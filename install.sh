@@ -259,9 +259,23 @@ install_opensocial() {
 
         # Extract project without installing dependencies
         print_info "Extracting project template..."
-        if ! composer create-project "$source" . --no-install --no-interaction; then
-            print_error "Failed to extract project template"
-            return 1
+
+        # Check if source is a Git URL
+        if [[ "$source" =~ ^(https?://|git@) ]] || [[ "$source" == *.git ]]; then
+            # Use git clone for Git URLs
+            print_info "Cloning from Git repository..."
+            if ! git clone "$source" .; then
+                print_error "Failed to clone project template from Git"
+                return 1
+            fi
+            # Remove .git directory to avoid issues
+            rm -rf .git
+        else
+            # Use composer create-project for package names
+            if ! composer create-project "$source" . --no-install --no-interaction; then
+                print_error "Failed to extract project template"
+                return 1
+            fi
         fi
 
         # Add Asset Packagist repository to project composer.json

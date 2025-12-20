@@ -22,7 +22,7 @@ recipes:
     #    sitename: default # leave blank it will be called the name of the site, eg loc
     auto:  y
   nwp:
-    source: rjzaar/commons_template:dev-master
+    source: https://github.com/rjzaar/commons_template.git
     install_modules: 
     profile: social
     webroot:  html

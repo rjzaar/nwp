@@ -5,9 +5,25 @@
 # follows official upstream conventions:
 # https://www.drupal.org/docs/develop/using-composer
 
+# Include folders starting with 'open'
+!open*/
+
+# Ignore NWP installation directories created by install.sh
+# These are recipe-based site installations (e.g., os, os1, d, m, nwp, etc.)
+/os
+/os[0-9]*
+/d
+/d[0-9]*
+/m
+/m[0-9]*
+/nwp
+/nwp[0-9]*
+
 # Ignore configuration files that may contain sensitive information
 /web/sites/*/*settings*.php
 /web/sites/*/*services*.yml
+/html/sites/*/*settings*.php
+/html/sites/*/*services*.yml
 
 # Ignore paths that may contain user-generated content
 /web/sites/*/files
@@ -15,11 +31,19 @@
 /web/sites/*/private
 /web/sites/*/files-public
 /web/sites/*/files-private
+/html/sites/*/files
+/html/sites/*/public
+/html/sites/*/private
+/html/sites/*/files-public
+/html/sites/*/files-private
 
 # Ignore paths that may contain temporary files
 /web/sites/*/translations
 /web/sites/*/tmp
 /web/sites/*/cache
+/html/sites/*/translations
+/html/sites/*/tmp
+/html/sites/*/cache
 
 # Ignore drupal core (if not versioning drupal sources)
 /web/vendor
@@ -52,6 +76,36 @@
 /web/robots.txt
 /web/update.php
 /web/web.config
+/html/vendor
+/html/core
+/html/modules/README.txt
+/html/modules/contrib
+/html/profiles/README.txt
+/html/profiles/contrib
+/html/sites/development.services.yml
+/html/sites/example.settings.local.php
+/html/sites/example.sites.php
+/html/sites/README.txt
+/html/themes/README.txt
+/html/themes/contrib
+/html/.csslintrc
+/html/.editorconfig
+/html/.eslintignore
+/html/.eslintrc.json
+/html/.gitattributes
+/html/.htaccess
+/html/.ht.router.php
+/html/autoload.php
+/html/composer.json
+/html/composer.lock
+/html/example.gitignore
+/html/index.php
+/html/INSTALL.txt
+/html/LICENSE.txt
+/html/README.txt
+/html/robots.txt
+/html/update.php
+/html/web.config
 
 # Ignore vendor dependencies and scripts
 /vendor

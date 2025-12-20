@@ -429,6 +429,14 @@ install_opensocial() {
             return 1
         fi
 
+        # Install Drush
+        print_info "Installing Drush..."
+        if composer require drush/drush --dev --no-interaction; then
+            print_status "OK" "Drush installed"
+        else
+            print_status "WARN" "Drush installation failed, but may already be available"
+        fi
+
         # Install additional modules if specified
         if [ -n "$install_modules" ]; then
             # Configure dworkflow repository only when needed
@@ -497,34 +505,19 @@ EOF
         print_status "INFO" "Skipping Step 4: DDEV already started"
     fi
 
-    # Step 5: Ensure Drush is installed
+    # Step 5: Verify Drush is available
     if should_run_step 5 "$start_step"; then
-        print_header "Step 5: Ensure Drush is Installed"
+        print_header "Step 5: Verify Drush is Available"
 
-        # Check if Drush is already available
+        # Check if Drush is available
         if [ -f "vendor/bin/drush" ]; then
-            print_status "OK" "Drush already available from composer.lock"
+            print_status "OK" "Drush is available"
         else
-            # Try to install Drush - temporarily remove custom repositories to avoid conflicts
-            print_info "Drush not found, attempting installation..."
-
-            # Remove dworkflow repository temporarily if it exists
-            composer config --unset repositories.dworkflow 2>/dev/null || true
-
-            # Install Drush without version constraint to use whatever is compatible
-            if ddev composer require drush/drush --dev --no-interaction >/dev/null 2>&1; then
-                print_status "OK" "Drush installed successfully"
-            else
-                print_status "WARN" "Drush installation failed, will try to continue"
-            fi
-
-            # Restore dworkflow repository if modules were installed
-            if [ -n "$install_modules" ]; then
-                composer config repositories.dworkflow vcs https://github.com/rjzaar/dworkflow
-            fi
+            print_error "Drush not found - installation may have failed in Step 1"
+            print_info "Try manually installing with: ddev composer require drush/drush --dev"
         fi
     else
-        print_status "INFO" "Skipping Step 5: Drush already installed"
+        print_status "INFO" "Skipping Step 5: Drush verification"
     fi
 
     # Step 6: Configure Private File System

@@ -4,12 +4,16 @@
 # NWP Installation Script
 #
 # Reads nwp.yml and installs OpenSocial based on the specified recipe
-# Usage: ./install.sh [recipe_name] [s=step_number]
+# Usage: ./install.sh [recipe_name] [s=step_number] [c]
 #
 # Examples:
 #   ./install.sh os              - Install using 'os' recipe
 #   ./install.sh os s=3          - Resume 'os' installation from step 3
 #   ./install.sh nwp --step=5    - Resume 'nwp' installation from step 5
+#   ./install.sh nwp c           - Install 'nwp' recipe with test content
+#
+# Options:
+#   c, --create-content          - Create test content (5 users, 5 docs, 5 workflow assignments)
 #
 # Installation Steps:
 #   1  - Initialize project with Composer
@@ -153,9 +157,157 @@ should_run_step() {
     fi
 }
 
+# Create test content for workflow_assignment module
+# Create test content for workflow_assignment module
+create_test_content() {
+    print_header "Creating Test Content"
+
+    print_info "Enabling workflow_assignment module..."
+    if ! ddev drush pm:enable workflow_assignment -y 2>&1 | grep -v "Deprecated"; then
+        print_error "Failed to enable workflow_assignment module"
+        return 1
+    fi
+
+    print_info "Enabling page content type for workflow support and clearing cache..."
+    ddev drush php:eval "
+        \$config = \Drupal::configFactory()->getEditable('workflow_assignment.settings');
+        \$enabled_types = \$config->get('enabled_content_types') ?: [];
+        if (!in_array('page', \$enabled_types)) {
+            \$enabled_types[] = 'page';
+            \$config->set('enabled_content_types', \$enabled_types);
+            \$config->save();
+        }
+        drupal_flush_all_caches();
+    " >/dev/null 2>&1
+
+    print_info "Creating 5 test users..."
+    local users=()
+    for i in {1..5}; do
+        local username="testuser$i"
+        local email="testuser$i@example.com"
+
+        if ddev drush user:info "$username" &>/dev/null; then
+            print_info "User $username already exists, skipping..."
+        else
+            ddev drush user:create "$username" --mail="$email" --password="test123" >/dev/null 2>&1
+            print_info "Created user: $username"
+        fi
+        users+=("$username")
+    done
+
+    print_info "Creating 5 test documents..."
+    local doc_nids=()
+    for i in {1..5}; do
+        local title="Test Document $i"
+        local body="This is test document number $i for workflow assignment testing."
+
+        local nid=$(ddev drush php:eval "
+            \$node = \Drupal\node\Entity\Node::create([
+                'type' => 'page',
+                'title' => '$title',
+                'body' => [
+                    'value' => '$body',
+                    'format' => 'basic_html',
+                ],
+                'uid' => 1,
+                'status' => 1,
+            ]);
+            \$node->save();
+            echo \$node->id();
+        " 2>/dev/null | tail -1)
+
+        if [ -n "$nid" ]; then
+            doc_nids+=("$nid")
+            print_info "Created document: $title (NID: $nid)"
+        fi
+    done
+
+    print_info "Creating 5 workflow assignments..."
+    local workflow_ids=()
+    for i in {1..5}; do
+        local user_index=$((i - 1))
+        local username="${users[$user_index]}"
+        local wf_id="test_workflow_$i"
+
+        ddev drush php:eval "
+            \$users = \Drupal::entityTypeManager()
+                ->getStorage('user')
+                ->loadByProperties(['name' => '$username']);
+            \$user = reset(\$users);
+
+            if (\$user) {
+                \$workflow = \Drupal::entityTypeManager()
+                    ->getStorage('workflow_list')
+                    ->create([
+                        'id' => '${wf_id}',
+                        'label' => 'Workflow Task $i',
+                        'description' => 'This is test workflow assignment $i for testing purposes.',
+                        'assigned_type' => 'user',
+                        'assigned_id' => \$user->id(),
+                        'comments' => 'Test comment for workflow $i',
+                    ]);
+                \$workflow->save();
+            }
+        " >/dev/null 2>&1
+
+        workflow_ids+=("$wf_id")
+        print_info "Created workflow: Workflow Task $i (assigned to $username)"
+    done
+
+    # Link workflows to the first document
+    if [ ${#doc_nids[@]} -gt 0 ] && [ ${#workflow_ids[@]} -gt 0 ]; then
+        local target_nid="${doc_nids[0]}"
+
+        print_info "Linking workflows to document (NID: $target_nid)..."
+        ddev drush php:eval "
+            \$node = \Drupal\node\Entity\Node::load($target_nid);
+            if (\$node && \$node->hasField('field_workflow_list')) {
+                \$workflow_ids = ['${workflow_ids[0]}', '${workflow_ids[1]}', '${workflow_ids[2]}', '${workflow_ids[3]}', '${workflow_ids[4]}'];
+                \$node->set('field_workflow_list', \$workflow_ids);
+                \$node->save();
+            }
+        " >/dev/null 2>&1
+
+        print_status "OK" "Test content created successfully"
+
+        # Generate URL to the document with workflow assignment tab
+        local site_url=$(ddev describe -j | jq -r '.raw.primary_url' 2>/dev/null)
+        if [ -z "$site_url" ]; then
+            site_url=$(ddev drush status --field=uri 2>/dev/null)
+        fi
+
+        local doc_url="${site_url}/node/${target_nid}/workflow"
+
+        echo ""
+        echo -e "${BOLD}Test Content Summary:${NC}"
+        echo -e "  ${GREEN}✓${NC} 5 users created (testuser1-5, password: test123)"
+        echo -e "  ${GREEN}✓${NC} 5 documents created (NIDs: ${doc_nids[*]})"
+        echo -e "  ${GREEN}✓${NC} 5 workflow assignments linked to document $target_nid"
+        echo ""
+        echo -e "${BOLD}View document with workflow assignments:${NC}"
+        echo -e "  ${BLUE}${doc_url}${NC}"
+        echo ""
+
+        # Try to open in browser
+        if command -v xdg-open &> /dev/null; then
+            xdg-open "$doc_url" &>/dev/null &
+            print_status "OK" "Document opened in browser"
+        elif command -v open &> /dev/null; then
+            open "$doc_url" &>/dev/null &
+            print_status "OK" "Document opened in browser"
+        fi
+    else
+        print_error "No documents or workflows were created"
+        return 1
+    fi
+
+    return 0
+}
+
 install_opensocial() {
     local recipe=$1
     local start_step=$2
+    local create_content=$3
     local base_dir=$(pwd)
 
     print_header "Installing OpenSocial using recipe: $recipe"
@@ -501,6 +653,14 @@ EOF
         ddev drush status
     else
         print_status "INFO" "Skipping Step 8: Additional configuration"
+    fi
+
+    # Create test content if requested
+    if [ "$create_content" == "y" ]; then
+        if ! create_test_content; then
+            print_error "Test content creation failed, but installation is complete"
+        fi
+        echo ""
     fi
 
     # Success message
@@ -877,6 +1037,7 @@ EOF
 main() {
     local recipe=""
     local start_step=""
+    local create_content="n"
     local config_file="nwp.yml"
 
     # Parse arguments
@@ -885,6 +1046,8 @@ main() {
             start_step="${BASH_REMATCH[1]}"
         elif [[ "$arg" =~ ^--step=([0-9]+)$ ]]; then
             start_step="${BASH_REMATCH[1]}"
+        elif [[ "$arg" == "c" ]] || [[ "$arg" == "--create-content" ]]; then
+            create_content="y"
         else
             recipe="$arg"
         fi
@@ -1028,7 +1191,7 @@ main() {
         fi
     else
         # Default to Drupal/OpenSocial installation
-        if install_opensocial "$recipe" "$start_step"; then
+        if install_opensocial "$recipe" "$start_step" "$create_content"; then
             exit 0
         else
             print_error "Installation failed"

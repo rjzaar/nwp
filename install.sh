@@ -257,10 +257,25 @@ install_opensocial() {
         print_header "Step 1: Initialize Project with Composer"
         print_info "This will take 10-15 minutes..."
 
-        if ! composer create-project "$source" . --no-interaction; then
-            print_error "Failed to create project with composer"
+        # Extract project without installing dependencies
+        print_info "Extracting project template..."
+        if ! composer create-project "$source" . --no-install --no-interaction; then
+            print_error "Failed to extract project template"
             return 1
         fi
+
+        # Add Asset Packagist repository to project composer.json
+        print_info "Configuring Asset Packagist repository..."
+        composer config repositories.asset-packagist composer https://asset-packagist.org
+        composer config repositories.drupal composer https://packages.drupal.org/8
+
+        # Install dependencies with Asset Packagist available
+        print_info "Installing dependencies (this will take 10-15 minutes)..."
+        if ! composer install --no-interaction; then
+            print_error "Failed to install project dependencies"
+            return 1
+        fi
+
         print_status "OK" "Project initialized"
     else
         print_status "INFO" "Skipping Step 1: Project already initialized"

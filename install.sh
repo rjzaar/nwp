@@ -3,7 +3,7 @@
 ################################################################################
 # NWP Installation Script
 #
-# Reads nwp.yml and installs OpenSocial based on the specified recipe
+# Reads nwpc.yml and installs OpenSocial based on the specified recipe
 # Usage: ./install.sh [recipe_name] [s=step_number] [c]
 #
 # Examples:
@@ -75,7 +75,7 @@ print_info() {
 get_recipe_value() {
     local recipe=$1
     local key=$2
-    local config_file="${3:-nwp.yml}"
+    local config_file="${3:-nwpc.yml}"
 
     # Use awk to extract the value
     awk -v recipe="$recipe" -v key="$key" '
@@ -99,7 +99,7 @@ get_recipe_value() {
 # Parse YAML file and extract root-level value
 get_root_value() {
     local key=$1
-    local config_file="${2:-nwp.yml}"
+    local config_file="${2:-nwpc.yml}"
 
     # Use awk to extract root-level values (not indented)
     awk -v key="$key" '
@@ -114,7 +114,7 @@ get_root_value() {
 # Check if recipe exists in config file
 recipe_exists() {
     local recipe=$1
-    local config_file="${2:-nwp.yml}"
+    local config_file="${2:-nwpc.yml}"
 
     grep -q "^  ${recipe}:" "$config_file"
     return $?
@@ -357,14 +357,14 @@ install_opensocial() {
     fi
 
     # Extract configuration values from YAML
-    local source=$(get_recipe_value "$recipe" "source" "$base_dir/nwp.yml")
-    local profile=$(get_recipe_value "$recipe" "profile" "$base_dir/nwp.yml")
-    local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/nwp.yml")
-    local install_modules=$(get_recipe_value "$recipe" "install_modules" "$base_dir/nwp.yml")
+    local source=$(get_recipe_value "$recipe" "source" "$base_dir/nwpc.yml")
+    local profile=$(get_recipe_value "$recipe" "profile" "$base_dir/nwpc.yml")
+    local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/nwpc.yml")
+    local install_modules=$(get_recipe_value "$recipe" "install_modules" "$base_dir/nwpc.yml")
 
     # Get root-level database and PHP configuration
-    local database=$(get_root_value "database" "$base_dir/nwp.yml")
-    local php_version=$(get_root_value "php" "$base_dir/nwp.yml")
+    local database=$(get_root_value "database" "$base_dir/nwpc.yml")
+    local php_version=$(get_root_value "php" "$base_dir/nwpc.yml")
 
     # Set defaults if not specified
     if [ -z "$php_version" ]; then
@@ -630,9 +630,9 @@ EOF
     # Step 8: Additional modules and configuration
     if should_run_step 8 "$start_step"; then
         # Dev modules installation if dev mode enabled
-        local dev=$(get_recipe_value "$recipe" "dev" "$base_dir/nwp.yml")
+        local dev=$(get_recipe_value "$recipe" "dev" "$base_dir/nwpc.yml")
         if [ "$dev" == "y" ]; then
-            local dev_modules=$(get_recipe_value "$recipe" "dev_modules" "$base_dir/nwp.yml")
+            local dev_modules=$(get_recipe_value "$recipe" "dev_modules" "$base_dir/nwpc.yml")
             if [ -n "$dev_modules" ]; then
                 print_header "Installing Development Modules"
                 print_info "Modules: $dev_modules"
@@ -771,14 +771,14 @@ install_moodle() {
     fi
 
     # Extract configuration values from YAML
-    local source=$(get_recipe_value "$recipe" "source" "$base_dir/nwp.yml")
-    local branch=$(get_recipe_value "$recipe" "branch" "$base_dir/nwp.yml")
-    local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/nwp.yml")
-    local sitename=$(get_recipe_value "$recipe" "sitename" "$base_dir/nwp.yml")
+    local source=$(get_recipe_value "$recipe" "source" "$base_dir/nwpc.yml")
+    local branch=$(get_recipe_value "$recipe" "branch" "$base_dir/nwpc.yml")
+    local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/nwpc.yml")
+    local sitename=$(get_recipe_value "$recipe" "sitename" "$base_dir/nwpc.yml")
 
     # Get root-level database and PHP configuration
-    local database=$(get_root_value "database" "$base_dir/nwp.yml")
-    local php_version=$(get_root_value "php" "$base_dir/nwp.yml")
+    local database=$(get_root_value "database" "$base_dir/nwpc.yml")
+    local php_version=$(get_root_value "php" "$base_dir/nwpc.yml")
 
     # Set defaults if not specified
     if [ -z "$php_version" ]; then
@@ -1046,7 +1046,7 @@ main() {
     local recipe=""
     local start_step=""
     local create_content="n"
-    local config_file="nwp.yml"
+    local config_file="nwpc.yml"
 
     # Parse arguments
     for arg in "$@"; do

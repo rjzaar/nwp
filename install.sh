@@ -270,13 +270,9 @@ create_test_content() {
 
         print_status "OK" "Test content created successfully"
 
-        # Generate URL to the document with workflow assignment tab
-        local site_url=$(ddev describe -j | jq -r '.raw.primary_url' 2>/dev/null)
-        if [ -z "$site_url" ]; then
-            site_url=$(ddev drush status --field=uri 2>/dev/null)
-        fi
-
-        local doc_url="${site_url}/node/${target_nid}/workflow"
+        # Get one-time login URL and append workflow tab destination
+        local uli_url=$(ddev drush uli --uri=default 2>/dev/null | tail -n 1)
+        local workflow_url="${uli_url%/login}/login?destination=/node/${target_nid}/workflow"
 
         echo ""
         echo -e "${BOLD}Test Content Summary:${NC}"
@@ -284,17 +280,17 @@ create_test_content() {
         echo -e "  ${GREEN}✓${NC} 5 documents created (NIDs: ${doc_nids[*]})"
         echo -e "  ${GREEN}✓${NC} 5 workflow assignments linked to document $target_nid"
         echo ""
-        echo -e "${BOLD}View document with workflow assignments:${NC}"
-        echo -e "  ${BLUE}${doc_url}${NC}"
+        echo -e "${BOLD}Login and view workflow assignments:${NC}"
+        echo -e "  ${BLUE}${workflow_url}${NC}"
         echo ""
 
-        # Try to open in browser
+        # Try to open in browser with login URL that redirects to workflow tab
         if command -v xdg-open &> /dev/null; then
-            xdg-open "$doc_url" &>/dev/null &
-            print_status "OK" "Document opened in browser"
+            xdg-open "$workflow_url" &>/dev/null &
+            print_status "OK" "Browser opened with login to workflow tab"
         elif command -v open &> /dev/null; then
-            open "$doc_url" &>/dev/null &
-            print_status "OK" "Document opened in browser"
+            open "$workflow_url" &>/dev/null &
+            print_status "OK" "Browser opened with login to workflow tab"
         fi
     else
         print_error "No documents or workflows were created"

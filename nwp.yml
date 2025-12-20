@@ -22,8 +22,8 @@ recipes:
     #    sitename: default # leave blank it will be called the name of the site, eg loc
     auto:  y
   nwp:
-    source: https://github.com/rjzaar/commons_template.git
-    install_modules: 
+    source: goalgorilla/social_template:dev-master
+    install_modules: rjzaar/workflow_assignment:dev-main drupal/ultimate_cron:^2.0.0-alpha7
     profile: social
     webroot:  html
     #    sitename: default # leave blank it will be called the name of the site, eg loc

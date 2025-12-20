@@ -212,6 +212,7 @@ install_opensocial() {
     local source=$(get_recipe_value "$recipe" "source" "$base_dir/nwp.yml")
     local profile=$(get_recipe_value "$recipe" "profile" "$base_dir/nwp.yml")
     local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/nwp.yml")
+    local install_modules=$(get_recipe_value "$recipe" "install_modules" "$base_dir/nwp.yml")
 
     # Get root-level database and PHP configuration
     local database=$(get_root_value "database" "$base_dir/nwp.yml")
@@ -259,35 +260,32 @@ install_opensocial() {
 
         # Extract project without installing dependencies
         print_info "Extracting project template..."
-
-        # Check if source is a Git URL
-        if [[ "$source" =~ ^(https?://|git@) ]] || [[ "$source" == *.git ]]; then
-            # Use git clone for Git URLs
-            print_info "Cloning from Git repository..."
-            if ! git clone "$source" .; then
-                print_error "Failed to clone project template from Git"
-                return 1
-            fi
-            # Remove .git directory to avoid issues
-            rm -rf .git
-        else
-            # Use composer create-project for package names
-            if ! composer create-project "$source" . --no-install --no-interaction; then
-                print_error "Failed to extract project template"
-                return 1
-            fi
+        if ! composer create-project "$source" . --no-install --no-interaction; then
+            print_error "Failed to extract project template"
+            return 1
         fi
 
         # Add Asset Packagist repository to project composer.json
-        print_info "Configuring Asset Packagist repository..."
+        print_info "Configuring repositories..."
         composer config repositories.asset-packagist composer https://asset-packagist.org
         composer config repositories.drupal composer https://packages.drupal.org/8
+        composer config repositories.dworkflow vcs https://github.com/rjzaar/dworkflow
 
         # Install dependencies with Asset Packagist available
         print_info "Installing dependencies (this will take 10-15 minutes)..."
         if ! composer install --no-interaction; then
             print_error "Failed to install project dependencies"
             return 1
+        fi
+
+        # Install additional modules if specified
+        if [ -n "$install_modules" ]; then
+            print_info "Installing additional modules: $install_modules"
+            if ! composer require $install_modules --no-interaction; then
+                print_error "Failed to install additional modules"
+                return 1
+            fi
+            print_status "OK" "Additional modules installed"
         fi
 
         print_status "OK" "Project initialized"
@@ -348,7 +346,8 @@ EOF
     if should_run_step 5 "$start_step"; then
         print_header "Step 5: Ensure Drush is Installed"
 
-        if ! ddev composer require drush/drush --dev --no-interaction; then
+        # Install Drush 12.x which is compatible with PHP 8.2
+        if ! ddev composer require drush/drush:^12.0 --dev --no-interaction; then
             print_error "Failed to install Drush (continuing anyway, may already be installed)"
         else
             print_status "OK" "Drush installed"
@@ -470,19 +469,6 @@ EOF
 
     # Step 8: Additional modules and configuration
     if should_run_step 8 "$start_step"; then
-        # Additional modules installation if specified
-        local install_modules=$(get_recipe_value "$recipe" "install_modules" "$base_dir/nwp.yml")
-        if [ -n "$install_modules" ]; then
-            print_header "Installing Additional Modules"
-            print_info "Modules: $install_modules"
-
-            if ! ddev drush pm:enable $install_modules -y; then
-                print_error "Failed to install modules: $install_modules"
-            else
-                print_status "OK" "Additional modules installed"
-            fi
-        fi
-
         # Dev modules installation if dev mode enabled
         local dev=$(get_recipe_value "$recipe" "dev" "$base_dir/nwp.yml")
         if [ "$dev" == "y" ]; then

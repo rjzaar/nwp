@@ -421,7 +421,6 @@ install_opensocial() {
         print_info "Configuring repositories..."
         composer config repositories.asset-packagist composer https://asset-packagist.org
         composer config repositories.drupal composer https://packages.drupal.org/8
-        composer config repositories.dworkflow vcs https://github.com/rjzaar/dworkflow
 
         # Install dependencies with Asset Packagist available
         print_info "Installing dependencies (this will take 10-15 minutes)..."
@@ -432,6 +431,10 @@ install_opensocial() {
 
         # Install additional modules if specified
         if [ -n "$install_modules" ]; then
+            # Configure dworkflow repository only when needed
+            print_info "Configuring custom repositories for additional modules..."
+            composer config repositories.dworkflow vcs https://github.com/rjzaar/dworkflow
+
             print_info "Installing additional modules: $install_modules"
             if ! composer require $install_modules --no-interaction; then
                 print_error "Failed to install additional modules"
@@ -498,11 +501,27 @@ EOF
     if should_run_step 5 "$start_step"; then
         print_header "Step 5: Ensure Drush is Installed"
 
-        # Install Drush 12.x which is compatible with PHP 8.2
-        if ! ddev composer require drush/drush:^12.0 --dev --no-interaction; then
-            print_error "Failed to install Drush (continuing anyway, may already be installed)"
+        # Check if Drush is already available
+        if [ -f "vendor/bin/drush" ]; then
+            print_status "OK" "Drush already available from composer.lock"
         else
-            print_status "OK" "Drush installed"
+            # Try to install Drush - temporarily remove custom repositories to avoid conflicts
+            print_info "Drush not found, attempting installation..."
+
+            # Remove dworkflow repository temporarily if it exists
+            composer config --unset repositories.dworkflow 2>/dev/null || true
+
+            # Install Drush without version constraint to use whatever is compatible
+            if ddev composer require drush/drush --dev --no-interaction >/dev/null 2>&1; then
+                print_status "OK" "Drush installed successfully"
+            else
+                print_status "WARN" "Drush installation failed, will try to continue"
+            fi
+
+            # Restore dworkflow repository if modules were installed
+            if [ -n "$install_modules" ]; then
+                composer config repositories.dworkflow vcs https://github.com/rjzaar/dworkflow
+            fi
         fi
     else
         print_status "INFO" "Skipping Step 5: Drush already installed"

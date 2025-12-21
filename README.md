@@ -29,9 +29,9 @@ The Narrow Way Project (NWP) simplifies the process of setting up local developm
 - **Resumable installations**: Start from any step if something fails
 - **Validation**: Automatic recipe validation before installation
 
-## Prerequisites
+## Environment setup
 
-Before using NWP, you need to have the following installed on your system:
+The setup.sh script will check and then offer to setup:
 
 - **Docker**: Container platform for DDEV
 - **DDEV**: Local development environment

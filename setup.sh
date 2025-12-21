@@ -1,10 +1,13 @@
 #!/bin/bash
 
 ################################################################################
-# DDEV + OpenSocial Installation Checker and Installer (v2)
-# 
-# This script checks if all components from the installation guide are properly
-# installed and configured, and offers to install/fix any missing components.
+# NWP Prerequisites Checker and Installer
+#
+# This script checks if all prerequisites for the Narrow Way Project are
+# properly installed and configured, and offers to install/fix any missing
+# components (Docker, DDEV, mkcert, etc.).
+#
+# Use install.sh to create and configure actual projects.
 ################################################################################
 
 # Colors for output
@@ -20,9 +23,6 @@ declare -a FAILED_ITEMS
 declare -a PARTIAL_ITEMS
 declare -a WARNING_ITEMS
 
-# Project directory (can be customized)
-PROJECT_DIR="$(pwd)"
-
 # Component status flags
 DOCKER_STATUS=""
 DOCKER_GROUP_STATUS=""
@@ -31,11 +31,6 @@ MKCERT_STATUS=""
 MKCERT_CA_STATUS=""
 DDEV_STATUS=""
 DDEV_CONFIG_STATUS=""
-PROJECT_DIR_STATUS=""
-DDEV_PROJECT_STATUS=""
-OPENSOCIAL_STATUS=""
-DRUPAL_STATUS=""
-MODULE_STATUS=""
 
 ################################################################################
 # Helper Functions
@@ -210,134 +205,6 @@ check_ddev_config() {
     fi
 }
 
-check_opensocial_project() {
-    echo -e "\n${BOLD}Checking OpenSocial project at: $PROJECT_DIR${NC}"
-    
-    if [ -d "$PROJECT_DIR" ]; then
-        print_status "OK" "Project directory exists"
-        PROJECT_DIR_STATUS="exists"
-        
-        cd "$PROJECT_DIR"
-        
-        # Check if DDEV is configured
-        if [ -f ".ddev/config.yaml" ]; then
-            print_status "OK" "DDEV configuration found"
-            
-            # Check docroot
-            local docroot=$(grep "^docroot:" .ddev/config.yaml 2>/dev/null | awk '{print $2}')
-            if [ "$docroot" == "html" ]; then
-                print_status "OK" "Correct docroot (html)"
-            else
-                print_status "WARN" "Docroot is '$docroot' (should be 'html')"
-                WARNING_ITEMS+=("wrong_docroot")
-            fi
-            
-            # Check if project is running
-            if ddev describe &> /dev/null 2>&1; then
-                print_status "OK" "DDEV project is running"
-                DDEV_PROJECT_STATUS="running"
-                
-                # Check database type
-                local db_info=$(ddev describe 2>/dev/null | grep -A 5 "DATABASE" | grep "Type:" | awk '{print $2}')
-                if [ -n "$db_info" ]; then
-                    print_status "OK" "Database: $db_info"
-                fi
-            else
-                print_status "WARN" "DDEV project NOT running"
-                DDEV_PROJECT_STATUS="stopped"
-                PARTIAL_ITEMS+=("ddev_project_stopped")
-            fi
-            
-            # Check if OpenSocial is installed
-            if [ -d "html/profiles/contrib/social" ] || [ -d "html/profiles/social" ]; then
-                print_status "OK" "OpenSocial profile found"
-                OPENSOCIAL_STATUS="installed"
-                
-                # Check if Drupal site is installed
-                if [ -f "html/sites/default/settings.php" ]; then
-                    if grep -q "^\$databases\['default'\]" html/sites/default/settings.php 2>/dev/null || \
-                       grep -q "^\$databases\[\"default\"\]" html/sites/default/settings.php 2>/dev/null; then
-                        print_status "OK" "Drupal appears to be installed"
-                        DRUPAL_STATUS="installed"
-                    else
-                        print_status "FAIL" "Drupal NOT installed (settings.php exists but no database config)"
-                        DRUPAL_STATUS="not_installed"
-                        FAILED_ITEMS+=("drupal_install")
-                    fi
-                else
-                    print_status "FAIL" "Drupal NOT installed (no settings.php)"
-                    DRUPAL_STATUS="not_installed"
-                    FAILED_ITEMS+=("drupal_install")
-                fi
-            else
-                print_status "FAIL" "OpenSocial profile NOT found"
-                OPENSOCIAL_STATUS="missing"
-                FAILED_ITEMS+=("opensocial")
-            fi
-        else
-            print_status "FAIL" "DDEV NOT configured in project"
-            DDEV_PROJECT_STATUS="not_configured"
-            FAILED_ITEMS+=("ddev_project_config")
-        fi
-    else
-        print_status "FAIL" "Project directory does NOT exist"
-        PROJECT_DIR_STATUS="missing"
-        FAILED_ITEMS+=("project_directory")
-    fi
-}
-
-check_custom_module() {
-    echo -e "\n${BOLD}Checking field_manager module...${NC}"
-    
-    if [ "$PROJECT_DIR_STATUS" == "exists" ]; then
-        if [ -d "$PROJECT_DIR/html/modules/custom/field_manager" ]; then
-            print_status "OK" "field_manager directory exists"
-            
-            # Check for key files
-            local files_ok=true
-            if [ -f "$PROJECT_DIR/html/modules/custom/field_manager/field_manager.info.yml" ]; then
-                print_status "OK" "Module info file exists"
-            else
-                print_status "WARN" "Module info file missing"
-                files_ok=false
-            fi
-            
-            if [ -f "$PROJECT_DIR/html/modules/custom/field_manager/src/Form/AddFieldForm.php" ]; then
-                print_status "OK" "AddFieldForm.php exists"
-            else
-                print_status "WARN" "AddFieldForm.php missing"
-                files_ok=false
-            fi
-            
-            if [ "$files_ok" == "true" ]; then
-                MODULE_STATUS="exists"
-                
-                # Check if module is enabled (only if DDEV is running)
-                if [ "$DDEV_PROJECT_STATUS" == "running" ]; then
-                    cd "$PROJECT_DIR"
-                    if ddev drush pm:list --status=enabled 2>/dev/null | grep -q "field_manager"; then
-                        print_status "OK" "field_manager module is enabled"
-                        MODULE_STATUS="enabled"
-                    else
-                        print_status "WARN" "field_manager module NOT enabled"
-                        MODULE_STATUS="not_enabled"
-                        PARTIAL_ITEMS+=("module_not_enabled")
-                    fi
-                fi
-            else
-                MODULE_STATUS="incomplete"
-                PARTIAL_ITEMS+=("module_incomplete")
-            fi
-        else
-            print_status "FAIL" "field_manager module NOT found"
-            MODULE_STATUS="missing"
-            FAILED_ITEMS+=("custom_module")
-        fi
-    else
-        print_status "INFO" "Skipping module check (no project directory)"
-        MODULE_STATUS="skipped"
-    fi
-}
 
 ################################################################################
 # Installation Functions
@@ -442,9 +309,9 @@ install_ddev() {
 
 create_ddev_config() {
     print_header "Creating DDEV Global Configuration"
-    
+
     mkdir -p ~/.ddev
-    
+
     cat > ~/.ddev/global_config.yaml << 'EOF'
 # DDEV Global Configuration
 use_dns_when_possible: false
@@ -453,102 +320,8 @@ router_https_port: "443"
 instrumentation_opt_in: false
 php_version: "8.3"
 EOF
-    
+
     print_status "OK" "DDEV global config created"
-}
-
-create_project_directory() {
-    print_header "Creating Project Directory"
-    
-    mkdir -p "$PROJECT_DIR"
-    cd "$PROJECT_DIR"
-    
-    print_status "OK" "Project directory created: $PROJECT_DIR"
-}
-
-configure_ddev_project() {
-    print_header "Configuring DDEV for Project"
-    
-    cd "$PROJECT_DIR"
-    ddev config --project-type=drupal10 --docroot=html --create-docroot
-    
-    print_status "OK" "DDEV configured"
-}
-
-start_ddev_project() {
-    print_header "Starting DDEV Project"
-    
-    cd "$PROJECT_DIR"
-    ddev start
-    
-    print_status "OK" "DDEV project started"
-}
-
-install_opensocial() {
-    print_header "Installing OpenSocial"
-    
-    cd "$PROJECT_DIR"
-    
-    echo "This will take 10-15 minutes..."
-    ddev composer create goalgorilla/social_template --no-interaction
-    
-    print_status "OK" "OpenSocial installed"
-}
-
-install_drupal_site() {
-    print_header "Installing Drupal Site"
-    
-    cd "$PROJECT_DIR"
-    
-    echo "This will take 5-10 minutes..."
-    ddev drush site:install social \
-        --db-url=mysql://db:db@db:3306/db \
-        --account-name=admin \
-        --account-pass=admin \
-        --site-name="My OpenSocial Site" \
-        -y
-    
-    ddev drush cr
-    
-    print_status "OK" "Drupal site installed"
-    echo -e "${GREEN}${BOLD}Login: admin / admin${NC}"
-}
-
-create_field_manager_module() {
-    print_header "Creating field_manager Module"
-    
-    cd "$PROJECT_DIR"
-    
-    mkdir -p html/modules/custom/field_manager/src/Form
-    
-    # Create info file
-    cat > html/modules/custom/field_manager/field_manager.info.yml << 'EOF'
-name: 'Field Manager'
-type: module
-description: 'Allows administrators to add fields to content types through a user interface.'
-package: Custom
-core_version_requirement: ^10 || ^11
-dependencies:
-  - drupal:field
-  - drupal:node
-  - drupal:field_ui
-EOF
-    
-    # Create basic files
-    touch html/modules/custom/field_manager/field_manager.module
-    
-    print_status "OK" "Module structure created"
-    echo -e "${YELLOW}Note: Copy full AddFieldForm.php from the guide for complete functionality${NC}"
-}
-
-enable_field_manager() {
-    print_header "Enabling field_manager Module"
-    
-    cd "$PROJECT_DIR"
-    ddev drush cr
-    ddev drush pm:enable field_manager -y
-    
-    print_status "OK" "Module enabled"
 }
 
 ################################################################################
@@ -587,155 +360,99 @@ print_summary() {
 
 show_installation_menu() {
     print_header "Installation Options"
-    
+
     echo "Select components to install:"
     echo ""
-    
+
     local option_num=1
-    
+
     # Build menu dynamically based on what's missing
     if [[ " ${FAILED_ITEMS[@]} " =~ " docker " ]]; then
         echo "  $option_num) Install Docker Engine"
         ((option_num++))
     fi
-    
+
     if [[ " ${FAILED_ITEMS[@]} " =~ " docker_group " ]]; then
         echo "  $option_num) Add user to docker group"
         ((option_num++))
     fi
-    
+
     if [[ " ${FAILED_ITEMS[@]} " =~ " docker_daemon " ]]; then
         echo "  $option_num) Start Docker daemon"
         ((option_num++))
     fi
-    
+
     if [[ " ${FAILED_ITEMS[@]} " =~ " docker_compose " ]]; then
         echo "  $option_num) Install Docker Compose (usually with Docker)"
         ((option_num++))
     fi
-    
+
     if [[ " ${FAILED_ITEMS[@]} " =~ " mkcert " ]]; then
         echo "  $option_num) Install mkcert"
         ((option_num++))
     fi
-    
+
     if [[ " ${FAILED_ITEMS[@]} " =~ " mkcert_ca " ]]; then
         echo "  $option_num) Install mkcert CA"
         ((option_num++))
     fi
-    
+
     if [[ " ${FAILED_ITEMS[@]} " =~ " ddev " ]]; then
         echo "  $option_num) Install DDEV"
         ((option_num++))
     fi
-    
+
     if [[ " ${WARNING_ITEMS[@]} " =~ " ddev_config " ]]; then
         echo "  $option_num) Create DDEV global config (optional)"
         ((option_num++))
     fi
-    
-    if [[ " ${FAILED_ITEMS[@]} " =~ " project_directory " ]]; then
-        echo "  $option_num) Create project directory"
-        ((option_num++))
-    fi
-    
-    if [[ " ${FAILED_ITEMS[@]} " =~ " ddev_project_config " ]]; then
-        echo "  $option_num) Configure DDEV for project"
-        ((option_num++))
-    fi
-    
-    if [[ " ${PARTIAL_ITEMS[@]} " =~ " ddev_project_stopped " ]]; then
-        echo "  $option_num) Start DDEV project"
-        ((option_num++))
-    fi
-    
-    if [[ " ${FAILED_ITEMS[@]} " =~ " opensocial " ]]; then
-        echo "  $option_num) Install OpenSocial (10-15 min)"
-        ((option_num++))
-    fi
-    
-    if [[ " ${FAILED_ITEMS[@]} " =~ " drupal_install " ]]; then
-        echo "  $option_num) Install Drupal site (5-10 min)"
-        ((option_num++))
-    fi
-    
-    if [[ " ${FAILED_ITEMS[@]} " =~ " custom_module " ]]; then
-        echo "  $option_num) Create field_manager module"
-        ((option_num++))
-    fi
-    
-    if [[ " ${PARTIAL_ITEMS[@]} " =~ " module_not_enabled " ]]; then
-        echo "  $option_num) Enable field_manager module"
-        ((option_num++))
-    fi
-    
+
     echo ""
-    echo "  a) Install ALL missing components automatically"
+    echo "  a) Install ALL missing prerequisites automatically"
     echo "  q) Quit without installing"
+    echo ""
+    echo "Note: Use ./install.sh to create and configure projects"
     echo ""
 }
 
 install_by_status() {
-    print_header "Installing Missing Components"
-    
+    print_header "Installing Missing Prerequisites"
+
     # Install in logical order
     if [[ " ${FAILED_ITEMS[@]} " =~ " docker " ]]; then
         install_docker
     fi
-    
+
     if [[ " ${FAILED_ITEMS[@]} " =~ " docker_daemon " ]]; then
         start_docker
     fi
-    
+
     if [[ " ${FAILED_ITEMS[@]} " =~ " docker_group " ]]; then
         add_user_to_docker_group
     fi
-    
+
     if [[ " ${FAILED_ITEMS[@]} " =~ " mkcert " ]]; then
         install_mkcert
     fi
-    
+
     if [[ " ${FAILED_ITEMS[@]} " =~ " mkcert_ca " ]]; then
         install_mkcert_ca
     fi
-    
+
     if [[ " ${FAILED_ITEMS[@]} " =~ " ddev " ]]; then
         install_ddev
     fi
-    
+
     if [[ " ${WARNING_ITEMS[@]} " =~ " ddev_config " ]]; then
         create_ddev_config
     fi
-    
-    if [[ " ${FAILED_ITEMS[@]} " =~ " project_directory " ]]; then
-        create_project_directory
-    fi
-    
-    if [[ " ${FAILED_ITEMS[@]} " =~ " ddev_project_config " ]]; then
-        configure_ddev_project
-    fi
-    
-    if [[ " ${PARTIAL_ITEMS[@]} " =~ " ddev_project_stopped " ]]; then
-        start_ddev_project
-    fi
-    
-    if [[ " ${FAILED_ITEMS[@]} " =~ " opensocial " ]]; then
-        install_opensocial
-    fi
-    
-    if [[ " ${FAILED_ITEMS[@]} " =~ " drupal_install " ]]; then
-        install_drupal_site
-    fi
-    
-    if [[ " ${FAILED_ITEMS[@]} " =~ " custom_module " ]]; then
-        create_field_manager_module
-    fi
-    
-    if [[ " ${PARTIAL_ITEMS[@]} " =~ " module_not_enabled " ]]; then
-        enable_field_manager
-    fi
-    
-    print_header "Installation Complete"
+
+    print_header "Prerequisites Installation Complete"
+    echo ""
+    echo "Next steps:"
+    echo "  1. If you added yourself to the docker group, log out and log back in"
+    echo "  2. Run ./install.sh --list to see available recipes"
+    echo "  3. Run ./install.sh <recipe> to create a project"
 }
 
 ################################################################################
@@ -743,19 +460,13 @@ install_by_status() {
 ################################################################################
 
 main() {
-    print_header "DDEV + OpenSocial Installation Checker v2"
-    
-    echo "This script checks your installation and offers to fix issues."
+    print_header "NWP Prerequisites Checker"
+
+    echo "This script checks NWP prerequisites and offers to install missing components."
     echo ""
-    
-    # Ask for project directory
-    read -p "Project directory [$PROJECT_DIR]: " input_dir
-    if [ -n "$input_dir" ]; then
-        PROJECT_DIR="$input_dir"
-    fi
-    
+
     print_header "Running Checks"
-    
+
     # Run all checks
     check_ubuntu_version
     check_docker
@@ -763,41 +474,37 @@ main() {
     check_mkcert
     check_ddev
     check_ddev_config
-    check_opensocial_project
-    check_custom_module
-    
+
     # Show summary
     echo ""
     if ! print_summary; then
         # Issues found
         echo ""
         show_installation_menu
-        
+
         read -p "Enter selection (number or 'a' for all, 'q' to quit): " choice
-        
+
         if [[ "$choice" =~ ^[Qq]$ ]]; then
             echo "Exiting..."
             exit 0
         elif [[ "$choice" =~ ^[Aa]$ ]]; then
-            if ask_yes_no "Install all missing components?" "y"; then
+            if ask_yes_no "Install all missing prerequisites?" "y"; then
                 install_by_status
-                
+
                 # Re-run checks
                 echo ""
                 print_header "Re-checking Installation"
                 FAILED_ITEMS=()
                 PARTIAL_ITEMS=()
                 WARNING_ITEMS=()
-                
+
                 check_ubuntu_version
                 check_docker
                 check_docker_compose
                 check_mkcert
                 check_ddev
                 check_ddev_config
-                check_opensocial_project
-                check_custom_module
-                
+
                 echo ""
                 print_summary
             fi
@@ -805,14 +512,14 @@ main() {
     else
         # No issues
         echo ""
-        if [ -d "$PROJECT_DIR" ] && [ "$DRUPAL_STATUS" == "installed" ]; then
-            echo -e "${BLUE}${BOLD}Quick Start:${NC}"
-            echo "  cd $PROJECT_DIR"
-            echo "  ddev launch"
-            echo "  ddev drush uli"
-        fi
+        echo -e "${GREEN}${BOLD}✓ All prerequisites are installed!${NC}"
+        echo ""
+        echo -e "${BLUE}${BOLD}Next steps:${NC}"
+        echo "  ./install.sh --list              # View available recipes"
+        echo "  ./install.sh <recipe>            # Install a project"
+        echo ""
     fi
-    
+
     echo ""
     print_header "Done"
 }

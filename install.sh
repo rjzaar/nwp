@@ -120,6 +120,138 @@ recipe_exists() {
     return $?
 }
 
+# List all available recipes with their descriptions
+list_recipes() {
+    local config_file="${1:-cnwp.yml}"
+
+    print_header "Available Recipes"
+
+    echo -e "${BOLD}Recipes defined in $config_file:${NC}\n"
+
+    # Extract all recipe names
+    local recipes=$(grep "^  [a-zA-Z0-9_-]*:" "$config_file" | sed 's/://g' | sed 's/^  //')
+
+    for recipe in $recipes; do
+        local recipe_type=$(get_recipe_value "$recipe" "type" "$config_file")
+        local source=$(get_recipe_value "$recipe" "source" "$config_file")
+        local profile=$(get_recipe_value "$recipe" "profile" "$config_file")
+        local branch=$(get_recipe_value "$recipe" "branch" "$config_file")
+
+        # Default to drupal if type not specified
+        if [ -z "$recipe_type" ]; then
+            recipe_type="drupal"
+        fi
+
+        echo -e "${BLUE}${BOLD}$recipe${NC} (${recipe_type})"
+
+        if [ "$recipe_type" == "moodle" ]; then
+            echo -e "  Source: $source"
+            [ -n "$branch" ] && echo -e "  Branch: $branch"
+        else
+            echo -e "  Source: $source"
+            [ -n "$profile" ] && echo -e "  Profile: $profile"
+        fi
+
+        echo ""
+    done
+
+    echo -e "${BOLD}Usage:${NC}"
+    echo -e "  ./install.sh <recipe>           Install the specified recipe"
+    echo -e "  ./install.sh <recipe> c         Install with test content creation"
+    echo -e "  ./install.sh <recipe> s=N       Start from step N"
+    echo ""
+}
+
+# Validate that a recipe has all required fields
+validate_recipe() {
+    local recipe=$1
+    local config_file="${2:-cnwp.yml}"
+    local errors=0
+
+    local recipe_type=$(get_recipe_value "$recipe" "type" "$config_file")
+
+    # Default to drupal if type not specified
+    if [ -z "$recipe_type" ]; then
+        recipe_type="drupal"
+    fi
+
+    # Check required fields based on type
+    if [ "$recipe_type" == "moodle" ]; then
+        # Moodle required fields
+        local source=$(get_recipe_value "$recipe" "source" "$config_file")
+        local branch=$(get_recipe_value "$recipe" "branch" "$config_file")
+        local webroot=$(get_recipe_value "$recipe" "webroot" "$config_file")
+
+        if [ -z "$source" ]; then
+            print_error "Recipe '$recipe': Missing required field 'source'"
+            errors=$((errors + 1))
+        fi
+
+        if [ -z "$branch" ]; then
+            print_error "Recipe '$recipe': Missing required field 'branch'"
+            errors=$((errors + 1))
+        fi
+
+        if [ -z "$webroot" ]; then
+            print_error "Recipe '$recipe': Missing required field 'webroot'"
+            errors=$((errors + 1))
+        fi
+    else
+        # Drupal required fields
+        local source=$(get_recipe_value "$recipe" "source" "$config_file")
+        local profile=$(get_recipe_value "$recipe" "profile" "$config_file")
+        local webroot=$(get_recipe_value "$recipe" "webroot" "$config_file")
+
+        if [ -z "$source" ]; then
+            print_error "Recipe '$recipe': Missing required field 'source'"
+            errors=$((errors + 1))
+        fi
+
+        if [ -z "$profile" ]; then
+            print_error "Recipe '$recipe': Missing required field 'profile'"
+            errors=$((errors + 1))
+        fi
+
+        if [ -z "$webroot" ]; then
+            print_error "Recipe '$recipe': Missing required field 'webroot'"
+            errors=$((errors + 1))
+        fi
+    fi
+
+    return $errors
+}
+
+# Show help information
+show_help() {
+    local config_file="${1:-cnwp.yml}"
+
+    echo -e "${BOLD}Narrow Way Project Installation Script${NC}"
+    echo ""
+    echo -e "${BOLD}USAGE:${NC}"
+    echo -e "  ./install.sh [OPTIONS] <recipe>"
+    echo ""
+    echo -e "${BOLD}OPTIONS:${NC}"
+    echo -e "  -l, --list              List all available recipes"
+    echo -e "  -h, --help              Show this help message"
+    echo -e "  c, --create-content     Create test content after installation"
+    echo -e "  s=N, --step=N           Start installation from step N"
+    echo ""
+    echo -e "${BOLD}EXAMPLES:${NC}"
+    echo -e "  ./install.sh --list              List available recipes"
+    echo -e "  ./install.sh nwp                 Install the nwp recipe"
+    echo -e "  ./install.sh nwp c               Install nwp with test content"
+    echo -e "  ./install.sh d s=3               Install d recipe starting from step 3"
+    echo ""
+    echo -e "${BOLD}AVAILABLE RECIPES:${NC}"
+    local recipes=$(grep "^  [a-zA-Z0-9_-]*:" "$config_file" | sed 's/://g' | sed 's/^  //')
+    for recipe in $recipes; do
+        echo -e "  - $recipe"
+    done
+    echo ""
+    echo -e "For detailed recipe information, use: ./install.sh --list"
+    echo ""
+}
+
 # Find available directory name for recipe installation
 get_available_dirname() {
     local recipe=$1
@@ -1050,7 +1182,13 @@ main() {
 
     # Parse arguments
     for arg in "$@"; do
-        if [[ "$arg" =~ ^s=([0-9]+)$ ]]; then
+        if [[ "$arg" == "-l" ]] || [[ "$arg" == "--list" ]]; then
+            list_recipes "$config_file"
+            exit 0
+        elif [[ "$arg" == "-h" ]] || [[ "$arg" == "--help" ]]; then
+            show_help "$config_file"
+            exit 0
+        elif [[ "$arg" =~ ^s=([0-9]+)$ ]]; then
             start_step="${BASH_REMATCH[1]}"
         elif [[ "$arg" =~ ^--step=([0-9]+)$ ]]; then
             start_step="${BASH_REMATCH[1]}"
@@ -1063,7 +1201,8 @@ main() {
 
     # Default recipe if not specified
     if [ -z "$recipe" ]; then
-        recipe="default"
+        show_help "$config_file"
+        exit 1
     fi
 
     print_header "NWP OpenSocial Installation"
@@ -1084,8 +1223,22 @@ main() {
         echo ""
         echo "Available recipes:"
         grep "^  [a-zA-Z0-9_-]*:" "$config_file" | sed 's/://g' | sed 's/^  /  - /'
+        echo ""
+        echo "Use './install.sh --list' to see detailed recipe information"
         exit 1
     fi
+
+    # Validate recipe configuration
+    print_info "Validating recipe configuration..."
+    if ! validate_recipe "$recipe" "$config_file"; then
+        print_error "Recipe '$recipe' has missing or invalid configuration"
+        echo ""
+        echo "Please check your $config_file and ensure all required fields are present:"
+        echo "  For Drupal recipes: source, profile, webroot"
+        echo "  For Moodle recipes: source, branch, webroot"
+        exit 1
+    fi
+    print_status "OK" "Recipe configuration is valid"
 
     # Check prerequisites
     print_info "Checking prerequisites..."

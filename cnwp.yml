@@ -15,7 +15,7 @@ recipes:
     #    sitename: default # leave blank it will be called the name of the site, eg loc
     auto:  y
   d:
-    source: drupal/recommended-project
+    source: drupal/recommended-project:^10.2
     install_modules:
     profile: standard
     webroot:  web

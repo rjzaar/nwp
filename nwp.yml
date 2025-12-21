@@ -1,0 +1,44 @@
+# This is the config file for the Narrow Way Project
+# The aim is to put reasonable default values to make running the nwp easy
+# particularly for beginners.
+
+# This recipe section will have defaults to easy start a new project.
+database: mariadb
+php: 8.2
+
+recipes:
+  os:
+    source: goalgorilla/social_template:dev-master
+    install_modules: 
+    profile: social
+    webroot:  html
+    #    sitename: default # leave blank it will be called the name of the site, eg loc
+    auto:  y
+  d:
+    source: drupal/recommended-project
+    install_modules: 
+    profile: social
+    webroot:  web
+    #    sitename: default # leave blank it will be called the name of the site, eg loc
+    auto:  y
+  nwp:
+    source: goalgorilla/social_template:dev-master
+    install_modules: rjzaar/workflow_assignment:dev-main
+    profile: social
+    webroot:  html
+    #    sitename: default # leave blank it will be called the name of the site, eg loc
+    auto:  y
+  m:
+    type: moodle
+    source: https://github.com/moodle/moodle.git
+    branch: MOODLE_404_STABLE
+    webroot: .
+    sitename: "My Moodle Site"
+    auto: y
+  dm:
+    source: drupal/recommended-project
+    install_modules: 
+    profile: social
+    webroot:  web
+    #    sitename: default # leave blank it will be called the name of the site, eg loc
+    auto:  y

@@ -29,47 +29,47 @@ The Narrow Way Project (NWP) simplifies the process of setting up local developm
 - **Resumable installations**: Start from any step if something fails
 - **Validation**: Automatic recipe validation before installation
 
-## Environment setup
+## Prerequisites
 
-The setup.sh script will check and then offer to setup:
+NWP requires the following software:
 
 - **Docker**: Container platform for DDEV
 - **DDEV**: Local development environment
 - **Composer**: PHP dependency manager
 - **Git**: Version control system
 
-### Installing Prerequisites
-
-NWP includes a setup script that can install the prerequisites for you:
-
-```bash
-./setup.sh
-```
-
-The setup script will:
-1. Check for existing installations
-2. Install missing prerequisites
-3. Configure your system for DDEV
-4. Verify everything is working
+**Don't worry if you don't have these installed yet!** The setup script will check for each prerequisite and automatically install any that are missing.
 
 ## Quick Start
 
-1. **Clone the repository** (or navigate to the NWP directory):
+1. **Clone the repository**:
    ```bash
-   cd /path/to/nwp
+   git clone git@github.com:rjzaar/nwp.git
+   cd nwp
    ```
 
-2. **View available recipes**:
+2. **Run the setup script** (installs missing prerequisites):
+   ```bash
+   ./setup.sh
+   ```
+
+   The setup script will:
+   - Check which prerequisites are already installed
+   - Install only the missing prerequisites
+   - Configure your system for DDEV
+   - Verify everything is working correctly
+
+3. **View available recipes**:
    ```bash
    ./install.sh --list
    ```
 
-3. **Install a project using a recipe**:
+4. **Install a project using a recipe**:
    ```bash
    ./install.sh nwp
    ```
 
-4. **Access your site**:
+5. **Access your site**:
    - The script will display the URL when installation completes
    - Typically: `https://<recipe-name>.ddev.site`
 

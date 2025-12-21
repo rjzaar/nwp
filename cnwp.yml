@@ -16,8 +16,8 @@ recipes:
     auto:  y
   d:
     source: drupal/recommended-project
-    install_modules: 
-    profile: social
+    install_modules:
+    profile: standard
     webroot:  web
     #    sitename: default # leave blank it will be called the name of the site, eg loc
     auto:  y

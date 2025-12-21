@@ -20,6 +20,9 @@
 /commons_template
 /commons_template[0-9]*
 
+# Ignore backup directories
+/sitebackups
+
 # Ignore vendor dependencies and scripts
 /vendor
 /composer.phar

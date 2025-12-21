@@ -37,7 +37,7 @@ recipes:
     auto: y
   dm:
     source: drupal/recommended-project:^10.2
-    install_modules: rjzaar/divine_mercy:dev-main
+    install_modules: git@github.com:rjzaar/divine_mercy.git
     profile: standard
     webroot:  web
     #    sitename: default # leave blank it will be called the name of the site, eg loc

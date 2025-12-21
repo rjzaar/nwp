@@ -252,6 +252,59 @@ show_help() {
     echo ""
 }
 
+# Extract module name from git URL
+get_module_name_from_git_url() {
+    local git_url=$1
+    # Extract last part of path and remove .git extension
+    # Handles both git@github.com:user/repo.git and https://github.com/user/repo.git
+    echo "$git_url" | sed -e 's/.*[:/]\([^/]*\)\.git$/\1/' -e 's/.*\/\([^/]*\)\.git$/\1/'
+}
+
+# Check if a string is a git URL
+is_git_url() {
+    local url=$1
+    if [[ "$url" =~ ^git@ ]] || [[ "$url" =~ \.git$ ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# Install modules from git repositories
+install_git_modules() {
+    local git_modules=$1
+    local webroot=$2
+    local custom_dir="${webroot}/modules/custom"
+
+    print_info "Installing modules from git repositories..."
+
+    # Create custom modules directory if it doesn't exist
+    if [ ! -d "$custom_dir" ]; then
+        mkdir -p "$custom_dir"
+        print_status "OK" "Created custom modules directory: $custom_dir"
+    fi
+
+    # Process each git module
+    for git_url in $git_modules; do
+        local module_name=$(get_module_name_from_git_url "$git_url")
+        local module_path="${custom_dir}/${module_name}"
+
+        if [ -d "$module_path" ]; then
+            print_status "WARN" "Module $module_name already exists, skipping clone"
+            continue
+        fi
+
+        print_info "Cloning $module_name from $git_url..."
+        if git clone "$git_url" "$module_path"; then
+            print_status "OK" "Module $module_name cloned successfully"
+        else
+            print_error "Failed to clone module $module_name from $git_url"
+            return 1
+        fi
+    done
+
+    return 0
+}
+
 # Find available directory name for recipe installation
 get_available_dirname() {
     local recipe=$1
@@ -567,16 +620,40 @@ install_opensocial() {
 
         # Install additional modules if specified
         if [ -n "$install_modules" ]; then
-            # Configure dworkflow repository only when needed
-            print_info "Configuring custom repositories for additional modules..."
-            composer config repositories.dworkflow vcs https://github.com/rjzaar/dworkflow
+            # Separate git modules from composer modules
+            local git_modules=""
+            local composer_modules=""
 
-            print_info "Installing additional modules: $install_modules"
-            if ! composer require $install_modules --no-interaction; then
-                print_error "Failed to install additional modules"
-                return 1
+            for module in $install_modules; do
+                if is_git_url "$module"; then
+                    git_modules="$git_modules $module"
+                else
+                    composer_modules="$composer_modules $module"
+                fi
+            done
+
+            # Install composer modules
+            if [ -n "$composer_modules" ]; then
+                # Configure dworkflow repository only when needed
+                print_info "Configuring custom repositories for additional modules..."
+                composer config repositories.dworkflow vcs https://github.com/rjzaar/dworkflow
+
+                print_info "Installing composer modules:$composer_modules"
+                if ! composer require $composer_modules --no-interaction; then
+                    print_error "Failed to install composer modules"
+                    return 1
+                fi
+                print_status "OK" "Composer modules installed"
             fi
-            print_status "OK" "Additional modules installed"
+
+            # Install git modules
+            if [ -n "$git_modules" ]; then
+                if ! install_git_modules "$git_modules" "$webroot"; then
+                    print_error "Failed to install git modules"
+                    return 1
+                fi
+                print_status "OK" "Git modules installed"
+            fi
         fi
 
         print_status "OK" "Project initialized"

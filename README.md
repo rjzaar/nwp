@@ -282,14 +282,63 @@ recipes:
 
 ### Using Custom Modules
 
-For custom modules hosted on GitHub:
+NWP supports two methods for installing custom modules:
 
-1. **Ensure your module has a `composer.json`** with the correct package name
-2. **Add the repository to the install script** (or it will be added automatically for `rjzaar/*` packages)
-3. **Reference it in `install_modules`**:
-   ```yaml
-   install_modules: vendor/module_name:dev-branch_name
-   ```
+#### Method 1: Git Repository (Recommended for development)
+
+For custom modules hosted on GitHub or other git repositories, you can clone them directly:
+
+```yaml
+recipes:
+  my_project:
+    source: drupal/recommended-project:^10.2
+    profile: standard
+    webroot: web
+    install_modules: git@github.com:username/my_module.git
+    auto: y
+```
+
+The install script will:
+- Create the `web/modules/custom` directory
+- Clone the module into `web/modules/custom/my_module`
+- Support both SSH (`git@github.com:...`) and HTTPS (`https://github.com/...`) URLs
+
+#### Method 2: Composer Package
+
+For modules available as Composer packages:
+
+```yaml
+recipes:
+  my_project:
+    source: drupal/recommended-project:^10.2
+    profile: standard
+    webroot: web
+    install_modules: vendor/module_name:dev-branch_name
+    auto: y
+```
+
+Requirements:
+1. Module must have a `composer.json` with the correct package name
+2. For `rjzaar/*` packages, the repository is configured automatically
+3. For other packages, add the repository configuration
+
+#### Mixing Both Methods
+
+You can use both git and composer modules in the same recipe:
+
+```yaml
+recipes:
+  my_project:
+    source: drupal/recommended-project:^10.2
+    profile: standard
+    webroot: web
+    install_modules: git@github.com:user/custom_module.git drupal/admin_toolbar
+    auto: y
+```
+
+The install script will automatically:
+- Clone git modules to `modules/custom/`
+- Install composer modules via `composer require`
 
 ## Advanced Features
 

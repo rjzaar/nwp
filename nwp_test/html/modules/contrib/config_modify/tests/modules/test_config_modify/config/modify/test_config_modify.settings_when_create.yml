@@ -1,0 +1,9 @@
+dependencies:
+  config:
+    - test_config_modify.create
+items:
+  test_config_modify.settings:
+    expected_config: { }
+    update_actions:
+      change:
+        change_me: true

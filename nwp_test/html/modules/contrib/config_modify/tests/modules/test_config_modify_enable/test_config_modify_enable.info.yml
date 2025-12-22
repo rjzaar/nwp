@@ -1,0 +1,11 @@
+name: Test Config Modify Enable
+type: module
+description: A module to test the effect of enabling a module.
+package: Testing
+# version: VERSION
+core_version_requirement: ">=9"
+
+# Information added by Drupal.org packaging script on 2023-12-22
+version: '1.1.0'
+project: 'config_modify'
+datestamp: 1703248448

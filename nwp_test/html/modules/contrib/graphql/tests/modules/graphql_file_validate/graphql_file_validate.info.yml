@@ -1,0 +1,10 @@
+type: module
+name: GraphQL File Validate Test
+description: Tests hook_file_validate() on uploads.
+package: Testing
+hidden: TRUE
+
+# Information added by Drupal.org packaging script on 2023-11-08
+version: '8.x-4.6'
+project: 'graphql'
+datestamp: 1699450992

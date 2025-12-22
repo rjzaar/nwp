@@ -1,0 +1,11 @@
+entity.post.add_form:
+  route_name: 'entity.post.add_page'
+  title: 'Add post'
+  appears_on:
+    - view.posts.page_admin_content_posts
+
+entity.post_type.add_form:
+  route_name: 'entity.post_type.add_form'
+  title: 'Add post type'
+  appears_on:
+    - entity.post_type.collection

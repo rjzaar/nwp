@@ -1,0 +1,6 @@
+# Workflow tab on node pages
+workflow_assignment.node_workflow:
+  route_name: workflow_assignment.node_workflow_tab
+  base_route: entity.node.canonical
+  title: 'Workflow'
+  weight: 20

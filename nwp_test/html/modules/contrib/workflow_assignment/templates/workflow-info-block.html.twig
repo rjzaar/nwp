@@ -1,0 +1,53 @@
+{#
+/**
+ * @file
+ * Template for displaying workflow information as a block.
+ *
+ * Available variables:
+ * - workflow: The workflow list entity.
+ * - node: The node entity (optional).
+ */
+#}
+<div class="workflow-info-block">
+  <div class="workflow-info-header">
+    <h4>{{ 'Workflow'|t }}: {{ workflow.label }}</h4>
+  </div>
+
+  <div class="workflow-info-content">
+    {% if workflow.description %}
+      <div class="workflow-info-description">
+        {{ workflow.description }}
+      </div>
+    {% endif %}
+
+    {% set assignment = workflow.getAssignment() %}
+    {% if assignment.type and assignment.id %}
+      <div class="workflow-info-section workflow-info-section--assigned">
+        <strong>{{ 'Assigned To:'|t }}</strong>
+        {% set class_map = {
+          'user': 'assigned-user',
+          'group': 'assigned-group',
+          'destination': 'assigned-destination'
+        } %}
+        {% set type_labels = {
+          'user': 'User'|t,
+          'group': 'Group'|t,
+          'destination': 'Destination'|t
+        } %}
+        <div class="assigned-entity {{ class_map[assignment.type]|default('') }}">
+          <span class="assignment-type">{{ type_labels[assignment.type]|default(assignment.type) }}:</span>
+          {{ workflow.getAssignedLabel() }}
+        </div>
+      </div>
+    {% endif %}
+
+    {% if workflow.comments %}
+      <div class="workflow-info-section workflow-info-section--comments">
+        <strong>{{ 'Comments:'|t }}</strong>
+        <div class="workflow-comments">
+          {{ workflow.comments }}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>

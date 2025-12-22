@@ -1,0 +1,9 @@
+config_modify.applied:
+  type: config_object
+  label: 'Tracks which alter files were applied'
+  mapping:
+    files:
+      type: sequence
+      label: "Files"
+      sequence:
+        type: string

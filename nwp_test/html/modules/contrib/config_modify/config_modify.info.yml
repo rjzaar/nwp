@@ -1,0 +1,13 @@
+name: Config Modify
+description: Allows automatic modification of existing config during config installation.
+type: module
+core_version_requirement: ^9 || ^10
+dependencies:
+  - drupal:config
+  # This is needed for the CUD system.
+  - update_helper:update_helper
+
+# Information added by Drupal.org packaging script on 2023-12-22
+version: '1.1.0'
+project: 'config_modify'
+datestamp: 1703248448

@@ -1,0 +1,18 @@
+test_config_modify.settings:
+  type: config_object
+  label: 'Test Settings'
+  mapping:
+    change_me:
+      type: boolean
+      label: 'Should be changed during the test'
+    remain:
+      type: boolean
+      label: 'Should not be changed during the test'
+
+test_config_modify.create:
+  type: config_object
+  label: 'A created config object'
+  mapping:
+    dummy:
+      type: boolean
+      label: 'A dummy value'

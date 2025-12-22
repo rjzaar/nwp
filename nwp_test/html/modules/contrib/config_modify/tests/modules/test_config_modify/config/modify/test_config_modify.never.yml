@@ -1,0 +1,9 @@
+dependencies:
+  config:
+    - test_config_modify.never_created
+items:
+  test_config_modify.settings:
+    expected_config: { }
+    update_actions:
+      change:
+        remain: true

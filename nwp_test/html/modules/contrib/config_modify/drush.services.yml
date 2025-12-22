@@ -1,0 +1,13 @@
+services:
+  config_modify.commands:
+    class: \Drupal\config_modify\Commands\ConfigModifyCommands
+    tags:
+      - { name: drush.command }
+    arguments:
+      - '@config_modify.update_definition_creator'
+      - '@file_system'
+      - '@extension.list.module'
+      - '@config.factory'
+      - '@config.storage'
+      - '%install_profile%'
+      - '%app.root%'

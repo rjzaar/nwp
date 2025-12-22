@@ -1,0 +1,6 @@
+services:
+  simple_oauth_commands:
+    class: Drupal\simple_oauth\Drush\Commands\SimpleOauthCommands
+    arguments: ['@simple_oauth.key.generator', '@file_system']
+    tags:
+      - { name: drush.command }

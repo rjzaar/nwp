@@ -1,0 +1,11 @@
+services:
+
+  ginvite_event_subscriber:
+    class: Drupal\ginvite\EventSubscriber\GinviteSubscriber
+    tags:
+      - {name: event_subscriber}
+    arguments: ['@ginvite.invitation_loader', '@current_user', '@messenger', '@logger.factory', '@config.factory']
+
+  ginvite.invitation_loader:
+    class: 'Drupal\ginvite\GroupInvitationLoader'
+    arguments: ['@entity_type.manager', '@current_user']

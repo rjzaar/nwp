@@ -1,0 +1,10 @@
+name: 'Workflow Assignment'
+type: module
+description: 'Flexible workflow system with single assignment (user/group/destination) and comments'
+core_version_requirement: ^10 || ^11
+package: 'Workflow'
+dependencies:
+  - drupal:node
+  - drupal:taxonomy
+  - drupal:user
+configure: workflow_assignment.settings

@@ -1,0 +1,21 @@
+<?php
+
+/**
+ * @file
+ * Functions and hooks for the Config Modify module.
+ */
+
+declare(strict_types=1);
+
+/**
+ * Mark all the available modifications as applied.
+ *
+ * This should be called before update hooks are applied. New code can
+ * introduce new config/modify files and also enable new modules. Those update
+ * hooks should also make any needed configuration modifications themselves.
+ * If a new config/modify file is accidentally run in such a scenario then
+ * update hooks will unpredictably fail.
+ */
+function config_modify_mark_available_as_applied() : void {
+  \Drupal::service("config.installer")->markAvailableModificationsAsApplied();
+}

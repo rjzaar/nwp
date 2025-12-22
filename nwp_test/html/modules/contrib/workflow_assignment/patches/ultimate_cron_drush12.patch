@@ -1,0 +1,36 @@
+--- ultimate_cron-8.x-2.0-alpha7/src/Commands/UltimateCronCommands.php	2024-02-04 09:07:58.000000000 +0000
++++ ultimate_cron-8.x-2.0-alpha7-patched/src/Commands/UltimateCronCommands.php	2025-11-04 10:45:08.428914320 +0000
+@@ -16,13 +16,21 @@
+ class UltimateCronCommands extends DrushCommands {
+ 
+   /**
++   * The logger channel.
++   *
++   * @var \Drupal\Core\Logger\LoggerChannelInterface
++   */
++  protected $ultimateCronLogger;
++
++  /**
+    * Constructs an UltimateCronCommands object.
+    *
+-   * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger
++   * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $loggerFactory
+    *   Logger factory object.
+    */
+-  public function __construct(LoggerChannelFactoryInterface $logger) {
+-    $this->logger = $logger->get('ultimate_cron');
++  public function __construct(LoggerChannelFactoryInterface $loggerFactory) {
++    parent::__construct();
++    $this->ultimateCronLogger = $loggerFactory->get('ultimate_cron');
+   }
+ 
+   /**
+@@ -404,7 +412,7 @@
+     if ($job->unlock($lock_id, TRUE)) {
+       $log_entry = $job->resumeLog($lock_id);
+       global $user;
+-      $this->logger->warning('@name manually unlocked by user @username (@uid)', [
++      $this->ultimateCronLogger->warning('@name manually unlocked by user @username (@uid)', [
+         '@name' => $job->id(),
+         '@username' => $user->getDisplayName(),
+         '@uid' => $user->id(),

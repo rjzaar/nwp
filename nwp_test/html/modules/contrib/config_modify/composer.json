@@ -1,0 +1,19 @@
+{
+    "name": "drupal/config_modify",
+    "type": "drupal-module",
+    "description": "Allows automatic modification of existing config during config installation.",
+    "homepage": "http://drupal.org/project/config_modify",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": "^8.1",
+        "drupal/core": "^9 || ^10 || ^11",
+        "drupal/update_helper": "^2 || ^3"
+    },
+    "extra": {
+        "drush": {
+            "services": {
+                "drush.services.yml": "^11 || ^12"
+            }
+        }
+    }
+}

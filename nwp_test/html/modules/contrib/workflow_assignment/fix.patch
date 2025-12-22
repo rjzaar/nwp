@@ -1,0 +1,101 @@
+diff --git a/src/Form/WorkflowAssignmentSettingsForm.php b/src/Form/WorkflowAssignmentSettingsForm.php
+index abc123..def456 100644
+--- a/src/Form/WorkflowAssignmentSettingsForm.php
++++ b/src/Form/WorkflowAssignmentSettingsForm.php
+@@ -166,7 +166,8 @@ class WorkflowAssignmentSettingsForm extends ConfigFormBase {
+           }
+           
+           $form_display->setComponent('field_workflow_list', [
+-            'type' => 'workflow_list_widget',  // Use custom widget
++            // Use options_select to avoid checkbox zero value issues
++            'type' => 'options_select',
+             'weight' => 100,
+             'settings' => [],
+           ])->save();
+diff --git a/workflow_assignment.module b/workflow_assignment.module
+index 111222..333444 100644
+--- a/workflow_assignment.module
++++ b/workflow_assignment.module
+@@ -107,6 +107,39 @@ function workflow_assignment_entity_type_alter(array &$entity_types) {
+ }
+ 
+ /**
++ * Implements hook_field_widget_multivalue_form_alter().
++ * 
++ * Fixes the "submitted value 0" error that occurs when using checkboxes
++ * for entity reference fields by filtering out unchecked values (zeros).
++ */
++function workflow_assignment_field_widget_multivalue_form_alter(array &$elements, FormStateInterface $form_state, array $context) {
++  // Only process the workflow list field
++  if ($context['items']->getName() == 'field_workflow_list') {
++    // Add validation to filter out zeros before entity reference validation
++    array_unshift($elements['#element_validate'], 'workflow_assignment_clean_checkbox_values');
++  }
++}
++
++/**
++ * Validation callback to clean checkbox values.
++ * 
++ * Removes zeros from checkbox submissions before entity reference validation
++ * to prevent "submitted value 0" errors.
++ */
++function workflow_assignment_clean_checkbox_values(&$element, FormStateInterface $form_state) {
++  $values = $form_state->getValue($element['#parents']);
++  
++  if (is_array($values)) {
++    $cleaned = [];
++    foreach ($values as $key => $value) {
++      // Only keep non-zero values (checked checkboxes)
++      if ($value !== 0 && $value !== '0' && !empty($value)) {
++        $cleaned[] = ['target_id' => $value];
++      }
++    }
++    $form_state->setValueForElement($element, $cleaned);
++  }
++}
++
++/**
+  * Implements hook_form_BASE_FORM_ID_alter() for node_form.
+  * 
+  * Filters out unchecked checkbox values (0) from workflow field
+diff --git a/workflow_assignment.install b/workflow_assignment.install
+index 555666..777888 100644
+--- a/workflow_assignment.install
++++ b/workflow_assignment.install
+@@ -165,3 +165,35 @@ function workflow_assignment_update_9002() {
+   
+   return t('Workflow field storage not found.');
+ }
++
++/**
++ * Fix workflow field widgets to use select lists instead of checkboxes.
++ */
++function workflow_assignment_update_9005() {
++  $entity_form_display_storage = \Drupal::entityTypeManager()
++    ->getStorage('entity_form_display');
++  
++  $updated = 0;
++  
++  // Get all form displays
++  $form_displays = $entity_form_display_storage->loadMultiple();
++  
++  foreach ($form_displays as $form_display) {
++    if ($component = $form_display->getComponent('field_workflow_list')) {
++      // Check if using problematic widget type
++      if (in_array($component['type'], ['options_buttons', 'workflow_list_widget', 'entity_reference_checkboxes'])) {
++        // Change to select widget
++        $form_display->setComponent('field_workflow_list', [
++          'type' => 'options_select',
++          'weight' => $component['weight'] ?? 100,
++          'settings' => [],
++          'third_party_settings' => $component['third_party_settings'] ?? [],
++        ])->save();
++        $updated++;
++      }
++    }
++  }
++  
++  return t('Updated @count workflow field widgets to use select lists instead of checkboxes.', [
++    '@count' => $updated,
++  ]);
++}

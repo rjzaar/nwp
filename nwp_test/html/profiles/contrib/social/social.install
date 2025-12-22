@@ -1,0 +1,76 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the social installation profile.
+ */
+
+use Drupal\user\Entity\User;
+
+/**
+ * Implements hook_install().
+ *
+ * Perform actions to set up the site for this profile.
+ *
+ * @see system_install()
+ */
+function social_install() {
+  \Drupal::configFactory()
+    ->getEditable('system.site')
+    ->set('page.front', '/stream')
+    ->save(TRUE);
+
+  // Assign user 1 the "administrator" role.
+  $user = User::load(1);
+  $user->roles[] = 'administrator';
+  $user->save();
+
+  // Disable secondary toolbar on frontend in Gin theme.
+  _social_core_disable_secondary_gin_toolbar();
+}
+
+/**
+ * Implements hook_requirements().
+ */
+function social_requirements($phase) : array {
+  $requirements = [];
+
+  switch ($phase) {
+    case 'install':
+      // We don't care how Drupal configures the private file system (e.g.
+      // through a setting or otherwise), we just care that our `private` uri
+      // scheme for our file field storages works.
+      if (!in_array('private', stream_get_wrappers(), TRUE)) {
+        $requirements['private_file_system'] = [
+          'title' => t('Private File System'),
+          'value' => t('Not configured'),
+          'description' => t('The private file system must be configured for Open Social to install. You may opt-out of the private file system for individual fields after installation. See https://www.drupal.org/documentation/modules/file for how to set the file_private_path in your settings.php.'),
+          'severity' => REQUIREMENT_ERROR,
+        ];
+      }
+      break;
+
+  }
+
+  return $requirements;
+}
+
+/**
+ * Disable secondary toolbar on frontend in Gin theme.
+ */
+function _social_core_disable_secondary_gin_toolbar() {
+  $config = \Drupal::configFactory()->getEditable('gin.settings');
+  if (!empty($config->getRawData())) {
+    \Drupal::configFactory()
+      ->getEditable('gin.settings')
+      ->set('secondary_toolbar_frontend', FALSE)
+      ->save(TRUE);
+  }
+}
+
+/**
+ * Disable secondary toolbar on frontend in Gin theme.
+ */
+function social_update_11501() {
+  _social_core_disable_secondary_gin_toolbar();
+}

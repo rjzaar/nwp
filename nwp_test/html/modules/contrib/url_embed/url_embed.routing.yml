@@ -1,0 +1,21 @@
+url_embed.dialog:
+  path: '/url-embed/dialog/{editor}/{embed_button}'
+  defaults:
+    _form: '\Drupal\url_embed\Form\UrlEmbedDialog'
+    _title: 'Embed URL'
+  requirements:
+    _embed_button_editor_access: 'TRUE'
+url_embed.admin:
+  path: '/admin/config/media/url_embed'
+  defaults:
+    _form: '\Drupal\url_embed\Form\UrlEmbedAdminSettingsForm'
+    _title: 'Url Embed'
+  requirements:
+    _permission: 'administer url_embed'
+url_embed.cke5dialog:
+  path: '/url-embedcke5/dialog/{editor}'
+  defaults:
+    _form: '\Drupal\url_embed\Form\UrlEmbedCke5Dialog'
+    _title: 'Embed URL'
+  requirements:
+    _url_embed_editor_access: 'TRUE'

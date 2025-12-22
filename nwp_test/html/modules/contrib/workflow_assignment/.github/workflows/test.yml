@@ -1,0 +1,208 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  coding-standards:
+    name: Coding Standards
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, dom, filter, gd, json, pdo, zip
+          coverage: none
+
+      - name: Install dependencies
+        run: |
+          composer global config allow-plugins.dealerdirect/phpcodesniffer-composer-installer true
+          composer global require drupal/coder:^8.3
+          phpcs --config-set installed_paths ~/.composer/vendor/drupal/coder/coder_sniffer
+
+      - name: Check coding standards
+        run: |
+          phpcs --standard=Drupal,DrupalPractice --extensions=php,module,inc,install,test,profile,theme,css,info,txt,md,yml src/ *.module *.install *.info.yml
+  
+  phpstan:
+    name: PHPStan Static Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, dom, filter, gd, json, pdo, zip
+          coverage: none
+
+      - name: Install Drupal and dependencies
+        run: |
+          composer create-project drupal/recommended-project:^10 /tmp/drupal --no-interaction
+          cd /tmp/drupal
+          composer require --dev phpstan/phpstan mglaman/phpstan-drupal phpstan/extension-installer
+          mkdir -p web/modules/custom/workflow_assignment
+          cp -r $GITHUB_WORKSPACE/* web/modules/custom/workflow_assignment/
+          cd web/modules/custom/workflow_assignment
+          composer install --no-interaction
+
+      - name: Run PHPStan
+        run: |
+          cd /tmp/drupal
+          ./vendor/bin/phpstan analyse web/modules/custom/workflow_assignment/src --level=1
+
+  test-module:
+    name: Test Module (PHP ${{ matrix.php }} - Drupal ${{ matrix.drupal }})
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.1', '8.2', '8.3']
+        drupal: ['10.3.x', '11.0.x']
+        exclude:
+          - php: '8.1'
+            drupal: '11.0.x'
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: drupal
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+      - name: Checkout module code
+        uses: actions/checkout@v4
+        with:
+          path: workflow_assignment
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, dom, filter, gd, json, pdo, zip
+          coverage: none
+          tools: composer:v2
+
+      - name: Install Drupal
+        run: |
+          composer create-project drupal/recommended-project:${{ matrix.drupal }} drupal --no-interaction
+          cd drupal
+          composer require drush/drush
+
+      - name: Copy module to Drupal
+        run: |
+          mkdir -p drupal/web/modules/custom
+          cp -r workflow_assignment drupal/web/modules/custom/
+
+      - name: Install module dependencies
+        run: |
+          cd drupal
+          composer require drupal/dynamic_entity_reference:^3.0 drupal/twig_tweak:^3.0
+
+      - name: Install Drupal site
+        run: |
+          cd drupal
+          ./vendor/bin/drush site:install standard --db-url=mysql://root:root@127.0.0.1:3306/drupal --site-name="Test Site" --account-pass=admin -y
+          ./vendor/bin/drush en workflow_assignment -y
+
+      - name: Run module install tests
+        run: |
+          cd drupal
+          # Check if vocabularies were created
+          ./vendor/bin/drush eval "echo \Drupal::entityTypeManager()->getStorage('taxonomy_vocabulary')->load('resource_locations') ? 'resource_locations: OK' : 'resource_locations: FAILED';"
+          ./vendor/bin/drush eval "echo \Drupal::entityTypeManager()->getStorage('taxonomy_vocabulary')->load('destination_locations') ? 'destination_locations: OK' : 'destination_locations: FAILED';"
+          
+          # Check if default terms were created
+          ./vendor/bin/drush eval "\$terms = \Drupal::entityTypeManager()->getStorage('taxonomy_term')->loadByProperties(['vid' => 'destination_locations', 'name' => 'Public']); echo !empty(\$terms) ? 'Public term: OK' : 'Public term: FAILED';"
+          ./vendor/bin/drush eval "\$terms = \Drupal::entityTypeManager()->getStorage('taxonomy_term')->loadByProperties(['vid' => 'destination_locations', 'name' => 'Private']); echo !empty(\$terms) ? 'Private term: OK' : 'Private term: FAILED';"
+
+      - name: Check module status
+        run: |
+          cd drupal
+          ./vendor/bin/drush pm:list --filter=workflow_assignment --format=json
+
+      - name: Test workflow creation
+        run: |
+          cd drupal
+          ./vendor/bin/drush eval "
+            \$workflow = \Drupal\workflow_assignment\Entity\WorkflowList::create([
+              'id' => 'test_workflow',
+              'label' => 'Test Workflow',
+              'description' => 'Test workflow for CI',
+            ]);
+            \$workflow->save();
+            echo 'Workflow created: ' . \$workflow->id();
+          "
+          
+          # Verify it was created
+          ./vendor/bin/drush eval "
+            \$workflow = \Drupal\workflow_assignment\Entity\WorkflowList::load('test_workflow');
+            echo \$workflow ? 'Workflow load: OK' : 'Workflow load: FAILED';
+          "
+
+      - name: Test content type configuration
+        run: |
+          cd drupal
+          # Enable workflow on article content type
+          ./vendor/bin/drush eval "
+            \$config = \Drupal::configFactory()->getEditable('workflow_assignment.settings');
+            \$config->set('enabled_content_types', ['article'])->save();
+            echo 'Configuration saved';
+          "
+          
+          # Clear cache
+          ./vendor/bin/drush cr
+          
+          # Check if field was added
+          ./vendor/bin/drush eval "
+            \$field = \Drupal::entityTypeManager()
+              ->getStorage('field_config')
+              ->load('node.article.field_workflow_list');
+            echo \$field ? 'Field added: OK' : 'Field added: FAILED';
+          "
+
+      - name: Run PHPUnit tests (if exist)
+        run: |
+          cd drupal
+          if [ -d "web/modules/custom/workflow_assignment/tests" ]; then
+            ./vendor/bin/phpunit -c web/core web/modules/custom/workflow_assignment/tests
+          else
+            echo "No PHPUnit tests found"
+          fi
+
+  security-check:
+    name: Security Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction
+
+      - name: Security check
+        run: |
+          composer audit || true

@@ -1,0 +1,232 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the workflow_assignment module.
+ */
+
+use Drupal\taxonomy\Entity\Vocabulary;
+use Drupal\taxonomy\Entity\Term;
+
+/**
+ * Implements hook_install().
+ */
+function workflow_assignment_install() {
+  // Create the destination_locations vocabulary.
+  $dest_vocabulary = Vocabulary::load('destination_locations');
+  if (!$dest_vocabulary) {
+    $dest_vocabulary = Vocabulary::create([
+      'vid' => 'destination_locations',
+      'name' => 'Destination Locations',
+      'description' => 'Taxonomy vocabulary for workflow destination locations',
+    ]);
+    $dest_vocabulary->save();
+  }
+
+  // Create default destination location terms: 'public' and 'private'.
+  $public_term = Term::create([
+    'vid' => 'destination_locations',
+    'name' => 'Public',
+    'description' => ['value' => 'Public destination - accessible to all users', 'format' => 'plain_text'],
+  ]);
+  $public_term->save();
+
+  $private_term = Term::create([
+    'vid' => 'destination_locations',
+    'name' => 'Private',
+    'description' => ['value' => 'Private destination - restricted access', 'format' => 'plain_text'],
+  ]);
+  $private_term->save();
+
+  // Set default configuration.
+  \Drupal::configFactory()->getEditable('workflow_assignment.settings')
+    ->set('enabled_content_types', [])
+    ->set('destination_vocabulary', 'destination_locations')
+    ->set('show_workflow_tab', TRUE)
+    ->save();
+
+  \Drupal::messenger()->addStatus(t('Workflow Assignment module installed successfully. Default destination locations (Public and Private) have been created.'));
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function workflow_assignment_uninstall() {
+  // Remove workflow field from all content types.
+  $field_storage = \Drupal::entityTypeManager()
+    ->getStorage('field_storage_config')
+    ->load('node.field_workflow_list');
+  
+  if ($field_storage) {
+    $field_storage->delete();
+  }
+
+  // Clean up configuration.
+  \Drupal::configFactory()->getEditable('workflow_assignment.settings')->delete();
+
+  \Drupal::messenger()->addStatus(t('Workflow Assignment module uninstalled. Destination Locations vocabulary has been preserved.'));
+}
+
+/**
+ * Update workflow entities to single assignment model.
+ */
+function workflow_assignment_update_9003() {
+  $workflow_storage = \Drupal::entityTypeManager()->getStorage('workflow_list');
+  $workflows = $workflow_storage->loadMultiple();
+  
+  foreach ($workflows as $workflow) {
+    $needs_update = FALSE;
+    
+    // Convert multiple assignments to single assignment
+    // Priority: user > group > destination
+    if (!empty($workflow->get('assigned_users'))) {
+      $users = $workflow->get('assigned_users');
+      if (!empty($users[0])) {
+        $workflow->set('assigned_type', 'user');
+        $workflow->set('assigned_id', $users[0]);
+        $needs_update = TRUE;
+      }
+    }
+    elseif (!empty($workflow->get('assigned_groups'))) {
+      $groups = $workflow->get('assigned_groups');
+      if (!empty($groups[0])) {
+        $workflow->set('assigned_type', 'group');
+        $workflow->set('assigned_id', $groups[0]);
+        $needs_update = TRUE;
+      }
+    }
+    elseif (!empty($workflow->get('destination_tags'))) {
+      $destinations = $workflow->get('destination_tags');
+      if (!empty($destinations[0])) {
+        $workflow->set('assigned_type', 'destination');
+        $workflow->set('assigned_id', $destinations[0]);
+        $needs_update = TRUE;
+      }
+    }
+    
+    // Add empty comments field
+    if (!$workflow->get('comments')) {
+      $workflow->set('comments', '');
+      $needs_update = TRUE;
+    }
+    
+    // Remove old fields
+    $workflow->set('assigned_users', NULL);
+    $workflow->set('assigned_groups', NULL);
+    $workflow->set('resource_tags', NULL);
+    $workflow->set('destination_tags', NULL);
+    
+    if ($needs_update) {
+      $workflow->save();
+    }
+  }
+  
+  // Remove resource_vocabulary from settings
+  $config = \Drupal::configFactory()->getEditable('workflow_assignment.settings');
+  $config->clear('resource_vocabulary')->save();
+  
+  return t('Workflow entities updated to single assignment model.');
+}
+
+/**
+ * Update field storage to allow multiple workflow assignments.
+ */
+function workflow_assignment_update_9002() {
+  $field_storage_config = \Drupal::entityTypeManager()->getStorage('field_storage_config');
+  $field_storage = $field_storage_config->load('node.field_workflow_list');
+  
+  if ($field_storage) {
+    // Delete old string field if it exists
+    if ($field_storage->getType() === 'string') {
+      // Store any existing data first
+      $existing_data = [];
+      $node_storage = \Drupal::entityTypeManager()->getStorage('node');
+      $query = $node_storage->getQuery()
+        ->exists('field_workflow_list')
+        ->accessCheck(FALSE);
+      $nids = $query->execute();
+      
+      foreach ($nids as $nid) {
+        $node = $node_storage->load($nid);
+        if ($node && $node->hasField('field_workflow_list')) {
+          $values = [];
+          foreach ($node->get('field_workflow_list') as $item) {
+            if (!empty($item->value)) {
+              $values[] = $item->value;
+            }
+          }
+          if (!empty($values)) {
+            $existing_data[$nid] = $values;
+          }
+        }
+      }
+      
+      // Delete the old field storage
+      $field_storage->delete();
+      
+      // Create new entity reference field storage
+      $field_storage = $field_storage_config->create([
+        'field_name' => 'field_workflow_list',
+        'entity_type' => 'node',
+        'type' => 'entity_reference',
+        'cardinality' => -1,
+        'settings' => [
+          'target_type' => 'workflow_list',
+        ],
+      ]);
+      $field_storage->save();
+      
+      // Restore data to new field
+      foreach ($existing_data as $nid => $workflow_ids) {
+        $node = $node_storage->load($nid);
+        if ($node && $node->hasField('field_workflow_list')) {
+          $node->set('field_workflow_list', $workflow_ids);
+          $node->save();
+        }
+      }
+      
+      return t('Workflow field updated to entity reference type.');
+    }
+    else {
+      // Just update cardinality if already entity reference
+      $field_storage->setCardinality(-1);
+      $field_storage->save();
+      return t('Workflow field cardinality updated.');
+    }
+  }
+  
+  return t('Workflow field storage not found.');
+}
+
+/**
+ * Fix workflow field widgets to use select lists instead of checkboxes.
+ */
+function workflow_assignment_update_9005() {
+  $entity_form_display_storage = \Drupal::entityTypeManager()
+    ->getStorage('entity_form_display');
+  
+  $updated = 0;
+  
+  // Get all form displays
+  $form_displays = $entity_form_display_storage->loadMultiple();
+  
+  foreach ($form_displays as $form_display) {
+    if ($component = $form_display->getComponent('field_workflow_list')) {
+      // Check if using problematic widget type
+      if (in_array($component['type'], ['options_buttons', 'workflow_list_widget', 'entity_reference_checkboxes'])) {
+        // Change to select widget
+        $form_display->setComponent('field_workflow_list', [
+          'type' => 'options_select',
+          'weight' => $component['weight'] ?? 100,
+          'settings' => [],
+          'third_party_settings' => $component['third_party_settings'] ?? [],
+        ])->save();
+        $updated++;
+      }
+    }
+  }
+  
+  return t('Updated @count workflow field widgets to use select lists instead of checkboxes.', [
+    '@count' => $updated,
+  ]);
+}

@@ -1,0 +1,45 @@
+workflow_assignment.settings:
+  type: config_object
+  label: 'Workflow Assignment settings'
+  mapping:
+    enabled_content_types:
+      type: sequence
+      label: 'Enabled content types'
+      sequence:
+        type: string
+        label: 'Content type'
+    destination_vocabulary:
+      type: string
+      label: 'Destination location vocabulary'
+    show_workflow_tab:
+      type: boolean
+      label: 'Show workflow tab'
+
+workflow_assignment.workflow_list.*:
+  type: config_entity
+  label: 'Workflow List'
+  mapping:
+    id:
+      type: string
+      label: 'ID'
+    label:
+      type: label
+      label: 'Label'
+    description:
+      type: text
+      label: 'Description'
+    assigned_type:
+      type: string
+      label: 'Assigned entity type'
+    assigned_id:
+      type: string
+      label: 'Assigned entity ID'
+    comments:
+      type: text
+      label: 'Comments'
+    created:
+      type: timestamp
+      label: 'Created timestamp'
+    changed:
+      type: timestamp
+      label: 'Changed timestamp'

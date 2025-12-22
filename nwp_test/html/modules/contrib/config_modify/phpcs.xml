@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<ruleset name="config_modify">
+  <description>PHP CodeSniffer configuration for Config modify.</description>
+  <file>.</file>
+  <arg name="extensions" value="php,module,inc,install,test,profile,theme"/>
+  <config name="drupal_core_version" value="9"/>
+
+  <exclude-pattern>*/.git/*</exclude-pattern>
+
+  <rule ref="Drupal" />
+</ruleset>

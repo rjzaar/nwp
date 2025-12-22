@@ -1,0 +1,5 @@
+name: 'Social Demo'
+type: module
+description: 'Provides demo content.'
+core_version_requirement: ^9 || ^10
+package: Social

@@ -1,0 +1,169 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the social_language module.
+ */
+
+use Drupal\Core\Serialization\Yaml;
+use Drupal\group\Entity\GroupType;
+use Drupal\language\ConfigurableLanguageManagerInterface;
+
+/**
+ * Implements hook_install().
+ *
+ * Perform actions related to the installation of social_language.
+ */
+function social_language_install() {
+  // Make sure the module has more weight then "Content Translation" module.
+  module_set_weight('social_language', 11);
+
+  // Grant the default permissions for this feature.
+  user_role_grant_permissions(
+    'contentmanager',
+    [
+      'create content translations',
+      'delete content translations',
+      'update content translations',
+    ]
+  );
+  user_role_grant_permissions(
+    'sitemanager',
+    [
+      'create content translations',
+      'delete content translations',
+      'update content translations',
+      'translate any entity',
+    ]
+  );
+
+  \Drupal::configFactory()->getEditable('locale.settings')
+    ->set('translation.path', '/tmp')
+    ->save();
+
+  // Changing the schedule for locale cron.
+  \Drupal::service('ultimate_cron.discovery')->discoverCronJobs();
+  \Drupal::configFactory()->getEditable('ultimate_cron.job.locale_cron')
+    ->set('scheduler.configuration.rules', ['0+@ 0 * * *'])
+    ->save();
+}
+
+/**
+ * Enable topic type and profile tag taxonomy translation.
+ */
+function social_language_update_8001() {
+  // Install the configuration added as part of this update.
+  $profile_tag_yml = <<<YAML
+langcode: en
+status: true
+dependencies:
+  config:
+    - taxonomy.vocabulary.profile_tag
+  module:
+    - content_translation
+third_party_settings:
+  content_translation:
+    enabled: true
+id: taxonomy_term.profile_tag
+target_entity_type_id: taxonomy_term
+target_bundle: profile_tag
+default_langcode: site_default
+language_alterable: true
+YAML;
+
+  $topic_types_yml = <<<YAML
+langcode: en
+status: true
+dependencies:
+  config:
+    - taxonomy.vocabulary.topic_types
+  module:
+    - content_translation
+third_party_settings:
+  content_translation:
+    enabled: true
+id: taxonomy_term.topic_types
+target_entity_type_id: taxonomy_term
+target_bundle: topic_types
+default_langcode: site_default
+language_alterable: true
+YAML;
+
+  $new_config = [
+    'language.content_settings.taxonomy_term.profile_tag' => $profile_tag_yml,
+    'language.content_settings.taxonomy_term.topic_types' => $topic_types_yml,
+  ];
+
+  $config_factory = \Drupal::configFactory();
+
+  foreach ($new_config as $name => $yml) {
+    $data = Yaml::decode($yml);
+    $config_factory->getEditable($name)->setData($data)->save(TRUE);
+  }
+
+  // Grant the new permissions for the sitemanager.
+  user_role_grant_permissions('sitemanager', [
+    'translate profile_tag taxonomy_term',
+    'translate topic_types taxonomy_term',
+  ]);
+}
+
+/**
+ * Allow "Content Manager" role to manage translations.
+ */
+function social_language_update_10301() {
+  $permissions = [
+    'create content translations',
+    'delete content translations',
+    'update content translations',
+  ];
+  user_role_grant_permissions('contentmanager', $permissions);
+}
+
+/**
+ * Change the weight for the module "Social Language".
+ */
+function social_language_update_10302() {
+  // Make sure the module has more weight then "Content Translation" module.
+  module_set_weight('social_language', 11);
+}
+
+/**
+ * Changing the schedule for locale cron.
+ */
+function social_language_update_12201(): string {
+  /** @var \Drupal\update_helper\Updater $updateHelper */
+  $updateHelper = \Drupal::service('update_helper.updater');
+
+  // Execute configuration update definitions with logging of success.
+  $updateHelper->executeUpdate('social_language', __FUNCTION__);
+
+  // Output logged messages to related channel of update execution.
+  return $updateHelper->logger()->output();
+}
+
+/**
+ * Removing wrong language configuration for original-language from groups.
+ */
+function social_language_update_12301(): void {
+  $language_manager = \Drupal::languageManager();
+  if (!$language_manager instanceof ConfigurableLanguageManagerInterface) {
+    return;
+  }
+
+  $group_types = GroupType::loadMultiple();
+  $group_configs = [
+    'group_invitation',
+    'group_membership',
+    'group_node-event',
+    'group_node-topic',
+  ];
+  foreach ($group_types as $group_type) {
+    foreach ($group_configs as $group_config) {
+      $configuration_name = sprintf('group.content_type.%s-%s', $group_type->id(), $group_config);
+
+      $config_translation = $language_manager->getLanguageConfigOverride($group_type->language()->getId(), $configuration_name);
+      $config_translation->delete();
+    }
+  }
+}

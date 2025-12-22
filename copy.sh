@@ -95,7 +95,7 @@ ${BOLD}ARGUMENTS:${NC}
 ${BOLD}EXAMPLES:${NC}
     ./copy.sh nwp4 nwp5                  # Copy nwp4 to nwp5
     ./copy.sh -y nwp4 nwp_backup         # Copy with auto-confirm
-    ./copy.sh -y -o nwp4 nwp_test        # Copy and generate login link
+    ./copy.sh -yo nwp4 nwp_test          # Copy with auto-confirm + login link
 
 ${BOLD}WORKFLOW:${NC}
     1. Validate source site exists
@@ -539,7 +539,7 @@ main() {
     local TO_SITE=""
 
     # Use getopt for option parsing
-    local OPTIONS=hd,y,o
+    local OPTIONS=hdyo
     local LONGOPTS=help,debug,yes,open
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then

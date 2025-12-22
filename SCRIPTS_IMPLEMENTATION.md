@@ -4,13 +4,13 @@
 
 Implemented comprehensive NWP scripts based on Pleasy functionality, adapted for DDEV environments:
 
-1. **backup.sh** - Full and database-only backups (with `--db` flag)
-2. **restore.sh** - Full and database-only restore (with `--db` flag)
+1. **backup.sh** - Full and database-only backups (with `-b` flag)
+2. **restore.sh** - Full and database-only restore (with `-b` flag)
 3. **copy.sh** - Full site copying (files + database)
 4. **copyf.sh** - Files-only copying
-5. **makedev.sh** - Enable development mode
-6. **makeprod.sh** - Enable production mode
+5. **make.sh** - Enable development or production mode
 
+All scripts support combined short flags (e.g., `-bfy`, `-yo`) for efficient command-line usage.
 All scripts tested successfully with nwp4 and nwp5 test sites.
 
 ---
@@ -22,12 +22,13 @@ Combined backup script supporting both full site backups and database-only backu
 ### Features
 
 - **Full backups**: Database + files (default)
-- **Database-only backups**: Use `--db` flag to skip file archiving
+- **Database-only backups**: Use `-b` flag to skip file archiving
 - Pleasy-style naming convention: `YYYYMMDDTHHmmss-branch-commit-message.sql`
 - Support for backup messages
 - Support for endpoint specification via `-e` flag
 - Stored in `sitebackups/<sitename>/` directory
 - Timer showing backup duration
+- **Combined flags**: All short flags can be combined (e.g., `-bd` for database-only with debug)
 
 ### Usage
 
@@ -37,21 +38,21 @@ Combined backup script supporting both full site backups and database-only backu
 ./backup.sh nwp4 'Before major update'
 
 # Database-only backup
-./backup.sh --db nwp4
-./backup.sh --db nwp4 'Before schema change'
+./backup.sh -b nwp4
+./backup.sh -b nwp4 'Before schema change'
+
+# Combined flags: database-only with debug
+./backup.sh -bd nwp4 'Test backup'
 
 # Backup to different endpoint
 ./backup.sh -e=nwp_backup nwp4 'Test backup'
-
-# Debug mode
-./backup.sh -d --db nwp4
 ```
 
 ### Options
 
 - `-h, --help` - Show help message
 - `-d, --debug` - Enable debug output
-- `--db, --db-only` - Database-only backup (skip files)
+- `-b, --db-only` - Database-only backup (skip files)
 - `-g, --git` - Create supplementary git backup (stub)
 - `-e, --endpoint=NAME` - Backup to different endpoint
 
@@ -73,14 +74,15 @@ Combined restore script supporting both full site restoration and database-only 
 ### Features
 
 - **Full restore**: Files + database + DDEV configuration (default)
-- **Database-only restore**: Use `--db` flag to skip file operations
+- **Database-only restore**: Use `-b` flag to skip file operations
 - Interactive backup selection with size display
-- Support for `--first` flag to auto-select latest backup
+- Support for `-f` flag to auto-select latest backup
 - Support for cross-site restore (restore from one site to another)
 - Step-based execution with resume capability (`-s` flag)
 - Cache clearing after restore
 - Optional login link generation with `-o` flag
 - Automatic DDEV configuration for full restores
+- **Combined flags**: All short flags can be combined (e.g., `-bfyo` for database-only + auto-select + auto-confirm + open)
 
 ### Usage
 
@@ -90,20 +92,14 @@ Combined restore script supporting both full site restoration and database-only 
 ./restore.sh nwp4 nwp4_copy
 
 # Database-only restore
-./restore.sh --db nwp4
-./restore.sh --db nwp4 nwp5
+./restore.sh -b nwp4
+./restore.sh -b nwp4 nwp5
 
-# Auto-select latest backup
-./restore.sh -f nwp4
-./restore.sh --db -f nwp4
+# Combined flags: auto-select + auto-confirm
+./restore.sh -fy nwp4
 
-# Auto-select and skip prompts
-./restore.sh -f -y nwp4 nwp_test
-./restore.sh --db -f -y nwp4 nwp5
-
-# Restore and generate login link
-./restore.sh -f -y -o nwp4
-./restore.sh --db -f -y -o nwp4
+# Combined flags: database-only + auto-select + auto-confirm + open
+./restore.sh -bfyo nwp4
 
 # Resume from step 5
 ./restore.sh -s=5 nwp4
@@ -113,7 +109,7 @@ Combined restore script supporting both full site restoration and database-only 
 
 - `-h, --help` - Show help message
 - `-d, --debug` - Enable debug output
-- `--db, --db-only` - Database-only restore (skip files)
+- `-b, --db-only` - Database-only restore (skip files)
 - `-s, --step=N` - Resume from step N
 - `-f, --first` - Auto-select latest backup
 - `-y, --yes` - Skip confirmation prompts
@@ -274,34 +270,46 @@ Combined restore script supporting both full site restoration and database-only 
 
 ---
 
-## 5. Make Development Mode (`makedev.sh`)
+## 5. Make Script (`make.sh`)
+
+Combined script for enabling development or production mode on a Drupal site.
 
 ### Features
 
-- Install development composer packages
-- Enable development Drupal modules
-- Disable caching and aggregation
-- Set Twig debug mode (manual step noted)
-- Fix permissions
-- Clear cache
+- **Development mode** (`-v` or `--dev`): Install dev packages, enable dev modules, disable caching
+- **Production mode** (`-p` or `--prod`): Remove dev packages, disable dev modules, enable caching
+- Mode selection required via `-v` or `-p` flag
+- **Combined flags**: All short flags can be combined (e.g., `-vy` for dev mode with auto-confirm)
+- Comprehensive validation and error handling
+- Execution timers and status updates
 
 ### Usage
 
 ```bash
-# Enable dev mode for nwp4
-./makedev.sh nwp4
+# Enable development mode
+./make.sh -v nwp4
+./make.sh --dev nwp5
 
-# Enable with auto-confirm
-./makedev.sh -y nwp5
+# Enable production mode
+./make.sh -p nwp4
+./make.sh --prod nwp5
+
+# Combined flags: dev mode with auto-confirm
+./make.sh -vy nwp4
+
+# Combined flags: prod mode with debug and auto-confirm
+./make.sh -pdy nwp5
 ```
 
 ### Options
 
 - `-h, --help` - Show help message
 - `-d, --debug` - Enable debug output
+- `-v, --dev` - Enable development mode
+- `-p, --prod` - Enable production mode
 - `-y, --yes` - Skip confirmation prompts
 
-### Actions Performed
+### Development Mode Actions
 
 1. Install dev packages: `drupal/devel`
 2. Enable dev modules: `devel`, `webprofiler`, `kint`
@@ -310,59 +318,7 @@ Combined restore script supporting both full site restoration and database-only 
 5. Fix file permissions
 6. Clear cache
 
-### Development Modules
-
-Enabled if available:
-- devel
-- webprofiler
-- kint
-- stage_file_proxy (noted for manual enabling)
-
-### Testing Results
-
-- ✅ Dev package installation attempted
-- ✅ Module enabling (modules not present in test site)
-- ✅ Settings configuration attempted
-- ✅ Permissions fixed
-- ✅ Cache clear attempted
-- ✅ Completed in 1 minute 45 seconds
-
-### Notes
-
-- For full Twig debugging, manually edit `development.services.yml`
-- Configure `settings.local.php` for additional dev settings
-- Consider enabling `stage_file_proxy` module for file syncing
-
----
-
-## 6. Make Production Mode (`makeprod.sh`)
-
-### Features
-
-- Disable and uninstall development modules
-- Remove development composer packages (`--no-dev`)
-- Enable caching and aggregation
-- Disable Twig debug
-- Export configuration
-- Clear cache
-
-### Usage
-
-```bash
-# Enable production mode for nwp4
-./makeprod.sh nwp4
-
-# Enable with auto-confirm
-./makeprod.sh -y nwp5
-```
-
-### Options
-
-- `-h, --help` - Show help message
-- `-d, --debug` - Enable debug output
-- `-y, --yes` - Skip confirmation prompts
-
-### Actions Performed
+### Production Mode Actions
 
 1. Disable dev modules: `webprofiler`, `kint`, `stage_file_proxy`, `devel`
 2. Remove dev dependencies: `composer install --no-dev`
@@ -372,18 +328,22 @@ Enabled if available:
 6. Fix permissions
 7. Clear cache
 
-### Testing Results
+### Development Modules
 
-- ✅ Module disabling (modules not present in test site)
-- ✅ Dev package removal attempted
-- ✅ Production settings configuration attempted
-- ✅ Configuration export attempted
-- ✅ Permissions set
-- ✅ Cache clear attempted
-- ✅ Completed in 22 seconds
+Enabled if available:
+- devel
+- webprofiler
+- kint
+- stage_file_proxy (noted for manual enabling)
 
-### Production Deployment Notes
+### Notes
 
+**For Development Mode:**
+- For full Twig debugging, manually edit `development.services.yml`
+- Configure `settings.local.php` for additional dev settings
+- Consider enabling `stage_file_proxy` module for file syncing
+
+**For Production Mode:**
 - For actual production, deploy to a production server
 - Lock down file permissions on production
 - Remove `development.services.yml` from production
@@ -420,13 +380,18 @@ Future enhancements could include:
 
 | Script | Lines | Purpose | Sections |
 |--------|-------|---------|----------|
-| backup.sh | 451 | Full and database-only backup | 1.1, 1.2 |
-| restore.sh | 698 | Full and database-only restore | 2.1, 2.2 |
+| backup.sh | 451 | Full and database-only backup (with `-b` flag) | 1.1, 1.2 |
+| restore.sh | 698 | Full and database-only restore (with `-b` flag) | 2.1, 2.2 |
 | copy.sh | 608 | Full site copy | 3.1 |
 | copyf.sh | 405 | Files-only copy | 3.2 |
-| makedev.sh | 456 | Enable dev mode | 4.2 |
-| makeprod.sh | 468 | Enable production mode | 4.3 |
-| **TOTAL** | **3,086** | 6 scripts | |
+| make.sh | 742 | Enable dev or prod mode (with `-v`/`-p` flags) | 4.2, 4.3 |
+| **TOTAL** | **2,904** | 5 scripts | |
+
+**Key improvements:**
+- All scripts support combined short flags (e.g., `-bfy`, `-yo`, `-vy`)
+- Unified make.sh script replaces separate makedev.sh and makeprod.sh
+- Consistent flag naming: `-b` for database-only, `-v` for dev, `-p` for prod
+- Reduced code duplication while maintaining full functionality
 
 ---
 

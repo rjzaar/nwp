@@ -1,12 +1,12 @@
 #!/bin/bash
 
 ################################################################################
-# NWP Make Development Mode Script
+# NWP Make Script
 #
-# Enables development mode for a Drupal site
-# Based on pleasy makedev.sh adapted for DDEV environments
+# Enables development or production mode for a Drupal site
+# Based on pleasy makedev.sh and makeprod.sh adapted for DDEV environments
 #
-# Usage: ./makedev.sh [OPTIONS] <sitename>
+# Usage: ./make.sh [OPTIONS] <sitename>
 ################################################################################
 
 # Script start time
@@ -71,30 +71,39 @@ show_elapsed_time() {
     local seconds=$((elapsed % 60))
 
     echo ""
-    print_status "OK" "Development mode enabled in $(printf "%02d:%02d:%02d" $hours $minutes $seconds)"
+    if [ "$MODE" == "dev" ]; then
+        print_status "OK" "Development mode enabled in $(printf "%02d:%02d:%02d" $hours $minutes $seconds)"
+    else
+        print_status "OK" "Production mode enabled in $(printf "%02d:%02d:%02d" $hours $minutes $seconds)"
+    fi
 }
 
 # Show help
 show_help() {
     cat << EOF
-${BOLD}NWP Make Development Mode Script${NC}
+${BOLD}NWP Make Script${NC}
 
 ${BOLD}USAGE:${NC}
-    ./makedev.sh [OPTIONS] <sitename>
+    ./make.sh [OPTIONS] <sitename>
 
 ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
+    -v, --dev               Enable development mode
+    -p, --prod              Enable production mode
     -y, --yes               Skip confirmation prompts
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Name of the DDEV site
 
 ${BOLD}EXAMPLES:${NC}
-    ./makedev.sh nwp4                    # Enable dev mode for nwp4
-    ./makedev.sh -y nwp5                 # Enable with auto-confirm
+    ./make.sh -v nwp4                    # Enable dev mode for nwp4
+    ./make.sh -p nwp5                    # Enable production mode for nwp5
+    ./make.sh -vy nwp4                   # Enable dev mode with auto-confirm
+    ./make.sh -py nwp5                   # Enable prod mode with auto-confirm
+    ./make.sh -vdy nwp4                  # Dev mode with debug and auto-confirm
 
-${BOLD}ACTIONS:${NC}
+${BOLD}DEVELOPMENT MODE ACTIONS:${NC}
     1. Install development composer packages
     2. Enable development Drupal modules
     3. Disable production optimizations (aggregation, caching)
@@ -102,21 +111,25 @@ ${BOLD}ACTIONS:${NC}
     5. Clear cache
     6. Display dev mode status
 
+${BOLD}PRODUCTION MODE ACTIONS:${NC}
+    1. Disable/uninstall development modules
+    2. Remove development composer packages (--no-dev)
+    3. Enable production optimizations (aggregation, caching)
+    4. Disable Twig debug mode
+    5. Export configuration
+    6. Clear cache
+
 ${BOLD}DEVELOPMENT MODULES:${NC}
-    Common dev modules that will be enabled if available:
     - devel
     - webprofiler
     - kint
     - stage_file_proxy
 
-${BOLD}DEVELOPMENT PACKAGES:${NC}
-    Common dev composer packages that will be installed if not present:
-    - drupal/devel
-    - drupal/devel-php (for webprofiler)
-
 ${BOLD}NOTE:${NC}
-    This script configures a site for local development.
-    Do NOT run this on production servers.
+    ${YELLOW}You must specify either -v (dev) or -p (prod) mode.${NC}
+
+    Development mode is for local development only.
+    Production mode prepares the site for deployment.
 
 EOF
 }
@@ -269,12 +282,168 @@ configure_dev_settings() {
     return 0
 }
 
+################################################################################
+# Production Mode Functions
+################################################################################
+
+# Disable dev modules
+disable_dev_modules() {
+    local sitename=$1
+
+    print_header "Step 1: Disable Development Modules"
+
+    local original_dir=$(pwd)
+    cd "$sitename" || {
+        print_error "Cannot access site directory: $sitename"
+        return 1
+    }
+
+    # List of dev modules to disable
+    local dev_modules=(
+        "webprofiler"
+        "kint"
+        "stage_file_proxy"
+        "devel"  # Disable last because others may depend on it
+    )
+
+    local modules_disabled=()
+    local modules_failed=()
+
+    for module in "${dev_modules[@]}"; do
+        # Check if module is enabled
+        if ddev drush pm:list --filter="$module" --status=enabled --no-core 2>/dev/null | grep -q "$module"; then
+            ocmsg "Disabling $module..."
+            if ddev drush pm:uninstall -y "$module" > /dev/null 2>&1; then
+                modules_disabled+=("$module")
+            else
+                modules_failed+=("$module")
+            fi
+        fi
+    done
+
+    if [ ${#modules_disabled[@]} -gt 0 ]; then
+        print_status "OK" "Disabled modules: ${modules_disabled[*]}"
+    fi
+
+    if [ ${#modules_failed[@]} -gt 0 ]; then
+        print_status "WARN" "Failed to disable: ${modules_failed[*]}"
+    fi
+
+    if [ ${#modules_disabled[@]} -eq 0 ] && [ ${#modules_failed[@]} -eq 0 ]; then
+        print_status "OK" "Dev modules already disabled"
+    fi
+
+    cd "$original_dir"
+    return 0
+}
+
+# Remove dev packages
+remove_dev_packages() {
+    local sitename=$1
+
+    print_header "Step 2: Remove Development Packages"
+
+    local original_dir=$(pwd)
+    cd "$sitename" || {
+        print_error "Cannot access site directory: $sitename"
+        return 1
+    }
+
+    # Check if composer.json exists
+    if [ ! -f "composer.json" ]; then
+        print_status "WARN" "No composer.json found, skipping package removal"
+        cd "$original_dir"
+        return 0
+    fi
+
+    print_info "Running composer install --no-dev..."
+    if ddev composer install --no-dev > /dev/null 2>&1; then
+        print_status "OK" "Development packages removed"
+    else
+        print_status "WARN" "Failed to remove dev packages (non-fatal)"
+    fi
+
+    cd "$original_dir"
+    return 0
+}
+
+# Configure production settings
+configure_prod_settings() {
+    local sitename=$1
+
+    print_header "Step 3: Configure Production Settings"
+
+    local original_dir=$(pwd)
+    cd "$sitename" || {
+        print_error "Cannot access site directory: $sitename"
+        return 1
+    }
+
+    local settings_changed=0
+
+    # Enable CSS/JS aggregation
+    ocmsg "Enabling CSS/JS aggregation..."
+    if ddev drush config:set -y system.performance css.preprocess 1 > /dev/null 2>&1; then
+        ((settings_changed++))
+    fi
+    if ddev drush config:set -y system.performance js.preprocess 1 > /dev/null 2>&1; then
+        ((settings_changed++))
+    fi
+
+    # Enable page cache (600 seconds = 10 minutes)
+    ocmsg "Enabling page cache..."
+    if ddev drush config:set -y system.performance cache.page.max_age 600 > /dev/null 2>&1; then
+        ((settings_changed++))
+    fi
+
+    # Disable Twig debug/auto-reload
+    ocmsg "Disabling Twig debug..."
+    # Note: This would typically require modifying services.yml
+    # For now, we'll just note it as a manual step
+
+    if [ $settings_changed -gt 0 ]; then
+        print_status "OK" "Production settings configured"
+    else
+        print_status "WARN" "Could not configure all production settings (drush may not be available)"
+    fi
+
+    cd "$original_dir"
+    return 0
+}
+
+# Export configuration
+export_config() {
+    local sitename=$1
+
+    print_header "Step 4: Export Configuration"
+
+    local original_dir=$(pwd)
+    cd "$sitename" || {
+        print_error "Cannot access site directory: $sitename"
+        return 1
+    }
+
+    ocmsg "Exporting configuration..."
+    if ddev drush config:export -y > /dev/null 2>&1; then
+        print_status "OK" "Configuration exported"
+    else
+        print_status "WARN" "Could not export configuration (drush may not be available)"
+    fi
+
+    cd "$original_dir"
+    return 0
+}
+
+################################################################################
+# Common Functions
+################################################################################
+
 # Set permissions
 fix_permissions() {
     local sitename=$1
     local webroot=$2
 
-    print_header "Step 4: Fix Permissions"
+    print_header "Fix Permissions"
 
     # Set sites/default writable
     if [ -d "$sitename/$webroot/sites/default" ]; then
@@ -289,6 +458,9 @@ fix_permissions() {
     fi
 
     print_status "OK" "Permissions set"
+    if [ "$MODE" == "prod" ]; then
+        print_info "Note: On production, lock down settings.php and sites/default"
+    fi
     return 0
 }
 
@@ -296,7 +468,7 @@ fix_permissions() {
 clear_cache() {
     local sitename=$1
 
-    print_header "Step 5: Clear Cache"
+    print_header "Clear Cache"
 
     local original_dir=$(pwd)
     cd "$sitename" || return 1
@@ -311,7 +483,7 @@ clear_cache() {
 }
 
 ################################################################################
-# Main Function
+# Main Functions
 ################################################################################
 
 makedev() {
@@ -383,6 +555,84 @@ makedev() {
     return 0
 }
 
+makeprod() {
+    local sitename=$1
+    local auto_yes=$2
+
+    print_header "Enable Production Mode: $sitename"
+
+    # Validate site
+    print_header "Validate Site"
+
+    if [ ! -d "$sitename" ]; then
+        print_error "Site directory not found: $sitename"
+        return 1
+    fi
+
+    if [ ! -f "$sitename/.ddev/config.yaml" ]; then
+        print_error "DDEV not configured in $sitename"
+        return 1
+    fi
+
+    # Get webroot
+    local webroot=$(grep "^docroot:" "$sitename/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
+    if [ -z "$webroot" ]; then
+        webroot="web"
+    fi
+
+    ocmsg "Webroot: $webroot"
+    print_status "OK" "Site validated: $sitename"
+
+    # Confirm
+    if [ "$auto_yes" != "true" ]; then
+        echo ""
+        echo -e "${YELLOW}${BOLD}WARNING:${NC} ${YELLOW}This will enable production mode for ${BOLD}$sitename${NC}"
+        echo -e "${YELLOW}Actions:${NC}"
+        echo -e "  - Disable and uninstall dev modules"
+        echo -e "  - Remove dev composer packages"
+        echo -e "  - Enable caching and aggregation"
+        echo -e "  - Export configuration"
+        echo -e "  - Clear cache"
+        echo ""
+        echo -n "Continue? [y/N]: "
+        read confirm
+        if [[ ! "$confirm" =~ ^[Yy] ]]; then
+            print_info "Operation cancelled"
+            return 1
+        fi
+    else
+        echo ""
+        echo -e "Auto-confirmed: Enable production mode for ${BOLD}$sitename${NC}"
+    fi
+
+    # Execute steps
+    disable_dev_modules "$sitename"
+    remove_dev_packages "$sitename"
+    configure_prod_settings "$sitename"
+    export_config "$sitename"
+    fix_permissions "$sitename" "$webroot"
+    clear_cache "$sitename"
+
+    # Summary
+    print_header "Production Mode Summary"
+    echo -e "${GREEN}✓${NC} Site: $sitename"
+    echo -e "${GREEN}✓${NC} Production mode enabled"
+    echo ""
+    echo -e "${YELLOW}${BOLD}NOTES:${NC}"
+    echo -e "  - This site is configured for production settings"
+    echo -e "  - Dev modules have been disabled and uninstalled"
+    echo -e "  - Dev dependencies have been removed"
+    echo -e "  - Caching and aggregation are enabled"
+    echo ""
+    echo -e "${YELLOW}${BOLD}PRODUCTION DEPLOYMENT:${NC}"
+    echo -e "  - For actual production, deploy to a production server"
+    echo -e "  - Lock down file permissions on production"
+    echo -e "  - Remove development.services.yml from production"
+    echo -e "  - Ensure settings.local.php is not deployed"
+
+    return 0
+}
+
 ################################################################################
 # Main Script
 ################################################################################
@@ -391,11 +641,12 @@ main() {
     # Parse options
     local DEBUG=false
     local AUTO_YES=false
+    local MODE=""
     local SITENAME=""
 
     # Use getopt for option parsing
-    local OPTIONS=hd,y
-    local LONGOPTS=help,debug,yes
+    local OPTIONS=hdvpy
+    local LONGOPTS=help,debug,dev,prod,yes
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -412,6 +663,22 @@ main() {
                 ;;
             -d|--debug)
                 DEBUG=true
+                shift
+                ;;
+            -v|--dev)
+                if [ -n "$MODE" ] && [ "$MODE" != "dev" ]; then
+                    print_error "Cannot specify both -v (dev) and -p (prod)"
+                    exit 1
+                fi
+                MODE="dev"
+                shift
+                ;;
+            -p|--prod)
+                if [ -n "$MODE" ] && [ "$MODE" != "prod" ]; then
+                    print_error "Cannot specify both -v (dev) and -p (prod)"
+                    exit 1
+                fi
+                MODE="prod"
                 shift
                 ;;
             -y|--yes)
@@ -439,16 +706,35 @@ main() {
 
     SITENAME="$1"
 
+    # Check that mode is specified
+    if [ -z "$MODE" ]; then
+        print_error "You must specify either -v (dev) or -p (prod) mode"
+        echo ""
+        show_help
+        exit 1
+    fi
+
     ocmsg "Site: $SITENAME"
+    ocmsg "Mode: $MODE"
     ocmsg "Auto yes: $AUTO_YES"
 
-    # Run makedev
-    if makedev "$SITENAME" "$AUTO_YES"; then
-        show_elapsed_time
-        exit 0
+    # Run appropriate function
+    if [ "$MODE" == "dev" ]; then
+        if makedev "$SITENAME" "$AUTO_YES"; then
+            show_elapsed_time
+            exit 0
+        else
+            print_error "Failed to enable development mode"
+            exit 1
+        fi
     else
-        print_error "Failed to enable development mode"
-        exit 1
+        if makeprod "$SITENAME" "$AUTO_YES"; then
+            show_elapsed_time
+            exit 0
+        else
+            print_error "Failed to enable production mode"
+            exit 1
+        fi
     fi
 }
 

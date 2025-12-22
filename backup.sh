@@ -85,7 +85,7 @@ ${BOLD}USAGE:${NC}
 ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
-    --db, --db-only         Database-only backup (skip files)
+    -b, --db-only           Database-only backup (skip files)
     -g, --git               Create supplementary git backup
     -e, --endpoint=NAME     Backup to different endpoint (default: sitename)
 
@@ -95,11 +95,11 @@ ${BOLD}ARGUMENTS:${NC}
 
 ${BOLD}EXAMPLES:${NC}
     ./backup.sh nwp                              # Backup 'nwp' site (full)
-    ./backup.sh --db nwp                         # Database-only backup
+    ./backup.sh -b nwp                           # Database-only backup
     ./backup.sh nwp 'Fixed error'                # Backup with message
-    ./backup.sh --db nwp 'Before update'         # DB-only backup with message
+    ./backup.sh -b nwp 'Before update'           # DB-only backup with message
     ./backup.sh -e=nwp_backup nwp 'Test backup'  # Backup to different endpoint
-    ./backup.sh -d nwp                           # Backup with debug output
+    ./backup.sh -bd nwp                          # DB-only backup with debug
 
 ${BOLD}OUTPUT:${NC}
     Backups are stored in: sitebackups/<sitename>/
@@ -366,8 +366,8 @@ main() {
     local MESSAGE=""
 
     # Use getopt for option parsing
-    local OPTIONS=hd,g,e:
-    local LONGOPTS=help,debug,db,db-only,git,endpoint:
+    local OPTIONS=hdbge:
+    local LONGOPTS=help,debug,db-only,git,endpoint:
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -386,7 +386,7 @@ main() {
                 DEBUG=true
                 shift
                 ;;
-            --db|--db-only)
+            -b|--db-only)
                 DB_ONLY=true
                 shift
                 ;;

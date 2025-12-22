@@ -341,7 +341,7 @@ main() {
     local TO_SITE=""
 
     # Use getopt for option parsing
-    local OPTIONS=hd,y
+    local OPTIONS=hdy
     local LONGOPTS=help,debug,yes
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then

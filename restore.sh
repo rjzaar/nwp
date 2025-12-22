@@ -118,7 +118,7 @@ ${BOLD}USAGE:${NC}
 ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
-    --db, --db-only         Database-only restore (skip files)
+    -b, --db-only           Database-only restore (skip files)
     -s, --step=N            Resume from step N
     -f, --first             Use latest backup without prompting
     -y, --yes               Auto-confirm deletion of existing content
@@ -130,11 +130,11 @@ ${BOLD}ARGUMENTS:${NC}
 
 ${BOLD}EXAMPLES:${NC}
     ./restore.sh nwp                         # Restore nwp from latest backup (full)
-    ./restore.sh --db nwp                    # Database-only restore
+    ./restore.sh -b nwp                      # Database-only restore
     ./restore.sh nwp nwp2                    # Restore nwp backup to nwp2 site
-    ./restore.sh --db nwp nwp2               # Database-only restore to different site
-    ./restore.sh -f nwp                      # Auto-select latest backup
-    ./restore.sh -y nwp nwp_test             # Auto-confirm restoration
+    ./restore.sh -b nwp nwp2                 # Database-only restore to different site
+    ./restore.sh -fy nwp                     # Auto-select latest + auto-confirm
+    ./restore.sh -bfyo nwp                   # DB-only + auto-select + confirm + open
     ./restore.sh -s=5 nwp                    # Resume from step 5
 
 ${BOLD}RESTORATION STEPS:${NC}
@@ -148,7 +148,7 @@ ${BOLD}RESTORATION STEPS:${NC}
       7. Clear cache
       8. Generate login link (if -o)
 
-    Database-only restore (--db):
+    Database-only restore (-b):
       1. Select backup
       2. Confirm restoration
       3. Restore database
@@ -607,8 +607,8 @@ main() {
     local TO_SITE=""
 
     # Parse options
-    local OPTIONS=hd,f,y,o,s:
-    local LONGOPTS=help,debug,db,db-only,first,yes,open,step:
+    local OPTIONS=hdbfyos:
+    local LONGOPTS=help,debug,db-only,first,yes,open,step:
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -627,7 +627,7 @@ main() {
                 DEBUG=true
                 shift
                 ;;
-            --db|--db-only)
+            -b|--db-only)
                 DB_ONLY=true
                 shift
                 ;;

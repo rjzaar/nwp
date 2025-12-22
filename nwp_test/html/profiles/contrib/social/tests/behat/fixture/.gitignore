@@ -1,2 +1,0 @@
-# Ignore temporary dumps but allow custom .sql files to be included in the repo.
-*.dump.sql

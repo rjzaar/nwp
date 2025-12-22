@@ -1,5 +1,0 @@
-services:
-  social_ajax_comments.route_subscriber:
-    class: Drupal\social_ajax_comments\Routing\RouteSubscriber
-    tags:
-      - { name: event_subscriber }

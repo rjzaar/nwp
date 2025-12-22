@@ -1,8 +1,0 @@
-name: 'Social Branding Test'
-description: 'Support module for module Social Branding for testing.'
-type: module
-core_version_requirement: ^9 || ^10
-dependencies:
-  - social:social_branding
-package: Testing
-hidden: true

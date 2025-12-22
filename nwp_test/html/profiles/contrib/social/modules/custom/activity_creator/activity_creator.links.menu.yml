@@ -1,5 +1,0 @@
-activity.admin.structure.settings:
-  title: Activity settings
-  description: 'Configure Activity entities'
-  route_name: activity.settings
-  parent: system.admin_structure

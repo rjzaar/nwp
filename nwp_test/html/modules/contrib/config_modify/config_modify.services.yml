@@ -1,3 +1,0 @@
-services:
-  config_modify.update_definition_creator:
-    class: \Drupal\config_modify\Util\UpdateDefinitionCreator

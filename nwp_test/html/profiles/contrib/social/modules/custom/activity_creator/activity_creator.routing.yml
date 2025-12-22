@@ -1,6 +1,0 @@
-activity_creator.stream.notifications:
-  path: '/activities/streams/notifications'
-  defaults:
-    _controller: '\Drupal\activity_creator\Controller\NotificationsController::getNotificationListCallback'
-  requirements:
-    _permission: 'access content'

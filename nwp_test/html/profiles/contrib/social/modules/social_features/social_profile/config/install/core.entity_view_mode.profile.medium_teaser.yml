@@ -1,9 +1,0 @@
-langcode: en
-status: true
-dependencies:
-  module:
-    - profile
-id: profile.medium_teaser
-label: 'Medium Teaser'
-targetEntityType: profile
-cache: true

@@ -1,5 +1,0 @@
-shariff.settings_form:
-  route_name: shariff.settings_form
-  title: 'Shariff sharing buttons'
-  description: 'Configure Shariff sharing button default settings.'
-  parent: system.admin_config_services

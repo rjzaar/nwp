@@ -1,8 +1,0 @@
-name: 'Social Profile Manager Notes'
-description: 'Provides profile notes that can created by Managers'
-type: module
-core_version_requirement: ^9 || ^10
-package: Social (experimental)
-dependencies:
-  - drupal:user
-  - social:social_profile

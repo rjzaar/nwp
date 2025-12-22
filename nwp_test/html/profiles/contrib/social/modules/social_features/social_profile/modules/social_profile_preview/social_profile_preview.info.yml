@@ -1,7 +1,0 @@
-name: 'Social Profile Preview'
-description: 'Provides a modal window to display profile details.'
-type: module
-core_version_requirement: ^9 || ^10
-package: Social (experimental)
-dependencies:
-  - social:social_profile

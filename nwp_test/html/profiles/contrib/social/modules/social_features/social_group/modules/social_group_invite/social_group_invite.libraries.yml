@@ -1,6 +1,0 @@
-share-group-link:
-  css:
-    component:
-      /libraries/fortawesome--fontawesome-free/css/all.min.css: { minified: true }
-  js:
-    assets/js/social_group_invite.js: {}

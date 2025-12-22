@@ -1,6 +1,0 @@
-social_mentions.autocomplete:
-  path: '/mentions-autocomplete'
-  defaults:
-    _controller: '\Drupal\social_mentions\Controller\AutocompleteController::suggestions'
-  requirements:
-    _permission: 'access mentions'

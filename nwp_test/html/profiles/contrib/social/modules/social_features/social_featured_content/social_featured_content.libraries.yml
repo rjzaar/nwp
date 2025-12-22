@@ -1,9 +1,0 @@
-paragraph.featured:
-  css:
-    theme:
-      css/paragraph.featured.css: {}
-
-featured:
-  css:
-    theme:
-      css/featured.css: {}

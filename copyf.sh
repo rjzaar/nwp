@@ -1,0 +1,405 @@
+#!/bin/bash
+
+################################################################################
+# NWP Files-Only Copy Script
+#
+# Copies files from one DDEV site to another (NO database)
+# Based on pleasy copyf.sh adapted for DDEV environments
+#
+# Usage: ./copyf.sh [OPTIONS] <from_site> <to_site>
+################################################################################
+
+# Script start time
+START_TIME=$(date +%s)
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+
+################################################################################
+# Helper Functions
+################################################################################
+
+print_header() {
+    echo -e "\n${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}${BOLD}  $1${NC}"
+    echo -e "${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}\n"
+}
+
+print_status() {
+    local status=$1
+    local message=$2
+
+    if [ "$status" == "OK" ]; then
+        echo -e "[${GREEN}✓${NC}] $message"
+    elif [ "$status" == "WARN" ]; then
+        echo -e "[${YELLOW}!${NC}] $message"
+    elif [ "$status" == "FAIL" ]; then
+        echo -e "[${RED}✗${NC}] $message"
+    else
+        echo -e "[${BLUE}i${NC}] $message"
+    fi
+}
+
+print_error() {
+    echo -e "${RED}${BOLD}ERROR:${NC} $1" >&2
+}
+
+print_info() {
+    echo -e "${BLUE}${BOLD}INFO:${NC} $1"
+}
+
+# Conditional debug message
+ocmsg() {
+    local message=$1
+    if [ "$DEBUG" == "true" ]; then
+        echo -e "${CYAN}[DEBUG]${NC} $message"
+    fi
+}
+
+# Display elapsed time
+show_elapsed_time() {
+    local end_time=$(date +%s)
+    local elapsed=$((end_time - START_TIME))
+    local hours=$((elapsed / 3600))
+    local minutes=$(((elapsed % 3600) / 60))
+    local seconds=$((elapsed % 60))
+
+    echo ""
+    print_status "OK" "Files copy completed in $(printf "%02d:%02d:%02d" $hours $minutes $seconds)"
+}
+
+# Show help
+show_help() {
+    cat << EOF
+${BOLD}NWP Files-Only Copy Script${NC}
+
+${BOLD}USAGE:${NC}
+    ./copyf.sh [OPTIONS] <from_site> <to_site>
+
+${BOLD}OPTIONS:${NC}
+    -h, --help              Show this help message
+    -d, --debug             Enable debug output
+    -y, --yes               Skip confirmation prompts
+
+${BOLD}ARGUMENTS:${NC}
+    from_site               Source site to copy from
+    to_site                 Destination site name
+
+${BOLD}EXAMPLES:${NC}
+    ./copyf.sh nwp4 nwp5                  # Copy nwp4 files to nwp5
+    ./copyf.sh -y nwp4 nwp_files          # Copy with auto-confirm
+
+${BOLD}WORKFLOW:${NC}
+    1. Validate source site exists
+    2. Prepare destination directory
+    3. Copy all files from source to destination
+    4. Fix site settings
+    5. Set permissions
+
+${BOLD}NOTE:${NC}
+    This script ONLY copies files (NO database operations).
+
+    Files copied include:
+    - Webroot (html/web)
+    - Private files
+    - Configuration (cmi)
+    - Composer files
+
+    The destination site must already exist and have DDEV configured.
+    Database will remain unchanged in the destination.
+
+    For full site copy including database, use copy.sh instead.
+
+EOF
+}
+
+################################################################################
+# Copy Functions
+################################################################################
+
+# Get webroot from DDEV config
+get_webroot() {
+    local site_dir=$1
+    local webroot=$(grep "^docroot:" "$site_dir/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
+    if [ -z "$webroot" ]; then
+        webroot="web"  # Default fallback
+    fi
+    echo "$webroot"
+}
+
+# Copy site files
+copy_files() {
+    local from_site=$1
+    local to_site=$2
+    local webroot=$3
+
+    print_header "Step 3: Copy Files"
+
+    # Paths to copy
+    local copy_paths=()
+
+    if [ -d "$from_site/$webroot" ]; then
+        copy_paths+=("$webroot")
+    fi
+
+    if [ -d "$from_site/private" ]; then
+        copy_paths+=("private")
+    fi
+
+    if [ -d "$from_site/cmi" ]; then
+        copy_paths+=("cmi")
+    fi
+
+    if [ -f "$from_site/composer.json" ]; then
+        copy_paths+=("composer.json")
+        if [ -f "$from_site/composer.lock" ]; then
+            copy_paths+=("composer.lock")
+        fi
+    fi
+
+    if [ ${#copy_paths[@]} -eq 0 ]; then
+        print_error "No files found to copy"
+        return 1
+    fi
+
+    ocmsg "Copying: ${copy_paths[*]}"
+
+    # Remove destination paths first if they exist
+    for path in "${copy_paths[@]}"; do
+        if [ -e "$to_site/$path" ]; then
+            ocmsg "Removing existing $path in destination..."
+            rm -rf "$to_site/$path"
+        fi
+    done
+
+    # Copy each path
+    for path in "${copy_paths[@]}"; do
+        ocmsg "Copying $path..."
+        if [ -d "$from_site/$path" ]; then
+            # Copy directory
+            cp -r "$from_site/$path" "$to_site/" || {
+                print_error "Failed to copy $path"
+                return 1
+            }
+        elif [ -f "$from_site/$path" ]; then
+            # Copy file
+            cp "$from_site/$path" "$to_site/" || {
+                print_error "Failed to copy $path"
+                return 1
+            }
+        fi
+    done
+
+    print_status "OK" "Files copied successfully"
+    return 0
+}
+
+# Fix site settings
+fix_settings() {
+    local to_site=$1
+    local webroot=$2
+
+    print_header "Step 4: Fix Site Settings"
+
+    local settings_file="$to_site/$webroot/sites/default/settings.php"
+
+    if [ -f "$settings_file" ]; then
+        # DDEV manages settings, so we just verify they exist
+        print_status "OK" "Settings verified (DDEV managed)"
+    else
+        print_status "WARN" "Settings file not found (will be managed by DDEV)"
+    fi
+
+    return 0
+}
+
+# Set permissions
+set_permissions() {
+    local to_site=$1
+    local webroot=$2
+
+    print_header "Step 5: Set Permissions"
+
+    # Set sites/default writable
+    if [ -d "$to_site/$webroot/sites/default" ]; then
+        chmod u+w "$to_site/$webroot/sites/default"
+        ocmsg "Set sites/default writable"
+    fi
+
+    # Set settings.php writable
+    if [ -f "$to_site/$webroot/sites/default/settings.php" ]; then
+        chmod u+w "$to_site/$webroot/sites/default/settings.php"
+        ocmsg "Set settings.php writable"
+    fi
+
+    print_status "OK" "Permissions set"
+    return 0
+}
+
+################################################################################
+# Main Copy Function
+################################################################################
+
+copyf_site() {
+    local from_site=$1
+    local to_site=$2
+    local auto_yes=$3
+
+    print_header "NWP Files-Only Copy: $from_site → $to_site"
+
+    # Step 1: Validate source
+    print_header "Step 1: Validate Source"
+
+    if [ ! -d "$from_site" ]; then
+        print_error "Source site not found: $from_site"
+        return 1
+    fi
+
+    if [ ! -f "$from_site/.ddev/config.yaml" ]; then
+        print_error "Source site is not a DDEV site: $from_site"
+        return 1
+    fi
+
+    local webroot=$(get_webroot "$from_site")
+    ocmsg "Source webroot: $webroot"
+    print_status "OK" "Source site validated: $from_site"
+
+    # Step 2: Validate destination
+    print_header "Step 2: Validate Destination"
+
+    if [ ! -d "$to_site" ]; then
+        print_error "Destination site not found: $to_site"
+        print_info "Destination must already exist. Create it first or use copy.sh instead."
+        return 1
+    fi
+
+    if [ ! -f "$to_site/.ddev/config.yaml" ]; then
+        print_error "Destination is not a DDEV site: $to_site"
+        print_info "Run 'ddev config' in the destination directory first"
+        return 1
+    fi
+
+    # Confirm overwrite
+    if [ "$auto_yes" != "true" ]; then
+        echo -e "${YELLOW}This will replace files in ${BOLD}$to_site${NC}${YELLOW} with files from ${BOLD}$from_site${NC}"
+        echo -e "${YELLOW}Database will NOT be affected.${NC}"
+        echo -n "Continue? [y/N]: "
+        read confirm
+        if [[ ! "$confirm" =~ ^[Yy] ]]; then
+            print_info "Copy cancelled"
+            return 1
+        fi
+    else
+        echo -e "Auto-confirmed: Replace files in ${BOLD}$to_site${NC}"
+    fi
+
+    print_status "OK" "Destination validated: $to_site"
+
+    # Step 3: Copy files
+    if ! copy_files "$from_site" "$to_site" "$webroot"; then
+        print_error "File copy failed"
+        return 1
+    fi
+
+    # Step 4: Fix settings
+    fix_settings "$to_site" "$webroot"
+
+    # Step 5: Set permissions
+    set_permissions "$to_site" "$webroot"
+
+    # Summary
+    print_header "Copy Summary"
+    echo -e "${GREEN}✓${NC} Source: $from_site"
+    echo -e "${GREEN}✓${NC} Destination: $to_site"
+    echo -e "${GREEN}✓${NC} Files copied (database unchanged)"
+
+    # Get site URL
+    local site_url=$(cd "$to_site" && ddev describe 2>/dev/null | grep -oP 'https://[^ ,]+' | head -1)
+    if [ -n "$site_url" ]; then
+        echo ""
+        echo -e "${BOLD}Site URL:${NC} $site_url"
+    fi
+
+    return 0
+}
+
+################################################################################
+# Main Script
+################################################################################
+
+main() {
+    # Parse options
+    local DEBUG=false
+    local AUTO_YES=false
+    local FROM_SITE=""
+    local TO_SITE=""
+
+    # Use getopt for option parsing
+    local OPTIONS=hd,y
+    local LONGOPTS=help,debug,yes
+
+    if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
+        show_help
+        exit 1
+    fi
+
+    eval set -- "$PARSED"
+
+    while true; do
+        case "$1" in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            -d|--debug)
+                DEBUG=true
+                shift
+                ;;
+            -y|--yes)
+                AUTO_YES=true
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            *)
+                echo "Programming error"
+                exit 3
+                ;;
+        esac
+    done
+
+    # Get from_site and to_site from remaining arguments
+    if [ $# -lt 2 ]; then
+        print_error "Missing required arguments"
+        echo ""
+        show_help
+        exit 1
+    fi
+
+    FROM_SITE="$1"
+    TO_SITE="$2"
+
+    ocmsg "From: $FROM_SITE"
+    ocmsg "To: $TO_SITE"
+    ocmsg "Auto yes: $AUTO_YES"
+
+    # Run copy
+    if copyf_site "$FROM_SITE" "$TO_SITE" "$AUTO_YES"; then
+        show_elapsed_time
+        exit 0
+    else
+        print_error "Files-only copy failed"
+        exit 1
+    fi
+}
+
+# Run main
+main "$@"

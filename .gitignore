@@ -20,7 +20,14 @@
 /commons_template
 /commons_template[0-9]*
 
+# Ignore environment-specific sites (staging, production, test, backup)
+*_stg/
+*_prod/
+*_test/
+*_backup/
+
 # Ignore backup directories
+/sitebackups/
 /sitebackups
 
 # Ignore vendor dependencies and scripts

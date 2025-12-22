@@ -118,6 +118,7 @@ ${BOLD}USAGE:${NC}
 ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
+    --db, --db-only         Database-only restore (skip files)
     -s, --step=N            Resume from step N
     -f, --first             Use latest backup without prompting
     -y, --yes               Auto-confirm deletion of existing content
@@ -128,21 +129,31 @@ ${BOLD}ARGUMENTS:${NC}
     to                      Destination site name (optional, defaults to 'from')
 
 ${BOLD}EXAMPLES:${NC}
-    ./restore.sh nwp                         # Restore nwp from latest backup
+    ./restore.sh nwp                         # Restore nwp from latest backup (full)
+    ./restore.sh --db nwp                    # Database-only restore
     ./restore.sh nwp nwp2                    # Restore nwp backup to nwp2 site
+    ./restore.sh --db nwp nwp2               # Database-only restore to different site
     ./restore.sh -f nwp                      # Auto-select latest backup
     ./restore.sh -y nwp nwp_test             # Auto-confirm restoration
     ./restore.sh -s=5 nwp                    # Resume from step 5
 
 ${BOLD}RESTORATION STEPS:${NC}
-    1. Select backup
-    2. Validate destination
-    3. Extract files
-    4. Fix settings
-    5. Set permissions
-    6. Restore database
-    7. Clear cache
-    8. Generate login link (if -o)
+    Full restore:
+      1. Select backup
+      2. Validate destination
+      3. Extract files
+      4. Fix settings
+      5. Set permissions
+      6. Restore database
+      7. Clear cache
+      8. Generate login link (if -o)
+
+    Database-only restore (--db):
+      1. Select backup
+      2. Confirm restoration
+      3. Restore database
+      4. Clear cache
+      5. Generate login link (if -o)
 
 ${BOLD}BACKUP LOCATION:${NC}
     Backups are read from: sitebackups/<sitename>/
@@ -410,8 +421,13 @@ restore_site() {
     local use_first=$3
     local start_step=${4:-1}
     local open_after=${5:-false}
+    local db_only=${6:-false}
 
-    print_header "NWP Site Restore: $from_site → $to_site"
+    if [ "$db_only" == "true" ]; then
+        print_header "NWP Database Restore: $from_site → $to_site"
+    else
+        print_header "NWP Site Restore: $from_site → $to_site"
+    fi
 
     # Step 1: Select backup
     if should_run_step 1 "$start_step"; then
@@ -433,69 +449,100 @@ restore_site() {
     if should_run_step 2 "$start_step"; then
         print_header "Step 2: Validate Destination"
 
-        if [ -d "$to_site" ]; then
-            print_status "WARN" "Destination site already exists: $to_site"
+        if [ "$db_only" == "true" ]; then
+            # Database-only: destination must exist
+            if [ ! -d "$to_site" ]; then
+                print_error "Destination site not found: $to_site"
+                print_info "Destination must already exist for database-only restore"
+                return 1
+            fi
 
-            if ! ask_yes_no "Delete existing site and restore from backup?" "n"; then
+            if [ ! -f "$to_site/.ddev/config.yaml" ]; then
+                print_error "Destination is not a DDEV site: $to_site"
+                print_info "Run 'ddev config' in the destination directory first"
+                return 1
+            fi
+
+            if ! ask_yes_no "Replace database in $to_site with backup from $from_site?" "n"; then
                 print_error "Restoration cancelled"
                 return 1
             fi
 
-            # Stop DDEV if running
-            ocmsg "Stopping DDEV for $to_site"
-            cd "$to_site" && ddev stop > /dev/null 2>&1
-            cd - > /dev/null
+            print_status "OK" "Destination validated: $to_site"
+        else
+            # Full restore: delete and recreate destination
+            if [ -d "$to_site" ]; then
+                print_status "WARN" "Destination site already exists: $to_site"
 
-            # Remove existing site
-            ocmsg "Removing existing site: $to_site"
-            rm -rf "$to_site"
-            print_status "OK" "Existing site removed"
+                if ! ask_yes_no "Delete existing site and restore from backup?" "n"; then
+                    print_error "Restoration cancelled"
+                    return 1
+                fi
+
+                # Stop DDEV if running
+                ocmsg "Stopping DDEV for $to_site"
+                cd "$to_site" && ddev stop > /dev/null 2>&1
+                cd - > /dev/null
+
+                # Remove existing site
+                ocmsg "Removing existing site: $to_site"
+                rm -rf "$to_site"
+                print_status "OK" "Existing site removed"
+            fi
+
+            # Create destination directory
+            mkdir -p "$to_site"
+            print_status "OK" "Destination prepared: $to_site"
         fi
-
-        # Create destination directory
-        mkdir -p "$to_site"
-        print_status "OK" "Destination prepared: $to_site"
     else
         print_status "INFO" "Skipping Step 2: Destination already prepared"
     fi
 
-    # Get webroot from backup or use default
+    # Get webroot (skip for database-only)
     local webroot="html"
-    # Try to detect from backup archive
-    local tar_file="${BACKUP_FILE%.sql}.tar.gz"
-    if [ -f "$tar_file" ]; then
-        if tar -tzf "$tar_file" | grep -q "^web/" 2>/dev/null; then
-            webroot="web"
+    if [ "$db_only" != "true" ]; then
+        # Try to detect from backup archive
+        local tar_file="${BACKUP_FILE%.sql}.tar.gz"
+        if [ -f "$tar_file" ]; then
+            if tar -tzf "$tar_file" | grep -q "^web/" 2>/dev/null; then
+                webroot="web"
+            fi
+        fi
+        ocmsg "Using webroot: $webroot"
+    fi
+
+    # Step 3: Restore files (skip for database-only)
+    if [ "$db_only" != "true" ]; then
+        if should_run_step 3 "$start_step"; then
+            if ! restore_files "$BACKUP_FILE" "$to_site" "$webroot"; then
+                print_error "File restoration failed"
+                return 1
+            fi
+        else
+            print_status "INFO" "Skipping Step 3: Files already restored"
         fi
     fi
-    ocmsg "Using webroot: $webroot"
 
-    # Step 3: Restore files
-    if should_run_step 3 "$start_step"; then
-        if ! restore_files "$BACKUP_FILE" "$to_site" "$webroot"; then
-            print_error "File restoration failed"
-            return 1
+    # Step 4: Fix settings (skip for database-only)
+    if [ "$db_only" != "true" ]; then
+        if should_run_step 4 "$start_step"; then
+            fix_site_settings "$to_site" "$webroot"
+        else
+            print_status "INFO" "Skipping Step 4: Settings already fixed"
         fi
-    else
-        print_status "INFO" "Skipping Step 3: Files already restored"
     fi
 
-    # Step 4: Fix settings
-    if should_run_step 4 "$start_step"; then
-        fix_site_settings "$to_site" "$webroot"
-    else
-        print_status "INFO" "Skipping Step 4: Settings already fixed"
+    # Step 5: Set permissions (skip for database-only)
+    if [ "$db_only" != "true" ]; then
+        if should_run_step 5 "$start_step"; then
+            set_permissions "$to_site" "$webroot"
+        else
+            print_status "INFO" "Skipping Step 5: Permissions already set"
+        fi
     fi
 
-    # Step 5: Set permissions
-    if should_run_step 5 "$start_step"; then
-        set_permissions "$to_site" "$webroot"
-    else
-        print_status "INFO" "Skipping Step 5: Permissions already set"
-    fi
-
-    # Configure and start DDEV if not already running
-    if [ ! -f "$to_site/.ddev/config.yaml" ]; then
+    # Configure and start DDEV if not already running (skip for database-only, already validated)
+    if [ "$db_only" != "true" ] && [ ! -f "$to_site/.ddev/config.yaml" ]; then
         print_info "Configuring DDEV for $to_site"
         cd "$to_site" || return 1
 
@@ -551,6 +598,7 @@ restore_site() {
 
 main() {
     local DEBUG=false
+    local DB_ONLY=false
     local USE_FIRST=false
     local AUTO_YES=false
     local OPEN_AFTER=false
@@ -560,7 +608,7 @@ main() {
 
     # Parse options
     local OPTIONS=hd,f,y,o,s:
-    local LONGOPTS=help,debug,first,yes,open,step:
+    local LONGOPTS=help,debug,db,db-only,first,yes,open,step:
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -577,6 +625,10 @@ main() {
                 ;;
             -d|--debug)
                 DEBUG=true
+                shift
+                ;;
+            --db|--db-only)
+                DB_ONLY=true
                 shift
                 ;;
             -f|--first)
@@ -629,10 +681,11 @@ main() {
     ocmsg "Use first: $USE_FIRST"
     ocmsg "Auto yes: $AUTO_YES"
     ocmsg "Open after: $OPEN_AFTER"
+    ocmsg "Database-only: $DB_ONLY"
     ocmsg "Start step: $START_STEP"
 
     # Run restore
-    if restore_site "$FROM_SITE" "$TO_SITE" "$USE_FIRST" "$START_STEP" "$OPEN_AFTER"; then
+    if restore_site "$FROM_SITE" "$TO_SITE" "$USE_FIRST" "$START_STEP" "$OPEN_AFTER" "$DB_ONLY"; then
         show_elapsed_time
         exit 0
     else

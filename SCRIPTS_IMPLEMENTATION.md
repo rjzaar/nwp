@@ -1,11 +1,11 @@
-# NWP Scripts Implementation (Sections 1.2, 2.2, 3.1, 3.2, 4.2, 4.3)
+# NWP Scripts Implementation (Sections 1.1, 1.2, 2.1, 2.2, 3.1, 3.2, 4.2, 4.3)
 
 ## Overview
 
-Implemented six new NWP scripts based on Pleasy functionality, adapted for DDEV environments:
+Implemented comprehensive NWP scripts based on Pleasy functionality, adapted for DDEV environments:
 
-1. **backupdb.sh** - Database-only backups
-2. **restoredb.sh** - Database-only restore
+1. **backup.sh** - Full and database-only backups (with `--db` flag)
+2. **restore.sh** - Full and database-only restore (with `--db` flag)
 3. **copy.sh** - Full site copying (files + database)
 4. **copyf.sh** - Files-only copying
 5. **makedev.sh** - Enable development mode
@@ -15,13 +15,16 @@ All scripts tested successfully with nwp4 and nwp5 test sites.
 
 ---
 
-## 1. Database-Only Backup (`backupdb.sh`)
+## 1. Backup Script (`backup.sh`)
+
+Combined backup script supporting both full site backups and database-only backups.
 
 ### Features
 
-- Database-only backups (no file archiving)
+- **Full backups**: Database + files (default)
+- **Database-only backups**: Use `--db` flag to skip file archiving
 - Pleasy-style naming convention: `YYYYMMDDTHHmmss-branch-commit-message.sql`
-- Support for backup messages via `-m` flag
+- Support for backup messages
 - Support for endpoint specification via `-e` flag
 - Stored in `sitebackups/<sitename>/` directory
 - Timer showing backup duration
@@ -29,92 +32,123 @@ All scripts tested successfully with nwp4 and nwp5 test sites.
 ### Usage
 
 ```bash
-# Basic database backup
-./backupdb.sh nwp4
+# Full backup (database + files)
+./backup.sh nwp4
+./backup.sh nwp4 'Before major update'
 
-# Backup with message
-./backupdb.sh nwp4 'Before updates'
-
-# Backup with -m flag
-./backupdb.sh -m 'Test backup' nwp4
+# Database-only backup
+./backup.sh --db nwp4
+./backup.sh --db nwp4 'Before schema change'
 
 # Backup to different endpoint
-./backupdb.sh -e=nwp_backup nwp4 'DB backup'
+./backup.sh -e=nwp_backup nwp4 'Test backup'
 
 # Debug mode
-./backupdb.sh -d nwp4
+./backup.sh -d --db nwp4
 ```
 
 ### Options
 
 - `-h, --help` - Show help message
 - `-d, --debug` - Enable debug output
-- `-m, --message=TEXT` - Backup description message
+- `--db, --db-only` - Database-only backup (skip files)
+- `-g, --git` - Create supplementary git backup (stub)
 - `-e, --endpoint=NAME` - Backup to different endpoint
 
 ### Testing Results
 
-- ✅ Basic database backup (nwp4)
+- ✅ Full backup (database + files) - completed in 4 seconds
+- ✅ Database-only backup - completed in 1 second
 - ✅ Message handling (spaces to underscores)
 - ✅ File size reporting
 - ✅ Timer display
-- ✅ Backup completed in 1 second
+- ✅ Endpoint specification
 
 ---
 
-## 2. Database-Only Restore (`restoredb.sh`)
+## 2. Restore Script (`restore.sh`)
+
+Combined restore script supporting both full site restoration and database-only restoration.
 
 ### Features
 
-- Database-only restore (no file operations)
+- **Full restore**: Files + database + DDEV configuration (default)
+- **Database-only restore**: Use `--db` flag to skip file operations
 - Interactive backup selection with size display
 - Support for `--first` flag to auto-select latest backup
 - Support for cross-site restore (restore from one site to another)
+- Step-based execution with resume capability (`-s` flag)
 - Cache clearing after restore
 - Optional login link generation with `-o` flag
+- Automatic DDEV configuration for full restores
 
 ### Usage
 
 ```bash
-# Restore nwp4 database (interactive)
-./restoredb.sh nwp4
+# Full restore (files + database)
+./restore.sh nwp4
+./restore.sh nwp4 nwp4_copy
 
-# Restore nwp4 DB to nwp4_copy
-./restoredb.sh nwp4 nwp4_copy
+# Database-only restore
+./restore.sh --db nwp4
+./restore.sh --db nwp4 nwp5
 
 # Auto-select latest backup
-./restoredb.sh -f nwp4
+./restore.sh -f nwp4
+./restore.sh --db -f nwp4
 
 # Auto-select and skip prompts
-./restoredb.sh -f -y nwp4 nwp5
+./restore.sh -f -y nwp4 nwp_test
+./restore.sh --db -f -y nwp4 nwp5
 
 # Restore and generate login link
-./restoredb.sh -f -y -o nwp4
+./restore.sh -f -y -o nwp4
+./restore.sh --db -f -y -o nwp4
+
+# Resume from step 5
+./restore.sh -s=5 nwp4
 ```
 
 ### Options
 
 - `-h, --help` - Show help message
 - `-d, --debug` - Enable debug output
-- `-f, --first` - Auto-select latest (first) backup
+- `--db, --db-only` - Database-only restore (skip files)
+- `-s, --step=N` - Resume from step N
+- `-f, --first` - Auto-select latest backup
 - `-y, --yes` - Skip confirmation prompts
 - `-o, --open` - Generate login link after restore
 
-### Workflow
+### Full Restore Workflow
 
-1. Select database backup (or auto-select with `-f`)
-2. Confirm restoration (or skip with `-y`)
-3. Import database to destination site
-4. Clear cache (if drush available)
-5. Generate login link (with `-o` flag)
+1. Select backup
+2. Validate destination (delete if exists)
+3. Extract files
+4. Fix settings
+5. Set permissions
+6. Configure DDEV and start
+7. Restore database
+8. Clear cache
+9. Generate login link (if `-o`)
+
+### Database-Only Restore Workflow
+
+1. Select backup
+2. Validate destination (must exist)
+3. Restore database
+4. Clear cache
+5. Generate login link (if `-o`)
 
 ### Testing Results
 
-- ✅ Backup selection (latest from nwp4)
-- ✅ Cross-site restore (nwp4 → nwp4_test)
+- ✅ Full restore (nwp4 → nwp_test) - completed in 28 seconds
+- ✅ Database-only restore (nwp4 → nwp5) - completed in 1 second
+- ✅ Backup selection (interactive and auto-select)
+- ✅ Cross-site restore capability
+- ✅ DDEV configuration and startup
 - ✅ Database import successful
 - ✅ Cache clear attempted
-- ✅ Restore completed in 1 second
+- ✅ Site accessible after restoration
 
 ---
 
@@ -384,15 +418,15 @@ Future enhancements could include:
 
 ## File Summary
 
-| Script | Lines | Purpose | Section |
-|--------|-------|---------|---------|
-| backupdb.sh | 387 | Database-only backup | 1.2 |
-| restoredb.sh | 452 | Database-only restore | 2.2 |
-| copy.sh | 574 | Full site copy | 3.1 |
-| copyf.sh | 414 | Files-only copy | 3.2 |
-| makedev.sh | 445 | Enable dev mode | 4.2 |
-| makeprod.sh | 471 | Enable production mode | 4.3 |
-| **TOTAL** | **2,743** | 6 new scripts | |
+| Script | Lines | Purpose | Sections |
+|--------|-------|---------|----------|
+| backup.sh | 451 | Full and database-only backup | 1.1, 1.2 |
+| restore.sh | 698 | Full and database-only restore | 2.1, 2.2 |
+| copy.sh | 608 | Full site copy | 3.1 |
+| copyf.sh | 405 | Files-only copy | 3.2 |
+| makedev.sh | 456 | Enable dev mode | 4.2 |
+| makeprod.sh | 468 | Enable production mode | 4.3 |
+| **TOTAL** | **3,086** | 6 scripts | |
 
 ---
 

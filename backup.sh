@@ -3,7 +3,7 @@
 ################################################################################
 # NWP Backup Script
 #
-# Backs up DDEV sites (database + files) with pleasy-style naming convention
+# Backs up DDEV sites (database + files or database only) with pleasy-style naming convention
 # Based on pleasy backup.sh adapted for DDEV environments
 #
 # Usage: ./backup.sh [OPTIONS] <sitename> [message]
@@ -85,6 +85,7 @@ ${BOLD}USAGE:${NC}
 ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
+    --db, --db-only         Database-only backup (skip files)
     -g, --git               Create supplementary git backup
     -e, --endpoint=NAME     Backup to different endpoint (default: sitename)
 
@@ -93,8 +94,10 @@ ${BOLD}ARGUMENTS:${NC}
     message                 Optional backup description (spaces converted to underscores)
 
 ${BOLD}EXAMPLES:${NC}
-    ./backup.sh nwp                              # Backup 'nwp' site
+    ./backup.sh nwp                              # Backup 'nwp' site (full)
+    ./backup.sh --db nwp                         # Database-only backup
     ./backup.sh nwp 'Fixed error'                # Backup with message
+    ./backup.sh --db nwp 'Before update'         # DB-only backup with message
     ./backup.sh -e=nwp_backup nwp 'Test backup'  # Backup to different endpoint
     ./backup.sh -d nwp                           # Backup with debug output
 
@@ -282,8 +285,13 @@ backup_site() {
     local sitename=$1
     local endpoint=$2
     local message=$3
+    local db_only=${4:-false}
 
-    print_header "NWP Site Backup: $sitename"
+    if [ "$db_only" == "true" ]; then
+        print_header "NWP Database Backup: $sitename"
+    else
+        print_header "NWP Site Backup: $sitename"
+    fi
 
     # Check if site directory exists
     if [ ! -d "$sitename" ]; then
@@ -326,16 +334,20 @@ backup_site() {
         return 1
     fi
 
-    # Backup files
-    if ! backup_files "$sitename" "$backup_base" "$backup_name" "$webroot"; then
-        print_error "Files backup failed"
-        return 1
+    # Backup files (skip if database-only)
+    if [ "$db_only" != "true" ]; then
+        if ! backup_files "$sitename" "$backup_base" "$backup_name" "$webroot"; then
+            print_error "Files backup failed"
+            return 1
+        fi
     fi
 
     # Summary
     print_header "Backup Summary"
     echo -e "${GREEN}✓${NC} Database: ${backup_base}/${backup_name}.sql"
-    echo -e "${GREEN}✓${NC} Files:    ${backup_base}/${backup_name}.tar.gz"
+    if [ "$db_only" != "true" ]; then
+        echo -e "${GREEN}✓${NC} Files:    ${backup_base}/${backup_name}.tar.gz"
+    fi
 
     return 0
 }
@@ -347,6 +359,7 @@ backup_site() {
 main() {
     # Parse options
     local DEBUG=false
+    local DB_ONLY=false
     local GIT_BACKUP=false
     local ENDPOINT=""
     local SITENAME=""
@@ -354,7 +367,7 @@ main() {
 
     # Use getopt for option parsing
     local OPTIONS=hd,g,e:
-    local LONGOPTS=help,debug,git,endpoint:
+    local LONGOPTS=help,debug,db,db-only,git,endpoint:
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -371,6 +384,10 @@ main() {
                 ;;
             -d|--debug)
                 DEBUG=true
+                shift
+                ;;
+            --db|--db-only)
+                DB_ONLY=true
                 shift
                 ;;
             -g|--git)
@@ -417,10 +434,11 @@ main() {
     ocmsg "Endpoint: $ENDPOINT"
     ocmsg "Message: $MESSAGE"
     ocmsg "Debug: $DEBUG"
+    ocmsg "Database-only: $DB_ONLY"
     ocmsg "Git backup: $GIT_BACKUP"
 
     # Run backup
-    if backup_site "$SITENAME" "$ENDPOINT" "$MESSAGE"; then
+    if backup_site "$SITENAME" "$ENDPOINT" "$MESSAGE" "$DB_ONLY"; then
         show_elapsed_time
         exit 0
     else

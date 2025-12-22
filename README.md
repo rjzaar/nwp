@@ -7,12 +7,14 @@ A streamlined installation system for Drupal and Moodle projects using DDEV and 
 - [Overview](#overview)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
+- [Management Scripts](#management-scripts)
 - [How It Works](#how-it-works)
 - [Using the Install Script](#using-the-install-script)
 - [Available Recipes](#available-recipes)
 - [Configuration File](#configuration-file)
 - [Creating Custom Recipes](#creating-custom-recipes)
 - [Advanced Features](#advanced-features)
+- [Documentation](#documentation)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
@@ -72,6 +74,76 @@ NWP requires the following software:
 5. **Access your site**:
    - The script will display the URL when installation completes
    - Typically: `https://<recipe-name>.ddev.site`
+
+## Management Scripts
+
+NWP includes a comprehensive set of management scripts for working with your sites after installation:
+
+### Available Scripts
+
+| Script | Purpose | Key Features |
+|--------|---------|--------------|
+| `backup.sh` | Backup sites | Full and database-only backups with `-b` flag |
+| `restore.sh` | Restore sites | Full and database-only restore, cross-site support |
+| `copy.sh` | Copy sites | Full copy or files-only with `-f` flag |
+| `make.sh` | Toggle dev/prod mode | Enable development (`-v`) or production (`-p`) mode |
+| `dev2stg.sh` | Deploy to staging | Automated deployment from dev to staging |
+
+### Quick Examples
+
+```bash
+# Backup a site (full backup)
+./backup.sh nwp4
+
+# Database-only backup
+./backup.sh -b nwp4 "Before schema change"
+
+# Restore a site
+./restore.sh nwp4
+
+# Copy a site
+./copy.sh nwp4 nwp5
+
+# Files-only copy (preserves destination database)
+./copy.sh -f nwp4 nwp5
+
+# Enable development mode
+./make.sh -v nwp4
+
+# Enable production mode
+./make.sh -p nwp4
+
+# Deploy development to staging
+./dev2stg.sh nwp4  # Creates nwp4_stg
+```
+
+### Combined Flags
+
+All scripts support combined short flags for efficient usage:
+
+```bash
+# Database-only backup with auto-confirm
+./backup.sh -by nwp4
+
+# Database-only restore with auto-select latest and open login link
+./restore.sh -bfyo nwp4
+
+# Files-only copy with auto-confirm
+./copy.sh -fy nwp4 nwp5
+
+# Dev mode with auto-confirm
+./make.sh -vy nwp4
+```
+
+### Environment Naming Convention
+
+NWP uses postfix naming for different environments:
+
+- **Development**: `sitename` (e.g., `nwp4`)
+- **Staging**: `sitename_stg` (e.g., `nwp4_stg`)
+- **Production**: `sitename_prod` (e.g., `nwp4_prod`)
+
+For detailed documentation on each script, see the [Documentation](#documentation) section.
 
 ## How It Works
 
@@ -392,6 +464,58 @@ Please check your cnwp.yml and ensure all required fields are present:
   For Moodle recipes: source, branch, webroot
 ```
 
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+### Core Documentation
+
+- **[SCRIPTS_IMPLEMENTATION.md](docs/SCRIPTS_IMPLEMENTATION.md)** - Detailed implementation documentation for all management scripts
+  - Script features and usage
+  - Testing results
+  - Implementation details
+  - File structure and line counts
+
+- **[IMPROVEMENTS.md](docs/IMPROVEMENTS.md)** - Roadmap and improvement tracking
+  - What has been achieved
+  - Known issues and bugs
+  - Future enhancements prioritized by phase
+  - Metrics and statistics
+  - Contributing guidelines
+
+- **[PRODUCTION_TESTING.md](docs/PRODUCTION_TESTING.md)** - Production deployment testing guide
+  - Safe testing strategies (local mock → remote test → dry-run → production)
+  - Implementation examples for safety features
+  - Testing checklists and workflows
+  - Configuration examples
+  - Troubleshooting guide
+
+- **[BACKUP_IMPLEMENTATION.md](docs/BACKUP_IMPLEMENTATION.md)** - Backup system implementation details
+  - Backup strategy and architecture
+  - File formats and naming conventions
+  - Restoration procedures
+
+### Quick Reference
+
+**For script usage:**
+```bash
+# All scripts have built-in help
+./backup.sh --help
+./restore.sh --help
+./copy.sh --help
+./make.sh --help
+./dev2stg.sh --help
+```
+
+**For detailed implementation:**
+- See `docs/SCRIPTS_IMPLEMENTATION.md`
+
+**For roadmap and planned features:**
+- See `docs/IMPROVEMENTS.md`
+
+**For production deployment:**
+- See `docs/PRODUCTION_TESTING.md`
+
 ## Troubleshooting
 
 ### Common Issues
@@ -472,13 +596,36 @@ nwp/
 ├── install.sh            # Main installation script
 ├── setup.sh              # Prerequisites setup script
 ├── README.md             # This file
-├── nwp.yml              # Legacy config (if exists)
+├── nwp.yml              # Site-specific config (if exists)
+├── docs/                 # Documentation directory
+│   ├── SCRIPTS_IMPLEMENTATION.md   # Script implementation docs
+│   ├── IMPROVEMENTS.md             # Roadmap and improvements
+│   ├── PRODUCTION_TESTING.md       # Production testing guide
+│   └── BACKUP_IMPLEMENTATION.md    # Backup system details
+├── backup.sh             # Backup script (full and database-only)
+├── restore.sh            # Restore script (full and database-only)
+├── copy.sh               # Site copy script (full and files-only)
+├── make.sh               # Dev/prod mode toggle script
+├── dev2stg.sh            # Development to staging deployment
+├── sitebackups/          # Backup storage (auto-created, gitignored)
 └── <recipe-dirs>/        # Installed project directories
     ├── .ddev/            # DDEV configuration
     ├── composer.json     # PHP dependencies
     ├── web/ or html/     # Webroot (varies by recipe)
     ├── vendor/           # Composer packages
     └── private/          # Private files directory
+```
+
+### Environment-Specific Directories (gitignored)
+
+These directories are created by management scripts and automatically ignored by git:
+
+```
+nwp/
+├── <sitename>_stg/       # Staging environment sites
+├── <sitename>_prod/      # Production environment sites
+├── <sitename>_test/      # Test environment sites
+└── <sitename>_backup/    # Backup copies
 ```
 
 ## Best Practices

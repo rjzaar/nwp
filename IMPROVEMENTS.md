@@ -254,6 +254,73 @@ This document tracks completed work, known issues, and planned improvements for 
 
 ---
 
+## Production Deployment Testing
+
+**IMPORTANT:** See **PRODUCTION_TESTING.md** for comprehensive testing guide.
+
+### Testing Strategy Overview
+
+Production deployment testing requires a multi-phase approach to minimize risk:
+
+**Phase 1: Local Mock Production (Safest)** 🟢
+- Create local `sitename_prod` site as mock production
+- Test deployment logic and script functionality
+- Test rollback procedures
+- Zero risk to real production
+
+**Phase 2: Remote Test Server (Safer)** 🟡
+- Deploy to separate test production server
+- Test SSH connectivity and remote operations
+- Test in production-like environment
+- Low risk, requires separate server
+
+**Phase 3: Dry-Run on Production (Safe)** 🟠
+- Use `--dry-run` flag to show commands without executing
+- Verify SSH access and paths
+- Review deployment plan before execution
+- Zero risk, validates real production access
+
+**Phase 4: Real Production (High Risk)** 🔴
+- Deploy to live production server
+- Always backup before deployment
+- Have tested rollback plan ready
+- Schedule during maintenance window
+
+### Key Testing Features to Implement
+
+1. **Dry-Run Mode** (Priority: HIGH)
+   ```bash
+   ./stg2prod.sh --dry-run nwp4_stg
+   # Shows all commands without executing
+   ```
+
+2. **Pre-Deployment Backup** (Priority: HIGH)
+   ```bash
+   # Automatic backup before deployment
+   ./stg2prod.sh --backup-first nwp4_stg
+   ```
+
+3. **Rollback Capability** (Priority: HIGH)
+   ```bash
+   # Restore previous deployment
+   ./stg2prod.sh --rollback prod_site
+   ```
+
+4. **Post-Deployment Verification** (Priority: MEDIUM)
+   ```bash
+   # Verify deployment succeeded
+   ./stg2prod.sh --verify prod_site
+   ```
+
+See **PRODUCTION_TESTING.md** for:
+- Detailed testing workflows
+- Safety features implementation
+- Code examples for validation
+- Common issues and solutions
+- Real-world testing timeline
+
+---
+
 ## Future Enhancements
 
 ### High Priority 🔴
@@ -458,6 +525,7 @@ This document tracks completed work, known issues, and planned improvements for 
 ## References
 
 - **SCRIPTS_IMPLEMENTATION.md** - Detailed implementation documentation
+- **PRODUCTION_TESTING.md** - Production deployment testing guide and strategies
 - **cnwp.yml** - Configuration file examples and options
 - **Pleasy** - Original inspiration for these scripts
 - **DDEV** - Local development environment

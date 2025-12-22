@@ -1,4 +1,4 @@
-# NWP Scripts Implementation (Sections 1.1, 1.2, 2.1, 2.2, 3.1, 3.2, 4.2, 4.3)
+# NWP Scripts Implementation (Sections 1.1, 1.2, 2.1, 2.2, 3.1, 3.2, 4.1, 4.2, 4.3, 5.1, 9.1)
 
 ## Overview
 
@@ -7,10 +7,18 @@ Implemented comprehensive NWP scripts based on Pleasy functionality, adapted for
 1. **backup.sh** - Full and database-only backups (with `-b` flag)
 2. **restore.sh** - Full and database-only restore (with `-b` flag)
 3. **copy.sh** - Full and files-only site copying (with `-f` flag)
-4. **make.sh** - Enable development or production mode
+4. **make.sh** - Enable development or production mode (with `-v`/`-p` flags)
+5. **dev2stg.sh** - Deploy from development to staging environment
 
 All scripts support combined short flags (e.g., `-bfy`, `-fy`, `-yo`) for efficient command-line usage.
 All scripts tested successfully with nwp4 and nwp5 test sites.
+
+**Environment Naming Convention (Section 9.1):**
+- Development: `sitename` (e.g., `nwp`)
+- Staging: `sitename_stg` (e.g., `nwp_stg`)
+- Production: `sitename_prod` (e.g., `nwp_prod`)
+
+Postfix naming is used instead of prefix for better organization and tab-completion.
 
 ---
 
@@ -326,6 +334,108 @@ Enabled if available:
 
 ---
 
+## 5. Dev to Staging Deployment Script (`dev2stg.sh`)
+
+Automated deployment script for pushing changes from development to staging environment.
+
+### Features
+
+- **Automated deployment workflow**: Export config → Sync files → Update dependencies → Import config → Clear cache
+- **Environment naming**: Postfix-based naming (e.g., `nwp` → `nwp_stg`)
+- **Intelligent file sync**: Excludes settings, files directory, .git, and other non-deployable content
+- **Production dependencies**: Automatically runs `composer install --no-dev` on staging
+- **Database updates**: Runs `drush updb` to apply pending database updates
+- **Configuration management**: Exports from dev, imports to staging
+- **Step-based execution**: Resume from any step with `-s` flag
+- **Module reinstallation support**: Can reinstall specified modules during deployment (configured in cnwp.yml)
+
+### Usage
+
+```bash
+# Deploy nwp to nwp_stg
+./dev2stg.sh nwp
+
+# Deploy with auto-confirm
+./dev2stg.sh -y nwp
+
+# Resume from step 5
+./dev2stg.sh -s=5 nwp
+```
+
+### Options
+
+- `-h, --help` - Show help message
+- `-d, --debug` - Enable debug output
+- `-y, --yes` - Skip confirmation prompts
+- `-s, --step=N` - Resume from step N
+
+### Deployment Workflow
+
+1. Validate dev and staging sites exist
+2. Export configuration from dev (`drush cex`)
+3. Sync files from dev to staging (with exclusions)
+4. Run `composer install --no-dev` on staging
+5. Run database updates on staging (`drush updb`)
+6. Import configuration to staging (`drush cim`)
+7. Reinstall specified modules (if configured in cnwp.yml)
+8. Clear cache on staging (`drush cr`)
+9. Display staging URL
+
+### File Exclusions
+
+The following are excluded from rsync:
+- `settings.php` and `services.yml`
+- `sites/default/files/` directory
+- `.git/` directory and `.gitignore`
+- `private/` directory
+- `node_modules/`
+- `dev/` directory
+
+### Environment Detection
+
+The script includes environment detection functions:
+- `get_env_type()` - Detects development, staging, or production from site name
+- `get_base_name()` - Extracts base name without environment suffix
+- `get_stg_name()` - Generates staging name from base name
+
+### Configuration (Section 5.1)
+
+Enhanced configuration options added to `cnwp.yml`:
+
+```yaml
+enhanced_example:
+  # Development configuration
+  dev_modules: devel kint webprofiler stage_file_proxy
+  dev_composer: drupal/devel drupal/stage_file_proxy
+  # Deployment configuration
+  reinstall_modules: custom_module
+  prod_method: rsync
+  # Directory paths
+  private: ../private
+  cmi: ../cmi
+```
+
+### Prerequisites
+
+- Both dev and staging sites must exist with DDEV configured
+- Use `./copy.sh dev_site stg_site` to create staging initially if needed
+- Staging site should already have a database (deployment doesn't copy database)
+
+### Testing Results
+
+- ✅ Help output displays correctly
+- ✅ Environment detection functions working
+- ✅ Step-based execution supported
+- ✅ File exclusions configured properly
+
+### Notes
+
+- This script does NOT copy the database (use `backup.sh` and `restore.sh` for database migration)
+- For production deployment, create a similar `stg2prod.sh` or `dev2prod.sh` script
+- Module reinstallation requires configuration in `cnwp.yml` (to be implemented)
+
+---
+
 ## Integration with NWP
 
 All scripts:
@@ -345,9 +455,9 @@ Future enhancements could include:
 
 1. **Section 1.1.4** - Implement full git-based backup functionality
 2. **Section 1.1.7** - Add production backup methods (SSH/rsync)
-3. **Section 4.1** - Implement dev2stg.sh for deployment workflows
-4. **Configuration System** - Add support for dev_modules/dev_composer in nwp.yml
-5. **Unified CLI** - Create main `nwp` command wrapper for all scripts
+3. **Configuration System** - Full integration of dev_modules/dev_composer/reinstall_modules from nwp.yml
+4. **Unified CLI** - Create main `nwp` command wrapper for all scripts
+5. **Production Deployment** - Create stg2prod.sh or dev2prod.sh for production deployment
 
 ---
 
@@ -359,15 +469,18 @@ Future enhancements could include:
 | restore.sh | 698 | Full and database-only restore (with `-b` flag) | 2.1, 2.2 |
 | copy.sh | 658 | Full and files-only site copy (with `-f` flag) | 3.1, 3.2 |
 | make.sh | 742 | Enable dev or prod mode (with `-v`/`-p` flags) | 4.2, 4.3 |
-| **TOTAL** | **2,549** | 4 scripts | |
+| dev2stg.sh | 584 | Deploy dev to staging environment | 4.1 |
+| **TOTAL** | **3,133** | 5 scripts | |
 
 **Key improvements:**
 - All scripts support combined short flags (e.g., `-bfy`, `-fy`, `-yo`, `-vy`)
 - Unified make.sh replaces makedev.sh and makeprod.sh
 - Unified copy.sh replaces copy.sh and copyf.sh
+- Added dev2stg.sh for automated deployment workflows
 - Consistent flag naming: `-b` for database-only, `-f` for files-only, `-v` for dev, `-p` for prod
+- Postfix environment naming: `nwp_stg`, `nwp_prod` (instead of `stg_nwp`, `prod_nwp`)
 - Reduced code duplication while maintaining full functionality
-- Fewer scripts to manage (4 instead of 6)
+- Streamlined script management (5 scripts instead of 6 separate ones)
 
 ---
 

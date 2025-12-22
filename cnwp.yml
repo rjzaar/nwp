@@ -42,3 +42,27 @@ recipes:
     webroot:  web
     #    sitename: default # leave blank it will be called the name of the site, eg loc
     auto:  y
+
+  # Enhanced recipe example with deployment configuration (Section 5.1)
+  enhanced_example:
+    source: goalgorilla/social_template:dev-master
+    profile: social
+    webroot: html
+    auto: y
+    # Directory paths
+    private: ../private              # Private files directory
+    cmi: ../cmi                       # Configuration management directory
+    # Development configuration
+    dev_modules: devel kint webprofiler stage_file_proxy  # Dev Drupal modules
+    dev_composer: drupal/devel drupal/stage_file_proxy    # Dev composer packages
+    # Deployment configuration
+    reinstall_modules: custom_module  # Modules to reinstall during sync
+    prod_method: rsync                # Production method: git, tar, rsync
+    # Git-based production (if prod_method: git)
+    # prod_gitrepo: git@github.com:user/site.git
+    # prod_gitdb: git@github.com:user/site-db.git
+    # SSH-based production (if prod_method: rsync or ssh)
+    # prod_alias: user@prod.example.com:/var/www/sitename
+    # Additional options
+    force: false                      # Force config imports
+    # lando: false                    # Use Lando instead of DDEV

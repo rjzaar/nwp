@@ -610,13 +610,8 @@ install_opensocial() {
             return 1
         fi
 
-        # Install Drush
-        print_info "Installing Drush..."
-        if composer require drush/drush --dev --no-interaction; then
-            print_status "OK" "Drush installed"
-        else
-            print_status "WARN" "Drush installation failed, but may already be available"
-        fi
+        # Note: Drush will be installed via DDEV after container starts (Step 3)
+        print_status "OK" "Dependencies installed successfully"
 
         # Install additional modules if specified
         if [ -n "$install_modules" ]; then
@@ -710,19 +705,25 @@ EOF
         print_status "INFO" "Skipping Step 4: DDEV already started"
     fi
 
-    # Step 5: Verify Drush is available
+    # Step 5: Install Drush
     if should_run_step 5 "$start_step"; then
-        print_header "Step 5: Verify Drush is Available"
+        print_header "Step 5: Install Drush"
 
-        # Check if Drush is available
+        # Check if Drush is already available
         if [ -f "vendor/bin/drush" ]; then
-            print_status "OK" "Drush is available"
+            print_status "OK" "Drush already installed"
         else
-            print_error "Drush not found - installation may have failed in Step 1"
-            print_info "Try manually installing with: ddev composer require drush/drush --dev"
+            print_info "Installing Drush via DDEV..."
+            if ddev composer require drush/drush --dev --no-interaction; then
+                print_status "OK" "Drush installed successfully"
+            else
+                print_error "Drush installation failed"
+                print_info "You can manually install with: ddev composer require drush/drush --dev"
+                return 1
+            fi
         fi
     else
-        print_status "INFO" "Skipping Step 5: Drush verification"
+        print_status "INFO" "Skipping Step 5: Drush installation"
     fi
 
     # Step 6: Configure Private File System

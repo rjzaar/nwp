@@ -106,7 +106,8 @@ ${BOLD}ARGUMENTS:${NC}
 ${BOLD}EXAMPLES:${NC}
     ./dev2stg.sh nwp                     # Deploy nwp to nwp_stg
     ./dev2stg.sh -y nwp                  # Deploy with auto-confirm
-    ./dev2stg.sh -s=5 nwp                # Resume from step 5
+    ./dev2stg.sh -s 5 nwp                # Resume from step 5
+    ./dev2stg.sh --step=5 nwp            # Resume from step 5 (long form)
 
 ${BOLD}ENVIRONMENT NAMING:${NC}
     Dev site:     <sitename>             (e.g., nwp)

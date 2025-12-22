@@ -359,7 +359,8 @@ Automated deployment script for pushing changes from development to staging envi
 ./dev2stg.sh -y nwp
 
 # Resume from step 5
-./dev2stg.sh -s=5 nwp
+./dev2stg.sh -s 5 nwp
+./dev2stg.sh --step=5 nwp   # Long form
 ```
 
 ### Options

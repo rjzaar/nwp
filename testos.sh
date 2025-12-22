@@ -174,6 +174,19 @@ EOF
 # Validation Functions
 ################################################################################
 
+# Get docroot from DDEV config
+get_docroot() {
+    local site=$1
+    local docroot=$(grep '^docroot:' "$site/.ddev/config.yaml" | awk '{print $2}')
+
+    if [ -z "$docroot" ]; then
+        # Default to 'web' if not found
+        docroot="web"
+    fi
+
+    echo "$docroot"
+}
+
 validate_site() {
     local site=$1
 
@@ -193,10 +206,14 @@ validate_site() {
 
     print_status "OK" "Site validated: $site"
 
+    # Get the docroot for this site
+    local docroot=$(get_docroot "$site")
+    ocmsg "Detected docroot: $docroot"
+
     # Check if it's OpenSocial
-    if [ ! -d "$site/html/profiles/contrib/social" ]; then
+    if [ ! -d "$site/$docroot/profiles/contrib/social" ]; then
         print_status "WARN" "This may not be an OpenSocial site"
-        print_info "OpenSocial profile not found at: $site/html/profiles/contrib/social"
+        print_info "OpenSocial profile not found at: $site/$docroot/profiles/contrib/social"
 
         if [ "$AUTO_YES" != "true" ]; then
             echo -n "Continue anyway? [y/N]: "
@@ -210,6 +227,51 @@ validate_site() {
         print_status "OK" "OpenSocial profile found"
     fi
 
+    return 0
+}
+
+# Install testing dependencies
+install_test_dependencies() {
+    local site=$1
+
+    print_header "Checking Testing Dependencies"
+
+    local original_dir=$(pwd)
+    cd "$site" || {
+        print_error "Cannot access site: $site"
+        return 1
+    }
+
+    # Check if Behat and required dependencies are installed
+    if ddev exec 'test -f /var/www/html/vendor/bin/behat && test -d /var/www/html/vendor/dmore/behat-chrome-extension && test -d /var/www/html/vendor/friends-of-behat/mink-debug-extension' 2>/dev/null; then
+        print_status "OK" "Testing dependencies already installed"
+        cd "$original_dir"
+        return 0
+    fi
+
+    print_status "WARN" "Testing dependencies not found"
+    print_info "Installing Behat, PHPUnit, and other testing tools..."
+
+    # Allow required Composer plugins first
+    ddev composer config --no-plugins allow-plugins.dealerdirect/phpcodesniffer-composer-installer true > /dev/null 2>&1
+    ddev composer config --no-plugins allow-plugins.phpstan/extension-installer true > /dev/null 2>&1
+
+    # Install testing dependencies
+    if ! ddev composer require --dev \
+        "drupal/drupal-extension:*" \
+        "behat/behat:*" \
+        "dmore/behat-chrome-extension:*" \
+        "friends-of-behat/mink-debug-extension:*" \
+        "phpunit/phpunit:*" \
+        "phpstan/phpstan:*" \
+        "drupal/coder:*" 2>&1 | tail -20; then
+        print_error "Failed to install testing dependencies"
+        cd "$original_dir"
+        return 1
+    fi
+
+    print_status "OK" "Testing dependencies installed successfully"
+    cd "$original_dir"
     return 0
 }
 
@@ -235,11 +297,19 @@ run_behat_tests() {
     print_info "Ensuring DDEV is running..."
     ddev start > /dev/null 2>&1
 
-    # Build behat command
-    local behat_cmd="ddev exec 'cd /var/www/html/profiles/contrib/social && vendor/bin/behat"
+    # Get docroot for this site
+    local docroot=$(get_docroot ".")
+    local social_path="$docroot/profiles/contrib/social"
+    local behat_config="/var/www/html/$social_path/tests/behat/behat.yml"
+    local features_path="/var/www/html/$social_path/tests/behat/features/capabilities"
+
+    # Build behat command (run from project root with config path)
+    local behat_cmd="ddev exec 'cd /var/www/html && vendor/bin/behat -c $behat_config"
 
     if [ -n "$feature" ]; then
-        behat_cmd="$behat_cmd --suite=default features/capabilities/$feature"
+        behat_cmd="$behat_cmd --suite=default $features_path/$feature"
+    else
+        behat_cmd="$behat_cmd --suite=default"
     fi
 
     if [ -n "$tag" ]; then
@@ -289,8 +359,13 @@ run_phpunit_tests() {
     print_info "Ensuring DDEV is running..."
     ddev start > /dev/null 2>&1
 
-    # Build phpunit command
-    local phpunit_cmd="ddev exec 'cd /var/www/html/profiles/contrib/social && vendor/bin/phpunit"
+    # Get docroot for this site
+    local docroot=$(get_docroot ".")
+    local social_path="$docroot/profiles/contrib/social"
+    local phpunit_config="/var/www/html/$social_path/phpunit.xml.dist"
+
+    # Build phpunit command (run from project root with config path)
+    local phpunit_cmd="ddev exec 'cd /var/www/html && vendor/bin/phpunit -c $phpunit_config"
 
     if [ -n "$suite" ]; then
         phpunit_cmd="$phpunit_cmd --testsuite=$suite"
@@ -349,7 +424,11 @@ run_phpstan() {
     print_info "Ensuring DDEV is running..."
     ddev start > /dev/null 2>&1
 
-    local phpstan_cmd="ddev exec 'cd /var/www/html/profiles/contrib/social && vendor/bin/phpstan analyse'"
+    # Get docroot for this site
+    local docroot=$(get_docroot ".")
+    local container_path="/var/www/html/$docroot/profiles/contrib/social"
+
+    local phpstan_cmd="ddev exec 'cd $container_path && vendor/bin/phpstan analyse'"
 
     ocmsg "Executing: $phpstan_cmd"
 
@@ -381,7 +460,11 @@ run_codesniff() {
     print_info "Ensuring DDEV is running..."
     ddev start > /dev/null 2>&1
 
-    local phpcs_cmd="ddev exec 'cd /var/www/html/profiles/contrib/social && vendor/bin/phpcs --standard=Drupal,DrupalPractice modules/'"
+    # Get docroot for this site
+    local docroot=$(get_docroot ".")
+    local container_path="/var/www/html/$docroot/profiles/contrib/social"
+
+    local phpcs_cmd="ddev exec 'cd $container_path && vendor/bin/phpcs --standard=Drupal,DrupalPractice modules/'"
 
     ocmsg "Executing: $phpcs_cmd"
 
@@ -403,14 +486,18 @@ list_features() {
 
     print_header "Available Behat Features"
 
-    if [ ! -d "$site/html/profiles/contrib/social/tests/behat/features/capabilities" ]; then
-        print_error "Features directory not found"
+    # Get docroot for this site
+    local docroot=$(get_docroot "$site")
+    local features_path="$site/$docroot/profiles/contrib/social/tests/behat/features/capabilities"
+
+    if [ ! -d "$features_path" ]; then
+        print_error "Features directory not found at: $features_path"
         return 1
     fi
 
     print_info "Available test features:\n"
 
-    for feature in "$site"/html/profiles/contrib/social/tests/behat/features/capabilities/*; do
+    for feature in "$features_path"/*; do
         if [ -d "$feature" ]; then
             local feature_name=$(basename "$feature")
             local feature_count=$(find "$feature" -name "*.feature" | wc -l)
@@ -430,6 +517,12 @@ run_tests() {
 
     # Validate site first
     if ! validate_site "$site"; then
+        return 1
+    fi
+
+    # Install testing dependencies if needed
+    if ! install_test_dependencies "$site"; then
+        print_error "Cannot proceed without testing dependencies"
         return 1
     fi
 

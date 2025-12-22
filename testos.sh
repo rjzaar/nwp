@@ -275,6 +275,183 @@ install_test_dependencies() {
     return 0
 }
 
+# Install and configure Selenium
+install_selenium() {
+    local site=$1
+
+    print_header "Checking Selenium Chrome"
+
+    local original_dir=$(pwd)
+    cd "$site" || {
+        print_error "Cannot access site: $site"
+        return 1
+    }
+
+    # Check if Selenium addon is already installed
+    if [ -d ".ddev/selenium-standalone-chrome" ]; then
+        print_status "OK" "Selenium Chrome already installed"
+
+        # Check if it's running
+        if ddev exec 'curl -s http://chrome:4444/wd/hub/status' > /dev/null 2>&1; then
+            print_status "OK" "Selenium Chrome is running"
+        else
+            print_status "WARN" "Selenium Chrome not running, restarting DDEV..."
+            ddev restart > /dev/null 2>&1
+        fi
+
+        cd "$original_dir"
+        return 0
+    fi
+
+    print_status "WARN" "Selenium Chrome not found"
+    print_info "Installing Selenium Chrome addon for DDEV..."
+
+    # Install the selenium addon
+    if ! ddev get ddev/ddev-selenium-standalone-chrome 2>&1 | tail -10; then
+        print_error "Failed to install Selenium Chrome addon"
+        cd "$original_dir"
+        return 1
+    fi
+
+    # Restart DDEV to apply changes
+    print_info "Restarting DDEV to activate Selenium..."
+    if ! ddev restart 2>&1 | tail -5; then
+        print_error "Failed to restart DDEV"
+        cd "$original_dir"
+        return 1
+    fi
+
+    # Wait a moment for Selenium to start
+    print_info "Waiting for Selenium to start..."
+    sleep 5
+
+    # Verify Selenium is running
+    if ddev exec 'curl -s http://chrome:4444/wd/hub/status' > /dev/null 2>&1; then
+        print_status "OK" "Selenium Chrome installed and running"
+    else
+        print_status "WARN" "Selenium installed but may not be fully ready"
+    fi
+
+    cd "$original_dir"
+    return 0
+}
+
+# Configure Behat for the site
+configure_behat() {
+    local site=$1
+
+    print_header "Configuring Behat"
+
+    local original_dir=$(pwd)
+    cd "$site" || {
+        print_error "Cannot access site: $site"
+        return 1
+    }
+
+    local docroot=$(get_docroot ".")
+    local social_path="$docroot/profiles/contrib/social"
+    local behat_dir="$social_path/tests/behat"
+    local custom_behat="$behat_dir/behat.nwp.yml"
+
+    # Check if custom config already exists
+    if [ -f "$custom_behat" ]; then
+        print_status "OK" "Custom Behat config already exists"
+        cd "$original_dir"
+        return 0
+    fi
+
+    print_info "Creating custom Behat configuration..."
+
+    # Get the site URL from DDEV
+    local site_url=$(ddev describe -j | grep -o '"https://[^"]*"' | head -1 | tr -d '"')
+    if [ -z "$site_url" ]; then
+        # Fallback to constructing URL from directory name
+        site_url="https://$(basename $(pwd)).ddev.site"
+    fi
+
+    # Create custom behat.yml with correct paths and Selenium configuration
+    cat > "$custom_behat" << 'BEHAT_EOF'
+default:
+  suites:
+    default:
+      paths:
+        - '%paths.base%/features/capabilities'
+      contexts:
+        - Drupal\social\Behat\DatabaseContext:
+            - '%paths.base%/fixture'
+        - Drupal\DrupalExtension\Context\BatchContext
+        - Drupal\social\Behat\AlbumContext
+        - Drupal\social\Behat\BookContext
+        - Drupal\social\Behat\CKEditorContext
+        - Drupal\social\Behat\ConfigContext
+        - Drupal\social\Behat\EmailContext
+        - Drupal\social\Behat\EventContext
+        - Drupal\social\Behat\GroupContext
+        - Drupal\social\Behat\GDPRContext
+        - Drupal\social\Behat\PostContext
+        - Drupal\social\Behat\FeatureContext
+        - Drupal\social\Behat\FileContext
+        - Drupal\social\Behat\LogContext
+        - Drupal\social\Behat\ModuleContext
+        - Drupal\social\Behat\ProfileContext
+        - Drupal\social\Behat\SearchContext
+        - Drupal\social\Behat\SocialDrupalContext
+        - Drupal\social\Behat\SocialMessageContext
+        - Drupal\social\Behat\SocialMinkContext
+        - Drupal\social\Behat\ThemeContext
+        - Drupal\social\Behat\TopicContext
+        - Drupal\social\Behat\UserContext
+        - Drupal\social\Behat\TaggingContext
+  extensions:
+    FriendsOfBehat\MinkDebugExtension:
+      directory: '%paths.base%/../../reports/behat'
+      clean_start: false
+      screenshot: true
+    Drupal\MinkExtension:
+      base_url: 'SITE_URL_PLACEHOLDER'
+      files_path: '%paths.base%/fixtures/files'
+      browser_name: chrome
+      javascript_session: selenium2
+      selenium2:
+        wd_host: 'http://chrome:4444/wd/hub'
+        capabilities:
+          chrome:
+            switches:
+              - '--headless'
+              - '--disable-gpu'
+              - '--no-sandbox'
+              - '--disable-dev-shm-usage'
+              - '--disable-extensions'
+              - '--disable-software-rasterizer'
+    Drupal\DrupalExtension:
+      api_driver: 'drupal'
+      drupal:
+        drupal_root: '/var/www/html/DOCROOT_PLACEHOLDER'
+      selectors:
+        message_selector: '.messages'
+        error_message_selector: '.messages.error'
+        success_message_selector: '.messages.success'
+        warning_message_selector: '.messages.warning'
+      region_map:
+        left sidebar: ".region-sidebar-first"
+        right sidebar: ".region-sidebar-second"
+        navbar: ".navbar"
+        hero: ".hero"
+        page: ".page-wrapper"
+BEHAT_EOF
+
+    # Replace placeholders with actual values
+    sed -i "s|SITE_URL_PLACEHOLDER|$site_url|g" "$custom_behat"
+    sed -i "s|DOCROOT_PLACEHOLDER|$docroot|g" "$custom_behat"
+
+    print_status "OK" "Behat configuration created at: $social_path/tests/behat/behat.nwp.yml"
+    print_info "Base URL: $site_url"
+    print_info "Drupal root: /var/www/html/$docroot"
+
+    cd "$original_dir"
+    return 0
+}
+
 ################################################################################
 # Test Execution Functions
 ################################################################################
@@ -300,8 +477,16 @@ run_behat_tests() {
     # Get docroot for this site
     local docroot=$(get_docroot ".")
     local social_path="$docroot/profiles/contrib/social"
-    local behat_config="/var/www/html/$social_path/tests/behat/behat.yml"
+    local behat_config="/var/www/html/$social_path/tests/behat/behat.nwp.yml"
     local features_path="/var/www/html/$social_path/tests/behat/features/capabilities"
+
+    # Use custom config if it exists, otherwise fall back to original
+    if [ ! -f "$social_path/tests/behat/behat.nwp.yml" ]; then
+        behat_config="/var/www/html/$social_path/tests/behat/behat.yml"
+        print_status "WARN" "Using original behat.yml (custom config not found)"
+    else
+        print_status "OK" "Using custom behat.nwp.yml configuration"
+    fi
 
     # Build behat command (run from project root with config path)
     local behat_cmd="ddev exec 'cd /var/www/html && vendor/bin/behat -c $behat_config"
@@ -523,6 +708,18 @@ run_tests() {
     # Install testing dependencies if needed
     if ! install_test_dependencies "$site"; then
         print_error "Cannot proceed without testing dependencies"
+        return 1
+    fi
+
+    # Install Selenium for browser testing
+    if ! install_selenium "$site"; then
+        print_error "Cannot proceed without Selenium"
+        return 1
+    fi
+
+    # Configure Behat with proper settings
+    if ! configure_behat "$site"; then
+        print_error "Cannot proceed without Behat configuration"
         return 1
     fi
 

@@ -3,7 +3,7 @@
 ################################################################################
 # NWP Site Copy Script
 #
-# Copies one DDEV site to another (files + database)
+# Copies one DDEV site to another (files + database or files-only)
 # Based on pleasy copy.sh adapted for DDEV environments
 #
 # Usage: ./copy.sh [OPTIONS] <from_site> <to_site>
@@ -71,7 +71,7 @@ show_elapsed_time() {
     local seconds=$((elapsed % 60))
 
     echo ""
-    print_status "OK" "Site copy completed in $(printf "%02d:%02d:%02d" $hours $minutes $seconds)"
+    print_status "OK" "Copy completed in $(printf "%02d:%02d:%02d" $hours $minutes $seconds)"
 }
 
 # Show help
@@ -85,6 +85,7 @@ ${BOLD}USAGE:${NC}
 ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
+    -f, --files-only        Copy files only (skip database operations)
     -y, --yes               Skip confirmation prompts
     -o, --open              Generate login link after copy (requires drush)
 
@@ -93,11 +94,13 @@ ${BOLD}ARGUMENTS:${NC}
     to_site                 Destination site name
 
 ${BOLD}EXAMPLES:${NC}
-    ./copy.sh nwp4 nwp5                  # Copy nwp4 to nwp5
-    ./copy.sh -y nwp4 nwp_backup         # Copy with auto-confirm
-    ./copy.sh -yo nwp4 nwp_test          # Copy with auto-confirm + login link
+    ./copy.sh nwp4 nwp5                  # Full copy (files + database)
+    ./copy.sh -f nwp4 nwp5               # Files-only copy
+    ./copy.sh -y nwp4 nwp_backup         # Full copy with auto-confirm
+    ./copy.sh -fy nwp4 nwp5              # Files-only with auto-confirm
+    ./copy.sh -yo nwp4 nwp_test          # Full copy with auto-confirm + login link
 
-${BOLD}WORKFLOW:${NC}
+${BOLD}WORKFLOW (Full Copy):${NC}
     1. Validate source site exists
     2. Prepare destination directory
     3. Copy all files from source to destination
@@ -109,16 +112,18 @@ ${BOLD}WORKFLOW:${NC}
     9. Clear cache
     10. Generate login link (with -o flag)
 
-${BOLD}NOTE:${NC}
-    This will create a complete clone of the source site, including:
-    - Webroot (html/web)
-    - Private files
-    - Configuration (cmi)
-    - Composer files
-    - Database
-    - DDEV configuration
+${BOLD}WORKFLOW (Files-Only with -f):${NC}
+    1. Validate source site exists
+    2. Validate destination exists (must already be configured)
+    3. Copy all files from source to destination
+    4. Fix site settings
+    5. Set permissions
 
-    The destination site will be completely replaced if it already exists.
+${BOLD}NOTE:${NC}
+    Full copy creates a complete clone including database and DDEV configuration.
+    Files-only copy (-f) updates files only, preserving the destination database.
+
+    For files-only copy, the destination site must already exist with DDEV configured.
 
 EOF
 }
@@ -412,8 +417,13 @@ copy_site() {
     local to_site=$2
     local auto_yes=$3
     local open_after=$4
+    local files_only=${5:-false}
 
-    print_header "NWP Site Copy: $from_site → $to_site"
+    if [ "$files_only" == "true" ]; then
+        print_header "NWP Files-Only Copy: $from_site → $to_site"
+    else
+        print_header "NWP Site Copy: $from_site → $to_site"
+    fi
 
     # Step 1: Validate source
     print_header "Step 1: Validate Source"
@@ -435,33 +445,64 @@ copy_site() {
     # Step 2: Prepare destination
     print_header "Step 2: Prepare Destination"
 
-    if [ -d "$to_site" ]; then
+    if [ "$files_only" == "true" ]; then
+        # Files-only mode: destination must already exist
+        if [ ! -d "$to_site" ]; then
+            print_error "Destination site not found: $to_site"
+            print_info "For files-only copy, destination must already exist"
+            return 1
+        fi
+
+        if [ ! -f "$to_site/.ddev/config.yaml" ]; then
+            print_error "Destination is not a DDEV site: $to_site"
+            print_info "Run 'ddev config' in the destination directory first"
+            return 1
+        fi
+
         if [ "$auto_yes" != "true" ]; then
-            print_status "WARN" "Destination site already exists: $to_site"
-            echo -n "Delete existing site and create fresh copy? [y/N]: "
+            print_status "WARN" "This will overwrite files in: $to_site"
+            echo -n "Continue with files-only copy? [y/N]: "
             read confirm
             if [[ ! "$confirm" =~ ^[Yy] ]]; then
                 print_info "Copy cancelled"
                 return 1
             fi
         else
-            print_status "WARN" "Destination site already exists: $to_site"
-            echo "Auto-confirmed: Delete and recreate"
+            print_status "WARN" "Overwriting files in: $to_site"
+            echo "Auto-confirmed: Files-only copy"
         fi
 
-        # Stop DDEV if running
-        ocmsg "Stopping DDEV for $to_site"
-        (cd "$to_site" && ddev stop > /dev/null 2>&1) || true
+        print_status "OK" "Destination validated: $to_site"
+    else
+        # Full copy mode: delete and recreate destination
+        if [ -d "$to_site" ]; then
+            if [ "$auto_yes" != "true" ]; then
+                print_status "WARN" "Destination site already exists: $to_site"
+                echo -n "Delete existing site and create fresh copy? [y/N]: "
+                read confirm
+                if [[ ! "$confirm" =~ ^[Yy] ]]; then
+                    print_info "Copy cancelled"
+                    return 1
+                fi
+            else
+                print_status "WARN" "Destination site already exists: $to_site"
+                echo "Auto-confirmed: Delete and recreate"
+            fi
 
-        # Remove existing site
-        ocmsg "Removing existing site: $to_site"
-        rm -rf "$to_site"
-        print_status "OK" "Existing site removed"
+            # Stop DDEV if running
+            ocmsg "Stopping DDEV for $to_site"
+            (cd "$to_site" && ddev stop > /dev/null 2>&1) || true
+
+            # Remove existing site
+            ocmsg "Removing existing site: $to_site"
+            rm -rf "$to_site"
+            print_status "OK" "Existing site removed"
+        fi
+
+        # Create destination directory
+        mkdir -p "$to_site"
+        print_status "OK" "Destination prepared: $to_site"
     fi
-
-    # Create destination directory
-    mkdir -p "$to_site"
-    print_status "OK" "Destination prepared: $to_site"
 
     # Step 3: Copy files
     if ! copy_files "$from_site" "$to_site" "$webroot"; then
@@ -469,33 +510,36 @@ copy_site() {
         return 1
     fi
 
-    # Remove .ddev if it was copied (we'll recreate it)
-    if [ -d "$to_site/.ddev" ]; then
+    # Remove .ddev if it was copied (we'll recreate it for full copy)
+    if [ "$files_only" != "true" ] && [ -d "$to_site/.ddev" ]; then
         ocmsg "Removing copied .ddev directory"
         rm -rf "$to_site/.ddev"
     fi
 
-    # Step 4: Export database
-    local db_export=$(export_database "$from_site")
-    if [ $? -ne 0 ] || [ -z "$db_export" ]; then
-        print_error "Database export failed"
-        return 1
-    fi
+    # Skip database operations for files-only mode
+    if [ "$files_only" != "true" ]; then
+        # Step 4: Export database
+        local db_export=$(export_database "$from_site")
+        if [ $? -ne 0 ] || [ -z "$db_export" ]; then
+            print_error "Database export failed"
+            return 1
+        fi
 
-    # Step 5: Configure DDEV
-    if ! configure_ddev "$to_site" "$webroot"; then
-        print_error "DDEV configuration failed"
-        return 1
-    fi
+        # Step 5: Configure DDEV
+        if ! configure_ddev "$to_site" "$webroot"; then
+            print_error "DDEV configuration failed"
+            return 1
+        fi
 
-    # Step 6: Import database
-    if ! import_database "$to_site" "$db_export"; then
-        print_error "Database import failed"
-        return 1
-    fi
+        # Step 6: Import database
+        if ! import_database "$to_site" "$db_export"; then
+            print_error "Database import failed"
+            return 1
+        fi
 
-    # Clean up temporary database export
-    rm -f "$db_export"
+        # Clean up temporary database export
+        rm -f "$db_export"
+    fi
 
     # Step 7: Fix settings
     fix_settings "$to_site" "$webroot"
@@ -535,12 +579,13 @@ main() {
     local DEBUG=false
     local AUTO_YES=false
     local OPEN_AFTER=false
+    local FILES_ONLY=false
     local FROM_SITE=""
     local TO_SITE=""
 
     # Use getopt for option parsing
-    local OPTIONS=hdyo
-    local LONGOPTS=help,debug,yes,open
+    local OPTIONS=hdfyo
+    local LONGOPTS=help,debug,files-only,yes,open
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -557,6 +602,10 @@ main() {
                 ;;
             -d|--debug)
                 DEBUG=true
+                shift
+                ;;
+            -f|--files-only)
+                FILES_ONLY=true
                 shift
                 ;;
             -y|--yes)
@@ -593,9 +642,10 @@ main() {
     ocmsg "To: $TO_SITE"
     ocmsg "Auto yes: $AUTO_YES"
     ocmsg "Open after: $OPEN_AFTER"
+    ocmsg "Files only: $FILES_ONLY"
 
     # Run copy
-    if copy_site "$FROM_SITE" "$TO_SITE" "$AUTO_YES" "$OPEN_AFTER"; then
+    if copy_site "$FROM_SITE" "$TO_SITE" "$AUTO_YES" "$OPEN_AFTER" "$FILES_ONLY"; then
         show_elapsed_time
         exit 0
     else

@@ -6,11 +6,10 @@ Implemented comprehensive NWP scripts based on Pleasy functionality, adapted for
 
 1. **backup.sh** - Full and database-only backups (with `-b` flag)
 2. **restore.sh** - Full and database-only restore (with `-b` flag)
-3. **copy.sh** - Full site copying (files + database)
-4. **copyf.sh** - Files-only copying
-5. **make.sh** - Enable development or production mode
+3. **copy.sh** - Full and files-only site copying (with `-f` flag)
+4. **make.sh** - Enable development or production mode
 
-All scripts support combined short flags (e.g., `-bfy`, `-yo`) for efficient command-line usage.
+All scripts support combined short flags (e.g., `-bfy`, `-fy`, `-yo`) for efficient command-line usage.
 All scripts tested successfully with nwp4 and nwp5 test sites.
 
 ---
@@ -148,41 +147,52 @@ Combined restore script supporting both full site restoration and database-only 
 
 ---
 
-## 3. Full Site Copy (`copy.sh`)
+## 3. Site Copy Script (`copy.sh`)
+
+Combined script for copying sites with full or files-only modes.
 
 ### Features
 
-- Complete site cloning (files + database)
-- Automatic DDEV configuration for destination
-- Support for destination deletion and recreation
+- **Full copy** (default): Complete site cloning (files + database)
+- **Files-only copy** (`-f` flag): Copy files only, preserve destination database
+- Automatic DDEV configuration for full copy
+- Support for destination deletion and recreation (full copy)
+- Destination validation for files-only copy (must exist)
 - Converts underscores to hyphens in project names (DDEV requirement)
-- Comprehensive 10-step process
 - Optional login link generation
+- **Combined flags**: All short flags can be combined (e.g., `-fy` for files-only with auto-confirm)
 
 ### Usage
 
 ```bash
-# Copy nwp4 to nwp5
+# Full copy (files + database)
 ./copy.sh nwp4 nwp5
 
-# Copy with auto-confirm
+# Files-only copy
+./copy.sh -f nwp4 nwp5
+
+# Full copy with auto-confirm
 ./copy.sh -y nwp4 nwp_backup
 
-# Copy and generate login link
-./copy.sh -y -o nwp4 nwp_test
+# Files-only with auto-confirm
+./copy.sh -fy nwp4 nwp5
+
+# Full copy with auto-confirm + login link
+./copy.sh -yo nwp4 nwp_test
 ```
 
 ### Options
 
 - `-h, --help` - Show help message
 - `-d, --debug` - Enable debug output
+- `-f, --files-only` - Copy files only (skip database operations)
 - `-y, --yes` - Skip confirmation prompts
 - `-o, --open` - Generate login link after copy
 
-### Workflow
+### Full Copy Workflow
 
 1. Validate source site exists
-2. Prepare destination directory
+2. Prepare destination directory (delete if exists)
 3. Copy all files from source to destination
 4. Export source database
 5. Configure DDEV for destination
@@ -192,58 +202,7 @@ Combined restore script supporting both full site restoration and database-only 
 9. Clear cache
 10. Generate login link (with `-o` flag)
 
-### What Gets Copied
-
-- Webroot (html/web)
-- Private files
-- Configuration (cmi)
-- Composer files (composer.json/lock)
-- Complete database
-- Fresh DDEV configuration
-
-### Testing Results
-
-- ✅ Full site copy (nwp4 → nwp5)
-- ✅ File copying successful
-- ✅ Database export and import successful
-- ✅ DDEV configured and started
-- ✅ Site accessible at https://nwp5.ddev.site
-- ✅ Copy completed in 26 seconds
-
-### Known Issues
-
-- DDEV project names with underscores must be converted to hyphens (handled automatically)
-- Destination directory removal requires DDEV to be stopped first (handled automatically)
-
----
-
-## 4. Files-Only Copy (`copyf.sh`)
-
-### Features
-
-- Copy files only (NO database operations)
-- Destination must already exist
-- Removes destination files before copying (for clean copy)
-- Fixes settings and permissions after copy
-- Database remains unchanged
-
-### Usage
-
-```bash
-# Copy nwp4 files to nwp5
-./copyf.sh nwp4 nwp5
-
-# Copy with auto-confirm
-./copyf.sh -y nwp4 nwp_files
-```
-
-### Options
-
-- `-h, --help` - Show help message
-- `-d, --debug` - Enable debug output
-- `-y, --yes` - Skip confirmation prompts
-
-### Workflow
+### Files-Only Workflow
 
 1. Validate source site exists
 2. Validate destination exists and has DDEV configured
@@ -253,24 +212,40 @@ Combined restore script supporting both full site restoration and database-only 
 
 ### What Gets Copied
 
+**Full copy:**
+- Webroot (html/web)
+- Private files
+- Configuration (cmi)
+- Composer files (composer.json/lock)
+- Complete database
+- Fresh DDEV configuration
+
+**Files-only copy:**
 - Webroot (html/web)
 - Private files
 - Configuration (cmi)
 - Composer files
-- **Database is NOT copied**
+- **Database is NOT copied** (preserved from destination)
 
 ### Testing Results
 
-- ✅ Files-only copy (nwp4 → nwp5)
+- ✅ Full site copy (nwp4 → nwp5) - completed in 26 seconds
+- ✅ Files-only copy (nwp4 → nwp5) - completed in 1 second
 - ✅ File copying successful
-- ✅ Settings verification
-- ✅ Permissions set
-- ✅ Database unchanged
-- ✅ Copy completed in 1 second
+- ✅ Database operations (full copy only)
+- ✅ DDEV configured and started (full copy only)
+- ✅ Site accessible after copy
+- ✅ Combined flags working (`-fy`, `-yo`)
+
+### Known Issues
+
+- DDEV project names with underscores must be converted to hyphens (handled automatically)
+- Destination directory removal requires DDEV to be stopped first (handled automatically)
+- For files-only copy, destination must already exist with DDEV configured
 
 ---
 
-## 5. Make Script (`make.sh`)
+## 4. Make Script (`make.sh`)
 
 Combined script for enabling development or production mode on a Drupal site.
 
@@ -382,16 +357,17 @@ Future enhancements could include:
 |--------|-------|---------|----------|
 | backup.sh | 451 | Full and database-only backup (with `-b` flag) | 1.1, 1.2 |
 | restore.sh | 698 | Full and database-only restore (with `-b` flag) | 2.1, 2.2 |
-| copy.sh | 608 | Full site copy | 3.1 |
-| copyf.sh | 405 | Files-only copy | 3.2 |
+| copy.sh | 658 | Full and files-only site copy (with `-f` flag) | 3.1, 3.2 |
 | make.sh | 742 | Enable dev or prod mode (with `-v`/`-p` flags) | 4.2, 4.3 |
-| **TOTAL** | **2,904** | 5 scripts | |
+| **TOTAL** | **2,549** | 4 scripts | |
 
 **Key improvements:**
-- All scripts support combined short flags (e.g., `-bfy`, `-yo`, `-vy`)
-- Unified make.sh script replaces separate makedev.sh and makeprod.sh
-- Consistent flag naming: `-b` for database-only, `-v` for dev, `-p` for prod
+- All scripts support combined short flags (e.g., `-bfy`, `-fy`, `-yo`, `-vy`)
+- Unified make.sh replaces makedev.sh and makeprod.sh
+- Unified copy.sh replaces copy.sh and copyf.sh
+- Consistent flag naming: `-b` for database-only, `-f` for files-only, `-v` for dev, `-p` for prod
 - Reduced code duplication while maintaining full functionality
+- Fewer scripts to manage (4 instead of 6)
 
 ---
 

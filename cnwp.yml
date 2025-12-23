@@ -5,6 +5,9 @@
 # This recipe section will have defaults to easy start a new project.
 database: mariadb
 php: 8.2
+webserver: nginx
+os: ubuntu
+
 
 recipes:
   os:

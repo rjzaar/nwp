@@ -88,6 +88,7 @@ NWP includes a comprehensive set of management scripts for working with your sit
 | `copy.sh` | Copy sites | Full copy or files-only with `-f` flag |
 | `make.sh` | Toggle dev/prod mode | Enable development (`-v`) or production (`-p`) mode |
 | `dev2stg.sh` | Deploy to staging | Automated deployment from dev to staging |
+| `testos.sh` | Test OpenSocial sites | Behat, PHPUnit, PHPStan testing with auto-setup |
 
 ### Quick Examples
 
@@ -115,6 +116,15 @@ NWP includes a comprehensive set of management scripts for working with your sit
 
 # Deploy development to staging
 ./dev2stg.sh nwp4  # Creates nwp4_stg
+
+# Test OpenSocial site
+./testos.sh -b -f groups nwp4  # Run Behat tests for groups feature
+
+# List available test features
+./testos.sh --list-features nwp4
+
+# Run all tests
+./testos.sh -a nwp4  # Behat + PHPUnit + PHPStan
 ```
 
 ### Combined Flags
@@ -133,6 +143,9 @@ All scripts support combined short flags for efficient usage:
 
 # Dev mode with auto-confirm
 ./make.sh -vy nwp4
+
+# Run Behat tests with auto-confirm and verbose
+./testos.sh -bvy nwp4
 ```
 
 ### Environment Naming Convention
@@ -494,6 +507,13 @@ Comprehensive documentation is available in the `docs/` directory:
   - Backup strategy and architecture
   - File formats and naming conventions
   - Restoration procedures
+
+- **[TESTING.md](docs/TESTING.md)** - OpenSocial testing infrastructure documentation
+  - Testing script (testos.sh) usage and options
+  - Behat, PHPUnit, PHPStan, CodeSniffer integration
+  - Selenium Chrome browser automation
+  - 30 test features with 134 scenarios
+  - Automatic dependency installation and configuration
 
 ### Quick Reference
 

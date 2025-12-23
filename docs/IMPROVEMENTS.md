@@ -5,7 +5,7 @@
 This document tracks completed work, known issues, and planned improvements for the NWP (Narrow Way Project) scripts suite. It serves as a roadmap for future development and a reference for current capabilities.
 
 **Last Updated:** December 2024
-**Current Version:** v1.0 (5 scripts, 3,133 lines)
+**Current Version:** v1.1 (6 scripts, 3,800+ lines)
 
 ---
 
@@ -25,21 +25,37 @@ This document tracks completed work, known issues, and planned improvements for 
    - ✅ `copy.sh` - Full and files-only site copying with `-f` flag
    - ✅ `make.sh` - Development and production mode switching with `-v`/`-p` flags
    - ✅ `dev2stg.sh` - Automated development to staging deployment
+   - ✅ `testos.sh` - OpenSocial testing with Behat, PHPUnit, PHPStan, CodeSniffer
 
-3. **Environment Management** (Section 9.1)
+3. **Automated Testing Infrastructure**
+   - ✅ Behat behavioral testing with Selenium WebDriver integration
+   - ✅ 30 test features with 134 scenarios for OpenSocial
+   - ✅ PHPUnit unit and kernel testing
+   - ✅ PHPStan static code analysis
+   - ✅ PHP CodeSniffer for Drupal coding standards
+   - ✅ Automatic Selenium Chrome installation via DDEV addon
+   - ✅ Dynamic Behat configuration with auto-detected site URLs
+   - ✅ Headless browser testing for CI/CD pipelines
+
+4. **Environment Management** (Section 9.1)
    - Postfix-based environment naming convention implemented
    - Development: `sitename` (e.g., `nwp`)
    - Staging: `sitename_stg` (e.g., `nwp_stg`)
    - Production: `sitename_prod` (e.g., `nwp_prod`)
    - Better tab-completion and organization than prefix naming
 
-4. **Enhanced Configuration System** (Section 5.1)
+5. **Enhanced Configuration System** (Section 5.1)
    - YAML-based recipe configuration (`cnwp.yml`)
    - Development module configuration (`dev_modules`, `dev_composer`)
    - Deployment configuration (`reinstall_modules`, `prod_method`)
    - Directory path configuration (`private`, `cmi`)
 
-5. **Deployment Workflow**
+6. **Drush Installation Fix**
+   - ✅ Drush now installed via `ddev composer` (inside container)
+   - ✅ Fixed host-based installation that caused version mismatches
+   - ✅ Proper PHP version compatibility ensured
+
+7. **Deployment Workflow**
    - 9-step automated deployment from dev to staging
    - Configuration export/import via Drush
    - Intelligent file synchronization with exclusions
@@ -58,7 +74,6 @@ This document tracks completed work, known issues, and planned improvements for 
    - No `stg2prod.sh` or `dev2prod.sh` deployment scripts
    - No unified `nwp` CLI wrapper command
    - Configuration values in `cnwp.yml` not fully integrated
-   - No automated testing framework
 
 3. **Usability Improvements Needed**
    - Better error messages for Drush failures
@@ -380,27 +395,22 @@ See **PRODUCTION_TESTING.md** for:
     - Estimated time remaining
     - More verbose output in debug mode
 
-11. **Automated Testing**
-    - Test suite for all scripts
-    - Mock DDEV commands for testing
-    - CI/CD integration
-
-12. **Logging System**
+11. **Logging System**
     - Log all operations to file
     - Searchable deployment history
     - Error log aggregation
 
-13. **Remote Site Support**
+12. **Remote Site Support**
     - Deploy to remote staging/production
     - SSH tunnel integration
     - Remote drush command execution
 
-14. **Database Sanitization**
+13. **Database Sanitization**
     - Sanitize production data for staging/dev
     - Remove PII, reset passwords
     - Integration with drush sql-sanitize
 
-15. **Multi-Site Support**
+14. **Multi-Site Support**
     - Deploy multiple sites in batch
     - Parallel deployment execution
     - Dependency management between sites
@@ -415,7 +425,7 @@ See **PRODUCTION_TESTING.md** for:
 - [ ] Fix help text bug in dev2stg.sh (HIGH)
 - [ ] Improve error messages for Drush failures (MEDIUM)
 - [ ] Add better documentation for combined flags (LOW)
-- [ ] Update SCRIPTS_IMPLEMENTATION.md with test results
+- [x] Testing infrastructure and documentation (COMPLETED)
 
 ### Phase 2: Configuration Integration (2-3 weeks)
 **Goal:** Fully integrate YAML configuration system
@@ -441,7 +451,6 @@ See **PRODUCTION_TESTING.md** for:
 - [ ] Git-based backup functionality (MEDIUM)
 - [ ] Progress indicators (LOW)
 - [ ] Logging system (LOW)
-- [ ] Automated testing (LOW)
 
 ### Phase 5: Enterprise Features (Future)
 **Goal:** Support complex deployment scenarios
@@ -465,20 +474,21 @@ See **PRODUCTION_TESTING.md** for:
 | Copy Scripts | 2 | 0 | 0 | 2 |
 | Mode Scripts | 3 | 0 | 0 | 3 |
 | Deployment Scripts | 0 | 1 | 2 | 3 |
+| Testing Scripts | 1 | 0 | 0 | 1 |
 | Configuration | 0 | 1 | 0 | 1 |
-| **TOTAL** | **9** | **3** | **3** | **15** |
+| **TOTAL** | **10** | **3** | **3** | **16** |
 
-**Overall Completion:** 60% complete, 20% partial, 20% not started
+**Overall Completion:** 62.5% complete, 18.75% partial, 18.75% not started
 
 ### Code Statistics
 
 | Metric | Value |
 |--------|-------|
-| Total Scripts | 5 |
-| Total Lines of Code | 3,133 |
-| Scripts Consolidated | 6 → 5 |
-| Code Reduction | ~15% |
-| Sections Implemented | 11 |
+| Total Scripts | 6 |
+| Total Lines of Code | 3,800+ |
+| Scripts Consolidated | 6 → 5 → 6 |
+| Testing Features | 30 features, 134 scenarios |
+| Sections Implemented | 12 |
 | Sections Partial | 2 |
 | Sections Not Started | 2 |
 
@@ -491,6 +501,7 @@ See **PRODUCTION_TESTING.md** for:
 | copy.sh | ✅ Yes | 0 |
 | make.sh | ✅ Yes | 0 |
 | dev2stg.sh | ✅ Yes | 1 (help text) |
+| testos.sh | ✅ Yes | 0 |
 
 ---
 
@@ -525,6 +536,7 @@ See **PRODUCTION_TESTING.md** for:
 ## References
 
 - **SCRIPTS_IMPLEMENTATION.md** - Detailed implementation documentation
+- **TESTING.md** - OpenSocial testing infrastructure documentation
 - **PRODUCTION_TESTING.md** - Production deployment testing guide and strategies
 - **cnwp.yml** - Configuration file examples and options
 - **Pleasy** - Original inspiration for these scripts
@@ -534,6 +546,29 @@ See **PRODUCTION_TESTING.md** for:
 ---
 
 ## Changelog
+
+### v1.1 - 2024-12-23
+
+**Added:**
+- `testos.sh` - Comprehensive OpenSocial testing script
+- Behat behavioral testing with 30 features and 134 scenarios
+- PHPUnit unit and kernel testing integration
+- PHPStan static code analysis
+- PHP CodeSniffer (Drupal coding standards)
+- Automatic Selenium Chrome installation via DDEV addon
+- Dynamic Behat configuration with auto-detected site URLs
+- Headless browser testing for CI/CD pipelines
+- **TESTING.md** - Complete testing infrastructure documentation
+
+**Fixed:**
+- Drush installation now uses `ddev composer` (inside container)
+- Resolved host-based drush installation causing version mismatches
+- Proper PHP version compatibility for drush
+
+**Documentation:**
+- Added comprehensive TESTING.md with usage examples and troubleshooting
+- Updated README.md with testing script information
+- Updated IMPROVEMENTS.md with testing infrastructure achievements
 
 ### v1.0 - 2024-12-22
 
@@ -560,5 +595,5 @@ See **PRODUCTION_TESTING.md** for:
 
 ---
 
-*Last updated: 2024-12-22*
+*Last updated: 2024-12-23*
 *Next review: January 2025*

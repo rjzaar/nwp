@@ -16,26 +16,48 @@ cd linode
 ```
 
 This will:
-- Install Linode CLI
+- Install Linode CLI (using pipx for modern Python)
 - Configure API authentication
-- Set up SSH keys
+- Generate SSH keys
 - Create configuration files
 
-### 2. Create Your First Server
+### 2. Upload StackScript
 
-After setup, provision a test server:
+Upload the server provisioning script to Linode:
 
 ```bash
-# Manual method via Linode Cloud Manager
-# Upload linode_server_setup.sh as a StackScript first
-# Then create a server using that StackScript
-
-# See docs/SETUP_GUIDE.md for detailed instructions
+./linode_upload_stackscript.sh
 ```
 
-### 3. Deploy Your Site
+This creates a StackScript in your Linode account for automated server provisioning.
 
-Coming soon - deployment automation scripts are in development.
+### 3. Create Your First Server
+
+Provision a test server in ~7 minutes:
+
+```bash
+./linode_create_test_server.sh
+```
+
+Or create a production server with custom options:
+
+```bash
+./linode_create_test_server.sh --type g6-standard-2 --email admin@example.com
+```
+
+### 4. Deploy Your Site
+
+Deploy your local DDEV site to the server:
+
+```bash
+./linode_deploy.sh --server 45.33.94.133 --target test
+```
+
+For production with SSL:
+
+```bash
+./linode_deploy.sh --server nwp.org --target prod --ssl
+```
 
 ---
 
@@ -43,22 +65,29 @@ Coming soon - deployment automation scripts are in development.
 
 ```
 linode/
-├── README.md                    # This file
-├── linode_setup.sh             # Local environment setup script
-├── linode_server_setup.sh      # Server provisioning StackScript
+├── README.md                       # This file
+├── .gitignore                      # Protects SSH keys and sensitive files
+│
+├── linode_setup.sh                 # Local environment setup
+├── linode_server_setup.sh          # Server provisioning StackScript
+├── linode_upload_stackscript.sh    # Upload StackScript to Linode
+├── linode_create_test_server.sh    # Create test servers
+├── linode_deploy.sh                # Deploy DDEV site to server
+├── validate_stackscript.sh         # Validate StackScript before upload
 │
 ├── docs/
-│   └── SETUP_GUIDE.md          # Complete setup guide
+│   ├── SETUP_GUIDE.md              # Complete setup guide
+│   └── TESTING_RESULTS.md          # Testing documentation and lessons learned
 │
 ├── keys/
-│   └── (SSH keys stored here)
+│   └── (SSH keys stored here - ignored by Git)
 │
-└── server_scripts/             # Scripts that run ON the Linode server
-    ├── README.md               # Server scripts documentation
-    ├── nwp-createsite.sh       # Create new site on server
-    ├── nwp-swap-prod.sh        # Blue-green deployment
-    ├── nwp-rollback.sh         # Rollback deployment
-    └── nwp-backup.sh           # Backup site
+└── server_scripts/                 # Scripts that run ON the Linode server
+    ├── README.md                   # Server scripts documentation
+    ├── nwp-createsite.sh           # Create new site on server
+    ├── nwp-swap-prod.sh            # Blue-green deployment
+    ├── nwp-rollback.sh             # Rollback deployment
+    └── nwp-backup.sh               # Backup site
 ```
 
 ---
@@ -71,6 +100,10 @@ linode/
 |--------|---------|-------|
 | **linode_setup.sh** | Set up local environment for Linode | `./linode_setup.sh` |
 | **linode_server_setup.sh** | Server provisioning StackScript | Upload to Linode as StackScript |
+| **linode_upload_stackscript.sh** | Upload/update StackScript to Linode | `./linode_upload_stackscript.sh` |
+| **linode_create_test_server.sh** | Create test server with one command | `./linode_create_test_server.sh` |
+| **linode_deploy.sh** | Deploy DDEV site to Linode server | `./linode_deploy.sh --server IP` |
+| **validate_stackscript.sh** | Validate StackScript before upload | `./validate_stackscript.sh FILE` |
 
 ### Server Scripts (Run on Linode server)
 
@@ -169,73 +202,75 @@ The server uses a three-directory structure for zero-downtime deployments:
 
 ```bash
 # 1. Upload StackScript (one-time)
-#    - Log into Linode Cloud Manager
-#    - Go to StackScripts → Create
-#    - Paste contents of linode_server_setup.sh
-#    - Label: "NWP Server Setup"
+./linode_upload_stackscript.sh
 
-# 2. Create server via CLI
-linode-cli linodes create \
-  --label "nwp-test-01" \
-  --region us-east \
-  --type g6-standard-2 \
-  --image linode/ubuntu24.04 \
-  --root_pass "TempPassword123!" \
-  --stackscript_id <your_stackscript_id>
+# 2. Create server with one command
+./linode_create_test_server.sh
 
-# 3. Wait for provisioning (3-5 minutes)
-linode-cli linodes list
+# 3. Wait for provisioning (~5-7 minutes total)
+# The script monitors boot status automatically
 
 # 4. Connect via SSH
 ssh nwp@<server-ip>
+
+# Server is ready with:
+# - Nginx 1.24.0
+# - PHP 8.2
+# - MariaDB 10.11
+# - UFW firewall configured
+# - Root login disabled
 ```
 
-### Deploying a Site (Manual - for now)
+### Deploying a Site
 
 ```bash
-# On local machine: Export site
-cd nwp4_stg
-ddev export-db --file=~/export.sql
-tar -czf ~/export-files.tar.gz html/
+# Deploy from your local DDEV project
+cd /path/to/your/ddev/project
+../linode/linode_deploy.sh \
+  --server 45.33.94.133 \
+  --target test \
+  --domain test.example.com
 
-# Transfer to server
-scp ~/export.sql nwp@server-ip:~/
-scp ~/export-files.tar.gz nwp@server-ip:~/
+# The script automatically:
+# - Exports database and files from DDEV
+# - Transfers to server via SCP
+# - Creates database with secure password
+# - Imports data
+# - Configures Nginx
+# - Sets correct permissions
+# - Updates Drupal settings.php
 
-# On server: Create site
-cd ~/nwp-scripts
-./nwp-createsite.sh \
-  --email admin@example.com \
-  --enable-ssl \
-  example.com
-
-# Import database
-mysql -u example_com -p example_com < ~/export.sql
-
-# Extract files
-sudo tar -xzf ~/export-files.tar.gz -C /var/www/prod/
-sudo chown -R www-data:www-data /var/www/prod
+# For production with SSL:
+../linode/linode_deploy.sh \
+  --server nwp.org \
+  --target prod \
+  --domain nwp.org \
+  --ssl
 ```
 
 ### Blue-Green Deployment
 
 ```bash
-# 1. Deploy to test (via future linode_deploy.sh)
-./linode_deploy.sh nwp4_prod test.example.com
+# 1. Deploy to test environment
+./linode_deploy.sh --server SERVER_IP --target test --domain test.example.com
 
 # 2. Verify test site works
-curl -I https://test.example.com
+curl -I http://test.example.com
 
-# 3. Swap to production (on server)
-ssh nwp@prod-server
+# 3. Deploy to production (atomic swap)
+ssh nwp@SERVER_IP
 cd ~/nwp-scripts
-./nwp-swap-prod.sh --maintenance --yes
+./nwp-swap-prod.sh
+
+# This swaps:
+# test → prod (new version goes live)
+# prod → old (previous version saved for rollback)
 
 # 4. Verify production
 curl -I https://example.com
 
-# 5. Rollback if needed
-./nwp-rollback.sh --yes
+# 5. Rollback if needed (instant)
+./nwp-rollback.sh
 ```
 
 ---
@@ -317,26 +352,27 @@ sudo tail -f /var/log/nginx/error.log
 
 ## Roadmap
 
-### ✅ Completed (Phase 1)
+### ✅ Completed (Phase 1 & 2)
 - [x] Local setup automation (`linode_setup.sh`)
 - [x] Server provisioning script (`linode_server_setup.sh`)
 - [x] Server management scripts (create, swap, rollback, backup)
 - [x] Comprehensive documentation
-
-### 🚧 In Progress (Phase 2)
-- [ ] Upload StackScript to Linode
-- [ ] Test server provisioning
-- [ ] Verify LEMP stack installation
-- [ ] Test SSH access and security
+- [x] StackScript upload automation (`linode_upload_stackscript.sh`)
+- [x] Test server creation script (`linode_create_test_server.sh`)
+- [x] LEMP stack installation verified (Nginx, PHP 8.2, MariaDB)
+- [x] SSH security tested (root disabled, key-only auth)
+- [x] Site deployment automation (`linode_deploy.sh`)
+- [x] Validation tools (`validate_stackscript.sh`)
 
 ### 📋 Planned (Phase 3+)
-- [ ] `linode_deploy.sh` - Automated deployment from local to Linode
-- [ ] `linode_provision.sh` - CLI wrapper for creating servers
-- [ ] Integration with NWP tools (`make.sh`, `dev2stg.sh`)
-- [ ] Automated testing on Linode servers
-- [ ] Multi-site support
+- [ ] Integration with existing NWP tools (`make.sh`, `dev2stg.sh`)
+- [ ] Automated testing pipeline on Linode servers
+- [ ] Multi-site management on single server
 - [ ] Backup automation with rotation
-- [ ] Monitoring and alerting
+- [ ] Server monitoring and alerting
+- [ ] Load balancing for high-traffic sites
+- [ ] Database replication for production
+- [ ] Automated SSL certificate management improvements
 
 ---
 
@@ -370,5 +406,6 @@ Built for the **Narrow Way Project (NWP)** - Drupal/OpenSocial distribution for 
 
 ---
 
-*Last updated: 2024-12-23*
+*Last updated: 2025-12-24*
 *Branch: linode*
+*Status: Phase 1 & 2 Complete - Ready for Production Use*

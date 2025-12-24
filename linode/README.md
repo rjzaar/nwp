@@ -366,136 +366,153 @@ sudo tail -f /var/log/nginx/error.log
 
 ### 📋 Planned (Phase 3+)
 
-#### Integration with Existing NWP Tools
-- [ ] Integrate `linode_deploy.sh` with `make.sh`
-  - [ ] Add Linode deployment option to make menu
-  - [ ] Pass configuration from make.sh to deployment scripts
-  - [ ] Unified environment variable handling
-- [ ] Integrate with `dev2stg.sh` workflow
-  - [ ] Extend dev2stg to support `dev2linode` deployment
-  - [ ] Add staging → production promotion via Linode
-  - [ ] Maintain compatibility with existing DDEV workflow
-- [ ] Add Linode commands to main NWP CLI
-  - [ ] `nwp linode:setup` - Run initial setup
-  - [ ] `nwp linode:deploy` - Deploy current project
-  - [ ] `nwp linode:provision` - Create new server
-  - [ ] `nwp linode:status` - Check server status
+#### 1. Integration with Existing NWP Tools
+1.1. Integrate `linode_deploy.sh` with `make.sh`
+- [ ] 1.1.1. Add Linode deployment option to make menu
+- [ ] 1.1.2. Pass configuration from make.sh to deployment scripts
+- [ ] 1.1.3. Unified environment variable handling
 
-#### Automated Testing Pipeline on Linode Servers
-- [ ] Create `linode_test.sh` script
-  - [ ] Deploy site to test server
-  - [ ] Run automated tests (Behat, PHPUnit)
-  - [ ] Verify SSL certificate installation
-  - [ ] Check all services are running
-  - [ ] Performance benchmarking
-- [ ] CI/CD Integration
-  - [ ] GitHub Actions workflow for Linode deployment
-  - [ ] Automated testing before production deployment
-  - [ ] Rollback on test failure
-  - [ ] Slack/email notifications
-- [ ] Test result reporting
-  - [ ] Generate test reports
-  - [ ] Store results in `/var/log/nwp-tests/`
-  - [ ] Compare performance across deployments
+1.2. Integrate with `dev2stg.sh` workflow
+- [ ] 1.2.1. Extend dev2stg to support `dev2linode` deployment
+- [ ] 1.2.2. Add staging → production promotion via Linode
+- [ ] 1.2.3. Maintain compatibility with existing DDEV workflow
 
-#### Multi-Site Management on Single Server
-- [ ] Create `linode_multisite.sh` management tool
-  - [ ] Add new sites without conflicts
-  - [ ] Manage per-site Nginx configurations
-  - [ ] Isolate site databases and users
-  - [ ] Per-site PHP-FPM pools for resource isolation
-- [ ] Resource allocation
-  - [ ] Configure PHP memory limits per site
-  - [ ] Set database connection limits
-  - [ ] Monitor per-site resource usage
-- [ ] Domain management
-  - [ ] Automated DNS verification
-  - [ ] Bulk SSL certificate setup
-  - [ ] Subdomain handling (site1.nwp.org, site2.nwp.org)
+1.3. Add Linode commands to main NWP CLI
+- [ ] 1.3.1. `nwp linode:setup` - Run initial setup
+- [ ] 1.3.2. `nwp linode:deploy` - Deploy current project
+- [ ] 1.3.3. `nwp linode:provision` - Create new server
+- [ ] 1.3.4. `nwp linode:status` - Check server status
 
-#### Backup Automation with Rotation
-- [ ] Enhance `nwp-backup.sh` with rotation
-  - [ ] Daily incremental backups
-  - [ ] Weekly full backups
-  - [ ] Monthly archives
-  - [ ] Automatic old backup deletion (keep last N backups)
-- [ ] Off-site backup storage
-  - [ ] Linode Object Storage integration
-  - [ ] Amazon S3 support
-  - [ ] Encrypted backup archives
-  - [ ] Backup verification/integrity checks
-- [ ] Restore testing
-  - [ ] Automated restore verification
-  - [ ] Document restore procedures
-  - [ ] Test restore time benchmarks
+#### 2. Automated Testing Pipeline on Linode Servers
+2.1. Create `linode_test.sh` script
+- [ ] 2.1.1. Deploy site to test server
+- [ ] 2.1.2. Run automated tests (Behat, PHPUnit)
+- [ ] 2.1.3. Verify SSL certificate installation
+- [ ] 2.1.4. Check all services are running
+- [ ] 2.1.5. Performance benchmarking
 
-#### Server Monitoring and Alerting
-- [ ] Install monitoring stack
-  - [ ] Prometheus for metrics collection
-  - [ ] Grafana for visualization
-  - [ ] Alert manager for notifications
-  - [ ] Node exporter for system metrics
-- [ ] Application monitoring
-  - [ ] PHP-FPM status monitoring
-  - [ ] Nginx request metrics
-  - [ ] MariaDB query performance
-  - [ ] Drupal watchdog integration
-- [ ] Alerting rules
-  - [ ] Disk space < 10% → alert
-  - [ ] CPU usage > 80% for 5 min → alert
-  - [ ] Memory usage > 90% → alert
-  - [ ] Site downtime → immediate alert
-  - [ ] SSL certificate expiring < 30 days → alert
-- [ ] Notification channels
-  - [ ] Email alerts
-  - [ ] Slack integration
-  - [ ] SMS for critical alerts (via Twilio)
+2.2. CI/CD Integration
+- [ ] 2.2.1. GitHub Actions workflow for Linode deployment
+- [ ] 2.2.2. Automated testing before production deployment
+- [ ] 2.2.3. Rollback on test failure
+- [ ] 2.2.4. Slack/email notifications
 
-#### Load Balancing for High-Traffic Sites
-- [ ] Linode NodeBalancer integration
-  - [ ] Create `linode_loadbalancer.sh` setup script
-  - [ ] Configure multiple backend servers
-  - [ ] Health check configuration
-  - [ ] SSL termination at load balancer
-- [ ] Session handling
-  - [ ] Redis for shared session storage
-  - [ ] Database session handler configuration
-  - [ ] Sticky sessions configuration
-- [ ] Scaling automation
-  - [ ] Auto-scale based on traffic
-  - [ ] Create servers from StackScript template
-  - [ ] Add/remove from load balancer pool
+2.3. Test result reporting
+- [ ] 2.3.1. Generate test reports
+- [ ] 2.3.2. Store results in `/var/log/nwp-tests/`
+- [ ] 2.3.3. Compare performance across deployments
 
-#### Database Replication for Production
-- [ ] MariaDB primary-replica setup
-  - [ ] Configure primary database server
-  - [ ] Set up read replicas
-  - [ ] Automated failover configuration
-  - [ ] Replication monitoring
-- [ ] Backup from replica
-  - [ ] Offload backups to replica server
-  - [ ] Prevent production performance impact
-  - [ ] Point-in-time recovery setup
-- [ ] Database connection routing
-  - [ ] Write operations → primary
-  - [ ] Read operations → replicas
-  - [ ] Load balancing across read replicas
+#### 3. Multi-Site Management on Single Server
+3.1. Create `linode_multisite.sh` management tool
+- [ ] 3.1.1. Add new sites without conflicts
+- [ ] 3.1.2. Manage per-site Nginx configurations
+- [ ] 3.1.3. Isolate site databases and users
+- [ ] 3.1.4. Per-site PHP-FPM pools for resource isolation
 
-#### Automated SSL Certificate Management
-- [ ] Enhanced certificate automation
-  - [ ] Pre-deployment certificate validation
-  - [ ] Wildcard certificate support
-  - [ ] Multi-domain SAN certificates
-  - [ ] Certificate monitoring dashboard
-- [ ] Renewal improvements
-  - [ ] Test renewal process in staging
-  - [ ] Zero-downtime certificate rotation
-  - [ ] Automatic Nginx reload on renewal
-  - [ ] Renewal failure notifications
-- [ ] Certificate backup
-  - [ ] Store certificates in secure backup
-  - [ ] Certificate inventory tracking
-  - [ ] Expiration calendar/reminders
+3.2. Resource allocation
+- [ ] 3.2.1. Configure PHP memory limits per site
+- [ ] 3.2.2. Set database connection limits
+- [ ] 3.2.3. Monitor per-site resource usage
+
+3.3. Domain management
+- [ ] 3.3.1. Automated DNS verification
+- [ ] 3.3.2. Bulk SSL certificate setup
+- [ ] 3.3.3. Subdomain handling (site1.nwp.org, site2.nwp.org)
+
+#### 4. Backup Automation with Rotation
+4.1. Enhance `nwp-backup.sh` with rotation
+- [ ] 4.1.1. Daily incremental backups
+- [ ] 4.1.2. Weekly full backups
+- [ ] 4.1.3. Monthly archives
+- [ ] 4.1.4. Automatic old backup deletion (keep last N backups)
+
+4.2. Off-site backup storage
+- [ ] 4.2.1. Linode Object Storage integration
+- [ ] 4.2.2. Amazon S3 support
+- [ ] 4.2.3. Encrypted backup archives
+- [ ] 4.2.4. Backup verification/integrity checks
+
+4.3. Restore testing
+- [ ] 4.3.1. Automated restore verification
+- [ ] 4.3.2. Document restore procedures
+- [ ] 4.3.3. Test restore time benchmarks
+
+#### 5. Server Monitoring and Alerting
+5.1. Install monitoring stack
+- [ ] 5.1.1. Prometheus for metrics collection
+- [ ] 5.1.2. Grafana for visualization
+- [ ] 5.1.3. Alert manager for notifications
+- [ ] 5.1.4. Node exporter for system metrics
+
+5.2. Application monitoring
+- [ ] 5.2.1. PHP-FPM status monitoring
+- [ ] 5.2.2. Nginx request metrics
+- [ ] 5.2.3. MariaDB query performance
+- [ ] 5.2.4. Drupal watchdog integration
+
+5.3. Alerting rules
+- [ ] 5.3.1. Disk space < 10% → alert
+- [ ] 5.3.2. CPU usage > 80% for 5 min → alert
+- [ ] 5.3.3. Memory usage > 90% → alert
+- [ ] 5.3.4. Site downtime → immediate alert
+- [ ] 5.3.5. SSL certificate expiring < 30 days → alert
+
+5.4. Notification channels
+- [ ] 5.4.1. Email alerts
+- [ ] 5.4.2. Slack integration
+- [ ] 5.4.3. SMS for critical alerts (via Twilio)
+
+#### 6. Load Balancing for High-Traffic Sites
+6.1. Linode NodeBalancer integration
+- [ ] 6.1.1. Create `linode_loadbalancer.sh` setup script
+- [ ] 6.1.2. Configure multiple backend servers
+- [ ] 6.1.3. Health check configuration
+- [ ] 6.1.4. SSL termination at load balancer
+
+6.2. Session handling
+- [ ] 6.2.1. Redis for shared session storage
+- [ ] 6.2.2. Database session handler configuration
+- [ ] 6.2.3. Sticky sessions configuration
+
+6.3. Scaling automation
+- [ ] 6.3.1. Auto-scale based on traffic
+- [ ] 6.3.2. Create servers from StackScript template
+- [ ] 6.3.3. Add/remove from load balancer pool
+
+#### 7. Database Replication for Production
+7.1. MariaDB primary-replica setup
+- [ ] 7.1.1. Configure primary database server
+- [ ] 7.1.2. Set up read replicas
+- [ ] 7.1.3. Automated failover configuration
+- [ ] 7.1.4. Replication monitoring
+
+7.2. Backup from replica
+- [ ] 7.2.1. Offload backups to replica server
+- [ ] 7.2.2. Prevent production performance impact
+- [ ] 7.2.3. Point-in-time recovery setup
+
+7.3. Database connection routing
+- [ ] 7.3.1. Write operations → primary
+- [ ] 7.3.2. Read operations → replicas
+- [ ] 7.3.3. Load balancing across read replicas
+
+#### 8. Automated SSL Certificate Management
+8.1. Enhanced certificate automation
+- [ ] 8.1.1. Pre-deployment certificate validation
+- [ ] 8.1.2. Wildcard certificate support
+- [ ] 8.1.3. Multi-domain SAN certificates
+- [ ] 8.1.4. Certificate monitoring dashboard
+
+8.2. Renewal improvements
+- [ ] 8.2.1. Test renewal process in staging
+- [ ] 8.2.2. Zero-downtime certificate rotation
+- [ ] 8.2.3. Automatic Nginx reload on renewal
+- [ ] 8.2.4. Renewal failure notifications
+
+8.3. Certificate backup
+- [ ] 8.3.1. Store certificates in secure backup
+- [ ] 8.3.2. Certificate inventory tracking
+- [ ] 8.3.3. Expiration calendar/reminders
 
 ---
 

@@ -152,7 +152,7 @@ ufw allow OpenSSH
 ufw allow 22/tcp
 
 # Allow HTTP and HTTPS
-ufw allow 'Nginx Full'
+ufw allow 'Nginx Full' || true  # May not exist until Nginx is installed
 ufw allow 80/tcp
 ufw allow 443/tcp
 
@@ -298,6 +298,9 @@ fi
 
 php composer-setup.php --quiet --install-dir=/usr/local/bin --filename=composer
 rm composer-setup.php
+
+# Set environment variable to allow Composer to run as root
+export COMPOSER_ALLOW_SUPERUSER=1
 
 # Verify Composer installation
 composer --version

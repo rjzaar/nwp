@@ -1,11 +1,37 @@
-# NWP Scripts - Improvements and Roadmap
+# NWP Improvements & Roadmap
 
 ## Document Overview
 
-This document tracks completed work, known issues, and planned improvements for the NWP (Narrow Way Project) scripts suite. It serves as a roadmap for future development and a reference for current capabilities.
+This document tracks completed work, known issues, and planned improvements for the NWP (Narrow Way Project) system. It serves as a roadmap for future development and a reference for current capabilities.
 
-**Last Updated:** December 2024
-**Current Version:** v1.1 (6 scripts, 3,800+ lines)
+For a chronological list of changes by version, see [CHANGES.md](CHANGES.md).
+
+**Last Updated:** December 28, 2024
+**Current Version:** v0.4
+
+---
+
+## Recent Improvements (v0.4 - December 2024)
+
+### Comprehensive Test Suite ✅
+
+**Added**: Complete automated test suite covering all NWP functionality
+- **File**: `test-nwp.sh` (449 lines, 41 tests across 9 categories)
+- **Results**: 73% passing rate (30/41 tests)
+- **Features**: Automatic retry mechanism, color-coded output, detailed logging
+- **Documentation**: `docs/TESTING_GUIDE.md` (437 lines)
+
+### Critical Bug Fixes ✅
+
+**1. Drush Installation in Restored/Copied Sites**
+- Added Step 4 to `restore.sh` - runs `composer install` after file restoration
+- Added Step 6 to `copy.sh` - runs `composer install` after DDEV configuration
+- Impact: Drush now works correctly in all restored and copied sites
+
+**2. Test Script Improvements**
+- Removed `set -e` to allow tests to continue after failures
+- Fixed integer expression errors in dev module checks
+- Added proper error handling and retry mechanisms
 
 ---
 
@@ -422,44 +448,44 @@ See **PRODUCTION_TESTING.md** for:
 ### Phase 1: Bug Fixes and Polish (1-2 weeks)
 **Goal:** Fix critical bugs and improve existing features
 
-- [ ] Fix help text bug in dev2stg.sh (HIGH)
-- [ ] Improve error messages for Drush failures (MEDIUM)
-- [ ] Add better documentation for combined flags (LOW)
-- [x] Testing infrastructure and documentation (COMPLETED)
+1. ✅ Testing infrastructure and documentation (COMPLETED v0.4)
+2. Fix help text bug in dev2stg.sh (HIGH)
+3. Improve error messages for Drush failures (MEDIUM)
+4. Add better documentation for combined flags (LOW)
 
 ### Phase 2: Configuration Integration (2-3 weeks)
 **Goal:** Fully integrate YAML configuration system
 
-- [ ] Implement module reinstallation from config (HIGH)
-- [ ] Read `dev_modules`/`dev_composer` in make.sh (MEDIUM)
-- [ ] Add config validation (MEDIUM)
-- [ ] Document all available config options
+1. Implement module reinstallation from config (HIGH)
+2. Read `dev_modules`/`dev_composer` in make.sh (MEDIUM)
+3. Add config validation (MEDIUM)
+4. Document all available config options
 
 ### Phase 3: Production Deployment (3-4 weeks)
 **Goal:** Support production deployment workflows
 
-- [ ] Create stg2prod.sh script (HIGH)
-- [ ] Implement git-based deployment (MEDIUM)
-- [ ] Implement rsync-based deployment (MEDIUM)
-- [ ] Add rollback capability (HIGH)
-- [ ] Production backup methods (MEDIUM)
+1. Create stg2prod.sh script (HIGH)
+2. Implement git-based deployment (MEDIUM)
+3. Implement rsync-based deployment (MEDIUM)
+4. Add rollback capability (HIGH)
+5. Production backup methods (MEDIUM)
 
 ### Phase 4: Advanced Features (4-6 weeks)
 **Goal:** Add advanced capabilities and polish
 
-- [ ] Unified `nwp` CLI wrapper (MEDIUM)
-- [ ] Git-based backup functionality (MEDIUM)
-- [ ] Progress indicators (LOW)
-- [ ] Logging system (LOW)
+1. Unified `nwp` CLI wrapper (MEDIUM)
+2. Git-based backup functionality (MEDIUM)
+3. Progress indicators (LOW)
+4. Logging system (LOW)
 
 ### Phase 5: Enterprise Features (Future)
 **Goal:** Support complex deployment scenarios
 
-- [ ] Remote site support
-- [ ] Database sanitization
-- [ ] Multi-site support
-- [ ] Deployment scheduling
-- [ ] Slack/email notifications
+1. Remote site support
+2. Database sanitization
+3. Multi-site support
+4. Deployment scheduling
+5. Slack/email notifications
 
 ---
 

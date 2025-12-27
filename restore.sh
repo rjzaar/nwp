@@ -273,7 +273,7 @@ restore_database() {
     local backup_file=$1
     local dest_site=$2
 
-    print_header "Step 6: Restore Database"
+    print_header "Step 7: Restore Database"
 
     if [ ! -f "$backup_file" ]; then
         print_error "Database backup not found: $backup_file"
@@ -317,7 +317,7 @@ fix_site_settings() {
     local dest_site=$1
     local webroot=$2
 
-    print_header "Step 4: Fix Site Settings"
+    print_header "Step 5: Fix Site Settings"
 
     local settings_file="$dest_site/$webroot/sites/default/settings.php"
 
@@ -338,7 +338,7 @@ set_permissions() {
     local dest_site=$1
     local webroot=$2
 
-    print_header "Step 5: Set Permissions"
+    print_header "Step 6: Set Permissions"
 
     # Ensure sites/default is writable
     if [ -d "$dest_site/$webroot/sites/default" ]; then
@@ -357,10 +357,33 @@ set_permissions() {
     return 0
 }
 
+install_dependencies() {
+    local dest_site=$1
+
+    print_header "Step 4: Install Dependencies"
+
+    local original_dir=$(pwd)
+    cd "$dest_site" || {
+        print_error "Cannot access site directory: $dest_site"
+        return 1
+    }
+
+    # Install composer dependencies to rebuild vendor/
+    ocmsg "Running composer install to rebuild vendor directory..."
+    if ddev composer install --no-interaction > /dev/null 2>&1; then
+        print_status "OK" "Dependencies installed"
+    else
+        print_status "WARN" "Could not install dependencies (may need manual intervention)"
+    fi
+
+    cd "$original_dir"
+    return 0
+}
+
 clear_cache() {
     local dest_site=$1
 
-    print_header "Step 7: Clear Cache"
+    print_header "Step 8: Clear Cache"
 
     local original_dir=$(pwd)
     cd "$dest_site" || {
@@ -382,7 +405,7 @@ clear_cache() {
 generate_login_link() {
     local dest_site=$1
 
-    print_header "Step 8: Generate Login Link"
+    print_header "Step 9: Generate Login Link"
 
     local original_dir=$(pwd)
     cd "$dest_site" || {
@@ -523,21 +546,30 @@ restore_site() {
         fi
     fi
 
-    # Step 4: Fix settings (skip for database-only)
+    # Step 4: Install dependencies (skip for database-only)
     if [ "$db_only" != "true" ]; then
         if should_run_step 4 "$start_step"; then
-            fix_site_settings "$to_site" "$webroot"
+            install_dependencies "$to_site"
         else
-            print_status "INFO" "Skipping Step 4: Settings already fixed"
+            print_status "INFO" "Skipping Step 4: Dependencies already installed"
         fi
     fi
 
-    # Step 5: Set permissions (skip for database-only)
+    # Step 5: Fix settings (skip for database-only)
     if [ "$db_only" != "true" ]; then
         if should_run_step 5 "$start_step"; then
+            fix_site_settings "$to_site" "$webroot"
+        else
+            print_status "INFO" "Skipping Step 5: Settings already fixed"
+        fi
+    fi
+
+    # Step 6: Set permissions (skip for database-only)
+    if [ "$db_only" != "true" ]; then
+        if should_run_step 6 "$start_step"; then
             set_permissions "$to_site" "$webroot"
         else
-            print_status "INFO" "Skipping Step 5: Permissions already set"
+            print_status "INFO" "Skipping Step 6: Permissions already set"
         fi
     fi
 
@@ -556,26 +588,26 @@ restore_site() {
         print_status "OK" "DDEV configured and started"
     fi
 
-    # Step 6: Restore database
-    if should_run_step 6 "$start_step"; then
+    # Step 7: Restore database
+    if should_run_step 7 "$start_step"; then
         if ! restore_database "$BACKUP_FILE" "$to_site"; then
             print_error "Database restoration failed"
             return 1
         fi
     else
-        print_status "INFO" "Skipping Step 6: Database already restored"
+        print_status "INFO" "Skipping Step 7: Database already restored"
     fi
 
-    # Step 7: Clear cache
-    if should_run_step 7 "$start_step"; then
+    # Step 8: Clear cache
+    if should_run_step 8 "$start_step"; then
         clear_cache "$to_site"
     else
-        print_status "INFO" "Skipping Step 7: Cache already cleared"
+        print_status "INFO" "Skipping Step 8: Cache already cleared"
     fi
 
-    # Step 8: Generate login link (if requested)
+    # Step 9: Generate login link (if requested)
     if [ "$open_after" == "true" ]; then
-        if should_run_step 8 "$start_step"; then
+        if should_run_step 9 "$start_step"; then
             generate_login_link "$to_site"
         fi
     fi

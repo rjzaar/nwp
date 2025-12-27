@@ -328,7 +328,7 @@ fix_settings() {
     local to_site=$1
     local webroot=$2
 
-    print_header "Step 7: Fix Site Settings"
+    print_header "Step 8: Fix Site Settings"
 
     local settings_file="$to_site/$webroot/sites/default/settings.php"
 
@@ -347,7 +347,7 @@ set_permissions() {
     local to_site=$1
     local webroot=$2
 
-    print_header "Step 8: Set Permissions"
+    print_header "Step 9: Set Permissions"
 
     # Set sites/default writable
     if [ -d "$to_site/$webroot/sites/default" ]; then
@@ -365,11 +365,30 @@ set_permissions() {
     return 0
 }
 
+# Install dependencies
+install_dependencies() {
+    local to_site=$1
+
+    print_header "Step 6: Install Dependencies"
+
+    local original_dir=$(pwd)
+    cd "$to_site" || return 1
+
+    ocmsg "Running composer install to rebuild vendor directory..."
+    if ddev composer install --no-interaction > /dev/null 2>&1; then
+        print_status "OK" "Dependencies installed"
+    else
+        print_status "WARN" "Could not install dependencies (may need manual intervention)"
+    fi
+
+    cd "$original_dir"
+}
+
 # Clear cache
 clear_cache() {
     local to_site=$1
 
-    print_header "Step 9: Clear Cache"
+    print_header "Step 10: Clear Cache"
 
     local original_dir=$(pwd)
     cd "$to_site" || return 1
@@ -387,7 +406,7 @@ clear_cache() {
 generate_login_link() {
     local to_site=$1
 
-    print_header "Step 10: Generate Login Link"
+    print_header "Step 11: Generate Login Link"
 
     local original_dir=$(pwd)
     cd "$to_site" || return 1
@@ -531,7 +550,10 @@ copy_site() {
             return 1
         fi
 
-        # Step 6: Import database
+        # Step 6: Install dependencies
+        install_dependencies "$to_site"
+
+        # Step 7: Import database
         if ! import_database "$to_site" "$db_export"; then
             print_error "Database import failed"
             return 1
@@ -541,16 +563,16 @@ copy_site() {
         rm -f "$db_export"
     fi
 
-    # Step 7: Fix settings
+    # Step 8: Fix settings
     fix_settings "$to_site" "$webroot"
 
-    # Step 8: Set permissions
+    # Step 9: Set permissions
     set_permissions "$to_site" "$webroot"
 
-    # Step 9: Clear cache
+    # Step 10: Clear cache
     clear_cache "$to_site"
 
-    # Step 10: Generate login link (if requested)
+    # Step 11: Generate login link (if requested)
     if [ "$open_after" == "true" ]; then
         generate_login_link "$to_site"
     fi

@@ -98,7 +98,7 @@ ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
     -y, --yes               Skip confirmation prompts
-    -s, --step=N            Resume from step N
+    -s N, --step=N          Resume from step N (use -s 5 or --step=5)
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Base name of the dev site (staging will be sitename_stg)
@@ -108,6 +108,11 @@ ${BOLD}EXAMPLES:${NC}
     ./dev2stg.sh -y nwp                  # Deploy with auto-confirm
     ./dev2stg.sh -s 5 nwp                # Resume from step 5
     ./dev2stg.sh --step=5 nwp            # Resume from step 5 (long form)
+    ./dev2stg.sh -dy nwp                 # Deploy with debug output and auto-confirm
+
+${BOLD}COMBINED FLAGS:${NC}
+    Multiple short flags can be combined: -dy = -d -y
+    Example: ./dev2stg.sh -dy nwp is the same as ./dev2stg.sh -d -y nwp
 
 ${BOLD}ENVIRONMENT NAMING:${NC}
     Dev site:     <sitename>             (e.g., nwp)
@@ -377,10 +382,23 @@ clear_cache_staging() {
     }
 
     ocmsg "Clearing cache..."
-    if ddev drush cache:rebuild > /dev/null 2>&1; then
+    # Try to clear cache and capture error
+    local error_msg=$(ddev drush cache:rebuild 2>&1)
+    local exit_code=$?
+
+    if [ $exit_code -eq 0 ]; then
         print_status "OK" "Cache cleared on staging"
     else
-        print_status "WARN" "Could not clear cache (drush may not be available)"
+        # Provide specific error message based on the failure
+        if echo "$error_msg" | grep -q "command not found\|drush: not found"; then
+            print_status "WARN" "Drush not installed - run 'ddev composer require drush/drush'"
+        elif echo "$error_msg" | grep -q "could not find driver\|database"; then
+            print_status "WARN" "Database not configured or not accessible"
+        elif echo "$error_msg" | grep -q "Bootstrap failed\|not a Drupal"; then
+            print_status "WARN" "Site not fully configured (not a Drupal installation)"
+        else
+            print_status "WARN" "Could not clear cache: ${error_msg:0:60}"
+        fi
     fi
 
     cd "$original_dir"

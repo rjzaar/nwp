@@ -7,7 +7,38 @@ This document tracks completed work, known issues, and planned improvements for 
 For a chronological list of changes by version, see [CHANGES.md](CHANGES.md).
 
 **Last Updated:** December 28, 2024
-**Current Version:** v0.4
+**Current Version:** v0.5
+
+---
+
+## Recent Improvements (v0.5 - December 2024)
+
+### Phase 1 Complete: Bug Fixes and Polish ✅
+
+All Phase 1 roadmap items have been completed:
+
+**1. Help Text Improvements**
+- Fixed dev2stg.sh help text to clarify `-s N` option syntax
+- Updated from ambiguous `-s, --step=N` to clear `-s N, --step=N (use -s 5 or --step=5)`
+
+**2. Enhanced Error Messages**
+- Replaced generic "drush may not be available" messages with specific diagnostics
+- Added detection for:
+  - Drush not installed (suggests `ddev composer require drush/drush`)
+  - Database not configured or not accessible
+  - Site not fully configured (not a Drupal installation)
+  - Shows first 60 characters of actual error for other failures
+- Updated in all scripts: make.sh, copy.sh, restore.sh, dev2stg.sh
+
+**3. Combined Flags Documentation**
+- Added "COMBINED FLAGS" section to all script help texts
+- Explains that `-bfyo` = `-b -f -y -o`
+- Includes examples for each script:
+  - backup.sh: `-bd` (database + debug)
+  - restore.sh: `-bfyo` (database + first + yes + open)
+  - copy.sh: `-fyo` (files + yes + open)
+  - make.sh: `-vdy` (dev + debug + yes)
+  - dev2stg.sh: `-dy` (debug + yes)
 
 ---
 
@@ -91,7 +122,6 @@ For a chronological list of changes by version, see [CHANGES.md](CHANGES.md).
 ### What Still Needs Work ⚠️
 
 1. **Critical Issues**
-   - Help text inconsistency: `-s=5` shown but doesn't work (should be `-s 5` or `--step=5`)
    - Module reinstallation not yet reading from `nwp.yml` (Step 7 is a stub)
    - Git-based backup functionality incomplete (Section 1.1.4)
    - Production backup methods not implemented (Section 1.1.7)
@@ -102,7 +132,6 @@ For a chronological list of changes by version, see [CHANGES.md](CHANGES.md).
    - Configuration values in `cnwp.yml` not fully integrated
 
 3. **Usability Improvements Needed**
-   - Better error messages for Drush failures
    - Progress indicators for long-running operations
    - Validation of configuration before deployment
    - Rollback capability after failed deployment
@@ -256,12 +285,7 @@ For a chronological list of changes by version, see [CHANGES.md](CHANGES.md).
 
 ### Critical Bugs 🔴
 
-1. **Help Text Inconsistency** (dev2stg.sh:109)
-   - **Issue:** Help shows `-s=5` syntax which doesn't work
-   - **Cause:** getopt doesn't parse `=` for short options
-   - **Fix:** Update help to show `-s 5` or `--step=5`
-   - **Impact:** User confusion, failed commands
-   - **Priority:** HIGH
+None - all critical bugs have been resolved in v0.5.
 
 ### Non-Critical Issues 🟡
 
@@ -271,13 +295,7 @@ For a chronological list of changes by version, see [CHANGES.md](CHANGES.md).
    - **Impact:** Feature incomplete
    - **Priority:** MEDIUM
 
-3. **Drush Warnings Too Generic** (multiple scripts)
-   - **Issue:** "Could not clear cache (drush may not be available)"
-   - **Cause:** All drush failures get same message
-   - **Impact:** Hard to debug real issues
-   - **Priority:** LOW
-
-4. **No Rollback Capability**
+3. **No Rollback Capability**
    - **Issue:** Failed deployment leaves staging in bad state
    - **Cause:** No backup before deployment
    - **Impact:** Manual recovery required
@@ -285,11 +303,7 @@ For a chronological list of changes by version, see [CHANGES.md](CHANGES.md).
 
 ### Warnings ⚠️
 
-5. **Combined Flags Not Documented in All Scripts**
-   - Some script help text doesn't mention combined flag capability
-   - Users may not know they can use `-bfy` instead of `-b -f -y`
-
-6. **No Validation of YAML Config**
+4. **No Validation of YAML Config**
    - Scripts don't validate `cnwp.yml` before reading
    - Malformed YAML could cause silent failures
 
@@ -366,77 +380,68 @@ See **PRODUCTION_TESTING.md** for:
 
 ### High Priority 🔴
 
-1. **Fix Help Text Bug** (dev2stg.sh)
-   - Update help text to show correct syntax: `-s 5` not `-s=5`
-   - Add note about long option: `--step=5`
-
-2. **Implement Module Reinstallation** (Section 5.1)
+1. **Implement Module Reinstallation** (Section 5.1)
    - Read `reinstall_modules` from `cnwp.yml`
    - Parse YAML in bash (or use yq/python)
    - Uninstall and reinstall specified modules
 
-3. **Production Deployment Script** (Section 4.1 extension)
+2. **Production Deployment Script** (Section 4.1 extension)
    - Create `stg2prod.sh` for staging to production deployment
    - Support git-based, rsync-based, and tar-based methods
    - Read `prod_method`, `prod_alias`, `prod_gitrepo` from config
 
-4. **Better Error Handling**
-   - Distinguish between "no drush", "drush failed", and "nothing to do"
-   - Provide actionable error messages
-   - Exit codes for different failure types
-
 ### Medium Priority 🟡
 
-5. **Git-Based Backup** (Section 1.1.4)
+3. **Git-Based Backup** (Section 1.1.4)
    - Implement `-g` flag functionality
    - Use `git bundle` for repository backup
    - Store bundles in `sitebackups/<sitename>/git/`
 
-6. **Production Backup Methods** (Section 1.1.7)
+4. **Production Backup Methods** (Section 1.1.7)
    - SSH-based backup from remote production
    - Rsync-based backup from remote production
    - Integration with `prod_alias` from config
 
-7. **Unified CLI Wrapper**
+5. **Unified CLI Wrapper**
    - Create main `nwp` command
    - Subcommands: `nwp backup`, `nwp restore`, `nwp copy`, etc.
    - Consistent help and documentation
    - Tab-completion support
 
-8. **Configuration Integration**
+6. **Configuration Integration**
    - Full YAML parsing in all scripts
    - Read `dev_modules`, `dev_composer` in `make.sh`
    - Read `reinstall_modules` in `dev2stg.sh`
    - Validate config before use
 
-9. **Rollback Capability**
+7. **Rollback Capability**
    - Automatic backup before deployment
    - `--rollback` flag to undo last deployment
    - Store deployment history
 
 ### Low Priority 🟢
 
-10. **Progress Indicators**
-    - Show progress bars for long operations
-    - Estimated time remaining
-    - More verbose output in debug mode
+8. **Progress Indicators**
+   - Show progress bars for long operations
+   - Estimated time remaining
+   - More verbose output in debug mode
 
-11. **Logging System**
-    - Log all operations to file
-    - Searchable deployment history
-    - Error log aggregation
+9. **Logging System**
+   - Log all operations to file
+   - Searchable deployment history
+   - Error log aggregation
 
-12. **Remote Site Support**
+10. **Remote Site Support**
     - Deploy to remote staging/production
     - SSH tunnel integration
     - Remote drush command execution
 
-13. **Database Sanitization**
+11. **Database Sanitization**
     - Sanitize production data for staging/dev
     - Remove PII, reset passwords
     - Integration with drush sql-sanitize
 
-14. **Multi-Site Support**
+12. **Multi-Site Support**
     - Deploy multiple sites in batch
     - Parallel deployment execution
     - Dependency management between sites
@@ -445,13 +450,13 @@ See **PRODUCTION_TESTING.md** for:
 
 ## Prioritized Roadmap
 
-### Phase 1: Bug Fixes and Polish (1-2 weeks)
+### Phase 1: Bug Fixes and Polish ✅ COMPLETED
 **Goal:** Fix critical bugs and improve existing features
 
-1. ✅ Testing infrastructure and documentation (COMPLETED v0.4)
-2. Fix help text bug in dev2stg.sh (HIGH)
-3. Improve error messages for Drush failures (MEDIUM)
-4. Add better documentation for combined flags (LOW)
+1. ✅ Testing infrastructure and documentation (v0.4)
+2. ✅ Fixed help text in dev2stg.sh to clarify -s option syntax (v0.5)
+3. ✅ Improved error messages for Drush failures with specific diagnostics (v0.5)
+4. ✅ Added COMBINED FLAGS documentation section to all scripts (v0.5)
 
 ### Phase 2: Configuration Integration (2-3 weeks)
 **Goal:** Fully integrate YAML configuration system

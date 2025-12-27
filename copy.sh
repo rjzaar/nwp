@@ -100,6 +100,10 @@ ${BOLD}EXAMPLES:${NC}
     ./copy.sh -fy nwp4 nwp5              # Files-only with auto-confirm
     ./copy.sh -yo nwp4 nwp_test          # Full copy with auto-confirm + login link
 
+${BOLD}COMBINED FLAGS:${NC}
+    Multiple short flags can be combined: -fyo = -f -y -o
+    Example: ./copy.sh -fyo nwp4 nwp5 is the same as ./copy.sh -f -y -o nwp4 nwp5
+
 ${BOLD}WORKFLOW (Full Copy):${NC}
     1. Validate source site exists
     2. Prepare destination directory
@@ -393,10 +397,23 @@ clear_cache() {
     local original_dir=$(pwd)
     cd "$to_site" || return 1
 
-    if ddev drush cr > /dev/null 2>&1; then
+    # Try to clear cache and capture error
+    local error_msg=$(ddev drush cr 2>&1)
+    local exit_code=$?
+
+    if [ $exit_code -eq 0 ]; then
         print_status "OK" "Cache cleared"
     else
-        print_status "WARN" "Could not clear cache (drush may not be available)"
+        # Provide specific error message based on the failure
+        if echo "$error_msg" | grep -q "command not found\|drush: not found"; then
+            print_status "WARN" "Drush not installed - run 'ddev composer require drush/drush'"
+        elif echo "$error_msg" | grep -q "could not find driver\|database"; then
+            print_status "WARN" "Database not configured or not accessible"
+        elif echo "$error_msg" | grep -q "Bootstrap failed\|not a Drupal"; then
+            print_status "WARN" "Site not fully configured (not a Drupal installation)"
+        else
+            print_status "WARN" "Could not clear cache: ${error_msg:0:60}"
+        fi
     fi
 
     cd "$original_dir"

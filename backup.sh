@@ -99,7 +99,11 @@ ${BOLD}EXAMPLES:${NC}
     ./backup.sh nwp 'Fixed error'                # Backup with message
     ./backup.sh -b nwp 'Before update'           # DB-only backup with message
     ./backup.sh -e=nwp_backup nwp 'Test backup'  # Backup to different endpoint
-    ./backup.sh -bd nwp                          # DB-only backup with debug
+    ./backup.sh -bd nwp                          # DB-only backup with debug output
+
+${BOLD}COMBINED FLAGS:${NC}
+    Multiple short flags can be combined: -bd = -b -d
+    Example: ./backup.sh -bd nwp is the same as ./backup.sh -b -d nwp
 
 ${BOLD}OUTPUT:${NC}
     Backups are stored in: sitebackups/<sitename>/

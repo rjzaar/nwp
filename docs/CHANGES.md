@@ -4,6 +4,55 @@ All notable changes to the NWP (Narrow Way Project) are documented here, organiz
 
 ---
 
+## [v0.5] - 2025-12-28
+
+### Major Changes
+
+#### Phase 1 Roadmap Completion ✅
+
+All Phase 1 items from the prioritized roadmap have been completed:
+
+**1. Help Text Improvements**
+- **Fixed** dev2stg.sh help text to clarify `-s N` option syntax
+- **Updated** from ambiguous `-s, --step=N` to clear `-s N, --step=N (use -s 5 or --step=5)`
+- **Location**: dev2stg.sh:101
+
+**2. Enhanced Error Messages for Drush Failures**
+- **Replaced** generic "drush may not be available" messages with specific diagnostics
+- **Added** detection for:
+  - Drush not installed (suggests `ddev composer require drush/drush`)
+  - Database not configured or not accessible
+  - Site not fully configured (not a Drupal installation)
+  - Shows first 60 characters of actual error for other failures
+- **Updated scripts**: make.sh, copy.sh, restore.sh, dev2stg.sh
+- **Impact**: Better debugging and clearer actionable messages for users
+
+**3. Combined Flags Documentation**
+- **Added** "COMBINED FLAGS" section to all script help texts
+- **Explains** that multiple short flags can be combined (e.g., `-bfyo` = `-b -f -y -o`)
+- **Examples added**:
+  - backup.sh: `-bd` (database + debug)
+  - restore.sh: `-bfyo` (database + first + yes + open)
+  - copy.sh: `-fyo` (files + yes + open)
+  - make.sh: `-vdy` (dev + debug + yes)
+  - dev2stg.sh: `-dy` (debug + yes)
+
+### Files Changed
+- **Modified**: backup.sh - Added combined flags documentation
+- **Modified**: copy.sh - Enhanced error messages + combined flags docs
+- **Modified**: dev2stg.sh - Fixed help text + enhanced errors + combined flags
+- **Modified**: make.sh - Enhanced error messages + combined flags docs
+- **Modified**: restore.sh - Enhanced error messages + combined flags docs
+- **Modified**: docs/IMPROVEMENTS.md - Documented v0.5 changes, marked Phase 1 complete
+
+### Breaking Changes
+None. All changes are backward compatible and improve user experience.
+
+### Known Issues
+None. All critical bugs from Phase 1 have been resolved.
+
+---
+
 ## [v0.4] - 2025-12-28
 
 ### Major Changes
@@ -220,6 +269,7 @@ modules:
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v0.5 | 2025-12-28 | Phase 1 complete: Help text, error messages, combined flags docs |
 | v0.4 | 2025-12-28 | Comprehensive test suite, drush installation fixes |
 | v0.3 | 2025-12-24 | Expanded roadmap with 60+ implementation substeps |
 | v0.2 | 2025-12-22 | Git tracking cleanup for test directories |

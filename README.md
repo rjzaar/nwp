@@ -75,6 +75,14 @@ NWP requires the following software:
    - The script will display the URL when installation completes
    - Typically: `https://<recipe-name>.ddev.site`
 
+6. **(Optional) Set up SSH keys for production deployment**:
+   ```bash
+   ./setup-ssh.sh
+   ```
+   - Generates SSH keypair for Linode deployment
+   - See [`docs/SSH_SETUP.md`](docs/SSH_SETUP.md) for complete instructions
+   - Required for `stg2prod.sh` and `prod2stg.sh` scripts
+
 ## Management Scripts
 
 NWP includes a comprehensive set of management scripts for working with your sites after installation:
@@ -540,8 +548,9 @@ Comprehensive documentation is available in the `docs/` directory:
 **For roadmap and planned features:**
 - See `docs/IMPROVEMENTS.md`
 
-**For production deployment:**
-- See `docs/PRODUCTION_TESTING.md`
+**For SSH setup and production deployment:**
+- **SSH Key Setup**: `./setup-ssh.sh` - See `docs/SSH_SETUP.md`
+- **Production Deployment**: See `docs/PRODUCTION_TESTING.md`
 
 ## Troubleshooting
 

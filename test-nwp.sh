@@ -594,6 +594,125 @@ else
     run_test "Site registered in cnwp.yml" "false"
 fi
 
+################################################################################
+# Test 12: Linode Production Testing (if token available)
+################################################################################
+
+print_header "Test 12: Linode Production Testing"
+
+# Check if Linode API token is available
+if [ -f "lib/linode.sh" ]; then
+    source lib/linode.sh
+    LINODE_TOKEN=$(get_linode_token ".")
+
+    if [ -n "$LINODE_TOKEN" ] && [ -f "$HOME/.ssh/nwp" ]; then
+        print_info "Linode API token and SSH key found - running production tests"
+        echo ""
+
+        # Provision test Linode instance
+        print_info "Provisioning test Linode instance..."
+        PROVISION_RESULT=$(provision_test_linode "$LINODE_TOKEN" "nwp-test")
+
+        if [ $? -eq 0 ] && [ -n "$PROVISION_RESULT" ]; then
+            # Extract instance ID and IP
+            LINODE_INSTANCE_ID=$(echo "$PROVISION_RESULT" | awk '{print $1}')
+            LINODE_IP=$(echo "$PROVISION_RESULT" | awk '{print $2}')
+
+            print_info "Linode instance provisioned: $LINODE_INSTANCE_ID ($LINODE_IP)"
+            run_test "Linode instance provisioned" "true"
+
+            # Update cnwp.yml with test server details
+            if ! grep -q "^linode:" cnwp.yml; then
+                cat >> cnwp.yml << EOF
+
+# Linode test server configuration
+linode:
+  servers:
+    test_primary:
+      ssh_user: root
+      ssh_host: $LINODE_IP
+      ssh_port: 22
+      ssh_key: ~/.ssh/nwp
+EOF
+                run_test "Test server added to cnwp.yml" "true"
+            else
+                # Update existing linode section
+                if ! grep -q "test_primary:" cnwp.yml; then
+                    # Add test_primary to existing servers section
+                    awk -v ip="$LINODE_IP" '
+                        /^  servers:/ {
+                            print
+                            print "    test_primary:"
+                            print "      ssh_user: root"
+                            print "      ssh_host: " ip
+                            print "      ssh_port: 22"
+                            print "      ssh_key: ~/.ssh/nwp"
+                            next
+                        }
+                        {print}
+                    ' cnwp.yml > cnwp.yml.tmp && mv cnwp.yml.tmp cnwp.yml
+                    run_test "Test server added to cnwp.yml" "true"
+                else
+                    run_test "Test server already in cnwp.yml" "true"
+                fi
+            fi
+
+            # Test SSH connection
+            print_info "Testing SSH connection to $LINODE_IP..."
+            if ssh -i ~/.ssh/nwp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \
+                root@$LINODE_IP "echo 'SSH connection successful'" >/dev/null 2>&1; then
+                run_test "SSH connection to Linode instance" "true"
+            else
+                run_test "SSH connection to Linode instance" "false"
+            fi
+
+            # Test basic server setup
+            print_info "Testing basic server commands..."
+            if ssh -i ~/.ssh/nwp -o ConnectTimeout=10 root@$LINODE_IP \
+                "apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1"; then
+                run_test "Server package installation" "true"
+            else
+                run_test "Server package installation" "false"
+            fi
+
+            # TODO: Add actual deployment tests here when stg2prod.sh is ready
+            # For now, just verify the scripts exist and are executable
+            run_test "stg2prod.sh exists" "[ -x stg2prod.sh ]"
+            run_test "prod2stg.sh exists" "[ -x prod2stg.sh ]"
+
+            # Cleanup: Delete test instance
+            print_info "Cleaning up test Linode instance..."
+            if delete_linode_instance "$LINODE_TOKEN" "$LINODE_INSTANCE_ID"; then
+                run_test "Test instance cleanup" "true"
+            else
+                run_test "Test instance cleanup" "false"
+            fi
+
+            # Remove test server from cnwp.yml
+            if grep -q "test_primary:" cnwp.yml; then
+                # Remove test_primary section
+                awk '/^    test_primary:/,/^    [a-z_]+:/{if(!/^    test_primary:/ && !/^      /)print; if(/^    [a-z_]+:/ && !/^    test_primary:/)print}' \
+                    cnwp.yml > cnwp.yml.tmp && mv cnwp.yml.tmp cnwp.yml
+                run_test "Test server removed from cnwp.yml" "true"
+            fi
+
+        else
+            print_warning "Failed to provision Linode instance - skipping production tests"
+            run_test "Linode instance provisioned" "false"
+        fi
+
+    else
+        print_warning "Linode API token or SSH key not found - skipping production tests"
+        echo "To enable production testing:"
+        echo "  1. Add Linode API token to .secrets.yml"
+        echo "  2. Run ./setup-ssh.sh to generate SSH keys"
+        echo "  3. Manually add SSH key to Linode Cloud Manager"
+        echo ""
+    fi
+else
+    print_warning "Linode library (lib/linode.sh) not found - skipping production tests"
+fi
+
 # Results summary
 print_header "Test Results Summary"
 

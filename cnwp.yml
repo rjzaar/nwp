@@ -76,3 +76,10 @@ recipes:
     auto: y
     dev_modules: devel kint webprofiler
     dev_composer: drupal/devel
+  gitlab:
+    type: gitlab
+    source: https://gitlab.com/gitlab-org/gitlab-foss.git
+    branch: master
+    webroot: .
+    sitename: "GitLab Instance"
+    auto: y

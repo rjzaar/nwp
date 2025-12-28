@@ -90,6 +90,8 @@ get_server_detail() {
         in_server && $0 ~ "^      " detail ": " {
             value=$0
             sub(/^      [^:]+: /, "", value)
+            sub(/#.*$/, "", value)
+            gsub(/^[ \t]+|[ \t]+$/, "", value)
             print value
             exit
         }
@@ -316,8 +318,8 @@ if [ -n "$LINODE_TOKEN" ] && [ ! -f "$PRIVATE_KEY_PATH" ] && [ ! -f "$SSH_PRIVAT
     if [ -n "$SERVERS" ]; then
         echo "Configured servers:"
         for server in $SERVERS; do
-            local host=$(get_server_detail "$server" "ssh_host")
-            local user=$(get_server_detail "$server" "ssh_user")
+            host=$(get_server_detail "$server" "ssh_host")
+            user=$(get_server_detail "$server" "ssh_user")
             echo "  • $server ($user@$host)"
         done
         echo ""
@@ -468,8 +470,8 @@ if [ -n "$LINODE_TOKEN" ]; then
     else
         echo "Configured Linode servers:"
         for server in $SERVERS; do
-            local host=$(get_server_detail "$server" "ssh_host")
-            local user=$(get_server_detail "$server" "ssh_user")
+            host=$(get_server_detail "$server" "ssh_host")
+            user=$(get_server_detail "$server" "ssh_user")
             echo "  • $server ($user@$host)"
         done
         echo ""
@@ -496,8 +498,8 @@ if [ -n "$LINODE_TOKEN" ]; then
             echo ""
             echo "Test your connection:"
             for server in $SERVERS; do
-                local host=$(get_server_detail "$server" "ssh_host")
-                local user=$(get_server_detail "$server" "ssh_user")
+                host=$(get_server_detail "$server" "ssh_host")
+                user=$(get_server_detail "$server" "ssh_user")
                 if [ -n "$host" ] && [ -n "$user" ]; then
                     echo "  ${BLUE}ssh -i ~/.ssh/nwp $user@$host${NC}"
                 fi

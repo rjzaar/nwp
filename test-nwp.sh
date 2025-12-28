@@ -267,6 +267,49 @@ else
     exit 1
 fi
 
+# Test 1b: Environment Variable Generation (Vortex)
+print_header "Test 1b: Environment Variable Generation (Vortex)"
+
+run_test ".env file created" "[ -f $TEST_SITE_PREFIX/.env ]"
+run_test ".env.local.example created" "[ -f $TEST_SITE_PREFIX/.env.local.example ]"
+run_test ".secrets.example.yml created" "[ -f $TEST_SITE_PREFIX/.secrets.example.yml ]"
+
+# Check key environment variables are set in .env
+if [ -f "$TEST_SITE_PREFIX/.env" ]; then
+    run_test "PROJECT_NAME set in .env" "grep -q '^PROJECT_NAME=' $TEST_SITE_PREFIX/.env"
+    run_test "NWP_RECIPE set in .env" "grep -q '^NWP_RECIPE=' $TEST_SITE_PREFIX/.env"
+    run_test "DRUPAL_PROFILE set in .env" "grep -q '^DRUPAL_PROFILE=' $TEST_SITE_PREFIX/.env"
+    run_test "DRUPAL_WEBROOT set in .env" "grep -q '^DRUPAL_WEBROOT=' $TEST_SITE_PREFIX/.env"
+
+    # Check service variables (social profile should have redis/solr enabled)
+    run_test "REDIS_ENABLED set in .env" "grep -q '^REDIS_ENABLED=' $TEST_SITE_PREFIX/.env"
+    run_test "SOLR_ENABLED set in .env" "grep -q '^SOLR_ENABLED=' $TEST_SITE_PREFIX/.env"
+
+    # For social profile, redis and solr should be enabled (=1)
+    REDIS_VAL=$(grep '^REDIS_ENABLED=' "$TEST_SITE_PREFIX/.env" | cut -d= -f2)
+    SOLR_VAL=$(grep '^SOLR_ENABLED=' "$TEST_SITE_PREFIX/.env" | cut -d= -f2)
+
+    if [ "$REDIS_VAL" = "1" ]; then
+        run_test "Redis enabled for social profile" "true"
+    else
+        run_test "Redis enabled for social profile" "false"
+    fi
+
+    if [ "$SOLR_VAL" = "1" ]; then
+        run_test "Solr enabled for social profile" "true"
+    else
+        run_test "Solr enabled for social profile" "false"
+    fi
+fi
+
+# Check DDEV config was generated from .env
+if [ -f "$TEST_SITE_PREFIX/.ddev/config.yaml" ]; then
+    run_test "DDEV config.yaml created" "true"
+    run_test "DDEV config has web_environment" "grep -q 'web_environment:' $TEST_SITE_PREFIX/.ddev/config.yaml"
+else
+    run_test "DDEV config.yaml created" "false"
+fi
+
 # Test 2: Backup functionality
 print_header "Test 2: Backup Functionality"
 

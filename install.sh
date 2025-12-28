@@ -692,9 +692,8 @@ install_opensocial() {
     if should_run_step 2 "$start_step"; then
         print_header "Step 2: Generate Environment Configuration"
 
-        # Get NWP root directory
-        local nwp_root="$(cd "$(dirname "$config_file")" && pwd)"
-        local vortex_script="$nwp_root/vortex/scripts/generate-env.sh"
+        # Use base_dir (NWP root) to find vortex scripts
+        local vortex_script="$base_dir/vortex/scripts/generate-env.sh"
 
         if [ ! -f "$vortex_script" ]; then
             print_error "Vortex environment generation script not found at $vortex_script"
@@ -703,7 +702,7 @@ install_opensocial() {
 
         # Generate .env file
         print_info "Generating .env file from cnwp.yml..."
-        if ! "$vortex_script" "$recipe" "$site_dir" .; then
+        if ! "$vortex_script" "$recipe" "$install_dir" .; then
             print_error "Failed to generate environment configuration"
             return 1
         fi
@@ -726,9 +725,8 @@ install_opensocial() {
     if should_run_step 3 "$start_step"; then
         print_header "Step 3: Configure DDEV"
 
-        # Get NWP root directory
-        local nwp_root="$(cd "$(dirname "$config_file")" && pwd)"
-        local ddev_script="$nwp_root/vortex/scripts/generate-ddev.sh"
+        # Use base_dir (NWP root) to find vortex scripts
+        local ddev_script="$base_dir/vortex/scripts/generate-ddev.sh"
 
         if [ -f "$ddev_script" ]; then
             # Use vortex script to generate DDEV config

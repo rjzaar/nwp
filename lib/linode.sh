@@ -84,7 +84,7 @@ create_linode_instance() {
         }")
 
     if echo "$response" | grep -q '"id"'; then
-        echo "$response" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2
+        echo "$response" | grep -o '"id"[: ]*[0-9]*' | head -1 | grep -o '[0-9]*'
     else
         echo "ERROR: Failed to create Linode instance" >&2
         echo "$response" >&2
@@ -132,7 +132,7 @@ get_linode_ip() {
         "https://api.linode.com/v4/linode/instances/$instance_id")
 
     # Extract IPv4 address
-    echo "$response" | grep -o '"ipv4":\["[^"]*"' | cut -d'"' -f4
+    echo "$response" | grep -o '"ipv4"[: ]*\["[^"]*"' | cut -d'"' -f4
 }
 
 # Wait for SSH to be available on instance
@@ -187,9 +187,18 @@ delete_linode_instance() {
 provision_test_linode() {
     local token=$1
     local label_prefix=${2:-nwp-test}
-    local ssh_key_path=${3:-~/.ssh/nwp.pub}
+    local ssh_key_path=${3:-}
     local timestamp=$(date +%Y%m%d-%H%M%S)
     local label="${label_prefix}-${timestamp}"
+
+    # Auto-detect SSH public key location if not specified
+    if [ -z "$ssh_key_path" ]; then
+        if [ -f "keys/nwp.pub" ]; then
+            ssh_key_path="keys/nwp.pub"
+        elif [ -f "$HOME/.ssh/nwp.pub" ]; then
+            ssh_key_path="$HOME/.ssh/nwp.pub"
+        fi
+    fi
 
     # Read SSH public key from filesystem
     if [ ! -f "$ssh_key_path" ]; then

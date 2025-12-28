@@ -8,6 +8,11 @@ settings:
   php: 8.2
   webserver: nginx
   os: ubuntu
+  # Do you want to install nwp with a universal cli prompt for scipts, eg 'pl' ie instead of only running
+  # the install script in the root nwp directory, it could be run from anywhere using the command 'pl'
+  # eg 'pl install d' anywhere instead of './install d' only in the nwp directory.
+  cli: y
+  cliprompt: pl
   # linodeuse: testing/gitlab/all. If left blank it means no use.
   linodeuse: 
   # urluse: testing/gitlab/all. If left blank it means no use.

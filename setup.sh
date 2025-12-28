@@ -32,6 +32,14 @@ MKCERT_CA_STATUS=""
 DDEV_STATUS=""
 DDEV_CONFIG_STATUS=""
 
+# Setup state tracking
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STATE_DIR="$HOME/.nwp/setup_state"
+STATE_FILE="$STATE_DIR/pre_setup_state.json"
+INSTALL_LOG="$STATE_DIR/install.log"
+CONFIG_FILE="$SCRIPT_DIR/cnwp.yml"
+EXAMPLE_CONFIG="$SCRIPT_DIR/example.cnwp.yml"
+
 ################################################################################
 # Helper Functions
 ################################################################################
@@ -75,6 +83,98 @@ ask_yes_no() {
     else
         return 1
     fi
+}
+
+################################################################################
+# Configuration Functions
+################################################################################
+
+read_config_value() {
+    local key="$1"
+    local config_file="${2:-$CONFIG_FILE}"
+
+    # Use example config on first run
+    if [ ! -f "$CONFIG_FILE" ] && [ -f "$EXAMPLE_CONFIG" ]; then
+        config_file="$EXAMPLE_CONFIG"
+    fi
+
+    if [ ! -f "$config_file" ]; then
+        echo ""
+        return 1
+    fi
+
+    # Read value from YAML (simple parsing using grep/awk)
+    local value=$(grep "^  $key:" "$config_file" 2>/dev/null | head -1 | awk -F': ' '{print $2}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    echo "$value"
+}
+
+################################################################################
+# System State Snapshot Functions
+################################################################################
+
+create_state_snapshot() {
+    print_header "Creating System State Snapshot"
+
+    # Create state directory
+    mkdir -p "$STATE_DIR"
+
+    # Check if snapshot already exists
+    if [ -f "$STATE_FILE" ]; then
+        print_status "OK" "State snapshot already exists (first run was on $(grep 'setup_date' "$STATE_FILE" | cut -d'"' -f4))"
+        return 0
+    fi
+
+    print_status "INFO" "Recording current system state for future uninstall..."
+
+    # Start logging
+    exec > >(tee -a "$INSTALL_LOG")
+    exec 2>&1
+
+    # Create state file
+    cat > "$STATE_FILE" << EOF
+{
+  "setup_date": "$(date -Iseconds)",
+  "user": "$USER",
+  "hostname": "$(hostname)",
+  "had_docker": $(command -v docker &> /dev/null && echo "true" || echo "false"),
+  "had_docker_compose": $(docker compose version &> /dev/null && echo "true" || echo "false"),
+  "was_in_docker_group": $(groups | grep -q docker && echo "true" || echo "false"),
+  "had_mkcert": $(command -v mkcert &> /dev/null && echo "true" || echo "false"),
+  "had_mkcert_ca": $([ -f "$(mkcert -CAROOT 2>/dev/null)/rootCA.pem" ] && echo "true" || echo "false"),
+  "had_ddev": $(command -v ddev &> /dev/null && echo "true" || echo "false"),
+  "had_ddev_config": $([ -f "$HOME/.ddev/global_config.yaml" ] && echo "true" || echo "false"),
+  "had_linode_cli": $(command -v linode-cli &> /dev/null && echo "true" || echo "false"),
+  "bashrc_exists": $([ -f "$HOME/.bashrc" ] && echo "true" || echo "false"),
+  "modified_bashrc": "false",
+  "installed_cli": "false",
+  "cli_prompt": ""
+}
+EOF
+
+    # Backup bashrc if it exists
+    if [ -f "$HOME/.bashrc" ]; then
+        cp "$HOME/.bashrc" "$STATE_DIR/bashrc.backup"
+        print_status "OK" "Backed up ~/.bashrc"
+    fi
+
+    # Record installed packages
+    dpkg -l > "$STATE_DIR/packages_before.txt" 2>/dev/null || true
+
+    print_status "OK" "System state snapshot created"
+    print_status "INFO" "Snapshot saved to: $STATE_FILE"
+}
+
+update_state_value() {
+    local key="$1"
+    local value="$2"
+
+    if [ ! -f "$STATE_FILE" ]; then
+        return 1
+    fi
+
+    # Update value in JSON (simple sed replacement)
+    sed -i "s/\"$key\": \"[^\"]*\"/\"$key\": \"$value\"/" "$STATE_FILE"
+    sed -i "s/\"$key\": [^,}]*/\"$key\": $value/" "$STATE_FILE"
 }
 
 ################################################################################
@@ -456,11 +556,175 @@ install_by_status() {
 }
 
 ################################################################################
+# CLI Installation Functions
+################################################################################
+
+setup_cli() {
+    print_header "Setting Up NWP CLI"
+
+    # Read CLI settings from config
+    local cli_enabled=$(read_config_value "cli")
+    local cli_prompt=$(read_config_value "cliprompt")
+
+    # Default values if not set
+    cli_prompt=${cli_prompt:-pl}
+
+    if [ "$cli_enabled" != "y" ] && [ "$cli_enabled" != "yes" ]; then
+        print_status "INFO" "CLI feature is disabled in configuration"
+        return 0
+    fi
+
+    print_status "INFO" "CLI feature is enabled with prompt: $cli_prompt"
+
+    # Create wrapper script
+    local cli_script="/usr/local/bin/$cli_prompt"
+
+    if [ -f "$cli_script" ]; then
+        print_status "OK" "CLI command '$cli_prompt' already exists"
+        return 0
+    fi
+
+    if ! ask_yes_no "Install CLI command '$cli_prompt' for running NWP scripts from anywhere?" "y"; then
+        print_status "INFO" "Skipping CLI installation"
+        return 0
+    fi
+
+    print_status "INFO" "Creating CLI wrapper script..."
+
+    # Create the wrapper script
+    sudo tee "$cli_script" > /dev/null << 'EOF'
+#!/bin/bash
+# NWP CLI Wrapper
+# Allows running NWP scripts from any directory
+
+NWP_DIR="$HOME/nwp"
+
+# If NWP_DIR doesn't exist, try to find it
+if [ ! -d "$NWP_DIR" ]; then
+    # Check common locations
+    for dir in "$HOME/nwp" "$HOME/projects/nwp" "/opt/nwp"; do
+        if [ -d "$dir" ] && [ -f "$dir/install.sh" ]; then
+            NWP_DIR="$dir"
+            break
+        fi
+    done
+fi
+
+if [ ! -d "$NWP_DIR" ]; then
+    echo "Error: NWP directory not found"
+    echo "Please set NWP_DIR environment variable or install NWP at ~/nwp"
+    exit 1
+fi
+
+# Run the specified script
+if [ $# -eq 0 ]; then
+    echo "NWP CLI - Narrow Way Project"
+    echo ""
+    echo "Usage: pl <script> [arguments]"
+    echo ""
+    echo "Available scripts:"
+    echo "  install <recipe>  - Install a new site"
+    echo "  make <site>       - Run drush make on a site"
+    echo "  backup <site>     - Backup a site"
+    echo "  restore <site>    - Restore a site from backup"
+    echo "  copy <from> <to>  - Copy site from one to another"
+    echo "  delete <site>     - Delete a site"
+    echo "  dev2stg <dev>     - Copy dev site to staging"
+    echo "  setup             - Run prerequisites check"
+    echo "  test-nwp          - Run NWP tests"
+    echo ""
+    echo "Examples:"
+    echo "  pl install d      - Install using the 'd' recipe"
+    echo "  pl backup mysite  - Backup 'mysite'"
+    echo "  pl --list         - List available recipes"
+    exit 0
+fi
+
+# Handle special flags
+if [ "$1" == "--list" ]; then
+    cd "$NWP_DIR"
+    ./install.sh --list
+    exit $?
+fi
+
+# Determine which script to run
+SCRIPT_NAME="$1"
+shift
+
+case "$SCRIPT_NAME" in
+    install|i)
+        SCRIPT="install.sh"
+        ;;
+    make|m)
+        SCRIPT="make.sh"
+        ;;
+    backup|b)
+        SCRIPT="backup.sh"
+        ;;
+    restore|r)
+        SCRIPT="restore.sh"
+        ;;
+    copy|cp)
+        SCRIPT="copy.sh"
+        ;;
+    delete|del|rm)
+        SCRIPT="delete.sh"
+        ;;
+    dev2stg|d2s)
+        SCRIPT="dev2stg.sh"
+        ;;
+    setup|check)
+        SCRIPT="setup.sh"
+        ;;
+    test|test-nwp)
+        SCRIPT="test-nwp.sh"
+        ;;
+    *)
+        echo "Unknown script: $SCRIPT_NAME"
+        echo "Run 'pl' without arguments to see available scripts"
+        exit 1
+        ;;
+esac
+
+# Run the script
+cd "$NWP_DIR"
+if [ ! -f "$SCRIPT" ]; then
+    echo "Error: Script not found: $NWP_DIR/$SCRIPT"
+    exit 1
+fi
+
+exec "./$SCRIPT" "$@"
+EOF
+
+    # Make executable
+    sudo chmod +x "$cli_script"
+
+    print_status "OK" "CLI command '$cli_prompt' installed"
+    print_status "INFO" "You can now run NWP scripts from anywhere using '$cli_prompt'"
+    echo ""
+    echo "Examples:"
+    echo "  $cli_prompt install d       - Install using the 'd' recipe"
+    echo "  $cli_prompt backup mysite   - Backup 'mysite'"
+    echo "  $cli_prompt --list          - List available recipes"
+    echo ""
+
+    # Update state
+    update_state_value "installed_cli" "true"
+    update_state_value "cli_prompt" "$cli_prompt"
+    update_state_value "modified_bashrc" "false"
+
+    return 0
+}
+
+################################################################################
 # Main Script
 ################################################################################
 
 main() {
     print_header "NWP Prerequisites Checker"
+
+    # Create system state snapshot on first run
+    create_state_snapshot
 
     echo "This script checks NWP prerequisites and offers to install missing components."
     echo ""
@@ -524,10 +788,10 @@ main() {
     echo ""
     print_header "Configuration Setup"
 
-    if [ ! -f "cnwp.yml" ]; then
-        if [ -f "example.cnwp.yml" ]; then
+    if [ ! -f "$CONFIG_FILE" ]; then
+        if [ -f "$EXAMPLE_CONFIG" ]; then
             echo "Creating cnwp.yml from example.cnwp.yml..."
-            cp example.cnwp.yml cnwp.yml
+            cp "$EXAMPLE_CONFIG" "$CONFIG_FILE"
             print_status "OK" "Configuration file cnwp.yml created"
             echo -e "${YELLOW}Please edit cnwp.yml to customize your settings${NC}"
         else
@@ -537,8 +801,20 @@ main() {
         print_status "OK" "Configuration file cnwp.yml already exists"
     fi
 
+    # Setup CLI if configured
+    setup_cli
+
     echo ""
-    print_header "Done"
+    print_header "Setup Complete"
+
+    echo "Summary:"
+    echo "  • Prerequisites checked and installed"
+    echo "  • Configuration file ready: $CONFIG_FILE"
+    echo "  • System state snapshot saved: $STATE_FILE"
+    echo ""
+    echo "To uninstall NWP and restore your system:"
+    echo "  ./uninstall_nwp.sh"
+    echo ""
 }
 
 # Run main

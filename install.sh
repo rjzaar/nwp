@@ -16,11 +16,11 @@
 #   c, --create-content          - Create test content (5 users, 5 docs, 5 workflow assignments)
 #
 # Installation Steps:
-#   1  - Initialize project with Composer
+#   1  - Initialize project with Composer (includes Drush installation)
 #   2  - Configure DDEV
 #   3  - Configure memory settings
 #   4  - Start DDEV services
-#   5  - Install Drush
+#   5  - Verify Drush is available
 #   6  - Configure private file system
 #   7  - Install Drupal profile
 #   8  - Install additional modules and export config
@@ -105,6 +105,30 @@ get_root_value() {
     awk -v key="$key" '
         /^[a-zA-Z0-9_-]+:/ && $1 == key":" {
             sub("^" key ": *", "")
+            print
+            exit
+        }
+    ' "$config_file"
+}
+
+# Get value from settings section
+get_settings_value() {
+    local key=$1
+    local config_file="${2:-cnwp.yml}"
+
+    # Use awk to extract values from settings section (indented under settings:)
+    awk -v key="$key" '
+        BEGIN { in_settings = 0 }
+        /^settings:/ {
+            in_settings = 1
+            next
+        }
+        in_settings && /^[a-zA-Z0-9_-]+:/ {
+            # Exited settings section
+            in_settings = 0
+        }
+        in_settings && /^  [a-zA-Z0-9_-]+:/ && $1 == key":" {
+            sub("^  " key ": *", "")
             print
             exit
         }
@@ -547,9 +571,9 @@ install_opensocial() {
     local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/cnwp.yml")
     local install_modules=$(get_recipe_value "$recipe" "install_modules" "$base_dir/cnwp.yml")
 
-    # Get root-level database and PHP configuration
-    local database=$(get_root_value "database" "$base_dir/cnwp.yml")
-    local php_version=$(get_root_value "php" "$base_dir/cnwp.yml")
+    # Get database and PHP configuration from settings section
+    local database=$(get_settings_value "database" "$base_dir/cnwp.yml")
+    local php_version=$(get_settings_value "php" "$base_dir/cnwp.yml")
 
     # Set defaults if not specified
     if [ -z "$php_version" ]; then
@@ -610,7 +634,14 @@ install_opensocial() {
             return 1
         fi
 
-        # Note: Drush will be installed via DDEV after container starts (Step 3)
+        # Install Drush
+        print_info "Installing Drush..."
+        if composer require drush/drush --dev --no-interaction; then
+            print_status "OK" "Drush installed"
+        else
+            print_status "WARN" "Drush installation failed, but may already be available"
+        fi
+
         print_status "OK" "Dependencies installed successfully"
 
         # Install additional modules if specified
@@ -705,27 +736,19 @@ EOF
         print_status "INFO" "Skipping Step 4: DDEV already started"
     fi
 
-    # Step 5: Install Drush
+    # Step 5: Verify Drush is Available
     if should_run_step 5 "$start_step"; then
-        print_header "Step 5: Install Drush"
+        print_header "Step 5: Verify Drush is Available"
 
-        # Check if Drush is already available
+        # Check if Drush is available
         if [ -f "vendor/bin/drush" ]; then
-            print_status "OK" "Drush already installed"
+            print_status "OK" "Drush is available"
         else
-            print_info "Installing Drush via DDEV..."
-            # Let composer find the best compatible version for PHP 8.2
-            # Use -W to allow all dependency updates
-            if ddev composer require drush/drush --dev --no-interaction -W; then
-                print_status "OK" "Drush installed successfully"
-            else
-                print_error "Drush installation failed"
-                print_info "You can manually install with: ddev composer require drush/drush --dev -W"
-                return 1
-            fi
+            print_error "Drush not found - installation may have failed in Step 1"
+            print_info "Try manually installing with: composer require drush/drush --dev"
         fi
     else
-        print_status "INFO" "Skipping Step 5: Drush installation"
+        print_status "INFO" "Skipping Step 5: Drush verification"
     fi
 
     # Step 6: Configure Private File System
@@ -988,9 +1011,9 @@ install_moodle() {
     local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/cnwp.yml")
     local sitename=$(get_recipe_value "$recipe" "sitename" "$base_dir/cnwp.yml")
 
-    # Get root-level database and PHP configuration
-    local database=$(get_root_value "database" "$base_dir/cnwp.yml")
-    local php_version=$(get_root_value "php" "$base_dir/cnwp.yml")
+    # Get database and PHP configuration from settings section
+    local database=$(get_settings_value "database" "$base_dir/cnwp.yml")
+    local php_version=$(get_settings_value "php" "$base_dir/cnwp.yml")
 
     # Set defaults if not specified
     if [ -z "$php_version" ]; then
@@ -1357,8 +1380,8 @@ main() {
     local source=$(get_recipe_value "$recipe" "source" "$config_file")
     local profile=$(get_recipe_value "$recipe" "profile" "$config_file")
     local webroot=$(get_recipe_value "$recipe" "webroot" "$config_file")
-    local database=$(get_root_value "database" "$config_file")
-    local php_version=$(get_root_value "php" "$config_file")
+    local database=$(get_settings_value "database" "$config_file")
+    local php_version=$(get_settings_value "php" "$config_file")
     local auto_mode=$(get_recipe_value "$recipe" "auto" "$config_file")
 
     # Default to drupal if type not specified

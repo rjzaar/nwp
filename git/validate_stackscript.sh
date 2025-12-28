@@ -1,0 +1,1 @@
+../linode/validate_stackscript.sh

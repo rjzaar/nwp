@@ -3,10 +3,12 @@
 # particularly for beginners.
 
 # This recipe section will have defaults to easy start a new project.
-database: mariadb
-php: 8.2
-webserver: nginx
-os: ubuntu
+settings:
+  database: mariadb
+  php: 8.2
+  webserver: nginx
+  os: ubuntu
+  url: prayandcreate.org
 
 
 recipes:
@@ -76,3 +78,5 @@ recipes:
     auto: y
     dev_modules: devel kint webprofiler
     dev_composer: drupal/devel
+
+sites:

@@ -1,42 +1,43 @@
-# gitignore template for Drupal 8 projects
-#
-# earlier versions of Drupal are tracked in `community/PHP/`
-#
-# follows official upstream conventions:
-# https://www.drupal.org/docs/develop/using-composer
+# NWP Infrastructure .gitignore
+# This file ignores everything except the core NWP infrastructure files
+# Users will have their own cnwp.yml configuration (ignored)
+# and their own site installations (ignored)
 
-# Ignore NWP installation directories created by install.sh
-# These are recipe-based site installations (e.g., os, os1, d, m, nwp, etc.)
-/os
-/os[0-9]*
-/d
-/d[0-9]*
-/m
-/m[0-9]*
-/nwp
-/nwp[0-9]*
-/dm
-/dm[0-9]*
-/commons_template
-/commons_template[0-9]*
+# Ignore everything by default
+/*
 
-# Ignore environment-specific sites (staging, production, test, backup)
-*_stg/
-*_prod/
-*_test/
-*_backup/
+# Whitelist NWP infrastructure files
 
-# Ignore backup directories
-/sitebackups/
-/sitebackups
+# Core scripts
+!setup.sh
+!install.sh
+!delete.sh
+!backup.sh
+!restore.sh
+!copy.sh
+!dev2stg.sh
+!make.sh
+!test-nwp.sh
+!testos.sh
 
-# Ignore vendor dependencies and scripts
-/vendor
-/composer.phar
-/composer
-/robo.phar
-/robo
-/drush.phar
-/drush
-/drupal.phar
-/drupal
+# Documentation and metadata
+!README.md
+!LICENSE
+
+# Configuration template (not user config)
+!example.cnwp.yml
+
+# Documentation directory
+!docs/
+!docs/**
+
+# Linode deployment infrastructure
+!linode/
+!linode/**
+
+# Claude Code settings
+!.claude/
+!.claude/**
+
+# Keep .gitignore itself
+!.gitignore

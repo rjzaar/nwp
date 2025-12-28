@@ -56,12 +56,12 @@ get_first_ssh_key_id() {
 }
 
 # Create a Linode instance
-# Usage: create_linode_instance "TOKEN" "LABEL" "SSH_KEY_ID" "REGION" "TYPE"
+# Usage: create_linode_instance "TOKEN" "LABEL" "SSH_PUBLIC_KEY" "REGION" "TYPE"
 # Returns: Instance ID
 create_linode_instance() {
     local token=$1
     local label=$2
-    local ssh_key_id=$3
+    local ssh_public_key=$3
     local region="${4:-us-east}"
     local type="${5:-g6-nanode-1}"
     local image="${6:-linode/ubuntu22.04}"
@@ -77,7 +77,7 @@ create_linode_instance() {
             \"type\": \"$type\",
             \"image\": \"$image\",
             \"root_pass\": \"$root_pass\",
-            \"authorized_keys\": [$ssh_key_id],
+            \"authorized_keys\": [\"$ssh_public_key\"],
             \"booted\": true,
             \"backups_enabled\": false,
             \"private_ip\": false
@@ -182,26 +182,32 @@ delete_linode_instance() {
 }
 
 # Provision a test Linode instance and wait for it to be ready
-# Usage: provision_test_linode "TOKEN" "LABEL_PREFIX"
+# Usage: provision_test_linode "TOKEN" "LABEL_PREFIX" "SSH_PUBLIC_KEY_PATH"
 # Returns: "INSTANCE_ID IP_ADDRESS" on success
 provision_test_linode() {
     local token=$1
     local label_prefix=${2:-nwp-test}
+    local ssh_key_path=${3:-~/.ssh/nwp.pub}
     local timestamp=$(date +%Y%m%d-%H%M%S)
     local label="${label_prefix}-${timestamp}"
 
-    # Get first SSH key from account
-    local ssh_key_id=$(get_first_ssh_key_id "$token")
-    if [ -z "$ssh_key_id" ]; then
-        echo "ERROR: No SSH keys found in Linode account" >&2
-        echo "Please add your SSH key manually at https://cloud.linode.com/profile/keys" >&2
+    # Read SSH public key from filesystem
+    if [ ! -f "$ssh_key_path" ]; then
+        echo "ERROR: SSH public key not found at: $ssh_key_path" >&2
+        echo "Please run ./setup-ssh.sh to generate SSH keys" >&2
         return 1
     fi
 
-    echo "Using SSH key ID: $ssh_key_id" >&2
+    local ssh_public_key=$(cat "$ssh_key_path")
+    if [ -z "$ssh_public_key" ]; then
+        echo "ERROR: SSH public key file is empty: $ssh_key_path" >&2
+        return 1
+    fi
+
+    echo "Using SSH public key from: $ssh_key_path" >&2
 
     # Create instance
-    local instance_id=$(create_linode_instance "$token" "$label" "$ssh_key_id")
+    local instance_id=$(create_linode_instance "$token" "$label" "$ssh_public_key")
     if [ -z "$instance_id" ]; then
         return 1
     fi

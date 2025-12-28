@@ -430,6 +430,7 @@ SCRIPTS=(
     "copy.sh"
     "make.sh"
     "dev2stg.sh"
+    "delete.sh"
 )
 
 for script in "${SCRIPTS[@]}"; do

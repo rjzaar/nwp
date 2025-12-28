@@ -4,21 +4,55 @@
 
 # This recipe section will have defaults to easy start a new project.
 settings:
+  # Stack settings
   database: mariadb
   php: 8.2
   webserver: nginx
   os: ubuntu
+
+  # CLI settings
   # Do you want to install nwp with a universal cli prompt for scipts, eg 'pl' ie instead of only running
   # the install script in the root nwp directory, it could be run from anywhere using the command 'pl'
   # eg 'pl install d' anywhere instead of './install d' only in the nwp directory.
   cli: y
   cliprompt: pl
+
+  # Deployment settings
   # linodeuse: testing/gitlab/all. If left blank it means no use.
-  linodeuse: 
+  linodeuse:
   # urluse: testing/gitlab/all. If left blank it means no use.
-  urluse: 
+  urluse:
   # url is for providing live tests and nwp site.
-  url: 
+  url:
+
+  # Default environment configuration (can be overridden per recipe)
+  environment:
+    development:
+      debug: true                   # Enable debug mode
+      xdebug: false                 # XDebug off by default
+      database_import: always       # Always import database
+      stage_file_proxy: false       # Disabled by default
+    staging:
+      debug: false
+      database_sanitize: true       # Sanitize database on import
+      stage_file_proxy: true
+    production:
+      debug: false
+      database_sanitize: false
+      redis: true                   # Enable Redis in production
+      caching: aggressive
+
+  # Default services configuration (can be overridden per recipe)
+  services:
+    redis:
+      enabled: false                # Redis disabled by default
+      version: "7"
+    solr:
+      enabled: false                # Solr disabled by default
+      version: "8"
+      core: drupal
+    memcache:
+      enabled: false 
 
 setup:
   # This will create a gitlab site based on the url, ie git.url to store and commit sites and the nwp itself.
@@ -63,6 +97,7 @@ recipes:
     auto:  y
 
   # Enhanced recipe example with full environment configuration (NWP v0.2+)
+  # This recipe shows how to override default settings from settings section
   enhanced_example:
     source: goalgorilla/social_template:dev-master
     profile: social
@@ -73,13 +108,13 @@ recipes:
     private: ../private              # Private files directory
     cmi: ../cmi                       # Configuration management directory
 
-    # Environment configuration (NEW in v0.2)
+    # Environment configuration (overrides settings.environment)
     environment:
       development:
         debug: true                   # Enable debug mode
-        xdebug: true                  # Enable XDebug
+        xdebug: true                  # Enable XDebug (overrides default false)
         database_import: always       # Always import database
-        stage_file_proxy: true        # Use stage_file_proxy module
+        stage_file_proxy: true        # Use stage_file_proxy module (overrides default false)
         stage_file_proxy_origin: https://www.example.com
       staging:
         debug: false
@@ -92,14 +127,14 @@ recipes:
         redis: true                   # Enable Redis in production
         caching: aggressive           # Aggressive caching
 
-    # Services configuration (NEW in v0.2)
+    # Services configuration (overrides settings.services)
     services:
       redis:
-        enabled: true                 # Enable Redis
+        enabled: true                 # Enable Redis (overrides default false)
         version: "7"
       solr:
-        enabled: true                 # Enable Solr
-        core: social                  # Solr core name
+        enabled: true                 # Enable Solr (overrides default false)
+        core: social                  # Solr core name (overrides default 'drupal')
       memcache:
         enabled: false
 

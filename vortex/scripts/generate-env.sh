@@ -74,6 +74,77 @@ read_setting() {
     echo "${value:-$default}"
 }
 
+# Read nested config with fallback: recipe.services.X.Y -> settings.services.X.Y -> default
+read_service_config() {
+    local service="$1"
+    local key="$2"
+    local default="${3:-}"
+
+    # Try recipe first
+    local value=$(awk -v recipe="$RECIPE" -v service="$service" -v key="$key" '
+        BEGIN { in_recipe=0; in_services=0; in_service=0 }
+        /^  [a-zA-Z0-9_-]+:/ {
+            if ($1 == recipe":") { in_recipe=1 }
+            else if (in_recipe) { in_recipe=0; in_services=0; in_service=0 }
+        }
+        in_recipe && /^    services:/ { in_services=1; next }
+        in_recipe && in_services && /^      [a-zA-Z0-9_-]+:/ {
+            sub(/^      /, "")
+            if ($1 == service":") { in_service=1; next }
+            else { in_service=0 }
+        }
+        in_recipe && in_services && in_service && /^        [a-zA-Z0-9_-]+:/ {
+            sub(/^        /, "")
+            if ($1 == key":") {
+                sub(/^[^:]+: */, "")
+                print
+                exit
+            }
+        }
+    ' "$CNWP_FILE")
+
+    # If not found in recipe, try settings
+    if [ -z "$value" ]; then
+        value=$(awk -v service="$service" -v key="$key" '
+            BEGIN { in_settings=0; in_services=0; in_service=0 }
+            /^settings:/ { in_settings=1; next }
+            /^[a-zA-Z]/ && in_settings { in_settings=0 }
+            in_settings && /^  services:/ { in_services=1; next }
+            in_settings && in_services && /^    [a-zA-Z0-9_-]+:/ {
+                sub(/^    /, "")
+                if ($1 == service":") { in_service=1; next }
+                else { in_service=0 }
+            }
+            in_settings && in_services && in_service && /^      [a-zA-Z0-9_-]+:/ {
+                sub(/^      /, "")
+                if ($1 == key":") {
+                    sub(/^[^:]+: */, "")
+                    print
+                    exit
+                }
+            }
+        ' "$CNWP_FILE")
+    fi
+
+    echo "${value:-$default}"
+}
+
+# Read config with fallback: recipe -> settings -> default
+read_config_with_fallback() {
+    local key="$1"
+    local default="${2:-}"
+
+    # Try recipe first
+    local value=$(read_recipe_config "$key" "")
+
+    # If not found, try settings
+    if [ -z "$value" ]; then
+        value=$(read_setting "$key" "")
+    fi
+
+    echo "${value:-$default}"
+}
+
 # Get recipe configuration
 PROFILE=$(read_recipe_config "profile" "standard")
 WEBROOT=$(read_recipe_config "webroot" "web")
@@ -122,15 +193,45 @@ case "$PROFILE" in
         ;;
 esac
 
-# Determine services based on profile
-REDIS_ENABLED=0
-SOLR_ENABLED=0
+# Determine services - check recipe.services, then settings.services, then profile defaults
+REDIS_ENABLED=$(read_service_config "redis" "enabled" "")
+SOLR_ENABLED=$(read_service_config "solr" "enabled" "")
+SOLR_CORE=$(read_service_config "solr" "core" "drupal")
+MEMCACHE_ENABLED=$(read_service_config "memcache" "enabled" "")
 
-case "$PROFILE" in
-    social|varbase)
-        REDIS_ENABLED=1
-        SOLR_ENABLED=1
-        ;;
+# If not explicitly set, use profile-based defaults
+if [ -z "$REDIS_ENABLED" ]; then
+    case "$PROFILE" in
+        social|varbase) REDIS_ENABLED=1 ;;
+        *) REDIS_ENABLED=0 ;;
+    esac
+fi
+
+if [ -z "$SOLR_ENABLED" ]; then
+    case "$PROFILE" in
+        social|varbase) SOLR_ENABLED=1 ;;
+        *) SOLR_ENABLED=0 ;;
+    esac
+fi
+
+if [ -z "$MEMCACHE_ENABLED" ]; then
+    MEMCACHE_ENABLED=0
+fi
+
+# Convert true/false to 1/0
+case "$REDIS_ENABLED" in
+    true|True|TRUE|1|yes|Yes|YES) REDIS_ENABLED=1 ;;
+    *) REDIS_ENABLED=0 ;;
+esac
+
+case "$SOLR_ENABLED" in
+    true|True|TRUE|1|yes|Yes|YES) SOLR_ENABLED=1 ;;
+    *) SOLR_ENABLED=0 ;;
+esac
+
+case "$MEMCACHE_ENABLED" in
+    true|True|TRUE|1|yes|Yes|YES) MEMCACHE_ENABLED=1 ;;
+    *) MEMCACHE_ENABLED=0 ;;
 esac
 
 # Create site directory if it doesn't exist
@@ -166,6 +267,8 @@ while IFS= read -r line; do
     line="${line//\$\{DRUPAL_PRIVATE_FILES\}/$PRIVATE_DIR}"
     line="${line//\$\{REDIS_ENABLED:-0\}/$REDIS_ENABLED}"
     line="${line//\$\{SOLR_ENABLED:-0\}/$SOLR_ENABLED}"
+    line="${line//\$\{SOLR_CORE:-drupal\}/$SOLR_CORE}"
+    line="${line//\$\{MEMCACHE_ENABLED:-0\}/$MEMCACHE_ENABLED}"
     line="${line//\$\{DEV_MODULES\}/$DEV_MODULES}"
     line="${line//\$\{DEV_COMPOSER\}/$DEV_COMPOSER}"
     line="${line//\$\{DEPLOY_METHOD\}/$DEPLOY_METHOD}"

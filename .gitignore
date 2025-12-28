@@ -9,14 +9,14 @@
 # Whitelist NWP infrastructure files
 
 # Core scripts
-!setup.sh
-!install.sh
-!delete.sh
 !backup.sh
-!restore.sh
 !copy.sh
+!delete.sh
 !dev2stg.sh
+!install.sh
 !make.sh
+!restore.sh
+!setup.sh
 !test-nwp.sh
 !testos.sh
 

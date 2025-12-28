@@ -8,8 +8,16 @@ settings:
   php: 8.2
   webserver: nginx
   os: ubuntu
+  # linodeuse: testing/gitlab/all. If left blank it means no use.
+  linodeuse: 
+  # urluse: testing/gitlab/all. If left blank it means no use.
+  urluse: 
   # url is for providing live tests and nwp site.
   url: 
+
+setup:
+  # This will create a gitlab site based on the url, ie git.url to store and commit sites and the nwp itself.
+  creategitlab: n
 
 
 recipes:

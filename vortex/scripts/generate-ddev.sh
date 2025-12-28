@@ -78,7 +78,7 @@ database:
 web_environment:
   - DRUPAL_PROFILE=${DRUPAL_PROFILE:-standard}
   - DRUPAL_CONFIG_PATH=${DRUPAL_CONFIG_PATH:-../config/default}
-  - DRUPAL_TRUSTED_HOSTS=^\${DDEV_SITENAME}\.ddev\.site$
+  - DRUPAL_TRUSTED_HOSTS=^\$\${DDEV_SITENAME}\\\\\\\\.ddev\\\\\\\\.site\$\$
   - ENV_TYPE=${ENV_TYPE:-development}
   - ENV_DEBUG=${ENV_DEBUG:-1}
   - NWP_RECIPE=${NWP_RECIPE:-}

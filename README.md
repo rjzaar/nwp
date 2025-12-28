@@ -736,3 +736,44 @@ For existing sites or custom setups:
 - **Migration**: See `docs/MIGRATION_GUIDE_ENV.md`
 - **Comparison**: See `docs/environment-variables-comparison.md`
 
+
+### Configuration Hierarchy
+
+NWP uses a flexible configuration hierarchy for environment variables and services:
+
+```
+1. Recipe-specific settings (highest priority)
+   ↓
+2. Global settings defaults
+   ↓
+3. Profile-based defaults
+   ↓
+4. Hardcoded defaults (lowest priority)
+```
+
+**Example:**
+```yaml
+# cnwp.yml
+settings:
+  services:
+    redis:
+      enabled: false      # Global default
+    solr:
+      enabled: false
+
+recipes:
+  mysite:
+    profile: social
+    services:
+      redis:
+        enabled: true     # Override for this recipe only
+      # solr uses global default (false)
+```
+
+This allows you to:
+- Set common defaults once in `settings`
+- Override per recipe only when needed
+- Keep recipe definitions minimal and focused
+
+See `example.cnwp.yml` for the complete structure and `enhanced_example` recipe for override examples.
+

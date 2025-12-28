@@ -26,15 +26,47 @@ vortex/
 
 ## How It Works
 
-### 1. Environment Files
+### 1. Configuration Hierarchy
+
+NWP uses a flexible configuration system with clear precedence:
+
+**For cnwp.yml configuration:**
+1. **Recipe-specific** settings (e.g., `recipes.mysite.services.redis.enabled`)
+2. **Global defaults** in settings (e.g., `settings.services.redis.enabled`)
+3. **Profile-based** defaults (e.g., redis=true for social/varbase profiles)
+4. **Hardcoded** defaults (final fallback)
+
+**Example:**
+```yaml
+# cnwp.yml
+settings:
+  services:
+    redis:
+      enabled: false      # Default for all recipes
+      version: "7"
+
+recipes:
+  mysite:
+    services:
+      redis:
+        enabled: true     # Override just for mysite
+        # version: "7" inherited from settings
+```
+
+This allows you to:
+- Set common defaults once in `settings`
+- Override per recipe only when needed
+- Keep recipes minimal and focused
+
+### 2. Environment Files
 
 NWP generates environment configuration files in each site directory based on:
-- The recipe configuration in `cnwp.yml`
+- The recipe configuration in `cnwp.yml` (with fallback to settings)
 - The appropriate template from `vortex/templates/`
 - Local overrides from `.env.local` (if present)
 - Secrets from `.secrets.yml` (if present)
 
-### 2. File Priority
+### 3. File Priority
 
 Environment variables are loaded in this order (later overrides earlier):
 
@@ -100,6 +132,60 @@ When you run `./install.sh [recipe] [sitename]`, NWP automatically:
    ```
 
 3. **NEVER** commit `.secrets.yml` to version control!
+
+## Configuring Services
+
+NWP supports configuring services at both global and recipe levels:
+
+### Global Service Defaults
+
+Set defaults in `cnwp.yml` that apply to all recipes:
+
+```yaml
+settings:
+  services:
+    redis:
+      enabled: false      # Off by default
+      version: "7"
+    solr:
+      enabled: false
+      version: "8"
+      core: drupal
+    memcache:
+      enabled: false
+```
+
+### Recipe Service Overrides
+
+Override defaults for specific recipes:
+
+```yaml
+recipes:
+  mysite:
+    profile: social
+    services:
+      redis:
+        enabled: true     # Override: enable Redis for this recipe
+        version: "7"      # Can also override version
+      solr:
+        enabled: true
+        core: social      # Use 'social' core instead of 'drupal'
+      # memcache uses global default (disabled)
+```
+
+### Minimal Recipe Configuration
+
+Only specify what differs from defaults:
+
+```yaml
+recipes:
+  simple:
+    profile: standard
+    # Uses all settings.services defaults
+    # No need to specify redis: false, solr: false, etc.
+```
+
+This keeps recipe definitions clean and maintainable.
 
 ## Environment Variables Reference
 

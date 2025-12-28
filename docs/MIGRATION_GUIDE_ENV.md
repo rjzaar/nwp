@@ -11,6 +11,56 @@ NWP now includes a comprehensive environment variable management system:
 - **DDEV integration**: Auto-generation of DDEV configuration
 - **Secrets management**: Secure handling of credentials
 - **Enhanced cnwp.yml**: Support for services and environment-specific settings
+- **Configuration hierarchy**: Recipe → Settings → Profile → Defaults
+- **Global defaults**: Define common settings once in `settings` section
+- **Recipe overrides**: Override only what you need per recipe
+
+## Configuration Hierarchy
+
+NWP v0.2 introduces a flexible configuration hierarchy:
+
+```
+1. Recipe-specific settings     (highest priority)
+   recipes.mysite.services.redis.enabled
+   ↓
+2. Global settings defaults
+   settings.services.redis.enabled
+   ↓
+3. Profile-based defaults
+   (redis=true for social/varbase)
+   ↓
+4. Hardcoded defaults           (lowest priority)
+   (redis=false)
+```
+
+**Benefits:**
+- Define defaults once in `settings`
+- Override per recipe only when needed
+- Keep recipe definitions minimal
+- Easier to maintain multiple sites
+
+**Example:**
+```yaml
+# cnwp.yml
+settings:
+  services:
+    redis:
+      enabled: false      # Default: Redis off
+    solr:
+      enabled: false      # Default: Solr off
+
+recipes:
+  production_site:
+    profile: social
+    services:
+      redis:
+        enabled: true     # Override: enable for production
+      # solr uses default (false)
+
+  dev_site:
+    profile: standard
+    # Uses all defaults (redis=false, solr=false)
+```
 
 ## For Existing NWP Users
 

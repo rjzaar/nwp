@@ -805,6 +805,11 @@ main() {
     setup_cli
 
     echo ""
+
+    # Check for Linode token and missing SSH keys
+    check_linode_ssh_setup
+
+    echo ""
     print_header "Setup Complete"
 
     echo "Summary:"
@@ -815,6 +820,67 @@ main() {
     echo "To uninstall NWP and restore your system:"
     echo "  ./uninstall_nwp.sh"
     echo ""
+}
+
+# Check for Linode API token and SSH keys
+check_linode_ssh_setup() {
+    local linode_token=""
+    local ssh_key_exists=false
+
+    # Check for Linode API token in .secrets.yml
+    if [ -f "$SCRIPT_DIR/.secrets.yml" ]; then
+        linode_token=$(awk '/^linode:/{f=1} f && /api_token:/{print $2; exit}' "$SCRIPT_DIR/.secrets.yml" | tr -d '"' | tr -d "'")
+    fi
+
+    # Fall back to environment variable
+    if [ -z "$linode_token" ] && [ -n "${LINODE_API_TOKEN:-}" ]; then
+        linode_token="$LINODE_API_TOKEN"
+    fi
+
+    # Check if SSH keys exist
+    if [ -f "$SCRIPT_DIR/keys/nwp" ] || [ -f "$HOME/.ssh/nwp" ]; then
+        ssh_key_exists=true
+    fi
+
+    # If token exists but no SSH keys, offer to set them up
+    if [ -n "$linode_token" ] && [ "$ssh_key_exists" = false ]; then
+        print_header "Linode SSH Key Setup"
+
+        echo -e "${GREEN}${BOLD}Linode API token detected!${NC}"
+        echo ""
+        echo "You have a Linode API token configured but no NWP SSH keys."
+        echo ""
+        echo "Would you like to set up SSH keys for Linode deployment?"
+        echo "This will:"
+        echo "  • Generate SSH keypair (nwp/nwp.pub)"
+        echo "  • Add key to your Linode account via API"
+        echo "  • Push key to all configured servers"
+        echo "  • Enable automatic deployments"
+        echo ""
+
+        if ask_yes_no "Run SSH key setup now?" "y"; then
+            echo ""
+            if [ -x "$SCRIPT_DIR/setup-ssh.sh" ]; then
+                "$SCRIPT_DIR/setup-ssh.sh"
+            else
+                print_status "WARN" "setup-ssh.sh not found or not executable"
+                echo "Run manually: ./setup-ssh.sh"
+            fi
+        else
+            echo ""
+            print_status "INFO" "Skipping SSH setup"
+            echo "Run later with: ./setup-ssh.sh"
+        fi
+    elif [ -n "$linode_token" ] && [ "$ssh_key_exists" = true ]; then
+        print_status "OK" "Linode token and SSH keys configured"
+    elif [ -z "$linode_token" ]; then
+        print_status "INFO" "No Linode API token detected"
+        echo "To enable automatic Linode deployment:"
+        echo "  1. Add token to .secrets.yml:"
+        echo "     linode:"
+        echo "       api_token: YOUR_TOKEN_HERE"
+        echo "  2. Run: ./setup-ssh.sh"
+    fi
 }
 
 # Run main

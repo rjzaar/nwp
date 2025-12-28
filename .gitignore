@@ -17,6 +17,9 @@
 !make.sh
 !restore.sh
 !setup.sh
+!setup-ssh.sh
+!stg2prod.sh
+!prod2stg.sh
 !test-nwp.sh
 !testos.sh
 !uninstall_nwp.sh
@@ -47,6 +50,14 @@
 # URL management infrastructure
 !url/
 !url/**
+
+# Libraries
+!lib/
+!lib/**
+
+# Tests
+!tests/
+!tests/**
 
 # Keep .gitignore itself
 !.gitignore

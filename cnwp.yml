@@ -155,3 +155,12 @@ linode:
 # Automatically populated when sites are created with install.sh
 # Stores site metadata, production configuration, and deployment settings
 sites:
+  nwp5:
+    directory: /home/rob/nwp/nwp5
+    recipe: nwp
+    environment: development
+    created: 2025-12-28T15:33:16Z
+    installed_modules:
+      - rjzaar/workflow_assignment:dev-main
+      - drupal/ultimate_cron:^2.0.0-alpha7
+

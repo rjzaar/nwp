@@ -188,6 +188,7 @@ linode:
       ssh_user: deploy                     # SSH username for deployment
       ssh_host: 203.0.113.10               # Server IP or hostname
       ssh_port: 22                         # SSH port (default: 22)
+      ssh_key: ~/.ssh/nwp                  # Path to SSH private key (optional, uses default if not specified)
       api_token: ${LINODE_API_TOKEN}       # Linode API token (use environment variable)
       server_ips:
         - 203.0.113.10                     # Primary IP
@@ -198,6 +199,7 @@ linode:
       ssh_user: deploy
       ssh_host: 203.0.113.20
       ssh_port: 22
+      ssh_key: ~/.ssh/nwp                  # Path to SSH private key (optional)
       api_token: ${LINODE_API_TOKEN}
       server_ips:
         - 203.0.113.20

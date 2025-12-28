@@ -175,16 +175,37 @@ get_ssh_connection() {
     local ssh_user=$(get_linode_server "$server_name" "ssh_user")
     local ssh_host=$(get_linode_server "$server_name" "ssh_host")
     local ssh_port=$(get_linode_server "$server_name" "ssh_port")
+    local ssh_key=$(get_linode_server "$server_name" "ssh_key")
 
     if [ -z "$ssh_user" ] || [ -z "$ssh_host" ]; then
         return 1
     fi
 
-    if [ -n "$ssh_port" ] && [ "$ssh_port" != "22" ]; then
-        echo "${ssh_user}@${ssh_host} -p ${ssh_port}"
-    else
-        echo "${ssh_user}@${ssh_host}"
+    # Expand ~ to home directory in ssh_key
+    if [ -n "$ssh_key" ]; then
+        ssh_key="${ssh_key/#\~/$HOME}"
+        if [ ! -f "$ssh_key" ]; then
+            print_error "SSH key not found: $ssh_key"
+            return 1
+        fi
+        # Store for use with rsync
+        export SSH_KEY="$ssh_key"
     fi
+
+    # Build connection string
+    local conn="${ssh_user}@${ssh_host}"
+
+    # Add port if not default
+    if [ -n "$ssh_port" ] && [ "$ssh_port" != "22" ]; then
+        conn="$conn -p ${ssh_port}"
+    fi
+
+    # Add key if specified
+    if [ -n "$ssh_key" ]; then
+        conn="$conn -i $ssh_key"
+    fi
+
+    echo "$conn"
 }
 
 ################################################################################
@@ -463,10 +484,23 @@ if should_run_step 4 "$START_STEP" && [ "$DB_ONLY" = false ]; then
         print_info "Source: $SSH_CONN:$PROD_PATH/"
         print_info "Destination: $SITENAME/"
 
+        # Build SSH options for rsync
+        local rsync_ssh="ssh"
+        if echo "$SSH_CONN" | grep -q '\-p'; then
+            local port=$(echo "$SSH_CONN" | grep -o '\-p [0-9]*' | awk '{print $2}')
+            rsync_ssh="$rsync_ssh -p $port"
+        fi
+        if [ -n "$SSH_KEY" ]; then
+            rsync_ssh="$rsync_ssh -i $SSH_KEY"
+        fi
+
+        # Extract user@host (first part before any options)
+        local user_host=$(echo "$SSH_CONN" | cut -d' ' -f1)
+
         # Rsync with SSH
         if rsync -avz --delete \
-            -e "ssh $(echo $SSH_CONN | grep -o '\-p [0-9]*')" \
-            "$(echo $SSH_CONN | cut -d' ' -f1):$PROD_PATH/" \
+            -e "$rsync_ssh" \
+            "$user_host:$PROD_PATH/" \
             "$SITENAME/" \
             --exclude=".ddev" \
             --exclude=".git" \
@@ -496,10 +530,22 @@ if should_run_step 5 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
         # Create temporary SQL file
         TMP_SQL="/tmp/prod2stg_${SITENAME}_$(date +%s).sql.gz"
 
+        # Build SCP options
+        local scp_opts=""
+        if echo "$SSH_CONN" | grep -q '\-p'; then
+            local port=$(echo "$SSH_CONN" | grep -o '\-p [0-9]*' | awk '{print $2}')
+            scp_opts="-P $port"
+        fi
+        if [ -n "$SSH_KEY" ]; then
+            scp_opts="$scp_opts -i $SSH_KEY"
+        fi
+
+        # Extract user@host
+        local user_host=$(echo "$SSH_CONN" | cut -d' ' -f1)
+
         # Export database via SSH
         if ssh $SSH_CONN "cd $PROD_PATH && drush sql:dump --gzip --result-file=/tmp/prod_export.sql" && \
-           scp $(echo $SSH_CONN | grep -q '\-p' && echo "-P $(echo $SSH_CONN | sed 's/.*-p //')" || echo "") \
-               "$(echo $SSH_CONN | cut -d' ' -f1):/tmp/prod_export.sql.gz" "$TMP_SQL" && \
+           scp $scp_opts "$user_host:/tmp/prod_export.sql.gz" "$TMP_SQL" && \
            ssh $SSH_CONN "rm /tmp/prod_export.sql.gz"; then
             print_status "OK" "Database exported"
             print_info "Temp file: $TMP_SQL"

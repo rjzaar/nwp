@@ -94,6 +94,28 @@ should_run_step() {
     fi
 }
 
+# Build SSH command with optional key
+build_ssh_cmd() {
+    local ssh_opts=""
+
+    if [ -n "$SSH_KEY" ]; then
+        ssh_opts="-i $SSH_KEY"
+    fi
+
+    echo "ssh $ssh_opts -p $SSH_PORT $SSH_USER@$SSH_HOST"
+}
+
+# Build rsync SSH options
+build_rsync_ssh_opts() {
+    local opts="-e ssh -p $SSH_PORT"
+
+    if [ -n "$SSH_KEY" ]; then
+        opts="-e ssh -i $SSH_KEY -p $SSH_PORT"
+    fi
+
+    echo "$opts"
+}
+
 # Get recipe value from cnwp.yml
 get_recipe_value() {
     local recipe=$1
@@ -280,6 +302,7 @@ validate_deployment() {
     local ssh_user=$(get_linode_config "$prod_server" "ssh_user" "$SCRIPT_DIR/cnwp.yml")
     local ssh_host=$(get_linode_config "$prod_server" "ssh_host" "$SCRIPT_DIR/cnwp.yml")
     local ssh_port=$(get_linode_config "$prod_server" "ssh_port" "$SCRIPT_DIR/cnwp.yml")
+    local ssh_key=$(get_linode_config "$prod_server" "ssh_key" "$SCRIPT_DIR/cnwp.yml")
 
     if [ -z "$ssh_user" ] || [ -z "$ssh_host" ]; then
         print_error "Server '$prod_server' not found in linode: section of cnwp.yml"
@@ -287,6 +310,16 @@ validate_deployment() {
     fi
 
     print_status "OK" "Server: $prod_server ($ssh_user@$ssh_host:${ssh_port:-22})"
+
+    if [ -n "$ssh_key" ]; then
+        # Expand ~ to home directory
+        ssh_key="${ssh_key/#\~/$HOME}"
+        if [ ! -f "$ssh_key" ]; then
+            print_error "SSH key not found: $ssh_key"
+            return 1
+        fi
+        print_status "OK" "SSH key: $ssh_key"
+    fi
 
     if [ -z "$prod_path" ]; then
         print_error "No prod_path configured for recipe '$recipe'"
@@ -307,6 +340,7 @@ validate_deployment() {
     export SSH_USER="$ssh_user"
     export SSH_HOST="$ssh_host"
     export SSH_PORT="${ssh_port:-22}"
+    export SSH_KEY="$ssh_key"
 
     return 0
 }
@@ -315,7 +349,7 @@ validate_deployment() {
 test_ssh_connection() {
     print_header "Step 2: Test SSH Connection"
 
-    local ssh_cmd="ssh -p $SSH_PORT $SSH_USER@$SSH_HOST"
+    local ssh_cmd=$(build_ssh_cmd)
 
     ocmsg "Testing SSH: $ssh_cmd"
 
@@ -374,7 +408,7 @@ backup_production() {
     fi
 
     local backup_name="backup-$(date +%Y%m%d-%H%M%S)"
-    local ssh_cmd="ssh -p $SSH_PORT $SSH_USER@$SSH_HOST"
+    local ssh_cmd=$(build_ssh_cmd)
 
     ocmsg "Creating backup: $backup_name"
 
@@ -406,7 +440,13 @@ sync_files() {
         "--exclude=.env"
     )
 
-    local rsync_cmd="rsync -avz --delete -e \"ssh -p $SSH_PORT\" ${excludes[@]} $stg_site/ $SSH_USER@$SSH_HOST:$PROD_PATH/"
+    # Build SSH options for rsync
+    local ssh_opts="ssh -p $SSH_PORT"
+    if [ -n "$SSH_KEY" ]; then
+        ssh_opts="ssh -i $SSH_KEY -p $SSH_PORT"
+    fi
+
+    local rsync_cmd="rsync -avz --delete -e \"$ssh_opts\" ${excludes[@]} $stg_site/ $SSH_USER@$SSH_HOST:$PROD_PATH/"
 
     ocmsg "Rsync command: $rsync_cmd"
 
@@ -430,7 +470,7 @@ sync_files() {
 run_composer_production() {
     print_header "Step 6: Run Composer Install on Production"
 
-    local ssh_cmd="ssh -p $SSH_PORT $SSH_USER@$SSH_HOST"
+    local ssh_cmd=$(build_ssh_cmd)
 
     if [ "$DRY_RUN" == "true" ]; then
         print_status "INFO" "DRY RUN: Would run composer install on production"
@@ -451,7 +491,7 @@ run_composer_production() {
 run_db_updates_production() {
     print_header "Step 7: Run Database Updates on Production"
 
-    local ssh_cmd="ssh -p $SSH_PORT $SSH_USER@$SSH_HOST"
+    local ssh_cmd=$(build_ssh_cmd)
 
     if [ "$DRY_RUN" == "true" ]; then
         print_status "INFO" "DRY RUN: Would run database updates on production"
@@ -472,7 +512,7 @@ run_db_updates_production() {
 import_config_production() {
     print_header "Step 8: Import Configuration to Production"
 
-    local ssh_cmd="ssh -p $SSH_PORT $SSH_USER@$SSH_HOST"
+    local ssh_cmd=$(build_ssh_cmd)
 
     if [ "$DRY_RUN" == "true" ]; then
         print_status "INFO" "DRY RUN: Would import configuration on production"
@@ -516,7 +556,7 @@ reinstall_modules_production() {
     echo -e "Found ${BOLD}$total_modules${NC} module(s) to reinstall: ${BOLD}$reinstall_modules${NC}"
     echo ""
 
-    local ssh_cmd="ssh -p $SSH_PORT $SSH_USER@$SSH_HOST"
+    local ssh_cmd=$(build_ssh_cmd)
 
     for module in "${module_array[@]}"; do
         echo -e "${CYAN}Processing module: ${BOLD}$module${NC}"
@@ -567,7 +607,7 @@ reinstall_modules_production() {
 clear_cache_and_display() {
     print_header "Step 10: Clear Cache and Display Production URL"
 
-    local ssh_cmd="ssh -p $SSH_PORT $SSH_USER@$SSH_HOST"
+    local ssh_cmd=$(build_ssh_cmd)
 
     if [ "$DRY_RUN" == "true" ]; then
         print_status "INFO" "DRY RUN: Would clear cache on production"

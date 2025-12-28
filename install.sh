@@ -714,11 +714,13 @@ EOF
             print_status "OK" "Drush already installed"
         else
             print_info "Installing Drush via DDEV..."
-            if ddev composer require drush/drush --dev --no-interaction; then
+            # Let composer find the best compatible version for PHP 8.2
+            # Use -W to allow all dependency updates
+            if ddev composer require drush/drush --dev --no-interaction -W; then
                 print_status "OK" "Drush installed successfully"
             else
                 print_error "Drush installation failed"
-                print_info "You can manually install with: ddev composer require drush/drush --dev"
+                print_info "You can manually install with: ddev composer require drush/drush --dev -W"
                 return 1
             fi
         fi

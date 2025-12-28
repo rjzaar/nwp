@@ -69,3 +69,10 @@ recipes:
     # Additional options
     force: false                      # Force config imports
     # lando: false                    # Use Lando instead of DDEV
+  test_nwp:
+    source: goalgorilla/social_template:dev-master
+    profile: social
+    webroot: html
+    auto: y
+    dev_modules: devel kint webprofiler
+    dev_composer: drupal/devel

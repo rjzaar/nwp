@@ -35,9 +35,5 @@
 !linode/
 !linode/**
 
-# Claude Code settings
-!.claude/
-!.claude/**
-
 # Keep .gitignore itself
 !.gitignore

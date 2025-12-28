@@ -8,7 +8,8 @@ settings:
   php: 8.2
   webserver: nginx
   os: ubuntu
-  url: prayandcreate.org
+  # url is for providing live tests and nwp site.
+  url: 
 
 
 recipes:

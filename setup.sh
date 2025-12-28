@@ -520,6 +520,23 @@ main() {
         echo ""
     fi
 
+    # Setup configuration file
+    echo ""
+    print_header "Configuration Setup"
+
+    if [ ! -f "cnwp.yml" ]; then
+        if [ -f "example.cnwp.yml" ]; then
+            echo "Creating cnwp.yml from example.cnwp.yml..."
+            cp example.cnwp.yml cnwp.yml
+            print_status "OK" "Configuration file cnwp.yml created"
+            echo -e "${YELLOW}Please edit cnwp.yml to customize your settings${NC}"
+        else
+            print_status "WARN" "example.cnwp.yml not found, skipping configuration setup"
+        fi
+    else
+        print_status "OK" "Configuration file cnwp.yml already exists"
+    fi
+
     echo ""
     print_header "Done"
 }

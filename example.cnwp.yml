@@ -3,10 +3,13 @@
 # particularly for beginners.
 
 # This recipe section will have defaults to easy start a new project.
-database: mariadb
-php: 8.2
-webserver: nginx
-os: ubuntu
+settings:
+  database: mariadb
+  php: 8.2
+  webserver: nginx
+  os: ubuntu
+  # url is for providing live tests and nwp site.
+  url: 
 
 
 recipes:
@@ -76,3 +79,12 @@ recipes:
     auto: y
     dev_modules: devel kint webprofiler
     dev_composer: drupal/devel
+  gitlab:
+    type: gitlab
+    source: https://gitlab.com/gitlab-org/gitlab-foss.git
+    branch: master
+    webroot: .
+    sitename: "GitLab Instance"
+    auto: y
+
+sites:

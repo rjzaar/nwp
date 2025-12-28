@@ -1,0 +1,27 @@
+# SSH Keys - NEVER commit these!
+keys/
+*.pub
+*_rsa
+*_ed25519
+
+# Backup files
+*.backup
+*.bak
+*~
+
+# Linode API credentials
+.linode-cli
+linode-cli.config
+
+# Temporary files
+*.tmp
+*.log
+
+# macOS
+.DS_Store
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -17,13 +17,14 @@
 #
 # Installation Steps:
 #   1  - Initialize project with Composer (includes Drush installation)
-#   2  - Configure DDEV
-#   3  - Configure memory settings
-#   4  - Start DDEV services
-#   5  - Verify Drush is available
-#   6  - Configure private file system
-#   7  - Install Drupal profile
-#   8  - Install additional modules and export config
+#   2  - Generate environment configuration (.env files)
+#   3  - Configure DDEV
+#   4  - Configure memory settings
+#   5  - Start DDEV services
+#   6  - Verify Drush is available
+#   7  - Configure private file system
+#   8  - Install Drupal profile
+#   9  - Install additional modules and export config
 ################################################################################
 
 # Colors for output
@@ -687,31 +688,82 @@ install_opensocial() {
         print_status "INFO" "Skipping Step 1: Project already initialized"
     fi
 
-    # Step 2: Configure DDEV
+    # Step 2: Generate Environment Configuration
     if should_run_step 2 "$start_step"; then
-        print_header "Step 2: Configure DDEV"
+        print_header "Step 2: Generate Environment Configuration"
 
-        # Map database type to DDEV database type
-        local ddev_database="$database"
-        # DDEV uses mariadb as the database type
-        if [ "$database" == "mysql" ]; then
-            ddev_database="mysql:8.0"
-        elif [ "$database" == "mariadb" ]; then
-            ddev_database="mariadb:10.11"
-        fi
+        # Get NWP root directory
+        local nwp_root="$(cd "$(dirname "$config_file")" && pwd)"
+        local vortex_script="$nwp_root/vortex/scripts/generate-env.sh"
 
-        if ! ddev config --project-type=drupal --docroot="$webroot" --php-version="$php_version" --database="$ddev_database"; then
-            print_error "Failed to configure DDEV"
+        if [ ! -f "$vortex_script" ]; then
+            print_error "Vortex environment generation script not found at $vortex_script"
             return 1
         fi
-        print_status "OK" "DDEV configured (Database: $ddev_database)"
+
+        # Generate .env file
+        print_info "Generating .env file from cnwp.yml..."
+        if ! "$vortex_script" "$recipe" "$site_dir" .; then
+            print_error "Failed to generate environment configuration"
+            return 1
+        fi
+
+        print_status "OK" "Environment configuration generated"
+
+        # Load environment variables
+        if [ -f ".env" ]; then
+            print_info "Loading environment variables..."
+            set -a
+            source ".env"
+            set +a
+            print_status "OK" "Environment variables loaded"
+        fi
     else
-        print_status "INFO" "Skipping Step 2: DDEV already configured"
+        print_status "INFO" "Skipping Step 2: Environment already configured"
     fi
 
-    # Step 3: Memory Configuration
+    # Step 3: Configure DDEV
     if should_run_step 3 "$start_step"; then
-        print_header "Step 3: Memory Configuration"
+        print_header "Step 3: Configure DDEV"
+
+        # Get NWP root directory
+        local nwp_root="$(cd "$(dirname "$config_file")" && pwd)"
+        local ddev_script="$nwp_root/vortex/scripts/generate-ddev.sh"
+
+        if [ -f "$ddev_script" ]; then
+            # Use vortex script to generate DDEV config
+            print_info "Generating DDEV configuration from .env..."
+            if ! "$ddev_script" .; then
+                print_error "Failed to generate DDEV configuration"
+                return 1
+            fi
+            print_status "OK" "DDEV configuration generated"
+        else
+            # Fallback to manual DDEV config
+            print_warn "Vortex DDEV script not found, using manual configuration"
+
+            # Map database type to DDEV database type
+            local ddev_database="$database"
+            # DDEV uses mariadb as the database type
+            if [ "$database" == "mysql" ]; then
+                ddev_database="mysql:8.0"
+            elif [ "$database" == "mariadb" ]; then
+                ddev_database="mariadb:10.11"
+            fi
+
+            if ! ddev config --project-type=drupal --docroot="$webroot" --php-version="$php_version" --database="$ddev_database"; then
+                print_error "Failed to configure DDEV"
+                return 1
+            fi
+            print_status "OK" "DDEV configured (Database: $ddev_database)"
+        fi
+    else
+        print_status "INFO" "Skipping Step 3: DDEV already configured"
+    fi
+
+    # Step 4: Memory Configuration
+    if should_run_step 4 "$start_step"; then
+        print_header "Step 4: Memory Configuration"
 
         mkdir -p .ddev/php
         cat > .ddev/php/memory.ini << 'EOF'
@@ -720,12 +772,12 @@ max_execution_time = 600
 EOF
         print_status "OK" "Memory limits configured"
     else
-        print_status "INFO" "Skipping Step 3: Memory already configured"
+        print_status "INFO" "Skipping Step 4: Memory already configured"
     fi
 
-    # Step 4: Launch Services
-    if should_run_step 4 "$start_step"; then
-        print_header "Step 4: Launch DDEV Services"
+    # Step 5: Launch Services
+    if should_run_step 5 "$start_step"; then
+        print_header "Step 5: Launch DDEV Services"
 
         if ! ddev start; then
             print_error "Failed to start DDEV"
@@ -733,12 +785,12 @@ EOF
         fi
         print_status "OK" "DDEV services started"
     else
-        print_status "INFO" "Skipping Step 4: DDEV already started"
+        print_status "INFO" "Skipping Step 5: DDEV already started"
     fi
 
-    # Step 5: Verify Drush is Available
-    if should_run_step 5 "$start_step"; then
-        print_header "Step 5: Verify Drush is Available"
+    # Step 6: Verify Drush is Available
+    if should_run_step 6 "$start_step"; then
+        print_header "Step 6: Verify Drush is Available"
 
         # Check if Drush is available
         if [ -f "vendor/bin/drush" ]; then
@@ -748,12 +800,12 @@ EOF
             print_info "Try manually installing with: composer require drush/drush --dev"
         fi
     else
-        print_status "INFO" "Skipping Step 5: Drush verification"
+        print_status "INFO" "Skipping Step 6: Drush verification"
     fi
 
-    # Step 6: Configure Private File System
-    if should_run_step 6 "$start_step"; then
-        print_header "Step 6: Configure Private File System"
+    # Step 7: Configure Private File System
+    if should_run_step 7 "$start_step"; then
+        print_header "Step 7: Configure Private File System"
 
         # Create private files directory
         mkdir -p private
@@ -806,12 +858,12 @@ EOF
 
         print_status "OK" "Private file system configured in settings.php"
     else
-        print_status "INFO" "Skipping Step 6: Private file system already configured"
+        print_status "INFO" "Skipping Step 7: Private file system already configured"
     fi
 
-    # Step 7: Install Drupal Profile
-    if should_run_step 7 "$start_step"; then
-        print_header "Step 7: Install Drupal Profile"
+    # Step 8: Install Drupal Profile
+    if should_run_step 8 "$start_step"; then
+        print_header "Step 8: Install Drupal Profile"
         print_info "This will take 5-10 minutes..."
 
         # Verify DDEV is running and restart to ensure proper mount
@@ -859,11 +911,11 @@ EOF
         fi
         print_status "OK" "Drupal site installed"
     else
-        print_status "INFO" "Skipping Step 7: Drupal already installed"
+        print_status "INFO" "Skipping Step 8: Drupal already installed"
     fi
 
-    # Step 8: Additional modules and configuration
-    if should_run_step 8 "$start_step"; then
+    # Step 9: Additional modules and configuration
+    if should_run_step 9 "$start_step"; then
         # Dev modules installation if dev mode enabled
         local dev=$(get_recipe_value "$recipe" "dev" "$base_dir/cnwp.yml")
         if [ "$dev" == "y" ]; then
@@ -895,7 +947,7 @@ EOF
         print_info "Verifying installation..."
         ddev drush status
     else
-        print_status "INFO" "Skipping Step 8: Additional configuration"
+        print_status "INFO" "Skipping Step 9: Additional configuration"
     fi
 
     # Create test content if requested

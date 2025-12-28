@@ -32,6 +32,10 @@
 !docs/
 !docs/**
 
+# Vortex configuration templates
+!vortex/
+!vortex/**
+
 # Linode deployment infrastructure
 !linode/
 !linode/**
@@ -46,3 +50,13 @@
 
 # Keep .gitignore itself
 !.gitignore
+
+# However, always ignore secrets and local overrides anywhere in the tree
+**/.secrets.yml
+**/.secrets.yaml
+**/.env.local
+**/.ddev/config.local.yaml
+**/.ddev/config.*.yaml
+!**/.ddev/config.yaml
+**/*.local.yml
+**/*.local.yaml

@@ -683,3 +683,56 @@ You can copy, modify, distribute and perform the work, even for commercial purpo
 ## Support
 
 For issues, questions, or contributions, please refer to the project repository or contact the maintainer.
+
+## Environment Variables (New in v0.2)
+
+NWP now includes comprehensive environment variable management:
+
+### Quick Start
+
+Environment configuration is automatic when creating new sites:
+
+```bash
+./install.sh d mysite
+```
+
+This generates:
+- `.env` - Main environment configuration (auto-generated, don't edit)
+- `.env.local.example` - Template for local overrides  
+- `.secrets.example.yml` - Template for credentials
+
+### Customizing Your Environment
+
+1. **Local overrides**: Copy `.env.local.example` to `.env.local`
+   ```bash
+   cp .env.local.example .env.local
+   # Edit .env.local with your settings
+   ```
+
+2. **Secrets**: Copy `.secrets.example.yml` to `.secrets.yml`
+   ```bash
+   cp .secrets.example.yml .secrets.yml
+   # Add your API keys, passwords, etc.
+   ```
+
+3. **Never commit**: `.env.local` and `.secrets.yml` are automatically gitignored
+
+### Manual Generation
+
+For existing sites or custom setups:
+
+```bash
+# Generate .env from recipe
+./vortex/scripts/generate-env.sh [recipe] [sitename] [path]
+
+# Generate DDEV config from .env
+./vortex/scripts/generate-ddev.sh [path]
+```
+
+### Documentation
+
+- **Templates**: See `vortex/templates/` for available templates
+- **Full Guide**: See `vortex/README.md`
+- **Migration**: See `docs/MIGRATION_GUIDE_ENV.md`
+- **Comparison**: See `docs/environment-variables-comparison.md`
+

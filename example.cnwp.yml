@@ -62,18 +62,51 @@ recipes:
     #    sitename: default # leave blank it will be called the name of the site, eg loc
     auto:  y
 
-  # Enhanced recipe example with deployment configuration (Section 5.1)
+  # Enhanced recipe example with full environment configuration (NWP v0.2+)
   enhanced_example:
     source: goalgorilla/social_template:dev-master
     profile: social
     webroot: html
     auto: y
+
     # Directory paths
     private: ../private              # Private files directory
     cmi: ../cmi                       # Configuration management directory
+
+    # Environment configuration (NEW in v0.2)
+    environment:
+      development:
+        debug: true                   # Enable debug mode
+        xdebug: true                  # Enable XDebug
+        database_import: always       # Always import database
+        stage_file_proxy: true        # Use stage_file_proxy module
+        stage_file_proxy_origin: https://www.example.com
+      staging:
+        debug: false
+        database_sanitize: true       # Sanitize database on import
+        stage_file_proxy: true
+        stage_file_proxy_origin: https://www.example.com
+      production:
+        debug: false
+        database_sanitize: false
+        redis: true                   # Enable Redis in production
+        caching: aggressive           # Aggressive caching
+
+    # Services configuration (NEW in v0.2)
+    services:
+      redis:
+        enabled: true                 # Enable Redis
+        version: "7"
+      solr:
+        enabled: true                 # Enable Solr
+        core: social                  # Solr core name
+      memcache:
+        enabled: false
+
     # Development configuration
     dev_modules: devel kint webprofiler stage_file_proxy  # Dev Drupal modules
     dev_composer: drupal/devel drupal/stage_file_proxy    # Dev composer packages
+
     # Deployment configuration
     reinstall_modules: custom_module  # Modules to reinstall during sync
     prod_method: rsync                # Production method: git, tar, rsync
@@ -82,9 +115,11 @@ recipes:
     # prod_gitdb: git@github.com:user/site-db.git
     # SSH-based production (if prod_method: rsync or ssh)
     # prod_alias: user@prod.example.com:/var/www/sitename
+
     # Additional options
     force: false                      # Force config imports
     # lando: false                    # Use Lando instead of DDEV
+    # secrets_file: .secrets.yml      # Custom secrets file location
   test_nwp:
     source: goalgorilla/social_template:dev-master
     profile: social

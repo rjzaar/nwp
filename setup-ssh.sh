@@ -47,6 +47,143 @@ print_warning() {
     echo -e "${YELLOW}${BOLD}WARNING:${NC} $1"
 }
 
+# Check for Linode API token
+get_linode_token() {
+    local token=""
+
+    # Check .secrets.yml first
+    if [ -f "$SCRIPT_DIR/.secrets.yml" ]; then
+        token=$(awk '/^linode:/{f=1} f && /api_token:/{print $2; exit}' "$SCRIPT_DIR/.secrets.yml" | tr -d '"' | tr -d "'")
+    fi
+
+    # Fall back to environment variable
+    if [ -z "$token" ] && [ -n "${LINODE_API_TOKEN:-}" ]; then
+        token="$LINODE_API_TOKEN"
+    fi
+
+    echo "$token"
+}
+
+# Get list of Linode servers from cnwp.yml
+get_linode_servers() {
+    awk '
+        /^linode:/ { in_linode=1 }
+        in_linode && /^  servers:/ { in_servers=1; next }
+        in_servers && /^    [a-z_]+:/ {
+            server=$1
+            sub(/:$/, "", server)
+            print server
+        }
+        in_servers && /^  [a-z]/ && !/^  servers:/ { in_servers=0; in_linode=0 }
+    ' "$SCRIPT_DIR/cnwp.yml" 2>/dev/null
+}
+
+# Get server details from cnwp.yml
+get_server_detail() {
+    local server_name=$1
+    local detail=$2
+
+    awk -v server="$server_name" -v detail="$detail" '
+        /^linode:/ { in_linode=1 }
+        in_linode && /^  servers:/ { in_servers=1 }
+        in_servers && $0 ~ "^    " server ":" { in_server=1; next }
+        in_server && $0 ~ "^      " detail ": " {
+            value=$0
+            sub(/^      [^:]+: /, "", value)
+            print value
+            exit
+        }
+        in_server && /^    [a-z]/ { in_server=0 }
+    ' "$SCRIPT_DIR/cnwp.yml" 2>/dev/null
+}
+
+# Add SSH key to Linode account via API
+add_key_to_linode_api() {
+    local public_key_file=$1
+    local token=$2
+    local label="${3:-nwp-deployment-key}"
+
+    if [ ! -f "$public_key_file" ]; then
+        print_error "Public key file not found: $public_key_file"
+        return 1
+    fi
+
+    local public_key=$(cat "$public_key_file")
+
+    print_info "Adding SSH key to Linode account..."
+
+    # Use Linode API to add SSH key
+    local response=$(curl -s -X POST "https://api.linode.com/v4/profile/sshkeys" \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json" \
+        -d "{\"label\": \"$label\", \"ssh_key\": \"$public_key\"}")
+
+    if echo "$response" | grep -q '"id"'; then
+        local key_id=$(echo "$response" | grep -o '"id":[0-9]*' | cut -d: -f2)
+        print_status "SSH key added to Linode account (ID: $key_id)"
+        return 0
+    elif echo "$response" | grep -q '"errors"'; then
+        local error=$(echo "$response" | grep -o '"reason":"[^"]*"' | cut -d'"' -f4)
+        if echo "$error" | grep -qi "already exists\|duplicate"; then
+            print_status "SSH key already exists in Linode account"
+            return 0
+        else
+            print_error "Linode API error: $error"
+            return 1
+        fi
+    else
+        print_error "Failed to add SSH key to Linode"
+        print_info "Response: $response"
+        return 1
+    fi
+}
+
+# Push SSH key to specific Linode server
+push_key_to_server() {
+    local server_name=$1
+    local public_key_file=$2
+
+    local ssh_user=$(get_server_detail "$server_name" "ssh_user")
+    local ssh_host=$(get_server_detail "$server_name" "ssh_host")
+    local ssh_port=$(get_server_detail "$server_name" "ssh_port")
+    local ssh_key=$(get_server_detail "$server_name" "ssh_key")
+
+    if [ -z "$ssh_user" ] || [ -z "$ssh_host" ]; then
+        print_warning "Incomplete configuration for server: $server_name"
+        return 1
+    fi
+
+    print_info "Pushing key to $server_name ($ssh_user@$ssh_host)..."
+
+    # Build SSH command
+    local ssh_cmd="ssh"
+    if [ -n "$ssh_port" ] && [ "$ssh_port" != "22" ]; then
+        ssh_cmd="$ssh_cmd -p $ssh_port"
+    fi
+
+    # If there's an existing key, use it for the connection
+    if [ -n "$ssh_key" ]; then
+        ssh_key_expanded="${ssh_key/#\~/$HOME}"
+        if [ -f "$ssh_key_expanded" ]; then
+            ssh_cmd="$ssh_cmd -i $ssh_key_expanded"
+        fi
+    fi
+
+    # Add options for non-interactive
+    ssh_cmd="$ssh_cmd -o StrictHostKeyChecking=accept-new -o BatchMode=no"
+
+    local public_key=$(cat "$public_key_file")
+
+    # Push the key
+    if $ssh_cmd "$ssh_user@$ssh_host" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$public_key' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo 'Key added successfully'"; then
+        print_status "Key pushed to $server_name"
+        return 0
+    else
+        print_warning "Failed to push key to $server_name (may need manual setup)"
+        return 1
+    fi
+}
+
 show_help() {
     cat << EOF
 NWP SSH Key Setup Script
@@ -81,9 +218,20 @@ WHAT THIS DOES:
     2. Generates SSH keypair: nwp (private) and nwp.pub (public)
     3. Installs private key to ~/.ssh/nwp with correct permissions (600)
     4. Keeps public key in keys/nwp.pub for easy deployment
-    5. Updates cnwp.yml with ssh_key path (if needed)
 
-NEXT STEPS:
+LINODE INTEGRATION (Automatic if token detected):
+    If .secrets.yml contains a Linode API token, this script will:
+    5. Add SSH key to your Linode account via API
+    6. Push key to all configured servers in cnwp.yml
+    7. Set up complete deployment infrastructure automatically
+
+    To enable automatic setup:
+    - Add Linode API token to .secrets.yml:
+      linode:
+        api_token: YOUR_TOKEN_HERE
+    - Configure servers in cnwp.yml under linode.servers
+
+NEXT STEPS (Manual):
     1. Add public key to your Linode server:
        cat keys/nwp.pub
        # Copy output and add to server's ~/.ssh/authorized_keys
@@ -145,6 +293,44 @@ if [[ "$KEY_TYPE" == "rsa" && "$KEY_BITS" != "2048" && "$KEY_BITS" != "4096" ]];
 fi
 
 print_header "NWP SSH Key Setup"
+
+################################################################################
+# Initial Check: Detect Linode token and missing keys
+################################################################################
+
+PRIVATE_KEY_PATH="$SCRIPT_DIR/keys/nwp"
+SSH_PRIVATE_KEY_PATH="$HOME/.ssh/nwp"
+LINODE_TOKEN=$(get_linode_token)
+
+if [ -n "$LINODE_TOKEN" ] && [ ! -f "$PRIVATE_KEY_PATH" ] && [ ! -f "$SSH_PRIVATE_KEY_PATH" ]; then
+    echo -e "${GREEN}${BOLD}Linode API token detected!${NC}"
+    echo ""
+    echo "I can automatically:"
+    echo "  1. Generate SSH keys (nwp/nwp.pub)"
+    echo "  2. Install private key to ~/.ssh/nwp"
+    echo "  3. Add public key to your Linode account"
+    echo "  4. Push key to all configured servers"
+    echo ""
+
+    SERVERS=$(get_linode_servers)
+    if [ -n "$SERVERS" ]; then
+        echo "Configured servers:"
+        for server in $SERVERS; do
+            local host=$(get_server_detail "$server" "ssh_host")
+            local user=$(get_server_detail "$server" "ssh_user")
+            echo "  • $server ($user@$host)"
+        done
+        echo ""
+    fi
+
+    read -p "Run automatic setup? (Y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        print_info "Starting automatic setup..."
+        # Continue with normal flow, but will auto-push at the end
+    fi
+    echo ""
+fi
 
 ################################################################################
 # Step 1: Create keys directory
@@ -253,31 +439,100 @@ cat "$PUBLIC_KEY"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-echo -e "${BOLD}Next steps:${NC}"
-echo ""
-echo "1. Add public key to your Linode server:"
-echo "   ${BLUE}ssh user@your-server 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'${NC}"
-echo "   Then paste the public key above and press Ctrl+D"
-echo ""
-echo "2. Or copy the public key manually:"
-echo "   ${BLUE}cat $PUBLIC_KEY${NC}"
-echo ""
-echo "3. Test SSH connection:"
-echo "   ${BLUE}ssh -i ~/.ssh/nwp user@your-server-ip${NC}"
-echo ""
-echo "4. Update cnwp.yml with your server configuration:"
-echo "   ${BLUE}nano cnwp.yml${NC}"
-echo ""
-echo "   Add under linode.servers:"
-echo "   ${BLUE}linode:"
-echo "     servers:"
-echo "       linode_primary:"
-echo "         ssh_user: deploy"
-echo "         ssh_host: YOUR_SERVER_IP"
-echo "         ssh_port: 22"
-echo "         ssh_key: ~/.ssh/nwp${NC}"
-echo ""
+################################################################################
+# Step 7: Linode Integration (if token available)
+################################################################################
 
-print_status "Setup complete!"
+LINODE_TOKEN=$(get_linode_token)
+
+if [ -n "$LINODE_TOKEN" ]; then
+    print_header "Step 7: Linode Integration"
+
+    echo -e "${BOLD}Linode API token detected!${NC}\n"
+
+    # Check for configured servers
+    SERVERS=$(get_linode_servers)
+
+    if [ -z "$SERVERS" ]; then
+        print_warning "No Linode servers configured in cnwp.yml"
+        echo ""
+        echo "To add servers, edit cnwp.yml and add under linode.servers:"
+        echo "  ${BLUE}linode:"
+        echo "    servers:"
+        echo "      linode_primary:"
+        echo "        ssh_user: deploy"
+        echo "        ssh_host: YOUR_SERVER_IP"
+        echo "        ssh_port: 22"
+        echo "        ssh_key: ~/.ssh/nwp${NC}"
+        echo ""
+    else
+        echo "Configured Linode servers:"
+        for server in $SERVERS; do
+            local host=$(get_server_detail "$server" "ssh_host")
+            local user=$(get_server_detail "$server" "ssh_user")
+            echo "  • $server ($user@$host)"
+        done
+        echo ""
+
+        # Offer to push key
+        read -p "Push SSH key to Linode servers? (y/N) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            # Add to Linode account via API
+            echo ""
+            add_key_to_linode_api "$PUBLIC_KEY" "$LINODE_TOKEN" "nwp-deployment-$(date +%Y%m%d)"
+
+            # Push to each server
+            echo ""
+            print_info "Pushing key to configured servers..."
+            echo ""
+
+            for server in $SERVERS; do
+                push_key_to_server "$server" "$PUBLIC_KEY" || true
+            done
+
+            echo ""
+            print_status "Key deployment complete!"
+            echo ""
+            echo "Test your connection:"
+            for server in $SERVERS; do
+                local host=$(get_server_detail "$server" "ssh_host")
+                local user=$(get_server_detail "$server" "ssh_user")
+                if [ -n "$host" ] && [ -n "$user" ]; then
+                    echo "  ${BLUE}ssh -i ~/.ssh/nwp $user@$host${NC}"
+                fi
+            done
+        else
+            print_info "Skipping automatic deployment"
+        fi
+    fi
+    echo ""
+fi
+
+################################################################################
+# Final Instructions
+################################################################################
+
+if [ -z "$LINODE_TOKEN" ] || [ -z "$SERVERS" ]; then
+    print_header "Manual Setup Instructions"
+
+    echo -e "${BOLD}Next steps:${NC}"
+    echo ""
+    echo "1. Add public key to your Linode server:"
+    echo "   ${BLUE}ssh user@your-server 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'${NC}"
+    echo "   Then paste the public key above and press Ctrl+D"
+    echo ""
+    echo "2. Or copy the public key manually:"
+    echo "   ${BLUE}cat $PUBLIC_KEY${NC}"
+    echo ""
+    echo "3. Configure cnwp.yml with server details"
+    echo ""
+    echo "4. Add Linode API token to .secrets.yml for automatic deployment:"
+    echo "   ${BLUE}linode:"
+    echo "     api_token: YOUR_TOKEN_HERE${NC}"
+    echo ""
+fi
+
+print_status "SSH key setup complete!"
 
 exit 0

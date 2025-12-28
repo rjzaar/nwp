@@ -37,13 +37,43 @@ All Phase 1 items from the prioritized roadmap have been completed:
   - make.sh: `-vdy` (dev + debug + yes)
   - dev2stg.sh: `-dy` (debug + yes)
 
+#### New Script: delete.sh
+
+**Added** comprehensive site deletion script with graceful cleanup:
+
+**Features**:
+- **Universal support** - Works with all DDEV site types (Drupal, Moodle, etc.)
+- **Optional backup** - Create backup before deletion with `-b` flag
+- **Backup management** - Keep or delete existing backups with `-k` flag
+- **Auto-confirm** - Skip prompts with `-y` flag
+- **Combined flags** - Use `-bky` for backup + keep + auto-confirm
+- **Safety confirmations** - Warns before permanent deletion
+- **6-step process**:
+  1. Validate site exists
+  2. Create backup (if requested)
+  3. Stop DDEV containers
+  4. Delete DDEV project
+  5. Remove site directory
+  6. Handle existing backups
+
+**Usage examples**:
+```bash
+./delete.sh os                    # Delete with confirmation
+./delete.sh -y nwp5              # Auto-confirm deletion
+./delete.sh -b nwp4              # Backup before deletion
+./delete.sh -bky old_site        # Backup + keep backups + auto-confirm
+```
+
 ### Files Changed
 - **Modified**: backup.sh - Added combined flags documentation
 - **Modified**: copy.sh - Enhanced error messages + combined flags docs
 - **Modified**: dev2stg.sh - Fixed help text + enhanced errors + combined flags
 - **Modified**: make.sh - Enhanced error messages + combined flags docs
 - **Modified**: restore.sh - Enhanced error messages + combined flags docs
+- **NEW**: delete.sh - Comprehensive site deletion script
+- **Modified**: test-nwp.sh - Added delete.sh validation tests
 - **Modified**: docs/IMPROVEMENTS.md - Documented v0.5 changes, marked Phase 1 complete
+- **Modified**: docs/CHANGES.md - Added delete.sh documentation
 
 ### Breaking Changes
 None. All changes are backward compatible and improve user experience.

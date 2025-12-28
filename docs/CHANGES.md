@@ -64,6 +64,12 @@ All Phase 1 items from the prioritized roadmap have been completed:
 ./delete.sh -bky old_site        # Backup + keep backups + auto-confirm
 ```
 
+**Testing**:
+- **Test 8b** added to test-nwp.sh for comprehensive delete functionality testing
+- Tests create temporary sites, delete with various flags, verify deletion
+- Validates backup creation and preservation with `-b` and `-k` flags
+- Includes 6 functional tests covering all delete.sh features
+
 ### Files Changed
 - **Modified**: backup.sh - Added combined flags documentation
 - **Modified**: copy.sh - Enhanced error messages + combined flags docs
@@ -71,7 +77,7 @@ All Phase 1 items from the prioritized roadmap have been completed:
 - **Modified**: make.sh - Enhanced error messages + combined flags docs
 - **Modified**: restore.sh - Enhanced error messages + combined flags docs
 - **NEW**: delete.sh - Comprehensive site deletion script
-- **Modified**: test-nwp.sh - Added delete.sh validation tests
+- **Modified**: test-nwp.sh - Added delete.sh validation and functional tests (Test 8b)
 - **Modified**: docs/IMPROVEMENTS.md - Documented v0.5 changes, marked Phase 1 complete
 - **Modified**: docs/CHANGES.md - Added delete.sh documentation
 

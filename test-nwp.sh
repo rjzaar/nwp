@@ -406,6 +406,8 @@ ALL_TEST_SITES=(
     "${TEST_SITE_PREFIX}_copy"
     "${TEST_SITE_PREFIX}_files"
     "${TEST_SITE_PREFIX}_stg"
+    "${TEST_SITE_PREFIX}_delete"
+    "${TEST_SITE_PREFIX}_delete2"
 )
 
 for site in "${ALL_TEST_SITES[@]}"; do
@@ -419,6 +421,37 @@ for site in "${ALL_TEST_SITES[@]}"; do
         fi
     fi
 done
+
+# Test 8b: Delete functionality
+print_header "Test 8b: Delete Functionality"
+
+# Create a test site specifically for deletion testing
+DELETE_TEST_SITE="${TEST_SITE_PREFIX}_delete"
+print_info "Creating temporary site for deletion testing..."
+run_test "Create site for deletion test" "./install.sh -y $DELETE_TEST_SITE test_nwp"
+
+if site_exists "$DELETE_TEST_SITE"; then
+    # Test 1: Delete with backup and auto-confirm
+    run_test "Delete with backup (-by)" "./delete.sh -by $DELETE_TEST_SITE"
+    run_test "Site deleted successfully" "! site_exists $DELETE_TEST_SITE"
+    run_test "Backup created during deletion" "[ -d sitebackups/$DELETE_TEST_SITE ] && [ -n \"\$(find sitebackups/$DELETE_TEST_SITE -name '*.tar.gz' 2>/dev/null)\" ]"
+
+    # Create another test site for keep-backups test
+    DELETE_TEST_SITE2="${TEST_SITE_PREFIX}_delete2"
+    print_info "Creating second test site for keep-backups test..."
+    run_test "Create second deletion test site" "./install.sh -y $DELETE_TEST_SITE2 test_nwp"
+
+    if site_exists "$DELETE_TEST_SITE2"; then
+        # Test 2: Delete with backup and keep backups
+        run_test "Delete with backup and keep (-bky)" "./delete.sh -bky $DELETE_TEST_SITE2"
+        run_test "Second site deleted successfully" "! site_exists $DELETE_TEST_SITE2"
+        run_test "Backups preserved with -k flag" "[ -d sitebackups/$DELETE_TEST_SITE2 ]"
+    else
+        print_warning "Could not create second deletion test site"
+    fi
+else
+    print_warning "Could not create deletion test site, skipping delete tests"
+fi
 
 # Test 9: Script validation
 print_header "Test 9: Script Validation"

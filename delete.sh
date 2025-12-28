@@ -116,6 +116,12 @@ ${BOLD}DELETION PROCESS:${NC}
     6. Handle backups (delete or keep based on -k flag)
     7. Display summary
 
+${BOLD}BACKUP BEHAVIOR:${NC}
+    - Without -y: Asks to delete existing backups (default: No)
+    - With -y: Keeps existing backups (safer default for auto-confirm)
+    - With -k: Always keeps backups regardless of -y flag
+    - With -by: Creates backup then keeps it (recommended safe delete)
+
 ${BOLD}SITE TYPES SUPPORTED:${NC}
     - Drupal (all versions)
     - Moodle
@@ -124,6 +130,7 @@ ${BOLD}SITE TYPES SUPPORTED:${NC}
 
 ${BOLD}NOTE:${NC}
     This operation cannot be undone unless you create a backup first (-b flag).
+    When using auto-confirm (-y), backups are preserved by default for safety.
     Use with caution!
 
 EOF
@@ -319,6 +326,11 @@ handle_backups() {
             print_status "OK" "Keeping backups"
             return 0
         fi
+    else
+        # When auto-confirm is enabled, keep backups by default
+        # User must explicitly use -k to delete them with -y
+        print_status "INFO" "Keeping backups (auto-confirm mode)"
+        return 0
     fi
 
     ocmsg "Removing backup directory: $backup_dir"

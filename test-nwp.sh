@@ -36,7 +36,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # Configuration
-TEST_SITE_PREFIX="test_nwp"
+TEST_SITE_PREFIX="test-nwp"
 CLEANUP=true
 VERBOSE=false
 LOG_FILE="test-nwp-$(date +%Y%m%d-%H%M%S).log"
@@ -248,7 +248,7 @@ if ! grep -q "^  ${TEST_SITE_PREFIX}:" cnwp.yml 2>/dev/null; then
     # Add with proper indentation (2 spaces for recipe name, 4 for properties)
     cat >> cnwp.yml << 'EOF'
 
-  test_nwp:
+  test-nwp:
     source: goalgorilla/social_template:dev-master
     profile: social
     webroot: html

@@ -4,6 +4,196 @@ All notable changes to the NWP (Narrow Way Project) are documented here, organiz
 
 ---
 
+## [v0.6] - 2025-12-28
+
+### Major Changes
+
+#### Vortex Environment Variable System (Complete Implementation of 9.1 & 9.2)
+
+**Completed**: Full implementation of environment variable management system with configuration hierarchy.
+
+**New Directory Structure**:
+```
+vortex/
+├── README.md                    # Comprehensive vortex documentation
+├── templates/                   # Environment templates
+│   ├── .env.base               # Base template with all variables
+│   ├── .env.drupal             # Drupal standard profile
+│   ├── .env.social             # Open Social profile
+│   ├── .env.varbase            # Varbase profile
+│   ├── .env.local.example      # Local overrides template
+│   └── .secrets.example.yml    # Secrets template
+└── scripts/                     # Utility scripts
+    ├── generate-env.sh         # Generate .env from cnwp.yml
+    ├── generate-ddev.sh        # Generate DDEV config from .env
+    └── load-secrets.sh         # Load secrets from .secrets.yml
+```
+
+**Configuration Hierarchy**:
+- Recipe-specific settings (highest priority)
+- Global settings defaults (`settings.services`, `settings.environment`)
+- Profile-based defaults (social/varbase enable redis/solr)
+- Hardcoded defaults (lowest priority)
+
+**Features**:
+1. ✅ **Automatic .env generation** - Step 2 in install.sh generates .env from cnwp.yml
+2. ✅ **Template system** - Profile-specific templates with variable substitution
+3. ✅ **DDEV integration** - Auto-generate config.yaml from .env files
+4. ✅ **Service management** - Global defaults for redis, solr, memcache with recipe overrides
+5. ✅ **Environment profiles** - Development, staging, production configurations
+6. ✅ **Secrets management** - Separate .secrets.yml for credentials (gitignored)
+7. ✅ **No external dependencies** - Uses awk instead of yq for YAML parsing
+8. ✅ **DRY principle** - Define defaults once in settings, override per recipe
+
+**cnwp.yml Enhancements**:
+```yaml
+settings:
+  # Environment profiles
+  environment:
+    development:
+      debug: true
+      xdebug: false
+    staging:
+      debug: false
+      stage_file_proxy: true
+    production:
+      debug: false
+      redis: true
+      caching: aggressive
+
+  # Service defaults
+  services:
+    redis:
+      enabled: false
+      version: "7"
+    solr:
+      enabled: false
+      version: "8"
+      core: drupal
+```
+
+### Critical Bug Fixes
+
+**1. Vortex Script Path Resolution**
+- **Problem**: install.sh couldn't find vortex scripts when running from site directory
+- **Cause**: Using `dirname $config_file` which returned "." when in site directory
+- **Fix**: Use `$base_dir` variable instead (lines 696, 729 in install.sh)
+- **Impact**: Environment generation now works correctly during installation
+
+**2. Environment Variable Parameter**
+- **Problem**: generate-env.sh called with undefined `$site_dir` variable
+- **Cause**: Variable name mismatch in install.sh
+- **Fix**: Changed to correct `$install_dir` variable (line 705 in install.sh)
+- **Impact**: Proper site name passed to environment generation
+
+**3. DEV_MODULES Execution Bug**
+- **Problem**: Bash tried to execute DEV_MODULES values as commands when sourcing .env
+- **Cause**: Unquoted multi-word values like `devel kint webprofiler`
+- **Fix**: Added quotes around DEV_MODULES and DEV_COMPOSER in all templates
+- **Impact**: .env files can now be safely sourced without command execution errors
+
+**4. Missing PROJECT_NAME Variables**
+- **Problem**: PROJECT_NAME and NWP_RECIPE not generated in .env files
+- **Cause**: Profile-specific templates didn't include these variables
+- **Fix**: Added PROJECT_NAME and NWP_RECIPE to all templates
+- **Impact**: Generated .env files now include project identification variables
+
+### Testing Enhancements
+
+**Test 1b: Environment Variable Generation (Vortex)**
+- Added comprehensive vortex testing to test-nwp.sh
+- **Tests**:
+  - ✅ .env file creation
+  - ✅ .env.local.example creation
+  - ✅ .secrets.example.yml creation
+  - ✅ Required variables (PROJECT_NAME, NWP_RECIPE, DRUPAL_PROFILE, etc.)
+  - ✅ Service configuration (REDIS_ENABLED, SOLR_ENABLED)
+  - ✅ Profile-specific defaults (social profile has redis=1, solr=1)
+  - ✅ DDEV config generation with web_environment
+- **Results**: 11 new tests added, all passing
+
+### Documentation Updates
+
+**New Documentation**:
+1. ✅ `vortex/README.md` (340 lines) - Complete vortex system guide
+2. ✅ `docs/MIGRATION_GUIDE_ENV.md` (246 lines) - Migration guide for v0.2
+3. ✅ `docs/environment-variables-comparison.md` - Comprehensive comparison & recommendations
+
+**Updated Documentation**:
+1. ✅ `README.md` - Added Environment Variables and Configuration Hierarchy sections
+2. ✅ All templates properly documented with comments
+3. ✅ `.gitignore` - Added patterns for .env.local, .secrets.yml, config.local.yaml
+
+### Files Changed
+
+**New Files**:
+- `vortex/README.md`
+- `vortex/templates/.env.base`
+- `vortex/templates/.env.drupal`
+- `vortex/templates/.env.social`
+- `vortex/templates/.env.varbase`
+- `vortex/templates/.env.local.example`
+- `vortex/templates/.secrets.example.yml`
+- `vortex/scripts/generate-env.sh`
+- `vortex/scripts/generate-ddev.sh`
+- `vortex/scripts/load-secrets.sh`
+- `docs/MIGRATION_GUIDE_ENV.md`
+- `docs/environment-variables-comparison.md`
+
+**Modified Files**:
+- `install.sh` - Added Step 2 (environment generation), fixed vortex path resolution
+- `test-nwp.sh` - Added Test 1b for vortex compatibility
+- `README.md` - Added environment variables and configuration hierarchy sections
+- `example.cnwp.yml` - Added settings.environment and settings.services
+- `.gitignore` - Added vortex whitelist and secrets patterns
+
+### Breaking Changes
+None. All changes are backward compatible. Existing installations continue to work without modification.
+
+### Migration Path
+
+**For new installations**: Automatic - environment generation happens in Step 2
+
+**For existing sites**:
+```bash
+# Generate .env from recipe
+cd your-site
+../vortex/scripts/generate-env.sh [recipe] [sitename] .
+
+# Regenerate DDEV config (optional)
+../vortex/scripts/generate-ddev.sh .
+ddev restart
+```
+
+See `docs/MIGRATION_GUIDE_ENV.md` for detailed migration instructions.
+
+### Implementation Summary
+
+Completed all items from sections 9.1 and 9.2 of environment-variables-comparison.md:
+
+**9.1 Immediate (High Priority)** ✅
+1. ✅ Environment variable mapping from cnwp.yml to DDEV
+2. ✅ .env support in NWP scripts
+3. ✅ Environment variables documentation
+4. ✅ .env.example templates for each recipe
+5. ✅ .gitignore entries for secrets
+
+**9.2 Short-term (Medium Priority)** ✅
+6. ✅ DDEV config generation in install.sh
+7. ✅ Environment selection (dev/staging/prod)
+8. ✅ Service management system in cnwp.yml
+9. ✅ Secrets management framework
+10. ✅ Migration guide for existing users
+
+**Bonus: 9.3 Additional Enhancements** ✅
+11. ✅ Configuration hierarchy (Recipe → Settings → Profile → Defaults)
+12. ✅ Global defaults in settings section
+13. ✅ Recipe override system
+14. ✅ No external dependencies (awk-based YAML parsing)
+15. ✅ Comprehensive documentation
+
+---
+
 ## [v0.5] - 2025-12-28
 
 ### Major Changes
@@ -311,6 +501,7 @@ modules:
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v0.6 | 2025-12-28 | Vortex environment system: Complete 9.1 & 9.2 implementation |
 | v0.5 | 2025-12-28 | Phase 1 complete: Help text, error messages, combined flags docs |
 | v0.4 | 2025-12-28 | Comprehensive test suite, drush installation fixes |
 | v0.3 | 2025-12-24 | Expanded roadmap with 60+ implementation substeps |

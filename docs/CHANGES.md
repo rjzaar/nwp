@@ -68,7 +68,13 @@ All Phase 1 items from the prioritized roadmap have been completed:
 - **Test 8b** added to test-nwp.sh for comprehensive delete functionality testing
 - Tests create temporary sites, delete with various flags, verify deletion
 - Validates backup creation and preservation with `-b` and `-k` flags
-- Includes 6 functional tests covering all delete.sh features
+- Includes 8 functional tests covering all delete.sh features
+
+**Backup Safety Fix**:
+- Fixed backup handling in auto-confirm mode (-y flag)
+- Backups are now preserved by default when using -y (safer behavior)
+- Prevents accidental deletion of backups in automated workflows
+- Added "BACKUP BEHAVIOR" section to help text explaining all scenarios
 
 ### Files Changed
 - **Modified**: backup.sh - Added combined flags documentation

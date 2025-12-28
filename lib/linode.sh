@@ -106,14 +106,20 @@ wait_for_linode() {
         local response=$(curl -s -H "Authorization: Bearer $token" \
             "https://api.linode.com/v4/linode/instances/$instance_id")
 
-        local status=$(echo "$response" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+        local status=$(echo "$response" | grep -o '"status"[: ]*"[^"]*"' | cut -d'"' -f4)
 
         if [ "$status" = "running" ]; then
             echo "Instance is running" >&2
             return 0
         fi
 
-        echo -n "." >&2
+        # Show status periodically for debugging
+        if [ $((elapsed % 30)) -eq 0 ] && [ $elapsed -gt 0 ]; then
+            echo " [status: $status]" >&2
+        else
+            echo -n "." >&2
+        fi
+
         sleep 5
         elapsed=$((elapsed + 5))
     done
@@ -140,7 +146,7 @@ get_linode_ip() {
 wait_for_ssh() {
     local ip=$1
     local ssh_key=${2:-~/.ssh/nwp}
-    local max_wait=${3:-180}
+    local max_wait=${3:-360}
     local elapsed=0
 
     echo "Waiting for SSH to be available on $ip..." >&2

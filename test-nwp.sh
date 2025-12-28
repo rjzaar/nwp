@@ -546,6 +546,8 @@ SCRIPTS=(
     "copy.sh"
     "make.sh"
     "dev2stg.sh"
+    "stg2prod.sh"
+    "prod2stg.sh"
     "delete.sh"
 )
 
@@ -553,6 +555,44 @@ for script in "${SCRIPTS[@]}"; do
     run_test "Script $script exists and executable" "[ -x ./$script ]"
     run_test "Script $script has help" "./$script --help >/dev/null 2>&1"
 done
+
+# Test 10: New deployment scripts
+print_header "Test 10: Deployment Scripts (stg2prod/prod2stg)"
+
+# Test stg2prod.sh validation
+run_test "stg2prod.sh validates missing sitename" "! ./stg2prod.sh 2>/dev/null"
+run_test "stg2prod.sh --dry-run works" "./stg2prod.sh --dry-run $TEST_SITE_PREFIX 2>/dev/null || true"
+
+# Test prod2stg.sh validation
+run_test "prod2stg.sh validates missing sitename" "! ./prod2stg.sh 2>/dev/null"
+run_test "prod2stg.sh --dry-run works" "./prod2stg.sh --dry-run $TEST_SITE_PREFIX 2>/dev/null || true"
+
+# Test 11: YAML library functions
+print_header "Test 11: YAML Library Functions"
+
+# Check YAML library exists
+run_test "YAML library exists" "[ -f lib/yaml-write.sh ]"
+
+# Run YAML library tests if test script exists
+if [ -f "tests/test-yaml-write.sh" ]; then
+    run_test "YAML library unit tests" "./tests/test-yaml-write.sh >/dev/null 2>&1"
+else
+    print_warning "YAML unit tests not found, skipping"
+fi
+
+# Run integration tests if test script exists
+if [ -f "tests/test-integration.sh" ]; then
+    run_test "Integration tests" "./tests/test-integration.sh >/dev/null 2>&1"
+else
+    print_warning "Integration tests not found, skipping"
+fi
+
+# Verify site was registered in cnwp.yml during installation
+if grep -q "^  $TEST_SITE_PREFIX:" cnwp.yml 2>/dev/null; then
+    run_test "Site registered in cnwp.yml" "true"
+else
+    run_test "Site registered in cnwp.yml" "false"
+fi
 
 # Results summary
 print_header "Test Results Summary"

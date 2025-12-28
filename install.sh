@@ -27,6 +27,14 @@
 #   9  - Install additional modules and export config
 ################################################################################
 
+# Get script directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Source YAML library for site registration
+if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
+    source "$SCRIPT_DIR/lib/yaml-write.sh"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -993,6 +1001,44 @@ EOF
     echo -e "  ${BLUE}ddev drush uli${NC}    - Get one-time login link"
     echo -e "  ${BLUE}ddev ssh${NC}          - SSH into container\n"
 
+    # Register site in cnwp.yml (if YAML library is available)
+    if command -v yaml_add_site &> /dev/null; then
+        print_info "Registering site in cnwp.yml..."
+
+        # Get full directory path
+        local site_dir=$(pwd)
+        local site_name=$(basename "$site_dir")
+
+        # Determine environment type from directory suffix
+        local environment="development"
+        if [[ "$site_name" =~ _stg$ ]]; then
+            environment="staging"
+        elif [[ "$site_name" =~ _prod$ ]]; then
+            environment="production"
+        elif [[ "$site_name" =~ _dev$ ]]; then
+            environment="development"
+        fi
+
+        # Get installed modules from install_modules if any
+        local installed_modules=""
+        if [ -n "$install_modules" ]; then
+            installed_modules="$install_modules"
+        fi
+
+        # Register the site
+        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+            print_status "OK" "Site registered in cnwp.yml"
+
+            # Add installed modules if any
+            if [ -n "$installed_modules" ] && command -v yaml_add_site_modules &> /dev/null; then
+                yaml_add_site_modules "$site_name" "$installed_modules" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null
+            fi
+        else
+            # Site already exists or registration failed - not critical
+            ocmsg "Site registration skipped (may already exist)"
+        fi
+    fi
+
     return 0
 }
 
@@ -1319,6 +1365,33 @@ EOF
     echo -e "  ${BLUE}ddev launch${NC}      - Open site in browser"
     echo -e "  ${BLUE}ddev ssh${NC}          - SSH into container"
     echo -e "  ${BLUE}ddev exec php admin/cli/cron.php${NC} - Run Moodle cron\n"
+
+    # Register site in cnwp.yml (if YAML library is available)
+    if command -v yaml_add_site &> /dev/null; then
+        print_info "Registering site in cnwp.yml..."
+
+        # Get full directory path
+        local site_dir=$(pwd)
+        local site_name=$(basename "$site_dir")
+
+        # Determine environment type from directory suffix
+        local environment="development"
+        if [[ "$site_name" =~ _stg$ ]]; then
+            environment="staging"
+        elif [[ "$site_name" =~ _prod$ ]]; then
+            environment="production"
+        elif [[ "$site_name" =~ _dev$ ]]; then
+            environment="development"
+        fi
+
+        # Register the site (Moodle doesn't have install_modules typically)
+        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+            print_status "OK" "Site registered in cnwp.yml"
+        else
+            # Site already exists or registration failed - not critical
+            ocmsg "Site registration skipped (may already exist)"
+        fi
+    fi
 
     return 0
 }

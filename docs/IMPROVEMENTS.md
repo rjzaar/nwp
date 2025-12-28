@@ -6,8 +6,75 @@ This document tracks completed work, known issues, and planned improvements for 
 
 For a chronological list of changes by version, see [CHANGES.md](CHANGES.md).
 
-**Last Updated:** December 28, 2024
-**Current Version:** v0.5
+**Last Updated:** December 29, 2025
+**Current Version:** v0.7
+
+---
+
+## Recent Improvements (v0.7 - December 2025)
+
+### Phase 2 Complete: Production Deployment & Site Tracking ✅
+
+All Future Enhancements 1 & 2 have been completed:
+
+**1. Module Reinstallation (Enhancement #1)** ✅
+- Implemented in `dev2stg.sh` Step 7 (replaces previous TODO)
+- Reads `reinstall_modules` from recipe configuration in cnwp.yml
+- Automatically uninstalls then re-enables specified modules
+- Provides detailed status reporting and error handling
+- Also implemented in `stg2prod.sh` Step 9 for production deployments
+
+**2. Production Deployment Script (Enhancement #2)** ✅
+- Created `stg2prod.sh` (~750 lines) for Linode production deployment
+- 10-step automated deployment workflow:
+  1. Validate deployment configuration
+  2. Test SSH connection to production
+  3. Export configuration from staging
+  4. Optional production backup
+  5. Sync files via rsync over SSH
+  6. Run composer install remotely
+  7. Run database updates remotely
+  8. Import configuration remotely
+  9. Reinstall modules remotely
+  10. Clear cache and display URL
+- Supports: debug mode, auto-yes, dry-run, resume from step N
+- Reads Linode configuration from cnwp.yml
+
+**3. Sites Tracking System** ✅
+- Created YAML writing library (`lib/yaml-write.sh`) with 9 functions
+- Sites automatically registered in cnwp.yml after installation
+- Tracks: directory, recipe, environment, timestamp, modules
+- Automatic cleanup when sites deleted (configurable)
+- 19/19 unit tests passed, 18/18 integration tests passed
+
+**4. Configuration Enhancements** ✅
+- Added `sites:` section in cnwp.yml for tracking installed sites
+- Added `linode:` section for production server configuration
+- Added `delete_site_yml` setting to control cleanup behavior
+- Updated recipes with `prod_method`, `prod_server`, `prod_domain`, `prod_path`
+
+**5. Script Updates** ✅
+- `install.sh`: Automatic site registration after installation
+- `delete.sh`: Added `--keep-yml` flag and Step 7 for cnwp.yml cleanup
+- `dev2stg.sh`: Module reinstallation implementation
+- All scripts source YAML library when available
+
+**6. Testing Infrastructure** ✅
+- Comprehensive unit tests: `tests/test-yaml-write.sh` (19/19 passed)
+- Integration tests: `tests/test-integration.sh` (18/18 passed)
+- Tests verify: YAML operations, site registration, module parsing, config reading
+
+**7. Documentation** ✅
+- Migration guide: `docs/MIGRATION_SITES_TRACKING.md`
+- Production deployment guide: `docs/PRODUCTION_DEPLOYMENT.md`
+- Complete examples in `example.cnwp.yml`
+
+**Key Features:**
+- ✅ No external dependencies (pure AWK/bash, no yq required)
+- ✅ Fully backward compatible (all features optional)
+- ✅ Comprehensive error handling and validation
+- ✅ Automatic backup before YAML modifications
+- ✅ Production-ready with dry-run support
 
 ---
 
@@ -122,14 +189,14 @@ All Phase 1 roadmap items have been completed:
 ### What Still Needs Work ⚠️
 
 1. **Critical Issues**
-   - Module reinstallation not yet reading from `nwp.yml` (Step 7 is a stub)
+   - ~~Module reinstallation not yet reading from `nwp.yml` (Step 7 is a stub)~~ ✅ **COMPLETED in v0.7**
    - Git-based backup functionality incomplete (Section 1.1.4)
    - Production backup methods not implemented (Section 1.1.7)
 
 2. **Missing Features**
-   - No `stg2prod.sh` or `dev2prod.sh` deployment scripts
+   - ~~No `stg2prod.sh` or `dev2prod.sh` deployment scripts~~ ✅ **COMPLETED in v0.7**
    - No unified `nwp` CLI wrapper command
-   - Configuration values in `cnwp.yml` not fully integrated
+   - ~~Configuration values in `cnwp.yml` not fully integrated~~ ✅ **COMPLETED in v0.7**
 
 3. **Usability Improvements Needed**
    - Progress indicators for long-running operations

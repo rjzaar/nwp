@@ -9,6 +9,14 @@
 # Usage: ./delete.sh [OPTIONS] <sitename>
 ################################################################################
 
+# Get script directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Source YAML library
+if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
+    source "$SCRIPT_DIR/lib/yaml-write.sh"
+fi
+
 # Script start time
 START_TIME=$(date +%s)
 
@@ -92,6 +100,7 @@ ${BOLD}OPTIONS:${NC}
     -y, --yes               Skip all confirmation prompts
     -b, --backup            Create backup before deletion
     -k, --keep-backups      Keep existing backups (default: ask)
+    --keep-yml              Keep site entry in cnwp.yml (default: remove)
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Name of the DDEV site to delete
@@ -343,6 +352,66 @@ handle_backups() {
     return 0
 }
 
+# Step 7: Remove from cnwp.yml
+remove_from_cnwp() {
+    local sitename=$1
+    local keep_yml=$2
+
+    print_header "Step 7: Remove from cnwp.yml"
+
+    # Check if YAML library is available
+    if ! command -v yaml_remove_site &> /dev/null; then
+        print_status "INFO" "YAML library not available, skipping cnwp.yml cleanup"
+        return 0
+    fi
+
+    # Read default setting from cnwp.yml
+    local delete_site_yml=$(awk '
+        /^settings:/ { in_settings = 1; next }
+        in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
+        in_settings && /^  delete_site_yml:/ {
+            sub("^  delete_site_yml: *", "")
+            print
+            exit
+        }
+    ' "$SCRIPT_DIR/cnwp.yml")
+
+    # Default to true if not set
+    delete_site_yml=${delete_site_yml:-true}
+
+    ocmsg "delete_site_yml setting: $delete_site_yml"
+    ocmsg "keep_yml flag: $keep_yml"
+
+    # If --keep-yml flag is set, skip removal
+    if [ "$keep_yml" == "true" ]; then
+        print_status "INFO" "Keeping site entry in cnwp.yml (--keep-yml flag)"
+        return 0
+    fi
+
+    # If delete_site_yml is false, skip removal
+    if [ "$delete_site_yml" == "false" ]; then
+        print_status "INFO" "Keeping site entry in cnwp.yml (delete_site_yml: false in settings)"
+        return 0
+    fi
+
+    # Check if site exists in cnwp.yml
+    if ! yaml_site_exists "$sitename" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+        print_status "INFO" "Site not found in cnwp.yml"
+        return 0
+    fi
+
+    ocmsg "Removing site '$sitename' from cnwp.yml"
+
+    # Remove the site
+    if yaml_remove_site "$sitename" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+        print_status "OK" "Site removed from cnwp.yml"
+    else
+        print_warning "Could not remove site from cnwp.yml"
+    fi
+
+    return 0
+}
+
 ################################################################################
 # Main Script
 ################################################################################
@@ -352,9 +421,10 @@ DEBUG=false
 AUTO_CONFIRM=false
 CREATE_BACKUP=false
 KEEP_BACKUPS=false
+KEEP_YML=false
 
 # Parse command-line options
-TEMP=$(getopt -o hdbyk --long help,debug,backup,yes,keep-backups -n 'delete.sh' -- "$@")
+TEMP=$(getopt -o hdbyk --long help,debug,backup,yes,keep-backups,keep-yml -n 'delete.sh' -- "$@")
 
 if [ $? != 0 ]; then
     echo "Error parsing options. Use --help for usage information." >&2
@@ -383,6 +453,10 @@ while true; do
             ;;
         -k|--keep-backups)
             KEEP_BACKUPS=true
+            shift
+            ;;
+        --keep-yml)
+            KEEP_YML=true
             shift
             ;;
         --)
@@ -468,6 +542,9 @@ fi
 
 # Handle backups
 handle_backups "$SITENAME" "$KEEP_BACKUPS"
+
+# Remove from cnwp.yml
+remove_from_cnwp "$SITENAME" "$KEEP_YML"
 
 # Show summary
 print_header "Deletion Summary"

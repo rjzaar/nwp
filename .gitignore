@@ -28,8 +28,9 @@
 !README.md
 !LICENSE
 
-# Configuration template (not user config)
+# Configuration templates (not user configs)
 !example.cnwp.yml
+!.secrets.example.yml
 
 # Documentation directory
 !docs/
@@ -59,10 +60,17 @@
 !tests/
 !tests/**
 
+# SSH keys directory (structure tracked, contents ignored)
+!keys/
+!keys/.gitkeep
+
 # Keep .gitignore itself
 !.gitignore
 
 # However, always ignore secrets and local overrides anywhere in the tree
+# SSH key contents (keep directory but ignore all keys)
+keys/*
+!keys/.gitkeep
 **/.secrets.yml
 **/.secrets.yaml
 **/.env.local

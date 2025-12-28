@@ -406,8 +406,6 @@ ALL_TEST_SITES=(
     "${TEST_SITE_PREFIX}_copy"
     "${TEST_SITE_PREFIX}_files"
     "${TEST_SITE_PREFIX}_stg"
-    "${TEST_SITE_PREFIX}_delete"
-    "${TEST_SITE_PREFIX}_delete2"
 )
 
 for site in "${ALL_TEST_SITES[@]}"; do
@@ -425,23 +423,65 @@ done
 # Test 8b: Delete functionality
 print_header "Test 8b: Delete Functionality"
 
-# Create a test site specifically for deletion testing
-DELETE_TEST_SITE="${TEST_SITE_PREFIX}_delete"
-print_info "Creating temporary site for deletion testing..."
-run_test "Create site for deletion test" "./install.sh -y $DELETE_TEST_SITE test_nwp"
+# Create test sites specifically for deletion testing
+# install.sh auto-increments directory names, so we'll get test_nwp1, test_nwp2, etc.
+print_info "Creating temporary sites for deletion testing..."
 
-if site_exists "$DELETE_TEST_SITE"; then
+# Get list of existing test_nwp* directories before install
+BEFORE_INSTALL=($(ls -d ${TEST_SITE_PREFIX}* 2>/dev/null | sort))
+
+# Create first deletion test site
+run_test "Create site for deletion test" "./install.sh test_nwp"
+
+# Find the newly created directory
+AFTER_INSTALL=($(ls -d ${TEST_SITE_PREFIX}* 2>/dev/null | sort))
+DELETE_TEST_SITE=""
+for site in "${AFTER_INSTALL[@]}"; do
+    found=false
+    for existing in "${BEFORE_INSTALL[@]}"; do
+        if [ "$site" = "$existing" ]; then
+            found=true
+            break
+        fi
+    done
+    if [ "$found" = false ]; then
+        DELETE_TEST_SITE="$site"
+        break
+    fi
+done
+
+if [ -n "$DELETE_TEST_SITE" ] && site_exists "$DELETE_TEST_SITE"; then
+    print_info "Created deletion test site: $DELETE_TEST_SITE"
+
     # Test 1: Delete with backup and auto-confirm
     run_test "Delete with backup (-by)" "./delete.sh -by $DELETE_TEST_SITE"
     run_test "Site deleted successfully" "! site_exists $DELETE_TEST_SITE"
     run_test "Backup created during deletion" "[ -d sitebackups/$DELETE_TEST_SITE ] && [ -n \"\$(find sitebackups/$DELETE_TEST_SITE -name '*.tar.gz' 2>/dev/null)\" ]"
 
-    # Create another test site for keep-backups test
-    DELETE_TEST_SITE2="${TEST_SITE_PREFIX}_delete2"
-    print_info "Creating second test site for keep-backups test..."
-    run_test "Create second deletion test site" "./install.sh -y $DELETE_TEST_SITE2 test_nwp"
+    # Create second test site for keep-backups test
+    BEFORE_INSTALL2=($(ls -d ${TEST_SITE_PREFIX}* 2>/dev/null | sort))
+    run_test "Create second deletion test site" "./install.sh test_nwp"
 
-    if site_exists "$DELETE_TEST_SITE2"; then
+    # Find the second newly created directory
+    AFTER_INSTALL2=($(ls -d ${TEST_SITE_PREFIX}* 2>/dev/null | sort))
+    DELETE_TEST_SITE2=""
+    for site in "${AFTER_INSTALL2[@]}"; do
+        found=false
+        for existing in "${BEFORE_INSTALL2[@]}"; do
+            if [ "$site" = "$existing" ]; then
+                found=true
+                break
+            fi
+        done
+        if [ "$found" = false ]; then
+            DELETE_TEST_SITE2="$site"
+            break
+        fi
+    done
+
+    if [ -n "$DELETE_TEST_SITE2" ] && site_exists "$DELETE_TEST_SITE2"; then
+        print_info "Created second deletion test site: $DELETE_TEST_SITE2"
+
         # Test 2: Delete with backup and keep backups
         run_test "Delete with backup and keep (-bky)" "./delete.sh -bky $DELETE_TEST_SITE2"
         run_test "Second site deleted successfully" "! site_exists $DELETE_TEST_SITE2"

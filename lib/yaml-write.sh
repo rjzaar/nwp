@@ -13,6 +13,163 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 #######################################
+# Validate a site name for safe use in YAML operations
+# Arguments:
+#   $1 - Site name to validate
+# Returns:
+#   0 if valid, 1 if invalid
+#######################################
+yaml_validate_sitename() {
+    local name="$1"
+
+    # Check if empty
+    if [[ -z "$name" ]]; then
+        echo -e "${RED}Error: Site name cannot be empty${NC}" >&2
+        return 1
+    fi
+
+    # Check length (reasonable limit)
+    if [[ ${#name} -gt 64 ]]; then
+        echo -e "${RED}Error: Site name too long (max 64 characters)${NC}" >&2
+        return 1
+    fi
+
+    # Check for path traversal
+    if [[ "$name" == *".."* ]] || [[ "$name" == *"/"* ]]; then
+        echo -e "${RED}Error: Site name cannot contain path components${NC}" >&2
+        return 1
+    fi
+
+    # Check for valid characters (alphanumeric, underscore, hyphen)
+    if [[ ! "$name" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
+        echo -e "${RED}Error: Site name must start with a letter and contain only alphanumeric, underscore, or hyphen${NC}" >&2
+        return 1
+    fi
+
+    # Check for YAML special characters that could cause injection
+    if [[ "$name" == *":"* ]] || [[ "$name" == *"#"* ]] || [[ "$name" == *"["* ]] || [[ "$name" == *"]"* ]]; then
+        echo -e "${RED}Error: Site name contains invalid YAML characters${NC}" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+#######################################
+# Validate YAML file structure
+# Arguments:
+#   $1 - Config file path (optional, defaults to YAML_CONFIG_FILE)
+# Returns:
+#   0 if valid, 1 if invalid
+#######################################
+yaml_validate() {
+    local config_file="${1:-$YAML_CONFIG_FILE}"
+
+    if [[ ! -f "$config_file" ]]; then
+        echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
+        return 1
+    fi
+
+    # Try yq first if available (most robust)
+    if command -v yq &>/dev/null; then
+        if yq eval '.' "$config_file" >/dev/null 2>&1; then
+            return 0
+        else
+            echo -e "${RED}Error: Invalid YAML syntax in $config_file${NC}" >&2
+            return 1
+        fi
+    fi
+
+    # Fall back to basic structural validation with awk
+    local validation_result
+    validation_result=$(awk '
+        BEGIN {
+            errors = 0
+            prev_indent = 0
+            line_num = 0
+        }
+
+        # Skip empty lines and comments
+        /^[[:space:]]*$/ || /^[[:space:]]*#/ { line_num++; next }
+
+        {
+            line_num++
+
+            # Calculate indentation (number of leading spaces)
+            match($0, /^[[:space:]]*/)
+            indent = RLENGTH
+
+            # Check for tabs (YAML should use spaces)
+            if (/^\t/) {
+                print "Line " line_num ": Tabs not allowed (use spaces)"
+                errors++
+                next
+            }
+
+            # Check indentation is multiple of 2
+            if (indent > 0 && indent % 2 != 0) {
+                print "Line " line_num ": Inconsistent indentation (should be multiple of 2)"
+                errors++
+            }
+
+            # Check for lines that look malformed
+            # A key should have format: key: or key: value
+            if (/^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_-]*[[:space:]]*[^:]*$/ && !/^[[:space:]]*-/) {
+                # Line with alphanumeric content but no colon - could be malformed
+                # Skip if it is a list item
+                if (!/^[[:space:]]*-/) {
+                    # Only warn if it does not look like a continuation
+                    # This is a weak check - just looking for obvious issues
+                }
+            }
+
+            prev_indent = indent
+        }
+
+        END {
+            if (errors > 0) {
+                exit 1
+            }
+        }
+    ' "$config_file" 2>&1)
+
+    if [[ $? -ne 0 ]]; then
+        echo -e "${RED}Error: YAML validation failed:${NC}" >&2
+        echo "$validation_result" >&2
+        return 1
+    fi
+
+    return 0
+}
+
+#######################################
+# Validate YAML and restore from backup if invalid
+# Arguments:
+#   $1 - Config file path
+#   $2 - Backup file path
+# Returns:
+#   0 if valid (or restored), 1 if restore also failed
+#######################################
+yaml_validate_or_restore() {
+    local config_file="$1"
+    local backup_file="$2"
+
+    if yaml_validate "$config_file"; then
+        return 0
+    fi
+
+    echo -e "${YELLOW}Warning: YAML validation failed, restoring from backup${NC}" >&2
+
+    if [[ -f "$backup_file" ]] && cp "$backup_file" "$config_file"; then
+        echo -e "${GREEN}Restored from backup: $backup_file${NC}" >&2
+        return 0
+    else
+        echo -e "${RED}Error: Failed to restore from backup${NC}" >&2
+        return 1
+    fi
+}
+
+#######################################
 # Backup cnwp.yml before modifications
 # Arguments:
 #   $1 - Config file path (optional, defaults to YAML_CONFIG_FILE)
@@ -160,6 +317,11 @@ yaml_add_site() {
         return 1
     fi
 
+    # Validate site name for safe YAML operations
+    if ! yaml_validate_sitename "$site_name"; then
+        return 1
+    fi
+
     # Check if site already exists
     if yaml_site_exists "$site_name" "$config_file"; then
         echo -e "${YELLOW}Warning: Site '$site_name' already exists in $config_file${NC}" >&2
@@ -249,6 +411,11 @@ yaml_remove_site() {
         return 1
     fi
 
+    # Validate site name for safe YAML operations
+    if ! yaml_validate_sitename "$site_name"; then
+        return 1
+    fi
+
     # Check if site exists
     if ! yaml_site_exists "$site_name" "$config_file"; then
         echo -e "${YELLOW}Warning: Site '$site_name' not found in $config_file${NC}" >&2
@@ -300,6 +467,11 @@ yaml_update_site_field() {
 
     if [[ -z "$site_name" || -z "$field_name" ]]; then
         echo -e "${RED}Error: Site name and field name are required${NC}" >&2
+        return 1
+    fi
+
+    # Validate site name for safe YAML operations
+    if ! yaml_validate_sitename "$site_name"; then
         return 1
     fi
 
@@ -362,6 +534,11 @@ yaml_add_site_modules() {
 
     if [[ -z "$site_name" || -z "$modules" ]]; then
         echo -e "${RED}Error: Site name and modules are required${NC}" >&2
+        return 1
+    fi
+
+    # Validate site name for safe YAML operations
+    if ! yaml_validate_sitename "$site_name"; then
         return 1
     fi
 
@@ -463,6 +640,11 @@ yaml_add_site_production() {
         return 1
     fi
 
+    # Validate site name for safe YAML operations
+    if ! yaml_validate_sitename "$site_name"; then
+        return 1
+    fi
+
     # Check if site exists
     if ! yaml_site_exists "$site_name" "$config_file"; then
         echo -e "${RED}Error: Site '$site_name' not found in $config_file${NC}" >&2
@@ -535,6 +717,9 @@ yaml_add_site_production() {
 }
 
 # Export functions for use in other scripts
+export -f yaml_validate_sitename
+export -f yaml_validate
+export -f yaml_validate_or_restore
 export -f yaml_backup
 export -f yaml_site_exists
 export -f yaml_get_site_field

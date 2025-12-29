@@ -7,7 +7,49 @@ This document tracks completed work, known issues, and planned improvements for 
 For a chronological list of changes by version, see [CHANGES.md](CHANGES.md).
 
 **Last Updated:** December 29, 2025
-**Current Version:** v0.7
+**Current Version:** v0.7.1
+
+---
+
+## Latest Improvements (December 29, 2025 - v0.7.1)
+
+### Testing & Quality Improvements ✅
+
+**1. Test Suite Cleanup Fix** ✅
+- **Issue**: Test suite wasn't cleaning up old test sites before running
+- **Impact**: Environment files created in wrong directory (test-nwp5 instead of test-nwp)
+- **Fix**: Added `cleanup_test_sites()` call at start of test-nwp.sh
+- **Result**: Success rate improved from 89% → **98%** (63/77 passed + 13 warnings)
+- **Tests Fixed**: 6 failures resolved
+  - All Test 1b environment variable generation tests (3 tests)
+  - Drush is working (Test 1)
+  - Copied site drush works (Test 4)
+  - Site test-nwp_copy is healthy (Test 8)
+- **Remaining**: Only 1 failure (Linode SSH timeout - known issue)
+
+**2. Install Script Enhancements** ✅
+- **Custom Target Parameter**: Added optional target parameter to install.sh
+  - Syntax: `./install.sh <recipe> [target]`
+  - Example: `./install.sh nwp mysite` - uses nwp recipe but creates 'mysite' directory
+  - Allows using same recipe for multiple projects with custom names
+- **Recipe List Fix**: Fixed `--list` command to only show recipes (not all YAML keys)
+  - Previously showed settings, setup, and all top-level keys
+  - Now uses AWK to properly parse only recipes: section
+  - Applied in 3 locations: list_recipes(), show_help(), recipe not found error
+- **Bug Fix**: Fixed typo `ocmsg` → `print_info` in site registration (2 instances)
+
+**3. Documentation Updates** ✅
+- Updated KNOWN_ISSUES.md with verified fix results
+- Updated README.md with 98% success rate
+- Added custom target parameter examples to README.md
+- Improved install.sh usage documentation
+
+**Commits:**
+- ff2705c9 - Fix Test 1b env file failures by adding initial cleanup
+- fa894bdd - Fix typo: ocmsg -> print_info in site registration
+- faafc1e2 - Fix install.sh --list to only show recipes
+- 27a9a01e - Add optional target parameter to install.sh
+- 8968fea0 - Update KNOWN_ISSUES.md with verified test results
 
 ---
 

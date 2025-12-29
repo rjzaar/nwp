@@ -4,6 +4,56 @@ All notable changes to the NWP (Narrow Way Project) are documented here, organiz
 
 ---
 
+## [v0.7.1] - 2025-12-29
+
+### Testing & Quality Improvements
+
+**Test Suite Success Rate**: 89% → **98%** (63/77 passed + 13 warnings)
+
+#### Test Suite Cleanup Fix
+- **Fixed**: Test suite not cleaning up old test sites before running
+- Added `cleanup_test_sites()` call at start of test-nwp.sh
+- Ensures fresh installation always uses expected directory name
+- **Result**: 6 test failures eliminated
+  - ✅ All Test 1b environment variable generation tests (3 tests)
+  - ✅ Drush is working (Test 1)
+  - ✅ Copied site drush works (Test 4)
+  - ✅ Site test-nwp_copy is healthy (Test 8)
+
+#### Install Script Enhancements
+
+**1. Custom Target Parameter**
+- Added optional `[target]` parameter: `./install.sh <recipe> [target]`
+- Example: `./install.sh nwp mysite` - uses nwp recipe but creates 'mysite' directory
+- Allows using same recipe for multiple projects with different names
+- Updated install_opensocial() and install_moodle() function signatures
+
+**2. Recipe List Fix**
+- Fixed `./install.sh --list` to only show recipes (not all YAML keys)
+- Previously incorrectly showed settings, setup, and other top-level keys
+- Now uses AWK to properly parse only the recipes: section
+- Applied fix in 3 locations: list_recipes(), show_help(), recipe not found error
+
+**3. Bug Fixes**
+- Fixed typo: `ocmsg` → `print_info` in site registration (2 instances)
+- Eliminates "command not found" error during site registration
+
+### Documentation Updates
+- Updated KNOWN_ISSUES.md with verified test results (98% success rate)
+- Updated README.md with new success rate and custom target examples
+- Added install.sh usage documentation for new features
+- Updated IMPROVEMENTS.md with latest changes
+
+### Commits
+- ff2705c9 - Fix Test 1b env file failures by adding initial cleanup
+- fa894bdd - Fix typo: ocmsg -> print_info in site registration
+- faafc1e2 - Fix install.sh --list to only show recipes
+- 27a9a01e - Add optional target parameter to install.sh
+- 26730112 - Update KNOWN_ISSUES.md with test results
+- 8968fea0 - Update KNOWN_ISSUES.md with verified test results
+
+---
+
 ## [v0.6] - 2025-12-28
 
 ### Major Changes

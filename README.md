@@ -213,8 +213,11 @@ Each directory is a complete, isolated DDEV project with its own:
 ### Basic Usage
 
 ```bash
-./install.sh <recipe>
+./install.sh <recipe> [target]
 ```
+
+- `<recipe>`: The recipe name from cnwp.yml
+- `[target]`: Optional custom directory/site name (defaults to recipe name with auto-numbering)
 
 ### Command-Line Options
 
@@ -230,6 +233,11 @@ Each directory is a complete, isolated DDEV project with its own:
 **Install the nwp recipe:**
 ```bash
 ./install.sh nwp
+```
+
+**Install with custom directory name:**
+```bash
+./install.sh nwp mysite    # Uses nwp recipe but creates 'mysite' directory
 ```
 
 **Install with test content creation:**
@@ -515,7 +523,7 @@ Comprehensive documentation is available in the `docs/` directory:
   - Active issues with investigation status
   - Test failure details and workarounds
   - Resolved issues history
-  - Current test suite success rate (94%)
+  - Current test suite success rate (98%)
 
 - **[PRODUCTION_TESTING.md](docs/PRODUCTION_TESTING.md)** - Production deployment testing guide
   - Safe testing strategies (local mock → remote test → dry-run → production)

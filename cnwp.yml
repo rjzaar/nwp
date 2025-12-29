@@ -61,6 +61,10 @@ setup:
   # This will create a gitlab site based on the url, ie git.url to store and commit sites and the nwp itself.
   creategitlab: y
 
+# Recipe definitions
+# Each recipe defines how to install a specific type of site (Drupal, Moodle, etc.)
+# Required fields: source, webroot
+# Optional fields: profile, install_modules, type, branch, sitename, auto
 recipes:
   os:
     source: goalgorilla/social_template:dev-master
@@ -97,6 +101,12 @@ recipes:
     webroot:  web
     #    sitename: default # leave blank it will be called the name of the site, eg loc
     auto:  y
+  test-nwp:
+    # Test recipe for automated testing
+    source: goalgorilla/social_template:dev-master
+    profile: social
+    webroot: html
+    auto: y
 
   # Enhanced recipe example with deployment configuration (Section 5.1)
   enhanced_example:
@@ -165,16 +175,6 @@ sites:
       - drupal/ultimate_cron:^2.0.0-alpha7
 
 
-  test-nwp:
-    source: goalgorilla/social_template:dev-master
-    profile: social
-    webroot: html
-    auto: y
-  test-nwp1:
-    directory: /home/rob/nwp/test-nwp1
-    recipe: test-nwp
-    environment: development
-    created: 2025-12-28T21:07:49Z
   test-nwp2:
     directory: /home/rob/nwp/test-nwp2
     recipe: test-nwp
@@ -185,3 +185,24 @@ sites:
     recipe: test-nwp
     environment: development
     created: 2025-12-28T21:29:56Z
+  test-nwp5:
+    directory: /home/rob/nwp/test-nwp5
+    recipe: test-nwp
+    environment: development
+    created: 2025-12-29T04:15:59Z
+  nwp6:
+    directory: /home/rob/nwp/nwp6
+    recipe: nwp
+    environment: development
+    created: 2025-12-29T04:18:23Z
+    installed_modules:
+      - rjzaar/workflow_assignment:dev-main
+      - drupal/ultimate_cron:^2.0.0-alpha7
+  avc:
+    directory: /home/rob/nwp/avc
+    recipe: nwp
+    environment: development
+    created: 2025-12-29T07:25:42Z
+    installed_modules:
+      - rjzaar/workflow_assignment:dev-main
+      - drupal/ultimate_cron:^2.0.0-alpha7

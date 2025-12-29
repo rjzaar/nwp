@@ -3,9 +3,34 @@
 This document tracks known issues and test failures in the NWP system.
 
 **Last Updated**: 2025-12-29
-**Test Suite Success Rate**: 94% (57/70 passed + 9/70 expected warnings)
+**Test Suite Success Rate**: 89% (49/69 passed + 13/69 expected warnings)
 
 ## Active Issues
+
+### 0. Environment Variable Generation (Test 1b) - FIXED
+
+**Status**: RESOLVED
+**Priority**: N/A (fixed)
+**Tests Affected**:
+- ".env file created"
+- ".env.local.example created"
+- ".secrets.example.yml created"
+
+**Root Cause**:
+Test suite was not cleaning up test sites from previous runs before starting. When running `./install.sh test-nwp`, the script found test-nwp through test-nwp4 already existed from previous runs, so it auto-incremented to test-nwp5. The .env files were created correctly in test-nwp5/, but the test script checked for them in test-nwp/.
+
+**Fix Applied**:
+Added cleanup_test_sites() call at the start of test-nwp.sh to remove old test sites before beginning installation. This ensures:
+1. Fresh start for each test run
+2. Installation goes to test-nwp (not test-nwp5)
+3. Test assertions check the correct directory
+
+**Expected Behavior** (after fix):
+- All Test 1b assertions should pass
+- .env files created in correct location
+- No directory numbering mismatch
+
+---
 
 ### 1. Dev Modules Test Failures (Test 5) - DRUSH VERSION CONFLICT
 

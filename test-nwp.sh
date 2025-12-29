@@ -231,6 +231,11 @@ print_header "NWP Comprehensive Test Suite"
 echo "Log file: $LOG_FILE"
 echo ""
 
+# Clean up any existing test sites from previous runs to ensure fresh start
+print_info "Cleaning up any existing test sites from previous runs..."
+cleanup_test_sites
+echo ""
+
 # Pre-configure DDEV hostname to avoid sudo prompts during tests
 print_info "Pre-configuring DDEV hostnames..."
 sudo ddev hostname ${TEST_SITE_PREFIX}.ddev.site 127.0.0.1 2>/dev/null || print_warning "Could not configure hostname (may require manual sudo)"

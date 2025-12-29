@@ -21,6 +21,9 @@ set -euo pipefail
 #   c, --create-content          - Create test content (5 users, 5 docs, 5 workflow assignments)
 #   s=N, --step=N                - Resume installation from step N
 #
+# Environment Variables:
+#   TEST_PASSWORD                - Password for test users (default: test123)
+#
 # Installation Steps:
 #   1  - Initialize project with Composer (includes Drush installation)
 #   2  - Generate environment configuration (.env files)

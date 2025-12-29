@@ -1064,7 +1064,7 @@ EOF
             fi
         else
             # Site already exists or registration failed - not critical
-            ocmsg "Site registration skipped (may already exist)"
+            print_info "Site registration skipped (may already exist)"
         fi
     fi
 
@@ -1415,7 +1415,7 @@ EOF
             print_status "OK" "Site registered in cnwp.yml"
         else
             # Site already exists or registration failed - not critical
-            ocmsg "Site registration skipped (may already exist)"
+            print_info "Site registration skipped (may already exist)"
         fi
     fi
 

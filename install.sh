@@ -383,7 +383,7 @@ create_test_content() {
     fi
 
     print_info "Enabling page content type for workflow support and clearing cache..."
-    ddev drush php:eval "
+    if ! ddev drush php:eval "
         \$config = \Drupal::configFactory()->getEditable('workflow_assignment.settings');
         \$enabled_types = \$config->get('enabled_content_types') ?: [];
         if (!in_array('page', \$enabled_types)) {
@@ -392,7 +392,9 @@ create_test_content() {
             \$config->save();
         }
         drupal_flush_all_caches();
-    " >/dev/null 2>&1
+    " 2>&1 | grep -v "Deprecated" >/dev/null; then
+        print_warning "Could not configure workflow settings (may already be configured)"
+    fi
 
     print_info "Creating 5 test users..."
     local users=()
@@ -403,8 +405,11 @@ create_test_content() {
         if ddev drush user:info "$username" &>/dev/null; then
             print_info "User $username already exists, skipping..."
         else
-            ddev drush user:create "$username" --mail="$email" --password="test123" >/dev/null 2>&1
-            print_info "Created user: $username"
+            if ddev drush user:create "$username" --mail="$email" --password="${TEST_PASSWORD:-test123}" 2>&1 | grep -v "Deprecated" >/dev/null; then
+                print_info "Created user: $username"
+            else
+                print_warning "Failed to create user: $username"
+            fi
         fi
         users+=("$username")
     done
@@ -443,7 +448,7 @@ create_test_content() {
         local username="${users[$user_index]}"
         local wf_id="test_workflow_$i"
 
-        ddev drush php:eval "
+        if ddev drush php:eval "
             \$users = \Drupal::entityTypeManager()
                 ->getStorage('user')
                 ->loadByProperties(['name' => '$username']);
@@ -461,11 +466,16 @@ create_test_content() {
                         'comments' => 'Test comment for workflow $i',
                     ]);
                 \$workflow->save();
+                echo 'OK';
+            } else {
+                echo 'USER_NOT_FOUND';
             }
-        " >/dev/null 2>&1
-
-        workflow_ids+=("$wf_id")
-        print_info "Created workflow: Workflow Task $i (assigned to $username)"
+        " 2>/dev/null | grep -q "OK"; then
+            workflow_ids+=("$wf_id")
+            print_info "Created workflow: Workflow Task $i (assigned to $username)"
+        else
+            print_warning "Failed to create workflow: Workflow Task $i"
+        fi
     done
 
     # Link workflows to the first document
@@ -473,16 +483,29 @@ create_test_content() {
         local target_nid="${doc_nids[0]}"
 
         print_info "Linking workflows to document (NID: $target_nid)..."
-        ddev drush php:eval "
+        # Build workflow IDs string safely
+        local wf_ids_str=""
+        for wf_id in "${workflow_ids[@]}"; do
+            [ -n "$wf_ids_str" ] && wf_ids_str+=", "
+            wf_ids_str+="'$wf_id'"
+        done
+
+        if ddev drush php:eval "
             \$node = \Drupal\node\Entity\Node::load($target_nid);
             if (\$node && \$node->hasField('field_workflow_list')) {
-                \$workflow_ids = ['${workflow_ids[0]}', '${workflow_ids[1]}', '${workflow_ids[2]}', '${workflow_ids[3]}', '${workflow_ids[4]}'];
+                \$workflow_ids = [$wf_ids_str];
                 \$node->set('field_workflow_list', \$workflow_ids);
                 \$node->save();
+                echo 'OK';
+            } else {
+                echo 'FIELD_NOT_FOUND';
             }
-        " >/dev/null 2>&1
-
-        print_status "OK" "Test content created successfully"
+        " 2>/dev/null | grep -q "OK"; then
+            print_status "OK" "Test content created successfully"
+        else
+            print_warning "Could not link workflows to document (field may not exist)"
+            print_status "OK" "Test content partially created"
+        fi
 
         # Get one-time login URL and append workflow tab destination
         local uli_url=$(ddev drush uli --uri=default 2>/dev/null | tail -n 1)
@@ -490,9 +513,9 @@ create_test_content() {
 
         echo ""
         echo -e "${BOLD}Test Content Summary:${NC}"
-        echo -e "  ${GREEN}✓${NC} 5 users created (testuser1-5, password: test123)"
-        echo -e "  ${GREEN}✓${NC} 5 documents created (NIDs: ${doc_nids[*]})"
-        echo -e "  ${GREEN}✓${NC} 5 workflow assignments linked to document $target_nid"
+        echo -e "  ${GREEN}✓${NC} ${#users[@]} users created (testuser1-${#users[@]}, password: ${TEST_PASSWORD:-test123})"
+        echo -e "  ${GREEN}✓${NC} ${#doc_nids[@]} documents created (NIDs: ${doc_nids[*]})"
+        echo -e "  ${GREEN}✓${NC} ${#workflow_ids[@]} workflow assignments linked to document $target_nid"
         echo ""
         echo -e "${BOLD}Login and view workflow assignments:${NC}"
         echo -e "  ${BLUE}${workflow_url}${NC}"

@@ -737,6 +737,48 @@ else
     print_warning "Linode library (lib/linode.sh) not found - skipping production tests"
 fi
 
+################################################################################
+# Test 13: Input Validation & Error Handling (Negative Tests)
+################################################################################
+
+print_header "Test 13: Input Validation & Error Handling"
+
+# Test invalid sitenames are rejected
+print_info "Testing sitename validation..."
+
+# Path traversal attempts should fail
+run_test "Reject path traversal (..)" "! ./install.sh '../malicious' 2>/dev/null"
+run_test "Reject path traversal (./)" "! ./install.sh './malicious' 2>/dev/null"
+run_test "Reject absolute path" "! ./delete.sh -y '/etc/passwd' 2>/dev/null"
+
+# Invalid characters should be rejected
+run_test "Reject special chars (;)" "! ./install.sh 'site;rm -rf /' 2>/dev/null"
+run_test "Reject special chars (&)" "! ./install.sh 'site&whoami' 2>/dev/null"
+run_test "Reject spaces" "! ./install.sh 'site with spaces' 2>/dev/null"
+
+# Missing required arguments should fail
+print_info "Testing missing argument handling..."
+run_test "install.sh requires sitename" "! ./install.sh 2>/dev/null"
+run_test "backup.sh requires sitename" "! ./backup.sh 2>/dev/null"
+run_test "restore.sh requires sitename" "! ./restore.sh -y 2>/dev/null"
+run_test "delete.sh requires sitename" "! ./delete.sh -y 2>/dev/null"
+run_test "copy.sh requires both args" "! ./copy.sh -y source 2>/dev/null"
+
+# Non-existent sites should fail gracefully
+print_info "Testing non-existent site handling..."
+run_test "Backup non-existent fails" "! ./backup.sh nonexistent_site_xyz 2>/dev/null"
+run_test "Restore non-existent fails" "! ./restore.sh -y nonexistent_site_xyz 2>/dev/null"
+run_test "Delete non-existent fails" "! ./delete.sh -y nonexistent_site_xyz 2>/dev/null"
+run_test "Copy non-existent fails" "! ./copy.sh -y nonexistent_site_xyz dest 2>/dev/null"
+
+# Make.sh mode validation
+print_info "Testing make.sh mode validation..."
+run_test "make.sh requires mode flag" "! ./make.sh test-nwp 2>/dev/null"
+run_test "make.sh -v (dev) is valid" "./make.sh --help 2>&1 | grep -q dev"
+run_test "make.sh -p (prod) is valid" "./make.sh --help 2>&1 | grep -q prod"
+
+print_info "Negative tests completed - failures above are EXPECTED behavior"
+
 # Results summary
 print_header "Test Results Summary"
 

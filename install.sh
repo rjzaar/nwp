@@ -166,8 +166,15 @@ list_recipes() {
 
     echo -e "${BOLD}Recipes defined in $config_file:${NC}\n"
 
-    # Extract all recipe names
-    local recipes=$(grep "^  [a-zA-Z0-9_-]*:" "$config_file" | sed 's/://g' | sed 's/^  //')
+    # Extract recipe names only from the recipes: section
+    local recipes=$(awk '
+        /^recipes:/ { in_recipes = 1; next }
+        /^[a-zA-Z]/ { in_recipes = 0 }
+        in_recipes && /^  [a-zA-Z0-9_-]+:/ {
+            match($0, /^  ([a-zA-Z0-9_-]+):/, arr)
+            if (arr[1]) print arr[1]
+        }
+    ' "$config_file")
 
     for recipe in $recipes; do
         local recipe_type=$(get_recipe_value "$recipe" "type" "$config_file")
@@ -294,7 +301,14 @@ show_help() {
     echo -e "    ./install.sh nwp client2  → Creates site in directory 'client2'"
     echo ""
     echo -e "${BOLD}AVAILABLE RECIPES:${NC}"
-    local recipes=$(grep "^  [a-zA-Z0-9_-]*:" "$config_file" | sed 's/://g' | sed 's/^  //')
+    local recipes=$(awk '
+        /^recipes:/ { in_recipes = 1; next }
+        /^[a-zA-Z]/ { in_recipes = 0 }
+        in_recipes && /^  [a-zA-Z0-9_-]+:/ {
+            match($0, /^  ([a-zA-Z0-9_-]+):/, arr)
+            if (arr[1]) print arr[1]
+        }
+    ' "$config_file")
     for recipe in $recipes; do
         echo -e "  - $recipe"
     done
@@ -1470,7 +1484,14 @@ main() {
         print_error "Recipe '$recipe' not found in $config_file"
         echo ""
         echo "Available recipes:"
-        grep "^  [a-zA-Z0-9_-]*:" "$config_file" | sed 's/://g' | sed 's/^  /  - /'
+        awk '
+            /^recipes:/ { in_recipes = 1; next }
+            /^[a-zA-Z]/ { in_recipes = 0 }
+            in_recipes && /^  [a-zA-Z0-9_-]+:/ {
+                match($0, /^  ([a-zA-Z0-9_-]+):/, arr)
+                if (arr[1]) print "  - " arr[1]
+            }
+        ' "$config_file"
         echo ""
         echo "Use './install.sh --list' to see detailed recipe information"
         exit 1

@@ -81,6 +81,10 @@ print_info() {
     echo -e "${BLUE}${BOLD}INFO:${NC} $1"
 }
 
+print_warning() {
+    echo -e "${YELLOW}${BOLD}WARNING:${NC} $1"
+}
+
 ################################################################################
 # YAML Parsing Functions
 ################################################################################
@@ -775,7 +779,7 @@ install_opensocial() {
             print_status "OK" "DDEV configuration generated"
         else
             # Fallback to manual DDEV config
-            print_warn "Vortex DDEV script not found, using manual configuration"
+            print_warning "Vortex DDEV script not found, using manual configuration"
 
             # Map database type to DDEV database type
             local ddev_database="$database"

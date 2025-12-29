@@ -26,6 +26,7 @@
 
 # Documentation and metadata
 !README.md
+!KNOWN_ISSUES.md
 !LICENSE
 
 # Configuration templates (not user configs)

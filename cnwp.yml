@@ -164,3 +164,24 @@ sites:
       - rjzaar/workflow_assignment:dev-main
       - drupal/ultimate_cron:^2.0.0-alpha7
 
+
+  test-nwp:
+    source: goalgorilla/social_template:dev-master
+    profile: social
+    webroot: html
+    auto: y
+  test-nwp1:
+    directory: /home/rob/nwp/test-nwp1
+    recipe: test-nwp
+    environment: development
+    created: 2025-12-28T21:07:49Z
+  test-nwp2:
+    directory: /home/rob/nwp/test-nwp2
+    recipe: test-nwp
+    environment: development
+    created: 2025-12-28T21:16:25Z
+  test-nwp3:
+    directory: /home/rob/nwp/test-nwp3
+    recipe: test-nwp
+    environment: development
+    created: 2025-12-28T21:29:56Z

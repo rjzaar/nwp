@@ -511,6 +511,12 @@ Comprehensive documentation is available in the `docs/` directory:
   - Metrics and statistics
   - Contributing guidelines
 
+- **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** - Current known issues and test failures
+  - Active issues with investigation status
+  - Test failure details and workarounds
+  - Resolved issues history
+  - Current test suite success rate (94%)
+
 - **[PRODUCTION_TESTING.md](docs/PRODUCTION_TESTING.md)** - Production deployment testing guide
   - Safe testing strategies (local mock → remote test → dry-run → production)
   - Implementation examples for safety features

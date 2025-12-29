@@ -685,13 +685,29 @@ main() {
 
     SITENAME="$1"
 
-    # Check that mode is specified
+    # Validate sitename
+    if ! validate_sitename "$SITENAME" "site name"; then
+        exit 1
+    fi
+
+    # Check that mode is specified and valid (whitelist validation)
     if [ -z "$MODE" ]; then
         print_error "You must specify either -v (dev) or -p (prod) mode"
         echo ""
         show_help
         exit 1
     fi
+
+    # Defense-in-depth: validate MODE against whitelist
+    case "$MODE" in
+        dev|prod)
+            # Valid mode
+            ;;
+        *)
+            print_error "Invalid mode: $MODE. Must be 'dev' or 'prod'"
+            exit 1
+            ;;
+    esac
 
     ocmsg "Site: $SITENAME"
     ocmsg "Mode: $MODE"

@@ -9,60 +9,21 @@
 # Usage: ./make.sh [OPTIONS] <sitename>
 ################################################################################
 
+# Get script directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Source shared libraries
+source "$SCRIPT_DIR/lib/ui.sh"
+source "$SCRIPT_DIR/lib/common.sh"
+
 # Script start time
 START_TIME=$(date +%s)
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-BOLD='\033[1m'
-
 ################################################################################
-# Helper Functions
+# Script-specific Functions
 ################################################################################
 
-print_header() {
-    echo -e "\n${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}${BOLD}  $1${NC}"
-    echo -e "${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}\n"
-}
-
-print_status() {
-    local status=$1
-    local message=$2
-
-    if [ "$status" == "OK" ]; then
-        echo -e "[${GREEN}✓${NC}] $message"
-    elif [ "$status" == "WARN" ]; then
-        echo -e "[${YELLOW}!${NC}] $message"
-    elif [ "$status" == "FAIL" ]; then
-        echo -e "[${RED}✗${NC}] $message"
-    else
-        echo -e "[${BLUE}i${NC}] $message"
-    fi
-}
-
-print_error() {
-    echo -e "${RED}${BOLD}ERROR:${NC} $1" >&2
-}
-
-print_info() {
-    echo -e "${BLUE}${BOLD}INFO:${NC} $1"
-}
-
-# Conditional debug message
-ocmsg() {
-    local message=$1
-    if [ "$DEBUG" == "true" ]; then
-        echo -e "${CYAN}[DEBUG]${NC} $message"
-    fi
-}
-
-# Display elapsed time
+# Display elapsed time (script-specific with MODE context)
 show_elapsed_time() {
     local end_time=$(date +%s)
     local elapsed=$((end_time - START_TIME))

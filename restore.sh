@@ -9,108 +9,21 @@
 # Usage: ./restore.sh [FROM] [TO] [OPTIONS]
 ################################################################################
 
+# Get script directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Source shared libraries
+source "$SCRIPT_DIR/lib/ui.sh"
+source "$SCRIPT_DIR/lib/common.sh"
+
 # Script start time
 START_TIME=$(date +%s)
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-BOLD='\033[1m'
-
 ################################################################################
-# Helper Functions
+# Script-specific Functions
 ################################################################################
 
-print_header() {
-    echo -e "\n${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}${BOLD}  $1${NC}"
-    echo -e "${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}\n"
-}
-
-print_status() {
-    local status=$1
-    local message=$2
-
-    if [ "$status" == "OK" ]; then
-        echo -e "[${GREEN}✓${NC}] $message"
-    elif [ "$status" == "WARN" ]; then
-        echo -e "[${YELLOW}!${NC}] $message"
-    elif [ "$status" == "FAIL" ]; then
-        echo -e "[${RED}✗${NC}] $message"
-    else
-        echo -e "[${BLUE}i${NC}] $message"
-    fi
-}
-
-print_error() {
-    echo -e "${RED}${BOLD}ERROR:${NC} $1" >&2
-}
-
-print_info() {
-    echo -e "${BLUE}${BOLD}INFO:${NC} $1"
-}
-
-# Validate site name to prevent dangerous operations
-# Returns 0 if valid, 1 if invalid
-validate_sitename() {
-    local name="$1"
-    local context="${2:-site name}"
-
-    # Check for empty name
-    if [ -z "$name" ]; then
-        print_error "Empty $context provided"
-        return 1
-    fi
-
-    # Check for absolute paths
-    if [[ "$name" == /* ]]; then
-        print_error "Absolute paths not allowed for $context: $name"
-        return 1
-    fi
-
-    # Check for path traversal
-    if [[ "$name" == *".."* ]]; then
-        print_error "Path traversal not allowed in $context: $name"
-        return 1
-    fi
-
-    # Check for dangerous patterns (just dots, slashes only, etc.)
-    if [[ "$name" =~ ^[./]+$ ]]; then
-        print_error "Invalid $context: $name"
-        return 1
-    fi
-
-    # Only allow safe characters: alphanumeric, hyphen, underscore, dot
-    if [[ ! "$name" =~ ^[a-zA-Z0-9._-]+$ ]]; then
-        print_error "Invalid characters in $context: $name (only alphanumeric, hyphen, underscore, dot allowed)"
-        return 1
-    fi
-
-    return 0
-}
-
-ocmsg() {
-    local message=$1
-    if [ "$DEBUG" == "true" ]; then
-        echo -e "${CYAN}[DEBUG]${NC} $message"
-    fi
-}
-
-show_elapsed_time() {
-    local end_time=$(date +%s)
-    local elapsed=$((end_time - START_TIME))
-    local hours=$((elapsed / 3600))
-    local minutes=$(((elapsed % 3600) / 60))
-    local seconds=$((elapsed % 60))
-
-    echo ""
-    print_status "OK" "Restore completed in $(printf "%02d:%02d:%02d" $hours $minutes $seconds)"
-}
-
+# Ask yes/no with AUTO_YES support (script-specific override)
 ask_yes_no() {
     local prompt=$1
     local default=${2:-n}
@@ -778,7 +691,7 @@ main() {
 
     # Run restore
     if restore_site "$FROM_SITE" "$TO_SITE" "$USE_FIRST" "$START_STEP" "$OPEN_AFTER" "$DB_ONLY"; then
-        show_elapsed_time
+        show_elapsed_time "Restore"
         exit 0
     else
         print_error "Restore failed"

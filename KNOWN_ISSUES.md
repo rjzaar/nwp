@@ -77,8 +77,8 @@ run_test "Create site for deletion test" "./install.sh test-nwp"
 
 ### 3. Linode SSH Timeout (Test 12) - IMPROVED
 
-**Status**: TIMEOUT INCREASED, MONITORING NEEDED
-**Priority**: Medium (improved, needs verification)
+**Status**: FAILING (600s timeout insufficient)
+**Priority**: Medium (improved UX, but issue persists)
 **Test Affected**: "Linode instance provisioned"
 
 **Description**:
@@ -125,13 +125,27 @@ This may take 5-10 minutes for cloud-init to configure the instance...
 SSH is ready (took XXX seconds)
 ```
 
-**Next Test Run Needed**:
-- Verify 600s timeout is sufficient
-- Monitor actual SSH ready time
-- If still timing out, consider:
-  1. Using a larger Linode instance type (more resources = faster boot)
-  2. Checking Lish console logs for boot issues
-  3. Adding API check for cloud-init completion status
+**Test Results (2025-12-29 15:24:00)**:
+- Tested with 600s (10 minute) timeout
+- Instance provisioned successfully (ID: 89285990)
+- Instance booted to "running" state
+- IP assigned: 173.255.229.103
+- **SSH never became available even after 600 seconds**
+- Instance cleaned up properly after timeout
+
+**Conclusion**:
+The issue is NOT simply timing. Even 10 minutes is insufficient, suggesting:
+1. SSH service may not start automatically on Ubuntu 22.04 Linode images
+2. Potential network/routing issue preventing SSH connections
+3. SSH keys might not be properly configured in cloud-init
+4. Instance type (g6-nanode-1) might have specific limitations
+
+**Next Investigation Steps**:
+1. Check Lish console logs for boot errors
+2. Try larger instance type (g6-standard-2)
+3. Test with different OS image (Ubuntu 24.04 or Debian)
+4. Verify SSH service is included in Linode's Ubuntu 22.04 image
+5. Consider using Linode StackScripts for guaranteed SSH setup
 
 **Workaround**:
 Use larger instance types (g6-standard-1 or higher) for faster boot times, or manually wait longer before running production tests.

@@ -4,16 +4,21 @@
 # NWP Installation Script
 #
 # Reads cnwp.yml and installs OpenSocial based on the specified recipe
-# Usage: ./install.sh [recipe_name] [s=step_number] [c]
+# Usage: ./install.sh <recipe_name> [target_name] [options]
+#
+# Arguments:
+#   recipe_name                  - Name of recipe from cnwp.yml
+#   target_name                  - Optional: custom directory/site name
 #
 # Examples:
-#   ./install.sh os              - Install using 'os' recipe
-#   ./install.sh os s=3          - Resume 'os' installation from step 3
-#   ./install.sh nwp --step=5    - Resume 'nwp' installation from step 5
-#   ./install.sh nwp c           - Install 'nwp' recipe with test content
+#   ./install.sh nwp              - Install using 'nwp' recipe in 'nwp' directory
+#   ./install.sh nwp client1      - Install using 'nwp' recipe in 'client1' directory
+#   ./install.sh nwp mysite s=3   - Resume 'mysite' installation from step 3
+#   ./install.sh nwp site1 c      - Install 'nwp' recipe as 'site1' with test content
 #
 # Options:
 #   c, --create-content          - Create test content (5 users, 5 docs, 5 workflow assignments)
+#   s=N, --step=N                - Resume installation from step N
 #
 # Installation Steps:
 #   1  - Initialize project with Composer (includes Drush installation)
@@ -261,7 +266,11 @@ show_help() {
     echo -e "${BOLD}Narrow Way Project Installation Script${NC}"
     echo ""
     echo -e "${BOLD}USAGE:${NC}"
-    echo -e "  ./install.sh [OPTIONS] <recipe>"
+    echo -e "  ./install.sh [OPTIONS] <recipe> [target]"
+    echo ""
+    echo -e "${BOLD}ARGUMENTS:${NC}"
+    echo -e "  recipe                  Recipe name from cnwp.yml (required)"
+    echo -e "  target                  Custom directory/site name (optional)"
     echo ""
     echo -e "${BOLD}OPTIONS:${NC}"
     echo -e "  -l, --list              List all available recipes"
@@ -271,9 +280,18 @@ show_help() {
     echo ""
     echo -e "${BOLD}EXAMPLES:${NC}"
     echo -e "  ./install.sh --list              List available recipes"
-    echo -e "  ./install.sh nwp                 Install the nwp recipe"
-    echo -e "  ./install.sh nwp c               Install nwp with test content"
-    echo -e "  ./install.sh d s=3               Install d recipe starting from step 3"
+    echo -e "  ./install.sh nwp                 Install nwp recipe in 'nwp' directory"
+    echo -e "  ./install.sh nwp client1         Install nwp recipe in 'client1' directory"
+    echo -e "  ./install.sh nwp mysite c        Install nwp as 'mysite' with test content"
+    echo -e "  ./install.sh nwp site2 s=3       Resume 'site2' from step 3"
+    echo ""
+    echo -e "${BOLD}TARGET NAMES:${NC}"
+    echo -e "  The target parameter allows you to create multiple sites from the same recipe."
+    echo -e "  If not specified, the recipe name is used as the directory/site name."
+    echo -e "  Examples:"
+    echo -e "    ./install.sh nwp          → Creates site in directory 'nwp'"
+    echo -e "    ./install.sh nwp client1  → Creates site in directory 'client1'"
+    echo -e "    ./install.sh nwp client2  → Creates site in directory 'client2'"
     echo ""
     echo -e "${BOLD}AVAILABLE RECIPES:${NC}"
     local recipes=$(grep "^  [a-zA-Z0-9_-]*:" "$config_file" | sed 's/://g' | sed 's/^  //')
@@ -520,8 +538,9 @@ create_test_content() {
 
 install_opensocial() {
     local recipe=$1
-    local start_step=$2
-    local create_content=$3
+    local install_dir=$2
+    local start_step=$3
+    local create_content=$4
     local base_dir=$(pwd)
 
     print_header "Installing OpenSocial using recipe: $recipe"
@@ -531,14 +550,11 @@ install_opensocial() {
         echo ""
     fi
 
-    # Determine installation directory
-    local install_dir=""
+    # Setup installation directory
     local project_dir=""
 
     if [ -n "$start_step" ]; then
-        # When resuming, use the recipe name directly (no auto-increment)
-        install_dir="$recipe"
-
+        # When resuming, directory must already exist
         if [ ! -d "$install_dir" ]; then
             print_error "Installation directory '$install_dir' does not exist. Cannot resume from step $start_step"
             print_info "To resume an installation, the directory must already exist"
@@ -553,8 +569,7 @@ install_opensocial() {
         project_dir=$(pwd)
         print_status "INFO" "Using existing directory: $project_dir"
     else
-        # Fresh installation - find available directory name with auto-increment
-        install_dir=$(get_available_dirname "$recipe")
+        # Fresh installation - create directory
         print_info "Installation directory: $install_dir"
 
         # Create and enter the installation directory using absolute path
@@ -1048,7 +1063,8 @@ EOF
 
 install_moodle() {
     local recipe=$1
-    local start_step=$2
+    local install_dir=$2
+    local start_step=$3
     local base_dir=$(pwd)
 
     print_header "Installing Moodle using recipe: $recipe"
@@ -1058,14 +1074,11 @@ install_moodle() {
         echo ""
     fi
 
-    # Determine installation directory
-    local install_dir=""
+    # Setup installation directory
     local project_dir=""
 
     if [ -n "$start_step" ]; then
-        # When resuming, use the recipe name directly (no auto-increment)
-        install_dir="$recipe"
-
+        # When resuming, directory must already exist
         if [ ! -d "$install_dir" ]; then
             print_error "Installation directory '$install_dir' does not exist. Cannot resume from step $start_step"
             print_info "To resume an installation, the directory must already exist"
@@ -1080,8 +1093,7 @@ install_moodle() {
         project_dir=$(pwd)
         print_status "INFO" "Using existing directory: $project_dir"
     else
-        # Fresh installation - find available directory name with auto-increment
-        install_dir=$(get_available_dirname "$recipe")
+        # Fresh installation - create directory
         print_info "Installation directory: $install_dir"
 
         # Create and enter the installation directory using absolute path
@@ -1402,9 +1414,11 @@ EOF
 
 main() {
     local recipe=""
+    local target=""
     local start_step=""
     local create_content="n"
     local config_file="cnwp.yml"
+    local positional_args=()
 
     # Parse arguments
     for arg in "$@"; do
@@ -1421,9 +1435,17 @@ main() {
         elif [[ "$arg" == "c" ]] || [[ "$arg" == "--create-content" ]]; then
             create_content="y"
         else
-            recipe="$arg"
+            positional_args+=("$arg")
         fi
     done
+
+    # Extract recipe and optional target from positional arguments
+    if [ ${#positional_args[@]} -ge 1 ]; then
+        recipe="${positional_args[0]}"
+    fi
+    if [ ${#positional_args[@]} -ge 2 ]; then
+        target="${positional_args[1]}"
+    fi
 
     # Default recipe if not specified
     if [ -z "$recipe" ]; then
@@ -1488,14 +1510,24 @@ main() {
 
     print_status "OK" "All prerequisites satisfied"
 
+    # Determine base name for installation directory
+    local base_name=""
+    if [ -n "$target" ]; then
+        # Use custom target name if provided
+        base_name="$target"
+    else
+        # Use recipe name as default
+        base_name="$recipe"
+    fi
+
     # Determine installation directory based on whether we're resuming
     local install_dir=""
     if [ -n "$start_step" ]; then
-        # When resuming, use recipe name directly
-        install_dir="$recipe"
+        # When resuming, use base name directly (no auto-increment)
+        install_dir="$base_name"
     else
         # Fresh install - find available directory with auto-increment
-        install_dir=$(get_available_dirname "$recipe")
+        install_dir=$(get_available_dirname "$base_name")
     fi
 
     # Read configuration values to display
@@ -1570,7 +1602,7 @@ main() {
 
     # Run installation based on recipe type
     if [ "$recipe_type" == "moodle" ]; then
-        if install_moodle "$recipe" "$start_step"; then
+        if install_moodle "$recipe" "$install_dir" "$start_step"; then
             exit 0
         else
             print_error "Installation failed"
@@ -1578,7 +1610,7 @@ main() {
         fi
     else
         # Default to Drupal/OpenSocial installation
-        if install_opensocial "$recipe" "$start_step" "$create_content"; then
+        if install_opensocial "$recipe" "$install_dir" "$start_step" "$create_content"; then
             exit 0
         else
             print_error "Installation failed"

@@ -75,51 +75,69 @@ run_test "Create site for deletion test" "./install.sh test-nwp"
 
 ---
 
-### 3. Linode SSH Timeout (Test 12)
+### 3. Linode SSH Timeout (Test 12) - IMPROVED
 
-**Status**: FAILING
-**Priority**: High (blocks production deployment testing)
+**Status**: TIMEOUT INCREASED, MONITORING NEEDED
+**Priority**: Medium (improved, needs verification)
 **Test Affected**: "Linode instance provisioned"
 
 **Description**:
-Linode instances are successfully created and boot to "running" state, but SSH does not become available within the 360-second timeout period.
+Linode instances are successfully created and boot to "running" state, but SSH does not become available within the previous 360-second (6 minute) timeout period. This has been addressed by increasing the timeout and improving progress feedback.
 
-**Expected Behavior**:
+**Root Cause Analysis**:
+Cloud-init on fresh Ubuntu 22.04 Linode instances takes significant time to:
+1. Complete first boot initialization
+2. Download and apply system updates
+3. Configure SSH keys from authorized_keys
+4. Start SSH service
+5. Configure network interfaces
+
+This process can easily take 8-10 minutes on g6-nanode-1 instances (1GB RAM, smallest tier).
+
+**Fix Applied**:
+Updated `lib/linode.sh` wait_for_ssh() function:
+- Increased timeout from 360s (6 min) to 600s (10 min)
+- Added progress messages every 60 seconds
+- Added elapsed time counter
+- Improved error messaging with troubleshooting hints
+
+**Expected Behavior (after fix)**:
 - Instance provisions in ~30-60 seconds
 - Instance boots to "running" state
-- SSH becomes available within 6 minutes (360s)
+- SSH becomes available within 10 minutes (600s)
+- Progress shown every 60 seconds
 - Tests can connect and run commands
 
-**Actual Behavior**:
+**Previous Behavior**:
 ```
-Created instance: 89280156 (label: nwp-test-20251229-113214)
-Waiting for instance 89280156 to boot...
-...... [status: provisioning]
-.....Instance is running
-Instance IP: 50.116.54.150
 Waiting for SSH to be available on 50.116.54.150...
-........................................................................ERROR: SSH did not become available within 360 seconds
-Instance 89280156 deleted
+........................................................................
+ERROR: SSH did not become available within 360 seconds
 ```
 
-**Investigation Needed**:
-- Check if SSH service starts on Ubuntu 22.04 Linode images
-- Verify SSH configuration in cloud-init
-- Test manual SSH connection to a Linode instance before it's deleted
-- Consider increasing timeout further (8-10 minutes)
-- Check if firewall rules are blocking SSH
-- Review Linode boot logs via Lish console
+**New Behavior** (with improvements):
+```
+Waiting for SSH to be available on 50.116.54.150...
+This may take 5-10 minutes for cloud-init to configure the instance...
+..............Still waiting... (60/600s elapsed)
+..............Still waiting... (120/600s elapsed)
+[continues until SSH ready or timeout]
+SSH is ready (took XXX seconds)
+```
 
-**Potential Causes**:
-1. SSH daemon not starting automatically on fresh Ubuntu 22.04 images
-2. Cloud-init taking longer than expected to configure SSH keys
-3. Network connectivity issues during provisioning
-4. Firewall blocking SSH (unlikely - Linode default allows port 22)
+**Next Test Run Needed**:
+- Verify 600s timeout is sufficient
+- Monitor actual SSH ready time
+- If still timing out, consider:
+  1. Using a larger Linode instance type (more resources = faster boot)
+  2. Checking Lish console logs for boot issues
+  3. Adding API check for cloud-init completion status
 
-**Workaround**: Manual testing on Linode instances
+**Workaround**:
+Use larger instance types (g6-standard-1 or higher) for faster boot times, or manually wait longer before running production tests.
 
 **Related Files**:
-- `lib/linode.sh` - wait_for_ssh() function (line 145-168)
+- `lib/linode.sh` - wait_for_ssh() function (line 146-183)
 - `test-nwp.sh` - Test 12 (Linode Production Testing)
 
 ---

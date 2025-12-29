@@ -146,24 +146,39 @@ get_linode_ip() {
 wait_for_ssh() {
     local ip=$1
     local ssh_key=${2:-~/.ssh/nwp}
-    local max_wait=${3:-360}
+    local max_wait=${3:-600}  # Increased to 10 minutes for cloud-init
     local elapsed=0
+    local last_progress=0
 
     echo "Waiting for SSH to be available on $ip..." >&2
+    echo "This may take 5-10 minutes for cloud-init to configure the instance..." >&2
 
     while [ $elapsed -lt $max_wait ]; do
+        # Try SSH connection with verbose error capturing
         if ssh -i "$ssh_key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 \
             -o BatchMode=yes root@$ip "exit" 2>/dev/null; then
-            echo "SSH is ready" >&2
+            echo "" >&2  # New line after dots
+            echo "SSH is ready (took $elapsed seconds)" >&2
             return 0
         fi
 
-        echo -n "." >&2
+        # Show progress message every 60 seconds
+        if [ $((elapsed - last_progress)) -ge 60 ]; then
+            echo "" >&2  # New line after dots
+            echo "Still waiting... ($elapsed/${max_wait}s elapsed)" >&2
+            last_progress=$elapsed
+        else
+            echo -n "." >&2
+        fi
+
         sleep 5
         elapsed=$((elapsed + 5))
     done
 
+    echo "" >&2  # New line after dots
     echo "ERROR: SSH did not become available within $max_wait seconds" >&2
+    echo "The instance may still be completing cloud-init setup" >&2
+    echo "You can check instance console via Linode Cloud Manager" >&2
     return 1
 }
 

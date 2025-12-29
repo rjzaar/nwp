@@ -66,6 +66,45 @@ print_warning() {
     echo -e "${YELLOW}${BOLD}WARNING:${NC} $1"
 }
 
+# Validate site name to prevent dangerous operations
+# Returns 0 if valid, 1 if invalid
+validate_sitename() {
+    local name="$1"
+    local context="${2:-site name}"
+
+    # Check for empty name
+    if [ -z "$name" ]; then
+        print_error "Empty $context provided"
+        return 1
+    fi
+
+    # Check for absolute paths
+    if [[ "$name" == /* ]]; then
+        print_error "Absolute paths not allowed for $context: $name"
+        return 1
+    fi
+
+    # Check for path traversal
+    if [[ "$name" == *".."* ]]; then
+        print_error "Path traversal not allowed in $context: $name"
+        return 1
+    fi
+
+    # Check for dangerous patterns (just dots, slashes only, etc.)
+    if [[ "$name" =~ ^[./]+$ ]]; then
+        print_error "Invalid $context: $name"
+        return 1
+    fi
+
+    # Only allow safe characters: alphanumeric, hyphen, underscore, dot
+    if [[ ! "$name" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+        print_error "Invalid characters in $context: $name (only alphanumeric, hyphen, underscore, dot allowed)"
+        return 1
+    fi
+
+    return 0
+}
+
 # Conditional debug message
 ocmsg() {
     local message=$1
@@ -285,6 +324,11 @@ remove_site_directory() {
     local sitename=$1
 
     print_header "Step 5: Remove Site Directory"
+
+    # Validate site name before destructive operation
+    if ! validate_sitename "$sitename" "site directory"; then
+        return 1
+    fi
 
     ocmsg "Removing directory: $sitename"
 

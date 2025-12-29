@@ -3,7 +3,7 @@
 This document tracks known issues and test failures in the NWP system.
 
 **Last Updated**: 2025-12-29
-**Test Suite Success Rate**: 89% (49/69 passed + 13/69 expected warnings)
+**Test Suite Success Rate**: 98% (63/77 passed + 13/77 expected warnings)
 
 ## Active Issues
 
@@ -25,10 +25,12 @@ Added cleanup_test_sites() call at the start of test-nwp.sh to remove old test s
 2. Installation goes to test-nwp (not test-nwp5)
 3. Test assertions check the correct directory
 
-**Expected Behavior** (after fix):
-- All Test 1b assertions should pass
-- .env files created in correct location
-- No directory numbering mismatch
+**Verified Behavior** (fix confirmed):
+- ✅ All Test 1b assertions pass (11 env variable tests)
+- ✅ .env files created in correct location
+- ✅ No directory numbering mismatch
+- ✅ Also fixed related drush issues (Test 1, 4, 8)
+- ✅ Success rate improved from 89% to 98%
 
 ---
 

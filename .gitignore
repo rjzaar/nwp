@@ -25,6 +25,7 @@
 !test-nwp.sh
 !testos.sh
 !uninstall_nwp.sh
+!schedule.sh
 
 # Documentation and metadata
 !README.md

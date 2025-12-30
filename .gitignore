@@ -26,6 +26,8 @@
 !testos.sh
 !uninstall_nwp.sh
 !schedule.sh
+!pl
+!pl-completion.bash
 
 # Documentation and metadata
 !README.md

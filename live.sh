@@ -486,6 +486,136 @@ setup_ssl() {
     print_status "OK" "SSL setup attempted"
 }
 
+# Setup server security hardening
+setup_server_security() {
+    local sitename="$1"
+    local ip="$2"
+
+    print_header "Server Security Hardening"
+
+    # Determine SSH user
+    local ssh_user="root"
+    if [[ "$ip" == *"git."* ]] || ssh -o BatchMode=yes -o ConnectTimeout=2 "gitlab@${ip}" exit 2>/dev/null; then
+        ssh_user="gitlab"
+    fi
+
+    # Check and apply security features
+    ssh -T "${ssh_user}@${ip}" << 'SECURITY'
+set -e
+
+echo "Checking server security..."
+
+# Track what was already configured
+ALREADY_DONE=""
+NEWLY_APPLIED=""
+
+# 1. Check/Install fail2ban
+if dpkg -l fail2ban 2>/dev/null | grep -q "^ii"; then
+    ALREADY_DONE="${ALREADY_DONE}fail2ban "
+else
+    echo "Installing fail2ban..."
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq fail2ban
+    sudo systemctl enable fail2ban
+    sudo systemctl start fail2ban
+    NEWLY_APPLIED="${NEWLY_APPLIED}fail2ban "
+fi
+
+# 2. Check/Configure UFW firewall
+if sudo ufw status | grep -q "Status: active"; then
+    ALREADY_DONE="${ALREADY_DONE}ufw "
+else
+    echo "Configuring firewall (ufw)..."
+    sudo apt-get install -y -qq ufw
+    sudo ufw default deny incoming
+    sudo ufw default allow outgoing
+    sudo ufw allow ssh
+    sudo ufw allow http
+    sudo ufw allow https
+    sudo ufw --force enable
+    NEWLY_APPLIED="${NEWLY_APPLIED}ufw "
+fi
+
+# 3. Check/Configure fail2ban for nginx
+if [ -f /etc/fail2ban/jail.local ] && grep -q "nginx-http-auth" /etc/fail2ban/jail.local 2>/dev/null; then
+    ALREADY_DONE="${ALREADY_DONE}fail2ban-nginx "
+else
+    echo "Configuring fail2ban for nginx..."
+    sudo tee /etc/fail2ban/jail.local > /dev/null << 'F2B'
+[DEFAULT]
+bantime = 3600
+findtime = 600
+maxretry = 5
+
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+
+[nginx-http-auth]
+enabled = true
+port = http,https
+filter = nginx-http-auth
+logpath = /var/log/nginx/error.log
+
+[nginx-botsearch]
+enabled = true
+port = http,https
+filter = nginx-botsearch
+logpath = /var/log/nginx/access.log
+maxretry = 2
+F2B
+    sudo systemctl restart fail2ban
+    NEWLY_APPLIED="${NEWLY_APPLIED}fail2ban-nginx "
+fi
+
+# 4. Check/Secure SSH configuration
+if grep -q "^PasswordAuthentication no" /etc/ssh/sshd_config 2>/dev/null; then
+    ALREADY_DONE="${ALREADY_DONE}ssh-hardening "
+else
+    echo "Hardening SSH configuration..."
+    sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+    sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+    sudo systemctl reload sshd
+    NEWLY_APPLIED="${NEWLY_APPLIED}ssh-hardening "
+fi
+
+# 5. Check/Install unattended-upgrades
+if dpkg -l unattended-upgrades 2>/dev/null | grep -q "^ii"; then
+    ALREADY_DONE="${ALREADY_DONE}auto-updates "
+else
+    echo "Enabling automatic security updates..."
+    sudo apt-get install -y -qq unattended-upgrades
+    echo 'APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";' | sudo tee /etc/apt/apt.conf.d/20auto-upgrades > /dev/null
+    NEWLY_APPLIED="${NEWLY_APPLIED}auto-updates "
+fi
+
+# Summary
+echo ""
+if [ -n "$ALREADY_DONE" ]; then
+    echo "Already configured: $ALREADY_DONE"
+fi
+if [ -n "$NEWLY_APPLIED" ]; then
+    echo "Newly applied: $NEWLY_APPLIED"
+fi
+if [ -z "$NEWLY_APPLIED" ]; then
+    echo "All security features already in place"
+fi
+SECURITY
+
+    if [ $? -eq 0 ]; then
+        print_status "OK" "Server security configured"
+        return 0
+    else
+        print_warning "Some security features may not have been applied"
+        return 1
+    fi
+}
+
 # Update cnwp.yml with live server info
 update_cnwp_live() {
     local sitename="$1"
@@ -598,6 +728,9 @@ provision_dedicated() {
     # Setup SSL (has its own idempotency check)
     setup_ssl "$sitename" "$ip" || true
 
+    # Setup server security (has its own idempotency checks)
+    setup_server_security "$sitename" "$ip" || true
+
     # Check if already in cnwp.yml
     local existing_ip=$(get_live_ip "$sitename")
     if [ -n "$existing_ip" ]; then
@@ -686,6 +819,9 @@ REMOTE
 
     # Setup SSL (has its own idempotency check)
     setup_ssl "$sitename" "$gitlab_host" || true
+
+    # Setup server security (has its own idempotency checks)
+    setup_server_security "$sitename" "$gitlab_host" || true
 
     # Check if already in cnwp.yml
     local existing_ip=$(get_live_ip "$sitename")

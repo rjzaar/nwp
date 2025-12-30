@@ -78,10 +78,13 @@ declare -a COMPONENTS=(
     "nwp_secrets|NWP Secrets (.secrets.yml)|-|tools"
 
     # Linode Infrastructure
+    # NOTE: SSH key upload to Linode profile is intentionally NOT automated.
+    # This must be done manually for security reasons - users should explicitly
+    # control which SSH keys have access to their Linode account.
+    # See: https://cloud.linode.com/profile/keys
     "linode_cli|Linode CLI|-|linode"
     "linode_config|Linode CLI Configuration|linode_cli|linode"
     "ssh_keys|SSH Keys for Deployment|linode_cli|linode"
-    "ssh_keys_linode|SSH Keys in Linode Profile|ssh_keys|linode"
 
     # GitLab Infrastructure (requires Linode)
     "gitlab_keys|GitLab SSH Keys|linode_config|gitlab"
@@ -235,21 +238,6 @@ check_linode_config_exists() {
     return 1
 }
 
-check_ssh_keys_in_linode() {
-    # Check if our SSH key is in Linode profile
-    if ! check_linode_config_exists; then
-        return 1
-    fi
-    local pubkey_file="$SCRIPT_DIR/keys/nwp.pub"
-    [ -f "$pubkey_file" ] || pubkey_file="$HOME/.ssh/nwp.pub"
-    [ -f "$pubkey_file" ] || return 1
-
-    local key_fingerprint=$(ssh-keygen -lf "$pubkey_file" 2>/dev/null | awk '{print $2}')
-    [ -z "$key_fingerprint" ] && return 1
-
-    linode-cli sshkeys list --text --no-headers 2>/dev/null | grep -q "$key_fingerprint"
-}
-
 check_gitlab_keys_exist() {
     [ -f "$SCRIPT_DIR/git/keys/gitlab_linode" ]
 }
@@ -316,7 +304,6 @@ detect_component_state() {
         linode_cli)       check_linode_cli_installed ;;
         linode_config)    check_linode_config_exists ;;
         ssh_keys)         check_ssh_keys_exist ;;
-        ssh_keys_linode)  check_ssh_keys_in_linode ;;
         gitlab_keys)      check_gitlab_keys_exist ;;
         gitlab_server)    check_gitlab_server_exists ;;
         gitlab_dns)       check_gitlab_dns_exists ;;
@@ -651,6 +638,15 @@ install_ssh_keys() {
     fi
 
     log_action "SSH keys configured"
+
+    # SECURITY: SSH key upload to Linode must be done manually
+    echo ""
+    print_status "WARN" "MANUAL STEP REQUIRED for security:"
+    echo "    Add your SSH public key to Linode manually:"
+    echo "    1. Copy: cat ~/.ssh/nwp.pub"
+    echo "    2. Go to: https://cloud.linode.com/profile/keys"
+    echo "    3. Click 'Add SSH Key' and paste the key"
+    echo ""
 }
 
 install_nwp_secrets() {
@@ -755,43 +751,6 @@ EOF
         log_action "Linode CLI configured"
     else
         print_status "FAIL" "Failed to configure Linode CLI - check your token"
-        return 1
-    fi
-}
-
-install_ssh_keys_linode() {
-    print_header "Adding SSH Key to Linode Profile"
-    log_action "Adding SSH key to Linode"
-
-    if ! check_linode_config_exists; then
-        print_status "FAIL" "Linode CLI not configured"
-        return 1
-    fi
-
-    # Find the public key
-    local pubkey_file="$SCRIPT_DIR/keys/nwp.pub"
-    [ -f "$pubkey_file" ] || pubkey_file="$HOME/.ssh/nwp.pub"
-
-    if [ ! -f "$pubkey_file" ]; then
-        print_status "FAIL" "SSH public key not found"
-        return 1
-    fi
-
-    # Check if already added
-    if check_ssh_keys_in_linode; then
-        print_status "OK" "SSH key already in Linode profile"
-        return 0
-    fi
-
-    local pubkey=$(cat "$pubkey_file")
-    local label="nwp-$(hostname)-$(date +%Y%m%d)"
-
-    print_status "INFO" "Adding SSH key to Linode profile..."
-    if linode-cli sshkeys create --label "$label" --ssh_key "$pubkey" --text --no-headers; then
-        print_status "OK" "SSH key added to Linode profile"
-        log_action "SSH key added to Linode"
-    else
-        print_status "FAIL" "Failed to add SSH key to Linode"
         return 1
     fi
 }
@@ -1013,7 +972,6 @@ install_component() {
         linode_cli)       install_linode_cli ;;
         linode_config)    install_linode_config ;;
         ssh_keys)         install_ssh_keys ;;
-        ssh_keys_linode)  install_ssh_keys_linode ;;
         gitlab_keys)      install_gitlab_keys ;;
         gitlab_server)    install_gitlab_server ;;
         gitlab_dns)       install_gitlab_dns ;;
@@ -1246,38 +1204,6 @@ remove_linode_config() {
     log_action "Linode config removed"
 }
 
-remove_ssh_keys_linode() {
-    print_header "Removing SSH Key from Linode Profile"
-    log_action "Removing SSH key from Linode"
-
-    if [ "${COMPONENT_ORIGINAL[ssh_keys_linode]:-0}" -eq 1 ]; then
-        print_status "WARN" "SSH key was in Linode before NWP - keeping it"
-        return 0
-    fi
-
-    if ! check_linode_config_exists; then
-        print_status "INFO" "Linode CLI not configured - nothing to remove"
-        return 0
-    fi
-
-    # Find and remove our key
-    local pubkey_file="$SCRIPT_DIR/keys/nwp.pub"
-    [ -f "$pubkey_file" ] || pubkey_file="$HOME/.ssh/nwp.pub"
-
-    if [ -f "$pubkey_file" ]; then
-        local key_fingerprint=$(ssh-keygen -lf "$pubkey_file" 2>/dev/null | awk '{print $2}')
-        if [ -n "$key_fingerprint" ]; then
-            local key_id=$(linode-cli sshkeys list --text --no-headers 2>/dev/null | grep "$key_fingerprint" | awk '{print $1}')
-            if [ -n "$key_id" ]; then
-                linode-cli sshkeys delete "$key_id" 2>/dev/null
-                print_status "OK" "SSH key removed from Linode profile"
-            fi
-        fi
-    fi
-
-    log_action "SSH key removed from Linode"
-}
-
 remove_gitlab_keys() {
     print_header "Removing GitLab SSH Keys"
     log_action "Removing GitLab SSH keys"
@@ -1436,7 +1362,6 @@ remove_component() {
         linode_cli)       remove_linode_cli ;;
         linode_config)    remove_linode_config ;;
         ssh_keys)         remove_ssh_keys ;;
-        ssh_keys_linode)  remove_ssh_keys_linode ;;
         gitlab_keys)      remove_gitlab_keys ;;
         gitlab_server)    remove_gitlab_server ;;
         gitlab_dns)       remove_gitlab_dns ;;

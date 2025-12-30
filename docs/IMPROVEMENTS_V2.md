@@ -650,17 +650,86 @@ Operations on remote servers:
 
 ---
 
+### P26: Live Test Site Provisioning
+**Priority:** MEDIUM | **Effort:** High | **Dependencies:** P08, GitLab server, Linode CLI
+
+Provision live test/staging sites at `[sitename].[url]` (e.g., `mysite.nwpcode.org`):
+
+```bash
+# Usage
+pl provision mysite              # Create mysite.nwpcode.org
+pl provision mysite --type g6-nanode-1   # Specify Linode type
+pl provision --delete mysite     # Remove test site
+```
+
+**Architecture:**
+```
+Local Development              Linode Cloud                    DNS
+─────────────────              ────────────────                ───
+mysite/ ──────────────────────► mysite.nwpcode.org             A record auto-created
+                                (Linode server)                 via Linode API
+                                     │
+                                     ▼
+                               Let's Encrypt SSL
+                               (auto-configured)
+```
+
+**Configuration:**
+```yaml
+# cnwp.yml
+settings:
+  url: nwpcode.org              # Base domain (already exists)
+  urluse: all                   # Enable test site provisioning
+
+# Site-specific
+sites:
+  mysite:
+    directory: /home/rob/nwp/mysite
+    recipe: d
+    environment: staging
+    live_test:
+      enabled: true
+      domain: mysite.nwpcode.org
+      linode_id: 12345678
+      server_ip: 1.2.3.4
+```
+
+**Implementation:**
+1. Create `provision.sh` script
+2. Provision Linode server (nanode/shared for cost efficiency)
+3. Auto-configure DNS via Linode API (`mysite.nwpcode.org → IP`)
+4. Deploy site using existing `stg2prod.sh` workflow
+5. Configure Let's Encrypt SSL via certbot
+6. Store server details in cnwp.yml and .secrets.yml
+7. Support shared hosting (multiple sites on one server) for cost savings
+
+**Deployment Options:**
+| Option | Description | Use Case |
+|--------|-------------|----------|
+| Dedicated | One Linode per site | Production-like testing |
+| Shared | Multiple sites on GitLab server | Cost-effective demos |
+| Temporary | Auto-delete after N days | PR review environments |
+
+**Success Criteria:**
+- [ ] `pl provision sitename` creates live site
+- [ ] DNS automatically configured
+- [ ] SSL working via Let's Encrypt
+- [ ] Site accessible at `sitename.nwpcode.org`
+- [ ] Cleanup removes server and DNS
+
+---
+
 ## Implementation Priority Matrix
 
 | Proposal | Priority | Effort | Dependencies | Phase |
 |----------|----------|--------|--------------|-------|
 | P01-P05 | - | - | - | 1 (DONE) |
 | P06-P10 | - | - | - | 2 (DONE) |
-| **P11** | HIGH | Medium | None | 3 |
+| **P11** | HIGH | Medium | GitLab server | 3 |
 | **P12** | HIGH | Medium | P11 | 3 |
-| P13 | MEDIUM | Medium | P11 | 3 |
-| P14 | MEDIUM | Low | P11, P13 | 3 |
-| P15 | LOW | High | P11-P14 | 3 |
+| P13 | LOW | Medium | P11 | 3 |
+| P14 | MEDIUM | Low | P11 | 3 |
+| P15 | LOW | Medium | P11 | 3 |
 | **P16** | HIGH | Medium | None | 4 |
 | **P17** | HIGH | Low | P16 | 4 |
 | **P18** | HIGH | Medium | P16 | 4 |
@@ -671,6 +740,7 @@ Operations on remote servers:
 | P23 | MEDIUM | Medium | P11 | 5 |
 | **P24** | HIGH | High | P08, P11 | 5 |
 | P25 | LOW | High | P08, P18 | 5 |
+| P26 | MEDIUM | High | P08, GitLab, Linode | 5 |
 
 **Bold** = Critical path items
 
@@ -693,17 +763,18 @@ Operations on remote servers:
 ### Medium-term (2-4 months)
 
 7. **P20: GitLab CI Pipeline** - Full automation
-8. **P13: Multiple Remote Support** - 3-2-1 backup rule
+8. **P13: Additional Remote Support** - Optional external backups
 9. **P14: Automated Scheduling** - Hands-off backups
 10. **P24: Rollback Capability** - Production safety
 
 ### Long-term (4-6 months)
 
 11. **P21: Coverage & Badges** - Visibility
-12. **P15: NWP GitLab as Backup** - Self-hosted backup
+12. **P15: GitLab API Automation** - Auto-create repos
 13. **P22: Unified CLI Wrapper** - Developer experience
 14. **P23: Database Sanitization** - GDPR compliance
 15. **P25: Remote Site Support** - Full remote ops
+16. **P26: Live Test Site Provisioning** - Deploy to `sitename.nwpcode.org`
 
 ---
 
@@ -722,10 +793,11 @@ Operations on remote servers:
 - [ ] Coverage badge shows >80%
 
 ### Phase 5 Complete When:
-- [ ] `nwp` CLI wrapper functional
+- [ ] `pl` CLI wrapper fully functional
 - [ ] Rollback tested and documented
 - [ ] Remote operations work
 - [ ] Database sanitization GDPR compliant
+- [ ] Live test sites deployable to `sitename.nwpcode.org`
 
 ---
 
@@ -760,6 +832,12 @@ sites:
     environment: development
     purpose: indefinite
     created: 2025-01-01T00:00:00Z
+    # P26: Live test site provisioning
+    live_test:
+      enabled: true
+      domain: mysite.nwpcode.org
+      linode_id: 12345678
+      server_ip: 1.2.3.4
 
 linode:
   servers:
@@ -770,16 +848,14 @@ linode:
 
 git_backup:
   enabled: true
-  method: push
   auto_commit: true
-  auto_push: false
-  remotes:
-    primary:
-      type: github
+  auto_push: true                        # Push to NWP GitLab by default
+  gitlab_url: https://git.nwpcode.org    # From settings.url
+  # Optional: Additional external remotes (P13)
+  additional_remotes:
+    github:
       url: git@github.com:user/site.git
-    secondary:
-      type: nwp_gitlab
-      url: git@gitlab.local:backups/site.git
+      enabled: false                     # Opt-in
   schedule:
     enabled: false
     database: "0 2 * * *"
@@ -792,7 +868,7 @@ git_backup:
 ci:
   provider: gitlab
   gitlab:
-    url: https://gitlab.local
+    url: https://git.nwpcode.org         # NWP GitLab from settings.url
     runner_tag: nwp
   testing:
     local: [phpcs, phpstan, phpunit-unit]

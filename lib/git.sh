@@ -404,3 +404,182 @@ git_backup() {
 
     return 0
 }
+
+################################################################################
+# Git Bundle Functions (P12)
+################################################################################
+
+# Create a full git bundle containing all history
+# Usage: git_bundle_full "/path/to/repo" "/path/to/output.bundle"
+git_bundle_full() {
+    local repo_path="$1"
+    local bundle_path="$2"
+
+    if [ ! -d "$repo_path/.git" ]; then
+        print_error "Not a git repository: $repo_path"
+        return 1
+    fi
+
+    cd "$repo_path" || return 1
+
+    # Create bundle with all refs
+    print_info "Creating full git bundle..."
+    if git bundle create "$bundle_path" --all 2>&1; then
+        local size=$(du -h "$bundle_path" | cut -f1)
+        print_status "OK" "Bundle created: $(basename "$bundle_path") ($size)"
+        cd - > /dev/null
+        return 0
+    else
+        print_error "Failed to create bundle"
+        cd - > /dev/null
+        return 1
+    fi
+}
+
+# Create an incremental git bundle since last bundle tag
+# Usage: git_bundle_incremental "/path/to/repo" "/path/to/output.bundle" ["tag-prefix"]
+git_bundle_incremental() {
+    local repo_path="$1"
+    local bundle_path="$2"
+    local tag_prefix="${3:-nwp-bundle}"
+
+    if [ ! -d "$repo_path/.git" ]; then
+        print_error "Not a git repository: $repo_path"
+        return 1
+    fi
+
+    cd "$repo_path" || return 1
+
+    # Find the last bundle tag
+    local last_tag=$(git tag -l "${tag_prefix}-*" --sort=-creatordate | head -n 1)
+
+    if [ -z "$last_tag" ]; then
+        # No previous bundle - create full bundle
+        print_info "No previous bundle found, creating full bundle"
+        if git bundle create "$bundle_path" --all 2>&1; then
+            local size=$(du -h "$bundle_path" | cut -f1)
+            print_status "OK" "Full bundle created: $(basename "$bundle_path") ($size)"
+        else
+            print_error "Failed to create bundle"
+            cd - > /dev/null
+            return 1
+        fi
+    else
+        # Create incremental bundle from last tag to HEAD
+        print_info "Creating incremental bundle since $last_tag"
+        if git bundle create "$bundle_path" "${last_tag}..HEAD" --all 2>&1; then
+            local size=$(du -h "$bundle_path" | cut -f1)
+            print_status "OK" "Incremental bundle created: $(basename "$bundle_path") ($size)"
+        else
+            print_error "Failed to create incremental bundle"
+            cd - > /dev/null
+            return 1
+        fi
+    fi
+
+    # Create a new tag marking this bundle point
+    local new_tag="${tag_prefix}-$(date +%Y%m%dT%H%M%S)"
+    git tag "$new_tag" -m "Bundle point: $new_tag"
+    ocmsg "Created bundle tag: $new_tag"
+
+    cd - > /dev/null
+    return 0
+}
+
+# Verify a git bundle is valid
+# Usage: git_bundle_verify "/path/to/bundle.bundle"
+git_bundle_verify() {
+    local bundle_path="$1"
+
+    if [ ! -f "$bundle_path" ]; then
+        print_error "Bundle not found: $bundle_path"
+        return 1
+    fi
+
+    print_info "Verifying bundle: $(basename "$bundle_path")"
+    if git bundle verify "$bundle_path" 2>&1; then
+        print_status "OK" "Bundle is valid"
+        return 0
+    else
+        print_error "Bundle verification failed"
+        return 1
+    fi
+}
+
+# List contents of a git bundle
+# Usage: git_bundle_list "/path/to/bundle.bundle"
+git_bundle_list() {
+    local bundle_path="$1"
+
+    if [ ! -f "$bundle_path" ]; then
+        print_error "Bundle not found: $bundle_path"
+        return 1
+    fi
+
+    print_info "Bundle contents: $(basename "$bundle_path")"
+    git bundle list-heads "$bundle_path"
+    return $?
+}
+
+# Full bundle backup workflow
+# Usage: git_bundle_backup "/path/to/backup/dir" "sitename" "backup-type" ["incremental"]
+git_bundle_backup() {
+    local backup_dir="$1"
+    local sitename="$2"
+    local backup_type="${3:-db}"
+    local incremental="${4:-false}"
+
+    print_header "Git Bundle Backup"
+
+    # Determine bundle filename
+    local timestamp=$(date +%Y%m%dT%H%M%S)
+    local bundle_dir="${backup_dir}/bundles"
+    local bundle_name
+
+    if [ "$incremental" == "true" ]; then
+        bundle_name="${sitename}-${backup_type}-incr-${timestamp}.bundle"
+    else
+        bundle_name="${sitename}-${backup_type}-full-${timestamp}.bundle"
+    fi
+
+    # Create bundle directory if needed
+    if [ ! -d "$bundle_dir" ]; then
+        mkdir -p "$bundle_dir"
+    fi
+
+    local bundle_path="${bundle_dir}/${bundle_name}"
+
+    # Initialize repo if needed (for non-git backup dirs)
+    if [ ! -d "$backup_dir/.git" ]; then
+        print_info "Initializing git repository for bundle..."
+        git_init_repo "$backup_dir" "${sitename}-${backup_type}"
+
+        # Add all current files
+        cd "$backup_dir" || return 1
+        git add -A
+        if ! git diff --cached --quiet 2>/dev/null; then
+            git commit -q -m "Initial commit for bundle backup"
+        fi
+        cd - > /dev/null
+    fi
+
+    # Create bundle
+    if [ "$incremental" == "true" ]; then
+        if ! git_bundle_incremental "$backup_dir" "$bundle_path"; then
+            return 1
+        fi
+    else
+        if ! git_bundle_full "$backup_dir" "$bundle_path"; then
+            return 1
+        fi
+    fi
+
+    # Verify bundle
+    if ! git_bundle_verify "$bundle_path"; then
+        print_warning "Bundle created but verification failed"
+        return 1
+    fi
+
+    print_status "OK" "Bundle saved to: $bundle_path"
+    return 0
+}

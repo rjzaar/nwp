@@ -39,6 +39,8 @@ ${BOLD}OPTIONS:${NC}
     -b, --db-only           Database-only backup (skip files)
     -g, --git               Create supplementary git backup
     -e, --endpoint=NAME     Backup to different endpoint (default: sitename)
+    --bundle                Create git bundle for offline/archival backup
+    --incremental           Create incremental bundle (use with --bundle)
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Name of the DDEV site to backup
@@ -51,6 +53,8 @@ ${BOLD}EXAMPLES:${NC}
     ./backup.sh -b nwp 'Before update'           # DB-only backup with message
     ./backup.sh -e=nwp_backup nwp 'Test backup'  # Backup to different endpoint
     ./backup.sh -bd nwp                          # DB-only backup with debug output
+    ./backup.sh --bundle nwp                     # Create git bundle (full)
+    ./backup.sh --bundle --incremental nwp       # Create incremental bundle
 
 ${BOLD}COMBINED FLAGS:${NC}
     Multiple short flags can be combined: -bd = -b -d
@@ -242,6 +246,8 @@ backup_site() {
     local message=$3
     local db_only=${4:-false}
     local git_backup=${5:-false}
+    local bundle=${6:-false}
+    local incremental=${7:-false}
 
     if [ "$db_only" == "true" ]; then
         print_header "NWP Database Backup: $sitename"
@@ -305,13 +311,14 @@ backup_site() {
         echo -e "${GREEN}✓${NC} Files:    ${backup_base}/${backup_name}.tar.gz"
     fi
 
+    # Determine backup type for git operations
+    local backup_type="db"
+    if [ "$db_only" != "true" ]; then
+        backup_type="files"
+    fi
+
     # Git backup if requested
     if [ "$git_backup" == "true" ]; then
-        local backup_type="db"
-        if [ "$db_only" != "true" ]; then
-            backup_type="files"
-        fi
-
         local commit_msg="Backup: $backup_name"
         if [ -n "$message" ]; then
             commit_msg="$message ($backup_name)"
@@ -321,6 +328,15 @@ backup_site() {
             echo -e "${GREEN}✓${NC} Git:      Committed and pushed to GitLab"
         else
             print_warning "Git backup completed with warnings"
+        fi
+    fi
+
+    # Bundle backup if requested
+    if [ "$bundle" == "true" ]; then
+        if git_bundle_backup "$backup_base" "$endpoint" "$backup_type" "$incremental"; then
+            echo -e "${GREEN}✓${NC} Bundle:   Created offline backup bundle"
+        else
+            print_warning "Bundle creation completed with warnings"
         fi
     fi
 
@@ -336,13 +352,15 @@ main() {
     local DEBUG=false
     local DB_ONLY=false
     local GIT_BACKUP=false
+    local BUNDLE=false
+    local INCREMENTAL=false
     local ENDPOINT=""
     local SITENAME=""
     local MESSAGE=""
 
     # Use getopt for option parsing
     local OPTIONS=hdbge:
-    local LONGOPTS=help,debug,db-only,git,endpoint:
+    local LONGOPTS=help,debug,db-only,git,endpoint:,bundle,incremental
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -372,6 +390,14 @@ main() {
             -e|--endpoint)
                 ENDPOINT="$2"
                 shift 2
+                ;;
+            --bundle)
+                BUNDLE=true
+                shift
+                ;;
+            --incremental)
+                INCREMENTAL=true
+                shift
                 ;;
             --)
                 shift
@@ -411,9 +437,11 @@ main() {
     ocmsg "Debug: $DEBUG"
     ocmsg "Database-only: $DB_ONLY"
     ocmsg "Git backup: $GIT_BACKUP"
+    ocmsg "Bundle: $BUNDLE"
+    ocmsg "Incremental: $INCREMENTAL"
 
     # Run backup
-    if backup_site "$SITENAME" "$ENDPOINT" "$MESSAGE" "$DB_ONLY" "$GIT_BACKUP"; then
+    if backup_site "$SITENAME" "$ENDPOINT" "$MESSAGE" "$DB_ONLY" "$GIT_BACKUP" "$BUNDLE" "$INCREMENTAL"; then
         show_elapsed_time "Backup"
         exit 0
     else

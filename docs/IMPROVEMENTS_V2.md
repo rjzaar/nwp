@@ -566,19 +566,19 @@ Where `<url>` comes from `cnwp.yml` settings (e.g., `git.nwpcode.org`).
 ### P22: Unified CLI Wrapper
 **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** All previous
 
-Single `nwp` command:
+Enhance existing `pl` command as unified interface:
 
 ```bash
-nwp install recipe sitename
-nwp backup sitename
-nwp restore sitename
-nwp copy source dest
-nwp test sitename
-nwp deploy sitename
+pl install recipe sitename
+pl backup sitename
+pl restore sitename
+pl copy source dest
+pl test sitename
+pl deploy sitename
 ```
 
 **Success Criteria:**
-- [ ] All scripts accessible via `nwp`
+- [ ] All scripts accessible via `pl`
 - [ ] Tab-completion support
 - [ ] Consistent help system
 

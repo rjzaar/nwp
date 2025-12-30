@@ -838,6 +838,12 @@ sites:
       domain: mysite.nwpcode.org
       linode_id: 12345678
       server_ip: 1.2.3.4
+      # Deployment type: dedicated | shared | temporary
+      type: dedicated                    # One Linode per site
+      # type: shared                     # Multiple sites on GitLab server
+      # type: temporary                  # Auto-delete after expires
+      # expires: 7                       # Days until auto-delete (temporary only)
+      linode_type: g6-nanode-1           # Linode plan (dedicated only)
 
 linode:
   servers:

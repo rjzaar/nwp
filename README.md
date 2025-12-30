@@ -14,6 +14,8 @@ A streamlined installation system for Drupal and Moodle projects using DDEV and 
 - [Configuration File](#configuration-file)
 - [Creating Custom Recipes](#creating-custom-recipes)
 - [Advanced Features](#advanced-features)
+- [GitLab Deployment](#gitlab-deployment)
+- [Site Purpose and Migration](#site-purpose-and-migration)
 - [Documentation](#documentation)
 - [Troubleshooting](#troubleshooting)
 
@@ -499,6 +501,105 @@ Please check your cnwp.yml and ensure all required fields are present:
   For Drupal recipes: source, profile, webroot
   For Moodle recipes: source, branch, webroot
 ```
+
+## GitLab Deployment
+
+NWP includes automated GitLab server deployment on Linode infrastructure.
+
+### Quick Setup
+
+```bash
+# Set up a permanent GitLab site at git.<your-domain>
+cd git
+./setup_gitlab_site.sh
+```
+
+This will:
+- Read your domain from `cnwp.yml` settings
+- Create a 4GB Linode server
+- Install GitLab CE with SSL
+- Configure SSH keys and access
+- Register the site as permanent in `cnwp.yml`
+- Store credentials in `.secrets.yml`
+
+### Manual GitLab Setup
+
+For more control over the installation:
+
+```bash
+# 1. Set up local environment
+./git/gitlab_setup.sh
+
+# 2. Upload StackScript to Linode
+./git/gitlab_upload_stackscript.sh
+
+# 3. Create GitLab server
+./git/gitlab_create_server.sh --domain git.example.com --email admin@example.com
+```
+
+### Accessing GitLab
+
+After setup, SSH config is automatically configured:
+
+```bash
+# Connect to GitLab server
+ssh git-server
+
+# Get root password
+ssh git-server 'sudo cat /root/gitlab_credentials.txt'
+```
+
+See `git/README.md` for complete GitLab documentation.
+
+## Site Purpose and Migration
+
+NWP supports site lifecycle management through purpose tracking and migration workflows.
+
+### Site Purpose
+
+When installing a site, you can specify its purpose:
+
+```bash
+./install.sh nwp mysite -p=t    # Testing - can be freely deleted
+./install.sh nwp mysite -p=i    # Indefinite - default, manual deletion allowed
+./install.sh nwp mysite -p=p    # Permanent - requires config change to delete
+./install.sh nwp mysite -p=m    # Migration - creates stub for importing sites
+```
+
+Purpose values:
+- **testing**: Safe to delete, used for temporary test sites
+- **indefinite**: Default for normal sites, can be deleted manually
+- **permanent**: Protected sites, must change purpose in `cnwp.yml` before deletion
+- **migration**: Creates directory structure for migrating external sites
+
+### Migration Workflow
+
+For importing existing sites (Drupal 7, WordPress, static HTML, etc.):
+
+```bash
+# Create migration stub
+./install.sh d oldsite -p=m
+
+# Analyze the source
+./migration.sh analyze oldsite
+
+# Prepare target Drupal site
+./migration.sh prepare oldsite
+
+# Run migration
+./migration.sh run oldsite
+
+# Verify results
+./migration.sh verify oldsite
+```
+
+The migration workflow supports:
+- Drupal 7/8/9 sites
+- WordPress sites
+- Static HTML sites
+- Joomla sites
+
+See `docs/MIGRATION.md` for complete migration documentation.
 
 ## Documentation
 

@@ -161,6 +161,60 @@ ensure_ssh_keys() {
     fi
 }
 
+# Setup SSH config for easy access
+setup_ssh_config() {
+    local server_ip="$1"
+    local domain="$2"
+    local ssh_user="gitlab"
+    local keys_dir="$SCRIPT_DIR/keys"
+    local key_file="$keys_dir/gitlab_linode"
+
+    print_info "Setting up SSH configuration..."
+
+    # Create ~/.ssh if it doesn't exist
+    mkdir -p "$HOME/.ssh"
+    chmod 700 "$HOME/.ssh"
+
+    # Copy key to ~/.ssh/ with correct permissions
+    local dest_key="$HOME/.ssh/gitlab_linode"
+    if [ ! -f "$dest_key" ] || [ "$key_file" -nt "$dest_key" ]; then
+        cp "$key_file" "$dest_key"
+        cp "${key_file}.pub" "${dest_key}.pub"
+        chmod 600 "$dest_key"
+        chmod 644 "${dest_key}.pub"
+        print_status "OK" "SSH key copied to ~/.ssh/gitlab_linode"
+    else
+        print_status "OK" "SSH key already in ~/.ssh/"
+    fi
+
+    # Add SSH config entry if not present
+    local ssh_config="$HOME/.ssh/config"
+    if ! grep -q "Host git-server" "$ssh_config" 2>/dev/null; then
+        cat >> "$ssh_config" << SSHCONFIG
+
+# GitLab Server ($domain)
+Host git-server gitlab $domain
+    HostName $server_ip
+    User $ssh_user
+    IdentityFile ~/.ssh/gitlab_linode
+    IdentitiesOnly yes
+    StrictHostKeyChecking no
+SSHCONFIG
+        chmod 600 "$ssh_config"
+        print_status "OK" "SSH config entry added for '$domain'"
+    else
+        # Update existing entry with new IP if needed
+        if ! grep -q "$server_ip" "$ssh_config" 2>/dev/null; then
+            sed -i "/Host git-server/,/^Host /{ s/HostName .*/HostName $server_ip/; }" "$ssh_config"
+            print_status "OK" "SSH config updated with new IP"
+        else
+            print_status "OK" "SSH config already configured"
+        fi
+    fi
+
+    print_info "You can now connect with: ssh git-server"
+}
+
 # Ensure StackScript is uploaded
 ensure_stackscript() {
     local stackscript_id_file="$HOME/.nwp/gitlab_stackscript_id"
@@ -397,6 +451,10 @@ print_header "Registration"
 register_site "$SERVER_ID" "$SERVER_IP" "$GITLAB_DOMAIN"
 store_secrets "$SERVER_ID" "$SERVER_IP" "$GITLAB_DOMAIN"
 
+# Setup SSH config for easy access
+print_header "SSH Configuration"
+setup_ssh_config "$SERVER_IP" "$GITLAB_DOMAIN"
+
 # Summary
 print_header "GitLab Site Created"
 
@@ -406,11 +464,15 @@ echo "  IP:        $SERVER_IP"
 echo "  Linode ID: $SERVER_ID"
 echo "  Purpose:   permanent"
 echo ""
+echo "SSH Access:"
+echo "  ssh git-server                    # Using SSH config alias"
+echo "  ssh gitlab@$SERVER_IP             # Direct connection"
+echo ""
 echo "Next Steps:"
 echo "  1. Configure DNS: $GITLAB_DOMAIN -> $SERVER_IP"
 echo "  2. Wait 10-15 minutes for GitLab installation"
 echo "  3. Get root password:"
-echo "     ssh -i $SCRIPT_DIR/keys/gitlab_linode gitlab@$SERVER_IP 'sudo cat /root/gitlab_credentials.txt'"
+echo "     ssh git-server 'sudo cat /root/gitlab_credentials.txt'"
 echo "  4. Access: https://$GITLAB_DOMAIN"
 echo ""
 print_status "OK" "Setup complete"

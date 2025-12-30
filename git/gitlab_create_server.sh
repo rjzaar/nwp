@@ -48,6 +48,7 @@ SSH_USER="gitlab"
 INSTALL_RUNNER="yes"
 RUNNER_TAGS="docker,shell"
 ROOT_PASS=""
+AUTO_YES="no"
 
 # Helper functions
 print_header() {
@@ -102,6 +103,10 @@ while [[ $# -gt 0 ]]; do
         --runner-tags)
             RUNNER_TAGS="$2"
             shift 2
+            ;;
+        -y|--yes)
+            AUTO_YES="yes"
+            shift
             ;;
         -h|--help)
             grep "^#" "$0" | grep -v "^#!/" | sed 's/^# //' | sed 's/^#//'
@@ -187,10 +192,12 @@ if [ -n "$TYPE_INFO" ] && [ "$TYPE_INFO" != "null" ]; then
         print_warning "Selected type has only ${TYPE_RAM}MB RAM"
         print_info "Recommended: g6-standard-1 (2GB) or larger"
         echo ""
-        read -p "Continue anyway? [y/N]: " response
-        if [[ ! "$response" =~ ^[yY]$ ]]; then
-            print_info "Cancelled. Use --type g6-standard-1 or larger"
-            exit 1
+        if [ "$AUTO_YES" != "yes" ]; then
+            read -p "Continue anyway? [y/N]: " response
+            if [[ ! "$response" =~ ^[yY]$ ]]; then
+                print_info "Cancelled. Use --type g6-standard-1 or larger"
+                exit 1
+            fi
         fi
     fi
 else
@@ -216,8 +223,12 @@ if [ "$INSTALL_RUNNER" = "yes" ]; then
 fi
 echo ""
 
-read -p "Create server with this configuration? [Y/n]: " response
-response=${response:-y}
+if [ "$AUTO_YES" = "yes" ]; then
+    response="y"
+else
+    read -p "Create server with this configuration? [Y/n]: " response
+    response=${response:-y}
+fi
 if [[ ! "$response" =~ ^[yY]$ ]]; then
     print_info "Cancelled"
     exit 0

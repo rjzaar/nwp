@@ -30,6 +30,10 @@
 !pl-completion.bash
 !security.sh
 !live.sh
+!stg2live.sh
+!live2stg.sh
+!live2prod.sh
+!produce.sh
 
 # Documentation and metadata
 !README.md

@@ -48,6 +48,102 @@ if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
     source "$SCRIPT_DIR/lib/yaml-write.sh"
 fi
 
+# Source Linode library for DNS registration
+if [ -f "$SCRIPT_DIR/lib/linode.sh" ]; then
+    source "$SCRIPT_DIR/lib/linode.sh"
+fi
+
+################################################################################
+# DNS Pre-registration for Live Sites
+################################################################################
+
+# Pre-register DNS entry for future live site deployment
+# This eliminates DNS propagation wait time when running pl live
+pre_register_live_dns() {
+    local site_name="$1"
+
+    # Get base name (strip _stg or _prod suffix)
+    local base_name=$(echo "$site_name" | sed -E 's/_(stg|prod|dev)$//')
+
+    # Get base domain from settings
+    local base_domain=$(get_settings_value "url" "$SCRIPT_DIR/cnwp.yml")
+    if [ -z "$base_domain" ]; then
+        print_info "DNS pre-registration skipped: No 'url' in cnwp.yml settings"
+        return 0
+    fi
+
+    # Get Linode API token
+    local token=""
+    if command -v get_linode_token &> /dev/null; then
+        token=$(get_linode_token "$SCRIPT_DIR")
+    fi
+
+    if [ -z "$token" ]; then
+        print_info "DNS pre-registration skipped: No Linode API token in .secrets.yml"
+        return 0
+    fi
+
+    # Get shared GitLab server IP
+    local gitlab_host="git.${base_domain}"
+    local server_ip=""
+
+    # Try to get IP via SSH first
+    if ssh -o BatchMode=yes -o ConnectTimeout=3 "gitlab@${gitlab_host}" "hostname -I" 2>/dev/null | awk '{print $1}' | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+        server_ip=$(ssh -o BatchMode=yes -o ConnectTimeout=3 "gitlab@${gitlab_host}" "hostname -I" 2>/dev/null | awk '{print $1}')
+    else
+        # Fall back to DNS lookup
+        server_ip=$(dig +short "$gitlab_host" 2>/dev/null | head -1)
+    fi
+
+    if [ -z "$server_ip" ]; then
+        print_info "DNS pre-registration skipped: Cannot reach shared server ${gitlab_host}"
+        return 0
+    fi
+
+    # Get domain ID
+    local domain_id=""
+    local response=$(curl -s -H "Authorization: Bearer $token" "https://api.linode.com/v4/domains")
+
+    if command -v jq &> /dev/null; then
+        domain_id=$(echo "$response" | jq -r ".data[] | select(.domain == \"${base_domain}\") | .id")
+    fi
+
+    if [ -z "$domain_id" ]; then
+        print_info "DNS pre-registration skipped: Domain ${base_domain} not found in Linode"
+        return 0
+    fi
+
+    # Check if DNS record already exists
+    local existing=$(curl -s -H "Authorization: Bearer $token" \
+        "https://api.linode.com/v4/domains/${domain_id}/records" | \
+        grep -o "\"name\":\"${base_name}\"" || true)
+
+    if [ -n "$existing" ]; then
+        print_info "DNS record already exists: ${base_name}.${base_domain}"
+        return 0
+    fi
+
+    # Create A record
+    print_info "Pre-registering DNS for future live site: ${base_name}.${base_domain}"
+
+    local create_response=$(curl -s -X POST \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json" \
+        "https://api.linode.com/v4/domains/${domain_id}/records" \
+        -d "{
+            \"type\": \"A\",
+            \"name\": \"${base_name}\",
+            \"target\": \"${server_ip}\",
+            \"ttl_sec\": 300
+        }")
+
+    if echo "$create_response" | grep -q '"id"'; then
+        print_status "OK" "DNS pre-registered: ${base_name}.${base_domain} -> ${server_ip}"
+    fi
+
+    return 0
+}
+
 ################################################################################
 # YAML Parsing Functions
 ################################################################################
@@ -1079,6 +1175,9 @@ EOF
         fi
     fi
 
+    # Pre-register DNS for live site (if shared server is configured)
+    pre_register_live_dns "$site_name"
+
     return 0
 }
 
@@ -1429,6 +1528,9 @@ EOF
             # Site already exists or registration failed - not critical
             print_info "Site registration skipped (may already exist)"
         fi
+
+        # Pre-register DNS for live site (if shared server is configured)
+        pre_register_live_dns "$site_name"
     fi
 
     return 0

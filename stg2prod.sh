@@ -166,6 +166,54 @@ get_base_name() {
     echo "$site" | sed -E 's/_(stg|prod)$//'
 }
 
+# Check if site is in production mode
+# Returns 0 if in prod mode, 1 if in dev mode
+is_prod_mode() {
+    local sitename=$1
+
+    if [ ! -d "$sitename" ]; then
+        return 1
+    fi
+
+    local original_dir=$(pwd)
+    cd "$sitename" || return 1
+
+    # Check CSS preprocessing setting - 1 means prod mode
+    local css_preprocess=$(ddev drush config:get system.performance css.preprocess 2>/dev/null | grep -oP "'\K[^']+")
+
+    cd "$original_dir"
+
+    if [ "$css_preprocess" == "1" ] || [ "$css_preprocess" == "true" ]; then
+        return 0  # Is in prod mode
+    else
+        return 1  # Is in dev mode
+    fi
+}
+
+# Ensure site is in production mode before deployment
+ensure_prod_mode() {
+    local sitename=$1
+
+    print_info "Checking if $sitename is in production mode..."
+
+    if is_prod_mode "$sitename"; then
+        print_status "OK" "$sitename is already in production mode"
+        return 0
+    fi
+
+    print_status "WARN" "$sitename is in development mode"
+    print_info "Switching to production mode..."
+
+    # Run make.sh -py to switch to prod mode with auto-confirm
+    if "${SCRIPT_DIR}/make.sh" -py "$sitename"; then
+        print_status "OK" "$sitename switched to production mode"
+        return 0
+    else
+        print_error "Failed to switch $sitename to production mode"
+        return 1
+    fi
+}
+
 # Show help
 show_help() {
     cat << EOF
@@ -792,6 +840,14 @@ main() {
     ocmsg "Auto yes: $AUTO_YES"
     ocmsg "Dry run: $DRY_RUN"
     ocmsg "Start step: $START_STEP"
+
+    # Ensure staging site is in production mode before deploying to prod
+    if [ "$DRY_RUN" != "true" ] && [ -d "$SITENAME" ]; then
+        if ! ensure_prod_mode "$SITENAME"; then
+            print_error "Cannot deploy to production without staging site in production mode"
+            exit 1
+        fi
+    fi
 
     # Run deployment
     if deploy_stg2prod "$SITENAME" "$AUTO_YES" "$START_STEP" "$DRY_RUN"; then

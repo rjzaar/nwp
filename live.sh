@@ -28,6 +28,11 @@ ${BOLD}NWP Live Server Provisioning${NC}
 ${BOLD}USAGE:${NC}
     ./live.sh [OPTIONS] <sitename>
 
+    Note: This script deploys from the staging site to a live server.
+    The live URL uses the base name: mysite.nwpcode.org (not mysite_stg)
+    Both 'pl live mysite' and 'pl live mysite_stg' deploy mysite_stg.
+    If staging is in dev mode, it will be switched to prod mode first.
+
 ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
@@ -55,6 +60,72 @@ ${BOLD}RESULT:${NC}
     Creates: https://sitename.nwpcode.org
 
 EOF
+}
+
+################################################################################
+# Site Name Helpers
+################################################################################
+
+# Get base site name (without env suffix)
+get_base_name() {
+    local site=$1
+    # Remove _stg or _prod suffix
+    echo "$site" | sed -E 's/_(stg|prod)$//'
+}
+
+# Get staging site name from base or any variant
+get_stg_name() {
+    local site=$1
+    local base=$(get_base_name "$site")
+    echo "${base}_stg"
+}
+
+# Check if site is in production mode
+# Returns 0 if in prod mode, 1 if in dev mode
+is_prod_mode() {
+    local sitename=$1
+
+    if [ ! -d "$sitename" ]; then
+        return 1
+    fi
+
+    local original_dir=$(pwd)
+    cd "$sitename" || return 1
+
+    # Check CSS preprocessing setting - 1 means prod mode
+    local css_preprocess=$(ddev drush config:get system.performance css.preprocess 2>/dev/null | grep -oP "'\K[^']+")
+
+    cd "$original_dir"
+
+    if [ "$css_preprocess" == "1" ] || [ "$css_preprocess" == "true" ]; then
+        return 0  # Is in prod mode
+    else
+        return 1  # Is in dev mode
+    fi
+}
+
+# Ensure site is in production mode before deployment
+ensure_prod_mode() {
+    local sitename=$1
+
+    print_info "Checking if $sitename is in production mode..."
+
+    if is_prod_mode "$sitename"; then
+        print_status "OK" "$sitename is already in production mode"
+        return 0
+    fi
+
+    print_warning "$sitename is in development mode"
+    print_info "Switching to production mode..."
+
+    # Run make.sh -py to switch to prod mode with auto-confirm
+    if "${SCRIPT_DIR}/make.sh" -py "$sitename"; then
+        print_status "OK" "$sitename switched to production mode"
+        return 0
+    else
+        print_error "Failed to switch $sitename to production mode"
+        return 1
+    fi
 }
 
 ################################################################################
@@ -87,8 +158,17 @@ get_domain_id() {
     local response=$(curl -s -H "Authorization: Bearer $token" \
         "https://api.linode.com/v4/domains")
 
-    echo "$response" | grep -o "\"id\":[0-9]*,\"domain\":\"${base_domain}\"" | \
-        grep -o '"id":[0-9]*' | cut -d: -f2 | head -1
+    # Use jq if available, otherwise fall back to grep/awk
+    if command -v jq &> /dev/null; then
+        echo "$response" | jq -r ".data[] | select(.domain == \"${base_domain}\") | .id"
+    else
+        # Parse JSON with awk - find domain and extract corresponding id
+        echo "$response" | tr ',' '\n' | tr '{' '\n' | \
+            awk -v domain="$base_domain" '
+                /"id":/ { gsub(/[^0-9]/, ""); id = $0 }
+                /"domain":/ && $0 ~ domain { print id; exit }
+            '
+    fi
 }
 
 # Get StackScript ID
@@ -441,17 +521,6 @@ provision_dedicated() {
         return 0
     fi
 
-    # Confirm
-    if [ "$auto_yes" != "true" ]; then
-        print_warning "This will create a new Linode server (costs apply)"
-        echo -n "Continue? (y/N) "
-        read -r confirm
-        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-            print_info "Cancelled"
-            return 0
-        fi
-    fi
-
     # Get SSH public key
     local ssh_public_key=$(cat "$ssh_key_path")
 
@@ -537,17 +606,6 @@ provision_shared() {
     if [ -z "$ip" ]; then
         print_error "Could not get GitLab server IP"
         return 1
-    fi
-
-    # Confirm
-    if [ "$auto_yes" != "true" ]; then
-        print_warning "This will create a new site on the shared GitLab server"
-        echo -n "Continue? (y/N) "
-        read -r confirm
-        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-            print_info "Cancelled"
-            return 0
-        fi
     fi
 
     # Setup on GitLab server
@@ -723,23 +781,41 @@ main() {
         exit 1
     fi
 
-    # Execute
+    # Get base name (for live domain) and staging name (for deployment source)
+    local BASE_NAME=$(get_base_name "$SITENAME")
+    local STG_NAME=$(get_stg_name "$SITENAME")
+
+    if [ "$SITENAME" != "$BASE_NAME" ]; then
+        print_info "Live domain will use: $BASE_NAME (deploying from $STG_NAME)"
+    fi
+
+    # For provisioning operations, check and ensure staging is in prod mode
+    if [ "$SSH" != "true" ] && [ "$STATUS" != "true" ] && [ "$DELETE" != "true" ]; then
+        if [ -d "$STG_NAME" ]; then
+            if ! ensure_prod_mode "$STG_NAME"; then
+                print_error "Cannot proceed without staging site in production mode"
+                exit 1
+            fi
+        fi
+    fi
+
+    # Execute - use BASE_NAME for domain/DNS, STG_NAME for deployment source
     if [ "$SSH" == "true" ]; then
-        live_ssh "$SITENAME"
+        live_ssh "$BASE_NAME"
     elif [ "$STATUS" == "true" ]; then
-        live_status "$SITENAME"
+        live_status "$BASE_NAME"
     elif [ "$DELETE" == "true" ]; then
-        live_delete "$SITENAME" "$TYPE" "$YES"
+        live_delete "$BASE_NAME" "$TYPE" "$YES"
     else
         case "$TYPE" in
             dedicated)
-                provision_dedicated "$SITENAME" "$YES"
+                provision_dedicated "$BASE_NAME" "$YES"
                 ;;
             shared)
-                provision_shared "$SITENAME" "$YES"
+                provision_shared "$BASE_NAME" "$YES"
                 ;;
             temporary)
-                provision_dedicated "$SITENAME" "$YES"
+                provision_dedicated "$BASE_NAME" "$YES"
                 print_info "Note: Server will NOT auto-delete. Set a reminder for $EXPIRES days."
                 ;;
             *)

@@ -55,7 +55,42 @@ settings:
       enabled: false
 
   # Site management settings
-  delete_site_yml: true             # Remove site from cnwp.yml when deleted (use --keep-yml to preserve) 
+  delete_site_yml: true             # Remove site from cnwp.yml when deleted (use --keep-yml to preserve)
+
+  # Live site security hardening
+  # Modules installed automatically when deploying to live servers (pl stg2live)
+  live_security:
+    enabled: true                   # Enable security hardening for live sites
+    # Core security modules (always recommended)
+    modules:
+      - seckit                      # HTTP security headers, XSS/CSRF protection
+      - honeypot                    # Spam bot protection (no user friction)
+      - flood_control               # Brute force protection UI
+      - login_security              # Login attempt limits, blocking
+      - username_enumeration_prevention  # Prevents username discovery
+    # Optional modules (enable as needed)
+    optional_modules:
+      - antibot                     # Behavior-based bot detection
+      - password_policy             # Strong password requirements
+      - turnstile                   # Cloudflare CAPTCHA (requires API key)
+    # SecKit configuration
+    seckit_config:
+      xss:
+        csp_policy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+      clickjacking:
+        x_frame_options: SAMEORIGIN
+      ssl:
+        hsts: true
+        hsts_max_age: 31536000      # 1 year
+    # Honeypot configuration
+    honeypot_config:
+      protect_all_forms: true
+      time_limit: 5                 # Seconds before form can be submitted
+    # Login security configuration
+    login_security_config:
+      user_wrong_count: 5           # Failed attempts before soft block
+      host_wrong_count: 10          # Failed attempts from IP before block
+      activity_threshold: 100       # Max login attempts per hour
 
 setup:
   # This will create a gitlab site based on the url, ie git.url to store and commit sites and the nwp itself.

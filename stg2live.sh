@@ -77,6 +77,101 @@ get_live_config() {
     ' "$SCRIPT_DIR/cnwp.yml"
 }
 
+# Check if live security is enabled
+is_live_security_enabled() {
+    local enabled=$(awk '
+        /^settings:/ { in_settings = 1; next }
+        in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
+        in_settings && /^  live_security:/ { in_security = 1; next }
+        in_security && /^  [a-zA-Z]/ && !/^    / { in_security = 0 }
+        in_security && /^    enabled:/ {
+            sub("^    enabled: *", "")
+            gsub(/["'"'"']/, "")
+            print
+            exit
+        }
+    ' "$SCRIPT_DIR/cnwp.yml")
+    [ "$enabled" == "true" ]
+}
+
+# Get security modules from cnwp.yml
+get_security_modules() {
+    awk '
+        /^settings:/ { in_settings = 1; next }
+        in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
+        in_settings && /^  live_security:/ { in_security = 1; next }
+        in_security && /^  [a-zA-Z]/ && !/^    / { in_security = 0 }
+        in_security && /^    modules:/ { in_modules = 1; next }
+        in_modules && /^    [a-zA-Z]/ && !/^      / { in_modules = 0 }
+        in_modules && /^      - / {
+            sub("^      - *", "")
+            gsub(/["'"'"']/, "")
+            print
+        }
+    ' "$SCRIPT_DIR/cnwp.yml"
+}
+
+# Install security modules on staging site before deployment
+install_security_modules() {
+    local stg_site="$1"
+
+    # Check if skipped via command line
+    if [ "${SKIP_SECURITY:-false}" == "true" ]; then
+        print_info "Security module installation skipped (--no-security)"
+        return 0
+    fi
+
+    if ! is_live_security_enabled; then
+        print_info "Live security hardening disabled in cnwp.yml"
+        return 0
+    fi
+
+    print_header "Installing Security Modules"
+
+    local modules=$(get_security_modules)
+    if [ -z "$modules" ]; then
+        print_info "No security modules configured"
+        return 0
+    fi
+
+    local original_dir=$(pwd)
+    cd "$stg_site" || return 1
+
+    # Install each module via composer and enable
+    while IFS= read -r module; do
+        [ -z "$module" ] && continue
+
+        # Check if already installed
+        if ddev composer show "drupal/$module" >/dev/null 2>&1; then
+            print_status "OK" "$module already installed"
+        else
+            print_info "Installing drupal/$module..."
+            if ddev composer require "drupal/$module" --no-interaction 2>/dev/null; then
+                print_status "OK" "Installed $module"
+            else
+                print_status "WARN" "Could not install $module (may not exist or have conflicts)"
+            fi
+        fi
+
+        # Enable module if not already enabled
+        if ! ddev drush pm:list --status=enabled --type=module 2>/dev/null | grep -q "^$module "; then
+            print_info "Enabling $module..."
+            if ddev drush en "$module" -y 2>/dev/null; then
+                print_status "OK" "Enabled $module"
+            else
+                print_status "WARN" "Could not enable $module"
+            fi
+        fi
+    done <<< "$modules"
+
+    # Export config so modules are enabled on live
+    print_info "Exporting configuration..."
+    ddev drush cex -y 2>/dev/null || true
+
+    cd "$original_dir"
+    return 0
+}
+
 # Display elapsed time
 show_elapsed_time() {
     local end_time=$(date +%s)
@@ -103,6 +198,7 @@ ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
     -y, --yes               Skip confirmation prompts
+    --no-security           Skip security module installation
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Site name (with or without _stg suffix)
@@ -111,6 +207,12 @@ ${BOLD}EXAMPLES:${NC}
     ./stg2live.sh mysite              # Deploy mysite_stg to mysite.nwpcode.org
     ./stg2live.sh mysite_stg          # Same as above
     ./stg2live.sh -y mysite           # Deploy without confirmation
+    ./stg2live.sh --no-security mysite  # Deploy without security modules
+
+${BOLD}SECURITY HARDENING:${NC}
+    By default, security modules are installed from cnwp.yml settings.live_security
+    Includes: seckit, honeypot, flood_control, login_security, etc.
+    Disable with: --no-security flag or set enabled: false in cnwp.yml
 
 ${BOLD}WORKFLOW:${NC}
     1. Provision live server:  pl live mysite
@@ -161,6 +263,9 @@ deploy_to_live() {
         print_error "Staging site not found: $stg_site"
         return 1
     fi
+
+    # Install security modules before deployment
+    install_security_modules "$stg_site"
 
     # Determine SSH user
     local ssh_user="gitlab"
@@ -256,11 +361,12 @@ deploy_to_live() {
 main() {
     local DEBUG=false
     local YES=false
+    local SKIP_SECURITY=false
     local SITENAME=""
 
     # Parse options
     local OPTIONS=hdy
-    local LONGOPTS=help,debug,yes
+    local LONGOPTS=help,debug,yes,no-security
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -274,6 +380,7 @@ main() {
             -h|--help) show_help; exit 0 ;;
             -d|--debug) DEBUG=true; shift ;;
             -y|--yes) YES=true; shift ;;
+            --no-security) SKIP_SECURITY=true; shift ;;
             --) shift; break ;;
             *) echo "Programming error"; exit 3 ;;
         esac
@@ -291,6 +398,9 @@ main() {
     # Normalize names
     local BASE_NAME=$(get_base_name "$SITENAME")
     local STG_NAME=$(get_stg_name "$SITENAME")
+
+    # Export for use in deploy function
+    export SKIP_SECURITY
 
     # Run deployment
     if deploy_to_live "$STG_NAME" "$BASE_NAME" "$YES"; then

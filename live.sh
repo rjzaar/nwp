@@ -759,9 +759,12 @@ provision_dedicated() {
     echo "  IP:      ${ip}"
     echo "  SSH:     ssh root@${ip}"
     echo ""
-    echo "Next steps:"
-    echo "  1. Deploy your site: ./stg2live.sh ${sitename}"
-    echo "  2. Or SSH in: ./live.sh --ssh ${sitename}"
+
+    # Deploy staging site to live
+    print_header "Deploying Site"
+    "${SCRIPT_DIR}/stg2live.sh" --no-provision "$sitename" || {
+        print_warning "Deployment had issues - you can retry with: pl stg2live $sitename"
+    }
 
     return 0
 }
@@ -850,8 +853,12 @@ REMOTE
     echo "  Domain:  https://${domain}"
     echo "  Server:  ${gitlab_host}"
     echo ""
-    echo "Next steps:"
-    echo "  1. Deploy your site: ./stg2live.sh ${sitename}"
+
+    # Deploy staging site to live
+    print_header "Deploying Site"
+    "${SCRIPT_DIR}/stg2live.sh" --no-provision "$sitename" || {
+        print_warning "Deployment had issues - you can retry with: pl stg2live $sitename"
+    }
 
     return 0
 }

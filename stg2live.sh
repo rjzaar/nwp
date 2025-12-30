@@ -199,6 +199,7 @@ ${BOLD}OPTIONS:${NC}
     -d, --debug             Enable debug output
     -y, --yes               Skip confirmation prompts
     --no-security           Skip security module installation
+    --no-provision          Skip auto-provisioning (used internally)
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Site name (with or without _stg suffix)
@@ -214,14 +215,12 @@ ${BOLD}SECURITY HARDENING:${NC}
     Includes: seckit, honeypot, flood_control, login_security, etc.
     Disable with: --no-security flag or set enabled: false in cnwp.yml
 
-${BOLD}WORKFLOW:${NC}
-    1. Provision live server:  pl live mysite
-    2. Deploy to live:         pl stg2live mysite
-    3. View live site:         https://mysite.nwpcode.org
+${BOLD}NOTE:${NC}
+    If no live server is configured, this script will automatically
+    call 'pl live' to provision one first.
 
 ${BOLD}REQUIREMENTS:${NC}
     - Staging site must exist and be in production mode
-    - Live server must be provisioned (pl live)
 
 EOF
 }
@@ -362,11 +361,12 @@ main() {
     local DEBUG=false
     local YES=false
     local SKIP_SECURITY=false
+    local NO_PROVISION=false
     local SITENAME=""
 
     # Parse options
     local OPTIONS=hdy
-    local LONGOPTS=help,debug,yes,no-security
+    local LONGOPTS=help,debug,yes,no-security,no-provision
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -381,6 +381,7 @@ main() {
             -d|--debug) DEBUG=true; shift ;;
             -y|--yes) YES=true; shift ;;
             --no-security) SKIP_SECURITY=true; shift ;;
+            --no-provision) NO_PROVISION=true; shift ;;
             --) shift; break ;;
             *) echo "Programming error"; exit 3 ;;
         esac
@@ -401,6 +402,24 @@ main() {
 
     # Export for use in deploy function
     export SKIP_SECURITY
+
+    # Check if live server is configured
+    local server_ip=$(get_live_config "$BASE_NAME" "server_ip")
+
+    if [ -z "$server_ip" ] && [ "$NO_PROVISION" != "true" ]; then
+        print_info "No live server configured for $BASE_NAME"
+        print_info "Provisioning live server first..."
+        echo ""
+
+        # Call live.sh to provision (it will call back to us with --no-provision)
+        if "${SCRIPT_DIR}/live.sh" -y "$BASE_NAME"; then
+            # live.sh already called stg2live with --no-provision, so we're done
+            exit 0
+        else
+            print_error "Failed to provision live server"
+            exit 1
+        fi
+    fi
 
     # Run deployment
     if deploy_to_live "$STG_NAME" "$BASE_NAME" "$YES"; then

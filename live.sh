@@ -310,12 +310,18 @@ add_dns_record() {
     fi
 
     # Check if record already exists
-    local existing=$(curl -s -H "Authorization: Bearer $token" \
-        "https://api.linode.com/v4/domains/${domain_id}/records" | \
-        grep -o "\"name\":\"${sitename}\"" || true)
+    local records_response=$(curl -s -H "Authorization: Bearer $token" \
+        "https://api.linode.com/v4/domains/${domain_id}/records")
+
+    local existing=""
+    if command -v jq &> /dev/null; then
+        existing=$(echo "$records_response" | jq -r ".data[] | select(.name == \"${sitename}\" and .type == \"A\") | .id" 2>/dev/null)
+    else
+        existing=$(echo "$records_response" | grep -o "\"name\":\"${sitename}\"" || true)
+    fi
 
     if [ -n "$existing" ]; then
-        print_info "DNS record already exists"
+        print_status "OK" "DNS record already exists"
         return 0
     fi
 
@@ -333,6 +339,9 @@ add_dns_record() {
 
     if echo "$response" | grep -q '"id"'; then
         print_status "OK" "DNS record created"
+        return 0
+    elif echo "$response" | grep -q 'already exists'; then
+        print_status "OK" "DNS record already exists"
         return 0
     else
         print_error "Failed to create DNS record"
@@ -385,8 +394,18 @@ setup_nginx_vhost() {
 }"
 
     # SSH to server and configure
-    ssh "${ssh_user}@${ip}" << REMOTE
+    ssh -T "${ssh_user}@${ip}" << REMOTE
 set -e
+
+# Check if nginx is installed
+if ! command -v nginx &> /dev/null; then
+    echo "Installing nginx..."
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq nginx
+fi
+
+# Ensure nginx directories exist
+sudo mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
 
 # Create site directory
 sudo mkdir -p /var/www/${sitename}

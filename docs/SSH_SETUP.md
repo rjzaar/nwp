@@ -38,11 +38,15 @@ This will:
 - Install private key to `~/.ssh/nwp` with correct permissions (600)
 - Display the public key for manual addition
 
-### Step 2: Add Public Key to Linode (Manual - Required)
+### Step 2: Add Public Key to Linode (Optional)
 
-> **SECURITY NOTE:** This step is intentionally NOT automated. You must manually control which SSH keys have access to your Linode account. Automated SSH key upload would be a security risk.
+> **NOTE:** This step is optional for NWP. When NWP provisions servers via StackScripts, SSH keys are passed directly during creation - they don't need to be in your Linode profile.
 
-The public key **must be manually added** to your Linode account:
+You only need to add keys to your Linode profile if you want to:
+- Create servers manually via the Linode web UI with auto-added keys
+- Use Linode's rescue mode or LISH features with your keys
+
+**To add keys to your Linode profile (optional):**
 
 1. **Log in to Linode Cloud Manager:**
    - Go to https://cloud.linode.com
@@ -57,8 +61,6 @@ The public key **must be manually added** to your Linode account:
    - Enter a label (e.g., `nwp-deployment-2025`)
    - Paste the public key displayed by `setup-ssh.sh`
    - Click "Add Key"
-
-**Why manual?** SSH keys grant access to your infrastructure. You should always explicitly review and approve any key before adding it to your account. This is a deliberate security design decision in NWP.
 
 ### Step 3: Configure Servers in cnwp.yml
 

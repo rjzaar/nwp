@@ -78,10 +78,8 @@ declare -a COMPONENTS=(
     "nwp_secrets|NWP Secrets (.secrets.yml)|-|tools"
 
     # Linode Infrastructure
-    # NOTE: SSH key upload to Linode profile is intentionally NOT automated.
-    # This must be done manually for security reasons - users should explicitly
-    # control which SSH keys have access to their Linode account.
-    # See: https://cloud.linode.com/profile/keys
+    # NOTE: SSH keys are passed directly to servers via StackScripts during
+    # provisioning. Adding keys to Linode profile is NOT required for NWP.
     "linode_cli|Linode CLI|-|linode"
     "linode_config|Linode CLI Configuration|linode_cli|linode"
     "ssh_keys|SSH Keys for Deployment|linode_cli|linode"
@@ -638,15 +636,6 @@ install_ssh_keys() {
     fi
 
     log_action "SSH keys configured"
-
-    # SECURITY: SSH key upload to Linode must be done manually
-    echo ""
-    print_status "WARN" "MANUAL STEP REQUIRED for security:"
-    echo "    Add your SSH public key to Linode manually:"
-    echo "    1. Copy: cat ~/.ssh/nwp.pub"
-    echo "    2. Go to: https://cloud.linode.com/profile/keys"
-    echo "    3. Click 'Add SSH Key' and paste the key"
-    echo ""
 }
 
 install_nwp_secrets() {

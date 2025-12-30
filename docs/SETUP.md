@@ -63,7 +63,7 @@ The setup script automates the following:
 | Linode Config | Configures CLI with your API token |
 | SSH Keys | Generates deployment SSH keys |
 
-**Note:** SSH key upload to Linode is intentionally NOT automated for security reasons. You must manually add SSH keys to your Linode profile.
+**Note:** SSH keys are passed directly to servers during provisioning via StackScripts. You do NOT need to add keys to your Linode profile for NWP to work.
 
 ### GitLab Deployment (Self-Hosted Git)
 | Component | What It Does |
@@ -94,14 +94,7 @@ Some steps cannot be automated and require your action:
 
 ### After Running Setup
 
-1. **Add SSH Key to Linode** (REQUIRED for server provisioning)
-   - This step is intentionally manual for security reasons
-   - Copy your public key: `cat ~/.ssh/nwp.pub`
-   - Go to https://cloud.linode.com/profile/keys
-   - Click "Add SSH Key" and paste the key
-   - This key will be used for all new Linode servers
-
-2. **Update Domain Nameservers** (if using Linode DNS)
+1. **Update Domain Nameservers** (if using Linode DNS)
    - Go to your domain registrar
    - Change nameservers to:
      - ns1.linode.com
@@ -110,7 +103,7 @@ Some steps cannot be automated and require your action:
      - ns4.linode.com
      - ns5.linode.com
 
-3. **Change GitLab Root Password** (if GitLab installed)
+2. **Change GitLab Root Password** (if GitLab installed)
    - Wait 10-15 minutes for GitLab to initialize
    - Get initial password: `ssh git-server 'sudo cat /root/gitlab_credentials.txt'`
    - Login at https://git.yourdomain.org

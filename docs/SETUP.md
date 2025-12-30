@@ -1,461 +1,312 @@
 # NWP Complete Setup Guide
 
-This guide provides step-by-step instructions to set up the Narrow Way Project (NWP) from scratch, including all automated and manual steps.
+This guide provides step-by-step instructions to set up the Narrow Way Project (NWP). The setup process is mostly automated - you just need to provide a few pieces of information.
 
 ## Table of Contents
 
-- [Prerequisites](#prerequisites)
-- [Quick Start (5 minutes)](#quick-start-5-minutes)
-- [Complete Setup (30-60 minutes)](#complete-setup-30-60-minutes)
-  - [Step 1: Clone the Repository](#step-1-clone-the-repository)
-  - [Step 2: Install Prerequisites](#step-2-install-prerequisites)
-  - [Step 3: Configuration Files](#step-3-configuration-files)
-  - [Step 4: SSH Key Setup](#step-4-ssh-key-setup)
-  - [Step 5: Linode API Setup (Optional)](#step-5-linode-api-setup-optional)
-  - [Step 6: GitLab Server Setup (Optional)](#step-6-gitlab-server-setup-optional)
-  - [Step 7: Verify Installation](#step-7-verify-installation)
-- [Manual Steps Summary](#manual-steps-summary)
-- [Post-Setup Tasks](#post-setup-tasks)
+- [Quick Start](#quick-start)
+- [What Gets Automated](#what-gets-automated)
+- [Manual Steps Required](#manual-steps-required)
+- [Detailed Setup Process](#detailed-setup-process)
+- [Setup Profiles](#setup-profiles)
+- [Rollback and Uninstall](#rollback-and-uninstall)
+- [Configuration Reference](#configuration-reference)
 - [Troubleshooting](#troubleshooting)
 
-## Prerequisites
-
-NWP requires the following software. Don't worry if they're not installed - the setup script handles most of this automatically.
-
-| Software | Purpose | Installation |
-|----------|---------|--------------|
-| Docker | Container runtime | Automatic via setup.sh |
-| DDEV | Local dev environment | Automatic via setup.sh |
-| Composer | PHP dependency manager | Automatic via setup.sh |
-| Git | Version control | Automatic via setup.sh |
-| yq | YAML processing | Automatic via setup.sh |
-| Linode CLI | Server management | Optional, manual |
-
-## Quick Start (5 minutes)
-
-For a basic local development setup:
+## Quick Start
 
 ```bash
 # Clone repository
 git clone git@github.com:rjzaar/nwp.git
 cd nwp
 
-# Install prerequisites (Docker, DDEV, Composer, etc.)
+# Run interactive setup
 ./setup.sh
 
-# View available recipes
-./install.sh --list
-
-# Install a site
-./install.sh nwp mysite
+# Or auto-install core components only
+./setup.sh --auto
 ```
 
-That's it for basic usage! Continue reading for complete infrastructure setup.
+The setup script will:
+1. Show current installation status
+2. Let you select which components to install
+3. Collect required information (API tokens, domain) once
+4. Automatically install everything selected
+5. Configure all services and connections
 
-## Complete Setup (30-60 minutes)
+## What Gets Automated
 
-### Step 1: Clone the Repository
+The setup script automates the following:
 
-```bash
-git clone git@github.com:rjzaar/nwp.git
-cd nwp
-```
+### Core Infrastructure (Local Development)
+| Component | What It Does |
+|-----------|--------------|
+| Docker Engine | Container runtime for DDEV |
+| Docker Compose | Multi-container orchestration |
+| Docker Group | Adds user to docker group |
+| DDEV | Local development environment |
+| DDEV Config | Global DDEV configuration |
+| mkcert | Local SSL certificate tool |
+| mkcert CA | Certificate authority setup |
 
-**Manual step**: If you don't have SSH keys for GitHub, either:
-- Generate them: `ssh-keygen -t ed25519 -C "your.email@example.com"`
-- Add to GitHub: https://github.com/settings/keys
-- Or use HTTPS: `git clone https://github.com/rjzaar/nwp.git`
+### NWP Tools
+| Component | What It Does |
+|-----------|--------------|
+| NWP CLI | Global `pl` command for running scripts |
+| NWP Config | Creates `cnwp.yml` from example |
+| NWP Secrets | Creates `.secrets.yml` template |
 
-### Step 2: Install Prerequisites
+### Linode Infrastructure (Server Provisioning)
+| Component | What It Does |
+|-----------|--------------|
+| Linode CLI | Command-line tool for Linode API |
+| Linode Config | Configures CLI with your API token |
+| SSH Keys | Generates deployment SSH keys |
+| SSH Keys in Linode | Uploads keys to your Linode profile |
 
-```bash
-./setup.sh
-```
+### GitLab Deployment (Self-Hosted Git)
+| Component | What It Does |
+|-----------|--------------|
+| GitLab SSH Keys | Generates keys for GitLab access |
+| GitLab Server | Provisions 4GB Linode server with GitLab CE |
+| GitLab DNS | Creates DNS records in Linode |
+| GitLab SSH Config | Configures `ssh git-server` alias |
 
-This automatically installs:
-- Docker (if missing)
-- DDEV (if missing)
-- Composer (if missing)
-- yq (if missing)
+## Manual Steps Required
 
-**Manual steps required**:
+Some steps cannot be automated and require your action:
 
-1. **Add user to docker group** (if prompted):
-   ```bash
-   sudo usermod -aG docker $USER
-   newgrp docker  # Or log out and back in
-   ```
+### Before Running Setup
 
-2. **Verify Docker is running**:
-   ```bash
-   docker ps
-   ```
+1. **Get a Linode API Token** (if using Linode/GitLab)
+   - Go to https://cloud.linode.com/profile/tokens
+   - Create token with Read/Write for: Linodes, StackScripts, Domains
+   - Save the token - you'll enter it during setup
 
-### Step 3: Configuration Files
+2. **Set Your Domain** (if deploying GitLab)
+   - Edit `cnwp.yml` after it's created
+   - Add your domain under settings:
+     ```yaml
+     settings:
+       url: yourdomain.org
+     ```
 
-NWP uses two main configuration files:
+### After Running Setup
 
-#### 3.1 Create cnwp.yml
-
-Copy the example configuration:
-
-```bash
-cp example.cnwp.yml cnwp.yml
-```
-
-Edit `cnwp.yml` to configure your domain:
-
-```yaml
-settings:
-  url: yourdomain.org    # Your primary domain
-  database: mariadb
-  php: 8.2
-
-recipes:
-  # Your site recipes here
-```
-
-**Important**: `cnwp.yml` is gitignored - it contains environment-specific settings.
-
-#### 3.2 Create .secrets.yml
-
-Copy the example secrets file:
-
-```bash
-cp .secrets.example.yml .secrets.yml
-chmod 600 .secrets.yml
-```
-
-Add your credentials:
-
-```yaml
-# Linode API token (required for server provisioning)
-linode:
-  api_token: "your-linode-api-token-here"
-
-# GitLab credentials (added automatically by setup scripts)
-gitlab:
-  server:
-    domain: git.yourdomain.org
-    ip: 0.0.0.0
-    linode_id: 0
-    ssh_user: gitlab
-    ssh_key: git/keys/gitlab_linode
-  admin:
-    url: https://git.yourdomain.org
-    username: root
-    initial_password: ""
-    password: ""
-```
-
-**Manual step**: Get a Linode API token:
-1. Go to https://cloud.linode.com/profile/tokens
-2. Create a Personal Access Token with Read/Write permissions for:
-   - Linodes
-   - StackScripts
-   - Domains
-3. Copy the token to `.secrets.yml`
-
-### Step 4: SSH Key Setup
-
-For deployment to production servers:
-
-```bash
-./setup-ssh.sh
-```
-
-This creates:
-- `keys/nwp` - Private key (gitignored)
-- `keys/nwp.pub` - Public key (gitignored)
-- `~/.ssh/nwp` - Installed private key
-
-**Manual step**: Add public key to Linode:
-1. Copy the displayed public key
-2. Go to https://cloud.linode.com/profile/keys
-3. Click "Add SSH Key"
-4. Paste the key and save
-
-See [SSH_SETUP.md](SSH_SETUP.md) for detailed instructions.
-
-### Step 5: Linode API Setup (Optional)
-
-If you want to provision servers via command line:
-
-```bash
-# Install Linode CLI
-pip3 install linode-cli
-
-# Configure with your API token
-linode-cli configure
-```
-
-**Manual step**: When prompted:
-- Enter your API token
-- Choose default region (e.g., `us-east`)
-- Choose default type (e.g., `g6-standard-2`)
-
-Verify installation:
-
-```bash
-linode-cli linodes list
-```
-
-### Step 6: GitLab Server Setup (Optional)
-
-To set up a self-hosted GitLab server:
-
-```bash
-cd git
-./setup_gitlab_site.sh
-```
-
-This automatically:
-- Reads domain from `cnwp.yml` (uses `git.<url>`)
-- Generates SSH keys for GitLab access
-- Uploads provisioning StackScript to Linode
-- Creates a 4GB Linode server
-- Installs GitLab CE with SSL
-- Configures SSH access (`ssh git-server`)
-- Stores credentials in `.secrets.yml`
-
-**Manual steps required**:
-
-1. **Configure DNS** (before or after server creation):
-
-   Option A - Using Linode DNS:
-   ```bash
-   # Create domain (if not exists)
-   linode-cli domains create --domain yourdomain.org --type master --soa_email admin@yourdomain.org
-
-   # Create A record for git subdomain
-   linode-cli domains records-create DOMAIN_ID --type A --name git --target SERVER_IP
-   ```
-
-   Option B - External DNS provider:
-   - Log into your DNS provider
-   - Create an A record: `git.yourdomain.org` -> `SERVER_IP`
-
-2. **Update nameservers** (if using Linode DNS):
+1. **Update Domain Nameservers** (if using Linode DNS)
    - Go to your domain registrar
-   - Set nameservers to:
+   - Change nameservers to:
      - ns1.linode.com
      - ns2.linode.com
      - ns3.linode.com
      - ns4.linode.com
      - ns5.linode.com
 
-3. **Wait for provisioning** (~10-15 minutes):
-   ```bash
-   # Check server status
-   ssh git-server
+2. **Change GitLab Root Password** (if GitLab installed)
+   - Wait 10-15 minutes for GitLab to initialize
+   - Get initial password: `ssh git-server 'sudo cat /root/gitlab_credentials.txt'`
+   - Login at https://git.yourdomain.org
+   - Change password immediately
+   - Update `.secrets.yml` with new password
 
-   # View setup log (once connected)
-   sudo tail -f /var/log/gitlab-setup.log
-   ```
+## Detailed Setup Process
 
-4. **Get GitLab root password**:
-   ```bash
-   ssh git-server 'sudo cat /root/gitlab_credentials.txt'
-   ```
-
-   Update `.secrets.yml` with the password.
-
-5. **First login and password change**:
-   - Navigate to https://git.yourdomain.org
-   - Login with username `root` and the initial password
-   - **Change the password immediately** (expires after 24 hours)
-   - Update `.secrets.yml` with the new password
-
-### Step 7: Verify Installation
-
-Run the test suite to verify everything works:
+### Step 1: Clone and Run Setup
 
 ```bash
-./test-nwp.sh
+git clone git@github.com:rjzaar/nwp.git
+cd nwp
+./setup.sh
 ```
 
-Expected results:
-- All prerequisite checks pass
-- Site installation works
-- Backup/restore works
-- Copy operations work
+### Step 2: Review Current Status
 
-## Manual Steps Summary
+The setup script shows what's currently installed:
 
-Here's a quick checklist of all required manual steps:
+```
+Current System Status
+═══════════════════════════════════════════════════════════════
 
-### Required for Basic Setup
+Core Infrastructure:
+[✓] Docker Engine
+[✓] Docker Compose Plugin
+  [✓] Docker Group Membership
+[✓] DDEV Development Environment
+  [✓] DDEV Global Configuration
+[✗] mkcert SSL Tool
+  [✗] mkcert Certificate Authority
 
-- [ ] Generate GitHub SSH key (if not using HTTPS)
-- [ ] Add user to docker group (if prompted)
+NWP Tools:
+[✗] NWP CLI Command
+[✗] NWP Configuration (cnwp.yml)
+[✗] NWP Secrets (.secrets.yml)
+...
+```
 
-### Required for Server Provisioning
+### Step 3: Select Components
 
-- [ ] Create Linode API token
-- [ ] Add token to `.secrets.yml`
-- [ ] Configure Linode CLI
-- [ ] Add SSH public key to Linode profile
+Use the interactive checkbox UI to select what you want:
 
-### Required for GitLab
+- **Space** - Toggle selection
+- **Enter** - Confirm selection
+- Components with `└─` depend on their parent
 
-- [ ] Configure DNS for git.yourdomain.org
-- [ ] Update nameservers (if using Linode DNS)
-- [ ] Get and save GitLab root password
-- [ ] Change GitLab root password on first login
-- [ ] Update `.secrets.yml` with new password
+The script automatically:
+- Selects parent components when you select a child
+- Deselects children when you deselect a parent
 
-## Post-Setup Tasks
+### Step 4: Provide Required Information
 
-### Install Your First Site
+When installing components that need configuration, you'll be prompted:
+
+```
+Configuring Linode CLI
+═══════════════════════════════════════════════════════════════
+
+[!] No Linode API token found
+
+To configure Linode CLI, you need an API token.
+Get one from: https://cloud.linode.com/profile/tokens
+
+Enter your Linode API token (or press Enter to skip):
+```
+
+Information you provide is:
+- Saved to `.secrets.yml` for future use
+- Used to configure all related components
+- Never asked twice in the same session
+
+### Step 5: Automatic Installation
+
+The script installs selected components in dependency order:
+
+```
+Installing Components
+═══════════════════════════════════════════════════════════════
+
+Installing Linode CLI
+═══════════════════════════════════════════════════════════════
+Installing pipx...
+Installing linode-cli...
+[✓] Linode CLI installed
+
+Configuring Linode CLI
+═══════════════════════════════════════════════════════════════
+[✓] Linode CLI configured successfully
+
+Adding SSH Key to Linode Profile
+═══════════════════════════════════════════════════════════════
+[i] Adding SSH key to Linode profile...
+[✓] SSH key added to Linode profile
+```
+
+### Step 6: Complete Manual Steps
+
+After setup completes, you'll see reminders for manual steps:
+
+```
+Setup Complete
+═══════════════════════════════════════════════════════════════
+
+Manual steps remaining:
+
+1. Update nameservers at your domain registrar:
+   ns1.linode.com, ns2.linode.com, ns3.linode.com, ns4.linode.com, ns5.linode.com
+
+2. After GitLab initializes (~10-15 minutes):
+   - Get password: ssh git-server 'sudo cat /root/gitlab_credentials.txt'
+   - Login and change password at https://git.yourdomain.org
+   - Update .secrets.yml with new password
+```
+
+## Setup Profiles
+
+### Local Development Only
+
+For just local Drupal/Moodle development:
 
 ```bash
-# List available recipes
-./install.sh --list
-
-# Install a site
-./install.sh nwp mysite
-
-# Access the site
-# URL will be displayed, typically https://mysite.ddev.site
+./setup.sh --auto
 ```
 
-### Configure SSH for Easy Access
+This installs:
+- Docker, DDEV, mkcert
+- NWP CLI and config files
 
-After GitLab setup, SSH config is automatically added:
+### Full Infrastructure
+
+For complete setup including GitLab:
 
 ```bash
-# Connect to GitLab server
-ssh git-server
-
-# Equivalent to:
-ssh -i ~/.ssh/gitlab_linode gitlab@git.yourdomain.org
+./setup.sh
+# Select all components in the UI
 ```
 
-To add more hosts, edit `~/.ssh/config`:
-
-```
-Host production
-    HostName your-production-ip
-    User deploy
-    IdentityFile ~/.ssh/nwp
-    IdentitiesOnly yes
-```
-
-### Set Up Deployment Workflow
+### Check Current Status
 
 ```bash
-# Create staging from development
-./dev2stg.sh mysite
-
-# Test on staging
-./testos.sh mysite_stg
-
-# Deploy staging to production (when ready)
-./stg2prod.sh mysite_stg
+./setup.sh --status
 ```
 
-## Troubleshooting
+## Rollback and Uninstall
 
-### Docker not running
+### Removing Components
+
+Run setup again and deselect components:
 
 ```bash
-# Check status
-systemctl status docker
-
-# Start Docker
-sudo systemctl start docker
-
-# Enable on boot
-sudo systemctl enable docker
+./setup.sh
+# Deselect unwanted components
+# Script will remove them
 ```
 
-### Permission denied (docker)
+### What Gets Preserved
 
-```bash
-# Add user to docker group
-sudo usermod -aG docker $USER
+The script tracks what was installed before NWP:
+- **Pre-existing components** are never removed
+- Only components installed by NWP can be uninstalled
+- Original state is saved on first run
 
-# Log out and back in, or run:
-newgrp docker
+### GitLab Server Deletion
+
+When deselecting GitLab Server, you'll be prompted:
+
+```
+[!] This will DELETE the GitLab server (Linode ID: 12345678)
+[!] All data on the server will be PERMANENTLY LOST
+
+Are you SURE you want to delete the GitLab server? [y/N]:
 ```
 
-### SSH connection refused
+### State Files
 
-```bash
-# Check key permissions
-chmod 600 ~/.ssh/nwp
-chmod 600 ~/.ssh/gitlab_linode
+Setup state is stored in `~/.nwp/setup_state/`:
 
-# Test with verbose output
-ssh -vvv git-server
-```
-
-### GitLab not accessible
-
-```bash
-# Check server status
-ssh git-server 'sudo gitlab-ctl status'
-
-# View logs
-ssh git-server 'sudo gitlab-ctl tail'
-
-# Reconfigure if needed
-ssh git-server 'sudo gitlab-ctl reconfigure'
-```
-
-### DNS not resolving
-
-```bash
-# Check DNS propagation
-dig git.yourdomain.org +short
-
-# Check nameservers
-dig yourdomain.org NS +short
-```
-
-### Linode CLI errors
-
-```bash
-# Reconfigure
-linode-cli configure
-
-# Check token permissions
-linode-cli account view
-```
+| File | Purpose |
+|------|---------|
+| `original_state.json` | What was installed before NWP |
+| `current_state.json` | Current installation state |
+| `install.log` | Log of all setup actions |
+| `*.backup.*` | Backups of removed config files |
 
 ## Configuration Reference
 
-### cnwp.yml Structure
+### cnwp.yml (Site Configuration)
 
 ```yaml
 settings:
-  url: yourdomain.org       # Base domain
-  database: mariadb         # mariadb or mysql
-  php: 8.2                  # PHP version
-  services:
-    redis:
-      enabled: false
-    solr:
-      enabled: false
+  url: yourdomain.org       # Required for GitLab
+  database: mariadb
+  php: 8.2
 
 recipes:
   myrecipe:
     source: drupal/recommended-project:^10.2
     profile: standard
     webroot: web
-    install_modules: module1 module2
-    auto: y
-
-sites:
-  mysite:
-    directory: /path/to/site
-    recipe: myrecipe
-    environment: development
-    purpose: indefinite
-    created: 2025-01-01T00:00:00Z
 ```
 
-### .secrets.yml Structure
+### .secrets.yml (Credentials)
 
 ```yaml
 linode:
@@ -475,10 +326,61 @@ gitlab:
     password: "your-changed-password"
 ```
 
+## Troubleshooting
+
+### Docker Permission Denied
+
+```bash
+# Add user to docker group
+sudo usermod -aG docker $USER
+# Log out and back in
+```
+
+### Linode CLI Authentication Failed
+
+```bash
+# Reconfigure with correct token
+rm ~/.config/linode-cli
+./setup.sh
+# Re-enter token when prompted
+```
+
+### GitLab Server Not Accessible
+
+```bash
+# Check server status
+ssh git-server 'sudo gitlab-ctl status'
+
+# View logs
+ssh git-server 'sudo tail -100 /var/log/gitlab-setup.log'
+
+# Reconfigure GitLab
+ssh git-server 'sudo gitlab-ctl reconfigure'
+```
+
+### DNS Not Resolving
+
+```bash
+# Check propagation (may take up to 48 hours)
+dig git.yourdomain.org +short
+
+# Verify nameservers are updated
+dig yourdomain.org NS +short
+```
+
+### Reset Setup State
+
+```bash
+# Remove state files to start fresh
+rm -rf ~/.nwp/setup_state
+
+# Run setup again
+./setup.sh
+```
+
 ## See Also
 
 - [README.md](../README.md) - Main documentation
 - [SSH_SETUP.md](SSH_SETUP.md) - Detailed SSH key setup
 - [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md) - Production deployment guide
-- [SCRIPTS_IMPLEMENTATION.md](SCRIPTS_IMPLEMENTATION.md) - Script documentation
 - [git/README.md](../git/README.md) - GitLab deployment details

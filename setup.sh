@@ -75,11 +75,23 @@ declare -a COMPONENTS=(
     # NWP Tools
     "nwp_cli|NWP CLI Command|-|tools"
     "nwp_config|NWP Configuration (cnwp.yml)|-|tools"
+    "nwp_secrets|NWP Secrets (.secrets.yml)|-|tools"
 
-    # Optional Infrastructure
-    "linode_cli|Linode CLI|-|optional"
-    "ssh_keys|SSH Keys for Deployment|linode_cli|optional"
+    # Linode Infrastructure
+    "linode_cli|Linode CLI|-|linode"
+    "linode_config|Linode CLI Configuration|linode_cli|linode"
+    "ssh_keys|SSH Keys for Deployment|linode_cli|linode"
+    "ssh_keys_linode|SSH Keys in Linode Profile|ssh_keys|linode"
+
+    # GitLab Infrastructure (requires Linode)
+    "gitlab_keys|GitLab SSH Keys|linode_config|gitlab"
+    "gitlab_server|GitLab Server|gitlab_keys|gitlab"
+    "gitlab_dns|GitLab DNS Record|gitlab_server|gitlab"
+    "gitlab_ssh_config|GitLab SSH Config|gitlab_server|gitlab"
 )
+
+# Manual input storage (collected once, used by multiple components)
+declare -A MANUAL_INPUTS
 
 # Track component states
 declare -A COMPONENT_INSTALLED    # Currently installed
@@ -210,23 +222,106 @@ check_ssh_keys_exist() {
     [ -f "$SCRIPT_DIR/keys/nwp" ] || [ -f "$HOME/.ssh/nwp" ]
 }
 
+check_nwp_secrets_exist() {
+    [ -f "$SCRIPT_DIR/.secrets.yml" ]
+}
+
+check_linode_config_exists() {
+    # Check if linode-cli is configured with a token
+    if command -v linode-cli &> /dev/null; then
+        linode-cli account view --text --no-headers &> /dev/null
+        return $?
+    fi
+    return 1
+}
+
+check_ssh_keys_in_linode() {
+    # Check if our SSH key is in Linode profile
+    if ! check_linode_config_exists; then
+        return 1
+    fi
+    local pubkey_file="$SCRIPT_DIR/keys/nwp.pub"
+    [ -f "$pubkey_file" ] || pubkey_file="$HOME/.ssh/nwp.pub"
+    [ -f "$pubkey_file" ] || return 1
+
+    local key_fingerprint=$(ssh-keygen -lf "$pubkey_file" 2>/dev/null | awk '{print $2}')
+    [ -z "$key_fingerprint" ] && return 1
+
+    linode-cli sshkeys list --text --no-headers 2>/dev/null | grep -q "$key_fingerprint"
+}
+
+check_gitlab_keys_exist() {
+    [ -f "$SCRIPT_DIR/git/keys/gitlab_linode" ]
+}
+
+check_gitlab_server_exists() {
+    # Check if GitLab server is registered in cnwp.yml or .secrets.yml
+    if [ -f "$SCRIPT_DIR/.secrets.yml" ]; then
+        grep -q "^gitlab:" "$SCRIPT_DIR/.secrets.yml" 2>/dev/null && \
+        grep -q "linode_id:" "$SCRIPT_DIR/.secrets.yml" 2>/dev/null
+        return $?
+    fi
+    return 1
+}
+
+check_gitlab_dns_exists() {
+    # Check if GitLab DNS is configured
+    if ! check_linode_config_exists; then
+        return 1
+    fi
+    local base_url=$(get_base_url_from_config 2>/dev/null)
+    [ -z "$base_url" ] && return 1
+
+    # Check if domain exists in Linode DNS
+    linode-cli domains list --text --no-headers 2>/dev/null | grep -q "$base_url"
+}
+
+check_gitlab_ssh_config_exists() {
+    # Check if git-server SSH config exists
+    [ -f "$HOME/.ssh/config" ] && grep -q "Host git-server" "$HOME/.ssh/config" 2>/dev/null
+}
+
+# Get base URL from cnwp.yml
+get_base_url_from_config() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        return 1
+    fi
+    awk '
+        /^settings:/ { in_settings = 1; next }
+        in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
+        in_settings && /^  url:/ {
+            sub("^  url: *", "")
+            gsub(/["'"'"']/, "")
+            print
+            exit
+        }
+    ' "$CONFIG_FILE"
+}
+
 # Main detection function
 detect_component_state() {
     local component_id="$1"
 
     case "$component_id" in
-        docker)         check_docker_installed ;;
-        docker_compose) check_docker_compose_installed ;;
-        docker_group)   check_docker_group ;;
-        mkcert)         check_mkcert_installed ;;
-        mkcert_ca)      check_mkcert_ca_installed ;;
-        ddev)           check_ddev_installed ;;
-        ddev_config)    check_ddev_config_exists ;;
-        nwp_cli)        check_nwp_cli_installed ;;
-        nwp_config)     check_nwp_config_exists ;;
-        linode_cli)     check_linode_cli_installed ;;
-        ssh_keys)       check_ssh_keys_exist ;;
-        *)              return 1 ;;
+        docker)           check_docker_installed ;;
+        docker_compose)   check_docker_compose_installed ;;
+        docker_group)     check_docker_group ;;
+        mkcert)           check_mkcert_installed ;;
+        mkcert_ca)        check_mkcert_ca_installed ;;
+        ddev)             check_ddev_installed ;;
+        ddev_config)      check_ddev_config_exists ;;
+        nwp_cli)          check_nwp_cli_installed ;;
+        nwp_config)       check_nwp_config_exists ;;
+        nwp_secrets)      check_nwp_secrets_exist ;;
+        linode_cli)       check_linode_cli_installed ;;
+        linode_config)    check_linode_config_exists ;;
+        ssh_keys)         check_ssh_keys_exist ;;
+        ssh_keys_linode)  check_ssh_keys_in_linode ;;
+        gitlab_keys)      check_gitlab_keys_exist ;;
+        gitlab_server)    check_gitlab_server_exists ;;
+        gitlab_dns)       check_gitlab_dns_exists ;;
+        gitlab_ssh_config) check_gitlab_ssh_config_exists ;;
+        *)                return 1 ;;
     esac
 }
 
@@ -558,23 +653,372 @@ install_ssh_keys() {
     log_action "SSH keys configured"
 }
 
+install_nwp_secrets() {
+    print_header "Creating NWP Secrets File"
+    log_action "Creating .secrets.yml"
+
+    local secrets_file="$SCRIPT_DIR/.secrets.yml"
+
+    if [ -f "$secrets_file" ]; then
+        print_status "OK" ".secrets.yml already exists"
+        return 0
+    fi
+
+    cat > "$secrets_file" << 'EOF'
+# NWP Infrastructure Secrets Configuration
+# NEVER commit this file to version control!
+
+# Linode API Configuration
+# Get your API token from: https://cloud.linode.com/profile/tokens
+# Create a Personal Access Token with Read/Write permissions for:
+# - Linodes, StackScripts, Domains
+linode:
+  api_token: ""
+
+# GitLab Server (auto-populated by setup)
+# gitlab:
+#   server:
+#     domain: git.yourdomain.org
+#     ip: 0.0.0.0
+#     linode_id: 0
+#     ssh_user: gitlab
+#     ssh_key: git/keys/gitlab_linode
+#   admin:
+#     url: https://git.yourdomain.org
+#     username: root
+#     initial_password: ""
+#     password: ""
+EOF
+
+    chmod 600 "$secrets_file"
+    print_status "OK" ".secrets.yml created"
+    print_status "INFO" "Add your Linode API token to .secrets.yml for server provisioning"
+    log_action ".secrets.yml created"
+}
+
+install_linode_config() {
+    print_header "Configuring Linode CLI"
+    log_action "Configuring Linode CLI"
+
+    # Check if already configured
+    if check_linode_config_exists; then
+        print_status "OK" "Linode CLI already configured"
+        return 0
+    fi
+
+    # Try to get token from .secrets.yml
+    local token=""
+    if [ -f "$SCRIPT_DIR/.secrets.yml" ]; then
+        token=$(grep "api_token:" "$SCRIPT_DIR/.secrets.yml" 2>/dev/null | head -1 | awk -F'"' '{print $2}')
+    fi
+
+    # Also check MANUAL_INPUTS
+    [ -z "$token" ] && token="${MANUAL_INPUTS[linode_token]:-}"
+
+    if [ -z "$token" ] || [ "$token" == "" ]; then
+        print_status "WARN" "No Linode API token found"
+        echo ""
+        echo "To configure Linode CLI, you need an API token."
+        echo "Get one from: https://cloud.linode.com/profile/tokens"
+        echo ""
+
+        read -p "Enter your Linode API token (or press Enter to skip): " token
+        if [ -z "$token" ]; then
+            print_status "INFO" "Skipping Linode CLI configuration"
+            return 1
+        fi
+
+        # Save token to .secrets.yml
+        if [ -f "$SCRIPT_DIR/.secrets.yml" ]; then
+            sed -i "s/api_token: \"\"/api_token: \"$token\"/" "$SCRIPT_DIR/.secrets.yml"
+            print_status "OK" "Token saved to .secrets.yml"
+        fi
+        MANUAL_INPUTS[linode_token]="$token"
+    fi
+
+    # Configure linode-cli non-interactively
+    mkdir -p "$HOME/.config/linode-cli"
+    cat > "$HOME/.config/linode-cli" << EOF
+[DEFAULT]
+default-user = default
+token = $token
+
+[default]
+region = us-east
+type = g6-standard-2
+image = linode/ubuntu24.04
+EOF
+
+    # Verify configuration
+    if linode-cli account view --text --no-headers &> /dev/null; then
+        print_status "OK" "Linode CLI configured successfully"
+        log_action "Linode CLI configured"
+    else
+        print_status "FAIL" "Failed to configure Linode CLI - check your token"
+        return 1
+    fi
+}
+
+install_ssh_keys_linode() {
+    print_header "Adding SSH Key to Linode Profile"
+    log_action "Adding SSH key to Linode"
+
+    if ! check_linode_config_exists; then
+        print_status "FAIL" "Linode CLI not configured"
+        return 1
+    fi
+
+    # Find the public key
+    local pubkey_file="$SCRIPT_DIR/keys/nwp.pub"
+    [ -f "$pubkey_file" ] || pubkey_file="$HOME/.ssh/nwp.pub"
+
+    if [ ! -f "$pubkey_file" ]; then
+        print_status "FAIL" "SSH public key not found"
+        return 1
+    fi
+
+    # Check if already added
+    if check_ssh_keys_in_linode; then
+        print_status "OK" "SSH key already in Linode profile"
+        return 0
+    fi
+
+    local pubkey=$(cat "$pubkey_file")
+    local label="nwp-$(hostname)-$(date +%Y%m%d)"
+
+    print_status "INFO" "Adding SSH key to Linode profile..."
+    if linode-cli sshkeys create --label "$label" --ssh_key "$pubkey" --text --no-headers; then
+        print_status "OK" "SSH key added to Linode profile"
+        log_action "SSH key added to Linode"
+    else
+        print_status "FAIL" "Failed to add SSH key to Linode"
+        return 1
+    fi
+}
+
+install_gitlab_keys() {
+    print_header "Generating GitLab SSH Keys"
+    log_action "Generating GitLab SSH keys"
+
+    local keys_dir="$SCRIPT_DIR/git/keys"
+    local key_file="$keys_dir/gitlab_linode"
+
+    mkdir -p "$keys_dir"
+
+    if [ -f "$key_file" ]; then
+        print_status "OK" "GitLab SSH keys already exist"
+        return 0
+    fi
+
+    # Get email from config or use default
+    local base_url=$(get_base_url_from_config 2>/dev/null)
+    local email="gitlab@${base_url:-localhost}"
+
+    print_status "INFO" "Generating SSH keys for GitLab..."
+    ssh-keygen -t ed25519 -f "$key_file" -N "" -C "$email"
+
+    print_status "OK" "GitLab SSH keys generated: $key_file"
+    log_action "GitLab SSH keys generated"
+}
+
+install_gitlab_server() {
+    print_header "Provisioning GitLab Server"
+    log_action "Provisioning GitLab server"
+
+    if ! check_linode_config_exists; then
+        print_status "FAIL" "Linode CLI not configured"
+        return 1
+    fi
+
+    local base_url=$(get_base_url_from_config 2>/dev/null)
+    if [ -z "$base_url" ]; then
+        print_status "FAIL" "No URL configured in cnwp.yml settings.url"
+        echo ""
+        echo "Please add your domain to cnwp.yml:"
+        echo "  settings:"
+        echo "    url: yourdomain.org"
+        return 1
+    fi
+
+    local gitlab_domain="git.$base_url"
+
+    # Check if server already exists
+    if check_gitlab_server_exists; then
+        print_status "OK" "GitLab server already provisioned"
+        return 0
+    fi
+
+    print_status "INFO" "Setting up GitLab at $gitlab_domain"
+
+    # Use the setup_gitlab_site.sh script if available
+    if [ -x "$SCRIPT_DIR/git/setup_gitlab_site.sh" ]; then
+        print_status "INFO" "Running GitLab setup script..."
+        if "$SCRIPT_DIR/git/setup_gitlab_site.sh" -y; then
+            print_status "OK" "GitLab server provisioned"
+            log_action "GitLab server provisioned"
+        else
+            print_status "FAIL" "GitLab setup failed"
+            return 1
+        fi
+    else
+        print_status "FAIL" "git/setup_gitlab_site.sh not found"
+        return 1
+    fi
+}
+
+install_gitlab_dns() {
+    print_header "Configuring GitLab DNS"
+    log_action "Configuring GitLab DNS"
+
+    if ! check_linode_config_exists; then
+        print_status "FAIL" "Linode CLI not configured"
+        return 1
+    fi
+
+    local base_url=$(get_base_url_from_config 2>/dev/null)
+    if [ -z "$base_url" ]; then
+        print_status "FAIL" "No URL configured in cnwp.yml"
+        return 1
+    fi
+
+    # Check if domain exists
+    local domain_id=$(linode-cli domains list --text --no-headers 2>/dev/null | grep "$base_url" | awk '{print $1}')
+
+    if [ -z "$domain_id" ]; then
+        print_status "INFO" "Creating domain $base_url in Linode DNS..."
+        local admin_email="admin@$base_url"
+        domain_id=$(linode-cli domains create --domain "$base_url" --type master --soa_email "$admin_email" --text --no-headers 2>/dev/null | awk '{print $1}')
+
+        if [ -z "$domain_id" ]; then
+            print_status "FAIL" "Failed to create domain"
+            return 1
+        fi
+        print_status "OK" "Domain created: $base_url (ID: $domain_id)"
+    else
+        print_status "OK" "Domain already exists: $base_url (ID: $domain_id)"
+    fi
+
+    # Get GitLab server IP from .secrets.yml
+    local server_ip=""
+    if [ -f "$SCRIPT_DIR/.secrets.yml" ]; then
+        server_ip=$(grep "ip:" "$SCRIPT_DIR/.secrets.yml" 2>/dev/null | head -1 | awk '{print $2}')
+    fi
+
+    if [ -z "$server_ip" ]; then
+        print_status "WARN" "GitLab server IP not found in .secrets.yml"
+        print_status "INFO" "DNS record will need to be created manually"
+        return 0
+    fi
+
+    # Check if git record exists
+    local existing_record=$(linode-cli domains records-list "$domain_id" --text --no-headers 2>/dev/null | grep "^git[[:space:]]")
+
+    if [ -n "$existing_record" ]; then
+        print_status "OK" "DNS record for git.$base_url already exists"
+    else
+        print_status "INFO" "Creating A record: git.$base_url -> $server_ip"
+        if linode-cli domains records-create "$domain_id" --type A --name git --target "$server_ip" --text --no-headers; then
+            print_status "OK" "DNS record created"
+        else
+            print_status "FAIL" "Failed to create DNS record"
+            return 1
+        fi
+    fi
+
+    log_action "GitLab DNS configured"
+
+    # Reminder about nameservers
+    echo ""
+    print_status "INFO" "Remember to update nameservers at your domain registrar:"
+    echo "    ns1.linode.com, ns2.linode.com, ns3.linode.com, ns4.linode.com, ns5.linode.com"
+}
+
+install_gitlab_ssh_config() {
+    print_header "Configuring GitLab SSH Access"
+    log_action "Configuring GitLab SSH"
+
+    # Get GitLab server IP from .secrets.yml
+    local server_ip=""
+    local gitlab_domain=""
+
+    if [ -f "$SCRIPT_DIR/.secrets.yml" ]; then
+        server_ip=$(grep "ip:" "$SCRIPT_DIR/.secrets.yml" 2>/dev/null | head -1 | awk '{print $2}')
+        gitlab_domain=$(grep "domain:" "$SCRIPT_DIR/.secrets.yml" 2>/dev/null | head -1 | awk '{print $2}')
+    fi
+
+    if [ -z "$server_ip" ]; then
+        print_status "FAIL" "GitLab server IP not found"
+        return 1
+    fi
+
+    # Copy key to ~/.ssh/
+    local src_key="$SCRIPT_DIR/git/keys/gitlab_linode"
+    local dest_key="$HOME/.ssh/gitlab_linode"
+
+    if [ -f "$src_key" ]; then
+        mkdir -p "$HOME/.ssh"
+        chmod 700 "$HOME/.ssh"
+
+        cp "$src_key" "$dest_key"
+        cp "${src_key}.pub" "${dest_key}.pub"
+        chmod 600 "$dest_key"
+        chmod 644 "${dest_key}.pub"
+        print_status "OK" "SSH key copied to ~/.ssh/gitlab_linode"
+    fi
+
+    # Add SSH config entry
+    local ssh_config="$HOME/.ssh/config"
+    if ! grep -q "Host git-server" "$ssh_config" 2>/dev/null; then
+        cat >> "$ssh_config" << SSHCONFIG
+
+# GitLab Server ($gitlab_domain)
+Host git-server gitlab $gitlab_domain
+    HostName $server_ip
+    User gitlab
+    IdentityFile ~/.ssh/gitlab_linode
+    IdentitiesOnly yes
+    StrictHostKeyChecking no
+SSHCONFIG
+        chmod 600 "$ssh_config"
+        print_status "OK" "SSH config entry added"
+    else
+        # Update IP if needed
+        if ! grep -q "$server_ip" "$ssh_config" 2>/dev/null; then
+            sed -i "/Host git-server/,/^Host /{ s/HostName .*/HostName $server_ip/; }" "$ssh_config"
+            print_status "OK" "SSH config updated with new IP"
+        else
+            print_status "OK" "SSH config already configured"
+        fi
+    fi
+
+    print_status "INFO" "You can now connect with: ssh git-server"
+    log_action "GitLab SSH config created"
+}
+
 # Main install dispatcher
 install_component() {
     local component_id="$1"
 
     case "$component_id" in
-        docker)         install_docker ;;
-        docker_compose) print_status "OK" "Docker Compose included with Docker" ;;
-        docker_group)   install_docker_group ;;
-        mkcert)         install_mkcert ;;
-        mkcert_ca)      install_mkcert_ca ;;
-        ddev)           install_ddev ;;
-        ddev_config)    install_ddev_config ;;
-        nwp_cli)        install_nwp_cli ;;
-        nwp_config)     install_nwp_config ;;
-        linode_cli)     install_linode_cli ;;
-        ssh_keys)       install_ssh_keys ;;
-        *)              print_status "WARN" "Unknown component: $component_id" ;;
+        docker)           install_docker ;;
+        docker_compose)   print_status "OK" "Docker Compose included with Docker" ;;
+        docker_group)     install_docker_group ;;
+        mkcert)           install_mkcert ;;
+        mkcert_ca)        install_mkcert_ca ;;
+        ddev)             install_ddev ;;
+        ddev_config)      install_ddev_config ;;
+        nwp_cli)          install_nwp_cli ;;
+        nwp_config)       install_nwp_config ;;
+        nwp_secrets)      install_nwp_secrets ;;
+        linode_cli)       install_linode_cli ;;
+        linode_config)    install_linode_config ;;
+        ssh_keys)         install_ssh_keys ;;
+        ssh_keys_linode)  install_ssh_keys_linode ;;
+        gitlab_keys)      install_gitlab_keys ;;
+        gitlab_server)    install_gitlab_server ;;
+        gitlab_dns)       install_gitlab_dns ;;
+        gitlab_ssh_config) install_gitlab_ssh_config ;;
+        *)                print_status "WARN" "Unknown component: $component_id" ;;
     esac
 }
 
@@ -766,23 +1210,238 @@ remove_ssh_keys() {
     log_action "SSH keys removed"
 }
 
+remove_nwp_secrets() {
+    print_header "Removing NWP Secrets File"
+    log_action "Removing .secrets.yml"
+
+    if [ "${COMPONENT_ORIGINAL[nwp_secrets]:-0}" -eq 1 ]; then
+        print_status "WARN" ".secrets.yml existed before NWP - keeping it"
+        return 0
+    fi
+
+    if [ -f "$SCRIPT_DIR/.secrets.yml" ]; then
+        # Backup before removing
+        cp "$SCRIPT_DIR/.secrets.yml" "$STATE_DIR/secrets.yml.backup.$(date +%Y%m%d%H%M%S)"
+        rm -f "$SCRIPT_DIR/.secrets.yml"
+        print_status "OK" ".secrets.yml removed (backup saved)"
+    fi
+
+    log_action ".secrets.yml removed"
+}
+
+remove_linode_config() {
+    print_header "Removing Linode CLI Configuration"
+    log_action "Removing Linode config"
+
+    if [ "${COMPONENT_ORIGINAL[linode_config]:-0}" -eq 1 ]; then
+        print_status "WARN" "Linode CLI was configured before NWP - keeping config"
+        return 0
+    fi
+
+    if [ -f "$HOME/.config/linode-cli" ]; then
+        rm -f "$HOME/.config/linode-cli"
+        print_status "OK" "Linode CLI configuration removed"
+    fi
+
+    log_action "Linode config removed"
+}
+
+remove_ssh_keys_linode() {
+    print_header "Removing SSH Key from Linode Profile"
+    log_action "Removing SSH key from Linode"
+
+    if [ "${COMPONENT_ORIGINAL[ssh_keys_linode]:-0}" -eq 1 ]; then
+        print_status "WARN" "SSH key was in Linode before NWP - keeping it"
+        return 0
+    fi
+
+    if ! check_linode_config_exists; then
+        print_status "INFO" "Linode CLI not configured - nothing to remove"
+        return 0
+    fi
+
+    # Find and remove our key
+    local pubkey_file="$SCRIPT_DIR/keys/nwp.pub"
+    [ -f "$pubkey_file" ] || pubkey_file="$HOME/.ssh/nwp.pub"
+
+    if [ -f "$pubkey_file" ]; then
+        local key_fingerprint=$(ssh-keygen -lf "$pubkey_file" 2>/dev/null | awk '{print $2}')
+        if [ -n "$key_fingerprint" ]; then
+            local key_id=$(linode-cli sshkeys list --text --no-headers 2>/dev/null | grep "$key_fingerprint" | awk '{print $1}')
+            if [ -n "$key_id" ]; then
+                linode-cli sshkeys delete "$key_id" 2>/dev/null
+                print_status "OK" "SSH key removed from Linode profile"
+            fi
+        fi
+    fi
+
+    log_action "SSH key removed from Linode"
+}
+
+remove_gitlab_keys() {
+    print_header "Removing GitLab SSH Keys"
+    log_action "Removing GitLab SSH keys"
+
+    if [ "${COMPONENT_ORIGINAL[gitlab_keys]:-0}" -eq 1 ]; then
+        print_status "WARN" "GitLab keys existed before NWP - keeping them"
+        return 0
+    fi
+
+    if [ -f "$SCRIPT_DIR/git/keys/gitlab_linode" ]; then
+        rm -f "$SCRIPT_DIR/git/keys/gitlab_linode" "$SCRIPT_DIR/git/keys/gitlab_linode.pub"
+        print_status "OK" "GitLab SSH keys removed"
+    fi
+
+    log_action "GitLab SSH keys removed"
+}
+
+remove_gitlab_server() {
+    print_header "Removing GitLab Server"
+    log_action "Removing GitLab server"
+
+    # WARNING: This is destructive - deletes the actual server
+    if [ "${COMPONENT_ORIGINAL[gitlab_server]:-0}" -eq 1 ]; then
+        print_status "WARN" "GitLab server existed before NWP - keeping it"
+        return 0
+    fi
+
+    if ! check_linode_config_exists; then
+        print_status "INFO" "Linode CLI not configured - cannot remove server"
+        return 0
+    fi
+
+    # Get Linode ID from .secrets.yml
+    local linode_id=""
+    if [ -f "$SCRIPT_DIR/.secrets.yml" ]; then
+        linode_id=$(grep "linode_id:" "$SCRIPT_DIR/.secrets.yml" 2>/dev/null | head -1 | awk '{print $2}')
+    fi
+
+    if [ -z "$linode_id" ] || [ "$linode_id" == "0" ]; then
+        print_status "INFO" "No GitLab server to remove"
+        return 0
+    fi
+
+    echo ""
+    print_status "WARN" "This will DELETE the GitLab server (Linode ID: $linode_id)"
+    print_status "WARN" "All data on the server will be PERMANENTLY LOST"
+    echo ""
+
+    if ! ask_yes_no "Are you SURE you want to delete the GitLab server?" "n"; then
+        print_status "INFO" "Server deletion cancelled"
+        return 0
+    fi
+
+    print_status "INFO" "Deleting GitLab server..."
+    if linode-cli linodes delete "$linode_id" 2>/dev/null; then
+        print_status "OK" "GitLab server deleted"
+
+        # Remove from .secrets.yml
+        if [ -f "$SCRIPT_DIR/.secrets.yml" ]; then
+            # Create backup
+            cp "$SCRIPT_DIR/.secrets.yml" "$STATE_DIR/secrets.yml.backup.$(date +%Y%m%d%H%M%S)"
+            # Remove gitlab section
+            sed -i '/^gitlab:/,/^[a-z]/{ /^gitlab:/d; /^  /d; }' "$SCRIPT_DIR/.secrets.yml"
+            print_status "OK" "GitLab entry removed from .secrets.yml"
+        fi
+    else
+        print_status "FAIL" "Failed to delete GitLab server"
+        return 1
+    fi
+
+    log_action "GitLab server deleted"
+}
+
+remove_gitlab_dns() {
+    print_header "Removing GitLab DNS Record"
+    log_action "Removing GitLab DNS"
+
+    if [ "${COMPONENT_ORIGINAL[gitlab_dns]:-0}" -eq 1 ]; then
+        print_status "WARN" "GitLab DNS existed before NWP - keeping it"
+        return 0
+    fi
+
+    if ! check_linode_config_exists; then
+        print_status "INFO" "Linode CLI not configured - cannot remove DNS"
+        return 0
+    fi
+
+    local base_url=$(get_base_url_from_config 2>/dev/null)
+    if [ -z "$base_url" ]; then
+        print_status "INFO" "No URL configured - nothing to remove"
+        return 0
+    fi
+
+    local domain_id=$(linode-cli domains list --text --no-headers 2>/dev/null | grep "$base_url" | awk '{print $1}')
+    if [ -z "$domain_id" ]; then
+        print_status "INFO" "Domain not in Linode DNS"
+        return 0
+    fi
+
+    # Find and remove git record
+    local record_id=$(linode-cli domains records-list "$domain_id" --text --no-headers 2>/dev/null | grep "^git[[:space:]]" | awk '{print $1}')
+    if [ -n "$record_id" ]; then
+        linode-cli domains records-delete "$domain_id" "$record_id" 2>/dev/null
+        print_status "OK" "DNS record for git.$base_url removed"
+    else
+        print_status "INFO" "No git DNS record found"
+    fi
+
+    log_action "GitLab DNS removed"
+}
+
+remove_gitlab_ssh_config() {
+    print_header "Removing GitLab SSH Config"
+    log_action "Removing GitLab SSH config"
+
+    if [ "${COMPONENT_ORIGINAL[gitlab_ssh_config]:-0}" -eq 1 ]; then
+        print_status "WARN" "GitLab SSH config existed before NWP - keeping it"
+        return 0
+    fi
+
+    # Remove from ~/.ssh/config
+    local ssh_config="$HOME/.ssh/config"
+    if [ -f "$ssh_config" ] && grep -q "Host git-server" "$ssh_config"; then
+        # Backup
+        cp "$ssh_config" "$ssh_config.backup.$(date +%Y%m%d%H%M%S)"
+        # Remove git-server block
+        sed -i '/# GitLab Server/,/^$/d' "$ssh_config"
+        sed -i '/Host git-server/,/^Host\|^$/{ /Host git-server/d; /^[[:space:]]/d; }' "$ssh_config"
+        print_status "OK" "SSH config entry removed"
+    fi
+
+    # Remove key from ~/.ssh/
+    if [ -f "$HOME/.ssh/gitlab_linode" ]; then
+        rm -f "$HOME/.ssh/gitlab_linode" "$HOME/.ssh/gitlab_linode.pub"
+        print_status "OK" "GitLab key removed from ~/.ssh/"
+    fi
+
+    log_action "GitLab SSH config removed"
+}
+
 # Main remove dispatcher
 remove_component() {
     local component_id="$1"
 
     case "$component_id" in
-        docker)         remove_docker ;;
-        docker_compose) print_status "OK" "Docker Compose removed with Docker" ;;
-        docker_group)   remove_docker_group ;;
-        mkcert)         remove_mkcert ;;
-        mkcert_ca)      remove_mkcert_ca ;;
-        ddev)           remove_ddev ;;
-        ddev_config)    remove_ddev_config ;;
-        nwp_cli)        remove_nwp_cli ;;
-        nwp_config)     remove_nwp_config ;;
-        linode_cli)     remove_linode_cli ;;
-        ssh_keys)       remove_ssh_keys ;;
-        *)              print_status "WARN" "Unknown component: $component_id" ;;
+        docker)           remove_docker ;;
+        docker_compose)   print_status "OK" "Docker Compose removed with Docker" ;;
+        docker_group)     remove_docker_group ;;
+        mkcert)           remove_mkcert ;;
+        mkcert_ca)        remove_mkcert_ca ;;
+        ddev)             remove_ddev ;;
+        ddev_config)      remove_ddev_config ;;
+        nwp_cli)          remove_nwp_cli ;;
+        nwp_config)       remove_nwp_config ;;
+        nwp_secrets)      remove_nwp_secrets ;;
+        linode_cli)       remove_linode_cli ;;
+        linode_config)    remove_linode_config ;;
+        ssh_keys)         remove_ssh_keys ;;
+        ssh_keys_linode)  remove_ssh_keys_linode ;;
+        gitlab_keys)      remove_gitlab_keys ;;
+        gitlab_server)    remove_gitlab_server ;;
+        gitlab_dns)       remove_gitlab_dns ;;
+        gitlab_ssh_config) remove_gitlab_ssh_config ;;
+        *)                print_status "WARN" "Unknown component: $component_id" ;;
     esac
 }
 
@@ -1086,6 +1745,8 @@ show_status() {
             case "$category" in
                 core)     echo -e "${BOLD}Core Infrastructure:${NC}" ;;
                 tools)    echo -e "${BOLD}NWP Tools:${NC}" ;;
+                linode)   echo -e "${BOLD}Linode Infrastructure:${NC}" ;;
+                gitlab)   echo -e "${BOLD}GitLab Deployment:${NC}" ;;
                 optional) echo -e "${BOLD}Optional Components:${NC}" ;;
             esac
         fi

@@ -663,6 +663,10 @@ Define four distinct site states with scripts to move between them:
 └─────────┘      └─────────┘      └─────────┘      └─────────┘
   DDEV            DDEV clone      sitename.url     sitename.com
   mysite/         mysite_stg/     mysite.nwpcode   production
+                       │                                │
+                       └────────────────────────────────┘
+                          stg2prod / prod2stg (direct)
+                          (live is OPTIONAL)
 ```
 
 | State | Location | Domain | Purpose |
@@ -678,9 +682,11 @@ Define four distinct site states with scripts to move between them:
 pl dev2stg mysite            # Dev → Staging (local copy)
 pl stg2live mysite           # Staging → Live (deploy to cloud)
 pl live2prod mysite          # Live → Production
+pl stg2prod mysite           # Staging → Production (skip live)
 
 # Sync scripts (backward)
 pl prod2live mysite          # Pull prod data to live
+pl prod2stg mysite           # Pull prod data to staging (skip live)
 pl live2stg mysite           # Pull live data to staging
 pl stg2dev mysite            # Pull staging to dev
 
@@ -689,6 +695,12 @@ pl live mysite               # Provision live server at mysite.nwpcode.org
 pl live --delete mysite      # Remove live server
 pl produce mysite            # Provision production server
 pl produce --delete mysite   # Remove production server
+```
+
+**Workflow Options:**
+```
+With Live Site:     dev → stg → live → prod    (client preview before prod)
+Without Live Site:  dev → stg → prod           (direct to production)
 ```
 
 **Configuration:**

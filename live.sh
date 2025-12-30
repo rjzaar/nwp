@@ -39,16 +39,16 @@ ${BOLD}OPTIONS:${NC}
     --ssh                   SSH into the live server
 
 ${BOLD}EXAMPLES:${NC}
-    ./live.sh nwp                      # Provision live server
-    ./live.sh --type=shared nwp        # Deploy on shared GitLab server
+    ./live.sh nwp                      # Deploy on shared GitLab server (default)
+    ./live.sh --type=dedicated nwp     # Provision dedicated Linode
     ./live.sh --type=temporary nwp     # Temporary (7 days)
     ./live.sh --delete nwp             # Delete live server
     ./live.sh --status nwp             # Show status
     ./live.sh --ssh nwp                # SSH to server
 
 ${BOLD}SERVER TYPES:${NC}
+    shared       Deploy on existing GitLab server (default, cost-effective)
     dedicated    One Linode per site (production-like)
-    shared       Deploy on existing GitLab server (cost-effective)
     temporary    Auto-delete after N days (PR reviews)
 
 ${BOLD}RESULT:${NC}
@@ -659,7 +659,7 @@ REMOTE
 main() {
     local DEBUG=false
     local DELETE=false
-    local TYPE="dedicated"
+    local TYPE="shared"
     local EXPIRES=7
     local STATUS=false
     local SSH=false

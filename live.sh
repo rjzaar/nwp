@@ -193,12 +193,22 @@ live_ssh() {
     local server_ip=$(get_live_ip "$sitename")
 
     if [ -z "$server_ip" ]; then
-        print_error "No live server found for $sitename"
-        return 1
+        # Try GitLab server as fallback for shared sites
+        local base_domain=$(get_base_domain)
+        local gitlab_host="git.${base_domain}"
+        print_info "Connecting to shared server ($gitlab_host)..."
+        ssh "gitlab@${gitlab_host}"
+        return $?
+    fi
+
+    # Determine SSH user
+    local ssh_user="root"
+    if ssh -o BatchMode=yes -o ConnectTimeout=2 "gitlab@${server_ip}" exit 2>/dev/null; then
+        ssh_user="gitlab"
     fi
 
     print_info "Connecting to $sitename live server ($server_ip)..."
-    ssh "root@${server_ip}"
+    ssh "${ssh_user}@${server_ip}"
 }
 
 # Add DNS record for the site
@@ -282,24 +292,30 @@ setup_nginx_vhost() {
     }
 }"
 
+    # Determine SSH user (gitlab for shared, root for dedicated)
+    local ssh_user="root"
+    if [[ "$ip" == *"git."* ]] || ssh -o BatchMode=yes -o ConnectTimeout=2 "gitlab@${ip}" exit 2>/dev/null; then
+        ssh_user="gitlab"
+    fi
+
     # SSH to server and configure
-    ssh "root@${ip}" << REMOTE
+    ssh "${ssh_user}@${ip}" << REMOTE
 set -e
 
 # Create site directory
-mkdir -p /var/www/${sitename}
-chown -R www-data:www-data /var/www/${sitename}
+sudo mkdir -p /var/www/${sitename}
+sudo chown -R www-data:www-data /var/www/${sitename}
 
 # Create nginx config
-cat > /etc/nginx/sites-available/${sitename} << 'NGINX'
+sudo tee /etc/nginx/sites-available/${sitename} > /dev/null << 'NGINX'
 ${nginx_config}
 NGINX
 
 # Enable site
-ln -sf /etc/nginx/sites-available/${sitename} /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/${sitename} /etc/nginx/sites-enabled/
 
 # Test and reload nginx
-nginx -t && systemctl reload nginx
+sudo nginx -t && sudo systemctl reload nginx
 
 echo "Nginx configured for ${domain}"
 REMOTE
@@ -342,8 +358,14 @@ setup_ssl() {
         return 0
     fi
 
+    # Determine SSH user
+    local ssh_user="root"
+    if [[ "$ip" == *"git."* ]] || ssh -o BatchMode=yes -o ConnectTimeout=2 "gitlab@${ip}" exit 2>/dev/null; then
+        ssh_user="gitlab"
+    fi
+
     # Get SSL certificate
-    ssh "root@${ip}" "certbot --nginx -d ${domain} --non-interactive --agree-tos --email admin@${base_domain} || true"
+    ssh "${ssh_user}@${ip}" "sudo certbot --nginx -d ${domain} --non-interactive --agree-tos --email admin@${base_domain} || true"
 
     print_status "OK" "SSL setup attempted"
 }
@@ -501,7 +523,7 @@ provision_shared() {
     print_info "Host: ${gitlab_host}"
 
     # Check GitLab server access
-    if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "root@${gitlab_host}" exit 2>/dev/null; then
+    if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "gitlab@${gitlab_host}" exit 2>/dev/null; then
         print_error "Cannot access GitLab server: ${gitlab_host}"
         print_info "Ensure SSH access is configured"
         return 1
@@ -510,7 +532,7 @@ provision_shared() {
     print_status "OK" "GitLab server accessible"
 
     # Get GitLab server IP
-    local ip=$(ssh -o BatchMode=yes "root@${gitlab_host}" "hostname -I | awk '{print \$1}'" 2>/dev/null)
+    local ip=$(ssh -o BatchMode=yes "gitlab@${gitlab_host}" "hostname -I | awk '{print \$1}'" 2>/dev/null)
 
     if [ -z "$ip" ]; then
         print_error "Could not get GitLab server IP"
@@ -531,16 +553,16 @@ provision_shared() {
     # Setup on GitLab server
     print_info "Setting up site on GitLab server..."
 
-    ssh "root@${gitlab_host}" << REMOTE
+    ssh "gitlab@${gitlab_host}" << REMOTE
 set -e
 
 # Create site directory
-mkdir -p /var/www/${sitename}
-chown -R www-data:www-data /var/www/${sitename}
+sudo mkdir -p /var/www/${sitename}
+sudo chown -R www-data:www-data /var/www/${sitename}
 
 # Create placeholder index
-echo "<h1>${sitename}</h1><p>Site coming soon</p>" > /var/www/${sitename}/index.html
-chown www-data:www-data /var/www/${sitename}/index.html
+echo "<h1>${sitename}</h1><p>Site coming soon</p>" | sudo tee /var/www/${sitename}/index.html > /dev/null
+sudo chown www-data:www-data /var/www/${sitename}/index.html
 
 echo "Site directory created"
 REMOTE
@@ -635,11 +657,11 @@ live_delete() {
             local gitlab_host="git.${base_domain}"
             print_info "Removing site from shared server..."
 
-            ssh "root@${gitlab_host}" << REMOTE || true
-rm -f /etc/nginx/sites-enabled/${sitename}
-rm -f /etc/nginx/sites-available/${sitename}
-rm -rf /var/www/${sitename}
-nginx -t && systemctl reload nginx
+            ssh "gitlab@${gitlab_host}" << REMOTE || true
+sudo rm -f /etc/nginx/sites-enabled/${sitename}
+sudo rm -f /etc/nginx/sites-available/${sitename}
+sudo rm -rf /var/www/${sitename}
+sudo nginx -t && sudo systemctl reload nginx
 echo "Site removed"
 REMOTE
             ;;

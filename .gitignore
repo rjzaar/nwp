@@ -21,6 +21,7 @@
 !setup-ssh.sh
 !stg2prod.sh
 !prod2stg.sh
+!test.sh
 !test-nwp.sh
 !testos.sh
 !uninstall_nwp.sh

@@ -103,6 +103,10 @@ ${BOLD}EXAMPLES:${NC}
     ./make.sh -py nwp5                   # Enable prod mode with auto-confirm
     ./make.sh -vdy nwp4                  # Dev mode with debug and auto-confirm
 
+${BOLD}COMBINED FLAGS:${NC}
+    Multiple short flags can be combined: -vdy = -v -d -y
+    Example: ./make.sh -vdy nwp4 is the same as ./make.sh -v -d -y nwp4
+
 ${BOLD}DEVELOPMENT MODE ACTIONS:${NC}
     1. Install development composer packages
     2. Enable development Drupal modules
@@ -473,10 +477,23 @@ clear_cache() {
     local original_dir=$(pwd)
     cd "$sitename" || return 1
 
-    if ddev drush cr > /dev/null 2>&1; then
+    # Try to clear cache and capture error
+    local error_msg=$(ddev drush cr 2>&1)
+    local exit_code=$?
+
+    if [ $exit_code -eq 0 ]; then
         print_status "OK" "Cache cleared"
     else
-        print_status "WARN" "Could not clear cache (drush may not be available)"
+        # Provide specific error message based on the failure
+        if echo "$error_msg" | grep -q "command not found\|drush: not found"; then
+            print_status "WARN" "Drush not installed - run 'ddev composer require drush/drush'"
+        elif echo "$error_msg" | grep -q "could not find driver\|database"; then
+            print_status "WARN" "Database not configured or not accessible"
+        elif echo "$error_msg" | grep -q "Bootstrap failed\|not a Drupal"; then
+            print_status "WARN" "Site not fully configured (not a Drupal installation)"
+        else
+            print_status "WARN" "Could not clear cache: ${error_msg:0:60}"
+        fi
     fi
 
     cd "$original_dir"

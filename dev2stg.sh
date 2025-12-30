@@ -9,6 +9,14 @@
 # Usage: ./dev2stg.sh [OPTIONS] <sitename>
 ################################################################################
 
+# Get script directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Source YAML library
+if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
+    source "$SCRIPT_DIR/lib/yaml-write.sh"
+fi
+
 # Script start time
 START_TIME=$(date +%s)
 
@@ -86,6 +94,30 @@ should_run_step() {
     fi
 }
 
+# Get recipe value from cnwp.yml
+get_recipe_value() {
+    local recipe=$1
+    local key=$2
+    local config_file="${3:-cnwp.yml}"
+
+    awk -v recipe="$recipe" -v key="$key" '
+        BEGIN { in_recipe = 0; found = 0 }
+        /^  [a-zA-Z0-9_-]+:/ {
+            if ($1 == recipe":") {
+                in_recipe = 1
+            } else if (in_recipe && /^  [a-zA-Z0-9_-]+:/) {
+                in_recipe = 0
+            }
+        }
+        in_recipe && $0 ~ "^    " key ":" {
+            sub("^    " key ": *", "")
+            print
+            found = 1
+            exit
+        }
+    ' "$config_file"
+}
+
 # Show help
 show_help() {
     cat << EOF
@@ -98,7 +130,7 @@ ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
     -y, --yes               Skip confirmation prompts
-    -s, --step=N            Resume from step N
+    -s N, --step=N          Resume from step N (use -s 5 or --step=5)
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Base name of the dev site (staging will be sitename_stg)
@@ -108,6 +140,11 @@ ${BOLD}EXAMPLES:${NC}
     ./dev2stg.sh -y nwp                  # Deploy with auto-confirm
     ./dev2stg.sh -s 5 nwp                # Resume from step 5
     ./dev2stg.sh --step=5 nwp            # Resume from step 5 (long form)
+    ./dev2stg.sh -dy nwp                 # Deploy with debug output and auto-confirm
+
+${BOLD}COMBINED FLAGS:${NC}
+    Multiple short flags can be combined: -dy = -d -y
+    Example: ./dev2stg.sh -dy nwp is the same as ./dev2stg.sh -d -y nwp
 
 ${BOLD}ENVIRONMENT NAMING:${NC}
     Dev site:     <sitename>             (e.g., nwp)
@@ -357,11 +394,124 @@ reinstall_modules() {
 
     print_header "Step 7: Reinstall Modules (if configured)"
 
-    # TODO: Read from nwp.yml for reinstall_modules list
-    # For now, just skip this step
-    print_status "INFO" "No modules configured for reinstallation"
+    local original_dir=$(pwd)
+    cd "$stg_site" || {
+        print_error "Cannot access staging site: $stg_site"
+        return 1
+    }
 
-    return 0
+    # Get base site name to look up recipe
+    local base_name=$(basename "$stg_site" | sed -E 's/_(stg|prod)$//')
+    ocmsg "Base site name: $base_name"
+
+    # Try to get recipe from sites: section first
+    local recipe=""
+    if command -v yaml_get_site_field &> /dev/null; then
+        recipe=$(yaml_get_site_field "$base_name" "recipe" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null)
+    fi
+
+    # If not found in sites:, use base_name as recipe
+    if [ -z "$recipe" ]; then
+        recipe="$base_name"
+        ocmsg "Recipe not found in sites:, using base name: $recipe"
+    else
+        ocmsg "Recipe from sites: $recipe"
+    fi
+
+    # Read reinstall_modules from recipe configuration
+    local reinstall_modules=$(get_recipe_value "$recipe" "reinstall_modules" "$SCRIPT_DIR/cnwp.yml")
+
+    if [ -z "$reinstall_modules" ]; then
+        print_status "INFO" "No modules configured for reinstallation in recipe '$recipe'"
+        cd "$original_dir"
+        return 0
+    fi
+
+    ocmsg "Modules to reinstall: $reinstall_modules"
+
+    # Convert space-separated string to array
+    local module_array=($reinstall_modules)
+    local total_modules=${#module_array[@]}
+    local success_count=0
+    local skip_count=0
+    local fail_count=0
+
+    echo -e "Found ${BOLD}$total_modules${NC} module(s) to reinstall: ${BOLD}$reinstall_modules${NC}"
+    echo ""
+
+    # Process each module
+    for module in "${module_array[@]}"; do
+        echo -e "${CYAN}Processing module: ${BOLD}$module${NC}"
+
+        # Check if module is currently enabled
+        ocmsg "Checking if module '$module' is enabled..."
+        local is_enabled=$(ddev drush pm:list --filter="$module" --status=enabled --format=list 2>/dev/null | grep -c "^$module$")
+
+        if [ "$is_enabled" -eq 0 ]; then
+            print_status "INFO" "Module '$module' is not enabled, skipping"
+            skip_count=$((skip_count + 1))
+            echo ""
+            continue
+        fi
+
+        # Uninstall the module
+        ocmsg "Uninstalling module '$module'..."
+        local uninstall_output=$(ddev drush pm:uninstall -y "$module" 2>&1)
+        local uninstall_code=$?
+
+        if [ $uninstall_code -ne 0 ]; then
+            print_status "FAIL" "Failed to uninstall '$module'"
+            echo "$uninstall_output" | sed 's/^/  /'
+            fail_count=$((fail_count + 1))
+            echo ""
+            continue
+        fi
+
+        print_status "OK" "Uninstalled '$module'"
+
+        # Re-enable the module
+        ocmsg "Re-enabling module '$module'..."
+        local enable_output=$(ddev drush pm:enable -y "$module" 2>&1)
+        local enable_code=$?
+
+        if [ $enable_code -ne 0 ]; then
+            print_status "FAIL" "Failed to re-enable '$module'"
+            echo "$enable_output" | sed 's/^/  /'
+            fail_count=$((fail_count + 1))
+            echo ""
+            continue
+        fi
+
+        print_status "OK" "Re-enabled '$module'"
+        success_count=$((success_count + 1))
+        echo ""
+    done
+
+    # Summary
+    echo -e "${BOLD}Module Reinstallation Summary:${NC}"
+    echo -e "  Total:    $total_modules"
+    echo -e "  ${GREEN}Success:  $success_count${NC}"
+    if [ $skip_count -gt 0 ]; then
+        echo -e "  ${YELLOW}Skipped:  $skip_count${NC}"
+    fi
+    if [ $fail_count -gt 0 ]; then
+        echo -e "  ${RED}Failed:   $fail_count${NC}"
+    fi
+    echo ""
+
+    cd "$original_dir"
+
+    # Return success if at least one module was processed and no failures
+    if [ $fail_count -gt 0 ]; then
+        print_status "WARN" "Module reinstallation completed with failures"
+        return 0  # Don't fail the deployment
+    elif [ $success_count -gt 0 ]; then
+        print_status "OK" "Module reinstallation completed successfully"
+        return 0
+    else
+        print_status "INFO" "No modules were reinstalled"
+        return 0
+    fi
 }
 
 # Step 8: Clear cache on staging
@@ -377,10 +527,23 @@ clear_cache_staging() {
     }
 
     ocmsg "Clearing cache..."
-    if ddev drush cache:rebuild > /dev/null 2>&1; then
+    # Try to clear cache and capture error
+    local error_msg=$(ddev drush cache:rebuild 2>&1)
+    local exit_code=$?
+
+    if [ $exit_code -eq 0 ]; then
         print_status "OK" "Cache cleared on staging"
     else
-        print_status "WARN" "Could not clear cache (drush may not be available)"
+        # Provide specific error message based on the failure
+        if echo "$error_msg" | grep -q "command not found\|drush: not found"; then
+            print_status "WARN" "Drush not installed - run 'ddev composer require drush/drush'"
+        elif echo "$error_msg" | grep -q "could not find driver\|database"; then
+            print_status "WARN" "Database not configured or not accessible"
+        elif echo "$error_msg" | grep -q "Bootstrap failed\|not a Drupal"; then
+            print_status "WARN" "Site not fully configured (not a Drupal installation)"
+        else
+            print_status "WARN" "Could not clear cache: ${error_msg:0:60}"
+        fi
     fi
 
     cd "$original_dir"

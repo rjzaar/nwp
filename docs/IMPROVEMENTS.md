@@ -1,11 +1,177 @@
-# NWP Scripts - Improvements and Roadmap
+# NWP Improvements & Roadmap
 
 ## Document Overview
 
-This document tracks completed work, known issues, and planned improvements for the NWP (Narrow Way Project) scripts suite. It serves as a roadmap for future development and a reference for current capabilities.
+This document tracks completed work, known issues, and planned improvements for the NWP (Narrow Way Project) system. It serves as a roadmap for future development and a reference for current capabilities.
 
-**Last Updated:** December 2024
-**Current Version:** v1.0 (5 scripts, 3,133 lines)
+For a chronological list of changes by version, see [CHANGES.md](CHANGES.md).
+
+**Last Updated:** December 29, 2025
+**Current Version:** v0.7.1
+
+---
+
+## Latest Improvements (December 29, 2025 - v0.7.1)
+
+### Testing & Quality Improvements ✅
+
+**1. Test Suite Cleanup Fix** ✅
+- **Issue**: Test suite wasn't cleaning up old test sites before running
+- **Impact**: Environment files created in wrong directory (test-nwp5 instead of test-nwp)
+- **Fix**: Added `cleanup_test_sites()` call at start of test-nwp.sh
+- **Result**: Success rate improved from 89% → **98%** (63/77 passed + 13 warnings)
+- **Tests Fixed**: 6 failures resolved
+  - All Test 1b environment variable generation tests (3 tests)
+  - Drush is working (Test 1)
+  - Copied site drush works (Test 4)
+  - Site test-nwp_copy is healthy (Test 8)
+- **Remaining**: Only 1 failure (Linode SSH timeout - known issue)
+
+**2. Install Script Enhancements** ✅
+- **Custom Target Parameter**: Added optional target parameter to install.sh
+  - Syntax: `./install.sh <recipe> [target]`
+  - Example: `./install.sh nwp mysite` - uses nwp recipe but creates 'mysite' directory
+  - Allows using same recipe for multiple projects with custom names
+- **Recipe List Fix**: Fixed `--list` command to only show recipes (not all YAML keys)
+  - Previously showed settings, setup, and all top-level keys
+  - Now uses AWK to properly parse only recipes: section
+  - Applied in 3 locations: list_recipes(), show_help(), recipe not found error
+- **Bug Fix**: Fixed typo `ocmsg` → `print_info` in site registration (2 instances)
+
+**3. Documentation Updates** ✅
+- Updated KNOWN_ISSUES.md with verified fix results
+- Updated README.md with 98% success rate
+- Added custom target parameter examples to README.md
+- Improved install.sh usage documentation
+
+**Commits:**
+- ff2705c9 - Fix Test 1b env file failures by adding initial cleanup
+- fa894bdd - Fix typo: ocmsg -> print_info in site registration
+- faafc1e2 - Fix install.sh --list to only show recipes
+- 27a9a01e - Add optional target parameter to install.sh
+- 8968fea0 - Update KNOWN_ISSUES.md with verified test results
+
+---
+
+## Recent Improvements (v0.7 - December 2025)
+
+### Phase 2 Complete: Production Deployment & Site Tracking ✅
+
+All Future Enhancements 1 & 2 have been completed:
+
+**1. Module Reinstallation (Enhancement #1)** ✅
+- Implemented in `dev2stg.sh` Step 7 (replaces previous TODO)
+- Reads `reinstall_modules` from recipe configuration in cnwp.yml
+- Automatically uninstalls then re-enables specified modules
+- Provides detailed status reporting and error handling
+- Also implemented in `stg2prod.sh` Step 9 for production deployments
+
+**2. Production Deployment Script (Enhancement #2)** ✅
+- Created `stg2prod.sh` (~750 lines) for Linode production deployment
+- 10-step automated deployment workflow:
+  1. Validate deployment configuration
+  2. Test SSH connection to production
+  3. Export configuration from staging
+  4. Optional production backup
+  5. Sync files via rsync over SSH
+  6. Run composer install remotely
+  7. Run database updates remotely
+  8. Import configuration remotely
+  9. Reinstall modules remotely
+  10. Clear cache and display URL
+- Supports: debug mode, auto-yes, dry-run, resume from step N
+- Reads Linode configuration from cnwp.yml
+
+**3. Sites Tracking System** ✅
+- Created YAML writing library (`lib/yaml-write.sh`) with 9 functions
+- Sites automatically registered in cnwp.yml after installation
+- Tracks: directory, recipe, environment, timestamp, modules
+- Automatic cleanup when sites deleted (configurable)
+- 19/19 unit tests passed, 18/18 integration tests passed
+
+**4. Configuration Enhancements** ✅
+- Added `sites:` section in cnwp.yml for tracking installed sites
+- Added `linode:` section for production server configuration
+- Added `delete_site_yml` setting to control cleanup behavior
+- Updated recipes with `prod_method`, `prod_server`, `prod_domain`, `prod_path`
+
+**5. Script Updates** ✅
+- `install.sh`: Automatic site registration after installation
+- `delete.sh`: Added `--keep-yml` flag and Step 7 for cnwp.yml cleanup
+- `dev2stg.sh`: Module reinstallation implementation
+- All scripts source YAML library when available
+
+**6. Testing Infrastructure** ✅
+- Comprehensive unit tests: `tests/test-yaml-write.sh` (19/19 passed)
+- Integration tests: `tests/test-integration.sh` (18/18 passed)
+- Tests verify: YAML operations, site registration, module parsing, config reading
+
+**7. Documentation** ✅
+- Migration guide: `docs/MIGRATION_SITES_TRACKING.md`
+- Production deployment guide: `docs/PRODUCTION_DEPLOYMENT.md`
+- Complete examples in `example.cnwp.yml`
+
+**Key Features:**
+- ✅ No external dependencies (pure AWK/bash, no yq required)
+- ✅ Fully backward compatible (all features optional)
+- ✅ Comprehensive error handling and validation
+- ✅ Automatic backup before YAML modifications
+- ✅ Production-ready with dry-run support
+
+---
+
+## Recent Improvements (v0.5 - December 2024)
+
+### Phase 1 Complete: Bug Fixes and Polish ✅
+
+All Phase 1 roadmap items have been completed:
+
+**1. Help Text Improvements**
+- Fixed dev2stg.sh help text to clarify `-s N` option syntax
+- Updated from ambiguous `-s, --step=N` to clear `-s N, --step=N (use -s 5 or --step=5)`
+
+**2. Enhanced Error Messages**
+- Replaced generic "drush may not be available" messages with specific diagnostics
+- Added detection for:
+  - Drush not installed (suggests `ddev composer require drush/drush`)
+  - Database not configured or not accessible
+  - Site not fully configured (not a Drupal installation)
+  - Shows first 60 characters of actual error for other failures
+- Updated in all scripts: make.sh, copy.sh, restore.sh, dev2stg.sh
+
+**3. Combined Flags Documentation**
+- Added "COMBINED FLAGS" section to all script help texts
+- Explains that `-bfyo` = `-b -f -y -o`
+- Includes examples for each script:
+  - backup.sh: `-bd` (database + debug)
+  - restore.sh: `-bfyo` (database + first + yes + open)
+  - copy.sh: `-fyo` (files + yes + open)
+  - make.sh: `-vdy` (dev + debug + yes)
+  - dev2stg.sh: `-dy` (debug + yes)
+
+---
+
+## Recent Improvements (v0.4 - December 2024)
+
+### Comprehensive Test Suite ✅
+
+**Added**: Complete automated test suite covering all NWP functionality
+- **File**: `test-nwp.sh` (449 lines, 41 tests across 9 categories)
+- **Results**: 73% passing rate (30/41 tests)
+- **Features**: Automatic retry mechanism, color-coded output, detailed logging
+- **Documentation**: `docs/TESTING_GUIDE.md` (437 lines)
+
+### Critical Bug Fixes ✅
+
+**1. Drush Installation in Restored/Copied Sites**
+- Added Step 4 to `restore.sh` - runs `composer install` after file restoration
+- Added Step 6 to `copy.sh` - runs `composer install` after DDEV configuration
+- Impact: Drush now works correctly in all restored and copied sites
+
+**2. Test Script Improvements**
+- Removed `set -e` to allow tests to continue after failures
+- Fixed integer expression errors in dev module checks
+- Added proper error handling and retry mechanisms
 
 ---
 
@@ -25,21 +191,37 @@ This document tracks completed work, known issues, and planned improvements for 
    - ✅ `copy.sh` - Full and files-only site copying with `-f` flag
    - ✅ `make.sh` - Development and production mode switching with `-v`/`-p` flags
    - ✅ `dev2stg.sh` - Automated development to staging deployment
+   - ✅ `testos.sh` - OpenSocial testing with Behat, PHPUnit, PHPStan, CodeSniffer
 
-3. **Environment Management** (Section 9.1)
+3. **Automated Testing Infrastructure**
+   - ✅ Behat behavioral testing with Selenium WebDriver integration
+   - ✅ 30 test features with 134 scenarios for OpenSocial
+   - ✅ PHPUnit unit and kernel testing
+   - ✅ PHPStan static code analysis
+   - ✅ PHP CodeSniffer for Drupal coding standards
+   - ✅ Automatic Selenium Chrome installation via DDEV addon
+   - ✅ Dynamic Behat configuration with auto-detected site URLs
+   - ✅ Headless browser testing for CI/CD pipelines
+
+4. **Environment Management** (Section 9.1)
    - Postfix-based environment naming convention implemented
    - Development: `sitename` (e.g., `nwp`)
    - Staging: `sitename_stg` (e.g., `nwp_stg`)
    - Production: `sitename_prod` (e.g., `nwp_prod`)
    - Better tab-completion and organization than prefix naming
 
-4. **Enhanced Configuration System** (Section 5.1)
+5. **Enhanced Configuration System** (Section 5.1)
    - YAML-based recipe configuration (`cnwp.yml`)
    - Development module configuration (`dev_modules`, `dev_composer`)
    - Deployment configuration (`reinstall_modules`, `prod_method`)
    - Directory path configuration (`private`, `cmi`)
 
-5. **Deployment Workflow**
+6. **Drush Installation Fix**
+   - ✅ Drush now installed via `ddev composer` (inside container)
+   - ✅ Fixed host-based installation that caused version mismatches
+   - ✅ Proper PHP version compatibility ensured
+
+7. **Deployment Workflow**
    - 9-step automated deployment from dev to staging
    - Configuration export/import via Drush
    - Intelligent file synchronization with exclusions
@@ -49,19 +231,16 @@ This document tracks completed work, known issues, and planned improvements for 
 ### What Still Needs Work ⚠️
 
 1. **Critical Issues**
-   - Help text inconsistency: `-s=5` shown but doesn't work (should be `-s 5` or `--step=5`)
-   - Module reinstallation not yet reading from `nwp.yml` (Step 7 is a stub)
+   - ~~Module reinstallation not yet reading from `nwp.yml` (Step 7 is a stub)~~ ✅ **COMPLETED in v0.7**
    - Git-based backup functionality incomplete (Section 1.1.4)
    - Production backup methods not implemented (Section 1.1.7)
 
 2. **Missing Features**
-   - No `stg2prod.sh` or `dev2prod.sh` deployment scripts
+   - ~~No `stg2prod.sh` or `dev2prod.sh` deployment scripts~~ ✅ **COMPLETED in v0.7**
    - No unified `nwp` CLI wrapper command
-   - Configuration values in `cnwp.yml` not fully integrated
-   - No automated testing framework
+   - ~~Configuration values in `cnwp.yml` not fully integrated~~ ✅ **COMPLETED in v0.7**
 
 3. **Usability Improvements Needed**
-   - Better error messages for Drush failures
    - Progress indicators for long-running operations
    - Validation of configuration before deployment
    - Rollback capability after failed deployment
@@ -215,12 +394,7 @@ This document tracks completed work, known issues, and planned improvements for 
 
 ### Critical Bugs 🔴
 
-1. **Help Text Inconsistency** (dev2stg.sh:109)
-   - **Issue:** Help shows `-s=5` syntax which doesn't work
-   - **Cause:** getopt doesn't parse `=` for short options
-   - **Fix:** Update help to show `-s 5` or `--step=5`
-   - **Impact:** User confusion, failed commands
-   - **Priority:** HIGH
+None - all critical bugs have been resolved in v0.5.
 
 ### Non-Critical Issues 🟡
 
@@ -230,13 +404,7 @@ This document tracks completed work, known issues, and planned improvements for 
    - **Impact:** Feature incomplete
    - **Priority:** MEDIUM
 
-3. **Drush Warnings Too Generic** (multiple scripts)
-   - **Issue:** "Could not clear cache (drush may not be available)"
-   - **Cause:** All drush failures get same message
-   - **Impact:** Hard to debug real issues
-   - **Priority:** LOW
-
-4. **No Rollback Capability**
+3. **No Rollback Capability**
    - **Issue:** Failed deployment leaves staging in bad state
    - **Cause:** No backup before deployment
    - **Impact:** Manual recovery required
@@ -244,11 +412,7 @@ This document tracks completed work, known issues, and planned improvements for 
 
 ### Warnings ⚠️
 
-5. **Combined Flags Not Documented in All Scripts**
-   - Some script help text doesn't mention combined flag capability
-   - Users may not know they can use `-bfy` instead of `-b -f -y`
-
-6. **No Validation of YAML Config**
+4. **No Validation of YAML Config**
    - Scripts don't validate `cnwp.yml` before reading
    - Malformed YAML could cause silent failures
 
@@ -325,82 +489,68 @@ See **PRODUCTION_TESTING.md** for:
 
 ### High Priority 🔴
 
-1. **Fix Help Text Bug** (dev2stg.sh)
-   - Update help text to show correct syntax: `-s 5` not `-s=5`
-   - Add note about long option: `--step=5`
-
-2. **Implement Module Reinstallation** (Section 5.1)
+1. **Implement Module Reinstallation** (Section 5.1)
    - Read `reinstall_modules` from `cnwp.yml`
    - Parse YAML in bash (or use yq/python)
    - Uninstall and reinstall specified modules
 
-3. **Production Deployment Script** (Section 4.1 extension)
+2. **Production Deployment Script** (Section 4.1 extension)
    - Create `stg2prod.sh` for staging to production deployment
    - Support git-based, rsync-based, and tar-based methods
    - Read `prod_method`, `prod_alias`, `prod_gitrepo` from config
 
-4. **Better Error Handling**
-   - Distinguish between "no drush", "drush failed", and "nothing to do"
-   - Provide actionable error messages
-   - Exit codes for different failure types
-
 ### Medium Priority 🟡
 
-5. **Git-Based Backup** (Section 1.1.4)
+3. **Git-Based Backup** (Section 1.1.4)
    - Implement `-g` flag functionality
    - Use `git bundle` for repository backup
    - Store bundles in `sitebackups/<sitename>/git/`
 
-6. **Production Backup Methods** (Section 1.1.7)
+4. **Production Backup Methods** (Section 1.1.7)
    - SSH-based backup from remote production
    - Rsync-based backup from remote production
    - Integration with `prod_alias` from config
 
-7. **Unified CLI Wrapper**
+5. **Unified CLI Wrapper**
    - Create main `nwp` command
    - Subcommands: `nwp backup`, `nwp restore`, `nwp copy`, etc.
    - Consistent help and documentation
    - Tab-completion support
 
-8. **Configuration Integration**
+6. **Configuration Integration**
    - Full YAML parsing in all scripts
    - Read `dev_modules`, `dev_composer` in `make.sh`
    - Read `reinstall_modules` in `dev2stg.sh`
    - Validate config before use
 
-9. **Rollback Capability**
+7. **Rollback Capability**
    - Automatic backup before deployment
    - `--rollback` flag to undo last deployment
    - Store deployment history
 
 ### Low Priority 🟢
 
-10. **Progress Indicators**
-    - Show progress bars for long operations
-    - Estimated time remaining
-    - More verbose output in debug mode
+8. **Progress Indicators**
+   - Show progress bars for long operations
+   - Estimated time remaining
+   - More verbose output in debug mode
 
-11. **Automated Testing**
-    - Test suite for all scripts
-    - Mock DDEV commands for testing
-    - CI/CD integration
+9. **Logging System**
+   - Log all operations to file
+   - Searchable deployment history
+   - Error log aggregation
 
-12. **Logging System**
-    - Log all operations to file
-    - Searchable deployment history
-    - Error log aggregation
-
-13. **Remote Site Support**
+10. **Remote Site Support**
     - Deploy to remote staging/production
     - SSH tunnel integration
     - Remote drush command execution
 
-14. **Database Sanitization**
+11. **Database Sanitization**
     - Sanitize production data for staging/dev
     - Remove PII, reset passwords
     - Integration with drush sql-sanitize
 
-15. **Multi-Site Support**
+12. **Multi-Site Support**
     - Deploy multiple sites in batch
     - Parallel deployment execution
     - Dependency management between sites
@@ -409,48 +559,47 @@ See **PRODUCTION_TESTING.md** for:
 
 ## Prioritized Roadmap
 
-### Phase 1: Bug Fixes and Polish (1-2 weeks)
+### Phase 1: Bug Fixes and Polish ✅ COMPLETED
 **Goal:** Fix critical bugs and improve existing features
 
-- [ ] Fix help text bug in dev2stg.sh (HIGH)
-- [ ] Improve error messages for Drush failures (MEDIUM)
-- [ ] Add better documentation for combined flags (LOW)
-- [ ] Update SCRIPTS_IMPLEMENTATION.md with test results
+1. ✅ Testing infrastructure and documentation (v0.4)
+2. ✅ Fixed help text in dev2stg.sh to clarify -s option syntax (v0.5)
+3. ✅ Improved error messages for Drush failures with specific diagnostics (v0.5)
+4. ✅ Added COMBINED FLAGS documentation section to all scripts (v0.5)
 
 ### Phase 2: Configuration Integration (2-3 weeks)
 **Goal:** Fully integrate YAML configuration system
 
-- [ ] Implement module reinstallation from config (HIGH)
-- [ ] Read `dev_modules`/`dev_composer` in make.sh (MEDIUM)
-- [ ] Add config validation (MEDIUM)
-- [ ] Document all available config options
+1. Implement module reinstallation from config (HIGH)
+2. Read `dev_modules`/`dev_composer` in make.sh (MEDIUM)
+3. Add config validation (MEDIUM)
+4. Document all available config options
 
 ### Phase 3: Production Deployment (3-4 weeks)
 **Goal:** Support production deployment workflows
 
-- [ ] Create stg2prod.sh script (HIGH)
-- [ ] Implement git-based deployment (MEDIUM)
-- [ ] Implement rsync-based deployment (MEDIUM)
-- [ ] Add rollback capability (HIGH)
-- [ ] Production backup methods (MEDIUM)
+1. Create stg2prod.sh script (HIGH)
+2. Implement git-based deployment (MEDIUM)
+3. Implement rsync-based deployment (MEDIUM)
+4. Add rollback capability (HIGH)
+5. Production backup methods (MEDIUM)
 
 ### Phase 4: Advanced Features (4-6 weeks)
 **Goal:** Add advanced capabilities and polish
 
-- [ ] Unified `nwp` CLI wrapper (MEDIUM)
-- [ ] Git-based backup functionality (MEDIUM)
-- [ ] Progress indicators (LOW)
-- [ ] Logging system (LOW)
-- [ ] Automated testing (LOW)
+1. Unified `nwp` CLI wrapper (MEDIUM)
+2. Git-based backup functionality (MEDIUM)
+3. Progress indicators (LOW)
+4. Logging system (LOW)
 
 ### Phase 5: Enterprise Features (Future)
 **Goal:** Support complex deployment scenarios
 
-- [ ] Remote site support
-- [ ] Database sanitization
-- [ ] Multi-site support
-- [ ] Deployment scheduling
-- [ ] Slack/email notifications
+1. Remote site support
+2. Database sanitization
+3. Multi-site support
+4. Deployment scheduling
+5. Slack/email notifications
 
 ---
 
@@ -465,20 +614,21 @@ See **PRODUCTION_TESTING.md** for:
 | Copy Scripts | 2 | 0 | 0 | 2 |
 | Mode Scripts | 3 | 0 | 0 | 3 |
 | Deployment Scripts | 0 | 1 | 2 | 3 |
+| Testing Scripts | 1 | 0 | 0 | 1 |
 | Configuration | 0 | 1 | 0 | 1 |
-| **TOTAL** | **9** | **3** | **3** | **15** |
+| **TOTAL** | **10** | **3** | **3** | **16** |
 
-**Overall Completion:** 60% complete, 20% partial, 20% not started
+**Overall Completion:** 62.5% complete, 18.75% partial, 18.75% not started
 
 ### Code Statistics
 
 | Metric | Value |
 |--------|-------|
-| Total Scripts | 5 |
-| Total Lines of Code | 3,133 |
-| Scripts Consolidated | 6 → 5 |
-| Code Reduction | ~15% |
-| Sections Implemented | 11 |
+| Total Scripts | 6 |
+| Total Lines of Code | 3,800+ |
+| Scripts Consolidated | 6 → 5 → 6 |
+| Testing Features | 30 features, 134 scenarios |
+| Sections Implemented | 12 |
 | Sections Partial | 2 |
 | Sections Not Started | 2 |
 
@@ -491,6 +641,7 @@ See **PRODUCTION_TESTING.md** for:
 | copy.sh | ✅ Yes | 0 |
 | make.sh | ✅ Yes | 0 |
 | dev2stg.sh | ✅ Yes | 1 (help text) |
+| testos.sh | ✅ Yes | 0 |
 
 ---
 
@@ -525,6 +676,7 @@ See **PRODUCTION_TESTING.md** for:
 ## References
 
 - **SCRIPTS_IMPLEMENTATION.md** - Detailed implementation documentation
+- **TESTING.md** - OpenSocial testing infrastructure documentation
 - **PRODUCTION_TESTING.md** - Production deployment testing guide and strategies
 - **cnwp.yml** - Configuration file examples and options
 - **Pleasy** - Original inspiration for these scripts
@@ -534,6 +686,29 @@ See **PRODUCTION_TESTING.md** for:
 ---
 
 ## Changelog
+
+### v1.1 - 2024-12-23
+
+**Added:**
+- `testos.sh` - Comprehensive OpenSocial testing script
+- Behat behavioral testing with 30 features and 134 scenarios
+- PHPUnit unit and kernel testing integration
+- PHPStan static code analysis
+- PHP CodeSniffer (Drupal coding standards)
+- Automatic Selenium Chrome installation via DDEV addon
+- Dynamic Behat configuration with auto-detected site URLs
+- Headless browser testing for CI/CD pipelines
+- **TESTING.md** - Complete testing infrastructure documentation
+
+**Fixed:**
+- Drush installation now uses `ddev composer` (inside container)
+- Resolved host-based drush installation causing version mismatches
+- Proper PHP version compatibility for drush
+
+**Documentation:**
+- Added comprehensive TESTING.md with usage examples and troubleshooting
+- Updated README.md with testing script information
+- Updated IMPROVEMENTS.md with testing infrastructure achievements
 
 ### v1.0 - 2024-12-22
 
@@ -560,5 +735,5 @@ See **PRODUCTION_TESTING.md** for:
 
 ---
 
-*Last updated: 2024-12-22*
+*Last updated: 2024-12-23*
 *Next review: January 2025*

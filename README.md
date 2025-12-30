@@ -75,6 +75,14 @@ NWP requires the following software:
    - The script will display the URL when installation completes
    - Typically: `https://<recipe-name>.ddev.site`
 
+6. **(Optional) Set up SSH keys for production deployment**:
+   ```bash
+   ./setup-ssh.sh
+   ```
+   - Generates SSH keypair for Linode deployment
+   - See [`docs/SSH_SETUP.md`](docs/SSH_SETUP.md) for complete instructions
+   - Required for `stg2prod.sh` and `prod2stg.sh` scripts
+
 ## Management Scripts
 
 NWP includes a comprehensive set of management scripts for working with your sites after installation:
@@ -88,6 +96,8 @@ NWP includes a comprehensive set of management scripts for working with your sit
 | `copy.sh` | Copy sites | Full copy or files-only with `-f` flag |
 | `make.sh` | Toggle dev/prod mode | Enable development (`-v`) or production (`-p`) mode |
 | `dev2stg.sh` | Deploy to staging | Automated deployment from dev to staging |
+| `delete.sh` | Delete sites | Graceful site deletion with optional backup (`-b`) |
+| `testos.sh` | Test OpenSocial sites | Behat, PHPUnit, PHPStan testing with auto-setup |
 
 ### Quick Examples
 
@@ -115,6 +125,21 @@ NWP includes a comprehensive set of management scripts for working with your sit
 
 # Deploy development to staging
 ./dev2stg.sh nwp4  # Creates nwp4_stg
+
+# Delete a site (with confirmation)
+./delete.sh nwp5
+
+# Delete with backup and auto-confirm
+./delete.sh -by old_site
+
+# Test OpenSocial site
+./testos.sh -b -f groups nwp4  # Run Behat tests for groups feature
+
+# List available test features
+./testos.sh --list-features nwp4
+
+# Run all tests
+./testos.sh -a nwp4  # Behat + PHPUnit + PHPStan
 ```
 
 ### Combined Flags
@@ -133,6 +158,9 @@ All scripts support combined short flags for efficient usage:
 
 # Dev mode with auto-confirm
 ./make.sh -vy nwp4
+
+# Run Behat tests with auto-confirm and verbose
+./testos.sh -bvy nwp4
 ```
 
 ### Environment Naming Convention
@@ -185,8 +213,11 @@ Each directory is a complete, isolated DDEV project with its own:
 ### Basic Usage
 
 ```bash
-./install.sh <recipe>
+./install.sh <recipe> [target]
 ```
+
+- `<recipe>`: The recipe name from cnwp.yml
+- `[target]`: Optional custom directory/site name (defaults to recipe name with auto-numbering)
 
 ### Command-Line Options
 
@@ -202,6 +233,11 @@ Each directory is a complete, isolated DDEV project with its own:
 **Install the nwp recipe:**
 ```bash
 ./install.sh nwp
+```
+
+**Install with custom directory name:**
+```bash
+./install.sh nwp mysite    # Uses nwp recipe but creates 'mysite' directory
 ```
 
 **Install with test content creation:**
@@ -483,6 +519,12 @@ Comprehensive documentation is available in the `docs/` directory:
   - Metrics and statistics
   - Contributing guidelines
 
+- **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** - Current known issues and test failures
+  - Active issues with investigation status
+  - Test failure details and workarounds
+  - Resolved issues history
+  - Current test suite success rate (98%)
+
 - **[PRODUCTION_TESTING.md](docs/PRODUCTION_TESTING.md)** - Production deployment testing guide
   - Safe testing strategies (local mock → remote test → dry-run → production)
   - Implementation examples for safety features
@@ -494,6 +536,13 @@ Comprehensive documentation is available in the `docs/` directory:
   - Backup strategy and architecture
   - File formats and naming conventions
   - Restoration procedures
+
+- **[TESTING.md](docs/TESTING.md)** - OpenSocial testing infrastructure documentation
+  - Testing script (testos.sh) usage and options
+  - Behat, PHPUnit, PHPStan, CodeSniffer integration
+  - Selenium Chrome browser automation
+  - 30 test features with 134 scenarios
+  - Automatic dependency installation and configuration
 
 ### Quick Reference
 
@@ -513,8 +562,9 @@ Comprehensive documentation is available in the `docs/` directory:
 **For roadmap and planned features:**
 - See `docs/IMPROVEMENTS.md`
 
-**For production deployment:**
-- See `docs/PRODUCTION_TESTING.md`
+**For SSH setup and production deployment:**
+- **SSH Key Setup**: `./setup-ssh.sh` - See `docs/SSH_SETUP.md`
+- **Production Deployment**: See `docs/PRODUCTION_TESTING.md`
 
 ## Troubleshooting
 
@@ -656,3 +706,97 @@ You can copy, modify, distribute and perform the work, even for commercial purpo
 ## Support
 
 For issues, questions, or contributions, please refer to the project repository or contact the maintainer.
+
+## Environment Variables (New in v0.2)
+
+NWP now includes comprehensive environment variable management:
+
+### Quick Start
+
+Environment configuration is automatic when creating new sites:
+
+```bash
+./install.sh d mysite
+```
+
+This generates:
+- `.env` - Main environment configuration (auto-generated, don't edit)
+- `.env.local.example` - Template for local overrides  
+- `.secrets.example.yml` - Template for credentials
+
+### Customizing Your Environment
+
+1. **Local overrides**: Copy `.env.local.example` to `.env.local`
+   ```bash
+   cp .env.local.example .env.local
+   # Edit .env.local with your settings
+   ```
+
+2. **Secrets**: Copy `.secrets.example.yml` to `.secrets.yml`
+   ```bash
+   cp .secrets.example.yml .secrets.yml
+   # Add your API keys, passwords, etc.
+   ```
+
+3. **Never commit**: `.env.local` and `.secrets.yml` are automatically gitignored
+
+### Manual Generation
+
+For existing sites or custom setups:
+
+```bash
+# Generate .env from recipe
+./vortex/scripts/generate-env.sh [recipe] [sitename] [path]
+
+# Generate DDEV config from .env
+./vortex/scripts/generate-ddev.sh [path]
+```
+
+### Documentation
+
+- **Templates**: See `vortex/templates/` for available templates
+- **Full Guide**: See `vortex/README.md`
+- **Migration**: See `docs/MIGRATION_GUIDE_ENV.md`
+- **Comparison**: See `docs/environment-variables-comparison.md`
+
+
+### Configuration Hierarchy
+
+NWP uses a flexible configuration hierarchy for environment variables and services:
+
+```
+1. Recipe-specific settings (highest priority)
+   ↓
+2. Global settings defaults
+   ↓
+3. Profile-based defaults
+   ↓
+4. Hardcoded defaults (lowest priority)
+```
+
+**Example:**
+```yaml
+# cnwp.yml
+settings:
+  services:
+    redis:
+      enabled: false      # Global default
+    solr:
+      enabled: false
+
+recipes:
+  mysite:
+    profile: social
+    services:
+      redis:
+        enabled: true     # Override for this recipe only
+      # solr uses global default (false)
+```
+
+This allows you to:
+- Set common defaults once in `settings`
+- Override per recipe only when needed
+- Keep recipe definitions minimal and focused
+
+See `example.cnwp.yml` for the complete structure and `enhanced_example` recipe for override examples.
+

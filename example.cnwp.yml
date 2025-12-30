@@ -19,11 +19,11 @@ settings:
 
   # Deployment settings
   # linodeuse: testing/gitlab/all. If left blank it means no use.
-  linodeuse: all
+  linodeuse:
   # urluse: testing/gitlab/all. If left blank it means no use.
-  urluse: all
+  urluse:
   # url is for providing live tests and nwp site.
-  url: nwpcode.org
+  url:
 
   # Default environment configuration (can be overridden per recipe)
   environment:
@@ -55,11 +55,12 @@ settings:
       enabled: false
 
   # Site management settings
-  delete_site_yml: true             # Remove site from cnwp.yml when deleted (use --keep-yml to preserve)
+  delete_site_yml: true             # Remove site from cnwp.yml when deleted (use --keep-yml to preserve) 
 
 setup:
   # This will create a gitlab site based on the url, ie git.url to store and commit sites and the nwp itself.
-  creategitlab: y
+  creategitlab: n
+
 
 recipes:
   os:
@@ -98,25 +99,59 @@ recipes:
     #    sitename: default # leave blank it will be called the name of the site, eg loc
     auto:  y
 
-  # Enhanced recipe example with deployment configuration (Section 5.1)
+  # Enhanced recipe example with full environment configuration (NWP v0.2+)
+  # This recipe shows how to override default settings from settings section
   enhanced_example:
     source: goalgorilla/social_template:dev-master
     profile: social
     webroot: html
     auto: y
+
     # Directory paths
     private: ../private              # Private files directory
     cmi: ../cmi                       # Configuration management directory
+
+    # Environment configuration (overrides settings.environment)
+    environment:
+      development:
+        debug: true                   # Enable debug mode
+        xdebug: true                  # Enable XDebug (overrides default false)
+        database_import: always       # Always import database
+        stage_file_proxy: true        # Use stage_file_proxy module (overrides default false)
+        stage_file_proxy_origin: https://www.example.com
+      staging:
+        debug: false
+        database_sanitize: true       # Sanitize database on import
+        stage_file_proxy: true
+        stage_file_proxy_origin: https://www.example.com
+      production:
+        debug: false
+        database_sanitize: false
+        redis: true                   # Enable Redis in production
+        caching: aggressive           # Aggressive caching
+
+    # Services configuration (overrides settings.services)
+    services:
+      redis:
+        enabled: true                 # Enable Redis (overrides default false)
+        version: "7"
+      solr:
+        enabled: true                 # Enable Solr (overrides default false)
+        core: social                  # Solr core name (overrides default 'drupal')
+      memcache:
+        enabled: false
+
     # Development configuration
     dev_modules: devel kint webprofiler stage_file_proxy  # Dev Drupal modules
     dev_composer: drupal/devel drupal/stage_file_proxy    # Dev composer packages
+
     # Deployment configuration
     reinstall_modules: custom_module  # Modules to reinstall during sync
     prod_method: rsync                # Production method: git, tar, rsync
 
     # Linode/SSH-based production (if prod_method: rsync or ssh)
     prod_server: linode_primary       # Reference to linode.servers entry
-    prod_domain: nwpcode.org          # Production domain name
+    prod_domain: example.com          # Production domain name
     prod_path: /var/www/sitename      # Remote deployment path
 
     # Alternative: Direct SSH alias (if not using linode.servers)
@@ -129,6 +164,14 @@ recipes:
     # Additional options
     force: false                      # Force config imports
     # lando: false                    # Use Lando instead of DDEV
+    # secrets_file: .secrets.yml      # Custom secrets file location
+  test_nwp:
+    source: goalgorilla/social_template:dev-master
+    profile: social
+    webroot: html
+    auto: y
+    dev_modules: devel kint webprofiler
+    dev_composer: drupal/devel
   gitlab:
     type: gitlab
     source: https://gitlab.com/gitlab-org/gitlab-foss.git
@@ -143,45 +186,54 @@ linode:
   servers:
     linode_primary:
       ssh_user: deploy                     # SSH username for deployment
-      ssh_host: 203.0.113.10               # Server IP or hostname (replace with your actual IP)
+      ssh_host: 203.0.113.10               # Server IP or hostname
       ssh_port: 22                         # SSH port (default: 22)
+      ssh_key: ~/.ssh/nwp                  # Path to SSH private key (optional, uses default if not specified)
       api_token: ${LINODE_API_TOKEN}       # Linode API token (use environment variable)
       server_ips:
         - 203.0.113.10                     # Primary IP
       domains:
-        - nwpcode.org                      # Primary domain from settings.url
+        - example.com                      # Primary domain
+        - www.example.com                  # Additional domains
+    linode_backup:
+      ssh_user: deploy
+      ssh_host: 203.0.113.20
+      ssh_port: 22
+      ssh_key: ~/.ssh/nwp                  # Path to SSH private key (optional)
+      api_token: ${LINODE_API_TOKEN}
+      server_ips:
+        - 203.0.113.20
+      domains:
+        - backup.example.com
 
 # Sites tracking
 # Automatically populated when sites are created with install.sh
 # Stores site metadata, production configuration, and deployment settings
 sites:
-  nwp5:
-    directory: /home/rob/nwp/nwp5
-    recipe: nwp
-    environment: development
-    created: 2025-12-28T15:33:16Z
-    installed_modules:
-      - rjzaar/workflow_assignment:dev-main
-      - drupal/ultimate_cron:^2.0.0-alpha7
-
-
-  test-nwp:
-    source: goalgorilla/social_template:dev-master
-    profile: social
-    webroot: html
-    auto: y
-  test-nwp1:
-    directory: /home/rob/nwp/test-nwp1
-    recipe: test-nwp
-    environment: development
-    created: 2025-12-28T21:07:49Z
-  test-nwp2:
-    directory: /home/rob/nwp/test-nwp2
-    recipe: test-nwp
-    environment: development
-    created: 2025-12-28T21:16:25Z
-  test-nwp3:
-    directory: /home/rob/nwp/test-nwp3
-    recipe: test-nwp
-    environment: development
-    created: 2025-12-28T21:29:56Z
+  # Example site entry (created by install.sh)
+  # nwp:
+  #   directory: /home/rob/nwp/nwp              # Full path to site directory
+  #   recipe: nwp                                # Recipe used for installation
+  #   environment: development                   # Environment type: development/staging/production
+  #   created: 2024-12-28T10:30:00Z             # ISO 8601 timestamp
+  #   installed_modules:                         # Additional modules installed
+  #     - workflow_assignment
+  #     - ultimate_cron
+  #   production_config:                         # Production deployment configuration
+  #     method: rsync                            # Deployment method: rsync/git/tar
+  #     server: linode_primary                   # Reference to linode.servers entry
+  #     remote_path: /var/www/nwp               # Remote deployment path
+  #     domain: nwp.example.com                  # Production domain
+  #
+  # mysite_stg:
+  #   directory: /home/rob/nwp/mysite_stg
+  #   recipe: enhanced_example
+  #   environment: staging
+  #   created: 2024-12-28T11:00:00Z
+  #   installed_modules:
+  #     - custom_module
+  #   production_config:
+  #     method: rsync
+  #     server: linode_primary
+  #     remote_path: /var/www/mysite
+  #     domain: staging.example.com

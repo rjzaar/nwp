@@ -1,42 +1,82 @@
-# gitignore template for Drupal 8 projects
-#
-# earlier versions of Drupal are tracked in `community/PHP/`
-#
-# follows official upstream conventions:
-# https://www.drupal.org/docs/develop/using-composer
+# NWP Infrastructure .gitignore
+# This file ignores everything except the core NWP infrastructure files
+# Users will have their own cnwp.yml configuration (ignored)
+# and their own site installations (ignored)
 
-# Ignore NWP installation directories created by install.sh
-# These are recipe-based site installations (e.g., os, os1, d, m, nwp, etc.)
-/os
-/os[0-9]*
-/d
-/d[0-9]*
-/m
-/m[0-9]*
-/nwp
-/nwp[0-9]*
-/dm
-/dm[0-9]*
-/commons_template
-/commons_template[0-9]*
+# Ignore everything by default
+/*
 
-# Ignore environment-specific sites (staging, production, test, backup)
-*_stg/
-*_prod/
-*_test/
-*_backup/
+# Whitelist NWP infrastructure files
 
-# Ignore backup directories
-/sitebackups/
-/sitebackups
+# Core scripts
+!backup.sh
+!copy.sh
+!delete.sh
+!dev2stg.sh
+!install.sh
+!make.sh
+!restore.sh
+!setup.sh
+!setup-ssh.sh
+!stg2prod.sh
+!prod2stg.sh
+!test-nwp.sh
+!testos.sh
+!uninstall_nwp.sh
 
-# Ignore vendor dependencies and scripts
-/vendor
-/composer.phar
-/composer
-/robo.phar
-/robo
-/drush.phar
-/drush
-/drupal.phar
-/drupal
+# Documentation and metadata
+!README.md
+!KNOWN_ISSUES.md
+!LICENSE
+
+# Configuration templates (not user configs)
+!example.cnwp.yml
+!.secrets.example.yml
+
+# Documentation directory
+!docs/
+!docs/**
+
+# Vortex configuration templates
+!vortex/
+!vortex/**
+
+# Linode deployment infrastructure
+!linode/
+!linode/**
+
+# GitLab deployment infrastructure
+!git/
+!git/**
+
+# URL management infrastructure
+!url/
+!url/**
+
+# Libraries
+!lib/
+!lib/**
+
+# Tests
+!tests/
+!tests/**
+
+# SSH keys directory (structure tracked, contents ignored)
+!keys/
+!keys/.gitkeep
+
+# Keep .gitignore itself
+!.gitignore
+
+# However, always ignore secrets and local overrides anywhere in the tree
+# SSH key contents (keep directory but ignore all keys)
+keys/*
+!keys/.gitkeep
+**/.secrets.yml
+**/.secrets.yaml
+**/.env.local
+**/.ddev/config.local.yaml
+**/.ddev/config.*.yaml
+!**/.ddev/config.yaml
+**/*.local.yml
+**/*.local.yaml

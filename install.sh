@@ -4,27 +4,41 @@
 # NWP Installation Script
 #
 # Reads cnwp.yml and installs OpenSocial based on the specified recipe
-# Usage: ./install.sh [recipe_name] [s=step_number] [c]
+# Usage: ./install.sh <recipe_name> [target_name] [options]
+#
+# Arguments:
+#   recipe_name                  - Name of recipe from cnwp.yml
+#   target_name                  - Optional: custom directory/site name
 #
 # Examples:
-#   ./install.sh os              - Install using 'os' recipe
-#   ./install.sh os s=3          - Resume 'os' installation from step 3
-#   ./install.sh nwp --step=5    - Resume 'nwp' installation from step 5
-#   ./install.sh nwp c           - Install 'nwp' recipe with test content
+#   ./install.sh nwp              - Install using 'nwp' recipe in 'nwp' directory
+#   ./install.sh nwp client1      - Install using 'nwp' recipe in 'client1' directory
+#   ./install.sh nwp mysite s=3   - Resume 'mysite' installation from step 3
+#   ./install.sh nwp site1 c      - Install 'nwp' recipe as 'site1' with test content
 #
 # Options:
 #   c, --create-content          - Create test content (5 users, 5 docs, 5 workflow assignments)
+#   s=N, --step=N                - Resume installation from step N
 #
 # Installation Steps:
-#   1  - Initialize project with Composer
-#   2  - Configure DDEV
-#   3  - Configure memory settings
-#   4  - Start DDEV services
-#   5  - Install Drush
-#   6  - Configure private file system
-#   7  - Install Drupal profile
-#   8  - Install additional modules and export config
+#   1  - Initialize project with Composer (includes Drush installation)
+#   2  - Generate environment configuration (.env files)
+#   3  - Configure DDEV
+#   4  - Configure memory settings
+#   5  - Start DDEV services
+#   6  - Verify Drush is available
+#   7  - Configure private file system
+#   8  - Install Drupal profile
+#   9  - Install additional modules and export config
 ################################################################################
+
+# Get script directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Source YAML library for site registration
+if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
+    source "$SCRIPT_DIR/lib/yaml-write.sh"
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -111,6 +125,30 @@ get_root_value() {
     ' "$config_file"
 }
 
+# Get value from settings section
+get_settings_value() {
+    local key=$1
+    local config_file="${2:-cnwp.yml}"
+
+    # Use awk to extract values from settings section (indented under settings:)
+    awk -v key="$key" '
+        BEGIN { in_settings = 0 }
+        /^settings:/ {
+            in_settings = 1
+            next
+        }
+        in_settings && /^[a-zA-Z0-9_-]+:/ {
+            # Exited settings section
+            in_settings = 0
+        }
+        in_settings && /^  [a-zA-Z0-9_-]+:/ && $1 == key":" {
+            sub("^  " key ": *", "")
+            print
+            exit
+        }
+    ' "$config_file"
+}
+
 # Check if recipe exists in config file
 recipe_exists() {
     local recipe=$1
@@ -128,8 +166,15 @@ list_recipes() {
 
     echo -e "${BOLD}Recipes defined in $config_file:${NC}\n"
 
-    # Extract all recipe names
-    local recipes=$(grep "^  [a-zA-Z0-9_-]*:" "$config_file" | sed 's/://g' | sed 's/^  //')
+    # Extract recipe names only from the recipes: section
+    local recipes=$(awk '
+        /^recipes:/ { in_recipes = 1; next }
+        /^[a-zA-Z]/ { in_recipes = 0 }
+        in_recipes && /^  [a-zA-Z0-9_-]+:/ {
+            match($0, /^  ([a-zA-Z0-9_-]+):/, arr)
+            if (arr[1]) print arr[1]
+        }
+    ' "$config_file")
 
     for recipe in $recipes; do
         local recipe_type=$(get_recipe_value "$recipe" "type" "$config_file")
@@ -228,7 +273,11 @@ show_help() {
     echo -e "${BOLD}Narrow Way Project Installation Script${NC}"
     echo ""
     echo -e "${BOLD}USAGE:${NC}"
-    echo -e "  ./install.sh [OPTIONS] <recipe>"
+    echo -e "  ./install.sh [OPTIONS] <recipe> [target]"
+    echo ""
+    echo -e "${BOLD}ARGUMENTS:${NC}"
+    echo -e "  recipe                  Recipe name from cnwp.yml (required)"
+    echo -e "  target                  Custom directory/site name (optional)"
     echo ""
     echo -e "${BOLD}OPTIONS:${NC}"
     echo -e "  -l, --list              List all available recipes"
@@ -238,12 +287,28 @@ show_help() {
     echo ""
     echo -e "${BOLD}EXAMPLES:${NC}"
     echo -e "  ./install.sh --list              List available recipes"
-    echo -e "  ./install.sh nwp                 Install the nwp recipe"
-    echo -e "  ./install.sh nwp c               Install nwp with test content"
-    echo -e "  ./install.sh d s=3               Install d recipe starting from step 3"
+    echo -e "  ./install.sh nwp                 Install nwp recipe in 'nwp' directory"
+    echo -e "  ./install.sh nwp client1         Install nwp recipe in 'client1' directory"
+    echo -e "  ./install.sh nwp mysite c        Install nwp as 'mysite' with test content"
+    echo -e "  ./install.sh nwp site2 s=3       Resume 'site2' from step 3"
+    echo ""
+    echo -e "${BOLD}TARGET NAMES:${NC}"
+    echo -e "  The target parameter allows you to create multiple sites from the same recipe."
+    echo -e "  If not specified, the recipe name is used as the directory/site name."
+    echo -e "  Examples:"
+    echo -e "    ./install.sh nwp          → Creates site in directory 'nwp'"
+    echo -e "    ./install.sh nwp client1  → Creates site in directory 'client1'"
+    echo -e "    ./install.sh nwp client2  → Creates site in directory 'client2'"
     echo ""
     echo -e "${BOLD}AVAILABLE RECIPES:${NC}"
-    local recipes=$(grep "^  [a-zA-Z0-9_-]*:" "$config_file" | sed 's/://g' | sed 's/^  //')
+    local recipes=$(awk '
+        /^recipes:/ { in_recipes = 1; next }
+        /^[a-zA-Z]/ { in_recipes = 0 }
+        in_recipes && /^  [a-zA-Z0-9_-]+:/ {
+            match($0, /^  ([a-zA-Z0-9_-]+):/, arr)
+            if (arr[1]) print arr[1]
+        }
+    ' "$config_file")
     for recipe in $recipes; do
         echo -e "  - $recipe"
     done
@@ -487,8 +552,9 @@ create_test_content() {
 
 install_opensocial() {
     local recipe=$1
-    local start_step=$2
-    local create_content=$3
+    local install_dir=$2
+    local start_step=$3
+    local create_content=$4
     local base_dir=$(pwd)
 
     print_header "Installing OpenSocial using recipe: $recipe"
@@ -498,14 +564,11 @@ install_opensocial() {
         echo ""
     fi
 
-    # Determine installation directory
-    local install_dir=""
+    # Setup installation directory
     local project_dir=""
 
     if [ -n "$start_step" ]; then
-        # When resuming, use the recipe name directly (no auto-increment)
-        install_dir="$recipe"
-
+        # When resuming, directory must already exist
         if [ ! -d "$install_dir" ]; then
             print_error "Installation directory '$install_dir' does not exist. Cannot resume from step $start_step"
             print_info "To resume an installation, the directory must already exist"
@@ -520,8 +583,7 @@ install_opensocial() {
         project_dir=$(pwd)
         print_status "INFO" "Using existing directory: $project_dir"
     else
-        # Fresh installation - find available directory name with auto-increment
-        install_dir=$(get_available_dirname "$recipe")
+        # Fresh installation - create directory
         print_info "Installation directory: $install_dir"
 
         # Create and enter the installation directory using absolute path
@@ -547,9 +609,9 @@ install_opensocial() {
     local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/cnwp.yml")
     local install_modules=$(get_recipe_value "$recipe" "install_modules" "$base_dir/cnwp.yml")
 
-    # Get root-level database and PHP configuration
-    local database=$(get_root_value "database" "$base_dir/cnwp.yml")
-    local php_version=$(get_root_value "php" "$base_dir/cnwp.yml")
+    # Get database and PHP configuration from settings section
+    local database=$(get_settings_value "database" "$base_dir/cnwp.yml")
+    local php_version=$(get_settings_value "php" "$base_dir/cnwp.yml")
 
     # Set defaults if not specified
     if [ -z "$php_version" ]; then
@@ -618,6 +680,8 @@ install_opensocial() {
             print_status "WARN" "Drush installation failed, but may already be available"
         fi
 
+        print_status "OK" "Dependencies installed successfully"
+
         # Install additional modules if specified
         if [ -n "$install_modules" ]; then
             # Separate git modules from composer modules
@@ -661,31 +725,80 @@ install_opensocial() {
         print_status "INFO" "Skipping Step 1: Project already initialized"
     fi
 
-    # Step 2: Configure DDEV
+    # Step 2: Generate Environment Configuration
     if should_run_step 2 "$start_step"; then
-        print_header "Step 2: Configure DDEV"
+        print_header "Step 2: Generate Environment Configuration"
 
-        # Map database type to DDEV database type
-        local ddev_database="$database"
-        # DDEV uses mariadb as the database type
-        if [ "$database" == "mysql" ]; then
-            ddev_database="mysql:8.0"
-        elif [ "$database" == "mariadb" ]; then
-            ddev_database="mariadb:10.11"
-        fi
+        # Use base_dir (NWP root) to find vortex scripts
+        local vortex_script="$base_dir/vortex/scripts/generate-env.sh"
 
-        if ! ddev config --project-type=drupal --docroot="$webroot" --php-version="$php_version" --database="$ddev_database"; then
-            print_error "Failed to configure DDEV"
+        if [ ! -f "$vortex_script" ]; then
+            print_error "Vortex environment generation script not found at $vortex_script"
             return 1
         fi
-        print_status "OK" "DDEV configured (Database: $ddev_database)"
+
+        # Generate .env file
+        print_info "Generating .env file from cnwp.yml..."
+        if ! "$vortex_script" "$recipe" "$install_dir" .; then
+            print_error "Failed to generate environment configuration"
+            return 1
+        fi
+
+        print_status "OK" "Environment configuration generated"
+
+        # Load environment variables
+        if [ -f ".env" ]; then
+            print_info "Loading environment variables..."
+            set -a
+            source ".env"
+            set +a
+            print_status "OK" "Environment variables loaded"
+        fi
     else
-        print_status "INFO" "Skipping Step 2: DDEV already configured"
+        print_status "INFO" "Skipping Step 2: Environment already configured"
     fi
 
-    # Step 3: Memory Configuration
+    # Step 3: Configure DDEV
     if should_run_step 3 "$start_step"; then
-        print_header "Step 3: Memory Configuration"
+        print_header "Step 3: Configure DDEV"
+
+        # Use base_dir (NWP root) to find vortex scripts
+        local ddev_script="$base_dir/vortex/scripts/generate-ddev.sh"
+
+        if [ -f "$ddev_script" ]; then
+            # Use vortex script to generate DDEV config
+            print_info "Generating DDEV configuration from .env..."
+            if ! "$ddev_script" .; then
+                print_error "Failed to generate DDEV configuration"
+                return 1
+            fi
+            print_status "OK" "DDEV configuration generated"
+        else
+            # Fallback to manual DDEV config
+            print_warn "Vortex DDEV script not found, using manual configuration"
+
+            # Map database type to DDEV database type
+            local ddev_database="$database"
+            # DDEV uses mariadb as the database type
+            if [ "$database" == "mysql" ]; then
+                ddev_database="mysql:8.0"
+            elif [ "$database" == "mariadb" ]; then
+                ddev_database="mariadb:10.11"
+            fi
+
+            if ! ddev config --project-type=drupal --docroot="$webroot" --php-version="$php_version" --database="$ddev_database"; then
+                print_error "Failed to configure DDEV"
+                return 1
+            fi
+            print_status "OK" "DDEV configured (Database: $ddev_database)"
+        fi
+    else
+        print_status "INFO" "Skipping Step 3: DDEV already configured"
+    fi
+
+    # Step 4: Memory Configuration
+    if should_run_step 4 "$start_step"; then
+        print_header "Step 4: Memory Configuration"
 
         mkdir -p .ddev/php
         cat > .ddev/php/memory.ini << 'EOF'
@@ -694,12 +807,12 @@ max_execution_time = 600
 EOF
         print_status "OK" "Memory limits configured"
     else
-        print_status "INFO" "Skipping Step 3: Memory already configured"
+        print_status "INFO" "Skipping Step 4: Memory already configured"
     fi
 
-    # Step 4: Launch Services
-    if should_run_step 4 "$start_step"; then
-        print_header "Step 4: Launch DDEV Services"
+    # Step 5: Launch Services
+    if should_run_step 5 "$start_step"; then
+        print_header "Step 5: Launch DDEV Services"
 
         if ! ddev start; then
             print_error "Failed to start DDEV"
@@ -707,27 +820,27 @@ EOF
         fi
         print_status "OK" "DDEV services started"
     else
-        print_status "INFO" "Skipping Step 4: DDEV already started"
+        print_status "INFO" "Skipping Step 5: DDEV already started"
     fi
 
-    # Step 5: Verify Drush is available
-    if should_run_step 5 "$start_step"; then
-        print_header "Step 5: Verify Drush is Available"
+    # Step 6: Verify Drush is Available
+    if should_run_step 6 "$start_step"; then
+        print_header "Step 6: Verify Drush is Available"
 
         # Check if Drush is available
         if [ -f "vendor/bin/drush" ]; then
             print_status "OK" "Drush is available"
         else
             print_error "Drush not found - installation may have failed in Step 1"
-            print_info "Try manually installing with: ddev composer require drush/drush --dev"
+            print_info "Try manually installing with: composer require drush/drush --dev"
         fi
     else
-        print_status "INFO" "Skipping Step 5: Drush verification"
+        print_status "INFO" "Skipping Step 6: Drush verification"
     fi
 
-    # Step 6: Configure Private File System
-    if should_run_step 6 "$start_step"; then
-        print_header "Step 6: Configure Private File System"
+    # Step 7: Configure Private File System
+    if should_run_step 7 "$start_step"; then
+        print_header "Step 7: Configure Private File System"
 
         # Create private files directory
         mkdir -p private
@@ -780,12 +893,12 @@ EOF
 
         print_status "OK" "Private file system configured in settings.php"
     else
-        print_status "INFO" "Skipping Step 6: Private file system already configured"
+        print_status "INFO" "Skipping Step 7: Private file system already configured"
     fi
 
-    # Step 7: Install Drupal Profile
-    if should_run_step 7 "$start_step"; then
-        print_header "Step 7: Install Drupal Profile"
+    # Step 8: Install Drupal Profile
+    if should_run_step 8 "$start_step"; then
+        print_header "Step 8: Install Drupal Profile"
         print_info "This will take 5-10 minutes..."
 
         # Verify DDEV is running and restart to ensure proper mount
@@ -833,11 +946,11 @@ EOF
         fi
         print_status "OK" "Drupal site installed"
     else
-        print_status "INFO" "Skipping Step 7: Drupal already installed"
+        print_status "INFO" "Skipping Step 8: Drupal already installed"
     fi
 
-    # Step 8: Additional modules and configuration
-    if should_run_step 8 "$start_step"; then
+    # Step 9: Additional modules and configuration
+    if should_run_step 9 "$start_step"; then
         # Dev modules installation if dev mode enabled
         local dev=$(get_recipe_value "$recipe" "dev" "$base_dir/cnwp.yml")
         if [ "$dev" == "y" ]; then
@@ -869,7 +982,7 @@ EOF
         print_info "Verifying installation..."
         ddev drush status
     else
-        print_status "INFO" "Skipping Step 8: Additional configuration"
+        print_status "INFO" "Skipping Step 9: Additional configuration"
     fi
 
     # Create test content if requested
@@ -917,6 +1030,44 @@ EOF
     echo -e "  ${BLUE}ddev drush uli${NC}    - Get one-time login link"
     echo -e "  ${BLUE}ddev ssh${NC}          - SSH into container\n"
 
+    # Register site in cnwp.yml (if YAML library is available)
+    if command -v yaml_add_site &> /dev/null; then
+        print_info "Registering site in cnwp.yml..."
+
+        # Get full directory path
+        local site_dir=$(pwd)
+        local site_name=$(basename "$site_dir")
+
+        # Determine environment type from directory suffix
+        local environment="development"
+        if [[ "$site_name" =~ _stg$ ]]; then
+            environment="staging"
+        elif [[ "$site_name" =~ _prod$ ]]; then
+            environment="production"
+        elif [[ "$site_name" =~ _dev$ ]]; then
+            environment="development"
+        fi
+
+        # Get installed modules from install_modules if any
+        local installed_modules=""
+        if [ -n "$install_modules" ]; then
+            installed_modules="$install_modules"
+        fi
+
+        # Register the site
+        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+            print_status "OK" "Site registered in cnwp.yml"
+
+            # Add installed modules if any
+            if [ -n "$installed_modules" ] && command -v yaml_add_site_modules &> /dev/null; then
+                yaml_add_site_modules "$site_name" "$installed_modules" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null
+            fi
+        else
+            # Site already exists or registration failed - not critical
+            print_info "Site registration skipped (may already exist)"
+        fi
+    fi
+
     return 0
 }
 
@@ -926,7 +1077,8 @@ EOF
 
 install_moodle() {
     local recipe=$1
-    local start_step=$2
+    local install_dir=$2
+    local start_step=$3
     local base_dir=$(pwd)
 
     print_header "Installing Moodle using recipe: $recipe"
@@ -936,14 +1088,11 @@ install_moodle() {
         echo ""
     fi
 
-    # Determine installation directory
-    local install_dir=""
+    # Setup installation directory
     local project_dir=""
 
     if [ -n "$start_step" ]; then
-        # When resuming, use the recipe name directly (no auto-increment)
-        install_dir="$recipe"
-
+        # When resuming, directory must already exist
         if [ ! -d "$install_dir" ]; then
             print_error "Installation directory '$install_dir' does not exist. Cannot resume from step $start_step"
             print_info "To resume an installation, the directory must already exist"
@@ -958,8 +1107,7 @@ install_moodle() {
         project_dir=$(pwd)
         print_status "INFO" "Using existing directory: $project_dir"
     else
-        # Fresh installation - find available directory name with auto-increment
-        install_dir=$(get_available_dirname "$recipe")
+        # Fresh installation - create directory
         print_info "Installation directory: $install_dir"
 
         # Create and enter the installation directory using absolute path
@@ -985,9 +1133,9 @@ install_moodle() {
     local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/cnwp.yml")
     local sitename=$(get_recipe_value "$recipe" "sitename" "$base_dir/cnwp.yml")
 
-    # Get root-level database and PHP configuration
-    local database=$(get_root_value "database" "$base_dir/cnwp.yml")
-    local php_version=$(get_root_value "php" "$base_dir/cnwp.yml")
+    # Get database and PHP configuration from settings section
+    local database=$(get_settings_value "database" "$base_dir/cnwp.yml")
+    local php_version=$(get_settings_value "php" "$base_dir/cnwp.yml")
 
     # Set defaults if not specified
     if [ -z "$php_version" ]; then
@@ -1244,6 +1392,33 @@ EOF
     echo -e "  ${BLUE}ddev ssh${NC}          - SSH into container"
     echo -e "  ${BLUE}ddev exec php admin/cli/cron.php${NC} - Run Moodle cron\n"
 
+    # Register site in cnwp.yml (if YAML library is available)
+    if command -v yaml_add_site &> /dev/null; then
+        print_info "Registering site in cnwp.yml..."
+
+        # Get full directory path
+        local site_dir=$(pwd)
+        local site_name=$(basename "$site_dir")
+
+        # Determine environment type from directory suffix
+        local environment="development"
+        if [[ "$site_name" =~ _stg$ ]]; then
+            environment="staging"
+        elif [[ "$site_name" =~ _prod$ ]]; then
+            environment="production"
+        elif [[ "$site_name" =~ _dev$ ]]; then
+            environment="development"
+        fi
+
+        # Register the site (Moodle doesn't have install_modules typically)
+        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+            print_status "OK" "Site registered in cnwp.yml"
+        else
+            # Site already exists or registration failed - not critical
+            print_info "Site registration skipped (may already exist)"
+        fi
+    fi
+
     return 0
 }
 
@@ -1253,9 +1428,11 @@ EOF
 
 main() {
     local recipe=""
+    local target=""
     local start_step=""
     local create_content="n"
     local config_file="cnwp.yml"
+    local positional_args=()
 
     # Parse arguments
     for arg in "$@"; do
@@ -1272,9 +1449,17 @@ main() {
         elif [[ "$arg" == "c" ]] || [[ "$arg" == "--create-content" ]]; then
             create_content="y"
         else
-            recipe="$arg"
+            positional_args+=("$arg")
         fi
     done
+
+    # Extract recipe and optional target from positional arguments
+    if [ ${#positional_args[@]} -ge 1 ]; then
+        recipe="${positional_args[0]}"
+    fi
+    if [ ${#positional_args[@]} -ge 2 ]; then
+        target="${positional_args[1]}"
+    fi
 
     # Default recipe if not specified
     if [ -z "$recipe" ]; then
@@ -1299,7 +1484,14 @@ main() {
         print_error "Recipe '$recipe' not found in $config_file"
         echo ""
         echo "Available recipes:"
-        grep "^  [a-zA-Z0-9_-]*:" "$config_file" | sed 's/://g' | sed 's/^  /  - /'
+        awk '
+            /^recipes:/ { in_recipes = 1; next }
+            /^[a-zA-Z]/ { in_recipes = 0 }
+            in_recipes && /^  [a-zA-Z0-9_-]+:/ {
+                match($0, /^  ([a-zA-Z0-9_-]+):/, arr)
+                if (arr[1]) print "  - " arr[1]
+            }
+        ' "$config_file"
         echo ""
         echo "Use './install.sh --list' to see detailed recipe information"
         exit 1
@@ -1339,14 +1531,24 @@ main() {
 
     print_status "OK" "All prerequisites satisfied"
 
+    # Determine base name for installation directory
+    local base_name=""
+    if [ -n "$target" ]; then
+        # Use custom target name if provided
+        base_name="$target"
+    else
+        # Use recipe name as default
+        base_name="$recipe"
+    fi
+
     # Determine installation directory based on whether we're resuming
     local install_dir=""
     if [ -n "$start_step" ]; then
-        # When resuming, use recipe name directly
-        install_dir="$recipe"
+        # When resuming, use base name directly (no auto-increment)
+        install_dir="$base_name"
     else
         # Fresh install - find available directory with auto-increment
-        install_dir=$(get_available_dirname "$recipe")
+        install_dir=$(get_available_dirname "$base_name")
     fi
 
     # Read configuration values to display
@@ -1354,8 +1556,8 @@ main() {
     local source=$(get_recipe_value "$recipe" "source" "$config_file")
     local profile=$(get_recipe_value "$recipe" "profile" "$config_file")
     local webroot=$(get_recipe_value "$recipe" "webroot" "$config_file")
-    local database=$(get_root_value "database" "$config_file")
-    local php_version=$(get_root_value "php" "$config_file")
+    local database=$(get_settings_value "database" "$config_file")
+    local php_version=$(get_settings_value "php" "$config_file")
     local auto_mode=$(get_recipe_value "$recipe" "auto" "$config_file")
 
     # Default to drupal if type not specified
@@ -1421,7 +1623,7 @@ main() {
 
     # Run installation based on recipe type
     if [ "$recipe_type" == "moodle" ]; then
-        if install_moodle "$recipe" "$start_step"; then
+        if install_moodle "$recipe" "$install_dir" "$start_step"; then
             exit 0
         else
             print_error "Installation failed"
@@ -1429,7 +1631,7 @@ main() {
         fi
     else
         # Default to Drupal/OpenSocial installation
-        if install_opensocial "$recipe" "$start_step" "$create_content"; then
+        if install_opensocial "$recipe" "$install_dir" "$start_step" "$create_content"; then
             exit 0
         else
             print_error "Installation failed"

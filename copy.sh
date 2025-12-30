@@ -100,6 +100,10 @@ ${BOLD}EXAMPLES:${NC}
     ./copy.sh -fy nwp4 nwp5              # Files-only with auto-confirm
     ./copy.sh -yo nwp4 nwp_test          # Full copy with auto-confirm + login link
 
+${BOLD}COMBINED FLAGS:${NC}
+    Multiple short flags can be combined: -fyo = -f -y -o
+    Example: ./copy.sh -fyo nwp4 nwp5 is the same as ./copy.sh -f -y -o nwp4 nwp5
+
 ${BOLD}WORKFLOW (Full Copy):${NC}
     1. Validate source site exists
     2. Prepare destination directory
@@ -328,7 +332,7 @@ fix_settings() {
     local to_site=$1
     local webroot=$2
 
-    print_header "Step 7: Fix Site Settings"
+    print_header "Step 8: Fix Site Settings"
 
     local settings_file="$to_site/$webroot/sites/default/settings.php"
 
@@ -347,7 +351,7 @@ set_permissions() {
     local to_site=$1
     local webroot=$2
 
-    print_header "Step 8: Set Permissions"
+    print_header "Step 9: Set Permissions"
 
     # Set sites/default writable
     if [ -d "$to_site/$webroot/sites/default" ]; then
@@ -365,19 +369,51 @@ set_permissions() {
     return 0
 }
 
-# Clear cache
-clear_cache() {
+# Install dependencies
+install_dependencies() {
     local to_site=$1
 
-    print_header "Step 9: Clear Cache"
+    print_header "Step 6: Install Dependencies"
 
     local original_dir=$(pwd)
     cd "$to_site" || return 1
 
-    if ddev drush cr > /dev/null 2>&1; then
+    ocmsg "Running composer install to rebuild vendor directory..."
+    if ddev composer install --no-interaction > /dev/null 2>&1; then
+        print_status "OK" "Dependencies installed"
+    else
+        print_status "WARN" "Could not install dependencies (may need manual intervention)"
+    fi
+
+    cd "$original_dir"
+}
+
+# Clear cache
+clear_cache() {
+    local to_site=$1
+
+    print_header "Step 10: Clear Cache"
+
+    local original_dir=$(pwd)
+    cd "$to_site" || return 1
+
+    # Try to clear cache and capture error
+    local error_msg=$(ddev drush cr 2>&1)
+    local exit_code=$?
+
+    if [ $exit_code -eq 0 ]; then
         print_status "OK" "Cache cleared"
     else
-        print_status "WARN" "Could not clear cache (drush may not be available)"
+        # Provide specific error message based on the failure
+        if echo "$error_msg" | grep -q "command not found\|drush: not found"; then
+            print_status "WARN" "Drush not installed - run 'ddev composer require drush/drush'"
+        elif echo "$error_msg" | grep -q "could not find driver\|database"; then
+            print_status "WARN" "Database not configured or not accessible"
+        elif echo "$error_msg" | grep -q "Bootstrap failed\|not a Drupal"; then
+            print_status "WARN" "Site not fully configured (not a Drupal installation)"
+        else
+            print_status "WARN" "Could not clear cache: ${error_msg:0:60}"
+        fi
     fi
 
     cd "$original_dir"
@@ -387,7 +423,7 @@ clear_cache() {
 generate_login_link() {
     local to_site=$1
 
-    print_header "Step 10: Generate Login Link"
+    print_header "Step 11: Generate Login Link"
 
     local original_dir=$(pwd)
     cd "$to_site" || return 1
@@ -531,7 +567,10 @@ copy_site() {
             return 1
         fi
 
-        # Step 6: Import database
+        # Step 6: Install dependencies
+        install_dependencies "$to_site"
+
+        # Step 7: Import database
         if ! import_database "$to_site" "$db_export"; then
             print_error "Database import failed"
             return 1
@@ -541,16 +580,16 @@ copy_site() {
         rm -f "$db_export"
     fi
 
-    # Step 7: Fix settings
+    # Step 8: Fix settings
     fix_settings "$to_site" "$webroot"
 
-    # Step 8: Set permissions
+    # Step 9: Set permissions
     set_permissions "$to_site" "$webroot"
 
-    # Step 9: Clear cache
+    # Step 10: Clear cache
     clear_cache "$to_site"
 
-    # Step 10: Generate login link (if requested)
+    # Step 11: Generate login link (if requested)
     if [ "$open_after" == "true" ]; then
         generate_login_link "$to_site"
     fi

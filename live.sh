@@ -348,6 +348,18 @@ setup_nginx_vhost() {
     local base_domain=$(get_base_domain)
     local domain="${sitename}.${base_domain}"
 
+    # Determine SSH user
+    local ssh_user="root"
+    if [[ "$ip" == *"git."* ]] || ssh -o BatchMode=yes -o ConnectTimeout=2 "gitlab@${ip}" exit 2>/dev/null; then
+        ssh_user="gitlab"
+    fi
+
+    # Check if nginx config already exists
+    if ssh -o BatchMode=yes "${ssh_user}@${ip}" "test -f /etc/nginx/sites-available/${sitename}" 2>/dev/null; then
+        print_status "OK" "Nginx vhost already configured for ${domain}"
+        return 0
+    fi
+
     print_info "Configuring nginx for ${domain}..."
 
     # Create nginx config
@@ -371,12 +383,6 @@ setup_nginx_vhost() {
         deny all;
     }
 }"
-
-    # Determine SSH user (gitlab for shared, root for dedicated)
-    local ssh_user="root"
-    if [[ "$ip" == *"git."* ]] || ssh -o BatchMode=yes -o ConnectTimeout=2 "gitlab@${ip}" exit 2>/dev/null; then
-        ssh_user="gitlab"
-    fi
 
     # SSH to server and configure
     ssh "${ssh_user}@${ip}" << REMOTE
@@ -416,6 +422,18 @@ setup_ssl() {
     local base_domain=$(get_base_domain)
     local domain="${sitename}.${base_domain}"
 
+    # Determine SSH user
+    local ssh_user="root"
+    if [[ "$ip" == *"git."* ]] || ssh -o BatchMode=yes -o ConnectTimeout=2 "gitlab@${ip}" exit 2>/dev/null; then
+        ssh_user="gitlab"
+    fi
+
+    # Check if SSL cert already exists
+    if ssh -o BatchMode=yes "${ssh_user}@${ip}" "test -d /etc/letsencrypt/live/${domain}" 2>/dev/null; then
+        print_status "OK" "SSL certificate already exists for ${domain}"
+        return 0
+    fi
+
     print_info "Setting up SSL for ${domain}..."
 
     # Wait for DNS propagation
@@ -436,12 +454,6 @@ setup_ssl() {
         print_warning "DNS not propagated yet, skipping SSL"
         print_info "Run certbot manually later: sudo certbot --nginx -d ${domain}"
         return 0
-    fi
-
-    # Determine SSH user
-    local ssh_user="root"
-    if [[ "$ip" == *"git."* ]] || ssh -o BatchMode=yes -o ConnectTimeout=2 "gitlab@${ip}" exit 2>/dev/null; then
-        ssh_user="gitlab"
     fi
 
     # Get SSL certificate
@@ -553,17 +565,23 @@ provision_dedicated() {
         print_info "Try again in a few minutes: ssh root@${ip}"
     fi
 
-    # Add DNS record
+    # Add DNS record (has its own idempotency check)
     add_dns_record "$sitename" "$ip" "$token" || true
 
-    # Setup nginx
+    # Setup nginx (has its own idempotency check)
     setup_nginx_vhost "$sitename" "$ip" || true
 
-    # Setup SSL (may need DNS to propagate first)
+    # Setup SSL (has its own idempotency check)
     setup_ssl "$sitename" "$ip" || true
 
-    # Update cnwp.yml
-    update_cnwp_live "$sitename" "$ip" "$instance_id" "dedicated" || true
+    # Check if already in cnwp.yml
+    local existing_ip=$(get_live_ip "$sitename")
+    if [ -n "$existing_ip" ]; then
+        print_status "OK" "cnwp.yml already configured for $sitename"
+    else
+        # Update cnwp.yml
+        update_cnwp_live "$sitename" "$ip" "$instance_id" "dedicated" || true
+    fi
 
     print_header "Live Server Ready"
     print_status "OK" "Server provisioned successfully"
@@ -608,10 +626,14 @@ provision_shared() {
         return 1
     fi
 
-    # Setup on GitLab server
-    print_info "Setting up site on GitLab server..."
+    # Check if site directory already exists
+    if ssh -o BatchMode=yes "gitlab@${gitlab_host}" "test -d /var/www/${sitename}" 2>/dev/null; then
+        print_status "OK" "Site directory already exists: /var/www/${sitename}"
+    else
+        # Setup on GitLab server
+        print_info "Creating site directory on GitLab server..."
 
-    ssh "gitlab@${gitlab_host}" << REMOTE
+        ssh "gitlab@${gitlab_host}" << REMOTE
 set -e
 
 # Create site directory
@@ -624,21 +646,31 @@ sudo chown www-data:www-data /var/www/${sitename}/index.html
 
 echo "Site directory created"
 REMOTE
+        print_status "OK" "Site directory created"
+    fi
 
-    # Setup nginx vhost
+    # Setup nginx vhost (has its own idempotency check)
     setup_nginx_vhost "$sitename" "$gitlab_host" || true
 
-    # Add DNS record if needed
+    # Add DNS record if needed (has its own idempotency check)
     local token=$(get_linode_token "$SCRIPT_DIR")
     if [ -n "$token" ]; then
         add_dns_record "$sitename" "$ip" "$token" || true
+    else
+        print_info "No Linode token - skipping DNS record (add manually if needed)"
     fi
 
-    # Setup SSL
+    # Setup SSL (has its own idempotency check)
     setup_ssl "$sitename" "$gitlab_host" || true
 
-    # Update cnwp.yml
-    update_cnwp_live "$sitename" "$ip" "shared" "shared" || true
+    # Check if already in cnwp.yml
+    local existing_ip=$(get_live_ip "$sitename")
+    if [ -n "$existing_ip" ]; then
+        print_status "OK" "cnwp.yml already configured for $sitename"
+    else
+        # Update cnwp.yml
+        update_cnwp_live "$sitename" "$ip" "shared" "shared" || true
+    fi
 
     print_header "Shared Live Server Ready"
     print_status "OK" "Site configured on shared server"

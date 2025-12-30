@@ -455,24 +455,29 @@ setup_ssl() {
 
     print_info "Setting up SSL for ${domain}..."
 
-    # Wait for DNS propagation
-    print_info "Waiting for DNS propagation..."
-    local attempts=0
-    while [ $attempts -lt 30 ]; do
-        if host "$domain" > /dev/null 2>&1; then
-            print_status "OK" "DNS propagated"
-            break
-        fi
-        sleep 10
-        attempts=$((attempts + 1))
-        echo -n "."
-    done
-    echo ""
+    # Check if DNS already resolves
+    if host "$domain" > /dev/null 2>&1; then
+        print_status "OK" "DNS already propagated"
+    else
+        # Wait for DNS propagation
+        print_info "Waiting for DNS propagation..."
+        local attempts=0
+        while [ $attempts -lt 30 ]; do
+            if host "$domain" > /dev/null 2>&1; then
+                print_status "OK" "DNS propagated"
+                break
+            fi
+            sleep 10
+            attempts=$((attempts + 1))
+            echo -n "."
+        done
+        echo ""
 
-    if [ $attempts -ge 30 ]; then
-        print_warning "DNS not propagated yet, skipping SSL"
-        print_info "Run certbot manually later: sudo certbot --nginx -d ${domain}"
-        return 0
+        if [ $attempts -ge 30 ]; then
+            print_warning "DNS not propagated yet, skipping SSL"
+            print_info "Run certbot manually later: sudo certbot --nginx -d ${domain}"
+            return 0
+        fi
     fi
 
     # Get SSL certificate

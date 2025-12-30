@@ -16,6 +16,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Source shared libraries
 source "$SCRIPT_DIR/lib/ui.sh"
 source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/git.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -240,6 +241,7 @@ backup_site() {
     local endpoint=$2
     local message=$3
     local db_only=${4:-false}
+    local git_backup=${5:-false}
 
     if [ "$db_only" == "true" ]; then
         print_header "NWP Database Backup: $sitename"
@@ -301,6 +303,25 @@ backup_site() {
     echo -e "${GREEN}✓${NC} Database: ${backup_base}/${backup_name}.sql"
     if [ "$db_only" != "true" ]; then
         echo -e "${GREEN}✓${NC} Files:    ${backup_base}/${backup_name}.tar.gz"
+    fi
+
+    # Git backup if requested
+    if [ "$git_backup" == "true" ]; then
+        local backup_type="db"
+        if [ "$db_only" != "true" ]; then
+            backup_type="files"
+        fi
+
+        local commit_msg="Backup: $backup_name"
+        if [ -n "$message" ]; then
+            commit_msg="$message ($backup_name)"
+        fi
+
+        if git_backup "$backup_base" "$endpoint" "$backup_type" "$commit_msg"; then
+            echo -e "${GREEN}✓${NC} Git:      Committed and pushed to GitLab"
+        else
+            print_warning "Git backup completed with warnings"
+        fi
     fi
 
     return 0
@@ -392,7 +413,7 @@ main() {
     ocmsg "Git backup: $GIT_BACKUP"
 
     # Run backup
-    if backup_site "$SITENAME" "$ENDPOINT" "$MESSAGE" "$DB_ONLY"; then
+    if backup_site "$SITENAME" "$ENDPOINT" "$MESSAGE" "$DB_ONLY" "$GIT_BACKUP"; then
         show_elapsed_time "Backup"
         exit 0
     else

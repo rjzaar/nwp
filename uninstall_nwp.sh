@@ -21,8 +21,10 @@ BOLD='\033[1m'
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="$HOME/.nwp/setup_state"
-STATE_FILE="$STATE_DIR/pre_setup_state.json"
+ORIGINAL_STATE_FILE="$STATE_DIR/original_state.json"
+LEGACY_STATE_FILE="$STATE_DIR/pre_setup_state.json"
 INSTALL_LOG="$STATE_DIR/install.log"
+CONFIG_FILE="$SCRIPT_DIR/cnwp.yml"
 
 ################################################################################
 # Helper Functions
@@ -73,17 +75,100 @@ ask_yes_no() {
 # State Reading Functions
 ################################################################################
 
+# Determine which state file to use (new format or legacy)
+get_state_file() {
+    if [ -f "$ORIGINAL_STATE_FILE" ]; then
+        echo "$ORIGINAL_STATE_FILE"
+    elif [ -f "$LEGACY_STATE_FILE" ]; then
+        echo "$LEGACY_STATE_FILE"
+    else
+        echo ""
+    fi
+}
+
+# Read state value - handles both new and legacy formats
 read_state_value() {
     local key="$1"
+    local state_file=$(get_state_file)
 
-    if [ ! -f "$STATE_FILE" ]; then
+    if [ -z "$state_file" ]; then
         echo ""
         return 1
     fi
 
-    # Simple JSON parsing (assumes values are on same line as key)
-    local value=$(grep "\"$key\"" "$STATE_FILE" | sed 's/.*": "\?\([^",]*\)"\?.*/\1/' | head -1)
-    echo "$value"
+    # Check if it's the new format (with components section)
+    if grep -q '"components"' "$state_file" 2>/dev/null; then
+        # New format: look in components section
+        local value=$(grep "\"$key\":" "$state_file" | grep -oE '[0-9]+' | head -1)
+        if [ -n "$value" ] && [ "$value" -eq 1 ]; then
+            echo "true"
+        else
+            echo "false"
+        fi
+    else
+        # Legacy format: direct key lookup
+        local value=$(grep "\"$key\"" "$state_file" | sed 's/.*": "\?\([^",]*\)"\?.*/\1/' | head -1)
+        echo "$value"
+    fi
+}
+
+# Map legacy keys to new component IDs
+map_legacy_key() {
+    local legacy_key="$1"
+
+    case "$legacy_key" in
+        had_docker)       echo "docker" ;;
+        had_docker_compose) echo "docker_compose" ;;
+        was_in_docker_group) echo "docker_group" ;;
+        had_mkcert)       echo "mkcert" ;;
+        had_mkcert_ca)    echo "mkcert_ca" ;;
+        had_ddev)         echo "ddev" ;;
+        had_ddev_config)  echo "ddev_config" ;;
+        had_linode_cli)   echo "linode_cli" ;;
+        installed_cli)    echo "nwp_cli" ;;
+        *)                echo "" ;;
+    esac
+}
+
+# Check if component was originally installed (before NWP)
+was_originally_installed() {
+    local component_id="$1"
+    local state_file=$(get_state_file)
+
+    if [ -z "$state_file" ]; then
+        return 1
+    fi
+
+    # Check if new format
+    if grep -q '"components"' "$state_file" 2>/dev/null; then
+        local value=$(grep "\"$component_id\":" "$state_file" | grep -oE '[0-9]+' | head -1)
+        [ "$value" -eq 1 ] 2>/dev/null
+    else
+        # Legacy format - map the key
+        local legacy_key=""
+        case "$component_id" in
+            docker)         legacy_key="had_docker" ;;
+            docker_compose) legacy_key="had_docker_compose" ;;
+            docker_group)   legacy_key="was_in_docker_group" ;;
+            mkcert)         legacy_key="had_mkcert" ;;
+            mkcert_ca)      legacy_key="had_mkcert_ca" ;;
+            ddev)           legacy_key="had_ddev" ;;
+            ddev_config)    legacy_key="had_ddev_config" ;;
+            linode_cli)     legacy_key="had_linode_cli" ;;
+            *)              return 1 ;;
+        esac
+
+        local value=$(read_state_value "$legacy_key")
+        [ "$value" == "true" ]
+    fi
+}
+
+read_config_value() {
+    local key="$1"
+    local config_file="$CONFIG_FILE"
+
+    [ -f "$config_file" ] || return 1
+    grep "^  $key:" "$config_file" 2>/dev/null | head -1 | awk -F': ' '{print $2}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
 
 ################################################################################
@@ -93,9 +178,7 @@ read_state_value() {
 remove_docker() {
     print_header "Removing Docker"
 
-    local had_docker=$(read_state_value "had_docker")
-
-    if [ "$had_docker" == "true" ]; then
+    if was_originally_installed "docker"; then
         print_status "INFO" "Docker was already installed before NWP setup"
         print_status "INFO" "Skipping Docker removal (keeping existing installation)"
         return 0
@@ -123,9 +206,7 @@ remove_docker() {
 remove_docker_group() {
     print_header "Removing User from Docker Group"
 
-    local was_in_docker_group=$(read_state_value "was_in_docker_group")
-
-    if [ "$was_in_docker_group" == "true" ]; then
+    if was_originally_installed "docker_group"; then
         print_status "INFO" "User was already in docker group before NWP setup"
         print_status "INFO" "Skipping docker group removal"
         return 0
@@ -145,9 +226,7 @@ remove_docker_group() {
 remove_mkcert() {
     print_header "Removing mkcert"
 
-    local had_mkcert=$(read_state_value "had_mkcert")
-
-    if [ "$had_mkcert" == "true" ]; then
+    if was_originally_installed "mkcert"; then
         print_status "INFO" "mkcert was already installed before NWP setup"
         print_status "INFO" "Skipping mkcert removal"
         return 0
@@ -171,9 +250,7 @@ remove_mkcert() {
 remove_ddev() {
     print_header "Removing DDEV"
 
-    local had_ddev=$(read_state_value "had_ddev")
-
-    if [ "$had_ddev" == "true" ]; then
+    if was_originally_installed "ddev"; then
         print_status "INFO" "DDEV was already installed before NWP setup"
         print_status "INFO" "Skipping DDEV removal"
         return 0
@@ -197,6 +274,27 @@ remove_ddev() {
         fi
     else
         print_status "INFO" "DDEV not installed"
+    fi
+}
+
+remove_linode_cli() {
+    print_header "Removing Linode CLI"
+
+    if was_originally_installed "linode_cli"; then
+        print_status "INFO" "Linode CLI was already installed before NWP setup"
+        print_status "INFO" "Skipping Linode CLI removal"
+        return 0
+    fi
+
+    if command -v linode-cli &> /dev/null; then
+        if ask_yes_no "Remove Linode CLI?" "y"; then
+            if command -v pipx &> /dev/null; then
+                pipx uninstall linode-cli 2>/dev/null || true
+            fi
+            print_status "OK" "Linode CLI removed"
+        fi
+    else
+        print_status "INFO" "Linode CLI not installed"
     fi
 }
 
@@ -229,30 +327,54 @@ restore_shell_config() {
     fi
 }
 
-remove_cli_symlinks() {
-    print_header "Removing CLI Symlinks"
+remove_cli_command() {
+    print_header "Removing CLI Command"
 
-    local installed_cli=$(read_state_value "installed_cli")
-    local cli_prompt=$(read_state_value "cli_prompt")
+    local cli_prompt=$(read_config_value "cliprompt")
+    cli_prompt=${cli_prompt:-pl}
 
-    if [ "$installed_cli" == "true" ] && [ -n "$cli_prompt" ]; then
-        if [ -L "/usr/local/bin/$cli_prompt" ]; then
-            if ask_yes_no "Remove CLI command '$cli_prompt'?" "y"; then
-                sudo rm -f "/usr/local/bin/$cli_prompt"
-                print_status "OK" "CLI command removed"
-            fi
+    if [ -f "/usr/local/bin/$cli_prompt" ]; then
+        if ask_yes_no "Remove CLI command '$cli_prompt'?" "y"; then
+            sudo rm -f "/usr/local/bin/$cli_prompt"
+            print_status "OK" "CLI command removed"
         fi
     else
-        print_status "INFO" "No CLI symlinks to remove"
+        print_status "INFO" "No CLI command to remove"
+    fi
+}
+
+remove_ssh_keys() {
+    print_header "Removing SSH Keys"
+
+    local has_keys=false
+
+    if [ -f "$SCRIPT_DIR/keys/nwp" ]; then
+        has_keys=true
+    fi
+
+    if [ -f "$HOME/.ssh/nwp" ]; then
+        has_keys=true
+    fi
+
+    if [ "$has_keys" = true ]; then
+        if ask_yes_no "Remove NWP SSH keys?" "n"; then
+            rm -f "$SCRIPT_DIR/keys/nwp" "$SCRIPT_DIR/keys/nwp.pub" 2>/dev/null || true
+            rm -f "$HOME/.ssh/nwp" "$HOME/.ssh/nwp.pub" 2>/dev/null || true
+            print_status "OK" "SSH keys removed"
+        else
+            print_status "INFO" "Keeping SSH keys"
+        fi
+    else
+        print_status "INFO" "No SSH keys to remove"
     fi
 }
 
 remove_config_files() {
     print_header "Removing NWP Configuration Files"
 
-    if [ -f "$SCRIPT_DIR/cnwp.yml" ]; then
+    if [ -f "$CONFIG_FILE" ]; then
         if ask_yes_no "Remove cnwp.yml configuration file?" "n"; then
-            rm -f "$SCRIPT_DIR/cnwp.yml"
+            rm -f "$CONFIG_FILE"
             print_status "OK" "cnwp.yml removed"
         else
             print_status "INFO" "Keeping cnwp.yml"
@@ -294,9 +416,12 @@ main() {
     echo ""
 
     # Check for state file
-    if [ ! -f "$STATE_FILE" ]; then
+    local state_file=$(get_state_file)
+    if [ -z "$state_file" ]; then
         print_status "WARN" "No installation state file found"
-        print_status "INFO" "State file expected at: $STATE_FILE"
+        print_status "INFO" "Checked locations:"
+        print_status "INFO" "  - $ORIGINAL_STATE_FILE (new format)"
+        print_status "INFO" "  - $LEGACY_STATE_FILE (legacy format)"
         echo ""
         print_status "INFO" "Without a state file, the uninstaller cannot determine what was"
         print_status "INFO" "installed by NWP vs. what was already on your system."
@@ -308,12 +433,20 @@ main() {
         fi
         echo ""
     else
-        print_status "OK" "Found installation state from: $(read_state_value 'setup_date')"
+        local state_date=""
+        if grep -q '"saved_date"' "$state_file" 2>/dev/null; then
+            state_date=$(grep '"saved_date"' "$state_file" | cut -d'"' -f4)
+        elif grep -q '"setup_date"' "$state_file" 2>/dev/null; then
+            state_date=$(grep '"setup_date"' "$state_file" | cut -d'"' -f4)
+        fi
+
+        print_status "OK" "Found installation state from: $state_date"
+        print_status "INFO" "State file: $state_file"
         echo ""
         print_status "INFO" "The uninstaller will:"
-        echo "  • Skip removing tools that existed before NWP setup"
-        echo "  • Remove only what NWP installed"
-        echo "  • Restore modified configuration files"
+        echo "  - Skip removing tools that existed before NWP setup"
+        echo "  - Remove only what NWP installed"
+        echo "  - Restore modified configuration files"
         echo ""
     fi
 
@@ -322,8 +455,10 @@ main() {
         exit 0
     fi
 
-    # Perform uninstall steps
-    remove_cli_symlinks
+    # Perform uninstall steps (in reverse dependency order)
+    remove_ssh_keys
+    remove_cli_command
+    remove_linode_cli
     remove_ddev
     remove_mkcert
     remove_docker_group
@@ -336,23 +471,21 @@ main() {
     echo "NWP has been uninstalled from your system."
     echo ""
     echo "What was removed/restored:"
-    echo "  • Docker (if installed by NWP)"
-    echo "  • DDEV (if installed by NWP)"
-    echo "  • mkcert (if installed by NWP)"
-    echo "  • Shell configuration changes"
-    echo "  • CLI symlinks"
+    echo "  - Docker (if installed by NWP)"
+    echo "  - DDEV (if installed by NWP)"
+    echo "  - mkcert (if installed by NWP)"
+    echo "  - Shell configuration changes"
+    echo "  - CLI commands"
     echo ""
     echo "What you may need to do manually:"
-    echo "  • Log out and log back in (if docker group was modified)"
-    echo "  • Source ~/.bashrc or restart terminal"
-    echo "  • Review ~/.nwp directory if not removed"
+    echo "  - Log out and log back in (if docker group was modified)"
+    echo "  - Source ~/.bashrc or restart terminal"
+    echo "  - Review ~/.nwp directory if not removed"
     echo ""
 
-    if ask_yes_no "View the installation log?" "n"; then
-        if [ -f "$INSTALL_LOG" ]; then
+    if [ -f "$INSTALL_LOG" ]; then
+        if ask_yes_no "View the installation log?" "n"; then
             less "$INSTALL_LOG"
-        else
-            print_status "INFO" "No installation log found"
         fi
     fi
 }

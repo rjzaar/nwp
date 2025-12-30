@@ -251,6 +251,13 @@ show_help() {
     echo -e "  -h, --help              Show this help message"
     echo -e "  c, --create-content     Create test content after installation"
     echo -e "  s=N, --step=N           Start installation from step N"
+    echo -e "  -p=X, --purpose=X       Set site purpose (t=testing, i=indefinite, p=permanent, m=migration)"
+    echo ""
+    echo -e "${BOLD}PURPOSE VALUES:${NC}"
+    echo -e "  testing (t)             Site can be deleted freely (default for test sites)"
+    echo -e "  indefinite (i)          Site not auto-deleted but can be manually deleted (default)"
+    echo -e "  permanent (p)           Site requires manual change in cnwp.yml before deletion"
+    echo -e "  migration (m)           Migration site - creates folder stub only for importing"
     echo ""
     echo -e "${BOLD}EXAMPLES:${NC}"
     echo -e "  ./install.sh --list              List available recipes"
@@ -258,6 +265,8 @@ show_help() {
     echo -e "  ./install.sh nwp client1         Install nwp recipe in 'client1' directory"
     echo -e "  ./install.sh nwp mysite c        Install nwp as 'mysite' with test content"
     echo -e "  ./install.sh nwp site2 s=3       Resume 'site2' from step 3"
+    echo -e "  ./install.sh nwp prod -p=p       Install with permanent purpose"
+    echo -e "  ./install.sh d oldsite -p=m      Create migration stub for importing old site"
     echo ""
     echo -e "${BOLD}TARGET NAMES:${NC}"
     echo -e "  The target parameter allows you to create multiple sites from the same recipe."
@@ -545,6 +554,7 @@ install_opensocial() {
     local install_dir=$2
     local start_step=$3
     local create_content=$4
+    local purpose=${5:-indefinite}
     local base_dir=$(pwd)
 
     print_header "Installing OpenSocial using recipe: $recipe"
@@ -1045,8 +1055,8 @@ EOF
         fi
 
         # Register the site
-        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
-            print_status "OK" "Site registered in cnwp.yml"
+        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+            print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
 
             # Add installed modules if any
             if [ -n "$installed_modules" ] && command -v yaml_add_site_modules &> /dev/null; then
@@ -1069,6 +1079,7 @@ install_moodle() {
     local recipe=$1
     local install_dir=$2
     local start_step=$3
+    local purpose=${4:-indefinite}
     local base_dir=$(pwd)
 
     print_header "Installing Moodle using recipe: $recipe"
@@ -1401,8 +1412,8 @@ EOF
         fi
 
         # Register the site (Moodle doesn't have install_modules typically)
-        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
-            print_status "OK" "Site registered in cnwp.yml"
+        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+            print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
         else
             # Site already exists or registration failed - not critical
             print_info "Site registration skipped (may already exist)"
@@ -1422,6 +1433,7 @@ main() {
     local start_step=""
     local create_content="n"
     local config_file="cnwp.yml"
+    local purpose="indefinite"
     local positional_args=()
 
     # Parse arguments
@@ -1438,6 +1450,20 @@ main() {
             start_step="${BASH_REMATCH[1]}"
         elif [[ "$arg" == "c" ]] || [[ "$arg" == "--create-content" ]]; then
             create_content="y"
+        elif [[ "$arg" =~ ^-p=(.+)$ ]] || [[ "$arg" =~ ^--purpose=(.+)$ ]]; then
+            local purpose_arg="${BASH_REMATCH[1]}"
+            # Map short codes to full values
+            case "$purpose_arg" in
+                t|testing) purpose="testing" ;;
+                i|indefinite) purpose="indefinite" ;;
+                p|permanent) purpose="permanent" ;;
+                m|migration) purpose="migration" ;;
+                *)
+                    print_error "Invalid purpose: $purpose_arg"
+                    echo "Valid values: t(esting), i(ndefinite), p(ermanent), m(igration)"
+                    exit 1
+                    ;;
+            esac
         else
             positional_args+=("$arg")
         fi
@@ -1520,6 +1546,112 @@ main() {
     fi
 
     print_status "OK" "All prerequisites satisfied"
+
+    # Handle migration purpose - create stub only
+    if [ "$purpose" == "migration" ]; then
+        print_header "Migration Site Setup"
+
+        # Determine target name
+        local migration_name=""
+        if [ -n "$target" ]; then
+            migration_name="$target"
+        else
+            migration_name="${recipe}_pre"
+        fi
+
+        # Check if directory already exists
+        if [ -d "$migration_name" ]; then
+            print_error "Directory '$migration_name' already exists"
+            exit 1
+        fi
+
+        # Create migration directory structure
+        print_info "Creating migration stub directory: $migration_name"
+        mkdir -p "$migration_name"
+
+        # Create placeholder README
+        cat > "$migration_name/README.md" << 'MIGRATION_README'
+# Migration Site
+
+This directory is prepared for site migration.
+
+## Next Steps
+
+1. Copy/extract your source site files into this directory
+2. Run `./migration.sh analyze <sitename>` to analyze the source
+3. Run `./migration.sh prepare <sitename>` to set up target Drupal
+4. Run `./migration.sh run <sitename>` to execute migration
+5. Run `./migration.sh verify <sitename>` to verify success
+
+## Directory Structure
+
+Place your source site here:
+- For Drupal sites: Copy the entire Drupal root
+- For static HTML: Create an `html/` subdirectory with your files
+- For database dumps: Place SQL files in `database/` subdirectory
+
+## Source Types Supported
+
+- drupal7: Drupal 7 sites (uses Migrate API)
+- drupal8/9: Drupal 8/9 sites (upgrade path)
+- html: Static HTML sites (uses migrate_source_html)
+- wordpress: WordPress sites (uses migrate_wordpress)
+- other: Custom migration needed
+
+MIGRATION_README
+
+        # Create subdirectories for source content
+        mkdir -p "$migration_name/database"
+        mkdir -p "$migration_name/source"
+
+        print_status "OK" "Created migration stub directory"
+
+        # Register in cnwp.yml
+        if command -v yaml_add_migration_stub &> /dev/null; then
+            print_info "Registering migration site in cnwp.yml..."
+            local site_dir="$SCRIPT_DIR/$migration_name"
+
+            # Prompt for source type
+            local source_type="other"
+            echo ""
+            echo "Select source type:"
+            echo "  1) drupal7  - Drupal 7 site"
+            echo "  2) drupal8  - Drupal 8 site"
+            echo "  3) drupal9  - Drupal 9 site"
+            echo "  4) html     - Static HTML site"
+            echo "  5) wordpress - WordPress site"
+            echo "  6) joomla   - Joomla site"
+            echo "  7) other    - Other/custom"
+            echo ""
+            read -p "Enter choice [1-7, default=7]: " source_choice
+            case "$source_choice" in
+                1) source_type="drupal7" ;;
+                2) source_type="drupal8" ;;
+                3) source_type="drupal9" ;;
+                4) source_type="html" ;;
+                5) source_type="wordpress" ;;
+                6) source_type="joomla" ;;
+                *) source_type="other" ;;
+            esac
+
+            if yaml_add_migration_stub "$migration_name" "$site_dir" "$source_type" "" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+                print_status "OK" "Migration site registered in cnwp.yml"
+            else
+                print_warning "Could not register site in cnwp.yml"
+            fi
+        fi
+
+        print_header "Migration Stub Complete"
+        echo ""
+        echo -e "${GREEN}Migration directory created: $migration_name${NC}"
+        echo ""
+        echo "Next steps:"
+        echo "  1. Copy your source site files into: $migration_name/source/"
+        echo "  2. Place database dumps in: $migration_name/database/"
+        echo "  3. Run: ./migration.sh analyze $migration_name"
+        echo ""
+        exit 0
+    fi
 
     # Determine base name for installation directory
     local base_name=""
@@ -1613,7 +1745,7 @@ main() {
 
     # Run installation based on recipe type
     if [ "$recipe_type" == "moodle" ]; then
-        if install_moodle "$recipe" "$install_dir" "$start_step"; then
+        if install_moodle "$recipe" "$install_dir" "$start_step" "$purpose"; then
             exit 0
         else
             print_error "Installation failed"
@@ -1621,7 +1753,7 @@ main() {
         fi
     else
         # Default to Drupal/OpenSocial installation
-        if install_opensocial "$recipe" "$install_dir" "$start_step" "$create_content"; then
+        if install_opensocial "$recipe" "$install_dir" "$start_step" "$create_content" "$purpose"; then
             exit 0
         else
             print_error "Installation failed"

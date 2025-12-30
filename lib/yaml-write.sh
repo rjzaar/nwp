@@ -294,13 +294,34 @@ yaml_get_site_list() {
 }
 
 #######################################
+# Validate a purpose value
+# Arguments:
+#   $1 - Purpose value to validate
+# Returns:
+#   0 if valid, 1 if invalid
+#######################################
+yaml_validate_purpose() {
+    local purpose="$1"
+    case "$purpose" in
+        testing|indefinite|permanent|migration)
+            return 0
+            ;;
+        *)
+            echo -e "${RED}Error: Invalid purpose '$purpose'. Must be: testing, indefinite, permanent, or migration${NC}" >&2
+            return 1
+            ;;
+    esac
+}
+
+#######################################
 # Add a new site entry to cnwp.yml
 # Arguments:
 #   $1 - Site name
 #   $2 - Directory path
 #   $3 - Recipe name
 #   $4 - Environment type (development/staging/production)
-#   $5 - Config file path (optional)
+#   $5 - Purpose (testing/indefinite/permanent/migration)
+#   $6 - Config file path (optional)
 # Returns:
 #   0 on success, 1 on failure
 #######################################
@@ -309,7 +330,8 @@ yaml_add_site() {
     local directory="$2"
     local recipe="$3"
     local environment="${4:-development}"
-    local config_file="${5:-$YAML_CONFIG_FILE}"
+    local purpose="${5:-indefinite}"
+    local config_file="${6:-$YAML_CONFIG_FILE}"
 
     # Validate required parameters
     if [[ -z "$site_name" || -z "$directory" || -z "$recipe" ]]; then
@@ -319,6 +341,11 @@ yaml_add_site() {
 
     # Validate site name for safe YAML operations
     if ! yaml_validate_sitename "$site_name"; then
+        return 1
+    fi
+
+    # Validate purpose
+    if ! yaml_validate_purpose "$purpose"; then
         return 1
     fi
 
@@ -341,6 +368,7 @@ yaml_add_site() {
     directory: $directory
     recipe: $recipe
     environment: $environment
+    purpose: $purpose
     created: $timestamp"
 
     # Add site entry to sites: section
@@ -716,15 +744,148 @@ yaml_add_site_production() {
     fi
 }
 
+#######################################
+# Add a migration stub entry to cnwp.yml
+# Creates minimal entry for a site pending migration
+# Arguments:
+#   $1 - Site name
+#   $2 - Directory path
+#   $3 - Source type (drupal7/drupal8/drupal9/html/wordpress/joomla/other)
+#   $4 - Source path or URL (optional)
+#   $5 - Config file path (optional)
+# Returns:
+#   0 on success, 1 on failure
+#######################################
+yaml_add_migration_stub() {
+    local site_name="$1"
+    local directory="$2"
+    local source_type="${3:-other}"
+    local source_path="${4:-}"
+    local config_file="${5:-$YAML_CONFIG_FILE}"
+
+    # Validate required parameters
+    if [[ -z "$site_name" || -z "$directory" ]]; then
+        echo -e "${RED}Error: Site name and directory are required${NC}" >&2
+        return 1
+    fi
+
+    # Validate site name for safe YAML operations
+    if ! yaml_validate_sitename "$site_name"; then
+        return 1
+    fi
+
+    # Check if site already exists
+    if yaml_site_exists "$site_name" "$config_file"; then
+        echo -e "${YELLOW}Warning: Site '$site_name' already exists in $config_file${NC}" >&2
+        return 1
+    fi
+
+    # Create backup
+    if ! yaml_backup "$config_file"; then
+        return 1
+    fi
+
+    # Get ISO 8601 timestamp
+    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    # Create migration stub entry
+    local site_entry="  $site_name:
+    directory: $directory
+    recipe: migration
+    environment: development
+    purpose: migration
+    created: $timestamp
+    migration:
+      status: pending
+      source_type: $source_type"
+
+    # Add source_path if provided
+    if [[ -n "$source_path" ]]; then
+        site_entry="$site_entry
+      source_path: $source_path"
+    fi
+
+    # Add site entry to sites: section
+    awk -v site_entry="$site_entry" '
+        BEGIN { in_sites = 0; sites_found = 0; entry_added = 0 }
+
+        /^sites:/ {
+            sites_found = 1
+            in_sites = 1
+            print
+            next
+        }
+
+        # If in sites section and we hit a non-indented line, end of sites section
+        in_sites && /^[a-zA-Z]/ && !/^  / {
+            if (!entry_added) {
+                print site_entry
+                entry_added = 1
+            }
+            in_sites = 0
+            print
+            next
+        }
+
+        in_sites {
+            print
+            next
+        }
+
+        { print }
+
+        END {
+            if (in_sites && !entry_added) {
+                print site_entry
+            }
+        }
+    ' "$config_file" > "${config_file}.tmp"
+
+    if mv "${config_file}.tmp" "$config_file"; then
+        echo -e "${GREEN}Migration stub '$site_name' added to $config_file${NC}" >&2
+        return 0
+    else
+        echo -e "${RED}Error: Failed to update $config_file${NC}" >&2
+        return 1
+    fi
+}
+
+#######################################
+# Get site purpose from cnwp.yml
+# Arguments:
+#   $1 - Site name
+#   $2 - Config file path (optional)
+# Outputs:
+#   Purpose value (testing/indefinite/permanent/migration)
+# Returns:
+#   0 on success, 1 on failure
+#######################################
+yaml_get_site_purpose() {
+    local site_name="$1"
+    local config_file="${2:-$YAML_CONFIG_FILE}"
+
+    local purpose=$(yaml_get_site_field "$site_name" "purpose" "$config_file")
+
+    # Default to indefinite if not set (for backward compatibility)
+    if [[ -z "$purpose" ]]; then
+        echo "indefinite"
+    else
+        echo "$purpose"
+    fi
+}
+
 # Export functions for use in other scripts
 export -f yaml_validate_sitename
+export -f yaml_validate_purpose
 export -f yaml_validate
 export -f yaml_validate_or_restore
 export -f yaml_backup
 export -f yaml_site_exists
 export -f yaml_get_site_field
 export -f yaml_get_site_list
+export -f yaml_get_site_purpose
 export -f yaml_add_site
+export -f yaml_add_migration_stub
 export -f yaml_remove_site
 export -f yaml_update_site_field
 export -f yaml_add_site_modules

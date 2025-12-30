@@ -100,12 +100,6 @@ recipes:
     profile: standard
     webroot:  web
     #    sitename: default # leave blank it will be called the name of the site, eg loc
-    auto:  y
-  test-nwp:
-    # Test recipe for automated testing
-    source: goalgorilla/social_template:dev-master
-    profile: social
-    webroot: html
     auto: y
 
   # Enhanced recipe example with deployment configuration (Section 5.1)
@@ -146,6 +140,13 @@ recipes:
     webroot: .
     sitename: "GitLab Instance"
     auto: y
+
+  # Migration recipe - used for importing existing sites
+  # Creates a stub directory for migration workflow
+  migration:
+    type: migration
+    description: "Migration stub for importing existing sites"
+    # No source needed - creates empty directory structure
 
 # Linode production server configuration
 # Store SSH credentials, API tokens, server IPs, and domain names for production deployments
@@ -206,3 +207,9 @@ sites:
     installed_modules:
       - rjzaar/workflow_assignment:dev-main
       - drupal/ultimate_cron:^2.0.0-alpha7
+
+  test-nwp:
+    source: goalgorilla/social_template:dev-master
+    profile: social
+    webroot: html
+    auto: y

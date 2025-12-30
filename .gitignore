@@ -15,6 +15,7 @@
 !dev2stg.sh
 !install.sh
 !make.sh
+!migration.sh
 !restore.sh
 !setup.sh
 !setup-ssh.sh

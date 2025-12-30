@@ -437,6 +437,35 @@ if ! validate_site "$SITENAME"; then
     exit 1
 fi
 
+# Check site purpose before deletion
+SITE_PURPOSE=""
+if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ] && command -v yaml_get_site_purpose &> /dev/null; then
+    SITE_PURPOSE=$(yaml_get_site_purpose "$SITENAME" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null)
+fi
+
+# Handle purpose-based deletion restrictions
+case "$SITE_PURPOSE" in
+    permanent)
+        print_error "Site '$SITENAME' has purpose 'permanent' and cannot be deleted"
+        echo ""
+        print_info "To delete this site, first change its purpose in cnwp.yml:"
+        echo "  1. Edit cnwp.yml"
+        echo "  2. Find the site entry for '$SITENAME'"
+        echo "  3. Change 'purpose: permanent' to 'purpose: indefinite' or 'purpose: testing'"
+        echo "  4. Run delete.sh again"
+        exit 1
+        ;;
+    migration)
+        print_warning "Site '$SITENAME' is a migration site (may contain work in progress)"
+        ;;
+    testing)
+        print_info "Site '$SITENAME' is a testing site (safe to delete)"
+        ;;
+    indefinite|"")
+        # Default - allow deletion with normal confirmation
+        ;;
+esac
+
 # Confirmation prompt
 if [ "$AUTO_CONFIRM" != "true" ]; then
     echo ""

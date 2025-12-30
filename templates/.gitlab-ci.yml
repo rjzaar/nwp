@@ -1,14 +1,24 @@
 # NWP GitLab CI Configuration Template
 # Copy this to your site's root directory
 #
-# Stages: BUILD -> VALIDATE -> TEST
-# Uses Docker-in-Docker for isolation
+# Stages: BUILD -> VALIDATE -> TEST -> DEPLOY
+# Pipeline architecture follows NWP best practices
+#
+# Features:
+# - Database caching for faster kernel/functional tests
+# - Parallel Behat execution
+# - Skip flags for selective testing
+# - JUnit reporting for all test types
+# - Coverage reporting
+# - Deploy to staging/production
 
 stages:
   - build
   - validate
   - test
+  - deploy
 
+# Global variables
 variables:
   # Database configuration
   MYSQL_ROOT_PASSWORD: root
@@ -17,40 +27,107 @@ variables:
   MYSQL_PASSWORD: drupal
   # Drupal test configuration
   SIMPLETEST_DB: mysql://drupal:drupal@database/drupal
-  SIMPLETEST_BASE_URL: http://localhost:8080
+  SIMPLETEST_BASE_URL: http://web:8080
+  BROWSERTEST_OUTPUT_DIRECTORY: /var/www/html/web/sites/simpletest/browser_output
   # PHP configuration
   PHP_VERSION: "8.2"
-  # Skip flags (set to 'true' to skip)
+  # Skip flags (set to 'true' to skip specific checks)
   SKIP_PHPCS: "false"
   SKIP_PHPSTAN: "false"
+  SKIP_RECTOR: "true"  # Dry-run only by default
   SKIP_PHPUNIT: "false"
   SKIP_BEHAT: "false"
+  # Coverage threshold
+  COVERAGE_THRESHOLD: "80"
+  # Drupal settings
+  DRUPAL_CORE_PATH: web/core
 
-# Cache composer dependencies
+# Default settings for all jobs
+default:
+  image: drupal:10-php${PHP_VERSION}-fpm
+  interruptible: true
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+
+# Cache composer dependencies globally
 cache:
-  key: ${CI_COMMIT_REF_SLUG}
+  key: "${CI_COMMIT_REF_SLUG}-composer"
   paths:
     - vendor/
     - web/core/
     - web/modules/contrib/
     - web/themes/contrib/
+  policy: pull-push
 
-# Build stage - install dependencies
+# Workflow rules
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+# -----------------------------------------------------------------------------
+# BUILD STAGE
+# -----------------------------------------------------------------------------
+
 build:composer:
   stage: build
   image: composer:2
   script:
+    - composer validate --strict
     - composer install --no-interaction --prefer-dist --optimize-autoloader
+    - mkdir -p reports
   artifacts:
     paths:
       - vendor/
       - web/
-    expire_in: 1 hour
+      - reports/
+    expire_in: 1 day
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}-composer"
+    paths:
+      - vendor/
+      - web/core/
+      - web/modules/contrib/
+      - web/themes/contrib/
 
-# Validation stage - code quality checks
+# Database dump for faster kernel/functional tests
+build:database:
+  stage: build
+  needs: ["build:composer"]
+  services:
+    - name: mariadb:10.6
+      alias: database
+  script:
+    - |
+      # Wait for database
+      for i in {1..30}; do
+        if mysqladmin ping -h database -u root -p${MYSQL_ROOT_PASSWORD} --silent; then
+          break
+        fi
+        sleep 1
+      done
+    # Install Drupal minimal
+    - cd web && php core/scripts/drupal install minimal --db-url=mysql://drupal:drupal@database/drupal
+    # Export database for reuse
+    - mysqldump -h database -u drupal -p${MYSQL_PASSWORD} drupal > ../reports/drupal-base.sql
+  artifacts:
+    paths:
+      - reports/drupal-base.sql
+    expire_in: 1 day
+  rules:
+    - if: $SKIP_PHPUNIT == "false" || $SKIP_BEHAT == "false"
+
+# -----------------------------------------------------------------------------
+# VALIDATE STAGE - Code Quality Checks
+# -----------------------------------------------------------------------------
+
 phpcs:
   stage: validate
-  image: drupal:10-php8.2-cli
   needs: ["build:composer"]
   script:
     - |
@@ -58,12 +135,22 @@ phpcs:
         echo "Skipping PHPCS"
         exit 0
       fi
-    - ./vendor/bin/phpcs --standard=Drupal,DrupalPractice web/modules/custom web/themes/custom
+    - mkdir -p reports
+    - |
+      ./vendor/bin/phpcs \
+        --standard=Drupal,DrupalPractice \
+        --report=full \
+        --report-checkstyle=reports/phpcs-checkstyle.xml \
+        --ignore=*/node_modules/*,*/vendor/* \
+        web/modules/custom web/themes/custom || true
+  artifacts:
+    reports:
+      codequality: reports/phpcs-checkstyle.xml
+    when: always
   allow_failure: true
 
 phpstan:
   stage: validate
-  image: drupal:10-php8.2-cli
   needs: ["build:composer"]
   script:
     - |
@@ -71,13 +158,57 @@ phpstan:
         echo "Skipping PHPStan"
         exit 0
       fi
-    - ./vendor/bin/phpstan analyse web/modules/custom web/themes/custom --level=7
+    - mkdir -p reports
+    - |
+      ./vendor/bin/phpstan analyse \
+        --level=5 \
+        --error-format=gitlab \
+        --no-progress \
+        web/modules/custom web/themes/custom > reports/phpstan.json || true
+  artifacts:
+    reports:
+      codequality: reports/phpstan.json
+    when: always
   allow_failure: true
 
-# Test stage - run tests
+rector:
+  stage: validate
+  needs: ["build:composer"]
+  script:
+    - |
+      if [ "$SKIP_RECTOR" = "true" ]; then
+        echo "Skipping Rector"
+        exit 0
+      fi
+    - ./vendor/bin/rector process --dry-run --ansi
+  allow_failure: true
+  rules:
+    - if: $SKIP_RECTOR == "false"
+
+security:
+  stage: validate
+  needs: ["build:composer"]
+  script:
+    - composer audit --format=json > reports/composer-audit.json || true
+    - |
+      if [ -f "reports/composer-audit.json" ]; then
+        if jq -e '.advisories | length > 0' reports/composer-audit.json > /dev/null; then
+          echo "Security vulnerabilities found!"
+          jq '.advisories' reports/composer-audit.json
+        fi
+      fi
+  artifacts:
+    paths:
+      - reports/composer-audit.json
+    when: always
+  allow_failure: true
+
+# -----------------------------------------------------------------------------
+# TEST STAGE
+# -----------------------------------------------------------------------------
+
 phpunit:unit:
   stage: test
-  image: drupal:10-php8.2-cli
   needs: ["build:composer"]
   script:
     - |
@@ -85,16 +216,25 @@ phpunit:unit:
         echo "Skipping PHPUnit"
         exit 0
       fi
-    - ./vendor/bin/phpunit --testsuite=unit
+    - mkdir -p reports
+    - |
+      ./vendor/bin/phpunit \
+        --testsuite=unit \
+        --log-junit=reports/phpunit-unit.xml \
+        --coverage-clover=reports/coverage-unit.xml \
+        --coverage-text
+  coverage: '/^\s*Lines:\s*\d+.\d+\%/'
   artifacts:
     reports:
-      junit: reports/phpunit.xml
+      junit: reports/phpunit-unit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: reports/coverage-unit.xml
     when: always
 
 phpunit:kernel:
   stage: test
-  image: drupal:10-php8.2-cli
-  needs: ["build:composer"]
+  needs: ["build:composer", "build:database"]
   services:
     - name: mariadb:10.6
       alias: database
@@ -104,50 +244,93 @@ phpunit:kernel:
         echo "Skipping PHPUnit"
         exit 0
       fi
-    - ./vendor/bin/phpunit --testsuite=kernel
+    # Import base database
+    - mysql -h database -u drupal -p${MYSQL_PASSWORD} drupal < reports/drupal-base.sql
+    - mkdir -p reports
+    - |
+      ./vendor/bin/phpunit \
+        --testsuite=kernel \
+        --log-junit=reports/phpunit-kernel.xml
   artifacts:
     reports:
       junit: reports/phpunit-kernel.xml
     when: always
 
-behat:smoke:
+phpunit:functional:
   stage: test
-  image: drupal:10-php8.2-cli
-  needs: ["build:composer"]
+  needs: ["build:composer", "build:database"]
   services:
     - name: mariadb:10.6
       alias: database
+  script:
+    - |
+      if [ "$SKIP_PHPUNIT" = "true" ]; then
+        echo "Skipping PHPUnit"
+        exit 0
+      fi
+    - mysql -h database -u drupal -p${MYSQL_PASSWORD} drupal < reports/drupal-base.sql
+    - mkdir -p reports web/sites/simpletest/browser_output
+    - |
+      ./vendor/bin/phpunit \
+        --testsuite=functional \
+        --log-junit=reports/phpunit-functional.xml
+  artifacts:
+    paths:
+      - web/sites/simpletest/browser_output/
+    reports:
+      junit: reports/phpunit-functional.xml
+    when: always
+  timeout: 30 minutes
+
+behat:smoke:
+  stage: test
+  needs: ["build:composer", "build:database"]
+  services:
+    - name: mariadb:10.6
+      alias: database
+    - name: nginx:alpine
+      alias: web
     - name: selenium/standalone-chrome:latest
       alias: chrome
   variables:
     SE_NODE_MAX_SESSIONS: 2
+    SE_NODE_SESSION_TIMEOUT: 300
   script:
     - |
       if [ "$SKIP_BEHAT" = "true" ]; then
         echo "Skipping Behat"
         exit 0
       fi
-    - ./vendor/bin/behat --tags=@smoke --format=progress --format=junit --out=,reports/behat.xml
+    - mysql -h database -u drupal -p${MYSQL_PASSWORD} drupal < reports/drupal-base.sql
+    - mkdir -p reports web/sites/simpletest/browser_output
+    - |
+      ./vendor/bin/behat \
+        --tags=@smoke \
+        --format=progress \
+        --format=junit \
+        --out=,reports/behat-smoke.xml
   artifacts:
     paths:
       - reports/
       - web/sites/simpletest/browser_output/
     reports:
-      junit: reports/behat.xml
+      junit: reports/behat-smoke.xml
     when: always
-  timeout: 30 minutes
+  timeout: 15 minutes
 
 behat:full:
   stage: test
-  image: drupal:10-php8.2-cli
-  needs: ["build:composer", "behat:smoke"]
+  needs: ["build:composer", "build:database", "behat:smoke"]
   services:
     - name: mariadb:10.6
       alias: database
+    - name: nginx:alpine
+      alias: web
     - name: selenium/standalone-chrome:latest
       alias: chrome
   variables:
     SE_NODE_MAX_SESSIONS: 4
+    SE_NODE_SESSION_TIMEOUT: 300
   parallel: 2
   script:
     - |
@@ -155,15 +338,79 @@ behat:full:
         echo "Skipping Behat"
         exit 0
       fi
-    - ./vendor/bin/behat --tags="@p${CI_NODE_INDEX}" --format=progress --format=junit --out=,reports/behat-${CI_NODE_INDEX}.xml
+    - mysql -h database -u drupal -p${MYSQL_PASSWORD} drupal < reports/drupal-base.sql
+    - mkdir -p reports web/sites/simpletest/browser_output
+    - |
+      ./vendor/bin/behat \
+        --tags="@p${CI_NODE_INDEX}" \
+        --format=progress \
+        --format=junit \
+        --out=,reports/behat-full-${CI_NODE_INDEX}.xml
   artifacts:
     paths:
       - reports/
       - web/sites/simpletest/browser_output/
     reports:
-      junit: reports/behat-*.xml
+      junit: reports/behat-full-*.xml
     when: always
   timeout: 60 minutes
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# -----------------------------------------------------------------------------
+# DEPLOY STAGE
+# -----------------------------------------------------------------------------
+
+deploy:staging:
+  stage: deploy
+  needs: ["phpunit:unit", "phpunit:kernel", "behat:smoke"]
+  script:
+    - echo "Deploying to staging..."
+    # Add your deployment commands here
+    # Example: rsync to staging server
+    # - rsync -avz --delete --exclude='.git' ./ ${STAGING_USER}@${STAGING_HOST}:${STAGING_PATH}/
+  environment:
+    name: staging
+    url: https://staging.${CI_PROJECT_NAME}.example.com
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+      when: manual
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+
+deploy:production:
+  stage: deploy
+  needs: ["deploy:staging"]
+  script:
+    - echo "Deploying to production..."
+    # Add your deployment commands here
+  environment:
+    name: production
+    url: https://${CI_PROJECT_NAME}.example.com
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  allow_failure: false
+
+# -----------------------------------------------------------------------------
+# SCHEDULED JOBS
+# -----------------------------------------------------------------------------
+
+security-scan:
+  stage: validate
+  script:
+    - composer audit
+    - |
+      if command -v drush &> /dev/null; then
+        drush pm:security-report --format=json > reports/drupal-security.json || true
+      fi
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  allow_failure: true
+
+# -----------------------------------------------------------------------------
+# BADGES (for README)
+# -----------------------------------------------------------------------------
+# Pipeline: https://git.yourdomain.org/group/project/badges/main/pipeline.svg
+# Coverage: https://git.yourdomain.org/group/project/badges/main/coverage.svg

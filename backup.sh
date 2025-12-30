@@ -17,6 +17,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPT_DIR/lib/ui.sh"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/git.sh"
+source "$SCRIPT_DIR/lib/sanitize.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -42,6 +43,8 @@ ${BOLD}OPTIONS:${NC}
     --bundle                Create git bundle for offline/archival backup
     --incremental           Create incremental bundle (use with --bundle)
     --push-all              Push to all configured remotes (with -g)
+    --sanitize              Sanitize database backup (remove PII)
+    --sanitize-level=LEVEL  Sanitization level: basic, full (default: basic)
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Name of the DDEV site to backup
@@ -57,6 +60,7 @@ ${BOLD}EXAMPLES:${NC}
     ./backup.sh --bundle nwp                     # Create git bundle (full)
     ./backup.sh --bundle --incremental nwp       # Create incremental bundle
     ./backup.sh -g --push-all nwp                # Push to all remotes
+    ./backup.sh --sanitize nwp                   # Sanitized backup (GDPR)
 
 ${BOLD}COMBINED FLAGS:${NC}
     Multiple short flags can be combined: -bd = -b -d
@@ -251,6 +255,8 @@ backup_site() {
     local bundle=${6:-false}
     local incremental=${7:-false}
     local push_all=${8:-false}
+    local sanitize=${9:-false}
+    local sanitize_level=${10:-basic}
 
     if [ "$db_only" == "true" ]; then
         print_header "NWP Database Backup: $sitename"
@@ -304,6 +310,15 @@ backup_site() {
         if ! backup_files "$sitename" "$backup_base" "$backup_name" "$webroot"; then
             print_error "Files backup failed"
             return 1
+        fi
+    fi
+
+    # Sanitize database backup if requested
+    if [ "$sanitize" == "true" ]; then
+        local sql_file="${backup_base}/${backup_name}.sql"
+        if [ -f "$sql_file" ]; then
+            sanitize_database "$sitename" "$sql_file" "$sanitize_level"
+            echo -e "${GREEN}✓${NC} Sanitized: Level $sanitize_level"
         fi
     fi
 
@@ -364,13 +379,15 @@ main() {
     local BUNDLE=false
     local INCREMENTAL=false
     local PUSH_ALL=false
+    local SANITIZE=false
+    local SANITIZE_LEVEL="basic"
     local ENDPOINT=""
     local SITENAME=""
     local MESSAGE=""
 
     # Use getopt for option parsing
     local OPTIONS=hdbge:
-    local LONGOPTS=help,debug,db-only,git,endpoint:,bundle,incremental,push-all
+    local LONGOPTS=help,debug,db-only,git,endpoint:,bundle,incremental,push-all,sanitize,sanitize-level:
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -413,6 +430,14 @@ main() {
                 PUSH_ALL=true
                 shift
                 ;;
+            --sanitize)
+                SANITIZE=true
+                shift
+                ;;
+            --sanitize-level)
+                SANITIZE_LEVEL="$2"
+                shift 2
+                ;;
             --)
                 shift
                 break
@@ -454,9 +479,11 @@ main() {
     ocmsg "Bundle: $BUNDLE"
     ocmsg "Incremental: $INCREMENTAL"
     ocmsg "Push all: $PUSH_ALL"
+    ocmsg "Sanitize: $SANITIZE"
+    ocmsg "Sanitize level: $SANITIZE_LEVEL"
 
     # Run backup
-    if backup_site "$SITENAME" "$ENDPOINT" "$MESSAGE" "$DB_ONLY" "$GIT_BACKUP" "$BUNDLE" "$INCREMENTAL" "$PUSH_ALL"; then
+    if backup_site "$SITENAME" "$ENDPOINT" "$MESSAGE" "$DB_ONLY" "$GIT_BACKUP" "$BUNDLE" "$INCREMENTAL" "$PUSH_ALL" "$SANITIZE" "$SANITIZE_LEVEL"; then
         show_elapsed_time "Backup"
         exit 0
     else

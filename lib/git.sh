@@ -282,6 +282,252 @@ git_configure_remotes() {
     return 0
 }
 
+################################################################################
+# GitLab API Automation (P15)
+################################################################################
+
+# Get GitLab API token from .secrets.yml
+# Usage: get_gitlab_token
+get_gitlab_token() {
+    local secrets_file="${SCRIPT_DIR}/.secrets.yml"
+
+    if [ ! -f "$secrets_file" ]; then
+        return 1
+    fi
+
+    awk '
+        /^gitlab:/ { in_gitlab = 1; next }
+        in_gitlab && /^[a-zA-Z]/ && !/^  / { in_gitlab = 0 }
+        in_gitlab && /^  api_token:/ {
+            sub("^  api_token: *", "")
+            gsub(/["'"'"']/, "")
+            print
+            exit
+        }
+        in_gitlab && /^  token:/ {
+            sub("^  token: *", "")
+            gsub(/["'"'"']/, "")
+            print
+            exit
+        }
+    ' "$secrets_file"
+}
+
+# Create GitLab project via API
+# Usage: gitlab_api_create_project "project-name" "group" ["description"]
+gitlab_api_create_project() {
+    local project_name="$1"
+    local group="${2:-backups}"
+    local description="${3:-NWP managed project}"
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$gitlab_url" ]; then
+        print_warning "GitLab URL not configured"
+        return 1
+    fi
+
+    if [ -z "$token" ]; then
+        # Fallback to SSH method
+        ocmsg "No API token, using SSH method"
+        gitlab_create_project "$project_name" "$group"
+        return $?
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+
+    # First, get the group ID
+    local group_id
+    group_id=$(curl -s --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/groups?search=${group}" | \
+        grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+
+    if [ -z "$group_id" ]; then
+        print_warning "Group '$group' not found, creating..."
+        # Create the group
+        local group_response
+        group_response=$(curl -s --header "PRIVATE-TOKEN: $token" \
+            --header "Content-Type: application/json" \
+            --data "{\"name\":\"${group}\",\"path\":\"${group}\",\"visibility\":\"private\"}" \
+            "${api_url}/groups")
+
+        group_id=$(echo "$group_response" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+
+        if [ -z "$group_id" ]; then
+            print_error "Failed to create group: $group"
+            return 1
+        fi
+        print_status "OK" "Created group: $group (ID: $group_id)"
+    fi
+
+    # Check if project exists
+    local existing
+    existing=$(curl -s --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/groups/${group_id}/projects?search=${project_name}" | \
+        grep -o "\"path\":\"${project_name}\"")
+
+    if [ -n "$existing" ]; then
+        ocmsg "Project already exists: ${group}/${project_name}"
+        return 0
+    fi
+
+    # Create the project
+    local response
+    response=$(curl -s --header "PRIVATE-TOKEN: $token" \
+        --header "Content-Type: application/json" \
+        --data "{
+            \"name\":\"${project_name}\",
+            \"path\":\"${project_name}\",
+            \"namespace_id\":${group_id},
+            \"visibility\":\"private\",
+            \"description\":\"${description}\",
+            \"initialize_with_readme\":false
+        }" \
+        "${api_url}/projects")
+
+    if echo "$response" | grep -q "\"id\":[0-9]*"; then
+        local new_id=$(echo "$response" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+        print_status "OK" "Created project: ${group}/${project_name} (ID: $new_id)"
+        return 0
+    else
+        local error=$(echo "$response" | grep -o '"message":"[^"]*"' | head -1)
+        print_error "Failed to create project: $error"
+        return 1
+    fi
+}
+
+# Delete GitLab project via API
+# Usage: gitlab_api_delete_project "project-name" "group"
+gitlab_api_delete_project() {
+    local project_name="$1"
+    local group="${2:-backups}"
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$token" ]; then
+        print_error "API token required for deletion"
+        return 1
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+    local project_path="${group}/${project_name}"
+    local encoded_path=$(echo "$project_path" | sed 's/\//%2F/g')
+
+    local response
+    response=$(curl -s --request DELETE \
+        --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/projects/${encoded_path}")
+
+    if [ -z "$response" ] || echo "$response" | grep -q '"message":"202 Accepted"'; then
+        print_status "OK" "Deleted project: ${project_path}"
+        return 0
+    else
+        print_error "Failed to delete project: $response"
+        return 1
+    fi
+}
+
+# List GitLab projects in a group
+# Usage: gitlab_api_list_projects "group"
+gitlab_api_list_projects() {
+    local group="${1:-backups}"
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$token" ]; then
+        print_error "API token required"
+        return 1
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+
+    # Get group ID
+    local group_id
+    group_id=$(curl -s --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/groups?search=${group}" | \
+        grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+
+    if [ -z "$group_id" ]; then
+        print_error "Group not found: $group"
+        return 1
+    fi
+
+    # List projects
+    curl -s --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/groups/${group_id}/projects?per_page=100" | \
+        grep -o '"path":"[^"]*"' | sed 's/"path":"//g; s/"//g' | sort
+}
+
+# Configure GitLab project settings
+# Usage: gitlab_api_configure_project "project-name" "group"
+gitlab_api_configure_project() {
+    local project_name="$1"
+    local group="${2:-backups}"
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$token" ]; then
+        print_warning "API token required for configuration"
+        return 1
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+    local project_path="${group}/${project_name}"
+    local encoded_path=$(echo "$project_path" | sed 's/\//%2F/g')
+
+    # Configure project settings
+    local response
+    response=$(curl -s --request PUT \
+        --header "PRIVATE-TOKEN: $token" \
+        --header "Content-Type: application/json" \
+        --data '{
+            "only_allow_merge_if_pipeline_succeeds": true,
+            "remove_source_branch_after_merge": true,
+            "auto_devops_enabled": false,
+            "ci_config_path": ".gitlab-ci.yml"
+        }' \
+        "${api_url}/projects/${encoded_path}")
+
+    if echo "$response" | grep -q "\"id\":[0-9]*"; then
+        print_status "OK" "Configured project settings"
+        return 0
+    else
+        print_warning "Could not configure project settings"
+        return 1
+    fi
+}
+
+# Unprotect default branch to allow force push for backups
+# Usage: gitlab_api_unprotect_branch "project-name" "group" "branch"
+gitlab_api_unprotect_branch() {
+    local project_name="$1"
+    local group="${2:-backups}"
+    local branch="${3:-main}"
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$token" ]; then
+        return 1
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+    local project_path="${group}/${project_name}"
+    local encoded_path=$(echo "$project_path" | sed 's/\//%2F/g')
+
+    # Remove branch protection
+    curl -s --request DELETE \
+        --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/projects/${encoded_path}/protected_branches/${branch}" > /dev/null 2>&1
+
+    ocmsg "Removed branch protection for $branch"
+    return 0
+}
+
 # Initialize git repository if not exists
 # Usage: git_init_repo "/path/to/repo" "repo-name"
 git_init_repo() {

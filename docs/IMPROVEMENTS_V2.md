@@ -224,9 +224,9 @@ linode:
 ## Phase 3: Git Backup System (READY)
 
 ### P11: Basic Git Integration
-**Priority:** HIGH | **Effort:** Medium | **Dependencies:** None
+**Priority:** HIGH | **Effort:** Medium | **Dependencies:** NWP GitLab server
 
-Implement functional `-g` flag in `backup.sh`:
+Implement functional `-g` flag in `backup.sh` using **NWP GitLab as the default remote**:
 
 ```bash
 # Usage
@@ -234,24 +234,44 @@ Implement functional `-g` flag in `backup.sh`:
 ./backup.sh -bg sitename "DB backup with git"
 ```
 
+**Architecture (Simplified):**
+```
+Site Directory                      NWP GitLab (git.nwpcode.org)
+──────────────                      ────────────────────────────
+mysite/.git ──────────────────────► sites/mysite.git
+                                    (auto-created on first push)
+
+sitebackups/mysite/db/.git ───────► backups/mysite-db.git
+                                    (auto-created on first push)
+```
+
+**Why NWP GitLab as default:**
+- Already created and configured by setup.sh
+- Self-hosted (full data sovereignty)
+- No external accounts needed
+- Built-in CI/CD for testing
+- SSH access already configured (`ssh git-server`)
+
 **Implementation:**
 1. Git add/commit after backup creation
 2. Initialize repository if needed
-3. Configure standard `.gitignore`
-4. Support custom commit messages
+3. Auto-create project on NWP GitLab via API
+4. Push to NWP GitLab as default remote
+5. Configure standard `.gitignore`
 
 **Configuration:**
 ```yaml
 git_backup:
   enabled: true
   auto_commit: true
-  auto_push: false
+  auto_push: true                    # Push to NWP GitLab by default
+  gitlab_url: https://git.nwpcode.org  # From settings.url
 ```
 
 **Success Criteria:**
 - [ ] `-g` flag creates git commit
-- [ ] Repository initialized if missing
-- [ ] Proper `.gitignore` configured
+- [ ] Repository auto-created on NWP GitLab
+- [ ] Push to NWP GitLab works
 - [ ] Works with existing naming convention
 
 ---
@@ -281,41 +301,46 @@ Enable offline/archival backups via git bundles:
 
 ---
 
-### P13: Multiple Remote Support
-**Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** P11
+### P13: Additional Remote Support (Optional)
+**Priority:** LOW | **Effort:** Medium | **Dependencies:** P11
 
-Implement 3-2-1 backup rule:
+Add **optional** external remotes for offsite backup (3-2-1 rule). NWP GitLab is already the primary.
 
 ```yaml
 git_backup:
-  remotes:
-    primary:
-      type: github
+  # Primary is always NWP GitLab (automatic)
+  additional_remotes:              # Optional external backups
+    github:
       url: git@github.com:user/site.git
-    secondary:
-      type: nwp_gitlab
-      url: git@gitlab.local:backups/site.git
-    tertiary:
-      type: local
+      enabled: false               # Opt-in
+    local:
       path: /srv/git/site.git
+      enabled: false
+```
+
+**Architecture:**
+```
+                                    ┌─► NWP GitLab (PRIMARY - automatic)
+mysite/.git ────────────────────────┤
+                                    ├─► GitHub (optional)
+                                    └─► Local bare repo (optional)
 ```
 
 **Implementation:**
-1. Sequential push with error handling
-2. Partial success reporting
-3. Retry logic for transient failures
-4. Remote status verification
+1. NWP GitLab always primary (from P11)
+2. Additional remotes are opt-in
+3. Sequential push with error handling
+4. Continue on external remote failure
 
 **Success Criteria:**
-- [ ] Push to multiple remotes
-- [ ] Clear status reporting
-- [ ] Graceful failure handling
-- [ ] At least 2 remotes configurable
+- [ ] NWP GitLab always works (primary)
+- [ ] Optional remotes configurable
+- [ ] External failures don't block backup
 
 ---
 
 ### P14: Automated Scheduling
-**Priority:** MEDIUM | **Effort:** Low | **Dependencies:** P11, P13
+**Priority:** MEDIUM | **Effort:** Low | **Dependencies:** P11
 
 Cron-based backup automation:
 
@@ -342,31 +367,30 @@ git_backup:
 
 ---
 
-### P15: NWP GitLab as Backup Destination
-**Priority:** LOW | **Effort:** High | **Dependencies:** P11-P14, GitLab server
+### P15: GitLab API Automation
+**Priority:** LOW | **Effort:** Medium | **Dependencies:** P11, GitLab server
 
-Use NWP-created GitLab for backup storage:
+Enhance GitLab integration with API-driven automation (P11 already uses NWP GitLab as default):
 
 ```yaml
 git_backup:
-  nwp_gitlab:
-    enabled: true
-    url: https://gitlab.local
-    token_env: GITLAB_BACKUP_TOKEN
-    group: backups
-    auto_create: true
+  gitlab_api:
+    auto_create_project: true    # Create repo if doesn't exist
+    group: sites                 # Organize in GitLab groups
+    visibility: private          # Default visibility
+    cleanup_branches: true       # Prune old backup branches
 ```
 
 **Implementation:**
-1. GitLab API integration for repo creation
-2. Automatic project creation per site
-3. Access token management
-4. Mirror to external services
+1. API-based project auto-creation (no manual repo setup)
+2. Organize repos into GitLab groups (sites/, backups/)
+3. Personal access token management
+4. Automatic `.gitignore` configuration
 
 **Success Criteria:**
-- [ ] Auto-repository creation works
-- [ ] API integration functional
-- [ ] Mirror configuration works
+- [ ] Projects auto-created on first push
+- [ ] Group organization works
+- [ ] Token stored securely in .secrets.yml
 
 ---
 
@@ -520,9 +544,10 @@ Visibility into test health:
 
 **Badge URLs:**
 ```
-Pipeline: https://gitlab.local/project/badges/main/pipeline.svg
-Coverage: https://gitlab.local/project/badges/main/coverage.svg
+Pipeline: https://git.<url>/project/badges/main/pipeline.svg
+Coverage: https://git.<url>/project/badges/main/coverage.svg
 ```
+Where `<url>` comes from `cnwp.yml` settings (e.g., `git.nwpcode.org`).
 
 **README Integration:**
 ```markdown

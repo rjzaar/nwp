@@ -805,6 +805,101 @@ sites:
 
 ---
 
+### P28: Automated Security Update Pipeline
+**Priority:** HIGH | **Effort:** High | **Dependencies:** P17, P20, P26
+
+Detect Drupal security updates and automatically test before deployment:
+
+**Workflow:**
+```
+┌──────────────┐      ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
+│   DETECT     │ ───► │    UPDATE    │ ───► │    TEST      │ ───► │   DEPLOY     │
+│ security.d.o │      │   composer   │      │  run tests   │      │  if passed   │
+└──────────────┘      └──────────────┘      └──────────────┘      └──────────────┘
+   scheduled            auto-branch           CI pipeline          notify/deploy
+```
+
+**Detection Methods:**
+| Method | Command/Source | Frequency |
+|--------|----------------|-----------|
+| Drush | `drush pm:security` | Daily |
+| Composer | `composer outdated --direct` | Daily |
+| Drupal.org | Security RSS feed | Real-time |
+| GitLab | Dependency scanning | On push |
+
+**Script:**
+```bash
+pl security-check mysite          # Check for updates
+pl security-check --all           # Check all sites
+pl security-update mysite         # Apply updates + test
+pl security-update --auto mysite  # Apply + test + deploy if pass
+```
+
+**Configuration:**
+```yaml
+# cnwp.yml
+settings:
+  security:
+    check_schedule: "0 6 * * *"    # Daily 6 AM
+    auto_update: true              # Auto-apply security updates
+    auto_test: true                # Run tests after update
+    auto_deploy_live: true         # Deploy to live if tests pass
+    auto_deploy_prod: false        # NEVER auto-deploy to prod (require approval)
+    notify_email: admin@site.com
+    notify_slack: webhook_url
+
+sites:
+  mysite:
+    security:
+      enabled: true
+      branch_prefix: security/     # Create branch for updates
+      merge_on_pass: true          # Auto-merge if tests pass
+```
+
+**Automated Pipeline:**
+1. Scheduled cron checks `drush pm:security` for all sites
+2. If update found:
+   - Create branch `security/drupal-10.2.1`
+   - Run `composer update drupal/core-* --with-dependencies`
+   - Commit changes
+   - Push to GitLab
+3. GitLab CI automatically:
+   - Runs full test suite (P17, P18)
+   - If tests pass → merge to main
+   - Deploy to live (if `auto_deploy_live: true`)
+   - Send notification
+4. Production deployment requires manual approval
+
+**Notification Template:**
+```
+🔒 Security Update Available: drupal/core 10.2.0 → 10.2.1
+
+Site: mysite
+Severity: Critical
+Tests: ✅ Passed (23/23)
+Live: ✅ Deployed to mysite.nwpcode.org
+Prod: ⏳ Awaiting approval
+
+[Approve Production Deploy] [View Changes] [Dismiss]
+```
+
+**Integration with Four-State Workflow:**
+```
+Security detected → auto-update dev → test → deploy live → MANUAL approve → prod
+                                                              ↑
+                                              Human reviews live site first
+```
+
+**Success Criteria:**
+- [ ] Daily security checks running
+- [ ] Auto-update creates branch and runs tests
+- [ ] Notifications sent on detection
+- [ ] Auto-deploy to live works
+- [ ] Production requires manual approval
+- [ ] Rollback if deployment fails
+
+---
+
 ## Implementation Priority Matrix
 
 | Proposal | Priority | Effort | Dependencies | Phase |
@@ -828,6 +923,7 @@ sites:
 | P25 | LOW | High | P08, P18 | 5 |
 | **P26** | HIGH | High | P08, GitLab, Linode | 5 |
 | P27 | MEDIUM | High | P26 | 5 |
+| **P28** | HIGH | High | P17, P20, P26 | 5 |
 
 **Bold** = Critical path items
 
@@ -863,6 +959,7 @@ sites:
 15. **P25: Remote Site Support** - Full remote ops
 16. **P26: Four-State Deployment Workflow** - dev/stg/live/prod states
 17. **P27: Production Server Provisioning** - `pl produce sitename`
+18. **P28: Automated Security Updates** - Detect, test, deploy
 
 ---
 
@@ -888,7 +985,10 @@ sites:
 - [ ] Four-state workflow operational (dev/stg/live/prod)
 - [ ] `pl live sitename` provisions live server
 - [ ] `pl produce sitename` provisions production server
-- [ ] All transition scripts work (stg2live, live2stg, live2prod, etc.)
+- [ ] All transition scripts work (stg2live, live2stg, stg2prod, etc.)
+- [ ] Security updates auto-detected daily
+- [ ] Auto-deploy to live after tests pass
+- [ ] Production deploy requires manual approval
 
 ---
 
@@ -903,6 +1003,14 @@ settings:
   php: 8.2
   delete_site_yml: true
   auto_live: true                        # Auto-provision live server on stg2live
+  # P28: Security update automation
+  security:
+    check_schedule: "0 6 * * *"          # Daily 6 AM
+    auto_update: true                    # Auto-apply security updates
+    auto_test: true                      # Run tests after update
+    auto_deploy_live: true               # Deploy to live if tests pass
+    auto_deploy_prod: false              # Require manual approval for prod
+    notify_email: admin@example.com
 
 recipes:
   myrecipe:

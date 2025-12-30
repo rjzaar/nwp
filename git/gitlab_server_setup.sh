@@ -75,6 +75,28 @@ apt-get install -y \
 echo "[OK] System packages updated"
 
 ################################################################################
+# 1.5 CREATE SWAP SPACE
+################################################################################
+
+echo "[1.5/10] Creating swap space..."
+
+# Create 2GB swap file if it doesn't exist
+if [ ! -f /swapfile ]; then
+    fallocate -l 2G /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    echo "[OK] 2GB swap space created"
+else
+    echo "[OK] Swap already exists"
+fi
+
+# Set swappiness to a reasonable value
+sysctl vm.swappiness=10
+echo 'vm.swappiness=10' >> /etc/sysctl.conf
+
+################################################################################
 # 2. CREATE NON-ROOT USER WITH SUDO PRIVILEGES
 ################################################################################
 
@@ -260,9 +282,9 @@ gitlab_rails['gitlab_email_enabled'] = true
 gitlab_rails['gitlab_email_from'] = '$EMAIL'
 gitlab_rails['gitlab_email_reply_to'] = '$EMAIL'
 
-# Container Registry
-registry_external_url 'https://$HOSTNAME:5050'
-gitlab_rails['registry_enabled'] = true
+# Container Registry (disabled initially - enable after SSL is configured)
+# registry_external_url 'https://$HOSTNAME:5050'
+gitlab_rails['registry_enabled'] = false
 
 # Git LFS
 gitlab_rails['lfs_enabled'] = true
@@ -273,14 +295,23 @@ gitlab_rails['backup_keep_time'] = 604800  # 7 days
 gitlab_rails['backup_path'] = '/var/opt/gitlab/backups'
 gitlab_rails['backup_archive_permissions'] = 0644
 
-# Monitoring
-prometheus['enable'] = true
+# Monitoring (disabled to reduce resource usage)
+prometheus_monitoring['enable'] = false
+prometheus['enable'] = false
 grafana['enable'] = false
+alertmanager['enable'] = false
+node_exporter['enable'] = false
+redis_exporter['enable'] = false
+postgres_exporter['enable'] = false
+gitlab_exporter['enable'] = false
 
-# Performance tuning for 2GB RAM server
+# Performance tuning for 4GB RAM server
 puma['worker_processes'] = 2
+puma['min_threads'] = 1
+puma['max_threads'] = 4
 sidekiq['max_concurrency'] = 10
 postgresql['shared_buffers'] = "256MB"
+postgresql['max_worker_processes'] = 4
 EOF
 
 echo "[OK] GitLab configuration updated"
@@ -432,12 +463,9 @@ WELCOME
 chmod +x "/home/$SSH_USER/welcome.sh"
 chown "$SSH_USER:$SSH_USER" "/home/$SSH_USER/welcome.sh"
 
-# Add welcome script to bashrc
-if ! grep -q "welcome.sh" "/home/$SSH_USER/.bashrc"; then
-    echo "" >> "/home/$SSH_USER/.bashrc"
-    echo "# GitLab Server Welcome" >> "/home/$SSH_USER/.bashrc"
-    echo "~/welcome.sh" >> "/home/$SSH_USER/.bashrc"
-fi
+# Note: welcome.sh is available but NOT auto-run to avoid CPU spikes
+# User can run ~/welcome.sh manually when needed
+echo "[INFO] Welcome script available at ~/welcome.sh (run manually)"
 
 # Create directory for GitLab management scripts
 mkdir -p "/home/$SSH_USER/gitlab-scripts"

@@ -13,7 +13,7 @@ set -euo pipefail
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Version
-VERSION="0.8.2"
+VERSION="0.9.0"
 
 ################################################################################
 # Color Definitions
@@ -41,7 +41,7 @@ fi
 
 show_help() {
     cat << EOF
-${BOLD}NWP CLI (pl) - Unified Command Interface${NC}
+${BOLD}NWP CLI (pl) v${VERSION} - Unified Command Interface${NC}
 
 ${BOLD}USAGE:${NC}
     pl <command> [options] [arguments]
@@ -49,66 +49,115 @@ ${BOLD}USAGE:${NC}
 ${BOLD}SITE MANAGEMENT:${NC}
     install <recipe> <sitename>     Install a new Drupal site
     delete <sitename>               Delete a site
-    make <sitename>                 Switch dev/prod mode
+    make <sitename>                 Switch dev/prod mode (-v dev, -p prod)
+    uninstall                       Uninstall NWP completely
 
 ${BOLD}BACKUP & RESTORE:${NC}
-    backup <sitename> [message]     Backup a site
-    restore <sitename> [backup]     Restore a site
+    backup <sitename> [message]     Create backup (full site)
+    backup -b <sitename>            Database-only backup
+    backup -g <sitename>            Backup with git commit
+    backup --bundle <sitename>      Create git bundle archive
+    backup --sanitize <sitename>    Create sanitized backup (no PII)
+    restore <sitename> [backup]     Restore from backup
+    restore -b <sitename>           Restore database only
     copy <source> <dest>            Copy site to new location
 
-${BOLD}DEPLOYMENT:${NC}
-    dev2stg <sitename>              Deploy dev to staging
+${BOLD}DEPLOYMENT (Local):${NC}
+    dev2stg <sitename>              Deploy dev to staging (local)
+
+${BOLD}DEPLOYMENT (Remote):${NC}
     stg2prod <sitename>             Deploy staging to production
     prod2stg <sitename>             Pull production to staging
-    stg2live <sitename>             Deploy staging to live
+    stg2live <sitename>             Deploy staging to live server
     live2stg <sitename>             Pull live to staging
     live2prod <sitename>            Deploy live to production
 
 ${BOLD}PROVISIONING:${NC}
-    live <sitename>                 Provision live server
-    produce <sitename>              Provision production server
+    live <sitename>                 Provision live test server
+    live --type=shared <sitename>   Provision on shared GitLab server
+    live --type=temporary <sitename> Temporary server (auto-delete)
+    live --delete <sitename>        Delete live server
+    live --status <sitename>        Show live server status
 
 ${BOLD}TESTING:${NC}
     test <sitename>                 Run all tests
-    test -l <sitename>              Run linting only
-    test -u <sitename>              Run unit tests only
-    test -s <sitename>              Run smoke tests only
+    test -l <sitename>              Lint only (PHPCS, PHPStan)
+    test -u <sitename>              Unit tests only
+    test -k <sitename>              Kernel tests only
+    test -f <sitename>              Functional tests only
+    test -s <sitename>              Smoke tests only (Behat @smoke)
+    test -b <sitename>              Full Behat tests
+    test -p <sitename>              Parallel Behat tests
+    testos <sitename>               Open Social specific tests
+    test-nwp                        Run NWP infrastructure tests
 
 ${BOLD}SCHEDULING:${NC}
-    schedule install <sitename>    Install backup schedule
-    schedule remove <sitename>     Remove backup schedule
-    schedule list                  List all schedules
+    schedule install <sitename>     Install backup schedule (cron)
+    schedule remove <sitename>      Remove backup schedule
+    schedule list                   List all scheduled backups
+    schedule show                   Show cron entries
+    schedule run <sitename>         Run scheduled backup now
 
 ${BOLD}SECURITY:${NC}
-    security-check <sitename>      Check for security updates
-    security-update <sitename>     Apply security updates
+    security check <sitename>       Check for security updates
+    security check --all            Check all sites
+    security update <sitename>      Apply security updates
+    security update --auto <site>   Auto-update with testing
+    security audit <sitename>       Full security audit
 
-${BOLD}GIT:${NC}
-    gitlab-create <project> [group]   Create GitLab project
-    gitlab-list [group]               List GitLab projects
+${BOLD}GIT & GITLAB:${NC}
+    gitlab-create <project> [group] Create GitLab project
+    gitlab-list [group]             List GitLab projects
 
-${BOLD}UTILITIES:${NC}
-    setup                          Run setup wizard
-    list                           List all sites
-    status <sitename>              Show site status
-    version                        Show version
+${BOLD}MIGRATION:${NC}
+    migration <sitename>            Run migration tasks
 
-${BOLD}OPTIONS:${NC}
-    -h, --help                     Show this help message
-    -v, --version                  Show version
-    -d, --debug                    Enable debug output
-    -y, --yes                      Auto-confirm prompts
+${BOLD}SETUP & UTILITIES:${NC}
+    setup                           Run setup wizard (18 components)
+    setup-ssh                       Setup SSH keys for deployment
+    list                            List all tracked sites
+    status <sitename>               Show site status
+    version                         Show NWP version
+
+${BOLD}GLOBAL OPTIONS:${NC}
+    -h, --help                      Show this help message
+    -v, --version                   Show version
+    -d, --debug                     Enable debug output
+    -y, --yes                       Auto-confirm prompts
+
+${BOLD}SCRIPT-SPECIFIC OPTIONS:${NC}
+    backup:    -b (db-only), -g (git), --bundle, --sanitize, --push-all
+    restore:   -b (db-only), -f (force), -o (overwrite)
+    copy:      -f (files-only), -y (yes), -o (overwrite)
+    delete:    -b (backup first), -k (keep backups), -y (yes)
+    make:      -v (dev mode), -p (prod mode)
+    test:      -l -u -k -f -s -b -p (see TESTING above)
 
 ${BOLD}EXAMPLES:${NC}
-    pl install d mysite            Install Drupal site 'mysite'
-    pl backup mysite "Before update"   Backup with message
-    pl test -s mysite              Run smoke tests
-    pl dev2stg mysite              Deploy to staging
-    pl schedule install mysite     Setup scheduled backups
+    pl install d mysite             Install Drupal site 'mysite'
+    pl backup -g mysite "Update"    Backup with git commit
+    pl backup --sanitize mysite     GDPR-safe backup (no PII)
+    pl test -s mysite               Run smoke tests
+    pl dev2stg mysite               Deploy to local staging
+    pl stg2prod mysite              Deploy to production server
+    pl live mysite                  Provision mysite.nwpcode.org
+    pl schedule install mysite      Setup daily backups
+    pl security check --all         Check all sites for updates
+
+${BOLD}WORKFLOW:${NC}
+    Development:  pl install d mysite
+    Testing:      pl test -s mysite
+    Staging:      pl dev2stg mysite
+    Live Preview: pl live mysite && pl stg2live mysite
+    Production:   pl stg2prod mysite
 
 ${BOLD}TAB COMPLETION:${NC}
     Add to ~/.bashrc:
     source ${SCRIPT_DIR}/pl-completion.bash
+
+${BOLD}MORE HELP:${NC}
+    pl <command> --help             Show help for specific command
+    See docs/README.md for full documentation
 
 EOF
 }
@@ -308,6 +357,9 @@ main() {
         make)
             run_script "make.sh" "$@"
             ;;
+        uninstall)
+            run_script "uninstall_nwp.sh" "$@"
+            ;;
 
         # Backup & restore
         backup)
@@ -320,10 +372,12 @@ main() {
             run_script "copy.sh" "$@"
             ;;
 
-        # Deployment
+        # Deployment (local)
         dev2stg)
             run_script "dev2stg.sh" "$@"
             ;;
+
+        # Deployment (remote)
         stg2prod)
             run_script "stg2prod.sh" "$@"
             ;;
@@ -352,15 +406,35 @@ main() {
         test)
             run_script "test.sh" "$@"
             ;;
+        testos)
+            run_script "testos.sh" "$@"
+            ;;
+        test-nwp)
+            run_script "test-nwp.sh" "$@"
+            ;;
 
         # Scheduling
         schedule)
             run_script "schedule.sh" "$@"
             ;;
 
-        # Security
-        security-check|security-update)
-            run_script "security.sh" "$command" "$@"
+        # Security - handle both forms
+        security)
+            run_script "security.sh" "$@"
+            ;;
+        security-check)
+            run_script "security.sh" "check" "$@"
+            ;;
+        security-update)
+            run_script "security.sh" "update" "$@"
+            ;;
+        security-audit)
+            run_script "security.sh" "audit" "$@"
+            ;;
+
+        # Migration
+        migration)
+            run_script "migration.sh" "$@"
             ;;
 
         # Git
@@ -371,9 +445,12 @@ main() {
             cmd_gitlab_list "$@"
             ;;
 
-        # Utilities
+        # Setup & utilities
         setup)
             run_script "setup.sh" "$@"
+            ;;
+        setup-ssh)
+            run_script "setup-ssh.sh" "$@"
             ;;
         list)
             cmd_list "$@"
@@ -390,11 +467,13 @@ main() {
             show_help
             ;;
 
-        # Unknown command
+        # Unknown command - try as script name
         *)
-            # Check if it's a script name
+            # Check if it's a script name (with or without .sh)
             if script_exists "${command}.sh"; then
                 run_script "${command}.sh" "$@"
+            elif script_exists "${command}"; then
+                run_script "${command}" "$@"
             else
                 print_error "Unknown command: $command"
                 echo ""

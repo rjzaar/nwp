@@ -11,17 +11,35 @@ _pl_completions() {
     local cur prev words cword
     _init_completion || return
 
-    # Main commands
-    local commands="install delete make backup restore copy dev2stg stg2prod prod2stg stg2live live2stg live2prod live produce test schedule security-check security-update gitlab-create gitlab-list setup list status version help"
+    # Main commands - all NWP commands
+    local commands="install delete make uninstall backup restore copy dev2stg stg2prod prod2stg stg2live live2stg live2prod live produce test testos test-nwp schedule security security-check security-update security-audit migration gitlab-create gitlab-list setup setup-ssh list status version help"
 
     # Schedule subcommands
     local schedule_commands="install remove list show run"
 
+    # Security subcommands
+    local security_commands="check update audit"
+
     # Test flags
-    local test_flags="-l -t -u -k -f -s -b -p --ci"
+    local test_flags="-l -u -k -f -s -b -p --ci --all"
 
     # Backup flags
-    local backup_flags="-b -g --bundle --incremental --push-all"
+    local backup_flags="-b -g -e --bundle --incremental --push-all --sanitize --sanitize-level"
+
+    # Restore flags
+    local restore_flags="-b -f -o -y"
+
+    # Delete flags
+    local delete_flags="-b -k -y"
+
+    # Make flags
+    local make_flags="-v -p -d -y"
+
+    # Live flags
+    local live_flags="--type --expires --delete --status"
+
+    # Live types
+    local live_types="dedicated shared temporary"
 
     # Get NWP directory
     local nwp_dir="${COMP_WORDS[0]%/*}"
@@ -52,14 +70,42 @@ _pl_completions() {
                 install)
                     COMPREPLY=($(compgen -W "${recipes}" -- "${cur}"))
                     ;;
-                delete|make|backup|restore|copy|dev2stg|stg2prod|prod2stg|stg2live|live2stg|live2prod|live|produce|test|status)
+                delete)
+                    COMPREPLY=($(compgen -W "${delete_flags} ${sites}" -- "${cur}"))
+                    ;;
+                make)
+                    COMPREPLY=($(compgen -W "${make_flags} ${sites}" -- "${cur}"))
+                    ;;
+                backup)
+                    COMPREPLY=($(compgen -W "${backup_flags} ${sites}" -- "${cur}"))
+                    ;;
+                restore)
+                    COMPREPLY=($(compgen -W "${restore_flags} ${sites}" -- "${cur}"))
+                    ;;
+                copy|dev2stg|stg2prod|prod2stg|stg2live|live2stg|live2prod|produce|status|testos|migration)
                     COMPREPLY=($(compgen -W "${sites}" -- "${cur}"))
+                    ;;
+                live)
+                    COMPREPLY=($(compgen -W "${live_flags} ${sites}" -- "${cur}"))
+                    ;;
+                test)
+                    COMPREPLY=($(compgen -W "${test_flags} ${sites}" -- "${cur}"))
                     ;;
                 schedule)
                     COMPREPLY=($(compgen -W "${schedule_commands}" -- "${cur}"))
                     ;;
+                security)
+                    COMPREPLY=($(compgen -W "${security_commands}" -- "${cur}"))
+                    ;;
+                security-check|security-update|security-audit)
+                    COMPREPLY=($(compgen -W "--all ${sites}" -- "${cur}"))
+                    ;;
                 gitlab-list)
                     COMPREPLY=($(compgen -W "sites backups" -- "${cur}"))
+                    ;;
+                gitlab-create)
+                    # Suggest project name
+                    COMPREPLY=()
                     ;;
                 *)
                     COMPREPLY=()
@@ -70,7 +116,7 @@ _pl_completions() {
             # Third argument
             case "${words[1]}" in
                 install)
-                    # Suggest a site name (use current word)
+                    # Third arg for install is sitename - suggest based on recipe
                     COMPREPLY=()
                     ;;
                 copy)
@@ -83,22 +129,60 @@ _pl_completions() {
                             ;;
                     esac
                     ;;
+                security)
+                    case "${words[2]}" in
+                        check|update|audit)
+                            COMPREPLY=($(compgen -W "--all --auto ${sites}" -- "${cur}"))
+                            ;;
+                    esac
+                    ;;
                 test)
                     COMPREPLY=($(compgen -W "${test_flags} ${sites}" -- "${cur}"))
                     ;;
                 backup)
-                    COMPREPLY=($(compgen -W "${backup_flags}" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "${backup_flags} ${sites}" -- "${cur}"))
+                    ;;
+                restore)
+                    COMPREPLY=($(compgen -W "${restore_flags} ${sites}" -- "${cur}"))
+                    ;;
+                delete)
+                    COMPREPLY=($(compgen -W "${delete_flags} ${sites}" -- "${cur}"))
+                    ;;
+                make)
+                    COMPREPLY=($(compgen -W "${make_flags} ${sites}" -- "${cur}"))
+                    ;;
+                live)
+                    if [[ "${words[2]}" == "--type" || "${words[2]}" == "--type="* ]]; then
+                        COMPREPLY=($(compgen -W "${live_types}" -- "${cur}"))
+                    else
+                        COMPREPLY=($(compgen -W "${live_flags} ${sites}" -- "${cur}"))
+                    fi
+                    ;;
+                gitlab-create)
+                    COMPREPLY=($(compgen -W "sites backups" -- "${cur}"))
                     ;;
             esac
             ;;
         *)
-            # Additional arguments
+            # Additional arguments - offer flags and sites where appropriate
             case "${words[1]}" in
                 test)
                     COMPREPLY=($(compgen -W "${test_flags} ${sites}" -- "${cur}"))
                     ;;
                 backup)
-                    COMPREPLY=($(compgen -W "${backup_flags}" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "${backup_flags} ${sites}" -- "${cur}"))
+                    ;;
+                restore)
+                    COMPREPLY=($(compgen -W "${restore_flags} ${sites}" -- "${cur}"))
+                    ;;
+                delete)
+                    COMPREPLY=($(compgen -W "${delete_flags} ${sites}" -- "${cur}"))
+                    ;;
+                live)
+                    COMPREPLY=($(compgen -W "${live_flags} ${sites}" -- "${cur}"))
+                    ;;
+                security)
+                    COMPREPLY=($(compgen -W "--all --auto ${sites}" -- "${cur}"))
                     ;;
             esac
             ;;

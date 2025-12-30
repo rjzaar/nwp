@@ -642,14 +642,12 @@ update_cnwp_live() {
     # Source yaml-write library
     source "$SCRIPT_DIR/lib/yaml-write.sh"
 
-    # Update site with live configuration
-    yaml_set_nested_value "${SCRIPT_DIR}/cnwp.yml" "sites" "$sitename" "live" "enabled" "true"
-    yaml_set_nested_value "${SCRIPT_DIR}/cnwp.yml" "sites" "$sitename" "live" "domain" "$domain"
-    yaml_set_nested_value "${SCRIPT_DIR}/cnwp.yml" "sites" "$sitename" "live" "server_ip" "$ip"
-    yaml_set_nested_value "${SCRIPT_DIR}/cnwp.yml" "sites" "$sitename" "live" "linode_id" "$linode_id"
-    yaml_set_nested_value "${SCRIPT_DIR}/cnwp.yml" "sites" "$sitename" "live" "type" "$type"
-
-    print_status "OK" "cnwp.yml updated"
+    # Update site with live configuration using yaml_add_site_live
+    if yaml_add_site_live "$sitename" "$domain" "$ip" "$linode_id" "$type" "${SCRIPT_DIR}/cnwp.yml" 2>/dev/null; then
+        print_status "OK" "cnwp.yml updated"
+    else
+        print_warning "Could not update cnwp.yml (site may not exist yet)"
+    fi
 }
 
 # Provision dedicated live server

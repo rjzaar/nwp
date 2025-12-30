@@ -745,6 +745,125 @@ yaml_add_site_production() {
 }
 
 #######################################
+# Add live server configuration to a site entry
+# Adds nested live: section with server details
+# Arguments:
+#   $1 - Site name
+#   $2 - Domain
+#   $3 - Server IP
+#   $4 - Linode ID (or "shared")
+#   $5 - Server type (dedicated/shared)
+#   $6 - Config file path (optional)
+# Returns:
+#   0 on success, 1 on failure
+#######################################
+yaml_add_site_live() {
+    local site_name="$1"
+    local domain="$2"
+    local server_ip="$3"
+    local linode_id="$4"
+    local server_type="$5"
+    local config_file="${6:-$YAML_CONFIG_FILE}"
+
+    if [[ -z "$site_name" || -z "$server_ip" ]]; then
+        echo -e "${RED}Error: Site name and server IP are required${NC}" >&2
+        return 1
+    fi
+
+    # Validate site name for safe YAML operations
+    if ! yaml_validate_sitename "$site_name"; then
+        return 1
+    fi
+
+    # Check if site exists
+    if ! yaml_site_exists "$site_name" "$config_file"; then
+        echo -e "${RED}Error: Site '$site_name' not found in $config_file${NC}" >&2
+        return 1
+    fi
+
+    # Create backup
+    if ! yaml_backup "$config_file"; then
+        return 1
+    fi
+
+    # Create live config entries
+    local live_config="    live:\n"
+    live_config="${live_config}      enabled: true\n"
+    [[ -n "$domain" ]] && live_config="${live_config}      domain: $domain\n"
+    live_config="${live_config}      server_ip: $server_ip\n"
+    [[ -n "$linode_id" ]] && live_config="${live_config}      linode_id: $linode_id\n"
+    [[ -n "$server_type" ]] && live_config="${live_config}      type: $server_type\n"
+
+    # Add live section to site (replace if exists)
+    awk -v site="$site_name" -v live_config="$live_config" '
+        BEGIN { in_site = 0; in_sites = 0; in_live = 0; added = 0 }
+
+        /^sites:/ {
+            in_sites = 1
+            print
+            next
+        }
+
+        # End of sites section
+        in_sites && /^[a-zA-Z]/ && !/^  / && !/^#/ {
+            in_sites = 0
+        }
+
+        # Found our site
+        in_sites && $0 ~ "^  " site ":" {
+            in_site = 1
+            print
+            next
+        }
+
+        # Check for existing live section
+        in_site && /^    live:/ {
+            in_live = 1
+            next  # Skip old live: line
+        }
+
+        # Skip contents of old live section
+        in_live && /^      / {
+            next
+        }
+
+        # End of live section
+        in_live && !/^      / {
+            in_live = 0
+        }
+
+        # In our site, check if we hit the next site or end of sites section
+        in_site && (/^  [a-zA-Z0-9_-]+:/ || (/^[a-zA-Z]/ && !/^  / && !/^#/)) {
+            # End of our site entry, add live config before next site/section
+            if (!added) {
+                printf "%s", live_config
+                added = 1
+            }
+            in_site = 0
+        }
+
+        # Print the line
+        { print }
+
+        # At end of file, if still in site, add live config
+        END {
+            if (in_site && !added) {
+                printf "%s", live_config
+            }
+        }
+    ' "$config_file" > "${config_file}.tmp"
+
+    # Move temp file to original
+    if mv "${config_file}.tmp" "$config_file"; then
+        echo -e "${GREEN}Live config added to site '$site_name'${NC}" >&2
+        return 0
+    else
+        echo -e "${RED}Error: Failed to update $config_file${NC}" >&2
+        return 1
+    fi
+}
+
+#######################################
 # Add a migration stub entry to cnwp.yml
 # Creates minimal entry for a site pending migration
 # Arguments:

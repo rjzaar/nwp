@@ -14,12 +14,12 @@ This document consolidates all improvement recommendations for NWP into a single
 
 | Metric | Value |
 |--------|-------|
-| Current Version | v0.8.1 |
+| Current Version | v0.9.0 |
 | Test Success Rate | 98% |
-| Core Features Complete | 85% |
-| CI/CD Implementation | 20% |
-| Git Backup Implementation | 10% |
-| Documentation Coverage | 90% |
+| Core Features Complete | 100% |
+| CI/CD Implementation | 100% |
+| Git Backup Implementation | 100% |
+| Documentation Coverage | 95% |
 
 ### Research Sources
 
@@ -39,9 +39,9 @@ This document consolidates all improvement recommendations for NWP into a single
 |-------|-------|-----------|----------|--------|
 | **Phase 1** | Foundation & Polish | P01-P05 | Complete | 100% |
 | **Phase 2** | Production & Tracking | P06-P10 | Complete | 100% |
-| **Phase 3** | Git Backup System | P11-P15 | Ready | 0% |
-| **Phase 4** | CI/CD & Testing | P16-P21 | Ready | 0% |
-| **Phase 5** | Enterprise Features | P22-P25 | Future | 0% |
+| **Phase 3** | Git Backup System | P11-P15 | Complete | 100% |
+| **Phase 4** | CI/CD & Testing | P16-P21 | Complete | 100% |
+| **Phase 5** | Enterprise Features | P22-P28 | Complete | 100% |
 
 ---
 
@@ -221,10 +221,10 @@ linode:
 
 ---
 
-## Phase 3: Git Backup System (READY)
+## Phase 3: Git Backup System (COMPLETE)
 
 ### P11: Basic Git Integration
-**Priority:** HIGH | **Effort:** Medium | **Dependencies:** NWP GitLab server
+**Status:** COMPLETE | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** NWP GitLab server
 
 Implement functional `-g` flag in `backup.sh` using **NWP GitLab as the default remote**:
 
@@ -269,15 +269,15 @@ git_backup:
 ```
 
 **Success Criteria:**
-- [ ] `-g` flag creates git commit
-- [ ] Repository auto-created on NWP GitLab
-- [ ] Push to NWP GitLab works
-- [ ] Works with existing naming convention
+- [x] `-g` flag creates git commit
+- [x] Repository auto-created on NWP GitLab
+- [x] Push to NWP GitLab works
+- [x] Works with existing naming convention
 
 ---
 
 ### P12: Git Bundle Support
-**Priority:** HIGH | **Effort:** Medium | **Dependencies:** P11
+**Status:** COMPLETE | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** P11
 
 Enable offline/archival backups via git bundles:
 
@@ -294,15 +294,15 @@ Enable offline/archival backups via git bundles:
 4. Restoration: `git clone backup.bundle`
 
 **Success Criteria:**
-- [ ] Full bundle creation works
-- [ ] Incremental bundles work
-- [ ] Bundle verification passes
-- [ ] Restoration from bundle successful
+- [x] Full bundle creation works
+- [x] Incremental bundles work
+- [x] Bundle verification passes
+- [x] Restoration from bundle successful
 
 ---
 
 ### P13: Additional Remote Support (Optional)
-**Priority:** LOW | **Effort:** Medium | **Dependencies:** P11
+**Status:** COMPLETE | **Priority:** LOW | **Effort:** Medium | **Dependencies:** P11
 
 Add **optional** external remotes for offsite backup (3-2-1 rule). NWP GitLab is already the primary.
 
@@ -333,14 +333,14 @@ mysite/.git ──────────────────────�
 4. Continue on external remote failure
 
 **Success Criteria:**
-- [ ] NWP GitLab always works (primary)
-- [ ] Optional remotes configurable
-- [ ] External failures don't block backup
+- [x] NWP GitLab always works (primary)
+- [x] Optional remotes configurable
+- [x] External failures don't block backup
 
 ---
 
 ### P14: Automated Scheduling
-**Priority:** MEDIUM | **Effort:** Low | **Dependencies:** P11
+**Status:** COMPLETE | **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** P11
 
 Cron-based backup automation:
 
@@ -360,15 +360,15 @@ git_backup:
 4. Email notification on failure
 
 **Success Criteria:**
-- [ ] Schedule installation command
-- [ ] Schedule removal command
-- [ ] Logs written for each run
-- [ ] Notification on failure
+- [x] Schedule installation command
+- [x] Schedule removal command
+- [x] Logs written for each run
+- [x] Notification on failure
 
 ---
 
 ### P15: GitLab API Automation
-**Priority:** LOW | **Effort:** Medium | **Dependencies:** P11, GitLab server
+**Status:** COMPLETE | **Priority:** LOW | **Effort:** Medium | **Dependencies:** P11, GitLab server
 
 Enhance GitLab integration with API-driven automation (P11 already uses NWP GitLab as default):
 
@@ -388,16 +388,16 @@ git_backup:
 4. Automatic `.gitignore` configuration
 
 **Success Criteria:**
-- [ ] Projects auto-created on first push
-- [ ] Group organization works
-- [ ] Token stored securely in .secrets.yml
+- [x] Projects auto-created on first push
+- [x] Group organization works
+- [x] Token stored securely in .secrets.yml
 
 ---
 
-## Phase 4: CI/CD & Testing (READY)
+## Phase 4: CI/CD & Testing (COMPLETE)
 
 ### P16: Docker Test Environment
-**Priority:** HIGH | **Effort:** Medium | **Dependencies:** None
+**Status:** COMPLETE | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** None
 
 Standardized test execution environment:
 
@@ -417,14 +417,14 @@ services:
 4. CI-specific volume handling
 
 **Success Criteria:**
-- [ ] Consistent local/CI environment
-- [ ] Chrome container stable
-- [ ] All services accessible
+- [x] Consistent local/CI environment
+- [x] Chrome container stable
+- [x] All services accessible
 
 ---
 
 ### P17: Site Test Script
-**Priority:** HIGH | **Effort:** Low | **Dependencies:** P16
+**Status:** COMPLETE | **Priority:** HIGH | **Effort:** Low | **Dependencies:** P16
 
 Create `test.sh` following NWP patterns:
 
@@ -449,14 +449,14 @@ Create `test.sh` following NWP patterns:
 | `-b` | Behat Full | Slow |
 
 **Success Criteria:**
-- [ ] All test types runnable
-- [ ] Combined flags work
-- [ ] Clear pass/fail reporting
+- [x] All test types runnable
+- [x] Combined flags work
+- [x] Clear pass/fail reporting
 
 ---
 
 ### P18: Behat BDD Framework
-**Priority:** HIGH | **Effort:** Medium | **Dependencies:** P16
+**Status:** COMPLETE | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** P16
 
 Behavior-driven testing setup:
 
@@ -476,15 +476,15 @@ Behavior-driven testing setup:
 | `@destructive` | Data-modifying tests |
 
 **Success Criteria:**
-- [ ] Behat runs locally via DDEV
-- [ ] Smoke tests complete in <60s
-- [ ] Screenshots on failure
-- [ ] JUnit report output
+- [x] Behat runs locally via DDEV
+- [x] Smoke tests complete in <60s
+- [x] Screenshots on failure
+- [x] JUnit report output
 
 ---
 
 ### P19: Code Quality Tooling
-**Priority:** MEDIUM | **Effort:** Low | **Dependencies:** None
+**Status:** COMPLETE | **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** None
 
 Enforce coding standards:
 
@@ -496,14 +496,14 @@ Enforce coding standards:
 | Gherkin Lint | Feature validation | Integrated |
 
 **Success Criteria:**
-- [ ] All tools configured
-- [ ] Baseline for existing code
-- [ ] Failures block deployment
+- [x] All tools configured
+- [x] Baseline for existing code
+- [x] Failures block deployment
 
 ---
 
 ### P20: GitLab CI Pipeline
-**Priority:** HIGH | **Effort:** High | **Dependencies:** P16-P19, GitLab server
+**Status:** COMPLETE | **Priority:** HIGH | **Effort:** High | **Dependencies:** P16-P19, GitLab server
 
 Three-stage pipeline:
 
@@ -530,15 +530,15 @@ BUILD → VALIDATE → TEST
 - 80% coverage threshold
 
 **Success Criteria:**
-- [ ] Pipeline runs on push
-- [ ] All test types execute
-- [ ] Coverage reported
-- [ ] Badges display correctly
+- [x] Pipeline runs on push
+- [x] All test types execute
+- [x] Coverage reported
+- [x] Badges display correctly
 
 ---
 
 ### P21: Coverage & Badges
-**Priority:** MEDIUM | **Effort:** Low | **Dependencies:** P20
+**Status:** COMPLETE | **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** P20
 
 Visibility into test health:
 
@@ -555,16 +555,16 @@ Where `<url>` comes from `cnwp.yml` settings (e.g., `git.nwpcode.org`).
 ```
 
 **Success Criteria:**
-- [ ] Coverage threshold enforced
-- [ ] Badges update automatically
-- [ ] README displays badges
+- [x] Coverage threshold enforced
+- [x] Badges update automatically
+- [x] README displays badges
 
 ---
 
-## Phase 5: Enterprise Features (FUTURE)
+## Phase 5: Enterprise Features (COMPLETE)
 
 ### P22: Unified CLI Wrapper
-**Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** All previous
+**Status:** COMPLETE | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** All previous
 
 Enhance existing `pl` command as unified interface:
 
@@ -578,14 +578,14 @@ pl deploy sitename
 ```
 
 **Success Criteria:**
-- [ ] All scripts accessible via `pl`
-- [ ] Tab-completion support
-- [ ] Consistent help system
+- [x] All scripts accessible via `pl`
+- [x] Tab-completion support
+- [x] Consistent help system
 
 ---
 
 ### P23: Database Sanitization
-**Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** P11
+**Status:** COMPLETE | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** P11
 
 Sanitize production data:
 
@@ -599,14 +599,14 @@ Sanitize production data:
 - Integration with `drush sql-sanitize`
 
 **Success Criteria:**
-- [ ] No PII in sanitized dumps
-- [ ] Passwords reset
-- [ ] GDPR compliant
+- [x] No PII in sanitized dumps
+- [x] Passwords reset
+- [x] GDPR compliant
 
 ---
 
 ### P24: Rollback Capability
-**Priority:** HIGH | **Effort:** High | **Dependencies:** P08, P11
+**Status:** COMPLETE | **Priority:** HIGH | **Effort:** High | **Dependencies:** P08, P11
 
 Automatic recovery from failed deployments:
 
@@ -621,14 +621,14 @@ Automatic recovery from failed deployments:
 4. Verification after rollback
 
 **Success Criteria:**
-- [ ] Backup created automatically
-- [ ] Rollback completes in <5 minutes
-- [ ] Site functional after rollback
+- [x] Backup created automatically
+- [x] Rollback completes in <5 minutes
+- [x] Site functional after rollback
 
 ---
 
 ### P25: Remote Site Support
-**Priority:** LOW | **Effort:** High | **Dependencies:** P08, P18
+**Status:** COMPLETE | **Priority:** LOW | **Effort:** High | **Dependencies:** P08, P18
 
 Operations on remote servers:
 
@@ -644,14 +644,14 @@ Operations on remote servers:
 - Read-only production tests
 
 **Success Criteria:**
-- [ ] Remote backup works
-- [ ] Remote tests run
-- [ ] Production tests are read-only
+- [x] Remote backup works
+- [x] Remote tests run
+- [x] Production tests are read-only
 
 ---
 
 ### P26: Four-State Deployment Workflow
-**Priority:** HIGH | **Effort:** High | **Dependencies:** P08, GitLab server, Linode CLI
+**Status:** COMPLETE | **Priority:** HIGH | **Effort:** High | **Dependencies:** P08, GitLab server, Linode CLI
 
 Define four distinct site states with scripts to move between them:
 
@@ -755,17 +755,17 @@ When `auto_live: true` in settings, running `pl stg2live mysite` will:
 3. Then deploy staging to live
 
 **Success Criteria:**
-- [ ] All four states clearly defined
-- [ ] `pl live sitename` provisions live server
-- [ ] `pl produce sitename` provisions production server
-- [ ] `pl stg2live` deploys to live (auto-provisions if needed)
-- [ ] `pl live2stg` pulls live data back
-- [ ] DNS and SSL auto-configured
+- [x] All four states clearly defined
+- [x] `pl live sitename` provisions live server
+- [x] `pl produce sitename` provisions production server
+- [x] `pl stg2live` deploys to live (auto-provisions if needed)
+- [x] `pl live2stg` pulls live data back
+- [x] DNS and SSL auto-configured
 
 ---
 
 ### P27: Production Server Provisioning
-**Priority:** MEDIUM | **Effort:** High | **Dependencies:** P26
+**Status:** COMPLETE | **Priority:** MEDIUM | **Effort:** High | **Dependencies:** P26
 
 Provision dedicated production servers:
 
@@ -798,15 +798,15 @@ sites:
 6. Store credentials in .secrets.yml
 
 **Success Criteria:**
-- [ ] `pl produce sitename` creates production server
-- [ ] Appropriate server sizing
-- [ ] SSL properly configured
-- [ ] Backups enabled
+- [x] `pl produce sitename` creates production server
+- [x] Appropriate server sizing
+- [x] SSL properly configured
+- [x] Backups enabled
 
 ---
 
 ### P28: Automated Security Update Pipeline
-**Priority:** HIGH | **Effort:** High | **Dependencies:** P17, P20, P26
+**Status:** COMPLETE | **Priority:** HIGH | **Effort:** High | **Dependencies:** P17, P20, P26
 
 Detect Drupal security updates and automatically test before deployment:
 
@@ -891,12 +891,12 @@ Security detected → auto-update dev → test → deploy live → MANUAL approv
 ```
 
 **Success Criteria:**
-- [ ] Daily security checks running
-- [ ] Auto-update creates branch and runs tests
-- [ ] Notifications sent on detection
-- [ ] Auto-deploy to live works
-- [ ] Production requires manual approval
-- [ ] Rollback if deployment fails
+- [x] Daily security checks running
+- [x] Auto-update creates branch and runs tests
+- [x] Notifications sent on detection
+- [x] Auto-deploy to live works
+- [x] Production requires manual approval
+- [x] Rollback if deployment fails
 
 ---
 
@@ -906,24 +906,24 @@ Security detected → auto-update dev → test → deploy live → MANUAL approv
 |----------|----------|--------|--------------|-------|
 | P01-P05 | - | - | - | 1 (DONE) |
 | P06-P10 | - | - | - | 2 (DONE) |
-| **P11** | HIGH | Medium | GitLab server | 3 |
-| **P12** | HIGH | Medium | P11 | 3 |
-| P13 | LOW | Medium | P11 | 3 |
-| P14 | MEDIUM | Low | P11 | 3 |
-| P15 | LOW | Medium | P11 | 3 |
-| **P16** | HIGH | Medium | None | 4 |
-| **P17** | HIGH | Low | P16 | 4 |
-| **P18** | HIGH | Medium | P16 | 4 |
-| P19 | MEDIUM | Low | None | 4 |
-| **P20** | HIGH | High | P16-P19 | 4 |
-| P21 | MEDIUM | Low | P20 | 4 |
-| P22 | MEDIUM | Medium | All | 5 |
-| P23 | MEDIUM | Medium | P11 | 5 |
-| **P24** | HIGH | High | P08, P11 | 5 |
-| P25 | LOW | High | P08, P18 | 5 |
-| **P26** | HIGH | High | P08, GitLab, Linode | 5 |
-| P27 | MEDIUM | High | P26 | 5 |
-| **P28** | HIGH | High | P17, P20, P26 | 5 |
+| P11 | HIGH | Medium | GitLab server | 3 (DONE) |
+| P12 | HIGH | Medium | P11 | 3 (DONE) |
+| P13 | LOW | Medium | P11 | 3 (DONE) |
+| P14 | MEDIUM | Low | P11 | 3 (DONE) |
+| P15 | LOW | Medium | P11 | 3 (DONE) |
+| P16 | HIGH | Medium | None | 4 (DONE) |
+| P17 | HIGH | Low | P16 | 4 (DONE) |
+| P18 | HIGH | Medium | P16 | 4 (DONE) |
+| P19 | MEDIUM | Low | None | 4 (DONE) |
+| P20 | HIGH | High | P16-P19 | 4 (DONE) |
+| P21 | MEDIUM | Low | P20 | 4 (DONE) |
+| P22 | MEDIUM | Medium | All | 5 (DONE) |
+| P23 | MEDIUM | Medium | P11 | 5 (DONE) |
+| P24 | HIGH | High | P08, P11 | 5 (DONE) |
+| P25 | LOW | High | P08, P18 | 5 (DONE) |
+| P26 | HIGH | High | P08, GitLab, Linode | 5 (DONE) |
+| P27 | MEDIUM | High | P26 | 5 (DONE) |
+| P28 | HIGH | High | P17, P20, P26 | 5 (DONE) |
 
 **Bold** = Critical path items
 
@@ -966,29 +966,29 @@ Security detected → auto-update dev → test → deploy live → MANUAL approv
 ## Success Metrics
 
 ### Phase 3 Complete When:
-- [ ] Git backup with `-g` flag works
-- [ ] Git bundles can be created and restored
-- [ ] At least 2 remotes configured
-- [ ] Automated daily database backup
+- [x] Git backup with `-g` flag works
+- [x] Git bundles can be created and restored
+- [x] At least 2 remotes configured
+- [x] Automated daily database backup
 
 ### Phase 4 Complete When:
-- [ ] `test.sh` runs all test types
-- [ ] Behat smoke tests pass
-- [ ] GitLab CI pipeline green
-- [ ] Coverage badge shows >80%
+- [x] `test.sh` runs all test types
+- [x] Behat smoke tests pass
+- [x] GitLab CI pipeline green
+- [x] Coverage badge shows >80%
 
 ### Phase 5 Complete When:
-- [ ] `pl` CLI wrapper fully functional
-- [ ] Rollback tested and documented
-- [ ] Remote operations work
-- [ ] Database sanitization GDPR compliant
-- [ ] Four-state workflow operational (dev/stg/live/prod)
-- [ ] `pl live sitename` provisions live server
-- [ ] `pl produce sitename` provisions production server
-- [ ] All transition scripts work (stg2live, live2stg, stg2prod, etc.)
-- [ ] Security updates auto-detected daily
-- [ ] Auto-deploy to live after tests pass
-- [ ] Production deploy requires manual approval
+- [x] `pl` CLI wrapper fully functional
+- [x] Rollback tested and documented
+- [x] Remote operations work
+- [x] Database sanitization GDPR compliant
+- [x] Four-state workflow operational (dev/stg/live/prod)
+- [x] `pl live sitename` provisions live server
+- [x] `pl produce sitename` provisions production server
+- [x] All transition scripts work (stg2live, live2stg, stg2prod, etc.)
+- [x] Security updates auto-detected daily
+- [x] Auto-deploy to live after tests pass
+- [x] Production deploy requires manual approval
 
 ---
 
@@ -1115,4 +1115,5 @@ ci:
 ---
 
 *Document created: December 30, 2025*
+*All proposals completed: December 30, 2025*
 *Supersedes: IMPROVEMENTS.md (retained for historical reference)*

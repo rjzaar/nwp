@@ -1,0 +1,169 @@
+# NWP GitLab CI Configuration Template
+# Copy this to your site's root directory
+#
+# Stages: BUILD -> VALIDATE -> TEST
+# Uses Docker-in-Docker for isolation
+
+stages:
+  - build
+  - validate
+  - test
+
+variables:
+  # Database configuration
+  MYSQL_ROOT_PASSWORD: root
+  MYSQL_DATABASE: drupal
+  MYSQL_USER: drupal
+  MYSQL_PASSWORD: drupal
+  # Drupal test configuration
+  SIMPLETEST_DB: mysql://drupal:drupal@database/drupal
+  SIMPLETEST_BASE_URL: http://localhost:8080
+  # PHP configuration
+  PHP_VERSION: "8.2"
+  # Skip flags (set to 'true' to skip)
+  SKIP_PHPCS: "false"
+  SKIP_PHPSTAN: "false"
+  SKIP_PHPUNIT: "false"
+  SKIP_BEHAT: "false"
+
+# Cache composer dependencies
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - vendor/
+    - web/core/
+    - web/modules/contrib/
+    - web/themes/contrib/
+
+# Build stage - install dependencies
+build:composer:
+  stage: build
+  image: composer:2
+  script:
+    - composer install --no-interaction --prefer-dist --optimize-autoloader
+  artifacts:
+    paths:
+      - vendor/
+      - web/
+    expire_in: 1 hour
+
+# Validation stage - code quality checks
+phpcs:
+  stage: validate
+  image: drupal:10-php8.2-cli
+  needs: ["build:composer"]
+  script:
+    - |
+      if [ "$SKIP_PHPCS" = "true" ]; then
+        echo "Skipping PHPCS"
+        exit 0
+      fi
+    - ./vendor/bin/phpcs --standard=Drupal,DrupalPractice web/modules/custom web/themes/custom
+  allow_failure: true
+
+phpstan:
+  stage: validate
+  image: drupal:10-php8.2-cli
+  needs: ["build:composer"]
+  script:
+    - |
+      if [ "$SKIP_PHPSTAN" = "true" ]; then
+        echo "Skipping PHPStan"
+        exit 0
+      fi
+    - ./vendor/bin/phpstan analyse web/modules/custom web/themes/custom --level=7
+  allow_failure: true
+
+# Test stage - run tests
+phpunit:unit:
+  stage: test
+  image: drupal:10-php8.2-cli
+  needs: ["build:composer"]
+  script:
+    - |
+      if [ "$SKIP_PHPUNIT" = "true" ]; then
+        echo "Skipping PHPUnit"
+        exit 0
+      fi
+    - ./vendor/bin/phpunit --testsuite=unit
+  artifacts:
+    reports:
+      junit: reports/phpunit.xml
+    when: always
+
+phpunit:kernel:
+  stage: test
+  image: drupal:10-php8.2-cli
+  needs: ["build:composer"]
+  services:
+    - name: mariadb:10.6
+      alias: database
+  script:
+    - |
+      if [ "$SKIP_PHPUNIT" = "true" ]; then
+        echo "Skipping PHPUnit"
+        exit 0
+      fi
+    - ./vendor/bin/phpunit --testsuite=kernel
+  artifacts:
+    reports:
+      junit: reports/phpunit-kernel.xml
+    when: always
+
+behat:smoke:
+  stage: test
+  image: drupal:10-php8.2-cli
+  needs: ["build:composer"]
+  services:
+    - name: mariadb:10.6
+      alias: database
+    - name: selenium/standalone-chrome:latest
+      alias: chrome
+  variables:
+    SE_NODE_MAX_SESSIONS: 2
+  script:
+    - |
+      if [ "$SKIP_BEHAT" = "true" ]; then
+        echo "Skipping Behat"
+        exit 0
+      fi
+    - ./vendor/bin/behat --tags=@smoke --format=progress --format=junit --out=,reports/behat.xml
+  artifacts:
+    paths:
+      - reports/
+      - web/sites/simpletest/browser_output/
+    reports:
+      junit: reports/behat.xml
+    when: always
+  timeout: 30 minutes
+
+behat:full:
+  stage: test
+  image: drupal:10-php8.2-cli
+  needs: ["build:composer", "behat:smoke"]
+  services:
+    - name: mariadb:10.6
+      alias: database
+    - name: selenium/standalone-chrome:latest
+      alias: chrome
+  variables:
+    SE_NODE_MAX_SESSIONS: 4
+  parallel: 2
+  script:
+    - |
+      if [ "$SKIP_BEHAT" = "true" ]; then
+        echo "Skipping Behat"
+        exit 0
+      fi
+    - ./vendor/bin/behat --tags="@p${CI_NODE_INDEX}" --format=progress --format=junit --out=,reports/behat-${CI_NODE_INDEX}.xml
+  artifacts:
+    paths:
+      - reports/
+      - web/sites/simpletest/browser_output/
+    reports:
+      junit: reports/behat-*.xml
+    when: always
+  timeout: 60 minutes
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"

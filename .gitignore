@@ -62,6 +62,10 @@
 !tests/
 !tests/**
 
+# Templates for new sites
+!templates/
+!templates/**
+
 # SSH keys directory (structure tracked, contents ignored)
 !keys/
 !keys/.gitkeep

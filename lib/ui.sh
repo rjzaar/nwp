@@ -7,14 +7,25 @@
 # Source this file: source "$SCRIPT_DIR/lib/ui.sh"
 ################################################################################
 
-# Colors for output (only set if not already defined)
-: "${RED:=\033[0;31m}"
-: "${GREEN:=\033[0;32m}"
-: "${YELLOW:=\033[1;33m}"
-: "${BLUE:=\033[0;34m}"
-: "${CYAN:=\033[0;36m}"
-: "${NC:=\033[0m}"
-: "${BOLD:=\033[1m}"
+# Colors for output
+# Only use colors if outputting to a terminal
+if [[ -t 1 ]]; then
+    RED=$'\033[0;31m'
+    GREEN=$'\033[0;32m'
+    YELLOW=$'\033[1;33m'
+    BLUE=$'\033[0;34m'
+    CYAN=$'\033[0;36m'
+    NC=$'\033[0m'
+    BOLD=$'\033[1m'
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    CYAN=''
+    NC=''
+    BOLD=''
+fi
 
 # Print a header banner
 print_header() {

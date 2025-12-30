@@ -741,14 +741,8 @@ provision_dedicated() {
     # Setup server security (has its own idempotency checks)
     setup_server_security "$sitename" "$ip" || true
 
-    # Check if already in cnwp.yml
-    local existing_ip=$(get_live_ip "$sitename")
-    if [ -n "$existing_ip" ]; then
-        print_status "OK" "cnwp.yml already configured for $sitename"
-    else
-        # Update cnwp.yml
-        update_cnwp_live "$sitename" "$ip" "$instance_id" "dedicated" || true
-    fi
+    # Update cnwp.yml (function handles idempotency - adds missing values only)
+    update_cnwp_live "$sitename" "$ip" "$instance_id" "dedicated" || true
 
     print_header "Live Server Ready"
     print_status "OK" "Server provisioned successfully"
@@ -836,14 +830,8 @@ REMOTE
     # Setup server security (has its own idempotency checks)
     setup_server_security "$sitename" "$gitlab_host" || true
 
-    # Check if already in cnwp.yml
-    local existing_ip=$(get_live_ip "$sitename")
-    if [ -n "$existing_ip" ]; then
-        print_status "OK" "cnwp.yml already configured for $sitename"
-    else
-        # Update cnwp.yml
-        update_cnwp_live "$sitename" "$ip" "shared" "shared" || true
-    fi
+    # Update cnwp.yml (function handles idempotency - adds missing values only)
+    update_cnwp_live "$sitename" "$ip" "shared" "shared" || true
 
     print_header "Shared Live Server Ready"
     print_status "OK" "Site configured on shared server"

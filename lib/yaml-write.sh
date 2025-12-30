@@ -745,8 +745,8 @@ yaml_add_site_production() {
 }
 
 #######################################
-# Add live server configuration to a site entry
-# Adds nested live: section with server details
+# Add/update live server configuration to a site entry
+# Checks existing values and only adds missing ones
 # Arguments:
 #   $1 - Site name
 #   $2 - Domain
@@ -759,14 +759,14 @@ yaml_add_site_production() {
 #######################################
 yaml_add_site_live() {
     local site_name="$1"
-    local domain="$2"
-    local server_ip="$3"
-    local linode_id="$4"
-    local server_type="$5"
+    local new_domain="$2"
+    local new_server_ip="$3"
+    local new_linode_id="$4"
+    local new_server_type="$5"
     local config_file="${6:-$YAML_CONFIG_FILE}"
 
-    if [[ -z "$site_name" || -z "$server_ip" ]]; then
-        echo -e "${RED}Error: Site name and server IP are required${NC}" >&2
+    if [[ -z "$site_name" ]]; then
+        echo -e "${RED}Error: Site name is required${NC}" >&2
         return 1
     fi
 
@@ -781,20 +781,69 @@ yaml_add_site_live() {
         return 1
     fi
 
+    # Read existing live values from config
+    local existing_values=$(awk -v site="$site_name" '
+        /^sites:/ { in_sites = 1; next }
+        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
+        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
+        in_site && /^  [a-zA-Z]/ && !/^    / { in_site = 0 }
+        in_site && /^    live:/ { in_live = 1; next }
+        in_live && /^    [a-zA-Z]/ && !/^      / { in_live = 0 }
+        in_live && /^      [a-zA-Z_]+:/ {
+            key = $0
+            sub(/^      /, "", key)
+            sub(/:.*/, "", key)
+            val = $0
+            sub(/^[^:]+: */, "", val)
+            gsub(/["'"'"']/, "", val)
+            print key "=" val
+        }
+    ' "$config_file")
+
+    # Parse existing values
+    local existing_enabled="" existing_domain="" existing_server_ip="" existing_linode_id="" existing_type=""
+    while IFS='=' read -r key val; do
+        case "$key" in
+            enabled) existing_enabled="$val" ;;
+            domain) existing_domain="$val" ;;
+            server_ip) existing_server_ip="$val" ;;
+            linode_id) existing_linode_id="$val" ;;
+            type) existing_type="$val" ;;
+        esac
+    done <<< "$existing_values"
+
+    # Merge: new values override, but keep existing if new is empty
+    local final_enabled="${existing_enabled:-true}"
+    local final_domain="${new_domain:-$existing_domain}"
+    local final_server_ip="${new_server_ip:-$existing_server_ip}"
+    local final_linode_id="${new_linode_id:-$existing_linode_id}"
+    local final_type="${new_server_type:-$existing_type}"
+
+    # Check if anything changed
+    if [[ "$final_enabled" == "$existing_enabled" && \
+          "$final_domain" == "$existing_domain" && \
+          "$final_server_ip" == "$existing_server_ip" && \
+          "$final_linode_id" == "$existing_linode_id" && \
+          "$final_type" == "$existing_type" && \
+          -n "$existing_server_ip" ]]; then
+        echo -e "${GREEN}Live config already up to date for '$site_name'${NC}" >&2
+        return 0
+    fi
+
     # Create backup
     if ! yaml_backup "$config_file"; then
         return 1
     fi
 
-    # Create live config entries
+    # Build live config with merged values
     local live_config="    live:\n"
-    live_config="${live_config}      enabled: true\n"
-    [[ -n "$domain" ]] && live_config="${live_config}      domain: $domain\n"
-    live_config="${live_config}      server_ip: $server_ip\n"
-    [[ -n "$linode_id" ]] && live_config="${live_config}      linode_id: $linode_id\n"
-    [[ -n "$server_type" ]] && live_config="${live_config}      type: $server_type\n"
+    live_config="${live_config}      enabled: ${final_enabled:-true}\n"
+    [[ -n "$final_domain" ]] && live_config="${live_config}      domain: $final_domain\n"
+    [[ -n "$final_server_ip" ]] && live_config="${live_config}      server_ip: $final_server_ip\n"
+    [[ -n "$final_linode_id" ]] && live_config="${live_config}      linode_id: $final_linode_id\n"
+    [[ -n "$final_type" ]] && live_config="${live_config}      type: $final_type\n"
 
-    # Add live section to site (replace if exists)
+    # Add/replace live section in site
     awk -v site="$site_name" -v live_config="$live_config" '
         BEGIN { in_site = 0; in_sites = 0; in_live = 0; added = 0 }
 
@@ -855,7 +904,7 @@ yaml_add_site_live() {
 
     # Move temp file to original
     if mv "${config_file}.tmp" "$config_file"; then
-        echo -e "${GREEN}Live config added to site '$site_name'${NC}" >&2
+        echo -e "${GREEN}Live config updated for site '$site_name'${NC}" >&2
         return 0
     else
         echo -e "${RED}Error: Failed to update $config_file${NC}" >&2

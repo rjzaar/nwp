@@ -455,15 +455,27 @@ setup_ssl() {
 
     print_info "Setting up SSL for ${domain}..."
 
+    # Function to check if DNS resolves (try multiple methods)
+    dns_resolves() {
+        local check_domain="$1"
+        # Try dig with Google DNS first (bypasses local cache)
+        if command -v dig &> /dev/null; then
+            dig +short "@8.8.8.8" "$check_domain" 2>/dev/null | grep -q .
+            return $?
+        fi
+        # Fall back to host command
+        host "$check_domain" > /dev/null 2>&1
+    }
+
     # Check if DNS already resolves
-    if host "$domain" > /dev/null 2>&1; then
+    if dns_resolves "$domain"; then
         print_status "OK" "DNS already propagated"
     else
         # Wait for DNS propagation
         print_info "Waiting for DNS propagation..."
         local attempts=0
         while [ $attempts -lt 30 ]; do
-            if host "$domain" > /dev/null 2>&1; then
+            if dns_resolves "$domain"; then
                 print_status "OK" "DNS propagated"
                 break
             fi

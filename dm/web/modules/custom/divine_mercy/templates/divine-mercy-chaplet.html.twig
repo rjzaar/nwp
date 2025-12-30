@@ -5,6 +5,7 @@
  *
  * Available variables:
  * - prayers: Array of prayer nodes.
+ * - reflection_sets: Array of reflection set data.
  * - current_day: Current novena day number.
  * - settings: Module settings array.
  */
@@ -16,6 +17,69 @@
       {{ 'The chaplet was given by Jesus to St. Faustina. Pray it on ordinary rosary beads.'|t }}
     </p>
   </div>
+
+  {# Font Size Control #}
+  <div class="divine-mercy-font-size-control" id="font-size-control">
+    <label for="font-size-slider" class="font-size-label">
+      {{ 'Font Size'|t }}
+    </label>
+    <div class="font-size-controls">
+      <button type="button" class="font-size-decrease" aria-label="{{ 'Decrease font size'|t }}">
+        <span aria-hidden="true">−</span>
+      </button>
+      <input type="range"
+             id="font-size-slider"
+             class="font-size-slider"
+             min="50"
+             max="200"
+             value="100"
+             step="5"
+             aria-label="{{ 'Font size slider'|t }}">
+      <button type="button" class="font-size-increase" aria-label="{{ 'Increase font size'|t }}">
+        <span aria-hidden="true">+</span>
+      </button>
+    </div>
+    <span class="font-size-value" id="font-size-value">100%</span>
+  </div>
+
+  {# Eucharist Adoration Video #}
+  {% if adoration_enabled and adoration_channels is not empty %}
+    <div class="divine-mercy-eucharist-adoration position-fixed" id="eucharist-adoration">
+      <div class="adoration-header">
+        <h4 class="adoration-title">{{ 'Live Eucharistic Adoration'|t }}</h4>
+        <button type="button" class="adoration-toggle" aria-label="{{ 'Toggle adoration video'|t }}" aria-expanded="true">
+          <span class="toggle-icon">×</span>
+        </button>
+      </div>
+
+      <div class="adoration-content">
+        {% if adoration_channels|length > 1 %}
+          <div class="adoration-selector">
+            <label for="adoration-channel" class="visually-hidden">{{ 'Select chapel'|t }}</label>
+            <select id="adoration-channel" class="adoration-channel-select">
+              {% for channel in adoration_channels %}
+                <option value="{{ channel.url }}"{% if loop.first %} selected{% endif %}>
+                  {{ channel.name }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+        {% endif %}
+
+        <div class="adoration-video">
+          <iframe id="adoration-iframe"
+                  src="{{ adoration_channels[0].url }}"
+                  width="350"
+                  height="300"
+                  frameborder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowfullscreen
+                  title="{{ 'Live Eucharistic Adoration'|t }}">
+          </iframe>
+        </div>
+      </div>
+    </div>
+  {% endif %}
 
   {% if prayers is not empty %}
     <div class="chaplet-prayers divine-mercy-content">
@@ -47,6 +111,50 @@
             </button>
           {% endif %}
         </div>
+
+        {# Insert reflection selector after Apostles' Creed #}
+        {% if prayer.label == "Apostles' Creed" and reflection_sets is not empty %}
+          <div class="reflection-selector-wrapper" id="reflection-selector-wrapper">
+            <div class="reflection-selector">
+              <h4>{{ 'Select Reflections for the Decades'|t }}</h4>
+              <div class="reflection-buttons">
+                <button class="reflection-btn" data-set-id="none" aria-pressed="true">
+                  {{ 'None'|t }}
+                </button>
+                {% for set in reflection_sets %}
+                  <button class="reflection-btn" data-set-id="{{ set.id }}" aria-pressed="false">
+                    {{ set.title }}
+                  </button>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="reflection-display" id="reflection-display" style="display: none;">
+              <div class="reflection-header">
+                <h4 class="reflection-title" id="reflection-title"></h4>
+                <div class="decade-nav">
+                  <button class="decade-prev" id="decade-prev" disabled>&laquo; {{ 'Previous'|t }}</button>
+                  <span class="decade-indicator" id="decade-indicator">{{ 'Decade 1 of 5'|t }}</span>
+                  <button class="decade-next" id="decade-next">{{ 'Next'|t }} &raquo;</button>
+                </div>
+              </div>
+              <div class="reflection-content" id="reflection-content">
+                <div class="reflection-opening-prayer">
+                  <p class="prayer-text"><strong>{{ 'Eternal Father'|t }}:</strong> {{ 'Eternal Father, I offer You the Body and Blood, Soul and Divinity of Your dearly beloved Son, Our Lord Jesus Christ, in atonement for our sins and those of the whole world.'|t }}</p>
+                </div>
+                <ol class="reflection-list" id="reflection-list">
+                </ol>
+                <div class="reflection-closing-prayer">
+                  <p class="prayer-text"><strong>{{ 'For the Sake of His Sorrowful Passion'|t }}:</strong><br>
+                  {{ 'For the sake of His sorrowful Passion, have mercy on us and on the whole world.'|t }}</p>
+                </div>
+                <div class="reflection-repeat-note">
+                  <p><em>({{ 'Repeat 10 times'|t }})</em></p>
+                </div>
+              </div>
+            </div>
+          </div>
+        {% endif %}
       {% endfor %}
     </div>
   {% else %}

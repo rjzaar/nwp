@@ -19,27 +19,50 @@
     <h3 class="novena-day-theme">{{ theme_text }}</h3>
   </div>
 
+  {# Font Size Control #}
+  <div class="divine-mercy-font-size-control" id="font-size-control">
+    <label for="font-size-slider" class="font-size-label">
+      {{ 'Font Size'|t }}
+    </label>
+    <div class="font-size-controls">
+      <button type="button" class="font-size-decrease" aria-label="{{ 'Decrease font size'|t }}">
+        <span aria-hidden="true">−</span>
+      </button>
+      <input type="range"
+             id="font-size-slider"
+             class="font-size-slider"
+             min="50"
+             max="200"
+             value="100"
+             step="5"
+             aria-label="{{ 'Font size slider'|t }}">
+      <button type="button" class="font-size-increase" aria-label="{{ 'Increase font size'|t }}">
+        <span aria-hidden="true">+</span>
+      </button>
+    </div>
+    <span class="font-size-value" id="font-size-value">100%</span>
+  </div>
+
   {% if intention %}
     <div class="novena-intention divine-mercy-content">
       <h4>{{ "Jesus said:"|t }}</h4>
       <blockquote class="jesus-words">
         {{ intention|raw }}
       </blockquote>
-    </div>
-  {% endif %}
 
-  {% if prayer %}
-    <div class="novena-prayer divine-mercy-content">
-      <h4>{{ "Prayer:"|t }}</h4>
-      <div class="prayer-text">
-        {{ prayer|raw }}
-      </div>
+      {% if prayer %}
+        <div class="novena-prayer">
+          <div class="prayer-text">
+            {{ prayer|raw }}
+          </div>
+        </div>
+      {% endif %}
     </div>
   {% endif %}
 
   <div class="novena-chaplet-reminder">
     <p>
-      <em>{{ 'After this prayer, recite the Chaplet of Divine Mercy.'|t }}</em>
+      <em>{{ 'After this prayer, recite the'|t }} <a href="{{ path('divine_mercy.chaplet') }}">{{ 'Chaplet of Divine Mercy'|t }}</a>.</em>
     </p>
   </div>
 </div>

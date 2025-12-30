@@ -1,0 +1,21 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_decade_reflections
+    - node.type.reflection_set
+  module:
+    - divine_mercy
+    - text
+id: node.reflection_set.field_decade_reflections
+field_name: field_decade_reflections
+entity_type: node
+bundle: reflection_set
+label: 'Decade Reflections'
+description: 'The 10 reflections for each decade, one field per decade. Format: one reflection per line.'
+required: false
+translatable: true
+default_value: []
+default_value_callback: ''
+settings: {}
+field_type: text_long

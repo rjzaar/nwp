@@ -81,7 +81,7 @@ class NovenaController extends ControllerBase {
         '#day_number' => $current_day,
         '#theme_text' => $this->novenaService->getDayTheme($current_day),
         '#intention' => $current_day_node->hasField('field_intention') ? $current_day_node->get('field_intention')->value : '',
-        '#prayer' => $current_day_node->hasField('body') ? $current_day_node->get('body')->value : '',
+        '#prayer' => $current_day_node->hasField('field_prayer') ? $current_day_node->get('field_prayer')->value : '',
       ];
     }
 
@@ -110,7 +110,7 @@ class NovenaController extends ControllerBase {
       '#day_number' => $day,
       '#theme_text' => $this->novenaService->getDayTheme($day),
       '#intention' => $day_node->hasField('field_intention') ? $day_node->get('field_intention')->value : '',
-      '#prayer' => $day_node->hasField('body') ? $day_node->get('body')->value : '',
+      '#prayer' => $day_node->hasField('field_prayer') ? $day_node->get('field_prayer')->value : '',
       '#attached' => [
         'library' => [
           'divine_mercy/divine-mercy',

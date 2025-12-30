@@ -1,0 +1,30 @@
+{#
+/**
+ * @file
+ * Template for the Divine Mercy home page.
+ */
+#}
+<div class="divine-mercy-home">
+  <div class="home-header">
+    <h1>{{ 'The Chaplet and Novena of Divine Mercy'|t }}</h1>
+  </div>
+
+  <div class="home-content divine-mercy-content">
+    <div class="home-intro">
+      <p>{{ 'The chaplet was given by Jesus to St. Faustina. As such it is perfect as it is. However, I for one tend to have my mind wander as I repeat "For the sake of His Sorrowful Passion, have mercy on us and the whole world" throughout 5 sets of 10 times in each set. I want to be able to reflect on that Sorrowful Passion as I say the chaplet. So just as we made a tool to help us reflect on the Mysteries of the Rosary we will take a similar tact for the chaplet.'|t }}</p>
+
+      <p>{{ 'The Divine Mercy Novena which is traditionally said beginning on Good Friday and ending the Saturday before Divine Mercy Sunday again needs no modification. But in my humble opinion It should not just be said once a year. Since each day\'s novena ends with a recitation of the Chaplet this site will initiate a perpetual recitation of the Divine Mercy Novena with a new Novena beginning every Friday. Thus every Friday you will say Day 8 and then Day 1 to start the next Novena and every Saturday will be Day 9 and Day 2.'|t }}</p>
+
+      <p>{{ 'The site positions each day on the current day of the week and the Novena prayers for that day. If you want to start a new Novena on a day other than Friday simply click on Friday and it will display the prayers for Day 1 of the novena. Likewise clicking on Saturday displays the novena prayers for Day 2.'|t }}</p>
+    </div>
+
+    <div class="home-links">
+      <a href="{{ path('divine_mercy.chaplet') }}" class="home-link-button">
+        {{ 'Chaplet of Divine Mercy'|t }}
+      </a>
+      <a href="{{ path('divine_mercy.novena') }}" class="home-link-button">
+        {{ 'Divine Mercy Novena'|t }}
+      </a>
+    </div>
+  </div>
+</div>

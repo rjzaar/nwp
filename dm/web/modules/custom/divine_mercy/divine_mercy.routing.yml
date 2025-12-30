@@ -1,5 +1,14 @@
 # Divine Mercy Routing
 
+# Home page
+divine_mercy.home:
+  path: '/divine-mercy'
+  defaults:
+    _controller: '\Drupal\divine_mercy\Controller\HomeController::display'
+    _title: 'Divine Mercy'
+  requirements:
+    _permission: 'access content'
+
 # Main pages
 divine_mercy.chaplet:
   path: '/chaplet'

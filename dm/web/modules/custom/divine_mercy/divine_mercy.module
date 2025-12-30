@@ -31,13 +31,29 @@ function divine_mercy_help($route_name, RouteMatchInterface $route_match) {
  */
 function divine_mercy_theme($existing, $type, $theme, $path) {
   return [
+    'divine_mercy_home' => [
+      'variables' => [],
+      'template' => 'divine-mercy-home',
+    ],
     'divine_mercy_chaplet' => [
       'variables' => [
         'prayers' => [],
+        'reflection_sets' => [],
         'current_day' => NULL,
+        'adoration_enabled' => FALSE,
+        'adoration_channels' => [],
         'settings' => [],
       ],
       'template' => 'divine-mercy-chaplet',
+    ],
+    'divine_mercy_eucharist_adoration' => [
+      'variables' => [
+        'channels' => [],
+        'position' => 'fixed',
+        'show_selector' => TRUE,
+        'default_channel' => '',
+      ],
+      'template' => 'divine-mercy-eucharist-adoration',
     ],
     'divine_mercy_prayer' => [
       'variables' => [

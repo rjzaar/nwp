@@ -1,0 +1,18 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - divine_mercy
+    - menu_ui
+third_party_settings:
+  menu_ui:
+    available_menus:
+      - main
+    parent: ''
+name: 'Reflection Set'
+type: reflection_set
+description: 'A set of reflections for praying the Divine Mercy Chaplet (10 per decade, 5 decades).'
+help: ''
+new_revision: true
+preview_mode: 1
+display_submitted: false

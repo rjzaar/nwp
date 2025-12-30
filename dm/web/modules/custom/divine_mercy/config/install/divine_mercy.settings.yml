@@ -3,9 +3,9 @@ enable_adoration_video: true
 novena_start_day: 5
 adoration_channels:
   -
-    name: 'EWTN Adoration Chapel'
-    url: 'https://www.youtube.com/embed/ERgZBLqEyYE'
-    location: 'Irondale, Alabama, USA'
+    name: 'EWTN Poland Adoration'
+    url: 'https://www.youtube.com/embed/Orc7lHFSqNY?si=bS-V3R0OYUHlNVEx'
+    location: 'Poland'
   -
     name: 'Our Lady of Sorrows Church'
     url: 'https://www.youtube.com/embed/am72_e-h9d8'

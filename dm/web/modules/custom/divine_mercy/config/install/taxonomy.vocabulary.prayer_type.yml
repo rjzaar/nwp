@@ -1,0 +1,9 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - divine_mercy
+name: 'Prayer Type'
+vid: prayer_type
+description: 'Classification of prayer types (standard, chaplet-specific, novena, etc.)'
+weight: 0

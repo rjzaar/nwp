@@ -1,0 +1,12 @@
+# Divine Mercy Task Links
+
+divine_mercy.settings:
+  title: 'Settings'
+  route_name: divine_mercy.settings
+  base_route: divine_mercy.settings
+
+divine_mercy.suggestion.list:
+  title: 'Prayer Suggestions'
+  route_name: divine_mercy.suggestion.list
+  base_route: system.admin_content
+  weight: 10

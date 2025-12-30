@@ -1,0 +1,313 @@
+/**
+ * @file
+ * Divine Mercy module styles.
+ */
+
+/* CSS Custom Properties */
+:root {
+  --prayer-font-size: 100%;
+  --divine-mercy-primary: #8B0000; /* Dark red - representing the Blood */
+  --divine-mercy-secondary: #1E90FF; /* Blue - representing the pale light */
+  --divine-mercy-background: #FFFAF0; /* Floral white */
+  --divine-mercy-text: #333333;
+  --divine-mercy-border: #CC6600;
+}
+
+/* Base Styles */
+.divine-mercy-content {
+  font-size: var(--prayer-font-size);
+  line-height: 1.6;
+  color: var(--divine-mercy-text);
+}
+
+/* Chaplet Styles */
+.divine-mercy-chaplet {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.chaplet-header {
+  text-align: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid var(--divine-mercy-border);
+}
+
+.chaplet-header h1 {
+  color: var(--divine-mercy-primary);
+  font-size: 2em;
+  margin-bottom: 10px;
+}
+
+.chaplet-intro {
+  font-style: italic;
+  color: #666;
+}
+
+.chaplet-prayers {
+  margin: 20px 0;
+}
+
+.prayer-item {
+  margin-bottom: 25px;
+  padding-bottom: 20px;
+  border-bottom: 1px dotted var(--divine-mercy-border);
+}
+
+.prayer-title {
+  color: var(--divine-mercy-primary);
+  font-size: 1.2em;
+  margin-bottom: 10px;
+}
+
+.prayer-text {
+  margin: 10px 0;
+}
+
+.prayer-latin,
+.prayer-variant {
+  margin-top: 15px;
+  padding: 10px;
+  background: #f5f5f5;
+  border-left: 3px solid var(--divine-mercy-secondary);
+  font-style: italic;
+}
+
+.latin-label,
+.variant-label {
+  font-weight: bold;
+  color: var(--divine-mercy-secondary);
+  display: block;
+  margin-bottom: 5px;
+}
+
+.expand-latin,
+.expand-variant {
+  background: transparent;
+  border: none;
+  color: var(--divine-mercy-secondary);
+  cursor: pointer;
+  font-weight: bold;
+  padding: 5px;
+}
+
+.expand-latin:hover,
+.expand-variant:hover {
+  text-decoration: underline;
+}
+
+.chaplet-footer {
+  text-align: center;
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 2px solid var(--divine-mercy-border);
+  font-style: italic;
+  color: var(--divine-mercy-primary);
+}
+
+/* Novena Styles */
+.divine-mercy-novena-day {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.novena-day-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.novena-day-title {
+  color: var(--divine-mercy-primary);
+  font-size: 2em;
+}
+
+.novena-day-theme {
+  color: var(--divine-mercy-secondary);
+  font-style: italic;
+}
+
+.novena-intention {
+  margin: 20px 0;
+}
+
+.jesus-words {
+  background: var(--divine-mercy-background);
+  padding: 20px;
+  border-left: 4px solid var(--divine-mercy-primary);
+  margin: 15px 0;
+  font-style: italic;
+}
+
+.novena-prayer {
+  margin: 20px 0;
+}
+
+.novena-chaplet-reminder {
+  text-align: center;
+  margin-top: 30px;
+  padding: 15px;
+  background: #f0f8ff;
+  border-radius: 5px;
+}
+
+/* Novena Navigation */
+.divine-mercy-novena-navigation {
+  margin: 20px 0;
+  padding: 15px;
+  background: var(--divine-mercy-background);
+  border-radius: 8px;
+}
+
+.novena-nav-title {
+  text-align: center;
+  color: var(--divine-mercy-primary);
+  margin-bottom: 15px;
+}
+
+.novena-days {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.novena-day-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 15px;
+  background: white;
+  border: 2px solid var(--divine-mercy-border);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--divine-mercy-text);
+  transition: all 0.2s ease;
+}
+
+.novena-day-button:hover {
+  background: var(--divine-mercy-secondary);
+  color: white;
+  border-color: var(--divine-mercy-secondary);
+}
+
+.novena-day-button.is-current {
+  background: var(--divine-mercy-primary);
+  color: white;
+  border-color: var(--divine-mercy-primary);
+}
+
+.novena-day-button.is-secondary {
+  box-shadow: 0 0 0 2px var(--divine-mercy-secondary);
+}
+
+.day-number {
+  font-size: 1.5em;
+  font-weight: bold;
+}
+
+.day-weekday {
+  font-size: 0.8em;
+  opacity: 0.8;
+}
+
+.novena-current-info {
+  text-align: center;
+  margin-top: 15px;
+  font-style: italic;
+}
+
+/* Font Size Control */
+.divine-mercy-font-size-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #f5f5f5;
+  border-radius: 5px;
+  margin-bottom: 20px;
+}
+
+.font-size-label {
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.font-size-controls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+}
+
+.font-size-slider {
+  flex: 1;
+  cursor: pointer;
+}
+
+.font-size-decrease,
+.font-size-increase {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #ccc;
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.font-size-decrease:hover,
+.font-size-increase:hover {
+  background: #e0e0e0;
+}
+
+.font-size-value {
+  min-width: 50px;
+  text-align: right;
+  font-weight: bold;
+}
+
+/* Suggestion Form */
+.divine-mercy-suggestion-form {
+  max-width: 600px;
+  margin: 20px auto;
+  padding: 20px;
+}
+
+.suggestion-form-header h2 {
+  color: var(--divine-mercy-primary);
+}
+
+.suggestion-description {
+  color: #666;
+  margin-bottom: 20px;
+}
+
+.suggestion-target {
+  padding: 10px;
+  background: #f5f5f5;
+  border-radius: 5px;
+  margin-bottom: 20px;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .divine-mercy-font-size-control {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .novena-days {
+    gap: 5px;
+  }
+
+  .novena-day-button {
+    padding: 8px 10px;
+  }
+
+  .day-number {
+    font-size: 1.2em;
+  }
+}

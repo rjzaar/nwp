@@ -1,0 +1,61 @@
+{#
+/**
+ * @file
+ * Template for displaying the Divine Mercy Chaplet.
+ *
+ * Available variables:
+ * - prayers: Array of prayer nodes.
+ * - current_day: Current novena day number.
+ * - settings: Module settings array.
+ */
+#}
+<div class="divine-mercy-chaplet" id="divine-mercy-chaplet">
+  <div class="chaplet-header">
+    <h1>{{ 'The Chaplet of Divine Mercy'|t }}</h1>
+    <p class="chaplet-intro">
+      {{ 'The chaplet was given by Jesus to St. Faustina. Pray it on ordinary rosary beads.'|t }}
+    </p>
+  </div>
+
+  {% if prayers is not empty %}
+    <div class="chaplet-prayers divine-mercy-content">
+      {% for prayer in prayers %}
+        <div class="prayer-item prayer-order-{{ loop.index }}" data-prayer-id="{{ prayer.id }}">
+          <h3 class="prayer-title">{{ prayer.label }}</h3>
+
+          <div class="prayer-text">
+            {{ prayer.body.value|raw }}
+          </div>
+
+          {% if prayer.field_latin_text.value %}
+            <div class="prayer-latin prayer-expandable" id="latin-{{ prayer.id }}" style="display: none;">
+              <span class="latin-label">{{ 'Latin:'|t }}</span>
+              {{ prayer.field_latin_text.value|raw }}
+            </div>
+            <button class="expand-latin" data-target="latin-{{ prayer.id }}" aria-expanded="false">
+              <span class="expand-icon">...</span>
+            </button>
+          {% endif %}
+
+          {% if prayer.field_has_variant.value and prayer.field_variant_text.value %}
+            <div class="prayer-variant prayer-expandable" id="variant-{{ prayer.id }}" style="display: none;">
+              <span class="variant-label">{{ 'Flame of Love variant:'|t }}</span>
+              {{ prayer.field_variant_text.value|raw }}
+            </div>
+            <button class="expand-variant" data-target="variant-{{ prayer.id }}" aria-expanded="false">
+              <span class="expand-icon">{{ '(Flame of Love)'|t }}</span>
+            </button>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="chaplet-empty">
+      <p>{{ 'No prayers have been added to the chaplet yet.'|t }}</p>
+    </div>
+  {% endif %}
+
+  <div class="chaplet-footer">
+    <p>{{ 'For the sake of His sorrowful Passion, have mercy on us and on the whole world.'|t }}</p>
+  </div>
+</div>

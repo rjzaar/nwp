@@ -1,0 +1,12 @@
+services:
+  divine_mercy.prayer_service:
+    class: Drupal\divine_mercy\Service\PrayerService
+    arguments: ['@entity_type.manager', '@database']
+
+  divine_mercy.novena_service:
+    class: Drupal\divine_mercy\Service\NovenaService
+    arguments: ['@entity_type.manager', '@config.factory']
+
+  divine_mercy.suggestion_service:
+    class: Drupal\divine_mercy\Service\SuggestionService
+    arguments: ['@database', '@current_user', '@datetime.time']

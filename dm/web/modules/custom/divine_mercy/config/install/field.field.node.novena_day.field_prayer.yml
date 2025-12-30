@@ -1,0 +1,21 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_prayer
+    - node.type.novena_day
+  module:
+    - divine_mercy
+    - text
+id: node.novena_day.field_prayer
+field_name: field_prayer
+entity_type: node
+bundle: novena_day
+label: 'Day Prayer'
+description: 'The specific prayer for this novena day.'
+required: false
+translatable: true
+default_value: []
+default_value_callback: ''
+settings: {}
+field_type: text_long

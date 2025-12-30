@@ -1,0 +1,37 @@
+{#
+/**
+ * @file
+ * Template for novena day navigation.
+ *
+ * Available variables:
+ * - days: Array of day information (number, theme, weekday).
+ * - current_day: Current novena day number.
+ * - secondary_day: Secondary day (for Friday/Saturday overlap).
+ */
+#}
+<div class="divine-mercy-novena-navigation" id="novena-navigation">
+  <h3 class="novena-nav-title">{{ 'Divine Mercy Novena'|t }}</h3>
+
+  <div class="novena-days">
+    {% for day_number, day in days %}
+      <a href="{{ path('divine_mercy.novena_day', {'day': day_number}) }}"
+         class="novena-day-button{% if day_number == current_day %} is-current{% endif %}{% if day_number == secondary_day %} is-secondary{% endif %}"
+         data-day="{{ day_number }}"
+         title="{{ day.theme }}">
+        <span class="day-number">{{ day_number }}</span>
+        <span class="day-weekday">{{ day.weekday }}</span>
+      </a>
+    {% endfor %}
+  </div>
+
+  {% if current_day %}
+    <div class="novena-current-info">
+      <p>
+        {{ 'Today is Day @day'|t({'@day': current_day}) }}
+        {% if secondary_day %}
+          {{ 'and Day @day'|t({'@day': secondary_day}) }}
+        {% endif %}
+      </p>
+    </div>
+  {% endif %}
+</div>

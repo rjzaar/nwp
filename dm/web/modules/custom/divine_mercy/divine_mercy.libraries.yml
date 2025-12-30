@@ -1,0 +1,49 @@
+# Divine Mercy Libraries
+
+divine-mercy:
+  version: 1.0.0
+  css:
+    theme:
+      css/divine-mercy.css: {}
+  js:
+    js/divine-mercy.js: {}
+  dependencies:
+    - core/drupal
+    - core/drupalSettings
+    - core/once
+
+font-size-control:
+  version: 1.0.0
+  js:
+    js/font-size-control.js: {}
+  dependencies:
+    - core/drupal
+    - core/once
+
+novena-navigation:
+  version: 1.0.0
+  js:
+    js/novena-navigation.js: {}
+  dependencies:
+    - core/drupal
+    - core/drupalSettings
+    - core/once
+
+expandable-sections:
+  version: 1.0.0
+  js:
+    js/expandable-sections.js: {}
+  dependencies:
+    - core/drupal
+    - core/once
+
+eucharist-adoration:
+  version: 1.0.0
+  js:
+    js/eucharist-adoration.js: {}
+  css:
+    component:
+      css/eucharist-adoration.css: {}
+  dependencies:
+    - core/drupal
+    - core/once

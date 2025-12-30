@@ -1,0 +1,28 @@
+{#
+/**
+ * @file
+ * Template for prayer suggestion form wrapper.
+ *
+ * Available variables:
+ * - form: The suggestion form render array.
+ * - target_entity: The entity being commented on.
+ */
+#}
+<div class="divine-mercy-suggestion-form">
+  <div class="suggestion-form-header">
+    <h2>{{ 'Submit a Suggestion'|t }}</h2>
+    <p class="suggestion-description">
+      {{ 'Your suggestion will be reviewed by our editors. Thank you for helping improve our prayers.'|t }}
+    </p>
+  </div>
+
+  {% if target_entity %}
+    <div class="suggestion-target">
+      <p>{{ 'Regarding: <strong>@title</strong>'|t({'@title': target_entity.label}) }}</p>
+    </div>
+  {% endif %}
+
+  <div class="suggestion-form-content">
+    {{ form }}
+  </div>
+</div>

@@ -1,0 +1,9 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - divine_mercy
+name: 'Reflection Type'
+vid: reflection_type
+description: 'Type of reflection to use with the Chaplet (Events, Suffering, Scriptural, Flame of Love, etc.).'
+weight: 2

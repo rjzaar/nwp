@@ -1,0 +1,16 @@
+default_font_size: 100
+enable_adoration_video: true
+novena_start_day: 5
+adoration_channels:
+  -
+    name: 'EWTN Adoration Chapel'
+    url: 'https://www.youtube.com/embed/ERgZBLqEyYE'
+    location: 'Irondale, Alabama, USA'
+  -
+    name: 'Our Lady of Sorrows Church'
+    url: 'https://www.youtube.com/embed/am72_e-h9d8'
+    location: 'Birmingham, Alabama, USA'
+  -
+    name: 'Our Lady of Guadalupe'
+    url: 'https://www.youtube.com/embed/72jejHn35ds'
+    location: 'Doral, Florida, USA'

@@ -1,0 +1,96 @@
+<?php
+
+/**
+ * @file
+ * Primary module hooks for Divine Mercy module.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+
+/**
+ * Implements hook_help().
+ */
+function divine_mercy_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    case 'help.page.divine_mercy':
+      $output = '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('The Divine Mercy module provides a comprehensive prayer site for the Divine Mercy Chaplet and Novena, with support for user suggestions, multiple languages, and interactive features.') . '</p>';
+      $output .= '<h3>' . t('Features') . '</h3>';
+      $output .= '<ul>';
+      $output .= '<li>' . t('Structured content types for prayers and novena days') . '</li>';
+      $output .= '<li>' . t('Private user suggestion system for corrections and translations') . '</li>';
+      $output .= '<li>' . t('Interactive font size control and navigation') . '</li>';
+      $output .= '<li>' . t('Full internationalization support for 30+ languages') . '</li>';
+      $output .= '</ul>';
+      return $output;
+  }
+}
+
+/**
+ * Implements hook_theme().
+ */
+function divine_mercy_theme($existing, $type, $theme, $path) {
+  return [
+    'divine_mercy_chaplet' => [
+      'variables' => [
+        'prayers' => [],
+        'current_day' => NULL,
+        'settings' => [],
+      ],
+      'template' => 'divine-mercy-chaplet',
+    ],
+    'divine_mercy_prayer' => [
+      'variables' => [
+        'prayer' => NULL,
+        'show_latin' => FALSE,
+        'show_variant' => FALSE,
+        'is_expandable' => FALSE,
+      ],
+      'template' => 'divine-mercy-prayer',
+    ],
+    'divine_mercy_novena_day' => [
+      'variables' => [
+        'day' => NULL,
+        'day_number' => NULL,
+        'theme' => NULL,
+        'intention' => NULL,
+        'prayer' => NULL,
+      ],
+      'template' => 'divine-mercy-novena-day',
+    ],
+    'divine_mercy_font_size_control' => [
+      'variables' => [
+        'min_size' => 50,
+        'max_size' => 200,
+        'default_size' => 100,
+      ],
+      'template' => 'divine-mercy-font-size-control',
+    ],
+    'divine_mercy_novena_navigation' => [
+      'variables' => [
+        'days' => [],
+        'current_day' => NULL,
+        'secondary_day' => NULL,
+      ],
+      'template' => 'divine-mercy-novena-navigation',
+    ],
+    'divine_mercy_suggestion_form' => [
+      'variables' => [
+        'form' => NULL,
+        'target_entity' => NULL,
+      ],
+      'template' => 'divine-mercy-suggestion-form',
+    ],
+  ];
+}
+
+/**
+ * Implements hook_page_attachments().
+ */
+function divine_mercy_page_attachments(array &$attachments) {
+  // Attach library on all divine mercy pages.
+  $route_name = \Drupal::routeMatch()->getRouteName();
+  if ($route_name && strpos($route_name, 'divine_mercy') === 0) {
+    $attachments['#attached']['library'][] = 'divine_mercy/divine-mercy';
+  }
+}

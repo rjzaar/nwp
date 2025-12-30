@@ -1,0 +1,135 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the Divine Mercy module.
+ */
+
+use Drupal\Core\Database\Database;
+
+/**
+ * Implements hook_schema().
+ */
+function divine_mercy_schema() {
+  $schema['prayer_suggestion'] = [
+    'description' => 'Stores private prayer suggestions from users.',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique suggestion ID.',
+      ],
+      'uuid' => [
+        'type' => 'varchar_ascii',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The UUID of the suggestion.',
+      ],
+      'target_entity_type' => [
+        'type' => 'varchar_ascii',
+        'length' => 64,
+        'not null' => TRUE,
+        'default' => 'node',
+        'description' => 'The entity type being commented on.',
+      ],
+      'target_entity_id' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'The entity ID being commented on.',
+      ],
+      'suggestion_type' => [
+        'type' => 'varchar_ascii',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => 'correction',
+        'description' => 'Type: correction, addition, translation, variation.',
+      ],
+      'suggestion_text' => [
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => FALSE,
+        'description' => 'The user suggestion text.',
+      ],
+      'proposed_text' => [
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => FALSE,
+        'description' => 'Proposed new or modified text.',
+      ],
+      'langcode' => [
+        'type' => 'varchar_ascii',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => 'en',
+        'description' => 'Language code for translation suggestions.',
+      ],
+      'uid' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'The user ID who submitted the suggestion.',
+      ],
+      'status' => [
+        'type' => 'varchar_ascii',
+        'length' => 16,
+        'not null' => TRUE,
+        'default' => 'pending',
+        'description' => 'Status: pending, reviewed, accepted, rejected.',
+      ],
+      'admin_notes' => [
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => FALSE,
+        'description' => 'Admin notes on the suggestion.',
+      ],
+      'created' => [
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Timestamp when suggestion was created.',
+      ],
+      'changed' => [
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Timestamp when suggestion was last modified.',
+      ],
+    ],
+    'primary key' => ['id'],
+    'indexes' => [
+      'target' => ['target_entity_type', 'target_entity_id'],
+      'uid' => ['uid'],
+      'status' => ['status'],
+      'created' => ['created'],
+    ],
+  ];
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function divine_mercy_install() {
+  // Set default configuration.
+  \Drupal::configFactory()->getEditable('divine_mercy.settings')
+    ->set('default_font_size', 100)
+    ->set('enable_adoration_video', TRUE)
+    ->set('novena_start_day', 5) // Friday
+    ->save();
+
+  \Drupal::messenger()->addStatus(t('Divine Mercy module has been installed. Configure settings at /admin/config/divine-mercy/settings.'));
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function divine_mercy_uninstall() {
+  // Remove configuration.
+  \Drupal::configFactory()->getEditable('divine_mercy.settings')->delete();
+}

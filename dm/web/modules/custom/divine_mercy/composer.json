@@ -1,0 +1,10 @@
+{
+  "name": "rjzaar/divine_mercy",
+  "description": "Custom module for Divine Mercy functionality",
+  "type": "drupal-module",
+  "license": "GPL-2.0-or-later",
+  "minimum-stability": "dev",
+  "require": {
+    "drupal/core": "^10 || ^11"
+  }
+}

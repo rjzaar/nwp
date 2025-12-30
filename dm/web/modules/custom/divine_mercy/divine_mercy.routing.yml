@@ -1,0 +1,85 @@
+# Divine Mercy Routing
+
+# Main pages
+divine_mercy.chaplet:
+  path: '/chaplet'
+  defaults:
+    _controller: '\Drupal\divine_mercy\Controller\ChapletController::display'
+    _title: 'Chaplet of Divine Mercy'
+  requirements:
+    _permission: 'access content'
+
+divine_mercy.novena:
+  path: '/novena'
+  defaults:
+    _controller: '\Drupal\divine_mercy\Controller\NovenaController::display'
+    _title: 'Divine Mercy Novena'
+  requirements:
+    _permission: 'access content'
+
+divine_mercy.novena_day:
+  path: '/novena/day/{day}'
+  defaults:
+    _controller: '\Drupal\divine_mercy\Controller\NovenaController::displayDay'
+    _title_callback: '\Drupal\divine_mercy\Controller\NovenaController::getDayTitle'
+  requirements:
+    _permission: 'access content'
+    day: '\d+'
+
+# Suggestion routes
+divine_mercy.suggestion.add:
+  path: '/divine-mercy/suggest/{entity_type}/{entity_id}'
+  defaults:
+    _form: '\Drupal\divine_mercy\Form\PrayerSuggestionForm'
+    _title: 'Submit Suggestion'
+  requirements:
+    _permission: 'submit prayer suggestions'
+  options:
+    parameters:
+      entity_type:
+        type: string
+      entity_id:
+        type: integer
+
+divine_mercy.suggestion.list:
+  path: '/admin/content/prayer-suggestions'
+  defaults:
+    _controller: '\Drupal\divine_mercy\Controller\SuggestionController::list'
+    _title: 'Prayer Suggestions'
+  requirements:
+    _permission: 'review prayer suggestions'
+
+divine_mercy.suggestion.review:
+  path: '/admin/content/prayer-suggestions/{suggestion_id}'
+  defaults:
+    _form: '\Drupal\divine_mercy\Form\SuggestionReviewForm'
+    _title: 'Review Suggestion'
+  requirements:
+    _permission: 'review prayer suggestions'
+    suggestion_id: '\d+'
+
+# Admin settings
+divine_mercy.settings:
+  path: '/admin/config/divine-mercy/settings'
+  defaults:
+    _form: '\Drupal\divine_mercy\Form\DivineMercySettingsForm'
+    _title: 'Divine Mercy Settings'
+  requirements:
+    _permission: 'administer divine mercy'
+
+# API endpoints for AJAX
+divine_mercy.api.font_size:
+  path: '/api/divine-mercy/font-size'
+  defaults:
+    _controller: '\Drupal\divine_mercy\Controller\ApiController::saveFontSize'
+  requirements:
+    _permission: 'access content'
+  methods: [POST]
+
+divine_mercy.api.current_day:
+  path: '/api/divine-mercy/current-day'
+  defaults:
+    _controller: '\Drupal\divine_mercy\Controller\ApiController::getCurrentDay'
+  requirements:
+    _permission: 'access content'
+  methods: [GET]

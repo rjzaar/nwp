@@ -1,0 +1,33 @@
+{#
+/**
+ * @file
+ * Template for displaying a single prayer.
+ *
+ * Available variables:
+ * - prayer: The prayer node.
+ * - show_latin: Whether to show Latin text.
+ * - show_variant: Whether to show variant text.
+ * - is_expandable: Whether sections are expandable.
+ */
+#}
+<div class="divine-mercy-prayer" data-prayer-id="{{ prayer.id }}">
+  <h3 class="prayer-title">{{ prayer.label }}</h3>
+
+  <div class="prayer-body divine-mercy-content">
+    {{ prayer.body.value|raw }}
+  </div>
+
+  {% if show_latin and prayer.field_latin_text.value %}
+    <div class="prayer-latin{% if is_expandable %} prayer-expandable{% endif %}">
+      <span class="latin-label">{{ 'Latin:'|t }}</span>
+      <div class="latin-text">{{ prayer.field_latin_text.value|raw }}</div>
+    </div>
+  {% endif %}
+
+  {% if show_variant and prayer.field_has_variant.value and prayer.field_variant_text.value %}
+    <div class="prayer-variant{% if is_expandable %} prayer-expandable{% endif %}">
+      <span class="variant-label">{{ 'Flame of Love variant:'|t }}</span>
+      <div class="variant-text">{{ prayer.field_variant_text.value|raw }}</div>
+    </div>
+  {% endif %}
+</div>

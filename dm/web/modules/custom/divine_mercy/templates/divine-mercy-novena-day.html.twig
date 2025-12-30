@@ -1,0 +1,45 @@
+{#
+/**
+ * @file
+ * Template for displaying a novena day.
+ *
+ * Available variables:
+ * - day: The novena day node.
+ * - day_number: The day number (1-9).
+ * - theme_text: The theme for this day.
+ * - intention: Jesus's words for this day.
+ * - prayer: The prayer text for this day.
+ */
+#}
+<div class="divine-mercy-novena-day" data-day="{{ day_number }}">
+  <div class="novena-day-header">
+    <h2 class="novena-day-title">
+      {{ 'Day @day'|t({'@day': day_number}) }}
+    </h2>
+    <h3 class="novena-day-theme">{{ theme_text }}</h3>
+  </div>
+
+  {% if intention %}
+    <div class="novena-intention divine-mercy-content">
+      <h4>{{ "Jesus said:"|t }}</h4>
+      <blockquote class="jesus-words">
+        {{ intention|raw }}
+      </blockquote>
+    </div>
+  {% endif %}
+
+  {% if prayer %}
+    <div class="novena-prayer divine-mercy-content">
+      <h4>{{ "Prayer:"|t }}</h4>
+      <div class="prayer-text">
+        {{ prayer|raw }}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="novena-chaplet-reminder">
+    <p>
+      <em>{{ 'After this prayer, recite the Chaplet of Divine Mercy.'|t }}</em>
+    </p>
+  </div>
+</div>

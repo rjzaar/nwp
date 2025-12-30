@@ -1,0 +1,23 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_has_variant
+    - node.type.prayer
+  module:
+    - divine_mercy
+id: node.prayer.field_has_variant
+field_name: field_has_variant
+entity_type: node
+bundle: prayer
+label: 'Has Flame of Love Variant'
+description: 'Check if this prayer has a Flame of Love variant text.'
+required: false
+translatable: false
+default_value:
+  - value: false
+default_value_callback: ''
+settings:
+  on_label: 'Yes'
+  off_label: 'No'
+field_type: boolean

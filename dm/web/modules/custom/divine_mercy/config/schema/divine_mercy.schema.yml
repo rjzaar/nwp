@@ -1,0 +1,28 @@
+divine_mercy.settings:
+  type: config_object
+  label: 'Divine Mercy settings'
+  mapping:
+    default_font_size:
+      type: integer
+      label: 'Default font size percentage'
+    enable_adoration_video:
+      type: boolean
+      label: 'Enable Eucharist adoration video'
+    novena_start_day:
+      type: integer
+      label: 'Day of week novena starts (0=Sunday, 5=Friday)'
+    adoration_channels:
+      type: sequence
+      label: 'Available adoration video channels'
+      sequence:
+        type: mapping
+        mapping:
+          name:
+            type: string
+            label: 'Channel name'
+          url:
+            type: string
+            label: 'YouTube embed URL'
+          location:
+            type: string
+            label: 'Location description'

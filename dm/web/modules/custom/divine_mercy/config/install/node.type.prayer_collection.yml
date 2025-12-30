@@ -1,0 +1,18 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - divine_mercy
+    - menu_ui
+third_party_settings:
+  menu_ui:
+    available_menus:
+      - main
+    parent: ''
+name: 'Prayer Collection'
+type: prayer_collection
+description: 'A collection of prayers, such as the complete Divine Mercy Chaplet.'
+help: 'Create a collection by adding prayers in the desired order. This can represent the full Chaplet or other prayer sequences.'
+new_revision: true
+preview_mode: 1
+display_submitted: false

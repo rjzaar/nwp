@@ -1,0 +1,17 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - divine_mercy
+    - menu_ui
+third_party_settings:
+  menu_ui:
+    available_menus: []
+    parent: ''
+name: 'Novena Day'
+type: novena_day
+description: 'A day in the Divine Mercy Novena (Days 1-9).'
+help: 'Enter the day number (1-9), theme, intention from Jesus, and the specific prayer for this day.'
+new_revision: true
+preview_mode: 1
+display_submitted: false

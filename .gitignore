@@ -57,6 +57,14 @@
 !lib/
 !lib/**
 
+# Divine Mercy module (custom Drupal module)
+!dm/
+!dm/web/
+!dm/web/modules/
+!dm/web/modules/custom/
+!dm/web/modules/custom/divine_mercy/
+!dm/web/modules/custom/divine_mercy/**
+
 # Tests
 !tests/
 !tests/**

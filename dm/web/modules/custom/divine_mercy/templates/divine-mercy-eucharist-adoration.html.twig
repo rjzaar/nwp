@@ -1,0 +1,47 @@
+{#
+/**
+ * @file
+ * Template for Eucharist adoration video block.
+ *
+ * Available variables:
+ * - channels: Array of available channels.
+ * - position: 'fixed' or 'inline'.
+ * - show_selector: Whether to show channel selector.
+ * - default_channel: Default channel URL.
+ */
+#}
+<div class="divine-mercy-eucharist-adoration position-{{ position }}" id="eucharist-adoration">
+  <div class="adoration-header">
+    <h4 class="adoration-title">{{ 'Live Eucharistic Adoration'|t }}</h4>
+    <button type="button" class="adoration-toggle" aria-label="{{ 'Toggle adoration video'|t }}" aria-expanded="true">
+      <span class="toggle-icon">×</span>
+    </button>
+  </div>
+
+  <div class="adoration-content">
+    {% if show_selector and channels|length > 1 %}
+      <div class="adoration-selector">
+        <label for="adoration-channel" class="visually-hidden">{{ 'Select chapel'|t }}</label>
+        <select id="adoration-channel" class="adoration-channel-select">
+          {% for channel in channels %}
+            <option value="{{ channel.url }}"{% if loop.first %} selected{% endif %}>
+              {{ channel.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
+
+    <div class="adoration-video">
+      <iframe id="adoration-iframe"
+              src="{{ default_channel }}"
+              width="350"
+              height="300"
+              frameborder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowfullscreen
+              title="{{ 'Live Eucharistic Adoration'|t }}">
+      </iframe>
+    </div>
+  </div>
+</div>

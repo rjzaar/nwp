@@ -1,0 +1,21 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_latin_text
+    - node.type.prayer
+  module:
+    - divine_mercy
+    - text
+id: node.prayer.field_latin_text
+field_name: field_latin_text
+entity_type: node
+bundle: prayer
+label: 'Latin Text'
+description: 'The traditional Latin version of this prayer.'
+required: false
+translatable: false
+default_value: []
+default_value_callback: ''
+settings: {}
+field_type: text_long

@@ -1,0 +1,17 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - divine_mercy
+    - menu_ui
+third_party_settings:
+  menu_ui:
+    available_menus: []
+    parent: ''
+name: Prayer
+type: prayer
+description: 'A prayer text used in the Divine Mercy Chaplet or Novena.'
+help: 'Enter the prayer text. Use the Latin field for traditional Latin versions. Mark as "has variant" if a Flame of Love or other variant exists.'
+new_revision: true
+preview_mode: 1
+display_submitted: false

@@ -1,0 +1,14 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - divine_mercy
+id: divine_mercy_contributor
+label: 'Divine Mercy Contributor'
+weight: 3
+is_admin: false
+permissions:
+  - 'access content'
+  - 'submit prayer suggestions'
+  - 'submit prayer translations'
+  - 'submit new prayers'

@@ -1,0 +1,22 @@
+# Divine Mercy Menu Links
+
+divine_mercy.chaplet:
+  title: 'Chaplet'
+  description: 'Pray the Divine Mercy Chaplet'
+  route_name: divine_mercy.chaplet
+  menu_name: main
+  weight: 0
+
+divine_mercy.novena:
+  title: 'Novena'
+  description: 'Divine Mercy Novena'
+  route_name: divine_mercy.novena
+  menu_name: main
+  weight: 1
+
+divine_mercy.admin_settings:
+  title: 'Divine Mercy'
+  description: 'Configure Divine Mercy module settings'
+  route_name: divine_mercy.settings
+  parent: system.admin_config
+  weight: 50

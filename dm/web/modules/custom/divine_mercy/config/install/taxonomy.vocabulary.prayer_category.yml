@@ -1,0 +1,9 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - divine_mercy
+name: 'Prayer Category'
+vid: prayer_category
+description: 'How the prayer is used (leader text, response, full prayer, reflection).'
+weight: 1

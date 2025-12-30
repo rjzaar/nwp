@@ -1,0 +1,21 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_variant_text
+    - node.type.prayer
+  module:
+    - divine_mercy
+    - text
+id: node.prayer.field_variant_text
+field_name: field_variant_text
+entity_type: node
+bundle: prayer
+label: 'Flame of Love Variant Text'
+description: 'The Flame of Love variant of this prayer (if applicable).'
+required: false
+translatable: true
+default_value: []
+default_value_callback: ''
+settings: {}
+field_type: text_long

@@ -1,0 +1,29 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_prayers
+    - node.type.prayer
+    - node.type.prayer_collection
+  module:
+    - divine_mercy
+id: node.prayer_collection.field_prayers
+field_name: field_prayers
+entity_type: node
+bundle: prayer_collection
+label: 'Prayers'
+description: 'Select prayers to include in this collection, in order.'
+required: false
+translatable: false
+default_value: []
+default_value_callback: ''
+settings:
+  handler: 'default:node'
+  handler_settings:
+    target_bundles:
+      prayer: prayer
+    sort:
+      field: field_prayer_order
+      direction: ASC
+    auto_create: false
+field_type: entity_reference

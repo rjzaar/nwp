@@ -1,0 +1,25 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - divine_mercy
+    - node
+id: divine_mercy_editor
+label: 'Divine Mercy Editor'
+weight: 4
+is_admin: false
+permissions:
+  - 'access content'
+  - 'submit prayer suggestions'
+  - 'submit prayer translations'
+  - 'submit new prayers'
+  - 'review prayer suggestions'
+  - 'create prayer content'
+  - 'edit any prayer content'
+  - 'delete any prayer content'
+  - 'create novena_day content'
+  - 'edit any novena_day content'
+  - 'delete any novena_day content'
+  - 'create prayer_collection content'
+  - 'edit any prayer_collection content'
+  - 'delete any prayer_collection content'

@@ -1,0 +1,33 @@
+{#
+/**
+ * @file
+ * Template for the font size control.
+ *
+ * Available variables:
+ * - min_size: Minimum font size percentage.
+ * - max_size: Maximum font size percentage.
+ * - default_size: Default font size percentage.
+ */
+#}
+<div class="divine-mercy-font-size-control" id="font-size-control">
+  <label for="font-size-slider" class="font-size-label">
+    {{ 'Font Size'|t }}
+  </label>
+  <div class="font-size-controls">
+    <button type="button" class="font-size-decrease" aria-label="{{ 'Decrease font size'|t }}">
+      <span aria-hidden="true">−</span>
+    </button>
+    <input type="range"
+           id="font-size-slider"
+           class="font-size-slider"
+           min="{{ min_size }}"
+           max="{{ max_size }}"
+           value="{{ default_size }}"
+           step="5"
+           aria-label="{{ 'Font size slider'|t }}">
+    <button type="button" class="font-size-increase" aria-label="{{ 'Increase font size'|t }}">
+      <span aria-hidden="true">+</span>
+    </button>
+  </div>
+  <span class="font-size-value" id="font-size-value">{{ default_size }}%</span>
+</div>

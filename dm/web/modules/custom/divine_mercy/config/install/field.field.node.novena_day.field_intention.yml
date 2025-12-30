@@ -1,0 +1,21 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_intention
+    - node.type.novena_day
+  module:
+    - divine_mercy
+    - text
+id: node.novena_day.field_intention
+field_name: field_intention
+entity_type: node
+bundle: novena_day
+label: 'Intention (Jesus''s Words)'
+description: 'The words Jesus spoke to St. Faustina for this day''s intention.'
+required: false
+translatable: true
+default_value: []
+default_value_callback: ''
+settings: {}
+field_type: text_long

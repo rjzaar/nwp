@@ -1,0 +1,17 @@
+name: Divine Mercy
+type: module
+description: 'Divine Mercy Chaplet and Novena prayer site with user suggestions and multilingual support.'
+core_version_requirement: ^10 || ^11
+package: Custom
+
+dependencies:
+  - drupal:node
+  - drupal:taxonomy
+  - drupal:user
+  - drupal:views
+  - drupal:language
+  - drupal:content_translation
+  - drupal:config_translation
+  - drupal:locale
+
+configure: divine_mercy.settings

@@ -1,0 +1,22 @@
+# Divine Mercy Permissions
+
+submit prayer suggestions:
+  title: 'Submit prayer suggestions'
+  description: 'Submit private suggestions on prayer content (visible only to admins).'
+
+submit prayer translations:
+  title: 'Submit prayer translations'
+  description: 'Submit new language translations for prayers.'
+
+submit new prayers:
+  title: 'Submit new prayers'
+  description: 'Suggest entirely new prayers for inclusion.'
+
+review prayer suggestions:
+  title: 'Review prayer suggestions'
+  description: 'View and moderate prayer suggestions from users.'
+
+administer divine mercy:
+  title: 'Administer Divine Mercy'
+  description: 'Full administrative access to Divine Mercy settings and content.'
+  restrict access: true

@@ -28,6 +28,8 @@
 !schedule.sh
 !pl
 !pl-completion.bash
+!security.sh
+!live.sh
 
 # Documentation and metadata
 !README.md

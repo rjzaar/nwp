@@ -58,38 +58,46 @@ fi
 ################################################################################
 # Component Hierarchy Definition
 #
-# Format: COMPONENT_ID|DISPLAY_NAME|PARENT_ID|CATEGORY
+# Format: COMPONENT_ID|DISPLAY_NAME|PARENT_ID|CATEGORY|PRIORITY
 # Parent ID of "-" means no parent (root level)
+# Priority: required = needed for NWP to work
+#           recommended = suggested for full experience
+#           optional = extra features (server provisioning, GitLab)
 ################################################################################
 
 declare -a COMPONENTS=(
     # Core Infrastructure - grouped by dependency
-    "docker|Docker Engine|-|core"
-    "docker_compose|Docker Compose Plugin|docker|core"
-    "docker_group|Docker Group Membership|docker|core"
-    "ddev|DDEV Development Environment|docker|core"
-    "ddev_config|DDEV Global Configuration|ddev|core"
-    "mkcert|mkcert SSL Tool|-|core"
-    "mkcert_ca|mkcert Certificate Authority|mkcert|core"
+    "docker|Docker Engine|-|core|required"
+    "docker_compose|Docker Compose Plugin|docker|core|required"
+    "docker_group|Docker Group Membership|docker|core|required"
+    "ddev|DDEV Development Environment|docker|core|required"
+    "ddev_config|DDEV Global Configuration|ddev|core|required"
+    "mkcert|mkcert SSL Tool|-|core|recommended"
+    "mkcert_ca|mkcert Certificate Authority|mkcert|core|recommended"
 
     # NWP Tools
-    "nwp_cli|NWP CLI Command|-|tools"
-    "nwp_config|NWP Configuration (cnwp.yml)|-|tools"
-    "nwp_secrets|NWP Secrets (.secrets.yml)|-|tools"
+    "nwp_cli|NWP CLI Command|-|tools|recommended"
+    "nwp_config|NWP Configuration (cnwp.yml)|-|tools|required"
+    "nwp_secrets|NWP Secrets (.secrets.yml)|-|tools|recommended"
 
     # Linode Infrastructure
     # NOTE: SSH keys are passed directly to servers via StackScripts during
     # provisioning. Adding keys to Linode profile is NOT required for NWP.
-    "linode_cli|Linode CLI|-|linode"
-    "linode_config|Linode CLI Configuration|linode_cli|linode"
-    "ssh_keys|SSH Keys for Deployment|linode_cli|linode"
+    "linode_cli|Linode CLI|-|linode|optional"
+    "linode_config|Linode CLI Configuration|linode_cli|linode|optional"
+    "ssh_keys|SSH Keys for Deployment|linode_cli|linode|optional"
 
     # GitLab Infrastructure (requires Linode)
-    "gitlab_keys|GitLab SSH Keys|linode_config|gitlab"
-    "gitlab_server|GitLab Server|gitlab_keys|gitlab"
-    "gitlab_dns|GitLab DNS Record|gitlab_server|gitlab"
-    "gitlab_ssh_config|GitLab SSH Config|gitlab_server|gitlab"
+    "gitlab_keys|GitLab SSH Keys|linode_config|gitlab|optional"
+    "gitlab_server|GitLab Server|gitlab_keys|gitlab|optional"
+    "gitlab_dns|GitLab DNS Record|gitlab_server|gitlab|optional"
+    "gitlab_ssh_config|GitLab SSH Config|gitlab_server|gitlab|optional"
 )
+
+# Priority colors
+PRIORITY_REQUIRED="${RED}"      # Red = Required for NWP to work
+PRIORITY_RECOMMENDED="${YELLOW}" # Yellow = Recommended for full experience
+PRIORITY_OPTIONAL="${CYAN}"      # Cyan = Optional extra features
 
 # Manual input storage (collected once, used by multiple components)
 declare -A MANUAL_INPUTS
@@ -1401,21 +1409,27 @@ show_checkbox_ui() {
         local name=$(echo "$comp" | cut -d'|' -f2)
         local parent=$(echo "$comp" | cut -d'|' -f3)
         local category=$(echo "$comp" | cut -d'|' -f4)
+        local priority=$(echo "$comp" | cut -d'|' -f5)
 
-        # Add indentation for children
-        local display_name="$name"
+        # Add priority indicator and indentation
+        local priority_marker=""
+        case "$priority" in
+            required)    priority_marker="[REQ]" ;;
+            recommended) priority_marker="[REC]" ;;
+            optional)    priority_marker="[OPT]" ;;
+        esac
+
+        local display_name="$priority_marker $name"
         if [ "$parent" != "-" ]; then
-            display_name="  └─ $name"
+            display_name="  └─ $priority_marker $name"
         fi
 
-        # Default selection based on current state
+        # Default selection based on current state and priority
         local state="off"
         if [ "${COMPONENT_INSTALLED[$id]:-0}" -eq 1 ]; then
             state="on"
-        fi
-
-        # For core items, default to on if not installed but needed
-        if [ "$category" == "core" ] && [ "$parent" == "-" ]; then
+        elif [ "$priority" == "required" ]; then
+            # Required components default to on
             state="on"
         fi
 
@@ -1426,8 +1440,8 @@ show_checkbox_ui() {
     local result
     result=$($dialog_cmd --title "NWP Setup Manager" \
         --backtitle "Select components to install/keep (Space to toggle, Enter to confirm)" \
-        --checklist "Use SPACE to select/deselect components.\nComponents with └─ depend on their parent.\n\nLegend: [*] = installed, [ ] = not installed" \
-        25 70 15 \
+        --checklist "Use SPACE to select/deselect components.\nComponents with └─ depend on their parent.\n\n[REQ]=Required  [REC]=Recommended  [OPT]=Optional" \
+        25 75 15 \
         "${items[@]}" \
         3>&1 1>&2 2>&3)
 
@@ -1455,6 +1469,8 @@ show_checkbox_ui() {
 show_text_ui() {
     print_header "Component Selection"
 
+    echo -e "Legend: ${RED}[REQ]${NC} Required  ${YELLOW}[REC]${NC} Recommended  ${CYAN}[OPT]${NC} Optional"
+    echo ""
     echo "Current installation state:"
     echo ""
 
@@ -1466,27 +1482,40 @@ show_text_ui() {
         local name=$(echo "$comp" | cut -d'|' -f2)
         local parent=$(echo "$comp" | cut -d'|' -f3)
         local category=$(echo "$comp" | cut -d'|' -f4)
+        local priority=$(echo "$comp" | cut -d'|' -f5)
 
         local indent=""
         if [ "$parent" != "-" ]; then
             indent="    "
         fi
 
+        # Get priority color and marker
+        local priority_color=""
+        local priority_marker=""
+        case "$priority" in
+            required)    priority_color="${RED}"; priority_marker="[REQ]" ;;
+            recommended) priority_color="${YELLOW}"; priority_marker="[REC]" ;;
+            optional)    priority_color="${CYAN}"; priority_marker="[OPT]" ;;
+        esac
+
         local status_icon="[ ]"
         if [ "${COMPONENT_INSTALLED[$id]:-0}" -eq 1 ]; then
             status_icon="[*]"
+            COMPONENT_SELECTED[$id]=1
+        elif [ "$priority" == "required" ]; then
+            # Pre-select required components
             COMPONENT_SELECTED[$id]=1
         else
             COMPONENT_SELECTED[$id]=0
         fi
 
-        printf "%s%2d) %s %s\n" "$indent" "$num" "$status_icon" "$name"
+        printf "%s%2d) %s ${priority_color}%s${NC} %s\n" "$indent" "$num" "$status_icon" "$priority_marker" "$name"
         NUM_TO_ID[$num]=$id
         ((num++))
     done
 
     echo ""
-    echo "Enter numbers to toggle (space-separated), 'a' for all core, or 'q' to proceed:"
+    echo "Enter numbers to toggle (space-separated), 'a' for all required+recommended, or 'q' to proceed:"
     read -p "> " selections
 
     if [ "$selections" == "q" ] || [ -z "$selections" ]; then
@@ -1494,11 +1523,11 @@ show_text_ui() {
     fi
 
     if [ "$selections" == "a" ]; then
-        # Select all core components
+        # Select all required and recommended components
         for comp in "${COMPONENTS[@]}"; do
             local id=$(echo "$comp" | cut -d'|' -f1)
-            local category=$(echo "$comp" | cut -d'|' -f4)
-            if [ "$category" == "core" ]; then
+            local priority=$(echo "$comp" | cut -d'|' -f5)
+            if [ "$priority" == "required" ] || [ "$priority" == "recommended" ]; then
                 COMPONENT_SELECTED[$id]=1
             fi
         done
@@ -1644,6 +1673,10 @@ show_status() {
     detect_all_current_states
     load_original_state
 
+    # Show legend
+    echo -e "Legend: ${RED}■${NC} Required  ${YELLOW}■${NC} Recommended  ${CYAN}■${NC} Optional"
+    echo ""
+
     local current_category=""
 
     for comp in "${COMPONENTS[@]}"; do
@@ -1651,6 +1684,7 @@ show_status() {
         local name=$(echo "$comp" | cut -d'|' -f2)
         local parent=$(echo "$comp" | cut -d'|' -f3)
         local category=$(echo "$comp" | cut -d'|' -f4)
+        local priority=$(echo "$comp" | cut -d'|' -f5)
 
         # Print category header
         if [ "$category" != "$current_category" ]; then
@@ -1670,16 +1704,26 @@ show_status() {
             indent="  "
         fi
 
-        local status="FAIL"
+        # Get priority color
+        local priority_color=""
+        case "$priority" in
+            required)    priority_color="${RED}" ;;
+            recommended) priority_color="${YELLOW}" ;;
+            optional)    priority_color="${CYAN}" ;;
+        esac
+
+        local status_icon=""
         local extra=""
         if [ "${COMPONENT_INSTALLED[$id]:-0}" -eq 1 ]; then
-            status="OK"
+            status_icon="${GREEN}✓${NC}"
             if [ "${COMPONENT_ORIGINAL[$id]:-0}" -eq 1 ]; then
                 extra=" (pre-existing)"
             fi
+        else
+            status_icon="${RED}✗${NC}"
         fi
 
-        print_status "$status" "${indent}${name}${extra}"
+        echo -e "${indent}[${status_icon}] ${priority_color}■${NC} ${name}${extra}"
     done
 
     echo ""
@@ -1719,11 +1763,11 @@ main() {
             detect_all_current_states
             load_original_state
 
-            # Select all core components
+            # Select all required and recommended components
             for comp in "${COMPONENTS[@]}"; do
                 local id=$(echo "$comp" | cut -d'|' -f1)
-                local category=$(echo "$comp" | cut -d'|' -f4)
-                if [ "$category" == "core" ]; then
+                local priority=$(echo "$comp" | cut -d'|' -f5)
+                if [ "$priority" == "required" ] || [ "$priority" == "recommended" ]; then
                     COMPONENT_SELECTED[$id]=1
                 else
                     COMPONENT_SELECTED[$id]=${COMPONENT_INSTALLED[$id]:-0}

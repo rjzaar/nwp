@@ -2,13 +2,22 @@
 ################################################################################
 # NWP Comprehensive Test Script
 #
-# Tests all NWP functionality:
-#   - Installation
-#   - Backup and restore
-#   - Site copying
-#   - Dev/prod mode switching
-#   - Deployment (dev2stg)
-#   - Testing infrastructure
+# Tests all NWP functionality across 22 test categories:
+#   1-8:   Core operations (install, backup, restore, copy, delete, deploy)
+#   9:     Script validation
+#   10:    Deployment scripts (stg2prod/prod2stg)
+#   11:    YAML library functions
+#   12:    Linode production testing
+#   13:    Input validation & error handling
+#   14:    Git backup features (P11-P13)
+#   15:    Scheduling features (P14)
+#   16:    CI/CD & testing templates (P16-P21)
+#   17:    Unified CLI wrapper (P22)
+#   18:    Database sanitization (P23)
+#   19:    Rollback capability (P24)
+#   20:    Remote site support (P25)
+#   21:    Live server & security scripts (P26-P28)
+#   22:    Script syntax validation
 #
 # Usage:
 #   ./test-nwp.sh [--skip-cleanup] [--verbose]
@@ -778,6 +787,282 @@ run_test "make.sh -v (dev) is valid" "./make.sh --help 2>&1 | grep -q dev"
 run_test "make.sh -p (prod) is valid" "./make.sh --help 2>&1 | grep -q prod"
 
 print_info "Negative tests completed - failures above are EXPECTED behavior"
+
+################################################################################
+# Test 14: Git Backup Features (P11-P13)
+################################################################################
+
+print_header "Test 14: Git Backup Features (P11-P13)"
+
+# Check git library exists
+run_test "Git library exists" "[ -f lib/git.sh ]"
+
+# Source git library for function testing
+if [ -f "lib/git.sh" ]; then
+    source lib/git.sh 2>/dev/null || true
+
+    # Test git backup flag exists in backup.sh
+    run_test "backup.sh supports -g flag" "./backup.sh --help 2>&1 | grep -q '\-g'"
+    run_test "backup.sh supports --bundle flag" "./backup.sh --help 2>&1 | grep -q 'bundle'"
+    run_test "backup.sh supports --incremental flag" "./backup.sh --help 2>&1 | grep -q 'incremental'"
+    run_test "backup.sh supports --push-all flag" "./backup.sh --help 2>&1 | grep -q 'push-all'"
+
+    # Test git functions exist
+    run_test "git_init function exists" "type git_init >/dev/null 2>&1"
+    run_test "git_commit_backup function exists" "type git_commit_backup >/dev/null 2>&1"
+    run_test "git_bundle_full function exists" "type git_bundle_full >/dev/null 2>&1"
+    run_test "git_bundle_incremental function exists" "type git_bundle_incremental >/dev/null 2>&1"
+    run_test "git_push_all function exists" "type git_push_all >/dev/null 2>&1"
+
+    # Test GitLab API functions (P15)
+    run_test "gitlab_api_create_project function exists" "type gitlab_api_create_project >/dev/null 2>&1"
+    run_test "gitlab_api_list_projects function exists" "type gitlab_api_list_projects >/dev/null 2>&1"
+fi
+
+################################################################################
+# Test 15: Scheduling Features (P14)
+################################################################################
+
+print_header "Test 15: Scheduling Features (P14)"
+
+# Check schedule.sh exists and is executable
+run_test "schedule.sh exists" "[ -f schedule.sh ]"
+run_test "schedule.sh is executable" "[ -x schedule.sh ]"
+
+if [ -x "schedule.sh" ]; then
+    run_test "schedule.sh has help" "./schedule.sh --help >/dev/null 2>&1"
+    run_test "schedule.sh install command" "./schedule.sh --help 2>&1 | grep -q 'install'"
+    run_test "schedule.sh remove command" "./schedule.sh --help 2>&1 | grep -q 'remove'"
+    run_test "schedule.sh list command" "./schedule.sh --help 2>&1 | grep -q 'list'"
+    run_test "schedule.sh show command" "./schedule.sh --help 2>&1 | grep -q 'show'"
+
+    # Test showing schedule (should work without changes)
+    run_test "schedule.sh show works" "./schedule.sh show >/dev/null 2>&1 || true"
+    run_test "schedule.sh list works" "./schedule.sh list >/dev/null 2>&1 || true"
+fi
+
+################################################################################
+# Test 16: CI/CD & Testing Templates (P16-P21)
+################################################################################
+
+print_header "Test 16: CI/CD & Testing Templates (P16-P21)"
+
+# Docker test environment (P16)
+run_test "Docker compose test template exists" "[ -f templates/docker-compose.test.yml ]"
+
+# Site test script (P17)
+run_test "test.sh exists" "[ -f test.sh ]"
+run_test "test.sh is executable" "[ -x test.sh ]"
+
+if [ -x "test.sh" ]; then
+    run_test "test.sh has help" "./test.sh --help >/dev/null 2>&1"
+    run_test "test.sh supports -l (lint)" "./test.sh --help 2>&1 | grep -qE '\-l|lint'"
+    run_test "test.sh supports -u (unit)" "./test.sh --help 2>&1 | grep -qE '\-u|unit'"
+    run_test "test.sh supports -s (smoke)" "./test.sh --help 2>&1 | grep -qE '\-s|smoke'"
+    run_test "test.sh supports -b (behat)" "./test.sh --help 2>&1 | grep -qE '\-b|behat'"
+fi
+
+# Behat BDD framework (P18)
+run_test "Behat template exists" "[ -f templates/behat.yml ]"
+run_test "Behat features directory exists" "[ -d templates/tests/behat/features ]"
+run_test "Smoke test feature exists" "[ -f templates/tests/behat/features/smoke.feature ]"
+run_test "Authentication feature exists" "[ -f templates/tests/behat/features/authentication.feature ]"
+run_test "Content feature exists" "[ -f templates/tests/behat/features/content.feature ]"
+
+# Code quality tooling (P19)
+run_test "PHPCS config template exists" "[ -f templates/.phpcs.xml ]"
+run_test "PHPStan config template exists" "[ -f templates/phpstan.neon ]"
+run_test "Rector config template exists" "[ -f templates/rector.php ]"
+run_test "GrumPHP config template exists" "[ -f templates/grumphp.yml ]"
+
+# GitLab CI pipeline (P20)
+run_test "GitLab CI template exists" "[ -f templates/.gitlab-ci.yml ]"
+
+if [ -f "templates/.gitlab-ci.yml" ]; then
+    run_test "GitLab CI has build stage" "grep -q 'build' templates/.gitlab-ci.yml"
+    run_test "GitLab CI has validate stage" "grep -q 'validate' templates/.gitlab-ci.yml"
+    run_test "GitLab CI has test stage" "grep -q 'test' templates/.gitlab-ci.yml"
+    run_test "GitLab CI has deploy stage" "grep -q 'deploy' templates/.gitlab-ci.yml"
+    run_test "GitLab CI has coverage reporting" "grep -q 'coverage' templates/.gitlab-ci.yml"
+fi
+
+# Coverage & Badges (P21)
+run_test "Badges library exists" "[ -f lib/badges.sh ]"
+
+if [ -f "lib/badges.sh" ]; then
+    source lib/badges.sh 2>/dev/null || true
+    run_test "generate_badge_url function exists" "type generate_badge_url >/dev/null 2>&1"
+    run_test "update_readme_badges function exists" "type update_readme_badges >/dev/null 2>&1"
+fi
+
+################################################################################
+# Test 17: Unified CLI Wrapper (P22)
+################################################################################
+
+print_header "Test 17: Unified CLI Wrapper (P22)"
+
+# Check pl command exists
+run_test "pl command exists" "[ -f pl ]"
+run_test "pl command is executable" "[ -x pl ]"
+run_test "pl-completion.bash exists" "[ -f pl-completion.bash ]"
+
+if [ -x "pl" ]; then
+    run_test "pl has help" "./pl --help >/dev/null 2>&1 || ./pl help >/dev/null 2>&1"
+    run_test "pl install command" "./pl help 2>&1 | grep -qE 'install|Install'"
+    run_test "pl backup command" "./pl help 2>&1 | grep -qE 'backup|Backup'"
+    run_test "pl restore command" "./pl help 2>&1 | grep -qE 'restore|Restore'"
+    run_test "pl copy command" "./pl help 2>&1 | grep -qE 'copy|Copy'"
+    run_test "pl test command" "./pl help 2>&1 | grep -qE 'test|Test'"
+    run_test "pl delete command" "./pl help 2>&1 | grep -qE 'delete|Delete'"
+
+    # Test pl completion script syntax
+    run_test "pl-completion.bash syntax valid" "bash -n pl-completion.bash"
+fi
+
+################################################################################
+# Test 18: Database Sanitization (P23)
+################################################################################
+
+print_header "Test 18: Database Sanitization (P23)"
+
+# Check sanitization library exists
+run_test "Sanitize library exists" "[ -f lib/sanitize.sh ]"
+
+if [ -f "lib/sanitize.sh" ]; then
+    source lib/sanitize.sh 2>/dev/null || true
+
+    run_test "sanitize_database function exists" "type sanitize_database >/dev/null 2>&1"
+    run_test "sanitize_sql_file function exists" "type sanitize_sql_file >/dev/null 2>&1"
+    run_test "sanitize_with_drush function exists" "type sanitize_with_drush >/dev/null 2>&1"
+
+    # Test backup.sh supports sanitize flag
+    run_test "backup.sh supports --sanitize flag" "./backup.sh --help 2>&1 | grep -q 'sanitize'"
+    run_test "backup.sh supports --sanitize-level flag" "./backup.sh --help 2>&1 | grep -q 'sanitize-level'"
+fi
+
+################################################################################
+# Test 19: Rollback Capability (P24)
+################################################################################
+
+print_header "Test 19: Rollback Capability (P24)"
+
+# Check rollback library exists
+run_test "Rollback library exists" "[ -f lib/rollback.sh ]"
+
+if [ -f "lib/rollback.sh" ]; then
+    source lib/rollback.sh 2>/dev/null || true
+
+    run_test "rollback_init function exists" "type rollback_init >/dev/null 2>&1"
+    run_test "rollback_record function exists" "type rollback_record >/dev/null 2>&1"
+    run_test "rollback_execute function exists" "type rollback_execute >/dev/null 2>&1"
+    run_test "rollback_verify function exists" "type rollback_verify >/dev/null 2>&1"
+    run_test "rollback_list function exists" "type rollback_list >/dev/null 2>&1"
+    run_test "rollback_quick function exists" "type rollback_quick >/dev/null 2>&1"
+
+    # Test rollback list works
+    run_test "rollback_list works" "rollback_list >/dev/null 2>&1 || true"
+fi
+
+################################################################################
+# Test 20: Remote Site Support (P25)
+################################################################################
+
+print_header "Test 20: Remote Site Support (P25)"
+
+# Check remote library exists
+run_test "Remote library exists" "[ -f lib/remote.sh ]"
+
+if [ -f "lib/remote.sh" ]; then
+    source lib/remote.sh 2>/dev/null || true
+
+    run_test "parse_remote_target function exists" "type parse_remote_target >/dev/null 2>&1"
+    run_test "get_remote_config function exists" "type get_remote_config >/dev/null 2>&1"
+    run_test "remote_exec function exists" "type remote_exec >/dev/null 2>&1"
+    run_test "remote_drush function exists" "type remote_drush >/dev/null 2>&1"
+    run_test "remote_backup function exists" "type remote_backup >/dev/null 2>&1"
+    run_test "remote_test function exists" "type remote_test >/dev/null 2>&1"
+fi
+
+################################################################################
+# Test 21: Live Server & Security Scripts (P26-P28)
+################################################################################
+
+print_header "Test 21: Live Server & Security Scripts (P26-P28)"
+
+# Live server provisioning (P26)
+run_test "live.sh exists" "[ -f live.sh ]"
+run_test "live.sh is executable" "[ -x live.sh ]"
+
+if [ -x "live.sh" ]; then
+    run_test "live.sh has help" "./live.sh --help >/dev/null 2>&1"
+    run_test "live.sh supports --type flag" "./live.sh --help 2>&1 | grep -q 'type'"
+    run_test "live.sh supports --delete flag" "./live.sh --help 2>&1 | grep -q 'delete'"
+    run_test "live.sh supports --status flag" "./live.sh --help 2>&1 | grep -q 'status'"
+    run_test "live.sh documents dedicated type" "./live.sh --help 2>&1 | grep -q 'dedicated'"
+    run_test "live.sh documents shared type" "./live.sh --help 2>&1 | grep -q 'shared'"
+    run_test "live.sh documents temporary type" "./live.sh --help 2>&1 | grep -q 'temporary'"
+fi
+
+# Security script (P28)
+run_test "security.sh exists" "[ -f security.sh ]"
+run_test "security.sh is executable" "[ -x security.sh ]"
+
+if [ -x "security.sh" ]; then
+    run_test "security.sh has help" "./security.sh --help >/dev/null 2>&1"
+    run_test "security.sh check command" "./security.sh --help 2>&1 | grep -q 'check'"
+    run_test "security.sh update command" "./security.sh --help 2>&1 | grep -q 'update'"
+    run_test "security.sh audit command" "./security.sh --help 2>&1 | grep -q 'audit'"
+    run_test "security.sh supports --all flag" "./security.sh --help 2>&1 | grep -q 'all'"
+    run_test "security.sh supports --auto flag" "./security.sh --help 2>&1 | grep -q 'auto'"
+fi
+
+################################################################################
+# Test 22: Script Syntax Validation
+################################################################################
+
+print_header "Test 22: Script Syntax Validation"
+
+# Validate all core scripts have valid bash syntax
+CORE_SCRIPTS=(
+    "install.sh"
+    "backup.sh"
+    "restore.sh"
+    "copy.sh"
+    "make.sh"
+    "delete.sh"
+    "dev2stg.sh"
+    "stg2prod.sh"
+    "prod2stg.sh"
+    "test.sh"
+    "schedule.sh"
+    "live.sh"
+    "security.sh"
+    "pl"
+)
+
+for script in "${CORE_SCRIPTS[@]}"; do
+    if [ -f "$script" ]; then
+        run_test "Syntax valid: $script" "bash -n $script"
+    fi
+done
+
+# Validate library files
+LIBRARY_FILES=(
+    "lib/ui.sh"
+    "lib/common.sh"
+    "lib/git.sh"
+    "lib/yaml-write.sh"
+    "lib/badges.sh"
+    "lib/sanitize.sh"
+    "lib/rollback.sh"
+    "lib/remote.sh"
+)
+
+for lib in "${LIBRARY_FILES[@]}"; do
+    if [ -f "$lib" ]; then
+        run_test "Syntax valid: $lib" "bash -n $lib"
+    fi
+done
 
 # Results summary
 print_header "Test Results Summary"

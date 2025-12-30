@@ -41,6 +41,7 @@ ${BOLD}OPTIONS:${NC}
     -e, --endpoint=NAME     Backup to different endpoint (default: sitename)
     --bundle                Create git bundle for offline/archival backup
     --incremental           Create incremental bundle (use with --bundle)
+    --push-all              Push to all configured remotes (with -g)
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Name of the DDEV site to backup
@@ -55,6 +56,7 @@ ${BOLD}EXAMPLES:${NC}
     ./backup.sh -bd nwp                          # DB-only backup with debug output
     ./backup.sh --bundle nwp                     # Create git bundle (full)
     ./backup.sh --bundle --incremental nwp       # Create incremental bundle
+    ./backup.sh -g --push-all nwp                # Push to all remotes
 
 ${BOLD}COMBINED FLAGS:${NC}
     Multiple short flags can be combined: -bd = -b -d
@@ -248,6 +250,7 @@ backup_site() {
     local git_backup=${5:-false}
     local bundle=${6:-false}
     local incremental=${7:-false}
+    local push_all=${8:-false}
 
     if [ "$db_only" == "true" ]; then
         print_header "NWP Database Backup: $sitename"
@@ -326,6 +329,12 @@ backup_site() {
 
         if git_backup "$backup_base" "$endpoint" "$backup_type" "$commit_msg"; then
             echo -e "${GREEN}✓${NC} Git:      Committed and pushed to GitLab"
+
+            # Push to additional remotes if requested
+            if [ "$push_all" == "true" ]; then
+                print_info "Pushing to additional remotes..."
+                git_push_all "$backup_base" "backup" "${endpoint}-${backup_type}" "backups"
+            fi
         else
             print_warning "Git backup completed with warnings"
         fi
@@ -354,13 +363,14 @@ main() {
     local GIT_BACKUP=false
     local BUNDLE=false
     local INCREMENTAL=false
+    local PUSH_ALL=false
     local ENDPOINT=""
     local SITENAME=""
     local MESSAGE=""
 
     # Use getopt for option parsing
     local OPTIONS=hdbge:
-    local LONGOPTS=help,debug,db-only,git,endpoint:,bundle,incremental
+    local LONGOPTS=help,debug,db-only,git,endpoint:,bundle,incremental,push-all
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -397,6 +407,10 @@ main() {
                 ;;
             --incremental)
                 INCREMENTAL=true
+                shift
+                ;;
+            --push-all)
+                PUSH_ALL=true
                 shift
                 ;;
             --)
@@ -439,9 +453,10 @@ main() {
     ocmsg "Git backup: $GIT_BACKUP"
     ocmsg "Bundle: $BUNDLE"
     ocmsg "Incremental: $INCREMENTAL"
+    ocmsg "Push all: $PUSH_ALL"
 
     # Run backup
-    if backup_site "$SITENAME" "$ENDPOINT" "$MESSAGE" "$DB_ONLY" "$GIT_BACKUP" "$BUNDLE" "$INCREMENTAL"; then
+    if backup_site "$SITENAME" "$ENDPOINT" "$MESSAGE" "$DB_ONLY" "$GIT_BACKUP" "$BUNDLE" "$INCREMENTAL" "$PUSH_ALL"; then
         show_elapsed_time "Backup"
         exit 0
     else

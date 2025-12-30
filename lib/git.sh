@@ -77,6 +77,211 @@ check_git_server_alias() {
     fi
 }
 
+################################################################################
+# Additional Remote Support (P13)
+################################################################################
+
+# Get additional remotes from cnwp.yml
+# Returns: remote configurations as "name|url|enabled" per line
+get_additional_remotes() {
+    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+
+    if [ ! -f "$cnwp_file" ]; then
+        return 1
+    fi
+
+    # Parse additional_remotes from git_backup section
+    awk '
+        /^git_backup:/ { in_git_backup = 1; next }
+        in_git_backup && /^[a-zA-Z]/ && !/^  / { in_git_backup = 0 }
+        in_git_backup && /^  additional_remotes:/ { in_remotes = 1; next }
+        in_remotes && /^  [a-zA-Z]/ && !/^    / { in_remotes = 0 }
+        in_remotes && /^    [a-zA-Z_]+:/ {
+            remote_name = $0
+            gsub(/^    /, "", remote_name)
+            gsub(/:.*/, "", remote_name)
+            next
+        }
+        in_remotes && remote_name && /url:/ {
+            url = $0
+            gsub(/.*url: */, "", url)
+            gsub(/["'"'"']/, "", url)
+            urls[remote_name] = url
+        }
+        in_remotes && remote_name && /path:/ {
+            path = $0
+            gsub(/.*path: */, "", path)
+            gsub(/["'"'"']/, "", path)
+            paths[remote_name] = path
+        }
+        in_remotes && remote_name && /enabled:/ {
+            enabled = $0
+            gsub(/.*enabled: */, "", enabled)
+            gsub(/["'"'"']/, "", enabled)
+            enableds[remote_name] = enabled
+        }
+        END {
+            for (name in urls) {
+                enabled = (enableds[name] == "true" || enableds[name] == "yes") ? "true" : "false"
+                print name "|" urls[name] "|" enabled
+            }
+            for (name in paths) {
+                if (!(name in urls)) {
+                    enabled = (enableds[name] == "true" || enableds[name] == "yes") ? "true" : "false"
+                    print name "|" paths[name] "|" enabled
+                }
+            }
+        }
+    ' "$cnwp_file"
+}
+
+# Add additional remote to repository
+# Usage: git_add_remote "/path/to/repo" "remote-name" "url"
+git_add_remote() {
+    local repo_path="$1"
+    local remote_name="$2"
+    local remote_url="$3"
+
+    if [ ! -d "$repo_path/.git" ]; then
+        print_error "Not a git repository: $repo_path"
+        return 1
+    fi
+
+    cd "$repo_path" || return 1
+
+    # Check if remote already exists
+    if git remote get-url "$remote_name" &>/dev/null; then
+        # Update URL if different
+        local current_url=$(git remote get-url "$remote_name")
+        if [ "$current_url" != "$remote_url" ]; then
+            git remote set-url "$remote_name" "$remote_url"
+            ocmsg "Updated remote '$remote_name' URL"
+        fi
+    else
+        # Add new remote
+        git remote add "$remote_name" "$remote_url"
+        print_status "OK" "Added remote: $remote_name -> $remote_url"
+    fi
+
+    cd - > /dev/null
+    return 0
+}
+
+# Push to all configured remotes
+# Usage: git_push_all "/path/to/repo" "branch"
+git_push_all() {
+    local repo_path="$1"
+    local branch="${2:-backup}"
+    local project_name="${3:-}"
+    local group="${4:-backups}"
+
+    # First, push to primary (origin/NWP GitLab)
+    if ! git_push "$repo_path" "$branch" "$project_name" "$group"; then
+        print_warning "Primary push failed"
+    fi
+
+    # Get additional remotes
+    local remotes=$(get_additional_remotes)
+
+    if [ -z "$remotes" ]; then
+        return 0
+    fi
+
+    cd "$repo_path" || return 1
+
+    # Push to each enabled additional remote
+    echo "$remotes" | while IFS='|' read -r name url enabled; do
+        if [ "$enabled" != "true" ]; then
+            ocmsg "Skipping disabled remote: $name"
+            continue
+        fi
+
+        # Add remote if not exists
+        if ! git remote get-url "$name" &>/dev/null; then
+            git remote add "$name" "$url"
+            ocmsg "Added remote: $name"
+        fi
+
+        # Push to remote (continue on failure for additional remotes)
+        print_info "Pushing to $name..."
+        if git push "$name" "$branch" 2>&1; then
+            print_status "OK" "Pushed to $name"
+        else
+            print_warning "Failed to push to $name (continuing...)"
+        fi
+    done
+
+    cd - > /dev/null
+    return 0
+}
+
+# Setup local bare repository for backup
+# Usage: git_setup_local_bare "/path/to/bare/repo.git"
+git_setup_local_bare() {
+    local bare_path="$1"
+
+    if [ -d "$bare_path" ]; then
+        if [ -f "$bare_path/HEAD" ]; then
+            ocmsg "Bare repository already exists: $bare_path"
+            return 0
+        fi
+    fi
+
+    # Create bare repository
+    mkdir -p "$bare_path"
+    if git init --bare "$bare_path"; then
+        print_status "OK" "Created bare repository: $bare_path"
+        return 0
+    else
+        print_error "Failed to create bare repository"
+        return 1
+    fi
+}
+
+# Configure remotes from cnwp.yml for a repository
+# Usage: git_configure_remotes "/path/to/repo" "project-name"
+git_configure_remotes() {
+    local repo_path="$1"
+    local project_name="$2"
+
+    if [ ! -d "$repo_path/.git" ]; then
+        print_error "Not a git repository: $repo_path"
+        return 1
+    fi
+
+    # Get additional remotes
+    local remotes=$(get_additional_remotes)
+
+    if [ -z "$remotes" ]; then
+        ocmsg "No additional remotes configured"
+        return 0
+    fi
+
+    echo "$remotes" | while IFS='|' read -r name url enabled; do
+        if [ "$enabled" != "true" ]; then
+            continue
+        fi
+
+        # Replace placeholders in URL
+        local final_url="$url"
+        final_url="${final_url//\{project\}/$project_name}"
+        final_url="${final_url//\{PROJECT\}/$project_name}"
+
+        # If it's a path (local repo), ensure it exists
+        if [[ "$final_url" == /* ]]; then
+            local bare_path="${final_url%.git}.git"
+            if [ ! -d "$bare_path" ]; then
+                git_setup_local_bare "$bare_path"
+            fi
+            final_url="$bare_path"
+        fi
+
+        git_add_remote "$repo_path" "$name" "$final_url"
+    done
+
+    return 0
+}
+
 # Initialize git repository if not exists
 # Usage: git_init_repo "/path/to/repo" "repo-name"
 git_init_repo() {

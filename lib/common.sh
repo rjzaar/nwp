@@ -88,3 +88,157 @@ ask_yes_no() {
             ;;
     esac
 }
+
+################################################################################
+# Configuration Reading Functions
+################################################################################
+
+# Get secret value from .secrets.yml with fallback
+# Usage: get_secret "section.key" "default_value"
+# Example: get_secret "moodle.admin_password" "Admin123!"
+get_secret() {
+    local path="$1"
+    local default="$2"
+    local secrets_file="${SCRIPT_DIR}/.secrets.yml"
+
+    if [ ! -f "$secrets_file" ]; then
+        echo "$default"
+        return
+    fi
+
+    # Parse section.key format
+    local section="${path%%.*}"
+    local key="${path#*.}"
+
+    local value=$(awk -v section="$section" -v key="$key" '
+        $0 ~ "^" section ":" { in_section = 1; next }
+        in_section && /^[a-zA-Z]/ && !/^  / { in_section = 0 }
+        in_section && $0 ~ "^  " key ":" {
+            sub("^  " key ": *", "")
+            gsub(/["'"'"']/, "")
+            # Remove inline comments
+            sub(/ *#.*$/, "")
+            # Trim whitespace
+            gsub(/^[ \t]+|[ \t]+$/, "")
+            print
+            exit
+        }
+    ' "$secrets_file")
+
+    if [ -n "$value" ] && [ "$value" != "" ]; then
+        echo "$value"
+    else
+        echo "$default"
+    fi
+}
+
+# Get nested secret value from .secrets.yml (for deeper nesting like gitlab.server.ip)
+# Usage: get_secret_nested "section.subsection.key" "default_value"
+get_secret_nested() {
+    local path="$1"
+    local default="$2"
+    local secrets_file="${SCRIPT_DIR}/.secrets.yml"
+
+    if [ ! -f "$secrets_file" ]; then
+        echo "$default"
+        return
+    fi
+
+    # Count depth
+    local depth=$(echo "$path" | tr -cd '.' | wc -c)
+
+    if [ "$depth" -eq 1 ]; then
+        # Simple section.key
+        get_secret "$path" "$default"
+        return
+    fi
+
+    # For section.subsection.key format
+    local section="${path%%.*}"
+    local rest="${path#*.}"
+    local subsection="${rest%%.*}"
+    local key="${rest#*.}"
+
+    local value=$(awk -v section="$section" -v subsection="$subsection" -v key="$key" '
+        $0 ~ "^" section ":" { in_section = 1; next }
+        in_section && /^[a-zA-Z]/ && !/^  / { in_section = 0 }
+        in_section && $0 ~ "^  " subsection ":" { in_subsection = 1; next }
+        in_subsection && /^  [a-zA-Z]/ && !/^    / { in_subsection = 0 }
+        in_subsection && $0 ~ "^    " key ":" {
+            sub("^    " key ": *", "")
+            gsub(/["'"'"']/, "")
+            sub(/ *#.*$/, "")
+            gsub(/^[ \t]+|[ \t]+$/, "")
+            print
+            exit
+        }
+    ' "$secrets_file")
+
+    if [ -n "$value" ] && [ "$value" != "" ]; then
+        echo "$value"
+    else
+        echo "$default"
+    fi
+}
+
+# Get setting value from cnwp.yml with fallback
+# Usage: get_setting "section.key" "default_value"
+# Example: get_setting "php_settings.memory_limit" "512M"
+get_setting() {
+    local path="$1"
+    local default="$2"
+    local config_file="${SCRIPT_DIR}/cnwp.yml"
+
+    if [ ! -f "$config_file" ]; then
+        echo "$default"
+        return
+    fi
+
+    # Parse section.key format
+    local section="${path%%.*}"
+    local key="${path#*.}"
+
+    # Special handling for settings section
+    if [ "$section" == "settings" ] || [ "$section" == "$key" ]; then
+        # Direct settings lookup
+        local value=$(awk -v key="$key" '
+            /^settings:/ { in_settings = 1; next }
+            in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
+            in_settings && $0 ~ "^  " key ":" {
+                sub("^  " key ": *", "")
+                gsub(/["'"'"']/, "")
+                sub(/ *#.*$/, "")
+                gsub(/^[ \t]+|[ \t]+$/, "")
+                print
+                exit
+            }
+        ' "$config_file")
+    else
+        # Nested settings lookup (e.g., php_settings.memory_limit)
+        local value=$(awk -v section="$section" -v key="$key" '
+            /^settings:/ { in_settings = 1; next }
+            in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
+            in_settings && $0 ~ "^  " section ":" { in_section = 1; next }
+            in_section && /^  [a-zA-Z]/ && !/^    / { in_section = 0 }
+            in_section && $0 ~ "^    " key ":" {
+                sub("^    " key ": *", "")
+                gsub(/["'"'"']/, "")
+                sub(/ *#.*$/, "")
+                gsub(/^[ \t]+|[ \t]+$/, "")
+                print
+                exit
+            }
+        ' "$config_file")
+    fi
+
+    if [ -n "$value" ] && [ "$value" != "" ]; then
+        echo "$value"
+    else
+        echo "$default"
+    fi
+}
+
+# Export functions for use in subshells
+export -f get_secret
+export -f get_secret_nested
+export -f get_setting

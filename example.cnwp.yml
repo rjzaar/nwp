@@ -1,79 +1,108 @@
-# This is the config file for the Narrow Way Project
-# The aim is to put reasonable default values to make running the nwp easy
-# particularly for beginners.
+# NWP Configuration File
+# Copy to cnwp.yml and customize for your environment
+#
+# Status Legend:
+#   [ACTIVE]  - Currently used by NWP scripts
+#   [PLANNED] - Documented but not yet implemented
+#   [DEFAULT] - Value shown is the hardcoded default if not specified
 
-# This recipe section will have defaults to easy start a new project.
+################################################################################
+# SETTINGS - Global NWP Configuration
+################################################################################
 settings:
-  # Stack settings
-  database: mariadb
-  php: 8.2
-  webserver: nginx
-  os: ubuntu
+  # === STACK SETTINGS [ACTIVE] ===
+  database: mariadb                # [ACTIVE] Database type: mariadb, mysql, postgres
+  database_version: "10.11"        # [ACTIVE] Database version for DDEV
+  php: 8.2                         # [ACTIVE] PHP version for DDEV
 
-  # CLI settings
-  # Do you want to install nwp with a universal cli prompt for scipts, eg 'pl' ie instead of only running
-  # the install script in the root nwp directory, it could be run from anywhere using the command 'pl'
-  # eg 'pl install d' anywhere instead of './install d' only in the nwp directory.
-  cli: y
-  cliprompt: pl
+  # === STACK SETTINGS [PLANNED] ===
+  # webserver: nginx               # [PLANNED] Always nginx in DDEV currently
+  # os: ubuntu                     # [PLANNED] Always ubuntu for Linode currently
 
-  # Deployment settings
-  # linodeuse: testing/gitlab/all. If left blank it means no use.
+  # === CLI SETTINGS [PLANNED] ===
+  # cli: y                         # [PLANNED] Install universal CLI wrapper
+  # cliprompt: pl                  # [PLANNED] CLI command name (hardcoded as 'pl')
+
+  # === DEPLOYMENT SETTINGS [ACTIVE] ===
+  # linodeuse: testing/gitlab/all  # [ACTIVE] When to use Linode: testing, gitlab, all, or blank
   linodeuse:
-  # urluse: testing/gitlab/all. If left blank it means no use.
+  # urluse: testing/gitlab/all     # [ACTIVE] When to use custom URL: testing, gitlab, all, or blank
   urluse:
-  # url is for providing live tests and nwp site.
-  url:
+  url:                             # [ACTIVE] Base domain for live sites (e.g., nwpcode.org)
 
-  # Default environment configuration (can be overridden per recipe)
+  # === PHP SETTINGS [ACTIVE] ===
+  # These override hardcoded defaults in install.sh
+  php_settings:
+    memory_limit: 512M             # [ACTIVE] PHP memory limit
+    max_execution_time: 600        # [ACTIVE] Max script execution time (seconds)
+    upload_max_filesize: 100M      # [ACTIVE] Max upload file size
+    post_max_size: 100M            # [ACTIVE] Max POST data size
+
+  # === TIMEOUT SETTINGS [ACTIVE] ===
+  timeouts:
+    dns_propagation: 300           # [ACTIVE] DNS propagation wait (seconds)
+    ssh_connection: 600            # [ACTIVE] SSH connection timeout (seconds)
+    health_check: 10               # [ACTIVE] Health check interval (seconds)
+
+  # === GITLAB LOCAL SETTINGS [ACTIVE] ===
+  # For local GitLab Docker installations
+  gitlab:
+    ports:
+      ssh: 2222                    # [ACTIVE] GitLab SSH port
+      http: 8080                   # [ACTIVE] GitLab HTTP port
+      https: 8443                  # [ACTIVE] GitLab HTTPS port
+
+  # === ENVIRONMENT CONFIGURATION [PLANNED] ===
+  # Default environment settings (can be overridden per recipe)
   environment:
     development:
-      debug: true                   # Enable debug mode
-      xdebug: false                 # XDebug off by default
-      database_import: always       # Always import database
-      stage_file_proxy: false       # Disabled by default
+      debug: true                  # [PLANNED] Enable debug mode
+      xdebug: false                # [PLANNED] XDebug off by default
+      database_import: always      # [PLANNED] Always import database
+      stage_file_proxy: false      # [PLANNED] Disabled by default
     staging:
-      debug: false
-      database_sanitize: true       # Sanitize database on import
-      stage_file_proxy: true
+      debug: false                 # [PLANNED]
+      database_sanitize: true      # [PLANNED] Sanitize database on import
+      stage_file_proxy: true       # [PLANNED]
     production:
-      debug: false
-      database_sanitize: false
-      redis: true                   # Enable Redis in production
-      caching: aggressive
+      debug: false                 # [PLANNED]
+      database_sanitize: false     # [PLANNED]
+      redis: true                  # [PLANNED] Enable Redis in production
+      caching: aggressive          # [PLANNED]
 
-  # Default services configuration (can be overridden per recipe)
+  # === SERVICES CONFIGURATION [PLANNED] ===
+  # Default services (can be overridden per recipe)
   services:
     redis:
-      enabled: false                # Redis disabled by default
-      version: "7"
+      enabled: false               # [PLANNED] Redis disabled by default
+      version: "7"                 # [PLANNED]
     solr:
-      enabled: false                # Solr disabled by default
-      version: "8"
-      core: drupal
+      enabled: false               # [PLANNED] Solr disabled by default
+      version: "8"                 # [PLANNED]
+      core: drupal                 # [PLANNED]
     memcache:
-      enabled: false
+      enabled: false               # [PLANNED]
 
-  # Site management settings
-  delete_site_yml: true             # Remove site from cnwp.yml when deleted (use --keep-yml to preserve)
+  # === SITE MANAGEMENT [ACTIVE] ===
+  delete_site_yml: true            # [ACTIVE] Remove site from cnwp.yml when deleted
 
-  # Live site security hardening
+  # === LIVE SITE SECURITY [ACTIVE] ===
   # Modules installed automatically when deploying to live servers (pl stg2live)
   live_security:
-    enabled: true                   # Enable security hardening for live sites
-    # Core security modules (always recommended)
+    enabled: true                  # [ACTIVE] Enable security hardening
+    # Core security modules [ACTIVE] - installed automatically
     modules:
-      - seckit                      # HTTP security headers, XSS/CSRF protection
-      - honeypot                    # Spam bot protection (no user friction)
-      - flood_control               # Brute force protection UI
-      - login_security              # Login attempt limits, blocking
+      - seckit                     # HTTP security headers, XSS/CSRF protection
+      - honeypot                   # Spam bot protection (no user friction)
+      - flood_control              # Brute force protection UI
+      - login_security             # Login attempt limits, blocking
       - username_enumeration_prevention  # Prevents username discovery
-    # Optional modules (enable as needed)
+    # Optional modules [PLANNED] - not auto-installed yet
     optional_modules:
-      - antibot                     # Behavior-based bot detection
-      - password_policy             # Strong password requirements
-      - turnstile                   # Cloudflare CAPTCHA (requires API key)
-    # SecKit configuration
+      - antibot                    # Behavior-based bot detection
+      - password_policy            # Strong password requirements
+      - turnstile                  # Cloudflare CAPTCHA (requires API key)
+    # Module configurations [PLANNED] - not applied yet
     seckit_config:
       xss:
         csp_policy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
@@ -81,194 +110,190 @@ settings:
         x_frame_options: SAMEORIGIN
       ssl:
         hsts: true
-        hsts_max_age: 31536000      # 1 year
-    # Honeypot configuration
+        hsts_max_age: 31536000     # 1 year
     honeypot_config:
       protect_all_forms: true
-      time_limit: 5                 # Seconds before form can be submitted
-    # Login security configuration
+      time_limit: 5                # Seconds before form can be submitted
     login_security_config:
-      user_wrong_count: 5           # Failed attempts before soft block
-      host_wrong_count: 10          # Failed attempts from IP before block
-      activity_threshold: 100       # Max login attempts per hour
+      user_wrong_count: 5          # Failed attempts before soft block
+      host_wrong_count: 10         # Failed attempts from IP before block
+      activity_threshold: 100      # Max login attempts per hour
 
+################################################################################
+# SETUP - One-time Setup Options
+################################################################################
 setup:
-  # This will create a gitlab site based on the url, ie git.url to store and commit sites and the nwp itself.
-  creategitlab: n
+  creategitlab: n                  # [PLANNED] Auto-create GitLab server
 
-
+################################################################################
+# RECIPES - Site Installation Templates
+################################################################################
 recipes:
-  os:
-    source: goalgorilla/social_template:dev-master
-    install_modules: 
-    profile: social
-    webroot:  html
-    #    sitename: default # leave blank it will be called the name of the site, eg loc
-    auto:  y
+  # === DRUPAL RECIPES ===
   d:
+    # [ACTIVE] Standard Drupal installation
     source: drupal/recommended-project:^10.2
-    install_modules:
-    profile: standard
-    webroot:  web
-    #    sitename: default # leave blank it will be called the name of the site, eg loc
-    auto:  y
+    install_modules:               # [ACTIVE] Additional composer packages
+    profile: standard              # [ACTIVE] Drupal install profile
+    webroot: web                   # [ACTIVE] Document root
+    auto: y                        # [ACTIVE] Auto-confirm installation
+
+  os:
+    # [ACTIVE] Open Social installation
+    source: goalgorilla/social_template:dev-master
+    install_modules:               # [ACTIVE]
+    profile: social                # [ACTIVE]
+    webroot: html                  # [ACTIVE]
+    auto: y                        # [ACTIVE]
+
   nwp:
+    # [ACTIVE] NWP custom recipe with modules
     source: goalgorilla/social_template:dev-master
     install_modules: git@github.com:rjzaar/workflow_assignment.git drupal/ultimate_cron:^2.0.0-alpha7
     profile: social
-    webroot:  html
-    #    sitename: default # leave blank it will be called the name of the site, eg loc
-    auto:  y
-  m:
-    type: moodle
-    source: https://github.com/moodle/moodle.git
-    branch: MOODLE_404_STABLE
-    webroot: .
-    sitename: "My Moodle Site"
+    webroot: html
     auto: y
+
   dm:
+    # [ACTIVE] Divine Mercy recipe
     source: drupal/recommended-project:^10.2
     install_modules: git@github.com:rjzaar/divine_mercy.git
     profile: standard
-    webroot:  web
-    #    sitename: default # leave blank it will be called the name of the site, eg loc
-    auto:  y
+    webroot: web
+    auto: y
 
-  # Enhanced recipe example with full environment configuration (NWP v0.2+)
-  # This recipe shows how to override default settings from settings section
+  # === MOODLE RECIPE ===
+  m:
+    type: moodle                   # [ACTIVE] Recipe type
+    source: https://github.com/moodle/moodle.git
+    branch: MOODLE_404_STABLE      # [ACTIVE] Git branch
+    webroot: .                     # [ACTIVE]
+    sitename: "My Moodle Site"     # [ACTIVE] Site title
+    auto: y                        # [ACTIVE]
+
+  # === GITLAB RECIPE ===
+  gitlab:
+    type: gitlab                   # [ACTIVE] Recipe type
+    source: https://gitlab.com/gitlab-org/gitlab-foss.git
+    branch: master                 # [ACTIVE]
+    webroot: .                     # [ACTIVE]
+    sitename: "GitLab Instance"    # [ACTIVE]
+    auto: y                        # [ACTIVE]
+
+  # === MIGRATION RECIPE ===
+  migration:
+    type: migration                # [ACTIVE] Creates stub for importing existing sites
+    description: "Migration stub for importing existing sites"
+
+  # === ENHANCED EXAMPLE (shows all options) ===
   enhanced_example:
     source: goalgorilla/social_template:dev-master
     profile: social
     webroot: html
     auto: y
 
-    # Directory paths
-    private: ../private              # Private files directory
-    cmi: ../cmi                       # Configuration management directory
+    # [ACTIVE] Development modules
+    dev_modules: devel kint webprofiler stage_file_proxy
 
-    # Environment configuration (overrides settings.environment)
-    environment:
-      development:
-        debug: true                   # Enable debug mode
-        xdebug: true                  # Enable XDebug (overrides default false)
-        database_import: always       # Always import database
-        stage_file_proxy: true        # Use stage_file_proxy module (overrides default false)
-        stage_file_proxy_origin: https://www.example.com
-      staging:
-        debug: false
-        database_sanitize: true       # Sanitize database on import
-        stage_file_proxy: true
-        stage_file_proxy_origin: https://www.example.com
-      production:
-        debug: false
-        database_sanitize: false
-        redis: true                   # Enable Redis in production
-        caching: aggressive           # Aggressive caching
+    # [ACTIVE] Deployment configuration
+    reinstall_modules: custom_module   # Modules to reinstall during sync
+    prod_method: rsync                 # Production method: git, tar, rsync
+    prod_server: linode_primary        # Reference to linode.servers entry
+    prod_domain: example.com           # Production domain name
+    prod_path: /var/www/sitename       # Remote deployment path
 
-    # Services configuration (overrides settings.services)
-    services:
-      redis:
-        enabled: true                 # Enable Redis (overrides default false)
-        version: "7"
-      solr:
-        enabled: true                 # Enable Solr (overrides default false)
-        core: social                  # Solr core name (overrides default 'drupal')
-      memcache:
-        enabled: false
+    # [PLANNED] Directory paths - not yet implemented
+    # private: ../private             # Private files directory
+    # cmi: ../cmi                      # Configuration management directory
 
-    # Development configuration
-    dev_modules: devel kint webprofiler stage_file_proxy  # Dev Drupal modules
-    dev_composer: drupal/devel drupal/stage_file_proxy    # Dev composer packages
+    # [PLANNED] Dev composer packages - not yet implemented
+    # dev_composer: drupal/devel drupal/stage_file_proxy
 
-    # Deployment configuration
-    reinstall_modules: custom_module  # Modules to reinstall during sync
-    prod_method: rsync                # Production method: git, tar, rsync
+    # [PLANNED] Per-recipe environment overrides - not yet implemented
+    # environment:
+    #   development:
+    #     xdebug: true
+    #   production:
+    #     redis: true
 
-    # Linode/SSH-based production (if prod_method: rsync or ssh)
-    prod_server: linode_primary       # Reference to linode.servers entry
-    prod_domain: example.com          # Production domain name
-    prod_path: /var/www/sitename      # Remote deployment path
+    # [PLANNED] Per-recipe service overrides - not yet implemented
+    # services:
+    #   redis:
+    #     enabled: true
+    #   solr:
+    #     enabled: true
+    #     core: social
 
-    # Alternative: Direct SSH alias (if not using linode.servers)
+    # [PLANNED] Additional options - not yet implemented
+    # force: false                    # Force config imports
+    # lando: false                    # Use Lando instead of DDEV
+    # secrets_file: .secrets.yml      # Custom secrets file location
     # prod_alias: user@prod.example.com:/var/www/sitename
-
-    # Git-based production (if prod_method: git)
     # prod_gitrepo: git@github.com:user/site.git
     # prod_gitdb: git@github.com:user/site-db.git
 
-    # Additional options
-    force: false                      # Force config imports
-    # lando: false                    # Use Lando instead of DDEV
-    # secrets_file: .secrets.yml      # Custom secrets file location
+  # === TEST RECIPE ===
   test_nwp:
     source: goalgorilla/social_template:dev-master
     profile: social
     webroot: html
     auto: y
     dev_modules: devel kint webprofiler
-    dev_composer: drupal/devel
-  gitlab:
-    type: gitlab
-    source: https://gitlab.com/gitlab-org/gitlab-foss.git
-    branch: master
-    webroot: .
-    sitename: "GitLab Instance"
-    auto: y
 
-# Linode production server configuration
-# Store SSH credentials, API tokens, server IPs, and domain names for production deployments
+################################################################################
+# LINODE - Production Server Configuration
+################################################################################
 linode:
+  # Default settings for new Linode instances [ACTIVE]
+  defaults:
+    image: linode/ubuntu22.04      # [ACTIVE] Default OS image
+    region: us-east                # [ACTIVE] Default region
+    type: g6-nanode-1              # [ACTIVE] Default instance type (1GB)
+    gitlab_type: g6-standard-1     # [ACTIVE] GitLab needs 2GB minimum
+
+  # Server configurations [ACTIVE]
   servers:
     linode_primary:
-      ssh_user: deploy                     # SSH username for deployment
-      ssh_host: 203.0.113.10               # Server IP or hostname
-      ssh_port: 22                         # SSH port (default: 22)
-      ssh_key: ~/.ssh/nwp                  # Path to SSH private key (optional, uses default if not specified)
-      api_token: ${LINODE_API_TOKEN}       # Linode API token (use environment variable)
+      ssh_user: deploy             # [ACTIVE] SSH username for deployment
+      ssh_host: 203.0.113.10       # [ACTIVE] Server IP or hostname
+      ssh_port: 22                 # [ACTIVE] SSH port
+      ssh_key: ~/.ssh/nwp          # [ACTIVE] Path to SSH private key
+      api_token: ${LINODE_API_TOKEN}  # [ACTIVE] Use environment variable
       server_ips:
-        - 203.0.113.10                     # Primary IP
+        - 203.0.113.10             # [ACTIVE] Primary IP
       domains:
-        - example.com                      # Primary domain
-        - www.example.com                  # Additional domains
+        - example.com              # [ACTIVE] Primary domain
+        - www.example.com          # [ACTIVE] Additional domains
+
     linode_backup:
       ssh_user: deploy
       ssh_host: 203.0.113.20
       ssh_port: 22
-      ssh_key: ~/.ssh/nwp                  # Path to SSH private key (optional)
+      ssh_key: ~/.ssh/nwp
       api_token: ${LINODE_API_TOKEN}
       server_ips:
         - 203.0.113.20
       domains:
         - backup.example.com
 
-# Sites tracking
+################################################################################
+# SITES - Auto-populated Site Registry
+################################################################################
 # Automatically populated when sites are created with install.sh
 # Stores site metadata, production configuration, and deployment settings
 sites:
-  # Example site entry (created by install.sh)
-  # nwp:
-  #   directory: /home/rob/nwp/nwp              # Full path to site directory
-  #   recipe: nwp                                # Recipe used for installation
-  #   environment: development                   # Environment type: development/staging/production
-  #   created: 2024-12-28T10:30:00Z             # ISO 8601 timestamp
-  #   installed_modules:                         # Additional modules installed
-  #     - workflow_assignment
-  #     - ultimate_cron
-  #   production_config:                         # Production deployment configuration
-  #     method: rsync                            # Deployment method: rsync/git/tar
-  #     server: linode_primary                   # Reference to linode.servers entry
-  #     remote_path: /var/www/nwp               # Remote deployment path
-  #     domain: nwp.example.com                  # Production domain
-  #
-  # mysite_stg:
-  #   directory: /home/rob/nwp/mysite_stg
-  #   recipe: enhanced_example
-  #   environment: staging
-  #   created: 2024-12-28T11:00:00Z
-  #   installed_modules:
-  #     - custom_module
-  #   production_config:
-  #     method: rsync
-  #     server: linode_primary
-  #     remote_path: /var/www/mysite
-  #     domain: staging.example.com
+  # Example site entry (created automatically by install.sh):
+  # mysite:
+  #   directory: /home/user/nwp/mysite    # [ACTIVE] Full path
+  #   recipe: d                            # [ACTIVE] Recipe used
+  #   environment: development             # [ACTIVE] Environment type
+  #   created: 2024-12-28T10:30:00Z       # [ACTIVE] Creation timestamp
+  #   purpose: indefinite                  # [ACTIVE] Site purpose
+  #   installed_modules:                   # [ACTIVE] Additional modules
+  #     - drupal/admin_toolbar
+  #   live:                                # [ACTIVE] Live deployment config
+  #     enabled: true
+  #     domain: mysite.example.com
+  #     server_ip: 203.0.113.10
+  #     linode_id: shared
+  #     type: shared

@@ -907,10 +907,18 @@ install_opensocial() {
     if should_run_step 4 "$start_step"; then
         print_header "Step 4: Memory Configuration"
 
+        # Get PHP settings from cnwp.yml (with defaults)
+        local php_memory=$(get_setting "php_settings.memory_limit" "512M")
+        local php_max_exec=$(get_setting "php_settings.max_execution_time" "600")
+        local php_upload_max=$(get_setting "php_settings.upload_max_filesize" "100M")
+        local php_post_max=$(get_setting "php_settings.post_max_size" "100M")
+
         mkdir -p .ddev/php
-        cat > .ddev/php/memory.ini << 'EOF'
-memory_limit = 512M
-max_execution_time = 600
+        cat > .ddev/php/memory.ini << EOF
+memory_limit = ${php_memory}
+max_execution_time = ${php_max_exec}
+post_max_size = ${php_post_max}
+upload_max_filesize = ${php_upload_max}
 EOF
         print_status "OK" "Memory limits configured"
     else
@@ -1328,12 +1336,18 @@ install_moodle() {
     if should_run_step 3 "$start_step"; then
         print_header "Step 3: Memory Configuration"
 
+        # Get PHP settings from cnwp.yml (with defaults)
+        local php_memory=$(get_setting "php_settings.memory_limit" "512M")
+        local php_max_exec=$(get_setting "php_settings.max_execution_time" "600")
+        local php_upload_max=$(get_setting "php_settings.upload_max_filesize" "100M")
+        local php_post_max=$(get_setting "php_settings.post_max_size" "100M")
+
         mkdir -p .ddev/php
-        cat > .ddev/php/memory.ini << 'EOF'
-memory_limit = 512M
-max_execution_time = 600
-post_max_size = 100M
-upload_max_filesize = 100M
+        cat > .ddev/php/memory.ini << EOF
+memory_limit = ${php_memory}
+max_execution_time = ${php_max_exec}
+post_max_size = ${php_post_max}
+upload_max_filesize = ${php_upload_max}
 EOF
         print_status "OK" "Memory limits configured"
     else
@@ -1455,6 +1469,12 @@ MOODLEDATA_EOF
 
         print_info "Site URL: $site_url"
 
+        # Get Moodle admin credentials from secrets (with defaults)
+        local moodle_admin_user=$(get_secret "moodle.admin_user" "admin")
+        local moodle_admin_pass=$(get_secret "moodle.admin_password" "Admin123!")
+        local moodle_admin_email=$(get_secret "moodle.admin_email" "admin@example.com")
+        local moodle_shortname=$(get_secret "moodle.shortname" "moodle")
+
         # Run Moodle installation
         if ! ddev exec php admin/cli/install.php \
             --lang=en \
@@ -1466,10 +1486,10 @@ MOODLEDATA_EOF
             --dbuser=db \
             --dbpass=db \
             --fullname="$sitename" \
-            --shortname=moodle \
-            --adminuser=admin \
-            --adminpass=Admin123! \
-            --adminemail=admin@example.com \
+            --shortname="$moodle_shortname" \
+            --adminuser="$moodle_admin_user" \
+            --adminpass="$moodle_admin_pass" \
+            --adminemail="$moodle_admin_email" \
             --non-interactive \
             --agree-license; then
             print_error "Failed to install Moodle"
@@ -1494,10 +1514,14 @@ MOODLEDATA_EOF
     # Success message
     print_header "Installation Complete!"
 
+    # Get credentials again for display (in case they weren't set in step 6)
+    local display_user=$(get_secret "moodle.admin_user" "admin")
+    local display_pass=$(get_secret "moodle.admin_password" "Admin123!")
+
     echo -e "${GREEN}${BOLD}✓ Moodle has been successfully installed!${NC}\n"
     echo -e "${BOLD}Login credentials:${NC}"
-    echo -e "  Username: ${GREEN}admin${NC}"
-    echo -e "  Password: ${GREEN}Admin123!${NC}\n"
+    echo -e "  Username: ${GREEN}${display_user}${NC}"
+    echo -e "  Password: ${GREEN}${display_pass}${NC}\n"
 
     # Open site
     print_info "Opening site in browser..."

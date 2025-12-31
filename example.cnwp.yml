@@ -126,6 +126,36 @@ setup:
   creategitlab: n                  # [PLANNED] Auto-create GitLab server
 
 ################################################################################
+# PODCAST - Castopod Hosting Configuration
+################################################################################
+# Used by ./podcast.sh for automated podcast infrastructure setup
+podcast:
+  # Default Linode region for podcast servers
+  linode_region: us-east
+  # Linode plan type (g6-nanode-1 = $5/month, g6-standard-1 = $10/month)
+  linode_type: g6-nanode-1
+  # Default B2 region for media storage
+  b2_region: us-west-004
+  # Default subdomain for media files (e.g., media.example.com)
+  media_subdomain: media
+  # Docker Compose version to use
+  compose_version: "3.9"
+  # Castopod image tag
+  castopod_image: castopod/castopod:latest
+  # Default admin email template (uses base domain)
+  admin_email_template: "admin@{domain}"
+
+  # Example podcast site configurations (created by ./podcast.sh setup)
+  # sites:
+  #   podcast.example.com:
+  #     linode_id: 12345678
+  #     server_ip: 192.0.2.1
+  #     b2_bucket: podcast-media
+  #     b2_key_id: 000xxxxxxxxxxxxx
+  #     dns_record_id: abc123
+  #     created: 2024-12-31T10:00:00Z
+
+################################################################################
 # RECIPES - Site Installation Templates
 ################################################################################
 recipes:

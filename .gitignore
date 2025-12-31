@@ -34,6 +34,7 @@
 !live2stg.sh
 !live2prod.sh
 !produce.sh
+!podcast.sh
 
 # Documentation and metadata
 !README.md

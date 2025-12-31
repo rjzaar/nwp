@@ -1353,13 +1353,32 @@ EOF
         print_status "INFO" "Skipping Step 4: DDEV already started"
     fi
 
-    # Step 5: Create Moodledata Directory
+    # Step 5: Create Moodledata Directory (outside web root for security)
     if should_run_step 5 "$start_step"; then
         print_header "Step 5: Create Moodledata Directory"
 
-        mkdir -p moodledata
-        chmod 777 moodledata
-        print_status "OK" "Moodledata directory created"
+        # Moodle requires dataroot to be OUTSIDE the web root
+        # Create it as a sibling directory and add a DDEV mount
+        # Use absolute path for docker-compose volume mount
+        local moodledata_abs="${base_dir}/${install_dir}_moodledata"
+        mkdir -p "$moodledata_abs"
+        chmod 777 "$moodledata_abs"
+
+        # Create DDEV docker-compose override to mount moodledata
+        # Use absolute path to ensure Docker can find it
+        cat > .ddev/docker-compose.moodledata.yaml << MOODLEDATA_EOF
+# Moodle dataroot mount - outside web root for security
+services:
+  web:
+    volumes:
+      - "${moodledata_abs}:/var/www/moodledata:rw"
+MOODLEDATA_EOF
+
+        # Restart DDEV to apply the new mount
+        print_info "Restarting DDEV to apply moodledata mount..."
+        ddev restart
+
+        print_status "OK" "Moodledata directory created at $moodledata_abs"
     else
         print_status "INFO" "Skipping Step 5: Moodledata already exists"
     fi
@@ -1440,7 +1459,7 @@ EOF
         if ! ddev exec php admin/cli/install.php \
             --lang=en \
             --wwwroot="$site_url" \
-            --dataroot=/var/www/html/moodledata \
+            --dataroot=/var/www/moodledata \
             --dbtype="$db_driver" \
             --dbhost=db \
             --dbname=db \

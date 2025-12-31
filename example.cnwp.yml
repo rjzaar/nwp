@@ -270,6 +270,20 @@ recipes:
     auto: y
     dev_modules: devel kint webprofiler
 
+  # === PODCAST RECIPE ===
+  podcast:
+    type: podcast                  # [ACTIVE] Recipe type
+    # Domain for the podcast (e.g., podcast.example.com)
+    # Can be overridden at install time: ./install.sh podcast mysite domain=podcast.mysite.com
+    domain: podcast.example.com
+    # Linode region for the server
+    linode_region: us-east
+    # B2 region for media storage
+    b2_region: us-west-004
+    # Media subdomain (e.g., media.example.com)
+    media_subdomain: media
+    auto: y                        # [ACTIVE]
+
 ################################################################################
 # LINODE - Production Server Configuration
 ################################################################################

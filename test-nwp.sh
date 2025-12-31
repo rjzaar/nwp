@@ -20,11 +20,12 @@
 #   22:    Script syntax validation
 #
 # Usage:
-#   ./test-nwp.sh [--skip-cleanup] [--verbose]
+#   ./test-nwp.sh [--skip-cleanup] [--verbose] [--podcast]
 #
 # Options:
 #   --skip-cleanup    Don't delete test sites after completion
 #   --verbose         Show detailed output
+#   --podcast         Include podcast infrastructure tests
 #   -h, --help        Show this help message
 #
 ################################################################################
@@ -48,6 +49,7 @@ NC='\033[0m'
 TEST_SITE_PREFIX="test-nwp"
 CLEANUP=true
 VERBOSE=false
+RUN_PODCAST=false
 LOG_FILE="test-nwp-$(date +%Y%m%d-%H%M%S).log"
 
 # Test results
@@ -67,6 +69,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --verbose)
             VERBOSE=true
+            shift
+            ;;
+        --podcast)
+            RUN_PODCAST=true
             shift
             ;;
         -h|--help)
@@ -1063,6 +1069,30 @@ for lib in "${LIBRARY_FILES[@]}"; do
         run_test "Syntax valid: $lib" "bash -n $lib"
     fi
 done
+
+################################################################################
+# Test 23: Podcast Infrastructure (Optional)
+################################################################################
+
+if [ "$RUN_PODCAST" = true ]; then
+    print_header "Test 23: Podcast Infrastructure (Optional)"
+
+    if [ -f "tests/test-podcast.sh" ]; then
+        print_info "Running podcast test suite..."
+        echo ""
+
+        # Run podcast tests and capture results
+        if ./tests/test-podcast.sh; then
+            run_test "Podcast test suite" "true"
+        else
+            run_test "Podcast test suite" "false"
+        fi
+    else
+        print_warning "Podcast test script not found (tests/test-podcast.sh)"
+    fi
+else
+    print_info "Skipping podcast tests (use --podcast flag to include)"
+fi
 
 # Results summary
 print_header "Test Results Summary"

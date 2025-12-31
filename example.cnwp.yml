@@ -271,10 +271,10 @@ recipes:
     dev_modules: devel kint webprofiler
 
   # === PODCAST RECIPE ===
-  podcast:
+  pod:
     type: podcast                  # [ACTIVE] Recipe type
+    # Usage: ./install.sh pod podcast.example.com
     # Domain for the podcast (e.g., podcast.example.com)
-    # Can be overridden at install time: ./install.sh podcast mysite domain=podcast.mysite.com
     domain: podcast.example.com
     # Linode region for the server
     linode_region: us-east

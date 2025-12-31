@@ -112,6 +112,38 @@ settings:
   # === SITE MANAGEMENT [ACTIVE] ===
   delete_site_yml: true            # [ACTIVE] Remove site from cnwp.yml when deleted
 
+  # === CI/CD CONFIGURATION [PLANNED] ===
+  # Global CI settings - can be overridden per site
+  ci:
+    enabled: true                  # [PLANNED] Enable CI by default for new sites
+    platform: gitlab               # [PLANNED] Primary CI platform: gitlab (NWP GitLab)
+    auto_setup: false              # [PLANNED] Auto-setup CI during pl install
+
+    # Pipeline stages to run
+    stages:
+      lint: true                   # [PLANNED] Run linting (phpcs, shellcheck)
+      test: true                   # [PLANNED] Run tests (phpunit, behat)
+      security: true               # [PLANNED] Security scanning
+      deploy: false                # [PLANNED] Auto-deploy (manual by default)
+
+    # Test configuration
+    testing:
+      phpcs: true                  # [PLANNED] PHP CodeSniffer
+      phpstan: true                # [PLANNED] PHPStan static analysis
+      phpstan_level: 5             # [PLANNED] PHPStan level (0-9)
+      phpunit: true                # [PLANNED] PHPUnit tests
+      behat: false                 # [PLANNED] Behat tests (disabled by default)
+
+    # Coverage thresholds
+    coverage:
+      enabled: false               # [PLANNED] Enable coverage reporting
+      threshold: 80                # [PLANNED] Minimum coverage percentage
+
+    # Mirror to external services
+    mirrors:
+      github: false                # [PLANNED] Mirror to GitHub
+      gitlab_com: false            # [PLANNED] Mirror to gitlab.com
+
   # === LIVE SITE SECURITY [ACTIVE] ===
   # Modules installed automatically when deploying to live servers (pl stg2live)
   live_security:
@@ -367,3 +399,17 @@ sites:
   #     server_ip: 203.0.113.10
   #     linode_id: shared
   #     type: shared
+  #   ci:                                  # [PLANNED] Per-site CI configuration
+  #     enabled: true                      # Enable CI for this site
+  #     repo: git@git.nwpcode.org:nwp/mysite.git  # GitLab repository URL
+  #     branch: main                       # Branch to run CI on
+  #     stages:                            # Override global stages
+  #       lint: true
+  #       test: true
+  #       security: true
+  #       deploy: false
+  #     mirrors:                           # Mirror destinations
+  #       github: git@github.com:user/mysite.git
+  #     notifications:                     # CI notifications
+  #       email: admin@example.com
+  #       slack_webhook: ""

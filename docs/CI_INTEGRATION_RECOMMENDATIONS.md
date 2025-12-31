@@ -234,189 +234,256 @@ nwp_autotest/
 
 ## Configuration Changes
 
-### Changes to `example.cnwp.yml`
+### Current Configuration Structure
 
-Add a new `ci` section under `settings`:
+NWP uses a two-file configuration system with clear separation of concerns:
+
+1. **`cnwp.yml`** - Non-sensitive settings (stack config, PHP settings, recipes)
+2. **`.secrets.yml`** - Sensitive credentials (API tokens, passwords, SSH keys)
+
+Both files support reading via library functions in `lib/common.sh`:
+- `get_setting "section.key" "default"` - Read from cnwp.yml
+- `get_secret "section.key" "default"` - Read from .secrets.yml
+- `get_secret_nested "section.subsection.key" "default"` - Read deeply nested secrets
+
+### Current `example.cnwp.yml` Structure
+
+The configuration file uses status markers to indicate implementation status:
+- `[ACTIVE]` - Currently used by NWP scripts
+- `[PLANNED]` - Documented but not yet implemented
+- `[DEFAULT]` - Value shown is the hardcoded default if not specified
+
+```yaml
+################################################################################
+# SETTINGS - Global NWP Configuration
+################################################################################
+settings:
+  # === STACK SETTINGS [ACTIVE] ===
+  database: mariadb                # [ACTIVE] Database type: mariadb, mysql, postgres
+  database_version: "10.11"        # [ACTIVE] Database version for DDEV
+  php: 8.2                         # [ACTIVE] PHP version for DDEV
+
+  # === STACK SETTINGS [PLANNED] ===
+  # webserver: nginx               # [PLANNED] Always nginx in DDEV currently
+  # os: ubuntu                     # [PLANNED] Always ubuntu for Linode currently
+
+  # === CLI SETTINGS [PLANNED] ===
+  # cli: y                         # [PLANNED] Install universal CLI wrapper
+  # cliprompt: pl                  # [PLANNED] CLI command name (hardcoded as 'pl')
+
+  # === DEPLOYMENT SETTINGS [ACTIVE] ===
+  linodeuse:                       # [ACTIVE] When to use Linode: testing, gitlab, all, or blank
+  urluse:                          # [ACTIVE] When to use custom URL
+  url:                             # [ACTIVE] Base domain for live sites (e.g., nwpcode.org)
+
+  # === PHP SETTINGS [ACTIVE] ===
+  # These override hardcoded defaults in install.sh
+  php_settings:
+    memory_limit: 512M             # [ACTIVE] PHP memory limit
+    max_execution_time: 600        # [ACTIVE] Max script execution time (seconds)
+    upload_max_filesize: 100M      # [ACTIVE] Max upload file size
+    post_max_size: 100M            # [ACTIVE] Max POST data size
+
+  # === TIMEOUT SETTINGS [ACTIVE] ===
+  timeouts:
+    dns_propagation: 300           # [ACTIVE] DNS propagation wait (seconds)
+    ssh_connection: 600            # [ACTIVE] SSH connection timeout (seconds)
+    health_check: 10               # [ACTIVE] Health check interval (seconds)
+
+  # === GITLAB LOCAL SETTINGS [ACTIVE] ===
+  gitlab:
+    ports:
+      ssh: 2222                    # [ACTIVE] GitLab SSH port
+      http: 8080                   # [ACTIVE] GitLab HTTP port
+      https: 8443                  # [ACTIVE] GitLab HTTPS port
+
+  # === ENVIRONMENT CONFIGURATION [PLANNED] ===
+  environment:
+    development:
+      debug: true                  # [PLANNED]
+      xdebug: false                # [PLANNED]
+    staging:
+      debug: false                 # [PLANNED]
+      stage_file_proxy: true       # [PLANNED]
+    production:
+      debug: false                 # [PLANNED]
+      redis: true                  # [PLANNED]
+
+  # === SERVICES CONFIGURATION [PLANNED] ===
+  services:
+    redis:
+      enabled: false               # [PLANNED]
+    solr:
+      enabled: false               # [PLANNED]
+
+  # === SITE MANAGEMENT [ACTIVE] ===
+  delete_site_yml: true            # [ACTIVE] Remove site from cnwp.yml when deleted
+
+  # === LIVE SITE SECURITY [ACTIVE] ===
+  live_security:
+    enabled: true                  # [ACTIVE] Enable security hardening
+    modules:                       # [ACTIVE] Core security modules
+      - seckit
+      - honeypot
+      - flood_control
+      - login_security
+      - username_enumeration_prevention
+
+################################################################################
+# LINODE - Production Server Configuration
+################################################################################
+linode:
+  # Default settings for new Linode instances [ACTIVE]
+  defaults:
+    image: linode/ubuntu22.04      # [ACTIVE] Default OS image
+    region: us-east                # [ACTIVE] Default region
+    type: g6-nanode-1              # [ACTIVE] Default instance type (1GB)
+    gitlab_type: g6-standard-1     # [ACTIVE] GitLab needs 2GB minimum
+
+  # Server configurations [ACTIVE]
+  servers:
+    linode_primary:
+      ssh_user: deploy             # [ACTIVE]
+      ssh_host: 203.0.113.10       # [ACTIVE]
+      ssh_port: 22                 # [ACTIVE]
+      ssh_key: ~/.ssh/nwp          # [ACTIVE]
+      api_token: ${LINODE_API_TOKEN}
+
+################################################################################
+# SITES - Auto-populated Site Registry
+################################################################################
+sites:
+  # Automatically populated when sites are created with install.sh
+  # mysite:
+  #   directory: /home/user/nwp/mysite    # [ACTIVE]
+  #   recipe: d                            # [ACTIVE]
+  #   environment: development             # [ACTIVE]
+  #   created: 2024-12-28T10:30:00Z       # [ACTIVE]
+  #   live:                                # [ACTIVE] Live deployment config
+  #     enabled: true
+  #     domain: mysite.example.com
+```
+
+### Proposed CI Section for `example.cnwp.yml`
+
+Add a new `ci` section under `settings` (all `[PLANNED]`):
 
 ```yaml
 settings:
-  # ... existing settings ...
-
-  # CI/CD Configuration
+  # === CI/CD CONFIGURATION [PLANNED] ===
   ci:
-    # CI platform: github, gitlab, or both
-    platform: gitlab
+    platform: gitlab               # [PLANNED] CI platform: github, gitlab, or both
+    auto_setup: false              # [PLANNED] Enable CI setup during install
 
-    # Enable CI setup during install (pl install --ci)
-    auto_setup: false
-
-    # Shell script linting
     shellcheck:
-      enabled: true
-      severity: warning          # error, warning, info, style
-      exclude:                   # ShellCheck codes to ignore
-        - SC1091                 # Can't follow non-constant source
+      enabled: true                # [PLANNED]
+      severity: warning            # [PLANNED] error, warning, info, style
 
-    # Shell script formatting
-    shfmt:
-      enabled: true
-      indent: 2                  # Indentation width
-      check_only: true           # Don't auto-fix, just check
-
-    # Test configuration
     testing:
-      # Skip flags (can be overridden per recipe or via environment)
-      skip_phpcs: false
-      skip_phpstan: false
-      skip_phpunit: false
-      skip_behat: false
-
-      # Coverage thresholds
+      skip_phpcs: false            # [PLANNED]
+      skip_phpstan: false          # [PLANNED]
       coverage:
-        enabled: true
-        threshold: 80            # Minimum coverage percentage
-        format: cobertura        # cobertura, clover, html
+        enabled: true              # [PLANNED]
+        threshold: 80              # [PLANNED]
 
-      # Behat configuration
-      behat:
-        parallel: 2              # Number of parallel runners
-        profile: default         # default, smoke, full
-        browser: chrome          # chrome, firefox
-
-      # PHPStan level (0-9)
-      phpstan_level: 5
-
-    # Deployment configuration
     deploy:
-      # Require tests to pass before deployment
-      require_tests: true
-
-      # Auto-deploy branches
-      staging_branch: develop
-      production_branch: main
-
-      # Manual approval required for production
-      production_manual: true
-
-      # Backup before deployment
-      backup_before_deploy: true
-
-    # Notifications
-    notifications:
-      enabled: false
-      # Channels: slack, email, or both
-      channels:
-        - slack
-      # Events to notify on
-      on_success: false
-      on_failure: true
-      on_deploy: true
-
-    # Local development hooks
-    hooks:
-      pre_commit:
-        enabled: true
-        run:
-          - shellcheck
-          - phpstan
-      pre_push:
-        enabled: true
-        run:
-          - phpcs
-          - phpunit_unit
+      require_tests: true          # [PLANNED]
+      backup_before_deploy: true   # [PLANNED]
 ```
 
-#### Per-Recipe CI Options
+### Current `.secrets.example.yml` Structure
 
-Add CI configuration to individual recipes:
-
-```yaml
-recipes:
-  os:
-    source: goalgorilla/social_template:dev-master
-    # ... existing config ...
-
-    # CI configuration (overrides settings.ci)
-    ci:
-      enabled: true              # Enable CI for this recipe
-      platform: gitlab           # Override default platform
-
-      # Test profiles for this recipe
-      testing:
-        behat_profile: social    # Recipe-specific Behat profile
-        phpstan_level: 4         # Lower level for this recipe
-        skip_behat: false
-
-        # Additional test tags
-        behat_tags: "@social"
-        phpunit_groups: "unit,kernel"
-
-      # Coverage requirements
-      coverage:
-        threshold: 70            # Lower threshold for this recipe
-
-      # Recipe-specific skip conditions
-      skip_on:
-        - "docs/*"               # Skip CI for docs-only changes
-        - "*.md"
-```
-
-### Changes to `.secrets.example.yml`
-
-Add CI/CD service tokens:
+The secrets file contains sensitive credentials organized by service:
 
 ```yaml
 # NWP Infrastructure Secrets Configuration
-# Copy this file to .secrets.yml and add your actual credentials
+# Copy this file to .secrets.yml and fill in your values
 # NEVER commit .secrets.yml to version control!
 
-# Linode API Configuration
+# === LINODE API ===
+# Get your API token from: https://cloud.linode.com/profile/tokens
 linode:
-  api_token: YOUR_LINODE_API_TOKEN_HERE
+  api_token: ""
 
-# CI/CD Platform Tokens
+# === GITLAB SERVER ===
+# Populated automatically when GitLab server is created
+gitlab:
+  server:
+    domain: ""                     # e.g., git.yourdomain.org
+    ip: ""                         # Server IP address
+    linode_id: ""                  # Linode instance ID
+    ssh_user: gitlab               # SSH username for server access
+    ssh_key: ~/.ssh/gitlab         # Path to SSH private key
+  api_token: ""                    # GitLab API token for project creation
+
+# === DRUPAL DEFAULTS ===
+# Used by install.sh when creating Drupal sites
+drupal:
+  admin_user: admin                # Drupal admin username
+  admin_password: ""               # Empty = generate random password
+  admin_email: admin@localhost     # Admin email address
+
+# === MOODLE DEFAULTS ===
+# Used by install.sh when creating Moodle sites
+moodle:
+  admin_user: admin                # Moodle admin username
+  admin_password: ""               # Empty = use Admin123!
+  admin_email: admin@example.com   # Admin email address
+  shortname: moodle                # Site short name
+
+# === SMTP CONFIGURATION ===
+# For sites that need email functionality
+smtp:
+  host: ""                         # SMTP server hostname
+  port: 587                        # SMTP port (usually 587 for TLS)
+  username: ""                     # SMTP username
+  password: ""                     # SMTP password
+  from_email: ""                   # Default from email address
+
+# === DEPLOYMENT DEFAULTS ===
+# Default SSH settings for production deployments
+deployment:
+  ssh_key: ~/.ssh/id_rsa           # Default SSH private key
+  ssh_user: ""                     # Default SSH username
+  ssh_port: 22                     # Default SSH port
+
+# === THIRD-PARTY SERVICES ===
+# API keys for optional integrations
+services:
+  sendgrid_key: ""                 # SendGrid API key
+  mailchimp_key: ""                # Mailchimp API key
+  cloudflare_api_key: ""           # Cloudflare API key
+  cloudflare_zone_id: ""           # Cloudflare zone ID
+  ga_tracking_id: ""               # Google Analytics tracking ID
+```
+
+### Proposed CI Additions for `.secrets.example.yml`
+
+Add CI/CD service tokens (all `[PLANNED]`):
+
+```yaml
+# === CI/CD PLATFORM TOKENS [PLANNED] ===
 ci:
-  # GitHub Configuration
-  # Used for GitHub Actions, PR comments, status checks
-  # Create token at: https://github.com/settings/tokens
-  # Required scopes: repo, workflow (for private repos)
   github:
-    api_token: YOUR_GITHUB_TOKEN_HERE
-
-  # GitLab Configuration
-  # Used for GitLab CI, API access, container registry
-  # Create token at: https://gitlab.com/-/profile/personal_access_tokens
-  # Required scopes: api, read_repository, write_repository
+    api_token: ""                  # GitHub personal access token
   gitlab:
-    api_token: YOUR_GITLAB_TOKEN_HERE
-    # Self-hosted GitLab URL (leave blank for gitlab.com)
-    url: ""
+    api_token: ""                  # GitLab API token
+    url: ""                        # Self-hosted GitLab URL (blank for gitlab.com)
 
-# Notification Services
+# === NOTIFICATION SERVICES [PLANNED] ===
 notifications:
-  # Slack webhook for CI notifications
-  # Create at: https://api.slack.com/messaging/webhooks
   slack:
-    webhook_url: YOUR_SLACK_WEBHOOK_URL_HERE
-
-  # Email notifications (SMTP)
+    webhook_url: ""                # Slack webhook for CI notifications
   email:
-    smtp_host: smtp.example.com
+    smtp_host: ""
     smtp_port: 587
-    smtp_user: notifications@example.com
-    smtp_password: YOUR_SMTP_PASSWORD_HERE
-    from_address: nwp-ci@example.com
-    recipients:
-      - dev@example.com
+    smtp_user: ""
+    smtp_password: ""
 
-# Code Quality Services
+# === CODE QUALITY SERVICES [PLANNED] ===
 code_quality:
-  # Codecov.io for coverage reporting
   codecov:
-    token: YOUR_CODECOV_TOKEN_HERE
-
-# Note: Site-specific secrets should be stored in each site's
-# .secrets.yml file, not here.
+    token: ""                      # Codecov.io token for coverage reporting
 ```
 
 ---
@@ -688,23 +755,48 @@ setup() {
 
 **Goal:** Add CI configuration reading to common library.
 
-Add to `lib/common.sh`:
+#### Already Implemented in `lib/common.sh`
+
+The following functions are already implemented and available:
+
+```bash
+# Get secret value from .secrets.yml with fallback
+# Usage: get_secret "section.key" "default_value"
+# Example: get_secret "moodle.admin_password" "Admin123!"
+get_secret() {
+    local path="$1"
+    local default="$2"
+    local secrets_file="${SCRIPT_DIR}/.secrets.yml"
+    # ... parses YAML and returns value or default
+}
+
+# Get nested secret value from .secrets.yml (for deeper nesting)
+# Usage: get_secret_nested "section.subsection.key" "default_value"
+# Example: get_secret_nested "gitlab.server.ip" ""
+get_secret_nested() {
+    local path="$1"
+    local default="$2"
+    # ... handles section.subsection.key format
+}
+
+# Get setting value from cnwp.yml with fallback
+# Usage: get_setting "section.key" "default_value"
+# Example: get_setting "php_settings.memory_limit" "512M"
+get_setting() {
+    local path="$1"
+    local default="$2"
+    local config_file="${SCRIPT_DIR}/cnwp.yml"
+    # ... parses YAML and returns value or default
+}
+```
+
+#### Proposed CI-Specific Functions (To Be Added)
 
 ```bash
 # Read CI configuration from cnwp.yml
 # Usage: ci_config_get "testing.coverage.threshold" "80"
 ci_config_get() {
-    local key="$1"
-    local default="${2:-}"
-    local value
-
-    value=$(yaml_get_value "settings.ci.${key}" "$CNWP_CONFIG" 2>/dev/null)
-
-    if [[ -z "$value" || "$value" == "null" ]]; then
-        echo "$default"
-    else
-        echo "$value"
-    fi
+    get_setting "ci.${1}" "${2:-}"
 }
 
 # Check if CI feature is enabled
@@ -712,7 +804,6 @@ ci_config_get() {
 ci_enabled() {
     local feature="$1"
     local enabled
-
     enabled=$(ci_config_get "${feature}.enabled" "false")
     [[ "$enabled" == "true" ]]
 }
@@ -752,13 +843,24 @@ is_ci() {
 
 ### Modified Files Summary
 
+**Already Implemented:**
+
+| File | Changes | Status |
+|------|---------|--------|
+| `example.cnwp.yml` | Added [ACTIVE]/[PLANNED] markers, php_settings, timeouts, gitlab.ports, linode.defaults | ✓ Done |
+| `.secrets.example.yml` | Added Drupal/Moodle credentials, SMTP, deployment, services sections | ✓ Done |
+| `lib/common.sh` | Added `get_setting()`, `get_secret()`, `get_secret_nested()` functions | ✓ Done |
+| `install.sh` | Uses `get_setting()` for PHP settings, `get_secret()` for Moodle credentials | ✓ Done |
+
+**Proposed Changes (Not Yet Implemented):**
+
 | File | Changes | Priority |
 |------|---------|----------|
-| `example.cnwp.yml` | Add `settings.ci` section (~80 lines) | High |
-| `.secrets.example.yml` | Add CI tokens section (~50 lines) | High |
+| `example.cnwp.yml` | Add `settings.ci` section (~40 lines) | High |
+| `.secrets.example.yml` | Add CI tokens section (~30 lines) | High |
 | `install.sh` | Add `--ci` flag handling (~20 lines) | High |
 | `setup.sh` | Add CI tool installation (~40 lines) | Medium |
-| `lib/common.sh` | Add CI helper functions (~50 lines) | Medium |
+| `lib/common.sh` | Add CI-specific functions (`ci_config_get`, `ci_enabled`, etc.) | Medium |
 | `templates/.gitlab-ci.yml` | Add shell linting, caching (~30 lines) | Medium |
 | `test-nwp.sh` | Add TAP output, `--ci` flag (~30 lines) | Medium |
 
@@ -813,4 +915,5 @@ pl ci test --full       # All tests including Behat
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2025-12-31 | 1.1 | Updated with current cnwp.yml and .secrets.yml structure; documented implemented `get_setting()`, `get_secret()`, `get_secret_nested()` functions; added [ACTIVE]/[PLANNED] status markers |
 | 2025-12-31 | 1.0 | Initial recommendations document |

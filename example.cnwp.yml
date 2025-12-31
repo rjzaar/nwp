@@ -44,13 +44,39 @@ settings:
     ssh_connection: 600            # [ACTIVE] SSH connection timeout (seconds)
     health_check: 10               # [ACTIVE] Health check interval (seconds)
 
-  # === GITLAB LOCAL SETTINGS [ACTIVE] ===
-  # For local GitLab Docker installations
+  # === GITLAB SETTINGS ===
+  # For local GitLab Docker installations and production GitLab servers
   gitlab:
+    # Local Docker ports [ACTIVE]
     ports:
       ssh: 2222                    # [ACTIVE] GitLab SSH port
       http: 8080                   # [ACTIVE] GitLab HTTP port
       https: 8443                  # [ACTIVE] GitLab HTTPS port
+
+    # Security hardening options [PLANNED]
+    # Applied when running: ./git/gitlab_harden.sh --apply
+    hardening:
+      enabled: true                # [PLANNED] Enable hardening during setup
+      disable_signups: true        # [PLANNED] Disable public user registration
+      require_2fa: false           # [PLANNED] Require 2FA for all users
+      password_min_length: 12      # [PLANNED] Minimum password length
+      session_timeout: 60          # [PLANNED] Session timeout (minutes)
+      ip_allowlist: []             # [PLANNED] Restrict to specific IPs
+      audit_logging: true          # [PLANNED] Enable audit event logging
+      # Security scanning in CI pipelines
+      sast_enabled: true           # [PLANNED] Static Application Security Testing
+      dependency_scanning: true    # [PLANNED] Dependency vulnerability scanning
+      secret_detection: true       # [PLANNED] Detect secrets in commits
+
+    # Repository mirroring [PLANNED]
+    # Push mirrors to external services (GitHub, external GitLab)
+    mirroring:
+      enabled: false               # [PLANNED] Enable repository mirroring
+      # targets:                   # [PLANNED] Mirror destinations
+      #   - type: github
+      #     url: https://github.com/username
+      #     token_secret: github.api_token  # Reference to .secrets.yml
+      #     mirror_protected_only: true
 
   # === ENVIRONMENT CONFIGURATION [PLANNED] ===
   # Default environment settings (can be overridden per recipe)

@@ -5,25 +5,133 @@ This document provides comprehensive recommendations for integrating Continuous 
 ## Table of Contents
 
 1. [Executive Summary](#executive-summary)
-2. [Research Findings](#research-findings)
-3. [Current NWP CI Infrastructure](#current-nwp-ci-infrastructure)
-4. [Best Practices (2025)](#best-practices-2025)
-5. [Recommendations](#recommendations)
-6. [Configuration Changes](#configuration-changes)
-7. [Implementation Plan](#implementation-plan)
-8. [File Reference](#file-reference)
+2. [NWP GitLab Architecture](#nwp-gitlab-architecture)
+3. [Research Findings](#research-findings)
+4. [Current NWP CI Infrastructure](#current-nwp-ci-infrastructure)
+5. [Best Practices (2025)](#best-practices-2025)
+6. [Recommendations](#recommendations)
+7. [Configuration Changes](#configuration-changes)
+8. [Implementation Plan](#implementation-plan)
+9. [File Reference](#file-reference)
 
 ---
 
 ## Executive Summary
 
-NWP already has substantial CI infrastructure including a GitLab CI template, comprehensive testing scripts, and detailed documentation. The recommendations focus on:
+NWP uses a **self-hosted GitLab instance as the primary CI/CD endpoint**. When you run `pl install gitlab` or `./git/setup_gitlab_site.sh`, NWP creates a GitLab server at `git.<your-domain>` that serves as:
 
-1. **Automating CI setup** - One-command CI configuration during site installation
-2. **Shell script quality** - Adding ShellCheck and shfmt for NWP's own scripts
-3. **Test framework enhancement** - Converting to BATS for better CI integration
-4. **Configuration-driven CI** - New `settings.ci` section in cnwp.yml
-5. **Multi-platform support** - GitHub Actions templates alongside GitLab CI
+1. **Primary Git repository** - All NWP sites push to this GitLab first
+2. **CI/CD runner** - GitLab CI pipelines run on this server
+3. **Mirror source** - Optionally mirrors to GitHub or external GitLab
+
+This architecture provides:
+- Full control over CI/CD infrastructure
+- No external service dependencies
+- Integrated runner for faster builds
+- Centralized project management
+
+The recommendations in this document focus on:
+
+1. **GitLab as primary endpoint** - Configure NWP GitLab as the canonical git remote
+2. **Repository mirroring** - Push to GitHub/external services as mirrors
+3. **GitLab hardening** - Security options for production GitLab instances
+4. **Shell script quality** - Adding ShellCheck and shfmt for NWP's own scripts
+5. **Configuration-driven CI** - New `settings.ci` section in cnwp.yml
+
+---
+
+## NWP GitLab Architecture
+
+### Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     NWP GitLab Server                           │
+│                   git.<your-domain>.org                         │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │   GitLab    │  │   GitLab    │  │    Container Registry   │  │
+│  │     CE      │  │   Runner    │  │      (optional)         │  │
+│  └──────┬──────┘  └──────┬──────┘  └─────────────────────────┘  │
+│         │                │                                       │
+│         └────────────────┼───────────────────────────────────┐  │
+│                          │                                   │  │
+│  ┌───────────────────────▼───────────────────────────────┐  │  │
+│  │                  CI/CD Pipelines                       │  │  │
+│  │  build → validate → test → deploy                      │  │  │
+│  └────────────────────────────────────────────────────────┘  │  │
+└──────────────────────────────┬───────────────────────────────┘  │
+                               │                                   │
+              ┌────────────────┼────────────────┐                  │
+              │                │                │                  │
+              ▼                ▼                ▼                  │
+       ┌──────────┐     ┌──────────┐     ┌──────────┐             │
+       │  GitHub  │     │ External │     │  Local   │             │
+       │ (mirror) │     │  GitLab  │     │   Dev    │             │
+       └──────────┘     │ (mirror) │     │ Machine  │             │
+                        └──────────┘     └──────────┘             │
+```
+
+### Git Remote Strategy
+
+When NWP GitLab is set up, repositories should be configured with:
+
+| Remote | URL | Purpose |
+|--------|-----|---------|
+| `origin` | `git@git.yourdomain.org:nwp/sitename.git` | Primary (CI runs here) |
+| `github` | `git@github.com:user/sitename.git` | Mirror (optional) |
+| `upstream` | Original project URL | For pulling updates |
+
+### Workflow
+
+1. **Development**: Push to `origin` (NWP GitLab)
+2. **CI/CD**: GitLab Runner executes pipelines
+3. **Mirroring**: GitLab automatically pushes to configured mirrors
+4. **Deployment**: Pipeline deploys to staging/production
+
+### GitLab Server Installation
+
+NWP provides two methods to set up the GitLab server:
+
+#### Method 1: Linode Server (Production)
+```bash
+# Creates a dedicated Linode server at git.<url>
+./git/setup_gitlab_site.sh
+
+# Or with options
+./git/setup_gitlab_site.sh --type g6-standard-4 --region us-west
+```
+
+#### Method 2: Local Docker (Development)
+```bash
+# Creates local GitLab using Docker Compose
+pl install gitlab git
+```
+
+### Post-Installation Setup
+
+After GitLab installation, the following should be configured:
+
+1. **NWP Repository**: Push NWP itself to GitLab
+2. **Site Repositories**: Create projects for each managed site
+3. **Mirroring**: Configure push mirrors to GitHub (optional)
+4. **Runners**: Register GitLab Runner for CI jobs
+5. **Webhooks**: Set up notifications (optional)
+
+### Hardening Options
+
+For production GitLab instances, NWP supports these hardening options:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `disable_signups` | Disable public user registration | Recommended |
+| `require_2fa` | Require two-factor authentication | Optional |
+| `ip_allowlist` | Restrict access to specific IPs | Optional |
+| `audit_logging` | Enable audit event logging | Recommended |
+| `container_scanning` | Enable container vulnerability scanning | Optional |
+| `sast_enabled` | Enable Static Application Security Testing | Recommended |
+
+See [GitLab Hardening](#gitlab-hardening) section for implementation details.
 
 ---
 
@@ -892,6 +1000,224 @@ pl ci test --full       # All tests including Behat
 
 ---
 
+## GitLab Hardening
+
+### Overview
+
+When deploying NWP GitLab in production, security hardening is essential. This section provides configuration options and scripts for securing your GitLab instance.
+
+### Hardening Configuration in cnwp.yml
+
+Add to `settings.gitlab` section:
+
+```yaml
+settings:
+  gitlab:
+    # Existing port settings
+    ports:
+      ssh: 2222
+      http: 8080
+      https: 8443
+
+    # Hardening options [PLANNED]
+    hardening:
+      enabled: true                    # Enable hardening during setup
+      disable_signups: true            # Disable public registration
+      require_2fa: false               # Require 2FA for all users
+      password_min_length: 12          # Minimum password length
+      session_timeout: 60              # Session timeout (minutes)
+      ip_allowlist: []                 # Restrict to specific IPs (empty = allow all)
+      audit_logging: true              # Enable audit event logging
+
+      # Security scanning
+      sast_enabled: true               # Static Application Security Testing
+      container_scanning: false        # Container vulnerability scanning
+      dependency_scanning: true        # Dependency vulnerability scanning
+      secret_detection: true           # Detect secrets in commits
+```
+
+### Hardening Script
+
+Create `git/gitlab_harden.sh`:
+
+```bash
+#!/bin/bash
+# gitlab_harden.sh - Apply security hardening to GitLab instance
+#
+# Usage: ./gitlab_harden.sh [--apply]
+#        Without --apply, shows what would be changed
+
+set -euo pipefail
+
+GITLAB_CONFIG="/etc/gitlab/gitlab.rb"
+DRY_RUN=true
+
+[[ "${1:-}" == "--apply" ]] && DRY_RUN=false
+
+echo "GitLab Security Hardening"
+echo "========================="
+echo ""
+
+# Function to add or update gitlab.rb setting
+update_config() {
+    local setting="$1"
+    local value="$2"
+
+    if $DRY_RUN; then
+        echo "[DRY-RUN] Would set: $setting = $value"
+    else
+        if grep -q "^${setting}" "$GITLAB_CONFIG"; then
+            sed -i "s|^${setting}.*|${setting} = ${value}|" "$GITLAB_CONFIG"
+        else
+            echo "${setting} = ${value}" >> "$GITLAB_CONFIG"
+        fi
+        echo "[OK] Set: $setting = $value"
+    fi
+}
+
+echo "1. Disabling public sign-ups..."
+update_config "gitlab_rails['gitlab_signup_enabled']" "false"
+
+echo "2. Enabling password complexity..."
+update_config "gitlab_rails['password_minimum_length']" "12"
+
+echo "3. Setting session timeout..."
+update_config "gitlab_rails['session_expire_delay']" "60"
+
+echo "4. Enabling audit logging..."
+update_config "gitlab_rails['audit_events_enabled']" "true"
+
+echo "5. Enabling rate limiting..."
+update_config "gitlab_rails['rate_limiting_response_text']" "'Too many requests'"
+update_config "gitlab_rails['throttle_authenticated_api_enabled']" "true"
+update_config "gitlab_rails['throttle_authenticated_web_enabled']" "true"
+
+echo "6. Disabling Gravatar..."
+update_config "gitlab_rails['gravatar_enabled']" "false"
+
+echo "7. Enabling protected paths..."
+update_config "gitlab_rails['rack_attack_protected_paths']" "['/users/password', '/users/sign_in', '/api/v4/session']"
+
+echo ""
+if $DRY_RUN; then
+    echo "Run with --apply to make changes"
+    echo "Then run: sudo gitlab-ctl reconfigure"
+else
+    echo "Reconfiguring GitLab..."
+    gitlab-ctl reconfigure
+    echo ""
+    echo "Hardening applied successfully!"
+fi
+```
+
+### Security Checklist
+
+After GitLab installation, verify these security measures:
+
+#### Immediate (Required)
+
+- [ ] Change default root password
+- [ ] Disable public sign-ups
+- [ ] Configure SSH key authentication
+- [ ] Enable HTTPS with valid certificate
+- [ ] Set up firewall rules (UFW)
+
+#### Recommended
+
+- [ ] Enable two-factor authentication for admins
+- [ ] Configure session timeout
+- [ ] Enable audit logging
+- [ ] Set password complexity requirements
+- [ ] Disable Gravatar (privacy)
+- [ ] Configure rate limiting
+
+#### Advanced (Production)
+
+- [ ] Set up IP allowlist if applicable
+- [ ] Enable SAST in CI pipelines
+- [ ] Configure container scanning
+- [ ] Set up backup encryption
+- [ ] Enable secret detection
+- [ ] Configure LDAP/SAML if needed
+
+### Repository Mirroring
+
+Configure GitLab to mirror repositories to external services:
+
+#### Push Mirroring to GitHub
+
+1. In GitLab project settings, go to **Repository > Mirroring repositories**
+2. Add mirror URL: `https://github.com/username/repo.git`
+3. Select **Push** direction
+4. Add authentication (GitHub personal access token)
+5. Enable **Mirror only protected branches** (optional)
+
+#### Automatic Mirror Configuration
+
+Add to `settings.gitlab` in cnwp.yml:
+
+```yaml
+settings:
+  gitlab:
+    mirroring:
+      enabled: true
+      targets:
+        - type: github
+          url: https://github.com/${GITHUB_USER}
+          token_secret: github.api_token    # Reference to .secrets.yml
+          mirror_protected_only: true
+        - type: gitlab
+          url: https://gitlab.com/${GITLAB_USER}
+          token_secret: ci.gitlab.api_token
+```
+
+### SSL Certificate Setup
+
+For production GitLab, configure Let's Encrypt:
+
+```bash
+# Edit /etc/gitlab/gitlab.rb
+external_url 'https://git.yourdomain.org'
+letsencrypt['enable'] = true
+letsencrypt['contact_emails'] = ['admin@yourdomain.org']
+letsencrypt['auto_renew'] = true
+letsencrypt['auto_renew_hour'] = 2
+letsencrypt['auto_renew_minute'] = 30
+letsencrypt['auto_renew_day_of_month'] = "*/7"
+
+# Apply changes
+sudo gitlab-ctl reconfigure
+```
+
+### Backup Configuration
+
+Secure backup configuration:
+
+```ruby
+# /etc/gitlab/gitlab.rb
+gitlab_rails['backup_keep_time'] = 604800  # 7 days
+gitlab_rails['backup_path'] = '/var/opt/gitlab/backups'
+gitlab_rails['backup_archive_permissions'] = 0600  # Restrictive permissions
+gitlab_rails['backup_encryption'] = 'AES-256-CBC'  # Encrypt backups
+gitlab_rails['backup_encryption_key'] = ENV['GITLAB_BACKUP_KEY']
+```
+
+### Integration with NWP
+
+When NWP GitLab is installed, sites can be automatically configured to use it:
+
+```bash
+# After GitLab setup, configure NWP itself
+cd /home/user/nwp
+git remote add gitlab git@git.yourdomain.org:nwp/nwp.git
+git push gitlab main
+
+# Configure new sites to use GitLab
+pl install os mysite --gitlab  # Future flag
+```
+
+---
+
 ## References
 
 ### External Resources
@@ -901,6 +1227,7 @@ pl ci test --full       # All tests including Behat
 - [BATS](https://github.com/bats-core/bats-core) - Bash Automated Testing System
 - [GitLab CI Documentation](https://docs.gitlab.com/ee/ci/)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
+- [GitLab Hardening Guide](https://docs.gitlab.com/ee/security/hardening.html) - Official security hardening
 
 ### Internal Documentation
 
@@ -908,6 +1235,8 @@ pl ci test --full       # All tests including Behat
 - `docs/NWP_CI_TESTING_STRATEGY.md` - Testing strategy research
 - `docs/TESTING.md` - Testing framework documentation
 - `templates/.gitlab-ci.yml` - Existing GitLab CI template
+- `git/setup_gitlab_site.sh` - GitLab server setup script
+- `git/gitlab_server_setup.sh` - Linode StackScript for GitLab
 
 ---
 
@@ -915,5 +1244,6 @@ pl ci test --full       # All tests including Behat
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2025-12-31 | 1.2 | Added NWP GitLab Architecture section; documented GitLab as primary CI endpoint; added GitLab Hardening section with security checklist, mirroring, and SSL configuration |
 | 2025-12-31 | 1.1 | Updated with current cnwp.yml and .secrets.yml structure; documented implemented `get_setting()`, `get_secret()`, `get_secret_nested()` functions; added [ACTIVE]/[PLANNED] status markers |
 | 2025-12-31 | 1.0 | Initial recommendations document |

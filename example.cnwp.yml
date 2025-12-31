@@ -413,3 +413,17 @@ sites:
   #     notifications:                     # CI notifications
   #       email: admin@example.com
   #       slack_webhook: ""
+  #   email:                               # [PLANNED] Per-site email configuration
+  #     enabled: true                      # Enable email for this site
+  #     address: mysite@nwpcode.org        # Site's email address
+  #     direction: send                    # send = outgoing only, all = send + receive
+  #     forward: admin@example.com         # Forward received emails to this address
+  #     # Direction options:
+  #     #   send - Site can send emails only (contact forms, notifications)
+  #     #          No mailbox created, just SMTP credentials
+  #     #   all  - Site can send AND receive emails
+  #     #          Creates virtual mailbox with IMAP access
+  #     # Forward options:
+  #     #   If set, all received emails are forwarded to this address
+  #     #   Works with direction: all (emails are stored AND forwarded)
+  #     #   Useful for routing site inquiries to admin's main inbox

@@ -321,49 +321,203 @@ myhostname = git.nwpcode.org
 #### E06: Install and Configure Dovecot
 **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** E01
 
-Dovecot provides IMAP access and authentication for virtual mailboxes.
+##### What is Dovecot?
 
-**Installation:**
-```bash
-sudo apt install dovecot-core dovecot-imapd dovecot-lmtpd
+Dovecot is an open-source IMAP and POP3 server. In our architecture, it serves two critical functions:
+
+1. **IMAP Server**: Allows users to access their mailboxes remotely (via email clients like Thunderbird, or webmail)
+2. **LMTP Delivery**: Receives emails from Postfix and stores them in the correct mailbox
+3. **SASL Authentication**: Provides authentication services for Postfix (so users can send email)
+
+##### How Dovecot Fits in the Architecture
+
+```
+                                 ┌─────────────────────────────────────┐
+Incoming Email                   │           Mail Server               │
+─────────────────────────────────┤                                     │
+                                 │  ┌─────────┐      ┌─────────────┐  │
+Internet ──▶ Port 25 ──▶ Postfix │──▶ LMTP    │──▶   │  Dovecot    │  │
+                                 │  └─────────┘      │             │  │
+                                 │                   │  ┌───────┐  │  │
+                                 │                   │  │Mailbox│  │  │
+                                 │                   │  │Storage│  │  │
+User Access                      │                   │  └───────┘  │  │
+─────────────────────────────────┤                   │      ▲      │  │
+                                 │                   │      │      │  │
+Email Client ──▶ Port 993 ───────┼───────────────────┼──▶ IMAP     │  │
+(Thunderbird)     (IMAPS)        │                   └─────────────┘  │
+                                 │                                     │
+Outgoing Email                   │                                     │
+─────────────────────────────────┤                                     │
+                                 │  ┌─────────────┐  ┌─────────┐      │
+Drupal Site ──▶ Port 587 ──▶     │  │   SASL      │──│ Postfix │──▶ Internet
+                (Submission)     │  │   Auth      │  │         │      │
+                                 │  │  (Dovecot)  │  └─────────┘      │
+                                 │  └─────────────┘                    │
+                                 └─────────────────────────────────────┘
 ```
 
-**Configuration (`/etc/dovecot/conf.d/10-mail.conf`):**
+##### When is Dovecot Needed?
+
+| Scenario | Dovecot Required? | Why |
+|----------|-------------------|-----|
+| Site sends emails only | **No** | Postfix alone can send via SMTP relay |
+| Site receives emails | **Yes** | Need mailbox storage and IMAP access |
+| Site needs SMTP auth | **Yes** | Dovecot provides SASL authentication |
+| Forward-only receiving | **Partial** | Postfix can forward without Dovecot storage |
+
+##### Installation
+
+```bash
+sudo apt install dovecot-core dovecot-imapd dovecot-lmtpd dovecot-sieve
+```
+
+**Packages explained:**
+- `dovecot-core` - Core Dovecot functionality
+- `dovecot-imapd` - IMAP server (for email client access)
+- `dovecot-lmtpd` - LMTP server (for receiving mail from Postfix)
+- `dovecot-sieve` - Mail filtering (for auto-forwarding)
+
+##### Configuration Files
+
+**Main Config (`/etc/dovecot/dovecot.conf`):**
 ```conf
+# Protocols to enable
+protocols = imap lmtp
+
+# Listen on all interfaces
+listen = *, ::
+```
+
+**Mail Location (`/etc/dovecot/conf.d/10-mail.conf`):**
+```conf
+# Where emails are stored
+# %d = domain (nwpcode.org)
+# %n = user (nwp1)
 mail_location = maildir:/var/mail/vhosts/%d/%n
+
+# Group that can access mail files
 mail_privileged_group = mail
+
+# Required for virtual users
+mail_uid = vmail
+mail_gid = vmail
+first_valid_uid = 5000
+last_valid_uid = 5000
+```
+
+**SSL/TLS (`/etc/dovecot/conf.d/10-ssl.conf`):**
+```conf
+ssl = required
+ssl_cert = </etc/letsencrypt/live/git.nwpcode.org/fullchain.pem
+ssl_key = </etc/letsencrypt/live/git.nwpcode.org/privkey.pem
+ssl_min_protocol = TLSv1.2
 ```
 
 **Authentication (`/etc/dovecot/conf.d/10-auth.conf`):**
 ```conf
+# Disable plain text auth except over SSL
 disable_plaintext_auth = yes
+
+# Authentication mechanisms
 auth_mechanisms = plain login
+
+# Use passwd-file for virtual users
 !include auth-passwdfile.conf.ext
 ```
 
-**Passwd File (`/etc/dovecot/conf.d/auth-passwdfile.conf.ext`):**
+**Passwd File Auth (`/etc/dovecot/conf.d/auth-passwdfile.conf.ext`):**
 ```conf
+# Password database - validates credentials
 passdb {
   driver = passwd-file
   args = scheme=SHA512-CRYPT /etc/dovecot/users
 }
+
+# User database - provides user info
 userdb {
   driver = static
   args = uid=vmail gid=vmail home=/var/mail/vhosts/%d/%n
 }
 ```
 
-**Create vmail user:**
+**LMTP Service (`/etc/dovecot/conf.d/10-master.conf`):**
+```conf
+service lmtp {
+  unix_listener /var/spool/postfix/private/dovecot-lmtp {
+    mode = 0600
+    user = postfix
+    group = postfix
+  }
+}
+
+# SASL auth for Postfix
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0666
+    user = postfix
+    group = postfix
+  }
+}
+```
+
+**Sieve Filtering (`/etc/dovecot/conf.d/90-sieve.conf`):**
+```conf
+# Enable sieve for auto-forwarding
+plugin {
+  sieve = ~/.dovecot.sieve
+  sieve_global_path = /var/mail/vhosts/sieve/default.sieve
+  sieve_dir = ~/sieve
+}
+```
+
+##### Create Virtual Mail User
+
 ```bash
+# Create vmail group and user (owns all mailboxes)
 sudo groupadd -g 5000 vmail
-sudo useradd -g vmail -u 5000 vmail -d /var/mail/vhosts -m
+sudo useradd -g vmail -u 5000 vmail -d /var/mail/vhosts -m -s /usr/sbin/nologin
+
+# Create mailbox directory structure
 sudo mkdir -p /var/mail/vhosts/nwpcode.org
 sudo chown -R vmail:vmail /var/mail/vhosts
+sudo chmod -R 700 /var/mail/vhosts
+```
+
+##### Connect Postfix to Dovecot
+
+Add to `/etc/postfix/main.cf`:
+```conf
+# Use Dovecot LMTP for local delivery
+virtual_transport = lmtp:unix:private/dovecot-lmtp
+
+# Use Dovecot for SASL authentication
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_auth_enable = yes
+```
+
+##### Testing Dovecot
+
+```bash
+# Check configuration
+doveconf -n
+
+# Test IMAP connection
+openssl s_client -connect git.nwpcode.org:993
+
+# Test authentication
+doveadm auth test nwp1@nwpcode.org password123
+
+# Check mailbox
+doveadm mailbox list -u nwp1@nwpcode.org
 ```
 
 **Success Criteria:**
-- [ ] Dovecot running
+- [ ] Dovecot running (`systemctl status dovecot`)
 - [ ] IMAP accessible on port 993 (TLS)
+- [ ] LMTP socket exists (`/var/spool/postfix/private/dovecot-lmtp`)
+- [ ] SASL socket exists (`/var/spool/postfix/private/auth`)
 - [ ] Can authenticate and check mailbox
 
 ---
@@ -371,54 +525,307 @@ sudo chown -R vmail:vmail /var/mail/vhosts
 #### E07: Virtual Mailbox Configuration
 **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** E06
 
-Configure virtual mailboxes for per-site email addresses.
+##### What are Virtual Mailboxes?
 
-**Virtual Mailbox Map (`/etc/postfix/vmailbox`):**
+Virtual mailboxes allow you to create email addresses that don't correspond to Linux system users. Instead of creating a Linux account for each email user, virtual mailboxes store all mail under a single system user (`vmail`) with each email address having its own directory.
+
+##### Virtual vs. System Mailboxes
+
+| Feature | System Mailbox | Virtual Mailbox |
+|---------|----------------|-----------------|
+| Linux user required | Yes | No |
+| Shell access | Yes (potential security risk) | No |
+| Scales to many users | Poorly | Excellently |
+| Per-domain isolation | Difficult | Easy |
+| Management | Edit /etc/passwd | Edit text files or database |
+
+##### Email Direction Options
+
+Each site can have one of two email directions:
+
+**1. `direction: send` (Send Only)**
+- Site can send emails (contact form confirmations, notifications)
+- No mailbox created
+- Uses SMTP credentials only
+- Lower resource usage
+- Simpler setup
+
+**2. `direction: all` (Send + Receive)**
+- Site can send AND receive emails
+- Creates virtual mailbox with IMAP access
+- Full email functionality
+- Requires Dovecot (E06)
+
+##### Email Forwarding
+
+The `forward` option automatically sends a copy of received emails to another address:
+
+```yaml
+sites:
+  nwp1:
+    email:
+      enabled: true
+      address: nwp1@nwpcode.org
+      direction: all              # Receive AND store locally
+      forward: admin@gmail.com    # Also forward to external address
 ```
-# GitLab system emails
+
+**How forwarding works:**
+```
+Incoming Email                    Dovecot Sieve
+──────────────                    ─────────────
+
+sender@external.com               ┌─────────────────┐
+       │                          │ 1. Store in     │
+       ▼                          │    local mailbox│
+nwp1@nwpcode.org ─────────────────│                 │
+                                  │ 2. Forward to   │
+                                  │    admin@gmail  │
+                                  └─────────────────┘
+                                          │
+                                          ▼
+                                  admin@gmail.com
+```
+
+##### Configuration Files
+
+**1. Virtual Mailbox Map (`/etc/postfix/vmailbox`)**
+
+This file tells Postfix WHERE to store emails for each address:
+
+```
+# Format: email_address    mailbox_path/
+
+# System emails (always needed)
 git@nwpcode.org          nwpcode.org/git/
 postmaster@nwpcode.org   nwpcode.org/postmaster/
 dmarc@nwpcode.org        nwpcode.org/dmarc/
 
-# Per-site emails
+# Per-site emails (direction: all)
 nwp1@nwpcode.org         nwpcode.org/nwp1/
 nwp2@nwpcode.org         nwpcode.org/nwp2/
+
+# Subdomain emails (optional)
 contact@nwp1.nwpcode.org nwpcode.org/nwp1-contact/
 ```
 
-**Virtual Alias Map (`/etc/postfix/virtual`):**
+**Path explained:**
+- `nwpcode.org/nwp1/` → `/var/mail/vhosts/nwpcode.org/nwp1/`
+- Inside this directory, Dovecot creates Maildir structure:
+  ```
+  /var/mail/vhosts/nwpcode.org/nwp1/
+  ├── cur/          # Read emails
+  ├── new/          # Unread emails
+  ├── tmp/          # Emails being delivered
+  └── .dovecot.sieve # Forwarding rules
+  ```
+
+**2. Virtual Alias Map (`/etc/postfix/virtual`)**
+
+This file creates email ALIASES and FORWARDING:
+
 ```
-# Catch-all for subdomains (optional)
+# Format: source_address    destination_address
+
+# Subdomain catch-all → main address
 @nwp1.nwpcode.org        nwp1@nwpcode.org
 @nwp2.nwpcode.org        nwp2@nwpcode.org
 
-# Aliases
+# Standard aliases
 admin@nwpcode.org        postmaster@nwpcode.org
 abuse@nwpcode.org        postmaster@nwpcode.org
+webmaster@nwpcode.org    postmaster@nwpcode.org
+
+# Forwarding (direction: send with forward)
+# For send-only sites that just forward to external
+info@nwpcode.org         admin@gmail.com
 ```
 
-**User Credentials (`/etc/dovecot/users`):**
+**3. User Credentials (`/etc/dovecot/users`)**
+
+This file stores authentication credentials:
+
 ```
-git@nwpcode.org:{SHA512-CRYPT}$6$randomsalt$hashedpassword
-nwp1@nwpcode.org:{SHA512-CRYPT}$6$randomsalt$hashedpassword
+# Format: email:{SCHEME}password_hash
+# Only needed for addresses with direction: all
+
+git@nwpcode.org:{SHA512-CRYPT}$6$rounds=5000$salt$hash...
+nwp1@nwpcode.org:{SHA512-CRYPT}$6$rounds=5000$salt$hash...
+nwp2@nwpcode.org:{SHA512-CRYPT}$6$rounds=5000$salt$hash...
 ```
 
 **Generate password hash:**
 ```bash
+# Interactive
 doveadm pw -s SHA512-CRYPT
+
+# Non-interactive
+doveadm pw -s SHA512-CRYPT -p 'mypassword'
 ```
 
-**Activate maps:**
+**4. Sieve Forward Rules (per-user)**
+
+For each user with `forward` set, create `/var/mail/vhosts/nwpcode.org/nwp1/.dovecot.sieve`:
+
+```sieve
+require ["copy", "fileinto"];
+
+# Keep a copy locally AND forward
+redirect :copy "admin@gmail.com";
+
+# Or forward without keeping local copy:
+# redirect "admin@gmail.com";
+```
+
+Compile the sieve script:
 ```bash
+sievec /var/mail/vhosts/nwpcode.org/nwp1/.dovecot.sieve
+```
+
+##### cnwp.yml Site Email Configuration
+
+```yaml
+sites:
+  # Example 1: Send-only site (most common)
+  nwp1:
+    email:
+      enabled: true
+      address: nwp1@nwpcode.org
+      direction: send              # Can only send emails
+      # No mailbox created, just SMTP credentials
+
+  # Example 2: Full email with forwarding
+  nwp2:
+    email:
+      enabled: true
+      address: nwp2@nwpcode.org
+      direction: all               # Can send AND receive
+      forward: admin@example.com   # Forward copies to admin
+      # Creates mailbox + IMAP access + auto-forward
+
+  # Example 3: Full email without forwarding
+  nwp3:
+    email:
+      enabled: true
+      address: nwp3@nwpcode.org
+      direction: all               # Can send AND receive
+      # Creates mailbox + IMAP access, no forwarding
+```
+
+##### Automation Script
+
+Create `email/add_site_email.sh`:
+
+```bash
+#!/bin/bash
+# Add email account for a new site
+# Usage: ./add_site_email.sh sitename direction [forward_address]
+
+set -euo pipefail
+
+SITE=$1
+DIRECTION=${2:-send}  # send or all
+FORWARD=${3:-}
+
+DOMAIN="nwpcode.org"
+EMAIL="${SITE}@${DOMAIN}"
+VMAILBOX="/etc/postfix/vmailbox"
+VIRTUAL="/etc/postfix/virtual"
+DOVECOT_USERS="/etc/dovecot/users"
+MAILDIR="/var/mail/vhosts/${DOMAIN}/${SITE}"
+
+echo "Creating email: $EMAIL"
+echo "Direction: $DIRECTION"
+[ -n "$FORWARD" ] && echo "Forward to: $FORWARD"
+
+# Generate secure password
+PASSWORD=$(openssl rand -base64 16)
+
+if [ "$DIRECTION" == "all" ]; then
+    # Full mailbox - add to vmailbox
+    echo "${EMAIL}  ${DOMAIN}/${SITE}/" >> "$VMAILBOX"
+
+    # Create maildir
+    sudo mkdir -p "$MAILDIR"/{cur,new,tmp}
+    sudo chown -R vmail:vmail "$MAILDIR"
+
+    # Add to Dovecot users
+    HASH=$(doveadm pw -s SHA512-CRYPT -p "$PASSWORD")
+    echo "${EMAIL}:${HASH}" >> "$DOVECOT_USERS"
+
+    # Setup forwarding if requested
+    if [ -n "$FORWARD" ]; then
+        cat > "${MAILDIR}/.dovecot.sieve" << EOF
+require ["copy"];
+redirect :copy "${FORWARD}";
+EOF
+        sievec "${MAILDIR}/.dovecot.sieve"
+        chown vmail:vmail "${MAILDIR}/.dovecot.sieve"*
+    fi
+
+    echo "IMAP access: ${EMAIL} / ${PASSWORD}"
+
+elif [ "$DIRECTION" == "send" ]; then
+    # Send-only - just add SMTP credentials
+    HASH=$(doveadm pw -s SHA512-CRYPT -p "$PASSWORD")
+    echo "${EMAIL}:${HASH}" >> "$DOVECOT_USERS"
+
+    # If forwarding, add to virtual aliases
+    if [ -n "$FORWARD" ]; then
+        echo "${EMAIL}  ${FORWARD}" >> "$VIRTUAL"
+        sudo postmap "$VIRTUAL"
+    fi
+fi
+
+# Rebuild Postfix maps
+sudo postmap "$VMAILBOX"
+sudo postmap "$VIRTUAL"
+sudo systemctl reload postfix dovecot
+
+echo ""
+echo "=== Email Created ==="
+echo "Address: $EMAIL"
+echo "Password: $PASSWORD"
+echo "SMTP: git.nwpcode.org:587 (TLS)"
+[ "$DIRECTION" == "all" ] && echo "IMAP: git.nwpcode.org:993 (TLS)"
+```
+
+##### Activate Configuration
+
+```bash
+# Rebuild Postfix lookup tables
 sudo postmap /etc/postfix/vmailbox
 sudo postmap /etc/postfix/virtual
+
+# Reload services
 sudo systemctl reload postfix
+sudo systemctl reload dovecot
+```
+
+##### Testing
+
+```bash
+# Test sending (as the site)
+echo "Test" | mail -s "Test" -r nwp1@nwpcode.org external@gmail.com
+
+# Test receiving (send email TO nwp1@nwpcode.org from external)
+
+# Check if email arrived
+doveadm fetch -u nwp1@nwpcode.org "subject" ALL
+
+# Test IMAP login
+openssl s_client -connect git.nwpcode.org:993
+# Then: a LOGIN nwp1@nwpcode.org password
+#       a SELECT INBOX
+#       a LOGOUT
 ```
 
 **Success Criteria:**
-- [ ] Virtual mailboxes created
-- [ ] Can receive email to virtual addresses
-- [ ] Can send email from virtual addresses
+- [ ] Virtual mailboxes created for `direction: all` sites
+- [ ] Send-only sites can authenticate for SMTP
+- [ ] Emails received and stored correctly
+- [ ] Forwarding works (emails arrive at forward address)
+- [ ] IMAP access works for full mailboxes
 
 ---
 

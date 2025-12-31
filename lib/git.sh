@@ -283,6 +283,27 @@ git_configure_remotes() {
 }
 
 ################################################################################
+# Basic Git Operations
+################################################################################
+
+# Initialize git repository (wrapper for git_init_repo)
+# Usage: git_init "/path/to/repo"
+git_init() {
+    local repo_path="$1"
+    git_init_repo "$repo_path"
+}
+
+# Commit changes for backup purposes
+# Usage: git_commit_backup "/path/to/repo" "sitename" ["message"]
+git_commit_backup() {
+    local repo_path="$1"
+    local sitename="$2"
+    local message="${3:-Backup of $sitename $(date +%Y-%m-%d\ %H:%M:%S)}"
+
+    git_commit "$repo_path" "$message"
+}
+
+################################################################################
 # GitLab API Automation (P15)
 ################################################################################
 

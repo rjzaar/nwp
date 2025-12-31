@@ -9,6 +9,58 @@
 # Dependencies: lib/ui.sh, lib/common.sh
 ################################################################################
 
+# Generate single badge URL for a project
+# Usage: generate_badge_url "project-name" "group" "badge-type" ["branch"]
+# badge-type: pipeline, coverage, release
+generate_badge_url() {
+    local project_name="$1"
+    local group="${2:-sites}"
+    local badge_type="${3:-pipeline}"
+    local branch="${4:-main}"
+    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+
+    # Get GitLab URL from cnwp.yml
+    local gitlab_domain=""
+    if [ -f "$cnwp_file" ]; then
+        local base_url=$(awk '
+            /^settings:/ { in_settings = 1; next }
+            in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
+            in_settings && /^  url:/ {
+                sub("^  url: *", "")
+                gsub(/["'"'"']/, "")
+                print
+                exit
+            }
+        ' "$cnwp_file")
+
+        if [ -n "$base_url" ]; then
+            gitlab_domain="git.${base_url}"
+        fi
+    fi
+
+    # Fallback to default
+    if [ -z "$gitlab_domain" ]; then
+        gitlab_domain="git.nwpcode.org"
+    fi
+
+    local base="https://${gitlab_domain}/${group}/${project_name}"
+
+    case "$badge_type" in
+        pipeline)
+            echo "${base}/badges/${branch}/pipeline.svg"
+            ;;
+        coverage)
+            echo "${base}/badges/${branch}/coverage.svg"
+            ;;
+        release)
+            echo "${base}/-/badges/release.svg"
+            ;;
+        *)
+            echo "${base}/badges/${branch}/${badge_type}.svg"
+            ;;
+    esac
+}
+
 # Generate badge URLs for a project
 # Usage: generate_badge_urls "project-name" "group" ["branch"]
 generate_badge_urls() {
@@ -133,6 +185,67 @@ add_badges_to_readme() {
 
     mv "$temp_file" "$readme_path"
     print_status "OK" "Added badges to README"
+}
+
+# Update badges in existing README.md
+# Usage: update_readme_badges "/path/to/README.md" "project-name" "group" ["branch"]
+update_readme_badges() {
+    local readme_path="$1"
+    local project_name="$2"
+    local group="${3:-sites}"
+    local branch="${4:-main}"
+
+    if [ ! -f "$readme_path" ]; then
+        print_error "README not found: $readme_path"
+        return 1
+    fi
+
+    local gitlab_domain=""
+    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+
+    if [ -f "$cnwp_file" ]; then
+        local base_url=$(awk '
+            /^settings:/ { in_settings = 1; next }
+            in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
+            in_settings && /^  url:/ {
+                sub("^  url: *", "")
+                gsub(/["'"'"']/, "")
+                print
+                exit
+            }
+        ' "$cnwp_file")
+
+        if [ -n "$base_url" ]; then
+            gitlab_domain="git.${base_url}"
+        fi
+    fi
+
+    if [ -z "$gitlab_domain" ]; then
+        gitlab_domain="git.nwpcode.org"
+    fi
+
+    local base="https://${gitlab_domain}/${group}/${project_name}"
+
+    # Update pipeline badge URL
+    if grep -q "badges/.*/pipeline.svg" "$readme_path"; then
+        sed -i "s|badges/[^/]*/pipeline.svg|badges/${branch}/pipeline.svg|g" "$readme_path"
+        ocmsg "Updated pipeline badge URLs"
+    fi
+
+    # Update coverage badge URL
+    if grep -q "badges/.*/coverage.svg" "$readme_path"; then
+        sed -i "s|badges/[^/]*/coverage.svg|badges/${branch}/coverage.svg|g" "$readme_path"
+        ocmsg "Updated coverage badge URLs"
+    fi
+
+    # If no badges exist, add them
+    if ! grep -q "badges/main/pipeline.svg" "$readme_path" && ! grep -q "badges/${branch}/pipeline.svg" "$readme_path"; then
+        add_badges_to_readme "$readme_path" "$project_name" "$group"
+    else
+        print_status "OK" "Badges updated in README"
+    fi
+
+    return 0
 }
 
 # Check if coverage meets threshold

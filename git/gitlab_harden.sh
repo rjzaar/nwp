@@ -99,12 +99,15 @@ update_config() {
         return 0
     fi
 
+    # Escape special characters for grep/sed
+    local escaped_setting=$(printf '%s' "$setting" | sed 's/[[\.*^$()+?{|]/\\&/g')
+
     # Check if setting already exists (commented or uncommented)
-    if grep -qE "^#?\s*${setting}" "$GITLAB_CONFIG"; then
-        # Update existing line
-        sed -i "s|^#*\s*${setting}.*|${setting} = ${value}|" "$GITLAB_CONFIG"
+    if grep -q "^#*\s*${setting}" "$GITLAB_CONFIG" 2>/dev/null; then
+        # Update existing line - use different delimiter for sed
+        sed -i "/^#*\s*${escaped_setting}/c\\${setting} = ${value}" "$GITLAB_CONFIG"
     else
-        # Add new line before the closing comments
+        # Add new line at end of file
         echo "${setting} = ${value}" >> "$GITLAB_CONFIG"
     fi
 
@@ -117,7 +120,8 @@ check_setting() {
     local expected="$2"
     local description="$3"
 
-    local current=$(grep -E "^${setting}" "$GITLAB_CONFIG" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d ' ')
+    # Use fgrep (fixed string grep) to match the setting exactly
+    local current=$(grep -F "$setting" "$GITLAB_CONFIG" 2>/dev/null | grep -v "^#" | head -1 | sed 's/.*= *//' | tr -d "' ")
 
     if [ -z "$current" ]; then
         print_warning "$description: Not configured (default)"
@@ -206,32 +210,32 @@ check_security_status() {
 
     # Check sign-ups
     if ! check_setting "gitlab_rails['gitlab_signup_enabled']" "false" "Sign-ups disabled"; then
-        ((issues++))
+        issues=$((issues + 1))
     fi
 
     # Check password length
     if ! check_setting "gitlab_rails['password_minimum_length']" "12" "Password minimum length"; then
-        ((issues++))
+        issues=$((issues + 1))
     fi
 
     # Check session timeout
     if ! check_setting "gitlab_rails['session_expire_delay']" "60" "Session timeout"; then
-        ((issues++))
+        issues=$((issues + 1))
     fi
 
     # Check audit logging
     if ! check_setting "gitlab_rails['audit_events_enabled']" "true" "Audit logging"; then
-        ((issues++))
+        issues=$((issues + 1))
     fi
 
     # Check rate limiting
     if ! check_setting "gitlab_rails['throttle_authenticated_api_enabled']" "true" "API rate limiting"; then
-        ((issues++))
+        issues=$((issues + 1))
     fi
 
     # Check Gravatar
     if ! check_setting "gitlab_rails['gravatar_enabled']" "false" "Gravatar disabled"; then
-        ((issues++))
+        issues=$((issues + 1))
     fi
 
     echo ""

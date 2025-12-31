@@ -42,6 +42,7 @@ This document consolidates all improvement recommendations for NWP into a single
 | **Phase 3** | Git Backup System | P11-P15 | Complete | 100% |
 | **Phase 4** | CI/CD & Testing | P16-P21 | Complete | 100% |
 | **Phase 5** | Enterprise Features | P22-P28 | Complete | 100% |
+| **Phase 6** | AI Integration | F01-F02 | Future | 0% |
 
 ---
 
@@ -1114,6 +1115,120 @@ ci:
 
 ---
 
+## Future Improvements (Phase 6)
+
+### F01: GitLab MCP Integration for Claude Code
+**Status:** PLANNED | **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** NWP GitLab server
+
+Enable Claude Code to directly interact with NWP GitLab via the Model Context Protocol (MCP):
+
+**Benefits:**
+- Claude can fetch CI logs directly without manual copy/paste
+- Automatic investigation of CI failures
+- Create issues for bugs found during code review
+- Monitor pipeline status in real-time
+- Query repository information
+
+**Implementation:**
+1. During NWP GitLab setup (`setup.sh`), generate a GitLab personal access token
+2. Store token securely in `.secrets.yml`:
+   ```yaml
+   gitlab:
+     api_token: glpat-xxxxxxxxxxxx
+   ```
+3. Configure MCP server in Claude Code:
+   ```bash
+   claude mcp add --transport http gitlab https://git.nwpcode.org/api/v4 \
+     --header "PRIVATE-TOKEN: $(get_secret gitlab.api_token)"
+   ```
+4. Add MCP configuration to `cnwp.yml`:
+   ```yaml
+   settings:
+     mcp:
+       gitlab:
+         enabled: true
+         url: https://git.nwpcode.org
+         token_secret: gitlab.api_token    # Reference to .secrets.yml
+         scopes:
+           - read_api
+           - read_repository
+           - write_repository
+   ```
+
+**Workflow After Implementation:**
+```
+User: "CI failed on mysite"
+Claude: [Uses MCP to fetch pipeline logs]
+Claude: "The phpcs job failed on line 45 of MyController.php - missing docblock"
+Claude: [Fixes the issue, commits, pushes]
+Claude: "Fixed and pushed. New pipeline running."
+```
+
+**Token Generation Script (`git/gitlab_token.sh`):**
+```bash
+#!/bin/bash
+# Generate GitLab personal access token for MCP integration
+# Run during setup.sh or manually
+
+GITLAB_URL="${1:-https://git.nwpcode.org}"
+TOKEN_NAME="nwp-mcp-$(date +%Y%m%d)"
+
+echo "Creating GitLab personal access token..."
+echo "Please login to $GITLAB_URL and create a token at:"
+echo "  $GITLAB_URL/-/user_settings/personal_access_tokens"
+echo ""
+echo "Required scopes: read_api, read_repository"
+echo "Token name suggestion: $TOKEN_NAME"
+```
+
+**Success Criteria:**
+- [ ] Token generated during GitLab setup
+- [ ] Token stored in .secrets.yml
+- [ ] MCP server configurable via setup.sh
+- [ ] Claude can fetch CI logs via MCP
+- [ ] Claude can query pipeline status
+
+---
+
+### F02: Automated CI Error Resolution
+**Status:** PLANNED | **Priority:** LOW | **Effort:** Medium | **Dependencies:** F01
+
+Extend MCP integration to automatically detect and fix common CI errors:
+
+**Auto-fixable Errors:**
+| Error Type | Detection | Auto-fix |
+|------------|-----------|----------|
+| PHPCS style | `phpcs` output | `phpcbf --fix` |
+| Missing docblock | PHPStan error | Add docblock template |
+| Unused import | PHPStan error | Remove import |
+| Type hint | PHPStan suggestion | Add type hint |
+
+**Workflow:**
+1. CI fails → webhook notifies (or cron checks)
+2. Claude fetches logs via MCP
+3. If auto-fixable: apply fix, commit, push
+4. If not auto-fixable: create issue with analysis
+
+**Configuration:**
+```yaml
+settings:
+  ci:
+    auto_fix:
+      enabled: true
+      types:
+        - phpcs              # Auto-run phpcbf
+        - unused_imports     # Auto-remove
+      create_issue: true     # Create issue for non-auto-fixable
+```
+
+**Success Criteria:**
+- [ ] Common PHPCS errors auto-fixed
+- [ ] Issues created for complex errors
+- [ ] Notification sent with resolution status
+
+---
+
 *Document created: December 30, 2025*
 *All proposals completed: December 30, 2025*
+*Future improvements added: December 31, 2025*
 *Supersedes: IMPROVEMENTS.md (retained for historical reference)*

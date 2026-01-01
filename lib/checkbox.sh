@@ -453,223 +453,368 @@ get_dependents() {
 # Interactive UI
 ################################################################################
 
-# Display options for a specific environment
-display_environment_options() {
-    local env="$1"
-    local env_label="$2"
-    local filter_env="$3"  # If set, only show this environment
+################################################################################
+# Interactive UI with Arrow Key Navigation
+################################################################################
 
-    echo ""
-    echo -e "${BLUE}${BOLD}═══ $env_label ═══${NC}"
+# Read a single keypress (including arrow keys)
+read_key() {
+    local key
+    IFS= read -rsn1 key 2>/dev/null
 
-    local current_category=""
-    local idx=1
+    if [[ $key == $'\x1b' ]]; then
+        read -rsn2 -t 0.1 key 2>/dev/null
+        case "$key" in
+            '[A') echo "UP" ;;
+            '[B') echo "DOWN" ;;
+            '[C') echo "RIGHT" ;;
+            '[D') echo "LEFT" ;;
+            *) echo "ESC" ;;
+        esac
+    elif [[ $key == '' ]]; then
+        echo "ENTER"
+    elif [[ $key == ' ' ]]; then
+        echo "SPACE"
+    elif [[ $key == 'q' || $key == 'Q' ]]; then
+        echo "QUIT"
+    elif [[ $key == 'a' || $key == 'A' ]]; then
+        echo "ALL"
+    elif [[ $key == 'n' || $key == 'N' ]]; then
+        echo "NONE"
+    elif [[ $key == 'e' || $key == 'E' ]]; then
+        echo "EDIT"
+    elif [[ $key == '?' || $key == 'h' || $key == 'H' ]]; then
+        echo "HELP"
+    else
+        echo "$key"
+    fi
+}
+
+# Build flat list of visible options for current environment
+build_option_list() {
+    local environment="$1"
+
+    VISIBLE_OPTIONS=()
+    VISIBLE_KEYS=()
 
     for key in "${OPTION_LIST[@]}"; do
-        # Check if option is for this environment
-        if ! option_visible_for_env "$key" "$filter_env"; then
-            continue
+        local opt_env="${OPTION_ENVIRONMENTS[$key]}"
+        # Show options for current environment or 'all'
+        if [[ "$opt_env" == "all" || "$opt_env" == "$environment" || "$opt_env" == "dev" || "$opt_env" == "stage" || "$opt_env" == "live" || "$opt_env" == "prod" ]]; then
+            VISIBLE_OPTIONS+=("$key")
+            VISIBLE_KEYS["${#VISIBLE_OPTIONS[@]}"]="$key"
         fi
-
-        local category="${OPTION_CATEGORIES[$key]}"
-        local label="${OPTION_LABELS[$key]}"
-        local description="${OPTION_DESCRIPTIONS[$key]}"
-        local selected="${OPTION_SELECTED[$key]}"
-        local deps="${OPTION_DEPENDENCIES[$key]}"
-        local inputs="${OPTION_INPUTS[$key]}"
-
-        # Show category header
-        if [[ "$category" != "$current_category" ]]; then
-            current_category="$category"
-            echo ""
-            echo -e "  ${CYAN}${BOLD}${category^}${NC}"
-        fi
-
-        # Determine checkbox state
-        local checkbox
-        if [[ "$selected" == "y" ]]; then
-            checkbox="$CHECKBOX_CHECKED"
-        else
-            checkbox="$CHECKBOX_UNCHECKED"
-        fi
-
-        # Check dependencies
-        local dep_warning=""
-        if [[ -n "$deps" ]]; then
-            local missing=$(check_dependencies "$key")
-            if [[ -n "$missing" ]]; then
-                dep_warning=" ${DIM}(requires: $missing)${NC}"
-            fi
-        fi
-
-        # Check conflicts
-        local conflict_warning=""
-        local conflicts="${OPTION_CONFLICTS[$key]:-}"
-        if [[ -n "$conflicts" ]] && [[ "$selected" == "y" ]]; then
-            local active_conflicts=$(check_conflicts "$key")
-            if [[ -n "$active_conflicts" ]]; then
-                conflict_warning=" ${RED}⚠ conflicts: $active_conflicts${NC}"
-            fi
-        fi
-
-        # Show input indicator
-        local input_indicator=""
-        if [[ -n "$inputs" ]]; then
-            input_indicator=" ${YELLOW}[input required]${NC}"
-        fi
-
-        printf "    %s %-3s %-30s %s%s%s%s\n" \
-            "$checkbox" "[$idx]" "$label" "${DIM}$description${NC}" "$dep_warning" "$conflict_warning" "$input_indicator"
-
-        # Show current input values if selected
-        if [[ "$selected" == "y" ]] && [[ -n "$inputs" ]]; then
-            IFS=',' read -ra input_arr <<< "$inputs"
-            for input in "${input_arr[@]}"; do
-                local input_key="${input%%:*}"
-                local value_key="${key}_${input_key}"
-                local current_value="${OPTION_VALUES[$value_key]:-<not set>}"
-                echo -e "        ${DIM}→ ${input_key}: ${current_value}${NC}"
-            done
-        fi
-
-        ((idx++))
     done
 }
 
-# Interactive checkbox menu
-# Returns when user confirms selection
+# Draw the compact option list
+draw_options() {
+    local cursor="$1"
+    local environment="$2"
+    local total="${#VISIBLE_OPTIONS[@]}"
+
+    # Header
+    echo -e "${BOLD}Options${NC} ${DIM}(${environment})${NC}  ${DIM}↑↓:move  space:toggle  enter:done  a:all  n:none  q:quit${NC}"
+    echo ""
+
+    local idx=0
+    local current_env=""
+
+    for key in "${VISIBLE_OPTIONS[@]}"; do
+        local opt_env="${OPTION_ENVIRONMENTS[$key]}"
+        local label="${OPTION_LABELS[$key]}"
+        local selected="${OPTION_SELECTED[$key]}"
+        local inputs="${OPTION_INPUTS[$key]}"
+        local deps="${OPTION_DEPENDENCIES[$key]}"
+
+        # Environment header (compact)
+        if [[ "$opt_env" != "$current_env" && "$opt_env" != "all" ]]; then
+            current_env="$opt_env"
+            local env_name
+            case "$opt_env" in
+                dev) env_name="DEV" ;;
+                stage) env_name="STG" ;;
+                live) env_name="LIVE" ;;
+                prod) env_name="PROD" ;;
+                *) env_name="${opt_env^^}" ;;
+            esac
+            if [[ "$opt_env" == "$environment" ]]; then
+                echo -e " ${GREEN}━━ $env_name ━━${NC}"
+            else
+                echo -e " ${DIM}━━ $env_name ━━${NC}"
+            fi
+        fi
+
+        # Checkbox
+        local checkbox
+        if [[ "$selected" == "y" ]]; then
+            checkbox="${GREEN}[✓]${NC}"
+        else
+            checkbox="${DIM}[ ]${NC}"
+        fi
+
+        # Cursor indicator
+        local pointer="  "
+        if [[ $idx -eq $cursor ]]; then
+            pointer="${CYAN}▸${NC} "
+            checkbox="${BOLD}$checkbox${NC}"
+        fi
+
+        # Indicators
+        local indicators=""
+        if [[ -n "$inputs" ]]; then
+            indicators="${YELLOW}*${NC}"
+        fi
+        if [[ -n "$deps" ]]; then
+            local missing=$(check_dependencies "$key")
+            if [[ -n "$missing" ]]; then
+                indicators="${indicators}${RED}!${NC}"
+            fi
+        fi
+
+        # Truncate label if needed
+        local display_label="${label:0:28}"
+
+        echo -e "${pointer}${checkbox} ${display_label}${indicators}"
+
+        ((idx++))
+    done
+
+    # Footer with count
+    local selected_count=0
+    for key in "${OPTION_LIST[@]}"; do
+        [[ "${OPTION_SELECTED[$key]}" == "y" ]] && ((selected_count++))
+    done
+    echo ""
+    echo -e "${DIM}Selected: $selected_count/${#OPTION_LIST[@]}${NC}  ${YELLOW}*${NC}${DIM}=needs input${NC}  ${RED}!${NC}${DIM}=missing dep${NC}"
+}
+
+# Interactive checkbox menu with arrow keys
 interactive_select_options() {
     local environment="$1"      # dev, stage, live, prod
     local recipe_type="$2"      # drupal, moodle, gitlab
-    local existing_config="$3"  # JSON string of existing config or empty
+    local existing_config="$3"  # site name for existing config
 
     # Load appropriate options
     case "$recipe_type" in
-        drupal|d|os|nwp|dm)
-            define_drupal_options
-            ;;
-        moodle|m)
-            define_moodle_options
-            ;;
-        gitlab)
-            define_gitlab_options
-            ;;
-        *)
-            define_drupal_options
-            ;;
+        drupal|d|os|nwp|dm) define_drupal_options ;;
+        moodle|m) define_moodle_options ;;
+        gitlab) define_gitlab_options ;;
+        *) define_drupal_options ;;
     esac
 
     # Apply existing configuration if provided
     if [[ -n "$existing_config" ]]; then
         load_existing_config "$existing_config"
     else
-        # Apply environment defaults
         apply_environment_defaults "$environment"
     fi
 
+    # Build visible options list
+    build_option_list "$environment"
+
+    local cursor=0
+    local total="${#VISIBLE_OPTIONS[@]}"
     local done=false
 
+    # Hide cursor
+    tput civis 2>/dev/null || true
+
+    # Ensure cursor is restored on exit
+    trap 'tput cnorm 2>/dev/null; stty echo 2>/dev/null' EXIT INT TERM
+
     while [[ "$done" != "true" ]]; do
+        # Clear and draw
         clear
-        echo -e "${BOLD}NWP Installation Options${NC}"
-        echo -e "${DIM}Environment: $environment | Recipe: $recipe_type${NC}"
-        echo ""
-        echo -e "Use numbers to toggle options. Type ${BOLD}e${NC} to edit inputs."
-        echo -e "Type ${BOLD}all${NC} to apply all defaults for environment."
-        echo -e "Type ${BOLD}none${NC} to clear all selections."
-        echo -e "Type ${BOLD}done${NC} or ${BOLD}d${NC} when finished."
-        echo ""
+        draw_options "$cursor" "$environment"
 
-        # Display options grouped by environment
-        local env_label
-        case "$environment" in
-            dev) env_label="Development" ;;
-            stage) env_label="Staging" ;;
-            live) env_label="Live" ;;
-            prod) env_label="Production" ;;
-        esac
+        # Read key
+        local key=$(read_key)
 
-        # Show all environments with current one highlighted
-        for env in dev stage live prod; do
-            local show_env_label
-            case "$env" in
-                dev) show_env_label="Development" ;;
-                stage) show_env_label="Staging" ;;
-                live) show_env_label="Live" ;;
-                prod) show_env_label="Production" ;;
-            esac
-
-            if [[ "$env" == "$environment" ]]; then
-                show_env_label="${show_env_label} ${GREEN}(current)${NC}"
-            fi
-
-            display_environment_options "$env" "$show_env_label" "$env"
-        done
-
-        echo ""
-        echo -e "${BOLD}Commands:${NC}"
-        echo -e "  ${CYAN}1-99${NC}   Toggle option by number"
-        echo -e "  ${CYAN}e <n>${NC}  Edit input for option number"
-        echo -e "  ${CYAN}all${NC}    Select all defaults for $env_label"
-        echo -e "  ${CYAN}none${NC}   Clear all selections"
-        echo -e "  ${CYAN}done${NC}   Confirm and continue"
-        echo ""
-
-        read -p "Enter command: " cmd arg
-
-        case "$cmd" in
-            [0-9]|[0-9][0-9])
-                toggle_option_by_index "$cmd"
+        case "$key" in
+            UP)
+                ((cursor > 0)) && ((cursor--))
                 ;;
-            e|edit)
-                if [[ -n "$arg" ]]; then
-                    edit_option_inputs "$arg"
+            DOWN)
+                ((cursor < total - 1)) && ((cursor++))
+                ;;
+            SPACE)
+                local opt_key="${VISIBLE_OPTIONS[$cursor]}"
+                if [[ "${OPTION_SELECTED[$opt_key]}" == "y" ]]; then
+                    # Check dependents before deselecting
+                    local dependents=$(get_dependents "$opt_key")
+                    if [[ -n "$dependents" ]]; then
+                        tput cnorm 2>/dev/null
+                        echo ""
+                        echo -e "${YELLOW}Warning:${NC} Will also deselect: $dependents"
+                        read -p "Continue? [y/N]: " confirm
+                        tput civis 2>/dev/null
+                        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                            OPTION_SELECTED["$opt_key"]="n"
+                            # Deselect dependents
+                            for dep_key in "${OPTION_LIST[@]}"; do
+                                local deps="${OPTION_DEPENDENCIES[$dep_key]}"
+                                if [[ -n "$deps" && "$deps" == *"$opt_key"* ]]; then
+                                    OPTION_SELECTED["$dep_key"]="n"
+                                fi
+                            done
+                        fi
+                    else
+                        OPTION_SELECTED["$opt_key"]="n"
+                    fi
                 else
-                    read -p "Option number to edit: " arg
-                    edit_option_inputs "$arg"
+                    # Check conflicts
+                    local conflicts=$(check_conflicts "$opt_key")
+                    if [[ -n "$conflicts" ]]; then
+                        tput cnorm 2>/dev/null
+                        echo ""
+                        echo -e "${RED}Conflicts:${NC} $conflicts"
+                        read -p "Disable conflicting? [y/N]: " confirm
+                        tput civis 2>/dev/null
+                        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                            IFS=',' read -ra carr <<< "${OPTION_CONFLICTS[$opt_key]:-}"
+                            for c in "${carr[@]}"; do
+                                OPTION_SELECTED["$c"]="n"
+                            done
+                            OPTION_SELECTED["$opt_key"]="y"
+                        fi
+                    else
+                        # Check dependencies
+                        local missing=$(check_dependencies "$opt_key")
+                        if [[ -n "$missing" ]]; then
+                            tput cnorm 2>/dev/null
+                            echo ""
+                            echo -e "${YELLOW}Requires:${NC} $missing"
+                            read -p "Enable dependencies? [Y/n]: " confirm
+                            tput civis 2>/dev/null
+                            if [[ ! "$confirm" =~ ^[Nn]$ ]]; then
+                                IFS=',' read -ra darr <<< "${OPTION_DEPENDENCIES[$opt_key]}"
+                                for d in "${darr[@]}"; do
+                                    OPTION_SELECTED["$d"]="y"
+                                done
+                            fi
+                        fi
+                        OPTION_SELECTED["$opt_key"]="y"
+                    fi
+
+                    # Check if input needed
+                    local inputs="${OPTION_INPUTS[$opt_key]}"
+                    if [[ -n "$inputs" ]]; then
+                        tput cnorm 2>/dev/null
+                        echo ""
+                        IFS=',' read -ra iarr <<< "$inputs"
+                        for inp in "${iarr[@]}"; do
+                            local ikey="${inp%%:*}"
+                            local ilabel="${inp#*:}"
+                            local vkey="${opt_key}_${ikey}"
+                            local curr="${OPTION_VALUES[$vkey]:-}"
+                            read -p "  $ilabel [$curr]: " newval
+                            OPTION_VALUES["$vkey"]="${newval:-$curr}"
+                        done
+                        tput civis 2>/dev/null
+                    fi
                 fi
                 ;;
-            all)
-                apply_environment_defaults "$environment"
-                echo -e "${GREEN}Applied defaults for $env_label${NC}"
-                sleep 1
-                ;;
-            none)
-                for key in "${OPTION_LIST[@]}"; do
-                    OPTION_SELECTED["$key"]="n"
-                done
-                echo -e "${YELLOW}Cleared all selections${NC}"
-                sleep 1
-                ;;
-            done|d|q)
-                # Validate dependencies
-                local validation_errors=()
+            ENTER|QUIT)
+                # Validate
+                local errors=()
                 for key in "${OPTION_LIST[@]}"; do
                     if [[ "${OPTION_SELECTED[$key]}" == "y" ]]; then
-                        local missing=$(check_dependencies "$key")
-                        if [[ -n "$missing" ]]; then
-                            validation_errors+=("${OPTION_LABELS[$key]} requires: $missing")
+                        local miss=$(check_dependencies "$key")
+                        if [[ -n "$miss" ]]; then
+                            errors+=("${OPTION_LABELS[$key]}: needs $miss")
                         fi
                     fi
                 done
 
-                if [[ ${#validation_errors[@]} -gt 0 ]]; then
+                if [[ ${#errors[@]} -gt 0 ]]; then
+                    tput cnorm 2>/dev/null
                     echo ""
-                    echo -e "${RED}${BOLD}Dependency errors:${NC}"
-                    for err in "${validation_errors[@]}"; do
-                        echo -e "  ${RED}✗${NC} $err"
+                    echo -e "${RED}Dependency errors:${NC}"
+                    for e in "${errors[@]}"; do
+                        echo "  - $e"
                     done
-                    echo ""
-                    read -p "Press Enter to continue editing..."
+                    read -p "Press Enter..."
+                    tput civis 2>/dev/null
                 else
                     done=true
                 fi
                 ;;
-            *)
-                echo -e "${YELLOW}Unknown command: $cmd${NC}"
-                sleep 1
+            ALL)
+                apply_environment_defaults "$environment"
+                ;;
+            NONE)
+                for key in "${OPTION_LIST[@]}"; do
+                    OPTION_SELECTED["$key"]="n"
+                done
+                ;;
+            EDIT)
+                local opt_key="${VISIBLE_OPTIONS[$cursor]}"
+                local inputs="${OPTION_INPUTS[$opt_key]}"
+                if [[ -n "$inputs" ]]; then
+                    tput cnorm 2>/dev/null
+                    echo ""
+                    echo -e "${BOLD}Edit: ${OPTION_LABELS[$opt_key]}${NC}"
+                    IFS=',' read -ra iarr <<< "$inputs"
+                    for inp in "${iarr[@]}"; do
+                        local ikey="${inp%%:*}"
+                        local ilabel="${inp#*:}"
+                        local vkey="${opt_key}_${ikey}"
+                        local curr="${OPTION_VALUES[$vkey]:-}"
+                        read -p "  $ilabel [$curr]: " newval
+                        OPTION_VALUES["$vkey"]="${newval:-$curr}"
+                    done
+                    tput civis 2>/dev/null
+                fi
+                ;;
+            HELP)
+                tput cnorm 2>/dev/null
+                clear
+                echo -e "${BOLD}Keyboard Controls${NC}"
+                echo ""
+                echo "  ↑/↓     Navigate options"
+                echo "  Space   Toggle selected option"
+                echo "  Enter   Confirm and continue"
+                echo "  a       Select all defaults"
+                echo "  n       Deselect all"
+                echo "  e       Edit input values"
+                echo "  q       Quit/confirm"
+                echo "  ?/h     Show this help"
+                echo ""
+                read -p "Press Enter to continue..."
+                tput civis 2>/dev/null
                 ;;
         esac
+    done
+
+    # Restore cursor
+    tput cnorm 2>/dev/null || true
+}
+
+# Legacy display function (for non-interactive use)
+display_environment_options() {
+    local env="$1"
+    local env_label="$2"
+    local filter_env="$3"
+
+    echo -e " ${BLUE}${BOLD}$env_label${NC}"
+
+    for key in "${OPTION_LIST[@]}"; do
+        if ! option_visible_for_env "$key" "$filter_env"; then
+            continue
+        fi
+
+        local label="${OPTION_LABELS[$key]}"
+        local selected="${OPTION_SELECTED[$key]}"
+
+        local checkbox
+        if [[ "$selected" == "y" ]]; then
+            checkbox="${GREEN}[✓]${NC}"
+        else
+            checkbox="${DIM}[ ]${NC}"
+        fi
+
+        echo -e "   $checkbox $label"
     done
 }
 
@@ -1109,5 +1254,6 @@ generate_manual_steps() {
 export -f define_option clear_options define_drupal_options define_moodle_options define_gitlab_options
 export -f get_option_default option_visible_for_env apply_environment_defaults
 export -f check_dependencies check_conflicts get_dependents
+export -f read_key build_option_list draw_options
 export -f display_environment_options interactive_select_options toggle_option_by_index edit_option_inputs
 export -f load_existing_config generate_options_yaml generate_manual_steps

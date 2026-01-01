@@ -105,84 +105,43 @@ run_interactive_options() {
         environment="prod"
     fi
 
-    echo ""
-    print_header "Configure Installation Options"
-
-    # Check for existing site configuration
-    if yaml_site_exists "$site_name" "$config_file" 2>/dev/null; then
-        echo -e "${YELLOW}Existing configuration found for '$site_name'${NC}"
-        echo "Current options will be loaded and can be modified."
-        echo ""
-    fi
-
-    # Ask if user wants interactive mode
-    echo "Would you like to configure installation options interactively?"
-    echo ""
-    echo -e "  ${CYAN}y${NC}  - Configure options with TUI"
-    echo -e "  ${CYAN}n${NC}  - Use defaults for $environment environment"
-    echo -e "  ${CYAN}q${NC}  - Quick install with minimal options"
-    echo ""
-    read -p "Select [Y/n/q]: " interactive_choice
-
-    case "$interactive_choice" in
-        n|N)
-            print_info "Using default options for $environment"
-            # Load options and apply defaults silently
-            case "$recipe_type" in
-                moodle|m) define_moodle_options ;;
-                gitlab) define_gitlab_options ;;
-                *) define_drupal_options ;;
-            esac
-            apply_environment_defaults "$environment"
-            # Load recipe defaults on top
-            load_recipe_defaults "$recipe" "$config_file"
-            return 0
-            ;;
-        q|Q)
-            print_info "Quick install - minimal options"
-            clear_options 2>/dev/null || true
-            return 0
-            ;;
-        *)
-            # Load options for recipe type
-            case "$recipe_type" in
-                moodle|m) define_moodle_options ;;
-                gitlab) define_gitlab_options ;;
-                *) define_drupal_options ;;
-            esac
-
-            # Load defaults with recipe pre-selections
-            load_tui_defaults "install" "$site_name" "$recipe" "$environment" "$config_file"
-
-            # Run interactive TUI
-            if run_tui "install" "$site_name" "$environment" "$recipe_type" "$config_file"; then
-                # User confirmed - show summary
-                echo ""
-                print_header "Selected Options Summary"
-                local selected_count=0
-                for key in "${OPTION_LIST[@]}"; do
-                    if [[ "${OPTION_SELECTED[$key]}" == "y" ]]; then
-                        local recipe_hint=""
-                        [[ "${OPTION_FROM_RECIPE[$key]:-n}" == "y" ]] && recipe_hint=" ${DIM}(recipe)${NC}"
-                        echo -e "  ${GREEN}✓${NC} ${OPTION_LABELS[$key]}${recipe_hint}"
-                        ((selected_count++))
-                    fi
-                done
-
-                if [[ $selected_count -eq 0 ]]; then
-                    echo -e "  ${DIM}No options selected${NC}"
-                fi
-                echo ""
-                echo "Total: $selected_count options selected"
-                echo ""
-                return 0
-            else
-                # User cancelled
-                print_warning "Installation cancelled"
-                return 1
-            fi
-            ;;
+    # Load options for recipe type
+    case "$recipe_type" in
+        moodle|m) define_moodle_options ;;
+        gitlab) define_gitlab_options ;;
+        *) define_drupal_options ;;
     esac
+
+    # Load defaults with recipe pre-selections
+    load_tui_defaults "install" "$site_name" "$recipe" "$environment" "$config_file"
+
+    # Run interactive TUI (goes directly to options like modify.sh)
+    if run_tui "install" "$site_name" "$environment" "$recipe_type" "$config_file"; then
+        # User confirmed - show summary
+        echo ""
+        print_header "Selected Options Summary"
+        local selected_count=0
+        for key in "${OPTION_LIST[@]}"; do
+            if [[ "${OPTION_SELECTED[$key]}" == "y" ]]; then
+                local recipe_hint=""
+                [[ "${OPTION_FROM_RECIPE[$key]:-n}" == "y" ]] && recipe_hint=" ${DIM}(recipe)${NC}"
+                echo -e "  ${GREEN}✓${NC} ${OPTION_LABELS[$key]}${recipe_hint}"
+                ((selected_count++))
+            fi
+        done
+
+        if [[ $selected_count -eq 0 ]]; then
+            echo -e "  ${DIM}No options selected${NC}"
+        fi
+        echo ""
+        echo "Total: $selected_count options selected"
+        echo ""
+        return 0
+    else
+        # User cancelled
+        print_warning "Installation cancelled"
+        return 1
+    fi
 }
 
 # Update cnwp.yml with selected options (or remove options section if none selected)
@@ -2717,10 +2676,8 @@ MIGRATION_README
         fi
     fi
 
-    # Run interactive option selection (unless auto mode)
-    if [ "$auto_mode" != "y" ]; then
-        run_interactive_options "$recipe" "$install_dir" "$recipe_type" "$config_file"
-    fi
+    # Run interactive option selection (always show TUI)
+    run_interactive_options "$recipe" "$install_dir" "$recipe_type" "$config_file"
 
     # Run installation based on recipe type
     if [ "$recipe_type" == "moodle" ]; then

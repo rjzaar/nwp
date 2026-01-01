@@ -490,20 +490,20 @@ read_key() {
     fi
 }
 
-# Build flat list of visible options for current environment
+# Build flat list of all options (sorted by environment)
 build_option_list() {
     local environment="$1"
 
     VISIBLE_OPTIONS=()
-    VISIBLE_KEYS=()
 
-    for key in "${OPTION_LIST[@]}"; do
-        local opt_env="${OPTION_ENVIRONMENTS[$key]}"
-        # Show options for current environment or 'all'
-        if [[ "$opt_env" == "all" || "$opt_env" == "$environment" || "$opt_env" == "dev" || "$opt_env" == "stage" || "$opt_env" == "live" || "$opt_env" == "prod" ]]; then
-            VISIBLE_OPTIONS+=("$key")
-            VISIBLE_KEYS["${#VISIBLE_OPTIONS[@]}"]="$key"
-        fi
+    # Add options in environment order: dev, stage, live, prod, then 'all'
+    for env in dev stage live prod all; do
+        for key in "${OPTION_LIST[@]}"; do
+            local opt_env="${OPTION_ENVIRONMENTS[$key]}"
+            if [[ "$opt_env" == "$env" ]]; then
+                VISIBLE_OPTIONS+=("$key")
+            fi
+        done
     done
 }
 

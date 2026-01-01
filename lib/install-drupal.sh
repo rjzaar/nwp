@@ -157,6 +157,14 @@ install_drupal() {
             print_status "WARN" "Drush installation failed, but may already be available"
         fi
 
+        # Install environment_indicator for environment awareness
+        print_info "Installing environment indicator module..."
+        if composer require drupal/environment_indicator --no-interaction; then
+            print_status "OK" "Environment indicator module installed"
+        else
+            print_status "WARN" "Environment indicator installation failed (non-critical)"
+        fi
+
         print_status "OK" "Dependencies installed successfully"
 
         # Install additional modules if specified
@@ -329,9 +337,9 @@ EOF
         print_status "INFO" "Skipping Step 6: Drush verification"
     fi
 
-    # Step 7: Configure Private File System
+    # Step 7: Configure Private File System and Environment Detection
     if should_run_step 7 "$start_step"; then
-        print_header "Step 7: Configure Private File System"
+        print_header "Step 7: Configure File System and Environment Detection"
 
         # Create private files directory
         mkdir -p private
@@ -339,6 +347,9 @@ EOF
         # Ensure sites/default directory exists and is writable
         mkdir -p "${webroot}/sites/default"
         chmod 755 "${webroot}/sites/default"
+
+        # Create includes/modules directory for environment-specific settings
+        mkdir -p "${webroot}/sites/default/includes/modules"
 
         # Copy default.settings.php to settings.php and add private file path
         if [ -f "${webroot}/sites/default/default.settings.php" ]; then
@@ -356,14 +367,78 @@ $settings['hash_salt'] = '';
 EOF
         fi
 
-        # Append private file path configuration to settings.php
-        cat >> "${webroot}/sites/default/settings.php" << 'EOF'
+        # Append private file path, environment detection, and includes to settings.php
+        cat >> "${webroot}/sites/default/settings.php" << 'SETTINGS_EOF'
 
 /**
  * Private file system configuration.
  * Required for OpenSocial installation.
  */
 $settings['file_private_path'] = '../private';
+
+////////////////////////////////////////////////////////////////////////////////
+///                       ENVIRONMENT TYPE DETECTION                         ///
+////////////////////////////////////////////////////////////////////////////////
+// NWP environment detection based on site naming convention and env variables.
+// @see https://www.drupal.org/project/environment_indicator
+
+// Define environment constants for use throughout the application.
+if (!defined('ENVIRONMENT_LOCAL')) {
+  define('ENVIRONMENT_LOCAL', 'local');
+}
+if (!defined('ENVIRONMENT_CI')) {
+  define('ENVIRONMENT_CI', 'ci');
+}
+if (!defined('ENVIRONMENT_DEV')) {
+  define('ENVIRONMENT_DEV', 'dev');
+}
+if (!defined('ENVIRONMENT_STAGE')) {
+  define('ENVIRONMENT_STAGE', 'stage');
+}
+if (!defined('ENVIRONMENT_PROD')) {
+  define('ENVIRONMENT_PROD', 'prod');
+}
+
+// Default environment type is 'local' for DDEV sites.
+$settings['environment'] = ENVIRONMENT_LOCAL;
+
+// NWP naming convention detection:
+// - sitename_stg = staging environment
+// - sitename_prod = production environment
+// - sitename (no suffix) = development environment
+$nwp_site_dir = basename(dirname(dirname(dirname(__DIR__))));
+if (preg_match('/_stg$/', $nwp_site_dir)) {
+  $settings['environment'] = ENVIRONMENT_STAGE;
+}
+elseif (preg_match('/_prod$/', $nwp_site_dir)) {
+  $settings['environment'] = ENVIRONMENT_PROD;
+}
+
+// Allow override via environment variable (takes precedence).
+if (!empty(getenv('DRUPAL_ENVIRONMENT'))) {
+  $settings['environment'] = getenv('DRUPAL_ENVIRONMENT');
+}
+
+// CI detection (GitHub Actions, GitLab CI, etc.).
+if (!empty(getenv('CI')) || !empty(getenv('GITHUB_ACTIONS')) || !empty(getenv('GITLAB_CI'))) {
+  $settings['environment'] = ENVIRONMENT_CI;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///                       PER-MODULE OVERRIDES                               ///
+////////////////////////////////////////////////////////////////////////////////
+// Load module-specific settings from includes/modules directory.
+// This allows environment-aware configuration for modules like
+// environment_indicator, config_split, shield, etc.
+
+if (file_exists($app_root . '/' . $site_path . '/includes/modules')) {
+  $files = glob($app_root . '/' . $site_path . '/includes/modules/settings.*.php');
+  if ($files) {
+    foreach ($files as $file) {
+      require $file;
+    }
+  }
+}
 
 /**
  * Include DDEV settings.
@@ -378,14 +453,133 @@ if (file_exists(__DIR__ . '/settings.ddev.php')) {
 if (file_exists(__DIR__ . '/settings.local.php')) {
   include __DIR__ . '/settings.local.php';
 }
-EOF
+SETTINGS_EOF
 
         chmod 644 "${webroot}/sites/default/settings.php"
+        print_status "OK" "Settings.php configured with environment detection"
 
-        print_status "OK" "Private file system configured in settings.php"
+        # Create environment_indicator settings file
+        cat > "${webroot}/sites/default/includes/modules/settings.environment_indicator.php" << 'ENV_INDICATOR_EOF'
+<?php
+
+/**
+ * @file
+ * Environment indicator module settings.
+ *
+ * Provides visual feedback in the Drupal admin toolbar showing which
+ * environment (local, dev, staging, production) the site is running in.
+ *
+ * @see https://www.drupal.org/project/environment_indicator
+ */
+
+declare(strict_types=1);
+
+// Only configure if environment is set.
+if (!empty($settings['environment'])) {
+  $config['environment_indicator.indicator']['name'] = strtoupper($settings['environment']);
+  $config['environment_indicator.indicator']['bg_color'] = '#006600';
+  $config['environment_indicator.indicator']['fg_color'] = '#ffffff';
+  $config['environment_indicator.settings']['toolbar_integration'] = [TRUE];
+  $config['environment_indicator.settings']['favicon'] = TRUE;
+
+  switch ($settings['environment']) {
+    case ENVIRONMENT_PROD:
+      $config['environment_indicator.indicator']['bg_color'] = '#ef5350';
+      $config['environment_indicator.indicator']['fg_color'] = '#000000';
+      $config['environment_indicator.indicator']['name'] = 'PRODUCTION';
+      break;
+
+    case ENVIRONMENT_STAGE:
+      $config['environment_indicator.indicator']['bg_color'] = '#fff176';
+      $config['environment_indicator.indicator']['fg_color'] = '#000000';
+      $config['environment_indicator.indicator']['name'] = 'STAGING';
+      break;
+
+    case ENVIRONMENT_DEV:
+      $config['environment_indicator.indicator']['bg_color'] = '#4caf50';
+      $config['environment_indicator.indicator']['fg_color'] = '#000000';
+      $config['environment_indicator.indicator']['name'] = 'DEVELOPMENT';
+      break;
+
+    case ENVIRONMENT_LOCAL:
+      $config['environment_indicator.indicator']['bg_color'] = '#2196f3';
+      $config['environment_indicator.indicator']['fg_color'] = '#ffffff';
+      $config['environment_indicator.indicator']['name'] = 'LOCAL';
+      break;
+
+    case ENVIRONMENT_CI:
+      $config['environment_indicator.indicator']['bg_color'] = '#9c27b0';
+      $config['environment_indicator.indicator']['fg_color'] = '#ffffff';
+      $config['environment_indicator.indicator']['name'] = 'CI';
+      break;
+  }
+}
+ENV_INDICATOR_EOF
+
+        print_status "OK" "Environment indicator settings created"
+
+        # Create config_split settings file
+        cat > "${webroot}/sites/default/includes/modules/settings.config_split.php" << 'CONFIG_SPLIT_EOF'
+<?php
+
+/**
+ * @file
+ * Config split module settings.
+ *
+ * Enables environment-specific configuration splits based on the detected
+ * environment. This allows different modules and settings per environment.
+ *
+ * @see https://www.drupal.org/project/config_split
+ */
+
+declare(strict_types=1);
+
+// Only configure if environment is set.
+if (!empty($settings['environment'])) {
+  switch ($settings['environment']) {
+    case ENVIRONMENT_PROD:
+      $config['config_split.config_split.dev']['status'] = FALSE;
+      $config['config_split.config_split.local']['status'] = FALSE;
+      $config['config_split.config_split.stage']['status'] = FALSE;
+      $config['config_split.config_split.ci']['status'] = FALSE;
+      break;
+
+    case ENVIRONMENT_STAGE:
+      $config['config_split.config_split.stage']['status'] = TRUE;
+      $config['config_split.config_split.dev']['status'] = FALSE;
+      $config['config_split.config_split.local']['status'] = FALSE;
+      $config['config_split.config_split.ci']['status'] = FALSE;
+      break;
+
+    case ENVIRONMENT_DEV:
+      $config['config_split.config_split.dev']['status'] = TRUE;
+      $config['config_split.config_split.local']['status'] = FALSE;
+      $config['config_split.config_split.stage']['status'] = FALSE;
+      $config['config_split.config_split.ci']['status'] = FALSE;
+      break;
+
+    case ENVIRONMENT_CI:
+      $config['config_split.config_split.ci']['status'] = TRUE;
+      $config['config_split.config_split.dev']['status'] = FALSE;
+      $config['config_split.config_split.local']['status'] = FALSE;
+      $config['config_split.config_split.stage']['status'] = FALSE;
+      break;
+
+    case ENVIRONMENT_LOCAL:
+    default:
+      $config['config_split.config_split.dev']['status'] = TRUE;
+      $config['config_split.config_split.local']['status'] = TRUE;
+      $config['config_split.config_split.stage']['status'] = FALSE;
+      $config['config_split.config_split.ci']['status'] = FALSE;
+      break;
+  }
+}
+CONFIG_SPLIT_EOF
+
+        print_status "OK" "Config split settings created"
         track_step 7
     else
-        print_status "INFO" "Skipping Step 7: Private file system already configured"
+        print_status "INFO" "Skipping Step 7: File system already configured"
     fi
 
     # Step 8: Install Drupal Profile
@@ -444,6 +638,16 @@ EOF
 
     # Step 9: Additional modules and configuration
     if should_run_step 9 "$start_step"; then
+        print_header "Step 9: Enable Core Modules"
+
+        # Enable environment_indicator module (installed via composer in Step 1)
+        print_info "Enabling environment indicator module..."
+        if ddev drush pm:enable environment_indicator -y 2>/dev/null; then
+            print_status "OK" "Environment indicator enabled"
+        else
+            print_status "WARN" "Environment indicator not available (install with: composer require drupal/environment_indicator)"
+        fi
+
         # Dev modules installation if dev mode enabled
         local dev=$(get_recipe_value "$recipe" "dev" "$base_dir/cnwp.yml")
         if [ "$dev" == "y" ]; then

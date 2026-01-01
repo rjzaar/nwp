@@ -236,6 +236,17 @@ recipes:
     profile: standard              # [ACTIVE] Drupal install profile
     webroot: web                   # [ACTIVE] Document root
     auto: y                        # [ACTIVE] Auto-confirm installation
+    # Options: TUI checkbox selections during install
+    options:
+      dev_modules:                    # Enable devel for debugging
+      xdebug:                         # Step-through debugging with IDE
+      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
+      config_split:                   # Environment-specific config
+      security_modules:               # Security hardening modules
+      redis:                          # Object caching for performance
+      cron:                           # Automated task scheduling
+      backup:                         # Automated backups
+      ssl:                            # HTTPS configuration
 
   os:
     # [ACTIVE] Open Social installation
@@ -244,6 +255,19 @@ recipes:
     profile: social                # [ACTIVE]
     webroot: html                  # [ACTIVE]
     auto: y                        # [ACTIVE]
+    # Options: TUI checkbox selections during install
+    options:
+      dev_modules:                    # Enable devel, webprofiler for debugging
+      xdebug:                         # Step-through debugging with IDE
+      stage_file_proxy:               # Proxy production files locally
+      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
+      config_split:                   # Environment-specific config
+      security_modules:               # Security hardening modules
+      redis:                          # Object caching for performance
+      solr:                           # Advanced full-text search
+      cron:                           # Automated task scheduling
+      backup:                         # Automated backups
+      ssl:                            # HTTPS configuration
 
   nwp:
     # [ACTIVE] NWP custom recipe with modules
@@ -252,6 +276,38 @@ recipes:
     profile: social
     webroot: html
     auto: y
+    # Options: Values with 'y' are pre-selected in TUI. Blank = available but not selected.
+    options:
+      # === Development (environment: dev) ===
+      dev_modules:                    # Enable devel, webprofiler for debugging
+      xdebug:                         # Step-through debugging with IDE
+      stage_file_proxy:               # Proxy production files locally
+
+      # === Configuration (environment: all) ===
+      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
+      config_split: y                 # [RECOMMENDED] Environment-specific config
+
+      # === Staging (environment: stage) ===
+      db_sanitize:                    # Anonymize user data on sync
+      staging_domain:                 # Custom staging domain
+
+      # === Security (environment: live) ===
+      security_modules: y             # [RECOMMENDED] seckit, honeypot, login_security
+
+      # === Performance (environment: live) ===
+      redis:                          # Object caching for performance
+      solr:                           # Advanced full-text search
+
+      # === Production Infrastructure (environment: live) ===
+      cron: y                         # [RECOMMENDED] Automated task scheduling
+      backup: y                       # [RECOMMENDED] Automated backups
+      ssl: y                          # [RECOMMENDED] HTTPS configuration
+      cdn:                            # CDN integration
+
+      # === Production Deployment (environment: prod) ===
+      live_domain:                    # Production domain name
+      dns_records:                    # Auto-configure DNS via Linode
+      monitoring:                     # Uptime and performance monitoring
 
   dm:
     # [ACTIVE] Divine Mercy recipe

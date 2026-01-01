@@ -238,7 +238,139 @@ get_setting() {
     fi
 }
 
+################################################################################
+# Environment Detection Functions
+################################################################################
+
+# Get environment type from site name (NWP naming convention)
+# Usage: get_env_type_from_name "sitename"
+# Returns: local, dev, stage, prod
+get_env_type_from_name() {
+    local site="$1"
+
+    if [[ "$site" =~ _stg$ ]]; then
+        echo "stage"
+    elif [[ "$site" =~ _prod$ ]]; then
+        echo "prod"
+    else
+        echo "local"
+    fi
+}
+
+# Get base site name (without environment suffix)
+# Usage: get_base_name "sitename_stg" -> "sitename"
+get_base_name() {
+    local site="$1"
+    echo "$site" | sed -E 's/_(stg|prod)$//'
+}
+
+# Get Drupal environment from a running DDEV site
+# Usage: get_drupal_environment "sitename"
+# Returns: local, dev, stage, prod, ci, or "unknown"
+get_drupal_environment() {
+    local site="$1"
+    local site_path=""
+
+    # Determine site path
+    if [ -d "$site" ]; then
+        site_path="$site"
+    elif [ -d "${SCRIPT_DIR}/${site}" ]; then
+        site_path="${SCRIPT_DIR}/${site}"
+    else
+        # Fallback to name-based detection
+        get_env_type_from_name "$site"
+        return
+    fi
+
+    # Check if DDEV is running for this site
+    local ddev_status=$(cd "$site_path" && ddev describe 2>/dev/null | grep -c "OK" || echo "0")
+
+    if [ "$ddev_status" -gt 0 ]; then
+        # Get environment from Drupal settings
+        local drupal_env=$(cd "$site_path" && ddev drush php-eval "echo \Drupal\Core\Site\Settings::get('environment', 'unknown');" 2>/dev/null || echo "")
+        if [ -n "$drupal_env" ] && [ "$drupal_env" != "unknown" ]; then
+            echo "$drupal_env"
+            return
+        fi
+    fi
+
+    # Fallback to name-based detection
+    get_env_type_from_name "$(basename "$site_path")"
+}
+
+# Get environment indicator color for terminal output
+# Usage: get_env_color "environment"
+# Returns: ANSI color code
+get_env_color() {
+    local env="$1"
+
+    case "$env" in
+        prod|production)
+            echo "\033[0;31m"  # Red
+            ;;
+        stage|staging)
+            echo "\033[1;33m"  # Yellow
+            ;;
+        dev|development)
+            echo "\033[0;32m"  # Green
+            ;;
+        local)
+            echo "\033[0;34m"  # Blue
+            ;;
+        ci)
+            echo "\033[0;35m"  # Purple
+            ;;
+        *)
+            echo "\033[0;37m"  # Gray
+            ;;
+    esac
+}
+
+# Print environment status with color coding
+# Usage: print_env_status "sitename" "environment"
+print_env_status() {
+    local site="$1"
+    local env="$2"
+    local color=$(get_env_color "$env")
+    local NC='\033[0m'
+
+    printf "  %-20s ${color}[%s]${NC}\n" "$site" "$env"
+}
+
+# Get environment label for display (uppercase, formatted)
+# Usage: get_env_label "stage" -> "STAGING"
+get_env_label() {
+    local env="$1"
+
+    case "$env" in
+        prod)
+            echo "PRODUCTION"
+            ;;
+        stage)
+            echo "STAGING"
+            ;;
+        dev)
+            echo "DEVELOPMENT"
+            ;;
+        local)
+            echo "LOCAL"
+            ;;
+        ci)
+            echo "CI"
+            ;;
+        *)
+            echo "$env" | tr '[:lower:]' '[:upper:]'
+            ;;
+    esac
+}
+
 # Export functions for use in subshells
 export -f get_secret
 export -f get_secret_nested
 export -f get_setting
+export -f get_env_type_from_name
+export -f get_base_name
+export -f get_drupal_environment
+export -f get_env_color
+export -f print_env_status
+export -f get_env_label

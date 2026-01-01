@@ -536,6 +536,132 @@ build_env_option_list() {
     done
 }
 
+################################################################################
+# Site Summary Display
+################################################################################
+
+show_site_summary() {
+    local site_name="$1"
+    local directory="$2"
+    local recipe_type="$3"
+    local config_file="$4"
+
+    printf "\n${BOLD}Site: ${CYAN}%s${NC}\n" "$site_name"
+    printf "Directory: %s\n" "$directory"
+    printf "Recipe: %s\n" "$recipe_type"
+
+    # Show purpose if set
+    local purpose=$(awk -v site="$site_name" '
+        /^sites:/ { in_sites = 1; next }
+        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
+        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
+        in_site && /^  [a-zA-Z]/ && !/^    / { in_site = 0 }
+        in_site && /^    purpose:/ { sub(/^    purpose: */, ""); gsub(/["'"'"']/, ""); print }
+    ' "$config_file")
+    [ -n "$purpose" ] && printf "Purpose: %s\n" "$purpose"
+
+    # Show live deployment info
+    local live_enabled=$(awk -v site="$site_name" '
+        /^sites:/ { in_sites = 1; next }
+        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
+        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
+        in_site && /^  [a-zA-Z]/ && !/^    / { in_site = 0 }
+        in_site && /^    live:/ { in_live = 1; next }
+        in_live && /^    [a-zA-Z]/ && !/^      / { in_live = 0 }
+        in_live && /^      enabled:/ { sub(/^      enabled: */, ""); print }
+    ' "$config_file")
+
+    if [ "$live_enabled" = "true" ]; then
+        local live_domain=$(awk -v site="$site_name" '
+            /^sites:/ { in_sites = 1; next }
+            in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
+            in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
+            in_site && /^  [a-zA-Z]/ && !/^    / { in_site = 0 }
+            in_site && /^    live:/ { in_live = 1; next }
+            in_live && /^    [a-zA-Z]/ && !/^      / { in_live = 0 }
+            in_live && /^      domain:/ { sub(/^      domain: */, ""); gsub(/["'"'"']/, ""); print }
+        ' "$config_file")
+        local live_ip=$(awk -v site="$site_name" '
+            /^sites:/ { in_sites = 1; next }
+            in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
+            in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
+            in_site && /^  [a-zA-Z]/ && !/^    / { in_site = 0 }
+            in_site && /^    live:/ { in_live = 1; next }
+            in_live && /^    [a-zA-Z]/ && !/^      / { in_live = 0 }
+            in_live && /^      server_ip:/ { sub(/^      server_ip: */, ""); print }
+        ' "$config_file")
+        printf "${GREEN}Live:${NC} %s (%s)\n" "$live_domain" "$live_ip"
+    fi
+    printf "\n"
+
+    # Show installed_modules from cnwp.yml
+    local installed_modules=$(awk -v site="$site_name" '
+        /^sites:/ { in_sites = 1; next }
+        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
+        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
+        in_site && /^  [a-zA-Z]/ && !/^    / { in_site = 0 }
+        in_site && /^    installed_modules:/ { in_mods = 1; next }
+        in_mods && /^      - / {
+            sub(/^      - /, "")
+            gsub(/["'"'"']/, "")
+            print
+        }
+        in_mods && /^    [a-zA-Z]/ && !/^      / { in_mods = 0 }
+    ' "$config_file")
+
+    if [ -n "$installed_modules" ]; then
+        printf "${BOLD}Installed Modules (from cnwp.yml):${NC}\n"
+        while read -r mod; do
+            printf "  - %s\n" "$mod"
+        done <<< "$installed_modules"
+        printf "\n"
+    fi
+
+    # Show options from cnwp.yml
+    local options_list=$(awk -v site="$site_name" '
+        /^sites:/ { in_sites = 1; next }
+        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
+        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
+        in_site && /^  [a-zA-Z]/ && !/^    / { in_site = 0 }
+        in_site && /^    options:/ { in_options = 1; next }
+        in_options && /^      [a-zA-Z_]+:/ {
+            sub(/^      /, "")
+            print
+        }
+        in_options && /^    [a-zA-Z]/ && !/^      / { in_options = 0 }
+    ' "$config_file")
+
+    if [ -n "$options_list" ]; then
+        printf "${BOLD}Options (from cnwp.yml):${NC}\n"
+        while read -r opt; do
+            printf "  %s\n" "$opt"
+        done <<< "$options_list"
+        printf "\n"
+    fi
+
+    # Show currently installed (from site detection)
+    local installed_items=""
+    for key in "${!OPTION_INSTALLED[@]}"; do
+        if [ "${OPTION_INSTALLED[$key]}" = "y" ]; then
+            local label="${OPTION_LABELS[$key]:-$key}"
+            installed_items="${installed_items}  - ${label}\n"
+        fi
+    done
+
+    if [ -n "$installed_items" ]; then
+        printf "${BOLD}Currently Installed (detected):${NC}\n"
+        printf "%b" "$installed_items"
+        printf "\n"
+    elif [ -d "$directory/.ddev" ]; then
+        # Check if DDEV is running
+        if ! (cd "$directory" && ddev describe &>/dev/null); then
+            printf "${DIM}(Site not running - start with 'ddev start' to detect installed options)${NC}\n\n"
+        else
+            printf "${DIM}(No options currently installed)${NC}\n\n"
+        fi
+    fi
+}
+
 run_options_tui() {
     local site_name="$1"
     local environment="$2"
@@ -557,6 +683,11 @@ run_options_tui() {
 
     # Load existing config
     load_existing_config "$site_name" "$CONFIG_FILE" 2>/dev/null || true
+
+    # Show summary before TUI
+    show_site_summary "$site_name" "$directory" "$recipe_type" "$CONFIG_FILE"
+    printf "Press any key to continue to options menu..."
+    read -rsn1
 
     # Build option list for current environment
     build_env_option_list "$environment"
@@ -826,6 +957,7 @@ Arguments:
   site_name          Name of site from cnwp.yml (optional)
 
 Options:
+  -i, --info         Show site info only (no TUI)
   -l, --list         List all sites
   -h, --help         Show this help
 
@@ -849,11 +981,13 @@ EOF
 main() {
     local site_name=""
     local list_only=false
+    local info_only=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -h|--help) show_help; exit 0 ;;
             -l|--list) list_only=true; shift ;;
+            -i|--info) info_only=true; shift ;;
             -*) print_error "Unknown option: $1"; exit 1 ;;
             *) site_name="$1"; shift ;;
         esac
@@ -902,6 +1036,26 @@ main() {
         production) env_short="prod" ;;
         live) env_short="live" ;;
     esac
+
+    # Info-only mode: just show summary and exit
+    if [ "$info_only" = true ]; then
+        # Load options for the recipe type
+        case "$recipe" in
+            drupal|d|os|nwp|dm|"") define_drupal_options ;;
+            moodle|m) define_moodle_options ;;
+            gitlab) define_gitlab_options ;;
+            *) define_drupal_options ;;
+        esac
+
+        # Check what's currently installed
+        if [ -n "$directory" ] && [ -d "$directory" ]; then
+            check_installed_status "$directory" "$recipe"
+        fi
+
+        # Show the summary
+        show_site_summary "$site_name" "$directory" "$recipe" "$CONFIG_FILE"
+        exit 0
+    fi
 
     # Run options TUI
     if run_options_tui "$site_name" "$env_short" "$recipe" "$directory"; then

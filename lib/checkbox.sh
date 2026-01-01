@@ -460,34 +460,45 @@ get_dependents() {
 # Read a single keypress (including arrow keys)
 read_key() {
     local key
-    IFS= read -rsn1 key 2>/dev/null
 
-    if [[ $key == $'\x1b' ]]; then
-        read -rsn2 -t 0.1 key 2>/dev/null
-        case "$key" in
-            '[A') echo "UP" ;;
-            '[B') echo "DOWN" ;;
-            '[C') echo "RIGHT" ;;
-            '[D') echo "LEFT" ;;
-            *) echo "ESC" ;;
+    # Save terminal settings and set raw mode
+    local saved_settings
+    saved_settings=$(stty -g 2>/dev/null) || true
+    stty -echo -icanon min 1 time 0 2>/dev/null || true
+
+    # Read single character
+    key=$(dd bs=1 count=1 2>/dev/null) || key=""
+
+    # Check for escape sequence (arrow keys)
+    if [[ "$key" == $'\x1b' ]]; then
+        # Read the rest of the escape sequence
+        stty -echo -icanon min 0 time 1 2>/dev/null || true
+        local seq
+        seq=$(dd bs=2 count=1 2>/dev/null) || seq=""
+        stty "$saved_settings" 2>/dev/null || true
+
+        case "$seq" in
+            '[A') echo "UP"; return ;;
+            '[B') echo "DOWN"; return ;;
+            '[C') echo "RIGHT"; return ;;
+            '[D') echo "LEFT"; return ;;
+            *) echo "ESC"; return ;;
         esac
-    elif [[ $key == '' ]]; then
-        echo "ENTER"
-    elif [[ $key == ' ' ]]; then
-        echo "SPACE"
-    elif [[ $key == 'q' || $key == 'Q' ]]; then
-        echo "QUIT"
-    elif [[ $key == 'a' || $key == 'A' ]]; then
-        echo "ALL"
-    elif [[ $key == 'n' || $key == 'N' ]]; then
-        echo "NONE"
-    elif [[ $key == 'e' || $key == 'E' ]]; then
-        echo "EDIT"
-    elif [[ $key == '?' || $key == 'h' || $key == 'H' ]]; then
-        echo "HELP"
-    else
-        echo "$key"
     fi
+
+    # Restore terminal
+    stty "$saved_settings" 2>/dev/null || true
+
+    case "$key" in
+        '') echo "ENTER" ;;
+        ' ') echo "SPACE" ;;
+        q|Q) echo "QUIT" ;;
+        a|A) echo "ALL" ;;
+        n|N) echo "NONE" ;;
+        e|E) echo "EDIT" ;;
+        '?'|h|H) echo "HELP" ;;
+        *) echo "$key" ;;
+    esac
 }
 
 # Build flat list of all options (sorted by environment)

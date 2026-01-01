@@ -63,21 +63,35 @@ if [ -f "$SCRIPT_DIR/lib/install-steps.sh" ]; then
     source "$SCRIPT_DIR/lib/install-steps.sh"
 fi
 
+# Source TUI library
+if [ -f "$SCRIPT_DIR/lib/tui.sh" ]; then
+    source "$SCRIPT_DIR/lib/tui.sh"
+fi
+
 ################################################################################
 # Interactive Option Selection
 ################################################################################
 
-# Run interactive option selection
-# Returns selected options in SELECTED_OPTIONS associative array
+# Run interactive option selection using TUI
+# Returns selected options in OPTION_SELECTED associative array
 run_interactive_options() {
     local recipe="$1"
     local site_name="$2"
     local recipe_type="$3"
     local config_file="${4:-cnwp.yml}"
 
-    # Check if checkbox library is available
-    if ! command -v interactive_select_options &> /dev/null; then
-        print_warning "Interactive options not available (checkbox.sh not loaded)"
+    # Check if TUI library is available
+    if ! command -v run_tui &> /dev/null; then
+        # Fall back to checkbox library
+        if command -v interactive_select_options &> /dev/null; then
+            local environment="dev"
+            [[ "$site_name" =~ _stg$ ]] && environment="stage"
+            [[ "$site_name" =~ _live$ ]] && environment="live"
+            [[ "$site_name" =~ _prod$ ]] && environment="prod"
+            interactive_select_options "$environment" "$recipe_type" ""
+            return $?
+        fi
+        print_warning "Interactive options not available"
         return 0
     fi
 
@@ -95,9 +109,7 @@ run_interactive_options() {
     print_header "Configure Installation Options"
 
     # Check for existing site configuration
-    local existing_site=""
     if yaml_site_exists "$site_name" "$config_file" 2>/dev/null; then
-        existing_site="$site_name"
         echo -e "${YELLOW}Existing configuration found for '$site_name'${NC}"
         echo "Current options will be loaded and can be modified."
         echo ""
@@ -106,7 +118,7 @@ run_interactive_options() {
     # Ask if user wants interactive mode
     echo "Would you like to configure installation options interactively?"
     echo ""
-    echo -e "  ${CYAN}y${NC}  - Configure options (dev/stage/live/prod settings)"
+    echo -e "  ${CYAN}y${NC}  - Configure options with TUI"
     echo -e "  ${CYAN}n${NC}  - Use defaults for $environment environment"
     echo -e "  ${CYAN}q${NC}  - Quick install with minimal options"
     echo ""
@@ -117,53 +129,58 @@ run_interactive_options() {
             print_info "Using default options for $environment"
             # Load options and apply defaults silently
             case "$recipe_type" in
-                moodle|m)
-                    define_moodle_options
-                    ;;
-                gitlab)
-                    define_gitlab_options
-                    ;;
-                *)
-                    define_drupal_options
-                    ;;
+                moodle|m) define_moodle_options ;;
+                gitlab) define_gitlab_options ;;
+                *) define_drupal_options ;;
             esac
             apply_environment_defaults "$environment"
+            # Load recipe defaults on top
+            load_recipe_defaults "$recipe" "$config_file"
             return 0
             ;;
         q|Q)
             print_info "Quick install - minimal options"
-            # Clear all options
             clear_options 2>/dev/null || true
             return 0
             ;;
         *)
-            # Interactive mode
-            interactive_select_options "$environment" "$recipe_type" "$existing_site"
+            # Load options for recipe type
+            case "$recipe_type" in
+                moodle|m) define_moodle_options ;;
+                gitlab) define_gitlab_options ;;
+                *) define_drupal_options ;;
+            esac
 
-            # Show summary of selections
-            echo ""
-            print_header "Selected Options Summary"
-            local selected_count=0
-            for key in "${OPTION_LIST[@]}"; do
-                if [[ "${OPTION_SELECTED[$key]}" == "y" ]]; then
-                    echo -e "  ${GREEN}✓${NC} ${OPTION_LABELS[$key]}"
-                    ((selected_count++))
+            # Load defaults with recipe pre-selections
+            load_tui_defaults "install" "$site_name" "$recipe" "$environment" "$config_file"
+
+            # Run interactive TUI
+            if run_tui "install" "$site_name" "$environment" "$recipe_type" "$config_file"; then
+                # User confirmed - show summary
+                echo ""
+                print_header "Selected Options Summary"
+                local selected_count=0
+                for key in "${OPTION_LIST[@]}"; do
+                    if [[ "${OPTION_SELECTED[$key]}" == "y" ]]; then
+                        local recipe_hint=""
+                        [[ "${OPTION_FROM_RECIPE[$key]:-n}" == "y" ]] && recipe_hint=" ${DIM}(recipe)${NC}"
+                        echo -e "  ${GREEN}✓${NC} ${OPTION_LABELS[$key]}${recipe_hint}"
+                        ((selected_count++))
+                    fi
+                done
+
+                if [[ $selected_count -eq 0 ]]; then
+                    echo -e "  ${DIM}No options selected${NC}"
                 fi
-            done
-
-            if [[ $selected_count -eq 0 ]]; then
-                echo -e "  ${DIM}No options selected${NC}"
+                echo ""
+                echo "Total: $selected_count options selected"
+                echo ""
+                return 0
+            else
+                # User cancelled
+                print_warning "Installation cancelled"
+                return 1
             fi
-            echo ""
-            echo "Total: $selected_count options selected"
-            echo ""
-
-            read -p "Continue with these options? [Y/n]: " confirm
-            if [[ "$confirm" =~ ^[Nn]$ ]]; then
-                # Re-run selection
-                run_interactive_options "$recipe" "$site_name" "$recipe_type" "$config_file"
-            fi
-            return 0
             ;;
     esac
 }

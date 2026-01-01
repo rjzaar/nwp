@@ -560,6 +560,6 @@ modules:
 
 ---
 
-*For detailed improvement plans and roadmap, see [IMPROVEMENTS.md](IMPROVEMENTS.md)*
+*For detailed improvement plans and roadmap, see [ROADMAP.md](ROADMAP.md)*
 
 *Last Updated: December 28, 2024*

@@ -1,24 +1,24 @@
-# NWP Complete Setup Guide
+# NWP Setup Guide
 
-This guide provides step-by-step instructions to set up the Narrow Way Project (NWP). The setup process is mostly automated - you just need to provide a few pieces of information.
+This guide provides step-by-step instructions to set up and manage the Narrow Way Project (NWP).
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-- [What Gets Automated](#what-gets-automated)
-- [Manual Steps Required](#manual-steps-required)
-- [Detailed Setup Process](#detailed-setup-process)
-- [Setup Profiles](#setup-profiles)
-- [Rollback and Uninstall](#rollback-and-uninstall)
-- [Configuration Reference](#configuration-reference)
+- [What Gets Installed](#what-gets-installed)
+- [Prerequisites](#prerequisites)
+- [Setup Process](#setup-process)
+- [Configuration](#configuration)
+- [CLI Installation](#cli-installation)
+- [Uninstallation](#uninstallation)
 - [Troubleshooting](#troubleshooting)
 
 ## Quick Start
 
 ```bash
 # Clone repository
-git clone git@github.com:rjzaar/nwp.git
-cd nwp
+git clone git@github.com:rjzaar/nwp.git ~/nwp
+cd ~/nwp
 
 # Run interactive setup
 ./setup.sh
@@ -34,11 +34,10 @@ The setup script will:
 4. Automatically install everything selected
 5. Configure all services and connections
 
-## What Gets Automated
-
-The setup script automates the following:
+## What Gets Installed
 
 ### Core Infrastructure (Local Development)
+
 | Component | What It Does |
 |-----------|--------------|
 | Docker Engine | Container runtime for DDEV |
@@ -50,6 +49,7 @@ The setup script automates the following:
 | mkcert CA | Certificate authority setup |
 
 ### NWP Tools
+
 | Component | What It Does |
 |-----------|--------------|
 | NWP CLI | Global `pl` command for running scripts |
@@ -57,15 +57,15 @@ The setup script automates the following:
 | NWP Secrets | Creates `.secrets.yml` template |
 
 ### Linode Infrastructure (Server Provisioning)
+
 | Component | What It Does |
 |-----------|--------------|
 | Linode CLI | Command-line tool for Linode API |
 | Linode Config | Configures CLI with your API token |
 | SSH Keys | Generates deployment SSH keys |
 
-**Note:** SSH keys are passed directly to servers during provisioning via StackScripts. You do NOT need to add keys to your Linode profile for NWP to work.
-
 ### GitLab Deployment (Self-Hosted Git)
+
 | Component | What It Does |
 |-----------|--------------|
 | GitLab SSH Keys | Generates keys for GitLab access |
@@ -73,9 +73,7 @@ The setup script automates the following:
 | GitLab DNS | Creates DNS records in Linode |
 | GitLab SSH Config | Configures `ssh git-server` alias |
 
-## Manual Steps Required
-
-Some steps cannot be automated and require your action:
+## Prerequisites
 
 ### Before Running Setup
 
@@ -110,13 +108,13 @@ Some steps cannot be automated and require your action:
    - Change password immediately
    - Update `.secrets.yml` with new password
 
-## Detailed Setup Process
+## Setup Process
 
 ### Step 1: Clone and Run Setup
 
 ```bash
-git clone git@github.com:rjzaar/nwp.git
-cd nwp
+git clone git@github.com:rjzaar/nwp.git ~/nwp
+cd ~/nwp
 ./setup.sh
 ```
 
@@ -141,7 +139,6 @@ NWP Tools:
 [✗] NWP CLI Command
 [✗] NWP Configuration (cnwp.yml)
 [✗] NWP Secrets (.secrets.yml)
-...
 ```
 
 ### Step 3: Select Components
@@ -194,103 +191,9 @@ Installing linode-cli...
 Configuring Linode CLI
 ═══════════════════════════════════════════════════════════════
 [✓] Linode CLI configured successfully
-
-Adding SSH Key to Linode Profile
-═══════════════════════════════════════════════════════════════
-[i] Adding SSH key to Linode profile...
-[✓] SSH key added to Linode profile
 ```
 
-### Step 6: Complete Manual Steps
-
-After setup completes, you'll see reminders for manual steps:
-
-```
-Setup Complete
-═══════════════════════════════════════════════════════════════
-
-Manual steps remaining:
-
-1. Update nameservers at your domain registrar:
-   ns1.linode.com, ns2.linode.com, ns3.linode.com, ns4.linode.com, ns5.linode.com
-
-2. After GitLab initializes (~10-15 minutes):
-   - Get password: ssh git-server 'sudo cat /root/gitlab_credentials.txt'
-   - Login and change password at https://git.yourdomain.org
-   - Update .secrets.yml with new password
-```
-
-## Setup Profiles
-
-### Local Development Only
-
-For just local Drupal/Moodle development:
-
-```bash
-./setup.sh --auto
-```
-
-This installs:
-- Docker, DDEV, mkcert
-- NWP CLI and config files
-
-### Full Infrastructure
-
-For complete setup including GitLab:
-
-```bash
-./setup.sh
-# Select all components in the UI
-```
-
-### Check Current Status
-
-```bash
-./setup.sh --status
-```
-
-## Rollback and Uninstall
-
-### Removing Components
-
-Run setup again and deselect components:
-
-```bash
-./setup.sh
-# Deselect unwanted components
-# Script will remove them
-```
-
-### What Gets Preserved
-
-The script tracks what was installed before NWP:
-- **Pre-existing components** are never removed
-- Only components installed by NWP can be uninstalled
-- Original state is saved on first run
-
-### GitLab Server Deletion
-
-When deselecting GitLab Server, you'll be prompted:
-
-```
-[!] This will DELETE the GitLab server (Linode ID: 12345678)
-[!] All data on the server will be PERMANENTLY LOST
-
-Are you SURE you want to delete the GitLab server? [y/N]:
-```
-
-### State Files
-
-Setup state is stored in `~/.nwp/setup_state/`:
-
-| File | Purpose |
-|------|---------|
-| `original_state.json` | What was installed before NWP |
-| `current_state.json` | Current installation state |
-| `install.log` | Log of all setup actions |
-| `*.backup.*` | Backups of removed config files |
-
-## Configuration Reference
+## Configuration
 
 ### cnwp.yml (Site Configuration)
 
@@ -299,6 +202,8 @@ settings:
   url: yourdomain.org       # Required for GitLab
   database: mariadb
   php: 8.2
+  cli: y                    # Enable CLI feature
+  cliprompt: pl             # CLI command name
 
 recipes:
   myrecipe:
@@ -326,6 +231,108 @@ gitlab:
     initial_password: "from-server"
     password: "your-changed-password"
 ```
+
+## CLI Installation
+
+### Enabling the CLI
+
+In `cnwp.yml`:
+
+```yaml
+settings:
+  cli: y
+  cliprompt: pl  # Command name (default: pl)
+```
+
+### Using the CLI
+
+Once installed, use the CLI from anywhere:
+
+```bash
+# List available recipes
+pl --list
+
+# Install a site
+pl install d
+
+# Backup a site
+pl backup mysite
+
+# Show all available commands
+pl
+```
+
+### Available CLI Commands
+
+| Command | Script | Description |
+|---------|--------|-------------|
+| `pl install <recipe>` | install.sh | Install a new site |
+| `pl backup <site>` | backup.sh | Backup a site |
+| `pl restore <site>` | restore.sh | Restore from backup |
+| `pl copy <from> <to>` | copy.sh | Copy a site |
+| `pl delete <site>` | delete.sh | Delete a site |
+| `pl dev2stg <dev>` | dev2stg.sh | Copy dev to staging |
+| `pl setup` | setup.sh | Run prerequisites check |
+| `pl test-nwp` | test-nwp.sh | Run tests |
+
+### CLI Aliases
+
+Short aliases are supported:
+- `pl i` = `pl install`
+- `pl b` = `pl backup`
+- `pl r` = `pl restore`
+- `pl cp` = `pl copy`
+- `pl del` = `pl delete`
+
+## Uninstallation
+
+### Running Uninstall
+
+```bash
+cd ~/nwp
+./uninstall_nwp.sh
+```
+
+### Smart Uninstall
+
+The uninstaller uses the system state snapshot to intelligently remove only what NWP installed:
+
+| What Was There | What Happens |
+|----------------|--------------|
+| Docker existed before NWP | Docker is kept |
+| NWP installed Docker | Docker is removed |
+| User was in docker group | User stays in group |
+| NWP added user to docker group | User is removed from group |
+
+### What Uninstall Does
+
+1. **Checks State File** - Uses snapshot to know what NWP installed
+2. **Removes CLI** - Removes global CLI command (e.g., `/usr/local/bin/pl`)
+3. **Removes DDEV** - Stops projects, removes binary and config
+4. **Removes mkcert** - Uninstalls CA and binary
+5. **Removes Docker Group** - If NWP added user
+6. **Removes Docker** - If NWP installed it
+7. **Restores Shell Config** - Original `~/.bashrc` from backup
+8. **Removes Configuration** - Optionally removes `cnwp.yml` and `~/.nwp`
+
+### Confirmation Prompts
+
+The uninstaller asks for confirmation before:
+- Removing Docker (if installed by NWP)
+- Removing user from docker group
+- Removing mkcert
+- Removing DDEV
+- Removing ~/.ddev configuration
+- Restoring ~/.bashrc
+- Removing cnwp.yml
+- Removing ~/.nwp directory
+
+### Manual Uninstall (No State File)
+
+If no state file exists, the uninstaller will:
+- Prompt before removing each component
+- Allow selective uninstallation
+- Cannot differentiate between NWP-installed and pre-existing tools
 
 ## Troubleshooting
 
@@ -369,6 +376,20 @@ dig git.yourdomain.org +short
 dig yourdomain.org NS +short
 ```
 
+### CLI Command Not Found
+
+```bash
+# Check if CLI is in PATH
+which pl
+ls -la /usr/local/bin/pl
+
+# Make executable
+sudo chmod +x /usr/local/bin/pl
+
+# Verify CLI setting in config
+grep "cli:" cnwp.yml
+```
+
 ### Reset Setup State
 
 ```bash
@@ -379,9 +400,101 @@ rm -rf ~/.nwp/setup_state
 ./setup.sh
 ```
 
+### State File Location
+
+Setup state is stored in `~/.nwp/setup_state/`:
+
+| File | Purpose |
+|------|---------|
+| `original_state.json` | What was installed before NWP |
+| `current_state.json` | Current installation state |
+| `install.log` | Log of all setup actions |
+| `bashrc.backup` | Backup of ~/.bashrc |
+
+### Check Current State
+
+```bash
+# View state file
+cat ~/.nwp/setup_state/pre_setup_state.json
+
+# Check setup status
+./setup.sh --status
+```
+
+## Setup Profiles
+
+### Local Development Only
+
+For just local Drupal/Moodle development:
+
+```bash
+./setup.sh --auto
+```
+
+This installs:
+- Docker, DDEV, mkcert
+- NWP CLI and config files
+
+### Full Infrastructure
+
+For complete setup including GitLab:
+
+```bash
+./setup.sh
+# Select all components in the UI
+```
+
+## File Locations
+
+| Item | Location |
+|------|----------|
+| Setup script | `~/nwp/setup.sh` |
+| Uninstall script | `~/nwp/uninstall_nwp.sh` |
+| Configuration | `~/nwp/cnwp.yml` |
+| Example config | `~/nwp/example.cnwp.yml` |
+| State directory | `~/.nwp/setup_state/` |
+| Install log | `~/.nwp/setup_state/install.log` |
+| CLI command | `/usr/local/bin/<cliprompt>` |
+
+## Security Considerations
+
+### Sudo Access
+
+Both scripts require sudo for:
+- Installing packages (Docker, mkcert, DDEV)
+- Installing CLI to `/usr/local/bin/`
+- Removing packages and system files
+
+### State File Security
+
+The state file contains:
+- Username and hostname
+- Installation dates
+- Which tools were installed
+
+It does NOT contain:
+- Passwords or API tokens
+- SSH keys
+- Personal data
+
+### Backup Recommendations
+
+Before running setup:
+```bash
+cp ~/.bashrc ~/.bashrc.pre-nwp
+dpkg -l > ~/packages-before-nwp.txt
+```
+
+Before running uninstall:
+```bash
+ddev export-db --all
+./backup.sh mysite
+```
+
 ## See Also
 
-- [README.md](../README.md) - Main documentation
-- [SSH_SETUP.md](SSH_SETUP.md) - Detailed SSH key setup
-- [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md) - Production deployment guide
-- [git/README.md](../git/README.md) - GitLab deployment details
+- [Testing Guide](TESTING.md) - Test suite documentation
+- [CI/CD Guide](CICD.md) - CI/CD implementation
+- [Production Deployment](PRODUCTION_DEPLOYMENT.md) - Deployment guide
+- [SSH Setup](SSH_SETUP.md) - SSH key setup
+- [GitLab Setup](../git/README.md) - GitLab server setup

@@ -1097,8 +1097,7 @@ ci:
 
 ### Research Documents
 - [GIT_BACKUP_RECOMMENDATIONS.md](./GIT_BACKUP_RECOMMENDATIONS.md) - Git backup analysis
-- [NWP_CI_TESTING_STRATEGY.md](./NWP_CI_TESTING_STRATEGY.md) - CI/CD strategy
-- [IMPROVEMENTS.md](./IMPROVEMENTS.md) - Original roadmap
+- [CICD.md](./CICD.md) - CI/CD implementation guide
 
 ### External Sources
 - Vortex: Enterprise Drupal patterns
@@ -1111,7 +1110,7 @@ ci:
 - [README.md](../README.md) - Main documentation
 - [SETUP.md](./SETUP.md) - Setup guide
 - [PRODUCTION_DEPLOYMENT.md](./PRODUCTION_DEPLOYMENT.md) - Deployment guide
-- [TESTING_GUIDE.md](./TESTING_GUIDE.md) - Testing guide
+- [TESTING.md](./TESTING.md) - Testing guide
 
 ---
 

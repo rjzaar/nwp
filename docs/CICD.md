@@ -1,467 +1,394 @@
-# CI/CD Implementation Guide
+# NWP CI/CD Guide
 
-**Last Updated:** December 2024
-**Status:** Planning and Implementation Guide
+This document provides comprehensive CI/CD guidance for the Narrow Way Project, covering architecture, implementation, and best practices.
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Local CI/CD Setup](#local-cicd-setup)
-- [GitHub Webhook Integration](#github-webhook-integration)
+- [Architecture Overview](#architecture-overview)
+- [NWP GitLab Server](#nwp-gitlab-server)
+- [Local CI Setup](#local-ci-setup)
+- [GitLab CI Configuration](#gitlab-ci-configuration)
+- [GitHub Actions (Alternative)](#github-actions-alternative)
 - [Automated Security Updates](#automated-security-updates)
-- [Implementation Phases](#implementation-phases)
-- [Safety Levels](#safety-levels)
-- [Monitoring and Notifications](#monitoring-and-notifications)
+- [GitLab Hardening](#gitlab-hardening)
+- [Troubleshooting](#troubleshooting)
 
-## Overview
+## Architecture Overview
 
-This document outlines a comprehensive CI/CD strategy for the NWP project, covering local development validation, automated testing on a test server, and automated security update deployment.
-
-### Key Goals
-
-1. **Fast Local Feedback** - Catch issues before pushing (seconds)
-2. **Automated Testing** - Full test suite on every commit (minutes)
-3. **Security Automation** - Automated Drupal security updates with validation
-4. **Safe Deployment** - Layered testing before production deployment
-
-### CI/CD Pipeline Architecture
+NWP uses a self-hosted GitLab instance as the primary CI/CD platform. The GitLab server at `git.<your-domain>` serves as the central repository with optional mirroring to GitHub.
 
 ```
-┌─────────────┐      ┌──────────────┐      ┌─────────────┐      ┌──────────────┐
-│   Local     │─git─→│   GitHub     │─hook→│ Test Server │─auto→│  Production  │
-│   Dev       │      │              │      │   (Linode)  │      │   (Linode)   │
-└─────────────┘      └──────────────┘      └─────────────┘      └──────────────┘
-      ↓                      ↓                      ↓                    ↓
-  Quick lint         Push commits         Full CI/CD           Verified code
-  testos.sh -p       Trigger webhook      + Security          + Security
-  (30 seconds)       (instant)            (5-10 min)          (stable)
+Developer Workstation              NWP GitLab                    External Services
+┌─────────────────────┐          ┌─────────────────┐            ┌─────────────────┐
+│  Local Development  │──push───▶│ git.domain.org  │───mirror──▶│  GitHub         │
+│  (DDEV)             │          │                 │            │  GitLab.com     │
+└─────────────────────┘          │  GitLab CI/CD   │            └─────────────────┘
+                                 │  ┌───────────┐  │
+                                 │  │ Pipeline  │  │
+                                 │  │ ─────────▶│  │
+                                 │  │ lint      │  │
+                                 │  │ test      │  │
+                                 │  │ security  │  │
+                                 │  │ deploy    │  │
+                                 │  └───────────┘  │
+                                 └─────────────────┘
 ```
 
-## Local CI/CD Setup
+### Git Remote Strategy
 
-### Option 1: Makefile (Recommended)
+| Remote | URL | Purpose |
+|--------|-----|---------|
+| `origin` | `git@git.yourdomain.org:nwp/sitename.git` | Primary (CI runs here) |
+| `github` | `git@github.com:user/sitename.git` | Mirror (optional) |
+| `upstream` | Original project URL | For pulling updates |
 
-Create a `Makefile` in the project root for consistent CI tasks:
+### Pipeline Stages
+
+```
+build:composer → validate (phpcs, phpstan, security) → test (phpunit, behat) → deploy
+```
+
+## NWP GitLab Server
+
+### Installation Methods
+
+**Production (Linode):**
+```bash
+./git/setup_gitlab_site.sh
+# Or with options
+./git/setup_gitlab_site.sh --type g6-standard-4 --region us-west
+```
+
+**Development (Local Docker):**
+```bash
+pl install gitlab git
+```
+
+### Post-Installation Setup
+
+1. Push NWP itself to GitLab
+2. Create projects for each managed site
+3. Configure push mirrors to GitHub (optional)
+4. Register GitLab Runner for CI jobs
+
+## Local CI Setup
+
+Run validation locally before pushing to catch issues early.
+
+### Makefile (Recommended)
+
+Create a `Makefile` in the project root:
 
 ```makefile
-.PHONY: test lint build ci quick-test help
+.PHONY: test lint build ci help
 
-# Default target
 help:
 	@echo "Available targets:"
-	@echo "  make test       - Run all tests (Behat, PHPUnit, PHPStan, CodeSniffer)"
-	@echo "  make lint       - Run linting and static analysis only"
-	@echo "  make quick-test - Run fast tests only (PHPStan)"
-	@echo "  make build      - Build and clear caches"
+	@echo "  make test       - Run all tests"
+	@echo "  make lint       - Run linting and static analysis"
 	@echo "  make ci         - Run full CI pipeline locally"
 
-# Run all tests
 test:
-	@echo "Running full test suite..."
 	./testos.sh -a
 
-# Lint and static analysis
 lint:
-	@echo "Running PHPStan..."
 	./testos.sh -p
-	@echo "Running CodeSniffer..."
 	./testos.sh -c
 
-# Quick tests (for pre-commit)
-quick-test:
-	@echo "Running quick validation..."
-	./testos.sh -p
-
-# Build
 build:
-	@echo "Installing dependencies..."
 	ddev composer install
-	@echo "Clearing caches..."
 	ddev drush cr
 
-# Full CI pipeline
 ci: build lint test
 	@echo "✓ All CI checks passed!"
-
-# Development helpers
-watch:
-	@echo "Watching for changes..."
-	while true; do \
-		inotifywait -e modify -r web/modules/custom/; \
-		make quick-test; \
-	done
 ```
 
 **Usage:**
 ```bash
 make ci          # Run full CI pipeline
-make quick-test  # Fast validation
+make lint        # Quick validation
 make test        # All tests
 ```
 
-### Option 2: DDEV Hooks
+### Git Hooks
 
-Add hooks to `.ddev/config.yaml` for automatic validation:
-
-```yaml
-hooks:
-  # Run after DDEV starts
-  post-start:
-    - exec: composer validate
-    - exec: drush status
-
-  # Run before commits (if using ddev-provided git)
-  pre-commit:
-    - exec: ./testos.sh -p  # PHPStan only for speed
-
-  # Custom hook examples
-  post-composer:
-    - exec: drush cr
-```
-
-### Option 3: Git Hooks
-
-Create `.git/hooks/pre-commit` for validation before commits:
+**Pre-push hook** (`.git/hooks/pre-push`):
 
 ```bash
 #!/bin/bash
-################################################################################
-# Pre-commit hook - Validates code before allowing commit
-################################################################################
-
 set -e
-
-echo "🔍 Running pre-commit checks..."
-
-# Run PHPStan (fast static analysis)
-echo "→ Running PHPStan..."
-./testos.sh -p || {
-    echo "✗ PHPStan failed - fix errors before committing"
-    exit 1
-}
-
-# Optional: Run CodeSniffer
-# echo "→ Running CodeSniffer..."
-# ./testos.sh -c || {
-#     echo "✗ CodeSniffer failed - fix coding standards"
-#     exit 1
-# }
-
-echo "✓ Pre-commit checks passed!"
-```
-
-Make executable:
-```bash
-chmod +x .git/hooks/pre-commit
-```
-
-### Option 4: Pre-push Hook (Recommended)
-
-Create `.git/hooks/pre-push` for more thorough validation:
-
-```bash
-#!/bin/bash
-################################################################################
-# Pre-push hook - Run full tests before pushing to remote
-################################################################################
-
-set -e
-
 echo "🚀 Running pre-push validation..."
-
-# Run all tests
 ./testos.sh -a || {
     echo "✗ Tests failed - fix before pushing"
     exit 1
 }
-
-echo "✓ All tests passed - pushing to remote!"
+echo "✓ All tests passed!"
 ```
 
-Make executable:
+Make executable: `chmod +x .git/hooks/pre-push`
+
+### DDEV Hooks
+
+Add to `.ddev/config.yaml`:
+
+```yaml
+hooks:
+  post-start:
+    - exec: composer validate
+    - exec: drush status
+  pre-commit:
+    - exec: ./testos.sh -p  # PHPStan only for speed
+```
+
+## GitLab CI Configuration
+
+### Global CI Settings
+
+In `cnwp.yml`, configure default CI behavior:
+
+```yaml
+settings:
+  ci:
+    enabled: true
+    platform: gitlab
+    auto_setup: false
+    stages:
+      lint: true
+      test: true
+      security: true
+      deploy: false
+    testing:
+      phpcs: true
+      phpstan: true
+      phpstan_level: 5
+      phpunit: true
+      behat: false
+```
+
+### Per-Site Configuration
+
+Each site in `cnwp.yml` can have its own CI settings:
+
+```yaml
+sites:
+  mysite:
+    directory: /home/user/nwp/mysite
+    recipe: d
+    environment: development
+    ci:
+      enabled: true
+      repo: git@git.nwpcode.org:nwp/mysite.git
+      branch: main
+      mirrors:
+        github: git@github.com:user/mysite.git
+```
+
+### .gitlab-ci.yml Template
+
+Create `.gitlab-ci.yml` in site root:
+
+```yaml
+stages:
+  - lint
+  - test
+  - security
+  - deploy
+
+variables:
+  COMPOSER_ALLOW_SUPERUSER: "1"
+  PHP_VERSION: "8.2"
+
+# Lint stage
+phpcs:
+  stage: lint
+  image: php:${PHP_VERSION}-cli
+  before_script:
+    - apt-get update && apt-get install -y git unzip
+    - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    - composer global require squizlabs/php_codesniffer drupal/coder
+    - export PATH="$PATH:$HOME/.composer/vendor/bin"
+  script:
+    - phpcs --standard=Drupal,DrupalPractice --extensions=php,module,inc,install,theme web/modules/custom
+  allow_failure: true
+
+phpstan:
+  stage: lint
+  image: php:${PHP_VERSION}-cli
+  before_script:
+    - apt-get update && apt-get install -y git unzip libpng-dev
+    - docker-php-ext-install gd
+    - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    - composer install --no-interaction
+  script:
+    - composer require --dev phpstan/phpstan mglaman/phpstan-drupal
+    - vendor/bin/phpstan analyse web/modules/custom --level=5
+  allow_failure: true
+
+# Test stage
+phpunit:
+  stage: test
+  image: php:${PHP_VERSION}-cli
+  services:
+    - mariadb:10.11
+  variables:
+    MYSQL_DATABASE: drupal
+    MYSQL_ROOT_PASSWORD: root
+    SIMPLETEST_DB: mysql://root:root@mariadb/drupal
+  before_script:
+    - apt-get update && apt-get install -y git unzip libpng-dev default-mysql-client
+    - docker-php-ext-install gd pdo pdo_mysql
+    - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    - composer install --no-interaction
+  script:
+    - vendor/bin/phpunit --configuration phpunit.xml web/modules/custom
+  allow_failure: true
+
+# Security stage
+security_scan:
+  stage: security
+  image: php:${PHP_VERSION}-cli
+  before_script:
+    - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+  script:
+    - composer audit --no-interaction
+  allow_failure: false
+
+# Deploy stage
+deploy_staging:
+  stage: deploy
+  when: manual
+  only:
+    - main
+  script:
+    - echo "Deploying to staging..."
+  environment:
+    name: staging
+    url: https://staging.example.com
+
+deploy_production:
+  stage: deploy
+  when: manual
+  only:
+    - main
+  script:
+    - echo "Deploying to production..."
+  environment:
+    name: production
+    url: https://example.com
+```
+
+### Running CI on a Site
+
 ```bash
-chmod +x .git/hooks/pre-push
-```
-
-## GitHub Webhook Integration
-
-### Overview
-
-Set up GitHub to automatically trigger CI pipeline on your test server when code is pushed.
-
-### Server Setup
-
-#### 1. Create Webhook Receiver
-
-Create `/var/www/webhook-receiver/deploy.php` on your Linode test server:
-
-```php
-<?php
-################################################################################
-# GitHub Webhook Receiver
-# Receives GitHub push events and triggers CI pipeline
-################################################################################
-
-// Security: Verify GitHub webhook signature
-$secret = getenv('GITHUB_WEBHOOK_SECRET');
-if (!$secret) {
-    http_response_code(500);
-    die('GITHUB_WEBHOOK_SECRET not configured');
-}
-
-$payload = file_get_contents('php://input');
-$signature = $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
-
-$expected = 'sha256=' . hash_hmac('sha256', $payload, $secret);
-
-if (!hash_equals($expected, $signature)) {
-    http_response_code(403);
-    error_log('Invalid webhook signature');
-    die('Invalid signature');
-}
-
-// Parse payload
-$data = json_decode($payload, true);
-if (!$data) {
-    http_response_code(400);
-    die('Invalid JSON payload');
-}
-
-// Log the event
-error_log("GitHub webhook received: {$data['ref']} by {$data['pusher']['name']}");
-
-// Only deploy on push to main branch
-if ($data['ref'] === 'refs/heads/main') {
-    // Trigger deployment in background
-    $output = [];
-    $return_var = 0;
-    exec('/var/www/scripts/ci-pipeline.sh > /dev/null 2>&1 &', $output, $return_var);
-
-    http_response_code(200);
-    echo json_encode([
-        'status' => 'triggered',
-        'branch' => 'main',
-        'commit' => substr($data['after'], 0, 7),
-        'message' => $data['head_commit']['message'] ?? 'No message'
-    ]);
-} else {
-    http_response_code(200);
-    echo json_encode([
-        'status' => 'ignored',
-        'ref' => $data['ref'],
-        'reason' => 'Only main branch triggers deployment'
-    ]);
-}
-?>
-```
-
-#### 2. Create CI Pipeline Script
-
-Create `/var/www/scripts/ci-pipeline.sh`:
-
-```bash
-#!/bin/bash
-################################################################################
-# CI Pipeline Script for Test Server
-# Triggered by GitHub webhook on push to main
-################################################################################
-
-set -e
-
-# Configuration
-SITE_NAME="nwp_test"
-SITE_DIR="/var/www/$SITE_NAME"
-LOG_DIR="/var/log/ci-pipeline"
-LOG_FILE="$LOG_DIR/deploy-$(date +%Y%m%d-%H%M%S).log"
-SLACK_WEBHOOK="${SLACK_WEBHOOK:-}"
-
-# Create log directory
-mkdir -p "$LOG_DIR"
-
-# Redirect all output to log file
-exec 1> >(tee -a "$LOG_FILE")
-exec 2>&1
-
-# Helper functions
-print_header() {
-    echo ""
-    echo "═══════════════════════════════════════════════════════════════"
-    echo "  $1"
-    echo "═══════════════════════════════════════════════════════════════"
-    echo ""
-}
-
-send_notification() {
-    local message="$1"
-    local emoji="${2:-:robot_face:}"
-
-    if [ -n "$SLACK_WEBHOOK" ]; then
-        curl -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"$emoji $message\"}" \
-            "$SLACK_WEBHOOK" 2>/dev/null || true
-    fi
-}
-
-# Start
-print_header "CI Pipeline Started at $(date)"
-send_notification "CI Pipeline started for $SITE_NAME"
-
-# Change to site directory
-cd "$SITE_DIR"
-
-# Step 1: Pull latest code
-print_header "Step 1: Pulling latest code from GitHub"
-git pull origin main
-COMMIT_HASH=$(git rev-parse --short HEAD)
-COMMIT_MSG=$(git log -1 --pretty=%B)
-echo "Latest commit: $COMMIT_HASH - $COMMIT_MSG"
-
-# Step 2: Update dependencies
-print_header "Step 2: Updating Composer dependencies"
-ddev composer install --no-dev --optimize-autoloader
-
-# Step 3: Database updates
-print_header "Step 3: Running database updates"
-ddev drush updatedb -y || {
-    echo "Warning: Database updates had issues"
-}
-
-# Step 4: Import configuration
-print_header "Step 4: Importing configuration"
-ddev drush config-import -y || {
-    echo "Warning: No configuration changes to import"
-}
-
-# Step 5: Clear caches
-print_header "Step 5: Clearing caches"
-ddev drush cr
-
-# Step 6: Run test suite
-print_header "Step 6: Running test suite"
-
-# Track test results
-TEST_FAILED=0
-
-# PHPStan
-echo "→ Running PHPStan..."
-./testos.sh -p || TEST_FAILED=1
-
-# CodeSniffer
-echo "→ Running CodeSniffer..."
-./testos.sh -c || TEST_FAILED=1
-
-# PHPUnit
-echo "→ Running PHPUnit..."
-./testos.sh -u || TEST_FAILED=1
-
-# Behat
-echo "→ Running Behat..."
-./testos.sh -b || TEST_FAILED=1
-
-# Check results
-if [ $TEST_FAILED -eq 0 ]; then
-    print_header "✓ All Tests Passed!"
-    send_notification "CI Pipeline PASSED for commit $COMMIT_HASH" ":white_check_mark:"
-
-    # Optional: Auto-deploy to production
-    # Uncomment if you want automatic production deployment
-    # if [ "${AUTO_DEPLOY_PRODUCTION:-false}" = "true" ]; then
-    #     print_header "Step 7: Deploying to production"
-    #     /var/www/scripts/deploy-to-production.sh
-    #     send_notification "Auto-deployed to PRODUCTION" ":rocket:"
-    # fi
-
-    EXIT_CODE=0
-else
-    print_header "✗ Tests Failed!"
-    send_notification "CI Pipeline FAILED for commit $COMMIT_HASH - Check logs" ":x:"
-    EXIT_CODE=1
-fi
-
-print_header "CI Pipeline Completed at $(date)"
-echo "Log file: $LOG_FILE"
-
-exit $EXIT_CODE
-```
-
-Make executable:
-```bash
-chmod +x /var/www/scripts/ci-pipeline.sh
-```
-
-#### 3. Configure Nginx
-
-Add webhook endpoint to Nginx configuration:
-
-```nginx
-server {
-    listen 80;
-    server_name your-test-server.com;
-
-    # Webhook receiver
-    location /webhook {
-        root /var/www/webhook-receiver;
-        index deploy.php;
-
-        location ~ \.php$ {
-            fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
-            fastcgi_index deploy.php;
-            include fastcgi_params;
-            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        }
-    }
-
-    # Existing site configuration...
-}
-```
-
-Reload Nginx:
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-### GitHub Configuration
-
-1. Go to your repository on GitHub
-2. Navigate to **Settings → Webhooks → Add webhook**
-3. Configure:
-   - **Payload URL:** `https://your-test-server.com/webhook/deploy.php`
-   - **Content type:** `application/json`
-   - **Secret:** Generate a random string (store in server environment)
-   - **Events:** Select "Just the push event"
-   - **Active:** ✓ Checked
-
-4. Set the secret on your server:
-```bash
-# Add to /etc/environment or server config
-export GITHUB_WEBHOOK_SECRET="your-random-secret-here"
-```
-
-### Testing the Webhook
-
-1. Make a commit and push to main:
-```bash
-git add .
-git commit -m "Test webhook"
+# Push to trigger CI
 git push origin main
+
+# Manual trigger via API
+curl --request POST \
+  --header "PRIVATE-TOKEN: <your-token>" \
+  "https://git.nwpcode.org/api/v4/projects/<project-id>/pipeline" \
+  --form "ref=main"
 ```
 
-2. Check GitHub webhook deliveries:
-   - Go to Settings → Webhooks → Recent Deliveries
-   - Check response status (should be 200)
+## GitHub Actions (Alternative)
 
-3. Check server logs:
-```bash
-tail -f /var/log/ci-pipeline/deploy-*.log
+If using GitHub instead of self-hosted GitLab:
+
+### .github/workflows/ci.yml
+
+```yaml
+name: CI
+
+on:
+  pull_request: {}
+  push:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.head_ref != '' }}
+
+jobs:
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+
+      - name: Setup DDEV
+        uses: ddev/github-action-setup-ddev@v1
+
+      - name: PHPCS
+        run: ./testos.sh -c
+
+      - name: PHPStan
+        run: ./testos.sh -p
+
+  behat-tests:
+    name: Behat Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup DDEV
+        uses: ddev/github-action-setup-ddev@v1
+
+      - name: Install site
+        run: ./install.sh nwp -y
+
+      - name: Run Behat tests
+        run: |
+          cd nwp
+          ../testos.sh -b
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: behat-output
+          path: nwp/tests/behat/logs/
+
+  update-path-test:
+    name: Update Path Testing
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup DDEV
+        uses: ddev/github-action-setup-ddev@v1
+
+      - name: Install previous version
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^)
+          git checkout $PREVIOUS_TAG
+          ./install.sh nwp -y
+
+      - name: Update to current version
+        run: |
+          git checkout ${{ github.ref_name }}
+          cd nwp
+          ddev composer install
+          ddev drush updatedb -y
+
+      - name: Run tests after update
+        run: |
+          cd nwp
+          ../testos.sh -a
 ```
 
 ## Automated Security Updates
 
-### Overview
-
-Automatically detect, test, and deploy Drupal security updates with comprehensive validation.
+Automatically detect, test, and deploy Drupal security updates.
 
 ### Security Update Script
 
@@ -469,608 +396,261 @@ Create `/var/www/scripts/security-updates.sh`:
 
 ```bash
 #!/bin/bash
-################################################################################
-# Automated Drupal Security Update System
-#
-# This script:
-#   1. Checks for security updates via Composer
-#   2. Creates backup before applying updates
-#   3. Applies updates and runs database migrations
-#   4. Runs full test suite
-#   5. Auto-deploys if configured and tests pass
-#   6. Sends notifications at each step
-################################################################################
-
 set -e
 
-# Configuration
 SITE_NAME="${SITE_NAME:-nwp_test}"
 SITE_DIR="/var/www/$SITE_NAME"
 LOG_DIR="/var/log/security-updates"
-LOG_FILE="$LOG_DIR/update-$(date +%Y%m%d-%H%M%S).log"
-SLACK_WEBHOOK="${SLACK_WEBHOOK:-}"
-EMAIL_RECIPIENT="${EMAIL_RECIPIENT:-admin@example.com}"
-
-# Safety configuration
 AUTO_MERGE_SECURITY="${AUTO_MERGE_SECURITY:-false}"
 AUTO_DEPLOY_PRODUCTION="${AUTO_DEPLOY_PRODUCTION:-false}"
-PRODUCTION_SERVER="${PRODUCTION_SERVER:-}"
 
-# Create log directory
 mkdir -p "$LOG_DIR"
-
-# Redirect output to log
-exec 1> >(tee -a "$LOG_FILE")
-exec 2>&1
-
-# Helper functions
-print_header() {
-    echo ""
-    echo "═══════════════════════════════════════════════════════════════"
-    echo "  $1"
-    echo "═══════════════════════════════════════════════════════════════"
-    echo ""
-}
-
-print_info() {
-    echo "ℹ $1"
-}
-
-print_success() {
-    echo "✓ $1"
-}
-
-print_warning() {
-    echo "⚠ $1"
-}
-
-print_error() {
-    echo "✗ $1"
-}
-
-send_notification() {
-    local message="$1"
-    local emoji="${2:-:robot_face:}"
-
-    # Slack notification
-    if [ -n "$SLACK_WEBHOOK" ]; then
-        curl -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"$emoji $message\"}" \
-            "$SLACK_WEBHOOK" 2>/dev/null || true
-    fi
-
-    # Email notification
-    if command -v mail &> /dev/null; then
-        echo "$message" | mail -s "NWP Security Update" "$EMAIL_RECIPIENT" 2>/dev/null || true
-    fi
-}
-
-cleanup() {
-    if [ $? -ne 0 ]; then
-        print_error "Script failed - see log: $LOG_FILE"
-        send_notification "Security update script FAILED - check logs" ":x:"
-    fi
-}
-
-trap cleanup EXIT
-
-# Start
-print_header "Drupal Security Update Check - $(date)"
-send_notification "Security update check started for $SITE_NAME"
+LOG_FILE="$LOG_DIR/update-$(date +%Y%m%d-%H%M%S).log"
+exec 1> >(tee -a "$LOG_FILE") 2>&1
 
 cd "$SITE_DIR"
 
-# Step 1: Check for security updates
-print_header "Step 1: Checking for security updates"
-
-# Get security updates from Composer
+# Check for security updates
+echo "Checking for security updates..."
 SECURITY_JSON=$(ddev composer outdated --direct --format=json 2>/dev/null || echo '{"installed":[]}')
 SECURITY_UPDATES=$(echo "$SECURITY_JSON" | jq -r '.installed[] | select(.warning != null) | .name' 2>/dev/null || echo "")
 
 if [ -z "$SECURITY_UPDATES" ]; then
-    print_success "No security updates available"
-    send_notification "No security updates found - system is up to date" ":white_check_mark:"
+    echo "No security updates available"
     exit 0
 fi
 
-print_warning "Security updates found:"
+echo "Security updates found:"
 echo "$SECURITY_UPDATES"
 
-# Get details
-print_info "Update details:"
-echo "$SECURITY_UPDATES" | while read -r package; do
-    echo "$SECURITY_JSON" | jq -r ".installed[] | select(.name == \"$package\") | \"  \(.name): \(.version) → \(.latest)\""
-done
-
-send_notification "Security updates detected:\n$SECURITY_UPDATES" ":warning:"
-
-# Step 2: Create backup
-print_header "Step 2: Creating backup"
+# Create backup
 BACKUP_NAME="before-security-update-$(date +%Y%m%d-%H%M%S)"
 ./backup.sh -y "$SITE_NAME" "$BACKUP_NAME"
-print_success "Backup created: $BACKUP_NAME"
 
-# Step 3: Create update branch
+# Create update branch
 BRANCH_NAME="security-update-$(date +%Y%m%d-%H%M%S)"
-print_header "Step 3: Creating update branch: $BRANCH_NAME"
-
-# Ensure we're on main
 git checkout main
 git pull origin main
-
-# Create new branch
 git checkout -b "$BRANCH_NAME"
-print_success "Created branch: $BRANCH_NAME"
 
-# Step 4: Apply security updates
-print_header "Step 4: Applying security updates"
-
-UPDATE_LIST=""
+# Apply updates
 echo "$SECURITY_UPDATES" | while read -r package; do
-    print_info "Updating $package..."
+    echo "Updating $package..."
     ddev composer update "$package" --with-all-dependencies
-    UPDATE_LIST="${UPDATE_LIST}\n- ${package}"
 done
 
-print_success "All security updates applied"
-
-# Step 5: Database updates
-print_header "Step 5: Running database updates"
-ddev drush updatedb -y || {
-    print_warning "Database updates completed with warnings"
-}
-
-# Step 6: Export configuration
-print_header "Step 6: Exporting configuration"
-ddev drush config-export -y || {
-    print_warning "No configuration changes to export"
-}
-
-# Step 7: Clear caches
-print_header "Step 7: Clearing caches"
+# Database updates and cache clear
+ddev drush updatedb -y
+ddev drush config-export -y
 ddev drush cr
 
-# Step 8: Run full test suite
-print_header "Step 8: Running test suite"
-send_notification "Running tests for security updates..." ":mag:"
-
-TEST_RESULT=0
-
-# Run all tests
-./testos.sh -a || TEST_RESULT=$?
-
-if [ $TEST_RESULT -ne 0 ]; then
-    print_error "Tests failed - rolling back"
-    send_notification "Security update FAILED tests - rolling back\nManual review needed" ":x:"
-
-    # Rollback
-    print_header "Rolling back changes"
+# Run tests
+echo "Running test suite..."
+if ! ./testos.sh -a; then
+    echo "Tests failed - rolling back"
     git checkout main
     git branch -D "$BRANCH_NAME"
     ./restore.sh -fy "$SITE_NAME"
-
     exit 1
 fi
 
-print_success "All tests passed!"
-
-# Step 9: Commit changes
-print_header "Step 9: Committing changes"
-
+# Commit changes
 git add .
-git commit -m "Security updates: $(date +%Y-%m-%d)
+git commit -m "Security updates: $(date +%Y-%m-%d)"
 
-Applied security updates:
-$(echo -e "$UPDATE_LIST")
-
-All tests passed:
-- PHPStan: ✓
-- CodeSniffer: ✓
-- PHPUnit: ✓
-- Behat: ✓
-
-Automated by security-updates.sh
-"
-
-print_success "Changes committed"
-
-# Step 10: Auto-merge if configured
-print_header "Step 10: Deployment decision"
-
+# Deploy based on configuration
 if [ "$AUTO_MERGE_SECURITY" = "true" ]; then
-    print_info "AUTO_MERGE_SECURITY=true - merging to main"
-
     git checkout main
-    git merge "$BRANCH_NAME" --no-ff -m "Merge security updates: $(date +%Y-%m-%d)"
+    git merge "$BRANCH_NAME" --no-ff -m "Merge security updates"
     git push origin main
+    echo "Auto-deployed to test server"
 
-    send_notification "Security updates AUTO-DEPLOYED to test server ✓" ":white_check_mark:"
-
-    # Step 11: Optional production deployment
-    if [ "$AUTO_DEPLOY_PRODUCTION" = "true" ] && [ -n "$PRODUCTION_SERVER" ]; then
-        print_header "Step 11: Deploying to production"
-        print_warning "AUTO_DEPLOY_PRODUCTION=true - deploying to production!"
-
-        ./linode_deploy.sh --server "$PRODUCTION_SERVER" --target prod --site "$SITE_NAME"
-
-        send_notification "Security updates AUTO-DEPLOYED to PRODUCTION ✓" ":rocket:"
-    else
-        print_info "Production deployment requires manual approval"
-        send_notification "Security updates on test server - ready for production deployment (manual approval required)" ":raising_hand:"
+    if [ "$AUTO_DEPLOY_PRODUCTION" = "true" ]; then
+        ./linode_deploy.sh --target prod --site "$SITE_NAME"
+        echo "Auto-deployed to production"
     fi
 else
-    print_info "AUTO_MERGE_SECURITY=false - creating PR for review"
-
-    # Push branch for manual review
     git push origin "$BRANCH_NAME"
-
-    send_notification "Security update branch created: $BRANCH_NAME\nTests passed ✓ - Please review and merge manually" ":mag:"
-
-    print_info "Branch pushed: $BRANCH_NAME"
-    print_info "Review and merge when ready"
+    echo "Branch pushed for manual review"
 fi
-
-print_header "Security update process completed successfully"
-print_success "Log file: $LOG_FILE"
-```
-
-Make executable:
-```bash
-chmod +x /var/www/scripts/security-updates.sh
 ```
 
 ### Cron Configuration
 
-Set up automated checks via cron:
-
 ```bash
-# Edit crontab
-crontab -e
-
-# Add one of these schedules:
-
-# Option 1: Daily at 2 AM
+# Daily at 2 AM
 0 2 * * * /var/www/scripts/security-updates.sh
 
-# Option 2: Twice daily (morning and afternoon)
-0 9,14 * * * /var/www/scripts/security-updates.sh
-
-# Option 3: Business hours only (9 AM and 2 PM, weekdays)
+# Or twice daily (business hours)
 0 9,14 * * 1-5 /var/www/scripts/security-updates.sh
-
-# Option 4: Weekly on Sunday night
-0 2 * * 0 /var/www/scripts/security-updates.sh
 ```
 
-### Environment Configuration
+### Safety Levels
 
-Create `/etc/nwp-ci.conf` or add to `/etc/environment`:
+| Level | AUTO_MERGE_SECURITY | AUTO_DEPLOY_PRODUCTION | Use Case |
+|-------|---------------------|------------------------|----------|
+| 1 - Manual | false | false | Production sites |
+| 2 - Auto-Test | true | false | Test/staging servers |
+| 3 - Fully Auto | true | true | Low-risk sites only |
+
+## GitLab Hardening
+
+For production GitLab instances, apply security hardening.
+
+### Hardening Script
+
+Create `git/gitlab_harden.sh`:
 
 ```bash
-# Site configuration
-SITE_NAME="nwp_test"
-PRODUCTION_SERVER="45.33.94.133"
+#!/bin/bash
+set -euo pipefail
 
-# Notification settings
-SLACK_WEBHOOK="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-EMAIL_RECIPIENT="admin@example.com"
+GITLAB_CONFIG="/etc/gitlab/gitlab.rb"
+DRY_RUN=true
+[[ "${1:-}" == "--apply" ]] && DRY_RUN=false
 
-# GitHub webhook secret
-GITHUB_WEBHOOK_SECRET="your-random-secret-here"
-
-# Security update behavior (see Safety Levels below)
-AUTO_MERGE_SECURITY="false"
-AUTO_DEPLOY_PRODUCTION="false"
-```
-
-## Safety Levels
-
-### Level 1: Manual Review (Recommended for Production Sites)
-
-**Configuration:**
-```bash
-AUTO_MERGE_SECURITY="false"
-AUTO_DEPLOY_PRODUCTION="false"
-```
-
-**Behavior:**
-1. ✓ Detects security updates
-2. ✓ Creates backup
-3. ✓ Creates update branch
-4. ✓ Applies updates
-5. ✓ Runs all tests
-6. → **Stops** - Creates PR for manual review
-7. ✓ You review and merge when ready
-8. ✓ You deploy to production manually
-
-**Best for:** Production sites, critical applications
-
-### Level 2: Auto-Test (Recommended for Test Servers)
-
-**Configuration:**
-```bash
-AUTO_MERGE_SECURITY="true"
-AUTO_DEPLOY_PRODUCTION="false"
-```
-
-**Behavior:**
-1. ✓ Detects security updates
-2. ✓ Creates backup
-3. ✓ Applies updates
-4. ✓ Runs all tests
-5. ✓ Auto-deploys to test server if tests pass
-6. ✓ Notifies you
-7. → **Stops** - Requires manual production deployment
-
-**Best for:** Test/staging servers, development environments
-
-### Level 3: Fully Automated (HIGH RISK!)
-
-**Configuration:**
-```bash
-AUTO_MERGE_SECURITY="true"
-AUTO_DEPLOY_PRODUCTION="true"
-```
-
-**Behavior:**
-1. ✓ Detects security updates
-2. ✓ Creates backup
-3. ✓ Applies updates
-4. ✓ Runs all tests
-5. ✓ Auto-deploys to test server
-6. ✓ Auto-deploys to production
-7. ✓ Notifies you after completion
-
-**Best for:** Low-risk sites, personal projects, sites with excellent test coverage
-
-**⚠ WARNING:** Only use this if:
-- Your test suite is comprehensive
-- Your site has good test coverage (>70%)
-- You have quick rollback capability
-- You monitor notifications closely
-- You're comfortable with automated production changes
-
-## Monitoring and Notifications
-
-### Slack Integration
-
-1. Create a Slack webhook:
-   - Go to https://api.slack.com/apps
-   - Create New App → Incoming Webhooks
-   - Activate and create webhook URL
-
-2. Configure in environment:
-```bash
-export SLACK_WEBHOOK="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-```
-
-### Email Notifications
-
-Install mail utility:
-```bash
-sudo apt-get install mailutils
-```
-
-Configure email:
-```bash
-export EMAIL_RECIPIENT="admin@example.com"
-```
-
-### Log Monitoring
-
-View logs:
-```bash
-# CI pipeline logs
-tail -f /var/log/ci-pipeline/deploy-*.log
-
-# Security update logs
-tail -f /var/log/security-updates/update-*.log
-
-# Latest log
-ls -lt /var/log/ci-pipeline/ | head -n 2
-ls -lt /var/log/security-updates/ | head -n 2
-```
-
-### Health Check Endpoint
-
-Create `/var/www/webhook-receiver/health.php`:
-
-```php
-<?php
-// CI/CD health check endpoint
-header('Content-Type: application/json');
-
-$status = [
-    'status' => 'ok',
-    'timestamp' => date('c'),
-    'ci_pipeline' => file_exists('/var/www/scripts/ci-pipeline.sh'),
-    'security_updates' => file_exists('/var/www/scripts/security-updates.sh'),
-    'last_deploy' => null,
-    'last_security_check' => null
-];
-
-// Check last deploy
-$deploy_logs = glob('/var/log/ci-pipeline/deploy-*.log');
-if ($deploy_logs) {
-    rsort($deploy_logs);
-    $status['last_deploy'] = date('c', filemtime($deploy_logs[0]));
+update_config() {
+    local setting="$1"
+    local value="$2"
+    if $DRY_RUN; then
+        echo "[DRY-RUN] Would set: $setting = $value"
+    else
+        if grep -q "^${setting}" "$GITLAB_CONFIG"; then
+            sed -i "s|^${setting}.*|${setting} = ${value}|" "$GITLAB_CONFIG"
+        else
+            echo "${setting} = ${value}" >> "$GITLAB_CONFIG"
+        fi
+        echo "[OK] Set: $setting = $value"
+    fi
 }
 
-// Check last security check
-$security_logs = glob('/var/log/security-updates/update-*.log');
-if ($security_logs) {
-    rsort($security_logs);
-    $status['last_security_check'] = date('c', filemtime($security_logs[0]));
-}
+echo "GitLab Security Hardening"
+echo "========================="
 
-echo json_encode($status, JSON_PRETTY_PRINT);
+echo "1. Disabling public sign-ups..."
+update_config "gitlab_rails['gitlab_signup_enabled']" "false"
+
+echo "2. Setting password requirements..."
+update_config "gitlab_rails['password_minimum_length']" "12"
+
+echo "3. Setting session timeout..."
+update_config "gitlab_rails['session_expire_delay']" "60"
+
+echo "4. Enabling audit logging..."
+update_config "gitlab_rails['audit_events_enabled']" "true"
+
+echo "5. Enabling rate limiting..."
+update_config "gitlab_rails['throttle_authenticated_api_enabled']" "true"
+update_config "gitlab_rails['throttle_authenticated_web_enabled']" "true"
+
+if $DRY_RUN; then
+    echo ""
+    echo "Run with --apply to make changes"
+else
+    gitlab-ctl reconfigure
+    echo "Hardening applied!"
+fi
 ```
 
-Access at: `https://your-test-server.com/webhook/health.php`
+### Security Checklist
 
-## Implementation Phases
+**Immediate (Required):**
+- [ ] Change default root password
+- [ ] Disable public sign-ups
+- [ ] Configure SSH key authentication
+- [ ] Enable HTTPS with valid certificate
+- [ ] Set up firewall rules (UFW)
 
-### Phase 1: Local Development (Week 1)
+**Recommended:**
+- [ ] Enable two-factor authentication for admins
+- [ ] Configure session timeout
+- [ ] Enable audit logging
+- [ ] Set password complexity requirements
+- [ ] Configure rate limiting
 
-**Tasks:**
-1. ✓ Create `Makefile` for local CI tasks
-2. ✓ Set up git pre-push hook
-3. ✓ Test local CI workflow
-4. ✓ Document usage
+**Advanced (Production):**
+- [ ] Set up IP allowlist if applicable
+- [ ] Enable SAST in CI pipelines
+- [ ] Configure container scanning
+- [ ] Set up backup encryption
+- [ ] Enable secret detection
 
-**Validation:**
-- `make ci` runs successfully
-- Pre-push hook catches errors
-- Team can run tests locally
+### SSL Certificate Setup
 
-### Phase 2: GitHub Webhook (Week 2)
+```bash
+# Edit /etc/gitlab/gitlab.rb
+external_url 'https://git.yourdomain.org'
+letsencrypt['enable'] = true
+letsencrypt['contact_emails'] = ['admin@yourdomain.org']
+letsencrypt['auto_renew'] = true
 
-**Tasks:**
-1. ✓ Set up webhook receiver on test server
-2. ✓ Create CI pipeline script
-3. ✓ Configure GitHub webhook
-4. ✓ Test webhook delivery
-5. ✓ Set up notifications
+# Apply changes
+sudo gitlab-ctl reconfigure
+```
 
-**Validation:**
-- Webhook triggers on push
-- CI pipeline runs automatically
-- Notifications received
-- Logs captured correctly
+## Troubleshooting
 
-### Phase 3: Security Automation (Week 3-4)
+### Pipeline Fails to Start
 
-**Tasks:**
-1. ✓ Create security update script
-2. ✓ Configure cron schedule
-3. ✓ Test with Level 1 (Manual Review)
-4. ✓ Set up monitoring
-5. ✓ Document procedures
+1. Validate `.gitlab-ci.yml` syntax:
+   ```bash
+   gitlab-ci-lint .gitlab-ci.yml
+   ```
 
-**Validation:**
-- Script detects updates
-- Tests run correctly
-- Notifications work
-- Rollback works if tests fail
+2. Check GitLab Runner is available:
+   - Settings > CI/CD > Runners
 
-### Phase 4: Optimization (Ongoing)
+### Tests Fail
 
-**Tasks:**
-1. Monitor CI performance
-2. Optimize test execution time
-3. Add more test coverage
-4. Consider Level 2 automation
-5. Fine-tune notification thresholds
+1. Run tests locally first:
+   ```bash
+   ddev exec vendor/bin/phpunit web/modules/custom
+   ddev exec vendor/bin/phpcs --standard=Drupal web/modules/custom
+   ```
+
+2. Check environment differences between local and CI
+
+### Deployment Fails
+
+1. Verify SSH keys are configured in CI/CD variables
+2. Check deployment server connectivity
+3. Review deployment script output in CI job logs
+
+### Webhook Not Triggering
+
+1. Check GitHub/GitLab webhook deliveries
+2. Verify webhook URL is accessible
+3. Check server logs: `/var/log/nginx/error.log`
+
+### Security Updates Not Applying
+
+1. Check cron is running: `sudo systemctl status cron`
+2. Check script permissions
+3. Check logs: `/var/log/security-updates/update-*.log`
+4. Run script manually for debugging
 
 ## Best Practices
 
 ### Testing
 
-1. **Comprehensive Test Suite**
-   - Unit tests (PHPUnit)
-   - Integration tests (Behat)
-   - Static analysis (PHPStan)
-   - Code standards (CodeSniffer)
-
-2. **Test Coverage**
-   - Aim for >70% code coverage
-   - Test critical paths thoroughly
-   - Include regression tests
-
-3. **Fast Feedback**
-   - Local tests < 1 minute
-   - Full CI < 10 minutes
-   - Optimize slow tests
+1. **Test Coverage** - Aim for >70% code coverage
+2. **Fast Feedback** - Local tests < 1 minute, full CI < 10 minutes
+3. **Test Pyramid** - Many unit tests, fewer integration, minimal E2E
 
 ### Security
 
-1. **Webhook Security**
-   - Always verify signatures
-   - Use strong secrets
-   - Log all requests
-   - Rate limit requests
-
-2. **Update Safety**
-   - Always backup before updates
-   - Test thoroughly
-   - Monitor after deployment
-   - Have rollback plan
-
-3. **Access Control**
-   - Restrict webhook endpoint
-   - Secure SSH keys
-   - Limit script permissions
-   - Audit logs regularly
+1. **Webhook Security** - Always verify signatures
+2. **Update Safety** - Always backup before updates
+3. **Access Control** - Restrict webhook endpoints and SSH keys
 
 ### Deployment
 
-1. **Staging First**
-   - Always test on staging
-   - Validate in production-like environment
-   - Check performance impact
+1. **Staging First** - Always test on staging
+2. **Rollback Plan** - Keep backups and document rollback procedure
+3. **Communication** - Notify team of deployments
 
-2. **Rollback Plan**
-   - Keep backups
-   - Document rollback procedure
-   - Test rollback process
-   - Monitor after deployment
+## See Also
 
-3. **Communication**
-   - Notify team of deployments
-   - Document changes
-   - Track deployment history
-
-## Troubleshooting
-
-### Webhook Not Triggering
-
-1. Check GitHub webhook deliveries
-2. Verify webhook URL is accessible
-3. Check server logs: `/var/log/nginx/error.log`
-4. Test webhook manually with curl
-
-### Tests Failing
-
-1. Check test logs: `/var/log/ci-pipeline/deploy-*.log`
-2. Run tests locally: `make test`
-3. Check for environment differences
-4. Verify test database state
-
-### Security Updates Not Applying
-
-1. Check cron is running: `sudo systemctl status cron`
-2. Check script permissions: `ls -la /var/www/scripts/`
-3. Check logs: `/var/log/security-updates/update-*.log`
-4. Run script manually for debugging
-
-### Notification Issues
-
-1. Verify Slack webhook URL
-2. Check email configuration
-3. Test notifications manually:
-   ```bash
-   curl -X POST -H 'Content-type: application/json' \
-     --data '{"text":"Test"}' \
-     "$SLACK_WEBHOOK"
-   ```
-
-## References
-
-- [NWP Testing Documentation](TESTING.md)
-- [NWP Scripts Implementation](SCRIPTS_IMPLEMENTATION.md)
-- [NWP Production Testing](PRODUCTION_TESTING.md)
-- [DDEV Hooks Documentation](https://ddev.readthedocs.io/en/stable/users/configuration/hooks/)
-- [GitHub Webhooks](https://docs.github.com/en/webhooks)
-- [Drupal Security](https://www.drupal.org/security)
-
-## Support
-
-For issues or questions:
-1. Check troubleshooting section above
-2. Review logs for error messages
-3. Test components individually
-4. Consult team or documentation
-
----
-
-**Next Steps:** See [Implementation Phases](#implementation-phases) for recommended rollout plan.
+- [Testing Guide](TESTING.md) - Test suite documentation
+- [Production Deployment](PRODUCTION_DEPLOYMENT.md) - Deployment guide
+- [GitLab Setup](../git/README.md) - GitLab server setup

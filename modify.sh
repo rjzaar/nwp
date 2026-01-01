@@ -141,6 +141,77 @@ check_installed_status() {
 }
 
 ################################################################################
+# Orphaned Site Detection
+################################################################################
+
+# Find site directories that have .ddev but are not in cnwp.yml
+find_orphaned_sites() {
+    local config_file="$1"
+    local script_dir="$2"
+
+    # Get all directories with .ddev in the script directory
+    local ddev_dirs=()
+    while IFS= read -r ddev_path; do
+        local site_dir=$(dirname "$ddev_path")
+        local site_name=$(basename "$site_dir")
+        ddev_dirs+=("$site_name:$site_dir")
+    done < <(find "$script_dir" -maxdepth 2 -name ".ddev" -type d 2>/dev/null)
+
+    # Get list of sites from cnwp.yml
+    local yml_sites=()
+    if [ -f "$config_file" ]; then
+        while read -r site; do
+            [ -n "$site" ] && yml_sites+=("$site")
+        done < <(list_sites "$config_file")
+    fi
+
+    # Find orphaned sites (have .ddev but not in cnwp.yml)
+    for entry in "${ddev_dirs[@]}"; do
+        local name="${entry%%:*}"
+        local dir="${entry#*:}"
+        local found=false
+
+        for yml_site in "${yml_sites[@]}"; do
+            if [ "$name" = "$yml_site" ]; then
+                found=true
+                break
+            fi
+        done
+
+        if [ "$found" = false ]; then
+            echo "$name:$dir"
+        fi
+    done
+}
+
+# Detect recipe type from an orphaned site's structure
+detect_recipe_from_site() {
+    local directory="$1"
+
+    # Check for various indicators
+    if [ -f "$directory/.ddev/config.yaml" ]; then
+        local project_type=$(grep "^type:" "$directory/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
+        case "$project_type" in
+            drupal*)
+                # Try to determine specific Drupal recipe
+                if [ -f "$directory/web/profiles/contrib/social" ] || [ -d "$directory/html/profiles/contrib/social" ]; then
+                    echo "os"
+                elif [ -d "$directory/html" ]; then
+                    echo "nwp"
+                else
+                    echo "d"
+                fi
+                ;;
+            wordpress) echo "wp" ;;
+            php) echo "php" ;;
+            *) echo "?" ;;
+        esac
+    else
+        echo "?"
+    fi
+}
+
+################################################################################
 # Site Functions
 ################################################################################
 
@@ -192,6 +263,7 @@ build_site_list() {
     SITE_NAMES=()
     SITE_DATA=()
 
+    # Add sites from cnwp.yml
     while read -r site; do
         [ -z "$site" ] && continue
         SITE_NAMES+=("$site")
@@ -200,8 +272,18 @@ build_site_list() {
         local environment=$(get_site_field "$site" "environment" "$config_file")
         local exists="N"
         [ -d "$directory" ] && exists="Y"
-        SITE_DATA+=("${recipe:-?}|${environment:-dev}|${exists}|${directory:-}")
+        # Last field indicates source: "yml" = from cnwp.yml, "orphan" = orphaned
+        SITE_DATA+=("${recipe:-?}|${environment:-dev}|${exists}|${directory:-}|yml")
     done < <(list_sites "$config_file")
+
+    # Add orphaned sites (have .ddev but not in cnwp.yml)
+    while IFS=':' read -r name dir; do
+        [ -z "$name" ] && continue
+        SITE_NAMES+=("$name")
+        local recipe=$(detect_recipe_from_site "$dir")
+        # Orphaned sites have no environment in yml, mark as "orphan"
+        SITE_DATA+=("${recipe:-?}|orphan|Y|${dir}|orphan")
+    done < <(find_orphaned_sites "$config_file" "$SCRIPT_DIR")
 }
 
 draw_site_selection() {
@@ -216,8 +298,9 @@ draw_site_selection() {
     printf "   %-20s %-12s %-12s %-6s %s\n" "--------------------" "------------" "------------" "------" "---------"
 
     local row=0
+    local has_orphans=false
     for site in "${SITE_NAMES[@]}"; do
-        IFS='|' read -r recipe env exists dir <<< "${SITE_DATA[$row]}"
+        IFS='|' read -r recipe env exists dir source <<< "${SITE_DATA[$row]}"
 
         local exists_color="${RED}No${NC}"
         [ "$exists" = "Y" ] && exists_color="${GREEN}Yes${NC}"
@@ -228,7 +311,13 @@ draw_site_selection() {
             printf "  "
         fi
 
-        printf "%-20s %-12s %-12s " "$site" "$recipe" "$env"
+        # Display orphaned sites with distinct styling
+        if [ "$source" = "orphan" ]; then
+            has_orphans=true
+            printf "${YELLOW}%-20s${NC} %-12s ${DIM}(orphan)${NC}     " "$site" "$recipe"
+        else
+            printf "%-20s %-12s %-12s " "$site" "$recipe" "$env"
+        fi
         printf "%b" "$exists_color"
         printf "     %s\n" "$dir"
 
@@ -237,7 +326,11 @@ draw_site_selection() {
 
     printf "\n"
     printf "───────────────────────────────────────────────────────────────────────────────\n"
-    printf "Select a site to modify its options.\n"
+    if [ "$has_orphans" = true ]; then
+        printf "Select a site to modify. ${YELLOW}Yellow${NC} sites are not in cnwp.yml.\n"
+    else
+        printf "Select a site to modify its options.\n"
+    fi
 }
 
 select_site_interactive() {
@@ -246,7 +339,7 @@ select_site_interactive() {
     build_site_list "$config_file"
 
     if [ ${#SITE_NAMES[@]} -eq 0 ]; then
-        print_error "No sites found in cnwp.yml"
+        print_error "No sites found in cnwp.yml or as orphaned directories"
         return 1
     fi
 
@@ -732,9 +825,11 @@ main() {
 
     # List mode
     if [ "$list_only" = true ]; then
-        print_header "Sites in cnwp.yml"
+        print_header "Sites"
         printf "\n  %-20s %-12s %-12s %s\n" "SITE" "RECIPE" "ENVIRONMENT" "DIRECTORY"
         printf "  %-20s %-12s %-12s %s\n" "--------------------" "------------" "------------" "---------"
+
+        # Sites from cnwp.yml
         while read -r site; do
             [ -z "$site" ] && continue
             local recipe=$(get_site_field "$site" "recipe" "$CONFIG_FILE")
@@ -742,6 +837,17 @@ main() {
             local dir=$(get_site_field "$site" "directory" "$CONFIG_FILE")
             printf "  %-20s %-12s %-12s %s\n" "$site" "${recipe:-?}" "${env:-dev}" "$dir"
         done < <(list_sites "$CONFIG_FILE")
+
+        # Orphaned sites
+        local orphaned=$(find_orphaned_sites "$CONFIG_FILE" "$SCRIPT_DIR")
+        if [ -n "$orphaned" ]; then
+            printf "\n  ${YELLOW}Orphaned sites (not in cnwp.yml):${NC}\n"
+            while IFS=':' read -r name dir; do
+                [ -z "$name" ] && continue
+                local recipe=$(detect_recipe_from_site "$dir")
+                printf "  ${YELLOW}%-20s${NC} %-12s %-12s %s\n" "$name" "${recipe:-?}" "(orphan)" "$dir"
+            done <<< "$orphaned"
+        fi
         echo ""
         exit 0
     fi
@@ -751,14 +857,25 @@ main() {
         site_name=$(select_site_interactive "$CONFIG_FILE") || exit 0
     fi
 
-    # Get site info
+    # Get site info - first try cnwp.yml, then check if orphaned
     local directory=$(get_site_field "$site_name" "directory" "$CONFIG_FILE")
     local recipe=$(get_site_field "$site_name" "recipe" "$CONFIG_FILE")
     local environment=$(get_site_field "$site_name" "environment" "$CONFIG_FILE")
+    local is_orphan=false
 
     if [ -z "$directory" ]; then
-        print_error "Site '$site_name' not found"
-        exit 1
+        # Check if it's an orphaned site
+        local orphan_dir="$SCRIPT_DIR/$site_name"
+        if [ -d "$orphan_dir/.ddev" ]; then
+            directory="$orphan_dir"
+            recipe=$(detect_recipe_from_site "$directory")
+            environment="development"
+            is_orphan=true
+            print_warning "Site '$site_name' is orphaned (not in cnwp.yml)"
+        else
+            print_error "Site '$site_name' not found in cnwp.yml or as orphaned directory"
+            exit 1
+        fi
     fi
 
     # Map environment

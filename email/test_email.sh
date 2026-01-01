@@ -82,7 +82,7 @@ print_info() {
 }
 
 show_help() {
-    sed -n '3,14p' "$0" | sed 's/^# //' | sed 's/^#//'
+    sed -n '3,20p' "$0" | sed 's/^# //' | sed 's/^#//'
     exit 0
 }
 
@@ -737,11 +737,21 @@ main() {
                 ;;
             --send|-s)
                 action="send"
+                if [[ -z "${2:-}" ]]; then
+                    echo "Error: --send requires an email address argument" >&2
+                    echo "Usage: $0 --send <email>" >&2
+                    exit 1
+                fi
                 send_to="$2"
                 shift 2
                 ;;
             --send-verify|-sv)
                 action="send-verify"
+                if [[ -z "${2:-}" ]]; then
+                    echo "Error: --send-verify requires an email address argument" >&2
+                    echo "Usage: $0 --send-verify <email>" >&2
+                    exit 1
+                fi
                 send_to="$2"
                 shift 2
                 ;;

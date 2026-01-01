@@ -46,8 +46,10 @@ setup() {
 }
 
 @test "mailpit-client.sh - respects MAILPIT_URL environment variable" {
-    MAILPIT_URL="http://custom:9000" source "$LIBRARY"
+    export MAILPIT_URL="http://custom:9000"
+    source "$LIBRARY"
     [ "$MAILPIT_URL" = "http://custom:9000" ]
+    unset MAILPIT_URL
 }
 
 ################################################################################

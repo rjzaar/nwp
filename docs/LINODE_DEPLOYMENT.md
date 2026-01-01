@@ -929,7 +929,7 @@ curl -I https://prod.nwp.org/
 
 - **README.md** - Main NWP documentation
 - **TESTING.md** - Testing infrastructure
-- **IMPROVEMENTS.md** - Project roadmap
+- **ROADMAP.md** - Project roadmap
 - **SCRIPTS_IMPLEMENTATION.md** - Script implementation details
 
 ### External Tutorials

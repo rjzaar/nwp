@@ -243,6 +243,67 @@ fi
 
 print_header "Server is Ready!"
 
+# Check SMTP port accessibility (Linode blocks ports 25, 465, 587 by default on new accounts)
+print_info "Checking SMTP port accessibility..."
+sleep 10  # Give server a moment to fully initialize
+
+SMTP_BLOCKED=false
+if ! ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SSH_USER@$IP_ADDRESS \
+    "timeout 5 bash -c '</dev/tcp/smtp.gmail.com/465' 2>/dev/null" 2>/dev/null; then
+    SMTP_BLOCKED=true
+fi
+
+if [ "$SMTP_BLOCKED" = true ]; then
+    echo ""
+    echo -e "${YELLOW}${BOLD}════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${YELLOW}${BOLD}  SMTP PORTS BLOCKED${NC}"
+    echo -e "${YELLOW}${BOLD}════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "${YELLOW}Linode blocks SMTP ports (25, 465, 587) on new accounts by default.${NC}"
+    echo "Your server will not be able to send emails until this is resolved."
+    echo ""
+    echo "${BOLD}To request SMTP port access, submit a support ticket:${NC}"
+    echo "  https://cloud.linode.com/support/tickets"
+    echo ""
+    echo "${BOLD}Suggested ticket content:${NC}"
+    echo "────────────────────────────────────────────────────────────────"
+    cat << 'SMTP_TICKET'
+Subject: Request for Account-Wide SMTP Port Restriction Removal
+
+Hello Linode Support,
+
+I am requesting the removal of SMTP port restrictions (ports 25, 465, and 587) for my entire Linode account.
+
+Current Linode: [YOUR_SERVER_LABEL]
+
+Use Case:
+This account will be used to host multiple servers for web development and hosting purposes:
+
+1. Development/Staging Servers - Testing sites in a live environment, including email functionality (notifications, password resets, form submissions)
+
+2. Client Testing - Some sites will allow client access for review and testing, which requires working email notifications
+
+3. Production Hosting - Sites will be hosted through this account, with the number of servers growing over time as our organisation expands
+
+All email sent will be transactional in nature (notifications, alerts, password resets, etc.). Emails will never be used for spam or unsolicited marketing.
+
+Compliance Confirmation:
+- I confirm that all email sent from this account will be CAN-SPAM compliant
+- I have reviewed and will adhere to Linode's Acceptable Use Policy (Section 2 - Abuse)
+- rDNS will be configured for all server IP addresses
+- All emails will be sent only to users who have explicitly opted in or registered on the hosted applications
+
+Please let me know if you need any additional information.
+
+Thank you,
+[Your Name]
+SMTP_TICKET
+    echo "────────────────────────────────────────────────────────────────"
+    echo ""
+    echo -e "${YELLOW}Replace [YOUR_SERVER_LABEL] with: $LABEL${NC}"
+    echo ""
+fi
+
 echo "${BOLD}Next steps:${NC}"
 echo ""
 echo "1. ${GREEN}Wait 3-5 minutes${NC} for StackScript to complete setup"

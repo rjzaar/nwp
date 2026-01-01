@@ -56,9 +56,37 @@ read_key() {
         echo "ENTER"
     elif [[ $key == " " ]]; then
         echo "SPACE"
+    elif [[ $key == "<" || $key == "," ]]; then
+        echo "PREV_ENV"
+    elif [[ $key == ">" || $key == "." ]]; then
+        echo "NEXT_ENV"
     else
         echo "$key"
     fi
+}
+
+# Environment list
+ENVIRONMENTS=("dev" "stage" "live" "prod")
+
+get_env_index() {
+    local env="$1"
+    local i=0
+    for e in "${ENVIRONMENTS[@]}"; do
+        [[ "$e" == "$env" ]] && { echo "$i"; return; }
+        ((i++))
+    done
+    echo "0"
+}
+
+get_env_label() {
+    local env="$1"
+    case "$env" in
+        dev) echo "Development" ;;
+        stage) echo "Staging" ;;
+        live) echo "Live" ;;
+        prod) echo "Production" ;;
+        *) echo "$env" ;;
+    esac
 }
 
 ################################################################################
@@ -214,52 +242,58 @@ draw_options_screen() {
 
     clear_screen
 
-    printf "${BOLD}Modify: ${CYAN}%s${NC}  |  ↑↓:Navigate  SPACE:Toggle  e:Edit  a:All  n:None  ENTER:Apply  q:Cancel\n" "$site_name"
+    # Header with environment selector
+    printf "${BOLD}Modify: ${CYAN}%s${NC}  |  " "$site_name"
+
+    # Environment tabs
+    printf "<"
+    for env in "${ENVIRONMENTS[@]}"; do
+        if [[ "$env" == "$environment" ]]; then
+            printf " ${GREEN}${BOLD}[%s]${NC} " "${env^^}"
+        else
+            printf " ${DIM}%s${NC} " "${env^^}"
+        fi
+    done
+    printf ">\n"
+
+    printf "${DIM}↑↓:Navigate  SPACE:Toggle  </>:Environment  e:Edit  a:All  n:None  ENTER:Apply  q:Cancel${NC}\n"
     printf "═══════════════════════════════════════════════════════════════════════════════\n"
 
-    local row=0
-    local current_env=""
+    if [ "$total" -eq 0 ]; then
+        printf "\n${DIM}  No options for this environment${NC}\n"
+    else
+        local row=0
 
-    for key in "${VISIBLE_OPTIONS[@]}"; do
-        local opt_env="${OPTION_ENVIRONMENTS[$key]}"
-        local label="${OPTION_LABELS[$key]}"
-        local selected="${OPTION_SELECTED[$key]:-n}"
-        local inputs="${OPTION_INPUTS[$key]:-}"
-        local deps="${OPTION_DEPENDENCIES[$key]:-}"
+        for key in "${VISIBLE_OPTIONS[@]}"; do
+            local opt_env="${OPTION_ENVIRONMENTS[$key]}"
+            local label="${OPTION_LABELS[$key]}"
+            local selected="${OPTION_SELECTED[$key]:-n}"
+            local inputs="${OPTION_INPUTS[$key]:-}"
+            local deps="${OPTION_DEPENDENCIES[$key]:-}"
 
-        # Environment header
-        if [[ "$opt_env" != "$current_env" && "$opt_env" != "all" ]]; then
-            current_env="$opt_env"
-            local env_name="${opt_env^^}"
-            if [[ "$opt_env" == "$environment" ]]; then
-                printf "\n ${GREEN}━━ %s ━━${NC}\n" "$env_name"
-            else
-                printf "\n ${DIM}━━ %s ━━${NC}\n" "$env_name"
+            # Checkbox
+            local checkbox="${DIM}[ ]${NC}"
+            [ "$selected" = "y" ] && checkbox="${GREEN}[✓]${NC}"
+
+            # Cursor
+            local pointer="  "
+            if [ $row -eq $current_row ]; then
+                pointer="${CYAN}▸${NC} "
             fi
-        fi
 
-        # Checkbox
-        local checkbox="${DIM}[ ]${NC}"
-        [ "$selected" = "y" ] && checkbox="${GREEN}[✓]${NC}"
+            # Indicators
+            local ind=""
+            [ -n "$inputs" ] && ind="${YELLOW}*${NC}"
+            if [ -n "$deps" ]; then
+                local missing=$(check_dependencies "$key" 2>/dev/null) || true
+                [ -n "$missing" ] && ind="${ind}${RED}!${NC}"
+            fi
 
-        # Cursor
-        local pointer="  "
-        if [ $row -eq $current_row ]; then
-            pointer="${CYAN}▸${NC} "
-        fi
+            printf "%b%b %-32s %b\n" "$pointer" "$checkbox" "${label:0:32}" "$ind"
 
-        # Indicators
-        local ind=""
-        [ -n "$inputs" ] && ind="${YELLOW}*${NC}"
-        if [ -n "$deps" ]; then
-            local missing=$(check_dependencies "$key" 2>/dev/null) || true
-            [ -n "$missing" ] && ind="${ind}${RED}!${NC}"
-        fi
-
-        printf "%b%b %-32s %b\n" "$pointer" "$checkbox" "${label:0:32}" "$ind"
-
-        ((row++))
-    done
+            ((row++))
+        done
+    fi
 
     # Footer
     local sel_count=0
@@ -269,7 +303,21 @@ draw_options_screen() {
 
     printf "\n"
     printf "───────────────────────────────────────────────────────────────────────────────\n"
-    printf "Selected: %d/%d  ${YELLOW}*${NC}=input needed  ${RED}!${NC}=missing dependency\n" "$sel_count" "${#OPTION_LIST[@]}"
+    printf "Selected: %d/%d  ${YELLOW}*${NC}=input  ${RED}!${NC}=missing dep  Environment: ${GREEN}%s${NC}\n" "$sel_count" "${#OPTION_LIST[@]}" "$(get_env_label "$environment")"
+}
+
+build_env_option_list() {
+    local environment="$1"
+
+    VISIBLE_OPTIONS=()
+
+    for key in "${OPTION_LIST[@]}"; do
+        local opt_env="${OPTION_ENVIRONMENTS[$key]}"
+        # Show options for this environment or 'all'
+        if [[ "$opt_env" == "$environment" || "$opt_env" == "all" ]]; then
+            VISIBLE_OPTIONS+=("$key")
+        fi
+    done
 }
 
 run_options_tui() {
@@ -288,21 +336,17 @@ run_options_tui() {
     # Load existing config
     load_existing_config "$site_name" "$CONFIG_FILE" 2>/dev/null || true
 
-    # Build option list
-    build_option_list "$environment"
-
-    local total="${#VISIBLE_OPTIONS[@]}"
-    if [ "$total" -eq 0 ]; then
-        print_error "No options available"
-        return 1
-    fi
+    # Build option list for current environment
+    build_env_option_list "$environment"
 
     local current_row=0
+    local env_index=$(get_env_index "$environment")
 
     cursor_hide
     trap 'cursor_show' EXIT INT TERM
 
     while true; do
+        local total="${#VISIBLE_OPTIONS[@]}"
         draw_options_screen "$site_name" "$environment" "$current_row"
 
         local key=$(read_key)
@@ -312,19 +356,55 @@ run_options_tui() {
                 [ $current_row -gt 0 ] && ((current_row--)) || true
                 ;;
             DOWN|j|J)
-                [ $current_row -lt $((total - 1)) ] && ((current_row++)) || true
+                [ "$total" -gt 0 ] && [ $current_row -lt $((total - 1)) ] && ((current_row++)) || true
+                ;;
+            PREV_ENV|LEFT)
+                # Previous environment
+                env_index=$(( (env_index - 1 + 4) % 4 ))
+                environment="${ENVIRONMENTS[$env_index]}"
+                build_env_option_list "$environment"
+                current_row=0
+                ;;
+            NEXT_ENV|RIGHT)
+                # Next environment
+                env_index=$(( (env_index + 1) % 4 ))
+                environment="${ENVIRONMENTS[$env_index]}"
+                build_env_option_list "$environment"
+                current_row=0
                 ;;
             SPACE)
-                local opt_key="${VISIBLE_OPTIONS[$current_row]}"
-                if [ "${OPTION_SELECTED[$opt_key]:-n}" = "y" ]; then
-                    OPTION_SELECTED["$opt_key"]="n"
-                else
-                    OPTION_SELECTED["$opt_key"]="y"
-                    # Prompt for inputs
+                if [ "$total" -gt 0 ]; then
+                    local opt_key="${VISIBLE_OPTIONS[$current_row]}"
+                    if [ "${OPTION_SELECTED[$opt_key]:-n}" = "y" ]; then
+                        OPTION_SELECTED["$opt_key"]="n"
+                    else
+                        OPTION_SELECTED["$opt_key"]="y"
+                        # Prompt for inputs
+                        local inputs="${OPTION_INPUTS[$opt_key]:-}"
+                        if [ -n "$inputs" ]; then
+                            cursor_show
+                            printf "\n"
+                            IFS=',' read -ra iarr <<< "$inputs"
+                            for inp in "${iarr[@]}"; do
+                                local ikey="${inp%%:*}"
+                                local ilabel="${inp#*:}"
+                                local vkey="${opt_key}_${ikey}"
+                                local curr="${OPTION_VALUES[$vkey]:-}"
+                                read -rp "  $ilabel [$curr]: " newval
+                                OPTION_VALUES["$vkey"]="${newval:-$curr}"
+                            done
+                            cursor_hide
+                        fi
+                    fi
+                fi
+                ;;
+            e|E)
+                if [ "$total" -gt 0 ]; then
+                    local opt_key="${VISIBLE_OPTIONS[$current_row]}"
                     local inputs="${OPTION_INPUTS[$opt_key]:-}"
                     if [ -n "$inputs" ]; then
                         cursor_show
-                        printf "\n"
+                        printf "\n${BOLD}Edit: %s${NC}\n" "${OPTION_LABELS[$opt_key]}"
                         IFS=',' read -ra iarr <<< "$inputs"
                         for inp in "${iarr[@]}"; do
                             local ikey="${inp%%:*}"
@@ -338,26 +418,9 @@ run_options_tui() {
                     fi
                 fi
                 ;;
-            e|E)
-                local opt_key="${VISIBLE_OPTIONS[$current_row]}"
-                local inputs="${OPTION_INPUTS[$opt_key]:-}"
-                if [ -n "$inputs" ]; then
-                    cursor_show
-                    printf "\n${BOLD}Edit: %s${NC}\n" "${OPTION_LABELS[$opt_key]}"
-                    IFS=',' read -ra iarr <<< "$inputs"
-                    for inp in "${iarr[@]}"; do
-                        local ikey="${inp%%:*}"
-                        local ilabel="${inp#*:}"
-                        local vkey="${opt_key}_${ikey}"
-                        local curr="${OPTION_VALUES[$vkey]:-}"
-                        read -rp "  $ilabel [$curr]: " newval
-                        OPTION_VALUES["$vkey"]="${newval:-$curr}"
-                    done
-                    cursor_hide
-                fi
-                ;;
             a|A)
                 apply_environment_defaults "$environment"
+                build_env_option_list "$environment"
                 ;;
             n|N)
                 for k in "${OPTION_LIST[@]}"; do

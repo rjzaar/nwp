@@ -36,6 +36,7 @@
 !produce.sh
 !podcast.sh
 !modify.sh
+!status.sh
 
 # Documentation and metadata
 !README.md
@@ -69,6 +70,10 @@
 # Libraries
 !lib/
 !lib/**
+
+# Email infrastructure
+!email/
+!email/**
 
 # Tests
 !tests/

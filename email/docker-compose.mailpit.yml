@@ -1,0 +1,47 @@
+# Mailpit Docker Compose for NWP Email Testing
+#
+# This file can be used standalone or copied to DDEV sites.
+#
+# Standalone usage:
+#   docker-compose -f docker-compose.mailpit.yml up -d
+#
+# DDEV usage:
+#   Copy to .ddev/docker-compose.mailpit.yml in any site
+#   Then: ddev restart
+#
+# Access:
+#   Web UI: http://localhost:8025 (or https://sitename.ddev.site:8026 in DDEV)
+#   SMTP:   localhost:1025
+#
+# API Documentation: https://mailpit.axllent.org/docs/api-v1/
+#
+version: '3.8'
+
+services:
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: nwp-mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"   # Web UI
+      - "1025:1025"   # SMTP
+    environment:
+      # Basic settings
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+      # Message retention (default: 500 messages)
+      MP_MAX_MESSAGES: 500
+      # Database storage (in-memory by default)
+      MP_DATABASE: /data/mailpit.db
+      # Logging
+      MP_VERBOSE: "false"
+    volumes:
+      - mailpit-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8025/api/v1/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mailpit-data:

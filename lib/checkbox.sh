@@ -1100,14 +1100,13 @@ load_existing_config() {
     local site_name="$1"
     local config_file="${2:-cnwp.yml}"
 
-    # This would parse existing site configuration and set OPTION_SELECTED accordingly
-    # For now, we'll implement basic loading
+    # Initialize OPTION_FROM_CONFIG if not already declared
+    if ! declare -p OPTION_FROM_CONFIG &>/dev/null; then
+        declare -gA OPTION_FROM_CONFIG
+    fi
 
     if [[ -f "$config_file" ]] && yaml_site_exists "$site_name" "$config_file" 2>/dev/null; then
-        echo -e "${BLUE}Loading existing configuration for '$site_name'...${NC}"
-
-        # Get existing options from site entry
-        # This is a simplified implementation - expand as needed
+        # Get existing options from site entry (silent for TUI)
         local existing_options=$(awk -v site="$site_name" '
             /^sites:/ { in_sites = 1; next }
             in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
@@ -1128,6 +1127,10 @@ load_existing_config() {
         while IFS='=' read -r key val; do
             if [[ -n "$key" ]] && [[ -n "${OPTION_LABELS[$key]:-}" ]]; then
                 OPTION_SELECTED["$key"]="$val"
+                # Track what was in config (for mismatch detection)
+                if [[ "$val" == "y" ]]; then
+                    OPTION_FROM_CONFIG["$key"]="y"
+                fi
             fi
         done <<< "$existing_options"
     fi

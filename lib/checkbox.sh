@@ -408,7 +408,7 @@ check_dependencies() {
 # Check conflicts for an option
 check_conflicts() {
     local key="$1"
-    local conflicts="${OPTION_CONFLICTS[$key]}"
+    local conflicts="${OPTION_CONFLICTS[$key]:-}"
 
     if [[ -z "$conflicts" ]]; then
         return 0  # No conflicts
@@ -504,7 +504,7 @@ display_environment_options() {
 
         # Check conflicts
         local conflict_warning=""
-        local conflicts="${OPTION_CONFLICTS[$key]}"
+        local conflicts="${OPTION_CONFLICTS[$key]:-}"
         if [[ -n "$conflicts" ]] && [[ "$selected" == "y" ]]; then
             local active_conflicts=$(check_conflicts "$key")
             if [[ -n "$active_conflicts" ]]; then
@@ -709,7 +709,7 @@ toggle_option_by_index() {
                     read -p "Disable conflicting options? [y/N]: " confirm
                     if [[ "$confirm" =~ ^[Yy]$ ]]; then
                         # Disable conflicting options
-                        IFS=',' read -ra conflict_arr <<< "${OPTION_CONFLICTS[$key]}"
+                        IFS=',' read -ra conflict_arr <<< "${OPTION_CONFLICTS[$key]:-}"
                         for conflict in "${conflict_arr[@]}"; do
                             OPTION_SELECTED["$conflict"]="n"
                         done

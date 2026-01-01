@@ -8,7 +8,7 @@
 ################################################################################
 
 # Ensure ui.sh is sourced for colors
-if [ -z "$NC" ]; then
+if [ -z "${NC:-}" ]; then
     RED=$'\033[0;31m'
     GREEN=$'\033[0;32m'
     YELLOW=$'\033[1;33m'
@@ -16,6 +16,9 @@ if [ -z "$NC" ]; then
     CYAN=$'\033[0;36m'
     NC=$'\033[0m'
     BOLD=$'\033[1m'
+fi
+# DIM may not be defined in ui.sh, so ensure it's set
+if [ -z "${DIM:-}" ]; then
     DIM=$'\033[2m'
 fi
 

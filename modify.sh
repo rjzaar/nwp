@@ -364,7 +364,7 @@ draw_options_screen() {
     done
     printf "\n"
 
-    printf "${DIM}↑↓:Navigate  ←→:Environment  SPACE:Toggle  e:Edit  d:Details  a:All  n:None  ENTER:Apply  q:Cancel${NC}\n"
+    printf "${DIM}↑↓:Navigate  ←→:Environment  SPACE:Toggle  e:Edit  d:Docs  s:Steps  a:All  n:None  ENTER:Apply  q:Cancel${NC}\n"
     printf "═══════════════════════════════════════════════════════════════════════════════\n"
 
     # Show installation status at the top
@@ -902,6 +902,48 @@ run_options_tui() {
                 done
                 ;;
             d|D)
+                # Show option details/documentation
+                if [ "$total" -gt 0 ]; then
+                    local opt_key="${VISIBLE_OPTIONS[$current_row]}"
+                    cursor_show
+                    clear_screen
+                    printf "\n${BOLD}═══════════════════════════════════════════════════════════════${NC}\n"
+                    printf "${BOLD}${CYAN}%s${NC}\n" "${OPTION_LABELS[$opt_key]}"
+                    printf "${BOLD}═══════════════════════════════════════════════════════════════${NC}\n\n"
+
+                    # Show description
+                    printf "${BOLD}Description:${NC}\n"
+                    printf "%s\n\n" "${OPTION_DESCRIPTIONS[$opt_key]}"
+
+                    # Show environment
+                    printf "${BOLD}Environment:${NC} %s\n" "${OPTION_ENVIRONMENTS[$opt_key]}"
+
+                    # Show category
+                    printf "${BOLD}Category:${NC} %s\n" "${OPTION_CATEGORIES[$opt_key]}"
+
+                    # Show dependencies
+                    local deps="${OPTION_DEPENDENCIES[$opt_key]:-}"
+                    if [ -n "$deps" ]; then
+                        printf "${BOLD}Requires:${NC} %s\n" "$deps"
+                    fi
+
+                    # Show documentation links
+                    local docs="${OPTION_DOCS[$opt_key]:-}"
+                    if [ -n "$docs" ]; then
+                        printf "\n${BOLD}Documentation:${NC}\n"
+                        IFS=',' read -ra doc_urls <<< "$docs"
+                        for url in "${doc_urls[@]}"; do
+                            printf "  ${BLUE}→${NC} %s\n" "$url"
+                        done
+                    fi
+
+                    printf "\n${BOLD}═══════════════════════════════════════════════════════════════${NC}\n"
+                    printf "\nPress any key to continue..."
+                    read -rsn1
+                    cursor_hide
+                fi
+                ;;
+            s|S)
                 # Show installation steps details
                 cursor_show
                 clear_screen

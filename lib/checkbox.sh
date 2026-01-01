@@ -43,12 +43,13 @@ declare -A OPTION_INPUTS        # Required input fields (comma-separated key:lab
 declare -A OPTION_CATEGORIES    # Category within environment
 declare -A OPTION_SELECTED      # Current selection state
 declare -A OPTION_VALUES        # Input values for options requiring input
+declare -A OPTION_DOCS          # Documentation links (comma-separated URLs)
 
 # List of all options in order
 OPTION_LIST=()
 
 # Define a new option
-# Usage: define_option "key" "label" "description" "environment" "default" "dependencies" "inputs" "category"
+# Usage: define_option "key" "label" "description" "environment" "default" "dependencies" "inputs" "category" "docs"
 define_option() {
     local key="$1"
     local label="$2"
@@ -58,6 +59,7 @@ define_option() {
     local dependencies="${6:-}"      # comma-separated option keys
     local inputs="${7:-}"            # comma-separated key:label pairs
     local category="${8:-general}"   # Category within environment
+    local docs="${9:-}"              # comma-separated documentation URLs
 
     OPTION_LIST+=("$key")
     OPTION_LABELS["$key"]="$label"
@@ -68,15 +70,16 @@ define_option() {
     OPTION_INPUTS["$key"]="$inputs"
     OPTION_CATEGORIES["$key"]="$category"
     OPTION_SELECTED["$key"]="n"
+    OPTION_DOCS["$key"]="$docs"
 }
 
 # Clear all options
 clear_options() {
     OPTION_LIST=()
     unset OPTION_LABELS OPTION_DESCRIPTIONS OPTION_ENVIRONMENTS OPTION_DEFAULTS
-    unset OPTION_DEPENDENCIES OPTION_INPUTS OPTION_CATEGORIES OPTION_SELECTED OPTION_VALUES
+    unset OPTION_DEPENDENCIES OPTION_INPUTS OPTION_CATEGORIES OPTION_SELECTED OPTION_VALUES OPTION_DOCS
     declare -gA OPTION_LABELS OPTION_DESCRIPTIONS OPTION_ENVIRONMENTS OPTION_DEFAULTS
-    declare -gA OPTION_DEPENDENCIES OPTION_INPUTS OPTION_CATEGORIES OPTION_SELECTED OPTION_VALUES
+    declare -gA OPTION_DEPENDENCIES OPTION_INPUTS OPTION_CATEGORIES OPTION_SELECTED OPTION_VALUES OPTION_DOCS
 }
 
 ################################################################################
@@ -89,138 +92,162 @@ define_drupal_options() {
     # === DEVELOPMENT OPTIONS ===
     define_option "dev_modules" \
         "Development Modules" \
-        "Install devel, kint, webprofiler for debugging" \
-        "dev" "dev:y,stage:n,live:n,prod:n" "" "" "modules"
+        "Install devel, kint, webprofiler for debugging. Devel provides helper functions and debug tools. Kint provides beautiful variable dumps. Webprofiler adds a toolbar showing SQL queries, cache hits, and performance data." \
+        "dev" "dev:y,stage:n,live:n,prod:n" "" "" "modules" \
+        "https://www.drupal.org/project/devel,https://www.drupal.org/project/webprofiler"
 
     define_option "xdebug" \
         "XDebug" \
-        "Enable XDebug for step-through debugging" \
-        "dev" "dev:n,stage:n,live:n,prod:n" "" "" "tools"
+        "Enable XDebug for step-through debugging in your IDE. Allows setting breakpoints, inspecting variables, and tracing execution flow. Works with PhpStorm, VS Code, and other IDEs." \
+        "dev" "dev:n,stage:n,live:n,prod:n" "" "" "tools" \
+        "https://ddev.readthedocs.io/en/stable/users/debugging-profiling/step-debugging/,https://xdebug.org/docs/"
     OPTION_CONFLICTS["xdebug"]="redis"  # XDebug and Redis can conflict in some setups
 
     define_option "stage_file_proxy" \
         "Stage File Proxy" \
-        "Proxy files from production (saves disk space)" \
-        "dev" "dev:n,stage:y,live:n,prod:n" "" "" "modules"
+        "Proxy files from production server instead of copying them locally. Saves disk space and speeds up database syncs by only downloading files when accessed." \
+        "dev" "dev:n,stage:y,live:n,prod:n" "" "" "modules" \
+        "https://www.drupal.org/project/stage_file_proxy"
     OPTION_CONFLICTS["stage_file_proxy"]="cdn"  # Don't proxy files if using CDN
 
     define_option "config_split" \
         "Config Split" \
-        "Enable environment-specific configuration" \
-        "dev" "dev:y,stage:y,live:y,prod:y" "" "" "modules"
+        "Enable environment-specific configuration management. Allows different config for dev/stage/prod (e.g., disable Google Analytics on dev, enable caching only on prod)." \
+        "dev" "dev:y,stage:y,live:y,prod:y" "" "" "modules" \
+        "https://www.drupal.org/project/config_split,https://www.drupal.org/docs/contributed-modules/configuration-split"
 
     # === STAGING OPTIONS ===
     define_option "db_sanitize" \
         "Database Sanitization" \
-        "Sanitize user data when syncing from production" \
-        "stage" "dev:y,stage:y,live:n,prod:n" "" "" "database"
+        "Sanitize user data when syncing from production. Replaces real emails with fake ones, anonymizes usernames, and removes sensitive data. Essential for GDPR compliance on non-production environments." \
+        "stage" "dev:y,stage:y,live:n,prod:n" "" "" "database" \
+        "https://www.drush.org/12.x/commands/sql_sanitize/,https://www.drupal.org/project/gdpr"
 
     define_option "staging_domain" \
         "Staging Domain" \
-        "Configure staging domain for the site" \
+        "Configure a staging domain for testing before production deployment. Typically uses a subdomain like staging.example.com or site-stg.example.com." \
         "stage" "dev:n,stage:y,live:n,prod:n" "" \
-        "domain:Staging Domain (e.g. site-stg.example.com)" "deployment"
+        "domain:Staging Domain (e.g. site-stg.example.com)" "deployment" \
+        "https://ddev.readthedocs.io/en/stable/users/extend/additional-hostnames/"
 
     # === LIVE/PRODUCTION OPTIONS ===
     define_option "security_modules" \
         "Security Modules" \
-        "Install seckit, honeypot, login_security, flood_control" \
-        "live" "dev:n,stage:n,live:y,prod:y" "" "" "security"
+        "Install essential security modules: SecKit (HTTP headers, CSP), Honeypot (spam protection), Login Security (brute force protection), Flood Control (rate limiting UI). Highly recommended for all production sites." \
+        "live" "dev:n,stage:n,live:y,prod:y" "" "" "security" \
+        "https://www.drupal.org/project/seckit,https://www.drupal.org/project/honeypot,https://www.drupal.org/project/login_security,https://www.drupal.org/project/flood_control"
 
     define_option "redis" \
         "Redis Caching" \
-        "Enable Redis for object caching" \
-        "live" "dev:n,stage:n,live:y,prod:y" "" "" "performance"
+        "Enable Redis for object and render caching. Significantly improves performance by storing cached data in memory. Reduces database load and speeds up page generation." \
+        "live" "dev:n,stage:n,live:y,prod:y" "" "" "performance" \
+        "https://www.drupal.org/project/redis,https://ddev.readthedocs.io/en/stable/users/extend/additional-services/#redis"
 
     define_option "solr" \
         "Solr Search" \
-        "Enable Apache Solr for advanced search" \
+        "Enable Apache Solr for advanced full-text search. Provides faceted search, highlighting, spell checking, and much better search relevance than database search." \
         "live" "dev:n,stage:n,live:n,prod:n" "" \
-        "core:Solr Core Name" "search"
+        "core:Solr Core Name" "search" \
+        "https://www.drupal.org/project/search_api_solr,https://ddev.readthedocs.io/en/stable/users/extend/additional-services/#solr"
 
     define_option "cron" \
         "Cron Configuration" \
-        "Set up automated cron jobs" \
+        "Set up automated cron jobs for Drupal. Runs scheduled tasks like clearing caches, sending emails, updating search indexes, and running queues. Critical for site health." \
         "live" "dev:n,stage:n,live:y,prod:y" "" \
-        "interval:Cron Interval (minutes)" "scheduling"
+        "interval:Cron Interval (minutes)" "scheduling" \
+        "https://www.drupal.org/docs/administering-a-drupal-site/cron-automated-tasks,https://www.drupal.org/project/ultimate_cron"
 
     define_option "backup" \
         "Automated Backups" \
-        "Configure automated backups to B2 storage" \
-        "live" "dev:n,stage:n,live:y,prod:y" "" "" "backup"
+        "Configure automated backups to Backblaze B2 cloud storage. Includes database dumps, files, and configuration. Essential for disaster recovery and compliance." \
+        "live" "dev:n,stage:n,live:y,prod:y" "" "" "backup" \
+        "https://www.backblaze.com/docs/cloud-storage-command-line-tools,https://www.drupal.org/project/backup_migrate"
 
     define_option "ssl" \
         "SSL Certificate" \
-        "Configure Let's Encrypt SSL" \
+        "Configure Let's Encrypt SSL certificates for HTTPS. Free, automatic SSL that renews itself. Required for production sites and improves SEO." \
         "live" "dev:n,stage:y,live:y,prod:y" "" \
-        "domain:Domain for SSL" "security"
+        "domain:Domain for SSL" "security" \
+        "https://letsencrypt.org/getting-started/,https://certbot.eff.org/"
 
     define_option "cdn" \
         "CDN Configuration" \
-        "Configure Cloudflare CDN" \
-        "live" "dev:n,stage:n,live:y,prod:y" "ssl" "" "performance"
+        "Configure Cloudflare CDN for global content delivery. Caches static assets at edge locations worldwide, provides DDoS protection, and improves page load times." \
+        "live" "dev:n,stage:n,live:y,prod:y" "ssl" "" "performance" \
+        "https://www.cloudflare.com/learning/cdn/what-is-a-cdn/,https://www.drupal.org/project/cloudflare"
 
     # === PRODUCTION-SPECIFIC OPTIONS ===
     define_option "live_domain" \
         "Production Domain" \
-        "Configure the production domain" \
+        "Configure the production domain for your live site. This is the public-facing URL users will access. Requires DNS configuration pointing to your server." \
         "prod" "dev:n,stage:n,live:n,prod:y" "" \
-        "domain:Production Domain" "deployment"
+        "domain:Production Domain" "deployment" \
+        "https://www.linode.com/docs/guides/dns-manager/,https://www.cloudflare.com/learning/dns/what-is-dns/"
 
     define_option "dns_records" \
         "DNS Records" \
-        "Auto-configure Linode DNS records" \
-        "prod" "dev:n,stage:n,live:n,prod:y" "live_domain" "" "deployment"
+        "Auto-configure Linode DNS records including A, AAAA, MX, SPF, DKIM, and DMARC records. Ensures proper domain resolution and email deliverability." \
+        "prod" "dev:n,stage:n,live:n,prod:y" "live_domain" "" "deployment" \
+        "https://www.linode.com/docs/api/domains/,https://www.linode.com/docs/guides/dns-manager/"
 
     define_option "monitoring" \
         "Uptime Monitoring" \
-        "Configure uptime monitoring alerts" \
+        "Configure uptime monitoring to receive alerts when your site goes down. Get notified via email or SMS when issues are detected so you can respond quickly." \
         "prod" "dev:n,stage:n,live:n,prod:y" "live_domain" \
-        "email:Alert Email" "monitoring"
+        "email:Alert Email" "monitoring" \
+        "https://uptimerobot.com/,https://www.drupal.org/project/monitoring"
 
     # === CI/CD OPTIONS ===
     define_option "ci_enabled" \
         "CI/CD Pipeline" \
-        "Enable GitLab CI/CD for this site" \
-        "all" "dev:y,stage:y,live:y,prod:y" "" "" "cicd"
+        "Enable GitLab CI/CD for automated testing and deployment. Runs on every push to verify code quality before merging. Essential for team development workflows." \
+        "all" "dev:y,stage:y,live:y,prod:y" "" "" "cicd" \
+        "https://docs.gitlab.com/ee/ci/,https://about.gitlab.com/topics/ci-cd/"
 
     define_option "ci_lint" \
         "Linting" \
-        "Run PHPCS and code linting in CI" \
-        "all" "dev:y,stage:y,live:y,prod:y" "ci_enabled" "" "cicd"
+        "Run PHPCS (PHP_CodeSniffer) and code linting in CI. Enforces Drupal coding standards and catches potential issues before they reach production." \
+        "all" "dev:y,stage:y,live:y,prod:y" "ci_enabled" "" "cicd" \
+        "https://www.drupal.org/docs/develop/standards,https://github.com/squizlabs/PHP_CodeSniffer"
 
     define_option "ci_tests" \
         "Automated Tests" \
-        "Run PHPUnit tests in CI" \
-        "all" "dev:y,stage:y,live:y,prod:y" "ci_enabled" "" "cicd"
+        "Run PHPUnit tests automatically in CI pipeline. Validates functionality, prevents regressions, and ensures code changes don't break existing features." \
+        "all" "dev:y,stage:y,live:y,prod:y" "ci_enabled" "" "cicd" \
+        "https://www.drupal.org/docs/testing,https://phpunit.de/documentation.html"
 
     define_option "ci_security" \
         "Security Scanning" \
-        "Run security scans in CI pipeline" \
-        "all" "dev:n,stage:y,live:y,prod:y" "ci_enabled" "" "cicd"
+        "Run security scans in CI pipeline using tools like security-checker and Drupal's security advisories. Detects known vulnerabilities in dependencies." \
+        "all" "dev:n,stage:y,live:y,prod:y" "ci_enabled" "" "cicd" \
+        "https://github.com/fabpot/local-php-security-checker,https://www.drupal.org/security"
 
     define_option "ci_deploy" \
         "Auto Deploy" \
-        "Automatically deploy on successful CI" \
-        "all" "dev:n,stage:n,live:n,prod:n" "ci_enabled" "" "cicd"
+        "Automatically deploy to staging/production after successful CI pipeline. Enables continuous delivery with zero-downtime deployments." \
+        "all" "dev:n,stage:n,live:n,prod:n" "ci_enabled" "" "cicd" \
+        "https://docs.gitlab.com/ee/ci/environments/,https://about.gitlab.com/topics/ci-cd/continuous-deployment/"
 
     # === EMAIL OPTIONS ===
     define_option "email_enabled" \
         "Email Configuration" \
-        "Enable site email functionality" \
-        "all" "dev:n,stage:n,live:y,prod:y" "" "" "email"
+        "Enable site email functionality using Postfix with proper authentication. Includes SPF, DKIM, and DMARC for high deliverability rates." \
+        "all" "dev:n,stage:n,live:y,prod:y" "" "" "email" \
+        "https://www.mail-tester.com/,https://www.drupal.org/docs/contributed-modules/smtp-authentication-support"
 
     define_option "email_send" \
         "Outgoing Email" \
-        "Configure SMTP for sending emails" \
+        "Configure SMTP for sending emails. Uses authenticated SMTP with TLS for secure delivery. Required for password resets, notifications, and contact forms." \
         "all" "dev:n,stage:n,live:y,prod:y" "email_enabled" \
-        "address:Site Email Address" "email"
+        "address:Site Email Address" "email" \
+        "https://www.drupal.org/project/smtp,https://www.drupal.org/project/mailsystem"
 
     define_option "email_receive" \
         "Incoming Email" \
-        "Set up mailbox for receiving emails" \
+        "Set up mailbox for receiving emails. Enables email-to-case, comment-by-email, and other inbound email features. Forwards to a configured address." \
         "all" "dev:n,stage:n,live:n,prod:n" "email_send" \
-        "forward:Forward To Address" "email"
+        "forward:Forward To Address" "email" \
+        "https://www.drupal.org/project/mailhandler"
 }
 
 ################################################################################

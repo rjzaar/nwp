@@ -595,8 +595,146 @@ draw_options() {
     echo -e "${DIM}Selected: $selected_count/${#OPTION_LIST[@]}${NC}  ${YELLOW}*${NC}${DIM}=needs input${NC}  ${RED}!${NC}${DIM}=missing dep${NC}"
 }
 
-# Interactive checkbox menu with arrow keys
+# Simple text-based menu (fallback)
+interactive_select_options_simple() {
+    local environment="$1"
+    local recipe_type="$2"
+    local existing_config="$3"
+
+    # Load appropriate options
+    case "$recipe_type" in
+        drupal|d|os|nwp|dm) define_drupal_options ;;
+        moodle|m) define_moodle_options ;;
+        gitlab) define_gitlab_options ;;
+        *) define_drupal_options ;;
+    esac
+
+    # Apply existing configuration if provided
+    if [[ -n "$existing_config" ]]; then
+        load_existing_config "$existing_config"
+    else
+        apply_environment_defaults "$environment"
+    fi
+
+    # Build visible options list
+    build_option_list "$environment"
+
+    local total="${#VISIBLE_OPTIONS[@]}"
+
+    while true; do
+        clear
+        echo -e "${BOLD}Options${NC} [${environment}]  Enter number to toggle, ${BOLD}d${NC}=done, ${BOLD}a${NC}=all, ${BOLD}n${NC}=none"
+        echo ""
+
+        local idx=1
+        local current_env=""
+
+        for key in "${VISIBLE_OPTIONS[@]}"; do
+            local opt_env="${OPTION_ENVIRONMENTS[$key]}"
+            local label="${OPTION_LABELS[$key]}"
+            local selected="${OPTION_SELECTED[$key]}"
+            local inputs="${OPTION_INPUTS[$key]}"
+
+            # Environment header
+            if [[ "$opt_env" != "$current_env" && "$opt_env" != "all" ]]; then
+                current_env="$opt_env"
+                local env_name="${opt_env^^}"
+                if [[ "$opt_env" == "$environment" ]]; then
+                    echo -e " ${GREEN}── $env_name ──${NC}"
+                else
+                    echo -e " ${DIM}── $env_name ──${NC}"
+                fi
+            fi
+
+            # Checkbox
+            local checkbox="[ ]"
+            [[ "$selected" == "y" ]] && checkbox="${GREEN}[✓]${NC}"
+
+            # Input indicator
+            local ind=""
+            [[ -n "$inputs" ]] && ind="${YELLOW}*${NC}"
+
+            printf "  %2d) %b %-28s %b\n" "$idx" "$checkbox" "${label:0:28}" "$ind"
+            ((idx++))
+        done
+
+        # Footer
+        local sel_count=0
+        for k in "${OPTION_LIST[@]}"; do
+            [[ "${OPTION_SELECTED[$k]}" == "y" ]] && ((sel_count++))
+        done
+        echo ""
+        echo -e "${DIM}Selected: $sel_count/${#OPTION_LIST[@]}${NC}  ${YELLOW}*${NC}${DIM}=input${NC}"
+        echo ""
+
+        read -rp "> " cmd
+
+        case "$cmd" in
+            d|D|done|q|Q|quit|"")
+                return 0
+                ;;
+            a|A|all)
+                apply_environment_defaults "$environment"
+                ;;
+            n|N|none)
+                for k in "${OPTION_LIST[@]}"; do
+                    OPTION_SELECTED["$k"]="n"
+                done
+                ;;
+            [0-9]|[0-9][0-9])
+                if [[ $cmd -ge 1 && $cmd -le $total ]]; then
+                    local opt_key="${VISIBLE_OPTIONS[$((cmd-1))]}"
+                    if [[ "${OPTION_SELECTED[$opt_key]}" == "y" ]]; then
+                        OPTION_SELECTED["$opt_key"]="n"
+                    else
+                        OPTION_SELECTED["$opt_key"]="y"
+                        # Prompt for inputs if needed
+                        local inputs="${OPTION_INPUTS[$opt_key]}"
+                        if [[ -n "$inputs" ]]; then
+                            echo ""
+                            IFS=',' read -ra iarr <<< "$inputs"
+                            for inp in "${iarr[@]}"; do
+                                local ikey="${inp%%:*}"
+                                local ilabel="${inp#*:}"
+                                local vkey="${opt_key}_${ikey}"
+                                local curr="${OPTION_VALUES[$vkey]:-}"
+                                read -rp "  $ilabel [$curr]: " newval
+                                OPTION_VALUES["$vkey"]="${newval:-$curr}"
+                            done
+                        fi
+                    fi
+                fi
+                ;;
+            e|E)
+                read -rp "Option # to edit: " num
+                if [[ $num -ge 1 && $num -le $total ]]; then
+                    local opt_key="${VISIBLE_OPTIONS[$((num-1))]}"
+                    local inputs="${OPTION_INPUTS[$opt_key]}"
+                    if [[ -n "$inputs" ]]; then
+                        echo ""
+                        IFS=',' read -ra iarr <<< "$inputs"
+                        for inp in "${iarr[@]}"; do
+                            local ikey="${inp%%:*}"
+                            local ilabel="${inp#*:}"
+                            local vkey="${opt_key}_${ikey}"
+                            local curr="${OPTION_VALUES[$vkey]:-}"
+                            read -rp "  $ilabel [$curr]: " newval
+                            OPTION_VALUES["$vkey"]="${newval:-$curr}"
+                        done
+                    fi
+                fi
+                ;;
+        esac
+    done
+}
+
+# Interactive checkbox menu - uses simple mode for reliability
 interactive_select_options() {
+    interactive_select_options_simple "$@"
+}
+
+# Arrow-key based menu (kept for future use when terminal issues resolved)
+interactive_select_options_arrows() {
     local environment="$1"      # dev, stage, live, prod
     local recipe_type="$2"      # drupal, moodle, gitlab
     local existing_config="$3"  # site name for existing config

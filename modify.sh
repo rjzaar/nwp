@@ -367,19 +367,6 @@ draw_options_screen() {
     printf "${DIM}↑↓:Navigate  ←→:Environment  SPACE:Toggle  e:Edit  d:Docs  s:Steps  a:All  n:None  ENTER:Apply  q:Cancel${NC}\n"
     printf "═══════════════════════════════════════════════════════════════════════════════\n"
 
-    # Show installation status at the top
-    if command -v get_install_status_display &>/dev/null; then
-        local install_status=$(get_install_status_display "$site_name" "$CONFIG_FILE" "$environment")
-        local status_color=$(get_install_status_color "$site_name" "$CONFIG_FILE" "$environment")
-        local status_icon
-        case "$status_color" in
-            green) status_icon="${GREEN}[✓]${NC}" ;;
-            yellow) status_icon="${YELLOW}[!]${NC}" ;;
-            *) status_icon="${DIM}[○]${NC}" ;;
-        esac
-        printf "\n  %b ${BOLD}Install:${NC} %s\n" "$status_icon" "$install_status"
-    fi
-
     if [ "$total" -eq 0 ]; then
         printf "\n${DIM}  No options for this environment${NC}\n"
     else
@@ -393,6 +380,37 @@ draw_options_screen() {
             local inputs="${OPTION_INPUTS[$key]:-}"
             local deps="${OPTION_DEPENDENCIES[$key]:-}"
             local depth="${OPTION_DEPTH[$key]:-0}"
+
+            # Cursor
+            local pointer="  "
+            local is_current=false
+            if [ $row -eq $current_row ]; then
+                pointer="${CYAN}▸${NC} "
+                is_current=true
+            fi
+
+            # Special handling for install_status pseudo-option
+            if [ "$key" = "install_status" ]; then
+                local status_color
+                if command -v get_install_status_color &>/dev/null; then
+                    status_color=$(get_install_status_color "$site_name" "$CONFIG_FILE" "$environment")
+                else
+                    status_color="dim"
+                fi
+                local status_icon
+                case "$status_color" in
+                    green) status_icon="${GREEN}[✓]${NC}" ;;
+                    yellow) status_icon="${YELLOW}[!]${NC}" ;;
+                    *) status_icon="${DIM}[○]${NC}" ;;
+                esac
+                local hint=""
+                if [ "$is_current" = true ]; then
+                    hint="${DIM}d:details s:steps${NC}"
+                fi
+                printf "%b%b ${BOLD}%s${NC} %b\n" "$pointer" "$status_icon" "$label" "$hint"
+                ((row++))
+                continue
+            fi
 
             # Hierarchical indentation
             local indent=""
@@ -425,14 +443,6 @@ draw_options_screen() {
                 else
                     checkbox="${DIM}[ ]${NC}"         # Not installed, not wanted
                 fi
-            fi
-
-            # Cursor
-            local pointer="  "
-            local is_current=false
-            if [ $row -eq $current_row ]; then
-                pointer="${CYAN}▸${NC} "
-                is_current=true
             fi
 
             # Adjust label length based on depth
@@ -498,11 +508,38 @@ draw_options_screen() {
     fi
 }
 
+# Setup install_status pseudo-option with dynamic content
+setup_install_status_option() {
+    local site_name="$1"
+    local config_file="$2"
+    local environment="$3"
+
+    if command -v get_install_status_display &>/dev/null; then
+        local install_status=$(get_install_status_display "$site_name" "$config_file" "$environment")
+        OPTION_LABELS["install_status"]="Install: $install_status"
+    else
+        OPTION_LABELS["install_status"]="Install: Status unavailable"
+    fi
+
+    OPTION_DESCRIPTIONS["install_status"]="Installation progress tracking for this site. Shows which installation steps have been completed and which remain. Press 's' or 'd' to see detailed step information."
+    OPTION_ENVIRONMENTS["install_status"]="all"
+    OPTION_CATEGORIES["install_status"]="system"
+    OPTION_DEPENDENCIES["install_status"]=""
+    OPTION_INPUTS["install_status"]=""
+    OPTION_DOCS["install_status"]=""
+    OPTION_SELECTED["install_status"]="n"
+    OPTION_INSTALLED["install_status"]="n"
+}
+
 build_env_option_list() {
     local environment="$1"
 
     VISIBLE_OPTIONS=()
     OPTION_DEPTH=()  # Reset hierarchy depth
+
+    # Add install_status as the first option (always present)
+    VISIBLE_OPTIONS+=("install_status")
+    OPTION_DEPTH["install_status"]=0
 
     # First pass: find all options for this environment
     local env_options=()
@@ -811,6 +848,7 @@ run_options_tui() {
 
     # Build option list for current environment
     build_env_option_list "$environment"
+    setup_install_status_option "$site_name" "$CONFIG_FILE" "$environment"
 
     local current_row=0
     local env_index=$(get_env_index "$environment")
@@ -836,6 +874,7 @@ run_options_tui() {
                 env_index=$(( (env_index - 1 + 4) % 4 ))
                 environment="${ENVIRONMENTS[$env_index]}"
                 build_env_option_list "$environment"
+                setup_install_status_option "$site_name" "$CONFIG_FILE" "$environment"
                 current_row=0
                 ;;
             RIGHT)
@@ -843,6 +882,7 @@ run_options_tui() {
                 env_index=$(( (env_index + 1) % 4 ))
                 environment="${ENVIRONMENTS[$env_index]}"
                 build_env_option_list "$environment"
+                setup_install_status_option "$site_name" "$CONFIG_FILE" "$environment"
                 current_row=0
                 ;;
             e|E)
@@ -869,6 +909,8 @@ run_options_tui() {
             SPACE)
                 if [ "$total" -gt 0 ]; then
                     local opt_key="${VISIBLE_OPTIONS[$current_row]}"
+                    # Skip toggle for install_status pseudo-option
+                    [ "$opt_key" = "install_status" ] && continue
                     if [ "${OPTION_SELECTED[$opt_key]:-n}" = "y" ]; then
                         OPTION_SELECTED["$opt_key"]="n"
                     else
@@ -907,6 +949,20 @@ run_options_tui() {
                     local opt_key="${VISIBLE_OPTIONS[$current_row]}"
                     cursor_show
                     clear_screen
+
+                    # Special handling for install_status - show steps detail
+                    if [ "$opt_key" = "install_status" ]; then
+                        if command -v show_steps_detail &>/dev/null; then
+                            show_steps_detail "$site_name" "$CONFIG_FILE" "$environment"
+                        else
+                            printf "\n${YELLOW}Installation step tracking not available${NC}\n"
+                        fi
+                        printf "\nPress any key to continue..."
+                        read -rsn1
+                        cursor_hide
+                        continue
+                    fi
+
                     printf "\n${BOLD}═══════════════════════════════════════════════════════════════${NC}\n"
                     printf "${BOLD}${CYAN}%s${NC}\n" "${OPTION_LABELS[$opt_key]}"
                     printf "${BOLD}═══════════════════════════════════════════════════════════════${NC}\n\n"

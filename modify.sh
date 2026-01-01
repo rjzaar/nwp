@@ -4,24 +4,15 @@ set -euo pipefail
 ################################################################################
 # NWP Site Modification Script
 #
-# Modifies options for existing sites listed in cnwp.yml
-# Usage: ./modify.sh [site_name] [options]
-#
-# Arguments:
-#   site_name                    - Name of site from cnwp.yml (optional, will prompt)
+# Interactive TUI for modifying options on existing sites in cnwp.yml
+# Usage: ./modify.sh [site_name]
 #
 # Examples:
-#   ./modify.sh                  - List all sites and select one
-#   ./modify.sh nwp5             - Modify options for 'nwp5' site
-#   ./modify.sh nwp5 --apply     - Apply options without interactive mode
-#
-# Options:
-#   -l, --list                   - List all sites in cnwp.yml
-#   -a, --apply                  - Apply current options without interactive mode
-#   -h, --help                   - Show this help message
+#   ./modify.sh           - Interactive site selection
+#   ./modify.sh nwp5      - Modify options for 'nwp5' site
+#   ./modify.sh -l        - List all sites
 ################################################################################
 
-# Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Source shared libraries
@@ -38,455 +29,376 @@ if [ -f "$SCRIPT_DIR/lib/checkbox.sh" ]; then
     source "$SCRIPT_DIR/lib/checkbox.sh"
 fi
 
+CONFIG_FILE="${SCRIPT_DIR}/cnwp.yml"
+
 ################################################################################
-# Site Listing Functions
+# Terminal Control Functions
 ################################################################################
 
-# List all sites from cnwp.yml
-list_sites() {
-    local config_file="${1:-cnwp.yml}"
+cursor_to() { printf "\033[%d;%dH" "$1" "$2"; }
+cursor_hide() { printf "\033[?25l"; }
+cursor_show() { printf "\033[?25h"; }
+clear_screen() { printf "\033[2J\033[H"; }
 
-    if [ ! -f "$config_file" ]; then
-        print_error "Config file not found: $config_file"
-        return 1
+read_key() {
+    local key
+    IFS= read -rsn1 key
+    if [[ $key == $'\x1b' ]]; then
+        read -rsn2 -t 0.1 rest || true
+        case "$rest" in
+            '[A') echo "UP" ;;
+            '[B') echo "DOWN" ;;
+            '[C') echo "RIGHT" ;;
+            '[D') echo "LEFT" ;;
+            *) echo "ESC" ;;
+        esac
+    elif [[ $key == "" ]]; then
+        echo "ENTER"
+    elif [[ $key == " " ]]; then
+        echo "SPACE"
+    else
+        echo "$key"
     fi
+}
 
-    # Extract site names and info
+################################################################################
+# Site Functions
+################################################################################
+
+list_sites() {
+    local config_file="$1"
+    [ ! -f "$config_file" ] && return 1
+
     awk '
         /^sites:/ { in_sites = 1; next }
-        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
-        in_sites && /^  [a-zA-Z0-9_-]+:/ {
-            name = $0
-            sub(/^  /, "", name)
-            sub(/:.*/, "", name)
-            sites[++count] = name
-        }
-        in_sites && /^    directory:/ {
-            dir = $0
-            sub(/^    directory: */, "", dir)
-            dirs[count] = dir
-        }
-        in_sites && /^    recipe:/ {
-            rec = $0
-            sub(/^    recipe: */, "", rec)
-            recipes[count] = rec
-        }
-        in_sites && /^    environment:/ {
-            env = $0
-            sub(/^    environment: */, "", env)
-            envs[count] = env
-        }
-        END {
-            for (i = 1; i <= count; i++) {
-                printf "%s|%s|%s|%s\n", sites[i], recipes[i], envs[i], dirs[i]
-            }
+        in_sites && /^[a-zA-Z]/ && !/^  / { exit }
+        in_sites && /^  [a-zA-Z_][a-zA-Z0-9_-]*:/ && !/^    / {
+            gsub(/:.*/, "")
+            gsub(/^  /, "")
+            if ($0 !~ /^#/) print
         }
     ' "$config_file"
 }
 
-# Display sites in a formatted table
-display_sites() {
-    local config_file="${1:-cnwp.yml}"
+get_site_field() {
+    local site="$1"
+    local field="$2"
+    local config_file="$3"
 
-    print_header "Sites in cnwp.yml"
-    echo ""
-    echo -e "  ${BOLD}#    Site Name            Recipe          Environment     Directory${NC}"
-    echo "  ────────────────────────────────────────────────────────────────────────────────"
-
-    local idx=1
-    while IFS='|' read -r name recipe env dir; do
-        if [ -n "$name" ]; then
-            # Check if directory exists
-            local status="${GREEN}●${NC}"
-            if [ ! -d "$dir" ]; then
-                status="${RED}○${NC}"
-            fi
-            printf "  [%d]  %-20s %-15s %-15s " "$idx" "$name" "$recipe" "$env"
-            echo -e "$status $dir"
-            ((idx++))
-        fi
-    done < <(list_sites "$config_file")
-
-    echo ""
-    echo -e "  ${GREEN}●${NC} = directory exists  ${RED}○${NC} = directory not found"
-    echo ""
-}
-
-# Get site details by name
-get_site_info() {
-    local site_name="$1"
-    local config_file="${2:-cnwp.yml}"
-
-    awk -v site="$site_name" '
+    awk -v site="$site" -v field="$field" '
         /^sites:/ { in_sites = 1; next }
-        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
+        in_sites && /^[a-zA-Z]/ && !/^  / { exit }
         in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
-        in_site && /^  [a-zA-Z0-9_-]+:/ && $0 !~ "^    " { in_site = 0 }
-        in_site && /^    directory:/ {
-            dir = $0; sub(/^    directory: */, "", dir); print "DIRECTORY=" dir
-        }
-        in_site && /^    recipe:/ {
-            rec = $0; sub(/^    recipe: */, "", rec); print "RECIPE=" rec
-        }
-        in_site && /^    environment:/ {
-            env = $0; sub(/^    environment: */, "", env); print "ENVIRONMENT=" env
-        }
-        in_site && /^    purpose:/ {
-            pur = $0; sub(/^    purpose: */, "", pur); print "PURPOSE=" pur
+        in_site && /^  [a-zA-Z]/ && !/^    / { exit }
+        in_site && $0 ~ "^    " field ":" {
+            sub("^    " field ": *", "")
+            gsub(/["'"'"']/, "")
+            sub(/ *#.*$/, "")
+            gsub(/^[ \t]+|[ \t]+$/, "")
+            print
+            exit
         }
     ' "$config_file"
 }
 
-# Get site name by index
-get_site_by_index() {
-    local index="$1"
-    local config_file="${2:-cnwp.yml}"
-
-    list_sites "$config_file" | sed -n "${index}p" | cut -d'|' -f1
-}
-
-# Count total sites
-count_sites() {
-    local config_file="${1:-cnwp.yml}"
-    list_sites "$config_file" | wc -l
-}
-
 ################################################################################
-# Option Application for Existing Sites
+# Site Selection TUI
 ################################################################################
 
-# Apply options to an existing Drupal site
-apply_options_to_drupal_site() {
-    local site_dir="$1"
+SITE_NAMES=()
+SITE_DATA=()
 
-    if [ ! -d "$site_dir" ]; then
-        print_error "Site directory not found: $site_dir"
+build_site_list() {
+    local config_file="$1"
+    SITE_NAMES=()
+    SITE_DATA=()
+
+    while read -r site; do
+        [ -z "$site" ] && continue
+        SITE_NAMES+=("$site")
+        local recipe=$(get_site_field "$site" "recipe" "$config_file")
+        local directory=$(get_site_field "$site" "directory" "$config_file")
+        local environment=$(get_site_field "$site" "environment" "$config_file")
+        local exists="N"
+        [ -d "$directory" ] && exists="Y"
+        SITE_DATA+=("${recipe:-?}|${environment:-dev}|${exists}|${directory:-}")
+    done < <(list_sites "$config_file")
+}
+
+draw_site_selection() {
+    local current_row="$1"
+
+    clear_screen
+
+    printf "${BOLD}NWP Modify${NC}  |  ↑↓:Navigate  ENTER:Select  q:Quit\n"
+    printf "═══════════════════════════════════════════════════════════════════════════════\n"
+    printf "\n"
+    printf "${BOLD}   %-20s %-12s %-12s %-6s %s${NC}\n" "SITE" "RECIPE" "ENVIRONMENT" "EXISTS" "DIRECTORY"
+    printf "   %-20s %-12s %-12s %-6s %s\n" "--------------------" "------------" "------------" "------" "---------"
+
+    local row=0
+    for site in "${SITE_NAMES[@]}"; do
+        IFS='|' read -r recipe env exists dir <<< "${SITE_DATA[$row]}"
+
+        local exists_color="${RED}No${NC}"
+        [ "$exists" = "Y" ] && exists_color="${GREEN}Yes${NC}"
+
+        if [ $row -eq $current_row ]; then
+            printf "${BOLD}${CYAN}▸${NC} "
+        else
+            printf "  "
+        fi
+
+        printf "%-20s %-12s %-12s " "$site" "$recipe" "$env"
+        printf "%b" "$exists_color"
+        printf "     %s\n" "$dir"
+
+        ((row++))
+    done
+
+    printf "\n"
+    printf "───────────────────────────────────────────────────────────────────────────────\n"
+    printf "Select a site to modify its options.\n"
+}
+
+select_site_interactive() {
+    local config_file="$1"
+
+    build_site_list "$config_file"
+
+    if [ ${#SITE_NAMES[@]} -eq 0 ]; then
+        print_error "No sites found in cnwp.yml"
         return 1
     fi
 
-    cd "$site_dir"
+    local num_sites=${#SITE_NAMES[@]}
+    local current_row=0
 
-    if [[ ${#OPTION_LIST[@]} -eq 0 ]]; then
-        print_info "No options defined"
-        return 0
-    fi
+    cursor_hide
+    trap 'cursor_show' EXIT
 
-    local applied=0
+    while true; do
+        draw_site_selection $current_row
 
-    print_header "Applying Options to Existing Site"
+        local key=$(read_key)
 
-    # Check if DDEV is running
-    if ! ddev describe &>/dev/null; then
-        print_info "Starting DDEV..."
-        ddev start || {
-            print_error "Failed to start DDEV"
-            return 1
-        }
-    fi
-
-    # Development Modules
-    if [[ "${OPTION_SELECTED[dev_modules]:-}" == "y" ]]; then
-        print_info "Installing development modules..."
-        if ddev drush pm:enable devel kint webprofiler -y 2>/dev/null; then
-            print_status "OK" "Development modules installed"
-            ((applied++))
-        else
-            # Try installing first
-            ddev composer require drupal/devel drupal/kint 2>/dev/null || true
-            ddev drush pm:enable devel -y 2>/dev/null && ((applied++)) || print_warning "Some dev modules may not be available"
-        fi
-    elif [[ "${OPTION_SELECTED[dev_modules]:-}" == "n" ]]; then
-        # Check if modules are enabled and disable them
-        if ddev drush pm:list --status=enabled 2>/dev/null | grep -q "devel"; then
-            print_info "Disabling development modules..."
-            ddev drush pm:uninstall devel kint webprofiler -y 2>/dev/null || true
-            print_status "OK" "Development modules disabled"
-        fi
-    fi
-
-    # XDebug
-    if [[ "${OPTION_SELECTED[xdebug]:-}" == "y" ]]; then
-        print_info "Enabling XDebug..."
-        if ddev xdebug on 2>/dev/null; then
-            print_status "OK" "XDebug enabled"
-            ((applied++))
-        else
-            print_warning "XDebug may need manual configuration"
-        fi
-    elif [[ "${OPTION_SELECTED[xdebug]:-}" == "n" ]]; then
-        print_info "Disabling XDebug..."
-        ddev xdebug off 2>/dev/null || true
-        print_status "OK" "XDebug disabled"
-    fi
-
-    # Stage File Proxy
-    if [[ "${OPTION_SELECTED[stage_file_proxy]:-}" == "y" ]]; then
-        print_info "Installing Stage File Proxy..."
-        if ddev composer require drupal/stage_file_proxy 2>/dev/null && ddev drush pm:enable stage_file_proxy -y 2>/dev/null; then
-            print_status "OK" "Stage File Proxy installed"
-            ((applied++))
-        else
-            print_warning "Stage File Proxy installation may need manual steps"
-        fi
-    fi
-
-    # Config Split
-    if [[ "${OPTION_SELECTED[config_split]:-}" == "y" ]]; then
-        print_info "Installing Config Split..."
-        if ddev composer require drupal/config_split 2>/dev/null && ddev drush pm:enable config_split -y 2>/dev/null; then
-            print_status "OK" "Config Split installed"
-            ((applied++))
-        else
-            print_warning "Config Split installation may need manual steps"
-        fi
-    fi
-
-    # Security Modules
-    if [[ "${OPTION_SELECTED[security_modules]:-}" == "y" ]]; then
-        print_info "Installing security modules..."
-        local security_mods="seckit honeypot login_security flood_control"
-        for mod in $security_mods; do
-            ddev composer require "drupal/$mod" 2>/dev/null || true
-            ddev drush pm:enable "$mod" -y 2>/dev/null || true
-        done
-        print_status "OK" "Security modules installed"
-        ((applied++))
-    fi
-
-    # Redis
-    if [[ "${OPTION_SELECTED[redis]:-}" == "y" ]]; then
-        print_info "Enabling Redis..."
-        if ddev get ddev/ddev-redis 2>/dev/null; then
-            ddev restart 2>/dev/null
-            ddev composer require drupal/redis 2>/dev/null || true
-            ddev drush pm:enable redis -y 2>/dev/null || true
-            print_status "OK" "Redis enabled (configure settings.php manually)"
-            ((applied++))
-        else
-            print_warning "Redis installation may need manual steps"
-        fi
-    fi
-
-    # Solr
-    if [[ "${OPTION_SELECTED[solr]:-}" == "y" ]]; then
-        print_info "Enabling Solr..."
-        if ddev get ddev/ddev-solr 2>/dev/null; then
-            local core="${OPTION_VALUES[solr_core]:-drupal}"
-            ddev restart 2>/dev/null
-            ddev solr create -c "$core" 2>/dev/null || true
-            ddev composer require drupal/search_api_solr 2>/dev/null || true
-            print_status "OK" "Solr enabled with core: $core"
-            ((applied++))
-        else
-            print_warning "Solr installation may need manual steps"
-        fi
-    fi
-
-    if [[ $applied -gt 0 ]]; then
-        print_info "Clearing cache..."
-        ddev drush cr 2>/dev/null || true
-        print_status "OK" "Applied $applied options"
-    else
-        print_info "No changes applied"
-    fi
-
-    return 0
-}
-
-# Apply options to an existing Moodle site
-apply_options_to_moodle_site() {
-    local site_dir="$1"
-
-    if [ ! -d "$site_dir" ]; then
-        print_error "Site directory not found: $site_dir"
-        return 1
-    fi
-
-    cd "$site_dir"
-
-    if [[ ${#OPTION_LIST[@]} -eq 0 ]]; then
-        print_info "No options defined"
-        return 0
-    fi
-
-    local applied=0
-
-    print_header "Applying Options to Existing Moodle Site"
-
-    # Check if DDEV is running
-    if ! ddev describe &>/dev/null; then
-        print_info "Starting DDEV..."
-        ddev start || {
-            print_error "Failed to start DDEV"
-            return 1
-        }
-    fi
-
-    # Debug Mode
-    if [[ "${OPTION_SELECTED[debug_mode]:-}" == "y" ]]; then
-        print_info "Enabling debug mode..."
-        if [ -f "config.php" ] && ! grep -q "Debug settings (added by" config.php; then
-            cat >> config.php << 'MOODLE_DEBUG'
-
-// Debug settings (added by modify script)
-@error_reporting(E_ALL | E_STRICT);
-@ini_set('display_errors', '1');
-$CFG->debug = (E_ALL | E_STRICT);
-$CFG->debugdisplay = 1;
-MOODLE_DEBUG
-            print_status "OK" "Debug mode enabled"
-            ((applied++))
-        else
-            print_info "Debug mode already configured"
-        fi
-    fi
-
-    # Redis
-    if [[ "${OPTION_SELECTED[redis]:-}" == "y" ]]; then
-        print_info "Configuring Redis..."
-        if ddev get ddev/ddev-redis 2>/dev/null; then
-            ddev restart 2>/dev/null
-            print_status "OK" "Redis container added (configure config.php manually)"
-            ((applied++))
-        else
-            print_warning "Redis installation may need manual steps"
-        fi
-    fi
-
-    if [[ $applied -gt 0 ]]; then
-        print_status "OK" "Applied $applied options"
-    else
-        print_info "No changes applied"
-    fi
-
-    return 0
-}
-
-################################################################################
-# Main Modification Flow
-################################################################################
-
-# Run modification for a site
-modify_site() {
-    local site_name="$1"
-    local config_file="${2:-cnwp.yml}"
-    local apply_only="${3:-n}"
-
-    # Get site info
-    local site_info
-    site_info=$(get_site_info "$site_name" "$config_file")
-
-    if [ -z "$site_info" ]; then
-        print_error "Site '$site_name' not found in $config_file"
-        return 1
-    fi
-
-    # Parse site info
-    local site_dir=""
-    local recipe=""
-    local environment=""
-    local purpose=""
-
-    while IFS='=' read -r key value; do
         case "$key" in
-            DIRECTORY) site_dir="$value" ;;
-            RECIPE) recipe="$value" ;;
-            ENVIRONMENT) environment="$value" ;;
-            PURPOSE) purpose="$value" ;;
+            UP|k|K)
+                [ $current_row -gt 0 ] && ((current_row--)) || true
+                ;;
+            DOWN|j|J)
+                [ $current_row -lt $((num_sites - 1)) ] && ((current_row++)) || true
+                ;;
+            ENTER)
+                cursor_show
+                echo "${SITE_NAMES[$current_row]}"
+                return 0
+                ;;
+            q|Q|ESC)
+                cursor_show
+                return 1
+                ;;
         esac
-    done <<< "$site_info"
+    done
+}
 
-    # Map environment to short form
-    local env_short="dev"
-    case "$environment" in
-        staging) env_short="stage" ;;
-        production) env_short="prod" ;;
-        live) env_short="live" ;;
-        *) env_short="dev" ;;
+################################################################################
+# Options TUI
+################################################################################
+
+draw_options_screen() {
+    local site_name="$1"
+    local environment="$2"
+    local current_row="$3"
+    local total="${#VISIBLE_OPTIONS[@]}"
+
+    clear_screen
+
+    printf "${BOLD}Modify: ${CYAN}%s${NC}  |  ↑↓:Navigate  SPACE:Toggle  e:Edit  a:All  n:None  ENTER:Apply  q:Cancel\n" "$site_name"
+    printf "═══════════════════════════════════════════════════════════════════════════════\n"
+
+    local row=0
+    local current_env=""
+
+    for key in "${VISIBLE_OPTIONS[@]}"; do
+        local opt_env="${OPTION_ENVIRONMENTS[$key]}"
+        local label="${OPTION_LABELS[$key]}"
+        local selected="${OPTION_SELECTED[$key]:-n}"
+        local inputs="${OPTION_INPUTS[$key]:-}"
+        local deps="${OPTION_DEPENDENCIES[$key]:-}"
+
+        # Environment header
+        if [[ "$opt_env" != "$current_env" && "$opt_env" != "all" ]]; then
+            current_env="$opt_env"
+            local env_name="${opt_env^^}"
+            if [[ "$opt_env" == "$environment" ]]; then
+                printf "\n ${GREEN}━━ %s ━━${NC}\n" "$env_name"
+            else
+                printf "\n ${DIM}━━ %s ━━${NC}\n" "$env_name"
+            fi
+        fi
+
+        # Checkbox
+        local checkbox="${DIM}[ ]${NC}"
+        [ "$selected" = "y" ] && checkbox="${GREEN}[✓]${NC}"
+
+        # Cursor
+        local pointer="  "
+        if [ $row -eq $current_row ]; then
+            pointer="${CYAN}▸${NC} "
+        fi
+
+        # Indicators
+        local ind=""
+        [ -n "$inputs" ] && ind="${YELLOW}*${NC}"
+        if [ -n "$deps" ]; then
+            local missing=$(check_dependencies "$key" 2>/dev/null) || true
+            [ -n "$missing" ] && ind="${ind}${RED}!${NC}"
+        fi
+
+        printf "%b%b %-32s %b\n" "$pointer" "$checkbox" "${label:0:32}" "$ind"
+
+        ((row++))
+    done
+
+    # Footer
+    local sel_count=0
+    for k in "${OPTION_LIST[@]}"; do
+        [ "${OPTION_SELECTED[$k]:-n}" = "y" ] && ((sel_count++)) || true
+    done
+
+    printf "\n"
+    printf "───────────────────────────────────────────────────────────────────────────────\n"
+    printf "Selected: %d/%d  ${YELLOW}*${NC}=input needed  ${RED}!${NC}=missing dependency\n" "$sel_count" "${#OPTION_LIST[@]}"
+}
+
+run_options_tui() {
+    local site_name="$1"
+    local environment="$2"
+    local recipe_type="$3"
+
+    # Load options
+    case "$recipe_type" in
+        drupal|d|os|nwp|dm|"") define_drupal_options ;;
+        moodle|m) define_moodle_options ;;
+        gitlab) define_gitlab_options ;;
+        *) define_drupal_options ;;
     esac
 
-    # Determine recipe type
-    local recipe_type="drupal"
-    case "$recipe" in
-        moodle|m) recipe_type="moodle" ;;
-        gitlab) recipe_type="gitlab" ;;
-        *) recipe_type="drupal" ;;
-    esac
+    # Load existing config
+    load_existing_config "$site_name" "$CONFIG_FILE" 2>/dev/null || true
 
-    print_header "Modify Site: $site_name"
-    echo ""
-    echo -e "  Directory:   ${BLUE}$site_dir${NC}"
-    echo -e "  Recipe:      ${BLUE}$recipe${NC}"
-    echo -e "  Environment: ${BLUE}$environment${NC}"
-    echo -e "  Purpose:     ${BLUE}${purpose:-indefinite}${NC}"
-    echo ""
+    # Build option list
+    build_option_list "$environment"
 
-    # Check if directory exists
-    if [ ! -d "$site_dir" ]; then
-        print_error "Site directory not found: $site_dir"
-        print_info "The site may have been moved or deleted."
+    local total="${#VISIBLE_OPTIONS[@]}"
+    if [ "$total" -eq 0 ]; then
+        print_error "No options available"
         return 1
     fi
 
-    # Run interactive option selection (unless apply_only)
-    if [ "$apply_only" != "y" ]; then
-        # Load options for recipe type
-        case "$recipe_type" in
-            moodle)
-                define_moodle_options
+    local current_row=0
+
+    cursor_hide
+    trap 'cursor_show' EXIT INT TERM
+
+    while true; do
+        draw_options_screen "$site_name" "$environment" "$current_row"
+
+        local key=$(read_key)
+
+        case "$key" in
+            UP|k|K)
+                [ $current_row -gt 0 ] && ((current_row--)) || true
                 ;;
-            gitlab)
-                define_gitlab_options
+            DOWN|j|J)
+                [ $current_row -lt $((total - 1)) ] && ((current_row++)) || true
                 ;;
-            *)
-                define_drupal_options
+            SPACE)
+                local opt_key="${VISIBLE_OPTIONS[$current_row]}"
+                if [ "${OPTION_SELECTED[$opt_key]:-n}" = "y" ]; then
+                    OPTION_SELECTED["$opt_key"]="n"
+                else
+                    OPTION_SELECTED["$opt_key"]="y"
+                    # Prompt for inputs
+                    local inputs="${OPTION_INPUTS[$opt_key]:-}"
+                    if [ -n "$inputs" ]; then
+                        cursor_show
+                        printf "\n"
+                        IFS=',' read -ra iarr <<< "$inputs"
+                        for inp in "${iarr[@]}"; do
+                            local ikey="${inp%%:*}"
+                            local ilabel="${inp#*:}"
+                            local vkey="${opt_key}_${ikey}"
+                            local curr="${OPTION_VALUES[$vkey]:-}"
+                            read -rp "  $ilabel [$curr]: " newval
+                            OPTION_VALUES["$vkey"]="${newval:-$curr}"
+                        done
+                        cursor_hide
+                    fi
+                fi
+                ;;
+            e|E)
+                local opt_key="${VISIBLE_OPTIONS[$current_row]}"
+                local inputs="${OPTION_INPUTS[$opt_key]:-}"
+                if [ -n "$inputs" ]; then
+                    cursor_show
+                    printf "\n${BOLD}Edit: %s${NC}\n" "${OPTION_LABELS[$opt_key]}"
+                    IFS=',' read -ra iarr <<< "$inputs"
+                    for inp in "${iarr[@]}"; do
+                        local ikey="${inp%%:*}"
+                        local ilabel="${inp#*:}"
+                        local vkey="${opt_key}_${ikey}"
+                        local curr="${OPTION_VALUES[$vkey]:-}"
+                        read -rp "  $ilabel [$curr]: " newval
+                        OPTION_VALUES["$vkey"]="${newval:-$curr}"
+                    done
+                    cursor_hide
+                fi
+                ;;
+            a|A)
+                apply_environment_defaults "$environment"
+                ;;
+            n|N)
+                for k in "${OPTION_LIST[@]}"; do
+                    OPTION_SELECTED["$k"]="n"
+                done
+                ;;
+            ENTER)
+                cursor_show
+                return 0
+                ;;
+            q|Q|ESC)
+                cursor_show
+                return 1
                 ;;
         esac
+    done
+}
 
-        # Load existing config
-        load_existing_config "$site_name" "$config_file"
+################################################################################
+# Apply Options
+################################################################################
 
-        # Run interactive selection
-        interactive_select_options "$env_short" "$recipe_type" "$site_name"
+apply_site_options() {
+    local site_name="$1"
+    local directory="$2"
+    local recipe_type="$3"
 
-        # Show summary
-        echo ""
-        print_header "Selected Options Summary"
-        local selected_count=0
-        for key in "${OPTION_LIST[@]}"; do
-            if [[ "${OPTION_SELECTED[$key]}" == "y" ]]; then
-                echo -e "  ${GREEN}✓${NC} ${OPTION_LABELS[$key]}"
-                ((selected_count++))
-            fi
-        done
-
-        if [[ $selected_count -eq 0 ]]; then
-            echo -e "  ${DIM}No options selected${NC}"
-        fi
-        echo ""
-        echo "Total: $selected_count options selected"
-        echo ""
-
-        read -p "Apply these options? [Y/n]: " confirm
-        if [[ "$confirm" =~ ^[Nn]$ ]]; then
-            print_info "Modification cancelled"
-            return 0
-        fi
+    if [ ! -d "$directory" ]; then
+        print_error "Directory not found: $directory"
+        return 1
     fi
 
-    # Update cnwp.yml with options
-    if command -v yaml_site_exists &> /dev/null && yaml_site_exists "$site_name" "$config_file" 2>/dev/null; then
-        # Check if any options are selected
+    # Save to cnwp.yml
+    if command -v yaml_site_exists &>/dev/null && yaml_site_exists "$site_name" "$CONFIG_FILE" 2>/dev/null; then
         local has_options=false
         for key in "${OPTION_LIST[@]}"; do
-            if [[ "${OPTION_SELECTED[$key]}" == "y" ]]; then
-                has_options=true
-                break
-            fi
+            [ "${OPTION_SELECTED[$key]:-n}" = "y" ] && { has_options=true; break; }
         done
 
-        if [[ "$has_options" == "true" ]]; then
-            print_info "Updating options in cnwp.yml..."
+        if [ "$has_options" = true ]; then
+            print_info "Saving options to cnwp.yml..."
             local options_yaml=$(generate_options_yaml "      ")
 
             awk -v site="$site_name" -v options="$options_yaml" '
@@ -503,167 +415,171 @@ modify_site() {
                 }
                 { print }
                 END { if (in_site && !added && options != "") { print options } }
-            ' "$config_file" > "${config_file}.tmp"
+            ' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"
 
-            if mv "${config_file}.tmp" "$config_file"; then
-                print_status "OK" "Options saved to cnwp.yml"
-            else
-                print_warning "Failed to update cnwp.yml"
-            fi
-        else
-            print_info "Removing options from cnwp.yml (none selected)..."
-            awk -v site="$site_name" '
-                BEGIN { in_site = 0; in_sites = 0; in_options = 0 }
-                /^sites:/ { in_sites = 1; print; next }
-                in_sites && /^[a-zA-Z]/ && !/^  / && !/^#/ { in_sites = 0 }
-                in_sites && $0 ~ "^  " site ":" { in_site = 1; print; next }
-                in_site && /^    options:/ { in_options = 1; next }
-                in_options && /^      / { next }
-                in_options && !/^      / { in_options = 0 }
-                in_site && (/^  [a-zA-Z0-9_-]+:/ || (/^[a-zA-Z]/ && !/^  / && !/^#/)) { in_site = 0 }
-                { print }
-            ' "$config_file" > "${config_file}.tmp"
-
-            if mv "${config_file}.tmp" "$config_file"; then
-                print_status "OK" "Options removed from cnwp.yml"
-            fi
+            mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+            print_status "OK" "Options saved"
         fi
     fi
 
-    # Apply options to site
+    # Apply options based on recipe type
+    cd "$directory"
+
+    print_header "Applying Options"
+
+    local applied=0
+
     case "$recipe_type" in
-        moodle)
-            apply_options_to_moodle_site "$site_dir"
-            ;;
-        gitlab)
-            print_info "GitLab options require manual configuration"
-            ;;
-        *)
-            apply_options_to_drupal_site "$site_dir"
+        drupal|d|os|nwp|dm|"")
+            # Check if DDEV is available
+            if [ -d ".ddev" ]; then
+                if ! ddev describe &>/dev/null; then
+                    print_info "Starting DDEV..."
+                    ddev start || true
+                fi
+
+                # Dev modules
+                if [ "${OPTION_SELECTED[dev_modules]:-n}" = "y" ]; then
+                    print_info "Installing dev modules..."
+                    ddev drush pm:enable devel -y 2>/dev/null && ((applied++)) || true
+                fi
+
+                # XDebug
+                if [ "${OPTION_SELECTED[xdebug]:-n}" = "y" ]; then
+                    print_info "Enabling XDebug..."
+                    ddev xdebug on 2>/dev/null && ((applied++)) || true
+                elif [ "${OPTION_SELECTED[xdebug]:-n}" = "n" ]; then
+                    ddev xdebug off 2>/dev/null || true
+                fi
+
+                # Redis
+                if [ "${OPTION_SELECTED[redis]:-n}" = "y" ]; then
+                    print_info "Adding Redis..."
+                    ddev get ddev/ddev-redis 2>/dev/null && ((applied++)) || true
+                fi
+
+                # Solr
+                if [ "${OPTION_SELECTED[solr]:-n}" = "y" ]; then
+                    print_info "Adding Solr..."
+                    ddev get ddev/ddev-solr 2>/dev/null && ((applied++)) || true
+                fi
+
+                if [ $applied -gt 0 ]; then
+                    print_info "Restarting DDEV..."
+                    ddev restart 2>/dev/null || true
+                fi
+            fi
             ;;
     esac
 
-    # Show manual steps guide
-    if command -v generate_manual_steps &> /dev/null; then
-        generate_manual_steps "$site_name" "$env_short"
+    print_status "OK" "Applied $applied options"
+
+    # Show manual steps
+    if command -v generate_manual_steps &>/dev/null; then
+        generate_manual_steps "$site_name" "$environment"
     fi
-
-    print_header "Modification Complete"
-    echo ""
-    echo -e "Site ${GREEN}$site_name${NC} has been updated."
-    echo ""
-
-    return 0
-}
-
-# Show help
-show_help() {
-    echo "NWP Site Modification Script"
-    echo ""
-    echo "Usage: ./modify.sh [site_name] [options]"
-    echo ""
-    echo "Arguments:"
-    echo "  site_name          Name of site from cnwp.yml (optional)"
-    echo ""
-    echo "Options:"
-    echo "  -l, --list         List all sites in cnwp.yml"
-    echo "  -a, --apply        Apply current options without interactive mode"
-    echo "  -h, --help         Show this help message"
-    echo ""
-    echo "Examples:"
-    echo "  ./modify.sh                  List and select a site"
-    echo "  ./modify.sh nwp5             Modify options for 'nwp5'"
-    echo "  ./modify.sh -l               List all sites"
-    echo ""
 }
 
 ################################################################################
 # Main
 ################################################################################
 
+show_help() {
+    cat << EOF
+NWP Site Modification Script
+
+Usage: ./modify.sh [site_name] [options]
+
+Arguments:
+  site_name          Name of site from cnwp.yml (optional)
+
+Options:
+  -l, --list         List all sites
+  -h, --help         Show this help
+
+Interactive Controls:
+  ↑/↓                Navigate
+  SPACE              Toggle option
+  e                  Edit input values
+  a                  Select all defaults
+  n                  Deselect all
+  ENTER              Apply changes
+  q                  Cancel/quit
+
+Examples:
+  ./modify.sh                  Interactive site selection
+  ./modify.sh nwp5             Modify 'nwp5' directly
+  ./modify.sh -l               List all sites
+
+EOF
+}
+
 main() {
     local site_name=""
-    local config_file="$SCRIPT_DIR/cnwp.yml"
-    local list_only="n"
-    local apply_only="n"
+    local list_only=false
 
-    # Parse arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -h|--help)
-                show_help
-                exit 0
-                ;;
-            -l|--list)
-                list_only="y"
-                shift
-                ;;
-            -a|--apply)
-                apply_only="y"
-                shift
-                ;;
-            -*)
-                print_error "Unknown option: $1"
-                show_help
-                exit 1
-                ;;
-            *)
-                site_name="$1"
-                shift
-                ;;
+            -h|--help) show_help; exit 0 ;;
+            -l|--list) list_only=true; shift ;;
+            -*) print_error "Unknown option: $1"; exit 1 ;;
+            *) site_name="$1"; shift ;;
         esac
     done
 
-    # Check config file exists
-    if [ ! -f "$config_file" ]; then
-        print_error "Config file not found: $config_file"
+    if [ ! -f "$CONFIG_FILE" ]; then
+        print_error "Config file not found: $CONFIG_FILE"
         exit 1
     fi
 
-    # Check for checkbox library
-    if ! command -v interactive_select_options &> /dev/null; then
-        print_error "Interactive options library not loaded"
-        print_info "Make sure lib/checkbox.sh exists"
-        exit 1
-    fi
-
-    # List sites if requested
-    if [ "$list_only" == "y" ]; then
-        display_sites "$config_file"
+    # List mode
+    if [ "$list_only" = true ]; then
+        print_header "Sites in cnwp.yml"
+        printf "\n  %-20s %-12s %-12s %s\n" "SITE" "RECIPE" "ENVIRONMENT" "DIRECTORY"
+        printf "  %-20s %-12s %-12s %s\n" "--------------------" "------------" "------------" "---------"
+        while read -r site; do
+            [ -z "$site" ] && continue
+            local recipe=$(get_site_field "$site" "recipe" "$CONFIG_FILE")
+            local env=$(get_site_field "$site" "environment" "$CONFIG_FILE")
+            local dir=$(get_site_field "$site" "directory" "$CONFIG_FILE")
+            printf "  %-20s %-12s %-12s %s\n" "$site" "${recipe:-?}" "${env:-dev}" "$dir"
+        done < <(list_sites "$CONFIG_FILE")
+        echo ""
         exit 0
     fi
 
-    # If no site specified, show list and prompt
+    # Interactive site selection if none specified
     if [ -z "$site_name" ]; then
-        local total_sites
-        total_sites=$(count_sites "$config_file")
-
-        if [ "$total_sites" -eq 0 ]; then
-            print_error "No sites found in cnwp.yml"
-            print_info "Use ./install.sh to create a new site first"
-            exit 1
-        fi
-
-        display_sites "$config_file"
-
-        echo ""
-        read -p "Enter site number or name to modify: " selection
-
-        # Check if it's a number
-        if [[ "$selection" =~ ^[0-9]+$ ]]; then
-            site_name=$(get_site_by_index "$selection" "$config_file")
-            if [ -z "$site_name" ]; then
-                print_error "Invalid selection: $selection"
-                exit 1
-            fi
-        else
-            site_name="$selection"
-        fi
+        site_name=$(select_site_interactive "$CONFIG_FILE") || exit 0
     fi
 
-    # Run modification
-    modify_site "$site_name" "$config_file" "$apply_only"
+    # Get site info
+    local directory=$(get_site_field "$site_name" "directory" "$CONFIG_FILE")
+    local recipe=$(get_site_field "$site_name" "recipe" "$CONFIG_FILE")
+    local environment=$(get_site_field "$site_name" "environment" "$CONFIG_FILE")
+
+    if [ -z "$directory" ]; then
+        print_error "Site '$site_name' not found"
+        exit 1
+    fi
+
+    # Map environment
+    local env_short="dev"
+    case "$environment" in
+        staging) env_short="stage" ;;
+        production) env_short="prod" ;;
+        live) env_short="live" ;;
+    esac
+
+    # Run options TUI
+    if run_options_tui "$site_name" "$env_short" "$recipe"; then
+        echo ""
+        apply_site_options "$site_name" "$directory" "$recipe"
+        echo ""
+        print_status "OK" "Modification complete for '$site_name'"
+    else
+        print_info "Modification cancelled"
+    fi
 }
 
-# Run main
 main "$@"

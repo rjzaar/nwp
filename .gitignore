@@ -35,6 +35,7 @@
 !live2prod.sh
 !produce.sh
 !podcast.sh
+!modify.sh
 !status.sh
 
 # Documentation and metadata

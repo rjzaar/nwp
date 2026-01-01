@@ -48,10 +48,418 @@ if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
     source "$SCRIPT_DIR/lib/yaml-write.sh"
 fi
 
+# Source interactive checkbox library
+if [ -f "$SCRIPT_DIR/lib/checkbox.sh" ]; then
+    source "$SCRIPT_DIR/lib/checkbox.sh"
+fi
+
 # Source Linode library for DNS registration
 if [ -f "$SCRIPT_DIR/lib/linode.sh" ]; then
     source "$SCRIPT_DIR/lib/linode.sh"
 fi
+
+################################################################################
+# Interactive Option Selection
+################################################################################
+
+# Run interactive option selection
+# Returns selected options in SELECTED_OPTIONS associative array
+run_interactive_options() {
+    local recipe="$1"
+    local site_name="$2"
+    local recipe_type="$3"
+    local config_file="${4:-cnwp.yml}"
+
+    # Check if checkbox library is available
+    if ! command -v interactive_select_options &> /dev/null; then
+        print_warning "Interactive options not available (checkbox.sh not loaded)"
+        return 0
+    fi
+
+    # Determine environment from site name suffix
+    local environment="dev"
+    if [[ "$site_name" =~ _stg$ ]]; then
+        environment="stage"
+    elif [[ "$site_name" =~ _live$ ]]; then
+        environment="live"
+    elif [[ "$site_name" =~ _prod$ ]]; then
+        environment="prod"
+    fi
+
+    echo ""
+    print_header "Configure Installation Options"
+
+    # Check for existing site configuration
+    local existing_site=""
+    if yaml_site_exists "$site_name" "$config_file" 2>/dev/null; then
+        existing_site="$site_name"
+        echo -e "${YELLOW}Existing configuration found for '$site_name'${NC}"
+        echo "Current options will be loaded and can be modified."
+        echo ""
+    fi
+
+    # Ask if user wants interactive mode
+    echo "Would you like to configure installation options interactively?"
+    echo ""
+    echo -e "  ${CYAN}y${NC}  - Configure options (dev/stage/live/prod settings)"
+    echo -e "  ${CYAN}n${NC}  - Use defaults for $environment environment"
+    echo -e "  ${CYAN}q${NC}  - Quick install with minimal options"
+    echo ""
+    read -p "Select [Y/n/q]: " interactive_choice
+
+    case "$interactive_choice" in
+        n|N)
+            print_info "Using default options for $environment"
+            # Load options and apply defaults silently
+            case "$recipe_type" in
+                moodle|m)
+                    define_moodle_options
+                    ;;
+                gitlab)
+                    define_gitlab_options
+                    ;;
+                *)
+                    define_drupal_options
+                    ;;
+            esac
+            apply_environment_defaults "$environment"
+            return 0
+            ;;
+        q|Q)
+            print_info "Quick install - minimal options"
+            # Clear all options
+            clear_options 2>/dev/null || true
+            return 0
+            ;;
+        *)
+            # Interactive mode
+            interactive_select_options "$environment" "$recipe_type" "$existing_site"
+
+            # Show summary of selections
+            echo ""
+            print_header "Selected Options Summary"
+            local selected_count=0
+            for key in "${OPTION_LIST[@]}"; do
+                if [[ "${OPTION_SELECTED[$key]}" == "y" ]]; then
+                    echo -e "  ${GREEN}✓${NC} ${OPTION_LABELS[$key]}"
+                    ((selected_count++))
+                fi
+            done
+
+            if [[ $selected_count -eq 0 ]]; then
+                echo -e "  ${DIM}No options selected${NC}"
+            fi
+            echo ""
+            echo "Total: $selected_count options selected"
+            echo ""
+
+            read -p "Continue with these options? [Y/n]: " confirm
+            if [[ "$confirm" =~ ^[Nn]$ ]]; then
+                # Re-run selection
+                run_interactive_options "$recipe" "$site_name" "$recipe_type" "$config_file"
+            fi
+            return 0
+            ;;
+    esac
+}
+
+# Update cnwp.yml with selected options (or remove options section if none selected)
+update_site_options() {
+    local site_name="$1"
+    local config_file="${2:-cnwp.yml}"
+
+    # Check if option system is loaded
+    if [[ ${#OPTION_LIST[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    # Check if site exists in config
+    if ! yaml_site_exists "$site_name" "$config_file" 2>/dev/null; then
+        return 0
+    fi
+
+    # Check if any options are selected
+    local has_options=false
+    for key in "${OPTION_LIST[@]}"; do
+        if [[ "${OPTION_SELECTED[$key]}" == "y" ]]; then
+            has_options=true
+            break
+        fi
+    done
+
+    if [[ "$has_options" == "true" ]]; then
+        print_info "Updating options in cnwp.yml..."
+        # Create options section with selected options only
+        local options_yaml=$(generate_options_yaml "      ")
+    else
+        print_info "Removing options from cnwp.yml (none selected)..."
+        # Empty options to trigger removal
+        local options_yaml=""
+    fi
+
+    # Use awk to add/replace/remove options section in site entry
+    awk -v site="$site_name" -v options="$options_yaml" '
+        BEGIN { in_site = 0; in_sites = 0; in_options = 0; added = 0 }
+
+        /^sites:/ {
+            in_sites = 1
+            print
+            next
+        }
+
+        in_sites && /^[a-zA-Z]/ && !/^  / && !/^#/ {
+            in_sites = 0
+        }
+
+        in_sites && $0 ~ "^  " site ":" {
+            in_site = 1
+            print
+            next
+        }
+
+        # Skip existing options section (will be replaced or removed)
+        in_site && /^    options:/ {
+            in_options = 1
+            next
+        }
+
+        in_options && /^      / {
+            next
+        }
+
+        in_options && !/^      / {
+            in_options = 0
+        }
+
+        # End of site, add options before next site (if we have any)
+        in_site && (/^  [a-zA-Z0-9_-]+:/ || (/^[a-zA-Z]/ && !/^  / && !/^#/)) {
+            if (!added && options != "") {
+                print options
+            }
+            added = 1
+            in_site = 0
+        }
+
+        { print }
+
+        END {
+            if (in_site && !added && options != "") {
+                print options
+            }
+        }
+    ' "$config_file" > "${config_file}.tmp"
+
+    if mv "${config_file}.tmp" "$config_file"; then
+        if [[ "$has_options" == "true" ]]; then
+            print_status "OK" "Options saved to cnwp.yml"
+        else
+            print_status "OK" "Options removed from cnwp.yml"
+        fi
+    else
+        print_warning "Failed to update cnwp.yml with options"
+    fi
+}
+
+# Show manual steps guide at installation end
+show_installation_guide() {
+    local site_name="$1"
+    local environment="$2"
+
+    if command -v generate_manual_steps &> /dev/null && [[ ${#OPTION_LIST[@]} -gt 0 ]]; then
+        generate_manual_steps "$site_name" "$environment"
+    fi
+}
+
+################################################################################
+# Apply Selected Options
+################################################################################
+
+# Apply selected options during Drupal/OpenSocial installation
+apply_drupal_options() {
+    if [[ ${#OPTION_LIST[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    local applied=0
+
+    print_header "Applying Selected Options"
+
+    # Development Modules
+    if [[ "${OPTION_SELECTED[dev_modules]}" == "y" ]]; then
+        print_info "Installing development modules..."
+        if ddev drush pm:enable devel kint webprofiler -y 2>/dev/null; then
+            print_status "OK" "Development modules installed"
+            ((applied++))
+        else
+            print_warning "Some dev modules may not be available"
+        fi
+    fi
+
+    # XDebug
+    if [[ "${OPTION_SELECTED[xdebug]}" == "y" ]]; then
+        print_info "Enabling XDebug..."
+        if ddev xdebug on 2>/dev/null; then
+            print_status "OK" "XDebug enabled"
+            ((applied++))
+        else
+            print_warning "XDebug may need manual configuration"
+        fi
+    fi
+
+    # Stage File Proxy
+    if [[ "${OPTION_SELECTED[stage_file_proxy]}" == "y" ]]; then
+        print_info "Installing Stage File Proxy..."
+        if ddev composer require drupal/stage_file_proxy && ddev drush pm:enable stage_file_proxy -y 2>/dev/null; then
+            print_status "OK" "Stage File Proxy installed"
+            ((applied++))
+        else
+            print_warning "Stage File Proxy installation may need manual steps"
+        fi
+    fi
+
+    # Config Split
+    if [[ "${OPTION_SELECTED[config_split]}" == "y" ]]; then
+        print_info "Installing Config Split..."
+        if ddev composer require drupal/config_split && ddev drush pm:enable config_split -y 2>/dev/null; then
+            print_status "OK" "Config Split installed"
+            ((applied++))
+        else
+            print_warning "Config Split installation may need manual steps"
+        fi
+    fi
+
+    # Security Modules
+    if [[ "${OPTION_SELECTED[security_modules]}" == "y" ]]; then
+        print_info "Installing security modules..."
+        local security_mods="seckit honeypot login_security flood_control"
+        for mod in $security_mods; do
+            if ddev composer require "drupal/$mod" 2>/dev/null; then
+                ddev drush pm:enable "$mod" -y 2>/dev/null || true
+            fi
+        done
+        print_status "OK" "Security modules installed"
+        ((applied++))
+    fi
+
+    # Redis
+    if [[ "${OPTION_SELECTED[redis]}" == "y" ]]; then
+        print_info "Enabling Redis..."
+        if ddev get ddev/ddev-redis 2>/dev/null; then
+            ddev restart 2>/dev/null
+            ddev composer require drupal/redis 2>/dev/null
+            ddev drush pm:enable redis -y 2>/dev/null
+            print_status "OK" "Redis enabled (configure settings.php manually)"
+            ((applied++))
+        else
+            print_warning "Redis installation may need manual steps"
+        fi
+    fi
+
+    # Solr
+    if [[ "${OPTION_SELECTED[solr]}" == "y" ]]; then
+        print_info "Enabling Solr..."
+        if ddev get ddev/ddev-solr 2>/dev/null; then
+            local core="${OPTION_VALUES[solr_core]:-drupal}"
+            ddev restart 2>/dev/null
+            ddev solr create -c "$core" 2>/dev/null || true
+            ddev composer require drupal/search_api_solr 2>/dev/null
+            print_status "OK" "Solr enabled with core: $core"
+            ((applied++))
+        else
+            print_warning "Solr installation may need manual steps"
+        fi
+    fi
+
+    if [[ $applied -gt 0 ]]; then
+        print_info "Clearing cache after option application..."
+        ddev drush cr 2>/dev/null || true
+        print_status "OK" "Applied $applied options"
+    else
+        print_info "No automated options to apply"
+    fi
+
+    return 0
+}
+
+# Apply selected options during Moodle installation
+apply_moodle_options() {
+    if [[ ${#OPTION_LIST[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    local applied=0
+
+    print_header "Applying Selected Options"
+
+    # Debug Mode
+    if [[ "${OPTION_SELECTED[debug_mode]}" == "y" ]]; then
+        print_info "Enabling debug mode..."
+        # Add debug settings to config.php
+        if [ -f "config.php" ]; then
+            cat >> config.php << 'MOODLE_DEBUG'
+
+// Debug settings (added by install script)
+@error_reporting(E_ALL | E_STRICT);
+@ini_set('display_errors', '1');
+$CFG->debug = (E_ALL | E_STRICT);
+$CFG->debugdisplay = 1;
+MOODLE_DEBUG
+            print_status "OK" "Debug mode enabled"
+            ((applied++))
+        fi
+    fi
+
+    # Redis Session Store
+    if [[ "${OPTION_SELECTED[redis]}" == "y" ]]; then
+        print_info "Configuring Redis for sessions..."
+        if ddev get ddev/ddev-redis 2>/dev/null; then
+            ddev restart 2>/dev/null
+            print_status "OK" "Redis container added (configure config.php manually)"
+            ((applied++))
+        else
+            print_warning "Redis installation may need manual steps"
+        fi
+    fi
+
+    if [[ $applied -gt 0 ]]; then
+        print_status "OK" "Applied $applied options"
+    else
+        print_info "No automated options to apply"
+    fi
+
+    return 0
+}
+
+# Apply selected options during GitLab installation
+apply_gitlab_options() {
+    if [[ ${#OPTION_LIST[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    local applied=0
+
+    print_header "Applying Selected Options"
+
+    # Reduced Memory Mode
+    if [[ "${OPTION_SELECTED[reduced_memory]}" == "y" ]]; then
+        print_info "Reduced memory mode already configured in docker-compose.yml"
+        ((applied++))
+    fi
+
+    # Disable Signups
+    if [[ "${OPTION_SELECTED[disable_signups]}" == "y" ]]; then
+        print_info "Note: Disable signups in GitLab Admin > Settings > General > Sign-up restrictions"
+        ((applied++))
+    fi
+
+    if [[ $applied -gt 0 ]]; then
+        print_status "OK" "Applied $applied options"
+    else
+        print_info "No automated options to apply"
+    fi
+
+    return 0
+}
 
 ################################################################################
 # DNS Pre-registration for Live Sites
@@ -1108,6 +1516,9 @@ EOF
         print_status "INFO" "Skipping Step 9: Additional configuration"
     fi
 
+    # Apply selected options from interactive checkbox
+    apply_drupal_options
+
     # Create test content if requested
     if [ "$create_content" == "y" ]; then
         if ! create_test_content; then
@@ -1185,14 +1596,25 @@ EOF
             if [ -n "$installed_modules" ] && command -v yaml_add_site_modules &> /dev/null; then
                 yaml_add_site_modules "$site_name" "$installed_modules" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null
             fi
+
+            # Update site with selected options
+            update_site_options "$site_name" "$SCRIPT_DIR/cnwp.yml"
         else
             # Site already exists or registration failed - not critical
             print_info "Site registration skipped (may already exist)"
+
+            # Still try to update options if site exists
+            if yaml_site_exists "$site_name" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+                update_site_options "$site_name" "$SCRIPT_DIR/cnwp.yml"
+            fi
         fi
     fi
 
     # Pre-register DNS for live site (if shared server is configured)
     pre_register_live_dns "$site_name"
+
+    # Show manual steps guide for selected options
+    show_installation_guide "$site_name" "$environment"
 
     return 0
 }
@@ -1519,6 +1941,9 @@ MOODLEDATA_EOF
         print_status "INFO" "Skipping Step 7: Already configured"
     fi
 
+    # Apply selected options from interactive checkbox
+    apply_moodle_options
+
     # Success message
     print_header "Installation Complete!"
 
@@ -1575,13 +2000,24 @@ MOODLEDATA_EOF
         # Register the site (Moodle doesn't have install_modules typically)
         if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
             print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
+
+            # Update site with selected options
+            update_site_options "$site_name" "$SCRIPT_DIR/cnwp.yml"
         else
             # Site already exists or registration failed - not critical
             print_info "Site registration skipped (may already exist)"
+
+            # Still try to update options if site exists
+            if yaml_site_exists "$site_name" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+                update_site_options "$site_name" "$SCRIPT_DIR/cnwp.yml"
+            fi
         fi
 
         # Pre-register DNS for live site (if shared server is configured)
         pre_register_live_dns "$site_name"
+
+        # Show manual steps guide for selected options
+        show_installation_guide "$site_name" "$environment"
     fi
 
     return 0
@@ -1792,10 +2228,21 @@ GITLAB_README
     if command -v yaml_add_site &> /dev/null; then
         if yaml_add_site "$install_dir" "$site_dir" "$recipe" "development" "$purpose" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
             print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
+
+            # Update site with selected options
+            update_site_options "$install_dir" "$SCRIPT_DIR/cnwp.yml"
         else
             print_info "Site registration skipped (may already exist)"
+
+            # Still try to update options if site exists
+            if yaml_site_exists "$install_dir" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+                update_site_options "$install_dir" "$SCRIPT_DIR/cnwp.yml"
+            fi
         fi
     fi
+
+    # Apply selected options from interactive checkbox
+    apply_gitlab_options
 
     # Show summary
     print_header "GitLab Installation Complete"
@@ -1806,6 +2253,9 @@ GITLAB_README
     echo -e "  Purpose:      ${GREEN}$purpose${NC}"
     echo ""
     print_info "See $install_dir/README.md for usage instructions"
+
+    # Show manual steps guide for selected options
+    show_installation_guide "$install_dir" "development"
 
     return 0
 }
@@ -2219,6 +2669,11 @@ MIGRATION_README
             print_info "Installation cancelled"
             exit 0
         fi
+    fi
+
+    # Run interactive option selection (unless auto mode)
+    if [ "$auto_mode" != "y" ]; then
+        run_interactive_options "$recipe" "$install_dir" "$recipe_type" "$config_file"
     fi
 
     # Run installation based on recipe type

@@ -377,8 +377,10 @@ EOF
     # Add DKIM DNS record
     if ! $SKIP_DNS && [ -n "${LINODE_TOKEN:-}" ]; then
         print_info "Adding DKIM DNS record..."
+        # Extract full public key from multi-line DKIM file
+        # The key file has format: ( "v=DKIM1; ..." "p=KEY" "KEYCONTINUED" )
         local dkim_record=$(cat /etc/opendkim/keys/${DOMAIN}/${DKIM_SELECTOR}.txt | \
-            grep -oP 'p=\K[^"]+' | tr -d ' \n\t')
+            tr -d '\n\t' | sed 's/.*p=/p=/' | sed 's/).*//' | tr -d ' "' | sed 's/^p=//')
         local dkim_value="v=DKIM1; h=sha256; k=rsa; p=${dkim_record}"
 
         # Check for existing DKIM record

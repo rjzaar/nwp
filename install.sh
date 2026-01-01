@@ -74,7 +74,7 @@ if [ -f "$SCRIPT_DIR/lib/install-steps.sh" ]; then
     source "$SCRIPT_DIR/lib/install-steps.sh"
 fi
 
-# Optional: TUI library for interactive options
+# Source TUI library
 if [ -f "$SCRIPT_DIR/lib/tui.sh" ]; then
     source "$SCRIPT_DIR/lib/tui.sh"
 fi
@@ -452,10 +452,8 @@ main() {
         fi
     fi
 
-    # Run interactive option selection (unless auto mode)
-    if [ "$auto_mode" != "y" ]; then
-        run_interactive_options "$recipe" "$install_dir" "$recipe_type" "$config_file"
-    fi
+    # Run interactive option selection (always show TUI)
+    run_interactive_options "$recipe" "$install_dir" "$recipe_type" "$config_file"
 
     # Load the appropriate installer (lazy loading)
     if ! load_installer "$recipe_type"; then

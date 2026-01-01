@@ -69,6 +69,10 @@
 !lib/
 !lib/**
 
+# Email infrastructure
+!email/
+!email/**
+
 # Tests
 !tests/
 !tests/**

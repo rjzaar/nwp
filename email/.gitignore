@@ -1,0 +1,6 @@
+# Email testing artifacts
+test-artifacts/
+*.log
+
+# Mailpit data
+mailpit-data/

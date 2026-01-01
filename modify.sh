@@ -614,6 +614,59 @@ show_site_summary() {
     fi
     printf "\n"
 
+    # Infrastructure status
+    printf "${BOLD}Infrastructure Status:${NC}\n"
+
+    # Check directory exists
+    if [ -d "$directory" ]; then
+        printf "  ${GREEN}✓${NC} Directory exists\n"
+
+        # Check for code (composer.json or index.php)
+        if [ -f "$directory/composer.json" ] || [ -f "$directory/index.php" ]; then
+            printf "  ${GREEN}✓${NC} Code present\n"
+        else
+            printf "  ${RED}✗${NC} No code found\n"
+        fi
+
+        # Check DDEV configured
+        if [ -d "$directory/.ddev" ]; then
+            printf "  ${GREEN}✓${NC} DDEV configured\n"
+
+            # Check DDEV running
+            if (cd "$directory" && ddev describe &>/dev/null 2>&1); then
+                printf "  ${GREEN}✓${NC} DDEV running\n"
+
+                # Get additional info from DDEV
+                local ddev_info=$(cd "$directory" && ddev describe -j 2>/dev/null)
+                if [ -n "$ddev_info" ]; then
+                    local php_ver=$(echo "$ddev_info" | grep -o '"php_version":"[^"]*"' | head -1 | cut -d'"' -f4)
+                    local db_type=$(echo "$ddev_info" | grep -o '"database_type":"[^"]*"' | head -1 | cut -d'"' -f4)
+                    local db_ver=$(echo "$ddev_info" | grep -o '"database_version":"[^"]*"' | head -1 | cut -d'"' -f4)
+                    [ -n "$php_ver" ] && printf "    PHP: %s\n" "$php_ver"
+                    [ -n "$db_type" ] && [ -n "$db_ver" ] && printf "    Database: %s %s\n" "$db_type" "$db_ver"
+                fi
+
+                # Check Drupal installed (bootstrap works)
+                local drupal_status=$(cd "$directory" && ddev drush status --field=bootstrap 2>/dev/null | grep -v "^PHP\|^Deprecated" | tail -1)
+                if [[ "$drupal_status" == *"Successful"* ]]; then
+                    printf "  ${GREEN}✓${NC} Drupal installed\n"
+                    # Get Drupal version
+                    local drupal_ver=$(cd "$directory" && ddev drush status --field=drupal-version 2>/dev/null | grep -v "^PHP\|^Deprecated" | tail -1)
+                    [ -n "$drupal_ver" ] && printf "    Drupal: %s\n" "$drupal_ver"
+                else
+                    printf "  ${YELLOW}○${NC} Drupal not bootstrapped\n"
+                fi
+            else
+                printf "  ${YELLOW}○${NC} DDEV not running\n"
+            fi
+        else
+            printf "  ${DIM}○${NC} DDEV not configured\n"
+        fi
+    else
+        printf "  ${RED}✗${NC} Directory missing\n"
+    fi
+    printf "\n"
+
     # Show installed_modules from cnwp.yml
     local installed_modules=$(awk -v site="$site_name" '
         /^sites:/ { in_sites = 1; next }

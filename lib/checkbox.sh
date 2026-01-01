@@ -459,36 +459,29 @@ get_dependents() {
 
 # Read a single keypress (including arrow keys)
 read_key() {
-    local key
+    local key=""
+    local extra=""
 
-    # Save terminal settings and set raw mode
-    local saved_settings
-    saved_settings=$(stty -g 2>/dev/null) || true
-    stty -echo -icanon min 1 time 0 2>/dev/null || true
+    # Read one character
+    IFS= read -rsn1 key
 
-    # Read single character
-    key=$(dd bs=1 count=1 2>/dev/null) || key=""
-
-    # Check for escape sequence (arrow keys)
-    if [[ "$key" == $'\x1b' ]]; then
-        # Read the rest of the escape sequence
-        stty -echo -icanon min 0 time 1 2>/dev/null || true
-        local seq
-        seq=$(dd bs=2 count=1 2>/dev/null) || seq=""
-        stty "$saved_settings" 2>/dev/null || true
-
-        case "$seq" in
-            '[A') echo "UP"; return ;;
-            '[B') echo "DOWN"; return ;;
-            '[C') echo "RIGHT"; return ;;
-            '[D') echo "LEFT"; return ;;
-            *) echo "ESC"; return ;;
-        esac
+    # Handle escape sequences (arrow keys)
+    if [[ "$key" == $'\e' ]]; then
+        IFS= read -rsn1 -t 0.1 extra
+        if [[ "$extra" == "[" ]]; then
+            IFS= read -rsn1 -t 0.1 extra
+            case "$extra" in
+                A) echo "UP"; return ;;
+                B) echo "DOWN"; return ;;
+                C) echo "RIGHT"; return ;;
+                D) echo "LEFT"; return ;;
+            esac
+        fi
+        echo "ESC"
+        return
     fi
 
-    # Restore terminal
-    stty "$saved_settings" 2>/dev/null || true
-
+    # Handle regular keys
     case "$key" in
         '') echo "ENTER" ;;
         ' ') echo "SPACE" ;;
@@ -497,7 +490,9 @@ read_key() {
         n|N) echo "NONE" ;;
         e|E) echo "EDIT" ;;
         '?'|h|H) echo "HELP" ;;
-        *) echo "$key" ;;
+        j|J) echo "DOWN" ;;
+        k|K) echo "UP" ;;
+        *) echo "OTHER" ;;
     esac
 }
 
@@ -628,19 +623,30 @@ interactive_select_options() {
     local total="${#VISIBLE_OPTIONS[@]}"
     local done=false
 
-    # Hide cursor
+    # Check if we have options
+    if [[ $total -eq 0 ]]; then
+        echo "No options available"
+        return 0
+    fi
+
+    # Hide cursor (optional, don't fail if not supported)
     tput civis 2>/dev/null || true
 
-    # Ensure cursor is restored on exit
-    trap 'tput cnorm 2>/dev/null; stty echo 2>/dev/null' EXIT INT TERM
+    # Cleanup function
+    cleanup_terminal() {
+        tput cnorm 2>/dev/null || true
+        stty echo 2>/dev/null || true
+    }
+    trap cleanup_terminal EXIT INT TERM
 
     while [[ "$done" != "true" ]]; do
         # Clear and draw
         clear
         draw_options "$cursor" "$environment"
 
-        # Read key
-        local key=$(read_key)
+        # Read key (this blocks until a key is pressed)
+        local key
+        key=$(read_key)
 
         case "$key" in
             UP)

@@ -682,34 +682,39 @@ interactive_select_options_simple() {
                 done
                 ;;
             [0-9]|[0-9][0-9])
-                if [[ $cmd -ge 1 && $cmd -le $total ]]; then
-                    local opt_key="${VISIBLE_OPTIONS[$((cmd-1))]}"
-                    if [[ "${OPTION_SELECTED[$opt_key]}" == "y" ]]; then
-                        OPTION_SELECTED["$opt_key"]="n"
-                    else
-                        OPTION_SELECTED["$opt_key"]="y"
-                        # Prompt for inputs if needed
-                        local inputs="${OPTION_INPUTS[$opt_key]}"
-                        if [[ -n "$inputs" ]]; then
-                            echo ""
-                            IFS=',' read -ra iarr <<< "$inputs"
-                            for inp in "${iarr[@]}"; do
-                                local ikey="${inp%%:*}"
-                                local ilabel="${inp#*:}"
-                                local vkey="${opt_key}_${ikey}"
-                                local curr="${OPTION_VALUES[$vkey]:-}"
-                                read -rp "  $ilabel [$curr]: " newval
-                                OPTION_VALUES["$vkey"]="${newval:-$curr}"
-                            done
+                local num_cmd="$cmd"
+                if [[ "$num_cmd" -ge 1 ]] 2>/dev/null && [[ "$num_cmd" -le "$total" ]] 2>/dev/null; then
+                    local idx=$((num_cmd - 1))
+                    local opt_key="${VISIBLE_OPTIONS[$idx]}"
+                    if [[ -n "$opt_key" ]]; then
+                        if [[ "${OPTION_SELECTED[$opt_key]:-n}" == "y" ]]; then
+                            OPTION_SELECTED["$opt_key"]="n"
+                        else
+                            OPTION_SELECTED["$opt_key"]="y"
+                            # Prompt for inputs if needed
+                            local inputs="${OPTION_INPUTS[$opt_key]:-}"
+                            if [[ -n "$inputs" ]]; then
+                                echo ""
+                                IFS=',' read -ra iarr <<< "$inputs"
+                                for inp in "${iarr[@]}"; do
+                                    local ikey="${inp%%:*}"
+                                    local ilabel="${inp#*:}"
+                                    local vkey="${opt_key}_${ikey}"
+                                    local curr="${OPTION_VALUES[$vkey]:-}"
+                                    read -rp "  $ilabel [$curr]: " newval
+                                    OPTION_VALUES["$vkey"]="${newval:-$curr}"
+                                done
+                            fi
                         fi
                     fi
                 fi
                 ;;
             e|E)
                 read -rp "Option # to edit: " num
-                if [[ $num -ge 1 && $num -le $total ]]; then
-                    local opt_key="${VISIBLE_OPTIONS[$((num-1))]}"
-                    local inputs="${OPTION_INPUTS[$opt_key]}"
+                if [[ "$num" -ge 1 ]] 2>/dev/null && [[ "$num" -le "$total" ]] 2>/dev/null; then
+                    local idx=$((num - 1))
+                    local opt_key="${VISIBLE_OPTIONS[$idx]}"
+                    local inputs="${OPTION_INPUTS[$opt_key]:-}"
                     if [[ -n "$inputs" ]]; then
                         echo ""
                         IFS=',' read -ra iarr <<< "$inputs"

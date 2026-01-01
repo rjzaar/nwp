@@ -449,15 +449,35 @@ draw_options_screen() {
     # Footer
     local sel_count=0
     local installed_count=0
+    local installed_this_env=0
+    local installed_other_env=0
+    local other_env_items=""
+
     for k in "${OPTION_LIST[@]}"; do
         [ "${OPTION_SELECTED[$k]:-n}" = "y" ] && ((sel_count++)) || true
-        [ "${OPTION_INSTALLED[$k]:-n}" = "y" ] && ((installed_count++)) || true
+        if [ "${OPTION_INSTALLED[$k]:-n}" = "y" ]; then
+            ((installed_count++)) || true
+            # Check if this option is visible in current environment
+            local opt_env="${OPTION_ENVIRONMENTS[$k]:-all}"
+            if [[ "$opt_env" == "$environment" || "$opt_env" == "all" ]]; then
+                ((installed_this_env++)) || true
+            else
+                ((installed_other_env++)) || true
+                other_env_items="${other_env_items}${OPTION_LABELS[$k]} (${opt_env}), "
+            fi
+        fi
     done
 
     printf "\n"
     printf "───────────────────────────────────────────────────────────────────────────────\n"
     printf "${GREEN}[✓]${NC}=installed  ${RED}[x]${NC}=remove  ${YELLOW}[+]${NC}=install  ${RED}[!]${NC}=config mismatch  ${DIM}[ ]${NC}=none\n"
     printf "Selected: %d  Installed: %d  Environment: ${GREEN}%s${NC}\n" "$sel_count" "$installed_count" "$(get_env_label "$environment")"
+
+    # Show installed items from other environments
+    if [ "$installed_other_env" -gt 0 ]; then
+        other_env_items="${other_env_items%, }"  # Remove trailing comma
+        printf "${CYAN}Installed in other tabs:${NC} %s\n" "$other_env_items"
+    fi
 }
 
 build_env_option_list() {

@@ -4,6 +4,138 @@ All notable changes to the NWP (Narrow Way Project) are documented here, organiz
 
 ---
 
+## [v0.9] - 2026-01-01
+
+### Major Changes
+
+#### Modular Install.sh Architecture
+
+**Refactored**: Complete restructuring of install.sh into lazy-loaded modular libraries.
+
+**Key Improvements**:
+- **82% code reduction**: Main install.sh reduced from 2,742 to ~500 lines
+- **Lazy loading**: Only required installer is sourced at runtime
+- **Single responsibility**: Each library file handles one platform type
+- **Guard patterns**: Prevent multiple sourcing with `set -u` compatibility
+- **Backward compatibility**: `install_opensocial()` alias preserved
+
+**New Library Files**:
+```
+lib/
+├── install-common.sh    # Shared functions (1,000+ lines)
+│   ├── YAML parsing
+│   ├── Option handling
+│   ├── DNS pre-registration
+│   └── Utilities
+├── install-drupal.sh    # Drupal/OpenSocial (~600 lines)
+├── install-moodle.sh    # Moodle LMS (~420 lines)
+├── install-gitlab.sh    # GitLab via Docker (~250 lines)
+└── install-podcast.sh   # Castopod podcast (~100 lines)
+```
+
+**TUI Library Integration**:
+- TUI (Terminal User Interface) library from main branch integrated
+- Interactive checkbox UI for installation options
+- Option documentation display ('d' key in modify.sh)
+- Environment switching with '<>' keys
+
+**Additional Enhancements**:
+- Installation step tracking system
+- Infrastructure status in modify.sh site info
+- Site summary display in modify.sh
+- Installed options from other environment tabs shown in TUI footer
+- Install status as selectable first option in TUI
+
+### Documentation
+- Consolidated and simplified documentation structure
+- Merged duplicate docs into unified references
+
+### Commits (Key Changes)
+- 05d13750 - Refactor install.sh into modular library architecture
+- bdd5dc91 - Merge main into nwppl - integrate TUI library and doc consolidation
+- 206be71e - Make Install status a selectable first option in TUI
+- 4aaa6207 - Add option documentation display ('d' key) in modify.sh
+- 0c5c60ac - Add installation step tracking system
+- 28e0ebab - Consolidate and simplify documentation
+
+---
+
+## [v0.8.1] - 2025-12-30
+
+### Enhancements
+
+#### Setup Automation
+- **Enhanced**: setup.sh with full infrastructure automation support
+- Complete infrastructure provisioning capabilities
+- Improved component management
+
+### Commits
+- 8ff9a3b2 - Enhance setup.sh with full infrastructure automation
+
+---
+
+## [v0.8] - 2025-12-30
+
+### Major Changes
+
+#### GitLab Deployment and Setup Documentation
+**Added**: Comprehensive GitLab installation support and setup automation.
+
+**Setup.sh Rewrite**:
+- Complete rewrite as setup manager with checkbox UI
+- Component-based installation selection
+- Color-coded priority levels for setup components
+- SSH automation improvements
+
+**GitLab Installation**:
+- Full GitLab CE via Docker support
+- Integrated with install.sh type system
+- Docker-compose configuration generation
+- Automatic README and environment file creation
+
+**Site Purpose Tracking**:
+- New `purpose` field for sites: testing, indefinite, permanent, migration
+- Migration workflow stub creation
+- Purpose-based site management
+
+### Quality Improvements
+
+**Validation and Error Handling**:
+- Mode and sitename validation in make.sh
+- YAML validation in lib/yaml-write.sh
+- Robust parse_yaml_value() in lib/linode.sh
+- Strict mode added to main scripts
+- Input validation for destructive operations
+
+**Testing Enhancements**:
+- Negative test cases added (Test 13)
+- Test credentials configurable via TEST_PASSWORD environment variable
+- Error checking in create_test_content() function
+
+**Code Organization**:
+- Consolidated duplicate functions into shared libraries
+- Cleaned up cnwp.yml configuration structure
+- Fixed undefined print_warn function in install.sh
+
+### Documentation
+- Comprehensive setup documentation
+- SSH automation guides
+- Git workflow suggestions
+
+### Commits
+- 0b716997 - Add comprehensive setup documentation and SSH automation
+- 369b94ed - Rewrite setup.sh as complete setup manager with checkbox UI
+- 42bf1201 - Add GitLab installation support and setup automation
+- e58f1bfd - Add site purpose tracking and migration workflow
+- f0e23728 - Add negative test cases to test-nwp.sh (Test 13)
+- b8defb8d - Clean up cnwp.yml configuration structure
+- 1fe376f1 - Add mode and sitename validation to make.sh
+- e1899a1c - Add YAML validation to lib/yaml-write.sh
+- 84c1b459 - Consolidate duplicate functions into shared libraries
+- 300a427d - Add input validation for destructive operations
+
+---
+
 ## [v0.7.1] - 2025-12-29
 
 ### Testing & Quality Improvements
@@ -551,6 +683,10 @@ modules:
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v0.9 | 2026-01-01 | Modular install.sh architecture with lazy loading |
+| v0.8.1 | 2025-12-30 | Enhanced setup automation with full infrastructure support |
+| v0.8 | 2025-12-30 | GitLab deployment, setup.sh rewrite, site purpose tracking |
+| v0.7.1 | 2025-12-29 | Test suite 98% success rate, custom target parameter |
 | v0.6 | 2025-12-28 | Vortex environment system: Complete 9.1 & 9.2 implementation |
 | v0.5 | 2025-12-28 | Phase 1 complete: Help text, error messages, combined flags docs |
 | v0.4 | 2025-12-28 | Comprehensive test suite, drush installation fixes |
@@ -562,4 +698,4 @@ modules:
 
 *For detailed improvement plans and roadmap, see [ROADMAP.md](ROADMAP.md)*
 
-*Last Updated: December 28, 2024*
+*Last Updated: January 1, 2026*

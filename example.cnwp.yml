@@ -109,6 +109,17 @@ settings:
     memcache:
       enabled: false               # [PLANNED]
 
+  # === TESTING CONFIGURATION [ACTIVE] ===
+  # Local testing tools and email safety
+  testing:
+    bats:
+      enabled: true                # [ACTIVE] Install BATS testing framework via setup.sh
+      run_on_commit: false         # [PLANNED] Run tests before commits (via hook)
+    email:
+      use_mailpit: true            # [ACTIVE] Use Mailpit for dev email capture
+      reroute_dev: true            # [ACTIVE] Reroute dev emails to test address
+      reroute_address: ""          # [ACTIVE] Leave empty to use Mailpit, or set specific address
+
   # === SITE MANAGEMENT [ACTIVE] ===
   delete_site_yml: true            # [ACTIVE] Remove site from cnwp.yml when deleted
 

@@ -80,6 +80,9 @@ declare -a COMPONENTS=(
     "nwp_config|NWP Configuration (cnwp.yml)|-|tools|required"
     "nwp_secrets|NWP Secrets (.secrets.yml)|-|tools|recommended"
 
+    # Testing Tools
+    "bats|BATS Testing Framework|-|testing|optional"
+
     # Linode Infrastructure
     # NOTE: SSH keys are passed directly to servers via StackScripts during
     # provisioning. Adding keys to Linode profile is NOT required for NWP.
@@ -248,6 +251,10 @@ check_gitlab_keys_exist() {
     [ -f "$SCRIPT_DIR/git/keys/gitlab_linode" ]
 }
 
+check_bats_installed() {
+    command -v bats &> /dev/null
+}
+
 check_gitlab_server_exists() {
     # Check if GitLab server is registered in cnwp.yml or .secrets.yml
     if [ -f "$SCRIPT_DIR/.secrets.yml" ]; then
@@ -307,6 +314,7 @@ detect_component_state() {
         nwp_cli)          check_nwp_cli_installed ;;
         nwp_config)       check_nwp_config_exists ;;
         nwp_secrets)      check_nwp_secrets_exist ;;
+        bats)             check_bats_installed ;;
         linode_cli)       check_linode_cli_installed ;;
         linode_config)    check_linode_config_exists ;;
         ssh_keys)         check_ssh_keys_exist ;;
@@ -951,6 +959,40 @@ SSHCONFIG
     log_action "GitLab SSH config created"
 }
 
+install_bats() {
+    print_header "Installing BATS Testing Framework"
+    log_action "Installing BATS"
+
+    # Check if available via apt
+    if command -v apt-get &> /dev/null; then
+        echo "Installing BATS via apt..."
+        sudo apt-get update
+        sudo apt-get install -y bats
+    elif command -v brew &> /dev/null; then
+        echo "Installing BATS via Homebrew..."
+        brew install bats-core
+    else
+        echo "Installing BATS from source..."
+        local bats_version="1.10.0"
+        cd /tmp
+        curl -sSL "https://github.com/bats-core/bats-core/archive/refs/tags/v${bats_version}.tar.gz" -o bats.tar.gz
+        tar -xzf bats.tar.gz
+        cd "bats-core-${bats_version}"
+        sudo ./install.sh /usr/local
+        cd - > /dev/null
+        rm -rf /tmp/bats.tar.gz /tmp/bats-core-*
+    fi
+
+    if check_bats_installed; then
+        print_status "OK" "BATS installed: $(bats --version)"
+        log_action "BATS installed"
+    else
+        print_status "FAIL" "BATS installation failed"
+        log_action "BATS installation failed"
+        return 1
+    fi
+}
+
 # Main install dispatcher
 install_component() {
     local component_id="$1"
@@ -966,6 +1008,7 @@ install_component() {
         nwp_cli)          install_nwp_cli ;;
         nwp_config)       install_nwp_config ;;
         nwp_secrets)      install_nwp_secrets ;;
+        bats)             install_bats ;;
         linode_cli)       install_linode_cli ;;
         linode_config)    install_linode_config ;;
         ssh_keys)         install_ssh_keys ;;

@@ -58,6 +58,11 @@ if [ -f "$SCRIPT_DIR/lib/linode.sh" ]; then
     source "$SCRIPT_DIR/lib/linode.sh"
 fi
 
+# Source install steps tracking
+if [ -f "$SCRIPT_DIR/lib/install-steps.sh" ]; then
+    source "$SCRIPT_DIR/lib/install-steps.sh"
+fi
+
 ################################################################################
 # Interactive Option Selection
 ################################################################################
@@ -1079,6 +1084,16 @@ install_opensocial() {
     local create_content=$4
     local purpose=${5:-indefinite}
     local base_dir=$(pwd)
+    local site_name=$(basename "$install_dir")
+    local config_file="$base_dir/cnwp.yml"
+
+    # Helper to track installation progress
+    track_step() {
+        local step_num="$1"
+        if command -v set_install_step &>/dev/null; then
+            set_install_step "$site_name" "$step_num" "$config_file"
+        fi
+    }
 
     print_header "Installing OpenSocial using recipe: $recipe"
 
@@ -1244,6 +1259,7 @@ install_opensocial() {
         fi
 
         print_status "OK" "Project initialized"
+        track_step 1
     else
         print_status "INFO" "Skipping Step 1: Project already initialized"
     fi
@@ -1277,6 +1293,7 @@ install_opensocial() {
             set +a
             print_status "OK" "Environment variables loaded"
         fi
+        track_step 2
     else
         print_status "INFO" "Skipping Step 2: Environment already configured"
     fi
@@ -1315,6 +1332,7 @@ install_opensocial() {
             fi
             print_status "OK" "DDEV configured (Database: $ddev_database)"
         fi
+        track_step 3
     else
         print_status "INFO" "Skipping Step 3: DDEV already configured"
     fi
@@ -1337,6 +1355,7 @@ post_max_size = ${php_post_max}
 upload_max_filesize = ${php_upload_max}
 EOF
         print_status "OK" "Memory limits configured"
+        track_step 4
     else
         print_status "INFO" "Skipping Step 4: Memory already configured"
     fi
@@ -1350,6 +1369,7 @@ EOF
             return 1
         fi
         print_status "OK" "DDEV services started"
+        track_step 5
     else
         print_status "INFO" "Skipping Step 5: DDEV already started"
     fi
@@ -1361,6 +1381,7 @@ EOF
         # Check if Drush is available
         if [ -f "vendor/bin/drush" ]; then
             print_status "OK" "Drush is available"
+            track_step 6
         else
             print_error "Drush not found - installation may have failed in Step 1"
             print_info "Try manually installing with: composer require drush/drush --dev"
@@ -1423,6 +1444,7 @@ EOF
         chmod 644 "${webroot}/sites/default/settings.php"
 
         print_status "OK" "Private file system configured in settings.php"
+        track_step 7
     else
         print_status "INFO" "Skipping Step 7: Private file system already configured"
     fi
@@ -1476,6 +1498,7 @@ EOF
             return 1
         fi
         print_status "OK" "Drupal site installed"
+        track_step 8
     else
         print_status "INFO" "Skipping Step 8: Drupal already installed"
     fi
@@ -1512,6 +1535,7 @@ EOF
         # Verify installation
         print_info "Verifying installation..."
         ddev drush status
+        track_step 9
     else
         print_status "INFO" "Skipping Step 9: Additional configuration"
     fi
@@ -1615,6 +1639,11 @@ EOF
 
     # Show manual steps guide for selected options
     show_installation_guide "$site_name" "$environment"
+
+    # Mark installation as complete
+    if command -v mark_install_complete &>/dev/null; then
+        mark_install_complete "$site_name" "$config_file"
+    fi
 
     return 0
 }

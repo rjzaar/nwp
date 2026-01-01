@@ -29,6 +29,11 @@ if [ -f "$SCRIPT_DIR/lib/checkbox.sh" ]; then
     source "$SCRIPT_DIR/lib/checkbox.sh"
 fi
 
+# Source install steps tracking
+if [ -f "$SCRIPT_DIR/lib/install-steps.sh" ]; then
+    source "$SCRIPT_DIR/lib/install-steps.sh"
+fi
+
 CONFIG_FILE="${SCRIPT_DIR}/cnwp.yml"
 
 ################################################################################
@@ -359,8 +364,21 @@ draw_options_screen() {
     done
     printf "\n"
 
-    printf "${DIM}↑↓:Navigate  ←→:Environment  SPACE:Toggle  e:Edit  a:All  n:None  ENTER:Apply  q:Cancel${NC}\n"
+    printf "${DIM}↑↓:Navigate  ←→:Environment  SPACE:Toggle  e:Edit  d:Details  a:All  n:None  ENTER:Apply  q:Cancel${NC}\n"
     printf "═══════════════════════════════════════════════════════════════════════════════\n"
+
+    # Show installation status at the top
+    if command -v get_install_status_display &>/dev/null; then
+        local install_status=$(get_install_status_display "$site_name" "$CONFIG_FILE" "$environment")
+        local status_color=$(get_install_status_color "$site_name" "$CONFIG_FILE" "$environment")
+        local status_icon
+        case "$status_color" in
+            green) status_icon="${GREEN}[✓]${NC}" ;;
+            yellow) status_icon="${YELLOW}[!]${NC}" ;;
+            *) status_icon="${DIM}[○]${NC}" ;;
+        esac
+        printf "\n  %b ${BOLD}Install:${NC} %s\n" "$status_icon" "$install_status"
+    fi
 
     if [ "$total" -eq 0 ]; then
         printf "\n${DIM}  No options for this environment${NC}\n"
@@ -667,6 +685,35 @@ show_site_summary() {
     fi
     printf "\n"
 
+    # Show installation progress
+    if command -v get_install_status_display &>/dev/null; then
+        local env_for_steps="dev"
+        # Determine environment for step count
+        local site_env=$(awk -v site="$site_name" '
+            /^sites:/ { in_sites = 1; next }
+            in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
+            in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
+            in_site && /^  [a-zA-Z]/ && !/^    / { in_site = 0 }
+            in_site && /^    environment:/ { sub(/^    environment: */, ""); gsub(/["'"'"']/, ""); print }
+        ' "$config_file")
+        case "$site_env" in
+            staging) env_for_steps="stage" ;;
+            production) env_for_steps="prod" ;;
+            live) env_for_steps="live" ;;
+            *) env_for_steps="dev" ;;
+        esac
+
+        local install_status=$(get_install_status_display "$site_name" "$config_file" "$env_for_steps")
+        local status_color=$(get_install_status_color "$site_name" "$config_file" "$env_for_steps")
+        local status_icon
+        case "$status_color" in
+            green) status_icon="${GREEN}✓${NC}" ;;
+            yellow) status_icon="${YELLOW}!${NC}" ;;
+            *) status_icon="${DIM}○${NC}" ;;
+        esac
+        printf "${BOLD}Installation Status:${NC} %b %s\n\n" "$status_icon" "$install_status"
+    fi
+
     # Show installed_modules from cnwp.yml
     local installed_modules=$(awk -v site="$site_name" '
         /^sites:/ { in_sites = 1; next }
@@ -853,6 +900,19 @@ run_options_tui() {
                 for k in "${OPTION_LIST[@]}"; do
                     OPTION_SELECTED["$k"]="n"
                 done
+                ;;
+            d|D)
+                # Show installation steps details
+                cursor_show
+                clear_screen
+                if command -v show_steps_detail &>/dev/null; then
+                    show_steps_detail "$site_name" "$CONFIG_FILE" "$environment"
+                else
+                    printf "\n${YELLOW}Installation step tracking not available${NC}\n"
+                fi
+                printf "\nPress any key to continue..."
+                read -rsn1
+                cursor_hide
                 ;;
             ENTER)
                 cursor_show

@@ -70,7 +70,7 @@ run_interactive_options() {
                 local recipe_hint=""
                 [[ "${OPTION_FROM_RECIPE[$key]:-n}" == "y" ]] && recipe_hint=" ${DIM}(recipe)${NC}"
                 echo -e "  ${GREEN}✓${NC} ${OPTION_LABELS[$key]}${recipe_hint}"
-                ((selected_count++))
+                ((++selected_count))
             fi
         done
 
@@ -214,7 +214,7 @@ apply_drupal_options() {
         print_info "Installing development modules..."
         if ddev drush pm:enable devel kint webprofiler -y 2>/dev/null; then
             print_status "OK" "Development modules installed"
-            ((applied++))
+            ((++applied))
         else
             print_warning "Some dev modules may not be available"
         fi
@@ -225,7 +225,7 @@ apply_drupal_options() {
         print_info "Enabling XDebug..."
         if ddev xdebug on 2>/dev/null; then
             print_status "OK" "XDebug enabled"
-            ((applied++))
+            ((++applied))
         else
             print_warning "XDebug may need manual configuration"
         fi
@@ -236,7 +236,7 @@ apply_drupal_options() {
         print_info "Installing Stage File Proxy..."
         if ddev composer require drupal/stage_file_proxy && ddev drush pm:enable stage_file_proxy -y 2>/dev/null; then
             print_status "OK" "Stage File Proxy installed"
-            ((applied++))
+            ((++applied))
         else
             print_warning "Stage File Proxy installation may need manual steps"
         fi
@@ -247,7 +247,7 @@ apply_drupal_options() {
         print_info "Installing Config Split..."
         if ddev composer require drupal/config_split && ddev drush pm:enable config_split -y 2>/dev/null; then
             print_status "OK" "Config Split installed"
-            ((applied++))
+            ((++applied))
         else
             print_warning "Config Split installation may need manual steps"
         fi
@@ -263,7 +263,7 @@ apply_drupal_options() {
             fi
         done
         print_status "OK" "Security modules installed"
-        ((applied++))
+        ((++applied))
     fi
 
     # Redis
@@ -274,7 +274,7 @@ apply_drupal_options() {
             ddev composer require drupal/redis 2>/dev/null
             ddev drush pm:enable redis -y 2>/dev/null
             print_status "OK" "Redis enabled (configure settings.php manually)"
-            ((applied++))
+            ((++applied))
         else
             print_warning "Redis installation may need manual steps"
         fi
@@ -289,7 +289,7 @@ apply_drupal_options() {
             ddev solr create -c "$core" 2>/dev/null || true
             ddev composer require drupal/search_api_solr 2>/dev/null
             print_status "OK" "Solr enabled with core: $core"
-            ((applied++))
+            ((++applied))
         else
             print_warning "Solr installation may need manual steps"
         fi
@@ -302,14 +302,14 @@ apply_drupal_options() {
         if command -v setup_migration_folder &>/dev/null; then
             local source_type="${OPTION_VALUES[source_type]:-other}"
             if setup_migration_folder "$site_dir" "$source_type"; then
-                ((applied++))
+                ((++applied))
             fi
         else
             # Fallback if function not available
             mkdir -p "$site_dir/migration/source"
             mkdir -p "$site_dir/migration/database"
             print_status "OK" "Migration folder created"
-            ((applied++))
+            ((++applied))
         fi
     fi
 
@@ -348,7 +348,7 @@ $CFG->debug = (E_ALL | E_STRICT);
 $CFG->debugdisplay = 1;
 MOODLE_DEBUG
             print_status "OK" "Debug mode enabled"
-            ((applied++))
+            ((++applied))
         fi
     fi
 
@@ -358,7 +358,7 @@ MOODLE_DEBUG
         if ddev get ddev/ddev-redis 2>/dev/null; then
             ddev restart 2>/dev/null
             print_status "OK" "Redis container added (configure config.php manually)"
-            ((applied++))
+            ((++applied))
         else
             print_warning "Redis installation may need manual steps"
         fi
@@ -386,13 +386,13 @@ apply_gitlab_options() {
     # Reduced Memory Mode
     if [[ "${OPTION_SELECTED[reduced_memory]}" == "y" ]]; then
         print_info "Reduced memory mode already configured in docker-compose.yml"
-        ((applied++))
+        ((++applied))
     fi
 
     # Disable Signups
     if [[ "${OPTION_SELECTED[disable_signups]}" == "y" ]]; then
         print_info "Note: Disable signups in GitLab Admin > Settings > General > Sign-up restrictions"
-        ((applied++))
+        ((++applied))
     fi
 
     if [[ $applied -gt 0 ]]; then

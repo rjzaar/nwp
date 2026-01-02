@@ -292,6 +292,87 @@ EOF
 jq '.permissions.deny' ~/.claude/settings.json
 ```
 
+#### Understanding the Limitations
+
+Deny rules are a **safety net, not a security boundary**. They prevent Claude Code from reading files via its Read tool, but:
+
+- Won't stop you from pasting file contents directly
+- Rely on Claude Code respecting the configuration
+- Don't protect against potential bugs or bypasses
+
+**The principle: Don't put secrets where they can be accessed.**
+
+#### Tiered Security Approaches
+
+Choose based on your risk tolerance:
+
+| Tier | Approach | Security | Practicality | Best For |
+|------|----------|----------|--------------|----------|
+| 1 | **Isolated environment** | Highest | Medium | High-security projects |
+| 2 | **Dev-only credentials** | High | High | Most development work |
+| 3 | **Deny rules only** | Medium | Highest | Quick prototyping |
+
+**Tier 1: Isolated Environment**
+
+Run Claude Code in a VM or container with only code, no secrets:
+
+```bash
+# Example: Use a dev container or VM
+# - Clone repo without secrets
+# - Use placeholder credentials
+# - Sync code changes, never secrets
+```
+
+Pros: Secrets physically cannot be accessed
+Cons: Requires workflow changes, code syncing
+
+**Tier 2: Dev-Only Credentials (Recommended)**
+
+Keep production secrets off your development machine entirely:
+
+```bash
+# On your dev machine:
+~/.secrets.yml          # Contains ONLY dev/staging credentials
+keys/                   # Contains ONLY dev SSH keys (if any)
+
+# Production credentials live on:
+# - Production servers only
+# - A separate deployment machine
+# - A secrets manager (Vault, AWS Secrets Manager, etc.)
+```
+
+For NWP/Drupal specifically:
+- **ddev/lando credentials** are local-only and safe
+- **Never store prod database credentials** on your dev machine
+- **Use a jump host** for production SSH access
+- **Do prod deployments** from a separate terminal/machine without Claude
+
+**Tier 3: Deny Rules Only**
+
+Current setup - relies on Claude Code configuration to block sensitive files.
+
+Use only when:
+- Doing quick prototyping
+- Working on non-sensitive projects
+- You understand and accept the risks
+
+#### Production Deployment Recommendation
+
+For maximum security when deploying to production:
+
+```bash
+# Option A: Separate terminal
+# Run Claude in one terminal, do deployments in another
+
+# Option B: Separate machine
+# Dev machine: Claude + code + dev secrets
+# Deploy machine: prod secrets + deployment scripts (no Claude)
+
+# Option C: CI/CD pipeline
+# Neither machine has prod secrets
+# Secrets injected at deploy time by CI/CD
+```
+
 > **Note:** Even with automated protection, always review what you share with AI assistants. The deny rules prevent accidental file reads but don't stop you from pasting content directly.
 
 ---
@@ -488,4 +569,5 @@ security_contacts:
 |------|--------|
 | 2026-01-03 | Initial version based on security research |
 | 2026-01-03 | Added Claude Code security config section with setup.sh integration |
+| 2026-01-03 | Added tiered security approaches for AI assistant usage |
 

@@ -37,6 +37,8 @@
 !podcast.sh
 !modify.sh
 !status.sh
+!import.sh
+!sync.sh
 
 # Documentation and metadata
 !README.md

@@ -421,6 +421,35 @@ recipes:
     auto: y                        # [ACTIVE]
 
 ################################################################################
+# IMPORT - Live Site Import Configuration
+################################################################################
+# Configuration for ./import.sh - importing live sites from remote servers
+import_defaults:
+  # Database sanitization options [ACTIVE]
+  sanitize: true                   # [ACTIVE] Sanitize user data (emails, passwords)
+  truncate_cache: true             # [ACTIVE] Clear cache tables
+  truncate_watchdog: true          # [ACTIVE] Clear log entries
+  truncate_sessions: true          # [ACTIVE] Clear active sessions
+
+  # File handling options [ACTIVE]
+  stage_file_proxy: true           # [ACTIVE] Download files on-demand (recommended)
+  full_file_sync: false            # [ACTIVE] Download all files (slower, more disk)
+  exclude_generated: true          # [ACTIVE] Skip js/*, css/*, styles/*
+
+  # Local environment options [ACTIVE]
+  environment_indicator: true      # [ACTIVE] Show dev/stg/prod badge
+  dev_modules: false               # [ACTIVE] Install devel, webprofiler
+  config_split: true               # [ACTIVE] Environment-specific config
+
+  # Exclude patterns for file sync [ACTIVE]
+  exclude_patterns:
+    - "*.log"
+    - "js/*"
+    - "css/*"
+    - "php/*"
+    - "styles/*"
+
+################################################################################
 # LINODE - Production Server Configuration
 ################################################################################
 linode:
@@ -431,8 +460,22 @@ linode:
     type: g6-nanode-1              # [ACTIVE] Default instance type (1GB)
     gitlab_type: g6-standard-1     # [ACTIVE] GitLab needs 2GB minimum
 
-  # Server configurations [ACTIVE]
+  # Server configurations for import and deployment [ACTIVE]
+  # Used by: ./import.sh, ./stg2prod.sh, ./live.sh
   servers:
+    # Production server - used for importing live sites
+    production:
+      ssh_host: root@203.0.113.10  # [ACTIVE] SSH connection string
+      ssh_key: ~/.ssh/nwp          # [ACTIVE] Path to SSH private key
+      label: "Production Server"   # [ACTIVE] Display label in TUI
+
+    # Staging server
+    staging:
+      ssh_host: root@203.0.113.20  # [ACTIVE] SSH connection string
+      ssh_key: ~/.ssh/nwp          # [ACTIVE] Path to SSH private key
+      label: "Staging Server"      # [ACTIVE] Display label in TUI
+
+    # Legacy format (still supported)
     linode_primary:
       ssh_user: deploy             # [ACTIVE] SSH username for deployment
       ssh_host: 203.0.113.10       # [ACTIVE] Server IP or hostname
@@ -459,10 +502,10 @@ linode:
 ################################################################################
 # SITES - Auto-populated Site Registry
 ################################################################################
-# Automatically populated when sites are created with install.sh
+# Automatically populated when sites are created with install.sh or import.sh
 # Stores site metadata, production configuration, and deployment settings
 sites:
-  # Example site entry (created automatically by install.sh):
+  # Example recipe-based site entry (created by install.sh):
   # mysite:
   #   directory: /home/user/nwp/mysite    # [ACTIVE] Full path
   #   recipe: d                            # [ACTIVE] Recipe used
@@ -505,3 +548,23 @@ sites:
   #     #   If set, all received emails are forwarded to this address
   #     #   Works with direction: all (emails are stored AND forwarded)
   #     #   Useful for routing site inquiries to admin's main inbox
+  #
+  # Example imported site entry (created by import.sh):
+  # imported_site:
+  #   directory: /home/user/nwp/imported_site  # [ACTIVE] Full path
+  #   type: import                              # [ACTIVE] Marks as imported site
+  #   source:                                   # [ACTIVE] Remote source info
+  #     server: production                      # [ACTIVE] Server from linode.servers
+  #     ssh_host: root@203.0.113.10            # [ACTIVE] SSH connection
+  #     webroot: /var/www/imported_site/web    # [ACTIVE] Remote webroot path
+  #   drupal_version: "10.3.2"                  # [ACTIVE] Detected Drupal version
+  #   php_version: "8.2"                        # [ACTIVE] PHP version used
+  #   environment: development                  # [ACTIVE] Local environment
+  #   imported: 2024-12-29T10:30:00Z           # [ACTIVE] Import timestamp
+  #   last_sync: 2024-12-29T10:30:00Z          # [ACTIVE] Last sync timestamp
+  #   options:                                  # [ACTIVE] Import options used
+  #     sanitize: true                          # Database sanitization enabled
+  #     stage_file_proxy: true                  # Using stage file proxy
+  #     origin_url: "https://example.com"       # Origin URL for file proxy
+  #     environment_indicator: true             # Environment indicator enabled
+  #     config_split: true                      # Config split enabled

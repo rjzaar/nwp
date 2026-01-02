@@ -24,6 +24,12 @@ features:
     description: "NWP prerequisites setup - Docker, DDEV, mkcert, Linode CLI, GitLab"
     files:
       - setup.sh
+    checklist:
+      - "Run setup.sh on a fresh system and verify all prerequisites install"
+      - "Test Docker installation and verify ddev starts correctly"
+      - "Verify mkcert generates valid local certificates"
+      - "Test Linode CLI authentication if configured"
+      - "Check that all error messages are clear and actionable"
     verified: false
     verified_by: null
     verified_at: null
@@ -38,6 +44,13 @@ features:
       - lib/install-common.sh
       - lib/install-drupal.sh
       - lib/install-steps.sh
+    checklist:
+      - "Test fresh install with each recipe type (nwp, d, os, dm)"
+      - "Verify site starts and is accessible via browser"
+      - "Check admin login works with generated credentials"
+      - "Test install with --list and --steps flags"
+      - "Verify cnwp.yml is updated correctly after install"
+      - "Test re-running install on existing site (should skip/warn)"
     verified: false
     verified_by: null
     verified_at: null
@@ -49,6 +62,12 @@ features:
     description: "Status display, health checks, and site management"
     files:
       - status.sh
+    checklist:
+      - "Run status.sh with no arguments - verify all sites listed"
+      - "Run status.sh <sitename> - verify detailed info shown"
+      - "Check running/stopped status is accurate"
+      - "Verify URLs displayed are correct and accessible"
+      - "Test health check indicators (database, files, config)"
     verified: false
     verified_by: null
     verified_at: null
@@ -60,6 +79,12 @@ features:
     description: "Interactive TUI for modifying site options"
     files:
       - modify.sh
+    checklist:
+      - "Run modify.sh <sitename> and navigate TUI menus"
+      - "Test changing site options (theme, modules, etc.)"
+      - "Verify changes are saved to cnwp.yml correctly"
+      - "Test cancel/exit without saving"
+      - "Check keyboard navigation (arrows, enter, escape)"
     verified: false
     verified_by: null
     verified_at: null
@@ -73,6 +98,14 @@ features:
       - backup.sh
       - lib/git.sh
       - lib/sanitize.sh
+    checklist:
+      - "Test full backup: ./backup.sh <sitename>"
+      - "Test database-only backup: ./backup.sh -b <sitename>"
+      - "Verify backup files created in sitebackups/<sitename>/"
+      - "Test --sanitize basic and --sanitize full flags"
+      - "Test --git flag pushes to GitLab repository"
+      - "Test --bundle creates git bundle file"
+      - "Verify backup naming convention includes timestamp"
     verified: false
     verified_by: null
     verified_at: null
@@ -85,6 +118,13 @@ features:
     files:
       - restore.sh
       - lib/rollback.sh
+    checklist:
+      - "Test restore from full backup"
+      - "Test restore from database-only backup"
+      - "Verify interactive backup selection works"
+      - "Test restore with specific backup file path"
+      - "Verify site works correctly after restore"
+      - "Test restore to different site name"
     verified: false
     verified_by: null
     verified_at: null
@@ -96,6 +136,12 @@ features:
     description: "Re-sync imported sites with remote sources"
     files:
       - sync.sh
+    checklist:
+      - "Test sync with an imported site"
+      - "Verify database is updated from remote"
+      - "Check files are synced correctly"
+      - "Test sync with --files-only flag"
+      - "Verify local changes are not overwritten unexpectedly"
     verified: false
     verified_by: null
     verified_at: null
@@ -107,6 +153,13 @@ features:
     description: "Copy/duplicate existing sites"
     files:
       - copy.sh
+    checklist:
+      - "Test full copy: ./copy.sh source dest"
+      - "Test files-only copy: ./copy.sh -f source dest"
+      - "Verify copied site starts and runs independently"
+      - "Check database is correctly duplicated"
+      - "Verify cnwp.yml is updated with new site"
+      - "Test copy to existing site (should warn/fail)"
     verified: false
     verified_by: null
     verified_at: null
@@ -118,6 +171,14 @@ features:
     description: "Site deletion with safety checks"
     files:
       - delete.sh
+    checklist:
+      - "Test delete with confirmation prompt"
+      - "Test delete with -y auto-confirm flag"
+      - "Test delete with -b backup flag (creates backup first)"
+      - "Verify DDEV project is stopped and removed"
+      - "Verify site directory is removed"
+      - "Check cnwp.yml is updated to remove site"
+      - "Test protection of production sites (should warn)"
     verified: false
     verified_by: null
     verified_at: null
@@ -129,6 +190,13 @@ features:
     description: "Site mode switching (dev/staging/production)"
     files:
       - make.sh
+    checklist:
+      - "Test dev mode: ./make.sh -v <sitename>"
+      - "Test prod mode: ./make.sh -p <sitename>"
+      - "Verify dev mode enables devel module and disables caching"
+      - "Verify prod mode uninstalls dev modules and enables caching"
+      - "Check CSS/JS aggregation settings change correctly"
+      - "Test with -y auto-confirm flag"
     verified: false
     verified_by: null
     verified_at: null
@@ -140,6 +208,13 @@ features:
     description: "Site migrations from various sources to Drupal 11"
     files:
       - migration.sh
+    checklist:
+      - "Test migration from Drupal 7 source"
+      - "Test migration from Drupal 9/10 source"
+      - "Verify content types are migrated correctly"
+      - "Check users and roles are migrated"
+      - "Verify media/files are migrated"
+      - "Test migration rollback if available"
     verified: false
     verified_by: null
     verified_at: null
@@ -154,6 +229,13 @@ features:
       - lib/import.sh
       - lib/import-tui.sh
       - lib/server-scan.sh
+    checklist:
+      - "Test import from SSH remote server"
+      - "Test interactive server scanning"
+      - "Verify database is imported correctly"
+      - "Check files are downloaded and placed correctly"
+      - "Verify imported site starts and runs"
+      - "Test import with specific database/files paths"
     verified: false
     verified_by: null
     verified_at: null
@@ -169,6 +251,13 @@ features:
     description: "Live server provisioning at sitename.nwpcode.org"
     files:
       - live.sh
+    checklist:
+      - "Test Linode server creation (use test mode if available)"
+      - "Verify DNS configuration with Cloudflare"
+      - "Check SSL certificate is installed correctly"
+      - "Verify site is accessible at sitename.nwpcode.org"
+      - "Test SSH access to provisioned server"
+      - "Verify firewall rules are applied"
     verified: false
     verified_by: null
     verified_at: null
@@ -180,10 +269,18 @@ features:
     description: "Deploy from dev to staging environment"
     files:
       - dev2stg.sh
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
+    checklist:
+      - "Test deployment: ./dev2stg.sh <sitename>"
+      - "Verify staging site is created/updated at <sitename>_stg"
+      - "Check production mode is enabled (Step 9)"
+      - "Verify dev modules are uninstalled on staging"
+      - "Check caching is enabled on staging"
+      - "Test all 10 deployment steps complete successfully"
+      - "Verify staging site mirrors dev functionality"
+    verified: true
+    verified_by: "rob"
+    verified_at: "2026-01-03T08:43:06+11:00"
+    file_hash: "a53de9c7a036d2a05cbd5565c1f4dc22e8eada6a1f2f1a99f50fa8b00cf2608c"
     notes: null
 
   stg2prod:
@@ -191,6 +288,13 @@ features:
     description: "Deploy from staging to production"
     files:
       - stg2prod.sh
+    checklist:
+      - "Test deployment with backup: ./stg2prod.sh -b <sitename>"
+      - "Verify backup is created before deployment"
+      - "Check production site is updated correctly"
+      - "Verify production mode is enforced"
+      - "Test database sync options"
+      - "Verify rollback procedure if deployment fails"
     verified: false
     verified_by: null
     verified_at: null
@@ -202,6 +306,12 @@ features:
     description: "Sync production back to staging"
     files:
       - prod2stg.sh
+    checklist:
+      - "Test sync: ./prod2stg.sh <sitename>"
+      - "Verify production database is copied to staging"
+      - "Check files are synced correctly"
+      - "Verify staging still has dev code (code not synced)"
+      - "Test sanitization option if available"
     verified: false
     verified_by: null
     verified_at: null
@@ -213,6 +323,12 @@ features:
     description: "Deploy staging to live server"
     files:
       - stg2live.sh
+    checklist:
+      - "Test deployment to live server"
+      - "Verify files are synced via rsync/SSH"
+      - "Check database is deployed correctly"
+      - "Verify live site is accessible"
+      - "Test with dry-run mode if available"
     verified: false
     verified_by: null
     verified_at: null
@@ -224,6 +340,11 @@ features:
     description: "Promote live back to staging"
     files:
       - live2stg.sh
+    checklist:
+      - "Test sync from live to local staging"
+      - "Verify database is downloaded and imported"
+      - "Check files are synced correctly"
+      - "Verify staging runs with live content"
     verified: false
     verified_by: null
     verified_at: null
@@ -235,6 +356,11 @@ features:
     description: "Promote live to production"
     files:
       - live2prod.sh
+    checklist:
+      - "Test promotion to production environment"
+      - "Verify backup is created before promotion"
+      - "Check production site is updated"
+      - "Test rollback procedure"
     verified: false
     verified_by: null
     verified_at: null
@@ -246,6 +372,11 @@ features:
     description: "Production environment setup"
     files:
       - produce.sh
+    checklist:
+      - "Test production environment creation"
+      - "Verify production settings are applied"
+      - "Check security hardening is enabled"
+      - "Verify caching and performance settings"
     verified: false
     verified_by: null
     verified_at: null
@@ -263,6 +394,12 @@ features:
       - podcast.sh
       - lib/podcast.sh
       - lib/install-podcast.sh
+    checklist:
+      - "Test podcast site creation"
+      - "Verify Castopod is installed correctly"
+      - "Check podcast admin interface works"
+      - "Test podcast RSS feed generation"
+      - "Verify media upload functionality"
     verified: false
     verified_by: null
     verified_at: null
@@ -274,6 +411,12 @@ features:
     description: "Backup and sync scheduling"
     files:
       - schedule.sh
+    checklist:
+      - "Test schedule creation for backups"
+      - "Verify cron jobs are created correctly"
+      - "Check scheduled backups run as expected"
+      - "Test schedule removal"
+      - "Verify schedule listing works"
     verified: false
     verified_by: null
     verified_at: null
@@ -285,6 +428,13 @@ features:
     description: "Security hardening and configuration"
     files:
       - security.sh
+    checklist:
+      - "Test security audit: ./security.sh audit <sitename>"
+      - "Test security check: ./security.sh check <sitename>"
+      - "Test security update: ./security.sh update <sitename>"
+      - "Verify file permissions are checked correctly"
+      - "Check dev module detection works"
+      - "Verify exposed file detection works"
     verified: false
     verified_by: null
     verified_at: null
@@ -296,6 +446,12 @@ features:
     description: "SSH key generation and management"
     files:
       - setup-ssh.sh
+    checklist:
+      - "Test SSH key generation"
+      - "Verify keys are created in keys/ directory"
+      - "Check key is installed to ~/.ssh/nwp"
+      - "Test connection to remote server with generated key"
+      - "Verify public key output for Linode"
     verified: false
     verified_by: null
     verified_at: null
@@ -307,6 +463,12 @@ features:
     description: "Complete NWP uninstallation"
     files:
       - uninstall_nwp.sh
+    checklist:
+      - "Test in dry-run mode if available"
+      - "Verify all DDEV projects are stopped"
+      - "Check NWP directories are removed"
+      - "Verify Docker resources are cleaned up"
+      - "Test partial uninstall options if available"
     verified: false
     verified_by: null
     verified_at: null
@@ -322,6 +484,13 @@ features:
     description: "Universal CLI wrapper - main command interface"
     files:
       - pl
+    checklist:
+      - "Test pl command with various subcommands"
+      - "Verify pl install works"
+      - "Verify pl backup works"
+      - "Check pl status works"
+      - "Test tab completion if available"
+      - "Verify help output is correct"
     verified: false
     verified_by: null
     verified_at: null
@@ -335,6 +504,13 @@ features:
       - test-nwp.sh
       - test.sh
       - testos.sh
+    checklist:
+      - "Run full test suite: ./test-nwp.sh"
+      - "Verify all test categories pass"
+      - "Check test output is clear and readable"
+      - "Test individual test categories"
+      - "Verify testos.sh OpenSocial tests work"
+      - "Check Behat/PHPUnit integration if applicable"
     verified: false
     verified_by: null
     verified_at: null
@@ -350,6 +526,12 @@ features:
     description: "Terminal UI framework - menus, checkboxes, forms"
     files:
       - lib/tui.sh
+    checklist:
+      - "Test menu display and navigation"
+      - "Verify checkbox selection works"
+      - "Test form input fields"
+      - "Check color rendering in different terminals"
+      - "Verify keyboard shortcuts work correctly"
     verified: false
     verified_by: null
     verified_at: null
@@ -361,6 +543,12 @@ features:
     description: "Advanced interactive checkbox selection"
     files:
       - lib/checkbox.sh
+    checklist:
+      - "Test checkbox display with multiple items"
+      - "Verify space bar toggles selection"
+      - "Check arrow key navigation"
+      - "Test Enter to confirm selection"
+      - "Verify Escape to cancel"
     verified: false
     verified_by: null
     verified_at: null
@@ -372,6 +560,12 @@ features:
     description: "YAML file manipulation without yq"
     files:
       - lib/yaml-write.sh
+    checklist:
+      - "Test reading YAML values"
+      - "Test writing/updating YAML values"
+      - "Verify nested value handling"
+      - "Check array handling"
+      - "Test with special characters in values"
     verified: false
     verified_by: null
     verified_at: null
@@ -383,6 +577,12 @@ features:
     description: "Common utilities - validation, secrets, prompts"
     files:
       - lib/common.sh
+    checklist:
+      - "Test get_secret() reads from .secrets.yml"
+      - "Test get_setting() reads from cnwp.yml"
+      - "Verify sitename validation"
+      - "Check prompt functions work correctly"
+      - "Test path handling utilities"
     verified: false
     verified_by: null
     verified_at: null
@@ -394,6 +594,12 @@ features:
     description: "Basic UI utilities - colors, status messages"
     files:
       - lib/ui.sh
+    checklist:
+      - "Test print_status with OK, WARN, FAIL, INFO"
+      - "Verify colors display correctly"
+      - "Check print_header formatting"
+      - "Test print_error output"
+      - "Verify ocmsg debug output"
     verified: false
     verified_by: null
     verified_at: null
@@ -405,6 +611,12 @@ features:
     description: "Git backup, bundling, GitLab API operations"
     files:
       - lib/git.sh
+    checklist:
+      - "Test git backup creation"
+      - "Verify git bundle creation"
+      - "Test GitLab API project creation"
+      - "Check git push to remote"
+      - "Verify incremental backup handling"
     verified: false
     verified_by: null
     verified_at: null
@@ -416,6 +628,12 @@ features:
     description: "Cloudflare DNS and SSL management"
     files:
       - lib/cloudflare.sh
+    checklist:
+      - "Test DNS record creation"
+      - "Verify DNS record lookup"
+      - "Check zone ID resolution"
+      - "Test API authentication"
+      - "Verify error handling for API failures"
     verified: false
     verified_by: null
     verified_at: null
@@ -427,6 +645,12 @@ features:
     description: "Linode API operations and provisioning"
     files:
       - lib/linode.sh
+    checklist:
+      - "Test Linode instance creation (use test mode)"
+      - "Verify instance listing"
+      - "Check API token authentication"
+      - "Test instance deletion"
+      - "Verify error handling"
     verified: false
     verified_by: null
     verified_at: null
@@ -438,6 +662,12 @@ features:
     description: "Backblaze B2 cloud storage integration"
     files:
       - lib/b2.sh
+    checklist:
+      - "Test B2 authentication"
+      - "Verify file upload to B2"
+      - "Test file download from B2"
+      - "Check bucket listing"
+      - "Verify error handling for API failures"
     verified: false
     verified_by: null
     verified_at: null
@@ -449,6 +679,12 @@ features:
     description: "Remote server operations"
     files:
       - lib/remote.sh
+    checklist:
+      - "Test SSH connection to remote server"
+      - "Verify file transfer via rsync"
+      - "Check remote command execution"
+      - "Test connection timeout handling"
+      - "Verify error handling for failed connections"
     verified: false
     verified_by: null
     verified_at: null
@@ -460,6 +696,11 @@ features:
     description: "Status badge generation"
     files:
       - lib/badges.sh
+    checklist:
+      - "Test badge generation for passing status"
+      - "Verify badge generation for failing status"
+      - "Check badge output format (SVG or URL)"
+      - "Test badge color coding"
     verified: false
     verified_by: null
     verified_at: null
@@ -475,6 +716,12 @@ features:
     description: "Moodle platform installation support"
     files:
       - lib/install-moodle.sh
+    checklist:
+      - "Test Moodle site installation with dm recipe"
+      - "Verify Moodle admin interface works"
+      - "Check database is configured correctly"
+      - "Test course creation functionality"
+      - "Verify user registration works"
     verified: false
     verified_by: null
     verified_at: null
@@ -492,6 +739,12 @@ features:
       - git/gitlab_setup.sh
       - git/gitlab_server_setup.sh
       - git/gitlab_create_server.sh
+    checklist:
+      - "Test GitLab server creation on Linode"
+      - "Verify GitLab is accessible via HTTPS"
+      - "Check admin login works"
+      - "Test repository creation"
+      - "Verify SSH access to GitLab"
     verified: false
     verified_by: null
     verified_at: null
@@ -503,6 +756,12 @@ features:
     description: "GitLab security hardening automation"
     files:
       - git/gitlab_harden.sh
+    checklist:
+      - "Test --check mode shows current settings"
+      - "Test dry-run mode (default) shows changes"
+      - "Test --apply mode applies changes"
+      - "Verify all 8 hardening options work"
+      - "Check gitlab.rb backup is created"
     verified: false
     verified_by: null
     verified_at: null
@@ -515,6 +774,11 @@ features:
     files:
       - git/setup_gitlab_repo.sh
       - git/setup_gitlab_site.sh
+    checklist:
+      - "Test repository creation for a site"
+      - "Verify git remote is configured"
+      - "Check initial commit is pushed"
+      - "Test site integration with GitLab"
     verified: false
     verified_by: null
     verified_at: null
@@ -526,6 +790,11 @@ features:
     description: "GitLab instance installation via DDEV"
     files:
       - lib/install-gitlab.sh
+    checklist:
+      - "Test local GitLab installation via DDEV"
+      - "Verify GitLab container starts"
+      - "Check admin interface is accessible"
+      - "Test repository operations"
     verified: false
     verified_by: null
     verified_at: null
@@ -542,6 +811,12 @@ features:
     files:
       - linode/linode_setup.sh
       - linode/linode_server_setup.sh
+    checklist:
+      - "Test server creation (use test mode)"
+      - "Verify SSH access to new server"
+      - "Check server configuration is correct"
+      - "Test firewall rules are applied"
+      - "Verify DNS is configured"
     verified: false
     verified_by: null
     verified_at: null
@@ -553,6 +828,12 @@ features:
     description: "Deployment automation to Linode servers"
     files:
       - linode/linode_deploy.sh
+    checklist:
+      - "Test deployment to existing server"
+      - "Verify files are synced correctly"
+      - "Check database is deployed"
+      - "Test SSL certificate setup"
+      - "Verify site is accessible"
     verified: false
     verified_by: null
     verified_at: null
@@ -564,6 +845,11 @@ features:
     description: "Automated test server creation"
     files:
       - linode/linode_create_test_server.sh
+    checklist:
+      - "Test server creation for testing"
+      - "Verify server is accessible"
+      - "Check cleanup/deletion works"
+      - "Test automated provisioning"
     verified: false
     verified_by: null
     verified_at: null
@@ -579,6 +865,12 @@ features:
     description: "Complete configuration template"
     files:
       - example.cnwp.yml
+    checklist:
+      - "Verify all recipe options are documented"
+      - "Check default values are sensible"
+      - "Test copying to cnwp.yml works"
+      - "Verify comments explain each option"
+      - "Check for any missing new options"
     verified: false
     verified_by: null
     verified_at: null
@@ -590,6 +882,11 @@ features:
     description: "Secrets configuration template"
     files:
       - .secrets.example.yml
+    checklist:
+      - "Verify all secret placeholders are present"
+      - "Check structure matches .secrets.yml expectations"
+      - "Verify comments explain each secret"
+      - "Test copying to .secrets.yml works"
     verified: false
     verified_by: null
     verified_at: null
@@ -607,6 +904,12 @@ features:
       - tests/test-integration.sh
       - tests/test-podcast.sh
       - tests/test-yaml-write.sh
+    checklist:
+      - "Run all integration tests"
+      - "Verify tests pass on fresh environment"
+      - "Check test output is clear"
+      - "Test individual test files"
+      - "Verify test coverage is adequate"
     verified: false
     verified_by: null
     verified_at: null

@@ -212,25 +212,64 @@ recipes:
     webroot: web
 ```
 
-### .secrets.yml (Credentials)
+### Two-Tier Secrets Architecture
+
+NWP uses a two-tier secrets system for AI assistant safety:
+
+| File | Contains | AI Access |
+|------|----------|-----------|
+| `.secrets.yml` | Infrastructure (API tokens) | Allowed |
+| `.secrets.data.yml` | Production data (DB, SSH) | Blocked |
+
+### .secrets.yml (Infrastructure Secrets)
 
 ```yaml
+# Infrastructure secrets - safe for AI assistants
 linode:
   api_token: "your-token-here"
+
+cloudflare:
+  api_token: "your-token-here"
+  zone_id: "your-zone-id"
 
 gitlab:
   server:
     domain: git.yourdomain.org
     ip: 1.2.3.4
     linode_id: 12345678
-    ssh_user: gitlab
-    ssh_key: git/keys/gitlab_linode
-  admin:
-    url: https://git.yourdomain.org
-    username: root
-    initial_password: "from-server"
-    password: "your-changed-password"
+  api_token: "gitlab-api-token"
 ```
+
+### .secrets.data.yml (Data Secrets - AI Blocked)
+
+```yaml
+# Data secrets - NEVER share with AI assistants
+production_ssh:
+  key_path: "keys/prod_deploy"
+  user: "deploy"
+  host: "prod.example.com"
+
+production_database:
+  host: "db.example.com"
+  password: "production-password"
+
+gitlab_admin:
+  password: "gitlab-root-password"
+```
+
+### Migrating Existing Secrets
+
+If you have an existing `.secrets.yml` with mixed secrets:
+
+```bash
+# Check for data secrets in wrong files
+./migrate-secrets.sh --check
+
+# Migrate to two-tier architecture
+./migrate-secrets.sh --nwp
+```
+
+See [DATA_SECURITY_BEST_PRACTICES.md](DATA_SECURITY_BEST_PRACTICES.md) for full documentation.
 
 ## CLI Installation
 

@@ -17,11 +17,12 @@ vortex/
 │   ├── .env.social             # Open Social recipe
 │   ├── .env.varbase            # Varbase recipe
 │   ├── .env.local.example      # Local overrides example
-│   └── .secrets.example.yml    # Secrets template
+│   ├── .secrets.example.yml    # Infrastructure secrets template
+│   └── .secrets.data.example.yml # Data secrets template (AI blocked)
 └── scripts/                     # Utility scripts
     ├── generate-env.sh         # Generate .env from cnwp.yml
     ├── generate-ddev.sh        # Generate DDEV config
-    └── load-secrets.sh         # Load secrets from .secrets.yml
+    └── load-secrets.sh         # Load secrets (supports two-tier)
 ```
 
 ## How It Works
@@ -114,7 +115,16 @@ When you run `./install.sh [recipe] [sitename]`, NWP automatically:
    STAGE_FILE_PROXY_ORIGIN=https://www.example.com
    ```
 
-#### For Secrets
+#### For Secrets (Two-Tier Architecture)
+
+NWP uses a two-tier secrets system for AI assistant safety:
+
+| File | Contains | AI Access |
+|------|----------|-----------|
+| `.secrets.yml` | API tokens, dev credentials | Allowed |
+| `.secrets.data.yml` | Production passwords, SSH keys | Blocked |
+
+**Infrastructure secrets** (safe for AI):
 
 1. Copy `.secrets.example.yml` to `.secrets.yml`:
    ```bash
@@ -122,16 +132,35 @@ When you run `./install.sh [recipe] [sitename]`, NWP automatically:
    cp .secrets.example.yml .secrets.yml
    ```
 
-2. Edit `.secrets.yml` with your credentials:
+2. Edit `.secrets.yml` with API tokens and dev credentials:
    ```yaml
-   # .secrets.yml
+   # .secrets.yml - Infrastructure (AI can help with these)
    api_keys:
      github_token: "ghp_xxxxxxxxxxxx"
    drupal:
-     admin_password: "secure_password"
+     admin_password: "dev_password"  # Development only
    ```
 
-3. **NEVER** commit `.secrets.yml` to version control!
+**Data secrets** (blocked from AI):
+
+1. Copy `.secrets.data.example.yml` to `.secrets.data.yml`:
+   ```bash
+   cd mysite
+   cp .secrets.data.example.yml .secrets.data.yml
+   ```
+
+2. Edit `.secrets.data.yml` with production credentials:
+   ```yaml
+   # .secrets.data.yml - Production (AI cannot read)
+   production_database:
+     password: "production_password"
+   production_ssh:
+     key_path: "keys/prod_deploy"
+   ```
+
+3. **NEVER** commit `.secrets.yml` or `.secrets.data.yml` to version control!
+
+See [DATA_SECURITY_BEST_PRACTICES.md](../docs/DATA_SECURITY_BEST_PRACTICES.md) for full documentation.
 
 ## Configuring Services
 
@@ -261,13 +290,20 @@ Never edit `.env` directly - it's generated from `cnwp.yml`. Instead:
 - Modify `cnwp.yml` for recipe defaults
 - Use `.env.local` for local overrides
 
-### 2. Keep Secrets Secret
+### 2. Keep Secrets Secret (Two-Tier)
 
-Always use `.secrets.yml` for:
-- API keys and tokens
-- Passwords
-- SSH keys
-- Any sensitive credentials
+Use the appropriate secrets file:
+
+**`.secrets.yml`** (infrastructure - AI can help):
+- API tokens (Linode, Cloudflare, GitLab)
+- Development passwords
+- Non-sensitive configuration
+
+**`.secrets.data.yml`** (data - AI blocked):
+- Production database passwords
+- Production SSH keys
+- Production SMTP credentials
+- Encryption keys
 
 ### 3. Document Custom Variables
 

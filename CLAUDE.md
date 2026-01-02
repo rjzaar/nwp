@@ -38,10 +38,58 @@ When you make changes to `example.cnwp.yml` (adding new options, updating defaul
    - New defaults -> Offer to apply to existing sites
 3. Remember: You can READ and EDIT `cnwp.yml` - just never COMMIT it
 
+## Two-Tier Secrets Architecture
+
+NWP uses a two-tier secrets system that allows you to help with infrastructure while protecting user data:
+
+### Files You CAN Read
+
+| File | Contents | Why Safe |
+|------|----------|----------|
+| `.secrets.yml` | API tokens (Linode, Cloudflare, GitLab) | Infrastructure automation only |
+| `.secrets.example.yml` | Template with empty values | No real credentials |
+| `.env`, `.env.local` | Development settings | Local dev only |
+
+### Files You CANNOT Read (Blocked by deny rules)
+
+| File | Contents | Why Blocked |
+|------|----------|-------------|
+| `.secrets.data.yml` | Production DB, SSH, SMTP | Access to user data |
+| `keys/prod_*` | Production SSH keys | Server access |
+| `*.sql`, `*.sql.gz` | Database dumps | User data |
+| `settings.php` | Drupal credentials | Production access |
+
+### Using Secrets in Scripts
+
+When helping with scripts, use the appropriate function:
+
+```bash
+# Infrastructure secrets (you can help with these)
+token=$(get_infra_secret "linode.api_token" "")
+
+# Data secrets (you should not access these)
+db_pass=$(get_data_secret "production_database.password" "")
+```
+
+### Safe Operations
+
+For operations needing data secrets, use proxy functions that return sanitized output:
+
+```bash
+source lib/safe-ops.sh
+
+safe_server_status prod1    # Returns: Status, CPU, Memory (no credentials)
+safe_db_status avc          # Returns: Table count, size (no actual data)
+safe_security_check avc     # Returns: Update count (no credentials)
+```
+
+See `docs/DATA_SECURITY_BEST_PRACTICES.md` for the full security architecture.
+
 ## Other Protected Files
 
 - `.env` files - Never commit environment secrets
 - Any file in `.gitignore` - Respect the ignore patterns
+- `.secrets.data.yml` - NEVER read, contains production credentials
 
 ## Project Structure
 

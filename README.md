@@ -748,6 +748,7 @@ Comprehensive documentation is available in the `docs/` directory:
   - Automatic dependency installation and configuration
 
 - **[DATA_SECURITY_BEST_PRACTICES.md](docs/DATA_SECURITY_BEST_PRACTICES.md)** - Security and AI usage guide
+  - Two-tier secrets architecture (infrastructure vs data secrets)
   - Production backup strategies and schedules
   - Database sanitization for GDPR compliance
   - What to share (and NOT share) with AI assistants like Claude
@@ -933,8 +934,9 @@ Environment configuration is automatic when creating new sites:
 
 This generates:
 - `.env` - Main environment configuration (auto-generated, don't edit)
-- `.env.local.example` - Template for local overrides  
-- `.secrets.example.yml` - Template for credentials
+- `.env.local.example` - Template for local overrides
+- `.secrets.example.yml` - Template for infrastructure credentials
+- `.secrets.data.example.yml` - Template for production credentials
 
 ### Customizing Your Environment
 
@@ -944,13 +946,32 @@ This generates:
    # Edit .env.local with your settings
    ```
 
-2. **Secrets**: Copy `.secrets.example.yml` to `.secrets.yml`
+2. **Infrastructure secrets**: Copy `.secrets.example.yml` to `.secrets.yml`
    ```bash
    cp .secrets.example.yml .secrets.yml
-   # Add your API keys, passwords, etc.
+   # Add API tokens (Linode, Cloudflare, GitLab)
+   # These are safe for AI assistants to help with
    ```
 
-3. **Never commit**: `.env.local` and `.secrets.yml` are automatically gitignored
+3. **Data secrets** (production): Copy `.secrets.data.example.yml` to `.secrets.data.yml`
+   ```bash
+   cp .secrets.data.example.yml .secrets.data.yml
+   # Add production DB passwords, SSH keys, SMTP credentials
+   # These are BLOCKED from AI assistants
+   ```
+
+4. **Never commit**: `.secrets.yml` and `.secrets.data.yml` are automatically gitignored
+
+### Two-Tier Secrets Architecture
+
+NWP uses a two-tier secrets system for AI assistant safety:
+
+| File | Contains | AI Access |
+|------|----------|-----------|
+| `.secrets.yml` | API tokens, dev credentials | Allowed |
+| `.secrets.data.yml` | Production passwords, SSH keys | Blocked |
+
+See [DATA_SECURITY_BEST_PRACTICES.md](docs/DATA_SECURITY_BEST_PRACTICES.md) for details.
 
 ### Manual Generation
 

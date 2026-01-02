@@ -8,6 +8,7 @@ A streamlined installation system for Drupal and Moodle projects using DDEV and 
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Management Scripts](#management-scripts)
+- [Feature Verification Tracking](#feature-verification-tracking)
 - [How It Works](#how-it-works)
 - [Using the Install Script](#using-the-install-script)
 - [Available Recipes](#available-recipes)
@@ -174,6 +175,85 @@ NWP uses postfix naming for different environments:
 - **Production**: `sitename_prod` (e.g., `nwp4_prod`)
 
 For detailed documentation on each script, see the [Documentation](#documentation) section.
+
+## Feature Verification Tracking
+
+NWP includes a verification tracking system to ensure all features have been manually tested by a human. When code is modified, verifications are automatically invalidated.
+
+### Quick Start
+
+```bash
+# View verification status
+./verify.sh
+
+# See summary with progress bar
+./verify.sh summary
+
+# List all feature IDs
+./verify.sh list
+
+# Mark a feature as verified
+./verify.sh verify setup
+
+# Mark verified by a specific person
+./verify.sh verify install rob
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `./verify.sh` | Show full verification status with checkboxes |
+| `./verify.sh summary` | Show progress statistics and progress bar |
+| `./verify.sh list` | List all feature IDs with current status |
+| `./verify.sh verify <id>` | Mark a feature as verified by you |
+| `./verify.sh verify <id> <name>` | Mark verified by a specific person |
+| `./verify.sh unverify <id>` | Mark a feature as unverified |
+| `./verify.sh check` | Detect modified files and invalidate verifications |
+| `./verify.sh reset` | Reset all verifications |
+| `./verify.sh help` | Show help message |
+
+### How It Works
+
+1. **Verification**: When you verify a feature, the script stores a SHA256 hash of all associated source files
+2. **Change Detection**: Running `./verify.sh check` compares current file hashes against stored hashes
+3. **Auto-Invalidation**: If any tracked file has changed, the verification is automatically cleared
+4. **Status Display**: Shows `[✓]` verified, `[ ]` unverified, `[!]` modified since verification
+
+### Tracked Features
+
+The system tracks 42 features across 10 categories:
+
+- **Core Scripts** (12): setup, install, status, backup, restore, etc.
+- **Deployment** (8): dev2stg, stg2prod, live, etc.
+- **Infrastructure** (5): podcast, schedule, security, etc.
+- **CLI & Testing** (2): pl_cli, test_nwp
+- **Libraries** (12): tui, checkbox, yaml_write, git, cloudflare, etc.
+- **Moodle** (1): moodle installation support
+- **GitLab** (4): setup, hardening, repo management
+- **Linode** (3): setup, deploy, test server
+- **Configuration** (2): example configs
+- **Tests** (1): integration tests
+
+### Example Workflow
+
+```bash
+# Before release, check what needs verification
+./verify.sh summary
+
+# Run through and verify each feature
+./verify.sh verify setup
+./verify.sh verify install
+./verify.sh verify backup
+
+# After code changes, check for invalidations
+./verify.sh check
+
+# See what still needs verification
+./verify.sh status
+```
+
+The verification state is stored in `.verification.yml` and tracked in git, so the team can share verification progress.
 
 ## How It Works
 
@@ -746,6 +826,8 @@ nwp/
 ├── cnwp.yml              # Configuration file with all recipes
 ├── install.sh            # Main installation script
 ├── setup.sh              # Prerequisites setup script
+├── verify.sh             # Feature verification tracking script
+├── .verification.yml     # Verification status tracking
 ├── README.md             # This file
 ├── nwp.yml              # Site-specific config (if exists)
 ├── docs/                 # Documentation directory

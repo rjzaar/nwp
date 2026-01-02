@@ -247,6 +247,7 @@ recipes:
       cron:                           # Automated task scheduling
       backup:                         # Automated backups
       ssl:                            # HTTPS configuration
+      migration:                      # Create migration folder for importing content
 
   os:
     # [ACTIVE] Open Social installation
@@ -268,6 +269,7 @@ recipes:
       cron:                           # Automated task scheduling
       backup:                         # Automated backups
       ssl:                            # HTTPS configuration
+      migration:                      # Create migration folder for importing content
 
   nwp:
     # [ACTIVE] NWP custom recipe with modules
@@ -309,6 +311,9 @@ recipes:
       dns_records:                    # Auto-configure DNS via Linode
       monitoring:                     # Uptime and performance monitoring
 
+      # === Migration (environment: all) ===
+      migration:                      # Create migration folder for importing content
+
   dm:
     # [ACTIVE] Divine Mercy recipe
     source: drupal/recommended-project:^10.2
@@ -316,6 +321,17 @@ recipes:
     profile: standard
     webroot: web
     auto: y
+    options:
+      dev_modules:                    # Enable devel for debugging
+      xdebug:                         # Step-through debugging with IDE
+      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
+      config_split:                   # Environment-specific config
+      security_modules:               # Security hardening modules
+      redis:                          # Object caching for performance
+      cron:                           # Automated task scheduling
+      backup:                         # Automated backups
+      ssl:                            # HTTPS configuration
+      migration:                      # Create migration folder for importing content
 
   # === MOODLE RECIPE ===
   m:
@@ -334,11 +350,6 @@ recipes:
     webroot: .                     # [ACTIVE]
     sitename: "GitLab Instance"    # [ACTIVE]
     auto: y                        # [ACTIVE]
-
-  # === MIGRATION RECIPE ===
-  migration:
-    type: migration                # [ACTIVE] Creates stub for importing existing sites
-    description: "Migration stub for importing existing sites"
 
   # === ENHANCED EXAMPLE (shows all options) ===
   enhanced_example:

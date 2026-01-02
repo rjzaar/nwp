@@ -364,6 +364,132 @@ get_env_label() {
     esac
 }
 
+################################################################################
+# Migration Functions
+################################################################################
+
+# Setup migration folder structure for a site
+# Usage: setup_migration_folder "/path/to/site" ["source_type"]
+# Creates: migration/source/, migration/database/, migration/README.md
+setup_migration_folder() {
+    local site_dir="$1"
+    local source_type="${2:-other}"
+    local migration_dir="$site_dir/migration"
+
+    # Check if site directory exists
+    if [ ! -d "$site_dir" ]; then
+        print_error "Site directory does not exist: $site_dir"
+        return 1
+    fi
+
+    # Check if migration folder already exists
+    if [ -d "$migration_dir" ]; then
+        print_warning "Migration folder already exists: $migration_dir"
+        return 0
+    fi
+
+    # Create migration directory structure
+    print_info "Creating migration folder structure..."
+    mkdir -p "$migration_dir/source"
+    mkdir -p "$migration_dir/database"
+
+    # Create README with instructions
+    cat > "$migration_dir/README.md" << 'MIGRATION_README'
+# Migration Folder
+
+This folder is prepared for importing content from an existing site.
+
+## Directory Structure
+
+- `source/` - Place your source site files here
+- `database/` - Place SQL database dumps here
+
+## Next Steps
+
+1. **Copy source files**: Copy your existing site into `source/`
+   - For Drupal: Copy the entire Drupal root
+   - For WordPress: Copy wp-content and wp-config.php
+   - For static HTML: Copy all HTML/CSS/JS files
+
+2. **Copy database**: Place SQL dump in `database/`
+   - Name the file: `database.sql` or `source.sql`
+
+3. **Analyze**: Run migration analysis
+   ```bash
+   ./migration.sh analyze <sitename>
+   ```
+
+4. **Prepare**: Set up migration modules
+   ```bash
+   ./migration.sh prepare <sitename>
+   ```
+
+5. **Run**: Execute the migration
+   ```bash
+   ./migration.sh run <sitename>
+   ```
+
+6. **Verify**: Check migration results
+   ```bash
+   ./migration.sh verify <sitename>
+   ```
+
+## Supported Source Types
+
+| Type | Detection | Migration Method |
+|------|-----------|------------------|
+| drupal7 | `includes/bootstrap.inc` | Migrate Drupal module |
+| drupal8/9/10 | `core/lib/Drupal.php` | Upgrade path |
+| wordpress | `wp-config.php` | WordPress Migrate module |
+| joomla | `configuration.php` | Custom migration |
+| html | `index.html` | migrate_source_html |
+| other | Manual | Custom migration needed |
+
+## Tips
+
+- Always backup your source before migrating
+- Test migrations on a development copy first
+- Check `/admin/reports/dblog` for migration errors
+- Use `drush migrate:status` to monitor progress
+
+MIGRATION_README
+
+    print_status "OK" "Migration folder created: $migration_dir"
+    return 0
+}
+
+# Check if a site has a migration folder
+# Usage: has_migration_folder "/path/to/site"
+# Returns: 0 if exists, 1 if not
+has_migration_folder() {
+    local site_dir="$1"
+    [ -d "$site_dir/migration" ] && return 0
+    return 1
+}
+
+# Remove migration folder from a site
+# Usage: remove_migration_folder "/path/to/site"
+remove_migration_folder() {
+    local site_dir="$1"
+    local migration_dir="$site_dir/migration"
+
+    if [ ! -d "$migration_dir" ]; then
+        print_info "No migration folder to remove"
+        return 0
+    fi
+
+    # Check if migration folder has content
+    if [ -n "$(ls -A "$migration_dir/source" 2>/dev/null)" ] || \
+       [ -n "$(ls -A "$migration_dir/database" 2>/dev/null)" ]; then
+        print_warning "Migration folder contains files. Remove manually if needed: $migration_dir"
+        return 1
+    fi
+
+    rm -rf "$migration_dir"
+    print_status "OK" "Migration folder removed"
+    return 0
+}
+
 # Export functions for use in subshells
 export -f get_secret
 export -f get_secret_nested
@@ -374,3 +500,6 @@ export -f get_drupal_environment
 export -f get_env_color
 export -f print_env_status
 export -f get_env_label
+export -f setup_migration_folder
+export -f has_migration_folder
+export -f remove_migration_folder

@@ -295,6 +295,24 @@ apply_drupal_options() {
         fi
     fi
 
+    # Migration Folder
+    if [[ "${OPTION_SELECTED[migration]}" == "y" ]]; then
+        print_info "Creating migration folder..."
+        local site_dir="$PWD"
+        if command -v setup_migration_folder &>/dev/null; then
+            local source_type="${OPTION_VALUES[source_type]:-other}"
+            if setup_migration_folder "$site_dir" "$source_type"; then
+                ((applied++))
+            fi
+        else
+            # Fallback if function not available
+            mkdir -p "$site_dir/migration/source"
+            mkdir -p "$site_dir/migration/database"
+            print_status "OK" "Migration folder created"
+            ((applied++))
+        fi
+    fi
+
     if [[ $applied -gt 0 ]]; then
         print_info "Clearing cache after option application..."
         ddev drush cr 2>/dev/null || true

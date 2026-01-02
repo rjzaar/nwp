@@ -128,6 +128,11 @@ check_installed_status() {
                     OPTION_INSTALLED["solr"]="y"
                 fi
             fi
+
+            # Check if migration folder exists (doesn't require DDEV running)
+            if [ -d "migration" ]; then
+                OPTION_INSTALLED["migration"]="y"
+            fi
             ;;
         moodle|m)
             # Moodle-specific checks would go here
@@ -729,6 +734,35 @@ apply_site_options() {
                 if [ "$needs_restart" = true ]; then
                     print_info "Restarting DDEV..."
                     ddev restart 2>/dev/null || true
+                fi
+            fi
+
+            # Migration folder (doesn't require DDEV)
+            if [ "${OPTION_SELECTED[migration]:-n}" = "y" ] && [ "${OPTION_INSTALLED[migration]:-n}" != "y" ]; then
+                print_info "Creating migration folder..."
+                if command -v setup_migration_folder &>/dev/null; then
+                    setup_migration_folder "$directory" && ((installed++)) || true
+                else
+                    # Fallback if function not available
+                    mkdir -p "$directory/migration/source"
+                    mkdir -p "$directory/migration/database"
+                    print_status "OK" "Migration folder created"
+                    ((installed++))
+                fi
+            elif [ "${OPTION_SELECTED[migration]:-n}" = "n" ] && [ "${OPTION_INSTALLED[migration]:-n}" = "y" ]; then
+                print_info "Removing migration folder..."
+                if command -v remove_migration_folder &>/dev/null; then
+                    remove_migration_folder "$directory" && ((removed++)) || true
+                else
+                    # Fallback - only remove if empty
+                    if [ -z "$(ls -A "$directory/migration/source" 2>/dev/null)" ] && \
+                       [ -z "$(ls -A "$directory/migration/database" 2>/dev/null)" ]; then
+                        rm -rf "$directory/migration"
+                        print_status "OK" "Migration folder removed"
+                        ((removed++))
+                    else
+                        print_warning "Migration folder contains files, not removed"
+                    fi
                 fi
             fi
             ;;

@@ -248,6 +248,14 @@ define_drupal_options() {
         "all" "dev:n,stage:n,live:n,prod:n" "email_send" \
         "forward:Forward To Address" "email" \
         "https://www.drupal.org/project/mailhandler"
+
+    # === MIGRATION OPTIONS ===
+    define_option "migration" \
+        "Migration Folder" \
+        "Create a migration folder structure for importing content from other sites. Sets up source/ and database/ directories with instructions for migrating from Drupal 7, WordPress, static HTML, or other CMS platforms." \
+        "all" "dev:n,stage:n,live:n,prod:n" "" \
+        "source_type:Source Type (drupal7/wordpress/html/other)" "migration" \
+        "https://www.drupal.org/docs/upgrading-drupal,https://www.drupal.org/project/migrate_drupal"
 }
 
 ################################################################################

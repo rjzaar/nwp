@@ -171,6 +171,13 @@
   margin: 0;
 }
 
+/* Bottom navigation */
+.decade-nav-bottom {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e9ecef;
+}
+
 .reflection-opening-prayer .prayer-text,
 .reflection-closing-prayer .prayer-text {
   margin: 0;

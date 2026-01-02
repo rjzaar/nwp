@@ -26,6 +26,11 @@
       const prevBtn = document.getElementById('decade-prev');
       const nextBtn = document.getElementById('decade-next');
 
+      // Bottom navigation elements
+      const indicatorBottom = document.querySelector('.decade-indicator-bottom');
+      const prevBtnBottom = document.querySelector('.decade-prev-bottom');
+      const nextBtnBottom = document.querySelector('.decade-next-bottom');
+
       // Get set data by ID
       function getSetById(id) {
         return reflectionSets.find(set => set.id == id);
@@ -79,10 +84,19 @@
 
         // Update indicator
         indicator.textContent = `Decade ${currentDecade} of 5`;
+        if (indicatorBottom) {
+          indicatorBottom.textContent = `Decade ${currentDecade} of 5`;
+        }
 
         // Update button states
         prevBtn.disabled = currentDecade <= 1;
         nextBtn.disabled = currentDecade >= 5;
+        if (prevBtnBottom) {
+          prevBtnBottom.disabled = currentDecade <= 1;
+        }
+        if (nextBtnBottom) {
+          nextBtnBottom.disabled = currentDecade >= 5;
+        }
       }
 
       // Handle set selection
@@ -144,6 +158,29 @@
           if (currentDecade < 5) {
             currentDecade++;
             renderDecade();
+          }
+        });
+      }
+
+      // Bottom navigation handlers
+      if (prevBtnBottom) {
+        prevBtnBottom.addEventListener('click', function () {
+          if (currentDecade > 1) {
+            currentDecade--;
+            renderDecade();
+            // Scroll to top of reflection display
+            display.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        });
+      }
+
+      if (nextBtnBottom) {
+        nextBtnBottom.addEventListener('click', function () {
+          if (currentDecade < 5) {
+            currentDecade++;
+            renderDecade();
+            // Scroll to top of reflection display
+            display.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
         });
       }

@@ -100,6 +100,7 @@ class ChapletController extends ControllerBase {
           'divine_mercy/expandable-sections',
           'divine_mercy/reflection-selector',
           'divine_mercy/eucharist-adoration',
+          'divine_mercy/bible-references',
         ],
         'drupalSettings' => [
           'divineMercy' => [

@@ -115,6 +115,7 @@ class NovenaController extends ControllerBase {
         'library' => [
           'divine_mercy/divine-mercy',
           'divine_mercy/font-size-control',
+          'divine_mercy/bible-references',
         ],
       ],
       '#cache' => [

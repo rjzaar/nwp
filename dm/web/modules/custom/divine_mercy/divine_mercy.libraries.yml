@@ -59,3 +59,12 @@ reflection-selector:
     - core/drupal
     - core/drupalSettings
     - core/once
+
+bible-references:
+  version: 1.0.0
+  js:
+    js/bible-references.js: {}
+  dependencies:
+    - core/drupal
+    - core/drupalSettings
+    - core/once

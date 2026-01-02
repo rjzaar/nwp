@@ -38,7 +38,7 @@
       'sirach': 25, 'sir': 25, 'ecclesiasticus': 25,
       'isaiah': 26, 'isa': 26, 'is': 26,
       'jeremiah': 27, 'jer': 27, 'jr': 27,
-      'lamentations': 28, 'lam': 28,
+      'lamentations': 28, 'lam': 28, 'la': 28,
       'baruch': 29, 'bar': 29,
       'ezekiel': 30, 'ezek': 30, 'ez': 30,
       'daniel': 31, 'dan': 31, 'dn': 31,
@@ -160,13 +160,13 @@
 
   /**
    * Parse a Bible reference string into components.
-   * Supports formats like: "Mt 25:31", "Matthew 25:31-34", "1 Cor 13:4-7"
+   * Supports formats like: "Mt 25:31", "Matthew 25:31-34", "1 Cor 13:4-7", "1Cor 13:4"
    */
   function parseReference(refText) {
     // Normalize the reference
     let ref = refText.trim();
 
-    // Match pattern: optional number, book name, chapter:verse(-endverse)
+    // Match pattern: optional number (with or without space), book name, chapter:verse(-endverse)
     const pattern = /^(\d?\s*[A-Za-z]+)\s*(\d+):(\d+)(?:-(\d+))?$/;
     const match = ref.match(pattern);
 
@@ -277,8 +277,14 @@
    * Find and linkify Bible references in text content.
    */
   function linkifyReferences(element) {
-    // Pattern to match Bible references like "Mt 25:31", "1 Cor 13:4-7", "(Jn 3:16)"
-    const refPattern = /\(?\b(\d?\s*[A-Z][a-z]+)\s+(\d+):(\d+)(?:-(\d+))?\)?/g;
+    // Pattern to match single Bible reference like "Mt 25:31", "1 Cor 13:4-7", "1Cor 13:4"
+    const singleRefPattern = /(\d?\s*[A-Z][a-z]+)\s*(\d+):(\d+)(?:-(\d+))?/;
+
+    // Pattern to match references in parentheses (may contain multiple comma-separated refs)
+    const parenRefPattern = /\(([^)]+)\)/g;
+
+    // Pattern to match standalone references (not in parentheses)
+    const standaloneRefPattern = /(?<!\()\b(\d?\s*[A-Z][a-z]+)\s*(\d+):(\d+)(?:-(\d+))?(?!\s*[,)])/g;
 
     const walker = document.createTreeWalker(
       element,
@@ -290,7 +296,7 @@
     const textNodes = [];
     let node;
     while (node = walker.nextNode()) {
-      if (node.textContent.match(refPattern)) {
+      if (node.textContent.match(singleRefPattern)) {
         textNodes.push(node);
       }
     }
@@ -299,47 +305,93 @@
       const text = textNode.textContent;
       const parts = [];
       let lastIndex = 0;
-      let match;
 
-      refPattern.lastIndex = 0;
-      while ((match = refPattern.exec(text)) !== null) {
-        // Add text before match
-        if (match.index > lastIndex) {
-          parts.push(document.createTextNode(text.substring(lastIndex, match.index)));
-        }
+      // First, handle parenthesized references (may contain multiple)
+      let parenMatch;
+      parenRefPattern.lastIndex = 0;
 
-        // Create link for the reference
-        const refText = match[0].replace(/[()]/g, '');
-        const ref = parseReference(refText);
+      // Collect all matches first
+      const allMatches = [];
 
-        if (ref) {
-          const link = document.createElement('a');
-          link.href = '#';
-          link.className = 'bible-reference';
-          link.textContent = match[0];
-          link.dataset.book = ref.bookNum;
-          link.dataset.chapter = ref.chapter;
-          link.dataset.verse = ref.verse;
-          if (ref.verseEnd) {
-            link.dataset.verseEnd = ref.verseEnd;
+      while ((parenMatch = parenRefPattern.exec(text)) !== null) {
+        const innerText = parenMatch[1];
+        const refs = innerText.split(/,\s*/);
+        const validRefs = [];
+
+        refs.forEach(refStr => {
+          const trimmed = refStr.trim();
+          const ref = parseReference(trimmed);
+          if (ref) {
+            validRefs.push({ text: trimmed, ref: ref });
           }
-          link.addEventListener('click', function(e) {
-            e.preventDefault();
-            const selectedBible = localStorage.getItem('divineMercyBible') || 'NABRE';
-            openReference({
-              bookNum: parseInt(this.dataset.book, 10),
-              chapter: parseInt(this.dataset.chapter, 10),
-              verse: parseInt(this.dataset.verse, 10),
-              verseEnd: this.dataset.verseEnd ? parseInt(this.dataset.verseEnd, 10) : null
-            }, selectedBible);
+        });
+
+        if (validRefs.length > 0) {
+          allMatches.push({
+            start: parenMatch.index,
+            end: parenMatch.index + parenMatch[0].length,
+            fullMatch: parenMatch[0],
+            refs: validRefs
           });
-          parts.push(link);
-        } else {
-          parts.push(document.createTextNode(match[0]));
+        }
+      }
+
+      // Also find standalone references not in parentheses
+      standaloneRefPattern.lastIndex = 0;
+      let standaloneMatch;
+      while ((standaloneMatch = standaloneRefPattern.exec(text)) !== null) {
+        // Check this isn't inside one of our paren matches
+        const isInsideParen = allMatches.some(m =>
+          standaloneMatch.index >= m.start && standaloneMatch.index < m.end
+        );
+        if (!isInsideParen) {
+          const ref = parseReference(standaloneMatch[0]);
+          if (ref) {
+            allMatches.push({
+              start: standaloneMatch.index,
+              end: standaloneMatch.index + standaloneMatch[0].length,
+              fullMatch: standaloneMatch[0],
+              refs: [{ text: standaloneMatch[0], ref: ref }]
+            });
+          }
+        }
+      }
+
+      // Sort matches by position
+      allMatches.sort((a, b) => a.start - b.start);
+
+      // Build the parts array
+      allMatches.forEach(match => {
+        // Add text before this match
+        if (match.start > lastIndex) {
+          parts.push(document.createTextNode(text.substring(lastIndex, match.start)));
         }
 
-        lastIndex = match.index + match[0].length;
-      }
+        // Handle the match
+        if (match.refs.length === 1 && match.fullMatch.startsWith('(')) {
+          // Single reference in parentheses
+          const ref = match.refs[0].ref;
+          parts.push(document.createTextNode('('));
+          parts.push(createReferenceLink(match.refs[0].text, ref));
+          parts.push(document.createTextNode(')'));
+        } else if (match.refs.length > 1) {
+          // Multiple references in parentheses
+          parts.push(document.createTextNode('('));
+          match.refs.forEach((refData, idx) => {
+            if (idx > 0) {
+              parts.push(document.createTextNode(', '));
+            }
+            parts.push(createReferenceLink(refData.text, refData.ref));
+          });
+          parts.push(document.createTextNode(')'));
+        } else {
+          // Standalone reference
+          const ref = match.refs[0].ref;
+          parts.push(createReferenceLink(match.fullMatch, ref));
+        }
+
+        lastIndex = match.end;
+      });
 
       // Add remaining text
       if (lastIndex < text.length) {
@@ -353,6 +405,33 @@
         textNode.parentNode.replaceChild(span, textNode);
       }
     });
+  }
+
+  /**
+   * Create a clickable link for a Bible reference.
+   */
+  function createReferenceLink(displayText, ref) {
+    const link = document.createElement('a');
+    link.href = '#';
+    link.className = 'bible-reference';
+    link.textContent = displayText;
+    link.dataset.book = ref.bookNum;
+    link.dataset.chapter = ref.chapter;
+    link.dataset.verse = ref.verse;
+    if (ref.verseEnd) {
+      link.dataset.verseEnd = ref.verseEnd;
+    }
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const selectedBible = localStorage.getItem('divineMercyBible') || 'NABRE';
+      openReference({
+        bookNum: parseInt(this.dataset.book, 10),
+        chapter: parseInt(this.dataset.chapter, 10),
+        verse: parseInt(this.dataset.verse, 10),
+        verseEnd: this.dataset.verseEnd ? parseInt(this.dataset.verseEnd, 10) : null
+      }, selectedBible);
+    });
+    return link;
   }
 
   /**

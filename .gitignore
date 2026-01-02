@@ -43,6 +43,8 @@
 !KNOWN_ISSUES.md
 !LICENSE
 !CLAUDE.md
+!folder_proposal.md
+!IMPLEMENTATION_SUMMARY.md
 
 # Configuration templates (not user configs)
 !example.cnwp.yml

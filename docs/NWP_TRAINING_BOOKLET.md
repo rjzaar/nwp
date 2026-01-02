@@ -9,9 +9,9 @@ Version 1.0 | January 2026
 ## Table of Contents
 
 1. [Introduction](#1-introduction)
+   - [Security: Two-Tier Secrets](#security-two-tier-secrets-architecture)
 2. [Prerequisites](#2-prerequisites)
 3. [Setup & Installation](#3-setup--installation)
-   - 3.3 [Two-Tier Secrets Architecture](#33-two-tier-secrets-architecture)
 4. [Core Operations](#4-core-operations)
    - 4.1 [Backup Operations](#41-backup-operations)
    - 4.2 [Restore Operations](#42-restore-operations)
@@ -103,6 +103,64 @@ nwp/
 3. **Development**: Use DDEV commands to work on the site
 4. **Management**: Use NWP scripts for backup, restore, copy
 5. **Deployment**: Promote through dev → staging → production
+
+## Security: Two-Tier Secrets Architecture
+
+NWP uses a **two-tier secrets system** to protect sensitive data, especially when working with AI assistants like Claude.
+
+### Why Two Tiers?
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SECRETS ARCHITECTURE                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  .secrets.yml (Infrastructure)     .secrets.data.yml (Data) │
+│  ┌─────────────────────────┐      ┌─────────────────────────┐│
+│  │ • API tokens (Linode)   │      │ • Production passwords  ││
+│  │ • API tokens (GitLab)   │      │ • Production SSH keys   ││
+│  │ • API tokens (Cloudflare│      │ • Database credentials  ││
+│  │ • Dev credentials       │      │ • SMTP credentials      ││
+│  └─────────────────────────┘      └─────────────────────────┘│
+│           ↓                                ↓                 │
+│     AI CAN ACCESS                   AI CANNOT ACCESS         │
+│  (helps with automation)         (protects user data)        │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+| Tier | File | Contains | AI Access |
+|------|------|----------|-----------|
+| **Infrastructure** | `.secrets.yml` | API tokens, dev credentials | ✓ Allowed |
+| **Data** | `.secrets.data.yml` | Production passwords, SSH keys | ✗ Blocked |
+
+### Quick Setup
+
+```bash
+# Infrastructure secrets (AI can help with these)
+cp .secrets.example.yml .secrets.yml
+
+# Data secrets (AI cannot access these)
+cp .secrets.data.example.yml .secrets.data.yml
+```
+
+### What Goes Where?
+
+**`.secrets.yml`** (Infrastructure - safe for AI):
+- Linode API token
+- Cloudflare API token
+- GitLab API token
+- Development/staging credentials
+
+**`.secrets.data.yml`** (Data - blocked from AI):
+- Production database passwords
+- Production SSH keys
+- Production SMTP credentials
+- Encryption keys
+
+> **Key Principle**: AI assistants can help provision servers and manage infrastructure without ever seeing production user data.
+
+See `docs/DATA_SECURITY_BEST_PRACTICES.md` for complete documentation.
 
 ---
 
@@ -259,81 +317,7 @@ recipes:
 | `auto` | Skip confirmations | `y` |
 | `sitename` | Custom site name | `"My Project"` |
 
-## 3.3 Two-Tier Secrets Architecture
-
-NWP uses a two-tier secrets system for security, especially when working with AI assistants like Claude.
-
-### Why Two Tiers?
-
-| Tier | File | Contains | AI Access |
-|------|------|----------|-----------|
-| **Infrastructure** | `.secrets.yml` | API tokens, dev credentials | Allowed |
-| **Data** | `.secrets.data.yml` | Production passwords, SSH keys | Blocked |
-
-This separation allows AI assistants to help with infrastructure automation (provisioning servers, managing DNS) while protecting access to user data.
-
-### Setting Up Infrastructure Secrets
-
-```bash
-cp .secrets.example.yml .secrets.yml
-```
-
-Edit `.secrets.yml` with your API tokens:
-
-```yaml
-# .secrets.yml - Infrastructure (AI can help with these)
-linode:
-  api_token: "your-linode-token"
-
-cloudflare:
-  api_token: "your-cloudflare-token"
-  zone_id: "your-zone-id"
-
-gitlab:
-  api_token: "your-gitlab-token"
-```
-
-### Setting Up Data Secrets
-
-```bash
-cp .secrets.data.example.yml .secrets.data.yml
-```
-
-Edit `.secrets.data.yml` with production credentials:
-
-```yaml
-# .secrets.data.yml - Production (AI CANNOT access)
-production_ssh:
-  key_path: "keys/prod_deploy"
-  user: "deploy"
-  host: "prod.example.com"
-
-production_database:
-  password: "production-password"
-```
-
-### Migrating Existing Secrets
-
-If you have an existing `.secrets.yml` with mixed secrets:
-
-```bash
-# Check for data secrets in wrong files
-./migrate-secrets.sh --check
-
-# Migrate to two-tier architecture
-./migrate-secrets.sh --nwp
-```
-
-### Security Best Practices
-
-1. **Never commit** `.secrets.yml` or `.secrets.data.yml`
-2. **Keep production secrets** off development machines when possible
-3. **Use scoped API tokens** with minimal permissions
-4. **Rotate credentials** every 90 days
-
-See `docs/DATA_SECURITY_BEST_PRACTICES.md` for complete documentation.
-
-## 3.4 Installing Your First Site
+## 3.3 Installing Your First Site
 
 ### List Available Recipes
 
@@ -396,7 +380,7 @@ If installation fails at step 5:
 7. Login URL generation
 8. Test content creation (if requested)
 
-## 3.5 Accessing Your Site
+## 3.4 Accessing Your Site
 
 After installation:
 

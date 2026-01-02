@@ -194,15 +194,16 @@ MIGRATION_README
         local source_type="other"
         echo ""
         echo "Select source type:"
-        echo "  1) drupal7  - Drupal 7 site"
-        echo "  2) drupal8  - Drupal 8 site"
-        echo "  3) drupal9  - Drupal 9 site"
-        echo "  4) html     - Static HTML site"
+        echo "  1) drupal7   - Drupal 7 site"
+        echo "  2) drupal8   - Drupal 8 site"
+        echo "  3) drupal9   - Drupal 9 site"
+        echo "  4) html      - Static HTML site"
         echo "  5) wordpress - WordPress site"
-        echo "  6) joomla   - Joomla site"
-        echo "  7) other    - Other/custom"
+        echo "  6) joomla    - Joomla site"
+        echo "  7) other     - Other/custom"
+        echo "  q) quit      - Cancel and exit"
         echo ""
-        read -p "Enter choice [1-7, default=7]: " source_choice
+        read -p "Enter choice [1-7, q, default=7]: " source_choice
         case "$source_choice" in
             1) source_type="drupal7" ;;
             2) source_type="drupal8" ;;
@@ -210,6 +211,11 @@ MIGRATION_README
             4) source_type="html" ;;
             5) source_type="wordpress" ;;
             6) source_type="joomla" ;;
+            q|Q)
+                print_info "Cancelled. Cleaning up..."
+                rm -rf "$migration_name"
+                exit 0
+                ;;
             *) source_type="other" ;;
         esac
 

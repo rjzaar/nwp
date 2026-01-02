@@ -1,0 +1,614 @@
+# NWP Feature Verification Tracking
+#
+# This file tracks which features have been manually verified by a human.
+# When code is modified, the verification status is automatically invalidated.
+#
+# Fields:
+#   verified: true/false - whether a human has verified this feature
+#   verified_by: name of the person who verified
+#   verified_at: timestamp of verification
+#   file_hash: SHA256 hash of the file(s) when verified (used to detect changes)
+#   notes: optional notes about the verification
+#
+# Run ./verify.sh to view and manage verification status
+
+version: 1
+
+features:
+  # ============================================================
+  # CORE SCRIPTS
+  # ============================================================
+
+  setup:
+    name: "Setup Script (setup.sh)"
+    description: "NWP prerequisites setup - Docker, DDEV, mkcert, Linode CLI, GitLab"
+    files:
+      - setup.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: "3797d2ec18d9d499f4452dc3178fd9ad2eedd583cfad3ea228baf3543da7bf1b"
+    notes: "Auto-invalidated: files changed"
+
+  install:
+    name: "Install Script (install.sh)"
+    description: "Main installation script - reads cnwp.yml and installs sites"
+    files:
+      - install.sh
+      - lib/install-common.sh
+      - lib/install-drupal.sh
+      - lib/install-steps.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  status:
+    name: "Status Script (status.sh)"
+    description: "Status display, health checks, and site management"
+    files:
+      - status.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  modify:
+    name: "Modify Script (modify.sh)"
+    description: "Interactive TUI for modifying site options"
+    files:
+      - modify.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  backup:
+    name: "Backup Script (backup.sh)"
+    description: "Site backup with database, files, git backup, and sanitization"
+    files:
+      - backup.sh
+      - lib/git.sh
+      - lib/sanitize.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  restore:
+    name: "Restore Script (restore.sh)"
+    description: "Site restoration from backups"
+    files:
+      - restore.sh
+      - lib/rollback.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  sync:
+    name: "Sync Script (sync.sh)"
+    description: "Re-sync imported sites with remote sources"
+    files:
+      - sync.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  copy:
+    name: "Copy Script (copy.sh)"
+    description: "Copy/duplicate existing sites"
+    files:
+      - copy.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  delete:
+    name: "Delete Script (delete.sh)"
+    description: "Site deletion with safety checks"
+    files:
+      - delete.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  make:
+    name: "Make Script (make.sh)"
+    description: "Site mode switching (dev/staging/production)"
+    files:
+      - make.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  migration:
+    name: "Migration Script (migration.sh)"
+    description: "Site migrations from various sources to Drupal 11"
+    files:
+      - migration.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  import:
+    name: "Import Script (import.sh)"
+    description: "Import existing sites from remote sources"
+    files:
+      - import.sh
+      - lib/import.sh
+      - lib/import-tui.sh
+      - lib/server-scan.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  # ============================================================
+  # DEPLOYMENT SCRIPTS
+  # ============================================================
+
+  live:
+    name: "Live Provisioning (live.sh)"
+    description: "Live server provisioning at sitename.nwpcode.org"
+    files:
+      - live.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  dev2stg:
+    name: "Dev to Staging (dev2stg.sh)"
+    description: "Deploy from dev to staging environment"
+    files:
+      - dev2stg.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  stg2prod:
+    name: "Staging to Production (stg2prod.sh)"
+    description: "Deploy from staging to production"
+    files:
+      - stg2prod.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  prod2stg:
+    name: "Production to Staging (prod2stg.sh)"
+    description: "Sync production back to staging"
+    files:
+      - prod2stg.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  stg2live:
+    name: "Staging to Live (stg2live.sh)"
+    description: "Deploy staging to live server"
+    files:
+      - stg2live.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  live2stg:
+    name: "Live to Staging (live2stg.sh)"
+    description: "Promote live back to staging"
+    files:
+      - live2stg.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  live2prod:
+    name: "Live to Production (live2prod.sh)"
+    description: "Promote live to production"
+    files:
+      - live2prod.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  produce:
+    name: "Produce Script (produce.sh)"
+    description: "Production environment setup"
+    files:
+      - produce.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  # ============================================================
+  # INFRASTRUCTURE SCRIPTS
+  # ============================================================
+
+  podcast:
+    name: "Podcast Infrastructure (podcast.sh)"
+    description: "Castopod podcast hosting infrastructure"
+    files:
+      - podcast.sh
+      - lib/podcast.sh
+      - lib/install-podcast.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  schedule:
+    name: "Schedule Script (schedule.sh)"
+    description: "Backup and sync scheduling"
+    files:
+      - schedule.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  security:
+    name: "Security Script (security.sh)"
+    description: "Security hardening and configuration"
+    files:
+      - security.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  setup_ssh:
+    name: "SSH Setup (setup-ssh.sh)"
+    description: "SSH key generation and management"
+    files:
+      - setup-ssh.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  uninstall:
+    name: "Uninstall Script (uninstall_nwp.sh)"
+    description: "Complete NWP uninstallation"
+    files:
+      - uninstall_nwp.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  # ============================================================
+  # CLI & TESTING
+  # ============================================================
+
+  pl_cli:
+    name: "PL CLI Wrapper (pl)"
+    description: "Universal CLI wrapper - main command interface"
+    files:
+      - pl
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  test_nwp:
+    name: "Test Suite (test-nwp.sh)"
+    description: "Comprehensive test suite - 22 test categories"
+    files:
+      - test-nwp.sh
+      - test.sh
+      - testos.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  # ============================================================
+  # LIBRARY MODULES
+  # ============================================================
+
+  lib_tui:
+    name: "TUI Library (lib/tui.sh)"
+    description: "Terminal UI framework - menus, checkboxes, forms"
+    files:
+      - lib/tui.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_checkbox:
+    name: "Checkbox Library (lib/checkbox.sh)"
+    description: "Advanced interactive checkbox selection"
+    files:
+      - lib/checkbox.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_yaml_write:
+    name: "YAML Write Library (lib/yaml-write.sh)"
+    description: "YAML file manipulation without yq"
+    files:
+      - lib/yaml-write.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_common:
+    name: "Common Library (lib/common.sh)"
+    description: "Common utilities - validation, secrets, prompts"
+    files:
+      - lib/common.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_ui:
+    name: "UI Library (lib/ui.sh)"
+    description: "Basic UI utilities - colors, status messages"
+    files:
+      - lib/ui.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_git:
+    name: "Git Library (lib/git.sh)"
+    description: "Git backup, bundling, GitLab API operations"
+    files:
+      - lib/git.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_cloudflare:
+    name: "Cloudflare Library (lib/cloudflare.sh)"
+    description: "Cloudflare DNS and SSL management"
+    files:
+      - lib/cloudflare.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_linode:
+    name: "Linode Library (lib/linode.sh)"
+    description: "Linode API operations and provisioning"
+    files:
+      - lib/linode.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_b2:
+    name: "B2 Library (lib/b2.sh)"
+    description: "Backblaze B2 cloud storage integration"
+    files:
+      - lib/b2.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_remote:
+    name: "Remote Library (lib/remote.sh)"
+    description: "Remote server operations"
+    files:
+      - lib/remote.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_badges:
+    name: "Badges Library (lib/badges.sh)"
+    description: "Status badge generation"
+    files:
+      - lib/badges.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  # ============================================================
+  # MOODLE SUPPORT
+  # ============================================================
+
+  moodle:
+    name: "Moodle Installation (lib/install-moodle.sh)"
+    description: "Moodle platform installation support"
+    files:
+      - lib/install-moodle.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  # ============================================================
+  # GITLAB INFRASTRUCTURE
+  # ============================================================
+
+  gitlab_setup:
+    name: "GitLab Setup (git/gitlab_setup.sh)"
+    description: "Main GitLab instance provisioning"
+    files:
+      - git/gitlab_setup.sh
+      - git/gitlab_server_setup.sh
+      - git/gitlab_create_server.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  gitlab_hardening:
+    name: "GitLab Hardening (git/gitlab_harden.sh)"
+    description: "GitLab security hardening automation"
+    files:
+      - git/gitlab_harden.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  gitlab_repo:
+    name: "GitLab Repository Setup (git/setup_gitlab_repo.sh)"
+    description: "Repository initialization and site integration"
+    files:
+      - git/setup_gitlab_repo.sh
+      - git/setup_gitlab_site.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  gitlab_install:
+    name: "GitLab Install Library (lib/install-gitlab.sh)"
+    description: "GitLab instance installation via DDEV"
+    files:
+      - lib/install-gitlab.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  # ============================================================
+  # LINODE INFRASTRUCTURE
+  # ============================================================
+
+  linode_setup:
+    name: "Linode Setup (linode/linode_setup.sh)"
+    description: "Linode server configuration and provisioning"
+    files:
+      - linode/linode_setup.sh
+      - linode/linode_server_setup.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  linode_deploy:
+    name: "Linode Deploy (linode/linode_deploy.sh)"
+    description: "Deployment automation to Linode servers"
+    files:
+      - linode/linode_deploy.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  linode_test_server:
+    name: "Linode Test Server (linode/linode_create_test_server.sh)"
+    description: "Automated test server creation"
+    files:
+      - linode/linode_create_test_server.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  # ============================================================
+  # CONFIGURATION
+  # ============================================================
+
+  config_example:
+    name: "Example Configuration (example.cnwp.yml)"
+    description: "Complete configuration template"
+    files:
+      - example.cnwp.yml
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  config_secrets:
+    name: "Secrets Example (.secrets.example.yml)"
+    description: "Secrets configuration template"
+    files:
+      - .secrets.example.yml
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  # ============================================================
+  # TESTS
+  # ============================================================
+
+  tests_integration:
+    name: "Integration Tests (tests/)"
+    description: "Integration and unit test suites"
+    files:
+      - tests/test-integration.sh
+      - tests/test-podcast.sh
+      - tests/test-yaml-write.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null

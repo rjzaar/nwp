@@ -39,6 +39,10 @@
 !status.sh
 !import.sh
 !sync.sh
+!verify.sh
+
+# Verification tracking
+!.verification.yml
 
 # Documentation and metadata
 !README.md

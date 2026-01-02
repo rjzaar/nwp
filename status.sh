@@ -59,6 +59,75 @@ else
 fi
 
 ################################################################################
+# Orphaned Site Detection
+################################################################################
+
+# Find site directories that have .ddev but are not in cnwp.yml
+find_orphaned_sites() {
+    local config_file="$1"
+    local script_dir="$2"
+
+    # Get all directories with .ddev in the script directory
+    local ddev_dirs=()
+    while IFS= read -r ddev_path; do
+        local site_dir=$(dirname "$ddev_path")
+        local site_name=$(basename "$site_dir")
+        ddev_dirs+=("$site_name:$site_dir")
+    done < <(find "$script_dir" -maxdepth 2 -name ".ddev" -type d 2>/dev/null)
+
+    # Get list of sites from cnwp.yml
+    local yml_sites=()
+    if [ -f "$config_file" ]; then
+        while read -r site; do
+            [ -n "$site" ] && yml_sites+=("$site")
+        done < <(list_sites "$config_file")
+    fi
+
+    # Find orphaned sites (have .ddev but not in cnwp.yml)
+    for entry in "${ddev_dirs[@]}"; do
+        local name="${entry%%:*}"
+        local dir="${entry#*:}"
+        local found=false
+
+        for yml_site in "${yml_sites[@]}"; do
+            if [ "$name" = "$yml_site" ]; then
+                found=true
+                break
+            fi
+        done
+
+        if [ "$found" = false ]; then
+            echo "$name:$dir"
+        fi
+    done
+}
+
+# Detect recipe type from an orphaned site's structure
+detect_recipe_from_site() {
+    local directory="$1"
+
+    if [ -f "$directory/.ddev/config.yaml" ]; then
+        local project_type=$(grep "^type:" "$directory/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
+        case "$project_type" in
+            drupal*)
+                if [ -d "$directory/html/profiles/contrib/social" ]; then
+                    echo "os"
+                elif [ -d "$directory/html" ]; then
+                    echo "nwp"
+                else
+                    echo "d"
+                fi
+                ;;
+            wordpress) echo "wp" ;;
+            php) echo "php" ;;
+            *) echo "?" ;;
+        esac
+    else
+        echo "?"
+    fi
+}
+
+################################################################################
 # Recipe Type Descriptions
 ################################################################################
 
@@ -481,7 +550,12 @@ show_sites() {
     [ ! -f "$config_file" ] && { print_error "Config not found: $config_file"; return 1; }
 
     local sites=$(list_sites "$config_file")
-    [ -z "$sites" ] && { print_info "No sites configured"; return 0; }
+    local orphaned=$(find_orphaned_sites "$config_file" "$SCRIPT_DIR")
+
+    if [ -z "$sites" ] && [ -z "$orphaned" ]; then
+        print_info "No sites configured"
+        return 0
+    fi
 
     echo -e "\n${BOLD}Sites:${NC}"
     echo ""
@@ -535,6 +609,18 @@ show_sites() {
 
             printf "  ${CYAN}%-18s${NC} %-10s %-12s %b\n" "$site" "${recipe:-?}" "${purpose:--}" "$stages"
         done <<< "$sites"
+    fi
+
+    # Show orphaned sites
+    if [ -n "$orphaned" ]; then
+        printf "\n  ${YELLOW}Orphaned sites (not in cnwp.yml):${NC}\n"
+        while IFS=':' read -r name dir; do
+            [ -z "$name" ] && continue
+            local recipe=$(detect_recipe_from_site "$dir")
+            local stages=""
+            [ -d "$dir" ] && stages="${GREEN}d${NC}"
+            printf "  ${YELLOW}%-18s${NC} %-10s %-12s %b\n" "$name" "${recipe:-?}" "(orphan)" "$stages"
+        done <<< "$orphaned"
     fi
 }
 
@@ -1390,6 +1476,7 @@ run_action() {
 # Global arrays for interactive mode
 SITE_NAMES=()
 SITE_SELECTED=()
+SITE_ORPHAN=()  # Track which sites are orphaned
 SITE_DATA=()  # Cached display data
 
 # Build cached site data
@@ -1401,18 +1488,35 @@ build_site_cache() {
     local ddev_list=""
     ddev_list=$(ddev list 2>/dev/null) || true
 
+    local idx=0
     for site in "${SITE_NAMES[@]}"; do
-        local recipe=$(get_site_field "$site" "recipe" "$config_file")
-        local purpose=$(get_site_field "$site" "purpose" "$config_file")
-        local directory=$(get_site_field "$site" "directory" "$config_file")
-        local domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
+        local is_orphan="${SITE_ORPHAN[$idx]:-0}"
+        local recipe=""
+        local purpose=""
+        local directory=""
+        local domain=""
+
+        if [ "$is_orphan" = "1" ]; then
+            # Orphaned site - get info from filesystem
+            directory="$SCRIPT_DIR/$site"
+            recipe=$(detect_recipe_from_site "$directory")
+            purpose="(orphan)"
+        else
+            # Normal site - get info from cnwp.yml
+            recipe=$(get_site_field "$site" "recipe" "$config_file")
+            purpose=$(get_site_field "$site" "purpose" "$config_file")
+            directory=$(get_site_field "$site" "directory" "$config_file")
+            domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
+        fi
 
         # Stages
         local stages=""
         [ -n "$directory" ] && [ -d "$directory" ] && stages="${stages}d"
         [ -d "${directory}_stg" ] && stages="${stages}s"
-        local live_enabled=$(get_site_nested_field "$site" "live" "enabled" "$config_file")
-        [ "$live_enabled" == "true" ] && stages="${stages}l"
+        if [ "$is_orphan" != "1" ]; then
+            local live_enabled=$(get_site_nested_field "$site" "live" "enabled" "$config_file")
+            [ "$live_enabled" == "true" ] && stages="${stages}l"
+        fi
         [ -d "${directory}_prod" ] && stages="${stages}p"
         [ -z "$stages" ] && stages="-"
 
@@ -1525,6 +1629,8 @@ build_site_cache() {
         # Store as pipe-delimited string (order must match column key order in draw_screen)
         # recipe|stages|ddev|purpose|disk|domain|users|db|health|activity|ssl|ci
         SITE_DATA+=("${recipe:-?}|${stages}|${ddev}|${purpose:--}|${disk:-?}|${domain:-}|${users}|${db}|${health}|${activity}|${ssl}|${ci}")
+
+        idx=$((idx + 1))
     done
 }
 
@@ -1542,13 +1648,23 @@ run_interactive() {
         return 1
     fi
 
-    # Build arrays
+    # Build arrays from cnwp.yml sites
     SITE_NAMES=()
     SITE_SELECTED=()
+    SITE_ORPHAN=()  # Track which sites are orphaned
     while read -r site; do
         SITE_NAMES+=("$site")
         SITE_SELECTED+=("0")
+        SITE_ORPHAN+=("0")
     done <<< "$sites_str"
+
+    # Add orphaned sites
+    while IFS=':' read -r name dir; do
+        [ -z "$name" ] && continue
+        SITE_NAMES+=("$name")
+        SITE_SELECTED+=("0")
+        SITE_ORPHAN+=("1")
+    done < <(find_orphaned_sites "$config_file" "$SCRIPT_DIR")
 
     # Cache site data
     build_site_cache "$config_file"
@@ -1602,18 +1718,31 @@ run_interactive() {
 
                 # Refresh site list (in case of deletes)
                 sites_str=$(list_sites "$config_file")
-                if [ -z "$sites_str" ]; then
+
+                # Rebuild arrays from cnwp.yml sites
+                SITE_NAMES=()
+                SITE_SELECTED=()
+                SITE_ORPHAN=()
+                if [ -n "$sites_str" ]; then
+                    while read -r site; do
+                        SITE_NAMES+=("$site")
+                        SITE_SELECTED+=("0")
+                        SITE_ORPHAN+=("0")
+                    done <<< "$sites_str"
+                fi
+
+                # Add orphaned sites
+                while IFS=':' read -r name dir; do
+                    [ -z "$name" ] && continue
+                    SITE_NAMES+=("$name")
+                    SITE_SELECTED+=("0")
+                    SITE_ORPHAN+=("1")
+                done < <(find_orphaned_sites "$config_file" "$SCRIPT_DIR")
+
+                if [ ${#SITE_NAMES[@]} -eq 0 ]; then
                     print_info "No more sites"
                     break
                 fi
-
-                # Rebuild arrays
-                SITE_NAMES=()
-                SITE_SELECTED=()
-                while read -r site; do
-                    SITE_NAMES+=("$site")
-                    SITE_SELECTED+=("0")
-                done <<< "$sites_str"
 
                 # Rebuild cache
                 build_site_cache "$config_file"

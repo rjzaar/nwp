@@ -1215,7 +1215,7 @@ generate_manual_steps() {
     local step=1
 
     # Development Modules
-    if [[ "${OPTION_SELECTED[dev_modules]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[dev_modules]:-}" == "y" ]]; then
         echo -e "${CYAN}Step $step: Development Modules (Automated)${NC}"
         echo "  Modules will be installed automatically: devel, kint, webprofiler"
         echo "  Access Devel menu at /devel"
@@ -1224,7 +1224,7 @@ generate_manual_steps() {
     fi
 
     # XDebug
-    if [[ "${OPTION_SELECTED[xdebug]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[xdebug]:-}" == "y" ]]; then
         echo -e "${CYAN}Step $step: Configure XDebug${NC}"
         echo "  1. Run: ddev xdebug on"
         echo "  2. Configure IDE (PhpStorm/VSCode) with port 9003"
@@ -1235,7 +1235,7 @@ generate_manual_steps() {
     fi
 
     # Staging Domain
-    if [[ "${OPTION_SELECTED[staging_domain]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[staging_domain]:-}" == "y" ]]; then
         local domain="${OPTION_VALUES[staging_domain_domain]:-site-stg.example.com}"
         echo -e "${CYAN}Step $step: Configure Staging Domain${NC}"
         echo "  1. Update DNS A record for: $domain"
@@ -1246,7 +1246,7 @@ generate_manual_steps() {
     fi
 
     # Database Sanitization
-    if [[ "${OPTION_SELECTED[db_sanitize]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[db_sanitize]:-}" == "y" ]]; then
         echo -e "${CYAN}Step $step: Database Sanitization${NC}"
         echo "  When syncing from production, sanitize user data:"
         echo "  ddev drush sql-sanitize --sanitize-password=test123 --sanitize-email=user+%uid@localhost"
@@ -1256,7 +1256,7 @@ generate_manual_steps() {
     fi
 
     # Security Modules
-    if [[ "${OPTION_SELECTED[security_modules]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[security_modules]:-}" == "y" ]]; then
         echo -e "${CYAN}Step $step: Security Modules (Automated)${NC}"
         echo "  Modules will be installed: seckit, honeypot, login_security, flood_control"
         echo "  Configure at: /admin/config/system/seckit"
@@ -1266,7 +1266,7 @@ generate_manual_steps() {
     fi
 
     # SSL Certificate
-    if [[ "${OPTION_SELECTED[ssl]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[ssl]:-}" == "y" ]]; then
         local domain="${OPTION_VALUES[ssl_domain]:-example.com}"
         echo -e "${CYAN}Step $step: Configure SSL Certificate${NC}"
         echo "  Run: certbot --nginx -d $domain"
@@ -1276,7 +1276,7 @@ generate_manual_steps() {
     fi
 
     # CDN Configuration
-    if [[ "${OPTION_SELECTED[cdn]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[cdn]:-}" == "y" ]]; then
         echo -e "${CYAN}Step $step: Configure Cloudflare CDN${NC}"
         echo "  1. Log into Cloudflare dashboard"
         echo "  2. Add your domain and update nameservers"
@@ -1289,7 +1289,7 @@ generate_manual_steps() {
     fi
 
     # Redis Configuration
-    if [[ "${OPTION_SELECTED[redis]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[redis]:-}" == "y" ]]; then
         echo -e "${CYAN}Step $step: Configure Redis${NC}"
         echo "  1. For DDEV: ddev get ddev/ddev-redis"
         echo "  2. Edit settings.php to add Redis configuration:"
@@ -1302,7 +1302,7 @@ generate_manual_steps() {
     fi
 
     # Solr Configuration
-    if [[ "${OPTION_SELECTED[solr]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[solr]:-}" == "y" ]]; then
         local core="${OPTION_VALUES[solr_core]:-drupal}"
         echo -e "${CYAN}Step $step: Configure Solr${NC}"
         echo "  1. Add Solr service to DDEV: ddev get ddev/ddev-solr"
@@ -1315,7 +1315,7 @@ generate_manual_steps() {
     fi
 
     # Cron Configuration
-    if [[ "${OPTION_SELECTED[cron]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[cron]:-}" == "y" ]]; then
         local interval="${OPTION_VALUES[cron_interval]:-15}"
         echo -e "${CYAN}Step $step: Configure Cron${NC}"
         echo "  For production server, add to crontab:"
@@ -1328,7 +1328,7 @@ generate_manual_steps() {
     fi
 
     # Backup Configuration
-    if [[ "${OPTION_SELECTED[backup]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[backup]:-}" == "y" ]]; then
         echo -e "${CYAN}Step $step: Configure Automated Backups${NC}"
         echo "  1. Configure B2 credentials in .secrets.yml"
         echo "  2. Set up backup script in cron:"
@@ -1340,7 +1340,7 @@ generate_manual_steps() {
     fi
 
     # Production Domain
-    if [[ "${OPTION_SELECTED[live_domain]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[live_domain]:-}" == "y" ]]; then
         local domain="${OPTION_VALUES[live_domain_domain]:-example.com}"
         echo -e "${CYAN}Step $step: Configure Production Domain${NC}"
         echo "  1. Update DNS A record for: $domain"
@@ -1352,7 +1352,7 @@ generate_manual_steps() {
     fi
 
     # DNS Records
-    if [[ "${OPTION_SELECTED[dns_records]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[dns_records]:-}" == "y" ]]; then
         echo -e "${CYAN}Step $step: Configure DNS Records (Automated)${NC}"
         echo "  DNS records are pre-registered via Linode API"
         echo "  Verify at: linode-cli domains list"
@@ -1362,7 +1362,7 @@ generate_manual_steps() {
     fi
 
     # CI/CD Pipeline
-    if [[ "${OPTION_SELECTED[ci_enabled]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[ci_enabled]:-}" == "y" ]]; then
         echo -e "${CYAN}Step $step: Configure CI/CD Pipeline${NC}"
         echo "  1. Create .gitlab-ci.yml in project root"
         echo "  2. Configure GitLab Runner for the project"
@@ -1373,7 +1373,7 @@ generate_manual_steps() {
     fi
 
     # 2FA for GitLab
-    if [[ "${OPTION_SELECTED[require_2fa]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[require_2fa]:-}" == "y" ]]; then
         echo -e "${CYAN}Step $step: Enable Required 2FA${NC}"
         echo "  1. Log into GitLab as admin"
         echo "  2. Go to Admin Area > Settings > General"
@@ -1384,7 +1384,7 @@ generate_manual_steps() {
     fi
 
     # GitLab Runner
-    if [[ "${OPTION_SELECTED[runner]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[runner]:-}" == "y" ]]; then
         echo -e "${CYAN}Step $step: Install GitLab Runner${NC}"
         echo "  1. Install runner: curl -L https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh | sudo bash"
         echo "  2. sudo apt-get install gitlab-runner"
@@ -1395,7 +1395,7 @@ generate_manual_steps() {
     fi
 
     # Audit Logging
-    if [[ "${OPTION_SELECTED[audit_logging]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[audit_logging]:-}" == "y" ]]; then
         echo -e "${CYAN}Step $step: Enable Audit Logging${NC}"
         echo "  1. Go to Admin Area > Settings > General > Visibility"
         echo "  2. Enable audit events"
@@ -1405,7 +1405,7 @@ generate_manual_steps() {
     fi
 
     # Monitoring Setup
-    if [[ "${OPTION_SELECTED[monitoring]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[monitoring]:-}" == "y" ]]; then
         local email="${OPTION_VALUES[monitoring_email]:-admin@example.com}"
         echo -e "${CYAN}Step $step: Configure Monitoring${NC}"
         echo "  1. Set up UptimeRobot or Pingdom"
@@ -1417,7 +1417,7 @@ generate_manual_steps() {
     fi
 
     # Email Configuration
-    if [[ "${OPTION_SELECTED[email_enabled]}" == "y" ]] || [[ "${OPTION_SELECTED[email_send]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[email_enabled]:-}" == "y" ]] || [[ "${OPTION_SELECTED[email_send]:-}" == "y" ]]; then
         local email="${OPTION_VALUES[email_send_address]:-noreply@example.com}"
         echo -e "${CYAN}Step $step: Configure Email${NC}"
         echo "  1. Verify SMTP credentials in .secrets.yml"
@@ -1430,7 +1430,7 @@ generate_manual_steps() {
     fi
 
     # Incoming Email
-    if [[ "${OPTION_SELECTED[email_receive]}" == "y" ]]; then
+    if [[ "${OPTION_SELECTED[email_receive]:-}" == "y" ]]; then
         local forward="${OPTION_VALUES[email_receive_forward]:-admin@example.com}"
         echo -e "${CYAN}Step $step: Configure Incoming Email${NC}"
         echo "  1. Configure mailbox via Postfix"

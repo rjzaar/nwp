@@ -1,24 +1,26 @@
 # NWP Improvements v2.0 - Unified Roadmap
 
-**Document Version:** 2.0
-**Date:** December 30, 2025
+**Document Version:** 2.1
+**Date:** January 2, 2026
 **Purpose:** Consolidated roadmap with numbered proposals based on research from Vortex, Pleasy, Open Social, Varbase, and industry best practices
 
 ---
 
 ## Executive Summary
 
-This document consolidates all improvement recommendations for NWP into a single prioritized roadmap with **25 numbered proposals** organized into **5 phases**. Each proposal includes effort estimates, dependencies, and success criteria.
+This document consolidates all improvement recommendations for NWP into a single prioritized roadmap with **31 numbered proposals** organized into **6 phases**. Each proposal includes effort estimates, dependencies, and success criteria.
 
 ### Current Status
 
 | Metric | Value |
 |--------|-------|
-| Current Version | v0.9.0 |
+| Current Version | v0.9.1 |
 | Test Success Rate | 98% |
 | Core Features Complete | 100% |
 | CI/CD Implementation | 100% |
 | Git Backup Implementation | 100% |
+| Live Import System | 100% |
+| Modular Architecture | 100% |
 | Documentation Coverage | 95% |
 
 ### Research Sources
@@ -42,6 +44,7 @@ This document consolidates all improvement recommendations for NWP into a single
 | **Phase 3** | Git Backup System | P11-P15 | Complete | 100% |
 | **Phase 4** | CI/CD & Testing | P16-P21 | Complete | 100% |
 | **Phase 5** | Enterprise Features | P22-P28 | Complete | 100% |
+| **Phase 5b** | Infrastructure & Import | P29-P31 | Complete | 100% |
 | **Phase 6** | AI Integration | F01-F02 | Future | 0% |
 
 ---
@@ -901,6 +904,121 @@ Security detected → auto-update dev → test → deploy live → MANUAL approv
 
 ---
 
+## Phase 5b: Infrastructure & Import (COMPLETE)
+
+### P29: Live Site Import System
+**Status:** COMPLETE | **Priority:** HIGH | **Effort:** High | **Dependencies:** P26, Linode servers
+
+Import existing live Drupal sites from Linode servers into NWP's local development environment:
+
+```bash
+# Interactive mode - scan server and select sites via TUI
+./import.sh --server=production
+
+# Non-interactive mode
+./import.sh site1 --server=production --source=/var/www/site1/web
+```
+
+**Features:**
+- Server discovery mode - SSH into Linode, scan `/var/www/` for all sites
+- Interactive TUI for site selection and option configuration
+- Database sanitization (enabled by default)
+- Stage File Proxy configuration for on-demand file downloads
+- Incremental re-sync via `sync.sh`
+- Full integration with existing NWP workflows
+
+**TUI Screens:**
+1. Server Selection - Choose from configured Linode servers
+2. Site Discovery - Automatic scanning with progress display
+3. Site Selection - Multi-select discovered sites with size info
+4. Import Options - Per-site database/file/environment options
+5. Confirmation - Review before import
+6. Progress - Step-by-step import status
+7. Completion - Summary with next steps
+
+**Import Options:**
+| Category | Option | Default | Description |
+|----------|--------|---------|-------------|
+| Database | sanitize | yes | Remove PII, reset passwords |
+| Database | truncate_cache | yes | Clear cache tables |
+| Files | stage_file_proxy | yes | Download files on-demand |
+| Files | full_file_sync | no | Download all files |
+| Local | environment_indicator | yes | Show dev/stg/prod badge |
+| Local | dev_modules | no | Install devel, webprofiler |
+
+**Success Criteria:**
+- [x] Server scanning discovers all Drupal sites
+- [x] TUI allows site and option selection
+- [x] Database import with sanitization works
+- [x] Stage File Proxy auto-configured
+- [x] Sites registered in cnwp.yml with source info
+- [x] Re-sync command (`sync.sh`) works
+
+---
+
+### P30: Modular Install Architecture
+**Status:** COMPLETE | **Priority:** MEDIUM | **Effort:** High | **Dependencies:** None
+
+Refactored install.sh into lazy-loaded modular libraries:
+
+**Architecture:**
+```
+lib/
+├── install-common.sh    # Shared functions (1,000+ lines)
+│   ├── YAML parsing
+│   ├── Option handling
+│   ├── DNS pre-registration
+│   └── Utilities
+├── install-drupal.sh    # Drupal/OpenSocial (~600 lines)
+├── install-moodle.sh    # Moodle LMS (~420 lines)
+├── install-gitlab.sh    # GitLab via Docker (~250 lines)
+└── install-podcast.sh   # Castopod podcast (~100 lines)
+```
+
+**Key Improvements:**
+- **82% code reduction**: Main install.sh from 2,742 to ~500 lines
+- **Lazy loading**: Only required installer sourced at runtime
+- **Single responsibility**: Each library handles one platform type
+- **Guard patterns**: Prevent multiple sourcing with `set -u` compatibility
+- **Backward compatibility**: All existing recipes continue to work
+
+**Success Criteria:**
+- [x] Main install.sh reduced by >75%
+- [x] Platform-specific code isolated to libraries
+- [x] All recipes work without modification
+- [x] Installation step tracking system integrated
+
+---
+
+### P31: Enhanced Site Management TUI
+**Status:** COMPLETE | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** P30
+
+Enhanced modify.sh with comprehensive site management features:
+
+**Features:**
+- Option documentation display (`d` key)
+- Environment switching with `<>` keys
+- State indicators for installed/pending options
+- Value editing for configurable options
+- Infrastructure status in site info header
+- Site summary display
+- Installed options from other environments shown in footer
+- Orphaned site detection in status.sh and modify.sh
+
+**Migration Improvements:**
+- Migration converted from standalone recipe to option for all Drupal recipes
+- Environment detection for dev/stg/prod transitions
+- Automatic environment indicator support
+
+**Success Criteria:**
+- [x] Option documentation accessible via `d` key
+- [x] Environment tabs functional with `<>` navigation
+- [x] State indicators show installed vs pending
+- [x] Orphaned sites detected and reported
+- [x] Migration available as option for all recipes
+
+---
+
 ## Implementation Priority Matrix
 
 | Proposal | Priority | Effort | Dependencies | Phase |
@@ -925,6 +1043,9 @@ Security detected → auto-update dev → test → deploy live → MANUAL approv
 | P26 | HIGH | High | P08, GitLab, Linode | 5 (DONE) |
 | P27 | MEDIUM | High | P26 | 5 (DONE) |
 | P28 | HIGH | High | P17, P20, P26 | 5 (DONE) |
+| P29 | HIGH | High | P26, Linode | 5b (DONE) |
+| P30 | MEDIUM | High | None | 5b (DONE) |
+| P31 | MEDIUM | Medium | P30 | 5b (DONE) |
 
 **Bold** = Critical path items
 
@@ -991,6 +1112,19 @@ Security detected → auto-update dev → test → deploy live → MANUAL approv
 - [x] Auto-deploy to live after tests pass
 - [x] Production deploy requires manual approval
 
+### Phase 5b Complete When:
+- [x] `import.sh` scans Linode servers for Drupal sites
+- [x] TUI allows multi-site selection with options
+- [x] Database sanitization integrated in import workflow
+- [x] Stage File Proxy auto-configured for imported sites
+- [x] `sync.sh` re-syncs imported sites from production
+- [x] install.sh modularized with lazy loading
+- [x] Platform-specific code in separate libraries
+- [x] modify.sh shows option documentation (`d` key)
+- [x] Environment switching works (`<>` keys)
+- [x] Orphaned sites detected and reported
+- [x] Migration available as option for all Drupal recipes
+
 ---
 
 ## Configuration Schema (Complete)
@@ -1051,12 +1185,47 @@ sites:
       ssl: letsencrypt                   # letsencrypt | cloudflare | custom
       backups: true
 
+  # P29: Imported site entry (created by import.sh)
+  imported_site:
+    directory: /home/rob/nwp/imported_site
+    type: import
+    source:
+      server: production                     # Reference to linode.servers entry
+      ssh_host: root@203.0.113.10
+      webroot: /var/www/imported_site/web
+    drupal_version: "10.3.2"
+    php_version: "8.2"
+    environment: development
+    imported: 2026-01-02T10:30:00Z
+    last_sync: 2026-01-02T10:30:00Z
+    options:
+      sanitize: true
+      stage_file_proxy: true
+      origin_url: "https://imported_site.example.com"
+      environment_indicator: true
+
 linode:
   servers:
     linode1:
       ip: 1.2.3.4
       user: deploy
       ssh_key: ~/.ssh/nwp
+    production:                              # P29: For import.sh server scanning
+      ssh_host: root@203.0.113.10
+      ssh_key: ~/.ssh/nwp
+      label: "Production Server"
+
+# P29: Import defaults for live site import
+import_defaults:
+  sanitize: true                             # Remove PII, reset passwords
+  stage_file_proxy: true                     # Download files on-demand
+  environment_indicator: true                # Show dev badge in admin
+  exclude_patterns:
+    - "*.log"
+    - "js/*"
+    - "css/*"
+    - "php/*"
+    - "styles/*"
 
 git_backup:
   enabled: true
@@ -1228,6 +1397,7 @@ settings:
 ---
 
 *Document created: December 30, 2025*
-*All proposals completed: December 30, 2025*
-*Future improvements added: December 31, 2025*
+*P01-P28 completed: December 30, 2025*
+*Future improvements (F01-F02) added: December 31, 2025*
+*Phase 5b (P29-P31) completed: January 2, 2026*
 *Supersedes: IMPROVEMENTS.md (retained for historical reference)*

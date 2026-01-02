@@ -98,7 +98,7 @@ NWP includes a comprehensive set of management scripts for working with your sit
 | `restore.sh` | Restore sites | Full and database-only restore, cross-site support |
 | `copy.sh` | Copy sites | Full copy or files-only with `-f` flag |
 | `make.sh` | Toggle dev/prod mode | Enable development (`-v`) or production (`-p`) mode |
-| `dev2stg.sh` | Deploy to staging | Automated deployment from dev to staging |
+| `dev2stg.sh` | Deploy to staging | Deploy + enable production mode (caching, no dev modules) |
 | `delete.sh` | Delete sites | Graceful site deletion with optional backup (`-b`) |
 | `testos.sh` | Test OpenSocial sites | Behat, PHPUnit, PHPStan testing with auto-setup |
 
@@ -126,8 +126,8 @@ NWP includes a comprehensive set of management scripts for working with your sit
 # Enable production mode
 ./make.sh -p nwp4
 
-# Deploy development to staging
-./dev2stg.sh nwp4  # Creates nwp4_stg
+# Deploy development to staging (auto-enables production mode)
+./dev2stg.sh nwp4  # Creates nwp4_stg with production settings
 
 # Delete a site (with confirmation)
 ./delete.sh nwp5

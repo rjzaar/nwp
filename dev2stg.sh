@@ -160,7 +160,16 @@ ${BOLD}DEPLOYMENT WORKFLOW:${NC}
     6. Import configuration to staging
     7. Reinstall specified modules (if configured)
     8. Clear cache on staging
-    9. Display staging URL
+    9. Enable production mode (disable dev modules, enable caching)
+    10. Display staging URL
+
+${BOLD}PRODUCTION MODE:${NC}
+    Staging is automatically converted to production mode to mirror
+    the live environment. This includes:
+    - Uninstalling dev modules (devel, webprofiler, kint, etc.)
+    - Enabling CSS/JS aggregation
+    - Enabling page caching
+    - Exporting clean configuration
 
 ${BOLD}FILE EXCLUSIONS:${NC}
     The following are excluded from sync:
@@ -550,11 +559,34 @@ clear_cache_staging() {
     return 0
 }
 
-# Step 9: Display staging URL
+# Step 9: Enable production mode
+enable_prod_mode() {
+    local stg_site=$1
+
+    print_header "Step 9: Enable Production Mode"
+
+    # Call make.sh to enable production mode on staging
+    # This uninstalls dev modules, enables caching/aggregation, exports config
+    ocmsg "Calling make.sh -py $stg_site..."
+
+    if [ -x "$SCRIPT_DIR/make.sh" ]; then
+        if "$SCRIPT_DIR/make.sh" -py "$stg_site" > /dev/null 2>&1; then
+            print_status "OK" "Production mode enabled on staging"
+        else
+            print_status "WARN" "Could not fully enable production mode (non-fatal)"
+        fi
+    else
+        print_status "WARN" "make.sh not found or not executable"
+    fi
+
+    return 0
+}
+
+# Step 10: Display staging URL
 display_staging_url() {
     local stg_site=$1
 
-    print_header "Step 9: Deployment Complete"
+    print_header "Step 10: Deployment Complete"
 
     # Get staging URL
     local stg_url=$(cd "$stg_site" && ddev describe 2>/dev/null | grep -oP 'https://[^ ,]+' | head -1)
@@ -594,6 +626,7 @@ deploy_dev2stg() {
         echo -e "  - Run database updates"
         echo -e "  - Import configuration"
         echo -e "  - Clear cache"
+        echo -e "  - Enable production mode (disable dev modules, enable caching)"
         echo ""
         echo -n "Continue? [y/N]: "
         read confirm
@@ -663,6 +696,12 @@ deploy_dev2stg() {
     fi
 
     if should_run_step 9 "$start_step"; then
+        enable_prod_mode "$stg_site"
+    else
+        print_status "INFO" "Skipping Step 9: Production mode already enabled"
+    fi
+
+    if should_run_step 10 "$start_step"; then
         display_staging_url "$stg_site"
     fi
 

@@ -205,78 +205,68 @@ Many organizations use four environments, not three:
 
 ---
 
-## Recommendations for NWP
+## NWP Implementation
 
-### Current NWP Workflow
+### Current NWP Workflow (Implemented)
 
-```bash
-./dev2stg.sh nwp5      # Creates nwp5_stg (copies everything)
-./stg2prod.sh nwp5     # Promotes to nwp5_prod
-```
-
-### Recommended Changes
-
-#### 1. Add Explicit `makeprod` Step (Like Pleasy)
+NWP now follows best practices with automatic production mode conversion:
 
 ```bash
-# Option A: Separate command
-./dev2stg.sh nwp5       # Copy to staging (still dev mode)
-./makeprod.sh nwp5_stg  # Convert to production mode
-./stg2prod.sh nwp5      # Deploy to production
-
-# Option B: Flag on dev2stg
-./dev2stg.sh -p nwp5    # Copy AND convert to prod mode
+./dev2stg.sh nwp5      # Deploy to staging WITH production mode enabled
+./stg2prod.sh nwp5     # Promotes to nwp5_prod (also ensures prod mode)
 ```
 
-#### 2. What `makeprod` Should Do
+### What dev2stg.sh Does (10 Steps)
+
+1. Validate dev and staging sites exist
+2. Export configuration from dev
+3. Sync files from dev to staging (with exclusions)
+4. Run `composer install --no-dev` on staging
+5. Run database updates on staging
+6. Import configuration to staging
+7. Reinstall specified modules (if configured)
+8. Clear cache on staging
+9. **Enable production mode** (calls `make.sh -py`)
+10. Display staging URL
+
+### What make.sh -p Does (Production Mode)
 
 ```bash
-makeprod() {
-    local site=$1
-
-    # 1. Switch Drupal to production mode
-    ddev drush @$site config:set system.performance css.preprocess 1
-    ddev drush @$site config:set system.performance js.preprocess 1
-    ddev drush @$site config:set system.logging error_level hide
-
-    # 2. Uninstall dev modules
-    ddev drush @$site pm:uninstall devel views_ui field_ui dblog -y
-
-    # 3. Remove dev Composer dependencies
-    cd $site && ddev composer install --no-dev
-
-    # 4. Export clean config
-    ddev drush @$site cex -y
-
-    # 5. Clear all caches
-    ddev drush @$site cr
-}
+# Called automatically by dev2stg.sh step 9
+./make.sh -py sitename_stg
 ```
 
-#### 3. Database Flow
+This command:
+1. **Uninstalls dev modules**: devel, webprofiler, kint, stage_file_proxy
+2. **Removes dev Composer packages**: `composer install --no-dev`
+3. **Enables CSS/JS aggregation**: Performance optimization
+4. **Enables page caching**: 10-minute cache lifetime
+5. **Exports clean configuration**: Saves production settings
+6. **Clears all caches**: Fresh start with new settings
+
+### Database Flow
 
 ```
 Production DB
      │
-     ▼ (download + sanitize)
+     ▼ (download + sanitize via prod2stg.sh)
 Staging DB ←─────────────────── Use for testing
      │
      ▼ (optional: copy for dev)
 Development DB ←─────────────── Can be anything
 ```
 
-#### 4. Recommended NWP Workflow
+### Complete NWP Workflow
 
 ```bash
 # DEVELOPMENT PHASE
 ./install.sh nwp mysite          # Create dev site
-./make.sh -v mysite              # Ensure dev mode
+./make.sh -v mysite              # Ensure dev mode (optional, default)
 # ... develop features ...
 
 # STAGING PHASE
-./dev2stg.sh mysite              # Copy to mysite_stg
-./prod2stg.sh mysite             # (optional) Get production DB
-./makeprod.sh mysite_stg         # Convert to production mode
+./dev2stg.sh mysite              # Deploy to mysite_stg (auto-enables prod mode)
+./prod2stg.sh mysite             # (optional) Get production DB for testing
 # ... test in production-like environment ...
 # ... stakeholder review ...
 
@@ -285,29 +275,13 @@ Development DB ←─────────────── Can be anything
 ./security.sh mysite_prod        # Harden security
 ```
 
-### Environment Configuration
+### Manual Mode Switching
 
-Update `cnwp.yml` to track environment modes:
+If you need to manually switch modes:
 
-```yaml
-sites:
-  mysite:
-    recipe: nwp
-    mode: dev              # dev | prod
-    environment: dev       # dev | stg | prod
-
-  mysite_stg:
-    recipe: nwp
-    mode: prod             # Staging runs in prod mode
-    environment: stg
-    source_db: mysite_prod # Where to get DB from
-    sanitize: true         # Sanitize DB on sync
-
-  mysite_prod:
-    recipe: nwp
-    mode: prod
-    environment: prod
-    purpose: permanent     # Protect from deletion
+```bash
+./make.sh -v mysite              # Enable development mode
+./make.sh -p mysite              # Enable production mode
 ```
 
 ---
@@ -338,19 +312,15 @@ If you need dev tools to debug something found in staging:
 3. Re-deploy to staging
 4. Verify the fix in production mode
 
-### Proposed NWP Terminology
+### NWP Environment Summary
 
 | Environment | Command | Mode | Purpose |
 |-------------|---------|------|---------|
 | **dev** | `./install.sh` | Dev | Active development |
-| **stg** | `./dev2stg.sh` + `./makeprod.sh` | Prod | Pre-production validation |
+| **stg** | `./dev2stg.sh` | **Prod** (automatic) | Pre-production validation |
 | **prod** | `./stg2prod.sh` | Prod | Live site |
 
-Or with a simplified workflow:
-
-```bash
-./dev2stg.sh -p mysite   # -p flag = also run makeprod
-```
+Staging automatically runs in production mode - no extra steps needed.
 
 ---
 

@@ -841,11 +841,13 @@ If a check fails:
 
 ### Environment Purposes
 
-| Environment | Purpose | Location |
-|-------------|---------|----------|
-| **Development** | Active coding, experimentation | Local |
-| **Staging** | Testing, review, pre-production | Local or server |
-| **Production** | Live site, real users | Server |
+| Environment | Purpose | Mode | Location |
+|-------------|---------|------|----------|
+| **Development** | Active coding, experimentation | Dev mode | Local |
+| **Staging** | Testing, review, pre-production | **Production mode** | Local or server |
+| **Production** | Live site, real users | Production mode | Server |
+
+> **Important**: Staging runs in production mode to mirror the live environment. This catches production-only bugs before they reach users.
 
 ### Naming Convention
 
@@ -881,14 +883,20 @@ The `dev2stg.sh` script deploys from development to staging.
 
 This creates/updates `nwp5_stg`.
 
-### What Happens
+### What Happens (10 Steps)
 
-1. Creates staging site if it doesn't exist
-2. Copies all files from dev
-3. Copies database
-4. Updates settings for staging
-5. Clears caches
-6. Runs database updates
+1. Validates dev and staging sites exist
+2. Exports configuration from dev
+3. Syncs files to staging (excludes settings, .git, files/)
+4. Runs `composer install --no-dev` (removes dev packages)
+5. Runs database updates
+6. Imports configuration
+7. Reinstalls specified modules (if configured)
+8. Clears caches
+9. **Enables production mode** (disables dev modules, enables caching)
+10. Displays staging URL
+
+> **Key Point**: Staging automatically runs in production mode to mirror the live environment. This catches production-only bugs before they reach users.
 
 ### Auto-Confirm Deployment
 
@@ -1347,7 +1355,7 @@ NWP's `lib/` directory contains reusable functions:
 
 | Command | Description |
 |---------|-------------|
-| `./dev2stg.sh <site>` | Dev → Staging |
+| `./dev2stg.sh <site>` | Dev → Staging (auto-enables prod mode) |
 | `./stg2prod.sh <site>` | Staging → Production |
 | `./prod2stg.sh <site>` | Production → Staging |
 | `./live.sh <site>` | Deploy to live server |

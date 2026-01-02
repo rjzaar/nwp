@@ -241,7 +241,7 @@
       case 'Douay-Rheims':
         const cbBase = selectedBible === 'Knox' ? 'knox' : (selectedBible === 'Vulgate' ? 'vulgate' : 'douay_rheims');
         const chapterPadded = chapter < 10 ? '0' + chapter : chapter;
-        url = `http://catholicbible.online/${cbBase}/${bibleData.cbAbbr[bookNum]}${chapterPadded}`;
+        url = `https://catholicbible.online/${cbBase}/${bibleData.cbAbbr[bookNum]}${chapterPadded}`;
         break;
 
       case 'DOUAY-RHEIMS':

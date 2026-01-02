@@ -423,7 +423,7 @@
     }
     link.addEventListener('click', function(e) {
       e.preventDefault();
-      const selectedBible = localStorage.getItem('divineMercyBible') || 'NABRE';
+      const selectedBible = localStorage.getItem('divineMercyBible') || 'NRSVCE';
       openReference({
         bookNum: parseInt(this.dataset.book, 10),
         chapter: parseInt(this.dataset.chapter, 10),
@@ -438,7 +438,7 @@
    * Create the Bible selector UI.
    */
   function createBibleSelector() {
-    const savedBible = localStorage.getItem('divineMercyBible') || 'NABRE';
+    const savedBible = localStorage.getItem('divineMercyBible') || 'NRSVCE';
 
     const container = document.createElement('div');
     container.className = 'bible-selector-control';

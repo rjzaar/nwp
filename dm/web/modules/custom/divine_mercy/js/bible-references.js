@@ -473,6 +473,10 @@
     return container;
   }
 
+  // Expose linkifyReferences for use by other behaviors
+  Drupal.divineMercy = Drupal.divineMercy || {};
+  Drupal.divineMercy.linkifyBibleReferences = linkifyReferences;
+
   Drupal.behaviors.divineMercyBibleReferences = {
     attach: function (context, settings) {
       // Add Bible selector after font size control
@@ -482,7 +486,7 @@
       });
 
       // Linkify Bible references in content areas
-      once('bible-linkify', '.divine-mercy-content, .reflection-list, .jesus-words, .prayer-text', context).forEach(function(element) {
+      once('bible-linkify', '.divine-mercy-content, .jesus-words, .prayer-text', context).forEach(function(element) {
         linkifyReferences(element);
       });
     }

@@ -59,6 +59,7 @@ reflection-selector:
     - core/drupal
     - core/drupalSettings
     - core/once
+    - divine_mercy/bible-references
 
 bible-references:
   version: 1.0.0

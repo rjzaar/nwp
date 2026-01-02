@@ -82,6 +82,11 @@
           });
         });
 
+        // Linkify Bible references in the newly rendered content
+        if (Drupal.divineMercy && Drupal.divineMercy.linkifyBibleReferences) {
+          Drupal.divineMercy.linkifyBibleReferences(list);
+        }
+
         // Update indicator
         indicator.textContent = `Decade ${currentDecade} of 5`;
         if (indicatorBottom) {

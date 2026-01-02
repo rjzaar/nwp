@@ -206,6 +206,7 @@ NWP includes a verification tracking system to ensure all features have been man
 | `./verify.sh` | Show full verification status with checkboxes |
 | `./verify.sh summary` | Show progress statistics and progress bar |
 | `./verify.sh list` | List all feature IDs with current status |
+| `./verify.sh details <id>` | Show what changed and verification checklist |
 | `./verify.sh verify <id>` | Mark a feature as verified by you |
 | `./verify.sh verify <id> <name>` | Mark verified by a specific person |
 | `./verify.sh unverify <id>` | Mark a feature as unverified |
@@ -249,8 +250,29 @@ The system tracks 42 features across 10 categories:
 # After code changes, check for invalidations
 ./verify.sh check
 
+# See what changed and what to verify for a specific feature
+./verify.sh details dev2stg
+
 # See what still needs verification
 ./verify.sh status
+```
+
+### When Verification is Invalidated
+
+When code changes invalidate a verification, use the `details` command to see:
+- Which files were modified
+- Recent git commits for those files
+- A specific checklist of what to test
+
+```bash
+# Check for invalidations (shows which files changed)
+./verify.sh check
+
+# Get detailed checklist for a modified feature
+./verify.sh details dev2stg
+
+# After testing, re-verify
+./verify.sh verify dev2stg
 ```
 
 The verification state is stored in `.verification.yml` and tracked in git, so the team can share verification progress.

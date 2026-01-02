@@ -95,6 +95,9 @@ declare -a COMPONENTS=(
     "gitlab_server|GitLab Server|gitlab_keys|gitlab|optional"
     "gitlab_dns|GitLab DNS Record|gitlab_server|gitlab|optional"
     "gitlab_ssh_config|GitLab SSH Config|gitlab_server|gitlab|optional"
+
+    # AI Assistant Security
+    "claude_config|Claude Code Security Config|-|security|recommended"
 )
 
 # Priority colors
@@ -282,6 +285,11 @@ check_gitlab_ssh_config_exists() {
     [ -f "$HOME/.ssh/config" ] && grep -q "Host git-server" "$HOME/.ssh/config" 2>/dev/null
 }
 
+check_claude_config_exists() {
+    # Check if Claude Code security config exists with deny rules
+    [ -f "$HOME/.claude/settings.json" ] && grep -q '"deny"' "$HOME/.claude/settings.json" 2>/dev/null
+}
+
 # Get base URL from cnwp.yml
 get_base_url_from_config() {
     if [ ! -f "$CONFIG_FILE" ]; then
@@ -322,6 +330,7 @@ detect_component_state() {
         gitlab_server)    check_gitlab_server_exists ;;
         gitlab_dns)       check_gitlab_dns_exists ;;
         gitlab_ssh_config) check_gitlab_ssh_config_exists ;;
+        claude_config)    check_claude_config_exists ;;
         *)                return 1 ;;
     esac
 }
@@ -993,6 +1002,101 @@ install_bats() {
     fi
 }
 
+install_claude_config() {
+    print_header "Configuring Claude Code Security"
+    log_action "Installing Claude Code security config"
+
+    local claude_dir="$HOME/.claude"
+    local settings_file="$claude_dir/settings.json"
+
+    # Create .claude directory if it doesn't exist
+    if [ ! -d "$claude_dir" ]; then
+        mkdir -p "$claude_dir"
+        print_status "OK" "Created $claude_dir directory"
+    fi
+
+    # Define the security deny rules
+    local deny_rules='[
+      "~/.secrets.yml",
+      "~/.ssh/*",
+      "**/cnwp.yml",
+      "**/.secrets.yml",
+      "**/.secrets.*.yml",
+      "**/.env",
+      "**/.env.local",
+      "**/.env.production",
+      "**/settings.php",
+      "**/settings.local.php",
+      "**/*.sql",
+      "**/*.sql.gz",
+      "**/keys/*",
+      "**/.credentials.json",
+      "**/id_rsa",
+      "**/id_ed25519",
+      "**/*.pem",
+      "**/*.key"
+    ]'
+
+    if [ -f "$settings_file" ]; then
+        # Check if deny rules already exist
+        if grep -q '"deny"' "$settings_file" 2>/dev/null; then
+            print_status "OK" "Claude security config already exists"
+        else
+            # Merge deny rules into existing settings
+            local temp_file=$(mktemp)
+            jq --argjson deny "$deny_rules" '. + {permissions: {deny: $deny}}' "$settings_file" > "$temp_file" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                mv "$temp_file" "$settings_file"
+                print_status "OK" "Added security deny rules to existing config"
+            else
+                rm -f "$temp_file"
+                print_status "WARN" "Could not update settings.json - please add deny rules manually"
+            fi
+        fi
+    else
+        # Create new settings file with deny rules
+        cat > "$settings_file" << 'CLAUDE_EOF'
+{
+  "permissions": {
+    "deny": [
+      "~/.secrets.yml",
+      "~/.ssh/*",
+      "**/cnwp.yml",
+      "**/.secrets.yml",
+      "**/.secrets.*.yml",
+      "**/.env",
+      "**/.env.local",
+      "**/.env.production",
+      "**/settings.php",
+      "**/settings.local.php",
+      "**/*.sql",
+      "**/*.sql.gz",
+      "**/keys/*",
+      "**/.credentials.json",
+      "**/id_rsa",
+      "**/id_ed25519",
+      "**/*.pem",
+      "**/*.key"
+    ]
+  }
+}
+CLAUDE_EOF
+        chmod 600 "$settings_file"
+        print_status "OK" "Created Claude security config at $settings_file"
+    fi
+
+    echo ""
+    echo "Claude Code will now be blocked from reading:"
+    echo "  - Secret files (.secrets.yml, .env, etc.)"
+    echo "  - SSH keys and certificates"
+    echo "  - Database dumps (*.sql)"
+    echo "  - Drupal settings.php files"
+    echo ""
+    echo "See DATA_SECURITY_BEST_PRACTICES.md for more information."
+
+    log_action "Claude Code security config installed"
+}
+
 # Main install dispatcher
 install_component() {
     local component_id="$1"
@@ -1016,6 +1120,7 @@ install_component() {
         gitlab_server)    install_gitlab_server ;;
         gitlab_dns)       install_gitlab_dns ;;
         gitlab_ssh_config) install_gitlab_ssh_config ;;
+        claude_config)    install_claude_config ;;
         *)                print_status "WARN" "Unknown component: $component_id" ;;
     esac
 }

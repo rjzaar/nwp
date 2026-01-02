@@ -216,6 +216,84 @@ uid | name    | mail
 Why might I see duplicate entries?"
 ```
 
+### Automated Protection: Claude Code Security Config
+
+Claude Code CLI supports a `settings.json` file that can automatically block access to sensitive files. NWP includes this as an installable component.
+
+#### Install via setup.sh
+
+```bash
+# Run setup.sh and select "Claude Code Security Config"
+./setup.sh
+
+# Or check current status
+./setup.sh --check
+```
+
+#### What It Protects
+
+The Claude Code security config (`~/.claude/settings.json`) includes deny rules for:
+
+| Pattern | Files Protected |
+|---------|-----------------|
+| `~/.secrets.yml` | NWP secrets file |
+| `~/.ssh/*` | SSH keys |
+| `**/cnwp.yml` | Site configuration with credentials |
+| `**/.secrets.yml`, `**/.secrets.*.yml` | All secrets files |
+| `**/.env`, `**/.env.local`, `**/.env.production` | Environment files |
+| `**/settings.php`, `**/settings.local.php` | Drupal database credentials |
+| `**/*.sql`, `**/*.sql.gz` | Database dumps |
+| `**/keys/*` | Key directories |
+| `**/.credentials.json` | Credential files |
+| `**/id_rsa`, `**/id_ed25519` | SSH private keys |
+| `**/*.pem`, `**/*.key` | Certificate/key files |
+
+#### Manual Installation
+
+If you prefer to configure manually:
+
+```bash
+mkdir -p ~/.claude
+cat > ~/.claude/settings.json << 'EOF'
+{
+  "permissions": {
+    "deny": [
+      "~/.secrets.yml",
+      "~/.ssh/*",
+      "**/cnwp.yml",
+      "**/.secrets.yml",
+      "**/.secrets.*.yml",
+      "**/.env",
+      "**/.env.local",
+      "**/.env.production",
+      "**/settings.php",
+      "**/settings.local.php",
+      "**/*.sql",
+      "**/*.sql.gz",
+      "**/keys/*",
+      "**/.credentials.json",
+      "**/id_rsa",
+      "**/id_ed25519",
+      "**/*.pem",
+      "**/*.key"
+    ]
+  }
+}
+EOF
+```
+
+#### Verify Configuration
+
+```bash
+# Check if config exists and has deny rules
+[ -f ~/.claude/settings.json ] && grep -q '"deny"' ~/.claude/settings.json && echo "Protected" || echo "Not configured"
+
+# View current deny rules
+jq '.permissions.deny' ~/.claude/settings.json
+```
+
+> **Note:** Even with automated protection, always review what you share with AI assistants. The deny rules prevent accidental file reads but don't stop you from pasting content directly.
+
 ---
 
 ## 4. Security Hardening Checklist
@@ -370,6 +448,7 @@ security_contacts:
 - [ ] Always sanitize when copying production data
 - [ ] Check for security updates weekly
 - [ ] Review access logs for anomalies
+- [ ] Verify Claude Code security config is active: `grep -q '"deny"' ~/.claude/settings.json`
 
 ### Before Each Deployment
 
@@ -408,4 +487,5 @@ security_contacts:
 | Date | Change |
 |------|--------|
 | 2026-01-03 | Initial version based on security research |
+| 2026-01-03 | Added Claude Code security config section with setup.sh integration |
 

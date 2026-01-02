@@ -216,164 +216,193 @@ uid | name    | mail
 Why might I see duplicate entries?"
 ```
 
-### Automated Protection: Claude Code Security Config
+### Two-Tier Secrets Architecture
 
-Claude Code CLI supports a `settings.json` file that can automatically block access to sensitive files. NWP includes this as an installable component.
+NWP uses a two-tier secrets architecture that allows Claude Code to help manage infrastructure while protecting user data:
+
+| Tier | File | Contents | Claude Access |
+|------|------|----------|---------------|
+| **Infrastructure** | `.secrets.yml` | API tokens for provisioning | ALLOWED |
+| **Data** | `.secrets.data.yml` | Production credentials | BLOCKED |
+
+#### Why Two Tiers?
+
+Claude can be valuable for infrastructure automation (provisioning servers, managing DNS, CI/CD) without needing access to user data (database contents, production logs, user files).
+
+**Infrastructure secrets** (safe for Claude):
+- Linode API token (server provisioning)
+- Cloudflare API token (DNS management)
+- GitLab API token (repo management)
+- Development/staging credentials
+
+**Data secrets** (blocked from Claude):
+- Production database passwords
+- Production SSH keys
+- Production SMTP credentials
+- Encryption keys
+- Admin account passwords
+
+#### File Structure
+
+```
+/home/user/nwp/
+├── .secrets.yml              # Infrastructure (Claude CAN read)
+├── .secrets.data.yml         # Data secrets (Claude CANNOT read)
+├── .secrets.example.yml      # Template for infrastructure
+├── .secrets.data.example.yml # Template for data secrets
+│
+└── sitename/
+    ├── .secrets.yml          # Site dev/staging secrets (safe)
+    └── .secrets.data.yml     # Site production secrets (blocked)
+```
 
 #### Install via setup.sh
 
 ```bash
-# Run setup.sh and select "Claude Code Security Config"
+# Install Claude security config with two-tier rules
 ./setup.sh
 
-# Or check current status
-./setup.sh --check
+# Or run migration check
+./migrate-secrets.sh --check
 ```
 
-#### What It Protects
+#### What's ALLOWED (Infrastructure)
 
-The Claude Code security config (`~/.claude/settings.json`) includes deny rules for:
+| Pattern | Purpose |
+|---------|---------|
+| `.secrets.yml` | API tokens for provisioning |
+| `.env`, `.env.local` | Development environment |
+| `cnwp.yml` | Site configuration (after removing embedded creds) |
 
-| Pattern | Files Protected |
-|---------|-----------------|
-| `~/.secrets.yml` | NWP secrets file |
-| `~/.ssh/*` | SSH keys |
-| `**/cnwp.yml` | Site configuration with credentials |
-| `**/.secrets.yml`, `**/.secrets.*.yml` | All secrets files |
-| `**/.env`, `**/.env.local`, `**/.env.production` | Environment files |
-| `**/settings.php`, `**/settings.local.php` | Drupal database credentials |
-| `**/*.sql`, `**/*.sql.gz` | Database dumps |
-| `**/keys/*` | Key directories |
-| `**/.credentials.json` | Credential files |
-| `**/id_rsa`, `**/id_ed25519` | SSH private keys |
-| `**/*.pem`, `**/*.key` | Certificate/key files |
+#### What's BLOCKED (Data)
 
-#### Manual Installation
+| Pattern | Purpose |
+|---------|---------|
+| `.secrets.data.yml` | Production credentials |
+| `keys/prod_*` | Production SSH keys |
+| `*.sql`, `*.sql.gz` | Database dumps |
+| `settings.php` | Drupal credentials |
+| `~/.ssh/*` | Personal SSH keys |
+| `*.pem`, `*.key` | Certificates |
 
-If you prefer to configure manually:
+#### Migration from Single-Tier
+
+If you have existing `.secrets.yml` files with mixed secrets:
 
 ```bash
-mkdir -p ~/.claude
-cat > ~/.claude/settings.json << 'EOF'
-{
-  "permissions": {
-    "deny": [
-      "~/.secrets.yml",
-      "~/.ssh/*",
-      "**/cnwp.yml",
-      "**/.secrets.yml",
-      "**/.secrets.*.yml",
-      "**/.env",
-      "**/.env.local",
-      "**/.env.production",
-      "**/settings.php",
-      "**/settings.local.php",
-      "**/*.sql",
-      "**/*.sql.gz",
-      "**/keys/*",
-      "**/.credentials.json",
-      "**/id_rsa",
-      "**/id_ed25519",
-      "**/*.pem",
-      "**/*.key"
-    ]
-  }
-}
-EOF
+# Check for data secrets in infrastructure files
+./migrate-secrets.sh --check
+
+# Migrate NWP root secrets
+./migrate-secrets.sh --nwp
+
+# Migrate a specific site
+./migrate-secrets.sh --site avc
+
+# Migrate all
+./migrate-secrets.sh --all
 ```
 
-#### Verify Configuration
+The migration script will:
+1. Identify data secrets in `.secrets.yml`
+2. Create `.secrets.data.yml` from template
+3. Guide you to move data secrets manually
+4. Validate the split
+
+#### Safe Operations Proxy
+
+For operations that need data secrets but should return sanitized output:
 
 ```bash
-# Check if config exists and has deny rules
-[ -f ~/.claude/settings.json ] && grep -q '"deny"' ~/.claude/settings.json && echo "Protected" || echo "Not configured"
+source lib/safe-ops.sh
 
-# View current deny rules
-jq '.permissions.deny' ~/.claude/settings.json
+# Get server status (no credentials exposed)
+safe_server_status prod1
+
+# Get database info (no actual data)
+safe_db_status avc
+
+# Check for security updates
+safe_security_check avc
 ```
 
-#### Understanding the Limitations
+These functions use data secrets internally but only return sanitized information.
 
-Deny rules are a **safety net, not a security boundary**. They prevent Claude Code from reading files via its Read tool, but:
+#### Using the New Functions
 
-- Won't stop you from pasting file contents directly
-- Rely on Claude Code respecting the configuration
-- Don't protect against potential bugs or bypasses
+In your scripts, use the appropriate function:
 
-**The principle: Don't put secrets where they can be accessed.**
+```bash
+source lib/common.sh
+
+# For infrastructure secrets (Claude can see)
+token=$(get_infra_secret "linode.api_token" "")
+
+# For data secrets (Claude cannot see)
+db_pass=$(get_data_secret "production_database.password" "")
+```
 
 #### Tiered Security Approaches
 
-Choose based on your risk tolerance:
-
-| Tier | Approach | Security | Practicality | Best For |
-|------|----------|----------|--------------|----------|
-| 1 | **Isolated environment** | Highest | Medium | High-security projects |
-| 2 | **Dev-only credentials** | High | High | Most development work |
-| 3 | **Deny rules only** | Medium | Highest | Quick prototyping |
+| Tier | Approach | Security | Practicality |
+|------|----------|----------|--------------|
+| 1 | **Isolated environment** | Highest | Medium |
+| 2 | **Two-tier secrets** (this) | High | High |
+| 3 | **Deny rules only** | Medium | Highest |
 
 **Tier 1: Isolated Environment**
 
-Run Claude Code in a VM or container with only code, no secrets:
+Run Claude in a VM/container with no secrets at all:
+- Clone repo without any secrets
+- Use placeholder credentials
+- Sync code, never secrets
 
-```bash
-# Example: Use a dev container or VM
-# - Clone repo without secrets
-# - Use placeholder credentials
-# - Sync code changes, never secrets
-```
+**Tier 2: Two-Tier Secrets (Recommended)**
 
-Pros: Secrets physically cannot be accessed
-Cons: Requires workflow changes, code syncing
-
-**Tier 2: Dev-Only Credentials (Recommended)**
-
-Keep production secrets off your development machine entirely:
-
-```bash
-# On your dev machine:
-~/.secrets.yml          # Contains ONLY dev/staging credentials
-keys/                   # Contains ONLY dev SSH keys (if any)
-
-# Production credentials live on:
-# - Production servers only
-# - A separate deployment machine
-# - A secrets manager (Vault, AWS Secrets Manager, etc.)
-```
-
-For NWP/Drupal specifically:
-- **ddev/lando credentials** are local-only and safe
-- **Never store prod database credentials** on your dev machine
-- **Use a jump host** for production SSH access
-- **Do prod deployments** from a separate terminal/machine without Claude
+Current architecture - separate infrastructure from data:
+- `.secrets.yml` = safe for Claude
+- `.secrets.data.yml` = blocked from Claude
+- Best balance of security and productivity
 
 **Tier 3: Deny Rules Only**
 
-Current setup - relies on Claude Code configuration to block sensitive files.
+Block all secrets files (original approach):
+- Simpler but less flexible
+- Claude can't help with infrastructure
 
-Use only when:
-- Doing quick prototyping
-- Working on non-sensitive projects
-- You understand and accept the risks
+#### Production Deployment
 
-#### Production Deployment Recommendation
-
-For maximum security when deploying to production:
+For maximum security:
 
 ```bash
-# Option A: Separate terminal
-# Run Claude in one terminal, do deployments in another
+# Option A: Two-tier with safe-ops
+# Claude uses infrastructure secrets
+# Production ops through safe_* functions
 
-# Option B: Separate machine
-# Dev machine: Claude + code + dev secrets
-# Deploy machine: prod secrets + deployment scripts (no Claude)
+# Option B: Separate terminal
+# Claude in one terminal
+# Production commands in another
 
 # Option C: CI/CD pipeline
 # Neither machine has prod secrets
-# Secrets injected at deploy time by CI/CD
+# Secrets injected at deploy time
 ```
 
-> **Note:** Even with automated protection, always review what you share with AI assistants. The deny rules prevent accidental file reads but don't stop you from pasting content directly.
+#### Verify Your Setup
+
+```bash
+# Check Claude deny rules
+jq '.permissions.deny' ~/.claude/settings.json
+
+# Check for data secrets in wrong files
+./migrate-secrets.sh --check
+
+# List what Claude can/cannot access
+grep -l "api_token" *.yml          # Should be in .secrets.yml
+grep -l "password" *.yml           # Should be in .secrets.data.yml
+```
+
+> **Note:** Even with two-tier architecture, never paste production credentials into Claude. The architecture prevents accidental file reads, but you can still manually share sensitive data.
 
 ---
 
@@ -570,4 +599,5 @@ security_contacts:
 | 2026-01-03 | Initial version based on security research |
 | 2026-01-03 | Added Claude Code security config section with setup.sh integration |
 | 2026-01-03 | Added tiered security approaches for AI assistant usage |
+| 2026-01-03 | Implemented two-tier secrets architecture (infrastructure vs data) |
 

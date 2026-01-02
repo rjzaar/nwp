@@ -132,6 +132,109 @@ get_secret() {
     fi
 }
 
+# Get infrastructure secret (from .secrets.yml - safe for AI assistants)
+# Usage: get_infra_secret "section.key" "default_value"
+# These secrets are for provisioning/automation, NOT user data access
+get_infra_secret() {
+    local path="$1"
+    local default="$2"
+    # Uses standard .secrets.yml (infrastructure secrets)
+    get_secret "$path" "$default"
+}
+
+# Get data secret (from .secrets.data.yml - NEVER share with AI)
+# Usage: get_data_secret "section.key" "default_value"
+# These secrets provide access to user data (production DB, SSH, etc.)
+get_data_secret() {
+    local path="$1"
+    local default="$2"
+    local data_secrets_file="${SCRIPT_DIR}/.secrets.data.yml"
+
+    # Warn if we're in an AI-accessible context (optional env var)
+    if [ "${AI_CONTEXT:-}" = "true" ]; then
+        echo "[SECURITY WARNING] Data secret accessed in AI context: $path" >&2
+    fi
+
+    if [ ! -f "$data_secrets_file" ]; then
+        # Fall back to default if no data secrets file
+        echo "$default"
+        return
+    fi
+
+    # Parse section.key format
+    local section="${path%%.*}"
+    local key="${path#*.}"
+
+    local value=$(awk -v section="$section" -v key="$key" '
+        $0 ~ "^" section ":" { in_section = 1; next }
+        in_section && /^[a-zA-Z]/ && !/^  / { in_section = 0 }
+        in_section && $0 ~ "^  " key ":" {
+            sub("^  " key ": *", "")
+            gsub(/["'"'"']/, "")
+            sub(/ *#.*$/, "")
+            gsub(/^[ \t]+|[ \t]+$/, "")
+            print
+            exit
+        }
+    ' "$data_secrets_file")
+
+    if [ -n "$value" ] && [ "$value" != "" ]; then
+        echo "$value"
+    else
+        echo "$default"
+    fi
+}
+
+# Get nested data secret (from .secrets.data.yml)
+# Usage: get_data_secret_nested "section.subsection.key" "default_value"
+get_data_secret_nested() {
+    local path="$1"
+    local default="$2"
+    local data_secrets_file="${SCRIPT_DIR}/.secrets.data.yml"
+
+    if [ "${AI_CONTEXT:-}" = "true" ]; then
+        echo "[SECURITY WARNING] Data secret accessed in AI context: $path" >&2
+    fi
+
+    if [ ! -f "$data_secrets_file" ]; then
+        echo "$default"
+        return
+    fi
+
+    local depth=$(echo "$path" | tr -cd '.' | wc -c)
+
+    if [ "$depth" -eq 1 ]; then
+        get_data_secret "$path" "$default"
+        return
+    fi
+
+    local section="${path%%.*}"
+    local rest="${path#*.}"
+    local subsection="${rest%%.*}"
+    local key="${rest#*.}"
+
+    local value=$(awk -v section="$section" -v subsection="$subsection" -v key="$key" '
+        $0 ~ "^" section ":" { in_section = 1; next }
+        in_section && /^[a-zA-Z]/ && !/^  / { in_section = 0 }
+        in_section && $0 ~ "^  " subsection ":" { in_subsection = 1; next }
+        in_subsection && /^  [a-zA-Z]/ && !/^    / { in_subsection = 0 }
+        in_subsection && $0 ~ "^    " key ":" {
+            sub("^    " key ": *", "")
+            gsub(/["'"'"']/, "")
+            sub(/ *#.*$/, "")
+            gsub(/^[ \t]+|[ \t]+$/, "")
+            print
+            exit
+        }
+    ' "$data_secrets_file")
+
+    if [ -n "$value" ] && [ "$value" != "" ]; then
+        echo "$value"
+    else
+        echo "$default"
+    fi
+}
+
 # Get nested secret value from .secrets.yml (for deeper nesting like gitlab.server.ip)
 # Usage: get_secret_nested "section.subsection.key" "default_value"
 get_secret_nested() {
@@ -493,6 +596,9 @@ remove_migration_folder() {
 # Export functions for use in subshells
 export -f get_secret
 export -f get_secret_nested
+export -f get_infra_secret
+export -f get_data_secret
+export -f get_data_secret_nested
 export -f get_setting
 export -f get_env_type_from_name
 export -f get_base_name

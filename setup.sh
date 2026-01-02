@@ -1015,21 +1015,25 @@ install_claude_config() {
         print_status "OK" "Created $claude_dir directory"
     fi
 
-    # Define the security deny rules
+    # Two-tier secrets architecture:
+    # - .secrets.yml = infrastructure secrets (ALLOWED - API tokens for provisioning)
+    # - .secrets.data.yml = data secrets (BLOCKED - production DB, SSH, etc.)
+    #
+    # See docs/DATA_SECURITY_BEST_PRACTICES.md for full documentation.
+
+    # Define the security deny rules (data secrets only)
     local deny_rules='[
-      "~/.secrets.yml",
+      "**/.secrets.data.yml",
+      "**/.secrets.prod.yml",
+      "**/keys/prod_*",
+      "**/keys/*_prod",
+      "**/keys/*_production",
       "~/.ssh/*",
-      "**/cnwp.yml",
-      "**/.secrets.yml",
-      "**/.secrets.*.yml",
-      "**/.env",
-      "**/.env.local",
-      "**/.env.production",
-      "**/settings.php",
-      "**/settings.local.php",
       "**/*.sql",
       "**/*.sql.gz",
-      "**/keys/*",
+      "**/settings.php",
+      "**/settings.local.php",
+      "**/.env.production",
       "**/.credentials.json",
       "**/id_rsa",
       "**/id_ed25519",
@@ -1040,7 +1044,22 @@ install_claude_config() {
     if [ -f "$settings_file" ]; then
         # Check if deny rules already exist
         if grep -q '"deny"' "$settings_file" 2>/dev/null; then
-            print_status "OK" "Claude security config already exists"
+            # Check if using old rules (blocking .secrets.yml)
+            if grep -q '"\*\*/\.secrets\.yml"' "$settings_file" 2>/dev/null; then
+                print_status "WARN" "Old deny rules detected - updating to two-tier architecture"
+                # Update to new rules
+                local temp_file=$(mktemp)
+                jq --argjson deny "$deny_rules" '.permissions.deny = $deny' "$settings_file" > "$temp_file" 2>/dev/null
+                if [ $? -eq 0 ]; then
+                    mv "$temp_file" "$settings_file"
+                    print_status "OK" "Updated to two-tier secrets architecture"
+                else
+                    rm -f "$temp_file"
+                    print_status "WARN" "Could not update - please update deny rules manually"
+                fi
+            else
+                print_status "OK" "Claude security config already configured"
+            fi
         else
             # Merge deny rules into existing settings
             local temp_file=$(mktemp)
@@ -1059,19 +1078,17 @@ install_claude_config() {
 {
   "permissions": {
     "deny": [
-      "~/.secrets.yml",
+      "**/.secrets.data.yml",
+      "**/.secrets.prod.yml",
+      "**/keys/prod_*",
+      "**/keys/*_prod",
+      "**/keys/*_production",
       "~/.ssh/*",
-      "**/cnwp.yml",
-      "**/.secrets.yml",
-      "**/.secrets.*.yml",
-      "**/.env",
-      "**/.env.local",
-      "**/.env.production",
-      "**/settings.php",
-      "**/settings.local.php",
       "**/*.sql",
       "**/*.sql.gz",
-      "**/keys/*",
+      "**/settings.php",
+      "**/settings.local.php",
+      "**/.env.production",
       "**/.credentials.json",
       "**/id_rsa",
       "**/id_ed25519",
@@ -1086,15 +1103,22 @@ CLAUDE_EOF
     fi
 
     echo ""
-    echo "Claude Code will now be blocked from reading:"
-    echo "  - Secret files (.secrets.yml, .env, etc.)"
-    echo "  - SSH keys and certificates"
-    echo "  - Database dumps (*.sql)"
-    echo "  - Drupal settings.php files"
+    echo "Two-Tier Secrets Architecture:"
     echo ""
-    echo "See DATA_SECURITY_BEST_PRACTICES.md for more information."
+    echo "  ALLOWED (infrastructure secrets):"
+    echo "    .secrets.yml     - API tokens for provisioning"
+    echo "    .env, .env.local - Development environment"
+    echo ""
+    echo "  BLOCKED (data secrets):"
+    echo "    .secrets.data.yml - Production DB, SSH, SMTP"
+    echo "    keys/prod_*       - Production SSH keys"
+    echo "    *.sql, *.sql.gz   - Database dumps"
+    echo "    settings.php      - Drupal credentials"
+    echo ""
+    echo "Run: ./migrate-secrets.sh --check  to verify your secrets"
+    echo "See: docs/DATA_SECURITY_BEST_PRACTICES.md for full documentation"
 
-    log_action "Claude Code security config installed"
+    log_action "Claude Code security config installed (two-tier architecture)"
 }
 
 # Main install dispatcher

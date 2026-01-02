@@ -56,6 +56,10 @@
 # Configuration templates (not user configs)
 !example.cnwp.yml
 !.secrets.example.yml
+!.secrets.data.example.yml
+
+# Migration scripts
+!migrate-secrets.sh
 
 # Documentation directory
 !docs/

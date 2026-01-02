@@ -81,35 +81,12 @@ See docs/DATA_SECURITY_BEST_PRACTICES.md for full documentation.
 EOF
 }
 
-# Keys that should be in .secrets.data.yml (data secrets)
-DATA_SECRET_PATTERNS=(
-    "admin_password"
-    "root_password"
-    "backup_password"
-    "ssh_key.*prod"
-    "prod.*ssh"
-    "production"
-    "stripe_secret"
-    "encryption"
-    "gitlab.*admin"
-    "admin.*password"
-)
-
-# Check if a line contains a data secret
-contains_data_secret() {
-    local line="$1"
-    for pattern in "${DATA_SECRET_PATTERNS[@]}"; do
-        if echo "$line" | grep -qiE "$pattern"; then
-            return 0
-        fi
-    done
-    return 1
-}
+# Combined regex pattern for data secrets
+DATA_SECRET_PATTERN="(admin_password|root_password|backup_password|ssh_key.*prod|prod.*ssh|production_|stripe_secret|encryption|gitlab.*admin)"
 
 # Check a secrets file for data secrets
 check_secrets_file() {
     local file="$1"
-    local found_issues=false
 
     if [ ! -f "$file" ]; then
         return 0
@@ -117,21 +94,17 @@ check_secrets_file() {
 
     log_info "Checking: $file"
 
-    local line_num=0
-    while IFS= read -r line; do
-        ((line_num++))
-        # Skip comments and empty lines
-        if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "${line// }" ]]; then
-            continue
-        fi
+    # Use grep to find all matches at once (much faster)
+    local matches
+    matches=$(grep -inE "$DATA_SECRET_PATTERN" "$file" 2>/dev/null | grep -v "^[[:space:]]*#" | head -20)
 
-        if contains_data_secret "$line"; then
-            log_warn "  Line $line_num may contain data secret: ${line:0:60}..."
-            found_issues=true
-        fi
-    done < "$file"
-
-    if [ "$found_issues" = false ]; then
+    if [ -n "$matches" ]; then
+        echo "$matches" | while IFS= read -r match; do
+            local line_num=$(echo "$match" | cut -d: -f1)
+            local content=$(echo "$match" | cut -d: -f2- | head -c 60)
+            log_warn "  Line $line_num: ${content}..."
+        done
+    else
         log_success "  No data secrets found"
     fi
 

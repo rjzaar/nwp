@@ -725,6 +725,13 @@ Comprehensive documentation is available in the `docs/` directory:
   - 30 test features with 134 scenarios
   - Automatic dependency installation and configuration
 
+- **[DATA_SECURITY_BEST_PRACTICES.md](docs/DATA_SECURITY_BEST_PRACTICES.md)** - Security and AI usage guide
+  - Production backup strategies and schedules
+  - Database sanitization for GDPR compliance
+  - What to share (and NOT share) with AI assistants like Claude
+  - Security hardening checklists
+  - Secrets management and rotation
+
 ### Quick Reference
 
 **For script usage:**

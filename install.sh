@@ -473,7 +473,8 @@ main() {
             if install_moodle "$recipe" "$install_dir" "$start_step" "$purpose"; then
                 exit 0
             else
-                print_error "Installation failed"
+                print_error "Moodle installation failed: $install_dir"
+                offer_error_report "Moodle installation failed: $install_dir (recipe: $recipe)" "install.sh"
                 exit 1
             fi
             ;;
@@ -481,7 +482,8 @@ main() {
             if install_gitlab "$recipe" "$install_dir" "$start_step" "$purpose"; then
                 exit 0
             else
-                print_error "Installation failed"
+                print_error "GitLab installation failed: $install_dir"
+                offer_error_report "GitLab installation failed: $install_dir (recipe: $recipe)" "install.sh"
                 exit 1
             fi
             ;;
@@ -489,7 +491,8 @@ main() {
             if install_podcast "$recipe" "$install_dir" "$start_step" "$purpose"; then
                 exit 0
             else
-                print_error "Installation failed"
+                print_error "Podcast installation failed: $install_dir"
+                offer_error_report "Podcast installation failed: $install_dir (recipe: $recipe)" "install.sh"
                 exit 1
             fi
             ;;
@@ -498,7 +501,8 @@ main() {
             if install_drupal "$recipe" "$install_dir" "$start_step" "$create_content" "$purpose"; then
                 exit 0
             else
-                print_error "Installation failed"
+                print_error "Installation failed: $install_dir"
+                offer_error_report "Installation failed: $install_dir (recipe: $recipe)" "install.sh"
                 exit 1
             fi
             ;;

@@ -719,7 +719,8 @@ main() {
             show_elapsed_time
             exit 0
         else
-            print_error "Failed to enable development mode"
+            print_error "Failed to enable development mode: $SITENAME"
+            offer_error_report "Failed to enable development mode: $SITENAME" "make.sh"
             exit 1
         fi
     else
@@ -727,7 +728,8 @@ main() {
             show_elapsed_time
             exit 0
         else
-            print_error "Failed to enable production mode"
+            print_error "Failed to enable production mode: $SITENAME"
+            offer_error_report "Failed to enable production mode: $SITENAME" "make.sh"
             exit 1
         fi
     fi

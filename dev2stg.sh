@@ -778,7 +778,8 @@ main() {
         show_elapsed_time
         exit 0
     else
-        print_error "Deployment failed"
+        print_error "Deployment failed: $SITENAME (dev → staging)"
+        offer_error_report "Deployment failed: $SITENAME (dev → staging)" "dev2stg.sh"
         exit 1
     fi
 }

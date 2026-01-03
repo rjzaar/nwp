@@ -40,6 +40,7 @@
 !import.sh
 !sync.sh
 !verify.sh
+!report.sh
 
 # Verification tracking
 !.verification.yml

@@ -243,11 +243,16 @@ check_nwp_secrets_exist() {
 
 check_linode_config_exists() {
     # Check if linode-cli is configured with a token
-    if command -v linode-cli &> /dev/null; then
-        linode-cli account view --text --no-headers &> /dev/null
-        return $?
+    if ! command -v linode-cli &> /dev/null; then
+        return 1
     fi
-    return 1
+    # Check if config file exists first (avoid API call hanging)
+    if [ ! -f "$HOME/.config/linode-cli" ]; then
+        return 1
+    fi
+    # Verify token works with timeout
+    timeout 5 linode-cli account view --text --no-headers &> /dev/null
+    return $?
 }
 
 check_gitlab_keys_exist() {
@@ -276,8 +281,8 @@ check_gitlab_dns_exists() {
     local base_url=$(get_base_url_from_config 2>/dev/null)
     [ -z "$base_url" ] && return 1
 
-    # Check if domain exists in Linode DNS
-    linode-cli domains list --text --no-headers 2>/dev/null | grep -q "$base_url"
+    # Check if domain exists in Linode DNS (with timeout)
+    timeout 5 linode-cli domains list --text --no-headers 2>/dev/null | grep -q "$base_url"
 }
 
 check_gitlab_ssh_config_exists() {
@@ -747,7 +752,7 @@ install_linode_config() {
     fi
 
     # Configure linode-cli non-interactively
-    mkdir -p "$HOME/.config/linode-cli"
+    mkdir -p "$HOME/.config"
     cat > "$HOME/.config/linode-cli" << EOF
 [DEFAULT]
 default-user = default
@@ -759,8 +764,8 @@ type = g6-standard-2
 image = linode/ubuntu24.04
 EOF
 
-    # Verify configuration
-    if linode-cli account view --text --no-headers &> /dev/null; then
+    # Verify configuration (with timeout to avoid hanging)
+    if timeout 10 linode-cli account view --text --no-headers &> /dev/null; then
         print_status "OK" "Linode CLI configured successfully"
         log_action "Linode CLI configured"
     else

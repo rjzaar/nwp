@@ -414,7 +414,8 @@ wrapper_mode() {
 
     if command -v script &>/dev/null && [[ "$(uname)" != "Darwin" ]]; then
         # Linux: use script for proper terminal handling
-        script -q -c "${command_args[*]}" "$OUTPUT_FILE"
+        # -q = quiet, -e = return child exit code, -c = command
+        script -q -e -c "${command_args[*]}" "$OUTPUT_FILE"
         exit_code=$?
     else
         # Fallback: tee to capture output

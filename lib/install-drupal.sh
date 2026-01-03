@@ -83,8 +83,11 @@ install_drupal() {
     # Extract configuration values from YAML
     local source=$(get_recipe_value "$recipe" "source" "$base_dir/cnwp.yml")
     local profile=$(get_recipe_value "$recipe" "profile" "$base_dir/cnwp.yml")
+    local profile_source=$(get_recipe_value "$recipe" "profile_source" "$base_dir/cnwp.yml")
     local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/cnwp.yml")
     local install_modules=$(get_recipe_value "$recipe" "install_modules" "$base_dir/cnwp.yml")
+    local post_install_modules=$(get_recipe_list_value "$recipe" "post_install_modules" "$base_dir/cnwp.yml")
+    local default_theme=$(get_recipe_value "$recipe" "default_theme" "$base_dir/cnwp.yml")
 
     # Get database and PHP configuration from settings section
     local database=$(get_settings_value "database" "$base_dir/cnwp.yml")
@@ -202,6 +205,20 @@ install_drupal() {
                     return 1
                 fi
                 print_status "OK" "Git modules installed"
+            fi
+        fi
+
+        # Install profile from git repository if specified
+        # This clones the profile to profiles/custom/ for active development
+        if [ -n "$profile_source" ]; then
+            if is_git_url "$profile_source"; then
+                print_info "Installing profile from git: $profile_source"
+                if ! install_git_profile "$profile_source" "$profile" "$webroot"; then
+                    print_error "Failed to install profile from git"
+                    return 1
+                fi
+            else
+                print_status "WARN" "profile_source is not a git URL: $profile_source"
             fi
         fi
 
@@ -646,6 +663,33 @@ CONFIG_SPLIT_EOF
             print_status "OK" "Environment indicator enabled"
         else
             print_status "WARN" "Environment indicator not available (install with: composer require drupal/environment_indicator)"
+        fi
+
+        # Enable post-install modules from recipe (e.g., AVC modules)
+        if [ -n "$post_install_modules" ]; then
+            print_info "Enabling post-install modules: $post_install_modules"
+            if ddev drush pm:enable $post_install_modules -y; then
+                print_status "OK" "Post-install modules enabled"
+            else
+                print_error "Failed to enable some post-install modules"
+                print_status "INFO" "You may need to enable modules manually with: ddev drush pm:enable <module>"
+            fi
+        fi
+
+        # Set default theme if specified in recipe
+        if [ -n "$default_theme" ]; then
+            print_info "Setting default theme: $default_theme"
+            # First install the theme if not already installed
+            if ddev drush theme:enable "$default_theme" -y 2>/dev/null; then
+                # Set as default theme
+                if ddev drush config:set system.theme default "$default_theme" -y; then
+                    print_status "OK" "Default theme set to $default_theme"
+                else
+                    print_status "WARN" "Failed to set $default_theme as default theme"
+                fi
+            else
+                print_status "WARN" "Theme $default_theme not available"
+            fi
         fi
 
         # Dev modules installation if dev mode enabled

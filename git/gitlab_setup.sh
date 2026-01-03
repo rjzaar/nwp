@@ -697,6 +697,24 @@ gitlab:
   enable_registry: true
   enable_lfs: true
 
+  # Repository organization
+  # The 'nwp' group contains code repositories (nwp, avc)
+  # The 'backups' group contains site backup repositories
+  default_group: "nwp"
+  groups:
+    - name: "nwp"
+      description: "NWP code repositories"
+      repos:
+        - "nwp/nwp"     # NWP codebase → mirrors to rjzaar/nwp
+        - "nwp/avc"     # AV Commons → mirrors to rjzaar/avc
+    - name: "backups"
+      description: "Site backup repositories"
+
+  # GitHub mirrors (configured automatically)
+  github_mirrors:
+    "nwp/nwp": "rjzaar/nwp"
+    "nwp/avc": "rjzaar/avc"
+
 # Runner Configuration
 runner:
   install_by_default: true
@@ -827,6 +845,11 @@ display_next_steps() {
     echo ""
     echo "6. ${BOLD}Read the documentation:${NC}"
     echo "   cat $GIT_DIR/docs/SETUP_GUIDE.md"
+    echo ""
+    echo "${BOLD}Repository Structure (created automatically):${NC}"
+    echo "   nwp/nwp     - NWP codebase (mirrors to GitHub rjzaar/nwp)"
+    echo "   nwp/avc     - AV Commons profile (mirrors to GitHub rjzaar/avc)"
+    echo "   backups/*   - Site backup repositories"
     echo ""
 
     print_info "For help with any script, use the --help flag"

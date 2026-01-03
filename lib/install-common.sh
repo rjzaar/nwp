@@ -524,6 +524,49 @@ get_recipe_value() {
     ' "$config_file"
 }
 
+# Get a list value from a recipe (returns space-separated items)
+# Usage: get_recipe_list_value "recipe_name" "key" "config_file"
+# For YAML like:
+#   post_install_modules:
+#     - module1
+#     - module2
+# Returns: "module1 module2"
+get_recipe_list_value() {
+    local recipe=$1
+    local key=$2
+    local config_file="${3:-cnwp.yml}"
+
+    awk -v recipe="$recipe" -v key="$key" '
+        BEGIN { in_recipe = 0; in_list = 0 }
+        /^  [a-zA-Z0-9_-]+:/ {
+            if ($1 == recipe":") {
+                in_recipe = 1
+            } else if (in_recipe) {
+                in_recipe = 0
+                in_list = 0
+            }
+        }
+        in_recipe && $0 ~ "^    " key ":" {
+            in_list = 1
+            next
+        }
+        in_recipe && in_list {
+            # Check if we hit another key (not a list item)
+            if (/^    [a-zA-Z0-9_-]+:/) {
+                in_list = 0
+                exit
+            }
+            # Extract list items (lines starting with "      - ")
+            if (/^      - /) {
+                sub("^      - *", "")
+                gsub(/["'"'"']/, "")  # Remove quotes
+                printf "%s ", $0
+            }
+        }
+        END { print "" }
+    ' "$config_file" | sed 's/ *$//'
+}
+
 # Parse YAML file and extract root-level value
 get_root_value() {
     local key=$1
@@ -778,6 +821,52 @@ is_git_url() {
         return 0
     fi
     return 1
+}
+
+# Install a Drupal profile from a git repository
+# Usage: install_git_profile "git@git.example.org:group/repo.git" "profile_name" "html"
+#
+# The profile will be cloned to: webroot/profiles/custom/<profile_name>
+# This allows active development on the profile while working on the site.
+#
+install_git_profile() {
+    local git_url=$1
+    local profile_name=$2
+    local webroot=$3
+    local profiles_dir="${webroot}/profiles/custom"
+    local profile_path="${profiles_dir}/${profile_name}"
+
+    print_info "Installing profile from git repository..."
+
+    # Create custom profiles directory if it doesn't exist
+    if [ ! -d "$profiles_dir" ]; then
+        mkdir -p "$profiles_dir"
+        print_status "OK" "Created custom profiles directory: $profiles_dir"
+    fi
+
+    if [ -d "$profile_path" ]; then
+        print_status "WARN" "Profile $profile_name already exists at $profile_path"
+        # Check if it's a git repo and pull latest
+        if [ -d "$profile_path/.git" ]; then
+            print_info "Pulling latest changes for $profile_name..."
+            if (cd "$profile_path" && git pull); then
+                print_status "OK" "Profile $profile_name updated"
+            else
+                print_status "WARN" "Could not pull updates for $profile_name"
+            fi
+        fi
+        return 0
+    fi
+
+    print_info "Cloning $profile_name from $git_url..."
+    if git clone "$git_url" "$profile_path"; then
+        print_status "OK" "Profile $profile_name cloned to $profile_path"
+        print_status "INFO" "You can now work on the profile directly in $profile_path"
+        return 0
+    else
+        print_error "Failed to clone profile $profile_name from $git_url"
+        return 1
+    fi
 }
 
 # Install modules from git repositories

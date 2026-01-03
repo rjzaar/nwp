@@ -40,7 +40,8 @@ NC='\033[0m'
 # Configuration
 GITLAB_DOMAIN="git.nwpcode.org"
 GITLAB_SSH_HOST="git-server"
-GITLAB_USER="root"  # GitLab namespace/user for projects
+GITLAB_USER="nwp"   # GitLab user for project ownership
+GITLAB_GROUP="nwp"  # Default GitLab group/namespace for projects
 
 ################################################################################
 # Helper Functions
@@ -172,11 +173,12 @@ detect_project_name() {
 
 create_gitlab_project() {
     local project_name="$1"
+    local group="${2:-$GITLAB_GROUP}"
 
     print_header "Creating GitLab Project"
 
-    # Check if project already exists
-    local exists=$(ssh "$GITLAB_SSH_HOST" "sudo gitlab-rails runner \"puts Project.where(path: '$project_name').first&.full_path || 'not_found'\"" 2>/dev/null)
+    # Check if project already exists in the group
+    local exists=$(ssh "$GITLAB_SSH_HOST" "sudo gitlab-rails runner \"puts Project.find_by_full_path('${group}/${project_name}')&.full_path || 'not_found'\"" 2>/dev/null)
 
     if [ "$exists" != "not_found" ] && [ -n "$exists" ]; then
         print_ok "Project already exists: $exists"
@@ -184,13 +186,28 @@ create_gitlab_project() {
         return 0
     fi
 
-    # Create project
-    print_info "Creating project: $project_name"
+    # Ensure group exists
+    print_info "Ensuring group exists: $group"
+    ssh "$GITLAB_SSH_HOST" "sudo gitlab-rails runner \"
+group = Group.find_by_path('$group')
+unless group
+  group = Group.new(name: '$group', path: '$group', visibility_level: Gitlab::VisibilityLevel::PRIVATE)
+  group.save!
+  puts 'Created group: $group'
+else
+  puts 'Group exists: $group'
+end
+\"" 2>/dev/null
+
+    # Create project in group
+    print_info "Creating project: ${group}/${project_name}"
     local result=$(ssh "$GITLAB_SSH_HOST" "sudo gitlab-rails runner \"
-user = User.find_by(username: '$GITLAB_USER')
+user = User.find_by(username: '$GITLAB_USER') || User.find_by(admin: true)
+group = Group.find_by_path('$group')
 project = Projects::CreateService.new(user, {
   name: '$project_name',
   path: '$project_name',
+  namespace_id: group.id,
   visibility_level: Gitlab::VisibilityLevel::PRIVATE,
   description: 'Mirrored from GitHub'
 }).execute

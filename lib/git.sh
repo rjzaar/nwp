@@ -173,7 +173,7 @@ git_push_all() {
     local repo_path="$1"
     local branch="${2:-backup}"
     local project_name="${3:-}"
-    local group="${4:-backups}"
+    local group="${4:-$(get_gitlab_default_group)}"
 
     # First, push to primary (origin/NWP GitLab)
     if ! git_push "$repo_path" "$branch" "$project_name" "$group"; then
@@ -307,6 +307,38 @@ git_commit_backup() {
 # GitLab API Automation (P15)
 ################################################################################
 
+# Get default GitLab group from cnwp.yml
+# Returns: group name (default: nwp)
+get_gitlab_default_group() {
+    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local default_group="nwp"
+
+    if [ ! -f "$cnwp_file" ]; then
+        echo "$default_group"
+        return
+    fi
+
+    # Parse settings.gitlab.default_group
+    local group=$(awk '
+        /^settings:/ { in_settings = 1; next }
+        in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
+        in_settings && /^  gitlab:/ { in_gitlab = 1; next }
+        in_gitlab && /^  [a-zA-Z]/ && !/^    / { in_gitlab = 0 }
+        in_gitlab && /^    default_group:/ {
+            sub("^    default_group: *", "")
+            gsub(/["'"'"']/, "")
+            print
+            exit
+        }
+    ' "$cnwp_file")
+
+    if [ -n "$group" ]; then
+        echo "$group"
+    else
+        echo "$default_group"
+    fi
+}
+
 # Get GitLab API token from .secrets.yml
 # Usage: get_gitlab_token
 get_gitlab_token() {
@@ -338,7 +370,7 @@ get_gitlab_token() {
 # Usage: gitlab_api_create_project "project-name" "group" ["description"]
 gitlab_api_create_project() {
     local project_name="$1"
-    local group="${2:-backups}"
+    local group="${2:-$(get_gitlab_default_group)}"
     local description="${3:-NWP managed project}"
 
     local gitlab_url=$(get_gitlab_url)
@@ -422,7 +454,7 @@ gitlab_api_create_project() {
 # Usage: gitlab_api_delete_project "project-name" "group"
 gitlab_api_delete_project() {
     local project_name="$1"
-    local group="${2:-backups}"
+    local group="${2:-$(get_gitlab_default_group)}"
 
     local gitlab_url=$(get_gitlab_url)
     local token=$(get_gitlab_token)
@@ -453,7 +485,7 @@ gitlab_api_delete_project() {
 # List GitLab projects in a group
 # Usage: gitlab_api_list_projects "group"
 gitlab_api_list_projects() {
-    local group="${1:-backups}"
+    local group="${1:-$(get_gitlab_default_group)}"
 
     local gitlab_url=$(get_gitlab_url)
     local token=$(get_gitlab_token)
@@ -486,7 +518,7 @@ gitlab_api_list_projects() {
 # Usage: gitlab_api_configure_project "project-name" "group"
 gitlab_api_configure_project() {
     local project_name="$1"
-    local group="${2:-backups}"
+    local group="${2:-$(get_gitlab_default_group)}"
 
     local gitlab_url=$(get_gitlab_url)
     local token=$(get_gitlab_token)
@@ -526,7 +558,7 @@ gitlab_api_configure_project() {
 # Usage: gitlab_api_unprotect_branch "project-name" "group" "branch"
 gitlab_api_unprotect_branch() {
     local project_name="$1"
-    local group="${2:-backups}"
+    local group="${2:-$(get_gitlab_default_group)}"
     local branch="${3:-main}"
 
     local gitlab_url=$(get_gitlab_url)
@@ -656,7 +688,7 @@ EOF
 git_setup_remote() {
     local repo_path="$1"
     local project_name="$2"
-    local group="${3:-backups}"
+    local group="${3:-$(get_gitlab_default_group)}"
 
     local gitlab_domain=$(get_gitlab_url)
 
@@ -718,7 +750,7 @@ git_commit() {
 # Usage: gitlab_create_project "project-name" "group"
 gitlab_create_project() {
     local project_name="$1"
-    local group="${2:-backups}"
+    local group="${2:-$(get_gitlab_default_group)}"
 
     ocmsg "Creating GitLab project: $group/$project_name"
 
@@ -774,7 +806,7 @@ git_push() {
     local repo_path="$1"
     local branch="${2:-main}"
     local project_name="${3:-}"
-    local group="${4:-backups}"
+    local group="${4:-$(get_gitlab_default_group)}"
 
     cd "$repo_path" || return 1
 
@@ -875,6 +907,403 @@ git_backup() {
     git_push "$backup_dir" "backup" "$project_name" "$group"
 
     return 0
+}
+
+################################################################################
+# GitLab Composer Package Registry
+#
+# Enables publishing and consuming Composer packages via GitLab's Package
+# Registry. This allows private Drupal profiles, modules, and themes to be
+# managed as proper Composer dependencies.
+#
+# Usage:
+#   1. Publish a package:
+#      gitlab_composer_publish "/path/to/package" "v1.0.0"
+#
+#   2. Configure a project to use the registry:
+#      gitlab_composer_configure_client "/path/to/project"
+#
+# See: https://docs.gitlab.com/user/packages/composer_repository/
+################################################################################
+
+# Get GitLab group ID by name
+# Usage: gitlab_get_group_id "group-name"
+gitlab_get_group_id() {
+    local group_name="$1"
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$gitlab_url" ] || [ -z "$token" ]; then
+        return 1
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+
+    curl -s --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/groups?search=${group_name}" | \
+        grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*'
+}
+
+# Get GitLab project ID by path (e.g., "root/avc")
+# Usage: gitlab_get_project_id "group/project"
+gitlab_get_project_id() {
+    local project_path="$1"
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$gitlab_url" ] || [ -z "$token" ]; then
+        return 1
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+    local encoded_path=$(echo "$project_path" | sed 's/\//%2F/g')
+
+    curl -s --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/projects/${encoded_path}" | \
+        grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*'
+}
+
+# Publish a Composer package to GitLab Package Registry
+# Usage: gitlab_composer_publish "/path/to/package" "tag-or-branch" ["project-path"]
+#
+# The package must have a valid composer.json with name and version fields.
+# If project-path is not provided, it's derived from composer.json name.
+#
+# Example:
+#   gitlab_composer_publish "/home/rob/avcgs" "v1.0.0" "root/avc"
+#
+gitlab_composer_publish() {
+    local package_path="$1"
+    local ref="$2"
+    local project_path="${3:-}"
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$gitlab_url" ]; then
+        print_error "GitLab URL not configured"
+        return 1
+    fi
+
+    if [ -z "$token" ]; then
+        print_error "GitLab API token required for publishing"
+        return 1
+    fi
+
+    # Validate composer.json exists
+    if [ ! -f "$package_path/composer.json" ]; then
+        print_error "No composer.json found in $package_path"
+        return 1
+    fi
+
+    # Get package name from composer.json
+    local package_name=$(grep '"name"' "$package_path/composer.json" | head -1 | \
+        sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+
+    if [ -z "$package_name" ]; then
+        print_error "Could not determine package name from composer.json"
+        return 1
+    fi
+
+    # Derive project path if not provided
+    if [ -z "$project_path" ]; then
+        # Try to get from git remote
+        cd "$package_path" || return 1
+        local remote_url=$(git remote get-url origin 2>/dev/null)
+        if [[ "$remote_url" == *"$gitlab_url"* ]]; then
+            # Extract path from git URL (git@host:path.git or https://host/path.git)
+            project_path=$(echo "$remote_url" | sed -E 's/.*[:/]([^/]+\/[^/]+)(\.git)?$/\1/')
+        fi
+        cd - > /dev/null
+    fi
+
+    if [ -z "$project_path" ]; then
+        print_error "Could not determine project path. Please provide it explicitly."
+        return 1
+    fi
+
+    # Get project ID
+    local project_id=$(gitlab_get_project_id "$project_path")
+    if [ -z "$project_id" ]; then
+        print_error "Project not found: $project_path"
+        return 1
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+
+    print_info "Publishing $package_name ($ref) to GitLab Package Registry..."
+
+    # Determine if ref is a tag or branch
+    local ref_type="tag"
+    cd "$package_path" || return 1
+    if ! git rev-parse "refs/tags/$ref" &>/dev/null; then
+        ref_type="branch"
+    fi
+    cd - > /dev/null
+
+    # Publish to Package Registry
+    local response
+    response=$(curl -s --fail-with-body \
+        --header "PRIVATE-TOKEN: $token" \
+        --data "${ref_type}=${ref}" \
+        "${api_url}/projects/${project_id}/packages/composer")
+
+    # Check for success - package_id in response or 201 Created status
+    if echo "$response" | grep -q '"package_id"'; then
+        local pkg_id=$(echo "$response" | grep -o '"package_id":[0-9]*' | grep -o '[0-9]*')
+        print_status "OK" "Published $package_name to GitLab Package Registry (ID: $pkg_id)"
+        return 0
+    elif echo "$response" | grep -q '201 Created'; then
+        # Some GitLab versions return just the status message
+        print_status "OK" "Published $package_name to GitLab Package Registry"
+        return 0
+    elif echo "$response" | grep -q '"message"'; then
+        local error=$(echo "$response" | grep -o '"message":"[^"]*"' | sed 's/"message":"//' | sed 's/"$//')
+        # Check if it's an error or just a status message
+        if [[ "$error" == *"Created"* ]] || [[ "$error" == *"success"* ]]; then
+            print_status "OK" "Published $package_name to GitLab Package Registry"
+            return 0
+        fi
+        print_error "Failed to publish: $error"
+        return 1
+    else
+        print_error "Failed to publish package: $response"
+        return 1
+    fi
+}
+
+# List packages in GitLab Package Registry
+# Usage: gitlab_composer_list ["project-path"]
+gitlab_composer_list() {
+    local project_path="${1:-}"
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$gitlab_url" ] || [ -z "$token" ]; then
+        print_error "GitLab URL and token required"
+        return 1
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+
+    if [ -n "$project_path" ]; then
+        # List packages for specific project
+        local project_id=$(gitlab_get_project_id "$project_path")
+        if [ -z "$project_id" ]; then
+            print_error "Project not found: $project_path"
+            return 1
+        fi
+
+        print_info "Packages in $project_path:"
+        curl -s --header "PRIVATE-TOKEN: $token" \
+            "${api_url}/projects/${project_id}/packages?package_type=composer" | \
+            grep -o '"name":"[^"]*","version":"[^"]*"' | \
+            sed 's/"name":"//; s/","version":"/:/; s/"$//' | sort -u
+    else
+        # List all packages in all groups
+        print_info "All Composer packages:"
+        curl -s --header "PRIVATE-TOKEN: $token" \
+            "${api_url}/packages?package_type=composer" | \
+            grep -o '"name":"[^"]*","version":"[^"]*"' | \
+            sed 's/"name":"//; s/","version":"/:/; s/"$//' | sort -u
+    fi
+}
+
+# Create a deploy token for Composer registry access
+# Usage: gitlab_composer_create_deploy_token "project-path" "token-name"
+# Returns: The deploy token value (save it - it won't be shown again!)
+gitlab_composer_create_deploy_token() {
+    local project_path="$1"
+    local token_name="${2:-composer-deploy}"
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$gitlab_url" ] || [ -z "$token" ]; then
+        print_error "GitLab URL and token required"
+        return 1
+    fi
+
+    local project_id=$(gitlab_get_project_id "$project_path")
+    if [ -z "$project_id" ]; then
+        print_error "Project not found: $project_path"
+        return 1
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+
+    # Create deploy token with read_package_registry scope
+    local response
+    response=$(curl -s --header "PRIVATE-TOKEN: $token" \
+        --header "Content-Type: application/json" \
+        --data "{
+            \"name\": \"${token_name}\",
+            \"scopes\": [\"read_package_registry\"]
+        }" \
+        "${api_url}/projects/${project_id}/deploy_tokens")
+
+    if echo "$response" | grep -q '"token"'; then
+        local deploy_token=$(echo "$response" | grep -o '"token":"[^"]*"' | sed 's/"token":"//; s/"$//')
+        print_status "OK" "Deploy token created: $token_name"
+        echo ""
+        echo "Token value (save this - it won't be shown again!):"
+        echo "$deploy_token"
+        return 0
+    else
+        local error=$(echo "$response" | grep -o '"message":"[^"]*"' | head -1)
+        print_error "Failed to create deploy token: $error"
+        return 1
+    fi
+}
+
+# Configure a Composer project to use GitLab Package Registry
+# Usage: gitlab_composer_configure_client "/path/to/project" "group-id-or-name"
+#
+# This adds the GitLab Composer repository to the project's composer.json
+# and configures authentication.
+#
+gitlab_composer_configure_client() {
+    local project_path="$1"
+    local group="${2:-root}"
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$gitlab_url" ]; then
+        print_error "GitLab URL not configured"
+        return 1
+    fi
+
+    if [ ! -f "$project_path/composer.json" ]; then
+        print_error "No composer.json found in $project_path"
+        return 1
+    fi
+
+    # Get group ID if name was provided
+    local group_id="$group"
+    if ! [[ "$group" =~ ^[0-9]+$ ]]; then
+        group_id=$(gitlab_get_group_id "$group")
+        if [ -z "$group_id" ]; then
+            print_error "Group not found: $group"
+            return 1
+        fi
+    fi
+
+    local repo_url="https://${gitlab_url}/api/v4/group/${group_id}/-/packages/composer/packages.json"
+
+    cd "$project_path" || return 1
+
+    # Check if repository already configured
+    if grep -q "$repo_url" composer.json 2>/dev/null; then
+        print_status "OK" "GitLab Composer repository already configured"
+        cd - > /dev/null
+        return 0
+    fi
+
+    print_info "Adding GitLab Composer repository to composer.json..."
+
+    # Add repository using composer command
+    if command -v composer &>/dev/null; then
+        composer config repositories.gitlab composer "$repo_url"
+        print_status "OK" "Repository added to composer.json"
+    elif command -v ddev &>/dev/null && [ -f ".ddev/config.yaml" ]; then
+        ddev composer config repositories.gitlab composer "$repo_url"
+        print_status "OK" "Repository added to composer.json (via ddev)"
+    else
+        print_warning "Composer not available. Add manually to composer.json:"
+        echo ""
+        echo '  "repositories": {'
+        echo '    "gitlab": {'
+        echo '      "type": "composer",'
+        echo "      \"url\": \"$repo_url\""
+        echo '    }'
+        echo '  }'
+        cd - > /dev/null
+        return 1
+    fi
+
+    # Configure authentication
+    if [ -n "$token" ]; then
+        print_info "Configuring authentication..."
+        if command -v composer &>/dev/null; then
+            composer config --global http-basic.${gitlab_url} __token__ "$token"
+        elif command -v ddev &>/dev/null && [ -f ".ddev/config.yaml" ]; then
+            # For DDEV, add to auth.json in project
+            mkdir -p "$project_path"
+            cat > "$project_path/auth.json" << EOF
+{
+    "http-basic": {
+        "${gitlab_url}": {
+            "username": "__token__",
+            "password": "${token}"
+        }
+    }
+}
+EOF
+            chmod 600 "$project_path/auth.json"
+            print_status "OK" "auth.json created (add to .gitignore!)"
+        fi
+    fi
+
+    cd - > /dev/null
+    print_status "OK" "Project configured to use GitLab Composer registry"
+    return 0
+}
+
+# Get the Composer repository URL for a GitLab group
+# Usage: gitlab_composer_repo_url "group-id-or-name"
+gitlab_composer_repo_url() {
+    local group="${1:-root}"
+
+    local gitlab_url=$(get_gitlab_url)
+    if [ -z "$gitlab_url" ]; then
+        return 1
+    fi
+
+    # Get group ID if name was provided
+    local group_id="$group"
+    if ! [[ "$group" =~ ^[0-9]+$ ]]; then
+        group_id=$(gitlab_get_group_id "$group")
+        if [ -z "$group_id" ]; then
+            return 1
+        fi
+    fi
+
+    echo "https://${gitlab_url}/api/v4/group/${group_id}/-/packages/composer/packages.json"
+}
+
+# Check if GitLab Composer registry is configured and accessible
+# Usage: gitlab_composer_check
+gitlab_composer_check() {
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$gitlab_url" ]; then
+        print_status "FAIL" "GitLab URL not configured"
+        return 1
+    fi
+
+    if [ -z "$token" ]; then
+        print_status "FAIL" "GitLab API token not configured"
+        return 1
+    fi
+
+    # Try to access the API
+    local api_url="https://${gitlab_url}/api/v4"
+    local response
+    response=$(curl -s --header "PRIVATE-TOKEN: $token" "${api_url}/version")
+
+    if echo "$response" | grep -q '"version"'; then
+        local version=$(echo "$response" | grep -o '"version":"[^"]*"' | sed 's/"version":"//; s/"$//')
+        print_status "OK" "GitLab $version - Package Registry available"
+        return 0
+    else
+        print_status "FAIL" "Cannot connect to GitLab API"
+        return 1
+    fi
 }
 
 ################################################################################

@@ -95,6 +95,7 @@ declare -a COMPONENTS=(
     "gitlab_server|GitLab Server|gitlab_keys|gitlab|optional"
     "gitlab_dns|GitLab DNS Record|gitlab_server|gitlab|optional"
     "gitlab_ssh_config|GitLab SSH Config|gitlab_server|gitlab|optional"
+    "gitlab_composer|GitLab Composer Registry|gitlab_server|gitlab|optional"
 
     # AI Assistant Security
     "claude_config|Claude Code Security Config|-|security|recommended"
@@ -295,6 +296,22 @@ check_claude_config_exists() {
     [ -f "$HOME/.claude/settings.json" ] && grep -q '"deny"' "$HOME/.claude/settings.json" 2>/dev/null
 }
 
+check_gitlab_composer_exists() {
+    # Check if GitLab Composer Registry is set up with at least one package
+    if [ ! -f "$SCRIPT_DIR/.secrets.yml" ]; then
+        return 1
+    fi
+    # Check if we can access the GitLab API and package registry
+    source "$SCRIPT_DIR/lib/git.sh" 2>/dev/null || return 1
+    local gitlab_url=$(get_gitlab_url 2>/dev/null)
+    local token=$(get_gitlab_token 2>/dev/null)
+    [ -z "$gitlab_url" ] && return 1
+    [ -z "$token" ] && return 1
+    # Check if package registry is accessible (timeout to avoid hanging)
+    timeout 5 curl -s --header "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/packages" &>/dev/null
+}
+
 # Get base URL from cnwp.yml
 get_base_url_from_config() {
     if [ ! -f "$CONFIG_FILE" ]; then
@@ -335,6 +352,7 @@ detect_component_state() {
         gitlab_server)    check_gitlab_server_exists ;;
         gitlab_dns)       check_gitlab_dns_exists ;;
         gitlab_ssh_config) check_gitlab_ssh_config_exists ;;
+        gitlab_composer)  check_gitlab_composer_exists ;;
         claude_config)    check_claude_config_exists ;;
         *)                return 1 ;;
     esac
@@ -974,6 +992,107 @@ SSHCONFIG
     log_action "GitLab SSH config created"
 }
 
+install_gitlab_composer() {
+    print_header "Setting up GitLab Composer Registry"
+    log_action "Setting up GitLab Composer Registry"
+
+    # Source git library for Composer functions
+    if [ -f "$SCRIPT_DIR/lib/git.sh" ]; then
+        source "$SCRIPT_DIR/lib/git.sh"
+    else
+        print_status "FAIL" "lib/git.sh not found"
+        return 1
+    fi
+
+    # Check GitLab is accessible
+    if ! gitlab_composer_check; then
+        return 1
+    fi
+
+    echo ""
+    echo "GitLab Composer Package Registry allows you to host private Composer"
+    echo "packages (Drupal profiles, modules, themes) on your GitLab server."
+    echo ""
+    echo "This enables:"
+    echo "  - Installing private packages with: composer require vendor/package"
+    echo "  - Proper dependency management for custom code"
+    echo "  - Version control and caching via Composer"
+    echo ""
+
+    # Show instructions
+    print_header "How to Use GitLab Composer Registry"
+
+    echo "1. PUBLISH A PACKAGE"
+    echo ""
+    echo "   First, ensure your package has a valid composer.json with:"
+    echo '     {"name": "rjzaar/avc_profile", "type": "drupal-profile", ...}'
+    echo ""
+    echo "   Then create a git tag and publish:"
+    echo ""
+    echo "     cd /path/to/your/package"
+    echo "     git tag v1.0.0"
+    echo "     git push origin v1.0.0"
+    echo ""
+    echo "   Publish to registry (from NWP directory):"
+    echo ""
+    echo "     source lib/git.sh"
+    echo "     gitlab_composer_publish \"/path/to/package\" \"v1.0.0\" \"root/project\""
+    echo ""
+
+    echo "2. CONFIGURE A PROJECT TO USE THE REGISTRY"
+    echo ""
+    echo "   Add to your project's composer.json:"
+    echo ""
+
+    local gitlab_url=$(get_gitlab_url)
+    local group_id=$(gitlab_get_group_id "root" 2>/dev/null)
+    if [ -n "$group_id" ]; then
+        echo "     \"repositories\": {"
+        echo "       \"gitlab\": {"
+        echo "         \"type\": \"composer\","
+        echo "         \"url\": \"https://${gitlab_url}/api/v4/group/${group_id}/-/packages/composer/packages.json\""
+        echo "       }"
+        echo "     }"
+    else
+        echo "     \"repositories\": {"
+        echo "       \"gitlab\": {"
+        echo "         \"type\": \"composer\","
+        echo "         \"url\": \"https://${gitlab_url}/api/v4/group/<GROUP_ID>/-/packages/composer/packages.json\""
+        echo "       }"
+        echo "     }"
+    fi
+    echo ""
+
+    echo "3. INSTALL A PACKAGE"
+    echo ""
+    echo "   composer require rjzaar/avc_profile:^1.0"
+    echo ""
+
+    echo "4. AUTOMATED PUBLISHING (CI/CD)"
+    echo ""
+    echo "   Add to .gitlab-ci.yml:"
+    echo ""
+    echo "     publish:"
+    echo "       stage: deploy"
+    echo "       script:"
+    echo "         - 'curl --header \"Job-Token: \$CI_JOB_TOKEN\" --data tag=\$CI_COMMIT_TAG \"\${CI_API_V4_URL}/projects/\$CI_PROJECT_ID/packages/composer\"'"
+    echo "       only:"
+    echo "         - tags"
+    echo ""
+
+    print_status "OK" "GitLab Composer Registry setup complete"
+    echo ""
+    echo "Available functions (source lib/git.sh first):"
+    echo "  gitlab_composer_publish       - Publish a package"
+    echo "  gitlab_composer_list          - List published packages"
+    echo "  gitlab_composer_configure_client - Configure a project"
+    echo "  gitlab_composer_create_deploy_token - Create access token"
+    echo ""
+    echo "Documentation: docs/GITLAB_COMPOSER.md"
+
+    log_action "GitLab Composer Registry setup complete"
+}
+
 install_bats() {
     print_header "Installing BATS Testing Framework"
     log_action "Installing BATS"
@@ -1150,6 +1269,7 @@ install_component() {
         gitlab_server)    install_gitlab_server ;;
         gitlab_dns)       install_gitlab_dns ;;
         gitlab_ssh_config) install_gitlab_ssh_config ;;
+        gitlab_composer)  install_gitlab_composer ;;
         claude_config)    install_claude_config ;;
         *)                print_status "WARN" "Unknown component: $component_id" ;;
     esac
@@ -1519,6 +1639,24 @@ remove_gitlab_ssh_config() {
     log_action "GitLab SSH config removed"
 }
 
+remove_gitlab_composer() {
+    print_header "Removing GitLab Composer Registry Setup"
+    log_action "Removing GitLab Composer setup"
+
+    # The Composer registry is a GitLab feature - we don't actually remove it
+    # We just mark it as "not configured" locally
+
+    print_status "INFO" "GitLab Composer Registry is a GitLab feature"
+    print_status "INFO" "To remove packages, use the GitLab web UI:"
+    echo ""
+    echo "  1. Go to your GitLab project"
+    echo "  2. Navigate to Deploy > Package Registry"
+    echo "  3. Delete unwanted packages"
+    echo ""
+
+    log_action "GitLab Composer info displayed"
+}
+
 # Main remove dispatcher
 remove_component() {
     local component_id="$1"
@@ -1541,6 +1679,7 @@ remove_component() {
         gitlab_server)    remove_gitlab_server ;;
         gitlab_dns)       remove_gitlab_dns ;;
         gitlab_ssh_config) remove_gitlab_ssh_config ;;
+        gitlab_composer)  remove_gitlab_composer ;;
         *)                print_status "WARN" "Unknown component: $component_id" ;;
     esac
 }

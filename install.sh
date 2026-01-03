@@ -458,8 +458,10 @@ main() {
         fi
     fi
 
-    # Run interactive option selection (always show TUI)
-    run_interactive_options "$recipe" "$install_dir" "$recipe_type" "$config_file"
+    # Run interactive option selection (skip in auto mode)
+    if [ "$auto_mode" != "y" ]; then
+        run_interactive_options "$recipe" "$install_dir" "$recipe_type" "$config_file"
+    fi
 
     # Load the appropriate installer (lazy loading)
     if ! load_installer "$recipe_type"; then

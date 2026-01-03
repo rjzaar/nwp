@@ -358,6 +358,62 @@ fi
 echo "[OK] GitLab configured and running"
 
 ################################################################################
+# 8.5 CREATE NWP GROUP AND CONFIGURE REPOS
+################################################################################
+
+echo "[8.5/10] Setting up NWP group and repositories..."
+
+# Wait for GitLab to be fully ready
+sleep 5
+
+# Create NWP group via rails runner
+gitlab-rails runner "
+begin
+  # Check if nwp group exists
+  group = Group.find_by_path('nwp')
+
+  unless group
+    # Create the nwp group
+    group = Group.new(
+      name: 'NWP',
+      path: 'nwp',
+      visibility_level: Gitlab::VisibilityLevel::PRIVATE,
+      description: 'NWP code repositories'
+    )
+    if group.save
+      puts 'Created group: nwp'
+    else
+      puts 'Failed to create group: ' + group.errors.full_messages.join(', ')
+    end
+  else
+    puts 'Group already exists: nwp'
+  end
+
+  # Create backups group for site backups (separate from code repos)
+  backups_group = Group.find_by_path('backups')
+  unless backups_group
+    backups_group = Group.new(
+      name: 'Backups',
+      path: 'backups',
+      visibility_level: Gitlab::VisibilityLevel::PRIVATE,
+      description: 'Site backup repositories'
+    )
+    if backups_group.save
+      puts 'Created group: backups'
+    else
+      puts 'Failed to create backups group: ' + backups_group.errors.full_messages.join(', ')
+    end
+  else
+    puts 'Group already exists: backups'
+  end
+rescue => e
+  puts 'Error: ' + e.message
+end
+" 2>&1 || echo "[!] Group creation may have partially failed, check manually"
+
+echo "[OK] NWP groups configured"
+
+################################################################################
 # 9. INSTALL GITLAB RUNNER
 ################################################################################
 

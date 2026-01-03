@@ -47,6 +47,21 @@ settings:
   # === GITLAB SETTINGS ===
   # For local GitLab Docker installations and production GitLab servers
   gitlab:
+    # Default group/namespace for new projects [ACTIVE]
+    default_group: nwp
+
+    # Core NWP repositories [ACTIVE]
+    # These are set up automatically during GitLab server initialization
+    repos:
+      nwp: nwp/nwp                           # NWP codebase
+      avc: nwp/avc                           # AV Commons profile
+
+    # GitHub mirror targets [ACTIVE]
+    # Push mirrors are configured automatically for these repos
+    github_mirrors:
+      nwp/nwp: rjzaar/nwp
+      nwp/avc: rjzaar/avc
+
     # Local Docker ports [ACTIVE]
     ports:
       ssh: 2222                    # [ACTIVE] GitLab SSH port
@@ -270,6 +285,39 @@ recipes:
       backup:                         # Automated backups
       ssl:                            # HTTPS configuration
       migration:                      # Create migration folder for importing content
+
+  avc:
+    # [ACTIVE] AV Commons - Collaborative workflow platform on Open Social
+    # Installs Open Social, then enables AVC modules from cloned profile
+    source: goalgorilla/social_template:dev-master
+    profile: social                      # [ACTIVE] Use Open Social as base
+    webroot: html                        # [ACTIVE]
+    auto: y                              # [ACTIVE]
+    # Clone AVC repo to profiles/custom/avc_profile/ for module discovery
+    # Drupal finds modules in profiles/*/modules/ automatically
+    profile_source: git@git.nwpcode.org:nwp/avc.git  # [ACTIVE]
+    # Modules to enable after Drupal installation [ACTIVE]
+    post_install_modules:
+      - avc_core
+      - avc_member
+      - avc_group
+      - avc_asset
+      - avc_notification
+      - avc_guild
+      - avc_content
+      - workflow_assignment
+    # Theme to set as default after installation [ACTIVE]
+    default_theme: avc_theme
+    options:
+      dev_modules:                       # Enable devel, webprofiler for debugging
+      xdebug:                            # Step-through debugging with IDE
+      environment_indicator: y           # [RECOMMENDED] Visual environment indicator
+      config_split: y                    # [RECOMMENDED] Environment-specific config
+      security_modules:                  # Security hardening modules
+      redis:                             # Object caching for performance
+      cron:                              # Automated task scheduling
+      backup:                            # Automated backups
+      ssl:                               # HTTPS configuration
 
   nwp:
     # [ACTIVE] NWP custom recipe with modules

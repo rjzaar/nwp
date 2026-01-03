@@ -107,6 +107,7 @@ NWP includes a comprehensive set of management scripts for working with your sit
 | `security.sh` | Security audits | Run security audits, check for updates |
 | `migrate-secrets.sh` | Two-tier secrets | Migrate to infrastructure/data secrets split |
 | `verify.sh` | Feature verification | Track which features need manual re-verification |
+| `report.sh` | Error reporting | Wrapper to report errors to GitLab with captured output |
 
 ### Quick Examples
 
@@ -165,6 +166,11 @@ NWP includes a comprehensive set of management scripts for working with your sit
 ./verify.sh status             # Show all feature statuses
 ./verify.sh check              # Check for invalidated verifications
 ./verify.sh details backup     # Show details about a specific feature
+
+# Error reporting - wrap any command to capture and report errors
+./report.sh backup.sh mysite   # Run backup, offer to report on failure
+./report.sh install.sh d test  # Run install with error capture
+./report.sh -c backup.sh site  # Copy error report URL to clipboard
 ```
 
 ### Combined Flags
@@ -831,6 +837,65 @@ Comprehensive documentation is available in the `docs/` directory:
 **For SSH setup and production deployment:**
 - **SSH Key Setup**: `./setup-ssh.sh` - See `docs/SSH_SETUP.md`
 - **Production Deployment**: See `docs/PRODUCTION_TESTING.md`
+
+## Error Reporting
+
+NWP includes an error reporting system that helps you submit bug reports to GitLab with full context.
+
+### Using the Error Reporter
+
+Wrap any NWP command with `report.sh` to capture errors and offer to report them:
+
+```bash
+# Run a command with error reporting enabled
+./report.sh backup.sh mysite
+
+# If the command fails, you'll see:
+# ═══════════════════════════════════════════════════════════════
+#   Running: backup.sh mysite
+# ═══════════════════════════════════════════════════════════════
+#
+# [✗] Site directory not found: mysite
+#
+# ───────────────────────────────────────────────────────────────
+# Command failed with exit code 1
+# ───────────────────────────────────────────────────────────────
+#
+# Report this error? [y/N/c] (c=continue):
+```
+
+### Options
+
+| Response | Action |
+|----------|--------|
+| `y` | Opens GitLab with pre-filled issue (system info, command output) |
+| `N` | Exit without reporting (default) |
+| `c` | Continue without exiting (useful for batch operations) |
+
+### Examples
+
+```bash
+# Report errors from backup
+./report.sh backup.sh mysite
+
+# Report errors from install
+./report.sh install.sh d newsite
+
+# Copy issue URL to clipboard instead of opening browser
+./report.sh -c backup.sh mysite
+
+# Direct report (without running a command)
+./report.sh --report "Description of the issue"
+./report.sh --report -s backup.sh "Error message"
+```
+
+### What Gets Included
+
+The error report automatically includes:
+- **Command output**: Full captured output (sanitized)
+- **Exit code**: The command's exit status
+- **System info**: NWP version, OS, DDEV version, Docker version
+- **Sanitization**: Removes IPs, passwords, and API tokens
 
 ## Troubleshooting
 

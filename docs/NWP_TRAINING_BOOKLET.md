@@ -20,6 +20,7 @@ Version 1.0 | January 2026
    - 4.5 [Development Modes](#45-development-modes)
    - 4.6 [Status & Monitoring](#46-status--monitoring)
    - 4.7 [Feature Verification](#47-feature-verification)
+   - 4.8 [Error Reporting](#48-error-reporting)
 5. [Deployment Pipeline](#5-deployment-pipeline)
    - 5.1 [Environment Concepts](#51-environment-concepts)
    - 5.2 [Dev to Staging](#52-dev-to-staging)
@@ -989,6 +990,117 @@ After manually testing a feature:
 
 ---
 
+## 4.8 Error Reporting
+
+The `report.sh` script helps you report bugs to GitLab with full context when something goes wrong.
+
+### Why Use Error Reporting?
+
+When an NWP script fails, you can wrap it with `report.sh` to:
+- **Capture the full output** of the command
+- **Gather system information** (NWP version, OS, DDEV, Docker)
+- **Sanitize sensitive data** (removes IPs, passwords, tokens)
+- **Generate a pre-filled GitLab issue** with all context
+
+### Basic Usage
+
+Wrap any NWP command with `report.sh`:
+
+```bash
+./report.sh backup.sh mysite
+```
+
+If the command succeeds, nothing extra happens. If it fails:
+
+```
+═══════════════════════════════════════════════════════════════
+  Running: backup.sh mysite
+═══════════════════════════════════════════════════════════════
+
+[✗] Site directory not found: mysite
+
+───────────────────────────────────────────────────────────────
+Command failed with exit code 1
+───────────────────────────────────────────────────────────────
+
+Report this error? [y/N/c] (c=continue):
+```
+
+### Response Options
+
+| Response | Action |
+|----------|--------|
+| `y` (Yes) | Opens GitLab with pre-filled issue in your browser |
+| `N` (No) | Exit without reporting (default) |
+| `c` (Continue) | Don't exit - useful for batch operations |
+
+### Clipboard Mode
+
+Copy the issue URL to clipboard instead of opening browser:
+
+```bash
+./report.sh -c backup.sh mysite
+```
+
+### Direct Report Mode
+
+Report an issue without running a command:
+
+```bash
+./report.sh --report "Description of the problem"
+./report.sh --report -s backup.sh "Error message"
+```
+
+### What Gets Included in the Report
+
+| Section | Content |
+|---------|---------|
+| **Title** | Error in script: exit code |
+| **Command Output** | Full captured output (sanitized) |
+| **Environment** | NWP version, OS, DDEV, Docker, Bash |
+| **Steps to Reproduce** | Template to fill in |
+
+### Automatic Sanitization
+
+The report automatically removes:
+- Home directory paths (replaced with `~`)
+- IP addresses (replaced with `[IP_REDACTED]`)
+- Passwords in URLs (replaced with `[PASS_REDACTED]`)
+- API tokens and keys (replaced with `[REDACTED]`)
+
+### When to Use
+
+| Situation | Use Report? |
+|-----------|-------------|
+| Script fails unexpectedly | Yes - wrap with `report.sh` |
+| User error (typo, missing site) | No - fix and retry |
+| Need help with a feature | No - use documentation |
+| Found a bug | Yes - use `--report` mode |
+
+### Practice Exercises
+
+1. Run a command with error reporting enabled
+2. Trigger a failure and choose "continue"
+3. Use direct report mode to describe a hypothetical issue
+
+<details>
+<summary>Solutions</summary>
+
+```bash
+# Exercise 1 - Wrap a command
+./report.sh backup.sh test1
+
+# Exercise 2 - Trigger failure and continue
+./report.sh backup.sh nonexistent
+# When prompted, press 'c' to continue
+
+# Exercise 3 - Direct report
+./report.sh --report -s backup.sh "Backup fails when site name has spaces"
+```
+</details>
+
+---
+
 # 5. Deployment Pipeline
 
 ## 5.1 Environment Concepts
@@ -1518,6 +1630,15 @@ NWP's `lib/` directory contains reusable functions:
 | `./verify.sh check` | Check for invalidated verifications |
 | `./verify.sh details <feature>` | View changes and checklist |
 | `./verify.sh verify <feature>` | Mark feature as verified |
+
+### Error Reporting
+
+| Command | Description |
+|---------|-------------|
+| `./report.sh <script> [args]` | Run script with error capture |
+| `./report.sh -c <script> [args]` | Copy error URL to clipboard |
+| `./report.sh --report "msg"` | Direct report without running script |
+| `./report.sh --help` | Show help |
 
 ### Deployment
 

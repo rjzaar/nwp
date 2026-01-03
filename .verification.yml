@@ -277,11 +277,11 @@ features:
       - "Check caching is enabled on staging"
       - "Test all 10 deployment steps complete successfully"
       - "Verify staging site mirrors dev functionality"
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-03T08:43:06+11:00"
+    verified: false
+    verified_by: null
+    verified_at: null
     file_hash: "a53de9c7a036d2a05cbd5565c1f4dc22e8eada6a1f2f1a99f50fa8b00cf2608c"
-    notes: null
+    notes: "Auto-invalidated: files changed"
 
   stg2prod:
     name: "Staging to Production (stg2prod.sh)"

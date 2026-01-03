@@ -517,6 +517,7 @@ get_recipe_value() {
         }
         in_recipe && $0 ~ "^    " key ":" {
             sub("^    " key ": *", "")
+            sub(" *#.*$", "")  # Strip trailing YAML comments
             print
             found = 1
             exit
@@ -559,6 +560,7 @@ get_recipe_list_value() {
             # Extract list items (lines starting with "      - ")
             if (/^      - /) {
                 sub("^      - *", "")
+                sub(" *#.*$", "")  # Strip trailing YAML comments
                 gsub(/["'"'"']/, "")  # Remove quotes
                 printf "%s ", $0
             }

@@ -1025,7 +1025,7 @@ install_gitlab_composer() {
     echo "1. PUBLISH A PACKAGE"
     echo ""
     echo "   First, ensure your package has a valid composer.json with:"
-    echo '     {"name": "rjzaar/avc_profile", "type": "drupal-profile", ...}'
+    echo '     {"name": "nwp/avc", "type": "drupal-profile", ...}'
     echo ""
     echo "   Then create a git tag and publish:"
     echo ""
@@ -1065,7 +1065,7 @@ install_gitlab_composer() {
 
     echo "3. INSTALL A PACKAGE"
     echo ""
-    echo "   composer require rjzaar/avc_profile:^1.0"
+    echo "   composer require nwp/avc:^0.2"
     echo ""
 
     echo "4. AUTOMATED PUBLISHING (CI/CD)"

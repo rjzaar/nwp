@@ -135,7 +135,24 @@ install_drupal() {
 
         # Extract project without installing dependencies
         print_info "Extracting project template..."
-        if ! composer create-project "$source" . --no-install --no-interaction; then
+
+        # Check if source is from GitLab registry (nwp/ prefix)
+        local gitlab_repo_opt=""
+        local composer_auth=""
+        if [[ "$source" == nwp/* ]]; then
+            local gitlab_url=$(get_gitlab_url)
+            local gitlab_token=$(get_gitlab_token)
+            if [ -n "$gitlab_url" ]; then
+                local repo_url="https://${gitlab_url}/api/v4/group/nwp/-/packages/composer/packages.json"
+                gitlab_repo_opt="--repository=${repo_url}"
+                print_info "Using GitLab Composer registry: $gitlab_url"
+                if [ -n "$gitlab_token" ]; then
+                    composer_auth="COMPOSER_AUTH={\"http-basic\":{\"${gitlab_url}\":{\"username\":\"gitlab-ci-token\",\"password\":\"${gitlab_token}\"}}}"
+                fi
+            fi
+        fi
+
+        if ! env $composer_auth composer create-project "$source" . --no-install --no-interaction $gitlab_repo_opt; then
             print_error "Failed to extract project template"
             return 1
         fi
@@ -144,6 +161,14 @@ install_drupal() {
         print_info "Configuring repositories..."
         composer config repositories.asset-packagist composer https://asset-packagist.org
         composer config repositories.drupal composer https://packages.drupal.org/8
+
+        # Allow required composer plugins
+        print_info "Configuring composer plugins..."
+        composer config --no-plugins allow-plugins.cweagans/composer-patches true
+        composer config --no-plugins allow-plugins.composer/installers true
+        composer config --no-plugins allow-plugins.drupal/core-composer-scaffold true
+        composer config --no-plugins allow-plugins.oomphinc/composer-installers-extender true
+        composer config --no-plugins allow-plugins.zaporylie/composer-drupal-optimizations true
 
         # Install dependencies with Asset Packagist available
         print_info "Installing dependencies (this will take 10-15 minutes)..."

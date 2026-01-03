@@ -1871,8 +1871,21 @@ ddev restart
 
 ---
 
+---
+
+# Appendix: Automated Training System
+
+For information about building an automated training platform using Moodle and CodeRunner, see the archived planning documents:
+
+- `docs/archive/NWP_TRAINING_SYSTEM.md` - Research on cognitive science and training platforms
+- `docs/archive/NWP_TRAINING_IMPLEMENTATION_PLAN.md` - Phased implementation plan for Moodle LMS
+
+These documents outline plans for spaced repetition, microlearning modules, and auto-graded exercises.
+
+---
+
 *End of NWP Developer Training Booklet*
 
-**Version:** 1.0
+**Version:** 1.1
 **Last Updated:** January 2026
 **License:** CC0 1.0 Universal

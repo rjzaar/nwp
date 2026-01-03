@@ -2,8 +2,10 @@
 
 This document tracks known issues and test failures in the NWP system.
 
-**Last Updated**: 2025-12-29
+**Last Updated**: 2026-01-03
 **Test Suite Success Rate**: 98% (63/77 passed + 13/77 expected warnings)
+
+See also: [docs/ROADMAP.md](docs/ROADMAP.md) for planned improvements.
 
 ## Active Issues
 

@@ -135,8 +135,13 @@ ssh gitlab@YOUR_SERVER 'cd gitlab-scripts && ./gitlab-register-runner.sh --token
 
 ## Documentation
 
+### Setup & Configuration
 - [SETUP_GUIDE.md](docs/SETUP_GUIDE.md) - Detailed setup instructions
 - [RUNNER_GUIDE.md](docs/RUNNER_GUIDE.md) - GitLab Runner configuration
+
+### Advanced Topics
+- [GITLAB_COMPOSER.md](GITLAB_COMPOSER.md) - Using GitLab Composer Package Registry for private Drupal modules
+- [GITLAB_MIGRATION.md](GITLAB_MIGRATION.md) - Repository migration and GitHub mirroring
 
 ## Architecture
 

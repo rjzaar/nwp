@@ -98,6 +98,10 @@
 !templates/
 !templates/**
 
+# AVC bits (scripts, utilities)
+!avcbits/
+!avcbits/**
+
 # SSH keys directory (structure tracked, contents ignored)
 !keys/
 !keys/.gitkeep

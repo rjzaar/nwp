@@ -54,6 +54,9 @@ source "$SCRIPT_DIR/lib/common.sh"
 # Installation common functions (YAML parsing, options, utilities)
 source "$SCRIPT_DIR/lib/install-common.sh"
 
+# Git and GitLab utilities (for GitLab Composer registry)
+source "$SCRIPT_DIR/lib/git.sh"
+
 # Optional: YAML write library for site registration
 if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
     source "$SCRIPT_DIR/lib/yaml-write.sh"

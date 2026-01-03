@@ -6,9 +6,18 @@ This directory contains all documentation for the Narrow Way Project (NWP).
 
 | Document | Description |
 |----------|-------------|
+| [QUICKSTART.md](QUICKSTART.md) | 5-minute quick start guide |
 | [SETUP.md](SETUP.md) | Installation, configuration, and uninstallation |
 | [TESTING.md](TESTING.md) | Running tests and code quality checks |
 | [CICD.md](CICD.md) | CI/CD pipelines and automation |
+
+## Security & Training
+
+| Document | Description |
+|----------|-------------|
+| [DATA_SECURITY_BEST_PRACTICES.md](DATA_SECURITY_BEST_PRACTICES.md) | Two-tier secrets architecture, AI safety, security hardening |
+| [NWP_TRAINING_BOOKLET.md](NWP_TRAINING_BOOKLET.md) | Comprehensive 8-phase training curriculum |
+| [VERIFICATION_GUIDE.md](VERIFICATION_GUIDE.md) | Feature verification tracking system |
 
 ## Deployment
 
@@ -22,6 +31,8 @@ This directory contains all documentation for the Narrow Way Project (NWP).
 
 | Document | Description |
 |----------|-------------|
+| [FEATURES.md](FEATURES.md) | Complete feature reference by category |
+| [LIB_REFERENCE.md](LIB_REFERENCE.md) | Library function API documentation |
 | [SCRIPTS_IMPLEMENTATION.md](SCRIPTS_IMPLEMENTATION.md) | Script architecture and details |
 | [BACKUP_IMPLEMENTATION.md](BACKUP_IMPLEMENTATION.md) | Backup system implementation |
 | [GIT_BACKUP_RECOMMENDATIONS.md](GIT_BACKUP_RECOMMENDATIONS.md) | Git-based backup strategy |
@@ -44,10 +55,16 @@ This directory contains all documentation for the Narrow Way Project (NWP).
 
 | Document | Description |
 |----------|-------------|
-| [VORTEX_COMPARISON.md](VORTEX_COMPARISON.md) | Comparison with Vortex project |
-| [EMAIL_POSTFIX_PROPOSAL.md](EMAIL_POSTFIX_PROPOSAL.md) | Email/Postfix configuration |
-| [environment-variables-comparison.md](environment-variables-comparison.md) | Environment variable comparison |
+| [ARCHITECTURE_ANALYSIS.md](ARCHITECTURE_ANALYSIS.md) | Consolidated research: Vortex comparison, env vars, deployment workflow |
 | [podcast_setup.md](podcast_setup.md) | Podcast site configuration |
+
+## Archived Documents
+
+Historical proposals and research documents are in `docs/archive/`:
+- Training system planning (Moodle/CodeRunner)
+- Email/Postfix infrastructure proposal
+- Original Vortex and deployment analysis
+- Code reviews and implementation summaries
 
 ## Quick Reference
 
@@ -100,6 +117,9 @@ pl test sitename
 ## Related Documentation
 
 - [Main README](../README.md) - Project overview
-- [GitLab Setup](../git/README.md) - GitLab server documentation
+- [CLAUDE.md](../CLAUDE.md) - AI assistant instructions and protected files
+- [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) - Current known issues and test failures
+- [GitLab Setup](../git/README.md) - GitLab server, Composer registry, and migration
 - [Linode Scripts](../linode/README.md) - Linode provisioning
+- [Vortex Environment](../vortex/README.md) - Environment configuration system
 - [URL Configuration](../url/README.md) - Domain configuration

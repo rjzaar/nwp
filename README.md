@@ -914,7 +914,7 @@ The migration workflow supports:
 - Static HTML sites
 - Joomla sites
 
-See `docs/MIGRATION.md` for complete migration documentation.
+See `docs/MIGRATION_SITES_TRACKING.md` for site migration and `docs/MIGRATION_GUIDE_ENV.md` for environment variable migration.
 
 ## Documentation
 
@@ -928,7 +928,7 @@ Comprehensive documentation is available in the `docs/` directory:
   - Implementation details
   - File structure and line counts
 
-- **[IMPROVEMENTS.md](docs/IMPROVEMENTS.md)** - Roadmap and improvement tracking
+- **[ROADMAP.md](docs/ROADMAP.md)** - Development roadmap and improvement tracking
   - What has been achieved
   - Known issues and bugs
   - Future enhancements prioritized by phase
@@ -941,7 +941,7 @@ Comprehensive documentation is available in the `docs/` directory:
   - Resolved issues history
   - Current test suite success rate (98%)
 
-- **[PRODUCTION_TESTING.md](docs/PRODUCTION_TESTING.md)** - Production deployment testing guide
+- **[PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md)** - Production deployment and testing guide
   - Safe testing strategies (local mock → remote test → dry-run → production)
   - Implementation examples for safety features
   - Testing checklists and workflows
@@ -1017,11 +1017,11 @@ Comprehensive documentation is available in the `docs/` directory:
 - See `docs/SCRIPTS_IMPLEMENTATION.md`
 
 **For roadmap and planned features:**
-- See `docs/IMPROVEMENTS.md`
+- See `docs/ROADMAP.md`
 
 **For SSH setup and production deployment:**
 - **SSH Key Setup**: `./setup-ssh.sh` - See `docs/SSH_SETUP.md`
-- **Production Deployment**: See `docs/PRODUCTION_TESTING.md`
+- **Production Deployment**: See `docs/PRODUCTION_DEPLOYMENT.md`
 
 ## Error Reporting
 

@@ -19,6 +19,7 @@ Version 1.0 | January 2026
    - 4.4 [Delete Operations](#44-delete-operations)
    - 4.5 [Development Modes](#45-development-modes)
    - 4.6 [Status & Monitoring](#46-status--monitoring)
+   - 4.7 [Feature Verification](#47-feature-verification)
 5. [Deployment Pipeline](#5-deployment-pipeline)
    - 5.1 [Environment Concepts](#51-environment-concepts)
    - 5.2 [Dev to Staging](#52-dev-to-staging)
@@ -159,6 +160,24 @@ cp .secrets.data.example.yml .secrets.data.yml
 - Encryption keys
 
 > **Key Principle**: AI assistants can help provision servers and manage infrastructure without ever seeing production user data.
+
+### Migrating Existing Secrets
+
+If you have an existing installation with secrets in a single file:
+
+```bash
+# Check what needs migration
+./migrate-secrets.sh --check
+
+# Migrate NWP root secrets
+./migrate-secrets.sh --nwp
+
+# Migrate a specific site
+./migrate-secrets.sh --site avc
+
+# Migrate everything
+./migrate-secrets.sh --all
+```
 
 See `docs/DATA_SECURITY_BEST_PRACTICES.md` for complete documentation.
 
@@ -885,6 +904,91 @@ If a check fails:
 
 ---
 
+## 4.7 Feature Verification
+
+The `verify.sh` script tracks which NWP features have been manually verified by a human. When code changes, verification is automatically invalidated.
+
+### Why Verification Tracking?
+
+Automated tests catch many issues, but some things require human verification:
+- User interface appearance and usability
+- Complex workflows working end-to-end
+- Performance under realistic conditions
+- Integration with external services
+
+### Check Verification Status
+
+```bash
+# Show all feature statuses
+./verify.sh status
+
+# Check for invalidated verifications
+./verify.sh check
+```
+
+### When Code Changes
+
+If a file changes, its associated features are marked for re-verification:
+
+```
+⚠️  INVALIDATED: backup - Files changed since last verification:
+    → backup.sh (3 commits, 45 lines changed)
+
+    Run './verify.sh details backup' for verification checklist
+```
+
+### View Feature Details
+
+```bash
+./verify.sh details backup
+```
+
+Shows:
+- Files that changed and why
+- Git commit history for those files
+- Verification checklist specific to that feature
+
+### Mark Features as Verified
+
+After manually testing a feature:
+
+```bash
+./verify.sh verify backup
+```
+
+### Available Commands
+
+| Command | Purpose |
+|---------|---------|
+| `./verify.sh status` | Show all feature statuses |
+| `./verify.sh check` | Check for invalidated verifications |
+| `./verify.sh details <feature>` | Show what changed and verification checklist |
+| `./verify.sh verify <feature>` | Mark feature as verified |
+| `./verify.sh list` | List all tracked features |
+
+### Practice Exercises
+
+1. Check current verification status
+2. View details of any invalidated feature
+3. Mark a feature as verified after testing
+
+<details>
+<summary>Solutions</summary>
+
+```bash
+# Exercise 1
+./verify.sh status
+
+# Exercise 2 - Pick any feature shown
+./verify.sh details backup
+
+# Exercise 3 - After testing backup
+./verify.sh verify backup
+```
+</details>
+
+---
+
 # 5. Deployment Pipeline
 
 ## 5.1 Environment Concepts
@@ -1410,6 +1514,10 @@ NWP's `lib/` directory contains reusable functions:
 | `./make.sh -p <site>` | Enable prod mode |
 | `./status.sh` | Check all sites |
 | `./status.sh <site>` | Check specific site |
+| `./verify.sh status` | Check feature verification status |
+| `./verify.sh check` | Check for invalidated verifications |
+| `./verify.sh details <feature>` | View changes and checklist |
+| `./verify.sh verify <feature>` | Mark feature as verified |
 
 ### Deployment
 
@@ -1420,6 +1528,14 @@ NWP's `lib/` directory contains reusable functions:
 | `./prod2stg.sh <site>` | Production → Staging |
 | `./live.sh <site>` | Deploy to live server |
 | `./security.sh <site>` | Security hardening |
+
+### Security & Secrets
+
+| Command | Description |
+|---------|-------------|
+| `./migrate-secrets.sh --check` | Check what needs secrets migration |
+| `./migrate-secrets.sh --nwp` | Migrate NWP root secrets |
+| `./migrate-secrets.sh --all` | Migrate all secrets |
 
 ## Common Flag Combinations
 

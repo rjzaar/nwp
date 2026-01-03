@@ -1396,6 +1396,82 @@ settings:
 
 ---
 
+### F03: Visual Regression Testing (VRT)
+**Status:** IN PROGRESS | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** P18 (Behat BDD Framework)
+
+Automated visual regression testing to catch layout and styling issues:
+
+**Tool Selection (Research Completed):**
+| Tool | Recommendation | Reason |
+|------|---------------|--------|
+| **BackstopJS** | PRIMARY | DDEV addon available, Drupal modules, works with Behat |
+| **Playwright** | SECONDARY | Future option if modernizing test stack |
+| **Diffy** | BUDGET OPTION | Drupal-specific SaaS ($67-125/mo) |
+
+**Implementation:**
+1. DDEV BackstopJS addon: `ddev get mmunz/ddev-backstopjs`
+2. Configure scenarios for critical pages (homepage, dashboard, groups, help)
+3. Define viewports: mobile (375px), tablet (768px), desktop (1280px)
+4. Integrate with GitLab CI pipeline
+5. Store baseline images in repository
+
+**Commands:**
+```bash
+ddev backstop init          # Initialize configuration
+ddev backstop reference     # Create baseline screenshots
+ddev backstop test          # Compare against baseline
+ddev backstop approve       # Approve changes as new baseline
+ddev backstop-results       # Open HTML report
+```
+
+**Configuration (`backstop.json`):**
+```json
+{
+  "viewports": [
+    { "name": "mobile", "width": 375, "height": 667 },
+    { "name": "tablet", "width": 768, "height": 1024 },
+    { "name": "desktop", "width": 1280, "height": 800 }
+  ],
+  "scenarios": [
+    { "label": "Homepage", "url": "https://sitename.ddev.site/" },
+    { "label": "About Page", "url": "https://sitename.ddev.site/about" },
+    { "label": "User Dashboard", "url": "https://sitename.ddev.site/user/1/dashboard" }
+  ],
+  "engine": "playwright"
+}
+```
+
+**GitLab CI Integration:**
+```yaml
+vrt:
+  stage: test
+  image: backstopjs/backstopjs:6.3.25
+  script:
+    - backstop test --config=backstop.json
+  artifacts:
+    when: always
+    paths:
+      - backstop_data/
+    reports:
+      junit: backstop_data/ci_report/xunit.xml
+```
+
+**Integration with NWP:**
+- Add `pl vrt sitename` command to unified CLI
+- Store baseline images in `tests/backstop/reference/`
+- Include VRT in `test.sh -v` flag
+- Fail CI pipeline on visual differences >0.1%
+
+**Success Criteria:**
+- [x] DDEV BackstopJS addon installed
+- [ ] Configuration created for avctest site
+- [ ] Baseline screenshots captured
+- [ ] Visual comparison tests pass
+- [ ] GitLab CI stage integrated
+- [ ] `pl vrt` command available
+
+---
+
 *Document created: December 30, 2025*
 *P01-P28 completed: December 30, 2025*
 *Future improvements (F01-F02) added: December 31, 2025*

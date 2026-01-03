@@ -79,3 +79,62 @@ show_elapsed_time() {
     echo ""
     print_status "OK" "$label completed in $(printf "%02d:%02d:%02d" $hours $minutes $seconds)"
 }
+
+# Offer to report an error to GitLab
+# Usage: offer_error_report "Error message" [script_name] [log_file]
+# Returns: 0 if user chose to report (report.sh was launched), 1 otherwise
+#
+# Example in a script:
+#   ddev export-db --file="$temp_db" || {
+#       print_error "Failed to export database"
+#       offer_error_report "Database export failed" "backup.sh"
+#       exit 1
+#   }
+offer_error_report() {
+    local error_message="${1:-An error occurred}"
+    local script_name="${2:-}"
+    local log_file="${3:-}"
+
+    # Only prompt if running interactively
+    if [[ ! -t 0 ]]; then
+        return 1
+    fi
+
+    # Skip if NWP_NO_REPORT is set (for automated/test environments)
+    if [[ "${NWP_NO_REPORT:-}" == "true" ]]; then
+        return 1
+    fi
+
+    echo ""
+    echo -e "${YELLOW}Would you like to report this error to the NWP project?${NC}"
+    echo -n "Report issue? [y/N]: "
+    read -r response
+
+    case "$response" in
+        [Yy]|[Yy][Ee][Ss])
+            # Find report.sh relative to this library
+            local report_script
+            local lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            report_script="$(dirname "$lib_dir")/report.sh"
+
+            if [[ ! -x "$report_script" ]]; then
+                print_warning "report.sh not found or not executable"
+                return 1
+            fi
+
+            # Build arguments
+            local args=()
+            [[ -n "$script_name" ]] && args+=(-s "$script_name")
+            [[ -n "$log_file" ]] && args+=(--attach-log "$log_file")
+            args+=("$error_message")
+
+            # Run report script
+            "$report_script" "${args[@]}"
+            return 0
+            ;;
+        *)
+            echo "Skipping error report."
+            return 1
+            ;;
+    esac
+}

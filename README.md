@@ -99,8 +99,14 @@ NWP includes a comprehensive set of management scripts for working with your sit
 | `copy.sh` | Copy sites | Full copy or files-only with `-f` flag |
 | `make.sh` | Toggle dev/prod mode | Enable development (`-v`) or production (`-p`) mode |
 | `dev2stg.sh` | Deploy to staging | Deploy + enable production mode (caching, no dev modules) |
+| `stg2prod.sh` | Deploy to production | Push staging to production server |
+| `prod2stg.sh` | Sync from production | Pull production data to local staging |
 | `delete.sh` | Delete sites | Graceful site deletion with optional backup (`-b`) |
 | `testos.sh` | Test OpenSocial sites | Behat, PHPUnit, PHPStan testing with auto-setup |
+| `setup.sh` | Setup prerequisites | Install DDEV, configure Claude security |
+| `security.sh` | Security audits | Run security audits, check for updates |
+| `migrate-secrets.sh` | Two-tier secrets | Migrate to infrastructure/data secrets split |
+| `verify.sh` | Feature verification | Track which features need manual re-verification |
 
 ### Quick Examples
 
@@ -143,6 +149,22 @@ NWP includes a comprehensive set of management scripts for working with your sit
 
 # Run all tests
 ./testos.sh -a nwp4  # Behat + PHPUnit + PHPStan
+
+# Run security audit
+./security.sh audit nwp4
+
+# Check for security updates
+./security.sh check nwp4
+
+# Migrate to two-tier secrets
+./migrate-secrets.sh --check  # Preview what needs migration
+./migrate-secrets.sh --nwp    # Migrate NWP root secrets
+./migrate-secrets.sh --all    # Migrate all secrets
+
+# Check verification status
+./verify.sh status             # Show all feature statuses
+./verify.sh check              # Check for invalidated verifications
+./verify.sh details backup     # Show details about a specific feature
 ```
 
 ### Combined Flags
@@ -755,6 +777,39 @@ Comprehensive documentation is available in the `docs/` directory:
   - Security hardening checklists
   - Secrets management and rotation
 
+- **[NWP_TRAINING_BOOKLET.md](docs/NWP_TRAINING_BOOKLET.md)** - Comprehensive training documentation
+  - Complete 8-phase training journey for new users
+  - NWP philosophy and architecture overview
+  - Step-by-step tutorials for all major operations
+  - Troubleshooting guides and best practices
+  - Two-tier secrets architecture introduction
+
+- **[DEPLOYMENT_WORKFLOW_ANALYSIS.md](docs/DEPLOYMENT_WORKFLOW_ANALYSIS.md)** - Deployment workflow research
+  - Comparison with Vortex, Pleasy, and industry best practices
+  - Analysis of production mode on staging environments
+  - Recommended deployment patterns for Drupal sites
+
+- **[QUICKSTART.md](docs/QUICKSTART.md)** - Quick start guide for getting started fast
+
+- **[SETUP.md](docs/SETUP.md)** - Detailed setup and configuration guide
+  - Prerequisites and installation
+  - SSH key setup
+  - Configuration file setup
+  - Two-tier secrets setup
+
+- **[CICD.md](docs/CICD.md)** - CI/CD pipeline documentation
+  - GitLab CI/CD integration
+  - Automated testing and deployment
+
+- **[ROADMAP.md](docs/ROADMAP.md)** - Complete development roadmap
+  - Phase-by-phase implementation plan
+  - Completed features and upcoming work
+
+- **[LINODE_DEPLOYMENT.md](docs/LINODE_DEPLOYMENT.md)** - Linode server deployment guide
+  - Server provisioning
+  - StackScripts usage
+  - Production deployment checklist
+
 ### Quick Reference
 
 **For script usage:**
@@ -861,15 +916,26 @@ nwp/
 ├── README.md             # This file
 ├── nwp.yml              # Site-specific config (if exists)
 ├── docs/                 # Documentation directory
+│   ├── QUICKSTART.md               # Quick start guide
+│   ├── SETUP.md                    # Setup and configuration
+│   ├── NWP_TRAINING_BOOKLET.md     # Comprehensive training guide
+│   ├── DATA_SECURITY_BEST_PRACTICES.md  # Security and AI usage
+│   ├── DEPLOYMENT_WORKFLOW_ANALYSIS.md  # Deployment workflow research
 │   ├── SCRIPTS_IMPLEMENTATION.md   # Script implementation docs
-│   ├── IMPROVEMENTS.md             # Roadmap and improvements
-│   ├── PRODUCTION_TESTING.md       # Production testing guide
+│   ├── ROADMAP.md                  # Development roadmap
+│   ├── CICD.md                     # CI/CD documentation
+│   ├── LINODE_DEPLOYMENT.md        # Linode deployment guide
+│   ├── TESTING.md                  # Testing infrastructure
 │   └── BACKUP_IMPLEMENTATION.md    # Backup system details
 ├── backup.sh             # Backup script (full and database-only)
 ├── restore.sh            # Restore script (full and database-only)
 ├── copy.sh               # Site copy script (full and files-only)
 ├── make.sh               # Dev/prod mode toggle script
 ├── dev2stg.sh            # Development to staging deployment
+├── stg2prod.sh           # Staging to production deployment
+├── prod2stg.sh           # Production to staging sync
+├── security.sh           # Security audits and updates
+├── migrate-secrets.sh    # Two-tier secrets migration
 ├── sitebackups/          # Backup storage (auto-created, gitignored)
 └── <recipe-dirs>/        # Installed project directories
     ├── .ddev/            # DDEV configuration

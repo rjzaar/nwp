@@ -855,7 +855,6 @@ main() {
         exit 0
     else
         print_error "Deployment to production failed: $SITENAME"
-        offer_error_report "Deployment to production failed: $SITENAME (staging → production)" "stg2prod.sh"
         exit 1
     fi
 }

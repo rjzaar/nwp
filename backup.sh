@@ -488,7 +488,6 @@ main() {
         exit 0
     else
         print_error "Backup failed for site: $SITENAME"
-        offer_error_report "Backup failed for site: $SITENAME" "backup.sh"
         exit 1
     fi
 }

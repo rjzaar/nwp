@@ -284,7 +284,6 @@ run_non_interactive() {
             echo "  cd $site_name && ddev launch"
         else
             print_error "Import failed: $site_name"
-            offer_error_report "Import failed: $site_name from $ssh_target" "import.sh"
             exit 1
         fi
         exit 0

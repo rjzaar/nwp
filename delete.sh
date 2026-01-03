@@ -514,7 +514,6 @@ fi
 # Remove site directory
 if ! remove_site_directory "$SITENAME"; then
     print_error "Failed to remove site directory: $SITENAME"
-    offer_error_report "Failed to remove site directory: $SITENAME" "delete.sh"
     exit 1
 fi
 

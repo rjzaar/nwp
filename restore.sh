@@ -696,7 +696,6 @@ main() {
         exit 0
     else
         print_error "Restore failed: $FROM_SITE → $TO_SITE"
-        offer_error_report "Restore failed: $FROM_SITE → $TO_SITE" "restore.sh"
         exit 1
     fi
 }

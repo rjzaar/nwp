@@ -417,7 +417,6 @@ main() {
             exit 0
         else
             print_error "Failed to provision live server for: $BASE_NAME"
-            offer_error_report "Failed to provision live server for: $BASE_NAME" "stg2live.sh"
             exit 1
         fi
     fi
@@ -428,7 +427,6 @@ main() {
         exit 0
     else
         print_error "Deployment to live failed: $STG_NAME → $BASE_NAME"
-        offer_error_report "Deployment to live failed: $STG_NAME → $BASE_NAME" "stg2live.sh"
         exit 1
     fi
 }

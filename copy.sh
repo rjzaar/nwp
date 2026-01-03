@@ -644,7 +644,6 @@ main() {
         exit 0
     else
         print_error "Site copy failed: $FROM_SITE → $TO_SITE"
-        offer_error_report "Site copy failed: $FROM_SITE → $TO_SITE" "copy.sh"
         exit 1
     fi
 }

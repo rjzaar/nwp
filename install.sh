@@ -474,7 +474,6 @@ main() {
                 exit 0
             else
                 print_error "Moodle installation failed: $install_dir"
-                offer_error_report "Moodle installation failed: $install_dir (recipe: $recipe)" "install.sh"
                 exit 1
             fi
             ;;
@@ -483,7 +482,6 @@ main() {
                 exit 0
             else
                 print_error "GitLab installation failed: $install_dir"
-                offer_error_report "GitLab installation failed: $install_dir (recipe: $recipe)" "install.sh"
                 exit 1
             fi
             ;;
@@ -492,7 +490,6 @@ main() {
                 exit 0
             else
                 print_error "Podcast installation failed: $install_dir"
-                offer_error_report "Podcast installation failed: $install_dir (recipe: $recipe)" "install.sh"
                 exit 1
             fi
             ;;
@@ -502,7 +499,6 @@ main() {
                 exit 0
             else
                 print_error "Installation failed: $install_dir"
-                offer_error_report "Installation failed: $install_dir (recipe: $recipe)" "install.sh"
                 exit 1
             fi
             ;;

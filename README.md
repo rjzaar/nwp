@@ -6,7 +6,9 @@ A streamlined installation system for Drupal and Moodle projects using DDEV and 
 
 - [Overview](#overview)
 - [Prerequisites](#prerequisites)
+- [Security Architecture](#security-architecture)
 - [Quick Start](#quick-start)
+- [Security Architecture Details](#security-architecture-details)
 - [Management Scripts](#management-scripts)
 - [Feature Verification Tracking](#feature-verification-tracking)
 - [How It Works](#how-it-works)
@@ -44,6 +46,20 @@ NWP requires the following software:
 - **Git**: Version control system
 
 **Don't worry if you don't have these installed yet!** The setup script will check for each prerequisite and automatically install any that are missing.
+
+## Security Architecture
+
+NWP uses a **two-tier secrets system** to protect sensitive data while allowing safe collaboration with AI assistants like Claude Code. The full details are in **Complete Guide**: See [`docs/DATA_SECURITY_BEST_PRACTICES.md`](docs/DATA_SECURITY_BEST_PRACTICES.md)
+
+### AI Assistant Safety Rules
+
+> **Critical Rule**: **Treat AI platforms like social media — if you wouldn't post it publicly, don't share it with AI.**
+
+### Why Two Tiers?
+
+Modern development often involves AI assistants that can help with infrastructure automation, deployment, and debugging. However, these tools should never have access to production user data or credentials. NWP's two-tier architecture enables AI to help with infrastructure while protecting your users.
+
+More information about security below.
 
 ## Quick Start
 
@@ -85,6 +101,175 @@ NWP requires the following software:
    - Generates SSH keypair for Linode deployment
    - See [`docs/SSH_SETUP.md`](docs/SSH_SETUP.md) for complete instructions
    - Required for `stg2prod.sh` and `prod2stg.sh` scripts
+
+## Security Architecture Details
+
+NWP uses a two-tier security system.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SECRETS ARCHITECTURE                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  .secrets.yml (Infrastructure)     .secrets.data.yml (Data) │
+│  ┌─────────────────────────┐      ┌─────────────────────────┐│
+│  │ • API tokens (Linode)   │      │ • Production passwords  ││
+│  │ • API tokens (GitLab)   │      │ • Production SSH keys   ││
+│  │ • API tokens (Cloudflare│      │ • Database credentials  ││
+│  │ • Dev credentials       │      │ • SMTP credentials      ││
+│  └─────────────────────────┘      └─────────────────────────┘│
+│           ↓                                ↓                 │
+│     AI CAN ACCESS                   AI CANNOT ACCESS         │
+│  (helps with automation)         (protects user data)        │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+| Tier | File | Contains | AI Access |
+|------|------|----------|-----------|
+| **Infrastructure** | `.secrets.yml` | API tokens, dev credentials | ✓ Allowed |
+| **Data** | `.secrets.data.yml` | Production passwords, SSH keys | ✗ Blocked |
+
+### Quick Setup
+
+When you run `./setup.sh`, it automatically configures the two-tier security system. For manual setup:
+
+```bash
+# Infrastructure secrets (AI can help with these)
+cp .secrets.example.yml .secrets.yml
+
+# Data secrets (AI cannot access these)
+cp .secrets.data.example.yml .secrets.data.yml
+```
+
+### What Goes Where?
+
+**`.secrets.yml`** (Infrastructure - safe for AI):
+- Linode API token (server provisioning)
+- Cloudflare API token (DNS management)
+- GitLab API token (repository management)
+- Development/staging credentials
+- CI/CD tokens
+
+**`.secrets.data.yml`** (Data - blocked from AI):
+- Production database passwords
+- Production SSH keys
+- Production SMTP credentials
+- Encryption keys
+- Admin account passwords
+
+### Key Principle
+
+> AI assistants can help provision servers, configure DNS, set up CI/CD pipelines, and debug infrastructure without ever seeing production user data.
+
+### Using Secrets in Scripts
+
+NWP provides separate functions for accessing each tier:
+
+```bash
+source lib/common.sh
+
+# Infrastructure secrets (AI can see these operations)
+token=$(get_infra_secret "linode.api_token" "")
+
+# Data secrets (blocked from AI)
+db_pass=$(get_data_secret "production_database.password" "")
+```
+
+### Safe Operations
+
+For operations that need data secrets but should return sanitized output, use the safe-ops library:
+
+```bash
+source lib/safe-ops.sh
+
+# Get server status (no credentials exposed)
+safe_server_status prod1
+
+# Get database info (no actual data)
+safe_db_status avc
+
+# Check for security updates
+safe_security_check avc
+```
+
+These functions use data secrets internally but only return sanitized information that's safe to share.
+
+### Protected Files
+
+NWP automatically blocks AI access to sensitive files:
+
+| File Pattern | Why Blocked |
+|--------------|-------------|
+| `.secrets.data.yml` | Production credentials |
+| `keys/prod_*` | Production SSH keys |
+| `*.sql`, `*.sql.gz` | Database dumps with user data |
+| `settings.php` | Drupal production credentials |
+| `cnwp.yml` | May contain site-specific credentials |
+
+**Note:** `cnwp.yml` is protected because it may contain user-specific site configurations. Use `example.cnwp.yml` for templates and documentation.
+
+### AI Safety Rules
+
+> **Critical Rule**: **Treat AI platforms like social media — if you wouldn't post it publicly, don't share it with AI.**
+
+#### NEVER Share with AI
+
+| Category | Examples | Risk |
+|----------|----------|------|
+| **Credentials** | API keys, passwords, tokens, SSH keys | Direct security breach |
+| **Connection strings** | Database URLs with passwords | System compromise |
+| **PII** | Real user emails, names, addresses | Privacy violations, GDPR |
+| **Production data** | Real database dumps, user content | Data exposure |
+| **Proprietary code** | Trade secrets, algorithms | IP theft |
+
+**NWP-specific files to NEVER share:**
+- `.secrets.yml` or `.secrets.data.yml` contents
+- `cnwp.yml` (contains user-specific site data)
+- `keys/*` (SSH private keys)
+- `*.sql`, `*.sql.gz` (database dumps)
+- `settings.php` (Drupal credentials)
+- `.env.local` (local secrets)
+
+#### SAFE to Share with AI
+
+| Safe | Example |
+|------|---------|
+| **Anonymized code** | Code with fake credentials: `DB_PASS=example123` |
+| **Public patterns** | "How do I implement X in Drupal?" |
+| **Error messages** | Stack traces (check for embedded secrets first) |
+| **Architecture questions** | "What's the best way to structure Y?" |
+| **Templates** | `example.cnwp.yml`, `.secrets.example.yml` |
+| **Documentation** | README files, public API docs |
+
+#### Before Pasting Code to AI
+
+Ask yourself:
+1. **Does it contain real credentials?** → Replace with placeholders
+2. **Does it contain real user data?** → Use synthetic examples
+3. **Does it contain server IPs/domains?** → Replace with `example.com`
+4. **Would I post this on Stack Overflow?** → If no, don't share
+
+### Verification
+
+Check your security setup:
+
+```bash
+# Verify Claude deny rules are in place
+jq '.permissions.deny' ~/.claude/settings.json
+
+# Check for data secrets in wrong files
+./migrate-secrets.sh --check
+
+# Test that secrets are properly separated
+grep -l "password" .secrets*.yml  # Should only be in .secrets.data.yml
+```
+
+### Learn More
+
+- **Complete Guide**: See [`docs/DATA_SECURITY_BEST_PRACTICES.md`](docs/DATA_SECURITY_BEST_PRACTICES.md)
+- **Training Material**: See [`docs/NWP_TRAINING_BOOKLET.md`](docs/NWP_TRAINING_BOOKLET.md)
+- **Migration Guide**: See [`docs/SETUP.md`](docs/SETUP.md) for two-tier setup
 
 ## Management Scripts
 

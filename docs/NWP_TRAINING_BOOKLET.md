@@ -182,6 +182,64 @@ If you have an existing installation with secrets in a single file:
 
 See `docs/DATA_SECURITY_BEST_PRACTICES.md` for complete documentation.
 
+### AI Assistant Safety Rules
+
+> **Critical Rule**: **Treat AI platforms like social media — if you wouldn't post it publicly, don't share it with AI.**
+
+#### NEVER Share with AI
+
+When working with AI assistants (Claude, Copilot, ChatGPT), never share:
+
+| Category | Examples | Risk |
+|----------|----------|------|
+| **Credentials** | API keys, passwords, tokens, SSH keys | Direct security breach |
+| **Connection strings** | Database URLs with passwords | System compromise |
+| **PII** | Real user emails, names, addresses | Privacy violations, GDPR |
+| **Production data** | Real database dumps, user content | Data exposure |
+| **Proprietary code** | Trade secrets, algorithms | IP theft |
+
+**NWP-specific files to NEVER share:**
+```bash
+.secrets.yml          # Contains API tokens, passwords
+.secrets.data.yml     # Production credentials
+cnwp.yml              # User-specific site configurations
+keys/*                # SSH private keys
+*.sql, *.sql.gz       # Database dumps (may contain PII)
+settings.php          # Drupal credentials
+.env.local            # Local secrets
+```
+
+#### SAFE to Share with AI
+
+| Safe | Example |
+|------|---------|
+| **Anonymized code** | Code with fake credentials: `DB_PASS=example123` |
+| **Public patterns** | "How do I implement X in Drupal?" |
+| **Error messages** | Stack traces (check for embedded secrets first) |
+| **Templates** | `example.cnwp.yml`, `.secrets.example.yml` |
+| **Documentation** | README files, public API docs |
+| **Synthetic examples** | Made-up data that preserves structure |
+
+#### Before Pasting Code to AI - 4-Point Checklist
+
+Ask yourself:
+1. **Does it contain real credentials?** → Replace with placeholders
+2. **Does it contain real user data?** → Use synthetic examples
+3. **Does it contain server IPs/domains?** → Replace with `example.com`
+4. **Would I post this on Stack Overflow?** → If no, don't share
+
+**Safe prompt example:**
+```
+# GOOD - Anonymized
+"I have a Drupal settings.php with this structure (credentials replaced):
+$databases['default']['default'] = [
+  'host' => 'db.example.com',
+  'username' => 'REDACTED',
+  'password' => 'REDACTED',
+];
+Why might the database connection fail?"
+```
+
 ---
 
 # 2. Prerequisites

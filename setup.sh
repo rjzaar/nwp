@@ -250,8 +250,8 @@ check_linode_config_exists() {
     if [ ! -f "$HOME/.config/linode-cli" ]; then
         return 1
     fi
-    # Verify token works with timeout
-    timeout 5 linode-cli account view --text --no-headers &> /dev/null
+    # Verify token works with timeout (use linodes list - works with limited scopes)
+    timeout 5 linode-cli linodes list --text --no-headers &> /dev/null
     return $?
 }
 
@@ -765,7 +765,8 @@ image = linode/ubuntu24.04
 EOF
 
     # Verify configuration (with timeout to avoid hanging)
-    if timeout 10 linode-cli account view --text --no-headers &> /dev/null; then
+    # Use 'linodes list' instead of 'account view' - works with more limited token scopes
+    if timeout 10 linode-cli linodes list --text --no-headers &> /dev/null; then
         print_status "OK" "Linode CLI configured successfully"
         log_action "Linode CLI configured"
     else

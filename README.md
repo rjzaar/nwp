@@ -283,7 +283,7 @@ NWP includes a comprehensive set of management scripts for working with your sit
 | `restore.sh` | Restore sites | Full and database-only restore, cross-site support |
 | `copy.sh` | Copy sites | Full copy or files-only with `-f` flag |
 | `make.sh` | Toggle dev/prod mode | Enable development (`-v`) or production (`-p`) mode |
-| `dev2stg.sh` | Deploy to staging | Deploy + enable production mode (caching, no dev modules) |
+| `dev2stg.sh` | Deploy to staging | Interactive TUI, multi-source DB, integrated testing, auto-staging |
 | `stg2prod.sh` | Deploy to production | Push staging to production server |
 | `prod2stg.sh` | Sync from production | Pull production data to local staging |
 | `delete.sh` | Delete sites | Graceful site deletion with optional backup (`-b`) |
@@ -318,8 +318,22 @@ NWP includes a comprehensive set of management scripts for working with your sit
 # Enable production mode
 ./make.sh -p nwp4
 
-# Deploy development to staging (auto-enables production mode)
-./dev2stg.sh nwp4  # Creates nwp4_stg with production settings
+# Deploy development to staging (interactive TUI)
+./dev2stg.sh nwp4  # Interactive mode - select DB source and tests
+
+# Deploy with automated mode (CI/CD friendly)
+./dev2stg.sh -y nwp4  # Auto-selects best DB source, skips tests
+
+# Deploy with specific database source
+./dev2stg.sh --db-source=production nwp4  # Fresh from production
+./dev2stg.sh --dev-db nwp4                # Clone from development
+
+# Deploy with specific test preset
+./dev2stg.sh -t essential nwp4  # Run phpunit, phpstan, phpcs
+./dev2stg.sh -t skip nwp4       # Skip all tests
+
+# Run preflight checks only
+./dev2stg.sh --preflight nwp4
 
 # Delete a site (with confirmation)
 ./delete.sh nwp5

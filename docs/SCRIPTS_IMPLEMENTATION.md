@@ -336,55 +336,120 @@ Enabled if available:
 
 ## 5. Dev to Staging Deployment Script (`dev2stg.sh`)
 
-Automated deployment script for pushing changes from development to staging environment.
+Enhanced deployment script with intelligent state detection, multi-source database routing, integrated testing, and interactive TUI.
 
 ### Features
 
-- **Automated deployment workflow**: Export config → Sync files → Update dependencies → Import config → Clear cache
-- **Environment naming**: Postfix-based naming (e.g., `nwp` → `nwp_stg`)
-- **Intelligent file sync**: Excludes settings, files directory, .git, and other non-deployable content
-- **Production dependencies**: Automatically runs `composer install --no-dev` on staging
-- **Database updates**: Runs `drush updb` to apply pending database updates
-- **Configuration management**: Exports from dev, imports to staging
-- **Step-based execution**: Resume from any step with `-s` flag
-- **Module reinstallation support**: Can reinstall specified modules during deployment (configured in cnwp.yml)
+- **Interactive TUI Mode**: Visual interface for reviewing state and selecting options (default)
+- **Intelligent State Detection**: Automatically detects site status, available backups, and production access
+- **Multi-Source Database Routing**: Choose from auto, production, backup, development, or URL sources
+- **Auto-Staging Creation**: Creates staging site if it doesn't exist
+- **Multi-Tier Testing**: 8 test types with 5 presets (quick, essential, functional, full, security-only)
+- **Preflight Checks**: Doctor-style validation before deployment
+- **Automated Mode**: Full automation with `-y` flag for CI/CD
+- **Step-Based Execution**: Resume from any step with `-s` flag
+- **Production Mode**: Automatically enables production settings on staging
 
 ### Usage
 
 ```bash
-# Deploy nwp to nwp_stg
+# Interactive TUI mode (default)
 ./dev2stg.sh nwp
 
-# Deploy with auto-confirm
+# Automated mode (skip all prompts)
 ./dev2stg.sh -y nwp
+
+# With preflight checks only
+./dev2stg.sh --preflight nwp
+
+# With specific database source
+./dev2stg.sh --db-source=production nwp
+./dev2stg.sh --db-source=backup:/path/to/file.sql.gz nwp
+
+# With fresh production backup
+./dev2stg.sh --fresh-backup nwp
+
+# Use development database (clone from dev)
+./dev2stg.sh --dev-db nwp
+
+# With specific test preset
+./dev2stg.sh -t essential nwp
+./dev2stg.sh -t phpunit,phpstan nwp
+
+# Skip tests
+./dev2stg.sh -t skip nwp
 
 # Resume from step 5
 ./dev2stg.sh -s 5 nwp
-./dev2stg.sh --step=5 nwp   # Long form
 ```
 
 ### Options
 
-- `-h, --help` - Show help message
-- `-d, --debug` - Enable debug output
-- `-y, --yes` - Skip confirmation prompts
-- `-s, --step=N` - Resume from step N
+| Option | Description |
+|--------|-------------|
+| `-h, --help` | Show help message |
+| `-d, --debug` | Enable debug output |
+| `-y, --yes` | Skip all prompts (automated mode) |
+| `-s, --step=N` | Resume from step N |
+| `--db-source=SRC` | Database source (auto, production, backup:FILE, development, url:URL) |
+| `--fresh-backup` | Force fresh backup from production |
+| `--dev-db` | Use development database (clone) |
+| `--no-sanitize` | Skip database sanitization |
+| `-t, --test=SEL` | Test selection (preset name or comma-separated types) |
+| `--create-stg` | Force staging creation |
+| `--no-create-stg` | Never create staging |
+| `--preflight` | Run preflight checks only |
 
-### Deployment Workflow
+### Test Presets
 
-1. Validate dev and staging sites exist
-2. Export configuration from dev (`drush cex`)
-3. Sync files from dev to staging (with exclusions)
-4. Run `composer install --no-dev` on staging
-5. Run database updates on staging (`drush updb`)
-6. Import configuration to staging (`drush cim`)
-7. Reinstall specified modules (if configured in cnwp.yml)
-8. Clear cache on staging (`drush cr`)
-9. Display staging URL
+| Preset | Tests Included | Duration |
+|--------|----------------|----------|
+| `quick` | phpcs, eslint | ~1 min |
+| `essential` | phpunit, phpstan, phpcs | ~4 min |
+| `functional` | behat | ~10 min |
+| `full` | All except accessibility | ~15 min |
+| `security-only` | security, phpstan | ~2 min |
+| `skip` | No tests | 0 min |
+
+### Available Test Types
+
+- `phpunit` - PHPUnit unit/integration tests
+- `behat` - Behat BDD scenario tests
+- `phpstan` - PHPStan static analysis
+- `phpcs` - PHP CodeSniffer style checks
+- `eslint` - JavaScript/TypeScript linting
+- `stylelint` - CSS/SCSS linting
+- `security` - Security vulnerability scan
+- `accessibility` - WCAG accessibility checks
+
+### Database Sources
+
+| Source | Description |
+|--------|-------------|
+| `auto` | Intelligent selection: sanitized backup → recent backup → production → development |
+| `production` | Fresh backup from production server |
+| `backup:/path` | Specific backup file |
+| `development` | Clone database from development site |
+| `url:https://...` | Download from URL |
+
+### Deployment Workflow (11 Steps)
+
+1. **Preflight Checks** - Validate DDEV, Docker, disk space, sites
+2. **State Detection** - Analyze source, target, backups, production access
+3. **TUI or Auto Selection** - Configure database source and tests
+4. **Create Staging** - Auto-create staging site if needed
+5. **Export Configuration** - Export config from development
+6. **Sync Files** - Rsync files with smart exclusions
+7. **Database Setup** - Route database from selected source
+8. **Composer Install** - Run `composer install --no-dev`
+9. **Database Updates** - Apply pending updates with `drush updb`
+10. **Import Configuration** - Import config with retry logic
+11. **Run Tests** - Execute selected test suite
+12. **Finalize** - Enable production mode, clear cache, show URL
 
 ### File Exclusions
 
-The following are excluded from rsync:
+Excluded from rsync:
 - `settings.php` and `services.yml`
 - `sites/default/files/` directory
 - `.git/` directory and `.gitignore`
@@ -392,16 +457,24 @@ The following are excluded from rsync:
 - `node_modules/`
 - `dev/` directory
 
+### TUI Interface
+
+When run without `-y`, the script launches an interactive TUI that:
+
+1. Shows current state (site status, backups, production access)
+2. Recommends optimal database source
+3. Allows database source selection
+4. Allows test preset selection
+5. Shows deployment plan for review
+6. Allows modifications before proceeding
+
 ### Environment Detection
 
-The script includes environment detection functions:
-- `get_env_type()` - Detects development, staging, or production from site name
-- `get_base_name()` - Extracts base name without environment suffix
-- `get_stg_name()` - Generates staging name from base name
+- `get_env_type()` - Detects development, staging, or production
+- `get_base_name()` - Extracts base name without suffix
+- `get_staging_name()` - Generates staging name (e.g., `nwp` → `nwp_stg`)
 
-### Configuration (Section 5.1)
-
-Enhanced configuration options added to `cnwp.yml`:
+### Configuration (cnwp.yml)
 
 ```yaml
 enhanced_example:
@@ -414,26 +487,39 @@ enhanced_example:
   # Directory paths
   private: ../private
   cmi: ../cmi
+  # Live server for production backups
+  live:
+    server_ip: 1.2.3.4
+    domain: example.com
 ```
 
-### Prerequisites
+### CI/CD Integration
 
-- Both dev and staging sites must exist with DDEV configured
-- Use `./copy.sh dev_site stg_site` to create staging initially if needed
-- Staging site should already have a database (deployment doesn't copy database)
+```yaml
+# GitLab CI example
+deploy_staging:
+  script:
+    - ./dev2stg.sh -y --db-source=auto -t essential $SITE_NAME
+  only:
+    - develop
+```
 
 ### Testing Results
 
-- ✅ Help output displays correctly
-- ✅ Environment detection functions working
-- ✅ Step-based execution supported
-- ✅ File exclusions configured properly
+- ✅ Interactive TUI mode working
+- ✅ Preflight checks comprehensive
+- ✅ Database routing from multiple sources
+- ✅ Auto-staging creation
+- ✅ Test preset execution
+- ✅ Configuration import with retry
+- ✅ Production mode enabled on staging
 
 ### Notes
 
-- This script does NOT copy the database (use `backup.sh` and `restore.sh` for database migration)
-- For production deployment, create a similar `stg2prod.sh` or `dev2prod.sh` script
-- Module reinstallation requires configuration in `cnwp.yml` (to be implemented)
+- Uses intelligent defaults for fully automated operation with `-y`
+- Database sanitization automatically anonymizes user data
+- Config import uses 3x retry for resilience
+- Staging inherits settings from development DDEV config
 
 ---
 

@@ -18,6 +18,11 @@ API documentation for the NWP bash library functions.
 8. [Cloudflare Library (cloudflare.sh)](#cloudflare-library-cloudflaresh)
 9. [Linode Library (linode.sh)](#linode-library-linodesh)
 10. [Install Libraries](#install-libraries)
+11. [State Library (state.sh)](#state-library-statesh)
+12. [Database Router Library (database-router.sh)](#database-router-library-database-routersh)
+13. [Testing Library (testing.sh)](#testing-library-testingsh)
+14. [Preflight Library (preflight.sh)](#preflight-library-preflightsh)
+15. [Dev2Stg TUI Library (dev2stg-tui.sh)](#dev2stg-tui-library-dev2stg-tuish)
 
 ---
 
@@ -138,6 +143,73 @@ START_TIME=$(date +%s)
 show_elapsed_time "Operation"
 
 # Output: [✓] Operation completed in 00:01:23
+```
+
+## Vortex-Style Output Functions
+
+Standardized output formatting inspired by Vortex.
+
+### info
+
+Prints an informational message with [INFO] prefix.
+
+```bash
+info "Starting deployment..."
+# Output: [INFO] Starting deployment...
+```
+
+### pass
+
+Prints a success message with [ OK ] prefix.
+
+```bash
+pass "Site created successfully"
+# Output: [ OK ] Site created successfully
+```
+
+### fail
+
+Prints a failure message with [FAIL] prefix.
+
+```bash
+fail "Could not connect to database"
+# Output: [FAIL] Could not connect to database
+```
+
+### warn
+
+Prints a warning message with [WARN] prefix.
+
+```bash
+warn "Configuration may need updating"
+# Output: [WARN] Configuration may need updating
+```
+
+### task
+
+Prints a task message (indented with >).
+
+```bash
+task "Syncing files..."
+# Output:   > Syncing files...
+```
+
+### note
+
+Prints a note message (double indented).
+
+```bash
+note "This may take a few minutes"
+# Output:     This may take a few minutes
+```
+
+### step
+
+Prints a step progress indicator.
+
+```bash
+step 3 10 "Running database updates"
+# Output: [3/10] Running database updates
 ```
 
 ---
@@ -584,6 +656,440 @@ cleanup() {
     rm -f "$temp_file"
 }
 trap cleanup EXIT
+```
+
+---
+
+# State Library (state.sh)
+
+Intelligent state detection for sites, backups, and production access.
+
+## Functions
+
+### site_exists
+
+Checks if a site directory exists and is valid.
+
+```bash
+if site_exists "mysite"; then
+    echo "Site exists"
+fi
+```
+
+### site_running
+
+Checks if a site's DDEV container is running.
+
+```bash
+if site_running "mysite"; then
+    echo "Site is running"
+fi
+```
+
+### find_recent_backup
+
+Finds recent backups within specified hours.
+
+```bash
+# Find backup less than 24 hours old
+backup=$(find_recent_backup "mysite" 24)
+if [ -n "$backup" ]; then
+    echo "Found: $backup"
+fi
+```
+
+### find_sanitized_backup
+
+Finds recent sanitized backups.
+
+```bash
+# Find sanitized backup less than 24 hours old
+backup=$(find_sanitized_backup "mysite" 24)
+```
+
+### check_prod_ssh
+
+Checks if production server is SSH accessible.
+
+```bash
+if check_prod_ssh "mysite"; then
+    echo "Production accessible"
+fi
+```
+
+### detect_test_suites
+
+Detects available test suites for a site.
+
+```bash
+available=$(detect_test_suites "mysite")
+# Returns: phpunit,phpcs,phpstan
+```
+
+### get_site_state
+
+Returns comprehensive state information for a site.
+
+```bash
+state=$(get_site_state "mysite")
+# JSON with: exists, running, has_stg, has_backup, prod_accessible
+```
+
+### get_staging_name
+
+Returns the staging name for a site.
+
+```bash
+stg_name=$(get_staging_name "mysite")  # Returns: mysite_stg
+```
+
+---
+
+# Database Router Library (database-router.sh)
+
+Multi-source database download and management.
+
+## Database Sources
+
+| Source | Description |
+|--------|-------------|
+| `auto` | Intelligent source selection |
+| `production` | Fresh from production server |
+| `backup:/path` | Specific backup file |
+| `development` | Clone from dev site |
+| `url:https://...` | Download from URL |
+
+## Functions
+
+### download_database
+
+Routes database operations to appropriate handler.
+
+```bash
+# Auto-select best source
+download_database "mysite" "auto" "mysite_stg"
+
+# From production
+download_database "mysite" "production" "mysite_stg"
+
+# From specific backup
+download_database "mysite" "backup:/path/to/backup.sql.gz" "mysite_stg"
+
+# From development site
+download_database "mysite" "development" "mysite_stg"
+
+# From URL
+download_database "mysite" "url:https://example.com/db.sql.gz" "mysite_stg"
+```
+
+### download_db_auto
+
+Intelligent source selection priority:
+1. Recent sanitized backup (< 24 hours)
+2. Recent regular backup (< 24 hours)
+3. Production (if SSH accessible)
+4. Development clone
+
+```bash
+download_db_auto "mysite" "mysite_stg"
+```
+
+### sanitize_staging_db
+
+Sanitizes database after import.
+
+```bash
+sanitize_staging_db "mysite_stg"
+```
+
+Actions:
+- Truncates cache, session, and log tables
+- Anonymizes user data (email, name)
+- Resets admin password to 'admin'
+- Clears sensitive configuration
+- Rebuilds cache
+
+### create_sanitized_backup
+
+Creates a sanitized backup file.
+
+```bash
+backup_file=$(create_sanitized_backup "mysite")
+```
+
+### list_backups
+
+Lists available backups for a site.
+
+```bash
+list_backups "mysite" 10  # Show 10 most recent
+```
+
+### get_recommended_db_source
+
+Returns recommended source based on current state.
+
+```bash
+source=$(get_recommended_db_source "mysite")
+# Returns: sanitized_backup, recent_backup, production, or development
+```
+
+---
+
+# Testing Library (testing.sh)
+
+Multi-tier testing system with 8 test types and 5 presets.
+
+## Test Types
+
+| Type | Description |
+|------|-------------|
+| `phpunit` | PHPUnit unit/integration tests |
+| `behat` | Behat BDD scenario tests |
+| `phpstan` | PHPStan static analysis |
+| `phpcs` | PHP CodeSniffer style checks |
+| `eslint` | JavaScript/TypeScript linting |
+| `stylelint` | CSS/SCSS linting |
+| `security` | Security vulnerability scan |
+| `accessibility` | WCAG accessibility checks |
+
+## Test Presets
+
+| Preset | Tests Included | Est. Duration |
+|--------|---------------|---------------|
+| `quick` | phpcs, eslint | ~1 min |
+| `essential` | phpunit, phpstan, phpcs | ~4 min |
+| `functional` | behat | ~10 min |
+| `full` | All except accessibility | ~15 min |
+| `security-only` | security, phpstan | ~2 min |
+
+## Functions
+
+### run_tests
+
+Main test runner function.
+
+```bash
+# Run a preset
+run_tests "mysite" "essential"
+
+# Run specific tests
+run_tests "mysite" "phpunit,phpstan"
+
+# Stop on first failure
+run_tests "mysite" "full" "true"
+
+# Skip tests
+run_tests "mysite" "skip"
+```
+
+### list_test_types
+
+Lists available test types.
+
+```bash
+list_test_types
+# Output:
+#   phpunit - PHPUnit unit/integration tests
+#   behat - Behat BDD scenario tests
+#   ...
+```
+
+### list_test_presets
+
+Lists available presets with durations.
+
+```bash
+list_test_presets
+# Output:
+#   quick (~1min) - phpcs,eslint
+#   essential (~4min) - phpunit,phpstan,phpcs
+#   ...
+```
+
+### estimate_test_duration
+
+Estimates duration for a selection.
+
+```bash
+minutes=$(estimate_test_duration "full")
+echo "Estimated: $minutes minutes"
+```
+
+### check_available_tests
+
+Checks which tests are available for a site.
+
+```bash
+available=$(check_available_tests "mysite")
+# Returns: phpunit,phpcs,security
+```
+
+### validate_test_selection
+
+Validates a test selection string.
+
+```bash
+if validate_test_selection "phpunit,phpcs"; then
+    echo "Valid selection"
+fi
+```
+
+---
+
+# Preflight Library (preflight.sh)
+
+Pre-deployment validation inspired by Vortex's doctor.sh.
+
+## Functions
+
+### preflight_check
+
+Runs comprehensive preflight checks.
+
+```bash
+if preflight_check "mysite" "mysite_stg"; then
+    echo "All critical checks passed"
+else
+    echo "Some checks failed"
+fi
+```
+
+Checks performed:
+1. DDEV installation and status
+2. Docker availability
+3. Source site validation
+4. Target site status
+5. Required tools (rsync, composer, git)
+6. Disk space
+7. Production access (optional)
+8. Git status
+
+### quick_preflight
+
+Minimal checks for automated runs (use with -y flag).
+
+```bash
+if quick_preflight "mysite"; then
+    echo "Quick checks passed"
+fi
+```
+
+Checks: DDEV, source site exists, Docker running.
+
+### show_system_info
+
+Displays system information (like doctor --info).
+
+```bash
+show_system_info
+# Output:
+# Operating System: Linux 6.x
+# Docker: Version x.x, Running
+# DDEV: Version x.x
+# PHP (host): Version x.x
+# Disk Space: ...
+# Memory: ...
+```
+
+### validate_db_operation
+
+Validates before database operations.
+
+```bash
+if validate_db_operation "mysite"; then
+    # Safe to proceed with database ops
+fi
+```
+
+### validate_rsync_operation
+
+Validates before rsync operations.
+
+```bash
+if validate_rsync_operation "/source/path" "/target/path"; then
+    # Safe to rsync
+fi
+```
+
+### Individual Check Functions
+
+```bash
+check_ddev                # Check DDEV installation
+check_source_site "site"  # Check source site validity
+check_target_site "site"  # Check target site status
+check_required_tools      # Check rsync, composer, git
+check_disk_space          # Check available disk space
+check_production_access   # Check production SSH access
+check_git_status "site"   # Check for uncommitted changes
+```
+
+---
+
+# Dev2Stg TUI Library (dev2stg-tui.sh)
+
+Interactive Terminal User Interface for dev2stg deployment.
+
+## Functions
+
+### run_dev2stg_tui
+
+Launches the interactive TUI.
+
+```bash
+run_dev2stg_tui "mysite"
+
+# After completion, variables are set:
+echo "$TUI_DB_SOURCE"      # Selected database source
+echo "$TUI_TEST_SELECTION" # Selected test configuration
+```
+
+### TUI Features
+
+The TUI provides:
+
+1. **State Overview**
+   - Source site status
+   - Staging site status
+   - Available backups
+   - Production accessibility
+
+2. **Database Source Menu**
+   - Auto (intelligent selection)
+   - Fresh from production
+   - Recent backup
+   - Development clone
+   - Custom URL
+
+3. **Test Selection Menu**
+   - Quick preset (~1 min)
+   - Essential preset (~4 min)
+   - Full preset (~15 min)
+   - Custom selection
+   - Skip tests
+
+4. **Plan Review**
+   - Shows selected options
+   - Allows modifications
+   - Confirms before proceeding
+
+### Navigation
+
+| Key | Action |
+|-----|--------|
+| ↑/↓ | Navigate options |
+| Enter | Select option |
+| q | Quit/Cancel |
+| b | Go back |
+| ? | Show help |
+
+### Output Variables
+
+After running the TUI, these variables are set:
+
+```bash
+TUI_DB_SOURCE       # "auto", "production", "backup:/path", "development", "url:..."
+TUI_TEST_SELECTION  # "quick", "essential", "full", "skip", or comma-separated types
 ```
 
 ---

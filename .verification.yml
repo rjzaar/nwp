@@ -266,22 +266,33 @@ features:
 
   dev2stg:
     name: "Dev to Staging (dev2stg.sh)"
-    description: "Deploy from dev to staging environment"
+    description: "Deploy from dev to staging with TUI, multi-source DB, and testing"
     files:
       - dev2stg.sh
+      - lib/state.sh
+      - lib/database-router.sh
+      - lib/testing.sh
+      - lib/preflight.sh
+      - lib/dev2stg-tui.sh
     checklist:
-      - "Test deployment: ./dev2stg.sh <sitename>"
-      - "Verify staging site is created/updated at <sitename>_stg"
-      - "Check production mode is enabled (Step 9)"
-      - "Verify dev modules are uninstalled on staging"
-      - "Check caching is enabled on staging"
-      - "Test all 10 deployment steps complete successfully"
-      - "Verify staging site mirrors dev functionality"
+      - "Test preflight only: ./dev2stg.sh --preflight <sitename>"
+      - "Test TUI mode: ./dev2stg.sh <sitename> (navigate DB and test menus)"
+      - "Test automated mode: ./dev2stg.sh -y <sitename>"
+      - "Test auto-staging creation when staging doesn't exist"
+      - "Test database sources: auto, production, backup, development"
+      - "Test with --fresh-backup flag (requires production access)"
+      - "Test with --dev-db flag (clones from development)"
+      - "Test test presets: -t quick, -t essential, -t full, -t skip"
+      - "Test custom test selection: -t phpunit,phpstan"
+      - "Verify all 11 deployment steps complete successfully"
+      - "Verify staging has production mode (caching enabled, dev modules off)"
+      - "Verify database sanitization (user emails anonymized)"
+      - "Test step resume: ./dev2stg.sh -s 5 <sitename>"
     verified: false
     verified_by: null
     verified_at: null
-    file_hash: "a53de9c7a036d2a05cbd5565c1f4dc22e8eada6a1f2f1a99f50fa8b00cf2608c"
-    notes: "Auto-invalidated: files changed"
+    file_hash: null
+    notes: "Enhanced with TUI, multi-source DB, testing - January 2026"
 
   stg2prod:
     name: "Staging to Production (stg2prod.sh)"

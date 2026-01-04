@@ -1,10 +1,15 @@
 #!/bin/bash
 
 ################################################################################
-# NWP Dev to Staging Deployment Script
+# NWP Dev to Staging Deployment Script (Enhanced)
 #
-# Deploys changes from development environment to staging
-# Based on pleasy dev2stg.sh adapted for DDEV environments
+# Deploys changes from development environment to staging with:
+# - Intelligent state detection
+# - Auto-create staging if missing
+# - Multi-source database routing
+# - Multi-tier testing (8 types, 5 presets)
+# - Interactive TUI or automated (-y) mode
+# - Doctor/preflight checks
 #
 # Usage: ./dev2stg.sh [OPTIONS] <sitename>
 ################################################################################
@@ -12,116 +17,45 @@
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Source YAML library
+# Script start time
+START_TIME=$(date +%s)
+
+################################################################################
+# Source Libraries
+################################################################################
+
+# Core libraries
+source "$SCRIPT_DIR/lib/ui.sh"
+source "$SCRIPT_DIR/lib/common.sh" 2>/dev/null || true
+
+# New enhanced libraries
+source "$SCRIPT_DIR/lib/state.sh"
+source "$SCRIPT_DIR/lib/database-router.sh"
+source "$SCRIPT_DIR/lib/testing.sh"
+source "$SCRIPT_DIR/lib/preflight.sh"
+source "$SCRIPT_DIR/lib/dev2stg-tui.sh"
+
+# YAML library (if available)
 if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
     source "$SCRIPT_DIR/lib/yaml-write.sh"
 fi
 
-# Script start time
-START_TIME=$(date +%s)
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-BOLD='\033[1m'
-
 ################################################################################
-# Helper Functions
+# Configuration
 ################################################################################
 
-print_header() {
-    echo -e "\n${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}${BOLD}  $1${NC}"
-    echo -e "${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}\n"
-}
+# Default values
+DEFAULT_TEST_SELECTION="essential"
+DEFAULT_DB_SOURCE="auto"
+CONFIG_IMPORT_RETRIES=3
 
-print_status() {
-    local status=$1
-    local message=$2
+################################################################################
+# Help
+################################################################################
 
-    if [ "$status" == "OK" ]; then
-        echo -e "[${GREEN}✓${NC}] $message"
-    elif [ "$status" == "WARN" ]; then
-        echo -e "[${YELLOW}!${NC}] $message"
-    elif [ "$status" == "FAIL" ]; then
-        echo -e "[${RED}✗${NC}] $message"
-    else
-        echo -e "[${BLUE}i${NC}] $message"
-    fi
-}
-
-print_error() {
-    echo -e "${RED}${BOLD}ERROR:${NC} $1" >&2
-}
-
-print_info() {
-    echo -e "${BLUE}${BOLD}INFO:${NC} $1"
-}
-
-# Conditional debug message
-ocmsg() {
-    local message=$1
-    if [ "$DEBUG" == "true" ]; then
-        echo -e "${CYAN}[DEBUG]${NC} $message"
-    fi
-}
-
-# Display elapsed time
-show_elapsed_time() {
-    local end_time=$(date +%s)
-    local elapsed=$((end_time - START_TIME))
-    local hours=$((elapsed / 3600))
-    local minutes=$(((elapsed % 3600) / 60))
-    local seconds=$((elapsed % 60))
-
-    echo ""
-    print_status "OK" "Deployment completed in $(printf "%02d:%02d:%02d" $hours $minutes $seconds)"
-}
-
-# Check if we should run a step
-should_run_step() {
-    local step_num=$1
-    local start_step=${2:-1}
-
-    if [ "$step_num" -ge "$start_step" ]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-# Get recipe value from cnwp.yml
-get_recipe_value() {
-    local recipe=$1
-    local key=$2
-    local config_file="${3:-cnwp.yml}"
-
-    awk -v recipe="$recipe" -v key="$key" '
-        BEGIN { in_recipe = 0; found = 0 }
-        /^  [a-zA-Z0-9_-]+:/ {
-            if ($1 == recipe":") {
-                in_recipe = 1
-            } else if (in_recipe && /^  [a-zA-Z0-9_-]+:/) {
-                in_recipe = 0
-            }
-        }
-        in_recipe && $0 ~ "^    " key ":" {
-            sub("^    " key ": *", "")
-            print
-            found = 1
-            exit
-        }
-    ' "$config_file"
-}
-
-# Show help
 show_help() {
     cat << EOF
-${BOLD}NWP Dev to Staging Deployment Script${NC}
+${BOLD}NWP Dev to Staging Deployment Script (Enhanced)${NC}
 
 ${BOLD}USAGE:${NC}
     ./dev2stg.sh [OPTIONS] <sitename>
@@ -129,59 +63,64 @@ ${BOLD}USAGE:${NC}
 ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
-    -y, --yes               Skip confirmation prompts
-    -s N, --step=N          Resume from step N (use -s 5 or --step=5)
+    -y, --yes               Skip confirmation prompts (CI/CD mode)
+    -s N, --step=N          Resume from step N
 
-${BOLD}ARGUMENTS:${NC}
-    sitename                Base name of the dev site (staging will be sitename_stg)
+${BOLD}DATABASE OPTIONS:${NC}
+    --db-source SOURCE      Database source:
+                              auto        - Auto-select best (default)
+                              production  - Fresh from production
+                              development - Clone dev database
+                              /path/file  - Specific backup file
+    --fresh-backup          Force fresh backup from production
+    --dev-db                Use development database
+    --no-sanitize           Skip database sanitization
+
+${BOLD}TESTING OPTIONS:${NC}
+    -t, --test SELECTION    Test selection:
+                              Presets: quick, essential, functional, full, security-only
+                              Types: phpunit,behat,phpstan,phpcs,eslint,stylelint,security,accessibility
+                              skip - No tests
+
+${BOLD}STAGING OPTIONS:${NC}
+    --create-stg            Create staging site if missing (default: prompt)
+    --no-create-stg         Fail if staging doesn't exist
+    --preflight             Run preflight checks only (no deployment)
 
 ${BOLD}EXAMPLES:${NC}
-    ./dev2stg.sh nwp                     # Deploy nwp to nwp_stg
-    ./dev2stg.sh -y nwp                  # Deploy with auto-confirm
-    ./dev2stg.sh -s 5 nwp                # Resume from step 5
-    ./dev2stg.sh --step=5 nwp            # Resume from step 5 (long form)
-    ./dev2stg.sh -dy nwp                 # Deploy with debug output and auto-confirm
+    # Interactive mode (shows TUI with all options)
+    ./dev2stg.sh avc
 
-${BOLD}COMBINED FLAGS:${NC}
-    Multiple short flags can be combined: -dy = -d -y
-    Example: ./dev2stg.sh -dy nwp is the same as ./dev2stg.sh -d -y nwp
+    # Automated with essential tests
+    ./dev2stg.sh avc -y -t essential
 
-${BOLD}ENVIRONMENT NAMING:${NC}
-    Dev site:     <sitename>             (e.g., nwp)
-    Staging site: <sitename>_stg         (e.g., nwp_stg)
-    Production:   <sitename>_prod        (e.g., nwp_prod)
+    # Specific test types only
+    ./dev2stg.sh avc -y -t phpunit,phpstan
+
+    # Fresh production backup, full tests
+    ./dev2stg.sh avc -y --fresh-backup -t full
+
+    # Quick syntax check
+    ./dev2stg.sh avc -y -t quick
+
+    # Pre-flight check only (no deployment)
+    ./dev2stg.sh avc --preflight
+
+    # Resume from step 5
+    ./dev2stg.sh avc -s 5
 
 ${BOLD}DEPLOYMENT WORKFLOW:${NC}
-    1. Validate dev and staging sites exist
-    2. Export configuration from dev
-    3. Sync files from dev to staging (with exclusions)
-    4. Run composer install --no-dev on staging
-    5. Run database updates on staging
-    6. Import configuration to staging
-    7. Reinstall specified modules (if configured)
-    8. Clear cache on staging
-    9. Enable production mode (disable dev modules, enable caching)
-    10. Display staging URL
-
-${BOLD}PRODUCTION MODE:${NC}
-    Staging is automatically converted to production mode to mirror
-    the live environment. This includes:
-    - Uninstalling dev modules (devel, webprofiler, kint, etc.)
-    - Enabling CSS/JS aggregation
-    - Enabling page caching
-    - Exporting clean configuration
-
-${BOLD}FILE EXCLUSIONS:${NC}
-    The following are excluded from sync:
-    - settings.php and services.yml
-    - files/ directory
-    - .git/ directory
-    - private/ directory
-    - node_modules/
-
-${BOLD}NOTE:${NC}
-    Both dev and staging sites must already exist with DDEV configured.
-    Use './copy.sh dev_site stg_site' to create staging initially if needed.
+    1. State detection & preflight checks
+    2. Create staging site (if needed)
+    3. Export configuration from dev
+    4. Sync files from dev to staging
+    5. Restore/sync database
+    6. Run composer install --no-dev
+    7. Run database updates
+    8. Import configuration (3x retry)
+    9. Set production mode
+    10. Run tests
+    11. Display staging URL
 
 EOF
 }
@@ -190,10 +129,8 @@ EOF
 # Environment Detection
 ################################################################################
 
-# Get environment type from site name
 get_env_type() {
     local site=$1
-
     if [[ "$site" =~ _stg$ ]]; then
         echo "staging"
     elif [[ "$site" =~ _prod$ ]]; then
@@ -203,106 +140,112 @@ get_env_type() {
     fi
 }
 
-# Get base site name (without env suffix)
 get_base_name() {
     local site=$1
-
-    # Remove _stg or _prod suffix
     echo "$site" | sed -E 's/_(stg|prod)$//'
 }
 
-# Get staging site name from base name
 get_stg_name() {
     local base=$1
     echo "${base}_stg"
 }
 
-# Get webroot from DDEV config
 get_webroot() {
     local site=$1
     local webroot=$(grep "^docroot:" "$site/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
-    if [ -z "$webroot" ]; then
-        echo "web"
-    else
-        echo "$webroot"
-    fi
+    echo "${webroot:-web}"
 }
 
 ################################################################################
-# Deployment Steps
+# Step Functions
 ################################################################################
 
-# Step 1: Validate sites
-validate_sites() {
+# Step: Create staging site
+create_staging_site() {
     local dev_site=$1
     local stg_site=$2
 
-    print_header "Step 1: Validate Sites"
+    step 1 11 "Creating staging site: $stg_site"
 
-    # Check dev site
-    if [ ! -d "$dev_site" ]; then
-        print_error "Dev site not found: $dev_site"
-        return 1
+    # Create directory
+    if [ -d "$stg_site" ]; then
+        warn "Staging directory already exists"
+        return 0
     fi
 
-    if [ ! -f "$dev_site/.ddev/config.yaml" ]; then
-        print_error "Dev site is not a DDEV site: $dev_site"
-        return 1
-    fi
-
-    print_status "OK" "Dev site validated: $dev_site"
-
-    # Check staging site
-    if [ ! -d "$stg_site" ]; then
-        print_error "Staging site not found: $stg_site"
-        print_info "Create staging site first: ./copy.sh $dev_site $stg_site"
-        return 1
-    fi
-
-    if [ ! -f "$stg_site/.ddev/config.yaml" ]; then
-        print_error "Staging site is not a DDEV site: $stg_site"
-        return 1
-    fi
-
-    print_status "OK" "Staging site validated: $stg_site"
-
-    return 0
-}
-
-# Step 2: Export configuration from dev
-export_config_dev() {
-    local dev_site=$1
-
-    print_header "Step 2: Export Configuration from Dev"
-
-    local original_dir=$(pwd)
-    cd "$dev_site" || {
-        print_error "Cannot access dev site: $dev_site"
+    task "Copying codebase from $dev_site..."
+    rsync -av --exclude='.ddev' --exclude='vendor' \
+          --exclude='node_modules' --exclude='*.sql*' \
+          --exclude='private/' \
+          "$dev_site/" "$stg_site/" > /dev/null 2>&1 || {
+        fail "Failed to copy codebase"
         return 1
     }
 
-    ocmsg "Exporting configuration..."
+    task "Creating DDEV configuration..."
+    mkdir -p "$stg_site/.ddev"
+
+    # Copy and modify DDEV config
+    local webroot=$(get_webroot "$dev_site")
+    local dev_name=$(basename "$dev_site")
+    local stg_name=$(basename "$stg_site")
+
+    # Create new DDEV config
+    cat > "$stg_site/.ddev/config.yaml" << DDEVEOF
+name: $stg_name
+type: drupal
+docroot: $webroot
+php_version: "8.2"
+webserver_type: nginx-fpm
+database:
+  type: mariadb
+  version: "10.11"
+DDEVEOF
+
+    task "Starting DDEV..."
+    (cd "$stg_site" && ddev start) || {
+        fail "Failed to start DDEV"
+        return 1
+    }
+
+    pass "Staging site created"
+    return 0
+}
+
+# Step: Export configuration from dev
+export_config_dev() {
+    local dev_site=$1
+
+    step 2 11 "Export configuration from dev"
+
+    local original_dir=$(pwd)
+    cd "$dev_site" || {
+        fail "Cannot access dev site: $dev_site"
+        return 1
+    }
+
+    task "Exporting configuration..."
     if ddev drush config:export -y > /dev/null 2>&1; then
-        print_status "OK" "Configuration exported from dev"
+        pass "Configuration exported"
     else
-        print_status "WARN" "Could not export configuration (may not be available)"
+        warn "Could not export configuration (may not be needed)"
     fi
 
     cd "$original_dir"
     return 0
 }
 
-# Step 3: Sync files from dev to staging
+# Step: Sync files
 sync_files() {
     local dev_site=$1
     local stg_site=$2
-    local webroot=$3
 
-    print_header "Step 3: Sync Files from Dev to Staging"
+    step 3 11 "Sync files from dev to staging"
 
-    ocmsg "Syncing files with rsync..."
+    local webroot=$(get_webroot "$dev_site")
 
-    # Build rsync exclusions
+    task "Syncing files with rsync..."
+
     local excludes=(
         "--exclude=.ddev/"
         "--exclude=$webroot/sites/default/settings.php"
@@ -317,283 +260,219 @@ sync_files() {
         "--exclude=dev/"
     )
 
-    # Rsync from dev to staging
     if rsync -av --delete "${excludes[@]}" "$dev_site/" "$stg_site/" > /dev/null 2>&1; then
-        print_status "OK" "Files synced to staging"
+        pass "Files synced to staging"
     else
-        print_error "File sync failed"
+        fail "File sync failed"
         return 1
     fi
 
     return 0
 }
 
-# Step 4: Run composer install on staging
+# Step: Database sync
+sync_database() {
+    local dev_site=$1
+    local stg_site=$2
+    local db_source=$3
+    local sanitize=$4
+
+    step 4 11 "Restore/sync database"
+
+    # Use the database router
+    download_database "$(basename "$dev_site")" "$db_source" "$(basename "$stg_site")" || {
+        fail "Database sync failed"
+        return 1
+    }
+
+    # Sanitize if not already sanitized
+    if [ "$sanitize" = "true" ] && [[ ! "$db_source" =~ sanitized ]]; then
+        sanitize_staging_db "$(basename "$stg_site")"
+    fi
+
+    pass "Database synced"
+    return 0
+}
+
+# Step: Composer install
 run_composer_staging() {
     local stg_site=$1
 
-    print_header "Step 4: Run Composer Install on Staging"
+    step 5 11 "Run composer install --no-dev"
 
     local original_dir=$(pwd)
     cd "$stg_site" || {
-        print_error "Cannot access staging site: $stg_site"
+        fail "Cannot access staging site"
         return 1
     }
 
-    ocmsg "Running composer install --no-dev..."
+    task "Installing dependencies..."
     if ddev composer install --no-dev > /dev/null 2>&1; then
-        print_status "OK" "Composer dependencies installed (production mode)"
+        pass "Composer dependencies installed"
     else
-        print_status "WARN" "Composer install had warnings (non-fatal)"
+        warn "Composer install had warnings (non-fatal)"
     fi
 
     cd "$original_dir"
     return 0
 }
 
-# Step 5: Run database updates on staging
+# Step: Database updates
 run_db_updates() {
     local stg_site=$1
 
-    print_header "Step 5: Run Database Updates on Staging"
+    step 6 11 "Run database updates"
 
     local original_dir=$(pwd)
     cd "$stg_site" || {
-        print_error "Cannot access staging site: $stg_site"
+        fail "Cannot access staging site"
         return 1
     }
 
-    ocmsg "Running database updates..."
+    task "Running drush updatedb..."
     if ddev drush updatedb -y > /dev/null 2>&1; then
-        print_status "OK" "Database updates completed"
+        pass "Database updates completed"
     else
-        print_status "WARN" "Database updates had warnings (may be none needed)"
+        warn "Database updates had warnings"
     fi
 
     cd "$original_dir"
     return 0
 }
 
-# Step 6: Import configuration to staging
+# Step: Import configuration with retry
 import_config_staging() {
     local stg_site=$1
 
-    print_header "Step 6: Import Configuration to Staging"
+    step 7 11 "Import configuration (${CONFIG_IMPORT_RETRIES}x retry)"
 
     local original_dir=$(pwd)
     cd "$stg_site" || {
-        print_error "Cannot access staging site: $stg_site"
+        fail "Cannot access staging site"
         return 1
     }
 
-    ocmsg "Importing configuration..."
-    if ddev drush config:import -y > /dev/null 2>&1; then
-        print_status "OK" "Configuration imported to staging"
+    local success=false
+    for i in $(seq 1 $CONFIG_IMPORT_RETRIES); do
+        task "Config import attempt $i of $CONFIG_IMPORT_RETRIES..."
+        if ddev drush config:import -y > /dev/null 2>&1; then
+            success=true
+            break
+        fi
+        note "Retrying due to dependency ordering..."
+    done
+
+    if [ "$success" = "true" ]; then
+        pass "Configuration imported"
     else
-        print_status "WARN" "Configuration import had warnings (may be none to import)"
+        warn "Configuration import had issues"
     fi
 
     cd "$original_dir"
     return 0
 }
 
-# Step 7: Reinstall modules (if configured)
-reinstall_modules() {
-    local stg_site=$1
-
-    print_header "Step 7: Reinstall Modules (if configured)"
-
-    local original_dir=$(pwd)
-    cd "$stg_site" || {
-        print_error "Cannot access staging site: $stg_site"
-        return 1
-    }
-
-    # Get base site name to look up recipe
-    local base_name=$(basename "$stg_site" | sed -E 's/_(stg|prod)$//')
-    ocmsg "Base site name: $base_name"
-
-    # Try to get recipe from sites: section first
-    local recipe=""
-    if command -v yaml_get_site_field &> /dev/null; then
-        recipe=$(yaml_get_site_field "$base_name" "recipe" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null)
-    fi
-
-    # If not found in sites:, use base_name as recipe
-    if [ -z "$recipe" ]; then
-        recipe="$base_name"
-        ocmsg "Recipe not found in sites:, using base name: $recipe"
-    else
-        ocmsg "Recipe from sites: $recipe"
-    fi
-
-    # Read reinstall_modules from recipe configuration
-    local reinstall_modules=$(get_recipe_value "$recipe" "reinstall_modules" "$SCRIPT_DIR/cnwp.yml")
-
-    if [ -z "$reinstall_modules" ]; then
-        print_status "INFO" "No modules configured for reinstallation in recipe '$recipe'"
-        cd "$original_dir"
-        return 0
-    fi
-
-    ocmsg "Modules to reinstall: $reinstall_modules"
-
-    # Convert space-separated string to array
-    local module_array=($reinstall_modules)
-    local total_modules=${#module_array[@]}
-    local success_count=0
-    local skip_count=0
-    local fail_count=0
-
-    echo -e "Found ${BOLD}$total_modules${NC} module(s) to reinstall: ${BOLD}$reinstall_modules${NC}"
-    echo ""
-
-    # Process each module
-    for module in "${module_array[@]}"; do
-        echo -e "${CYAN}Processing module: ${BOLD}$module${NC}"
-
-        # Check if module is currently enabled
-        ocmsg "Checking if module '$module' is enabled..."
-        local is_enabled=$(ddev drush pm:list --filter="$module" --status=enabled --format=list 2>/dev/null | grep -c "^$module$")
-
-        if [ "$is_enabled" -eq 0 ]; then
-            print_status "INFO" "Module '$module' is not enabled, skipping"
-            skip_count=$((skip_count + 1))
-            echo ""
-            continue
-        fi
-
-        # Uninstall the module
-        ocmsg "Uninstalling module '$module'..."
-        local uninstall_output=$(ddev drush pm:uninstall -y "$module" 2>&1)
-        local uninstall_code=$?
-
-        if [ $uninstall_code -ne 0 ]; then
-            print_status "FAIL" "Failed to uninstall '$module'"
-            echo "$uninstall_output" | sed 's/^/  /'
-            fail_count=$((fail_count + 1))
-            echo ""
-            continue
-        fi
-
-        print_status "OK" "Uninstalled '$module'"
-
-        # Re-enable the module
-        ocmsg "Re-enabling module '$module'..."
-        local enable_output=$(ddev drush pm:enable -y "$module" 2>&1)
-        local enable_code=$?
-
-        if [ $enable_code -ne 0 ]; then
-            print_status "FAIL" "Failed to re-enable '$module'"
-            echo "$enable_output" | sed 's/^/  /'
-            fail_count=$((fail_count + 1))
-            echo ""
-            continue
-        fi
-
-        print_status "OK" "Re-enabled '$module'"
-        success_count=$((success_count + 1))
-        echo ""
-    done
-
-    # Summary
-    echo -e "${BOLD}Module Reinstallation Summary:${NC}"
-    echo -e "  Total:    $total_modules"
-    echo -e "  ${GREEN}Success:  $success_count${NC}"
-    if [ $skip_count -gt 0 ]; then
-        echo -e "  ${YELLOW}Skipped:  $skip_count${NC}"
-    fi
-    if [ $fail_count -gt 0 ]; then
-        echo -e "  ${RED}Failed:   $fail_count${NC}"
-    fi
-    echo ""
-
-    cd "$original_dir"
-
-    # Return success if at least one module was processed and no failures
-    if [ $fail_count -gt 0 ]; then
-        print_status "WARN" "Module reinstallation completed with failures"
-        return 0  # Don't fail the deployment
-    elif [ $success_count -gt 0 ]; then
-        print_status "OK" "Module reinstallation completed successfully"
-        return 0
-    else
-        print_status "INFO" "No modules were reinstalled"
-        return 0
-    fi
-}
-
-# Step 8: Clear cache on staging
+# Step: Clear cache
 clear_cache_staging() {
     local stg_site=$1
 
-    print_header "Step 8: Clear Cache on Staging"
+    task "Clearing cache..."
 
     local original_dir=$(pwd)
-    cd "$stg_site" || {
-        print_error "Cannot access staging site: $stg_site"
-        return 1
-    }
+    cd "$stg_site" || return 1
 
-    ocmsg "Clearing cache..."
-    # Try to clear cache and capture error
-    local error_msg=$(ddev drush cache:rebuild 2>&1)
-    local exit_code=$?
-
-    if [ $exit_code -eq 0 ]; then
-        print_status "OK" "Cache cleared on staging"
-    else
-        # Provide specific error message based on the failure
-        if echo "$error_msg" | grep -q "command not found\|drush: not found"; then
-            print_status "WARN" "Drush not installed - run 'ddev composer require drush/drush'"
-        elif echo "$error_msg" | grep -q "could not find driver\|database"; then
-            print_status "WARN" "Database not configured or not accessible"
-        elif echo "$error_msg" | grep -q "Bootstrap failed\|not a Drupal"; then
-            print_status "WARN" "Site not fully configured (not a Drupal installation)"
-        else
-            print_status "WARN" "Could not clear cache: ${error_msg:0:60}"
-        fi
-    fi
+    ddev drush cache:rebuild > /dev/null 2>&1
+    pass "Cache cleared"
 
     cd "$original_dir"
     return 0
 }
 
-# Step 9: Enable production mode
+# Step: Enable production mode
 enable_prod_mode() {
     local stg_site=$1
 
-    print_header "Step 9: Enable Production Mode"
+    step 8 11 "Set production mode"
 
-    # Call make.sh to enable production mode on staging
-    # This uninstalls dev modules, enables caching/aggregation, exports config
-    ocmsg "Calling make.sh -py $stg_site..."
-
+    # Use make.sh if available
     if [ -x "$SCRIPT_DIR/make.sh" ]; then
-        if "$SCRIPT_DIR/make.sh" -py "$stg_site" > /dev/null 2>&1; then
-            print_status "OK" "Production mode enabled on staging"
+        task "Running make.sh -py..."
+        if "$SCRIPT_DIR/make.sh" -py "$(basename "$stg_site")" > /dev/null 2>&1; then
+            pass "Production mode enabled"
         else
-            print_status "WARN" "Could not fully enable production mode (non-fatal)"
+            warn "Could not fully enable production mode"
         fi
     else
-        print_status "WARN" "make.sh not found or not executable"
+        task "Disabling dev modules manually..."
+        local original_dir=$(pwd)
+        cd "$stg_site" || return 0
+
+        # Disable common dev modules
+        for module in devel webprofiler kint stage_file_proxy; do
+            ddev drush pm:uninstall -y "$module" 2>/dev/null || true
+        done
+
+        # Enable caching
+        ddev drush config:set system.performance css.preprocess 1 -y 2>/dev/null
+        ddev drush config:set system.performance js.preprocess 1 -y 2>/dev/null
+        ddev drush cr 2>/dev/null
+
+        pass "Production mode enabled"
+        cd "$original_dir"
     fi
 
     return 0
 }
 
-# Step 10: Display staging URL
+# Step: Run tests
+run_deployment_tests() {
+    local stg_site=$1
+    local test_selection=$2
+
+    step 9 11 "Run tests: $test_selection"
+
+    if [ "$test_selection" = "skip" ]; then
+        note "Tests skipped as requested"
+        return 0
+    fi
+
+    run_tests "$(basename "$stg_site")" "$test_selection"
+    local result=$?
+
+    if [ $result -eq 0 ]; then
+        pass "All tests passed"
+    else
+        warn "$result test(s) failed"
+    fi
+
+    return $result
+}
+
+# Step: Display staging URL
 display_staging_url() {
     local stg_site=$1
 
-    print_header "Step 10: Deployment Complete"
+    step 10 11 "Deployment complete"
 
-    # Get staging URL
-    local stg_url=$(cd "$stg_site" && ddev describe 2>/dev/null | grep -oP 'https://[^ ,]+' | head -1)
+    local original_dir=$(pwd)
+    cd "$stg_site" || return 0
+
+    local stg_url=$(ddev describe 2>/dev/null | grep -oP 'https://[^ ,]+' | head -1)
 
     if [ -n "$stg_url" ]; then
+        echo ""
         echo -e "${BOLD}Staging URL:${NC} $stg_url"
     fi
+
+    cd "$original_dir"
+
+    # Show elapsed time
+    local end_time=$(date +%s)
+    local elapsed=$((end_time - START_TIME))
+    local minutes=$((elapsed / 60))
+    local seconds=$((elapsed % 60))
+    echo ""
+    pass "Deployment completed in ${minutes}m ${seconds}s"
 
     return 0
 }
@@ -606,110 +485,107 @@ deploy_dev2stg() {
     local dev_site=$1
     local auto_yes=$2
     local start_step=${3:-1}
+    local db_source=$4
+    local test_selection=$5
+    local create_stg=$6
+    local sanitize=$7
 
-    # Determine staging site name
+    # Determine site names
     local base_name=$(get_base_name "$dev_site")
-    local stg_site=$(get_stg_name "$base_name")
+    local stg_site="${base_name}_stg"
 
     print_header "NWP Dev to Staging Deployment"
-    echo -e "${BOLD}Dev:${NC}     $dev_site"
-    echo -e "${BOLD}Staging:${NC} $stg_site"
+    info "Source: $dev_site (development)"
+    info "Target: $stg_site (staging)"
     echo ""
 
-    # Confirm deployment
-    if [ "$auto_yes" != "true" ] && [ "$start_step" -eq 1 ]; then
-        echo -e "${YELLOW}This will deploy changes from ${BOLD}$dev_site${NC}${YELLOW} to ${BOLD}$stg_site${NC}"
-        echo -e "${YELLOW}Actions:${NC}"
-        echo -e "  - Export config from dev"
-        echo -e "  - Sync files (excluding settings, files, .git)"
-        echo -e "  - Run composer install --no-dev"
-        echo -e "  - Run database updates"
-        echo -e "  - Import configuration"
-        echo -e "  - Clear cache"
-        echo -e "  - Enable production mode (disable dev modules, enable caching)"
-        echo ""
-        echo -n "Continue? [y/N]: "
-        read confirm
-        if [[ ! "$confirm" =~ ^[Yy] ]]; then
-            print_info "Deployment cancelled"
+    # Preflight check (quick for -y mode, full otherwise)
+    if [ "$auto_yes" = "true" ]; then
+        quick_preflight "$dev_site" || return 1
+    else
+        if ! preflight_check "$dev_site" "$stg_site"; then
+            fail "Preflight checks failed"
             return 1
         fi
-    elif [ "$auto_yes" == "true" ]; then
-        echo -e "Auto-confirmed: Deploying ${BOLD}$dev_site${NC} to ${BOLD}$stg_site${NC}"
     fi
 
-    # Get webroot
-    local webroot=$(get_webroot "$dev_site")
-    ocmsg "Webroot: $webroot"
+    # Check if staging exists
+    if [ ! -d "$stg_site" ]; then
+        if [ "$create_stg" = "true" ] || [ "$auto_yes" = "true" ]; then
+            info "Staging site does not exist - creating..."
+            create_staging_site "$dev_site" "$stg_site" || return 1
+        elif [ "$create_stg" = "false" ]; then
+            fail "Staging site does not exist and --no-create-stg specified"
+            return 1
+        else
+            echo ""
+            read -p "Staging site does not exist. Create it? [Y/n]: " response
+            if [[ "$response" =~ ^[Nn] ]]; then
+                info "Deployment cancelled"
+                return 1
+            fi
+            create_staging_site "$dev_site" "$stg_site" || return 1
+        fi
+    fi
+
+    # Ensure staging DDEV is running
+    if [ -d "$stg_site" ]; then
+        task "Ensuring staging DDEV is running..."
+        (cd "$stg_site" && ddev start > /dev/null 2>&1)
+    fi
 
     # Execute deployment steps
-    if should_run_step 1 "$start_step"; then
-        if ! validate_sites "$dev_site" "$stg_site"; then
-            return 1
-        fi
-    else
-        print_status "INFO" "Skipping Step 1: Sites already validated"
-    fi
+    local current_step=2
 
-    if should_run_step 2 "$start_step"; then
-        export_config_dev "$dev_site"
-    else
-        print_status "INFO" "Skipping Step 2: Config already exported"
+    if [ "$start_step" -le "$current_step" ]; then
+        export_config_dev "$dev_site" || return 1
     fi
+    ((current_step++))
 
-    if should_run_step 3 "$start_step"; then
-        if ! sync_files "$dev_site" "$stg_site" "$webroot"; then
-            return 1
-        fi
-    else
-        print_status "INFO" "Skipping Step 3: Files already synced"
+    if [ "$start_step" -le "$current_step" ]; then
+        sync_files "$dev_site" "$stg_site" || return 1
     fi
+    ((current_step++))
 
-    if should_run_step 4 "$start_step"; then
-        run_composer_staging "$stg_site"
-    else
-        print_status "INFO" "Skipping Step 4: Composer already run"
+    if [ "$start_step" -le "$current_step" ]; then
+        sync_database "$dev_site" "$stg_site" "$db_source" "$sanitize" || return 1
     fi
+    ((current_step++))
 
-    if should_run_step 5 "$start_step"; then
-        run_db_updates "$stg_site"
-    else
-        print_status "INFO" "Skipping Step 5: Database updates already run"
+    if [ "$start_step" -le "$current_step" ]; then
+        run_composer_staging "$stg_site" || return 1
     fi
+    ((current_step++))
 
-    if should_run_step 6 "$start_step"; then
-        import_config_staging "$stg_site"
-    else
-        print_status "INFO" "Skipping Step 6: Config already imported"
+    if [ "$start_step" -le "$current_step" ]; then
+        run_db_updates "$stg_site" || return 1
     fi
+    ((current_step++))
 
-    if should_run_step 7 "$start_step"; then
-        reinstall_modules "$stg_site"
-    else
-        print_status "INFO" "Skipping Step 7: Modules already reinstalled"
+    if [ "$start_step" -le "$current_step" ]; then
+        import_config_staging "$stg_site" || return 1
     fi
+    ((current_step++))
 
-    if should_run_step 8 "$start_step"; then
+    if [ "$start_step" -le "$current_step" ]; then
         clear_cache_staging "$stg_site"
-    else
-        print_status "INFO" "Skipping Step 8: Cache already cleared"
+        enable_prod_mode "$stg_site" || return 1
     fi
+    ((current_step++))
 
-    if should_run_step 9 "$start_step"; then
-        enable_prod_mode "$stg_site"
-    else
-        print_status "INFO" "Skipping Step 9: Production mode already enabled"
+    if [ "$start_step" -le "$current_step" ]; then
+        run_deployment_tests "$stg_site" "$test_selection"
+        # Don't fail deployment on test failures
     fi
+    ((current_step++))
 
-    if should_run_step 10 "$start_step"; then
-        display_staging_url "$stg_site"
-    fi
+    display_staging_url "$stg_site"
 
     return 0
 }
 
 ################################################################################
-# Main Script
+# Main
 ################################################################################
 
 main() {
@@ -718,19 +594,14 @@ main() {
     local AUTO_YES=false
     local START_STEP=1
     local SITENAME=""
+    local DB_SOURCE="$DEFAULT_DB_SOURCE"
+    local TEST_SELECTION="$DEFAULT_TEST_SELECTION"
+    local CREATE_STG="prompt"
+    local SANITIZE="true"
+    local PREFLIGHT_ONLY=false
 
-    # Use getopt for option parsing
-    local OPTIONS=hdys:
-    local LONGOPTS=help,debug,yes,step:
-
-    if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
-        show_help
-        exit 1
-    fi
-
-    eval set -- "$PARSED"
-
-    while true; do
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
         case "$1" in
             -h|--help)
                 show_help
@@ -748,37 +619,117 @@ main() {
                 START_STEP="$2"
                 shift 2
                 ;;
-            --)
+            --step=*)
+                START_STEP="${1#*=}"
                 shift
-                break
+                ;;
+            -t|--test)
+                TEST_SELECTION="$2"
+                shift 2
+                ;;
+            --test=*)
+                TEST_SELECTION="${1#*=}"
+                shift
+                ;;
+            --db-source)
+                DB_SOURCE="$2"
+                shift 2
+                ;;
+            --db-source=*)
+                DB_SOURCE="${1#*=}"
+                shift
+                ;;
+            --fresh-backup)
+                DB_SOURCE="production"
+                shift
+                ;;
+            --dev-db)
+                DB_SOURCE="development"
+                shift
+                ;;
+            --no-sanitize)
+                SANITIZE="false"
+                shift
+                ;;
+            --create-stg)
+                CREATE_STG="true"
+                shift
+                ;;
+            --no-create-stg)
+                CREATE_STG="false"
+                shift
+                ;;
+            --preflight)
+                PREFLIGHT_ONLY=true
+                shift
+                ;;
+            -*)
+                # Handle combined short flags
+                local flags="${1#-}"
+                shift
+                while [ -n "$flags" ]; do
+                    local flag="${flags:0:1}"
+                    flags="${flags:1}"
+                    case "$flag" in
+                        d) DEBUG=true ;;
+                        y) AUTO_YES=true ;;
+                        h) show_help; exit 0 ;;
+                        *)
+                            print_error "Unknown flag: -$flag"
+                            exit 1
+                            ;;
+                    esac
+                done
                 ;;
             *)
-                echo "Programming error"
-                exit 3
+                if [ -z "$SITENAME" ]; then
+                    SITENAME="$1"
+                fi
+                shift
                 ;;
         esac
     done
 
-    # Get sitename
-    if [ $# -lt 1 ]; then
+    # Export DEBUG for libraries
+    export DEBUG
+
+    # Validate sitename
+    if [ -z "$SITENAME" ]; then
         print_error "Missing site name"
         echo ""
         show_help
         exit 1
     fi
 
-    SITENAME="$1"
+    # Preflight only mode
+    if [ "$PREFLIGHT_ONLY" = "true" ]; then
+        preflight_check "$SITENAME"
+        exit $?
+    fi
 
-    ocmsg "Site: $SITENAME"
-    ocmsg "Auto yes: $AUTO_YES"
-    ocmsg "Start step: $START_STEP"
+    # Interactive TUI mode (if not -y and not starting from a step)
+    if [ "$AUTO_YES" != "true" ] && [ "$START_STEP" -eq 1 ]; then
+        # Run TUI
+        if run_dev2stg_tui "$SITENAME"; then
+            # TUI sets TUI_DB_SOURCE and TUI_TEST_SELECTION
+            DB_SOURCE="$TUI_DB_SOURCE"
+            TEST_SELECTION="$TUI_TEST_SELECTION"
+        else
+            info "Deployment cancelled"
+            exit 0
+        fi
+    fi
+
+    # Validate test selection
+    if ! validate_test_selection "$TEST_SELECTION"; then
+        exit 1
+    fi
 
     # Run deployment
-    if deploy_dev2stg "$SITENAME" "$AUTO_YES" "$START_STEP"; then
-        show_elapsed_time
+    if deploy_dev2stg "$SITENAME" "$AUTO_YES" "$START_STEP" "$DB_SOURCE" "$TEST_SELECTION" "$CREATE_STG" "$SANITIZE"; then
         exit 0
     else
-        print_error "Deployment failed: $SITENAME (dev → staging)"
+        fail "Deployment failed"
         exit 1
     fi
 }

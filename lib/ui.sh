@@ -79,3 +79,53 @@ show_elapsed_time() {
     echo ""
     print_status "OK" "$label completed in $(printf "%02d:%02d:%02d" $hours $minutes $seconds)"
 }
+
+################################################################################
+# Vortex-Style Output Functions (for standardized output across all scripts)
+################################################################################
+
+# Info - Blue section headers
+# Usage: info "Starting deployment"
+info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+# Pass - Green success messages
+# Usage: pass "Configuration exported"
+pass() {
+    echo -e "${GREEN}[ OK ]${NC} $1"
+}
+
+# Fail - Red error messages
+# Usage: fail "Could not connect to database"
+fail() {
+    echo -e "${RED}[FAIL]${NC} $1"
+}
+
+# Warn - Yellow warning messages
+# Usage: warn "Low disk space"
+warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+# Task - Step indicator for sub-operations
+# Usage: task "Exporting configuration..."
+task() {
+    echo -e "  > $1"
+}
+
+# Note - Additional details or hints
+# Usage: note "Hint: Check disk space"
+note() {
+    echo -e "    $1"
+}
+
+# Progress indicator with step count
+# Usage: step 3 10 "Running database updates"
+step() {
+    local current=$1
+    local total=$2
+    local message=$3
+    local pct=$((current * 100 / total))
+    echo -e "${CYAN}[${current}/${total}]${NC} ${BOLD}${message}${NC} (${pct}%)"
+}

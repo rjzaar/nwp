@@ -1,13 +1,13 @@
 #!/bin/bash
 # Generate .env file from cnwp.yml and template
-# Usage: ./generate-env.sh <recipe> <sitename> [site_dir]
+# Usage: ./env-generate.sh <recipe> <sitename> [site_dir]
 
 set -euo pipefail
 
-# Get script directory
+# Get script directory (lib/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VORTEX_DIR="$(dirname "$SCRIPT_DIR")"
-NWP_ROOT="$(dirname "$VORTEX_DIR")"
+NWP_ROOT="$(dirname "$SCRIPT_DIR")"
+TEMPLATES_DIR="$NWP_ROOT/templates/env"
 
 # Arguments
 RECIPE="${1:-}"
@@ -161,15 +161,15 @@ DATABASE_TYPE=$(read_setting "database" "mariadb")
 WEBSERVER=$(read_setting "webserver" "nginx")
 
 # Determine template
-TEMPLATE_FILE="$VORTEX_DIR/templates/.env.base"
-RECIPE_TEMPLATE="$VORTEX_DIR/templates/.env.$RECIPE"
+TEMPLATE_FILE="$TEMPLATES_DIR/.env.base"
+RECIPE_TEMPLATE="$TEMPLATES_DIR/.env.$RECIPE"
 
 # Use recipe-specific template if it exists
 if [ -f "$RECIPE_TEMPLATE" ]; then
     TEMPLATE_FILE="$RECIPE_TEMPLATE"
 else
     # Try profile-based template
-    PROFILE_TEMPLATE="$VORTEX_DIR/templates/.env.$PROFILE"
+    PROFILE_TEMPLATE="$TEMPLATES_DIR/.env.$PROFILE"
     if [ -f "$PROFILE_TEMPLATE" ]; then
         TEMPLATE_FILE="$PROFILE_TEMPLATE"
     fi
@@ -281,13 +281,13 @@ done < <(grep -v "^#\|^$" "$TEMPLATE_FILE" || true)
 
 # Copy .env.local.example if it doesn't exist
 if [ ! -f "$SITE_DIR/.env.local" ] && [ ! -f "$SITE_DIR/.env.local.example" ]; then
-    cp "$VORTEX_DIR/templates/.env.local.example" "$SITE_DIR/.env.local.example"
+    cp "$TEMPLATES_DIR/.env.local.example" "$SITE_DIR/.env.local.example"
     echo "Created .env.local.example"
 fi
 
 # Copy .secrets.example.yml if it doesn't exist
 if [ ! -f "$SITE_DIR/.secrets.yml" ] && [ ! -f "$SITE_DIR/.secrets.example.yml" ]; then
-    cp "$VORTEX_DIR/templates/.secrets.example.yml" "$SITE_DIR/.secrets.example.yml"
+    cp "$TEMPLATES_DIR/.secrets.example.yml" "$SITE_DIR/.secrets.example.yml"
     echo "Created .secrets.example.yml"
 fi
 

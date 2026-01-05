@@ -257,17 +257,17 @@ install_drupal() {
     if should_run_step 2 "$start_step"; then
         print_header "Step 2: Generate Environment Configuration"
 
-        # Use base_dir (NWP root) to find vortex scripts
-        local vortex_script="$base_dir/vortex/scripts/generate-env.sh"
+        # Use base_dir (NWP root) to find env generation script
+        local env_script="$base_dir/lib/env-generate.sh"
 
-        if [ ! -f "$vortex_script" ]; then
-            print_error "Vortex environment generation script not found at $vortex_script"
+        if [ ! -f "$env_script" ]; then
+            print_error "Environment generation script not found at $env_script"
             return 1
         fi
 
         # Generate .env file
         print_info "Generating .env file from cnwp.yml..."
-        if ! "$vortex_script" "$recipe" "$install_dir" .; then
+        if ! "$env_script" "$recipe" "$install_dir" .; then
             print_error "Failed to generate environment configuration"
             return 1
         fi
@@ -291,11 +291,11 @@ install_drupal() {
     if should_run_step 3 "$start_step"; then
         print_header "Step 3: Configure DDEV"
 
-        # Use base_dir (NWP root) to find vortex scripts
-        local ddev_script="$base_dir/vortex/scripts/generate-ddev.sh"
+        # Use base_dir (NWP root) to find DDEV generation script
+        local ddev_script="$base_dir/lib/ddev-generate.sh"
 
         if [ -f "$ddev_script" ]; then
-            # Use vortex script to generate DDEV config
+            # Generate DDEV config from .env
             print_info "Generating DDEV configuration from .env..."
             if ! "$ddev_script" .; then
                 print_error "Failed to generate DDEV configuration"

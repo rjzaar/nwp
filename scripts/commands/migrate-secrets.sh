@@ -212,8 +212,8 @@ migrate_site() {
 
     # Create .secrets.data.yml from template
     if [ ! -f "$data_file" ]; then
-        if [ -f "$SCRIPT_DIR/vortex/templates/.secrets.data.example.yml" ]; then
-            cp "$SCRIPT_DIR/vortex/templates/.secrets.data.example.yml" "$data_file"
+        if [ -f "$SCRIPT_DIR/templates/env/.secrets.data.example.yml" ]; then
+            cp "$SCRIPT_DIR/templates/env/.secrets.data.example.yml" "$data_file"
             log_success "Created $site/.secrets.data.yml from template"
         fi
     fi

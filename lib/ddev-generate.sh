@@ -1,13 +1,12 @@
 #!/bin/bash
 # Generate DDEV configuration from .env and cnwp.yml
-# Usage: ./generate-ddev.sh [site_dir]
+# Usage: ./ddev-generate.sh [site_dir]
 
 set -euo pipefail
 
-# Get script directory
+# Get script directory (lib/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VORTEX_DIR="$(dirname "$SCRIPT_DIR")"
-NWP_ROOT="$(dirname "$VORTEX_DIR")"
+NWP_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Site directory
 SITE_DIR="${1:-.}"

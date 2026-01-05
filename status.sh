@@ -891,6 +891,121 @@ restart_site() {
 }
 
 ################################################################################
+# Production Status Dashboard
+################################################################################
+
+show_production_dashboard() {
+    local config_file="$1"
+
+    echo ""
+    echo "╔═══════════════════════════════════════════════════════════════════════════════╗"
+    echo "║                           NWP Production Status                                ║"
+    echo "╠═══════════════════════════════════════════════════════════════════════════════╣"
+    printf "║ %-12s │ %-8s │ %-10s │ %-14s │ %-12s │ %-10s ║\n" \
+        "Site" "Status" "Response" "Last Deploy" "Backup Age" "SSL"
+    echo "╠═══════════════════════════════════════════════════════════════════════════════╣"
+
+    local sites=$(list_sites "$config_file")
+    local has_production=false
+
+    while read -r site; do
+        local live_enabled=$(get_site_nested_field "$site" "live" "enabled" "$config_file")
+        [ "$live_enabled" != "true" ] && continue
+
+        has_production=true
+
+        local domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
+        local server_ip=$(get_site_nested_field "$site" "live" "server_ip" "$config_file")
+
+        # Status check
+        local status="${RED}DOWN${NC}"
+        local response="-"
+        if [ -n "$domain" ]; then
+            local http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "https://${domain}" 2>/dev/null || echo "000")
+            local response_time=$(curl -s -o /dev/null -w "%{time_total}" --max-time 5 "https://${domain}" 2>/dev/null || echo "0")
+
+            case "$http_code" in
+                200|301|302) status="${GREEN}UP${NC}" ;;
+                401|403) status="${YELLOW}AUTH${NC}" ;;
+                500|502|503) status="${RED}ERROR${NC}" ;;
+                000) status="${RED}DOWN${NC}" ;;
+                *) status="${YELLOW}${http_code}${NC}" ;;
+            esac
+
+            response="${response_time}s"
+        fi
+
+        # Last deploy (from audit log if available)
+        local last_deploy="-"
+        if [ -n "$server_ip" ]; then
+            # Would need SSH access to check /var/log/nwp/deployments.jsonl
+            last_deploy="N/A"
+        fi
+
+        # Backup age
+        local backup_age="-"
+        local backup_dir="${SCRIPT_DIR}/sitebackups/${site}"
+        if [ -d "$backup_dir" ]; then
+            local latest_backup=$(ls -t "$backup_dir"/*.sql.gz 2>/dev/null | head -1)
+            if [ -n "$latest_backup" ]; then
+                local backup_time=$(stat -c %Y "$latest_backup" 2>/dev/null || stat -f %m "$latest_backup" 2>/dev/null)
+                if [ -n "$backup_time" ]; then
+                    local now=$(date +%s)
+                    local age_hours=$(( (now - backup_time) / 3600 ))
+                    if [ $age_hours -lt 24 ]; then
+                        backup_age="${age_hours}h"
+                    else
+                        local age_days=$(( age_hours / 24 ))
+                        backup_age="${age_days}d"
+                    fi
+                fi
+            fi
+        fi
+
+        # SSL expiry
+        local ssl_status=$(check_ssl_expiry "$domain")
+
+        printf "║ %-12s │ %-14b │ %-10s │ %-14s │ %-12s │ %-16b ║\n" \
+            "$site" "$status" "$response" "$last_deploy" "$backup_age" "$ssl_status"
+    done <<< "$sites"
+
+    if [ "$has_production" = false ]; then
+        printf "║ %-78s ║\n" "No production sites configured (add live.enabled: true to cnwp.yml)"
+    fi
+
+    echo "╚═══════════════════════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    # Quick stats
+    echo -e "${BOLD}Quick Stats:${NC}"
+    local total_sites=$(echo "$sites" | wc -l)
+    local prod_sites=$(echo "$sites" | while read -r s; do
+        local enabled=$(get_site_nested_field "$s" "live" "enabled" "$config_file")
+        [ "$enabled" = "true" ] && echo "$s"
+    done | wc -l)
+    printf "  Total sites: %d | Production sites: %d\n" "$total_sites" "$prod_sites"
+
+    # Check for recent backups
+    local backup_count=0
+    local stale_backup_count=0
+    for site in $(echo "$sites"); do
+        local backup_dir="${SCRIPT_DIR}/sitebackups/${site}"
+        if [ -d "$backup_dir" ]; then
+            local latest=$(ls -t "$backup_dir"/*.sql.gz 2>/dev/null | head -1)
+            if [ -n "$latest" ]; then
+                backup_count=$((backup_count + 1))
+                local backup_time=$(stat -c %Y "$latest" 2>/dev/null || stat -f %m "$latest" 2>/dev/null)
+                local now=$(date +%s)
+                local age_hours=$(( (now - backup_time) / 3600 ))
+                [ $age_hours -gt 48 ] && stale_backup_count=$((stale_backup_count + 1))
+            fi
+        fi
+    done
+    printf "  Sites with backups: %d | Stale backups (>48h): %d\n" "$backup_count" "$stale_backup_count"
+    echo ""
+}
+
+################################################################################
 # Linode Server Stats
 ################################################################################
 
@@ -1795,6 +1910,7 @@ ${BOLD}USAGE:${NC}
 ${BOLD}COMMANDS:${NC}
     (none)              Interactive mode (default) - select sites with checkboxes
     health              Run health checks on all sites
+    production          Show production status dashboard
     info <site>         Show detailed info for a specific site
     delete <site>       Delete a site (with confirmation)
     start <site>        Start DDEV for a site
@@ -1867,7 +1983,7 @@ main() {
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
-            health|info|delete|start|stop|restart|servers)
+            health|info|delete|start|stop|restart|servers|production|prod)
                 command="$1"
                 shift
                 [ $# -gt 0 ] && [ "${1:0:1}" != "-" ] && { site_arg="$1"; shift; }
@@ -1971,6 +2087,9 @@ main() {
             ;;
         servers)
             show_server_stats "$CONFIG_FILE"
+            ;;
+        production|prod)
+            show_production_dashboard "$CONFIG_FILE"
             ;;
         *)
             # Default status display

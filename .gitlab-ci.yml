@@ -21,6 +21,7 @@ stages:
   - database
   - build
   - deploy
+  - preview
 
 ################################################################################
 # Global Variables
@@ -428,6 +429,87 @@ deploy:production:
 ################################################################################
 
 ################################################################################
+# PREVIEW ENVIRONMENTS
+# Create isolated preview environments for merge requests
+################################################################################
+
+# Deploy preview environment for merge requests
+# Creates an isolated DDEV environment for testing PR changes
+deploy:preview:
+  stage: preview
+  needs: ["build"]
+  rules:
+    # Only run for merge requests
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - echo "Creating preview environment for MR $CI_MERGE_REQUEST_IID..."
+
+    # Install DDEV if not available
+    - |
+      if ! command -v ddev >/dev/null 2>&1; then
+        echo "Installing DDEV..."
+        curl -fsSL https://raw.githubusercontent.com/ddev/ddev/master/scripts/install_ddev.sh | bash
+      fi
+
+    # Create preview environment
+    - ./scripts/ci/create-preview.sh "mr-$CI_MERGE_REQUEST_IID"
+
+    # Get preview URL for artifacts
+    - |
+      if [ -f .preview-env ]; then
+        source .preview-env
+        echo "PREVIEW_URL=$PREVIEW_URL" > preview.env
+        echo "Preview environment available at: $PREVIEW_URL"
+      fi
+
+  environment:
+    name: preview/mr-$CI_MERGE_REQUEST_IID
+    url: https://mr-$CI_MERGE_REQUEST_IID.ddev.site
+    on_stop: cleanup:preview
+    auto_stop_in: 1 week
+  artifacts:
+    reports:
+      dotenv: preview.env
+    paths:
+      - .preview-env
+    expire_in: 1 week
+  tags:
+    - nwp
+  allow_failure: false
+
+# Cleanup preview environment
+# Runs manually or when MR is closed
+cleanup:preview:
+  stage: preview
+  needs: []
+  rules:
+    # Manual cleanup for open MRs
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
+  script:
+    - echo "Cleaning up preview environment for MR $CI_MERGE_REQUEST_IID..."
+
+    # Install DDEV if not available
+    - |
+      if ! command -v ddev >/dev/null 2>&1; then
+        echo "Installing DDEV..."
+        curl -fsSL https://raw.githubusercontent.com/ddev/ddev/master/scripts/install_ddev.sh | bash
+      fi
+
+    # Cleanup preview environment
+    - ./scripts/ci/cleanup-preview.sh "mr-$CI_MERGE_REQUEST_IID" || true
+
+    - echo "Preview environment cleaned up"
+
+  environment:
+    name: preview/mr-$CI_MERGE_REQUEST_IID
+    action: stop
+  tags:
+    - nwp
+  allow_failure: true
+
+################################################################################
 # Usage Examples
 ################################################################################
 #
@@ -435,15 +517,26 @@ deploy:production:
 #   1. Developer pushes to feature branch
 #   2. Pipeline runs: database → build
 #   3. Developer creates merge request
-#   4. Pipeline runs again with artifacts
-#   5. After merge to develop: manual deploy to staging
-#   6. After merge to main: manual deploy to production
+#   4. Pipeline runs again: database → build → preview
+#   5. Preview environment created with unique URL
+#   6. Review and test in preview environment
+#   7. After merge to develop: manual deploy to staging
+#   8. After merge to main: manual deploy to production
+#   9. Preview environment auto-cleans up after 1 week
 #
 # Nightly workflow:
 #   1. Scheduled pipeline runs at 2 AM
 #   2. database:nightly job fetches and caches DB
 #   3. Cache available for all builds during the day
 #   4. Next night, cache refreshes
+#
+# Preview environment workflow:
+#   1. Open merge request
+#   2. CI creates preview environment (preview/mr-123)
+#   3. Access preview at https://mr-123.ddev.site
+#   4. Test changes in isolated environment
+#   5. Manual cleanup available via GitLab UI
+#   6. Auto-cleanup after 1 week of inactivity
 #
 ################################################################################
 

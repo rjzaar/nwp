@@ -272,3 +272,111 @@ jobs:
           TAG="deploy-$(date +%Y%m%d-%H%M%S)"
           git tag -a "$TAG" -m "Production deployment: ${{ env.SITE_NAME }}"
           git push origin "$TAG" || echo "Failed to push tag"
+
+  # Preview environment for pull requests
+  deploy-preview:
+    name: Deploy Preview Environment
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'pull_request'
+    environment:
+      name: preview/pr-${{ github.event.pull_request.number }}
+      url: https://pr-${{ github.event.pull_request.number }}.ddev.site
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup DDEV
+        uses: ddev/github-action-setup-ddev@v1
+        with:
+          autostart: false
+
+      - name: Restore database cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .data/db.sql.gz
+          key: db-nightly-
+          restore-keys: |
+            db-nightly-
+            db-
+
+      - name: Create preview environment
+        id: preview
+        run: |
+          ./scripts/ci/create-preview.sh "pr-${{ github.event.pull_request.number }}"
+
+      - name: Get preview URL
+        id: get-url
+        run: |
+          if [ -f .preview-env ]; then
+            source .preview-env
+            echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
+          else
+            echo "preview_url=https://pr-${{ github.event.pull_request.number }}.ddev.site" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment PR with preview URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.get-url.outputs.preview_url }}';
+            const body = `## Preview Environment Ready
+
+            Your preview environment is ready for testing:
+
+            **Preview URL:** ${url}
+
+            ### What's included:
+            - Latest code from this PR
+            - Sanitized production database
+            - Isolated DDEV environment
+
+            ### Notes:
+            - This environment will be automatically cleaned up when the PR is closed
+            - The environment will auto-stop after 1 week of inactivity
+            - You can manually trigger cleanup from the Actions tab if needed
+
+            Happy testing! 🚀`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Save preview metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-env-pr-${{ github.event.pull_request.number }}
+          path: .preview-env
+          retention-days: 7
+
+  # Cleanup preview when PR is closed
+  cleanup-preview:
+    name: Cleanup Preview Environment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup DDEV
+        uses: ddev/github-action-setup-ddev@v1
+        with:
+          autostart: false
+
+      - name: Cleanup preview environment
+        run: |
+          ./scripts/ci/cleanup-preview.sh "pr-${{ github.event.pull_request.number }}" || true
+
+      - name: Comment PR with cleanup status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '## Preview Environment Cleaned Up\n\nThe preview environment for this PR has been successfully removed.'
+            });

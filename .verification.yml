@@ -1256,3 +1256,231 @@ features:
     verified_at: null
     file_hash: null
     notes: "Added January 2026 - Multi-coder infrastructure"
+
+  # ============================================================
+  # PHASE 6: MONITORING & OBSERVABILITY
+  # ============================================================
+
+  monitoring_daemon:
+    name: "Monitoring Daemon (linode/server_scripts/nwp-monitor.sh)"
+    description: "Continuous server monitoring with metrics collection and alerting"
+    files:
+      - linode/server_scripts/nwp-monitor.sh
+      - linode/server_scripts/nwp-cron.conf
+    checklist:
+      - "Test metrics collection: ./nwp-monitor.sh --domain example.com /var/www/prod"
+      - "Verify JSON metrics logged to /var/log/nwp/metrics/"
+      - "Test HTTP status alerts (stop site, verify alert triggers)"
+      - "Test response time alerts (configure low threshold)"
+      - "Test disk usage alerts (configure low threshold)"
+      - "Verify cron configuration runs every 5 minutes"
+      - "Test --verbose mode for debugging"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 6 implementation"
+
+  production_dashboard:
+    name: "Production Dashboard (status.sh production)"
+    description: "Production status overview with response times and backup ages"
+    files:
+      - status.sh
+    checklist:
+      - "Test ./status.sh production command"
+      - "Verify production sites with live.enabled: true are shown"
+      - "Check response time measurement"
+      - "Verify backup age calculation"
+      - "Test SSL expiry display"
+      - "Verify quick stats summary"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 6 implementation"
+
+  # ============================================================
+  # PHASE 7: AUTOMATED BACKUPS & DISASTER RECOVERY
+  # ============================================================
+
+  scheduled_backup:
+    name: "Scheduled Backup (linode/server_scripts/nwp-scheduled-backup.sh)"
+    description: "Automated backup with rotation policies"
+    files:
+      - linode/server_scripts/nwp-scheduled-backup.sh
+    checklist:
+      - "Test database backup: ./nwp-scheduled-backup.sh prod database"
+      - "Test file backup: ./nwp-scheduled-backup.sh prod files"
+      - "Test full backup: ./nwp-scheduled-backup.sh prod full"
+      - "Verify backup files created in /var/backups/nwp/"
+      - "Test rotation (create old backups, verify cleanup)"
+      - "Verify audit logging on success"
+      - "Verify notification on failure"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 7 implementation"
+
+  verify_backup:
+    name: "Backup Verification (linode/server_scripts/nwp-verify-backup.sh)"
+    description: "Backup integrity verification"
+    files:
+      - linode/server_scripts/nwp-verify-backup.sh
+    checklist:
+      - "Test with valid .sql.gz backup"
+      - "Test with valid .tar.gz backup"
+      - "Test with corrupted backup (should fail)"
+      - "Test with empty file (should fail)"
+      - "Verify exit codes (0=valid, 1=invalid)"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 7 implementation"
+
+  disaster_recovery:
+    name: "Disaster Recovery Documentation"
+    description: "Comprehensive disaster recovery procedures"
+    files:
+      - docs/DISASTER_RECOVERY.md
+    checklist:
+      - "Review RTO targets are realistic"
+      - "Test Scenario 1: Bad Deployment rollback"
+      - "Test Scenario 2: Database restore from backup"
+      - "Verify all referenced scripts exist"
+      - "Review pre-disaster preparation checklist"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 7 implementation"
+
+  # ============================================================
+  # PHASE 8: ENVIRONMENT MANAGEMENT
+  # ============================================================
+
+  preview_environments:
+    name: "Preview Environments (scripts/ci/create-preview.sh)"
+    description: "PR/MR preview environment creation and cleanup"
+    files:
+      - scripts/ci/create-preview.sh
+      - scripts/ci/cleanup-preview.sh
+    checklist:
+      - "Test create preview: ./scripts/ci/create-preview.sh pr-123"
+      - "Verify DDEV project starts"
+      - "Verify database imported from cache"
+      - "Test preview URL accessibility"
+      - "Test cleanup: ./scripts/ci/cleanup-preview.sh pr-123"
+      - "Verify DDEV project removed"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 8 implementation"
+
+  environments_doc:
+    name: "Environments Documentation"
+    description: "Environment hierarchy and configuration splits"
+    files:
+      - docs/ENVIRONMENTS.md
+    checklist:
+      - "Review environment hierarchy is accurate"
+      - "Verify config split examples are correct"
+      - "Check CI/CD examples for GitLab and GitHub"
+      - "Review best practices section"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 8 implementation"
+
+  # ============================================================
+  # PHASE 9: ADVANCED AUTOMATION
+  # ============================================================
+
+  bluegreen_deploy:
+    name: "Blue-Green Deployment (linode/server_scripts/nwp-bluegreen-deploy.sh)"
+    description: "Enhanced blue-green deployment with smoke tests"
+    files:
+      - linode/server_scripts/nwp-bluegreen-deploy.sh
+    checklist:
+      - "Test basic deployment: ./nwp-bluegreen-deploy.sh --domain example.com"
+      - "Test with canary mode: --canary --canary-percent 10"
+      - "Verify smoke tests run on test environment"
+      - "Test automatic rollback on failure"
+      - "Verify health check integration"
+      - "Test --dry-run mode"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 9 implementation"
+
+  canary_release:
+    name: "Canary Releases (linode/server_scripts/nwp-canary.sh)"
+    description: "Canary release management with auto-promote/rollback"
+    files:
+      - linode/server_scripts/nwp-canary.sh
+    checklist:
+      - "Test deploy command: ./nwp-canary.sh deploy --domain example.com"
+      - "Test status command: ./nwp-canary.sh status"
+      - "Test promote command: ./nwp-canary.sh promote"
+      - "Test rollback command: ./nwp-canary.sh rollback"
+      - "Verify auto-promote after monitoring period"
+      - "Verify auto-rollback on errors"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 9 implementation"
+
+  perf_baseline:
+    name: "Performance Baseline (linode/server_scripts/nwp-perf-baseline.sh)"
+    description: "Performance baseline capture and comparison"
+    files:
+      - linode/server_scripts/nwp-perf-baseline.sh
+    checklist:
+      - "Test capture: ./nwp-perf-baseline.sh capture --domain example.com"
+      - "Verify baseline stored in /var/log/nwp/baselines/"
+      - "Test compare: ./nwp-perf-baseline.sh compare --domain example.com"
+      - "Test regression detection (>20% slower)"
+      - "Test list and show commands"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 9 implementation"
+
+  visual_regression:
+    name: "Visual Regression (scripts/ci/visual-regression.sh)"
+    description: "Visual regression testing with BackstopJS integration"
+    files:
+      - scripts/ci/visual-regression.sh
+    checklist:
+      - "Test init: ./scripts/ci/visual-regression.sh init --base-url http://test.example.com"
+      - "Test reference capture: ./scripts/ci/visual-regression.sh reference"
+      - "Test comparison: ./scripts/ci/visual-regression.sh test"
+      - "Verify report generation in .logs/visual/"
+      - "Test approve command for baseline updates"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 9 implementation"
+
+  advanced_deployment_doc:
+    name: "Advanced Deployment Documentation"
+    description: "Blue-green, canary, and performance tracking documentation"
+    files:
+      - docs/ADVANCED_DEPLOYMENT.md
+    checklist:
+      - "Review blue-green deployment strategy"
+      - "Verify canary release examples"
+      - "Check performance baseline documentation"
+      - "Review visual regression setup"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 9 implementation"

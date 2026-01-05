@@ -13,6 +13,7 @@ These scripts run **on the Linode server** to manage NWP/OpenSocial Drupal sites
 | `nwp-backup.sh` | Backup site database and files | `./nwp-backup.sh` |
 | `nwp-healthcheck.sh` | Check site health (HTTP, Drupal, DB, cache, SSL) | `./nwp-healthcheck.sh` |
 | `nwp-audit.sh` | Log deployment events in JSON and text format | `./nwp-audit.sh --event deploy --site prod` |
+| `nwp-monitor.sh` | Continuous monitoring with metrics and alerting | `./nwp-monitor.sh --domain example.com` |
 
 ## Installation
 
@@ -150,6 +151,36 @@ Logs are written to:
 - `/var/log/nwp/deployments.jsonl` - JSON Lines format (machine-readable)
 - `/var/log/nwp/deployments.log` - Human-readable text format
 
+### Monitoring
+
+```bash
+# Monitor production site with full alerting
+./nwp-monitor.sh \
+  --domain example.com \
+  --alert-http \
+  --alert-time 5 \
+  --alert-disk 90 \
+  /var/www/prod
+
+# Monitor without alerts (metrics only)
+./nwp-monitor.sh --domain example.com /var/www/prod
+
+# Verbose output for debugging
+./nwp-monitor.sh --domain example.com --verbose /var/www/prod
+```
+
+The monitoring script:
+- Collects HTTP/HTTPS response codes and times
+- Monitors disk usage
+- Logs metrics to `/var/log/nwp/metrics/` in JSON format
+- Triggers alerts when thresholds are exceeded:
+  - HTTP status != 200/301/302
+  - Response time > 5 seconds (configurable)
+  - Disk usage > 90% (configurable)
+- Sends notifications via `nwp-notify.sh` if configured
+
+To set up automated monitoring via cron, see `nwp-cron.conf` for example configurations.
+
 ## Directory Structure
 
 These scripts expect this directory structure on the server:
@@ -165,9 +196,12 @@ These scripts expect this directory structure on the server:
 └── nwp/           # NWP backup storage
 
 /var/log/
-└── nwp/           # NWP deployment logs
-    ├── deployments.log      # Human-readable log
-    └── deployments.jsonl    # JSON Lines log
+└── nwp/           # NWP deployment and monitoring logs
+    ├── deployments.log      # Human-readable deployment log
+    ├── deployments.jsonl    # JSON Lines deployment log
+    └── metrics/             # Monitoring metrics (JSON Lines)
+        ├── metrics-2026-01-05.jsonl
+        └── metrics-2026-01-06.jsonl
 ```
 
 This structure is created automatically by:
@@ -231,6 +265,9 @@ Deployment actions are logged to:
 - `/var/log/nwp/deployments.jsonl` - JSON Lines format for parsing/monitoring
 - `/var/log/nwp-setup.log` - Initial server setup log (root of /var/log)
 
+Monitoring metrics are logged to:
+- `/var/log/nwp/metrics/metrics-YYYY-MM-DD.jsonl` - Daily metric logs in JSON Lines format
+
 View recent deployments:
 ```bash
 # View text log
@@ -241,6 +278,25 @@ cat /var/log/nwp/deployments.jsonl | jq -r '.event + " - " + .site + " (" + .tim
 
 # Filter by event type
 cat /var/log/nwp/deployments.jsonl | jq 'select(.event=="deploy")'
+```
+
+View monitoring metrics:
+```bash
+# View today's metrics
+cat /var/log/nwp/metrics/metrics-$(date +%Y-%m-%d).jsonl | jq '.'
+
+# Check response times over the last hour
+cat /var/log/nwp/metrics/metrics-$(date +%Y-%m-%d).jsonl | \
+  jq -r 'select(.timestamp > (now - 3600 | strftime("%Y-%m-%dT%H:%M:%S"))) |
+         "\(.timestamp) - \(.http.response_time_ms)ms"'
+
+# Count alerts triggered today
+cat /var/log/nwp/metrics/metrics-$(date +%Y-%m-%d).jsonl | \
+  jq -r 'select(.alerts > 0) | .timestamp' | wc -l
+
+# Average response time today
+cat /var/log/nwp/metrics/metrics-$(date +%Y-%m-%d).jsonl | \
+  jq -s 'map(.http.response_time_ms) | add / length'
 ```
 
 ## See Also

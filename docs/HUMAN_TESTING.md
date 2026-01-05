@@ -14,7 +14,11 @@ This document outlines tests that require human verification because they cannot
 6. [Database Router Tests](#6-database-router-tests)
 7. [Pre-commit Hook Tests](#7-pre-commit-hook-tests)
 8. [Integration Tests](#8-integration-tests)
-9. [Test Checklist Template](#9-test-checklist-template)
+9. [Monitoring & Observability Tests](#9-monitoring--observability-tests)
+10. [Backup & Disaster Recovery Tests](#10-backup--disaster-recovery-tests)
+11. [Preview Environment Tests](#11-preview-environment-tests)
+12. [Advanced Deployment Tests](#12-advanced-deployment-tests)
+13. [Test Checklist Template](#13-test-checklist-template)
 
 ---
 
@@ -478,15 +482,312 @@ Ready for release: YES / NO
 
 ---
 
+## 9. Monitoring & Observability Tests
+
+### 9.1 Production Dashboard (status.sh production)
+
+| Test | Steps | Expected Result |
+|------|-------|-----------------|
+| Dashboard displays | Run `./status.sh production` | ASCII table with production sites |
+| Status detection | Check live site | Shows UP/DOWN correctly |
+| Response time | Verify measurement | Shows response time in seconds |
+| Backup age | Check sitebackups/ | Shows hours/days since backup |
+| SSL expiry | Check live domain | Shows days until expiry |
+| Quick stats | View summary | Total/production site counts |
+
+```bash
+# Test production dashboard
+./status.sh production
+
+# Or shorthand
+./status.sh prod
+```
+
+### 9.2 Monitoring Daemon (nwp-monitor.sh)
+
+**Prerequisite:** Deploy to Linode server
+
+| Test | Steps | Expected Result |
+|------|-------|-----------------|
+| Metrics collection | Run monitor script | JSON logged to /var/log/nwp/metrics/ |
+| HTTP alert | Stop nginx temporarily | Alert triggered |
+| Response time alert | Set low threshold (1s) | Alert on slow pages |
+| Disk alert | Set low threshold (10%) | Alert on any disk usage |
+| Cron integration | Install cron config | Runs every 5 minutes |
+
+```bash
+# Test on server
+ssh prod-server
+./nwp-monitor.sh --domain example.com --alert-http --verbose /var/www/prod
+
+# View metrics
+tail /var/log/nwp/metrics/metrics-$(date +%Y-%m-%d).jsonl | jq .
+```
+
+---
+
+## 10. Backup & Disaster Recovery Tests
+
+### 10.1 Scheduled Backup (nwp-scheduled-backup.sh)
+
+| Test | Steps | Expected Result |
+|------|-------|-----------------|
+| Database backup | Run with `database` type | .sql.gz in /var/backups/nwp/hourly/ |
+| File backup | Run with `files` type | .tar.gz in /var/backups/nwp/daily/ |
+| Full backup | Run with `full` type | .tar.gz in /var/backups/nwp/weekly/ |
+| Rotation | Create old backups, run again | Old backups deleted |
+| Verification | Run with --verify | Backup validated after creation |
+
+```bash
+# Test on server
+ssh prod-server
+
+# Database backup
+./nwp-scheduled-backup.sh prod database
+
+# File backup
+./nwp-scheduled-backup.sh prod files
+
+# Full backup with verification
+./nwp-scheduled-backup.sh prod full --verify
+```
+
+### 10.2 Backup Verification (nwp-verify-backup.sh)
+
+| Test | Steps | Expected Result |
+|------|-------|-----------------|
+| Valid SQL backup | Verify .sql.gz file | Exit code 0 |
+| Valid tar backup | Verify .tar.gz file | Exit code 0 |
+| Corrupted file | Verify corrupted file | Exit code 1 |
+| Empty file | Verify empty file | Exit code 1 |
+
+```bash
+# Test verification
+./nwp-verify-backup.sh /var/backups/nwp/hourly/prod-database-20260105.sql.gz
+echo $?  # Should be 0
+```
+
+### 10.3 Disaster Recovery Scenarios
+
+| Scenario | Test | Expected RTO |
+|----------|------|--------------|
+| Bad deployment | Run rollback, verify site | < 5 minutes |
+| Database corruption | Restore from backup | < 30 minutes |
+| Server loss | Full rebuild procedure | < 2 hours |
+
+```bash
+# Test rollback
+./nwp-rollback.sh
+./nwp-healthcheck.sh prod
+
+# Test database restore
+gunzip -c /var/backups/nwp/hourly/prod-database-latest.sql.gz | drush sql:cli
+drush updb -y && drush cr
+```
+
+---
+
+## 11. Preview Environment Tests
+
+### 11.1 Create Preview Environment
+
+| Test | Steps | Expected Result |
+|------|-------|-----------------|
+| Create preview | Run create-preview.sh | DDEV project starts |
+| Database import | Check site data | Sanitized data present |
+| URL accessibility | Visit preview URL | Site loads correctly |
+| Environment banner | Check site | Shows "Preview Environment" |
+
+```bash
+# Create preview environment
+./scripts/ci/create-preview.sh pr-123
+
+# Check DDEV
+ddev list | grep pr-123
+
+# Visit URL
+curl -I https://pr-123.ddev.site
+```
+
+### 11.2 Cleanup Preview Environment
+
+| Test | Steps | Expected Result |
+|------|-------|-----------------|
+| Cleanup | Run cleanup-preview.sh | DDEV project removed |
+| DDEV gone | Check ddev list | Project not listed |
+| Files removed | Check directory | Preview dir removed |
+
+```bash
+# Cleanup preview
+./scripts/ci/cleanup-preview.sh pr-123
+
+# Verify removal
+ddev list | grep pr-123  # Should return nothing
+```
+
+### 11.3 CI/CD Integration
+
+| Platform | Test | Expected Result |
+|----------|------|-----------------|
+| GitLab | Open MR | Preview environment created |
+| GitLab | Close MR | Preview environment cleaned |
+| GitHub | Open PR | Preview environment created |
+| GitHub | Close PR | Preview environment cleaned |
+
+---
+
+## 12. Advanced Deployment Tests
+
+### 12.1 Blue-Green Deployment (nwp-bluegreen-deploy.sh)
+
+| Test | Steps | Expected Result |
+|------|-------|-----------------|
+| Basic deploy | Run without canary | Deploy to test, swap to prod |
+| Smoke tests | Check test output | All smoke tests pass |
+| Canary mode | Run with --canary | Gradual traffic shift |
+| Rollback | Fail smoke test | Automatic rollback |
+
+```bash
+# Test blue-green deployment
+ssh prod-server
+
+# Basic deployment
+./nwp-bluegreen-deploy.sh --domain example.com
+
+# With canary
+./nwp-bluegreen-deploy.sh --domain example.com --canary --canary-percent 10
+
+# Verify rollback (intentionally break something)
+./nwp-bluegreen-deploy.sh --domain example.com --rollback-on-fail
+```
+
+### 12.2 Canary Releases (nwp-canary.sh)
+
+| Test | Steps | Expected Result |
+|------|-------|-----------------|
+| Deploy canary | Run deploy command | 10% traffic to new version |
+| Monitor | Check status | Health monitoring active |
+| Promote | Run promote | 100% traffic to new version |
+| Rollback | Run rollback | Revert to previous version |
+
+```bash
+# Deploy canary
+./nwp-canary.sh deploy --domain example.com --duration 600
+
+# Check status
+./nwp-canary.sh status
+
+# Promote after monitoring
+./nwp-canary.sh promote
+
+# Or rollback if issues
+./nwp-canary.sh rollback
+```
+
+### 12.3 Performance Baseline (nwp-perf-baseline.sh)
+
+| Test | Steps | Expected Result |
+|------|-------|-----------------|
+| Capture baseline | Run capture command | Baseline stored in /var/log/nwp/baselines/ |
+| Compare | Run compare command | Shows % difference |
+| Regression | Slow down site | Alert if >20% slower |
+| List baselines | Run list command | Shows all stored baselines |
+
+```bash
+# Capture baseline
+./nwp-perf-baseline.sh capture --domain example.com --set-latest
+
+# Compare after changes
+./nwp-perf-baseline.sh compare --domain example.com --threshold 20
+
+# List all baselines
+./nwp-perf-baseline.sh list
+```
+
+### 12.4 Visual Regression (visual-regression.sh)
+
+| Test | Steps | Expected Result |
+|------|-------|-----------------|
+| Initialize | Run init command | backstop.json created |
+| Capture reference | Run reference command | Baseline screenshots saved |
+| Run test | Run test command | Comparison against baseline |
+| View report | Open HTML report | Diff viewer shows changes |
+| Approve changes | Run approve command | New baseline set |
+
+```bash
+# Initialize
+./scripts/ci/visual-regression.sh init --base-url https://staging.example.com
+
+# Capture reference screenshots
+./scripts/ci/visual-regression.sh reference --base-url https://staging.example.com
+
+# Run comparison test
+./scripts/ci/visual-regression.sh test --base-url https://staging.example.com
+
+# View report
+open .logs/visual/html_report/index.html
+
+# Approve intentional changes
+./scripts/ci/visual-regression.sh approve
+```
+
+---
+
+## 13. Test Checklist Template
+
+Use this template when performing human testing:
+
+```
+# Human Testing Session
+Date: YYYY-MM-DD
+Tester: [Name]
+NWP Version: [version]
+
+## Environment
+- OS: [Ubuntu 22.04 / macOS / etc.]
+- Docker: [version]
+- DDEV: [version]
+- Shell: [bash / zsh]
+- Terminal: [gnome-terminal / iTerm2 / etc.]
+
+## Tests Performed
+
+### [Feature Name]
+- [ ] Test 1: [description]
+  - Result: PASS / FAIL
+  - Notes: [any observations]
+
+- [ ] Test 2: [description]
+  - Result: PASS / FAIL
+  - Notes: [any observations]
+
+## Issues Found
+1. [Issue description]
+   - Steps to reproduce: [steps]
+   - Expected: [expected behavior]
+   - Actual: [actual behavior]
+   - Severity: Critical / High / Medium / Low
+
+## Sign-off
+All critical and high-severity tests: PASS / FAIL
+Ready for release: YES / NO
+```
+
+---
+
 ## Running After Updates
 
 When updating NWP code, run through relevant sections of this guide:
 
-1. **CI/CD changes** → Test pipelines
-2. **Notification changes** → Test all channels
-3. **Server script changes** → Test on staging server
-4. **TUI changes** → Test interactive flows
-5. **Hook changes** → Test commit workflow
+1. **CI/CD changes** → Test pipelines (Section 1)
+2. **Notification changes** → Test all channels (Section 2)
+3. **Server script changes** → Test on staging server (Section 3)
+4. **TUI changes** → Test interactive flows (Section 5)
+5. **Hook changes** → Test commit workflow (Section 7)
+6. **Monitoring changes** → Test dashboard and alerts (Section 9)
+7. **Backup changes** → Test backup and restore (Section 10)
+8. **Preview env changes** → Test create/cleanup (Section 11)
+9. **Advanced deploy changes** → Test blue-green/canary (Section 12)
 
 After testing, update `.verification.yml` with results:
 

@@ -8,42 +8,14 @@
 
 # Whitelist NWP infrastructure files
 
-# Core command scripts (symlinks to scripts/commands/)
-# The actual scripts are in scripts/commands/, these symlinks provide
-# convenient access from the root directory (./install.sh, ./backup.sh, etc.)
-!backup.sh
-!copy.sh
-!delete.sh
-!dev2stg.sh
-!install.sh
-!make.sh
-!migration.sh
-!restore.sh
+# Setup entry point (symlink to scripts/commands/setup.sh)
+# This is the only command script tracked in git - users run ./setup.sh to bootstrap
+# After setup, use the `pl` CLI command to run all other scripts
 !setup.sh
-!setup-ssh.sh
-!stg2prod.sh
-!prod2stg.sh
-!test.sh
-!test-nwp.sh
-!testos.sh
-!uninstall_nwp.sh
-!schedule.sh
+
+# CLI completion (installed by setup)
 !pl
 !pl-completion.bash
-!security.sh
-!live.sh
-!stg2live.sh
-!live2stg.sh
-!live2prod.sh
-!produce.sh
-!podcast.sh
-!modify.sh
-!status.sh
-!import.sh
-!sync.sh
-!verify.sh
-!report.sh
-!coder-setup.sh
 
 # CI/CD and code quality
 !.gitlab-ci.yml
@@ -78,8 +50,7 @@
 !.secrets.example.yml
 !.secrets.data.example.yml
 
-# Migration scripts
-!migrate-secrets.sh
+# Migration scripts (access via pl or scripts/commands/)
 
 # Documentation directory
 !docs/

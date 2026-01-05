@@ -1,1 +1,0 @@
-scripts/commands/test-nwp.sh

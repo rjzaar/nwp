@@ -1,1 +1,0 @@
-scripts/commands/migrate-secrets.sh

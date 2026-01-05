@@ -1,1 +1,0 @@
-scripts/commands/prod2stg.sh

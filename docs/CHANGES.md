@@ -14,18 +14,26 @@ Major reorganization of project structure for cleaner root directory and better 
 
 **Moved Scripts to `scripts/commands/`**:
 - All 32 command scripts moved from root to `scripts/commands/`
-- Backward-compatible symlinks in root (optional)
-- Scripts accessible via traditional `./install.sh` or `./scripts/commands/install.sh`
+- `pl` CLI is the default and recommended way to run scripts
+- Scripts accessible via `pl install nwp` or `./scripts/commands/install.sh`
 
-**New Setup Options**:
+**Using the `pl` CLI (default)**:
 ```bash
-./setup.sh --symlinks      # Create symlinks (backward compatible)
-./setup.sh --no-symlinks   # Remove symlinks (cleaner root)
+pl install nwp       # Install a site
+pl backup mysite     # Backup a site
+pl status            # Check all sites
+pl --help            # Show all commands
+```
+
+**Optional Symlinks for Backward Compatibility**:
+```bash
+./setup.sh --symlinks      # Create ./install.sh etc. in root
+./setup.sh --no-symlinks   # Remove symlinks
 ```
 
 **Interactive Setup**:
-- New "Script Symlinks (backward compat)" component in `./setup.sh` UI
-- Toggle symlinks on/off during setup
+- "Script Symlinks" available as optional component in `./setup.sh` UI
+- Not included by default; toggle on if you need `./install.sh` style access
 
 #### Log and Backup Organization
 

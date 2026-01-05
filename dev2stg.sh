@@ -1,1 +1,0 @@
-scripts/commands/dev2stg.sh

@@ -26,12 +26,6 @@ This installs Docker, DDEV, mkcert, and the NWP CLI (`pl` command).
 ```bash
 # Install a Drupal site using the 'd' recipe
 pl install d mysite
-
-# Or use the traditional symlink
-./install.sh d mysite
-
-# Or call directly from scripts/commands/
-./scripts/commands/install.sh d mysite
 ```
 
 Wait 2-3 minutes for installation to complete.
@@ -78,16 +72,16 @@ pl dev2stg mysite
 
 ```bash
 # All tests
-./testos.sh -a mysite
+pl testos -a mysite
 
 # Just code quality
-./testos.sh -p mysite    # PHPStan
-./testos.sh -c mysite    # CodeSniffer
+pl testos -p mysite    # PHPStan
+pl testos -c mysite    # CodeSniffer
 ```
 
 ## CLI Reference
 
-If you enabled the CLI during setup:
+The `pl` CLI is installed by default during setup:
 
 | Command | Description |
 |---------|-------------|
@@ -96,7 +90,9 @@ If you enabled the CLI during setup:
 | `pl restore sitename` | Restore from backup |
 | `pl copy from to` | Copy site |
 | `pl delete sitename` | Delete site |
+| `pl status` | Check all sites |
 | `pl --list` | List available recipes |
+| `pl --help` | Show all commands |
 
 ## Available Recipes
 

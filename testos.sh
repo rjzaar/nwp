@@ -1,1 +1,0 @@
-scripts/commands/testos.sh

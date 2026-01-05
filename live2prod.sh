@@ -1,1 +1,0 @@
-scripts/commands/live2prod.sh

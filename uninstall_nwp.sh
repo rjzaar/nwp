@@ -1,1 +1,0 @@
-scripts/commands/uninstall_nwp.sh

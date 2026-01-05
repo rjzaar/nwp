@@ -1,1 +1,0 @@
-scripts/commands/import.sh

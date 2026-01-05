@@ -78,16 +78,16 @@ More information about security below.
    - Check which prerequisites are already installed
    - Install only the missing prerequisites
    - Configure your system for DDEV
-   - Verify everything is working correctly
+   - Install the `pl` CLI command for running NWP scripts
 
 3. **View available recipes**:
    ```bash
-   ./install.sh --list
+   pl --list
    ```
 
 4. **Install a project using a recipe**:
    ```bash
-   ./install.sh nwp
+   pl install nwp
    ```
 
 5. **Access your site**:
@@ -96,11 +96,23 @@ More information about security below.
 
 6. **(Optional) Set up SSH keys for production deployment**:
    ```bash
-   ./setup-ssh.sh
+   pl setup-ssh
    ```
-   - Generates SSH keypair for Linode deployment
-   - See [`docs/SSH_SETUP.md`](docs/SSH_SETUP.md) for complete instructions
-   - Required for `stg2prod.sh` and `prod2stg.sh` scripts
+
+## Using the `pl` CLI
+
+After setup, the `pl` command is the primary way to run NWP scripts:
+
+```bash
+pl install d mysite    # Install a Drupal site
+pl backup mysite       # Backup a site
+pl restore mysite      # Restore from backup
+pl copy mysite newsite # Copy a site
+pl status              # Check all sites
+pl --help              # Show all commands
+```
+
+The `pl` command works from any directory and provides tab completion for commands.
 
 ## Security Architecture Details
 
@@ -318,31 +330,28 @@ NWP includes a comprehensive set of management scripts for working with your sit
 | `scripts/ci/visual-regression.sh` | Visual regression testing |
 | `scripts/security-update.sh` | Automated security updates |
 
-### Script Organization Options
+### Script Organization
 
-Scripts can be accessed two ways:
+Scripts live in `scripts/commands/` and are accessed via the `pl` CLI (default):
 
 ```bash
-# Traditional (with symlinks - default)
-./install.sh nwp
-./backup.sh mysite
-
-# Direct (without symlinks)
-./scripts/commands/install.sh nwp
-./scripts/commands/backup.sh mysite
-# Or using the CLI
-pl install nwp
+pl install nwp       # Recommended - works from anywhere
 pl backup mysite
+pl status
 ```
 
-**Managing Symlinks:**
+**Alternative access methods:**
 
 ```bash
-./setup.sh --symlinks      # Enable symlinks (backward compatible)
-./setup.sh --no-symlinks   # Remove symlinks (cleaner root directory)
+# Direct path (no CLI needed)
+./scripts/commands/install.sh nwp
+
+# Traditional symlinks (optional - for backward compatibility)
+./setup.sh --symlinks    # Creates ./install.sh etc. in root
+./install.sh nwp         # Then works like before
 ```
 
-The interactive `./setup.sh` also includes a "Script Symlinks" component you can toggle.
+The interactive `./setup.sh` also includes a "Script Symlinks" component for backward compatibility.
 
 ### Quick Examples
 

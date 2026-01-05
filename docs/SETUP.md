@@ -52,10 +52,10 @@ The setup script will:
 
 | Component | What It Does |
 |-----------|--------------|
-| Script Symlinks | Create `./install.sh` etc. symlinks to `scripts/commands/` |
-| NWP CLI | Global `pl` command for running scripts |
+| NWP CLI | Global `pl` command for running scripts (recommended) |
 | NWP Config | Creates `cnwp.yml` from example |
 | NWP Secrets | Creates `.secrets.yml` template |
+| Script Symlinks | Optional: Create `./install.sh` symlinks for backward compatibility |
 
 ### Linode Infrastructure (Server Provisioning)
 
@@ -473,8 +473,7 @@ For just local Drupal/Moodle development:
 
 This installs:
 - Docker, DDEV, mkcert
-- NWP CLI and config files
-- Script symlinks (backward compatibility)
+- NWP CLI (`pl` command) and config files
 
 ### Full Infrastructure
 
@@ -487,26 +486,26 @@ For complete setup including GitLab:
 
 ### Script Organization
 
-Scripts are located in `scripts/commands/` with symlinks in root for convenience:
+Scripts are located in `scripts/commands/` and accessed via the `pl` CLI:
 
 ```bash
-# Traditional access (with symlinks - default)
-./install.sh nwp
-./backup.sh mysite
+# Default: use the pl CLI (works from anywhere)
+pl install nwp
+pl backup mysite
+pl status
 
-# Direct access (without symlinks)
+# Alternative: direct path
 ./scripts/commands/install.sh nwp
-pl install nwp  # Using CLI
 ```
 
-**Manage symlinks:**
+**Optional symlinks for backward compatibility:**
 
 ```bash
-./setup.sh --symlinks      # Create symlinks (default)
-./setup.sh --no-symlinks   # Remove symlinks for cleaner root
+./setup.sh --symlinks      # Create ./install.sh etc. in root
+./setup.sh --no-symlinks   # Remove symlinks
 ```
 
-The interactive setup UI includes "Script Symlinks" as a toggleable component.
+The interactive setup UI includes "Script Symlinks" as an optional component.
 
 ## File Locations
 

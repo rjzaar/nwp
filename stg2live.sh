@@ -1,1 +1,0 @@
-scripts/commands/stg2live.sh

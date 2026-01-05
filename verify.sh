@@ -1,1 +1,0 @@
-scripts/commands/verify.sh

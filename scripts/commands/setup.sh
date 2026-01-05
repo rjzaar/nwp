@@ -68,7 +68,7 @@ fi
 declare -a COMPONENTS=(
     # Core Infrastructure - grouped by dependency
     "docker|Docker Engine|-|core|required"
-    "script_symlinks|Script Symlinks (backward compat)|-|core|recommended"
+    "script_symlinks|Script Symlinks (backward compat)|-|core|optional"
     "docker_compose|Docker Compose Plugin|docker|core|required"
     "docker_group|Docker Group Membership|docker|core|required"
     "ddev|DDEV Development Environment|docker|core|required"

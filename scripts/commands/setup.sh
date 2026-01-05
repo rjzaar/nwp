@@ -537,15 +537,21 @@ run_interactive_tui() {
 
                     # Show hint at bottom of screen
                     cursor_to 22 1
-                    printf "${DIM}Type new value + Enter, or just Enter to cancel${NC}"
+                    printf "${DIM}Enter: save  q/ESC/empty: cancel${NC}"
                     cursor_to $edit_line 49
 
-                    # Simple read - user types new value or Enter to cancel
+                    # Read new value
                     local new_val=""
                     read new_val
 
-                    # Save only if not empty and different from current
-                    if [ -n "$new_val" ] && [ "$new_val" != "$current_val" ]; then
+                    # Check for cancel: empty, "q", "Q", or starts with ESC
+                    local cancelled=0
+                    if [ -z "$new_val" ] || [ "$new_val" = "q" ] || [ "$new_val" = "Q" ] || [[ "$new_val" == $'\x1b'* ]]; then
+                        cancelled=1
+                    fi
+
+                    # Save only if not cancelled and different from current
+                    if [ "$cancelled" -eq 0 ] && [ "$new_val" != "$current_val" ]; then
                         MANUAL_INPUTS[$comp_id]="$new_val"
                     fi
 

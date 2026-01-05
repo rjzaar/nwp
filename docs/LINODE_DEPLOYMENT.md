@@ -1,8 +1,11 @@
 # Linode Deployment Infrastructure
 
-**Status:** Proposal / Design Phase
+**Status:** Implementation Guide (Complete)
 **Created:** 2024-12-23
-**Branch:** linode
+**Updated:** January 2026
+
+> This infrastructure has been implemented. See `linode/` directory for scripts
+> and `lib/linode.sh` for API functions.
 
 ---
 

@@ -1,5 +1,11 @@
 # Migration Guide: Environment Variables (NWP v0.2)
 
+> **HISTORICAL DOCUMENT**
+>
+> This guide was written for NWP v0.2. Current version is v0.12.
+> The environment variable system described here is now standard.
+> Archived for reference only.
+
 This guide helps you migrate to NWP's new environment variable system introduced in v0.2.
 
 ## What's New in v0.2

@@ -1,5 +1,17 @@
 # Live Site Import System for NWP
 
+> **STATUS: IMPLEMENTED (January 2026)**
+>
+> This proposal has been fully implemented. Key components:
+> - `scripts/commands/import.sh` - Main import script with TUI
+> - `lib/import.sh` - Shared import functions
+> - `lib/import-tui.sh` - TUI components for site/option selection
+> - `scripts/commands/sync.sh` - Re-sync existing imported site from live
+>
+> See `docs/ROADMAP.md` P29 for implementation details.
+>
+> Archived for historical reference.
+
 ## Overview
 
 This proposal outlines a system to import existing live Drupal sites from Linode servers into NWP's local development environment. The import system provides:

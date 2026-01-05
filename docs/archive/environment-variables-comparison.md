@@ -1,5 +1,10 @@
 # Environment Variables and Configuration Comparison
 
+> **NOTE: Superseded by `docs/ARCHITECTURE_ANALYSIS.md`**
+>
+> This research has been consolidated into the main architecture analysis document.
+> NWP uses cnwp.yml + .secrets.yml for configuration (see docs/DATA_SECURITY_BEST_PRACTICES.md).
+
 This document compares environment variable structures and configurations from:
 - Vortex (DrevOps framework)
 - Open Social and Varbase Drupal profiles

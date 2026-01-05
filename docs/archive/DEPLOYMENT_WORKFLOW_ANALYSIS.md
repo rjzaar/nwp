@@ -1,5 +1,10 @@
 # Deployment Workflow Analysis: Dev → Staging → Production
 
+> **NOTE: Superseded by `docs/ARCHITECTURE_ANALYSIS.md`**
+>
+> This research has been consolidated into the main architecture analysis document.
+> Recommendations were implemented in dev2stg.sh, stg2prod.sh, and lib/preflight.sh.
+
 A comparative analysis of Vortex, Pleasy, and industry best practices for environment management.
 
 ---

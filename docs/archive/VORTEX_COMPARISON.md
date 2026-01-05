@@ -1,5 +1,10 @@
 # NWP vs DrevOps Vortex: Comparison and Recommendations
 
+> **NOTE: Superseded by `docs/ARCHITECTURE_ANALYSIS.md`**
+>
+> This research has been consolidated into the main architecture analysis document.
+> Key findings were incorporated into NWP's implementation (Phases 1-5b of ROADMAP.md).
+
 **Date:** 2025-12-24
 **NWP Version:** v0.3
 **Vortex Version:** Latest (main branch)

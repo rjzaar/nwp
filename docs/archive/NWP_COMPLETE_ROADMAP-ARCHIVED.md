@@ -1,5 +1,20 @@
 # NWP Complete Development & Deployment Roadmap
 
+> **STATUS: ARCHIVED (January 2026)**
+>
+> This proposal has been superseded by `docs/ROADMAP.md` which consolidates all
+> improvement proposals into a single unified roadmap. The features described
+> here have been implemented as part of Phases 1-5b of that roadmap.
+>
+> Key implementations:
+> - CI/CD pipeline scripts (`scripts/ci/`)
+> - Notification system (`scripts/notify*.sh`, `linode/server_scripts/nwp-notify.sh`)
+> - Health monitoring (`linode/server_scripts/nwp-healthcheck.sh`, `nwp-monitor.sh`)
+> - Automated backups (`linode/server_scripts/nwp-scheduled-backup.sh`)
+> - Code quality tools (PHPStan, PHPCS, Behat integration)
+>
+> Archived for historical reference.
+
 A unified, numbered, phased proposal for implementing a complete developer lifecycle from project initialization to automated production deployment with security updates.
 
 ---

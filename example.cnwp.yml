@@ -54,13 +54,15 @@ settings:
     # These are set up automatically during GitLab server initialization
     repos:
       nwp: nwp/nwp                           # NWP codebase
-      avc: nwp/avc                           # AV Commons profile
+      avc: nwp/avc                           # AV Commons profile (source)
+      avc-project: nwp/avc-project           # AV Commons project template
 
     # GitHub mirror targets [ACTIVE]
     # Push mirrors are configured automatically for these repos
     github_mirrors:
       nwp/nwp: rjzaar/nwp
       nwp/avc: rjzaar/avc
+      nwp/avc-project: rjzaar/avc-project
 
     # Local Docker ports [ACTIVE]
     ports:
@@ -323,18 +325,48 @@ recipes:
       ssl:                            # HTTPS configuration
       migration:                      # Create migration folder for importing content
 
+  # === AVC RECIPES ===
+  # AV Commons uses a split architecture:
+  #   - nwp/avc-project: Project template (like drupal/recommended-project)
+  #   - nwp/avc: The Drupal profile with all AVC modules
+  #
+  # Choose your recipe based on your use case:
+  #   avc     - For SITE BUILDERS: Deploy AVC sites, customize config
+  #             Uses composer, profile updates via composer update
+  #   avc-dev - For PROFILE DEVELOPERS: Work on AVC profile code
+  #             Uses git clone, profile is editable in profiles/contrib/avc
+
   avc:
-    # [ACTIVE] AV Commons - Collaborative workflow platform (Open Social fork)
-    # All AVC modules are bundled in the profile - no separate clone needed
-    source: nwp/avc:^0.2                 # [ACTIVE] AVC distribution from GitLab
-    profile: avc                         # [ACTIVE] AVC profile (not social)
+    # [ACTIVE] AV Commons - For site builders and production deployments
+    # Use this when: Building sites with AVC, not modifying the profile itself
+    # Profile updates: Run `composer update nwp/avc` to get latest version
+    source: nwp/avc-project              # [ACTIVE] AVC project template from GitLab
+    profile: avc                         # [ACTIVE] AVC profile (installed via composer)
     webroot: html                        # [ACTIVE]
     auto: y                              # [ACTIVE]
-    # AVC modules are installed automatically via avc.info.yml:
-    # avc_core, avc_member, avc_group, avc_asset, avc_notification,
-    # avc_guild, avc_content, workflow_assignment
     options:
       dev_modules:                       # Enable devel, webprofiler for debugging
+      xdebug:                            # Step-through debugging with IDE
+      environment_indicator: y           # [RECOMMENDED] Visual environment indicator
+      config_split: y                    # [RECOMMENDED] Environment-specific config
+      security_modules:                  # Security hardening modules
+      redis:                             # Object caching for performance
+      cron:                              # Automated task scheduling
+      backup:                            # Automated backups
+      ssl:                               # HTTPS configuration
+
+  avc-dev:
+    # [ACTIVE] AV Commons - For profile/module developers
+    # Use this when: Developing AVC modules, fixing bugs, adding features
+    # Profile location: profiles/contrib/avc (git repo, editable)
+    # Workflow: Edit code -> commit -> push to nwp/avc -> tag release
+    source: nwp/avc-project              # [ACTIVE] Project template
+    profile: avc                         # [ACTIVE] Profile name
+    profile_source: git@git.nwpcode.org:nwp/avc.git  # [ACTIVE] Clone profile from git
+    webroot: html                        # [ACTIVE]
+    auto: y                              # [ACTIVE]
+    options:
+      dev_modules: y                     # [RECOMMENDED] Enable devel, webprofiler
       xdebug:                            # Step-through debugging with IDE
       environment_indicator: y           # [RECOMMENDED] Visual environment indicator
       config_split: y                    # [RECOMMENDED] Environment-specific config

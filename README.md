@@ -1467,18 +1467,16 @@ For existing sites or custom setups:
 
 ```bash
 # Generate .env from recipe
-./vortex/scripts/generate-env.sh [recipe] [sitename] [path]
+./lib/env-generate.sh [recipe] [sitename] [path]
 
 # Generate DDEV config from .env
-./vortex/scripts/generate-ddev.sh [path]
+./lib/ddev-generate.sh [path]
 ```
 
 ### Documentation
 
-- **Templates**: See `vortex/templates/` for available templates
-- **Full Guide**: See `vortex/README.md`
-- **Migration**: See `docs/MIGRATION_GUIDE_ENV.md`
-- **Comparison**: See `docs/environment-variables-comparison.md`
+- **Templates**: See `templates/env/` for available templates
+- **Architecture**: See `docs/ARCHITECTURE_ANALYSIS.md` for environment variable design
 
 
 ### Configuration Hierarchy

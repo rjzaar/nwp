@@ -69,8 +69,8 @@ This directory contains all documentation for the Narrow Way Project (NWP).
 
 | Document | Description |
 |----------|-------------|
-| [ROADMAP.md](ROADMAP.md) | Pending & future work (P32-P35, F01-F03) |
-| [MILESTONES.md](MILESTONES.md) | Completed implementation history (P01-P31) |
+| [ROADMAP.md](ROADMAP.md) | Pending & future work (F01-F03) |
+| [MILESTONES.md](MILESTONES.md) | Completed implementation history (P01-P35) |
 
 ## Specialized
 

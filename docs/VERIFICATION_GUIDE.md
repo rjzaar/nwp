@@ -542,13 +542,12 @@ A complete map of all NWP documentation organized by purpose.
 | [BACKUP_IMPLEMENTATION.md](BACKUP_IMPLEMENTATION.md) | Backup system details |
 | [GIT_BACKUP_RECOMMENDATIONS.md](GIT_BACKUP_RECOMMENDATIONS.md) | Git-based backup strategy |
 | [MIGRATION_SITES_TRACKING.md](MIGRATION_SITES_TRACKING.md) | Sites registry migration |
-| [MIGRATION_GUIDE_ENV.md](MIGRATION_GUIDE_ENV.md) | Environment variable migration |
 
 ## Planning & Roadmap
 
 | Document | Purpose |
 |----------|---------|
-| [ROADMAP.md](ROADMAP.md) | Development roadmap, 31 proposals |
+| [ROADMAP.md](ROADMAP.md) | Development roadmap (35 proposals complete, F01-F03 pending) |
 | [CHANGES.md](CHANGES.md) | Version changelog |
 | [ARCHITECTURE_ANALYSIS.md](ARCHITECTURE_ANALYSIS.md) | Research and comparisons |
 
@@ -557,7 +556,7 @@ A complete map of all NWP documentation organized by purpose.
 Historical proposals and research in `docs/archive/`:
 - Training system planning (Moodle/CodeRunner)
 - Email/Postfix infrastructure proposal
-- Original Vortex and deployment analysis
+- Original Vortex comparison and deployment analysis
 - Code reviews and implementation summaries
 - Import system proposal (now implemented)
 
@@ -586,11 +585,12 @@ nwp/
 │       ├── GITLAB_COMPOSER.md # Package registry
 │       └── GITLAB_MIGRATION.md # Migration guide
 │
-├── vortex/                   # Environment config
-│   └── README.md             # Config system
+├── templates/                # Configuration templates
+│   └── env/                  # Environment templates (.env.*, .secrets.*)
 │
-└── url/                      # URL/DNS setup
-    └── README.md             # Domain config
+└── lib/                      # Library scripts
+    ├── env-generate.sh       # Generate .env from cnwp.yml
+    └── ddev-generate.sh      # Generate DDEV config
 ```
 
 ---

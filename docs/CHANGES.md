@@ -62,6 +62,46 @@ pl --help            # Show all commands
 - Documented site directory convention (root level for DDEV)
 - Added symlink options to setup.sh help
 
+#### Vortex Folder Reorganization
+
+The `vortex/` folder was reorganized into NWP's standard structure:
+
+| Before | After |
+|--------|-------|
+| `vortex/templates/.env.*` | `templates/env/.env.*` |
+| `vortex/templates/.secrets*.yml` | `templates/env/.secrets*.yml` |
+| `vortex/scripts/generate-env.sh` | `lib/env-generate.sh` |
+| `vortex/scripts/generate-ddev.sh` | `lib/ddev-generate.sh` |
+| `vortex/scripts/load-secrets.sh` | Removed (unused) |
+| `vortex/README.md` | Removed |
+
+**Rationale**: The "vortex" name was confusing - it's NWP's own environment config system inspired by Vortex patterns, not actual Vortex integration.
+
+#### Phase 5c: Live Deployment Automation (P32-P35)
+
+Implemented all Phase 5c proposals for live deployment automation:
+
+**P32: Profile Module Symlink Auto-Creation**
+- `_create_profile_symlinks()` in `lib/install-common.sh`
+- Automatically creates module/theme symlinks for custom profiles
+
+**P33: Live Server Infrastructure Setup**
+- New `lib/live-server-setup.sh` (503 lines)
+- Functions: `ensure_php_fpm()`, `ensure_mariadb()`, `create_site_database()`, `configure_nginx_drupal()`, `provision_drupal_stack()`
+- Ubuntu 22.04/24.04 support, idempotent execution
+
+**P34: Database Deployment in stg2live.sh**
+- `deploy_database()` function in `scripts/commands/stg2live.sh`
+- Export via `ddev export-db`, SCP transfer, mysql import
+- Automatic cleanup of temporary files
+
+**P35: Production Settings Generation**
+- `generate_live_settings()` in `lib/install-common.sh`
+- Generates `settings.local.php` with production config
+- Secure hash_salt, trusted host patterns, performance settings
+
+**Total proposals implemented: 35 (P01-P35)**
+
 ---
 
 ## [v0.11.0] - 2026-01-05

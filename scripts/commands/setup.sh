@@ -529,33 +529,24 @@ run_interactive_tui() {
                         [ $r -lt $current_row ] && edit_line=$((edit_line + 1))
                     done
 
-                    # Position cursor inside the brackets
+                    # Show the current value in the field and position cursor
                     cursor_show
+                    cursor_to $edit_line 49
+                    printf "%s" "$current_val"
                     cursor_to $edit_line 49
 
                     # Show hint at bottom of screen
                     cursor_to 22 1
-                    printf "${DIM}Edit value, Enter to save, ESC or q to cancel${NC}"
+                    printf "${DIM}Type new value + Enter, or just Enter to cancel${NC}"
                     cursor_to $edit_line 49
 
-                    # Check first keypress for cancel
-                    local first_char
-                    IFS= read -rsn1 first_char
+                    # Simple read - user types new value or Enter to cancel
+                    local new_val=""
+                    read new_val
 
-                    local cancelled=0
-                    if [[ "$first_char" == $'\x1b' ]] || [[ "$first_char" == "q" ]] || [[ "$first_char" == "Q" ]]; then
-                        cancelled=1
-                    fi
-
-                    if [ "$cancelled" -eq 0 ]; then
-                        local new_val=""
-                        # Read with pre-filled value (readline shows it)
-                        read -e -i "$current_val" new_val 2>/dev/null || cancelled=1
-
-                        # Save only if changed and not empty and not cancelled
-                        if [ "$cancelled" -eq 0 ] && [ -n "$new_val" ] && [ "$new_val" != "$current_val" ]; then
-                            MANUAL_INPUTS[$comp_id]="$new_val"
-                        fi
+                    # Save only if not empty and different from current
+                    if [ -n "$new_val" ] && [ "$new_val" != "$current_val" ]; then
+                        MANUAL_INPUTS[$comp_id]="$new_val"
                     fi
 
                     cursor_hide

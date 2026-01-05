@@ -831,6 +831,10 @@ is_git_url() {
 # The profile will be cloned to: webroot/profiles/custom/<profile_name>
 # This allows active development on the profile while working on the site.
 #
+# After cloning, automatically creates symlinks for:
+# - Modules in $profile_path/modules/ -> $webroot/modules/custom/
+# - Themes in $profile_path/themes/ -> $webroot/themes/custom/
+#
 install_git_profile() {
     local git_url=$1
     local profile_name=$2
@@ -857,6 +861,8 @@ install_git_profile() {
                 print_status "WARN" "Could not pull updates for $profile_name"
             fi
         fi
+        # Still create symlinks in case profile was updated with new modules/themes
+        _create_profile_symlinks "$profile_name" "$webroot"
         return 0
     fi
 
@@ -864,10 +870,104 @@ install_git_profile() {
     if git clone "$git_url" "$profile_path"; then
         print_status "OK" "Profile $profile_name cloned to $profile_path"
         print_status "INFO" "You can now work on the profile directly in $profile_path"
+
+        # Create symlinks for profile modules and themes
+        _create_profile_symlinks "$profile_name" "$webroot"
+
         return 0
     else
         print_error "Failed to clone profile $profile_name from $git_url"
         return 1
+    fi
+}
+
+# Create symlinks for modules and themes in a profile
+# Usage: _create_profile_symlinks "profile_name" "webroot"
+#
+# This internal function scans a profile's modules/ and themes/ directories
+# and creates symlinks in the site's modules/custom/ and themes/custom/ directories.
+#
+_create_profile_symlinks() {
+    local profile_name=$1
+    local webroot=$2
+    local profile_path="${webroot}/profiles/custom/${profile_name}"
+    local modules_source="${profile_path}/modules"
+    local themes_source="${profile_path}/themes"
+    local modules_target="${webroot}/modules/custom"
+    local themes_target="${webroot}/themes/custom"
+
+    # Create symlinks for profile modules
+    if [ -d "$modules_source" ]; then
+        # Create modules/custom directory if it doesn't exist
+        if [ ! -d "$modules_target" ]; then
+            mkdir -p "$modules_target"
+            print_info "Created custom modules directory: $modules_target"
+        fi
+
+        # Scan for modules in profile
+        local module_count=0
+        for module_dir in "$modules_source"/*; do
+            if [ -d "$module_dir" ]; then
+                local module_name=$(basename "$module_dir")
+                local symlink_path="${modules_target}/${module_name}"
+
+                # Skip if symlink already exists
+                if [ -L "$symlink_path" ] || [ -d "$symlink_path" ]; then
+                    print_info "Module symlink already exists: $module_name"
+                    continue
+                fi
+
+                # Create relative symlink: ../../profiles/custom/<profile>/modules/<module_name>
+                local relative_path="../../profiles/custom/${profile_name}/modules/${module_name}"
+                if ln -s "$relative_path" "$symlink_path" 2>/dev/null; then
+                    print_status "OK" "Created module symlink: $module_name"
+                    ((++module_count))
+                else
+                    print_warning "Failed to create module symlink: $module_name"
+                fi
+            fi
+        done
+
+        if [ $module_count -gt 0 ]; then
+            print_info "Created $module_count module symlink(s) from profile"
+        fi
+    fi
+
+    # Create symlinks for profile themes
+    if [ -d "$themes_source" ]; then
+        # Create themes/custom directory if it doesn't exist
+        if [ ! -d "$themes_target" ]; then
+            mkdir -p "$themes_target"
+            print_info "Created custom themes directory: $themes_target"
+        fi
+
+        # Scan for themes in profile
+        local theme_count=0
+        for theme_dir in "$themes_source"/*; do
+            if [ -d "$theme_dir" ]; then
+                local theme_name=$(basename "$theme_dir")
+                local symlink_path="${themes_target}/${theme_name}"
+
+                # Skip if symlink already exists
+                if [ -L "$symlink_path" ] || [ -d "$symlink_path" ]; then
+                    print_info "Theme symlink already exists: $theme_name"
+                    continue
+                fi
+
+                # Create relative symlink: ../../profiles/custom/<profile>/themes/<theme_name>
+                local relative_path="../../profiles/custom/${profile_name}/themes/${theme_name}"
+                if ln -s "$relative_path" "$symlink_path" 2>/dev/null; then
+                    print_status "OK" "Created theme symlink: $theme_name"
+                    ((++theme_count))
+                else
+                    print_warning "Failed to create theme symlink: $theme_name"
+                fi
+            fi
+        done
+
+        if [ $theme_count -gt 0 ]; then
+            print_info "Created $theme_count theme symlink(s) from profile"
+        fi
     fi
 }
 
@@ -942,6 +1042,131 @@ should_run_step() {
     else
         return 1  # false - skip this step
     fi
+}
+
+################################################################################
+# Production Settings Generation
+################################################################################
+
+# Generate production-ready settings.local.php for live deployment
+# Usage: generate_live_settings "site_dir" "webroot" "db_name" "db_user" "db_pass" ["db_host"]
+#
+# This function creates a settings.local.php file with production-ready configuration:
+# - Production database credentials (localhost by default, not DDEV's 'db')
+# - Generated hash_salt using openssl
+# - Production performance settings (CSS/JS aggregation enabled)
+# - Error hiding for security
+# - Trusted host patterns based on site name
+#
+# The function is idempotent - it won't overwrite an existing settings.local.php
+#
+generate_live_settings() {
+    local site_dir=$1
+    local webroot=$2
+    local db_name=$3
+    local db_user=$4
+    local db_pass=$5
+    local db_host=${6:-localhost}
+
+    local settings_local="${site_dir}/${webroot}/sites/default/settings.local.php"
+    local settings_php="${site_dir}/${webroot}/sites/default/settings.php"
+
+    # Check if settings.local.php already exists
+    if [ -f "$settings_local" ]; then
+        print_status "WARN" "settings.local.php already exists, skipping generation"
+        print_info "Delete $settings_local if you want to regenerate it"
+        return 0
+    fi
+
+    print_info "Generating production settings.local.php..."
+
+    # Generate hash_salt
+    local hash_salt=$(openssl rand -hex 32)
+
+    # Extract domain pattern from site name for trusted hosts
+    # If site_dir is "avc", domain pattern would be "avc.nwpcode.org"
+    local base_name=$(basename "$site_dir")
+    # Remove _stg, _prod, _live suffixes to get base name
+    base_name=$(echo "$base_name" | sed -E 's/_(stg|prod|live)$//')
+
+    # Create settings.local.php with heredoc
+    cat > "$settings_local" << PRODUCTION_SETTINGS
+<?php
+
+/**
+ * @file
+ * Production settings - auto-generated by NWP.
+ *
+ * This file contains production-ready configuration including:
+ * - Database credentials
+ * - Performance optimizations
+ * - Security settings
+ */
+
+// Database connection
+\$databases['default']['default'] = [
+  'database' => '$db_name',
+  'username' => '$db_user',
+  'password' => '$db_pass',
+  'host' => '$db_host',
+  'port' => '3306',
+  'driver' => 'mysql',
+  'prefix' => '',
+  'collation' => 'utf8mb4_general_ci',
+];
+
+// Hash salt for security
+\$settings['hash_salt'] = '$hash_salt';
+
+// Enable CSS/JS aggregation for performance
+\$config['system.performance']['css']['preprocess'] = TRUE;
+\$config['system.performance']['js']['preprocess'] = TRUE;
+
+// Hide error messages for security
+\$config['system.logging']['error_level'] = 'hide';
+
+// Trusted host patterns (update with actual domain if needed)
+\$settings['trusted_host_patterns'] = [
+  '^${base_name}\.nwpcode\.org$',
+  '^www\.${base_name}\.nwpcode\.org$',
+  '^${base_name}\..*$',
+];
+
+// Private file path
+\$settings['file_private_path'] = '../private';
+
+// Disable update manager for production
+\$settings['update_free_access'] = FALSE;
+
+// Skip permissions hardening (handled by deployment)
+\$settings['skip_permissions_hardening'] = TRUE;
+PRODUCTION_SETTINGS
+
+    chmod 644 "$settings_local"
+    print_status "OK" "Generated settings.local.php"
+
+    # Ensure settings.php includes settings.local.php
+    if [ -f "$settings_php" ]; then
+        if ! grep -q "settings.local.php" "$settings_php" 2>/dev/null; then
+            print_info "Adding settings.local.php include to settings.php..."
+
+            cat >> "$settings_php" << 'INCLUDE_LOCAL'
+
+// Include local settings if available
+if (file_exists($app_root . '/' . $site_path . '/settings.local.php')) {
+  include $app_root . '/' . $site_path . '/settings.local.php';
+}
+INCLUDE_LOCAL
+
+            print_status "OK" "Updated settings.php to include settings.local.php"
+        else
+            print_info "settings.php already includes settings.local.php"
+        fi
+    else
+        print_status "WARN" "settings.php not found at $settings_php"
+    fi
+
+    return 0
 }
 
 ################################################################################

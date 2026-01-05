@@ -6,6 +6,13 @@ set -euo pipefail
 #
 # Deploys staging site to live server (provisioned by live.sh)
 #
+# Features:
+#   - File synchronization via rsync
+#   - Database deployment (P34 - requires P33/P35 for full integration)
+#   - Security module installation
+#   - Permission management
+#   - Cache clearing
+#
 # Usage: ./stg2live.sh [OPTIONS] <sitename>
 ################################################################################
 
@@ -223,6 +230,133 @@ EOF
 # Deployment Functions
 ################################################################################
 
+# Deploy database from staging to live server
+#
+# Exports the staging database via ddev export-db, copies it to the live server
+# via SCP, imports it via mysql CLI, and cleans up temporary files.
+#
+# This function implements P34: Database Deployment from the roadmap.
+#
+# Prerequisites (from P33: Live Server Infrastructure Setup):
+#   - MariaDB/MySQL installed on live server
+#   - Database and user created via create_site_database()
+#   - Database credentials stored in .secrets.data.yml (managed by P35)
+#
+# Usage:
+#   deploy_database <stg_site> <live_server> <ssh_user> <db_name> <db_user> <db_pass>
+#
+# Arguments:
+#   stg_site     - Name of staging site (e.g., "mysite_stg")
+#   live_server  - Live server IP or hostname
+#   ssh_user     - SSH user (gitlab or root)
+#   db_name      - Database name on live server
+#   db_user      - Database user on live server
+#   db_pass      - Database password on live server
+#
+# Returns:
+#   0 on success, 1 on failure
+#
+# Error handling:
+#   - Cleans up local and remote temporary files on failure
+#   - Provides clear error messages for each step
+#   - Returns to original directory on failure
+#
+deploy_database() {
+    local stg_site="$1"
+    local live_server="$2"
+    local ssh_user="$3"
+    local db_name="$4"
+    local db_user="$5"
+    local db_pass="$6"
+
+    print_header "Database Deployment"
+
+    # Determine sudo prefix
+    local sudo_prefix=""
+    if [ "$ssh_user" == "gitlab" ]; then
+        sudo_prefix="sudo"
+    fi
+
+    # Step 1: Export database from staging
+    print_info "Exporting database from staging site: $stg_site"
+
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local dump_name="${stg_site}_${timestamp}.sql"
+    local local_dump="./.ddev/${dump_name}"
+
+    # Change to staging site directory
+    local original_dir=$(pwd)
+    cd "sites/$stg_site" || {
+        print_error "Cannot access staging site directory: sites/$stg_site"
+        return 1
+    }
+
+    # Export database using DDEV
+    if ddev export-db --file="$dump_name" --gzip=false > /dev/null 2>&1; then
+        if [ -f "$local_dump" ]; then
+            print_status "OK" "Database exported: $dump_name"
+            local size=$(du -h "$local_dump" | cut -f1)
+            print_info "Export size: $size"
+        else
+            print_error "Database export file not found at: $local_dump"
+            cd "$original_dir"
+            return 1
+        fi
+    else
+        print_error "Failed to export database from staging"
+        cd "$original_dir"
+        return 1
+    fi
+
+    # Step 2: Copy database dump to live server
+    print_info "Copying database dump to live server..."
+
+    local remote_dump="/tmp/${dump_name}"
+    if scp -o BatchMode=yes "$local_dump" "${ssh_user}@${live_server}:${remote_dump}" >/dev/null 2>&1; then
+        print_status "OK" "Database dump copied to server"
+    else
+        print_error "Failed to copy database dump to live server"
+        rm -f "$local_dump"
+        cd "$original_dir"
+        return 1
+    fi
+
+    # Step 3: Import database on live server
+    print_info "Importing database on live server..."
+
+    # Create import command
+    local import_cmd="mysql -u \"${db_user}\" -p\"${db_pass}\" \"${db_name}\" < \"${remote_dump}\""
+
+    if ssh "${ssh_user}@${live_server}" "$sudo_prefix bash -c '$import_cmd'" >/dev/null 2>&1; then
+        print_status "OK" "Database imported successfully"
+    else
+        print_error "Failed to import database on live server"
+        # Clean up remote dump on failure
+        ssh "${ssh_user}@${live_server}" "$sudo_prefix rm -f \"${remote_dump}\"" 2>/dev/null || true
+        rm -f "$local_dump"
+        cd "$original_dir"
+        return 1
+    fi
+
+    # Step 4: Clean up temporary files
+    print_info "Cleaning up temporary files..."
+
+    # Remove local dump
+    rm -f "$local_dump"
+
+    # Remove remote dump
+    if ssh "${ssh_user}@${live_server}" "$sudo_prefix rm -f \"${remote_dump}\"" 2>/dev/null; then
+        print_status "OK" "Temporary files cleaned up"
+    else
+        print_status "WARN" "Could not remove remote temporary file"
+    fi
+
+    cd "$original_dir"
+
+    print_status "OK" "Database deployment complete"
+    return 0
+}
+
 deploy_to_live() {
     local stg_site="$1"
     local base_name="$2"
@@ -327,6 +461,21 @@ deploy_to_live() {
     # Set permissions
     print_info "Setting permissions..."
     ssh "${ssh_user}@${server_ip}" "$sudo_prefix chown -R www-data:www-data /var/www/${base_name}" 2>/dev/null || true
+
+    # Deploy database (if credentials are available)
+    # TODO: P35 will provide generate_live_settings() to retrieve these credentials
+    # For now, database deployment is commented out pending P33/P35 implementation
+    # local db_name="${base_name}"
+    # local db_user="${base_name}"
+    # local db_pass=$(get_data_secret "sites.${base_name}.database.password" "")
+    # if [ -n "$db_pass" ]; then
+    #     if ! deploy_database "$stg_site" "$server_ip" "$ssh_user" "$db_name" "$db_user" "$db_pass"; then
+    #         print_status "WARN" "Database deployment failed (continuing with file deployment)"
+    #     fi
+    # else
+    #     print_status "INFO" "Database credentials not configured - skipping database deployment"
+    #     print_info "Run 'pl live $base_name' first to provision database, or manually configure in .secrets.data.yml"
+    # fi
 
     # Run post-deployment commands
     print_header "Post-Deployment Tasks"

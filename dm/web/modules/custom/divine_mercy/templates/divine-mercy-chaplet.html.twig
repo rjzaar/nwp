@@ -10,9 +10,12 @@
  * - settings: Module settings array.
  */
 #}
+<table class="divine-mercy-chaplet-wrapper">
+<tr>
+<td class="chaplet-spacer-left"></td>
+<td class="chaplet-content-cell">
 <div class="divine-mercy-chaplet" id="divine-mercy-chaplet">
   <div class="chaplet-header">
-    <h1>{{ 'The Chaplet of Divine Mercy'|t }}</h1>
     <p class="chaplet-intro">
       {{ 'The chaplet was given by Jesus to St. Faustina. Pray it on ordinary rosary beads.'|t }}
     </p>
@@ -41,45 +44,6 @@
     </div>
     <span class="font-size-value" id="font-size-value">100%</span>
   </div>
-
-  {# Eucharist Adoration Video #}
-  {% if adoration_enabled and adoration_channels is not empty %}
-    <div class="divine-mercy-eucharist-adoration position-fixed" id="eucharist-adoration">
-      <div class="adoration-header">
-        <h4 class="adoration-title">{{ 'Live Eucharistic Adoration'|t }}</h4>
-        <button type="button" class="adoration-toggle" aria-label="{{ 'Toggle adoration video'|t }}" aria-expanded="true">
-          <span class="toggle-icon">×</span>
-        </button>
-      </div>
-
-      <div class="adoration-content">
-        {% if adoration_channels|length > 1 %}
-          <div class="adoration-selector">
-            <label for="adoration-channel" class="visually-hidden">{{ 'Select chapel'|t }}</label>
-            <select id="adoration-channel" class="adoration-channel-select">
-              {% for channel in adoration_channels %}
-                <option value="{{ channel.url }}"{% if loop.first %} selected{% endif %}>
-                  {{ channel.name }}
-                </option>
-              {% endfor %}
-            </select>
-          </div>
-        {% endif %}
-
-        <div class="adoration-video">
-          <iframe id="adoration-iframe"
-                  src="{{ adoration_channels[0].url }}"
-                  width="350"
-                  height="300"
-                  frameborder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowfullscreen
-                  title="{{ 'Live Eucharistic Adoration'|t }}">
-          </iframe>
-        </div>
-      </div>
-    </div>
-  {% endif %}
 
   {% if prayers is not empty %}
     <div class="chaplet-prayers divine-mercy-content">
@@ -172,3 +136,46 @@
     <p>{{ 'For the sake of His sorrowful Passion, have mercy on us and on the whole world.'|t }}</p>
   </div>
 </div>
+</td>
+<td class="chaplet-spacer-right"></td>
+</tr>
+</table>
+
+{# Eucharist Adoration Video - Fixed position in upper right corner #}
+{% if adoration_enabled and adoration_channels is not empty %}
+  <div class="divine-mercy-eucharist-adoration position-fixed" id="eucharist-adoration">
+    <div class="adoration-header">
+      <h4 class="adoration-title">{{ 'Live Eucharistic Adoration'|t }}</h4>
+      <button type="button" class="adoration-toggle" aria-label="{{ 'Toggle adoration video'|t }}" aria-expanded="true">
+        <span class="toggle-icon">×</span>
+      </button>
+    </div>
+
+    <div class="adoration-content">
+      {% if adoration_channels|length > 1 %}
+        <div class="adoration-selector">
+          <label for="adoration-channel" class="visually-hidden">{{ 'Select chapel'|t }}</label>
+          <select id="adoration-channel" class="adoration-channel-select">
+            {% for channel in adoration_channels %}
+              <option value="{{ channel.url }}"{% if loop.first %} selected{% endif %}>
+                {{ channel.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endif %}
+
+      <div class="adoration-video">
+        <iframe id="adoration-iframe"
+                src="{{ adoration_channels[0].url }}"
+                width="300"
+                height="225"
+                frameborder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen
+                title="{{ 'Live Eucharistic Adoration'|t }}">
+        </iframe>
+      </div>
+    </div>
+  </div>
+{% endif %}

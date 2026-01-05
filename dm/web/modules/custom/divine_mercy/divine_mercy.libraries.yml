@@ -38,7 +38,7 @@ expandable-sections:
     - core/once
 
 eucharist-adoration:
-  version: 1.0.3
+  version: 1.0.20
   js:
     js/eucharist-adoration.js: {}
   css:

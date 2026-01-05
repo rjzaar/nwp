@@ -910,7 +910,7 @@ install_git_modules() {
 # Find available directory name for recipe installation
 get_available_dirname() {
     local recipe=$1
-    local dirname="$recipe"
+    local dirname="sites/$recipe"
     local counter=1
 
     # If directory doesn't exist, return it
@@ -920,11 +920,11 @@ get_available_dirname() {
     fi
 
     # Otherwise, find the next available numbered directory
-    while [ -d "${recipe}${counter}" ]; do
+    while [ -d "sites/${recipe}${counter}" ]; do
         counter=$((counter + 1))
     done
 
-    echo "${recipe}${counter}"
+    echo "sites/${recipe}${counter}"
     return 0
 }
 

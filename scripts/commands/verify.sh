@@ -163,7 +163,8 @@ get_changed_files() {
     # We need to track individual file hashes to detect which changed
     # For now, just return all files if the combined hash changed
     local files=$(get_feature_files "$feature")
-    echo "$files"
+    # Prefix with sites/ if referencing site directories
+    echo "$files" | sed 's|^scripts/commands/|sites/|g' || echo "$files"
 }
 
 # Show git diff for a file if available

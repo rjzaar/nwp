@@ -168,30 +168,30 @@ create_staging_site() {
     step 1 11 "Creating staging site: $stg_site"
 
     # Create directory
-    if [ -d "$stg_site" ]; then
+    if [ -d "sites/$stg_site" ]; then
         warn "Staging directory already exists"
         return 0
     fi
 
-    task "Copying codebase from $dev_site..."
+    task "Copying codebase from sites/$dev_site..."
     rsync -av --exclude='.ddev' --exclude='vendor' \
           --exclude='node_modules' --exclude='*.sql*' \
           --exclude='private/' \
-          "$dev_site/" "$stg_site/" > /dev/null 2>&1 || {
+          "sites/$dev_site/" "sites/$stg_site/" > /dev/null 2>&1 || {
         fail "Failed to copy codebase"
         return 1
     }
 
     task "Creating DDEV configuration..."
-    mkdir -p "$stg_site/.ddev"
+    mkdir -p "sites/$stg_site/.ddev"
 
     # Copy and modify DDEV config
-    local webroot=$(get_webroot "$dev_site")
+    local webroot=$(get_webroot "sites/$dev_site")
     local dev_name=$(basename "$dev_site")
     local stg_name=$(basename "$stg_site")
 
     # Create new DDEV config
-    cat > "$stg_site/.ddev/config.yaml" << DDEVEOF
+    cat > "sites/$stg_site/.ddev/config.yaml" << DDEVEOF
 name: $stg_name
 type: drupal
 docroot: $webroot
@@ -203,7 +203,7 @@ database:
 DDEVEOF
 
     task "Starting DDEV..."
-    (cd "$stg_site" && ddev start) || {
+    (cd "sites/$stg_site" && ddev start) || {
         fail "Failed to start DDEV"
         return 1
     }
@@ -219,8 +219,8 @@ export_config_dev() {
     step 2 11 "Export configuration from dev"
 
     local original_dir=$(pwd)
-    cd "$dev_site" || {
-        fail "Cannot access dev site: $dev_site"
+    cd "sites/$dev_site" || {
+        fail "Cannot access dev site: sites/$dev_site"
         return 1
     }
 
@@ -242,7 +242,7 @@ sync_files() {
 
     step 3 11 "Sync files from dev to staging"
 
-    local webroot=$(get_webroot "$dev_site")
+    local webroot=$(get_webroot "sites/$dev_site")
 
     task "Syncing files with rsync..."
 
@@ -260,7 +260,7 @@ sync_files() {
         "--exclude=dev/"
     )
 
-    if rsync -av --delete "${excludes[@]}" "$dev_site/" "$stg_site/" > /dev/null 2>&1; then
+    if rsync -av --delete "${excludes[@]}" "sites/$dev_site/" "sites/$stg_site/" > /dev/null 2>&1; then
         pass "Files synced to staging"
     else
         fail "File sync failed"
@@ -301,7 +301,7 @@ run_composer_staging() {
     step 5 11 "Run composer install --no-dev"
 
     local original_dir=$(pwd)
-    cd "$stg_site" || {
+    cd "sites/$stg_site" || {
         fail "Cannot access staging site"
         return 1
     }
@@ -324,7 +324,7 @@ run_db_updates() {
     step 6 11 "Run database updates"
 
     local original_dir=$(pwd)
-    cd "$stg_site" || {
+    cd "sites/$stg_site" || {
         fail "Cannot access staging site"
         return 1
     }
@@ -347,7 +347,7 @@ import_config_staging() {
     step 7 11 "Import configuration (${CONFIG_IMPORT_RETRIES}x retry)"
 
     local original_dir=$(pwd)
-    cd "$stg_site" || {
+    cd "sites/$stg_site" || {
         fail "Cannot access staging site"
         return 1
     }
@@ -379,7 +379,7 @@ clear_cache_staging() {
     task "Clearing cache..."
 
     local original_dir=$(pwd)
-    cd "$stg_site" || return 1
+    cd "sites/$stg_site" || return 1
 
     ddev drush cache:rebuild > /dev/null 2>&1
     pass "Cache cleared"
@@ -405,7 +405,7 @@ enable_prod_mode() {
     else
         task "Disabling dev modules manually..."
         local original_dir=$(pwd)
-        cd "$stg_site" || return 0
+        cd "sites/$stg_site" || return 0
 
         # Disable common dev modules
         for module in devel webprofiler kint stage_file_proxy; do
@@ -455,7 +455,7 @@ display_staging_url() {
     step 10 11 "Deployment complete"
 
     local original_dir=$(pwd)
-    cd "$stg_site" || return 0
+    cd "sites/$stg_site" || return 0
 
     local stg_url=$(ddev describe 2>/dev/null | grep -oP 'https://[^ ,]+' | head -1)
 
@@ -510,7 +510,7 @@ deploy_dev2stg() {
     fi
 
     # Check if staging exists
-    if [ ! -d "$stg_site" ]; then
+    if [ ! -d "sites/$stg_site" ]; then
         if [ "$create_stg" = "true" ] || [ "$auto_yes" = "true" ]; then
             info "Staging site does not exist - creating..."
             create_staging_site "$dev_site" "$stg_site" || return 1
@@ -529,9 +529,9 @@ deploy_dev2stg() {
     fi
 
     # Ensure staging DDEV is running
-    if [ -d "$stg_site" ]; then
+    if [ -d "sites/$stg_site" ]; then
         task "Ensuring staging DDEV is running..."
-        (cd "$stg_site" && ddev start > /dev/null 2>&1)
+        (cd "sites/$stg_site" && ddev start > /dev/null 2>&1)
     fi
 
     # Execute deployment steps

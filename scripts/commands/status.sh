@@ -67,13 +67,13 @@ find_orphaned_sites() {
     local config_file="$1"
     local script_dir="$2"
 
-    # Get all directories with .ddev in the script directory
+    # Get all directories with .ddev in the sites subdirectory
     local ddev_dirs=()
     while IFS= read -r ddev_path; do
         local site_dir=$(dirname "$ddev_path")
         local site_name=$(basename "$site_dir")
         ddev_dirs+=("$site_name:$site_dir")
-    done < <(find "$script_dir" -maxdepth 2 -name ".ddev" -type d 2>/dev/null)
+    done < <(find "$script_dir/sites" -maxdepth 2 -name ".ddev" -type d 2>/dev/null)
 
     # Get list of sites from cnwp.yml
     local yml_sites=()
@@ -1621,6 +1621,10 @@ build_site_cache() {
             recipe=$(get_site_field "$site" "recipe" "$config_file")
             purpose=$(get_site_field "$site" "purpose" "$config_file")
             directory=$(get_site_field "$site" "directory" "$config_file")
+            # If directory is not absolute and doesn't start with sites/, prefix with sites/
+            if [[ "$directory" != /* ]] && [[ "$directory" != sites/* ]]; then
+                directory="sites/$directory"
+            fi
             domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
         fi
 

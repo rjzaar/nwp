@@ -88,7 +88,8 @@ EOF
 
 # Get webroot from DDEV config
 get_webroot() {
-    local site_dir=$1
+    local sitename=$1
+    local site_dir="sites/$sitename"
     local webroot=$(grep "^docroot:" "$site_dir/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
     if [ -z "$webroot" ]; then
         webroot="web"  # Default fallback
@@ -104,24 +105,27 @@ copy_files() {
 
     print_header "Step 3: Copy Files"
 
+    local from_dir="sites/$from_site"
+    local to_dir="sites/$to_site"
+
     # Paths to copy
     local copy_paths=()
 
-    if [ -d "$from_site/$webroot" ]; then
+    if [ -d "$from_dir/$webroot" ]; then
         copy_paths+=("$webroot")
     fi
 
-    if [ -d "$from_site/private" ]; then
+    if [ -d "$from_dir/private" ]; then
         copy_paths+=("private")
     fi
 
-    if [ -d "$from_site/cmi" ]; then
+    if [ -d "$from_dir/cmi" ]; then
         copy_paths+=("cmi")
     fi
 
-    if [ -f "$from_site/composer.json" ]; then
+    if [ -f "$from_dir/composer.json" ]; then
         copy_paths+=("composer.json")
-        if [ -f "$from_site/composer.lock" ]; then
+        if [ -f "$from_dir/composer.lock" ]; then
             copy_paths+=("composer.lock")
         fi
     fi
@@ -136,15 +140,15 @@ copy_files() {
     # Copy each path
     for path in "${copy_paths[@]}"; do
         ocmsg "Copying $path..."
-        if [ -d "$from_site/$path" ]; then
+        if [ -d "$from_dir/$path" ]; then
             # Copy directory
-            cp -r "$from_site/$path" "$to_site/" || {
+            cp -r "$from_dir/$path" "$to_dir/" || {
                 print_error "Failed to copy $path"
                 return 1
             }
-        elif [ -f "$from_site/$path" ]; then
+        elif [ -f "$from_dir/$path" ]; then
             # Copy file
-            cp "$from_site/$path" "$to_site/" || {
+            cp "$from_dir/$path" "$to_dir/" || {
                 print_error "Failed to copy $path"
                 return 1
             }
@@ -161,9 +165,10 @@ export_database() {
 
     print_header "Step 4: Export Database" >&2
 
+    local from_dir="sites/$from_site"
     local original_dir=$(pwd)
-    cd "$from_site" || {
-        print_error "Cannot access source site: $from_site" >&2
+    cd "$from_dir" || {
+        print_error "Cannot access source site: $from_dir" >&2
         return 1
     }
 
@@ -199,9 +204,10 @@ configure_ddev() {
 
     print_header "Step 5: Configure DDEV"
 
+    local to_dir="sites/$to_site"
     local original_dir=$(pwd)
-    cd "$to_site" || {
-        print_error "Cannot access destination site: $to_site"
+    cd "$to_dir" || {
+        print_error "Cannot access destination site: $to_dir"
         return 1
     }
 
@@ -245,9 +251,10 @@ import_database() {
         return 1
     fi
 
+    local to_dir="sites/$to_site"
     local original_dir=$(pwd)
-    cd "$to_site" || {
-        print_error "Cannot access destination site: $to_site"
+    cd "$to_dir" || {
+        print_error "Cannot access destination site: $to_dir"
         return 1
     }
 
@@ -284,7 +291,8 @@ fix_settings() {
 
     print_header "Step 8: Fix Site Settings"
 
-    local settings_file="$to_site/$webroot/sites/default/settings.php"
+    local to_dir="sites/$to_site"
+    local settings_file="$to_dir/$webroot/sites/default/settings.php"
 
     if [ -f "$settings_file" ]; then
         # DDEV manages settings, so we just verify they exist
@@ -303,15 +311,17 @@ set_permissions() {
 
     print_header "Step 9: Set Permissions"
 
+    local to_dir="sites/$to_site"
+
     # Set sites/default writable
-    if [ -d "$to_site/$webroot/sites/default" ]; then
-        chmod u+w "$to_site/$webroot/sites/default"
+    if [ -d "$to_dir/$webroot/sites/default" ]; then
+        chmod u+w "$to_dir/$webroot/sites/default"
         ocmsg "Set sites/default writable"
     fi
 
     # Set settings.php writable
-    if [ -f "$to_site/$webroot/sites/default/settings.php" ]; then
-        chmod u+w "$to_site/$webroot/sites/default/settings.php"
+    if [ -f "$to_dir/$webroot/sites/default/settings.php" ]; then
+        chmod u+w "$to_dir/$webroot/sites/default/settings.php"
         ocmsg "Set settings.php writable"
     fi
 
@@ -325,8 +335,9 @@ install_dependencies() {
 
     print_header "Step 6: Install Dependencies"
 
+    local to_dir="sites/$to_site"
     local original_dir=$(pwd)
-    cd "$to_site" || return 1
+    cd "$to_dir" || return 1
 
     ocmsg "Running composer install to rebuild vendor directory..."
     if ddev composer install --no-interaction > /dev/null 2>&1; then
@@ -344,8 +355,9 @@ clear_cache() {
 
     print_header "Step 10: Clear Cache"
 
+    local to_dir="sites/$to_site"
     local original_dir=$(pwd)
-    cd "$to_site" || return 1
+    cd "$to_dir" || return 1
 
     # Try to clear cache and capture error
     local error_msg=$(ddev drush cr 2>&1)
@@ -375,8 +387,9 @@ generate_login_link() {
 
     print_header "Step 11: Generate Login Link"
 
+    local to_dir="sites/$to_site"
     local original_dir=$(pwd)
-    cd "$to_site" || return 1
+    cd "$to_dir" || return 1
 
     local login_url=$(ddev drush uli 2>&1)
 
@@ -414,39 +427,43 @@ copy_site() {
     # Step 1: Validate source
     print_header "Step 1: Validate Source"
 
-    if [ ! -d "$from_site" ]; then
-        print_error "Source site not found: $from_site"
+    local from_dir="sites/$from_site"
+
+    if [ ! -d "$from_dir" ]; then
+        print_error "Source site not found: $from_dir"
         return 1
     fi
 
-    if [ ! -f "$from_site/.ddev/config.yaml" ]; then
-        print_error "Source site is not a DDEV site: $from_site"
+    if [ ! -f "$from_dir/.ddev/config.yaml" ]; then
+        print_error "Source site is not a DDEV site: $from_dir"
         return 1
     fi
 
     local webroot=$(get_webroot "$from_site")
     ocmsg "Source webroot: $webroot"
-    print_status "OK" "Source site validated: $from_site"
+    print_status "OK" "Source site validated: $from_dir"
 
     # Step 2: Prepare destination
     print_header "Step 2: Prepare Destination"
 
+    local to_dir="sites/$to_site"
+
     if [ "$files_only" == "true" ]; then
         # Files-only mode: destination must already exist
-        if [ ! -d "$to_site" ]; then
-            print_error "Destination site not found: $to_site"
+        if [ ! -d "$to_dir" ]; then
+            print_error "Destination site not found: $to_dir"
             print_info "For files-only copy, destination must already exist"
             return 1
         fi
 
-        if [ ! -f "$to_site/.ddev/config.yaml" ]; then
-            print_error "Destination is not a DDEV site: $to_site"
+        if [ ! -f "$to_dir/.ddev/config.yaml" ]; then
+            print_error "Destination is not a DDEV site: $to_dir"
             print_info "Run 'ddev config' in the destination directory first"
             return 1
         fi
 
         if [ "$auto_yes" != "true" ]; then
-            print_status "WARN" "This will overwrite files in: $to_site"
+            print_status "WARN" "This will overwrite files in: $to_dir"
             echo -n "Continue with files-only copy? [y/N]: "
             read confirm
             if [[ ! "$confirm" =~ ^[Yy] ]]; then
@@ -454,16 +471,16 @@ copy_site() {
                 return 1
             fi
         else
-            print_status "WARN" "Overwriting files in: $to_site"
+            print_status "WARN" "Overwriting files in: $to_dir"
             echo "Auto-confirmed: Files-only copy"
         fi
 
-        print_status "OK" "Destination validated: $to_site"
+        print_status "OK" "Destination validated: $to_dir"
     else
         # Full copy mode: delete and recreate destination
-        if [ -d "$to_site" ]; then
+        if [ -d "$to_dir" ]; then
             if [ "$auto_yes" != "true" ]; then
-                print_status "WARN" "Destination site already exists: $to_site"
+                print_status "WARN" "Destination site already exists: $to_dir"
                 echo -n "Delete existing site and create fresh copy? [y/N]: "
                 read confirm
                 if [[ ! "$confirm" =~ ^[Yy] ]]; then
@@ -471,7 +488,7 @@ copy_site() {
                     return 1
                 fi
             else
-                print_status "WARN" "Destination site already exists: $to_site"
+                print_status "WARN" "Destination site already exists: $to_dir"
                 echo "Auto-confirmed: Delete and recreate"
             fi
 
@@ -482,17 +499,17 @@ copy_site() {
 
             # Stop DDEV if running
             ocmsg "Stopping DDEV for $to_site"
-            (cd "$to_site" && ddev stop > /dev/null 2>&1) || true
+            (cd "$to_dir" && ddev stop > /dev/null 2>&1) || true
 
             # Remove existing site
-            ocmsg "Removing existing site: $to_site"
-            rm -rf "$to_site"
+            ocmsg "Removing existing site: $to_dir"
+            rm -rf "$to_dir"
             print_status "OK" "Existing site removed"
         fi
 
         # Create destination directory
-        mkdir -p "$to_site"
-        print_status "OK" "Destination prepared: $to_site"
+        mkdir -p "$to_dir"
+        print_status "OK" "Destination prepared: $to_dir"
     fi
 
     # Step 3: Copy files
@@ -502,9 +519,10 @@ copy_site() {
     fi
 
     # Remove .ddev if it was copied (we'll recreate it for full copy)
-    if [ "$files_only" != "true" ] && [ -d "$to_site/.ddev" ]; then
+    local to_dir="sites/$to_site"
+    if [ "$files_only" != "true" ] && [ -d "$to_dir/.ddev" ]; then
         ocmsg "Removing copied .ddev directory"
-        rm -rf "$to_site/.ddev"
+        rm -rf "$to_dir/.ddev"
     fi
 
     # Skip database operations for files-only mode
@@ -555,7 +573,8 @@ copy_site() {
     echo -e "${GREEN}✓${NC} Destination: $to_site"
 
     # Get site URL
-    local site_url=$(cd "$to_site" && ddev describe 2>/dev/null | grep -oP 'https://[^ ,]+' | head -1)
+    local to_dir="sites/$to_site"
+    local site_url=$(cd "$to_dir" && ddev describe 2>/dev/null | grep -oP 'https://[^ ,]+' | head -1)
     if [ -n "$site_url" ]; then
         echo ""
         echo -e "${BOLD}Site URL:${NC} $site_url"

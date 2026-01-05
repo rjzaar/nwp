@@ -498,6 +498,8 @@ pl status
 ./scripts/commands/install.sh nwp
 ```
 
+Sites are installed to `~/nwp/sites/<sitename>/` directory.
+
 **Optional symlinks for backward compatibility:**
 
 ```bash

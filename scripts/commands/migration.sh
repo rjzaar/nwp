@@ -242,7 +242,7 @@ analyze_database() {
 # Main analyze command
 cmd_analyze() {
     local sitename="$1"
-    local site_dir="$SCRIPT_DIR/$sitename"
+    local site_dir="$SCRIPT_DIR/sites/$sitename"
 
     print_header "Analyzing Migration Source: $sitename"
 
@@ -382,7 +382,7 @@ cmd_analyze() {
 
 cmd_prepare() {
     local sitename="$1"
-    local site_dir="$SCRIPT_DIR/$sitename"
+    local site_dir="$SCRIPT_DIR/sites/$sitename"
 
     print_header "Preparing Target Site: $sitename"
 
@@ -409,7 +409,7 @@ cmd_prepare() {
     # Create target Drupal site
     local target_name="${sitename}_target"
 
-    if [ -d "$SCRIPT_DIR/$target_name" ]; then
+    if [ -d "$SCRIPT_DIR/sites/$target_name" ]; then
         print_warning "Target site already exists: $target_name"
         read -p "Continue with existing site? (y/N) " -n 1 -r
         echo
@@ -426,7 +426,7 @@ cmd_prepare() {
 
     # Install migration modules
     print_info "Installing migration modules..."
-    cd "$SCRIPT_DIR/$target_name"
+    cd "$SCRIPT_DIR/sites/$target_name"
 
     # Enable core migrate modules
     ddev drush en migrate migrate_drupal migrate_drupal_ui -y 2>/dev/null || true
@@ -457,7 +457,7 @@ cmd_prepare() {
     print_status "OK" "Target site prepared: $target_name"
     echo ""
     echo "Next steps:"
-    echo "  1. Configure source database in $target_name/web/sites/default/settings.php"
+    echo "  1. Configure source database in sites/$target_name/web/sites/default/settings.php"
     echo "  2. Run: ./migration.sh run $sitename"
 }
 
@@ -468,7 +468,7 @@ cmd_prepare() {
 cmd_run() {
     local sitename="$1"
     local dry_run="${2:-false}"
-    local site_dir="$SCRIPT_DIR/$sitename"
+    local site_dir="$SCRIPT_DIR/sites/$sitename"
     local target_name="${sitename}_target"
 
     print_header "Running Migration: $sitename"
@@ -478,13 +478,13 @@ cmd_run() {
     fi
 
     # Check target site
-    if [ ! -d "$SCRIPT_DIR/$target_name" ]; then
+    if [ ! -d "$SCRIPT_DIR/sites/$target_name" ]; then
         print_error "Target site not found. Run prepare first:"
         echo "  ./migration.sh prepare $sitename"
         return 1
     fi
 
-    cd "$SCRIPT_DIR/$target_name"
+    cd "$SCRIPT_DIR/sites/$target_name"
 
     # Get source type
     local source_type=""
@@ -531,12 +531,12 @@ cmd_verify() {
 
     print_header "Verifying Migration: $sitename"
 
-    if [ ! -d "$SCRIPT_DIR/$target_name" ]; then
+    if [ ! -d "$SCRIPT_DIR/sites/$target_name" ]; then
         print_error "Target site not found: $target_name"
         return 1
     fi
 
-    cd "$SCRIPT_DIR/$target_name"
+    cd "$SCRIPT_DIR/sites/$target_name"
 
     # Check migration status
     print_info "Checking migration status..."
@@ -567,7 +567,7 @@ cmd_verify() {
 
 cmd_status() {
     local sitename="$1"
-    local site_dir="$SCRIPT_DIR/$sitename"
+    local site_dir="$SCRIPT_DIR/sites/$sitename"
 
     print_header "Migration Status: $sitename"
 
@@ -589,7 +589,7 @@ cmd_status() {
     [ -d "$site_dir" ] && echo "  Migration stub: EXISTS" || echo "  Migration stub: MISSING"
     [ -d "$site_dir/source" ] && echo "  Source files: EXISTS" || echo "  Source files: MISSING"
     [ -d "$site_dir/database" ] && echo "  Database dumps: EXISTS" || echo "  Database dumps: MISSING"
-    [ -d "$SCRIPT_DIR/${sitename}_target" ] && echo "  Target site: EXISTS" || echo "  Target site: MISSING"
+    [ -d "$SCRIPT_DIR/sites/${sitename}_target" ] && echo "  Target site: EXISTS" || echo "  Target site: MISSING"
 }
 
 ################################################################################

@@ -234,6 +234,7 @@ cmd_list() {
 # Show site status
 cmd_status() {
     local sitename="$1"
+    local site_dir="sites/$sitename"
 
     if [ -z "$sitename" ]; then
         print_error "Sitename required"
@@ -244,27 +245,27 @@ cmd_status() {
     echo ""
 
     # Check directory
-    if [ -d "$sitename" ]; then
-        print_success "Directory exists: $sitename"
+    if [ -d "$site_dir" ]; then
+        print_success "Directory exists: $site_dir"
     else
-        print_error "Directory not found: $sitename"
+        print_error "Directory not found: $site_dir"
         return 1
     fi
 
     # Check DDEV
-    if [ -f "$sitename/.ddev/config.yaml" ]; then
+    if [ -f "$site_dir/.ddev/config.yaml" ]; then
         print_success "DDEV configured"
-        local ddev_status=$(cd "$sitename" && ddev describe 2>/dev/null | grep -E "^[a-z]+" | head -1 || echo "unknown")
+        local ddev_status=$(cd "$site_dir" && ddev describe 2>/dev/null | grep -E "^[a-z]+" | head -1 || echo "unknown")
         echo "    Status: $ddev_status"
     else
         echo -e "  ${YELLOW}!${NC} DDEV not configured"
     fi
 
     # Check git
-    if [ -d "$sitename/.git" ]; then
+    if [ -d "$site_dir/.git" ]; then
         print_success "Git repository"
-        local branch=$(cd "$sitename" && git branch --show-current 2>/dev/null || echo "unknown")
-        local commit=$(cd "$sitename" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+        local branch=$(cd "$site_dir" && git branch --show-current 2>/dev/null || echo "unknown")
+        local commit=$(cd "$site_dir" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
         echo "    Branch: $branch"
         echo "    Commit: $commit"
     else

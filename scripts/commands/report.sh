@@ -382,13 +382,19 @@ wrapper_mode() {
     local cmd="${command_args[0]}"
     local cmd_display="$cmd"
 
-    # If it's just a script name (no path), look in SCRIPT_DIR
+    # If it's just a script name (no path), look in SCRIPT_DIR and sites/
     if [[ ! "$cmd" =~ / ]]; then
         if [[ -x "$SCRIPT_DIR/$cmd" ]]; then
             command_args[0]="$SCRIPT_DIR/$cmd"
             cmd_display="$cmd"
         elif [[ -x "$SCRIPT_DIR/${cmd}.sh" ]]; then
             command_args[0]="$SCRIPT_DIR/${cmd}.sh"
+            cmd_display="${cmd}.sh"
+        elif [[ -x "$SCRIPT_DIR/sites/$cmd" ]]; then
+            command_args[0]="$SCRIPT_DIR/sites/$cmd"
+            cmd_display="$cmd"
+        elif [[ -x "$SCRIPT_DIR/sites/${cmd}.sh" ]]; then
+            command_args[0]="$SCRIPT_DIR/sites/${cmd}.sh"
             cmd_display="${cmd}.sh"
         fi
     fi

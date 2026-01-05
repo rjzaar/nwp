@@ -93,9 +93,10 @@ nwp/
 │   └── templates/        # Site templates
 │
 └── Site Directories
-    ├── nwp1/             # Installed site
-    ├── nwp2/             # Another site
-    └── mysite_stg/       # Staging environment
+    └── sites/            # Site installations directory
+        ├── nwp1/         # Installed site
+        ├── nwp2/         # Another site
+        └── mysite_stg/   # Staging environment
 ```
 
 ## How NWP Works
@@ -421,7 +422,7 @@ Available Recipes
 ./install.sh d
 ```
 
-This creates a new Drupal site in `./d/` (or `./d1/` if `d` exists).
+This creates a new Drupal site in `./sites/d/` (or `./sites/d1/` if `d` exists).
 
 ### Install with Custom Name
 
@@ -429,7 +430,7 @@ This creates a new Drupal site in `./d/` (or `./d1/` if `d` exists).
 ./install.sh d myproject
 ```
 
-Creates the site in `./myproject/`.
+Creates the site in `./sites/myproject/`.
 
 ### Install with Test Content
 
@@ -463,7 +464,7 @@ If installation fails at step 5:
 After installation:
 
 ```bash
-cd myproject
+cd sites/myproject
 ddev launch      # Opens site in browser
 ddev drush uli   # Generates admin login link
 ```
@@ -531,6 +532,8 @@ sitebackups/
         ├── files.tar.gz (full backup only)
         └── backup.info
 ```
+
+Note: Backups reference sites by name (e.g., `nwp5`) regardless of their location in the `sites/` directory.
 
 ### Practice Exercises
 
@@ -1187,11 +1190,11 @@ The report automatically removes:
 
 NWP uses postfix naming:
 
-| Environment | Naming Pattern | Example |
-|-------------|---------------|---------|
-| Development | `sitename` | `nwp5` |
-| Staging | `sitename_stg` | `nwp5_stg` |
-| Production | `sitename_prod` | `nwp5_prod` |
+| Environment | Naming Pattern | Example | Path |
+|-------------|----------------|---------|------|
+| Development | `sitename` | `nwp5` | `~/nwp/sites/nwp5/` |
+| Staging | `sitename_stg` | `nwp5_stg` | `~/nwp/sites/nwp5_stg/` |
+| Production | `sitename_prod` | `nwp5_prod` | Server or `~/nwp/sites/nwp5_prod/` |
 
 ### Deployment Flow
 
@@ -1509,7 +1512,7 @@ The `security.sh` script applies security hardening.
 ./security.sh test1
 
 # Exercise 2
-cd test1 && ddev drush pm:list | grep security
+cd sites/test1 && ddev drush pm:list | grep security
 ```
 </details>
 
@@ -1761,7 +1764,8 @@ docker ps
 # Restart Docker
 sudo systemctl restart docker
 
-# Remove and recreate
+# Remove and recreate (from site directory)
+cd sites/mysite
 ddev delete -O
 ddev start
 ```

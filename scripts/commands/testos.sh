@@ -192,28 +192,36 @@ validate_site() {
 
     print_header "Validating Site"
 
-    # Check if site exists
-    if [ ! -d "$site" ]; then
+    # Check if site exists - look in sites/ subdirectory first
+    local site_path=""
+    if [ -d "sites/$site" ]; then
+        site_path="sites/$site"
+    elif [ -d "$site" ]; then
+        site_path="$site"
+    else
         print_error "Site not found: $site"
         return 1
     fi
 
     # Check if it's a DDEV site
-    if [ ! -f "$site/.ddev/config.yaml" ]; then
-        print_error "Not a DDEV site: $site"
+    if [ ! -f "$site_path/.ddev/config.yaml" ]; then
+        print_error "Not a DDEV site: $site_path"
         return 1
     fi
 
-    print_status "OK" "Site validated: $site"
+    # Update site variable to use the found path
+    site="$site_path"
+
+    print_status "OK" "Site validated: $site_path"
 
     # Get the docroot for this site
-    local docroot=$(get_docroot "$site")
+    local docroot=$(get_docroot "$site_path")
     ocmsg "Detected docroot: $docroot"
 
     # Check if it's OpenSocial
-    if [ ! -d "$site/$docroot/profiles/contrib/social" ]; then
+    if [ ! -d "$site_path/$docroot/profiles/contrib/social" ]; then
         print_status "WARN" "This may not be an OpenSocial site"
-        print_info "OpenSocial profile not found at: $site/$docroot/profiles/contrib/social"
+        print_info "OpenSocial profile not found at: $site_path/$docroot/profiles/contrib/social"
 
         if [ "$AUTO_YES" != "true" ]; then
             echo -n "Continue anyway? [y/N]: "
@@ -671,9 +679,17 @@ list_features() {
 
     print_header "Available Behat Features"
 
+    # Check if site exists - look in sites/ subdirectory first
+    local site_path=""
+    if [ -d "sites/$site" ]; then
+        site_path="sites/$site"
+    elif [ -d "$site" ]; then
+        site_path="$site"
+    fi
+
     # Get docroot for this site
-    local docroot=$(get_docroot "$site")
-    local features_path="$site/$docroot/profiles/contrib/social/tests/behat/features/capabilities"
+    local docroot=$(get_docroot "$site_path")
+    local features_path="$site_path/$docroot/profiles/contrib/social/tests/behat/features/capabilities"
 
     if [ ! -d "$features_path" ]; then
         print_error "Features directory not found at: $features_path"

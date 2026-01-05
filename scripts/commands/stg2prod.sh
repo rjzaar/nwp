@@ -171,12 +171,12 @@ get_base_name() {
 is_prod_mode() {
     local sitename=$1
 
-    if [ ! -d "$sitename" ]; then
+    if [ ! -d "sites/$sitename" ]; then
         return 1
     fi
 
     local original_dir=$(pwd)
-    cd "$sitename" || return 1
+    cd "sites/$sitename" || return 1
 
     # Check CSS preprocessing setting - 1 means prod mode
     local css_preprocess=$(ddev drush config:get system.performance css.preprocess 2>/dev/null | grep -oP "'\K[^']+")
@@ -280,11 +280,11 @@ validate_deployment() {
     print_header "Step 1: Validate Deployment Configuration"
 
     # Check if staging site exists
-    if [ ! -d "$stg_site" ]; then
-        print_error "Staging site not found: $stg_site"
+    if [ ! -d "sites/$stg_site" ]; then
+        print_error "Staging site not found: sites/$stg_site"
         return 1
     fi
-    print_status "OK" "Staging site exists: $stg_site"
+    print_status "OK" "Staging site exists: sites/$stg_site"
 
     # Get recipe from sites: or use base_name
     local recipe=""
@@ -422,8 +422,8 @@ export_config_staging() {
     print_header "Step 3: Export Configuration from Staging"
 
     local original_dir=$(pwd)
-    cd "$stg_site" || {
-        print_error "Cannot access staging site: $stg_site"
+    cd "sites/$stg_site" || {
+        print_error "Cannot access staging site: sites/$stg_site"
         return 1
     }
 
@@ -494,7 +494,7 @@ sync_files() {
         ssh_opts="ssh -i $SSH_KEY -p $SSH_PORT"
     fi
 
-    local rsync_cmd="rsync -avz --delete -e \"$ssh_opts\" ${excludes[@]} $stg_site/ $SSH_USER@$SSH_HOST:$PROD_PATH/"
+    local rsync_cmd="rsync -avz --delete -e \"$ssh_opts\" ${excludes[@]} sites/$stg_site/ $SSH_USER@$SSH_HOST:$PROD_PATH/"
 
     ocmsg "Rsync command: $rsync_cmd"
 
@@ -842,7 +842,7 @@ main() {
     ocmsg "Start step: $START_STEP"
 
     # Ensure staging site is in production mode before deploying to prod
-    if [ "$DRY_RUN" != "true" ] && [ -d "$SITENAME" ]; then
+    if [ "$DRY_RUN" != "true" ] && [ -d "sites/$SITENAME" ]; then
         if ! ensure_prod_mode "$SITENAME"; then
             print_error "Cannot deploy to production without staging site in production mode"
             exit 1

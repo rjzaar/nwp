@@ -281,7 +281,7 @@ run_non_interactive() {
             print_status "OK" "Import complete: $site_name"
             echo ""
             echo "Next steps:"
-            echo "  cd $site_name && ddev launch"
+            echo "  cd sites/$site_name && ddev launch"
         else
             print_error "Import failed: $site_name"
             exit 1

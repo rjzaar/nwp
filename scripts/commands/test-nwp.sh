@@ -170,22 +170,24 @@ run_test() {
 cleanup_test_sites() {
     print_info "Cleaning up test sites..."
 
-    # Stop all test sites
-    for site in ${TEST_SITE_PREFIX}*; do
-        if [ -d "$site" ]; then
-            print_info "Stopping $site..."
-            cd "$site" && ddev stop 2>/dev/null || true
-            cd "$SCRIPT_DIR"
-        fi
-    done
+    # Stop all test sites in sites/ subdirectory
+    if [ -d "sites" ]; then
+        for site in sites/${TEST_SITE_PREFIX}*; do
+            if [ -d "$site" ]; then
+                print_info "Stopping $site..."
+                cd "$site" && ddev stop 2>/dev/null || true
+                cd "$SCRIPT_DIR"
+            fi
+        done
 
-    # Remove test site directories
-    for site in ${TEST_SITE_PREFIX}*; do
-        if [ -d "$site" ]; then
-            print_info "Removing $site..."
-            rm -rf "$site"
-        fi
-    done
+        # Remove test site directories
+        for site in sites/${TEST_SITE_PREFIX}*; do
+            if [ -d "$site" ]; then
+                print_info "Removing $site..."
+                rm -rf "$site"
+            fi
+        done
+    fi
 
     # Clean up backups
     if [ -d "sitebackups" ]; then
@@ -205,12 +207,27 @@ cleanup_test_sites() {
 
 site_exists() {
     local site="$1"
-    [ -d "$site" ] && [ -f "$site/.ddev/config.yaml" ]
+    # Check sites/ subdirectory first, then fall back to root
+    if [ -d "sites/$site" ] && [ -f "sites/$site/.ddev/config.yaml" ]; then
+        return 0
+    elif [ -d "$site" ] && [ -f "$site/.ddev/config.yaml" ]; then
+        return 0
+    fi
+    return 1
 }
 
 site_is_running() {
     local site="$1"
-    cd "$site" && ddev describe >/dev/null 2>&1
+    # Check sites/ subdirectory first, then fall back to root
+    local site_path=""
+    if [ -d "sites/$site" ]; then
+        site_path="sites/$site"
+    elif [ -d "$site" ]; then
+        site_path="$site"
+    else
+        return 1
+    fi
+    cd "$site_path" && ddev describe >/dev/null 2>&1
     local result=$?
     cd "$SCRIPT_DIR"
     return $result
@@ -221,8 +238,18 @@ drush_works() {
     local max_attempts=3
     local attempt=1
 
+    # Check sites/ subdirectory first, then fall back to root
+    local site_path=""
+    if [ -d "sites/$site" ]; then
+        site_path="sites/$site"
+    elif [ -d "$site" ]; then
+        site_path="$site"
+    else
+        return 1
+    fi
+
     while [ $attempt -le $max_attempts ]; do
-        if cd "$site" && ddev drush status >/dev/null 2>&1; then
+        if cd "$site_path" && ddev drush status >/dev/null 2>&1; then
             cd "$SCRIPT_DIR"
             return 0
         fi
@@ -239,7 +266,9 @@ drush_works() {
 
 backup_exists() {
     local site="$1"
-    [ -d "sitebackups/$site" ] && [ -n "$(ls -A sitebackups/$site 2>/dev/null)" ]
+    # Extract just the site name if path includes sites/
+    local site_name="${site#sites/}"
+    [ -d "sitebackups/$site_name" ] && [ -n "$(ls -A sitebackups/$site_name 2>/dev/null)" ]
 }
 
 # Start testing
@@ -341,7 +370,11 @@ run_test "Backup directory exists" "backup_exists $TEST_SITE_PREFIX"
 print_header "Test 3: Restore Functionality"
 
 # Modify site before restore
-if cd "$TEST_SITE_PREFIX" 2>/dev/null; then
+local test_site_path="sites/$TEST_SITE_PREFIX"
+if [ ! -d "$test_site_path" ]; then
+    test_site_path="$TEST_SITE_PREFIX"
+fi
+if cd "$test_site_path" 2>/dev/null; then
     ddev drush config:set system.site name "Modified Site" -y >/dev/null 2>&1 || true
     cd "$SCRIPT_DIR"
 fi
@@ -355,7 +388,11 @@ run_test "Create database-only backup" "./backup.sh -b $TEST_SITE_PREFIX 'DB_onl
 run_test "Restore from database-only backup" "./restore.sh -bfy $TEST_SITE_PREFIX"
 
 # Verify restoration
-if cd "$TEST_SITE_PREFIX" 2>/dev/null; then
+local test_site_path="sites/$TEST_SITE_PREFIX"
+if [ ! -d "$test_site_path" ]; then
+    test_site_path="$TEST_SITE_PREFIX"
+fi
+if cd "$test_site_path" 2>/dev/null; then
     SITE_NAME=$(ddev drush config:get system.site name --format=string 2>/dev/null || echo "")
     cd "$SCRIPT_DIR"
     if [ "$SITE_NAME" != "Modified Site" ]; then
@@ -382,7 +419,11 @@ print_header "Test 5: Dev/Prod Mode Switching"
 
 # Check if drush is functional before running dev/prod tests
 DRUSH_FUNCTIONAL=false
-if cd "$TEST_SITE_PREFIX" 2>/dev/null; then
+local test_site_path="sites/$TEST_SITE_PREFIX"
+if [ ! -d "$test_site_path" ]; then
+    test_site_path="$TEST_SITE_PREFIX"
+fi
+if cd "$test_site_path" 2>/dev/null; then
     if ddev drush status 2>&1 | grep -q "Drupal version"; then
         DRUSH_FUNCTIONAL=true
     fi
@@ -401,7 +442,11 @@ else
     run_test "Enable development mode" "./make.sh -vy $TEST_SITE_PREFIX"
 
     # Check if dev modules are enabled
-    if cd "$TEST_SITE_PREFIX" 2>/dev/null; then
+    local test_site_path="sites/$TEST_SITE_PREFIX"
+    if [ ! -d "$test_site_path" ]; then
+        test_site_path="$TEST_SITE_PREFIX"
+    fi
+    if cd "$test_site_path" 2>/dev/null; then
         DEVEL_ENABLED=$(ddev drush pm:list --status=enabled --format=list 2>/dev/null | grep -c "^devel$" 2>/dev/null || true)
         DEVEL_ENABLED=${DEVEL_ENABLED:-0}  # Default to 0 if empty
         cd "$SCRIPT_DIR"
@@ -415,7 +460,11 @@ else
     run_test "Enable production mode" "./make.sh -py $TEST_SITE_PREFIX"
 
     # Check if dev modules are disabled
-    if cd "$TEST_SITE_PREFIX" 2>/dev/null; then
+    local test_site_path="sites/$TEST_SITE_PREFIX"
+    if [ ! -d "$test_site_path" ]; then
+        test_site_path="$TEST_SITE_PREFIX"
+    fi
+    if cd "$test_site_path" 2>/dev/null; then
         DEVEL_DISABLED=$(ddev drush pm:list --status=disabled --format=list 2>/dev/null | grep -c "^devel$" 2>/dev/null || true)
         DEVEL_DISABLED=${DEVEL_DISABLED:-0}  # Default to 0 if empty
         cd "$SCRIPT_DIR"
@@ -437,7 +486,11 @@ run_test "Staging site is running" "site_is_running ${TEST_SITE_PREFIX}_stg" "wa
 run_test "Staging site drush works" "drush_works ${TEST_SITE_PREFIX}_stg" "warn"
 
 # Verify configuration was imported
-if cd "${TEST_SITE_PREFIX}_stg" 2>/dev/null; then
+local stg_site_path="sites/${TEST_SITE_PREFIX}_stg"
+if [ ! -d "$stg_site_path" ]; then
+    stg_site_path="${TEST_SITE_PREFIX}_stg"
+fi
+if cd "$stg_site_path" 2>/dev/null; then
     CONFIG_IMPORT=$(ddev drush config:status 2>/dev/null | grep -c "No differences" || echo "0")
     cd "$SCRIPT_DIR"
     if [ "$CONFIG_IMPORT" -gt 0 ]; then
@@ -455,7 +508,11 @@ if [ -x "./testos.sh" ]; then
     run_test "testos.sh is executable" "true"
 
     # Test PHPStan (may legitimately fail on fresh OpenSocial)
-    if cd "$TEST_SITE_PREFIX" 2>/dev/null; then
+    local test_site_path="sites/$TEST_SITE_PREFIX"
+    if [ ! -d "$test_site_path" ]; then
+        test_site_path="$TEST_SITE_PREFIX"
+    fi
+    if cd "$test_site_path" 2>/dev/null; then
         print_info "Running PHPStan (this may take a minute)..."
         if ../testos.sh -p >/dev/null 2>&1; then
             run_test "PHPStan analysis" "true"
@@ -467,7 +524,7 @@ if [ -x "./testos.sh" ]; then
     fi
 
     # Test CodeSniffer (may legitimately fail on fresh OpenSocial)
-    if cd "$TEST_SITE_PREFIX" 2>/dev/null; then
+    if cd "$test_site_path" 2>/dev/null; then
         print_info "Running CodeSniffer..."
         if ../testos.sh -c >/dev/null 2>&1; then
             run_test "CodeSniffer analysis" "true"
@@ -485,10 +542,10 @@ fi
 print_header "Test 8: Site Verification"
 
 ALL_TEST_SITES=(
-    "$TEST_SITE_PREFIX"
-    "${TEST_SITE_PREFIX}_copy"
-    "${TEST_SITE_PREFIX}_files"
-    "${TEST_SITE_PREFIX}_stg"
+    "sites/$TEST_SITE_PREFIX"
+    "sites/${TEST_SITE_PREFIX}_copy"
+    "sites/${TEST_SITE_PREFIX}_files"
+    "sites/${TEST_SITE_PREFIX}_stg"
 )
 
 for site in "${ALL_TEST_SITES[@]}"; do
@@ -511,13 +568,13 @@ print_header "Test 8b: Delete Functionality"
 print_info "Creating temporary sites for deletion testing..."
 
 # Get list of existing test_nwp* directories before install
-BEFORE_INSTALL=($(ls -d ${TEST_SITE_PREFIX}* 2>/dev/null | sort))
+BEFORE_INSTALL=($(ls -d sites/${TEST_SITE_PREFIX}* 2>/dev/null | sort))
 
 # Create first deletion test site
 run_test "Create site for deletion test" "./install.sh test-nwp"
 
 # Find the newly created directory
-AFTER_INSTALL=($(ls -d ${TEST_SITE_PREFIX}* 2>/dev/null | sort))
+AFTER_INSTALL=($(ls -d sites/${TEST_SITE_PREFIX}* 2>/dev/null | sort))
 DELETE_TEST_SITE=""
 for site in "${AFTER_INSTALL[@]}"; do
     found=false
@@ -542,11 +599,11 @@ if [ -n "$DELETE_TEST_SITE" ] && site_exists "$DELETE_TEST_SITE"; then
     run_test "Backup created during deletion" "[ -d sitebackups/$DELETE_TEST_SITE ] && [ -n \"\$(find sitebackups/$DELETE_TEST_SITE -name '*.tar.gz' 2>/dev/null)\" ]"
 
     # Create second test site for keep-backups test
-    BEFORE_INSTALL2=($(ls -d ${TEST_SITE_PREFIX}* 2>/dev/null | sort))
+    BEFORE_INSTALL2=($(ls -d sites/${TEST_SITE_PREFIX}* 2>/dev/null | sort))
     run_test "Create second deletion test site" "./install.sh test-nwp"
 
     # Find the second newly created directory
-    AFTER_INSTALL2=($(ls -d ${TEST_SITE_PREFIX}* 2>/dev/null | sort))
+    AFTER_INSTALL2=($(ls -d sites/${TEST_SITE_PREFIX}* 2>/dev/null | sort))
     DELETE_TEST_SITE2=""
     for site in "${AFTER_INSTALL2[@]}"; do
         found=false

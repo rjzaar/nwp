@@ -414,17 +414,25 @@ main() {
         exit 1
     fi
 
-    # Check if site exists
-    if [ ! -d "$SITENAME" ]; then
+    # Check if site exists - look in sites/ subdirectory first
+    local SITE_PATH=""
+    if [ -d "sites/$SITENAME" ]; then
+        SITE_PATH="sites/$SITENAME"
+    elif [ -d "$SITENAME" ]; then
+        SITE_PATH="$SITENAME"
+    else
         print_error "Site directory not found: $SITENAME"
         exit 1
     fi
 
     # Check if DDEV is configured
-    if [ ! -f "$SITENAME/.ddev/config.yaml" ]; then
-        print_error "DDEV not configured in $SITENAME"
+    if [ ! -f "$SITE_PATH/.ddev/config.yaml" ]; then
+        print_error "DDEV not configured in $SITE_PATH"
         exit 1
     fi
+
+    # Update SITENAME to use the found path
+    SITENAME="$SITE_PATH"
 
     print_header "NWP Test Suite: $SITENAME"
 

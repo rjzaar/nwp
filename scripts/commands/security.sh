@@ -316,8 +316,16 @@ check_all_sites() {
 
     for site in $sites; do
         total=$((total + 1))
-        if [ -d "$site" ]; then
-            if ! security_check "$site"; then
+        # Check both sites/ subdirectory and root directory
+        local site_path=""
+        if [ -d "sites/$site" ]; then
+            site_path="sites/$site"
+        elif [ -d "$site" ]; then
+            site_path="$site"
+        fi
+
+        if [ -n "$site_path" ]; then
+            if ! security_check "$site_path"; then
                 issues=$((issues + 1))
             fi
         else

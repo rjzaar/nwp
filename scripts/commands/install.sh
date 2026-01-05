@@ -14,10 +14,10 @@ set -euo pipefail
 #   target_name                  - Optional: custom directory/site name
 #
 # Examples:
-#   ./install.sh nwp              - Install using 'nwp' recipe in 'nwp' directory
-#   ./install.sh nwp client1      - Install using 'nwp' recipe in 'client1' directory
+#   ./install.sh nwp              - Install using 'nwp' recipe in 'sites/nwp' directory
+#   ./install.sh nwp client1      - Install using 'nwp' recipe in 'sites/client1' directory
 #   ./install.sh nwp mysite s=3   - Resume 'mysite' installation from step 3
-#   ./install.sh nwp site1 c      - Install 'nwp' recipe as 'site1' with test content
+#   ./install.sh nwp site1 c      - Install 'nwp' recipe as 'sites/site1' with test content
 #
 # Options:
 #   c, --create-content          - Create test content (5 users, 5 docs, 5 workflow assignments)
@@ -133,12 +133,15 @@ handle_migration() {
 
     print_header "Migration Site Setup"
 
+    # Ensure sites directory exists
+    mkdir -p sites
+
     # Determine target name
     local migration_name=""
     if [ -n "$target" ]; then
-        migration_name="$target"
+        migration_name="sites/$target"
     else
-        migration_name="${recipe}_pre"
+        migration_name="sites/${recipe}_pre"
     fi
 
     # Check if directory already exists
@@ -381,11 +384,14 @@ main() {
         base_name="$recipe"
     fi
 
+    # Ensure sites directory exists
+    mkdir -p sites
+
     # Determine installation directory based on whether we're resuming
     local install_dir=""
     if [ -n "$start_step" ]; then
-        # When resuming, use base name directly (no auto-increment)
-        install_dir="$base_name"
+        # When resuming, use base name with sites/ prefix (no auto-increment)
+        install_dir="sites/$base_name"
     else
         # Fresh install - find available directory with auto-increment
         install_dir=$(get_available_dirname "$base_name")

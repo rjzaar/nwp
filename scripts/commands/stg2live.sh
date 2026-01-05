@@ -129,7 +129,7 @@ install_security_modules() {
     fi
 
     local original_dir=$(pwd)
-    cd "$stg_site" || return 1
+    cd "sites/$stg_site" || return 1
 
     # Install each module via composer and enable
     while IFS= read -r module; do
@@ -252,8 +252,8 @@ deploy_to_live() {
     echo ""
 
     # Check staging site exists
-    if [ ! -d "$stg_site" ]; then
-        print_error "Staging site not found: $stg_site"
+    if [ ! -d "sites/$stg_site" ]; then
+        print_error "Staging site not found: sites/$stg_site"
         return 1
     fi
 
@@ -284,8 +284,8 @@ deploy_to_live() {
 
     # Get webroot from staging site
     local webroot="web"
-    if [ -f "$stg_site/.ddev/config.yaml" ]; then
-        webroot=$(grep "^docroot:" "$stg_site/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
+    if [ -f "sites/$stg_site/.ddev/config.yaml" ]; then
+        webroot=$(grep "^docroot:" "sites/$stg_site/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
         [ -z "$webroot" ] && webroot="web"
     fi
 
@@ -316,7 +316,7 @@ deploy_to_live() {
 
     # Rsync
     if rsync -avz --delete "${excludes[@]}" \
-        "$stg_site/" \
+        "sites/$stg_site/" \
         "${ssh_user}@${server_ip}:/var/www/${base_name}/"; then
         print_status "OK" "Files synced"
     else

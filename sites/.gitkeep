@@ -1,4 +1,26 @@
 # Sites Directory
 
-Site installations go here. Contents are gitignored.
+All NWP site installations are placed in this directory to keep the repository root clean and organized.
+
+## Directory Structure
+
+Sites are installed at: `~/nwp/sites/<sitename>/`
+
+Examples:
+- `~/nwp/sites/nwp5/` - Development site
+- `~/nwp/sites/nwp5_stg/` - Staging site
+- `~/nwp/sites/avc/` - Custom-named site
+
+## Usage
+
+When you run:
+```bash
+pl install d mysite
+```
+
+The site is created at `~/nwp/sites/mysite/`
+
+## Git Ignore
+
+All contents of this directory are gitignored via the pattern `sites/*/` in the root `.gitignore` file. Only this `.gitkeep` file is tracked to preserve the directory structure.
 

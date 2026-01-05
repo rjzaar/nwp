@@ -364,12 +364,12 @@ if should_run_step 1 "$START_STEP"; then
     print_header "Step 1: Validate Pull Configuration"
 
     # Check staging site exists
-    if [ ! -d "$SITENAME" ]; then
-        print_error "Staging site not found: $SITENAME"
+    if [ ! -d "sites/$SITENAME" ]; then
+        print_error "Staging site not found: sites/$SITENAME"
         print_info "Create staging site first with: ./install.sh $SITENAME"
         exit 1
     fi
-    print_status "OK" "Staging site exists: $SITENAME"
+    print_status "OK" "Staging site exists: sites/$SITENAME"
 
     # Get production config
     PROD_SERVER=$(get_prod_config "$SITENAME" "server")
@@ -468,7 +468,7 @@ if should_run_step 3 "$START_STEP"; then
             print_status "WARN" "Backup failed, but continuing"
         fi
     else
-        print_status "INFO" "Would create backup of $SITENAME"
+        print_status "INFO" "Would create backup of sites/$SITENAME"
     fi
 fi
 
@@ -501,7 +501,7 @@ if should_run_step 4 "$START_STEP" && [ "$DB_ONLY" = false ]; then
         if rsync -avz --delete \
             -e "$rsync_ssh" \
             "$user_host:$PROD_PATH/" \
-            "$SITENAME/" \
+            "sites/$SITENAME/" \
             --exclude=".ddev" \
             --exclude=".git" \
             --exclude="html/sites/default/files" \
@@ -568,7 +568,7 @@ if should_run_step 6 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
     if [ "$DRY_RUN" = false ]; then
         print_info "Importing database to staging..."
 
-        cd "$SITENAME" || exit 1
+        cd "sites/$SITENAME" || exit 1
 
         # Import database
         if ddev import-db --file="$TMP_SQL"; then
@@ -596,7 +596,7 @@ if should_run_step 7 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
     print_header "Step 7: Update Database"
 
     if [ "$DRY_RUN" = false ]; then
-        cd "$SITENAME" || exit 1
+        cd "sites/$SITENAME" || exit 1
 
         print_info "Running database updates..."
         if ddev drush updatedb -y; then
@@ -619,7 +619,7 @@ if should_run_step 8 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
     print_header "Step 8: Import Configuration"
 
     if [ "$DRY_RUN" = false ]; then
-        cd "$SITENAME" || exit 1
+        cd "sites/$SITENAME" || exit 1
 
         print_info "Importing configuration..."
         if ddev drush config:import -y; then
@@ -660,7 +660,7 @@ if should_run_step 9 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
 
     if [ -n "$REINSTALL_MODULES" ]; then
         if [ "$DRY_RUN" = false ]; then
-            cd "$SITENAME" || exit 1
+            cd "sites/$SITENAME" || exit 1
 
             for module in $REINSTALL_MODULES; do
                 # Check if module is enabled
@@ -700,7 +700,7 @@ if should_run_step 10 "$START_STEP"; then
     print_header "Step 10: Clear Cache"
 
     if [ "$DRY_RUN" = false ]; then
-        cd "$SITENAME" || exit 1
+        cd "sites/$SITENAME" || exit 1
 
         print_info "Clearing cache..."
         if ddev drush cr; then

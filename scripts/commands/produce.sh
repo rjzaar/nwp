@@ -144,6 +144,7 @@ main() {
         echo ""
         print_info "Production server already provisioned"
         print_info "Deploy with: pl stg2prod $BASE_NAME"
+        print_info "Site directory: sites/${BASE_NAME}_prod"
         exit 0
     fi
 

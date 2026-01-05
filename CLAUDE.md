@@ -95,5 +95,5 @@ See `docs/DATA_SECURITY_BEST_PRACTICES.md` for the full security architecture.
 
 - `lib/` - Shared bash libraries
 - `recipes/` - Recipe definitions (os, d, nwp, dm, etc.)
-- `*/html/` or `*/web/` - Drupal webroot directories
-- Site directories are at the project root level (e.g., `nwp5/`, `avc/`)
+- `sites/` - All site installations go here (e.g., `sites/nwp/`, `sites/avc/`)
+- `sites/*/html/` or `sites/*/web/` - Drupal webroot directories within each site

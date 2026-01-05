@@ -111,8 +111,8 @@ install_dev_packages() {
     print_header "Step 1: Install Development Packages"
 
     local original_dir=$(pwd)
-    cd "$sitename" || {
-        print_error "Cannot access site directory: $sitename"
+    cd "sites/$sitename" || {
+        print_error "Cannot access site directory: sites/$sitename"
         return 1
     }
 
@@ -159,8 +159,8 @@ enable_dev_modules() {
     print_header "Step 2: Enable Development Modules"
 
     local original_dir=$(pwd)
-    cd "$sitename" || {
-        print_error "Cannot access site directory: $sitename"
+    cd "sites/$sitename" || {
+        print_error "Cannot access site directory: sites/$sitename"
         return 1
     }
 
@@ -211,8 +211,8 @@ configure_dev_settings() {
     print_header "Step 3: Configure Development Settings"
 
     local original_dir=$(pwd)
-    cd "$sitename" || {
-        print_error "Cannot access site directory: $sitename"
+    cd "sites/$sitename" || {
+        print_error "Cannot access site directory: sites/$sitename"
         return 1
     }
 
@@ -259,8 +259,8 @@ disable_dev_modules() {
     print_header "Step 1: Disable Development Modules"
 
     local original_dir=$(pwd)
-    cd "$sitename" || {
-        print_error "Cannot access site directory: $sitename"
+    cd "sites/$sitename" || {
+        print_error "Cannot access site directory: sites/$sitename"
         return 1
     }
 
@@ -310,8 +310,8 @@ remove_dev_packages() {
     print_header "Step 2: Remove Development Packages"
 
     local original_dir=$(pwd)
-    cd "$sitename" || {
-        print_error "Cannot access site directory: $sitename"
+    cd "sites/$sitename" || {
+        print_error "Cannot access site directory: sites/$sitename"
         return 1
     }
 
@@ -340,8 +340,8 @@ configure_prod_settings() {
     print_header "Step 3: Configure Production Settings"
 
     local original_dir=$(pwd)
-    cd "$sitename" || {
-        print_error "Cannot access site directory: $sitename"
+    cd "sites/$sitename" || {
+        print_error "Cannot access site directory: sites/$sitename"
         return 1
     }
 
@@ -384,8 +384,8 @@ export_config() {
     print_header "Step 4: Export Configuration"
 
     local original_dir=$(pwd)
-    cd "$sitename" || {
-        print_error "Cannot access site directory: $sitename"
+    cd "sites/$sitename" || {
+        print_error "Cannot access site directory: sites/$sitename"
         return 1
     }
 
@@ -412,14 +412,14 @@ fix_permissions() {
     print_header "Fix Permissions"
 
     # Set sites/default writable
-    if [ -d "$sitename/$webroot/sites/default" ]; then
-        chmod u+w "$sitename/$webroot/sites/default"
+    if [ -d "sites/$sitename/$webroot/sites/default" ]; then
+        chmod u+w "sites/$sitename/$webroot/sites/default"
         ocmsg "Set sites/default writable"
     fi
 
     # Set settings.php writable
-    if [ -f "$sitename/$webroot/sites/default/settings.php" ]; then
-        chmod u+w "$sitename/$webroot/sites/default/settings.php"
+    if [ -f "sites/$sitename/$webroot/sites/default/settings.php" ]; then
+        chmod u+w "sites/$sitename/$webroot/sites/default/settings.php"
         ocmsg "Set settings.php writable"
     fi
 
@@ -437,7 +437,7 @@ clear_cache() {
     print_header "Clear Cache"
 
     local original_dir=$(pwd)
-    cd "$sitename" || return 1
+    cd "sites/$sitename" || return 1
 
     # Try to clear cache and capture error
     local error_msg=$(ddev drush cr 2>&1)
@@ -474,18 +474,18 @@ makedev() {
     # Validate site
     print_header "Validate Site"
 
-    if [ ! -d "$sitename" ]; then
-        print_error "Site directory not found: $sitename"
+    if [ ! -d "sites/$sitename" ]; then
+        print_error "Site directory not found: sites/$sitename"
         return 1
     fi
 
-    if [ ! -f "$sitename/.ddev/config.yaml" ]; then
-        print_error "DDEV not configured in $sitename"
+    if [ ! -f "sites/$sitename/.ddev/config.yaml" ]; then
+        print_error "DDEV not configured in sites/$sitename"
         return 1
     fi
 
     # Get webroot
-    local webroot=$(grep "^docroot:" "$sitename/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
+    local webroot=$(grep "^docroot:" "sites/$sitename/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
     if [ -z "$webroot" ]; then
         webroot="web"
     fi
@@ -543,18 +543,18 @@ makeprod() {
     # Validate site
     print_header "Validate Site"
 
-    if [ ! -d "$sitename" ]; then
-        print_error "Site directory not found: $sitename"
+    if [ ! -d "sites/$sitename" ]; then
+        print_error "Site directory not found: sites/$sitename"
         return 1
     fi
 
-    if [ ! -f "$sitename/.ddev/config.yaml" ]; then
-        print_error "DDEV not configured in $sitename"
+    if [ ! -f "sites/$sitename/.ddev/config.yaml" ]; then
+        print_error "DDEV not configured in sites/$sitename"
         return 1
     fi
 
     # Get webroot
-    local webroot=$(grep "^docroot:" "$sitename/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
+    local webroot=$(grep "^docroot:" "sites/$sitename/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
     if [ -z "$webroot" ]; then
         webroot="web"
     fi

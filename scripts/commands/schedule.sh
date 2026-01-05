@@ -159,8 +159,8 @@ install_schedule() {
     print_header "Installing Backup Schedule: $sitename"
 
     # Validate site exists
-    if [ ! -d "$SCRIPT_DIR/$sitename" ]; then
-        print_warning "Site directory not found: $sitename (schedule will still be installed)"
+    if [ ! -d "$SCRIPT_DIR/sites/$sitename" ]; then
+        print_warning "Site directory not found: sites/$sitename (schedule will still be installed)"
     fi
 
     # Create log directory

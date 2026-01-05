@@ -132,7 +132,7 @@ create_backup_name() {
 
 # Backup database
 backup_database() {
-    local sitename=$1
+    local site_dir=$1
     local backup_dir=$2
     local backup_name=$3
 
@@ -146,8 +146,8 @@ backup_database() {
 
     # Change to site directory
     local original_dir=$(pwd)
-    cd "$sitename" || {
-        print_error "Site directory not found: $sitename"
+    cd "$site_dir" || {
+        print_error "Site directory not found: $site_dir"
         return 1
     }
 
@@ -179,7 +179,7 @@ backup_database() {
 
 # Backup files
 backup_files() {
-    local sitename=$1
+    local site_dir=$1
     local backup_dir=$2
     local backup_name=$3
     local webroot=$4
@@ -193,29 +193,29 @@ backup_files() {
     ocmsg "Creating file archive: $files_archive"
 
     # Check if site directory exists
-    if [ ! -d "$sitename" ]; then
-        print_error "Site directory not found: $sitename"
+    if [ ! -d "$site_dir" ]; then
+        print_error "Site directory not found: $site_dir"
         return 1
     fi
 
     # Determine what to backup (webroot + other important dirs)
     local backup_paths=""
 
-    if [ -d "$sitename/$webroot" ]; then
+    if [ -d "$site_dir/$webroot" ]; then
         backup_paths="$webroot"
     fi
 
-    if [ -d "$sitename/private" ]; then
+    if [ -d "$site_dir/private" ]; then
         backup_paths="$backup_paths private"
     fi
 
-    if [ -d "$sitename/cmi" ]; then
+    if [ -d "$site_dir/cmi" ]; then
         backup_paths="$backup_paths cmi"
     fi
 
-    if [ -f "$sitename/composer.json" ]; then
+    if [ -f "$site_dir/composer.json" ]; then
         backup_paths="$backup_paths composer.json"
-        if [ -f "$sitename/composer.lock" ]; then
+        if [ -f "$site_dir/composer.lock" ]; then
             backup_paths="$backup_paths composer.lock"
         fi
     fi
@@ -228,7 +228,7 @@ backup_files() {
     ocmsg "Backing up: $backup_paths"
 
     # Create tar.gz archive (suppress "Removing leading" warnings)
-    tar -czf "$files_archive" -C "$sitename" $backup_paths 2>&1 | grep -v "Removing leading" || true
+    tar -czf "$files_archive" -C "$site_dir" $backup_paths 2>&1 | grep -v "Removing leading" || true
 
     # Check if archive was created successfully
     if [ -f "$files_archive" ] && [ -s "$files_archive" ]; then
@@ -265,21 +265,22 @@ backup_site() {
     fi
 
     # Check if site directory exists
-    if [ ! -d "$sitename" ]; then
-        print_error "Site directory not found: $sitename"
+    local site_dir="sites/$sitename"
+    if [ ! -d "$site_dir" ]; then
+        print_error "Site directory not found: $site_dir"
         echo "Current directory: $(pwd)"
-        echo "Looking for: $sitename"
+        echo "Looking for: $site_dir"
         return 1
     fi
 
     # Check if DDEV is configured
-    if [ ! -f "$sitename/.ddev/config.yaml" ]; then
-        print_error "DDEV not configured in $sitename"
+    if [ ! -f "$site_dir/.ddev/config.yaml" ]; then
+        print_error "DDEV not configured in $site_dir"
         return 1
     fi
 
     # Get webroot from DDEV config
-    local webroot=$(grep "^docroot:" "$sitename/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
+    local webroot=$(grep "^docroot:" "$site_dir/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
     if [ -z "$webroot" ]; then
         webroot="web"  # Default fallback
     fi
@@ -294,20 +295,20 @@ backup_site() {
     fi
 
     # Generate backup name
-    local backup_name=$(create_backup_name "$sitename" "$message")
+    local backup_name=$(create_backup_name "$site_dir" "$message")
 
     print_info "Backup name: ${BOLD}$backup_name${NC}"
     print_info "Backup location: ${BOLD}$backup_base${NC}"
 
     # Backup database
-    if ! backup_database "$sitename" "$backup_base" "$backup_name"; then
+    if ! backup_database "$site_dir" "$backup_base" "$backup_name"; then
         print_error "Database backup failed"
         return 1
     fi
 
     # Backup files (skip if database-only)
     if [ "$db_only" != "true" ]; then
-        if ! backup_files "$sitename" "$backup_base" "$backup_name" "$webroot"; then
+        if ! backup_files "$site_dir" "$backup_base" "$backup_name" "$webroot"; then
             print_error "Files backup failed"
             return 1
         fi
@@ -317,7 +318,7 @@ backup_site() {
     if [ "$sanitize" == "true" ]; then
         local sql_file="${backup_base}/${backup_name}.sql"
         if [ -f "$sql_file" ]; then
-            sanitize_database "$sitename" "$sql_file" "$sanitize_level"
+            sanitize_database "$site_dir" "$sql_file" "$sanitize_level"
             echo -e "${GREEN}✓${NC} Sanitized: Level $sanitize_level"
         fi
     fi

@@ -596,10 +596,11 @@ When you run `./install.sh nwp`, it creates:
 
 ```
 nwp/
-├── nwp/              # First installation
-├── nwp1/             # Second installation
-├── nwp2/             # Third installation
-└── ...
+└── sites/
+    ├── nwp/          # First installation
+    ├── nwp1/         # Second installation
+    ├── nwp2/         # Third installation
+    └── ...
 ```
 
 Each directory is a complete, isolated DDEV project with its own:
@@ -1276,6 +1277,8 @@ nwp/
 ├── .logs/                # Test logs (gitignored)
 ├── .backups/             # Config backups with retention (gitignored)
 │
+├── sites/                # Site installations directory (gitignored)
+│
 ├── docs/                 # Documentation directory
 │   ├── QUICKSTART.md                   # Quick start guide
 │   ├── SETUP.md                        # Setup and configuration
@@ -1350,29 +1353,31 @@ nwp/
 │   └── cloudflare.sh                   # Cloudflare API
 │
 ├── sitebackups/          # Backup storage (auto-created, gitignored)
-└── <recipe-dirs>/        # Installed project directories
-    ├── .ddev/            # DDEV configuration
-    ├── composer.json     # PHP dependencies
-    ├── web/ or html/     # Webroot (varies by recipe)
-    ├── vendor/           # Composer packages
-    └── private/          # Private files directory
+└── sites/                # Installed project directories
+    └── <sitename>/       # Individual site installations
+        ├── .ddev/        # DDEV configuration
+        ├── composer.json # PHP dependencies
+        ├── web/ or html/ # Webroot (varies by recipe)
+        ├── vendor/       # Composer packages
+        └── private/      # Private files directory
 ```
 
 ### Site Directories (gitignored)
 
-Site directories are created at the root level (not in a `sites/` subdirectory) for DDEV compatibility. This is intentional - DDEV requires projects to be at a consistent filesystem level for proper container networking.
+Site directories are created in the `sites/` subdirectory to keep the root directory clean and organized. DDEV projects work at any filesystem level.
 
 ```
 nwp/
-├── nwp1/                 # Installed sites (base from recipe name)
-├── nwp2/                 # Multiple installs get numbered
-├── avc/                  # Custom-named sites
-├── avc_stg/              # Staging environment version
-├── avc_prod/             # Production environment version
-└── avc_backup/           # Backup copies
+└── sites/
+    ├── nwp1/             # Installed sites (base from recipe name)
+    ├── nwp2/             # Multiple installs get numbered
+    ├── avc/              # Custom-named sites
+    ├── avc_stg/          # Staging environment version
+    ├── avc_prod/         # Production environment version
+    └── avc_backup/       # Backup copies
 ```
 
-All site directories are automatically gitignored (via `/*` in .gitignore).
+All site directory contents are automatically gitignored (via `sites/*/` in .gitignore).
 
 ## Best Practices
 

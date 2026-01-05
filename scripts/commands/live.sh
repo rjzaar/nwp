@@ -84,13 +84,14 @@ get_stg_name() {
 # Returns 0 if in prod mode, 1 if in dev mode
 is_prod_mode() {
     local sitename=$1
+    local site_dir="$SCRIPT_DIR/sites/$sitename"
 
-    if [ ! -d "$sitename" ]; then
+    if [ ! -d "$site_dir" ]; then
         return 1
     fi
 
     local original_dir=$(pwd)
-    cd "$sitename" || return 1
+    cd "$site_dir" || return 1
 
     # Check CSS preprocessing setting - 1 means prod mode
     local css_preprocess=$(ddev drush config:get system.performance css.preprocess 2>/dev/null | grep -oP "'\K[^']+")
@@ -988,7 +989,7 @@ main() {
 
     # For provisioning operations, check and ensure staging is in prod mode
     if [ "$SSH" != "true" ] && [ "$STATUS" != "true" ] && [ "$DELETE" != "true" ]; then
-        if [ -d "$STG_NAME" ]; then
+        if [ -d "$SCRIPT_DIR/sites/$STG_NAME" ]; then
             if ! ensure_prod_mode "$STG_NAME"; then
                 print_error "Cannot proceed without staging site in production mode"
                 exit 1

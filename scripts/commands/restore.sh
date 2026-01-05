@@ -213,11 +213,13 @@ restore_files() {
         return 1
     fi
 
+    local dest_dir="sites/$dest_site"
+
     ocmsg "Extracting files from: $tar_file"
-    ocmsg "Destination: $dest_site"
+    ocmsg "Destination: $dest_dir"
 
     # Extract tar.gz to destination
-    if tar -xzf "$tar_file" -C "$dest_site" 2>/dev/null; then
+    if tar -xzf "$tar_file" -C "$dest_dir" 2>/dev/null; then
         print_status "OK" "Files extracted successfully"
         return 0
     else
@@ -242,10 +244,12 @@ restore_database() {
     # Get absolute path to backup file
     local abs_backup=$(cd "$(dirname "$backup_file")" && pwd)/$(basename "$backup_file")
 
+    local dest_dir="sites/$dest_site"
+
     # Change to destination site directory
     local original_dir=$(pwd)
-    cd "$dest_site" || {
-        print_error "Cannot access site directory: $dest_site"
+    cd "$dest_dir" || {
+        print_error "Cannot access site directory: $dest_dir"
         return 1
     }
 
@@ -276,7 +280,8 @@ fix_site_settings() {
 
     print_header "Step 5: Fix Site Settings"
 
-    local settings_file="$dest_site/$webroot/sites/default/settings.php"
+    local dest_dir="sites/$dest_site"
+    local settings_file="$dest_dir/$webroot/sites/default/settings.php"
 
     if [ ! -f "$settings_file" ]; then
         print_status "WARN" "No settings.php found, DDEV will handle configuration"
@@ -297,15 +302,17 @@ set_permissions() {
 
     print_header "Step 6: Set Permissions"
 
+    local dest_dir="sites/$dest_site"
+
     # Ensure sites/default is writable
-    if [ -d "$dest_site/$webroot/sites/default" ]; then
-        chmod u+w "$dest_site/$webroot/sites/default"
+    if [ -d "$dest_dir/$webroot/sites/default" ]; then
+        chmod u+w "$dest_dir/$webroot/sites/default"
         ocmsg "Set sites/default writable"
     fi
 
     # Ensure settings.php is writable
-    if [ -f "$dest_site/$webroot/sites/default/settings.php" ]; then
-        chmod u+w "$dest_site/$webroot/sites/default/settings.php"
+    if [ -f "$dest_dir/$webroot/sites/default/settings.php" ]; then
+        chmod u+w "$dest_dir/$webroot/sites/default/settings.php"
         ocmsg "Set settings.php writable"
     fi
 
@@ -319,9 +326,10 @@ install_dependencies() {
 
     print_header "Step 4: Install Dependencies"
 
+    local dest_dir="sites/$dest_site"
     local original_dir=$(pwd)
-    cd "$dest_site" || {
-        print_error "Cannot access site directory: $dest_site"
+    cd "$dest_dir" || {
+        print_error "Cannot access site directory: $dest_dir"
         return 1
     }
 
@@ -342,9 +350,10 @@ clear_cache() {
 
     print_header "Step 8: Clear Cache"
 
+    local dest_dir="sites/$dest_site"
     local original_dir=$(pwd)
-    cd "$dest_site" || {
-        print_error "Cannot access site directory: $dest_site"
+    cd "$dest_dir" || {
+        print_error "Cannot access site directory: $dest_dir"
         return 1
     }
 
@@ -376,9 +385,10 @@ generate_login_link() {
 
     print_header "Step 9: Generate Login Link"
 
+    local dest_dir="sites/$dest_site"
     local original_dir=$(pwd)
-    cd "$dest_site" || {
-        print_error "Cannot access site directory: $dest_site"
+    cd "$dest_dir" || {
+        print_error "Cannot access site directory: $dest_dir"
         return 1
     }
 
@@ -441,16 +451,18 @@ restore_site() {
     if should_run_step 2 "$start_step"; then
         print_header "Step 2: Validate Destination"
 
+        local dest_dir="sites/$to_site"
+
         if [ "$db_only" == "true" ]; then
             # Database-only: destination must exist
-            if [ ! -d "$to_site" ]; then
-                print_error "Destination site not found: $to_site"
+            if [ ! -d "$dest_dir" ]; then
+                print_error "Destination site not found: $dest_dir"
                 print_info "Destination must already exist for database-only restore"
                 return 1
             fi
 
-            if [ ! -f "$to_site/.ddev/config.yaml" ]; then
-                print_error "Destination is not a DDEV site: $to_site"
+            if [ ! -f "$dest_dir/.ddev/config.yaml" ]; then
+                print_error "Destination is not a DDEV site: $dest_dir"
                 print_info "Run 'ddev config' in the destination directory first"
                 return 1
             fi
@@ -460,11 +472,11 @@ restore_site() {
                 return 1
             fi
 
-            print_status "OK" "Destination validated: $to_site"
+            print_status "OK" "Destination validated: $dest_dir"
         else
             # Full restore: delete and recreate destination
-            if [ -d "$to_site" ]; then
-                print_status "WARN" "Destination site already exists: $to_site"
+            if [ -d "$dest_dir" ]; then
+                print_status "WARN" "Destination site already exists: $dest_dir"
 
                 if ! ask_yes_no "Delete existing site and restore from backup?" "n"; then
                     print_error "Restoration cancelled"
@@ -478,18 +490,18 @@ restore_site() {
 
                 # Stop DDEV if running
                 ocmsg "Stopping DDEV for $to_site"
-                cd "$to_site" && ddev stop > /dev/null 2>&1
+                cd "$dest_dir" && ddev stop > /dev/null 2>&1
                 cd - > /dev/null
 
                 # Remove existing site
-                ocmsg "Removing existing site: $to_site"
-                rm -rf "$to_site"
+                ocmsg "Removing existing site: $dest_dir"
+                rm -rf "$dest_dir"
                 print_status "OK" "Existing site removed"
             fi
 
             # Create destination directory
-            mkdir -p "$to_site"
-            print_status "OK" "Destination prepared: $to_site"
+            mkdir -p "$dest_dir"
+            print_status "OK" "Destination prepared: $dest_dir"
         fi
     else
         print_status "INFO" "Skipping Step 2: Destination already prepared"
@@ -548,9 +560,10 @@ restore_site() {
     fi
 
     # Configure and start DDEV if not already running (skip for database-only, already validated)
-    if [ "$db_only" != "true" ] && [ ! -f "$to_site/.ddev/config.yaml" ]; then
+    local dest_dir="sites/$to_site"
+    if [ "$db_only" != "true" ] && [ ! -f "$dest_dir/.ddev/config.yaml" ]; then
         print_info "Configuring DDEV for $to_site"
-        cd "$to_site" || return 1
+        cd "$dest_dir" || return 1
 
         # Get project name from directory (convert underscores to hyphens for valid hostname)
         local project_name=$(basename "$to_site" | tr '_' '-')
@@ -593,7 +606,8 @@ restore_site() {
     echo -e "${GREEN}✓${NC} Backup: $(basename "$BACKUP_FILE" .sql)"
     echo ""
     echo -e "${BOLD}Site URL:${NC}"
-    cd "$to_site" && ddev describe 2>/dev/null | grep "^https://" && cd - > /dev/null
+    local dest_dir="sites/$to_site"
+    cd "$dest_dir" && ddev describe 2>/dev/null | grep "^https://" && cd - > /dev/null
 
     return 0
 }

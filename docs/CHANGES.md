@@ -10,6 +10,15 @@ All notable changes to the NWP (Narrow Way Project) are documented here, organiz
 
 Major reorganization of project structure for cleaner root directory and better organization.
 
+#### Sites Directory Organization
+
+**New `sites/` Directory**:
+- All site installations now go in `sites/` subdirectory
+- Sites installed at `~/nwp/sites/<sitename>/` instead of `~/nwp/<sitename>/`
+- Keeps root directory clean and organized
+- DDEV projects work at any filesystem level
+- `.gitignore` updated to ignore `sites/*/`
+
 #### Script Organization
 
 **Moved Scripts to `scripts/commands/`**:

@@ -95,7 +95,8 @@ EOF
 # Check if site directory exists
 site_exists() {
     local sitename=$1
-    if [ ! -d "$sitename" ]; then
+    local site_dir="sites/$sitename"
+    if [ ! -d "$site_dir" ]; then
         return 1
     fi
     return 0
@@ -104,7 +105,8 @@ site_exists() {
 # Check if DDEV is running for this site
 ddev_is_running() {
     local sitename=$1
-    if cd "$sitename" 2>/dev/null; then
+    local site_dir="sites/$sitename"
+    if cd "$site_dir" 2>/dev/null; then
         if ddev status 2>/dev/null | grep -q "OK"; then
             cd - > /dev/null
             return 0
@@ -133,7 +135,8 @@ validate_site() {
     print_status "OK" "Site exists: $sitename"
 
     # Show site information
-    if cd "$sitename" 2>/dev/null; then
+    local site_dir="sites/$sitename"
+    if cd "$site_dir" 2>/dev/null; then
         if ddev describe 2>/dev/null | grep -q "Name:"; then
             local site_url=$(ddev describe 2>/dev/null | grep "Primary URL:" | awk '{print $3}')
             local site_type=$(ddev describe 2>/dev/null | grep "Type:" | awk '{print $2}')
@@ -179,9 +182,10 @@ stop_ddev() {
 
     print_header "Step 3: Stop DDEV"
 
+    local site_dir="sites/$sitename"
     local original_dir=$(pwd)
-    cd "$sitename" || {
-        print_error "Cannot access site directory: $sitename"
+    cd "$site_dir" || {
+        print_error "Cannot access site directory: $site_dir"
         return 1
     }
 
@@ -206,9 +210,10 @@ delete_ddev_project() {
 
     print_header "Step 4: Delete DDEV Project"
 
+    local site_dir="sites/$sitename"
     local original_dir=$(pwd)
-    cd "$sitename" || {
-        print_error "Cannot access site directory: $sitename"
+    cd "$site_dir" || {
+        print_error "Cannot access site directory: $site_dir"
         return 1
     }
 
@@ -234,17 +239,18 @@ remove_site_directory() {
         return 1
     fi
 
-    ocmsg "Removing directory: $sitename"
+    local site_dir="sites/$sitename"
+    ocmsg "Removing directory: $site_dir"
 
     # Get directory size for reporting
-    local dir_size=$(du -sh "$sitename" 2>/dev/null | awk '{print $1}')
+    local dir_size=$(du -sh "$site_dir" 2>/dev/null | awk '{print $1}')
 
-    if rm -rf "$sitename" 2>/dev/null; then
-        print_status "OK" "Directory removed: $sitename (${dir_size:-unknown size})"
+    if rm -rf "$site_dir" 2>/dev/null; then
+        print_status "OK" "Directory removed: $site_dir (${dir_size:-unknown size})"
         return 0
     else
-        print_error "Failed to remove directory: $sitename"
-        print_info "You may need to manually remove it with: sudo rm -rf $sitename"
+        print_error "Failed to remove directory: $site_dir"
+        print_info "You may need to manually remove it with: sudo rm -rf $site_dir"
         return 1
     fi
 }

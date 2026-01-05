@@ -33,11 +33,11 @@ Wait 2-3 minutes for installation to complete.
 ## Step 3: Access Your Site
 
 ```bash
-# Open in browser
+# Open in browser (from site directory)
+cd sites/mysite
 ddev launch
 
 # Or get the URL
-cd mysite
 ddev describe
 ```
 
@@ -71,7 +71,7 @@ pl dev2stg mysite
 ### Running Tests
 
 ```bash
-# All tests
+# All tests (run from nwp root or use full path)
 pl testos -a mysite
 
 # Just code quality
@@ -147,7 +147,7 @@ sudo usermod -aG docker $USER
 ### Site Won't Start
 
 ```bash
-cd mysite
+cd sites/mysite
 ddev restart
 ddev logs
 ```

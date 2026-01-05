@@ -154,13 +154,15 @@ find_orphaned_sites() {
     local config_file="$1"
     local script_dir="$2"
 
-    # Get all directories with .ddev in the script directory
+    # Get all directories with .ddev in the sites subdirectory
     local ddev_dirs=()
-    while IFS= read -r ddev_path; do
-        local site_dir=$(dirname "$ddev_path")
-        local site_name=$(basename "$site_dir")
-        ddev_dirs+=("$site_name:$site_dir")
-    done < <(find "$script_dir" -maxdepth 2 -name ".ddev" -type d 2>/dev/null)
+    if [ -d "$script_dir/sites" ]; then
+        while IFS= read -r ddev_path; do
+            local site_dir=$(dirname "$ddev_path")
+            local site_name=$(basename "$site_dir")
+            ddev_dirs+=("$site_name:$site_dir")
+        done < <(find "$script_dir/sites" -maxdepth 2 -name ".ddev" -type d 2>/dev/null)
+    fi
 
     # Get list of sites from cnwp.yml
     local yml_sites=()
@@ -899,7 +901,7 @@ main() {
 
     if [ -z "$directory" ]; then
         # Check if it's an orphaned site
-        local orphan_dir="$SCRIPT_DIR/$site_name"
+        local orphan_dir="$SCRIPT_DIR/sites/$site_name"
         if [ -d "$orphan_dir/.ddev" ]; then
             directory="$orphan_dir"
             recipe=$(detect_recipe_from_site "$directory")

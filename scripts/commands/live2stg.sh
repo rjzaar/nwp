@@ -131,8 +131,8 @@ main() {
     echo ""
 
     # Check staging exists
-    if [ ! -d "$STG_NAME" ]; then
-        print_error "Staging site not found: $STG_NAME"
+    if [ ! -d "sites/$STG_NAME" ]; then
+        print_error "Staging site not found: sites/$STG_NAME"
         exit 1
     fi
 
@@ -159,7 +159,7 @@ main() {
             --exclude="web/sites/default/files" \
             --exclude="private" \
             "${ssh_user}@${server_ip}:/var/www/${BASE_NAME}/" \
-            "$STG_NAME/"
+            "sites/$STG_NAME/"
         print_status "OK" "Files pulled"
     fi
 
@@ -173,7 +173,7 @@ main() {
             ssh "${ssh_user}@${server_ip}" "$sudo_prefix -u www-data sh -c 'cd /var/www/${BASE_NAME}/web && ../vendor/bin/drush sql:dump --gzip'" > "$tmp_sql"
 
         # Import to staging
-        cd "$STG_NAME"
+        cd "sites/$STG_NAME"
         ddev import-db --file="$tmp_sql"
         rm -f "$tmp_sql"
         cd "$SCRIPT_DIR"
@@ -182,7 +182,7 @@ main() {
 
     # Clear cache
     print_info "Clearing cache..."
-    cd "$STG_NAME"
+    cd "sites/$STG_NAME"
     ddev drush cr 2>/dev/null || true
     cd "$SCRIPT_DIR"
 

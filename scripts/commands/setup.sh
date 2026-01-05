@@ -70,39 +70,40 @@ fi
 ################################################################################
 
 declare -a COMPONENTS=(
-    # Format: ID|NAME|PARENT|CATEGORY|PRIORITY|DESCRIPTION
+    # Format: ID|NAME|PARENT|CATEGORY|PRIORITY|DESCRIPTION|EDITABLE_KEY
+    # EDITABLE_KEY: config key name if editable, empty if not
     # Core Infrastructure
-    "docker|Docker Engine|-|core|required|Container runtime for running DDEV and local development environments"
-    "docker_compose|Docker Compose Plugin|docker|core|required|Multi-container orchestration plugin for Docker"
-    "docker_group|Docker Group Membership|docker|core|required|Allows running Docker commands without sudo"
-    "ddev|DDEV Development Environment|docker|core|required|Local PHP development environment with per-project containers"
-    "ddev_config|DDEV Global Configuration|ddev|core|required|Default DDEV settings (PHP version, ports, DNS)"
-    "mkcert|mkcert SSL Tool|-|core|recommended|Creates locally-trusted SSL certificates for HTTPS"
-    "mkcert_ca|mkcert Certificate Authority|mkcert|core|recommended|Root CA for browser-trusted local SSL certificates"
+    "docker|Docker Engine|-|core|required|Container runtime for running DDEV and local development environments|"
+    "docker_compose|Docker Compose Plugin|docker|core|required|Multi-container orchestration plugin for Docker|"
+    "docker_group|Docker Group Membership|docker|core|required|Allows running Docker commands without sudo|"
+    "ddev|DDEV Development Environment|docker|core|required|Local PHP development environment with per-project containers|"
+    "ddev_config|DDEV Global Configuration|ddev|core|required|Default DDEV settings (PHP version, ports, DNS)|"
+    "mkcert|mkcert SSL Tool|-|core|recommended|Creates locally-trusted SSL certificates for HTTPS|"
+    "mkcert_ca|mkcert Certificate Authority|mkcert|core|recommended|Root CA for browser-trusted local SSL certificates|"
 
     # NWP Tools
-    "nwp_cli|NWP CLI Command|-|tools|recommended|Global 'pl' command to run NWP from any directory"
-    "nwp_config|NWP Configuration (cnwp.yml)|-|tools|required|Main config file defining sites, recipes, and settings"
-    "nwp_secrets|NWP Secrets (.secrets.yml)|-|tools|recommended|API tokens for Linode, Cloudflare, GitLab integration"
-    "script_symlinks|Script Symlinks (backward compat)|-|tools|optional|Symlinks in project root for legacy ./install.sh usage"
+    "nwp_cli|NWP CLI Command|-|tools|recommended|Global command to run NWP from any directory|cliprompt"
+    "nwp_config|NWP Configuration (cnwp.yml)|-|tools|required|Main config file defining sites, recipes, and settings|"
+    "nwp_secrets|NWP Secrets (.secrets.yml)|-|tools|recommended|API tokens for Linode, Cloudflare, GitLab integration|"
+    "script_symlinks|Script Symlinks (backward compat)|-|tools|optional|Symlinks in project root for legacy ./install.sh usage|"
 
     # Testing Tools
-    "bats|BATS Testing Framework|-|testing|optional|Bash Automated Testing System for running NWP tests"
+    "bats|BATS Testing Framework|-|testing|optional|Bash Automated Testing System for running NWP tests|"
 
     # Security
-    "claude_config|Claude Code Security Config|-|security|recommended|Restricts Claude from accessing production secrets and data"
+    "claude_config|Claude Code Security Config|-|security|recommended|Restricts Claude from accessing production secrets and data|"
 
     # Linode Infrastructure
-    "linode_cli|Linode CLI|-|linode|optional|Command-line tool for managing Linode cloud servers"
-    "linode_config|Linode CLI Configuration|linode_cli|linode|optional|API token and default region/type settings for Linode"
-    "ssh_keys|SSH Keys for Deployment|linode_cli|linode|optional|SSH keypair for secure server access and deployments"
+    "linode_cli|Linode CLI|-|linode|optional|Command-line tool for managing Linode cloud servers|"
+    "linode_config|Linode CLI Configuration|linode_cli|linode|optional|API token and default region/type settings for Linode|linode_token"
+    "ssh_keys|SSH Keys for Deployment|linode_cli|linode|optional|SSH keypair for secure server access and deployments|"
 
     # GitLab Infrastructure
-    "gitlab_keys|GitLab SSH Keys|linode_config|gitlab|optional|SSH keys specifically for GitLab server provisioning"
-    "gitlab_server|GitLab Server|gitlab_keys|gitlab|optional|Self-hosted GitLab instance on Linode for private repos"
-    "gitlab_dns|GitLab DNS Record|gitlab_server|gitlab|optional|DNS A record pointing to your GitLab server"
-    "gitlab_ssh_config|GitLab SSH Config|gitlab_server|gitlab|optional|SSH config entry for easy git@git-server access"
-    "gitlab_composer|GitLab Composer Registry|gitlab_server|gitlab|optional|Private Composer package registry on GitLab"
+    "gitlab_keys|GitLab SSH Keys|linode_config|gitlab|optional|SSH keys specifically for GitLab server provisioning|"
+    "gitlab_server|GitLab Server|gitlab_keys|gitlab|optional|Self-hosted GitLab instance on Linode for private repos|"
+    "gitlab_dns|GitLab DNS Record|gitlab_server|gitlab|optional|DNS A record pointing to your GitLab server|"
+    "gitlab_ssh_config|GitLab SSH Config|gitlab_server|gitlab|optional|SSH config entry for easy git@git-server access|"
+    "gitlab_composer|GitLab Composer Registry|gitlab_server|gitlab|optional|Private Composer package registry on GitLab|"
 )
 
 # Track component states
@@ -118,6 +119,7 @@ COMP_PARENTS=()
 COMP_CATEGORIES=()
 COMP_PRIORITIES=()
 COMP_DESCRIPTIONS=()
+COMP_EDITABLE_KEYS=()
 
 # Page definitions - categories grouped into pages
 declare -a PAGE_CATEGORIES
@@ -173,6 +175,7 @@ init_components() {
         COMP_CATEGORIES[$idx]=$(echo "$comp" | cut -d'|' -f4)
         COMP_PRIORITIES[$idx]=$(echo "$comp" | cut -d'|' -f5)
         COMP_DESCRIPTIONS[$idx]=$(echo "$comp" | cut -d'|' -f6)
+        COMP_EDITABLE_KEYS[$idx]=$(echo "$comp" | cut -d'|' -f7)
         idx=$((idx + 1))
     done
     build_page_indices
@@ -216,6 +219,47 @@ get_component_name_by_id() {
     echo "$target_id"
 }
 
+# Get current value for editable component
+get_editable_value() {
+    local comp_id="$1"
+    local edit_key="$2"
+
+    # Check if manually set
+    if [ -n "${MANUAL_INPUTS[$comp_id]:-}" ]; then
+        echo "${MANUAL_INPUTS[$comp_id]}"
+        return
+    fi
+
+    # Get default from config
+    case "$edit_key" in
+        cliprompt)
+            local val=$(read_config_value "cliprompt")
+            echo "${val:-pl}"
+            ;;
+        linode_token)
+            if [ -f "$PROJECT_ROOT/.secrets.yml" ]; then
+                local val=$(grep "api_token:" "$PROJECT_ROOT/.secrets.yml" 2>/dev/null | head -1 | awk -F'"' '{print $2}')
+                [ -n "$val" ] && echo "(configured)" || echo "(not set)"
+            else
+                echo "(not set)"
+            fi
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+# Get prompt text for editable field
+get_edit_prompt() {
+    local edit_key="$1"
+    case "$edit_key" in
+        cliprompt)    echo "CLI command name" ;;
+        linode_token) echo "Linode API token" ;;
+        *)            echo "Value" ;;
+    esac
+}
+
 # Get category display name
 get_category_name() {
     case "$1" in
@@ -239,7 +283,7 @@ draw_setup_screen() {
 
     # Header with page indicator
     printf "${BOLD}NWP Setup Manager${NC}  |  "
-    printf "←→:Page  ↑↓:Nav  SPACE:Toggle  d:Desc  a:All  n:None  ENTER:Apply  q:Quit\n"
+    printf "←→:Page ↑↓:Nav SPACE:Toggle d:Desc e:Edit a:All n:None ENTER:Apply q:Quit\n"
     printf "═══════════════════════════════════════════════════════════════════════════════\n"
 
     # Page tabs
@@ -297,12 +341,20 @@ draw_setup_screen() {
             checkbox="[${GREEN}✓${NC}]"
         fi
 
-        # Installed status
+        # Installed status and editable value
         local status_icon=""
+        local edit_key="${COMP_EDITABLE_KEYS[$i]}"
         if [ "${COMPONENT_INSTALLED[$id]:-0}" = "1" ]; then
             status_icon="${GREEN}installed${NC}"
         else
             status_icon="${DIM}not installed${NC}"
+        fi
+
+        # Show current value for editable items
+        local edit_info=""
+        if [ -n "$edit_key" ]; then
+            local current_val=$(get_editable_value "$id" "$edit_key")
+            edit_info=" ${CYAN}[$current_val]${NC}"
         fi
 
         # Highlight current row
@@ -313,7 +365,7 @@ draw_setup_screen() {
         fi
 
         # Print component line
-        printf "%s%b %b %s%-30s %b\n" "$indent" "$checkbox" "$priority_dot" "$prefix" "$name" "$status_icon"
+        printf "%s%b %b %s%-30s%b %b\n" "$indent" "$checkbox" "$priority_dot" "$prefix" "$name" "$edit_info" "$status_icon"
 
         row=$((row + 1))
     done
@@ -419,10 +471,12 @@ run_interactive_tui() {
             "d"|"D")
                 # Show description for current component
                 local comp_idx="${page_indices[$current_row]}"
+                local comp_id="${COMP_IDS[$comp_idx]}"
                 local comp_name="${COMP_NAMES[$comp_idx]}"
                 local comp_desc="${COMP_DESCRIPTIONS[$comp_idx]}"
                 local comp_priority="${COMP_PRIORITIES[$comp_idx]}"
                 local comp_parent="${COMP_PARENTS[$comp_idx]}"
+                local comp_edit_key="${COMP_EDITABLE_KEYS[$comp_idx]}"
                 local parent_name=""
                 [ "$comp_parent" != "-" ] && parent_name=$(get_component_name_by_id "$comp_parent")
 
@@ -434,10 +488,50 @@ run_interactive_tui() {
                 printf "  $comp_desc\n\n"
                 printf "  ${BOLD}Priority:${NC} $comp_priority\n"
                 [ -n "$parent_name" ] && printf "  ${BOLD}Requires:${NC} $parent_name\n"
+                if [ -n "$comp_edit_key" ]; then
+                    local current_val=$(get_editable_value "$comp_id" "$comp_edit_key")
+                    printf "  ${BOLD}Current value:${NC} ${CYAN}$current_val${NC}  ${DIM}(press 'e' to edit)${NC}\n"
+                fi
                 printf "\n───────────────────────────────────────────────────────────────────────────────\n"
                 printf "  Press any key to return..."
                 read -rsn1
                 cursor_hide
+                ;;
+            "e"|"E")
+                # Edit value for editable component
+                local comp_idx="${page_indices[$current_row]}"
+                local comp_id="${COMP_IDS[$comp_idx]}"
+                local comp_name="${COMP_NAMES[$comp_idx]}"
+                local comp_edit_key="${COMP_EDITABLE_KEYS[$comp_idx]}"
+
+                if [ -z "$comp_edit_key" ]; then
+                    # Not editable - show message briefly
+                    cursor_show
+                    clear_screen
+                    printf "\n${YELLOW}$comp_name is not editable${NC}\n"
+                    sleep 1
+                    cursor_hide
+                else
+                    local current_val=$(get_editable_value "$comp_id" "$comp_edit_key")
+                    local prompt_text=$(get_edit_prompt "$comp_edit_key")
+
+                    cursor_show
+                    clear_screen
+                    printf "\n${BOLD}${CYAN}Edit: $comp_name${NC}\n"
+                    printf "═══════════════════════════════════════════════════════════════════════════════\n\n"
+                    printf "  ${BOLD}$prompt_text${NC}\n"
+                    printf "  Current: ${CYAN}$current_val${NC}\n\n"
+                    printf "  Enter new value (or press Enter to keep current): "
+                    read new_val
+                    if [ -n "$new_val" ]; then
+                        MANUAL_INPUTS[$comp_id]="$new_val"
+                        printf "\n  ${GREEN}✓${NC} Value set to: ${CYAN}$new_val${NC}\n"
+                    else
+                        printf "\n  ${DIM}Kept current value${NC}\n"
+                    fi
+                    sleep 1
+                    cursor_hide
+                fi
                 ;;
             "ENTER")
                 cursor_show
@@ -750,16 +844,17 @@ install_script_symlinks() {
 
 install_nwp_cli() {
     print_status "INFO" "Installing NWP CLI..."
-    local cli_prompt=$(read_config_value "cliprompt")
+    local cli_prompt="${MANUAL_INPUTS[nwp_cli]:-}"
+    [ -z "$cli_prompt" ] && cli_prompt=$(read_config_value "cliprompt")
     cli_prompt=${cli_prompt:-pl}
-    sudo tee "/usr/local/bin/$cli_prompt" > /dev/null << 'CLIEOF'
+    sudo tee "/usr/local/bin/$cli_prompt" > /dev/null << CLIEOF
 #!/bin/bash
-NWP_DIR="$HOME/nwp"
-for dir in "$HOME/nwp" "$HOME/projects/nwp" "/opt/nwp"; do
-    [ -d "$dir" ] && [ -f "$dir/pl" ] && { NWP_DIR="$dir"; break; }
+NWP_DIR="\$HOME/nwp"
+for dir in "\$HOME/nwp" "\$HOME/projects/nwp" "/opt/nwp"; do
+    [ -d "\$dir" ] && [ -f "\$dir/pl" ] && { NWP_DIR="\$dir"; break; }
 done
-[ ! -d "$NWP_DIR" ] && { echo "Error: NWP directory not found"; exit 1; }
-cd "$NWP_DIR" && exec "./pl" "$@"
+[ ! -d "\$NWP_DIR" ] && { echo "Error: NWP directory not found"; exit 1; }
+cd "\$NWP_DIR" && exec "./pl" "\$@"
 CLIEOF
     sudo chmod +x "/usr/local/bin/$cli_prompt"
     print_status "OK" "CLI '$cli_prompt' installed"

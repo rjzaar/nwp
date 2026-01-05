@@ -41,6 +41,22 @@
 !sync.sh
 !verify.sh
 !report.sh
+!coder-setup.sh
+
+# CI/CD and code quality
+!.gitlab-ci.yml
+!.github/
+!.github/**
+!.gitlab/
+!.gitlab/**
+!.hooks/
+!.hooks/**
+!renovate.json
+!phpstan.neon
+
+# Scripts directory
+!scripts/
+!scripts/**
 
 # Verification tracking
 !.verification.yml

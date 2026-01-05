@@ -6,10 +6,13 @@ These scripts run **on the Linode server** to manage NWP/OpenSocial Drupal sites
 
 | Script | Purpose | Usage |
 |--------|---------|-------|
+| `nwp-bootstrap.sh` | Bootstrap server with required packages and directories | `./nwp-bootstrap.sh` |
 | `nwp-createsite.sh` | Create a new site with database and Nginx config | `./nwp-createsite.sh example.com` |
 | `nwp-swap-prod.sh` | Blue-green deployment swap | `./nwp-swap-prod.sh` |
 | `nwp-rollback.sh` | Rollback last deployment | `./nwp-rollback.sh` |
 | `nwp-backup.sh` | Backup site database and files | `./nwp-backup.sh` |
+| `nwp-healthcheck.sh` | Check site health (HTTP, Drupal, DB, cache, SSL) | `./nwp-healthcheck.sh` |
+| `nwp-audit.sh` | Log deployment events in JSON and text format | `./nwp-audit.sh --event deploy --site prod` |
 
 ## Installation
 
@@ -78,6 +81,75 @@ Instantly reverts to the previous production version.
 ./nwp-backup.sh --output /home/nwp/backups /var/www/prod
 ```
 
+### Bootstrap Server
+
+```bash
+# Initial server setup (run once)
+sudo ./nwp-bootstrap.sh
+
+# Reinstall all packages
+sudo ./nwp-bootstrap.sh --reinstall
+
+# Verbose output
+sudo ./nwp-bootstrap.sh --verbose
+```
+
+This will:
+- Verify/install required packages (PHP 8.2, Nginx, MariaDB, etc.)
+- Create directory structure (/var/www/prod, /var/www/test, /var/www/old)
+- Create backup and log directories (/var/backups/nwp, /var/log/nwp)
+- Set proper permissions
+- Install NWP server scripts to /usr/local/bin
+
+### Health Check
+
+```bash
+# Check production site
+./nwp-healthcheck.sh /var/www/prod
+
+# Check with domain for SSL verification
+./nwp-healthcheck.sh --domain example.com /var/www/prod
+
+# Quick check (HTTP + Drupal bootstrap only)
+./nwp-healthcheck.sh --quick /var/www/prod
+
+# JSON output for monitoring systems
+./nwp-healthcheck.sh --json /var/www/prod
+```
+
+Health checks include:
+- HTTP/HTTPS response codes
+- Drupal bootstrap status
+- Database connectivity
+- Cache functionality
+- Cron status
+- SSL certificate validity
+- Disk space usage
+- File permissions
+
+### Audit Logging
+
+```bash
+# Log a deployment event
+./nwp-audit.sh \
+  --event deploy \
+  --site prod \
+  --user nwp \
+  --commit abc123def456 \
+  --branch main \
+  --message "Deploy version 2.0"
+
+# Log a swap event
+./nwp-audit.sh --event swap --site prod --status success
+
+# Log a failure
+./nwp-audit.sh --event deploy --site test --status failure --message "Build failed"
+```
+
+Logs are written to:
+- `/var/log/nwp/deployments.jsonl` - JSON Lines format (machine-readable)
+- `/var/log/nwp/deployments.log` - Human-readable text format
+
 ## Directory Structure
 
 These scripts expect this directory structure on the server:
@@ -87,10 +159,20 @@ These scripts expect this directory structure on the server:
 ├── prod/          # Current production site
 ├── test/          # Test/staging environment
 ├── old/           # Previous production (for rollback)
-└── backups/       # Local backups (optional)
+└── html/          # Default Nginx welcome page
+
+/var/backups/
+└── nwp/           # NWP backup storage
+
+/var/log/
+└── nwp/           # NWP deployment logs
+    ├── deployments.log      # Human-readable log
+    └── deployments.jsonl    # JSON Lines log
 ```
 
-This structure is created automatically by the `linode_server_setup.sh` provisioning script.
+This structure is created automatically by:
+- `linode_server_setup.sh` - Initial provisioning script
+- `nwp-bootstrap.sh` - Server bootstrap script
 
 ## Blue-Green Deployment Flow
 
@@ -145,8 +227,21 @@ The scripts set these permissions automatically:
 ## Logs
 
 Deployment actions are logged to:
-- `/var/log/nwp-deployments.log` - Swap/rollback history
-- `/var/log/nwp-setup.log` - Initial server setup log
+- `/var/log/nwp/deployments.log` - Human-readable deployment history
+- `/var/log/nwp/deployments.jsonl` - JSON Lines format for parsing/monitoring
+- `/var/log/nwp-setup.log` - Initial server setup log (root of /var/log)
+
+View recent deployments:
+```bash
+# View text log
+tail -20 /var/log/nwp/deployments.log
+
+# Parse JSON log
+cat /var/log/nwp/deployments.jsonl | jq -r '.event + " - " + .site + " (" + .timestamp + ")"'
+
+# Filter by event type
+cat /var/log/nwp/deployments.jsonl | jq 'select(.event=="deploy")'
+```
 
 ## See Also
 

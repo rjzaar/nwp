@@ -1,0 +1,22 @@
+parameters:
+    level: 5
+    paths:
+        - web/modules/custom
+        - web/themes/custom
+    excludePaths:
+        - */tests/*
+        - */Tests/*
+        - *Test.php
+    scanDirectories:
+        - web/core
+        - web/modules/contrib
+    ignoreErrors:
+        # Drupal-specific ignores
+        - '#Call to deprecated function drupal_set_message\(\)#'
+        - '#Access to an undefined property Drupal\\.*::\$#'
+    checkMissingIterableValueType: false
+    checkGenericClassInNonGenericObjectType: false
+    polluteScopeWithLoopInitialAssignments: true
+    polluteScopeWithAlwaysIterableForeach: true
+    reportUnmatchedIgnoredErrors: false
+    treatPhpDocTypesAsCertain: false

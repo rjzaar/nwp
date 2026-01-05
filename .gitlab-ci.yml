@@ -1,0 +1,462 @@
+# NWP GitLab CI/CD Configuration
+#
+# Complete CI/CD pipeline for NWP-managed Drupal sites
+# Based on NWP roadmap P20 (GitLab CI Pipeline)
+#
+# Pipeline Stages:
+#   database - Fetch/cache production database for testing
+#   build    - Install dependencies, prepare environment
+#   deploy   - Deploy to staging/production environments
+#
+# Features:
+# - Nightly database caching for faster builds
+# - Production database import with sanitization
+# - Automatic composer and npm builds
+# - Drupal deployment (updb, cim, cr)
+# - Environment-specific deployments
+# - Test coverage reporting
+# - Artifact management
+
+stages:
+  - database
+  - build
+  - deploy
+
+################################################################################
+# Global Variables
+################################################################################
+
+variables:
+  # Site configuration
+  SITE_NAME: ${CI_PROJECT_NAME}
+  PHP_VERSION: "8.2"
+
+  # Database configuration
+  MYSQL_ROOT_PASSWORD: root
+  MYSQL_DATABASE: drupal
+  MYSQL_USER: drupal
+  MYSQL_PASSWORD: drupal
+
+  # Drupal configuration
+  SIMPLETEST_DB: mysql://drupal:drupal@database/drupal
+  SIMPLETEST_BASE_URL: http://web:8080
+  BROWSERTEST_OUTPUT_DIRECTORY: /var/www/html/web/sites/simpletest/browser_output
+
+  # Composer configuration
+  COMPOSER_ALLOW_SUPERUSER: "1"
+  COMPOSER_MEMORY_LIMIT: "-1"
+
+  # DDEV configuration
+  DDEV_NONINTERACTIVE: "true"
+
+################################################################################
+# Default Configuration
+################################################################################
+
+default:
+  # Use DDEV-compatible image
+  image: ddev/ddev-webserver:latest
+
+  # Allow pipeline interruption for newer runs
+  interruptible: true
+
+  # Retry on infrastructure failures
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - scheduler_failure
+
+################################################################################
+# Cache Configuration
+################################################################################
+
+# Cache composer dependencies globally
+cache:
+  key: "${CI_COMMIT_REF_SLUG}-composer"
+  paths:
+    - vendor/
+    - web/core/
+    - web/modules/contrib/
+    - web/themes/contrib/
+    - node_modules/
+  policy: pull
+
+################################################################################
+# Workflow Rules
+################################################################################
+
+workflow:
+  rules:
+    # Run on merge request events
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Run on scheduled pipelines (nightly database cache)
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    # Prevent duplicate pipelines for MRs
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    # Run on branch pushes
+    - if: $CI_COMMIT_BRANCH
+
+################################################################################
+# DATABASE STAGE
+# Fetch and cache production database for testing
+################################################################################
+
+# Nightly database caching job
+# Runs on schedule to fetch and cache production database
+# Artifacts expire after 1 day and are used by other jobs
+database:nightly:
+  stage: database
+  rules:
+    # Only run on scheduled pipelines (configure schedule in GitLab)
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  script:
+    - echo "Fetching and caching production database..."
+    - ./scripts/ci/fetch-db.sh --sanitize
+  artifacts:
+    paths:
+      - .data/db.sql.gz
+    expire_in: 1 day
+  tags:
+    - nwp
+  # Allow failure to not block other scheduled jobs
+  allow_failure: true
+
+# Database job for regular builds
+# Uses cached database from nightly job if available
+# Falls back to fetching fresh database if cache is stale
+database:
+  stage: database
+  rules:
+    # Skip on scheduled pipelines (nightly job handles this)
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # Run on all other pipelines
+    - when: on_success
+  script:
+    - echo "Checking for cached database..."
+    # Try to use cached database from nightly job
+    - |
+      if [ -f .data/db.sql.gz ]; then
+        echo "Using cached database from nightly job"
+      else
+        echo "No cache available, fetching fresh database..."
+        ./scripts/ci/fetch-db.sh --sanitize
+      fi
+  artifacts:
+    paths:
+      - .data/db.sql.gz
+    expire_in: 1 hour
+  cache:
+    # Pull cache only
+    policy: pull
+  tags:
+    - nwp
+  # Allow failure for non-blocking database issues
+  allow_failure: true
+
+################################################################################
+# BUILD STAGE
+# Install dependencies, build assets, import database, run deployment
+################################################################################
+
+build:
+  stage: build
+  needs: ["database"]
+  script:
+    - echo "Starting build process for ${SITE_NAME}..."
+
+    # Install system dependencies for DDEV
+    - apt-get update -qq
+    - apt-get install -y -qq docker.io docker-compose
+
+    # Run the build script
+    - ./scripts/ci/build.sh
+
+    # Show build information
+    - echo "Build completed successfully"
+    - ddev describe || true
+
+  artifacts:
+    paths:
+      - vendor/
+      - web/
+      - node_modules/
+      - .logs/
+    reports:
+      dotenv: build.env
+    expire_in: 1 hour
+  cache:
+    # Update cache with new dependencies
+    key: "${CI_COMMIT_REF_SLUG}-composer"
+    paths:
+      - vendor/
+      - web/core/
+      - web/modules/contrib/
+      - web/themes/contrib/
+      - node_modules/
+    policy: pull-push
+  tags:
+    - nwp
+  timeout: 30 minutes
+
+# Coverage check job
+# Validates test coverage meets threshold
+coverage:
+  stage: build
+  needs: ["build"]
+  script:
+    - echo "Checking code coverage..."
+
+    # Check if coverage report exists
+    - |
+      if [ -f .logs/coverage/clover.xml ]; then
+        ./scripts/ci/check-coverage.sh 80 .logs/coverage/clover.xml
+      else
+        echo "No coverage report found, skipping coverage check"
+        exit 0
+      fi
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: .logs/coverage/cobertura.xml
+    paths:
+      - .logs/coverage/
+    expire_in: 1 week
+  coverage: '/^\s*Lines:\s*\d+.\d+\%/'
+  tags:
+    - nwp
+  allow_failure: true
+
+################################################################################
+# DEPLOY STAGE
+# Deploy to staging and production environments
+################################################################################
+
+# Deploy to staging environment
+# Runs on develop branch, manual trigger required
+deploy:staging:
+  stage: deploy
+  needs: ["build"]
+  rules:
+    # Deploy to staging on develop branch (manual)
+    - if: $CI_COMMIT_BRANCH == "develop"
+      when: manual
+    # Also allow manual deploy from main branch to staging
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  script:
+    - echo "Deploying to staging environment..."
+
+    # Set up SSH key for deployment
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo "$STAGING_SSH_KEY" | base64 -d > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-keyscan -H $STAGING_HOST >> ~/.ssh/known_hosts
+
+    # Deploy to staging using rsync
+    - |
+      rsync -avz \
+        --exclude='.git' \
+        --exclude='.ddev' \
+        --exclude='node_modules' \
+        --exclude='.data' \
+        --exclude='sitebackups' \
+        --delete \
+        ./ ${STAGING_USER}@${STAGING_HOST}:${STAGING_PATH}/
+
+    # Run deployment commands on staging server
+    - |
+      ssh ${STAGING_USER}@${STAGING_HOST} "
+        cd ${STAGING_PATH}
+        ddev drush deploy -y
+        ddev drush cr
+        echo 'Staging deployment completed'
+      "
+  environment:
+    name: staging
+    url: https://staging.${SITE_NAME}.${BASE_DOMAIN}
+    on_stop: stop:staging
+  tags:
+    - nwp
+  only:
+    variables:
+      # Only run if staging variables are configured
+      - $STAGING_HOST
+      - $STAGING_USER
+      - $STAGING_PATH
+
+# Stop staging environment
+stop:staging:
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+      when: manual
+  script:
+    - echo "Stopping staging environment..."
+    - ssh ${STAGING_USER}@${STAGING_HOST} "cd ${STAGING_PATH} && ddev stop"
+  environment:
+    name: staging
+    action: stop
+  tags:
+    - nwp
+  only:
+    variables:
+      - $STAGING_HOST
+      - $STAGING_USER
+
+# Deploy to production environment
+# Runs on main/production branch, manual trigger required
+# This is the final step and requires explicit approval
+deploy:production:
+  stage: deploy
+  needs: ["build"]
+  rules:
+    # Deploy to production only on main branch (manual trigger)
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "production"
+      when: manual
+  script:
+    - echo "Deploying to production environment..."
+
+    # Set up SSH key for deployment
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo "$PRODUCTION_SSH_KEY" | base64 -d > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-keyscan -H $PRODUCTION_HOST >> ~/.ssh/known_hosts
+
+    # Create backup before deployment
+    - |
+      ssh ${PRODUCTION_USER}@${PRODUCTION_HOST} "
+        cd ${PRODUCTION_PATH}
+        echo 'Creating backup before deployment...'
+        ddev snapshot --name=pre-deploy-${CI_COMMIT_SHORT_SHA}
+      "
+
+    # Deploy to production using rsync
+    - |
+      rsync -avz \
+        --exclude='.git' \
+        --exclude='.ddev' \
+        --exclude='node_modules' \
+        --exclude='.data' \
+        --exclude='sitebackups' \
+        --exclude='web/sites/*/files' \
+        --delete \
+        ./ ${PRODUCTION_USER}@${PRODUCTION_HOST}:${PRODUCTION_PATH}/
+
+    # Run deployment commands on production server
+    - |
+      ssh ${PRODUCTION_USER}@${PRODUCTION_HOST} "
+        cd ${PRODUCTION_PATH}
+        echo 'Running Drupal deployment tasks...'
+        ddev drush deploy -y
+        ddev drush cr
+        echo 'Production deployment completed successfully'
+      "
+
+    # Verify deployment
+    - |
+      ssh ${PRODUCTION_USER}@${PRODUCTION_HOST} "
+        cd ${PRODUCTION_PATH}
+        ddev drush status
+      "
+  environment:
+    name: production
+    url: https://${SITE_NAME}.${BASE_DOMAIN}
+  tags:
+    - nwp
+  # Do not allow failure for production deployments
+  allow_failure: false
+  only:
+    variables:
+      # Only run if production variables are configured
+      - $PRODUCTION_HOST
+      - $PRODUCTION_USER
+      - $PRODUCTION_PATH
+
+################################################################################
+# CI/CD Variables Required
+################################################################################
+#
+# Configure these in GitLab: Settings > CI/CD > Variables
+#
+# Database & Build:
+#   (none required - uses local database fetch)
+#
+# Staging Deployment:
+#   STAGING_HOST         - Staging server hostname/IP
+#   STAGING_USER         - SSH username for staging
+#   STAGING_PATH         - Path to site on staging server
+#   STAGING_SSH_KEY      - Base64-encoded SSH private key
+#   BASE_DOMAIN          - Base domain for environments (e.g., nwpcode.org)
+#
+# Production Deployment:
+#   PRODUCTION_HOST      - Production server hostname/IP
+#   PRODUCTION_USER      - SSH username for production
+#   PRODUCTION_PATH      - Path to site on production server
+#   PRODUCTION_SSH_KEY   - Base64-encoded SSH private key
+#   BASE_DOMAIN          - Base domain for production (e.g., example.com)
+#
+# To encode SSH key for CI/CD variables:
+#   cat ~/.ssh/id_rsa | base64 -w 0
+#
+################################################################################
+
+################################################################################
+# Scheduled Pipeline Configuration
+################################################################################
+#
+# To enable nightly database caching:
+#
+# 1. Go to: Settings > CI/CD > Schedules
+# 2. Click "New schedule"
+# 3. Configure:
+#    - Description: "Nightly database cache"
+#    - Interval: "0 2 * * *" (2 AM daily)
+#    - Target branch: main
+#    - Variables: (none needed)
+# 4. Save pipeline schedule
+#
+# The database:nightly job will run and cache the production database
+# for use by builds throughout the next day.
+#
+################################################################################
+
+################################################################################
+# Usage Examples
+################################################################################
+#
+# Standard workflow:
+#   1. Developer pushes to feature branch
+#   2. Pipeline runs: database → build
+#   3. Developer creates merge request
+#   4. Pipeline runs again with artifacts
+#   5. After merge to develop: manual deploy to staging
+#   6. After merge to main: manual deploy to production
+#
+# Nightly workflow:
+#   1. Scheduled pipeline runs at 2 AM
+#   2. database:nightly job fetches and caches DB
+#   3. Cache available for all builds during the day
+#   4. Next night, cache refreshes
+#
+################################################################################
+
+################################################################################
+# Pipeline Badges
+################################################################################
+#
+# Add to your README.md:
+#
+# Pipeline Status:
+# ![Pipeline](https://git.${BASE_DOMAIN}/${CI_PROJECT_PATH}/badges/${CI_DEFAULT_BRANCH}/pipeline.svg)
+#
+# Coverage:
+# ![Coverage](https://git.${BASE_DOMAIN}/${CI_PROJECT_PATH}/badges/${CI_DEFAULT_BRANCH}/coverage.svg)
+#
+################################################################################

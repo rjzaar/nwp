@@ -926,3 +926,333 @@ features:
     verified_at: null
     file_hash: null
     notes: null
+
+  # ============================================================
+  # CI/CD PIPELINE
+  # ============================================================
+
+  ci_scripts:
+    name: "CI Helper Scripts (scripts/ci/)"
+    description: "CI pipeline helper scripts for database, build, test, coverage"
+    files:
+      - scripts/ci/fetch-db.sh
+      - scripts/ci/build.sh
+      - scripts/ci/test.sh
+      - scripts/ci/check-coverage.sh
+    checklist:
+      - "Test fetch-db.sh creates sanitized database backup"
+      - "Test fetch-db.sh --use-cache uses cached database"
+      - "Test build.sh runs composer install and npm build"
+      - "Test build.sh imports database and runs drush deploy"
+      - "Test test.sh runs phpcs, phpstan, phpunit, behat"
+      - "Test test.sh respects --skip-* flags"
+      - "Test test.sh creates logs in .logs/ directory"
+      - "Test check-coverage.sh validates coverage threshold"
+      - "Verify all scripts work within DDEV environment"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 1 implementation"
+
+  gitlab_ci:
+    name: "GitLab CI Configuration (.gitlab-ci.yml)"
+    description: "GitLab CI/CD pipeline with database caching and multi-stage deploy"
+    files:
+      - .gitlab-ci.yml
+    checklist:
+      - "Verify pipeline triggers on push to any branch"
+      - "Test nightly database job caches production database"
+      - "Verify build job runs all tests"
+      - "Test coverage job generates reports"
+      - "Test staging deployment on merge to staging branch"
+      - "Test production deployment on merge to production branch"
+      - "Verify manual deployment buttons work"
+      - "Test pipeline artifacts are stored correctly"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 1 implementation"
+
+  github_actions:
+    name: "GitHub Actions Workflow (.github/workflows/)"
+    description: "GitHub Actions workflow with DDEV integration"
+    files:
+      - .github/workflows/build-test-deploy.yml
+    checklist:
+      - "Verify workflow triggers on push/PR/schedule"
+      - "Test DDEV starts correctly in GitHub Actions"
+      - "Verify database caching works"
+      - "Test all test types run successfully"
+      - "Test staging deployment on push to main"
+      - "Test production deployment on release tag"
+      - "Verify workflow concurrency limits work"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 1 implementation"
+
+  # ============================================================
+  # DEPENDENCY AUTOMATION
+  # ============================================================
+
+  renovate:
+    name: "Renovate Configuration (renovate.json)"
+    description: "Automated dependency updates for Drupal projects"
+    files:
+      - renovate.json
+    checklist:
+      - "Verify Renovate bot is enabled on repository"
+      - "Test Drupal core update PR creation"
+      - "Test contrib module update PR creation"
+      - "Verify auto-merge works for patch updates"
+      - "Test security alert PRs are created immediately"
+      - "Check rate limiting (2 PRs/hour, 10/day)"
+      - "Verify commit message format"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 2 implementation"
+
+  security_update:
+    name: "Security Update Script (scripts/security-update.sh)"
+    description: "Automated security update workflow with testing"
+    files:
+      - scripts/security-update.sh
+    checklist:
+      - "Test --check mode lists available security updates"
+      - "Test security branch creation (security/YYYYMMDD)"
+      - "Verify composer update --dry-run shows changes"
+      - "Test composer update applies changes correctly"
+      - "Verify tests run after applying updates"
+      - "Test commit is created with proper message"
+      - "Test branch is pushed to remote"
+      - "Verify summary report is accurate"
+      - "Test notification is sent after update"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 2 implementation"
+
+  # ============================================================
+  # SERVER SCRIPTS
+  # ============================================================
+
+  server_bootstrap:
+    name: "Server Bootstrap (linode/server_scripts/nwp-bootstrap.sh)"
+    description: "Production server initialization and package installation"
+    files:
+      - linode/server_scripts/nwp-bootstrap.sh
+    checklist:
+      - "Test on fresh Ubuntu 22.04 server"
+      - "Verify all packages installed (nginx, php, mysql, etc.)"
+      - "Check /var/www/{prod,test,old} directories created"
+      - "Verify /var/backups/nwp directory created"
+      - "Check /var/log/nwp directory created"
+      - "Test idempotent (runs twice without errors)"
+      - "Verify firewall rules applied"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 3 implementation"
+
+  server_healthcheck:
+    name: "Server Health Check (linode/server_scripts/nwp-healthcheck.sh)"
+    description: "Comprehensive health monitoring for production sites"
+    files:
+      - linode/server_scripts/nwp-healthcheck.sh
+    checklist:
+      - "Test HTTP check returns site status"
+      - "Test Drupal status check via drush"
+      - "Verify database connection check works"
+      - "Test cache backend check"
+      - "Test cron status check"
+      - "Verify SSL certificate check"
+      - "Test disk usage check"
+      - "Test --json output format"
+      - "Verify exit codes (0=healthy, 1=unhealthy)"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 3 implementation"
+
+  server_audit:
+    name: "Server Audit Logging (linode/server_scripts/nwp-audit.sh)"
+    description: "Deployment and operation audit logging"
+    files:
+      - linode/server_scripts/nwp-audit.sh
+    checklist:
+      - "Test deploy action logging"
+      - "Verify JSON Lines format in deployments.jsonl"
+      - "Check human-readable format in deployments.log"
+      - "Verify timestamps are correct"
+      - "Test metadata field storage"
+      - "Verify log rotation doesn't lose data"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 3 implementation"
+
+  # ============================================================
+  # NOTIFICATION SYSTEM
+  # ============================================================
+
+  notify_main:
+    name: "Notification Router (scripts/notify.sh)"
+    description: "Main notification script routing to multiple channels"
+    files:
+      - scripts/notify.sh
+    checklist:
+      - "Test --event flag with various event types"
+      - "Test --site flag includes site name"
+      - "Test --url flag includes clickable link"
+      - "Verify routes to Slack when SLACK_WEBHOOK_URL set"
+      - "Verify routes to email when EMAIL_RECIPIENTS set"
+      - "Verify routes to webhook when WEBHOOK_URL set"
+      - "Test multiple channels simultaneously"
+      - "Verify event-to-emoji mapping"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 4 implementation"
+
+  notify_slack:
+    name: "Slack Notifications (scripts/notify-slack.sh)"
+    description: "Slack webhook integration for deployment notifications"
+    files:
+      - scripts/notify-slack.sh
+    checklist:
+      - "Test success notification (green color)"
+      - "Test error notification (red color)"
+      - "Test warning notification (yellow color)"
+      - "Verify message formatting in Slack"
+      - "Test link attachment"
+      - "Verify SLACK_WEBHOOK_URL validation"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 4 implementation"
+
+  notify_email:
+    name: "Email Notifications (scripts/notify-email.sh)"
+    description: "Email notifications via sendmail/SMTP"
+    files:
+      - scripts/notify-email.sh
+    checklist:
+      - "Test email delivery via sendmail"
+      - "Test email delivery via SMTP"
+      - "Verify subject line formatting"
+      - "Test multiple recipients"
+      - "Verify HTML vs plain text formatting"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 4 implementation"
+
+  notify_webhook:
+    name: "Webhook Notifications (scripts/notify-webhook.sh)"
+    description: "Generic webhook integration for external systems"
+    files:
+      - scripts/notify-webhook.sh
+    checklist:
+      - "Test JSON payload format"
+      - "Verify event type in payload"
+      - "Test timestamp field"
+      - "Verify metadata fields"
+      - "Test webhook URL validation"
+      - "Test response handling"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 4 implementation"
+
+  # ============================================================
+  # CODE QUALITY
+  # ============================================================
+
+  phpstan_config:
+    name: "PHPStan Configuration (phpstan.neon)"
+    description: "Static analysis configuration for Drupal projects"
+    files:
+      - phpstan.neon
+    checklist:
+      - "Verify level 5 analysis runs without config errors"
+      - "Test custom module scanning in web/modules/custom"
+      - "Test custom theme scanning in web/themes/custom"
+      - "Verify Drupal-specific ignores work"
+      - "Test baseline generation if needed"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 5 implementation"
+
+  pre_commit_hook:
+    name: "Pre-commit Hook (.hooks/pre-commit)"
+    description: "Git pre-commit hook for code quality checks"
+    files:
+      - .hooks/pre-commit
+    checklist:
+      - "Test hook installation to .git/hooks/"
+      - "Verify PHPCS runs on staged PHP files"
+      - "Verify PHPStan runs on staged PHP files"
+      - "Test commit blocked on PHPCS errors"
+      - "Test commit blocked on PHPStan errors"
+      - "Verify --no-verify bypasses hook"
+      - "Test non-PHP files skip PHP checks"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 5 implementation"
+
+  pr_templates:
+    name: "PR/MR Templates"
+    description: "Pull/Merge request templates for code review"
+    files:
+      - .github/PULL_REQUEST_TEMPLATE.md
+      - .gitlab/merge_request_templates/default.md
+    checklist:
+      - "Verify GitHub PR template appears on new PR"
+      - "Verify GitLab MR template appears on new MR"
+      - "Check all checklist items are relevant"
+      - "Test markdown rendering"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Phase 5 implementation"
+
+  # ============================================================
+  # MULTI-CODER SUPPORT
+  # ============================================================
+
+  coder_setup:
+    name: "Coder Setup (coder-setup.sh)"
+    description: "Multi-coder DNS delegation and management"
+    files:
+      - coder-setup.sh
+      - lib/cloudflare.sh
+    checklist:
+      - "Test add coder: ./coder-setup.sh add codername"
+      - "Verify NS records created in Cloudflare"
+      - "Test list coders: ./coder-setup.sh list"
+      - "Test remove coder: ./coder-setup.sh remove codername"
+      - "Verify cnwp.yml other_coders section updated"
+      - "Test DNS propagation verification"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: "Added January 2026 - Multi-coder infrastructure"

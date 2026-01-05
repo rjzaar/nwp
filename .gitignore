@@ -8,6 +8,12 @@
 
 # Whitelist NWP infrastructure files
 
+# Sites directory (where site installations go)
+# The folder is tracked but contents are ignored
+!sites/
+sites/*
+!sites/.gitkeep
+
 # Setup entry point (symlink to scripts/commands/setup.sh)
 # This is the only command script tracked in git - users run ./setup.sh to bootstrap
 # After setup, use the `pl` CLI command to run all other scripts

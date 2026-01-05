@@ -2,99 +2,117 @@
 
 This directory contains all documentation for the Narrow Way Project (NWP).
 
+**29 active documents** organized by category.
+
+---
+
 ## Getting Started
 
 | Document | Description |
 |----------|-------------|
 | [QUICKSTART.md](QUICKSTART.md) | 5-minute quick start guide |
 | [SETUP.md](SETUP.md) | Installation, configuration, and uninstallation |
-| [TESTING.md](TESTING.md) | Running tests and code quality checks |
-| [CICD.md](CICD.md) | CI/CD pipelines and automation |
-
-## Security & Training
-
-| Document | Description |
-|----------|-------------|
-| [DATA_SECURITY_BEST_PRACTICES.md](DATA_SECURITY_BEST_PRACTICES.md) | Two-tier secrets architecture, AI safety, security hardening |
-| [NWP_TRAINING_BOOKLET.md](NWP_TRAINING_BOOKLET.md) | Comprehensive 8-phase training curriculum |
-| [VERIFICATION_GUIDE.md](VERIFICATION_GUIDE.md) | Feature verification tracking system |
-
-## Deployment
-
-| Document | Description |
-|----------|-------------|
-| [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md) | Deploying to production |
-| [LINODE_DEPLOYMENT.md](LINODE_DEPLOYMENT.md) | Linode-specific deployment |
-| [SSH_SETUP.md](SSH_SETUP.md) | SSH key configuration |
+| [FEATURES.md](FEATURES.md) | Complete feature reference by category |
 
 ## Reference
 
 | Document | Description |
 |----------|-------------|
-| [FEATURES.md](FEATURES.md) | Complete feature reference by category |
 | [LIB_REFERENCE.md](LIB_REFERENCE.md) | Library function API documentation |
-| [SCRIPTS_IMPLEMENTATION.md](SCRIPTS_IMPLEMENTATION.md) | Script architecture and details |
+| [SCRIPTS_IMPLEMENTATION.md](SCRIPTS_IMPLEMENTATION.md) | Script architecture and implementation details |
 | [BACKUP_IMPLEMENTATION.md](BACKUP_IMPLEMENTATION.md) | Backup system implementation |
-| [GIT_BACKUP_RECOMMENDATIONS.md](GIT_BACKUP_RECOMMENDATIONS.md) | Git-based backup strategy |
+| [ARCHITECTURE_ANALYSIS.md](ARCHITECTURE_ANALYSIS.md) | Research: Vortex comparison, env vars, workflows |
 
-## Project
+## Deployment
 
 | Document | Description |
 |----------|-------------|
-| [ROADMAP.md](ROADMAP.md) | Project roadmap and proposals |
+| [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md) | Deploying to production servers |
+| [ADVANCED_DEPLOYMENT.md](ADVANCED_DEPLOYMENT.md) | Blue-green deployment, canary releases |
+| [LINODE_DEPLOYMENT.md](LINODE_DEPLOYMENT.md) | Linode infrastructure guide |
+| [SSH_SETUP.md](SSH_SETUP.md) | SSH key configuration |
+| [ENVIRONMENTS.md](ENVIRONMENTS.md) | Four-tier environment model (dev/stg/live/prod) |
+| [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) | Recovery procedures and RTO/RPO targets |
+
+## Testing
+
+| Document | Description |
+|----------|-------------|
+| [TESTING.md](TESTING.md) | Automated testing: Behat, PHPUnit, PHPStan |
+| [HUMAN_TESTING.md](HUMAN_TESTING.md) | Manual test procedures (12 categories) |
+| [VERIFICATION_GUIDE.md](VERIFICATION_GUIDE.md) | Feature verification tracking system |
+
+## CI/CD & Git
+
+| Document | Description |
+|----------|-------------|
+| [CICD.md](CICD.md) | CI/CD pipelines: GitLab CI, GitHub Actions |
+| [GIT_BACKUP_RECOMMENDATIONS.md](GIT_BACKUP_RECOMMENDATIONS.md) | Git-based backup strategy |
 | [CHANGES.md](CHANGES.md) | Version changelog |
 
-## Migration Guides
+## Security & Best Practices
 
 | Document | Description |
 |----------|-------------|
-| [MIGRATION_SITES_TRACKING.md](MIGRATION_SITES_TRACKING.md) | Migrating to sites tracking |
-| [MIGRATION_GUIDE_ENV.md](MIGRATION_GUIDE_ENV.md) | Environment variable migration |
+| [DATA_SECURITY_BEST_PRACTICES.md](DATA_SECURITY_BEST_PRACTICES.md) | Two-tier secrets, AI safety, security hardening |
+| [WHY.md](WHY.md) | Design decisions and architecture rationale |
 
-## Technical Reference
+## Training & Guides
 
 | Document | Description |
 |----------|-------------|
-| [ARCHITECTURE_ANALYSIS.md](ARCHITECTURE_ANALYSIS.md) | Consolidated research: Vortex comparison, env vars, deployment workflow |
-| [podcast_setup.md](podcast_setup.md) | Podcast site configuration |
+| [NWP_TRAINING_BOOKLET.md](NWP_TRAINING_BOOKLET.md) | Comprehensive 8-phase training curriculum |
+| [DEVELOPER_LIFECYCLE_GUIDE.md](DEVELOPER_LIFECYCLE_GUIDE.md) | 9-phase developer workflow guide |
+| [CODER_ONBOARDING.md](CODER_ONBOARDING.md) | Multi-coder infrastructure setup |
+
+## Planning & History
+
+| Document | Description |
+|----------|-------------|
+| [ROADMAP.md](ROADMAP.md) | Pending & future work (P32-P35, F01-F03) |
+| [MILESTONES.md](MILESTONES.md) | Completed implementation history (P01-P31) |
+
+## Specialized
+
+| Document | Description |
+|----------|-------------|
+| [podcast_setup.md](podcast_setup.md) | Castopod podcast hosting setup |
+| [MIGRATION_SITES_TRACKING.md](MIGRATION_SITES_TRACKING.md) | Migrating to sites tracking system |
+
+---
 
 ## Archived Documents
 
-Historical proposals and research documents are in `docs/archive/`:
-- Training system planning (Moodle/CodeRunner)
-- Email/Postfix infrastructure proposal
-- Original Vortex and deployment analysis
-- Code reviews and implementation summaries
+Historical proposals and research in `docs/archive/` (14 files):
+
+| Category | Files |
+|----------|-------|
+| **Implemented Proposals** | dev2stg-enhancement, IMPORT, multi-coder-dns, LIVE_DEPLOYMENT_AUTOMATION, NWP_COMPLETE_ROADMAP |
+| **Superseded Research** | VORTEX_COMPARISON, DEPLOYMENT_WORKFLOW_ANALYSIS, environment-variables-comparison |
+| **Historical Guides** | MIGRATION_GUIDE_ENV, IMPLEMENTATION_SUMMARY |
+| **Future Proposals** | EMAIL_POSTFIX_PROPOSAL, NWP_TRAINING_SYSTEM, NWP_TRAINING_IMPLEMENTATION_PLAN |
+| **Reviews** | CODE_REVIEW_2024-12 |
+
+---
 
 ## Quick Reference
 
 ### Common Commands
 
 ```bash
-# Setup
-./setup.sh                    # Interactive setup
-./setup.sh --auto             # Auto-install core components
+# Using pl CLI (recommended)
+pl install nwp mysite        # Install new site
+pl backup mysite             # Backup site
+pl restore mysite            # Restore site
+pl copy source dest          # Copy site
+pl delete mysite             # Delete site
+pl dev2stg mysite            # Dev to staging
+pl stg2prod mysite           # Staging to production
+pl test mysite               # Run tests
 
-# Site Management
-./install.sh recipe sitename  # Install new site
-./backup.sh sitename          # Backup site
-./restore.sh sitename         # Restore site
-./copy.sh source dest         # Copy site
-./delete.sh sitename          # Delete site
-
-# Deployment
-./dev2stg.sh sitename         # Dev to staging
-./stg2prod.sh sitename        # Staging to production
-
-# Testing
-./testos.sh -a sitename       # All tests
-./testos.sh -b sitename       # Behat tests
-./test-nwp.sh                 # NWP self-tests
-
-# CLI (if installed)
-pl install recipe sitename
-pl backup sitename
-pl test sitename
+# Or use scripts directly
+./scripts/commands/install.sh nwp mysite
+./scripts/commands/backup.sh mysite
 ```
 
 ### Environment Naming
@@ -110,15 +128,21 @@ pl test sitename
 
 | File | Purpose |
 |------|---------|
-| `cnwp.yml` | Main configuration |
-| `.secrets.yml` | Credentials (not in git) |
+| `cnwp.yml` | Main configuration (user-specific, not in git) |
 | `example.cnwp.yml` | Configuration template |
+| `.secrets.yml` | Infrastructure credentials |
+| `.secrets.data.yml` | Production credentials (blocked from AI) |
+
+---
 
 ## Related Documentation
 
 - [Main README](../README.md) - Project overview
-- [CLAUDE.md](../CLAUDE.md) - AI assistant instructions and protected files
-- [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) - Current known issues and test failures
-- [GitLab Setup](../linode/gitlab/README.md) - GitLab server, Composer registry, and migration
+- [CLAUDE.md](../CLAUDE.md) - AI assistant instructions
+- [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) - Current known issues
+- [GitLab Setup](../linode/gitlab/README.md) - GitLab server documentation
 - [Linode Scripts](../linode/README.md) - Linode provisioning
-- [Vortex Environment](../vortex/README.md) - Environment configuration system
+
+---
+
+*Last updated: January 5, 2026*

@@ -16,8 +16,9 @@ A summary of all completed development phases and their key achievements.
 | Phase 4 | CI/CD & Testing | P16-P21 | Dec 2025 |
 | Phase 5 | Enterprise Features | P22-P28 | Dec 2025 |
 | Phase 5b | Infrastructure & Import | P29-P31 | Jan 2026 |
+| Phase 5c | Live Deployment Automation | P32-P35 | Jan 2026 |
 
-**Total: 31 proposals implemented**
+**Total: 35 proposals implemented**
 
 ---
 
@@ -140,6 +141,22 @@ Daily security checks, auto-update branches, CI testing, live auto-deploy, prod 
 
 ### P31: Enhanced Site Management TUI
 `modify.sh` with option documentation (`d` key), environment switching (`<>` keys), orphaned site detection.
+
+---
+
+## Phase 5c: Live Deployment Automation
+
+### P32: Profile Module Symlink Auto-Creation
+`_create_profile_symlinks()` in `lib/install-common.sh` automatically creates module/theme symlinks for custom profiles during `install_git_profile()`.
+
+### P33: Live Server Infrastructure Setup
+`lib/live-server-setup.sh` (503 lines) with functions: `ensure_php_fpm()`, `ensure_mariadb()`, `create_site_database()`, `configure_nginx_drupal()`, `provision_drupal_stack()`. Ubuntu 22.04/24.04 support, idempotent execution.
+
+### P34: Database Deployment in stg2live.sh
+`deploy_database()` function exports via `ddev export-db`, SCP transfers to live server, imports via mysql CLI. Automatic cleanup of temporary files.
+
+### P35: Production Settings Generation
+`generate_live_settings()` in `lib/install-common.sh` generates `settings.local.php` with production database credentials, hash_salt, performance settings, trusted host patterns.
 
 ---
 

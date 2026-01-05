@@ -437,6 +437,188 @@ yaml_add_site() {
 }
 
 #######################################
+# Add a minimal site stub entry for installation tracking
+# Called BEFORE installation starts to enable progress tracking
+# Arguments:
+#   $1 - Site name
+#   $2 - Directory path
+#   $3 - Recipe name
+#   $4 - Config file path (optional)
+# Returns:
+#   0 on success, 1 on failure
+#######################################
+yaml_add_site_stub() {
+    local site_name="$1"
+    local directory="$2"
+    local recipe="$3"
+    local config_file="${4:-$YAML_CONFIG_FILE}"
+
+    # Validate required parameters
+    if [[ -z "$site_name" || -z "$directory" || -z "$recipe" ]]; then
+        echo -e "${RED}Error: Site name, directory, and recipe are required${NC}" >&2
+        return 1
+    fi
+
+    # Validate site name for safe YAML operations
+    if ! yaml_validate_sitename "$site_name"; then
+        return 1
+    fi
+
+    # Check if site already exists - if so, nothing to do
+    if yaml_site_exists "$site_name" "$config_file"; then
+        # Site already registered, this is fine for resume scenarios
+        return 0
+    fi
+
+    # Create backup
+    if ! yaml_backup "$config_file"; then
+        return 1
+    fi
+
+    # Get ISO 8601 timestamp
+    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    # Create minimal stub entry for tracking
+    local site_entry="  $site_name:
+    directory: $directory
+    recipe: $recipe
+    install_step: 0
+    created: $timestamp"
+
+    # Add site entry to sites: section (same AWK pattern as yaml_add_site)
+    awk -v site_entry="$site_entry" '
+        BEGIN { in_sites = 0; sites_found = 0; entry_added = 0 }
+
+        /^sites:/ {
+            sites_found = 1
+            in_sites = 1
+            print
+            next
+        }
+
+        # If in sites section and we hit a non-indented line (or comment at root level), end of sites section
+        in_sites && /^[a-zA-Z]/ && !/^  / {
+            # Add entry before this new section
+            if (!entry_added) {
+                print site_entry
+                entry_added = 1
+            }
+            in_sites = 0
+            print
+            next
+        }
+
+        # In sites section, print all lines
+        in_sites {
+            print
+            next
+        }
+
+        # Not in sites section, just print
+        { print }
+
+        # At EOF, if still in sites section, add entry
+        END {
+            if (in_sites && !entry_added) {
+                print site_entry
+            }
+        }
+    ' "$config_file" > "${config_file}.tmp"
+
+    # Move temp file to original
+    if mv "${config_file}.tmp" "$config_file"; then
+        echo -e "${GREEN}Site stub '$site_name' registered for installation tracking${NC}" >&2
+        return 0
+    else
+        echo -e "${RED}Error: Failed to update $config_file${NC}" >&2
+        return 1
+    fi
+}
+
+#######################################
+# Update site stub to full site entry after installation completes
+# Adds environment, purpose, and updates install_step to -1
+# Arguments:
+#   $1 - Site name
+#   $2 - Environment type (development/staging/production)
+#   $3 - Purpose (testing/indefinite/permanent/migration)
+#   $4 - Config file path (optional)
+# Returns:
+#   0 on success, 1 on failure
+#######################################
+yaml_complete_site_stub() {
+    local site_name="$1"
+    local environment="${2:-development}"
+    local purpose="${3:-indefinite}"
+    local config_file="${4:-$YAML_CONFIG_FILE}"
+
+    # Validate site name
+    if ! yaml_validate_sitename "$site_name"; then
+        return 1
+    fi
+
+    # Validate purpose
+    if ! yaml_validate_purpose "$purpose"; then
+        return 1
+    fi
+
+    # Check if site exists
+    if ! yaml_site_exists "$site_name" "$config_file"; then
+        echo -e "${RED}Error: Site '$site_name' not found in $config_file${NC}" >&2
+        return 1
+    fi
+
+    # Create backup
+    if ! yaml_backup "$config_file"; then
+        return 1
+    fi
+
+    # Update install_step to -1 (complete) and add environment/purpose
+    awk -v site="$site_name" -v env="$environment" -v purp="$purpose" '
+        BEGIN { in_site = 0; in_sites = 0; added_env = 0; added_purpose = 0 }
+        /^sites:/ { in_sites = 1; print; next }
+        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
+        in_sites && $0 ~ "^  " site ":" { in_site = 1; print; next }
+        in_site && (/^  [a-zA-Z0-9_-]+:/ || (/^[a-zA-Z]/ && !/^    /)) {
+            # End of site - add any missing fields
+            if (!added_env) print "    environment: " env
+            if (!added_purpose) print "    purpose: " purp
+            in_site = 0
+        }
+        in_site && /^    install_step:/ {
+            print "    install_step: -1"
+            next
+        }
+        in_site && /^    environment:/ {
+            print "    environment: " env
+            added_env = 1
+            next
+        }
+        in_site && /^    purpose:/ {
+            print "    purpose: " purp
+            added_purpose = 1
+            next
+        }
+        { print }
+        END {
+            if (in_site) {
+                if (!added_env) print "    environment: " env
+                if (!added_purpose) print "    purpose: " purp
+            }
+        }
+    ' "$config_file" > "${config_file}.tmp"
+
+    # Move temp file to original
+    if mv "${config_file}.tmp" "$config_file"; then
+        echo -e "${GREEN}Site '$site_name' installation marked complete${NC}" >&2
+        return 0
+    else
+        echo -e "${RED}Error: Failed to update $config_file${NC}" >&2
+        return 1
+    fi
+}
+
+#######################################
 # Remove a site entry from cnwp.yml
 # Arguments:
 #   $1 - Site name
@@ -1067,6 +1249,8 @@ export -f yaml_get_site_field
 export -f yaml_get_site_list
 export -f yaml_get_site_purpose
 export -f yaml_add_site
+export -f yaml_add_site_stub
+export -f yaml_complete_site_stub
 export -f yaml_add_migration_stub
 export -f yaml_remove_site
 export -f yaml_update_site_field

@@ -235,6 +235,35 @@ mark_install_complete() {
 # Display Functions
 ################################################################################
 
+# Check if a site appears to be installed (has DDEV and code)
+# Args: $1 = site name, $2 = config file
+is_site_actually_installed() {
+    local site="$1"
+    local config_file="${2:-cnwp.yml}"
+
+    # Get directory from cnwp.yml
+    local directory=""
+    if command -v get_site_field &>/dev/null; then
+        directory=$(get_site_field "$site" "directory" "$config_file" 2>/dev/null)
+    fi
+
+    # Fallback to standard location
+    if [ -z "$directory" ]; then
+        local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+        directory="${script_dir}/sites/${site}"
+    fi
+
+    # Check if site has DDEV configured and appears installed
+    if [ -d "$directory/.ddev" ] && [ -f "$directory/.ddev/config.yaml" ]; then
+        # Check for Drupal installation markers
+        if [ -f "$directory/html/sites/default/settings.php" ] || \
+           [ -f "$directory/web/sites/default/settings.php" ]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
 # Get install status display string
 # Args: $1 = site name, $2 = config file, $3 = environment
 get_install_status_display() {
@@ -248,7 +277,12 @@ get_install_status_display() {
     if [ "$step" = "-1" ] || [ "$step" -ge "$total" ]; then
         echo "Complete ($total/$total steps)"
     elif [ "$step" = "0" ]; then
-        echo "Not started"
+        # Check if site is actually installed despite no tracking
+        if is_site_actually_installed "$site" "$config_file"; then
+            echo "Complete (untracked)"
+        else
+            echo "Not started"
+        fi
     else
         local title=$(get_step_title "$step" "$env")
         echo "Stopped at step $step ($title)"
@@ -269,7 +303,12 @@ get_install_status_color() {
     if [ "$step" = "-1" ] || [ "$step" -ge "$total" ]; then
         echo "green"
     elif [ "$step" = "0" ]; then
-        echo "dim"
+        # Check if site is actually installed despite no tracking
+        if is_site_actually_installed "$site" "$config_file"; then
+            echo "green"
+        else
+            echo "dim"
+        fi
     else
         echo "yellow"
     fi
@@ -337,4 +376,4 @@ show_steps_detail() {
 export -f get_steps_for_env get_total_steps get_step_info get_step_title
 export -f get_step_key get_step_description get_install_step is_install_complete
 export -f set_install_step mark_install_complete get_install_status_display
-export -f get_install_status_color show_steps_detail
+export -f get_install_status_color show_steps_detail is_site_actually_installed

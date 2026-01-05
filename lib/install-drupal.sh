@@ -78,6 +78,11 @@ install_drupal() {
 
         project_dir=$(pwd)
         print_status "OK" "Created installation directory: $project_dir"
+
+        # Register site stub for progress tracking (fresh install only)
+        if type yaml_add_site_stub &>/dev/null; then
+            yaml_add_site_stub "$site_name" "$project_dir" "$recipe" "$config_file" 2>/dev/null
+        fi
     fi
 
     # Extract configuration values from YAML
@@ -87,6 +92,7 @@ install_drupal() {
     local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/cnwp.yml")
     local install_modules=$(get_recipe_value "$recipe" "install_modules" "$base_dir/cnwp.yml")
     local post_install_modules=$(get_recipe_list_value "$recipe" "post_install_modules" "$base_dir/cnwp.yml")
+    local post_install_scripts=$(get_recipe_list_value "$recipe" "post_install_scripts" "$base_dir/cnwp.yml")
     local default_theme=$(get_recipe_value "$recipe" "default_theme" "$base_dir/cnwp.yml")
 
     # Get PHP and database: recipe overrides settings, settings overrides defaults
@@ -360,6 +366,31 @@ EOF
     # Step 5: Launch Services
     if should_run_step 5 "$start_step"; then
         print_header "Step 5: Launch DDEV Services"
+
+        # Get project name from DDEV config
+        local ddev_project_name=""
+        if [ -f ".ddev/config.yaml" ]; then
+            ddev_project_name=$(grep "^name:" .ddev/config.yaml | sed 's/^name: *//')
+        fi
+
+        # Check for and clean up stale DDEV project registration
+        if [ -n "$ddev_project_name" ]; then
+            local current_dir=$(pwd)
+            # Use JSON output for reliable parsing - extract approot for matching project name
+            local registered_path=""
+            if command -v jq &>/dev/null; then
+                registered_path=$(ddev list -j 2>/dev/null | jq -r --arg name "$ddev_project_name" '.raw[]? | select(.name == $name) | .approot // empty' 2>/dev/null || true)
+            else
+                # Fallback: parse JSON with grep/sed if jq not available
+                registered_path=$(ddev list -j 2>/dev/null | grep -o "\"name\":\"$ddev_project_name\"[^}]*\"approot\":\"[^\"]*\"" | sed 's/.*"approot":"\([^"]*\)".*/\1/' 2>/dev/null || true)
+            fi
+            if [ -n "$registered_path" ] && [ "$registered_path" != "$current_dir" ]; then
+                print_info "Cleaning up stale DDEV registration for '$ddev_project_name'..."
+                print_info "  Registered at: $registered_path"
+                print_info "  Current dir:   $current_dir"
+                ddev stop --unlist "$ddev_project_name" 2>/dev/null || true
+            fi
+        fi
 
         if ! ddev start; then
             print_error "Failed to start DDEV"
@@ -709,6 +740,31 @@ CONFIG_SPLIT_EOF
             fi
         fi
 
+        # Run post-install scripts from recipe (e.g., seed scripts)
+        if [ -n "$post_install_scripts" ]; then
+            print_info "Running post-install scripts..."
+            for script in $post_install_scripts; do
+                if [ -f "$webroot/$script" ]; then
+                    print_info "  Running: $script"
+                    if ddev drush php:script "$webroot/$script"; then
+                        print_status "OK" "Script completed: $(basename "$script")"
+                    else
+                        print_status "WARN" "Script failed: $script"
+                    fi
+                elif [ -f "$script" ]; then
+                    # Try relative to project root
+                    print_info "  Running: $script"
+                    if ddev drush php:script "$script"; then
+                        print_status "OK" "Script completed: $(basename "$script")"
+                    else
+                        print_status "WARN" "Script failed: $script"
+                    fi
+                else
+                    print_status "WARN" "Script not found: $script"
+                fi
+            done
+        fi
+
         # Set default theme if specified in recipe
         if [ -n "$default_theme" ]; then
             print_info "Setting default theme: $default_theme"
@@ -808,9 +864,9 @@ CONFIG_SPLIT_EOF
     echo -e "  ${BLUE}ddev drush uli${NC}    - Get one-time login link"
     echo -e "  ${BLUE}ddev ssh${NC}          - SSH into container\n"
 
-    # Register site in cnwp.yml (if YAML library is available)
-    if command -v yaml_add_site &> /dev/null; then
-        print_info "Registering site in cnwp.yml..."
+    # Complete site registration in cnwp.yml (stub was created at install start)
+    if command -v yaml_complete_site_stub &> /dev/null; then
+        print_info "Completing site registration in cnwp.yml..."
 
         # Get full directory path
         local site_dir=$(pwd)
@@ -832,8 +888,8 @@ CONFIG_SPLIT_EOF
             installed_modules="$install_modules"
         fi
 
-        # Register the site
-        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+        # Complete the stub entry (adds environment, purpose, marks install_step=-1)
+        if yaml_complete_site_stub "$site_name" "$environment" "$purpose" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
             print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
 
             # Add installed modules if any
@@ -844,13 +900,34 @@ CONFIG_SPLIT_EOF
             # Update site with selected options
             update_site_options "$site_name" "$SCRIPT_DIR/cnwp.yml"
         else
-            # Site already exists or registration failed - not critical
-            print_info "Site registration skipped (may already exist)"
+            # Stub didn't exist (legacy install?) - try full yaml_add_site
+            if command -v yaml_add_site &> /dev/null; then
+                if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+                    print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
+                fi
+            fi
 
             # Still try to update options if site exists
             if yaml_site_exists "$site_name" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
                 update_site_options "$site_name" "$SCRIPT_DIR/cnwp.yml"
             fi
+        fi
+    elif command -v yaml_add_site &> /dev/null; then
+        # Fallback for when yaml_complete_site_stub isn't available
+        print_info "Registering site in cnwp.yml..."
+
+        local site_dir=$(pwd)
+        local site_name=$(basename "$site_dir")
+        local environment="development"
+        if [[ "$site_name" =~ _stg$ ]]; then
+            environment="staging"
+        elif [[ "$site_name" =~ _prod$ ]]; then
+            environment="production"
+        fi
+
+        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+            print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
+            update_site_options "$site_name" "$SCRIPT_DIR/cnwp.yml"
         fi
     fi
 

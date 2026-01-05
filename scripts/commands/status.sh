@@ -44,6 +44,11 @@ if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
     source "$SCRIPT_DIR/lib/yaml-write.sh"
 fi
 
+# Source install steps library for progress tracking
+if [ -f "$SCRIPT_DIR/lib/install-steps.sh" ]; then
+    source "$SCRIPT_DIR/lib/install-steps.sh"
+fi
+
 # Source Linode library if available
 if [ -f "$SCRIPT_DIR/lib/linode.sh" ]; then
     source "$SCRIPT_DIR/lib/linode.sh"
@@ -125,6 +130,101 @@ detect_recipe_from_site() {
     else
         echo "?"
     fi
+}
+
+################################################################################
+# Installation Progress Tracking
+################################################################################
+
+# Get installation status with time-based warnings
+# Args: $1 = site name, $2 = config file
+# Returns: formatted status string with color codes
+get_install_progress_display() {
+    local site="$1"
+    local config_file="${2:-$CONFIG_FILE}"
+
+    # Check if install_step functions are available
+    if ! command -v get_install_step &>/dev/null; then
+        echo ""
+        return
+    fi
+
+    local install_step=$(get_install_step "$site" "$config_file")
+
+    # -1 means complete, empty/missing means no tracking
+    if [ "$install_step" = "-1" ] || [ -z "$install_step" ]; then
+        echo ""
+        return
+    fi
+
+    # Get environment and total steps
+    local environment=$(get_site_field "$site" "environment" "$config_file")
+    local total_steps=$(get_total_steps "${environment:-development}")
+    local step_title=$(get_step_title "$install_step" "${environment:-development}" 2>/dev/null || echo "unknown")
+
+    # Get created timestamp and calculate elapsed time
+    local created=$(get_site_field "$site" "created" "$config_file")
+    local elapsed_mins=0
+
+    if [ -n "$created" ]; then
+        # Convert ISO 8601 timestamp to seconds since epoch
+        local created_epoch=$(date -d "$created" +%s 2>/dev/null || echo "0")
+        local now_epoch=$(date +%s)
+        if [ "$created_epoch" != "0" ]; then
+            elapsed_mins=$(( (now_epoch - created_epoch) / 60 ))
+        fi
+    fi
+
+    # Determine warning level based on elapsed time
+    local color=""
+    local suffix=""
+
+    if [ "$elapsed_mins" -lt 20 ]; then
+        # Normal - installation probably still running
+        color="${CYAN}"
+        suffix=""
+    elif [ "$elapsed_mins" -lt 30 ]; then
+        # First warning at 20 min
+        color="${YELLOW}"
+        suffix=" (may be stuck)"
+    elif [ "$elapsed_mins" -lt 60 ]; then
+        # Second warning at 30-60 min
+        color="${YELLOW}"
+        suffix=" (likely stuck)"
+    else
+        # Final warning after 60 min
+        color="${RED}"
+        local hours=$((elapsed_mins / 60))
+        if [ "$hours" -ge 1 ]; then
+            suffix=" (stale ${hours}h)"
+        else
+            suffix=" (stale)"
+        fi
+    fi
+
+    printf "%b%d/%d %s%s%b" "$color" "$install_step" "$total_steps" "$step_title" "$suffix" "${NC}"
+}
+
+# Check if a site has an incomplete installation
+# Args: $1 = site name, $2 = config file
+# Returns: 0 if incomplete, 1 if complete or not tracked
+has_incomplete_install() {
+    local site="$1"
+    local config_file="${2:-$CONFIG_FILE}"
+
+    if ! command -v get_install_step &>/dev/null; then
+        return 1
+    fi
+
+    local install_step=$(get_install_step "$site" "$config_file")
+
+    # -1 = complete, empty = not tracked
+    if [ "$install_step" = "-1" ] || [ -z "$install_step" ]; then
+        return 1
+    fi
+
+    # Any other value (0 or positive) means incomplete
+    return 0
 }
 
 ################################################################################
@@ -584,7 +684,7 @@ show_sites() {
 
     elif [ "$verbose" == "true" ]; then
         # Verbose view with purpose and domain
-        printf "  ${BOLD}%-18s %-10s %-12s %-15s %s${NC}\n" "NAME" "RECIPE" "PURPOSE" "STAGES" "DOMAIN"
+        printf "  ${BOLD}%-18s %-10s %-12s %-15s %s${NC}\n" "NAME" "RECIPE" "PURPOSE" "STATUS" "DOMAIN"
         printf "  %-18s %-10s %-12s %-15s %s\n" "------------------" "----------" "------------" "---------------" "------"
 
         while read -r site; do
@@ -593,8 +693,14 @@ show_sites() {
             local stages=$(get_site_stages "$site" "$config_file")
             local domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
 
-            printf "  ${CYAN}%-18s${NC} %-10s %-12s %-22b %s\n" \
-                "$site" "${recipe:-?}" "${purpose:--}" "$stages" "${domain:-}"
+            # Check for incomplete installation
+            local status_display="$stages"
+            if has_incomplete_install "$site" "$config_file"; then
+                status_display=$(get_install_progress_display "$site" "$config_file")
+            fi
+
+            printf "  ${CYAN}%-18s${NC} %-10s %-12s %-30b %s\n" \
+                "$site" "${recipe:-?}" "${purpose:--}" "$status_display" "${domain:-}"
         done <<< "$sites"
 
     else
@@ -607,7 +713,18 @@ show_sites() {
             local purpose=$(get_site_field "$site" "purpose" "$config_file")
             local stages=$(get_site_stages "$site" "$config_file")
 
-            printf "  ${CYAN}%-18s${NC} %-10s %-12s %b\n" "$site" "${recipe:-?}" "${purpose:--}" "$stages"
+            # Check for incomplete installation
+            local install_progress=""
+            if has_incomplete_install "$site" "$config_file"; then
+                install_progress=$(get_install_progress_display "$site" "$config_file")
+            fi
+
+            if [ -n "$install_progress" ]; then
+                # Show incomplete installation status
+                printf "  ${CYAN}%-18s${NC} %-10s %-12s %b\n" "$site" "${recipe:-?}" "${purpose:--}" "$install_progress"
+            else
+                printf "  ${CYAN}%-18s${NC} %-10s %-12s %b\n" "$site" "${recipe:-?}" "${purpose:--}" "$stages"
+            fi
         done <<< "$sites"
     fi
 
@@ -621,6 +738,21 @@ show_sites() {
             [ -d "$dir" ] && stages="${GREEN}d${NC}"
             printf "  ${YELLOW}%-18s${NC} %-10s %-12s %b\n" "$name" "${recipe:-?}" "(orphan)" "$stages"
         done <<< "$orphaned"
+    fi
+
+    # Check for incomplete installations and show hint
+    local incomplete_count=0
+    while read -r site; do
+        [ -z "$site" ] && continue
+        if has_incomplete_install "$site" "$config_file"; then
+            ((incomplete_count++)) || true
+        fi
+    done <<< "$sites"
+
+    if [ "$incomplete_count" -gt 0 ]; then
+        echo ""
+        printf "  ${DIM}Tip: Resume stuck installations with: pl setup <site> --resume${NC}\n"
+        printf "  ${DIM}     Or delete with: pl delete <site>${NC}\n"
     fi
 }
 
@@ -652,6 +784,15 @@ show_site_info() {
     echo ""
     echo -e "${BOLD}Stages:${NC}"
     printf "  %-20s %b\n" "Configured:" "$(get_site_stages "$site" "$config_file")"
+
+    # Show installation progress if incomplete
+    if has_incomplete_install "$site" "$config_file"; then
+        local install_progress=$(get_install_progress_display "$site" "$config_file")
+        echo ""
+        echo -e "${BOLD}Installation Progress:${NC}"
+        printf "  %-20s %b\n" "Status:" "$install_progress"
+        printf "  %-20s %s\n" "Resume:" "pl setup $site --resume"
+    fi
 
     echo ""
     echo -e "${BOLD}DDEV Status:${NC}"

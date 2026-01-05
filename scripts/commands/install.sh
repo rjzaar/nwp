@@ -22,6 +22,7 @@ set -euo pipefail
 # Options:
 #   c, --create-content          - Create test content (5 users, 5 docs, 5 workflow assignments)
 #   s=N, --step=N                - Resume installation from step N
+#   --resume                     - Auto-resume from last tracked step (reads from cnwp.yml)
 #
 # Environment Variables:
 #   TEST_PASSWORD                - Password for test users (default: test123)
@@ -258,6 +259,7 @@ main() {
     local positional_args=()
     local next_is_step=""
     local next_is_purpose=""
+    local auto_resume=""
 
     # Parse arguments
     for arg in "$@"; do
@@ -298,6 +300,8 @@ main() {
             start_step="${BASH_REMATCH[1]}"
         elif [[ "$arg" == "c" ]] || [[ "$arg" == "--create-content" ]]; then
             create_content="y"
+        elif [[ "$arg" == "--resume" ]] || [[ "$arg" == "-r" ]]; then
+            auto_resume="1"
         elif [[ "$arg" == "-p" ]] || [[ "$arg" == "--purpose" ]]; then
             next_is_purpose="1"
         elif [[ "$arg" =~ ^-p=(.+)$ ]] || [[ "$arg" =~ ^--purpose=(.+)$ ]]; then
@@ -325,6 +329,25 @@ main() {
     fi
     if [ ${#positional_args[@]} -ge 2 ]; then
         target="${positional_args[1]}"
+    fi
+
+    # Handle --resume: look up install_step from cnwp.yml
+    if [ -n "$auto_resume" ]; then
+        local site_name="${target:-$recipe}"
+        if command -v get_install_step &>/dev/null; then
+            local saved_step=$(get_install_step "$site_name" "$config_file")
+            if [ -n "$saved_step" ] && [ "$saved_step" != "-1" ] && [ "$saved_step" != "0" ]; then
+                start_step="$saved_step"
+                print_info "Auto-resuming $site_name from step $start_step"
+            elif [ "$saved_step" = "-1" ]; then
+                print_status "OK" "Site '$site_name' installation is already complete"
+                exit 0
+            elif [ "$saved_step" = "0" ] || [ -z "$saved_step" ]; then
+                print_info "No incomplete installation found for '$site_name' - starting fresh"
+            fi
+        else
+            print_status "WARN" "Install step tracking not available - cannot auto-resume"
+        fi
     fi
 
     # Default recipe if not specified

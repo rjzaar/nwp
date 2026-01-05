@@ -602,6 +602,7 @@ get_settings_value() {
         }
         in_settings && /^  [a-zA-Z0-9_-]+:/ && $1 == key":" {
             sub("^  " key ": *", "")
+            sub(/[[:space:]]*#.*$/, "")  # Strip trailing comments
             print
             exit
         }

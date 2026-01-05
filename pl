@@ -30,6 +30,7 @@ if [[ -t 1 ]]; then
     GREEN=$'\033[0;32m'
     YELLOW=$'\033[1;33m'
     BLUE=$'\033[0;34m'
+    CYAN=$'\033[0;36m'
     BOLD=$'\033[1m'
     NC=$'\033[0m'
 else
@@ -37,6 +38,7 @@ else
     GREEN=''
     YELLOW=''
     BLUE=''
+    CYAN=''
     BOLD=''
     NC=''
 fi
@@ -184,10 +186,25 @@ print_success() {
     echo -e "${GREEN}✓${NC} $1"
 }
 
-# Check if a script exists
+# Check if a script exists (checks root and scripts/commands/)
 script_exists() {
     local script="$1"
-    [ -f "${SCRIPT_DIR}/${script}" ] && [ -x "${SCRIPT_DIR}/${script}" ]
+    if [ -f "${SCRIPT_DIR}/${script}" ] && [ -x "${SCRIPT_DIR}/${script}" ]; then
+        return 0
+    elif [ -f "${SCRIPT_DIR}/scripts/commands/${script}" ] && [ -x "${SCRIPT_DIR}/scripts/commands/${script}" ]; then
+        return 0
+    fi
+    return 1
+}
+
+# Get the full path to a script
+get_script_path() {
+    local script="$1"
+    if [ -f "${SCRIPT_DIR}/${script}" ] && [ -x "${SCRIPT_DIR}/${script}" ]; then
+        echo "${SCRIPT_DIR}/${script}"
+    elif [ -f "${SCRIPT_DIR}/scripts/commands/${script}" ] && [ -x "${SCRIPT_DIR}/scripts/commands/${script}" ]; then
+        echo "${SCRIPT_DIR}/scripts/commands/${script}"
+    fi
 }
 
 # Run a script with arguments
@@ -195,12 +212,13 @@ run_script() {
     local script="$1"
     shift
 
-    if ! script_exists "$script"; then
+    local script_path=$(get_script_path "$script")
+    if [ -z "$script_path" ]; then
         print_error "Script not found: $script"
         return 1
     fi
 
-    "${SCRIPT_DIR}/${script}" "$@"
+    "$script_path" "$@"
 }
 
 ################################################################################
@@ -231,12 +249,74 @@ cmd_list() {
     ' "$cnwp_file"
 }
 
+# Get a field from a site in cnwp.yml
+get_site_field() {
+    local site="$1"
+    local field="$2"
+    local config_file="${SCRIPT_DIR}/cnwp.yml"
+
+    awk -v site="$site" -v field="$field" '
+        /^sites:/ { in_sites = 1; next }
+        in_sites && /^[a-zA-Z]/ && !/^  / { exit }
+        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
+        in_site && /^  [a-zA-Z]/ && !/^    / { exit }
+        in_site && $0 ~ "^    " field ":" {
+            sub("^    " field ": *", "")
+            gsub(/["'"'"']/, "")
+            sub(/ *#.*$/, "")
+            gsub(/^[ \t]+|[ \t]+$/, "")
+            print
+            exit
+        }
+    ' "$config_file"
+}
+
+# Get a nested field (e.g., live.domain) from a site in cnwp.yml
+get_site_nested_field() {
+    local site="$1"
+    local section="$2"
+    local field="$3"
+    local config_file="${SCRIPT_DIR}/cnwp.yml"
+
+    awk -v site="$site" -v section="$section" -v field="$field" '
+        /^sites:/ { in_sites = 1; next }
+        in_sites && /^[a-zA-Z]/ && !/^  / { exit }
+        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
+        in_site && /^  [a-zA-Z]/ && !/^    / { exit }
+        in_site && $0 ~ "^    " section ":" { in_section = 1; next }
+        in_section && /^    [a-zA-Z]/ && !/^      / { in_section = 0 }
+        in_section && $0 ~ "^      " field ":" {
+            sub("^      " field ": *", "")
+            gsub(/["'"'"']/, "")
+            sub(/ *#.*$/, "")
+            gsub(/^[ \t]+|[ \t]+$/, "")
+            print
+            exit
+        }
+    ' "$config_file"
+}
+
 # Show status for a single site
 show_site_status() {
     local sitename="$1"
     local site_dir="sites/$sitename"
+    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local ddev_running=false
 
     echo -e "${BOLD}$sitename${NC}"
+
+    # Get config details
+    local recipe=$(get_site_field "$sitename" "recipe")
+    local purpose=$(get_site_field "$sitename" "purpose")
+    local domain=$(get_site_nested_field "$sitename" "live" "domain")
+
+    # Show recipe and purpose if available
+    if [ -n "$recipe" ] || [ -n "$purpose" ]; then
+        local info=""
+        [ -n "$recipe" ] && info="$recipe"
+        [ -n "$purpose" ] && info="${info:+$info, }$purpose"
+        echo -e "  ${CYAN}ℹ${NC} Config: $info"
+    fi
 
     # Check directory
     if [ ! -d "$site_dir" ]; then
@@ -250,6 +330,7 @@ show_site_status() {
         local ddev_status=$(cd "$site_dir" && ddev describe -j 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
         if [ "$ddev_status" = "running" ]; then
             echo -e "  ${GREEN}●${NC} DDEV: running"
+            ddev_running=true
         elif [ "$ddev_status" = "stopped" ]; then
             echo -e "  ${RED}●${NC} DDEV: stopped"
         else
@@ -259,19 +340,59 @@ show_site_status() {
         echo -e "  ${YELLOW}○${NC} DDEV: not configured"
     fi
 
+    # Show URL if DDEV running
+    if [ "$ddev_running" = true ]; then
+        echo -e "  ${CYAN}→${NC} URL: https://${sitename}.ddev.site"
+    fi
+
     # Check git
     if [ -d "$site_dir/.git" ]; then
         local branch=$(cd "$site_dir" && git branch --show-current 2>/dev/null || echo "unknown")
-        echo -e "  ${GREEN}●${NC} Git: $branch"
+        local last_commit=$(cd "$site_dir" && git log -1 --format="%ar" 2>/dev/null || echo "")
+        if [ -n "$last_commit" ]; then
+            echo -e "  ${GREEN}●${NC} Git: $branch (${last_commit})"
+        else
+            echo -e "  ${GREEN}●${NC} Git: $branch"
+        fi
     else
         echo -e "  ${YELLOW}○${NC} Git: not initialized"
     fi
 
     # Check cnwp.yml registration
-    if grep -q "^  ${sitename}:" "${SCRIPT_DIR}/cnwp.yml" 2>/dev/null; then
+    if grep -q "^  ${sitename}:" "$cnwp_file" 2>/dev/null; then
         echo -e "  ${GREEN}●${NC} Registered"
     else
         echo -e "  ${YELLOW}○${NC} Not registered"
+    fi
+
+    # Disk usage
+    local disk_usage=$(du -sh "$site_dir" 2>/dev/null | awk '{print $1}')
+    if [ -n "$disk_usage" ]; then
+        echo -e "  ${CYAN}◆${NC} Disk: $disk_usage"
+    fi
+
+    # Database size (only if DDEV running)
+    if [ "$ddev_running" = true ]; then
+        local db_size=$(cd "$site_dir" && ddev mysql -N -e "SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) FROM information_schema.tables WHERE table_schema = DATABASE();" 2>/dev/null | tail -1)
+        if [ -n "$db_size" ] && [ "$db_size" != "NULL" ]; then
+            echo -e "  ${CYAN}◆${NC} Database: ${db_size}MB"
+        fi
+
+        # Health check
+        local http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "https://${sitename}.ddev.site" 2>/dev/null || echo "000")
+        case "$http_code" in
+            200|301|302|303) echo -e "  ${GREEN}●${NC} Health: OK (HTTP $http_code)" ;;
+            401|403) echo -e "  ${YELLOW}●${NC} Health: auth required (HTTP $http_code)" ;;
+            404) echo -e "  ${YELLOW}●${NC} Health: not found (HTTP 404)" ;;
+            500|502|503) echo -e "  ${RED}●${NC} Health: error (HTTP $http_code)" ;;
+            000) echo -e "  ${RED}●${NC} Health: unreachable" ;;
+            *) echo -e "  ${YELLOW}●${NC} Health: HTTP $http_code" ;;
+        esac
+    fi
+
+    # Live domain
+    if [ -n "$domain" ]; then
+        echo -e "  ${BLUE}◆${NC} Domain: $domain"
     fi
 
     echo ""

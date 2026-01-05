@@ -8,7 +8,7 @@
   position: fixed;
   top: 50px;
   right: 0;
-  width: 370px;
+  width: 280px;
   z-index: 100;
   background: white;
   border: 1px solid #ccc;
@@ -18,13 +18,14 @@
 
 /* Make room for fixed adoration panel */
 .divine-mercy-chaplet {
-  margin-right: 380px;
+  margin-left: 20px;
+  margin-right: 300px;
   transition: margin-right 0.3s ease;
 }
 
 /* When adoration is collapsed, reduce margin */
 .divine-mercy-chaplet.adoration-collapsed {
-  margin-right: 200px;
+  margin-right: 180px;
 }
 
 .divine-mercy-eucharist-adoration.is-collapsed {
@@ -89,8 +90,8 @@
 
 .adoration-video iframe {
   display: block;
-  width: 100%;
-  max-width: 350px;
+  width: 260px;
+  height: 195px;
   border-radius: 3px;
 }
 

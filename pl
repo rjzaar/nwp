@@ -222,7 +222,7 @@ cmd_list() {
     awk '
         /^sites:/ { in_sites = 1; next }
         in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
-        in_sites && /^  [a-zA-Z_-]+:/ {
+        in_sites && /^  [a-zA-Z0-9_-]+:/ {
             name = $0
             gsub(/^  /, "", name)
             gsub(/:.*/, "", name)
@@ -231,52 +231,87 @@ cmd_list() {
     ' "$cnwp_file"
 }
 
-# Show site status
-cmd_status() {
+# Show status for a single site
+show_site_status() {
     local sitename="$1"
     local site_dir="sites/$sitename"
 
-    if [ -z "$sitename" ]; then
-        print_error "Sitename required"
-        return 1
-    fi
-
-    echo -e "${BOLD}Site Status: $sitename${NC}"
-    echo ""
+    echo -e "${BOLD}$sitename${NC}"
 
     # Check directory
-    if [ -d "$site_dir" ]; then
-        print_success "Directory exists: $site_dir"
-    else
-        print_error "Directory not found: $site_dir"
-        return 1
+    if [ ! -d "$site_dir" ]; then
+        echo -e "  ${YELLOW}○${NC} Local: not present (remote only?)"
+        echo ""
+        return 0
     fi
 
     # Check DDEV
     if [ -f "$site_dir/.ddev/config.yaml" ]; then
-        print_success "DDEV configured"
-        local ddev_status=$(cd "$site_dir" && ddev describe 2>/dev/null | grep -E "^[a-z]+" | head -1 || echo "unknown")
-        echo "    Status: $ddev_status"
+        local ddev_status=$(cd "$site_dir" && ddev describe -j 2>/dev/null | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+        if [ "$ddev_status" = "running" ]; then
+            echo -e "  ${GREEN}●${NC} DDEV: running"
+        elif [ "$ddev_status" = "stopped" ]; then
+            echo -e "  ${RED}●${NC} DDEV: stopped"
+        else
+            echo -e "  ${YELLOW}●${NC} DDEV: $ddev_status"
+        fi
     else
-        echo -e "  ${YELLOW}!${NC} DDEV not configured"
+        echo -e "  ${YELLOW}○${NC} DDEV: not configured"
     fi
 
     # Check git
     if [ -d "$site_dir/.git" ]; then
-        print_success "Git repository"
         local branch=$(cd "$site_dir" && git branch --show-current 2>/dev/null || echo "unknown")
-        local commit=$(cd "$site_dir" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-        echo "    Branch: $branch"
-        echo "    Commit: $commit"
+        echo -e "  ${GREEN}●${NC} Git: $branch"
     else
-        echo -e "  ${YELLOW}!${NC} Not a git repository"
+        echo -e "  ${YELLOW}○${NC} Git: not initialized"
     fi
 
     # Check cnwp.yml registration
     if grep -q "^  ${sitename}:" "${SCRIPT_DIR}/cnwp.yml" 2>/dev/null; then
-        print_success "Registered in cnwp.yml"
+        echo -e "  ${GREEN}●${NC} Registered"
     else
-        echo -e "  ${YELLOW}!${NC} Not registered in cnwp.yml"
+        echo -e "  ${YELLOW}○${NC} Not registered"
+    fi
+
+    echo ""
+}
+
+# Show site status (all sites or specific site)
+cmd_status() {
+    local sitename="${1:-}"
+    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+
+    if [ -z "$sitename" ]; then
+        # Show all sites
+        echo -e "${BOLD}Site Status:${NC}"
+        echo ""
+
+        # Get sites from cnwp.yml
+        local sites=$(awk '
+            /^sites:/ { in_sites = 1; next }
+            in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
+            in_sites && /^  [a-zA-Z0-9_-]+:/ {
+                name = $0
+                gsub(/^  /, "", name)
+                gsub(/:.*/, "", name)
+                print name
+            }
+        ' "$cnwp_file" 2>/dev/null)
+
+        if [ -z "$sites" ]; then
+            echo "No sites found in cnwp.yml"
+            return 0
+        fi
+
+        for site in $sites; do
+            show_site_status "$site"
+        done
+    else
+        # Show single site
+        echo -e "${BOLD}Site Status:${NC}"
+        echo ""
+        show_site_status "$sitename"
     fi
 }
 
@@ -286,7 +321,7 @@ cmd_gitlab_create() {
     source "${SCRIPT_DIR}/lib/common.sh"
     source "${SCRIPT_DIR}/lib/git.sh"
 
-    local project="$1"
+    local project="${1:-}"
     local group="${2:-sites}"
 
     if [ -z "$project" ]; then

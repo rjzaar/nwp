@@ -70,38 +70,39 @@ fi
 ################################################################################
 
 declare -a COMPONENTS=(
+    # Format: ID|NAME|PARENT|CATEGORY|PRIORITY|DESCRIPTION
     # Core Infrastructure
-    "docker|Docker Engine|-|core|required"
-    "docker_compose|Docker Compose Plugin|docker|core|required"
-    "docker_group|Docker Group Membership|docker|core|required"
-    "ddev|DDEV Development Environment|docker|core|required"
-    "ddev_config|DDEV Global Configuration|ddev|core|required"
-    "mkcert|mkcert SSL Tool|-|core|recommended"
-    "mkcert_ca|mkcert Certificate Authority|mkcert|core|recommended"
+    "docker|Docker Engine|-|core|required|Container runtime for running DDEV and local development environments"
+    "docker_compose|Docker Compose Plugin|docker|core|required|Multi-container orchestration plugin for Docker"
+    "docker_group|Docker Group Membership|docker|core|required|Allows running Docker commands without sudo"
+    "ddev|DDEV Development Environment|docker|core|required|Local PHP development environment with per-project containers"
+    "ddev_config|DDEV Global Configuration|ddev|core|required|Default DDEV settings (PHP version, ports, DNS)"
+    "mkcert|mkcert SSL Tool|-|core|recommended|Creates locally-trusted SSL certificates for HTTPS"
+    "mkcert_ca|mkcert Certificate Authority|mkcert|core|recommended|Root CA for browser-trusted local SSL certificates"
 
     # NWP Tools
-    "nwp_cli|NWP CLI Command|-|tools|recommended"
-    "nwp_config|NWP Configuration (cnwp.yml)|-|tools|required"
-    "nwp_secrets|NWP Secrets (.secrets.yml)|-|tools|recommended"
-    "script_symlinks|Script Symlinks (backward compat)|-|tools|optional"
+    "nwp_cli|NWP CLI Command|-|tools|recommended|Global 'pl' command to run NWP from any directory"
+    "nwp_config|NWP Configuration (cnwp.yml)|-|tools|required|Main config file defining sites, recipes, and settings"
+    "nwp_secrets|NWP Secrets (.secrets.yml)|-|tools|recommended|API tokens for Linode, Cloudflare, GitLab integration"
+    "script_symlinks|Script Symlinks (backward compat)|-|tools|optional|Symlinks in project root for legacy ./install.sh usage"
 
     # Testing Tools
-    "bats|BATS Testing Framework|-|testing|optional"
+    "bats|BATS Testing Framework|-|testing|optional|Bash Automated Testing System for running NWP tests"
 
     # Security
-    "claude_config|Claude Code Security Config|-|security|recommended"
+    "claude_config|Claude Code Security Config|-|security|recommended|Restricts Claude from accessing production secrets and data"
 
     # Linode Infrastructure
-    "linode_cli|Linode CLI|-|linode|optional"
-    "linode_config|Linode CLI Configuration|linode_cli|linode|optional"
-    "ssh_keys|SSH Keys for Deployment|linode_cli|linode|optional"
+    "linode_cli|Linode CLI|-|linode|optional|Command-line tool for managing Linode cloud servers"
+    "linode_config|Linode CLI Configuration|linode_cli|linode|optional|API token and default region/type settings for Linode"
+    "ssh_keys|SSH Keys for Deployment|linode_cli|linode|optional|SSH keypair for secure server access and deployments"
 
     # GitLab Infrastructure
-    "gitlab_keys|GitLab SSH Keys|linode_config|gitlab|optional"
-    "gitlab_server|GitLab Server|gitlab_keys|gitlab|optional"
-    "gitlab_dns|GitLab DNS Record|gitlab_server|gitlab|optional"
-    "gitlab_ssh_config|GitLab SSH Config|gitlab_server|gitlab|optional"
-    "gitlab_composer|GitLab Composer Registry|gitlab_server|gitlab|optional"
+    "gitlab_keys|GitLab SSH Keys|linode_config|gitlab|optional|SSH keys specifically for GitLab server provisioning"
+    "gitlab_server|GitLab Server|gitlab_keys|gitlab|optional|Self-hosted GitLab instance on Linode for private repos"
+    "gitlab_dns|GitLab DNS Record|gitlab_server|gitlab|optional|DNS A record pointing to your GitLab server"
+    "gitlab_ssh_config|GitLab SSH Config|gitlab_server|gitlab|optional|SSH config entry for easy git@git-server access"
+    "gitlab_composer|GitLab Composer Registry|gitlab_server|gitlab|optional|Private Composer package registry on GitLab"
 )
 
 # Track component states
@@ -116,6 +117,7 @@ COMP_NAMES=()
 COMP_PARENTS=()
 COMP_CATEGORIES=()
 COMP_PRIORITIES=()
+COMP_DESCRIPTIONS=()
 
 # Page definitions - categories grouped into pages
 declare -a PAGE_CATEGORIES
@@ -170,6 +172,7 @@ init_components() {
         COMP_PARENTS[$idx]=$(echo "$comp" | cut -d'|' -f3)
         COMP_CATEGORIES[$idx]=$(echo "$comp" | cut -d'|' -f4)
         COMP_PRIORITIES[$idx]=$(echo "$comp" | cut -d'|' -f5)
+        COMP_DESCRIPTIONS[$idx]=$(echo "$comp" | cut -d'|' -f6)
         idx=$((idx + 1))
     done
     build_page_indices
@@ -201,6 +204,18 @@ get_page_count() {
     echo "${#indices[@]}"
 }
 
+# Get component name by ID
+get_component_name_by_id() {
+    local target_id="$1"
+    for ((i=0; i<${#COMP_IDS[@]}; i++)); do
+        if [ "${COMP_IDS[$i]}" = "$target_id" ]; then
+            echo "${COMP_NAMES[$i]}"
+            return
+        fi
+    done
+    echo "$target_id"
+}
+
 # Get category display name
 get_category_name() {
     case "$1" in
@@ -224,7 +239,7 @@ draw_setup_screen() {
 
     # Header with page indicator
     printf "${BOLD}NWP Setup Manager${NC}  |  "
-    printf "←→:Page  ↑↓:Navigate  SPACE:Toggle  a:All  n:None  ENTER:Apply  q:Quit\n"
+    printf "←→:Page  ↑↓:Nav  SPACE:Toggle  d:Desc  a:All  n:None  ENTER:Apply  q:Quit\n"
     printf "═══════════════════════════════════════════════════════════════════════════════\n"
 
     # Page tabs
@@ -400,6 +415,29 @@ run_interactive_tui() {
                 for id in "${COMP_IDS[@]}"; do
                     COMPONENT_SELECTED[$id]=${COMPONENT_INSTALLED[$id]:-0}
                 done
+                ;;
+            "d"|"D")
+                # Show description for current component
+                local comp_idx="${page_indices[$current_row]}"
+                local comp_name="${COMP_NAMES[$comp_idx]}"
+                local comp_desc="${COMP_DESCRIPTIONS[$comp_idx]}"
+                local comp_priority="${COMP_PRIORITIES[$comp_idx]}"
+                local comp_parent="${COMP_PARENTS[$comp_idx]}"
+                local parent_name=""
+                [ "$comp_parent" != "-" ] && parent_name=$(get_component_name_by_id "$comp_parent")
+
+                cursor_show
+                clear_screen
+                printf "\n${BOLD}${CYAN}$comp_name${NC}\n"
+                printf "═══════════════════════════════════════════════════════════════════════════════\n\n"
+                printf "  ${BOLD}Description:${NC}\n"
+                printf "  $comp_desc\n\n"
+                printf "  ${BOLD}Priority:${NC} $comp_priority\n"
+                [ -n "$parent_name" ] && printf "  ${BOLD}Requires:${NC} $parent_name\n"
+                printf "\n───────────────────────────────────────────────────────────────────────────────\n"
+                printf "  Press any key to return..."
+                read -rsn1
+                cursor_hide
                 ;;
             "ENTER")
                 cursor_show

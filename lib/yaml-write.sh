@@ -178,15 +178,29 @@ yaml_validate_or_restore() {
 #######################################
 yaml_backup() {
     local config_file="${1:-$YAML_CONFIG_FILE}"
-    local backup_file="${config_file}.backup-$(date +%Y%m%d-%H%M%S)"
+    local config_dir=$(dirname "$config_file")
+    local config_name=$(basename "$config_file")
+    local backup_dir="${config_dir}/.backups"
+    local backup_file="${backup_dir}/${config_name}.backup-$(date +%Y%m%d-%H%M%S)"
+    local max_backups=10
 
     if [[ ! -f "$config_file" ]]; then
         echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
         return 1
     fi
 
+    # Ensure backup directory exists
+    mkdir -p "$backup_dir"
+
     if cp "$config_file" "$backup_file"; then
         echo -e "${GREEN}Backup created: $backup_file${NC}" >&2
+
+        # Retention: keep only the last N backups
+        local backup_count=$(ls -1 "${backup_dir}/${config_name}.backup-"* 2>/dev/null | wc -l)
+        if [[ $backup_count -gt $max_backups ]]; then
+            ls -1t "${backup_dir}/${config_name}.backup-"* 2>/dev/null | tail -n +$((max_backups + 1)) | xargs rm -f
+            echo -e "${DIM}Cleaned up old backups (keeping last $max_backups)${NC}" >&2
+        fi
         return 0
     else
         echo -e "${RED}Error: Failed to create backup${NC}" >&2

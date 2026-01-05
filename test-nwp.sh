@@ -50,7 +50,8 @@ TEST_SITE_PREFIX="test-nwp"
 CLEANUP=true
 VERBOSE=false
 RUN_PODCAST=false
-LOG_FILE="test-nwp-$(date +%Y%m%d-%H%M%S).log"
+mkdir -p .logs
+LOG_FILE=".logs/test-nwp-$(date +%Y%m%d-%H%M%S).log"
 
 # Test results
 TESTS_RUN=0

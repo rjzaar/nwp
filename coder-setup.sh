@@ -33,6 +33,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/ui.sh"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/cloudflare.sh"
+source "$SCRIPT_DIR/lib/yaml-write.sh"
 
 # Configuration
 CONFIG_FILE="${SCRIPT_DIR}/cnwp.yml"
@@ -162,8 +163,8 @@ add_coder_to_config() {
     local notes="${2:-}"
     local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-    # Create backup
-    cp "$CONFIG_FILE" "${CONFIG_FILE}.backup-$(date +%Y%m%d-%H%M%S)"
+    # Create backup using yaml_backup (writes to .backups/ with retention)
+    yaml_backup "$CONFIG_FILE"
 
     if command -v yq &>/dev/null; then
         # Use yq for reliable YAML editing
@@ -210,8 +211,8 @@ add_coder_to_config() {
 remove_coder_from_config() {
     local name="$1"
 
-    # Create backup
-    cp "$CONFIG_FILE" "${CONFIG_FILE}.backup-$(date +%Y%m%d-%H%M%S)"
+    # Create backup using yaml_backup (writes to .backups/ with retention)
+    yaml_backup "$CONFIG_FILE"
 
     if command -v yq &>/dev/null; then
         yq -i "del(.other_coders.coders.$name)" "$CONFIG_FILE"

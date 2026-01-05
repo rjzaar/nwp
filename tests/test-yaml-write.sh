@@ -239,7 +239,7 @@ test_second_site_remains() {
 # Test: Backup file creation
 #######################################
 test_backup_created() {
-    local backup_count=$(ls -1 "$TEST_DIR"/*.backup-* 2>/dev/null | wc -l)
+    local backup_count=$(ls -1 "$TEST_DIR/.backups"/*.backup-* 2>/dev/null | wc -l)
     [[ $backup_count -gt 0 ]]
     return $?
 }

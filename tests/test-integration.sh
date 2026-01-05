@@ -426,8 +426,9 @@ test_backup_creation() {
         "development" \
         2>/dev/null
 
-    # Count backup files
-    local backup_count=$(ls -1 "${TEST_CONFIG}.backup-"* 2>/dev/null | wc -l)
+    # Count backup files (now stored in .backups/ directory)
+    local backup_dir="$TEST_DIR/.backups"
+    local backup_count=$(ls -1 "${backup_dir}"/cnwp.yml.backup-* 2>/dev/null | wc -l)
 
     # Should have multiple backups from all operations
     [[ $backup_count -gt 0 ]]

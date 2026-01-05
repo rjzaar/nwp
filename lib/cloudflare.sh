@@ -192,6 +192,129 @@ cf_update_dns_record() {
     fi
 }
 
+# Create a DNS NS record (for subdomain delegation)
+# Usage: cf_create_dns_ns "TOKEN" "ZONE_ID" "subdomain" "nameserver"
+# Returns: Record ID on success
+cf_create_dns_ns() {
+    local token=$1
+    local zone_id=$2
+    local name=$3
+    local nameserver=$4
+
+    local response=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records" \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"type\": \"NS\",
+            \"name\": \"$name\",
+            \"content\": \"$nameserver\",
+            \"ttl\": 3600
+        }")
+
+    if echo "$response" | grep -q '"success":true'; then
+        local record_id=$(echo "$response" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+        echo "$record_id"
+        return 0
+    else
+        echo "ERROR: Failed to create DNS NS record for $name -> $nameserver" >&2
+        echo "$response" | grep -o '"message":"[^"]*"' | cut -d'"' -f4 >&2
+        return 1
+    fi
+}
+
+# Create multiple NS records for subdomain delegation
+# Usage: cf_create_ns_delegation "TOKEN" "ZONE_ID" "subdomain" "ns1.example.com ns2.example.com ..."
+# Returns: 0 on success, 1 on failure
+cf_create_ns_delegation() {
+    local token=$1
+    local zone_id=$2
+    local subdomain=$3
+    shift 3
+    local nameservers=("$@")
+
+    local success=0
+    local created_ids=()
+
+    echo "Creating NS delegation for $subdomain..." >&2
+
+    for ns in "${nameservers[@]}"; do
+        echo "  Adding NS record: $subdomain -> $ns" >&2
+        local record_id=$(cf_create_dns_ns "$token" "$zone_id" "$subdomain" "$ns")
+        if [ -n "$record_id" ] && [ "$record_id" != "ERROR:"* ]; then
+            created_ids+=("$record_id")
+        else
+            echo "  Failed to create NS record for $ns" >&2
+            success=1
+        fi
+    done
+
+    if [ $success -eq 0 ]; then
+        echo "NS delegation created successfully (${#created_ids[@]} records)" >&2
+        echo "${created_ids[*]}"
+        return 0
+    else
+        echo "NS delegation partially failed" >&2
+        return 1
+    fi
+}
+
+# Delete all NS records for a subdomain
+# Usage: cf_delete_ns_delegation "TOKEN" "ZONE_ID" "subdomain"
+cf_delete_ns_delegation() {
+    local token=$1
+    local zone_id=$2
+    local subdomain=$3
+
+    echo "Removing NS delegation for $subdomain..." >&2
+
+    # Get all NS records for this subdomain
+    local response=$(curl -s "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records?type=NS&name=$subdomain" \
+        -H "Authorization: Bearer $token")
+
+    if ! echo "$response" | grep -q '"success":true'; then
+        echo "ERROR: Failed to list NS records" >&2
+        return 1
+    fi
+
+    # Extract record IDs
+    local record_ids=$(echo "$response" | jq -r '.result[].id' 2>/dev/null || \
+        echo "$response" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+
+    if [ -z "$record_ids" ]; then
+        echo "No NS records found for $subdomain" >&2
+        return 0
+    fi
+
+    local deleted=0
+    for record_id in $record_ids; do
+        if cf_delete_dns_record "$token" "$zone_id" "$record_id"; then
+            ((deleted++))
+        fi
+    done
+
+    echo "Deleted $deleted NS records for $subdomain" >&2
+    return 0
+}
+
+# List NS records for a subdomain
+# Usage: cf_list_ns_records "TOKEN" "ZONE_ID" "subdomain"
+cf_list_ns_records() {
+    local token=$1
+    local zone_id=$2
+    local subdomain=$3
+
+    local response=$(curl -s "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records?type=NS&name=$subdomain" \
+        -H "Authorization: Bearer $token")
+
+    if echo "$response" | grep -q '"success":true'; then
+        echo "$response" | jq -r '.result[] | "\(.name)\t\(.content)"' 2>/dev/null || \
+        echo "$response" | grep -o '"content":"[^"]*"' | cut -d'"' -f4
+    else
+        echo "ERROR: Failed to list NS records" >&2
+        return 1
+    fi
+}
+
 # Delete a DNS record
 # Usage: cf_delete_dns_record "TOKEN" "ZONE_ID" "RECORD_ID"
 cf_delete_dns_record() {
@@ -430,6 +553,10 @@ export -f get_cloudflare_zone_id
 export -f verify_cloudflare_auth
 export -f cf_create_dns_a
 export -f cf_create_dns_cname
+export -f cf_create_dns_ns
+export -f cf_create_ns_delegation
+export -f cf_delete_ns_delegation
+export -f cf_list_ns_records
 export -f cf_get_dns_record_id
 export -f cf_update_dns_record
 export -f cf_delete_dns_record

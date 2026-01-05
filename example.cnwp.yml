@@ -138,6 +138,43 @@ settings:
   # === SITE MANAGEMENT [ACTIVE] ===
   delete_site_yml: true            # [ACTIVE] Remove site from cnwp.yml when deleted
 
+################################################################################
+# OTHER CODERS - Multi-Coder DNS Delegation
+################################################################################
+# Configure additional coders who have their own subdomains under nwpcode.org
+# Each coder gets NS delegation for their subdomain (e.g., coder2.nwpcode.org)
+# allowing them to manage their own DNS via their own Linode account.
+#
+# Usage: ./coder-setup.sh add <coder_name>
+#        ./coder-setup.sh remove <coder_name>
+#        ./coder-setup.sh list
+#
+# See docs/CODER_ONBOARDING.md for complete setup instructions.
+other_coders:
+  # Base domain for subdomain delegation [ACTIVE]
+  base_domain: nwpcode.org
+
+  # Nameservers to delegate to (Linode's nameservers) [ACTIVE]
+  nameservers:
+    - ns1.linode.com
+    - ns2.linode.com
+    - ns3.linode.com
+    - ns4.linode.com
+    - ns5.linode.com
+
+  # Registered coders [ACTIVE]
+  # Each entry creates NS delegation: <name>.nwpcode.org -> Linode nameservers
+  # Example:
+  #   coder2:
+  #     added: 2024-01-15T10:30:00Z
+  #     status: active
+  #     notes: "John's development environment"
+  coders:
+    # coder2:
+    #   added: 2024-01-15T10:30:00Z
+    #   status: active
+    #   notes: "Example coder entry"
+
   # === CI/CD CONFIGURATION [PLANNED] ===
   # Global CI settings - can be overridden per site
   ci:

@@ -498,39 +498,28 @@ run_interactive_tui() {
                 cursor_hide
                 ;;
             "e"|"E")
-                # Edit value for editable component
+                # Edit value for editable component inline
                 local comp_idx="${page_indices[$current_row]}"
                 local comp_id="${COMP_IDS[$comp_idx]}"
                 local comp_name="${COMP_NAMES[$comp_idx]}"
                 local comp_edit_key="${COMP_EDITABLE_KEYS[$comp_idx]}"
 
                 if [ -z "$comp_edit_key" ]; then
-                    # Not editable - show message briefly
-                    cursor_show
-                    clear_screen
-                    printf "\n${YELLOW}$comp_name is not editable${NC}\n"
-                    sleep 1
-                    cursor_hide
+                    # Not editable - flash message at bottom
+                    printf "\n  ${YELLOW}$comp_name is not editable${NC}"
+                    sleep 0.8
                 else
                     local current_val=$(get_editable_value "$comp_id" "$comp_edit_key")
                     local prompt_text=$(get_edit_prompt "$comp_edit_key")
 
+                    # Show inline edit prompt at bottom
                     cursor_show
-                    clear_screen
-                    printf "\n${BOLD}${CYAN}Edit: $comp_name${NC}\n"
-                    printf "═══════════════════════════════════════════════════════════════════════════════\n\n"
-                    printf "  ${BOLD}$prompt_text${NC}\n"
-                    printf "  Current: ${CYAN}$current_val${NC}\n\n"
-                    printf "  Enter new value (or press Enter to keep current): "
+                    printf "\n  ${BOLD}$prompt_text${NC} [${CYAN}$current_val${NC}]: "
                     read new_val
+                    cursor_hide
                     if [ -n "$new_val" ]; then
                         MANUAL_INPUTS[$comp_id]="$new_val"
-                        printf "\n  ${GREEN}✓${NC} Value set to: ${CYAN}$new_val${NC}\n"
-                    else
-                        printf "\n  ${DIM}Kept current value${NC}\n"
                     fi
-                    sleep 1
-                    cursor_hide
                 fi
                 ;;
             "ENTER")

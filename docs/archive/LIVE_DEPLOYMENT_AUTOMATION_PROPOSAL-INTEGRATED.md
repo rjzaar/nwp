@@ -1,14 +1,16 @@
 # NWP Live Deployment Automation Proposal
 
-> **STATUS: PENDING IMPLEMENTATION**
+> **STATUS: INTEGRATED INTO ROADMAP (January 2026)**
 >
-> Key gaps still to be addressed:
-> - Profile module symlink auto-creation in `install_git_profile()`
-> - Live server infrastructure setup (`lib/live-server-setup.sh`)
-> - Database deployment in `stg2live.sh`
-> - Production `settings.local.php` generation
+> This proposal has been integrated into `docs/ROADMAP.md` as Phase 5c (P32-P35):
+> - P32: Profile module symlink auto-creation
+> - P33: Live server infrastructure setup
+> - P34: Database deployment in stg2live.sh
+> - P35: Production settings.local.php generation
 >
-> See Implementation Priority section for phased approach.
+> See ROADMAP.md Phase 5c for current status and implementation details.
+>
+> Archived for historical reference.
 
 ## Executive Summary
 

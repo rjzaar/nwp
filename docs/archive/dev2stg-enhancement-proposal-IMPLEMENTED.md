@@ -1,5 +1,18 @@
 # NWP Improvement Proposal: Enhanced dev2stg Workflow
 
+> **STATUS: IMPLEMENTED (January 2026)**
+>
+> This proposal has been implemented. Key components:
+> - `lib/preflight.sh` - Preflight/doctor checks
+> - `lib/database-router.sh` - Multi-source database download
+> - `lib/dev2stg-tui.sh` - Interactive TUI
+> - `lib/ui.sh` - Standardized output (info/pass/fail/task/note)
+> - `lib/state.sh` - State detection
+> - `lib/testing.sh` - Test presets (quick, essential, functional, full, security-only)
+> - `scripts/commands/dev2stg.sh` - Enhanced deployment script
+>
+> Archived for historical reference.
+
 ## Overview
 
 This proposal outlines improvements to the NWP deployment pipeline, specifically the `dev2stg.sh` script, based on lessons learned from:

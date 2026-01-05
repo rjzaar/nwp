@@ -1,4 +1,14 @@
-# NWP Installation & Deployment Improvement Proposal
+# NWP Live Deployment Automation Proposal
+
+> **STATUS: PENDING IMPLEMENTATION**
+>
+> Key gaps still to be addressed:
+> - Profile module symlink auto-creation in `install_git_profile()`
+> - Live server infrastructure setup (`lib/live-server-setup.sh`)
+> - Database deployment in `stg2live.sh`
+> - Production `settings.local.php` generation
+>
+> See Implementation Priority section for phased approach.
 
 ## Executive Summary
 

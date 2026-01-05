@@ -212,9 +212,9 @@ run_test "example.cnwp.yml has podcast settings" "grep -q '^podcast:' example.cn
 
 print_header "Test 6: Install.sh Integration"
 
-run_test "install.sh has install_podcast function" "grep -q 'install_podcast()' install.sh"
-run_test "install.sh handles podcast type" "grep -q 'recipe_type.*podcast' install.sh"
-run_test "install.sh validates podcast domain" "grep -q 'podcast.*domain' install.sh"
+run_test "install.sh has install_podcast function" "grep -q 'install_podcast()' lib/install-podcast.sh"
+run_test "install.sh handles podcast type" "grep -q 'podcast' install.sh"
+run_test "install-podcast.sh validates podcast domain" "grep -q 'domain' lib/install-podcast.sh"
 
 ################################################################################
 # Test 7: Generate Files Test

@@ -14,10 +14,12 @@
 sites/*
 !sites/.gitkeep
 
-# Setup entry point (symlink to scripts/commands/setup.sh)
-# This is the only command script tracked in git - users run ./setup.sh to bootstrap
+# Command entry points (symlinks to scripts/commands/)
+# Users run ./setup.sh to bootstrap
 # After setup, use the `pl` CLI command to run all other scripts
 !setup.sh
+!podcast.sh
+!install.sh
 
 # CLI completion (installed by setup)
 !pl

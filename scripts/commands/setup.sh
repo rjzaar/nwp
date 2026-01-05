@@ -68,6 +68,7 @@ fi
 declare -a COMPONENTS=(
     # Core Infrastructure - grouped by dependency
     "docker|Docker Engine|-|core|required"
+    "script_symlinks|Script Symlinks (backward compat)|-|core|recommended"
     "docker_compose|Docker Compose Plugin|docker|core|required"
     "docker_group|Docker Group Membership|docker|core|required"
     "ddev|DDEV Development Environment|docker|core|required"
@@ -226,6 +227,17 @@ check_nwp_cli_installed() {
     [ -f "/usr/local/bin/$cli_prompt" ]
 }
 
+check_script_symlinks_exist() {
+    # Check if symlinks exist in root pointing to scripts/commands/
+    local script_dir="$SCRIPT_DIR"
+    # If we're in scripts/commands/, go up two levels
+    if [[ "$script_dir" == */scripts/commands ]]; then
+        script_dir="${script_dir%/scripts/commands}"
+    fi
+    # Check for at least one symlink
+    [ -L "$script_dir/install.sh" ] && [ -L "$script_dir/backup.sh" ]
+}
+
 check_nwp_config_exists() {
     [ -f "$CONFIG_FILE" ]
 }
@@ -341,6 +353,7 @@ detect_component_state() {
         mkcert_ca)        check_mkcert_ca_installed ;;
         ddev)             check_ddev_installed ;;
         ddev_config)      check_ddev_config_exists ;;
+        script_symlinks)  check_script_symlinks_exist ;;
         nwp_cli)          check_nwp_cli_installed ;;
         nwp_config)       check_nwp_config_exists ;;
         nwp_secrets)      check_nwp_secrets_exist ;;
@@ -568,6 +581,67 @@ EOF
 
     print_status "OK" "DDEV global config created"
     log_action "DDEV config created"
+}
+
+install_script_symlinks() {
+    print_header "Creating Script Symlinks"
+    log_action "Creating script symlinks for backward compatibility"
+
+    # Determine root directory
+    local root_dir="$SCRIPT_DIR"
+    if [[ "$root_dir" == */scripts/commands ]]; then
+        root_dir="${root_dir%/scripts/commands}"
+    fi
+
+    local commands_dir="$root_dir/scripts/commands"
+
+    if [ ! -d "$commands_dir" ]; then
+        print_status "FAIL" "scripts/commands/ directory not found"
+        return 1
+    fi
+
+    local created=0
+    local skipped=0
+
+    # List of scripts to symlink
+    local scripts=(
+        backup.sh coder-setup.sh copy.sh delete.sh dev2stg.sh
+        import.sh install.sh live.sh live2prod.sh live2stg.sh
+        make.sh migrate-secrets.sh migration.sh modify.sh
+        podcast.sh prod2stg.sh produce.sh report.sh restore.sh
+        schedule.sh security.sh setup.sh setup-ssh.sh status.sh
+        stg2live.sh stg2prod.sh sync.sh test-nwp.sh test.sh
+        testos.sh uninstall_nwp.sh verify.sh
+    )
+
+    for script in "${scripts[@]}"; do
+        local target="$root_dir/$script"
+        local source="scripts/commands/$script"
+
+        if [ -L "$target" ]; then
+            # Already a symlink
+            skipped=$((skipped + 1))
+        elif [ -f "$target" ]; then
+            # Regular file exists - skip to avoid overwriting
+            print_status "WARN" "Skipping $script (regular file exists)"
+            skipped=$((skipped + 1))
+        elif [ -f "$commands_dir/$script" ]; then
+            # Create symlink
+            ln -s "$source" "$target"
+            created=$((created + 1))
+        fi
+    done
+
+    print_status "OK" "Created $created symlinks ($skipped already existed)"
+    echo ""
+    echo "Scripts accessible via:"
+    echo "  ./install.sh, ./backup.sh, ./status.sh, etc."
+    echo ""
+    echo "To use scripts without symlinks, use:"
+    echo "  ./scripts/commands/install.sh"
+    echo "  or: pl install (NWP CLI)"
+
+    log_action "Script symlinks created: $created new, $skipped existing"
 }
 
 install_nwp_cli() {
@@ -1258,6 +1332,7 @@ install_component() {
         mkcert_ca)        install_mkcert_ca ;;
         ddev)             install_ddev ;;
         ddev_config)      install_ddev_config ;;
+        script_symlinks)  install_script_symlinks ;;
         nwp_cli)          install_nwp_cli ;;
         nwp_config)       install_nwp_config ;;
         nwp_secrets)      install_nwp_secrets ;;
@@ -1390,6 +1465,46 @@ remove_ddev_config() {
     fi
 
     log_action "DDEV config removed"
+}
+
+remove_script_symlinks() {
+    print_header "Removing Script Symlinks"
+    log_action "Removing script symlinks"
+
+    # Determine root directory
+    local root_dir="$SCRIPT_DIR"
+    if [[ "$root_dir" == */scripts/commands ]]; then
+        root_dir="${root_dir%/scripts/commands}"
+    fi
+
+    local removed=0
+
+    # List of scripts that might have symlinks
+    local scripts=(
+        backup.sh coder-setup.sh copy.sh delete.sh dev2stg.sh
+        import.sh install.sh live.sh live2prod.sh live2stg.sh
+        make.sh migrate-secrets.sh migration.sh modify.sh
+        podcast.sh prod2stg.sh produce.sh report.sh restore.sh
+        schedule.sh security.sh setup.sh setup-ssh.sh status.sh
+        stg2live.sh stg2prod.sh sync.sh test-nwp.sh test.sh
+        testos.sh uninstall_nwp.sh verify.sh
+    )
+
+    for script in "${scripts[@]}"; do
+        local target="$root_dir/$script"
+        if [ -L "$target" ]; then
+            rm -f "$target"
+            removed=$((removed + 1))
+        fi
+    done
+
+    print_status "OK" "Removed $removed symlinks"
+    echo ""
+    echo "Scripts now accessible via:"
+    echo "  ./scripts/commands/install.sh"
+    echo "  or: pl install (NWP CLI)"
+
+    log_action "Script symlinks removed: $removed"
 }
 
 remove_nwp_cli() {
@@ -1669,6 +1784,7 @@ remove_component() {
         mkcert_ca)        remove_mkcert_ca ;;
         ddev)             remove_ddev ;;
         ddev_config)      remove_ddev_config ;;
+        script_symlinks)  remove_script_symlinks ;;
         nwp_cli)          remove_nwp_cli ;;
         nwp_config)       remove_nwp_config ;;
         nwp_secrets)      remove_nwp_secrets ;;
@@ -2056,11 +2172,17 @@ show_help() {
     echo "Usage: $0 [options]"
     echo ""
     echo "Options:"
-    echo "  --status    Show current installation status"
-    echo "  --auto      Auto-install all core components"
-    echo "  --help      Show this help message"
+    echo "  --status       Show current installation status"
+    echo "  --auto         Auto-install all core components"
+    echo "  --symlinks     Create script symlinks for backward compatibility"
+    echo "  --no-symlinks  Remove script symlinks (use scripts/commands/ directly)"
+    echo "  --help         Show this help message"
     echo ""
     echo "Without options, runs interactive setup."
+    echo ""
+    echo "Symlink Options:"
+    echo "  With symlinks:    ./install.sh, ./backup.sh, etc. (traditional)"
+    echo "  Without symlinks: ./scripts/commands/install.sh or 'pl install'"
 }
 
 main() {
@@ -2073,6 +2195,16 @@ main() {
         --status)
             save_original_state
             show_status
+            exit 0
+            ;;
+        --symlinks)
+            print_header "Enabling Script Symlinks"
+            install_script_symlinks
+            exit 0
+            ;;
+        --no-symlinks)
+            print_header "Disabling Script Symlinks"
+            remove_script_symlinks
             exit 0
             ;;
         --auto)

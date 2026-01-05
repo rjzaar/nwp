@@ -9,14 +9,8 @@ set -euo pipefail
 # Usage: ./produce.sh [OPTIONS] <sitename>
 ################################################################################
 
-# Get script directory (resolve symlinks)
-SOURCE="${BASH_SOURCE[0]}"
-while [ -L "$SOURCE" ]; do
-    DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
-    SOURCE="$(readlink "$SOURCE")"
-    [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
-done
-SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+# Get script directory (from symlink location, not resolved target)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Source shared libraries
 source "$SCRIPT_DIR/lib/ui.sh"

@@ -927,13 +927,13 @@ For more control over the installation:
 
 ```bash
 # 1. Set up local environment
-./git/gitlab_setup.sh
+./linode/gitlab/gitlab_setup.sh
 
 # 2. Upload StackScript to Linode
-./git/gitlab_upload_stackscript.sh
+./linode/gitlab/gitlab_upload_stackscript.sh
 
 # 3. Create GitLab server
-./git/gitlab_create_server.sh --domain git.example.com --email admin@example.com
+./linode/gitlab/gitlab_create_server.sh --domain git.example.com --email admin@example.com
 ```
 
 ### Accessing GitLab
@@ -948,7 +948,7 @@ ssh git-server
 ssh git-server 'sudo cat /root/gitlab_credentials.txt'
 ```
 
-See `git/README.md` for complete GitLab documentation.
+See `linode/gitlab/README.md` for complete GitLab documentation.
 
 ## Site Purpose and Migration
 

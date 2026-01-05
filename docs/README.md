@@ -119,7 +119,6 @@ pl test sitename
 - [Main README](../README.md) - Project overview
 - [CLAUDE.md](../CLAUDE.md) - AI assistant instructions and protected files
 - [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) - Current known issues and test failures
-- [GitLab Setup](../git/README.md) - GitLab server, Composer registry, and migration
+- [GitLab Setup](../linode/gitlab/README.md) - GitLab server, Composer registry, and migration
 - [Linode Scripts](../linode/README.md) - Linode provisioning
 - [Vortex Environment](../vortex/README.md) - Environment configuration system
-- [URL Configuration](../url/README.md) - Domain configuration

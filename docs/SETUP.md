@@ -562,4 +562,4 @@ ddev export-db --all
 - [CI/CD Guide](CICD.md) - CI/CD implementation
 - [Production Deployment](PRODUCTION_DEPLOYMENT.md) - Deployment guide
 - [SSH Setup](SSH_SETUP.md) - SSH key setup
-- [GitLab Setup](../git/README.md) - GitLab server setup
+- [GitLab Setup](../linode/gitlab/README.md) - GitLab server setup

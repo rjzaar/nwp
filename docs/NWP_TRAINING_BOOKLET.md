@@ -89,7 +89,7 @@ nwp/
 │
 ├── Infrastructure
 │   ├── linode/           # Linode deployment scripts
-│   ├── git/              # GitLab infrastructure
+│   │   └── gitlab/       # GitLab infrastructure
 │   └── templates/        # Site templates
 │
 └── Site Directories
@@ -1543,7 +1543,7 @@ Creates a GitLab instance at `git.<your-domain>`.
 ### Connecting Sites to GitLab
 
 ```bash
-./git/setup_gitlab_repo.sh nwp5
+./linode/gitlab/setup_gitlab_repo.sh nwp5
 ```
 
 Creates a repository and configures the site.

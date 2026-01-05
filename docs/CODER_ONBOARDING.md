@@ -238,7 +238,7 @@ If you want your own GitLab instance:
 
 ```bash
 # Run GitLab installer
-./git/install-gitlab.sh
+./linode/gitlab/setup_gitlab_site.sh
 ```
 
 This will set up GitLab at `git.<yourname>.nwpcode.org`.

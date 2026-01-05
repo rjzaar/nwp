@@ -262,12 +262,12 @@ Interactive setup wizard for NWP prerequisites.
 ./setup.sh --auto                 # Auto-install core
 ```
 
-## GitLab Server (git/)
+## GitLab Server (linode/gitlab/)
 
 Automated GitLab CE deployment on Linode.
 
 ```bash
-cd git
+cd linode/gitlab
 ./setup_gitlab_site.sh            # Full GitLab setup
 ./gitlab_create_server.sh         # Create server only
 ```

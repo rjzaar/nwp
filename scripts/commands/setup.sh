@@ -269,7 +269,7 @@ check_linode_config_exists() {
 }
 
 check_gitlab_keys_exist() {
-    [ -f "$SCRIPT_DIR/git/keys/gitlab_linode" ]
+    [ -f "$SCRIPT_DIR/linode/gitlab/keys/gitlab_linode" ]
 }
 
 check_bats_installed() {
@@ -789,7 +789,7 @@ linode:
 #     ip: 0.0.0.0
 #     linode_id: 0
 #     ssh_user: gitlab
-#     ssh_key: git/keys/gitlab_linode
+#     ssh_key: linode/gitlab/keys/gitlab_linode
 #   admin:
 #     url: https://git.yourdomain.org
 #     username: root
@@ -871,7 +871,7 @@ install_gitlab_keys() {
     print_header "Generating GitLab SSH Keys"
     log_action "Generating GitLab SSH keys"
 
-    local keys_dir="$SCRIPT_DIR/git/keys"
+    local keys_dir="$SCRIPT_DIR/linode/gitlab/keys"
     local key_file="$keys_dir/gitlab_linode"
 
     mkdir -p "$keys_dir"
@@ -922,9 +922,9 @@ install_gitlab_server() {
     print_status "INFO" "Setting up GitLab at $gitlab_domain"
 
     # Use the setup_gitlab_site.sh script if available
-    if [ -x "$SCRIPT_DIR/git/setup_gitlab_site.sh" ]; then
+    if [ -x "$SCRIPT_DIR/linode/gitlab/setup_gitlab_site.sh" ]; then
         print_status "INFO" "Running GitLab setup script..."
-        if "$SCRIPT_DIR/git/setup_gitlab_site.sh" -y; then
+        if "$SCRIPT_DIR/linode/gitlab/setup_gitlab_site.sh" -y; then
             print_status "OK" "GitLab server provisioned"
             log_action "GitLab server provisioned"
         else
@@ -932,7 +932,7 @@ install_gitlab_server() {
             return 1
         fi
     else
-        print_status "FAIL" "git/setup_gitlab_site.sh not found"
+        print_status "FAIL" "linode/gitlab/setup_gitlab_site.sh not found"
         return 1
     fi
 }
@@ -1023,7 +1023,7 @@ install_gitlab_ssh_config() {
     fi
 
     # Copy key to ~/.ssh/
-    local src_key="$SCRIPT_DIR/git/keys/gitlab_linode"
+    local src_key="$SCRIPT_DIR/linode/gitlab/keys/gitlab_linode"
     local dest_key="$HOME/.ssh/gitlab_linode"
 
     if [ -f "$src_key" ]; then
@@ -1623,8 +1623,8 @@ remove_gitlab_keys() {
         return 0
     fi
 
-    if [ -f "$SCRIPT_DIR/git/keys/gitlab_linode" ]; then
-        rm -f "$SCRIPT_DIR/git/keys/gitlab_linode" "$SCRIPT_DIR/git/keys/gitlab_linode.pub"
+    if [ -f "$SCRIPT_DIR/linode/gitlab/keys/gitlab_linode" ]; then
+        rm -f "$SCRIPT_DIR/linode/gitlab/keys/gitlab_linode" "$SCRIPT_DIR/linode/gitlab/keys/gitlab_linode.pub"
         print_status "OK" "GitLab SSH keys removed"
     fi
 

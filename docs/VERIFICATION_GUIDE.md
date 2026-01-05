@@ -530,9 +530,9 @@ A complete map of all NWP documentation organized by purpose.
 
 | Document | Purpose |
 |----------|---------|
-| [../git/README.md](../git/README.md) | GitLab server setup |
-| [../git/GITLAB_COMPOSER.md](../git/GITLAB_COMPOSER.md) | Composer package registry |
-| [../git/GITLAB_MIGRATION.md](../git/GITLAB_MIGRATION.md) | Repository migration |
+| [../linode/gitlab/README.md](../linode/gitlab/README.md) | GitLab server setup |
+| [../linode/gitlab/GITLAB_COMPOSER.md](../linode/gitlab/GITLAB_COMPOSER.md) | Composer package registry |
+| [../linode/gitlab/GITLAB_MIGRATION.md](../linode/gitlab/GITLAB_MIGRATION.md) | Repository migration |
 | [../linode/README.md](../linode/README.md) | Linode provisioning |
 
 ## Backup & Migration
@@ -579,13 +579,12 @@ nwp/
 │   ├── VERIFICATION_GUIDE.md # This document
 │   └── archive/              # Historical docs
 │
-├── git/                      # GitLab documentation
-│   ├── README.md             # GitLab setup
-│   ├── GITLAB_COMPOSER.md    # Package registry
-│   └── GITLAB_MIGRATION.md   # Migration guide
-│
-├── linode/                   # Linode scripts
-│   └── README.md             # Provisioning guide
+├── linode/                   # Linode infrastructure
+│   ├── README.md             # Provisioning guide
+│   └── gitlab/               # GitLab documentation
+│       ├── README.md         # GitLab setup
+│       ├── GITLAB_COMPOSER.md # Package registry
+│       └── GITLAB_MIGRATION.md # Migration guide
 │
 ├── vortex/                   # Environment config
 │   └── README.md             # Config system

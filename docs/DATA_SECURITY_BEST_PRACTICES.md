@@ -447,13 +447,13 @@ live_security:
 
 ```bash
 # Review current security settings
-./git/gitlab_harden.sh --check
+./linode/gitlab/gitlab_harden.sh --check
 
 # Preview changes (dry run)
-./git/gitlab_harden.sh
+./linode/gitlab/gitlab_harden.sh
 
 # Apply security hardening
-./git/gitlab_harden.sh --apply
+./linode/gitlab/gitlab_harden.sh --apply
 ```
 
 ---

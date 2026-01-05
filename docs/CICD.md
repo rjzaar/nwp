@@ -54,9 +54,9 @@ build:composer → validate (phpcs, phpstan, security) → test (phpunit, behat)
 
 **Production (Linode):**
 ```bash
-./git/setup_gitlab_site.sh
+./linode/gitlab/setup_gitlab_site.sh
 # Or with options
-./git/setup_gitlab_site.sh --type g6-standard-4 --region us-west
+./linode/gitlab/setup_gitlab_site.sh --type g6-standard-4 --region us-west
 ```
 
 **Development (Local Docker):**
@@ -499,7 +499,7 @@ For production GitLab instances, apply security hardening.
 
 ### Hardening Script
 
-Create `git/gitlab_harden.sh`:
+Create `linode/gitlab/gitlab_harden.sh`:
 
 ```bash
 #!/bin/bash
@@ -653,4 +653,4 @@ sudo gitlab-ctl reconfigure
 
 - [Testing Guide](TESTING.md) - Test suite documentation
 - [Production Deployment](PRODUCTION_DEPLOYMENT.md) - Deployment guide
-- [GitLab Setup](../git/README.md) - GitLab server setup
+- [GitLab Setup](../linode/gitlab/README.md) - GitLab server setup

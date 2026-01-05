@@ -26,7 +26,7 @@ set -euo pipefail
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NWP_ROOT="$(dirname "$SCRIPT_DIR")"
+NWP_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 CNWP_FILE="$NWP_ROOT/cnwp.yml"
 SECRETS_FILE="$NWP_ROOT/.secrets.yml"
 
@@ -404,8 +404,8 @@ gitlab:
     ip: $server_ip
     linode_id: $server_id
     ssh_user: gitlab
-    ssh_key: git/keys/gitlab_linode
-    # Root password: ssh -i git/keys/gitlab_linode gitlab@$server_ip 'sudo cat /root/gitlab_credentials.txt'
+    ssh_key: linode/gitlab/keys/gitlab_linode
+    # Root password: ssh -i linode/gitlab/keys/gitlab_linode gitlab@$server_ip 'sudo cat /root/gitlab_credentials.txt'
 EOF
 
     print_status "OK" "Secrets stored"

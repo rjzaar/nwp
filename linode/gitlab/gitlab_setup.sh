@@ -32,7 +32,7 @@ NC='\033[0m' # No Color
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NWP_ROOT="$(dirname "$SCRIPT_DIR")"
+NWP_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 GIT_DIR="$SCRIPT_DIR"
 KEYS_DIR="$GIT_DIR/keys"
 CONFIG_DIR="$HOME/.nwp"
@@ -645,7 +645,7 @@ setup_ssh_config() {
 # GitLab Linode Servers
 Host gitlab-*
     User gitlab
-    IdentityFile ~/.nwp/git/keys/gitlab_linode
+    IdentityFile ~/.ssh/gitlab_linode
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
 
@@ -687,7 +687,7 @@ server:
   ssh_user: "gitlab"
   ssh_port: 22
   timezone: "America/New_York"
-  ssh_key_path: "~/.nwp/git/keys/gitlab_linode.pub"
+  ssh_key_path: "~/.ssh/gitlab_linode.pub"
 
 # GitLab Configuration
 gitlab:

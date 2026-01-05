@@ -1332,7 +1332,7 @@ Claude: [Fixes the issue, commits, pushes]
 Claude: "Fixed and pushed. New pipeline running."
 ```
 
-**Token Generation Script (`git/gitlab_token.sh`):**
+**Token Generation Script (`linode/gitlab/gitlab_token.sh`):**
 ```bash
 #!/bin/bash
 # Generate GitLab personal access token for MCP integration

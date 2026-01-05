@@ -18,15 +18,15 @@
 
 /* Make room for fixed adoration panel */
 .divine-mercy-chaplet {
-  max-width: none;
-  margin-left: 20px;
-  margin-right: 300px;
+  max-width: none !important;
+  margin-left: 20px !important;
+  margin-right: 350px !important;
   transition: margin-right 0.3s ease;
 }
 
 /* When adoration is collapsed, reduce margin */
 .divine-mercy-chaplet.adoration-collapsed {
-  margin-right: 180px;
+  margin-right: 180px !important;
 }
 
 .divine-mercy-eucharist-adoration.is-collapsed {

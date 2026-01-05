@@ -133,7 +133,7 @@ ensure_prod_mode() {
 # Configuration
 ################################################################################
 
-# Get base domain from cnwp.yml
+# Get base domain from cnwp.yml settings.url
 get_base_domain() {
     local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
 
@@ -143,8 +143,10 @@ get_base_domain() {
             in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
             in_settings && /^  url:/ {
                 sub("^  url: *", "")
+                sub(/#.*/, "")
                 gsub(/["'"'"']/, "")
-                print
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+                if (length($0) > 0) print
                 exit
             }
         ' "$cnwp_file"

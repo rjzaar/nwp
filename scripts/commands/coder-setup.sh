@@ -101,22 +101,26 @@ validate_coder_name() {
     return 0
 }
 
-# Get base domain from config
+# Get base domain from settings.url
 get_base_domain() {
+    local result
     if command -v yq &>/dev/null; then
-        yq -r '.other_coders.base_domain // "nwpcode.org"' "$CONFIG_FILE" 2>/dev/null || echo "nwpcode.org"
+        result=$(yq -r '.settings.url // ""' "$CONFIG_FILE" 2>/dev/null)
     else
-        awk '
-            /^other_coders:/ { in_section = 1; next }
+        result=$(awk '
+            /^settings:/ { in_section = 1; next }
             in_section && /^[a-zA-Z]/ && !/^  / { in_section = 0 }
-            in_section && /^  base_domain:/ {
-                sub(/^  base_domain: */, "")
+            in_section && /^  url:/ {
+                sub(/^  url: */, "")
+                sub(/#.*/, "")
                 gsub(/["'"'"']/, "")
-                print
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+                if (length($0) > 0) print
                 exit
             }
-        ' "$CONFIG_FILE" 2>/dev/null || echo "nwpcode.org"
+        ' "$CONFIG_FILE" 2>/dev/null)
     fi
+    echo "${result:-nwpcode.org}"
 }
 
 # Get nameservers from config

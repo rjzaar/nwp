@@ -35,7 +35,7 @@ read_recipe_config() {
     local key="$1"
     local default="${2:-}"
 
-    # Use awk to extract the value
+    # Use awk to extract the value, stripping YAML comments
     local value=$(awk -v recipe="$RECIPE" -v key="$key" '
         BEGIN { in_recipe = 0; found = 0 }
         /^  [a-zA-Z0-9_-]+:/ {
@@ -47,6 +47,7 @@ read_recipe_config() {
         }
         in_recipe && $0 ~ "^    " key ":" {
             sub("^    " key ": *", "")
+            sub(/ *#.*$/, "")  # Strip trailing comments
             print
             found = 1
             exit
@@ -66,6 +67,7 @@ read_setting() {
         /^[a-zA-Z]/ && in_settings { in_settings = 0 }
         in_settings && $0 ~ "^  " key ":" {
             sub("^  " key ": *", "")
+            sub(/ *#.*$/, "")  # Strip trailing comments
             print
             exit
         }

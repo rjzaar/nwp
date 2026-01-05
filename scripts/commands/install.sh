@@ -256,21 +256,50 @@ main() {
     local config_file="cnwp.yml"
     local purpose="indefinite"
     local positional_args=()
+    local next_is_step=""
+    local next_is_purpose=""
 
     # Parse arguments
     for arg in "$@"; do
+        # Handle value for previous flag
+        if [[ -n "$next_is_step" ]]; then
+            start_step="$arg"
+            next_is_step=""
+            continue
+        fi
+        if [[ -n "$next_is_purpose" ]]; then
+            # Map short codes to full values
+            case "$arg" in
+                t|testing) purpose="testing" ;;
+                i|indefinite) purpose="indefinite" ;;
+                p|permanent) purpose="permanent" ;;
+                m|migration) purpose="migration" ;;
+                *)
+                    print_error "Invalid purpose: $arg"
+                    echo "Valid values: t(esting), i(ndefinite), p(ermanent), m(igration)"
+                    exit 1
+                    ;;
+            esac
+            next_is_purpose=""
+            continue
+        fi
+
         if [[ "$arg" == "-l" ]] || [[ "$arg" == "--list" ]]; then
             list_recipes "$config_file"
             exit 0
         elif [[ "$arg" == "-h" ]] || [[ "$arg" == "--help" ]]; then
             show_help "$config_file"
             exit 0
-        elif [[ "$arg" =~ ^s=([0-9]+)$ ]]; then
+        elif [[ "$arg" == "-s" ]] || [[ "$arg" == "--start" ]] || [[ "$arg" == "--step" ]]; then
+            next_is_step="1"
+        elif [[ "$arg" =~ ^-s([0-9]+)$ ]] || [[ "$arg" =~ ^s=([0-9]+)$ ]]; then
             start_step="${BASH_REMATCH[1]}"
-        elif [[ "$arg" =~ ^--step=([0-9]+)$ ]]; then
+        elif [[ "$arg" =~ ^--step=([0-9]+)$ ]] || [[ "$arg" =~ ^--start=([0-9]+)$ ]]; then
             start_step="${BASH_REMATCH[1]}"
         elif [[ "$arg" == "c" ]] || [[ "$arg" == "--create-content" ]]; then
             create_content="y"
+        elif [[ "$arg" == "-p" ]] || [[ "$arg" == "--purpose" ]]; then
+            next_is_purpose="1"
         elif [[ "$arg" =~ ^-p=(.+)$ ]] || [[ "$arg" =~ ^--purpose=(.+)$ ]]; then
             local purpose_arg="${BASH_REMATCH[1]}"
             # Map short codes to full values

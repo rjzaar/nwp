@@ -43,15 +43,17 @@ get_stg_name() {
     echo "${base}_stg"
 }
 
-# Get base domain from cnwp.yml settings
+# Get base domain from cnwp.yml settings.url
 get_base_domain() {
     awk '
         /^settings:/ { in_settings = 1; next }
         in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
         in_settings && /^  url:/ {
             sub("^  url: *", "")
+            sub(/#.*/, "")
             gsub(/["'"'"']/, "")
-            print
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+            if (length($0) > 0) print
             exit
         }
     ' "$SCRIPT_DIR/cnwp.yml"

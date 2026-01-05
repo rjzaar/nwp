@@ -75,18 +75,25 @@ install_moodle() {
     local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/cnwp.yml")
     local sitename=$(get_recipe_value "$recipe" "sitename" "$base_dir/cnwp.yml")
 
-    # Get database and PHP configuration from settings section
-    local database=$(get_settings_value "database" "$base_dir/cnwp.yml")
-    local php_version=$(get_settings_value "php" "$base_dir/cnwp.yml")
+    # Get PHP and database: recipe overrides settings, settings overrides defaults
+    local php_version=$(get_recipe_value "$recipe" "php" "$base_dir/cnwp.yml")
+    local database=$(get_recipe_value "$recipe" "database" "$base_dir/cnwp.yml")
 
-    # Set defaults if not specified
+    # Fall back to settings if not in recipe
+    if [ -z "$php_version" ]; then
+        php_version=$(get_settings_value "php" "$base_dir/cnwp.yml")
+    fi
+    if [ -z "$database" ]; then
+        database=$(get_settings_value "database" "$base_dir/cnwp.yml")
+    fi
+
+    # Set defaults if still not specified (Moodle has different defaults)
     if [ -z "$php_version" ]; then
         php_version="8.1"  # Moodle 4.x default
         print_info "No PHP version specified, using default: 8.1"
     fi
-
     if [ -z "$database" ]; then
-        database="mariadb"
+        database="mariadb"  # Moodle default
         print_info "No database specified, using default: mariadb"
     fi
 

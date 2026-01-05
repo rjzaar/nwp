@@ -25,8 +25,10 @@ get_gitlab_url() {
         in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
         in_settings && /^  url:/ {
             sub("^  url: *", "")
+            sub(/#.*/, "")        # Remove inline comments
             gsub(/["'"'"']/, "")  # Remove quotes
-            print
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "")  # Trim whitespace
+            if (length($0) > 0) print
             exit
         }
     ' "$cnwp_file")

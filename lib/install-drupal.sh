@@ -89,16 +89,23 @@ install_drupal() {
     local post_install_modules=$(get_recipe_list_value "$recipe" "post_install_modules" "$base_dir/cnwp.yml")
     local default_theme=$(get_recipe_value "$recipe" "default_theme" "$base_dir/cnwp.yml")
 
-    # Get database and PHP configuration from settings section
-    local database=$(get_settings_value "database" "$base_dir/cnwp.yml")
-    local php_version=$(get_settings_value "php" "$base_dir/cnwp.yml")
+    # Get PHP and database: recipe overrides settings, settings overrides defaults
+    local php_version=$(get_recipe_value "$recipe" "php" "$base_dir/cnwp.yml")
+    local database=$(get_recipe_value "$recipe" "database" "$base_dir/cnwp.yml")
 
-    # Set defaults if not specified
+    # Fall back to settings if not in recipe
     if [ -z "$php_version" ]; then
-        php_version="8.3"  # Default from guide
-        print_info "No PHP version specified, using default: 8.3"
+        php_version=$(get_settings_value "php" "$base_dir/cnwp.yml")
+    fi
+    if [ -z "$database" ]; then
+        database=$(get_settings_value "database" "$base_dir/cnwp.yml")
     fi
 
+    # Set defaults if still not specified
+    if [ -z "$php_version" ]; then
+        php_version="8.3"  # Default
+        print_info "No PHP version specified, using default: 8.3"
+    fi
     if [ -z "$database" ]; then
         database="mysql"  # Default
         print_info "No database specified, using default: mysql"
@@ -266,8 +273,9 @@ install_drupal() {
         fi
 
         # Generate .env file
+        # Note: env-generate.sh expects sitename (not path), so use basename
         print_info "Generating .env file from cnwp.yml..."
-        if ! "$env_script" "$recipe" "$install_dir" .; then
+        if ! "$env_script" "$recipe" "$(basename "$install_dir")" .; then
             print_error "Failed to generate environment configuration"
             return 1
         fi

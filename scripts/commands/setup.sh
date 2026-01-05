@@ -350,8 +350,10 @@ draw_setup_screen() {
         if [ -n "$edit_key" ]; then
             local current_val=$(get_editable_value "$id" "$edit_key")
             if [ "$row_idx" -eq "$EDITING_ROW" ]; then
-                # Show input field placeholder - will be filled by read
-                edit_field="${BOLD}[                    ]${NC}"
+                # Show editable field with value - cursor will be positioned here
+                edit_field="${BOLD}[${NC}%-18s${BOLD}]${NC}"
+                # Use printf to format with padding for consistent width
+                edit_field=$(printf "${BOLD}[${NC}%-18s${BOLD}]${NC}" "$current_val")
             else
                 edit_field="${CYAN}[$current_val]${NC}"
             fi
@@ -513,6 +515,8 @@ run_interactive_tui() {
                     printf "\n  ${YELLOW}Not editable${NC}"
                     sleep 0.5
                 else
+                    local current_val=$(get_editable_value "$comp_id" "$comp_edit_key")
+
                     # Set editing mode and redraw
                     EDITING_ROW=$current_row
                     draw_setup_screen $current_row
@@ -527,15 +531,24 @@ run_interactive_tui() {
                         [ $r -lt $current_row ] && edit_line=$((edit_line + 1))
                     done
 
-                    # Position cursor inside the brackets (col ~48) and read
+                    # Position cursor inside the brackets and read with pre-filled value
                     cursor_show
                     cursor_to $edit_line 49
-                    read -e new_val
-                    cursor_hide
 
-                    if [ -n "$new_val" ]; then
-                        MANUAL_INPUTS[$comp_id]="$new_val"
+                    # Clear the placeholder brackets area first
+                    printf "%-20s" "$current_val"
+                    cursor_to $edit_line 49
+
+                    # Read with pre-filled value; Ctrl+C or empty = cancel
+                    local new_val=""
+                    if read -e -i "$current_val" new_val 2>/dev/null; then
+                        # Save only if changed and not empty
+                        if [ -n "$new_val" ] && [ "$new_val" != "$current_val" ]; then
+                            MANUAL_INPUTS[$comp_id]="$new_val"
+                        fi
                     fi
+                    # Ctrl+C or ESC during read cancels - no change
+                    cursor_hide
                     EDITING_ROW=-1
                 fi
                 ;;

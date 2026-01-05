@@ -172,7 +172,7 @@ install_drupal() {
 
         # Install dependencies with Asset Packagist available
         print_info "Installing dependencies (this will take 10-15 minutes)..."
-        if ! composer install --no-interaction; then
+        if ! env $composer_auth composer install --no-interaction; then
             print_error "Failed to install project dependencies"
             return 1
         fi

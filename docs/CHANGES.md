@@ -4,6 +4,128 @@ All notable changes to the NWP (Narrow Way Project) are documented here, organiz
 
 ---
 
+## [v0.11.0] - 2026-01-05
+
+### Complete NWP Roadmap Implementation (Phases 1-9)
+
+This release implements the complete developer lifecycle roadmap from development to production deployment.
+
+### Phase 1: CI/CD Infrastructure
+
+**New CI Pipeline Scripts** (`scripts/ci/`):
+- `fetch-db.sh` - Database fetching for CI with caching and sanitization
+- `build.sh` - DDEV-based build operations (composer, npm, drush deploy)
+- `test.sh` - Comprehensive test runner (phpcs, phpstan, phpunit, behat)
+- `check-coverage.sh` - Coverage threshold validation from clover.xml
+
+**CI Configuration**:
+- `.gitlab-ci.yml` - Complete GitLab CI pipeline with database caching, multi-stage deploy
+- `.github/workflows/build-test-deploy.yml` - GitHub Actions workflow with DDEV integration
+
+### Phase 2: Dependency Automation
+
+- `renovate.json` - Automated Drupal dependency updates (extends drevops/renovate-drupal)
+- `scripts/security-update.sh` - Security update workflow with testing and notifications
+
+### Phase 3: Server Infrastructure
+
+- `linode/server_scripts/nwp-bootstrap.sh` - Server initialization and package installation
+- `linode/server_scripts/nwp-healthcheck.sh` - Comprehensive health monitoring (JSON output)
+- `linode/server_scripts/nwp-audit.sh` - Deployment audit logging (JSON Lines format)
+
+### Phase 4: Notification System
+
+- `scripts/notify.sh` - Main notification router with event-to-emoji mapping
+- `scripts/notify-slack.sh` - Slack webhook integration
+- `scripts/notify-email.sh` - Email notifications via sendmail/SMTP
+- `scripts/notify-webhook.sh` - Generic webhook support for external systems
+
+### Phase 5: Code Quality
+
+- `phpstan.neon` - PHPStan level 5 configuration for Drupal
+- `.hooks/pre-commit` - PHPCS/PHPStan pre-commit hook
+- `.github/PULL_REQUEST_TEMPLATE.md` - PR review checklist
+- `.gitlab/merge_request_templates/default.md` - MR review checklist
+
+### Phase 6: Monitoring & Observability
+
+- `linode/server_scripts/nwp-monitor.sh` - Continuous monitoring daemon with alerting
+- `linode/server_scripts/nwp-cron.conf` - Cron configuration for monitoring
+- `status.sh` - Added `./status.sh production` dashboard command
+
+### Phase 7: Automated Backups & Disaster Recovery
+
+- `linode/server_scripts/nwp-scheduled-backup.sh` - Tiered backup with rotation (hourly/daily/weekly)
+- `linode/server_scripts/nwp-verify-backup.sh` - Backup integrity verification
+- `linode/server_scripts/nwp-notify.sh` - Multi-channel notification script
+- `docs/DISASTER_RECOVERY.md` - RTO targets and recovery procedures
+
+### Phase 8: Environment Management
+
+- `scripts/ci/create-preview.sh` - PR/MR preview environment creation
+- `scripts/ci/cleanup-preview.sh` - Preview environment cleanup
+- `docs/ENVIRONMENTS.md` - Environment hierarchy and config splits documentation
+- CI configurations updated with preview environment jobs
+
+### Phase 9: Advanced Automation
+
+- `linode/server_scripts/nwp-bluegreen-deploy.sh` - Enhanced blue-green with canary support
+- `linode/server_scripts/nwp-canary.sh` - Canary release management with auto-promote/rollback
+- `linode/server_scripts/nwp-perf-baseline.sh` - Performance baseline capture and comparison
+- `scripts/ci/visual-regression.sh` - BackstopJS integration for visual regression testing
+- `docs/ADVANCED_DEPLOYMENT.md` - Deployment strategies documentation
+
+### Documentation
+
+**New Documentation**:
+- `docs/DEVELOPER_LIFECYCLE_GUIDE.md` - Complete developer workflow guide
+- `docs/NWP_COMPLETE_ROADMAP.md` - Consolidated roadmap (merged from multiple docs)
+- `docs/HUMAN_TESTING.md` - Manual testing guide for features that can't be automated
+- `docs/DISASTER_RECOVERY.md` - Disaster recovery procedures
+- `docs/ENVIRONMENTS.md` - Environment management guide
+- `docs/ADVANCED_DEPLOYMENT.md` - Advanced deployment strategies
+
+**Updated**:
+- `.verification.yml` - 27 new verification entries for all phases
+- `linode/server_scripts/README.md` - Complete server scripts documentation
+
+### Multi-Coder Support
+
+- `coder-setup.sh` - Multi-coder DNS delegation and management
+- `lib/cloudflare.sh` - NS record API functions
+- `docs/CODER_ONBOARDING.md` - New coder onboarding guide
+
+---
+
+## [v0.10.0] - 2026-01-05
+
+### Major Changes
+
+#### Enhanced dev2stg.sh with TUI and Testing
+
+**Complete Rewrite** of dev2stg.sh with modern features:
+
+**New Library Files**:
+- `lib/state.sh` - Intelligent state detection for source/target environments
+- `lib/database-router.sh` - Multi-source database selection (auto, production, backup, development)
+- `lib/testing.sh` - Multi-tier testing framework (8 test types, 5 presets)
+- `lib/preflight.sh` - Pre-deployment validation checks
+- `lib/dev2stg-tui.sh` - Terminal UI for interactive deployment
+
+**Features**:
+- Interactive TUI mode with checkbox selection
+- Intelligent database source auto-selection
+- Test presets: quick, essential, full, security-only, skip
+- Preflight checks before deployment
+- Standardized output formatting (info/pass/fail/warn)
+
+#### Documentation Consolidation
+
+- Merged `NWP_IMPROVEMENT_PHASES.md` and `PRODUCTION_DEPLOYMENT_PROPOSAL.md` into `NWP_COMPLETE_ROADMAP.md`
+- Created comprehensive `DEVELOPER_LIFECYCLE_GUIDE.md`
+
+---
+
 ## [v0.9] - 2026-01-01
 
 ### Major Changes
@@ -683,6 +805,8 @@ modules:
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v0.11.0 | 2026-01-05 | Complete roadmap implementation (Phases 1-9), CI/CD, monitoring, advanced deployment |
+| v0.10.0 | 2026-01-05 | Enhanced dev2stg.sh with TUI, testing framework, documentation consolidation |
 | v0.9 | 2026-01-01 | Modular install.sh architecture with lazy loading |
 | v0.8.1 | 2025-12-30 | Enhanced setup automation with full infrastructure support |
 | v0.8 | 2025-12-30 | GitLab deployment, setup.sh rewrite, site purpose tracking |
@@ -698,4 +822,4 @@ modules:
 
 *For detailed improvement plans and roadmap, see [ROADMAP.md](ROADMAP.md)*
 
-*Last Updated: January 1, 2026*
+*Last Updated: January 5, 2026*

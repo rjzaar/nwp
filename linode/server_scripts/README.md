@@ -4,6 +4,8 @@ These scripts run **on the Linode server** to manage NWP/OpenSocial Drupal sites
 
 ## Scripts Overview
 
+### Core Scripts
+
 | Script | Purpose | Usage |
 |--------|---------|-------|
 | `nwp-bootstrap.sh` | Bootstrap server with required packages and directories | `./nwp-bootstrap.sh` |
@@ -11,9 +13,36 @@ These scripts run **on the Linode server** to manage NWP/OpenSocial Drupal sites
 | `nwp-swap-prod.sh` | Blue-green deployment swap | `./nwp-swap-prod.sh` |
 | `nwp-rollback.sh` | Rollback last deployment | `./nwp-rollback.sh` |
 | `nwp-backup.sh` | Backup site database and files | `./nwp-backup.sh` |
-| `nwp-healthcheck.sh` | Check site health (HTTP, Drupal, DB, cache, SSL) | `./nwp-healthcheck.sh` |
-| `nwp-audit.sh` | Log deployment events in JSON and text format | `./nwp-audit.sh --event deploy --site prod` |
+
+### Monitoring & Health
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `nwp-healthcheck.sh` | Check site health (HTTP, Drupal, DB, cache, SSL) | `./nwp-healthcheck.sh [--json] /var/www/prod` |
 | `nwp-monitor.sh` | Continuous monitoring with metrics and alerting | `./nwp-monitor.sh --domain example.com` |
+| `nwp-audit.sh` | Log deployment events in JSON and text format | `./nwp-audit.sh --event deploy --site prod` |
+
+### Backup & Recovery
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `nwp-scheduled-backup.sh` | Automated backup with tiered rotation | `./nwp-scheduled-backup.sh prod database` |
+| `nwp-verify-backup.sh` | Verify backup file integrity | `./nwp-verify-backup.sh backup.sql.gz` |
+| `nwp-notify.sh` | Multi-channel notifications (log, email, Slack) | `./nwp-notify.sh "Message" warning` |
+
+### Advanced Deployment
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `nwp-bluegreen-deploy.sh` | Enhanced blue-green with canary support | `./nwp-bluegreen-deploy.sh --domain example.com` |
+| `nwp-canary.sh` | Canary release management | `./nwp-canary.sh deploy --domain example.com` |
+| `nwp-perf-baseline.sh` | Performance baseline tracking | `./nwp-perf-baseline.sh capture --domain example.com` |
+
+### Configuration
+
+| File | Purpose |
+|------|---------|
+| `nwp-cron.conf` | Example cron configuration for monitoring and backups |
 
 ## Installation
 
@@ -299,12 +328,134 @@ cat /var/log/nwp/metrics/metrics-$(date +%Y-%m-%d).jsonl | \
   jq -s 'map(.http.response_time_ms) | add / length'
 ```
 
+## Scheduled Backups
+
+```bash
+# Database backup (runs hourly, keeps 24)
+./nwp-scheduled-backup.sh prod database
+
+# File backup (runs daily, keeps 7)
+./nwp-scheduled-backup.sh prod files
+
+# Full backup with verification (runs weekly, keeps 4)
+./nwp-scheduled-backup.sh prod full --verify
+```
+
+Backup locations:
+- `/var/backups/nwp/hourly/` - Database backups (24 retention)
+- `/var/backups/nwp/daily/` - File backups (7 retention)
+- `/var/backups/nwp/weekly/` - Full backups (4 retention)
+
+## Backup Verification
+
+```bash
+# Verify a database backup
+./nwp-verify-backup.sh /var/backups/nwp/hourly/prod-database-20260105.sql.gz
+# Exit code 0 = valid, 1 = invalid
+
+# Verify a file backup
+./nwp-verify-backup.sh /var/backups/nwp/daily/prod-files-20260105.tar.gz
+```
+
+## Notifications
+
+```bash
+# Log notification
+./nwp-notify.sh "Deployment complete" info
+
+# Email notification
+NWP_ALERT_EMAIL="admin@example.com" ./nwp-notify.sh "Backup failed" error email
+
+# Slack notification
+SLACK_WEBHOOK_URL="https://hooks.slack.com/..." ./nwp-notify.sh "Site down" critical slack
+
+# All channels
+./nwp-notify.sh "Server restarted" warning all
+```
+
+## Advanced Deployment
+
+### Blue-Green with Canary
+
+```bash
+# Standard blue-green deployment
+./nwp-bluegreen-deploy.sh --domain example.com
+
+# With canary (10% traffic to new version first)
+./nwp-bluegreen-deploy.sh --domain example.com --canary --canary-percent 10
+
+# With automatic rollback on failure
+./nwp-bluegreen-deploy.sh --domain example.com --rollback-on-fail
+```
+
+### Canary Releases
+
+```bash
+# Deploy canary version
+./nwp-canary.sh deploy --domain example.com --duration 600
+
+# Check canary status
+./nwp-canary.sh status
+
+# Promote canary to full production
+./nwp-canary.sh promote
+
+# Rollback canary
+./nwp-canary.sh rollback
+```
+
+### Performance Baseline
+
+```bash
+# Capture performance baseline after deployment
+./nwp-perf-baseline.sh capture --domain example.com --set-latest
+
+# Compare current performance to baseline
+./nwp-perf-baseline.sh compare --domain example.com --threshold 20
+
+# List all baselines
+./nwp-perf-baseline.sh list
+
+# Show specific baseline
+./nwp-perf-baseline.sh show 20260105-120000
+```
+
+## Cron Configuration
+
+Install the example cron configuration:
+
+```bash
+# Copy to cron.d
+sudo cp nwp-cron.conf /etc/cron.d/nwp
+
+# Or add to user crontab
+crontab -e
+```
+
+Example cron entries (from `nwp-cron.conf`):
+```cron
+# Monitoring every 5 minutes
+*/5 * * * * /usr/local/bin/nwp-monitor.sh --domain example.com /var/www/prod
+
+# Database backup every 6 hours
+0 */6 * * * /usr/local/bin/nwp-scheduled-backup.sh prod database
+
+# File backup daily at 2 AM
+0 2 * * * /usr/local/bin/nwp-scheduled-backup.sh prod files
+
+# Full backup weekly Sunday 3 AM
+0 3 * * 0 /usr/local/bin/nwp-scheduled-backup.sh prod full --verify
+```
+
 ## See Also
 
 - [LINODE_DEPLOYMENT.md](../../docs/LINODE_DEPLOYMENT.md) - Full deployment architecture
-- [SETUP_GUIDE.md](../docs/SETUP_GUIDE.md) - Initial Linode setup guide
+- [DISASTER_RECOVERY.md](../../docs/DISASTER_RECOVERY.md) - Disaster recovery procedures
+- [ADVANCED_DEPLOYMENT.md](../../docs/ADVANCED_DEPLOYMENT.md) - Advanced deployment strategies
+- [ENVIRONMENTS.md](../../docs/ENVIRONMENTS.md) - Environment management
 - [Pleasy Server Scripts](https://github.com/rjzaar/pleasy/tree/master/server) - Original inspiration
 
 ---
 
 *These scripts are adapted from the Pleasy project for NWP/OpenSocial on Linode.*
+*Last Updated: January 5, 2026*

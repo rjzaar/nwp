@@ -287,12 +287,36 @@ NWP includes a comprehensive set of management scripts for working with your sit
 | `stg2prod.sh` | Deploy to production | Push staging to production server |
 | `prod2stg.sh` | Sync from production | Pull production data to local staging |
 | `delete.sh` | Delete sites | Graceful site deletion with optional backup (`-b`) |
+| `status.sh` | Site status | Interactive site management, `production` dashboard |
 | `testos.sh` | Test OpenSocial sites | Behat, PHPUnit, PHPStan testing with auto-setup |
 | `setup.sh` | Setup prerequisites | Install DDEV, configure Claude security |
 | `security.sh` | Security audits | Run security audits, check for updates |
+| `coder-setup.sh` | Multi-coder setup | DNS delegation for team members |
 | `migrate-secrets.sh` | Two-tier secrets | Migrate to infrastructure/data secrets split |
 | `verify.sh` | Feature verification | Track which features need manual re-verification |
 | `report.sh` | Error reporting | Wrapper to report errors to GitLab with captured output |
+
+### Notification Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/notify.sh` | Main notification router (routes to Slack, email, webhook) |
+| `scripts/notify-slack.sh` | Slack webhook notifications |
+| `scripts/notify-email.sh` | Email notifications via sendmail/SMTP |
+| `scripts/notify-webhook.sh` | Generic webhook notifications |
+
+### CI/CD Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/ci/fetch-db.sh` | Fetch database for CI with caching |
+| `scripts/ci/build.sh` | CI build operations (composer, npm, drush) |
+| `scripts/ci/test.sh` | Comprehensive test runner |
+| `scripts/ci/check-coverage.sh` | Validate coverage thresholds |
+| `scripts/ci/create-preview.sh` | Create PR preview environment |
+| `scripts/ci/cleanup-preview.sh` | Clean up preview environment |
+| `scripts/ci/visual-regression.sh` | Visual regression testing |
+| `scripts/security-update.sh` | Automated security updates |
 
 ### Quick Examples
 
@@ -370,6 +394,16 @@ NWP includes a comprehensive set of management scripts for working with your sit
 ./report.sh backup.sh mysite   # Run backup, offer to report on failure
 ./report.sh install.sh d test  # Run install with error capture
 ./report.sh -c backup.sh site  # Copy error report URL to clipboard
+
+# Production status dashboard
+./status.sh production         # Show all production sites with status
+
+# Send notifications
+./scripts/notify.sh --event deploy_success --site mysite --url https://mysite.com
+
+# Run security updates
+./scripts/security-update.sh mysite --check   # Check for updates
+./scripts/security-update.sh mysite --apply   # Apply updates with testing
 ```
 
 ### Combined Flags
@@ -1006,14 +1040,38 @@ Comprehensive documentation is available in the `docs/` directory:
   - GitLab CI/CD integration
   - Automated testing and deployment
 
-- **[ROADMAP.md](docs/ROADMAP.md)** - Complete development roadmap
-  - Phase-by-phase implementation plan
-  - Completed features and upcoming work
+- **[DEVELOPER_LIFECYCLE_GUIDE.md](docs/DEVELOPER_LIFECYCLE_GUIDE.md)** - Complete developer workflow
+  - From project initialization to production
+  - All 9 phases of development lifecycle
+
+- **[NWP_COMPLETE_ROADMAP.md](docs/NWP_COMPLETE_ROADMAP.md)** - Consolidated roadmap
+  - All phases of NWP development
+  - Implementation details and status
 
 - **[LINODE_DEPLOYMENT.md](docs/LINODE_DEPLOYMENT.md)** - Linode server deployment guide
   - Server provisioning
   - StackScripts usage
   - Production deployment checklist
+
+- **[DISASTER_RECOVERY.md](docs/DISASTER_RECOVERY.md)** - Disaster recovery procedures
+  - Recovery Time Objectives (RTO)
+  - Rollback and restore procedures
+  - Server rebuild procedures
+
+- **[ENVIRONMENTS.md](docs/ENVIRONMENTS.md)** - Environment management
+  - Environment hierarchy (local → dev → staging → production)
+  - Configuration splits
+  - Preview environments for PRs
+
+- **[ADVANCED_DEPLOYMENT.md](docs/ADVANCED_DEPLOYMENT.md)** - Advanced deployment strategies
+  - Blue-green deployment
+  - Canary releases
+  - Performance baseline tracking
+  - Visual regression testing
+
+- **[HUMAN_TESTING.md](docs/HUMAN_TESTING.md)** - Manual testing guide
+  - Tests that require human verification
+  - Comprehensive checklists for each feature
 
 ### Quick Reference
 
@@ -1176,21 +1234,78 @@ nwp/
 ├── install.sh            # Main installation script
 ├── setup.sh              # Prerequisites setup script
 ├── verify.sh             # Feature verification tracking script
+├── status.sh             # Site status and production dashboard
+├── coder-setup.sh        # Multi-coder DNS setup
 ├── .verification.yml     # Verification status tracking
+├── .gitlab-ci.yml        # GitLab CI pipeline configuration
+├── renovate.json         # Automated dependency updates
+├── phpstan.neon          # PHPStan configuration
 ├── README.md             # This file
-├── nwp.yml              # Site-specific config (if exists)
+│
 ├── docs/                 # Documentation directory
-│   ├── QUICKSTART.md               # Quick start guide
-│   ├── SETUP.md                    # Setup and configuration
-│   ├── NWP_TRAINING_BOOKLET.md     # Comprehensive training guide
-│   ├── DATA_SECURITY_BEST_PRACTICES.md  # Security and AI usage
-│   ├── DEPLOYMENT_WORKFLOW_ANALYSIS.md  # Deployment workflow research
-│   ├── SCRIPTS_IMPLEMENTATION.md   # Script implementation docs
-│   ├── ROADMAP.md                  # Development roadmap
-│   ├── CICD.md                     # CI/CD documentation
-│   ├── LINODE_DEPLOYMENT.md        # Linode deployment guide
-│   ├── TESTING.md                  # Testing infrastructure
-│   └── BACKUP_IMPLEMENTATION.md    # Backup system details
+│   ├── QUICKSTART.md                   # Quick start guide
+│   ├── SETUP.md                        # Setup and configuration
+│   ├── DEVELOPER_LIFECYCLE_GUIDE.md    # Complete developer workflow
+│   ├── NWP_COMPLETE_ROADMAP.md         # Consolidated roadmap
+│   ├── NWP_TRAINING_BOOKLET.md         # Comprehensive training guide
+│   ├── DATA_SECURITY_BEST_PRACTICES.md # Security and AI usage
+│   ├── DISASTER_RECOVERY.md            # Disaster recovery procedures
+│   ├── ENVIRONMENTS.md                 # Environment management
+│   ├── ADVANCED_DEPLOYMENT.md          # Advanced deployment strategies
+│   ├── HUMAN_TESTING.md                # Manual testing guide
+│   ├── CICD.md                         # CI/CD documentation
+│   ├── LINODE_DEPLOYMENT.md            # Linode deployment guide
+│   ├── TESTING.md                      # Testing infrastructure
+│   └── CODER_ONBOARDING.md             # Multi-coder onboarding
+│
+├── scripts/              # Utility scripts
+│   ├── ci/                             # CI/CD helper scripts
+│   │   ├── fetch-db.sh                 # Fetch database for CI
+│   │   ├── build.sh                    # CI build operations
+│   │   ├── test.sh                     # Comprehensive test runner
+│   │   ├── check-coverage.sh           # Coverage threshold check
+│   │   ├── create-preview.sh           # Create PR preview
+│   │   ├── cleanup-preview.sh          # Cleanup preview
+│   │   └── visual-regression.sh        # Visual regression testing
+│   ├── notify.sh                       # Main notification router
+│   ├── notify-slack.sh                 # Slack notifications
+│   ├── notify-email.sh                 # Email notifications
+│   ├── notify-webhook.sh               # Webhook notifications
+│   └── security-update.sh              # Security update automation
+│
+├── linode/               # Linode deployment
+│   └── server_scripts/                 # Production server scripts
+│       ├── nwp-bootstrap.sh            # Server initialization
+│       ├── nwp-healthcheck.sh          # Health monitoring
+│       ├── nwp-monitor.sh              # Continuous monitoring
+│       ├── nwp-scheduled-backup.sh     # Automated backups
+│       ├── nwp-verify-backup.sh        # Backup verification
+│       ├── nwp-bluegreen-deploy.sh     # Blue-green deployment
+│       ├── nwp-canary.sh               # Canary releases
+│       ├── nwp-perf-baseline.sh        # Performance baselines
+│       └── nwp-cron.conf               # Cron configuration
+│
+├── .github/              # GitHub configuration
+│   ├── workflows/
+│   │   └── build-test-deploy.yml       # GitHub Actions workflow
+│   └── PULL_REQUEST_TEMPLATE.md        # PR template
+│
+├── .gitlab/              # GitLab configuration
+│   └── merge_request_templates/
+│       └── default.md                  # MR template
+│
+├── .hooks/               # Git hooks
+│   └── pre-commit                      # Pre-commit quality checks
+│
+├── lib/                  # Shared libraries
+│   ├── common.sh                       # Common functions
+│   ├── ui.sh                           # UI formatting
+│   ├── state.sh                        # State detection
+│   ├── database-router.sh              # Database routing
+│   ├── testing.sh                      # Testing framework
+│   ├── preflight.sh                    # Preflight checks
+│   └── cloudflare.sh                   # Cloudflare API
+│
 ├── backup.sh             # Backup script (full and database-only)
 ├── restore.sh            # Restore script (full and database-only)
 ├── copy.sh               # Site copy script (full and files-only)

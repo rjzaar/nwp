@@ -27,8 +27,11 @@ This installs Docker, DDEV, mkcert, and the NWP CLI (`pl` command).
 # Install a Drupal site using the 'd' recipe
 pl install d mysite
 
-# Or use the full command
+# Or use the traditional symlink
 ./install.sh d mysite
+
+# Or call directly from scripts/commands/
+./scripts/commands/install.sh d mysite
 ```
 
 Wait 2-3 minutes for installation to complete.

@@ -289,7 +289,7 @@ NWP includes a comprehensive set of management scripts for working with your sit
 | `delete.sh` | Delete sites | Graceful site deletion with optional backup (`-b`) |
 | `status.sh` | Site status | Interactive site management, `production` dashboard |
 | `testos.sh` | Test OpenSocial sites | Behat, PHPUnit, PHPStan testing with auto-setup |
-| `setup.sh` | Setup prerequisites | Install DDEV, configure Claude security |
+| `setup.sh` | Setup prerequisites | Install DDEV, configure Claude security, manage symlinks |
 | `security.sh` | Security audits | Run security audits, check for updates |
 | `coder-setup.sh` | Multi-coder setup | DNS delegation for team members |
 | `migrate-secrets.sh` | Two-tier secrets | Migrate to infrastructure/data secrets split |
@@ -317,6 +317,32 @@ NWP includes a comprehensive set of management scripts for working with your sit
 | `scripts/ci/cleanup-preview.sh` | Clean up preview environment |
 | `scripts/ci/visual-regression.sh` | Visual regression testing |
 | `scripts/security-update.sh` | Automated security updates |
+
+### Script Organization Options
+
+Scripts can be accessed two ways:
+
+```bash
+# Traditional (with symlinks - default)
+./install.sh nwp
+./backup.sh mysite
+
+# Direct (without symlinks)
+./scripts/commands/install.sh nwp
+./scripts/commands/backup.sh mysite
+# Or using the CLI
+pl install nwp
+pl backup mysite
+```
+
+**Managing Symlinks:**
+
+```bash
+./setup.sh --symlinks      # Enable symlinks (backward compatible)
+./setup.sh --no-symlinks   # Remove symlinks (cleaner root directory)
+```
+
+The interactive `./setup.sh` also includes a "Script Symlinks" component you can toggle.
 
 ### Quick Examples
 

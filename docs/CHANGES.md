@@ -4,6 +4,49 @@ All notable changes to the NWP (Narrow Way Project) are documented here, organiz
 
 ---
 
+## [v0.12.0] - 2026-01-05 (reorg branch)
+
+### Project Structure Reorganization
+
+Major reorganization of project structure for cleaner root directory and better organization.
+
+#### Script Organization
+
+**Moved Scripts to `scripts/commands/`**:
+- All 32 command scripts moved from root to `scripts/commands/`
+- Backward-compatible symlinks in root (optional)
+- Scripts accessible via traditional `./install.sh` or `./scripts/commands/install.sh`
+
+**New Setup Options**:
+```bash
+./setup.sh --symlinks      # Create symlinks (backward compatible)
+./setup.sh --no-symlinks   # Remove symlinks (cleaner root)
+```
+
+**Interactive Setup**:
+- New "Script Symlinks (backward compat)" component in `./setup.sh` UI
+- Toggle symlinks on/off during setup
+
+#### Log and Backup Organization
+
+**New `.logs/` Directory**:
+- Test logs moved from root to `.logs/`
+- `test-nwp.sh` now writes logs to `.logs/`
+- Automatically created, gitignored
+
+**New `.backups/` Directory**:
+- Config backups (cnwp.yml.backup-*) moved to `.backups/`
+- Automatic 10-backup retention policy
+- `yaml_backup()` function updated to use new location
+
+#### Documentation Updates
+
+- Updated Directory Reference in README.md
+- Documented site directory convention (root level for DDEV)
+- Added symlink options to setup.sh help
+
+---
+
 ## [v0.11.0] - 2026-01-05
 
 ### Complete NWP Roadmap Implementation (Phases 1-9)

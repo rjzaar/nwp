@@ -19,12 +19,18 @@
 
         // Toggle visibility.
         if (toggleBtn && content) {
+          var chapletElement = document.querySelector('.divine-mercy-chaplet');
+
           // Check saved preference.
           var isHidden = localStorage.getItem('adorationHidden') === 'true';
           if (isHidden) {
             content.style.display = 'none';
             toggleBtn.setAttribute('aria-expanded', 'false');
             toggleBtn.querySelector('.toggle-icon').textContent = '+';
+            adorationElement.classList.add('is-collapsed');
+            if (chapletElement) {
+              chapletElement.classList.add('adoration-collapsed');
+            }
           }
 
           toggleBtn.addEventListener('click', function () {
@@ -35,11 +41,19 @@
               this.setAttribute('aria-expanded', 'true');
               this.querySelector('.toggle-icon').textContent = '×';
               localStorage.setItem('adorationHidden', 'false');
+              adorationElement.classList.remove('is-collapsed');
+              if (chapletElement) {
+                chapletElement.classList.remove('adoration-collapsed');
+              }
             } else {
               content.style.display = 'none';
               this.setAttribute('aria-expanded', 'false');
               this.querySelector('.toggle-icon').textContent = '+';
               localStorage.setItem('adorationHidden', 'true');
+              adorationElement.classList.add('is-collapsed');
+              if (chapletElement) {
+                chapletElement.classList.add('adoration-collapsed');
+              }
             }
           });
         }

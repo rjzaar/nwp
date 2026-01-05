@@ -533,25 +533,46 @@ run_interactive_tui() {
                     cursor_show
                     cursor_to $edit_line 49
                     printf "%s" "$current_val"
-                    cursor_to $edit_line 49
 
                     # Show hint at bottom of screen
                     cursor_to 22 1
-                    printf "${DIM}Enter: save  q/ESC/empty: cancel${NC}"
-                    cursor_to $edit_line 49
+                    printf "${DIM}Type to replace, Enter: save, ESC: cancel${NC}"
 
-                    # Read new value
+                    # Character-by-character read for ESC detection
                     local new_val=""
-                    read new_val
-
-                    # Check for cancel: empty, "q", "Q", or starts with ESC
                     local cancelled=0
-                    if [ -z "$new_val" ] || [ "$new_val" = "q" ] || [ "$new_val" = "Q" ] || [[ "$new_val" == $'\x1b'* ]]; then
-                        cancelled=1
-                    fi
+                    local col=49
 
-                    # Save only if not cancelled and different from current
-                    if [ "$cancelled" -eq 0 ] && [ "$new_val" != "$current_val" ]; then
+                    while true; do
+                        cursor_to $edit_line $col
+                        local char
+                        IFS= read -rsn1 char
+
+                        if [[ "$char" == $'\x1b' ]]; then
+                            # ESC pressed - cancel
+                            cancelled=1
+                            break
+                        elif [[ "$char" == "" ]]; then
+                            # Enter pressed - save
+                            break
+                        elif [[ "$char" == $'\x7f' ]] || [[ "$char" == $'\b' ]]; then
+                            # Backspace
+                            if [ ${#new_val} -gt 0 ]; then
+                                new_val="${new_val%?}"
+                                col=$((col - 1))
+                                cursor_to $edit_line $col
+                                printf " "
+                            fi
+                        else
+                            # Regular character
+                            new_val="${new_val}${char}"
+                            printf "%s" "$char"
+                            col=$((col + 1))
+                        fi
+                    done
+
+                    # Save only if not cancelled and has value different from current
+                    if [ "$cancelled" -eq 0 ] && [ -n "$new_val" ] && [ "$new_val" != "$current_val" ]; then
                         MANUAL_INPUTS[$comp_id]="$new_val"
                     fi
 

@@ -1231,16 +1231,15 @@ Could not find package...
 ```
 nwp/
 ├── cnwp.yml              # Configuration file with all recipes
-├── install.sh            # Main installation script
-├── setup.sh              # Prerequisites setup script
-├── verify.sh             # Feature verification tracking script
-├── status.sh             # Site status and production dashboard
-├── coder-setup.sh        # Multi-coder DNS setup
+├── *.sh                  # Command symlinks (→ scripts/commands/)
 ├── .verification.yml     # Verification status tracking
 ├── .gitlab-ci.yml        # GitLab CI pipeline configuration
 ├── renovate.json         # Automated dependency updates
 ├── phpstan.neon          # PHPStan configuration
 ├── README.md             # This file
+│
+├── .logs/                # Test logs (gitignored)
+├── .backups/             # Config backups with retention (gitignored)
 │
 ├── docs/                 # Documentation directory
 │   ├── QUICKSTART.md                   # Quick start guide
@@ -1258,7 +1257,16 @@ nwp/
 │   ├── TESTING.md                      # Testing infrastructure
 │   └── CODER_ONBOARDING.md             # Multi-coder onboarding
 │
-├── scripts/              # Utility scripts
+├── scripts/              # Scripts directory
+│   ├── commands/                       # Core command scripts (actual files)
+│   │   ├── install.sh                  # Main installation
+│   │   ├── backup.sh                   # Backup script
+│   │   ├── restore.sh                  # Restore script
+│   │   ├── status.sh                   # Site status dashboard
+│   │   ├── verify.sh                   # Verification tracking
+│   │   ├── dev2stg.sh                  # Dev to staging
+│   │   ├── stg2prod.sh                 # Staging to production
+│   │   └── ...                         # All other command scripts
 │   ├── ci/                             # CI/CD helper scripts
 │   │   ├── fetch-db.sh                 # Fetch database for CI
 │   │   ├── build.sh                    # CI build operations
@@ -1306,15 +1314,6 @@ nwp/
 │   ├── preflight.sh                    # Preflight checks
 │   └── cloudflare.sh                   # Cloudflare API
 │
-├── backup.sh             # Backup script (full and database-only)
-├── restore.sh            # Restore script (full and database-only)
-├── copy.sh               # Site copy script (full and files-only)
-├── make.sh               # Dev/prod mode toggle script
-├── dev2stg.sh            # Development to staging deployment
-├── stg2prod.sh           # Staging to production deployment
-├── prod2stg.sh           # Production to staging sync
-├── security.sh           # Security audits and updates
-├── migrate-secrets.sh    # Two-tier secrets migration
 ├── sitebackups/          # Backup storage (auto-created, gitignored)
 └── <recipe-dirs>/        # Installed project directories
     ├── .ddev/            # DDEV configuration
@@ -1324,17 +1323,21 @@ nwp/
     └── private/          # Private files directory
 ```
 
-### Environment-Specific Directories (gitignored)
+### Site Directories (gitignored)
 
-These directories are created by management scripts and automatically ignored by git:
+Site directories are created at the root level (not in a `sites/` subdirectory) for DDEV compatibility. This is intentional - DDEV requires projects to be at a consistent filesystem level for proper container networking.
 
 ```
 nwp/
-├── <sitename>_stg/       # Staging environment sites
-├── <sitename>_prod/      # Production environment sites
-├── <sitename>_test/      # Test environment sites
-└── <sitename>_backup/    # Backup copies
+├── nwp1/                 # Installed sites (base from recipe name)
+├── nwp2/                 # Multiple installs get numbered
+├── avc/                  # Custom-named sites
+├── avc_stg/              # Staging environment version
+├── avc_prod/             # Production environment version
+└── avc_backup/           # Backup copies
 ```
+
+All site directories are automatically gitignored (via `/*` in .gitignore).
 
 ## Best Practices
 

@@ -8,7 +8,9 @@
 
 # Whitelist NWP infrastructure files
 
-# Core scripts
+# Core command scripts (symlinks to scripts/commands/)
+# The actual scripts are in scripts/commands/, these symlinks provide
+# convenient access from the root directory (./install.sh, ./backup.sh, etc.)
 !backup.sh
 !copy.sh
 !delete.sh

@@ -134,6 +134,9 @@ CURRENT_PAGE=0
 # Per-page component indices
 declare -a PAGE_COMP_INDICES
 
+# Editing state (-1 = not editing)
+EDITING_ROW=-1
+
 ################################################################################
 # TUI Functions
 ################################################################################
@@ -341,20 +344,17 @@ draw_setup_screen() {
             checkbox="[${GREEN}✓${NC}]"
         fi
 
-        # Installed status and editable value
-        local status_icon=""
-        local edit_key="${COMP_EDITABLE_KEYS[$i]}"
-        if [ "${COMPONENT_INSTALLED[$id]:-0}" = "1" ]; then
-            status_icon="${GREEN}installed${NC}"
-        else
-            status_icon="${DIM}not installed${NC}"
-        fi
-
         # Show current value for editable items
-        local edit_info=""
+        local edit_key="${COMP_EDITABLE_KEYS[$i]}"
+        local edit_field=""
         if [ -n "$edit_key" ]; then
             local current_val=$(get_editable_value "$id" "$edit_key")
-            edit_info=" ${CYAN}[$current_val]${NC}"
+            if [ "$row_idx" -eq "$EDITING_ROW" ]; then
+                # Show input field placeholder - will be filled by read
+                edit_field="${BOLD}[                    ]${NC}"
+            else
+                edit_field="${CYAN}[$current_val]${NC}"
+            fi
         fi
 
         # Highlight current row
@@ -365,7 +365,11 @@ draw_setup_screen() {
         fi
 
         # Print component line
-        printf "%s%b %b %s%-30s%b %b\n" "$indent" "$checkbox" "$priority_dot" "$prefix" "$name" "$edit_info" "$status_icon"
+        if [ -n "$edit_field" ]; then
+            printf "%s%b %b %s%-32s %b\n" "$indent" "$checkbox" "$priority_dot" "$prefix" "$name" "$edit_field"
+        else
+            printf "%s%b %b %s%s\n" "$indent" "$checkbox" "$priority_dot" "$prefix" "$name"
+        fi
 
         row=$((row + 1))
     done
@@ -506,20 +510,33 @@ run_interactive_tui() {
 
                 if [ -z "$comp_edit_key" ]; then
                     # Not editable - flash message at bottom
-                    printf "\n  ${YELLOW}$comp_name is not editable${NC}"
-                    sleep 0.8
+                    printf "\n  ${YELLOW}Not editable${NC}"
+                    sleep 0.5
                 else
-                    local current_val=$(get_editable_value "$comp_id" "$comp_edit_key")
-                    local prompt_text=$(get_edit_prompt "$comp_edit_key")
+                    # Set editing mode and redraw
+                    EDITING_ROW=$current_row
+                    draw_setup_screen $current_row
 
-                    # Show inline edit prompt at bottom
+                    # Calculate line position (header=6, then count rows + category headers)
+                    local edit_line=7
+                    local prev_cat=""
+                    for ((r=0; r<=current_row; r++)); do
+                        local ri="${page_indices[$r]}"
+                        local cat="${COMP_CATEGORIES[$ri]}"
+                        [ "$cat" != "$prev_cat" ] && { edit_line=$((edit_line + 2)); prev_cat="$cat"; }
+                        [ $r -lt $current_row ] && edit_line=$((edit_line + 1))
+                    done
+
+                    # Position cursor inside the brackets (col ~48) and read
                     cursor_show
-                    printf "\n  ${BOLD}$prompt_text${NC} [${CYAN}$current_val${NC}]: "
-                    read new_val
+                    cursor_to $edit_line 49
+                    read -e new_val
                     cursor_hide
+
                     if [ -n "$new_val" ]; then
                         MANUAL_INPUTS[$comp_id]="$new_val"
                     fi
+                    EDITING_ROW=-1
                 fi
                 ;;
             "ENTER")

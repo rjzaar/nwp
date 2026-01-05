@@ -18,6 +18,7 @@
 
 /* Make room for fixed adoration panel */
 .divine-mercy-chaplet {
+  max-width: none;
   margin-left: 20px;
   margin-right: 300px;
   transition: margin-right 0.3s ease;

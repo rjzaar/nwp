@@ -117,6 +117,19 @@ COMP_PARENTS=()
 COMP_CATEGORIES=()
 COMP_PRIORITIES=()
 
+# Page definitions - categories grouped into pages
+declare -a PAGE_CATEGORIES
+PAGE_CATEGORIES[0]="core tools testing"
+PAGE_CATEGORIES[1]="security linode gitlab"
+declare -a PAGE_NAMES
+PAGE_NAMES[0]="Core & Tools"
+PAGE_NAMES[1]="Infrastructure"
+NUM_PAGES=2
+CURRENT_PAGE=0
+
+# Per-page component indices
+declare -a PAGE_COMP_INDICES
+
 ################################################################################
 # TUI Functions
 ################################################################################
@@ -159,6 +172,33 @@ init_components() {
         COMP_PRIORITIES[$idx]=$(echo "$comp" | cut -d'|' -f5)
         idx=$((idx + 1))
     done
+    build_page_indices
+}
+
+# Build per-page component index arrays
+build_page_indices() {
+    for ((page=0; page<NUM_PAGES; page++)); do
+        local categories="${PAGE_CATEGORIES[$page]}"
+        local indices=""
+        for ((i=0; i<${#COMP_IDS[@]}; i++)); do
+            local cat="${COMP_CATEGORIES[$i]}"
+            if [[ " $categories " == *" $cat "* ]]; then
+                indices="$indices $i"
+            fi
+        done
+        PAGE_COMP_INDICES[$page]="${indices# }"
+    done
+}
+
+# Get component indices for current page
+get_page_indices() {
+    echo "${PAGE_COMP_INDICES[$CURRENT_PAGE]}"
+}
+
+# Get count of components on current page
+get_page_count() {
+    local indices=(${PAGE_COMP_INDICES[$CURRENT_PAGE]})
+    echo "${#indices[@]}"
 }
 
 # Get category display name
@@ -177,14 +217,26 @@ get_category_name() {
 # Draw the interactive setup screen
 draw_setup_screen() {
     local current_row="$1"
-    local num_components=${#COMP_IDS[@]}
+    local page_indices=(${PAGE_COMP_INDICES[$CURRENT_PAGE]})
+    local num_on_page=${#page_indices[@]}
 
     clear_screen
 
-    # Header
+    # Header with page indicator
     printf "${BOLD}NWP Setup Manager${NC}  |  "
-    printf "↑↓:Navigate  SPACE:Toggle  a:All  n:None  ENTER:Apply  q:Quit\n"
+    printf "←→:Page  ↑↓:Navigate  SPACE:Toggle  a:All  n:None  ENTER:Apply  q:Quit\n"
     printf "═══════════════════════════════════════════════════════════════════════════════\n"
+
+    # Page tabs
+    printf "  "
+    for ((p=0; p<NUM_PAGES; p++)); do
+        if [ $p -eq $CURRENT_PAGE ]; then
+            printf "${BOLD}${CYAN}[${PAGE_NAMES[$p]}]${NC}  "
+        else
+            printf "${DIM}${PAGE_NAMES[$p]}${NC}  "
+        fi
+    done
+    printf "\n"
 
     # Legend
     printf "  ${RED}●${NC} Required  ${YELLOW}●${NC} Recommended  ${CYAN}●${NC} Optional    "
@@ -194,7 +246,8 @@ draw_setup_screen() {
     local current_category=""
     local row=0
 
-    for ((i=0; i<num_components; i++)); do
+    for row_idx in "${!page_indices[@]}"; do
+        local i="${page_indices[$row_idx]}"
         local id="${COMP_IDS[$i]}"
         local name="${COMP_NAMES[$i]}"
         local parent="${COMP_PARENTS[$i]}"
@@ -238,7 +291,7 @@ draw_setup_screen() {
         fi
 
         # Highlight current row
-        if [ $i -eq $current_row ]; then
+        if [ $row_idx -eq $current_row ]; then
             printf "${BOLD}>${NC}"
         else
             printf " "
@@ -253,7 +306,7 @@ draw_setup_screen() {
     # Footer
     printf "\n───────────────────────────────────────────────────────────────────────────────\n"
 
-    # Count selected
+    # Count selected (all pages)
     local selected_count=0
     local installed_count=0
     local total_count=${#COMP_IDS[@]}
@@ -287,7 +340,6 @@ draw_setup_screen() {
 
 # Run interactive TUI
 run_interactive_tui() {
-    local num_components=${#COMP_IDS[@]}
     local current_row=0
 
     # Setup terminal
@@ -295,6 +347,9 @@ run_interactive_tui() {
     trap 'cursor_show; clear_screen' EXIT
 
     while true; do
+        local page_indices=(${PAGE_COMP_INDICES[$CURRENT_PAGE]})
+        local num_on_page=${#page_indices[@]}
+
         draw_setup_screen $current_row
 
         local key=$(read_key)
@@ -304,10 +359,24 @@ run_interactive_tui() {
                 [ $current_row -gt 0 ] && current_row=$((current_row - 1))
                 ;;
             "DOWN"|"j")
-                [ $current_row -lt $((num_components - 1)) ] && current_row=$((current_row + 1))
+                [ $current_row -lt $((num_on_page - 1)) ] && current_row=$((current_row + 1))
+                ;;
+            "LEFT"|"h")
+                if [ $CURRENT_PAGE -gt 0 ]; then
+                    CURRENT_PAGE=$((CURRENT_PAGE - 1))
+                    current_row=0
+                fi
+                ;;
+            "RIGHT"|"l")
+                if [ $CURRENT_PAGE -lt $((NUM_PAGES - 1)) ]; then
+                    CURRENT_PAGE=$((CURRENT_PAGE + 1))
+                    current_row=0
+                fi
                 ;;
             "SPACE")
-                local id="${COMP_IDS[$current_row]}"
+                # Get actual component index from page indices
+                local comp_idx="${page_indices[$current_row]}"
+                local id="${COMP_IDS[$comp_idx]}"
                 if [ "${COMPONENT_SELECTED[$id]:-0}" = "1" ]; then
                     COMPONENT_SELECTED[$id]=0
                 else
@@ -316,8 +385,8 @@ run_interactive_tui() {
                 enforce_dependencies
                 ;;
             "a"|"A")
-                # Select all required + recommended
-                for ((i=0; i<num_components; i++)); do
+                # Select all required + recommended (all pages)
+                for ((i=0; i<${#COMP_IDS[@]}; i++)); do
                     local id="${COMP_IDS[$i]}"
                     local priority="${COMP_PRIORITIES[$i]}"
                     if [ "$priority" = "required" ] || [ "$priority" = "recommended" ]; then

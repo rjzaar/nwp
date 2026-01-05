@@ -11,11 +11,12 @@
 ################################################################################
 settings:
   # === STACK SETTINGS [ACTIVE] ===
-  database: mariadb                # [ACTIVE] Database type: mariadb, mysql, postgres
-  database_version: "10.11"        # [ACTIVE] Database version for DDEV
-  php: 8.2                         # [ACTIVE] PHP version for DDEV
+  # These are read by install scripts and can be overridden per-recipe
+  database: mariadb                # [ACTIVE] Database type: mariadb, mysql, postgres [DEFAULT: mysql]
+  php: 8.2                         # [ACTIVE] PHP version for DDEV [DEFAULT: 8.3 for Drupal, 8.1 for Moodle]
 
   # === STACK SETTINGS [PLANNED] ===
+  # database_version: "10.11"      # [PLANNED] Database version for DDEV - not yet implemented
   # webserver: nginx               # [PLANNED] Always nginx in DDEV currently
   # os: ubuntu                     # [PLANNED] Always ubuntu for Linode currently
 
@@ -23,52 +24,51 @@ settings:
   # cli: y                         # [PLANNED] Install universal CLI wrapper
   # cliprompt: pl                  # [PLANNED] CLI command name (hardcoded as 'pl')
 
-  # === DEPLOYMENT SETTINGS [ACTIVE] ===
-  # linodeuse: testing/gitlab/all  # [ACTIVE] When to use Linode: testing, gitlab, all, or blank
-  linodeuse:
-  # urluse: testing/gitlab/all     # [ACTIVE] When to use custom URL: testing, gitlab, all, or blank
-  urluse:
-  url:                             # [ACTIVE] Base domain for live sites (e.g., nwpcode.org)
+  # === DEPLOYMENT SETTINGS ===
+  url: nwpcode.org                 # [ACTIVE] Base domain for live sites - used for GitLab URL (git.{url})
+  # linodeuse: all                 # [PLANNED] When to use Linode: testing, gitlab, all, or blank
+  # urluse: all                    # [PLANNED] When to use custom URL: testing, gitlab, all, or blank
 
   # === PHP SETTINGS [ACTIVE] ===
-  # These override hardcoded defaults in install.sh
+  # These override hardcoded defaults in install scripts
   php_settings:
-    memory_limit: 512M             # [ACTIVE] PHP memory limit
-    max_execution_time: 600        # [ACTIVE] Max script execution time (seconds)
-    upload_max_filesize: 100M      # [ACTIVE] Max upload file size
-    post_max_size: 100M            # [ACTIVE] Max POST data size
+    memory_limit: 512M             # [ACTIVE] PHP memory limit [DEFAULT: 512M]
+    max_execution_time: 600        # [ACTIVE] Max script execution time (seconds) [DEFAULT: 600]
+    upload_max_filesize: 100M      # [ACTIVE] Max upload file size [DEFAULT: 100M]
+    post_max_size: 100M            # [ACTIVE] Max POST data size [DEFAULT: 100M]
 
-  # === TIMEOUT SETTINGS [ACTIVE] ===
-  timeouts:
-    dns_propagation: 300           # [ACTIVE] DNS propagation wait (seconds)
-    ssh_connection: 600            # [ACTIVE] SSH connection timeout (seconds)
-    health_check: 10               # [ACTIVE] Health check interval (seconds)
+  # === TIMEOUT SETTINGS [PLANNED] ===
+  # timeouts:
+  #   dns_propagation: 300         # [PLANNED] DNS propagation wait (seconds)
+  #   ssh_connection: 600          # [PLANNED] SSH connection timeout (seconds)
+  #   health_check: 10             # [PLANNED] Health check interval (seconds)
 
   # === GITLAB SETTINGS ===
   # For local GitLab Docker installations and production GitLab servers
   gitlab:
-    # Default group/namespace for new projects [ACTIVE]
-    default_group: nwp
+    # Default group/namespace for new projects [PLANNED]
+    # default_group: nwp
 
-    # Core NWP repositories [ACTIVE]
-    # These are set up automatically during GitLab server initialization
-    repos:
-      nwp: nwp/nwp                           # NWP codebase
-      avc: nwp/avc                           # AV Commons profile (source)
-      avc-project: nwp/avc-project           # AV Commons project template
+    # Core NWP repositories [DOCUMENTATION ONLY]
+    # These are documentation - not read by code, set up manually during GitLab initialization
+    # repos:
+    #   nwp: nwp/nwp                         # NWP codebase
+    #   avc: nwp/avc                         # AV Commons profile (source)
+    #   avc-project: nwp/avc-project         # AV Commons project template
 
-    # GitHub mirror targets [ACTIVE]
-    # Push mirrors are configured automatically for these repos
-    github_mirrors:
-      nwp/nwp: rjzaar/nwp
-      nwp/avc: rjzaar/avc
-      nwp/avc-project: rjzaar/avc-project
+    # GitHub mirror targets [DOCUMENTATION ONLY]
+    # Push mirrors are configured manually in GitLab UI
+    # github_mirrors:
+    #   nwp/nwp: rjzaar/nwp
+    #   nwp/avc: rjzaar/avc
+    #   nwp/avc-project: rjzaar/avc-project
 
-    # Local Docker ports [ACTIVE]
-    ports:
-      ssh: 2222                    # [ACTIVE] GitLab SSH port
-      http: 8080                   # [ACTIVE] GitLab HTTP port
-      https: 8443                  # [ACTIVE] GitLab HTTPS port
+    # Local Docker ports [DOCUMENTATION ONLY]
+    # These are defaults - not read by code
+    # ports:
+    #   ssh: 2222                  # GitLab SSH port
+    #   http: 8080                 # GitLab HTTP port
+    #   https: 8443                # GitLab HTTPS port
 
     # Security hardening options [PLANNED]
     # Applied when running: ./git/gitlab_harden.sh --apply
@@ -126,19 +126,19 @@ settings:
     memcache:
       enabled: false               # [PLANNED]
 
-  # === TESTING CONFIGURATION [ACTIVE] ===
-  # Local testing tools and email safety
-  testing:
-    bats:
-      enabled: true                # [ACTIVE] Install BATS testing framework via setup.sh
-      run_on_commit: false         # [PLANNED] Run tests before commits (via hook)
-    email:
-      use_mailpit: true            # [ACTIVE] Use Mailpit for dev email capture
-      reroute_dev: true            # [ACTIVE] Reroute dev emails to test address
-      reroute_address: ""          # [ACTIVE] Leave empty to use Mailpit, or set specific address
+  # === TESTING CONFIGURATION [PLANNED] ===
+  # Local testing tools and email safety - not yet implemented
+  # testing:
+  #   bats:
+  #     enabled: true              # [PLANNED] Install BATS testing framework via setup.sh
+  #     run_on_commit: false       # [PLANNED] Run tests before commits (via hook)
+  #   email:
+  #     use_mailpit: true          # [PLANNED] Use Mailpit for dev email capture
+  #     reroute_dev: true          # [PLANNED] Reroute dev emails to test address
+  #     reroute_address: ""        # [PLANNED] Leave empty to use Mailpit, or set specific address
 
   # === SITE MANAGEMENT [ACTIVE] ===
-  delete_site_yml: true            # [ACTIVE] Remove site from cnwp.yml when deleted
+  delete_site_yml: true            # [ACTIVE] Remove site from cnwp.yml when deleted (--keep-yml to preserve)
 
 ################################################################################
 # OTHER CODERS - Multi-Coder DNS Delegation
@@ -153,8 +153,7 @@ settings:
 #
 # See docs/CODER_ONBOARDING.md for complete setup instructions.
 other_coders:
-  # Base domain for subdomain delegation [ACTIVE]
-  base_domain: nwpcode.org
+  # Base domain comes from settings.url above
 
   # Nameservers to delegate to (Linode's nameservers) [ACTIVE]
   nameservers:
@@ -249,281 +248,25 @@ setup:
   creategitlab: n                  # [PLANNED] Auto-create GitLab server
 
 ################################################################################
-# PODCAST - Castopod Hosting Configuration
+# PODCAST - Castopod Hosting Configuration [DOCUMENTATION ONLY]
 ################################################################################
-# Used by ./podcast.sh for automated podcast infrastructure setup
-podcast:
-  # Default Linode region for podcast servers
-  linode_region: us-east
-  # Linode plan type (g6-nanode-1 = $5/month, g6-standard-1 = $10/month)
-  linode_type: g6-nanode-1
-  # Default B2 region for media storage
-  b2_region: us-west-004
-  # Default subdomain for media files (e.g., media.example.com)
-  media_subdomain: media
-  # Docker Compose version to use
-  compose_version: "3.9"
-  # Castopod image tag
-  castopod_image: castopod/castopod:latest
-  # Default admin email template (uses base domain)
-  admin_email_template: "admin@{domain}"
-
-  # Example podcast site configurations (created by ./podcast.sh setup)
-  # sites:
-  #   podcast.example.com:
-  #     linode_id: 12345678
-  #     server_ip: 192.0.2.1
-  #     b2_bucket: podcast-media
-  #     b2_key_id: 000xxxxxxxxxxxxx
-  #     dns_record_id: abc123
-  #     created: 2024-12-31T10:00:00Z
-
-################################################################################
-# RECIPES - Site Installation Templates
-################################################################################
-recipes:
-  # === DRUPAL RECIPES ===
-  d:
-    # [ACTIVE] Standard Drupal installation
-    source: drupal/recommended-project:^10.2
-    install_modules:               # [ACTIVE] Additional composer packages
-    profile: standard              # [ACTIVE] Drupal install profile
-    webroot: web                   # [ACTIVE] Document root
-    auto: y                        # [ACTIVE] Auto-confirm installation
-    # Options: TUI checkbox selections during install
-    options:
-      dev_modules:                    # Enable devel for debugging
-      xdebug:                         # Step-through debugging with IDE
-      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
-      config_split:                   # Environment-specific config
-      security_modules:               # Security hardening modules
-      redis:                          # Object caching for performance
-      cron:                           # Automated task scheduling
-      backup:                         # Automated backups
-      ssl:                            # HTTPS configuration
-      migration:                      # Create migration folder for importing content
-
-  os:
-    # [ACTIVE] Open Social installation
-    source: goalgorilla/social_template:dev-master
-    install_modules:               # [ACTIVE]
-    profile: social                # [ACTIVE]
-    webroot: html                  # [ACTIVE]
-    auto: y                        # [ACTIVE]
-    # Options: TUI checkbox selections during install
-    options:
-      dev_modules:                    # Enable devel, webprofiler for debugging
-      xdebug:                         # Step-through debugging with IDE
-      stage_file_proxy:               # Proxy production files locally
-      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
-      config_split:                   # Environment-specific config
-      security_modules:               # Security hardening modules
-      redis:                          # Object caching for performance
-      solr:                           # Advanced full-text search
-      cron:                           # Automated task scheduling
-      backup:                         # Automated backups
-      ssl:                            # HTTPS configuration
-      migration:                      # Create migration folder for importing content
-
-  # === AVC RECIPES ===
-  # AV Commons uses a split architecture:
-  #   - nwp/avc-project: Project template (like drupal/recommended-project)
-  #   - nwp/avc: The Drupal profile with all AVC modules
-  #
-  # Choose your recipe based on your use case:
-  #   avc     - For SITE BUILDERS: Deploy AVC sites, customize config
-  #             Uses composer, profile updates via composer update
-  #   avc-dev - For PROFILE DEVELOPERS: Work on AVC profile code
-  #             Uses git clone, profile is editable in profiles/contrib/avc
-
-  avc:
-    # [ACTIVE] AV Commons - For site builders and production deployments
-    # Use this when: Building sites with AVC, not modifying the profile itself
-    # Profile updates: Run `composer update nwp/avc` to get latest version
-    source: nwp/avc-project              # [ACTIVE] AVC project template from GitLab
-    profile: avc                         # [ACTIVE] AVC profile (installed via composer)
-    webroot: html                        # [ACTIVE]
-    auto: y                              # [ACTIVE]
-    options:
-      dev_modules:                       # Enable devel, webprofiler for debugging
-      xdebug:                            # Step-through debugging with IDE
-      environment_indicator: y           # [RECOMMENDED] Visual environment indicator
-      config_split: y                    # [RECOMMENDED] Environment-specific config
-      security_modules:                  # Security hardening modules
-      redis:                             # Object caching for performance
-      cron:                              # Automated task scheduling
-      backup:                            # Automated backups
-      ssl:                               # HTTPS configuration
-
-  avc-dev:
-    # [ACTIVE] AV Commons - For profile/module developers
-    # Use this when: Developing AVC modules, fixing bugs, adding features
-    # Profile location: profiles/contrib/avc (git repo, editable)
-    # Workflow: Edit code -> commit -> push to nwp/avc -> tag release
-    source: nwp/avc-project              # [ACTIVE] Project template
-    profile: avc                         # [ACTIVE] Profile name
-    profile_source: git@git.nwpcode.org:nwp/avc.git  # [ACTIVE] Clone profile from git
-    webroot: html                        # [ACTIVE]
-    auto: y                              # [ACTIVE]
-    options:
-      dev_modules: y                     # [RECOMMENDED] Enable devel, webprofiler
-      xdebug:                            # Step-through debugging with IDE
-      environment_indicator: y           # [RECOMMENDED] Visual environment indicator
-      config_split: y                    # [RECOMMENDED] Environment-specific config
-      security_modules:                  # Security hardening modules
-      redis:                             # Object caching for performance
-      cron:                              # Automated task scheduling
-      backup:                            # Automated backups
-      ssl:                               # HTTPS configuration
-
-  nwp:
-    # [ACTIVE] NWP custom recipe with modules
-    source: goalgorilla/social_template:dev-master
-    install_modules: git@github.com:rjzaar/workflow_assignment.git drupal/ultimate_cron:^2.0.0-alpha7
-    profile: social
-    webroot: html
-    auto: y
-    # Options: Values with 'y' are pre-selected in TUI. Blank = available but not selected.
-    options:
-      # === Development (environment: dev) ===
-      dev_modules:                    # Enable devel, webprofiler for debugging
-      xdebug:                         # Step-through debugging with IDE
-      stage_file_proxy:               # Proxy production files locally
-
-      # === Configuration (environment: all) ===
-      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
-      config_split: y                 # [RECOMMENDED] Environment-specific config
-
-      # === Staging (environment: stage) ===
-      db_sanitize:                    # Anonymize user data on sync
-      staging_domain:                 # Custom staging domain
-
-      # === Security (environment: live) ===
-      security_modules: y             # [RECOMMENDED] seckit, honeypot, login_security
-
-      # === Performance (environment: live) ===
-      redis:                          # Object caching for performance
-      solr:                           # Advanced full-text search
-
-      # === Production Infrastructure (environment: live) ===
-      cron: y                         # [RECOMMENDED] Automated task scheduling
-      backup: y                       # [RECOMMENDED] Automated backups
-      ssl: y                          # [RECOMMENDED] HTTPS configuration
-      cdn:                            # CDN integration
-
-      # === Production Deployment (environment: prod) ===
-      live_domain:                    # Production domain name
-      dns_records:                    # Auto-configure DNS via Linode
-      monitoring:                     # Uptime and performance monitoring
-
-      # === Migration (environment: all) ===
-      migration:                      # Create migration folder for importing content
-
-  dm:
-    # [ACTIVE] Divine Mercy recipe
-    source: drupal/recommended-project:^10.2
-    install_modules: git@github.com:rjzaar/divine_mercy.git
-    profile: standard
-    webroot: web
-    auto: y
-    options:
-      dev_modules:                    # Enable devel for debugging
-      xdebug:                         # Step-through debugging with IDE
-      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
-      config_split:                   # Environment-specific config
-      security_modules:               # Security hardening modules
-      redis:                          # Object caching for performance
-      cron:                           # Automated task scheduling
-      backup:                         # Automated backups
-      ssl:                            # HTTPS configuration
-      migration:                      # Create migration folder for importing content
-
-  # === MOODLE RECIPE ===
-  m:
-    type: moodle                   # [ACTIVE] Recipe type
-    source: https://github.com/moodle/moodle.git
-    branch: MOODLE_404_STABLE      # [ACTIVE] Git branch
-    webroot: .                     # [ACTIVE]
-    sitename: "My Moodle Site"     # [ACTIVE] Site title
-    auto: y                        # [ACTIVE]
-
-  # === GITLAB RECIPE ===
-  gitlab:
-    type: gitlab                   # [ACTIVE] Recipe type
-    source: https://gitlab.com/gitlab-org/gitlab-foss.git
-    branch: master                 # [ACTIVE]
-    webroot: .                     # [ACTIVE]
-    sitename: "GitLab Instance"    # [ACTIVE]
-    auto: y                        # [ACTIVE]
-
-  # === ENHANCED EXAMPLE (shows all options) ===
-  enhanced_example:
-    source: goalgorilla/social_template:dev-master
-    profile: social
-    webroot: html
-    auto: y
-
-    # [ACTIVE] Development modules
-    dev_modules: devel kint webprofiler stage_file_proxy
-
-    # [ACTIVE] Deployment configuration
-    reinstall_modules: custom_module   # Modules to reinstall during sync
-    prod_method: rsync                 # Production method: git, tar, rsync
-    prod_server: linode_primary        # Reference to linode.servers entry
-    prod_domain: example.com           # Production domain name
-    prod_path: /var/www/sitename       # Remote deployment path
-
-    # [PLANNED] Directory paths - not yet implemented
-    # private: ../private             # Private files directory
-    # cmi: ../cmi                      # Configuration management directory
-
-    # [PLANNED] Dev composer packages - not yet implemented
-    # dev_composer: drupal/devel drupal/stage_file_proxy
-
-    # [PLANNED] Per-recipe environment overrides - not yet implemented
-    # environment:
-    #   development:
-    #     xdebug: true
-    #   production:
-    #     redis: true
-
-    # [PLANNED] Per-recipe service overrides - not yet implemented
-    # services:
-    #   redis:
-    #     enabled: true
-    #   solr:
-    #     enabled: true
-    #     core: social
-
-    # [PLANNED] Additional options - not yet implemented
-    # force: false                    # Force config imports
-    # lando: false                    # Use Lando instead of DDEV
-    # secrets_file: .secrets.yml      # Custom secrets file location
-    # prod_alias: user@prod.example.com:/var/www/sitename
-    # prod_gitrepo: git@github.com:user/site.git
-    # prod_gitdb: git@github.com:user/site-db.git
-
-  # === TEST RECIPE ===
-  test_nwp:
-    source: goalgorilla/social_template:dev-master
-    profile: social
-    webroot: html
-    auto: y
-    dev_modules: devel kint webprofiler
-
-  # === PODCAST RECIPE ===
-  pod:
-    type: podcast                  # [ACTIVE] Recipe type
-    # Usage: ./install.sh pod podcast.example.com
-    # Domain for the podcast (e.g., podcast.example.com)
-    domain: podcast.example.com
-    # Linode region for the server
-    linode_region: us-east
-    # B2 region for media storage
-    b2_region: us-west-004
-    # Media subdomain (e.g., media.example.com)
-    media_subdomain: media
-    auto: y                        # [ACTIVE]
+# These are documentation defaults - podcast settings are configured per-recipe
+# See the podcast recipe type in the recipes section
+# podcast:
+#   linode_region: us-east           # Default Linode region for podcast servers
+#   linode_type: g6-nanode-1         # Linode plan type ($5/month)
+#   b2_region: us-west-004           # Default B2 region for media storage
+#   media_subdomain: media           # Subdomain for media files
+#   compose_version: "3.9"           # Docker Compose version
+#   castopod_image: castopod/castopod:latest
+#   admin_email_template: "admin@{domain}"
+#
+#   # Podcast sites are tracked automatically when created:
+#   # sites:
+#   #   podcast.example.com:
+#   #     linode_id: 12345678
+#   #     server_ip: 192.0.2.1
+#   #     b2_bucket: podcast-media
 
 ################################################################################
 # IMPORT - Live Site Import Configuration
@@ -603,6 +346,363 @@ linode:
         - 203.0.113.20
       domains:
         - backup.example.com
+
+################################################################################
+# RECIPES - Site Installation Templates
+################################################################################
+# Recipe Field Reference:
+#
+# CORE FIELDS (all recipes):
+#   source:          [REQUIRED] Composer package or git URL
+#   type:            [OPTIONAL] drupal (default), moodle, gitlab, podcast
+#   webroot:         [OPTIONAL] Document root - DEFAULT: html (drupal), . (moodle/gitlab)
+#   auto:            [OPTIONAL] Auto-confirm install - DEFAULT: n
+#
+# DRUPAL-SPECIFIC:
+#   profile:         [REQUIRED] Install profile name (standard, social, avc, etc.)
+#   profile_source:  [OPTIONAL] Git URL to clone profile for development
+#   install_modules: [OPTIONAL] Space-separated composer packages to require
+#   post_install_modules: [OPTIONAL] List of modules to enable after install
+#   default_theme:   [OPTIONAL] Theme to set as default
+#
+# ENVIRONMENT OVERRIDES (override settings section):
+#   php:             [OPTIONAL] PHP version - DEFAULT: 8.3 (drupal), 8.1 (moodle)
+#   database:        [OPTIONAL] Database type - DEFAULT: mysql (drupal), mariadb (moodle)
+#
+# DEVELOPMENT MODE:
+#   dev:             [OPTIONAL] y/n - Enable dev module installation
+#   dev_modules:     [OPTIONAL] Space-separated modules to install when dev: y
+#                    Example: devel webprofiler kint stage_file_proxy
+#
+# DEPLOYMENT (for stg2prod):
+#   prod_method:     [OPTIONAL] git, tar, rsync
+#   prod_server:     [OPTIONAL] Reference to linode.servers entry
+#   prod_domain:     [OPTIONAL] Production domain name
+#   prod_path:       [OPTIONAL] Remote deployment path
+#   reinstall_modules: [OPTIONAL] Modules to reinstall during sync
+#
+# NON-DRUPAL FIELDS:
+#   branch:          [MOODLE/GITLAB] Git branch to clone
+#   sitename:        [MOODLE/GITLAB] Site display name
+#   domain:          [PODCAST] Podcast domain
+#   linode_region:   [PODCAST] Linode region
+#   b2_region:       [PODCAST] B2 storage region
+#   media_subdomain: [PODCAST] Media files subdomain
+#
+# OPTIONS (TUI checkboxes - value 'y' = pre-selected):
+#   options:
+#     dev_modules:           # Development tools
+#     xdebug:                # Step debugging
+#     environment_indicator: # Visual environment badge
+#     config_split:          # Environment-specific config
+#     security_modules:      # Security hardening
+#     redis:                 # Object caching
+#     solr:                  # Full-text search
+#     cron:                  # Automated tasks
+#     backup:                # Automated backups
+#     ssl:                   # HTTPS setup
+#
+recipes:
+  # === DRUPAL RECIPES ===
+  d:
+    # [ACTIVE] Standard Drupal installation
+    source: drupal/recommended-project:^10.2
+    profile: standard              # [ACTIVE] Drupal install profile
+    webroot: web                   # [ACTIVE] Document root
+    auto: y                        # [ACTIVE] Auto-confirm installation
+    # Optional overrides (if not set, uses settings defaults)
+    # php: 8.3                     # [ACTIVE] Override settings.php
+    # database: mysql              # [ACTIVE] Override settings.database
+    # Development mode
+    # dev: y                       # [ACTIVE] Enable dev module installation
+    # dev_modules: devel webprofiler kint  # [ACTIVE] Modules to install when dev: y
+    # Additional packages
+    install_modules:               # [ACTIVE] Additional composer packages
+    # Options: TUI checkbox selections during install (y = pre-selected)
+    options:
+      # === Development (environment: dev) ===
+      dev_modules:                    # Enable devel, webprofiler for debugging
+      xdebug:                         # Step-through debugging with IDE
+      stage_file_proxy:               # Proxy production files locally
+
+      # === Configuration (environment: all) ===
+      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
+      config_split:                   # Environment-specific config
+
+      # === Staging (environment: stage) ===
+      db_sanitize:                    # Anonymize user data on sync
+      staging_domain:                 # Custom staging domain
+
+      # === Security (environment: live) ===
+      security_modules:               # Security hardening modules
+
+      # === Performance (environment: live) ===
+      redis:                          # Object caching for performance
+      solr:                           # Advanced full-text search
+
+      # === Production Infrastructure (environment: live) ===
+      cron:                           # Automated task scheduling
+      backup:                         # Automated backups
+      ssl:                            # HTTPS configuration
+      cdn:                            # CDN integration
+
+      # === Production Deployment (environment: prod) ===
+      live_domain:                    # Production domain name
+      dns_records:                    # Auto-configure DNS via Linode
+      monitoring:                     # Uptime and performance monitoring
+
+      # === Migration (environment: all) ===
+      migration:                      # Create migration folder for importing content
+
+  os:
+    # [ACTIVE] Open Social installation
+    source: goalgorilla/social_template:dev-master
+    profile: social                # [ACTIVE]
+    webroot: html                  # [ACTIVE]
+    auto: y                        # [ACTIVE]
+    # Optional overrides (if not set, uses settings defaults)
+    # php: 8.2                     # [ACTIVE] Open Social requires PHP 8.2
+    # database: mariadb            # [ACTIVE] Override settings.database
+    # Development mode
+    # dev: y                       # [ACTIVE] Enable dev module installation
+    # dev_modules: devel webprofiler kint  # [ACTIVE] Modules to install when dev: y
+    # Additional packages
+    install_modules:               # [ACTIVE]
+    # Options: TUI checkbox selections during install (y = pre-selected)
+    options:
+      # === Development (environment: dev) ===
+      dev_modules:                    # Enable devel, webprofiler for debugging
+      xdebug:                         # Step-through debugging with IDE
+      stage_file_proxy:               # Proxy production files locally
+
+      # === Configuration (environment: all) ===
+      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
+      config_split:                   # Environment-specific config
+
+      # === Staging (environment: stage) ===
+      db_sanitize:                    # Anonymize user data on sync
+      staging_domain:                 # Custom staging domain
+
+      # === Security (environment: live) ===
+      security_modules:               # Security hardening modules
+
+      # === Performance (environment: live) ===
+      redis:                          # Object caching for performance
+      solr:                           # Advanced full-text search
+
+      # === Production Infrastructure (environment: live) ===
+      cron:                           # Automated task scheduling
+      backup:                         # Automated backups
+      ssl:                            # HTTPS configuration
+      cdn:                            # CDN integration
+
+      # === Production Deployment (environment: prod) ===
+      live_domain:                    # Production domain name
+      dns_records:                    # Auto-configure DNS via Linode
+      monitoring:                     # Uptime and performance monitoring
+
+      # === Migration (environment: all) ===
+      migration:                      # Create migration folder for importing content
+
+  # === AVC RECIPES ===
+  # AV Commons uses a split architecture:
+  #   - nwp/avc-project: Project template (like drupal/recommended-project)
+  #   - nwp/avc: The Drupal profile with all AVC modules
+  #
+  # Choose your recipe based on your use case:
+  #   avc     - For SITE BUILDERS: Deploy AVC sites, customize config
+  #             Uses composer, profile updates via composer update
+  #   avc-dev - For PROFILE DEVELOPERS: Work on AVC profile code
+  #             Uses git clone, profile is editable in profiles/contrib/avc
+
+  avc:
+    # [ACTIVE] AV Commons - For site builders and production deployments
+    # Use this when: Building sites with AVC, not modifying the profile itself
+    # Profile updates: Run `composer update nwp/avc` to get latest version
+    source: nwp/avc-project              # [ACTIVE] AVC project template from GitLab
+    profile: avc                         # [ACTIVE] AVC profile (installed via composer)
+    webroot: html                        # [ACTIVE]
+    auto: y                              # [ACTIVE]
+    # Optional overrides (if not set, uses settings defaults)
+    # php: 8.2                           # [ACTIVE] Override settings.php
+    # database: mariadb                  # [ACTIVE] Override settings.database
+    # Development mode (disabled for production recipe)
+    # dev: n                             # [ACTIVE] Don't install dev modules
+    # Options: TUI checkbox selections during install (y = pre-selected)
+    options:
+      # === Development (environment: dev) ===
+      dev_modules:                       # Enable devel, webprofiler for debugging
+      xdebug:                            # Step-through debugging with IDE
+      stage_file_proxy:                  # Proxy production files locally
+
+      # === Configuration (environment: all) ===
+      environment_indicator: y           # [RECOMMENDED] Visual environment indicator
+      config_split: y                    # [RECOMMENDED] Environment-specific config
+
+      # === Staging (environment: stage) ===
+      db_sanitize:                       # Anonymize user data on sync
+      staging_domain:                    # Custom staging domain
+
+      # === Security (environment: live) ===
+      security_modules:                  # Security hardening modules
+
+      # === Performance (environment: live) ===
+      redis:                             # Object caching for performance
+      solr:                              # Advanced full-text search
+
+      # === Production Infrastructure (environment: live) ===
+      cron:                              # Automated task scheduling
+      backup:                            # Automated backups
+      ssl:                               # HTTPS configuration
+      cdn:                               # CDN integration
+
+      # === Production Deployment (environment: prod) ===
+      live_domain:                       # Production domain name
+      dns_records:                       # Auto-configure DNS via Linode
+      monitoring:                        # Uptime and performance monitoring
+
+      # === Migration (environment: all) ===
+      migration:                         # Create migration folder for importing content
+
+  avc-dev:
+    # [ACTIVE] AV Commons - For profile/module developers
+    # Use this when: Developing AVC modules, fixing bugs, adding features
+    # Profile location: profiles/contrib/avc (git repo, editable)
+    # Workflow: Edit code -> commit -> push to nwp/avc -> tag release
+    source: nwp/avc-project              # [ACTIVE] Project template
+    profile: avc                         # [ACTIVE] Profile name
+    profile_source: git@git.nwpcode.org:nwp/avc.git  # [ACTIVE] Clone profile from git
+    webroot: html                        # [ACTIVE]
+    auto: y                              # [ACTIVE]
+    # Optional overrides (if not set, uses settings defaults)
+    # php: 8.2                           # [ACTIVE] Override settings.php
+    # database: mariadb                  # [ACTIVE] Override settings.database
+    # Development mode (enabled for developer recipe)
+    dev: y                               # [ACTIVE] Install dev modules
+    dev_modules: devel webprofiler kint  # [ACTIVE] Modules to install
+    # Options: TUI checkbox selections during install (y = pre-selected)
+    options:
+      # === Development (environment: dev) ===
+      # Note: dev_modules handled by dev: y above
+      xdebug:                            # Step-through debugging with IDE
+      stage_file_proxy:                  # Proxy production files locally
+
+      # === Configuration (environment: all) ===
+      environment_indicator: y           # [RECOMMENDED] Visual environment indicator
+      config_split: y                    # [RECOMMENDED] Environment-specific config
+
+      # === Staging (environment: stage) ===
+      db_sanitize:                       # Anonymize user data on sync
+      staging_domain:                    # Custom staging domain
+
+      # === Security (environment: live) ===
+      security_modules:                  # Security hardening modules
+
+      # === Performance (environment: live) ===
+      redis:                             # Object caching for performance
+      solr:                              # Advanced full-text search
+
+      # === Production Infrastructure (environment: live) ===
+      cron:                              # Automated task scheduling
+      backup:                            # Automated backups
+      ssl:                               # HTTPS configuration
+      cdn:                               # CDN integration
+
+      # === Production Deployment (environment: prod) ===
+      live_domain:                       # Production domain name
+      dns_records:                       # Auto-configure DNS via Linode
+      monitoring:                        # Uptime and performance monitoring
+
+      # === Migration (environment: all) ===
+      migration:                         # Create migration folder for importing content
+
+  dm:
+    # [ACTIVE] Divine Mercy recipe
+    source: drupal/recommended-project:^10.2
+    profile: standard
+    webroot: web
+    auto: y
+    # Optional overrides (if not set, uses settings defaults)
+    # php: 8.3                       # [ACTIVE] Override settings.php
+    # database: mysql                # [ACTIVE] Override settings.database
+    # Development mode
+    # dev: y                         # [ACTIVE] Enable dev module installation
+    # dev_modules: devel webprofiler kint  # [ACTIVE] Modules to install when dev: y
+    # Additional packages
+    install_modules: git@github.com:rjzaar/divine_mercy.git
+    # Options: TUI checkbox selections during install (y = pre-selected)
+    options:
+      # === Development (environment: dev) ===
+      dev_modules:                    # Enable devel, webprofiler for debugging
+      xdebug:                         # Step-through debugging with IDE
+      stage_file_proxy:               # Proxy production files locally
+
+      # === Configuration (environment: all) ===
+      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
+      config_split:                   # Environment-specific config
+
+      # === Staging (environment: stage) ===
+      db_sanitize:                    # Anonymize user data on sync
+      staging_domain:                 # Custom staging domain
+
+      # === Security (environment: live) ===
+      security_modules:               # Security hardening modules
+
+      # === Performance (environment: live) ===
+      redis:                          # Object caching for performance
+      solr:                           # Advanced full-text search
+
+      # === Production Infrastructure (environment: live) ===
+      cron:                           # Automated task scheduling
+      backup:                         # Automated backups
+      ssl:                            # HTTPS configuration
+      cdn:                            # CDN integration
+
+      # === Production Deployment (environment: prod) ===
+      live_domain:                    # Production domain name
+      dns_records:                    # Auto-configure DNS via Linode
+      monitoring:                     # Uptime and performance monitoring
+
+      # === Migration (environment: all) ===
+      migration:                      # Create migration folder for importing content
+
+  # === MOODLE RECIPE ===
+  m:
+    type: moodle                   # [ACTIVE] Recipe type
+    source: https://github.com/moodle/moodle.git
+    branch: MOODLE_404_STABLE      # [ACTIVE] Git branch
+    webroot: .                     # [ACTIVE]
+    sitename: "My Moodle Site"     # [ACTIVE] Site title
+    auto: y                        # [ACTIVE]
+    # Optional overrides (if not set, uses settings defaults, then Moodle defaults)
+    php: 8.1                       # [ACTIVE] Moodle 4.x requires PHP 8.1
+    database: mariadb              # [ACTIVE] Moodle default database
+
+  # === GITLAB RECIPE ===
+  gitlab:
+    type: gitlab                   # [ACTIVE] Recipe type
+    source: https://gitlab.com/gitlab-org/gitlab-foss.git
+    branch: master                 # [ACTIVE]
+    webroot: .                     # [ACTIVE]
+    sitename: "GitLab Instance"    # [ACTIVE]
+    auto: y                        # [ACTIVE]
+    # Optional overrides
+    # php: 8.2                     # [ACTIVE] Override settings.php
+    # database: postgres           # [ACTIVE] GitLab prefers PostgreSQL
+
+  # === PODCAST RECIPE ===
+  pod:
+    type: podcast                  # [ACTIVE] Recipe type
+    # Usage: ./install.sh pod podcast.example.com
+    # Domain for the podcast (e.g., podcast.example.com)
+    domain: podcast.example.com
+    # Linode region for the server
+    linode_region: us-east
+    # B2 region for media storage
+    b2_region: us-west-004
+    # Media subdomain (e.g., media.example.com)
+    media_subdomain: media
+    auto: y                        # [ACTIVE]
 
 ################################################################################
 # SITES - Auto-populated Site Registry

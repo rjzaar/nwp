@@ -49,7 +49,7 @@ eucharist-adoration:
     - core/once
 
 reflection-selector:
-  version: 1.0.0
+  version: 1.0.1
   js:
     js/reflection-selector.js: {}
   css:

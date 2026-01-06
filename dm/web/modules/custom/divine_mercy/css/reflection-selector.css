@@ -237,7 +237,7 @@
 }
 
 .reflection-ellipsis.expanded {
-  display: none;
+  color: #000086;
 }
 
 .reflection-hidden-text {

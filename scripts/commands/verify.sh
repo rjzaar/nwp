@@ -699,50 +699,38 @@ cursor_to() { printf '\033[%d;%dH' "$1" "$2"; }
 clear_screen() { printf '\033[2J\033[H'; }
 clear_line() { printf '\033[2K'; }
 
-# Get category for a feature
+# Get category for a feature (consolidated into ~12 per group)
 get_feature_category() {
     local feature="$1"
     case "$feature" in
+        # Group 1: Core Scripts (12)
         setup|install|status|modify|backup|restore|sync|copy|delete|make|migration|import)
             echo "Core Scripts" ;;
+
+        # Group 2: Deployment (8)
         live|dev2stg|stg2prod|prod2stg|stg2live|live2stg|live2prod|produce)
             echo "Deployment" ;;
-        podcast|schedule|security|setup_ssh|uninstall)
-            echo "Infrastructure" ;;
-        pl_cli|test_nwp|theme)
-            echo "CLI & Testing" ;;
+
+        # Group 3: Infrastructure & CLI (8) - Infrastructure + CLI + Moodle
+        podcast|schedule|security|setup_ssh|uninstall|pl_cli|test_nwp|moodle|theme)
+            echo "Infrastructure & CLI" ;;
+
+        # Group 4: Libraries (11)
         lib_*)
             echo "Libraries" ;;
-        moodle)
-            echo "Moodle" ;;
-        gitlab_*)
-            echo "GitLab" ;;
-        linode_*)
-            echo "Linode" ;;
-        config_*|example_*)
-            echo "Configuration" ;;
-        tests_*)
-            echo "Tests" ;;
-        ci_*)
-            echo "CI/CD" ;;
-        renovate|dependabot)
-            echo "Dependencies" ;;
-        server_*)
-            echo "Server Scripts" ;;
-        notify_*)
-            echo "Notifications" ;;
-        phpcs|phpstan|eslint)
-            echo "Code Quality" ;;
-        coder_*)
-            echo "Multi-Coder" ;;
-        monitor_*|logging_*|alerting_*)
-            echo "Monitoring" ;;
-        scheduled_*|disaster_*)
-            echo "Backup & Recovery" ;;
-        env_*|preview_*)
-            echo "Environments" ;;
-        auto_*)
-            echo "Automation" ;;
+
+        # Group 5: Services & Config (10) - GitLab + Linode + Config + Tests
+        gitlab_*|linode_*|config_*|example_*|tests_*)
+            echo "Services & Config" ;;
+
+        # Group 6: CI/CD & Quality (12) - CI + Dependencies + Notifications + Code Quality
+        ci_*|renovate|dependabot|security_update|notify_*|phpstan_config|pre_commit_hook|pr_templates)
+            echo "CI/CD & Quality" ;;
+
+        # Group 7: Server & Production (16) - Server + Multi-coder + Phases 6-9
+        server_*|coder_*|monitoring_daemon|production_dashboard|scheduled_backup|verify_backup|disaster_recovery|preview_environments|environments_doc|bluegreen_deploy|canary_release|perf_baseline|visual_regression|advanced_deployment_doc)
+            echo "Server & Production" ;;
+
         *)
             echo "Other" ;;
     esac
@@ -758,8 +746,11 @@ build_feature_arrays() {
     declare -gA CATEGORY_START=()  # Start index for each category
     declare -gA CATEGORY_COUNT=()  # Count of features in each category
 
-    local current_category=""
-    local idx=0
+    # First pass: collect all features with their categories
+    local -a all_features=()
+    local -a all_names=()
+    local -a all_categories=()
+    local -a all_status=()
 
     while IFS= read -r feature; do
         [[ -z "$feature" ]] && continue
@@ -777,21 +768,38 @@ build_feature_arrays() {
             fi
         fi
 
-        # Track category boundaries
-        if [[ "$category" != "$current_category" ]]; then
-            CATEGORY_LIST+=("$category")
-            CATEGORY_START["$category"]=$idx
-            CATEGORY_COUNT["$category"]=0
-            current_category="$category"
-        fi
-        CATEGORY_COUNT["$category"]=$((CATEGORY_COUNT["$category"] + 1))
-
-        FEATURE_IDS+=("$feature")
-        FEATURE_NAMES+=("${name:-$feature}")
-        FEATURE_CATEGORIES+=("$category")
-        FEATURE_STATUS+=("$status")
-        idx=$((idx + 1))
+        all_features+=("$feature")
+        all_names+=("${name:-$feature}")
+        all_categories+=("$category")
+        all_status+=("$status")
     done <<< "$(get_feature_ids)"
+
+    # Define category order (for consistent ordering)
+    local -a category_order=("Core Scripts" "Deployment" "Infrastructure & CLI" "Libraries" "Services & Config" "CI/CD & Quality" "Server & Production" "Other")
+
+    # Second pass: add features in category order
+    local idx=0
+    for cat in "${category_order[@]}"; do
+        local cat_has_features=false
+
+        for i in "${!all_features[@]}"; do
+            if [[ "${all_categories[$i]}" == "$cat" ]]; then
+                if [[ "$cat_has_features" == false ]]; then
+                    CATEGORY_LIST+=("$cat")
+                    CATEGORY_START["$cat"]=$idx
+                    CATEGORY_COUNT["$cat"]=0
+                    cat_has_features=true
+                fi
+
+                FEATURE_IDS+=("${all_features[$i]}")
+                FEATURE_NAMES+=("${all_names[$i]}")
+                FEATURE_CATEGORIES+=("$cat")
+                FEATURE_STATUS+=("${all_status[$i]}")
+                CATEGORY_COUNT["$cat"]=$((CATEGORY_COUNT["$cat"] + 1))
+                idx=$((idx + 1))
+            fi
+        done
+    done
 }
 
 # Draw the console TUI with category pages

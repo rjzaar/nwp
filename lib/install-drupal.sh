@@ -516,11 +516,11 @@ if (!defined('ENVIRONMENT_PROD')) {
 $settings['environment'] = ENVIRONMENT_LOCAL;
 
 // NWP naming convention detection:
-// - sitename_stg = staging environment
+// - sitename-stg = staging environment
 // - sitename_prod = production environment
 // - sitename (no suffix) = development environment
 $nwp_site_dir = basename(dirname(dirname(dirname(__DIR__))));
-if (preg_match('/_stg$/', $nwp_site_dir)) {
+if (preg_match('/-stg$/', $nwp_site_dir)) {
   $settings['environment'] = ENVIRONMENT_STAGE;
 }
 elseif (preg_match('/_prod$/', $nwp_site_dir)) {
@@ -734,16 +734,26 @@ CONFIG_SPLIT_EOF
             db_driver="mysql"
         fi
 
+        # Generate secure admin password
+        local admin_password
+        admin_password=$(generate_secure_password 16)
+
         if ! ddev drush site:install "$profile" \
             --db-url="${db_driver}://db:db@db:3306/db" \
             --account-name=admin \
-            --account-pass=admin \
+            --account-pass="$admin_password" \
             --site-name="My OpenSocial Site" \
             -y; then
             print_error "Failed to install Drupal site"
             return 1
         fi
         print_status "OK" "Drupal site installed"
+        echo ""
+        print_status "INFO" "Admin credentials:"
+        echo -e "  ${CYAN:-}Username:${NC:-} admin"
+        echo -e "  ${CYAN:-}Password:${NC:-} $admin_password"
+        echo -e "  ${YELLOW:-}(Save this password - it will not be shown again)${NC:-}"
+        echo ""
         track_step 8
     else
         print_status "INFO" "Skipping Step 8: Drupal already installed"
@@ -906,7 +916,7 @@ CONFIG_SPLIT_EOF
 
         # Determine environment type from directory suffix
         local environment="development"
-        if [[ "$site_name" =~ _stg$ ]]; then
+        if [[ "$site_name" =~ -stg$ ]]; then
             environment="staging"
         elif [[ "$site_name" =~ _prod$ ]]; then
             environment="production"
@@ -951,7 +961,7 @@ CONFIG_SPLIT_EOF
         local site_dir=$(pwd)
         local site_name=$(basename "$site_dir")
         local environment="development"
-        if [[ "$site_name" =~ _stg$ ]]; then
+        if [[ "$site_name" =~ -stg$ ]]; then
             environment="staging"
         elif [[ "$site_name" =~ _prod$ ]]; then
             environment="production"

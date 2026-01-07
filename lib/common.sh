@@ -90,6 +90,20 @@ ask_yes_no() {
 }
 
 ################################################################################
+# Password Generation Functions
+################################################################################
+
+# Generate a cryptographically secure random password
+# Uses OpenSSL for high-quality entropy
+# Usage: generate_secure_password [length]
+# Default length: 24 characters
+# Returns: Alphanumeric password (no special chars that might cause escaping issues)
+generate_secure_password() {
+    local length=${1:-24}
+    openssl rand -base64 48 | tr -d '/=+' | cut -c -"$length"
+}
+
+################################################################################
 # Configuration Reading Functions
 ################################################################################
 
@@ -351,7 +365,7 @@ get_setting() {
 get_env_type_from_name() {
     local site="$1"
 
-    if [[ "$site" =~ _stg$ ]]; then
+    if [[ "$site" =~ -stg$ ]]; then
         echo "stage"
     elif [[ "$site" =~ _prod$ ]]; then
         echo "prod"
@@ -361,10 +375,10 @@ get_env_type_from_name() {
 }
 
 # Get base site name (without environment suffix)
-# Usage: get_base_name "sitename_stg" -> "sitename"
+# Usage: get_base_name "sitename-stg" -> "sitename"
 get_base_name() {
     local site="$1"
-    echo "$site" | sed -E 's/_(stg|prod)$//'
+    echo "$site" | sed -E 's/[-_](stg|prod)$//'
 }
 
 # Get Drupal environment from a running DDEV site

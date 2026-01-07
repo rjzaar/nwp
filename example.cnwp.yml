@@ -228,10 +228,12 @@ other_coders:
       - flood_control              # Brute force protection UI
       - login_security             # Login attempt limits, blocking
       - username_enumeration_prevention  # Prevents username discovery
+      - password_policy            # Strong password requirements (length, complexity)
+      - password_strength          # Entropy-based password strength checking
     # Optional modules [PLANNED] - not auto-installed yet
     optional_modules:
       - antibot                    # Behavior-based bot detection
-      - password_policy            # Strong password requirements
+      - better_passwords           # NIST 800-63B compliant password checking
       - turnstile                  # Cloudflare CAPTCHA (requires API key)
     # Module configurations [PLANNED] - not applied yet
     seckit_config:
@@ -249,6 +251,14 @@ other_coders:
       user_wrong_count: 5          # Failed attempts before soft block
       host_wrong_count: 10         # Failed attempts from IP before block
       activity_threshold: 100      # Max login attempts per hour
+    password_policy_config:
+      min_length: 12               # Minimum password length
+      require_uppercase: 1         # Minimum uppercase characters
+      require_lowercase: 1         # Minimum lowercase characters
+      require_digit: 1             # Minimum digits
+      require_special: 1           # Minimum special characters
+      max_age: 0                   # Password expiration days (0 = never)
+      history: 3                   # Remember last N passwords
 
 ################################################################################
 # SETUP - One-time Setup Options

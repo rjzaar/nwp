@@ -10,6 +10,7 @@ YAML_CONFIG_FILE="${YAML_CONFIG_FILE:-cnwp.yml}"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+DIM='\033[2m'
 NC='\033[0m' # No Color
 
 #######################################

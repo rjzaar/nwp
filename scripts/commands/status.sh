@@ -65,8 +65,36 @@ else
 fi
 
 ################################################################################
-# Orphaned Site Detection
+# Orphaned and Ghost Site Detection
 ################################################################################
+
+# Find ghost DDEV registrations (registered in DDEV but directory missing, within nwp folder)
+find_ghost_ddev_sites() {
+    local project_root="$1"
+
+    # Get DDEV list as JSON and parse it
+    local ddev_json
+    ddev_json=$(ddev list --json-output 2>/dev/null | grep -o '"raw":\[.*\]' | sed 's/"raw"://') || return
+
+    # Parse JSON to find ghost sites in nwp folder
+    # Looking for: approot starts with project_root AND status contains "missing"
+    echo "$ddev_json" | grep -o '{[^}]*}' | while read -r entry; do
+        local name=$(echo "$entry" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+        local approot=$(echo "$entry" | grep -o '"approot":"[^"]*"' | cut -d'"' -f4)
+        local status=$(echo "$entry" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+
+        # Skip if not in nwp folder
+        [[ "$approot" != "$project_root"* ]] && continue
+
+        # Skip Router
+        [ "$name" = "Router" ] && continue
+
+        # Check if directory is missing
+        if [[ "$status" == *"missing"* ]]; then
+            echo "$name:$approot:ghost"
+        fi
+    done
+}
 
 # Find site directories that have .ddev but are not in cnwp.yml
 find_orphaned_sites() {
@@ -1418,6 +1446,7 @@ draw_screen() {
         local colored_ddev="$ddev"
         [ "$ddev" = "run" ] && colored_ddev="${GREEN}run${NC}"
         [ "$ddev" = "stop" ] && colored_ddev="${YELLOW}stop${NC}"
+        [ "$ddev" = "ghost" ] && colored_ddev="${RED}ghost${NC}"
 
         # Colorize health
         local colored_health="$health"
@@ -1743,7 +1772,7 @@ run_action() {
 # Global arrays for interactive mode
 SITE_NAMES=()
 SITE_SELECTED=()
-SITE_ORPHAN=()  # Track which sites are orphaned
+SITE_TYPE=()  # 0=normal, 1=orphan, 2=ghost
 SITE_DATA=()  # Cached display data
 
 # Build cached site data
@@ -1757,13 +1786,18 @@ build_site_cache() {
 
     local idx=0
     for site in "${SITE_NAMES[@]}"; do
-        local is_orphan="${SITE_ORPHAN[$idx]:-0}"
+        local site_type="${SITE_TYPE[$idx]:-0}"
         local recipe=""
         local purpose=""
         local directory=""
         local domain=""
 
-        if [ "$is_orphan" = "1" ]; then
+        if [ "$site_type" = "2" ]; then
+            # Ghost site - registered in DDEV but directory missing
+            directory=""
+            recipe="?"
+            purpose="(ghost)"
+        elif [ "$site_type" = "1" ]; then
             # Orphaned site - get info from filesystem
             directory="$PROJECT_ROOT/sites/$site"
             recipe=$(detect_recipe_from_site "$directory")
@@ -1782,18 +1816,24 @@ build_site_cache() {
 
         # Stages
         local stages=""
-        [ -n "$directory" ] && [ -d "$directory" ] && stages="${stages}d"
-        [ -d "${directory}_stg" ] && stages="${stages}s"
-        if [ "$is_orphan" != "1" ]; then
-            local live_enabled=$(get_site_nested_field "$site" "live" "enabled" "$config_file")
-            [ "$live_enabled" == "true" ] && stages="${stages}l"
+        if [ "$site_type" = "2" ]; then
+            stages="-"
+        else
+            [ -n "$directory" ] && [ -d "$directory" ] && stages="${stages}d"
+            [ -d "${directory}_stg" ] && stages="${stages}s"
+            if [ "$site_type" = "0" ]; then
+                local live_enabled=$(get_site_nested_field "$site" "live" "enabled" "$config_file")
+                [ "$live_enabled" == "true" ] && stages="${stages}l"
+            fi
+            [ -d "${directory}_prod" ] && stages="${stages}p"
+            [ -z "$stages" ] && stages="-"
         fi
-        [ -d "${directory}_prod" ] && stages="${stages}p"
-        [ -z "$stages" ] && stages="-"
 
         # DDEV status (use cached list)
         local ddev="-"
-        if [ -d "$directory/.ddev" ]; then
+        if [ "$site_type" = "2" ]; then
+            ddev="ghost"
+        elif [ -n "$directory" ] && [ -d "$directory/.ddev" ]; then
             local site_basename=$(basename "$directory")
             if echo "$ddev_list" | grep -q "^${site_basename}.*running"; then
                 ddev="run"
@@ -1804,7 +1844,7 @@ build_site_cache() {
 
         # Disk usage
         local disk="-"
-        [ -d "$directory" ] && disk=$(du -sh "$directory" 2>/dev/null | awk '{print $1}')
+        [ -n "$directory" ] && [ -d "$directory" ] && disk=$(du -sh "$directory" 2>/dev/null | awk '{print $1}')
 
         # Database size (only if DDEV running and column visible)
         local db="-"
@@ -1922,20 +1962,34 @@ run_interactive() {
     # Build arrays from cnwp.yml sites
     SITE_NAMES=()
     SITE_SELECTED=()
-    SITE_ORPHAN=()  # Track which sites are orphaned
+    SITE_TYPE=()  # 0=normal, 1=orphan, 2=ghost
     while read -r site; do
         SITE_NAMES+=("$site")
         SITE_SELECTED+=("0")
-        SITE_ORPHAN+=("0")
+        SITE_TYPE+=("0")
     done <<< "$sites_str"
 
-    # Add orphaned sites
+    # Add orphaned sites (have .ddev dir but not in cnwp.yml)
     while IFS=':' read -r name dir; do
         [ -z "$name" ] && continue
         SITE_NAMES+=("$name")
         SITE_SELECTED+=("0")
-        SITE_ORPHAN+=("1")
+        SITE_TYPE+=("1")
     done < <(find_orphaned_sites "$config_file" "$PROJECT_ROOT")
+
+    # Add ghost DDEV sites (registered in DDEV but directory missing)
+    while IFS=':' read -r name dir type; do
+        [ -z "$name" ] && continue
+        # Skip if already in list
+        local skip=false
+        for existing in "${SITE_NAMES[@]}"; do
+            [ "$existing" = "$name" ] && { skip=true; break; }
+        done
+        [ "$skip" = true ] && continue
+        SITE_NAMES+=("$name")
+        SITE_SELECTED+=("0")
+        SITE_TYPE+=("2")
+    done < <(find_ghost_ddev_sites "$PROJECT_ROOT")
 
     # Cache site data
     build_site_cache "$config_file"
@@ -1993,12 +2047,12 @@ run_interactive() {
                 # Rebuild arrays from cnwp.yml sites
                 SITE_NAMES=()
                 SITE_SELECTED=()
-                SITE_ORPHAN=()
+                SITE_TYPE=()
                 if [ -n "$sites_str" ]; then
                     while read -r site; do
                         SITE_NAMES+=("$site")
                         SITE_SELECTED+=("0")
-                        SITE_ORPHAN+=("0")
+                        SITE_TYPE+=("0")
                     done <<< "$sites_str"
                 fi
 
@@ -2007,8 +2061,21 @@ run_interactive() {
                     [ -z "$name" ] && continue
                     SITE_NAMES+=("$name")
                     SITE_SELECTED+=("0")
-                    SITE_ORPHAN+=("1")
+                    SITE_TYPE+=("1")
                 done < <(find_orphaned_sites "$config_file" "$PROJECT_ROOT")
+
+                # Add ghost DDEV sites
+                while IFS=':' read -r name dir type; do
+                    [ -z "$name" ] && continue
+                    local skip=false
+                    for existing in "${SITE_NAMES[@]}"; do
+                        [ "$existing" = "$name" ] && { skip=true; break; }
+                    done
+                    [ "$skip" = true ] && continue
+                    SITE_NAMES+=("$name")
+                    SITE_SELECTED+=("0")
+                    SITE_TYPE+=("2")
+                done < <(find_ghost_ddev_sites "$PROJECT_ROOT")
 
                 if [ ${#SITE_NAMES[@]} -eq 0 ]; then
                     print_info "No more sites"

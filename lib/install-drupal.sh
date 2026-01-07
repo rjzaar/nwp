@@ -87,6 +87,7 @@ install_drupal() {
 
     # Extract configuration values from YAML
     local source=$(get_recipe_value "$recipe" "source" "$base_dir/cnwp.yml")
+    local source_git=$(get_recipe_value "$recipe" "source_git" "$base_dir/cnwp.yml")
     local profile=$(get_recipe_value "$recipe" "profile" "$base_dir/cnwp.yml")
     local profile_source=$(get_recipe_value "$recipe" "profile_source" "$base_dir/cnwp.yml")
     local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/cnwp.yml")
@@ -117,9 +118,9 @@ install_drupal() {
         print_info "No database specified, using default: mysql"
     fi
 
-    # Validate required values
-    if [ -z "$source" ]; then
-        print_error "Recipe '$recipe' does not specify 'source'"
+    # Validate required values - need either source or source_git
+    if [ -z "$source" ] && [ -z "$source_git" ]; then
+        print_error "Recipe '$recipe' does not specify 'source' or 'source_git'"
         return 1
     fi
 
@@ -134,61 +135,92 @@ install_drupal() {
     fi
 
     print_info "Configuration:"
-    echo "  Source:   $source"
+    if [ -n "$source_git" ]; then
+        echo "  Source:   $source_git (git clone)"
+    else
+        echo "  Source:   $source (composer)"
+    fi
     echo "  Profile:  $profile"
     echo "  Webroot:  $webroot"
     echo "  Database: $database"
     echo "  PHP:      $php_version"
     echo ""
 
-    # Step 1: Initialize Project with Composer
+    # Step 1: Initialize Project
     if should_run_step 1 "$start_step"; then
-        print_header "Step 1: Initialize Project with Composer"
-        print_info "This will take 10-15 minutes..."
+        if [ -n "$source_git" ]; then
+            print_header "Step 1: Clone Project from Git"
+            print_info "Cloning project repository..."
 
-        # Extract project without installing dependencies
-        print_info "Extracting project template..."
+            if ! git clone "$source_git" .; then
+                print_error "Failed to clone project from $source_git"
+                return 1
+            fi
+            print_status "OK" "Project cloned from git"
 
-        # Check if source is from GitLab registry (nwp/ prefix)
-        local gitlab_repo_opt=""
-        local composer_auth=""
-        if [[ "$source" == nwp/* ]]; then
+            # Set up GitLab authentication for composer
+            local composer_auth=""
             local gitlab_url=$(get_gitlab_url)
             local gitlab_token=$(get_gitlab_token)
-            if [ -n "$gitlab_url" ]; then
-                local repo_url="https://${gitlab_url}/api/v4/group/nwp/-/packages/composer/packages.json"
-                gitlab_repo_opt="--repository=${repo_url}"
-                print_info "Using GitLab Composer registry: $gitlab_url"
-                if [ -n "$gitlab_token" ]; then
-                    composer_auth="COMPOSER_AUTH={\"http-basic\":{\"${gitlab_url}\":{\"username\":\"gitlab-ci-token\",\"password\":\"${gitlab_token}\"}}}"
+            if [ -n "$gitlab_url" ] && [ -n "$gitlab_token" ]; then
+                composer_auth="COMPOSER_AUTH={\"http-basic\":{\"${gitlab_url}\":{\"username\":\"gitlab-ci-token\",\"password\":\"${gitlab_token}\"}}}"
+                print_info "Using GitLab authentication for composer"
+            fi
+
+            # Install composer dependencies
+            print_info "Installing dependencies (this will take 10-15 minutes)..."
+            if ! env $composer_auth composer install --no-interaction; then
+                print_error "Failed to install project dependencies"
+                return 1
+            fi
+        else
+            print_header "Step 1: Initialize Project with Composer"
+            print_info "This will take 10-15 minutes..."
+
+            # Extract project without installing dependencies
+            print_info "Extracting project template..."
+
+            # Check if source is from GitLab registry (nwp/ prefix)
+            local gitlab_repo_opt=""
+            local composer_auth=""
+            if [[ "$source" == nwp/* ]]; then
+                local gitlab_url=$(get_gitlab_url)
+                local gitlab_token=$(get_gitlab_token)
+                if [ -n "$gitlab_url" ]; then
+                    local repo_url="https://${gitlab_url}/api/v4/group/nwp/-/packages/composer/packages.json"
+                    gitlab_repo_opt="--repository=${repo_url}"
+                    print_info "Using GitLab Composer registry: $gitlab_url"
+                    if [ -n "$gitlab_token" ]; then
+                        composer_auth="COMPOSER_AUTH={\"http-basic\":{\"${gitlab_url}\":{\"username\":\"gitlab-ci-token\",\"password\":\"${gitlab_token}\"}}}"
+                    fi
                 fi
             fi
-        fi
 
-        if ! env $composer_auth composer create-project "$source" . --no-install --no-interaction $gitlab_repo_opt; then
-            print_error "Failed to extract project template"
-            return 1
-        fi
+            if ! env $composer_auth composer create-project "$source" . --no-install --no-interaction $gitlab_repo_opt; then
+                print_error "Failed to extract project template"
+                return 1
+            fi
 
-        # Add Asset Packagist repository to project composer.json
-        print_info "Configuring repositories..."
-        composer config repositories.asset-packagist composer https://asset-packagist.org
-        composer config repositories.drupal composer https://packages.drupal.org/8
+            # Add Asset Packagist repository to project composer.json
+            print_info "Configuring repositories..."
+            composer config repositories.asset-packagist composer https://asset-packagist.org
+            composer config repositories.drupal composer https://packages.drupal.org/8
 
-        # Allow required composer plugins
-        print_info "Configuring composer plugins..."
-        composer config --no-plugins allow-plugins.cweagans/composer-patches true
-        composer config --no-plugins allow-plugins.composer/installers true
-        composer config --no-plugins allow-plugins.drupal/core-composer-scaffold true
-        composer config --no-plugins allow-plugins.oomphinc/composer-installers-extender true
-        composer config --no-plugins allow-plugins.zaporylie/composer-drupal-optimizations true
+            # Allow required composer plugins
+            print_info "Configuring composer plugins..."
+            composer config --no-plugins allow-plugins.cweagans/composer-patches true
+            composer config --no-plugins allow-plugins.composer/installers true
+            composer config --no-plugins allow-plugins.drupal/core-composer-scaffold true
+            composer config --no-plugins allow-plugins.oomphinc/composer-installers-extender true
+            composer config --no-plugins allow-plugins.zaporylie/composer-drupal-optimizations true
 
-        # Install dependencies with Asset Packagist available
-        print_info "Installing dependencies (this will take 10-15 minutes)..."
-        if ! env $composer_auth composer install --no-interaction; then
-            print_error "Failed to install project dependencies"
-            return 1
-        fi
+            # Install dependencies with Asset Packagist available
+            print_info "Installing dependencies (this will take 10-15 minutes)..."
+            if ! env $composer_auth composer install --no-interaction; then
+                print_error "Failed to install project dependencies"
+                return 1
+            fi
+        fi  # End source vs source_git
 
         # Install Drush
         print_info "Installing Drush..."

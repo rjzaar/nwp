@@ -401,35 +401,12 @@ show_site_status() {
 # Show site status (all sites or specific site)
 cmd_status() {
     local sitename="${1:-}"
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
 
     if [ -z "$sitename" ]; then
-        # Show all sites
-        echo -e "${BOLD}Site Status:${NC}"
-        echo ""
-
-        # Get sites from cnwp.yml
-        local sites=$(awk '
-            /^sites:/ { in_sites = 1; next }
-            in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
-            in_sites && /^  [a-zA-Z0-9_-]+:/ {
-                name = $0
-                gsub(/^  /, "", name)
-                gsub(/:.*/, "", name)
-                print name
-            }
-        ' "$cnwp_file" 2>/dev/null)
-
-        if [ -z "$sites" ]; then
-            echo "No sites found in cnwp.yml"
-            return 0
-        fi
-
-        for site in $sites; do
-            show_site_status "$site"
-        done
+        # Launch interactive TUI for overview
+        exec "${SCRIPT_DIR}/scripts/commands/status.sh"
     else
-        # Show single site
+        # Show detailed single site view
         echo -e "${BOLD}Site Status:${NC}"
         echo ""
         show_site_status "$sitename"

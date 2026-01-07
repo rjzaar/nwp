@@ -10,6 +10,11 @@
 # SETTINGS - Global NWP Configuration
 ################################################################################
 settings:
+  # === CLI SETTINGS [ACTIVE] ===
+  # CLI command name for this NWP installation (auto-assigned during setup)
+  # Allows multiple NWP installations to coexist with unique commands (pl, pl1, pl2, etc.)
+  # cli_command: pl                # [ACTIVE] Set automatically by setup.sh
+
   # === STACK SETTINGS [ACTIVE] ===
   # These are read by install scripts and can be overridden per-recipe
   database: mariadb                # [ACTIVE] Database type: mariadb, mysql, postgres [DEFAULT: mysql]
@@ -19,10 +24,6 @@ settings:
   # database_version: "10.11"      # [PLANNED] Database version for DDEV - not yet implemented
   # webserver: nginx               # [PLANNED] Always nginx in DDEV currently
   # os: ubuntu                     # [PLANNED] Always ubuntu for Linode currently
-
-  # === CLI SETTINGS [PLANNED] ===
-  # cli: y                         # [PLANNED] Install universal CLI wrapper
-  # cliprompt: pl                  # [PLANNED] CLI command name (hardcoded as 'pl')
 
   # === DEPLOYMENT SETTINGS ===
   url: nwpcode.org                 # [ACTIVE] Base domain for live sites - used for GitLab URL (git.{url})

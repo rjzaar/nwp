@@ -82,8 +82,8 @@ declare -a COMPONENTS=(
     "mkcert_ca|mkcert Certificate Authority|mkcert|core|recommended|Root CA for browser-trusted local SSL certificates|"
 
     # NWP Tools
-    "nwp_cli|NWP CLI Command|-|tools|recommended|Global command to run NWP from any directory|cliprompt"
     "nwp_config|NWP Configuration (cnwp.yml)|-|tools|required|Main config file defining sites, recipes, and settings|"
+    "nwp_cli|NWP CLI Command|nwp_config|tools|recommended|Global command to run NWP from any directory (pl, pl1, pl2, etc.)|cli_command"
     "nwp_secrets|NWP Secrets (.secrets.yml)|-|tools|recommended|API tokens for Linode, Cloudflare, GitLab integration|"
     "script_symlinks|Script Symlinks (backward compat)|-|tools|optional|Symlinks in project root for legacy ./install.sh usage|"
 
@@ -235,9 +235,14 @@ get_editable_value() {
 
     # Get default from config
     case "$edit_key" in
-        cliprompt)
-            local val=$(read_config_value "cliprompt")
-            echo "${val:-pl}"
+        cli_command)
+            # Source CLI registration library to find suggested name
+            if [ -f "$PROJECT_ROOT/lib/cli-register.sh" ]; then
+                source "$PROJECT_ROOT/lib/cli-register.sh"
+                find_available_cli_name "$PROJECT_ROOT"
+            else
+                echo "pl"
+            fi
             ;;
         linode_token)
             if [ -f "$PROJECT_ROOT/.secrets.yml" ]; then
@@ -257,7 +262,7 @@ get_editable_value() {
 get_edit_prompt() {
     local edit_key="$1"
     case "$edit_key" in
-        cliprompt)    echo "CLI command name" ;;
+        cli_command)  echo "CLI command name" ;;
         linode_token) echo "Linode API token" ;;
         *)            echo "Value" ;;
     esac
@@ -666,9 +671,15 @@ check_mkcert_ca_installed() {
 check_ddev_installed() { command -v ddev &>/dev/null; }
 check_ddev_config_exists() { [ -f "$HOME/.ddev/global_config.yaml" ]; }
 check_nwp_cli_installed() {
-    local cli_prompt=$(read_config_value "cliprompt")
-    cli_prompt=${cli_prompt:-pl}
-    [ -f "/usr/local/bin/$cli_prompt" ]
+    # Source CLI registration library if available
+    if [ -f "$PROJECT_ROOT/lib/cli-register.sh" ]; then
+        source "$PROJECT_ROOT/lib/cli-register.sh"
+        local cli_command=$(get_cli_command)
+        [ -L "/usr/local/bin/$cli_command" ]
+    else
+        # Fallback: check default 'pl' command
+        [ -f "/usr/local/bin/pl" ]
+    fi
 }
 check_script_symlinks_exist() {
     [ -L "$PROJECT_ROOT/install.sh" ] && [ -L "$PROJECT_ROOT/backup.sh" ]
@@ -891,20 +902,23 @@ install_script_symlinks() {
 
 install_nwp_cli() {
     print_status "INFO" "Installing NWP CLI..."
-    local cli_prompt="${MANUAL_INPUTS[nwp_cli]:-}"
-    [ -z "$cli_prompt" ] && cli_prompt=$(read_config_value "cliprompt")
-    cli_prompt=${cli_prompt:-pl}
-    sudo tee "/usr/local/bin/$cli_prompt" > /dev/null << CLIEOF
-#!/bin/bash
-NWP_DIR="\$HOME/nwp"
-for dir in "\$HOME/nwp" "\$HOME/projects/nwp" "/opt/nwp"; do
-    [ -d "\$dir" ] && [ -f "\$dir/pl" ] && { NWP_DIR="\$dir"; break; }
-done
-[ ! -d "\$NWP_DIR" ] && { echo "Error: NWP directory not found"; exit 1; }
-cd "\$NWP_DIR" && exec "./pl" "\$@"
-CLIEOF
-    sudo chmod +x "/usr/local/bin/$cli_prompt"
-    print_status "OK" "CLI '$cli_prompt' installed"
+
+    # Get user-specified command name if set
+    local preferred_name="${MANUAL_INPUTS[nwp_cli]:-}"
+
+    # Source CLI registration library
+    if [ -f "$PROJECT_ROOT/lib/cli-register.sh" ]; then
+        source "$PROJECT_ROOT/lib/cli-register.sh"
+        if register_cli_command "$PROJECT_ROOT" "$preferred_name"; then
+            return 0
+        else
+            print_status "FAIL" "CLI registration failed"
+            return 1
+        fi
+    else
+        print_status "FAIL" "CLI registration library not found"
+        return 1
+    fi
 }
 
 install_nwp_config() {

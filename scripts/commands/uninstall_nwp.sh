@@ -330,16 +330,33 @@ restore_shell_config() {
 remove_cli_command() {
     print_header "Removing CLI Command"
 
-    local cli_prompt=$(read_config_value "cliprompt")
-    cli_prompt=${cli_prompt:-pl}
+    # Determine project root (uninstall script is in scripts/commands/)
+    local project_root="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-    if [ -f "/usr/local/bin/$cli_prompt" ]; then
-        if ask_yes_no "Remove CLI command '$cli_prompt'?" "y"; then
-            sudo rm -f "/usr/local/bin/$cli_prompt"
-            print_status "OK" "CLI command removed"
+    # Source CLI registration library if available
+    if [ -f "$project_root/lib/cli-register.sh" ]; then
+        # Temporarily set PROJECT_ROOT_CLI for the library
+        export PROJECT_ROOT_CLI="$project_root"
+        source "$project_root/lib/cli-register.sh"
+
+        if ask_yes_no "Remove NWP CLI command?" "y"; then
+            unregister_cli_command
+        else
+            print_status "INFO" "Keeping CLI command"
         fi
     else
-        print_status "INFO" "No CLI command to remove"
+        # Fallback to old method
+        local cli_prompt=$(read_config_value "cliprompt")
+        cli_prompt=${cli_prompt:-pl}
+
+        if [ -f "/usr/local/bin/$cli_prompt" ]; then
+            if ask_yes_no "Remove CLI command '$cli_prompt'?" "y"; then
+                sudo rm -f "/usr/local/bin/$cli_prompt"
+                print_status "OK" "CLI command removed"
+            fi
+        else
+            print_status "INFO" "No CLI command to remove"
+        fi
     fi
 }
 

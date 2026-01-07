@@ -10,16 +10,17 @@ set -euo pipefail
 # Usage: ./delete.sh [OPTIONS] <sitename>
 ################################################################################
 
-# Get script directory
+# Get script directory and project root
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source shared libraries
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/common.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
 
 # Source YAML library
-if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
-    source "$SCRIPT_DIR/lib/yaml-write.sh"
+if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
+    source "$PROJECT_ROOT/lib/yaml-write.sh"
 fi
 
 # Script start time
@@ -328,7 +329,7 @@ remove_from_cnwp() {
             print
             exit
         }
-    ' "$SCRIPT_DIR/cnwp.yml")
+    ' "$PROJECT_ROOT/cnwp.yml")
 
     # Default to true if not set
     delete_site_yml=${delete_site_yml:-true}
@@ -349,7 +350,7 @@ remove_from_cnwp() {
     fi
 
     # Check if site exists in cnwp.yml
-    if ! yaml_site_exists "$sitename" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+    if ! yaml_site_exists "$sitename" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
         print_status "INFO" "Site not found in cnwp.yml"
         return 0
     fi
@@ -357,7 +358,7 @@ remove_from_cnwp() {
     ocmsg "Removing site '$sitename' from cnwp.yml"
 
     # Remove the site
-    if yaml_remove_site "$sitename" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+    if yaml_remove_site "$sitename" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
         print_status "OK" "Site removed from cnwp.yml"
     else
         print_warning "Could not remove site from cnwp.yml"
@@ -445,8 +446,8 @@ fi
 
 # Check site purpose before deletion
 SITE_PURPOSE=""
-if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ] && command -v yaml_get_site_purpose &> /dev/null; then
-    SITE_PURPOSE=$(yaml_get_site_purpose "$SITENAME" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null)
+if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ] && command -v yaml_get_site_purpose &> /dev/null; then
+    SITE_PURPOSE=$(yaml_get_site_purpose "$SITENAME" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null)
 fi
 
 # Handle purpose-based deletion restrictions

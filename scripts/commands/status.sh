@@ -32,35 +32,36 @@ set -euo pipefail
 #   ./status.sh start avc        - Start DDEV for avc
 ################################################################################
 
-# Get script directory
+# Get script directory and project root
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source shared libraries
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/common.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
 
 # Source YAML library if available
-if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
-    source "$SCRIPT_DIR/lib/yaml-write.sh"
+if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
+    source "$PROJECT_ROOT/lib/yaml-write.sh"
 fi
 
 # Source install steps library for progress tracking
-if [ -f "$SCRIPT_DIR/lib/install-steps.sh" ]; then
-    source "$SCRIPT_DIR/lib/install-steps.sh"
+if [ -f "$PROJECT_ROOT/lib/install-steps.sh" ]; then
+    source "$PROJECT_ROOT/lib/install-steps.sh"
 fi
 
 # Source Linode library if available
-if [ -f "$SCRIPT_DIR/lib/linode.sh" ]; then
-    source "$SCRIPT_DIR/lib/linode.sh"
+if [ -f "$PROJECT_ROOT/lib/linode.sh" ]; then
+    source "$PROJECT_ROOT/lib/linode.sh"
 fi
 
 # Configuration
-if [ -f "${SCRIPT_DIR}/cnwp.yml" ]; then
-    CONFIG_FILE="${SCRIPT_DIR}/cnwp.yml"
-elif [ -f "${SCRIPT_DIR}/example.cnwp.yml" ]; then
-    CONFIG_FILE="${SCRIPT_DIR}/example.cnwp.yml"
+if [ -f "${PROJECT_ROOT}/cnwp.yml" ]; then
+    CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
+elif [ -f "${PROJECT_ROOT}/example.cnwp.yml" ]; then
+    CONFIG_FILE="${PROJECT_ROOT}/example.cnwp.yml"
 else
-    CONFIG_FILE="${SCRIPT_DIR}/cnwp.yml"
+    CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
 fi
 
 ################################################################################
@@ -650,7 +651,7 @@ show_sites() {
     [ ! -f "$config_file" ] && { print_error "Config not found: $config_file"; return 1; }
 
     local sites=$(list_sites "$config_file")
-    local orphaned=$(find_orphaned_sites "$config_file" "$SCRIPT_DIR")
+    local orphaned=$(find_orphaned_sites "$config_file" "$PROJECT_ROOT")
 
     if [ -z "$sites" ] && [ -z "$orphaned" ]; then
         print_info "No sites configured"
@@ -811,9 +812,19 @@ show_site_info() {
     printf "  %-20s %s\n" "Database Size:" "$(get_db_size "$directory")"
 
     echo ""
-    echo -e "${BOLD}Activity:${NC}"
-    printf "  %-20s %s\n" "Last Commit:" "$(get_last_activity "$directory")"
-    printf "  %-20s %b\n" "Health:" "$(check_site_health "$directory")"
+    echo -e "${BOLD}Git:${NC}"
+    if [ -d "$directory/.git" ] || [ -f "$directory/.git" ]; then
+        local git_branch=$(cd "$directory" && git branch --show-current 2>/dev/null || echo "unknown")
+        local git_commit=$(cd "$directory" && git log -1 --format="%ar" 2>/dev/null || echo "unknown")
+        printf "  %-20s %s\n" "Branch:" "$git_branch"
+        printf "  %-20s %s\n" "Last Commit:" "$git_commit"
+    else
+        printf "  %-20s %s\n" "Status:" "Not initialized"
+    fi
+
+    echo ""
+    echo -e "${BOLD}Health:${NC}"
+    printf "  %-20s %b\n" "Site Status:" "$(check_site_health "$directory")"
 
     # Live site info
     local live_enabled=$(get_site_nested_field "$site" "live" "enabled" "$config_file")
@@ -1085,7 +1096,7 @@ show_production_dashboard() {
 
         # Backup age
         local backup_age="-"
-        local backup_dir="${SCRIPT_DIR}/sitebackups/${site}"
+        local backup_dir="${PROJECT_ROOT}/sitebackups/${site}"
         if [ -d "$backup_dir" ]; then
             local latest_backup=$(ls -t "$backup_dir"/*.sql.gz 2>/dev/null | head -1)
             if [ -n "$latest_backup" ]; then
@@ -1130,7 +1141,7 @@ show_production_dashboard() {
     local backup_count=0
     local stale_backup_count=0
     for site in $(echo "$sites"); do
-        local backup_dir="${SCRIPT_DIR}/sitebackups/${site}"
+        local backup_dir="${PROJECT_ROOT}/sitebackups/${site}"
         if [ -d "$backup_dir" ]; then
             local latest=$(ls -t "$backup_dir"/*.sql.gz 2>/dev/null | head -1)
             if [ -n "$latest" ]; then
@@ -1158,7 +1169,7 @@ show_server_stats() {
     # Check if we have Linode API access
     local token=""
     if command -v get_linode_token &>/dev/null; then
-        token=$(get_linode_token "$SCRIPT_DIR")
+        token=$(get_linode_token "$PROJECT_ROOT")
     fi
 
     if [ -z "$token" ]; then
@@ -1236,7 +1247,7 @@ VISIBLE_COLUMNS=()
 declare -A COLUMN_WIDTHS
 
 # Settings file
-SETTINGS_FILE="${SCRIPT_DIR}/.status-settings"
+SETTINGS_FILE="${PROJECT_ROOT}/.status-settings"
 
 # Load column settings
 load_column_settings() {
@@ -1754,7 +1765,7 @@ build_site_cache() {
 
         if [ "$is_orphan" = "1" ]; then
             # Orphaned site - get info from filesystem
-            directory="$SCRIPT_DIR/$site"
+            directory="$PROJECT_ROOT/sites/$site"
             recipe=$(detect_recipe_from_site "$directory")
             purpose="(orphan)"
         else
@@ -1924,7 +1935,7 @@ run_interactive() {
         SITE_NAMES+=("$name")
         SITE_SELECTED+=("0")
         SITE_ORPHAN+=("1")
-    done < <(find_orphaned_sites "$config_file" "$SCRIPT_DIR")
+    done < <(find_orphaned_sites "$config_file" "$PROJECT_ROOT")
 
     # Cache site data
     build_site_cache "$config_file"
@@ -1997,7 +2008,7 @@ run_interactive() {
                     SITE_NAMES+=("$name")
                     SITE_SELECTED+=("0")
                     SITE_ORPHAN+=("1")
-                done < <(find_orphaned_sites "$config_file" "$SCRIPT_DIR")
+                done < <(find_orphaned_sites "$config_file" "$PROJECT_ROOT")
 
                 if [ ${#SITE_NAMES[@]} -eq 0 ]; then
                     print_info "No more sites"

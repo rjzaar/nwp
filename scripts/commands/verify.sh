@@ -692,6 +692,316 @@ reset_all() {
     fi
 }
 
+# Terminal control functions
+cursor_hide() { printf '\033[?25l'; }
+cursor_show() { printf '\033[?25h'; }
+cursor_to() { printf '\033[%d;%dH' "$1" "$2"; }
+clear_screen() { printf '\033[2J\033[H'; }
+clear_line() { printf '\033[2K'; }
+
+# Get category for a feature
+get_feature_category() {
+    local feature="$1"
+    case "$feature" in
+        setup|install|status|modify|backup|restore|sync|copy|delete|make|migration|import)
+            echo "Core Scripts" ;;
+        live|dev2stg|stg2prod|prod2stg|stg2live|live2stg|live2prod|produce)
+            echo "Deployment" ;;
+        podcast|schedule|security|setup_ssh|uninstall)
+            echo "Infrastructure" ;;
+        pl_cli|test_nwp|theme)
+            echo "CLI & Testing" ;;
+        lib_*)
+            echo "Libraries" ;;
+        moodle)
+            echo "Moodle" ;;
+        gitlab_*)
+            echo "GitLab" ;;
+        linode_*)
+            echo "Linode" ;;
+        config_*|example_*)
+            echo "Configuration" ;;
+        tests_*)
+            echo "Tests" ;;
+        ci_*)
+            echo "CI/CD" ;;
+        renovate|dependabot)
+            echo "Dependencies" ;;
+        server_*)
+            echo "Server Scripts" ;;
+        notify_*)
+            echo "Notifications" ;;
+        phpcs|phpstan|eslint)
+            echo "Code Quality" ;;
+        coder_*)
+            echo "Multi-Coder" ;;
+        monitor_*|logging_*|alerting_*)
+            echo "Monitoring" ;;
+        scheduled_*|disaster_*)
+            echo "Backup & Recovery" ;;
+        env_*|preview_*)
+            echo "Environments" ;;
+        auto_*)
+            echo "Automation" ;;
+        *)
+            echo "Other" ;;
+    esac
+}
+
+# Build feature data arrays
+build_feature_arrays() {
+    FEATURE_IDS=()
+    FEATURE_NAMES=()
+    FEATURE_CATEGORIES=()
+    FEATURE_STATUS=()  # 0=unverified, 1=verified, 2=modified
+
+    while IFS= read -r feature; do
+        [[ -z "$feature" ]] && continue
+
+        local name=$(get_yaml_value "$feature" "name")
+        local verified=$(get_yaml_value "$feature" "verified")
+        local category=$(get_feature_category "$feature")
+        local status=0
+
+        if [[ "$verified" == "true" ]]; then
+            if check_feature_changed "$feature" 2>/dev/null; then
+                status=2  # Modified since verification
+            else
+                status=1  # Verified
+            fi
+        fi
+
+        FEATURE_IDS+=("$feature")
+        FEATURE_NAMES+=("${name:-$feature}")
+        FEATURE_CATEGORIES+=("$category")
+        FEATURE_STATUS+=("$status")
+    done <<< "$(get_feature_ids)"
+}
+
+# Draw the console TUI
+draw_console() {
+    local current_idx="$1"
+    local scroll_offset="$2"
+    local max_lines=$(($(tput lines) - 8))
+    local width=$(tput cols)
+
+    clear_screen
+
+    # Header
+    echo -e "${BOLD}NWP Verification Console${NC}  |  ↑↓:Navigate  v:Verify  u:Unverify  d:Details  c:Check  r:Refresh  q:Quit"
+    printf '═%.0s' $(seq 1 $width)
+    echo ""
+
+    # Count stats
+    local verified=0 unverified=0 modified=0
+    for status in "${FEATURE_STATUS[@]}"; do
+        case "$status" in
+            0) ((unverified++)) ;;
+            1) ((verified++)) ;;
+            2) ((modified++)) ;;
+        esac
+    done
+
+    printf "  ${GREEN}Verified: %d${NC}  |  ${DIM}Unverified: %d${NC}  |  ${YELLOW}Modified: %d${NC}  |  Total: %d\n" \
+        "$verified" "$unverified" "$modified" "${#FEATURE_IDS[@]}"
+    printf '─%.0s' $(seq 1 $width)
+    echo ""
+
+    # Feature list with categories
+    local prev_category=""
+    local display_idx=0
+    local line_count=0
+
+    for i in "${!FEATURE_IDS[@]}"; do
+        # Skip items before scroll offset
+        if [[ $display_idx -lt $scroll_offset ]]; then
+            ((display_idx++))
+            continue
+        fi
+
+        # Stop if we've filled the screen
+        if [[ $line_count -ge $max_lines ]]; then
+            break
+        fi
+
+        local category="${FEATURE_CATEGORIES[$i]}"
+        local feature="${FEATURE_IDS[$i]}"
+        local name="${FEATURE_NAMES[$i]}"
+        local status="${FEATURE_STATUS[$i]}"
+
+        # Category header
+        if [[ "$category" != "$prev_category" ]]; then
+            if [[ $line_count -gt 0 ]]; then
+                echo ""
+                ((line_count++))
+            fi
+            echo -e "  ${BOLD}${CYAN}── $category ──${NC}"
+            prev_category="$category"
+            ((line_count++))
+        fi
+
+        # Status indicator
+        local indicator status_color
+        case "$status" in
+            0) indicator="$CHECK_OFF"; status_color="$DIM" ;;
+            1) indicator="$CHECK_ON"; status_color="$GREEN" ;;
+            2) indicator="$CHECK_INVALID"; status_color="$YELLOW" ;;
+        esac
+
+        # Highlight current selection
+        if [[ $i -eq $current_idx ]]; then
+            printf "${WHITE}>${NC}"
+        else
+            printf " "
+        fi
+
+        # Truncate name if too long
+        local max_name_len=$((width - 30))
+        local display_name="$name"
+        if [[ ${#display_name} -gt $max_name_len ]]; then
+            display_name="${display_name:0:$((max_name_len-3))}..."
+        fi
+
+        printf " ${status_color}%s${NC} %-12s %s\n" "$indicator" "($feature)" "$display_name"
+        ((line_count++))
+        ((display_idx++))
+    done
+
+    # Footer with current feature details
+    echo ""
+    printf '─%.0s' $(seq 1 $width)
+    echo ""
+
+    if [[ ${#FEATURE_IDS[@]} -gt 0 ]]; then
+        local current_feature="${FEATURE_IDS[$current_idx]}"
+        local current_name="${FEATURE_NAMES[$current_idx]}"
+        local desc=$(get_yaml_value "$current_feature" "description")
+        local verified_by=$(get_yaml_value "$current_feature" "verified_by")
+        local verified_at=$(get_yaml_value "$current_feature" "verified_at")
+
+        printf "  ${BOLD}%s${NC}" "$current_name"
+        if [[ -n "$desc" && "$desc" != "null" ]]; then
+            printf " - %s" "$desc"
+        fi
+        echo ""
+
+        if [[ "${FEATURE_STATUS[$current_idx]}" == "1" && "$verified_by" != "null" ]]; then
+            printf "  ${DIM}Verified by %s at %s${NC}\n" "$verified_by" "$verified_at"
+        elif [[ "${FEATURE_STATUS[$current_idx]}" == "2" ]]; then
+            printf "  ${YELLOW}⚠ Modified since last verification${NC}\n"
+        fi
+    fi
+}
+
+# Interactive console TUI
+run_console() {
+    # Build data
+    build_feature_arrays
+
+    if [[ ${#FEATURE_IDS[@]} -eq 0 ]]; then
+        echo -e "${YELLOW}No features found in verification file${NC}"
+        return 1
+    fi
+
+    local current_idx=0
+    local scroll_offset=0
+    local max_visible=$(($(tput lines) - 12))
+
+    cursor_hide
+    trap 'cursor_show; clear_screen' EXIT
+
+    while true; do
+        draw_console "$current_idx" "$scroll_offset"
+
+        # Read single keypress
+        IFS= read -rsn1 key
+
+        case "$key" in
+            $'\x1b')  # Escape sequence
+                read -rsn2 -t 0.1 key2
+                case "$key2" in
+                    '[A')  # Up arrow
+                        if [[ $current_idx -gt 0 ]]; then
+                            ((current_idx--))
+                            if [[ $current_idx -lt $scroll_offset ]]; then
+                                ((scroll_offset--))
+                            fi
+                        fi
+                        ;;
+                    '[B')  # Down arrow
+                        if [[ $current_idx -lt $((${#FEATURE_IDS[@]} - 1)) ]]; then
+                            ((current_idx++))
+                            if [[ $current_idx -ge $((scroll_offset + max_visible)) ]]; then
+                                ((scroll_offset++))
+                            fi
+                        fi
+                        ;;
+                esac
+                ;;
+            'q'|'Q')  # Quit
+                cursor_show
+                clear_screen
+                echo "Exited verification console."
+                return 0
+                ;;
+            'v'|'V')  # Verify current feature
+                cursor_show
+                clear_screen
+                local feature="${FEATURE_IDS[$current_idx]}"
+                echo -e "${BOLD}Verifying: ${FEATURE_NAMES[$current_idx]}${NC}"
+                echo ""
+                verify_feature "$feature" ""
+                echo ""
+                read -p "Press Enter to continue..."
+                build_feature_arrays
+                cursor_hide
+                ;;
+            'u'|'U')  # Unverify current feature
+                cursor_show
+                clear_screen
+                local feature="${FEATURE_IDS[$current_idx]}"
+                echo -e "${BOLD}Unverifying: ${FEATURE_NAMES[$current_idx]}${NC}"
+                echo ""
+                unverify_feature "$feature"
+                echo ""
+                read -p "Press Enter to continue..."
+                build_feature_arrays
+                cursor_hide
+                ;;
+            'd'|'D')  # Show details
+                cursor_show
+                clear_screen
+                local feature="${FEATURE_IDS[$current_idx]}"
+                show_details "$feature"
+                echo ""
+                read -p "Press Enter to continue..."
+                cursor_hide
+                ;;
+            'c'|'C')  # Check for invalidations
+                cursor_show
+                clear_screen
+                check_invalidations
+                echo ""
+                read -p "Press Enter to continue..."
+                build_feature_arrays
+                cursor_hide
+                ;;
+            'r'|'R')  # Refresh
+                build_feature_arrays
+                ;;
+            '')  # Enter - show details
+                cursor_show
+                clear_screen
+                local feature="${FEATURE_IDS[$current_idx]}"
+                show_details "$feature"
+                echo ""
+                read -p "Press Enter to continue..."
+                cursor_hide
+                ;;
+        esac
+    done
+}
+
 # Main
 main() {
     local command="${1:-status}"
@@ -702,6 +1012,9 @@ main() {
     fi
 
     case "$command" in
+        console|tui)
+            run_console
+            ;;
         status)
             show_status
             ;;
@@ -744,6 +1057,7 @@ main() {
             echo "Usage: ./verify.sh [command] [args]"
             echo ""
             echo "Commands:"
+            echo "  console       Interactive TUI console (navigate, verify, view details)"
             echo "  status        Show verification status (default)"
             echo "  check         Check for invalidated verifications"
             echo "  details <id>  Show what changed and verification checklist"

@@ -448,8 +448,12 @@ deploy_to_live() {
         sudo_prefix="sudo"
     fi
 
-    # Ensure target directory exists
+    # Ensure target directory exists with correct ownership for rsync
     ssh "${ssh_user}@${server_ip}" "$sudo_prefix mkdir -p /var/www/${base_name}" 2>/dev/null || true
+    if [ "$ssh_user" == "gitlab" ]; then
+        # Give gitlab user ownership temporarily for rsync
+        ssh "${ssh_user}@${server_ip}" "sudo chown -R gitlab:www-data /var/www/${base_name}" 2>/dev/null || true
+    fi
 
     # Rsync
     if rsync -avz --delete "${excludes[@]}" \

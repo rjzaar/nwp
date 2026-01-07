@@ -25,6 +25,14 @@ settings:
   # webserver: nginx               # [PLANNED] Always nginx in DDEV currently
   # os: ubuntu                     # [PLANNED] Always ubuntu for Linode currently
 
+  # === FRONTEND SETTINGS [ACTIVE] ===
+  # Global defaults for frontend build tools (can be overridden per-site)
+  # Auto-detected from project files if not specified
+  frontend:
+    node_version: "20"             # [ACTIVE] Required Node.js version [DEFAULT: 20]
+    # build_tool: gulp             # [ACTIVE] gulp, grunt, webpack, vite (auto-detected)
+    # package_manager: npm         # [ACTIVE] npm, yarn, pnpm (auto-detected from lock files)
+
   # === DEPLOYMENT SETTINGS ===
   url: nwpcode.org                 # [ACTIVE] Base domain for live sites - used for GitLab URL (git.{url})
   # linodeuse: all                 # [PLANNED] When to use Linode: testing, gitlab, all, or blank
@@ -354,7 +362,10 @@ linode:
 # Recipe Field Reference:
 #
 # CORE FIELDS (all recipes):
-#   source:          [REQUIRED] Composer package or git URL
+#   source:          [REQUIRED*] Composer package (e.g., nwp/avc-project)
+#   source_git:      [REQUIRED*] Git URL to clone project (preserves git history)
+#                    * One of source or source_git is required
+#                    Use source_git for developer recipes where you need project-level git
 #   type:            [OPTIONAL] drupal (default), moodle, gitlab, podcast
 #   webroot:         [OPTIONAL] Document root - DEFAULT: html (drupal), . (moodle/gitlab)
 #   auto:            [OPTIONAL] Auto-confirm install - DEFAULT: n
@@ -568,9 +579,14 @@ recipes:
   avc-dev:
     # [ACTIVE] AV Commons - For profile/module developers
     # Use this when: Developing AVC modules, fixing bugs, adding features
-    # Profile location: profiles/contrib/avc (git repo, editable)
+    # Profile location: profiles/custom/avc (git repo, editable)
     # Workflow: Edit code -> commit -> push to nwp/avc -> tag release
-    source: nwp/avc-project              # [ACTIVE] Project template
+    #
+    # source_git vs source:
+    #   source_git: Clone project via git (preserves git history for project-level changes)
+    #   source: Use composer create-project (no git history, simpler for non-developers)
+    #
+    source_git: git@git.nwpcode.org:nwp/avc-project.git  # [ACTIVE] Clone project via git
     profile: avc                         # [ACTIVE] Profile name
     profile_source: git@git.nwpcode.org:nwp/avc.git  # [ACTIVE] Clone profile from git
     webroot: html                        # [ACTIVE]
@@ -726,6 +742,10 @@ sites:
   #     server_ip: 203.0.113.10
   #     linode_id: shared
   #     type: shared
+  #   frontend:                            # [ACTIVE] Per-site frontend config (overrides recipe/global)
+  #     build_tool: gulp                   # gulp, grunt, webpack, vite (auto-detected if not set)
+  #     package_manager: yarn              # npm, yarn, pnpm (auto-detected from lock files)
+  #     node_version: "20"                 # Required Node.js version
   #   ci:                                  # [PLANNED] Per-site CI configuration
   #     enabled: true                      # Enable CI for this site
   #     repo: git@git.nwpcode.org:nwp/mysite.git  # GitLab repository URL

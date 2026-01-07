@@ -99,6 +99,13 @@ ${BOLD}TESTING:${NC}
     testos <sitename>               Open Social specific tests
     test-nwp                        Run NWP infrastructure tests
 
+${BOLD}THEMING:${NC}
+    theme setup <sitename>          Install theme Node.js dependencies
+    theme watch <sitename>          Start dev mode with live reload
+    theme build <sitename>          Production build (minified)
+    theme lint <sitename>           Run ESLint/Stylelint
+    theme info <sitename>           Show theme build tool info
+
 ${BOLD}SCHEDULING:${NC}
     schedule install <sitename>     Install backup schedule (cron)
     schedule remove <sitename>      Remove backup schedule
@@ -551,6 +558,11 @@ main() {
             ;;
         test-nwp)
             run_script "test-nwp.sh" "$@"
+            ;;
+
+        # Theming
+        theme)
+            run_script "theme.sh" "$@"
             ;;
 
         # Scheduling

@@ -793,17 +793,17 @@ draw_console() {
     echo ""
 
     # Count stats
-    local verified=0 unverified=0 modified=0
-    for status in "${FEATURE_STATUS[@]}"; do
-        case "$status" in
-            0) ((unverified++)) ;;
-            1) ((verified++)) ;;
-            2) ((modified++)) ;;
+    local verified_count=0 unverified_count=0 modified_count=0
+    for stat in "${FEATURE_STATUS[@]}"; do
+        case "$stat" in
+            0) unverified_count=$((unverified_count + 1)) ;;
+            1) verified_count=$((verified_count + 1)) ;;
+            2) modified_count=$((modified_count + 1)) ;;
         esac
     done
 
     printf "  ${GREEN}Verified: %d${NC}  |  ${DIM}Unverified: %d${NC}  |  ${YELLOW}Modified: %d${NC}  |  Total: %d\n" \
-        "$verified" "$unverified" "$modified" "${#FEATURE_IDS[@]}"
+        "$verified_count" "$unverified_count" "$modified_count" "${#FEATURE_IDS[@]}"
     printf '─%.0s' $(seq 1 $width)
     echo ""
 
@@ -815,7 +815,7 @@ draw_console() {
     for i in "${!FEATURE_IDS[@]}"; do
         # Skip items before scroll offset
         if [[ $display_idx -lt $scroll_offset ]]; then
-            ((display_idx++))
+            display_idx=$((display_idx + 1))
             continue
         fi
 
@@ -833,11 +833,11 @@ draw_console() {
         if [[ "$category" != "$prev_category" ]]; then
             if [[ $line_count -gt 0 ]]; then
                 echo ""
-                ((line_count++))
+                line_count=$((line_count + 1))
             fi
             echo -e "  ${BOLD}${CYAN}── $category ──${NC}"
             prev_category="$category"
-            ((line_count++))
+            line_count=$((line_count + 1))
         fi
 
         # Status indicator
@@ -863,8 +863,8 @@ draw_console() {
         fi
 
         printf " ${status_color}%s${NC} %-12s %s\n" "$indicator" "($feature)" "$display_name"
-        ((line_count++))
-        ((display_idx++))
+        line_count=$((line_count + 1))
+        display_idx=$((display_idx + 1))
     done
 
     # Footer with current feature details
@@ -922,17 +922,17 @@ run_console() {
                 case "$key2" in
                     '[A')  # Up arrow
                         if [[ $current_idx -gt 0 ]]; then
-                            ((current_idx--))
+                            current_idx=$((current_idx - 1))
                             if [[ $current_idx -lt $scroll_offset ]]; then
-                                ((scroll_offset--))
+                                scroll_offset=$((scroll_offset - 1))
                             fi
                         fi
                         ;;
                     '[B')  # Down arrow
                         if [[ $current_idx -lt $((${#FEATURE_IDS[@]} - 1)) ]]; then
-                            ((current_idx++))
+                            current_idx=$((current_idx + 1))
                             if [[ $current_idx -ge $((scroll_offset + max_visible)) ]]; then
-                                ((scroll_offset++))
+                                scroll_offset=$((scroll_offset + 1))
                             fi
                         fi
                         ;;

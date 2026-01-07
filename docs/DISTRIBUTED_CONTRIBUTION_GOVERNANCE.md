@@ -21,7 +21,8 @@ A proposal for managing multi-tier Git repositories with AI-assisted code govern
 9. [Change Classification](#change-classification)
 10. [Integration Workflow](#integration-workflow)
 11. [Security Considerations](#security-considerations)
-12. [Implementation Plan](#implementation-plan)
+12. [Malicious Code Detection](#malicious-code-detection)
+13. [Implementation Plan](#implementation-plan)
 
 ---
 
@@ -635,9 +636,304 @@ pl report --sanitize --output=project-state.md
 
 ---
 
+## Malicious Code Detection
+
+A critical concern in distributed development is detecting malicious code hidden in legitimate-looking contributions (supply chain attacks).
+
+### Attack Vectors
+
+| Attack Type | Example | Detection Difficulty |
+|-------------|---------|---------------------|
+| Backdoor in dependency | Adding malicious npm/composer package | High |
+| Obfuscated payload | Base64-encoded eval() | Medium |
+| Logic bomb | `if (date > X) { malicious() }` | High |
+| Typosquatting | `druapl/core` instead of `drupal/core` | Medium |
+| Scope creep | Bug fix + hidden feature | Medium |
+| Credential harvesting | Logging passwords to file | Medium |
+
+### Defense in Depth
+
+No single layer catches everything. Multiple detection layers make bypassing exponentially harder.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    CONTRIBUTION FLOW                        │
+├─────────────────────────────────────────────────────────────┤
+│  1. Developer submits MR                                    │
+│         ↓                                                   │
+│  2. CI: Automated scans (gitleaks, semgrep, composer audit) │
+│         ↓                                                   │
+│  3. Claude: Scope check + red flag analysis                 │
+│         ↓                                                   │
+│  4. Human: Maintainer review (with Claude's notes)          │
+│         ↓                                                   │
+│  5. Sensitive paths: Require 2nd approver                   │
+│         ↓                                                   │
+│  6. Merge + deploy to staging first                         │
+│         ↓                                                   │
+│  7. Post-deploy monitoring                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Layer 1: Automated CI Security Scans
+
+Add to `.gitlab-ci.yml`:
+
+```yaml
+security_scan:
+  stage: security
+  script:
+    # Dependency audit
+    - composer audit
+    - npm audit 2>/dev/null || true
+
+    # Secret detection
+    - gitleaks detect --source . --verbose
+
+    # SAST (Static Application Security Testing)
+    - semgrep --config auto .
+
+    # Suspicious pattern detection
+    - |
+      echo "=== Suspicious Pattern Scan ==="
+      grep -rn "eval\|base64_decode\|exec\|system\|passthru" \
+        --include="*.php" --include="*.sh" . || true
+  allow_failure: false
+```
+
+### Layer 2: Scope Verification (Claude)
+
+Claude should verify that changes match the stated purpose:
+
+```markdown
+## MR Scope Verification
+
+Before approving any MR, verify:
+
+1. **Scope Check:** Does the diff match the issue description?
+   - Bug fix should only touch relevant code
+   - Flag: "This MR modifies 15 files but the bug is in 1 function"
+
+2. **Proportionality:** Is the change size appropriate?
+   - Simple typo fix = few lines
+   - Flag: "500 lines changed for a typo fix"
+
+3. **Unrelated Changes:** Are there changes outside the fix?
+   - Flag: "This also modifies authentication code"
+```
+
+### Layer 3: Red Flag Detection
+
+Add to CLAUDE.md for automated flagging:
+
+```markdown
+## Security Red Flags
+
+### High Risk (Block and Escalate)
+- [ ] Modifies authentication/authorization without auth-related issue
+- [ ] Adds new external network calls (curl, file_get_contents with URL)
+- [ ] Introduces eval(), exec(), system(), or dynamic code execution
+- [ ] Modifies .htaccess, nginx.conf, or server configs
+- [ ] Changes cryptographic functions or key handling
+- [ ] Adds dependencies not mentioned in issue description
+- [ ] Modifies CI/CD pipeline configuration
+
+### Medium Risk (Require Explanation)
+- [ ] Changes significantly more files than issue scope suggests
+- [ ] Includes "cleanup" or "refactoring" alongside bug fix
+- [ ] Modifies database queries or schema
+- [ ] Changes file permissions or ownership logic
+- [ ] Adds new user input handling without validation
+
+### Verification Questions
+When flags are triggered, ask:
+1. "This MR modifies [X] which wasn't mentioned in the issue. Can you explain?"
+2. "The new dependency [Y] - what does it do and why is it needed?"
+3. "This changes authentication logic - was this intentional?"
+```
+
+### Layer 4: Diff Analysis Script
+
+Create `lib/security-review.sh`:
+
+```bash
+#!/bin/bash
+# Security analysis for merge requests
+
+analyze_mr_security() {
+    local base_branch="${1:-main}"
+
+    echo "=== MR Security Analysis ==="
+
+    # 1. File count vs claimed scope
+    local files_changed=$(git diff --name-only "$base_branch" | wc -l)
+    echo "Files changed: $files_changed"
+
+    # 2. Lines added/removed
+    git diff --stat "$base_branch" | tail -1
+
+    # 3. Suspicious patterns in diff
+    echo ""
+    echo "=== Suspicious Pattern Scan ==="
+    git diff "$base_branch" | grep -E \
+        'eval\(|base64_decode|exec\(|system\(|passthru|shell_exec|proc_open' \
+        && echo "WARNING: Potential code execution patterns found" || echo "OK: No execution patterns"
+
+    # 4. New dependencies
+    echo ""
+    echo "=== New Dependencies ==="
+    git diff "$base_branch" -- composer.json package.json 2>/dev/null | \
+        grep "^\+" | grep -v "^\+\+\+" || echo "None"
+
+    # 5. Sensitive file modifications
+    echo ""
+    echo "=== Sensitive Files Modified ==="
+    git diff --name-only "$base_branch" | grep -E \
+        'settings\.php|\.env|\.htaccess|nginx\.conf|auth|login|password|credential|secret|token|\.gitlab-ci' \
+        || echo "None"
+
+    # 6. New external URLs
+    echo ""
+    echo "=== New External URLs ==="
+    git diff "$base_branch" | grep -oE 'https?://[^"'"'"')\s]+' | sort -u || echo "None"
+
+    # 7. New file permissions changes
+    echo ""
+    echo "=== Permission Changes ==="
+    git diff "$base_branch" | grep -E 'chmod|chown|0777|0755' || echo "None"
+}
+
+# Export for use
+export -f analyze_mr_security
+```
+
+### Layer 5: Two-Person Rule
+
+Sensitive paths require two approvers:
+
+| Path Pattern | Reason | Required Approvers |
+|--------------|--------|-------------------|
+| `lib/auth*` | Authentication | 2 |
+| `**/settings.php` | Credentials | 2 |
+| `.gitlab-ci.yml` | CI pipeline | 2 |
+| `composer.json` | Dependencies | 2 |
+| `lib/*secret*` | Secret handling | 2 |
+| `scripts/commands/live*.sh` | Production deployment | 2 |
+| `CLAUDE.md` | AI standing orders | 2 |
+
+Configure in GitLab:
+- Settings → Merge requests → Approval rules
+- Create rule for each sensitive path pattern
+
+### Layer 6: Post-Merge Monitoring
+
+```bash
+# lib/security-monitor.sh
+
+post_deploy_security_check() {
+    local site="$1"
+
+    echo "=== Post-Deploy Security Audit: $site ==="
+
+    # Check for unexpected outbound connections (requires site access)
+    echo "Recent PHP errors:"
+    ddev drush watchdog:show --type=php --severity=error --count=10 2>/dev/null || echo "N/A"
+
+    # Check for new files in unexpected locations
+    echo ""
+    echo "PHP files in files directory (should be empty):"
+    find "sites/$site/html/sites/default/files" -name "*.php" -mtime -1 2>/dev/null || echo "None"
+
+    # Check for modified core files
+    echo ""
+    echo "Core integrity:"
+    ddev drush core:status --field=drupal-version 2>/dev/null || echo "N/A"
+}
+```
+
+### Layer 7: Contributor Trust Levels
+
+Implement graduated trust based on contribution history:
+
+| Trust Level | Requirements | Capabilities |
+|-------------|--------------|--------------|
+| New | First contribution | All changes reviewed, no sensitive paths |
+| Contributor | 5+ merged MRs, 3+ months | Standard review, no sensitive paths |
+| Trusted | 20+ merged MRs, 1+ year, vouched | Can review others, sensitive with 2nd approver |
+| Maintainer | Appointed by project lead | Full access, can approve sensitive paths |
+
+### Example: Detecting Hidden Malicious Code
+
+**Scenario:** Developer submits "Fix typo in error message"
+
+**What Claude should check:**
+
+```
+MR Analysis:
+- Title: "Fix typo in error message"
+- Files changed: 3 (expected: 1)
+- Lines changed: 47 (expected: ~2)
+
+Red Flags Detected:
+1. File lib/backup.sh modified (not related to error messages)
+2. New external URL added: http://evil.com/collect
+3. New dependency: "logging-helper" (not in issue description)
+
+Claude Response:
+"This MR claims to fix a typo but modifies 3 files with 47 lines changed.
+I found the following concerns:
+
+1. lib/backup.sh was modified - this file handles backups, not error messages
+2. A new external URL (http://evil.com/collect) was added
+3. A new dependency 'logging-helper' was added without explanation
+
+Please explain these changes or split this into separate MRs."
+```
+
+### CI Gate Configuration
+
+Add to `.gitlab-ci.yml`:
+
+```yaml
+security_gate:
+  stage: security
+  script:
+    - source lib/security-review.sh
+    - analyze_mr_security origin/main > security-report.txt
+    - cat security-report.txt
+
+    # Fail on high-risk patterns
+    - |
+      if grep -q "WARNING:" security-report.txt; then
+        echo "SECURITY REVIEW REQUIRED"
+        echo "High-risk patterns detected. Manual review required."
+        exit 1
+      fi
+  artifacts:
+    paths:
+      - security-report.txt
+    when: always
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+```
+
+### Summary: Security Review Checklist
+
+For every MR, verify:
+
+- [ ] **Scope matches description** - Changes align with stated purpose
+- [ ] **No unexpected files** - Only relevant files modified
+- [ ] **No new dependencies** - Or dependencies are explained and audited
+- [ ] **No suspicious patterns** - eval, exec, base64_decode, external URLs
+- [ ] **No sensitive path changes** - Or has required approvers
+- [ ] **CI security scan passed** - Automated checks complete
+- [ ] **Proportional change size** - Lines changed match complexity
+
+---
+
 ## Implementation Plan
 
-### Phase 1: Foundation (Week 1-2)
+### Phase 1: Foundation
 
 - [ ] Create `docs/decisions/` directory structure
 - [ ] Create ADR template and index
@@ -645,33 +941,43 @@ pl report --sanitize --output=project-state.md
 - [ ] Extend CLAUDE.md with standing orders section
 - [ ] Create GitLab issue templates
 
-### Phase 2: Issue Queue (Week 2-3)
+### Phase 2: Issue Queue
 
 - [ ] Configure GitLab labels (bug, task, feature, support, plan)
 - [ ] Configure GitLab priority labels (P1-P4)
 - [ ] Create issue templates in `.gitlab/issue_templates/`
 - [ ] Document issue workflow in CONTRIBUTING.md
 
-### Phase 3: Claude Integration (Week 3-4)
+### Phase 3: Claude Integration
 
 - [ ] Update CLAUDE.md with decision checking instructions
 - [ ] Create `lib/decisions.sh` for querying decisions
 - [ ] Add decision search to `pl` CLI
 - [ ] Test Claude's decision-checking behavior
 
-### Phase 4: Multi-Tier Support (Week 4-5)
+### Phase 4: Multi-Tier Support
 
 - [ ] Create `.nwp-upstream.yml` schema
 - [ ] Implement `pl sync upstream` command
 - [ ] Implement `pl contribute` command
 - [ ] Document tier setup process
 
-### Phase 5: Automation (Week 5-6)
+### Phase 5: Automation
 
 - [ ] GitLab CI for decision validation
 - [ ] Automated ADR number assignment
 - [ ] MR template with decision checklist
 - [ ] Notification on new standing orders
+
+### Phase 6: Security Review System
+
+- [ ] Create `lib/security-review.sh` with `analyze_mr_security()`
+- [ ] Add security scan stage to `.gitlab-ci.yml`
+- [ ] Configure GitLab approval rules for sensitive paths
+- [ ] Add security red flags to CLAUDE.md
+- [ ] Create `lib/security-monitor.sh` for post-deploy checks
+- [ ] Document contributor trust levels
+- [ ] Test security gate with sample malicious MRs
 
 ---
 

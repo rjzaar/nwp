@@ -37,7 +37,9 @@ This proposal establishes a governance framework for distributed NWP development
 - Rejected features are documented to prevent repeated work
 - New developers can understand historical context
 
-**Key Innovation:** Claude reads a `CLAUDE.md` file containing "standing orders" that encode project decisions, rejected features, and coding standards. Before implementing changes, Claude checks this history and explains to developers when their request conflicts with previous decisions.
+**Key Innovation #1: Decision Memory.** Claude reads a `CLAUDE.md` file containing "standing orders" that encode project decisions, rejected features, and coding standards. Before implementing changes, Claude checks this history and explains to developers when their request conflicts with previous decisions.
+
+**Key Innovation #2: Scope Verification.** Claude's superpower for security is comparing what a merge request *claims* to do (title, description, linked issue) against what it *actually* does (the diff). A human reviewer might miss that a "typo fix" also modifies `backup.sh` and adds an external URL, but Claude systematically analyzes every change and flags mismatches. This catches malicious code hidden in legitimate-looking contributions.
 
 ---
 

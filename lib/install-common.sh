@@ -684,11 +684,13 @@ validate_recipe() {
     if [ "$recipe_type" == "moodle" ]; then
         # Moodle required fields
         local source=$(get_recipe_value "$recipe" "source" "$config_file")
+        local source_git=$(get_recipe_value "$recipe" "source_git" "$config_file")
         local branch=$(get_recipe_value "$recipe" "branch" "$config_file")
         local webroot=$(get_recipe_value "$recipe" "webroot" "$config_file")
 
-        if [ -z "$source" ]; then
-            print_error "Recipe '$recipe': Missing required field 'source'"
+        # Accept either source or source_git
+        if [ -z "$source" ] && [ -z "$source_git" ]; then
+            print_error "Recipe '$recipe': Missing required field 'source' or 'source_git'"
             errors=$((errors + 1))
         fi
 
@@ -704,9 +706,10 @@ validate_recipe() {
     elif [ "$recipe_type" == "gitlab" ]; then
         # GitLab required fields - uses Docker, minimal requirements
         local source=$(get_recipe_value "$recipe" "source" "$config_file")
+        local source_git=$(get_recipe_value "$recipe" "source_git" "$config_file")
         # GitLab only needs source (git URL) - everything else has defaults
-        if [ -z "$source" ]; then
-            print_error "Recipe '$recipe': Missing required field 'source'"
+        if [ -z "$source" ] && [ -z "$source_git" ]; then
+            print_error "Recipe '$recipe': Missing required field 'source' or 'source_git'"
             errors=$((errors + 1))
         fi
     elif [ "$recipe_type" == "podcast" ]; then
@@ -723,11 +726,13 @@ validate_recipe() {
     else
         # Drupal required fields
         local source=$(get_recipe_value "$recipe" "source" "$config_file")
+        local source_git=$(get_recipe_value "$recipe" "source_git" "$config_file")
         local profile=$(get_recipe_value "$recipe" "profile" "$config_file")
         local webroot=$(get_recipe_value "$recipe" "webroot" "$config_file")
 
-        if [ -z "$source" ]; then
-            print_error "Recipe '$recipe': Missing required field 'source'"
+        # Accept either source or source_git
+        if [ -z "$source" ] && [ -z "$source_git" ]; then
+            print_error "Recipe '$recipe': Missing required field 'source' or 'source_git'"
             errors=$((errors + 1))
         fi
 

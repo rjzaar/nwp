@@ -4,6 +4,95 @@ All notable changes to the NWP (Narrow Way Project) are documented here, organiz
 
 ---
 
+## [v0.13.0] - 2026-01-07
+
+### Frontend Build Tool Management
+
+**New Feature:** Unified frontend tooling system supporting multiple build tools.
+
+**New Command: `pl theme`**
+```bash
+pl theme setup <sitename>     # Install Node.js dependencies
+pl theme watch <sitename>     # Start dev mode with live reload
+pl theme build <sitename>     # Production build (minified)
+pl theme lint <sitename>      # Run ESLint/Stylelint
+pl theme info <sitename>      # Show build tool info
+pl theme list <sitename>      # List all themes
+```
+
+**Supported Build Tools:**
+| Tool | Detection | Used By |
+|------|-----------|---------|
+| Gulp | `gulpfile.js` | OpenSocial, legacy Drupal |
+| Grunt | `Gruntfile.js` | Vortex, Drupal standard |
+| Webpack | `webpack.config.js` | Varbase, modern Drupal |
+| Vite | `vite.config.js` | Greenfield projects |
+
+**Features:**
+- Auto-detection of build tool from project files
+- Auto-detection of package manager (npm/yarn/pnpm) from lock files
+- Auto-detection of Node version from .nvmrc or package.json
+- Auto-configuration of browser-sync for DDEV URLs
+- Per-site configuration override in cnwp.yml
+
+**New Files:**
+- `lib/frontend.sh` - Core detection and configuration functions
+- `lib/frontend/gulp.sh` - Gulp-specific commands with browser-sync
+- `lib/frontend/grunt.sh` - Grunt-specific commands
+- `lib/frontend/webpack.sh` - Webpack-specific commands
+- `lib/frontend/vite.sh` - Vite-specific commands
+- `scripts/commands/theme.sh` - Unified `pl theme` command
+
+### CLI Registration System
+
+**New Feature:** Support for multiple NWP installations with unique command names.
+
+When you have multiple NWP installations, each can register its own CLI command:
+- First installation: `pl`
+- Second installation: `pl1`
+- Third installation: `pl2`
+- Or custom names: `nwp`, `dev`, etc.
+
+**Features:**
+- Automatic detection of existing `pl` commands
+- Suggests next available name (pl1, pl2, etc.)
+- Editable in setup.sh TUI (press 'e' on NWP CLI Command)
+- Symlinks stored in `/usr/local/bin/`
+- Command name stored in `cnwp.yml` settings
+
+**New File:** `lib/cli-register.sh` with functions:
+- `register_cli_command` - Creates symlink, stores in config
+- `unregister_cli_command` - Removes symlink on uninstall
+- `get_cli_command` - Returns current command name
+- `find_available_cli_name` - Finds next available name
+
+### Status TUI Improvements
+
+- **Ghost DDEV site detection:** Finds DDEV containers without matching cnwp.yml entries
+- **Wrap-around navigation:** Arrow keys wrap from last to first site and vice versa
+- **Delete action for ghost sites:** Can delete orphaned DDEV sites from status TUI
+- **Improved site display:** Better status indicators and formatting
+
+### Setup TUI Improvements
+
+- **Editable configuration fields:** Press 'e' to edit values like CLI command name
+- **Page navigation:** '<' and '>' to navigate between component pages
+- **Component descriptions:** Press 'd' to view detailed component info
+- **ESC/q to cancel edit:** Instant cancel when editing fields
+
+### Recipe Validation
+
+- **source_git support:** Recipes can now use `source_git` as an alternative to `source`
+- Allows git URL for project source instead of Composer package
+
+### Bug Fixes
+
+- Fixed delete.sh path resolution (PROJECT_ROOT instead of SCRIPT_DIR)
+- Fixed status.sh path resolution for config and backup directories
+- Fixed pl status command to use status.sh TUI instead of inline display
+
+---
+
 ## [v0.12.0] - 2026-01-05 (reorg branch)
 
 ### Project Structure Reorganization
@@ -905,6 +994,8 @@ modules:
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v0.13.0 | 2026-01-07 | Frontend tooling (pl theme), CLI registration system, status/setup TUI improvements |
+| v0.12.0 | 2026-01-05 | Project structure reorganization, sites directory, script symlinks |
 | v0.11.0 | 2026-01-05 | Complete roadmap implementation (Phases 1-9), CI/CD, monitoring, advanced deployment |
 | v0.10.0 | 2026-01-05 | Enhanced dev2stg.sh with TUI, testing framework, documentation consolidation |
 | v0.9 | 2026-01-01 | Modular install.sh architecture with lazy loading |

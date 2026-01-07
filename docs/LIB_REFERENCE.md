@@ -23,6 +23,9 @@ API documentation for the NWP bash library functions.
 13. [Testing Library (testing.sh)](#testing-library-testingsh)
 14. [Preflight Library (preflight.sh)](#preflight-library-preflightsh)
 15. [Dev2Stg TUI Library (dev2stg-tui.sh)](#dev2stg-tui-library-dev2stg-tuish)
+16. [CLI Registration Library (cli-register.sh)](#cli-registration-library-cli-registersh)
+17. [Frontend Library (frontend.sh)](#frontend-library-frontendsh)
+18. [Frontend Tool Libraries](#frontend-tool-libraries)
 
 ---
 
@@ -1090,6 +1093,252 @@ After running the TUI, these variables are set:
 ```bash
 TUI_DB_SOURCE       # "auto", "production", "backup:/path", "development", "url:..."
 TUI_TEST_SELECTION  # "quick", "essential", "full", "skip", or comma-separated types
+```
+
+---
+
+# CLI Registration Library (cli-register.sh)
+
+Manages NWP CLI command registration for multiple installations.
+
+## Functions
+
+### register_cli_command
+
+Registers or updates a CLI command symlink.
+
+```bash
+source lib/cli-register.sh
+
+# Register with auto-detected name (pl, pl1, pl2, etc.)
+register_cli_command "/home/user/nwp"
+
+# Register with preferred name
+register_cli_command "/home/user/nwp" "mypl"
+```
+
+### unregister_cli_command
+
+Removes a CLI command registration.
+
+```bash
+unregister_cli_command "/home/user/nwp"
+```
+
+### get_cli_command
+
+Gets the current CLI command for an installation.
+
+```bash
+cmd=$(get_cli_command "/home/user/nwp")
+echo "Current command: $cmd"  # e.g., "pl" or "pl1"
+```
+
+### find_available_cli_name
+
+Finds an available CLI command name.
+
+```bash
+# Find next available (pl, pl1, pl2, etc.)
+name=$(find_available_cli_name "pl")
+
+# Returns "pl" if available, or "pl1", "pl2", etc.
+```
+
+---
+
+# Frontend Library (frontend.sh)
+
+Core frontend build tool detection and configuration.
+
+## Functions
+
+### find_theme_dir
+
+Finds the theme directory for a site.
+
+```bash
+theme_dir=$(find_theme_dir "mysite")
+echo "Theme: $theme_dir"
+```
+
+### detect_frontend_tool
+
+Detects the frontend build tool from config files.
+
+```bash
+tool=$(detect_frontend_tool "/path/to/theme")
+# Returns: gulp, grunt, webpack, vite, or none
+```
+
+Detection priority:
+1. Site config in cnwp.yml (`frontend.build_tool`)
+2. Auto-detect from files (gulpfile.js, Gruntfile.js, etc.)
+3. Recipe default
+4. Global default
+
+### detect_package_manager
+
+Detects the package manager from lock files.
+
+```bash
+pm=$(detect_package_manager "/path/to/theme")
+# Returns: yarn, npm, or pnpm
+```
+
+Detection order:
+1. `yarn.lock` → yarn
+2. `package-lock.json` → npm
+3. `pnpm-lock.yaml` → pnpm
+
+### get_ddev_url
+
+Gets the DDEV URL for a site.
+
+```bash
+url=$(get_ddev_url "mysite")
+echo "URL: $url"  # e.g., https://mysite.ddev.site
+```
+
+### get_theme_node_version
+
+Gets the required Node.js version for a theme.
+
+```bash
+version=$(get_theme_node_version "/path/to/theme")
+echo "Node: $version"  # e.g., 20
+```
+
+### install_theme_deps
+
+Installs Node.js dependencies for a theme.
+
+```bash
+install_theme_deps "/path/to/theme" "yarn"
+```
+
+### list_theme_dirs
+
+Lists all theme directories for a site.
+
+```bash
+list_theme_dirs "mysite" | while read dir; do
+    echo "Found theme: $dir"
+done
+```
+
+---
+
+# Frontend Tool Libraries
+
+Tool-specific implementations in `lib/frontend/`.
+
+## Gulp Library (lib/frontend/gulp.sh)
+
+### gulp_watch
+
+Starts Gulp watch mode with browser-sync.
+
+```bash
+source lib/frontend/gulp.sh
+gulp_watch "mysite" "/path/to/theme"
+```
+
+### gulp_build
+
+Runs production build.
+
+```bash
+gulp_build "mysite" "/path/to/theme"
+```
+
+### gulp_task
+
+Runs a specific Gulp task.
+
+```bash
+gulp_task "mysite" "lint" "/path/to/theme"
+```
+
+### configure_browsersync_url
+
+Configures browser-sync with DDEV URL.
+
+```bash
+configure_browsersync_url "/path/to/theme" "https://mysite.ddev.site"
+```
+
+## Grunt Library (lib/frontend/grunt.sh)
+
+### grunt_watch
+
+Starts Grunt watch mode.
+
+```bash
+source lib/frontend/grunt.sh
+grunt_watch "mysite" "/path/to/theme"
+```
+
+### grunt_build
+
+Runs production build.
+
+```bash
+grunt_build "mysite" "/path/to/theme"
+```
+
+### grunt_lint
+
+Runs Grunt linting.
+
+```bash
+grunt_lint "mysite" "/path/to/theme"
+```
+
+## Webpack Library (lib/frontend/webpack.sh)
+
+### webpack_watch
+
+Starts Webpack dev server.
+
+```bash
+source lib/frontend/webpack.sh
+webpack_watch "mysite" "/path/to/theme"
+```
+
+### webpack_build
+
+Runs production build.
+
+```bash
+webpack_build "mysite" "/path/to/theme"
+```
+
+### webpack_dev
+
+Runs development build.
+
+```bash
+webpack_dev "mysite" "/path/to/theme"
+```
+
+## Vite Library (lib/frontend/vite.sh)
+
+### vite_watch
+
+Starts Vite dev server.
+
+```bash
+source lib/frontend/vite.sh
+vite_watch "mysite" "/path/to/theme"
+```
+
+### vite_build
+
+Runs production build.
+
+```bash
+vite_build "mysite" "/path/to/theme"
 ```
 
 ---

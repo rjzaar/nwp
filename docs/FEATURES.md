@@ -2,7 +2,7 @@
 
 A complete reference of all NWP features organized by category.
 
-**Version:** 1.0 | **Last Updated:** January 2026
+**Version:** 1.1 | **Last Updated:** January 2026
 
 ---
 
@@ -12,10 +12,11 @@ A complete reference of all NWP features organized by category.
 2. [Backup & Restore](#2-backup--restore)
 3. [Deployment Pipeline](#3-deployment-pipeline)
 4. [Development Tools](#4-development-tools)
-5. [Infrastructure Automation](#5-infrastructure-automation)
-6. [Testing & Verification](#6-testing--verification)
-7. [Configuration System](#7-configuration-system)
-8. [Security Features](#8-security-features)
+5. [Frontend Theming](#5-frontend-theming)
+6. [Infrastructure Automation](#6-infrastructure-automation)
+7. [Testing & Verification](#7-testing--verification)
+8. [Configuration System](#8-configuration-system)
+9. [Security Features](#9-security-features)
 
 ---
 
@@ -237,7 +238,69 @@ Switches between development and production configurations.
 
 ---
 
-# 5. Infrastructure Automation
+# 5. Frontend Theming
+
+## theme.sh - Frontend Build Tool Management
+
+Unified frontend tooling supporting Gulp, Grunt, Webpack, and Vite.
+
+| Subcommand | Description |
+|------------|-------------|
+| `setup <sitename>` | Install Node.js dependencies |
+| `watch <sitename>` | Start dev mode with live reload |
+| `build <sitename>` | Production build (minified) |
+| `dev <sitename>` | Development build (one-time) |
+| `lint <sitename>` | Run ESLint/Stylelint |
+| `info <sitename>` | Show build tool info |
+| `list <sitename>` | List all themes |
+
+| Option | Description |
+|--------|-------------|
+| `-t, --theme <path>` | Specify theme directory |
+| `-d, --debug` | Enable debug output |
+
+**Examples:**
+```bash
+pl theme setup mysite              # Install dependencies
+pl theme watch mysite              # Start gulp/webpack watch
+pl theme build mysite              # Production build
+pl theme info mysite               # Show detected build tool
+pl theme watch mysite -t /path     # Use specific theme path
+```
+
+## Auto-Detection
+
+The build tool is automatically detected from project files:
+
+| File | Detected Tool |
+|------|--------------|
+| `gulpfile.js` | Gulp (OpenSocial, legacy Drupal) |
+| `Gruntfile.js` | Grunt (Vortex, Drupal standard) |
+| `webpack.config.js` | Webpack (Varbase, modern Drupal) |
+| `vite.config.js` | Vite (greenfield projects) |
+
+Package manager is detected from lock files:
+- `yarn.lock` → yarn
+- `package-lock.json` → npm
+- `pnpm-lock.yaml` → pnpm
+
+## Per-Site Configuration
+
+Override auto-detection in `cnwp.yml`:
+
+```yaml
+sites:
+  mysite:
+    recipe: os
+    frontend:
+      build_tool: gulp
+      package_manager: yarn
+      node_version: "20"
+```
+
+---
+
+# 6. Infrastructure Automation
 
 ## setup.sh - Install Prerequisites
 
@@ -283,7 +346,7 @@ Linode server management scripts.
 
 ---
 
-# 6. Testing & Verification
+# 7. Testing & Verification
 
 ## testos.sh - OpenSocial Testing
 
@@ -335,7 +398,7 @@ Tracks which features have been manually verified.
 
 ---
 
-# 7. Configuration System
+# 8. Configuration System
 
 ## cnwp.yml - Main Configuration
 
@@ -387,7 +450,7 @@ sites:
 
 ---
 
-# 8. Security Features
+# 9. Security Features
 
 ## Two-Tier Secrets Architecture
 
@@ -436,7 +499,22 @@ If CLI is installed, use the `pl` command from anywhere:
 | `pl delete mysite` | `./delete.sh mysite` |
 | `pl dev2stg mysite` | `./dev2stg.sh mysite` |
 | `pl test mysite` | `./testos.sh -a mysite` |
+| `pl theme watch mysite` | `./theme.sh watch mysite` |
+| `pl status` | `./status.sh` |
 | `pl --list` | `./install.sh --list` |
+
+## Multiple NWP Installations
+
+If you have multiple NWP installations, each registers a unique command:
+
+| Installation | Command |
+|--------------|---------|
+| First (default) | `pl` |
+| Second | `pl1` |
+| Third | `pl2` |
+| Custom | `nwp`, `dev`, etc. |
+
+Set during `./setup.sh` - editable with 'e' key on "NWP CLI Command" row.
 
 ---
 

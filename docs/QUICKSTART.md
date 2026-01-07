@@ -79,6 +79,22 @@ pl testos -p mysite    # PHPStan
 pl testos -c mysite    # CodeSniffer
 ```
 
+### Frontend Theming
+
+```bash
+# Install theme dependencies
+pl theme setup mysite
+
+# Start watch mode with live reload
+pl theme watch mysite
+
+# Production build
+pl theme build mysite
+
+# Show detected build tool
+pl theme info mysite
+```
+
 ## CLI Reference
 
 The `pl` CLI is installed by default during setup:
@@ -91,6 +107,7 @@ The `pl` CLI is installed by default during setup:
 | `pl copy from to` | Copy site |
 | `pl delete sitename` | Delete site |
 | `pl status` | Check all sites |
+| `pl theme <cmd> sitename` | Frontend build tooling |
 | `pl --list` | List available recipes |
 | `pl --help` | Show all commands |
 

@@ -284,6 +284,40 @@ settings:
   cliprompt: pl  # Command name (default: pl)
 ```
 
+### CLI Registration System
+
+NWP uses a symlink-based CLI registration system that:
+- Creates commands in `/usr/local/bin/` for global access
+- Automatically detects conflicts with existing commands
+- Supports multiple NWP installations with unique names
+
+During `./setup.sh`, the TUI shows the "NWP CLI Command" row where you can:
+- Press **Enter** to accept the suggested command name
+- Press **e** to edit and choose a custom name
+- The system suggests `pl`, then `pl1`, `pl2`, etc. if conflicts exist
+
+### Multiple NWP Installations
+
+If you have multiple NWP installations (e.g., different projects), each gets a unique CLI command:
+
+| Installation | Command |
+|--------------|---------|
+| First (default) | `pl` |
+| Second | `pl1` |
+| Third | `pl2` |
+| Custom | Any name you choose |
+
+**Checking which installation a command points to:**
+```bash
+readlink /usr/local/bin/pl
+# Output: /home/user/nwp/pl
+```
+
+**Changing the command name:**
+1. Run `./setup.sh` from the NWP installation
+2. Navigate to "NWP CLI Command"
+3. Press 'e' to edit and enter a new name
+
 ### Using the CLI
 
 Once installed, use the CLI from anywhere:
@@ -297,6 +331,9 @@ pl install d
 
 # Backup a site
 pl backup mysite
+
+# Frontend theming
+pl theme watch mysite
 
 # Show all available commands
 pl
@@ -312,6 +349,8 @@ pl
 | `pl copy <from> <to>` | copy.sh | Copy a site |
 | `pl delete <site>` | delete.sh | Delete a site |
 | `pl dev2stg <dev>` | dev2stg.sh | Copy dev to staging |
+| `pl status` | status.sh | Show site status |
+| `pl theme <cmd> <site>` | theme.sh | Frontend build tooling |
 | `pl setup` | setup.sh | Run prerequisites check |
 | `pl test-nwp` | test-nwp.sh | Run tests |
 

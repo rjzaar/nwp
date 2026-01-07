@@ -109,10 +109,24 @@ pl backup mysite       # Backup a site
 pl restore mysite      # Restore from backup
 pl copy mysite newsite # Copy a site
 pl status              # Check all sites
+pl theme watch mysite  # Start frontend dev server
 pl --help              # Show all commands
 ```
 
 The `pl` command works from any directory and provides tab completion for commands.
+
+### Multiple NWP Installations
+
+If you have multiple NWP installations (e.g., different projects), each registers a unique CLI command:
+
+| Installation | Command |
+|--------------|---------|
+| First (default) | `pl` |
+| Second | `pl1` |
+| Third | `pl2` |
+| Custom | Any name you choose |
+
+During `./setup.sh`, you can customize the CLI command name in the TUI using the 'e' key on the "NWP CLI Command" row.
 
 ## Security Architecture Details
 
@@ -307,6 +321,7 @@ NWP includes a comprehensive set of management scripts for working with your sit
 | `migrate-secrets.sh` | Two-tier secrets | Migrate to infrastructure/data secrets split |
 | `verify.sh` | Feature verification | Track which features need manual re-verification |
 | `report.sh` | Error reporting | Wrapper to report errors to GitLab with captured output |
+| `theme.sh` | Frontend tooling | Unified frontend build tool management (Gulp, Grunt, Webpack, Vite) |
 
 ### Notification Scripts
 
@@ -432,6 +447,12 @@ The interactive `./setup.sh` also includes a "Script Symlinks" component for bac
 
 # Production status dashboard
 ./status.sh production         # Show all production sites with status
+
+# Frontend theming
+pl theme setup mysite          # Install Node.js dependencies
+pl theme watch mysite          # Start watch mode with live reload
+pl theme build mysite          # Production build
+pl theme info mysite           # Show detected build tool info
 
 # Send notifications
 ./scripts/notify.sh --event deploy_success --site mysite --url https://mysite.com
@@ -1304,6 +1325,7 @@ nwp/
 │   │   ├── verify.sh                   # Verification tracking
 │   │   ├── dev2stg.sh                  # Dev to staging
 │   │   ├── stg2prod.sh                 # Staging to production
+│   │   ├── theme.sh                    # Frontend build tooling
 │   │   └── ...                         # All other command scripts
 │   ├── ci/                             # CI/CD helper scripts
 │   │   ├── fetch-db.sh                 # Fetch database for CI
@@ -1350,7 +1372,14 @@ nwp/
 │   ├── database-router.sh              # Database routing
 │   ├── testing.sh                      # Testing framework
 │   ├── preflight.sh                    # Preflight checks
-│   └── cloudflare.sh                   # Cloudflare API
+│   ├── cloudflare.sh                   # Cloudflare API
+│   ├── cli-register.sh                 # CLI command registration
+│   ├── frontend.sh                     # Frontend build tool detection
+│   └── frontend/                       # Frontend tool implementations
+│       ├── gulp.sh                     # Gulp support
+│       ├── grunt.sh                    # Grunt support
+│       ├── webpack.sh                  # Webpack support
+│       └── vite.sh                     # Vite support
 │
 ├── sitebackups/          # Backup storage (auto-created, gitignored)
 └── sites/                # Installed project directories

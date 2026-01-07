@@ -227,6 +227,7 @@ ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
     -y, --yes               Skip confirmation prompts
+    -v, --verbose           Show detailed rsync output
     -s N, --step=N          Resume from step N
     --dry-run               Show what would be done without making changes
 
@@ -495,7 +496,13 @@ sync_files() {
         ssh_opts="ssh -i $SSH_KEY -p $SSH_PORT"
     fi
 
-    local rsync_cmd="rsync -avz --delete -e \"$ssh_opts\" ${excludes[@]} $PROJECT_ROOT/sites/$stg_site/ $SSH_USER@$SSH_HOST:$PROD_PATH/"
+    # Rsync (quiet by default, verbose with -v flag)
+    local rsync_opts="-az"
+    if [ "${VERBOSE:-false}" == "true" ]; then
+        rsync_opts="-avz"
+    fi
+
+    local rsync_cmd="rsync $rsync_opts --delete -e \"$ssh_opts\" ${excludes[@]} $PROJECT_ROOT/sites/$stg_site/ $SSH_USER@$SSH_HOST:$PROD_PATH/"
 
     ocmsg "Rsync command: $rsync_cmd"
 
@@ -773,14 +780,15 @@ main() {
     local DEBUG=false
     local AUTO_YES=false
     local DRY_RUN=false
+    local VERBOSE=false
     local START_STEP=1
     local SITENAME=""
 
     # Export for use in functions
-    export DEBUG AUTO_YES DRY_RUN
+    export DEBUG AUTO_YES DRY_RUN VERBOSE
 
-    local OPTIONS=hdys:
-    local LONGOPTS=help,debug,yes,step:,dry-run
+    local OPTIONS=hdyvs:
+    local LONGOPTS=help,debug,yes,verbose,step:,dry-run
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -801,6 +809,10 @@ main() {
                 ;;
             -y|--yes)
                 AUTO_YES=true
+                shift
+                ;;
+            -v|--verbose)
+                VERBOSE=true
                 shift
                 ;;
             --dry-run)

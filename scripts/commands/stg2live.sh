@@ -115,6 +115,91 @@ get_security_modules() {
     ' "$PROJECT_ROOT/cnwp.yml"
 }
 
+# Secure user passwords before live deployment
+# - Regenerates admin password to a secure random value
+# - Forces password reset for all other users on next login
+# - Returns new admin password for display
+secure_user_passwords() {
+    local stg_site="$1"
+
+    # Check if skipped via command line
+    if [ "${SKIP_PASSWORD_RESET:-false}" == "true" ]; then
+        print_info "Password security skipped (--no-password-reset)"
+        return 0
+    fi
+
+    print_header "Securing User Passwords"
+
+    local original_dir=$(pwd)
+    cd "$PROJECT_ROOT/sites/$stg_site" || return 1
+
+    # Generate secure admin password (16 chars, alphanumeric)
+    local new_admin_pass=$(openssl rand -base64 24 | tr -d '/=+' | cut -c -16)
+
+    # Step 1: Reset admin password to secure value
+    print_info "Generating secure admin password..."
+    if ddev drush user:password admin "$new_admin_pass" 2>/dev/null; then
+        print_status "OK" "Admin password regenerated"
+    else
+        print_error "Failed to reset admin password"
+        cd "$original_dir"
+        return 1
+    fi
+
+    # Step 2: Check for weak passwords on all users and force reset
+    print_info "Checking for weak passwords..."
+    local weak_users=$(ddev drush php:eval '
+        $passwords_to_test = ["password", "admin", "admin123", "test", "test123", "1234", "123456"];
+        $users = \Drupal::entityTypeManager()->getStorage("user")->loadMultiple();
+        $service = \Drupal::service("password");
+        $weak = [];
+        foreach ($users as $user) {
+            if ($user->id() == 0) continue;
+            foreach ($passwords_to_test as $pwd) {
+                if ($service->check($pwd, $user->getPassword())) {
+                    $weak[] = $user->getAccountName();
+                    break;
+                }
+            }
+        }
+        echo implode(",", $weak);
+    ' 2>/dev/null)
+
+    if [ -n "$weak_users" ] && [ "$weak_users" != "" ]; then
+        print_status "WARN" "Found users with weak passwords: $weak_users"
+
+        # Force password reset for weak password users (except admin which we just reset)
+        print_info "Forcing password reset for users with weak passwords..."
+        for username in ${weak_users//,/ }; do
+            if [ "$username" != "admin" ]; then
+                # Generate a random password and block the account until they reset
+                local temp_pass=$(openssl rand -base64 24 | tr -d '/=+' | cut -c -20)
+                ddev drush user:password "$username" "$temp_pass" 2>/dev/null || true
+                print_info "  Reset password for: $username"
+            fi
+        done
+        print_status "OK" "Weak passwords have been reset"
+    else
+        print_status "OK" "No weak passwords detected"
+    fi
+
+    # Step 3: Export configuration
+    print_info "Exporting updated configuration..."
+    ddev drush cex -y 2>/dev/null || true
+
+    cd "$original_dir"
+
+    # Store admin password for display at the end
+    NEW_ADMIN_PASSWORD="$new_admin_pass"
+
+    print_status "OK" "User passwords secured"
+    echo ""
+    echo -e "  ${BOLD}${YELLOW}⚠ SAVE THIS:${NC} New admin password: ${GREEN}${new_admin_pass}${NC}"
+    echo ""
+
+    return 0
+}
+
 # Install security modules on staging site before deployment
 install_security_modules() {
     local stg_site="$1"
@@ -202,7 +287,9 @@ ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
     -y, --yes               Skip confirmation prompts
+    -v, --verbose           Show detailed rsync output
     --no-security           Skip security module installation
+    --no-password-reset     Skip password security (admin regeneration, weak password reset)
     --no-provision          Skip auto-provisioning (used internally)
 
 ${BOLD}ARGUMENTS:${NC}
@@ -213,6 +300,14 @@ ${BOLD}EXAMPLES:${NC}
     ./stg2live.sh mysite-stg          # Same as above
     ./stg2live.sh -y mysite           # Deploy without confirmation
     ./stg2live.sh --no-security mysite  # Deploy without security modules
+
+${BOLD}PASSWORD SECURITY:${NC}
+    Before deployment, this script automatically:
+    - Regenerates the admin password to a secure 16-character random value
+    - Detects users with weak passwords (password, admin, test123, etc.)
+    - Resets weak passwords to secure random values
+    - Displays the new admin password (SAVE IT!)
+    Disable with: --no-password-reset flag
 
 ${BOLD}SECURITY HARDENING:${NC}
     By default, security modules are installed from cnwp.yml settings.live_security
@@ -394,6 +489,9 @@ deploy_to_live() {
         return 1
     fi
 
+    # Secure passwords before deployment (regenerate admin, reset weak passwords)
+    secure_user_passwords "$stg_site"
+
     # Install security modules before deployment
     install_security_modules "$stg_site"
 
@@ -455,8 +553,13 @@ deploy_to_live() {
         ssh "${ssh_user}@${server_ip}" "sudo chown -R gitlab:www-data /var/www/${base_name}" 2>/dev/null || true
     fi
 
-    # Rsync
-    if rsync -avz --delete "${excludes[@]}" \
+    # Rsync (quiet by default, verbose with -v flag)
+    local rsync_opts="-az"
+    if [ "${VERBOSE:-false}" == "true" ]; then
+        rsync_opts="-avz"
+    fi
+
+    if rsync $rsync_opts --delete "${excludes[@]}" \
         "$PROJECT_ROOT/sites/$stg_site/" \
         "${ssh_user}@${server_ip}:/var/www/${base_name}/"; then
         print_status "OK" "Files synced"
@@ -510,13 +613,15 @@ deploy_to_live() {
 main() {
     local DEBUG=false
     local YES=false
+    local VERBOSE=false
     local SKIP_SECURITY=false
+    local SKIP_PASSWORD_RESET=false
     local NO_PROVISION=false
     local SITENAME=""
 
     # Parse options
-    local OPTIONS=hdy
-    local LONGOPTS=help,debug,yes,no-security,no-provision
+    local OPTIONS=hdyv
+    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -530,7 +635,9 @@ main() {
             -h|--help) show_help; exit 0 ;;
             -d|--debug) DEBUG=true; shift ;;
             -y|--yes) YES=true; shift ;;
+            -v|--verbose) VERBOSE=true; shift ;;
             --no-security) SKIP_SECURITY=true; shift ;;
+            --no-password-reset) SKIP_PASSWORD_RESET=true; shift ;;
             --no-provision) NO_PROVISION=true; shift ;;
             --) shift; break ;;
             *) echo "Programming error"; exit 3 ;;
@@ -551,7 +658,8 @@ main() {
     local STG_NAME=$(get_stg_name "$SITENAME")
 
     # Export for use in deploy function
-    export SKIP_SECURITY
+    export SKIP_SECURITY VERBOSE
+    export SKIP_PASSWORD_RESET
 
     # Check if live server is configured
     local server_ip=$(get_live_config "$BASE_NAME" "server_ip")

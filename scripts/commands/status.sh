@@ -929,6 +929,7 @@ delete_site() {
     local force="${3:-false}"
 
     local directory=$(get_site_field "$site" "directory" "$config_file")
+    local delete_success=true
 
     if [ -z "$directory" ]; then
         print_error "Site '$site' not found in configuration"
@@ -967,33 +968,51 @@ delete_site() {
     echo ""
     print_info "Deleting site '$site'..."
 
-    # Stop DDEV if running
+    # Stop DDEV if running (trap errors to ensure cleanup continues)
     if [ -d "$directory/.ddev" ]; then
         print_status "INFO" "Stopping DDEV..."
-        (cd "$directory" && ddev stop 2>/dev/null) || true
+        if ! (cd "$directory" && ddev stop 2>/dev/null); then
+            print_status "WARN" "DDEV stop failed (continuing anyway)"
+        fi
         print_status "INFO" "Removing DDEV project..."
-        (cd "$directory" && ddev delete -O -y 2>/dev/null) || true
+        if ! (cd "$directory" && ddev delete -O -y 2>/dev/null); then
+            print_status "WARN" "DDEV delete failed (continuing anyway)"
+        fi
     fi
 
     # Remove directory
     if [ -d "$directory" ]; then
         print_status "INFO" "Removing directory: $directory"
-        rm -rf "$directory"
-        print_status "OK" "Directory removed"
+        if rm -rf "$directory"; then
+            print_status "OK" "Directory removed"
+        else
+            print_status "FAIL" "Failed to remove directory"
+            delete_success=false
+        fi
+    else
+        print_status "INFO" "Directory already removed"
     fi
 
-    # Remove from cnwp.yml using yaml-write if available
+    # Always try to remove from cnwp.yml (critical step)
     if command -v yaml_remove_site &>/dev/null; then
         print_status "INFO" "Removing from cnwp.yml..."
-        yaml_remove_site "$site" "$config_file" 2>/dev/null || true
-        print_status "OK" "Removed from configuration"
+        if yaml_remove_site "$site" "$config_file" 2>/dev/null; then
+            print_status "OK" "Removed from configuration"
+        else
+            print_status "WARN" "Site may not exist in configuration"
+        fi
     else
         print_warning "Cannot remove from cnwp.yml (yaml-write.sh not available)"
         print_info "Manually remove the '$site' entry from cnwp.yml"
+        delete_success=false
     fi
 
     echo ""
-    print_status "OK" "Site '$site' has been deleted"
+    if [ "$delete_success" = true ]; then
+        print_status "OK" "Site '$site' has been deleted"
+    else
+        print_status "WARN" "Site '$site' deleted with warnings"
+    fi
     echo ""
 }
 

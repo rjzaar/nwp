@@ -77,7 +77,7 @@ safe_site_status() {
         return 1
     fi
 
-    local site_dir="$SCRIPT_DIR/$site"
+    local site_dir="$PROJECT_ROOT/$site"
 
     if [ ! -d "$site_dir" ]; then
         echo "Site not found: $site"
@@ -116,7 +116,7 @@ safe_db_status() {
         return 1
     fi
 
-    local site_dir="$SCRIPT_DIR/$site"
+    local site_dir="$PROJECT_ROOT/$site"
 
     if [ ! -d "$site_dir" ]; then
         echo "Site not found: $site"
@@ -142,7 +142,7 @@ safe_db_status() {
     echo "Size: ${size_mb}MB"
 
     # Check for recent backups
-    local backup_dir="$SCRIPT_DIR/sitebackups/$site"
+    local backup_dir="$PROJECT_ROOT/sitebackups/$site"
     if [ -d "$backup_dir" ]; then
         local last_backup=$(ls -t "$backup_dir"/*.sql.gz 2>/dev/null | head -1)
         if [ -n "$last_backup" ]; then
@@ -173,7 +173,7 @@ safe_deploy() {
     echo "=== Deploy: $site to $env ==="
 
     # Check prerequisites
-    local site_dir="$SCRIPT_DIR/$site"
+    local site_dir="$PROJECT_ROOT/$site"
     if [ ! -d "$site_dir" ]; then
         echo "Error: Site not found"
         return 1
@@ -213,7 +213,7 @@ safe_backup_list() {
         return 1
     fi
 
-    local backup_dir="$SCRIPT_DIR/sitebackups/$site"
+    local backup_dir="$PROJECT_ROOT/sitebackups/$site"
 
     echo "=== Backups: $site ==="
 
@@ -261,7 +261,7 @@ safe_recent_errors() {
         return 1
     fi
 
-    local site_dir="$SCRIPT_DIR/$site"
+    local site_dir="$PROJECT_ROOT/$site"
 
     if [ ! -d "$site_dir" ]; then
         echo "Site not found: $site"
@@ -303,7 +303,7 @@ safe_security_check() {
         return 1
     fi
 
-    local site_dir="$SCRIPT_DIR/$site"
+    local site_dir="$PROJECT_ROOT/$site"
 
     if [ ! -d "$site_dir" ]; then
         echo "Site not found: $site"

@@ -456,7 +456,7 @@ run_db_menu() {
                 echo ""
                 read -p "Enter backup filename (or press Enter to cancel): " backup_file
                 if [ -n "$backup_file" ]; then
-                    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+                    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
                     local full_path="$script_dir/sitebackups/$sitename/$backup_file"
                     if [ -f "$full_path" ]; then
                         TUI_DB_SOURCE="backup:$full_path"

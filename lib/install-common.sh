@@ -29,7 +29,7 @@ run_interactive_options() {
         # Fall back to checkbox library
         if command -v interactive_select_options &> /dev/null; then
             local environment="dev"
-            [[ "$site_name" =~ _stg$ ]] && environment="stage"
+            [[ "$site_name" =~ -stg$ ]] && environment="stage"
             [[ "$site_name" =~ _live$ ]] && environment="live"
             [[ "$site_name" =~ _prod$ ]] && environment="prod"
             interactive_select_options "$environment" "$recipe_type" ""
@@ -41,7 +41,7 @@ run_interactive_options() {
 
     # Determine environment from site name suffix
     local environment="dev"
-    if [[ "$site_name" =~ _stg$ ]]; then
+    if [[ "$site_name" =~ -stg$ ]]; then
         environment="stage"
     elif [[ "$site_name" =~ _live$ ]]; then
         environment="live"
@@ -413,11 +413,11 @@ apply_gitlab_options() {
 pre_register_live_dns() {
     local site_name="$1"
 
-    # Get base name (strip _stg or _prod suffix)
-    local base_name=$(echo "$site_name" | sed -E 's/_(stg|prod|dev)$//')
+    # Get base name (strip -stg or _prod suffix)
+    local base_name=$(echo "$site_name" | sed -E 's/[-_](stg|prod|dev)$//')
 
     # Get base domain from settings
-    local base_domain=$(get_settings_value "url" "$SCRIPT_DIR/cnwp.yml")
+    local base_domain=$(get_settings_value "url" "$PROJECT_ROOT/cnwp.yml")
     if [ -z "$base_domain" ]; then
         print_info "DNS pre-registration skipped: No 'url' in cnwp.yml settings"
         return 0
@@ -1092,8 +1092,8 @@ generate_live_settings() {
     # Extract domain pattern from site name for trusted hosts
     # If site_dir is "avc", domain pattern would be "avc.nwpcode.org"
     local base_name=$(basename "$site_dir")
-    # Remove _stg, _prod, _live suffixes to get base name
-    base_name=$(echo "$base_name" | sed -E 's/_(stg|prod|live)$//')
+    # Remove -stg, _prod, _live suffixes to get base name
+    base_name=$(echo "$base_name" | sed -E 's/[-_](stg|prod|live)$//')
 
     # Create settings.local.php with heredoc
     cat > "$settings_local" << PRODUCTION_SETTINGS

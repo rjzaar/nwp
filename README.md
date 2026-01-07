@@ -485,11 +485,11 @@ All scripts support combined short flags for efficient usage:
 
 ### Environment Naming Convention
 
-NWP uses postfix naming for different environments:
+NWP uses hyphenated postfix naming for different environments (DDEV hostname compatible):
 
 - **Development**: `sitename` (e.g., `nwp4`)
-- **Staging**: `sitename_stg` (e.g., `nwp4_stg`)
-- **Production**: `sitename_prod` (e.g., `nwp4_prod`)
+- **Staging**: `sitename-stg` (e.g., `nwp4-stg`)
+- **Production**: `sitename-prod` (e.g., `nwp4-prod`)
 
 For detailed documentation on each script, see the [Documentation](#documentation) section.
 
@@ -1401,9 +1401,9 @@ nwp/
     ├── nwp1/             # Installed sites (base from recipe name)
     ├── nwp2/             # Multiple installs get numbered
     ├── avc/              # Custom-named sites
-    ├── avc_stg/          # Staging environment version
-    ├── avc_prod/         # Production environment version
-    └── avc_backup/       # Backup copies
+    ├── avc-stg/          # Staging environment version
+    ├── avc-prod/         # Production environment version
+    └── avc-backup/       # Backup copies
 ```
 
 All site directory contents are automatically gitignored (via `sites/*/` in .gitignore).

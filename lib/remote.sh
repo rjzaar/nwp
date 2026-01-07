@@ -29,7 +29,7 @@ parse_remote_target() {
 get_remote_config() {
     local sitename="$1"
     local environment="$2"
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
 
     if [ ! -f "$cnwp_file" ]; then
         return 1

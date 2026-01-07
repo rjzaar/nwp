@@ -120,7 +120,7 @@ pl test mysite               # Run tests
 | Environment | Pattern | Example |
 |-------------|---------|---------|
 | Development | `sitename` | `mysite` |
-| Staging | `sitename_stg` | `mysite_stg` |
+| Staging | `sitename-stg` | `mysite-stg` |
 | Live | `sitename.domain` | `mysite.nwpcode.org` |
 | Production | Custom domain | `mysite.com` |
 

@@ -147,7 +147,7 @@ check_existing_site() {
 
 # Ensure SSH keys exist
 ensure_ssh_keys() {
-    local keys_dir="$SCRIPT_DIR/keys"
+    local keys_dir="$NWP_ROOT/keys"
     local key_file="$keys_dir/gitlab_linode"
 
     mkdir -p "$keys_dir"
@@ -166,7 +166,7 @@ setup_ssh_config() {
     local server_ip="$1"
     local domain="$2"
     local ssh_user="gitlab"
-    local keys_dir="$SCRIPT_DIR/keys"
+    local keys_dir="$NWP_ROOT/keys"
     local key_file="$keys_dir/gitlab_linode"
 
     print_info "Setting up SSH configuration..."
@@ -255,7 +255,7 @@ create_gitlab_server() {
     local label="gitlab-$(echo "$domain" | cut -d. -f1)"
 
     # Get SSH public key
-    local ssh_pubkey=$(cat "$SCRIPT_DIR/keys/gitlab_linode.pub")
+    local ssh_pubkey=$(cat "$NWP_ROOT/keys/gitlab_linode.pub")
 
     # Generate root password
     local root_pass=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)

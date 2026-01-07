@@ -11,10 +11,11 @@ set -euo pipefail
 
 # Get script directory (from symlink location, not resolved target)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source shared libraries
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/common.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
 
 ################################################################################
 # Helper Functions
@@ -42,7 +43,7 @@ get_live_config() {
             print
             exit
         }
-    ' "$SCRIPT_DIR/cnwp.yml"
+    ' "$PROJECT_ROOT/cnwp.yml"
 }
 
 show_help() {

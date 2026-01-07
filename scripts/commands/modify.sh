@@ -14,32 +14,33 @@ set -euo pipefail
 ################################################################################
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source shared libraries
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/common.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
 
 # Source YAML library
-if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
-    source "$SCRIPT_DIR/lib/yaml-write.sh"
+if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
+    source "$PROJECT_ROOT/lib/yaml-write.sh"
 fi
 
 # Source interactive checkbox library
-if [ -f "$SCRIPT_DIR/lib/checkbox.sh" ]; then
-    source "$SCRIPT_DIR/lib/checkbox.sh"
+if [ -f "$PROJECT_ROOT/lib/checkbox.sh" ]; then
+    source "$PROJECT_ROOT/lib/checkbox.sh"
 fi
 
 # Source install steps tracking
-if [ -f "$SCRIPT_DIR/lib/install-steps.sh" ]; then
-    source "$SCRIPT_DIR/lib/install-steps.sh"
+if [ -f "$PROJECT_ROOT/lib/install-steps.sh" ]; then
+    source "$PROJECT_ROOT/lib/install-steps.sh"
 fi
 
 # Source TUI library (provides terminal control, TUI functions)
-if [ -f "$SCRIPT_DIR/lib/tui.sh" ]; then
-    source "$SCRIPT_DIR/lib/tui.sh"
+if [ -f "$PROJECT_ROOT/lib/tui.sh" ]; then
+    source "$PROJECT_ROOT/lib/tui.sh"
 fi
 
-CONFIG_FILE="${SCRIPT_DIR}/cnwp.yml"
+CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
 
 ################################################################################
 # Installation Status Detection
@@ -290,7 +291,7 @@ build_site_list() {
         local recipe=$(detect_recipe_from_site "$dir")
         # Orphaned sites have no environment in yml, mark as "orphan"
         SITE_DATA+=("${recipe:-?}|orphan|Y|${dir}|orphan")
-    done < <(find_orphaned_sites "$config_file" "$SCRIPT_DIR")
+    done < <(find_orphaned_sites "$config_file" "$PROJECT_ROOT")
 }
 
 draw_site_selection() {
@@ -875,7 +876,7 @@ main() {
         done < <(list_sites "$CONFIG_FILE")
 
         # Orphaned sites
-        local orphaned=$(find_orphaned_sites "$CONFIG_FILE" "$SCRIPT_DIR")
+        local orphaned=$(find_orphaned_sites "$CONFIG_FILE" "$PROJECT_ROOT")
         if [ -n "$orphaned" ]; then
             printf "\n  ${YELLOW}Orphaned sites (not in cnwp.yml):${NC}\n"
             while IFS=':' read -r name dir; do
@@ -901,7 +902,7 @@ main() {
 
     if [ -z "$directory" ]; then
         # Check if it's an orphaned site
-        local orphan_dir="$SCRIPT_DIR/sites/$site_name"
+        local orphan_dir="$PROJECT_ROOT/sites/$site_name"
         if [ -d "$orphan_dir/.ddev" ]; then
             directory="$orphan_dir"
             recipe=$(detect_recipe_from_site "$directory")

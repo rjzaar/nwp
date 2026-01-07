@@ -16,7 +16,7 @@ The production deployment system supports:
 ## Prerequisites
 
 ### Local Environment
-- ✅ Staging site created and working (e.g., `mysite_stg`)
+- ✅ Staging site created and working (e.g., `mysite-stg`)
 - ✅ DDEV installed and configured
 - ✅ SSH key configured for passwordless access to production server
 
@@ -116,11 +116,11 @@ ssh deploy@203.0.113.10 echo "Connection successful"
 ### Basic Deployment
 
 ```bash
-# Deploy mysite_stg to production
+# Deploy mysite-stg to production
 ./stg2prod.sh mysite
 
 # Or specify staging site directly
-./stg2prod.sh mysite_stg
+./stg2prod.sh mysite-stg
 ```
 
 ### Dry Run (Recommended First Time)
@@ -172,7 +172,7 @@ ssh deploy@203.0.113.10 echo "Connection successful"
 
 ```bash
 # Ensure staging site is up-to-date
-cd mysite_stg
+cd mysite-stg
 ddev start
 ddev drush cst   # Check status
 ddev drush cex -y  # Export config
@@ -223,7 +223,7 @@ For updates after the initial deployment:
 
 ```bash
 # 1. Update staging
-cd mysite_stg
+cd mysite-stg
 ddev drush cex -y
 
 # 2. Test staging
@@ -356,7 +356,7 @@ composer global require drush/drush
 ```bash
 # Manual file sync (one-time or periodic)
 rsync -avz --progress \
-  mysite_stg/html/sites/default/files/ \
+  mysite-stg/html/sites/default/files/ \
   deploy@203.0.113.10:/var/www/mysite/html/sites/default/files/
 ```
 
@@ -494,7 +494,7 @@ gzip /tmp/prod-db.sql
 scp deploy@203.0.113.10:/tmp/prod-db.sql.gz ./
 
 # Import to staging
-cd mysite_stg
+cd mysite-stg
 gunzip -c prod-db.sql.gz | ddev drush sql:cli
 ddev drush cr
 ddev drush cex -y  # Export updated config

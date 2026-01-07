@@ -296,20 +296,20 @@ Checks:
 
 ```bash
 # Create mock production environment
-./copy.sh sitename_stg sitename_prod
+./copy.sh sitename-stg sitename-prod
 
 # Test deployment locally
-./stg2prod.sh -y sitename_stg
+./stg2prod.sh -y sitename-stg
 
 # Test rollback
-./stg2prod.sh --rollback sitename_prod
+./stg2prod.sh --rollback sitename-prod
 ```
 
 ### Dry-Run Mode
 
 ```bash
 # Shows what would happen without executing
-./stg2prod.sh --dry-run sitename_stg
+./stg2prod.sh --dry-run sitename-stg
 ```
 
 Output shows all commands that would be executed.
@@ -336,7 +336,7 @@ Output shows all commands that would be executed.
 
 ```bash
 # Deploy to test production server
-./stg2prod.sh sitename_stg --target=test-prod.example.com
+./stg2prod.sh sitename-stg --target=test-prod.example.com
 
 # Verify deployment
 ssh test-prod "drush status"

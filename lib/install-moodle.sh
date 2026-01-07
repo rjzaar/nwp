@@ -389,7 +389,7 @@ MOODLEDATA_EOF
 
         # Determine environment type from directory suffix
         local environment="development"
-        if [[ "$site_name" =~ _stg$ ]]; then
+        if [[ "$site_name" =~ -stg$ ]]; then
             environment="staging"
         elif [[ "$site_name" =~ _prod$ ]]; then
             environment="production"
@@ -398,18 +398,18 @@ MOODLEDATA_EOF
         fi
 
         # Register the site (Moodle doesn't have install_modules typically)
-        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
             print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
 
             # Update site with selected options
-            update_site_options "$site_name" "$SCRIPT_DIR/cnwp.yml"
+            update_site_options "$site_name" "$PROJECT_ROOT/cnwp.yml"
         else
             # Site already exists or registration failed - not critical
             print_info "Site registration skipped (may already exist)"
 
             # Still try to update options if site exists
-            if yaml_site_exists "$site_name" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
-                update_site_options "$site_name" "$SCRIPT_DIR/cnwp.yml"
+            if yaml_site_exists "$site_name" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
+                update_site_options "$site_name" "$PROJECT_ROOT/cnwp.yml"
             fi
         fi
 

@@ -14,8 +14,9 @@
 # Usage: ./dev2stg.sh [OPTIONS] <sitename>
 ################################################################################
 
-# Get script directory
+# Get script directory and project root
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -25,19 +26,19 @@ START_TIME=$(date +%s)
 ################################################################################
 
 # Core libraries
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/common.sh" 2>/dev/null || true
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh" 2>/dev/null || true
 
 # New enhanced libraries
-source "$SCRIPT_DIR/lib/state.sh"
-source "$SCRIPT_DIR/lib/database-router.sh"
-source "$SCRIPT_DIR/lib/testing.sh"
-source "$SCRIPT_DIR/lib/preflight.sh"
-source "$SCRIPT_DIR/lib/dev2stg-tui.sh"
+source "$PROJECT_ROOT/lib/state.sh"
+source "$PROJECT_ROOT/lib/database-router.sh"
+source "$PROJECT_ROOT/lib/testing.sh"
+source "$PROJECT_ROOT/lib/preflight.sh"
+source "$PROJECT_ROOT/lib/dev2stg-tui.sh"
 
 # YAML library (if available)
-if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
-    source "$SCRIPT_DIR/lib/yaml-write.sh"
+if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
+    source "$PROJECT_ROOT/lib/yaml-write.sh"
 fi
 
 ################################################################################
@@ -142,12 +143,12 @@ get_env_type() {
 
 get_base_name() {
     local site=$1
-    echo "$site" | sed -E 's/_(stg|prod)$//'
+    echo "$site" | sed -E 's/[-_](stg|prod)$//'
 }
 
 get_stg_name() {
     local base=$1
-    echo "${base}_stg"
+    echo "${base}-stg"
 }
 
 get_webroot() {
@@ -168,30 +169,30 @@ create_staging_site() {
     step 1 11 "Creating staging site: $stg_site"
 
     # Create directory
-    if [ -d "sites/$stg_site" ]; then
+    if [ -d "$PROJECT_ROOT/sites/$stg_site" ]; then
         warn "Staging directory already exists"
         return 0
     fi
 
-    task "Copying codebase from sites/$dev_site..."
+    task "Copying codebase from $PROJECT_ROOT/sites/$dev_site..."
     rsync -av --exclude='.ddev' --exclude='vendor' \
           --exclude='node_modules' --exclude='*.sql*' \
           --exclude='private/' \
-          "sites/$dev_site/" "sites/$stg_site/" > /dev/null 2>&1 || {
+          "$PROJECT_ROOT/sites/$dev_site/" "$PROJECT_ROOT/sites/$stg_site/" > /dev/null 2>&1 || {
         fail "Failed to copy codebase"
         return 1
     }
 
     task "Creating DDEV configuration..."
-    mkdir -p "sites/$stg_site/.ddev"
+    mkdir -p "$PROJECT_ROOT/sites/$stg_site/.ddev"
 
     # Copy and modify DDEV config
-    local webroot=$(get_webroot "sites/$dev_site")
+    local webroot=$(get_webroot "$PROJECT_ROOT/sites/$dev_site")
     local dev_name=$(basename "$dev_site")
     local stg_name=$(basename "$stg_site")
 
     # Create new DDEV config
-    cat > "sites/$stg_site/.ddev/config.yaml" << DDEVEOF
+    cat > "$PROJECT_ROOT/sites/$stg_site/.ddev/config.yaml" << DDEVEOF
 name: $stg_name
 type: drupal
 docroot: $webroot
@@ -203,7 +204,7 @@ database:
 DDEVEOF
 
     task "Starting DDEV..."
-    (cd "sites/$stg_site" && ddev start) || {
+    (cd "$PROJECT_ROOT/sites/$stg_site" && ddev start) || {
         fail "Failed to start DDEV"
         return 1
     }
@@ -219,8 +220,8 @@ export_config_dev() {
     step 2 11 "Export configuration from dev"
 
     local original_dir=$(pwd)
-    cd "sites/$dev_site" || {
-        fail "Cannot access dev site: sites/$dev_site"
+    cd "$PROJECT_ROOT/sites/$dev_site" || {
+        fail "Cannot access dev site: $PROJECT_ROOT/sites/$dev_site"
         return 1
     }
 
@@ -242,7 +243,7 @@ sync_files() {
 
     step 3 11 "Sync files from dev to staging"
 
-    local webroot=$(get_webroot "sites/$dev_site")
+    local webroot=$(get_webroot "$PROJECT_ROOT/sites/$dev_site")
 
     task "Syncing files with rsync..."
 
@@ -260,7 +261,7 @@ sync_files() {
         "--exclude=dev/"
     )
 
-    if rsync -av --delete "${excludes[@]}" "sites/$dev_site/" "sites/$stg_site/" > /dev/null 2>&1; then
+    if rsync -av --delete "${excludes[@]}" "$PROJECT_ROOT/sites/$dev_site/" "$PROJECT_ROOT/sites/$stg_site/" > /dev/null 2>&1; then
         pass "Files synced to staging"
     else
         fail "File sync failed"
@@ -301,7 +302,7 @@ run_composer_staging() {
     step 5 11 "Run composer install --no-dev"
 
     local original_dir=$(pwd)
-    cd "sites/$stg_site" || {
+    cd "$PROJECT_ROOT/sites/$stg_site" || {
         fail "Cannot access staging site"
         return 1
     }
@@ -324,7 +325,7 @@ run_db_updates() {
     step 6 11 "Run database updates"
 
     local original_dir=$(pwd)
-    cd "sites/$stg_site" || {
+    cd "$PROJECT_ROOT/sites/$stg_site" || {
         fail "Cannot access staging site"
         return 1
     }
@@ -347,7 +348,7 @@ import_config_staging() {
     step 7 11 "Import configuration (${CONFIG_IMPORT_RETRIES}x retry)"
 
     local original_dir=$(pwd)
-    cd "sites/$stg_site" || {
+    cd "$PROJECT_ROOT/sites/$stg_site" || {
         fail "Cannot access staging site"
         return 1
     }
@@ -379,7 +380,7 @@ clear_cache_staging() {
     task "Clearing cache..."
 
     local original_dir=$(pwd)
-    cd "sites/$stg_site" || return 1
+    cd "$PROJECT_ROOT/sites/$stg_site" || return 1
 
     ddev drush cache:rebuild > /dev/null 2>&1
     pass "Cache cleared"
@@ -405,7 +406,7 @@ enable_prod_mode() {
     else
         task "Disabling dev modules manually..."
         local original_dir=$(pwd)
-        cd "sites/$stg_site" || return 0
+        cd "$PROJECT_ROOT/sites/$stg_site" || return 0
 
         # Disable common dev modules
         for module in devel webprofiler kint stage_file_proxy; do
@@ -455,7 +456,7 @@ display_staging_url() {
     step 10 11 "Deployment complete"
 
     local original_dir=$(pwd)
-    cd "sites/$stg_site" || return 0
+    cd "$PROJECT_ROOT/sites/$stg_site" || return 0
 
     local stg_url=$(ddev describe 2>/dev/null | grep -oP 'https://[^ ,]+' | head -1)
 
@@ -492,7 +493,7 @@ deploy_dev2stg() {
 
     # Determine site names
     local base_name=$(get_base_name "$dev_site")
-    local stg_site="${base_name}_stg"
+    local stg_site="${base_name}-stg"
 
     print_header "NWP Dev to Staging Deployment"
     info "Source: $dev_site (development)"
@@ -510,7 +511,7 @@ deploy_dev2stg() {
     fi
 
     # Check if staging exists
-    if [ ! -d "sites/$stg_site" ]; then
+    if [ ! -d "$PROJECT_ROOT/sites/$stg_site" ]; then
         if [ "$create_stg" = "true" ] || [ "$auto_yes" = "true" ]; then
             info "Staging site does not exist - creating..."
             create_staging_site "$dev_site" "$stg_site" || return 1
@@ -529,9 +530,9 @@ deploy_dev2stg() {
     fi
 
     # Ensure staging DDEV is running
-    if [ -d "sites/$stg_site" ]; then
+    if [ -d "$PROJECT_ROOT/sites/$stg_site" ]; then
         task "Ensuring staging DDEV is running..."
-        (cd "sites/$stg_site" && ddev start > /dev/null 2>&1)
+        (cd "$PROJECT_ROOT/sites/$stg_site" && ddev start > /dev/null 2>&1)
     fi
 
     # Execute deployment steps

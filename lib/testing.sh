@@ -59,7 +59,7 @@ run_tests() {
     local sitename="$1"
     local selection="$2"
     local stop_on_failure="${3:-false}"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     # Resolve selection to test types
     local test_types
@@ -185,8 +185,8 @@ run_tests() {
 # Run PHPUnit tests
 run_phpunit() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/$sitename"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local site_path="$script_dir/sites/$sitename"
 
     cd "$site_path" || return 1
 
@@ -211,8 +211,8 @@ run_phpunit() {
 # Run Behat tests
 run_behat() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/$sitename"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local site_path="$script_dir/sites/$sitename"
 
     cd "$site_path" || return 1
 
@@ -235,8 +235,8 @@ run_behat() {
 # Run PHPStan static analysis
 run_phpstan() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/$sitename"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local site_path="$script_dir/sites/$sitename"
 
     cd "$site_path" || return 1
 
@@ -257,8 +257,8 @@ run_phpstan() {
 # Run PHP CodeSniffer
 run_phpcs() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/$sitename"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local site_path="$script_dir/sites/$sitename"
 
     cd "$site_path" || return 1
 
@@ -283,8 +283,8 @@ run_phpcs() {
 # Run ESLint
 run_eslint() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/$sitename"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local site_path="$script_dir/sites/$sitename"
 
     cd "$site_path" || return 1
 
@@ -326,8 +326,8 @@ run_eslint() {
 # Run Stylelint
 run_stylelint() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/$sitename"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local site_path="$script_dir/sites/$sitename"
 
     cd "$site_path" || return 1
 
@@ -363,8 +363,8 @@ run_stylelint() {
 # Run security checks
 run_security() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/$sitename"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local site_path="$script_dir/sites/$sitename"
 
     cd "$site_path" || return 1
 
@@ -387,8 +387,8 @@ run_security() {
 # Run accessibility checks
 run_accessibility() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/$sitename"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local site_path="$script_dir/sites/$sitename"
 
     cd "$site_path" || return 1
 
@@ -468,8 +468,8 @@ estimate_test_duration() {
 # Usage: check_available_tests "sitename"
 check_available_tests() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/$sitename"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local site_path="$script_dir/sites/$sitename"
     local available=""
 
     cd "$site_path" 2>/dev/null || return 1

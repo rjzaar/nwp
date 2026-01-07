@@ -56,7 +56,7 @@ nwp/avc (GitLab Package)
 ```
 DEV (local: avc)
     ↓ [dev2stg.sh]
-STG (local: avc_stg)
+STG (local: avc-stg)
     ↓ [stg2prod.sh]
 PROD (Linode: avc.nwpcode.org)
 ```
@@ -380,7 +380,7 @@ When run without `-y`, the script presents an interactive terminal UI:
 ║                    dev2stg Deployment Planner                     ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║ Source: avc (development)                                         ║
-║ Target: avc_stg (staging)                                         ║
+║ Target: avc-stg (staging)                                         ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 ━━━ Current State ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

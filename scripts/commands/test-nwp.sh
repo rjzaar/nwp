@@ -286,7 +286,7 @@ print_info "Pre-configuring DDEV hostnames..."
 sudo ddev hostname ${TEST_SITE_PREFIX}.ddev.site 127.0.0.1 2>/dev/null || print_warning "Could not configure hostname (may require manual sudo)"
 sudo ddev hostname ${TEST_SITE_PREFIX}_copy.ddev.site 127.0.0.1 2>/dev/null || true
 sudo ddev hostname ${TEST_SITE_PREFIX}_files.ddev.site 127.0.0.1 2>/dev/null || true
-sudo ddev hostname ${TEST_SITE_PREFIX}_stg.ddev.site 127.0.0.1 2>/dev/null || true
+sudo ddev hostname ${TEST_SITE_PREFIX}-stg.ddev.site 127.0.0.1 2>/dev/null || true
 echo ""
 
 # Test 1: Installation
@@ -481,14 +481,14 @@ print_header "Test 6: Deployment (dev2stg)"
 
 # Expected to fail - dev2stg requires staging site to already exist
 run_test "Deploy to staging" "./dev2stg.sh -y $TEST_SITE_PREFIX" "warn"
-run_test "Staging site exists" "site_exists ${TEST_SITE_PREFIX}_stg" "warn"
-run_test "Staging site is running" "site_is_running ${TEST_SITE_PREFIX}_stg" "warn"
-run_test "Staging site drush works" "drush_works ${TEST_SITE_PREFIX}_stg" "warn"
+run_test "Staging site exists" "site_exists ${TEST_SITE_PREFIX}-stg" "warn"
+run_test "Staging site is running" "site_is_running ${TEST_SITE_PREFIX}-stg" "warn"
+run_test "Staging site drush works" "drush_works ${TEST_SITE_PREFIX}-stg" "warn"
 
 # Verify configuration was imported
-local stg_site_path="sites/${TEST_SITE_PREFIX}_stg"
+local stg_site_path="sites/${TEST_SITE_PREFIX}-stg"
 if [ ! -d "$stg_site_path" ]; then
-    stg_site_path="${TEST_SITE_PREFIX}_stg"
+    stg_site_path="${TEST_SITE_PREFIX}-stg"
 fi
 if cd "$stg_site_path" 2>/dev/null; then
     CONFIG_IMPORT=$(ddev drush config:status 2>/dev/null | grep -c "No differences" || echo "0")
@@ -545,7 +545,7 @@ ALL_TEST_SITES=(
     "sites/$TEST_SITE_PREFIX"
     "sites/${TEST_SITE_PREFIX}_copy"
     "sites/${TEST_SITE_PREFIX}_files"
-    "sites/${TEST_SITE_PREFIX}_stg"
+    "sites/${TEST_SITE_PREFIX}-stg"
 )
 
 for site in "${ALL_TEST_SITES[@]}"; do

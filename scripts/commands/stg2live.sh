@@ -18,10 +18,11 @@ set -euo pipefail
 
 # Get script directory (from symlink location, not resolved target)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source shared libraries
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/common.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -30,17 +31,17 @@ START_TIME=$(date +%s)
 # Helper Functions
 ################################################################################
 
-# Get base name (remove _stg or _prod suffix)
+# Get base name (remove -stg or -prod suffix, support legacy _stg/_prod during migration)
 get_base_name() {
     local site=$1
-    echo "$site" | sed -E 's/_(stg|prod)$//'
+    echo "$site" | sed -E 's/[-_](stg|prod)$//'
 }
 
 # Get staging name
 get_stg_name() {
     local site=$1
     local base=$(get_base_name "$site")
-    echo "${base}_stg"
+    echo "${base}-stg"
 }
 
 # Get base domain from cnwp.yml settings.url
@@ -56,7 +57,7 @@ get_base_domain() {
             if (length($0) > 0) print
             exit
         }
-    ' "$SCRIPT_DIR/cnwp.yml"
+    ' "$PROJECT_ROOT/cnwp.yml"
 }
 
 # Get live server config from cnwp.yml
@@ -77,7 +78,7 @@ get_live_config() {
             print
             exit
         }
-    ' "$SCRIPT_DIR/cnwp.yml"
+    ' "$PROJECT_ROOT/cnwp.yml"
 }
 
 # Check if live security is enabled
@@ -93,7 +94,7 @@ is_live_security_enabled() {
             print
             exit
         }
-    ' "$SCRIPT_DIR/cnwp.yml")
+    ' "$PROJECT_ROOT/cnwp.yml")
     [ "$enabled" == "true" ]
 }
 
@@ -111,7 +112,7 @@ get_security_modules() {
             gsub(/["'"'"']/, "")
             print
         }
-    ' "$SCRIPT_DIR/cnwp.yml"
+    ' "$PROJECT_ROOT/cnwp.yml"
 }
 
 # Install security modules on staging site before deployment
@@ -138,7 +139,7 @@ install_security_modules() {
     fi
 
     local original_dir=$(pwd)
-    cd "sites/$stg_site" || return 1
+    cd "$PROJECT_ROOT/sites/$stg_site" || return 1
 
     # Install each module via composer and enable
     while IFS= read -r module; do
@@ -208,8 +209,8 @@ ${BOLD}ARGUMENTS:${NC}
     sitename                Site name (with or without _stg suffix)
 
 ${BOLD}EXAMPLES:${NC}
-    ./stg2live.sh mysite              # Deploy mysite_stg to mysite.nwpcode.org
-    ./stg2live.sh mysite_stg          # Same as above
+    ./stg2live.sh mysite              # Deploy mysite-stg to mysite.nwpcode.org
+    ./stg2live.sh mysite-stg          # Same as above
     ./stg2live.sh -y mysite           # Deploy without confirmation
     ./stg2live.sh --no-security mysite  # Deploy without security modules
 
@@ -248,7 +249,7 @@ EOF
 #   deploy_database <stg_site> <live_server> <ssh_user> <db_name> <db_user> <db_pass>
 #
 # Arguments:
-#   stg_site     - Name of staging site (e.g., "mysite_stg")
+#   stg_site     - Name of staging site (e.g., "mysite-stg")
 #   live_server  - Live server IP or hostname
 #   ssh_user     - SSH user (gitlab or root)
 #   db_name      - Database name on live server
@@ -388,8 +389,8 @@ deploy_to_live() {
     echo ""
 
     # Check staging site exists
-    if [ ! -d "sites/$stg_site" ]; then
-        print_error "Staging site not found: sites/$stg_site"
+    if [ ! -d "$PROJECT_ROOT/sites/$stg_site" ]; then
+        print_error "Staging site not found: $PROJECT_ROOT/sites/$stg_site"
         return 1
     fi
 
@@ -420,8 +421,8 @@ deploy_to_live() {
 
     # Get webroot from staging site
     local webroot="web"
-    if [ -f "sites/$stg_site/.ddev/config.yaml" ]; then
-        webroot=$(grep "^docroot:" "sites/$stg_site/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
+    if [ -f "$PROJECT_ROOT/sites/$stg_site/.ddev/config.yaml" ]; then
+        webroot=$(grep "^docroot:" "$PROJECT_ROOT/sites/$stg_site/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
         [ -z "$webroot" ] && webroot="web"
     fi
 
@@ -452,7 +453,7 @@ deploy_to_live() {
 
     # Rsync
     if rsync -avz --delete "${excludes[@]}" \
-        "sites/$stg_site/" \
+        "$PROJECT_ROOT/sites/$stg_site/" \
         "${ssh_user}@${server_ip}:/var/www/${base_name}/"; then
         print_status "OK" "Files synced"
     else

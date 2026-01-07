@@ -430,8 +430,8 @@ get_site_stages() {
         stages="${stages}${GREEN}d${NC}"
     fi
 
-    # Staging
-    if [ -d "${directory}_stg" ]; then
+    # Staging (support both -stg and legacy _stg during migration)
+    if [ -d "${directory}-stg" ] || [ -d "${directory}_stg" ]; then
         stages="${stages}${YELLOW}s${NC}"
     fi
 
@@ -441,8 +441,8 @@ get_site_stages() {
         stages="${stages}${BLUE}l${NC}"
     fi
 
-    # Prod
-    if [ -d "${directory}_prod" ]; then
+    # Prod (support both -prod and legacy _prod during migration)
+    if [ -d "${directory}-prod" ] || [ -d "${directory}_prod" ]; then
         stages="${stages}${RED}p${NC}"
     fi
 
@@ -595,15 +595,25 @@ get_user_count() {
     local recipe=$(get_site_field "$site" "recipe" "$config_file")
 
     # Determine which directory to check (prod > live > stg > dev)
+    # Support both hyphen and legacy underscore formats during migration
     local check_dir=""
     local env_label=""
 
-    if [ -d "${directory}_prod" ]; then
+    if [ -d "${directory}-prod" ]; then
+        check_dir="${directory}-prod"
+        env_label="p"
+    elif [ -d "${directory}_prod" ]; then
         check_dir="${directory}_prod"
         env_label="p"
+    elif [ -d "${directory}-live" ]; then
+        check_dir="${directory}-live"
+        env_label="l"
     elif [ -d "${directory}_live" ]; then
         check_dir="${directory}_live"
         env_label="l"
+    elif [ -d "${directory}-stg" ]; then
+        check_dir="${directory}-stg"
+        env_label="s"
     elif [ -d "${directory}_stg" ]; then
         check_dir="${directory}_stg"
         env_label="s"
@@ -946,9 +956,11 @@ delete_site() {
     printf "  %-15s %s\n" "Disk Usage:" "$(get_disk_usage "$directory")"
     echo ""
 
-    # Check for related directories
+    # Check for related directories (support both -stg/-prod and legacy _stg/_prod)
     local related_dirs=""
+    [ -d "${directory}-stg" ] && related_dirs="${related_dirs} ${directory}-stg"
     [ -d "${directory}_stg" ] && related_dirs="${related_dirs} ${directory}_stg"
+    [ -d "${directory}-prod" ] && related_dirs="${related_dirs} ${directory}-prod"
     [ -d "${directory}_prod" ] && related_dirs="${related_dirs} ${directory}_prod"
 
     if [ -n "$related_dirs" ]; then
@@ -1852,18 +1864,18 @@ build_site_cache() {
             domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
         fi
 
-        # Stages
+        # Stages (support both hyphen and legacy underscore formats during migration)
         local stages=""
         if [ "$site_type" = "2" ]; then
             stages="-"
         else
             [ -n "$directory" ] && [ -d "$directory" ] && stages="${stages}d"
-            [ -d "${directory}_stg" ] && stages="${stages}s"
+            [ -d "${directory}-stg" ] || [ -d "${directory}_stg" ] && stages="${stages}s"
             if [ "$site_type" = "0" ]; then
                 local live_enabled=$(get_site_nested_field "$site" "live" "enabled" "$config_file")
                 [ "$live_enabled" == "true" ] && stages="${stages}l"
             fi
-            [ -d "${directory}_prod" ] && stages="${stages}p"
+            [ -d "${directory}-prod" ] || [ -d "${directory}_prod" ] && stages="${stages}p"
             [ -z "$stages" ] && stages="-"
         fi
 

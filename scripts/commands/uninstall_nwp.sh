@@ -20,11 +20,12 @@ BOLD='\033[1m'
 
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 STATE_DIR="$HOME/.nwp/setup_state"
 ORIGINAL_STATE_FILE="$STATE_DIR/original_state.json"
 LEGACY_STATE_FILE="$STATE_DIR/pre_setup_state.json"
 INSTALL_LOG="$STATE_DIR/install.log"
-CONFIG_FILE="$SCRIPT_DIR/cnwp.yml"
+CONFIG_FILE="$PROJECT_ROOT/cnwp.yml"
 
 ################################################################################
 # Helper Functions
@@ -365,7 +366,7 @@ remove_ssh_keys() {
 
     local has_keys=false
 
-    if [ -f "$SCRIPT_DIR/keys/nwp" ]; then
+    if [ -f "$PROJECT_ROOT/keys/nwp" ]; then
         has_keys=true
     fi
 
@@ -375,7 +376,7 @@ remove_ssh_keys() {
 
     if [ "$has_keys" = true ]; then
         if ask_yes_no "Remove NWP SSH keys?" "n"; then
-            rm -f "$SCRIPT_DIR/keys/nwp" "$SCRIPT_DIR/keys/nwp.pub" 2>/dev/null || true
+            rm -f "$PROJECT_ROOT/keys/nwp" "$PROJECT_ROOT/keys/nwp.pub" 2>/dev/null || true
             rm -f "$HOME/.ssh/nwp" "$HOME/.ssh/nwp.pub" 2>/dev/null || true
             print_status "OK" "SSH keys removed"
         else

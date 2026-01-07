@@ -11,10 +11,11 @@ set -euo pipefail
 
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source shared libraries
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/common.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
 
 ################################################################################
 # Configuration
@@ -84,7 +85,7 @@ EOF
 get_site_schedule() {
     local sitename="$1"
     local schedule_type="$2"  # database, full, bundle
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
 
     if [ ! -f "$cnwp_file" ]; then
         return 1
@@ -159,8 +160,8 @@ install_schedule() {
     print_header "Installing Backup Schedule: $sitename"
 
     # Validate site exists
-    if [ ! -d "$SCRIPT_DIR/sites/$sitename" ]; then
-        print_warning "Site directory not found: sites/$sitename (schedule will still be installed)"
+    if [ ! -d "$PROJECT_ROOT/sites/$sitename" ]; then
+        print_warning "Site directory not found: $PROJECT_ROOT/sites/$sitename (schedule will still be installed)"
     fi
 
     # Create log directory

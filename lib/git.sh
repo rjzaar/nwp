@@ -12,7 +12,7 @@
 # Get NWP GitLab URL from cnwp.yml settings.url
 # Returns: git.domain.org format
 get_gitlab_url() {
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
 
     if [ ! -f "$cnwp_file" ]; then
         echo ""
@@ -44,7 +44,7 @@ get_gitlab_url() {
 # Get GitLab SSH host from .secrets.yml or derive from settings
 # Returns: IP address or hostname for SSH
 get_gitlab_ssh_host() {
-    local secrets_file="${SCRIPT_DIR}/.secrets.yml"
+    local secrets_file="${PROJECT_ROOT}/.secrets.yml"
 
     if [ -f "$secrets_file" ]; then
         # Try to get IP from secrets
@@ -86,7 +86,7 @@ check_git_server_alias() {
 # Get additional remotes from cnwp.yml
 # Returns: remote configurations as "name|url|enabled" per line
 get_additional_remotes() {
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
 
     if [ ! -f "$cnwp_file" ]; then
         return 1
@@ -312,7 +312,7 @@ git_commit_backup() {
 # Get default GitLab group from cnwp.yml
 # Returns: group name (default: nwp)
 get_gitlab_default_group() {
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
     local default_group="nwp"
 
     if [ ! -f "$cnwp_file" ]; then
@@ -344,7 +344,7 @@ get_gitlab_default_group() {
 # Get GitLab API token from .secrets.yml
 # Usage: get_gitlab_token
 get_gitlab_token() {
-    local secrets_file="${SCRIPT_DIR}/.secrets.yml"
+    local secrets_file="${PROJECT_ROOT}/.secrets.yml"
 
     if [ ! -f "$secrets_file" ]; then
         return 1

@@ -19,7 +19,7 @@
 preflight_check() {
     local sitename="$1"
     local target_site="${2:-$(get_staging_name "$sitename")}"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     local errors=0
     local warnings=0
@@ -100,18 +100,18 @@ check_ddev() {
 # Check source site
 check_source_site() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     task "Checking source site ($sitename)..."
 
     # Check directory exists
-    if [ ! -d "$script_dir/$sitename" ]; then
+    if [ ! -d "$script_dir/sites/$sitename" ]; then
         fail "Source site directory not found: $sitename"
         return 1
     fi
 
     # Check DDEV config
-    if [ ! -f "$script_dir/$sitename/.ddev/config.yaml" ]; then
+    if [ ! -f "$script_dir/sites/$sitename/.ddev/config.yaml" ]; then
         fail "Source site is not a DDEV project"
         note "Run: cd $sitename && ddev config"
         return 1
@@ -122,7 +122,7 @@ check_source_site() {
     # Check if running
     task "Checking source DDEV status..."
     local original_dir=$(pwd)
-    cd "$script_dir/$sitename" || return 1
+    cd "$script_dir/sites/$sitename" || return 1
 
     if ddev describe &>/dev/null; then
         local status=$(ddev describe 2>/dev/null | grep -o "running\|stopped" | head -1)
@@ -162,16 +162,16 @@ check_source_site() {
 # Check target site
 check_target_site() {
     local target_site="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     task "Checking target site ($target_site)..."
 
-    if [ ! -d "$script_dir/$target_site" ]; then
+    if [ ! -d "$script_dir/sites/$target_site" ]; then
         warn "Target site does not exist (will be created)"
         return 0
     fi
 
-    if [ ! -f "$script_dir/$target_site/.ddev/config.yaml" ]; then
+    if [ ! -f "$script_dir/sites/$target_site/.ddev/config.yaml" ]; then
         warn "Target exists but is not a DDEV project"
         return 0
     fi
@@ -180,7 +180,7 @@ check_target_site() {
 
     # Check if running
     local original_dir=$(pwd)
-    cd "$script_dir/$target_site" || return 0
+    cd "$script_dir/sites/$target_site" || return 0
 
     if ddev describe &>/dev/null; then
         local status=$(ddev describe 2>/dev/null | grep -o "running\|stopped" | head -1)
@@ -227,7 +227,7 @@ check_required_tools() {
 check_disk_space() {
     task "Checking disk space..."
 
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
     local free_kb=$(df -k "$script_dir" 2>/dev/null | awk 'NR==2 {print $4}')
     local free_gb=$((free_kb / 1024 / 1024))
 
@@ -273,12 +273,12 @@ check_production_access() {
 # Check git status
 check_git_status() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     task "Checking git status..."
 
     local original_dir=$(pwd)
-    cd "$script_dir/$sitename" || return 0
+    cd "$script_dir/sites/$sitename" || return 0
 
     if [ ! -d ".git" ]; then
         note "Not a git repository"
@@ -311,7 +311,7 @@ check_git_status() {
 # Usage: quick_preflight "sitename"
 quick_preflight() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     info "Running quick preflight checks..."
 
@@ -322,7 +322,7 @@ quick_preflight() {
     fi
 
     # Source site exists
-    if [ ! -d "$script_dir/$sitename" ]; then
+    if [ ! -d "$script_dir/sites/$sitename" ]; then
         fail "Site not found: $sitename"
         return 1
     fi
@@ -392,17 +392,17 @@ show_system_info() {
 # Usage: validate_db_operation "sitename"
 validate_db_operation() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     # Check site exists and has DDEV
-    if [ ! -f "$script_dir/$sitename/.ddev/config.yaml" ]; then
+    if [ ! -f "$script_dir/sites/$sitename/.ddev/config.yaml" ]; then
         fail "Site is not a DDEV project: $sitename"
         return 1
     fi
 
     # Check DDEV is running
     local original_dir=$(pwd)
-    cd "$script_dir/$sitename" || return 1
+    cd "$script_dir/sites/$sitename" || return 1
 
     if ! ddev describe &>/dev/null; then
         task "Starting DDEV..."

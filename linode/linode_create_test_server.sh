@@ -30,7 +30,8 @@ NC='\033[0m'
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KEYS_DIR="$SCRIPT_DIR/keys"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+KEYS_DIR="$PROJECT_ROOT/keys"
 CONFIG_DIR="$HOME/.nwp"
 
 # Default configuration

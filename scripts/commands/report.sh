@@ -21,7 +21,8 @@ set -uo pipefail
 # Note: -e is NOT set so we can capture command failures
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/lib/ui.sh"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+source "$PROJECT_ROOT/lib/ui.sh"
 
 # GitLab project URL
 GITLAB_URL="https://git.nwpcode.org/root/nwp"
@@ -382,7 +383,7 @@ wrapper_mode() {
     local cmd="${command_args[0]}"
     local cmd_display="$cmd"
 
-    # If it's just a script name (no path), look in SCRIPT_DIR and sites/
+    # If it's just a script name (no path), look in SCRIPT_DIR and PROJECT_ROOT/sites/
     if [[ ! "$cmd" =~ / ]]; then
         if [[ -x "$SCRIPT_DIR/$cmd" ]]; then
             command_args[0]="$SCRIPT_DIR/$cmd"
@@ -390,11 +391,11 @@ wrapper_mode() {
         elif [[ -x "$SCRIPT_DIR/${cmd}.sh" ]]; then
             command_args[0]="$SCRIPT_DIR/${cmd}.sh"
             cmd_display="${cmd}.sh"
-        elif [[ -x "$SCRIPT_DIR/sites/$cmd" ]]; then
-            command_args[0]="$SCRIPT_DIR/sites/$cmd"
+        elif [[ -x "$PROJECT_ROOT/sites/$cmd" ]]; then
+            command_args[0]="$PROJECT_ROOT/sites/$cmd"
             cmd_display="$cmd"
-        elif [[ -x "$SCRIPT_DIR/sites/${cmd}.sh" ]]; then
-            command_args[0]="$SCRIPT_DIR/sites/${cmd}.sh"
+        elif [[ -x "$PROJECT_ROOT/sites/${cmd}.sh" ]]; then
+            command_args[0]="$PROJECT_ROOT/sites/${cmd}.sh"
             cmd_display="${cmd}.sh"
         fi
     fi

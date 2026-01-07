@@ -238,7 +238,7 @@ NWP now follows best practices with automatic production mode conversion:
 
 ```bash
 # Called automatically by dev2stg.sh step 9
-./make.sh -py sitename_stg
+./make.sh -py sitename-stg
 ```
 
 This command:
@@ -270,7 +270,7 @@ Development DB ←─────────────── Can be anything
 # ... develop features ...
 
 # STAGING PHASE
-./dev2stg.sh mysite              # Deploy to mysite_stg (auto-enables prod mode)
+./dev2stg.sh mysite              # Deploy to mysite-stg (auto-enables prod mode)
 ./prod2stg.sh mysite             # (optional) Get production DB for testing
 # ... test in production-like environment ...
 # ... stakeholder review ...

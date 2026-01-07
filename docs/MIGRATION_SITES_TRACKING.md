@@ -86,8 +86,8 @@ sites:
 Sites are categorized by suffix:
 - `sitename` → development
 - `sitename_dev` → development
-- `sitename_stg` → staging
-- `sitename_prod` → production
+- `sitename-stg` → staging
+- `sitename-prod` → production
 
 #### 4. Find Installed Modules
 

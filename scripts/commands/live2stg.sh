@@ -11,10 +11,11 @@ set -euo pipefail
 
 # Get script directory (from symlink location, not resolved target)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source shared libraries
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/common.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -25,13 +26,13 @@ START_TIME=$(date +%s)
 
 get_base_name() {
     local site=$1
-    echo "$site" | sed -E 's/_(stg|prod)$//'
+    echo "$site" | sed -E 's/[-_](stg|prod)$//'
 }
 
 get_stg_name() {
     local site=$1
     local base=$(get_base_name "$site")
-    echo "${base}_stg"
+    echo "${base}-stg"
 }
 
 get_live_config() {
@@ -51,7 +52,7 @@ get_live_config() {
             print
             exit
         }
-    ' "$SCRIPT_DIR/cnwp.yml"
+    ' "$PROJECT_ROOT/cnwp.yml"
 }
 
 show_elapsed_time() {
@@ -80,7 +81,7 @@ ${BOLD}OPTIONS:${NC}
     --db-only               Pull database only, skip files
 
 ${BOLD}EXAMPLES:${NC}
-    ./live2stg.sh mysite              # Pull live to mysite_stg
+    ./live2stg.sh mysite              # Pull live to mysite-stg
     ./live2stg.sh --files-only mysite # Pull files only
 
 EOF
@@ -131,8 +132,8 @@ main() {
     echo ""
 
     # Check staging exists
-    if [ ! -d "sites/$STG_NAME" ]; then
-        print_error "Staging site not found: sites/$STG_NAME"
+    if [ ! -d "$PROJECT_ROOT/sites/$STG_NAME" ]; then
+        print_error "Staging site not found: $PROJECT_ROOT/sites/$STG_NAME"
         exit 1
     fi
 
@@ -159,7 +160,7 @@ main() {
             --exclude="web/sites/default/files" \
             --exclude="private" \
             "${ssh_user}@${server_ip}:/var/www/${BASE_NAME}/" \
-            "sites/$STG_NAME/"
+            "$PROJECT_ROOT/sites/$STG_NAME/"
         print_status "OK" "Files pulled"
     fi
 
@@ -173,18 +174,18 @@ main() {
             ssh "${ssh_user}@${server_ip}" "$sudo_prefix -u www-data sh -c 'cd /var/www/${BASE_NAME}/web && ../vendor/bin/drush sql:dump --gzip'" > "$tmp_sql"
 
         # Import to staging
-        cd "sites/$STG_NAME"
+        cd "$PROJECT_ROOT/sites/$STG_NAME"
         ddev import-db --file="$tmp_sql"
         rm -f "$tmp_sql"
-        cd "$SCRIPT_DIR"
+        cd "$PROJECT_ROOT"
         print_status "OK" "Database imported"
     fi
 
     # Clear cache
     print_info "Clearing cache..."
-    cd "sites/$STG_NAME"
+    cd "$PROJECT_ROOT/sites/$STG_NAME"
     ddev drush cr 2>/dev/null || true
-    cd "$SCRIPT_DIR"
+    cd "$PROJECT_ROOT"
 
     print_header "Pull Complete"
     print_status "OK" "Live pulled to staging: $STG_NAME"

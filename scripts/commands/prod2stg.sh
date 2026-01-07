@@ -11,10 +11,11 @@
 
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source YAML library
-if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
-    source "$SCRIPT_DIR/lib/yaml-write.sh"
+if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
+    source "$PROJECT_ROOT/lib/yaml-write.sh"
 fi
 
 # Script start time
@@ -107,7 +108,7 @@ get_recipe_value() {
             print value
             exit
         }
-    ' "$SCRIPT_DIR/cnwp.yml"
+    ' "$PROJECT_ROOT/cnwp.yml"
 }
 
 # Get site value from cnwp.yml
@@ -127,7 +128,7 @@ get_site_value() {
             print value
             exit
         }
-    ' "$SCRIPT_DIR/cnwp.yml"
+    ' "$PROJECT_ROOT/cnwp.yml"
 }
 
 # Get production config from site or recipe
@@ -165,7 +166,7 @@ get_linode_server() {
             exit
         }
         in_server_block && /^    [a-z]/ && $0 !~ "^    " server ":" { in_server_block=0 }
-    ' "$SCRIPT_DIR/cnwp.yml"
+    ' "$PROJECT_ROOT/cnwp.yml"
 }
 
 # Get SSH connection string
@@ -246,20 +247,20 @@ STEPS:
     10. Clear Cache
 
 EXAMPLES:
-    # Pull production to nwp_stg
-    ./prod2stg.sh nwp_stg
+    # Pull production to nwp-stg
+    ./prod2stg.sh nwp-stg
 
     # Pull with auto-confirm
-    ./prod2stg.sh -y nwp_stg
+    ./prod2stg.sh -y nwp-stg
 
     # Pull only files
-    ./prod2stg.sh --files-only nwp_stg
+    ./prod2stg.sh --files-only nwp-stg
 
     # Pull only database
-    ./prod2stg.sh --db-only nwp_stg
+    ./prod2stg.sh --db-only nwp-stg
 
     # Dry run (show what would happen)
-    ./prod2stg.sh --dry-run nwp_stg
+    ./prod2stg.sh --dry-run nwp-stg
 
 CONFIGURATION:
     Production configuration is read from cnwp.yml:
@@ -501,7 +502,7 @@ if should_run_step 4 "$START_STEP" && [ "$DB_ONLY" = false ]; then
         if rsync -avz --delete \
             -e "$rsync_ssh" \
             "$user_host:$PROD_PATH/" \
-            "sites/$SITENAME/" \
+            "$PROJECT_ROOT/sites/$SITENAME/" \
             --exclude=".ddev" \
             --exclude=".git" \
             --exclude="html/sites/default/files" \
@@ -578,11 +579,11 @@ if should_run_step 6 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
             rm -f "$TMP_SQL"
         else
             print_error "Database import failed"
-            cd "$SCRIPT_DIR"
+            cd "$PROJECT_ROOT"
             exit 1
         fi
 
-        cd "$SCRIPT_DIR"
+        cd "$PROJECT_ROOT"
     else
         print_status "INFO" "Would import database to staging"
     fi
@@ -596,7 +597,7 @@ if should_run_step 7 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
     print_header "Step 7: Update Database"
 
     if [ "$DRY_RUN" = false ]; then
-        cd "sites/$SITENAME" || exit 1
+        cd "$PROJECT_ROOT/sites/$SITENAME" || exit 1
 
         print_info "Running database updates..."
         if ddev drush updatedb -y; then
@@ -605,7 +606,7 @@ if should_run_step 7 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
             print_status "WARN" "Database updates had warnings (may be normal)"
         fi
 
-        cd "$SCRIPT_DIR"
+        cd "$PROJECT_ROOT"
     else
         print_status "INFO" "Would run database updates"
     fi
@@ -619,7 +620,7 @@ if should_run_step 8 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
     print_header "Step 8: Import Configuration"
 
     if [ "$DRY_RUN" = false ]; then
-        cd "sites/$SITENAME" || exit 1
+        cd "$PROJECT_ROOT/sites/$SITENAME" || exit 1
 
         print_info "Importing configuration..."
         if ddev drush config:import -y; then
@@ -628,7 +629,7 @@ if should_run_step 8 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
             print_status "WARN" "Configuration import had warnings (may be normal)"
         fi
 
-        cd "$SCRIPT_DIR"
+        cd "$PROJECT_ROOT"
     else
         print_status "INFO" "Would import configuration"
     fi
@@ -641,8 +642,9 @@ fi
 if should_run_step 9 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
     print_header "Step 9: Reinstall Modules"
 
-    # Get base sitename (remove _stg suffix)
-    BASE_NAME="${SITENAME%_stg}"
+    # Get base sitename (remove -stg or _stg suffix, support legacy during migration)
+    BASE_NAME="${SITENAME%-stg}"
+    BASE_NAME="${BASE_NAME%_stg}"
 
     # Get recipe
     RECIPE=$(get_site_value "$BASE_NAME" "recipe")
@@ -656,11 +658,11 @@ if should_run_step 9 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
         current_recipe == recipe && /^    reinstall_modules:/ { in_modules=1; next }
         in_modules && /^      - / { print $2 }
         in_modules && /^    [a-z_]/ { in_modules=0 }
-    ' "$SCRIPT_DIR/cnwp.yml")
+    ' "$PROJECT_ROOT/cnwp.yml")
 
     if [ -n "$REINSTALL_MODULES" ]; then
         if [ "$DRY_RUN" = false ]; then
-            cd "sites/$SITENAME" || exit 1
+            cd "$PROJECT_ROOT/sites/$SITENAME" || exit 1
 
             for module in $REINSTALL_MODULES; do
                 # Check if module is enabled
@@ -683,7 +685,7 @@ if should_run_step 9 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
                 fi
             done
 
-            cd "$SCRIPT_DIR"
+            cd "$PROJECT_ROOT"
         else
             print_status "INFO" "Would reinstall modules: $(echo $REINSTALL_MODULES | tr '\n' ' ')"
         fi
@@ -700,7 +702,7 @@ if should_run_step 10 "$START_STEP"; then
     print_header "Step 10: Clear Cache"
 
     if [ "$DRY_RUN" = false ]; then
-        cd "sites/$SITENAME" || exit 1
+        cd "$PROJECT_ROOT/sites/$SITENAME" || exit 1
 
         print_info "Clearing cache..."
         if ddev drush cr; then
@@ -716,7 +718,7 @@ if should_run_step 10 "$START_STEP"; then
             print_status "OK" "Staging site ready: $STAGING_URL"
         fi
 
-        cd "$SCRIPT_DIR"
+        cd "$PROJECT_ROOT"
     else
         print_status "INFO" "Would clear cache"
     fi

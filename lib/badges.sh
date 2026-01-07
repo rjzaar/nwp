@@ -17,7 +17,7 @@ generate_badge_url() {
     local group="${2:-sites}"
     local badge_type="${3:-pipeline}"
     local branch="${4:-main}"
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
 
     # Get GitLab URL from cnwp.yml
     local gitlab_domain=""
@@ -67,7 +67,7 @@ generate_badge_urls() {
     local project_name="$1"
     local group="${2:-sites}"
     local branch="${3:-main}"
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
 
     # Get GitLab URL from cnwp.yml
     local gitlab_domain=""
@@ -114,7 +114,7 @@ generate_readme_badges() {
     local branch="${3:-main}"
 
     local gitlab_domain=""
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
 
     if [ -f "$cnwp_file" ]; then
         local base_url=$(awk '
@@ -201,7 +201,7 @@ update_readme_badges() {
     fi
 
     local gitlab_domain=""
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
 
     if [ -f "$cnwp_file" ]; then
         local base_url=$(awk '

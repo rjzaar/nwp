@@ -24,14 +24,15 @@ set -euo pipefail
 
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source shared libraries
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/common.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
 
 # Source YAML library
-if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
-    source "$SCRIPT_DIR/lib/yaml-write.sh"
+if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
+    source "$PROJECT_ROOT/lib/yaml-write.sh"
 fi
 
 # Script start time
@@ -242,7 +243,7 @@ analyze_database() {
 # Main analyze command
 cmd_analyze() {
     local sitename="$1"
-    local site_dir="$SCRIPT_DIR/sites/$sitename"
+    local site_dir="$PROJECT_ROOT/sites/$sitename"
 
     print_header "Analyzing Migration Source: $sitename"
 
@@ -272,7 +273,7 @@ cmd_analyze() {
     # Get configured type from cnwp.yml
     local configured_type=""
     if command -v yaml_get_site_field &> /dev/null; then
-        configured_type=$(yaml_get_site_field "$sitename" "source_type" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null || echo "")
+        configured_type=$(yaml_get_site_field "$sitename" "source_type" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null || echo "")
     fi
 
     if [ -n "$configured_type" ] && [ "$configured_type" != "$detected_type" ]; then
@@ -365,7 +366,7 @@ cmd_analyze() {
 
     # Update cnwp.yml with analysis results
     if command -v yaml_update_site_field &> /dev/null; then
-        yaml_update_site_field "$sitename" "source_type" "$detected_type" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null || true
+        yaml_update_site_field "$sitename" "source_type" "$detected_type" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null || true
 
         # Update migration status
         local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -382,7 +383,7 @@ cmd_analyze() {
 
 cmd_prepare() {
     local sitename="$1"
-    local site_dir="$SCRIPT_DIR/sites/$sitename"
+    local site_dir="$PROJECT_ROOT/sites/$sitename"
 
     print_header "Preparing Target Site: $sitename"
 
@@ -395,7 +396,7 @@ cmd_prepare() {
     # Get source type
     local source_type=""
     if command -v yaml_get_site_field &> /dev/null; then
-        source_type=$(yaml_get_site_field "$sitename" "source_type" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null || echo "other")
+        source_type=$(yaml_get_site_field "$sitename" "source_type" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null || echo "other")
     fi
 
     if [ -z "$source_type" ]; then
@@ -409,7 +410,7 @@ cmd_prepare() {
     # Create target Drupal site
     local target_name="${sitename}_target"
 
-    if [ -d "$SCRIPT_DIR/sites/$target_name" ]; then
+    if [ -d "$PROJECT_ROOT/sites/$target_name" ]; then
         print_warning "Target site already exists: $target_name"
         read -p "Continue with existing site? (y/N) " -n 1 -r
         echo
@@ -426,7 +427,7 @@ cmd_prepare() {
 
     # Install migration modules
     print_info "Installing migration modules..."
-    cd "$SCRIPT_DIR/sites/$target_name"
+    cd "$PROJECT_ROOT/sites/$target_name"
 
     # Enable core migrate modules
     ddev drush en migrate migrate_drupal migrate_drupal_ui -y 2>/dev/null || true
@@ -447,11 +448,11 @@ cmd_prepare() {
             ;;
     esac
 
-    cd "$SCRIPT_DIR"
+    cd "$PROJECT_ROOT"
 
     # Update status
     if command -v yaml_update_site_field &> /dev/null; then
-        yaml_update_site_field "$sitename" "status" "prepared" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null || true
+        yaml_update_site_field "$sitename" "status" "prepared" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null || true
     fi
 
     print_status "OK" "Target site prepared: $target_name"
@@ -468,7 +469,7 @@ cmd_prepare() {
 cmd_run() {
     local sitename="$1"
     local dry_run="${2:-false}"
-    local site_dir="$SCRIPT_DIR/sites/$sitename"
+    local site_dir="$PROJECT_ROOT/sites/$sitename"
     local target_name="${sitename}_target"
 
     print_header "Running Migration: $sitename"
@@ -478,18 +479,18 @@ cmd_run() {
     fi
 
     # Check target site
-    if [ ! -d "$SCRIPT_DIR/sites/$target_name" ]; then
+    if [ ! -d "$PROJECT_ROOT/sites/$target_name" ]; then
         print_error "Target site not found. Run prepare first:"
         echo "  ./migration.sh prepare $sitename"
         return 1
     fi
 
-    cd "$SCRIPT_DIR/sites/$target_name"
+    cd "$PROJECT_ROOT/sites/$target_name"
 
     # Get source type
     local source_type=""
     if command -v yaml_get_site_field &> /dev/null; then
-        source_type=$(yaml_get_site_field "$sitename" "source_type" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null || echo "other")
+        source_type=$(yaml_get_site_field "$sitename" "source_type" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null || echo "other")
     fi
 
     print_info "Migration type: $source_type"
@@ -513,11 +514,11 @@ cmd_run() {
             ;;
     esac
 
-    cd "$SCRIPT_DIR"
+    cd "$PROJECT_ROOT"
 
     # Update status
     if command -v yaml_update_site_field &> /dev/null; then
-        yaml_update_site_field "$sitename" "status" "migrating" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null || true
+        yaml_update_site_field "$sitename" "status" "migrating" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null || true
     fi
 }
 
@@ -531,12 +532,12 @@ cmd_verify() {
 
     print_header "Verifying Migration: $sitename"
 
-    if [ ! -d "$SCRIPT_DIR/sites/$target_name" ]; then
+    if [ ! -d "$PROJECT_ROOT/sites/$target_name" ]; then
         print_error "Target site not found: $target_name"
         return 1
     fi
 
-    cd "$SCRIPT_DIR/sites/$target_name"
+    cd "$PROJECT_ROOT/sites/$target_name"
 
     # Check migration status
     print_info "Checking migration status..."
@@ -550,7 +551,7 @@ cmd_verify() {
     print_info "Checking site health..."
     ddev drush status 2>/dev/null | grep -E "Drupal|Database|PHP" || true
 
-    cd "$SCRIPT_DIR"
+    cd "$PROJECT_ROOT"
 
     print_status "OK" "Verification complete"
     echo ""
@@ -567,15 +568,15 @@ cmd_verify() {
 
 cmd_status() {
     local sitename="$1"
-    local site_dir="$SCRIPT_DIR/sites/$sitename"
+    local site_dir="$PROJECT_ROOT/sites/$sitename"
 
     print_header "Migration Status: $sitename"
 
     # Get info from cnwp.yml
     if command -v yaml_get_site_field &> /dev/null; then
-        local source_type=$(yaml_get_site_field "$sitename" "source_type" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null)
-        local status=$(yaml_get_site_field "$sitename" "status" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null)
-        local created=$(yaml_get_site_field "$sitename" "created" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null)
+        local source_type=$(yaml_get_site_field "$sitename" "source_type" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null)
+        local status=$(yaml_get_site_field "$sitename" "status" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null)
+        local created=$(yaml_get_site_field "$sitename" "created" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null)
 
         echo "Site: $sitename"
         echo "Source type: ${source_type:-unknown}"
@@ -589,7 +590,7 @@ cmd_status() {
     [ -d "$site_dir" ] && echo "  Migration stub: EXISTS" || echo "  Migration stub: MISSING"
     [ -d "$site_dir/source" ] && echo "  Source files: EXISTS" || echo "  Source files: MISSING"
     [ -d "$site_dir/database" ] && echo "  Database dumps: EXISTS" || echo "  Database dumps: MISSING"
-    [ -d "$SCRIPT_DIR/sites/${sitename}_target" ] && echo "  Target site: EXISTS" || echo "  Target site: MISSING"
+    [ -d "$PROJECT_ROOT/sites/${sitename}_target" ] && echo "  Target site: EXISTS" || echo "  Target site: MISSING"
 }
 
 ################################################################################

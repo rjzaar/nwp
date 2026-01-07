@@ -14,9 +14,9 @@
 # Returns: 0 if exists, 1 if not
 site_exists() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
-    if [ -d "$script_dir/$sitename" ] && [ -f "$script_dir/$sitename/.ddev/config.yaml" ]; then
+    if [ -d "$script_dir/sites/$sitename" ] && [ -f "$script_dir/sites/$sitename/.ddev/config.yaml" ]; then
         return 0
     fi
     return 1
@@ -27,13 +27,13 @@ site_exists() {
 # Returns: 0 if running, 1 if not
 site_running() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     if ! site_exists "$sitename"; then
         return 1
     fi
 
-    local status=$(cd "$script_dir/$sitename" && ddev describe 2>/dev/null | grep -c "running")
+    local status=$(cd "$script_dir/sites/$sitename" && ddev describe 2>/dev/null | grep -c "running")
     if [ "$status" -gt 0 ]; then
         return 0
     fi
@@ -44,9 +44,10 @@ site_running() {
 # Usage: get_staging_name "sitename"
 get_staging_name() {
     local sitename="$1"
-    # Remove any existing _stg suffix first
-    local base="${sitename%_stg}"
-    echo "${base}_stg"
+    # Remove any existing -stg or _stg suffix first (support both for migration)
+    local base="${sitename%-stg}"
+    base="${base%_stg}"
+    echo "${base}-stg"
 }
 
 # Find recent backup files
@@ -55,7 +56,7 @@ get_staging_name() {
 find_recent_backup() {
     local sitename="$1"
     local max_hours="${2:-24}"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
     local backup_dir="$script_dir/sitebackups/$sitename"
 
     if [ ! -d "$backup_dir" ]; then
@@ -64,7 +65,7 @@ find_recent_backup() {
 
     # Find most recent .sql.gz file within max_hours
     local recent_backup=$(find "$backup_dir" -name "*.sql.gz" -mmin -$((max_hours * 60)) -type f 2>/dev/null | \
-        xargs ls -t 2>/dev/null | head -1)
+        xargs -r ls -t 2>/dev/null | head -1)
 
     if [ -n "$recent_backup" ]; then
         echo "$recent_backup"
@@ -78,14 +79,14 @@ find_recent_backup() {
 find_sanitized_backup() {
     local sitename="$1"
     local max_hours="${2:-24}"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
     local backup_dir="$script_dir/sitebackups/$sitename/sanitized"
 
     if [ ! -d "$backup_dir" ]; then
         # Check for sanitized marker in main backup dir
         backup_dir="$script_dir/sitebackups/$sitename"
         local recent_backup=$(find "$backup_dir" -name "*sanitized*.sql.gz" -mmin -$((max_hours * 60)) -type f 2>/dev/null | \
-            xargs ls -t 2>/dev/null | head -1)
+            xargs -r ls -t 2>/dev/null | head -1)
         if [ -n "$recent_backup" ]; then
             echo "$recent_backup"
             return 0
@@ -94,7 +95,7 @@ find_sanitized_backup() {
     fi
 
     local recent_backup=$(find "$backup_dir" -name "*.sql.gz" -mmin -$((max_hours * 60)) -type f 2>/dev/null | \
-        xargs ls -t 2>/dev/null | head -1)
+        xargs -r ls -t 2>/dev/null | head -1)
 
     if [ -n "$recent_backup" ]; then
         echo "$recent_backup"
@@ -133,7 +134,7 @@ backup_age_human() {
 # Returns: 0 if accessible, 1 if not
 check_prod_ssh() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
     local config_file="$script_dir/cnwp.yml"
 
     # Get live config from cnwp.yml
@@ -166,7 +167,7 @@ check_prod_ssh() {
 # Usage: has_live_config "sitename"
 has_live_config() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
     local config_file="$script_dir/cnwp.yml"
 
     if [ ! -f "$config_file" ]; then
@@ -184,7 +185,7 @@ has_live_config() {
 # Usage: get_live_domain "sitename"
 get_live_domain() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
     local config_file="$script_dir/cnwp.yml"
 
     if [ ! -f "$config_file" ]; then
@@ -206,8 +207,8 @@ get_live_domain() {
 # Returns: comma-separated list of available test types
 detect_test_suites() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/$sitename"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local site_path="$script_dir/sites/$sitename"
     local available=""
 
     if [ ! -d "$site_path" ]; then

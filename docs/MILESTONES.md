@@ -30,7 +30,7 @@ Consolidated 6+ scripts into 5 unified, multi-purpose scripts with consistent CL
 - Combined flags support (e.g., `-bfyo`)
 
 ### P02: Environment Naming Convention
-Postfix-based naming: `sitename`, `sitename_stg`, `sitename_prod`
+Hyphenated postfix-based naming for DDEV compatibility: `sitename`, `sitename-stg`, `sitename-prod`
 
 ### P03: Enhanced Error Messages
 Specific diagnostics replacing generic messages. Users can self-diagnose 80% of issues.

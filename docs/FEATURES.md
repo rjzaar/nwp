@@ -164,7 +164,7 @@ Deploys development site to local staging environment.
 **Key Feature:** Automatically enables production mode on staging.
 
 ```bash
-./dev2stg.sh mysite               # Creates mysite_stg
+./dev2stg.sh mysite               # Creates mysite-stg
 ```
 
 ## stg2prod.sh - Staging to Production

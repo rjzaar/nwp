@@ -15,8 +15,8 @@ All scripts tested successfully with nwp4 and nwp5 test sites.
 
 **Environment Naming Convention (Section 9.1):**
 - Development: `sitename` (e.g., `nwp`)
-- Staging: `sitename_stg` (e.g., `nwp_stg`)
-- Production: `sitename_prod` (e.g., `nwp_prod`)
+- Staging: `sitename-stg` (e.g., `nwp-stg`)
+- Production: `sitename-prod` (e.g., `nwp-prod`)
 
 Postfix naming is used instead of prefix for better organization and tab-completion.
 
@@ -472,7 +472,7 @@ When run without `-y`, the script launches an interactive TUI that:
 
 - `get_env_type()` - Detects development, staging, or production
 - `get_base_name()` - Extracts base name without suffix
-- `get_staging_name()` - Generates staging name (e.g., `nwp` → `nwp_stg`)
+- `get_staging_name()` - Generates staging name (e.g., `nwp` → `nwp-stg`)
 
 ### Configuration (cnwp.yml)
 
@@ -565,7 +565,7 @@ Future enhancements could include:
 - Unified copy.sh replaces copy.sh and copyf.sh
 - Added dev2stg.sh for automated deployment workflows
 - Consistent flag naming: `-b` for database-only, `-f` for files-only, `-v` for dev, `-p` for prod
-- Postfix environment naming: `nwp_stg`, `nwp_prod` (instead of `stg_nwp`, `prod_nwp`)
+- Postfix environment naming: `nwp-stg`, `nwp-prod` (instead of `stg_nwp`, `prod_nwp`)
 - Reduced code duplication while maintaining full functionality
 - Streamlined script management (5 scripts instead of 6 separate ones)
 

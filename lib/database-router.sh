@@ -34,7 +34,7 @@ download_database() {
     local sitename="$1"
     local source="$2"
     local target_site="${3:-$sitename}"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     case "$source" in
         auto|"")
@@ -74,7 +74,7 @@ download_database() {
 download_db_auto() {
     local sitename="$1"
     local target_site="$2"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     info "Auto-selecting database source for $sitename..."
 
@@ -120,7 +120,7 @@ download_db_auto() {
 download_db_production() {
     local sitename="$1"
     local target_site="$2"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
     local config_file="$script_dir/cnwp.yml"
 
     info "Downloading database from production..."
@@ -171,7 +171,7 @@ download_db_production() {
 download_db_backup() {
     local backup_file="$1"
     local target_site="$2"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     if [ ! -f "$backup_file" ]; then
         fail "Backup file not found: $backup_file"
@@ -182,7 +182,7 @@ download_db_backup() {
     task "File: $(basename "$backup_file")"
 
     local original_dir=$(pwd)
-    cd "$script_dir/$target_site" || {
+    cd "$script_dir/sites/$target_site" || {
         fail "Cannot access target site: $target_site"
         return 1
     }
@@ -229,7 +229,7 @@ download_db_backup() {
 download_db_development() {
     local source_site="$1"
     local target_site="$2"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     if [ "$source_site" = "$target_site" ]; then
         fail "Source and target cannot be the same"
@@ -241,7 +241,7 @@ download_db_development() {
     local original_dir=$(pwd)
 
     # Ensure source is running
-    cd "$script_dir/$source_site" || {
+    cd "$script_dir/sites/$source_site" || {
         fail "Cannot access source site: $source_site"
         return 1
     }
@@ -267,7 +267,7 @@ download_db_development() {
     fi
 
     # Ensure target is running
-    cd "$script_dir/$target_site" || {
+    cd "$script_dir/sites/$target_site" || {
         fail "Cannot access target site: $target_site"
         rm -f "$temp_dump"
         cd "$original_dir"
@@ -307,7 +307,7 @@ download_db_development() {
 download_db_url() {
     local url="$1"
     local target_site="$2"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     info "Downloading database from URL..."
     task "URL: $url"
@@ -352,12 +352,12 @@ download_db_url() {
 # Usage: sanitize_staging_db "target_site"
 sanitize_staging_db() {
     local target_site="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
     info "Sanitizing database..."
 
     local original_dir=$(pwd)
-    cd "$script_dir/$target_site" || {
+    cd "$script_dir/sites/$target_site" || {
         fail "Cannot access target site: $target_site"
         return 1
     }
@@ -404,20 +404,20 @@ sanitize_staging_db() {
 # Usage: create_sanitized_backup "sitename"
 create_sanitized_backup() {
     local sitename="$1"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
     local backup_dir="$script_dir/sitebackups/$sitename/sanitized"
 
     mkdir -p "$backup_dir"
 
     local timestamp=$(date +%Y%m%dT%H%M%S)
-    local branch=$(cd "$script_dir/$sitename" && git branch --show-current 2>/dev/null || echo "main")
-    local commit=$(cd "$script_dir/$sitename" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    local branch=$(cd "$script_dir/sites/$sitename" && git branch --show-current 2>/dev/null || echo "main")
+    local commit=$(cd "$script_dir/sites/$sitename" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
     local backup_file="$backup_dir/${timestamp}-${branch}-${commit}.sql.gz"
 
     info "Creating sanitized backup..."
 
     local original_dir=$(pwd)
-    cd "$script_dir/$sitename" || {
+    cd "$script_dir/sites/$sitename" || {
         fail "Cannot access site: $sitename"
         return 1
     }
@@ -445,7 +445,7 @@ create_sanitized_backup() {
 list_backups() {
     local sitename="$1"
     local limit="${2:-10}"
-    local script_dir="${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}"
+    local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
     local backup_dir="$script_dir/sitebackups/$sitename"
 
     if [ ! -d "$backup_dir" ]; then
@@ -455,7 +455,7 @@ list_backups() {
 
     info "Available backups for $sitename:"
     find "$backup_dir" -name "*.sql*" -type f 2>/dev/null | \
-        xargs ls -lt 2>/dev/null | \
+        xargs -r ls -lt 2>/dev/null | \
         head -"$limit" | \
         while read -r line; do
             local file=$(echo "$line" | awk '{print $NF}')

@@ -11,10 +11,11 @@ set -euo pipefail
 
 # Get script directory (from symlink location, not resolved target)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source shared libraries
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/common.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
 
 ################################################################################
 # Helper Functions
@@ -22,13 +23,13 @@ source "$SCRIPT_DIR/lib/common.sh"
 
 get_base_name() {
     local site=$1
-    echo "$site" | sed -E 's/_(stg|prod)$//'
+    echo "$site" | sed -E 's/[-_](stg|prod)$//'
 }
 
 get_prod_name() {
     local site=$1
     local base=$(get_base_name "$site")
-    echo "${base}_prod"
+    echo "${base}-prod"
 }
 
 get_prod_config() {
@@ -48,7 +49,7 @@ get_prod_config() {
             print
             exit
         }
-    ' "$SCRIPT_DIR/cnwp.yml"
+    ' "$PROJECT_ROOT/cnwp.yml"
 }
 
 show_help() {

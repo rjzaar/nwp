@@ -117,12 +117,12 @@ check_all_secrets() {
     echo ""
 
     # Check NWP root
-    if [ -f "$SCRIPT_DIR/.secrets.yml" ]; then
-        check_secrets_file "$SCRIPT_DIR/.secrets.yml"
+    if [ -f "$PROJECT_ROOT/.secrets.yml" ]; then
+        check_secrets_file "$PROJECT_ROOT/.secrets.yml"
     fi
 
     # Check site directories
-    for dir in "$SCRIPT_DIR"/*/; do
+    for dir in "$PROJECT_ROOT"/sites/*/; do
         if [ -f "${dir}.secrets.yml" ]; then
             check_secrets_file "${dir}.secrets.yml"
         fi
@@ -135,8 +135,8 @@ check_all_secrets() {
 
 # Migrate NWP root secrets
 migrate_nwp() {
-    local secrets_file="$SCRIPT_DIR/.secrets.yml"
-    local data_file="$SCRIPT_DIR/.secrets.data.yml"
+    local secrets_file="$PROJECT_ROOT/.secrets.yml"
+    local data_file="$PROJECT_ROOT/.secrets.data.yml"
 
     if [ ! -f "$secrets_file" ]; then
         log_warn "No .secrets.yml found at NWP root"
@@ -157,8 +157,8 @@ migrate_nwp() {
 
     # Create .secrets.data.yml from template if it doesn't exist
     if [ ! -f "$data_file" ]; then
-        if [ -f "$SCRIPT_DIR/.secrets.data.example.yml" ]; then
-            cp "$SCRIPT_DIR/.secrets.data.example.yml" "$data_file"
+        if [ -f "$PROJECT_ROOT/.secrets.data.example.yml" ]; then
+            cp "$PROJECT_ROOT/.secrets.data.example.yml" "$data_file"
             log_success "Created .secrets.data.yml from template"
         else
             log_error "No .secrets.data.example.yml template found"
@@ -184,7 +184,7 @@ migrate_nwp() {
 # Migrate site secrets
 migrate_site() {
     local site="$1"
-    local site_dir="$SCRIPT_DIR/$site"
+    local site_dir="$PROJECT_ROOT/sites/$site"
     local secrets_file="$site_dir/.secrets.yml"
     local data_file="$site_dir/.secrets.data.yml"
 

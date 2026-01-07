@@ -28,6 +28,7 @@ set -euo pipefail
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Colors
 RED='\033[0;31m'
@@ -76,7 +77,7 @@ show_help() {
 get_secret() {
     local path="$1"
     local default="${2:-}"
-    local secrets_file="${SCRIPT_DIR}/.secrets.yml"
+    local secrets_file="${PROJECT_ROOT}/.secrets.yml"
 
     if [ ! -f "$secrets_file" ]; then
         echo "$default"
@@ -421,7 +422,7 @@ show_status() {
 
 save_gitlab_token() {
     local token="$1"
-    local secrets_file="${SCRIPT_DIR}/.secrets.yml"
+    local secrets_file="${PROJECT_ROOT}/.secrets.yml"
 
     if [ ! -f "$secrets_file" ]; then
         print_warning "No .secrets.yml file found"

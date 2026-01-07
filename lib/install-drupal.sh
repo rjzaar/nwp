@@ -163,7 +163,7 @@ install_drupal() {
             local gitlab_url=$(get_gitlab_url)
             local gitlab_token=$(get_gitlab_token)
             if [ -n "$gitlab_url" ] && [ -n "$gitlab_token" ]; then
-                composer_auth="COMPOSER_AUTH={\"http-basic\":{\"${gitlab_url}\":{\"username\":\"gitlab-ci-token\",\"password\":\"${gitlab_token}\"}}}"
+                composer_auth="COMPOSER_AUTH={\"gitlab-token\":{\"${gitlab_url}\":\"${gitlab_token}\"}}"
                 print_info "Using GitLab authentication for composer"
             fi
 
@@ -191,7 +191,7 @@ install_drupal() {
                     gitlab_repo_opt="--repository=${repo_url}"
                     print_info "Using GitLab Composer registry: $gitlab_url"
                     if [ -n "$gitlab_token" ]; then
-                        composer_auth="COMPOSER_AUTH={\"http-basic\":{\"${gitlab_url}\":{\"username\":\"gitlab-ci-token\",\"password\":\"${gitlab_token}\"}}}"
+                        composer_auth="COMPOSER_AUTH={\"gitlab-token\":{\"${gitlab_url}\":\"${gitlab_token}\"}}"
                     fi
                 fi
             fi
@@ -931,27 +931,27 @@ CONFIG_SPLIT_EOF
         fi
 
         # Complete the stub entry (adds environment, purpose, marks install_step=-1)
-        if yaml_complete_site_stub "$site_name" "$environment" "$purpose" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+        if yaml_complete_site_stub "$site_name" "$environment" "$purpose" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
             print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
 
             # Add installed modules if any
             if [ -n "$installed_modules" ] && command -v yaml_add_site_modules &> /dev/null; then
-                yaml_add_site_modules "$site_name" "$installed_modules" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null
+                yaml_add_site_modules "$site_name" "$installed_modules" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null
             fi
 
             # Update site with selected options
-            update_site_options "$site_name" "$SCRIPT_DIR/cnwp.yml"
+            update_site_options "$site_name" "$PROJECT_ROOT/cnwp.yml"
         else
             # Stub didn't exist (legacy install?) - try full yaml_add_site
             if command -v yaml_add_site &> /dev/null; then
-                if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+                if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
                     print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
                 fi
             fi
 
             # Still try to update options if site exists
-            if yaml_site_exists "$site_name" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
-                update_site_options "$site_name" "$SCRIPT_DIR/cnwp.yml"
+            if yaml_site_exists "$site_name" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
+                update_site_options "$site_name" "$PROJECT_ROOT/cnwp.yml"
             fi
         fi
     elif command -v yaml_add_site &> /dev/null; then
@@ -967,9 +967,9 @@ CONFIG_SPLIT_EOF
             environment="production"
         fi
 
-        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
             print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
-            update_site_options "$site_name" "$SCRIPT_DIR/cnwp.yml"
+            update_site_options "$site_name" "$PROJECT_ROOT/cnwp.yml"
         fi
     fi
 

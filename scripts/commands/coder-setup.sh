@@ -28,16 +28,17 @@ set -e
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source libraries
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/common.sh"
-source "$SCRIPT_DIR/lib/cloudflare.sh"
-source "$SCRIPT_DIR/lib/yaml-write.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
+source "$PROJECT_ROOT/lib/cloudflare.sh"
+source "$PROJECT_ROOT/lib/yaml-write.sh"
 
 # Configuration
-CONFIG_FILE="${SCRIPT_DIR}/cnwp.yml"
-EXAMPLE_CONFIG="${SCRIPT_DIR}/example.cnwp.yml"
+CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
+EXAMPLE_CONFIG="${PROJECT_ROOT}/example.cnwp.yml"
 
 ################################################################################
 # Helper Functions
@@ -322,8 +323,8 @@ cmd_add() {
     info "Subdomain:   $subdomain"
 
     # Get Cloudflare credentials
-    local cf_token=$(get_cloudflare_token "$SCRIPT_DIR")
-    local cf_zone_id=$(get_cloudflare_zone_id "$SCRIPT_DIR")
+    local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
+    local cf_zone_id=$(get_cloudflare_zone_id "$PROJECT_ROOT")
 
     if [[ -z "$cf_token" || -z "$cf_zone_id" ]]; then
         print_error "Cloudflare API credentials not found"
@@ -430,8 +431,8 @@ cmd_remove() {
     print_header "Removing Coder: $name"
 
     # Get Cloudflare credentials
-    local cf_token=$(get_cloudflare_token "$SCRIPT_DIR")
-    local cf_zone_id=$(get_cloudflare_zone_id "$SCRIPT_DIR")
+    local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
+    local cf_zone_id=$(get_cloudflare_zone_id "$PROJECT_ROOT")
 
     if [[ -z "$cf_token" || -z "$cf_zone_id" ]]; then
         print_error "Cloudflare API credentials not found"

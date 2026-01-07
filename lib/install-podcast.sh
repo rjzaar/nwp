@@ -86,10 +86,10 @@ install_podcast() {
         "$domain"; then
 
         # Register site in cnwp.yml
-        local site_dir="$SCRIPT_DIR/$install_dir"
+        local site_dir="$PROJECT_ROOT/$install_dir"
 
         if command -v yaml_add_site &> /dev/null; then
-            if yaml_add_site "$install_dir" "$site_dir" "$recipe" "production" "$purpose" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+            if yaml_add_site "$install_dir" "$site_dir" "$recipe" "production" "$purpose" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
                 print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
             else
                 print_info "Site registration skipped (may already exist)"

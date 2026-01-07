@@ -11,10 +11,11 @@
 
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source YAML library
-if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
-    source "$SCRIPT_DIR/lib/yaml-write.sh"
+if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
+    source "$PROJECT_ROOT/lib/yaml-write.sh"
 fi
 
 # Script start time
@@ -157,13 +158,13 @@ get_linode_config() {
             print
             exit
         }
-    ' "$config_file"
+    ' "$PROJECT_ROOT/cnwp.yml"
 }
 
-# Get base name (remove _stg or _prod suffix)
+# Get base name (remove -stg or -prod suffix, support legacy _stg/_prod during migration)
 get_base_name() {
     local site=$1
-    echo "$site" | sed -E 's/_(stg|prod)$//'
+    echo "$site" | sed -E 's/[-_](stg|prod)$//'
 }
 
 # Check if site is in production mode
@@ -171,12 +172,12 @@ get_base_name() {
 is_prod_mode() {
     local sitename=$1
 
-    if [ ! -d "sites/$sitename" ]; then
+    if [ ! -d "$PROJECT_ROOT/sites/$sitename" ]; then
         return 1
     fi
 
     local original_dir=$(pwd)
-    cd "sites/$sitename" || return 1
+    cd "$PROJECT_ROOT/sites/$sitename" || return 1
 
     # Check CSS preprocessing setting - 1 means prod mode
     local css_preprocess=$(ddev drush config:get system.performance css.preprocess 2>/dev/null | grep -oP "'\K[^']+")
@@ -233,13 +234,13 @@ ${BOLD}ARGUMENTS:${NC}
     sitename                Base name of the staging site (production will be configured in cnwp.yml)
 
 ${BOLD}EXAMPLES:${NC}
-    ./stg2prod.sh nwp                     # Deploy nwp_stg to production
+    ./stg2prod.sh nwp                     # Deploy nwp-stg to production
     ./stg2prod.sh -y nwp                  # Deploy with auto-confirm
     ./stg2prod.sh --dry-run nwp           # Dry run - show what would happen
     ./stg2prod.sh -s 5 nwp                # Resume from step 5
 
 ${BOLD}ENVIRONMENT NAMING:${NC}
-    Staging site: <sitename>_stg         (e.g., nwp_stg)
+    Staging site: <sitename>-stg         (e.g., nwp-stg)
     Production:   Configured in cnwp.yml linode: section
 
 ${BOLD}DEPLOYMENT WORKFLOW:${NC}
@@ -280,16 +281,16 @@ validate_deployment() {
     print_header "Step 1: Validate Deployment Configuration"
 
     # Check if staging site exists
-    if [ ! -d "sites/$stg_site" ]; then
-        print_error "Staging site not found: sites/$stg_site"
+    if [ ! -d "$PROJECT_ROOT/sites/$stg_site" ]; then
+        print_error "Staging site not found: $PROJECT_ROOT/sites/$stg_site"
         return 1
     fi
-    print_status "OK" "Staging site exists: sites/$stg_site"
+    print_status "OK" "Staging site exists: $PROJECT_ROOT/sites/$stg_site"
 
     # Get recipe from sites: or use base_name
     local recipe=""
     if command -v yaml_get_site_field &> /dev/null; then
-        recipe=$(yaml_get_site_field "$base_name" "recipe" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null)
+        recipe=$(yaml_get_site_field "$base_name" "recipe" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null)
     fi
 
     if [ -z "$recipe" ]; then
@@ -316,15 +317,15 @@ validate_deployment() {
                 print
                 exit
             }
-        ' "$SCRIPT_DIR/cnwp.yml")
+        ' "$PROJECT_ROOT/cnwp.yml")
     fi
 
     # If not in sites:, read from recipe
     if [ -z "$prod_method" ]; then
-        prod_method=$(get_recipe_value "$recipe" "prod_method" "$SCRIPT_DIR/cnwp.yml")
-        prod_server=$(get_recipe_value "$recipe" "prod_server" "$SCRIPT_DIR/cnwp.yml")
-        prod_domain=$(get_recipe_value "$recipe" "prod_domain" "$SCRIPT_DIR/cnwp.yml")
-        prod_path=$(get_recipe_value "$recipe" "prod_path" "$SCRIPT_DIR/cnwp.yml")
+        prod_method=$(get_recipe_value "$recipe" "prod_method" "$PROJECT_ROOT/cnwp.yml")
+        prod_server=$(get_recipe_value "$recipe" "prod_server" "$PROJECT_ROOT/cnwp.yml")
+        prod_domain=$(get_recipe_value "$recipe" "prod_domain" "$PROJECT_ROOT/cnwp.yml")
+        prod_path=$(get_recipe_value "$recipe" "prod_path" "$PROJECT_ROOT/cnwp.yml")
     fi
 
     if [ -z "$prod_method" ]; then
@@ -347,10 +348,10 @@ validate_deployment() {
     fi
 
     # Get server details from linode: section
-    local ssh_user=$(get_linode_config "$prod_server" "ssh_user" "$SCRIPT_DIR/cnwp.yml")
-    local ssh_host=$(get_linode_config "$prod_server" "ssh_host" "$SCRIPT_DIR/cnwp.yml")
-    local ssh_port=$(get_linode_config "$prod_server" "ssh_port" "$SCRIPT_DIR/cnwp.yml")
-    local ssh_key=$(get_linode_config "$prod_server" "ssh_key" "$SCRIPT_DIR/cnwp.yml")
+    local ssh_user=$(get_linode_config "$prod_server" "ssh_user" "$PROJECT_ROOT/cnwp.yml")
+    local ssh_host=$(get_linode_config "$prod_server" "ssh_host" "$PROJECT_ROOT/cnwp.yml")
+    local ssh_port=$(get_linode_config "$prod_server" "ssh_port" "$PROJECT_ROOT/cnwp.yml")
+    local ssh_key=$(get_linode_config "$prod_server" "ssh_key" "$PROJECT_ROOT/cnwp.yml")
 
     if [ -z "$ssh_user" ] || [ -z "$ssh_host" ]; then
         print_error "Server '$prod_server' not found in linode: section of cnwp.yml"
@@ -422,8 +423,8 @@ export_config_staging() {
     print_header "Step 3: Export Configuration from Staging"
 
     local original_dir=$(pwd)
-    cd "sites/$stg_site" || {
-        print_error "Cannot access staging site: sites/$stg_site"
+    cd "$PROJECT_ROOT/sites/$stg_site" || {
+        print_error "Cannot access staging site: $PROJECT_ROOT/sites/$stg_site"
         return 1
     }
 
@@ -494,7 +495,7 @@ sync_files() {
         ssh_opts="ssh -i $SSH_KEY -p $SSH_PORT"
     fi
 
-    local rsync_cmd="rsync -avz --delete -e \"$ssh_opts\" ${excludes[@]} sites/$stg_site/ $SSH_USER@$SSH_HOST:$PROD_PATH/"
+    local rsync_cmd="rsync -avz --delete -e \"$ssh_opts\" ${excludes[@]} $PROJECT_ROOT/sites/$stg_site/ $SSH_USER@$SSH_HOST:$PROD_PATH/"
 
     ocmsg "Rsync command: $rsync_cmd"
 
@@ -587,7 +588,7 @@ reinstall_modules_production() {
     fi
 
     # Read reinstall_modules from recipe configuration
-    local reinstall_modules=$(get_recipe_value "$PROD_RECIPE" "reinstall_modules" "$SCRIPT_DIR/cnwp.yml")
+    local reinstall_modules=$(get_recipe_value "$PROD_RECIPE" "reinstall_modules" "$PROJECT_ROOT/cnwp.yml")
 
     if [ -z "$reinstall_modules" ]; then
         print_status "INFO" "No modules configured for reinstallation in recipe '$PROD_RECIPE'"
@@ -831,9 +832,9 @@ main() {
 
     SITENAME="$1"
 
-    # Add _stg suffix if not present
-    if [[ ! "$SITENAME" =~ _stg$ ]]; then
-        SITENAME="${SITENAME}_stg"
+    # Add -stg suffix if not present (support legacy _stg during migration)
+    if [[ ! "$SITENAME" =~ [-_]stg$ ]]; then
+        SITENAME="${SITENAME}-stg"
     fi
 
     ocmsg "Staging site: $SITENAME"
@@ -842,7 +843,7 @@ main() {
     ocmsg "Start step: $START_STEP"
 
     # Ensure staging site is in production mode before deploying to prod
-    if [ "$DRY_RUN" != "true" ] && [ -d "sites/$SITENAME" ]; then
+    if [ "$DRY_RUN" != "true" ] && [ -d "$PROJECT_ROOT/sites/$SITENAME" ]; then
         if ! ensure_prod_mode "$SITENAME"; then
             print_error "Cannot deploy to production without staging site in production mode"
             exit 1

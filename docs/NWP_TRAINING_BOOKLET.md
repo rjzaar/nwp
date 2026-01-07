@@ -96,7 +96,7 @@ nwp/
     └── sites/            # Site installations directory
         ├── nwp1/         # Installed site
         ├── nwp2/         # Another site
-        └── mysite_stg/   # Staging environment
+        └── mysite-stg/   # Staging environment
 ```
 
 ## How NWP Works
@@ -1193,8 +1193,8 @@ NWP uses postfix naming:
 | Environment | Naming Pattern | Example | Path |
 |-------------|----------------|---------|------|
 | Development | `sitename` | `nwp5` | `~/nwp/sites/nwp5/` |
-| Staging | `sitename_stg` | `nwp5_stg` | `~/nwp/sites/nwp5_stg/` |
-| Production | `sitename_prod` | `nwp5_prod` | Server or `~/nwp/sites/nwp5_prod/` |
+| Staging | `sitename-stg` | `nwp5-stg` | `~/nwp/sites/nwp5_stg/` |
+| Production | `sitename-prod` | `nwp5-prod` | Server or `~/nwp/sites/nwp5_prod/` |
 
 ### Deployment Flow
 
@@ -1218,7 +1218,7 @@ The `dev2stg.sh` script deploys from development to staging.
 ./dev2stg.sh nwp5
 ```
 
-This creates/updates `nwp5_stg`.
+This creates/updates `nwp5-stg`.
 
 ### What Happens (10 Steps)
 
@@ -1289,7 +1289,7 @@ The `stg2prod.sh` script deploys from staging to production.
 ./stg2prod.sh nwp5
 ```
 
-Deploys `nwp5_stg` to `nwp5_prod`.
+Deploys `nwp5-stg` to `nwp5-prod`.
 
 ### Pre-Deployment Backup
 

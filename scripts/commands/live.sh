@@ -11,11 +11,12 @@ set -euo pipefail
 
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source shared libraries
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/common.sh"
-source "$SCRIPT_DIR/lib/linode.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
+source "$PROJECT_ROOT/lib/linode.sh"
 
 ################################################################################
 # Help
@@ -29,8 +30,8 @@ ${BOLD}USAGE:${NC}
     ./live.sh [OPTIONS] <sitename>
 
     Note: This script deploys from the staging site to a live server.
-    The live URL uses the base name: mysite.nwpcode.org (not mysite_stg)
-    Both 'pl live mysite' and 'pl live mysite_stg' deploy mysite_stg.
+    The live URL uses the base name: mysite.nwpcode.org (not mysite-stg)
+    Both 'pl live mysite' and 'pl live mysite-stg' deploy mysite-stg.
     If staging is in dev mode, it will be switched to prod mode first.
 
 ${BOLD}OPTIONS:${NC}
@@ -66,25 +67,25 @@ EOF
 # Site Name Helpers
 ################################################################################
 
-# Get base site name (without env suffix)
+# Get base site name (without env suffix, support legacy _stg/_prod during migration)
 get_base_name() {
     local site=$1
-    # Remove _stg or _prod suffix
-    echo "$site" | sed -E 's/_(stg|prod)$//'
+    # Remove -stg or -prod suffix (support legacy _stg/_prod)
+    echo "$site" | sed -E 's/[-_](stg|prod)$//'
 }
 
 # Get staging site name from base or any variant
 get_stg_name() {
     local site=$1
     local base=$(get_base_name "$site")
-    echo "${base}_stg"
+    echo "${base}-stg"
 }
 
 # Check if site is in production mode
 # Returns 0 if in prod mode, 1 if in dev mode
 is_prod_mode() {
     local sitename=$1
-    local site_dir="$SCRIPT_DIR/sites/$sitename"
+    local site_dir="$PROJECT_ROOT/sites/$sitename"
 
     if [ ! -d "$site_dir" ]; then
         return 1
@@ -135,7 +136,7 @@ ensure_prod_mode() {
 
 # Get base domain from cnwp.yml settings.url
 get_base_domain() {
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
 
     if [ -f "$cnwp_file" ]; then
         awk '
@@ -207,7 +208,7 @@ live_exists() {
 # Get live server IP from cnwp.yml
 get_live_ip() {
     local sitename="$1"
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
 
     if [ -f "$cnwp_file" ]; then
         awk -v site="$sitename" '
@@ -643,10 +644,10 @@ update_cnwp_live() {
     print_info "Updating cnwp.yml..."
 
     # Source yaml-write library
-    source "$SCRIPT_DIR/lib/yaml-write.sh"
+    source "$PROJECT_ROOT/lib/yaml-write.sh"
 
     # Update site with live configuration using yaml_add_site_live
-    if yaml_add_site_live "$sitename" "$domain" "$ip" "$linode_id" "$type" "${SCRIPT_DIR}/cnwp.yml" 2>/dev/null; then
+    if yaml_add_site_live "$sitename" "$domain" "$ip" "$linode_id" "$type" "${PROJECT_ROOT}/cnwp.yml" 2>/dev/null; then
         print_status "OK" "cnwp.yml updated"
     else
         print_warning "Could not update cnwp.yml (site may not exist yet)"
@@ -676,8 +677,8 @@ provision_dedicated() {
 
     # Check for SSH key
     local ssh_key_path=""
-    if [ -f "${SCRIPT_DIR}/keys/nwp.pub" ]; then
-        ssh_key_path="${SCRIPT_DIR}/keys/nwp.pub"
+    if [ -f "${PROJECT_ROOT}/keys/nwp.pub" ]; then
+        ssh_key_path="${PROJECT_ROOT}/keys/nwp.pub"
     elif [ -f "$HOME/.ssh/nwp.pub" ]; then
         ssh_key_path="$HOME/.ssh/nwp.pub"
     else
@@ -785,11 +786,16 @@ provision_shared() {
 
     print_status "OK" "GitLab server accessible"
 
-    # Get GitLab server IP
-    local ip=$(ssh -o BatchMode=yes "gitlab@${gitlab_host}" "hostname -I | awk '{print \$1}'" 2>/dev/null)
+    # Get GitLab server IP from secrets or via SSH fallback
+    local ip=$(get_secret_nested "gitlab.server.ip" "")
+    if [ -z "$ip" ]; then
+        # Fallback to SSH if not in secrets
+        ip=$(ssh -o BatchMode=yes "gitlab@${gitlab_host}" "hostname -I | awk '{print \$1}'" 2>/dev/null)
+    fi
 
     if [ -z "$ip" ]; then
         print_error "Could not get GitLab server IP"
+        print_info "Add gitlab.server.ip to .secrets.yml or ensure SSH hostname -I works"
         return 1
     fi
 
@@ -991,7 +997,7 @@ main() {
 
     # For provisioning operations, check and ensure staging is in prod mode
     if [ "$SSH" != "true" ] && [ "$STATUS" != "true" ] && [ "$DELETE" != "true" ]; then
-        if [ -d "$SCRIPT_DIR/sites/$STG_NAME" ]; then
+        if [ -d "$PROJECT_ROOT/sites/$STG_NAME" ]; then
             if ! ensure_prod_mode "$STG_NAME"; then
                 print_error "Cannot proceed without staging site in production mode"
                 exit 1

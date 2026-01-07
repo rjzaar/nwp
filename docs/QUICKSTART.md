@@ -62,7 +62,7 @@ pl restore mysite
 
 ```bash
 # Create staging copy
-pl copy mysite mysite_stg
+pl copy mysite mysite-stg
 
 # Deploy changes to staging
 pl dev2stg mysite

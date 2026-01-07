@@ -29,14 +29,15 @@ set -euo pipefail
 
 # Get script directory (from symlink location, not resolved target)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # Source libraries
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/common.sh"
-source "$SCRIPT_DIR/lib/linode.sh"
-source "$SCRIPT_DIR/lib/cloudflare.sh"
-source "$SCRIPT_DIR/lib/b2.sh"
-source "$SCRIPT_DIR/lib/podcast.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
+source "$PROJECT_ROOT/lib/linode.sh"
+source "$PROJECT_ROOT/lib/cloudflare.sh"
+source "$PROJECT_ROOT/lib/b2.sh"
+source "$PROJECT_ROOT/lib/podcast.sh"
 
 # Track execution time
 START_TIME=$(date +%s)
@@ -119,7 +120,7 @@ check_status() {
 
     # Check SSH keys
     echo "SSH Keys:"
-    if [ -f "$SCRIPT_DIR/keys/nwp.pub" ]; then
+    if [ -f "$PROJECT_ROOT/keys/nwp.pub" ]; then
         print_status "OK" "SSH keys found in keys/nwp"
     elif [ -f "$HOME/.ssh/nwp.pub" ]; then
         print_status "OK" "SSH keys found in ~/.ssh/nwp"
@@ -316,7 +317,7 @@ do_setup() {
     print_header "Step 2: Creating Linode Instance"
 
     # Find SSH key
-    local ssh_key_path="$SCRIPT_DIR/keys/nwp.pub"
+    local ssh_key_path="$PROJECT_ROOT/keys/nwp.pub"
     if [ ! -f "$ssh_key_path" ]; then
         ssh_key_path="$HOME/.ssh/nwp.pub"
     fi
@@ -664,7 +665,7 @@ do_deploy() {
     fi
 
     # Find SSH key
-    local ssh_key="$SCRIPT_DIR/keys/nwp"
+    local ssh_key="$PROJECT_ROOT/keys/nwp"
     if [ ! -f "$ssh_key" ]; then
         ssh_key="$HOME/.ssh/nwp"
     fi

@@ -41,46 +41,47 @@ set -euo pipefail
 
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 ################################################################################
 # Source Required Libraries
 ################################################################################
 
 # Core UI library (colors, status messages)
-source "$SCRIPT_DIR/lib/ui.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
 
 # Common utilities (validation, secrets)
-source "$SCRIPT_DIR/lib/common.sh"
+source "$PROJECT_ROOT/lib/common.sh"
 
 # Installation common functions (YAML parsing, options, utilities)
-source "$SCRIPT_DIR/lib/install-common.sh"
+source "$PROJECT_ROOT/lib/install-common.sh"
 
 # Git and GitLab utilities (for GitLab Composer registry)
-source "$SCRIPT_DIR/lib/git.sh"
+source "$PROJECT_ROOT/lib/git.sh"
 
 # Optional: YAML write library for site registration
-if [ -f "$SCRIPT_DIR/lib/yaml-write.sh" ]; then
-    source "$SCRIPT_DIR/lib/yaml-write.sh"
+if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
+    source "$PROJECT_ROOT/lib/yaml-write.sh"
 fi
 
 # Optional: Interactive checkbox library
-if [ -f "$SCRIPT_DIR/lib/checkbox.sh" ]; then
-    source "$SCRIPT_DIR/lib/checkbox.sh"
+if [ -f "$PROJECT_ROOT/lib/checkbox.sh" ]; then
+    source "$PROJECT_ROOT/lib/checkbox.sh"
 fi
 
 # Optional: Linode library for DNS registration
-if [ -f "$SCRIPT_DIR/lib/linode.sh" ]; then
-    source "$SCRIPT_DIR/lib/linode.sh"
+if [ -f "$PROJECT_ROOT/lib/linode.sh" ]; then
+    source "$PROJECT_ROOT/lib/linode.sh"
 fi
 
 # Optional: Install steps tracking
-if [ -f "$SCRIPT_DIR/lib/install-steps.sh" ]; then
-    source "$SCRIPT_DIR/lib/install-steps.sh"
+if [ -f "$PROJECT_ROOT/lib/install-steps.sh" ]; then
+    source "$PROJECT_ROOT/lib/install-steps.sh"
 fi
 
 # Source TUI library
-if [ -f "$SCRIPT_DIR/lib/tui.sh" ]; then
-    source "$SCRIPT_DIR/lib/tui.sh"
+if [ -f "$PROJECT_ROOT/lib/tui.sh" ]; then
+    source "$PROJECT_ROOT/lib/tui.sh"
 fi
 
 ################################################################################
@@ -95,16 +96,16 @@ load_installer() {
 
     case "$install_type" in
         drupal|opensocial)
-            installer_file="$SCRIPT_DIR/lib/install-drupal.sh"
+            installer_file="$PROJECT_ROOT/lib/install-drupal.sh"
             ;;
         moodle)
-            installer_file="$SCRIPT_DIR/lib/install-moodle.sh"
+            installer_file="$PROJECT_ROOT/lib/install-moodle.sh"
             ;;
         gitlab)
-            installer_file="$SCRIPT_DIR/lib/install-gitlab.sh"
+            installer_file="$PROJECT_ROOT/lib/install-gitlab.sh"
             ;;
         podcast)
-            installer_file="$SCRIPT_DIR/lib/install-podcast.sh"
+            installer_file="$PROJECT_ROOT/lib/install-podcast.sh"
             ;;
         *)
             print_error "Unknown install type: $install_type"
@@ -195,7 +196,7 @@ MIGRATION_README
     # Register in cnwp.yml
     if command -v yaml_add_migration_stub &> /dev/null; then
         print_info "Registering migration site in cnwp.yml..."
-        local site_dir="$SCRIPT_DIR/$migration_name"
+        local site_dir="$PROJECT_ROOT/$migration_name"
 
         # Prompt for source type
         local source_type="other"
@@ -226,7 +227,7 @@ MIGRATION_README
             *) source_type="other" ;;
         esac
 
-        if yaml_add_migration_stub "$migration_name" "$site_dir" "$source_type" "" "$SCRIPT_DIR/cnwp.yml" 2>/dev/null; then
+        if yaml_add_migration_stub "$migration_name" "$site_dir" "$source_type" "" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
             print_status "OK" "Migration site registered in cnwp.yml"
         else
             print_warning "Could not register site in cnwp.yml"

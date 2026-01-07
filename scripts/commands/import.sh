@@ -43,31 +43,32 @@ set -euo pipefail
 
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 ################################################################################
 # Source Required Libraries
 ################################################################################
 
 # Core UI library (colors, status messages)
-source "$SCRIPT_DIR/lib/ui.sh"
+source "$PROJECT_ROOT/lib/ui.sh"
 
 # Common utilities (validation, secrets)
-source "$SCRIPT_DIR/lib/common.sh"
+source "$PROJECT_ROOT/lib/common.sh"
 
 # Server scanning functions
-source "$SCRIPT_DIR/lib/server-scan.sh"
+source "$PROJECT_ROOT/lib/server-scan.sh"
 
 # Import TUI components
-source "$SCRIPT_DIR/lib/import-tui.sh"
+source "$PROJECT_ROOT/lib/import-tui.sh"
 
 # Import core functions
-source "$SCRIPT_DIR/lib/import.sh"
+source "$PROJECT_ROOT/lib/import.sh"
 
 ################################################################################
 # Configuration
 ################################################################################
 
-CONFIG_FILE="$SCRIPT_DIR/cnwp.yml"
+CONFIG_FILE="$PROJECT_ROOT/cnwp.yml"
 
 # Default options
 OPT_SERVER=""

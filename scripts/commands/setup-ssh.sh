@@ -58,7 +58,7 @@ get_linode_servers() {
             print server
         }
         in_servers && /^  [a-z]/ && !/^  servers:/ { in_servers=0; in_linode=0 }
-    ' "$SCRIPT_DIR/cnwp.yml" 2>/dev/null
+    ' "$PROJECT_ROOT/cnwp.yml" 2>/dev/null
 }
 
 # Get server details from cnwp.yml
@@ -79,7 +79,7 @@ get_server_detail() {
             exit
         }
         in_server && /^    [a-z]/ { in_server=0 }
-    ' "$SCRIPT_DIR/cnwp.yml" 2>/dev/null
+    ' "$PROJECT_ROOT/cnwp.yml" 2>/dev/null
 }
 
 # Push SSH key to specific Linode server
@@ -244,9 +244,9 @@ print_header "NWP SSH Key Setup"
 # Configuration
 ################################################################################
 
-PRIVATE_KEY_PATH="$SCRIPT_DIR/keys/nwp"
+PRIVATE_KEY_PATH="$PROJECT_ROOT/keys/nwp"
 SSH_PRIVATE_KEY_PATH="$HOME/.ssh/nwp"
-PUBLIC_KEY="$SCRIPT_DIR/keys/nwp.pub"
+PUBLIC_KEY="$PROJECT_ROOT/keys/nwp.pub"
 
 ################################################################################
 # Step 1: Create keys directory
@@ -254,7 +254,7 @@ PUBLIC_KEY="$SCRIPT_DIR/keys/nwp.pub"
 
 print_header "Step 1: Create Keys Directory"
 
-KEYS_DIR="$SCRIPT_DIR/keys"
+KEYS_DIR="$PROJECT_ROOT/keys"
 
 if [ -d "$KEYS_DIR" ]; then
     print_status "Keys directory exists: $KEYS_DIR"

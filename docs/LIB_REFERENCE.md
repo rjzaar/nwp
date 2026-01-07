@@ -743,7 +743,7 @@ state=$(get_site_state "mysite")
 Returns the staging name for a site.
 
 ```bash
-stg_name=$(get_staging_name "mysite")  # Returns: mysite_stg
+stg_name=$(get_staging_name "mysite")  # Returns: mysite-stg
 ```
 
 ---
@@ -770,19 +770,19 @@ Routes database operations to appropriate handler.
 
 ```bash
 # Auto-select best source
-download_database "mysite" "auto" "mysite_stg"
+download_database "mysite" "auto" "mysite-stg"
 
 # From production
-download_database "mysite" "production" "mysite_stg"
+download_database "mysite" "production" "mysite-stg"
 
 # From specific backup
-download_database "mysite" "backup:/path/to/backup.sql.gz" "mysite_stg"
+download_database "mysite" "backup:/path/to/backup.sql.gz" "mysite-stg"
 
 # From development site
-download_database "mysite" "development" "mysite_stg"
+download_database "mysite" "development" "mysite-stg"
 
 # From URL
-download_database "mysite" "url:https://example.com/db.sql.gz" "mysite_stg"
+download_database "mysite" "url:https://example.com/db.sql.gz" "mysite-stg"
 ```
 
 ### download_db_auto
@@ -794,7 +794,7 @@ Intelligent source selection priority:
 4. Development clone
 
 ```bash
-download_db_auto "mysite" "mysite_stg"
+download_db_auto "mysite" "mysite-stg"
 ```
 
 ### sanitize_staging_db
@@ -802,7 +802,7 @@ download_db_auto "mysite" "mysite_stg"
 Sanitizes database after import.
 
 ```bash
-sanitize_staging_db "mysite_stg"
+sanitize_staging_db "mysite-stg"
 ```
 
 Actions:
@@ -951,7 +951,7 @@ Pre-deployment validation inspired by Vortex's doctor.sh.
 Runs comprehensive preflight checks.
 
 ```bash
-if preflight_check "mysite" "mysite_stg"; then
+if preflight_check "mysite" "mysite-stg"; then
     echo "All critical checks passed"
 else
     echo "Some checks failed"

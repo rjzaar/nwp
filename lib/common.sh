@@ -113,7 +113,7 @@ generate_secure_password() {
 get_secret() {
     local path="$1"
     local default="$2"
-    local secrets_file="${SCRIPT_DIR}/.secrets.yml"
+    local secrets_file="${PROJECT_ROOT}/.secrets.yml"
 
     if [ ! -f "$secrets_file" ]; then
         echo "$default"
@@ -162,7 +162,7 @@ get_infra_secret() {
 get_data_secret() {
     local path="$1"
     local default="$2"
-    local data_secrets_file="${SCRIPT_DIR}/.secrets.data.yml"
+    local data_secrets_file="${PROJECT_ROOT}/.secrets.data.yml"
 
     # Warn if we're in an AI-accessible context (optional env var)
     if [ "${AI_CONTEXT:-}" = "true" ]; then
@@ -204,7 +204,7 @@ get_data_secret() {
 get_data_secret_nested() {
     local path="$1"
     local default="$2"
-    local data_secrets_file="${SCRIPT_DIR}/.secrets.data.yml"
+    local data_secrets_file="${PROJECT_ROOT}/.secrets.data.yml"
 
     if [ "${AI_CONTEXT:-}" = "true" ]; then
         echo "[SECURITY WARNING] Data secret accessed in AI context: $path" >&2
@@ -254,7 +254,7 @@ get_data_secret_nested() {
 get_secret_nested() {
     local path="$1"
     local default="$2"
-    local secrets_file="${SCRIPT_DIR}/.secrets.yml"
+    local secrets_file="${PROJECT_ROOT}/.secrets.yml"
 
     if [ ! -f "$secrets_file" ]; then
         echo "$default"
@@ -304,7 +304,7 @@ get_secret_nested() {
 get_setting() {
     local path="$1"
     local default="$2"
-    local config_file="${SCRIPT_DIR}/cnwp.yml"
+    local config_file="${PROJECT_ROOT}/cnwp.yml"
 
     if [ ! -f "$config_file" ]; then
         echo "$default"
@@ -391,8 +391,8 @@ get_drupal_environment() {
     # Determine site path
     if [ -d "$site" ]; then
         site_path="$site"
-    elif [ -d "${SCRIPT_DIR}/${site}" ]; then
-        site_path="${SCRIPT_DIR}/${site}"
+    elif [ -d "${PROJECT_ROOT}/sites/${site}" ]; then
+        site_path="${PROJECT_ROOT}/sites/${site}"
     else
         # Fallback to name-based detection
         get_env_type_from_name "$site"

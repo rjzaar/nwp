@@ -1757,7 +1757,26 @@ run_action() {
             print_warning "About to delete: ${sites[*]}"
             if ask_yes_no "Are you sure?" "n"; then
                 for site in "${sites[@]}"; do
-                    delete_site "$site" "$config_file" "true"
+                    # Find site type from global array
+                    local site_idx=-1
+                    for i in "${!SITE_NAMES[@]}"; do
+                        if [ "${SITE_NAMES[$i]}" = "$site" ]; then
+                            site_idx=$i
+                            break
+                        fi
+                    done
+
+                    local site_type="${SITE_TYPE[$site_idx]:-0}"
+
+                    if [ "$site_type" = "2" ]; then
+                        # Ghost site - just unlist from DDEV
+                        print_info "Unlisting ghost DDEV project: $site"
+                        ddev stop --unlist "$site" 2>&1 || true
+                        print_status "OK" "Ghost site '$site' removed from DDEV"
+                    else
+                        # Normal or orphan site - use full delete
+                        delete_site "$site" "$config_file" "true"
+                    fi
                 done
             else
                 print_info "Cancelled"

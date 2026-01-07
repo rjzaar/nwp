@@ -748,12 +748,18 @@ get_feature_category() {
     esac
 }
 
-# Build feature data arrays
+# Build feature data arrays grouped by category
 build_feature_arrays() {
     FEATURE_IDS=()
     FEATURE_NAMES=()
     FEATURE_CATEGORIES=()
     FEATURE_STATUS=()  # 0=unverified, 1=verified, 2=modified
+    CATEGORY_LIST=()
+    declare -gA CATEGORY_START=()  # Start index for each category
+    declare -gA CATEGORY_COUNT=()  # Count of features in each category
+
+    local current_category=""
+    local idx=0
 
     while IFS= read -r feature; do
         [[ -z "$feature" ]] && continue
@@ -771,24 +777,39 @@ build_feature_arrays() {
             fi
         fi
 
+        # Track category boundaries
+        if [[ "$category" != "$current_category" ]]; then
+            CATEGORY_LIST+=("$category")
+            CATEGORY_START["$category"]=$idx
+            CATEGORY_COUNT["$category"]=0
+            current_category="$category"
+        fi
+        CATEGORY_COUNT["$category"]=$((CATEGORY_COUNT["$category"] + 1))
+
         FEATURE_IDS+=("$feature")
         FEATURE_NAMES+=("${name:-$feature}")
         FEATURE_CATEGORIES+=("$category")
         FEATURE_STATUS+=("$status")
+        idx=$((idx + 1))
     done <<< "$(get_feature_ids)"
 }
 
-# Draw the console TUI
+# Draw the console TUI with category pages
 draw_console() {
-    local current_idx="$1"
-    local scroll_offset="$2"
-    local max_lines=$(($(tput lines) - 8))
+    local cat_idx="$1"
+    local feat_idx="$2"  # Index within current category
     local width=$(tput cols)
+    local max_lines=$(($(tput lines) - 10))
+
+    local category="${CATEGORY_LIST[$cat_idx]}"
+    local cat_start="${CATEGORY_START[$category]}"
+    local cat_count="${CATEGORY_COUNT[$category]}"
+    local global_idx=$((cat_start + feat_idx))
 
     clear_screen
 
     # Header
-    echo -e "${BOLD}NWP Verification Console${NC}  |  ↑↓:Navigate  v:Verify  u:Unverify  d:Details  c:Check  r:Refresh  q:Quit"
+    echo -e "${BOLD}NWP Verification Console${NC}  |  ←→:Category  ↑↓:Feature  v:Verify  u:Unverify  d:Details  q:Quit"
     printf '═%.0s' $(seq 1 $width)
     echo ""
 
@@ -807,38 +828,42 @@ draw_console() {
     printf '─%.0s' $(seq 1 $width)
     echo ""
 
-    # Feature list with categories
-    local prev_category=""
-    local display_idx=0
-    local line_count=0
+    # Category navigation bar
+    printf "  "
+    for i in "${!CATEGORY_LIST[@]}"; do
+        local cat="${CATEGORY_LIST[$i]}"
+        local cat_verified=0 cat_total=0
+        local start="${CATEGORY_START[$cat]}"
+        local count="${CATEGORY_COUNT[$cat]}"
 
-    for i in "${!FEATURE_IDS[@]}"; do
-        # Skip items before scroll offset
-        if [[ $display_idx -lt $scroll_offset ]]; then
-            display_idx=$((display_idx + 1))
-            continue
-        fi
-
-        # Stop if we've filled the screen
-        if [[ $line_count -ge $max_lines ]]; then
-            break
-        fi
-
-        local category="${FEATURE_CATEGORIES[$i]}"
-        local feature="${FEATURE_IDS[$i]}"
-        local name="${FEATURE_NAMES[$i]}"
-        local status="${FEATURE_STATUS[$i]}"
-
-        # Category header
-        if [[ "$category" != "$prev_category" ]]; then
-            if [[ $line_count -gt 0 ]]; then
-                echo ""
-                line_count=$((line_count + 1))
+        for ((j=start; j<start+count; j++)); do
+            cat_total=$((cat_total + 1))
+            if [[ "${FEATURE_STATUS[$j]}" == "1" ]]; then
+                cat_verified=$((cat_verified + 1))
             fi
-            echo -e "  ${BOLD}${CYAN}── $category ──${NC}"
-            prev_category="$category"
-            line_count=$((line_count + 1))
+        done
+
+        if [[ $i -eq $cat_idx ]]; then
+            printf "${WHITE}${BOLD}[%s (%d/%d)]${NC} " "$cat" "$cat_verified" "$cat_total"
+        else
+            printf "${DIM}%s${NC} " "$cat"
         fi
+    done
+    echo ""
+    printf '─%.0s' $(seq 1 $width)
+    echo ""
+
+    # Category header
+    echo -e "  ${BOLD}${CYAN}── $category ──${NC}  (${cat_count} features, page $((cat_idx + 1))/${#CATEGORY_LIST[@]})"
+    echo ""
+
+    # Features in this category
+    local line_count=0
+    for ((i=0; i<cat_count && line_count<max_lines; i++)); do
+        local idx=$((cat_start + i))
+        local feature="${FEATURE_IDS[$idx]}"
+        local name="${FEATURE_NAMES[$idx]}"
+        local status="${FEATURE_STATUS[$idx]}"
 
         # Status indicator
         local indicator status_color
@@ -849,7 +874,7 @@ draw_console() {
         esac
 
         # Highlight current selection
-        if [[ $i -eq $current_idx ]]; then
+        if [[ $i -eq $feat_idx ]]; then
             printf "${WHITE}>${NC}"
         else
             printf " "
@@ -862,9 +887,8 @@ draw_console() {
             display_name="${display_name:0:$((max_name_len-3))}..."
         fi
 
-        printf " ${status_color}%s${NC} %-12s %s\n" "$indicator" "($feature)" "$display_name"
+        printf " ${status_color}%s${NC} %-16s %s\n" "$indicator" "($feature)" "$display_name"
         line_count=$((line_count + 1))
-        display_idx=$((display_idx + 1))
     done
 
     # Footer with current feature details
@@ -872,28 +896,29 @@ draw_console() {
     printf '─%.0s' $(seq 1 $width)
     echo ""
 
-    if [[ ${#FEATURE_IDS[@]} -gt 0 ]]; then
-        local current_feature="${FEATURE_IDS[$current_idx]}"
-        local current_name="${FEATURE_NAMES[$current_idx]}"
+    if [[ $cat_count -gt 0 ]]; then
+        local current_feature="${FEATURE_IDS[$global_idx]}"
+        local current_name="${FEATURE_NAMES[$global_idx]}"
         local desc=$(get_yaml_value "$current_feature" "description")
         local verified_by=$(get_yaml_value "$current_feature" "verified_by")
         local verified_at=$(get_yaml_value "$current_feature" "verified_at")
 
         printf "  ${BOLD}%s${NC}" "$current_name"
         if [[ -n "$desc" && "$desc" != "null" ]]; then
-            printf " - %s" "$desc"
+            echo ""
+            printf "  ${DIM}%s${NC}" "$desc"
         fi
         echo ""
 
-        if [[ "${FEATURE_STATUS[$current_idx]}" == "1" && "$verified_by" != "null" ]]; then
-            printf "  ${DIM}Verified by %s at %s${NC}\n" "$verified_by" "$verified_at"
-        elif [[ "${FEATURE_STATUS[$current_idx]}" == "2" ]]; then
+        if [[ "${FEATURE_STATUS[$global_idx]}" == "1" && "$verified_by" != "null" ]]; then
+            printf "  ${GREEN}✓ Verified by %s at %s${NC}\n" "$verified_by" "$verified_at"
+        elif [[ "${FEATURE_STATUS[$global_idx]}" == "2" ]]; then
             printf "  ${YELLOW}⚠ Modified since last verification${NC}\n"
         fi
     fi
 }
 
-# Interactive console TUI
+# Interactive console TUI with category navigation
 run_console() {
     # Build data
     build_feature_arrays
@@ -903,15 +928,19 @@ run_console() {
         return 1
     fi
 
-    local current_idx=0
-    local scroll_offset=0
-    local max_visible=$(($(tput lines) - 12))
+    local cat_idx=0      # Current category index
+    local feat_idx=0     # Current feature index within category
 
     cursor_hide
     trap 'cursor_show; clear_screen' EXIT
 
     while true; do
-        draw_console "$current_idx" "$scroll_offset"
+        local category="${CATEGORY_LIST[$cat_idx]}"
+        local cat_count="${CATEGORY_COUNT[$category]}"
+        local cat_start="${CATEGORY_START[$category]}"
+        local global_idx=$((cat_start + feat_idx))
+
+        draw_console "$cat_idx" "$feat_idx"
 
         # Read single keypress
         IFS= read -rsn1 key
@@ -920,20 +949,34 @@ run_console() {
             $'\x1b')  # Escape sequence
                 read -rsn2 -t 0.1 key2
                 case "$key2" in
-                    '[A')  # Up arrow
-                        if [[ $current_idx -gt 0 ]]; then
-                            current_idx=$((current_idx - 1))
-                            if [[ $current_idx -lt $scroll_offset ]]; then
-                                scroll_offset=$((scroll_offset - 1))
-                            fi
+                    '[A')  # Up arrow - previous feature in category
+                        if [[ $feat_idx -gt 0 ]]; then
+                            feat_idx=$((feat_idx - 1))
                         fi
                         ;;
-                    '[B')  # Down arrow
-                        if [[ $current_idx -lt $((${#FEATURE_IDS[@]} - 1)) ]]; then
-                            current_idx=$((current_idx + 1))
-                            if [[ $current_idx -ge $((scroll_offset + max_visible)) ]]; then
-                                scroll_offset=$((scroll_offset + 1))
-                            fi
+                    '[B')  # Down arrow - next feature in category
+                        if [[ $feat_idx -lt $((cat_count - 1)) ]]; then
+                            feat_idx=$((feat_idx + 1))
+                        fi
+                        ;;
+                    '[D')  # Left arrow - previous category
+                        if [[ $cat_idx -gt 0 ]]; then
+                            cat_idx=$((cat_idx - 1))
+                            feat_idx=0
+                        else
+                            # Wrap to last category
+                            cat_idx=$((${#CATEGORY_LIST[@]} - 1))
+                            feat_idx=0
+                        fi
+                        ;;
+                    '[C')  # Right arrow - next category
+                        if [[ $cat_idx -lt $((${#CATEGORY_LIST[@]} - 1)) ]]; then
+                            cat_idx=$((cat_idx + 1))
+                            feat_idx=0
+                        else
+                            # Wrap to first category
+                            cat_idx=0
+                            feat_idx=0
                         fi
                         ;;
                 esac
@@ -947,8 +990,8 @@ run_console() {
             'v'|'V')  # Verify current feature
                 cursor_show
                 clear_screen
-                local feature="${FEATURE_IDS[$current_idx]}"
-                echo -e "${BOLD}Verifying: ${FEATURE_NAMES[$current_idx]}${NC}"
+                local feature="${FEATURE_IDS[$global_idx]}"
+                echo -e "${BOLD}Verifying: ${FEATURE_NAMES[$global_idx]}${NC}"
                 echo ""
                 verify_feature "$feature" ""
                 echo ""
@@ -959,8 +1002,8 @@ run_console() {
             'u'|'U')  # Unverify current feature
                 cursor_show
                 clear_screen
-                local feature="${FEATURE_IDS[$current_idx]}"
-                echo -e "${BOLD}Unverifying: ${FEATURE_NAMES[$current_idx]}${NC}"
+                local feature="${FEATURE_IDS[$global_idx]}"
+                echo -e "${BOLD}Unverifying: ${FEATURE_NAMES[$global_idx]}${NC}"
                 echo ""
                 unverify_feature "$feature"
                 echo ""
@@ -968,10 +1011,10 @@ run_console() {
                 build_feature_arrays
                 cursor_hide
                 ;;
-            'd'|'D')  # Show details
+            'd'|'D'|'')  # Show details (d or Enter)
                 cursor_show
                 clear_screen
-                local feature="${FEATURE_IDS[$current_idx]}"
+                local feature="${FEATURE_IDS[$global_idx]}"
                 show_details "$feature"
                 echo ""
                 read -p "Press Enter to continue..."
@@ -988,15 +1031,6 @@ run_console() {
                 ;;
             'r'|'R')  # Refresh
                 build_feature_arrays
-                ;;
-            '')  # Enter - show details
-                cursor_show
-                clear_screen
-                local feature="${FEATURE_IDS[$current_idx]}"
-                show_details "$feature"
-                echo ""
-                read -p "Press Enter to continue..."
-                cursor_hide
                 ;;
         esac
     done

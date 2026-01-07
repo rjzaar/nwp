@@ -21,7 +21,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERIFICATION_FILE="${SCRIPT_DIR}/.verification.yml"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+VERIFICATION_FILE="${PROJECT_ROOT}/.verification.yml"
 
 # Colors
 RED='\033[0;31m'
@@ -46,7 +47,7 @@ calculate_hash() {
 
     while IFS= read -r file; do
         if [[ -n "$file" ]]; then
-            local filepath="${SCRIPT_DIR}/${file}"
+            local filepath="${PROJECT_ROOT}/${file}"
             if [[ -f "$filepath" ]]; then
                 combined_hash+=$(sha256sum "$filepath" 2>/dev/null | cut -d' ' -f1)
             fi
@@ -170,7 +171,7 @@ get_changed_files() {
 # Show git diff for a file if available
 show_file_diff() {
     local file="$1"
-    local filepath="${SCRIPT_DIR}/${file}"
+    local filepath="${PROJECT_ROOT}/${file}"
 
     if [[ ! -f "$filepath" ]]; then
         echo -e "    ${RED}File not found${NC}"
@@ -178,17 +179,17 @@ show_file_diff() {
     fi
 
     # Check if file is tracked by git
-    if git -C "$SCRIPT_DIR" ls-files --error-unmatch "$file" &>/dev/null; then
+    if git -C "$PROJECT_ROOT" ls-files --error-unmatch "$file" &>/dev/null; then
         # Show recent changes (last commit that modified this file)
-        local last_commit=$(git -C "$SCRIPT_DIR" log -1 --format="%h %s" -- "$file" 2>/dev/null)
+        local last_commit=$(git -C "$PROJECT_ROOT" log -1 --format="%h %s" -- "$file" 2>/dev/null)
         if [[ -n "$last_commit" ]]; then
             echo -e "    ${DIM}Last commit: ${last_commit}${NC}"
         fi
 
         # Show summary of changes if file has uncommitted changes
-        if ! git -C "$SCRIPT_DIR" diff --quiet -- "$file" 2>/dev/null; then
+        if ! git -C "$PROJECT_ROOT" diff --quiet -- "$file" 2>/dev/null; then
             echo -e "    ${YELLOW}Has uncommitted changes${NC}"
-            local stats=$(git -C "$SCRIPT_DIR" diff --stat -- "$file" 2>/dev/null | tail -1)
+            local stats=$(git -C "$PROJECT_ROOT" diff --stat -- "$file" 2>/dev/null | tail -1)
             if [[ -n "$stats" ]]; then
                 echo -e "    ${DIM}${stats}${NC}"
             fi
@@ -414,7 +415,7 @@ show_details() {
     local files=$(get_feature_files "$feature")
     while IFS= read -r file; do
         if [[ -n "$file" ]]; then
-            local filepath="${SCRIPT_DIR}/${file}"
+            local filepath="${PROJECT_ROOT}/${file}"
             if [[ -f "$filepath" ]]; then
                 echo -e "  ${CYAN}•${NC} $file"
                 show_file_diff "$file"
@@ -454,7 +455,7 @@ show_details() {
     done <<< "$files"
 
     if [[ -n "$all_files" ]]; then
-        local git_log=$(git -C "$SCRIPT_DIR" log --oneline -5 -- $all_files 2>/dev/null)
+        local git_log=$(git -C "$PROJECT_ROOT" log --oneline -5 -- $all_files 2>/dev/null)
         if [[ -n "$git_log" ]]; then
             echo "$git_log" | while IFS= read -r line; do
                 echo -e "  ${DIM}$line${NC}"
@@ -492,7 +493,7 @@ check_invalidations() {
                 local files=$(get_feature_files "$feature")
                 while IFS= read -r file; do
                     if [[ -n "$file" ]]; then
-                        local last_commit=$(git -C "$SCRIPT_DIR" log -1 --format="%h %s" -- "$file" 2>/dev/null)
+                        local last_commit=$(git -C "$PROJECT_ROOT" log -1 --format="%h %s" -- "$file" 2>/dev/null)
                         echo -e "    ${DIM}${file}: ${last_commit}${NC}"
                     fi
                 done <<< "$files"

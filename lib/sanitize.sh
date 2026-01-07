@@ -10,6 +10,9 @@
 ################################################################################
 
 # Default sanitization SQL commands
+# NOTE: Password reset is now handled by sanitize_with_drush() with secure random passwords
+# This SQL fallback anonymizes user data but does NOT reset passwords to a known value
+# (that would be a security risk if the dump were exposed)
 SANITIZE_SQL_USERS='
 -- Sanitize user data (GDPR compliant)
 UPDATE users_field_data
@@ -19,10 +22,9 @@ SET
     name = CONCAT("user_", uid)
 WHERE uid > 1;
 
--- Reset all passwords to "password" (Drupal 10+ hash)
-UPDATE users_field_data
-SET pass = "$S$E0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv"
-WHERE uid > 0;
+-- SECURITY: Do NOT reset passwords to a known value in SQL dumps
+-- Passwords are randomized by sanitize_with_drush() instead
+-- If using SQL fallback, passwords remain as-is (still hashed, but original)
 '
 
 SANITIZE_SQL_SESSIONS='
@@ -70,18 +72,30 @@ SET
     remote_id = CONCAT("test_", payment_id);
 '
 
-# Run Drush sql-sanitize
+# Generate a unique sanitized password per user
+# Uses a deterministic but non-guessable format: sanitized_<uid>_<random>
+generate_sanitized_password() {
+    local uid="$1"
+    # Generate 8 random alphanumeric chars
+    local random_part=$(openssl rand -base64 12 | tr -d '/=+' | cut -c -8)
+    echo "Sanitized${uid}_${random_part}"
+}
+
+# Run Drush sql-sanitize with secure random passwords
 # Usage: sanitize_with_drush "/path/to/site"
 sanitize_with_drush() {
     local site_path="$1"
-    local options="${2:---sanitize-password=password --sanitize-email=user%uid@example.com}"
+    # Use a secure random password instead of "password"
+    local secure_pass=$(openssl rand -base64 16 | tr -d '/=+' | cut -c -12)
+    local options="${2:---sanitize-password=$secure_pass --sanitize-email=user%uid@example.com}"
 
     cd "$site_path" || return 1
 
-    print_info "Running drush sql-sanitize..."
+    print_info "Running drush sql-sanitize with secure passwords..."
 
     if ddev drush sql-sanitize $options -y 2>&1; then
-        print_status "OK" "Drush sanitization complete"
+        print_status "OK" "Drush sanitization complete (passwords set to random value)"
+        print_info "Sanitized password for all users: $secure_pass"
         cd - > /dev/null
         return 0
     else

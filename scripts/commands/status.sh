@@ -1958,11 +1958,11 @@ run_interactive() {
         local key=$(read_key)
 
         case "$key" in
-            "UP"|"k") # Up
-                [ $current_row -gt 0 ] && current_row=$((current_row - 1)) || true
+            "UP"|"k") # Up (with wrap-around)
+                current_row=$(( (current_row - 1 + num_sites) % num_sites ))
                 ;;
-            "DOWN"|"j") # Down
-                [ $current_row -lt $((num_sites - 1)) ] && current_row=$((current_row + 1)) || true
+            "DOWN"|"j") # Down (with wrap-around)
+                current_row=$(( (current_row + 1) % num_sites ))
                 ;;
             "SPACE") # Toggle selection
                 if [ "${SITE_SELECTED[$current_row]}" = "0" ]; then

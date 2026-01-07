@@ -666,7 +666,7 @@ provision_dedicated() {
     print_info "Domain: ${domain}"
 
     # Check prerequisites
-    local token=$(get_linode_token "$SCRIPT_DIR")
+    local token=$(get_linode_token "$PROJECT_ROOT")
     if [ -z "$token" ]; then
         print_error "Linode API token not found"
         print_info "Add to .secrets.yml:"
@@ -826,7 +826,7 @@ REMOTE
     setup_nginx_vhost "$sitename" "$gitlab_host" || true
 
     # Add DNS record if needed (has its own idempotency check)
-    local token=$(get_linode_token "$SCRIPT_DIR")
+    local token=$(get_linode_token "$PROJECT_ROOT")
     if [ -n "$token" ]; then
         add_dns_record "$sitename" "$ip" "$token" || true
     else
@@ -868,7 +868,7 @@ live_delete() {
 
     print_header "Deleting Live Server: $sitename"
 
-    local token=$(get_linode_token "$SCRIPT_DIR")
+    local token=$(get_linode_token "$PROJECT_ROOT")
 
     # Confirm
     if [ "$auto_yes" != "true" ]; then

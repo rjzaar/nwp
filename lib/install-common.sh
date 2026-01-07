@@ -426,7 +426,7 @@ pre_register_live_dns() {
     # Get Linode API token
     local token=""
     if command -v get_linode_token &> /dev/null; then
-        token=$(get_linode_token "$SCRIPT_DIR")
+        token=$(get_linode_token "$PROJECT_ROOT")
     fi
 
     if [ -z "$token" ]; then

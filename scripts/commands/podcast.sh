@@ -132,7 +132,7 @@ check_status() {
     # Check Linode token
     echo ""
     echo "Linode:"
-    local linode_token=$(get_linode_token "$SCRIPT_DIR")
+    local linode_token=$(get_linode_token "$PROJECT_ROOT")
     if [ -n "$linode_token" ]; then
         print_status "OK" "API token configured"
         # Verify token works
@@ -150,8 +150,8 @@ check_status() {
     # Check Cloudflare
     echo ""
     echo "Cloudflare:"
-    local cf_token=$(get_cloudflare_token "$SCRIPT_DIR")
-    local cf_zone=$(get_cloudflare_zone_id "$SCRIPT_DIR")
+    local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
+    local cf_zone=$(get_cloudflare_zone_id "$PROJECT_ROOT")
     if [ -n "$cf_token" ] && [ -n "$cf_zone" ]; then
         print_status "OK" "API token and Zone ID configured"
         if verify_cloudflare_auth "$cf_token" "$cf_zone" 2>/dev/null; then
@@ -251,9 +251,9 @@ do_setup() {
     echo ""
 
     # Get credentials
-    local linode_token=$(get_linode_token "$SCRIPT_DIR")
-    local cf_token=$(get_cloudflare_token "$SCRIPT_DIR")
-    local cf_zone_id=$(get_cloudflare_zone_id "$SCRIPT_DIR")
+    local linode_token=$(get_linode_token "$PROJECT_ROOT")
+    local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
+    local cf_zone_id=$(get_cloudflare_zone_id "$PROJECT_ROOT")
 
     local base_domain="${domain#*.}"
     local podcast_subdomain="${domain%%.*}"
@@ -721,7 +721,7 @@ do_teardown() {
     print_warning "This will permanently delete resources!"
     echo ""
 
-    local linode_token=$(get_linode_token "$SCRIPT_DIR")
+    local linode_token=$(get_linode_token "$PROJECT_ROOT")
     if [ -z "$linode_token" ]; then
         print_error "Linode token not found"
         exit 1

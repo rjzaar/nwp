@@ -35,7 +35,8 @@
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+cd "$PROJECT_ROOT"
 
 # Color output
 RED='\033[0;31m'
@@ -698,9 +699,9 @@ fi
 print_header "Test 12: Linode Production Testing"
 
 # Check if Linode API token is available
-if [ -f "lib/linode.sh" ]; then
-    source lib/linode.sh
-    LINODE_TOKEN=$(get_linode_token ".")
+if [ -f "$PROJECT_ROOT/lib/linode.sh" ]; then
+    source "$PROJECT_ROOT/lib/linode.sh"
+    LINODE_TOKEN=$(get_linode_token "$PROJECT_ROOT")
 
     if [ -n "$LINODE_TOKEN" ] && [ -f "$HOME/.ssh/nwp" ]; then
         print_info "Linode API token and SSH key found - running production tests"

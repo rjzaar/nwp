@@ -13,16 +13,17 @@ A proposal for managing multi-tier Git repositories with AI-assisted code govern
 1. [Executive Summary](#executive-summary)
 2. [The Problem](#the-problem)
 3. [Distributed Repository Topology](#distributed-repository-topology)
-4. [Issue Queue Categories](#issue-queue-categories)
-5. [Decision Tracking System](#decision-tracking-system)
-6. [Claude's Role in Governance](#claudes-role-in-governance)
-7. [CLAUDE.md as Standing Orders](#claudemd-as-standing-orders)
-8. [Question and Decision Recording](#question-and-decision-recording)
-9. [Change Classification](#change-classification)
-10. [Integration Workflow](#integration-workflow)
-11. [Security Considerations](#security-considerations)
-12. [Malicious Code Detection](#malicious-code-detection)
-13. [Implementation Plan](#implementation-plan)
+4. [Fork-Based Contributions](#fork-based-contributions)
+5. [Issue Queue Categories](#issue-queue-categories)
+6. [Decision Tracking System](#decision-tracking-system)
+7. [Claude's Role in Governance](#claudes-role-in-governance)
+8. [CLAUDE.md as Standing Orders](#claudemd-as-standing-orders)
+9. [Question and Decision Recording](#question-and-decision-recording)
+10. [Change Classification](#change-classification)
+11. [Integration Workflow](#integration-workflow)
+12. [Security Considerations](#security-considerations)
+13. [Malicious Code Detection](#malicious-code-detection)
+14. [Implementation Plan](#implementation-plan)
 
 ---
 
@@ -30,7 +31,8 @@ A proposal for managing multi-tier Git repositories with AI-assisted code govern
 
 This proposal establishes a governance framework for distributed NWP development where:
 
-- Multiple developers can run their own GitLab instances
+- Contributors can participate via simple GitHub/GitLab forks (recommended for most)
+- Power users can run their own GitLab instances for full autonomy
 - Changes flow upstream through a hierarchy of repositories
 - Claude assists with code review, decision enforcement, and documentation
 - All design decisions are recorded and searchable
@@ -122,6 +124,210 @@ downstream:
 sync:
   auto_pull: daily
   auto_push: manual  # Requires merge request
+```
+
+---
+
+## Fork-Based Contributions
+
+For contributors who don't need or want to run their own GitLab infrastructure, a simpler fork-based workflow is available. This is the recommended path for most contributors.
+
+### Fork Model Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              TIER 0: github.com/nwp/nwp                     │
+│                   (Canonical - public)                       │
+└────────────────────────────┬────────────────────────────────┘
+                             │
+┌────────────────────────────┴────────────────────────────────┐
+│              TIER 1: git.nwpcode.org/nwp/nwp                │
+│                   (Primary maintainer)                       │
+└────────────────────────────┬────────────────────────────────┘
+                             │
+        ┌────────────────────┼────────────────────┐
+        │                    │                    │
+        ▼                    ▼                    ▼
+┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+│   Fork A      │   │   Fork B      │   │   Fork C      │
+│ (GitHub fork) │   │ (GitHub fork) │   │ (GitLab fork) │
+│  alice/nwp    │   │   bob/nwp     │   │  carol/nwp    │
+└───────────────┘   └───────────────┘   └───────────────┘
+```
+
+### When to Use Forks vs Full GitLab Instances
+
+| Contribution Type | Recommended Approach | Reason |
+|-------------------|---------------------|--------|
+| Bug fixes | Fork | Simple, fast, minimal setup |
+| Documentation | Fork | No CI needed for docs |
+| Small features | Fork | Upstream CI handles testing |
+| Large features | Fork or Tier 2 | Depends on iteration needs |
+| Core development | Tier 2 GitLab | Full CI/CD, multiple branches |
+| Experimental work | Tier 2 GitLab | Privacy, custom pipelines |
+| Organizational use | Tier 2+ GitLab | Independence, internal policies |
+
+### Fork Workflow
+
+#### Initial Setup
+
+```bash
+# 1. Fork the repository on GitHub/GitLab (via web UI)
+
+# 2. Clone your fork locally
+git clone git@github.com:YOUR_USERNAME/nwp.git
+cd nwp
+
+# 3. Add upstream remote
+git remote add upstream git@github.com:nwp/nwp.git
+
+# 4. Verify remotes
+git remote -v
+# origin    git@github.com:YOUR_USERNAME/nwp.git (fetch)
+# origin    git@github.com:YOUR_USERNAME/nwp.git (push)
+# upstream  git@github.com:nwp/nwp.git (fetch)
+# upstream  git@github.com:nwp/nwp.git (push)
+```
+
+#### Contributing via Fork
+
+```bash
+# 1. Sync your fork with upstream
+git fetch upstream
+git checkout main
+git merge upstream/main
+git push origin main
+
+# 2. Create feature branch
+git checkout -b fix/issue-123-backup-path
+
+# 3. Make changes, commit (Claude assists here)
+# ... edit files ...
+git add -A
+git commit -m "Fix backup path handling for spaces (#123)"
+
+# 4. Push to your fork
+git push origin fix/issue-123-backup-path
+
+# 5. Create Pull Request via GitHub/GitLab web UI
+#    - PR from: YOUR_USERNAME/nwp:fix/issue-123-backup-path
+#    - PR to:   nwp/nwp:main (or git.nwpcode.org for Tier 1)
+```
+
+#### Keeping Fork in Sync
+
+```bash
+# Regular sync (recommended: before starting new work)
+git fetch upstream
+git checkout main
+git merge upstream/main
+git push origin main
+
+# Or use GitHub's "Sync fork" button in the web UI
+```
+
+### Claude Integration with Forks
+
+Claude's governance features work the same way with forks:
+
+1. **CLAUDE.md is inherited** - Your fork contains the same standing orders
+2. **Decision history travels** - ADRs and decision logs are in the repo
+3. **Security checks apply** - Upstream CI runs all security scans on PRs
+4. **Scope verification** - Claude (on maintainer's side) reviews PR scope
+
+#### Fork-Specific Claude Workflow
+
+```
+Developer with Fork                    Upstream Maintainer
+       │                                      │
+       │  1. Clone fork                       │
+       │  2. Work with Claude locally         │
+       │     - Claude checks CLAUDE.md        │
+       │     - Claude checks docs/decisions/  │
+       │  3. Push to fork                     │
+       │  4. Create PR ──────────────────────▶│
+       │                                      │
+       │                         5. CI runs security scans
+       │                         6. Claude reviews PR scope
+       │                         7. Maintainer reviews
+       │                         8. Merge or request changes
+       │  ◀──────────────────────────────────│
+       │                                      │
+```
+
+### Advantages of Fork Model
+
+| Advantage | Description |
+|-----------|-------------|
+| **Zero infrastructure** | No GitLab server to maintain |
+| **Familiar workflow** | Standard GitHub/GitLab PR process |
+| **Built-in sync** | Platform handles fork synchronization |
+| **Free CI** | GitHub Actions / GitLab CI on upstream |
+| **Visibility** | PRs visible in upstream's issue tracker |
+| **Lower barrier** | Anyone with GitHub account can contribute |
+
+### Limitations of Fork Model
+
+| Limitation | Workaround |
+|------------|------------|
+| **No private CI** | Use local testing, or upgrade to Tier 2 |
+| **Platform dependency** | Can't work if GitHub/GitLab is down |
+| **Less autonomy** | Subject to upstream's CI policies |
+| **No custom pipelines** | Must use upstream's CI configuration |
+| **Limited branch experiments** | Create branches in fork, but no private CI |
+
+### Hybrid Contribution Paths
+
+Contributors can start with forks and graduate to full GitLab instances:
+
+```
+Contribution Journey:
+
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  Newcomer   │────▶│  Regular    │────▶│    Core     │
+│             │     │ Contributor │     │  Developer  │
+└─────────────┘     └─────────────┘     └─────────────┘
+       │                   │                   │
+       ▼                   ▼                   ▼
+   GitHub Fork        GitHub Fork         Tier 2 GitLab
+   Simple PRs        Complex PRs         Full instance
+   Bug fixes         Features            Core development
+```
+
+### Fork Configuration (Optional)
+
+For forks that want to track their relationship formally:
+
+```yaml
+# .nwp-fork.yml (optional, in fork's root)
+fork:
+  upstream: git@github.com:nwp/nwp.git
+  contributor: alice@example.com
+  sync_strategy: merge  # or rebase
+
+# Areas of focus (helps maintainers route reviews)
+expertise:
+  - lib/backup.sh
+  - recipes/dm/
+```
+
+### Quick Reference: Fork Commands
+
+```bash
+# Sync fork with upstream
+git fetch upstream && git merge upstream/main && git push origin main
+
+# Create feature branch
+git checkout -b feature/my-feature
+
+# Push and create PR
+git push origin feature/my-feature
+# Then use web UI to create PR
+
+# Clean up after PR merged
+git checkout main
+git branch -d feature/my-feature
+git push origin --delete feature/my-feature
 ```
 
 ---
@@ -957,21 +1163,29 @@ For every MR, verify:
 - [ ] Add decision search to `pl` CLI
 - [ ] Test Claude's decision-checking behavior
 
-### Phase 4: Multi-Tier Support
+### Phase 4: Fork Support
+
+- [ ] Document fork workflow in CONTRIBUTING.md
+- [ ] Create `.nwp-fork.yml` schema (optional tracking)
+- [ ] Add fork setup instructions to README
+- [ ] Configure GitHub/GitLab PR templates for forks
+- [ ] Test Claude governance with forked contributions
+
+### Phase 5: Multi-Tier Support
 
 - [ ] Create `.nwp-upstream.yml` schema
 - [ ] Implement `pl sync upstream` command
 - [ ] Implement `pl contribute` command
 - [ ] Document tier setup process
 
-### Phase 5: Automation
+### Phase 6: Automation
 
 - [ ] GitLab CI for decision validation
 - [ ] Automated ADR number assignment
 - [ ] MR template with decision checklist
 - [ ] Notification on new standing orders
 
-### Phase 6: Security Review System
+### Phase 7: Security Review System
 
 - [ ] Create `lib/security-review.sh` with `analyze_mr_security()`
 - [ ] Add security scan stage to `.gitlab-ci.yml`

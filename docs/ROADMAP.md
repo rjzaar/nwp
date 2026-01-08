@@ -15,7 +15,7 @@ Pending implementation items and future improvements for NWP.
 | Current Version | v0.12 |
 | Test Success Rate | 98% |
 | Completed Proposals | P01-P35 (100%) |
-| Pending Proposals | F01-F06 |
+| Pending Proposals | F01-F07 |
 
 ---
 
@@ -26,7 +26,7 @@ Pending implementation items and future improvements for NWP.
 | Phase 1-5b | Foundation through Import | P01-P31 | ✅ Complete |
 | Phase 5c | Live Deployment Automation | P32-P35 | ✅ Complete |
 | **Phase 6** | **AI & Visual Testing** | **F01-F03** | **Future** |
-| **Phase 7** | **Governance & Security** | **F04-F06** | **Future** |
+| **Phase 7** | **Governance & Security** | **F04-F07** | **Future** |
 
 ---
 
@@ -191,6 +191,43 @@ Automated security scanning for merge requests:
 
 ---
 
+### F07: SEO & Search Engine Control
+**Status:** PROPOSED | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** stg2live, recipes
+**Proposal:** [SEO_ROBOTS_PROPOSAL.md](SEO_ROBOTS_PROPOSAL.md)
+
+Comprehensive search engine control ensuring staging sites are protected while production sites are optimized:
+
+**Staging Protection (4 Layers):**
+| Layer | Method | Purpose |
+|-------|--------|---------|
+| 1 | X-Robots-Tag header | `noindex, nofollow` on all responses |
+| 2 | robots.txt | `Disallow: /` for all crawlers |
+| 3 | Meta robots | noindex on all Drupal pages |
+| 4 | HTTP Basic Auth | Optional access control |
+
+**Production Optimization:**
+- Sitemap.xml generation via Simple XML Sitemap module
+- robots.txt with `Sitemap:` directive
+- AI crawler controls (GPTBot, ClaudeBot, etc.)
+- Proper canonical URLs and meta tags
+
+**Current Issues:**
+- Staging sites use production robots.txt (fully indexable)
+- No X-Robots-Tag headers on staging
+- Production sites missing sitemap.xml
+- 404 pages missing noindex meta tag
+
+**Success Criteria:**
+- [ ] X-Robots-Tag header on staging nginx configs
+- [ ] `templates/robots-staging.txt` created
+- [ ] `templates/robots-production.txt` with sitemap reference
+- [ ] Environment detection in deployment scripts
+- [ ] SEO settings in cnwp.yml schema
+- [ ] Existing staging sites protected
+- [ ] Production sites have working sitemap.xml
+
+---
+
 ## Priority Matrix
 
 | Proposal | Priority | Effort | Dependencies | Phase |
@@ -201,6 +238,7 @@ Automated security scanning for merge requests:
 | F04 | HIGH | High | GitLab | 7 |
 | F05 | HIGH | Low | stg2live | 7 |
 | F06 | HIGH | Medium | F04, GitLab CI | 7 |
+| F07 | HIGH | Medium | stg2live, recipes | 7 |
 
 ---
 
@@ -211,6 +249,7 @@ Automated security scanning for merge requests:
 - [CICD.md](CICD.md) - CI/CD pipeline setup
 - [TESTING.md](TESTING.md) - Testing framework
 - [DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md) - Governance proposal (F04)
+- [SEO_ROBOTS_PROPOSAL.md](SEO_ROBOTS_PROPOSAL.md) - SEO & search engine control (F07)
 - [WORKING_WITH_CLAUDE_SECURELY.md](WORKING_WITH_CLAUDE_SECURELY.md) - Secure AI workflows
 
 ---

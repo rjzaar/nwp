@@ -1309,6 +1309,208 @@ gitlab_composer_check() {
 }
 
 ################################################################################
+# GitLab User Management
+################################################################################
+
+# Create a GitLab user via API
+# Usage: gitlab_create_user "username" "email" "name" ["password"]
+# Returns: 0 on success, 1 on failure
+gitlab_create_user() {
+    local username="$1"
+    local email="$2"
+    local name="$3"
+    local password="${4:-}"
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$gitlab_url" ] || [ -z "$token" ]; then
+        print_error "GitLab URL and admin API token required"
+        return 1
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+
+    # Generate random password if not provided
+    if [ -z "$password" ]; then
+        password=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
+    fi
+
+    # Check if user already exists
+    local existing
+    existing=$(curl -s --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/users?username=${username}" | grep -o '"id":[0-9]*')
+
+    if [ -n "$existing" ]; then
+        print_warning "User '$username' already exists"
+        return 0
+    fi
+
+    # Create the user
+    local response
+    response=$(curl -s --header "PRIVATE-TOKEN: $token" \
+        --header "Content-Type: application/json" \
+        --data "{
+            \"username\": \"${username}\",
+            \"email\": \"${email}\",
+            \"name\": \"${name}\",
+            \"password\": \"${password}\",
+            \"skip_confirmation\": true,
+            \"force_random_password\": false
+        }" \
+        "${api_url}/users")
+
+    if echo "$response" | grep -q '"id":[0-9]*'; then
+        local user_id=$(echo "$response" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+        print_status "OK" "Created GitLab user: $username (ID: $user_id)"
+        echo ""
+        echo "  Username: $username"
+        echo "  Password: $password"
+        echo "  Login:    https://${gitlab_url}"
+        echo ""
+        print_warning "User should change password on first login"
+        return 0
+    else
+        local error=$(echo "$response" | grep -o '"message":{[^}]*}' | head -1)
+        [ -z "$error" ] && error=$(echo "$response" | grep -o '"error":"[^"]*"' | head -1)
+        print_error "Failed to create user: $error"
+        return 1
+    fi
+}
+
+# Add SSH key to GitLab user
+# Usage: gitlab_add_user_ssh_key "username" "ssh_public_key" ["key_title"]
+gitlab_add_user_ssh_key() {
+    local username="$1"
+    local ssh_key="$2"
+    local key_title="${3:-nwp-key}"
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$gitlab_url" ] || [ -z "$token" ]; then
+        print_error "GitLab URL and admin API token required"
+        return 1
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+
+    # Get user ID
+    local user_id
+    user_id=$(curl -s --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/users?username=${username}" | \
+        grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+
+    if [ -z "$user_id" ]; then
+        print_error "User not found: $username"
+        return 1
+    fi
+
+    # Add SSH key
+    local response
+    response=$(curl -s --header "PRIVATE-TOKEN: $token" \
+        --header "Content-Type: application/json" \
+        --data "{
+            \"title\": \"${key_title}\",
+            \"key\": \"${ssh_key}\"
+        }" \
+        "${api_url}/users/${user_id}/keys")
+
+    if echo "$response" | grep -q '"id":[0-9]*'; then
+        print_status "OK" "Added SSH key to user: $username"
+        return 0
+    else
+        local error=$(echo "$response" | grep -o '"message":"[^"]*"' | head -1)
+        print_error "Failed to add SSH key: $error"
+        return 1
+    fi
+}
+
+# Add user to GitLab group
+# Usage: gitlab_add_user_to_group "username" "group" ["access_level"]
+# Access levels: 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner
+gitlab_add_user_to_group() {
+    local username="$1"
+    local group="$2"
+    local access_level="${3:-30}"  # Default: Developer
+
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$gitlab_url" ] || [ -z "$token" ]; then
+        print_error "GitLab URL and admin API token required"
+        return 1
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+
+    # Get user ID
+    local user_id
+    user_id=$(curl -s --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/users?username=${username}" | \
+        grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+
+    if [ -z "$user_id" ]; then
+        print_error "User not found: $username"
+        return 1
+    fi
+
+    # Get group ID
+    local group_id
+    group_id=$(curl -s --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/groups?search=${group}" | \
+        grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+
+    if [ -z "$group_id" ]; then
+        print_error "Group not found: $group"
+        return 1
+    fi
+
+    # Add user to group
+    local response
+    response=$(curl -s --header "PRIVATE-TOKEN: $token" \
+        --header "Content-Type: application/json" \
+        --data "{
+            \"user_id\": ${user_id},
+            \"access_level\": ${access_level}
+        }" \
+        "${api_url}/groups/${group_id}/members")
+
+    if echo "$response" | grep -q '"id":[0-9]*'; then
+        print_status "OK" "Added $username to group: $group"
+        return 0
+    elif echo "$response" | grep -q "already a member"; then
+        print_info "User already a member of: $group"
+        return 0
+    else
+        local error=$(echo "$response" | grep -o '"message":"[^"]*"' | head -1)
+        print_error "Failed to add to group: $error"
+        return 1
+    fi
+}
+
+# List GitLab users
+# Usage: gitlab_list_users
+gitlab_list_users() {
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [ -z "$gitlab_url" ] || [ -z "$token" ]; then
+        print_error "GitLab URL and API token required"
+        return 1
+    fi
+
+    local api_url="https://${gitlab_url}/api/v4"
+
+    curl -s --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/users?per_page=100" | \
+        grep -oE '"username":"[^"]*"|"name":"[^"]*"|"state":"[^"]*"' | \
+        paste - - - | \
+        sed 's/"username":"//g; s/"name":"//g; s/"state":"//g; s/"//g' | \
+        awk -F'\t' '{printf "%-20s %-30s %s\n", $1, $2, $3}'
+}
+
+################################################################################
 # Git Bundle Functions (P12)
 ################################################################################
 

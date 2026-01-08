@@ -6,10 +6,11 @@ This guide walks you through setting up your own NWP development environment wit
 
 As a new coder, you'll receive:
 
+- **GitLab account** on the central NWP GitLab server (`git.nwpcode.org`)
 - A delegated subdomain: `<yourname>.nwpcode.org`
 - Full DNS control via your own Linode account
 - Ability to create services like:
-  - `git.<yourname>.nwpcode.org` - Your GitLab instance
+  - `git.<yourname>.nwpcode.org` - Your own GitLab instance (optional)
   - `nwp.<yourname>.nwpcode.org` - Your NWP sites
   - `*.yourname.nwpcode.org` - Any other subdomains you need
 
@@ -17,24 +18,55 @@ As a new coder, you'll receive:
 
 Before starting, you need:
 
-1. **Contact the NWP administrator** to have your subdomain delegated
-2. **A Linode account** (or create one during setup)
-3. **Basic command line knowledge**
-4. **SSH key pair** for server access
+1. **Contact the NWP administrator** to request access (see Step 1)
+2. **Your email address** for GitLab account
+3. **A Linode account** (or create one during setup)
+4. **Basic command line knowledge**
+5. **SSH key pair** for server access
 
-## Step 1: Request Subdomain Delegation
+## Requesting Access
 
-Contact the NWP administrator with your desired coder name (e.g., "coder2", "john", "dev1").
+### Who to Contact
 
-The administrator will run:
+Contact the NWP administrator:
+- **Email**: [administrator email]
+- **GitHub**: Open an issue at https://github.com/rjzaar/nwp/issues
+
+### What to Provide
+
+When requesting access, include:
+1. Your desired **coder name** (e.g., "john", "dev1") - alphanumeric, starts with letter
+2. Your **email address** for GitLab account
+3. Your **full name** (for GitLab profile)
+4. Brief description of your intended use
+
+## Step 1: Administrator Sets Up Your Access
+
+The NWP administrator will run:
 
 ```bash
-./coder-setup.sh add <yourname> --notes "Your description"
+./coder-setup.sh add <yourname> --email "you@example.com" --fullname "Your Name"
 ```
 
-This creates NS delegation, allowing your Linode account to control DNS for `<yourname>.nwpcode.org`.
+This automatically:
+1. Creates NS delegation for `<yourname>.nwpcode.org`
+2. Creates your GitLab account on `git.nwpcode.org`
+3. Adds you to the `nwp` group with Developer access
 
-**Note:** DNS propagation takes 24-48 hours. You can proceed with the next steps while waiting.
+You'll receive:
+- GitLab login credentials (username + temporary password)
+- Confirmation that your subdomain is ready
+
+**Note:** DNS propagation takes 24-48 hours. You can proceed with GitLab and Linode setup while waiting.
+
+## Step 1b: Log into GitLab
+
+1. Go to https://git.nwpcode.org
+2. Log in with the credentials provided by the administrator
+3. **Change your password** immediately (Profile → Password)
+4. Add your SSH public key (Profile → SSH Keys)
+
+You now have access to the NWP codebase and can clone repositories.
 
 ## Step 2: Create Your Linode Account
 

@@ -35,6 +35,7 @@ source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/cloudflare.sh"
 source "$PROJECT_ROOT/lib/yaml-write.sh"
+source "$PROJECT_ROOT/lib/git.sh"
 
 # Configuration
 CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
@@ -50,21 +51,28 @@ usage() {
 Usage: $(basename "$0") <command> [options]
 
 Commands:
-  add <name>     Add NS delegation for a new coder
+  add <name>     Add NS delegation and optionally GitLab account for a new coder
   remove <name>  Remove NS delegation for a coder
   list           List all configured coders
   verify <name>  Verify DNS delegation is working
+  gitlab-users   List all GitLab users
 
 Options:
-  --notes "text"  Add a description when adding a coder
-  --dry-run       Show what would be done without making changes
-  -h, --help      Show this help message
+  --notes "text"   Add a description when adding a coder
+  --email "addr"   Email address for GitLab account (enables GitLab user creation)
+  --fullname "nm"  Full name for GitLab account (default: coder name)
+  --gitlab-group   GitLab group to add user to (default: nwp)
+  --no-gitlab      Skip GitLab user creation even if email provided
+  --dry-run        Show what would be done without making changes
+  -h, --help       Show this help message
 
 Examples:
   $(basename "$0") add coder2 --notes "John's dev environment"
+  $(basename "$0") add john --email "john@example.com" --fullname "John Smith"
+  $(basename "$0") add jane --email "jane@example.com" --gitlab-group developers
   $(basename "$0") remove coder2
   $(basename "$0") list
-  $(basename "$0") verify coder2
+  $(basename "$0") gitlab-users
 
 EOF
 }
@@ -281,6 +289,10 @@ get_coder_details() {
 cmd_add() {
     local name="$1"
     local notes=""
+    local email=""
+    local fullname=""
+    local gitlab_group="nwp"
+    local no_gitlab=false
     local dry_run=false
     shift || true
 
@@ -290,6 +302,22 @@ cmd_add() {
             --notes)
                 notes="$2"
                 shift 2
+                ;;
+            --email)
+                email="$2"
+                shift 2
+                ;;
+            --fullname)
+                fullname="$2"
+                shift 2
+                ;;
+            --gitlab-group)
+                gitlab_group="$2"
+                shift 2
+                ;;
+            --no-gitlab)
+                no_gitlab=true
+                shift
                 ;;
             --dry-run)
                 dry_run=true
@@ -302,6 +330,9 @@ cmd_add() {
                 ;;
         esac
     done
+
+    # Default fullname to coder name if not provided
+    [ -z "$fullname" ] && fullname="$name"
 
     # Validate name
     if ! validate_coder_name "$name"; then
@@ -360,6 +391,13 @@ cmd_add() {
             task "$name  NS  $ns"
         done
         info "Would add coder to cnwp.yml"
+        if [ -n "$email" ] && ! $no_gitlab; then
+            info "Would create GitLab user:"
+            task "Username: $name"
+            task "Email: $email"
+            task "Name: $fullname"
+            task "Group: $gitlab_group"
+        fi
         exit 0
     fi
 
@@ -377,12 +415,38 @@ cmd_add() {
     add_coder_to_config "$name" "$notes"
     pass "Coder added to configuration"
 
+    # Create GitLab user if email provided
+    local gitlab_created=false
+    if [ -n "$email" ] && ! $no_gitlab; then
+        echo ""
+        info "Creating GitLab user account..."
+        if gitlab_create_user "$name" "$email" "$fullname"; then
+            gitlab_created=true
+            # Add to group
+            if [ -n "$gitlab_group" ]; then
+                gitlab_add_user_to_group "$name" "$gitlab_group" 30  # Developer access
+            fi
+        else
+            warn "GitLab user creation failed - coder can request account manually"
+        fi
+    fi
+
     # Success message
     echo ""
     print_header "Setup Complete"
     pass "Coder '$name' has been set up"
     echo ""
+
+    if $gitlab_created; then
+        info "GitLab account created - credentials shown above"
+        info "Login at: https://$(get_gitlab_url)"
+        echo ""
+    fi
+
     info "Next steps for $name:"
+    if ! $gitlab_created && [ -z "$email" ]; then
+        task "0. Request GitLab account from NWP administrator (provide email)"
+    fi
     task "1. Create a Linode account at https://www.linode.com/"
     task "2. Generate an API token with Domains Read/Write permissions"
     task "3. Create a DNS zone for '$subdomain' in Linode DNS Manager"
@@ -596,6 +660,10 @@ main() {
             ;;
         verify)
             cmd_verify "$@"
+            ;;
+        gitlab-users)
+            print_header "GitLab Users"
+            gitlab_list_users
             ;;
         -h|--help|help)
             usage

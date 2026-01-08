@@ -29,7 +29,7 @@
 #
 ################################################################################
 
-set -e
+# Note: Don't use set -e in interactive TUIs - it causes crashes on edge cases
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -322,8 +322,12 @@ draw_column_headers() {
 draw_coder_row() {
     local index=$1
     local row=$2
+
+    # Bounds check
+    ((index < 0 || index >= ${#CODERS[@]})) && return
+
     local name="${CODERS[$index]}"
-    local data="${CODER_DATA[$index]}"
+    local data="${CODER_DATA[$index]:-contributor|active||0|0|0}"
 
     local role=$(echo "$data" | cut -d'|' -f1)
     local status=$(echo "$data" | cut -d'|' -f2)
@@ -336,7 +340,8 @@ draw_coder_row() {
     clear_line
 
     # Selection marker
-    if ((SELECTED[index])); then
+    local is_selected=${SELECTED[$index]:-0}
+    if ((is_selected)); then
         printf "${YELLOW}*${NC} "
     else
         printf "  "
@@ -348,7 +353,7 @@ draw_coder_row() {
     fi
 
     # Checkbox for selection
-    if ((SELECTED[index])); then
+    if ((is_selected)); then
         printf "${YELLOW}[x]${NC}"
     else
         printf "[ ]"
@@ -870,15 +875,18 @@ tui_main() {
                 ((CURRENT_INDEX < 0)) && CURRENT_INDEX=0
                 ;;
             PGDN)
-                CURRENT_INDEX=$((CURRENT_INDEX + 10))
-                ((CURRENT_INDEX >= ${#CODERS[@]})) && CURRENT_INDEX=$((${#CODERS[@]} - 1))
+                if ((${#CODERS[@]} > 0)); then
+                    CURRENT_INDEX=$((CURRENT_INDEX + 10))
+                    local max_idx=$((${#CODERS[@]} - 1))
+                    ((CURRENT_INDEX > max_idx)) && CURRENT_INDEX=$max_idx
+                fi
                 ;;
             SPACE)
-                if ((${#CODERS[@]} > 0)); then
-                    SELECTED[$CURRENT_INDEX]=$((1 - SELECTED[$CURRENT_INDEX]))
+                if ((${#CODERS[@]} > 0)) && ((CURRENT_INDEX >= 0)) && ((CURRENT_INDEX < ${#SELECTED[@]})); then
+                    SELECTED[$CURRENT_INDEX]=$((1 - ${SELECTED[$CURRENT_INDEX]:-0}))
                     # Move down after selection
                     if ((CURRENT_INDEX < ${#CODERS[@]} - 1)); then
-                        ((CURRENT_INDEX++))
+                        ((CURRENT_INDEX++)) || true
                     fi
                 fi
                 ;;

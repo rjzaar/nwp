@@ -51,25 +51,38 @@ usage() {
 Usage: $(basename "$0") <command> [options]
 
 Commands:
-  add <name>     Add NS delegation and optionally GitLab account for a new coder
-  remove <name>  Remove NS delegation for a coder
-  list           List all configured coders
-  verify <name>  Verify DNS delegation is working
-  gitlab-users   List all GitLab users
+  add <name>       Add NS delegation and optionally GitLab account for a new coder
+  remove <name>    Remove NS delegation and revoke access for a coder
+  provision <name> Provision Linode server and DNS for a coder
+  list             List all configured coders
+  verify <name>    Verify DNS delegation is working
+  gitlab-users     List all GitLab users
 
-Options:
+Options for 'add':
   --notes "text"   Add a description when adding a coder
   --email "addr"   Email address for GitLab account (enables GitLab user creation)
   --fullname "nm"  Full name for GitLab account (default: coder name)
   --gitlab-group   GitLab group to add user to (default: nwp)
   --no-gitlab      Skip GitLab user creation even if email provided
   --dry-run        Show what would be done without making changes
+
+Options for 'provision':
+  --region         Linode region (default: us-east)
+  --plan           Linode plan type (default: g6-nanode-1)
+  --dry-run        Show what would be done without making changes
+
+Options for 'remove':
+  --keep-gitlab    Don't revoke GitLab access
+  --archive        Archive contribution history before removal
+  --dry-run        Show what would be done without making changes
+
+General:
   -h, --help       Show this help message
 
 Examples:
   $(basename "$0") add coder2 --notes "John's dev environment"
   $(basename "$0") add john --email "john@example.com" --fullname "John Smith"
-  $(basename "$0") add jane --email "jane@example.com" --gitlab-group developers
+  $(basename "$0") provision john --region us-west --plan g6-standard-1
   $(basename "$0") remove coder2
   $(basename "$0") list
   $(basename "$0") gitlab-users
@@ -356,40 +369,57 @@ cmd_add() {
     # Get Cloudflare credentials
     local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
     local cf_zone_id=$(get_cloudflare_zone_id "$PROJECT_ROOT")
+    local skip_dns=false
 
     if [[ -z "$cf_token" || -z "$cf_zone_id" ]]; then
-        print_error "Cloudflare API credentials not found"
-        print_info "Please configure cloudflare.api_token and cloudflare.zone_id in .secrets.yml"
-        exit 1
+        warn "Cloudflare API credentials not configured - skipping DNS setup"
+        info "DNS delegation can be configured manually later"
+        skip_dns=true
+    else
+        # Verify Cloudflare auth
+        info "Verifying Cloudflare authentication..."
+        if ! verify_cloudflare_auth "$cf_token" "$cf_zone_id" 2>/dev/null; then
+            warn "Cloudflare authentication failed - skipping DNS setup"
+            skip_dns=true
+        else
+            pass "Cloudflare authenticated"
+        fi
     fi
 
-    # Verify Cloudflare auth
-    info "Verifying Cloudflare authentication..."
-    if ! verify_cloudflare_auth "$cf_token" "$cf_zone_id" 2>/dev/null; then
-        print_error "Cloudflare authentication failed"
-        exit 1
-    fi
-    pass "Cloudflare authenticated"
+    # DNS delegation setup (only if Cloudflare is configured)
+    if ! $skip_dns; then
+        # Get nameservers
+        local nameservers=($(get_nameservers))
+        if [[ ${#nameservers[@]} -eq 0 ]]; then
+            # Default to Linode nameservers
+            nameservers=("ns1.linode.com" "ns2.linode.com" "ns3.linode.com" "ns4.linode.com" "ns5.linode.com")
+        fi
 
-    # Get nameservers
-    local nameservers=($(get_nameservers))
-    if [[ ${#nameservers[@]} -eq 0 ]]; then
-        # Default to Linode nameservers
-        nameservers=("ns1.linode.com" "ns2.linode.com" "ns3.linode.com" "ns4.linode.com" "ns5.linode.com")
-    fi
+        info "Nameservers to delegate to:"
+        for ns in "${nameservers[@]}"; do
+            task "$ns"
+        done
 
-    info "Nameservers to delegate to:"
-    for ns in "${nameservers[@]}"; do
-        task "$ns"
-    done
+        if $dry_run; then
+            warn "DRY RUN - No changes will be made"
+            echo ""
+            info "Would create NS records:"
+            for ns in "${nameservers[@]}"; do
+                task "$name  NS  $ns"
+            done
+        else
+            # Create NS delegation
+            info "Creating NS delegation..."
+            if cf_create_ns_delegation "$cf_token" "$cf_zone_id" "$name" "${nameservers[@]}"; then
+                pass "NS delegation created for $subdomain"
+            else
+                fail "Failed to create NS delegation"
+                exit 1
+            fi
+        fi
+    fi
 
     if $dry_run; then
-        warn "DRY RUN - No changes will be made"
-        echo ""
-        info "Would create NS records:"
-        for ns in "${nameservers[@]}"; do
-            task "$name  NS  $ns"
-        done
         info "Would add coder to cnwp.yml"
         if [ -n "$email" ] && ! $no_gitlab; then
             info "Would create GitLab user:"
@@ -399,15 +429,6 @@ cmd_add() {
             task "Group: $gitlab_group"
         fi
         exit 0
-    fi
-
-    # Create NS delegation
-    info "Creating NS delegation..."
-    if cf_create_ns_delegation "$cf_token" "$cf_zone_id" "$name" "${nameservers[@]}"; then
-        pass "NS delegation created for $subdomain"
-    else
-        fail "Failed to create NS delegation"
-        exit 1
     fi
 
     # Add to config
@@ -458,16 +479,26 @@ cmd_add() {
     warn "DNS propagation may take 24-48 hours"
 }
 
-# Remove a coder
+# Remove a coder with full offboarding
 cmd_remove() {
     local name="$1"
     local dry_run=false
+    local keep_gitlab=false
+    local archive=false
     shift || true
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --dry-run)
                 dry_run=true
+                shift
+                ;;
+            --keep-gitlab)
+                keep_gitlab=true
+                shift
+                ;;
+            --archive)
+                archive=true
                 shift
                 ;;
             *)
@@ -493,47 +524,200 @@ cmd_remove() {
     local subdomain="${name}.${base_domain}"
 
     print_header "Removing Coder: $name"
+    info "This will perform full offboarding cleanup"
+    echo ""
 
     # Get Cloudflare credentials
     local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
     local cf_zone_id=$(get_cloudflare_zone_id "$PROJECT_ROOT")
+    local skip_dns=false
 
     if [[ -z "$cf_token" || -z "$cf_zone_id" ]]; then
-        print_error "Cloudflare API credentials not found"
-        exit 1
+        warn "Cloudflare API credentials not found - skipping DNS removal"
+        skip_dns=true
+    fi
+
+    # Show what will be done
+    info "Actions to be performed:"
+    if ! $skip_dns; then
+        task "1. Remove NS delegation for $subdomain"
+    fi
+    if ! $keep_gitlab; then
+        task "2. Block GitLab user account"
+        task "3. Remove from nwp group"
+    else
+        task "2. (Skipped) Keep GitLab access"
+    fi
+    task "4. Remove from cnwp.yml configuration"
+    task "5. Log offboarding action"
+    if $archive; then
+        task "6. Archive contribution history"
     fi
 
     if $dry_run; then
+        echo ""
         warn "DRY RUN - No changes will be made"
-        info "Would delete NS records for $subdomain"
-        info "Would remove coder from cnwp.yml"
         exit 0
     fi
 
     # Confirm
     echo ""
-    warn "This will remove NS delegation for $subdomain"
-    read -p "Are you sure? [y/N]: " confirm
+    warn "This action cannot be fully undone"
+    read -p "Are you sure you want to remove '$name'? [y/N]: " confirm
     if [[ ! "$confirm" =~ ^[yY] ]]; then
         info "Cancelled"
         exit 0
     fi
 
-    # Delete NS delegation
-    info "Removing NS delegation..."
-    if cf_delete_ns_delegation "$cf_token" "$cf_zone_id" "$name"; then
-        pass "NS delegation removed"
-    else
-        warn "Failed to remove NS delegation (may not exist)"
+    echo ""
+
+    # Step 1: Delete NS delegation
+    if ! $skip_dns; then
+        info "Removing NS delegation..."
+        if cf_delete_ns_delegation "$cf_token" "$cf_zone_id" "$name"; then
+            pass "NS delegation removed"
+        else
+            warn "Failed to remove NS delegation (may not exist)"
+        fi
     fi
 
-    # Remove from config
+    # Step 2-3: GitLab cleanup
+    if ! $keep_gitlab; then
+        local gitlab_url=$(get_gitlab_url)
+        local gitlab_token=$(get_gitlab_token)
+
+        if [[ -n "$gitlab_url" && -n "$gitlab_token" ]]; then
+            # Remove from group
+            info "Removing from GitLab group..."
+            if gitlab_remove_user_from_group "$name" "nwp" 2>/dev/null; then
+                pass "Removed from nwp group"
+            else
+                warn "Could not remove from group (may not be a member)"
+            fi
+
+            # Block user account
+            info "Blocking GitLab user account..."
+            if gitlab_block_user "$name" 2>/dev/null; then
+                pass "GitLab user blocked"
+            else
+                warn "Could not block GitLab user (may not exist)"
+            fi
+        else
+            warn "GitLab credentials not configured - skipping GitLab cleanup"
+        fi
+    else
+        info "Keeping GitLab access (--keep-gitlab specified)"
+    fi
+
+    # Step 4: Remove from config
     info "Removing from cnwp.yml..."
     remove_coder_from_config "$name"
     pass "Coder removed from configuration"
 
+    # Step 5: Log offboarding
+    local log_dir="${PROJECT_ROOT}/logs"
+    local log_file="${log_dir}/offboarding.log"
+    mkdir -p "$log_dir"
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) | REMOVED | $name | by $(whoami) | keep_gitlab=$keep_gitlab | archive=$archive" >> "$log_file"
+    pass "Offboarding logged"
+
+    # Step 6: Archive contributions (optional)
+    if $archive; then
+        info "Archiving contribution history..."
+        local archive_dir="${PROJECT_ROOT}/archives/coders"
+        mkdir -p "$archive_dir"
+        local archive_file="${archive_dir}/${name}-$(date +%Y%m%d).json"
+
+        # Try to get contribution stats from GitLab
+        if [[ -n "$gitlab_url" && -n "$gitlab_token" ]]; then
+            local user_id=$(curl -s -H "PRIVATE-TOKEN: $gitlab_token" \
+                "https://${gitlab_url}/api/v4/users?username=${name}" | jq -r '.[0].id // empty')
+
+            if [[ -n "$user_id" ]]; then
+                # Get user events/contributions
+                curl -s -H "PRIVATE-TOKEN: $gitlab_token" \
+                    "https://${gitlab_url}/api/v4/users/${user_id}/events?per_page=100" > "$archive_file"
+                pass "Contributions archived to $archive_file"
+            else
+                warn "Could not find user for archiving"
+            fi
+        else
+            echo "{\"name\": \"$name\", \"removed\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\", \"note\": \"No GitLab data available\"}" > "$archive_file"
+            pass "Basic archive created"
+        fi
+    fi
+
     echo ""
+    print_header "Offboarding Complete"
     pass "Coder '$name' has been removed"
+    echo ""
+    info "Summary:"
+    task "DNS delegation: $(if $skip_dns; then echo 'skipped'; else echo 'removed'; fi)"
+    task "GitLab access: $(if $keep_gitlab; then echo 'kept'; else echo 'revoked'; fi)"
+    task "Configuration: removed"
+    task "Log entry: created"
+    if $archive; then
+        task "Archive: created"
+    fi
+}
+
+# Helper function to block GitLab user
+gitlab_block_user() {
+    local username="$1"
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [[ -z "$gitlab_url" || -z "$token" ]]; then
+        return 1
+    fi
+
+    # Get user ID
+    local user_id=$(curl -s -H "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/users?username=${username}" | jq -r '.[0].id // empty')
+
+    if [[ -z "$user_id" ]]; then
+        return 1
+    fi
+
+    # Block user
+    curl -s -X POST -H "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/users/${user_id}/block" >/dev/null
+
+    return $?
+}
+
+# Helper function to remove user from group
+gitlab_remove_user_from_group() {
+    local username="$1"
+    local group="$2"
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    if [[ -z "$gitlab_url" || -z "$token" ]]; then
+        return 1
+    fi
+
+    # Get user ID
+    local user_id=$(curl -s -H "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/users?username=${username}" | jq -r '.[0].id // empty')
+
+    if [[ -z "$user_id" ]]; then
+        return 1
+    fi
+
+    # Get group ID
+    local group_id=$(curl -s -H "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/groups?search=${group}" | jq -r '.[0].id // empty')
+
+    if [[ -z "$group_id" ]]; then
+        return 1
+    fi
+
+    # Remove from group
+    curl -s -X DELETE -H "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/groups/${group_id}/members/${user_id}" >/dev/null
+
+    return $?
 }
 
 # List all coders
@@ -569,6 +753,170 @@ cmd_list() {
     done <<< "$coders"
 
     echo ""
+}
+
+# Provision Linode infrastructure for a coder
+cmd_provision() {
+    local name="$1"
+    local region="us-east"
+    local plan="g6-nanode-1"
+    local dry_run=false
+    shift || true
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --region)
+                region="$2"
+                shift 2
+                ;;
+            --plan)
+                plan="$2"
+                shift 2
+                ;;
+            --dry-run)
+                dry_run=true
+                shift
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+
+    if [[ -z "$name" ]]; then
+        print_error "Coder name is required"
+        usage
+        exit 1
+    fi
+
+    # Check if coder exists
+    if ! coder_exists "$name"; then
+        print_error "Coder '$name' not found. Run 'add' first."
+        exit 1
+    fi
+
+    # Check for Linode CLI
+    if ! command -v linode-cli &>/dev/null; then
+        print_error "linode-cli not installed. Install with: pip install linode-cli"
+        exit 1
+    fi
+
+    local base_domain=$(get_base_domain)
+    local subdomain="${name}.${base_domain}"
+
+    print_header "Provisioning Linode Infrastructure: $name"
+    info "Subdomain: $subdomain"
+    info "Region: $region"
+    info "Plan: $plan"
+    echo ""
+
+    if $dry_run; then
+        warn "DRY RUN - No changes will be made"
+        echo ""
+        info "Would create:"
+        task "1. Linode server: ${name}-nwp"
+        task "2. DNS zone: $subdomain"
+        task "3. A records: @, git, *"
+        exit 0
+    fi
+
+    # Step 1: Create Linode server
+    info "Creating Linode server..."
+    local ssh_key=""
+    if [[ -f ~/.ssh/id_rsa.pub ]]; then
+        ssh_key=$(cat ~/.ssh/id_rsa.pub)
+    elif [[ -f ~/.ssh/id_ed25519.pub ]]; then
+        ssh_key=$(cat ~/.ssh/id_ed25519.pub)
+    fi
+
+    local create_args=(
+        --label "${name}-nwp"
+        --region "$region"
+        --type "$plan"
+        --image "linode/ubuntu22.04"
+    )
+
+    if [[ -n "$ssh_key" ]]; then
+        create_args+=(--authorized_keys "$ssh_key")
+    fi
+
+    if ! linode-cli linodes create "${create_args[@]}"; then
+        fail "Failed to create Linode server"
+        exit 1
+    fi
+    pass "Linode server created"
+
+    # Wait for server to be running and get IP
+    info "Waiting for server to boot..."
+    sleep 10
+    local ip=""
+    local attempts=0
+    while [[ -z "$ip" || "$ip" == "null" ]] && [[ $attempts -lt 30 ]]; do
+        ip=$(linode-cli linodes list --label "${name}-nwp" --json 2>/dev/null | jq -r '.[0].ipv4[0]' 2>/dev/null)
+        ((attempts++))
+        sleep 2
+    done
+
+    if [[ -z "$ip" || "$ip" == "null" ]]; then
+        fail "Could not get server IP address"
+        exit 1
+    fi
+    pass "Server IP: $ip"
+
+    # Step 2: Create DNS zone
+    info "Creating DNS zone..."
+    if ! linode-cli domains create --domain "$subdomain" --type master --soa_email "admin@${subdomain}" 2>/dev/null; then
+        warn "DNS zone may already exist, continuing..."
+    else
+        pass "DNS zone created"
+    fi
+
+    # Get domain ID
+    local domain_id=$(linode-cli domains list --json 2>/dev/null | jq -r ".[] | select(.domain==\"${subdomain}\") | .id")
+    if [[ -z "$domain_id" ]]; then
+        fail "Could not get domain ID"
+        exit 1
+    fi
+
+    # Step 3: Create DNS records
+    info "Creating DNS records..."
+
+    # Root A record
+    linode-cli domains records-create "$domain_id" --type A --name "" --target "$ip" --ttl_sec 300 2>/dev/null && \
+        pass "A record for @ -> $ip" || warn "A record may already exist"
+
+    # Git subdomain
+    linode-cli domains records-create "$domain_id" --type A --name "git" --target "$ip" --ttl_sec 300 2>/dev/null && \
+        pass "A record for git -> $ip" || warn "git A record may already exist"
+
+    # Wildcard
+    linode-cli domains records-create "$domain_id" --type A --name "*" --target "$ip" --ttl_sec 300 2>/dev/null && \
+        pass "A record for * -> $ip" || warn "Wildcard A record may already exist"
+
+    # Update coder config with server info
+    if command -v yq &>/dev/null; then
+        yq -i ".other_coders.coders.${name}.server_ip = \"$ip\"" "$CONFIG_FILE"
+        yq -i ".other_coders.coders.${name}.linode_label = \"${name}-nwp\"" "$CONFIG_FILE"
+        yq -i ".other_coders.coders.${name}.provisioned = \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"" "$CONFIG_FILE"
+    fi
+
+    echo ""
+    print_header "Provisioning Complete"
+    pass "Server and DNS configured for $name"
+    echo ""
+    info "Server details:"
+    task "IP Address: $ip"
+    task "SSH: ssh root@$ip"
+    task "Domain: $subdomain"
+    echo ""
+    info "Next steps for $name:"
+    task "1. Wait for DNS propagation (up to 48 hours)"
+    task "2. SSH into server: ssh root@$ip"
+    task "3. Run NWP bootstrap script"
+    echo ""
+    info "Bootstrap command:"
+    echo "  curl -fsSL https://raw.githubusercontent.com/rjzaar/nwp/main/scripts/bootstrap-coder-server.sh | bash"
 }
 
 # Verify DNS delegation
@@ -654,6 +1002,9 @@ main() {
             ;;
         remove)
             cmd_remove "$@"
+            ;;
+        provision)
+            cmd_provision "$@"
             ;;
         list)
             cmd_list

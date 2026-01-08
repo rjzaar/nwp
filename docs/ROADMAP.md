@@ -166,9 +166,9 @@ Establish a governance framework for distributed NWP development:
 1. Foundation (decision records, ADR templates) - **COMPLETE**
 2. Developer Roles (ROLES.md, access levels) - **COMPLETE**
 3. Onboarding Automation (provision, offboarding) - **COMPLETE**
-4. Issue Queue (GitLab labels, templates) - PENDING
-5. Developer Level Detection (`lib/developer.sh`) - IN PROGRESS
-6. Coders TUI (`scripts/commands/coders.sh`) - IN PROGRESS
+4. Developer Level Detection (`lib/developer.sh`) - **COMPLETE**
+5. Coders TUI (`scripts/commands/coders.sh`) - **COMPLETE**
+6. Issue Queue (GitLab labels, templates) - PENDING
 7. Multi-Tier Support (upstream sync, contribute) - PENDING
 8. Security Review System (malicious code detection) - PENDING
 
@@ -178,6 +178,8 @@ Establish a governance framework for distributed NWP development:
 - [x] `CONTRIBUTING.md` - Entry point for developers
 - [x] `coder-setup.sh provision` - Automated Linode provisioning
 - [x] `coder-setup.sh remove` - Full offboarding with GitLab cleanup
+- [x] `lib/developer.sh` - Developer level detection library
+- [x] `scripts/commands/coders.sh` - Full TUI with arrow navigation, bulk actions, auto-sync
 
 **Success Criteria:**
 - [x] `docs/decisions/` directory with ADR template
@@ -185,8 +187,8 @@ Establish a governance framework for distributed NWP development:
 - [x] `CONTRIBUTING.md` as developer entry point
 - [x] `coder-setup.sh provision` command
 - [x] `coder-setup.sh remove` with full offboarding
-- [ ] `lib/developer.sh` for role detection
-- [ ] `scripts/commands/coders.sh` TUI
+- [x] `lib/developer.sh` for role detection
+- [x] `scripts/commands/coders.sh` TUI with bulk actions
 - [ ] GitLab issue templates created
 - [ ] `pl sync upstream` command
 - [ ] `pl contribute` command

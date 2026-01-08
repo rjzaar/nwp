@@ -57,6 +57,7 @@ sites/*
 !example.cnwp.yml
 !.secrets.example.yml
 !.secrets.data.example.yml
+!.nwp-developer.example.yml
 
 # Migration scripts (access via pl or scripts/commands/)
 

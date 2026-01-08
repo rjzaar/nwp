@@ -392,6 +392,48 @@ docker restart gitlab
 - **Issues:** Report at [GitHub Issues](https://github.com/rjzaar/nwp/issues)
 - **Administrator:** Contact the main NWP administrator
 
+## Administrator Tools
+
+Administrators can manage coders using the interactive TUI:
+
+```bash
+# Launch interactive coders management TUI
+./scripts/commands/coders.sh
+```
+
+**TUI Features:**
+- Arrow-key navigation through all coders
+- Auto-sync contribution data from GitLab
+- Bulk selection with Space for mass operations
+- Detailed stats view with Enter
+- Promote, modify, or delete coders
+
+**TUI Controls:**
+| Key | Action |
+|-----|--------|
+| ↑/↓ | Navigate coders |
+| Space | Select for bulk actions |
+| Enter | View detailed stats |
+| P | Promote selected |
+| D | Delete selected |
+| S | Sync from GitLab |
+| Q | Quit |
+
+**Other admin commands:**
+```bash
+# Add a new coder
+./scripts/commands/coder-setup.sh add <name> --email "email" --fullname "Name"
+
+# Provision Linode infrastructure for coder
+./scripts/commands/coder-setup.sh provision <name>
+
+# Remove a coder (with GitLab access revocation)
+./scripts/commands/coder-setup.sh remove <name>
+
+# List all coders
+./scripts/commands/coders.sh list
+```
+
 ## Quick Reference
 
 | Service | URL |
@@ -407,3 +449,10 @@ docker restart gitlab
 | `./delete.sh sitename` | Delete a site |
 | `./status.sh` | Show all sites |
 | `./backup.sh sitename` | Backup a site |
+
+## Related Documentation
+
+- [ROLES.md](ROLES.md) - Developer role definitions and access levels
+- [CONTRIBUTING.md](../CONTRIBUTING.md) - How to contribute to NWP
+- [CORE_DEVELOPER_ONBOARDING_PROPOSAL.md](CORE_DEVELOPER_ONBOARDING_PROPOSAL.md) - Full onboarding automation proposal
+- [DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md) - Governance framework

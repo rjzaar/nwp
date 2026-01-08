@@ -17,7 +17,9 @@ A proposal for implementing cross-platform dynamic badges that display verificat
 5. [Proposed Solutions](#proposed-solutions)
 6. [Implementation Details](#implementation-details)
 7. [CI Automation](#ci-automation)
-8. [Success Criteria](#success-criteria)
+8. [Self-Hosted GitLab Integration](#self-hosted-gitlab-integration)
+9. [Migration Plan](#migration-plan)
+10. [Success Criteria](#success-criteria)
 
 ---
 
@@ -36,6 +38,7 @@ This proposal adds **dynamic badges** using Shields.io that:
 - Display test-nwp results (% tests passing)
 - Update automatically via **NWP GitLab CI** (primary)
 - Sync to GitHub mirror automatically
+- **Support self-hosted GitLab instances** via setup.sh automation
 
 **CI Strategy: GitLab-Primary**
 
@@ -47,6 +50,18 @@ NWP GitLab (git.nwpcode.org) is the canonical repository and the only place wher
 | GitHub | Mirror | No - receives `.badges.json` via sync |
 
 This approach ensures badges reflect the authoritative test results from the NWP environment.
+
+**Self-Hosted GitLab Support**
+
+NWP already has automated GitLab provisioning via Linode StackScripts. This proposal extends that infrastructure to automatically configure badge generation on any self-hosted GitLab instance:
+
+```bash
+# Option 1: During initial NWP setup
+./setup.sh --gitlab --with-badges
+
+# Option 2: Add badges to existing GitLab
+./setup.sh gitlab-badges --domain git.example.org
+```
 
 ---
 
@@ -585,6 +600,264 @@ test-nightly:
 
 ---
 
+## Self-Hosted GitLab Integration
+
+NWP already has comprehensive GitLab self-hosting automation. This section extends that infrastructure to include automatic badge configuration.
+
+### Existing GitLab Infrastructure
+
+NWP provides automated GitLab provisioning via Linode:
+
+| Component | Location | Status |
+|-----------|----------|--------|
+| Server provisioning | `linode/gitlab/gitlab_create_server.sh` | Complete |
+| StackScript (automated install) | `linode/gitlab/gitlab_server_setup.sh` | Complete |
+| SSL certificates | Certbot in StackScript | Complete |
+| CI Runner registration | `server_scripts/gitlab-register-runner.sh` | Complete |
+| User management API | `lib/git.sh:gitlab_create_user()` | Complete |
+| Project creation API | `lib/git.sh:gitlab_api_create_project()` | Complete |
+| Backup/restore | `server_scripts/gitlab-backup.sh` | Complete |
+
+### New Badge Integration Points
+
+#### 1. Setup Script Options
+
+Add badge configuration to `setup.sh`:
+
+```bash
+# Full GitLab setup with badges
+./setup.sh gitlab --domain git.example.org --with-badges
+
+# Add badges to existing GitLab installation
+./setup.sh gitlab-badges
+
+# Configure badges for a specific project
+./setup.sh gitlab-badges --project mysite
+```
+
+#### 2. New Functions in `lib/git.sh`
+
+```bash
+# Configure badge generation for a GitLab project
+gitlab_configure_badges() {
+    local project_name="$1"
+    local group="${2:-sites}"
+    local gitlab_domain=$(get_gitlab_url)
+
+    # Add .badges.json generation to project CI
+    gitlab_api_add_ci_include "$project_name" "$group" \
+        "templates/gitlab-ci-badges.yml"
+
+    # Create scheduled pipeline for nightly badge updates
+    gitlab_api_create_schedule "$project_name" "$group" \
+        --description "Nightly badge update" \
+        --cron "0 3 * * *" \
+        --ref "main"
+
+    # Update project README with badge URLs
+    local badge_urls=$(generate_readme_badges "$project_name" "$group")
+    echo "Badge URLs for $project_name:"
+    echo "$badge_urls"
+}
+
+# Configure badges for all projects in a group
+gitlab_configure_badges_all() {
+    local group="${1:-sites}"
+    local projects=$(gitlab_api_list_projects "$group")
+
+    for project in $projects; do
+        gitlab_configure_badges "$project" "$group"
+    done
+}
+```
+
+#### 3. CI Template for Badge Generation
+
+Create `templates/gitlab-ci-badges.yml`:
+
+```yaml
+# NWP Badge Generation CI Template
+# Include this in your .gitlab-ci.yml:
+#   include:
+#     - local: 'templates/gitlab-ci-badges.yml'
+
+.badges-template:
+  stage: build
+  script:
+    - source lib/badges-dynamic.sh
+    - generate_badges_json ".badges.json" "${TEST_LOG:-}"
+    - |
+      git config user.name "NWP CI Bot"
+      git config user.email "ci@${CI_SERVER_HOST}"
+      git add .badges.json
+      if ! git diff --cached --quiet; then
+        git commit -m "Update badge data [skip ci]"
+        git push "https://oauth2:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:${CI_COMMIT_BRANCH}
+      fi
+  artifacts:
+    paths:
+      - .badges.json
+    expire_in: 1 week
+
+update-badges:
+  extends: .badges-template
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  tags:
+    - nwp
+
+update-badges-nightly:
+  extends: .badges-template
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  before_script:
+    # Run tests first to get latest results
+    - ./scripts/commands/test-nwp.sh --skip-cleanup 2>&1 | tee .logs/test-nwp-latest.log || true
+    - export TEST_LOG=".logs/test-nwp-latest.log"
+  tags:
+    - nwp
+```
+
+#### 4. README Template with Dynamic Badges
+
+Create `templates/README.badges.md` (update existing):
+
+```markdown
+# ${PROJECT_NAME}
+
+<!-- Badges - Auto-configured by NWP -->
+[![Pipeline](https://${GITLAB_DOMAIN}/${GROUP}/${PROJECT}/badges/main/pipeline.svg)](https://${GITLAB_DOMAIN}/${GROUP}/${PROJECT}/-/pipelines)
+[![Coverage](https://${GITLAB_DOMAIN}/${GROUP}/${PROJECT}/badges/main/coverage.svg)](https://${GITLAB_DOMAIN}/${GROUP}/${PROJECT}/-/graphs/main/charts)
+[![Verified](https://img.shields.io/endpoint?url=https://${GITLAB_DOMAIN}/${GROUP}/${PROJECT}/-/raw/main/.badges.json&query=$.verification.message&label=verified)](https://${GITLAB_DOMAIN}/${GROUP}/${PROJECT}/-/blob/main/.verification.yml)
+[![Tests](https://img.shields.io/endpoint?url=https://${GITLAB_DOMAIN}/${GROUP}/${PROJECT}/-/raw/main/.badges.json&query=$.tests.message&label=tests)](https://${GITLAB_DOMAIN}/${GROUP}/${PROJECT}/-/blob/main/scripts/commands/test-nwp.sh)
+
+## Description
+...
+```
+
+#### 5. Configuration in cnwp.yml
+
+Add badge settings to `example.cnwp.yml`:
+
+```yaml
+settings:
+  gitlab:
+    # ... existing settings ...
+
+    badges:
+      enabled: true                    # Enable badge generation
+      include_verification: true       # Include verification % badge
+      include_tests: true              # Include test pass rate badge
+      nightly_schedule: "0 3 * * *"    # Cron for nightly updates
+      auto_readme: true                # Auto-update README with badges
+```
+
+### Integration with Existing Scripts
+
+#### A. Extend `linode/gitlab/gitlab_server_setup.sh`
+
+Add badge configuration to the GitLab StackScript:
+
+```bash
+# After GitLab installation, configure badge infrastructure
+configure_badges() {
+    # Create badge generation CI template
+    mkdir -p /opt/nwp/templates
+    curl -o /opt/nwp/templates/gitlab-ci-badges.yml \
+        https://raw.githubusercontent.com/nwp/nwp/main/templates/gitlab-ci-badges.yml
+
+    # Install badges-dynamic.sh library
+    curl -o /opt/nwp/lib/badges-dynamic.sh \
+        https://raw.githubusercontent.com/nwp/nwp/main/lib/badges-dynamic.sh
+
+    echo "Badge infrastructure configured"
+}
+
+# Call during setup if --with-badges flag is set
+if [ "$WITH_BADGES" = "true" ]; then
+    configure_badges
+fi
+```
+
+#### B. Extend `coder-setup.sh`
+
+Add badge setup when creating new coder environments:
+
+```bash
+# In coder-setup.sh add command
+setup_coder_badges() {
+    local coder_name="$1"
+    local coder_domain="${coder_name}.${BASE_DOMAIN}"
+
+    # Configure badges for coder's GitLab projects
+    gitlab_configure_badges_all "sites"
+
+    print_success "Badges configured for ${coder_name}"
+}
+```
+
+#### C. Extend `install.sh`
+
+Auto-configure badges when installing new sites:
+
+```bash
+# After site installation
+if [ "$BADGES_ENABLED" = "true" ]; then
+    gitlab_configure_badges "$SITE_NAME" "sites"
+    add_badges_to_readme "$SITE_DIR/README.md" "$SITE_NAME" "sites"
+fi
+```
+
+### Self-Hosted Badge URL Considerations
+
+When using a self-hosted GitLab, Shields.io endpoint badges need access to the raw JSON file. Options:
+
+#### Option A: Public GitLab Projects (Recommended for Open Source)
+
+If projects are public, Shields.io can fetch directly:
+```
+https://img.shields.io/endpoint?url=https://git.example.org/group/project/-/raw/main/.badges.json
+```
+
+#### Option B: GitLab Pages (For Private Projects)
+
+Host `.badges.json` on GitLab Pages for public access:
+```yaml
+# Add to .gitlab-ci.yml
+pages:
+  stage: deploy
+  script:
+    - mkdir -p public
+    - cp .badges.json public/
+  artifacts:
+    paths:
+      - public
+  only:
+    - main
+```
+Badge URL: `https://group.pages.git.example.org/project/badges.json`
+
+#### Option C: Static Badges (No External Access Needed)
+
+If external access is not possible, use static badges updated by CI:
+```bash
+# CI script updates README directly with current values
+VERIFIED_PCT=$(jq -r '.verification.message' .badges.json)
+sed -i "s|verified-[0-9]*%25|verified-${VERIFIED_PCT}|g" README.md
+```
+
+### Firewall Considerations
+
+For Shields.io to fetch badge data, ensure GitLab raw file access is allowed:
+
+```bash
+# In gitlab_server_setup.sh or UFW configuration
+# Allow HTTPS access to GitLab (required for badge fetching)
+ufw allow 443/tcp comment 'GitLab HTTPS (badges)'
+```
+
+---
+
 ## Migration Plan
 
 ### Phase 1: Core Implementation
@@ -613,6 +886,16 @@ test-nightly:
 - [ ] Extend `pl badges` to generate site-specific dynamic badges
 - [ ] Add verification tracking per-site (optional)
 - [ ] Document site badge setup
+
+### Phase 5: Self-Hosted GitLab Integration
+
+- [ ] Create `templates/gitlab-ci-badges.yml` CI template
+- [ ] Add `gitlab_configure_badges()` function to `lib/git.sh`
+- [ ] Add `--with-badges` option to GitLab setup scripts
+- [ ] Add `settings.gitlab.badges` to `example.cnwp.yml`
+- [ ] Integrate badge setup into `install.sh`
+- [ ] Update `coder-setup.sh` with badge configuration
+- [ ] Document self-hosted badge URL options (public/pages/static)
 
 ---
 
@@ -644,9 +927,20 @@ test-nightly:
 - [ ] Badge URLs documented
 - [ ] GitLab-primary architecture explained
 
+### Self-Hosted GitLab Integration
+
+- [ ] `./setup.sh gitlab --with-badges` provisions GitLab with badge support
+- [ ] `./setup.sh gitlab-badges` adds badges to existing GitLab
+- [ ] `templates/gitlab-ci-badges.yml` works on any NWP GitLab instance
+- [ ] Badge URLs auto-configured based on `settings.url` domain
+- [ ] New site installs include badge configuration when enabled
+- [ ] Coder environments have badges pre-configured
+
 ---
 
 ## Verification Commands
+
+### Local Badge Generation
 
 ```bash
 # Generate badge data locally
@@ -665,6 +959,30 @@ curl "https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/nwp/
 # Run tests and generate badge data
 ./scripts/commands/test-nwp.sh 2>&1 | tee /tmp/test.log
 generate_badges_json ".badges.json" "/tmp/test.log"
+```
+
+### Self-Hosted GitLab
+
+```bash
+# Configure badges for a project on your GitLab
+source lib/git.sh
+gitlab_configure_badges "mysite" "sites"
+
+# Configure badges for all projects
+gitlab_configure_badges_all "sites"
+
+# Test badge URL on self-hosted GitLab
+GITLAB_DOMAIN=$(get_gitlab_url)
+curl -s "https://${GITLAB_DOMAIN}/sites/mysite/-/raw/main/.badges.json" | jq .
+
+# Test Shields.io can reach your GitLab
+curl "https://img.shields.io/endpoint?url=https://${GITLAB_DOMAIN}/sites/mysite/-/raw/main/.badges.json"
+
+# Setup GitLab with badges from scratch
+./setup.sh gitlab --domain git.example.org --with-badges
+
+# Add badges to existing GitLab installation
+./setup.sh gitlab-badges
 ```
 
 ---
@@ -703,15 +1021,23 @@ generate_badges_json ".badges.json" "/tmp/test.log"
 
 ## References
 
+### External Documentation
 - [Shields.io Documentation](https://shields.io/docs/)
 - [Shields.io Endpoint Badges](https://shields.io/endpoint)
 - [GitLab Badges](https://docs.gitlab.com/ee/user/project/badges.html)
-- [GitHub Actions Badges](https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/adding-a-workflow-status-badge)
+- [GitLab CI/CD Schedules](https://docs.gitlab.com/ee/ci/pipelines/schedules.html)
+- [GitLab Pages](https://docs.gitlab.com/ee/user/project/pages/)
+
+### NWP Internal References
 - [NWP Badges Library](../lib/badges.sh)
 - [NWP Verification System](../scripts/commands/verify.sh)
+- [NWP GitLab Setup](../linode/gitlab/)
+- [NWP Git Library](../lib/git.sh) - GitLab API functions
+- [Coder Setup](../scripts/commands/coder-setup.sh) - Developer onboarding
 
 ---
 
 *Proposal created: January 2026*
 *Updated: January 8, 2026 - Clarified GitLab-primary CI strategy*
+*Updated: January 8, 2026 - Added self-hosted GitLab integration section*
 *Status: Ready for review*

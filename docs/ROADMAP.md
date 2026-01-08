@@ -105,10 +105,10 @@ ddev backstop approve       # Approve changes as new baseline
 ---
 
 ### F08: Dynamic Cross-Platform Badges
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** verify.sh, test-nwp.sh
+**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** verify.sh, test-nwp.sh, GitLab infrastructure
 **Proposal:** [DYNAMIC_BADGES_PROPOSAL.md](DYNAMIC_BADGES_PROPOSAL.md)
 
-Add dynamic badges using Shields.io that work on both GitHub and GitLab READMEs:
+Add dynamic badges using Shields.io that work on both GitHub and GitLab READMEs, with full support for self-hosted GitLab instances:
 
 **Badge Types:**
 | Badge | Source | Display |
@@ -124,11 +124,19 @@ Add dynamic badges using Shields.io that work on both GitHub and GitLab READMEs:
 - Used by VS Code, Vue.js, Bootstrap
 - Supports dynamic badges from JSON endpoints
 
+**Self-Hosted GitLab Support:**
+```bash
+./setup.sh gitlab --domain git.example.org --with-badges
+./setup.sh gitlab-badges  # Add to existing GitLab
+```
+
 **Implementation:**
 1. Create `lib/badges-dynamic.sh` for JSON generation
 2. Add `pl badges json` command
 3. CI job generates `.badges.json` on main branch
 4. READMEs use Shields.io endpoint badges
+5. `templates/gitlab-ci-badges.yml` for any GitLab instance
+6. `gitlab_configure_badges()` in `lib/git.sh`
 
 **Success Criteria:**
 - [ ] `lib/badges-dynamic.sh` created
@@ -136,6 +144,7 @@ Add dynamic badges using Shields.io that work on both GitHub and GitLab READMEs:
 - [ ] Verification badge on GitHub/GitLab READMEs
 - [ ] Test pass rate badge on READMEs
 - [ ] Nightly job updates test results
+- [ ] Self-hosted GitLab badge automation
 
 ---
 
@@ -294,7 +303,7 @@ Comprehensive search engine control ensuring staging sites are protected while p
 | F05 | HIGH | Low | stg2live | 7 |
 | F06 | HIGH | Medium | F04, GitLab CI | 7 |
 | F07 | HIGH | Medium | stg2live, recipes | 7 |
-| F08 | MEDIUM | Low | verify.sh, test-nwp.sh | 6 |
+| F08 | MEDIUM | Medium | verify.sh, test-nwp.sh, GitLab | 6 |
 
 ---
 

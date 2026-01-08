@@ -173,7 +173,7 @@ register_cli_command() {
         cli_command=$(find_available_cli_name "$project_root")
     fi
 
-    if [ -z "$cli_command" ] || [ $? -ne 0 ]; then
+    if [ -z "$cli_command" ]; then
         return 1
     fi
 

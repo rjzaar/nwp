@@ -1211,10 +1211,20 @@ main() {
     detect_all_current_states
     load_original_state
 
-    # Initialize selections to current state
-    for id in "${COMP_IDS[@]}"; do
-        COMPONENT_SELECTED[$id]=${COMPONENT_INSTALLED[$id]:-0}
+    # Initialize selections: installed components stay selected,
+    # uninstalled required/recommended components get pre-selected
+    for ((i=0; i<${#COMP_IDS[@]}; i++)); do
+        local id="${COMP_IDS[$i]}"
+        local priority="${COMP_PRIORITIES[$i]}"
+        if [ "${COMPONENT_INSTALLED[$id]:-0}" = "1" ]; then
+            COMPONENT_SELECTED[$id]=1
+        elif [ "$priority" = "required" ] || [ "$priority" = "recommended" ]; then
+            COMPONENT_SELECTED[$id]=1
+        else
+            COMPONENT_SELECTED[$id]=0
+        fi
     done
+    enforce_dependencies
 
     run_interactive_tui
 }

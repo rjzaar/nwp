@@ -495,6 +495,32 @@ setup_ssl() {
     print_status "OK" "SSL setup attempted"
 }
 
+# Verify SSH connectivity to server with retries
+# Usage: verify_ssh_connectivity "ip" "user" [max_retries]
+verify_ssh_connectivity() {
+    local ip="$1"
+    local user="${2:-root}"
+    local max_retries="${3:-5}"
+    local retry=0
+
+    print_info "Verifying SSH connectivity to ${user}@${ip}..."
+
+    while [ $retry -lt $max_retries ]; do
+        if ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "${user}@${ip}" "echo SSH_OK" 2>/dev/null | grep -q "SSH_OK"; then
+            print_status "OK" "SSH connectivity verified"
+            return 0
+        fi
+        retry=$((retry + 1))
+        if [ $retry -lt $max_retries ]; then
+            print_info "SSH attempt $retry failed, retrying in 5 seconds..."
+            sleep 5
+        fi
+    done
+
+    print_error "SSH connectivity failed after $max_retries attempts"
+    return 1
+}
+
 # Setup server security hardening
 setup_server_security() {
     local sitename="$1"
@@ -527,6 +553,11 @@ else
     sudo apt-get install -y -qq fail2ban
     sudo systemctl enable fail2ban
     sudo systemctl start fail2ban
+    # Whitelist the current connection IP to prevent lockout during provisioning
+    CURRENT_IP=$(echo $SSH_CLIENT | awk '{print $1}')
+    if [ -n "$CURRENT_IP" ]; then
+        sudo fail2ban-client set sshd addignoreip "$CURRENT_IP" 2>/dev/null || true
+    fi
     NEWLY_APPLIED="${NEWLY_APPLIED}fail2ban "
 fi
 
@@ -546,15 +577,23 @@ else
 fi
 
 # 3. Check/Configure fail2ban for nginx
+# Get current connection IP for whitelisting
+CURRENT_IP=$(echo $SSH_CLIENT | awk '{print $1}')
 if [ -f /etc/fail2ban/jail.local ] && grep -q "nginx-http-auth" /etc/fail2ban/jail.local 2>/dev/null; then
     ALREADY_DONE="${ALREADY_DONE}fail2ban-nginx "
+    # Ensure current IP is whitelisted even if already configured
+    if [ -n "$CURRENT_IP" ]; then
+        sudo fail2ban-client set sshd addignoreip "$CURRENT_IP" 2>/dev/null || true
+    fi
 else
     echo "Configuring fail2ban for nginx..."
-    sudo tee /etc/fail2ban/jail.local > /dev/null << 'F2B'
+    # Create jail.local with current IP whitelisted persistently
+    sudo tee /etc/fail2ban/jail.local > /dev/null << F2B
 [DEFAULT]
 bantime = 3600
 findtime = 600
 maxretry = 5
+ignoreip = 127.0.0.1/8 ::1 ${CURRENT_IP:-127.0.0.1}
 
 [sshd]
 enabled = true
@@ -585,10 +624,60 @@ if grep -q "^PasswordAuthentication no" /etc/ssh/sshd_config 2>/dev/null; then
     ALREADY_DONE="${ALREADY_DONE}ssh-hardening "
 else
     echo "Hardening SSH configuration..."
+    # Create backup before modifying
+    sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+
+    # Apply hardening changes
     sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
     sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
-    sudo systemctl reload sshd
-    NEWLY_APPLIED="${NEWLY_APPLIED}ssh-hardening "
+
+    # Validate config before reloading (shows errors for debugging)
+    echo "Validating SSH config..."
+    if sudo sshd -t; then
+        echo "SSH config valid, reloading..."
+
+        # Find the main sshd PID (check multiple locations)
+        SSHD_PID=""
+        for pidfile in /run/sshd.pid /var/run/sshd.pid; do
+            if [ -f "$pidfile" ]; then
+                SSHD_PID=$(cat "$pidfile" 2>/dev/null)
+                break
+            fi
+        done
+
+        # Fallback to pgrep if no PID file
+        if [ -z "$SSHD_PID" ] || ! ps -p "$SSHD_PID" >/dev/null 2>&1; then
+            # Get the parent sshd process (lowest PID sshd not owned by another sshd)
+            SSHD_PID=$(pgrep -x sshd | sort -n | head -1)
+        fi
+
+        if [ -n "$SSHD_PID" ]; then
+            echo "Sending SIGHUP to sshd (PID: $SSHD_PID)..."
+            sudo kill -HUP "$SSHD_PID" 2>/dev/null
+            sleep 2
+
+            # Verify sshd is still running
+            if pgrep -x sshd >/dev/null; then
+                echo "SSHD reloaded successfully"
+                NEWLY_APPLIED="${NEWLY_APPLIED}ssh-hardening "
+            else
+                echo "ERROR: sshd not running after reload!"
+                sudo mv /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
+                sudo systemctl start sshd
+                echo "WARNING: Reverted SSH config and restarted sshd"
+            fi
+        else
+            echo "Could not find sshd PID, trying systemctl..."
+            # Last resort - use systemctl reload (may disconnect us)
+            sudo systemctl reload ssh 2>/dev/null || sudo systemctl reload sshd 2>/dev/null
+            sleep 2
+            NEWLY_APPLIED="${NEWLY_APPLIED}ssh-hardening "
+        fi
+    else
+        echo "SSH config validation failed, reverting..."
+        sudo mv /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
+        echo "WARNING: SSH hardening skipped due to config error"
+    fi
 fi
 
 # 5. Check/Install unattended-upgrades
@@ -738,6 +827,14 @@ provision_dedicated() {
     # Setup server security (has its own idempotency checks)
     setup_server_security "$sitename" "$ip" || true
 
+    # Verify SSH still works after security hardening
+    if ! verify_ssh_connectivity "$ip" "root" 5; then
+        print_error "SSH connectivity lost after security hardening"
+        print_info "Server may need manual recovery via Linode console (Lish)"
+        print_info "Linode ID: $instance_id, IP: $ip"
+        return 1
+    fi
+
     # Update cnwp.yml (function handles idempotency - adds missing values only)
     update_cnwp_live "$sitename" "$ip" "$instance_id" "dedicated" || true
 
@@ -831,6 +928,13 @@ REMOTE
 
     # Setup server security (has its own idempotency checks)
     setup_server_security "$sitename" "$gitlab_host" || true
+
+    # Verify SSH still works after security hardening
+    if ! verify_ssh_connectivity "$gitlab_host" "gitlab" 5; then
+        print_error "SSH connectivity lost after security hardening"
+        print_info "Server may need manual recovery"
+        return 1
+    fi
 
     # Update cnwp.yml (function handles idempotency - adds missing values only)
     update_cnwp_live "$sitename" "$ip" "shared" "shared" || true

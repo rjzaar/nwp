@@ -27,7 +27,9 @@ generate_badge_url() {
             in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
             in_settings && /^  url:/ {
                 sub("^  url: *", "")
+                sub(/ *#.*$/, "")  # Strip comments
                 gsub(/["'"'"']/, "")
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "")  # Trim whitespace
                 print
                 exit
             }
@@ -77,7 +79,9 @@ generate_badge_urls() {
             in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
             in_settings && /^  url:/ {
                 sub("^  url: *", "")
+                sub(/ *#.*$/, "")  # Strip comments
                 gsub(/["'"'"']/, "")
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "")  # Trim whitespace
                 print
                 exit
             }
@@ -122,7 +126,9 @@ generate_readme_badges() {
             in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
             in_settings && /^  url:/ {
                 sub("^  url: *", "")
+                sub(/ *#.*$/, "")  # Strip comments
                 gsub(/["'"'"']/, "")
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "")  # Trim whitespace
                 print
                 exit
             }
@@ -209,7 +215,9 @@ update_readme_badges() {
             in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
             in_settings && /^  url:/ {
                 sub("^  url: *", "")
+                sub(/ *#.*$/, "")  # Strip comments
                 gsub(/["'"'"']/, "")
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "")  # Trim whitespace
                 print
                 exit
             }

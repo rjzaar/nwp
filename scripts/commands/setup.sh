@@ -597,7 +597,7 @@ run_interactive_tui() {
             "ENTER")
                 cursor_show
                 echo ""
-                apply_changes
+                apply_changes || true  # Don't exit on cancel
                 echo ""
                 read -p "Press Enter to continue..."
                 cursor_hide

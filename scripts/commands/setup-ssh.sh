@@ -16,36 +16,11 @@ set -euo pipefail
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-BOLD='\033[1m'
-
-print_header() {
-    echo -e "\n${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}${BOLD}  $1${NC}"
-    echo -e "${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}\n"
-}
-
-print_status() {
-    echo -e "[${GREEN}✓${NC}] $1"
-}
-
-print_error() {
-    echo -e "${RED}${BOLD}ERROR:${NC} $1" >&2
-}
-
-print_info() {
-    echo -e "${BLUE}${BOLD}INFO:${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}${BOLD}WARNING:${NC} $1"
-}
+# Source shared libraries
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
 
 # Get list of Linode servers from cnwp.yml
 get_linode_servers() {

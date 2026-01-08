@@ -24,11 +24,6 @@ START_TIME=$(date +%s)
 # Helper Functions
 ################################################################################
 
-get_base_name() {
-    local site=$1
-    echo "$site" | sed -E 's/[-_](stg|prod)$//'
-}
-
 get_stg_name() {
     local site=$1
     local base=$(get_base_name "$site")

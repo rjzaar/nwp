@@ -32,19 +32,28 @@ INSTALL_LOG="$STATE_DIR/install.log"
 CONFIG_FILE="$PROJECT_ROOT/cnwp.yml"
 EXAMPLE_CONFIG="$PROJECT_ROOT/example.cnwp.yml"
 
-# Source UI library if available
-if [ -f "$PROJECT_ROOT/lib/ui.sh" ]; then
-    source "$PROJECT_ROOT/lib/ui.sh"
+# Source UI library for colors
+source "$PROJECT_ROOT/lib/ui.sh"
+
+# Additional colors for TUI not in ui.sh
+if [[ -t 1 ]]; then
+    DIM=$'\033[2m'
+    WHITE=$'\033[1;37m'
 else
-    # Fallback colors
-    RED='\033[0;31m'
-    GREEN='\033[0;32m'
-    YELLOW='\033[1;33m'
-    BLUE='\033[0;34m'
-    CYAN='\033[0;36m'
-    NC='\033[0m'
-    BOLD='\033[1m'
-    DIM='\033[2m'
+    DIM=''
+    WHITE=''
+fi
+
+# Fallback print functions if ui.sh doesn't provide them
+if ! declare -f print_header > /dev/null; then
+    # Fallback implementations (should not be needed)
+    RED=$'\033[0;31m'
+    GREEN=$'\033[0;32m'
+    YELLOW=$'\033[1;33m'
+    BLUE=$'\033[0;34m'
+    CYAN=$'\033[0;36m'
+    NC=$'\033[0m'
+    BOLD=$'\033[1m'
 
     print_header() {
         echo -e "\n${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}"

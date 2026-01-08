@@ -83,29 +83,49 @@ show_elapsed_time() {
 ################################################################################
 # Vortex-Style Output Functions (for standardized output across all scripts)
 ################################################################################
+#
+# NWP provides TWO output styles for different use cases:
+#
+# 1. TEXT-PREFIX STYLE (print_error, print_warning, print_info)
+#    - Best for: Logging, CLI output, scripts that pipe to log files
+#    - Format: "ERROR: message", "WARNING: message", "INFO: message"
+#    - Features: Uses BOLD text, proper stderr redirection
+#    - Example: print_error "Database connection failed"
+#
+# 2. ICON STYLE (fail, warn, info, pass)
+#    - Best for: TUI applications, modern terminal output, interactive scripts
+#    - Format: "[✗] message", "[!] message", "[ℹ] message", "[✓] message"
+#    - Features: Clean visual indicators, compact output
+#    - Example: fail "Database connection failed"
+#
+# Both styles are available and can be used based on your needs.
+################################################################################
 
-# Info - Blue section headers
-# Usage: info "Starting deployment"
-info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
+# Icon-style functions (modern terminal output with Unicode symbols)
+# These use color with fallbacks to work even if colors aren't defined
 
-# Pass - Green success messages
-# Usage: pass "Configuration exported"
-pass() {
-    echo -e "${GREEN}[ OK ]${NC} $1"
-}
-
-# Fail - Red error messages
+# fail - Red error messages with X icon
 # Usage: fail "Could not connect to database"
 fail() {
-    echo -e "${RED}[FAIL]${NC} $1"
+    echo -e "${RED:-\033[0;31m}[✗]${NC:-\033[0m} $1" >&2
 }
 
-# Warn - Yellow warning messages
+# warn - Yellow warning messages with exclamation icon
 # Usage: warn "Low disk space"
 warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
+    echo -e "${YELLOW:-\033[1;33m}[!]${NC:-\033[0m} $1"
+}
+
+# info - Blue information messages with info icon
+# Usage: info "Starting deployment"
+info() {
+    echo -e "${BLUE:-\033[0;34m}[ℹ]${NC:-\033[0m} $1"
+}
+
+# pass - Green success messages with checkmark icon
+# Usage: pass "Configuration exported"
+pass() {
+    echo -e "${GREEN:-\033[0;32m}[✓]${NC:-\033[0m} $1"
 }
 
 # Task - Step indicator for sub-operations
@@ -129,3 +149,26 @@ step() {
     local pct=$((current * 100 / total))
     echo -e "${CYAN}[${current}/${total}]${NC} ${BOLD}${message}${NC} (${pct}%)"
 }
+
+################################################################################
+# Export all functions for use in other scripts
+################################################################################
+
+# Text-prefix style functions
+export -f print_header
+export -f print_status
+export -f print_error
+export -f print_info
+export -f print_warning
+export -f show_elapsed_time
+
+# Icon-style functions
+export -f fail
+export -f warn
+export -f info
+export -f pass
+
+# Vortex-style helper functions
+export -f task
+export -f note
+export -f step

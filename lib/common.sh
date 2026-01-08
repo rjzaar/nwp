@@ -449,7 +449,7 @@ print_env_status() {
     local site="$1"
     local env="$2"
     local color=$(get_env_color "$env")
-    local NC='\033[0m'
+    local NC=$'\033[0m'
 
     printf "  %-20s ${color}[%s]${NC}\n" "$site" "$env"
 }
@@ -465,6 +465,9 @@ get_env_label() {
             ;;
         stage)
             echo "STAGING"
+            ;;
+        live)
+            echo "LIVE"
             ;;
         dev)
             echo "DEVELOPMENT"

@@ -67,13 +67,6 @@ EOF
 # Site Name Helpers
 ################################################################################
 
-# Get base site name (without env suffix, support legacy _stg/_prod during migration)
-get_base_name() {
-    local site=$1
-    # Remove -stg or -prod suffix (support legacy _stg/_prod)
-    echo "$site" | sed -E 's/[-_](stg|prod)$//'
-}
-
 # Get staging site name from base or any variant
 get_stg_name() {
     local site=$1
@@ -931,9 +924,42 @@ REMOTE
             ;;
     esac
 
-    # Remove from cnwp.yml
+    # Remove live section from cnwp.yml
     print_info "Updating cnwp.yml..."
-    # TODO: Remove live section from cnwp.yml
+
+    # Source yaml-write library if not already loaded
+    if ! command -v yaml_update_site_field &>/dev/null; then
+        source "$PROJECT_ROOT/lib/yaml-write.sh"
+    fi
+
+    # Remove live configuration from site
+    # We use awk to remove the entire live: section
+    local BASE_NAME=$(get_base_name "$sitename")
+    local config_file="$PROJECT_ROOT/cnwp.yml"
+    local temp_file=$(mktemp)
+
+    awk -v site="$BASE_NAME" '
+        BEGIN { in_sites = 0; in_site = 0; in_live = 0; skip_live = 0 }
+
+        /^sites:/ { in_sites = 1; print; next }
+        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0; in_site = 0 }
+
+        in_sites && $0 ~ "^  " site ":" { in_site = 1; print; next }
+        in_site && /^  [a-zA-Z]/ && !/^    / { in_site = 0 }
+
+        in_site && /^    live:/ { in_live = 1; skip_live = 1; next }
+        in_live && /^    [a-zA-Z]/ && !/^      / { in_live = 0; skip_live = 0 }
+
+        !skip_live { print }
+    ' "$config_file" > "$temp_file"
+
+    if [ -s "$temp_file" ]; then
+        mv "$temp_file" "$config_file"
+        print_status "OK" "Removed live configuration from cnwp.yml"
+    else
+        rm -f "$temp_file"
+        print_warning "Could not update cnwp.yml (file may need manual cleanup)"
+    fi
 
     print_status "OK" "Live server deleted"
 }

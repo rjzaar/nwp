@@ -12,13 +12,31 @@ _pl_completions() {
     _init_completion || return
 
     # Main commands - all NWP commands
-    local commands="install delete make uninstall backup restore copy dev2stg stg2prod prod2stg stg2live live2stg live2prod live produce test testos test-nwp schedule security security-check security-update security-audit migration gitlab-create gitlab-list setup setup-ssh list status version help"
+    local commands="install delete make uninstall backup restore copy dev2stg stg2prod prod2stg stg2live live2stg live2prod live produce test testos test-nwp schedule security security-check security-update security-audit import sync modify migration podcast email badges storage rollback coder verify report gitlab-create gitlab-list setup setup-ssh list status version migrate-secrets help"
 
     # Schedule subcommands
     local schedule_commands="install remove list show run"
 
     # Security subcommands
     local security_commands="check update audit"
+
+    # Email subcommands
+    local email_commands="setup add test reroute list"
+
+    # Badge subcommands
+    local badges_commands="show add update coverage markdown"
+
+    # Storage subcommands
+    local storage_commands="auth list info files upload delete keys key-delete"
+
+    # Rollback subcommands
+    local rollback_commands="list execute verify cleanup"
+
+    # Coder subcommands
+    local coder_commands="add list remove"
+
+    # Theme subcommands
+    local theme_commands="setup watch build lint info"
 
     # Test flags
     local test_flags="-l -u -k -f -s -b -p --ci --all"
@@ -82,14 +100,21 @@ _pl_completions() {
                 restore)
                     COMPREPLY=($(compgen -W "${restore_flags} ${sites}" -- "${cur}"))
                     ;;
-                copy|dev2stg|stg2prod|prod2stg|stg2live|live2stg|live2prod|produce|status|testos|migration)
+                copy|dev2stg|stg2prod|prod2stg|stg2live|live2stg|live2prod|produce|status|testos|migration|sync|modify|verify|podcast)
                     COMPREPLY=($(compgen -W "${sites}" -- "${cur}"))
+                    ;;
+                import)
+                    # Suggest server names (could be empty or require user input)
+                    COMPREPLY=()
                     ;;
                 live)
                     COMPREPLY=($(compgen -W "${live_flags} ${sites}" -- "${cur}"))
                     ;;
                 test)
                     COMPREPLY=($(compgen -W "${test_flags} ${sites}" -- "${cur}"))
+                    ;;
+                theme)
+                    COMPREPLY=($(compgen -W "${theme_commands}" -- "${cur}"))
                     ;;
                 schedule)
                     COMPREPLY=($(compgen -W "${schedule_commands}" -- "${cur}"))
@@ -99,6 +124,25 @@ _pl_completions() {
                     ;;
                 security-check|security-update|security-audit)
                     COMPREPLY=($(compgen -W "--all ${sites}" -- "${cur}"))
+                    ;;
+                email)
+                    COMPREPLY=($(compgen -W "${email_commands}" -- "${cur}"))
+                    ;;
+                badges)
+                    COMPREPLY=($(compgen -W "${badges_commands}" -- "${cur}"))
+                    ;;
+                storage)
+                    COMPREPLY=($(compgen -W "${storage_commands}" -- "${cur}"))
+                    ;;
+                rollback)
+                    COMPREPLY=($(compgen -W "${rollback_commands}" -- "${cur}"))
+                    ;;
+                coder)
+                    COMPREPLY=($(compgen -W "${coder_commands}" -- "${cur}"))
+                    ;;
+                report|migrate-secrets)
+                    # These commands don't take arguments
+                    COMPREPLY=()
                     ;;
                 gitlab-list)
                     COMPREPLY=($(compgen -W "sites backups" -- "${cur}"))
@@ -122,6 +166,13 @@ _pl_completions() {
                 copy)
                     COMPREPLY=($(compgen -W "${sites}" -- "${cur}"))
                     ;;
+                theme)
+                    case "${words[2]}" in
+                        setup|watch|build|lint|info)
+                            COMPREPLY=($(compgen -W "${sites}" -- "${cur}"))
+                            ;;
+                    esac
+                    ;;
                 schedule)
                     case "${words[2]}" in
                         install|remove|show|run)
@@ -133,6 +184,47 @@ _pl_completions() {
                     case "${words[2]}" in
                         check|update|audit)
                             COMPREPLY=($(compgen -W "--all --auto ${sites}" -- "${cur}"))
+                            ;;
+                    esac
+                    ;;
+                email)
+                    case "${words[2]}" in
+                        add|test|reroute)
+                            COMPREPLY=($(compgen -W "${sites}" -- "${cur}"))
+                            ;;
+                    esac
+                    ;;
+                badges)
+                    case "${words[2]}" in
+                        show|add|update|coverage|markdown)
+                            COMPREPLY=($(compgen -W "${sites}" -- "${cur}"))
+                            ;;
+                    esac
+                    ;;
+                storage)
+                    case "${words[2]}" in
+                        info|files)
+                            # Suggest bucket names (could pull from storage list)
+                            COMPREPLY=()
+                            ;;
+                        upload)
+                            # First arg is file path
+                            COMPREPLY=($(compgen -f -- "${cur}"))
+                            ;;
+                    esac
+                    ;;
+                rollback)
+                    case "${words[2]}" in
+                        execute|verify)
+                            COMPREPLY=($(compgen -W "${sites}" -- "${cur}"))
+                            ;;
+                    esac
+                    ;;
+                coder)
+                    case "${words[2]}" in
+                        add|remove)
+                            # Coder name - let user type
+                            COMPREPLY=()
                             ;;
                     esac
                     ;;

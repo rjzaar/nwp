@@ -15,39 +15,12 @@
 #   modify  - Modify existing site (env tabs, 5-state checkboxes)
 ################################################################################
 
+# Source minimal terminal control functions
+source "${BASH_SOURCE%/*}/terminal.sh"
+
 # Prevent double-sourcing
 [[ -n "${_TUI_SH_LOADED:-}" ]] && return 0
 _TUI_SH_LOADED=1
-
-################################################################################
-# Terminal Control Functions
-################################################################################
-
-cursor_to() { printf "\033[%d;%dH" "$1" "$2"; }
-cursor_hide() { printf "\033[?25l"; }
-cursor_show() { printf "\033[?25h"; }
-clear_screen() { printf "\033[2J\033[H"; }
-
-read_key() {
-    local key
-    IFS= read -rsn1 key
-    if [[ $key == $'\x1b' ]]; then
-        read -rsn2 -t 0.1 rest || true
-        case "$rest" in
-            '[A') echo "UP" ;;
-            '[B') echo "DOWN" ;;
-            '[C') echo "RIGHT" ;;
-            '[D') echo "LEFT" ;;
-            *) echo "ESC" ;;
-        esac
-    elif [[ $key == "" ]]; then
-        echo "ENTER"
-    elif [[ $key == " " ]]; then
-        echo "SPACE"
-    else
-        echo "$key"
-    fi
-}
 
 ################################################################################
 # Environment Management
@@ -66,7 +39,7 @@ get_env_index() {
     echo "0"
 }
 
-get_env_label() {
+get_env_display_label() {
     local env="$1"
     case "$env" in
         dev) echo "Development" ;;
@@ -313,7 +286,7 @@ draw_tui_screen() {
     # Header
     if [[ "$mode" == "install" ]]; then
         printf "${BOLD}Install: ${CYAN}%s${NC}  |  " "$site_name"
-        printf "Environment: ${GREEN}%s${NC}\n" "$(get_env_label "$environment")"
+        printf "Environment: ${GREEN}%s${NC}\n" "$(get_env_display_label "$environment")"
     else
         printf "${BOLD}Modify: ${CYAN}%s${NC}  |  " "$site_name"
         # Environment tabs
@@ -451,10 +424,10 @@ draw_tui_footer() {
         printf "${YELLOW}[+]${NC}=will install  ${DIM}[ ]${NC}=skip\n"
         printf "Selected: %d" "$sel_count"
         [ "$recipe_count" -gt 0 ] && printf "  (from recipe: %d)" "$recipe_count"
-        printf "  Environment: ${GREEN}%s${NC}\n" "$(get_env_label "$environment")"
+        printf "  Environment: ${GREEN}%s${NC}\n" "$(get_env_display_label "$environment")"
     else
         printf "${GREEN}[✓]${NC}=installed  ${RED}[x]${NC}=remove  ${YELLOW}[+]${NC}=install  ${RED}[!]${NC}=config mismatch  ${DIM}[ ]${NC}=none\n"
-        printf "Selected: %d  Installed: %d  Environment: ${GREEN}%s${NC}\n" "$sel_count" "$installed_count" "$(get_env_label "$environment")"
+        printf "Selected: %d  Installed: %d  Environment: ${GREEN}%s${NC}\n" "$sel_count" "$installed_count" "$(get_env_display_label "$environment")"
     fi
 }
 
@@ -777,9 +750,8 @@ load_tui_defaults() {
     fi
 }
 
-# Export functions
-export -f cursor_to cursor_hide cursor_show clear_screen read_key
-export -f get_env_index get_env_label
+# Export functions (terminal control functions already exported by terminal.sh)
+export -f get_env_index get_env_display_label
 export -f setup_install_action_option setup_install_status_option
 export -f build_env_option_list get_checkbox_display
 export -f draw_tui_screen draw_tui_footer show_option_docs edit_option_inputs

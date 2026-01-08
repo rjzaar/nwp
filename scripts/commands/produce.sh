@@ -21,11 +21,6 @@ source "$PROJECT_ROOT/lib/common.sh"
 # Helper Functions
 ################################################################################
 
-get_base_name() {
-    local site=$1
-    echo "$site" | sed -E 's/[-_](stg|prod)$//'
-}
-
 get_prod_name() {
     local site=$1
     local base=$(get_base_name "$site")

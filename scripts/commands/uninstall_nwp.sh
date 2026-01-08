@@ -10,67 +10,19 @@
 # installed by NWP setup. Make sure you have backups of any important data.
 ################################################################################
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-BOLD='\033[1m'
-
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+
+# Source shared libraries
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
+
 STATE_DIR="$HOME/.nwp/setup_state"
 ORIGINAL_STATE_FILE="$STATE_DIR/original_state.json"
 LEGACY_STATE_FILE="$STATE_DIR/pre_setup_state.json"
 INSTALL_LOG="$STATE_DIR/install.log"
 CONFIG_FILE="$PROJECT_ROOT/cnwp.yml"
-
-################################################################################
-# Helper Functions
-################################################################################
-
-print_header() {
-    echo -e "\n${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}${BOLD}  $1${NC}"
-    echo -e "${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}\n"
-}
-
-print_status() {
-    local status=$1
-    local message=$2
-
-    if [ "$status" == "OK" ]; then
-        echo -e "[${GREEN}✓${NC}] $message"
-    elif [ "$status" == "WARN" ]; then
-        echo -e "[${YELLOW}!${NC}] $message"
-    elif [ "$status" == "FAIL" ]; then
-        echo -e "[${RED}✗${NC}] $message"
-    else
-        echo -e "[${BLUE}i${NC}] $message"
-    fi
-}
-
-ask_yes_no() {
-    local prompt=$1
-    local default=${2:-n}
-
-    if [ "$default" == "y" ]; then
-        prompt="$prompt [Y/n]: "
-    else
-        prompt="$prompt [y/N]: "
-    fi
-
-    read -p "$prompt" response
-    response=${response:-$default}
-
-    if [[ "$response" =~ ^[Yy]$ ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
 
 ################################################################################
 # State Reading Functions

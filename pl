@@ -124,8 +124,44 @@ ${BOLD}GIT & GITLAB:${NC}
     gitlab-create <project> [group] Create GitLab project
     gitlab-list [group]             List GitLab projects
 
+${BOLD}IMPORT & SYNC:${NC}
+    import <server>                 Import sites from remote server
+    sync <sitename>                 Sync database/files from source
+    modify <sitename>               Modify site options interactively
+
 ${BOLD}MIGRATION:${NC}
     migration <sitename>            Run migration tasks
+
+${BOLD}PODCASTING:${NC}
+    podcast <sitename>              Setup Castopod podcast infrastructure
+
+${BOLD}EMAIL:${NC}
+    email setup                     Setup email infrastructure
+    email add <sitename>            Add email account for site
+    email test <sitename>           Test email deliverability
+    email reroute <sitename>        Route email to Mailpit (dev)
+
+${BOLD}CI/CD:${NC}
+    badges show <sitename>          Show GitLab badge URLs
+    badges add <sitename>           Add badges to README.md
+    badges coverage <sitename>      Check test coverage threshold
+
+${BOLD}CLOUD STORAGE:${NC}
+    storage auth                    Authenticate with Backblaze B2
+    storage list                    List B2 buckets
+    storage upload <file> <bucket>  Upload file to B2
+    storage files <bucket>          List files in bucket
+
+${BOLD}ROLLBACK:${NC}
+    rollback list [sitename]        List available rollback points
+    rollback execute <sitename>     Rollback to pre-deployment state
+    rollback cleanup                Remove old rollback points
+
+${BOLD}DEVELOPER TOOLS:${NC}
+    coder add <name>                Add developer coder environment
+    coder list                      List configured coders
+    verify <sitename>               Verify site features and changes
+    report                          Generate bug report
 
 ${BOLD}SETUP & UTILITIES:${NC}
     setup                           Run setup wizard (18 components)
@@ -133,6 +169,9 @@ ${BOLD}SETUP & UTILITIES:${NC}
     list                            List all tracked sites
     status <sitename>               Show site status
     version                         Show NWP version
+
+${BOLD}MAINTENANCE:${NC}
+    migrate-secrets                 Migrate secrets to new format
 
 ${BOLD}GLOBAL OPTIONS:${NC}
     -h, --help                      Show this help message
@@ -584,9 +623,56 @@ main() {
             run_script "security.sh" "audit" "$@"
             ;;
 
+        # Import & Sync
+        import)
+            run_script "import.sh" "$@"
+            ;;
+        sync)
+            run_script "sync.sh" "$@"
+            ;;
+        modify)
+            run_script "modify.sh" "$@"
+            ;;
+
         # Migration
         migration)
             run_script "migration.sh" "$@"
+            ;;
+
+        # Podcasting
+        podcast)
+            run_script "podcast.sh" "$@"
+            ;;
+
+        # Email
+        email)
+            run_script "email.sh" "$@"
+            ;;
+
+        # CI/CD
+        badges)
+            run_script "badges.sh" "$@"
+            ;;
+
+        # Cloud Storage
+        storage)
+            run_script "storage.sh" "$@"
+            ;;
+
+        # Rollback
+        rollback)
+            run_script "rollback.sh" "$@"
+            ;;
+
+        # Developer tools
+        coder)
+            run_script "coder-setup.sh" "$@"
+            ;;
+        verify)
+            run_script "verify.sh" "$@"
+            ;;
+        report)
+            run_script "report.sh" "$@"
             ;;
 
         # Git
@@ -612,6 +698,11 @@ main() {
             ;;
         version)
             echo "NWP CLI (pl) version $VERSION"
+            ;;
+
+        # Maintenance
+        migrate-secrets)
+            run_script "migrate-secrets.sh" "$@"
             ;;
 
         # Help

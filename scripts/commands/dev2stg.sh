@@ -141,11 +141,6 @@ get_env_type() {
     fi
 }
 
-get_base_name() {
-    local site=$1
-    echo "$site" | sed -E 's/[-_](stg|prod)$//'
-}
-
 get_stg_name() {
     local base=$1
     echo "${base}-stg"

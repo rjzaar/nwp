@@ -13,6 +13,10 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
+# Source shared libraries
+source "$PROJECT_ROOT/lib/ui.sh"
+source "$PROJECT_ROOT/lib/common.sh"
+
 # Source YAML library
 if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
     source "$PROJECT_ROOT/lib/yaml-write.sh"
@@ -21,55 +25,9 @@ fi
 # Script start time
 START_TIME=$(date +%s)
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-BOLD='\033[1m'
-
 ################################################################################
 # Helper Functions
 ################################################################################
-
-print_header() {
-    echo -e "\n${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}${BOLD}  $1${NC}"
-    echo -e "${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}\n"
-}
-
-print_status() {
-    local status=$1
-    local message=$2
-
-    if [ "$status" == "OK" ]; then
-        echo -e "[${GREEN}✓${NC}] $message"
-    elif [ "$status" == "WARN" ]; then
-        echo -e "[${YELLOW}!${NC}] $message"
-    elif [ "$status" == "FAIL" ]; then
-        echo -e "[${RED}✗${NC}] $message"
-    else
-        echo -e "[${BLUE}i${NC}] $message"
-    fi
-}
-
-print_error() {
-    echo -e "${RED}${BOLD}ERROR:${NC} $1" >&2
-}
-
-print_info() {
-    echo -e "${BLUE}${BOLD}INFO:${NC} $1"
-}
-
-# Conditional debug message
-ocmsg() {
-    local message=$1
-    if [ "$DEBUG" == "true" ]; then
-        echo -e "${CYAN}[DEBUG]${NC} $message"
-    fi
-}
 
 # Display elapsed time
 show_elapsed_time() {
@@ -159,12 +117,6 @@ get_linode_config() {
             exit
         }
     ' "$PROJECT_ROOT/cnwp.yml"
-}
-
-# Get base name (remove -stg or -prod suffix, support legacy _stg/_prod during migration)
-get_base_name() {
-    local site=$1
-    echo "$site" | sed -E 's/[-_](stg|prod)$//'
 }
 
 # Check if site is in production mode

@@ -31,12 +31,6 @@ START_TIME=$(date +%s)
 # Helper Functions
 ################################################################################
 
-# Get base name (remove -stg or -prod suffix, support legacy _stg/_prod during migration)
-get_base_name() {
-    local site=$1
-    echo "$site" | sed -E 's/[-_](stg|prod)$//'
-}
-
 # Get staging name
 get_stg_name() {
     local site=$1

@@ -6,12 +6,23 @@
 # Default config file
 YAML_CONFIG_FILE="${YAML_CONFIG_FILE:-cnwp.yml}"
 
-# Color output for messages
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-DIM='\033[2m'
-NC='\033[0m' # No Color
+# Color output for messages - use existing definitions from lib/ui.sh if available
+# Only define if not already set (maintains TTY-awareness from ui.sh)
+if [[ -z "${RED+x}" ]]; then
+    if [[ -t 1 ]]; then
+        RED=$'\033[0;31m'
+        GREEN=$'\033[0;32m'
+        YELLOW=$'\033[1;33m'
+        DIM=$'\033[2m'
+        NC=$'\033[0m'
+    else
+        RED=''
+        GREEN=''
+        YELLOW=''
+        DIM=''
+        NC=''
+    fi
+fi
 
 #######################################
 # Validate a site name for safe use in YAML operations

@@ -24,16 +24,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 VERIFICATION_FILE="${PROJECT_ROOT}/.verification.yml"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-WHITE='\033[1;37m'
-DIM='\033[2m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
+# Source UI library for colors
+source "$PROJECT_ROOT/lib/ui.sh"
+
+# Additional colors for TUI not in ui.sh
+if [[ -t 1 ]]; then
+    WHITE=$'\033[1;37m'
+    DIM=$'\033[2m'
+else
+    WHITE=''
+    DIM=''
+fi
 
 # Checkbox characters
 CHECK_ON="[✓]"

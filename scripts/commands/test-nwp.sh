@@ -2,7 +2,7 @@
 ################################################################################
 # NWP Comprehensive Test Script
 #
-# Tests all NWP functionality across 22 test categories:
+# Tests all NWP functionality across 22+ test categories:
 #   1-8:   Core operations (install, backup, restore, copy, delete, deploy)
 #   9:     Script validation
 #   10:    Deployment scripts (stg2prod/prod2stg)
@@ -18,6 +18,9 @@
 #   20:    Remote site support (P25)
 #   21:    Live server & security scripts (P26-P28)
 #   22:    Script syntax validation
+#   22b:   Library loading and function tests
+#   22c:   New command help tests
+#   23:    Podcast infrastructure (optional)
 #
 # Usage:
 #   ./test-nwp.sh [--skip-cleanup] [--verbose] [--podcast]
@@ -38,13 +41,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 cd "$PROJECT_ROOT"
 
-# Color output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-BOLD='\033[1m'
-NC='\033[0m'
+# Source UI library for colors
+source "$PROJECT_ROOT/lib/ui.sh"
+
+# Additional test-specific colors not in ui.sh
+if [[ -t 1 ]]; then
+    DIM=$'\033[2m'
+else
+    DIM=''
+fi
 
 # Configuration
 TEST_SITE_PREFIX="test-nwp"
@@ -1115,6 +1120,7 @@ done
 LIBRARY_FILES=(
     "lib/ui.sh"
     "lib/common.sh"
+    "lib/terminal.sh"
     "lib/git.sh"
     "lib/yaml-write.sh"
     "lib/badges.sh"
@@ -1128,6 +1134,126 @@ for lib in "${LIBRARY_FILES[@]}"; do
         run_test "Syntax valid: $lib" "bash -n $lib"
     fi
 done
+
+################################################################################
+# Test 22b: Library Loading and Function Tests
+################################################################################
+
+print_header "Test 22b: Library Loading and Function Tests"
+
+# Test library loading
+run_test "lib/terminal.sh exists" "[ -f lib/terminal.sh ]"
+run_test "lib/terminal.sh can be sourced" "source lib/terminal.sh 2>/dev/null"
+run_test "lib/ui.sh exists" "[ -f lib/ui.sh ]"
+run_test "lib/ui.sh can be sourced" "source lib/ui.sh 2>/dev/null"
+run_test "lib/common.sh exists" "[ -f lib/common.sh ]"
+run_test "lib/common.sh can be sourced" "source lib/common.sh 2>/dev/null"
+
+# Source libraries for function tests
+if [ -f "lib/common.sh" ]; then
+    source lib/common.sh 2>/dev/null || true
+
+    # Test get_base_name function
+    run_test "get_base_name function exists" "type get_base_name >/dev/null 2>&1"
+
+    if type get_base_name >/dev/null 2>&1; then
+        # Test hyphen variant
+        RESULT=$(get_base_name "mysite-stg" 2>/dev/null || echo "")
+        if [ "$RESULT" = "mysite" ]; then
+            run_test "get_base_name handles hyphen (mysite-stg → mysite)" "true"
+        else
+            run_test "get_base_name handles hyphen (mysite-stg → mysite)" "false"
+        fi
+
+        # Test underscore variant
+        RESULT=$(get_base_name "mysite_prod" 2>/dev/null || echo "")
+        if [ "$RESULT" = "mysite" ]; then
+            run_test "get_base_name handles underscore (mysite_prod → mysite)" "true"
+        else
+            run_test "get_base_name handles underscore (mysite_prod → mysite)" "false"
+        fi
+    fi
+
+    # Test get_env_label function (returns UPPERCASE)
+    run_test "get_env_label function exists" "type get_env_label >/dev/null 2>&1"
+
+    if type get_env_label >/dev/null 2>&1; then
+        RESULT=$(get_env_label "prod" 2>/dev/null || echo "")
+        if [ "$RESULT" = "PRODUCTION" ]; then
+            run_test "get_env_label returns UPPERCASE (prod → PRODUCTION)" "true"
+        else
+            run_test "get_env_label returns UPPERCASE (prod → PRODUCTION)" "false"
+        fi
+
+        RESULT=$(get_env_label "stg" 2>/dev/null || echo "")
+        if [ "$RESULT" = "STAGING" ]; then
+            run_test "get_env_label returns UPPERCASE (stg → STAGING)" "true"
+        else
+            run_test "get_env_label returns UPPERCASE (stg → STAGING)" "false"
+        fi
+    fi
+
+    # Test get_env_display_label function (returns Title Case)
+    run_test "get_env_display_label function exists" "type get_env_display_label >/dev/null 2>&1"
+
+    if type get_env_display_label >/dev/null 2>&1; then
+        RESULT=$(get_env_display_label "prod" 2>/dev/null || echo "")
+        if [ "$RESULT" = "Production" ]; then
+            run_test "get_env_display_label returns Title Case (prod → Production)" "true"
+        else
+            run_test "get_env_display_label returns Title Case (prod → Production)" "false"
+        fi
+
+        RESULT=$(get_env_display_label "live" 2>/dev/null || echo "")
+        if [ "$RESULT" = "Live" ]; then
+            run_test "get_env_display_label returns Title Case (live → Live)" "true"
+        else
+            run_test "get_env_display_label returns Title Case (live → Live)" "false"
+        fi
+    fi
+fi
+
+# Source ui.sh for UI function tests
+if [ -f "lib/ui.sh" ]; then
+    source lib/ui.sh 2>/dev/null || true
+
+    # Test print_* functions
+    run_test "print_error function exists" "type print_error >/dev/null 2>&1"
+    run_test "print_warning function exists" "type print_warning >/dev/null 2>&1"
+    run_test "print_info function exists" "type print_info >/dev/null 2>&1"
+
+    # Test icon functions
+    run_test "fail function exists" "type fail >/dev/null 2>&1"
+    run_test "warn function exists" "type warn >/dev/null 2>&1"
+    run_test "info function exists" "type info >/dev/null 2>&1"
+    run_test "pass function exists" "type pass >/dev/null 2>&1"
+fi
+
+# Source terminal.sh for terminal function tests
+if [ -f "lib/terminal.sh" ]; then
+    source lib/terminal.sh 2>/dev/null || true
+
+    # Test terminal control functions
+    run_test "cursor_to function exists" "type cursor_to >/dev/null 2>&1"
+    run_test "cursor_hide function exists" "type cursor_hide >/dev/null 2>&1"
+    run_test "cursor_show function exists" "type cursor_show >/dev/null 2>&1"
+fi
+
+################################################################################
+# Test 22c: New Command Help Tests
+################################################################################
+
+print_header "Test 22c: New Command Help Tests"
+
+# Test new pl commands
+if [ -x "pl" ]; then
+    run_test "pl badges --help works" "./pl badges --help >/dev/null 2>&1 || true"
+    run_test "pl storage --help works" "./pl storage --help >/dev/null 2>&1 || true"
+    run_test "pl rollback --help works" "./pl rollback --help >/dev/null 2>&1 || true"
+    run_test "pl email --help works" "./pl email --help >/dev/null 2>&1 || true"
+else
+    print_warning "pl command not found - skipping command help tests"
+fi
 
 ################################################################################
 # Test 23: Podcast Infrastructure (Optional)

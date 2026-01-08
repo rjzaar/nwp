@@ -18,24 +18,12 @@ set -e
 THRESHOLD=${1:-80}
 COVERAGE_FILE=${2:-.logs/coverage/clover.xml}
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Get script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Function to print colored output
-print_error() {
-    echo -e "${RED}ERROR: $1${NC}" >&2
-}
-
-print_success() {
-    echo -e "${GREEN}$1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}$1${NC}"
-}
+# Source UI library for colors and print functions
+source "$PROJECT_ROOT/lib/ui.sh"
 
 # Validate threshold is a number
 if ! [[ "$THRESHOLD" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then

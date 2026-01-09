@@ -149,6 +149,25 @@ settings:
   # === SITE MANAGEMENT [ACTIVE] ===
   delete_site_yml: true            # [ACTIVE] Remove site from cnwp.yml when deleted (--keep-yml to preserve)
 
+  # === SEO & SEARCH ENGINE CONTROL [ACTIVE] ===
+  # Controls search engine indexing behavior across environments
+  # See: docs/SEO_ROBOTS_PROPOSAL.md for complete specification
+  seo:
+    # Staging protection - Prevent staging sites from being indexed
+    staging_noindex: true          # [ACTIVE] Add X-Robots-Tag header to staging sites
+    staging_robots_block: true     # [ACTIVE] Deploy blocking robots.txt to staging
+    staging_http_auth: false       # [PLANNED] Enable HTTP Basic Auth on staging
+
+    # Production optimization - Improve search engine indexing
+    production_robots: true        # [ACTIVE] Deploy optimized robots.txt with sitemap
+    sitemap_enabled: true          # [PLANNED] Enable sitemap.xml generation (requires Simple XML Sitemap module)
+    ai_bots_allowed: true          # [PLANNED] Allow AI training crawlers (GPTBot, ClaudeBot, etc.)
+    crawl_delay: 1                 # [ACTIVE] Seconds between crawler requests
+
+    # Meta tags configuration
+    meta_robots_404: true          # [PLANNED] Add noindex to 404 pages
+    canonical_urls: true           # [PLANNED] Enforce canonical URLs
+
 ################################################################################
 # OTHER CODERS - Multi-Coder DNS Delegation
 ################################################################################

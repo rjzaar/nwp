@@ -244,9 +244,30 @@ server {
     }
 
     # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self';" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+
+    # Hide server information
+    server_tokens off;
+    fastcgi_hide_header X-Generator;
+    fastcgi_hide_header X-Powered-By;
+    fastcgi_hide_header X-Drupal-Cache;
+    fastcgi_hide_header X-Drupal-Dynamic-Cache;
+
+    # SEO: Block staging sites from search engine indexing
+    # Detects staging sites by -stg or _stg in domain name
+    # This is a CRITICAL layer of defense against accidental indexing
+    set \$is_staging 0;
+    if (\$host ~* "([-_]stg|staging)") {
+        set \$is_staging 1;
+    }
+    if (\$is_staging = 1) {
+        add_header X-Robots-Tag "noindex, nofollow, noarchive, nosnippet" always;
+    }
 
     # Gzip compression
     gzip on;
@@ -292,6 +313,65 @@ sudo chown -R www-data:www-data "$WEBROOT"
 sudo find "$WEBROOT" -type d -exec chmod 755 {} \;
 sudo find "$WEBROOT" -type f -exec chmod 644 {} \;
 print_success "Permissions set"
+
+# Deploy appropriate robots.txt based on environment
+print_info "Deploying robots.txt..."
+if echo "$DOMAIN" | grep -qE "([-_]stg|staging)"; then
+    # Staging site - block all crawlers
+    print_info "Detected staging site - deploying blocking robots.txt"
+    sudo tee "$WEBROOT/robots.txt" > /dev/null << 'EOF'
+# robots.txt - Staging Site
+# This staging site should NOT be indexed by search engines
+
+User-agent: *
+Disallow: /
+
+# Block AI crawlers
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+# Block Internet Archive
+User-agent: ia_archiver
+Disallow: /
+EOF
+else
+    # Production site - allow crawlers with sitemap
+    print_info "Detected production site - deploying optimized robots.txt"
+    sudo tee "$WEBROOT/robots.txt" > /dev/null << EOF
+# robots.txt - Production Site
+
+User-agent: *
+
+# Allow CSS, JS, and images
+Allow: /core/*.css$
+Allow: /core/*.js$
+Allow: /themes/*.css$
+Allow: /themes/*.js$
+
+# Block admin paths
+Disallow: /admin/
+Disallow: /user/
+Disallow: /node/add/
+
+# Crawl rate limiting
+Crawl-delay: 1
+
+# Sitemap location
+Sitemap: http$([ "$ENABLE_SSL" = true ] && echo "s" || echo "")://$DOMAIN/sitemap.xml
+EOF
+fi
+sudo chown www-data:www-data "$WEBROOT/robots.txt"
+sudo chmod 644 "$WEBROOT/robots.txt"
+print_success "robots.txt deployed"
 
 # Save database credentials
 CREDS_FILE="/home/$(whoami)/.nwp-site-credentials"

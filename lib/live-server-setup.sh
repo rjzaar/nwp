@@ -368,6 +368,21 @@ server {
         log_not_found off;
     }
 
+    # SEO: Block staging sites from search engine indexing
+    # Detects staging sites by -stg, _stg, or "staging" in domain name
+    set \$is_staging 0;
+    if \(\$host ~* \"([-_]stg|staging)\"\) {
+        set \$is_staging 1;
+    }
+    if \(\$is_staging = 1\) {
+        add_header X-Robots-Tag \"noindex, nofollow, noarchive, nosnippet\" always;
+    }
+
+    # Sitemap support for production sites
+    location = /sitemap.xml {
+        try_files \$uri @rewrite;
+    }
+
     # Fighting with Styles? This little gem is amazing.
     location ~ ^/sites/.*/files/styles/ {
         try_files \$uri @rewrite;

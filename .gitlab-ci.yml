@@ -18,10 +18,14 @@
 # - Artifact management
 
 stages:
+  - lint
+  - test
   - database
   - build
+  - security
   - deploy
   - preview
+  - e2e
 
 ################################################################################
 # Global Variables
@@ -99,6 +103,72 @@ workflow:
       when: never
     # Run on branch pushes
     - if: $CI_COMMIT_BRANCH
+
+################################################################################
+# LINT STAGE
+# Fast syntax and style validation
+################################################################################
+
+# Bash syntax validation
+lint:bash:
+  stage: lint
+  image: ubuntu:22.04
+  script:
+    - apt-get update -qq && apt-get install -y -qq bash
+    - echo "Validating bash syntax for all scripts and libraries..."
+    - find scripts/commands lib -name "*.sh" -type f -exec bash -n {} \;
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+  tags:
+    - nwp
+
+################################################################################
+# TEST STAGE
+# Unit and integration tests
+################################################################################
+
+# Unit tests (BATS)
+test:unit:
+  stage: test
+  image: ubuntu:22.04
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq bats git
+  script:
+    - echo "Running BATS unit tests..."
+    - bats tests/unit/
+  artifacts:
+    when: always
+    reports:
+      junit: tests/unit/results.xml
+    paths:
+      - tests/unit/results.xml
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+  tags:
+    - nwp
+
+# Integration tests (BATS) - syntax validation only in CI
+test:integration:
+  stage: test
+  image: ubuntu:22.04
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq bats git
+  script:
+    - echo "Running BATS integration tests (non-DDEV tests only)..."
+    - bats tests/integration/06-scripts-validation.bats
+  artifacts:
+    when: always
+    reports:
+      junit: tests/integration/results.xml
+    paths:
+      - tests/integration/results.xml
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+  tags:
+    - nwp
+  allow_failure: false
 
 ################################################################################
 # DATABASE STAGE
@@ -228,6 +298,216 @@ coverage:
       - .logs/coverage/
     expire_in: 1 week
   coverage: '/^\s*Lines:\s*\d+.\d+\%/'
+  tags:
+    - nwp
+  allow_failure: true
+
+################################################################################
+# SECURITY STAGE
+# Security scanning for vulnerabilities and malicious code
+################################################################################
+
+# Security scan job
+# Runs automated security checks on code and dependencies
+security:scan:
+  stage: security
+  needs: ["build"]
+  rules:
+    # Run on all branches
+    - when: on_success
+  script:
+    - echo "Starting security scans..."
+
+    # Dependency audit - check for known vulnerabilities
+    - echo "=== Composer Security Audit ==="
+    - |
+      if [ -f composer.json ]; then
+        composer audit || echo "WARNING: Vulnerabilities found in dependencies"
+      else
+        echo "No composer.json found, skipping composer audit"
+      fi
+
+    # NPM audit if package.json exists
+    - echo ""
+    - echo "=== NPM Security Audit ==="
+    - |
+      if [ -f package.json ]; then
+        npm audit --audit-level=high 2>/dev/null || echo "WARNING: Vulnerabilities found in npm packages"
+      else
+        echo "No package.json found, skipping npm audit"
+      fi
+
+    # Secret detection patterns
+    - echo ""
+    - echo "=== Secret Detection ==="
+    - |
+      echo "Scanning for exposed secrets..."
+      secrets_found=0
+
+      # API keys and tokens
+      if grep -rn --include="*.php" --include="*.sh" --include="*.js" --include="*.yml" \
+          -E "(api_key|api_token|access_token|secret_key|private_key)\s*=\s*['\"][^'\"]{20,}" \
+          . 2>/dev/null | grep -v ".gitlab-ci.yml" | grep -v "example" | grep -v "test"; then
+        echo "WARNING: Potential hardcoded secrets found"
+        secrets_found=1
+      fi
+
+      # AWS keys
+      if grep -rn --include="*.php" --include="*.sh" --include="*.js" --include="*.yml" \
+          -E "AKIA[0-9A-Z]{16}" . 2>/dev/null; then
+        echo "WARNING: Potential AWS keys found"
+        secrets_found=1
+      fi
+
+      # Private keys
+      if grep -rn --include="*" -l "BEGIN.*PRIVATE KEY" . 2>/dev/null | grep -v "test" | grep -v "example"; then
+        echo "WARNING: Private keys found in repository"
+        secrets_found=1
+      fi
+
+      if [ $secrets_found -eq 0 ]; then
+        echo "OK: No secrets detected"
+      fi
+
+    # Suspicious pattern detection
+    - echo ""
+    - echo "=== Suspicious Pattern Scan ==="
+    - |
+      echo "Scanning for suspicious code patterns..."
+      suspicious_found=0
+
+      # Code execution patterns
+      if grep -rn --include="*.php" --include="*.sh" \
+          -E "(eval|base64_decode|exec|system|passthru|shell_exec|proc_open)\s*\(" \
+          . 2>/dev/null | grep -v ".gitlab-ci.yml" | grep -v "test" | grep -v "vendor"; then
+        echo "WARNING: Potentially dangerous code execution patterns found"
+        suspicious_found=1
+      fi
+
+      # Obfuscation patterns
+      if grep -rn --include="*.php" --include="*.js" \
+          -E "(chr\([0-9]+\)|\\\\x[0-9a-f]{2}){5,}" \
+          . 2>/dev/null | grep -v "vendor" | grep -v "test"; then
+        echo "WARNING: Potential code obfuscation found"
+        suspicious_found=1
+      fi
+
+      if [ $suspicious_found -eq 0 ]; then
+        echo "OK: No suspicious patterns detected"
+      fi
+
+    # File permission checks
+    - echo ""
+    - echo "=== File Permission Check ==="
+    - |
+      echo "Checking for overly permissive files..."
+      if find . -type f -perm -002 2>/dev/null | grep -v ".git" | head -5; then
+        echo "WARNING: World-writable files found"
+      else
+        echo "OK: No world-writable files"
+      fi
+
+    # External URL detection in new code
+    - echo ""
+    - echo "=== External URL Check ==="
+    - |
+      if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then
+        echo "Checking for new external URLs in MR..."
+        git fetch origin $CI_MERGE_REQUEST_TARGET_BRANCH_NAME 2>/dev/null || true
+        if git diff origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..HEAD 2>/dev/null | \
+            grep "^+" | grep -oE 'https?://[^"'\'')\s]+' | \
+            grep -v "drupal.org" | grep -v "github.com" | grep -v "gitlab.com" | head -10; then
+          echo "INFO: New external URLs detected - review required"
+        else
+          echo "OK: No new external URLs"
+        fi
+      else
+        echo "Skipping (not a merge request)"
+      fi
+
+    - echo ""
+    - echo "=== Security Scan Complete ==="
+
+  artifacts:
+    reports:
+      # Store security findings
+      junit: .logs/security-report.xml
+    paths:
+      - .logs/security/
+    expire_in: 1 week
+    when: always
+  tags:
+    - nwp
+  # Don't block pipeline on security warnings (review manually)
+  allow_failure: true
+
+# Security review for merge requests
+# Performs scope verification and red flag detection
+security:review:
+  stage: security
+  needs: ["build"]
+  rules:
+    # Only run for merge requests
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - echo "=== Merge Request Security Review ==="
+    - echo ""
+    - echo "MR Title: $CI_MERGE_REQUEST_TITLE"
+    - echo "Source Branch: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"
+    - echo "Target Branch: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - echo ""
+
+    # Fetch target branch for comparison
+    - git fetch origin $CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+
+    # File count analysis
+    - echo "=== Scope Analysis ==="
+    - |
+      files_changed=$(git diff --name-only origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..HEAD | wc -l)
+      echo "Files changed: $files_changed"
+
+      if [ $files_changed -gt 20 ]; then
+        echo "INFO: Large changeset - thorough review recommended"
+      fi
+
+    # Lines changed
+    - git diff --stat origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..HEAD | tail -1
+
+    # Sensitive file modifications
+    - echo ""
+    - echo "=== Sensitive File Check ==="
+    - |
+      if git diff --name-only origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..HEAD | \
+          grep -E '(settings\.php|\.env|\.htaccess|nginx\.conf|auth|login|password|credential|secret|token|\.gitlab-ci)'; then
+        echo "WARNING: Sensitive files modified - requires additional review"
+      else
+        echo "OK: No sensitive files modified"
+      fi
+
+    # New dependencies
+    - echo ""
+    - echo "=== Dependency Changes ==="
+    - |
+      if git diff origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..HEAD -- composer.json package.json 2>/dev/null | grep "^\+" | grep -v "^\+\+\+"; then
+        echo "INFO: Dependencies modified - review required"
+      else
+        echo "OK: No dependency changes"
+      fi
+
+    # Scope verification hint
+    - echo ""
+    - echo "=== Scope Verification ==="
+    - echo "Review: Does the diff match the MR title and description?"
+    - echo "Red flags:"
+    - echo "  - Large changeset for small fix"
+    - echo "  - Unrelated file modifications"
+    - echo "  - New external dependencies"
+    - echo "  - Authentication/security changes"
+
+  artifacts:
+    paths:
+      - .logs/mr-review.txt
+    expire_in: 1 week
   tags:
     - nwp
   allow_failure: true
@@ -539,6 +819,46 @@ cleanup:preview:
 #   6. Auto-cleanup after 1 week of inactivity
 #
 ################################################################################
+
+################################################################################
+# E2E STAGE
+# End-to-end tests on Linode infrastructure (nightly only)
+################################################################################
+
+# E2E: Fresh install test
+e2e:fresh-install:
+  stage: e2e
+  image: ubuntu:22.04
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl git ssh
+  script:
+    - echo "E2E tests not yet implemented - placeholder job"
+    - echo "See tests/e2e/README.md for planned implementation"
+    - ./tests/e2e/test-fresh-install.sh || true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: manual
+  timeout: 2h
+  tags:
+    - nwp
+  allow_failure: true
+  after_script:
+    - echo "Cleanup would run here"
+
+# E2E: Production deployment test
+e2e:production:
+  stage: e2e
+  image: ubuntu:22.04
+  script:
+    - echo "E2E production tests not yet implemented"
+    - echo "Future: Test staging -> production deployment"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: manual
+  timeout: 3h
+  tags:
+    - nwp
+  allow_failure: true
 
 ################################################################################
 # Pipeline Badges

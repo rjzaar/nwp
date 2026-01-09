@@ -104,6 +104,109 @@ See `docs/DATA_SECURITY_BEST_PRACTICES.md` for the full security architecture.
   - `CHANGELOG.md` - Version changelog for releases
   - `decisions/` - Architecture Decision Records (ADRs)
 
+## Security Red Flags
+
+When reviewing code changes, contributions, or merge requests, watch for these security red flags that may indicate malicious code or security vulnerabilities.
+
+### High Risk (Block and Escalate)
+
+These changes require immediate attention and should not be merged without thorough review:
+
+- **Authentication/Authorization Changes** - Modifications to authentication or authorization logic without a related security issue
+- **New External Network Calls** - Adding curl, file_get_contents with URLs, or other external network requests
+- **Dynamic Code Execution** - Introduction of eval(), exec(), system(), passthru(), shell_exec(), or proc_open()
+- **Server Configuration Changes** - Modifications to .htaccess, nginx.conf, Apache configs, or other server configuration files
+- **Cryptographic Changes** - Changes to encryption, key handling, or cryptographic functions
+- **New Dependencies** - Adding composer or npm dependencies not mentioned in issue description
+- **CI/CD Pipeline Changes** - Modifications to .gitlab-ci.yml, .github/workflows/, or other CI/CD configurations
+- **Git Configuration** - Changes to .gitignore, .gitattributes, or git hooks
+
+### Medium Risk (Require Explanation)
+
+These changes need justification and careful review:
+
+- **Scope Creep** - Changes affecting significantly more files than issue scope suggests
+- **Mixed Changes** - "Cleanup" or "refactoring" bundled with bug fixes or features
+- **Database Changes** - Modifications to database queries, schema, or migrations
+- **File Permission Changes** - Changes to chmod, chown, or file permission logic
+- **New User Input Handling** - Adding new user input fields without proper validation/sanitization
+- **Secret Handling** - Changes to how secrets, credentials, or API keys are stored or accessed
+- **Backup/Restore Logic** - Modifications to backup, restore, or data export functionality
+
+### Malicious Code Patterns
+
+Watch for these specific code patterns that may indicate malicious intent:
+
+- **Obfuscated Code** - Base64 encoding, hex encoding, or other obfuscation techniques
+- **Hidden Functionality** - Logic bombs (time-based triggers), backdoors, or undocumented features
+- **Data Exfiltration** - Code that sends data to unexpected external URLs
+- **Credential Harvesting** - Code that logs, stores, or transmits passwords or tokens
+- **Supply Chain Attacks** - Typosquatting dependencies (e.g., "druapl/core" instead of "drupal/core")
+- **Hardcoded Secrets** - API keys, passwords, or tokens embedded in code
+
+### Scope Verification Questions
+
+For every merge request, ask:
+
+1. **Does the diff match the MR title?** - "Fix typo" should not modify 10 files
+2. **Are all changed files related?** - Bug fix in backup.sh should not touch authentication code
+3. **Is the change size proportional?** - Simple fixes should be small, not 500 lines
+4. **Are new dependencies justified?** - Why is this package needed? What does it do?
+5. **Do external URLs make sense?** - Why is this connecting to an external service?
+6. **Are sensitive paths explained?** - Why does this change authentication/security code?
+
+### Red Flag Response Protocol
+
+When red flags are detected:
+
+1. **Document the concern** - Note specifically what triggered the red flag
+2. **Ask for explanation** - Give the contributor a chance to explain (may be legitimate)
+3. **Request scope reduction** - Ask for unrelated changes to be split into separate MRs
+4. **Verify with maintainer** - High-risk changes require senior developer review
+5. **Check CI results** - Ensure all automated security scans passed
+6. **Test thoroughly** - Manual testing of security-sensitive changes
+
+### Security Review Checklist
+
+For merge requests touching sensitive areas:
+
+- [ ] Scope matches issue description
+- [ ] No unexpected file modifications
+- [ ] No new dependencies (or dependencies are explained and audited)
+- [ ] No suspicious code patterns (eval, base64_decode, external URLs)
+- [ ] No sensitive path changes (or has required approvers)
+- [ ] CI security scans passed
+- [ ] Change size is proportional to stated purpose
+- [ ] All external URLs are necessary and trusted
+- [ ] No hardcoded credentials or secrets
+
+### Sensitive File Paths
+
+These paths require extra scrutiny and two-person approval:
+
+- `lib/auth*` - Authentication libraries
+- `lib/*secret*` - Secret handling code
+- `**/settings.php` - Drupal settings files
+- `.gitlab-ci.yml` - CI/CD configuration
+- `composer.json` - Dependency definitions
+- `scripts/commands/live*.sh` - Production deployment scripts
+- `CLAUDE.md` - AI standing orders (this file)
+- `.env*` - Environment configuration
+- `keys/**` - SSH and encryption keys
+
+### Safe Contribution Practices
+
+Encourage contributors to:
+
+- **Small, focused changes** - One issue per MR
+- **Clear descriptions** - Explain what and why
+- **Test evidence** - Show that changes were tested
+- **Document decisions** - Explain non-obvious choices
+- **Separate refactoring** - Don't mix cleanup with features
+- **Declare dependencies** - List any new packages in issue description
+
+See also: `docs/DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md` for the complete security review system.
+
 ## Release Tag Process
 
 When the user asks to create a new release tag (e.g., "create tag v0.13"), follow this complete checklist:

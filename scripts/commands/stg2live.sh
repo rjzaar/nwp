@@ -487,6 +487,53 @@ setup_ssl_certificate() {
     fi
 }
 
+# Deploy production robots.txt to live server
+deploy_production_robots() {
+    local base_name="$1"
+    local server_ip="$2"
+    local ssh_user="$3"
+    local domain="$4"
+
+    local sudo_prefix=""
+    if [ "$ssh_user" == "gitlab" ]; then
+        sudo_prefix="sudo"
+    fi
+
+    print_info "Deploying production robots.txt..."
+
+    # Read template and replace [DOMAIN] placeholder
+    local template_path="$PROJECT_ROOT/templates/robots-production.txt"
+
+    if [ ! -f "$template_path" ]; then
+        print_status "WARN" "Production robots.txt template not found at $template_path"
+        return 1
+    fi
+
+    # Replace [DOMAIN] with actual domain and deploy
+    local robots_content=$(sed "s/\[DOMAIN\]/${domain}/g" "$template_path")
+
+    # Deploy to webroot
+    local site_path="/var/www/${base_name}"
+    local webroot_path="${site_path}/html"
+
+    if ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix test -d ${site_path}/web" 2>/dev/null; then
+        webroot_path="${site_path}/web"
+    fi
+
+    # Write robots.txt to server
+    echo "$robots_content" | ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix tee ${webroot_path}/robots.txt > /dev/null" 2>/dev/null
+
+    if [ $? -eq 0 ]; then
+        # Set correct permissions
+        ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix chown www-data:www-data ${webroot_path}/robots.txt && $sudo_prefix chmod 644 ${webroot_path}/robots.txt" 2>/dev/null
+        print_status "OK" "Production robots.txt deployed"
+        return 0
+    else
+        print_status "WARN" "Could not deploy robots.txt"
+        return 1
+    fi
+}
+
 # Update nginx config to include SSL
 update_nginx_ssl() {
     local base_name="$1"
@@ -527,6 +574,9 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
 
+    # SEO: Production site - allow indexing
+    # (No X-Robots-Tag needed - search engines will index normally)
+
     # Hide server information
     server_tokens off;
     fastcgi_hide_header X-Generator;
@@ -560,6 +610,10 @@ server {
         allow all;
         log_not_found off;
         access_log off;
+    }
+
+    location = /sitemap.xml {
+        try_files \$uri @rewrite;
     }
 
     location ~* \\.(txt|log)\$ {
@@ -812,6 +866,10 @@ deploy_to_live() {
     if ! setup_ssl_certificate "$base_name" "$server_ip" "$ssh_user"; then
         print_status "WARN" "SSL setup incomplete - site may not have HTTPS"
     fi
+
+    # Deploy production robots.txt
+    print_header "SEO Configuration"
+    deploy_production_robots "$base_name" "$server_ip" "$ssh_user" "$domain"
 
     # Run post-deployment commands
     print_header "Post-Deployment Tasks"

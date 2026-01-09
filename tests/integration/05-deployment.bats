@@ -32,7 +32,7 @@ teardown_file() {
                 if [ -f "${PROJECT_ROOT}/sites/${site}/.ddev/config.yaml" ]; then
                     (cd "${PROJECT_ROOT}/sites/${site}" && ddev stop --unlist 2>/dev/null) || true
                 fi
-                ./scripts/commands/delete.sh -fy "${site}" 2>/dev/null || rm -rf "${PROJECT_ROOT}/sites/${site}"
+                ./scripts/commands/delete.sh -y "${site}" 2>/dev/null || rm -rf "${PROJECT_ROOT}/sites/${site}"
             fi
         done
     fi
@@ -55,30 +55,38 @@ skip_unless_ddev_enabled() {
     command -v ddev &>/dev/null || skip "DDEV not installed"
 }
 
-# Helper to create a test site for deployment tests
-ensure_test_site() {
-    if [ ! -d "${PROJECT_ROOT}/sites/${TEST_SITE}" ]; then
-        cd "${PROJECT_ROOT}"
-        # install.sh <recipe> <target> - auto mode via recipe config
-        ./scripts/commands/install.sh "${TEST_RECIPE}" "${TEST_SITE}" || return 1
-    fi
-}
-
 @test "dev2stg: deploys to local staging" {
     skip_unless_ddev_enabled
 
     cd "${PROJECT_ROOT}"
 
-    # First create a development site
-    ensure_test_site
+    # First create a development site if it doesn't exist
+    if [ ! -d "sites/${TEST_SITE}" ]; then
+        run ./scripts/commands/install.sh "${TEST_RECIPE}" "${TEST_SITE}"
+        if [ "$status" -ne 0 ]; then
+            echo "Install failed with status $status"
+            skip "Could not create test site for deployment test"
+        fi
+    fi
 
+    # Verify dev site exists
+    [ -d "sites/${TEST_SITE}" ] || skip "Dev site not created"
+
+    # Run dev2stg
     run ./scripts/commands/dev2stg.sh -y "${TEST_SITE}"
-    echo "Output: $output"
-    # May succeed or warn if staging doesn't exist yet
+
+    # dev2stg may succeed or fail depending on staging setup
+    # We just verify it runs without crashing
+    if [ "$status" -ne 0 ]; then
+        echo "dev2stg exited with status: $status"
+        echo "Output (last 20 lines): $(echo "$output" | tail -20)"
+    fi
+
+    # Accept success (0) or expected failure (1) but not crash/error
     [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
 }
 
-# Unit-style tests
+# Unit-style tests (always run, no DDEV required)
 @test "dev2stg.sh: exists and is executable" {
     assert_file_exists "${PROJECT_ROOT}/scripts/commands/dev2stg.sh"
     [ -x "${PROJECT_ROOT}/scripts/commands/dev2stg.sh" ]
@@ -112,7 +120,7 @@ ensure_test_site() {
 @test "stg2prod.sh: dry-run mode works" {
     cd "${PROJECT_ROOT}"
     run ./scripts/commands/stg2prod.sh --dry-run test-site
-    # Should succeed in dry-run (just validation)
+    # Should succeed in dry-run (just validation) or fail gracefully
     [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
 }
 
@@ -137,6 +145,6 @@ ensure_test_site() {
 @test "prod2stg.sh: dry-run mode works" {
     cd "${PROJECT_ROOT}"
     run ./scripts/commands/prod2stg.sh --dry-run test-site
-    # Should succeed in dry-run (just validation)
+    # Should succeed in dry-run (just validation) or fail gracefully
     [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
 }

@@ -326,6 +326,7 @@ remove_from_cnwp() {
         in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
         in_settings && /^  delete_site_yml:/ {
             sub("^  delete_site_yml: *", "")
+            sub(" *#.*$", "")  # Strip trailing comments
             print
             exit
         }

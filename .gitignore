@@ -42,6 +42,7 @@ sites/*
 
 # Verification tracking
 !.verification.yml
+!migrate-verification-v2.sh
 
 # Documentation and metadata
 !README.md
@@ -54,6 +55,7 @@ sites/*
 !avc_folder_implementation_plan.md
 !IMPLEMENTATION_SUMMARY.md
 !nwp-improvement-proposal.md
+!VERIFY_ENHANCEMENTS.md
 
 # Configuration templates (not user configs)
 !example.cnwp.yml

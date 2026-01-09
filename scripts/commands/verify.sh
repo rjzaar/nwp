@@ -119,7 +119,12 @@ get_feature_files() {
     ' "$VERIFICATION_FILE"
 }
 
-# Get checklist items for a feature
+# Get schema version from YAML file
+get_schema_version() {
+    awk '/^version:/ {print $2; exit}' "$VERIFICATION_FILE"
+}
+
+# Get checklist items for a feature (v1 format - simple strings)
 get_feature_checklist() {
     local feature="$1"
 
@@ -148,6 +153,422 @@ get_feature_checklist() {
         in_checklist = 0
     }
     ' "$VERIFICATION_FILE"
+}
+
+# Get checklist items with v2 format (objects with text/completed fields)
+# Returns text content only (for backward compatibility)
+get_feature_checklist_v2() {
+    local feature="$1"
+    local version=$(get_schema_version)
+
+    if [[ "$version" == "2" ]]; then
+        # Parse v2 format (objects)
+        awk -v feature="$feature" '
+        BEGIN { in_feature = 0; in_checklist = 0; in_item = 0 }
+        /^  [a-z0-9_]+:/ {
+            gsub(/^  /, "")
+            gsub(/:.*/, "")
+            if ($0 == feature) {
+                in_feature = 1
+            } else if (in_feature) {
+                in_feature = 0
+                in_checklist = 0
+            }
+        }
+        in_feature && /^    checklist:/ {
+            in_checklist = 1
+            next
+        }
+        in_feature && in_checklist && /^      - text:/ {
+            gsub(/^      - text: *"?/, "")
+            gsub(/"$/, "")
+            print
+        }
+        in_feature && in_checklist && /^    [a-z]/ {
+            in_checklist = 0
+        }
+        ' "$VERIFICATION_FILE"
+    else
+        # Fall back to v1 parser for backward compatibility
+        get_feature_checklist "$feature"
+    fi
+}
+
+# Count total checklist items for a feature
+get_checklist_item_count() {
+    local feature="$1"
+    local version=$(get_schema_version)
+
+    if [[ "$version" == "2" ]]; then
+        awk -v feature="$feature" '
+        BEGIN { in_feature = 0; in_checklist = 0; count = 0 }
+        /^  [a-z0-9_]+:/ {
+            gsub(/^  /, "")
+            gsub(/:.*/, "")
+            if ($0 == feature) {
+                in_feature = 1
+            } else if (in_feature) {
+                exit
+            }
+        }
+        in_feature && /^    checklist:/ {
+            in_checklist = 1
+            next
+        }
+        in_feature && in_checklist && /^      - text:/ {
+            count++
+        }
+        in_feature && in_checklist && /^    [a-z]/ {
+            exit
+        }
+        END { print count }
+        ' "$VERIFICATION_FILE"
+    else
+        # v1 format - count simple list items
+        get_feature_checklist "$feature" | wc -l
+    fi
+}
+
+# Count completed checklist items for a feature
+get_completed_checklist_item_count() {
+    local feature="$1"
+    local version=$(get_schema_version)
+
+    if [[ "$version" == "2" ]]; then
+        awk -v feature="$feature" '
+        BEGIN { in_feature = 0; in_checklist = 0; in_item = 0; count = 0; completed = "" }
+        /^  [a-z0-9_]+:/ {
+            gsub(/^  /, "")
+            gsub(/:.*/, "")
+            if ($0 == feature) {
+                in_feature = 1
+            } else if (in_feature) {
+                exit
+            }
+        }
+        in_feature && /^    checklist:/ {
+            in_checklist = 1
+            next
+        }
+        in_feature && in_checklist && /^      - text:/ {
+            in_item = 1
+            completed = ""
+        }
+        in_feature && in_checklist && in_item && /^        completed:/ {
+            gsub(/^        completed: */, "")
+            if ($0 == "true") {
+                count++
+            }
+            in_item = 0
+        }
+        in_feature && in_checklist && /^    [a-z]/ {
+            exit
+        }
+        END { print count }
+        ' "$VERIFICATION_FILE"
+    else
+        # v1 format - no completion tracking, return 0
+        echo "0"
+    fi
+}
+
+# Get checklist item completion status by index
+get_checklist_item_status() {
+    local feature="$1"
+    local idx="$2"
+    local version=$(get_schema_version)
+
+    if [[ "$version" == "2" ]]; then
+        awk -v feature="$feature" -v idx="$idx" '
+        BEGIN { in_feature = 0; in_checklist = 0; current_idx = -1; in_item = 0 }
+        /^  [a-z0-9_]+:/ {
+            gsub(/^  /, "")
+            gsub(/:.*/, "")
+            if ($0 == feature) {
+                in_feature = 1
+            } else if (in_feature) {
+                exit
+            }
+        }
+        in_feature && /^    checklist:/ {
+            in_checklist = 1
+            next
+        }
+        in_feature && in_checklist && /^      - text:/ {
+            current_idx++
+            if (current_idx == idx) {
+                in_item = 1
+            }
+        }
+        in_item && /^        completed:/ {
+            gsub(/^        completed: */, "")
+            print
+            exit
+        }
+        in_feature && in_checklist && /^    [a-z]/ {
+            exit
+        }
+        END { if (in_item && current_idx == idx) print "false" }
+        ' "$VERIFICATION_FILE"
+    else
+        # v1 format - no completion tracking
+        echo "false"
+    fi
+}
+
+# Get checklist items as arrays (for iteration)
+# Usage: get_checklist_items_array "feature_id" items_array completed_array
+get_checklist_items_array() {
+    local feature="$1"
+    local -n items_ref="$2"
+    local -n completed_ref="$3"
+    local version=$(get_schema_version)
+
+    items_ref=()
+    completed_ref=()
+
+    if [[ "$version" == "2" ]]; then
+        # Parse v2 format
+        local in_feature=0 in_checklist=0 current_text="" current_completed="false"
+
+        while IFS= read -r line; do
+            # Check for feature start
+            if [[ "$line" =~ ^[[:space:]]{2}[a-z0-9_]+: ]]; then
+                local feat_name=$(echo "$line" | sed 's/^  //' | sed 's/:.*//')
+                if [[ "$feat_name" == "$feature" ]]; then
+                    in_feature=1
+                elif [[ $in_feature -eq 1 ]]; then
+                    break
+                fi
+            fi
+
+            # Check for checklist section
+            if [[ $in_feature -eq 1 ]] && [[ "$line" =~ ^[[:space:]]{4}checklist: ]]; then
+                in_checklist=1
+                continue
+            fi
+
+            # Parse checklist items
+            if [[ $in_feature -eq 1 ]] && [[ $in_checklist -eq 1 ]]; then
+                if [[ "$line" =~ ^[[:space:]]{6}-[[:space:]]text: ]]; then
+                    # Save previous item if exists
+                    if [[ -n "$current_text" ]]; then
+                        items_ref+=("$current_text")
+                        completed_ref+=("$current_completed")
+                    fi
+                    # Start new item
+                    current_text=$(echo "$line" | sed 's/^      - text: *//' | sed 's/^"//' | sed 's/"$//')
+                    current_completed="false"
+                elif [[ "$line" =~ ^[[:space:]]{8}completed: ]]; then
+                    current_completed=$(echo "$line" | sed 's/^        completed: *//')
+                elif [[ "$line" =~ ^[[:space:]]{4}[a-z] ]]; then
+                    # End of checklist section
+                    if [[ -n "$current_text" ]]; then
+                        items_ref+=("$current_text")
+                        completed_ref+=("$current_completed")
+                    fi
+                    break
+                fi
+            fi
+        done < "$VERIFICATION_FILE"
+
+        # Add last item if we reached EOF
+        if [[ $in_checklist -eq 1 ]] && [[ -n "$current_text" ]]; then
+            items_ref+=("$current_text")
+            completed_ref+=("$current_completed")
+        fi
+    else
+        # v1 format - simple string list
+        while IFS= read -r item; do
+            items_ref+=("$item")
+            completed_ref+=("false")
+        done < <(get_feature_checklist "$feature")
+    fi
+}
+
+# Update a YAML value for a feature
+update_yaml_value() {
+    local feature="$1"
+    local field="$2"
+    local value="$3"
+    local tmpfile=$(mktemp)
+
+    awk -v feature="$feature" -v field="$field" -v value="$value" '
+    BEGIN { in_feature = 0; updated = 0 }
+    /^  [a-z0-9_]+:/ {
+        test = $0
+        gsub(/^  /, "", test)
+        gsub(/:.*/, "", test)
+        if (test == feature) {
+            in_feature = 1
+        } else if (in_feature && !updated) {
+            # Insert field before next feature if it doesnt exist
+            print "    " field ": " value
+            updated = 1
+            in_feature = 0
+        } else {
+            in_feature = 0
+        }
+    }
+    in_feature && $0 ~ "^    " field ":" {
+        print "    " field ": " value
+        updated = 1
+        next
+    }
+    { print }
+    END {
+        if (in_feature && !updated) {
+            # Field was last in file
+            print "    " field ": " value
+        }
+    }
+    ' "$VERIFICATION_FILE" > "$tmpfile"
+
+    mv "$tmpfile" "$VERIFICATION_FILE"
+}
+
+# Update a specific checklist item field
+update_checklist_item() {
+    local feature="$1"
+    local idx="$2"
+    local field="$3"  # completed, completed_by, completed_at
+    local value="$4"
+    local tmpfile=$(mktemp)
+
+    awk -v feature="$feature" -v idx="$idx" -v field="$field" -v value="$value" '
+    BEGIN { in_feature = 0; in_checklist = 0; current_idx = -1; in_item = 0; field_updated = 0 }
+    /^  [a-z0-9_]+:/ {
+        test = $0
+        gsub(/^  /, "", test)
+        gsub(/:.*/, "", test)
+        if (test == feature) {
+            in_feature = 1
+        } else if (in_feature) {
+            in_feature = 0
+            in_checklist = 0
+        }
+    }
+    in_feature && /^    checklist:/ {
+        in_checklist = 1
+        print
+        next
+    }
+    in_feature && in_checklist && /^      - text:/ {
+        current_idx++
+        if (current_idx == idx) {
+            in_item = 1
+            field_updated = 0
+        }
+        print
+        next
+    }
+    in_feature && in_checklist && in_item && $0 ~ "^        " field ":" {
+        # Update existing field
+        print "        " field ": " value
+        field_updated = 1
+        next
+    }
+    in_feature && in_checklist && in_item && /^      - text:/ {
+        # Next item started, insert field if it wasnt found
+        if (!field_updated) {
+            print "        " field ": " value
+        }
+        in_item = 0
+        field_updated = 0
+        current_idx++
+        if (current_idx == idx) {
+            in_item = 1
+        }
+        print
+        next
+    }
+    in_feature && in_checklist && in_item && /^    [a-z]/ {
+        # End of checklist, insert field if not found
+        if (!field_updated) {
+            print "        " field ": " value
+        }
+        in_item = 0
+        in_checklist = 0
+    }
+    { print }
+    END {
+        if (in_item && !field_updated) {
+            # Field was last in item
+            print "        " field ": " value
+        }
+    }
+    ' "$VERIFICATION_FILE" > "$tmpfile"
+
+    mv "$tmpfile" "$VERIFICATION_FILE"
+}
+
+# Add history entry to a feature
+add_history_entry() {
+    local feature="$1"
+    local action="$2"
+    local username="$3"
+    local context="${4:-}"
+    local timestamp=$(date -Iseconds)
+    local version=$(get_schema_version)
+
+    # Only add history for v2 schema
+    [[ "$version" != "2" ]] && return 0
+
+    local tmpfile=$(mktemp)
+
+    awk -v feature="$feature" -v action="$action" -v by="$username" \
+        -v at="$timestamp" -v context="$context" '
+    BEGIN { in_feature = 0; in_history = 0; inserted = 0 }
+    /^  [a-z0-9_]+:/ {
+        test = $0
+        gsub(/^  /, "", test)
+        gsub(/:.*/, "", test)
+        if (test == feature) {
+            in_feature = 1
+        } else if (in_feature && !inserted) {
+            # End of feature, insert history section if it didnt exist
+            if (!in_history) {
+                print "    history:"
+            }
+            print "      - action: \"" action "\""
+            print "        by: \"" by "\""
+            print "        at: \"" at "\""
+            if (context != "") print "        context: \"" context "\""
+            inserted = 1
+            in_feature = 0
+            in_history = 0
+        } else {
+            in_feature = 0
+            in_history = 0
+        }
+    }
+    in_feature && /^    history:/ {
+        in_history = 1
+        print
+        # Insert new entry at beginning (most recent first)
+        print "      - action: \"" action "\""
+        print "        by: \"" by "\""
+        print "        at: \"" at "\""
+        if (context != "") print "        context: \"" context "\""
+        inserted = 1
+        next
+    }
+    { print }
+    END {
+        if (in_feature && !inserted) {
+            # Feature was last in file
+            if (!in_history) {
+                print "    history:"
+            }
+            print "      - action: \"" action "\""
+            print "        by: \"" by "\""
+            print "        at: \"" at "\""
+            if (context != "") print "        context: \"" context "\""
+        }
+    }
+    ' "$VERIFICATION_FILE" > "$tmpfile"
+
+    mv "$tmpfile" "$VERIFICATION_FILE"
 }
 
 # Get list of files that changed since last verification
@@ -429,8 +850,11 @@ show_details() {
 
     # Verification checklist
     echo -e "${BOLD}Verification Checklist:${NC}"
-    local checklist=$(get_feature_checklist "$feature")
-    if [[ -z "$checklist" ]]; then
+    local -a checklist_items=()
+    local -a checklist_completed=()
+    get_checklist_items_array "$feature" checklist_items checklist_completed
+
+    if [[ ${#checklist_items[@]} -eq 0 ]]; then
         echo -e "  ${DIM}No specific checklist defined for this feature.${NC}"
         echo -e "  ${DIM}General verification steps:${NC}"
         echo -e "    ${WHITE}□${NC} Review the code changes"
@@ -438,11 +862,15 @@ show_details() {
         echo -e "    ${WHITE}□${NC} Check for edge cases"
         echo -e "    ${WHITE}□${NC} Verify error handling"
     else
-        while IFS= read -r item; do
-            if [[ -n "$item" ]]; then
-                echo -e "  ${WHITE}□${NC} $item"
+        for i in "${!checklist_items[@]}"; do
+            local check_icon="□"
+            local item_color="$WHITE"
+            if [[ "${checklist_completed[$i]}" == "true" ]]; then
+                check_icon="✓"
+                item_color="$GREEN"
             fi
-        done <<< "$checklist"
+            echo -e "  ${item_color}${check_icon}${NC} ${checklist_items[$i]}"
+        done
     fi
     echo ""
 
@@ -504,6 +932,10 @@ check_invalidations() {
                 update_yaml_value "$feature" "verified_by" "null"
                 update_yaml_value "$feature" "verified_at" "null"
                 update_yaml_value "$feature" "notes" "\"Auto-invalidated: files changed\""
+
+                # Add history entry
+                add_history_entry "$feature" "invalidated" "system" "Files changed - auto-invalidated"
+
                 invalidated_features+=("$feature")
                 ((++invalidated))
                 echo ""
@@ -547,6 +979,9 @@ verify_feature() {
     update_yaml_value "$feature" "file_hash" "\"$hash\""
     update_yaml_value "$feature" "notes" "null"
 
+    # Add history entry
+    add_history_entry "$feature" "verified" "$verifier" "Manual verification"
+
     echo -e "${GREEN}✓${NC} Marked '$name' as verified by $verifier"
 }
 
@@ -568,6 +1003,9 @@ unverify_feature() {
     update_yaml_value "$feature" "verified_at" "null"
     update_yaml_value "$feature" "file_hash" "null"
     update_yaml_value "$feature" "notes" "null"
+
+    # Add history entry
+    add_history_entry "$feature" "unverified" "$(whoami)" "Manual unverification"
 
     echo -e "${RED}○${NC} Marked '$name' as unverified"
 }
@@ -742,7 +1180,7 @@ build_feature_arrays() {
     FEATURE_IDS=()
     FEATURE_NAMES=()
     FEATURE_CATEGORIES=()
-    FEATURE_STATUS=()  # 0=unverified, 1=verified, 2=modified
+    FEATURE_STATUS=()  # 0=unverified, 1=verified, 2=modified, 3=partial
     CATEGORY_LIST=()
     declare -gA CATEGORY_START=()  # Start index for each category
     declare -gA CATEGORY_COUNT=()  # Count of features in each category
@@ -761,11 +1199,24 @@ build_feature_arrays() {
         local category=$(get_feature_category "$feature")
         local status=0
 
+        # Calculate status based on verification and checklist completion
+        local total_items=$(get_checklist_item_count "$feature")
+        local completed_items=$(get_completed_checklist_item_count "$feature")
+
         if [[ "$verified" == "true" ]]; then
             if check_feature_changed "$feature" 2>/dev/null; then
                 status=2  # Modified since verification
             else
                 status=1  # Verified
+            fi
+        elif [[ $total_items -gt 0 ]] && [[ $completed_items -gt 0 ]]; then
+            # Some checklist items completed but not fully verified
+            local pct=$((completed_items * 100 / total_items))
+            if [[ $pct -eq 100 ]]; then
+                # All items done but not verified yet - still partial
+                status=3
+            else
+                status=3  # Partial completion
             fi
         fi
 
@@ -803,10 +1254,50 @@ build_feature_arrays() {
     done
 }
 
+# Draw checklist preview below feature line
+draw_checklist_preview() {
+    local feature="$1"
+    local max_items="${2:-3}"
+
+    local -a items=()
+    local -a completed=()
+    get_checklist_items_array "$feature" items completed
+
+    [[ ${#items[@]} -eq 0 ]] && return
+
+    local count=0
+    for i in "${!items[@]}"; do
+        [[ $count -ge $max_items ]] && break
+
+        local check_icon="[ ]"
+        local item_color="$DIM"
+        [[ "${completed[$i]}" == "true" ]] && check_icon="[✓]" && item_color="$GREEN"
+
+        # Tree character
+        local tree_char="├─"
+        [[ $i -eq $((${#items[@]} - 1)) || $count -eq $((max_items - 1)) ]] && tree_char="└─"
+
+        # Truncate long items
+        local item_text="${items[$i]}"
+        local max_len=$(($(tput cols) - 20))
+        [[ ${#item_text} -gt $max_len ]] && item_text="${item_text:0:$((max_len - 3))}..."
+
+        printf "    ${DIM}%s${NC} ${item_color}%s${NC} %s\n" "$tree_char" "$check_icon" "$item_text"
+        count=$((count + 1))
+    done
+
+    # Show "X more..." if there are more items
+    if [[ ${#items[@]} -gt $max_items ]]; then
+        local remaining=$((${#items[@]} - max_items))
+        printf "    ${DIM}    ... %d more item(s)${NC}\n" "$remaining"
+    fi
+}
+
 # Draw the console TUI with category pages
 draw_console() {
     local cat_idx="$1"
     local feat_idx="$2"  # Index within current category
+    local preview_mode="${3:-false}"  # Preview mode flag
     local width=$(tput cols)
     local max_lines=$(($(tput lines) - 10))
 
@@ -817,23 +1308,25 @@ draw_console() {
 
     clear_screen
 
-    # Header
-    echo -e "${BOLD}NWP Verification Console${NC}  |  ←→:Category  ↑↓:Feature  v:Verify  u:Unverify  d:Details  q:Quit"
+    # Header (split into two lines for readability)
+    echo -e "${BOLD}NWP Verification Console${NC}"
+    echo -e "${DIM}←→:Category ↑↓:Feature | v:Verify u:Unverify d:Details | i:Checklist n:Notes h:History p:Preview | c:Check r:Refresh q:Quit${NC}"
     printf '═%.0s' $(seq 1 $width)
     echo ""
 
     # Count stats
-    local verified_count=0 unverified_count=0 modified_count=0
+    local verified_count=0 unverified_count=0 modified_count=0 partial_count=0
     for stat in "${FEATURE_STATUS[@]}"; do
         case "$stat" in
             0) unverified_count=$((unverified_count + 1)) ;;
             1) verified_count=$((verified_count + 1)) ;;
             2) modified_count=$((modified_count + 1)) ;;
+            3) partial_count=$((partial_count + 1)) ;;
         esac
     done
 
-    printf "  ${GREEN}Verified: %d${NC}  |  ${DIM}Unverified: %d${NC}  |  ${YELLOW}Modified: %d${NC}  |  Total: %d\n" \
-        "$verified_count" "$unverified_count" "$modified_count" "${#FEATURE_IDS[@]}"
+    printf "  ${GREEN}Verified: %d${NC}  |  ${YELLOW}Partial: %d${NC}  |  ${DIM}Unverified: %d${NC}  |  ${YELLOW}Modified: %d${NC}  |  Total: %d\n" \
+        "$verified_count" "$partial_count" "$unverified_count" "$modified_count" "${#FEATURE_IDS[@]}"
     printf '─%.0s' $(seq 1 $width)
     echo ""
 
@@ -880,6 +1373,7 @@ draw_console() {
             0) indicator="$CHECK_OFF"; status_color="$DIM" ;;
             1) indicator="$CHECK_ON"; status_color="$GREEN" ;;
             2) indicator="$CHECK_INVALID"; status_color="$YELLOW" ;;
+            3) indicator="[◐]"; status_color="$YELLOW" ;;  # Partial completion
         esac
 
         # Highlight current selection
@@ -898,6 +1392,15 @@ draw_console() {
 
         printf " ${status_color}%s${NC} %-16s %s\n" "$indicator" "($feature)" "$display_name"
         line_count=$((line_count + 1))
+
+        # Show checklist preview if enabled
+        if [[ "$preview_mode" == "true" ]] && [[ $line_count -lt $max_lines ]]; then
+            draw_checklist_preview "$feature" 3
+            # Adjust line count (estimate 4 lines for preview)
+            local preview_lines=$(get_checklist_item_count "$feature")
+            [[ $preview_lines -gt 3 ]] && preview_lines=4 || preview_lines=$((preview_lines + 1))
+            line_count=$((line_count + preview_lines))
+        fi
     done
 
     # Footer with current feature details
@@ -927,6 +1430,339 @@ draw_console() {
     fi
 }
 
+# Toggle checklist item completion
+toggle_checklist_item() {
+    local feature="$1"
+    local item_idx="$2"
+    local username="$(whoami)"
+    local timestamp="$(date -Iseconds)"
+
+    local is_completed=$(get_checklist_item_status "$feature" "$item_idx")
+
+    if [[ "$is_completed" == "true" ]]; then
+        # Mark as incomplete
+        update_checklist_item "$feature" "$item_idx" "completed" "false"
+        update_checklist_item "$feature" "$item_idx" "completed_by" "null"
+        update_checklist_item "$feature" "$item_idx" "completed_at" "null"
+        add_history_entry "$feature" "checklist_item_uncompleted" "$username" "Item $((item_idx + 1)) marked incomplete"
+    else
+        # Mark as complete
+        update_checklist_item "$feature" "$item_idx" "completed" "true"
+        update_checklist_item "$feature" "$item_idx" "completed_by" "\"$username\""
+        update_checklist_item "$feature" "$item_idx" "completed_at" "\"$timestamp\""
+        add_history_entry "$feature" "checklist_item_completed" "$username" "Item $((item_idx + 1)) completed"
+    fi
+}
+
+# Draw checklist editor screen
+draw_checklist_editor() {
+    local feature="$1"
+    local selected="$2"
+    local feat_name="$3"
+
+    clear_screen
+    echo -e "${BOLD}Checklist Editor: $feat_name${NC}"
+    echo -e "${DIM}Use ↑↓ to navigate, Space to toggle, Enter/q to save and exit${NC}"
+    printf '═%.0s' $(seq 1 $(tput cols))
+    echo ""
+
+    # Get checklist items with completion status
+    local -a items=()
+    local -a completed=()
+    get_checklist_items_array "$feature" items completed
+
+    if [[ ${#items[@]} -eq 0 ]]; then
+        echo -e "  ${DIM}No checklist items for this feature${NC}"
+        return
+    fi
+
+    for i in "${!items[@]}"; do
+        local check_mark="[ ]"
+        local item_color="$DIM"
+        if [[ "${completed[$i]}" == "true" ]]; then
+            check_mark="[✓]"
+            item_color="$GREEN"
+        fi
+
+        if [[ $i -eq $selected ]]; then
+            printf "${WHITE}> %s %s${NC}\n" "$check_mark" "${items[$i]}"
+        else
+            printf "  ${item_color}%s${NC} %s\n" "$check_mark" "${items[$i]}"
+        fi
+    done
+
+    echo ""
+    local completed_count=0
+    for c in "${completed[@]}"; do
+        [[ "$c" == "true" ]] && completed_count=$((completed_count + 1))
+    done
+    printf "${DIM}Progress: %d/%d items completed${NC}\n" "$completed_count" "${#items[@]}"
+}
+
+# Edit checklist items interactively
+edit_checklist_items() {
+    local feature="$1"
+    local feat_name="$2"
+    local selected_idx=0
+
+    cursor_hide
+
+    # Get initial item count
+    local -a items=()
+    local -a completed=()
+    get_checklist_items_array "$feature" items completed
+    local total=${#items[@]}
+
+    if [[ $total -eq 0 ]]; then
+        cursor_show
+        clear_screen
+        echo -e "${YELLOW}No checklist items for this feature${NC}"
+        echo ""
+        read -p "Press Enter to continue..."
+        return
+    fi
+
+    while true; do
+        draw_checklist_editor "$feature" "$selected_idx" "$feat_name"
+
+        IFS= read -rsn1 key
+        case "$key" in
+            $'\x1b')  # Arrow keys
+                read -rsn2 -t 0.1 key2
+                case "$key2" in
+                    '[A')  # Up arrow
+                        if [[ $selected_idx -gt 0 ]]; then
+                            selected_idx=$((selected_idx - 1))
+                        fi
+                        ;;
+                    '[B')  # Down arrow
+                        if [[ $selected_idx -lt $((total - 1)) ]]; then
+                            selected_idx=$((selected_idx + 1))
+                        fi
+                        ;;
+                esac
+                ;;
+            ' ')  # Space - toggle completion
+                toggle_checklist_item "$feature" "$selected_idx"
+                # Redraw immediately to show change
+                ;;
+            'q'|'Q'|$'\n')  # Quit
+                break
+                ;;
+        esac
+    done
+
+    cursor_show
+}
+
+# Edit feature notes in text editor
+edit_feature_notes() {
+    local feature="$1"
+    local feat_name="$2"
+    local current_notes=$(get_yaml_value "$feature" "notes")
+
+    # Detect editor: $EDITOR → nano → vim → vi
+    local editor="${EDITOR:-nano}"
+    if ! command -v "$editor" &>/dev/null; then
+        for fallback in nano vim vi; do
+            if command -v "$fallback" &>/dev/null; then
+                editor="$fallback"
+                break
+            fi
+        done
+    fi
+
+    if ! command -v "$editor" &>/dev/null; then
+        echo -e "${RED}Error: No text editor found${NC}"
+        echo -e "${DIM}Set \$EDITOR or install nano/vim/vi${NC}"
+        echo ""
+        read -p "Press Enter to continue..."
+        return 1
+    fi
+
+    # Create temp file
+    local tmpfile=$(mktemp /tmp/nwp-verify-notes.XXXXXX)
+
+    # Write current notes
+    if [[ -n "$current_notes" && "$current_notes" != "null" ]]; then
+        echo "$current_notes" > "$tmpfile"
+    fi
+
+    # Show instructions
+    cursor_show
+    clear_screen
+    echo -e "${BOLD}Editing notes for: $feat_name${NC}"
+    echo -e "${DIM}Editor: $editor${NC}"
+    echo -e "${DIM}Save and exit editor when done${NC}"
+    echo ""
+    read -p "Press Enter to open editor..."
+
+    # Open editor
+    "$editor" "$tmpfile"
+
+    # Read back notes
+    local new_notes=$(cat "$tmpfile")
+
+    # Update YAML
+    if [[ -z "$new_notes" ]]; then
+        # Remove notes if empty
+        update_yaml_value "$feature" "notes" "null"
+    else
+        # Escape quotes and newlines for YAML
+        new_notes="${new_notes//\\/\\\\}"  # Escape backslashes first
+        new_notes="${new_notes//\"/\\\"}"  # Escape quotes
+        # For multi-line notes, use YAML literal block scalar
+        if [[ "$new_notes" == *$'\n'* ]]; then
+            # Multi-line: use literal block scalar (|)
+            # For simplicity, we'll just escape newlines for now
+            new_notes="${new_notes//$'\n'/\\n}"
+        fi
+        update_yaml_value "$feature" "notes" "\"$new_notes\""
+    fi
+
+    # Cleanup
+    rm -f "$tmpfile"
+
+    cursor_hide
+    clear_screen
+    echo -e "${GREEN}✓${NC} Notes updated"
+    echo ""
+    read -p "Press Enter to continue..."
+
+    # Add history entry
+    add_history_entry "$feature" "notes_updated" "$(whoami)" ""
+}
+
+# Get feature history (limit to last N entries)
+get_feature_history() {
+    local feature="$1"
+    local limit="${2:-10}"
+    local version=$(get_schema_version)
+
+    # Only show history for v2 schema
+    [[ "$version" != "2" ]] && return 0
+
+    awk -v feature="$feature" -v limit="$limit" '
+    BEGIN { in_feature = 0; in_history = 0; count = 0; in_entry = 0 }
+    BEGIN { action = ""; by = ""; at = ""; context = "" }
+    /^  [a-z0-9_]+:/ {
+        test = $0
+        gsub(/^  /, "", test)
+        gsub(/:.*/, "", test)
+        if (test == feature) {
+            in_feature = 1
+        } else if (in_feature) {
+            exit
+        }
+    }
+    in_feature && /^    history:/ {
+        in_history = 1
+        next
+    }
+    in_feature && in_history && /^      - action:/ {
+        # Print previous entry if it exists
+        if (in_entry && count < limit) {
+            print action "|" by "|" at "|" context
+            count++
+        }
+        # Start new entry
+        gsub(/^      - action: *"?/, "")
+        gsub(/"$/, "")
+        action = $0
+        by = ""
+        at = ""
+        context = ""
+        in_entry = 1
+        if (count >= limit) exit
+    }
+    in_feature && in_history && in_entry && /^        by:/ {
+        gsub(/^        by: *"?/, "")
+        gsub(/"$/, "")
+        by = $0
+    }
+    in_feature && in_history && in_entry && /^        at:/ {
+        gsub(/^        at: *"?/, "")
+        gsub(/"$/, "")
+        at = $0
+    }
+    in_feature && in_history && in_entry && /^        context:/ {
+        gsub(/^        context: *"?/, "")
+        gsub(/"$/, "")
+        context = $0
+    }
+    in_feature && in_history && /^    [a-z]/ {
+        # End of history section
+        if (in_entry && count < limit) {
+            print action "|" by "|" at "|" context
+        }
+        exit
+    }
+    END {
+        if (in_entry && count < limit) {
+            print action "|" by "|" at "|" context
+        }
+    }
+    ' "$VERIFICATION_FILE"
+}
+
+# Show history screen
+show_history() {
+    local feature="$1"
+    local feat_name="$2"
+
+    cursor_show
+    clear_screen
+
+    echo -e "${BOLD}${WHITE}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BOLD}${WHITE}  Verification History: $feat_name${NC}"
+    echo -e "${BOLD}${WHITE}═══════════════════════════════════════════════════════════════${NC}"
+    echo ""
+
+    local history=$(get_feature_history "$feature" 10)
+
+    if [[ -z "$history" ]]; then
+        echo -e "  ${DIM}No history recorded for this feature${NC}"
+        echo -e "  ${DIM}History tracking requires schema v2${NC}"
+    else
+        local entry_count=0
+        while IFS='|' read -r action by at context; do
+            entry_count=$((entry_count + 1))
+
+            # Format timestamp
+            local date_str=$(date -d "$at" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "$at")
+
+            # Action icon and color
+            local icon="ℹ" color="$BLUE"
+            case "$action" in
+                verified) icon="✓"; color="$GREEN" ;;
+                unverified) icon="○"; color="$RED" ;;
+                invalidated) icon="!"; color="$YELLOW" ;;
+                checklist_item_completed) icon="✓"; color="$GREEN" ;;
+                checklist_item_uncompleted) icon="○"; color="$DIM" ;;
+                notes_updated) icon="📝"; color="$CYAN" ;;
+                *) icon="ℹ"; color="$BLUE" ;;
+            esac
+
+            # Format action name (capitalize and replace underscores)
+            local action_display="$action"
+            action_display="${action_display//_/ }"
+            action_display="$(tr '[:lower:]' '[:upper:]' <<< ${action_display:0:1})${action_display:1}"
+
+            printf "  %s  %-10s  %b%s%b %s\n" "$date_str" "$by" "$color" "$icon" "$NC" "$action_display"
+            if [[ -n "$context" ]]; then
+                printf "     ${DIM}%s${NC}\n" "$context"
+            fi
+        done <<< "$history"
+
+        echo ""
+        printf "${DIM}Showing last %d entries${NC}\n" "$entry_count"
+    fi
+
+    echo ""
+    read -p "Press Enter to continue..."
+    cursor_hide
+}
+
 # Interactive console TUI with category navigation
 run_console() {
     # Build data
@@ -939,6 +1775,7 @@ run_console() {
 
     local cat_idx=0      # Current category index
     local feat_idx=0     # Current feature index within category
+    local preview_mode="false"  # Checklist preview mode
 
     cursor_hide
     trap 'cursor_show; clear_screen' EXIT
@@ -949,7 +1786,7 @@ run_console() {
         local cat_start="${CATEGORY_START[$category]}"
         local global_idx=$((cat_start + feat_idx))
 
-        draw_console "$cat_idx" "$feat_idx"
+        draw_console "$cat_idx" "$feat_idx" "$preview_mode"
 
         # Read single keypress
         IFS= read -rsn1 key
@@ -1037,6 +1874,32 @@ run_console() {
                 read -p "Press Enter to continue..."
                 build_feature_arrays
                 cursor_hide
+                ;;
+            'i'|'I')  # Edit checklist items
+                cursor_show
+                local feature="${FEATURE_IDS[$global_idx]}"
+                edit_checklist_items "$feature" "${FEATURE_NAMES[$global_idx]}"
+                build_feature_arrays  # Refresh data after editing
+                cursor_hide
+                ;;
+            'n'|'N')  # Edit notes
+                cursor_show
+                local feature="${FEATURE_IDS[$global_idx]}"
+                edit_feature_notes "$feature" "${FEATURE_NAMES[$global_idx]}"
+                cursor_hide
+                ;;
+            'h'|'H')  # Show history
+                cursor_show
+                local feature="${FEATURE_IDS[$global_idx]}"
+                show_history "$feature" "${FEATURE_NAMES[$global_idx]}"
+                cursor_hide
+                ;;
+            'p'|'P')  # Toggle preview mode
+                if [[ "$preview_mode" == "true" ]]; then
+                    preview_mode="false"
+                else
+                    preview_mode="true"
+                fi
                 ;;
             'r'|'R')  # Refresh
                 build_feature_arrays

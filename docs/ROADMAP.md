@@ -15,7 +15,7 @@ Pending implementation items and future improvements for NWP.
 | Current Version | v0.17 |
 | Test Success Rate | 98% |
 | Completed Proposals | P01-P35 (100%) |
-| Pending Proposals | F01-F08 |
+| Pending Proposals | F01-F09 |
 
 ---
 
@@ -25,7 +25,7 @@ Pending implementation items and future improvements for NWP.
 |-------|-------|-----------|--------|
 | Phase 1-5b | Foundation through Import | P01-P31 | ✅ Complete |
 | Phase 5c | Live Deployment Automation | P32-P35 | ✅ Complete |
-| **Phase 6** | **AI & Visual Testing** | **F01-F03, F08** | **Future** |
+| **Phase 6** | **AI & Visual Testing** | **F01-F03, F08-F09** | **Future** |
 | **Phase 7** | **Governance & Security** | **F04-F07** | **In Progress** |
 
 ---
@@ -292,6 +292,48 @@ Comprehensive search engine control ensuring staging sites are protected while p
 
 ---
 
+### F09: Comprehensive Testing Infrastructure
+**Status:** PROPOSED | **Priority:** HIGH | **Effort:** High | **Dependencies:** Linode, GitLab CI
+**Proposal:** [COMPREHENSIVE_TESTING_PROPOSAL.md](COMPREHENSIVE_TESTING_PROPOSAL.md)
+
+Automated testing infrastructure using Linode for comprehensive E2E testing:
+
+**Test Environment Types:**
+| Type | Purpose | Instance | Duration |
+|------|---------|----------|----------|
+| Fresh Install | Clean server setup | Nanode | 2h |
+| Pre-configured | Existing sites | Standard-1 | 4h |
+| Production | Multi-region deploy | 2x Standard-2 | 6h |
+| Multi-coder | Developer scenarios | Std-2 + 2x Nanode | 4h |
+
+**Test Suites:**
+- Unit tests (BATS) - ~2 minutes, every commit
+- Integration tests (DDEV) - ~15 minutes, main branch
+- E2E tests (Linode) - ~45 minutes, nightly
+- TUI tests (Expect) - ~10 minutes, TUI file changes
+
+**Coverage Goals:**
+| Category | Current | Target |
+|----------|---------|--------|
+| Unit | ~20% | 80% |
+| Integration | ~60% | 95% |
+| E2E | ~30% | 80% |
+| TUI | 0% | 70% |
+| **Overall** | **~40%** | **85%** |
+
+**Estimated Cost:** ~$32/month
+
+**Success Criteria:**
+- [ ] `tests/unit/` directory with BATS tests
+- [ ] `tests/integration/` modular test suite
+- [ ] `tests/e2e/provision-and-test.sh` for Linode
+- [ ] `tests/tui/` with Expect scripts
+- [ ] GitLab CI pipeline with all stages
+- [ ] Auto-cleanup of test instances
+- [ ] Test results dashboard
+
+---
+
 ## Priority Matrix
 
 | Proposal | Priority | Effort | Dependencies | Phase |
@@ -304,6 +346,7 @@ Comprehensive search engine control ensuring staging sites are protected while p
 | F06 | HIGH | Medium | F04, GitLab CI | 7 |
 | F07 | HIGH | Medium | stg2live, recipes | 7 |
 | F08 | MEDIUM | Medium | verify.sh, test-nwp.sh, GitLab | 6 |
+| F09 | HIGH | High | Linode, GitLab CI | 6 |
 
 ---
 
@@ -319,6 +362,7 @@ Comprehensive search engine control ensuring staging sites are protected while p
 - [decisions/](decisions/) - Architecture Decision Records (F04)
 - [SEO_ROBOTS_PROPOSAL.md](SEO_ROBOTS_PROPOSAL.md) - SEO & search engine control (F07)
 - [DYNAMIC_BADGES_PROPOSAL.md](DYNAMIC_BADGES_PROPOSAL.md) - Cross-platform badges (F08)
+- [COMPREHENSIVE_TESTING_PROPOSAL.md](COMPREHENSIVE_TESTING_PROPOSAL.md) - Testing infrastructure (F09)
 - [WORKING_WITH_CLAUDE_SECURELY.md](WORKING_WITH_CLAUDE_SECURELY.md) - Secure AI workflows
 
 ---

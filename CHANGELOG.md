@@ -6,6 +6,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v0.18.0] - 2026-01-10
+
+### Added
+
+- **Interactive Verification Console Enhancements**
+  - Individual checklist item tracking with completion status
+  - Press `i` in console to edit checklist items (toggle with Space)
+  - Press `n` to edit notes in text editor (nano/vim/vi)
+  - Press `h` to view verification history timeline
+  - Press `p` to toggle checklist preview mode (shows first 3 items)
+  - Partial completion status indicator `[◐]` for features with some items done
+  - Verification history tracking for all events (verified, invalidated, checklist changes, notes)
+  - Schema v2 migration for `.verification.yml` with backward compatibility
+  - Migration script: `migrate-verification-v2.sh`
+  - Comprehensive documentation: `VERIFY_ENHANCEMENTS.md`
+
+### Changed
+
+- `.verification.yml` upgraded from v1 to v2 format
+  - Checklist items now objects with: text, completed, completed_by, completed_at
+  - Added history array for audit trail
+- Console summary now shows "Partial: N" count for partially completed features
+- Updated console header with new keyboard shortcuts
+
+### Fixed
+
+- `delete.sh` - Fixed YAML comment parsing to strip trailing comments from settings
+- Integration tests improved with better error handling and skip logic
+
+### Technical Details
+
+- Added ~700 lines to verify.sh with new interactive features
+- AWK-based YAML parsing for efficient schema version detection
+- All 77 verification tasks migrated successfully to schema v2
+- Backward compatible with v1 format
+
+---
+
 ## [v0.17.0] - 2026-01-09
 
 ### Added

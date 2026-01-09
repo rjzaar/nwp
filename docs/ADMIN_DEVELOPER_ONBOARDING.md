@@ -104,17 +104,20 @@ When adding users to groups, specify access level:
 **Step 1: Create Account**
 
 ```bash
-# With Cloudflare (creates DNS delegation + GitLab)
+# Standard onboarding (works with or without Cloudflare)
 pl coder-setup add john \
   --email "john@example.com" \
   --fullname "John Smith" \
   --gitlab-group nwp
 
-# Without Cloudflare (GitLab only)
-# Cloudflare is optional - skips DNS setup automatically
-pl coder-setup add jane \
-  --email "jane@example.com" \
-  --gitlab-group nwp
+# If Cloudflare is configured in .secrets.yml:
+#   → Creates NS delegation for john.nwpcode.org
+#   → Creates GitLab user
+#
+# If Cloudflare is NOT configured:
+#   → Skips DNS setup (warns user)
+#   → Creates GitLab user
+#   → User can configure DNS manually later
 ```
 
 **Step 2: Add SSH Key (Optional)**
@@ -782,8 +785,9 @@ What access level?
 └─ Team lead        → Owner (50)
 
 Need DNS subdomain?
-├─ Yes → Full coder-setup (requires Cloudflare)
-└─ No  → GitLab only (add --no-gitlab flag if using coder-setup)
+├─ Yes, automate → Configure Cloudflare in .secrets.yml (coder-setup handles NS delegation)
+├─ Yes, manual   → Skip Cloudflare config (DNS skipped, configure manually later)
+└─ No            → GitLab-only onboarding (Cloudflare not needed)
 ```
 
 ---

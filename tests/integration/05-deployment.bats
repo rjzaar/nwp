@@ -27,63 +27,63 @@ teardown() {
 
 # Unit-style tests
 @test "dev2stg.sh: exists and is executable" {
-    assert_file_exists "${PROJECT_ROOT}/dev2stg.sh"
-    [ -x "${PROJECT_ROOT}/dev2stg.sh" ]
+    assert_file_exists "${PROJECT_ROOT}/scripts/commands/dev2stg.sh"
+    [ -x "${PROJECT_ROOT}/scripts/commands/dev2stg.sh" ]
 }
 
 @test "dev2stg.sh: shows help message" {
     cd "${PROJECT_ROOT}"
-    run ./dev2stg.sh --help
+    run ./scripts/commands/dev2stg.sh --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage"* ]] || [[ "$output" == *"USAGE"* ]]
 }
 
 @test "stg2prod.sh: exists and is executable" {
-    assert_file_exists "${PROJECT_ROOT}/stg2prod.sh"
-    [ -x "${PROJECT_ROOT}/stg2prod.sh" ]
+    assert_file_exists "${PROJECT_ROOT}/scripts/commands/stg2prod.sh"
+    [ -x "${PROJECT_ROOT}/scripts/commands/stg2prod.sh" ]
 }
 
 @test "stg2prod.sh: shows help message" {
     cd "${PROJECT_ROOT}"
-    run ./stg2prod.sh --help
+    run ./scripts/commands/stg2prod.sh --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage"* ]] || [[ "$output" == *"USAGE"* ]]
 }
 
 @test "stg2prod.sh: rejects missing sitename" {
     cd "${PROJECT_ROOT}"
-    run ./stg2prod.sh
+    run ./scripts/commands/stg2prod.sh
     [ "$status" -ne 0 ]
 }
 
 @test "stg2prod.sh: dry-run mode works" {
     cd "${PROJECT_ROOT}"
-    run ./stg2prod.sh --dry-run test-site
+    run ./scripts/commands/stg2prod.sh --dry-run test-site
     # Should succeed in dry-run (just validation)
     [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
 }
 
 @test "prod2stg.sh: exists and is executable" {
-    assert_file_exists "${PROJECT_ROOT}/prod2stg.sh"
-    [ -x "${PROJECT_ROOT}/prod2stg.sh" ]
+    assert_file_exists "${PROJECT_ROOT}/scripts/commands/prod2stg.sh"
+    [ -x "${PROJECT_ROOT}/scripts/commands/prod2stg.sh" ]
 }
 
 @test "prod2stg.sh: shows help message" {
     cd "${PROJECT_ROOT}"
-    run ./prod2stg.sh --help
+    run ./scripts/commands/prod2stg.sh --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage"* ]] || [[ "$output" == *"USAGE"* ]]
 }
 
 @test "prod2stg.sh: rejects missing sitename" {
     cd "${PROJECT_ROOT}"
-    run ./prod2stg.sh
+    run ./scripts/commands/prod2stg.sh
     [ "$status" -ne 0 ]
 }
 
 @test "prod2stg.sh: dry-run mode works" {
     cd "${PROJECT_ROOT}"
-    run ./prod2stg.sh --dry-run test-site
+    run ./scripts/commands/prod2stg.sh --dry-run test-site
     # Should succeed in dry-run (just validation)
     [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
 }

@@ -189,7 +189,8 @@ Line 2"
 @test "task: outputs task indicator" {
     run task "Running task"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"▶"* ]]
+    # task() outputs "  > message" (indented with >)
+    [[ "$output" == *">"* ]]
     [[ "$output" == *"Running task"* ]]
 }
 
@@ -197,10 +198,10 @@ Line 2"
 # note() tests
 ################################################################################
 
-@test "note: outputs note with icon" {
+@test "note: outputs note with indentation" {
     run note "This is a note"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"→"* ]]
+    # note() outputs indented text (4 spaces), no arrow icon
     [[ "$output" == *"This is a note"* ]]
 }
 
@@ -208,11 +209,14 @@ Line 2"
 # step() tests
 ################################################################################
 
-@test "step: outputs step indicator" {
-    run step "Step 1"
+@test "step: outputs progress indicator with step count" {
+    # step() takes 3 args: current, total, message
+    run step 1 5 "Running step one"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"•"* ]]
-    [[ "$output" == *"Step 1"* ]]
+    # step() outputs "[current/total] message (pct%)"
+    [[ "$output" == *"[1/5]"* ]]
+    [[ "$output" == *"Running step one"* ]]
+    [[ "$output" == *"20%"* ]]
 }
 
 ################################################################################

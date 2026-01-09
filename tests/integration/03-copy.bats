@@ -62,37 +62,37 @@ teardown() {
 
 # Unit-style tests
 @test "copy.sh: exists and is executable" {
-    assert_file_exists "${PROJECT_ROOT}/copy.sh"
-    [ -x "${PROJECT_ROOT}/copy.sh" ]
+    assert_file_exists "${PROJECT_ROOT}/scripts/commands/copy.sh"
+    [ -x "${PROJECT_ROOT}/scripts/commands/copy.sh" ]
 }
 
 @test "copy.sh: shows help message" {
     cd "${PROJECT_ROOT}"
-    run ./copy.sh --help
+    run ./scripts/commands/copy.sh --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage"* ]] || [[ "$output" == *"USAGE"* ]]
 }
 
 @test "copy.sh: requires source sitename" {
     cd "${PROJECT_ROOT}"
-    run ./copy.sh
+    run ./scripts/commands/copy.sh
     [ "$status" -ne 0 ]
 }
 
 @test "copy.sh: requires destination sitename" {
     cd "${PROJECT_ROOT}"
-    run ./copy.sh "${TEST_SITE}"
+    run ./scripts/commands/copy.sh "${TEST_SITE}"
     [ "$status" -ne 0 ]
 }
 
 @test "copy.sh: validates source sitename" {
     cd "${PROJECT_ROOT}"
-    run ./copy.sh "../bad" "destination"
+    run ./scripts/commands/copy.sh "../bad" "destination"
     [ "$status" -ne 0 ]
 }
 
 @test "copy.sh: validates destination sitename" {
     cd "${PROJECT_ROOT}"
-    run ./copy.sh "source" "../bad"
+    run ./scripts/commands/copy.sh "source" "../bad"
     [ "$status" -ne 0 ]
 }

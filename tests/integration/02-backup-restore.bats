@@ -49,37 +49,37 @@ teardown() {
 
 # Unit-style tests
 @test "backup.sh: exists and is executable" {
-    assert_file_exists "${PROJECT_ROOT}/backup.sh"
-    [ -x "${PROJECT_ROOT}/backup.sh" ]
+    assert_file_exists "${PROJECT_ROOT}/scripts/commands/backup.sh"
+    [ -x "${PROJECT_ROOT}/scripts/commands/backup.sh" ]
 }
 
 @test "backup.sh: shows help message" {
     cd "${PROJECT_ROOT}"
-    run ./backup.sh --help
+    run ./scripts/commands/backup.sh --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage"* ]] || [[ "$output" == *"USAGE"* ]]
 }
 
 @test "backup.sh: rejects missing sitename" {
     cd "${PROJECT_ROOT}"
-    run ./backup.sh
+    run ./scripts/commands/backup.sh
     [ "$status" -ne 0 ]
 }
 
 @test "restore.sh: exists and is executable" {
-    assert_file_exists "${PROJECT_ROOT}/restore.sh"
-    [ -x "${PROJECT_ROOT}/restore.sh" ]
+    assert_file_exists "${PROJECT_ROOT}/scripts/commands/restore.sh"
+    [ -x "${PROJECT_ROOT}/scripts/commands/restore.sh" ]
 }
 
 @test "restore.sh: shows help message" {
     cd "${PROJECT_ROOT}"
-    run ./restore.sh --help
+    run ./scripts/commands/restore.sh --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage"* ]] || [[ "$output" == *"USAGE"* ]]
 }
 
 @test "restore.sh: rejects missing backup file" {
     cd "${PROJECT_ROOT}"
-    run ./restore.sh
+    run ./scripts/commands/restore.sh
     [ "$status" -ne 0 ]
 }

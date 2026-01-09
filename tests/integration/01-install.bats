@@ -70,25 +70,25 @@ teardown() {
 
 # Unit-style tests that don't require full installation
 @test "install.sh: exists and is executable" {
-    assert_file_exists "${PROJECT_ROOT}/install.sh"
-    [ -x "${PROJECT_ROOT}/install.sh" ]
+    assert_file_exists "${PROJECT_ROOT}/scripts/commands/install.sh"
+    [ -x "${PROJECT_ROOT}/scripts/commands/install.sh" ]
 }
 
 @test "install.sh: shows help message" {
     cd "${PROJECT_ROOT}"
-    run ./install.sh --help
+    run ./scripts/commands/install.sh --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage"* ]] || [[ "$output" == *"USAGE"* ]]
 }
 
 @test "install.sh: rejects empty sitename" {
     cd "${PROJECT_ROOT}"
-    run ./install.sh ""
+    run ./scripts/commands/install.sh ""
     [ "$status" -ne 0 ]
 }
 
 @test "install.sh: validates sitename for dangerous characters" {
     cd "${PROJECT_ROOT}"
-    run ./install.sh "../dangerous"
+    run ./scripts/commands/install.sh "../dangerous"
     [ "$status" -ne 0 ]
 }

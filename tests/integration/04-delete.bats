@@ -47,32 +47,32 @@ teardown() {
 
 # Unit-style tests
 @test "delete.sh: exists and is executable" {
-    assert_file_exists "${PROJECT_ROOT}/delete.sh"
-    [ -x "${PROJECT_ROOT}/delete.sh" ]
+    assert_file_exists "${PROJECT_ROOT}/scripts/commands/delete.sh"
+    [ -x "${PROJECT_ROOT}/scripts/commands/delete.sh" ]
 }
 
 @test "delete.sh: shows help message" {
     cd "${PROJECT_ROOT}"
-    run ./delete.sh --help
+    run ./scripts/commands/delete.sh --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage"* ]] || [[ "$output" == *"USAGE"* ]]
 }
 
 @test "delete.sh: requires sitename argument" {
     cd "${PROJECT_ROOT}"
-    run ./delete.sh -y
+    run ./scripts/commands/delete.sh -y
     [ "$status" -ne 0 ]
 }
 
 @test "delete.sh: validates sitename" {
     cd "${PROJECT_ROOT}"
-    run ./delete.sh -y "../dangerous"
+    run ./scripts/commands/delete.sh -y "../dangerous"
     [ "$status" -ne 0 ]
 }
 
 @test "delete.sh: rejects non-existent site gracefully" {
     cd "${PROJECT_ROOT}"
-    run ./delete.sh -y "site-that-does-not-exist-12345"
+    run ./scripts/commands/delete.sh -y "site-that-does-not-exist-12345"
     # Should fail but not crash
     [ "$status" -ne 0 ]
 }

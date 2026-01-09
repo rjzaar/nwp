@@ -16,6 +16,7 @@ Pending implementation items and future improvements for NWP.
 | Test Success Rate | 98% |
 | Completed Proposals | P01-P35, F04, F05, F07, F09 |
 | Pending Proposals | F01-F03, F06, F08, F10 |
+| Experimental/Outlier | X01 |
 
 ---
 
@@ -30,6 +31,7 @@ Pending implementation items and future improvements for NWP.
 | Phase 7 | Testing & CI Enhancement | F09 | ✅ Complete |
 | **Phase 7b** | **CI Enhancements** | **F01-F03, F08** | **Future** |
 | **Phase 8** | **Developer Experience** | **F10** | **Future** |
+| **Phase X** | **Experimental/Outliers** | **X01** | **Exploratory** |
 
 ---
 
@@ -49,6 +51,7 @@ Based on dependencies, current progress, and priority:
 | 8 | F08 | PROPOSED | Needs stable GitLab infrastructure |
 | 9 | F10 | PROPOSED | Independent, developer privacy/experience |
 | 10 | F02 | PLANNED | Depends on F01, lowest priority |
+| - | X01 | EXPLORATORY | Outlier - significant scope expansion |
 
 ---
 
@@ -312,6 +315,7 @@ Extend MCP integration to automatically detect and fix common CI errors:
 
 ### F10: Local LLM Support & Privacy Options
 **Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** None
+**Guide:** [LOCAL_LLM_GUIDE.md](LOCAL_LLM_GUIDE.md) - Complete guide to using open source AI models
 
 Provide developers with privacy-focused alternatives to cloud-based AI by integrating local LLM support into NWP workflows:
 
@@ -487,10 +491,10 @@ tests/unit/test-llm.bats       # Unit tests for LLM functions
 - [ ] `pl llm ask` for one-shot questions
 - [ ] AI provider selection in cnwp.yml
 - [ ] `.aiignore` file support (similar to .gitignore)
-- [ ] `docs/LOCAL_LLM_GUIDE.md` with setup instructions
+- [x] `docs/LOCAL_LLM_GUIDE.md` with setup instructions
 - [ ] Model recommendation based on hardware detection
 - [ ] Integration with existing `pl` commands (opt-in flags)
-- [ ] Privacy comparison documentation
+- [x] Privacy comparison documentation
 - [ ] Benchmark command to test local model performance
 - [ ] Graceful fallback when local LLM unavailable
 
@@ -560,6 +564,305 @@ Automated testing infrastructure using BATS framework with GitLab CI integration
 
 ---
 
+## Phase X: Experimental & Outlier Features
+
+> **Note:** These proposals explore capabilities outside NWP's core mission of Drupal hosting/deployment. They are marked as "outliers" because they represent significant scope expansion. Implementation would only occur if there's strong user demand and clear use cases.
+
+### X01: AI Video Generation Integration
+**Status:** EXPLORATORY | **Priority:** LOW | **Effort:** High | **Dependencies:** F10 (Local LLM)
+**Type:** OUTLIER - Significant scope expansion beyond core NWP mission
+
+Integrate AI video generation capabilities into NWP for automated content creation on Drupal sites:
+
+**⚠️ Why This is an Outlier:**
+- NWP's core mission: Drupal deployment, hosting, site management
+- Video generation: Content creation, not infrastructure
+- Significant complexity and resource requirements
+- May be better served by dedicated tools/services
+- Would require ongoing maintenance of video generation stack
+
+**Potential Use Cases:**
+
+| Use Case | Tool Integration | Benefit |
+|----------|------------------|---------|
+| Blog → Video | Pictory API | Auto-convert posts to video |
+| Tutorial Videos | Synthesia API | Create training content |
+| Social Media | Opus Clip API | Auto-generate shorts |
+| Product Demos | Runway API | Showcase Drupal modules |
+| AI Avatars | HeyGen API | Video testimonials |
+
+**Why Consider This (Despite Being an Outlier)?**
+
+**1. Content Velocity**
+- Drupal sites need regular content
+- Video content drives engagement
+- Manual video creation is expensive/time-consuming
+
+**2. Integration with Existing Content**
+- Drupal already manages blog posts, products, documentation
+- Auto-generate video versions of existing content
+- Multi-channel content distribution
+
+**3. Marketing for NWP Sites**
+- Help NWP users create marketing videos
+- Reduce barrier to video content
+- Competitive advantage for NWP-hosted sites
+
+**Two Possible Approaches:**
+
+#### Approach A: API Integration (Recommended if pursued)
+
+**Simpler, more practical:**
+
+```bash
+# Add video generation as a service integration
+pl video setup                      # Configure API keys
+pl video blog-to-video <post-id>    # Convert Drupal post to video
+pl video avatar-record "script"     # Generate AI avatar video
+pl video status                     # Check generation jobs
+```
+
+**Architecture:**
+```
+Drupal Post (API)
+    ↓
+NWP extraction
+    ↓
+Third-party API (Pictory, Synthesia, etc.)
+    ↓
+Video file
+    ↓
+Upload to Drupal Media Library
+```
+
+**Services to integrate:**
+- **Pictory** - Blog to video ($23-119/mo)
+- **Synthesia** - AI avatars ($22-67/mo)
+- **Runway** - Creative video ($12-76/mo)
+- **HeyGen** - Presenter videos ($24-120/mo)
+
+**Pros:**
+- No GPU hardware required
+- Professional quality output
+- Maintained by specialized companies
+- Faster implementation
+
+**Cons:**
+- Recurring costs per user
+- Data sent to third parties
+- API rate limits
+- Vendor lock-in
+
+#### Approach B: Self-Hosted (Not Recommended)
+
+**Complex, expensive, ongoing maintenance:**
+
+```bash
+# Setup local video generation infrastructure
+pl video-server setup               # Install GPU drivers, models
+pl video-server models list         # Show available models
+pl video-server generate-from-text  # Generate video locally
+```
+
+**Requirements:**
+- Dedicated GPU server (RTX 4090, $2000-3000)
+- 64GB+ RAM
+- Stable Video Diffusion, AnimateDiff
+- Ongoing model updates and maintenance
+- Significant storage (video files)
+
+**Pros:**
+- No recurring API costs
+- Complete privacy
+- Full control over generation
+
+**Cons:**
+- High upfront hardware cost ($3000-5000)
+- Ongoing maintenance burden
+- Lower quality than commercial APIs
+- GPU obsolescence (2-3 year cycle)
+- Electricity costs
+- Complex troubleshooting
+
+**Implementation Plan (If Approach A Pursued):**
+
+**Phase 1: Foundation (2 weeks)**
+- [ ] Research API options (Pictory, Synthesia, Runway)
+- [ ] Create `lib/video-generation.sh` library
+- [ ] Add video API config to cnwp.yml
+- [ ] Basic API integration for one service
+
+**Phase 2: Drupal Integration (2 weeks)**
+- [ ] Content extraction from Drupal API
+- [ ] Template system for video generation
+- [ ] Upload generated videos to Drupal Media
+- [ ] Drush command: `drush nwp:video:generate <nid>`
+
+**Phase 3: CLI Commands (1 week)**
+- [ ] `pl video setup` - Configure API credentials
+- [ ] `pl video blog-to-video` - Blog post conversion
+- [ ] `pl video status` - Check generation jobs
+- [ ] `pl video list` - Show generated videos
+
+**Phase 4: Automation (1 week)**
+- [ ] Scheduled generation (new posts)
+- [ ] Batch processing
+- [ ] Queue management
+- [ ] Error handling and retry logic
+
+**Configuration in cnwp.yml:**
+
+```yaml
+video_generation:
+  enabled: false  # Opt-in feature
+
+  provider: pictory  # pictory, synthesia, runway, heygen
+
+  # API credentials (stored in .secrets.yml)
+  api_key_env: VIDEO_GENERATION_API_KEY
+
+  # Generation settings
+  auto_generate: false  # Auto-generate on new post publish
+  video_format: mp4
+  resolution: 1080p
+
+  # Pictory-specific settings
+  pictory:
+    voice: "professional_male"
+    music: true
+    style: "modern"
+
+  # Synthesia-specific settings
+  synthesia:
+    avatar: "anna_professional"
+    background: "office"
+
+  # Upload settings
+  drupal_media_type: video
+  storage_location: "sites/default/files/videos"
+```
+
+**File Structure:**
+
+```
+lib/video-generation.sh           # Video generation library
+lib/video-providers/
+  ├── pictory.sh                  # Pictory API integration
+  ├── synthesia.sh                # Synthesia API integration
+  └── runway.sh                   # Runway API integration
+scripts/commands/video.sh         # CLI commands
+docs/VIDEO_GENERATION_GUIDE.md    # Complete guide
+templates/video-config.yml        # Config template
+tests/unit/test-video.bats        # Unit tests
+```
+
+**Cost Analysis (Monthly per site):**
+
+| Service | Price | Videos/Month | Cost per Video |
+|---------|-------|--------------|----------------|
+| Pictory | $23-119 | 10-120 | $2-12 |
+| Synthesia | $22-67 | 10-360 | $0.20-7 |
+| Runway | $12-76 | Varies | $1-5 |
+| HeyGen | $24-120 | 20-unlimited | $1-6 |
+
+**Self-hosted comparison:**
+- Initial: $3000-5000 (hardware)
+- Running: $50-100/mo (electricity)
+- ROI: 2-3 years vs API costs
+- Maintenance: Significant ongoing effort
+
+**Example Workflows:**
+
+```bash
+# 1. Convert blog post to video
+pl video blog-to-video --post 123 --provider pictory --voice professional_male
+
+# 2. Create AI avatar announcement
+pl video avatar --script "Welcome to our new website" --avatar anna --provider synthesia
+
+# 3. Generate social media shorts
+pl video social --source video123.mp4 --platform tiktok --duration 60s
+
+# 4. Batch process recent posts
+pl video batch --recent 10 --provider pictory
+
+# 5. Check generation status
+pl video status
+# Output:
+# Job ID  | Type      | Status      | Started    | Progress
+# v-1234  | blog      | processing  | 5 min ago  | 45%
+# v-1235  | avatar    | complete    | 10 min ago | 100%
+# v-1236  | social    | queued      | -          | 0%
+```
+
+**Drupal Module Integration:**
+
+Optional companion Drupal module for UI-based generation:
+
+```php
+// Admin UI: node/123/generate-video
+// Drush: drush nwp:video:generate 123
+// Cron: Auto-generate on publish (if enabled)
+```
+
+**Success Criteria:**
+
+- [ ] API integration with at least one provider (Pictory or Synthesia)
+- [ ] `lib/video-generation.sh` library
+- [ ] `pl video setup` command
+- [ ] `pl video blog-to-video` working end-to-end
+- [ ] Generated videos uploaded to Drupal Media
+- [ ] Configuration in cnwp.yml
+- [ ] API keys stored in .secrets.yml
+- [ ] Error handling and retry logic
+- [ ] Documentation with cost analysis
+- [ ] Example workflows documented
+- [ ] Drush command for Drupal integration
+
+**Why This Might NOT Be Worth It:**
+
+**1. Scope Creep**
+- NWP is about infrastructure, not content creation
+- Video generation is a separate domain
+- Better to integrate existing tools via Drupal modules
+
+**2. Maintenance Burden**
+- APIs change frequently
+- Multiple providers to maintain
+- Video generation is complex and error-prone
+
+**3. Cost vs Benefit**
+- Users can use these services directly
+- May not justify development/maintenance effort
+- Drupal already has video modules
+
+**4. Alternative Approach**
+- Document how to use video generation services
+- Provide Drupal module recommendations
+- Focus NWP on infrastructure strengths
+
+**Decision Framework:**
+
+Should X01 be implemented? Only if:
+- [ ] 5+ users explicitly request this feature
+- [ ] Clear ROI demonstrated (time/cost savings)
+- [ ] Dedicated maintainer willing to own this
+- [ ] Doesn't distract from core NWP mission
+- [ ] Can be cleanly separated (optional module)
+
+**Recommended Path Forward:**
+
+**Instead of building this into NWP:**
+1. Create guide: "Integrating Video Generation with NWP Drupal Sites"
+2. Document available Drupal modules for video
+3. Provide API integration examples
+4. Let users choose their own video generation tools
+5. Revisit if demand emerges
+
+**If building anyway, choose Approach A (API Integration)** with Pictory as first provider.
+
+---
+
 ## Priority Matrix
 
 | Order | Proposal | Priority | Effort | Dependencies | Phase | Status |
@@ -574,6 +877,7 @@ Automated testing infrastructure using BATS framework with GitLab CI integration
 | 8 | F08 | MEDIUM | Medium | verify.sh, test-nwp.sh, GitLab | 7b | Proposed |
 | 9 | F10 | MEDIUM | Medium | None | 8 | Proposed |
 | 10 | F02 | LOW | Medium | F01 | 7b | Planned |
+| - | X01 | LOW | High | F10 (optional) | X | Exploratory |
 
 ---
 
@@ -601,6 +905,9 @@ Automated testing infrastructure using BATS framework with GitLab CI integration
 - [DYNAMIC_BADGES_PROPOSAL.md](DYNAMIC_BADGES_PROPOSAL.md) - Cross-platform badges (F08)
 - [COMPREHENSIVE_TESTING_PROPOSAL.md](COMPREHENSIVE_TESTING_PROPOSAL.md) - Testing infrastructure (F09)
 
+### Guides
+- [LOCAL_LLM_GUIDE.md](LOCAL_LLM_GUIDE.md) - Complete guide to running open source AI models locally (F10)
+
 ---
 
 *Document restructured: January 5, 2026*
@@ -610,3 +917,5 @@ Automated testing infrastructure using BATS framework with GitLab CI integration
 *F09 (Testing) moved to position 3: January 9, 2026*
 *F05, F04, F07, F09 completed: January 9, 2026*
 *F10 (Local LLM Support) added: January 10, 2026*
+*X01 (AI Video Generation) added as experimental outlier: January 10, 2026*
+*Phase X (Experimental/Outliers) created: January 10, 2026*

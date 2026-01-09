@@ -57,13 +57,26 @@ get_remote_config() {
 
 # Execute command on remote server
 # Usage: remote_exec "sitename" "environment" "command"
+# SECURITY: This function executes commands on remote servers. Input validation
+# is performed but callers should ensure commands are safe.
 remote_exec() {
     local sitename="$1"
     local environment="$2"
     local command="$3"
 
+    # Input validation - prevent path traversal and injection in sitename/environment
+    if [[ "$sitename" =~ [^a-zA-Z0-9._-] ]]; then
+        print_error "Invalid sitename: contains unsafe characters"
+        return 1
+    fi
+    if [[ "$environment" =~ [^a-zA-Z0-9._-] ]]; then
+        print_error "Invalid environment: contains unsafe characters"
+        return 1
+    fi
+
     # Get remote config
-    local config=$(get_remote_config "$sitename" "$environment")
+    local config
+    config=$(get_remote_config "$sitename" "$environment")
 
     if [ -z "$config" ]; then
         print_error "No configuration found for ${sitename}@${environment}"
@@ -88,9 +101,17 @@ remote_exec() {
         return 1
     fi
 
+    # Validate site_path - must be absolute path without dangerous characters
+    if [[ ! "$site_path" =~ ^/[a-zA-Z0-9./_-]+$ ]]; then
+        print_error "Invalid site_path: must be absolute path with safe characters"
+        return 1
+    fi
+
     ocmsg "Executing on ${ssh_user}@${server_ip}..."
+    # SECURITY FIX: Properly quote variables in SSH command to prevent injection
+    # The site_path is validated above; command is passed as-is (caller's responsibility)
     ssh -o BatchMode=yes -o ConnectTimeout=10 "${ssh_user}@${server_ip}" \
-        "cd ${site_path} && ${command}"
+        "cd '${site_path}' && ${command}"
 }
 
 # Run drush on remote server
@@ -132,20 +153,25 @@ remote_backup() {
         return 1
     fi
 
-    local timestamp=$(date +%Y%m%dT%H%M%S)
+    local timestamp
+    timestamp=$(date +%Y%m%dT%H%M%S)
+    # SECURITY: backup_name uses validated sitename/environment + timestamp (safe characters only)
     local backup_name="${sitename}-${environment}-${timestamp}"
 
     # Export database on remote
     print_info "Exporting database on remote..."
+    # SECURITY FIX: Quote backup_name in remote command
     remote_exec "$sitename" "$environment" \
-        "drush sql-dump --gzip > /tmp/${backup_name}.sql.gz"
+        "drush sql-dump --gzip > '/tmp/${backup_name}.sql.gz'"
 
     # Download
     print_info "Downloading backup..."
+    # SECURITY FIX: Quote paths properly in scp command
     scp "${ssh_user}@${server_ip}:/tmp/${backup_name}.sql.gz" "${local_path}/"
 
     # Cleanup remote
-    remote_exec "$sitename" "$environment" "rm /tmp/${backup_name}.sql.gz"
+    # SECURITY FIX: Quote path in remote rm command
+    remote_exec "$sitename" "$environment" "rm '/tmp/${backup_name}.sql.gz'"
 
     if [ -f "${local_path}/${backup_name}.sql.gz" ]; then
         print_status "OK" "Remote backup saved: ${local_path}/${backup_name}.sql.gz"

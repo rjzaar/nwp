@@ -114,8 +114,13 @@ sites/*
 # SSH key contents (keep directory but ignore all keys)
 keys/*
 !keys/.gitkeep
+
+# Secrets files - NEVER commit these
 **/.secrets.yml
 **/.secrets.yaml
+**/.secrets.data.yml
+**/.secrets.data.yaml
+**/cnwp.yml
 **/.env.local
 **/.ddev/config.local.yaml
 **/.ddev/config.*.yaml

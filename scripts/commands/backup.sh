@@ -200,36 +200,38 @@ backup_files() {
     fi
 
     # Determine what to backup (webroot + other important dirs)
-    local backup_paths=""
+    # SECURITY FIX: Use array to properly handle paths (prevents word splitting issues)
+    local -a backup_paths=()
 
     if [ -d "$site_dir/$webroot" ]; then
-        backup_paths="$webroot"
+        backup_paths+=("$webroot")
     fi
 
     if [ -d "$site_dir/private" ]; then
-        backup_paths="$backup_paths private"
+        backup_paths+=("private")
     fi
 
     if [ -d "$site_dir/cmi" ]; then
-        backup_paths="$backup_paths cmi"
+        backup_paths+=("cmi")
     fi
 
     if [ -f "$site_dir/composer.json" ]; then
-        backup_paths="$backup_paths composer.json"
+        backup_paths+=("composer.json")
         if [ -f "$site_dir/composer.lock" ]; then
-            backup_paths="$backup_paths composer.lock"
+            backup_paths+=("composer.lock")
         fi
     fi
 
-    if [ -z "$backup_paths" ]; then
+    if [ ${#backup_paths[@]} -eq 0 ]; then
         print_error "No files found to backup"
         return 1
     fi
 
-    ocmsg "Backing up: $backup_paths"
+    ocmsg "Backing up: ${backup_paths[*]}"
 
     # Create tar.gz archive (suppress "Removing leading" warnings)
-    tar -czf "$files_archive" -C "$site_dir" $backup_paths 2>&1 | grep -v "Removing leading" || true
+    # SECURITY FIX: Use array expansion "${backup_paths[@]}" to properly quote each path
+    tar -czf "$files_archive" -C "$site_dir" "${backup_paths[@]}" 2>&1 | grep -v "Removing leading" || true
 
     # Check if archive was created successfully
     if [ -f "$files_archive" ] && [ -s "$files_archive" ]; then

@@ -1,6 +1,6 @@
 # NWP Roadmap - Pending & Future Work
 
-**Last Updated:** January 9, 2026
+**Last Updated:** January 10, 2026
 
 Pending implementation items and future improvements for NWP.
 
@@ -15,7 +15,7 @@ Pending implementation items and future improvements for NWP.
 | Current Version | v0.17 |
 | Test Success Rate | 98% |
 | Completed Proposals | P01-P35, F04, F05, F07, F09 |
-| Pending Proposals | F01-F03, F06, F08 |
+| Pending Proposals | F01-F03, F06, F08, F10 |
 
 ---
 
@@ -29,6 +29,7 @@ Pending implementation items and future improvements for NWP.
 | Phase 6b | Security Pipeline | F06 | Planned |
 | Phase 7 | Testing & CI Enhancement | F09 | ✅ Complete |
 | **Phase 7b** | **CI Enhancements** | **F01-F03, F08** | **Future** |
+| **Phase 8** | **Developer Experience** | **F10** | **Future** |
 
 ---
 
@@ -46,7 +47,8 @@ Based on dependencies, current progress, and priority:
 | 6 | F01 | PLANNED | Foundation for F02, enhances CI |
 | 7 | F03 | IN PROGRESS | Independent, visual testing |
 | 8 | F08 | PROPOSED | Needs stable GitLab infrastructure |
-| 9 | F02 | PLANNED | Depends on F01, lowest priority |
+| 9 | F10 | PROPOSED | Independent, developer privacy/experience |
+| 10 | F02 | PLANNED | Depends on F01, lowest priority |
 
 ---
 
@@ -306,6 +308,219 @@ Extend MCP integration to automatically detect and fix common CI errors:
 
 ---
 
+## Phase 8: Developer Experience (FUTURE)
+
+### F10: Local LLM Support & Privacy Options
+**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** None
+
+Provide developers with privacy-focused alternatives to cloud-based AI by integrating local LLM support into NWP workflows:
+
+**Why This Matters:**
+- Privacy concerns with cloud-based AI processing codebase/secrets
+- Data sovereignty requirements
+- Offline development capability
+- Cost optimization for high-volume usage
+- Developer autonomy and choice
+
+**Supported Local LLM Platforms:**
+
+| Platform | Best For | Integration Level |
+|----------|----------|-------------------|
+| Ollama | General purpose, easiest setup | Primary target |
+| LM Studio | GUI users, model exploration | Documentation |
+| llama.cpp | Advanced users, custom builds | Documentation |
+| text-generation-webui | Full-featured local UI | Documentation |
+
+**Recommended Models for NWP Work:**
+
+| Model | Size | Purpose | Hardware |
+|-------|------|---------|----------|
+| qwen2.5-coder | 7B-32B | Bash/PHP coding | 16-64GB RAM |
+| deepseek-coder-v2 | 16B | Code generation | 32GB+ RAM |
+| llama3.2 | 3B-70B | General tasks | 8-128GB RAM |
+| codestral | 22B | Multi-language coding | 32GB+ RAM |
+
+**Implementation Approach:**
+
+```bash
+# 1. Detection & Setup
+pl llm setup                    # Interactive setup wizard
+pl llm setup --provider ollama  # Auto-configure Ollama
+pl llm doctor                   # Verify installation
+
+# 2. Model Management
+pl llm models list              # Show available/installed models
+pl llm models install qwen2.5-coder:7b
+pl llm models benchmark         # Test performance on sample tasks
+
+# 3. Integration with Existing Tools
+pl llm chat                     # Interactive chat (like Claude)
+pl llm code-review issue-123    # Review code using local LLM
+pl llm ask "How do I fix this bash error?"
+
+# 4. AI Provider Selection
+pl config set ai.provider local     # Switch to local LLM
+pl config set ai.provider anthropic # Switch back to Claude
+pl config get ai.provider            # Show current provider
+```
+
+**Configuration in cnwp.yml:**
+
+```yaml
+ai:
+  # Provider: anthropic (Claude API), local (Ollama/local), none (disabled)
+  provider: anthropic
+
+  # Claude API settings (when provider=anthropic)
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+    model: claude-sonnet-4-5
+
+  # Local LLM settings (when provider=local)
+  local:
+    backend: ollama                    # ollama, lm-studio, llama-cpp
+    endpoint: http://localhost:11434   # API endpoint
+    model: qwen2.5-coder:7b            # Default model
+    timeout: 120                       # Seconds
+
+  # Feature flags
+  features:
+    code_review: true        # AI-assisted code review
+    commit_messages: true    # AI-generated commit messages
+    error_analysis: true     # Analyze CI/test errors
+    documentation: false     # AI-generated docs (opt-in)
+```
+
+**Integration Points:**
+
+| Feature | Current | With Local LLM |
+|---------|---------|----------------|
+| Code review | Manual | `pl llm review <file>` |
+| Commit messages | Manual | `pl commit --ai-message` |
+| Error debugging | Manual log reading | `pl llm explain <error-log>` |
+| Documentation | Manual writing | `pl llm doc <function>` |
+| Test generation | Manual writing | `pl llm test <file>` |
+
+**Privacy Architecture:**
+
+```
+┌─────────────────────────────────────┐
+│ Developer Choice (cnwp.yml)         │
+├─────────────────────────────────────┤
+│                                     │
+│  [Anthropic Cloud]  [Local LLM]    │
+│        ↓                ↓           │
+│   Claude API        Ollama         │
+│   (paid, powerful)  (free, private)│
+│   Data sent out     Data stays     │
+│                                     │
+└─────────────────────────────────────┘
+
+Protected Files (never sent to AI):
+- .secrets.data.yml (always blocked)
+- keys/prod_* (always blocked)
+- *.sql, *.sql.gz (always blocked)
+- User can add to .aiignore
+```
+
+**Implementation Phases:**
+
+1. **Foundation** (Week 1)
+   - Add `lib/llm.sh` library
+   - Ollama detection and validation
+   - Configuration schema in cnwp.yml
+
+2. **Core Commands** (Week 2)
+   - `pl llm setup` - Guided installation
+   - `pl llm chat` - Interactive chat interface
+   - `pl llm ask` - One-shot questions
+   - Provider switching logic
+
+3. **Tool Integration** (Week 3)
+   - Code review integration
+   - Commit message generation
+   - Error log analysis
+   - `.aiignore` file support
+
+4. **Documentation** (Week 4)
+   - Installation guides for Ollama/LM Studio
+   - Model selection guide
+   - Privacy comparison chart
+   - Troubleshooting guide
+
+**File Structure:**
+
+```
+lib/llm.sh                     # LLM integration library
+scripts/commands/llm.sh        # LLM management commands
+docs/LOCAL_LLM_GUIDE.md        # Complete setup guide
+templates/aiignore.txt         # Default .aiignore template
+tests/unit/test-llm.bats       # Unit tests for LLM functions
+```
+
+**Hardware Requirements Guide:**
+
+| Use Case | Recommended Model | RAM | GPU | Speed |
+|----------|-------------------|-----|-----|-------|
+| Quick scripts | qwen2.5-coder:3b | 8GB | No | Fast |
+| General dev | qwen2.5-coder:7b | 16GB | Optional | Good |
+| Complex code | qwen2.5-coder:32b | 64GB | Yes | Slow |
+| Production | Claude API | N/A | N/A | Fast |
+
+**Comparison Matrix:**
+
+| Feature | Claude API | Local LLM |
+|---------|------------|-----------|
+| **Privacy** | Data sent to Anthropic | All local |
+| **Cost** | $3-15 per million tokens | Free after setup |
+| **Quality** | Excellent | Good to Very Good |
+| **Speed** | Fast | Depends on hardware |
+| **Offline** | No | Yes |
+| **Setup** | API key only | Install + models |
+| **Maintenance** | None | Update models |
+
+**Success Criteria:**
+
+- [ ] `lib/llm.sh` library with Ollama integration
+- [ ] `pl llm setup` command with interactive wizard
+- [ ] `pl llm chat` for interactive sessions
+- [ ] `pl llm ask` for one-shot questions
+- [ ] AI provider selection in cnwp.yml
+- [ ] `.aiignore` file support (similar to .gitignore)
+- [ ] `docs/LOCAL_LLM_GUIDE.md` with setup instructions
+- [ ] Model recommendation based on hardware detection
+- [ ] Integration with existing `pl` commands (opt-in flags)
+- [ ] Privacy comparison documentation
+- [ ] Benchmark command to test local model performance
+- [ ] Graceful fallback when local LLM unavailable
+
+**Security Considerations:**
+
+- `.aiignore` file to exclude sensitive paths
+- Same data protection rules as Claude integration
+- No secrets sent to any AI (local or cloud)
+- User consent required for any AI features
+- Clear indication of which provider is active
+
+**Documentation Deliverables:**
+
+- Setup guide for Ollama (Linux, macOS, Windows)
+- Model selection guide (speed vs quality tradeoffs)
+- Privacy comparison (cloud vs local)
+- Hardware requirements calculator
+- Troubleshooting common issues
+- Integration examples for common workflows
+
+**Future Enhancements:**
+
+- Model fine-tuning on NWP codebase
+- Custom model training for site-specific patterns
+- Multi-model support (use different models for different tasks)
+- Model quantization recommendations
+- Distributed inference (multiple machines)
+
+---
+
 ### F09: Comprehensive Testing Infrastructure
 **Status:** ✅ COMPLETE | **Priority:** HIGH | **Effort:** High | **Dependencies:** Linode, GitLab CI
 **Proposal:** [COMPREHENSIVE_TESTING_PROPOSAL.md](COMPREHENSIVE_TESTING_PROPOSAL.md)
@@ -357,7 +572,8 @@ Automated testing infrastructure using BATS framework with GitLab CI integration
 | 6 | F01 | MEDIUM | Low | GitLab | 7b | Planned |
 | 7 | F03 | MEDIUM | Medium | Behat | 7b | In Progress |
 | 8 | F08 | MEDIUM | Medium | verify.sh, test-nwp.sh, GitLab | 7b | Proposed |
-| 9 | F02 | LOW | Medium | F01 | 7b | Planned |
+| 9 | F10 | MEDIUM | Medium | None | 8 | Proposed |
+| 10 | F02 | LOW | Medium | F01 | 7b | Planned |
 
 ---
 
@@ -393,3 +609,4 @@ Automated testing infrastructure using BATS framework with GitLab CI integration
 *Proposals reordered by implementation priority: January 9, 2026*
 *F09 (Testing) moved to position 3: January 9, 2026*
 *F05, F04, F07, F09 completed: January 9, 2026*
+*F10 (Local LLM Support) added: January 10, 2026*

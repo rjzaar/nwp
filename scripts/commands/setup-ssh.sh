@@ -89,12 +89,19 @@ push_key_to_server() {
     fi
 
     # Add options for non-interactive
+    # SECURITY NOTE: StrictHostKeyChecking=accept-new automatically accepts new host keys.
+    # This is convenient but enables MITM attacks on first connection.
+    # For high-security environments, pre-populate known_hosts or use StrictHostKeyChecking=yes
     ssh_cmd="$ssh_cmd -o StrictHostKeyChecking=accept-new -o BatchMode=no"
 
-    local public_key=$(cat "$public_key_file")
+    # Read public key from file
+    local public_key
+    public_key=$(cat "$public_key_file")
 
-    # Push the key
-    if $ssh_cmd "$ssh_user@$ssh_host" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$public_key' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo 'Key added successfully'"; then
+    # Push the key by piping through stdin to avoid command injection
+    # SECURITY FIX: Previously embedded $public_key in command string which allowed
+    # malicious keys containing shell metacharacters to execute arbitrary commands
+    if echo "$public_key" | $ssh_cmd "$ssh_user@$ssh_host" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo 'Key added successfully'"; then
         print_status "Key pushed to $server_name"
         return 0
     else

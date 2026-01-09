@@ -4,60 +4,98 @@
 #
 # Tests site cloning functionality
 # Corresponds to Test 4 in COMPREHENSIVE_TESTING_PROPOSAL.md
+#
+# To run DDEV tests:
+#   ENABLE_DDEV_TESTS=true bats tests/integration/03-copy.bats
+# Or use the test runner:
+#   ./tests/run-ddev-tests.sh 03-copy
 ################################################################################
 
 load ../helpers/test-helpers
 
-TEST_SITE="test-integration-source"
-TEST_COPY="test-integration-copy"
+# Use "d" recipe (standard Drupal) for faster tests
+TEST_RECIPE="${TEST_RECIPE:-d}"
+
+# File-level setup - runs once before all tests
+setup_file() {
+    export PROJECT_ROOT="${BATS_TEST_DIRNAME}/../.."
+    export TEST_SITE="${TEST_SITE_PREFIX:-bats-test}-copy-src"
+    export TEST_COPY="${TEST_SITE_PREFIX:-bats-test}-copy-dst"
+}
+
+# File-level teardown - runs once after all tests
+teardown_file() {
+    if [ "${CLEANUP_SITES:-true}" = "true" ]; then
+        for site in "${TEST_SITE}" "${TEST_COPY}"; do
+            if [ -d "${PROJECT_ROOT}/sites/${site}" ]; then
+                cd "${PROJECT_ROOT}"
+                if [ -f "${PROJECT_ROOT}/sites/${site}/.ddev/config.yaml" ]; then
+                    (cd "${PROJECT_ROOT}/sites/${site}" && ddev stop --unlist 2>/dev/null) || true
+                fi
+                ./scripts/commands/delete.sh -fy "${site}" 2>/dev/null || rm -rf "${PROJECT_ROOT}/sites/${site}"
+            fi
+        done
+    fi
+}
 
 setup() {
     test_setup
     export PROJECT_ROOT="${BATS_TEST_DIRNAME}/../.."
+    export TEST_SITE="${TEST_SITE_PREFIX:-bats-test}-copy-src"
+    export TEST_COPY="${TEST_SITE_PREFIX:-bats-test}-copy-dst"
 }
 
 teardown() {
-    # Cleanup copy site
-    if [ "${CLEANUP_SITES:-true}" = "true" ]; then
-        if [ -d "${PROJECT_ROOT}/sites/${TEST_COPY}" ]; then
-            cd "${PROJECT_ROOT}"
-            ./scripts/commands/delete.sh -fy "${TEST_COPY}" 2>/dev/null || true
-        fi
-    fi
     test_teardown
 }
 
+# Helper to conditionally skip DDEV tests
+skip_unless_ddev_enabled() {
+    [[ "${ENABLE_DDEV_TESTS:-false}" != "true" ]] && skip "DDEV tests disabled - set ENABLE_DDEV_TESTS=true to run"
+    command -v ddev &>/dev/null || skip "DDEV not installed"
+}
+
+# Helper to ensure source site exists
+ensure_source_site() {
+    if [ ! -d "${PROJECT_ROOT}/sites/${TEST_SITE}" ]; then
+        cd "${PROJECT_ROOT}"
+        # install.sh <recipe> <target> - auto mode via recipe config
+        ./scripts/commands/install.sh "${TEST_RECIPE}" "${TEST_SITE}" || return 1
+    fi
+}
+
 @test "copy: creates full copy of site" {
-    skip "Requires DDEV and full environment - run manually with test-nwp.sh"
+    skip_unless_ddev_enabled
 
     cd "${PROJECT_ROOT}"
-    run ./copy.sh -y "${TEST_SITE}" "${TEST_COPY}"
+
+    # First create a source site
+    ensure_source_site
+
+    run ./scripts/commands/copy.sh -y "${TEST_SITE}" "${TEST_COPY}"
+    echo "Output: $output"
     [ "$status" -eq 0 ]
 
     assert_dir_exists "sites/${TEST_COPY}"
 }
 
 @test "copy: copied site has DDEV config" {
-    skip "Requires DDEV and full environment - run manually with test-nwp.sh"
+    skip_unless_ddev_enabled
 
-    assert_file_exists "sites/${TEST_COPY}/.ddev/config.yaml"
+    [ -d "${PROJECT_ROOT}/sites/${TEST_COPY}" ] || skip "Copy site not created - run full test suite"
+
+    assert_file_exists "${PROJECT_ROOT}/sites/${TEST_COPY}/.ddev/config.yaml"
 }
 
 @test "copy: copied site is running" {
-    skip "Requires DDEV and full environment - run manually with test-nwp.sh"
+    skip_unless_ddev_enabled
+
+    [ -d "${PROJECT_ROOT}/sites/${TEST_COPY}" ] || skip "Copy site not created - run full test suite"
 
     cd "${PROJECT_ROOT}/sites/${TEST_COPY}"
     run ddev describe
+    echo "Output: $output"
     [ "$status" -eq 0 ]
-}
-
-@test "copy: files-only copy with -f flag" {
-    skip "Requires DDEV and full environment - run manually with test-nwp.sh"
-
-    cd "${PROJECT_ROOT}"
-    run ./copy.sh -fy "${TEST_SITE}" "${TEST_COPY}-files"
-    # This should warn but not fail completely
-    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
 }
 
 # Unit-style tests

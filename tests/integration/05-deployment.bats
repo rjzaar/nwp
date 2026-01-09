@@ -4,25 +4,78 @@
 #
 # Tests deployment workflow scripts
 # Corresponds to Tests 6 and 10 in COMPREHENSIVE_TESTING_PROPOSAL.md
+#
+# To run DDEV tests:
+#   ENABLE_DDEV_TESTS=true bats tests/integration/05-deployment.bats
+# Or use the test runner:
+#   ./tests/run-ddev-tests.sh 05-deployment
 ################################################################################
 
 load ../helpers/test-helpers
 
+# Use "d" recipe (standard Drupal) for faster tests
+TEST_RECIPE="${TEST_RECIPE:-d}"
+
+# File-level setup - runs once before all tests
+setup_file() {
+    export PROJECT_ROOT="${BATS_TEST_DIRNAME}/../.."
+    export TEST_SITE="${TEST_SITE_PREFIX:-bats-test}-deploy"
+    export TEST_SITE_STG="${TEST_SITE}-stg"
+}
+
+# File-level teardown - runs once after all tests
+teardown_file() {
+    if [ "${CLEANUP_SITES:-true}" = "true" ]; then
+        for site in "${TEST_SITE}" "${TEST_SITE_STG}"; do
+            if [ -d "${PROJECT_ROOT}/sites/${site}" ]; then
+                cd "${PROJECT_ROOT}"
+                if [ -f "${PROJECT_ROOT}/sites/${site}/.ddev/config.yaml" ]; then
+                    (cd "${PROJECT_ROOT}/sites/${site}" && ddev stop --unlist 2>/dev/null) || true
+                fi
+                ./scripts/commands/delete.sh -fy "${site}" 2>/dev/null || rm -rf "${PROJECT_ROOT}/sites/${site}"
+            fi
+        done
+    fi
+}
+
 setup() {
     test_setup
     export PROJECT_ROOT="${BATS_TEST_DIRNAME}/../.."
+    export TEST_SITE="${TEST_SITE_PREFIX:-bats-test}-deploy"
+    export TEST_SITE_STG="${TEST_SITE}-stg"
 }
 
 teardown() {
     test_teardown
 }
 
+# Helper to conditionally skip DDEV tests
+skip_unless_ddev_enabled() {
+    [[ "${ENABLE_DDEV_TESTS:-false}" != "true" ]] && skip "DDEV tests disabled - set ENABLE_DDEV_TESTS=true to run"
+    command -v ddev &>/dev/null || skip "DDEV not installed"
+}
+
+# Helper to create a test site for deployment tests
+ensure_test_site() {
+    if [ ! -d "${PROJECT_ROOT}/sites/${TEST_SITE}" ]; then
+        cd "${PROJECT_ROOT}"
+        # install.sh <recipe> <target> - auto mode via recipe config
+        ./scripts/commands/install.sh "${TEST_RECIPE}" "${TEST_SITE}" || return 1
+    fi
+}
+
 @test "dev2stg: deploys to local staging" {
-    skip "Requires DDEV and full environment - run manually with test-nwp.sh"
+    skip_unless_ddev_enabled
 
     cd "${PROJECT_ROOT}"
-    run ./dev2stg.sh -y "test-deployment"
-    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]  # May warn if staging doesn't exist
+
+    # First create a development site
+    ensure_test_site
+
+    run ./scripts/commands/dev2stg.sh -y "${TEST_SITE}"
+    echo "Output: $output"
+    # May succeed or warn if staging doesn't exist yet
+    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
 }
 
 # Unit-style tests

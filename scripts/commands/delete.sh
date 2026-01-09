@@ -161,9 +161,9 @@ create_backup() {
 
     print_header "Step 2: Create Backup"
 
-    if [ -f "./backup.sh" ]; then
+    if [ -f "$SCRIPT_DIR/backup.sh" ]; then
         ocmsg "Running backup script..."
-        if ./backup.sh $sitename "Pre-deletion backup"; then
+        if "$SCRIPT_DIR/backup.sh" "$sitename" "Pre-deletion backup"; then
             print_status "OK" "Backup created successfully"
             return 0
         else
@@ -547,3 +547,4 @@ fi
 show_elapsed_time "Site deletion"
 
 echo ""
+exit 0

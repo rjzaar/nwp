@@ -106,8 +106,9 @@ ensure_test_site() {
     backup_count=$(ls sitebackups/${TEST_SITE}/*.sql 2>/dev/null | wc -l)
     [ "$backup_count" -gt 0 ] || skip "No backup files found"
 
-    # Restore using site name with -f (auto-select latest) and -y (auto-confirm)
-    run ./scripts/commands/restore.sh -fy "${TEST_SITE}"
+    # Restore using site name with -b (db-only), -f (auto-select latest) and -y (auto-confirm)
+    # Using -b because the most recent backup from test 2 is db-only
+    run ./scripts/commands/restore.sh -bfy "${TEST_SITE}"
     echo "Output: $output"
     [ "$status" -eq 0 ]
 }

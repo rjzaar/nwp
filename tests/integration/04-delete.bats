@@ -31,7 +31,7 @@ teardown_file() {
                 if [ -f "${PROJECT_ROOT}/sites/${site}/.ddev/config.yaml" ]; then
                     (cd "${PROJECT_ROOT}/sites/${site}" && ddev stop --unlist 2>/dev/null) || true
                 fi
-                ./scripts/commands/delete.sh -fy "${site}" 2>/dev/null || rm -rf "${PROJECT_ROOT}/sites/${site}"
+                ./scripts/commands/delete.sh -y "${site}" 2>/dev/null || rm -rf "${PROJECT_ROOT}/sites/${site}"
             fi
         done
         # Cleanup any test backups
@@ -74,7 +74,7 @@ create_site_for_deletion() {
     # Verify it was created
     assert_dir_exists "sites/${TEST_SITE}"
 
-    run ./scripts/commands/delete.sh -fy "${TEST_SITE}"
+    run ./scripts/commands/delete.sh -y "${TEST_SITE}"
     echo "Output: $output"
     [ "$status" -eq 0 ]
 
@@ -90,7 +90,7 @@ create_site_for_deletion() {
     # Create a test site
     create_site_for_deletion "${TEST_SITE}-backup"
 
-    run ./scripts/commands/delete.sh -bfy "${TEST_SITE}-backup"
+    run ./scripts/commands/delete.sh -by "${TEST_SITE}-backup"
     echo "Output: $output"
     [ "$status" -eq 0 ]
 

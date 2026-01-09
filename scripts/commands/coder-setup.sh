@@ -34,6 +34,7 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/cloudflare.sh"
+source "$PROJECT_ROOT/lib/linode.sh"
 source "$PROJECT_ROOT/lib/yaml-write.sh"
 source "$PROJECT_ROOT/lib/git.sh"
 
@@ -366,27 +367,45 @@ cmd_add() {
     info "Base domain: $base_domain"
     info "Subdomain:   $subdomain"
 
-    # Get Cloudflare credentials
+    # Determine DNS provider (Cloudflare or Linode)
     local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
     local cf_zone_id=$(get_cloudflare_zone_id "$PROJECT_ROOT")
+    local linode_token=$(get_linode_token "$PROJECT_ROOT")
+    local dns_provider=""
     local skip_dns=false
 
-    if [[ -z "$cf_token" || -z "$cf_zone_id" ]]; then
-        warn "Cloudflare API credentials not configured - skipping DNS setup"
-        info "DNS delegation can be configured manually later"
-        skip_dns=true
-    else
-        # Verify Cloudflare auth
-        info "Verifying Cloudflare authentication..."
-        if ! verify_cloudflare_auth "$cf_token" "$cf_zone_id" 2>/dev/null; then
-            warn "Cloudflare authentication failed - skipping DNS setup"
-            skip_dns=true
+    # Check Cloudflare first
+    if [[ -n "$cf_token" && -n "$cf_zone_id" ]]; then
+        info "Verifying Cloudflare DNS access..."
+        if verify_cloudflare_auth "$cf_token" "$cf_zone_id" 2>/dev/null; then
+            dns_provider="cloudflare"
+            pass "Using Cloudflare DNS"
         else
-            pass "Cloudflare authenticated"
+            warn "Cloudflare authentication failed"
         fi
     fi
 
-    # DNS delegation setup (only if Cloudflare is configured)
+    # Fall back to Linode if Cloudflare not available
+    if [[ -z "$dns_provider" && -n "$linode_token" ]]; then
+        info "Verifying Linode DNS access..."
+        if verify_linode_dns "$linode_token" "$base_domain" 2>/dev/null; then
+            dns_provider="linode"
+            pass "Using Linode DNS"
+        else
+            warn "Linode DNS verification failed"
+            warn "Ensure $base_domain exists in Linode DNS Manager"
+        fi
+    fi
+
+    # No DNS provider available
+    if [[ -z "$dns_provider" ]]; then
+        warn "No DNS provider configured - skipping DNS setup"
+        info "Configure either Cloudflare or Linode DNS in .secrets.yml"
+        info "Or configure DNS delegation manually"
+        skip_dns=true
+    fi
+
+    # DNS delegation setup
     if ! $skip_dns; then
         # Get nameservers
         local nameservers=($(get_nameservers))
@@ -403,18 +422,28 @@ cmd_add() {
         if $dry_run; then
             warn "DRY RUN - No changes will be made"
             echo ""
-            info "Would create NS records:"
+            info "Would create NS records via $dns_provider:"
             for ns in "${nameservers[@]}"; do
                 task "$name  NS  $ns"
             done
         else
-            # Create NS delegation
-            info "Creating NS delegation..."
-            if cf_create_ns_delegation "$cf_token" "$cf_zone_id" "$name" "${nameservers[@]}"; then
-                pass "NS delegation created for $subdomain"
-            else
-                fail "Failed to create NS delegation"
-                exit 1
+            # Create NS delegation using selected provider
+            info "Creating NS delegation via $dns_provider..."
+
+            if [[ "$dns_provider" == "cloudflare" ]]; then
+                if cf_create_ns_delegation "$cf_token" "$cf_zone_id" "$name" "${nameservers[@]}"; then
+                    pass "NS delegation created for $subdomain"
+                else
+                    fail "Failed to create NS delegation"
+                    exit 1
+                fi
+            elif [[ "$dns_provider" == "linode" ]]; then
+                if linode_create_ns_delegation "$linode_token" "$base_domain" "$name" "${nameservers[@]}"; then
+                    pass "NS delegation created for $subdomain"
+                else
+                    fail "Failed to create NS delegation"
+                    exit 1
+                fi
             fi
         fi
     fi
@@ -527,13 +556,30 @@ cmd_remove() {
     info "This will perform full offboarding cleanup"
     echo ""
 
-    # Get Cloudflare credentials
+    # Determine DNS provider (Cloudflare or Linode)
     local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
     local cf_zone_id=$(get_cloudflare_zone_id "$PROJECT_ROOT")
+    local linode_token=$(get_linode_token "$PROJECT_ROOT")
+    local dns_provider=""
     local skip_dns=false
 
-    if [[ -z "$cf_token" || -z "$cf_zone_id" ]]; then
-        warn "Cloudflare API credentials not found - skipping DNS removal"
+    # Check Cloudflare first
+    if [[ -n "$cf_token" && -n "$cf_zone_id" ]]; then
+        if verify_cloudflare_auth "$cf_token" "$cf_zone_id" 2>/dev/null; then
+            dns_provider="cloudflare"
+        fi
+    fi
+
+    # Fall back to Linode if Cloudflare not available
+    if [[ -z "$dns_provider" && -n "$linode_token" ]]; then
+        if verify_linode_dns "$linode_token" "$base_domain" 2>/dev/null; then
+            dns_provider="linode"
+        fi
+    fi
+
+    # No DNS provider available
+    if [[ -z "$dns_provider" ]]; then
+        warn "No DNS provider configured - skipping DNS removal"
         skip_dns=true
     fi
 
@@ -573,11 +619,20 @@ cmd_remove() {
 
     # Step 1: Delete NS delegation
     if ! $skip_dns; then
-        info "Removing NS delegation..."
-        if cf_delete_ns_delegation "$cf_token" "$cf_zone_id" "$name"; then
-            pass "NS delegation removed"
-        else
-            warn "Failed to remove NS delegation (may not exist)"
+        info "Removing NS delegation via $dns_provider..."
+
+        if [[ "$dns_provider" == "cloudflare" ]]; then
+            if cf_delete_ns_delegation "$cf_token" "$cf_zone_id" "$name"; then
+                pass "NS delegation removed"
+            else
+                warn "Failed to remove NS delegation (may not exist)"
+            fi
+        elif [[ "$dns_provider" == "linode" ]]; then
+            if linode_delete_ns_delegation "$linode_token" "$base_domain" "$name"; then
+                pass "NS delegation removed"
+            else
+                warn "Failed to remove NS delegation (may not exist)"
+            fi
         fi
     fi
 

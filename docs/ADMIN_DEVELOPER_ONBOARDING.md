@@ -29,6 +29,31 @@ Before onboarding a developer, collect:
 - Desired **username** (alphanumeric, starts with letter)
 - Target **GitLab group** (default: nwp)
 
+### DNS Provider Setup (One-Time)
+
+NWP supports two DNS providers for automated NS delegation:
+
+**Option 1: Cloudflare** (if you're already using it)
+```yaml
+# .secrets.yml
+cloudflare:
+  api_token: "your_token"
+  zone_id: "your_zone_id"
+```
+
+**Option 2: Linode DNS** (simpler, all-in-one)
+```yaml
+# .secrets.yml
+linode:
+  api_token: "your_token"
+```
+
+**Requirements for Linode DNS:**
+- Base domain (e.g., `nwpcode.org`) must exist in Linode DNS Manager
+- Domain nameservers should point to Linode: `ns1-5.linode.com`
+
+**Without either:** NS delegation will be skipped (configure manually)
+
 ### Basic Onboarding (3 Steps)
 
 ```bash
@@ -37,6 +62,7 @@ pl coder-setup add <username> \
   --email "user@example.com" \
   --fullname "First Last" \
   --gitlab-group nwp
+# This automatically creates NS delegation if DNS provider is configured
 
 # 2. (Optional) Add their SSH key
 # See "SSH Key Management" section below
@@ -785,9 +811,80 @@ What access level?
 └─ Team lead        → Owner (50)
 
 Need DNS subdomain?
-├─ Yes, automate → Configure Cloudflare in .secrets.yml (coder-setup handles NS delegation)
-├─ Yes, manual   → Skip Cloudflare config (DNS skipped, configure manually later)
-└─ No            → GitLab-only onboarding (Cloudflare not needed)
+├─ Yes, automate → Configure Cloudflare OR Linode in .secrets.yml
+├─ Yes, manual   → Skip DNS provider config (configure manually later)
+└─ No            → GitLab-only onboarding (no DNS needed)
+
+Which DNS provider?
+├─ Already using Cloudflare → Keep Cloudflare
+├─ Using Linode for servers  → Use Linode DNS (simpler)
+└─ Neither configured        → Manual DNS or add later
+```
+
+---
+
+## Switching from Cloudflare to Linode DNS
+
+If you want to simplify your stack by using Linode for both servers and DNS:
+
+### Step 1: Create Domain in Linode
+
+```bash
+# Via Linode CLI
+linode-cli domains create \
+  --domain nwpcode.org \
+  --type master \
+  --soa_email admin@nwpcode.org
+
+# Or via Linode Dashboard: https://cloud.linode.com/domains
+```
+
+### Step 2: Migrate Existing NS Delegations
+
+If you already have coders with Cloudflare NS delegation:
+
+```bash
+# List current NS records for each coder
+pl coder-setup list
+
+# For each coder, you'll need to:
+# 1. Create NS records in Linode manually or
+# 2. Remove and re-add the coder (recreates NS delegation)
+```
+
+### Step 3: Update Nameservers at Registrar
+
+Point your domain's nameservers to Linode:
+```
+ns1.linode.com
+ns2.linode.com
+ns3.linode.com
+ns4.linode.com
+ns5.linode.com
+```
+
+**Wait 24-48 hours** for DNS propagation.
+
+### Step 4: Update .secrets.yml
+
+Remove Cloudflare, keep only Linode:
+```yaml
+# .secrets.yml
+linode:
+  api_token: "your_linode_token"
+
+# Remove or comment out:
+# cloudflare:
+#   api_token: "..."
+#   zone_id: "..."
+```
+
+### Step 5: Test
+
+```bash
+# Verify Linode DNS is detected
+pl coder-setup add testuser --dry-run --email "test@example.com"
+# Should show: "Using Linode DNS"
 ```
 
 ---
@@ -796,6 +893,7 @@ Need DNS subdomain?
 
 | Date | Change |
 |------|--------|
+| 2026-01-09 | Added Linode DNS support as alternative to Cloudflare |
 | 2026-01-08 | Initial version - covers GitLab user/group management |
 
 ---

@@ -354,6 +354,202 @@ cleanup_test_linodes() {
     done
 }
 
+################################################################################
+# Linode DNS Functions
+################################################################################
+
+# Get domain ID by domain name
+# Usage: linode_get_domain_id "TOKEN" "example.com"
+# Returns: Domain ID or empty string
+linode_get_domain_id() {
+    local token=$1
+    local domain=$2
+
+    local response=$(curl -s -H "Authorization: Bearer $token" \
+        "https://api.linode.com/v4/domains")
+
+    # Extract domain ID using grep
+    echo "$response" | grep -o "\"id\":[0-9]*,\"type\":\"[^\"]*\",\"domain\":\"$domain\"" | \
+        grep -o "\"id\":[0-9]*" | grep -o "[0-9]*" | head -1
+}
+
+# Create a DNS NS record
+# Usage: linode_create_dns_ns "TOKEN" "DOMAIN_ID" "subdomain" "nameserver"
+# Returns: Record ID on success
+linode_create_dns_ns() {
+    local token=$1
+    local domain_id=$2
+    local name=$3
+    local target=$4
+
+    local response=$(curl -s -X POST \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"type\": \"NS\",
+            \"name\": \"$name\",
+            \"target\": \"$target\",
+            \"ttl_sec\": 300
+        }" \
+        "https://api.linode.com/v4/domains/$domain_id/records")
+
+    if echo "$response" | grep -q '"id":[0-9]*'; then
+        local record_id=$(echo "$response" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+        echo "$record_id"
+        return 0
+    else
+        echo "ERROR: Failed to create NS record for $name -> $target" >&2
+        echo "$response" | grep -o '"errors":\[.*\]' >&2
+        return 1
+    fi
+}
+
+# Create multiple NS records for subdomain delegation
+# Usage: linode_create_ns_delegation "TOKEN" "DOMAIN" "subdomain" "ns1.example.com" "ns2.example.com" ...
+# Returns: 0 on success, 1 on failure
+linode_create_ns_delegation() {
+    local token=$1
+    local base_domain=$2
+    local subdomain=$3
+    shift 3
+    local nameservers=("$@")
+
+    # Get domain ID
+    local domain_id=$(linode_get_domain_id "$token" "$base_domain")
+    if [ -z "$domain_id" ]; then
+        echo "ERROR: Domain not found: $base_domain" >&2
+        echo "Ensure $base_domain exists in Linode DNS Manager" >&2
+        return 1
+    fi
+
+    local success=0
+    local created_ids=()
+
+    echo "Creating NS delegation for $subdomain.$base_domain..." >&2
+
+    for ns in "${nameservers[@]}"; do
+        echo "  Adding NS record: $subdomain -> $ns" >&2
+        local record_id=$(linode_create_dns_ns "$token" "$domain_id" "$subdomain" "$ns")
+        if [ -n "$record_id" ] && [ "$record_id" != "ERROR:"* ]; then
+            created_ids+=("$record_id")
+        else
+            echo "  Failed to create NS record for $ns" >&2
+            success=1
+        fi
+    done
+
+    if [ $success -eq 0 ]; then
+        echo "NS delegation created successfully (${#created_ids[@]} records)" >&2
+        echo "${created_ids[*]}"
+        return 0
+    else
+        echo "NS delegation partially failed" >&2
+        return 1
+    fi
+}
+
+# Delete all NS records for a subdomain
+# Usage: linode_delete_ns_delegation "TOKEN" "DOMAIN" "subdomain"
+linode_delete_ns_delegation() {
+    local token=$1
+    local base_domain=$2
+    local subdomain=$3
+
+    # Get domain ID
+    local domain_id=$(linode_get_domain_id "$token" "$base_domain")
+    if [ -z "$domain_id" ]; then
+        echo "ERROR: Domain not found: $base_domain" >&2
+        return 1
+    fi
+
+    echo "Removing NS delegation for $subdomain.$base_domain..." >&2
+
+    # Get all NS records for this subdomain
+    local response=$(curl -s -H "Authorization: Bearer $token" \
+        "https://api.linode.com/v4/domains/$domain_id/records")
+
+    # Extract record IDs for NS records matching the subdomain
+    local record_ids=$(echo "$response" | grep -o "\"id\":[0-9]*,\"type\":\"NS\",\"name\":\"$subdomain\"" | \
+        grep -o "\"id\":[0-9]*" | grep -o "[0-9]*")
+
+    if [ -z "$record_ids" ]; then
+        echo "No NS records found for $subdomain" >&2
+        return 0
+    fi
+
+    local deleted=0
+    for record_id in $record_ids; do
+        if linode_delete_dns_record "$token" "$domain_id" "$record_id"; then
+            ((deleted++))
+        fi
+    done
+
+    echo "Deleted $deleted NS records for $subdomain" >&2
+    return 0
+}
+
+# Delete a DNS record
+# Usage: linode_delete_dns_record "TOKEN" "DOMAIN_ID" "RECORD_ID"
+linode_delete_dns_record() {
+    local token=$1
+    local domain_id=$2
+    local record_id=$3
+
+    local response=$(curl -s -X DELETE \
+        -H "Authorization: Bearer $token" \
+        "https://api.linode.com/v4/domains/$domain_id/records/$record_id")
+
+    # Linode returns empty response on successful delete
+    if [ -z "$response" ] || echo "$response" | grep -q '"id":[0-9]*'; then
+        echo "DNS record $record_id deleted" >&2
+        return 0
+    else
+        echo "ERROR: Failed to delete DNS record $record_id" >&2
+        return 1
+    fi
+}
+
+# List NS records for a subdomain
+# Usage: linode_list_ns_records "TOKEN" "DOMAIN" "subdomain"
+linode_list_ns_records() {
+    local token=$1
+    local base_domain=$2
+    local subdomain=$3
+
+    # Get domain ID
+    local domain_id=$(linode_get_domain_id "$token" "$base_domain")
+    if [ -z "$domain_id" ]; then
+        echo "ERROR: Domain not found: $base_domain" >&2
+        return 1
+    fi
+
+    local response=$(curl -s -H "Authorization: Bearer $token" \
+        "https://api.linode.com/v4/domains/$domain_id/records")
+
+    # Parse and display NS records for the subdomain
+    echo "$response" | grep "\"type\":\"NS\",\"name\":\"$subdomain\"" | \
+        grep -o "\"target\":\"[^\"]*\"" | cut -d'"' -f4
+}
+
+# Verify Linode DNS API access
+# Usage: verify_linode_dns "TOKEN" "DOMAIN"
+# Returns: 0 on success, 1 on failure
+verify_linode_dns() {
+    local token=$1
+    local domain=$2
+
+    local domain_id=$(linode_get_domain_id "$token" "$domain")
+
+    if [ -n "$domain_id" ]; then
+        echo "Authenticated for domain: $domain (ID: $domain_id)" >&2
+        return 0
+    else
+        echo "ERROR: Domain not found in Linode DNS: $domain" >&2
+        echo "Create the domain in Linode DNS Manager first" >&2
+        return 1
+    fi
+}
+
 # Export functions for use in other scripts
 export -f get_linode_token
 export -f get_ssh_key_id
@@ -366,3 +562,10 @@ export -f delete_linode_instance
 export -f provision_test_linode
 export -f list_test_linodes
 export -f cleanup_test_linodes
+export -f linode_get_domain_id
+export -f linode_create_dns_ns
+export -f linode_create_ns_delegation
+export -f linode_delete_ns_delegation
+export -f linode_delete_dns_record
+export -f linode_list_ns_records
+export -f verify_linode_dns

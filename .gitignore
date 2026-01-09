@@ -45,6 +45,8 @@ sites/*
 
 # Documentation and metadata
 !README.md
+!CHANGELOG.md
+!CONTRIBUTING.md
 !KNOWN_ISSUES.md
 !LICENSE
 !CLAUDE.md

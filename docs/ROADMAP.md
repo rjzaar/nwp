@@ -1,6 +1,6 @@
 # NWP Roadmap - Pending & Future Work
 
-**Last Updated:** January 8, 2026
+**Last Updated:** January 9, 2026
 
 Pending implementation items and future improvements for NWP.
 
@@ -12,7 +12,7 @@ Pending implementation items and future improvements for NWP.
 
 | Metric | Value |
 |--------|-------|
-| Current Version | v0.12 |
+| Current Version | v0.17 |
 | Test Success Rate | 98% |
 | Completed Proposals | P01-P35 (100%) |
 | Pending Proposals | F01-F08 |
@@ -26,7 +26,7 @@ Pending implementation items and future improvements for NWP.
 | Phase 1-5b | Foundation through Import | P01-P31 | ✅ Complete |
 | Phase 5c | Live Deployment Automation | P32-P35 | ✅ Complete |
 | **Phase 6** | **AI & Visual Testing** | **F01-F03, F08** | **Future** |
-| **Phase 7** | **Governance & Security** | **F04-F07** | **Future** |
+| **Phase 7** | **Governance & Security** | **F04-F07** | **In Progress** |
 
 ---
 

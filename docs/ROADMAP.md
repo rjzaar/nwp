@@ -38,13 +38,13 @@ Based on dependencies, current progress, and priority:
 |-------|----------|--------|-----------|
 | 1 | F05 | IMPLEMENTED | Only 1 item left - quick win |
 | 2 | F04 | IN PROGRESS | 5/8 phases done, foundation for F06 |
-| 3 | F07 | PROPOSED | No F-dependencies, protects staging now |
-| 4 | F06 | PLANNED | Depends on F04 (mostly done) |
-| 5 | F01 | PLANNED | Foundation for F02, enhances CI |
-| 6 | F03 | IN PROGRESS | Independent, visual testing |
-| 7 | F08 | PROPOSED | Needs stable GitLab infrastructure |
-| 8 | F02 | PLANNED | Depends on F01, lowest priority |
-| 9 | F09 | PROPOSED | High effort, builds on all testing |
+| 3 | F09 | PROPOSED | Testing infrastructure enables validation of all features |
+| 4 | F07 | PROPOSED | No F-dependencies, protects staging now |
+| 5 | F06 | PLANNED | Depends on F04 (mostly done) |
+| 6 | F01 | PLANNED | Foundation for F02, enhances CI |
+| 7 | F03 | IN PROGRESS | Independent, visual testing |
+| 8 | F08 | PROPOSED | Needs stable GitLab infrastructure |
+| 9 | F02 | PLANNED | Depends on F01, lowest priority |
 
 ---
 
@@ -358,13 +358,13 @@ Automated testing infrastructure using Linode for comprehensive E2E testing:
 |-------|----------|----------|--------|--------------|-------|
 | 1 | F05 | HIGH | Low | stg2live | 6 |
 | 2 | F04 | HIGH | High | GitLab | 6 |
-| 3 | F07 | HIGH | Medium | stg2live, recipes | 6 |
-| 4 | F06 | HIGH | Medium | F04, GitLab CI | 6 |
-| 5 | F01 | MEDIUM | Low | GitLab | 7 |
-| 6 | F03 | MEDIUM | Medium | Behat | 7 |
-| 7 | F08 | MEDIUM | Medium | verify.sh, test-nwp.sh, GitLab | 7 |
-| 8 | F02 | LOW | Medium | F01 | 7 |
-| 9 | F09 | HIGH | High | Linode, GitLab CI | 7 |
+| 3 | F09 | HIGH | High | Linode, GitLab CI | 7 |
+| 4 | F07 | HIGH | Medium | stg2live, recipes | 6 |
+| 5 | F06 | HIGH | Medium | F04, GitLab CI | 6 |
+| 6 | F01 | MEDIUM | Low | GitLab | 7 |
+| 7 | F03 | MEDIUM | Medium | Behat | 7 |
+| 8 | F08 | MEDIUM | Medium | verify.sh, test-nwp.sh, GitLab | 7 |
+| 9 | F02 | LOW | Medium | F01 | 7 |
 
 ---
 
@@ -398,3 +398,4 @@ Automated testing infrastructure using Linode for comprehensive E2E testing:
 *Phase 5c (P32-P35) completed: January 5, 2026*
 *Phase 6-7 reorganized: January 9, 2026*
 *Proposals reordered by implementation priority: January 9, 2026*
+*F09 (Testing) moved to position 3: January 9, 2026*

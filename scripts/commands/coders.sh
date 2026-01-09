@@ -5,6 +5,7 @@
 #
 # Interactive terminal interface for managing NWP coders with:
 # - Auto-listing of all coders on startup
+# - Onboarding status columns (GitLab, DNS, Server, Site)
 # - Arrow key navigation
 # - Bulk actions (delete, promote)
 # - Auto-sync from GitLab
@@ -48,6 +49,7 @@ CODER_SETUP="${SCRIPT_DIR}/coder-setup.sh"
 # TUI State
 declare -a CODERS=()
 declare -a CODER_DATA=()
+declare -a CODER_STATUS=()  # Onboarding status: GL|GRP|NS|DNS|SRV|SITE
 declare -a SELECTED=()
 CURRENT_INDEX=0
 FILTER=""
@@ -55,6 +57,7 @@ LAST_SYNC=""
 TERMINAL_HEIGHT=0
 TERMINAL_WIDTH=0
 LIST_START=0
+STATUS_CHECKED=false
 
 # Colors
 readonly RED='\033[0;31m'
@@ -137,6 +140,224 @@ read_key() {
 }
 
 ################################################################################
+# Onboarding Status Check Functions
+################################################################################
+
+# Check if GitLab user exists
+check_gitlab_user() {
+    local name="$1"
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    [[ -z "$gitlab_url" || -z "$token" ]] && echo "?" && return
+
+    local user_id=$(curl -s --max-time 5 -H "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/users?username=${name}" 2>/dev/null | jq -r '.[0].id // empty')
+
+    [[ -n "$user_id" ]] && echo "Y" || echo "N"
+}
+
+# Check if user is in GitLab group
+check_gitlab_group() {
+    local name="$1"
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    [[ -z "$gitlab_url" || -z "$token" ]] && echo "?" && return
+
+    local user_id=$(curl -s --max-time 5 -H "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/users?username=${name}" 2>/dev/null | jq -r '.[0].id // empty')
+
+    [[ -z "$user_id" ]] && echo "N" && return
+
+    # Check if in nwp group
+    local group_id=$(curl -s --max-time 5 -H "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/groups?search=nwp" 2>/dev/null | jq -r '.[0].id // empty')
+
+    [[ -z "$group_id" ]] && echo "?" && return
+
+    local member=$(curl -s --max-time 5 -H "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/groups/${group_id}/members/${user_id}" 2>/dev/null | jq -r '.id // empty')
+
+    [[ -n "$member" ]] && echo "Y" || echo "N"
+}
+
+# Get base domain (works with or without yq)
+get_base_domain_for_check() {
+    if command -v yq &>/dev/null; then
+        get_base_domain_for_check
+    else
+        local result=$(awk '
+            /^settings:/ { in_section = 1; next }
+            in_section && /^[a-zA-Z]/ && !/^  / { in_section = 0 }
+            in_section && /^  url:/ {
+                sub(/^  url: */, "")
+                sub(/#.*/, "")
+                gsub(/["'"'"']/, "")
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+                if (length($0) > 0) print
+                exit
+            }
+        ' "$CONFIG_FILE" 2>/dev/null)
+        echo "${result:-nwpcode.org}"
+    fi
+}
+
+# Get coder field from config (works with or without yq)
+get_coder_field() {
+    local name="$1"
+    local field="$2"
+
+    if command -v yq &>/dev/null; then
+        yq -r ".other_coders.coders.${name}.${field} // empty" "$CONFIG_FILE" 2>/dev/null
+    else
+        awk -v coder="$name" -v field="$field" '
+            /^other_coders:/ { in_other = 1; next }
+            in_other && /^  coders:/ { in_coders = 1; next }
+            in_coders && $0 ~ "^    " coder ":" { in_coder = 1; next }
+            in_coder && /^    [a-zA-Z]/ && !/^      / { in_coder = 0 }
+            in_coder && $0 ~ "^      " field ":" {
+                sub(/^      [a-zA-Z_]+: */, "")
+                gsub(/["'"'"']/, "")
+                print
+                exit
+            }
+        ' "$CONFIG_FILE" 2>/dev/null
+    fi
+}
+
+# Check NS delegation
+check_ns_delegation() {
+    local name="$1"
+    local base_domain=$(get_base_domain_for_check)
+    local subdomain="${name}.${base_domain}"
+
+    local ns=$(dig NS "$subdomain" +short +time=2 +tries=1 2>/dev/null | head -1)
+
+    [[ -n "$ns" ]] && echo "Y" || echo "N"
+}
+
+# Check DNS A records
+check_dns_records() {
+    local name="$1"
+    local base_domain=$(get_base_domain_for_check)
+    local subdomain="${name}.${base_domain}"
+
+    local ip=$(dig A "$subdomain" +short +time=2 +tries=1 2>/dev/null | head -1)
+
+    [[ -n "$ip" && "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo "Y" || echo "N"
+}
+
+# Check server exists (from config or Linode)
+check_server() {
+    local name="$1"
+
+    # First check config for server_ip
+    local server_ip=$(get_coder_field "$name" "server_ip")
+
+    if [[ -n "$server_ip" && "$server_ip" != "null" ]]; then
+        echo "Y"
+        return
+    fi
+
+    # Check if linode_label exists
+    local linode_label=$(get_coder_field "$name" "linode_label")
+
+    [[ -n "$linode_label" && "$linode_label" != "null" ]] && echo "Y" || echo "N"
+}
+
+# Check site is accessible
+check_site() {
+    local name="$1"
+    local base_domain=$(get_base_domain_for_check)
+    local subdomain="${name}.${base_domain}"
+
+    # Try to reach the site
+    local status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "https://${subdomain}" 2>/dev/null)
+
+    [[ "$status" =~ ^(200|301|302|303)$ ]] && echo "Y" || echo "N"
+}
+
+# Determine if step is required based on role
+# Returns: Y=required, N=not required
+step_required() {
+    local step="$1"  # GL, GRP, NS, DNS, SRV, SITE
+    local role="$2"  # steward, core, contributor, newcomer
+
+    case "$step" in
+        GL|GRP)
+            # All coders need GitLab access
+            echo "Y"
+            ;;
+        NS|DNS)
+            # Core+ need their own subdomain
+            case "$role" in
+                steward|core) echo "Y" ;;
+                *) echo "N" ;;
+            esac
+            ;;
+        SRV|SITE)
+            # Only core+ need their own server/site
+            case "$role" in
+                steward|core) echo "Y" ;;
+                *) echo "N" ;;
+            esac
+            ;;
+        *)
+            echo "Y"
+            ;;
+    esac
+}
+
+# Load onboarding status for a coder (returns: GL|GRP|NS|DNS|SRV|SITE)
+# Values: Y=yes, N=no, ?=unknown, -=not required
+load_coder_status() {
+    local name="$1"
+    local role="$2"
+
+    local gl grp ns dns srv site
+
+    # Check each step, respecting role requirements
+    if [[ $(step_required "GL" "$role") == "Y" ]]; then
+        gl=$(check_gitlab_user "$name")
+    else
+        gl="-"
+    fi
+
+    if [[ $(step_required "GRP" "$role") == "Y" ]]; then
+        grp=$(check_gitlab_group "$name")
+    else
+        grp="-"
+    fi
+
+    if [[ $(step_required "NS" "$role") == "Y" ]]; then
+        ns=$(check_ns_delegation "$name")
+    else
+        ns="-"
+    fi
+
+    if [[ $(step_required "DNS" "$role") == "Y" ]]; then
+        dns=$(check_dns_records "$name")
+    else
+        dns="-"
+    fi
+
+    if [[ $(step_required "SRV" "$role") == "Y" ]]; then
+        srv=$(check_server "$name")
+    else
+        srv="-"
+    fi
+
+    if [[ $(step_required "SITE" "$role") == "Y" ]]; then
+        site=$(check_site "$name")
+    else
+        site="-"
+    fi
+
+    echo "${gl}|${grp}|${ns}|${dns}|${srv}|${site}"
+}
+
+################################################################################
 # Data Functions
 ################################################################################
 
@@ -144,7 +365,9 @@ read_key() {
 load_coders() {
     CODERS=()
     CODER_DATA=()
+    CODER_STATUS=()
     SELECTED=()
+    STATUS_CHECKED=false
 
     local coders_list
     if command -v yq &>/dev/null; then
@@ -187,7 +410,36 @@ load_coders() {
         fi
 
         CODER_DATA+=("$role|$status|${added:0:10}|$commits|$mrs|$reviews")
+        # Initialize status as unknown (will be checked later)
+        CODER_STATUS+=("?|?|?|?|?|?")
     done <<< "$coders_list"
+}
+
+# Check onboarding status for all coders (run after initial load)
+check_all_status() {
+    for i in "${!CODERS[@]}"; do
+        local name="${CODERS[$i]}"
+        local data="${CODER_DATA[$i]:-contributor|active||0|0|0}"
+        local role=$(echo "$data" | cut -d'|' -f1)
+
+        # Update status row in TUI
+        get_terminal_size
+        local status_row=$((TERMINAL_HEIGHT - 1))
+        cursor_to "$status_row" 1
+        clear_line
+        printf " ${DIM}Checking: %s...${NC}" "$name"
+
+        CODER_STATUS[$i]=$(load_coder_status "$name" "$role")
+        draw_coder_row "$i" $((5 + i - LIST_START)) 2>/dev/null || true
+    done
+
+    STATUS_CHECKED=true
+
+    # Clear status message
+    get_terminal_size
+    local status_row=$((TERMINAL_HEIGHT - 1))
+    cursor_to "$status_row" 1
+    clear_line
 }
 
 # Sync from GitLab
@@ -309,13 +561,18 @@ draw_column_headers() {
     cursor_to 3 1
     clear_line
     printf "${BOLD}${DIM}"
-    printf "   %-15s %-10s %-8s %-10s %8s %6s %7s" "NAME" "ROLE" "STATUS" "ADDED" "COMMITS" "MRs" "REVIEWS"
+    printf "   %-12s %-8s " "NAME" "ROLE"
+    # Onboarding status columns
+    printf "%3s %3s %3s %3s %3s %4s  " "GL" "GRP" "NS" "DNS" "SRV" "SITE"
+    printf "%6s %4s" "COMMIT" "MRs"
     printf "${NC}\n"
 
     cursor_to 4 1
     clear_line
     printf "${DIM}"
-    printf "   %-15s %-10s %-8s %-10s %8s %6s %7s" "───────────────" "──────────" "────────" "──────────" "────────" "──────" "───────"
+    printf "   %-12s %-8s " "────────────" "────────"
+    printf "%3s %3s %3s %3s %3s %4s  " "──" "───" "──" "───" "───" "────"
+    printf "%6s %4s" "──────" "────"
     printf "${NC}\n"
 }
 
@@ -328,6 +585,7 @@ draw_coder_row() {
 
     local name="${CODERS[$index]}"
     local data="${CODER_DATA[$index]:-contributor|active||0|0|0}"
+    local onboard_status="${CODER_STATUS[$index]:-?|?|?|?|?|?}"
 
     local role=$(echo "$data" | cut -d'|' -f1)
     local status=$(echo "$data" | cut -d'|' -f2)
@@ -335,6 +593,14 @@ draw_coder_row() {
     local commits=$(echo "$data" | cut -d'|' -f4)
     local mrs=$(echo "$data" | cut -d'|' -f5)
     local reviews=$(echo "$data" | cut -d'|' -f6)
+
+    # Parse onboarding status
+    local gl=$(echo "$onboard_status" | cut -d'|' -f1)
+    local grp=$(echo "$onboard_status" | cut -d'|' -f2)
+    local ns=$(echo "$onboard_status" | cut -d'|' -f3)
+    local dns=$(echo "$onboard_status" | cut -d'|' -f4)
+    local srv=$(echo "$onboard_status" | cut -d'|' -f5)
+    local site=$(echo "$onboard_status" | cut -d'|' -f6)
 
     cursor_to "$row" 1
     clear_line
@@ -359,29 +625,44 @@ draw_coder_row() {
         printf "[ ]"
     fi
 
-    # Name
-    printf " %-14s" "$name"
+    # Name (truncated to 11 chars)
+    printf " %-11s" "${name:0:11}"
 
     # Role with color
     local rc=$(role_color "$role")
-    printf " ${rc}%-9s${NC}" "$(role_display "$role")"
+    printf " ${rc}%-7s${NC}" "$(role_display "$role")"
 
-    # Status with color
-    local sc=$(status_color "$status")
-    printf " ${sc}%-7s${NC}" "$status"
+    # Onboarding status columns with colors
+    print_status_cell "$gl"
+    print_status_cell "$grp"
+    print_status_cell "$ns"
+    print_status_cell "$dns"
+    print_status_cell "$srv"
+    print_status_cell "$site" 4
 
-    # Added date
-    printf " %-10s" "${added:-N/A}"
-
-    # Stats with visual bars
-    local max_bar=8
-    printf " %8s" "$commits"
-    printf " %6s" "$mrs"
-    printf " %7s" "$reviews"
+    # Stats
+    printf " %6s" "$commits"
+    printf " %4s" "$mrs"
 
     if ((index == CURRENT_INDEX)); then
         printf "${NC}"
     fi
+}
+
+# Print a status cell with appropriate color
+# Y=green ✓, N=red ✗, ?=yellow ?, -=dim -
+# Note: '-' must come before '?' since '?' is a glob pattern matching any char
+print_status_cell() {
+    local val="$1"
+    local width="${2:-3}"
+
+    case "$val" in
+        Y) printf " ${GREEN}%*s${NC}" "$width" "✓" ;;
+        N) printf " ${RED}%*s${NC}" "$width" "✗" ;;
+        -) printf " ${DIM}%*s${NC}" "$width" "-" ;;
+        '?') printf " ${YELLOW}%*s${NC}" "$width" "?" ;;
+        *) printf " %*s" "$width" "$val" ;;
+    esac
 }
 
 draw_coder_list() {
@@ -437,7 +718,7 @@ draw_footer() {
         printf " | ${DIM}%s commits, %s MRs${NC}" "$commits" "$mrs"
 
         # Show subdomain
-        local base_domain=$(yq -r '.settings.url // "nwpcode.org"' "$CONFIG_FILE" 2>/dev/null)
+        local base_domain=$(get_base_domain_for_check)
         printf " | ${DIM}%s.%s${NC}" "$name" "$base_domain"
     fi
 
@@ -445,14 +726,17 @@ draw_footer() {
     ((footer_row++))
     cursor_to "$footer_row" 1
     clear_line
-    printf " ${DIM}↑↓${NC} Navigate  "
-    printf "${DIM}Space${NC} Select  "
+    printf " ${DIM}↑↓${NC} Nav  "
+    printf "${DIM}Space${NC} Sel  "
     printf "${DIM}Enter${NC} Details  "
-    printf "${DIM}M${NC}odify  "
-    printf "${DIM}P${NC}romote  "
-    printf "${DIM}D${NC}elete  "
+    printf "${DIM}M${NC}od  "
+    printf "${DIM}P${NC}rom  "
+    printf "${DIM}D${NC}el  "
     printf "${DIM}A${NC}dd  "
     printf "${DIM}S${NC}ync  "
+    printf "${DIM}C${NC}heck  "
+    printf "${DIM}H${NC}elp  "
+    printf "${DIM}O${NC}pen doc  "
     printf "${DIM}Q${NC}uit"
 
     # Status line
@@ -499,7 +783,7 @@ show_details() {
     printf "  Status:     $(status_color "$status")%s${NC}\n" "$status"
     printf "  Registered: %s\n" "${added:-Unknown}"
 
-    local base_domain=$(yq -r '.settings.url // "nwpcode.org"' "$CONFIG_FILE" 2>/dev/null)
+    local base_domain=$(get_base_domain_for_check)
     printf "  Subdomain:  %s.%s\n" "$name" "$base_domain"
     printf "\n"
 
@@ -835,6 +1119,90 @@ do_sync() {
 }
 
 ################################################################################
+# Help & Documentation
+################################################################################
+
+# Show help screen with status column explanations
+show_help_screen() {
+    clear
+    cursor_to 1 1
+
+    printf "${BOLD}${REVERSE} CODERS TUI HELP ${NC}\n\n"
+
+    printf "${BOLD}Status Columns${NC}\n"
+    printf "  ${GREEN}✓${NC}  Complete/OK\n"
+    printf "  ${RED}✗${NC}  Missing/Failed\n"
+    printf "  ${YELLOW}?${NC}  Unknown/Checking\n"
+    printf "  ${DIM}-${NC}  Not required for role\n\n"
+
+    printf "${BOLD}Role-based Requirements${NC}\n"
+    printf "  ${DIM}Newcomer/Contributor:${NC} Only GL + GRP required\n"
+    printf "  ${DIM}Core/Steward:${NC}         All steps required (GL, GRP, NS, DNS, SRV, SITE)\n\n"
+
+    printf "${BOLD}Status Checks${NC}\n"
+    printf "  ${CYAN}GL${NC}   GitLab user exists (via API)\n"
+    printf "  ${CYAN}GRP${NC}  GitLab group membership (via API)\n"
+    printf "  ${CYAN}NS${NC}   NS delegation configured (dig NS)\n"
+    printf "  ${CYAN}DNS${NC}  A record resolves to IP (dig A)\n"
+    printf "  ${CYAN}SRV${NC}  Server provisioned (config or Linode)\n"
+    printf "  ${CYAN}SITE${NC} Site accessible via HTTPS\n\n"
+
+    printf "${BOLD}Keyboard Shortcuts${NC}\n"
+    printf "  ${DIM}↑/↓${NC}       Navigate coders\n"
+    printf "  ${DIM}Space${NC}     Select/deselect for bulk actions\n"
+    printf "  ${DIM}Enter${NC}     View detailed stats\n"
+    printf "  ${DIM}M${NC}         Modify selected coder\n"
+    printf "  ${DIM}P${NC}         Promote selected/marked coders\n"
+    printf "  ${DIM}D${NC}         Delete selected/marked coders\n"
+    printf "  ${DIM}A${NC}         Add new coder\n"
+    printf "  ${DIM}S${NC}         Sync from GitLab (contribution stats)\n"
+    printf "  ${DIM}C${NC}         Check onboarding status\n"
+    printf "  ${DIM}V${NC}         Verify DNS/infrastructure\n"
+    printf "  ${DIM}R${NC}         Reload data\n"
+    printf "  ${DIM}H${NC}         Show this help\n"
+    printf "  ${DIM}O${NC}         Open documentation\n"
+    printf "  ${DIM}Q${NC}         Quit\n\n"
+
+    printf "${DIM}Press any key to return...${NC}"
+    read_key >/dev/null
+}
+
+# Open documentation in default viewer
+open_documentation() {
+    local doc_file="${PROJECT_ROOT}/docs/CODER_ONBOARDING.md"
+
+    if [[ ! -f "$doc_file" ]]; then
+        get_terminal_size
+        local status_row=$((TERMINAL_HEIGHT - 1))
+        cursor_to "$status_row" 1
+        clear_line
+        printf " ${RED}Documentation not found: %s${NC}" "$doc_file"
+        sleep 2
+        return
+    fi
+
+    # Restore terminal and open doc
+    show_cursor
+    restore_screen
+
+    # Try different viewers
+    if command -v xdg-open &>/dev/null; then
+        xdg-open "$doc_file" 2>/dev/null &
+    elif command -v open &>/dev/null; then
+        open "$doc_file" 2>/dev/null &
+    elif command -v less &>/dev/null; then
+        less "$doc_file"
+    elif command -v cat &>/dev/null; then
+        cat "$doc_file" | more
+    fi
+
+    # Return to TUI
+    save_screen
+    hide_cursor
+    draw_screen
+}
+
+################################################################################
 # Main TUI Loop
 ################################################################################
 
@@ -850,7 +1218,13 @@ tui_main() {
     # Load data
     load_coders
 
-    # Initial sync
+    # Initial draw with ? placeholders
+    draw_screen
+
+    # Check onboarding status (updates display as it goes)
+    check_all_status
+
+    # Initial sync from GitLab for contribution stats
     sync_from_gitlab 2>/dev/null || true
 
     # Main loop
@@ -920,6 +1294,20 @@ tui_main() {
                 ;;
             r|R)
                 load_coders
+                draw_screen
+                check_all_status
+                ;;
+            c|C)
+                # Recheck onboarding status
+                check_all_status
+                ;;
+            h|H|?)
+                # Show help screen
+                show_help_screen
+                ;;
+            o|O)
+                # Open documentation
+                open_documentation
                 ;;
             q|Q|ESC)
                 break
@@ -935,23 +1323,50 @@ tui_main() {
 cmd_list() {
     load_coders
 
-    printf "%-15s %-12s %-8s %-10s %8s %6s %7s\n" "NAME" "ROLE" "STATUS" "ADDED" "COMMITS" "MRs" "REVIEWS"
-    printf "%-15s %-12s %-8s %-10s %8s %6s %7s\n" "───────────────" "────────────" "────────" "──────────" "────────" "──────" "───────"
+    echo "Checking onboarding status..."
+
+    printf "%-12s %-8s  GL GRP  NS DNS SRV SITE  %6s %4s\n" "NAME" "ROLE" "COMMIT" "MRs"
+    printf "%-12s %-8s  ── ───  ── ─── ─── ────  %6s %4s\n" "────────────" "────────" "──────" "────"
 
     for i in "${!CODERS[@]}"; do
         local name="${CODERS[$i]}"
         local data="${CODER_DATA[$i]}"
-
         local role=$(echo "$data" | cut -d'|' -f1)
-        local status=$(echo "$data" | cut -d'|' -f2)
-        local added=$(echo "$data" | cut -d'|' -f3)
         local commits=$(echo "$data" | cut -d'|' -f4)
         local mrs=$(echo "$data" | cut -d'|' -f5)
-        local reviews=$(echo "$data" | cut -d'|' -f6)
 
-        printf "%-15s %-12s %-8s %-10s %8s %6s %7s\n" \
-            "$name" "$(role_display "$role")" "$status" "${added:-N/A}" "$commits" "$mrs" "$reviews"
+        # Check status for this coder
+        local status_str=$(load_coder_status "$name" "$role")
+        local gl=$(echo "$status_str" | cut -d'|' -f1)
+        local grp=$(echo "$status_str" | cut -d'|' -f2)
+        local ns=$(echo "$status_str" | cut -d'|' -f3)
+        local dns=$(echo "$status_str" | cut -d'|' -f4)
+        local srv=$(echo "$status_str" | cut -d'|' -f5)
+        local site=$(echo "$status_str" | cut -d'|' -f6)
+
+        # Convert to display chars
+        gl=$(status_char "$gl")
+        grp=$(status_char "$grp")
+        ns=$(status_char "$ns")
+        dns=$(status_char "$dns")
+        srv=$(status_char "$srv")
+        site=$(status_char "$site")
+
+        printf "%-12s %-8s  %2s %3s  %2s %3s %3s %4s  %6s %4s\n" \
+            "${name:0:12}" "$(role_display "$role")" "$gl" "$grp" "$ns" "$dns" "$srv" "$site" "$commits" "$mrs"
     done
+}
+
+# Convert status code to display character (non-colored for CLI)
+# Note: '-' must come before '?' since '?' is a glob pattern matching any char
+status_char() {
+    case "$1" in
+        Y) echo "✓" ;;
+        N) echo "✗" ;;
+        -) echo "-" ;;
+        '?') echo "?" ;;
+        *) echo "$1" ;;
+    esac
 }
 
 cmd_sync() {
@@ -1005,10 +1420,31 @@ TUI Controls:
   P         Promote selected/marked coders
   D         Delete selected/marked coders
   A         Add new coder
-  S         Sync from GitLab
+  S         Sync from GitLab (contribution stats)
+  C         Check onboarding status (GL, DNS, etc.)
   V         Verify DNS/infrastructure
   R         Reload data
+  H         Show help screen
+  O         Open documentation (CODER_ONBOARDING.md)
   Q         Quit
+
+Status Columns:
+  GL        GitLab user exists (via API)
+  GRP       GitLab group membership (via API)
+  NS        NS delegation configured (dig NS)
+  DNS       A record resolves to IP (dig A)
+  SRV       Server provisioned (config or Linode)
+  SITE      Site accessible via HTTPS
+
+Status Symbols:
+  ✓         Complete/OK
+  ✗         Missing/Failed
+  ?         Unknown/Checking
+  -         Not required for role
+
+Role-based Requirements:
+  Newcomer/Contributor: Only GL + GRP required
+  Core/Steward:         All steps required
 
 EOF
             ;;

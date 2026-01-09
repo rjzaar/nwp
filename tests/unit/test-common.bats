@@ -292,6 +292,20 @@ teardown() {
     [ "$output" = "default_value" ]
 }
 
+@test "get_secret: reads value from fixture secrets file" {
+    # Set up fixtures
+    setup_fixtures
+
+    # Copy secrets fixture to expected location
+    cp "${FIXTURE_SECRETS}" "${TEST_TEMP_DIR}/.secrets.yml"
+    export PROJECT_ROOT="${TEST_TEMP_DIR}"
+
+    # Test reading a known value from fixture
+    run get_secret "linode.api_token" "fallback"
+    [ "$status" -eq 0 ]
+    [ "$output" = "test-linode-token-12345" ]
+}
+
 ################################################################################
 # Edge cases and error handling
 ################################################################################

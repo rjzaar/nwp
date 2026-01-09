@@ -37,6 +37,14 @@ tests/
 ├── README.md                      # This file
 ├── helpers/
 │   └── test-helpers.bash         # Common BATS test helpers
+├── fixtures/
+│   ├── setup.bash                # Fixture setup script
+│   ├── cnwp.yml                  # Minimal test configuration
+│   ├── secrets.yml               # Mock secrets (no real credentials)
+│   └── sample-site/              # Minimal site structure for testing
+│       ├── .ddev/config.yaml
+│       ├── composer.json
+│       └── html/sites/default/settings.php
 ├── unit/
 │   ├── test-common.bats          # Tests for lib/common.sh
 │   └── test-ui.bats              # Tests for lib/ui.sh
@@ -50,6 +58,7 @@ tests/
 └── e2e/
     ├── README.md                 # E2E testing documentation
     ├── test-fresh-install.sh     # Fresh install E2E tests
+    ├── test-basic-workflow.sh    # Basic workflow validation
     └── helpers/                  # E2E-specific helpers
 ```
 
@@ -167,6 +176,101 @@ Test complete deployment scenarios on real infrastructure.
 ### Speed
 ~30-60 minutes per test suite
 
+## Test Fixtures
+
+### Overview
+
+Test fixtures provide consistent test data for BATS tests. Fixtures are located in `tests/fixtures/` and include:
+
+- **cnwp.yml**: Minimal test configuration (recipes, sites, settings)
+- **secrets.yml**: Mock secrets file (no real credentials - safe to commit)
+- **sample-site/**: Minimal Drupal site structure for testing
+
+### Using Fixtures in Tests
+
+```bash
+#!/usr/bin/env bats
+
+load ../helpers/test-helpers
+
+setup() {
+    test_setup
+    # Set up fixtures (copies to temp dir)
+    setup_fixtures
+}
+
+teardown() {
+    test_teardown
+}
+
+@test "example: use fixture config" {
+    # FIXTURE_CNWP, FIXTURE_SECRETS, FIXTURE_SAMPLE_SITE are now available
+    [ -f "${FIXTURE_CNWP}" ]
+
+    # Copy fixture to expected location for testing
+    cp "${FIXTURE_SECRETS}" "${TEST_TEMP_DIR}/.secrets.yml"
+    export PROJECT_ROOT="${TEST_TEMP_DIR}"
+
+    # Now run tests that need config files
+    run some_function_that_reads_config
+    [ "$status" -eq 0 ]
+}
+
+@test "example: use fixture site" {
+    # Use the sample site fixture
+    local site_dir="${FIXTURE_SAMPLE_SITE}"
+    [ -d "${site_dir}" ]
+    [ -f "${site_dir}/composer.json" ]
+    [ -d "${site_dir}/.ddev" ]
+}
+```
+
+### Fixture Setup Script
+
+The `tests/fixtures/setup.bash` script can be used standalone:
+
+```bash
+# Verify all fixtures exist
+./tests/fixtures/setup.bash --verify
+
+# Create a test environment with fixtures
+./tests/fixtures/setup.bash --setup /tmp/my-test
+
+# Clean up test environment
+./tests/fixtures/setup.bash --cleanup /tmp/my-test
+
+# Show fixture information
+./tests/fixtures/setup.bash --info
+```
+
+### Available Fixture Variables
+
+After calling `setup_fixtures` in your test:
+
+| Variable | Description |
+|----------|-------------|
+| `FIXTURE_CNWP` | Path to test cnwp.yml |
+| `FIXTURE_SECRETS` | Path to mock secrets.yml |
+| `FIXTURE_SAMPLE_SITE` | Path to sample site directory |
+
+### Creating Custom Fixtures
+
+For tests requiring special configurations:
+
+```bash
+@test "custom fixture example" {
+    # Create custom config in temp dir
+    create_test_yaml "${TEST_TEMP_DIR}/custom.yml" "key: value"
+
+    # Or create a mock site
+    create_mock_site "${TEST_TEMP_DIR}/mysite" "web"
+
+    # Run tests against custom fixtures
+    run my_function "${TEST_TEMP_DIR}/mysite"
+    [ "$status" -eq 0 ]
+}
+```
+
 ## Test Helpers
 
 ### BATS Helpers (`tests/helpers/test-helpers.bash`)
@@ -178,22 +282,41 @@ Common helper functions for all BATS tests:
 test_setup()              # Initialize test environment
 test_teardown()           # Clean up test resources
 
+# Fixture functions
+setup_fixtures            # Copy fixtures to temp directory
+cleanup_fixtures          # Clean up fixtures
+fixture_path "file"       # Get path to a fixture file
+use_fixture_config        # Set up PROJECT_ROOT with fixtures
+
 # Assertions
 assert_file_exists "path"
 assert_dir_exists "path"
 assert_contains "haystack" "needle"
+assert_not_contains "haystack" "needle"
 assert_equals "expected" "actual"
+assert_not_equals "unexpected" "actual"
 assert_success $?
 assert_failure $?
+assert_set "$variable"
+assert_empty "$variable"
+assert_output_matches "pattern"
 
 # Mock utilities
 mock_command "cmd" "output" [exit_code]
+unmock_command "cmd"
 unmock_commands
 
 # Test utilities
 create_temp_file "content"
 create_temp_dir
 create_mock_site "$dir" "$webroot"
+create_mock_backup "$backup_dir" "$sitename"
+yaml_get "path.to.key" "file.yml"
+
+# Skip helpers
+skip_if_ci
+skip_if_not_ddev
+require_command "cmd" "message"
 ```
 
 ## CI/CD Integration

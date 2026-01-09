@@ -42,6 +42,7 @@ Proposed → Accepted → [Deprecated | Superseded]
 | [0003](0003-bash-for-automation-scripts.md) | Bash for automation scripts | 2026-01-08 | Accepted |
 | [0004](0004-two-tier-secrets-architecture.md) | Two-tier secrets architecture | 2026-01-08 | Accepted |
 | [0005](0005-distributed-contribution-governance.md) | Distributed contribution governance | 2026-01-08 | Accepted |
+| [0006](0006-contribution-workflow.md) | Contribution workflow | 2026-01-09 | Accepted |
 
 ## Rejected Proposals
 

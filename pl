@@ -119,6 +119,8 @@ ${BOLD}SECURITY:${NC}
     security update <sitename>      Apply security updates
     security update --auto <site>   Auto-update with testing
     security audit <sitename>       Full security audit
+    security-check <url>            Check HTTP security headers on URL
+    headers <url>                   Alias for security-check (headers check)
 
 ${BOLD}GIT & GITLAB:${NC}
     gitlab-create <project> [group] Create GitLab project
@@ -614,13 +616,22 @@ main() {
             run_script "security.sh" "$@"
             ;;
         security-check)
-            run_script "security.sh" "check" "$@"
+            # Check if argument looks like a URL (HTTP security headers check)
+            if [[ "${1:-}" =~ ^https?:// ]] || [[ "${1:-}" =~ \. ]]; then
+                run_script "security-check.sh" "$@"
+            else
+                run_script "security.sh" "check" "$@"
+            fi
             ;;
         security-update)
             run_script "security.sh" "update" "$@"
             ;;
         security-audit)
             run_script "security.sh" "audit" "$@"
+            ;;
+        headers)
+            # HTTP security headers check (alias for security-check <url>)
+            run_script "security-check.sh" "$@"
             ;;
 
         # Import & Sync

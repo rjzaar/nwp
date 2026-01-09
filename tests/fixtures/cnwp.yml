@@ -1,0 +1,55 @@
+# Test Configuration File
+# Minimal test configuration for BATS tests
+# This file is a fixture - NOT for production use
+
+settings:
+  database: mariadb
+  php: 8.3
+  url: test.example.com
+  frontend:
+    node_version: "20"
+  php_settings:
+    memory_limit: 256M
+    max_execution_time: 300
+    upload_max_filesize: 50M
+    post_max_size: 50M
+  delete_site_yml: true
+  seo:
+    staging_noindex: true
+    staging_robots_block: true
+    production_robots: true
+    crawl_delay: 1
+
+recipes:
+  test:
+    source: drupal/recommended-project:^10.2
+    profile: standard
+    webroot: web
+    auto: y
+    options:
+      environment_indicator: y
+
+  test-dev:
+    source: drupal/recommended-project:^10.2
+    profile: standard
+    webroot: web
+    auto: y
+    dev: y
+    dev_modules: devel kint
+    options:
+      environment_indicator: y
+
+sites:
+  testsite:
+    directory: /tmp/nwp-test/sites/testsite
+    recipe: test
+    environment: development
+    created: 2024-01-01T00:00:00Z
+    purpose: testing
+
+  testsite-stg:
+    directory: /tmp/nwp-test/sites/testsite-stg
+    recipe: test
+    environment: staging
+    created: 2024-01-01T00:00:00Z
+    purpose: testing

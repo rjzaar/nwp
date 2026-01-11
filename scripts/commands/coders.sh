@@ -5,7 +5,7 @@
 #
 # Interactive terminal interface for managing NWP coders with:
 # - Auto-listing of all coders on startup
-# - Onboarding status columns (GitLab, DNS, Server, Site)
+# - Onboarding status columns (GitLab, SSH, DNS, Server, Site)
 # - Arrow key navigation
 # - Bulk actions (delete, promote)
 # - Auto-sync from GitLab
@@ -182,6 +182,26 @@ check_gitlab_group() {
     [[ -n "$member" ]] && echo "Y" || echo "N"
 }
 
+# Check if user has SSH keys on GitLab
+check_gitlab_ssh() {
+    local name="$1"
+    local gitlab_url=$(get_gitlab_url)
+    local token=$(get_gitlab_token)
+
+    [[ -z "$gitlab_url" || -z "$token" ]] && echo "?" && return
+
+    local user_id=$(curl -s --max-time 5 -H "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/users?username=${name}" 2>/dev/null | jq -r '.[0].id // empty')
+
+    [[ -z "$user_id" ]] && echo "N" && return
+
+    # Get SSH keys for user (requires admin token)
+    local key_count=$(curl -s --max-time 5 -H "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/users/${user_id}/keys" 2>/dev/null | jq -r 'length // 0')
+
+    [[ "$key_count" -gt 0 ]] && echo "Y" || echo "N"
+}
+
 # Get base domain (works with or without yq)
 get_base_domain_for_check() {
     if command -v yq &>/dev/null; then
@@ -281,12 +301,12 @@ check_site() {
 # Determine if step is required based on role
 # Returns: Y=required, N=not required
 step_required() {
-    local step="$1"  # GL, GRP, NS, DNS, SRV, SITE
+    local step="$1"  # GL, GRP, SSH, NS, DNS, SRV, SITE
     local role="$2"  # steward, core, contributor, newcomer
 
     case "$step" in
-        GL|GRP)
-            # All coders need GitLab access
+        GL|GRP|SSH)
+            # All coders need GitLab access and SSH keys
             echo "Y"
             ;;
         NS|DNS)
@@ -309,13 +329,13 @@ step_required() {
     esac
 }
 
-# Load onboarding status for a coder (returns: GL|GRP|NS|DNS|SRV|SITE)
+# Load onboarding status for a coder (returns: GL|GRP|SSH|NS|DNS|SRV|SITE)
 # Values: Y=yes, N=no, ?=unknown, -=not required
 load_coder_status() {
     local name="$1"
     local role="$2"
 
-    local gl grp ns dns srv site
+    local gl grp ssh ns dns srv site
 
     # Check each step, respecting role requirements
     if [[ $(step_required "GL" "$role") == "Y" ]]; then
@@ -328,6 +348,12 @@ load_coder_status() {
         grp=$(check_gitlab_group "$name")
     else
         grp="-"
+    fi
+
+    if [[ $(step_required "SSH" "$role") == "Y" ]]; then
+        ssh=$(check_gitlab_ssh "$name")
+    else
+        ssh="-"
     fi
 
     if [[ $(step_required "NS" "$role") == "Y" ]]; then
@@ -354,7 +380,7 @@ load_coder_status() {
         site="-"
     fi
 
-    echo "${gl}|${grp}|${ns}|${dns}|${srv}|${site}"
+    echo "${gl}|${grp}|${ssh}|${ns}|${dns}|${srv}|${site}"
 }
 
 ################################################################################
@@ -411,7 +437,7 @@ load_coders() {
 
         CODER_DATA+=("$role|$status|${added:0:10}|$commits|$mrs|$reviews")
         # Initialize status as unknown (will be checked later)
-        CODER_STATUS+=("?|?|?|?|?|?")
+        CODER_STATUS+=("?|?|?|?|?|?|?")
     done <<< "$coders_list"
 }
 
@@ -561,18 +587,18 @@ draw_column_headers() {
     cursor_to 3 1
     clear_line
     printf "${BOLD}${DIM}"
-    printf "   %-12s %-8s " "NAME" "ROLE"
-    # Onboarding status columns
-    printf "%3s %3s %3s %3s %3s %4s  " "GL" "GRP" "NS" "DNS" "SRV" "SITE"
-    printf "%6s %4s" "COMMIT" "MRs"
+    printf "      %-10s %-7s" "NAME" "ROLE"
+    # Onboarding status columns (width 4, with 3-space gaps between)
+    printf "   %4s   %4s   %4s   %4s   %4s   %4s   %4s" "GL" "GRP" "SSH" "NS" "DNS" "SRV" "SITE"
+    printf "  %6s %4s" "COMMIT" "MRs"
     printf "${NC}\n"
 
     cursor_to 4 1
     clear_line
     printf "${DIM}"
-    printf "   %-12s %-8s " "────────────" "────────"
-    printf "%3s %3s %3s %3s %3s %4s  " "──" "───" "──" "───" "───" "────"
-    printf "%6s %4s" "──────" "────"
+    printf "      %-10s %-7s" "──────────" "───────"
+    printf "   %4s   %4s   %4s   %4s   %4s   %4s   %4s" "────" "────" "────" "────" "────" "────" "────"
+    printf "  %6s %4s" "──────" "────"
     printf "${NC}\n"
 }
 
@@ -585,7 +611,7 @@ draw_coder_row() {
 
     local name="${CODERS[$index]}"
     local data="${CODER_DATA[$index]:-contributor|active||0|0|0}"
-    local onboard_status="${CODER_STATUS[$index]:-?|?|?|?|?|?}"
+    local onboard_status="${CODER_STATUS[$index]:-?|?|?|?|?|?|?}"
 
     local role=$(echo "$data" | cut -d'|' -f1)
     local status=$(echo "$data" | cut -d'|' -f2)
@@ -597,10 +623,11 @@ draw_coder_row() {
     # Parse onboarding status
     local gl=$(echo "$onboard_status" | cut -d'|' -f1)
     local grp=$(echo "$onboard_status" | cut -d'|' -f2)
-    local ns=$(echo "$onboard_status" | cut -d'|' -f3)
-    local dns=$(echo "$onboard_status" | cut -d'|' -f4)
-    local srv=$(echo "$onboard_status" | cut -d'|' -f5)
-    local site=$(echo "$onboard_status" | cut -d'|' -f6)
+    local ssh=$(echo "$onboard_status" | cut -d'|' -f3)
+    local ns=$(echo "$onboard_status" | cut -d'|' -f4)
+    local dns=$(echo "$onboard_status" | cut -d'|' -f5)
+    local srv=$(echo "$onboard_status" | cut -d'|' -f6)
+    local site=$(echo "$onboard_status" | cut -d'|' -f7)
 
     cursor_to "$row" 1
     clear_line
@@ -625,42 +652,52 @@ draw_coder_row() {
         printf "[ ]"
     fi
 
-    # Name (truncated to 11 chars)
-    printf " %-11s" "${name:0:11}"
+    # Turn off reverse after checkbox
+    if ((index == CURRENT_INDEX)); then printf "${NC}"; fi
 
-    # Role with color
+    # Name (truncated to 10 chars) and Role
+    printf " %-10s" "${name:0:10}"
     local rc=$(role_color "$role")
     printf " ${rc}%-7s${NC}" "$(role_display "$role")"
 
-    # Onboarding status columns with colors
-    print_status_cell "$gl"
-    print_status_cell "$grp"
-    print_status_cell "$ns"
-    print_status_cell "$dns"
-    print_status_cell "$srv"
+    # Onboarding status columns with colors (width 4, with extra spacing)
+    printf "  "
+    print_status_cell "$gl" 4
+    printf "  "
+    print_status_cell "$grp" 4
+    printf "  "
+    print_status_cell "$ssh" 4
+    printf "  "
+    print_status_cell "$ns" 4
+    printf "  "
+    print_status_cell "$dns" 4
+    printf "  "
+    print_status_cell "$srv" 4
+    printf "  "
     print_status_cell "$site" 4
 
     # Stats
-    printf " %6s" "$commits"
+    printf "  %6s" "$commits"
     printf " %4s" "$mrs"
-
-    if ((index == CURRENT_INDEX)); then
-        printf "${NC}"
-    fi
 }
 
 # Print a status cell with appropriate color
 # Y=green ✓, N=red ✗, ?=yellow ?, -=dim -
-# Note: '-' must come before '?' since '?' is a glob pattern matching any char
+# Note: Uses manual padding because printf %*s counts bytes, not display chars
+# Unicode ✓ and ✗ are 3 bytes but 1 display char
 print_status_cell() {
     local val="$1"
     local width="${2:-3}"
 
+    # Generate padding (width-1 spaces, since symbol is 1 char)
+    local pad=""
+    for ((i=1; i<width; i++)); do pad+=" "; done
+
     case "$val" in
-        Y) printf " ${GREEN}%*s${NC}" "$width" "✓" ;;
-        N) printf " ${RED}%*s${NC}" "$width" "✗" ;;
-        -) printf " ${DIM}%*s${NC}" "$width" "-" ;;
-        '?') printf " ${YELLOW}%*s${NC}" "$width" "?" ;;
+        Y) printf " %s${GREEN}✓${NC}" "$pad" ;;
+        N) printf " %s${RED}✗${NC}" "$pad" ;;
+        -) printf " %s${DIM}-${NC}" "$pad" ;;
+        '?') printf " %s${YELLOW}?${NC}" "$pad" ;;
         *) printf " %*s" "$width" "$val" ;;
     esac
 }
@@ -1136,12 +1173,13 @@ show_help_screen() {
     printf "  ${DIM}-${NC}  Not required for role\n\n"
 
     printf "${BOLD}Role-based Requirements${NC}\n"
-    printf "  ${DIM}Newcomer/Contributor:${NC} Only GL + GRP required\n"
-    printf "  ${DIM}Core/Steward:${NC}         All steps required (GL, GRP, NS, DNS, SRV, SITE)\n\n"
+    printf "  ${DIM}Newcomer/Contributor:${NC} GL + GRP + SSH required\n"
+    printf "  ${DIM}Core/Steward:${NC}         All steps required (GL, GRP, SSH, NS, DNS, SRV, SITE)\n\n"
 
     printf "${BOLD}Status Checks${NC}\n"
     printf "  ${CYAN}GL${NC}   GitLab user exists (via API)\n"
     printf "  ${CYAN}GRP${NC}  GitLab group membership (via API)\n"
+    printf "  ${CYAN}SSH${NC}  SSH key registered on GitLab\n"
     printf "  ${CYAN}NS${NC}   NS delegation configured (dig NS)\n"
     printf "  ${CYAN}DNS${NC}  A record resolves to IP (dig A)\n"
     printf "  ${CYAN}SRV${NC}  Server provisioned (config or Linode)\n"
@@ -1325,8 +1363,9 @@ cmd_list() {
 
     echo "Checking onboarding status..."
 
-    printf "%-12s %-8s  GL GRP  NS DNS SRV SITE  %6s %4s\n" "NAME" "ROLE" "COMMIT" "MRs"
-    printf "%-12s %-8s  ── ───  ── ─── ─── ────  %6s %4s\n" "────────────" "────────" "──────" "────"
+    # Column widths: NAME=10, ROLE=7, all status=4 with 3-space gaps, COMMIT=6, MRs=4
+    printf "%-10s %-7s   %4s   %4s   %4s   %4s   %4s   %4s   %4s  %6s %4s\n" "NAME" "ROLE" "GL" "GRP" "SSH" "NS" "DNS" "SRV" "SITE" "COMMIT" "MRs"
+    printf "%-10s %-7s   %4s   %4s   %4s   %4s   %4s   %4s   %4s  %6s %4s\n" "──────────" "───────" "────" "────" "────" "────" "────" "────" "────" "──────" "────"
 
     for i in "${!CODERS[@]}"; do
         local name="${CODERS[$i]}"
@@ -1339,21 +1378,23 @@ cmd_list() {
         local status_str=$(load_coder_status "$name" "$role")
         local gl=$(echo "$status_str" | cut -d'|' -f1)
         local grp=$(echo "$status_str" | cut -d'|' -f2)
-        local ns=$(echo "$status_str" | cut -d'|' -f3)
-        local dns=$(echo "$status_str" | cut -d'|' -f4)
-        local srv=$(echo "$status_str" | cut -d'|' -f5)
-        local site=$(echo "$status_str" | cut -d'|' -f6)
+        local ssh=$(echo "$status_str" | cut -d'|' -f3)
+        local ns=$(echo "$status_str" | cut -d'|' -f4)
+        local dns=$(echo "$status_str" | cut -d'|' -f5)
+        local srv=$(echo "$status_str" | cut -d'|' -f6)
+        local site=$(echo "$status_str" | cut -d'|' -f7)
 
         # Convert to display chars
         gl=$(status_char "$gl")
         grp=$(status_char "$grp")
+        ssh=$(status_char "$ssh")
         ns=$(status_char "$ns")
         dns=$(status_char "$dns")
         srv=$(status_char "$srv")
         site=$(status_char "$site")
 
-        printf "%-12s %-8s  %2s %3s  %2s %3s %3s %4s  %6s %4s\n" \
-            "${name:0:12}" "$(role_display "$role")" "$gl" "$grp" "$ns" "$dns" "$srv" "$site" "$commits" "$mrs"
+        printf "%-10s %-7s   %4s   %4s   %4s   %4s   %4s   %4s   %4s  %6s %4s\n" \
+            "${name:0:10}" "$(role_display "$role")" "$gl" "$grp" "$ssh" "$ns" "$dns" "$srv" "$site" "$commits" "$mrs"
     done
 }
 
@@ -1431,6 +1472,7 @@ TUI Controls:
 Status Columns:
   GL        GitLab user exists (via API)
   GRP       GitLab group membership (via API)
+  SSH       SSH key registered on GitLab
   NS        NS delegation configured (dig NS)
   DNS       A record resolves to IP (dig A)
   SRV       Server provisioned (config or Linode)
@@ -1443,7 +1485,7 @@ Status Symbols:
   -         Not required for role
 
 Role-based Requirements:
-  Newcomer/Contributor: Only GL + GRP required
+  Newcomer/Contributor: GL + GRP + SSH required
   Core/Steward:         All steps required
 
 EOF

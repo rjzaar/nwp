@@ -1,6 +1,6 @@
 # NWP Roadmap - Pending & Future Work
 
-**Last Updated:** January 10, 2026
+**Last Updated:** January 11, 2026
 
 Pending implementation items and future improvements for NWP.
 
@@ -15,7 +15,7 @@ Pending implementation items and future improvements for NWP.
 | Current Version | v0.18 |
 | Test Success Rate | 98% |
 | Completed Proposals | P01-P35, F04, F05, F07, F09 |
-| Pending Proposals | F01-F03, F06, F08, F10 |
+| Pending Proposals | F01-F03, F06, F08, F10, F11 |
 | Experimental/Outlier | X01 |
 
 ---
@@ -30,7 +30,7 @@ Pending implementation items and future improvements for NWP.
 | Phase 6b | Security Pipeline | F06 | Planned |
 | Phase 7 | Testing & CI Enhancement | F09 | ✅ Complete |
 | **Phase 7b** | **CI Enhancements** | **F01-F03, F08** | **Future** |
-| **Phase 8** | **Developer Experience** | **F10** | **Future** |
+| **Phase 8** | **Developer Experience** | **F10, F11** | **Future** |
 | **Phase X** | **Experimental/Outliers** | **X01** | **Exploratory** |
 
 ---
@@ -50,7 +50,8 @@ Based on dependencies, current progress, and priority:
 | 7 | F03 | IN PROGRESS | Independent, visual testing |
 | 8 | F08 | PROPOSED | Needs stable GitLab infrastructure |
 | 9 | F10 | PROPOSED | Independent, developer privacy/experience |
-| 10 | F02 | PLANNED | Depends on F01, lowest priority |
+| 10 | F11 | PROPOSED | Depends on F10, hardware-specific config |
+| 11 | F02 | PLANNED | Depends on F01, lowest priority |
 | - | X01 | EXPLORATORY | Outlier - significant scope expansion |
 
 ---
@@ -525,6 +526,213 @@ tests/unit/test-llm.bats       # Unit tests for LLM functions
 
 ---
 
+### F11: Developer Workstation Local LLM Configuration
+**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** F10 (Local LLM Support)
+**Hardware Target:** Ryzen 9 12-core, 32GB RAM, 1TB SSD, NVIDIA RTX 2060 (6GB VRAM)
+
+Provide optimized local LLM configuration for mid-range developer workstations, enabling privacy-focused AI assistance without cloud dependencies.
+
+**Hardware Analysis:**
+
+| Component | Spec | LLM Impact |
+|-----------|------|------------|
+| CPU | Ryzen 9 12-core | Excellent for CPU inference, ~15-25 tokens/sec on 7B |
+| RAM | 32GB | Comfortable for 7B-14B models with headroom |
+| SSD | 1TB NVMe | Store 5-10 models simultaneously |
+| GPU | RTX 2060 6GB | Partial offload (3-4 layers), ~20% speedup |
+
+**Recommended Models (Optimized for 32GB RAM + RTX 2060):**
+
+| Model | Size | RAM Used | GPU Layers | Speed | Best For |
+|-------|------|----------|------------|-------|----------|
+| **qwen2.5-coder:7b** | 4.7GB | ~10GB | 8-10 | Fast | Daily coding (PRIMARY) |
+| **qwen2.5-coder:14b** | 9GB | ~18GB | 4-6 | Good | Complex refactoring |
+| **deepseek-coder-v2:16b** | 10GB | ~20GB | 4-5 | Moderate | Multi-language |
+| **llama3.2:8b** | 4.9GB | ~12GB | 8-10 | Fast | General Q&A |
+| **phi3:3.8b** | 2.4GB | ~6GB | Full | Very Fast | Quick lookups |
+| **mistral:7b** | 4.1GB | ~10GB | 8-10 | Fast | Fast general purpose |
+
+**Optimal Configuration for RTX 2060:**
+
+```bash
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Pull recommended models for your hardware
+ollama pull qwen2.5-coder:7b      # Primary coding model
+ollama pull phi3:3.8b              # Fast lookups
+ollama pull llama3.2:8b            # General tasks
+
+# Configure GPU layers (RTX 2060 = 6GB VRAM)
+# Create custom modelfile for optimal performance
+cat > ~/.ollama/Modelfile-nwp <<'EOF'
+FROM qwen2.5-coder:7b
+
+# Optimize for RTX 2060 (6GB VRAM) + 32GB RAM
+PARAMETER num_gpu 10
+PARAMETER num_thread 12
+PARAMETER num_ctx 4096
+
+# NWP-focused system prompt
+SYSTEM """
+You are an expert in bash scripting, PHP, and Drupal development.
+You work with the NWP (Node Web Platform) deployment framework.
+Provide secure, well-tested code with clear explanations.
+"""
+EOF
+
+ollama create nwp-coder -f ~/.ollama/Modelfile-nwp
+```
+
+**Performance Expectations:**
+
+| Task | Model | Expected Speed | Quality |
+|------|-------|----------------|---------|
+| Quick script help | phi3:3.8b | 2-3 sec | Good |
+| Code review | qwen2.5-coder:7b | 5-8 sec | Very Good |
+| Complex refactor | qwen2.5-coder:14b | 15-25 sec | Excellent |
+| General Q&A | llama3.2:8b | 4-6 sec | Very Good |
+
+**GPU Acceleration Setup (RTX 2060):**
+
+```bash
+# Verify NVIDIA drivers
+nvidia-smi
+
+# Check CUDA support
+nvidia-smi -L
+
+# Ollama auto-detects GPU, but verify:
+ollama run qwen2.5-coder:7b "test"
+# Should show GPU utilization in nvidia-smi
+
+# Monitor GPU during inference
+watch -n 1 nvidia-smi
+```
+
+**Memory Management (32GB Optimization):**
+
+```bash
+# Keep ~8GB free for system/browser
+# Recommended concurrent usage:
+# - 1 large model (14B) + development tools
+# - OR 2 medium models (7B each) for comparison
+# - OR 1 medium (7B) + coding + browser
+
+# Check memory before loading large model
+free -h
+
+# Unload unused models
+ollama stop qwen2.5-coder:14b
+```
+
+**Storage Layout (1TB SSD):**
+
+```
+~/. ollama/models/           # ~50-80GB for models
+├── qwen2.5-coder:7b        # 4.7GB
+├── qwen2.5-coder:14b       # 9GB
+├── deepseek-coder-v2:16b   # 10GB
+├── llama3.2:8b             # 4.9GB
+├── phi3:3.8b               # 2.4GB
+└── mistral:7b              # 4.1GB
+                            # Total: ~35GB
+                            # Plenty of room for more
+```
+
+**NWP Integration Commands:**
+
+```bash
+# Quick coding help (uses phi3 for speed)
+alias ai-quick='ollama run phi3:3.8b'
+
+# Code review (uses qwen2.5-coder:7b)
+alias ai-code='ollama run nwp-coder'
+
+# Complex tasks (uses 14b when needed)
+alias ai-deep='ollama run qwen2.5-coder:14b'
+
+# Add to ~/.bashrc or ~/.zshrc
+```
+
+**Benchmarking Your Setup:**
+
+```bash
+#!/bin/bash
+# benchmark-llm.sh - Test your hardware
+
+models=("phi3:3.8b" "qwen2.5-coder:7b" "llama3.2:8b")
+prompt="Write a bash function to safely backup a Drupal database"
+
+echo "Benchmarking Local LLM Performance"
+echo "Hardware: Ryzen 9 12-core, 32GB RAM, RTX 2060"
+echo "-------------------------------------------"
+
+for model in "${models[@]}"; do
+    echo -n "Testing $model... "
+    start=$(date +%s.%N)
+    ollama run "$model" "$prompt" > /dev/null 2>&1
+    end=$(date +%s.%N)
+    duration=$(echo "$end - $start" | bc)
+    echo "${duration}s"
+done
+```
+
+**Comparison: Your Hardware vs Cloud API:**
+
+| Metric | Your Workstation | Claude API |
+|--------|------------------|------------|
+| Privacy | 100% local | Data sent to Anthropic |
+| Cost | $0/month (electricity ~$5) | $50-200/month |
+| Speed (7B) | 15-25 tok/sec | 50-100 tok/sec |
+| Quality (7B) | Very Good | Excellent |
+| Offline | Yes | No |
+| Best For | Daily coding, privacy | Complex architecture |
+
+**Hybrid Workflow Recommendation:**
+
+```
+Daily Development (Local):
+├── Code review → qwen2.5-coder:7b
+├── Quick scripts → phi3:3.8b
+├── Debug errors → llama3.2:8b
+└── Commit messages → qwen2.5-coder:7b
+
+Complex Tasks (Claude API):
+├── Architecture decisions
+├── Security audits
+└── Novel problem solving
+```
+
+**Success Criteria:**
+
+- [ ] Ollama installed with GPU acceleration verified
+- [ ] qwen2.5-coder:7b running at 15+ tokens/sec
+- [ ] Custom nwp-coder modelfile created
+- [ ] Shell aliases configured for quick access
+- [ ] Benchmark script confirms expected performance
+- [ ] Memory usage stays under 24GB during inference
+- [ ] GPU shows utilization during model inference
+
+**What You CAN'T Run Efficiently:**
+
+| Model | Why Not |
+|-------|---------|
+| qwen2.5-coder:32b | Needs 64GB RAM |
+| llama3.1:70b | Needs 128GB RAM |
+| codestral:22b | Needs 48GB+ RAM |
+| Any model fully on GPU | 6GB VRAM too small |
+
+**Upgrade Path (If Needed Later):**
+
+| Upgrade | Cost | Benefit |
+|---------|------|---------|
+| +32GB RAM (64GB total) | ~$80 | Run 32B models |
+| RTX 4060 Ti 16GB | ~$400 | 2-3x faster inference |
+| RTX 4070 12GB | ~$550 | Full 7B on GPU |
+
+---
+
 ### F09: Comprehensive Testing Infrastructure
 **Status:** ✅ COMPLETE | **Priority:** HIGH | **Effort:** High | **Dependencies:** Linode, GitLab CI
 **Proposal:** [COMPREHENSIVE_TESTING_PROPOSAL.md](COMPREHENSIVE_TESTING_PROPOSAL.md)
@@ -876,7 +1084,8 @@ Should X01 be implemented? Only if:
 | 7 | F03 | MEDIUM | Medium | Behat | 7b | In Progress |
 | 8 | F08 | MEDIUM | Medium | verify.sh, test-nwp.sh, GitLab | 7b | Proposed |
 | 9 | F10 | MEDIUM | Medium | None | 8 | Proposed |
-| 10 | F02 | LOW | Medium | F01 | 7b | Planned |
+| 10 | F11 | MEDIUM | Low | F10 | 8 | Proposed |
+| 11 | F02 | LOW | Medium | F01 | 7b | Planned |
 | - | X01 | LOW | High | F10 (optional) | X | Exploratory |
 
 ---
@@ -919,3 +1128,4 @@ Should X01 be implemented? Only if:
 *F10 (Local LLM Support) added: January 10, 2026*
 *X01 (AI Video Generation) added as experimental outlier: January 10, 2026*
 *Phase X (Experimental/Outliers) created: January 10, 2026*
+*F11 (Developer Workstation Local LLM Config) added: January 11, 2026*

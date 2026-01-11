@@ -24,6 +24,11 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 
+# Source install-common for get_settings_value
+if [ -f "$PROJECT_ROOT/lib/install-common.sh" ]; then
+    source "$PROJECT_ROOT/lib/install-common.sh"
+fi
+
 # Script start time
 START_TIME=$(date +%s)
 
@@ -684,6 +689,126 @@ show_elapsed_time() {
     print_status "OK" "Deployment completed in $(printf "%02d:%02d:%02d" $hours $minutes $seconds)"
 }
 
+# Verify and configure site email
+verify_site_email() {
+    local base_name="$1"
+    local server_ip="$2"
+    local ssh_user="$3"
+
+    print_header "Verify Site Email Configuration"
+
+    # Check if email auto-configure is enabled
+    local auto_configure
+    auto_configure=$(get_settings_value "email.auto_configure" "true" 2>/dev/null)
+    if [ "$auto_configure" != "true" ]; then
+        print_status "INFO" "Email auto-configure disabled in settings"
+        return 0
+    fi
+
+    # Get email domain and admin email
+    local email_domain
+    email_domain=$(get_settings_value "email.domain" "" 2>/dev/null)
+    if [ -z "$email_domain" ]; then
+        email_domain=$(get_settings_value "url" "nwpcode.org" 2>/dev/null)
+    fi
+
+    local admin_email
+    admin_email=$(get_settings_value "email.admin_email" "" 2>/dev/null)
+    if [ -z "$admin_email" ]; then
+        print_status "WARN" "No admin_email configured in settings.email"
+        print_info "Email verification skipped"
+        return 0
+    fi
+
+    local site_email="${base_name}@${email_domain}"
+    local gitlab_host="git.${email_domain}"
+    local mail_ssh_user="gitlab"
+
+    print_info "Expected site email: $site_email"
+    print_info "Forward to: $admin_email"
+
+    # Check if email forwarding exists on mail server
+    print_info "Checking email forwarding on $gitlab_host..."
+
+    if ssh -o BatchMode=yes -o ConnectTimeout=5 "${mail_ssh_user}@${gitlab_host}" \
+        "grep -q '^${site_email}' /etc/postfix/virtual 2>/dev/null" 2>/dev/null; then
+        print_status "OK" "Email forwarding exists: $site_email"
+
+        # Verify it forwards to the correct address
+        local current_forward
+        current_forward=$(ssh -o BatchMode=yes "${mail_ssh_user}@${gitlab_host}" \
+            "grep '^${site_email}' /etc/postfix/virtual 2>/dev/null | awk '{print \$2}'" 2>/dev/null)
+
+        if [ "$current_forward" != "$admin_email" ] && [ -n "$current_forward" ]; then
+            print_status "WARN" "Forward address mismatch: $current_forward (expected: $admin_email)"
+            print_info "Updating email forwarding..."
+
+            local email_script="${PROJECT_ROOT}/email/add_site_email.sh"
+            if [ -f "$email_script" ]; then
+                if scp -q "$email_script" "${mail_ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
+                    if ssh "${mail_ssh_user}@${gitlab_host}" \
+                        "sudo bash /tmp/add_site_email.sh ${base_name} --forward-only ${admin_email} -y && rm /tmp/add_site_email.sh" 2>/dev/null; then
+                        print_status "OK" "Email forwarding updated: $site_email -> $admin_email"
+                    else
+                        print_status "WARN" "Could not update email forwarding"
+                    fi
+                fi
+            fi
+        else
+            print_status "OK" "Email forwards to: $current_forward"
+        fi
+    else
+        print_status "WARN" "Email forwarding not configured"
+        print_info "Creating email forwarding..."
+
+        local email_script="${PROJECT_ROOT}/email/add_site_email.sh"
+        if [ -f "$email_script" ]; then
+            if scp -q "$email_script" "${mail_ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
+                if ssh "${mail_ssh_user}@${gitlab_host}" \
+                    "sudo bash /tmp/add_site_email.sh ${base_name} --forward-only ${admin_email} -y && rm /tmp/add_site_email.sh" 2>/dev/null; then
+                    print_status "OK" "Email forwarding created: $site_email -> $admin_email"
+                else
+                    print_status "WARN" "Could not create email forwarding (may need manual setup)"
+                fi
+            else
+                print_status "WARN" "Could not copy email script to mail server"
+            fi
+        else
+            print_status "WARN" "Email setup script not found: $email_script"
+        fi
+    fi
+
+    # Verify Drupal site email matches
+    print_info "Verifying Drupal site email..."
+
+    local sudo_prefix=""
+    if [ "$ssh_user" == "gitlab" ]; then
+        sudo_prefix="sudo -u www-data"
+    fi
+
+    local current_drupal_email
+    current_drupal_email=$(ssh -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "cd /var/www/${base_name} && $sudo_prefix vendor/bin/drush config:get system.site mail --format=string 2>/dev/null" 2>/dev/null)
+
+    if [ "$current_drupal_email" == "$site_email" ]; then
+        print_status "OK" "Drupal site email correct: $current_drupal_email"
+    elif [ -n "$current_drupal_email" ]; then
+        print_status "WARN" "Drupal site email mismatch: $current_drupal_email (expected: $site_email)"
+        print_info "Updating Drupal site email..."
+
+        if ssh -o BatchMode=yes "${ssh_user}@${server_ip}" \
+            "cd /var/www/${base_name} && $sudo_prefix vendor/bin/drush config:set system.site mail '${site_email}' -y" 2>/dev/null; then
+            print_status "OK" "Drupal site email updated to: $site_email"
+        else
+            print_status "WARN" "Could not update Drupal site email"
+        fi
+    else
+        print_info "Could not read current Drupal site email"
+    fi
+
+    return 0
+}
+
 # Show help
 show_help() {
     cat << EOF
@@ -879,6 +1004,9 @@ deploy_to_live() {
     ssh "${ssh_user}@${server_ip}" "cd /var/www/${base_name} && $sudo_prefix -u www-data drush cr" 2>/dev/null || \
         ssh "${ssh_user}@${server_ip}" "cd /var/www/${base_name}/$webroot && $sudo_prefix -u www-data ../vendor/bin/drush cr" 2>/dev/null || \
         print_status "WARN" "Could not clear cache (drush may not be available)"
+
+    # Verify and configure site email
+    verify_site_email "$base_name" "$server_ip" "$ssh_user"
 
     # Success
     print_header "Deployment Complete"

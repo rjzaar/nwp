@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v0.19.0] - 2026-01-11
+
+### Added
+
+- **SSH Column in pl coders**
+  - New SSH status column showing if coder has SSH keys on GitLab
+  - Uses GitLab API to check `/users/:id/keys` endpoint
+  - Status display: ✓ (has keys), ✗ (no keys), ? (unknown)
+
+- **Auto-verification via Checklist Completion**
+  - When all checklist items are completed, feature auto-verifies
+  - Sets `verified_by: "checklist"` for multi-coder collaboration
+  - Each item tracks individual `completed_by` for audit trail
+  - Displays "Verified via checklist" instead of individual name
+  - Auto-unverifies if checklist item uncompleted on checklist-verified feature
+
+- **Partial Verification Display**
+  - Shows ◐ indicator with completion percentage in `pl verify report`
+  - Summary includes partial count alongside verified/unverified
+
+### Changed
+
+- `pl verify` now opens interactive TUI console by default
+- Old status view renamed to `pl verify report` (status still works as alias)
+- Reordered console footer: v:Verify i:Checklist u:Unverify
+
+### Fixed
+
+- Checklist toggle bug: Space now toggles only selected item (not all)
+- AWK state machine in `get_checklist_item_status` returning duplicate values
+- Added Escape key handling to exit checklist editor back to main console
+- Column alignment in pl coders TUI for Unicode characters
+
+---
+
 ## [v0.18.0] - 2026-01-10
 
 ### Added

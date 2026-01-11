@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v0.19.1] - 2026-01-12
+
+### Added
+
+- **Automated Site Email Configuration**
+  - Auto-configure site emails during `pl live` deployment
+  - Site email set to `sitename@nwpcode.org`
+  - Admin email forwarding configured automatically
+  - Configurable via `settings.email` in cnwp.yml
+
+- **Email Verification in Deployments**
+  - Added email verification step to `stg2live` and `stg2prod`
+  - Displays configured site email and admin address
+  - Option to skip with `email.auto_configure: false`
+
+- **AVC Work Management Documentation**
+  - Added design drafts for work management module
+  - Implementation planning documents
+
+### Changed
+
+- `stg2live.sh` now includes email verification step
+- `stg2prod.sh` now includes email verification step
+
+---
+
 ## [v0.19.0] - 2026-01-11
 
 ### Added

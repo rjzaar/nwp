@@ -12,7 +12,7 @@ Pending implementation items and future improvements for NWP.
 
 | Metric | Value |
 |--------|-------|
-| Current Version | v0.19 |
+| Current Version | v0.19.1 |
 | Test Success Rate | 98% |
 | Completed Proposals | P01-P35, F04, F05, F07, F09 |
 | Pending Proposals | F01-F03, F06, F08, F10, F11 |

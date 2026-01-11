@@ -7,8 +7,8 @@
 # and automatically invalidates verification when code changes.
 #
 # Usage:
-#   ./verify.sh              # Show verification status
-#   ./verify.sh status       # Show verification status (default)
+#   ./verify.sh              # Interactive TUI console (default)
+#   ./verify.sh report       # Show verification status report
 #   ./verify.sh check        # Check for invalidated verifications
 #   ./verify.sh details <id> # Show what changed and verification checklist
 #   ./verify.sh verify       # Interactive verification mode
@@ -280,7 +280,7 @@ get_checklist_item_status() {
 
     if [[ "$version" == "2" ]]; then
         awk -v feature="$feature" -v idx="$idx" '
-        BEGIN { in_feature = 0; in_checklist = 0; current_idx = -1; in_item = 0 }
+        BEGIN { in_feature = 0; in_checklist = 0; current_idx = -1; in_item = 0; found = 0 }
         /^  [a-z0-9_]+:/ {
             gsub(/^  /, "")
             gsub(/:.*/, "")
@@ -303,12 +303,13 @@ get_checklist_item_status() {
         in_item && /^        completed:/ {
             gsub(/^        completed: */, "")
             print
+            found = 1
             exit
         }
         in_feature && in_checklist && /^    [a-z]/ {
             exit
         }
-        END { if (in_item && current_idx == idx) print "false" }
+        END { if (!found && in_item && current_idx == idx) print "false" }
         ' "$VERIFICATION_FILE"
     else
         # v1 format - no completion tracking
@@ -454,10 +455,12 @@ update_checklist_item() {
         next
     }
     in_feature && in_checklist && /^      - text:/ {
+        # Reset in_item before checking if this is the target
+        in_item = 0
+        field_updated = 0
         current_idx++
         if (current_idx == idx) {
             in_item = 1
-            field_updated = 0
         }
         print
         next
@@ -688,6 +691,7 @@ show_status() {
     local verified_count=0
     local unverified_count=0
     local invalid_count=0
+    local partial_count=0
     local current_section=""
 
     while IFS= read -r feature; do
@@ -758,14 +762,30 @@ show_status() {
                 checkbox="${GREEN}${CHECK_ON}${NC}"
                 status_color="${GREEN}"
                 if [[ -n "$verified_by" && "$verified_by" != "null" ]]; then
-                    status_info=" ${DIM}by ${verified_by}${NC}"
+                    if [[ "$verified_by" == "checklist" ]]; then
+                        status_info=" ${DIM}via checklist${NC}"
+                    else
+                        status_info=" ${DIM}by ${verified_by}${NC}"
+                    fi
                 fi
                 ((++verified_count))
             fi
         else
-            checkbox="${RED}${CHECK_OFF}${NC}"
-            status_color="${RED}"
-            ((++unverified_count))
+            # Check for partial completion (some checklist items done)
+            local total_items=$(get_checklist_item_count "$feature" 2>/dev/null || echo "0")
+            local completed_items=$(get_completed_checklist_item_count "$feature" 2>/dev/null || echo "0")
+
+            if [[ $total_items -gt 0 ]] && [[ $completed_items -gt 0 ]]; then
+                local pct=$((completed_items * 100 / total_items))
+                checkbox="${YELLOW}◐${NC}"
+                status_color="${YELLOW}"
+                status_info=" ${DIM}(${completed_items}/${total_items} checklist items - ${pct}%)${NC}"
+                ((++partial_count))
+            else
+                checkbox="${RED}${CHECK_OFF}${NC}"
+                status_color="${RED}"
+                ((++unverified_count))
+            fi
         fi
 
         # Print feature line
@@ -778,6 +798,7 @@ show_status() {
     echo -e "${DIM}════════════════════════════════════════════════════════════════${NC}"
     echo -e "${BOLD}Summary:${NC}"
     echo -e "  ${GREEN}✓ Verified:${NC}   $verified_count"
+    echo -e "  ${YELLOW}◐ Partial:${NC}    $partial_count"
     echo -e "  ${RED}○ Unverified:${NC} $unverified_count"
     echo -e "  ${YELLOW}! Modified:${NC}   $invalid_count"
     echo ""
@@ -816,12 +837,20 @@ show_details() {
         if check_feature_changed "$feature"; then
             echo -e "  ${YELLOW}${CHECK_INVALID}${NC} ${YELLOW}MODIFIED${NC} - verification invalidated"
             if [[ -n "$verified_by" && "$verified_by" != "null" ]]; then
-                echo -e "  ${DIM}Previously verified by ${verified_by} at ${verified_at}${NC}"
+                if [[ "$verified_by" == "checklist" ]]; then
+                    echo -e "  ${DIM}Previously verified via checklist at ${verified_at}${NC}"
+                else
+                    echo -e "  ${DIM}Previously verified by ${verified_by} at ${verified_at}${NC}"
+                fi
             fi
         else
             echo -e "  ${GREEN}${CHECK_ON}${NC} ${GREEN}VERIFIED${NC}"
             if [[ -n "$verified_by" && "$verified_by" != "null" ]]; then
-                echo -e "  ${DIM}Verified by ${verified_by} at ${verified_at}${NC}"
+                if [[ "$verified_by" == "checklist" ]]; then
+                    echo -e "  ${DIM}Verified via checklist at ${verified_at}${NC}"
+                else
+                    echo -e "  ${DIM}Verified by ${verified_by} at ${verified_at}${NC}"
+                fi
             fi
         fi
     else
@@ -1310,7 +1339,7 @@ draw_console() {
 
     # Header (split into two lines for readability)
     echo -e "${BOLD}NWP Verification Console${NC}"
-    echo -e "${DIM}←→:Category ↑↓:Feature | v:Verify u:Unverify d:Details | i:Checklist n:Notes h:History p:Preview | c:Check r:Refresh q:Quit${NC}"
+    echo -e "${DIM}←→:Category ↑↓:Feature | v:Verify i:Checklist u:Unverify | d:Details n:Notes h:History p:Preview | c:Check r:Refresh q:Quit${NC}"
     printf '═%.0s' $(seq 1 $width)
     echo ""
 
@@ -1325,7 +1354,7 @@ draw_console() {
         esac
     done
 
-    printf "  ${GREEN}Verified: %d${NC}  |  ${YELLOW}Partial: %d${NC}  |  ${DIM}Unverified: %d${NC}  |  ${YELLOW}Modified: %d${NC}  |  Total: %d\n" \
+    printf "  ${GREEN}[✓]Verified: %d${NC}  |  ${YELLOW}[◐]Partial: %d${NC}  |  ${DIM}[○]Unverified: %d${NC}  |  ${YELLOW}[!]Modified: %d${NC}  |  Total: %d\n" \
         "$verified_count" "$partial_count" "$unverified_count" "$modified_count" "${#FEATURE_IDS[@]}"
     printf '─%.0s' $(seq 1 $width)
     echo ""
@@ -1423,7 +1452,11 @@ draw_console() {
         echo ""
 
         if [[ "${FEATURE_STATUS[$global_idx]}" == "1" && "$verified_by" != "null" ]]; then
-            printf "  ${GREEN}✓ Verified by %s at %s${NC}\n" "$verified_by" "$verified_at"
+            if [[ "$verified_by" == "checklist" ]]; then
+                printf "  ${GREEN}✓ Verified via checklist at %s${NC}\n" "$verified_at"
+            else
+                printf "  ${GREEN}✓ Verified by %s at %s${NC}\n" "$verified_by" "$verified_at"
+            fi
         elif [[ "${FEATURE_STATUS[$global_idx]}" == "2" ]]; then
             printf "  ${YELLOW}⚠ Modified since last verification${NC}\n"
         fi
@@ -1445,12 +1478,39 @@ toggle_checklist_item() {
         update_checklist_item "$feature" "$item_idx" "completed_by" "null"
         update_checklist_item "$feature" "$item_idx" "completed_at" "null"
         add_history_entry "$feature" "checklist_item_uncompleted" "$username" "Item $((item_idx + 1)) marked incomplete"
+
+        # If feature was auto-verified via checklist, unverify it
+        local verified_by=$(get_yaml_value "$feature" "verified_by")
+        if [[ "$verified_by" == "checklist" ]]; then
+            update_yaml_value "$feature" "verified" "false"
+            update_yaml_value "$feature" "verified_by" "null"
+            update_yaml_value "$feature" "verified_at" "null"
+            add_history_entry "$feature" "unverified" "$username" "Checklist item uncompleted"
+        fi
     else
         # Mark as complete
         update_checklist_item "$feature" "$item_idx" "completed" "true"
         update_checklist_item "$feature" "$item_idx" "completed_by" "\"$username\""
         update_checklist_item "$feature" "$item_idx" "completed_at" "\"$timestamp\""
         add_history_entry "$feature" "checklist_item_completed" "$username" "Item $((item_idx + 1)) completed"
+
+        # Check if all checklist items are now complete - auto-verify
+        local total_items=$(get_checklist_item_count "$feature" 2>/dev/null || echo "0")
+        local completed_items=$(get_completed_checklist_item_count "$feature" 2>/dev/null || echo "0")
+
+        if [[ $total_items -gt 0 ]] && [[ $completed_items -eq $total_items ]]; then
+            local current_verified=$(get_yaml_value "$feature" "verified")
+            if [[ "$current_verified" != "true" ]]; then
+                # Auto-verify: all checklist items complete
+                local files=$(get_feature_files "$feature")
+                local hash=$(calculate_hash "$files")
+                update_yaml_value "$feature" "verified" "true"
+                update_yaml_value "$feature" "verified_by" "\"checklist\""
+                update_yaml_value "$feature" "verified_at" "\"$timestamp\""
+                update_yaml_value "$feature" "file_hash" "\"$hash\""
+                add_history_entry "$feature" "verified" "checklist" "All checklist items completed"
+            fi
+        fi
     fi
 }
 
@@ -1527,7 +1587,7 @@ edit_checklist_items() {
 
         IFS= read -rsn1 key
         case "$key" in
-            $'\x1b')  # Arrow keys
+            $'\x1b')  # Escape sequence
                 read -rsn2 -t 0.1 key2
                 case "$key2" in
                     '[A')  # Up arrow
@@ -1540,13 +1600,16 @@ edit_checklist_items() {
                             selected_idx=$((selected_idx + 1))
                         fi
                         ;;
+                    '')  # Plain Escape - go back
+                        break
+                        ;;
                 esac
                 ;;
             ' ')  # Space - toggle completion
                 toggle_checklist_item "$feature" "$selected_idx"
                 # Redraw immediately to show change
                 ;;
-            'q'|'Q'|$'\n')  # Quit
+            'q'|'Q'|$'\n')  # Quit - go back to main console
                 break
                 ;;
         esac
@@ -1845,6 +1908,13 @@ run_console() {
                 build_feature_arrays
                 cursor_hide
                 ;;
+            'i'|'I')  # Edit checklist items
+                cursor_show
+                local feature="${FEATURE_IDS[$global_idx]}"
+                edit_checklist_items "$feature" "${FEATURE_NAMES[$global_idx]}"
+                build_feature_arrays  # Refresh data after editing
+                cursor_hide
+                ;;
             'u'|'U')  # Unverify current feature
                 cursor_show
                 clear_screen
@@ -1875,13 +1945,6 @@ run_console() {
                 build_feature_arrays
                 cursor_hide
                 ;;
-            'i'|'I')  # Edit checklist items
-                cursor_show
-                local feature="${FEATURE_IDS[$global_idx]}"
-                edit_checklist_items "$feature" "${FEATURE_NAMES[$global_idx]}"
-                build_feature_arrays  # Refresh data after editing
-                cursor_hide
-                ;;
             'n'|'N')  # Edit notes
                 cursor_show
                 local feature="${FEATURE_IDS[$global_idx]}"
@@ -1910,7 +1973,7 @@ run_console() {
 
 # Main
 main() {
-    local command="${1:-status}"
+    local command="${1:-console}"
 
     if [[ ! -f "$VERIFICATION_FILE" ]]; then
         echo -e "${RED}Error:${NC} Verification file not found: $VERIFICATION_FILE"
@@ -1921,7 +1984,7 @@ main() {
         console|tui)
             run_console
             ;;
-        status)
+        report|status)
             show_status
             ;;
         check)
@@ -1963,8 +2026,8 @@ main() {
             echo "Usage: ./verify.sh [command] [args]"
             echo ""
             echo "Commands:"
-            echo "  console       Interactive TUI console (navigate, verify, view details)"
-            echo "  status        Show verification status (default)"
+            echo "  (default)     Interactive TUI console (navigate, verify, view details)"
+            echo "  report        Show verification status report"
             echo "  check         Check for invalidated verifications"
             echo "  details <id>  Show what changed and verification checklist"
             echo "  verify        Interactive verification mode"

@@ -17,6 +17,11 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 
+# Source install-common for get_settings_value
+if [ -f "$PROJECT_ROOT/lib/install-common.sh" ]; then
+    source "$PROJECT_ROOT/lib/install-common.sh"
+fi
+
 # Source YAML library
 if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
     source "$PROJECT_ROOT/lib/yaml-write.sh"
@@ -205,8 +210,9 @@ ${BOLD}DEPLOYMENT WORKFLOW:${NC}
     6. Run composer install on production
     7. Run database updates on production
     8. Import configuration to production
-    9. Reinstall modules on production (if configured)
-   10. Clear cache and display production URL
+    9. Verify and configure site email
+   10. Reinstall modules on production (if configured)
+   11. Clear cache and display production URL
 
 ${BOLD}CONFIGURATION:${NC}
     Production deployment configuration is stored in cnwp.yml:
@@ -537,9 +543,131 @@ import_config_production() {
     return 0
 }
 
-# Step 9: Reinstall modules on production
+# Step 9: Verify and configure site email
+verify_site_email() {
+    local base_name=$1
+
+    print_header "Step 9: Verify Site Email Configuration"
+
+    # Check if email auto-configure is enabled
+    local auto_configure
+    auto_configure=$(get_settings_value "email.auto_configure" "true" 2>/dev/null)
+    if [ "$auto_configure" != "true" ]; then
+        print_status "INFO" "Email auto-configure disabled in settings"
+        return 0
+    fi
+
+    # Get email domain and admin email
+    local email_domain
+    email_domain=$(get_settings_value "email.domain" "" 2>/dev/null)
+    if [ -z "$email_domain" ]; then
+        email_domain=$(get_settings_value "url" "nwpcode.org" 2>/dev/null)
+    fi
+
+    local admin_email
+    admin_email=$(get_settings_value "email.admin_email" "" 2>/dev/null)
+    if [ -z "$admin_email" ]; then
+        print_status "WARN" "No admin_email configured in settings.email"
+        print_info "Email verification skipped"
+        return 0
+    fi
+
+    local site_email="${base_name}@${email_domain}"
+    local gitlab_host="git.${email_domain}"
+
+    print_info "Expected site email: $site_email"
+    print_info "Forward to: $admin_email"
+
+    if [ "$DRY_RUN" == "true" ]; then
+        print_status "INFO" "DRY RUN: Would verify email configuration"
+        return 0
+    fi
+
+    # Check if email forwarding exists on mail server
+    local ssh_cmd=$(build_ssh_cmd)
+    local mail_ssh_user="gitlab"  # Default user for mail server
+
+    # Try to check if the forwarding alias exists
+    print_info "Checking email forwarding on $gitlab_host..."
+    local alias_exists=false
+
+    if ssh -o BatchMode=yes -o ConnectTimeout=5 "${mail_ssh_user}@${gitlab_host}" \
+        "grep -q '^${site_email}' /etc/postfix/virtual 2>/dev/null" 2>/dev/null; then
+        alias_exists=true
+        print_status "OK" "Email forwarding exists: $site_email"
+
+        # Verify it forwards to the correct address
+        local current_forward
+        current_forward=$(ssh -o BatchMode=yes "${mail_ssh_user}@${gitlab_host}" \
+            "grep '^${site_email}' /etc/postfix/virtual 2>/dev/null | awk '{print \$2}'" 2>/dev/null)
+
+        if [ "$current_forward" != "$admin_email" ] && [ -n "$current_forward" ]; then
+            print_status "WARN" "Forward address mismatch: $current_forward (expected: $admin_email)"
+            print_info "Updating email forwarding..."
+
+            # Update the forwarding
+            local email_script="${PROJECT_ROOT}/email/add_site_email.sh"
+            if [ -f "$email_script" ]; then
+                if scp -q "$email_script" "${mail_ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
+                    if ssh "${mail_ssh_user}@${gitlab_host}" \
+                        "sudo bash /tmp/add_site_email.sh ${base_name} --forward-only ${admin_email} -y && rm /tmp/add_site_email.sh" 2>/dev/null; then
+                        print_status "OK" "Email forwarding updated: $site_email -> $admin_email"
+                    else
+                        print_status "WARN" "Could not update email forwarding"
+                    fi
+                fi
+            fi
+        else
+            print_status "OK" "Email forwards to: $current_forward"
+        fi
+    else
+        print_status "WARN" "Email forwarding not configured"
+        print_info "Creating email forwarding..."
+
+        # Create the forwarding alias
+        local email_script="${PROJECT_ROOT}/email/add_site_email.sh"
+        if [ -f "$email_script" ]; then
+            if scp -q "$email_script" "${mail_ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
+                if ssh "${mail_ssh_user}@${gitlab_host}" \
+                    "sudo bash /tmp/add_site_email.sh ${base_name} --forward-only ${admin_email} -y && rm /tmp/add_site_email.sh" 2>/dev/null; then
+                    print_status "OK" "Email forwarding created: $site_email -> $admin_email"
+                else
+                    print_status "WARN" "Could not create email forwarding (may need manual setup)"
+                fi
+            else
+                print_status "WARN" "Could not copy email script to mail server"
+            fi
+        else
+            print_status "WARN" "Email setup script not found: $email_script"
+        fi
+    fi
+
+    # Verify Drupal site email matches
+    print_info "Verifying Drupal site email..."
+    local current_drupal_email
+    current_drupal_email=$($ssh_cmd "cd $PROD_PATH && drush config:get system.site mail --format=string 2>/dev/null" 2>/dev/null)
+
+    if [ "$current_drupal_email" == "$site_email" ]; then
+        print_status "OK" "Drupal site email correct: $current_drupal_email"
+    elif [ -n "$current_drupal_email" ]; then
+        print_status "WARN" "Drupal site email mismatch: $current_drupal_email (expected: $site_email)"
+        print_info "Updating Drupal site email..."
+
+        if $ssh_cmd "cd $PROD_PATH && drush config:set system.site mail '${site_email}' -y" 2>/dev/null; then
+            print_status "OK" "Drupal site email updated to: $site_email"
+        else
+            print_status "WARN" "Could not update Drupal site email"
+        fi
+    else
+        print_info "Could not read current Drupal site email"
+    fi
+
+    return 0
+}
+
+# Step 10: Reinstall modules on production
 reinstall_modules_production() {
-    print_header "Step 9: Reinstall Modules (if configured)"
+    print_header "Step 10: Reinstall Modules (if configured)"
 
     if [ "$DRY_RUN" == "true" ]; then
         print_status "INFO" "DRY RUN: Would reinstall modules on production"
@@ -611,9 +739,9 @@ reinstall_modules_production() {
     return 0
 }
 
-# Step 10: Clear cache and display URL
+# Step 11: Clear cache and display URL
 clear_cache_and_display() {
-    print_header "Step 10: Clear Cache and Display Production URL"
+    print_header "Step 11: Clear Cache and Display Production URL"
 
     local ssh_cmd=$(build_ssh_cmd)
 
@@ -713,10 +841,14 @@ deploy_stg2prod() {
     fi
 
     if should_run_step 9 "$start_step"; then
-        reinstall_modules_production
+        verify_site_email "$base_name"
     fi
 
     if should_run_step 10 "$start_step"; then
+        reinstall_modules_production
+    fi
+
+    if should_run_step 11 "$start_step"; then
         clear_cache_and_display
     fi
 

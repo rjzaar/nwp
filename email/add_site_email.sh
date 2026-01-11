@@ -9,7 +9,9 @@
 # Usage:
 #   ./add_site_email.sh <sitename>                    # Add email for site
 #   ./add_site_email.sh <sitename> --forward <email>  # Add with forwarding
+#   ./add_site_email.sh <sitename> --forward-only <email>  # Forwarding only (no mailbox)
 #   ./add_site_email.sh <sitename> --receive          # Enable receiving (Dovecot)
+#   ./add_site_email.sh <sitename> -y                 # Non-interactive (skip prompts)
 #   ./add_site_email.sh --list                        # List all site emails
 #   ./add_site_email.sh --delete <sitename>           # Remove site email
 #   ./add_site_email.sh --help                        # Show this help
@@ -68,7 +70,7 @@ print_info() {
 }
 
 show_help() {
-    sed -n '3,14p' "$0" | sed 's/^# //' | sed 's/^#//'
+    sed -n '3,17p' "$0" | sed 's/^# //' | sed 's/^#//'
     exit 0
 }
 
@@ -129,21 +131,55 @@ add_site_email() {
     local sitename="$1"
     local forward_to="${2:-}"
     local enable_receive="${3:-false}"
+    local forward_only="${4:-false}"
+    local noninteractive="${5:-false}"
 
     local email="${sitename}@${DOMAIN}"
 
     print_header "Adding Email: ${email}"
 
+    # For forward-only mode, we just need the virtual alias
+    if [ "$forward_only" = "true" ]; then
+        if [ -z "$forward_to" ]; then
+            print_error "Forward-only mode requires a forward address"
+            exit 1
+        fi
+
+        # Check if alias already exists
+        if grep -q "^${email}" /etc/postfix/virtual 2>/dev/null; then
+            print_warning "Email alias ${email} already exists"
+            if [ "$noninteractive" != "true" ]; then
+                read -p "Replace it? [y/N] " -n 1 -r
+                echo
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    exit 0
+                fi
+            fi
+            sed -i "/^${email}/d" /etc/postfix/virtual
+        fi
+
+        # Add forwarding alias only
+        echo "${email}    ${forward_to}" >> /etc/postfix/virtual
+        postmap /etc/postfix/virtual
+        systemctl reload postfix
+
+        print_ok "Forwarding alias created: ${email} → ${forward_to}"
+        return 0
+    fi
+
+    # Full mailbox mode
     # Ensure virtual mailbox infrastructure exists
     setup_virtual_users
 
     # Check if email already exists
     if grep -q "^${email}" /etc/postfix/vmailbox 2>/dev/null; then
         print_warning "Email ${email} already exists"
-        read -p "Replace it? [y/N] " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 0
+        if [ "$noninteractive" != "true" ]; then
+            read -p "Replace it? [y/N] " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                exit 0
+            fi
         fi
         # Remove existing entry
         sed -i "/^${email}/d" /etc/postfix/vmailbox
@@ -404,6 +440,8 @@ main() {
     local sitename=""
     local forward_to=""
     local enable_receive="false"
+    local forward_only="false"
+    local noninteractive="false"
 
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -423,8 +461,17 @@ main() {
                 forward_to="$2"
                 shift 2
                 ;;
+            --forward-only|-fo)
+                forward_only="true"
+                forward_to="$2"
+                shift 2
+                ;;
             --receive|-r)
                 enable_receive="true"
+                shift
+                ;;
+            --yes|-y)
+                noninteractive="true"
                 shift
                 ;;
             --from-config)
@@ -462,7 +509,7 @@ main() {
             setup_from_config "$sitename"
             ;;
         add)
-            add_site_email "$sitename" "$forward_to" "$enable_receive"
+            add_site_email "$sitename" "$forward_to" "$enable_receive" "$forward_only" "$noninteractive"
             ;;
         *)
             show_help

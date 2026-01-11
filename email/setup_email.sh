@@ -643,6 +643,46 @@ EOF
 }
 
 ################################################################################
+# E10: Git Email Alias (git@nwpcode.org forwarding)
+################################################################################
+
+setup_git_alias() {
+    print_header "E10: Configuring git@ Email Alias"
+
+    local forward_to="${ADMIN_EMAIL}"
+
+    # Ensure virtual alias file exists
+    touch /etc/postfix/virtual
+
+    # Check if git@ alias already exists
+    if grep -q "^git@${DOMAIN}" /etc/postfix/virtual 2>/dev/null; then
+        print_info "Updating existing git@ alias..."
+        sed -i "/^git@${DOMAIN}/d" /etc/postfix/virtual
+    fi
+
+    # Add git@ forwarding alias
+    echo "git@${DOMAIN}    ${forward_to}" >> /etc/postfix/virtual
+    postmap /etc/postfix/virtual
+
+    # Reload Postfix to apply changes
+    systemctl reload postfix 2>/dev/null || true
+
+    print_ok "git@${DOMAIN} forwards to ${forward_to}"
+}
+
+check_git_alias() {
+    echo -n "E10 git@ alias: "
+    if grep -q "^git@${DOMAIN}" /etc/postfix/virtual 2>/dev/null; then
+        local forward=$(grep "^git@${DOMAIN}" /etc/postfix/virtual | awk '{print $2}')
+        echo -e "${GREEN}OK${NC} (git@${DOMAIN} → ${forward})"
+        return 0
+    else
+        echo -e "${YELLOW}NOT CONFIGURED${NC}"
+        return 1
+    fi
+}
+
+################################################################################
 # Status Check
 ################################################################################
 
@@ -657,6 +697,7 @@ check_all() {
     check_dmarc || issues=$((issues + 1))
     check_ptr || issues=$((issues + 1))
     check_mx || issues=$((issues + 1))
+    check_git_alias || issues=$((issues + 1))
 
     echo ""
     if [ $issues -eq 0 ]; then
@@ -735,6 +776,7 @@ main() {
     setup_ptr
     setup_mx
     setup_gitlab_email
+    setup_git_alias
 
     echo ""
     print_header "Setup Complete"

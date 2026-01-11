@@ -495,6 +495,86 @@ setup_ssl() {
     print_status "OK" "SSL setup attempted"
 }
 
+# Setup site email with forwarding to admin
+# Creates [sitename]@nwpcode.org that forwards to the coder's email
+setup_site_email() {
+    local sitename="$1"
+    local server_ip="$2"
+    local ssh_user="${3:-gitlab}"
+
+    print_header "Email Configuration"
+
+    # Check if email auto-configure is enabled
+    local auto_configure
+    auto_configure=$(get_settings_value "email.auto_configure" "true")
+    if [ "$auto_configure" != "true" ]; then
+        print_info "Email auto-configure disabled in settings"
+        return 0
+    fi
+
+    # Get email domain and admin email
+    local email_domain
+    email_domain=$(get_settings_value "email.domain" "")
+    if [ -z "$email_domain" ]; then
+        email_domain=$(get_settings_value "url" "nwpcode.org")
+    fi
+
+    local admin_email
+    admin_email=$(get_settings_value "email.admin_email" "")
+    if [ -z "$admin_email" ]; then
+        print_warning "No admin_email configured in settings.email"
+        print_info "Site email forwarding will not be configured"
+        return 1
+    fi
+
+    local site_email="${sitename}@${email_domain}"
+    local gitlab_host="git.${email_domain}"
+
+    print_info "Site email: $site_email"
+    print_info "Forward to: $admin_email"
+
+    # Check if email infrastructure exists on GitLab server
+    if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "${ssh_user}@${gitlab_host}" "test -f /etc/postfix/virtual" 2>/dev/null; then
+        print_warning "Email infrastructure not configured on $gitlab_host"
+        print_info "Run 'pl email setup' on the GitLab server first"
+        return 1
+    fi
+
+    # Create forwarding alias using add_site_email.sh
+    local email_script="${PROJECT_ROOT}/email/add_site_email.sh"
+    if [ ! -f "$email_script" ]; then
+        print_warning "Email setup script not found: $email_script"
+        return 1
+    fi
+
+    # Copy script to server and run it
+    print_info "Creating email forwarding..."
+    if scp -q "$email_script" "${ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
+        if ssh "${ssh_user}@${gitlab_host}" "sudo bash /tmp/add_site_email.sh ${sitename} --forward-only ${admin_email} -y && rm /tmp/add_site_email.sh" 2>/dev/null; then
+            print_status "OK" "Email forwarding configured: $site_email -> $admin_email"
+        else
+            print_warning "Could not create email forwarding (may already exist)"
+        fi
+    else
+        print_warning "Could not copy email script to server"
+        return 1
+    fi
+
+    # Update Drupal site email on the live server
+    print_info "Updating Drupal site email..."
+    local sudo_prefix=""
+    [ "$ssh_user" == "gitlab" ] && sudo_prefix="sudo -u www-data"
+
+    if ssh -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "cd /var/www/${sitename} && $sudo_prefix vendor/bin/drush config:set system.site mail '${site_email}' -y" 2>/dev/null; then
+        print_status "OK" "Drupal site email set to $site_email"
+    else
+        print_info "Could not update Drupal site email (may need manual configuration)"
+    fi
+
+    return 0
+}
+
 # Verify SSH connectivity to server with retries
 # Usage: verify_ssh_connectivity "ip" "user" [max_retries]
 verify_ssh_connectivity() {
@@ -824,6 +904,9 @@ provision_dedicated() {
     # Setup SSL (has its own idempotency check)
     setup_ssl "$sitename" "$ip" || true
 
+    # Setup site email forwarding
+    setup_site_email "$sitename" "$ip" "root" || true
+
     # Setup server security (has its own idempotency checks)
     setup_server_security "$sitename" "$ip" || true
 
@@ -925,6 +1008,9 @@ REMOTE
 
     # Setup SSL (has its own idempotency check)
     setup_ssl "$sitename" "$gitlab_host" || true
+
+    # Setup site email forwarding
+    setup_site_email "$sitename" "$gitlab_host" "gitlab" || true
 
     # Setup server security (has its own idempotency checks)
     setup_server_security "$sitename" "$gitlab_host" || true

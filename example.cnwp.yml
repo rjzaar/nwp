@@ -38,6 +38,14 @@ settings:
   # linodeuse: all                 # [PLANNED] When to use Linode: testing, gitlab, all, or blank
   # urluse: all                    # [PLANNED] When to use custom URL: testing, gitlab, all, or blank
 
+  # === EMAIL CONFIGURATION [ACTIVE] ===
+  # Site emails are auto-configured during pl live deployment
+  # Each site gets [sitename]@{url} which forwards to admin_email
+  email:
+    domain: nwpcode.org              # [ACTIVE] Email domain for site addresses (defaults to settings.url)
+    admin_email: admin@example.com   # [ACTIVE] Default admin email - receives forwarded site emails
+    auto_configure: true             # [ACTIVE] Auto-configure email during pl live
+
   # === PHP SETTINGS [ACTIVE] ===
   # These override hardcoded defaults in install scripts
   php_settings:
@@ -193,15 +201,18 @@ other_coders:
 
   # Registered coders [ACTIVE]
   # Each entry creates NS delegation: <name>.nwpcode.org -> Linode nameservers
+  # The email field is used for forwarding site emails (sitename@nwpcode.org -> coder email)
   # Example:
   #   coder2:
   #     added: 2024-01-15T10:30:00Z
   #     status: active
+  #     email: coder2@example.com      # [ACTIVE] Personal email for site email forwarding
   #     notes: "John's development environment"
   coders:
     # coder2:
     #   added: 2024-01-15T10:30:00Z
     #   status: active
+    #   email: coder2@example.com
     #   notes: "Example coder entry"
 
   # === CI/CD CONFIGURATION [PLANNED] ===
@@ -789,20 +800,14 @@ sites:
   #     notifications:                     # CI notifications
   #       email: admin@example.com
   #       slack_webhook: ""
-  #   email:                               # [PLANNED] Per-site email configuration
-  #     enabled: true                      # Enable email for this site
-  #     address: mysite@nwpcode.org        # Site's email address
-  #     direction: send                    # send = outgoing only, all = send + receive
-  #     forward: admin@example.com         # Forward received emails to this address
-  #     # Direction options:
-  #     #   send - Site can send emails only (contact forms, notifications)
-  #     #          No mailbox created, just SMTP credentials
-  #     #   all  - Site can send AND receive emails
-  #     #          Creates virtual mailbox with IMAP access
-  #     # Forward options:
-  #     #   If set, all received emails are forwarded to this address
-  #     #   Works with direction: all (emails are stored AND forwarded)
-  #     #   Useful for routing site inquiries to admin's main inbox
+  #   email:                               # [ACTIVE] Per-site email configuration
+  #     enabled: true                      # [ACTIVE] Enable email for this site (default: true for live)
+  #     address: mysite@nwpcode.org        # [ACTIVE] Site's email address (auto-generated: sitename@domain)
+  #     forward: admin@example.com         # [ACTIVE] Forward site emails to this address
+  #     # Forward defaults to:
+  #     #   1. Coder's email from other_coders.coders.<name>.email
+  #     #   2. settings.email.admin_email if no coder email
+  #     # Site email is automatically configured during pl live deployment
   #
   # Example imported site entry (created by import.sh):
   # imported_site:

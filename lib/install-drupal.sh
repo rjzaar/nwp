@@ -738,11 +738,20 @@ CONFIG_SPLIT_EOF
         local admin_password
         admin_password=$(generate_secure_password 16)
 
+        # Get site email address (sitename@domain)
+        local email_domain
+        email_domain=$(get_settings_value "email.domain" "" "$config_file" 2>/dev/null)
+        if [ -z "$email_domain" ]; then
+            email_domain=$(get_settings_value "url" "nwpcode.org" "$config_file" 2>/dev/null)
+        fi
+        local site_email="${site_name}@${email_domain}"
+
         if ! ddev drush site:install "$profile" \
             --db-url="${db_driver}://db:db@db:3306/db" \
             --account-name=admin \
             --account-pass="$admin_password" \
-            --site-name="My OpenSocial Site" \
+            --site-name="${site_name}" \
+            --site-mail="$site_email" \
             -y; then
             print_error "Failed to install Drupal site"
             return 1

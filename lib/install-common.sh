@@ -585,12 +585,21 @@ get_root_value() {
 }
 
 # Get value from settings section
+# Usage: get_settings_value "key" ["default_value"] ["config_file"]
 get_settings_value() {
     local key=$1
-    local config_file="${2:-cnwp.yml}"
+    local default_value="${2:-}"
+    local config_file="${3:-cnwp.yml}"
+
+    # If only 2 args and second looks like a file path, treat it as config_file
+    if [[ $# -eq 2 && "$2" == */* ]]; then
+        config_file="$2"
+        default_value=""
+    fi
 
     # Use awk to extract values from settings section (indented under settings:)
-    awk -v key="$key" '
+    local result
+    result=$(awk -v key="$key" '
         BEGIN { in_settings = 0 }
         /^settings:/ {
             in_settings = 1
@@ -606,7 +615,14 @@ get_settings_value() {
             print
             exit
         }
-    ' "$config_file"
+    ' "$config_file" 2>/dev/null)
+
+    # Return result or default
+    if [[ -n "$result" ]]; then
+        echo "$result"
+    else
+        echo "$default_value"
+    fi
 }
 
 # Check if recipe exists in config file

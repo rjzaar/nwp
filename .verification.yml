@@ -23,16 +23,16 @@ features:
     name: "Setup Script (setup.sh)"
     description: "NWP prerequisites setup - Docker, DDEV, mkcert, Linode CLI, GitLab"
     files:
-      - setup.sh
+      - scripts/commands/setup.sh
     checklist:
       - text: "Run setup.sh on a fresh system and verify all prerequisites install"
         completed: true
         completed_by: "rob"
         completed_at: "2026-01-11T21:35:56+11:00"
       - text: "Test Docker installation and verify ddev starts correctly"
-        completed: false
-        completed_by: null
-        completed_at: null
+        completed: true
+        completed_by: "greg"
+        completed_at: "2026-01-11T16:02:39-07:00"
       - text: "Verify mkcert generates valid local certificates"
         completed: false
         completed_by: null
@@ -53,19 +53,20 @@ features:
 
     history:
       - action: "notes_updated"
-        by: "rob"
-        at: "2026-01-11T21:36:45+11:00"
-      - action: "notes_updated"
-        by: "rob"
-        at: "2026-01-11T21:36:36+11:00"
+        by: "greg"
+        at: "2026-01-11T16:08:58-07:00"
+      - action: "checklist_item_uncompleted"
+        by: "greg"
+        at: "2026-01-11T16:08:06-07:00"
+        context: "Item 3 marked incomplete"
       - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T21:35:56+11:00"
-        context: "Item 1 completed"
+        by: "greg"
+        at: "2026-01-11T16:08:05-07:00"
+        context: "Item 3 completed"
       - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T21:35:28+11:00"
-        context: "Item 6 completed"
+        by: "greg"
+        at: "2026-01-11T16:02:39-07:00"
+        context: "Item 2 completed"
       - action: "checklist_item_uncompleted"
         by: "rob"
         at: "2026-01-11T21:35:27+11:00"
@@ -88,106 +89,111 @@ features:
         context: "Item 1 marked incomplete"
       - action: "checklist_item_completed"
         by: "rob"
-        at: "2026-01-11T21:11:16+11:00"
-        context: "Item 2 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T21:11:14+11:00"
-        context: "Item 2 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T21:11:14+11:00"
-        context: "Item 2 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T21:11:14+11:00"
-        context: "Item 2 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T21:11:13+11:00"
-        context: "Item 2 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T21:11:12+11:00"
-        context: "Item 2 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T21:11:10+11:00"
-        context: "Item 2 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T21:11:08+11:00"
+        at: "2026-01-11T21:35:56+11:00"
         context: "Item 1 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T20:50:52+11:00"
-        context: "Item 2 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T20:50:51+11:00"
-        context: "Item 4 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T20:50:50+11:00"
-        context: "Item 2 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T20:50:49+11:00"
-        context: "Item 2 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T20:50:46+11:00"
-        context: "Item 2 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T20:50:44+11:00"
-        context: "Item 1 completed"
-      - action: "checklist_item_completed"
-        by: "rob"
-        at: "2026-01-11T20:50:43+11:00"
-        context: "Item 1 completed"
-      - action: "unverified"
-        by: "rob"
-        at: "2026-01-11T20:46:09+11:00"
-        context: "Manual unverification"
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-11T20:46:04+11:00"
-        context: "Manual verification"
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-11T20:45:59+11:00"
-        context: "Manual verification"
+
   install:
     name: "Install Script (install.sh)"
     description: "Main installation script - reads cnwp.yml and installs sites"
     files:
-      - install.sh
+      - scripts/commands/install.sh
       - lib/install-common.sh
       - lib/install-drupal.sh
       - lib/install-steps.sh
     checklist:
-      - text: "Test fresh install with each recipe type (nwp, d, os, dm)"
+      - text: "Test install with 'd' recipe (standard Drupal)"
+        completed: true
+        completed_by: "greg"
+        completed_at: "2026-01-11T16:59:21-07:00"
+      - text: "Test install with 'os' recipe (Open Social)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install with 'nwp' recipe (NWP base)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install with 'avc' recipe (AV Commons)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install with 'avc-dev' recipe (AV Commons developer)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install with 'dm' recipe (Divine Mercy)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install with 'm' recipe (Moodle)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install with 'gitlab' recipe"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install with 'pod' recipe (Podcast)"
         completed: false
         completed_by: null
         completed_at: null
       - text: "Verify site starts and is accessible via browser"
-        completed: false
-        completed_by: null
-        completed_at: null
+        completed: true
+        completed_by: "greg"
+        completed_at: "2026-01-11T16:59:39-07:00"
       - text: "Check admin login works with generated credentials"
+        completed: true
+        completed_by: "greg"
+        completed_at: "2026-01-11T16:59:48-07:00"
+      - text: "Test install with --list flag"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Test install with --list and --steps flags"
+      - text: "Test install with -s=N (resume from step N)"
+        completed: true
+        completed_by: "greg"
+        completed_at: "2026-01-11T16:59:57-07:00"
+      - text: "Test install with --resume flag"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install with -p=t (testing purpose)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install with -p=i (indefinite purpose)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install with -p=p (permanent purpose)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install with -p=m (migration purpose - stub only)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install with c flag (create test content)"
         completed: false
         completed_by: null
         completed_at: null
       - text: "Verify cnwp.yml is updated correctly after install"
+        completed: true
+        completed_by: "greg"
+        completed_at: "2026-01-11T17:01:47-07:00"
+      - text: "Test install with custom target name"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Test re-running install on existing site (should skip/warn)"
+      - text: "Test install with auto mode enabled in recipe"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install_step tracking in cnwp.yml"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test interactive option selection works"
         completed: false
         completed_by: null
         completed_at: null
@@ -197,11 +203,40 @@ features:
     file_hash: null
     notes: null
 
+    history:
+      - action: "checklist_item_completed"
+        by: "greg"
+        at: "2026-01-11T17:01:48-07:00"
+        context: "Item 20 completed"
+      - action: "checklist_item_completed"
+        by: "greg"
+        at: "2026-01-11T16:59:58-07:00"
+        context: "Item 13 completed"
+      - action: "checklist_item_completed"
+        by: "greg"
+        at: "2026-01-11T16:59:48-07:00"
+        context: "Item 11 completed"
+      - action: "checklist_item_completed"
+        by: "greg"
+        at: "2026-01-11T16:59:39-07:00"
+        context: "Item 10 completed"
+      - action: "checklist_item_completed"
+        by: "greg"
+        at: "2026-01-11T16:59:21-07:00"
+        context: "Item 1 completed"
+      - action: "checklist_item_uncompleted"
+        by: "greg"
+        at: "2026-01-11T16:33:29-07:00"
+        context: "Item 1 marked incomplete"
+      - action: "checklist_item_completed"
+        by: "greg"
+        at: "2026-01-11T16:33:24-07:00"
+        context: "Item 1 completed"
   status:
     name: "Status Script (status.sh)"
     description: "Status display, health checks, and site management"
     files:
-      - status.sh
+      - scripts/commands/status.sh
     checklist:
       - text: "Run status.sh with no arguments - verify all sites listed"
         completed: false
@@ -233,7 +268,7 @@ features:
     name: "Modify Script (modify.sh)"
     description: "Interactive TUI for modifying site options"
     files:
-      - modify.sh
+      - scripts/commands/modify.sh
     checklist:
       - text: "Run modify.sh <sitename> and navigate TUI menus"
         completed: false
@@ -265,7 +300,7 @@ features:
     name: "Backup Script (backup.sh)"
     description: "Site backup with database, files, git backup, and sanitization"
     files:
-      - backup.sh
+      - scripts/commands/backup.sh
       - lib/git.sh
       - lib/sanitize.sh
     checklist:
@@ -281,7 +316,11 @@ features:
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Test --sanitize basic and --sanitize full flags"
+      - text: "Test --sanitize basic flag"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test --sanitize full flag"
         completed: false
         completed_by: null
         completed_at: null
@@ -307,7 +346,7 @@ features:
     name: "Restore Script (restore.sh)"
     description: "Site restoration from backups"
     files:
-      - restore.sh
+      - scripts/commands/restore.sh
       - lib/rollback.sh
     checklist:
       - text: "Test restore from full backup"
@@ -344,7 +383,7 @@ features:
     name: "Sync Script (sync.sh)"
     description: "Re-sync imported sites with remote sources"
     files:
-      - sync.sh
+      - scripts/commands/sync.sh
     checklist:
       - text: "Test sync with an imported site"
         completed: false
@@ -376,7 +415,7 @@ features:
     name: "Copy Script (copy.sh)"
     description: "Copy/duplicate existing sites"
     files:
-      - copy.sh
+      - scripts/commands/copy.sh
     checklist:
       - text: "Test full copy: ./copy.sh source dest"
         completed: false
@@ -412,7 +451,7 @@ features:
     name: "Delete Script (delete.sh)"
     description: "Site deletion with safety checks"
     files:
-      - delete.sh
+      - scripts/commands/delete.sh
     checklist:
       - text: "Test delete with confirmation prompt"
         completed: false
@@ -452,7 +491,7 @@ features:
     name: "Make Script (make.sh)"
     description: "Site mode switching (dev/staging/production)"
     files:
-      - make.sh
+      - scripts/commands/make.sh
     checklist:
       - text: "Test dev mode: ./make.sh -v <sitename>"
         completed: false
@@ -488,7 +527,7 @@ features:
     name: "Migration Script (migration.sh)"
     description: "Site migrations from various sources to Drupal 11"
     files:
-      - migration.sh
+      - scripts/commands/migration.sh
     checklist:
       - text: "Test migration from Drupal 7 source"
         completed: false
@@ -524,7 +563,7 @@ features:
     name: "Import Script (import.sh)"
     description: "Import existing sites from remote sources"
     files:
-      - import.sh
+      - scripts/commands/import.sh
       - lib/import.sh
       - lib/import-tui.sh
       - lib/server-scan.sh
@@ -567,7 +606,7 @@ features:
     name: "Live Provisioning (live.sh)"
     description: "Live server provisioning at sitename.nwpcode.org"
     files:
-      - live.sh
+      - scripts/commands/live.sh
     checklist:
       - text: "Test Linode server creation (use test mode if available)"
         completed: false
@@ -608,11 +647,12 @@ features:
         by: "rob"
         at: "2026-01-11T20:39:27+11:00"
         context: "Manual verification"
+
   dev2stg:
     name: "Dev to Staging (dev2stg.sh)"
     description: "Deploy from dev to staging with TUI, multi-source DB, and testing"
     files:
-      - dev2stg.sh
+      - scripts/commands/dev2stg.sh
       - lib/state.sh
       - lib/database-router.sh
       - lib/testing.sh
@@ -635,7 +675,19 @@ features:
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Test database sources: auto, production, backup, development"
+      - text: "Test database source: auto"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test database source: production"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test database source: backup"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test database source: development"
         completed: false
         completed_by: null
         completed_at: null
@@ -647,7 +699,19 @@ features:
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Test test presets: -t quick, -t essential, -t full, -t skip"
+      - text: "Test with -t quick (quick test preset)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -t essential (essential test preset)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -t full (full test preset)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -t skip (skip tests)"
         completed: false
         completed_by: null
         completed_at: null
@@ -681,7 +745,7 @@ features:
     name: "Staging to Production (stg2prod.sh)"
     description: "Deploy from staging to production"
     files:
-      - stg2prod.sh
+      - scripts/commands/stg2prod.sh
     checklist:
       - text: "Test deployment with backup: ./stg2prod.sh -b <sitename>"
         completed: false
@@ -717,7 +781,7 @@ features:
     name: "Production to Staging (prod2stg.sh)"
     description: "Sync production back to staging"
     files:
-      - prod2stg.sh
+      - scripts/commands/prod2stg.sh
     checklist:
       - text: "Test sync: ./prod2stg.sh <sitename>"
         completed: false
@@ -749,7 +813,7 @@ features:
     name: "Staging to Live (stg2live.sh)"
     description: "Deploy staging to live server"
     files:
-      - stg2live.sh
+      - scripts/commands/stg2live.sh
     checklist:
       - text: "Test deployment to live server"
         completed: false
@@ -781,7 +845,7 @@ features:
     name: "Live to Staging (live2stg.sh)"
     description: "Promote live back to staging"
     files:
-      - live2stg.sh
+      - scripts/commands/live2stg.sh
     checklist:
       - text: "Test sync from live to local staging"
         completed: false
@@ -809,7 +873,7 @@ features:
     name: "Live to Production (live2prod.sh)"
     description: "Promote live to production"
     files:
-      - live2prod.sh
+      - scripts/commands/live2prod.sh
     checklist:
       - text: "Test promotion to production environment"
         completed: false
@@ -837,7 +901,7 @@ features:
     name: "Produce Script (produce.sh)"
     description: "Production environment setup"
     files:
-      - produce.sh
+      - scripts/commands/produce.sh
     checklist:
       - text: "Test production environment creation"
         completed: false
@@ -869,7 +933,7 @@ features:
     name: "Podcast Infrastructure (podcast.sh)"
     description: "Castopod podcast hosting infrastructure"
     files:
-      - podcast.sh
+      - scripts/commands/podcast.sh
       - lib/podcast.sh
       - lib/install-podcast.sh
     checklist:
@@ -903,7 +967,7 @@ features:
     name: "Schedule Script (schedule.sh)"
     description: "Backup and sync scheduling"
     files:
-      - schedule.sh
+      - scripts/commands/schedule.sh
     checklist:
       - text: "Test schedule creation for backups"
         completed: false
@@ -935,7 +999,7 @@ features:
     name: "Security Script (security.sh)"
     description: "Security hardening and configuration"
     files:
-      - security.sh
+      - scripts/commands/security.sh
     checklist:
       - text: "Test security audit: ./security.sh audit <sitename>"
         completed: false
@@ -971,7 +1035,7 @@ features:
     name: "SSH Setup (setup-ssh.sh)"
     description: "SSH key generation and management"
     files:
-      - setup-ssh.sh
+      - scripts/commands/setup-ssh.sh
     checklist:
       - text: "Test SSH key generation"
         completed: false
@@ -1003,7 +1067,7 @@ features:
     name: "Uninstall Script (uninstall_nwp.sh)"
     description: "Complete NWP uninstallation"
     files:
-      - uninstall_nwp.sh
+      - scripts/commands/uninstall_nwp.sh
     checklist:
       - text: "Test in dry-run mode if available"
         completed: false
@@ -1022,6 +1086,455 @@ features:
         completed_by: null
         completed_at: null
       - text: "Test partial uninstall options if available"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  # ============================================================
+  # UTILITY & MANAGEMENT SCRIPTS
+  # ============================================================
+
+  badges:
+    name: "GitLab Badge Management (badges.sh)"
+    description: "Manages GitLab CI/CD badges for project READMEs"
+    files:
+      - scripts/commands/badges.sh
+      - lib/badges.sh
+    checklist:
+      - text: "Test show command displays badge URLs correctly"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify markdown generation works"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test adding badges to site README"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check coverage threshold validation"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  email:
+    name: "Email Management (email.sh)"
+    description: "Unified interface for email setup, testing, and configuration"
+    files:
+      - scripts/commands/email.sh
+    checklist:
+      - text: "Test email setup command"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify email account creation for site"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test email deliverability"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check email rerouting configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  report:
+    name: "Error Reporter (report.sh)"
+    description: "Wrapper for error reporting to GitLab with pre-filled issue URLs"
+    files:
+      - scripts/commands/report.sh
+    checklist:
+      - text: "Test wrapper mode running a command"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify error capture and sanitization"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test GitLab issue URL generation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check clipboard copy mode"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  rollback:
+    name: "Deployment Rollback (rollback.sh)"
+    description: "Manages deployment rollback points and recovery"
+    files:
+      - scripts/commands/rollback.sh
+      - lib/rollback.sh
+    checklist:
+      - text: "Test listing rollback points"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify rollback execution"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test rollback verification"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check cleanup functionality"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  storage:
+    name: "Cloud Storage Management (storage.sh)"
+    description: "Backblaze B2 cloud storage for backups and podcast media"
+    files:
+      - scripts/commands/storage.sh
+      - lib/b2.sh
+    checklist:
+      - text: "Test B2 authentication"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify bucket listing"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test file upload to bucket"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check file deletion"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  theme:
+    name: "Theme Build Tool Management (theme.sh)"
+    description: "Unified frontend build tool management (Gulp, Grunt, Webpack, Vite)"
+    files:
+      - scripts/commands/theme.sh
+      - lib/frontend.sh
+    checklist:
+      - text: "Test auto-detection of build tools"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify dependency installation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test watch mode for live reload"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check production build"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test linting functionality"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  contribute:
+    name: "Contribution Submission (contribute.sh)"
+    description: "Submit contributions to upstream repository via merge request"
+    files:
+      - scripts/commands/contribute.sh
+    checklist:
+      - text: "Test pre-flight checks pass"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify test execution"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check MR description generation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test GitLab CLI integration"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  coder_setup:
+    name: "Coder Setup (coder-setup.sh)"
+    description: "Multi-coder DNS delegation and management"
+    files:
+      - scripts/commands/coder-setup.sh
+      - lib/cloudflare.sh
+    checklist:
+      - text: "Test adding a new coder"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify NS records in Cloudflare"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test listing coders"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check coder removal"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  coders:
+    name: "Coder Management TUI (coders.sh)"
+    description: "Interactive TUI for managing NWP coders with onboarding status tracking"
+    files:
+      - scripts/commands/coders.sh
+    checklist:
+      - text: "Test TUI navigation and selection"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify onboarding status checks (GL, GRP, SSH, NS, DNS, SRV, SITE)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test coder promotion functionality"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check bulk actions (delete, promote)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify GitLab sync functionality"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  seo_check:
+    name: "SEO Check (seo-check.sh)"
+    description: "Comprehensive SEO monitoring and sitemap verification"
+    files:
+      - scripts/commands/seo-check.sh
+    checklist:
+      - text: "Test robots.txt validation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify X-Robots-Tag header checking"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test sitemap.xml verification"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check staging protection verification"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test production SEO optimization checks"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  run_tests:
+    name: "Comprehensive Test Runner (run-tests.sh)"
+    description: "Runs all levels of tests: unit, integration, and E2E"
+    files:
+      - scripts/commands/run-tests.sh
+    checklist:
+      - text: "Test BATS unit tests execution"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify BATS integration tests"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check test output formatting"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test selective test execution"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  upstream:
+    name: "Upstream Sync (upstream.sh)"
+    description: "Syncs local repository with upstream in distributed contribution model"
+    files:
+      - scripts/commands/upstream.sh
+    checklist:
+      - text: "Test upstream configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify sync functionality"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check status reporting"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test merge and rebase strategies"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  migrate_secrets:
+    name: "Secrets Migration (migrate-secrets.sh)"
+    description: "Migrate to two-tier secrets architecture (infrastructure vs data)"
+    files:
+      - scripts/commands/migrate-secrets.sh
+    checklist:
+      - text: "Test dry-run mode"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify data secret detection"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check backup creation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test NWP root migration"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  security_check:
+    name: "HTTP Security Headers Check (security-check.sh)"
+    description: "Tests HTTP security headers on any URL (like Mozilla Observatory)"
+    files:
+      - scripts/commands/security-check.sh
+    checklist:
+      - text: "Test HSTS header validation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify CSP header checking"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check X-Frame-Options validation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test security grading system"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify JSON output mode"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  verify:
+    name: "Feature Verification (verify.sh)"
+    description: "NWP feature verification tracking with interactive TUI console"
+    files:
+      - scripts/commands/verify.sh
+    checklist:
+      - text: "Test TUI console navigation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify checklist editing functionality"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check verification status tracking"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test file change detection"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify history tracking"
         completed: false
         completed_by: null
         completed_at: null
@@ -1075,9 +1588,9 @@ features:
     name: "Test Suite (test-nwp.sh)"
     description: "Comprehensive test suite - 22 test categories"
     files:
-      - test-nwp.sh
-      - test.sh
-      - testos.sh
+      - scripts/commands/test-nwp.sh
+      - scripts/commands/test.sh
+      - scripts/commands/testos.sh
     checklist:
       - text: "Run full test suite: ./test-nwp.sh"
         completed: false
@@ -1109,9 +1622,781 @@ features:
     file_hash: null
     notes: null
 
+  test:
+    name: "Test Script (test.sh)"
+    description: "Run tests for DDEV sites (PHPCS, PHPStan, PHPUnit, Behat)"
+    files:
+      - scripts/commands/test.sh
+    checklist:
+      - text: "Test with -l flag (PHPCS linting only)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -t flag (PHPStan only)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -u flag (PHPUnit unit tests only)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -k flag (PHPUnit kernel tests only)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -f flag (PHPUnit functional tests only)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -s flag (Behat smoke tests only)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -b flag (full Behat tests)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -p flag (parallel Behat execution)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -a flag (run all tests)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with --ci flag (CI mode with JUnit output)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test combined flags: -ltu (lint, stan, unit)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify test reports are generated in CI mode"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check that missing test dependencies are detected"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  testos:
+    name: "OpenSocial Test Script (testos.sh)"
+    description: "Comprehensive testing for OpenSocial distributions (Behat, PHPUnit, PHPStan)"
+    files:
+      - scripts/commands/testos.sh
+    checklist:
+      - text: "Test with -b flag (run Behat tests)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -u flag (run all PHPUnit tests)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -U flag (run PHPUnit unit tests only)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -k flag (run PHPUnit kernel tests only)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -s flag (run PHPStan static analysis)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -c flag (run PHP CodeSniffer)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -a flag (run all tests)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -f flag (run specific Behat feature)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with -t flag (run tests with specific tag)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with --list-features flag"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with --headless flag (Behat headless mode)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with --headed flag (Behat with visible browser)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with --group flag (PHPUnit test group)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with --coverage flag (generate code coverage)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with --testdox flag (PHPUnit testdox output)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with --stop-on-failure flag"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Selenium Chrome installation works"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Behat configuration generation works"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check test dependency installation (Behat, PHPUnit, etc.)"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
   # ============================================================
   # LIBRARY MODULES
   # ============================================================
+
+  lib_cli_register:
+    name: "CLI Registration Library (lib/cli-register.sh)"
+    description: "Manages CLI command registration for multiple NWP installations"
+    files:
+      - lib/cli-register.sh
+    checklist:
+      - text: "Test register_cli_command function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify symlink creation in /usr/local/bin/"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test find_available_cli_name (pl, pl1, pl2, etc.)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify cnwp.yml cli_command setting is updated"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test unregister_cli_command function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify get_cli_command reads from cnwp.yml"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test switching CLI command names"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify stale registration cleanup"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_ddev_generate:
+    name: "DDEV Generation Library (lib/ddev-generate.sh)"
+    description: "Generate DDEV configuration from .env and cnwp.yml"
+    files:
+      - lib/ddev-generate.sh
+    checklist:
+      - text: "Test DDEV config generation from .env file"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify config.yaml is created correctly"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with different PHP versions (8.1, 8.2, 8.3)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with different database types (mysql, mariadb)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify webserver type configuration (nginx-fpm, apache-fpm)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test environment variable injection"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify config.local.yaml.example generation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test service recommendations (Redis, Solr, Memcache)"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_developer:
+    name: "Developer Identity Library (lib/developer.sh)"
+    description: "Developer roles and permissions management"
+    files:
+      - lib/developer.sh
+    checklist:
+      - text: "Test init_developer_config function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify .nwp-developer.yml creation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test get_developer_role function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test get_developer_level function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify role_to_level and level_to_role conversions"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test can_developer permission checks"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test set_developer_role function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify sync_developer_info from GitLab"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test show_developer_status display"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify developer_push wrapper (blocks push to main for non-core)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify developer_merge wrapper (blocks merge for non-core)"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_env_generate:
+    name: "Environment Generation Library (lib/env-generate.sh)"
+    description: "Generate .env file from cnwp.yml and template"
+    files:
+      - lib/env-generate.sh
+    checklist:
+      - text: "Test .env generation from recipe and sitename"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify recipe-specific templates are used"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test profile-based template fallback"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify variable substitution works"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test service configuration (Redis, Solr, Memcache)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify .env.local.example creation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with different profiles (social, varbase, standard)"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_install_common:
+    name: "Install Common Library (lib/install-common.sh)"
+    description: "Shared installation functions for all types (Drupal, Moodle, GitLab, Podcast)"
+    files:
+      - lib/install-common.sh
+    checklist:
+      - text: "Test run_interactive_options function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify update_site_options updates cnwp.yml"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test apply_drupal_options function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test apply_moodle_options function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test apply_gitlab_options function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify get_recipe_value YAML parsing"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test get_recipe_list_value for arrays"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify get_settings_value function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test recipe_exists validation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify validate_recipe function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test list_recipes display"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify install_git_profile function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test install_git_modules function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify pre_register_live_dns function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test generate_live_settings function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify create_test_content function"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_install_drupal:
+    name: "Drupal Installation Library (lib/install-drupal.sh)"
+    description: "Drupal/OpenSocial installation implementation"
+    files:
+      - lib/install-drupal.sh
+    checklist:
+      - text: "Test install_drupal main function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 1: Initialize project with Composer"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 1: Clone project from Git (source_git)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 2: Generate environment configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 3: Configure DDEV"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 4: Memory configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 5: Launch DDEV services"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 6: Verify Drush is available"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 7: Configure file system and environment detection"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 8: Install Drupal profile"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 9: Enable core modules and post-install"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test resume from step functionality"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify GitLab Composer authentication"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test post-install module enabling"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test post-install script execution"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify site registration in cnwp.yml"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_install_gitlab:
+    name: "GitLab Installation Library (lib/install-gitlab.sh)"
+    description: "GitLab CE installation via Docker"
+    files:
+      - lib/install-gitlab.sh
+    checklist:
+      - text: "Test install_gitlab main function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 1: Create directory structure"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 2: Create docker-compose.yml"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 3: Create environment configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 4: Start GitLab containers"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test reduced memory mode configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify README.md generation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test site registration in cnwp.yml"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_install_moodle:
+    name: "Moodle Installation Library (lib/install-moodle.sh)"
+    description: "Moodle LMS installation implementation"
+    files:
+      - lib/install-moodle.sh
+    checklist:
+      - text: "Test install_moodle main function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 1: Clone Moodle from Git"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 2: Configure DDEV"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 3: Memory configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 4: Launch DDEV services"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 5: Create moodledata directory"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 6: Install Moodle"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Step 7: Post-installation configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with different Moodle branches"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify site registration in cnwp.yml"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_install_podcast:
+    name: "Podcast Installation Library (lib/install-podcast.sh)"
+    description: "Castopod podcast platform installation"
+    files:
+      - lib/install-podcast.sh
+    checklist:
+      - text: "Test install_podcast main function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify podcast.sh integration"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test prerequisite checking"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify domain configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test Linode region selection"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify B2 region configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test media subdomain setup"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify site registration in cnwp.yml"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_install_steps:
+    name: "Installation Steps Library (lib/install-steps.sh)"
+    description: "Installation step definitions and tracking"
+    files:
+      - lib/install-steps.sh
+    checklist:
+      - text: "Test get_steps_for_env function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify get_total_steps for each environment"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test get_step_info function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify get_install_step from cnwp.yml"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test set_install_step updates cnwp.yml"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify mark_install_complete function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test is_install_complete checking"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify get_install_status_display function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test show_steps_detail display"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify environment-specific steps (dev, stage, live)"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_live_server_setup:
+    name: "Live Server Setup Library (lib/live-server-setup.sh)"
+    description: "Remote server provisioning on Ubuntu 22.04/24.04 Linode instances"
+    files:
+      - lib/live-server-setup.sh
+    checklist:
+      - text: "Test remote_ssh command execution"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify remote_package_installed checking"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test remote_service_running checking"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify ensure_php_fpm installation and configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test PHP-FPM socket permissions for nginx"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify ensure_mariadb installation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test create_site_database function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify configure_nginx_drupal vhost generation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test provision_drupal_stack complete setup"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify check_infrastructure_ready status checks"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test with GitLab bundled nginx (gitlab-www group)"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_terminal:
+    name: "Terminal Control Library (lib/terminal.sh)"
+    description: "Minimal terminal control functions for TUI"
+    files:
+      - lib/terminal.sh
+    checklist:
+      - text: "Test cursor_to positioning"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify cursor_hide and cursor_show"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test clear_screen and clear_line"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify read_key function (UP, DOWN, LEFT, RIGHT)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test ENTER and SPACE key detection"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify ESC key detection"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
 
   lib_tui:
     name: "TUI Library (lib/tui.sh)"
@@ -1461,33 +2746,25 @@ features:
     file_hash: null
     notes: null
 
-  # ============================================================
-  # MOODLE SUPPORT
-  # ============================================================
-
-  moodle:
-    name: "Moodle Installation (lib/install-moodle.sh)"
-    description: "Moodle platform installation support"
+  lib_state:
+    name: "State Library (lib/state.sh)"
+    description: "Deployment state tracking and persistence"
     files:
-      - lib/install-moodle.sh
+      - lib/state.sh
     checklist:
-      - text: "Test Moodle site installation with dm recipe"
+      - text: "Test state initialization"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Verify Moodle admin interface works"
+      - text: "Verify state saving between steps"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Check database is configured correctly"
+      - text: "Check state restoration on resume"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Test course creation functionality"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify user registration works"
+      - text: "Test state cleanup on completion"
         completed: false
         completed_by: null
         completed_at: null
@@ -1497,35 +2774,25 @@ features:
     file_hash: null
     notes: null
 
-  # ============================================================
-  # GITLAB INFRASTRUCTURE
-  # ============================================================
-
-  gitlab_setup:
-    name: "GitLab Setup (git/gitlab_setup.sh)"
-    description: "Main GitLab instance provisioning"
+  lib_database_router:
+    name: "Database Router Library (lib/database-router.sh)"
+    description: "Multi-source database routing for deployments"
     files:
-      - git/gitlab_setup.sh
-      - git/gitlab_server_setup.sh
-      - git/gitlab_create_server.sh
+      - lib/database-router.sh
     checklist:
-      - text: "Test GitLab server creation on Linode"
+      - text: "Test auto source selection"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Verify GitLab is accessible via HTTPS"
+      - text: "Verify production database access"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Check admin login works"
+      - text: "Test backup database selection"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Test repository creation"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify SSH access to GitLab"
+      - text: "Check development database cloning"
         completed: false
         completed_by: null
         completed_at: null
@@ -1535,29 +2802,25 @@ features:
     file_hash: null
     notes: null
 
-  gitlab_hardening:
-    name: "GitLab Hardening (git/gitlab_harden.sh)"
-    description: "GitLab security hardening automation"
+  lib_testing:
+    name: "Testing Library (lib/testing.sh)"
+    description: "Test orchestration and preset management"
     files:
-      - git/gitlab_harden.sh
+      - lib/testing.sh
     checklist:
-      - text: "Test --check mode shows current settings"
+      - text: "Test quick preset execution"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Test dry-run mode (default) shows changes"
+      - text: "Verify essential preset"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Test --apply mode applies changes"
+      - text: "Check full test suite preset"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Verify all 8 hardening options work"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Check gitlab.rb backup is created"
+      - text: "Test custom test selection"
         completed: false
         completed_by: null
         completed_at: null
@@ -1567,26 +2830,25 @@ features:
     file_hash: null
     notes: null
 
-  gitlab_repo:
-    name: "GitLab Repository Setup (git/setup_gitlab_repo.sh)"
-    description: "Repository initialization and site integration"
+  lib_preflight:
+    name: "Preflight Library (lib/preflight.sh)"
+    description: "Pre-deployment validation checks"
     files:
-      - git/setup_gitlab_repo.sh
-      - git/setup_gitlab_site.sh
+      - lib/preflight.sh
     checklist:
-      - text: "Test repository creation for a site"
+      - text: "Test site existence validation"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Verify git remote is configured"
+      - text: "Verify DDEV status checks"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Check initial commit is pushed"
+      - text: "Check git status validation"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Test site integration with GitLab"
+      - text: "Test dependency verification"
         completed: false
         completed_by: null
         completed_at: null
@@ -1596,25 +2858,21 @@ features:
     file_hash: null
     notes: null
 
-  gitlab_install:
-    name: "GitLab Install Library (lib/install-gitlab.sh)"
-    description: "GitLab instance installation via DDEV"
+  lib_dev2stg_tui:
+    name: "Dev2Stg TUI Library (lib/dev2stg-tui.sh)"
+    description: "Interactive TUI for dev2stg deployment options"
     files:
-      - lib/install-gitlab.sh
+      - lib/dev2stg-tui.sh
     checklist:
-      - text: "Test local GitLab installation via DDEV"
+      - text: "Test database source selection menu"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Verify GitLab container starts"
+      - text: "Verify test preset selection"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Check admin interface is accessible"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test repository operations"
+      - text: "Check navigation and confirmation"
         completed: false
         completed_by: null
         completed_at: null
@@ -1624,34 +2882,21 @@ features:
     file_hash: null
     notes: null
 
-  # ============================================================
-  # LINODE INFRASTRUCTURE
-  # ============================================================
-
-  linode_setup:
-    name: "Linode Setup (linode/linode_setup.sh)"
-    description: "Linode server configuration and provisioning"
+  lib_safe_ops:
+    name: "Safe Operations Library (lib/safe-ops.sh)"
+    description: "Proxy functions that return sanitized output without exposing secrets"
     files:
-      - linode/linode_setup.sh
-      - linode/linode_server_setup.sh
+      - lib/safe-ops.sh
     checklist:
-      - text: "Test server creation (use test mode)"
+      - text: "Test safe_server_status returns sanitized data"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Verify SSH access to new server"
+      - text: "Verify safe_db_status hides credentials"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Check server configuration is correct"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test firewall rules are applied"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify DNS is configured"
+      - text: "Check safe_security_check sanitization"
         completed: false
         completed_by: null
         completed_at: null
@@ -1661,29 +2906,21 @@ features:
     file_hash: null
     notes: null
 
-  linode_deploy:
-    name: "Linode Deploy (linode/linode_deploy.sh)"
-    description: "Deployment automation to Linode servers"
+  lib_sanitize:
+    name: "Sanitize Library (lib/sanitize.sh)"
+    description: "Database sanitization for backups (basic and full modes)"
     files:
-      - linode/linode_deploy.sh
+      - lib/sanitize.sh
     checklist:
-      - text: "Test deployment to existing server"
+      - text: "Test basic sanitization (emails only)"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Verify files are synced correctly"
+      - text: "Verify full sanitization (emails, passwords, sessions)"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Check database is deployed"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test SSL certificate setup"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify site is accessible"
+      - text: "Check admin user preservation"
         completed: false
         completed_by: null
         completed_at: null
@@ -1693,25 +2930,97 @@ features:
     file_hash: null
     notes: null
 
-  linode_test_server:
-    name: "Linode Test Server (linode/linode_create_test_server.sh)"
-    description: "Automated test server creation"
+  lib_import:
+    name: "Import Library (lib/import.sh)"
+    description: "Site import functionality from remote sources"
     files:
-      - linode/linode_create_test_server.sh
+      - lib/import.sh
     checklist:
-      - text: "Test server creation for testing"
+      - text: "Test SSH connection and authentication"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Verify server is accessible"
+      - text: "Verify database download and import"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Check cleanup/deletion works"
+      - text: "Check file synchronization"
         completed: false
         completed_by: null
         completed_at: null
-      - text: "Test automated provisioning"
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_import_tui:
+    name: "Import TUI Library (lib/import-tui.sh)"
+    description: "Interactive TUI for import operations"
+    files:
+      - lib/import-tui.sh
+    checklist:
+      - text: "Test server selection menu"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify site selection interface"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check import option configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_server_scan:
+    name: "Server Scan Library (lib/server-scan.sh)"
+    description: "Remote server scanning and site detection"
+    files:
+      - lib/server-scan.sh
+    checklist:
+      - text: "Test server connectivity check"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Drupal site detection"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check database discovery"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_frontend:
+    name: "Frontend Library (lib/frontend.sh)"
+    description: "Frontend build tool detection and management"
+    files:
+      - lib/frontend.sh
+    checklist:
+      - text: "Test Gulp detection and execution"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Grunt support"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check Webpack integration"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test Vite support"
         completed: false
         completed_by: null
         completed_at: null
@@ -1784,1124 +3093,3 @@ features:
     verified_at: null
     file_hash: null
     notes: null
-
-  # ============================================================
-  # TESTS
-  # ============================================================
-
-  tests_integration:
-    name: "Integration Tests (tests/)"
-    description: "Integration and unit test suites"
-    files:
-      - tests/test-integration.sh
-      - tests/test-podcast.sh
-      - tests/test-yaml-write.sh
-    checklist:
-      - text: "Run all integration tests"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify tests pass on fresh environment"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Check test output is clear"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test individual test files"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify test coverage is adequate"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: null
-
-  # ============================================================
-  # CI/CD PIPELINE
-  # ============================================================
-
-  ci_scripts:
-    name: "CI Helper Scripts (scripts/ci/)"
-    description: "CI pipeline helper scripts for database, build, test, coverage"
-    files:
-      - scripts/ci/fetch-db.sh
-      - scripts/ci/build.sh
-      - scripts/ci/test.sh
-      - scripts/ci/check-coverage.sh
-    checklist:
-      - text: "Test fetch-db.sh creates sanitized database backup"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test fetch-db.sh --use-cache uses cached database"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test build.sh runs composer install and npm build"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test build.sh imports database and runs drush deploy"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test test.sh runs phpcs, phpstan, phpunit, behat"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test test.sh respects --skip-* flags"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test test.sh creates logs in .logs/ directory"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test check-coverage.sh validates coverage threshold"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify all scripts work within DDEV environment"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 1 implementation"
-
-  gitlab_ci:
-    name: "GitLab CI Configuration (.gitlab-ci.yml)"
-    description: "GitLab CI/CD pipeline with database caching and multi-stage deploy"
-    files:
-      - .gitlab-ci.yml
-    checklist:
-      - text: "Verify pipeline triggers on push to any branch"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test nightly database job caches production database"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify build job runs all tests"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test coverage job generates reports"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test staging deployment on merge to staging branch"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test production deployment on merge to production branch"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify manual deployment buttons work"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test pipeline artifacts are stored correctly"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 1 implementation"
-
-  github_actions:
-    name: "GitHub Actions Workflow (.github/workflows/)"
-    description: "GitHub Actions workflow with DDEV integration"
-    files:
-      - .github/workflows/build-test-deploy.yml
-    checklist:
-      - text: "Verify workflow triggers on push/PR/schedule"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test DDEV starts correctly in GitHub Actions"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify database caching works"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test all test types run successfully"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test staging deployment on push to main"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test production deployment on release tag"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify workflow concurrency limits work"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 1 implementation"
-
-  # ============================================================
-  # DEPENDENCY AUTOMATION
-  # ============================================================
-
-  renovate:
-    name: "Renovate Configuration (renovate.json)"
-    description: "Automated dependency updates for Drupal projects"
-    files:
-      - renovate.json
-    checklist:
-      - text: "Verify Renovate bot is enabled on repository"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test Drupal core update PR creation"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test contrib module update PR creation"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify auto-merge works for patch updates"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test security alert PRs are created immediately"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Check rate limiting (2 PRs/hour, 10/day)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify commit message format"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 2 implementation"
-
-  security_update:
-    name: "Security Update Script (scripts/security-update.sh)"
-    description: "Automated security update workflow with testing"
-    files:
-      - scripts/security-update.sh
-    checklist:
-      - text: "Test --check mode lists available security updates"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test security branch creation (security/YYYYMMDD)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify composer update --dry-run shows changes"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test composer update applies changes correctly"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify tests run after applying updates"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test commit is created with proper message"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test branch is pushed to remote"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify summary report is accurate"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test notification is sent after update"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 2 implementation"
-
-  # ============================================================
-  # SERVER SCRIPTS
-  # ============================================================
-
-  server_bootstrap:
-    name: "Server Bootstrap (linode/server_scripts/nwp-bootstrap.sh)"
-    description: "Production server initialization and package installation"
-    files:
-      - linode/server_scripts/nwp-bootstrap.sh
-    checklist:
-      - text: "Test on fresh Ubuntu 22.04 server"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify all packages installed (nginx, php, mysql, etc.)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Check /var/www/{prod,test,old} directories created"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify /var/backups/nwp directory created"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Check /var/log/nwp directory created"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test idempotent (runs twice without errors)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify firewall rules applied"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 3 implementation"
-
-  server_healthcheck:
-    name: "Server Health Check (linode/server_scripts/nwp-healthcheck.sh)"
-    description: "Comprehensive health monitoring for production sites"
-    files:
-      - linode/server_scripts/nwp-healthcheck.sh
-    checklist:
-      - text: "Test HTTP check returns site status"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test Drupal status check via drush"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify database connection check works"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test cache backend check"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test cron status check"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify SSL certificate check"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test disk usage check"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test --json output format"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify exit codes (0=healthy, 1=unhealthy)"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 3 implementation"
-
-  server_audit:
-    name: "Server Audit Logging (linode/server_scripts/nwp-audit.sh)"
-    description: "Deployment and operation audit logging"
-    files:
-      - linode/server_scripts/nwp-audit.sh
-    checklist:
-      - text: "Test deploy action logging"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify JSON Lines format in deployments.jsonl"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Check human-readable format in deployments.log"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify timestamps are correct"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test metadata field storage"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify log rotation doesn't lose data"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 3 implementation"
-
-  # ============================================================
-  # NOTIFICATION SYSTEM
-  # ============================================================
-
-  notify_main:
-    name: "Notification Router (scripts/notify.sh)"
-    description: "Main notification script routing to multiple channels"
-    files:
-      - scripts/notify.sh
-    checklist:
-      - text: "Test --event flag with various event types"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test --site flag includes site name"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test --url flag includes clickable link"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify routes to Slack when SLACK_WEBHOOK_URL set"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify routes to email when EMAIL_RECIPIENTS set"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify routes to webhook when WEBHOOK_URL set"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test multiple channels simultaneously"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify event-to-emoji mapping"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 4 implementation"
-
-  notify_slack:
-    name: "Slack Notifications (scripts/notify-slack.sh)"
-    description: "Slack webhook integration for deployment notifications"
-    files:
-      - scripts/notify-slack.sh
-    checklist:
-      - text: "Test success notification (green color)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test error notification (red color)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test warning notification (yellow color)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify message formatting in Slack"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test link attachment"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify SLACK_WEBHOOK_URL validation"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 4 implementation"
-
-  notify_email:
-    name: "Email Notifications (scripts/notify-email.sh)"
-    description: "Email notifications via sendmail/SMTP"
-    files:
-      - scripts/notify-email.sh
-    checklist:
-      - text: "Test email delivery via sendmail"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test email delivery via SMTP"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify subject line formatting"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test multiple recipients"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify HTML vs plain text formatting"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 4 implementation"
-
-  notify_webhook:
-    name: "Webhook Notifications (scripts/notify-webhook.sh)"
-    description: "Generic webhook integration for external systems"
-    files:
-      - scripts/notify-webhook.sh
-    checklist:
-      - text: "Test JSON payload format"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify event type in payload"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test timestamp field"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify metadata fields"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test webhook URL validation"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test response handling"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 4 implementation"
-
-  # ============================================================
-  # CODE QUALITY
-  # ============================================================
-
-  phpstan_config:
-    name: "PHPStan Configuration (phpstan.neon)"
-    description: "Static analysis configuration for Drupal projects"
-    files:
-      - phpstan.neon
-    checklist:
-      - text: "Verify level 5 analysis runs without config errors"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test custom module scanning in web/modules/custom"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test custom theme scanning in web/themes/custom"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify Drupal-specific ignores work"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test baseline generation if needed"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 5 implementation"
-
-  pre_commit_hook:
-    name: "Pre-commit Hook (.hooks/pre-commit)"
-    description: "Git pre-commit hook for code quality checks"
-    files:
-      - .hooks/pre-commit
-    checklist:
-      - text: "Test hook installation to .git/hooks/"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify PHPCS runs on staged PHP files"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify PHPStan runs on staged PHP files"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test commit blocked on PHPCS errors"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test commit blocked on PHPStan errors"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify --no-verify bypasses hook"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test non-PHP files skip PHP checks"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 5 implementation"
-
-  pr_templates:
-    name: "PR/MR Templates"
-    description: "Pull/Merge request templates for code review"
-    files:
-      - .github/PULL_REQUEST_TEMPLATE.md
-      - .gitlab/merge_request_templates/default.md
-    checklist:
-      - text: "Verify GitHub PR template appears on new PR"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify GitLab MR template appears on new MR"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Check all checklist items are relevant"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test markdown rendering"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 5 implementation"
-
-  # ============================================================
-  # MULTI-CODER SUPPORT
-  # ============================================================
-
-  coder_setup:
-    name: "Coder Setup (coder-setup.sh)"
-    description: "Multi-coder DNS delegation and management"
-    files:
-      - coder-setup.sh
-      - lib/cloudflare.sh
-    checklist:
-      - text: "Test add coder: ./coder-setup.sh add codername"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify NS records created in Cloudflare"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test list coders: ./coder-setup.sh list"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test remove coder: ./coder-setup.sh remove codername"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify cnwp.yml other_coders section updated"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test DNS propagation verification"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Multi-coder infrastructure"
-
-  # ============================================================
-  # PHASE 6: MONITORING & OBSERVABILITY
-  # ============================================================
-
-  monitoring_daemon:
-    name: "Monitoring Daemon (linode/server_scripts/nwp-monitor.sh)"
-    description: "Continuous server monitoring with metrics collection and alerting"
-    files:
-      - linode/server_scripts/nwp-monitor.sh
-      - linode/server_scripts/nwp-cron.conf
-    checklist:
-      - text: "Test metrics collection: ./nwp-monitor.sh --domain example.com /var/www/prod"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify JSON metrics logged to /var/log/nwp/metrics/"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test HTTP status alerts (stop site, verify alert triggers)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test response time alerts (configure low threshold)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test disk usage alerts (configure low threshold)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify cron configuration runs every 5 minutes"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test --verbose mode for debugging"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 6 implementation"
-
-  production_dashboard:
-    name: "Production Dashboard (status.sh production)"
-    description: "Production status overview with response times and backup ages"
-    files:
-      - status.sh
-    checklist:
-      - text: "Test ./status.sh production command"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify production sites with live.enabled: true are shown"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Check response time measurement"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify backup age calculation"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test SSL expiry display"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify quick stats summary"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 6 implementation"
-
-  # ============================================================
-  # PHASE 7: AUTOMATED BACKUPS & DISASTER RECOVERY
-  # ============================================================
-
-  scheduled_backup:
-    name: "Scheduled Backup (linode/server_scripts/nwp-scheduled-backup.sh)"
-    description: "Automated backup with rotation policies"
-    files:
-      - linode/server_scripts/nwp-scheduled-backup.sh
-    checklist:
-      - text: "Test database backup: ./nwp-scheduled-backup.sh prod database"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test file backup: ./nwp-scheduled-backup.sh prod files"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test full backup: ./nwp-scheduled-backup.sh prod full"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify backup files created in /var/backups/nwp/"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test rotation (create old backups, verify cleanup)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify audit logging on success"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify notification on failure"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 7 implementation"
-
-  verify_backup:
-    name: "Backup Verification (linode/server_scripts/nwp-verify-backup.sh)"
-    description: "Backup integrity verification"
-    files:
-      - linode/server_scripts/nwp-verify-backup.sh
-    checklist:
-      - text: "Test with valid .sql.gz backup"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test with valid .tar.gz backup"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test with corrupted backup (should fail)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test with empty file (should fail)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify exit codes (0=valid, 1=invalid)"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 7 implementation"
-
-  disaster_recovery:
-    name: "Disaster Recovery Documentation"
-    description: "Comprehensive disaster recovery procedures"
-    files:
-      - docs/DISASTER_RECOVERY.md
-    checklist:
-      - text: "Review RTO targets are realistic"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test Scenario 1: Bad Deployment rollback"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test Scenario 2: Database restore from backup"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify all referenced scripts exist"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Review pre-disaster preparation checklist"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 7 implementation"
-
-  # ============================================================
-  # PHASE 8: ENVIRONMENT MANAGEMENT
-  # ============================================================
-
-  preview_environments:
-    name: "Preview Environments (scripts/ci/create-preview.sh)"
-    description: "PR/MR preview environment creation and cleanup"
-    files:
-      - scripts/ci/create-preview.sh
-      - scripts/ci/cleanup-preview.sh
-    checklist:
-      - text: "Test create preview: ./scripts/ci/create-preview.sh pr-123"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify DDEV project starts"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify database imported from cache"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test preview URL accessibility"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test cleanup: ./scripts/ci/cleanup-preview.sh pr-123"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify DDEV project removed"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 8 implementation"
-
-  environments_doc:
-    name: "Environments Documentation"
-    description: "Environment hierarchy and configuration splits"
-    files:
-      - docs/ENVIRONMENTS.md
-    checklist:
-      - text: "Review environment hierarchy is accurate"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify config split examples are correct"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Check CI/CD examples for GitLab and GitHub"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Review best practices section"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 8 implementation"
-
-  # ============================================================
-  # PHASE 9: ADVANCED AUTOMATION
-  # ============================================================
-
-  bluegreen_deploy:
-    name: "Blue-Green Deployment (linode/server_scripts/nwp-bluegreen-deploy.sh)"
-    description: "Enhanced blue-green deployment with smoke tests"
-    files:
-      - linode/server_scripts/nwp-bluegreen-deploy.sh
-    checklist:
-      - text: "Test basic deployment: ./nwp-bluegreen-deploy.sh --domain example.com"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test with canary mode: --canary --canary-percent 10"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify smoke tests run on test environment"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test automatic rollback on failure"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify health check integration"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test --dry-run mode"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 9 implementation"
-
-  canary_release:
-    name: "Canary Releases (linode/server_scripts/nwp-canary.sh)"
-    description: "Canary release management with auto-promote/rollback"
-    files:
-      - linode/server_scripts/nwp-canary.sh
-    checklist:
-      - text: "Test deploy command: ./nwp-canary.sh deploy --domain example.com"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test status command: ./nwp-canary.sh status"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test promote command: ./nwp-canary.sh promote"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test rollback command: ./nwp-canary.sh rollback"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify auto-promote after monitoring period"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify auto-rollback on errors"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 9 implementation"
-
-  perf_baseline:
-    name: "Performance Baseline (linode/server_scripts/nwp-perf-baseline.sh)"
-    description: "Performance baseline capture and comparison"
-    files:
-      - linode/server_scripts/nwp-perf-baseline.sh
-    checklist:
-      - text: "Test capture: ./nwp-perf-baseline.sh capture --domain example.com"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify baseline stored in /var/log/nwp/baselines/"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test compare: ./nwp-perf-baseline.sh compare --domain example.com"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test regression detection (>20% slower)"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test list and show commands"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 9 implementation"
-
-  visual_regression:
-    name: "Visual Regression (scripts/ci/visual-regression.sh)"
-    description: "Visual regression testing with BackstopJS integration"
-    files:
-      - scripts/ci/visual-regression.sh
-    checklist:
-      - text: "Test init: ./scripts/ci/visual-regression.sh init --base-url http://test.example.com"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test reference capture: ./scripts/ci/visual-regression.sh reference"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test comparison: ./scripts/ci/visual-regression.sh test"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify report generation in .logs/visual/"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Test approve command for baseline updates"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 9 implementation"
-
-  advanced_deployment_doc:
-    name: "Advanced Deployment Documentation"
-    description: "Blue-green, canary, and performance tracking documentation"
-    files:
-      - docs/ADVANCED_DEPLOYMENT.md
-    checklist:
-      - text: "Review blue-green deployment strategy"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Verify canary release examples"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Check performance baseline documentation"
-        completed: false
-        completed_by: null
-        completed_at: null
-      - text: "Review visual regression setup"
-        completed: false
-        completed_by: null
-        completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: "Added January 2026 - Phase 9 implementation"

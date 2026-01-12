@@ -44,6 +44,7 @@ ${BOLD}OPTIONS:${NC}
     -y, --yes               Skip all confirmation prompts
     -b, --backup            Create backup before deletion
     -k, --keep-backups      Keep existing backups (default: ask)
+    -f, --force             Force deletion (bypass name validation for cleanup)
     --keep-yml              Keep site entry in cnwp.yml (default: remove)
 
 ${BOLD}ARGUMENTS:${NC}
@@ -232,12 +233,19 @@ delete_ddev_project() {
 # Step 5: Remove site directory
 remove_site_directory() {
     local sitename=$1
+    local force="${2:-false}"
 
     print_header "Step 5: Remove Site Directory"
 
-    # Validate site name before destructive operation
-    if ! validate_sitename "$sitename" "site directory"; then
-        return 1
+    # Validate site name before destructive operation (skip if force mode)
+    if [[ "$force" != "true" ]]; then
+        if ! validate_sitename "$sitename" "site directory"; then
+            print_info "Tip: Use --force flag to delete sites with invalid names"
+            print_info "Example: pl delete --force -- $sitename"
+            return 1
+        fi
+    else
+        print_warning "Force mode: skipping name validation for cleanup"
     fi
 
     local site_dir="sites/$sitename"
@@ -378,9 +386,10 @@ AUTO_CONFIRM=false
 CREATE_BACKUP=false
 KEEP_BACKUPS=false
 KEEP_YML=false
+FORCE_DELETE=false
 
 # Parse command-line options
-TEMP=$(getopt -o hdbyk --long help,debug,backup,yes,keep-backups,keep-yml -n 'delete.sh' -- "$@")
+TEMP=$(getopt -o hdbykf --long help,debug,backup,yes,keep-backups,keep-yml,force -n 'delete.sh' -- "$@")
 
 if [ $? != 0 ]; then
     echo "Error parsing options. Use --help for usage information." >&2
@@ -415,6 +424,10 @@ while true; do
             KEEP_YML=true
             shift
             ;;
+        -f|--force)
+            FORCE_DELETE=true
+            shift
+            ;;
         --)
             shift
             break
@@ -440,8 +453,14 @@ SITENAME=$1
 # Show header
 print_header "NWP Site Deletion: $SITENAME"
 
-# Validate site exists
-if ! validate_site "$SITENAME"; then
+# Validate site exists (in force mode, just check directory exists)
+if [[ "$FORCE_DELETE" == "true" ]]; then
+    if [ ! -d "sites/$SITENAME" ]; then
+        print_error "Site directory not found: sites/$SITENAME"
+        exit 1
+    fi
+    print_warning "Force mode: skipping normal validation"
+elif ! validate_site "$SITENAME"; then
     exit 1
 fi
 
@@ -520,7 +539,7 @@ if ! delete_ddev_project "$SITENAME"; then
 fi
 
 # Remove site directory
-if ! remove_site_directory "$SITENAME"; then
+if ! remove_site_directory "$SITENAME" "$FORCE_DELETE"; then
     print_error "Failed to remove site directory: $SITENAME"
     exit 1
 fi

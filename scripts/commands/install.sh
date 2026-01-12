@@ -295,7 +295,7 @@ main() {
             exit 0
         elif [[ "$arg" == "-s" ]] || [[ "$arg" == "--start" ]] || [[ "$arg" == "--step" ]]; then
             next_is_step="1"
-        elif [[ "$arg" =~ ^-s([0-9]+)$ ]] || [[ "$arg" =~ ^s=([0-9]+)$ ]]; then
+        elif [[ "$arg" =~ ^-s([0-9]+)$ ]] || [[ "$arg" =~ ^-s=([0-9]+)$ ]] || [[ "$arg" =~ ^s=([0-9]+)$ ]]; then
             start_step="${BASH_REMATCH[1]}"
         elif [[ "$arg" =~ ^--step=([0-9]+)$ ]] || [[ "$arg" =~ ^--start=([0-9]+)$ ]]; then
             start_step="${BASH_REMATCH[1]}"

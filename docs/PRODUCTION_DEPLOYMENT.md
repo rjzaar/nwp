@@ -96,6 +96,59 @@ ssh-copy-id deploy@203.0.113.10
 ssh deploy@203.0.113.10 echo "Connection successful"
 ```
 
+## Email Configuration (v0.19.1+)
+
+**Auto-configured during `pl live` deployment:**
+
+When deploying with `pl live`, the system automatically configures site emails:
+
+```yaml
+# In cnwp.yml settings section:
+settings:
+  url: nwpcode.org
+  email:
+    auto_configure: true          # Enable auto-config (default: true)
+    site_email_pattern: "{site}@{domain}"  # Pattern for site email
+    admin_forward_to: admin@nwpcode.org    # Admin emails forwarded here
+```
+
+**What happens automatically:**
+1. Site email set to `sitename@nwpcode.org`
+2. Admin account email set to `admin-sitename@nwpcode.org`
+3. Email forwarding configured for admin notifications
+
+**Verification Step (v0.19.1+):**
+
+During `stg2live` and `stg2prod` deployments, you'll see:
+
+```
+Email Configuration Verification
+─────────────────────────────────
+  Site Email: mysite@nwpcode.org
+  Admin Email: admin-mysite@nwpcode.org
+
+✓ Email addresses validated
+! Make sure these email addresses are configured in your mail server
+```
+
+**To skip email auto-configuration:**
+
+```yaml
+settings:
+  email:
+    auto_configure: false
+```
+
+Or use command line:
+```bash
+pl live mysite --no-email-config
+```
+
+**Email Server Setup** (separate from NWP):
+- Configure mail forwarding in your DNS/mail provider
+- Set up SPF, DKIM, DMARC records
+- Test with `drush email:test` after deployment
+
 ## Deployment Workflow
 
 ### Complete 10-Step Process

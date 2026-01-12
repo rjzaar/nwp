@@ -481,6 +481,183 @@ Next steps:
 | API Clients | curl + grep | Typed SDK wrappers |
 | Progress | None | Rich progress libraries |
 
+#### 8.3.1 CLI Framework: Pure Bash vs Go (Cobra) or Python (Click)
+
+**Current: Pure Bash (48K lines)**
+
+| Pros | Cons |
+|------|------|
+| Zero dependencies - runs anywhere with bash | 48K lines is hard to maintain |
+| Native shell integration - pipes, redirects work naturally | No type safety - errors caught at runtime |
+| Direct access to system tools (drush, git, docker) | Complex argument parsing must be built manually |
+| Fast startup for simple commands | Error handling is verbose and error-prone |
+| Team already knows bash | Testing is awkward (BATS is limited) |
+
+**Alternative: Go (Cobra) or Python (Click)**
+
+| Pros | Cons |
+|------|------|
+| Built-in argument parsing, help generation | Adds runtime dependency (Go binary or Python) |
+| Type safety catches errors at compile/import time | Shell integration becomes awkward |
+| Excellent testing frameworks | Team would need to learn new language |
+| Rich ecosystem (progress bars, colors, HTTP clients) | Cross-platform distribution more complex |
+| Better maintainability at scale | Calling bash tools requires subprocess management |
+
+**Verdict: Moderate Issue (5/10)**
+
+For NWP specifically, pure bash was a reasonable choice because:
+- The primary audience (Drupal developers) knows bash
+- Heavy reliance on shell tools (drush, git, docker, ssh) means constant subprocess calls anyway
+- Zero-dependency deployment to any Linux box is valuable
+
+However, at 48K lines, bash's limitations are showing. The god objects (`status.sh` at 81KB) exist partly because bash lacks good code organization tools.
+
+**Recommendation**: Keep bash for now, but consider a hybrid approach - a thin orchestration layer in Python/Go for complex operations while keeping bash scripts for atomic tasks.
+
+#### 8.3.2 Configuration: Custom YAML Parsing vs Standard YAML Library
+
+**Current: Custom YAML parsing (awk/grep-based)**
+
+| Pros | Cons |
+|------|------|
+| No dependency on external tools | Fragile - breaks on edge cases |
+| Works with minimal bash | Duplicated 5+ times across codebase |
+| Fast for simple key lookups | Can't handle complex YAML (nested arrays, anchors) |
+
+**Alternative: Standard YAML library (yq, Python yaml, etc.)**
+
+| Pros | Cons |
+|------|------|
+| Handles all YAML features correctly | Adds dependency (yq or Python) |
+| Well-tested, maintained | Slightly slower for simple lookups |
+| Simpler code | Another tool users must install |
+
+**Verdict: Low-Medium Issue (4/10)**
+
+The custom YAML parsing works fine for the simple flat structure of `cnwp.yml`. The document notes duplication but doesn't mention actual bugs from parsing errors. The `.verification.yml` schema v2 migration worked despite custom parsing.
+
+**Recommendation**: Install `yq` as a recommended (not required) dependency. Refactor the 5+ duplicate YAML parsers into a single `lib/yaml-read.sh` wrapper that uses `yq` if available, falls back to awk otherwise.
+
+#### 8.3.3 Testing: BATS vs Go testing or pytest
+
+**Current: BATS**
+
+| Pros | Cons |
+|------|------|
+| Designed for testing bash scripts | Limited mocking capabilities |
+| Familiar shell syntax | Poor test isolation |
+| Runs in same environment as code | No built-in code coverage |
+| TAP output for CI integration | Community/ecosystem is small |
+
+**Alternative: pytest (via bash subprocess)**
+
+| Pros | Cons |
+|------|------|
+| Excellent fixtures and mocking | Tests bash via subprocess - indirect |
+| Rich assertion library | Python dependency for tests only |
+| Parallel execution | Context switching between languages |
+| Widely known framework | |
+
+**Verdict: Low Issue (3/10)**
+
+BATS is the right tool for testing bash. The 15-20% coverage isn't BATS's fault - it's a prioritization choice. Moving to pytest would require wrapping every bash function call in subprocess, adding complexity without much benefit.
+
+**Recommendation**: Stick with BATS. The issue isn't the tool, it's test coverage. Invest in writing more BATS tests for the 35 untested libraries rather than switching frameworks.
+
+#### 8.3.4 API Clients: curl + grep vs Typed SDK Wrappers
+
+**Current: curl + grep**
+
+| Pros | Cons |
+|------|------|
+| Works everywhere | No type checking - silent failures |
+| Direct HTTP control | Error handling is manual |
+| Easy to debug (just run the curl command) | Brittle to API changes |
+| No additional dependencies | Parsing JSON with grep/sed is fragile |
+
+**Alternative: Typed SDK wrappers (Linode CLI, CloudFlare CLI, etc.)**
+
+| Pros | Cons |
+|------|------|
+| Type-safe responses | Another dependency per API |
+| Built-in pagination, retries | Less control over HTTP details |
+| Automatically updated for API changes | CLI tools may have bugs |
+| Official SDKs are well-documented | Version pinning adds maintenance burden |
+
+**Verdict: High Issue (7/10)**
+
+This is a genuine pain point. The document notes:
+- API Brittleness scores of 6-8/10 for all external APIs
+- No version contracts with Linode/Cloudflare
+- Endpoints hardcoded throughout
+
+When Linode or Cloudflare makes breaking API changes, NWP will break silently or with obscure grep errors.
+
+**Recommendation**: Create an abstraction layer (`lib/api/linode.sh`, `lib/api/cloudflare.sh`) that wraps all API calls. This layer should:
+- Validate responses structurally (jq -e)
+- Log API versions used
+- Provide clear error messages
+- Be the single place to update when APIs change
+
+Consider using official CLIs where available (`linode-cli`, `cloudflare` npm package) as they handle auth, pagination, and versioning.
+
+#### 8.3.5 Progress: None vs Rich progress libraries
+
+**Current: None**
+
+| Pros | Cons |
+|------|------|
+| Simpler code | Users think command hung |
+| Works in all terminals | No feedback during long operations |
+| No dependencies | Professional tools have progress indicators |
+
+**Alternative: Rich progress libraries**
+
+| Pros | Cons |
+|------|------|
+| Users know something is happening | Adds complexity |
+| Professional user experience | May not work in all terminals |
+| Can show ETA, throughput | Adds dependency or code |
+
+**Verdict: Medium Issue (5/10)**
+
+This is a UX issue, not a correctness issue. The document specifically calls this out as a friction point: "Users think command hung."
+
+However, implementing progress in pure bash is straightforward:
+```bash
+# Simple spinner
+spinner() {
+    local pid=$1
+    local chars='|/-\'
+    while kill -0 $pid 2>/dev/null; do
+        for c in $chars; do
+            printf '\r[%c] Working...' "$c"
+            sleep 0.1
+        done
+    done
+    printf '\r'
+}
+```
+
+**Recommendation**: Add simple progress indicators without external dependencies:
+- Spinners for operations < 30 seconds
+- Progress bars for operations with known steps (e.g., "Installing module 3/12...")
+- Periodic status updates for long operations ("Still running... 45 seconds elapsed")
+
+This can be done in `lib/ui.sh` with ~100 lines of bash.
+
+#### 8.3.6 Summary: Issue Severity Assessment
+
+| Choice | Issue Severity | Would Alternative Have Been Better? |
+|--------|---------------|-------------------------------------|
+| CLI Framework (bash) | **5/10** | Maybe. At 48K lines bash shows strain, but rewriting is 200+ hours |
+| Custom YAML | **4/10** | Slightly. Works fine, just needs consolidation |
+| BATS Testing | **3/10** | No. BATS is correct for bash. Problem is coverage, not tool |
+| curl + grep APIs | **7/10** | Yes. Abstraction layer needed regardless of tool choice |
+| No Progress | **5/10** | Yes, but easily fixed in pure bash without major changes |
+
+**Overall**: The biggest technical debt is the API client approach (curl + grep with no abstraction), which creates brittleness to external changes. The other choices were reasonable given the project's goals and constraints. The CLI framework choice is debatable at scale, but a rewrite would be expensive and risky.
+
 ---
 
 ## 9. Prioritized Improvement Roadmap

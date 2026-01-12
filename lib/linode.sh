@@ -368,9 +368,10 @@ linode_get_domain_id() {
     local response=$(curl -s -H "Authorization: Bearer $token" \
         "https://api.linode.com/v4/domains")
 
-    # Extract domain ID using grep
-    echo "$response" | grep -o "\"id\":[0-9]*,\"type\":\"[^\"]*\",\"domain\":\"$domain\"" | \
-        grep -o "\"id\":[0-9]*" | grep -o "[0-9]*" | head -1
+    # Extract domain ID using grep (handle JSON with or without spaces after colons)
+    # Pattern matches: "id": 123456 or "id":123456, with domain matching
+    echo "$response" | grep -oE "\"id\":[[:space:]]*[0-9]+,[^}]*\"domain\":[[:space:]]*\"$domain\"" | \
+        grep -oE "\"id\":[[:space:]]*[0-9]+" | grep -o "[0-9]*" | head -1
 }
 
 # Create a DNS NS record
@@ -550,6 +551,110 @@ verify_linode_dns() {
     fi
 }
 
+# Create or update DNS A record
+# Usage: linode_upsert_dns_a "TOKEN" "DOMAIN_ID" "name" "target_ip" "ttl"
+# Returns: Record ID on success
+linode_upsert_dns_a() {
+    local token=$1
+    local domain_id=$2
+    local name=$3
+    local target=$4
+    local ttl=${5:-300}
+
+    # Check if record exists
+    local response=$(curl -s -H "Authorization: Bearer $token" \
+        "https://api.linode.com/v4/domains/$domain_id/records")
+
+    # Look for existing A record with this name (handle JSON with spaces after colons)
+    local existing_id=$(echo "$response" | grep -oE "\"id\":[[:space:]]*[0-9]+,[^}]*\"type\":[[:space:]]*\"A\",[^}]*\"name\":[[:space:]]*\"$name\"" | \
+        grep -oE "\"id\":[[:space:]]*[0-9]+" | grep -o "[0-9]*" | head -1)
+
+    if [ -n "$existing_id" ]; then
+        # Update existing record
+        local update_response=$(curl -s -X PUT \
+            -H "Authorization: Bearer $token" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"target\": \"$target\",
+                \"ttl_sec\": $ttl
+            }" \
+            "https://api.linode.com/v4/domains/$domain_id/records/$existing_id")
+
+        if echo "$update_response" | grep -qE '"id":[[:space:]]*[0-9]+'; then
+            echo "$existing_id"
+            return 0
+        else
+            echo "ERROR: Failed to update A record for $name" >&2
+            echo "$update_response" | grep -oE '"errors":[[:space:]]*\[.*\]' >&2
+            return 1
+        fi
+    else
+        # Create new record
+        local create_response=$(curl -s -X POST \
+            -H "Authorization: Bearer $token" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"type\": \"A\",
+                \"name\": \"$name\",
+                \"target\": \"$target\",
+                \"ttl_sec\": $ttl
+            }" \
+            "https://api.linode.com/v4/domains/$domain_id/records")
+
+        if echo "$create_response" | grep -qE '"id":[[:space:]]*[0-9]+'; then
+            local record_id=$(echo "$create_response" | grep -oE '"id":[[:space:]]*[0-9]+' | head -1 | grep -o '[0-9]*')
+            echo "$record_id"
+            return 0
+        else
+            echo "ERROR: Failed to create A record for $name -> $target" >&2
+            echo "$create_response" | grep -oE '"errors":[[:space:]]*\[.*\]' >&2
+            return 1
+        fi
+    fi
+}
+
+# Create A record for full domain (e.g., podcast.example.com)
+# Usage: linode_create_dns_a_for_domain "TOKEN" "podcast.example.com" "IP"
+# Returns: Record ID on success
+linode_create_dns_a_for_domain() {
+    local token=$1
+    local fqdn=$2
+    local target_ip=$3
+
+    # Extract base domain and subdomain
+    local base_domain="${fqdn#*.}"
+    local subdomain="${fqdn%%.*}"
+
+    # Handle case where fqdn has more than two parts (e.g., gm.opencat.org)
+    # We need to find the actual registered domain in Linode
+    local domain_id=""
+    local test_domain="$fqdn"
+
+    # Try progressively shorter domains until we find one that exists
+    while [[ "$test_domain" == *.* ]]; do
+        domain_id=$(linode_get_domain_id "$token" "$test_domain")
+        if [ -n "$domain_id" ]; then
+            # Found the base domain, now calculate the subdomain part
+            if [ "$test_domain" = "$fqdn" ]; then
+                subdomain=""  # It's the root domain
+            else
+                subdomain="${fqdn%.$test_domain}"
+            fi
+            break
+        fi
+        test_domain="${test_domain#*.}"
+    done
+
+    if [ -z "$domain_id" ]; then
+        echo "ERROR: Could not find domain in Linode DNS for: $fqdn" >&2
+        echo "Ensure the base domain exists in Linode DNS Manager" >&2
+        return 1
+    fi
+
+    echo "Creating A record: $subdomain.$test_domain -> $target_ip" >&2
+    linode_upsert_dns_a "$token" "$domain_id" "$subdomain" "$target_ip"
+}
+
 # Export functions for use in other scripts
 export -f get_linode_token
 export -f get_ssh_key_id
@@ -569,3 +674,5 @@ export -f linode_delete_ns_delegation
 export -f linode_delete_dns_record
 export -f linode_list_ns_records
 export -f verify_linode_dns
+export -f linode_upsert_dns_a
+export -f linode_create_dns_a_for_domain

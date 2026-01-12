@@ -1,6 +1,6 @@
 # NWP Roadmap - Pending & Future Work
 
-**Last Updated:** January 11, 2026
+**Last Updated:** January 12, 2026
 
 Pending implementation items and future improvements for NWP.
 
@@ -17,6 +17,7 @@ Pending implementation items and future improvements for NWP.
 | Completed Proposals | P01-P35, F04, F05, F07, F09 |
 | Pending Proposals | F01-F03, F06, F08, F10, F11 |
 | Experimental/Outlier | X01 |
+| Recent Enhancements | Verify TUI console (v0.18-v0.19), Email auto-config (v0.19.1) |
 
 ---
 
@@ -118,6 +119,9 @@ Establish a governance framework for distributed NWP development:
 - [x] `coder-setup.sh remove` - Full offboarding with GitLab cleanup
 - [x] `lib/developer.sh` - Developer level detection library
 - [x] `scripts/commands/coders.sh` - Full TUI with arrow navigation, bulk actions, auto-sync
+- [x] SSH status column in pl coders (v0.19.0) - Shows if coder has SSH keys on GitLab
+- [x] Onboarding status tracking (v0.19.0) - GL, GRP, SSH, NS, DNS, SRV, SITE columns
+- [x] Role-based requirement checking - Core/Steward require full onboarding
 
 **Success Criteria:**
 - [x] `docs/decisions/` directory with ADR template
@@ -734,10 +738,11 @@ Complex Tasks (Claude API):
 ---
 
 ### F09: Comprehensive Testing Infrastructure
-**Status:** ✅ COMPLETE | **Priority:** HIGH | **Effort:** High | **Dependencies:** Linode, GitLab CI
+**Status:** ✅ COMPLETE + ENHANCED | **Priority:** HIGH | **Effort:** High | **Dependencies:** Linode, GitLab CI
 **Proposal:** [COMPREHENSIVE_TESTING_PROPOSAL.md](COMPREHENSIVE_TESTING_PROPOSAL.md)
+**Console Guide:** [VERIFY_ENHANCEMENTS.md](VERIFY_ENHANCEMENTS.md)
 
-Automated testing infrastructure using BATS framework with GitLab CI integration:
+Automated testing infrastructure using BATS framework with GitLab CI integration, plus interactive verification console with schema v2 enhancements:
 
 **Test Suites:**
 - Unit tests (BATS) - ~2 minutes, every commit
@@ -767,8 +772,24 @@ Automated testing infrastructure using BATS framework with GitLab CI integration
 - [x] `tests/helpers/test-helpers.bash` shared utilities
 - [x] GitLab CI pipeline with lint, test, e2e stages
 - [x] `scripts/commands/run-tests.sh` unified test runner
+- [x] Interactive verification console (v0.18.0) - Arrow navigation, checklist editor, history
+- [x] Verification schema v2 (v0.18.0) - Individual checklist item tracking, audit trail
+- [x] Auto-verification via checklist (v0.19.0) - Team collaboration, multi-coder support
+- [x] Partial completion display (v0.19.0) - Shows progress for features in development
+- [x] Checklist preview mode - Toggle display of first 3 items per feature
 - [ ] E2E tests on Linode (infrastructure ready, tests pending)
 - [ ] Test results dashboard
+
+**Verification Console Features (v0.18.0-v0.19.0):**
+- Default `pl verify` opens interactive TUI console
+- Keyboard shortcuts: v:Verify, i:Checklist, u:Unverify, h:History, n:Notes, p:Preview
+- Category navigation with ←→ arrows
+- Feature navigation with ↑↓ arrows
+- Interactive checklist editor with Space to toggle items
+- Notes editor with auto-detection (nano/vim/vi)
+- History timeline showing all verification events
+- Auto-verification when all checklist items completed
+- Perfect for distributed teams - each person completes different items
 
 ---
 

@@ -404,19 +404,40 @@ Administrators can manage coders using the interactive TUI:
 **TUI Features:**
 - Arrow-key navigation through all coders
 - Auto-sync contribution data from GitLab
+- Onboarding status tracking (GitLab user, SSH keys, DNS, server, site)
 - Bulk selection with Space for mass operations
 - Detailed stats view with Enter
 - Promote, modify, or delete coders
+
+**Status Columns (v0.19.0+):**
+| Column | Description | Status |
+|--------|-------------|--------|
+| GL | GitLab user exists | ✓ Yes / ✗ No / ? Unknown / - Not required |
+| GRP | GitLab group membership | ✓ Yes / ✗ No / ? Unknown / - Not required |
+| SSH | SSH key registered on GitLab | ✓ Yes / ✗ No / ? Unknown / - Not required |
+| NS | NS delegation configured | ✓ Yes / ✗ No / ? Unknown / - Not required |
+| DNS | A record resolves | ✓ Yes / ✗ No / ? Unknown / - Not required |
+| SRV | Server provisioned | ✓ Yes / ✗ No / ? Unknown / - Not required |
+| SITE | Site accessible via HTTPS | ✓ Yes / ✗ No / ? Unknown / - Not required |
+
+**Role-based Requirements:**
+- Newcomer/Contributor: GL, GRP, SSH required
+- Core/Steward: All steps required (complete onboarding)
 
 **TUI Controls:**
 | Key | Action |
 |-----|--------|
 | ↑/↓ | Navigate coders |
+| ←/→ | Scroll horizontally (if table exceeds terminal width) |
 | Space | Select for bulk actions |
 | Enter | View detailed stats |
-| P | Promote selected |
-| D | Delete selected |
+| M | Modify selected coder |
+| P | Promote selected/marked coders |
+| D | Delete selected/marked coders |
+| A | Add new coder |
 | S | Sync from GitLab |
+| C | Check onboarding status |
+| H | Show help screen |
 | Q | Quit |
 
 **Other admin commands:**

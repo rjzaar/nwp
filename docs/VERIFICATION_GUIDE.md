@@ -30,12 +30,16 @@ NWP has a built-in verification tracking system that ensures all features have b
 ### Key Commands
 
 ```bash
-# View current verification status
-./verify.sh                  # Default: show status
-./verify.sh summary          # Progress bar overview
+# Launch interactive TUI console (default since v0.19.0)
+./verify.sh                  # Interactive console with keyboard navigation
+pl verify                    # Same, via pl CLI
+
+# View status report (old default)
+./verify.sh report           # Show verification status report
+./verify.sh status           # Alias for report
 
 # Check what needs testing
-./verify.sh list             # List all 42 trackable features
+./verify.sh list             # List all trackable features
 ./verify.sh check            # Find invalidated verifications
 
 # Get testing details
@@ -47,6 +51,8 @@ NWP has a built-in verification tracking system that ensures all features have b
 # Administration
 ./verify.sh reset            # Clear all verifications (start fresh)
 ```
+
+**What's New (v0.18.0+):** The default `./verify.sh` now opens an interactive TUI console instead of showing a static report. See [VERIFY_ENHANCEMENTS.md](VERIFY_ENHANCEMENTS.md) for the complete console guide with keyboard shortcuts, checklist editing, history viewing, and auto-verification features.
 
 ---
 
@@ -70,13 +76,18 @@ NWP has a built-in verification tracking system that ensures all features have b
 
 ```bash
 cd /home/rob/nwp
-./verify.sh
+./verify.sh        # Opens interactive console (v0.19.0+)
+# or
+./verify.sh report # Traditional status report
 ```
+
+**Interactive Console (recommended):** Navigate with arrow keys, press `v` to verify, `i` to edit checklists, `h` for history. See [VERIFY_ENHANCEMENTS.md](VERIFY_ENHANCEMENTS.md) for full keyboard shortcuts.
 
 Look for:
 - `[✓]` = Verified and unchanged
 - `[!]` = Was verified but code changed (needs re-testing)
-- `[ ]` = Never verified
+- `[◐]` = Partially complete (some checklist items done)
+- `[○]` = Never verified
 
 ### Step 2: Pick a Feature to Verify
 
@@ -142,11 +153,23 @@ This shows:
 
 ### Step 5: Mark as Verified
 
-After successful testing:
+**Option A: In the interactive console (recommended):**
+1. Navigate to the feature with arrow keys
+2. Press `v` to mark verified
+3. Or press `i` to edit checklist items individually
 
+**Option B: Command line:**
 ```bash
 ./verify.sh verify backup
 ```
+
+**Option C: Auto-verification via checklist (v0.19.0+):**
+- Open console and press `i` on a feature
+- Mark all checklist items complete with `Space`
+- Feature auto-verifies when all items are done
+- Perfect for team collaboration
+
+See [VERIFY_ENHANCEMENTS.md](VERIFY_ENHANCEMENTS.md) for detailed console usage.
 
 ---
 

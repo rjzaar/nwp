@@ -48,6 +48,7 @@ MEDIA_SUBDOMAIN="media"
 B2_REGION="us-west-004"
 AUTO_CONFIRM=false
 DEBUG=false
+LINODE_ONLY=false  # When true, use Linode DNS and local storage (no Cloudflare/B2)
 
 ################################################################################
 # Help
@@ -71,19 +72,26 @@ OPTIONS:
     -r, --region        Linode region (default: us-east)
     -m, --media         Media subdomain (default: media)
     -b, --b2-region     B2 region (default: us-west-004)
+    -l, --linode-only   Use Linode DNS and local storage (no Cloudflare/B2)
     -y, --yes           Auto-confirm prompts
     -v, --verbose       Enable debug output
     -h, --help          Show this help message
 
 EXAMPLES:
-    # Full automated setup
+    # Full automated setup (with Cloudflare + B2)
     ./podcast.sh setup podcast.example.com
+
+    # Linode-only setup (uses Linode DNS and local storage)
+    ./podcast.sh setup --linode-only podcast.example.com
 
     # Setup with custom region
     ./podcast.sh setup -r us-west podcast.example.com
 
     # Generate files only (for existing server)
     ./podcast.sh generate podcast.example.com
+
+    # Generate files for Linode-only (local storage)
+    ./podcast.sh generate --linode-only podcast.example.com
 
     # Deploy to server
     ./podcast.sh deploy podcast-setup-20241231-120000
@@ -93,16 +101,18 @@ EXAMPLES:
 
 PREREQUISITES:
     1. Configure credentials in .secrets.yml:
-       - Linode API token
-       - Cloudflare API token and Zone ID
-       - B2 account ID and application key
+       - Linode API token (required)
+       - Cloudflare API token and Zone ID (optional with --linode-only)
+       - B2 account ID and application key (optional with --linode-only)
 
     2. Generate SSH keys:
        ./setup-ssh.sh
 
-    3. Install and authorize b2 CLI:
+    3. Install and authorize b2 CLI (skip for --linode-only):
        pip install b2
        b2 account authorize
+
+    4. Ensure domain exists in Linode DNS Manager (for --linode-only)
 
 DOCUMENTATION:
     See docs/podcast_setup.md for detailed instructions.
@@ -115,6 +125,13 @@ EOF
 
 check_status() {
     print_header "NWP Podcast Setup - Status Check"
+
+    if $LINODE_ONLY; then
+        echo "Mode: Linode-only (Linode DNS + local storage)"
+    else
+        echo "Mode: Full (Cloudflare + B2 + Linode)"
+    fi
+    echo ""
 
     local all_ok=true
 
@@ -147,43 +164,55 @@ check_status() {
         all_ok=false
     fi
 
-    # Check Cloudflare
-    echo ""
-    echo "Cloudflare:"
-    local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
-    local cf_zone=$(get_cloudflare_zone_id "$PROJECT_ROOT")
-    if [ -n "$cf_token" ] && [ -n "$cf_zone" ]; then
-        print_status "OK" "API token and Zone ID configured"
-        if verify_cloudflare_auth "$cf_token" "$cf_zone" 2>/dev/null; then
-            print_status "OK" "Credentials valid"
+    # Check Cloudflare (skip in Linode-only mode)
+    if ! $LINODE_ONLY; then
+        echo ""
+        echo "Cloudflare:"
+        local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
+        local cf_zone=$(get_cloudflare_zone_id "$PROJECT_ROOT")
+        if [ -n "$cf_token" ] && [ -n "$cf_zone" ]; then
+            print_status "OK" "API token and Zone ID configured"
+            if verify_cloudflare_auth "$cf_token" "$cf_zone" 2>/dev/null; then
+                print_status "OK" "Credentials valid"
+            else
+                print_status "WARN" "Credentials may be invalid"
+            fi
         else
-            print_status "WARN" "Credentials may be invalid"
+            print_status "FAIL" "Credentials not found in .secrets.yml"
+            all_ok=false
         fi
     else
-        print_status "FAIL" "Credentials not found in .secrets.yml"
-        all_ok=false
+        echo ""
+        echo "Cloudflare: (skipped - using Linode DNS)"
+        print_status "SKIP" "Not required in --linode-only mode"
     fi
 
-    # Check B2
-    echo ""
-    echo "Backblaze B2:"
-    if command -v b2 &>/dev/null; then
-        print_status "OK" "b2 CLI installed"
-        if b2 account get &>/dev/null; then
-            print_status "OK" "b2 authenticated"
-        else
-            local b2_id=$(get_b2_account_id "$SCRIPT_DIR")
-            if [ -n "$b2_id" ]; then
-                print_status "WARN" "Credentials in .secrets.yml but not authorized"
-                print_info "Run: b2 account authorize"
+    # Check B2 (skip in Linode-only mode)
+    if ! $LINODE_ONLY; then
+        echo ""
+        echo "Backblaze B2:"
+        if command -v b2 &>/dev/null; then
+            print_status "OK" "b2 CLI installed"
+            if b2 account get &>/dev/null; then
+                print_status "OK" "b2 authenticated"
             else
-                print_status "FAIL" "Not authenticated (run: b2 account authorize)"
-                all_ok=false
+                local b2_id=$(get_b2_account_id "$SCRIPT_DIR")
+                if [ -n "$b2_id" ]; then
+                    print_status "WARN" "Credentials in .secrets.yml but not authorized"
+                    print_info "Run: b2 account authorize"
+                else
+                    print_status "FAIL" "Not authenticated (run: b2 account authorize)"
+                    all_ok=false
+                fi
             fi
+        else
+            print_status "FAIL" "b2 CLI not installed (run: pip install b2)"
+            all_ok=false
         fi
     else
-        print_status "FAIL" "b2 CLI not installed (run: pip install b2)"
-        all_ok=false
+        echo ""
+        echo "Backblaze B2: (skipped - using local storage)"
+        print_status "SKIP" "Not required in --linode-only mode"
     fi
 
     # Check other tools
@@ -217,7 +246,12 @@ do_setup() {
     print_header "NWP Podcast Setup"
     echo "Domain: $domain"
     echo "Linode Region: $LINODE_REGION"
-    echo "B2 Region: $B2_REGION"
+    if $LINODE_ONLY; then
+        echo "Mode: Linode-only (Linode DNS + local storage)"
+    else
+        echo "B2 Region: $B2_REGION"
+        echo "Mode: Full (Cloudflare + B2)"
+    fi
     echo ""
 
     # Validate domain format
@@ -239,8 +273,13 @@ do_setup() {
     if ! $AUTO_CONFIRM; then
         echo "This will create:"
         echo "  - Linode VPS (~\$5/month for Nanode)"
-        echo "  - B2 bucket (free tier: 10GB)"
-        echo "  - Cloudflare DNS records (free)"
+        if $LINODE_ONLY; then
+            echo "  - Linode DNS A record"
+            echo "  - Local media storage on VPS"
+        else
+            echo "  - B2 bucket (free tier: 10GB)"
+            echo "  - Cloudflare DNS records (free)"
+        fi
         echo ""
         if ! ask_yes_no "Continue with setup?" "n"; then
             echo "Aborted."
@@ -252,8 +291,12 @@ do_setup() {
 
     # Get credentials
     local linode_token=$(get_linode_token "$PROJECT_ROOT")
-    local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
-    local cf_zone_id=$(get_cloudflare_zone_id "$PROJECT_ROOT")
+    local cf_token=""
+    local cf_zone_id=""
+    if ! $LINODE_ONLY; then
+        cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
+        cf_zone_id=$(get_cloudflare_zone_id "$PROJECT_ROOT")
+    fi
 
     local base_domain="${domain#*.}"
     local podcast_subdomain="${domain%%.*}"
@@ -276,42 +319,51 @@ do_setup() {
             echo "Deleting Linode $linode_id..."
             delete_linode_instance "$linode_token" "$linode_id" 2>/dev/null || true
         fi
-        if [ -n "$dns_podcast_record" ]; then
+        if ! $LINODE_ONLY && [ -n "$dns_podcast_record" ]; then
             echo "Deleting DNS record..."
             cf_delete_dns_record "$cf_token" "$cf_zone_id" "$dns_podcast_record" 2>/dev/null || true
         fi
-        if [ -n "$dns_media_record" ]; then
+        if ! $LINODE_ONLY && [ -n "$dns_media_record" ]; then
             cf_delete_dns_record "$cf_token" "$cf_zone_id" "$dns_media_record" 2>/dev/null || true
         fi
         # Note: B2 bucket/key cleanup is manual since they might have data
-        print_error "Partial cleanup complete. Check B2 manually if needed."
+        if ! $LINODE_ONLY; then
+            print_error "Partial cleanup complete. Check B2 manually if needed."
+        else
+            print_error "Partial cleanup complete."
+        fi
     }
     trap cleanup_on_error ERR
 
-    # Step 1: Create B2 bucket
-    print_header "Step 1: Creating B2 Bucket"
-    bucket_id=$(b2_create_bucket "$bucket_name" "allPublic")
-    if [ -z "$bucket_id" ]; then
-        print_error "Failed to create B2 bucket"
-        exit 1
-    fi
-    print_status "OK" "Bucket created: $bucket_name ($bucket_id)"
+    # Step 1: Create B2 bucket (skip in Linode-only mode)
+    if $LINODE_ONLY; then
+        print_header "Step 1: Skipping B2 (using local storage)"
+        print_status "SKIP" "Using local storage on VPS instead of B2"
+    else
+        print_header "Step 1: Creating B2 Bucket"
+        bucket_id=$(b2_create_bucket "$bucket_name" "allPublic")
+        if [ -z "$bucket_id" ]; then
+            print_error "Failed to create B2 bucket"
+            exit 1
+        fi
+        print_status "OK" "Bucket created: $bucket_name ($bucket_id)"
 
-    # Enable CORS
-    echo "Enabling CORS..."
-    b2_enable_cors "$bucket_name" "*" >/dev/null 2>&1 || true
-    print_status "OK" "CORS enabled"
+        # Enable CORS
+        echo "Enabling CORS..."
+        b2_enable_cors "$bucket_name" "*" >/dev/null 2>&1 || true
+        print_status "OK" "CORS enabled"
 
-    # Create application key
-    echo "Creating application key..."
-    local key_output=$(b2_create_app_key "$bucket_name" "${podcast_subdomain}-castopod")
-    b2_key_id=$(echo "$key_output" | awk '{print $1}')
-    b2_app_key=$(echo "$key_output" | awk '{print $2}')
-    if [ -z "$b2_key_id" ]; then
-        print_error "Failed to create B2 application key"
-        exit 1
+        # Create application key
+        echo "Creating application key..."
+        local key_output=$(b2_create_app_key "$bucket_name" "${podcast_subdomain}-castopod")
+        b2_key_id=$(echo "$key_output" | awk '{print $1}')
+        b2_app_key=$(echo "$key_output" | awk '{print $2}')
+        if [ -z "$b2_key_id" ]; then
+            print_error "Failed to create B2 application key"
+            exit 1
+        fi
+        print_status "OK" "Application key created"
     fi
-    print_status "OK" "Application key created"
 
     # Step 2: Create Linode
     print_header "Step 2: Creating Linode Instance"
@@ -380,16 +432,29 @@ echo "Docker installed successfully"
 DOCKER_INSTALL
     print_status "OK" "Docker installed"
 
-    # Step 3: Create Cloudflare DNS
-    print_header "Step 3: Creating Cloudflare DNS Records"
+    # Step 3: Create DNS records
+    if $LINODE_ONLY; then
+        print_header "Step 3: Creating Linode DNS Records"
 
-    echo "Creating A record for $domain..."
-    dns_podcast_record=$(cf_upsert_dns_a "$cf_token" "$cf_zone_id" "$domain" "$server_ip" "true")
-    print_status "OK" "DNS: $domain -> $server_ip"
+        echo "Creating A record for $domain..."
+        dns_podcast_record=$(linode_create_dns_a_for_domain "$linode_token" "$domain" "$server_ip")
+        if [ -z "$dns_podcast_record" ] || [[ "$dns_podcast_record" == ERROR* ]]; then
+            print_error "Failed to create DNS record for $domain"
+            print_info "Ensure $base_domain exists in Linode DNS Manager"
+            exit 1
+        fi
+        print_status "OK" "DNS: $domain -> $server_ip"
+    else
+        print_header "Step 3: Creating Cloudflare DNS Records"
 
-    echo "Creating A record for $media_domain..."
-    dns_media_record=$(cf_upsert_dns_a "$cf_token" "$cf_zone_id" "$media_domain" "$server_ip" "true")
-    print_status "OK" "DNS: $media_domain -> $server_ip"
+        echo "Creating A record for $domain..."
+        dns_podcast_record=$(cf_upsert_dns_a "$cf_token" "$cf_zone_id" "$domain" "$server_ip" "true")
+        print_status "OK" "DNS: $domain -> $server_ip"
+
+        echo "Creating A record for $media_domain..."
+        dns_media_record=$(cf_upsert_dns_a "$cf_token" "$cf_zone_id" "$media_domain" "$server_ip" "true")
+        print_status "OK" "DNS: $media_domain -> $server_ip"
+    fi
 
     # Step 4: Generate and deploy configuration
     print_header "Step 4: Generating and Deploying Configuration"
@@ -399,9 +464,14 @@ DOCKER_INSTALL
 
     mkdir -p "$output_dir"
 
-    # Generate .env
-    generate_castopod_env "$domain" "$db_password" "$b2_key_id" "$b2_app_key" "$bucket_name" "$B2_REGION" > "$output_dir/.env"
-    print_status "OK" "Generated .env"
+    # Generate .env (use local storage version for Linode-only mode)
+    if $LINODE_ONLY; then
+        generate_castopod_env_local "$domain" "$db_password" > "$output_dir/.env"
+        print_status "OK" "Generated .env (local storage)"
+    else
+        generate_castopod_env "$domain" "$db_password" "$b2_key_id" "$b2_app_key" "$bucket_name" "$B2_REGION" > "$output_dir/.env"
+        print_status "OK" "Generated .env"
+    fi
 
     # Generate docker-compose.yml
     generate_castopod_compose "$domain" > "$output_dir/docker-compose.yml"
@@ -433,7 +503,36 @@ START_CASTOPOD
     trap - ERR
 
     # Save deployment info
-    cat > "$output_dir/deployment-info.txt" << EOF
+    if $LINODE_ONLY; then
+        cat > "$output_dir/deployment-info.txt" << EOF
+NWP Podcast Deployment Info (Linode-only mode)
+===============================================
+Date: $(date)
+Domain: $domain
+Mode: Linode-only (local storage)
+
+Linode:
+  ID: $linode_id
+  IP: $server_ip
+  Label: $label
+  Region: $LINODE_REGION
+
+DNS (Linode):
+  Podcast DNS Record: $dns_podcast_record
+
+Storage: Local (on VPS)
+
+SSH Access:
+  ssh -i ${ssh_key_private} root@${server_ip}
+
+Castopod Setup:
+  https://${domain}/admin/install
+
+Teardown Command:
+  ./podcast.sh teardown $linode_id
+EOF
+    else
+        cat > "$output_dir/deployment-info.txt" << EOF
 NWP Podcast Deployment Info
 ============================
 Date: $(date)
@@ -464,6 +563,7 @@ Castopod Setup:
 Teardown Command:
   ./podcast.sh teardown $linode_id
 EOF
+    fi
 
     # Final output
     print_header "Setup Complete!"
@@ -472,7 +572,11 @@ EOF
     echo ""
     echo "Server: $server_ip"
     echo "Domain: https://$domain"
-    echo "Media:  https://$media_domain"
+    if ! $LINODE_ONLY; then
+        echo "Media:  https://$media_domain"
+    else
+        echo "Storage: Local (on VPS)"
+    fi
     echo ""
     echo "SSH Access:"
     echo "  ssh -i $ssh_key_private root@$server_ip"
@@ -497,6 +601,11 @@ do_generate() {
 
     print_header "NWP Podcast - Generate Configuration"
     echo "Domain: $domain"
+    if $LINODE_ONLY; then
+        echo "Mode: Linode-only (local storage)"
+    else
+        echo "Mode: Full (B2 storage)"
+    fi
     echo ""
 
     # Validate domain format
@@ -513,8 +622,14 @@ do_generate() {
 
     mkdir -p "$output_dir"
 
-    # Generate .env with placeholders for B2 credentials
-    cat > "$output_dir/.env" << EOF
+    # Generate .env based on mode
+    if $LINODE_ONLY; then
+        # Generate .env for local storage
+        generate_castopod_env_local "$domain" "$db_password" > "$output_dir/.env"
+        print_status "OK" "Generated .env (local storage)"
+    else
+        # Generate .env with placeholders for B2 credentials
+        cat > "$output_dir/.env" << EOF
 # Castopod Environment Configuration
 # Generated by NWP Podcast Setup
 # IMPORTANT: Fill in the B2 credentials before deploying!
@@ -551,7 +666,8 @@ CP_MAX_BODY_SIZE="512M"
 PHP_MEMORY_LIMIT="512M"
 PHP_MAX_EXECUTION_TIME="300"
 EOF
-    print_status "OK" "Generated .env"
+        print_status "OK" "Generated .env"
+    fi
 
     # Generate docker-compose.yml
     generate_castopod_compose "$domain" > "$output_dir/docker-compose.yml"
@@ -562,7 +678,50 @@ EOF
     print_status "OK" "Generated Caddyfile"
 
     # Generate deployment script
-    cat > "$output_dir/deploy.sh" << 'DEPLOY'
+    if $LINODE_ONLY; then
+        cat > "$output_dir/deploy.sh" << 'DEPLOY'
+#!/bin/bash
+set -euo pipefail
+
+echo "Deploying Castopod (local storage mode)..."
+
+# Check for required files
+for f in .env docker-compose.yml Caddyfile; do
+    if [ ! -f "$f" ]; then
+        echo "ERROR: Missing $f"
+        exit 1
+    fi
+done
+
+# Load environment
+set -a
+source .env
+set +a
+
+# Pull latest images
+docker compose pull
+
+# Start services
+docker compose up -d
+
+# Wait for services
+echo "Waiting for services to start..."
+sleep 15
+
+# Check status
+docker compose ps
+
+echo ""
+echo "Castopod is starting up!"
+echo "Visit ${CP_BASEURL} to complete setup"
+echo ""
+echo "First-time setup:"
+echo "  1. Create an admin account at ${CP_BASEURL}/admin/install"
+echo "  2. Create your first podcast"
+echo "  3. Configure podcast settings"
+DEPLOY
+    else
+        cat > "$output_dir/deploy.sh" << 'DEPLOY'
 #!/bin/bash
 set -euo pipefail
 
@@ -610,6 +769,7 @@ echo "  1. Create an admin account at ${CP_BASEURL}/admin/install"
 echo "  2. Create your first podcast"
 echo "  3. Configure podcast settings"
 DEPLOY
+    fi
     chmod +x "$output_dir/deploy.sh"
     print_status "OK" "Generated deploy.sh"
 
@@ -617,15 +777,24 @@ DEPLOY
     print_status "OK" "Configuration files generated in: $output_dir"
     echo ""
     echo "Files created:"
-    echo "  - .env (environment configuration - EDIT B2 CREDENTIALS)"
+    if $LINODE_ONLY; then
+        echo "  - .env (environment configuration - local storage)"
+    else
+        echo "  - .env (environment configuration - EDIT B2 CREDENTIALS)"
+    fi
     echo "  - docker-compose.yml (container setup)"
     echo "  - Caddyfile (reverse proxy)"
     echo "  - deploy.sh (deployment script)"
     echo ""
     echo "Next steps:"
-    echo "  1. Edit $output_dir/.env with your B2 credentials"
-    echo "  2. Copy files to your server"
-    echo "  3. Run ./deploy.sh on the server"
+    if $LINODE_ONLY; then
+        echo "  1. Copy files to your server"
+        echo "  2. Run ./deploy.sh on the server"
+    else
+        echo "  1. Edit $output_dir/.env with your B2 credentials"
+        echo "  2. Copy files to your server"
+        echo "  3. Run ./deploy.sh on the server"
+    fi
 
     show_elapsed_time "Configuration Generation"
 }
@@ -794,6 +963,10 @@ while [[ $# -gt 0 ]]; do
         -b|--b2-region)
             B2_REGION="$2"
             shift 2
+            ;;
+        -l|--linode-only)
+            LINODE_ONLY=true
+            shift
             ;;
         -y|--yes)
             AUTO_CONFIRM=true

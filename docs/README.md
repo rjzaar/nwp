@@ -41,6 +41,7 @@ This directory contains all documentation for the Narrow Way Project (NWP).
 | [TESTING.md](TESTING.md) | Automated testing: Behat, PHPUnit, PHPStan |
 | [HUMAN_TESTING.md](HUMAN_TESTING.md) | Manual test procedures (12 categories) |
 | [VERIFICATION_GUIDE.md](VERIFICATION_GUIDE.md) | Feature verification tracking system |
+| [VERIFY_ENHANCEMENTS.md](VERIFY_ENHANCEMENTS.md) | Interactive TUI console guide (v0.18.0+) |
 
 ## CI/CD & Git
 
@@ -145,4 +146,4 @@ pl test mysite               # Run tests
 
 ---
 
-*Last updated: January 5, 2026*
+*Last updated: January 12, 2026*

@@ -334,9 +334,24 @@ MOODLEDATA_EOF
     if should_run_step 7 "$start_step"; then
         print_header "Step 7: Post-Installation Configuration"
 
-        # Set up cron (optional)
-        print_info "Moodle installed successfully"
-        print_status "OK" "Installation complete"
+        # Disable slasharguments for DDEV/nginx compatibility
+        # This prevents JS/CSS files from returning HTML instead of their content
+        print_info "Disabling slasharguments for DDEV compatibility..."
+        if ddev exec php admin/cli/cfg.php --name=slasharguments --set=0; then
+            print_status "OK" "Slasharguments disabled"
+        else
+            print_warning "Failed to disable slasharguments (non-critical)"
+        fi
+
+        # Purge caches to apply configuration
+        print_info "Purging caches..."
+        if ddev exec php admin/cli/purge_caches.php; then
+            print_status "OK" "Caches purged"
+        else
+            print_warning "Failed to purge caches (non-critical)"
+        fi
+
+        print_status "OK" "Post-installation configuration complete"
     else
         print_status "INFO" "Skipping Step 7: Already configured"
     fi

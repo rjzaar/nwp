@@ -182,7 +182,7 @@ cleanup_test_sites() {
             if [ -d "$site" ]; then
                 print_info "Stopping $site..."
                 cd "$site" && ddev stop 2>/dev/null || true
-                cd "$SCRIPT_DIR"
+                cd "$PROJECT_ROOT"
             fi
         done
 
@@ -235,7 +235,7 @@ site_is_running() {
     fi
     cd "$site_path" && ddev describe >/dev/null 2>&1
     local result=$?
-    cd "$SCRIPT_DIR"
+    cd "$PROJECT_ROOT"
     return $result
 }
 
@@ -256,10 +256,10 @@ drush_works() {
 
     while [ $attempt -le $max_attempts ]; do
         if cd "$site_path" && ddev drush status >/dev/null 2>&1; then
-            cd "$SCRIPT_DIR"
+            cd "$PROJECT_ROOT"
             return 0
         fi
-        cd "$SCRIPT_DIR" 2>/dev/null || true
+        cd "$PROJECT_ROOT" 2>/dev/null || true
 
         if [ $attempt -lt $max_attempts ]; then
             sleep 2  # Wait 2 seconds before retry
@@ -382,7 +382,7 @@ if [ ! -d "$test_site_path" ]; then
 fi
 if cd "$test_site_path" 2>/dev/null; then
     ddev drush config:set system.site name "Modified Site" -y >/dev/null 2>&1 || true
-    cd "$SCRIPT_DIR"
+    cd "$PROJECT_ROOT"
 fi
 
 run_test "Restore from full backup" "./scripts/commands/restore.sh -fy $TEST_SITE_PREFIX"
@@ -400,7 +400,7 @@ if [ ! -d "$test_site_path" ]; then
 fi
 if cd "$test_site_path" 2>/dev/null; then
     SITE_NAME=$(ddev drush config:get system.site name --format=string 2>/dev/null || echo "")
-    cd "$SCRIPT_DIR"
+    cd "$PROJECT_ROOT"
     if [ "$SITE_NAME" != "Modified Site" ]; then
         run_test "Site restored successfully" "true"
     else
@@ -433,7 +433,7 @@ if cd "$test_site_path" 2>/dev/null; then
     if ddev drush status 2>&1 | grep -q "Drupal version"; then
         DRUSH_FUNCTIONAL=true
     fi
-    cd "$SCRIPT_DIR"
+    cd "$PROJECT_ROOT"
 fi
 
 if [ "$DRUSH_FUNCTIONAL" = "false" ]; then
@@ -455,7 +455,7 @@ else
     if cd "$test_site_path" 2>/dev/null; then
         DEVEL_ENABLED=$(ddev drush pm:list --status=enabled --format=list 2>/dev/null | grep -c "^devel$" 2>/dev/null || true)
         DEVEL_ENABLED=${DEVEL_ENABLED:-0}  # Default to 0 if empty
-        cd "$SCRIPT_DIR"
+        cd "$PROJECT_ROOT"
         if [ "$DEVEL_ENABLED" -gt 0 ] 2>/dev/null; then
             run_test "Dev modules enabled" "true"
         else
@@ -473,7 +473,7 @@ else
     if cd "$test_site_path" 2>/dev/null; then
         DEVEL_DISABLED=$(ddev drush pm:list --status=disabled --format=list 2>/dev/null | grep -c "^devel$" 2>/dev/null || true)
         DEVEL_DISABLED=${DEVEL_DISABLED:-0}  # Default to 0 if empty
-        cd "$SCRIPT_DIR"
+        cd "$PROJECT_ROOT"
         if [ "$DEVEL_DISABLED" -gt 0 ] 2>/dev/null; then
             run_test "Dev modules disabled in prod mode" "true"
         else
@@ -498,7 +498,7 @@ if [ ! -d "$stg_site_path" ]; then
 fi
 if cd "$stg_site_path" 2>/dev/null; then
     CONFIG_IMPORT=$(ddev drush config:status 2>/dev/null | grep -c "No differences" || echo "0")
-    cd "$SCRIPT_DIR"
+    cd "$PROJECT_ROOT"
     if [ "$CONFIG_IMPORT" -gt 0 ]; then
         run_test "Configuration imported to staging" "true"
     else
@@ -526,7 +526,7 @@ if [ -x "./scripts/commands/testos.sh" ]; then
             # PHPStan failure is expected on fresh installations
             run_test "PHPStan analysis" "true" "warn"
         fi
-        cd "$SCRIPT_DIR"
+        cd "$PROJECT_ROOT"
     fi
 
     # Test CodeSniffer (may legitimately fail on fresh OpenSocial)
@@ -538,7 +538,7 @@ if [ -x "./scripts/commands/testos.sh" ]; then
             # CodeSniffer failure is expected on fresh installations
             run_test "CodeSniffer analysis" "true" "warn"
         fi
-        cd "$SCRIPT_DIR"
+        cd "$PROJECT_ROOT"
     fi
 else
     run_test "testos.sh exists and executable" "false"

@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v0.20.0] - 2026-01-12
+
+### Added
+
+- **Major Documentation Restructure**
+  - Reorganized 49 documentation files into 11 topic-based folders
+  - New structure: guides/, reference/, deployment/, testing/, security/, proposals/, governance/, projects/, reports/
+  - All files renamed to lowercase with hyphens for consistency
+  - Git history preserved for all moved files
+
+- **Command Reference Documentation**
+  - New `docs/reference/commands/` directory with command index
+  - Reference pages for 8 previously undocumented commands:
+    - badges, coders, coder-setup, contribute, import, report, security, security-check
+  - Comprehensive README.md listing all 43 NWP commands by category
+
+- **Documentation Standards**
+  - New `docs/DOCUMENTATION_STANDARDS.md` with guidelines for:
+    - File naming conventions
+    - Folder structure
+    - Document structure requirements
+    - Markdown style guide
+    - Cross-reference guidelines
+    - Proposal lifecycle
+
+- **Deep Analysis Expansion**
+  - Added detailed pros/cons analysis for alternative tool choices (Section 8.3)
+  - CLI framework, YAML parsing, testing, API clients, progress indicators
+
+### Changed
+
+- Updated 150+ cross-references to use new documentation paths
+- Rewrote `docs/README.md` as comprehensive navigation hub
+- Updated root `README.md`, `CHANGELOG.md`, `KNOWN_ISSUES.md` with new paths
+- Podcast theme documentation added to `docs/themes/`
+
+### Documentation
+
+- Command coverage increased from 43% to 62% (18 → 26 of 42 commands)
+- New folder organization makes documentation discoverable
+- Clear separation: guides vs reference vs proposals vs reports
+
+---
+
 ## [v0.19.1] - 2026-01-12
 
 ### Added

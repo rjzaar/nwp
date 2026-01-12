@@ -1,0 +1,465 @@
+/**
+ * Gospel Meditations - Castopod Custom Theme
+ * ==========================================
+ *
+ * A contemplative theme for Catholic meditation podcasts featuring:
+ * - 5-minute meditations on the Catholic Faith
+ * - Mark's Gospel reflections
+ * - Rosary meditations
+ *
+ * Based on opencat.org design philosophy
+ *
+ * Color Palette:
+ * - Primary (Marian Blue): #1a3a5c - Deep contemplative blue
+ * - Secondary (Warm Gold): #c9a227 - Sacred illumination gold
+ * - Background (Soft Cream): #f8f6f1 - Parchment-like warmth
+ * - Accent (Rosary Rose): #8b4557 - Mystical rose for highlights
+ * - Text Dark: #2c2c2c - Readable dark gray
+ * - Text Light: #f8f6f1 - Light text for dark backgrounds
+ *
+ * Typography:
+ * - Headings: Cormorant Garamond (elegant, liturgical)
+ * - Body: Open Sans (clean, readable)
+ *
+ * Usage:
+ * 1. Add custom CSS in Castopod Admin > Settings > Theme
+ * 2. Or upload as a custom stylesheet
+ */
+
+/* ============================================
+   CSS Custom Properties (Theme Variables)
+   ============================================ */
+:root {
+  /* Primary Colors */
+  --gm-primary: #1a3a5c;
+  --gm-primary-light: #2a5a8c;
+  --gm-primary-dark: #0d1f30;
+
+  /* Secondary Colors */
+  --gm-secondary: #c9a227;
+  --gm-secondary-light: #e0c050;
+  --gm-secondary-dark: #9a7a10;
+
+  /* Background Colors */
+  --gm-background: #f8f6f1;
+  --gm-background-alt: #ebe8e0;
+  --gm-background-dark: #1a3a5c;
+
+  /* Accent Colors */
+  --gm-accent: #8b4557;
+  --gm-accent-light: #a86070;
+  --gm-accent-dark: #6a3040;
+
+  /* Text Colors */
+  --gm-text-dark: #2c2c2c;
+  --gm-text-light: #f8f6f1;
+  --gm-text-muted: #6b6b6b;
+
+  /* Borders & Shadows */
+  --gm-border: #d4d0c8;
+  --gm-shadow: rgba(26, 58, 92, 0.15);
+  --gm-shadow-strong: rgba(26, 58, 92, 0.25);
+
+  /* Spacing */
+  --gm-spacing-xs: 0.25rem;
+  --gm-spacing-sm: 0.5rem;
+  --gm-spacing-md: 1rem;
+  --gm-spacing-lg: 1.5rem;
+  --gm-spacing-xl: 2rem;
+
+  /* Border Radius */
+  --gm-radius-sm: 4px;
+  --gm-radius-md: 8px;
+  --gm-radius-lg: 12px;
+
+  /* Transitions */
+  --gm-transition: 0.3s ease;
+}
+
+/* ============================================
+   Typography - Google Fonts Import
+   ============================================ */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+/* ============================================
+   Base Styles
+   ============================================ */
+body {
+  font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--gm-background);
+  color: var(--gm-text-dark);
+  line-height: 1.6;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6,
+.podcast-title,
+.episode-title {
+  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  font-weight: 600;
+  color: var(--gm-primary);
+  line-height: 1.3;
+}
+
+h1 { font-size: 2.5rem; }
+h2 { font-size: 2rem; }
+h3 { font-size: 1.5rem; }
+h4 { font-size: 1.25rem; }
+
+/* ============================================
+   Header & Navigation
+   ============================================ */
+header,
+.site-header,
+nav {
+  background: linear-gradient(135deg, var(--gm-primary) 0%, var(--gm-primary-dark) 100%);
+  color: var(--gm-text-light);
+}
+
+.site-header a,
+nav a {
+  color: var(--gm-text-light);
+  text-decoration: none;
+  transition: color var(--gm-transition);
+}
+
+.site-header a:hover,
+nav a:hover {
+  color: var(--gm-secondary);
+}
+
+/* Logo/Brand Area */
+.brand,
+.site-logo,
+.podcast-name {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: var(--gm-text-light);
+}
+
+/* ============================================
+   Podcast Cover Art Area
+   ============================================ */
+.podcast-cover,
+.cover-art,
+.podcast-image {
+  border-radius: var(--gm-radius-lg);
+  box-shadow: 0 8px 24px var(--gm-shadow-strong);
+  border: 4px solid var(--gm-secondary);
+  transition: transform var(--gm-transition), box-shadow var(--gm-transition);
+}
+
+.podcast-cover:hover,
+.cover-art:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px var(--gm-shadow-strong);
+}
+
+/* ============================================
+   Episode Cards
+   ============================================ */
+.episode-card,
+.episode,
+.episode-item {
+  background: white;
+  border-radius: var(--gm-radius-md);
+  box-shadow: 0 2px 8px var(--gm-shadow);
+  padding: var(--gm-spacing-lg);
+  margin-bottom: var(--gm-spacing-lg);
+  border-left: 4px solid var(--gm-secondary);
+  transition: transform var(--gm-transition), box-shadow var(--gm-transition);
+}
+
+.episode-card:hover,
+.episode:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px var(--gm-shadow-strong);
+}
+
+.episode-title {
+  color: var(--gm-primary);
+  margin-bottom: var(--gm-spacing-sm);
+}
+
+.episode-title a {
+  color: var(--gm-primary);
+  text-decoration: none;
+  transition: color var(--gm-transition);
+}
+
+.episode-title a:hover {
+  color: var(--gm-accent);
+}
+
+.episode-date,
+.episode-meta {
+  color: var(--gm-text-muted);
+  font-size: 0.875rem;
+}
+
+.episode-description {
+  color: var(--gm-text-dark);
+  margin-top: var(--gm-spacing-sm);
+}
+
+/* ============================================
+   Audio Player
+   ============================================ */
+.audio-player,
+.player,
+audio {
+  background: var(--gm-primary);
+  border-radius: var(--gm-radius-md);
+  padding: var(--gm-spacing-md);
+}
+
+/* Play Button */
+.play-button,
+.btn-play {
+  background: var(--gm-secondary);
+  color: var(--gm-primary-dark);
+  border: none;
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--gm-transition), transform var(--gm-transition);
+}
+
+.play-button:hover,
+.btn-play:hover {
+  background: var(--gm-secondary-light);
+  transform: scale(1.1);
+}
+
+/* Progress Bar */
+.progress-bar,
+.player-progress {
+  background: var(--gm-primary-light);
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar-fill,
+.progress-current {
+  background: var(--gm-secondary);
+  height: 100%;
+  transition: width 0.1s linear;
+}
+
+/* ============================================
+   Buttons & Links
+   ============================================ */
+.btn,
+button,
+.button {
+  font-family: 'Open Sans', sans-serif;
+  font-weight: 600;
+  padding: var(--gm-spacing-sm) var(--gm-spacing-lg);
+  border-radius: var(--gm-radius-sm);
+  transition: all var(--gm-transition);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gm-spacing-sm);
+}
+
+/* Primary Button */
+.btn-primary,
+.btn--primary {
+  background: var(--gm-primary);
+  color: var(--gm-text-light);
+  border: 2px solid var(--gm-primary);
+}
+
+.btn-primary:hover,
+.btn--primary:hover {
+  background: var(--gm-primary-light);
+  border-color: var(--gm-primary-light);
+}
+
+/* Secondary Button */
+.btn-secondary,
+.btn--secondary {
+  background: var(--gm-secondary);
+  color: var(--gm-primary-dark);
+  border: 2px solid var(--gm-secondary);
+}
+
+.btn-secondary:hover,
+.btn--secondary:hover {
+  background: var(--gm-secondary-light);
+  border-color: var(--gm-secondary-light);
+}
+
+/* Accent Button (for Subscribe/Follow) */
+.btn-subscribe,
+.btn-follow {
+  background: var(--gm-accent);
+  color: var(--gm-text-light);
+  border: 2px solid var(--gm-accent);
+}
+
+.btn-subscribe:hover,
+.btn-follow:hover {
+  background: var(--gm-accent-light);
+  border-color: var(--gm-accent-light);
+}
+
+/* ============================================
+   Subscribe/Platform Links Section
+   ============================================ */
+.subscribe-links,
+.platform-links,
+.podcast-platforms {
+  background: var(--gm-background-alt);
+  padding: var(--gm-spacing-lg);
+  border-radius: var(--gm-radius-md);
+  margin: var(--gm-spacing-xl) 0;
+}
+
+.subscribe-links h3,
+.platform-links h3 {
+  color: var(--gm-primary);
+  margin-bottom: var(--gm-spacing-md);
+  font-family: 'Cormorant Garamond', Georgia, serif;
+}
+
+.platform-icon,
+.subscribe-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--gm-radius-sm);
+  transition: transform var(--gm-transition);
+}
+
+.platform-icon:hover,
+.subscribe-icon:hover {
+  transform: scale(1.1);
+}
+
+/* ============================================
+   Footer
+   ============================================ */
+footer,
+.site-footer {
+  background: var(--gm-primary-dark);
+  color: var(--gm-text-light);
+  padding: var(--gm-spacing-xl);
+  margin-top: var(--gm-spacing-xl);
+}
+
+footer a,
+.site-footer a {
+  color: var(--gm-secondary);
+  text-decoration: none;
+  transition: color var(--gm-transition);
+}
+
+footer a:hover,
+.site-footer a:hover {
+  color: var(--gm-secondary-light);
+}
+
+/* ============================================
+   Decorative Elements
+   ============================================ */
+
+/* Cross/Religious Symbol Divider */
+.divider,
+.section-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: var(--gm-spacing-xl) 0;
+  color: var(--gm-secondary);
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--gm-border);
+  margin: 0 var(--gm-spacing-md);
+}
+
+/* Gold accent line */
+.accent-line {
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--gm-secondary), transparent);
+  margin: var(--gm-spacing-lg) 0;
+}
+
+/* Scripture Quote Block */
+.quote,
+.scripture,
+blockquote {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-style: italic;
+  font-size: 1.25rem;
+  color: var(--gm-primary);
+  border-left: 4px solid var(--gm-secondary);
+  padding-left: var(--gm-spacing-lg);
+  margin: var(--gm-spacing-lg) 0;
+  background: var(--gm-background-alt);
+  padding: var(--gm-spacing-lg);
+  border-radius: 0 var(--gm-radius-md) var(--gm-radius-md) 0;
+}
+
+/* ============================================
+   Responsive Design
+   ============================================ */
+@media (max-width: 768px) {
+  h1 { font-size: 2rem; }
+  h2 { font-size: 1.5rem; }
+  h3 { font-size: 1.25rem; }
+
+  .episode-card,
+  .episode {
+    padding: var(--gm-spacing-md);
+  }
+
+  .btn {
+    padding: var(--gm-spacing-sm) var(--gm-spacing-md);
+    font-size: 0.875rem;
+  }
+}
+
+/* ============================================
+   Dark Mode Support
+   ============================================ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --gm-background: #1a1a2e;
+    --gm-background-alt: #16162a;
+    --gm-text-dark: #e8e8e8;
+    --gm-text-muted: #a8a8a8;
+    --gm-border: #333355;
+  }
+
+  .episode-card,
+  .episode {
+    background: var(--gm-background-alt);
+  }
+}
+
+/* ============================================
+   Print Styles
+   ============================================ */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  header, footer, .audio-player, .subscribe-links {
+    display: none;
+  }
+}

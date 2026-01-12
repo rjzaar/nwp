@@ -129,3 +129,6 @@ keys/*
 !**/.ddev/config.yaml
 **/*.local.yml
 **/*.local.yaml
+
+# Generated output directories
+scripts/commands/podcast-setup-*/

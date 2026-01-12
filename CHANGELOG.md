@@ -171,4 +171,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [v0.15.0] and earlier
 
-See [MILESTONES.md](docs/MILESTONES.md) for complete implementation history of proposals P01-P35.
+See [Milestones](docs/reports/milestones.md) for complete implementation history of proposals P01-P35.

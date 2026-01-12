@@ -271,15 +271,15 @@ LOCAL                           CLOUD
 
 | Document | Purpose |
 |----------|---------|
-| [QUICKSTART.md](QUICKSTART.md) | 5-minute getting started |
-| [NWP_TRAINING_BOOKLET.md](NWP_TRAINING_BOOKLET.md) | Comprehensive training (8 phases) |
-| [ROADMAP.md](ROADMAP.md) | Future development plans |
-| [MILESTONES.md](MILESTONES.md) | Completed implementation history |
-| [DATA_SECURITY_BEST_PRACTICES.md](DATA_SECURITY_BEST_PRACTICES.md) | Security architecture |
-| [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) | Recovery procedures |
-| [DEVELOPER_LIFECYCLE_GUIDE.md](DEVELOPER_LIFECYCLE_GUIDE.md) | Complete workflow |
-| [ROLES.md](ROLES.md) | Developer role definitions |
-| [CONTRIBUTING.md](../CONTRIBUTING.md) | Contributor guidelines |
+| [Quickstart](../guides/quickstart.md) | 5-minute getting started |
+| [Training Booklet](../guides/training-booklet.md) | Comprehensive training (8 phases) |
+| [Roadmap](roadmap.md) | Future development plans |
+| [Milestones](../reports/milestones.md) | Completed implementation history |
+| [Data Security Best Practices](../security/data-security-best-practices.md) | Security architecture |
+| [Disaster Recovery](../deployment/disaster-recovery.md) | Recovery procedures |
+| [Developer Workflow](../guides/developer-workflow.md) | Complete workflow |
+| [Roles](roles.md) | Developer role definitions |
+| [Contributing](../../CONTRIBUTING.md) | Contributor guidelines |
 
 ---
 

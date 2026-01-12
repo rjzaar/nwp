@@ -4,7 +4,7 @@ A proposal for comprehensive search engine control across all NWP environments, 
 
 **Status:** PROPOSAL
 **Created:** January 2026
-**Related:** ROADMAP.md, DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md
+**Related:** [Roadmap](../governance/roadmap.md), [Distributed Contribution Governance](../governance/distributed-contribution-governance.md)
 
 ---
 

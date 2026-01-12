@@ -1354,4 +1354,4 @@ Unit tests are available in `tests/`:
 
 ---
 
-*For script usage documentation, see `docs/FEATURES.md`*
+*For script usage documentation, see [Features Reference](features.md)*

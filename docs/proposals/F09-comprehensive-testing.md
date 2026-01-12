@@ -1372,10 +1372,10 @@ alerts:
 
 ## References
 
-- [TESTING.md](TESTING.md) - Current testing documentation
-- [CICD.md](CICD.md) - CI/CD pipeline setup
-- [ROADMAP.md](ROADMAP.md) - Project roadmap
-- [test-nwp.sh](../scripts/commands/test-nwp.sh) - Current test script
+- [Testing](../testing/testing.md) - Current testing documentation
+- [CI/CD](../deployment/cicd.md) - CI/CD pipeline setup
+- [Roadmap](../governance/roadmap.md) - Project roadmap
+- [test-nwp.sh](../../scripts/commands/test-nwp.sh) - Current test script
 - [Linode API Documentation](https://www.linode.com/docs/api/)
 - [BATS Documentation](https://bats-core.readthedocs.io/)
 - [Expect Documentation](https://core.tcl-lang.org/expect/)

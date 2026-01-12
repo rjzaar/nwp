@@ -276,6 +276,6 @@ After migration:
 
 ## See Also
 
-- [Production Deployment Guide](PRODUCTION_DEPLOYMENT.md)
-- [ROADMAP.md](ROADMAP.md) - Project roadmap
-- [example.cnwp.yml](../example.cnwp.yml) - Configuration examples
+- [Production Deployment Guide](../deployment/production-deployment.md)
+- [Roadmap](../governance/roadmap.md) - Project roadmap
+- [example.cnwp.yml](../../example.cnwp.yml) - Configuration examples

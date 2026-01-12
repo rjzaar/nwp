@@ -52,7 +52,7 @@ pl verify                    # Same, via pl CLI
 ./verify.sh reset            # Clear all verifications (start fresh)
 ```
 
-**What's New (v0.18.0+):** The default `./verify.sh` now opens an interactive TUI console instead of showing a static report. See [VERIFY_ENHANCEMENTS.md](VERIFY_ENHANCEMENTS.md) for the complete console guide with keyboard shortcuts, checklist editing, history viewing, and auto-verification features.
+**What's New (v0.18.0+):** The default `./verify.sh` now opens an interactive TUI console instead of showing a static report. See [Verify Enhancements](../VERIFY_ENHANCEMENTS.md) for the complete console guide with keyboard shortcuts, checklist editing, history viewing, and auto-verification features.
 
 ---
 
@@ -81,7 +81,7 @@ cd /home/rob/nwp
 ./verify.sh report # Traditional status report
 ```
 
-**Interactive Console (recommended):** Navigate with arrow keys, press `v` to verify, `i` to edit checklists, `h` for history. See [VERIFY_ENHANCEMENTS.md](VERIFY_ENHANCEMENTS.md) for full keyboard shortcuts.
+**Interactive Console (recommended):** Navigate with arrow keys, press `v` to verify, `i` to edit checklists, `h` for history. See [Verify Enhancements](../VERIFY_ENHANCEMENTS.md) for full keyboard shortcuts.
 
 Look for:
 - `[✓]` = Verified and unchanged
@@ -169,7 +169,7 @@ This shows:
 - Feature auto-verifies when all items are done
 - Perfect for team collaboration
 
-See [VERIFY_ENHANCEMENTS.md](VERIFY_ENHANCEMENTS.md) for detailed console usage.
+See [Verify Enhancements](../VERIFY_ENHANCEMENTS.md) for detailed console usage.
 
 ---
 
@@ -511,68 +511,68 @@ A complete map of all NWP documentation organized by purpose.
 
 | Step | Document | Purpose |
 |------|----------|---------|
-| 1 | [QUICKSTART.md](QUICKSTART.md) | Get running in 5 minutes |
-| 2 | [SETUP.md](SETUP.md) | Detailed setup options |
-| 3 | [FEATURES.md](FEATURES.md) | Feature reference by category |
-| 4 | [NWP_TRAINING_BOOKLET.md](NWP_TRAINING_BOOKLET.md) | Comprehensive 8-phase training |
+| 1 | [Quickstart](../guides/quickstart.md) | Get running in 5 minutes |
+| 2 | [Setup](../guides/setup.md) | Detailed setup options |
+| 3 | [Features](../reference/features.md) | Feature reference by category |
+| 4 | [Training Booklet](../guides/training-booklet.md) | Comprehensive 8-phase training |
 
 ## Reference Documents
 
 | Document | When to Use |
 |----------|-------------|
-| [FEATURES.md](FEATURES.md) | Looking up a specific feature or command |
-| [LIB_REFERENCE.md](LIB_REFERENCE.md) | Writing scripts using NWP libraries |
-| [SCRIPTS_IMPLEMENTATION.md](SCRIPTS_IMPLEMENTATION.md) | Understanding script internals |
-| [../README.md](../README.md) | Project overview with examples |
+| [Features](../reference/features.md) | Looking up a specific feature or command |
+| [Libraries](../reference/libraries.md) | Writing scripts using NWP libraries |
+| [Scripts Implementation](../reference/scripts-implementation.md) | Understanding script internals |
+| [Main README](../../README.md) | Project overview with examples |
 
 ## Deployment & Production
 
 | Document | Purpose |
 |----------|---------|
-| [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md) | Deploying sites to production |
-| [LINODE_DEPLOYMENT.md](LINODE_DEPLOYMENT.md) | Linode-specific setup |
-| [SSH_SETUP.md](SSH_SETUP.md) | SSH key configuration |
-| [CICD.md](CICD.md) | CI/CD pipeline setup |
+| [Production Deployment](../deployment/production-deployment.md) | Deploying sites to production |
+| [Linode Deployment](../deployment/linode-deployment.md) | Linode-specific setup |
+| [SSH Setup](../deployment/ssh-setup.md) | SSH key configuration |
+| [CI/CD](../deployment/cicd.md) | CI/CD pipeline setup |
 
 ## Security & Best Practices
 
 | Document | Purpose |
 |----------|---------|
-| [DATA_SECURITY_BEST_PRACTICES.md](DATA_SECURITY_BEST_PRACTICES.md) | Two-tier secrets, AI safety |
-| [../CLAUDE.md](../CLAUDE.md) | AI assistant rules, protected files |
+| [Data Security Best Practices](../security/data-security-best-practices.md) | Two-tier secrets, AI safety |
+| [CLAUDE.md](../../CLAUDE.md) | AI assistant rules, protected files |
 
 ## Testing & Verification
 
 | Document | Purpose |
 |----------|---------|
-| [TESTING.md](TESTING.md) | Running Behat, PHPUnit, PHPStan |
-| [VERIFICATION_GUIDE.md](VERIFICATION_GUIDE.md) | Feature verification system (this doc) |
-| [../KNOWN_ISSUES.md](../KNOWN_ISSUES.md) | Current known issues |
+| [Testing](testing.md) | Running Behat, PHPUnit, PHPStan |
+| [Verification Guide](verification-guide.md) | Feature verification system (this doc) |
+| [Known Issues](../../KNOWN_ISSUES.md) | Current known issues |
 
 ## GitLab & Infrastructure
 
 | Document | Purpose |
 |----------|---------|
-| [../linode/gitlab/README.md](../linode/gitlab/README.md) | GitLab server setup |
-| [../linode/gitlab/GITLAB_COMPOSER.md](../linode/gitlab/GITLAB_COMPOSER.md) | Composer package registry |
-| [../linode/gitlab/GITLAB_MIGRATION.md](../linode/gitlab/GITLAB_MIGRATION.md) | Repository migration |
-| [../linode/README.md](../linode/README.md) | Linode provisioning |
+| [GitLab Setup](../../linode/gitlab/README.md) | GitLab server setup |
+| [GitLab Composer](../../linode/gitlab/GITLAB_COMPOSER.md) | Composer package registry |
+| [GitLab Migration](../../linode/gitlab/GITLAB_MIGRATION.md) | Repository migration |
+| [Linode Setup](../../linode/README.md) | Linode provisioning |
 
 ## Backup & Migration
 
 | Document | Purpose |
 |----------|---------|
-| [BACKUP_IMPLEMENTATION.md](BACKUP_IMPLEMENTATION.md) | Backup system details |
-| [GIT_BACKUP_RECOMMENDATIONS.md](GIT_BACKUP_RECOMMENDATIONS.md) | Git-based backup strategy |
-| [MIGRATION_SITES_TRACKING.md](MIGRATION_SITES_TRACKING.md) | Sites registry migration |
+| [Backup Implementation](../reference/backup-implementation.md) | Backup system details |
+| [Git Backup Recommendations](../reference/git-backup-recommendations.md) | Git-based backup strategy |
+| [Migration Sites Tracking](../guides/migration-sites-tracking.md) | Sites registry migration |
 
 ## Planning & Roadmap
 
 | Document | Purpose |
 |----------|---------|
-| [ROADMAP.md](ROADMAP.md) | Development roadmap (35 proposals complete, F01-F03 pending) |
-| [CHANGES.md](CHANGES.md) | Version changelog |
-| [ARCHITECTURE_ANALYSIS.md](ARCHITECTURE_ANALYSIS.md) | Research and comparisons |
+| [Roadmap](../governance/roadmap.md) | Development roadmap (35 proposals complete, F01-F03 pending) |
+| [Version Changes](../reports/version-changes.md) | Version changelog |
+| [Architecture Analysis](../reference/architecture-analysis.md) | Research and comparisons |
 
 ## Archived Documents
 

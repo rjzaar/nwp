@@ -726,7 +726,7 @@ drush cr
 
 - `docs/drafts/AVC_WORK_MANAGEMENT_MODULE.md` - Dashboard module code
 - `docs/drafts/WORKFLOW_ACCESS_CONTROL_EXTENSION.md` - Access control code
-- `docs/ROADMAP.md` - F10, F11 proposals
+- [Roadmap](../../governance/roadmap.md) - F10, F11 proposals
 - `sites/avc/html/profiles/custom/avc/modules/avc_features/workflow_assignment/` - Existing module
 
 ---

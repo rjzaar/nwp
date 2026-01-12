@@ -808,11 +808,11 @@ openssl s_client -connect your-site.com:443 -servername your-site.com
 
 ### Related Documentation
 
-- [Production Deployment Guide](PRODUCTION_DEPLOYMENT.md)
-- [Linode Deployment Guide](LINODE_DEPLOYMENT.md)
-- [Backup Implementation](BACKUP_IMPLEMENTATION.md)
-- [Testing Guide](TESTING.md)
-- [CI/CD Documentation](CICD.md)
+- [Production Deployment Guide](production-deployment.md)
+- [Linode Deployment Guide](linode-deployment.md)
+- [Backup Implementation](../reference/backup-implementation.md)
+- [Testing Guide](../testing/testing.md)
+- [CI/CD Documentation](cicd.md)
 
 ### Emergency Contacts
 

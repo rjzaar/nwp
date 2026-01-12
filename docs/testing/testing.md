@@ -446,6 +446,6 @@ cd test_site && ddev describe
 
 ## See Also
 
-- [CI/CD Guide](CICD.md) - CI/CD implementation
-- [Production Deployment](PRODUCTION_DEPLOYMENT.md) - Deployment guide
-- [Setup Guide](SETUP.md) - Initial setup
+- [CI/CD Guide](../deployment/cicd.md) - CI/CD implementation
+- [Production Deployment](../deployment/production-deployment.md) - Deployment guide
+- [Setup Guide](../guides/setup.md) - Initial setup

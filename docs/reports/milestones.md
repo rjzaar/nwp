@@ -174,11 +174,11 @@ Daily security checks, auto-update branches, CI testing, live auto-deploy, prod 
 ## Implementation Details
 
 For detailed implementation specifications, see:
-- [SCRIPTS_IMPLEMENTATION.md](SCRIPTS_IMPLEMENTATION.md) - Script architecture
-- [BACKUP_IMPLEMENTATION.md](BACKUP_IMPLEMENTATION.md) - Backup system
-- [CICD.md](CICD.md) - CI/CD pipeline setup
-- [TESTING.md](TESTING.md) - Testing framework
-- [DEVELOPER_LIFECYCLE_GUIDE.md](DEVELOPER_LIFECYCLE_GUIDE.md) - Complete workflow
+- [Scripts Implementation](../reference/scripts-implementation.md) - Script architecture
+- [Backup Implementation](../reference/backup-implementation.md) - Backup system
+- [CI/CD](../deployment/cicd.md) - CI/CD pipeline setup
+- [Testing](../testing/testing.md) - Testing framework
+- [Developer Workflow](../guides/developer-workflow.md) - Complete workflow
 
 ---
 
@@ -195,4 +195,4 @@ These external projects informed NWP's implementation:
 
 ---
 
-*For pending and future work, see [ROADMAP.md](ROADMAP.md)*
+*For pending and future work, see [Roadmap](../governance/roadmap.md)*

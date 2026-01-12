@@ -533,4 +533,4 @@ All scripts support combined short flags:
 
 ---
 
-*For detailed implementation documentation, see `docs/SCRIPTS_IMPLEMENTATION.md`*
+*For detailed implementation documentation, see [Scripts Implementation](scripts-implementation.md)*

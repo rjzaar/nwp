@@ -4,7 +4,7 @@
 
 Pending implementation items and future improvements for NWP.
 
-> **For completed work, see [MILESTONES.md](MILESTONES.md)** (P01-P35)
+> **For completed work, see [Milestones](../reports/milestones.md)** (P01-P35)
 
 ---
 
@@ -1114,21 +1114,21 @@ Should X01 be implemented? Only if:
 ## References
 
 ### Core Documentation
-- [MILESTONES.md](MILESTONES.md) - Completed implementation history
-- [SCRIPTS_IMPLEMENTATION.md](SCRIPTS_IMPLEMENTATION.md) - Script architecture
-- [CICD.md](CICD.md) - CI/CD pipeline setup
-- [TESTING.md](TESTING.md) - Testing framework
+- [Milestones](../reports/milestones.md) - Completed implementation history
+- [Scripts Implementation](../reference/scripts-implementation.md) - Script architecture
+- [CI/CD](../deployment/cicd.md) - CI/CD pipeline setup
+- [Testing](../testing/testing.md) - Testing framework
 
 ### Governance (F04)
-- [DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md) - Governance proposal
-- [CORE_DEVELOPER_ONBOARDING_PROPOSAL.md](CORE_DEVELOPER_ONBOARDING_PROPOSAL.md) - Developer onboarding
-- [CODER_ONBOARDING.md](CODER_ONBOARDING.md) - New coder guide
-- [ROLES.md](ROLES.md) - Developer role definitions
-- [decisions/](decisions/) - Architecture Decision Records
+- [Distributed Contribution Governance](distributed-contribution-governance.md) - Governance proposal
+- [Core Developer Onboarding](core-developer-onboarding.md) - Developer onboarding
+- [Coder Onboarding](../guides/coder-onboarding.md) - New coder guide
+- [Roles](roles.md) - Developer role definitions
+- [Architecture Decisions](../decisions/) - Architecture Decision Records
 
 ### Security (F05, F06)
-- [DATA_SECURITY_BEST_PRACTICES.md](DATA_SECURITY_BEST_PRACTICES.md) - Security architecture
-- [WORKING_WITH_CLAUDE_SECURELY.md](WORKING_WITH_CLAUDE_SECURELY.md) - Secure AI workflows
+- [Data Security Best Practices](../security/data-security-best-practices.md) - Security architecture
+- [Working with Claude Securely](../guides/working-with-claude-securely.md) - Secure AI workflows
 
 ### Proposals
 - [SEO_ROBOTS_PROPOSAL.md](SEO_ROBOTS_PROPOSAL.md) - SEO & search engine control (F07)

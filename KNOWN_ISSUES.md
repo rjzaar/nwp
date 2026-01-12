@@ -4,7 +4,7 @@ This document tracks known issues and limitations in the NWP system.
 
 **Last Updated**: 2026-01-05
 
-See also: [docs/ROADMAP.md](docs/ROADMAP.md) for planned improvements.
+See also: [Roadmap](docs/governance/roadmap.md) for planned improvements.
 
 ---
 

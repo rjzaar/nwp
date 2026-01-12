@@ -597,8 +597,8 @@ ddev export-db --all
 
 ## See Also
 
-- [Testing Guide](TESTING.md) - Test suite documentation
-- [CI/CD Guide](CICD.md) - CI/CD implementation
-- [Production Deployment](PRODUCTION_DEPLOYMENT.md) - Deployment guide
-- [SSH Setup](SSH_SETUP.md) - SSH key setup
-- [GitLab Setup](../linode/gitlab/README.md) - GitLab server setup
+- [Testing Guide](../testing/testing.md) - Test suite documentation
+- [CI/CD Guide](../deployment/cicd.md) - CI/CD implementation
+- [Production Deployment](../deployment/production-deployment.md) - Deployment guide
+- [SSH Setup](../deployment/ssh-setup.md) - SSH key setup
+- [GitLab Setup](../../linode/gitlab/README.md) - GitLab server setup

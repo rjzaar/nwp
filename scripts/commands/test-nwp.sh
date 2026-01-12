@@ -312,7 +312,7 @@ if ! grep -q "^  ${TEST_SITE_PREFIX}:" cnwp.yml 2>/dev/null; then
 EOF
 fi
 
-run_test "Install test site" "./install.sh $TEST_SITE_PREFIX"
+run_test "Install test site" "./scripts/commands/install.sh $TEST_SITE_PREFIX"
 
 if site_exists "$TEST_SITE_PREFIX"; then
     run_test "Site directory created" "site_exists $TEST_SITE_PREFIX"
@@ -326,24 +326,24 @@ fi
 # Test 1b: Environment Variable Generation (Vortex)
 print_header "Test 1b: Environment Variable Generation (Vortex)"
 
-run_test ".env file created" "[ -f $TEST_SITE_PREFIX/.env ]"
-run_test ".env.local.example created" "[ -f $TEST_SITE_PREFIX/.env.local.example ]"
-run_test ".secrets.example.yml created" "[ -f $TEST_SITE_PREFIX/.secrets.example.yml ]"
+run_test ".env file created" "[ -f sites/$TEST_SITE_PREFIX/.env ]"
+run_test ".env.local.example created" "[ -f sites/$TEST_SITE_PREFIX/.env.local.example ]"
+run_test ".secrets.example.yml created" "[ -f sites/$TEST_SITE_PREFIX/.secrets.example.yml ]"
 
 # Check key environment variables are set in .env
-if [ -f "$TEST_SITE_PREFIX/.env" ]; then
-    run_test "PROJECT_NAME set in .env" "grep -q '^PROJECT_NAME=' $TEST_SITE_PREFIX/.env"
-    run_test "NWP_RECIPE set in .env" "grep -q '^NWP_RECIPE=' $TEST_SITE_PREFIX/.env"
-    run_test "DRUPAL_PROFILE set in .env" "grep -q '^DRUPAL_PROFILE=' $TEST_SITE_PREFIX/.env"
-    run_test "DRUPAL_WEBROOT set in .env" "grep -q '^DRUPAL_WEBROOT=' $TEST_SITE_PREFIX/.env"
+if [ -f "sites/$TEST_SITE_PREFIX/.env" ]; then
+    run_test "PROJECT_NAME set in .env" "grep -q '^PROJECT_NAME=' sites/$TEST_SITE_PREFIX/.env"
+    run_test "NWP_RECIPE set in .env" "grep -q '^NWP_RECIPE=' sites/$TEST_SITE_PREFIX/.env"
+    run_test "DRUPAL_PROFILE set in .env" "grep -q '^DRUPAL_PROFILE=' sites/$TEST_SITE_PREFIX/.env"
+    run_test "DRUPAL_WEBROOT set in .env" "grep -q '^DRUPAL_WEBROOT=' sites/$TEST_SITE_PREFIX/.env"
 
     # Check service variables (social profile should have redis/solr enabled)
-    run_test "REDIS_ENABLED set in .env" "grep -q '^REDIS_ENABLED=' $TEST_SITE_PREFIX/.env"
-    run_test "SOLR_ENABLED set in .env" "grep -q '^SOLR_ENABLED=' $TEST_SITE_PREFIX/.env"
+    run_test "REDIS_ENABLED set in .env" "grep -q '^REDIS_ENABLED=' sites/$TEST_SITE_PREFIX/.env"
+    run_test "SOLR_ENABLED set in .env" "grep -q '^SOLR_ENABLED=' sites/$TEST_SITE_PREFIX/.env"
 
     # For social profile, redis and solr should be enabled (=1)
-    REDIS_VAL=$(grep '^REDIS_ENABLED=' "$TEST_SITE_PREFIX/.env" | cut -d= -f2)
-    SOLR_VAL=$(grep '^SOLR_ENABLED=' "$TEST_SITE_PREFIX/.env" | cut -d= -f2)
+    REDIS_VAL=$(grep '^REDIS_ENABLED=' "sites/$TEST_SITE_PREFIX/.env" | cut -d= -f2)
+    SOLR_VAL=$(grep '^SOLR_ENABLED=' "sites/$TEST_SITE_PREFIX/.env" | cut -d= -f2)
 
     if [ "$REDIS_VAL" = "1" ]; then
         run_test "Redis enabled for social profile" "true"
@@ -359,9 +359,9 @@ if [ -f "$TEST_SITE_PREFIX/.env" ]; then
 fi
 
 # Check DDEV config was generated from .env
-if [ -f "$TEST_SITE_PREFIX/.ddev/config.yaml" ]; then
+if [ -f "sites/$TEST_SITE_PREFIX/.ddev/config.yaml" ]; then
     run_test "DDEV config.yaml created" "true"
-    run_test "DDEV config has web_environment" "grep -q 'web_environment:' $TEST_SITE_PREFIX/.ddev/config.yaml"
+    run_test "DDEV config has web_environment" "grep -q 'web_environment:' sites/$TEST_SITE_PREFIX/.ddev/config.yaml"
 else
     run_test "DDEV config.yaml created" "false"
 fi
@@ -369,7 +369,7 @@ fi
 # Test 2: Backup functionality
 print_header "Test 2: Backup Functionality"
 
-run_test "Create full backup" "./backup.sh $TEST_SITE_PREFIX 'Test_backup'"
+run_test "Create full backup" "./scripts/commands/backup.sh $TEST_SITE_PREFIX 'Test_backup'"
 run_test "Backup directory exists" "backup_exists $TEST_SITE_PREFIX"
 
 # Test 3: Restore functionality (before creating DB-only backup)
@@ -385,13 +385,13 @@ if cd "$test_site_path" 2>/dev/null; then
     cd "$SCRIPT_DIR"
 fi
 
-run_test "Restore from full backup" "./restore.sh -fy $TEST_SITE_PREFIX"
+run_test "Restore from full backup" "./scripts/commands/restore.sh -fy $TEST_SITE_PREFIX"
 
 # Test 3b: Database-only backup and restore
 print_header "Test 3b: Database-Only Backup and Restore"
 
-run_test "Create database-only backup" "./backup.sh -b $TEST_SITE_PREFIX 'DB_only_backup'"
-run_test "Restore from database-only backup" "./restore.sh -bfy $TEST_SITE_PREFIX"
+run_test "Create database-only backup" "./scripts/commands/backup.sh -b $TEST_SITE_PREFIX 'DB_only_backup'"
+run_test "Restore from database-only backup" "./scripts/commands/restore.sh -bfy $TEST_SITE_PREFIX"
 
 # Verify restoration
 local test_site_path="sites/$TEST_SITE_PREFIX"
@@ -411,13 +411,13 @@ fi
 # Test 4: Copy functionality
 print_header "Test 4: Copy Functionality"
 
-run_test "Full site copy" "./copy.sh -y $TEST_SITE_PREFIX ${TEST_SITE_PREFIX}_copy"
+run_test "Full site copy" "./scripts/commands/copy.sh -y $TEST_SITE_PREFIX ${TEST_SITE_PREFIX}_copy"
 run_test "Copied site exists" "site_exists ${TEST_SITE_PREFIX}_copy"
 run_test "Copied site is running" "site_is_running ${TEST_SITE_PREFIX}_copy"
 run_test "Copied site drush works" "drush_works ${TEST_SITE_PREFIX}_copy"
 
 # Test files-only copy (expected to fail - requires destination to exist)
-run_test "Files-only copy" "./copy.sh -fy $TEST_SITE_PREFIX ${TEST_SITE_PREFIX}_files" "warn"
+run_test "Files-only copy" "./scripts/commands/copy.sh -fy $TEST_SITE_PREFIX ${TEST_SITE_PREFIX}_files" "warn"
 run_test "Files-only copy exists" "site_exists ${TEST_SITE_PREFIX}_files" "warn"
 
 # Test 5: Dev/Prod mode switching
@@ -445,7 +445,7 @@ if [ "$DRUSH_FUNCTIONAL" = "false" ]; then
     run_test "Enable production mode" "true" "warn"
     run_test "Dev modules disabled in prod mode" "true" "warn"
 else
-    run_test "Enable development mode" "./make.sh -vy $TEST_SITE_PREFIX"
+    run_test "Enable development mode" "./scripts/commands/make.sh -vy $TEST_SITE_PREFIX"
 
     # Check if dev modules are enabled
     local test_site_path="sites/$TEST_SITE_PREFIX"
@@ -463,7 +463,7 @@ else
         fi
     fi
 
-    run_test "Enable production mode" "./make.sh -py $TEST_SITE_PREFIX"
+    run_test "Enable production mode" "./scripts/commands/make.sh -py $TEST_SITE_PREFIX"
 
     # Check if dev modules are disabled
     local test_site_path="sites/$TEST_SITE_PREFIX"
@@ -486,7 +486,7 @@ fi
 print_header "Test 6: Deployment (dev2stg)"
 
 # Expected to fail - dev2stg requires staging site to already exist
-run_test "Deploy to staging" "./dev2stg.sh -y $TEST_SITE_PREFIX" "warn"
+run_test "Deploy to staging" "./scripts/commands/dev2stg.sh -y $TEST_SITE_PREFIX" "warn"
 run_test "Staging site exists" "site_exists ${TEST_SITE_PREFIX}-stg" "warn"
 run_test "Staging site is running" "site_is_running ${TEST_SITE_PREFIX}-stg" "warn"
 run_test "Staging site drush works" "drush_works ${TEST_SITE_PREFIX}-stg" "warn"
@@ -510,7 +510,7 @@ fi
 print_header "Test 7: Testing Infrastructure"
 
 # Check if testos.sh exists and is executable
-if [ -x "./testos.sh" ]; then
+if [ -x "./scripts/commands/testos.sh" ]; then
     run_test "testos.sh is executable" "true"
 
     # Test PHPStan (may legitimately fail on fresh OpenSocial)
@@ -520,7 +520,7 @@ if [ -x "./testos.sh" ]; then
     fi
     if cd "$test_site_path" 2>/dev/null; then
         print_info "Running PHPStan (this may take a minute)..."
-        if ../testos.sh -p >/dev/null 2>&1; then
+        if "$PROJECT_ROOT/scripts/commands/testos.sh" -p >/dev/null 2>&1; then
             run_test "PHPStan analysis" "true"
         else
             # PHPStan failure is expected on fresh installations
@@ -532,7 +532,7 @@ if [ -x "./testos.sh" ]; then
     # Test CodeSniffer (may legitimately fail on fresh OpenSocial)
     if cd "$test_site_path" 2>/dev/null; then
         print_info "Running CodeSniffer..."
-        if ../testos.sh -c >/dev/null 2>&1; then
+        if "$PROJECT_ROOT/scripts/commands/testos.sh" -c >/dev/null 2>&1; then
             run_test "CodeSniffer analysis" "true"
         else
             # CodeSniffer failure is expected on fresh installations
@@ -577,7 +577,7 @@ print_info "Creating temporary sites for deletion testing..."
 BEFORE_INSTALL=($(ls -d sites/${TEST_SITE_PREFIX}* 2>/dev/null | sort))
 
 # Create first deletion test site
-run_test "Create site for deletion test" "./install.sh test-nwp"
+run_test "Create site for deletion test" "./scripts/commands/install.sh test-nwp"
 
 # Find the newly created directory
 AFTER_INSTALL=($(ls -d sites/${TEST_SITE_PREFIX}* 2>/dev/null | sort))
@@ -600,13 +600,13 @@ if [ -n "$DELETE_TEST_SITE" ] && site_exists "$DELETE_TEST_SITE"; then
     print_info "Created deletion test site: $DELETE_TEST_SITE"
 
     # Test 1: Delete with backup and auto-confirm
-    run_test "Delete with backup (-by)" "./delete.sh -by $DELETE_TEST_SITE"
+    run_test "Delete with backup (-by)" "./scripts/commands/delete.sh -by $DELETE_TEST_SITE"
     run_test "Site deleted successfully" "! site_exists $DELETE_TEST_SITE"
     run_test "Backup created during deletion" "[ -d sitebackups/$DELETE_TEST_SITE ] && [ -n \"\$(find sitebackups/$DELETE_TEST_SITE -name '*.tar.gz' 2>/dev/null)\" ]"
 
     # Create second test site for keep-backups test
     BEFORE_INSTALL2=($(ls -d sites/${TEST_SITE_PREFIX}* 2>/dev/null | sort))
-    run_test "Create second deletion test site" "./install.sh test-nwp"
+    run_test "Create second deletion test site" "./scripts/commands/install.sh test-nwp"
 
     # Find the second newly created directory
     AFTER_INSTALL2=($(ls -d sites/${TEST_SITE_PREFIX}* 2>/dev/null | sort))
@@ -629,7 +629,7 @@ if [ -n "$DELETE_TEST_SITE" ] && site_exists "$DELETE_TEST_SITE"; then
         print_info "Created second deletion test site: $DELETE_TEST_SITE2"
 
         # Test 2: Delete with backup and keep backups
-        run_test "Delete with backup and keep (-bky)" "./delete.sh -bky $DELETE_TEST_SITE2"
+        run_test "Delete with backup and keep (-bky)" "./scripts/commands/delete.sh -bky $DELETE_TEST_SITE2"
         run_test "Second site deleted successfully" "! site_exists $DELETE_TEST_SITE2"
         run_test "Backups preserved with -k flag" "[ -d sitebackups/$DELETE_TEST_SITE2 ]"
     else
@@ -643,15 +643,15 @@ fi
 print_header "Test 9: Script Validation"
 
 SCRIPTS=(
-    "install.sh"
-    "backup.sh"
-    "restore.sh"
-    "copy.sh"
-    "make.sh"
-    "dev2stg.sh"
-    "stg2prod.sh"
-    "prod2stg.sh"
-    "delete.sh"
+    "scripts/commands/install.sh"
+    "scripts/commands/backup.sh"
+    "scripts/commands/restore.sh"
+    "scripts/commands/copy.sh"
+    "scripts/commands/make.sh"
+    "scripts/commands/dev2stg.sh"
+    "scripts/commands/stg2prod.sh"
+    "scripts/commands/prod2stg.sh"
+    "scripts/commands/delete.sh"
 )
 
 for script in "${SCRIPTS[@]}"; do
@@ -663,12 +663,12 @@ done
 print_header "Test 10: Deployment Scripts (stg2prod/prod2stg)"
 
 # Test stg2prod.sh validation
-run_test "stg2prod.sh validates missing sitename" "! ./stg2prod.sh 2>/dev/null"
-run_test "stg2prod.sh --dry-run works" "./stg2prod.sh --dry-run $TEST_SITE_PREFIX 2>/dev/null || true"
+run_test "stg2prod.sh validates missing sitename" "! ./scripts/commands/stg2prod.sh 2>/dev/null"
+run_test "stg2prod.sh --dry-run works" "./scripts/commands/stg2prod.sh --dry-run $TEST_SITE_PREFIX 2>/dev/null || true"
 
 # Test prod2stg.sh validation
-run_test "prod2stg.sh validates missing sitename" "! ./prod2stg.sh 2>/dev/null"
-run_test "prod2stg.sh --dry-run works" "./prod2stg.sh --dry-run $TEST_SITE_PREFIX 2>/dev/null || true"
+run_test "prod2stg.sh validates missing sitename" "! ./scripts/commands/prod2stg.sh 2>/dev/null"
+run_test "prod2stg.sh --dry-run works" "./scripts/commands/prod2stg.sh --dry-run $TEST_SITE_PREFIX 2>/dev/null || true"
 
 # Test 11: YAML library functions
 print_header "Test 11: YAML Library Functions"
@@ -828,7 +828,7 @@ print_info "Testing sitename validation..."
 # Path traversal attempts should fail
 run_test "Reject path traversal (..)" "! ./install.sh '../malicious' 2>/dev/null"
 run_test "Reject path traversal (./)" "! ./install.sh './malicious' 2>/dev/null"
-run_test "Reject absolute path" "! ./delete.sh -y '/etc/passwd' 2>/dev/null"
+run_test "Reject absolute path" "! ./scripts/commands/delete.sh -y '/etc/passwd' 2>/dev/null"
 
 # Invalid characters should be rejected
 run_test "Reject special chars (;)" "! ./install.sh 'site;rm -rf /' 2>/dev/null"
@@ -838,23 +838,23 @@ run_test "Reject spaces" "! ./install.sh 'site with spaces' 2>/dev/null"
 # Missing required arguments should fail
 print_info "Testing missing argument handling..."
 run_test "install.sh requires sitename" "! ./install.sh 2>/dev/null"
-run_test "backup.sh requires sitename" "! ./backup.sh 2>/dev/null"
-run_test "restore.sh requires sitename" "! ./restore.sh -y 2>/dev/null"
-run_test "delete.sh requires sitename" "! ./delete.sh -y 2>/dev/null"
-run_test "copy.sh requires both args" "! ./copy.sh -y source 2>/dev/null"
+run_test "backup.sh requires sitename" "! ./scripts/commands/backup.sh 2>/dev/null"
+run_test "restore.sh requires sitename" "! ./scripts/commands/restore.sh -y 2>/dev/null"
+run_test "delete.sh requires sitename" "! ./scripts/commands/delete.sh -y 2>/dev/null"
+run_test "copy.sh requires both args" "! ./scripts/commands/copy.sh -y source 2>/dev/null"
 
 # Non-existent sites should fail gracefully
 print_info "Testing non-existent site handling..."
-run_test "Backup non-existent fails" "! ./backup.sh nonexistent_site_xyz 2>/dev/null"
-run_test "Restore non-existent fails" "! ./restore.sh -y nonexistent_site_xyz 2>/dev/null"
-run_test "Delete non-existent fails" "! ./delete.sh -y nonexistent_site_xyz 2>/dev/null"
-run_test "Copy non-existent fails" "! ./copy.sh -y nonexistent_site_xyz dest 2>/dev/null"
+run_test "Backup non-existent fails" "! ./scripts/commands/backup.sh nonexistent_site_xyz 2>/dev/null"
+run_test "Restore non-existent fails" "! ./scripts/commands/restore.sh -y nonexistent_site_xyz 2>/dev/null"
+run_test "Delete non-existent fails" "! ./scripts/commands/delete.sh -y nonexistent_site_xyz 2>/dev/null"
+run_test "Copy non-existent fails" "! ./scripts/commands/copy.sh -y nonexistent_site_xyz dest 2>/dev/null"
 
 # Make.sh mode validation
 print_info "Testing make.sh mode validation..."
-run_test "make.sh requires mode flag" "! ./make.sh test-nwp 2>/dev/null"
-run_test "make.sh -v (dev) is valid" "./make.sh --help 2>&1 | grep -q dev"
-run_test "make.sh -p (prod) is valid" "./make.sh --help 2>&1 | grep -q prod"
+run_test "make.sh requires mode flag" "! ./scripts/commands/make.sh test-nwp 2>/dev/null"
+run_test "make.sh -v (dev) is valid" "./scripts/commands/make.sh --help 2>&1 | grep -q dev"
+run_test "make.sh -p (prod) is valid" "./scripts/commands/make.sh --help 2>&1 | grep -q prod"
 
 print_info "Negative tests completed - failures above are EXPECTED behavior"
 
@@ -872,10 +872,10 @@ if [ -f "lib/git.sh" ]; then
     source lib/git.sh 2>/dev/null || true
 
     # Test git backup flag exists in backup.sh
-    run_test "backup.sh supports -g flag" "./backup.sh --help 2>&1 | grep -q '\-g'"
-    run_test "backup.sh supports --bundle flag" "./backup.sh --help 2>&1 | grep -q 'bundle'"
-    run_test "backup.sh supports --incremental flag" "./backup.sh --help 2>&1 | grep -q 'incremental'"
-    run_test "backup.sh supports --push-all flag" "./backup.sh --help 2>&1 | grep -q 'push-all'"
+    run_test "backup.sh supports -g flag" "./scripts/commands/backup.sh --help 2>&1 | grep -q '\-g'"
+    run_test "backup.sh supports --bundle flag" "./scripts/commands/backup.sh --help 2>&1 | grep -q 'bundle'"
+    run_test "backup.sh supports --incremental flag" "./scripts/commands/backup.sh --help 2>&1 | grep -q 'incremental'"
+    run_test "backup.sh supports --push-all flag" "./scripts/commands/backup.sh --help 2>&1 | grep -q 'push-all'"
 
     # Test git functions exist
     run_test "git_init function exists" "type git_init >/dev/null 2>&1"
@@ -896,19 +896,19 @@ fi
 print_header "Test 15: Scheduling Features (P14)"
 
 # Check schedule.sh exists and is executable
-run_test "schedule.sh exists" "[ -f schedule.sh ]"
+run_test "schedule.sh exists" "[ -f scripts/commands/schedule.sh ]"
 run_test "schedule.sh is executable" "[ -x schedule.sh ]"
 
-if [ -x "schedule.sh" ]; then
-    run_test "schedule.sh has help" "./schedule.sh --help >/dev/null 2>&1"
-    run_test "schedule.sh install command" "./schedule.sh --help 2>&1 | grep -q 'install'"
-    run_test "schedule.sh remove command" "./schedule.sh --help 2>&1 | grep -q 'remove'"
-    run_test "schedule.sh list command" "./schedule.sh --help 2>&1 | grep -q 'list'"
-    run_test "schedule.sh show command" "./schedule.sh --help 2>&1 | grep -q 'show'"
+if [ -x "scripts/commands/schedule.sh" ]; then
+    run_test "schedule.sh has help" "./scripts/commands/schedule.sh --help >/dev/null 2>&1"
+    run_test "schedule.sh install command" "./scripts/commands/schedule.sh --help 2>&1 | grep -q 'install'"
+    run_test "schedule.sh remove command" "./scripts/commands/schedule.sh --help 2>&1 | grep -q 'remove'"
+    run_test "schedule.sh list command" "./scripts/commands/schedule.sh --help 2>&1 | grep -q 'list'"
+    run_test "schedule.sh show command" "./scripts/commands/schedule.sh --help 2>&1 | grep -q 'show'"
 
     # Test showing schedule (should work without changes)
-    run_test "schedule.sh show works" "./schedule.sh show >/dev/null 2>&1 || true"
-    run_test "schedule.sh list works" "./schedule.sh list >/dev/null 2>&1 || true"
+    run_test "schedule.sh show works" "./scripts/commands/schedule.sh show >/dev/null 2>&1 || true"
+    run_test "schedule.sh list works" "./scripts/commands/schedule.sh list >/dev/null 2>&1 || true"
 fi
 
 ################################################################################
@@ -921,15 +921,15 @@ print_header "Test 16: CI/CD & Testing Templates (P16-P21)"
 run_test "Docker compose test template exists" "[ -f templates/docker-compose.test.yml ]"
 
 # Site test script (P17)
-run_test "test.sh exists" "[ -f test.sh ]"
+run_test "test.sh exists" "[ -f scripts/commands/test.sh ]"
 run_test "test.sh is executable" "[ -x test.sh ]"
 
-if [ -x "test.sh" ]; then
-    run_test "test.sh has help" "./test.sh --help >/dev/null 2>&1"
-    run_test "test.sh supports -l (lint)" "./test.sh --help 2>&1 | grep -qE '\-l|lint'"
-    run_test "test.sh supports -u (unit)" "./test.sh --help 2>&1 | grep -qE '\-u|unit'"
-    run_test "test.sh supports -s (smoke)" "./test.sh --help 2>&1 | grep -qE '\-s|smoke'"
-    run_test "test.sh supports -b (behat)" "./test.sh --help 2>&1 | grep -qE '\-b|behat'"
+if [ -x "scripts/commands/test.sh" ]; then
+    run_test "test.sh has help" "./scripts/commands/test.sh --help >/dev/null 2>&1"
+    run_test "test.sh supports -l (lint)" "./scripts/commands/test.sh --help 2>&1 | grep -qE '\-l|lint'"
+    run_test "test.sh supports -u (unit)" "./scripts/commands/test.sh --help 2>&1 | grep -qE '\-u|unit'"
+    run_test "test.sh supports -s (smoke)" "./scripts/commands/test.sh --help 2>&1 | grep -qE '\-s|smoke'"
+    run_test "test.sh supports -b (behat)" "./scripts/commands/test.sh --help 2>&1 | grep -qE '\-b|behat'"
 fi
 
 # Behat BDD framework (P18)
@@ -1006,8 +1006,8 @@ if [ -f "lib/sanitize.sh" ]; then
     run_test "sanitize_with_drush function exists" "type sanitize_with_drush >/dev/null 2>&1"
 
     # Test backup.sh supports sanitize flag
-    run_test "backup.sh supports --sanitize flag" "./backup.sh --help 2>&1 | grep -q 'sanitize'"
-    run_test "backup.sh supports --sanitize-level flag" "./backup.sh --help 2>&1 | grep -q 'sanitize-level'"
+    run_test "backup.sh supports --sanitize flag" "./scripts/commands/backup.sh --help 2>&1 | grep -q 'sanitize'"
+    run_test "backup.sh supports --sanitize-level flag" "./scripts/commands/backup.sh --help 2>&1 | grep -q 'sanitize-level'"
 fi
 
 ################################################################################
@@ -1060,30 +1060,30 @@ fi
 print_header "Test 21: Live Server & Security Scripts (P26-P28)"
 
 # Live server provisioning (P26)
-run_test "live.sh exists" "[ -f live.sh ]"
+run_test "live.sh exists" "[ -f scripts/commands/live.sh ]"
 run_test "live.sh is executable" "[ -x live.sh ]"
 
-if [ -x "live.sh" ]; then
-    run_test "live.sh has help" "./live.sh --help >/dev/null 2>&1"
-    run_test "live.sh supports --type flag" "./live.sh --help 2>&1 | grep -q 'type'"
-    run_test "live.sh supports --delete flag" "./live.sh --help 2>&1 | grep -q 'delete'"
-    run_test "live.sh supports --status flag" "./live.sh --help 2>&1 | grep -q 'status'"
-    run_test "live.sh documents dedicated type" "./live.sh --help 2>&1 | grep -q 'dedicated'"
-    run_test "live.sh documents shared type" "./live.sh --help 2>&1 | grep -q 'shared'"
-    run_test "live.sh documents temporary type" "./live.sh --help 2>&1 | grep -q 'temporary'"
+if [ -x "scripts/commands/live.sh" ]; then
+    run_test "live.sh has help" "./scripts/commands/live.sh --help >/dev/null 2>&1"
+    run_test "live.sh supports --type flag" "./scripts/commands/live.sh --help 2>&1 | grep -q 'type'"
+    run_test "live.sh supports --delete flag" "./scripts/commands/live.sh --help 2>&1 | grep -q 'delete'"
+    run_test "live.sh supports --status flag" "./scripts/commands/live.sh --help 2>&1 | grep -q 'status'"
+    run_test "live.sh documents dedicated type" "./scripts/commands/live.sh --help 2>&1 | grep -q 'dedicated'"
+    run_test "live.sh documents shared type" "./scripts/commands/live.sh --help 2>&1 | grep -q 'shared'"
+    run_test "live.sh documents temporary type" "./scripts/commands/live.sh --help 2>&1 | grep -q 'temporary'"
 fi
 
 # Security script (P28)
-run_test "security.sh exists" "[ -f security.sh ]"
+run_test "security.sh exists" "[ -f scripts/commands/security.sh ]"
 run_test "security.sh is executable" "[ -x security.sh ]"
 
-if [ -x "security.sh" ]; then
-    run_test "security.sh has help" "./security.sh --help >/dev/null 2>&1"
-    run_test "security.sh check command" "./security.sh --help 2>&1 | grep -q 'check'"
-    run_test "security.sh update command" "./security.sh --help 2>&1 | grep -q 'update'"
-    run_test "security.sh audit command" "./security.sh --help 2>&1 | grep -q 'audit'"
-    run_test "security.sh supports --all flag" "./security.sh --help 2>&1 | grep -q 'all'"
-    run_test "security.sh supports --auto flag" "./security.sh --help 2>&1 | grep -q 'auto'"
+if [ -x "scripts/commands/security.sh" ]; then
+    run_test "security.sh has help" "./scripts/commands/security.sh --help >/dev/null 2>&1"
+    run_test "security.sh check command" "./scripts/commands/security.sh --help 2>&1 | grep -q 'check'"
+    run_test "security.sh update command" "./scripts/commands/security.sh --help 2>&1 | grep -q 'update'"
+    run_test "security.sh audit command" "./scripts/commands/security.sh --help 2>&1 | grep -q 'audit'"
+    run_test "security.sh supports --all flag" "./scripts/commands/security.sh --help 2>&1 | grep -q 'all'"
+    run_test "security.sh supports --auto flag" "./scripts/commands/security.sh --help 2>&1 | grep -q 'auto'"
 fi
 
 ################################################################################
@@ -1094,19 +1094,19 @@ print_header "Test 22: Script Syntax Validation"
 
 # Validate all core scripts have valid bash syntax
 CORE_SCRIPTS=(
-    "install.sh"
-    "backup.sh"
-    "restore.sh"
-    "copy.sh"
-    "make.sh"
-    "delete.sh"
-    "dev2stg.sh"
-    "stg2prod.sh"
-    "prod2stg.sh"
-    "test.sh"
-    "schedule.sh"
-    "live.sh"
-    "security.sh"
+    "scripts/commands/install.sh"
+    "scripts/commands/backup.sh"
+    "scripts/commands/restore.sh"
+    "scripts/commands/copy.sh"
+    "scripts/commands/make.sh"
+    "scripts/commands/delete.sh"
+    "scripts/commands/dev2stg.sh"
+    "scripts/commands/stg2prod.sh"
+    "scripts/commands/prod2stg.sh"
+    "scripts/commands/test.sh"
+    "scripts/commands/schedule.sh"
+    "scripts/commands/live.sh"
+    "scripts/commands/security.sh"
     "pl"
 )
 

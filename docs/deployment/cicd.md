@@ -651,6 +651,6 @@ sudo gitlab-ctl reconfigure
 
 ## See Also
 
-- [Testing Guide](TESTING.md) - Test suite documentation
-- [Production Deployment](PRODUCTION_DEPLOYMENT.md) - Deployment guide
-- [GitLab Setup](../linode/gitlab/README.md) - GitLab server setup
+- [Testing Guide](../testing/testing.md) - Test suite documentation
+- [Production Deployment](production-deployment.md) - Deployment guide
+- [GitLab Setup](../../linode/gitlab/README.md) - GitLab server setup

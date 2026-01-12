@@ -1011,6 +1011,6 @@ modules:
 
 ---
 
-*For detailed improvement plans and roadmap, see [ROADMAP.md](ROADMAP.md)*
+*For detailed improvement plans and roadmap, see [Roadmap](../governance/roadmap.md)*
 
 *Last Updated: January 5, 2026*

@@ -4,7 +4,7 @@ A proposal for implementing cross-platform dynamic badges that display verificat
 
 **Status:** PROPOSAL
 **Created:** January 2026
-**Related:** ROADMAP.md, lib/badges.sh, scripts/commands/verify.sh, scripts/commands/test-nwp.sh
+**Related:** [Roadmap](../governance/roadmap.md), lib/badges.sh, scripts/commands/verify.sh, scripts/commands/test-nwp.sh
 
 ---
 

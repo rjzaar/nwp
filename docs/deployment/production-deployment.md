@@ -611,9 +611,9 @@ drush core:requirements
 
 ## Related Documentation
 
-- [Migration Guide](MIGRATION_SITES_TRACKING.md) - Migrating to sites tracking
-- [ROADMAP.md](ROADMAP.md) - Project roadmap
-- [README.md](../README.md) - General NWP documentation
+- [Migration Guide](../guides/migration-sites-tracking.md) - Migrating to sites tracking
+- [Roadmap](../governance/roadmap.md) - Project roadmap
+- [Documentation Index](../README.md) - General NWP documentation
 
 ## Getting Help
 

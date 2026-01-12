@@ -1213,9 +1213,9 @@ For every MR, verify:
 - [InnerSource Patterns](https://patterns.innersourcecommons.org/)
 
 ### NWP Documentation
-- [CICD.md](CICD.md) - CI/CD pipeline setup
-- [WORKING_WITH_CLAUDE_SECURELY.md](WORKING_WITH_CLAUDE_SECURELY.md) - Secure AI workflows
-- [ROADMAP.md](ROADMAP.md) - Feature roadmap
+- [CI/CD](../deployment/cicd.md) - CI/CD pipeline setup
+- [Working with Claude Securely](../guides/working-with-claude-securely.md) - Secure AI workflows
+- [Roadmap](roadmap.md) - Feature roadmap
 
 ---
 

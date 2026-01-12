@@ -303,7 +303,7 @@ pl provision mysite      # Provision server
 
 ## See Also
 
-- [ARCHITECTURE_ANALYSIS.md](ARCHITECTURE_ANALYSIS.md) - Detailed research and comparisons
-- [FEATURES.md](FEATURES.md) - Feature overview
-- [DATA_SECURITY_BEST_PRACTICES.md](DATA_SECURITY_BEST_PRACTICES.md) - Security guidelines
-- [LIB_REFERENCE.md](LIB_REFERENCE.md) - Library function reference
+- [Architecture Analysis](../reference/architecture-analysis.md) - Detailed research and comparisons
+- [Features](../reference/features.md) - Feature overview
+- [Data Security Best Practices](data-security-best-practices.md) - Security guidelines
+- [Libraries](../reference/libraries.md) - Library function reference

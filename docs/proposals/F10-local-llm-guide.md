@@ -1142,7 +1142,7 @@ done
 - Ollama GitHub Discussions: https://github.com/ollama/ollama/discussions
 
 ### NWP Integration
-- F10 Proposal: See `docs/ROADMAP.md` (Phase 8)
+- F10 Proposal: See [Roadmap](../governance/roadmap.md) (Phase 8)
 - Status: PROPOSED (not yet implemented)
 - Track progress: https://github.com/yourusername/nwp/issues
 
@@ -1166,4 +1166,4 @@ done
 ---
 
 **Last Updated:** January 10, 2026
-**Related:** F10 proposal in `docs/ROADMAP.md`
+**Related:** F10 proposal in [Roadmap](../governance/roadmap.md)

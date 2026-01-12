@@ -49,7 +49,7 @@ NWP requires the following software:
 
 ## Security Architecture
 
-NWP uses a **two-tier secrets system** to protect sensitive data while allowing safe collaboration with AI assistants like Claude Code. The full details are in **Complete Guide**: See [`docs/DATA_SECURITY_BEST_PRACTICES.md`](docs/DATA_SECURITY_BEST_PRACTICES.md)
+NWP uses a **two-tier secrets system** to protect sensitive data while allowing safe collaboration with AI assistants like Claude Code. The full details are in **Complete Guide**: See [`docs/security/data-security-best-practices.md`](docs/security/data-security-best-practices.md)
 
 ### AI Assistant Safety Rules
 
@@ -293,9 +293,9 @@ grep -l "password" .secrets*.yml  # Should only be in .secrets.data.yml
 
 ### Learn More
 
-- **Complete Guide**: See [`docs/DATA_SECURITY_BEST_PRACTICES.md`](docs/DATA_SECURITY_BEST_PRACTICES.md)
-- **Training Material**: See [`docs/NWP_TRAINING_BOOKLET.md`](docs/NWP_TRAINING_BOOKLET.md)
-- **Migration Guide**: See [`docs/SETUP.md`](docs/SETUP.md) for two-tier setup
+- **Complete Guide**: See [`docs/security/data-security-best-practices.md`](docs/security/data-security-best-practices.md)
+- **Training Material**: See [`docs/guides/training-booklet.md`](docs/guides/training-booklet.md)
+- **Migration Guide**: See [`docs/guides/setup.md`](docs/guides/setup.md) for two-tier setup
 
 ## Management Scripts
 
@@ -1019,7 +1019,7 @@ The migration workflow supports:
 - Static HTML sites
 - Joomla sites
 
-See `docs/MIGRATION_SITES_TRACKING.md` for site migration and `docs/MIGRATION_GUIDE_ENV.md` for environment variable migration.
+See `docs/guides/migration-sites-tracking.md` for site migration and `docs/archive/MIGRATION_GUIDE_ENV.md` for environment variable migration.
 
 ## Documentation
 
@@ -1027,13 +1027,13 @@ Comprehensive documentation is available in the `docs/` directory:
 
 ### Core Documentation
 
-- **[SCRIPTS_IMPLEMENTATION.md](docs/SCRIPTS_IMPLEMENTATION.md)** - Detailed implementation documentation for all management scripts
+- **[Scripts Implementation](docs/reference/scripts-implementation.md)** - Detailed implementation documentation for all management scripts
   - Script features and usage
   - Testing results
   - Implementation details
   - File structure and line counts
 
-- **[ROADMAP.md](docs/ROADMAP.md)** - Development roadmap and improvement tracking
+- **[Roadmap](docs/governance/roadmap.md)** - Development roadmap and improvement tracking
   - What has been achieved
   - Known issues and bugs
   - Future enhancements prioritized by phase
@@ -1046,26 +1046,26 @@ Comprehensive documentation is available in the `docs/` directory:
   - Resolved issues history
   - Current test suite success rate (98%)
 
-- **[PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md)** - Production deployment and testing guide
+- **[Production Deployment](docs/deployment/production-deployment.md)** - Production deployment and testing guide
   - Safe testing strategies (local mock → remote test → dry-run → production)
   - Implementation examples for safety features
   - Testing checklists and workflows
   - Configuration examples
   - Troubleshooting guide
 
-- **[BACKUP_IMPLEMENTATION.md](docs/BACKUP_IMPLEMENTATION.md)** - Backup system implementation details
+- **[Backup Implementation](docs/reference/backup-implementation.md)** - Backup system implementation details
   - Backup strategy and architecture
   - File formats and naming conventions
   - Restoration procedures
 
-- **[TESTING.md](docs/TESTING.md)** - OpenSocial testing infrastructure documentation
+- **[Testing](docs/testing/testing.md)** - OpenSocial testing infrastructure documentation
   - Testing script (testos.sh) usage and options
   - Behat, PHPUnit, PHPStan, CodeSniffer integration
   - Selenium Chrome browser automation
   - 30 test features with 134 scenarios
   - Automatic dependency installation and configuration
 
-- **[DATA_SECURITY_BEST_PRACTICES.md](docs/DATA_SECURITY_BEST_PRACTICES.md)** - Security and AI usage guide
+- **[Data Security Best Practices](docs/security/data-security-best-practices.md)** - Security and AI usage guide
   - Two-tier secrets architecture (infrastructure vs data secrets)
   - Production backup strategies and schedules
   - Database sanitization for GDPR compliance
@@ -1073,60 +1073,60 @@ Comprehensive documentation is available in the `docs/` directory:
   - Security hardening checklists
   - Secrets management and rotation
 
-- **[NWP_TRAINING_BOOKLET.md](docs/NWP_TRAINING_BOOKLET.md)** - Comprehensive training documentation
+- **[Training Booklet](docs/guides/training-booklet.md)** - Comprehensive training documentation
   - Complete 8-phase training journey for new users
   - NWP philosophy and architecture overview
   - Step-by-step tutorials for all major operations
   - Troubleshooting guides and best practices
   - Two-tier secrets architecture introduction
 
-- **[DEPLOYMENT_WORKFLOW_ANALYSIS.md](docs/DEPLOYMENT_WORKFLOW_ANALYSIS.md)** - Deployment workflow research
+- **[Deployment Workflow Analysis](docs/reference/deployment-workflow-analysis.md)** - Deployment workflow research
   - Comparison with Vortex, Pleasy, and industry best practices
   - Analysis of production mode on staging environments
   - Recommended deployment patterns for Drupal sites
 
-- **[QUICKSTART.md](docs/QUICKSTART.md)** - Quick start guide for getting started fast
+- **[Quickstart](docs/guides/quickstart.md)** - Quick start guide for getting started fast
 
-- **[SETUP.md](docs/SETUP.md)** - Detailed setup and configuration guide
+- **[Setup](docs/guides/setup.md)** - Detailed setup and configuration guide
   - Prerequisites and installation
   - SSH key setup
   - Configuration file setup
   - Two-tier secrets setup
 
-- **[CICD.md](docs/CICD.md)** - CI/CD pipeline documentation
+- **[CI/CD](docs/deployment/cicd.md)** - CI/CD pipeline documentation
   - GitLab CI/CD integration
   - Automated testing and deployment
 
-- **[DEVELOPER_LIFECYCLE_GUIDE.md](docs/DEVELOPER_LIFECYCLE_GUIDE.md)** - Complete developer workflow
+- **[Developer Workflow](docs/guides/developer-workflow.md)** - Complete developer workflow
   - From project initialization to production
   - All 9 phases of development lifecycle
 
-- **[NWP_COMPLETE_ROADMAP.md](docs/NWP_COMPLETE_ROADMAP.md)** - Consolidated roadmap
+- **[Complete Roadmap](docs/governance/complete-roadmap.md)** - Consolidated roadmap
   - All phases of NWP development
   - Implementation details and status
 
-- **[LINODE_DEPLOYMENT.md](docs/LINODE_DEPLOYMENT.md)** - Linode server deployment guide
+- **[Linode Deployment](docs/deployment/linode-deployment.md)** - Linode server deployment guide
   - Server provisioning
   - StackScripts usage
   - Production deployment checklist
 
-- **[DISASTER_RECOVERY.md](docs/DISASTER_RECOVERY.md)** - Disaster recovery procedures
+- **[Disaster Recovery](docs/deployment/disaster-recovery.md)** - Disaster recovery procedures
   - Recovery Time Objectives (RTO)
   - Rollback and restore procedures
   - Server rebuild procedures
 
-- **[ENVIRONMENTS.md](docs/ENVIRONMENTS.md)** - Environment management
+- **[Environments](docs/deployment/environments.md)** - Environment management
   - Environment hierarchy (local → dev → staging → production)
   - Configuration splits
   - Preview environments for PRs
 
-- **[ADVANCED_DEPLOYMENT.md](docs/ADVANCED_DEPLOYMENT.md)** - Advanced deployment strategies
+- **[Advanced Deployment](docs/deployment/advanced-deployment.md)** - Advanced deployment strategies
   - Blue-green deployment
   - Canary releases
   - Performance baseline tracking
   - Visual regression testing
 
-- **[HUMAN_TESTING.md](docs/HUMAN_TESTING.md)** - Manual testing guide
+- **[Human Testing](docs/testing/human-testing.md)** - Manual testing guide
   - Tests that require human verification
   - Comprehensive checklists for each feature
 
@@ -1143,14 +1143,14 @@ Comprehensive documentation is available in the `docs/` directory:
 ```
 
 **For detailed implementation:**
-- See `docs/SCRIPTS_IMPLEMENTATION.md`
+- See `docs/reference/scripts-implementation.md`
 
 **For roadmap and planned features:**
-- See `docs/ROADMAP.md`
+- See `docs/governance/roadmap.md`
 
 **For SSH setup and production deployment:**
-- **SSH Key Setup**: `./setup-ssh.sh` - See `docs/SSH_SETUP.md`
-- **Production Deployment**: See `docs/PRODUCTION_DEPLOYMENT.md`
+- **SSH Key Setup**: `./setup-ssh.sh` - See `docs/deployment/ssh-setup.md`
+- **Production Deployment**: See `docs/deployment/production-deployment.md`
 
 ## Error Reporting
 
@@ -1301,20 +1301,26 @@ nwp/
 ├── sites/                # Site installations directory (gitignored)
 │
 ├── docs/                 # Documentation directory
-│   ├── QUICKSTART.md                   # Quick start guide
-│   ├── SETUP.md                        # Setup and configuration
-│   ├── DEVELOPER_LIFECYCLE_GUIDE.md    # Complete developer workflow
-│   ├── NWP_COMPLETE_ROADMAP.md         # Consolidated roadmap
-│   ├── NWP_TRAINING_BOOKLET.md         # Comprehensive training guide
-│   ├── DATA_SECURITY_BEST_PRACTICES.md # Security and AI usage
-│   ├── DISASTER_RECOVERY.md            # Disaster recovery procedures
-│   ├── ENVIRONMENTS.md                 # Environment management
-│   ├── ADVANCED_DEPLOYMENT.md          # Advanced deployment strategies
-│   ├── HUMAN_TESTING.md                # Manual testing guide
-│   ├── CICD.md                         # CI/CD documentation
-│   ├── LINODE_DEPLOYMENT.md            # Linode deployment guide
-│   ├── TESTING.md                      # Testing infrastructure
-│   └── CODER_ONBOARDING.md             # Multi-coder onboarding
+│   ├── guides/                         # User guides
+│   │   ├── quickstart.md               # Quick start guide
+│   │   ├── setup.md                    # Setup and configuration
+│   │   ├── developer-workflow.md       # Complete developer workflow
+│   │   ├── training-booklet.md         # Comprehensive training guide
+│   │   └── coder-onboarding.md         # Multi-coder onboarding
+│   ├── security/                       # Security documentation
+│   │   └── data-security-best-practices.md # Security and AI usage
+│   ├── deployment/                     # Deployment guides
+│   │   ├── production-deployment.md    # Production deployment
+│   │   ├── disaster-recovery.md        # Disaster recovery procedures
+│   │   ├── environments.md             # Environment management
+│   │   ├── advanced-deployment.md      # Advanced deployment strategies
+│   │   ├── cicd.md                     # CI/CD documentation
+│   │   └── linode-deployment.md        # Linode deployment guide
+│   ├── testing/                        # Testing documentation
+│   │   ├── testing.md                  # Testing infrastructure
+│   │   └── human-testing.md            # Manual testing guide
+│   └── governance/                     # Planning and roadmap
+│       └── complete-roadmap.md         # Consolidated roadmap
 │
 ├── scripts/              # Scripts directory
 │   ├── commands/                       # Core command scripts (actual files)
@@ -1505,7 +1511,7 @@ For existing sites or custom setups:
 ### Documentation
 
 - **Templates**: See `templates/env/` for available templates
-- **Architecture**: See `docs/ARCHITECTURE_ANALYSIS.md` for environment variable design
+- **Architecture**: See `docs/reference/architecture-analysis.md` for environment variable design
 
 
 ### Configuration Hierarchy

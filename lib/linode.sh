@@ -394,13 +394,13 @@ linode_create_dns_ns() {
         }" \
         "https://api.linode.com/v4/domains/$domain_id/records")
 
-    if echo "$response" | grep -q '"id":[0-9]*'; then
-        local record_id=$(echo "$response" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+    if echo "$response" | grep -q '"id"'; then
+        local record_id=$(echo "$response" | grep -oE '"id":[[:space:]]*[0-9]+' | grep -oE '[0-9]+')
         echo "$record_id"
         return 0
     else
         echo "ERROR: Failed to create NS record for $name -> $target" >&2
-        echo "$response" | grep -o '"errors":\[.*\]' >&2
+        echo "$response" >&2
         return 1
     fi
 }

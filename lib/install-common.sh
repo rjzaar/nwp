@@ -1229,8 +1229,9 @@ create_test_content() {
         print_warning "Could not configure workflow settings (may already be configured)"
     fi
 
-    print_info "Creating 5 test users..."
+    print_info "Creating 5 test users with complex passwords..."
     local users=()
+    local user_passwords=()
     for i in {1..5}; do
         local username="testuser$i"
         local email="testuser$i@example.com"
@@ -1238,8 +1239,11 @@ create_test_content() {
         if ddev drush user:info "$username" &>/dev/null; then
             print_info "User $username already exists, skipping..."
         else
-            if ddev drush user:create "$username" --mail="$email" --password="${TEST_PASSWORD:-test123}" 2>&1 | grep -v "Deprecated" >/dev/null; then
-                print_info "Created user: $username"
+            # Generate complex random password (16 characters)
+            local password=$(ddev drush php:eval "echo \Drupal::service('password_generator')->generate(16);" 2>/dev/null)
+            if ddev drush user:create "$username" --mail="$email" --password="$password" 2>&1 | grep -v "Deprecated" >/dev/null; then
+                print_info "Created user: $username (password: $password)"
+                user_passwords+=("$username: $password")
             else
                 print_warning "Failed to create user: $username"
             fi
@@ -1346,7 +1350,10 @@ create_test_content() {
 
         echo ""
         echo -e "${BOLD}Test Content Summary:${NC}"
-        echo -e "  ${GREEN}✓${NC} ${#users[@]} users created (testuser1-${#users[@]}, password: ${TEST_PASSWORD:-test123})"
+        echo -e "  ${GREEN}✓${NC} ${#users[@]} users created with complex passwords:"
+        for user_pass in "${user_passwords[@]}"; do
+            echo -e "    ${CYAN}${user_pass}${NC}"
+        done
         echo -e "  ${GREEN}✓${NC} ${#doc_nids[@]} documents created (NIDs: ${doc_nids[*]})"
         echo -e "  ${GREEN}✓${NC} ${#workflow_ids[@]} workflow assignments linked to document $target_nid"
         echo ""

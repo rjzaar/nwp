@@ -222,6 +222,18 @@ install_drupal() {
             fi
         fi  # End source vs source_git
 
+        # Configure GitLab composer authentication if available
+        local gitlab_url=$(get_gitlab_url)
+        local gitlab_token=$(get_gitlab_token)
+        if [ -n "$gitlab_url" ] && [ -n "$gitlab_token" ]; then
+            print_info "Configuring GitLab composer authentication..."
+            if composer config --auth gitlab-token."${gitlab_url}" "${gitlab_token}" 2>/dev/null; then
+                print_status "OK" "GitLab authentication configured"
+            else
+                print_status "WARN" "Could not configure GitLab authentication (will use cached packages)"
+            fi
+        fi
+
         # Install Drush
         print_info "Installing Drush..."
         if composer require drush/drush --dev --no-interaction; then
@@ -429,6 +441,19 @@ EOF
             return 1
         fi
         print_status "OK" "DDEV services started"
+
+        # Configure GitLab composer authentication in DDEV container
+        local gitlab_url=$(get_gitlab_url)
+        local gitlab_token=$(get_gitlab_token)
+        if [ -n "$gitlab_url" ] && [ -n "$gitlab_token" ]; then
+            print_info "Configuring GitLab composer authentication..."
+            if ddev composer config --auth gitlab-token."${gitlab_url}" "${gitlab_token}" 2>/dev/null; then
+                print_status "OK" "GitLab authentication configured"
+            else
+                print_status "WARN" "Could not configure GitLab authentication"
+            fi
+        fi
+
         track_step 5
     else
         print_status "INFO" "Skipping Step 5: DDEV already started"

@@ -641,6 +641,7 @@ yaml_complete_site_stub() {
 yaml_remove_site() {
     local site_name="$1"
     local config_file="${2:-$YAML_CONFIG_FILE}"
+    local lockfile="/tmp/cnwp.yml.lock"
 
     if [[ -z "$site_name" ]]; then
         echo -e "${RED}Error: Site name is required${NC}" >&2
@@ -658,10 +659,38 @@ yaml_remove_site() {
         return 1
     fi
 
-    # Create backup
-    if ! yaml_backup "$config_file"; then
+    # FIX 1: Check for duplicate site entries
+    local duplicate_count=$(grep -c "^  $site_name:" "$config_file" 2>/dev/null || echo 0)
+    if [ "$duplicate_count" -gt 1 ]; then
+        echo -e "${RED}Error: Found $duplicate_count duplicate entries for site '$site_name'${NC}" >&2
+        echo -e "${YELLOW}Please manually fix $config_file before deletion${NC}" >&2
+        echo -e "${YELLOW}Run: grep -n \"^  $site_name:\" $config_file${NC}" >&2
         return 1
     fi
+
+    # FIX 4: Acquire file lock to prevent concurrent modifications
+    exec 200>"$lockfile"
+    if ! flock -x -w 10 200; then
+        echo -e "${RED}Error: Could not acquire lock on $config_file (timeout after 10s)${NC}" >&2
+        return 1
+    fi
+
+    # Create backup
+    if ! yaml_backup "$config_file"; then
+        flock -u 200
+        return 1
+    fi
+
+    # FIX 5: Use atomic write pattern with mktemp
+    local tmpfile=$(mktemp "${config_file}.XXXXXX")
+    if [ -z "$tmpfile" ] || [ ! -f "$tmpfile" ]; then
+        echo -e "${RED}Error: Failed to create temporary file${NC}" >&2
+        flock -u 200
+        return 1
+    fi
+
+    # Store original line count for validation
+    local original_lines=$(wc -l < "$config_file")
 
     # Remove the site entry (the site line and all indented lines below it until next site or section)
     awk -v site="$site_name" '
@@ -673,14 +702,38 @@ yaml_remove_site() {
             in_site = 0
         }
         !in_site { print }
-    ' "$config_file" > "${config_file}.tmp"
+    ' "$config_file" > "$tmpfile"
 
-    # Move temp file to original
-    if mv "${config_file}.tmp" "$config_file"; then
+    # FIX 2: Validate AWK output
+    local new_lines=$(wc -l < "$tmpfile")
+
+    # Check if temp file is empty
+    if [ ! -s "$tmpfile" ]; then
+        echo -e "${RED}Error: AWK produced empty output - aborting operation${NC}" >&2
+        echo -e "${YELLOW}This may indicate a bug. Original file unchanged.${NC}" >&2
+        rm -f "$tmpfile"
+        flock -u 200
+        return 1
+    fi
+
+    # Check if AWK removed too many lines (more than 100 lines seems suspicious)
+    if [ "$new_lines" -lt $((original_lines - 100)) ]; then
+        echo -e "${RED}Error: AWK removed too many lines ($original_lines → $new_lines)${NC}" >&2
+        echo -e "${YELLOW}This may indicate a bug. Original file unchanged.${NC}" >&2
+        rm -f "$tmpfile"
+        flock -u 200
+        return 1
+    fi
+
+    # Atomic move (same filesystem)
+    if mv "$tmpfile" "$config_file"; then
         echo -e "${GREEN}Site '$site_name' removed from $config_file${NC}" >&2
+        flock -u 200
         return 0
     else
         echo -e "${RED}Error: Failed to update $config_file${NC}" >&2
+        rm -f "$tmpfile"
+        flock -u 200
         return 1
     fi
 }

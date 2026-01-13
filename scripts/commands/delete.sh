@@ -359,18 +359,20 @@ remove_from_cnwp() {
     fi
 
     # Check if site exists in cnwp.yml
-    if ! yaml_site_exists "$sitename" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
+    if ! yaml_site_exists "$sitename" "$PROJECT_ROOT/cnwp.yml"; then
         print_status "INFO" "Site not found in cnwp.yml"
         return 0
     fi
 
     ocmsg "Removing site '$sitename' from cnwp.yml"
 
-    # Remove the site
-    if yaml_remove_site "$sitename" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
+    # FIX 3: Remove error suppression - show errors to user
+    # Remove the site (errors are now visible and informative)
+    if yaml_remove_site "$sitename" "$PROJECT_ROOT/cnwp.yml"; then
         print_status "OK" "Site removed from cnwp.yml"
     else
-        print_warning "Could not remove site from cnwp.yml"
+        print_error "Failed to remove site from cnwp.yml"
+        return 1
     fi
 
     return 0

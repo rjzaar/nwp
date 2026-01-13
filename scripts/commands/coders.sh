@@ -427,12 +427,18 @@ load_coders() {
             mrs=$(yq -r ".other_coders.coders.$name.merge_requests // 0" "$CONFIG_FILE" 2>/dev/null)
             reviews=$(yq -r ".other_coders.coders.$name.reviews // 0" "$CONFIG_FILE" 2>/dev/null)
         else
-            role="contributor"
-            status="active"
-            added=""
-            commits=0
-            mrs=0
-            reviews=0
+            # Fallback: read from YAML using awk
+            role=$(get_coder_field "$name" "role")
+            [[ -z "$role" ]] && role="contributor"
+            status=$(get_coder_field "$name" "status")
+            [[ -z "$status" ]] && status="active"
+            added=$(get_coder_field "$name" "added")
+            commits=$(get_coder_field "$name" "commits")
+            [[ -z "$commits" ]] && commits=0
+            mrs=$(get_coder_field "$name" "merge_requests")
+            [[ -z "$mrs" ]] && mrs=0
+            reviews=$(get_coder_field "$name" "reviews")
+            [[ -z "$reviews" ]] && reviews=0
         fi
 
         CODER_DATA+=("$role|$status|${added:0:10}|$commits|$mrs|$reviews")
@@ -691,7 +697,7 @@ print_status_cell() {
 
     # Generate padding (width-1 spaces, since symbol is 1 char)
     local pad=""
-    for ((i=1; i<width; i++)); do pad+=" "; done
+    for ((pad_i=1; pad_i<width; pad_i++)); do pad+=" "; done
 
     case "$val" in
         Y) printf " %s${GREEN}✓${NC}" "$pad" ;;

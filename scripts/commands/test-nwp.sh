@@ -856,11 +856,14 @@ run_test "delete.sh requires sitename" "! ./scripts/commands/delete.sh -y 2>/dev
 run_test "copy.sh requires both args" "! ./scripts/commands/copy.sh -y source 2>/dev/null"
 
 # Non-existent sites should fail gracefully
+# Use unique names for each test to avoid interference
 print_info "Testing non-existent site handling..."
-run_test "Backup non-existent fails" "! ./scripts/commands/backup.sh nonexistent_site_xyz 2>/dev/null"
-run_test "Restore non-existent fails" "! ./scripts/commands/restore.sh -y nonexistent_site_xyz 2>/dev/null"
-run_test "Delete non-existent fails" "! ./scripts/commands/delete.sh -y nonexistent_site_xyz 2>/dev/null"
-run_test "Copy non-existent fails" "! ./scripts/commands/copy.sh -y nonexistent_site_xyz dest 2>/dev/null"
+run_test "Backup non-existent fails" "! ./scripts/commands/backup.sh nonexistent_backup_xyz 2>/dev/null"
+run_test "Restore non-existent fails" "! ./scripts/commands/restore.sh -y nonexistent_restore_xyz 2>/dev/null"
+# Clean up any residual directories from restore attempt
+rm -rf sites/nonexistent_restore_xyz 2>/dev/null || true
+run_test "Delete non-existent fails" "! ./scripts/commands/delete.sh -y nonexistent_delete_xyz 2>/dev/null"
+run_test "Copy non-existent fails" "! ./scripts/commands/copy.sh -y nonexistent_copy_xyz dest 2>/dev/null"
 
 # Make.sh mode validation
 print_info "Testing make.sh mode validation..."

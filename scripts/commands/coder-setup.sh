@@ -434,15 +434,15 @@ cmd_add() {
                 if cf_create_ns_delegation "$cf_token" "$cf_zone_id" "$name" "${nameservers[@]}"; then
                     pass "NS delegation created for $subdomain"
                 else
-                    fail "Failed to create NS delegation"
-                    exit 1
+                    warn "Failed to create NS delegation - you can configure DNS manually"
+                    info "The coder will still be added to cnwp.yml"
                 fi
             elif [[ "$dns_provider" == "linode" ]]; then
                 if linode_create_ns_delegation "$linode_token" "$base_domain" "$name" "${nameservers[@]}"; then
                     pass "NS delegation created for $subdomain"
                 else
-                    fail "Failed to create NS delegation"
-                    exit 1
+                    warn "Failed to create NS delegation - you can configure DNS manually"
+                    info "The coder will still be added to cnwp.yml"
                 fi
             fi
         fi
@@ -493,19 +493,51 @@ cmd_add() {
         echo ""
     fi
 
-    info "Next steps for $name:"
-    if ! $gitlab_created && [ -z "$email" ]; then
-        task "0. Request GitLab account from NWP administrator (provide email)"
-    fi
-    task "1. Create a Linode account at https://www.linode.com/"
-    task "2. Generate an API token with Domains Read/Write permissions"
-    task "3. Create a DNS zone for '$subdomain' in Linode DNS Manager"
-    task "4. Add DNS records (A, CNAME) pointing to their server IP"
-    task "5. Provision server and install NWP"
+    # Show onboarding command for the new coder
+    print_header "Onboarding Instructions for $name"
+    info "Send these instructions to $name:"
     echo ""
-    info "See docs/CODER_ONBOARDING.md for detailed instructions"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "Welcome to NWP! Your account has been created."
+    echo ""
+    echo "GitLab Access:"
+    echo "  URL: https://$(get_gitlab_url)"
+    if $gitlab_created; then
+        echo "  Username: $name"
+        echo "  Password: (shown above)"
+        echo "  Action: Change your password and add SSH key"
+    else
+        echo "  Action: Add your SSH key to GitLab"
+    fi
+    echo ""
+    echo "Your subdomain: $subdomain"
+    echo "DNS Status: Delegation configured (propagation takes 24-48 hours)"
+    echo ""
+    echo "Quick Start:"
+    echo "  1. Set up Linode account: https://www.linode.com/"
+    echo "  2. Create a server (Ubuntu 22.04, 1GB+ RAM)"
+    echo "  3. SSH into your server and run:"
+    echo ""
+    echo "     git clone https://github.com/rjzaar/nwp.git"
+    echo "     cd nwp"
+    echo "     ./scripts/commands/bootstrap-coder.sh --coder $name"
+    echo ""
+    echo "  The bootstrap script will:"
+    echo "    • Configure your identity automatically"
+    echo "    • Set up cnwp.yml with your subdomain"
+    echo "    • Validate your GitLab access"
+    echo "    • Check DNS configuration"
+    echo "    • Guide you through next steps"
+    echo ""
+    echo "Documentation:"
+    echo "  Full Guide: docs/guides/coder-onboarding.md"
+    echo "  Commands:   docs/reference/commands/README.md"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     warn "DNS propagation may take 24-48 hours"
+    info "See docs/guides/coder-onboarding.md for detailed instructions"
 }
 
 # Remove a coder with full offboarding

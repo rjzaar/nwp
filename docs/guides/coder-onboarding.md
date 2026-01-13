@@ -14,6 +14,20 @@ As a new coder, you'll receive:
   - `nwp.<yourname>.nwpcode.org` - Your NWP sites
   - `*.yourname.nwpcode.org` - Any other subdomains you need
 
+## Quick Start (New!)
+
+**For the fastest onboarding experience**, once you have a server set up:
+
+```bash
+git clone https://github.com/rjzaar/nwp.git
+cd nwp
+./scripts/commands/bootstrap-coder.sh --coder <yourname>
+```
+
+The bootstrap script will automatically configure everything for you!
+
+For detailed step-by-step instructions, continue reading below.
+
 ## Prerequisites
 
 Before starting, you need:
@@ -238,31 +252,73 @@ git clone https://github.com/rjzaar/nwp.git
 cd nwp
 ```
 
-### Configure NWP
+### Bootstrap Your Installation (Automated)
+
+The bootstrap script will automatically configure your identity and NWP installation:
 
 ```bash
-# Copy example config
-cp example.cnwp.yml cnwp.yml
-cp .secrets.example.yml .secrets.yml
-
-# Edit configuration
-nano cnwp.yml
+./scripts/commands/bootstrap-coder.sh --coder <yourname>
 ```
 
-Update `cnwp.yml` with your settings:
+**What the bootstrap script does:**
 
-```yaml
-settings:
-  url: <yourname>.nwpcode.org
-  # ... other settings
+1. ✅ Validates your identity against GitLab and DNS
+2. ✅ Configures `cnwp.yml` with your subdomain automatically
+3. ✅ Sets up `.secrets.yml` from example
+4. ✅ Configures git user.name and user.email
+5. ✅ Checks for SSH keys (offers to generate if missing)
+6. ✅ Verifies DNS delegation and A records
+7. ✅ Registers NWP CLI command
+8. ✅ Shows clear next steps
+
+**Interactive mode** (if you prefer):
+
+```bash
+./scripts/commands/bootstrap-coder.sh
 ```
 
-Update `.secrets.yml`:
+The script will:
+- Try to detect your identity from GitLab SSH (if you've added your key)
+- Try to detect from DNS (if A records are configured)
+- Prompt you interactively if auto-detection fails
+
+**What happens:**
+
+```
+╔════════════════════════════════════════╗
+║   NWP Coder Identity Bootstrap         ║
+╚════════════════════════════════════════╝
+
+[i] Attempting GitLab SSH authentication...
+[✓] Detected from GitLab SSH: yourname
+    Use identity 'yourname'? [y/N]: y
+
+[i] Validating identity: yourname
+  [✓] GitLab account exists
+  [✓] NS delegation configured
+  [!] DNS A records not configured (you'll need to set these up)
+
+[✓] Configured cnwp.yml with identity: yourname
+[✓] Created .secrets.yml from example
+[✓] Configured git as: yourname <git@yourname.nwpcode.org>
+
+[i] Next steps shown below...
+```
+
+### Add Your Linode Token
+
+Edit `.secrets.yml` and add your Linode API token:
+
+```bash
+nano .secrets.yml
+```
 
 ```yaml
 linode:
   api_token: "your_linode_api_token_here"
 ```
+
+Get your token from: https://cloud.linode.com/profile/tokens
 
 ## Step 9: Install GitLab (Optional)
 
@@ -303,6 +359,8 @@ certbot --nginx -d <yourname>.nwpcode.org -d git.<yourname>.nwpcode.org
 ```
 
 ## Configuration Reference
+
+> **Note:** If you used the bootstrap script (`bootstrap-coder.sh`), most of this configuration was done automatically. This section is for reference or manual configuration.
 
 ### Your `.secrets.yml`
 

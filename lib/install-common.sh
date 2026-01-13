@@ -12,6 +12,12 @@ if [ "${_INSTALL_COMMON_LOADED:-}" = "1" ]; then
 fi
 _INSTALL_COMMON_LOADED=1
 
+# Source yaml-write.sh for consolidated YAML functions
+INSTALL_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$INSTALL_COMMON_DIR/yaml-write.sh" ]; then
+    source "$INSTALL_COMMON_DIR/yaml-write.sh"
+fi
+
 ################################################################################
 # Interactive Option Selection
 ################################################################################
@@ -505,24 +511,8 @@ get_recipe_value() {
     local key=$2
     local config_file="${3:-cnwp.yml}"
 
-    # Use awk to extract the value
-    awk -v recipe="$recipe" -v key="$key" '
-        BEGIN { in_recipe = 0; found = 0 }
-        /^  [a-zA-Z0-9_-]+:/ {
-            if ($1 == recipe":") {
-                in_recipe = 1
-            } else if (in_recipe && /^  [a-zA-Z0-9_-]+:/) {
-                in_recipe = 0
-            }
-        }
-        in_recipe && $0 ~ "^    " key ":" {
-            sub("^    " key ": *", "")
-            sub(" *#.*$", "")  # Strip trailing YAML comments
-            print
-            found = 1
-            exit
-        }
-    ' "$config_file"
+    # Use consolidated yaml_get_recipe_field function
+    yaml_get_recipe_field "$recipe" "$key" "$config_file"
 }
 
 # Get a list value from a recipe (returns space-separated items)
@@ -537,36 +527,8 @@ get_recipe_list_value() {
     local key=$2
     local config_file="${3:-cnwp.yml}"
 
-    awk -v recipe="$recipe" -v key="$key" '
-        BEGIN { in_recipe = 0; in_list = 0 }
-        /^  [a-zA-Z0-9_-]+:/ {
-            if ($1 == recipe":") {
-                in_recipe = 1
-            } else if (in_recipe) {
-                in_recipe = 0
-                in_list = 0
-            }
-        }
-        in_recipe && $0 ~ "^    " key ":" {
-            in_list = 1
-            next
-        }
-        in_recipe && in_list {
-            # Check if we hit another key (not a list item)
-            if (/^    [a-zA-Z0-9_-]+:/) {
-                in_list = 0
-                exit
-            }
-            # Extract list items (lines starting with "      - ")
-            if (/^      - /) {
-                sub("^      - *", "")
-                sub(" *#.*$", "")  # Strip trailing YAML comments
-                gsub(/["'"'"']/, "")  # Remove quotes
-                printf "%s ", $0
-            }
-        }
-        END { print "" }
-    ' "$config_file" | sed 's/ *$//'
+    # Use consolidated yaml_get_recipe_list function
+    yaml_get_recipe_list "$recipe" "$key" "$config_file"
 }
 
 # Parse YAML file and extract root-level value
@@ -597,25 +559,9 @@ get_settings_value() {
         default_value=""
     fi
 
-    # Use awk to extract values from settings section (indented under settings:)
+    # Use consolidated yaml_get_setting function
     local result
-    result=$(awk -v key="$key" '
-        BEGIN { in_settings = 0 }
-        /^settings:/ {
-            in_settings = 1
-            next
-        }
-        in_settings && /^[a-zA-Z0-9_-]+:/ {
-            # Exited settings section
-            in_settings = 0
-        }
-        in_settings && /^  [a-zA-Z0-9_-]+:/ && $1 == key":" {
-            sub("^  " key ": *", "")
-            sub(/[[:space:]]*#.*$/, "")  # Strip trailing comments
-            print
-            exit
-        }
-    ' "$config_file" 2>/dev/null)
+    result=$(yaml_get_setting "$key" "$config_file" 2>/dev/null)
 
     # Return result or default
     if [[ -n "$result" ]]; then

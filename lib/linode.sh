@@ -12,58 +12,23 @@
 # - curl and jq installed
 ################################################################################
 
+# Source yaml-write.sh for consolidated YAML functions
+LINODE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$LINODE_LIB_DIR/yaml-write.sh" ]; then
+    source "$LINODE_LIB_DIR/yaml-write.sh"
+fi
+
+# DEPRECATED: Wrapper for backward compatibility
+# Use yaml_get_secret directly for new code
 # Parse a YAML value from a simple YAML file
 # Usage: parse_yaml_value "file.yml" "section" "key"
-# Handles: quoted values, inline comments, indented keys
 parse_yaml_value() {
     local file="$1"
     local section="$2"
     local key="$3"
 
-    # Try yq first if available (most robust)
-    if command -v yq &>/dev/null; then
-        yq -r ".$section.$key // empty" "$file" 2>/dev/null
-        return
-    fi
-
-    # Fall back to improved awk parsing
-    awk -v section="$section" -v key="$key" '
-        BEGIN { in_section = 0; found = 0 }
-        # Match section start (e.g., "linode:")
-        /^[a-zA-Z_][a-zA-Z0-9_]*:/ {
-            gsub(/:.*/, "")
-            if ($0 == section) {
-                in_section = 1
-            } else {
-                in_section = 0
-            }
-            next
-        }
-        # Match key within section (indented)
-        in_section && /^[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*:/ {
-            # Extract key name (removing leading spaces and trailing colon)
-            current_key = $0
-            gsub(/^[[:space:]]+/, "", current_key)
-            gsub(/:.*/, "", current_key)
-
-            if (current_key == key) {
-                # Extract value after the colon
-                value = $0
-                gsub(/^[^:]*:[[:space:]]*/, "", value)
-                # Remove inline comments (but be careful with # in quoted strings)
-                if (value !~ /^["'\'']/) {
-                    gsub(/[[:space:]]*#.*$/, "", value)
-                }
-                # Remove surrounding quotes
-                gsub(/^["'\'']|["'\'']$/, "", value)
-                print value
-                found = 1
-                exit
-            }
-        }
-        # Exit section if we hit a non-indented line
-        in_section && /^[a-zA-Z]/ { in_section = 0 }
-    ' "$file"
+    # Use consolidated yaml_get_secret function
+    yaml_get_secret "${section}.${key}" "$file"
 }
 
 # Get Linode API token
@@ -71,9 +36,9 @@ get_linode_token() {
     local token=""
     local script_dir="${1:-.}"
 
-    # Check .secrets.yml first
+    # Check .secrets.yml first using consolidated yaml_get_secret
     if [ -f "$script_dir/.secrets.yml" ]; then
-        token=$(parse_yaml_value "$script_dir/.secrets.yml" "linode" "api_token")
+        token=$(yaml_get_secret "linode.api_token" "$script_dir/.secrets.yml")
     fi
 
     # Fall back to environment variable

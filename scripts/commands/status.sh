@@ -358,15 +358,8 @@ list_sites() {
     local config_file="$1"
     [ ! -f "$config_file" ] && return 1
 
-    awk '
-        /^sites:/ { in_sites = 1; next }
-        in_sites && /^[a-zA-Z]/ && !/^  / { exit }
-        in_sites && /^  [a-zA-Z_][a-zA-Z0-9_-]*:/ && !/^    / {
-            gsub(/:.*/, "")
-            gsub(/^  /, "")
-            if ($0 !~ /^#/) print
-        }
-    ' "$config_file"
+    # Use consolidated yaml_get_all_sites function
+    yaml_get_all_sites "$config_file"
 }
 
 get_site_field() {
@@ -374,20 +367,8 @@ get_site_field() {
     local field="$2"
     local config_file="$3"
 
-    awk -v site="$site" -v field="$field" '
-        /^sites:/ { in_sites = 1; next }
-        in_sites && /^[a-zA-Z]/ && !/^  / { exit }
-        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
-        in_site && /^  [a-zA-Z]/ && !/^    / { exit }
-        in_site && $0 ~ "^    " field ":" {
-            sub("^    " field ": *", "")
-            gsub(/["'"'"']/, "")
-            sub(/ *#.*$/, "")
-            gsub(/^[ \t]+|[ \t]+$/, "")
-            print
-            exit
-        }
-    ' "$config_file"
+    # Use consolidated yaml_get_site_field function
+    yaml_get_site_field "$site" "$field" "$config_file"
 }
 
 get_site_nested_field() {

@@ -12,12 +12,10 @@
 # - curl and jq installed
 ################################################################################
 
-# Source linode.sh for parse_yaml_value if not already available
-if ! declare -f parse_yaml_value &>/dev/null; then
-    CLOUDFLARE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    if [ -f "$CLOUDFLARE_LIB_DIR/linode.sh" ]; then
-        source "$CLOUDFLARE_LIB_DIR/linode.sh"
-    fi
+# Source yaml-write.sh for consolidated YAML functions
+CLOUDFLARE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$CLOUDFLARE_LIB_DIR/yaml-write.sh" ]; then
+    source "$CLOUDFLARE_LIB_DIR/yaml-write.sh"
 fi
 
 # Get Cloudflare API token
@@ -26,9 +24,9 @@ get_cloudflare_token() {
     local token=""
     local script_dir="${1:-.}"
 
-    # Check .secrets.yml first
+    # Check .secrets.yml first using consolidated yaml_get_secret
     if [ -f "$script_dir/.secrets.yml" ]; then
-        token=$(parse_yaml_value "$script_dir/.secrets.yml" "cloudflare" "api_token")
+        token=$(yaml_get_secret "cloudflare.api_token" "$script_dir/.secrets.yml")
     fi
 
     # Fall back to environment variable
@@ -45,9 +43,9 @@ get_cloudflare_zone_id() {
     local zone_id=""
     local script_dir="${1:-.}"
 
-    # Check .secrets.yml first
+    # Check .secrets.yml first using consolidated yaml_get_secret
     if [ -f "$script_dir/.secrets.yml" ]; then
-        zone_id=$(parse_yaml_value "$script_dir/.secrets.yml" "cloudflare" "zone_id")
+        zone_id=$(yaml_get_secret "cloudflare.zone_id" "$script_dir/.secrets.yml")
     fi
 
     # Fall back to environment variable

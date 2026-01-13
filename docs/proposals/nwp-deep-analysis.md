@@ -593,13 +593,85 @@ This is a genuine pain point. The document notes:
 
 When Linode or Cloudflare makes breaking API changes, NWP will break silently or with obscure grep errors.
 
-**Recommendation**: Create an abstraction layer (`lib/api/linode.sh`, `lib/api/cloudflare.sh`) that wraps all API calls. This layer should:
+**Initial Recommendation**: Create an abstraction layer (`lib/api/linode.sh`, `lib/api/cloudflare.sh`) that wraps all API calls. This layer should:
 - Validate responses structurally (jq -e)
 - Log API versions used
 - Provide clear error messages
 - Be the single place to update when APIs change
 
 Consider using official CLIs where available (`linode-cli`, `cloudflare` npm package) as they handle auth, pagination, and versioning.
+
+---
+
+**DECISION RECORD (2026-01-13)**
+
+**Status:** DEFERRED (Not Implementing)
+
+**Proposal Created:** `docs/proposals/API_CLIENT_ABSTRACTION.md` - Complete 9-week phased implementation plan with abstraction layers, retry logic, monitoring, rate limiting, and comprehensive testing.
+
+**Decision:** After cost-benefit analysis, decided **NOT to implement** the full abstraction layer.
+
+**Rationale:**
+
+1. **Over-engineered for current scale**
+   - NWP has 1-2 active developers
+   - No evidence of API breakage causing production issues
+   - APIs (Linode, Cloudflare, GitLab) are relatively stable
+   - When they break, fixes take ~5 minutes
+
+2. **Cost too high**
+   - 9 weeks of full-time work
+   - 1,660+ lines of abstraction code to maintain
+   - Testing infrastructure requiring ongoing maintenance
+   - More complexity = more potential bugs
+
+3. **Minimal actual benefit**
+   - Current curl + grep **works** and has worked reliably
+   - Time to fix API breakage: ~5 minutes (with or without abstraction)
+   - Net time saved: ~0 minutes over project lifetime
+
+4. **YAGNI principle**
+   - "You Aren't Gonna Need It"
+   - Building for hypothetical future problems
+   - Better to fix issues when they actually occur
+
+**Alternative Approach (If Needed):**
+
+If API reliability becomes an issue, implement minimal error checking (1 day effort):
+
+```bash
+# lib/api-helpers.sh - ~50 lines
+api_call() {
+    local response=$(curl -s "$@")
+
+    # Basic validation
+    if ! echo "$response" | jq empty 2>/dev/null; then
+        log_error "Invalid JSON response from API"
+        return 1
+    fi
+
+    # Check for errors
+    if echo "$response" | jq -e '.errors[]?' >/dev/null 2>&1; then
+        log_error "API error: $(echo "$response" | jq -r '.errors[0].message')"
+        return 1
+    fi
+
+    echo "$response"
+}
+```
+
+Use opportunistically when touching API code. Don't rewrite everything.
+
+**Would Revisit If:**
+- Multiple developers hitting API issues frequently
+- High-frequency API changes breaking things monthly
+- Customer-facing product where API reliability is critical
+- Spare time/resources after all features complete
+- Team grows to 5+ developers
+
+**For Now:** Continue with current approach. Fix API issues when they happen (~5 min each). Monitor for patterns that would justify the investment.
+
+**Reference:** See `docs/proposals/API_CLIENT_ABSTRACTION.md` for complete implementation plan (kept for future reference if scale changes).
 
 #### 8.3.5 Progress: None vs Rich progress libraries
 

@@ -26,6 +26,8 @@ A streamlined installation system for Drupal and Moodle projects using DDEV and 
 
 The Narrow Way Project (NWP) simplifies the process of setting up local development environments for Drupal and Moodle projects. Instead of manually configuring each project, NWP uses a recipe-based system where you define your project requirements in a simple YAML configuration file (`cnwp.yml`), and the installation script handles the rest.
 
+**[Complete Documentation →](docs/README.md)** - Comprehensive guides, deployment strategies, testing frameworks, security practices, and API references.
+
 ### Key Features
 
 - **Recipe-based configuration**: Define multiple project templates in a single config file

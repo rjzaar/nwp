@@ -820,23 +820,33 @@ CONFIG_SPLIT_EOF
         if [ -n "$post_install_scripts" ]; then
             print_info "Running post-install scripts..."
             for script in $post_install_scripts; do
+                local script_path=""
                 if [ -f "$webroot/$script" ]; then
-                    print_info "  Running: $script"
-                    if ddev drush php:script "$webroot/$script"; then
-                        print_status "OK" "Script completed: $(basename "$script")"
-                    else
-                        print_status "WARN" "Script failed: $script"
-                    fi
+                    script_path="$webroot/$script"
                 elif [ -f "$script" ]; then
-                    # Try relative to project root
-                    print_info "  Running: $script"
-                    if ddev drush php:script "$script"; then
+                    script_path="$script"
+                else
+                    print_status "WARN" "Script not found: $script"
+                    continue
+                fi
+
+                print_info "  Running: $script"
+
+                # Detect script type by extension
+                if [[ "$script" == *.sh ]]; then
+                    # Shell script - run with bash in DDEV container
+                    if ddev exec bash "$script_path"; then
                         print_status "OK" "Script completed: $(basename "$script")"
                     else
                         print_status "WARN" "Script failed: $script"
                     fi
                 else
-                    print_status "WARN" "Script not found: $script"
+                    # PHP script - run with drush php:script
+                    if ddev drush php:script "$script_path"; then
+                        print_status "OK" "Script completed: $(basename "$script")"
+                    else
+                        print_status "WARN" "Script failed: $script"
+                    fi
                 fi
             done
         fi

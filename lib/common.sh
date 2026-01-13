@@ -469,7 +469,7 @@ get_env_label() {
         prod)
             echo "PRODUCTION"
             ;;
-        stage)
+        stage|stg)
             echo "STAGING"
             ;;
         live)
@@ -486,6 +486,37 @@ get_env_label() {
             ;;
         *)
             echo "$env" | tr '[:lower:]' '[:upper:]'
+            ;;
+    esac
+}
+
+# Get environment display label (Title Case, formatted)
+# Usage: get_env_display_label "prod" -> "Production"
+get_env_display_label() {
+    local env="$1"
+
+    case "$env" in
+        prod)
+            echo "Production"
+            ;;
+        stage|stg)
+            echo "Staging"
+            ;;
+        live)
+            echo "Live"
+            ;;
+        dev)
+            echo "Development"
+            ;;
+        local)
+            echo "Local"
+            ;;
+        ci)
+            echo "CI"
+            ;;
+        *)
+            # Capitalize first letter
+            echo "${env^}"
             ;;
     esac
 }

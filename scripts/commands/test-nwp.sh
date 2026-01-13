@@ -201,11 +201,15 @@ cleanup_test_sites() {
         rm -rf sitebackups/${TEST_SITE_PREFIX}*
     fi
 
-    # Remove test recipe from cnwp.yml
+    # Remove test recipe from cnwp.yml (both from recipes: and sites: sections)
     if grep -q "^  ${TEST_SITE_PREFIX}:" cnwp.yml 2>/dev/null; then
         print_info "Removing test recipe from cnwp.yml..."
-        # Remove the test recipe section (6 lines: recipe name + 4 config lines + auto line)
-        sed -i "/^  ${TEST_SITE_PREFIX}:/,+4d" cnwp.yml
+        # Use awk to remove all test-nwp blocks (works for both recipes and sites sections)
+        awk '
+            /^  test-nwp:/ { skip=1; next }
+            skip && /^  [a-z]/ && !/^    / { skip=0 }
+            !skip
+        ' cnwp.yml > cnwp.yml.tmp && mv cnwp.yml.tmp cnwp.yml
     fi
 
     print_success "Cleanup complete"
@@ -375,7 +379,7 @@ run_test "Backup directory exists" "backup_exists $TEST_SITE_PREFIX"
 print_header "Test 3: Restore Functionality"
 
 # Modify site before restore
-local test_site_path="sites/$TEST_SITE_PREFIX"
+test_site_path="sites/$TEST_SITE_PREFIX"
 if [ ! -d "$test_site_path" ]; then
     test_site_path="$TEST_SITE_PREFIX"
 fi
@@ -393,7 +397,7 @@ run_test "Create database-only backup" "./scripts/commands/backup.sh -b $TEST_SI
 run_test "Restore from database-only backup" "./scripts/commands/restore.sh -bfy $TEST_SITE_PREFIX"
 
 # Verify restoration
-local test_site_path="sites/$TEST_SITE_PREFIX"
+test_site_path="sites/$TEST_SITE_PREFIX"
 if [ ! -d "$test_site_path" ]; then
     test_site_path="$TEST_SITE_PREFIX"
 fi
@@ -424,7 +428,7 @@ print_header "Test 5: Dev/Prod Mode Switching"
 
 # Check if drush is functional before running dev/prod tests
 DRUSH_FUNCTIONAL=false
-local test_site_path="sites/$TEST_SITE_PREFIX"
+test_site_path="sites/$TEST_SITE_PREFIX"
 if [ ! -d "$test_site_path" ]; then
     test_site_path="$TEST_SITE_PREFIX"
 fi
@@ -447,7 +451,7 @@ else
     run_test "Enable development mode" "./scripts/commands/make.sh -vy $TEST_SITE_PREFIX"
 
     # Check if dev modules are enabled
-    local test_site_path="sites/$TEST_SITE_PREFIX"
+    test_site_path="sites/$TEST_SITE_PREFIX"
     if [ ! -d "$test_site_path" ]; then
         test_site_path="$TEST_SITE_PREFIX"
     fi
@@ -491,14 +495,17 @@ run_test "Staging site is running" "site_is_running ${TEST_SITE_PREFIX}-stg" "wa
 run_test "Staging site drush works" "drush_works ${TEST_SITE_PREFIX}-stg" "warn"
 
 # Verify configuration was imported
-local stg_site_path="sites/${TEST_SITE_PREFIX}-stg"
+stg_site_path="sites/${TEST_SITE_PREFIX}-stg"
 if [ ! -d "$stg_site_path" ]; then
     stg_site_path="${TEST_SITE_PREFIX}-stg"
 fi
 if cd "$stg_site_path" 2>/dev/null; then
     CONFIG_IMPORT=$(ddev drush config:status 2>/dev/null | grep -c "No differences" || echo "0")
     cd "$PROJECT_ROOT"
-    if [ "$CONFIG_IMPORT" -gt 0 ]; then
+    # Ensure CONFIG_IMPORT is a valid integer
+    CONFIG_IMPORT=$(echo "$CONFIG_IMPORT" | tr -d '\n\r' | grep -o '[0-9]*' | head -1)
+    CONFIG_IMPORT=${CONFIG_IMPORT:-0}
+    if [ "$CONFIG_IMPORT" -gt 0 ] 2>/dev/null; then
         run_test "Configuration imported to staging" "true"
     else
         print_warning "Configuration may have differences (this could be normal)"
@@ -513,7 +520,7 @@ if [ -x "./scripts/commands/testos.sh" ]; then
     run_test "testos.sh is executable" "true"
 
     # Test PHPStan (may legitimately fail on fresh OpenSocial)
-    local test_site_path="sites/$TEST_SITE_PREFIX"
+    test_site_path="sites/$TEST_SITE_PREFIX"
     if [ ! -d "$test_site_path" ]; then
         test_site_path="$TEST_SITE_PREFIX"
     fi
@@ -555,9 +562,9 @@ ALL_TEST_SITES=(
 
 for site in "${ALL_TEST_SITES[@]}"; do
     if site_exists "$site"; then
-        # For test_nwp site, drush won't work if production mode was enabled
-        if [ "$site" = "$TEST_SITE_PREFIX" ]; then
-            # Just check if site is running - drush removed by prod mode
+        # For test_nwp and staging sites, drush may not work
+        if [ "$site" = "sites/$TEST_SITE_PREFIX" ] || [ "$site" = "sites/${TEST_SITE_PREFIX}-stg" ]; then
+            # Just check if site is running - drush may be removed or not available
             run_test "Site $site is healthy" "site_is_running $site" "warn"
         else
             run_test "Site $site is healthy" "site_is_running $site && drush_works $site"
@@ -595,6 +602,9 @@ for site in "${AFTER_INSTALL[@]}"; do
     fi
 done
 
+# Strip sites/ prefix if present
+DELETE_TEST_SITE="${DELETE_TEST_SITE#sites/}"
+
 if [ -n "$DELETE_TEST_SITE" ] && site_exists "$DELETE_TEST_SITE"; then
     print_info "Created deletion test site: $DELETE_TEST_SITE"
 
@@ -623,6 +633,9 @@ if [ -n "$DELETE_TEST_SITE" ] && site_exists "$DELETE_TEST_SITE"; then
             break
         fi
     done
+
+    # Strip sites/ prefix if present
+    DELETE_TEST_SITE2="${DELETE_TEST_SITE2#sites/}"
 
     if [ -n "$DELETE_TEST_SITE2" ] && site_exists "$DELETE_TEST_SITE2"; then
         print_info "Created second deletion test site: $DELETE_TEST_SITE2"
@@ -779,8 +792,8 @@ EOF
 
             # TODO: Add actual deployment tests here when stg2prod.sh is ready
             # For now, just verify the scripts exist and are executable
-            run_test "stg2prod.sh exists" "[ -x stg2prod.sh ]"
-            run_test "prod2stg.sh exists" "[ -x prod2stg.sh ]"
+            run_test "stg2prod.sh exists" "[ -x scripts/commands/stg2prod.sh ]"
+            run_test "prod2stg.sh exists" "[ -x scripts/commands/prod2stg.sh ]"
 
             # Cleanup: Delete test instance
             print_info "Cleaning up test Linode instance..."
@@ -896,7 +909,7 @@ print_header "Test 15: Scheduling Features (P14)"
 
 # Check schedule.sh exists and is executable
 run_test "schedule.sh exists" "[ -f scripts/commands/schedule.sh ]"
-run_test "schedule.sh is executable" "[ -x schedule.sh ]"
+run_test "schedule.sh is executable" "[ -x scripts/commands/schedule.sh ]"
 
 if [ -x "scripts/commands/schedule.sh" ]; then
     run_test "schedule.sh has help" "./scripts/commands/schedule.sh --help >/dev/null 2>&1"
@@ -921,7 +934,7 @@ run_test "Docker compose test template exists" "[ -f templates/docker-compose.te
 
 # Site test script (P17)
 run_test "test.sh exists" "[ -f scripts/commands/test.sh ]"
-run_test "test.sh is executable" "[ -x test.sh ]"
+run_test "test.sh is executable" "[ -x scripts/commands/test.sh ]"
 
 if [ -x "scripts/commands/test.sh" ]; then
     run_test "test.sh has help" "./scripts/commands/test.sh --help >/dev/null 2>&1"
@@ -1060,7 +1073,7 @@ print_header "Test 21: Live Server & Security Scripts (P26-P28)"
 
 # Live server provisioning (P26)
 run_test "live.sh exists" "[ -f scripts/commands/live.sh ]"
-run_test "live.sh is executable" "[ -x live.sh ]"
+run_test "live.sh is executable" "[ -x scripts/commands/live.sh ]"
 
 if [ -x "scripts/commands/live.sh" ]; then
     run_test "live.sh has help" "./scripts/commands/live.sh --help >/dev/null 2>&1"
@@ -1074,7 +1087,7 @@ fi
 
 # Security script (P28)
 run_test "security.sh exists" "[ -f scripts/commands/security.sh ]"
-run_test "security.sh is executable" "[ -x security.sh ]"
+run_test "security.sh is executable" "[ -x scripts/commands/security.sh ]"
 
 if [ -x "scripts/commands/security.sh" ]; then
     run_test "security.sh has help" "./scripts/commands/security.sh --help >/dev/null 2>&1"

@@ -6,6 +6,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v0.21.0] - 2026-01-13
+
+### Added
+
+- **YAML Parser Consolidation** (P17)
+  - New unified YAML API with 4 core read functions:
+    - `yaml_get_setting()` - Read settings with dot notation
+    - `yaml_get_array()` - Read array values
+    - `yaml_get_recipe_field()` - Read recipe fields
+    - `yaml_get_secret()` - Read from .secrets.yml
+  - Additional helper functions:
+    - `yaml_get_all_sites()` - List all site names
+    - `yaml_get_coder_list()` - List all coder names
+    - `yaml_get_coder_field()` - Get coder field value
+    - `yaml_get_recipe_list()` - Get recipe list array
+  - 34 comprehensive BATS tests for YAML functions
+  - Full API documentation in `docs/YAML_API.md`
+
+- **yq YAML Processor**
+  - Added yq as required setup component
+  - Automatic installation via snap or binary download
+  - yq-first with AWK fallback pattern for robust parsing
+
+- **Automated Coder Identity Bootstrap**
+  - New system for automated coder identity setup
+  - Streamlined onboarding for new developers
+
+- **AVC-Moodle SSO Integration**
+  - Added Composer to setup prerequisites
+  - Implemented SSO integration between AVC and Moodle
+
+### Changed
+
+- **Migrated 5 files to consolidated YAML functions:**
+  - `lib/cloudflare.sh`
+  - `lib/linode.sh`
+  - `lib/common.sh`
+  - `lib/install-common.sh`
+  - `lib/b2.sh`
+
+- Fixed `pl status` interactive mode with progressive loading
+- Fixed variable name collision in coders.sh
+- Fixed Linode NS record creation grep pattern
+- Fixed Moodle CSS/JS loading in DDEV
+
+### Documentation
+
+- Added comprehensive YAML API documentation
+- Updated roadmap with pragmatic priorities
+- Added API client abstraction proposal for future reference
+
+---
+
 ## [v0.20.0] - 2026-01-12
 
 ### Added

@@ -12,12 +12,12 @@ Pending implementation items and future improvements for NWP.
 
 | Metric | Value |
 |--------|-------|
-| Current Version | v0.20.0 |
-| Test Success Rate | 98% |
-| Completed Proposals | P01-P35, F04, F05, F07, F09 |
+| Current Version | v0.21.0 |
+| Test Success Rate | 93% |
+| Completed Proposals | P01-P35, P17, F04, F05, F07, F09 |
 | Pending Proposals | F01-F03, F06, F08, F10, F11 |
 | Experimental/Outlier | X01 |
-| Recent Enhancements | Documentation restructure (v0.20.0), Verify TUI console (v0.18-v0.19) |
+| Recent Enhancements | YAML Parser Consolidation (v0.21.0), Documentation restructure (v0.20.0) |
 
 ---
 

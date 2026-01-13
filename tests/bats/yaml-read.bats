@@ -13,8 +13,8 @@
 ################################################################################
 
 setup() {
-    # Get project root
-    export PROJECT_ROOT="/home/rob/nwp-yaml-consolidation"
+    # Get project root (auto-detect from test file location)
+    export PROJECT_ROOT="${BATS_TEST_DIRNAME}/../.."
 
     # Source the yaml library
     source "$PROJECT_ROOT/lib/yaml-write.sh"

@@ -1251,6 +1251,179 @@ yaml_get_site_purpose() {
 }
 
 #######################################
+# Get all site names from config
+# Arguments:
+#   $1 - Config file (optional, defaults to YAML_CONFIG_FILE)
+# Outputs:
+#   Site names, one per line
+#######################################
+yaml_get_all_sites() {
+    local config_file="${1:-$YAML_CONFIG_FILE}"
+
+    if [[ ! -f "$config_file" ]]; then
+        echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
+        return 1
+    fi
+
+    # Use yq if available
+    if command -v yq &>/dev/null; then
+        yq eval '.sites | keys | .[]' "$config_file" 2>/dev/null
+        return ${PIPESTATUS[0]}
+    fi
+
+    # Fallback to awk
+    awk '
+        /^sites:/ { in_sites = 1; next }
+        in_sites && /^[a-zA-Z]/ && !/^  / { exit }
+        in_sites && /^  [a-zA-Z_][a-zA-Z0-9_-]*:/ && !/^    / {
+            gsub(/:.*/, "")
+            gsub(/^  /, "")
+            if ($0 !~ /^#/) print
+        }
+    ' "$config_file"
+}
+
+#######################################
+# Get list of coders from other_coders section
+# Arguments:
+#   $1 - Config file (optional, defaults to YAML_CONFIG_FILE)
+# Outputs:
+#   Coder names, one per line
+#######################################
+yaml_get_coder_list() {
+    local config_file="${1:-$YAML_CONFIG_FILE}"
+
+    if [[ ! -f "$config_file" ]]; then
+        echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
+        return 1
+    fi
+
+    # Use yq if available
+    if command -v yq &>/dev/null; then
+        yq eval '.other_coders.coders | keys | .[]' "$config_file" 2>/dev/null
+        return ${PIPESTATUS[0]}
+    fi
+
+    # Fallback to awk
+    awk '
+        /^other_coders:/ { in_other_coders = 1; next }
+        in_other_coders && /^  coders:/ { in_coders = 1; next }
+        in_other_coders && /^[a-zA-Z]/ && !/^  / { exit }
+        in_coders && /^  [a-zA-Z]/ && !/^    / { exit }
+        in_coders && /^    [a-zA-Z_][a-zA-Z0-9_-]*:/ {
+            gsub(/:.*/, "")
+            gsub(/^    /, "")
+            if ($0 !~ /^#/) print
+        }
+    ' "$config_file"
+}
+
+#######################################
+# Get coder field value
+# Arguments:
+#   $1 - Coder name
+#   $2 - Field name (e.g., "email", "status", "notes")
+#   $3 - Config file (optional, defaults to YAML_CONFIG_FILE)
+# Outputs:
+#   Field value or empty string
+#######################################
+yaml_get_coder_field() {
+    local coder_name="$1"
+    local field_name="$2"
+    local config_file="${3:-$YAML_CONFIG_FILE}"
+
+    if [[ -z "$coder_name" || -z "$field_name" ]]; then
+        echo -e "${RED}Error: Coder name and field name are required${NC}" >&2
+        return 1
+    fi
+
+    if [[ ! -f "$config_file" ]]; then
+        echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
+        return 1
+    fi
+
+    # Use yq if available
+    if command -v yq &>/dev/null; then
+        local result
+        result=$(yq eval ".other_coders.coders.${coder_name}.${field_name}" "$config_file" 2>/dev/null)
+        if [[ "$result" != "null" && -n "$result" ]]; then
+            echo "$result"
+            return 0
+        fi
+        return 1
+    fi
+
+    # Fallback to awk
+    awk -v coder="$coder_name" -v field="$field_name" '
+        /^other_coders:/ { in_other_coders = 1; next }
+        in_other_coders && /^  coders:/ { in_coders = 1; next }
+        in_other_coders && /^[a-zA-Z]/ && !/^  / { exit }
+        in_coders && $0 ~ "^    " coder ":" { in_coder = 1; next }
+        in_coder && /^    [a-zA-Z]/ && !/^      / { exit }
+        in_coder && $0 ~ "^      " field ":" {
+            sub("^      " field ": *", "")
+            sub(/ *#.*$/, "")  # Strip comments
+            gsub(/^["'"'"']|["'"'"']$/, "")  # Strip quotes
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "")  # Strip whitespace
+            print
+            exit
+        }
+    ' "$config_file"
+}
+
+#######################################
+# Get recipe list array (e.g., modules list)
+# Arguments:
+#   $1 - Recipe name
+#   $2 - Field name (e.g., "modules")
+#   $3 - Config file (optional, defaults to YAML_CONFIG_FILE)
+# Outputs:
+#   Space-separated list values
+#######################################
+yaml_get_recipe_list() {
+    local recipe_name="$1"
+    local field_name="$2"
+    local config_file="${3:-$YAML_CONFIG_FILE}"
+
+    if [[ -z "$recipe_name" || -z "$field_name" ]]; then
+        echo -e "${RED}Error: Recipe name and field name are required${NC}" >&2
+        return 1
+    fi
+
+    if [[ ! -f "$config_file" ]]; then
+        echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
+        return 1
+    fi
+
+    # Use yq if available (returns newline-separated)
+    if command -v yq &>/dev/null; then
+        local result
+        result=$(yq eval ".recipes.${recipe_name}.${field_name}[]" "$config_file" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
+        if [[ "$result" != "null" && -n "$result" ]]; then
+            echo "$result"
+            return 0
+        fi
+        return 1
+    fi
+
+    # Fallback to awk (returns space-separated for compatibility)
+    awk -v recipe="$recipe_name" -v field="$field_name" '
+        /^recipes:/ { in_recipes = 1; next }
+        in_recipes && /^[a-zA-Z]/ && !/^  / { exit }
+        in_recipes && $0 ~ "^  " recipe ":" { in_recipe = 1; next }
+        in_recipe && /^  [a-zA-Z]/ && !/^    / { exit }
+        in_recipe && $0 ~ "^    " field ":" { in_list = 1; next }
+        in_list && /^    [a-zA-Z]/ { exit }
+        in_list && /^      - / {
+            sub("^      - ", "")
+            gsub(/["'"'"']/, "")
+            printf "%s ", $0
+        }
+        END { print "" }
+    ' "$config_file" | sed 's/ $//'
+}
+
+#######################################
 # Get value from settings section with dot notation
 # Arguments:
 #   $1 - Key path (e.g., "url", "email.domain", "php_settings.memory_limit")

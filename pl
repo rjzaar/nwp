@@ -169,7 +169,7 @@ ${BOLD}SETUP & UTILITIES:${NC}
     setup                           Run setup wizard (18 components)
     setup-ssh                       Setup SSH keys for deployment
     list                            List all tracked sites
-    status <sitename>               Show site status
+    status [options] [sitename]     Show site status (-f for fast text)
     version                         Show NWP version
 
 ${BOLD}MAINTENANCE:${NC}
@@ -450,7 +450,10 @@ show_site_status() {
 cmd_status() {
     local sitename="${1:-}"
 
-    if [ -z "$sitename" ]; then
+    # If first arg is a flag, pass all args to status.sh
+    if [[ "$sitename" == -* ]]; then
+        exec "${SCRIPT_DIR}/scripts/commands/status.sh" "$@"
+    elif [ -z "$sitename" ]; then
         # Launch interactive TUI for overview
         exec "${SCRIPT_DIR}/scripts/commands/status.sh"
     else

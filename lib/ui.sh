@@ -17,6 +17,7 @@ if [[ -t 1 ]]; then
     CYAN=$'\033[0;36m'
     NC=$'\033[0m'
     BOLD=$'\033[1m'
+    DIM=$'\033[2m'
 else
     RED=''
     GREEN=''
@@ -25,6 +26,7 @@ else
     CYAN=''
     NC=''
     BOLD=''
+    DIM=''
 fi
 
 # Print a header banner

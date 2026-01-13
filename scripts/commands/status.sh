@@ -1,5 +1,7 @@
 #!/bin/bash
-set -euo pipefail
+
+# Note: Don't use set -e in interactive TUIs - it causes crashes on edge cases
+# set -euo pipefail  # Disabled for interactive mode
 
 ################################################################################
 # NWP Status Script
@@ -1806,7 +1808,59 @@ SITE_SELECTED=()
 SITE_TYPE=()  # 0=normal, 1=orphan, 2=ghost
 SITE_DATA=()  # Cached display data
 
-# Build cached site data
+# Build cached site data (fast mode - skip expensive operations)
+build_site_cache_fast() {
+    local config_file="$1"
+    SITE_DATA=()
+
+    local idx=0
+    for site in "${SITE_NAMES[@]}"; do
+        local site_type="${SITE_TYPE[$idx]:-0}"
+        local recipe=""
+        local purpose=""
+        local directory=""
+        local domain=""
+
+        if [ "$site_type" = "2" ]; then
+            # Ghost site
+            directory=""
+            recipe="?"
+            purpose="(ghost)"
+        elif [ "$site_type" = "1" ]; then
+            # Orphaned site
+            directory="$PROJECT_ROOT/sites/$site"
+            recipe=$(detect_recipe_from_site "$directory")
+            purpose="(orphan)"
+        else
+            # Normal site - get basic info from cnwp.yml
+            recipe=$(get_site_field "$site" "recipe" "$config_file")
+            purpose=$(get_site_field "$site" "purpose" "$config_file")
+            directory=$(get_site_field "$site" "directory" "$config_file")
+            if [[ "$directory" != /* ]] && [[ "$directory" != sites/* ]]; then
+                directory="sites/$directory"
+            fi
+            domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
+        fi
+
+        # Fast load - use placeholders
+        local stages="?"
+        local ddev="?"
+        local disk="?"
+        local db="?"
+        local health="?"
+        local activity="?"
+        local ssl="?"
+        local ci="?"
+        local users="?"
+
+        # Store as pipe-delimited string
+        SITE_DATA+=("${recipe:-?}|${stages}|${ddev}|${purpose:--}|${disk}|${domain:-}|${users}|${db}|${health}|${activity}|${ssl}|${ci}")
+
+        idx=$((idx + 1))
+    done
+}
+
+# Build cached site data (full mode - includes expensive operations)
 build_site_cache() {
     local config_file="$1"
     SITE_DATA=()
@@ -1976,6 +2030,102 @@ build_site_cache() {
     done
 }
 
+# Load real data for all sites progressively
+load_all_site_data() {
+    local config_file="$1"
+    local current_row="${2:-0}"
+    local current_action="${3:-0}"
+
+    # Get DDEV list once (expensive operation)
+    local ddev_list=""
+    ddev_list=$(ddev list 2>/dev/null) || true
+
+    # Get terminal height for status row
+    local term_height=$(tput lines 2>/dev/null || echo 24)
+    local status_row=$((term_height))
+
+    for idx in "${!SITE_NAMES[@]}"; do
+        local site="${SITE_NAMES[$idx]}"
+        local site_type="${SITE_TYPE[$idx]:-0}"
+
+        # Show loading status at bottom of screen
+        printf "\033[%d;1H" "$status_row"  # Move to status row
+        printf "\033[2K"  # Clear line
+        printf " ${DIM}Loading: %s...${NC}" "$site"
+
+        # Load real data for this site
+        local recipe=""
+        local purpose=""
+        local directory=""
+        local domain=""
+
+        if [ "$site_type" = "2" ]; then
+            # Ghost site
+            directory=""
+            recipe="?"
+            purpose="(ghost)"
+        elif [ "$site_type" = "1" ]; then
+            # Orphaned site
+            directory="$PROJECT_ROOT/sites/$site"
+            recipe=$(detect_recipe_from_site "$directory" 2>/dev/null || echo "?")
+            purpose="(orphan)"
+        else
+            # Normal site
+            recipe=$(get_site_field "$site" "recipe" "$config_file" 2>/dev/null || echo "?")
+            purpose=$(get_site_field "$site" "purpose" "$config_file" 2>/dev/null || echo "-")
+            directory=$(get_site_field "$site" "directory" "$config_file" 2>/dev/null || echo "")
+            if [[ -n "$directory" && "$directory" != /* ]] && [[ "$directory" != sites/* ]]; then
+                directory="sites/$directory"
+            fi
+            domain=$(get_site_nested_field "$site" "live" "domain" "$config_file" 2>/dev/null || echo "")
+        fi
+
+        # Stages
+        local stages=""
+        if [ "$site_type" = "2" ]; then
+            stages="-"
+        else
+            [ -n "$directory" ] && [ -d "$directory" ] && stages="${stages}d"
+            [ -d "${directory}-stg" ] || [ -d "${directory}_stg" ] && stages="${stages}s"
+            if [ "$site_type" = "0" ]; then
+                local live_enabled=$(get_site_nested_field "$site" "live" "enabled" "$config_file" 2>/dev/null || echo "")
+                [ "$live_enabled" == "true" ] && stages="${stages}l"
+            fi
+            [ -d "${directory}-prod" ] || [ -d "${directory}_prod" ] && stages="${stages}p"
+            [ -z "$stages" ] && stages="-"
+        fi
+
+        # DDEV status
+        local ddev="-"
+        if [ "$site_type" = "2" ]; then
+            ddev="ghost"
+        elif [ -n "$directory" ] && [ -d "$directory/.ddev" ]; then
+            local site_basename=$(basename "$directory" 2>/dev/null || echo "")
+            if [ -n "$site_basename" ] && echo "$ddev_list" | grep -q "^${site_basename}.*running"; then
+                ddev="run"
+            else
+                ddev="stop"
+            fi
+        fi
+
+        # Disk usage (can be slow)
+        local disk="-"
+        if [ -n "$directory" ] && [ -d "$directory" ]; then
+            disk=$(du -sh "$directory" 2>/dev/null | awk '{print $1}' || echo "?")
+        fi
+
+        # Update this site's data
+        SITE_DATA[$idx]="${recipe:-?}|${stages}|${ddev}|${purpose:--}|${disk}|-|-|-|-|-|-|-"
+
+        # Redraw screen with current position
+        draw_screen "$current_row" "$current_action" 2>/dev/null || true
+    done
+
+    # Clear status message
+    printf "\033[%d;1H" "$status_row"
+    printf "\033[2K"
+}
+
 # Main interactive loop
 run_interactive() {
     local config_file="$1"
@@ -2022,8 +2172,8 @@ run_interactive() {
         SITE_TYPE+=("2")
     done < <(find_ghost_ddev_sites "$PROJECT_ROOT")
 
-    # Cache site data
-    build_site_cache "$config_file"
+    # Use fast cache first (immediate load with placeholders)
+    build_site_cache_fast "$config_file"
 
     # Calculate column widths based on data
     calculate_column_widths
@@ -2037,9 +2187,17 @@ run_interactive() {
     cursor_hide
     trap 'cursor_show; clear_screen' EXIT
 
-    while true; do
-        draw_screen $current_row $current_action
+    # Draw immediately with placeholders
+    draw_screen $current_row $current_action || {
+        cursor_show
+        echo "Error: draw_screen failed" >&2
+        return 1
+    }
 
+    # Load real data progressively (updates display as it goes)
+    load_all_site_data "$config_file" "$current_row" "$current_action"
+
+    while true; do
         local key=$(read_key)
 
         case "$key" in
@@ -2144,6 +2302,9 @@ run_interactive() {
                 break
                 ;;
         esac
+
+        # Redraw screen after processing key
+        draw_screen $current_row $current_action
     done
 
     cursor_show
@@ -2162,7 +2323,7 @@ ${BOLD}USAGE:${NC}
     ./status.sh [command] [options]
 
 ${BOLD}COMMANDS:${NC}
-    (none)              Interactive mode (default) - select sites with checkboxes
+    (none)              Interactive mode (default)
     health              Run health checks on all sites
     production          Show production status dashboard
     info <site>         Show detailed info for a specific site
@@ -2173,6 +2334,7 @@ ${BOLD}COMMANDS:${NC}
     servers             Show Linode server statistics
 
 ${BOLD}OPTIONS:${NC}
+    -f, --fast          Fast text mode (skip interactive)
     -r, --recipes       Show only recipes
     -s, --sites         Show only sites
     -v, --verbose       Show detailed information (purpose, domain)
@@ -2181,8 +2343,9 @@ ${BOLD}OPTIONS:${NC}
     -h, --help          Show this help
 
 ${BOLD}EXAMPLES:${NC}
-    ./status.sh                  Interactive mode (default)
-    ./status.sh -s               Text status view (sites only)
+    ./status.sh                  Interactive mode (instant load with ? placeholders)
+    ./status.sh -f               Fast text status view
+    ./status.sh -s               Sites-only text view
     ./status.sh -v               Verbose text status with domains
     ./status.sh -a               Full status with health, disk, db info
     ./status.sh health           Run health checks on all sites
@@ -2192,13 +2355,16 @@ ${BOLD}EXAMPLES:${NC}
     ./status.sh servers          Show Linode server stats
 
 ${BOLD}INTERACTIVE MODE (default):${NC}
+    Initial load shows '?' for data being loaded
+    Press 'r' to fully refresh DDEV status, disk usage, health checks, etc.
+
     ↑/↓         Navigate sites
     ←/→         Select action (Info/Start/Stop/Restart/Health/Delete/Setup)
     SPACE       Toggle site selection
     ENTER       Execute action on selected sites
     a           Select all sites
     n           Deselect all sites
-    r           Refresh data (DDEV status, disk usage, etc.)
+    r           Refresh - load full data (DDEV, disk, health, SSL, etc.)
     s           Setup - configure visible columns
     q           Quit
 
@@ -2231,7 +2397,7 @@ main() {
     local verbose=false
     local show_all=false
     local force=false
-    local interactive=false
+    local fast_mode=false
     local site_arg=""
 
     # Parse arguments
@@ -2242,8 +2408,8 @@ main() {
                 shift
                 [ $# -gt 0 ] && [ "${1:0:1}" != "-" ] && { site_arg="$1"; shift; }
                 ;;
-            -i|--interactive)
-                interactive=true
+            -f|--fast)
+                fast_mode=true
                 shift
                 ;;
             -r|--recipes)
@@ -2288,10 +2454,21 @@ main() {
         exit 1
     fi
 
-    # Interactive mode is default when no command specified
+    # Fast text mode explicitly requested
+    if [ "$fast_mode" = true ]; then
+        show_sites_only=true
+    fi
+
+    # Default to interactive mode
     if [ -z "$command" ] && [ "$show_recipes_only" = false ] && [ "$show_sites_only" = false ] && [ "$verbose" = false ] && [ "$show_all" = false ]; then
-        run_interactive "$CONFIG_FILE"
-        exit 0
+        # Check if we have a TTY for interactive mode
+        if [[ -t 0 ]] && [[ -t 1 ]]; then
+            run_interactive "$CONFIG_FILE"
+            exit 0
+        else
+            # No TTY - fall back to fast text mode
+            show_sites_only=true
+        fi
     fi
 
     # Execute command

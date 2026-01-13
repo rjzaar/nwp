@@ -840,10 +840,29 @@ CONFIG_SPLIT_EOF
                 print_header "Installing Development Modules"
                 print_info "Modules: $dev_modules"
 
-                if ! ddev drush pm:enable $dev_modules -y; then
-                    print_error "Failed to install dev modules: $dev_modules"
+                # Install dev modules via composer first
+                local composer_packages=""
+                for module in $dev_modules; do
+                    # Convert module name to composer package (e.g., devel -> drupal/devel)
+                    if [[ ! "$module" =~ ^drupal/ ]]; then
+                        composer_packages="$composer_packages drupal/$module"
+                    else
+                        composer_packages="$composer_packages $module"
+                    fi
+                done
+
+                print_info "Installing via composer: $composer_packages"
+                if ! ddev composer require $composer_packages --dev --no-interaction; then
+                    print_error "Failed to install dev modules via composer"
                 else
-                    print_status "OK" "Development modules installed"
+                    print_status "OK" "Dev modules installed via composer"
+
+                    # Now enable the modules
+                    if ! ddev drush pm:enable $dev_modules -y; then
+                        print_error "Failed to enable dev modules: $dev_modules"
+                    else
+                        print_status "OK" "Development modules enabled"
+                    fi
                 fi
             fi
         fi

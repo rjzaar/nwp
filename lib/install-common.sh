@@ -505,24 +505,29 @@ get_recipe_value() {
     local key=$2
     local config_file="${3:-cnwp.yml}"
 
-    # Use awk to extract the value
-    awk -v recipe="$recipe" -v key="$key" '
-        BEGIN { in_recipe = 0; found = 0 }
-        /^  [a-zA-Z0-9_-]+:/ {
-            if ($1 == recipe":") {
-                in_recipe = 1
-            } else if (in_recipe && /^  [a-zA-Z0-9_-]+:/) {
-                in_recipe = 0
+    # Use consolidated YAML function
+    if command -v yaml_get_recipe_field &>/dev/null; then
+        yaml_get_recipe_field "$recipe" "$key" "$config_file" 2>/dev/null || true
+    else
+        # Fallback to inline AWK if yaml-write.sh not available
+        awk -v recipe="$recipe" -v key="$key" '
+            BEGIN { in_recipe = 0; found = 0 }
+            /^  [a-zA-Z0-9_-]+:/ {
+                if ($1 == recipe":") {
+                    in_recipe = 1
+                } else if (in_recipe && /^  [a-zA-Z0-9_-]+:/) {
+                    in_recipe = 0
+                }
             }
-        }
-        in_recipe && $0 ~ "^    " key ":" {
-            sub("^    " key ": *", "")
-            sub(" *#.*$", "")  # Strip trailing YAML comments
-            print
-            found = 1
-            exit
-        }
-    ' "$config_file"
+            in_recipe && $0 ~ "^    " key ":" {
+                sub("^    " key ": *", "")
+                sub(" *#.*$", "")  # Strip trailing YAML comments
+                print
+                found = 1
+                exit
+            }
+        ' "$config_file"
+    fi
 }
 
 # Get a list value from a recipe (returns space-separated items)
@@ -597,25 +602,30 @@ get_settings_value() {
         default_value=""
     fi
 
-    # Use awk to extract values from settings section (indented under settings:)
+    # Use consolidated YAML function
     local result
-    result=$(awk -v key="$key" '
-        BEGIN { in_settings = 0 }
-        /^settings:/ {
-            in_settings = 1
-            next
-        }
-        in_settings && /^[a-zA-Z0-9_-]+:/ {
-            # Exited settings section
-            in_settings = 0
-        }
-        in_settings && /^  [a-zA-Z0-9_-]+:/ && $1 == key":" {
-            sub("^  " key ": *", "")
-            sub(/[[:space:]]*#.*$/, "")  # Strip trailing comments
-            print
-            exit
-        }
-    ' "$config_file" 2>/dev/null)
+    if command -v yaml_get_setting &>/dev/null; then
+        result=$(yaml_get_setting "$key" "$config_file" 2>/dev/null || true)
+    else
+        # Fallback to inline AWK if yaml-write.sh not available
+        result=$(awk -v key="$key" '
+            BEGIN { in_settings = 0 }
+            /^settings:/ {
+                in_settings = 1
+                next
+            }
+            in_settings && /^[a-zA-Z0-9_-]+:/ {
+                # Exited settings section
+                in_settings = 0
+            }
+            in_settings && /^  [a-zA-Z0-9_-]+:/ && $1 == key":" {
+                sub("^  " key ": *", "")
+                sub(/[[:space:]]*#.*$/, "")  # Strip trailing comments
+                print
+                exit
+            }
+        ' "$config_file" 2>/dev/null)
+    fi
 
     # Return result or default
     if [[ -n "$result" ]]; then

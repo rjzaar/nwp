@@ -120,24 +120,30 @@ get_secret() {
         return
     fi
 
-    # Parse section.key format
-    local section="${path%%.*}"
-    local key="${path#*.}"
+    # Use consolidated YAML function
+    local value=""
+    if command -v yaml_get_secret &>/dev/null; then
+        value=$(yaml_get_secret "$path" "$secrets_file" 2>/dev/null || true)
+    else
+        # Fallback to inline AWK if yaml-write.sh not available
+        local section="${path%%.*}"
+        local key="${path#*.}"
 
-    local value=$(awk -v section="$section" -v key="$key" '
-        $0 ~ "^" section ":" { in_section = 1; next }
-        in_section && /^[a-zA-Z]/ && !/^  / { in_section = 0 }
-        in_section && $0 ~ "^  " key ":" {
-            sub("^  " key ": *", "")
-            gsub(/["'"'"']/, "")
-            # Remove inline comments
-            sub(/ *#.*$/, "")
-            # Trim whitespace
-            gsub(/^[ \t]+|[ \t]+$/, "")
-            print
-            exit
-        }
-    ' "$secrets_file")
+        value=$(awk -v section="$section" -v key="$key" '
+            $0 ~ "^" section ":" { in_section = 1; next }
+            in_section && /^[a-zA-Z]/ && !/^  / { in_section = 0 }
+            in_section && $0 ~ "^  " key ":" {
+                sub("^  " key ": *", "")
+                gsub(/["'"'"']/, "")
+                # Remove inline comments
+                sub(/ *#.*$/, "")
+                # Trim whitespace
+                gsub(/^[ \t]+|[ \t]+$/, "")
+                print
+                exit
+            }
+        ' "$secrets_file")
+    fi
 
     if [ -n "$value" ] && [ "$value" != "" ]; then
         echo "$value"

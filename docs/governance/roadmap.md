@@ -1,6 +1,6 @@
 # NWP Roadmap - Pending & Future Work
 
-**Last Updated:** January 12, 2026
+**Last Updated:** January 13, 2026
 
 Pending implementation items and future improvements for NWP.
 
@@ -1089,6 +1089,244 @@ Should X01 be implemented? Only if:
 5. Revisit if demand emerges
 
 **If building anyway, choose Approach A (API Integration)** with Pictory as first provider.
+
+---
+
+## Deep Analysis Re-Evaluation (January 2026)
+
+**Full Report:** [NWP_DEEP_ANALYSIS_REEVALUATION.md](../reports/NWP_DEEP_ANALYSIS_REEVALUATION.md)
+
+A comprehensive re-evaluation of all recommendations from the NWP Deep Analysis, applying YAGNI principle and 1-2 developer reality. Out of 33 major recommendations:
+
+- **11 (33%) - DO IT**: Real problems with clear ROI
+- **13 (39%) - DON'T**: Over-engineering or YAGNI violations
+- **9 (27%) - MAYBE**: Context-dependent, nice-to-have
+
+**Time Saved:** 400-650 hours of over-engineering avoided
+
+---
+
+### Priority 1: Critical (20 hours, DO IT)
+
+| Item | Effort | Status | Rationale |
+|------|--------|--------|-----------|
+| **YAML Parsing Consolidation** | 6h | PLANNED | Real duplication across 5+ files, causes maintenance burden |
+| **Documentation Organization** | 3h | PLANNED | 14 orphaned docs, 140 [PLANNED] options confusing users |
+| **pl doctor Command** | 10h | PLANNED | High troubleshooting value, catches common issues early |
+
+**Total: ~20 hours, high impact**
+
+---
+
+### Priority 2: Important (12 hours, DO IT)
+
+| Item | Effort | Status | Rationale |
+|------|--------|--------|-----------|
+| **Progress Indicators** | 10h | PLANNED | Users think commands hang, real UX problem |
+| **NO_COLOR Support** | 1h | PLANNED | Standard convention, easy win |
+| **SSH Host Key Documentation** | 0.5h | PLANNED | Document security trade-offs |
+
+**Total: ~12 hours, good value**
+
+---
+
+### Priority 3: Optional (33 hours, MAYBE)
+
+| Item | Effort | Condition |
+|------|--------|-----------|
+| **Better Error Messages** | 3h | Fix top 5 incrementally |
+| **E2E Smoke Tests** | 10h | One test only, not comprehensive suite |
+| **Visual Regression Testing** | 20h | Only if active theme development |
+| **CI Integration Tests** | 2h | Add DDEV to CI infrastructure |
+| **Command Reference Matrix** | 1h | Add "Common Workflows" section only |
+| **Group Setup Components** | 2h | If onboarding many users regularly |
+| **--dry-run Flag** | 10h | If preview capability valuable |
+| **Audit Outdated Docs** | Ongoing | Fix incrementally as noticed |
+| **SSH Host Key Verification** | 3h | If security > convenience |
+
+**Total: ~33 hours if all done, pick and choose based on need**
+
+---
+
+### Confirmed NOT Worth It (400+ hours saved)
+
+These items were thoroughly evaluated and rejected as over-engineering for NWP's scale:
+
+#### Architecture Over-Engineering (100+ hours)
+
+| Item | Why Not | Hours Saved |
+|------|---------|-------------|
+| **API Abstraction Layer** | APIs break 1-2x/year, fix in 5 min. No ROI for 40+ hour investment. | 40+ |
+| **Break Apart God Objects** | No bugs from status.sh or coders.sh. Working code isn't debt. | 32-48 |
+| **Monolithic Function Refactoring** | install_drupal() works fine. No tests needed if not breaking. | 16-24 |
+| **Break Circular Dependencies** | No evidence of problems. Academic exercise. | 8-16 |
+
+#### Testing Over-Engineering (150+ hours)
+
+| Item | Why Not | Hours Saved |
+|------|---------|-------------|
+| **80% Test Coverage Target** | Vanity metric. Current 15-20% catches bugs fine. | 80-160 |
+| **TUI Testing Framework** | Complex, fragile, not worth maintenance burden. | 20-30 |
+| **Comprehensive E2E Suite** | Manual testing works. One smoke test sufficient. | 50-80 |
+
+#### Feature Over-Engineering (150+ hours)
+
+| Item | Why Not | Hours Saved |
+|------|---------|-------------|
+| **GitLab MCP Integration** | Saves 5 seconds per CI failure. Not worth 16 hours. | 16 |
+| **Auto-Fix CI Errors** | Way over-engineered. Developers can fix their own errors. | 40-80 |
+| **Badge System** | Private tool with no audience. Who's seeing these badges? | 20-40 |
+| **Video Generation** | Massive scope creep. Not infrastructure tool's job. | 40-80 |
+| **Malicious Code Detection** | No external contributors. Solving non-existent problem. | 20-40 |
+
+#### UX Over-Engineering (30+ hours)
+
+| Item | Why Not | Hours Saved |
+|------|---------|-------------|
+| **Group Confirmation Prompts** | Users can press Enter. Not a real problem. | 3-6 |
+| **--json Output** | No API consumers. Building for hypothetical users. | 8-12 |
+| **Command Suggestions on Typo** | Nice-to-have but low ROI. | 4-8 |
+| **Summary After Operations** | Already have output. More polish than value. | 6-10 |
+
+#### Rewrite Fantasies (200+ hours)
+
+| Item | Why Not | Hours Saved |
+|------|---------|-------------|
+| **Rewrite Bash to Go/Python** | 48K lines work fine. Rewrite would introduce bugs. | 200+ |
+| **Plugin System for Recipes** | No external recipe developers. YAGNI. | 40+ |
+
+---
+
+### Reality Check Principles Applied
+
+1. **YAGNI (You Aren't Gonna Need It)**
+   - Don't build for hypothetical problems
+   - API abstraction for APIs that rarely break
+   - Malicious code detection with no contributors
+
+2. **80/20 Rule**
+   - 20% of effort provides 80% of value
+   - Focus on real user pain: progress, docs, troubleshooting
+   - Skip academic exercises: god objects, circular deps
+
+3. **Real vs Hypothetical Problems**
+   - **Real:** Users think commands hang (no progress)
+   - **Hypothetical:** God objects might cause bugs someday
+   - **Real:** Docs hard to find (14 orphaned)
+   - **Hypothetical:** APIs might break frequently (they don't)
+
+4. **Scale-Appropriate Solutions**
+   - 1-2 developers don't need enterprise testing frameworks
+   - Fix bugs as they occur, don't chase coverage percentages
+   - Human processes over automation where appropriate
+
+---
+
+### Time Investment Comparison
+
+**If following original deep analysis:** 500-800 hours (3-5 months full-time)
+
+**If following re-evaluation:**
+- Priority 1 (Critical): 20 hours
+- Priority 2 (Important): 12 hours
+- Priority 3 (Optional): 0-33 hours (pick and choose)
+- **Total: 32-65 hours (1-2 weeks)**
+
+**Time saved by not over-engineering:** 435-768 hours (2-4.5 months)
+
+**Better use of saved time:**
+- Build features users actually want
+- Improve existing functionality
+- Document what exists
+- Or take a well-deserved vacation
+
+---
+
+### Implementation Approach
+
+#### This Month (Priority 1 - 20 hours)
+
+1. **Consolidate YAML parsing** (6h)
+   ```bash
+   # Create lib/yaml-helpers.sh
+   # Migrate 5+ duplicate parsers
+   # Add yq support with awk fallback
+   ```
+
+2. **Organize documentation** (3h)
+   ```bash
+   # Index 14 orphaned docs
+   # Link governance docs from main README
+   # Clean up [PLANNED] markers in cnwp.yml
+   ```
+
+3. **Add pl doctor command** (10h)
+   ```bash
+   # Check prerequisites (DDEV, Docker, PHP, Composer)
+   # Verify configuration (cnwp.yml, .secrets.yml)
+   # Diagnose common issues (ports, permissions, DNS)
+   # Show actionable fix suggestions
+   ```
+
+#### Next Month (Priority 2 - 12 hours)
+
+4. **Add progress indicators** (10h)
+   - Spinners for short operations
+   - Step progress for workflows
+   - Periodic status updates for long ops
+
+5. **NO_COLOR support** (1h)
+   - Check NO_COLOR env var in lib/ui.sh
+   - Disable colors if set
+
+6. **Document SSH host key behavior** (0.5h)
+   - Explain accept-new trade-offs
+   - Document strict mode option
+
+#### Later (Priority 3 - Pick and choose)
+
+Only implement if you have spare time and the specific need arises:
+
+- Better error messages (fix top 5 most common)
+- One E2E smoke test (not comprehensive suite)
+- Visual regression testing (only if theme work)
+- CI integration tests (if CI infrastructure allows)
+
+---
+
+### Never Do List (Confirmed)
+
+Do not attempt these items - they were thoroughly evaluated and rejected:
+
+❌ **Architecture:**
+- API abstraction layers
+- Break apart god objects
+- Refactor monolithic functions
+- Break circular dependencies
+
+❌ **Testing:**
+- Chase 80% test coverage
+- TUI testing framework
+- Comprehensive E2E suites
+
+❌ **Features:**
+- GitLab MCP integration
+- Auto-fix CI errors
+- Badge systems
+- Video generation
+- Malicious code detection (without contributors)
+
+❌ **UX:**
+- Group confirmation prompts
+- --json output
+- Command suggestions
+- Comprehensive summaries
+
+❌ **Rewrites:**
+- Rewrite bash to Go/Python
+- Plugin system for recipes
+
+**Reasoning:** These items solve hypothetical problems, not real ones. They're over-engineered for a 1-2 developer project. Time is better spent on features users actually want.
 
 ---
 

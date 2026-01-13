@@ -580,6 +580,24 @@ recipes:
     # database: mariadb                  # [ACTIVE] Override settings.database
     # Development mode (disabled for production recipe)
     # dev: n                             # [ACTIVE] Don't install dev modules
+
+    # === Moodle Integration Settings [ACTIVE] ===
+    # Configure SSO and data synchronization with Moodle LMS
+    moodle_integration:
+      moodle_site: ""                    # [ACTIVE] Linked Moodle site name (e.g., 'ss')
+      moodle_url: ""                     # [ACTIVE] Moodle URL (auto-detected if empty)
+      oauth2_token_lifetime: 300         # [ACTIVE] OAuth2 token lifetime (seconds, default: 5 minutes)
+      sync_interval: 3600                # [ACTIVE] Role sync interval for cron (seconds, default: 1 hour)
+
+      # Role Mapping: AVC Guild Role → Moodle Role
+      # These mappings control how guild roles in AVC translate to Moodle permissions
+      role_mapping:
+        guild_admin: manager             # [ACTIVE] Guild admin → Moodle manager
+        guild_facilitator: teacher       # [ACTIVE] Guild facilitator → Moodle teacher
+        guild_mentor: teacher            # [ACTIVE] Guild mentor → Moodle teacher
+        guild_member: student            # [ACTIVE] Guild member → Moodle student
+        default: student                 # [ACTIVE] Default role for all AVC members
+
     # Options: TUI checkbox selections during install (y = pre-selected)
     options:
       # === Development (environment: dev) ===
@@ -616,6 +634,11 @@ recipes:
       # === Migration (environment: all) ===
       migration:                         # Create migration folder for importing content
 
+      # === Moodle Integration (environment: all) [ACTIVE] ===
+      moodle_sso:                        # Enable OAuth2 SSO with Moodle LMS
+      moodle_role_sync:                  # Auto-sync guild roles to Moodle cohorts
+      moodle_badge_display:              # Display Moodle badges on AVC profiles
+
   avc-dev:
     # [ACTIVE] AV Commons - For profile/module developers
     # Use this when: Developing AVC modules, fixing bugs, adding features
@@ -637,6 +660,24 @@ recipes:
     # Development mode (enabled for developer recipe)
     dev: y                               # [ACTIVE] Install dev modules
     dev_modules: devel webprofiler kint  # [ACTIVE] Modules to install
+
+    # === Moodle Integration Settings [ACTIVE] ===
+    # Configure SSO and data synchronization with Moodle LMS
+    moodle_integration:
+      moodle_site: ""                    # [ACTIVE] Linked Moodle site name (e.g., 'ss')
+      moodle_url: ""                     # [ACTIVE] Moodle URL (auto-detected if empty)
+      oauth2_token_lifetime: 300         # [ACTIVE] OAuth2 token lifetime (seconds, default: 5 minutes)
+      sync_interval: 3600                # [ACTIVE] Role sync interval for cron (seconds, default: 1 hour)
+
+      # Role Mapping: AVC Guild Role → Moodle Role
+      # These mappings control how guild roles in AVC translate to Moodle permissions
+      role_mapping:
+        guild_admin: manager             # [ACTIVE] Guild admin → Moodle manager
+        guild_facilitator: teacher       # [ACTIVE] Guild facilitator → Moodle teacher
+        guild_mentor: teacher            # [ACTIVE] Guild mentor → Moodle teacher
+        guild_member: student            # [ACTIVE] Guild member → Moodle student
+        default: student                 # [ACTIVE] Default role for all AVC members
+
     # Options: TUI checkbox selections during install (y = pre-selected)
     options:
       # === Development (environment: dev) ===
@@ -672,6 +713,11 @@ recipes:
 
       # === Migration (environment: all) ===
       migration:                         # Create migration folder for importing content
+
+      # === Moodle Integration (environment: all) [ACTIVE] ===
+      moodle_sso:                        # Enable OAuth2 SSO with Moodle LMS
+      moodle_role_sync:                  # Auto-sync guild roles to Moodle cohorts
+      moodle_badge_display:              # Display Moodle badges on AVC profiles
 
   dm:
     # [ACTIVE] Divine Mercy recipe
@@ -734,6 +780,19 @@ recipes:
     # Optional overrides (if not set, uses settings defaults, then Moodle defaults)
     php: 8.1                       # [ACTIVE] Moodle 4.x requires PHP 8.1
     database: mariadb              # [ACTIVE] Moodle default database
+
+    # === AVC Integration Settings [ACTIVE] ===
+    # Configure OAuth2 authentication from AV Commons sites
+    avc_integration:
+      avc_site: ""                 # [ACTIVE] Linked AVC site name (e.g., 'avc')
+      avc_url: ""                  # [ACTIVE] AVC URL (auto-detected if empty)
+      default_role: student        # [ACTIVE] Default Moodle role for all AVC members
+
+    # Options: TUI checkbox selections during install (y = pre-selected)
+    options:
+      # === AVC Integration (environment: all) [ACTIVE] ===
+      avc_sso:                     # Enable OAuth2 authentication from AVC
+      avc_cohort_sync:             # Enable automatic cohort-role synchronization
 
   # === GITLAB RECIPE ===
   gitlab:

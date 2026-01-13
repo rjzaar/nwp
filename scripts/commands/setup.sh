@@ -85,6 +85,7 @@ declare -a COMPONENTS=(
     "docker|Docker Engine|-|core|required|Container runtime for running DDEV and local development environments|"
     "docker_compose|Docker Compose Plugin|docker|core|required|Multi-container orchestration plugin for Docker|"
     "docker_group|Docker Group Membership|docker|core|required|Allows running Docker commands without sudo|"
+    "composer|Composer Dependency Manager|-|core|required|PHP dependency manager for Drupal and other recipes|"
     "ddev|DDEV Development Environment|docker|core|required|Local PHP development environment with per-project containers|"
     "ddev_config|DDEV Global Configuration|ddev|core|required|Default DDEV settings (PHP version, ports, DNS)|"
     "mkcert|mkcert SSL Tool|-|core|recommended|Creates locally-trusted SSL certificates for HTTPS|"
@@ -671,6 +672,7 @@ get_base_url_from_config() {
 check_docker_installed() { command -v docker &>/dev/null && docker --version &>/dev/null; }
 check_docker_compose_installed() { docker compose version &>/dev/null 2>&1; }
 check_docker_group() { groups 2>/dev/null | grep -q docker; }
+check_composer_installed() { command -v composer &>/dev/null && composer --version &>/dev/null; }
 check_mkcert_installed() { command -v mkcert &>/dev/null; }
 check_mkcert_ca_installed() {
     check_mkcert_installed || return 1
@@ -738,6 +740,7 @@ detect_component_state() {
         docker)           check_docker_installed ;;
         docker_compose)   check_docker_compose_installed ;;
         docker_group)     check_docker_group ;;
+        composer)         check_composer_installed ;;
         mkcert)           check_mkcert_installed ;;
         mkcert_ca)        check_mkcert_ca_installed ;;
         ddev)             check_ddev_installed ;;
@@ -859,6 +862,26 @@ install_docker_group() {
     sudo usermod -aG docker $USER
     print_status "OK" "User added to docker group"
     print_status "WARN" "Log out and back in to take effect"
+}
+
+install_composer() {
+    print_status "INFO" "Installing Composer..."
+    # Download and verify Composer installer
+    local expected_checksum="$(curl -fsSL https://composer.github.io/installer.sig)"
+    curl -fsSL https://getcomposer.org/installer -o /tmp/composer-setup.php
+    local actual_checksum="$(php -r "echo hash_file('sha384', '/tmp/composer-setup.php');")"
+
+    if [ "$expected_checksum" != "$actual_checksum" ]; then
+        print_status "FAIL" "Composer installer checksum mismatch"
+        rm /tmp/composer-setup.php
+        return 1
+    fi
+
+    # Install Composer globally
+    sudo php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+    rm /tmp/composer-setup.php
+
+    print_status "OK" "Composer installed ($(composer --version 2>/dev/null | head -1 || echo 'version unknown'))"
 }
 
 install_mkcert() {
@@ -1046,6 +1069,7 @@ install_component() {
         docker)           install_docker ;;
         docker_compose)   print_status "OK" "Included with Docker" ;;
         docker_group)     install_docker_group ;;
+        composer)         install_composer ;;
         mkcert)           install_mkcert ;;
         mkcert_ca)        install_mkcert_ca ;;
         ddev)             install_ddev ;;

@@ -9,6 +9,12 @@
 # Note: This library requires lib/ui.sh to be sourced first for print_error
 ################################################################################
 
+# Source yaml-write.sh for consolidated YAML functions
+COMMON_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$COMMON_LIB_DIR/yaml-write.sh" ]; then
+    source "$COMMON_LIB_DIR/yaml-write.sh"
+fi
+
 # Debug message - only prints when DEBUG=true
 # Usage: debug_msg "message"
 debug_msg() {
@@ -120,24 +126,8 @@ get_secret() {
         return
     fi
 
-    # Parse section.key format
-    local section="${path%%.*}"
-    local key="${path#*.}"
-
-    local value=$(awk -v section="$section" -v key="$key" '
-        $0 ~ "^" section ":" { in_section = 1; next }
-        in_section && /^[a-zA-Z]/ && !/^  / { in_section = 0 }
-        in_section && $0 ~ "^  " key ":" {
-            sub("^  " key ": *", "")
-            gsub(/["'"'"']/, "")
-            # Remove inline comments
-            sub(/ *#.*$/, "")
-            # Trim whitespace
-            gsub(/^[ \t]+|[ \t]+$/, "")
-            print
-            exit
-        }
-    ' "$secrets_file")
+    # Use consolidated yaml_get_secret function
+    local value=$(yaml_get_secret "$path" "$secrets_file")
 
     if [ -n "$value" ] && [ "$value" != "" ]; then
         echo "$value"
@@ -311,42 +301,14 @@ get_setting() {
         return
     fi
 
-    # Parse section.key format
-    local section="${path%%.*}"
-    local key="${path#*.}"
-
-    # Special handling for settings section
-    if [ "$section" == "settings" ] || [ "$section" == "$key" ]; then
-        # Direct settings lookup
-        local value=$(awk -v key="$key" '
-            /^settings:/ { in_settings = 1; next }
-            in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
-            in_settings && $0 ~ "^  " key ":" {
-                sub("^  " key ": *", "")
-                gsub(/["'"'"']/, "")
-                sub(/ *#.*$/, "")
-                gsub(/^[ \t]+|[ \t]+$/, "")
-                print
-                exit
-            }
-        ' "$config_file")
-    else
-        # Nested settings lookup (e.g., php_settings.memory_limit)
-        local value=$(awk -v section="$section" -v key="$key" '
-            /^settings:/ { in_settings = 1; next }
-            in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
-            in_settings && $0 ~ "^  " section ":" { in_section = 1; next }
-            in_section && /^  [a-zA-Z]/ && !/^    / { in_section = 0 }
-            in_section && $0 ~ "^    " key ":" {
-                sub("^    " key ": *", "")
-                gsub(/["'"'"']/, "")
-                sub(/ *#.*$/, "")
-                gsub(/^[ \t]+|[ \t]+$/, "")
-                print
-                exit
-            }
-        ' "$config_file")
+    # Handle both "key" and "section.key" format
+    # If no dot in path, assume it's directly under settings
+    if [[ "$path" != *.* ]]; then
+        path="$path"  # Simple key like "url"
     fi
+
+    # Use consolidated yaml_get_setting function
+    local value=$(yaml_get_setting "$path" "$config_file")
 
     if [ -n "$value" ] && [ "$value" != "" ]; then
         echo "$value"

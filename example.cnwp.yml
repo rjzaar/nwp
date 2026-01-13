@@ -661,6 +661,12 @@ recipes:
     dev: y                               # [ACTIVE] Install dev modules
     dev_modules: devel webprofiler kint  # [ACTIVE] Modules to install
 
+    # Sample content generation modules for development/testing
+    post_install_modules:
+      - avc_devel                        # [ACTIVE] AVC content generation and cleanup tools
+      - social_demo                      # [ACTIVE] Social demo content generation
+      - graphql                          # [ACTIVE] GraphQL API (required by social_demo)
+
     # === Moodle Integration Settings [ACTIVE] ===
     # Configure SSO and data synchronization with Moodle LMS
     moodle_integration:

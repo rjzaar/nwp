@@ -667,6 +667,12 @@ recipes:
       - social_demo                      # [ACTIVE] Social demo content generation
       - graphql                          # [ACTIVE] GraphQL API (required by social_demo)
 
+    # Post-install scripts for development setup
+    post_install_scripts:
+      - profiles/custom/avc/modules/avc_features/avc_content/scripts/seed_content_data.php
+      - profiles/custom/avc/modules/avc_features/workflow_assignment/scripts/seed_workflow_data.php
+      - profiles/custom/avc/scripts/generate_sample_content.sh  # [ACTIVE] Auto-generate comprehensive sample content
+
     # === Moodle Integration Settings [ACTIVE] ===
     # Configure SSO and data synchronization with Moodle LMS
     moodle_integration:

@@ -93,6 +93,7 @@ declare -a COMPONENTS=(
     "mkcert_ca|mkcert Certificate Authority|mkcert|core|recommended|Root CA for browser-trusted local SSL certificates|"
 
     # NWP Tools
+    "yq|yq YAML Processor|-|tools|required|Command-line YAML processor for robust config parsing (like jq for YAML)|"
     "nwp_config|NWP Configuration (cnwp.yml)|-|tools|required|Main config file defining sites, recipes, and settings|"
     "nwp_cli|NWP CLI Command|nwp_config|tools|recommended|Global command to run NWP from any directory (pl, pl1, pl2, etc.)|cli_command"
     "nwp_secrets|NWP Secrets (.secrets.yml)|-|tools|recommended|API tokens for Linode, Cloudflare, GitLab integration|"
@@ -670,6 +671,7 @@ get_base_url_from_config() {
 # State Detection Functions
 ################################################################################
 
+check_yq_installed() { command -v yq &>/dev/null && yq --version &>/dev/null 2>&1; }
 check_docker_installed() { command -v docker &>/dev/null && docker --version &>/dev/null; }
 check_docker_compose_installed() { docker compose version &>/dev/null 2>&1; }
 check_docker_group() { groups 2>/dev/null | grep -q docker; }
@@ -739,6 +741,7 @@ check_gitlab_composer_exists() {
 detect_component_state() {
     local id="$1"
     case "$id" in
+        yq)               check_yq_installed ;;
         docker)           check_docker_installed ;;
         docker_compose)   check_docker_compose_installed ;;
         docker_group)     check_docker_group ;;
@@ -842,6 +845,33 @@ enforce_dependencies() {
 ################################################################################
 # Installation Functions
 ################################################################################
+
+install_yq() {
+    print_status "INFO" "Installing yq YAML processor..."
+    log_action "Installing yq"
+
+    # Try snap first (cleanest on Ubuntu)
+    if command -v snap &>/dev/null; then
+        sudo snap install yq
+        print_status "OK" "yq installed via snap"
+        return 0
+    fi
+
+    # Fallback: download binary directly
+    local yq_version="v4.44.1"
+    local yq_binary="yq_linux_amd64"
+    local yq_url="https://github.com/mikefarah/yq/releases/download/${yq_version}/${yq_binary}"
+
+    print_status "INFO" "Downloading yq ${yq_version}..."
+    if curl -fsSL "$yq_url" -o /tmp/yq; then
+        sudo mv /tmp/yq /usr/local/bin/yq
+        sudo chmod +x /usr/local/bin/yq
+        print_status "OK" "yq installed to /usr/local/bin/yq"
+    else
+        print_status "FAIL" "Failed to download yq"
+        return 1
+    fi
+}
 
 install_docker() {
     print_status "INFO" "Installing Docker Engine..."
@@ -1077,6 +1107,7 @@ EOF
 install_component() {
     local id="$1"
     case "$id" in
+        yq)               install_yq ;;
         docker)           install_docker ;;
         docker_compose)   print_status "OK" "Included with Docker" ;;
         docker_group)     install_docker_group ;;

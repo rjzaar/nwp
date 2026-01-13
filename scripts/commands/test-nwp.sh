@@ -301,15 +301,14 @@ print_header "Test 1: Installation"
 # First, create a test recipe in cnwp.yml if it doesn't exist
 if ! grep -q "^  ${TEST_SITE_PREFIX}:" cnwp.yml 2>/dev/null; then
     print_info "Adding test recipe to cnwp.yml..."
-    # Add with proper indentation (2 spaces for recipe name, 4 for properties)
-    cat >> cnwp.yml << 'EOF'
-
-  test-nwp:
-    source: goalgorilla/social_template:dev-master
-    profile: social
-    webroot: html
-    auto: y
-EOF
+    # Insert recipe into the recipes: section (not at end of file which lands in sites:)
+    # Use sed to insert after the 'recipes:' line
+    sed -i '/^recipes:/a\
+  test-nwp:\
+    source: goalgorilla/social_template:dev-master\
+    profile: social\
+    webroot: html\
+    auto: y' cnwp.yml
 fi
 
 run_test "Install test site" "./scripts/commands/install.sh $TEST_SITE_PREFIX"

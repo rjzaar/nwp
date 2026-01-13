@@ -13,22 +13,23 @@
 ################################################################################
 
 # Source yaml-write.sh for consolidated YAML functions
-LINODE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$LINODE_LIB_DIR/yaml-write.sh" ]; then
-    source "$LINODE_LIB_DIR/yaml-write.sh"
+if ! declare -f yaml_get_secret &>/dev/null; then
+    LINODE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "$LINODE_LIB_DIR/yaml-write.sh" ]; then
+        source "$LINODE_LIB_DIR/yaml-write.sh"
+    fi
 fi
 
-# DEPRECATED: Wrapper for backward compatibility
-# Use yaml_get_secret directly for new code
-# Parse a YAML value from a simple YAML file
+# DEPRECATED: Parse a YAML value from a simple YAML file
 # Usage: parse_yaml_value "file.yml" "section" "key"
+# Use yaml_get_secret() instead for new code
 parse_yaml_value() {
     local file="$1"
     local section="$2"
     local key="$3"
 
-    # Use consolidated yaml_get_secret function
-    yaml_get_secret "${section}.${key}" "$file"
+    # Redirect to consolidated function
+    yaml_get_secret "${section}.${key}" "$file" 2>/dev/null || true
 }
 
 # Get Linode API token
@@ -36,9 +37,9 @@ get_linode_token() {
     local token=""
     local script_dir="${1:-.}"
 
-    # Check .secrets.yml first using consolidated yaml_get_secret
+    # Check .secrets.yml first using consolidated function
     if [ -f "$script_dir/.secrets.yml" ]; then
-        token=$(yaml_get_secret "linode.api_token" "$script_dir/.secrets.yml")
+        token=$(yaml_get_secret "linode.api_token" "$script_dir/.secrets.yml" 2>/dev/null || true)
     fi
 
     # Fall back to environment variable

@@ -13,9 +13,11 @@
 ################################################################################
 
 # Source yaml-write.sh for consolidated YAML functions
-B2_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$B2_LIB_DIR/yaml-write.sh" ]; then
-    source "$B2_LIB_DIR/yaml-write.sh"
+if ! declare -f yaml_get_secret &>/dev/null; then
+    B2_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "$B2_LIB_DIR/yaml-write.sh" ]; then
+        source "$B2_LIB_DIR/yaml-write.sh"
+    fi
 fi
 
 # Check if b2 CLI is installed
@@ -45,7 +47,7 @@ get_b2_account_id() {
     local script_dir="${1:-.}"
 
     if [ -f "$script_dir/.secrets.yml" ]; then
-        account_id=$(yaml_get_secret "b2.account_id" "$script_dir/.secrets.yml")
+        account_id=$(yaml_get_secret "b2.account_id" "$script_dir/.secrets.yml" 2>/dev/null || true)
     fi
 
     if [ -z "$account_id" ] && [ -n "${B2_ACCOUNT_ID:-}" ]; then
@@ -62,7 +64,7 @@ get_b2_app_key() {
     local script_dir="${1:-.}"
 
     if [ -f "$script_dir/.secrets.yml" ]; then
-        app_key=$(yaml_get_secret "b2.app_key" "$script_dir/.secrets.yml")
+        app_key=$(yaml_get_secret "b2.app_key" "$script_dir/.secrets.yml" 2>/dev/null || true)
     fi
 
     if [ -z "$app_key" ] && [ -n "${B2_APP_KEY:-}" ]; then

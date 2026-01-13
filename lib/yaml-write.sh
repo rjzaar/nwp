@@ -1251,49 +1251,14 @@ yaml_get_site_purpose() {
 }
 
 #######################################
-# Get list of all site names from sites section
+# Get value from settings section with dot notation
 # Arguments:
-#   $1 - Config file path (optional, defaults to YAML_CONFIG_FILE)
-# Outputs:
-#   Site names, one per line
-# Returns:
-#   0 on success, 1 on failure
-#######################################
-yaml_get_all_sites() {
-    local config_file="${1:-$YAML_CONFIG_FILE}"
-
-    if [[ ! -f "$config_file" ]]; then
-        echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
-        return 1
-    fi
-
-    # Use yq if available
-    if command -v yq &>/dev/null; then
-        yq eval '.sites | keys | .[]' "$config_file" 2>/dev/null
-        return ${PIPESTATUS[0]}
-    fi
-
-    # Fallback to awk
-    awk '
-        /^sites:/ { in_sites = 1; next }
-        in_sites && /^[a-zA-Z]/ && !/^  / { exit }
-        in_sites && /^  [a-zA-Z_][a-zA-Z0-9_-]*:/ && !/^    / {
-            gsub(/:.*/, "")
-            gsub(/^  /, "")
-            if ($0 !~ /^#/) print
-        }
-    ' "$config_file"
-}
-
-#######################################
-# Get value from settings section
-# Arguments:
-#   $1 - Key path (e.g., "url", "email.domain", "gitlab.hardening.enabled")
-#   $2 - Config file (optional, defaults to YAML_CONFIG_FILE)
+#   $1 - Key path (e.g., "url", "email.domain", "php_settings.memory_limit")
+#   $2 - Config file path (optional)
 # Outputs:
 #   Value or empty string
 # Returns:
-#   0 on success, 1 on failure
+#   0 on success, 1 if key not found
 #######################################
 yaml_get_setting() {
     local key_path="$1"
@@ -1304,31 +1269,26 @@ yaml_get_setting() {
         return 1
     fi
 
-    if [[ ! -f "$config_file" ]]; then
-        echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
-        return 1
-    fi
-
-    # Use yq if available
+    # Use yq if available (more robust for nested keys)
     if command -v yq &>/dev/null; then
         local result
-        result=$(yq eval ".settings.${key_path}" "$config_file" 2>/dev/null)
-        if [[ "$result" != "null" && -n "$result" ]]; then
+        result=$(yq eval ".settings.${key_path} // \"\"" "$config_file" 2>/dev/null | grep -v '^null$')
+        if [[ -n "$result" ]]; then
             echo "$result"
             return 0
         fi
         return 1
     fi
 
-    # Fallback to awk for dot-notation parsing
+    # Fallback to AWK for nested dot notation parsing
     local keys=()
     IFS='.' read -ra keys <<< "$key_path"
     local depth="${#keys[@]}"
 
     awk -v depth="$depth" '
         BEGIN {
-            # Build key array from arguments
-            for (i = 1; i < depth + 1; i++) {
+            # Build keys array from remaining ARGV
+            for (i = 1; i <= depth; i++) {
                 keys[i] = ARGV[i + 1]
                 delete ARGV[i + 1]
             }
@@ -1337,71 +1297,82 @@ yaml_get_setting() {
             found = 0
         }
 
-        /^settings:/ { in_settings = 1; current_depth = 1; next }
+        # Enter settings section
+        /^settings:/ {
+            in_settings = 1
+            current_depth = 1
+            next
+        }
 
-        # Exit settings section
-        in_settings && /^[a-zA-Z]/ && !/^  / { exit }
+        # Exit settings section on root-level key
+        in_settings && /^[a-zA-Z]/ && !/^  / {
+            exit
+        }
 
-        in_settings && current_depth > 0 {
-            # Calculate indent level of current line (number of spaces / 2)
-            if (match($0, /^[[:space:]]*/)) {
-                indent = RLENGTH / 2
-            } else {
-                indent = 0
-            }
+        # Navigate nested structure
+        in_settings && current_depth > 0 && current_depth < depth {
+            # Calculate indentation
+            indent_match = match($0, /^[[:space:]]*/)
+            indent_spaces = RLENGTH
+            expected_indent = current_depth * 2
 
-            # Skip empty lines and comments
-            if (NF == 0 || /^[[:space:]]*#/) next
+            if (indent_spaces == expected_indent) {
+                # At expected depth, check if this is our key
+                key_line = $0
+                sub(/^[[:space:]]+/, "", key_line)
+                sub(/:.*/, "", key_line)
 
-            # Only process lines with colons (keys)
-            if ($0 !~ /:/) next
-
-            # Extract the key name from this line
-            line = $0
-            sub(/^[[:space:]]+/, "", line)
-            split(line, parts, ":")
-            current_key = parts[1]
-            gsub(/[[:space:]]/, "", current_key)
-
-            # Check if we moved to a shallower or equal depth - need to backtrack
-            if (indent < current_depth) {
-                current_depth = indent + 1
-            }
-
-            # If at expected depth for next key in path
-            if (current_depth <= depth && indent == current_depth && current_key == keys[current_depth]) {
-                if (current_depth == depth) {
-                    # Found target key, extract value
-                    value = line
-                    sub(/^[^:]+:[[:space:]]*/, "", value)
-                    sub(/[[:space:]]*#.*$/, "", value)  # Strip comments
-                    gsub(/^["'"'"']|["'"'"']$/, "", value)  # Strip quotes
-                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)  # Strip whitespace
-                    if (length(value) > 0) {
-                        print value
-                        found = 1
-                        exit
-                    }
-                } else {
-                    # Navigate deeper
+                if (key_line == keys[current_depth]) {
                     current_depth++
                 }
             }
         }
 
-        END { exit !found }
+        # At target depth, extract value
+        in_settings && current_depth == depth {
+            indent_match = match($0, /^[[:space:]]*/)
+            indent_spaces = RLENGTH
+            expected_indent = depth * 2
+
+            if (indent_spaces == expected_indent) {
+                key_line = $0
+                sub(/^[[:space:]]+/, "", key_line)
+
+                # Check if key matches
+                if (key_line ~ "^" keys[depth] ":") {
+                    # Extract value
+                    sub(/^[^:]+:[[:space:]]*/, "", key_line)
+                    # Remove inline comments
+                    sub(/[[:space:]]*#.*$/, "", key_line)
+                    # Remove quotes
+                    gsub(/^["'"'"']|["'"'"']$/, "", key_line)
+                    # Trim whitespace
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", key_line)
+
+                    if (length(key_line) > 0) {
+                        print key_line
+                        found = 1
+                        exit
+                    }
+                }
+            }
+        }
+
+        END {
+            exit !found
+        }
     ' "$config_file" "${keys[@]}"
 }
 
 #######################################
-# Get array values from a section
+# Get array values from any YAML path
 # Arguments:
-#   $1 - Path (e.g., "other_coders.nameservers", "sites.mysite.modules.enabled")
-#   $2 - Config file (optional, defaults to YAML_CONFIG_FILE)
+#   $1 - Path (e.g., "sites.mysite.installed_modules", "settings.frontend")
+#   $2 - Config file path (optional)
 # Outputs:
 #   Array values, one per line
 # Returns:
-#   0 on success, 1 on failure
+#   0 on success, 1 if not found
 #######################################
 yaml_get_array() {
     local path="$1"
@@ -1412,31 +1383,26 @@ yaml_get_array() {
         return 1
     fi
 
-    if [[ ! -f "$config_file" ]]; then
-        echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
-        return 1
-    fi
-
     # Use yq if available
     if command -v yq &>/dev/null; then
         local result
-        result=$(yq eval ".${path}[]" "$config_file" 2>/dev/null)
-        if [[ "$result" != "null" && -n "$result" ]]; then
+        result=$(yq eval ".${path}[]" "$config_file" 2>/dev/null | grep -v '^null$')
+        if [[ -n "$result" ]]; then
             echo "$result"
             return 0
         fi
         return 1
     fi
 
-    # Parse path into sections
+    # Fallback to AWK
     local sections=()
     IFS='.' read -ra sections <<< "$path"
     local depth="${#sections[@]}"
 
     awk -v depth="$depth" '
         BEGIN {
-            # Build section array from path
-            for (i = 1; i < depth + 1; i++) {
+            # Build sections array
+            for (i = 1; i <= depth; i++) {
                 sections[i] = ARGV[i + 1]
                 delete ARGV[i + 1]
             }
@@ -1445,54 +1411,21 @@ yaml_get_array() {
             found = 0
         }
 
-        # Skip empty lines and full-line comments
-        NF == 0 || /^[[:space:]]*#/ { next }
+        # Skip empty lines and comments
+        /^[[:space:]]*$/ || /^[[:space:]]*#/ { next }
 
-        # Track depth by navigation through keys
-        {
-            # Calculate indent level (spaces / 2)
-            if (match($0, /^[[:space:]]*/)) {
-                indent = RLENGTH / 2
-            } else {
-                indent = 0
-            }
+        # Navigate to target depth
+        current_depth < depth {
+            indent_match = match($0, /^[[:space:]]*/)
+            indent_spaces = RLENGTH
+            expected_indent = current_depth * 2
 
-            # If we are in the array, collect items
-            if (in_array) {
-                # Check if this is an array item at the right depth
-                if ($0 ~ /^[[:space:]]*-[[:space:]]/ && indent == depth) {
-                    sub(/^[[:space:]]*-[[:space:]]*/, "")
-                    sub(/[[:space:]]*#.*$/, "")  # Strip comments
-                    gsub(/^["'"'"']|["'"'"']$/, "")  # Strip quotes
-                    gsub(/^[[:space:]]+|[[:space:]]+$/, "")  # Strip whitespace
-                    if (length($0) > 0) {
-                        print
-                        found = 1
-                    }
-                    next
-                }
-                # If we hit a key at same or shallower depth, exit array
-                if ($0 ~ /:/ && indent <= depth) {
-                    exit
-                }
-            }
+            if (indent_spaces == expected_indent) {
+                key_line = $0
+                sub(/^[[:space:]]+/, "", key_line)
+                sub(/:.*/, "", key_line)
 
-            # Navigate to target depth
-            if (current_depth < depth && $0 ~ /:/) {
-                # Extract key name
-                line = $0
-                sub(/^[[:space:]]+/, "", line)
-                split(line, parts, ":")
-                current_key = parts[1]
-                gsub(/[[:space:]]/, "", current_key)
-
-                # Check if we backtracked
-                if (indent < current_depth) {
-                    current_depth = indent + 1
-                }
-
-                # Check if this key matches our path
-                if (indent == current_depth && current_key == sections[current_depth + 1]) {
+                if (key_line == sections[current_depth + 1]) {
                     current_depth++
                     if (current_depth == depth) {
                         in_array = 1
@@ -1501,221 +1434,128 @@ yaml_get_array() {
             }
         }
 
-        END { exit !found }
+        # At target depth, collect array items
+        in_array && /^[[:space:]]*-[[:space:]]/ {
+            indent_match = match($0, /^[[:space:]]*/)
+            indent_spaces = RLENGTH
+            expected_indent = depth * 2
+
+            if (indent_spaces == expected_indent) {
+                item = $0
+                sub(/^[[:space:]]*-[[:space:]]*/, "", item)
+                sub(/[[:space:]]*#.*$/, "", item)
+                gsub(/^["'"'"']|["'"'"']$/, "", item)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", item)
+
+                if (length(item) > 0) {
+                    print item
+                    found = 1
+                }
+            }
+        }
+
+        # Exit when leaving target section
+        in_array && /^[a-zA-Z]/ && !/^[[:space:]]/ {
+            exit
+        }
+
+        END {
+            exit !found
+        }
     ' "$config_file" "${sections[@]}"
 }
 
 #######################################
-# Get list of coders from other_coders section
+# Get a field value from a recipe definition
 # Arguments:
-#   $1 - Config file (optional, defaults to YAML_CONFIG_FILE)
-# Outputs:
-#   List of coder names, one per line
-# Returns:
-#   0 on success, 1 on failure
-#######################################
-yaml_get_coder_list() {
-    local config_file="${1:-$YAML_CONFIG_FILE}"
-
-    if [[ ! -f "$config_file" ]]; then
-        echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
-        return 1
-    fi
-
-    # Use yq if available
-    if command -v yq &>/dev/null; then
-        yq eval '.other_coders.coders | keys | .[]' "$config_file" 2>/dev/null
-        return ${PIPESTATUS[0]}
-    fi
-
-    # Fallback to awk
-    awk '
-        /^other_coders:/ { in_other_coders = 1; next }
-        in_other_coders && /^  coders:/ { in_coders = 1; next }
-        in_other_coders && /^[a-zA-Z]/ && !/^  / { exit }
-        in_coders && /^  [a-zA-Z]/ && !/^    / { exit }
-        in_coders && /^    [a-zA-Z_][a-zA-Z0-9_-]*:/ {
-            gsub(/:.*/, "")
-            gsub(/^    /, "")
-            if ($0 !~ /^#/) print
-        }
-    ' "$config_file"
-}
-
-#######################################
-# Get coder field value
-# Arguments:
-#   $1 - Coder name
-#   $2 - Field name (e.g., "email", "status", "notes")
-#   $3 - Config file (optional, defaults to YAML_CONFIG_FILE)
+#   $1 - Recipe name (e.g., "d", "nwp", "dm")
+#   $2 - Field name (e.g., "source", "dev", "webroot")
+#   $3 - Config file path (optional, defaults to example.cnwp.yml)
 # Outputs:
 #   Field value or empty string
 # Returns:
-#   0 on success, 1 on failure
-#######################################
-yaml_get_coder_field() {
-    local coder_name="$1"
-    local field_name="$2"
-    local config_file="${3:-$YAML_CONFIG_FILE}"
-
-    if [[ -z "$coder_name" || -z "$field_name" ]]; then
-        echo -e "${RED}Error: Coder name and field name are required${NC}" >&2
-        return 1
-    fi
-
-    if [[ ! -f "$config_file" ]]; then
-        echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
-        return 1
-    fi
-
-    # Use yq if available
-    if command -v yq &>/dev/null; then
-        local result
-        result=$(yq eval ".other_coders.coders.${coder_name}.${field_name}" "$config_file" 2>/dev/null)
-        if [[ "$result" != "null" && -n "$result" ]]; then
-            echo "$result"
-            return 0
-        fi
-        return 1
-    fi
-
-    # Fallback to awk
-    awk -v coder="$coder_name" -v field="$field_name" '
-        /^other_coders:/ { in_other_coders = 1; next }
-        in_other_coders && /^  coders:/ { in_coders = 1; next }
-        in_other_coders && /^[a-zA-Z]/ && !/^  / { exit }
-        in_coders && $0 ~ "^    " coder ":" { in_coder = 1; next }
-        in_coder && /^    [a-zA-Z]/ && !/^      / { exit }
-        in_coder && $0 ~ "^      " field ":" {
-            sub("^      " field ": *", "")
-            sub(/ *#.*$/, "")  # Strip comments
-            gsub(/^["'"'"']|["'"'"']$/, "")  # Strip quotes
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "")  # Strip whitespace
-            print
-            exit
-        }
-    ' "$config_file"
-}
-
-#######################################
-# Get recipe field value
-# Arguments:
-#   $1 - Recipe name
-#   $2 - Field name (e.g., "source", "recipe", "webroot")
-#   $3 - Config file (optional, defaults to YAML_CONFIG_FILE)
-# Outputs:
-#   Field value or empty string
-# Returns:
-#   0 on success, 1 on failure
+#   0 on success, 1 if not found
 #######################################
 yaml_get_recipe_field() {
     local recipe_name="$1"
     local field_name="$2"
-    local config_file="${3:-$YAML_CONFIG_FILE}"
+    local config_file="${3:-example.cnwp.yml}"
 
     if [[ -z "$recipe_name" || -z "$field_name" ]]; then
         echo -e "${RED}Error: Recipe name and field name are required${NC}" >&2
-        return 1
-    fi
-
-    if [[ ! -f "$config_file" ]]; then
-        echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
         return 1
     fi
 
     # Use yq if available
     if command -v yq &>/dev/null; then
         local result
-        result=$(yq eval ".recipes.${recipe_name}.${field_name}" "$config_file" 2>/dev/null)
-        if [[ "$result" != "null" && -n "$result" ]]; then
+        result=$(yq eval ".recipes.${recipe_name}.${field_name} // \"\"" "$config_file" 2>/dev/null | grep -v '^null$')
+        if [[ -n "$result" ]]; then
             echo "$result"
             return 0
         fi
         return 1
     fi
 
-    # Fallback to awk
+    # Fallback to AWK
     awk -v recipe="$recipe_name" -v field="$field_name" '
-        /^recipes:/ { in_recipes = 1; next }
-        in_recipes && /^[a-zA-Z]/ && !/^  / { exit }
-        in_recipes && $0 ~ "^  " recipe ":" { in_recipe = 1; next }
-        in_recipe && /^  [a-zA-Z]/ && !/^    / { exit }
-        in_recipe && $0 ~ "^    " field ":" {
-            sub("^    " field ": *", "")
-            sub(/ *#.*$/, "")  # Strip comments
-            gsub(/^["'"'"']|["'"'"']$/, "")  # Strip quotes
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "")  # Strip whitespace
-            print
+        BEGIN {
+            in_recipes = 0
+            in_recipe = 0
+            found = 0
+        }
+
+        /^recipes:/ {
+            in_recipes = 1
+            next
+        }
+
+        # Exit recipes section
+        in_recipes && /^[a-zA-Z]/ && !/^  / {
             exit
         }
-    ' "$config_file"
-}
 
-#######################################
-# Get recipe list field value (returns space-separated items)
-# Arguments:
-#   $1 - Recipe name
-#   $2 - Field name (e.g., "post_install_modules")
-#   $3 - Config file (optional, defaults to YAML_CONFIG_FILE)
-# Outputs:
-#   Space-separated list items
-# Returns:
-#   0 on success, 1 on failure
-#######################################
-yaml_get_recipe_list() {
-    local recipe_name="$1"
-    local field_name="$2"
-    local config_file="${3:-$YAML_CONFIG_FILE}"
-
-    if [[ -z "$recipe_name" || -z "$field_name" ]]; then
-        echo -e "${RED}Error: Recipe name and field name are required${NC}" >&2
-        return 1
-    fi
-
-    if [[ ! -f "$config_file" ]]; then
-        echo -e "${RED}Error: Config file not found: $config_file${NC}" >&2
-        return 1
-    fi
-
-    # Use yq if available (returns newline-separated)
-    if command -v yq &>/dev/null; then
-        local result
-        result=$(yq eval ".recipes.${recipe_name}.${field_name}[]" "$config_file" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
-        if [[ "$result" != "null" && -n "$result" ]]; then
-            echo "$result"
-            return 0
-        fi
-        return 1
-    fi
-
-    # Fallback to awk (returns space-separated for compatibility)
-    awk -v recipe="$recipe_name" -v field="$field_name" '
-        /^recipes:/ { in_recipes = 1; next }
-        in_recipes && /^[a-zA-Z]/ && !/^  / { exit }
-        in_recipes && $0 ~ "^  " recipe ":" { in_recipe = 1; next }
-        in_recipe && /^  [a-zA-Z]/ && !/^    / { exit }
-        in_recipe && $0 ~ "^    " field ":" { in_list = 1; next }
-        in_list && /^    [a-zA-Z]/ && !/^      / { exit }
-        in_list && /^      - / {
-            sub("^      - *", "")
-            sub(/ *#.*$/, "")  # Strip comments
-            gsub(/^["'"'"']|["'"'"']$/, "")  # Strip quotes
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "")  # Strip whitespace
-            if (length($0) > 0) printf "%s ", $0
+        # Find recipe
+        in_recipes && $0 ~ "^  " recipe ":" {
+            in_recipe = 1
+            next
         }
-        END { print "" }
-    ' "$config_file" | sed 's/ *$//'
+
+        # End of recipe
+        in_recipe && /^  [a-zA-Z]/ && !/^    / {
+            in_recipe = 0
+        }
+
+        # Extract field value
+        in_recipe && $0 ~ "^    " field ":" {
+            value = $0
+            sub(/^[[:space:]]+[^:]+:[[:space:]]*/, "", value)
+            sub(/[[:space:]]*#.*$/, "", value)
+            gsub(/^["'"'"']|["'"'"']$/, "", value)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+
+            if (length(value) > 0) {
+                print value
+                found = 1
+                exit
+            }
+        }
+
+        END {
+            exit !found
+        }
+    ' "$config_file"
 }
 
 #######################################
 # Get secret value from .secrets.yml
 # Arguments:
-#   $1 - Key path (e.g., "linode.api_token", "cloudflare.api_token")
-#   $2 - Secrets file (optional, defaults to .secrets.yml)
+#   $1 - Key path (e.g., "linode.api_token", "cloudflare.zone_id")
+#   $2 - Secrets file path (optional, defaults to .secrets.yml)
 # Outputs:
 #   Secret value or empty string
 # Returns:
-#   0 on success, 1 on failure
+#   0 on success, 1 if not found
 #######################################
 yaml_get_secret() {
     local key_path="$1"
@@ -1734,23 +1574,22 @@ yaml_get_secret() {
     # Use yq if available
     if command -v yq &>/dev/null; then
         local result
-        result=$(yq eval ".${key_path}" "$secrets_file" 2>/dev/null)
-        if [[ "$result" != "null" && -n "$result" ]]; then
+        result=$(yq eval ".${key_path} // \"\"" "$secrets_file" 2>/dev/null | grep -v '^null$')
+        if [[ -n "$result" ]]; then
             echo "$result"
             return 0
         fi
         return 1
     fi
 
-    # Fallback to awk for dot-notation parsing
+    # Fallback to AWK with same logic as yaml_get_setting but no "settings" prefix
     local keys=()
     IFS='.' read -ra keys <<< "$key_path"
     local depth="${#keys[@]}"
 
     awk -v depth="$depth" '
         BEGIN {
-            # Build key array from arguments
-            for (i = 1; i < depth + 1; i++) {
+            for (i = 1; i <= depth; i++) {
                 keys[i] = ARGV[i + 1]
                 delete ARGV[i + 1]
             }
@@ -1758,54 +1597,54 @@ yaml_get_secret() {
             found = 0
         }
 
-        # Skip empty lines and comments
-        NF == 0 || /^[[:space:]]*#/ { next }
+        # Skip empty and comment lines
+        /^[[:space:]]*$/ || /^[[:space:]]*#/ { next }
 
-        # Only process lines with colons
-        $0 !~ /:/ { next }
+        # Navigate nested structure from root
+        current_depth < depth {
+            indent_match = match($0, /^[[:space:]]*/)
+            indent_spaces = RLENGTH
+            expected_indent = current_depth * 2
 
-        {
-            # Calculate indent level (spaces / 2)
-            if (match($0, /^[[:space:]]*/)) {
-                indent = RLENGTH / 2
-            } else {
-                indent = 0
-            }
+            if (indent_spaces == expected_indent) {
+                key_line = $0
+                sub(/^[[:space:]]+/, "", key_line)
+                sub(/:.*/, "", key_line)
 
-            # Extract key name and value
-            line = $0
-            sub(/^[[:space:]]+/, "", line)
-            split(line, parts, ":")
-            current_key = parts[1]
-            gsub(/[[:space:]]/, "", current_key)
-
-            # Check if we backtracked to shallower depth
-            if (indent < current_depth) {
-                current_depth = indent + 1
-            }
-
-            # Check if this key matches our path at current depth
-            if (indent == current_depth && current_key == keys[current_depth + 1]) {
-                if (current_depth + 1 == depth) {
-                    # Found target key, extract value
-                    value = line
-                    sub(/^[^:]+:[[:space:]]*/, "", value)
-                    sub(/[[:space:]]*#.*$/, "", value)  # Strip comments
-                    gsub(/^["'"'"']|["'"'"']$/, "", value)  # Strip quotes
-                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)  # Strip whitespace
-                    if (length(value) > 0) {
-                        print value
-                        found = 1
-                        exit
-                    }
-                } else {
-                    # Navigate deeper
+                if (key_line == keys[current_depth + 1]) {
                     current_depth++
                 }
             }
         }
 
-        END { exit !found }
+        # At target depth, extract value
+        current_depth == depth {
+            indent_match = match($0, /^[[:space:]]*/)
+            indent_spaces = RLENGTH
+            expected_indent = (depth - 1) * 2
+
+            if (indent_spaces == expected_indent) {
+                key_line = $0
+                sub(/^[[:space:]]+/, "", key_line)
+
+                if (key_line ~ "^" keys[depth] ":") {
+                    sub(/^[^:]+:[[:space:]]*/, "", key_line)
+                    sub(/[[:space:]]*#.*$/, "", key_line)
+                    gsub(/^["'"'"']|["'"'"']$/, "", key_line)
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", key_line)
+
+                    if (length(key_line) > 0) {
+                        print key_line
+                        found = 1
+                        exit
+                    }
+                }
+            }
+        }
+
+        END {
+            exit !found
+        }
     ' "$secrets_file" "${keys[@]}"
 }
 
@@ -1819,14 +1658,6 @@ export -f yaml_site_exists
 export -f yaml_get_site_field
 export -f yaml_get_site_list
 export -f yaml_get_site_purpose
-export -f yaml_get_all_sites
-export -f yaml_get_setting
-export -f yaml_get_array
-export -f yaml_get_coder_list
-export -f yaml_get_coder_field
-export -f yaml_get_recipe_field
-export -f yaml_get_recipe_list
-export -f yaml_get_secret
 export -f yaml_add_site
 export -f yaml_add_site_stub
 export -f yaml_complete_site_stub
@@ -1835,3 +1666,8 @@ export -f yaml_remove_site
 export -f yaml_update_site_field
 export -f yaml_add_site_modules
 export -f yaml_add_site_production
+export -f yaml_add_site_live
+export -f yaml_get_setting
+export -f yaml_get_array
+export -f yaml_get_recipe_field
+export -f yaml_get_secret

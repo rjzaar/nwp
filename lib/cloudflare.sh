@@ -13,9 +13,11 @@
 ################################################################################
 
 # Source yaml-write.sh for consolidated YAML functions
-CLOUDFLARE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$CLOUDFLARE_LIB_DIR/yaml-write.sh" ]; then
-    source "$CLOUDFLARE_LIB_DIR/yaml-write.sh"
+if ! declare -f yaml_get_secret &>/dev/null; then
+    CLOUDFLARE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "$CLOUDFLARE_LIB_DIR/yaml-write.sh" ]; then
+        source "$CLOUDFLARE_LIB_DIR/yaml-write.sh"
+    fi
 fi
 
 # Get Cloudflare API token
@@ -24,9 +26,9 @@ get_cloudflare_token() {
     local token=""
     local script_dir="${1:-.}"
 
-    # Check .secrets.yml first using consolidated yaml_get_secret
+    # Check .secrets.yml first using consolidated function
     if [ -f "$script_dir/.secrets.yml" ]; then
-        token=$(yaml_get_secret "cloudflare.api_token" "$script_dir/.secrets.yml")
+        token=$(yaml_get_secret "cloudflare.api_token" "$script_dir/.secrets.yml" 2>/dev/null || true)
     fi
 
     # Fall back to environment variable
@@ -43,9 +45,9 @@ get_cloudflare_zone_id() {
     local zone_id=""
     local script_dir="${1:-.}"
 
-    # Check .secrets.yml first using consolidated yaml_get_secret
+    # Check .secrets.yml first using consolidated function
     if [ -f "$script_dir/.secrets.yml" ]; then
-        zone_id=$(yaml_get_secret "cloudflare.zone_id" "$script_dir/.secrets.yml")
+        zone_id=$(yaml_get_secret "cloudflare.zone_id" "$script_dir/.secrets.yml" 2>/dev/null || true)
     fi
 
     # Fall back to environment variable

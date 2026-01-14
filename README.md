@@ -5,6 +5,7 @@ A streamlined installation system for Drupal and Moodle projects using DDEV and 
 ## Table of Contents
 
 - [Overview](#overview)
+- [License](#license-tldr)
 - [Prerequisites](#prerequisites)
 - [Security Architecture](#security-architecture)
 - [Quick Start](#quick-start)
@@ -21,12 +22,41 @@ A streamlined installation system for Drupal and Moodle projects using DDEV and 
 - [Site Purpose and Migration](#site-purpose-and-migration)
 - [Documentation](#documentation)
 - [Troubleshooting](#troubleshooting)
+- [License (Full Details)](#license)
 
 ## Overview
 
 The Narrow Way Project (NWP) simplifies the process of setting up local development environments for Drupal and Moodle projects. Instead of manually configuring each project, NWP uses a recipe-based system where you define your project requirements in a simple YAML configuration file (`cnwp.yml`), and the installation script handles the rest.
 
 **[Complete Documentation →](docs/README.md)** - Comprehensive guides, deployment strategies, testing frameworks, security practices, and API references.
+
+## License (TL;DR)
+
+> *"Freely you have received, freely give."* — Matthew 10:8
+
+**This project is dedicated to the public domain under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/).**
+
+**What this means for you:**
+- ✅ Use commercially without fees or license compliance
+- ✅ Modify without releasing your changes
+- ✅ No attribution required (though appreciated)
+- ✅ Incorporate into proprietary software
+- ✅ Redistribute under any license you choose
+
+**What this means if you contribute:**
+
+By contributing to NWP (pull requests, issues, documentation, code), you agree to dedicate your contributions to the public domain under CC0 1.0 Universal. This means:
+
+- **You waive all copyright** to your contributions to the extent possible under law
+- **Your contributions become freely available** to everyone for any purpose
+- **You cannot revoke** this dedication once made
+- **No attribution required** for your contributions (though we appreciate recognition)
+
+**Why CC0?** Maximum freedom with zero legal barriers. Students can learn, businesses can adopt, and everyone can build upon NWP without restrictions or compliance overhead.
+
+📖 **Full details:** [LICENSE](LICENSE) file | [docs/CC0_DEDICATION.md](docs/CC0_DEDICATION.md) | [CONTRIBUTING.md](CONTRIBUTING.md)
+
+---
 
 ### Key Features
 
@@ -1541,16 +1571,80 @@ To add new recipes or improve the installation script:
 
 > *"Freely you have received, freely give."* — Matthew 10:8
 
-This project is dedicated to the public domain under the CC0 1.0 Universal (CC0 1.0) Public Domain Dedication.
+### Public Domain Dedication
 
-You can copy, modify, distribute and perform the work, even for commercial purposes, all without asking permission.
+The Narrow Way Project is dedicated to the public domain under the **CC0 1.0 Universal (CC0 1.0) Public Domain Dedication**.
 
-**Quick Links:**
-- **Full Legal Text:** [LICENSE](LICENSE) file
-- **Detailed Explanation:** [docs/CC0_DEDICATION.md](docs/CC0_DEDICATION.md) - includes rationale, FAQs, and contributor information
-- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) - see the License section for contributor agreement
+To the extent possible under law, the authors have waived all copyright and related or neighboring rights to this work. This means:
 
-**TL;DR:** Use this project however you want. No restrictions. No attribution required (though appreciated).
+**You can:**
+- ✅ Use the code for any purpose (personal, commercial, educational)
+- ✅ Modify and adapt the code
+- ✅ Distribute the code
+- ✅ Incorporate the code into other projects (even proprietary ones)
+- ✅ Change the license (release your modifications under any license)
+- ✅ **All without asking permission or providing attribution** (though attribution is appreciated)
+
+**This includes:**
+- All source code and scripts
+- All documentation and guides
+- All configuration templates
+- All examples and tutorials
+
+### Contributor Agreement
+
+**By contributing to this project, you agree to the following:**
+
+When you submit any contribution to NWP (including but not limited to code, documentation, examples, bug fixes, feature enhancements, or issues), you certify that:
+
+1. **Your contribution is your original work**, or you have the right to submit it under CC0
+2. **You dedicate your contribution to the public domain** under CC0 1.0 Universal
+3. **You understand this dedication is irrevocable** and permanent
+4. **You waive all copyright and related rights** to your contribution to the extent possible under law
+5. **You grant everyone the right** to use, modify, and distribute your contribution for any purpose without restriction
+
+**What this means in practice:**
+
+- ✅ Your name may appear in git history and CONTRIBUTING.md (for recognition)
+- ✅ Your code becomes part of the public domain
+- ✅ Anyone can use your contribution without crediting you
+- ✅ Your contribution can be modified, sold, or relicensed by others
+- ✅ You cannot later change the license or restrict use
+
+**Why we require this:**
+
+CC0 ensures NWP remains **freely available to everyone forever** without legal barriers. Users don't need to track licenses, worry about compatibility, or provide attribution. This makes NWP ideal for:
+- Students learning Drupal/Moodle development
+- Businesses evaluating without legal review
+- Educational institutions teaching web development
+- Open source projects needing a development platform
+- Anyone who values freedom over restrictions
+
+### Third-Party Dependencies
+
+Note that while NWP itself is public domain, it relies on various open-source projects (Drupal, DDEV, Composer, etc.), each with their own licenses:
+- Drupal core: GPL v2+
+- DDEV: Apache 2.0
+- Composer: MIT
+- See `composer.json` and `composer.lock` for complete dependency information
+
+### Questions About Licensing?
+
+- **Full legal text:** [LICENSE](LICENSE) file
+- **Detailed explanation:** [docs/CC0_DEDICATION.md](docs/CC0_DEDICATION.md) - includes rationale, FAQs, and author dedications
+- **Contributor guide:** [CONTRIBUTING.md](CONTRIBUTING.md) - complete contributor agreement and guidelines
+- **Questions?** Open an issue with the "license" label
+
+### Comparison with Other Licenses
+
+| License | Requires Attribution | Copyleft | Patent Grant | Public Domain |
+|---------|---------------------|----------|--------------|---------------|
+| **CC0 (NWP)** | No | No | N/A | Yes |
+| MIT | Yes | No | No | No |
+| Apache 2.0 | Yes | No | Yes | No |
+| GPL v3 | Yes | Yes (strong) | Yes | No |
+
+CC0 is the most permissive option, removing all restrictions and maximizing freedom.
 
 ## Support
 

@@ -1167,7 +1167,7 @@ cursor_to() { printf '\033[%d;%dH' "$1" "$2"; }
 clear_screen() { printf '\033[2J\033[H'; }
 clear_line() { printf '\033[2K'; }
 
-# Get category for a feature (consolidated into ~12 per group)
+# Get category for a feature (max 14 per group for TUI display)
 get_feature_category() {
     local feature="$1"
     case "$feature" in
@@ -1179,23 +1179,51 @@ get_feature_category() {
         live|dev2stg|stg2prod|prod2stg|stg2live|live2stg|live2prod|produce)
             echo "Deployment" ;;
 
-        # Group 3: Infrastructure & CLI (8) - Infrastructure + CLI + Moodle
-        podcast|schedule|security|setup_ssh|uninstall|pl_cli|test_nwp|moodle|theme)
-            echo "Infrastructure & CLI" ;;
+        # Group 3: Infrastructure (11)
+        podcast|schedule|security|setup_ssh|uninstall|pl_cli|test_nwp|moodle|theme|doctor|bootstrap_coder)
+            echo "Infrastructure" ;;
 
-        # Group 4: Libraries (11)
-        lib_*)
-            echo "Libraries" ;;
+        # Group 4: AVC-Moodle Integration (4)
+        avc_moodle_setup|avc_moodle_status|avc_moodle_sync|avc_moodle_test)
+            echo "AVC-Moodle" ;;
 
-        # Group 5: Services & Config (10) - GitLab + Linode + Config + Tests
+        # Group 5: Installation Libraries (6)
+        lib_install_common|lib_install_drupal|lib_install_gitlab|lib_install_moodle|lib_install_podcast|lib_install_steps)
+            echo "Lib: Install" ;;
+
+        # Group 6: Core Utilities (7)
+        lib_common|lib_ui|lib_terminal|lib_state|lib_safe_ops|lib_database_router|lib_preflight)
+            echo "Lib: Core Utils" ;;
+
+        # Group 7: Infrastructure & Cloud (7)
+        lib_cloudflare|lib_linode|lib_b2|lib_remote|lib_badges|lib_server_scan|lib_live_server_setup)
+            echo "Lib: Cloud" ;;
+
+        # Group 8: Git & Development (4)
+        lib_git|lib_developer|lib_ddev_generate|lib_env_generate)
+            echo "Lib: Git & Dev" ;;
+
+        # Group 9: User Interface (5)
+        lib_tui|lib_checkbox|lib_cli_register|lib_dev2stg_tui|lib_import_tui)
+            echo "Lib: UI" ;;
+
+        # Group 10: Data & Configuration (4)
+        lib_yaml_write|lib_import|lib_sanitize|lib_testing)
+            echo "Lib: Data" ;;
+
+        # Group 11: Specialized Libraries (4)
+        lib_frontend|lib_avc_moodle|lib_podcast|lib_ssh)
+            echo "Lib: Specialized" ;;
+
+        # Group 12: Services & Config (future features)
         gitlab_*|linode_*|config_*|example_*|tests_*)
             echo "Services & Config" ;;
 
-        # Group 6: CI/CD & Quality (12) - CI + Dependencies + Notifications + Code Quality
+        # Group 13: CI/CD & Quality (future features)
         ci_*|renovate|dependabot|security_update|notify_*|phpstan_config|pre_commit_hook|pr_templates)
             echo "CI/CD & Quality" ;;
 
-        # Group 7: Server & Production (16) - Server + Multi-coder + Phases 6-9
+        # Group 14: Server & Production (future features)
         server_*|coder_*|monitoring_daemon|production_dashboard|scheduled_backup|verify_backup|disaster_recovery|preview_environments|environments_doc|bluegreen_deploy|canary_release|perf_baseline|visual_regression|advanced_deployment_doc)
             echo "Server & Production" ;;
 
@@ -1256,7 +1284,7 @@ build_feature_arrays() {
     done <<< "$(get_feature_ids)"
 
     # Define category order (for consistent ordering)
-    local -a category_order=("Core Scripts" "Deployment" "Infrastructure & CLI" "Libraries" "Services & Config" "CI/CD & Quality" "Server & Production" "Other")
+    local -a category_order=("Core Scripts" "Deployment" "Infrastructure" "AVC-Moodle" "Lib: Install" "Lib: Core Utils" "Lib: Cloud" "Lib: Git & Dev" "Lib: UI" "Lib: Data" "Lib: Specialized" "Services & Config" "CI/CD & Quality" "Server & Production" "Other")
 
     # Second pass: add features in category order
     local idx=0

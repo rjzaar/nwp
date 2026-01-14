@@ -204,12 +204,47 @@ cleanup_test_sites() {
     # Remove test recipe from cnwp.yml (both from recipes: and sites: sections)
     if grep -q "^  ${TEST_SITE_PREFIX}:" cnwp.yml 2>/dev/null; then
         print_info "Removing test recipe from cnwp.yml..."
+
+        # PROTECTION 1: Store original line count for validation
+        local original_lines=$(wc -l < cnwp.yml)
+
+        # PROTECTION 2: Use mktemp for atomic write
+        local tmpfile=$(mktemp cnwp.yml.XXXXXX)
+        if [ -z "$tmpfile" ] || [ ! -f "$tmpfile" ]; then
+            print_error "Failed to create temporary file"
+            return 1
+        fi
+
         # Use awk to remove all test-nwp blocks (works for both recipes and sites sections)
         awk '
             /^  test-nwp:/ { skip=1; next }
             skip && /^  [a-z]/ && !/^    / { skip=0 }
             !skip
-        ' cnwp.yml > cnwp.yml.tmp && mv cnwp.yml.tmp cnwp.yml
+        ' cnwp.yml > "$tmpfile"
+
+        # PROTECTION 3: Validate AWK output is not empty
+        if [ ! -s "$tmpfile" ]; then
+            print_error "AWK produced empty output - aborting operation"
+            print_warning "This may indicate duplicate test-nwp entries. Original file unchanged."
+            rm -f "$tmpfile"
+            return 1
+        fi
+
+        # PROTECTION 4: Check if AWK removed too many lines (more than 100 seems suspicious)
+        local new_lines=$(wc -l < "$tmpfile")
+        if [ "$new_lines" -lt $((original_lines - 100)) ]; then
+            print_error "AWK removed too many lines ($original_lines → $new_lines)"
+            print_warning "This may indicate a bug. Original file unchanged."
+            rm -f "$tmpfile"
+            return 1
+        fi
+
+        # PROTECTION 5: Atomic move
+        if ! mv "$tmpfile" cnwp.yml; then
+            print_error "Failed to update cnwp.yml"
+            rm -f "$tmpfile"
+            return 1
+        fi
     fi
 
     print_success "Cleanup complete"
@@ -754,19 +789,51 @@ EOF
                 # Update existing linode section
                 if ! grep -q "test_primary:" cnwp.yml; then
                     # Add test_primary to existing servers section
-                    awk -v ip="$LINODE_IP" '
-                        /^  servers:/ {
-                            print
-                            print "    test_primary:"
-                            print "      ssh_user: root"
-                            print "      ssh_host: " ip
-                            print "      ssh_port: 22"
-                            print "      ssh_key: ~/.ssh/nwp"
-                            next
-                        }
-                        {print}
-                    ' cnwp.yml > cnwp.yml.tmp && mv cnwp.yml.tmp cnwp.yml
-                    run_test "Test server added to cnwp.yml" "true"
+                    # PROTECTION 1: Store original line count
+                    local original_lines=$(wc -l < cnwp.yml)
+
+                    # PROTECTION 2: Use mktemp for atomic write
+                    local tmpfile=$(mktemp cnwp.yml.XXXXXX)
+                    if [ -z "$tmpfile" ] || [ ! -f "$tmpfile" ]; then
+                        run_test "Test server added to cnwp.yml" "false (tmpfile creation failed)"
+                    else
+                        awk -v ip="$LINODE_IP" '
+                            /^  servers:/ {
+                                print
+                                print "    test_primary:"
+                                print "      ssh_user: root"
+                                print "      ssh_host: " ip
+                                print "      ssh_port: 22"
+                                print "      ssh_key: ~/.ssh/nwp"
+                                next
+                            }
+                            {print}
+                        ' cnwp.yml > "$tmpfile"
+
+                        # PROTECTION 3: Validate AWK output is not empty
+                        if [ ! -s "$tmpfile" ]; then
+                            print_error "AWK produced empty output - aborting"
+                            rm -f "$tmpfile"
+                            run_test "Test server added to cnwp.yml" "false (empty output)"
+                        else
+                            # PROTECTION 4: Check line count (should have added 5 lines)
+                            local new_lines=$(wc -l < "$tmpfile")
+                            if [ "$new_lines" -lt "$original_lines" ]; then
+                                print_error "AWK lost lines ($original_lines → $new_lines)"
+                                rm -f "$tmpfile"
+                                run_test "Test server added to cnwp.yml" "false (line count decreased)"
+                            else
+                                # PROTECTION 5: Atomic move
+                                if mv "$tmpfile" cnwp.yml; then
+                                    run_test "Test server added to cnwp.yml" "true"
+                                else
+                                    print_error "Failed to update cnwp.yml"
+                                    rm -f "$tmpfile"
+                                    run_test "Test server added to cnwp.yml" "false (move failed)"
+                                fi
+                            fi
+                        fi
+                    fi
                 else
                     run_test "Test server already in cnwp.yml" "true"
                 fi
@@ -806,9 +873,41 @@ EOF
             # Remove test server from cnwp.yml
             if grep -q "test_primary:" cnwp.yml; then
                 # Remove test_primary section
-                awk '/^    test_primary:/,/^    [a-z_]+:/{if(!/^    test_primary:/ && !/^      /)print; if(/^    [a-z_]+:/ && !/^    test_primary:/)print}' \
-                    cnwp.yml > cnwp.yml.tmp && mv cnwp.yml.tmp cnwp.yml
-                run_test "Test server removed from cnwp.yml" "true"
+                # PROTECTION 1: Store original line count
+                local original_lines=$(wc -l < cnwp.yml)
+
+                # PROTECTION 2: Use mktemp for atomic write
+                local tmpfile=$(mktemp cnwp.yml.XXXXXX)
+                if [ -z "$tmpfile" ] || [ ! -f "$tmpfile" ]; then
+                    run_test "Test server removed from cnwp.yml" "false (tmpfile creation failed)"
+                else
+                    awk '/^    test_primary:/,/^    [a-z_]+:/{if(!/^    test_primary:/ && !/^      /)print; if(/^    [a-z_]+:/ && !/^    test_primary:/)print}' \
+                        cnwp.yml > "$tmpfile"
+
+                    # PROTECTION 3: Validate AWK output is not empty
+                    if [ ! -s "$tmpfile" ]; then
+                        print_error "AWK produced empty output - aborting"
+                        rm -f "$tmpfile"
+                        run_test "Test server removed from cnwp.yml" "false (empty output)"
+                    else
+                        # PROTECTION 4: Check line count (should have removed ~5 lines)
+                        local new_lines=$(wc -l < "$tmpfile")
+                        if [ "$new_lines" -lt $((original_lines - 100)) ]; then
+                            print_error "AWK removed too many lines ($original_lines → $new_lines)"
+                            rm -f "$tmpfile"
+                            run_test "Test server removed from cnwp.yml" "false (too many lines removed)"
+                        else
+                            # PROTECTION 5: Atomic move
+                            if mv "$tmpfile" cnwp.yml; then
+                                run_test "Test server removed from cnwp.yml" "true"
+                            else
+                                print_error "Failed to update cnwp.yml"
+                                rm -f "$tmpfile"
+                                run_test "Test server removed from cnwp.yml" "false (move failed)"
+                            fi
+                        fi
+                    fi
+                fi
             fi
 
         else

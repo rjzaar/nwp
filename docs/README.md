@@ -3,7 +3,7 @@
 Welcome to the **Narrow Way Project (NWP)** documentation hub. This directory contains comprehensive documentation for developing, deploying, and maintaining Drupal sites using NWP's automated workflows.
 
 **Current Version:** v0.22.0
-**Documentation Last Updated:** January 14, 2026
+**Documentation Last Updated:** 2026-01-14
 
 ---
 
@@ -26,11 +26,12 @@ Most frequently accessed documentation:
 | Document | Description |
 |----------|-------------|
 | [Feature Reference](reference/features.md) | Complete list of NWP features by category |
-| [Command Reference](reference/commands/README.md) | All `pl` CLI commands with examples |
+| [Command Reference](reference/commands/README.md) | All `pl` CLI commands (56% documented) |
 | [Libraries API](reference/libraries.md) | Bash library function reference |
 | [Production Deployment](deployment/production-deployment.md) | Deploy to production servers |
 | [Testing Guide](testing/testing.md) | Automated testing with Behat, PHPUnit, PHPStan |
 | [Security Best Practices](security/data-security-best-practices.md) | Two-tier secrets, AI safety, security hardening |
+| [Git Hooks](development/git-hooks.md) | Automated code quality checks |
 | [Roadmap](governance/roadmap.md) | Current status and future plans |
 
 ---
@@ -51,6 +52,7 @@ Step-by-step guides for common workflows:
 | [Coder Onboarding](guides/coder-onboarding.md) | Multi-coder infrastructure setup |
 | [Working with Claude Securely](guides/working-with-claude-securely.md) | AI assistant security guidelines |
 | [Migration Sites Tracking](guides/migration-sites-tracking.md) | Migrate to sites tracking system |
+| [Git Hooks](development/git-hooks.md) | Automated code quality checks |
 
 ### Technical Reference
 
@@ -72,15 +74,34 @@ Detailed documentation for specific commands:
 
 | Command | Description |
 |---------|-------------|
-| [All Commands](reference/commands/README.md) | Complete command reference |
+| [All Commands](reference/commands/README.md) | Complete command reference (56% documented) |
+| [backup](reference/commands/backup.md) | Create site backups |
 | [badges](reference/commands/badges.md) | Dynamic badge generation |
 | [coder-setup](reference/commands/coder-setup.md) | Initialize coder environment |
 | [coders](reference/commands/coders.md) | Multi-coder management |
 | [contribute](reference/commands/contribute.md) | Contribution workflow |
+| [copy](reference/commands/copy.md) | Copy/clone sites |
+| [delete](reference/commands/delete.md) | Delete sites and cleanup |
+| [dev2stg](reference/commands/dev2stg.md) | Deploy development to staging |
+| [doctor](reference/commands/doctor.md) | System diagnostics |
 | [import](reference/commands/import.md) | Import existing sites |
+| [install](reference/commands/install.md) | Install new Drupal sites |
+| [live](reference/commands/live.md) | Manage live site deployments |
+| [live2prod](reference/commands/live2prod.md) | Sync live to production |
+| [live2stg](reference/commands/live2stg.md) | Sync live back to staging |
+| [make](reference/commands/make.md) | Generate components |
+| [prod2stg](reference/commands/prod2stg.md) | Sync production to staging |
 | [report](reference/commands/report.md) | System reporting |
+| [restore](reference/commands/restore.md) | Restore from backups |
+| [run-tests](reference/commands/run-tests.md) | Unified test runner |
 | [security](reference/commands/security.md) | Security scanning |
 | [security-check](reference/commands/security-check.md) | Security check details |
+| [status](reference/commands/status.md) | Show site status |
+| [stg2live](reference/commands/stg2live.md) | Deploy staging to live |
+| [stg2prod](reference/commands/stg2prod.md) | Deploy staging to production |
+| [test](reference/commands/test.md) | Run site tests |
+| [testos](reference/commands/testos.md) | OS testing |
+| [verify](reference/commands/verify.md) | Verify site configuration |
 
 ### Deployment
 
@@ -96,6 +117,16 @@ Guides for deploying NWP sites:
 | [Disaster Recovery](deployment/disaster-recovery.md) | Recovery procedures, RTO/RPO |
 | [CI/CD Pipelines](deployment/cicd.md) | GitLab CI, GitHub Actions |
 | [Git Backup Strategy](deployment/git-backup-recommendations.md) | Git-based backup recommendations |
+
+### Development
+
+Development workflows and tools:
+
+| Document | Description |
+|----------|-------------|
+| [Developer Workflow](guides/developer-workflow.md) | 9-phase development lifecycle |
+| [Git Hooks](development/git-hooks.md) | Automated code quality checks |
+| [Working with Claude Securely](guides/working-with-claude-securely.md) | AI assistant security guidelines |
 
 ### Testing
 

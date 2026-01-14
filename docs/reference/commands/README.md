@@ -35,21 +35,22 @@ pl <command> [options] [arguments]
 | Command | Description | Documentation |
 |---------|-------------|---------------|
 | `dev2stg` | Deploy development to staging | [dev2stg.md](dev2stg.md) ✓ |
-| `stg2prod` | Deploy staging to production | [stg2prod.md](stg2prod.md) |
-| `stg2live` | Deploy staging to live | [stg2live.md](stg2live.md) |
-| `live2stg` | Sync live back to staging | [live2stg.md](live2stg.md) |
-| `live2prod` | Sync live to production | [live2prod.md](live2prod.md) |
-| `prod2stg` | Sync production to staging | [prod2stg.md](prod2stg.md) |
-| `live` | Manage live site deployments | [live.md](live.md) |
+| `stg2prod` | Deploy staging to production | [stg2prod.md](stg2prod.md) ✓ |
+| `stg2live` | Deploy staging to live | [stg2live.md](stg2live.md) ✓ |
+| `live2stg` | Sync live back to staging | [live2stg.md](live2stg.md) ✓ |
+| `live2prod` | Sync live to production | [live2prod.md](live2prod.md) ✓ |
+| `prod2stg` | Sync production to staging | [prod2stg.md](prod2stg.md) ✓ |
+| `live` | Manage live site deployments | [live.md](live.md) ✓ |
 | `sync` | Synchronization operations | [sync.md](sync.md) |
 | `produce` | Production operations | [produce.md](produce.md) |
 
 ### Testing & Quality
 | Command | Description | Documentation |
 |---------|-------------|---------------|
-| `test` | Run site tests | [test.md](test.md) |
+| `test` | Run site tests | [test.md](test.md) ✓ |
 | `test-nwp` | NWP test runner | [test-nwp.md](test-nwp.md) |
-| `run-tests` | Unified test runner | [run-tests.md](run-tests.md) |
+| `run-tests` | Unified test runner | [run-tests.md](run-tests.md) ✓ |
+| `testos` | OS testing | [testos.md](testos.md) ✓ |
 
 ### Security
 | Command | Description | Documentation |
@@ -89,14 +90,13 @@ pl <command> [options] [arguments]
 |---------|-------------|---------------|
 | `badges` | Dynamic badges generation | [badges.md](badges.md) ✓ |
 | `report` | Error reporting to GitLab | [report.md](report.md) ✓ |
-| `testos` | OS testing | [testos.md](testos.md) |
 | `uninstall_nwp` | NWP uninstallation | [uninstall_nwp.md](uninstall_nwp.md) |
 
 ## Documentation Status
 
 ✓ = Documented (complete reference available)
 
-**Documentation Coverage: 39% (19/49 commands)**
+**Documentation Coverage: 56% (27/48 commands)**
 
 Updated: 2026-01-14
 
@@ -245,5 +245,5 @@ See [contribute.md](contribute.md) for information on submitting improvements to
 
 ---
 
-Last Updated: 2026-01-12
-NWP Version: 0.18.0
+Last Updated: 2026-01-14
+NWP Version: 0.22.0

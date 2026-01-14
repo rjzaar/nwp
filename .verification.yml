@@ -1095,6 +1095,253 @@ features:
     file_hash: null
     notes: null
 
+
+  doctor:
+    name: "Doctor Script (doctor.sh)"
+    description: "Diagnostic and troubleshooting for NWP configuration and prerequisites"
+    files:
+      - scripts/commands/doctor.sh
+    checklist:
+      - text: "Test prerequisite checks (Docker, DDEV, PHP, Composer, yq, git)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Docker daemon running check"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test configuration file validation (cnwp.yml, .secrets.yml)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check network connectivity tests (Linode, Cloudflare, drupal.org)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify common issue detection (disk space, memory, DDEV sites)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test verbose and quiet modes"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  bootstrap_coder:
+    name: "Bootstrap Coder (bootstrap-coder.sh)"
+    description: "Automated coder identity configuration and NWP setup"
+    files:
+      - scripts/commands/bootstrap-coder.sh
+    checklist:
+      - text: "Test interactive coder detection"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify identity validation against GitLab and DNS"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test cnwp.yml configuration with coder subdomain"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify git user configuration setup"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test SSH key verification for GitLab"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check infrastructure readiness verification"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test --coder flag with known identity"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify --dry-run mode"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+
+  # ============================================================
+  # AVC-MOODLE INTEGRATION
+  # ============================================================
+
+  avc_moodle_setup:
+    name: "AVC-Moodle Setup (avc-moodle-setup.sh)"
+    description: "OAuth2 SSO integration setup between AVC and Moodle sites"
+    files:
+      - scripts/commands/avc-moodle-setup.sh
+      - lib/avc-moodle.sh
+    checklist:
+      - text: "Test OAuth2 key generation (RSA 2048-bit)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify AVC Drupal modules installation (simple_oauth)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test Moodle plugin installation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify OAuth2 client configuration in AVC"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test OAuth2 issuer configuration in Moodle"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify SSO flow testing"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test --regenerate-keys flag"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify --skip-test flag"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test --role-sync flag"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test --badge-display flag"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify cnwp.yml integration settings update"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  avc_moodle_status:
+    name: "AVC-Moodle Status (avc-moodle-status.sh)"
+    description: "Integration health dashboard for AVC-Moodle SSO"
+    files:
+      - scripts/commands/avc-moodle-status.sh
+      - lib/avc-moodle.sh
+    checklist:
+      - text: "Test SSO status display (active/disabled)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify OAuth2 endpoint health checks"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test last sync time display"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify role sync status"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test --debug flag output"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  avc_moodle_sync:
+    name: "AVC-Moodle Sync (avc-moodle-sync.sh)"
+    description: "Manual role and cohort synchronization between AVC and Moodle"
+    files:
+      - scripts/commands/avc-moodle-sync.sh
+      - lib/avc-moodle.sh
+    checklist:
+      - text: "Test full sync (all users and guilds)"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify --guild=NAME specific guild sync"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test --user=ID specific user sync"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify --dry-run mode"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test --verbose flag output"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  avc_moodle_test:
+    name: "AVC-Moodle Test (avc-moodle-test.sh)"
+    description: "OAuth2 SSO and integration functionality testing"
+    files:
+      - scripts/commands/avc-moodle-test.sh
+      - lib/avc-moodle.sh
+    checklist:
+      - text: "Test OAuth2 endpoint accessibility"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify token exchange functionality"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test user authentication flow"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify role mapping tests"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test badge display functionality"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Check test result reporting (pass/fail counts)"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+
   # ============================================================
   # UTILITY & MANAGEMENT SCRIPTS
   # ============================================================
@@ -3029,6 +3276,104 @@ features:
     verified_at: null
     file_hash: null
     notes: null
+
+
+  lib_avc_moodle:
+    name: "AVC-Moodle Integration Library (lib/avc-moodle.sh)"
+    description: "Shared functions for AVC-Moodle SSO, role sync, and data display"
+    files:
+      - lib/avc-moodle.sh
+    checklist:
+      - text: "Test get_site_directory function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify get_site_recipe detection"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test OAuth2 key generation helpers"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify role mapping functions"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test cohort synchronization functions"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_podcast:
+    name: "Podcast Library (lib/podcast.sh)"
+    description: "High-level functions for Castopod podcast hosting infrastructure"
+    files:
+      - lib/podcast.sh
+    checklist:
+      - text: "Test generate_password function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify generate_castopod_env function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test Linode orchestration helpers"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify Cloudflare DNS configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test B2 storage configuration"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
+  lib_ssh:
+    name: "SSH Library (lib/ssh.sh)"
+    description: "SSH connection helpers with security controls"
+    files:
+      - lib/ssh.sh
+    checklist:
+      - text: "Test get_ssh_host_key_checking function"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify show_ssh_security_warning output"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test get_ssh_options array generation"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Verify NWP_SSH_STRICT=1 strict mode"
+        completed: false
+        completed_by: null
+        completed_at: null
+      - text: "Test accept-new mode (default)"
+        completed: false
+        completed_by: null
+        completed_at: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+
 
   # ============================================================
   # CONFIGURATION

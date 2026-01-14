@@ -33,9 +33,9 @@ NWP uses a verification tracking system (`.verification.yml`) to ensure all feat
 
 ## Feature Categories
 
-NWP tracks 42+ features across these categories:
+NWP tracks 81 features across these categories:
 
-### Core Scripts (12 features)
+### Core Scripts (15 features)
 - `setup` - Prerequisites setup (Docker, DDEV, Linode, GitLab)
 - `install` - Main installation script
 - `status` - Site status dashboard
@@ -48,29 +48,60 @@ NWP tracks 42+ features across these categories:
 - `email` - Email configuration
 - `migration` - Site migration
 - `migrate_secrets` - Secrets migration to two-tier
+- `import` - Import external sites
+- `doctor` - System diagnostics
+- `bootstrap_coder` - Automated coder identity setup
 
-### Deployment (8 features)
+### Deployment (9 features)
 - `dev2stg` - Development to staging
 - `stg2prod` - Staging to production
 - `prod2stg` - Production to staging sync
 - `live2stg` - Live to staging sync
 - `stg2live` - Staging to live deployment
 - `live` - Live deployment management
+- `live2prod` - Live to production
+- `produce` - Production environment setup
 - `rollback` - Deployment rollback
-- `sync` - Synchronization operations
 
-### Infrastructure (5 features)
+### Infrastructure (6 features)
 - `podcast` - Podcast site setup (Castopod)
 - `schedule` - Cron scheduling
-- `security` - Security audits and updates
-- `doctor` - System diagnostics
-- `theme` - Frontend theming
+- `security` - Security hardening
+- `setup_ssh` - SSH key management
+- `uninstall` - Complete NWP uninstallation
+- `sync` - Synchronization operations
 
-### CLI & Testing (2 features)
+### AVC-Moodle Integration (4 features)
+- `avc_moodle_setup` - OAuth2 SSO setup between AVC and Moodle
+- `avc_moodle_status` - Integration health dashboard
+- `avc_moodle_sync` - Role and cohort synchronization
+- `avc_moodle_test` - SSO and integration testing
+
+### Utility & Management (11 features)
+- `badges` - GitLab badge management
+- `email` - Email configuration
+- `report` - Error reporting to GitLab
+- `rollback` - Deployment rollback
+- `storage` - Cloud storage (Backblaze B2)
+- `theme` - Frontend build tool management
+- `seo_check` - SEO monitoring and validation
+- `run_tests` - Comprehensive test runner
+- `upstream` - Upstream repository sync
+- `security_check` - HTTP security headers check
+- `verify` - Feature verification tracking
+
+### Coder Management (3 features)
+- `coders` - Multi-coder TUI
+- `coder_setup` - Coder provisioning
+- `contribute` - Contribution workflow
+
+### CLI & Testing (3 features)
 - `pl_cli` - PL CLI wrapper
 - `test_nwp` - NWP test suite
+- `test` - DDEV site testing (PHPCS, PHPStan, PHPUnit, Behat)
+- `testos` - OpenSocial testing suite
 
-### Libraries (26 features)
+### Libraries (29 features)
 - `lib_common` - Common utilities
 - `lib_ui` - UI formatting
 - `lib_state` - State detection
@@ -83,29 +114,35 @@ NWP tracks 42+ features across these categories:
 - `lib_git` - Git operations
 - `lib_cloudflare` - Cloudflare API
 - `lib_linode` - Linode API
+- `lib_b2` - Backblaze B2 storage
 - `lib_cli_register` - CLI registration
+- `lib_ddev_generate` - DDEV config generation
+- `lib_developer` - Developer identity management
+- `lib_env_generate` - Environment file generation
 - `lib_frontend` - Frontend build tools
-- `lib_install_*` - Installation libraries (5 types)
+- `lib_install_common` - Common installation functions
+- `lib_install_drupal` - Drupal installation
+- `lib_install_gitlab` - GitLab installation
+- `lib_install_moodle` - Moodle installation
+- `lib_install_podcast` - Podcast installation
+- `lib_install_steps` - Installation step tracking
+- `lib_live_server_setup` - Live server provisioning
 - `lib_badges` - Dynamic badges
 - `lib_sanitize` - Database sanitization
 - `lib_safe_ops` - Safe operations
 - `lib_remote` - Remote operations
 - `lib_server_scan` - Server scanning
-- And more...
-
-### Coder Management (3 features)
-- `coders` - Multi-coder TUI
-- `coder_setup` - Coder provisioning
-- `contribute` - Contribution workflow
+- `lib_import` - Import library
+- `lib_import_tui` - Import TUI
+- `lib_dev2stg_tui` - Dev2stg TUI
+- `lib_terminal` - Terminal utilities
+- `lib_avc_moodle` - AVC-Moodle integration
+- `lib_podcast` - Podcast infrastructure
+- `lib_ssh` - SSH helpers with security controls
 
 ### Configuration (2 features)
 - `config_example` - example.cnwp.yml
 - `config_secrets` - .secrets.example.yml
-
-### Import & Migration (3 features)
-- `import` - Import external sites
-- `lib_import` - Import library
-- `lib_import_tui` - Import TUI
 
 ## Verification Commands
 

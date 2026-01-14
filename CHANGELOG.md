@@ -6,6 +6,163 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v0.23.0] - 2026-01-14
+
+### Documentation (Major Release)
+
+This release represents the most comprehensive documentation update in NWP history, achieving **100% command documentation coverage** and complete library API reference.
+
+#### Command Documentation (31 new files)
+
+**Deployment Commands (6):**
+- `stg2prod` - Staging to production deployment with module reinstallation
+- `stg2live` - Staging to live with security hardening and password regeneration
+- `prod2stg` - Production to staging pull for testing production issues
+- `live` - Live server provisioning and management (shared/dedicated/temporary)
+- `live2prod` - Direct live to production deployment
+- `live2stg` - Live to staging pull workflow
+
+**Testing Commands (4):**
+- `test` - Comprehensive DDEV site testing (PHPCS, PHPStan, PHPUnit, Behat)
+- `test-nwp` - Master NWP system test suite (22+ test categories)
+- `run-tests` - BATS test orchestrator for unit/integration/E2E tests
+- `testos` - OpenSocial-specific testing with Selenium
+
+**Setup & Migration (7):**
+- `setup` - Interactive TUI for managing 25+ prerequisites and components
+- `setup-ssh` - SSH key generation and distribution to Linode servers
+- `modify` - Interactive modification of existing site options
+- `migration` - Platform migration workflow (Drupal 7/8/9, WordPress, Joomla)
+- `migrate-secrets` - Two-tier secrets architecture migration tool
+- `sync` - Remote site re-synchronization with automatic sanitization
+- `upstream` - Distributed governance upstream synchronization
+
+**Operations (7):**
+- `rollback` - Deployment rollback management with rollback points
+- `schedule` - Cron-based backup scheduling (database, full, bundle)
+- `email` - Email infrastructure setup (Postfix, DKIM, SPF, DMARC)
+- `storage` - Backblaze B2 cloud storage management
+- `produce` - Production server provisioning on Linode
+- `seo-check` - SEO monitoring and validation (robots.txt, sitemap.xml)
+- `theme` - Frontend build tool management (Gulp, Grunt, Webpack, Vite)
+
+**Specialized (7):**
+- `avc-moodle-setup` - OAuth2 SSO setup for AVC-Moodle integration
+- `avc-moodle-status` - Integration health dashboard
+- `avc-moodle-sync` - Role/cohort synchronization (full, guild, user modes)
+- `avc-moodle-test` - Comprehensive test suite (15 individual tests)
+- `podcast` - Podcast hosting infrastructure with Castopod
+- `bootstrap-coder` - Automated coder onboarding with identity detection
+- `uninstall_nwp` - Safe uninstall with state-based intelligent removal
+
+#### Library API Reference
+
+**Created:** `docs/reference/api/library-functions.md`
+- Documents **300+ functions** across **38 library files**
+- Complete function signatures with parameters and return values
+- Usage examples and security notes
+- Cross-references to YAML_API.md and security documentation
+
+**Key Libraries Documented:**
+- `common.sh` (18 functions) - Core utilities and secrets management
+- `ui.sh` (22 functions) - Output formatting and color support
+- `ssh.sh` (5 functions) - SSH security controls
+- `remote.sh` (7 functions) - Remote server operations
+- `cloudflare.sh` (26+ functions) - Cloudflare API operations
+- `linode.sh` (38+ functions) - Linode server management
+- `yaml-write.sh` (40+ functions) - YAML parsing and modification
+- `checkbox.sh` (30+ functions) - Multi-select TUI interface
+- `tui.sh` (12 functions) - Full-screen TUI framework
+- `git.sh` (60+ functions) - Git and GitLab API integration
+- `install-common.sh` (35+ functions) - Installation workflow
+- `testing.sh` (15 functions) - Test harness and assertions
+- Plus 26 more specialized libraries
+
+#### Git Hooks Implementation
+
+**Created pre-commit hook:**
+- Prevents committing `cnwp.yml` (user-specific configuration)
+- Warns about outdated documentation dates (>7 days)
+- Validates command documentation structure
+- Color-coded output with bypass instructions
+
+**Created commit-msg hook:**
+- Enforces non-empty commit messages
+- Requires minimum 10 characters
+- Warns about overly long first lines
+
+**Documentation:** `docs/development/git-hooks.md`
+- Complete hook documentation with examples
+- Troubleshooting guide
+- Customization instructions
+
+#### Documentation Improvements
+
+**Enhanced Core Documentation:**
+- Updated `docs/SECURITY.md` with YAML/AWK injection protection (5-layer system)
+- Expanded `lib/README.md` with yaml-write.sh, checkbox.sh, tui.sh documentation
+- Updated `docs/VERIFY_ENHANCEMENTS.md` for v0.22.0+ features
+- Added "Last Updated" dates to key documentation files
+
+**README.md Enhancements:**
+- Added environment naming clarity (dev/stg/live/prod)
+- Recipe configuration hierarchy explanation
+- Two-tier secrets early cross-reference
+- pl CLI vs direct scripts clarification
+- Site purpose values moved higher
+
+**Documentation Index Updates:**
+- Updated `docs/reference/commands/README.md` to 100% coverage (48/48 commands)
+- Expanded `docs/README.md` with Development section and Git Hooks
+- Added individual links to all 48 command documentation files
+
+#### Workflow Guides (4 new comprehensive guides)
+
+- `docs/guides/migration-workflow.md` - Complete migration process for all platforms
+- `docs/guides/email-setup.md` - Email infrastructure and SMTP configuration
+- `docs/deployment/rollback-procedures.md` - Rollback strategies and recovery
+- `docs/guides/frontend-theming.md` - Unified frontend workflow for all build tools
+
+#### Verification Documentation
+
+**Created:** `docs/reference/verification-tasks.md`
+- Complete reference for 42+ features across 10 categories
+- Verification system explanation with SHA256 hashing
+- Example checklists for major features
+- Integration with `pl verify` command
+
+### Impact
+
+**Documentation Coverage:**
+- Before: 39% (19/48 commands documented)
+- After: **100% (48/48 commands documented)**
+- Improvement: +61 percentage points
+
+**Content Statistics:**
+- 35 files changed
+- 17,235 lines added
+- Command documentation: +31 files
+- Library API: 300+ functions documented
+- Total documentation: ~42,000 lines
+
+**Quality Enforcement:**
+- Git hooks operational and tested
+- Automated documentation standards checking
+- Cross-reference validation
+- Date tracking for freshness
+
+### Documentation Standards
+
+All new documentation follows `DOCUMENTATION_STANDARDS.md`:
+- Consistent file naming (lowercase-with-hyphens)
+- Standard structure (Synopsis, Description, Examples, Troubleshooting)
+- Last Updated dates on all files
+- Practical examples from actual codebase
+- Comprehensive troubleshooting sections
+- Cross-references to related documentation
+
+---
+
 ## [v0.22.0] - 2026-01-14
 
 ### Added

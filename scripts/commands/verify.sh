@@ -367,13 +367,14 @@ get_checklist_items_array() {
                     if [[ -n "$current_text" ]]; then
                         items_ref+=("$current_text")
                         completed_ref+=("$current_completed")
+                        current_text=""  # Clear to prevent duplicate addition
                     fi
                     break
                 fi
             fi
         done < "$VERIFICATION_FILE"
 
-        # Add last item if we reached EOF
+        # Add last item if we reached EOF (only if not already added above)
         if [[ $in_checklist -eq 1 ]] && [[ -n "$current_text" ]]; then
             items_ref+=("$current_text")
             completed_ref+=("$current_completed")

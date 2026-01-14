@@ -17,6 +17,9 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 
+# Trap handler to ensure spinners are stopped
+trap 'stop_spinner' EXIT INT TERM
+
 # Script start time
 START_TIME=$(date +%s)
 
@@ -137,10 +140,14 @@ main() {
     [ "$server_type" == "dedicated" ] && ssh_user="root"
 
     # Test SSH
+    show_step 1 4 "Testing SSH connection to live server"
+    start_spinner "Connecting to ${server_ip}"
     if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "${ssh_user}@${server_ip}" "echo ok" >/dev/null 2>&1; then
+        stop_spinner
         print_error "Cannot connect to live server"
         exit 1
     fi
+    stop_spinner
     print_status "OK" "SSH connection successful"
 
     local sudo_prefix=""
@@ -148,39 +155,49 @@ main() {
 
     # Pull files
     if [ "$DB_ONLY" != "true" ]; then
-        print_header "Pulling Files"
+        show_step 2 4 "Pulling files from live server"
+        start_spinner "Syncing files via rsync"
         rsync -avz --delete \
             --exclude=".ddev" \
             --exclude=".git" \
             --exclude="web/sites/default/files" \
             --exclude="private" \
             "${ssh_user}@${server_ip}:/var/www/${BASE_NAME}/" \
-            "$PROJECT_ROOT/sites/$STG_NAME/"
+            "$PROJECT_ROOT/sites/$STG_NAME/" 2>&1 | grep -v "^sending incremental file list$" | grep -v "^$" || true
+        stop_spinner
         print_status "OK" "Files pulled"
     fi
 
     # Pull database
     if [ "$FILES_ONLY" != "true" ]; then
-        print_header "Pulling Database"
+        local step_num=2
+        [ "$DB_ONLY" != "true" ] && step_num=3
+        show_step $step_num 4 "Pulling database from live server"
         local tmp_sql="/tmp/live2stg_${BASE_NAME}_$(date +%s).sql.gz"
 
         # Export from live
+        start_spinner "Exporting database from live"
         ssh "${ssh_user}@${server_ip}" "$sudo_prefix -u www-data sh -c 'cd /var/www/${BASE_NAME} && drush sql:dump --gzip'" > "$tmp_sql" 2>/dev/null || \
             ssh "${ssh_user}@${server_ip}" "$sudo_prefix -u www-data sh -c 'cd /var/www/${BASE_NAME}/web && ../vendor/bin/drush sql:dump --gzip'" > "$tmp_sql"
+        stop_spinner
 
         # Import to staging
+        start_spinner "Importing database to staging"
         cd "$PROJECT_ROOT/sites/$STG_NAME"
-        ddev import-db --file="$tmp_sql"
+        ddev import-db --file="$tmp_sql" >/dev/null 2>&1
         rm -f "$tmp_sql"
         cd "$PROJECT_ROOT"
+        stop_spinner
         print_status "OK" "Database imported"
     fi
 
     # Clear cache
-    print_info "Clearing cache..."
+    show_step 4 4 "Clearing Drupal cache"
+    start_spinner "Running drush cache:rebuild"
     cd "$PROJECT_ROOT/sites/$STG_NAME"
     ddev drush cr 2>/dev/null || true
     cd "$PROJECT_ROOT"
+    stop_spinner
 
     print_header "Pull Complete"
     print_status "OK" "Live pulled to staging: $STG_NAME"

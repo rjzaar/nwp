@@ -154,7 +154,9 @@ backup_database() {
 
     # Export database using DDEV to .ddev directory first
     local temp_file=".ddev/${backup_name}.sql"
+    start_spinner "Exporting database..."
     if ddev export-db --file="$temp_file" --gzip=false > /dev/null 2>&1; then
+        stop_spinner
         # Move from .ddev to backup directory
         if [ -f "$temp_file" ]; then
             mv "$temp_file" "$db_file"
@@ -169,6 +171,7 @@ backup_database() {
             return 1
         fi
     else
+        stop_spinner
         print_error "Failed to export database"
         cd "$original_dir"
         return 1
@@ -231,7 +234,9 @@ backup_files() {
 
     # Create tar.gz archive (suppress "Removing leading" warnings)
     # SECURITY FIX: Use array expansion "${backup_paths[@]}" to properly quote each path
+    start_spinner "Creating archive..."
     tar -czf "$files_archive" -C "$site_dir" "${backup_paths[@]}" 2>&1 | grep -v "Removing leading" || true
+    stop_spinner
 
     # Check if archive was created successfully
     if [ -f "$files_archive" ] && [ -s "$files_archive" ]; then
@@ -260,6 +265,9 @@ backup_site() {
     local push_all=${8:-false}
     local sanitize=${9:-false}
     local sanitize_level=${10:-basic}
+
+    # Clean up spinner on exit/error
+    trap 'stop_spinner' EXIT INT TERM
 
     if [ "$db_only" == "true" ]; then
         print_header "NWP Database Backup: $sitename"

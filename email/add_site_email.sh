@@ -35,11 +35,20 @@ VIRTUAL_UID="${VIRTUAL_UID:-5000}"
 VIRTUAL_GID="${VIRTUAL_GID:-5000}"
 
 # Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# Respects NO_COLOR standard (https://no-color.org/)
+if [ -n "${NO_COLOR:-}" ] || [ ! -t 1 ]; then
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    NC=''
+else
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[0;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m'
+fi
 
 ################################################################################
 # Helper Functions

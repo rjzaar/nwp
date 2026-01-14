@@ -16,7 +16,12 @@
 _IMPORT_TUI_SH_LOADED=1
 
 # Ensure colors are available
-DIM="${DIM:-$'\033[2m'}"
+# Respect NO_COLOR standard
+if [ -n "${NO_COLOR:-}" ] || [ ! -t 1 ]; then
+    DIM="${DIM:-}"
+else
+    DIM="${DIM:-$'\033[2m'}"
+fi
 
 ################################################################################
 # Data Structures

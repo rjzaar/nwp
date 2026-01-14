@@ -21,6 +21,9 @@ source "$PROJECT_ROOT/lib/common.sh"
 # Script start time
 START_TIME=$(date +%s)
 
+# Trap handler to stop spinners on exit
+trap 'stop_spinner' EXIT INT TERM
+
 ################################################################################
 # Script-specific Functions
 ################################################################################
@@ -140,20 +143,24 @@ copy_files() {
 
     # Copy each path
     for path in "${copy_paths[@]}"; do
-        ocmsg "Copying $path..."
+        start_spinner "Copying $path..."
         if [ -d "$from_dir/$path" ]; then
             # Copy directory
             cp -r "$from_dir/$path" "$to_dir/" || {
+                stop_spinner
                 print_error "Failed to copy $path"
                 return 1
             }
         elif [ -f "$from_dir/$path" ]; then
             # Copy file
             cp "$from_dir/$path" "$to_dir/" || {
+                stop_spinner
                 print_error "Failed to copy $path"
                 return 1
             }
         fi
+        stop_spinner
+        ocmsg "Copied $path"
     done
 
     print_status "OK" "Files copied successfully"
@@ -175,9 +182,10 @@ export_database() {
 
     # Create temporary database export
     local temp_db=".ddev/copy_temp.sql"
-    ocmsg "Exporting database from $from_site..." >&2
+    start_spinner "Exporting database from $from_site..." >&2
 
     if ddev export-db --file="$temp_db" --gzip=false > /dev/null 2>&1; then
+        stop_spinner >&2
         if [ -f "$temp_db" ]; then
             # Get absolute path before changing directories
             local abs_temp=$(pwd)/$temp_db
@@ -187,11 +195,13 @@ export_database() {
             echo "$abs_temp"
             return 0
         else
+            stop_spinner >&2
             print_error "Database export file not found" >&2
             cd "$original_dir"
             return 1
         fi
     else
+        stop_spinner >&2
         print_error "Failed to export database" >&2
         cd "$original_dir"
         return 1
@@ -215,22 +225,27 @@ configure_ddev() {
     # Get project name (convert underscores to hyphens for valid hostname)
     local project_name=$(basename "$to_site" | tr '_' '-')
 
-    ocmsg "Configuring DDEV with project name: $project_name"
+    ocmsg "Project name: $project_name"
 
     # Configure DDEV
+    start_spinner "Configuring DDEV..."
     if ddev config --project-name="$project_name" --project-type=drupal --docroot="$webroot" --php-version="8.2" --database="mariadb:10.11" > /dev/null 2>&1; then
+        stop_spinner
         print_status "OK" "DDEV configured"
     else
+        stop_spinner
         print_error "Failed to configure DDEV"
         cd "$original_dir"
         return 1
     fi
 
     # Start DDEV
-    ocmsg "Starting DDEV..."
+    start_spinner "Starting DDEV..."
     if ddev start > /dev/null 2>&1; then
+        stop_spinner
         print_status "OK" "DDEV started"
     else
+        stop_spinner
         print_error "Failed to start DDEV"
         cd "$original_dir"
         return 1
@@ -269,15 +284,17 @@ import_database() {
     local temp_import=".ddev/import.sql"
     cp "$abs_db_export" "$temp_import"
 
-    ocmsg "Importing database to $to_site..."
+    start_spinner "Importing database to $to_site..."
 
     # Import database
     if ddev import-db --file="$temp_import" > /dev/null 2>&1; then
+        stop_spinner
         rm -f "$temp_import"
         print_status "OK" "Database imported"
         cd "$original_dir"
         return 0
     else
+        stop_spinner
         rm -f "$temp_import"
         print_error "Failed to import database"
         cd "$original_dir"
@@ -340,10 +357,12 @@ install_dependencies() {
     local original_dir=$(pwd)
     cd "$to_dir" || return 1
 
-    ocmsg "Running composer install to rebuild vendor directory..."
+    start_spinner "Running composer install to rebuild vendor directory..."
     if ddev composer install --no-interaction > /dev/null 2>&1; then
+        stop_spinner
         print_status "OK" "Dependencies installed"
     else
+        stop_spinner
         print_status "WARN" "Could not install dependencies (may need manual intervention)"
     fi
 
@@ -425,7 +444,17 @@ copy_site() {
         print_header "NWP Site Copy: $from_site → $to_site"
     fi
 
+    # Determine total steps
+    local total_steps=6  # Files-only mode
+    if [ "$files_only" != "true" ]; then
+        total_steps=11  # Full copy mode
+        if [ "$open_after" == "true" ]; then
+            total_steps=12  # Full copy + login link
+        fi
+    fi
+
     # Step 1: Validate source
+    show_step 1 "$total_steps" "Validate Source"
     print_header "Step 1: Validate Source"
 
     local from_dir="sites/$from_site"
@@ -445,6 +474,7 @@ copy_site() {
     print_status "OK" "Source site validated: $from_dir"
 
     # Step 2: Prepare destination
+    show_step 2 "$total_steps" "Prepare Destination"
     print_header "Step 2: Prepare Destination"
 
     local to_dir="sites/$to_site"
@@ -514,6 +544,7 @@ copy_site() {
     fi
 
     # Step 3: Copy files
+    show_step 3 "$total_steps" "Copy Files"
     if ! copy_files "$from_site" "$to_site" "$webroot"; then
         print_error "File copy failed"
         return 1
@@ -529,6 +560,7 @@ copy_site() {
     # Skip database operations for files-only mode
     if [ "$files_only" != "true" ]; then
         # Step 4: Export database
+        show_step 4 "$total_steps" "Export Database"
         local db_export=$(export_database "$from_site")
         if [ $? -ne 0 ] || [ -z "$db_export" ]; then
             print_error "Database export failed"
@@ -536,15 +568,18 @@ copy_site() {
         fi
 
         # Step 5: Configure DDEV
+        show_step 5 "$total_steps" "Configure DDEV"
         if ! configure_ddev "$to_site" "$webroot"; then
             print_error "DDEV configuration failed"
             return 1
         fi
 
         # Step 6: Install dependencies
+        show_step 6 "$total_steps" "Install Dependencies"
         install_dependencies "$to_site"
 
         # Step 7: Import database
+        show_step 7 "$total_steps" "Import Database"
         if ! import_database "$to_site" "$db_export"; then
             print_error "Database import failed"
             return 1
@@ -554,17 +589,31 @@ copy_site() {
         rm -f "$db_export"
     fi
 
-    # Step 8: Fix settings
+    # Calculate step numbers for remaining steps
+    local step_settings=4
+    local step_permissions=5
+    local step_cache=6
+    if [ "$files_only" != "true" ]; then
+        step_settings=8
+        step_permissions=9
+        step_cache=10
+    fi
+
+    # Fix settings
+    show_step "$step_settings" "$total_steps" "Fix Site Settings"
     fix_settings "$to_site" "$webroot"
 
-    # Step 9: Set permissions
+    # Set permissions
+    show_step "$step_permissions" "$total_steps" "Set Permissions"
     set_permissions "$to_site" "$webroot"
 
-    # Step 10: Clear cache
+    # Clear cache
+    show_step "$step_cache" "$total_steps" "Clear Cache"
     clear_cache "$to_site"
 
     # Step 11: Generate login link (if requested)
     if [ "$open_after" == "true" ]; then
+        show_step 11 "$total_steps" "Generate Login Link"
         generate_login_link "$to_site"
     fi
 

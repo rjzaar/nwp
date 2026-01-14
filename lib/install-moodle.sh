@@ -23,6 +23,9 @@ install_moodle() {
     local purpose=${4:-indefinite}
     local base_dir=$(pwd)
 
+    # Clean up spinner on exit/error
+    trap 'stop_spinner' EXIT INT TERM
+
     print_header "Installing Moodle using recipe: $recipe"
 
     if [ -n "$start_step" ]; then
@@ -128,13 +131,16 @@ install_moodle() {
 
     # Step 1: Clone Moodle from Git
     if should_run_step 1 "$start_step"; then
+        show_step 1 7 "Cloning Moodle repository"
         print_header "Step 1: Clone Moodle Repository"
-        print_info "This may take several minutes..."
 
-        if ! git clone --branch "$branch" --depth 1 "$source" .; then
+        start_spinner "Cloning Moodle from Git (this may take several minutes)..."
+        if ! git clone --branch "$branch" --depth 1 "$source" . >/dev/null 2>&1; then
+            stop_spinner
             print_error "Failed to clone Moodle repository"
             return 1
         fi
+        stop_spinner
         print_status "OK" "Moodle cloned successfully"
     else
         print_status "INFO" "Skipping Step 1: Moodle already cloned"
@@ -142,6 +148,7 @@ install_moodle() {
 
     # Step 2: Configure DDEV
     if should_run_step 2 "$start_step"; then
+        show_step 2 7 "Configuring DDEV"
         print_header "Step 2: Configure DDEV"
 
         # Map database type to DDEV database type
@@ -153,10 +160,13 @@ install_moodle() {
         fi
 
         # Moodle uses php project type
-        if ! ddev config --project-type=php --docroot="$webroot" --php-version="$php_version" --database="$ddev_database"; then
+        start_spinner "Configuring DDEV project..."
+        if ! ddev config --project-type=php --docroot="$webroot" --php-version="$php_version" --database="$ddev_database" >/dev/null 2>&1; then
+            stop_spinner
             print_error "Failed to configure DDEV"
             return 1
         fi
+        stop_spinner
         print_status "OK" "DDEV configured (Database: $ddev_database)"
     else
         print_status "INFO" "Skipping Step 2: DDEV already configured"
@@ -164,6 +174,7 @@ install_moodle() {
 
     # Step 3: Memory Configuration
     if should_run_step 3 "$start_step"; then
+        show_step 3 7 "Configuring PHP settings"
         print_header "Step 3: Memory Configuration"
 
         # Get PHP settings from cnwp.yml (with defaults)
@@ -186,12 +197,16 @@ EOF
 
     # Step 4: Launch Services
     if should_run_step 4 "$start_step"; then
+        show_step 4 7 "Launching DDEV services"
         print_header "Step 4: Launch DDEV Services"
 
-        if ! ddev start; then
+        start_spinner "Starting DDEV containers..."
+        if ! ddev start >/dev/null 2>&1; then
+            stop_spinner
             print_error "Failed to start DDEV"
             return 1
         fi
+        stop_spinner
         print_status "OK" "DDEV services started"
     else
         print_status "INFO" "Skipping Step 4: DDEV already started"
@@ -199,6 +214,7 @@ EOF
 
     # Step 5: Create Moodledata Directory (outside web root for security)
     if should_run_step 5 "$start_step"; then
+        show_step 5 7 "Creating Moodledata directory"
         print_header "Step 5: Create Moodledata Directory"
 
         # Moodle requires dataroot to be OUTSIDE the web root
@@ -219,8 +235,9 @@ services:
 MOODLEDATA_EOF
 
         # Restart DDEV to apply the new mount
-        print_info "Restarting DDEV to apply moodledata mount..."
-        ddev restart
+        start_spinner "Restarting DDEV to apply moodledata mount..."
+        ddev restart >/dev/null 2>&1
+        stop_spinner
 
         print_status "OK" "Moodledata directory created at $moodledata_abs"
     else
@@ -229,35 +246,45 @@ MOODLEDATA_EOF
 
     # Step 6: Install Moodle
     if should_run_step 6 "$start_step"; then
+        show_step 6 7 "Installing Moodle"
         print_header "Step 6: Install Moodle"
         print_info "This will take 5-10 minutes..."
 
         # Verify DDEV is running and restart to ensure proper mount
-        print_info "Verifying DDEV status..."
+        start_spinner "Verifying DDEV status..."
         if ! ddev describe >/dev/null 2>&1; then
+            stop_spinner
             print_error "DDEV is not running. Starting DDEV..."
-            if ! ddev start; then
+            start_spinner "Starting DDEV..."
+            if ! ddev start >/dev/null 2>&1; then
+                stop_spinner
                 print_error "Failed to start DDEV"
                 return 1
             fi
+            stop_spinner
         else
             # Restart DDEV to ensure proper container mount context
-            print_info "Restarting DDEV to ensure proper container configuration..."
+            stop_spinner
+            start_spinner "Restarting DDEV to ensure proper container configuration..."
             if ! ddev restart >/dev/null 2>&1; then
+                stop_spinner
                 print_error "Failed to restart DDEV"
                 return 1
             fi
+            stop_spinner
         fi
 
         # Verify current directory is accessible
         print_info "Working directory: $(pwd)"
-        print_info "Verifying container access..."
+        start_spinner "Verifying container access..."
         if ! ddev exec pwd >/dev/null 2>&1; then
+            stop_spinner
             print_error "Container cannot access current directory"
             print_error "This is likely a Docker AppArmor/SELinux issue"
             print_info "Try running: sudo aa-status | grep docker"
             return 1
         fi
+        stop_spinner
 
         # Determine database driver
         local db_driver="mariadb"
@@ -306,6 +333,7 @@ MOODLEDATA_EOF
         local moodle_shortname=$(get_secret "moodle.shortname" "moodle")
 
         # Run Moodle installation
+        start_spinner "Installing Moodle database and configuration (5-10 minutes)..."
         if ! ddev exec php admin/cli/install.php \
             --lang=en \
             --wwwroot="$site_url" \
@@ -321,10 +349,12 @@ MOODLEDATA_EOF
             --adminpass="$moodle_admin_pass" \
             --adminemail="$moodle_admin_email" \
             --non-interactive \
-            --agree-license; then
+            --agree-license >/dev/null 2>&1; then
+            stop_spinner
             print_error "Failed to install Moodle"
             return 1
         fi
+        stop_spinner
         print_status "OK" "Moodle site installed"
     else
         print_status "INFO" "Skipping Step 6: Moodle already installed"
@@ -332,22 +362,27 @@ MOODLEDATA_EOF
 
     # Step 7: Post-installation configuration
     if should_run_step 7 "$start_step"; then
+        show_step 7 7 "Post-installation configuration"
         print_header "Step 7: Post-Installation Configuration"
 
         # Disable slasharguments for DDEV/nginx compatibility
         # This prevents JS/CSS files from returning HTML instead of their content
-        print_info "Disabling slasharguments for DDEV compatibility..."
-        if ddev exec php admin/cli/cfg.php --name=slasharguments --set=0; then
+        start_spinner "Disabling slasharguments for DDEV compatibility..."
+        if ddev exec php admin/cli/cfg.php --name=slasharguments --set=0 >/dev/null 2>&1; then
+            stop_spinner
             print_status "OK" "Slasharguments disabled"
         else
+            stop_spinner
             print_warning "Failed to disable slasharguments (non-critical)"
         fi
 
         # Purge caches to apply configuration
-        print_info "Purging caches..."
-        if ddev exec php admin/cli/purge_caches.php; then
+        start_spinner "Purging caches..."
+        if ddev exec php admin/cli/purge_caches.php >/dev/null 2>&1; then
+            stop_spinner
             print_status "OK" "Caches purged"
         else
+            stop_spinner
             print_warning "Failed to purge caches (non-critical)"
         fi
 

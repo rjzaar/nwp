@@ -7,9 +7,24 @@
 # Source this file: source "$SCRIPT_DIR/lib/ui.sh"
 ################################################################################
 
+# Determine if color output should be used
+# Respects NO_COLOR standard (https://no-color.org/)
+# Returns 0 (true) if colors should be used, 1 (false) otherwise
+should_use_color() {
+    # NO_COLOR standard - if set (any value), disable color
+    if [ -n "${NO_COLOR:-}" ]; then
+        return 1
+    fi
+    # Also disable if not a terminal
+    if [ ! -t 1 ]; then
+        return 1
+    fi
+    return 0
+}
+
 # Colors for output
-# Only use colors if outputting to a terminal
-if [[ -t 1 ]]; then
+# Only use colors if outputting to a terminal and NO_COLOR is not set
+if should_use_color; then
     RED=$'\033[0;31m'
     GREEN=$'\033[0;32m'
     YELLOW=$'\033[1;33m'
@@ -66,6 +81,16 @@ print_info() {
 # Print a warning message
 print_warning() {
     echo -e "${YELLOW}${BOLD}WARNING:${NC} $1"
+}
+
+# Print a success message
+print_success() {
+    echo -e "${GREEN}${BOLD}SUCCESS:${NC} $1"
+}
+
+# Print a hint message
+print_hint() {
+    echo -e "${CYAN}${BOLD}HINT:${NC} $1"
 }
 
 # Display elapsed time since START_TIME
@@ -153,6 +178,61 @@ step() {
 }
 
 ################################################################################
+# Progress Indicator Functions
+################################################################################
+
+# Simple spinner for background operations
+# Usage: start_spinner "Installing Drupal..."
+#        do_something
+#        stop_spinner
+start_spinner() {
+    local msg="${1:-Working...}"
+    # Only show spinner if we have a terminal
+    [ ! -t 1 ] && return
+    (
+        local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+        local i=0
+        while true; do
+            printf "\r%s %s" "${spin:i++%${#spin}:1}" "$msg"
+            sleep 0.1
+        done
+    ) &
+    SPINNER_PID=$!
+}
+
+stop_spinner() {
+    [ -n "${SPINNER_PID:-}" ] && kill "$SPINNER_PID" 2>/dev/null
+    printf "\r\033[K"  # Clear line
+    unset SPINNER_PID
+}
+
+# Step indicator for multi-step operations
+# Usage: show_step 1 5 "Installing dependencies"
+show_step() {
+    local current=$1
+    local total=$2
+    local message=$3
+    printf "[%d/%d] %s\n" "$current" "$total" "$message"
+}
+
+# Progress bar for known-length operations
+# Usage: show_progress 45 100 "Downloading"
+show_progress() {
+    local current=$1
+    local total=$2
+    local message="${3:-Progress}"
+    local percent=$((current * 100 / total))
+    local filled=$((percent / 2))
+    local empty=$((50 - filled))
+    printf "\r%s [%-50s] %d%%" "$message" "$(printf '#%.0s' $(seq 1 $filled 2>/dev/null))" "$percent"
+}
+
+# Complete a progress bar
+finish_progress() {
+    printf "\n"
+}
+
+################################################################################
 # Export all functions for use in other scripts
 ################################################################################
 
@@ -162,6 +242,8 @@ export -f print_status
 export -f print_error
 export -f print_info
 export -f print_warning
+export -f print_success
+export -f print_hint
 export -f show_elapsed_time
 
 # Icon-style functions
@@ -174,3 +256,10 @@ export -f pass
 export -f task
 export -f note
 export -f step
+
+# Progress indicator functions
+export -f start_spinner
+export -f stop_spinner
+export -f show_step
+export -f show_progress
+export -f finish_progress

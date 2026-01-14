@@ -1,10 +1,12 @@
 # NWP Configuration File
 # Copy to cnwp.yml and customize for your environment
 #
-# Status Legend:
-#   [ACTIVE]  - Currently used by NWP scripts
-#   [PLANNED] - Documented but not yet implemented
-#   [DEFAULT] - Value shown is the hardcoded default if not specified
+# Option markers:
+#   [ACTIVE]       - Feature fully implemented and stable
+#   [EXPERIMENTAL] - Feature partially implemented, may change
+#   [PLANNED]      - Feature not yet implemented, placeholder for future
+#   [DEFAULT]      - Value shown is the hardcoded default if not specified
+#   [DOCUMENTATION] - Informational only, not read by code
 
 ################################################################################
 # SETTINGS - Global NWP Configuration
@@ -33,9 +35,9 @@ settings:
   php: 8.2                         # [ACTIVE] PHP version for DDEV [DEFAULT: 8.3 for Drupal, 8.1 for Moodle]
 
   # === STACK SETTINGS [PLANNED] ===
-  # database_version: "10.11"      # [PLANNED] Database version for DDEV - not yet implemented
-  # webserver: nginx               # [PLANNED] Always nginx in DDEV currently
-  # os: ubuntu                     # [PLANNED] Always ubuntu for Linode currently
+  # database_version: "10.11"      # [PLANNED] Database version for DDEV - not configurable yet
+  # webserver: nginx               # [PLANNED] Webserver type - always nginx in DDEV currently
+  # os: ubuntu                     # [PLANNED] OS type - always ubuntu for Linode currently
 
   # === FRONTEND SETTINGS [ACTIVE] ===
   # Global defaults for frontend build tools (can be overridden per-site)
@@ -75,8 +77,8 @@ settings:
   # === GITLAB SETTINGS ===
   # For local GitLab Docker installations and production GitLab servers
   gitlab:
-    # Default group/namespace for new projects [PLANNED]
-    # default_group: nwp
+    # Default group/namespace for new projects [ACTIVE]
+    default_group: nwp
 
     # Core NWP repositories [DOCUMENTATION ONLY]
     # These are documentation - not read by code, set up manually during GitLab initialization
@@ -99,20 +101,21 @@ settings:
     #   http: 8080                 # GitLab HTTP port
     #   https: 8443                # GitLab HTTPS port
 
-    # Security hardening options [PLANNED]
-    # Applied when running: ./git/gitlab_harden.sh --apply
-    hardening:
-      enabled: true                # [PLANNED] Enable hardening during setup
-      disable_signups: true        # [PLANNED] Disable public user registration
-      require_2fa: false           # [PLANNED] Require 2FA for all users
-      password_min_length: 12      # [PLANNED] Minimum password length
-      session_timeout: 60          # [PLANNED] Session timeout (minutes)
-      ip_allowlist: []             # [PLANNED] Restrict to specific IPs
-      audit_logging: true          # [PLANNED] Enable audit event logging
-      # Security scanning in CI pipelines
-      sast_enabled: true           # [PLANNED] Static Application Security Testing
-      dependency_scanning: true    # [PLANNED] Dependency vulnerability scanning
-      secret_detection: true       # [PLANNED] Detect secrets in commits
+    # Security hardening options [EXPERIMENTAL]
+    # Script exists at linode/gitlab/gitlab_harden.sh but not yet integrated with cnwp.yml
+    # Currently run manually: ./linode/gitlab/gitlab_harden.sh --apply
+    # hardening:
+    #   enabled: true              # [EXPERIMENTAL] Enable hardening during setup
+    #   disable_signups: true      # [EXPERIMENTAL] Disable public user registration
+    #   require_2fa: false         # [EXPERIMENTAL] Require 2FA for all users
+    #   password_min_length: 12    # [EXPERIMENTAL] Minimum password length
+    #   session_timeout: 60        # [EXPERIMENTAL] Session timeout (minutes)
+    #   ip_allowlist: []           # [EXPERIMENTAL] Restrict to specific IPs
+    #   audit_logging: true        # [EXPERIMENTAL] Enable audit event logging
+    #   # Security scanning in CI pipelines
+    #   sast_enabled: true         # [PLANNED] Static Application Security Testing
+    #   dependency_scanning: true  # [PLANNED] Dependency vulnerability scanning
+    #   secret_detection: true     # [PLANNED] Detect secrets in commits
 
     # Repository mirroring [PLANNED]
     # Push mirrors to external services (GitHub, external GitLab)
@@ -142,18 +145,20 @@ settings:
       redis: true                  # [PLANNED] Enable Redis in production
       caching: aggressive          # [PLANNED]
 
-  # === SERVICES CONFIGURATION [PLANNED] ===
+  # === SERVICES CONFIGURATION ===
   # Default services (can be overridden per recipe)
+  # Note: Redis and Solr are available as TUI options during install
+  # These settings would provide defaults for those options
   services:
     redis:
       enabled: false               # [PLANNED] Redis disabled by default
-      version: "7"                 # [PLANNED]
+      version: "7"                 # [PLANNED] Version not configurable yet
     solr:
       enabled: false               # [PLANNED] Solr disabled by default
-      version: "8"                 # [PLANNED]
-      core: drupal                 # [PLANNED]
+      version: "8"                 # [PLANNED] Version not configurable yet
+      core: drupal                 # [PLANNED] Core name not configurable yet
     memcache:
-      enabled: false               # [PLANNED]
+      enabled: false               # [PLANNED] Memcache not implemented
 
   # === TESTING CONFIGURATION [PLANNED] ===
   # Local testing tools and email safety - not yet implemented
@@ -169,9 +174,9 @@ settings:
   # === SITE MANAGEMENT [ACTIVE] ===
   delete_site_yml: true            # [ACTIVE] Remove site from cnwp.yml when deleted (--keep-yml to preserve)
 
-  # === SEO & SEARCH ENGINE CONTROL [ACTIVE] ===
+  # === SEO & SEARCH ENGINE CONTROL ===
   # Controls search engine indexing behavior across environments
-  # See: docs/SEO_ROBOTS_PROPOSAL.md for complete specification
+  # See: docs/security/seo-setup.md for complete specification
   seo:
     # Staging protection - Prevent staging sites from being indexed
     staging_noindex: true          # [ACTIVE] Add X-Robots-Tag header to staging sites
@@ -182,7 +187,7 @@ settings:
     production_robots: true        # [ACTIVE] Deploy optimized robots.txt with sitemap
     sitemap_enabled: true          # [PLANNED] Enable sitemap.xml generation (requires Simple XML Sitemap module)
     ai_bots_allowed: true          # [PLANNED] Allow AI training crawlers (GPTBot, ClaudeBot, etc.)
-    crawl_delay: 1                 # [ACTIVE] Seconds between crawler requests
+    crawl_delay: 1                 # [ACTIVE] Seconds between crawler requests in robots.txt
 
     # Meta tags configuration
     meta_robots_404: true          # [PLANNED] Add noindex to 404 pages
@@ -263,7 +268,7 @@ other_coders:
   # Modules installed automatically when deploying to live servers (pl stg2live)
   live_security:
     enabled: true                  # [ACTIVE] Enable security hardening
-    # Core security modules [ACTIVE] - installed automatically
+    # Core security modules [ACTIVE] - installed automatically by stg2live
     modules:
       - seckit                     # HTTP security headers, XSS/CSRF protection
       - honeypot                   # Spam bot protection (no user friction)
@@ -272,35 +277,35 @@ other_coders:
       - username_enumeration_prevention  # Prevents username discovery
       - password_policy            # Strong password requirements (length, complexity)
       - password_strength          # Entropy-based password strength checking
-    # Optional modules [PLANNED] - not auto-installed yet
-    optional_modules:
-      - antibot                    # Behavior-based bot detection
-      - better_passwords           # NIST 800-63B compliant password checking
-      - turnstile                  # Cloudflare CAPTCHA (requires API key)
-    # Module configurations [PLANNED] - not applied yet
-    seckit_config:
-      xss:
-        csp_policy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
-      clickjacking:
-        x_frame_options: SAMEORIGIN
-      ssl:
-        hsts: true
-        hsts_max_age: 31536000     # 1 year
-    honeypot_config:
-      protect_all_forms: true
-      time_limit: 5                # Seconds before form can be submitted
-    login_security_config:
-      user_wrong_count: 5          # Failed attempts before soft block
-      host_wrong_count: 10         # Failed attempts from IP before block
-      activity_threshold: 100      # Max login attempts per hour
-    password_policy_config:
-      min_length: 12               # Minimum password length
-      require_uppercase: 1         # Minimum uppercase characters
-      require_lowercase: 1         # Minimum lowercase characters
-      require_digit: 1             # Minimum digits
-      require_special: 1           # Minimum special characters
-      max_age: 0                   # Password expiration days (0 = never)
-      history: 3                   # Remember last N passwords
+    # Optional modules [PLANNED] - not installed automatically yet
+    # optional_modules:
+    #   - antibot                  # Behavior-based bot detection
+    #   - better_passwords         # NIST 800-63B compliant password checking
+    #   - turnstile                # Cloudflare CAPTCHA (requires API key)
+    # Module configurations [PLANNED] - not applied automatically yet
+    # seckit_config:
+    #   xss:
+    #     csp_policy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    #   clickjacking:
+    #     x_frame_options: SAMEORIGIN
+    #   ssl:
+    #     hsts: true
+    #     hsts_max_age: 31536000   # 1 year
+    # honeypot_config:
+    #   protect_all_forms: true
+    #   time_limit: 5              # Seconds before form can be submitted
+    # login_security_config:
+    #   user_wrong_count: 5        # Failed attempts before soft block
+    #   host_wrong_count: 10       # Failed attempts from IP before block
+    #   activity_threshold: 100    # Max login attempts per hour
+    # password_policy_config:
+    #   min_length: 12             # Minimum password length
+    #   require_uppercase: 1       # Minimum uppercase characters
+    #   require_lowercase: 1       # Minimum lowercase characters
+    #   require_digit: 1           # Minimum digits
+    #   require_special: 1         # Minimum special characters
+    #   max_age: 0                 # Password expiration days (0 = never)
+    #   history: 3                 # Remember last N passwords
 
 ################################################################################
 # SETUP - One-time Setup Options

@@ -26,6 +26,9 @@ install_drupal() {
     local site_name=$(basename "$install_dir")
     local config_file="$base_dir/cnwp.yml"
 
+    # Clean up spinner on exit/error
+    trap 'stop_spinner' EXIT INT TERM
+
     # Helper to track installation progress
     track_step() {
         local step_num="$1"
@@ -148,6 +151,7 @@ install_drupal() {
 
     # Step 1: Initialize Project
     if should_run_step 1 "$start_step"; then
+        show_step 1 9 "Initializing project"
         if [ -n "$source_git" ]; then
             print_header "Step 1: Clone Project from Git"
             print_info "Cloning project repository..."
@@ -169,10 +173,14 @@ install_drupal() {
 
             # Install composer dependencies
             print_info "Installing dependencies (this will take 10-15 minutes)..."
+            start_spinner "Installing composer dependencies..."
             if ! env $composer_auth composer install --no-interaction; then
+                stop_spinner
                 print_error "Failed to install project dependencies"
                 return 1
             fi
+            stop_spinner
+            print_status "OK" "Dependencies installed"
         else
             print_header "Step 1: Initialize Project with Composer"
             print_info "This will take 10-15 minutes..."
@@ -216,10 +224,14 @@ install_drupal() {
 
             # Install dependencies with Asset Packagist available
             print_info "Installing dependencies (this will take 10-15 minutes)..."
+            start_spinner "Installing composer dependencies..."
             if ! env $composer_auth composer install --no-interaction; then
+                stop_spinner
                 print_error "Failed to install project dependencies"
                 return 1
             fi
+            stop_spinner
+            print_status "OK" "Dependencies installed"
         fi  # End source vs source_git
 
         # Configure GitLab composer authentication if available
@@ -312,6 +324,7 @@ install_drupal() {
 
     # Step 2: Generate Environment Configuration
     if should_run_step 2 "$start_step"; then
+        show_step 2 9 "Generating environment configuration"
         print_header "Step 2: Generate Environment Configuration"
 
         # Use base_dir (NWP root) to find env generation script
@@ -347,6 +360,7 @@ install_drupal() {
 
     # Step 3: Configure DDEV
     if should_run_step 3 "$start_step"; then
+        show_step 3 9 "Configuring DDEV"
         print_header "Step 3: Configure DDEV"
 
         # Use base_dir (NWP root) to find DDEV generation script
@@ -386,6 +400,7 @@ install_drupal() {
 
     # Step 4: Memory Configuration
     if should_run_step 4 "$start_step"; then
+        show_step 4 9 "Configuring memory settings"
         print_header "Step 4: Memory Configuration"
 
         # Get PHP settings from cnwp.yml (with defaults)
@@ -409,6 +424,7 @@ EOF
 
     # Step 5: Launch Services
     if should_run_step 5 "$start_step"; then
+        show_step 5 9 "Launching DDEV services"
         print_header "Step 5: Launch DDEV Services"
 
         # Get project name from DDEV config
@@ -461,6 +477,7 @@ EOF
 
     # Step 6: Verify Drush is Available
     if should_run_step 6 "$start_step"; then
+        show_step 6 9 "Verifying Drush availability"
         print_header "Step 6: Verify Drush is Available"
 
         # Check if Drush is available
@@ -477,6 +494,7 @@ EOF
 
     # Step 7: Configure Private File System and Environment Detection
     if should_run_step 7 "$start_step"; then
+        show_step 7 9 "Configuring file system and environment"
         print_header "Step 7: Configure File System and Environment Detection"
 
         # Create private files directory
@@ -722,6 +740,7 @@ CONFIG_SPLIT_EOF
 
     # Step 8: Install Drupal Profile
     if should_run_step 8 "$start_step"; then
+        show_step 8 9 "Installing Drupal profile"
         print_header "Step 8: Install Drupal Profile"
         print_info "This will take 5-10 minutes..."
 
@@ -795,6 +814,7 @@ CONFIG_SPLIT_EOF
 
     # Step 9: Additional modules and configuration
     if should_run_step 9 "$start_step"; then
+        show_step 9 9 "Enabling modules and finalizing configuration"
         print_header "Step 9: Enable Core Modules"
 
         # Enable environment_indicator module (installed via composer in Step 1)

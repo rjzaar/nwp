@@ -262,12 +262,15 @@ restore_database() {
     cp "$abs_backup" "$temp_db"
 
     # Import database using DDEV
+    start_spinner "Importing database..."
     if ddev import-db --file="$temp_db" > /dev/null 2>&1; then
+        stop_spinner
         rm -f "$temp_db"
         print_status "OK" "Database restored successfully"
         cd "$original_dir"
         return 0
     else
+        stop_spinner
         rm -f "$temp_db"
         print_error "Failed to import database"
         cd "$original_dir"
@@ -425,6 +428,9 @@ restore_site() {
     local start_step=${4:-1}
     local open_after=${5:-false}
     local db_only=${6:-false}
+
+    # Clean up spinner on exit/error
+    trap 'stop_spinner' EXIT INT TERM
 
     if [ "$db_only" == "true" ]; then
         print_header "NWP Database Restore: $from_site → $to_site"

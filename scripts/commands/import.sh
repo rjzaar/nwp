@@ -237,10 +237,14 @@ run_non_interactive() {
 
     # Test SSH connection
     print_info "Connecting to $ssh_target..."
+    start_spinner "Testing SSH connection..."
     if ! test_ssh_connection "$ssh_target" "$ssh_key"; then
+        stop_spinner
         print_error "Cannot connect to $ssh_target"
         exit 1
     fi
+    stop_spinner
+    print_status "OK" "Connected"
 
     # If specific source provided
     if [ -n "$OPT_SOURCE" ] && [ -n "$OPT_SITE_NAME" ]; then
@@ -294,11 +298,13 @@ run_non_interactive() {
     print_info "Scanning for Drupal sites..."
     DISCOVERED_SITES=()
 
+    start_spinner "Scanning server for Drupal installations..."
     while IFS= read -r site_json; do
         if [ -n "$site_json" ]; then
             DISCOVERED_SITES+=("$site_json")
         fi
     done < <(scan_server_for_sites "$ssh_target" "$ssh_key")
+    stop_spinner
 
     if [ ${#DISCOVERED_SITES[@]} -eq 0 ]; then
         print_error "No Drupal sites found on $ssh_target"
@@ -384,11 +390,14 @@ run_interactive() {
 
     # Step 2: Test connection
     print_info "Connecting to $SELECTED_SSH_HOST..."
+    start_spinner "Testing SSH connection..."
     if ! test_ssh_connection "$SELECTED_SSH_HOST" "$SELECTED_SSH_KEY"; then
+        stop_spinner
         print_error "Cannot connect to $SELECTED_SSH_HOST"
         print_info "Check SSH key and server accessibility"
         exit 1
     fi
+    stop_spinner
     print_status "OK" "Connected"
 
     # Step 3: Scan for sites
@@ -444,6 +453,9 @@ run_interactive() {
 ################################################################################
 
 main() {
+    # Set up trap to clean up spinners on exit
+    trap 'stop_spinner' EXIT INT TERM
+
     parse_arguments "$@"
 
     if [ "$OPT_HELP" = "y" ]; then

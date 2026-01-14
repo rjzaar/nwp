@@ -8,18 +8,48 @@
 ################################################################################
 
 # Ensure ui.sh is sourced for colors
+# If not, define our own with NO_COLOR support
 if [ -z "${NC:-}" ]; then
-    RED=$'\033[0;31m'
-    GREEN=$'\033[0;32m'
-    YELLOW=$'\033[1;33m'
-    BLUE=$'\033[0;34m'
-    CYAN=$'\033[0;36m'
-    NC=$'\033[0m'
-    BOLD=$'\033[1m'
-fi
-# DIM may not be defined in ui.sh, so ensure it's set
-if [ -z "${DIM:-}" ]; then
-    DIM=$'\033[2m'
+    # Determine if color output should be used
+    # Respects NO_COLOR standard (https://no-color.org/)
+    should_use_color() {
+        # NO_COLOR standard - if set (any value), disable color
+        if [ -n "${NO_COLOR:-}" ]; then
+            return 1
+        fi
+        # Also disable if not a terminal
+        if [ ! -t 1 ]; then
+            return 1
+        fi
+        return 0
+    }
+
+    if should_use_color; then
+        RED=$'\033[0;31m'
+        GREEN=$'\033[0;32m'
+        YELLOW=$'\033[1;33m'
+        BLUE=$'\033[0;34m'
+        CYAN=$'\033[0;36m'
+        NC=$'\033[0m'
+        BOLD=$'\033[1m'
+        DIM=$'\033[2m'
+    else
+        RED=''
+        GREEN=''
+        YELLOW=''
+        BLUE=''
+        CYAN=''
+        NC=''
+        BOLD=''
+        DIM=''
+    fi
+elif [ -z "${DIM:-}" ]; then
+    # DIM may not be defined in ui.sh, so ensure it's set
+    if [ -n "${NO_COLOR:-}" ] || [ ! -t 1 ]; then
+        DIM=''
+    else
+        DIM=$'\033[2m'
+    fi
 fi
 
 # Checkbox symbols

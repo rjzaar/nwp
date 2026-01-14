@@ -29,10 +29,12 @@ import_step_create_directory() {
         return 1
     fi
 
+    start_spinner "Creating directory structure..."
     mkdir -p "$site_dir"
     mkdir -p "$site_dir/$webroot_name/sites/default/files"
     mkdir -p "$site_dir/private"
     mkdir -p "$site_dir/config/sync"
+    stop_spinner
 
     print_status "OK" "Created directory: $site_dir"
     return 0
@@ -49,14 +51,17 @@ import_step_configure_ddev() {
 
     cd "$site_dir" || return 1
 
+    start_spinner "Configuring DDEV..."
     ddev config \
         --project-type=drupal \
         --docroot="$webroot_name" \
         --php-version="$php_version" \
         --database="$db_type" \
         --project-name="$site_name" 2>/dev/null
+    local result=$?
+    stop_spinner
 
-    if [ $? -eq 0 ]; then
+    if [ $result -eq 0 ]; then
         print_status "OK" "DDEV configured"
         return 0
     else
@@ -80,7 +85,9 @@ import_step_pull_database() {
     local start_time=$(date +%s)
 
     # Dump database from remote
+    start_spinner "Pulling database from remote server..."
     if ssh $ssh_opts "$ssh_target" "cd '$remote_site_dir' && vendor/bin/drush sql:dump --gzip 2>/dev/null" > db.sql.gz 2>/dev/null; then
+        stop_spinner
         if [ -s db.sql.gz ]; then
             local size=$(du -h db.sql.gz | cut -f1)
             local end_time=$(date +%s)
@@ -90,6 +97,7 @@ import_step_pull_database() {
         fi
     fi
 
+    stop_spinner
     print_error "Failed to pull database"
     rm -f db.sql.gz
     return 1
@@ -112,6 +120,7 @@ import_step_pull_files() {
 
     if [ "$full_sync" = "y" ]; then
         # Full file sync including public files
+        start_spinner "Syncing all files from remote server..."
         rsync -avz --progress \
             -e "ssh -i $ssh_key -o StrictHostKeyChecking=accept-new" \
             --exclude=".git" \
@@ -119,8 +128,10 @@ import_step_pull_files() {
             --exclude="node_modules" \
             "$ssh_target:$remote_site_dir/" \
             "$site_dir/" 2>/dev/null
+        local result=$?
+        stop_spinner
 
-        if [ $? -eq 0 ]; then
+        if [ $result -eq 0 ]; then
             local end_time=$(date +%s)
             local duration=$((end_time - start_time))
             print_status "OK" "Full file sync complete (${duration}s)"
@@ -128,6 +139,7 @@ import_step_pull_files() {
         fi
     else
         # Minimal sync: composer files, config, custom code
+        start_spinner "Syncing essential files from remote server..."
         rsync -avz \
             -e "ssh -i $ssh_key -o StrictHostKeyChecking=accept-new" \
             --include="composer.json" \
@@ -147,8 +159,10 @@ import_step_pull_files() {
             --prune-empty-dirs \
             "$ssh_target:$remote_site_dir/" \
             "$site_dir/" 2>/dev/null
+        local result=$?
+        stop_spinner
 
-        if [ $? -eq 0 ]; then
+        if [ $result -eq 0 ]; then
             local end_time=$(date +%s)
             local duration=$((end_time - start_time))
             print_status "OK" "Essential files synced (${duration}s)"
@@ -170,15 +184,19 @@ import_step_import_database() {
 
     # Start DDEV if not running
     if ! ddev describe >/dev/null 2>&1; then
+        start_spinner "Starting DDEV..."
         ddev start >/dev/null 2>&1
+        stop_spinner
     fi
 
     local start_time=$(date +%s)
 
     # Import the database
     if [ -f db.sql.gz ]; then
+        start_spinner "Importing database into DDEV..."
         gunzip -c db.sql.gz | ddev mysql 2>/dev/null
         local result=$?
+        stop_spinner
         rm -f db.sql.gz
 
         if [ $result -eq 0 ]; then
@@ -202,9 +220,8 @@ import_step_sanitize_database() {
     cd "$site_dir" || return 1
 
     # Run Drush sanitize
+    start_spinner "Sanitizing database..."
     if ddev drush sql:sanitize -y 2>/dev/null; then
-        print_status "OK" "Database sanitized"
-
         # Additional truncations based on options
         if option_enabled "$site_name" "truncate_cache"; then
             ddev drush sql:query "SHOW TABLES LIKE 'cache%'" 2>/dev/null | while read table; do
@@ -220,9 +237,12 @@ import_step_sanitize_database() {
             ddev drush sql:query "TRUNCATE TABLE sessions" 2>/dev/null || true
         fi
 
+        stop_spinner
+        print_status "OK" "Database sanitized"
         return 0
     fi
 
+    stop_spinner
     print_warning "Sanitization had issues (non-fatal)"
     return 0
 }
@@ -296,6 +316,7 @@ import_step_configure_stage_file_proxy() {
     cd "$site_dir" || return 1
 
     # Install stage_file_proxy module
+    start_spinner "Configuring Stage File Proxy module..."
     if ! ddev drush pm:list --status=enabled --format=list 2>/dev/null | grep -q "stage_file_proxy"; then
         # Check if module is already available
         if ddev drush pm:list --format=list 2>/dev/null | grep -q "stage_file_proxy"; then
@@ -311,8 +332,10 @@ import_step_configure_stage_file_proxy() {
     if [ -n "$origin_url" ]; then
         ddev drush config:set stage_file_proxy.settings origin "$origin_url" -y 2>/dev/null
         ddev drush config:set stage_file_proxy.settings hotlink 0 -y 2>/dev/null
+        stop_spinner
         print_status "OK" "Stage File Proxy configured: $origin_url"
     else
+        stop_spinner
         print_warning "Stage File Proxy installed but origin URL unknown"
     fi
 
@@ -327,11 +350,14 @@ import_step_clear_caches() {
 
     cd "$site_dir" || return 1
 
+    start_spinner "Clearing Drupal caches..."
     if ddev drush cache:rebuild 2>/dev/null; then
+        stop_spinner
         print_status "OK" "Caches cleared"
         return 0
     fi
 
+    stop_spinner
     print_warning "Cache clear had issues (non-fatal)"
     return 0
 }
@@ -346,7 +372,9 @@ import_step_verify_site() {
     cd "$site_dir" || return 1
 
     # Check Drupal bootstrap status
+    start_spinner "Verifying site boots..."
     local status=$(ddev drush status --field=bootstrap 2>/dev/null)
+    stop_spinner
 
     if echo "$status" | grep -qi "successful"; then
         print_status "OK" "Site boots successfully"
@@ -434,6 +462,7 @@ import_site() {
 
     # Step 1: Create directory
     show_import_progress "$site_name" 0 1 1
+    show_step 1 $total_steps "Creating local directory structure"
     if ! import_step_create_directory "$site_name" "$webroot_name"; then
         return 1
     fi
@@ -441,6 +470,7 @@ import_site() {
 
     # Step 2: Configure DDEV
     show_import_progress "$site_name" 1 1 1
+    show_step 2 $total_steps "Configuring DDEV environment"
     if ! import_step_configure_ddev "$site_name" "$webroot_name" "$php_version"; then
         return 1
     fi
@@ -448,6 +478,7 @@ import_site() {
 
     # Step 3: Pull database
     show_import_progress "$site_name" 2 1 1
+    show_step 3 $total_steps "Pulling database from remote server"
     if ! import_step_pull_database "$site_name" "$ssh_target" "$ssh_key" "$remote_site_dir"; then
         return 1
     fi
@@ -455,6 +486,7 @@ import_site() {
 
     # Step 4: Pull files
     show_import_progress "$site_name" 3 1 1
+    show_step 4 $total_steps "Syncing files from remote server"
     if ! import_step_pull_files "$site_name" "$ssh_target" "$ssh_key" "$remote_site_dir" "$webroot_name" "$full_sync"; then
         return 1
     fi
@@ -463,12 +495,15 @@ import_site() {
     # Run composer install if we did minimal sync
     if [ "$full_sync" != "y" ]; then
         cd "$PWD/$site_name" || return 1
+        start_spinner "Installing dependencies via Composer..."
         ddev start >/dev/null 2>&1
         ddev composer install --no-interaction 2>/dev/null || true
+        stop_spinner
     fi
 
     # Step 5: Import database
     show_import_progress "$site_name" 4 1 1
+    show_step 5 $total_steps "Importing database into DDEV"
     if ! import_step_import_database "$site_name"; then
         return 1
     fi
@@ -476,6 +511,7 @@ import_site() {
 
     # Step 6: Sanitize (if enabled)
     show_import_progress "$site_name" 5 1 1
+    show_step 6 $total_steps "Sanitizing database"
     if [ "$do_sanitize" = "y" ]; then
         import_step_sanitize_database "$site_name"
     else
@@ -485,11 +521,13 @@ import_site() {
 
     # Step 7: Configure settings
     show_import_progress "$site_name" 6 1 1
+    show_step 7 $total_steps "Configuring local settings"
     import_step_configure_settings "$site_name" "$webroot_name"
     ((step++))
 
     # Step 8: Configure Stage File Proxy (if enabled)
     show_import_progress "$site_name" 7 1 1
+    show_step 8 $total_steps "Configuring Stage File Proxy"
     if [ "$do_stage_proxy" = "y" ]; then
         import_step_configure_stage_file_proxy "$site_name" "$origin_url"
     else
@@ -499,16 +537,19 @@ import_site() {
 
     # Step 9: Clear caches
     show_import_progress "$site_name" 8 1 1
+    show_step 9 $total_steps "Clearing caches"
     import_step_clear_caches "$site_name"
     ((step++))
 
     # Step 10: Verify site
     show_import_progress "$site_name" 9 1 1
+    show_step 10 $total_steps "Verifying site functionality"
     import_step_verify_site "$site_name"
     ((step++))
 
     # Step 11: Register in cnwp.yml
     show_import_progress "$site_name" 10 1 1
+    show_step 11 $total_steps "Registering site in configuration"
     import_step_register_site "$site_name" "$ssh_target" "$remote_webroot" "$drupal_version"
     ((step++))
 

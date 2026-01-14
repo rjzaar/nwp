@@ -21,6 +21,7 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 # Source shared libraries
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
+source "$PROJECT_ROOT/lib/ssh.sh"
 
 # Get list of Linode servers from cnwp.yml
 get_linode_servers() {
@@ -74,25 +75,28 @@ push_key_to_server() {
 
     print_info "Pushing key to $server_name ($ssh_user@$ssh_host)..."
 
-    # Build SSH command
-    local ssh_cmd="ssh"
+    # Show SSH security warning on first use
+    show_ssh_security_warning
+
+    # Build SSH command as array to avoid word splitting issues
+    local ssh_cmd=(ssh)
+
     if [ -n "$ssh_port" ] && [ "$ssh_port" != "22" ]; then
-        ssh_cmd="$ssh_cmd -p $ssh_port"
+        ssh_cmd+=(-p "$ssh_port")
     fi
 
     # If there's an existing key, use it for the connection
     if [ -n "$ssh_key" ]; then
         ssh_key_expanded="${ssh_key/#\~/$HOME}"
         if [ -f "$ssh_key_expanded" ]; then
-            ssh_cmd="$ssh_cmd -i $ssh_key_expanded"
+            ssh_cmd+=(-i "$ssh_key_expanded")
         fi
     fi
 
-    # Add options for non-interactive
-    # SECURITY NOTE: StrictHostKeyChecking=accept-new automatically accepts new host keys.
-    # This is convenient but enables MITM attacks on first connection.
-    # For high-security environments, pre-populate known_hosts or use StrictHostKeyChecking=yes
-    ssh_cmd="$ssh_cmd -o StrictHostKeyChecking=accept-new -o BatchMode=no"
+    # Add security options from ssh.sh library
+    local host_key_mode
+    host_key_mode=$(get_ssh_host_key_checking)
+    ssh_cmd+=(-o "StrictHostKeyChecking=$host_key_mode" -o BatchMode=no)
 
     # Read public key from file
     local public_key
@@ -101,7 +105,7 @@ push_key_to_server() {
     # Push the key by piping through stdin to avoid command injection
     # SECURITY FIX: Previously embedded $public_key in command string which allowed
     # malicious keys containing shell metacharacters to execute arbitrary commands
-    if echo "$public_key" | $ssh_cmd "$ssh_user@$ssh_host" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo 'Key added successfully'"; then
+    if echo "$public_key" | "${ssh_cmd[@]}" "$ssh_user@$ssh_host" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo 'Key added successfully'"; then
         print_status "Key pushed to $server_name"
         return 0
     else

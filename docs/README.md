@@ -2,8 +2,8 @@
 
 Welcome to the **Narrow Way Project (NWP)** documentation hub. This directory contains comprehensive documentation for developing, deploying, and maintaining Drupal sites using NWP's automated workflows.
 
-**Current Version:** v0.18.0
-**Documentation Last Updated:** January 12, 2026
+**Current Version:** v0.22.0
+**Documentation Last Updated:** January 14, 2026
 
 ---
 
@@ -60,6 +60,7 @@ Detailed technical documentation:
 |----------|-------------|
 | [Features Reference](reference/features.md) | Complete feature list by category |
 | [Libraries API](reference/libraries.md) | Bash library function documentation |
+| [YAML API Reference](YAML_API.md) | YAML parsing and manipulation functions |
 | [Scripts Implementation](reference/scripts-implementation.md) | Script architecture and implementation |
 | [Backup Implementation](reference/backup-implementation.md) | Backup system internals |
 | [Architecture Analysis](reference/architecture-analysis.md) | Vortex comparison, env vars, workflows |
@@ -128,6 +129,9 @@ Current proposals under consideration:
 | [F09: Comprehensive Testing](proposals/F09-comprehensive-testing.md) | Enhanced testing framework |
 | [F10: Local LLM Guide](proposals/F10-local-llm-guide.md) | Local AI development guide |
 | [NWP Deep Analysis](proposals/nwp-deep-analysis.md) | Comprehensive system analysis |
+| [YAML Parser Consolidation](proposals/YAML_PARSER_CONSOLIDATION.md) | Consolidate duplicate YAML parsers |
+| [API Client Abstraction](proposals/API_CLIENT_ABSTRACTION.md) | Abstraction layer for API calls |
+| [Coder Identity Bootstrap](proposals/CODER_IDENTITY_BOOTSTRAP.md) | Automated identity configuration |
 
 ### Governance
 
@@ -138,7 +142,7 @@ Project management and governance:
 | [Roadmap](governance/roadmap.md) | Current status and future plans |
 | [Roles](governance/roles.md) | Project roles and responsibilities |
 | [Executive Summary](governance/executive-summary.md) | High-level project overview |
-| [Distributed Contribution Governance](governance/distributed-contribution-governance.md) | Contribution security model |
+| [Distributed Contribution Governance](governance/distributed-contribution-governance.md) | Security review process for contributions |
 | [Core Developer Onboarding](governance/core-developer-onboarding.md) | Onboarding core developers |
 
 ### Project-Specific Documentation
@@ -161,6 +165,28 @@ Documentation for specific projects:
 |----------|-------------|
 | [Podcast Setup](projects/podcast/podcast-setup.md) | Castopod podcast hosting |
 
+### Integration & Completion Documents
+
+Documentation for completed integrations and implementations:
+
+| Document | Description |
+|----------|-------------|
+| [AVC Moodle Integration Proposal](AVC_MOODLE_INTEGRATION_PROPOSAL.md) | Original Moodle SSO integration proposal |
+| [AVC Moodle SSO Implementation](AVC_MOODLE_SSO_IMPLEMENTATION_COMPLETE.md) | Complete SSO implementation details |
+| [AVC Moodle SSO Complete](AVC_MOODLE_SSO_COMPLETE.md) | Final SSO implementation summary |
+| [NWP Moodle SSO Implementation](NWP_MOODLE_SSO_IMPLEMENTATION.md) | NWP-wide Moodle SSO implementation |
+| [Moodle Course Creation Guide](MOODLE_COURSE_CREATION_GUIDE.md) | Guide for creating Moodle courses |
+| [Setup Complete](SETUP_COMPLETE.md) | Initial setup completion documentation |
+| [Deployment Complete](DEPLOYMENT_COMPLETE.md) | Deployment completion documentation |
+| [Verify Enhancements](VERIFY_ENHANCEMENTS.md) | Interactive verification console guide |
+
+### Legal & Licensing
+
+| Document | Description |
+|----------|-------------|
+| [CC0 Public Domain Dedication](CC0_DEDICATION.md) | Public domain dedication and rationale |
+| [Documentation Standards](DOCUMENTATION_STANDARDS.md) | Documentation style guidelines |
+
 ### Reports & History
 
 Implementation reports and version history:
@@ -169,9 +195,15 @@ Implementation reports and version history:
 |----------|-------------|
 | [Milestones](reports/milestones.md) | Completed proposals (P01-P35) |
 | [Version Changes](reports/version-changes.md) | Version changelog |
+| [History](reports/history.md) | Project evolution and documentation history |
 | [Documentation Audit](reports/documentation-audit-2026-01-12.md) | January 2026 audit results |
+| [Implementation Plan 2026-01](reports/IMPLEMENTATION_PLAN_2026-01.md) | January 2026 implementation roadmap |
 | [F05/F04/F09/F07 Implementation](reports/f05-f04-f09-f07-implementation.md) | Feature implementation report |
 | [Implementation Consolidation](reports/implementation-consolidation.md) | Consolidation summary |
+| [Coder Identity Bootstrap Implementation](reports/CODER_IDENTITY_BOOTSTRAP_IMPLEMENTATION.md) | Bootstrap system implementation |
+| [NWP Deep Analysis Reevaluation](reports/NWP_DEEP_ANALYSIS_REEVALUATION.md) | System analysis reevaluation |
+| [Documentation Creation Analysis](reports/documentation_creation_analysis.md) | Documentation creation patterns |
+| [README Documentation Analysis](reports/README-documentation-analysis.md) | README analysis and recommendations |
 
 ### Architecture Decision Records (ADRs)
 
@@ -193,14 +225,14 @@ Documented technical decisions:
 
 Historical documents no longer actively maintained:
 
-| Category | Description |
-|----------|-------------|
+| Category | Documents |
+|----------|-----------|
 | [Archive Directory](archive/) | 14 archived documents |
-| Implemented Proposals | dev2stg-enhancement, IMPORT, multi-coder-dns, LIVE_DEPLOYMENT_AUTOMATION, NWP_COMPLETE_ROADMAP |
-| Superseded Research | VORTEX_COMPARISON, DEPLOYMENT_WORKFLOW_ANALYSIS, environment-variables-comparison |
-| Historical Guides | MIGRATION_GUIDE_ENV, IMPLEMENTATION_SUMMARY |
-| Future Proposals | EMAIL_POSTFIX_PROPOSAL, NWP_TRAINING_SYSTEM, NWP_TRAINING_IMPLEMENTATION_PLAN |
-| Reviews | CODE_REVIEW_2024-12 |
+| Implemented Proposals | [dev2stg-enhancement](archive/dev2stg-enhancement-proposal-IMPLEMENTED.md), [IMPORT](archive/IMPORT-PROPOSAL.md), [multi-coder-dns](archive/multi-coder-dns-proposal-IMPLEMENTED.md), [LIVE_DEPLOYMENT_AUTOMATION](archive/LIVE_DEPLOYMENT_AUTOMATION_PROPOSAL-INTEGRATED.md) |
+| Superseded Research | [VORTEX_COMPARISON](archive/VORTEX_COMPARISON.md), [DEPLOYMENT_WORKFLOW_ANALYSIS](archive/DEPLOYMENT_WORKFLOW_ANALYSIS.md), [environment-variables-comparison](archive/environment-variables-comparison.md) |
+| Historical Guides | [MIGRATION_GUIDE_ENV](archive/MIGRATION_GUIDE_ENV-HISTORICAL.md), [IMPLEMENTATION_SUMMARY](archive/IMPLEMENTATION_SUMMARY.md), [NWP_COMPLETE_ROADMAP](archive/NWP_COMPLETE_ROADMAP-ARCHIVED.md) |
+| Future Proposals | [EMAIL_POSTFIX_PROPOSAL](archive/EMAIL_POSTFIX_PROPOSAL.md), [NWP_TRAINING_SYSTEM](archive/NWP_TRAINING_SYSTEM.md), [NWP_TRAINING_IMPLEMENTATION_PLAN](archive/NWP_TRAINING_IMPLEMENTATION_PLAN.md) |
+| Reviews | [CODE_REVIEW_2024-12](archive/CODE_REVIEW_2024-12.md) |
 
 ### Draft Documents
 

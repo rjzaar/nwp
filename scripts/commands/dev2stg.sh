@@ -21,6 +21,9 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 # Script start time
 START_TIME=$(date +%s)
 
+# Trap to ensure spinner cleanup
+trap 'stop_spinner 2>/dev/null' EXIT INT TERM
+
 ################################################################################
 # Source Libraries
 ################################################################################
@@ -161,7 +164,7 @@ create_staging_site() {
     local dev_site=$1
     local stg_site=$2
 
-    step 1 11 "Creating staging site: $stg_site"
+    show_step "Creating staging site: $stg_site"
 
     # Create directory
     if [ -d "$PROJECT_ROOT/sites/$stg_site" ]; then
@@ -169,14 +172,18 @@ create_staging_site() {
         return 0
     fi
 
-    task "Copying codebase from $PROJECT_ROOT/sites/$dev_site..."
+    start_spinner "Copying codebase from dev to staging"
     rsync -av --exclude='.ddev' --exclude='vendor' \
           --exclude='node_modules' --exclude='*.sql*' \
           --exclude='private/' \
-          "$PROJECT_ROOT/sites/$dev_site/" "$PROJECT_ROOT/sites/$stg_site/" > /dev/null 2>&1 || {
+          "$PROJECT_ROOT/sites/$dev_site/" "$PROJECT_ROOT/sites/$stg_site/" > /dev/null 2>&1
+    local rsync_result=$?
+    stop_spinner $rsync_result
+
+    if [ $rsync_result -ne 0 ]; then
         fail "Failed to copy codebase"
         return 1
-    }
+    fi
 
     task "Creating DDEV configuration..."
     mkdir -p "$PROJECT_ROOT/sites/$stg_site/.ddev"
@@ -198,11 +205,15 @@ database:
   version: "10.11"
 DDEVEOF
 
-    task "Starting DDEV..."
-    (cd "$PROJECT_ROOT/sites/$stg_site" && ddev start) || {
+    start_spinner "Starting DDEV for staging site"
+    (cd "$PROJECT_ROOT/sites/$stg_site" && ddev start > /dev/null 2>&1)
+    local ddev_result=$?
+    stop_spinner $ddev_result
+
+    if [ $ddev_result -ne 0 ]; then
         fail "Failed to start DDEV"
         return 1
-    }
+    fi
 
     pass "Staging site created"
     return 0
@@ -212,7 +223,7 @@ DDEVEOF
 export_config_dev() {
     local dev_site=$1
 
-    step 2 11 "Export configuration from dev"
+    show_step "Export configuration from dev"
 
     local original_dir=$(pwd)
     cd "$PROJECT_ROOT/sites/$dev_site" || {
@@ -220,8 +231,12 @@ export_config_dev() {
         return 1
     }
 
-    task "Exporting configuration..."
-    if ddev drush config:export -y > /dev/null 2>&1; then
+    start_spinner "Exporting configuration from dev"
+    ddev drush config:export -y > /dev/null 2>&1
+    local export_result=$?
+    stop_spinner $export_result
+
+    if [ $export_result -eq 0 ]; then
         pass "Configuration exported"
     else
         warn "Could not export configuration (may not be needed)"
@@ -236,11 +251,9 @@ sync_files() {
     local dev_site=$1
     local stg_site=$2
 
-    step 3 11 "Sync files from dev to staging"
+    show_step "Sync files from dev to staging"
 
     local webroot=$(get_webroot "$PROJECT_ROOT/sites/$dev_site")
-
-    task "Syncing files with rsync..."
 
     local excludes=(
         "--exclude=.ddev/"
@@ -256,7 +269,12 @@ sync_files() {
         "--exclude=dev/"
     )
 
-    if rsync -av --delete "${excludes[@]}" "$PROJECT_ROOT/sites/$dev_site/" "$PROJECT_ROOT/sites/$stg_site/" > /dev/null 2>&1; then
+    start_spinner "Syncing files with rsync"
+    rsync -av --delete "${excludes[@]}" "$PROJECT_ROOT/sites/$dev_site/" "$PROJECT_ROOT/sites/$stg_site/" > /dev/null 2>&1
+    local rsync_result=$?
+    stop_spinner $rsync_result
+
+    if [ $rsync_result -eq 0 ]; then
         pass "Files synced to staging"
     else
         fail "File sync failed"
@@ -273,17 +291,24 @@ sync_database() {
     local db_source=$3
     local sanitize=$4
 
-    step 4 11 "Restore/sync database"
+    show_step "Restore/sync database"
 
+    start_spinner "Syncing database from $db_source"
     # Use the database router
-    download_database "$(basename "$dev_site")" "$db_source" "$(basename "$stg_site")" || {
+    download_database "$(basename "$dev_site")" "$db_source" "$(basename "$stg_site")" > /dev/null 2>&1
+    local db_result=$?
+    stop_spinner $db_result
+
+    if [ $db_result -ne 0 ]; then
         fail "Database sync failed"
         return 1
-    }
+    fi
 
     # Sanitize if not already sanitized
     if [ "$sanitize" = "true" ] && [[ ! "$db_source" =~ sanitized ]]; then
-        sanitize_staging_db "$(basename "$stg_site")"
+        start_spinner "Sanitizing database"
+        sanitize_staging_db "$(basename "$stg_site")" > /dev/null 2>&1
+        stop_spinner $?
     fi
 
     pass "Database synced"
@@ -294,7 +319,7 @@ sync_database() {
 run_composer_staging() {
     local stg_site=$1
 
-    step 5 11 "Run composer install --no-dev"
+    show_step "Run composer install --no-dev"
 
     local original_dir=$(pwd)
     cd "$PROJECT_ROOT/sites/$stg_site" || {
@@ -302,8 +327,12 @@ run_composer_staging() {
         return 1
     }
 
-    task "Installing dependencies..."
-    if ddev composer install --no-dev > /dev/null 2>&1; then
+    start_spinner "Installing composer dependencies"
+    ddev composer install --no-dev > /dev/null 2>&1
+    local composer_result=$?
+    stop_spinner $composer_result
+
+    if [ $composer_result -eq 0 ]; then
         pass "Composer dependencies installed"
     else
         warn "Composer install had warnings (non-fatal)"
@@ -317,7 +346,7 @@ run_composer_staging() {
 run_db_updates() {
     local stg_site=$1
 
-    step 6 11 "Run database updates"
+    show_step "Run database updates"
 
     local original_dir=$(pwd)
     cd "$PROJECT_ROOT/sites/$stg_site" || {
@@ -325,8 +354,12 @@ run_db_updates() {
         return 1
     }
 
-    task "Running drush updatedb..."
-    if ddev drush updatedb -y > /dev/null 2>&1; then
+    start_spinner "Running drush updatedb"
+    ddev drush updatedb -y > /dev/null 2>&1
+    local updatedb_result=$?
+    stop_spinner $updatedb_result
+
+    if [ $updatedb_result -eq 0 ]; then
         pass "Database updates completed"
     else
         warn "Database updates had warnings"
@@ -340,7 +373,7 @@ run_db_updates() {
 import_config_staging() {
     local stg_site=$1
 
-    step 7 11 "Import configuration (${CONFIG_IMPORT_RETRIES}x retry)"
+    show_step "Import configuration (${CONFIG_IMPORT_RETRIES}x retry)"
 
     local original_dir=$(pwd)
     cd "$PROJECT_ROOT/sites/$stg_site" || {
@@ -350,8 +383,12 @@ import_config_staging() {
 
     local success=false
     for i in $(seq 1 $CONFIG_IMPORT_RETRIES); do
-        task "Config import attempt $i of $CONFIG_IMPORT_RETRIES..."
-        if ddev drush config:import -y > /dev/null 2>&1; then
+        start_spinner "Config import attempt $i of $CONFIG_IMPORT_RETRIES"
+        ddev drush config:import -y > /dev/null 2>&1
+        local import_result=$?
+        stop_spinner $import_result
+
+        if [ $import_result -eq 0 ]; then
             success=true
             break
         fi
@@ -372,12 +409,12 @@ import_config_staging() {
 clear_cache_staging() {
     local stg_site=$1
 
-    task "Clearing cache..."
-
     local original_dir=$(pwd)
     cd "$PROJECT_ROOT/sites/$stg_site" || return 1
 
+    start_spinner "Clearing cache"
     ddev drush cache:rebuild > /dev/null 2>&1
+    stop_spinner $?
     pass "Cache cleared"
 
     cd "$original_dir"
@@ -388,18 +425,22 @@ clear_cache_staging() {
 enable_prod_mode() {
     local stg_site=$1
 
-    step 8 11 "Set production mode"
+    show_step "Set production mode"
 
     # Use make.sh if available
     if [ -x "$SCRIPT_DIR/make.sh" ]; then
-        task "Running make.sh -py..."
-        if "$SCRIPT_DIR/make.sh" -py "$(basename "$stg_site")" > /dev/null 2>&1; then
+        start_spinner "Running make.sh -py"
+        "$SCRIPT_DIR/make.sh" -py "$(basename "$stg_site")" > /dev/null 2>&1
+        local make_result=$?
+        stop_spinner $make_result
+
+        if [ $make_result -eq 0 ]; then
             pass "Production mode enabled"
         else
             warn "Could not fully enable production mode"
         fi
     else
-        task "Disabling dev modules manually..."
+        start_spinner "Disabling dev modules manually"
         local original_dir=$(pwd)
         cd "$PROJECT_ROOT/sites/$stg_site" || return 0
 
@@ -413,6 +454,7 @@ enable_prod_mode() {
         ddev drush config:set system.performance js.preprocess 1 -y 2>/dev/null
         ddev drush cr 2>/dev/null
 
+        stop_spinner 0
         pass "Production mode enabled"
         cd "$original_dir"
     fi
@@ -425,7 +467,7 @@ run_deployment_tests() {
     local stg_site=$1
     local test_selection=$2
 
-    step 9 11 "Run tests: $test_selection"
+    show_step "Run tests: $test_selection"
 
     if [ "$test_selection" = "skip" ]; then
         note "Tests skipped as requested"
@@ -448,7 +490,7 @@ run_deployment_tests() {
 display_staging_url() {
     local stg_site=$1
 
-    step 10 11 "Deployment complete"
+    show_step "Deployment complete"
 
     local original_dir=$(pwd)
     cd "$PROJECT_ROOT/sites/$stg_site" || return 0
@@ -526,8 +568,9 @@ deploy_dev2stg() {
 
     # Ensure staging DDEV is running
     if [ -d "$PROJECT_ROOT/sites/$stg_site" ]; then
-        task "Ensuring staging DDEV is running..."
+        start_spinner "Ensuring staging DDEV is running"
         (cd "$PROJECT_ROOT/sites/$stg_site" && ddev start > /dev/null 2>&1)
+        stop_spinner $?
     fi
 
     # Execute deployment steps

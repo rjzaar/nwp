@@ -6,8 +6,19 @@
 # Support for operations on remote servers
 # Source this file: source "$SCRIPT_DIR/lib/remote.sh"
 #
-# Dependencies: lib/ui.sh, lib/common.sh
+# Dependencies: lib/ui.sh, lib/common.sh, lib/ssh.sh
 ################################################################################
+
+# Source SSH library for security controls
+# Only source if not already loaded
+if [ -z "$(type -t get_ssh_host_key_checking)" ]; then
+    # Try to find and source lib/ssh.sh
+    if [ -n "${PROJECT_ROOT:-}" ] && [ -f "$PROJECT_ROOT/lib/ssh.sh" ]; then
+        source "$PROJECT_ROOT/lib/ssh.sh"
+    elif [ -f "$(dirname "${BASH_SOURCE[0]}")/ssh.sh" ]; then
+        source "$(dirname "${BASH_SOURCE[0]}")/ssh.sh"
+    fi
+fi
 
 # Parse remote notation (@env sitename)
 # Usage: parse_remote_target "@prod sitename" -> returns "prod sitename"

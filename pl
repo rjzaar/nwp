@@ -25,7 +25,21 @@ VERSION="0.22.0"
 # Color Definitions
 ################################################################################
 
-if [[ -t 1 ]]; then
+# Determine if color output should be used
+# Respects NO_COLOR standard (https://no-color.org/)
+should_use_color() {
+    # NO_COLOR standard - if set (any value), disable color
+    if [ -n "${NO_COLOR:-}" ]; then
+        return 1
+    fi
+    # Also disable if not a terminal
+    if [ ! -t 1 ]; then
+        return 1
+    fi
+    return 0
+}
+
+if should_use_color; then
     RED=$'\033[0;31m'
     GREEN=$'\033[0;32m'
     YELLOW=$'\033[1;33m'
@@ -170,6 +184,7 @@ ${BOLD}SETUP & UTILITIES:${NC}
     setup-ssh                       Setup SSH keys for deployment
     list                            List all tracked sites
     status [options] [sitename]     Show site status (-f for fast text)
+    doctor                          Diagnose common issues and verify configuration
     version                         Show NWP version
 
 ${BOLD}MAINTENANCE:${NC}

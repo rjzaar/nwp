@@ -20,6 +20,14 @@ if ! declare -f yaml_get_secret &>/dev/null; then
     fi
 fi
 
+# Source ui.sh for progress indicators
+if ! declare -f start_spinner &>/dev/null; then
+    LINODE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "$LINODE_LIB_DIR/ui.sh" ]; then
+        source "$LINODE_LIB_DIR/ui.sh"
+    fi
+fi
+
 # DEPRECATED: Parse a YAML value from a simple YAML file
 # Usage: parse_yaml_value "file.yml" "section" "key"
 # Use yaml_get_secret() instead for new code
@@ -88,6 +96,7 @@ create_linode_instance() {
 
     local root_pass=$(openssl rand -base64 32 | tr -d /=+ | cut -c -25)
 
+    start_spinner "Creating Linode instance ($type in $region)..."
     local response=$(curl -s -X POST "https://api.linode.com/v4/linode/instances" \
         -H "Authorization: Bearer $token" \
         -H "Content-Type: application/json" \
@@ -102,11 +111,22 @@ create_linode_instance() {
             \"backups_enabled\": false,
             \"private_ip\": false
         }")
+    stop_spinner
 
     if echo "$response" | grep -q '"id"'; then
-        echo "$response" | grep -o '"id"[: ]*[0-9]*' | head -1 | grep -o '[0-9]*'
+        local instance_id=$(echo "$response" | grep -o '"id"[: ]*[0-9]*' | head -1 | grep -o '[0-9]*')
+        if declare -f pass &>/dev/null; then
+            pass "Instance created: $instance_id (label: $label)"
+        else
+            echo "Instance created: $instance_id (label: $label)" >&2
+        fi
+        echo "$instance_id"
     else
-        echo "ERROR: Failed to create Linode instance" >&2
+        if declare -f fail &>/dev/null; then
+            fail "Failed to create Linode instance"
+        else
+            echo "ERROR: Failed to create Linode instance" >&2
+        fi
         echo "$response" >&2
         return 1
     fi
@@ -120,7 +140,7 @@ wait_for_linode() {
     local max_wait=${3:-300}
     local elapsed=0
 
-    echo "Waiting for instance $instance_id to boot..." >&2
+    start_spinner "Waiting for instance $instance_id to boot..."
 
     while [ $elapsed -lt $max_wait ]; do
         local response=$(curl -s -H "Authorization: Bearer $token" \
@@ -129,22 +149,25 @@ wait_for_linode() {
         local status=$(echo "$response" | grep -o '"status"[: ]*"[^"]*"' | cut -d'"' -f4)
 
         if [ "$status" = "running" ]; then
-            echo "Instance is running" >&2
+            stop_spinner
+            if declare -f pass &>/dev/null; then
+                pass "Instance is running (took ${elapsed}s)"
+            else
+                echo "Instance is running (took ${elapsed}s)" >&2
+            fi
             return 0
-        fi
-
-        # Show status periodically for debugging
-        if [ $((elapsed % 30)) -eq 0 ] && [ $elapsed -gt 0 ]; then
-            echo " [status: $status]" >&2
-        else
-            echo -n "." >&2
         fi
 
         sleep 5
         elapsed=$((elapsed + 5))
     done
 
-    echo "ERROR: Instance did not start within $max_wait seconds" >&2
+    stop_spinner
+    if declare -f fail &>/dev/null; then
+        fail "Instance did not start within $max_wait seconds"
+    else
+        echo "ERROR: Instance did not start within $max_wait seconds" >&2
+    fi
     return 1
 }
 
@@ -170,35 +193,54 @@ wait_for_ssh() {
     local elapsed=0
     local last_progress=0
 
-    echo "Waiting for SSH to be available on $ip..." >&2
-    echo "This may take 5-10 minutes for cloud-init to configure the instance..." >&2
+    if declare -f info &>/dev/null; then
+        info "Waiting for SSH on $ip (may take 5-10 minutes for cloud-init)..."
+    else
+        echo "Waiting for SSH to be available on $ip..." >&2
+        echo "This may take 5-10 minutes for cloud-init to configure the instance..." >&2
+    fi
+
+    start_spinner "Waiting for SSH on $ip..."
 
     while [ $elapsed -lt $max_wait ]; do
         # Try SSH connection with verbose error capturing
         if ssh -i "$ssh_key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 \
             -o BatchMode=yes root@$ip "exit" 2>/dev/null; then
-            echo "" >&2  # New line after dots
-            echo "SSH is ready (took $elapsed seconds)" >&2
+            stop_spinner
+            if declare -f pass &>/dev/null; then
+                pass "SSH is ready (took ${elapsed}s)"
+            else
+                echo "SSH is ready (took $elapsed seconds)" >&2
+            fi
             return 0
         fi
 
         # Show progress message every 60 seconds
         if [ $((elapsed - last_progress)) -ge 60 ]; then
-            echo "" >&2  # New line after dots
-            echo "Still waiting... ($elapsed/${max_wait}s elapsed)" >&2
+            stop_spinner
+            if declare -f info &>/dev/null; then
+                info "Still waiting... ($elapsed/${max_wait}s elapsed)"
+            else
+                echo "Still waiting... ($elapsed/${max_wait}s elapsed)" >&2
+            fi
+            start_spinner "Waiting for SSH on $ip..."
             last_progress=$elapsed
-        else
-            echo -n "." >&2
         fi
 
         sleep 5
         elapsed=$((elapsed + 5))
     done
 
-    echo "" >&2  # New line after dots
-    echo "ERROR: SSH did not become available within $max_wait seconds" >&2
-    echo "The instance may still be completing cloud-init setup" >&2
-    echo "You can check instance console via Linode Cloud Manager" >&2
+    stop_spinner
+    if declare -f fail &>/dev/null; then
+        fail "SSH did not become available within $max_wait seconds"
+        warn "The instance may still be completing cloud-init setup"
+        note "Check instance console via Linode Cloud Manager"
+    else
+        echo "ERROR: SSH did not become available within $max_wait seconds" >&2
+        echo "The instance may still be completing cloud-init setup" >&2
+        echo "You can check instance console via Linode Cloud Manager" >&2
+    fi
     return 1
 }
 
@@ -232,6 +274,15 @@ provision_test_linode() {
     local timestamp=$(date +%Y%m%d-%H%M%S)
     local label="${label_prefix}-${timestamp}"
 
+    if declare -f print_header &>/dev/null; then
+        print_header "Provisioning Test Linode Instance"
+    fi
+
+    # Step 1: Validate SSH key
+    if declare -f show_step &>/dev/null; then
+        show_step 1 4 "Validating SSH key"
+    fi
+
     # Auto-detect SSH public key location if not specified
     if [ -z "$ssh_key_path" ]; then
         if [ -f "keys/nwp.pub" ]; then
@@ -243,47 +294,91 @@ provision_test_linode() {
 
     # Read SSH public key from filesystem
     if [ ! -f "$ssh_key_path" ]; then
-        echo "ERROR: SSH public key not found at: $ssh_key_path" >&2
-        echo "Please run ./setup-ssh.sh to generate SSH keys" >&2
+        if declare -f fail &>/dev/null; then
+            fail "SSH public key not found at: $ssh_key_path"
+            note "Please run ./setup-ssh.sh to generate SSH keys"
+        else
+            echo "ERROR: SSH public key not found at: $ssh_key_path" >&2
+            echo "Please run ./setup-ssh.sh to generate SSH keys" >&2
+        fi
         return 1
     fi
 
     local ssh_public_key=$(cat "$ssh_key_path")
     if [ -z "$ssh_public_key" ]; then
-        echo "ERROR: SSH public key file is empty: $ssh_key_path" >&2
+        if declare -f fail &>/dev/null; then
+            fail "SSH public key file is empty: $ssh_key_path"
+        else
+            echo "ERROR: SSH public key file is empty: $ssh_key_path" >&2
+        fi
         return 1
     fi
 
-    echo "Using SSH public key from: $ssh_key_path" >&2
+    if declare -f pass &>/dev/null; then
+        pass "Using SSH public key from: $ssh_key_path"
+    else
+        echo "Using SSH public key from: $ssh_key_path" >&2
+    fi
 
-    # Create instance
+    # Step 2: Create instance
+    if declare -f show_step &>/dev/null; then
+        show_step 2 4 "Creating Linode instance"
+    fi
+
     local instance_id=$(create_linode_instance "$token" "$label" "$ssh_public_key")
     if [ -z "$instance_id" ]; then
         return 1
     fi
 
-    echo "Created instance: $instance_id (label: $label)" >&2
+    # Step 3: Wait for instance to boot
+    if declare -f show_step &>/dev/null; then
+        show_step 3 4 "Waiting for instance to boot"
+    fi
 
-    # Wait for instance to boot
     if ! wait_for_linode "$token" "$instance_id"; then
         delete_linode_instance "$token" "$instance_id"
         return 1
     fi
 
     # Get IP address
+    start_spinner "Retrieving IP address..."
     local ip=$(get_linode_ip "$token" "$instance_id")
+    stop_spinner
+
     if [ -z "$ip" ]; then
-        echo "ERROR: Could not get IP address for instance $instance_id" >&2
+        if declare -f fail &>/dev/null; then
+            fail "Could not get IP address for instance $instance_id"
+        else
+            echo "ERROR: Could not get IP address for instance $instance_id" >&2
+        fi
         delete_linode_instance "$token" "$instance_id"
         return 1
     fi
 
-    echo "Instance IP: $ip" >&2
+    if declare -f pass &>/dev/null; then
+        pass "Instance IP: $ip"
+    else
+        echo "Instance IP: $ip" >&2
+    fi
 
-    # Wait for SSH
+    # Step 4: Wait for SSH
+    if declare -f show_step &>/dev/null; then
+        show_step 4 4 "Waiting for SSH to become available"
+    fi
+
     if ! wait_for_ssh "$ip"; then
         delete_linode_instance "$token" "$instance_id"
         return 1
+    fi
+
+    if declare -f print_success &>/dev/null; then
+        echo ""
+        print_success "Test instance provisioned successfully"
+        if declare -f print_info &>/dev/null; then
+            print_info "Instance ID: $instance_id"
+            print_info "IP Address: $ip"
+            print_info "Label: $label"
+        fi
     fi
 
     # Return instance ID and IP

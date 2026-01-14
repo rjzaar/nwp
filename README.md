@@ -1437,9 +1437,18 @@ To add new recipes or improve the installation script:
 
 ## License
 
+> *"Freely you have received, freely give."* — Matthew 10:8
+
 This project is dedicated to the public domain under the CC0 1.0 Universal (CC0 1.0) Public Domain Dedication.
 
-You can copy, modify, distribute and perform the work, even for commercial purposes, all without asking permission. See the [LICENSE](LICENSE) file for details.
+You can copy, modify, distribute and perform the work, even for commercial purposes, all without asking permission.
+
+**Quick Links:**
+- **Full Legal Text:** [LICENSE](LICENSE) file
+- **Detailed Explanation:** [docs/CC0_DEDICATION.md](docs/CC0_DEDICATION.md) - includes rationale, FAQs, and contributor information
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) - see the License section for contributor agreement
+
+**TL;DR:** Use this project however you want. No restrictions. No attribution required (though appreciated).
 
 ## Support
 

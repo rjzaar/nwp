@@ -1,5 +1,7 @@
 # YAML API Reference
 
+**Last Updated:** 2026-01-14
+
 NWP provides a consolidated YAML parsing library in `lib/yaml-write.sh` that offers robust, tested functions for reading and writing YAML configuration files.
 
 ## Quick Start

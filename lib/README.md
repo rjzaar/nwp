@@ -425,6 +425,167 @@ token=$(get_infra_secret "linode.api_token")
 create_linode_server "$token" "us-east" "g6-nanode-1" "myserver"
 ```
 
+#### yaml-write.sh
+**Purpose:** Consolidated YAML parsing and modification library
+
+**Comprehensive Documentation:** See [docs/YAML_API.md](../docs/YAML_API.md) for full API reference
+
+**Key Read Functions:**
+- `yaml_get_setting()` - Read settings with dot notation (e.g., "settings.stack")
+- `yaml_get_array()` - Read array values (e.g., "sites.mysite.tags")
+- `yaml_get_recipe_field()` - Read recipe fields (e.g., "recipe_name" "webroot")
+- `yaml_get_secret()` - Read from .secrets.yml with dot notation
+
+**Key Write Functions:**
+- `yaml_write_site()` - Write entire site definition
+- `yaml_update_site_field()` - Update single site field
+- `yaml_delete_site()` - Remove site from cnwp.yml
+- `yaml_write_coder()` - Write coder definition
+- `yaml_update_coder_field()` - Update coder field
+
+**Helper Functions:**
+- `yaml_get_all_sites()` - List all site names
+- `yaml_get_coder_list()` - List all coder names
+- `yaml_get_recipe_list()` - Get recipe list array
+
+**Dependencies:** ui.sh (for error messages), yq (YAML processor)
+
+**Security Features:**
+- 5-layer protection for cnwp.yml modifications (see docs/SECURITY.md)
+- Line count tracking prevents data loss
+- mktemp for atomic writes
+- Empty output detection
+- Sanity checks against large deletions
+- Atomic move operations
+
+**Example:**
+```bash
+source "$PROJECT_ROOT/lib/yaml-write.sh"
+
+# Read setting
+stack=$(yaml_get_setting "settings.stack" "ddev")
+
+# Read site field
+directory=$(yaml_get_site_field "mysite" "directory")
+
+# Update site field
+yaml_update_site_field "mysite" "install_step" "5"
+```
+
+**Testing:** 34 comprehensive BATS tests in tests/yaml-functions.bats
+
+#### checkbox.sh
+**Purpose:** TUI checkbox/multi-select interface library
+
+**Functions (23 total):**
+- `draw_checkbox_list()` - Render checkbox list with current selection
+- `checkbox_handle_input()` - Process keyboard input (arrows, space, enter)
+- `checkbox_get_selected()` - Get array of selected items
+- `checkbox_init()` - Initialize checkbox state
+- `checkbox_cleanup()` - Clean up terminal state
+
+**Key Features:**
+- Arrow key navigation (up/down)
+- Space bar to toggle selection
+- Visual indicators: [x] selected, [ ] unselected
+- Highlighted current line
+- Support for long lists with scrolling
+- Minimum terminal size detection
+
+**Dependencies:** ui.sh, terminal.sh
+
+**Usage Pattern:**
+```bash
+source "$PROJECT_ROOT/lib/checkbox.sh"
+
+# Define items
+items=("Option 1" "Option 2" "Option 3")
+
+# Show checkbox list
+checkbox_init "${items[@]}"
+selected=$(checkbox_get_selected)
+
+# Process selections
+for item in $selected; do
+    echo "Selected: $item"
+done
+```
+
+**Used By:**
+- coders.sh - Multi-coder selection for bulk actions
+- dev2stg-tui.sh - Select sites for deployment
+- import-tui.sh - Select import options
+
+**Terminal Requirements:**
+- Minimum 80x24 terminal
+- ANSI color support
+- Cursor positioning support
+
+#### tui.sh
+**Purpose:** Terminal User Interface framework library
+
+**Core Functions (13 total):**
+- `tui_init()` - Initialize TUI with title and status bar
+- `tui_draw()` - Render TUI frame (header, content, footer)
+- `tui_update_status()` - Update status bar text
+- `tui_clear()` - Clear TUI and restore terminal
+- `tui_get_dimensions()` - Get terminal width/height
+- `tui_handle_resize()` - Handle terminal resize events
+
+**Navigation Functions:**
+- `tui_cursor_up()` - Move cursor up
+- `tui_cursor_down()` - Move cursor down
+- `tui_cursor_home()` - Jump to first item
+- `tui_cursor_end()` - Jump to last item
+
+**Input Functions:**
+- `tui_read_key()` - Read single keypress
+- `tui_confirm()` - Show yes/no prompt
+- `tui_message()` - Display message box
+
+**Dependencies:** ui.sh, terminal.sh
+
+**Features:**
+- Full-screen TUI with header/content/footer layout
+- Keyboard navigation (arrows, home, end, pgup, pgdn)
+- Status updates without full refresh
+- Terminal resize handling
+- Color support with fallback
+
+**Example:**
+```bash
+source "$PROJECT_ROOT/lib/tui.sh"
+
+# Initialize TUI
+tui_init "My Application" "Ready"
+
+# Main loop
+while true; do
+    tui_draw "$content"
+    key=$(tui_read_key)
+
+    case "$key" in
+        up) tui_cursor_up ;;
+        down) tui_cursor_down ;;
+        q) break ;;
+    esac
+done
+
+# Cleanup
+tui_clear
+```
+
+**Used By:**
+- coders.sh - Interactive coder management console
+- verify.sh - Interactive verification console
+- dev2stg-tui.sh - Deployment selection interface
+- status.sh - Interactive site status dashboard
+
+**Terminal Requirements:**
+- ANSI escape sequence support
+- Minimum 80x24 terminal
+- Cursor positioning support
+
 ---
 
 ## Creating New Libraries

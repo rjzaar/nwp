@@ -354,6 +354,62 @@ ssh user@host "echo $untrusted_data >> file"  # Injection possible
 echo "$untrusted_data" | ssh user@host "cat >> file"  # Data via stdin
 ```
 
+#### 5. YAML/AWK Injection Protection
+
+**Critical Configuration File Protection:**
+
+NWP's `cnwp.yml` is the central configuration file containing site definitions, server settings, and deployment configurations. AWK operations on this file require special protection to prevent data loss from edge cases, duplicate entries, or malformed input.
+
+**The 5-Layer Protection System** (implemented in commits fb2f2603 and ea07e155):
+
+1. **Line Count Tracking** - Store original file size before modification
+   ```bash
+   original_line_count=$(wc -l < cnwp.yml)
+   ```
+
+2. **mktemp for Atomic Writes** - Use secure temporary files instead of `.tmp`
+   ```bash
+   tmpfile=$(mktemp) || { echo "Failed to create temp file"; return 1; }
+   ```
+
+3. **Empty Output Detection** - Abort if AWK produces empty file
+   ```bash
+   if [ ! -s "$tmpfile" ]; then
+       echo "ERROR: AWK operation produced empty file"
+       rm -f "$tmpfile"
+       return 1
+   fi
+   ```
+
+4. **Sanity Checks** - Prevent suspiciously large deletions (>100 lines)
+   ```bash
+   new_line_count=$(wc -l < "$tmpfile")
+   lines_removed=$((original_line_count - new_line_count))
+   if [ "$lines_removed" -gt 100 ]; then
+       echo "ERROR: Would remove $lines_removed lines (>100), aborting"
+       rm -f "$tmpfile"
+       return 1
+   fi
+   ```
+
+5. **Atomic Move** - Only update cnwp.yml if all validations pass
+   ```bash
+   mv "$tmpfile" cnwp.yml || {
+       echo "ERROR: Failed to update cnwp.yml"
+       rm -f "$tmpfile"
+       return 1
+   }
+   ```
+
+**Applied to:**
+- `lib/yaml-write.sh` - All YAML modification functions
+- `scripts/commands/test-nwp.sh` - Test cleanup and Linode server management
+- Any script performing AWK operations on cnwp.yml
+
+**Why This Matters:**
+
+In January 2026, a duplicate entry bug in `test-nwp.sh` caused complete data loss of a user's cnwp.yml file. The AWK operation encountered duplicate site entries and produced an empty output, which was blindly written back to cnwp.yml, wiping all user configurations. The 5-layer protection system prevents this entire class of errors.
+
 ### Input Validation Rules
 
 1. **Sitenames:** `^[a-zA-Z0-9._-]+$`
@@ -371,6 +427,7 @@ When reviewing shell scripts, check for:
 - [ ] User input is validated before use
 - [ ] No variables in eval or command substitution
 - [ ] Untrusted data passed via stdin, not command line
+- [ ] AWK operations on cnwp.yml use 5-layer protection system
 - [ ] Shellcheck passes with no warnings
 
 ---

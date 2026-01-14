@@ -1,8 +1,8 @@
 # NWP Verification Console - Interactive TUI Guide
 
-**Last Updated:** January 12, 2026
+**Last Updated:** January 14, 2026
 
-A comprehensive guide to the `pl verify` interactive verification console introduced in v0.18.0, with Schema v2 enhancements in v0.19.0.
+A comprehensive guide to the `pl verify` interactive verification console introduced in v0.18.0, with Schema v2 enhancements in v0.19.0 and auto-verification via checklist completion in v0.19.0.
 
 ---
 

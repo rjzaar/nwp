@@ -1,5 +1,7 @@
 # Moodle Course Creation Guide for Claude
 
+**Last Updated:** 2026-01-14
+
 ## Overview
 
 This guide documents the complete process for creating Moodle courses, importing questions, and building quizzes. It includes technical implementation details, cognitive science principles for effective learning design, and troubleshooting strategies.

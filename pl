@@ -19,7 +19,7 @@ done
 SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
 # Version
-VERSION="0.21.0"
+VERSION="0.22.0"
 
 ################################################################################
 # Color Definitions

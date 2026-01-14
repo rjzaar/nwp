@@ -6,6 +6,81 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v0.22.0] - 2026-01-14
+
+### Added
+
+- **CC0 Public Domain Dedication**
+  - Added comprehensive CC0 1.0 Universal public domain dedication documentation
+  - New `docs/CC0_DEDICATION.md` with full legal details and FAQs
+  - Updated `CONTRIBUTING.md` with contributor agreement (CC0 dedication required)
+  - Added license information to `example.cnwp.yml` and `README.md`
+  - Biblical foundation: "Freely you have received, freely give." — Matthew 10:8
+
+- **AVC Help Documentation System**
+  - Automated help page creation via `migrate_help_to_book.php` script
+  - Integrated into avc-dev recipe `post_install_scripts`
+  - Creates comprehensive help documentation on installation:
+    - Main help hub at /help
+    - User guide, guild guide, member levels, and more
+    - All help pages secured to community-only (login required)
+
+- **AVC Automated Content Generation**
+  - Sample content generation in avc-dev recipe for development
+  - Creates realistic test data for guild resources and member profiles
+  - Helps developers test features with populated content
+
+- **Shell Script Support in Recipes**
+  - `post_install_scripts` now supports shell scripts (.sh) in addition to PHP
+  - Enables more flexible post-installation automation
+
+- **Complex Password Generation**
+  - New `generate_random_password()` function for secure test user passwords
+  - Creates complex passwords with letters, numbers, and special characters
+
+### Changed
+
+- **GitLab Composer Authentication**
+  - Automatic GitLab composer configuration from `.secrets.yml`
+  - Streamlines private repository access during installation
+
+- **AVC Branding Updates**
+  - Removed all Apostoli Viae references across codebase
+  - Updated to AV Commons branding throughout
+  - Fixed contact emails and URLs in documentation and database
+  - Updated About page with AV Commons-specific content
+
+- **Module Installation**
+  - Development modules now installed via composer before enabling
+  - Ensures proper dependency resolution
+
+### Fixed
+
+- **Test Suite Improvements**
+  - Fixed test failures for non-existent site handling (unique names)
+  - Achieved 99%+ pass rate across test suite
+  - Fixed critical test issues for reliable CI/CD
+
+- **cnwp.yml Data Integrity**
+  - Fixed critical bug preventing cnwp.yml from being emptied on duplicate site entries
+  - Improved site registration handling
+
+- **AVC Guild Resources UX**
+  - Made both title and URL clickable on /guild-resources page
+  - Improved link accessibility and user experience
+
+### Documentation
+
+- **Comprehensive Documentation History Analysis**
+  - Added detailed analysis of documentation evolution
+  - Tracks major documentation milestones and restructuring
+
+- **AVC Proposal Migration**
+  - Moved AVC Error Reporting Module proposal to AVC repository
+  - Better organization of AVC-specific features
+
+---
+
 ## [v0.21.0] - 2026-01-13
 
 ### Added

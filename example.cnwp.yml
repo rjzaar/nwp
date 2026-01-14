@@ -10,6 +10,18 @@
 # SETTINGS - Global NWP Configuration
 ################################################################################
 settings:
+  # === LICENSE INFORMATION [DOCUMENTATION] ===
+  # "Freely you have received, freely give." — Matthew 10:8
+  # This project is dedicated to the public domain under CC0 1.0 Universal
+  # See: docs/CC0_DEDICATION.md for full details
+  # See: LICENSE file for legal text
+  # See: CONTRIBUTING.md for contributor agreement
+  license:
+    type: CC0-1.0                  # [DOCUMENTATION] License type - informational only
+    dedication: public_domain      # [DOCUMENTATION] Public domain dedication
+    attribution_required: false    # [DOCUMENTATION] No attribution required (but appreciated)
+    url: https://creativecommons.org/publicdomain/zero/1.0/
+
   # === CLI SETTINGS [ACTIVE] ===
   # CLI command name for this NWP installation (auto-assigned during setup)
   # Allows multiple NWP installations to coexist with unique commands (pl, pl1, pl2, etc.)
@@ -669,6 +681,7 @@ recipes:
 
     # Post-install scripts for development setup
     post_install_scripts:
+      - profiles/custom/avc/modules/avc_features/avc_content/scripts/migrate_help_to_book.php  # [ACTIVE] Create help documentation as book pages
       - profiles/custom/avc/modules/avc_features/avc_content/scripts/seed_content_data.php
       - profiles/custom/avc/modules/avc_features/workflow_assignment/scripts/seed_workflow_data.php
       - profiles/custom/avc/scripts/generate_sample_content.sh  # [ACTIVE] Auto-generate comprehensive sample content

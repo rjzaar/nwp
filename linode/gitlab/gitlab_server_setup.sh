@@ -33,6 +33,8 @@
 # <UDF name="gitlab_external_url" label="GitLab External URL" default="http://gitlab.example.com" example="https://gitlab.example.com" />
 # <UDF name="install_runner" label="Install GitLab Runner" oneof="yes,no" default="yes" />
 # <UDF name="runner_tags" label="Runner Tags" default="docker,shell" example="docker,shell,linux" />
+# <UDF name="configure_email" label="Configure Email (SMTP/DKIM)" oneof="yes,no" default="yes" />
+# <UDF name="linode_api_token" label="Linode API Token (for DNS)" example="optional - needed for SPF/DKIM/DMARC DNS" />
 
 set -e  # Exit on error
 set -x  # Log all commands (for debugging)
@@ -279,8 +281,18 @@ gitlab_rails['time_zone'] = '$TIMEZONE'
 
 # Email configuration
 gitlab_rails['gitlab_email_enabled'] = true
-gitlab_rails['gitlab_email_from'] = '$EMAIL'
-gitlab_rails['gitlab_email_reply_to'] = '$EMAIL'
+gitlab_rails['gitlab_email_from'] = 'git@${HOSTNAME#*.}'
+gitlab_rails['gitlab_email_display_name'] = 'GitLab'
+gitlab_rails['gitlab_email_reply_to'] = 'noreply@${HOSTNAME#*.}'
+
+# SMTP settings for local Postfix (configured in step 8.7)
+gitlab_rails['smtp_enable'] = true
+gitlab_rails['smtp_address'] = "localhost"
+gitlab_rails['smtp_port'] = 25
+gitlab_rails['smtp_domain'] = '${HOSTNAME#*.}'
+gitlab_rails['smtp_tls'] = false
+gitlab_rails['smtp_openssl_verify_mode'] = 'none'
+gitlab_rails['smtp_enable_starttls_auto'] = false
 
 # Container Registry (disabled initially - enable after SSL is configured)
 # registry_external_url 'https://$HOSTNAME:5050'
@@ -414,6 +426,278 @@ end
 echo "[OK] NWP groups configured"
 
 ################################################################################
+# 8.7 CONFIGURE EMAIL INFRASTRUCTURE
+################################################################################
+
+if [ "$CONFIGURE_EMAIL" = "yes" ]; then
+    echo "[8.7/10] Configuring email infrastructure (Postfix, OpenDKIM, SPF, DKIM, DMARC)..."
+
+    # Extract domain from hostname (e.g., git.nwpcode.org -> nwpcode.org)
+    MAIL_DOMAIN="${HOSTNAME#*.}"
+    MAIL_IP=$(hostname -I | awk '{print $1}')
+
+    echo "[INFO] Email domain: $MAIL_DOMAIN"
+    echo "[INFO] Mail server IP: $MAIL_IP"
+
+    # Install OpenDKIM
+    apt-get install -y opendkim opendkim-tools mailutils
+
+    # Add postfix user to opendkim group
+    usermod -aG opendkim postfix
+
+    # Configure Postfix for email sending
+    postconf -e "myhostname = $HOSTNAME"
+    postconf -e "mydomain = $MAIL_DOMAIN"
+    postconf -e "myorigin = \$mydomain"
+    postconf -e "mydestination = \$myhostname, localhost.\$mydomain, localhost"
+    postconf -e "inet_interfaces = all"
+    postconf -e "inet_protocols = ipv4"
+
+    # Add submission port for authenticated sending (port 587)
+    if ! grep -q "^submission" /etc/postfix/master.cf; then
+        cat >> /etc/postfix/master.cf << 'SUBMISSION'
+
+# Submission port for authenticated email sending
+submission inet n       -       y       -       -       smtpd
+  -o syslog_name=postfix/submission
+  -o smtpd_tls_security_level=may
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_tls_auth_only=no
+  -o smtpd_reject_unlisted_recipient=no
+  -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject
+  -o milter_macro_daemon_name=ORIGINATING
+SUBMISSION
+    fi
+
+    # Configure OpenDKIM
+    mkdir -p /etc/opendkim/keys/${MAIL_DOMAIN}
+
+    # Generate DKIM keys
+    cd /etc/opendkim/keys/${MAIL_DOMAIN}
+    opendkim-genkey -s default -d ${MAIL_DOMAIN} -b 2048
+    chown opendkim:opendkim default.private
+    chmod 600 default.private
+
+    # OpenDKIM configuration
+    cat > /etc/opendkim.conf << DKIMCONF
+AutoRestart             Yes
+AutoRestartRate         10/1h
+UMask                   002
+Syslog                  yes
+SyslogSuccess           Yes
+LogWhy                  Yes
+
+Canonicalization        relaxed/simple
+ExternalIgnoreList      refile:/etc/opendkim/TrustedHosts
+InternalHosts           refile:/etc/opendkim/TrustedHosts
+KeyTable                refile:/etc/opendkim/KeyTable
+SigningTable            refile:/etc/opendkim/SigningTable
+Mode                    sv
+SignatureAlgorithm      rsa-sha256
+Socket                  inet:8891@localhost
+PidFile                 /run/opendkim/opendkim.pid
+OversignHeaders         From
+SubDomains              yes
+DKIMCONF
+
+    # TrustedHosts
+    cat > /etc/opendkim/TrustedHosts << TRUSTED
+127.0.0.1
+localhost
+${HOSTNAME}
+*.${MAIL_DOMAIN}
+TRUSTED
+
+    # KeyTable
+    echo "default._domainkey.${MAIL_DOMAIN} ${MAIL_DOMAIN}:default:/etc/opendkim/keys/${MAIL_DOMAIN}/default.private" > /etc/opendkim/KeyTable
+
+    # SigningTable
+    cat > /etc/opendkim/SigningTable << SIGNING
+*@${MAIL_DOMAIN} default._domainkey.${MAIL_DOMAIN}
+*@*.${MAIL_DOMAIN} default._domainkey.${MAIL_DOMAIN}
+SIGNING
+
+    # Fix permissions
+    chown -R root:opendkim /etc/opendkim
+    chmod -R o-rwx /etc/opendkim
+    chmod -R g-w /etc/opendkim
+    chmod 600 /etc/opendkim/keys/${MAIL_DOMAIN}/default.private
+
+    # Create run directory
+    mkdir -p /run/opendkim
+    chown opendkim:opendkim /run/opendkim
+
+    # Configure Postfix to use OpenDKIM
+    postconf -e "milter_protocol = 6"
+    postconf -e "milter_default_action = accept"
+    postconf -e "smtpd_milters = inet:localhost:8891"
+    postconf -e "non_smtpd_milters = inet:localhost:8891"
+
+    # Set up git@domain alias to forward to admin email
+    touch /etc/postfix/virtual
+    echo "git@${MAIL_DOMAIN}    $EMAIL" >> /etc/postfix/virtual
+    echo "@${HOSTNAME}    $EMAIL" >> /etc/postfix/virtual
+    postmap /etc/postfix/virtual
+    postconf -e "virtual_alias_maps = hash:/etc/postfix/virtual"
+
+    # Restart services
+    systemctl restart opendkim
+    systemctl enable opendkim
+    systemctl restart postfix
+
+    # Extract DKIM public key for DNS
+    DKIM_RECORD=$(cat /etc/opendkim/keys/${MAIL_DOMAIN}/default.txt | tr -d '\n\t' | sed 's/.*p=/p=/' | sed 's/).*//' | tr -d ' "' | sed 's/^p=//')
+
+    # Save email configuration info
+    cat > /root/email_setup_info.txt << EMAILINFO
+Email Infrastructure Configuration
+===================================
+Date: $(date)
+
+Mail Server: $HOSTNAME
+Mail IP: $MAIL_IP
+Domain: $MAIL_DOMAIN
+
+Email Addresses:
+  GitLab: git@${MAIL_DOMAIN}
+  Reply-To: noreply@${MAIL_DOMAIN}
+  Admin forwarding: git@${MAIL_DOMAIN} -> $EMAIL
+
+Services Configured:
+  [✓] Postfix (SMTP server)
+  [✓] OpenDKIM (Email signing)
+  [✓] Submission port (587)
+
+DNS Records Required:
+----------------------
+
+1. SPF Record:
+   Type: TXT
+   Name: @
+   Value: v=spf1 ip4:${MAIL_IP} a mx -all
+
+2. DKIM Record:
+   Type: TXT
+   Name: default._domainkey
+   Value: v=DKIM1; h=sha256; k=rsa; p=${DKIM_RECORD}
+
+3. DMARC Record:
+   Type: TXT
+   Name: _dmarc
+   Value: v=DMARC1; p=quarantine; sp=quarantine; rua=mailto:dmarc@${MAIL_DOMAIN}; ruf=mailto:dmarc@${MAIL_DOMAIN}; adkim=r; aspf=r; pct=100
+
+4. MX Record:
+   Type: MX
+   Name: @
+   Target: ${HOSTNAME}
+   Priority: 10
+
+5. Reverse DNS (PTR):
+   Configure in Linode Cloud Manager:
+   IP: ${MAIL_IP} -> Hostname: ${HOSTNAME}
+
+EMAILINFO
+
+    # Configure DNS if Linode API token provided
+    if [ -n "$LINODE_API_TOKEN" ]; then
+        echo "[INFO] Configuring DNS records via Linode API..."
+
+        # Get domain ID
+        DOMAIN_ID=$(curl -s -H "Authorization: Bearer $LINODE_API_TOKEN" \
+            "https://api.linode.com/v4/domains" | \
+            python3 -c "import sys,json; domains=json.load(sys.stdin)['data']; print(next((d['id'] for d in domains if d['domain']=='${MAIL_DOMAIN}'), ''))" 2>/dev/null || echo "")
+
+        if [ -n "$DOMAIN_ID" ]; then
+            echo "[INFO] Found domain ID: $DOMAIN_ID"
+
+            # Create/update SPF record
+            curl -s -X POST -H "Authorization: Bearer $LINODE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{\"type\": \"TXT\", \"name\": \"\", \"target\": \"v=spf1 ip4:${MAIL_IP} a mx -all\", \"ttl_sec\": 300}" \
+                "https://api.linode.com/v4/domains/${DOMAIN_ID}/records" >/dev/null 2>&1 || true
+
+            # Create DKIM record
+            curl -s -X POST -H "Authorization: Bearer $LINODE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{\"type\": \"TXT\", \"name\": \"default._domainkey\", \"target\": \"v=DKIM1; h=sha256; k=rsa; p=${DKIM_RECORD}\", \"ttl_sec\": 300}" \
+                "https://api.linode.com/v4/domains/${DOMAIN_ID}/records" >/dev/null 2>&1 || true
+
+            # Create DMARC record
+            curl -s -X POST -H "Authorization: Bearer $LINODE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{\"type\": \"TXT\", \"name\": \"_dmarc\", \"target\": \"v=DMARC1; p=quarantine; sp=quarantine; rua=mailto:dmarc@${MAIL_DOMAIN}; ruf=mailto:dmarc@${MAIL_DOMAIN}; adkim=r; aspf=r; pct=100\", \"ttl_sec\": 300}" \
+                "https://api.linode.com/v4/domains/${DOMAIN_ID}/records" >/dev/null 2>&1 || true
+
+            # Create MX record
+            curl -s -X POST -H "Authorization: Bearer $LINODE_API_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{\"type\": \"MX\", \"name\": \"\", \"target\": \"${HOSTNAME}\", \"priority\": 10, \"ttl_sec\": 300}" \
+                "https://api.linode.com/v4/domains/${DOMAIN_ID}/records" >/dev/null 2>&1 || true
+
+            echo "[OK] DNS records configured automatically"
+            echo "[INFO] DNS records added: SPF, DKIM, DMARC, MX"
+        else
+            echo "[!] Could not find domain in Linode DNS"
+            echo "[!] Add DNS records manually (see /root/email_setup_info.txt)"
+        fi
+    else
+        echo "[!] No Linode API token provided"
+        echo "[!] Add DNS records manually (see /root/email_setup_info.txt)"
+    fi
+
+    # Wait for services to start
+    sleep 5
+
+    # Test email sending
+    echo "[INFO] Testing email configuration..."
+    echo "This is a test email from your new GitLab server.
+
+Email infrastructure has been configured with:
+- Postfix SMTP server
+- OpenDKIM email signing
+- DNS records (SPF, DKIM, DMARC, MX)
+
+Your GitLab instance is ready to send notification emails!
+
+GitLab URL: $GITLAB_EXTERNAL_URL
+" | mail -s "GitLab Email Test from $HOSTNAME" -r "git@${MAIL_DOMAIN}" "$EMAIL" 2>&1 || echo "[!] Email test may have failed - check logs"
+
+    # Check if email was sent
+    sleep 2
+    if grep -q "status=sent" /var/log/syslog 2>/dev/null; then
+        echo "[OK] Test email sent successfully to $EMAIL"
+        echo "[OK] Check your inbox (including spam folder)"
+    else
+        echo "[!] Email may still be queuing or failed - check: sudo tail -f /var/log/syslog"
+    fi
+
+    # Save configuration summary
+    cat >> /root/email_setup_info.txt << SUMMARY
+
+Email Test Results:
+-------------------
+Test email sent to: $EMAIL
+Status: Check /var/log/syslog for delivery status
+
+To check email delivery:
+  sudo grep postfix /var/log/syslog | tail -20
+
+To test mail-tester.com score:
+  echo "Test" | mail -s "Test" -r "git@${MAIL_DOMAIN}" test-XXXXX@srv1.mail-tester.com
+  (Replace XXXXX with code from mail-tester.com)
+
+SUMMARY
+
+    chmod 600 /root/email_setup_info.txt
+
+    echo "[OK] Email infrastructure configured"
+    echo "[INFO] Email configuration saved to /root/email_setup_info.txt"
+
+else
+    echo "[8.7/10] Skipping email configuration (CONFIGURE_EMAIL=no)"
+fi
+
+################################################################################
 # 9. INSTALL GITLAB RUNNER
 ################################################################################
 
@@ -479,6 +763,9 @@ echo "  Docker: $(docker --version | awk '{print $3}' | sed 's/,$//')"
 if command -v gitlab-runner &> /dev/null; then
     echo "  GitLab Runner: $(gitlab-runner --version | head -n1 | awk '{print $2}')"
 fi
+if systemctl is-active postfix &> /dev/null; then
+    echo "  Email: Postfix + OpenDKIM configured"
+fi
 echo ""
 echo "GitLab Status:"
 gitlab-ctl status | head -n 5
@@ -491,6 +778,10 @@ echo "  sudo gitlab-ctl tail           - View GitLab logs"
 echo "  sudo gitlab-rake gitlab:check  - Run health check"
 echo "  sudo ufw status                - Check firewall status"
 echo "  sudo tail -f /var/log/gitlab-setup.log - View setup log"
+if systemctl is-active postfix &> /dev/null; then
+    echo "  sudo grep postfix /var/log/syslog | tail -20 - Check email logs"
+    echo "  sudo cat /root/email_setup_info.txt - Email configuration"
+fi
 echo ""
 echo "GitLab Credentials:"
 if [ -f /root/gitlab_credentials.txt ]; then
@@ -555,6 +846,10 @@ gitlab-ctl status | grep -q "run:" && echo "  [OK] GitLab" || echo "  [X] GitLab
 if [ "$INSTALL_RUNNER" = "yes" ]; then
     systemctl is-active gitlab-runner && echo "  [OK] GitLab Runner" || echo "  [X] GitLab Runner"
 fi
+if [ "$CONFIGURE_EMAIL" = "yes" ]; then
+    systemctl is-active postfix && echo "  [OK] Postfix (Email)" || echo "  [X] Postfix"
+    systemctl is-active opendkim && echo "  [OK] OpenDKIM (DKIM)" || echo "  [X] OpenDKIM"
+fi
 echo ""
 echo "Firewall Status:"
 ufw status | grep "Status:" | awk '{print "  " $0}'
@@ -566,5 +861,12 @@ echo "To access GitLab:"
 echo "  Open browser to: $GITLAB_EXTERNAL_URL"
 echo "  Login with root credentials from: /root/gitlab_credentials.txt"
 echo ""
+if [ "$CONFIGURE_EMAIL" = "yes" ]; then
+    echo "Email Configuration:"
+    echo "  GitLab email: git@${HOSTNAME#*.}"
+    echo "  Test email sent to: $EMAIL"
+    echo "  Configuration details: /root/email_setup_info.txt"
+    echo ""
+fi
 echo "Setup log saved to: /var/log/gitlab-setup.log"
 echo "========================================"

@@ -14,12 +14,14 @@
 #   --email EMAIL        Administrator email for SSL and notifications
 #
 # Optional:
-#   --label LABEL        Server label (default: gitlab-TIMESTAMP)
-#   --region REGION      Region (default: us-east)
-#   --type TYPE          Linode type (default: g6-standard-1, 2GB RAM)
-#   --no-runner          Don't install GitLab Runner
-#   --runner-tags TAGS   Runner tags (default: docker,shell)
-#   -h, --help           Show this help message
+#   --label LABEL          Server label (default: gitlab-TIMESTAMP)
+#   --region REGION        Region (default: us-east)
+#   --type TYPE            Linode type (default: g6-standard-1, 2GB RAM)
+#   --no-runner            Don't install GitLab Runner
+#   --runner-tags TAGS     Runner tags (default: docker,shell)
+#   --no-email             Skip email configuration (default: configured)
+#   --linode-api-token T   Linode API token for automatic DNS setup
+#   -h, --help             Show this help message
 #
 ################################################################################
 
@@ -50,6 +52,8 @@ INSTALL_RUNNER="yes"
 RUNNER_TAGS="docker,shell"
 ROOT_PASS=""
 AUTO_YES="no"
+CONFIGURE_EMAIL="yes"  # Default: configure email automatically
+LINODE_API_TOKEN=""    # Optional: for automatic DNS configuration
 
 # Helper functions
 print_header() {
@@ -103,6 +107,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --runner-tags)
             RUNNER_TAGS="$2"
+            shift 2
+            ;;
+        --no-email)
+            CONFIGURE_EMAIL="no"
+            shift
+            ;;
+        --linode-api-token)
+            LINODE_API_TOKEN="$2"
             shift 2
             ;;
         -y|--yes)
@@ -222,6 +234,14 @@ echo "  Install Runner: $INSTALL_RUNNER"
 if [ "$INSTALL_RUNNER" = "yes" ]; then
     echo "  Runner Tags: $RUNNER_TAGS"
 fi
+echo "  Configure Email: $CONFIGURE_EMAIL"
+if [ "$CONFIGURE_EMAIL" = "yes" ]; then
+    if [ -n "$LINODE_API_TOKEN" ]; then
+        echo "  DNS Configuration: Automatic (via Linode API)"
+    else
+        echo "  DNS Configuration: Manual (no API token)"
+    fi
+fi
 echo ""
 
 if [ "$AUTO_YES" = "yes" ]; then
@@ -235,6 +255,26 @@ if [[ ! "$response" =~ ^[yY]$ ]]; then
     exit 0
 fi
 
+# Get Linode API token from .secrets.yml if not provided
+if [ -z "$LINODE_API_TOKEN" ] && [ -f "$PROJECT_ROOT/.secrets.yml" ]; then
+    LINODE_API_TOKEN=$(awk '
+        /^linode:/ { in_linode = 1; next }
+        in_linode && /^[a-zA-Z]/ && !/^  / { in_linode = 0 }
+        in_linode && /^  api_token:/ {
+            sub(/^  api_token: */, "")
+            gsub(/["'"'"']/, "")
+            sub(/ *#.*$/, "")
+            gsub(/^[ \t]+|[ \t]+$/, "")
+            print
+            exit
+        }
+    ' "$PROJECT_ROOT/.secrets.yml")
+
+    if [ -n "$LINODE_API_TOKEN" ]; then
+        print_success "Using Linode API token from .secrets.yml"
+    fi
+fi
+
 # Create StackScript data JSON
 STACKSCRIPT_DATA=$(cat <<EOF
 {
@@ -246,7 +286,9 @@ STACKSCRIPT_DATA=$(cat <<EOF
     "disable_root": "yes",
     "gitlab_external_url": "$GITLAB_EXTERNAL_URL",
     "install_runner": "$INSTALL_RUNNER",
-    "runner_tags": "$RUNNER_TAGS"
+    "runner_tags": "$RUNNER_TAGS",
+    "configure_email": "$CONFIGURE_EMAIL",
+    "linode_api_token": "$LINODE_API_TOKEN"
 }
 EOF
 )

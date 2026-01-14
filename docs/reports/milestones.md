@@ -1,6 +1,6 @@
 # NWP Milestones - Completed Implementation History
 
-**Last Updated:** January 5, 2026
+**Last Updated:** January 14, 2026
 
 A summary of all completed development phases and their key achievements.
 
@@ -17,8 +17,9 @@ A summary of all completed development phases and their key achievements.
 | Phase 5 | Enterprise Features | P22-P28 | Dec 2025 |
 | Phase 5b | Infrastructure & Import | P29-P31 | Jan 2026 |
 | Phase 5c | Live Deployment Automation | P32-P35 | Jan 2026 |
+| Phase 6-7 | Governance, Security & Testing | F04, F05, F07, F09 | Jan 2026 |
 
-**Total: 35 proposals implemented**
+**Total: 39 proposals implemented** (P01-P35 + F04, F05, F07, F09)
 
 ---
 
@@ -157,6 +158,120 @@ Daily security checks, auto-update branches, CI testing, live auto-deploy, prod 
 
 ### P35: Production Settings Generation
 `generate_live_settings()` in `lib/install-common.sh` generates `settings.local.php` with production database credentials, hash_salt, performance settings, trusted host patterns.
+
+---
+
+## Phase 6-7: Governance, Security & Testing
+
+### F05: Security Headers & Hardening
+Comprehensive security header configuration for nginx deployments, protecting sites from common web vulnerabilities.
+
+**Headers Implemented:**
+- `Strict-Transport-Security` (HSTS) - 1 year with includeSubDomains
+- `Content-Security-Policy` - Drupal-compatible CSP
+- `Referrer-Policy` - strict-origin-when-cross-origin
+- `Permissions-Policy` - Disable geolocation, microphone, camera
+- `server_tokens off` - Hide nginx version
+- `fastcgi_hide_header` - Remove X-Generator, X-Powered-By
+
+**Implementation:**
+- Security headers in `stg2live.sh` nginx config generation
+- Security headers in `linode_deploy.sh` templates
+- Server version hiding
+- CMS fingerprinting header removal
+
+### F04: Distributed Contribution Governance (Phases 1-5)
+Established governance framework for distributed NWP development, enabling secure collaboration across multiple developers.
+
+**Key Components:**
+- Multi-tier repository topology (Canonical → Primary → Developer)
+- Architecture Decision Records (ADRs) for tracking design decisions
+- Issue queue categories following Drupal's model (Bug, Task, Feature, Support, Plan)
+- Developer role system (Newcomer → Contributor → Core → Steward)
+- CLAUDE.md as "standing orders" for AI-assisted governance
+
+**Phases 1-5 Complete:**
+1. **Foundation** - Decision records, ADR templates, `docs/decisions/` directory
+2. **Developer Roles** - `docs/ROLES.md`, access level definitions
+3. **Onboarding Automation** - `coder-setup.sh provision/remove`, full lifecycle management
+4. **Developer Level Detection** - `lib/developer.sh` library for role detection
+5. **Coders TUI** - `scripts/commands/coders.sh` with arrow navigation, bulk actions, SSH status tracking
+
+**Key Features:**
+- Automated Linode provisioning via `coder-setup.sh provision`
+- Full offboarding with GitLab cleanup via `coder-setup.sh remove`
+- SSH status column showing if coder has SSH keys on GitLab
+- Onboarding status tracking (GL, GRP, SSH, NS, DNS, SRV, SITE columns)
+- Role-based requirement checking for Core/Steward developers
+
+**Phases 6-8 Pending:**
+- Phase 6: Issue Queue (GitLab labels, templates)
+- Phase 7: Multi-Tier Support (upstream sync, contribute commands)
+- Phase 8: Security Review System (malicious code detection)
+
+### F07: SEO & Search Engine Control
+Comprehensive search engine control ensuring staging sites are protected while production sites are optimized for discoverability.
+
+**Staging Protection (4 Layers):**
+| Layer | Method | Purpose |
+|-------|--------|---------|
+| 1 | X-Robots-Tag header | `noindex, nofollow` on all responses |
+| 2 | robots.txt | `Disallow: /` for all crawlers |
+| 3 | Meta robots | noindex on all Drupal pages |
+| 4 | HTTP Basic Auth | Optional access control |
+
+**Production Optimization:**
+- Sitemap.xml generation via Simple XML Sitemap module
+- robots.txt with `Sitemap:` directive
+- AI crawler controls (GPTBot, ClaudeBot, etc.)
+- Proper canonical URLs and meta tags
+
+**Implementation:**
+- X-Robots-Tag header on staging nginx configs
+- `templates/robots-staging.txt` for staging environments
+- `templates/robots-production.txt` with sitemap reference
+- Environment detection in deployment scripts (`stg2live.sh`, `linode_deploy.sh`)
+- SEO settings in cnwp.yml schema
+
+### F09: Comprehensive Testing Infrastructure
+Automated testing infrastructure using BATS framework with GitLab CI integration, plus interactive verification console.
+
+**Test Suites:**
+- Unit tests (BATS) - ~2 minutes, 76 tests, function-level validation
+- Integration tests (BATS) - ~5 minutes, 72 tests, workflow validation
+- E2E tests (Linode) - Infrastructure ready, tests pending
+
+**Test Structure:**
+| Directory | Purpose | Tests |
+|-----------|---------|-------|
+| `tests/unit/` | Function-level tests | 76 tests |
+| `tests/integration/` | Workflow tests | 72 tests |
+| `tests/e2e/` | Full deployment tests | Placeholder |
+| `tests/helpers/` | Shared test utilities | - |
+
+**Key Components:**
+- GitLab CI pipeline with lint, test, e2e stages
+- `scripts/commands/run-tests.sh` unified test runner
+- Shared utilities in `tests/helpers/test-helpers.bash`
+
+**Verification Console (v0.18.0-v0.19.0):**
+- Interactive TUI with arrow navigation (`pl verify`)
+- Keyboard shortcuts: v:Verify, i:Checklist, u:Unverify, h:History, n:Notes, p:Preview
+- Category and feature navigation with arrow keys
+- Interactive checklist editor with Space to toggle items
+- Notes editor with auto-detection (nano/vim/vi)
+- History timeline showing all verification events
+- Auto-verification when all checklist items completed
+- Perfect for distributed teams - each person completes different items
+- Verification schema v2 with individual checklist item tracking and audit trail
+
+**Coverage Status:**
+| Category | Current | Target |
+|----------|---------|--------|
+| Unit | ~40% | 80% |
+| Integration | ~60% | 95% |
+| E2E | ~10% | 80% |
+| **Overall** | **~45%** | **85%** |
 
 ---
 

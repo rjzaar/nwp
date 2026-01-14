@@ -1,10 +1,12 @@
 # NWP Roadmap - Pending & Future Work
 
-**Last Updated:** January 13, 2026
+**Last Updated:** January 14, 2026
 
 Pending implementation items and future improvements for NWP.
 
-> **For completed work, see [Milestones](../reports/milestones.md)** (P01-P35)
+> **For completed work, see [Milestones](../reports/milestones.md)**
+> - Phase 1-5c: P01-P35 (Foundation through Live Deployment)
+> - Phase 6-7: F04 (phases 1-5), F05, F07, F09
 
 ---
 
@@ -14,10 +16,25 @@ Pending implementation items and future improvements for NWP.
 |--------|-------|
 | Current Version | v0.21.0 |
 | Test Success Rate | 93% |
-| Completed Proposals | P01-P35, P17, F04, F05, F07, F09 |
+| Completed Proposals | P01-P35, F04, F05, F07, F09 |
 | Pending Proposals | F01-F03, F06, F08, F10, F11 |
 | Experimental/Outlier | X01 |
 | Recent Enhancements | YAML Parser Consolidation (v0.21.0), Documentation restructure (v0.20.0) |
+
+---
+
+## Proposal Designation System
+
+| Prefix | Meaning | Count | Example |
+|--------|---------|-------|---------|
+| **P##** | Core Phase Proposals | 35 complete | P01-P35: Foundation→Live Deployment |
+| **F##** | Feature Enhancements | 4 complete, 7 pending | F04: Governance, F09: Testing |
+| **X##** | Experimental Outliers | 1 exploratory | X01: AI Video (scope expansion) |
+
+**Why different prefixes?**
+- P01-P35: Core NWP infrastructure built during phases 1-5c (all complete)
+- F01+: Post-foundation feature additions for mature platform (Phase 6+)
+- X01+: Exploratory proposals outside core Drupal deployment mission
 
 ---
 
@@ -57,115 +74,46 @@ Based on dependencies, current progress, and priority:
 
 ---
 
-## Phase 6: Governance & Security (COMPLETE)
+## Phase 6: Governance & Security
 
-### F05: Security Headers & Hardening
-**Status:** ✅ COMPLETE | **Priority:** HIGH | **Effort:** Low | **Dependencies:** stg2live
-
-Comprehensive security header configuration for nginx deployments:
-
-**Headers Added:**
-- `Strict-Transport-Security` (HSTS) - 1 year with includeSubDomains
-- `Content-Security-Policy` - Drupal-compatible CSP
-- `Referrer-Policy` - strict-origin-when-cross-origin
-- `Permissions-Policy` - Disable geolocation, microphone, camera
-- `server_tokens off` - Hide nginx version
-- `fastcgi_hide_header` - Remove X-Generator, X-Powered-By
-
-**Success Criteria:**
-- [x] Security headers in stg2live nginx config
-- [x] Server version hidden
-- [x] CMS fingerprinting headers removed
-- [x] Security headers in linode_deploy.sh templates
-
----
-
-### F04: Distributed Contribution Governance
-**Status:** ✅ COMPLETE | **Priority:** HIGH | **Effort:** High | **Dependencies:** GitLab
+### F04: Distributed Contribution Governance (Phases 6-8)
+**Status:** PENDING | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** GitLab
 **Proposal:** [DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md)
-**Onboarding:** [CORE_DEVELOPER_ONBOARDING_PROPOSAL.md](CORE_DEVELOPER_ONBOARDING_PROPOSAL.md)
 
-Establish a governance framework for distributed NWP development:
+**Phases 1-5 Complete** (see [Milestones](../reports/milestones.md#f04-distributed-contribution-governance-phases-1-5)):
+- Foundation, Developer Roles, Onboarding Automation, Developer Detection, Coders TUI
 
-**Key Features:**
-- Multi-tier repository topology (Canonical → Primary → Developer)
-- Architecture Decision Records (ADRs) for tracking design decisions
-- Issue queue categories following Drupal's model (Bug, Task, Feature, Support, Plan)
-- Claude integration for decision enforcement and historical context
-- CLAUDE.md as "standing orders" for AI-assisted governance
-- Developer role detection and coders TUI management
+**Remaining Phases:**
 
-**Key Innovations:**
-1. **Decision Memory** - Claude checks `CLAUDE.md` and `docs/decisions/` before implementing changes
-2. **Scope Verification** - Claude compares MR claims vs actual diffs to detect hidden malicious code
-3. **Developer Identity** - Local NWP installations know the developer's role via `.nwp-developer.yml`
-4. **Coders TUI** - Full management interface for coders with contribution tracking
+**Phase 6: Issue Queue (PENDING)**
+- GitLab issue templates for Bug, Feature, Task, Support, Plan
+- Label taxonomy following Drupal's model
+- Issue triage workflow
+- Priority and severity classifications
 
-**Implementation Phases:**
-1. Foundation (decision records, ADR templates) - **COMPLETE**
-2. Developer Roles (ROLES.md, access levels) - **COMPLETE**
-3. Onboarding Automation (provision, offboarding) - **COMPLETE**
-4. Developer Level Detection (`lib/developer.sh`) - **COMPLETE**
-5. Coders TUI (`scripts/commands/coders.sh`) - **COMPLETE**
-6. Issue Queue (GitLab labels, templates) - PENDING
-7. Multi-Tier Support (upstream sync, contribute) - PENDING
-8. Security Review System (malicious code detection) - PENDING
+**Phase 7: Multi-Tier Support (PENDING)**
+- `pl upstream sync` - Sync changes from canonical repository
+- `pl contribute` - Submit changes to upstream
+- Merge request workflow for distributed development
+- Conflict resolution helpers
 
-**Completed in January 2026:**
-- [x] `docs/decisions/` directory with ADR template and 5 foundational ADRs
-- [x] `docs/ROLES.md` - Formal role definitions (Newcomer -> Contributor -> Core -> Steward)
-- [x] `CONTRIBUTING.md` - Entry point for developers
-- [x] `coder-setup.sh provision` - Automated Linode provisioning
-- [x] `coder-setup.sh remove` - Full offboarding with GitLab cleanup
-- [x] `lib/developer.sh` - Developer level detection library
-- [x] `scripts/commands/coders.sh` - Full TUI with arrow navigation, bulk actions, auto-sync
-- [x] SSH status column in pl coders (v0.19.0) - Shows if coder has SSH keys on GitLab
-- [x] Onboarding status tracking (v0.19.0) - GL, GRP, SSH, NS, DNS, SRV, SITE columns
-- [x] Role-based requirement checking - Core/Steward require full onboarding
-
-**Success Criteria:**
-- [x] `docs/decisions/` directory with ADR template
-- [x] `docs/ROLES.md` with role definitions
-- [x] `CONTRIBUTING.md` as developer entry point
-- [x] `coder-setup.sh provision` command
-- [x] `coder-setup.sh remove` with full offboarding
-- [x] `lib/developer.sh` for role detection
-- [x] `scripts/commands/coders.sh` TUI with bulk actions
-- [x] GitLab issue templates created (Bug, Feature, Task, Support)
-- [x] `pl upstream sync` command
-- [x] `pl contribute` command
-- [x] Security scan stage in CI (security:scan, security:review jobs)
+**Phase 8: Security Review System (PENDING)**
+- Automated security scanning for merge requests
+- Malicious code pattern detection
+- Sensitive file path approvals
+- See F06 for detailed security pipeline
 
 ---
 
 ### F07: SEO & Search Engine Control
-**Status:** ✅ COMPLETE | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** stg2live, recipes
-**Proposal:** [SEO_ROBOTS_PROPOSAL.md](SEO_ROBOTS_PROPOSAL.md)
+**Status:** ✅ COMPLETE (implementation) | **Proposal:** [SEO_ROBOTS_PROPOSAL.md](SEO_ROBOTS_PROPOSAL.md)
 
-Comprehensive search engine control ensuring staging sites are protected while production sites are optimized:
+**Implementation Complete** (see [Milestones](../reports/milestones.md#f07-seo--search-engine-control)):
+- All 4-layer staging protection implemented
+- Production optimization features available
+- Templates, scripts, and configuration ready
 
-**Staging Protection (4 Layers):**
-| Layer | Method | Purpose |
-|-------|--------|---------|
-| 1 | X-Robots-Tag header | `noindex, nofollow` on all responses |
-| 2 | robots.txt | `Disallow: /` for all crawlers |
-| 3 | Meta robots | noindex on all Drupal pages |
-| 4 | HTTP Basic Auth | Optional access control |
-
-**Production Optimization:**
-- Sitemap.xml generation via Simple XML Sitemap module
-- robots.txt with `Sitemap:` directive
-- AI crawler controls (GPTBot, ClaudeBot, etc.)
-- Proper canonical URLs and meta tags
-
-**Success Criteria:**
-- [x] X-Robots-Tag header on staging nginx configs
-- [x] `templates/robots-staging.txt` created
-- [x] `templates/robots-production.txt` with sitemap reference
-- [x] Environment detection in deployment scripts
-- [x] SEO settings in cnwp.yml schema
-- [ ] Existing staging sites protected (requires redeployment)
-- [ ] Production sites have working sitemap.xml (requires module install)
+**Note:** Deployment to existing sites is a usage task, not a development task. Users can redeploy staging sites or apply settings as needed. See proposal for deployment instructions.
 
 ---
 
@@ -738,58 +686,18 @@ Complex Tasks (Claude API):
 ---
 
 ### F09: Comprehensive Testing Infrastructure
-**Status:** ✅ COMPLETE + ENHANCED | **Priority:** HIGH | **Effort:** High | **Dependencies:** Linode, GitLab CI
-**Proposal:** [COMPREHENSIVE_TESTING_PROPOSAL.md](COMPREHENSIVE_TESTING_PROPOSAL.md)
-**Console Guide:** [VERIFY_ENHANCEMENTS.md](VERIFY_ENHANCEMENTS.md)
+**Status:** ✅ COMPLETE (infrastructure) | **Proposal:** [COMPREHENSIVE_TESTING_PROPOSAL.md](COMPREHENSIVE_TESTING_PROPOSAL.md)
 
-Automated testing infrastructure using BATS framework with GitLab CI integration, plus interactive verification console with schema v2 enhancements:
+**Infrastructure Complete** (see [Milestones](../reports/milestones.md#f09-comprehensive-testing-infrastructure)):
+- BATS framework with 148 tests (76 unit + 72 integration)
+- GitLab CI integration with lint, test, e2e stages
+- Interactive verification console with schema v2
+- `pl verify` TUI, `pl run-tests` unified test runner
+- E2E test infrastructure ready
 
-**Test Suites:**
-- Unit tests (BATS) - ~2 minutes, every commit
-- Integration tests (BATS) - ~5 minutes, every commit
-- E2E tests (Linode) - ~45 minutes, nightly (placeholder)
-
-**Test Structure:**
-| Directory | Purpose | Tests |
-|-----------|---------|-------|
-| `tests/unit/` | Function-level tests | 76 tests |
-| `tests/integration/` | Workflow tests | 72 tests |
-| `tests/e2e/` | Full deployment tests | Placeholder |
-| `tests/helpers/` | Shared test utilities | - |
-
-**Coverage Goals:**
-| Category | Current | Target |
-|----------|---------|--------|
-| Unit | ~40% | 80% |
-| Integration | ~60% | 95% |
-| E2E | ~10% | 80% |
-| **Overall** | **~45%** | **85%** |
-
-**Success Criteria:**
-- [x] `tests/unit/` directory with BATS tests
-- [x] `tests/integration/` modular test suite
-- [x] `tests/e2e/` placeholder with documentation
-- [x] `tests/helpers/test-helpers.bash` shared utilities
-- [x] GitLab CI pipeline with lint, test, e2e stages
-- [x] `scripts/commands/run-tests.sh` unified test runner
-- [x] Interactive verification console (v0.18.0) - Arrow navigation, checklist editor, history
-- [x] Verification schema v2 (v0.18.0) - Individual checklist item tracking, audit trail
-- [x] Auto-verification via checklist (v0.19.0) - Team collaboration, multi-coder support
-- [x] Partial completion display (v0.19.0) - Shows progress for features in development
-- [x] Checklist preview mode - Toggle display of first 3 items per feature
-- [ ] E2E tests on Linode (infrastructure ready, tests pending)
-- [ ] Test results dashboard
-
-**Verification Console Features (v0.18.0-v0.19.0):**
-- Default `pl verify` opens interactive TUI console
-- Keyboard shortcuts: v:Verify, i:Checklist, u:Unverify, h:History, n:Notes, p:Preview
-- Category navigation with ←→ arrows
-- Feature navigation with ↑↓ arrows
-- Interactive checklist editor with Space to toggle items
-- Notes editor with auto-detection (nano/vim/vi)
-- History timeline showing all verification events
-- Auto-verification when all checklist items completed
-- Perfect for distributed teams - each person completes different items
+**Remaining Work:**
+- [ ] E2E tests on Linode (infrastructure ready, actual tests pending)
+- [ ] Test results dashboard (optional enhancement)
 
 ---
 

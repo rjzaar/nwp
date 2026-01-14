@@ -51,7 +51,9 @@ NWP requires the following software:
 
 ## Security Architecture
 
-NWP uses a **two-tier secrets system** to protect sensitive data while allowing safe collaboration with AI assistants like Claude Code. The full details are in **Complete Guide**: See [`docs/security/data-security-best-practices.md`](docs/security/data-security-best-practices.md)
+NWP uses a **two-tier secrets system** to protect sensitive data while allowing safe collaboration with AI assistants like Claude Code.
+
+**Complete Guide**: [`docs/security/data-security-best-practices.md`](docs/security/data-security-best-practices.md) - Read this for comprehensive security architecture, GDPR compliance, backup strategies, and AI safety rules.
 
 ### AI Assistant Safety Rules
 
@@ -103,7 +105,7 @@ More information about security below.
 
 ## Using the `pl` CLI
 
-After setup, the `pl` command is the primary way to run NWP scripts:
+After setup, the `pl` command is the **recommended way** to run NWP scripts:
 
 ```bash
 pl install d mysite    # Install a Drupal site
@@ -115,7 +117,65 @@ pl theme watch mysite  # Start frontend dev server
 pl --help              # Show all commands
 ```
 
-The `pl` command works from any directory and provides tab completion for commands.
+The `pl` command provides several advantages:
+- **Works from any directory** - No need to `cd` into NWP root
+- **Tab completion** - Auto-complete commands and arguments (if configured)
+- **Consistent interface** - Standardized command structure
+- **Better error handling** - Improved error messages and logging
+
+### Alternative: Direct Script Access
+
+If you prefer or need to run scripts directly (without the CLI wrapper):
+
+```bash
+# From NWP root directory
+./scripts/commands/install.sh d mysite
+./scripts/commands/backup.sh mysite
+
+# Or with traditional symlinks (if enabled during setup)
+./install.sh d mysite    # Requires ./setup.sh --symlinks
+./backup.sh mysite
+```
+
+**When to use direct scripts:**
+- Legacy scripts or automation that expects direct paths
+- Debugging script issues
+- Running scripts before CLI is configured
+- Personal preference for direct access
+
+**Recommendation:** Use the `pl` CLI for all regular operations. Direct script access is a fallback for edge cases.
+
+## Site Purpose
+
+When installing a site, you can specify its purpose to control how it's managed and protected:
+
+```bash
+pl install nwp mysite -p=t    # Testing - can be freely deleted
+pl install nwp mysite -p=i    # Indefinite - default, manual deletion allowed
+pl install nwp mysite -p=p    # Permanent - requires config change to delete
+pl install nwp mysite -p=m    # Migration - creates stub for importing sites
+```
+
+### Purpose Values
+
+| Value | Purpose | Description | Deletion Policy |
+|-------|---------|-------------|-----------------|
+| **t** | Testing | Temporary test sites | Can be freely deleted |
+| **i** | Indefinite | Normal development sites (default) | Can be deleted manually |
+| **p** | Permanent | Production or critical sites | Must change purpose in `cnwp.yml` before deletion |
+| **m** | Migration | Migration stub for importing external sites | Creates directory structure only |
+
+**Examples:**
+```bash
+# Create a temporary test site
+pl install d test-feature -p=t
+
+# Create a permanent production site
+pl install os community-site -p=p
+
+# Create a migration stub for importing an old site
+pl install d oldsite -p=m
+```
 
 ### Multiple NWP Installations
 
@@ -298,6 +358,72 @@ grep -l "password" .secrets*.yml  # Should only be in .secrets.data.yml
 - **Complete Guide**: See [`docs/security/data-security-best-practices.md`](docs/security/data-security-best-practices.md)
 - **Training Material**: See [`docs/guides/training-booklet.md`](docs/guides/training-booklet.md)
 - **Migration Guide**: See [`docs/guides/setup.md`](docs/guides/setup.md) for two-tier setup
+
+## Environment Naming
+
+NWP uses a clear and consistent naming convention for different environments. Understanding these names is crucial for working with deployment commands.
+
+### Environment Names
+
+| Environment | Hostname Pattern | Description | Usage |
+|-------------|-----------------|-------------|-------|
+| **Development** | `sitename` | Local DDEV development environment | `sites/nwp/` or `sites/avc/` |
+| **Staging** | `sitename-stg` | Local staging environment for testing | `sites/avc-stg/` |
+| **Live** | `sitename-live` | Remote production server | Referenced in deployment commands |
+| **Production** | `sitename-prod` | Alternative name for remote production | Some commands use "prod" instead of "live" |
+
+**Examples:**
+- Development: `avc` → `https://avc.ddev.site`
+- Staging: `avc-stg` → `https://avc-stg.ddev.site`
+- Live/Production: `avc-live` → Remote server at configured domain
+
+**Important Notes:**
+- "live" and "prod" are often used interchangeably for production servers
+- Development environments have no suffix (just the sitename)
+- Staging environments use `-stg` suffix
+- All local environments use DDEV's `.ddev.site` domain
+- Remote production uses your configured custom domain
+
+### Recipe Configuration Hierarchy
+
+NWP uses a flexible configuration hierarchy that lets you set defaults globally and override them per recipe:
+
+```
+Recipe-specific settings (highest priority)
+    ↓
+Global settings defaults
+    ↓
+Profile-based defaults
+    ↓
+Hardcoded defaults (lowest priority)
+```
+
+**Example:**
+```yaml
+# cnwp.yml
+settings:
+  services:
+    redis:
+      enabled: false      # Global default for all recipes
+    solr:
+      enabled: false
+
+recipes:
+  mysite:
+    profile: social
+    services:
+      redis:
+        enabled: true     # Override: this recipe gets Redis
+      # solr inherits global default (false)
+```
+
+This means you can:
+- Set common defaults once in the `settings` section
+- Override per recipe only when needed
+- Keep recipe definitions minimal and focused
+- Avoid repeating the same settings across recipes
+
+See `example.cnwp.yml` for the complete configuration structure.
 
 ## Management Scripts
 
@@ -484,14 +610,6 @@ All scripts support combined short flags for efficient usage:
 # Run Behat tests with auto-confirm and verbose
 ./testos.sh -bvy nwp4
 ```
-
-### Environment Naming Convention
-
-NWP uses hyphenated postfix naming for different environments (DDEV hostname compatible):
-
-- **Development**: `sitename` (e.g., `nwp4`)
-- **Staging**: `sitename-stg` (e.g., `nwp4-stg`)
-- **Production**: `sitename-prod` (e.g., `nwp4-prod`)
 
 For detailed documentation on each script, see the [Documentation](#documentation) section.
 
@@ -973,55 +1091,39 @@ ssh git-server 'sudo cat /root/gitlab_credentials.txt'
 
 See `linode/gitlab/README.md` for complete GitLab documentation.
 
-## Site Purpose and Migration
+## Migration Workflow
 
-NWP supports site lifecycle management through purpose tracking and migration workflows.
+NWP includes a comprehensive migration system for importing existing sites from various platforms.
 
-### Site Purpose
+### Supported Platforms
 
-When installing a site, you can specify its purpose:
-
-```bash
-./install.sh nwp mysite -p=t    # Testing - can be freely deleted
-./install.sh nwp mysite -p=i    # Indefinite - default, manual deletion allowed
-./install.sh nwp mysite -p=p    # Permanent - requires config change to delete
-./install.sh nwp mysite -p=m    # Migration - creates stub for importing sites
-```
-
-Purpose values:
-- **testing**: Safe to delete, used for temporary test sites
-- **indefinite**: Default for normal sites, can be deleted manually
-- **permanent**: Protected sites, must change purpose in `cnwp.yml` before deletion
-- **migration**: Creates directory structure for migrating external sites
-
-### Migration Workflow
-
-For importing existing sites (Drupal 7, WordPress, static HTML, etc.):
-
-```bash
-# Create migration stub
-./install.sh d oldsite -p=m
-
-# Analyze the source
-./migration.sh analyze oldsite
-
-# Prepare target Drupal site
-./migration.sh prepare oldsite
-
-# Run migration
-./migration.sh run oldsite
-
-# Verify results
-./migration.sh verify oldsite
-```
-
-The migration workflow supports:
 - Drupal 7/8/9 sites
 - WordPress sites
 - Static HTML sites
 - Joomla sites
 
-See `docs/guides/migration-sites-tracking.md` for site migration and `docs/archive/MIGRATION_GUIDE_ENV.md` for environment variable migration.
+### Migration Process
+
+For importing existing sites:
+
+```bash
+# Create migration stub (use -p=m purpose flag)
+pl install d oldsite -p=m
+
+# Analyze the source
+pl migration analyze oldsite
+
+# Prepare target Drupal site
+pl migration prepare oldsite
+
+# Run migration
+pl migration run oldsite
+
+# Verify results
+pl migration verify oldsite
+```
+
+See [`docs/guides/migration-workflow.md`](docs/guides/migration-workflow.md) for the complete migration guide and [`docs/guides/migration-sites-tracking.md`](docs/guides/migration-sites-tracking.md) for site migration tracking.
 
 ## Documentation
 
@@ -1523,45 +1625,4 @@ For existing sites or custom setups:
 
 - **Templates**: See `templates/env/` for available templates
 - **Architecture**: See `docs/reference/architecture-analysis.md` for environment variable design
-
-
-### Configuration Hierarchy
-
-NWP uses a flexible configuration hierarchy for environment variables and services:
-
-```
-1. Recipe-specific settings (highest priority)
-   ↓
-2. Global settings defaults
-   ↓
-3. Profile-based defaults
-   ↓
-4. Hardcoded defaults (lowest priority)
-```
-
-**Example:**
-```yaml
-# cnwp.yml
-settings:
-  services:
-    redis:
-      enabled: false      # Global default
-    solr:
-      enabled: false
-
-recipes:
-  mysite:
-    profile: social
-    services:
-      redis:
-        enabled: true     # Override for this recipe only
-      # solr uses global default (false)
-```
-
-This allows you to:
-- Set common defaults once in `settings`
-- Override per recipe only when needed
-- Keep recipe definitions minimal and focused
-
-See `example.cnwp.yml` for the complete structure and `enhanced_example` recipe for override examples.
 

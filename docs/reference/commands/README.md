@@ -15,26 +15,26 @@ pl <command> [options] [arguments]
 ### Site Management
 | Command | Description | Documentation |
 |---------|-------------|---------------|
-| `install` | Install new Drupal sites with recipes | [install.md](install.md) |
-| `delete` | Delete sites and cleanup resources | [delete.md](delete.md) |
-| `copy` | Copy/clone sites | [copy.md](copy.md) |
-| `status` | Show site status and health | [status.md](status.md) |
-| `verify` | Verify site configuration and setup | [verify.md](verify.md) |
+| `install` | Install new Drupal sites with recipes | [install.md](install.md) ✓ |
+| `delete` | Delete sites and cleanup resources | [delete.md](delete.md) ✓ |
+| `copy` | Copy/clone sites | [copy.md](copy.md) ✓ |
+| `status` | Show site status and health | [status.md](status.md) ✓ |
+| `verify` | Verify site configuration and setup | [verify.md](verify.md) ✓ |
 | `modify` | Modify site configuration | [modify.md](modify.md) |
-| `make` | Generate new components (modules, themes) | [make.md](make.md) |
+| `make` | Generate new components (modules, themes) | [make.md](make.md) ✓ |
 | `theme` | Theme management | [theme.md](theme.md) |
 
 ### Backup & Restore
 | Command | Description | Documentation |
 |---------|-------------|---------------|
-| `backup` | Create site backups | [backup.md](backup.md) |
-| `restore` | Restore from backups | [restore.md](restore.md) |
+| `backup` | Create site backups | [backup.md](backup.md) ✓ |
+| `restore` | Restore from backups | [restore.md](restore.md) ✓ |
 | `rollback` | Rollback deployments | [rollback.md](rollback.md) |
 
 ### Deployment & Sync
 | Command | Description | Documentation |
 |---------|-------------|---------------|
-| `dev2stg` | Deploy development to staging | [dev2stg.md](dev2stg.md) |
+| `dev2stg` | Deploy development to staging | [dev2stg.md](dev2stg.md) ✓ |
 | `stg2prod` | Deploy staging to production | [stg2prod.md](stg2prod.md) |
 | `stg2live` | Deploy staging to live | [stg2live.md](stg2live.md) |
 | `live2stg` | Sync live back to staging | [live2stg.md](live2stg.md) |
@@ -78,6 +78,7 @@ pl <command> [options] [arguments]
 |---------|-------------|---------------|
 | `setup` | Initial NWP setup | [setup.md](setup.md) |
 | `setup-ssh` | SSH key generation | [setup-ssh.md](setup-ssh.md) |
+| `doctor` | System diagnostics and troubleshooting | [doctor.md](doctor.md) ✓ |
 | `email` | Email configuration | [email.md](email.md) |
 | `storage` | Storage management | [storage.md](storage.md) |
 | `schedule` | Cron scheduling | [schedule.md](schedule.md) |
@@ -95,7 +96,9 @@ pl <command> [options] [arguments]
 
 ✓ = Documented (complete reference available)
 
-Most commands have basic documentation. Some advanced commands have comprehensive documentation marked with ✓.
+**Documentation Coverage: 39% (19/49 commands)**
+
+Updated: 2026-01-14
 
 ## Getting Help
 

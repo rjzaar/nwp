@@ -5888,34 +5888,117 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Provision test Linode: TEST_SERVER=$(provision_test_linode "$LINODE_TOKEN" "nwp-phptest")
+        2. Extract IP: SERVER_IP=$(echo $TEST_SERVER | awk '{print $2}')
+        3. Install PHP-FPM: ensure_php_fpm "$SERVER_IP" "8.2" "www-data" "root"
+        4. Verify package installed: remote_package_installed "$SERVER_IP" "php8.2-fpm" "root"
+        5. Verify service running: remote_service_running "$SERVER_IP" "php8.2-fpm" "root"
+        6. Check pool config: remote_ssh "$SERVER_IP" "grep 'listen.owner = www-data' /etc/php/8.2/fpm/pool.d/www.conf"
+        Success: PHP-FPM installed, running, and configured with correct socket permissions
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/live-server-setup.sh
     - text: Test PHP-FPM socket permissions for nginx
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. After ensure_php_fpm completes on test server
+        2. Check socket file: remote_ssh "$SERVER_IP" "ls -la /run/php/php8.2-fpm.sock"
+        3. Verify owner/group shows www-data:www-data or nginx user
+        4. Check pool config: remote_ssh "$SERVER_IP" "grep -E '(listen.owner|listen.group|listen.mode)' /etc/php/8.2/fpm/pool.d/www.conf"
+        5. Verify mode is 0660
+        Success: Socket has correct permissions for nginx/gitlab-www access
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/live-server-setup.sh
     - text: Verify ensure_mariadb installation
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. On test Linode server: ensure_mariadb "$SERVER_IP" "root"
+        2. Verify package installed: remote_package_installed "$SERVER_IP" "mariadb-server" "root"
+        3. Verify service running: remote_service_running "$SERVER_IP" "mariadb" "root"
+        4. Test connection: remote_ssh "$SERVER_IP" "mysql -e 'SELECT VERSION()'"
+        5. Verify shows MariaDB version
+        Success: MariaDB installed, running, and accessible
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/live-server-setup.sh
     - text: Test create_site_database function
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. On test server with MariaDB: create_site_database "$SERVER_IP" "testdb" "testuser" "testpass" "root"
+        2. Verify database created: remote_ssh "$SERVER_IP" "mysql -e 'SHOW DATABASES' | grep testdb"
+        3. Verify user created: remote_ssh "$SERVER_IP" "mysql -e 'SELECT User FROM mysql.user' | grep testuser"
+        4. Test user access: remote_ssh "$SERVER_IP" "mysql -u testuser -ptestpass testdb -e 'SELECT 1'"
+        5. Verify user can query the database
+        Success: Database and user created with proper permissions
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/live-server-setup.sh
     - text: Verify configure_nginx_drupal vhost generation
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. On test server: configure_nginx_drupal "$SERVER_IP" "test.example.com" "/var/www/test" "root"
+        2. Check vhost file created: remote_ssh "$SERVER_IP" "ls /etc/nginx/sites-available/test.example.com"
+        3. Check symlink: remote_ssh "$SERVER_IP" "ls -la /etc/nginx/sites-enabled/ | grep test.example.com"
+        4. Verify nginx config: remote_ssh "$SERVER_IP" "nginx -t"
+        5. Check vhost contains proper PHP-FPM socket and Drupal rules
+        Success: Nginx vhost created with Drupal-optimized configuration
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/live-server-setup.sh
     - text: Test provision_drupal_stack complete setup
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Provision fresh Linode: TEST_SERVER=$(provision_test_linode "$LINODE_TOKEN" "nwp-fullstack")
+        2. Extract IP: SERVER_IP=$(echo $TEST_SERVER | awk '{print $2}')
+        3. Run full stack: provision_drupal_stack "$SERVER_IP" "test.example.com" "root"
+        4. Verify PHP-FPM running: remote_service_running "$SERVER_IP" "php8.2-fpm"
+        5. Verify MariaDB running: remote_service_running "$SERVER_IP" "mariadb"
+        6. Verify nginx configured: remote_ssh "$SERVER_IP" "nginx -t"
+        Success: Complete LEMP stack provisioned and operational
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/live-server-setup.sh
     - text: Verify check_infrastructure_ready status checks
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. On provisioned server: check_infrastructure_ready "$SERVER_IP" "root"
+        2. Verify returns 0 when all services running
+        3. Stop a service: remote_ssh "$SERVER_IP" "systemctl stop php8.2-fpm"
+        4. Run check again: check_infrastructure_ready "$SERVER_IP" "root"
+        5. Verify returns 1 and reports missing service
+        Success: Correctly validates full infrastructure readiness
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/live-server-setup.sh
     - text: Test with GitLab bundled nginx (gitlab-www group)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. On server with GitLab installed: ensure_php_fpm "$SERVER_IP" "8.2" "gitlab-www" "root"
+        2. Verify pool config uses gitlab-www: remote_ssh "$SERVER_IP" "grep 'listen.owner = gitlab-www' /etc/php/8.2/fpm/pool.d/www.conf"
+        3. Check socket permissions: remote_ssh "$SERVER_IP" "ls -la /run/php/php8.2-fpm.sock | grep gitlab-www"
+        4. Test nginx can access: remote_ssh "$SERVER_IP" "sudo -u gitlab-www test -r /run/php/php8.2-fpm.sock && echo OK"
+        5. Verify returns OK
+        Success: PHP-FPM integrates with GitLab's nginx (gitlab-www group)
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/live-server-setup.sh
+        - docs/guides/gitlab-integration.md
     verified: false
     verified_by: null
     verified_at: null
@@ -7342,18 +7425,59 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Source library: source lib/frontend.sh lib/ui.sh
+        2. Find theme with Gulp: THEME_DIR=$(find_theme_dir "opensocial-site")
+        3. Detect tool: TOOL=$(detect_frontend_tool "$THEME_DIR")
+        4. Verify returns "gulp" for themes with gulpfile.js
+        5. Get watch command: get_watch_command "gulp" "$THEME_DIR"
+        6. Verify returns "gulp watch" or npm script equivalent
+        Success: Gulp detected correctly, proper commands generated
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/frontend.sh
     - text: Verify Grunt support
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Find theme with Grunt: THEME_DIR with Gruntfile.js
+        2. Detect: TOOL=$(detect_frontend_tool "$THEME_DIR")
+        3. Verify returns "grunt"
+        4. Check build command: get_build_command "grunt" "$THEME_DIR"
+        5. Verify returns "grunt" or custom script
+        Success: Grunt detected and configured correctly
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/frontend.sh
     - text: Check Webpack integration
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Find theme with webpack.config.js
+        2. Detect: TOOL=$(detect_frontend_tool "$THEME_DIR")
+        3. Verify returns "webpack"
+        4. Get commands: get_watch_command "webpack" "$THEME_DIR"
+        5. Verify returns "npm run watch" or equivalent
+        Success: Webpack detected, npm scripts identified correctly
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/frontend.sh
     - text: Test Vite support
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Find theme with vite.config.js or vite.config.ts
+        2. Detect: TOOL=$(detect_frontend_tool "$THEME_DIR")
+        3. Verify returns "vite"
+        4. Check commands: get_build_command "vite" "$THEME_DIR"
+        5. Verify returns "npm run build" or "vite build"
+        Success: Vite detected and configured with correct commands
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/frontend.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -7369,22 +7493,70 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Source library: source lib/avc-moodle.sh
+        2. Test with existing site: SITE_DIR=$(get_site_directory "avc")
+        3. Verify returns full path: echo "$SITE_DIR" (should show /home/.../sites/avc)
+        4. Test non-existent: get_site_directory "nonexistent-site-$(date +%s)"
+        5. Verify returns 1
+        Success: Returns correct paths for existing sites, fails gracefully for missing
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/avc-moodle.sh
     - text: Verify get_site_recipe detection
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Test AVC site: RECIPE=$(get_site_recipe "avc")
+        2. Verify returns "avc" or "avc-dev"
+        3. Test Moodle: RECIPE=$(get_site_recipe "moodle-site")
+        4. Verify returns "m"
+        5. Test detection from composer.json when cnwp.yml missing
+        Success: Recipe detected from config or filesystem analysis
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/avc-moodle.sh
     - text: Test OAuth2 key generation helpers
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Generate OAuth2 keys (if functions exist in library)
+        2. Verify key format is valid
+        3. Check keys can be used for Moodle OAuth2 setup
+        4. Test key regeneration doesn't break existing configs
+        Success: OAuth2 keys generated in correct format for Moodle integration
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/avc-moodle.sh
     - text: Verify role mapping functions
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Test AVC site validation: avc_moodle_validate_avc_site "avc"
+        2. Verify returns 0 for valid AVC site
+        3. Test with wrong recipe: avc_moodle_validate_avc_site "plain-drupal"
+        4. Verify returns 1 with error
+        5. Check Moodle validation: avc_moodle_validate_moodle_site "moodle-site"
+        Success: Validation correctly identifies AVC and Moodle sites
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/avc-moodle.sh
     - text: Test cohort synchronization functions
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Source library and test site validation
+        2. Run any cohort sync functions (if implemented)
+        3. Verify data structures match expected format
+        4. Test error handling for invalid site combinations
+        Success: Cohort functions validate sites and handle errors gracefully
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/avc-moodle.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -7400,22 +7572,71 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Source library: source lib/podcast.sh
+        2. Generate password: PASS=$(generate_password 24)
+        3. Verify length: echo ${#PASS} (should be 24)
+        4. Check charset: echo "$PASS" | grep -E '^[A-Za-z0-9]+$'
+        5. Generate multiple: for i in {1..10}; do generate_password; done (should be unique)
+        Success: Passwords generated with correct length, safe characters, unique
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/podcast.sh
     - text: Verify generate_castopod_env function
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Generate env: ENV=$(generate_castopod_env "podcast.example.com" "dbpass123" "keyid" "appkey" "bucket-name" "us-west-004")
+        2. Verify contains CP_BASEURL: echo "$ENV" | grep "CP_BASEURL="
+        3. Check database settings: echo "$ENV" | grep "CP_DATABASE_PASSWORD=dbpass123"
+        4. Verify B2 config: echo "$ENV" | grep "CP_MEDIA_S3_BUCKET=bucket-name"
+        Success: Environment file generated with all required Castopod variables
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/podcast.sh
     - text: Test Linode orchestration helpers
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Test provisions Linode for podcast hosting
+        2. Verify calls create_linode_instance from lib/linode.sh
+        3. Check waits for instance to be ready
+        4. Verify returns instance info
+        Success: Orchestration functions coordinate Linode provisioning correctly
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/podcast.sh
+        - lib/linode.sh
     - text: Verify Cloudflare DNS configuration
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Test DNS setup calls cf_create_dns_a or cf_upsert_dns_a
+        2. Verify creates A record for podcast domain
+        3. Check creates media subdomain if using B2
+        4. Verify DNS propagation wait logic
+        Success: DNS configured correctly for podcast and media domains
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/podcast.sh
+        - lib/cloudflare.sh
     - text: Test B2 storage configuration
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Test B2 bucket creation for podcast
+        2. Verify calls b2_create_bucket with correct settings
+        3. Check creates application key with proper permissions
+        4. Verify generates correct S3-compatible endpoint URL
+        Success: B2 storage configured for Castopod media files
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/podcast.sh
+        - lib/b2.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -7431,22 +7652,75 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Source library: source lib/ssh.sh
+        2. Test default mode: MODE=$(get_ssh_host_key_checking); echo "$MODE"
+        3. Verify returns "accept-new" by default
+        4. Test strict mode: NWP_SSH_STRICT=1 MODE=$(get_ssh_host_key_checking); echo "$MODE"
+        5. Verify returns "yes" in strict mode
+        Success: Returns correct host key checking mode based on NWP_SSH_STRICT
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/ssh.sh
+        - docs/SECURITY.md
     - text: Verify show_ssh_security_warning output
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Show warning: show_ssh_security_warning
+        2. Verify displays warning about accept-new mode
+        3. Verify mentions MITM vulnerability
+        4. Check suggests NWP_SSH_STRICT=1 for strict mode
+        5. Test with strict: NWP_SSH_STRICT=1 show_ssh_security_warning (should be silent)
+        Success: Warning displayed in default mode, suppressed in strict mode
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/ssh.sh
+        - docs/SECURITY.md
     - text: Test get_ssh_options array generation
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Get options: get_ssh_options
+        2. Verify includes "-o" "StrictHostKeyChecking=accept-new"
+        3. Verify includes "-o" "ConnectTimeout=10"
+        4. Test in strict mode: NWP_SSH_STRICT=1 get_ssh_options
+        5. Verify uses "yes" instead of "accept-new"
+        Success: SSH options array generated correctly for both modes
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/ssh.sh
     - text: Verify NWP_SSH_STRICT=1 strict mode
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Set strict mode: export NWP_SSH_STRICT=1
+        2. Check mode: is_ssh_strict_mode && echo "Strict" || echo "Relaxed"
+        3. Verify returns 0 (true)
+        4. Build SSH command: build_ssh_command
+        5. Verify includes "StrictHostKeyChecking=yes"
+        Success: Strict mode enforces known_hosts verification
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/ssh.sh
+        - docs/SECURITY.md
     - text: Test accept-new mode (default)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Unset strict: unset NWP_SSH_STRICT
+        2. Check mode: is_ssh_strict_mode && echo "Strict" || echo "Relaxed"
+        3. Verify returns 1 (false)
+        4. Build SSH command: build_ssh_command
+        5. Verify includes "StrictHostKeyChecking=accept-new"
+        Success: Default mode accepts new hosts, verifies known hosts
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/ssh.sh
     verified: false
     verified_by: null
     verified_at: null

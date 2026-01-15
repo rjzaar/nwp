@@ -10,22 +10,101 @@ features:
       completed: true
       completed_by: rob
       completed_at: '2026-01-11T21:35:56+11:00'
+      how_to_verify: '1. On a fresh Ubuntu/Debian system: `cd ~/nwp && ./scripts/commands/setup.sh` or `pl setup`
+
+        2. Use arrow keys to navigate and SPACE to select required components
+
+        3. Press ENTER to apply and watch installation process
+
+        4. Verify Docker: `docker --version` (should show v20+)
+
+        5. Verify DDEV: `ddev version` (should show v1.21+)
+
+        6. Check setup status: `pl setup --status` (should show all required components with [✓])
+
+        Success: All required components marked with [✓] and no error messages during installation'
+      related_docs:
+      - docs/reference/commands/setup.md
+      - docs/guides/setup.md
+      - docs/guides/quickstart.md
     - text: Test Docker installation and verify ddev starts correctly
       completed: true
       completed_by: greg
       completed_at: '2026-01-11T16:02:39-07:00'
+      how_to_verify: '1. Verify Docker daemon is running: `sudo systemctl status docker` (should show "active (running)")
+
+        2. Test Docker without sudo: `docker ps` (should list containers without permission error)
+
+        3. Verify user is in docker group: `groups | grep docker` (should show docker)
+
+        4. Start a test DDEV project: `mkdir /tmp/test-ddev && cd /tmp/test-ddev && ddev config --project-type=php && ddev
+        start`
+
+        5. Verify DDEV started: `ddev describe` (should show running services)
+
+        6. Clean up: `ddev delete -y && cd ~ && rm -rf /tmp/test-ddev`
+
+        Success: Docker runs without sudo and DDEV project starts successfully'
+      related_docs:
+      - docs/reference/commands/setup.md
+      - docs/guides/setup.md
     - text: Verify mkcert generates valid local certificates
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Check mkcert installation: `mkcert -version` (should show version number)
+
+        2. Verify CA is installed: `mkcert -CAROOT` (should show path like ~/.local/share/mkcert)
+
+        3. Check CA certificates exist: `ls -la $(mkcert -CAROOT)` (should show rootCA.pem and rootCA-key.pem)
+
+        4. Generate a test certificate: `cd /tmp && mkcert test.local`
+
+        5. Verify certificate files created: `ls -la test.local*.pem` (should show cert and key files)
+
+        6. Clean up: `rm -f /tmp/test.local*.pem`
+
+        Success: mkcert generates valid certificates and CA is trusted system-wide'
+      related_docs:
+      - docs/reference/commands/setup.md
+      - docs/guides/setup.md
     - text: Test Linode CLI authentication if configured
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Check Linode CLI installation: `linode-cli --version` (should show version number)
+
+        2. Verify configuration file exists: `cat ~/.config/linode-cli` (should show API token redacted)
+
+        3. Test authentication: `linode-cli account view` (should show your account information)
+
+        4. Verify read permissions: `linode-cli linodes list` (should list Linodes or show empty array)
+
+        5. Check for API errors: previous commands should not show "Invalid Token" errors
+
+        Success: Linode CLI authenticates successfully and can retrieve account information'
+      related_docs:
+      - docs/reference/commands/setup.md
+      - docs/guides/setup.md
     - text: Check that all error messages are clear and actionable
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Test setup without prerequisites: On fresh system run `pl setup` and deliberately skip a dependency
+
+        2. Verify error message explains what''s missing and how to fix it
+
+        3. Test with invalid Linode token: Enter "invalid-token" when prompted for Linode API token
+
+        4. Verify error message identifies the token as invalid and suggests checking token
+
+        5. Test component installation failure: Disconnect network and try to install a component
+
+        6. Verify error message explains the network issue and suggests checking connection
+
+        Success: All error messages include clear explanation of problem and actionable next steps'
+      related_docs:
+      - docs/reference/commands/setup.md
     verified: false
     verified_by: null
     verified_at: null
@@ -576,6 +655,19 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl live --type=shared <sitename> (for GitLab server deployment)
+        2. For dedicated: pl live --type=dedicated <sitename>
+        3. Check console output for server creation confirmation
+        4. Success indicators:
+           - "Server created successfully" message
+           - Server IP address displayed
+           - No error messages during provisioning
+        5. Verify server appears in cnwp.yml under sites.<sitename>.live.server_ip
+      related_docs:
+      - docs/reference/commands/live.md
+      - docs/deployment/linode-deployment.md
+      - docs/deployment/production-deployment.md
     - text: Verify DNS configuration with Cloudflare
       completed: false
       completed_by: null
@@ -1623,7 +1715,12 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. After running setup, visit: https://avc.ddev.site/admin/config/services/consumer\n2. Create OAuth2 client with:\n   - Client ID: moodle_ss\n   - Redirect URI: https://ss.ddev.site/admin/oauth2callback.php\n   - Grant Types: Authorization Code\n   - Scopes: openid profile email\n3. Verify Simple OAuth key paths: cd sites/avc && ddev drush config:get simple_oauth.settings\n4. Check token expiration (should be 300s): cd sites/avc && ddev drush config:get simple_oauth.settings token_expiration\nSuccess: OAuth2 client exists with correct configuration, keys configured\n"
+      how_to_verify: "1. After running setup, visit: https://avc.ddev.site/admin/config/services/consumer\n2. Create OAuth2\
+        \ client with:\n   - Client ID: moodle_ss\n   - Redirect URI: https://ss.ddev.site/admin/oauth2callback.php\n   -\
+        \ Grant Types: Authorization Code\n   - Scopes: openid profile email\n3. Verify Simple OAuth key paths: cd sites/avc\
+        \ && ddev drush config:get simple_oauth.settings\n4. Check token expiration (should be 300s): cd sites/avc && ddev\
+        \ drush config:get simple_oauth.settings token_expiration\nSuccess: OAuth2 client exists with correct configuration,\
+        \ keys configured\n"
       related_docs:
       - docs/reference/commands/avc-moodle-setup.md
       - lib/avc-moodle.sh
@@ -1631,7 +1728,11 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. After running setup, visit: https://ss.ddev.site/admin/settings.php?section=oauth2\n2. Configure OAuth2 issuer with:\n   - Name: AVC\n   - Client ID: moodle_ss (from AVC setup)\n   - Client Secret: (from AVC OAuth2 client)\n   - Authorization Endpoint: https://avc.ddev.site/oauth/authorize\n   - Token Endpoint: https://avc.ddev.site/oauth/token\n   - UserInfo Endpoint: https://avc.ddev.site/oauth/userinfo\n3. Test endpoints work: curl -k https://avc.ddev.site/oauth/authorize\nSuccess: OAuth2 issuer configured in Moodle, all endpoints accessible\n"
+      how_to_verify: "1. After running setup, visit: https://ss.ddev.site/admin/settings.php?section=oauth2\n2. Configure\
+        \ OAuth2 issuer with:\n   - Name: AVC\n   - Client ID: moodle_ss (from AVC setup)\n   - Client Secret: (from AVC OAuth2\
+        \ client)\n   - Authorization Endpoint: https://avc.ddev.site/oauth/authorize\n   - Token Endpoint: https://avc.ddev.site/oauth/token\n\
+        \   - UserInfo Endpoint: https://avc.ddev.site/oauth/userinfo\n3. Test endpoints work: curl -k https://avc.ddev.site/oauth/authorize\n\
+        Success: OAuth2 issuer configured in Moodle, all endpoints accessible\n"
       related_docs:
       - docs/reference/commands/avc-moodle-setup.md
       - lib/avc-moodle.sh
@@ -1639,7 +1740,11 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Run setup without --skip-test: pl avc-moodle-setup avc ss\n2. Check output for OAuth2 endpoint tests (authorize, token, userinfo)\n3. Manually test SSO flow:\n   - Visit https://ss.ddev.site\n   - Click \"Login with AVC\" button\n   - Should redirect to AVC authorize page\n   - Login with AVC credentials\n   - Should redirect back to Moodle logged in\n4. Run test command: pl avc-moodle-test avc ss\nSuccess: All OAuth2 endpoints return 200/302, manual login flow completes\n"
+      how_to_verify: "1. Run setup without --skip-test: pl avc-moodle-setup avc ss\n2. Check output for OAuth2 endpoint tests\
+        \ (authorize, token, userinfo)\n3. Manually test SSO flow:\n   - Visit https://ss.ddev.site\n   - Click \"Login with\
+        \ AVC\" button\n   - Should redirect to AVC authorize page\n   - Login with AVC credentials\n   - Should redirect\
+        \ back to Moodle logged in\n4. Run test command: pl avc-moodle-test avc ss\nSuccess: All OAuth2 endpoints return 200/302,\
+        \ manual login flow completes\n"
       related_docs:
       - docs/reference/commands/avc-moodle-setup.md
       - docs/reference/commands/avc-moodle-test.md
@@ -1861,7 +1966,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Run with debug flag: pl avc-moodle-status --debug avc ss\n2. Compare with normal run: pl avc-moodle-status avc ss\n3. Debug output should show additional information:\n   - Detailed curl commands for endpoint checks\n   - Full Drush state query results\n   - URL resolution details\n   - Cache hit/miss breakdown\n4. Verify debug output includes technical details not in normal output\nSuccess: Debug mode shows detailed technical information for troubleshooting\n"
+      how_to_verify: "1. Run with debug flag: pl avc-moodle-status --debug avc ss\n2. Compare with normal run: pl avc-moodle-status\
+        \ avc ss\n3. Debug output should show additional information:\n   - Detailed curl commands for endpoint checks\n \
+        \  - Full Drush state query results\n   - URL resolution details\n   - Cache hit/miss breakdown\n4. Verify debug output\
+        \ includes technical details not in normal output\nSuccess: Debug mode shows detailed technical information for troubleshooting\n"
       related_docs:
       - docs/reference/commands/avc-moodle-status.md
       - lib/avc-moodle.sh
@@ -1970,7 +2078,11 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Run sync with verbose: pl avc-moodle-sync avc ss --guild=web-dev --verbose\n2. Compare with normal run: pl avc-moodle-sync avc ss --guild=web-dev\n3. Verbose output should show:\n   - Individual user operations (added, removed, unchanged)\n   - Guild member counts\n   - Cohort ID and name details\n   - Operation-by-operation progress\n4. Verify verbose includes more detail than standard output\nSuccess: Verbose mode shows detailed per-operation information\n"
+      how_to_verify: "1. Run sync with verbose: pl avc-moodle-sync avc ss --guild=web-dev --verbose\n2. Compare with normal\
+        \ run: pl avc-moodle-sync avc ss --guild=web-dev\n3. Verbose output should show:\n   - Individual user operations\
+        \ (added, removed, unchanged)\n   - Guild member counts\n   - Cohort ID and name details\n   - Operation-by-operation\
+        \ progress\n4. Verify verbose includes more detail than standard output\nSuccess: Verbose mode shows detailed per-operation\
+        \ information\n"
       related_docs:
       - docs/reference/commands/avc-moodle-sync.md
       - lib/avc-moodle.sh
@@ -1990,7 +2102,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Run test command: pl avc-moodle-test avc ss\n2. Check \"Testing OAuth2 Endpoints\" section shows:\n   - OAuth2 authorize endpoint... ✓ PASS\n   - OAuth2 token endpoint... ✓ PASS\n   - OAuth2 userinfo endpoint... ✓ PASS\n3. Test manually: curl -k https://avc.ddev.site/oauth/authorize\n4. Stop AVC: cd sites/avc && ddev stop\n5. Run test again - endpoints should fail (✗ FAIL)\nSuccess: Test accurately detects OAuth2 endpoint accessibility\n"
+      how_to_verify: "1. Run test command: pl avc-moodle-test avc ss\n2. Check \"Testing OAuth2 Endpoints\" section shows:\n\
+        \   - OAuth2 authorize endpoint... ✓ PASS\n   - OAuth2 token endpoint... ✓ PASS\n   - OAuth2 userinfo endpoint...\
+        \ ✓ PASS\n3. Test manually: curl -k https://avc.ddev.site/oauth/authorize\n4. Stop AVC: cd sites/avc && ddev stop\n\
+        5. Run test again - endpoints should fail (✗ FAIL)\nSuccess: Test accurately detects OAuth2 endpoint accessibility\n"
       related_docs:
       - docs/reference/commands/avc-moodle-test.md
       - docs/reference/commands/avc-moodle-setup.md
@@ -2022,7 +2137,11 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Run test suite: pl avc-moodle-test avc ss\n2. Manually test full authentication flow:\n   - Visit Moodle: https://ss.ddev.site\n   - Click \"Login with AVC\" button\n   - Redirects to AVC authorize endpoint\n   - Login with AVC credentials\n   - Should redirect back to Moodle with user logged in\n3. Verify user profile exists in Moodle after SSO login\n4. Check OAuth2 userinfo endpoint provides user data\nSuccess: Complete OAuth2 authentication flow works end-to-end\n"
+      how_to_verify: "1. Run test suite: pl avc-moodle-test avc ss\n2. Manually test full authentication flow:\n   - Visit\
+        \ Moodle: https://ss.ddev.site\n   - Click \"Login with AVC\" button\n   - Redirects to AVC authorize endpoint\n \
+        \  - Login with AVC credentials\n   - Should redirect back to Moodle with user logged in\n3. Verify user profile exists\
+        \ in Moodle after SSO login\n4. Check OAuth2 userinfo endpoint provides user data\nSuccess: Complete OAuth2 authentication\
+        \ flow works end-to-end\n"
       related_docs:
       - docs/reference/commands/avc-moodle-test.md
       - docs/reference/commands/avc-moodle-setup.md
@@ -2031,7 +2150,11 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Enable role sync: pl avc-moodle-setup avc ss --role-sync\n2. Run test suite: pl avc-moodle-test avc ss\n3. Verify role mapping test checks:\n   - AVC guilds map to Moodle cohorts correctly\n   - Guild machine names convert to cohort IDs\n   - Guild display names map to cohort names\n4. Check actual mappings: Compare AVC guilds to Moodle cohorts\n5. Guild \"web-dev\" should map to cohort \"AVC - Web Development\"\nSuccess: Role mapping tests verify correct guild-to-cohort mapping\n"
+      how_to_verify: "1. Enable role sync: pl avc-moodle-setup avc ss --role-sync\n2. Run test suite: pl avc-moodle-test avc\
+        \ ss\n3. Verify role mapping test checks:\n   - AVC guilds map to Moodle cohorts correctly\n   - Guild machine names\
+        \ convert to cohort IDs\n   - Guild display names map to cohort names\n4. Check actual mappings: Compare AVC guilds\
+        \ to Moodle cohorts\n5. Guild \"web-dev\" should map to cohort \"AVC - Web Development\"\nSuccess: Role mapping tests\
+        \ verify correct guild-to-cohort mapping\n"
       related_docs:
       - docs/reference/commands/avc-moodle-test.md
       - docs/reference/commands/avc-moodle-sync.md
@@ -2040,7 +2163,11 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Enable badge display: pl avc-moodle-setup avc ss --badge-display\n2. Run test suite: pl avc-moodle-test avc ss\n3. Verify badge display test checks:\n   - Moodle badges are accessible via API\n   - Badge data can be fetched from Moodle\n   - Badges can be rendered on AVC user profiles (when module available)\n4. Check badge configuration in cnwp.yml\n5. Test requires custom avc_moodle_data module for full functionality\nSuccess: Badge display tests verify badge data accessibility\n"
+      how_to_verify: "1. Enable badge display: pl avc-moodle-setup avc ss --badge-display\n2. Run test suite: pl avc-moodle-test\
+        \ avc ss\n3. Verify badge display test checks:\n   - Moodle badges are accessible via API\n   - Badge data can be\
+        \ fetched from Moodle\n   - Badges can be rendered on AVC user profiles (when module available)\n4. Check badge configuration\
+        \ in cnwp.yml\n5. Test requires custom avc_moodle_data module for full functionality\nSuccess: Badge display tests\
+        \ verify badge data accessibility\n"
       related_docs:
       - docs/reference/commands/avc-moodle-test.md
       - docs/reference/commands/avc-moodle-setup.md
@@ -2049,7 +2176,11 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Run test suite: pl avc-moodle-test avc ss\n2. Check \"Test Results\" section at end of output\n3. Should display:\n   - Total Tests: X\n   - Passed: Y\n   - Failed: Z\n   - Success Rate: N%\n4. Verify all tests passing shows \"✓ All tests passed! (15/15)\"\n5. Verify failed tests show \"✗ Some tests failed: X passed, Y failed\"\n6. Exit code should be 0 for 100% pass, 1 for any failures\nSuccess: Test result summary accurately reports pass/fail counts\n"
+      how_to_verify: "1. Run test suite: pl avc-moodle-test avc ss\n2. Check \"Test Results\" section at end of output\n3.\
+        \ Should display:\n   - Total Tests: X\n   - Passed: Y\n   - Failed: Z\n   - Success Rate: N%\n4. Verify all tests\
+        \ passing shows \"✓ All tests passed! (15/15)\"\n5. Verify failed tests show \"✗ Some tests failed: X passed, Y failed\"\
+        \n6. Exit code should be 0 for 100% pass, 1 for any failures\nSuccess: Test result summary accurately reports pass/fail\
+        \ counts\n"
       related_docs:
       - docs/reference/commands/avc-moodle-test.md
       - lib/avc-moodle.sh

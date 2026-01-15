@@ -4093,18 +4093,79 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create a test script that fails: echo "#!/bin/bash" > /tmp/test-fail.sh && echo "exit 1" >> /tmp/test-fail.sh
+        && chmod +x /tmp/test-fail.sh
+
+        2. Run: pl report /tmp/test-fail.sh
+
+        3. When prompted, press ''N'' to decline creating issue
+
+        4. Verify error captured and prompt shown
+
+        5. Check exit code is 1 (preserved from wrapped command)
+
+        Success: Wrapper captures failure, prompts for issue creation, preserves exit code
+
+        '
+      related_docs:
+      - docs/reference/commands/report.md
     - text: Verify error capture and sanitization
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create script with sensitive data: echo "Error: failed at /home/user with password=secret123" > /tmp/test-output.txt
+
+        2. Run: pl report --report "$(cat /tmp/test-output.txt)"
+
+        3. Check generated GitLab URL in output
+
+        4. Verify /home/user replaced with ~
+
+        5. Verify password=secret123 is sanitized
+
+        Success: Paths sanitized to ~, passwords/tokens redacted from output
+
+        '
+      related_docs:
+      - docs/reference/commands/report.md
     - text: Test GitLab issue URL generation
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl report --report -s backup.sh "Test error message"
+
+        2. Check output contains GitLab issue URL
+
+        3. Verify URL includes pre-filled title and description
+
+        4. Check URL format is correct: https://git.nwpcode.org/root/nwp/-/issues/new?...
+
+        5. Verify labels include ''bug''
+
+        Success: Valid GitLab issue URL generated with pre-filled title, description, and bug label
+
+        '
+      related_docs:
+      - docs/reference/commands/report.md
     - text: Check clipboard copy mode
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Ensure xclip or pbcopy is installed
+
+        2. Run: pl report -c --report "Test error"
+
+        3. Check message indicates URL copied to clipboard
+
+        4. Paste from clipboard to verify URL present
+
+        5. Verify URL is valid GitLab issue URL
+
+        Success: URL copied to clipboard successfully, browser not opened
+
+        '
+      related_docs:
+      - docs/reference/commands/report.md
     verified: false
     verified_by: null
     verified_at: null
@@ -4121,18 +4182,85 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create a test site backup: pl backup testsite "Test backup for rollback"
+
+        2. Copy backup to rollback directory: mkdir -p sites/testsite/backups/rollback && cp sites/testsite/backups/*.sql.gz
+        sites/testsite/backups/rollback/rollback-$(date +%Y%m%d-%H%M%S).sql.gz
+
+        3. Run: pl rollback list
+
+        4. Verify rollback points are listed with timestamps
+
+        5. Run: pl rollback list testsite
+
+        6. Check specific site rollback points shown
+
+        Success: Rollback points listed with site names, timestamps, and file sizes
+
+        '
+      related_docs:
+      - docs/reference/commands/rollback.md
     - text: Verify rollback execution
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Deploy a test site to staging: pl dev2stg testsite
+
+        2. Make a database change via drush
+
+        3. Create rollback point before change
+
+        4. Run: pl rollback execute testsite stage
+
+        5. Verify database restored to previous state
+
+        6. Check site is accessible and functioning
+
+        Success: Site restored to previous deployment state, database and files reverted
+
+        '
+      related_docs:
+      - docs/reference/commands/rollback.md
     - text: Test rollback verification
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. After performing a rollback: pl rollback execute testsite
+
+        2. Run: pl rollback verify testsite
+
+        3. Check verification performs health checks
+
+        4. Verify database connectivity tested
+
+        5. Check site URL accessibility verified
+
+        Success: Verification confirms site functional, no errors reported
+
+        '
+      related_docs:
+      - docs/reference/commands/rollback.md
     - text: Check cleanup functionality
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create multiple rollback points for a site (5+)
+
+        2. Run: pl rollback cleanup --keep=3
+
+        3. Verify only 3 most recent rollback points remain
+
+        4. Check old rollback files deleted from sites/*/backups/rollback/
+
+        5. Run: pl rollback list
+
+        6. Verify cleanup reflected in listing
+
+        Success: Old rollback points removed, most recent N kept, disk space freed
+
+        '
+      related_docs:
+      - docs/reference/commands/rollback.md
     verified: false
     verified_by: null
     verified_at: null
@@ -4149,14 +4277,59 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Ensure B2 credentials in .secrets.yml: b2.account_id and b2.app_key
+
+        2. Run: pl storage auth
+
+        3. Verify authentication succeeds
+
+        4. Check for success message confirming B2 connection
+
+        5. Verify auth token cached (b2 account authorize should work)
+
+        Success: B2 authentication successful, credentials validated, token cached
+
+        '
+      related_docs:
+      - docs/reference/commands/storage.md
     - text: Verify bucket listing
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. After authentication, run: pl storage list
+
+        2. Check all B2 buckets displayed
+
+        3. Verify bucket names, types (public/private), and sizes shown
+
+        4. Run: pl storage info <bucket-name>
+
+        5. Check detailed bucket information displayed
+
+        Success: All buckets listed with correct details, info command shows bucket specifics
+
+        '
+      related_docs:
+      - docs/reference/commands/storage.md
     - text: Test file upload to bucket
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create test file: echo "test content" > /tmp/test-upload.txt
+
+        2. Run: pl storage upload /tmp/test-upload.txt <test-bucket>
+
+        3. Verify upload completes with success message
+
+        4. Run: pl storage files <test-bucket>
+
+        5. Confirm test-upload.txt appears in file listing
+
+        Success: File uploaded successfully, appears in bucket file list
+
+        '
+      related_docs:
+      - docs/reference/commands/storage.md
     - text: Check file deletion
       completed: false
       completed_by: null
@@ -4343,18 +4516,82 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl coder-setup add testcoder --notes "Test coder for verification"
+
+        2. Check success message with coder added
+
+        3. Verify testcoder added to cnwp.yml in coders section
+
+        4. Run: pl coder-setup list
+
+        5. Confirm testcoder appears in list
+
+        Success: Coder added to configuration, visible in listing
+
+        '
+      related_docs:
+      - docs/reference/commands/coder-setup.md
     - text: Verify NS records in Cloudflare
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Ensure Cloudflare credentials in .secrets.yml
+
+        2. Run: pl coder-setup add testcoder2
+
+        3. Check Cloudflare API calls succeed
+
+        4. Verify NS records created: dig NS testcoder2.nwpcode.org
+
+        5. Check delegation points to Linode nameservers
+
+        Success: NS delegation records created in Cloudflare, DNS queries return Linode nameservers
+
+        '
+      related_docs:
+      - docs/reference/commands/coder-setup.md
     - text: Test listing coders
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Add 2-3 test coders: pl coder-setup add coder1, pl coder-setup add coder2
+
+        2. Run: pl coder-setup list
+
+        3. Verify all coders shown with names and notes
+
+        4. Check output formatting is clear and readable
+
+        5. Verify status indicators if present
+
+        Success: All coders listed with correct information, clear formatting
+
+        '
+      related_docs:
+      - docs/reference/commands/coder-setup.md
     - text: Check coder removal
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Add a test coder: pl coder-setup add removeme
+
+        2. Run: pl coder-setup remove removeme
+
+        3. Verify removal confirmation prompt or success message
+
+        4. Check NS records removed from Cloudflare
+
+        5. Run: pl coder-setup list
+
+        6. Confirm coder no longer in listing
+
+        7. Verify removed from cnwp.yml
+
+        Success: Coder removed from DNS, configuration, and no longer listed
+
+        '
+      related_docs:
+      - docs/reference/commands/coder-setup.md
     verified: false
     verified_by: null
     verified_at: null
@@ -4370,18 +4607,86 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Add test coders: pl coder-setup add coder1, pl coder-setup add coder2
+
+        2. Run: pl coders
+
+        3. Use Up/Down arrow keys to navigate coder list
+
+        4. Press SPACE to select/deselect coders
+
+        5. Press ENTER to view detailed stats
+
+        6. Press Q to quit
+
+        Success: Navigation responsive, selection works, details view accessible
+
+        '
+      related_docs:
+      - docs/reference/commands/coders.md
     - text: Verify onboarding status checks (GL, GRP, SSH, NS, DNS, SRV, SITE)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl coders
+
+        2. Check status column displays 7 indicators: GL GRP SSH NS DNS SRV SITE
+
+        3. Verify symbols: ✓ (complete), ✗ (missing), ? (checking), - (not required)
+
+        4. Press C to trigger status check
+
+        5. Verify status updates after check completes
+
+        Success: All 7 onboarding steps displayed with accurate status indicators
+
+        '
+      related_docs:
+      - docs/reference/commands/coders.md
     - text: Test coder promotion functionality
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl coders
+
+        2. Navigate to a Newcomer-level coder
+
+        3. Press P to promote
+
+        4. Select new role (Contributor/Core/Steward)
+
+        5. Confirm promotion
+
+        6. Verify role updated in display
+
+        7. Check cnwp.yml shows updated role
+
+        Success: Promotion workflow works, role updated in configuration and display
+
+        '
+      related_docs:
+      - docs/reference/commands/coders.md
     - text: Check bulk actions (delete, promote)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl coders
+
+        2. Use SPACE to select multiple coders
+
+        3. Press P to promote all selected
+
+        4. Verify confirmation prompt for bulk action
+
+        5. Test bulk delete with D key
+
+        6. Check all selected coders affected
+
+        Success: Bulk selection works, operations apply to all selected coders
+
+        '
+      related_docs:
+      - docs/reference/commands/coders.md
     - text: Verify GitLab sync functionality
       completed: false
       completed_by: null
@@ -4401,22 +4706,107 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl seo-check check testsite
+
+        2. Verify robots.txt fetched and analyzed
+
+        3. Check for Disallow: / detection (staging)
+
+        4. Check for sitemap reference (production)
+
+        5. Test with non-existent robots.txt
+
+        6. Verify appropriate error/warning shown
+
+        Success: robots.txt correctly validated for environment, staging blocked, production allows indexing
+
+        '
+      related_docs:
+      - docs/reference/commands/seo-check.md
     - text: Verify X-Robots-Tag header checking
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl seo-check headers testsite-stg
+
+        2. Check for X-Robots-Tag in output
+
+        3. Verify noindex/nofollow detection for staging
+
+        4. Run: pl seo-check staging testsite-stg
+
+        5. Confirm staging protection check includes header
+
+        Success: X-Robots-Tag header detected and validated, staging requires noindex/nofollow
+
+        '
+      related_docs:
+      - docs/reference/commands/seo-check.md
     - text: Test sitemap.xml verification
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl seo-check sitemap testsite
+
+        2. Verify sitemap.xml fetched from site
+
+        3. Check XML structure validation
+
+        4. Verify URL count displayed
+
+        5. Test with site without sitemap
+
+        6. Check appropriate error message shown
+
+        Success: sitemap.xml validated, URL count accurate, XML structure checked
+
+        '
+      related_docs:
+      - docs/reference/commands/seo-check.md
     - text: Check staging protection verification
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl seo-check staging testsite-stg
+
+        2. Check all three protection layers verified: X-Robots-Tag, robots.txt, meta tag
+
+        3. Verify warnings for missing protection
+
+        4. Check summary indicates if staging is properly protected
+
+        5. Test with unprotected staging site
+
+        6. Verify failures clearly indicated
+
+        Success: All staging protection layers checked, clear pass/fail status for indexing protection
+
+        '
+      related_docs:
+      - docs/reference/commands/seo-check.md
     - text: Test production SEO optimization checks
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl seo-check production testsite
+
+        2. Verify robots.txt allows crawling (no Disallow: /)
+
+        3. Check sitemap.xml reference in robots.txt
+
+        4. Verify X-Robots-Tag doesn''t contain noindex
+
+        5. Check recommendations for SEO improvements
+
+        6. Test with site missing sitemap
+
+        7. Verify appropriate warnings shown
+
+        Success: Production checks verify crawlability, sitemap presence, no blocking headers
+
+        '
+      related_docs:
+      - docs/reference/commands/seo-check.md
     verified: false
     verified_by: null
     verified_at: null
@@ -4615,18 +5005,80 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl security-check https://example.com
+
+        2. Check HSTS section in output
+
+        3. Verify header presence detected (PASS/FAIL/WARN)
+
+        4. Check for max-age validation
+
+        5. Run: pl security-check -v https://example.com
+
+        6. Verify raw HSTS header value displayed
+
+        Success: HSTS header correctly validated, max-age and includeSubDomains checked
+
+        '
+      related_docs:
+      - docs/reference/commands/security-check.md
     - text: Verify CSP header checking
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl security-check https://drupal.org
+
+        2. Check Content-Security-Policy section
+
+        3. Verify CSP presence and directives checked
+
+        4. Look for unsafe-inline/unsafe-eval warnings
+
+        5. Check recommendation if CSP missing
+
+        Success: CSP header validated, unsafe directives flagged, recommendations provided
+
+        '
+      related_docs:
+      - docs/reference/commands/security-check.md
     - text: Check X-Frame-Options validation
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl security-check https://mozilla.org
+
+        2. Check X-Frame-Options section
+
+        3. Verify DENY/SAMEORIGIN detection
+
+        4. Check CSP frame-ancestors fallback logic
+
+        5. Test with site that has neither header
+
+        Success: X-Frame-Options correctly validated, CSP frame-ancestors considered as alternative
+
+        '
+      related_docs:
+      - docs/reference/commands/security-check.md
     - text: Test security grading system
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl security-check https://example.com
+
+        2. Check overall grade at bottom (A+, A, B, C, D, F)
+
+        3. Verify grade reflects pass/warn/fail counts
+
+        4. Test multiple sites with different security levels
+
+        5. Check grade matches expected criteria from docs
+
+        Success: Grading system assigns accurate letter grades based on header compliance
+
+        '
+      related_docs:
+      - docs/reference/commands/security-check.md
     - text: Verify JSON output mode
       completed: false
       completed_by: null
@@ -4646,14 +5098,63 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl verify
+
+        2. Use arrow keys (↑/↓) to navigate between features
+
+        3. Press ''d'' to view details of selected feature
+
+        4. Press ''r'' to refresh display
+
+        5. Press ''q'' to quit
+
+        Success: Navigation responsive, features display correctly with status indicators [✓], [!], [ ]
+
+        '
+      related_docs:
+      - docs/reference/commands/verify.md
     - text: Verify checklist editing functionality
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl verify
+
+        2. Navigate to a feature and press SPACE or ENTER
+
+        3. Provide your username when prompted
+
+        4. Check that status updates to verified
+
+        5. Run: pl verify report
+
+        6. Verify feature shows as verified with username and timestamp
+
+        Success: Feature marked as verified, username and timestamp recorded correctly
+
+        '
+      related_docs:
+      - docs/reference/commands/verify.md
     - text: Check verification status tracking
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl verify summary
+
+        2. Check progress percentage and status breakdown
+
+        3. Run: pl verify list
+
+        4. Verify all feature IDs are listed
+
+        5. Run: pl verify report
+
+        6. Check that verified features show user and date
+
+        Success: Status accurately tracked, summary shows correct counts and percentages
+
+        '
+      related_docs:
+      - docs/reference/commands/verify.md
     - text: Test file change detection
       completed: false
       completed_by: null
@@ -5169,61 +5670,222 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Install OpenSocial site: pl install os avc
+      how_to_verify: '1. Install OpenSocial site: pl install os avc
+
         2. Run Behat tests: ./scripts/commands/testos.sh -b avc
+
         3. Verify script auto-installs Behat and Selenium if missing
+
         4. Check Behat configuration generated for OpenSocial profile
+
         5. Verify tests run against OpenSocial features (groups, events, activity-stream)
+
         6. Verify execution completes with test results summary
+
         Success: Behat runs on OpenSocial site, auto-configuration works, tests execute
+
+        '
       related_docs:
-        - docs/reference/commands/testos.md
-        - docs/testing/testing.md
+      - docs/reference/commands/testos.md
+      - docs/testing/testing.md
     - text: Test with -u flag (run all PHPUnit tests)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run all PHPUnit tests: ./scripts/commands/testos.sh -u avc
+
+        2. Verify script runs both unit and kernel tests
+
+        3. Check tests execute against OpenSocial profile code
+
+        4. Verify output shows test results for unit + kernel suites
+
+        Success: PHPUnit runs all tests (unit + kernel) on OpenSocial profile
+
+        '
+      related_docs:
+      - docs/reference/commands/testos.md
+      - docs/testing/testing.md
     - text: Test with -U flag (run PHPUnit unit tests only)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run unit tests only: ./scripts/commands/testos.sh -U avc
+
+        2. Verify only unit test suite runs (no kernel tests)
+
+        3. Check tests are isolated without database dependencies
+
+        4. Verify execution is fast (no database bootstrap overhead)
+
+        Success: PHPUnit unit tests only, fast execution, no kernel tests
+
+        '
+      related_docs:
+      - docs/reference/commands/testos.md
+      - docs/testing/testing.md
     - text: Test with -k flag (run PHPUnit kernel tests only)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run kernel tests only: ./scripts/commands/testos.sh -k avc
+
+        2. Verify only kernel test suite runs (no unit tests)
+
+        3. Check tests have database and Drupal API access
+
+        4. Verify tests include entity CRUD, service integration
+
+        Success: PHPUnit kernel tests only, database access enabled
+
+        '
+      related_docs:
+      - docs/reference/commands/testos.md
+      - docs/testing/testing.md
     - text: Test with -s flag (run PHPStan static analysis)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run static analysis: ./scripts/commands/testos.sh -s avc
+
+        2. Verify PHPStan analyzes OpenSocial profile code
+
+        3. Check output shows type errors, undefined methods, dead code detection
+
+        4. Verify analysis level and configuration are OpenSocial-appropriate
+
+        Success: PHPStan runs on OpenSocial code, detects type issues
+
+        '
+      related_docs:
+      - docs/reference/commands/testos.md
+      - docs/testing/testing.md
     - text: Test with -c flag (run PHP CodeSniffer)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run code standards check: ./scripts/commands/testos.sh -c avc
+
+        2. Verify PHPCS checks OpenSocial custom code against Drupal standards
+
+        3. Check output shows coding standards violations or compliance
+
+        4. Verify DrupalPractice standard is applied
+
+        Success: PHPCS runs on OpenSocial code, checks Drupal standards
+
+        '
+      related_docs:
+      - docs/reference/commands/testos.md
+      - docs/testing/testing.md
     - text: Test with -a flag (run all tests)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run all tests: ./scripts/commands/testos.sh -a avc
+
+        2. Verify runs Behat, PHPUnit (unit + kernel), and PHPStan
+
+        3. Check complete test suite executes against OpenSocial profile
+
+        4. Verify output shows results for all test types
+
+        Success: All tests run (Behat + PHPUnit + PHPStan) on OpenSocial site
+
+        '
+      related_docs:
+      - docs/reference/commands/testos.md
+      - docs/testing/testing.md
     - text: Test with -f flag (run specific Behat feature)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. List available features: ./scripts/commands/testos.sh --list-features avc
+
+        2. Run specific feature: ./scripts/commands/testos.sh -b -f groups avc
+
+        3. Verify only the groups feature tests run (not all features)
+
+        4. Check output shows tests from groups.feature file only
+
+        Success: Specific Behat feature runs, other features skipped
+
+        '
+      related_docs:
+      - docs/reference/commands/testos.md
+      - docs/testing/testing.md
     - text: Test with -t flag (run tests with specific tag)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run tests with tag: ./scripts/commands/testos.sh -b -t @api avc
+
+        2. Verify only tests tagged with @api run
+
+        3. Check other tags (@smoke, @javascript) are skipped
+
+        4. Verify output shows filtered test results
+
+        Success: Behat runs only tests with specified tag, filtering works
+
+        '
+      related_docs:
+      - docs/reference/commands/testos.md
+      - docs/testing/testing.md
     - text: Test with --list-features flag
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. List features: ./scripts/commands/testos.sh --list-features avc
+
+        2. Verify displays all available OpenSocial features (groups, events, account, etc.)
+
+        3. Check output is formatted and readable
+
+        4. Verify feature names match OpenSocial capabilities
+
+        Success: All OpenSocial features listed (account, activity-stream, groups, events, etc.)
+
+        '
+      related_docs:
+      - docs/reference/commands/testos.md
+      - docs/testing/testing.md
     - text: Test with --headless flag (Behat headless mode)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run in headless mode: ./scripts/commands/testos.sh -b --headless avc
+
+        2. Verify Chrome runs in headless mode (no visible browser window)
+
+        3. Check tests execute normally without GUI
+
+        4. Verify default behavior (headless is default)
+
+        Success: Behat runs in headless mode, no browser window visible
+
+        '
+      related_docs:
+      - docs/reference/commands/testos.md
+      - docs/testing/testing.md
     - text: Test with --headed flag (Behat with visible browser)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run with visible browser: ./scripts/commands/testos.sh -b --headed avc
+
+        2. Verify Chrome browser window is visible during test execution
+
+        3. Watch browser automation in real-time
+
+        4. Check tests complete successfully with GUI
+
+        Success: Behat runs with visible Chrome browser, useful for debugging
+
+        '
+      related_docs:
+      - docs/reference/commands/testos.md
+      - docs/testing/testing.md
     - text: Test with --group flag (PHPUnit test group)
       completed: false
       completed_by: null
@@ -5267,34 +5929,144 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Source library: source lib/cli-register.sh lib/ui.sh
+
+        2. Run registration: register_cli_command "$PWD"
+
+        3. Verify output shows "OK" status and chosen command name (pl or pl1, etc.)
+
+        4. Check symlink exists: ls -la /usr/local/bin/pl*
+
+        5. Test command works: pl --version
+
+        Success: Registration completes without errors, command available in PATH'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/cli-register.sh
     - text: Verify symlink creation in /usr/local/bin/
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Before registration: ls -la /usr/local/bin/pl* (note existing)
+
+        2. Run: source lib/cli-register.sh; register_cli_command "$PWD"
+
+        3. Verify new symlink: ls -la /usr/local/bin/pl (or pl1, pl2)
+
+        4. Check target: readlink -f /usr/local/bin/pl (should point to ~/nwp/pl)
+
+        5. Test symlink: /usr/local/bin/pl --version (should work)
+
+        Success: Symlink created correctly in /usr/local/bin pointing to project pl script'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/cli-register.sh
     - text: Test find_available_cli_name (pl, pl1, pl2, etc.)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Source library: source lib/cli-register.sh lib/ui.sh
+
+        2. Create dummy symlinks: sudo ln -s /dev/null /usr/local/bin/pl; sudo ln -s /dev/null /usr/local/bin/pl1
+
+        3. Test function: find_available_cli_name "$PWD"
+
+        4. Verify returns "pl2" (first available)
+
+        5. Clean up: sudo rm /usr/local/bin/pl /usr/local/bin/pl1
+
+        6. Test again, verify returns "pl"
+
+        Success: Function finds first available name in sequence (pl, pl1, pl2, ...)'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/cli-register.sh
     - text: Verify cnwp.yml cli_command setting is updated
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Check before: grep "cli_command:" cnwp.yml (may not exist yet)
+
+        2. Run registration: source lib/cli-register.sh; register_cli_command "$PWD"
+
+        3. Check after: grep "cli_command:" cnwp.yml
+
+        4. Verify format: should be under settings: section, e.g., "cli_command: pl"
+
+        5. Run get_cli_command, verify returns same value
+
+        Success: cnwp.yml updated with cli_command setting under settings section'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/cli-register.sh
+      - example.cnwp.yml
     - text: Test unregister_cli_command function
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. First register: source lib/cli-register.sh; register_cli_command "$PWD"
+
+        2. Verify registered: which pl (should show /usr/local/bin/pl)
+
+        3. Run unregister: unregister_cli_command
+
+        4. Verify symlink removed: ls /usr/local/bin/pl (should not exist or point elsewhere)
+
+        5. Verify cnwp.yml cleaned: grep "cli_command:" cnwp.yml (should be empty)
+
+        Success: Symlink removed, cnwp.yml setting cleared, clean unregistration'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/cli-register.sh
     - text: Verify get_cli_command reads from cnwp.yml
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: "1. Source library: source lib/cli-register.sh\n2. Set test value: echo -e \"\nsettings:\n  cli_command:\
+        \ testcmd\" >> cnwp.yml\n3. Run function: result=$(get_cli_command)\n4. Verify: echo \"$result\" (should output \"\
+        testcmd\")\n5. Clean up: git checkout cnwp.yml\n6. Test default: get_cli_command (should return \"pl\" when setting\
+        \ missing)\nSuccess: Reads from cnwp.yml settings section, defaults to 'pl' if not found"
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/cli-register.sh
     - text: Test switching CLI command names
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Register as pl: source lib/cli-register.sh; register_cli_command "$PWD" "pl"
+
+        2. Verify: which pl
+
+        3. Switch to pl2: register_cli_command "$PWD" "pl2"
+
+        4. Verify old removed: ls /usr/local/bin/pl (should not exist)
+
+        5. Verify new exists: which pl2
+
+        6. Check cnwp.yml: grep "cli_command:" cnwp.yml (should show "pl2")
+
+        Success: Old symlink removed, new created, cnwp.yml updated to new name'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/cli-register.sh
     - text: Verify stale registration cleanup
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create stale symlink: sudo ln -s /tmp/nonexistent/pl /usr/local/bin/pl
+
+        2. Try to register: source lib/cli-register.sh; register_cli_command "$PWD" "pl"
+
+        3. Verify detects stale link (target doesn''t match this project)
+
+        4. Verify falls back to pl1 or prompts to override
+
+        5. Clean up: sudo rm /usr/local/bin/pl /usr/local/bin/pl1
+
+        Success: Detects stale/mismatched symlinks, chooses alternative name or prompts'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/cli-register.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -6363,17 +7135,15 @@ features:
       completed_at: null
       how_to_verify: '1. Source the library: source lib/terminal.sh
 
-        2. Test cursor positioning: cursor_to 5 10
+        2. Test cursor positioning: cursor_to 5 10; echo "Test"
 
-        3. Echo text to verify position: echo "Test"
+        3. Verify text appears at row 5, column 10
 
-        4. Test multiple positions: cursor_to 1 1; cursor_to 10 20; cursor_to 20 40
+        4. Test multiple positions: cursor_to 1 1; echo "Top left"; cursor_to 10 20; echo "Middle"
 
-        5. Verify cursor moves to specified row and column
+        5. Clear and verify: clear_screen; cursor_to 15 30; echo "Bottom right"
 
-        Success: Cursor moves to specified positions correctly
-
-        '
+        Success: Cursor moves to specified row/column positions correctly'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/terminal.sh
@@ -6383,17 +7153,15 @@ features:
       completed_at: null
       how_to_verify: '1. Source the library: source lib/terminal.sh
 
-        2. Test hide: cursor_hide; sleep 2 (cursor should be invisible)
+        2. Test hide: cursor_hide; echo "Cursor should be hidden"; sleep 2
 
-        3. Test show: cursor_show (cursor should reappear)
+        3. Test show: cursor_show; echo "Cursor should be visible"
 
-        4. Verify cursor visibility toggles correctly
+        4. Test in loop: for i in 1 2 3; do cursor_hide; sleep 1; cursor_show; sleep 1; done
 
-        5. Test in interactive script context
+        5. Verify cursor visibility toggles correctly
 
-        Success: Cursor hides and shows on command
-
-        '
+        Success: Cursor hides and shows on command without terminal artifacts'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/terminal.sh
@@ -6403,17 +7171,15 @@ features:
       completed_at: null
       how_to_verify: '1. Source the library: source lib/terminal.sh
 
-        2. Echo some text: echo "Line 1"; echo "Line 2"; echo "Line 3"
+        2. Echo lines: echo "Line 1"; echo "Line 2"; echo "Line 3"
 
-        3. Test clear screen: clear_screen (should clear all and move to top)
+        3. Test clear screen: clear_screen (should clear all and move cursor to top-left)
 
-        4. Echo text again: echo "Test"
+        4. Echo text: echo "New content at top"
 
-        5. Test clear line: clear_line (should clear current line)
+        5. Test clear line: cursor_to 5 1; echo "Test line"; cursor_to 5 1; clear_line; echo "Replaced"
 
-        Success: Screen and line clearing work correctly
-
-        '
+        Success: Screen clears completely, line clears without affecting other lines'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/terminal.sh
@@ -6423,19 +7189,17 @@ features:
       completed_at: null
       how_to_verify: '1. Source the library: source lib/terminal.sh
 
-        2. Create test script: key=$(read_key); echo "Key: $key"
+        2. Create test loop: while true; do key=$(read_key); echo "Key: $key"; [[ "$key" == "q" ]] && break; done
 
         3. Press UP arrow, verify outputs "UP"
 
         4. Press DOWN arrow, verify outputs "DOWN"
 
-        5. Press LEFT arrow, verify outputs "LEFT"
+        5. Press LEFT/RIGHT arrows, verify outputs "LEFT"/"RIGHT"
 
-        6. Press RIGHT arrow, verify outputs "RIGHT"
+        6. Press ''q'' to exit test
 
-        Success: Arrow keys detected and returned correctly
-
-        '
+        Success: All arrow keys detected and returned correctly as named strings'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/terminal.sh
@@ -6449,11 +7213,12 @@ features:
 
         3. Test SPACE: key=$(read_key); echo "Key: $key" (press Space, should output "SPACE")
 
-        4. Verify both keys detected correctly
+        4. Test in selection loop: while true; do key=$(read_key); [[ "$key" == "ENTER" ]] && echo "Confirmed!" && break;
+        done
 
-        Success: ENTER and SPACE keys properly identified
+        5. Verify both keys detected reliably
 
-        '
+        Success: ENTER and SPACE keys identified correctly in all contexts'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/terminal.sh
@@ -6465,13 +7230,13 @@ features:
 
         2. Test ESC: key=$(read_key); echo "Key: $key" (press Esc, should output "ESC")
 
-        3. Verify ESC is distinguished from arrow keys (which start with ESC sequence)
+        3. Test arrow keys still work: key=$(read_key); echo "Key: $key" (press UP, should output "UP" not "ESC")
 
-        4. Test timeout handling for ESC vs arrow keys
+        4. Verify ESC timeout: ESC key should be detected within 100ms without waiting for second char
 
-        Success: ESC key detected correctly, not confused with arrow keys
+        5. Test in cancel flow: while true; do key=$(read_key); [[ "$key" == "ESC" ]] && echo "Cancelled" && break; done
 
-        '
+        Success: ESC key detected correctly and distinguished from arrow key escape sequences'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/terminal.sh
@@ -6490,22 +7255,110 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Source libraries: source lib/terminal.sh lib/checkbox.sh lib/tui.sh
+
+        2. Run install in TUI mode: pl install d testsite
+
+        3. Navigate with UP/DOWN arrow keys through environment tabs (DEV/STG/LIVE/PROD)
+
+        4. Verify cursor indicator (▸) moves correctly
+
+        5. Test LEFT/RIGHT to switch environment tabs
+
+        6. Verify menu redraws without flicker or artifacts
+
+        Success: Smooth navigation, clear visual indicators, no screen tearing'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/tui.sh
+      - docs/reference/api/tui-api.md
     - text: Verify checkbox selection works
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Source libraries and run: pl install d testsite
+
+        2. Navigate to an option with UP/DOWN keys
+
+        3. Press SPACE to toggle selection
+
+        4. Verify checkbox changes: [ ] to [✓] (or [+] in install mode)
+
+        5. Test ''a'' key to select all, verify all checkboxes marked
+
+        6. Test ''n'' key to select none, verify all checkboxes cleared
+
+        Success: Checkboxes toggle correctly, bulk operations work, visual feedback immediate'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/tui.sh
+      - docs/reference/api/tui-api.md
+      - docs/reference/api/checkbox-api.md
     - text: Test form input fields
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl install d testsite
+
+        2. Navigate to option requiring input (e.g., "SSL Certificate")
+
+        3. Select it with SPACE, verify prompts for domain input
+
+        4. Enter test value: "example.com"
+
+        5. Press ''e'' key on selected option to edit value
+
+        6. Verify value displayed and editable
+
+        Success: Input prompts appear, values stored, editing works, cursor shows during input'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/tui.sh
+      - docs/reference/api/tui-api.md
     - text: Check color rendering in different terminals
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Test in default terminal: pl install d testsite
+
+        2. Verify colors: GREEN for selected [✓], YELLOW for [+], RED for [x], CYAN for cursor (▸)
+
+        3. Set NO_COLOR=1 and rerun: NO_COLOR=1 pl install d testsite
+
+        4. Verify no color codes, plain brackets and symbols only
+
+        5. Test in xterm, gnome-terminal, and SSH session
+
+        6. Verify colors consistent across terminals or gracefully disabled
+
+        Success: Colors display correctly, NO_COLOR respected, no broken escape sequences'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/tui.sh
+      - docs/reference/api/tui-api.md
     - text: Verify keyboard shortcuts work correctly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl install d testsite in TUI mode
+
+        2. Test ''a'' key - verify selects all applicable options for current environment
+
+        3. Test ''n'' key - verify deselects all options
+
+        4. Test ''e'' key - verify opens input editor for selected option
+
+        5. Test ''d'' key - verify shows documentation/details panel
+
+        6. Test ''q'' key - verify quits/cancels with confirmation
+
+        7. Test ENTER - verify confirms and proceeds
+
+        Success: All shortcuts work immediately, no key repeats, correct actions triggered'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/tui.sh
+      - docs/reference/api/tui-api.md
     verified: false
     verified_by: null
     verified_at: null
@@ -6521,22 +7374,109 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Source libraries: source lib/checkbox.sh lib/ui.sh
+
+        2. Define test options: define_drupal_options
+
+        3. Run interactive selector: interactive_select_options "dev" "drupal" ""
+
+        4. Verify all option groups displayed (DEV/STAGE/LIVE/PROD sections)
+
+        5. Check formatting: checkbox [✓]/[ ], label, description all aligned
+
+        6. Test with 20+ items, verify scrolling/pagination if needed
+
+        Success: All items display correctly, no text overflow, proper grouping by environment'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/checkbox.sh
+      - docs/reference/api/checkbox-api.md
     - text: Verify space bar toggles selection
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Source libraries and run: source lib/checkbox.sh lib/ui.sh; interactive_select_options "dev" "drupal"
+        ""
+
+        2. Navigate to an unchecked item [ ]
+
+        3. Press SPACE, verify changes to [✓]
+
+        4. Press SPACE again, verify changes back to [ ]
+
+        5. Test rapid toggling: SPACE SPACE SPACE, verify stable state
+
+        6. Test on items with dependencies, verify dependency prompts
+
+        Success: Toggle works immediately, state consistent, visual update immediate'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/checkbox.sh
+      - docs/reference/api/checkbox-api.md
     - text: Check arrow key navigation
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run interactive selector: source lib/checkbox.sh lib/ui.sh; interactive_select_options "dev" "drupal"
+        ""
+
+        2. Press DOWN arrow multiple times, verify cursor (▸) moves down item by item
+
+        3. Press UP arrow, verify cursor moves up
+
+        4. Test at boundaries: UP at top item (should stay), DOWN at bottom (should stay)
+
+        5. Test rapid navigation: hold DOWN for 2 seconds
+
+        6. Verify cursor position indicator always visible
+
+        Success: Navigation smooth, no skipped items, boundaries handled correctly'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/checkbox.sh
+      - docs/reference/api/checkbox-api.md
     - text: Test Enter to confirm selection
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run selector: source lib/checkbox.sh lib/ui.sh; interactive_select_options "dev" "drupal" ""
+
+        2. Select 3-4 options with SPACE
+
+        3. Press ENTER to confirm
+
+        4. Verify function returns 0 (success)
+
+        5. Check OPTION_SELECTED array populated correctly
+
+        6. Run generate_options_yaml to verify YAML output contains selected items
+
+        Success: ENTER confirms and exits, selections preserved, return code correct'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/checkbox.sh
+      - docs/reference/api/checkbox-api.md
     - text: Verify Escape to cancel
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run selector: source lib/checkbox.sh lib/ui.sh; interactive_select_options "dev" "drupal" ""
+
+        2. Select some options with SPACE
+
+        3. Press ESC key
+
+        4. Verify function returns 1 (cancelled)
+
+        5. Verify no changes made to configuration
+
+        6. Test ''q'' key as alternative cancel method
+
+        Success: ESC/q cancel operation, return code 1, no side effects, clean exit'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/checkbox.sh
+      - docs/reference/api/checkbox-api.md
     verified: false
     verified_by: null
     verified_at: null
@@ -7842,14 +8782,71 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Source library: source lib/dev2stg-tui.sh lib/ui.sh
+
+        2. Set up test site: pl install d devsite
+
+        3. Run TUI: load_tui_state "devsite"; run_dev2stg_tui "devsite"
+
+        4. Press ''D'' to enter database selection menu
+
+        5. Verify shows options: sanitized backup, recent backup, production, development
+
+        6. Navigate with 1/2/3/4 keys and select one
+
+        7. Verify TUI_DB_SOURCE variable set correctly
+
+        Success: Database menu displays all available sources, selection updates TUI_DB_SOURCE'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/dev2stg-tui.sh
+      - docs/reference/api/tui-api.md
     - text: Verify test preset selection
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Source library: source lib/dev2stg-tui.sh lib/ui.sh
+
+        2. Run TUI: load_tui_state "devsite"; run_dev2stg_tui "devsite"
+
+        3. Press ''T'' to enter test selection menu
+
+        4. Verify presets shown: quick, essential, functional, full, security, skip
+
+        5. Select preset ''2'' (essential)
+
+        6. Verify TUI_TEST_SELECTION="essential"
+
+        7. Test individual selection: press ''P'' for phpunit
+
+        Success: Test menu shows all presets, individual tests, selection updates TUI_TEST_SELECTION'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/dev2stg-tui.sh
+      - docs/reference/api/tui-api.md
     - text: Check navigation and confirmation
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Source library: source lib/dev2stg-tui.sh lib/ui.sh
+
+        2. Run TUI: load_tui_state "devsite"; run_dev2stg_tui "devsite"
+
+        3. Verify main screen shows: current state, proposed plan, options menu
+
+        4. Test ''E'' to execute (should return 0 to proceed)
+
+        5. Test ''P'' for preflight checks
+
+        6. Test ''Q'' to quit (should return 1 to cancel)
+
+        7. Verify navigation keys work in submenus (arrow keys, numbers)
+
+        Success: All menu navigation works, E/P/Q keys function correctly, proper return codes'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/dev2stg-tui.sh
+      - docs/reference/api/tui-api.md
     verified: false
     verified_by: null
     verified_at: null
@@ -8095,14 +9092,71 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Source library: source lib/import-tui.sh lib/ui.sh
+
+        2. Ensure cnwp.yml has servers configured
+
+        3. Run selector: select_server "cnwp.yml"
+
+        4. Navigate with UP/DOWN arrows through server list
+
+        5. Press ENTER to select a server
+
+        6. Verify SELECTED_SERVER_NAME, SELECTED_SSH_HOST, SELECTED_SSH_KEY variables set
+
+        7. Test custom option (manual entry)
+
+        Success: Server list displays, navigation works, selection sets variables correctly'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/import-tui.sh
+      - docs/reference/api/tui-api.md
     - text: Verify site selection interface
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Source library: source lib/import-tui.sh lib/ui.sh
+
+        2. Populate DISCOVERED_SITES with test data (or run actual scan)
+
+        3. Run selector: select_sites_to_import
+
+        4. Navigate with UP/DOWN through discovered sites
+
+        5. Press SPACE to toggle selection ([ ] to [✓])
+
+        6. Test ''a'' to select all, ''n'' to select none
+
+        7. Press ENTER to confirm, verify SELECTED_SITES array populated
+
+        Success: Site list displays with version/size info, multi-select works, selections tracked'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/import-tui.sh
+      - docs/reference/api/tui-api.md
     - text: Check import option configuration
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Source library: source lib/import-tui.sh lib/ui.sh
+
+        2. Run option config: configure_import_options "testsite"
+
+        3. Verify shows options grouped: DATABASE, FILES, ENVIRONMENT
+
+        4. Navigate with UP/DOWN, toggle with SPACE
+
+        5. Test ''g'' key to apply options to all sites
+
+        6. Verify conflicting options (stage_file_proxy vs full_file_sync) handled
+
+        7. Press ENTER to confirm
+
+        Success: Options display by category, toggle works, conflicts resolved, global apply works'
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/import-tui.sh
+      - docs/reference/api/tui-api.md
     verified: false
     verified_by: null
     verified_at: null
@@ -8610,22 +9664,101 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Open: example.cnwp.yml
+
+        2. Check recipes section contains: os, d, nwp, dm, avc, m, gitlab, pod
+
+        3. Verify each recipe has all available options listed
+
+        4. Compare with recipe files in recipes/ directory
+
+        5. Check for any new options in recipes not in example
+
+        Success: All recipe options documented, matches current recipe implementations
+
+        '
+      related_docs:
+      - example.cnwp.yml
     - text: Check default values are sensible
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Review example.cnwp.yml default values
+
+        2. Check php_version defaults to supported version (8.1+)
+
+        3. Verify composer_version is stable (2.x)
+
+        4. Check database defaults are reasonable (mysql 8.0)
+
+        5. Verify paths use correct conventions
+
+        6. Check boolean flags have safe defaults
+
+        Success: All defaults are sensible, secure, and follow best practices
+
+        '
+      related_docs:
+      - example.cnwp.yml
     - text: Test copying to cnwp.yml works
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Backup existing cnwp.yml: cp cnwp.yml cnwp.yml.bak
+
+        2. Copy example: cp example.cnwp.yml cnwp.yml
+
+        3. Edit cnwp.yml with a test site
+
+        4. Run: pl install d testsite
+
+        5. Verify installation reads from cnwp.yml successfully
+
+        6. Restore: mv cnwp.yml.bak cnwp.yml
+
+        Success: example.cnwp.yml can be copied and used as working configuration
+
+        '
+      related_docs:
+      - example.cnwp.yml
     - text: Verify comments explain each option
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Open: example.cnwp.yml
+
+        2. Check each option has inline or above-line comment
+
+        3. Verify comments explain purpose and acceptable values
+
+        4. Check for examples in comments where helpful
+
+        5. Verify complex options have multi-line explanations
+
+        Success: All options clearly documented, comments explain purpose and usage
+
+        '
+      related_docs:
+      - example.cnwp.yml
     - text: Check for any missing new options
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Review recent commits for new features: git log --oneline --grep="add.*option" -10
+
+        2. Check recipe files for new options: grep "get_recipe_option" recipes/*.sh
+
+        3. Compare with example.cnwp.yml
+
+        4. Verify all get_recipe_option calls have corresponding example entries
+
+        5. Check lib/ files for new configuration options
+
+        Success: No new options missing from example.cnwp.yml, all features documented
+
+        '
+      related_docs:
+      - example.cnwp.yml
     verified: false
     verified_by: null
     verified_at: null
@@ -8641,18 +9774,81 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Open: .secrets.example.yml
+
+        2. Check for sections: linode, cloudflare, gitlab, b2
+
+        3. Verify each section has all required keys
+
+        4. Compare with get_infra_secret calls: grep -r "get_infra_secret" lib/ scripts/
+
+        5. Verify all accessed secrets have placeholders
+
+        Success: All secrets that scripts access have placeholder entries in example
+
+        '
+      related_docs:
+      - .secrets.example.yml
     - text: Check structure matches .secrets.yml expectations
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Compare structure: diff <(grep -v ''^#'' .secrets.example.yml | grep -v ''^$'') <(grep -v ''^#''
+        .secrets.yml | grep -v ''^$'' | sed ''s/:.*/: "REDACTED"/'')
+
+        2. Verify YAML structure is identical
+
+        3. Check nested keys match
+
+        4. Verify all parent keys present
+
+        5. Test YAML parsing: python3 -c "import yaml; yaml.safe_load(open(''.secrets.example.yml''))"
+
+        Success: Structure matches, YAML is valid, all keys align with .secrets.yml format
+
+        '
+      related_docs:
+      - .secrets.example.yml
     - text: Verify comments explain each secret
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Open: .secrets.example.yml
+
+        2. Check each secret has explanatory comment
+
+        3. Verify comments explain where to obtain secret
+
+        4. Check for links to documentation or provider consoles
+
+        5. Verify security notes for sensitive secrets
+
+        Success: Every secret documented, comments explain purpose and how to obtain
+
+        '
+      related_docs:
+      - .secrets.example.yml
     - text: Test copying to .secrets.yml works
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Backup existing: cp .secrets.yml .secrets.yml.bak
+
+        2. Copy example: cp .secrets.example.yml .secrets.yml
+
+        3. Fill in one secret (e.g., linode.api_token)
+
+        4. Run command that uses that secret: pl storage auth (if b2 secret filled)
+
+        5. Verify script reads secret correctly
+
+        6. Restore: mv .secrets.yml.bak .secrets.yml
+
+        Success: Example file serves as working template, scripts can read secrets after filling in values
+
+        '
+      related_docs:
+      - .secrets.example.yml
     verified: false
     verified_by: null
     verified_at: null

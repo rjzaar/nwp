@@ -1192,46 +1192,174 @@ features:
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run: pl avc-moodle-setup avc ss
+          2. Check for "Generating 2048-bit RSA key pair..." message
+          3. Verify keys created: ls -la sites/avc/private/keys/oauth_*.key
+          4. Check private key permissions (should be 600): stat -c '%a' sites/avc/private/keys/oauth_private.key
+          5. Check public key permissions (should be 644): stat -c '%a' sites/avc/private/keys/oauth_public.key
+          6. Verify key format: openssl rsa -in sites/avc/private/keys/oauth_private.key -check -noout
+          Success: Both keys exist with correct permissions, private key validates
+        related_docs:
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
       - text: "Verify AVC Drupal modules installation (simple_oauth)"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run setup: pl avc-moodle-setup avc ss
+          2. Check composer.json for drupal/simple_oauth: cat sites/avc/composer.json | grep simple_oauth
+          3. Verify module enabled: cd sites/avc && ddev drush pm:list --status=enabled | grep oauth
+          4. Check Simple OAuth settings: cd sites/avc && ddev drush config:get simple_oauth.settings
+          5. Verify module status: cd sites/avc && ddev drush pm:info simple_oauth
+          Success: simple_oauth module is installed via Composer and enabled via Drush
+        related_docs:
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
       - text: "Test Moodle plugin installation"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run setup: pl avc-moodle-setup avc ss
+          2. Check for auth_avc_oauth2 plugin (when available): ls sites/ss/auth/avc_oauth2/
+          3. Check for local_cohortrole plugin: ls sites/ss/local/cohortrole/
+          4. Verify plugin status via CLI: cd sites/ss && ddev exec php admin/cli/plugin_info.php
+          5. Check Moodle plugins page: Visit https://ss.ddev.site/admin/plugins.php
+          Success: Required plugins are installed and show in Moodle's plugin list
+        related_docs:
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
       - text: "Verify OAuth2 client configuration in AVC"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. After running setup, visit: https://avc.ddev.site/admin/config/services/consumer
+          2. Create OAuth2 client with:
+             - Client ID: moodle_ss
+             - Redirect URI: https://ss.ddev.site/admin/oauth2callback.php
+             - Grant Types: Authorization Code
+             - Scopes: openid profile email
+          3. Verify Simple OAuth key paths: cd sites/avc && ddev drush config:get simple_oauth.settings
+          4. Check token expiration (should be 300s): cd sites/avc && ddev drush config:get simple_oauth.settings token_expiration
+          Success: OAuth2 client exists with correct configuration, keys configured
+        related_docs:
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
       - text: "Test OAuth2 issuer configuration in Moodle"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. After running setup, visit: https://ss.ddev.site/admin/settings.php?section=oauth2
+          2. Configure OAuth2 issuer with:
+             - Name: AVC
+             - Client ID: moodle_ss (from AVC setup)
+             - Client Secret: (from AVC OAuth2 client)
+             - Authorization Endpoint: https://avc.ddev.site/oauth/authorize
+             - Token Endpoint: https://avc.ddev.site/oauth/token
+             - UserInfo Endpoint: https://avc.ddev.site/oauth/userinfo
+          3. Test endpoints work: curl -k https://avc.ddev.site/oauth/authorize
+          Success: OAuth2 issuer configured in Moodle, all endpoints accessible
+        related_docs:
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
       - text: "Verify SSO flow testing"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run setup without --skip-test: pl avc-moodle-setup avc ss
+          2. Check output for OAuth2 endpoint tests (authorize, token, userinfo)
+          3. Manually test SSO flow:
+             - Visit https://ss.ddev.site
+             - Click "Login with AVC" button
+             - Should redirect to AVC authorize page
+             - Login with AVC credentials
+             - Should redirect back to Moodle logged in
+          4. Run test command: pl avc-moodle-test avc ss
+          Success: All OAuth2 endpoints return 200/302, manual login flow completes
+        related_docs:
+          - docs/reference/commands/avc-moodle-setup.md
+          - docs/reference/commands/avc-moodle-test.md
+          - lib/avc-moodle.sh
       - text: "Test --regenerate-keys flag"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run initial setup: pl avc-moodle-setup avc ss
+          2. Backup existing keys: cp sites/avc/private/keys/oauth_private.key /tmp/old_key.bak
+          3. Run with --regenerate-keys: pl avc-moodle-setup avc ss --regenerate-keys
+          4. Check output for "Generating 2048-bit RSA key pair..." message
+          5. Compare keys: diff /tmp/old_key.bak sites/avc/private/keys/oauth_private.key
+          6. Verify new keys exist and have correct permissions
+          Success: New keys are generated (different from old), warning shown about breaking existing sessions
+        related_docs:
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
       - text: "Verify --skip-test flag"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run setup with flag: pl avc-moodle-setup avc ss --skip-test
+          2. Check output - should NOT see "Testing OAuth2 endpoints" section
+          3. Verify setup still completes: Check "Setup complete" message
+          4. Compare with normal run: pl avc-moodle-setup avc ss (without --skip-test)
+          5. Normal run should show endpoint testing steps
+          Success: Setup completes faster without testing, no endpoint tests performed
+        related_docs:
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
       - text: "Test --role-sync flag"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run setup with flag: pl avc-moodle-setup avc ss --role-sync
+          2. Check cnwp.yml for role_sync setting: yq eval '.sites.avc.moodle_integration.role_sync' cnwp.yml
+          3. Verify it shows "true"
+          4. Run without flag: pl avc-moodle-setup avc ss
+          5. Check cnwp.yml again - role_sync should be false or absent
+          6. When enabled, role synchronization should occur during SSO login
+          Success: role_sync flag correctly updates cnwp.yml configuration
+        related_docs:
+          - docs/reference/commands/avc-moodle-setup.md
+          - docs/reference/commands/avc-moodle-sync.md
+          - lib/avc-moodle.sh
       - text: "Test --badge-display flag"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run setup with flag: pl avc-moodle-setup avc ss --badge-display
+          2. Check cnwp.yml for badge_display: yq eval '.sites.avc.moodle_integration.badge_display' cnwp.yml
+          3. Verify it shows "true"
+          4. Run without flag: pl avc-moodle-setup avc ss
+          5. Check cnwp.yml again - badge_display should be false or absent
+          6. When enabled, Moodle badges should display on AVC user profiles
+          Success: badge_display flag correctly updates cnwp.yml configuration
+        related_docs:
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
       - text: "Verify cnwp.yml integration settings update"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run setup: pl avc-moodle-setup avc ss
+          2. Check AVC site config: yq eval '.sites.avc.moodle_integration' cnwp.yml
+          3. Should show: enabled: true, moodle_site: ss, moodle_url: https://ss.ddev.site
+          4. Check Moodle site config: yq eval '.sites.ss.avc_integration' cnwp.yml
+          5. Should show: enabled: true, avc_site: avc, avc_url: https://avc.ddev.site
+          6. Verify both sites cross-reference each other correctly
+          Success: cnwp.yml updated with integration settings for both sites
+        related_docs:
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -1249,22 +1377,83 @@ features:
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run status command: pl avc-moodle-status avc ss
+          2. Check "SSO Status" section in output dashboard
+          3. Should show "✓ Active" if integration enabled, "✗ Disabled" if not
+          4. Verify integration status matches cnwp.yml: yq eval '.sites.avc.moodle_integration.enabled' cnwp.yml
+          5. Toggle integration and verify status changes accordingly
+          Success: SSO status accurately reflects integration enabled/disabled state
+        related_docs:
+          - docs/reference/commands/avc-moodle-status.md
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
       - text: "Verify OAuth2 endpoint health checks"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run status command: pl avc-moodle-status avc ss
+          2. Check "OAuth2 Endpoints" section showing authorize, token, userinfo
+          3. Each endpoint should show ✓ (reachable) or ✗ (not reachable)
+          4. Test endpoints directly: curl -k https://avc.ddev.site/oauth/authorize
+          5. Stop AVC site: cd sites/avc && ddev stop
+          6. Run status again - endpoints should show ✗
+          7. Start site and verify endpoints return to ✓
+          Success: Endpoint health checks accurately detect reachability
+        related_docs:
+          - docs/reference/commands/avc-moodle-status.md
+          - docs/reference/commands/avc-moodle-test.md
+          - lib/avc-moodle.sh
       - text: "Test last sync time display"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run initial sync: pl avc-moodle-sync avc ss --full
+          2. Run status: pl avc-moodle-status avc ss
+          3. Check "Synchronization" section for "Last Sync" timestamp
+          4. Should show recent timestamp with relative time (e.g., "2m ago")
+          5. Verify timestamp in Drupal state: cd sites/avc && ddev drush state:get avc_moodle_sync.last_sync
+          6. Shows "Never" if sync module not installed or no sync performed
+          Success: Last sync time displays correctly with timestamp and relative time
+        related_docs:
+          - docs/reference/commands/avc-moodle-status.md
+          - docs/reference/commands/avc-moodle-sync.md
+          - lib/avc-moodle.sh
       - text: "Verify role sync status"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Enable role sync: pl avc-moodle-setup avc ss --role-sync
+          2. Run status: pl avc-moodle-status avc ss
+          3. Check "Configuration" section for "Role Sync: ✓ Enabled"
+          4. Verify in cnwp.yml: yq eval '.sites.avc.moodle_integration.role_sync' cnwp.yml
+          5. Check sync statistics showing synced users/cohorts counts
+          6. Disable role sync and verify status shows "✗ Disabled"
+          Success: Role sync status correctly reflects enabled/disabled state
+        related_docs:
+          - docs/reference/commands/avc-moodle-status.md
+          - docs/reference/commands/avc-moodle-sync.md
+          - lib/avc-moodle.sh
       - text: "Test --debug flag output"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run with debug flag: pl avc-moodle-status --debug avc ss
+          2. Compare with normal run: pl avc-moodle-status avc ss
+          3. Debug output should show additional information:
+             - Detailed curl commands for endpoint checks
+             - Full Drush state query results
+             - URL resolution details
+             - Cache hit/miss breakdown
+          4. Verify debug output includes technical details not in normal output
+          Success: Debug mode shows detailed technical information for troubleshooting
+        related_docs:
+          - docs/reference/commands/avc-moodle-status.md
+          - lib/avc-moodle.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -1282,22 +1471,80 @@ features:
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run full sync: pl avc-moodle-sync avc ss --full
+          2. Check output for "Syncing all users and guilds..." message
+          3. Verify statistics: "Processed X guilds", "Synchronized Y users"
+          4. Check Drupal state: cd sites/avc && ddev drush state:get avc_moodle_sync.synced_users
+          5. Verify Moodle cohorts created: cd sites/ss && ddev exec php admin/cli/list_cohorts.php
+          6. Check sync timestamp updated in status: pl avc-moodle-status avc ss
+          Success: All guilds and users synchronized, cohorts created in Moodle
+        related_docs:
+          - docs/reference/commands/avc-moodle-sync.md
+          - docs/reference/commands/avc-moodle-status.md
+          - lib/avc-moodle.sh
       - text: "Verify --guild=NAME specific guild sync"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. List available guilds: cd sites/avc && ddev drush avc-guilds:list (if available)
+          2. Run specific guild sync: pl avc-moodle-sync avc ss --guild=web-dev
+          3. Check output shows "Syncing guild: web-dev"
+          4. Verify only that guild's members synchronized (not all guilds)
+          5. Check Moodle for specific cohort: cd sites/ss && ddev exec php admin/cli/list_cohorts.php | grep "web-dev"
+          6. Verify sync completed faster than full sync
+          Success: Only specified guild synchronized, not all guilds
+        related_docs:
+          - docs/reference/commands/avc-moodle-sync.md
+          - lib/avc-moodle.sh
       - text: "Test --user=ID specific user sync"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Find a user ID: cd sites/avc && ddev drush user:information admin
+          2. Run user-specific sync: pl avc-moodle-sync avc ss --user=123
+          3. Check output shows "Syncing user: 123"
+          4. Verify only that user's guild memberships synchronized
+          5. Check Moodle user cohort assignments for that specific user
+          6. Verify sync completed very quickly (under 2 seconds)
+          Success: Only specified user's guild memberships synchronized
+        related_docs:
+          - docs/reference/commands/avc-moodle-sync.md
+          - lib/avc-moodle.sh
       - text: "Verify --dry-run mode"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run dry run: pl avc-moodle-sync avc ss --full --dry-run
+          2. Check output header shows "⚠ DRY RUN MODE - No changes will be made"
+          3. Verify operations show "Would perform:" prefix
+          4. Check footer shows "⚠ DRY RUN completed - no changes were made"
+          5. Verify no actual changes in Moodle cohorts
+          6. Compare with real run to ensure same analysis but no execution
+          Success: Dry run shows what would happen without making changes
+        related_docs:
+          - docs/reference/commands/avc-moodle-sync.md
+          - lib/avc-moodle.sh
       - text: "Test --verbose flag output"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run sync with verbose: pl avc-moodle-sync avc ss --guild=web-dev --verbose
+          2. Compare with normal run: pl avc-moodle-sync avc ss --guild=web-dev
+          3. Verbose output should show:
+             - Individual user operations (added, removed, unchanged)
+             - Guild member counts
+             - Cohort ID and name details
+             - Operation-by-operation progress
+          4. Verify verbose includes more detail than standard output
+          Success: Verbose mode shows detailed per-operation information
+        related_docs:
+          - docs/reference/commands/avc-moodle-sync.md
+          - lib/avc-moodle.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -1315,26 +1562,110 @@ features:
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run test command: pl avc-moodle-test avc ss
+          2. Check "Testing OAuth2 Endpoints" section shows:
+             - OAuth2 authorize endpoint... ✓ PASS
+             - OAuth2 token endpoint... ✓ PASS
+             - OAuth2 userinfo endpoint... ✓ PASS
+          3. Test manually: curl -k https://avc.ddev.site/oauth/authorize
+          4. Stop AVC: cd sites/avc && ddev stop
+          5. Run test again - endpoints should fail (✗ FAIL)
+          Success: Test accurately detects OAuth2 endpoint accessibility
+        related_docs:
+          - docs/reference/commands/avc-moodle-test.md
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
       - text: "Verify token exchange functionality"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run test: pl avc-moodle-test avc ss
+          2. Check test output for token endpoint test (should be PASS)
+          3. Token endpoint accepts POST requests (GET returns 405 Method Not Allowed - this is correct)
+          4. Test requires full OAuth2 flow: authorization code → access token
+          5. Verify Simple OAuth is properly configured to handle token requests
+          6. Check token expiration is set to 300s: cd sites/avc && ddev drush config:get simple_oauth.settings token_expiration
+          Success: Token endpoint accessible and configured correctly
+        related_docs:
+          - docs/reference/commands/avc-moodle-test.md
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
       - text: "Test user authentication flow"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run test suite: pl avc-moodle-test avc ss
+          2. Manually test full authentication flow:
+             - Visit Moodle: https://ss.ddev.site
+             - Click "Login with AVC" button
+             - Redirects to AVC authorize endpoint
+             - Login with AVC credentials
+             - Should redirect back to Moodle with user logged in
+          3. Verify user profile exists in Moodle after SSO login
+          4. Check OAuth2 userinfo endpoint provides user data
+          Success: Complete OAuth2 authentication flow works end-to-end
+        related_docs:
+          - docs/reference/commands/avc-moodle-test.md
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
       - text: "Verify role mapping tests"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Enable role sync: pl avc-moodle-setup avc ss --role-sync
+          2. Run test suite: pl avc-moodle-test avc ss
+          3. Verify role mapping test checks:
+             - AVC guilds map to Moodle cohorts correctly
+             - Guild machine names convert to cohort IDs
+             - Guild display names map to cohort names
+          4. Check actual mappings: Compare AVC guilds to Moodle cohorts
+          5. Guild "web-dev" should map to cohort "AVC - Web Development"
+          Success: Role mapping tests verify correct guild-to-cohort mapping
+        related_docs:
+          - docs/reference/commands/avc-moodle-test.md
+          - docs/reference/commands/avc-moodle-sync.md
+          - lib/avc-moodle.sh
       - text: "Test badge display functionality"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Enable badge display: pl avc-moodle-setup avc ss --badge-display
+          2. Run test suite: pl avc-moodle-test avc ss
+          3. Verify badge display test checks:
+             - Moodle badges are accessible via API
+             - Badge data can be fetched from Moodle
+             - Badges can be rendered on AVC user profiles (when module available)
+          4. Check badge configuration in cnwp.yml
+          5. Test requires custom avc_moodle_data module for full functionality
+          Success: Badge display tests verify badge data accessibility
+        related_docs:
+          - docs/reference/commands/avc-moodle-test.md
+          - docs/reference/commands/avc-moodle-setup.md
+          - lib/avc-moodle.sh
       - text: "Check test result reporting (pass/fail counts)"
         completed: false
         completed_by: null
         completed_at: null
+        how_to_verify: |
+          1. Run test suite: pl avc-moodle-test avc ss
+          2. Check "Test Results" section at end of output
+          3. Should display:
+             - Total Tests: X
+             - Passed: Y
+             - Failed: Z
+             - Success Rate: N%
+          4. Verify all tests passing shows "✓ All tests passed! (15/15)"
+          5. Verify failed tests show "✗ Some tests failed: X passed, Y failed"
+          6. Exit code should be 0 for 100% pass, 1 for any failures
+          Success: Test result summary accurately reports pass/fail counts
+        related_docs:
+          - docs/reference/commands/avc-moodle-test.md
+          - lib/avc-moodle.sh
     verified: false
     verified_by: null
     verified_at: null

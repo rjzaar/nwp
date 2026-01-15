@@ -8,7 +8,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [v0.24.0] - 2026-01-15
+
 ### Added
+
+#### Verification System Enhancements
+
+Complete overhaul of the verification system with detailed verification instructions for all 553 checklist items across 89 features.
+
+**Verification Content:**
+- `how_to_verify` field: Step-by-step instructions for each checklist item
+- `related_docs` field: Links to relevant documentation for each item
+- 100% coverage: All 553 items now have verification instructions
+
+**TUI Improvements:**
+- Press `d` on any checklist item to view verification details
+- Press `1-9` to open related documentation inline
+- Clickable OSC 8 hyperlinks in supported terminals
+
+**New Features (9 added):**
+- avc_moodle_setup, avc_moodle_status, avc_moodle_sync, avc_moodle_test
+- bootstrap_coder, doctor
+- lib_avc_moodle, lib_podcast, lib_ssh
+
+**Documentation:**
+- Added CLAUDE_CHEATSHEET.md - Quick reference for Claude Code usage
+- Added COMMAND_INVENTORY.md - Complete inventory of all pl commands
+
+### Fixed
+
+- Fixed YAML syntax errors in .verification.yml that prevented parsing
+- Fixed TUI doc viewing (inline cat instead of problematic less calls)
+
+---
 
 #### AVC Email Reply System
 

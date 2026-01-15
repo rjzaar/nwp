@@ -317,6 +317,130 @@ get_checklist_item_status() {
     fi
 }
 
+# Get checklist item details (how_to_verify, related_docs) by index
+# Returns multiline output: first line is how_to_verify, remaining lines are related_docs
+get_checklist_item_details() {
+    local feature="$1"
+    local idx="$2"
+    local version=$(get_schema_version)
+
+    if [[ "$version" != "2" ]]; then
+        echo ""
+        return
+    fi
+
+    # Use a state machine to parse the YAML
+    local in_feature=0 in_checklist=0 in_item=0 current_idx=-1
+    local in_how_to_verify=0 in_related_docs=0
+    local how_to_verify="" related_docs=""
+    local how_to_verify_indent=0
+
+    while IFS= read -r line; do
+        # Check for feature start
+        if [[ "$line" =~ ^[[:space:]]{2}[a-z0-9_]+:$ ]]; then
+            local feat_name="${line#  }"
+            feat_name="${feat_name%:}"
+            if [[ "$feat_name" == "$feature" ]]; then
+                in_feature=1
+            elif [[ $in_feature -eq 1 ]]; then
+                break
+            fi
+            continue
+        fi
+
+        # Check for checklist section
+        if [[ $in_feature -eq 1 ]] && [[ "$line" =~ ^[[:space:]]{4}checklist: ]]; then
+            in_checklist=1
+            continue
+        fi
+
+        # Exit checklist on next section
+        if [[ $in_feature -eq 1 ]] && [[ $in_checklist -eq 1 ]] && [[ "$line" =~ ^[[:space:]]{4}[a-z] ]] && [[ ! "$line" =~ ^[[:space:]]{4}checklist ]]; then
+            break
+        fi
+
+        # Check for new checklist item
+        if [[ $in_feature -eq 1 ]] && [[ $in_checklist -eq 1 ]] && [[ "$line" =~ ^[[:space:]]{6}-[[:space:]]text: ]]; then
+            # If we were in the target item, we're done
+            if [[ $in_item -eq 1 ]]; then
+                break
+            fi
+            current_idx=$((current_idx + 1))
+            if [[ $current_idx -eq $idx ]]; then
+                in_item=1
+            fi
+            in_how_to_verify=0
+            in_related_docs=0
+            continue
+        fi
+
+        # Parse fields for target item
+        if [[ $in_item -eq 1 ]]; then
+            # Check for how_to_verify field (block scalar or quoted)
+            if [[ "$line" =~ ^[[:space:]]{8}how_to_verify:[[:space:]]*\|[-]?$ ]]; then
+                in_how_to_verify=1
+                in_related_docs=0
+                how_to_verify_indent=10
+                continue
+            elif [[ "$line" =~ ^[[:space:]]{8}how_to_verify:[[:space:]]+(.*) ]]; then
+                # Inline value (quoted string)
+                how_to_verify="${BASH_REMATCH[1]}"
+                # Remove surrounding quotes
+                how_to_verify="${how_to_verify#\'}"
+                how_to_verify="${how_to_verify%\'}"
+                how_to_verify="${how_to_verify#\"}"
+                how_to_verify="${how_to_verify%\"}"
+                in_how_to_verify=0
+                continue
+            fi
+
+            # Check for related_docs field
+            if [[ "$line" =~ ^[[:space:]]{8}related_docs: ]]; then
+                in_how_to_verify=0
+                in_related_docs=1
+                continue
+            fi
+
+            # Continue reading how_to_verify block content
+            if [[ $in_how_to_verify -eq 1 ]]; then
+                if [[ "$line" =~ ^[[:space:]]{10} ]] || [[ -z "${line// }" ]]; then
+                    local content="${line#          }"
+                    if [[ -n "$how_to_verify" ]]; then
+                        how_to_verify="$how_to_verify"$'\n'"$content"
+                    else
+                        how_to_verify="$content"
+                    fi
+                else
+                    in_how_to_verify=0
+                fi
+            fi
+
+            # Continue reading related_docs entries (at 8 spaces with dash)
+            if [[ $in_related_docs -eq 1 ]]; then
+                if [[ "$line" =~ ^[[:space:]]{8}-[[:space:]]+(.*) ]]; then
+                    local doc="${BASH_REMATCH[1]}"
+                    if [[ -n "$related_docs" ]]; then
+                        related_docs="$related_docs"$'\n'"$doc"
+                    else
+                        related_docs="$doc"
+                    fi
+                elif [[ ! "$line" =~ ^[[:space:]]{8}- ]] && [[ -n "${line// }" ]]; then
+                    in_related_docs=0
+                fi
+            fi
+
+            # Check for end of item (next field at 8-space indent)
+            if [[ "$line" =~ ^[[:space:]]{8}(completed|verified|history): ]]; then
+                in_how_to_verify=0
+                in_related_docs=0
+            fi
+        fi
+    done < "$VERIFICATION_FILE"
+
+    # Output format: HOW_TO_VERIFY|||RELATED_DOCS
+    echo "${how_to_verify}|||${related_docs}"
+}
+
 # Get checklist items as arrays (for iteration)
 # Usage: get_checklist_items_array "feature_id" items_array completed_array
 get_checklist_items_array() {
@@ -1543,6 +1667,60 @@ toggle_checklist_item() {
     fi
 }
 
+# Show item details (how_to_verify and related_docs)
+show_item_details() {
+    local feature="$1"
+    local item_idx="$2"
+    local item_text="$3"
+
+    cursor_show
+    clear_screen
+
+    # Header
+    echo -e "${BOLD}Item Details${NC}"
+    printf '═%.0s' $(seq 1 $(tput cols))
+    echo ""
+
+    # Item text
+    echo -e "${CYAN}Item:${NC}"
+    echo -e "  $item_text"
+    echo ""
+
+    # Get details
+    local details=$(get_checklist_item_details "$feature" "$item_idx")
+    local how_to_verify="${details%%|||*}"
+    local related_docs="${details##*|||}"
+
+    # How to verify section
+    echo -e "${CYAN}How to Verify:${NC}"
+    if [[ -n "$how_to_verify" ]]; then
+        echo "$how_to_verify" | while IFS= read -r line; do
+            echo -e "  $line"
+        done
+    else
+        echo -e "  ${DIM}No verification instructions available${NC}"
+    fi
+    echo ""
+
+    # Related docs section
+    echo -e "${CYAN}Related Documentation:${NC}"
+    if [[ -n "$related_docs" ]]; then
+        echo "$related_docs" | while IFS= read -r doc; do
+            if [[ -n "$doc" ]]; then
+                echo -e "  • $doc"
+            fi
+        done
+    else
+        echo -e "  ${DIM}No related documentation${NC}"
+    fi
+    echo ""
+
+    printf '─%.0s' $(seq 1 $(tput cols))
+    echo ""
+    read -p "Press Enter to return..."
+    cursor_hide
+}
+
 # Draw checklist editor screen
 draw_checklist_editor() {
     local feature="$1"
@@ -1551,7 +1729,7 @@ draw_checklist_editor() {
 
     clear_screen
     echo -e "${BOLD}Checklist Editor: $feat_name${NC}"
-    echo -e "${DIM}Use ↑↓ to navigate, Space to toggle, Enter/q to save and exit${NC}"
+    echo -e "${DIM}Use ↑↓ to navigate, Space to toggle, ${WHITE}d${DIM} for details, Enter/q to exit${NC}"
     printf '═%.0s' $(seq 1 $(tput cols))
     echo ""
 
@@ -1637,6 +1815,9 @@ edit_checklist_items() {
             ' ')  # Space - toggle completion
                 toggle_checklist_item "$feature" "$selected_idx"
                 # Redraw immediately to show change
+                ;;
+            'd'|'D')  # Show item details
+                show_item_details "$feature" "$selected_idx" "${items[$selected_idx]}"
                 ;;
             'q'|'Q'|$'\n')  # Quit - go back to main console
                 break

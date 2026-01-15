@@ -4166,11 +4166,15 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: null
+      how_to_verify: '1. Upload test file: `pl storage upload <sitename> /path/to/test.txt`
+2. List files: `pl storage list <sitename>` (note the file name)
+3. Delete file: `pl storage delete <sitename> test.txt`
+4. List again: `pl storage list <sitename>` (file should be gone)
+5. Try to download deleted file (should fail)
+Success: File deleted from B2 and no longer appears in listings'
+      related_docs:
+        - docs/reference/commands/storage.md
+        - lib/b2.sh
   theme:
     name: Theme Build Tool Management (theme.sh)
     description: Unified frontend build tool management (Gulp, Grunt, Webpack, Vite)
@@ -4523,11 +4527,16 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: null
+      how_to_verify: '1. Run: `pl coders` and navigate to a coder entry
+2. Press 's' key to trigger GitLab sync
+3. Check output shows "Syncing with GitLab..."
+4. Verify GitLab API called: check for project/group synchronization
+5. Check coder status updated in TUI display
+Success: GitLab sync completes and status indicators update correctly'
+      related_docs:
+        - docs/reference/commands/coders.md
+        - lib/developer.sh
+        - docs/governance/roles.md
   seo_check:
     name: SEO Check (seo-check.sh)
     description: Comprehensive SEO monitoring and sitemap verification
@@ -4987,11 +4996,15 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: null
+      how_to_verify: '1. Run: `pl security-check <sitename> --json`
+2. Check output is valid JSON format
+3. Verify includes: hsts, csp, x_frame_options, referrer_policy, permissions_policy
+4. Check each has: present (bool), value (string), score (int)
+5. Parse with: `pl security-check <sitename> --json | jq .`
+Success: Valid JSON with all security headers and scores'
+      related_docs:
+        - docs/reference/commands/security-check.md
+        - docs/SECURITY.md
   verify:
     name: Feature Verification (verify.sh)
     description: NWP feature verification tracking with interactive TUI console
@@ -5063,15 +5076,31 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Start: `pl verify` and navigate to a verified feature
+2. Modify a source file: `echo "# comment" >> scripts/commands/setup.sh`
+3. Press 'c' to check for invalidations
+4. Verify feature marked as [!] Modified
+5. Check file hash mismatch detected
+6. Restore file: `git checkout scripts/commands/setup.sh`
+Success: Modified features automatically detected and marked invalid'
+      related_docs:
+        - docs/reference/commands/verify.md
+        - docs/reference/verification-tasks.md
     - text: Verify history tracking
       completed: false
       completed_by: null
       completed_at: null
-    verified: false
-    verified_by: null
-    verified_at: null
-    file_hash: null
-    notes: null
+      how_to_verify: '1. Run: `pl verify` and select a feature
+2. Press 'v' to verify it (complete checklist items first with 'i')
+3. Press 'h' to view history
+4. Check history shows: verification action, username, timestamp
+5. Make changes and re-verify
+6. Check history shows both entries chronologically
+Success: All verification actions logged with full audit trail'
+      related_docs:
+        - docs/reference/commands/verify.md
+        - docs/reference/verification-tasks.md
+        - docs/decisions/0007-verification-schema-v2-design.md
   pl_cli:
     name: PL CLI Wrapper (pl)
     description: Universal CLI wrapper - main command interface

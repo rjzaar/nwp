@@ -1,6 +1,6 @@
 # NWP Roadmap - Pending & Future Work
 
-**Last Updated:** January 14, 2026
+**Last Updated:** January 15, 2026
 
 Pending implementation items and future improvements for NWP.
 
@@ -19,7 +19,7 @@ Pending implementation items and future improvements for NWP.
 | Completed Proposals | P01-P35, F04, F05, F07, F09 |
 | Pending Proposals | F01-F03, F06, F08, F10, F11 |
 | Experimental/Outlier | X01 |
-| Recent Enhancements | YAML Parser Consolidation (v0.21.0), Documentation restructure (v0.20.0) |
+| Recent Enhancements | AVC Email Reply System, YAML Parser Consolidation (v0.21.0), Documentation restructure (v0.20.0) |
 
 ---
 

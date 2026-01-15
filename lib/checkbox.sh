@@ -279,6 +279,13 @@ define_drupal_options() {
         "forward:Forward To Address" "email" \
         "https://www.drupal.org/project/mailhandler"
 
+    define_option "email_reply" \
+        "Email Reply" \
+        "Enable email reply for group notifications. Users can reply to notification emails to post comments on content. Includes secure token-based authentication, spam filtering, and rate limiting. Requires SendGrid or Mailgun for production." \
+        "all" "dev:y,stage:y,live:n,prod:n" "" \
+        "reply_domain:Reply Domain (e.g. reply.example.com)" "email" \
+        "https://www.drupal.org/project/comment"
+
     # === MIGRATION OPTIONS ===
     define_option "migration" \
         "Migration Folder" \

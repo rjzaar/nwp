@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+#### AVC Email Reply System
+
+Allows group members to reply to notification emails to create comments on content. Users receive notification emails with `Reply-To: reply+{token}@domain` headers and can respond directly via email.
+
+**Features:**
+- Secure token-based email reply system with HMAC-SHA256 signed tokens
+- SendGrid Inbound Parse and Mailgun Routes integration
+- Queue-based async processing for reliability
+- Rate limiting (10/hour, 50/day per user; 100/hour per group)
+- Spam filtering with configurable score threshold
+- Content sanitization before comment creation
+
+**Drush Commands:**
+- `email-reply:status` - Check system status
+- `email-reply:enable` - Enable email reply
+- `email-reply:disable` - Disable email reply
+- `email-reply:configure` - Configure settings
+- `email-reply:generate-token` - Generate test token
+- `email-reply:simulate` - Simulate email reply
+- `email-reply:process-queue` - Process queue
+- `email-reply:setup-test` - Set up test infrastructure
+- `email-reply:test` - Run end-to-end test
+
+**Testing Tools:**
+- DDEV command: `ddev email-reply-test {setup|test|simulate|webhook|queue}`
+- Web UI testing: `/admin/config/avc/email-reply/test`
+- Automated end-to-end testing via Drush
+
+**Recipe Integration:**
+- `email_reply` configuration option in avc and avc-dev recipes
+- Auto-configuration via post-install script
+- Environment-aware setup (dev/stage: debug mode, production: optimized)
+
+**Documentation:**
+- Updated `docs/guides/email-setup.md` with email reply section
+- Updated `docs/reference/commands/email.md` with Drush commands
+- Module README with complete usage guide
+
+---
+
 ## [v0.23.0] - 2026-01-14
 
 ### Documentation (Major Release)

@@ -1,6 +1,6 @@
 # email
 
-**Last Updated:** 2026-01-14
+**Last Updated:** 2026-01-15
 
 Unified interface for email setup, testing, and configuration for NWP sites.
 
@@ -188,6 +188,159 @@ pl email reroute --disable
 ```
 
 Restores normal email delivery for production deployments.
+
+## Email Reply System (AVC)
+
+The AVC profile includes an email reply system that allows users to respond to notification emails and have their replies posted as comments on content. This is managed via Drush commands and DDEV testing tools.
+
+### Email Reply Drush Commands
+
+| Command | Description |
+|---------|-------------|
+| `email-reply:status` | Check email reply system status |
+| `email-reply:enable` | Enable email reply system |
+| `email-reply:disable` | Disable email reply system |
+| `email-reply:configure` | Configure email reply settings |
+| `email-reply:generate-token` | Generate a reply token for testing |
+| `email-reply:simulate` | Simulate an email reply |
+| `email-reply:process-queue` | Process the email reply queue |
+| `email-reply:setup-test` | Set up test infrastructure |
+| `email-reply:test` | Run end-to-end test |
+
+### Drush Command Examples
+
+#### Check Status
+
+```bash
+ddev drush email-reply:status
+```
+
+Shows:
+- Enable/disable state
+- Reply domain configuration
+- Rate limit settings
+- Queue statistics
+
+#### Enable with Domain
+
+```bash
+ddev drush email-reply:enable --domain=reply.example.com
+```
+
+#### Configure Settings
+
+```bash
+ddev drush email-reply:configure --domain=reply.example.com --provider=sendgrid
+```
+
+#### Generate Test Token
+
+```bash
+ddev drush email-reply:generate-token 1 2
+```
+
+Generates a reply token for node ID 1 and user ID 2.
+
+#### Simulate Email Reply
+
+```bash
+ddev drush email-reply:simulate "TOKEN" "user@example.com" "My reply text"
+```
+
+#### Process Queue
+
+```bash
+ddev drush email-reply:process-queue
+# Or use standard queue command:
+ddev drush queue:run avc_email_reply
+```
+
+#### Run End-to-End Test
+
+```bash
+ddev drush email-reply:test
+```
+
+### DDEV Testing Commands
+
+The `email-reply-test` DDEV command provides convenient testing:
+
+```bash
+ddev email-reply-test <command>
+```
+
+| Command | Description |
+|---------|-------------|
+| `status` | Check system status |
+| `enable` | Enable email reply for DDEV site |
+| `disable` | Disable email reply |
+| `setup` | Set up test infrastructure (users, nodes) |
+| `test` | Run end-to-end test |
+| `simulate` | Simulate a reply: `simulate <node_id> <user_id> "text"` |
+| `webhook` | Send webhook request: `webhook <token> <email> "text"` |
+| `queue` | Process the email reply queue |
+| `help` | Show help |
+
+### DDEV Testing Examples
+
+#### Quick Start
+
+```bash
+# Set up test infrastructure
+ddev email-reply-test setup
+
+# Run automated test
+ddev email-reply-test test
+```
+
+#### Manual Testing
+
+```bash
+# Simulate reply for node 1, user 2
+ddev email-reply-test simulate 1 2 "This is my test reply"
+
+# Check status
+ddev email-reply-test status
+
+# Process queue
+ddev email-reply-test queue
+```
+
+#### Webhook Testing
+
+```bash
+# Simulate external webhook request
+ddev email-reply-test webhook <token> user@example.com "Reply text"
+```
+
+### Web UI Testing
+
+Access the test interface at:
+```
+https://<sitename>.ddev.site/admin/config/avc/email-reply/test
+```
+
+Features:
+- Generate tokens for any user/entity combination
+- Simulate email replies without actual emails
+- Process the email queue manually
+- View queue status and recent activity
+
+### Email Reply Configuration
+
+Via Admin UI: `/admin/config/avc/email-reply`
+
+Via Recipe (cnwp.yml):
+```yaml
+recipes:
+  avc-dev:
+    email_reply:
+      enabled: true
+      reply_domain: "reply.example.com"
+      email_provider: sendgrid
+      token_expiry_days: 30
+      debug_mode: true
+```
 
 ## Exit Codes
 
@@ -449,6 +602,7 @@ fi
 ## See Also
 
 - [Email Setup Guide](../../guides/email-setup.md) - Detailed email configuration
+- [AVC Email Reply Module](../../../sites/avc/html/profiles/custom/avc/modules/avc_features/avc_email_reply/README.md) - Email reply module documentation
 - [DKIM/SPF/DMARC Guide](../../guides/email-authentication.md) - Email authentication
 - [Mailpit Documentation](https://github.com/axllent/mailpit) - Mailpit SMTP capture
 - [Postfix Configuration](../../deployment/postfix-setup.md) - Postfix MTA setup

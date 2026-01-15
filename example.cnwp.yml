@@ -656,6 +656,37 @@ recipes:
       moodle_role_sync:                  # Auto-sync guild roles to Moodle cohorts
       moodle_badge_display:              # Display Moodle badges on AVC profiles
 
+      # === Email Reply (environment: all) [ACTIVE] ===
+      email_reply:                       # Enable email reply for group notifications
+
+    # === Email Reply Settings [ACTIVE] ===
+    # Configure email reply functionality for group notifications
+    # Users can reply to notification emails to post comments
+    email_reply:
+      enabled: false                     # [ACTIVE] Enable email reply (requires email provider setup)
+      reply_domain: ""                   # [ACTIVE] Domain for reply-to addresses (e.g., reply.example.com)
+      email_provider: sendgrid           # [ACTIVE] Email provider: sendgrid or mailgun
+      webhook_secret: ""                 # [ACTIVE] Webhook verification secret (from .secrets.yml)
+      token_expiry_days: 30              # [ACTIVE] Days before reply tokens expire
+      spam_score_threshold: 5.0          # [ACTIVE] Reject replies with spam score above this
+      debug_mode: false                  # [ACTIVE] Enable debug logging
+      rate_limits:
+        per_user_per_hour: 10            # [ACTIVE] Max replies per user per hour
+        per_user_per_day: 50             # [ACTIVE] Max replies per user per day
+        per_group_per_hour: 100          # [ACTIVE] Max replies per group per hour
+      # Environment-specific overrides
+      environments:
+        dev:
+          enabled: true                  # [ACTIVE] Auto-enable in dev for testing
+          reply_domain: "test.local"     # [ACTIVE] Use test domain in dev
+          debug_mode: true               # [ACTIVE] Enable debug in dev
+        stage:
+          enabled: true                  # [ACTIVE] Enable in staging
+          debug_mode: true               # [ACTIVE] Enable debug in staging
+        live:
+          enabled: true                  # [ACTIVE] Enable in production
+          debug_mode: false              # [ACTIVE] Disable debug in production
+
   avc-dev:
     # [ACTIVE] AV Commons - For profile/module developers
     # Use this when: Developing AVC modules, fixing bugs, adding features
@@ -689,6 +720,7 @@ recipes:
       - profiles/custom/avc/modules/avc_features/avc_content/scripts/migrate_help_to_book.php  # [ACTIVE] Create help documentation as book pages
       - profiles/custom/avc/modules/avc_features/avc_content/scripts/seed_content_data.php
       - profiles/custom/avc/modules/avc_features/workflow_assignment/scripts/seed_workflow_data.php
+      - profiles/custom/avc/modules/avc_features/avc_email_reply/scripts/configure_email_reply.php  # [ACTIVE] Configure email reply for environment
       - profiles/custom/avc/scripts/generate_sample_content.sh  # [ACTIVE] Auto-generate comprehensive sample content
 
     # === Moodle Integration Settings [ACTIVE] ===
@@ -748,6 +780,36 @@ recipes:
       moodle_sso:                        # Enable OAuth2 SSO with Moodle LMS
       moodle_role_sync:                  # Auto-sync guild roles to Moodle cohorts
       moodle_badge_display:              # Display Moodle badges on AVC profiles
+
+      # === Email Reply (environment: all) [ACTIVE] ===
+      email_reply: y                     # [DEV DEFAULT] Enable email reply for group notifications
+
+    # === Email Reply Settings [ACTIVE] ===
+    # Configure email reply functionality for group notifications
+    # In dev mode, auto-enabled with test configuration for DDEV testing
+    email_reply:
+      enabled: true                      # [DEV] Auto-enabled in dev mode
+      reply_domain: ""                   # [DEV] Auto-set to sitename.ddev.site
+      email_provider: sendgrid           # [ACTIVE] Email provider: sendgrid or mailgun
+      webhook_secret: ""                 # [DEV] Not required for local testing
+      token_expiry_days: 30              # [ACTIVE] Days before reply tokens expire
+      spam_score_threshold: 5.0          # [ACTIVE] Reject replies with spam score above this
+      debug_mode: true                   # [DEV] Enable debug logging in dev
+      rate_limits:
+        per_user_per_hour: 100           # [DEV] Higher limits for testing
+        per_user_per_day: 500            # [DEV] Higher limits for testing
+        per_group_per_hour: 1000         # [DEV] Higher limits for testing
+      # Environment-specific overrides
+      environments:
+        dev:
+          enabled: true                  # [ACTIVE] Auto-enable in dev
+          debug_mode: true               # [ACTIVE] Enable debug in dev
+        stage:
+          enabled: true                  # [ACTIVE] Enable in staging
+          debug_mode: true               # [ACTIVE] Enable debug in staging
+        live:
+          enabled: true                  # [ACTIVE] Enable in production
+          debug_mode: false              # [ACTIVE] Disable debug in production
 
   dm:
     # [ACTIVE] Divine Mercy recipe

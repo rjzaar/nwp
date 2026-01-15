@@ -2,8 +2,8 @@
 
 Welcome to the **Narrow Way Project (NWP)** documentation hub. This directory contains comprehensive documentation for developing, deploying, and maintaining Drupal sites using NWP's automated workflows.
 
-**Current Version:** v0.22.0
-**Documentation Last Updated:** 2026-01-14
+**Current Version:** v0.23.0
+**Documentation Last Updated:** 2026-01-15
 
 ---
 
@@ -50,6 +50,7 @@ Step-by-step guides for common workflows:
 | [Developer Workflow](guides/developer-workflow.md) | 9-phase development lifecycle |
 | [Admin Onboarding](guides/admin-onboarding.md) | System administrator onboarding |
 | [Coder Onboarding](guides/coder-onboarding.md) | Multi-coder infrastructure setup |
+| [Email Setup](guides/email-setup.md) | Email configuration, SMTP, and email reply system |
 | [Working with Claude Securely](guides/working-with-claude-securely.md) | AI assistant security guidelines |
 | [Migration Sites Tracking](guides/migration-sites-tracking.md) | Migrate to sites tracking system |
 | [Git Hooks](development/git-hooks.md) | Automated code quality checks |
@@ -184,6 +185,7 @@ Documentation for specific projects:
 
 | Document | Description |
 |----------|-------------|
+| [Email Reply Module](../sites/avc/html/profiles/custom/avc/modules/avc_features/avc_email_reply/README.md) | Email reply system for group notifications |
 | [Work Management Implementation](projects/avc/work-management-implementation.md) | AVC work management module |
 | [Mobile App Options](projects/avc/mobile-app-options.md) | Mobile application analysis |
 | [Hybrid Mobile Approach](projects/avc/hybrid-mobile-approach.md) | Hybrid app strategy |
@@ -249,6 +251,7 @@ Documented technical decisions:
 | [ADR 0004](decisions/0004-two-tier-secrets-architecture.md) | Two-tier secrets architecture |
 | [ADR 0005](decisions/0005-distributed-contribution-governance.md) | Distributed contribution governance |
 | [ADR 0006](decisions/0006-contribution-workflow.md) | Contribution workflow |
+| [ADR 0016](decisions/0016-avc-email-reply-architecture.md) | AVC email reply architecture |
 | [Decision Log](decisions/decision-log.md) | Chronological decision log |
 | [ADR Template](decisions/template.md) | Template for new ADRs |
 

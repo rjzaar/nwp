@@ -1,6 +1,6 @@
 # NWP Milestones - Completed Implementation History
 
-**Last Updated:** January 14, 2026
+**Last Updated:** January 15, 2026
 
 A summary of all completed development phases and their key achievements.
 
@@ -18,8 +18,9 @@ A summary of all completed development phases and their key achievements.
 | Phase 5b | Infrastructure & Import | P29-P31 | Jan 2026 |
 | Phase 5c | Live Deployment Automation | P32-P35 | Jan 2026 |
 | Phase 6-7 | Governance, Security & Testing | F04, F05, F07, F09 | Jan 2026 |
+| AVC | Profile Enhancements | Email Reply | Jan 2026 |
 
-**Total: 39 proposals implemented** (P01-P35 + F04, F05, F07, F09)
+**Total: 39 proposals implemented** (P01-P35 + F04, F05, F07, F09) + AVC Profile Enhancements
 
 ---
 
@@ -272,6 +273,52 @@ Automated testing infrastructure using BATS framework with GitLab CI integration
 | Integration | ~60% | 95% |
 | E2E | ~10% | 80% |
 | **Overall** | **~45%** | **85%** |
+
+---
+
+## AVC Profile Enhancements
+
+### AVC Email Reply System
+Allows group members to reply to notification emails to create comments on content. Users receive notification emails with `Reply-To: reply+{token}@domain` headers and can respond directly via email.
+
+**Architecture:**
+```
+Outbound: Notification → Reply-To: reply+{token}@domain → User Inbox
+Inbound:  User Reply → Webhook /api/email/inbound → Queue → Comment
+```
+
+**Key Components:**
+- HMAC-SHA256 token generation with 30-day expiration
+- Email provider integration (SendGrid Inbound Parse, Mailgun Routes)
+- Queue-based async processing for reliability
+- Rate limiting (10/hour, 50/day per user; 100/hour per group)
+- Spam filtering with configurable score threshold
+- Content sanitization before comment creation
+
+**Implementation:**
+- `avc_email_reply` module with controller, services, queue worker
+- Drush commands: `email-reply:status`, `email-reply:enable`, `email-reply:configure`, etc.
+- DDEV testing command: `ddev email-reply-test`
+- Web UI testing: `/admin/config/avc/email-reply/test`
+- Auto-configuration via recipe system in `cnwp.yml`
+- Post-install script for environment-aware setup
+
+**Files:**
+| File | Purpose |
+|------|---------|
+| `InboundEmailController.php` | Webhook endpoint for email providers |
+| `EmailReplyTestController.php` | Testing UI |
+| `ReplyTokenService.php` | Token generation/validation |
+| `EmailReplyProcessor.php` | Email processing logic |
+| `EmailReplyWorker.php` | Queue worker |
+| `EmailRateLimiter.php` | Rate limiting service |
+| `EmailReplyCommands.php` | Drush commands |
+| `configure_email_reply.php` | Post-install configuration |
+
+**Testing:**
+- DDEV command: `ddev email-reply-test {setup|test|simulate|webhook|queue}`
+- Web UI: `/admin/config/avc/email-reply/test`
+- End-to-end automated testing via Drush commands
 
 ---
 

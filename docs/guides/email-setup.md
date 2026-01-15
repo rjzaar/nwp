@@ -1,7 +1,7 @@
 # Email Setup Guide
 
 **Status:** ACTIVE
-**Last Updated:** 2026-01-14
+**Last Updated:** 2026-01-15
 
 Complete guide for configuring email in NWP environments including SMTP, development rerouting, and deliverability testing.
 
@@ -218,6 +218,134 @@ ddev drush smtp:test admin@example.com
 - Use app-specific passwords when available
 - Enable TLS for all SMTP connections
 
+## Email Reply System (AVC)
+
+The AVC profile includes an email reply system that allows users to respond to notification emails and have their replies posted as comments on content.
+
+### Overview
+
+When users receive notification emails about group content (workflow updates, comments, etc.), they can reply directly to the email to post a comment. The reply is processed through a secure webhook and creates a comment on the original content.
+
+### Architecture
+
+```
+Outbound: Notification → Reply-To: reply+{token}@domain → User Inbox
+Inbound:  User Reply → Webhook /api/email/inbound → Queue → Comment
+```
+
+### Configuration
+
+#### Via Recipe (cnwp.yml)
+
+```yaml
+recipes:
+  avc-dev:
+    email_reply:
+      enabled: true
+      reply_domain: "reply.example.com"
+      email_provider: sendgrid
+      token_expiry_days: 30
+      debug_mode: true
+```
+
+#### Via Drush
+
+```bash
+# Check status
+ddev drush email-reply:status
+
+# Enable with domain
+ddev drush email-reply:enable --domain=reply.example.com
+
+# Configure settings
+ddev drush email-reply:configure --domain=reply.example.com --provider=sendgrid
+```
+
+#### Via Admin UI
+
+Navigate to `/admin/config/avc/email-reply` to configure:
+- Enable/disable email reply
+- Set reply domain
+- Configure rate limits
+- Set spam score threshold
+
+### Email Provider Setup
+
+#### SendGrid Inbound Parse
+
+1. Create Inbound Parse webhook in SendGrid dashboard
+2. Configure MX record: `reply.example.com → mx.sendgrid.net`
+3. Set webhook URL: `https://yoursite.com/api/email/inbound`
+4. Copy webhook verification key to settings
+
+#### Mailgun Routes
+
+1. Create a route in Mailgun dashboard
+2. Configure MX record to Mailgun servers
+3. Set webhook URL: `https://yoursite.com/api/email/inbound`
+4. Configure webhook signing key
+
+### Testing in DDEV
+
+DDEV environments include built-in email reply testing:
+
+```bash
+# Quick start
+ddev email-reply-test setup    # Create test data
+ddev email-reply-test test     # Run automated test
+
+# Manual testing
+ddev email-reply-test simulate <node_id> <user_id> "My reply"
+ddev email-reply-test webhook <token> <email> "Reply text"
+
+# Management
+ddev email-reply-test status   # Check status
+ddev email-reply-test queue    # Process queue
+```
+
+Web UI testing: `/admin/config/avc/email-reply/test`
+
+### Security Features
+
+- **Token Authentication**: HMAC-SHA256 signed tokens with 30-day expiration
+- **Email Verification**: Sender email must match user in token
+- **Group Membership**: Verifies user is still a group member
+- **Spam Filtering**: Rejects emails with spam score > 5.0
+- **Rate Limiting**: 10/hour, 50/day per user; 100/hour per group
+- **Content Sanitization**: HTML filtering before comment creation
+
+### Email Reply Commands
+
+| Command | Description |
+|---------|-------------|
+| `email-reply:status` | Check system status |
+| `email-reply:enable` | Enable email reply |
+| `email-reply:disable` | Disable email reply |
+| `email-reply:configure` | Configure settings |
+| `email-reply:generate-token` | Generate test token |
+| `email-reply:simulate` | Simulate email reply |
+| `email-reply:process-queue` | Process queue manually |
+| `email-reply:test` | Run end-to-end test |
+
+### Troubleshooting Email Reply
+
+#### Replies Not Being Processed
+
+1. Check if enabled: `ddev drush email-reply:status`
+2. Check queue: `ddev drush queue:list`
+3. Process manually: `ddev drush queue:run avc_email_reply`
+4. Check logs: `ddev drush watchdog:show --type=avc_email_reply`
+
+#### Invalid Token Errors
+
+- Token may have expired (default: 30 days)
+- User email doesn't match token
+- Token was tampered with
+
+#### Rate Limiting
+
+Check remaining quota in status output and adjust limits if needed for testing.
+
 ## Troubleshooting
 
 ### Email Not Sending
@@ -321,3 +449,6 @@ settings:
 - [Mailpit](https://github.com/axllent/mailpit) - Email testing tool
 - [SPF Record](https://www.spf-record.com/) - SPF configuration tool
 - [DMARC Guide](https://dmarc.org/) - DMARC documentation
+- [AVC Email Reply Module](../../sites/avc/html/profiles/custom/avc/modules/avc_features/avc_email_reply/README.md) - Detailed email reply documentation
+- [SendGrid Inbound Parse](https://docs.sendgrid.com/for-developers/parsing-email/setting-up-the-inbound-parse-webhook) - SendGrid webhook setup
+- [Mailgun Routes](https://documentation.mailgun.com/en/latest/api-routes.html) - Mailgun routing configuration

@@ -1668,6 +1668,8 @@ toggle_checklist_item() {
 }
 
 # Open a file with the system's default handler or editor
+# Note: For the verify TUI, docs are opened inline in show_item_details()
+# This function is kept for potential future use or external calls
 open_doc_file() {
     local filepath="$1"
     local full_path
@@ -1682,69 +1684,38 @@ open_doc_file() {
     # Check if file exists
     if [[ ! -f "$full_path" ]]; then
         echo -e "${RED}File not found: $full_path${NC}"
-        read -p "Press Enter to continue..."
         return 1
     fi
 
-    # Reset terminal to sane state before opening editors
-    # This is critical because we may be in raw input mode from the TUI
+    # Reset terminal state
     stty sane 2>/dev/null
 
-    # For markdown/text files, prefer terminal-based viewers
-    # This keeps the user in the terminal workflow
     local ext="${filepath##*.}"
 
+    # Use EDITOR if set
     if [[ -n "$EDITOR" ]]; then
-        # Use configured editor (handles TUI editors properly)
         "$EDITOR" "$full_path"
         return 0
     fi
 
-    # For markdown files, prefer terminal viewers that work well
+    # For text files, display with cat
     if [[ "$ext" == "md" || "$ext" == "txt" || "$ext" == "sh" ]]; then
-        if command -v less &>/dev/null; then
-            # less with syntax awareness
-            less "$full_path"
-            return 0
-        elif command -v nano &>/dev/null; then
-            nano "$full_path"
-            return 0
-        fi
-    fi
-
-    # Try VS Code (opens in existing window if running)
-    if command -v code &>/dev/null; then
-        code "$full_path"
-        echo -e "${DIM}Opened in VS Code${NC}"
-        sleep 1
-        return 0
-    fi
-
-    # Try GUI openers as last resort
-    if command -v xdg-open &>/dev/null; then
-        xdg-open "$full_path" 2>/dev/null
-        echo -e "${DIM}Opened with system viewer${NC}"
-        sleep 1
-        return 0
-    elif command -v open &>/dev/null; then
-        open "$full_path"
-        echo -e "${DIM}Opened with system viewer${NC}"
-        sleep 1
-        return 0
-    fi
-
-    # Final fallback - just cat it
-    if command -v cat &>/dev/null; then
         clear
+        echo -e "${BOLD}=== $filepath ===${NC}"
+        echo ""
         cat "$full_path"
         echo ""
-        read -p "Press Enter to continue..."
+        echo -e "${DIM}─── End of file ───${NC}"
+        read -p "Press Enter to return..."
         return 0
     fi
 
-    echo -e "${RED}No suitable viewer found${NC}"
+    # Fallback to cat for any file
+    clear
+    cat "$full_path"
+    echo ""
     read -p "Press Enter to continue..."
-    return 1
+    return 0
 }
 
 # Create OSC 8 hyperlink (clickable in modern terminals)
@@ -1784,73 +1755,88 @@ show_item_details() {
         done <<< "$related_docs"
     fi
 
+    # Reset terminal and show cursor
+    stty sane 2>/dev/null
     cursor_show
+    clear_screen
 
-    while true; do
-        clear_screen
+    # Header
+    echo -e "${BOLD}Item Details${NC}"
+    printf '═%.0s' $(seq 1 $(tput cols))
+    echo ""
 
-        # Header
-        echo -e "${BOLD}Item Details${NC}"
-        printf '═%.0s' $(seq 1 $(tput cols))
-        echo ""
+    # Item text
+    echo -e "${CYAN}Item:${NC}"
+    echo -e "  $item_text"
+    echo ""
 
-        # Item text
-        echo -e "${CYAN}Item:${NC}"
-        echo -e "  $item_text"
-        echo ""
+    # How to verify section
+    echo -e "${CYAN}How to Verify:${NC}"
+    if [[ -n "$how_to_verify" ]]; then
+        echo "$how_to_verify" | while IFS= read -r line; do
+            echo -e "  $line"
+        done
+    else
+        echo -e "  ${DIM}No verification instructions available${NC}"
+    fi
+    echo ""
 
-        # How to verify section
-        echo -e "${CYAN}How to Verify:${NC}"
-        if [[ -n "$how_to_verify" ]]; then
-            echo "$how_to_verify" | while IFS= read -r line; do
-                echo -e "  $line"
-            done
-        else
-            echo -e "  ${DIM}No verification instructions available${NC}"
-        fi
-        echo ""
-
-        # Related docs section with numbered, clickable links
-        echo -e "${CYAN}Related Documentation:${NC}"
-        if [[ ${#docs_array[@]} -gt 0 ]]; then
-            for i in "${!docs_array[@]}"; do
-                local doc="${docs_array[$i]}"
-                local num=$((i + 1))
-                # Create clickable hyperlink with number prefix
-                printf "  ${WHITE}[%d]${NC} " "$num"
-                make_hyperlink "$doc" "$doc"
-                echo ""
-            done
+    # Related docs section with numbered links
+    echo -e "${CYAN}Related Documentation:${NC}"
+    if [[ ${#docs_array[@]} -gt 0 ]]; then
+        for i in "${!docs_array[@]}"; do
+            local doc="${docs_array[$i]}"
+            local num=$((i + 1))
+            printf "  ${WHITE}[%d]${NC} " "$num"
+            make_hyperlink "$doc" "$doc"
             echo ""
-            echo -e "${DIM}Press 1-${#docs_array[@]} to open a doc, or Enter to return${NC}"
-        else
-            echo -e "  ${DIM}No related documentation${NC}"
-            echo ""
-            echo -e "${DIM}Press Enter to return${NC}"
-        fi
-
+        done
+        echo ""
         printf '─%.0s' $(seq 1 $(tput cols))
         echo ""
+        echo -e "Press ${WHITE}1-${#docs_array[@]}${NC} to open a doc, ${WHITE}Enter${NC} to return"
+        echo ""
 
-        # Read user input
-        IFS= read -rsn1 key
+        # Read user choice
+        read -rsn1 key
 
         case "$key" in
-            ''|$'\n')  # Enter - return
-                break
-                ;;
-            [1-9])  # Number - open doc
+            [1-9])
                 local doc_idx=$((key - 1))
                 if [[ $doc_idx -lt ${#docs_array[@]} ]]; then
-                    echo -e "\n${DIM}Opening ${docs_array[$doc_idx]}...${NC}"
-                    open_doc_file "${docs_array[$doc_idx]}"
+                    local doc_to_open="${docs_array[$doc_idx]}"
+                    local full_doc_path
+
+                    # Build full path (use NWP_ROOT if available, else find it)
+                    if [[ "$doc_to_open" = /* ]]; then
+                        full_doc_path="$doc_to_open"
+                    elif [[ -n "$NWP_ROOT" ]]; then
+                        full_doc_path="$NWP_ROOT/$doc_to_open"
+                    else
+                        full_doc_path="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/$doc_to_open"
+                    fi
+
+                    clear
+                    echo -e "${BOLD}=== $doc_to_open ===${NC}"
+                    echo ""
+                    if [[ -f "$full_doc_path" ]]; then
+                        cat "$full_doc_path"
+                    else
+                        echo -e "${RED}File not found: $full_doc_path${NC}"
+                    fi
+                    echo ""
+                    echo -e "${DIM}─── End of file ───${NC}"
+                    read -p "Press Enter to return..."
                 fi
                 ;;
-            'q'|'Q')  # Quit
-                break
-                ;;
         esac
-    done
+    else
+        echo -e "  ${DIM}No related documentation${NC}"
+        echo ""
+        printf '─%.0s' $(seq 1 $(tput cols))
+        echo ""
+        read -p "Press Enter to return..."
+    fi
 
     cursor_hide
 }

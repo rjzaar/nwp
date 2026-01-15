@@ -16,24 +16,62 @@ NWP uses a verification tracking system (`.verification.yml`) to ensure all feat
 1. **Feature Tracking** - Each feature has:
    - Name and description
    - Associated source files
-   - Verification checklist
+   - Verification checklist with detailed instructions
    - Verification status and metadata
    - File hashes (SHA256)
 
-2. **Change Detection** - When files are modified:
+2. **Detailed Verification Instructions** - Each checklist item includes:
+   - **how_to_verify**: Step-by-step verification procedure with:
+     - Numbered steps (1., 2., 3., ...)
+     - Specific commands to execute
+     - Expected outputs and behaviors
+     - Clear success criteria
+   - **related_docs**: Links to relevant documentation:
+     - Command reference pages
+     - User guides
+     - API documentation
+     - Source code files
+
+3. **Change Detection** - When files are modified:
    - SHA256 hashes are compared
    - Mismatches invalidate verification
    - Features marked for re-verification
 
-3. **History Tracking** - All verification actions logged:
+4. **History Tracking** - All verification actions logged:
    - Who verified
    - When verified
    - Checklist completion
    - Notes and context
 
+### Example Enhanced Checklist Item
+
+```yaml
+- text: Run setup.sh on a fresh system and verify all prerequisites install
+  completed: false
+  completed_by: null
+  completed_at: null
+  how_to_verify: |
+    1. On a fresh Ubuntu/Debian system: `cd ~/nwp && ./scripts/commands/setup.sh` or `pl setup`
+    2. Use arrow keys to navigate and SPACE to select required components
+    3. Press ENTER to apply and watch installation process
+    4. Verify Docker: `docker --version` (should show v20+)
+    5. Verify DDEV: `ddev version` (should show v1.21+)
+    6. Check setup status: `pl setup --status` (should show all required components with [✓])
+    Success: All required components marked with [✓] and no error messages during installation
+  related_docs:
+    - docs/reference/commands/setup.md
+    - docs/guides/setup.md
+    - docs/guides/quickstart.md
+```
+
+This format provides testers with:
+- **Clear steps**: Exactly what to run and check
+- **Expected behavior**: What success looks like
+- **Documentation**: Where to find more information
+
 ## Feature Categories
 
-NWP tracks 81 features across these categories:
+NWP tracks 89 features across these categories:
 
 ### Core Scripts (15 features)
 - `setup` - Prerequisites setup (Docker, DDEV, Linode, GitLab)

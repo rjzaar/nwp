@@ -6487,30 +6487,104 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Ensure cnwp.yml has a test recipe configured (e.g., d recipe)
+        2. Run generator: bash lib/env-generate.sh d testsite /tmp/test-env-gen
+        3. Verify .env created: cat /tmp/test-env-gen/.env
+        4. Check header comments: recipe name, profile, generation timestamp
+        5. Verify PROJECT_NAME=testsite
+        Success: .env file generated from recipe, sitename interpolated, header documentation present
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/env-generate.sh
+        - docs/guides/setup.md
     - text: Verify recipe-specific templates are used
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Check templates exist: ls templates/env/.env.*
+        2. Create recipe template: echo "CUSTOM_VAR=recipe_specific" > templates/env/.env.testrecipe
+        3. Run generator: bash lib/env-generate.sh testrecipe testsite /tmp/test-recipe
+        4. Verify custom var present: grep CUSTOM_VAR /tmp/test-recipe/.env
+        5. Test fallback to .env.base if recipe template missing
+        Success: Recipe-specific template used when exists, fallback to base works
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/env-generate.sh
     - text: Test profile-based template fallback
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Check profile templates: ls templates/env/.env.social .env.varbase .env.standard
+        2. Configure recipe with profile in cnwp.yml: profile: social
+        3. Run generator for recipe without specific template
+        4. Verify uses .env.social: grep profile-specific-setting /tmp/test-profile/.env
+        5. Test fallback chain: recipe → profile → base
+        Success: Profile template used when recipe template missing, base as final fallback
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/env-generate.sh
     - text: Verify variable substitution works
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Create template with variables: echo 'PROJECT_NAME=${PROJECT_NAME}' > templates/env/.env.test
+        2. Run generator: bash lib/env-generate.sh test myproject /tmp/test-subst
+        3. Verify substitution: grep 'PROJECT_NAME=myproject' /tmp/test-subst/.env
+        4. Test all substitution vars: DRUPAL_PROFILE, DRUPAL_WEBROOT, DRUPAL_THEME, REDIS_ENABLED, etc.
+        5. Verify proper escaping of special chars
+        Success: All ${VAR} placeholders replaced with actual values from cnwp.yml/defaults
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/env-generate.sh
     - text: Test service configuration (Redis, Solr, Memcache)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Configure recipe in cnwp.yml with services enabled
+        2. Run generator: bash lib/env-generate.sh socialrecipe testsite /tmp/test-services
+        3. Verify Redis: grep 'REDIS_ENABLED=1' /tmp/test-services/.env
+        4. Verify Solr: grep 'SOLR_ENABLED=1' /tmp/test-services/.env
+        5. Check service-specific config: SOLR_CORE, Redis host/port
+        6. Test profile defaults: social/varbase should enable Redis/Solr by default
+        Success: Service configuration from cnwp.yml propagated to .env, profile defaults work
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/env-generate.sh
     - text: Verify .env.local.example creation
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run generator: bash lib/env-generate.sh d testsite /tmp/test-local-example
+        2. Verify example created: cat /tmp/test-local-example/.env.local.example
+        3. Check contains documentation for local overrides
+        4. Verify .env.local itself NOT created (user does manually)
+        5. Verify .secrets.example.yml also created
+        Success: Example files created as templates, actual secret files not auto-created
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/env-generate.sh
     - text: Test with different profiles (social, varbase, standard)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Test social: configure recipe with profile: social, run generator
+        2. Verify social-specific settings: THEME=socialblue, REDIS_ENABLED=1, SOLR_ENABLED=1
+        3. Test varbase: profile: varbase
+        4. Verify varbase-specific: THEME=vartheme_bs5, services enabled
+        5. Test standard: profile: standard
+        6. Verify standard: THEME=olivero, minimal services
+        Success: Each profile generates appropriate theme and service configuration
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/env-generate.sh
+        - docs/guides/setup.md
     verified: false
     verified_by: null
     verified_at: null

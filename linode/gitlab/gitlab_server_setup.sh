@@ -34,7 +34,7 @@
 # <UDF name="install_runner" label="Install GitLab Runner" oneof="yes,no" default="yes" />
 # <UDF name="runner_tags" label="Runner Tags" default="docker,shell" example="docker,shell,linux" />
 # <UDF name="configure_email" label="Configure Email (SMTP/DKIM)" oneof="yes,no" default="yes" />
-# <UDF name="linode_api_token" label="Linode API Token (for DNS)" example="optional - needed for SPF/DKIM/DMARC DNS" />
+# <UDF name="api_token" label="Linode API Token (for DNS)" example="optional - needed for SPF/DKIM/DMARC DNS" />
 
 set -e  # Exit on error
 set -x  # Log all commands (for debugging)
@@ -564,9 +564,9 @@ Email Addresses:
   Admin forwarding: git@${MAIL_DOMAIN} -> $EMAIL
 
 Services Configured:
-  [✓] Postfix (SMTP server)
-  [✓] OpenDKIM (Email signing)
-  [✓] Submission port (587)
+  [[OK]] Postfix (SMTP server)
+  [[OK]] OpenDKIM (Email signing)
+  [[OK]] Submission port (587)
 
 DNS Records Required:
 ----------------------
@@ -599,11 +599,11 @@ DNS Records Required:
 EMAILINFO
 
     # Configure DNS if Linode API token provided
-    if [ -n "$LINODE_API_TOKEN" ]; then
+    if [ -n "$API_TOKEN" ]; then
         echo "[INFO] Configuring DNS records via Linode API..."
 
         # Get domain ID
-        DOMAIN_ID=$(curl -s -H "Authorization: Bearer $LINODE_API_TOKEN" \
+        DOMAIN_ID=$(curl -s -H "Authorization: Bearer $API_TOKEN" \
             "https://api.linode.com/v4/domains" | \
             python3 -c "import sys,json; domains=json.load(sys.stdin)['data']; print(next((d['id'] for d in domains if d['domain']=='${MAIL_DOMAIN}'), ''))" 2>/dev/null || echo "")
 
@@ -611,25 +611,25 @@ EMAILINFO
             echo "[INFO] Found domain ID: $DOMAIN_ID"
 
             # Create/update SPF record
-            curl -s -X POST -H "Authorization: Bearer $LINODE_API_TOKEN" \
+            curl -s -X POST -H "Authorization: Bearer $API_TOKEN" \
                 -H "Content-Type: application/json" \
                 -d "{\"type\": \"TXT\", \"name\": \"\", \"target\": \"v=spf1 ip4:${MAIL_IP} a mx -all\", \"ttl_sec\": 300}" \
                 "https://api.linode.com/v4/domains/${DOMAIN_ID}/records" >/dev/null 2>&1 || true
 
             # Create DKIM record
-            curl -s -X POST -H "Authorization: Bearer $LINODE_API_TOKEN" \
+            curl -s -X POST -H "Authorization: Bearer $API_TOKEN" \
                 -H "Content-Type: application/json" \
                 -d "{\"type\": \"TXT\", \"name\": \"default._domainkey\", \"target\": \"v=DKIM1; h=sha256; k=rsa; p=${DKIM_RECORD}\", \"ttl_sec\": 300}" \
                 "https://api.linode.com/v4/domains/${DOMAIN_ID}/records" >/dev/null 2>&1 || true
 
             # Create DMARC record
-            curl -s -X POST -H "Authorization: Bearer $LINODE_API_TOKEN" \
+            curl -s -X POST -H "Authorization: Bearer $API_TOKEN" \
                 -H "Content-Type: application/json" \
                 -d "{\"type\": \"TXT\", \"name\": \"_dmarc\", \"target\": \"v=DMARC1; p=quarantine; sp=quarantine; rua=mailto:dmarc@${MAIL_DOMAIN}; ruf=mailto:dmarc@${MAIL_DOMAIN}; adkim=r; aspf=r; pct=100\", \"ttl_sec\": 300}" \
                 "https://api.linode.com/v4/domains/${DOMAIN_ID}/records" >/dev/null 2>&1 || true
 
             # Create MX record
-            curl -s -X POST -H "Authorization: Bearer $LINODE_API_TOKEN" \
+            curl -s -X POST -H "Authorization: Bearer $API_TOKEN" \
                 -H "Content-Type: application/json" \
                 -d "{\"type\": \"MX\", \"name\": \"\", \"target\": \"${HOSTNAME}\", \"priority\": 10, \"ttl_sec\": 300}" \
                 "https://api.linode.com/v4/domains/${DOMAIN_ID}/records" >/dev/null 2>&1 || true

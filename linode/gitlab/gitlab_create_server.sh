@@ -288,7 +288,7 @@ STACKSCRIPT_DATA=$(cat <<EOF
     "install_runner": "$INSTALL_RUNNER",
     "runner_tags": "$RUNNER_TAGS",
     "configure_email": "$CONFIGURE_EMAIL",
-    "linode_api_token": "$LINODE_API_TOKEN"
+    "api_token": "$LINODE_API_TOKEN"
 }
 EOF
 )

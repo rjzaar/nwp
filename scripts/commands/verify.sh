@@ -1667,57 +1667,154 @@ toggle_checklist_item() {
     fi
 }
 
+# Open a file with the system's default handler or editor
+open_doc_file() {
+    local filepath="$1"
+    local full_path
+
+    # Get absolute path
+    if [[ "$filepath" = /* ]]; then
+        full_path="$filepath"
+    else
+        full_path="$(cd "$(dirname "$VERIFICATION_FILE")" && pwd)/$filepath"
+    fi
+
+    # Check if file exists
+    if [[ ! -f "$full_path" ]]; then
+        echo -e "${RED}File not found: $full_path${NC}"
+        sleep 1
+        return 1
+    fi
+
+    # Detect the best way to open the file
+    if [[ -n "$EDITOR" ]]; then
+        # Use configured editor
+        "$EDITOR" "$full_path"
+    elif command -v xdg-open &>/dev/null; then
+        # Linux
+        xdg-open "$full_path" 2>/dev/null &
+    elif command -v open &>/dev/null; then
+        # macOS
+        open "$full_path"
+    elif command -v code &>/dev/null; then
+        # VS Code
+        code "$full_path"
+    elif command -v nano &>/dev/null; then
+        nano "$full_path"
+    elif command -v less &>/dev/null; then
+        less "$full_path"
+    else
+        echo -e "${RED}No suitable viewer found${NC}"
+        sleep 1
+        return 1
+    fi
+}
+
+# Create OSC 8 hyperlink (clickable in modern terminals)
+# Format: \e]8;;URL\e\\TEXT\e]8;;\e\\
+make_hyperlink() {
+    local url="$1"
+    local text="$2"
+    local full_path
+
+    # Convert to absolute file:// URL
+    if [[ "$url" = /* ]]; then
+        full_path="$url"
+    else
+        full_path="$(cd "$(dirname "$VERIFICATION_FILE")" && pwd)/$url"
+    fi
+
+    # OSC 8 hyperlink format
+    printf '\e]8;;file://%s\e\\%s\e]8;;\e\\' "$full_path" "$text"
+}
+
 # Show item details (how_to_verify and related_docs)
 show_item_details() {
     local feature="$1"
     local item_idx="$2"
     local item_text="$3"
 
-    cursor_show
-    clear_screen
-
-    # Header
-    echo -e "${BOLD}Item Details${NC}"
-    printf '═%.0s' $(seq 1 $(tput cols))
-    echo ""
-
-    # Item text
-    echo -e "${CYAN}Item:${NC}"
-    echo -e "  $item_text"
-    echo ""
-
-    # Get details
+    # Get details once
     local details=$(get_checklist_item_details "$feature" "$item_idx")
     local how_to_verify="${details%%|||*}"
     local related_docs="${details##*|||}"
 
-    # How to verify section
-    echo -e "${CYAN}How to Verify:${NC}"
-    if [[ -n "$how_to_verify" ]]; then
-        echo "$how_to_verify" | while IFS= read -r line; do
-            echo -e "  $line"
-        done
-    else
-        echo -e "  ${DIM}No verification instructions available${NC}"
-    fi
-    echo ""
-
-    # Related docs section
-    echo -e "${CYAN}Related Documentation:${NC}"
+    # Store docs in array for selection
+    local -a docs_array=()
     if [[ -n "$related_docs" ]]; then
-        echo "$related_docs" | while IFS= read -r doc; do
-            if [[ -n "$doc" ]]; then
-                echo -e "  • $doc"
-            fi
-        done
-    else
-        echo -e "  ${DIM}No related documentation${NC}"
+        while IFS= read -r doc; do
+            [[ -n "$doc" ]] && docs_array+=("$doc")
+        done <<< "$related_docs"
     fi
-    echo ""
 
-    printf '─%.0s' $(seq 1 $(tput cols))
-    echo ""
-    read -p "Press Enter to return..."
+    cursor_show
+
+    while true; do
+        clear_screen
+
+        # Header
+        echo -e "${BOLD}Item Details${NC}"
+        printf '═%.0s' $(seq 1 $(tput cols))
+        echo ""
+
+        # Item text
+        echo -e "${CYAN}Item:${NC}"
+        echo -e "  $item_text"
+        echo ""
+
+        # How to verify section
+        echo -e "${CYAN}How to Verify:${NC}"
+        if [[ -n "$how_to_verify" ]]; then
+            echo "$how_to_verify" | while IFS= read -r line; do
+                echo -e "  $line"
+            done
+        else
+            echo -e "  ${DIM}No verification instructions available${NC}"
+        fi
+        echo ""
+
+        # Related docs section with numbered, clickable links
+        echo -e "${CYAN}Related Documentation:${NC}"
+        if [[ ${#docs_array[@]} -gt 0 ]]; then
+            for i in "${!docs_array[@]}"; do
+                local doc="${docs_array[$i]}"
+                local num=$((i + 1))
+                # Create clickable hyperlink with number prefix
+                printf "  ${WHITE}[%d]${NC} " "$num"
+                make_hyperlink "$doc" "$doc"
+                echo ""
+            done
+            echo ""
+            echo -e "${DIM}Press 1-${#docs_array[@]} to open a doc, or Enter to return${NC}"
+        else
+            echo -e "  ${DIM}No related documentation${NC}"
+            echo ""
+            echo -e "${DIM}Press Enter to return${NC}"
+        fi
+
+        printf '─%.0s' $(seq 1 $(tput cols))
+        echo ""
+
+        # Read user input
+        IFS= read -rsn1 key
+
+        case "$key" in
+            ''|$'\n')  # Enter - return
+                break
+                ;;
+            [1-9])  # Number - open doc
+                local doc_idx=$((key - 1))
+                if [[ $doc_idx -lt ${#docs_array[@]} ]]; then
+                    echo -e "\n${DIM}Opening ${docs_array[$doc_idx]}...${NC}"
+                    open_doc_file "${docs_array[$doc_idx]}"
+                fi
+                ;;
+            'q'|'Q')  # Quit
+                break
+                ;;
+        esac
+    done
+
     cursor_hide
 }
 

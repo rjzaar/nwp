@@ -6086,34 +6086,115 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Create test site dir: mkdir -p /tmp/test-ddev-site
+        2. Create .env: echo -e "PROJECT_NAME=testsite\\nDRUPAL_WEBROOT=web\\nPHP_VERSION=8.2" > /tmp/test-ddev-site/.env
+        3. Run generator: bash lib/ddev-generate.sh /tmp/test-ddev-site
+        4. Verify config created: cat /tmp/test-ddev-site/.ddev/config.yaml
+        5. Check project name, docroot, PHP version match .env values
+        Success: DDEV config.yaml generated from .env, all settings applied correctly
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/ddev-generate.sh
+        - docs/guides/setup.md
     - text: Verify config.yaml is created correctly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Generate config using lib/ddev-generate.sh
+        2. Verify file structure: name, type, docroot, php_version, webserver_type, database section
+        3. Verify web_environment variables present: DRUPAL_PROFILE, DRUPAL_CONFIG_PATH, ENV_TYPE
+        4. Verify hooks section exists with post-start composer install
+        5. Check YAML is valid: ddev config --show or yq eval /tmp/test-ddev-site/.ddev/config.yaml
+        Success: Valid DDEV config.yaml, all required sections present, proper YAML syntax
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/ddev-generate.sh
     - text: Test with different PHP versions (8.1, 8.2, 8.3)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Test PHP 8.1: echo "PHP_VERSION=8.1" > /tmp/test-php/.env && bash lib/ddev-generate.sh /tmp/test-php
+        2. Verify: grep 'php_version: "8.1"' /tmp/test-php/.ddev/config.yaml
+        3. Test PHP 8.2: echo "PHP_VERSION=8.2" > /tmp/test-php2/.env && bash lib/ddev-generate.sh /tmp/test-php2
+        4. Verify: grep 'php_version: "8.2"' /tmp/test-php2/.ddev/config.yaml
+        5. Test PHP 8.3: similar process
+        Success: PHP version from .env correctly inserted into config.yaml
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/ddev-generate.sh
     - text: Test with different database types (mysql, mariadb)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Test MariaDB: echo -e "DATABASE_TYPE=mariadb\\nDATABASE_VERSION=10.11" > /tmp/test-db/.env
+        2. Generate: bash lib/ddev-generate.sh /tmp/test-db
+        3. Verify database section: grep -A2 'database:' /tmp/test-db/.ddev/config.yaml
+        4. Test MySQL: echo -e "DATABASE_TYPE=mysql\\nDATABASE_VERSION=8.0" > /tmp/test-db2/.env
+        5. Generate and verify similar to above
+        Success: Database type and version from .env correctly set in config
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/ddev-generate.sh
     - text: Verify webserver type configuration (nginx-fpm, apache-fpm)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Test nginx: echo "WEBSERVER_TYPE=nginx-fpm" > /tmp/test-web/.env
+        2. Generate: bash lib/ddev-generate.sh /tmp/test-web
+        3. Verify: grep 'webserver_type: nginx-fpm' /tmp/test-web/.ddev/config.yaml
+        4. Test apache: echo "WEBSERVER_TYPE=apache-fpm" > /tmp/test-web2/.env
+        5. Generate and verify: grep 'webserver_type: apache-fpm' /tmp/test-web2/.ddev/config.yaml
+        Success: Webserver type correctly configured from .env
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/ddev-generate.sh
     - text: Test environment variable injection
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Create .env with env vars: echo -e "DRUPAL_PROFILE=social\\nSTAGE_FILE_PROXY_ORIGIN=https://prod.example.com" > /tmp/test-env/.env
+        2. Generate: bash lib/ddev-generate.sh /tmp/test-env
+        3. Verify web_environment section: grep -A10 'web_environment:' /tmp/test-env/.ddev/config.yaml
+        4. Check DRUPAL_PROFILE=social present
+        5. Check STAGE_FILE_PROXY_ORIGIN present
+        Success: Environment variables from .env injected into DDEV config
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/ddev-generate.sh
     - text: Verify config.local.yaml.example generation
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Generate config: bash lib/ddev-generate.sh /tmp/test-local
+        2. Verify example created: cat /tmp/test-local/.ddev/config.local.yaml.example
+        3. Check contains examples for: php_version override, additional_hostnames, web_environment, php_ini
+        4. Verify it's documentation only (commented examples)
+        5. Verify actual config.local.yaml is NOT created (user creates manually)
+        Success: Example file created as template, actual config.local.yaml not auto-created
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/ddev-generate.sh
     - text: Test service recommendations (Redis, Solr, Memcache)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Test with Redis: echo -e "REDIS_ENABLED=1\\nSOLR_ENABLED=1" > /tmp/test-svc/.env
+        2. Generate: bash lib/ddev-generate.sh /tmp/test-svc
+        3. Verify recommendations in config: grep -A5 'Recommended DDEV' /tmp/test-svc/.ddev/config.yaml
+        4. Should show: ddev get ddev/ddev-redis and ddev get ddev/ddev-solr-drupal
+        5. Test with services disabled: REDIS_ENABLED=0 should not show recommendations
+        Success: Service recommendations added as comments when services enabled in .env
+      related_docs:
+        - docs/reference/api/library-functions.md
+        - lib/ddev-generate.sh
     verified: false
     verified_by: null
     verified_at: null

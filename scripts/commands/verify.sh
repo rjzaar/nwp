@@ -1686,6 +1686,10 @@ open_doc_file() {
         return 1
     fi
 
+    # Reset terminal to sane state before opening editors
+    # This is critical because we may be in raw input mode from the TUI
+    stty sane 2>/dev/null
+
     # For markdown/text files, prefer terminal-based viewers
     # This keeps the user in the terminal workflow
     local ext="${filepath##*.}"

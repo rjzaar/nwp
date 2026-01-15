@@ -2025,22 +2025,91 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. After running: pl live <sitename>
+
+        2. Check DNS record created: dig <sitename>.nwpcode.org
+
+        3. Verify A record points to server IP
+
+        4. Check Cloudflare dashboard for DNS entry
+
+        5. Success: DNS resolves correctly, record visible in Cloudflare
+
+        '
+      related_docs:
+      - docs/reference/commands/live.md
+      - docs/deployment/linode-deployment.md
     - text: Check SSL certificate is installed correctly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. After live provisioning completes
+
+        2. Check certificate: curl -vI https://<sitename>.nwpcode.org 2>&1 | grep "SSL certificate"
+
+        3. Verify Let''s Encrypt certificate issued
+
+        4. Test HTTPS access in browser (no warnings)
+
+        5. Success: Valid SSL certificate, HTTPS works, no browser warnings
+
+        '
+      related_docs:
+      - docs/reference/commands/live.md
+      - docs/deployment/production-deployment.md
     - text: Verify site is accessible at sitename.nwpcode.org
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Open browser to https://<sitename>.nwpcode.org
+
+        2. Verify Drupal site loads
+
+        3. Check HTTP redirects to HTTPS
+
+        4. Test login works
+
+        5. Success: Site accessible, redirects work, Drupal functioning
+
+        '
+      related_docs:
+      - docs/reference/commands/live.md
     - text: Test SSH access to provisioned server
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl live --ssh <sitename>
+
+        2. Or: ssh <user>@<server-ip> (check cnwp.yml for IP)
+
+        3. Verify successful SSH connection
+
+        4. Check you can navigate to /var/www/<sitename>
+
+        5. Success: SSH access granted, site directory accessible
+
+        '
+      related_docs:
+      - docs/reference/commands/live.md
+      - docs/deployment/linode-deployment.md
     - text: Verify firewall rules are applied
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. SSH to provisioned server
+
+        2. Check UFW status: sudo ufw status verbose
+
+        3. Verify only ports 22, 80, 443 are open
+
+        4. Test fail2ban: sudo fail2ban-client status
+
+        5. Success: Firewall active, only required ports open, fail2ban running
+
+        '
+      related_docs:
+      - docs/reference/commands/live.md
+      - docs/deployment/production-deployment.md
     verified: false
     verified_by: null
     verified_at: null
@@ -2070,15 +2139,9 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg --preflight <sitename>
-        2. Verify pre-deployment checks run without actual deployment
-        3. Success indicators:
-           - All validation checks pass
-           - No deployment steps execute
-           - Exit code 0 if checks pass
-        4. Check output lists detected issues (if any)
-        5. Verify staging site not modified
+      how_to_verify: "1. Run: pl dev2stg --preflight <sitename>\n2. Verify pre-deployment checks run without actual deployment\n\
+        3. Success indicators:\n   - All validation checks pass\n   - No deployment steps execute\n   - Exit code 0 if checks\
+        \ pass\n4. Check output lists detected issues (if any)\n5. Verify staging site not modified\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/deployment/environments.md
@@ -2086,31 +2149,19 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg <sitename> (without -y flag)
-        2. Navigate database source menu using arrow keys
-        3. Navigate test preset menu
-        4. Success indicators:
-           - Interactive menus display correctly
-           - Can select database source (auto/production/development)
-           - Can select test preset (quick/essential/full/skip)
-           - Selected options are applied correctly
-        5. Complete deployment and verify choices were honored
+      how_to_verify: "1. Run: pl dev2stg <sitename> (without -y flag)\n2. Navigate database source menu using arrow keys\n\
+        3. Navigate test preset menu\n4. Success indicators:\n   - Interactive menus display correctly\n   - Can select database\
+        \ source (auto/production/development)\n   - Can select test preset (quick/essential/full/skip)\n   - Selected options\
+        \ are applied correctly\n5. Complete deployment and verify choices were honored\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
     - text: 'Test automated mode: ./dev2stg.sh -y <sitename>'
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg -y <sitename>
-        2. Verify deployment proceeds without prompts
-        3. Success indicators:
-           - No interactive prompts appear
-           - Deployment completes automatically
-           - Default options are used (auto DB, essential tests)
-           - Exit code 0 on success
-        4. Check staging site is updated correctly
+      how_to_verify: "1. Run: pl dev2stg -y <sitename>\n2. Verify deployment proceeds without prompts\n3. Success indicators:\n\
+        \   - No interactive prompts appear\n   - Deployment completes automatically\n   - Default options are used (auto\
+        \ DB, essential tests)\n   - Exit code 0 on success\n4. Check staging site is updated correctly\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/deployment/cicd.md
@@ -2118,16 +2169,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Delete staging site if exists: pl delete <sitename>-stg
-        2. Run: pl dev2stg <sitename>
-        3. Verify staging site is created automatically
-        4. Success indicators:
-           - Staging site directory created
-           - DDEV config generated
-           - Site appears in pl status output
-           - Deployment proceeds after creation
-        5. Check staging site works: ddev describe <sitename>-stg
+      how_to_verify: "1. Delete staging site if exists: pl delete <sitename>-stg\n2. Run: pl dev2stg <sitename>\n3. Verify\
+        \ staging site is created automatically\n4. Success indicators:\n   - Staging site directory created\n   - DDEV config\
+        \ generated\n   - Site appears in pl status output\n   - Deployment proceeds after creation\n5. Check staging site\
+        \ works: ddev describe <sitename>-stg\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/reference/commands/install.md
@@ -2135,15 +2180,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg --db-source=auto <sitename>
-        2. Verify system auto-selects best database source
-        3. Success indicators:
-           - Uses recent production backup if available (<24hrs)
-           - Falls back to development DB if no recent backup
-           - Auto-selection logged in output
-           - Database import succeeds
-        4. Check staging database content matches source
+      how_to_verify: "1. Run: pl dev2stg --db-source=auto <sitename>\n2. Verify system auto-selects best database source\n\
+        3. Success indicators:\n   - Uses recent production backup if available (<24hrs)\n   - Falls back to development DB\
+        \ if no recent backup\n   - Auto-selection logged in output\n   - Database import succeeds\n4. Check staging database\
+        \ content matches source\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/deployment/environments.md
@@ -2151,15 +2191,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg --db-source=production <sitename>
-        2. Verify fresh backup created from production server
-        3. Success indicators:
-           - SSH connection to production succeeds
-           - Database exported from production
-           - Backup imported to staging
-           - Database sanitization applied
-        4. Check user emails are anonymized: ddev drush sql:query "SELECT mail FROM users LIMIT 5"
+      how_to_verify: "1. Run: pl dev2stg --db-source=production <sitename>\n2. Verify fresh backup created from production\
+        \ server\n3. Success indicators:\n   - SSH connection to production succeeds\n   - Database exported from production\n\
+        \   - Backup imported to staging\n   - Database sanitization applied\n4. Check user emails are anonymized: ddev drush\
+        \ sql:query \"SELECT mail FROM users LIMIT 5\"\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/reference/commands/prod2stg.md
@@ -2167,15 +2202,9 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Create manual backup: pl backup <sitename>
-        2. Run: pl dev2stg --db-source=backup <sitename>
-        3. Verify most recent backup file is used
-        4. Success indicators:
-           - Backup file detected in sitebackups/
-           - Backup imported successfully
-           - Database matches backup content
-        5. Check backup timestamp in deployment output
+      how_to_verify: "1. Create manual backup: pl backup <sitename>\n2. Run: pl dev2stg --db-source=backup <sitename>\n3.\
+        \ Verify most recent backup file is used\n4. Success indicators:\n   - Backup file detected in sitebackups/\n   -\
+        \ Backup imported successfully\n   - Database matches backup content\n5. Check backup timestamp in deployment output\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/reference/commands/backup.md
@@ -2183,15 +2212,9 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg --db-source=development <sitename>
-        2. Verify development database cloned to staging
-        3. Success indicators:
-           - Development DB exported
-           - Staging DB replaced with dev content
-           - No production data involved
-           - Fast deployment (no remote fetch)
-        4. Check staging has development test data
+      how_to_verify: "1. Run: pl dev2stg --db-source=development <sitename>\n2. Verify development database cloned to staging\n\
+        3. Success indicators:\n   - Development DB exported\n   - Staging DB replaced with dev content\n   - No production\
+        \ data involved\n   - Fast deployment (no remote fetch)\n4. Check staging has development test data\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/deployment/environments.md
@@ -2199,15 +2222,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Ensure production server configured and accessible
-        2. Run: pl dev2stg --fresh-backup <sitename>
-        3. Verify new backup created from production (not cached)
-        4. Success indicators:
-           - Production backup created (ignore existing backups)
-           - Fresh data synced to staging
-           - Backup timestamp is current
-        5. Check sitebackups/ for new backup file
+      how_to_verify: "1. Ensure production server configured and accessible\n2. Run: pl dev2stg --fresh-backup <sitename>\n\
+        3. Verify new backup created from production (not cached)\n4. Success indicators:\n   - Production backup created\
+        \ (ignore existing backups)\n   - Fresh data synced to staging\n   - Backup timestamp is current\n5. Check sitebackups/\
+        \ for new backup file\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/reference/commands/backup.md
@@ -2215,29 +2233,18 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg --dev-db <sitename>
-        2. Verify development database used (shorthand for --db-source=development)
-        3. Success indicators:
-           - Development DB cloned to staging
-           - No production server accessed
-           - Fast deployment
-        4. Check staging database content matches development
+      how_to_verify: "1. Run: pl dev2stg --dev-db <sitename>\n2. Verify development database used (shorthand for --db-source=development)\n\
+        3. Success indicators:\n   - Development DB cloned to staging\n   - No production server accessed\n   - Fast deployment\n\
+        4. Check staging database content matches development\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
     - text: Test with -t quick (quick test preset)
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg -y -t quick <sitename>
-        2. Verify only quick tests run (PHPStan, PHPCS)
-        3. Success indicators:
-           - Tests complete in ~30 seconds
-           - Static analysis and coding standards checked
-           - No unit/functional tests run
-           - Deployment succeeds if tests pass
-        4. Check test output shows only quick test results
+      how_to_verify: "1. Run: pl dev2stg -y -t quick <sitename>\n2. Verify only quick tests run (PHPStan, PHPCS)\n3. Success\
+        \ indicators:\n   - Tests complete in ~30 seconds\n   - Static analysis and coding standards checked\n   - No unit/functional\
+        \ tests run\n   - Deployment succeeds if tests pass\n4. Check test output shows only quick test results\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/reference/commands/test.md
@@ -2245,14 +2252,9 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg -y -t essential <sitename>
-        2. Verify essential tests run (PHPUnit, PHPStan, PHPCS)
-        3. Success indicators:
-           - Tests complete in 2-5 minutes
-           - Unit tests, static analysis, and coding standards checked
-           - Core quality gates validated
-        4. Check test output shows all essential test results
+      how_to_verify: "1. Run: pl dev2stg -y -t essential <sitename>\n2. Verify essential tests run (PHPUnit, PHPStan, PHPCS)\n\
+        3. Success indicators:\n   - Tests complete in 2-5 minutes\n   - Unit tests, static analysis, and coding standards\
+        \ checked\n   - Core quality gates validated\n4. Check test output shows all essential test results\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/reference/commands/test.md
@@ -2260,14 +2262,9 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg -y -t full <sitename>
-        2. Verify all tests run (unit, functional, static analysis, frontend, security)
-        3. Success indicators:
-           - Tests complete in 15-30 minutes
-           - Comprehensive test coverage
-           - All quality gates validated
-        4. Review detailed test report
+      how_to_verify: "1. Run: pl dev2stg -y -t full <sitename>\n2. Verify all tests run (unit, functional, static analysis,\
+        \ frontend, security)\n3. Success indicators:\n   - Tests complete in 15-30 minutes\n   - Comprehensive test coverage\n\
+        \   - All quality gates validated\n4. Review detailed test report\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/reference/commands/test.md
@@ -2275,28 +2272,18 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg -y -t skip <sitename>
-        2. Verify no tests execute (deployment only)
-        3. Success indicators:
-           - Tests skipped in output
-           - Deployment completes quickly
-           - Only deployment steps run
-        4. Useful for rapid iteration during development
+      how_to_verify: "1. Run: pl dev2stg -y -t skip <sitename>\n2. Verify no tests execute (deployment only)\n3. Success indicators:\n\
+        \   - Tests skipped in output\n   - Deployment completes quickly\n   - Only deployment steps run\n4. Useful for rapid\
+        \ iteration during development\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
     - text: 'Test custom test selection: -t phpunit,phpstan'
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg -y -t phpunit,phpstan <sitename>
-        2. Verify only specified tests run
-        3. Success indicators:
-           - Only PHPUnit and PHPStan execute
-           - Other tests skipped
-           - Custom test combination works
-        4. Check test output shows only selected tests
+      how_to_verify: "1. Run: pl dev2stg -y -t phpunit,phpstan <sitename>\n2. Verify only specified tests run\n3. Success\
+        \ indicators:\n   - Only PHPUnit and PHPStan execute\n   - Other tests skipped\n   - Custom test combination works\n\
+        4. Check test output shows only selected tests\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/reference/commands/test.md
@@ -2304,25 +2291,11 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg -y <sitename>
-        2. Monitor output for all 11 steps:
-           - State detection & preflight
-           - Create/verify staging site
-           - Export configuration
-           - Sync files
-           - Restore/sync database
-           - Composer install --no-dev
-           - Database updates (drush updatedb)
-           - Import configuration (drush cim)
-           - Set production mode
-           - Run tests
-           - Display staging URL
-        3. Success indicators:
-           - Each step shows success checkmark
-           - No errors in any step
-           - Final "Deployment complete" message
-        4. Verify staging URL accessible
+      how_to_verify: "1. Run: pl dev2stg -y <sitename>\n2. Monitor output for all 11 steps:\n   - State detection & preflight\n\
+        \   - Create/verify staging site\n   - Export configuration\n   - Sync files\n   - Restore/sync database\n   - Composer\
+        \ install --no-dev\n   - Database updates (drush updatedb)\n   - Import configuration (drush cim)\n   - Set production\
+        \ mode\n   - Run tests\n   - Display staging URL\n3. Success indicators:\n   - Each step shows success checkmark\n\
+        \   - No errors in any step\n   - Final \"Deployment complete\" message\n4. Verify staging URL accessible\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/deployment/production-deployment.md
@@ -2330,16 +2303,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. After dev2stg deployment, check staging site
-        2. Run: ddev drush <sitename>-stg status
-        3. Verify production settings:
-           - CSS/JS aggregation enabled
-           - Page caching enabled
-           - Development modules disabled (devel, stage_file_proxy)
-           - Error display set to "log only"
-        4. Check: ddev drush <sitename>-stg pml | grep -i devel (should show uninstalled)
-        5. Test caching: curl -I https://<sitename>-stg.ddev.site (check for cache headers)
+      how_to_verify: "1. After dev2stg deployment, check staging site\n2. Run: ddev drush <sitename>-stg status\n3. Verify\
+        \ production settings:\n   - CSS/JS aggregation enabled\n   - Page caching enabled\n   - Development modules disabled\
+        \ (devel, stage_file_proxy)\n   - Error display set to \"log only\"\n4. Check: ddev drush <sitename>-stg pml | grep\
+        \ -i devel (should show uninstalled)\n5. Test caching: curl -I https://<sitename>-stg.ddev.site (check for cache headers)\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/reference/commands/make.md
@@ -2348,15 +2315,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. After dev2stg with production database
-        2. Check user emails are anonymized: ddev drush <sitename>-stg sql:query "SELECT name, mail FROM users LIMIT 10"
-        3. Success indicators:
-           - User emails like user1@example.com, user2@example.com
-           - No real user email addresses
-           - Passwords reset to secure hashes
-        4. Verify admin password changed (shown in deployment output)
-        5. Check sensitive config sanitized
+      how_to_verify: "1. After dev2stg with production database\n2. Check user emails are anonymized: ddev drush <sitename>-stg\
+        \ sql:query \"SELECT name, mail FROM users LIMIT 10\"\n3. Success indicators:\n   - User emails like user1@example.com,\
+        \ user2@example.com\n   - No real user email addresses\n   - Passwords reset to secure hashes\n4. Verify admin password\
+        \ changed (shown in deployment output)\n5. Check sensitive config sanitized\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/deployment/environments.md
@@ -2364,15 +2326,9 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Interrupt deployment at step 5: Ctrl+C during database restore
-        2. Run: pl dev2stg -s 5 <sitename>
-        3. Verify deployment resumes from step 5
-        4. Success indicators:
-           - Steps 1-4 skipped
-           - Step 5 and onward execute
-           - Deployment completes successfully
-        5. Useful for recovery from failures
+      how_to_verify: "1. Interrupt deployment at step 5: Ctrl+C during database restore\n2. Run: pl dev2stg -s 5 <sitename>\n\
+        3. Verify deployment resumes from step 5\n4. Success indicators:\n   - Steps 1-4 skipped\n   - Step 5 and onward execute\n\
+        \   - Deployment completes successfully\n5. Useful for recovery from failures\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
     verified: false
@@ -2390,15 +2346,9 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl stg2prod -b <sitename>
-        2. Verify production backup created before deployment
-        3. Success indicators:
-           - Backup file created in sitebackups/
-           - Backup timestamp recorded
-           - Deployment proceeds after backup
-        4. Check backup can be restored if needed
-        5. Verify backup includes database and files
+      how_to_verify: "1. Run: pl stg2prod -b <sitename>\n2. Verify production backup created before deployment\n3. Success\
+        \ indicators:\n   - Backup file created in sitebackups/\n   - Backup timestamp recorded\n   - Deployment proceeds\
+        \ after backup\n4. Check backup can be restored if needed\n5. Verify backup includes database and files\n"
       related_docs:
       - docs/reference/commands/stg2prod.md
       - docs/reference/commands/backup.md
@@ -2407,15 +2357,9 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. During stg2prod deployment, monitor backup step
-        2. Check console output for backup creation
-        3. Success indicators:
-           - "Creating production backup" message
-           - Backup file path displayed
-           - Backup completes before rsync
-        4. Verify backup file exists: ls sitebackups/<sitename>/prod-*
-        5. Check backup size is reasonable
+      how_to_verify: "1. During stg2prod deployment, monitor backup step\n2. Check console output for backup creation\n3.\
+        \ Success indicators:\n   - \"Creating production backup\" message\n   - Backup file path displayed\n   - Backup completes\
+        \ before rsync\n4. Verify backup file exists: ls sitebackups/<sitename>/prod-*\n5. Check backup size is reasonable\n"
       related_docs:
       - docs/reference/commands/stg2prod.md
       - docs/reference/commands/backup.md
@@ -2423,16 +2367,9 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. After deployment, visit production URL
-        2. Check site loads and displays correctly
-        3. Success indicators:
-           - Site accessible via HTTPS
-           - Latest changes deployed
-           - No 500/503 errors
-           - Drupal site renders properly
-        4. Test critical functionality (login, forms, etc.)
-        5. Check production logs for errors: ssh <prod> tail -f /var/log/nginx/error.log
+      how_to_verify: "1. After deployment, visit production URL\n2. Check site loads and displays correctly\n3. Success indicators:\n\
+        \   - Site accessible via HTTPS\n   - Latest changes deployed\n   - No 500/503 errors\n   - Drupal site renders properly\n\
+        4. Test critical functionality (login, forms, etc.)\n5. Check production logs for errors: ssh <prod> tail -f /var/log/nginx/error.log\n"
       related_docs:
       - docs/reference/commands/stg2prod.md
       - docs/deployment/production-deployment.md
@@ -2440,16 +2377,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. SSH to production server
-        2. Check Drupal status: cd /var/www/<sitename> && drush status
-        3. Verify production settings:
-           - Caching enabled (page cache, dynamic page cache)
-           - CSS/JS aggregation enabled
-           - Development modules disabled
-           - Error display set to "log only"
-        4. Check devel module not installed: drush pml | grep devel
-        5. Verify .htaccess or nginx config has security headers
+      how_to_verify: "1. SSH to production server\n2. Check Drupal status: cd /var/www/<sitename> && drush status\n3. Verify\
+        \ production settings:\n   - Caching enabled (page cache, dynamic page cache)\n   - CSS/JS aggregation enabled\n \
+        \  - Development modules disabled\n   - Error display set to \"log only\"\n4. Check devel module not installed: drush\
+        \ pml | grep devel\n5. Verify .htaccess or nginx config has security headers\n"
       related_docs:
       - docs/reference/commands/stg2prod.md
       - docs/deployment/production-deployment.md
@@ -2457,15 +2388,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Test different database sync approaches
-        2. Option 1 - Keep production DB: pl stg2prod --no-db <sitename>
-        3. Option 2 - Sync staging DB to prod: pl stg2prod --with-db <sitename>
-        4. Success indicators:
-           - Appropriate database handling based on option
-           - Content preserved or updated as expected
-           - Configuration imported correctly
-        5. Verify drush config:status shows no differences
+      how_to_verify: "1. Test different database sync approaches\n2. Option 1 - Keep production DB: pl stg2prod --no-db <sitename>\n\
+        3. Option 2 - Sync staging DB to prod: pl stg2prod --with-db <sitename>\n4. Success indicators:\n   - Appropriate\
+        \ database handling based on option\n   - Content preserved or updated as expected\n   - Configuration imported correctly\n\
+        5. Verify drush config:status shows no differences\n"
       related_docs:
       - docs/reference/commands/stg2prod.md
       - docs/deployment/production-deployment.md
@@ -2473,16 +2399,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Simulate deployment failure (e.g., invalid config)
-        2. Verify automatic rollback prompt appears
-        3. Success indicators:
-           - Rollback offer displayed on failure
-           - Rollback restores pre-deployment state
-           - Production site remains accessible
-           - Backup used for rollback
-        4. Test manual rollback: pl rollback execute <sitename> prod
-        5. Verify site restored to working state
+      how_to_verify: "1. Simulate deployment failure (e.g., invalid config)\n2. Verify automatic rollback prompt appears\n\
+        3. Success indicators:\n   - Rollback offer displayed on failure\n   - Rollback restores pre-deployment state\n  \
+        \ - Production site remains accessible\n   - Backup used for rollback\n4. Test manual rollback: pl rollback execute\
+        \ <sitename> prod\n5. Verify site restored to working state\n"
       related_docs:
       - docs/reference/commands/stg2prod.md
       - docs/deployment/rollback-procedures.md
@@ -2502,16 +2422,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl prod2stg <sitename>
-        2. Verify production content pulled to staging
-        3. Success indicators:
-           - SSH connection to production succeeds
-           - Database exported from production
-           - Files synced via rsync
-           - Staging updated with production content
-        4. Check staging database matches production structure
-        5. Verify staging site loads with production content
+      how_to_verify: "1. Run: pl prod2stg <sitename>\n2. Verify production content pulled to staging\n3. Success indicators:\n\
+        \   - SSH connection to production succeeds\n   - Database exported from production\n   - Files synced via rsync\n\
+        \   - Staging updated with production content\n4. Check staging database matches production structure\n5. Verify staging\
+        \ site loads with production content\n"
       related_docs:
       - docs/reference/commands/prod2stg.md
       - docs/deployment/environments.md
@@ -2519,16 +2433,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. After prod2stg, check staging database
-        2. Run: ddev drush <sitename>-stg sql:query "SELECT COUNT(*) FROM node"
-        3. Compare with production: ssh <prod> "drush sql:query 'SELECT COUNT(*) FROM node'"
-        4. Success indicators:
-           - Node counts match
-           - User accounts synced
-           - Content structure identical
-           - Database sanitization applied to staging
-        5. Verify emails anonymized in staging
+      how_to_verify: "1. After prod2stg, check staging database\n2. Run: ddev drush <sitename>-stg sql:query \"SELECT COUNT(*)\
+        \ FROM node\"\n3. Compare with production: ssh <prod> \"drush sql:query 'SELECT COUNT(*) FROM node'\"\n4. Success\
+        \ indicators:\n   - Node counts match\n   - User accounts synced\n   - Content structure identical\n   - Database\
+        \ sanitization applied to staging\n5. Verify emails anonymized in staging\n"
       related_docs:
       - docs/reference/commands/prod2stg.md
       - docs/deployment/environments.md
@@ -2536,32 +2444,20 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Verify production files pulled to staging
-        2. Check file counts match: find sites/<sitename>-stg/web/sites/default/files -type f | wc -l
-        3. Success indicators:
-           - User-uploaded files synced
-           - File permissions correct
-           - No permission errors
-           - Symbolic links preserved
-        4. Spot-check specific files exist
-        5. Verify files directory size reasonable
+      how_to_verify: "1. Verify production files pulled to staging\n2. Check file counts match: find sites/<sitename>-stg/web/sites/default/files\
+        \ -type f | wc -l\n3. Success indicators:\n   - User-uploaded files synced\n   - File permissions correct\n   - No\
+        \ permission errors\n   - Symbolic links preserved\n4. Spot-check specific files exist\n5. Verify files directory\
+        \ size reasonable\n"
       related_docs:
       - docs/reference/commands/prod2stg.md
     - text: Verify staging still has dev code (code not synced)
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. After prod2stg, check staging codebase
-        2. Verify code NOT synced from production (database/files only)
-        3. Success indicators:
-           - Git branch unchanged in staging
-           - Custom modules still present
-           - Development features still available
-           - Only database and files updated
-        4. Check git status shows staging code intact
-        5. Verify staging composer.json unchanged
+      how_to_verify: "1. After prod2stg, check staging codebase\n2. Verify code NOT synced from production (database/files\
+        \ only)\n3. Success indicators:\n   - Git branch unchanged in staging\n   - Custom modules still present\n   - Development\
+        \ features still available\n   - Only database and files updated\n4. Check git status shows staging code intact\n\
+        5. Verify staging composer.json unchanged\n"
       related_docs:
       - docs/reference/commands/prod2stg.md
       - docs/deployment/environments.md
@@ -2569,16 +2465,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl prod2stg --sanitize <sitename>
-        2. Verify production data sanitized for staging
-        3. Success indicators:
-           - User emails anonymized
-           - Passwords reset
-           - Sensitive config removed
-           - PII stripped from database
-        4. Check user table: ddev drush <sitename>-stg sql:query "SELECT mail FROM users LIMIT 5"
-        5. Verify no production credentials in staging
+      how_to_verify: "1. Run: pl prod2stg --sanitize <sitename>\n2. Verify production data sanitized for staging\n3. Success\
+        \ indicators:\n   - User emails anonymized\n   - Passwords reset\n   - Sensitive config removed\n   - PII stripped\
+        \ from database\n4. Check user table: ddev drush <sitename>-stg sql:query \"SELECT mail FROM users LIMIT 5\"\n5. Verify\
+        \ no production credentials in staging\n"
       related_docs:
       - docs/reference/commands/prod2stg.md
       - docs/deployment/environments.md
@@ -2597,16 +2487,9 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl stg2live <sitename>
-        2. Verify staging deployed to live test server
-        3. Success indicators:
-           - Live server provisioned (if needed)
-           - Files synced via rsync
-           - Database deployed
-           - Site accessible at <sitename>.nwpcode.org
-        4. Check deployment steps complete successfully
-        5. Verify live site matches staging
+      how_to_verify: "1. Run: pl stg2live <sitename>\n2. Verify staging deployed to live test server\n3. Success indicators:\n\
+        \   - Live server provisioned (if needed)\n   - Files synced via rsync\n   - Database deployed\n   - Site accessible\
+        \ at <sitename>.nwpcode.org\n4. Check deployment steps complete successfully\n5. Verify live site matches staging\n"
       related_docs:
       - docs/reference/commands/stg2live.md
       - docs/reference/commands/live.md
@@ -2615,16 +2498,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Monitor rsync output during deployment
-        2. Check files transferred to live server
-        3. Success indicators:
-           - Rsync completes without errors
-           - File counts match staging
-           - Permissions set correctly
-           - Excludes applied (.ddev, .git, etc.)
-        4. SSH to live and check: ls -la /var/www/<sitename>
-        5. Verify web files present and accessible
+      how_to_verify: "1. Monitor rsync output during deployment\n2. Check files transferred to live server\n3. Success indicators:\n\
+        \   - Rsync completes without errors\n   - File counts match staging\n   - Permissions set correctly\n   - Excludes\
+        \ applied (.ddev, .git, etc.)\n4. SSH to live and check: ls -la /var/www/<sitename>\n5. Verify web files present and\
+        \ accessible\n"
       related_docs:
       - docs/reference/commands/stg2live.md
       - docs/deployment/production-deployment.md
@@ -2632,16 +2509,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Verify database exported from staging and imported to live
-        2. SSH to live server and check database
-        3. Success indicators:
-           - Database created on live server
-           - settings.local.php generated with credentials
-           - Data imported successfully
-           - Drupal bootstrap works
-        4. Test: ssh <live> "cd /var/www/<sitename> && drush status"
-        5. Check database connection and site name
+      how_to_verify: "1. Verify database exported from staging and imported to live\n2. SSH to live server and check database\n\
+        3. Success indicators:\n   - Database created on live server\n   - settings.local.php generated with credentials\n\
+        \   - Data imported successfully\n   - Drupal bootstrap works\n4. Test: ssh <live> \"cd /var/www/<sitename> && drush\
+        \ status\"\n5. Check database connection and site name\n"
       related_docs:
       - docs/reference/commands/stg2live.md
       - docs/deployment/production-deployment.md
@@ -2649,17 +2520,9 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Open browser to https://<sitename>.nwpcode.org
-        2. Verify site loads correctly
-        3. Success indicators:
-           - HTTPS works (SSL certificate valid)
-           - Site renders properly
-           - No errors (HTTP 200 response)
-           - Login works
-           - Images and assets load
-        4. Test critical functionality
-        5. Check browser console for JavaScript errors
+      how_to_verify: "1. Open browser to https://<sitename>.nwpcode.org\n2. Verify site loads correctly\n3. Success indicators:\n\
+        \   - HTTPS works (SSL certificate valid)\n   - Site renders properly\n   - No errors (HTTP 200 response)\n   - Login\
+        \ works\n   - Images and assets load\n4. Test critical functionality\n5. Check browser console for JavaScript errors\n"
       related_docs:
       - docs/reference/commands/stg2live.md
       - docs/reference/commands/live.md
@@ -2667,16 +2530,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl stg2live --dry-run <sitename>
-        2. Verify deployment simulation without changes
-        3. Success indicators:
-           - Rsync shows what would be transferred (--dry-run flag)
-           - No actual files transferred
-           - No database changes
-           - Deployment steps listed but not executed
-        4. Useful for previewing deployment impact
-        5. Check output for potential issues
+      how_to_verify: "1. Run: pl stg2live --dry-run <sitename>\n2. Verify deployment simulation without changes\n3. Success\
+        \ indicators:\n   - Rsync shows what would be transferred (--dry-run flag)\n   - No actual files transferred\n   -\
+        \ No database changes\n   - Deployment steps listed but not executed\n4. Useful for previewing deployment impact\n\
+        5. Check output for potential issues\n"
       related_docs:
       - docs/reference/commands/stg2live.md
     verified: false
@@ -2694,16 +2551,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl prod2stg <sitename>
-        2. Verify production content pulled to staging
-        3. Success indicators:
-           - SSH connection to production succeeds
-           - Database exported from production
-           - Files synced via rsync
-           - Staging updated with production content
-        4. Check staging database matches production structure
-        5. Verify staging site loads with production content
+      how_to_verify: "1. Run: pl prod2stg <sitename>\n2. Verify production content pulled to staging\n3. Success indicators:\n\
+        \   - SSH connection to production succeeds\n   - Database exported from production\n   - Files synced via rsync\n\
+        \   - Staging updated with production content\n4. Check staging database matches production structure\n5. Verify staging\
+        \ site loads with production content\n"
       related_docs:
       - docs/reference/commands/prod2stg.md
       - docs/deployment/environments.md
@@ -2711,48 +2562,29 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Monitor database export and import steps
-        2. Check database transferred from live to staging
-        3. Success indicators:
-           - Database exported from live server
-           - SQL dump downloaded
-           - Database imported to staging DDEV
-           - Drupal cache cleared
-        4. Test: ddev drush <sitename>-stg status
-        5. Verify database content matches live
+      how_to_verify: "1. Monitor database export and import steps\n2. Check database transferred from live to staging\n3.\
+        \ Success indicators:\n   - Database exported from live server\n   - SQL dump downloaded\n   - Database imported to\
+        \ staging DDEV\n   - Drupal cache cleared\n4. Test: ddev drush <sitename>-stg status\n5. Verify database content matches\
+        \ live\n"
       related_docs:
       - docs/reference/commands/live2stg.md
     - text: Check files are synced correctly
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Verify production files pulled to staging
-        2. Check file counts match: find sites/<sitename>-stg/web/sites/default/files -type f | wc -l
-        3. Success indicators:
-           - User-uploaded files synced
-           - File permissions correct
-           - No permission errors
-           - Symbolic links preserved
-        4. Spot-check specific files exist
-        5. Verify files directory size reasonable
+      how_to_verify: "1. Verify production files pulled to staging\n2. Check file counts match: find sites/<sitename>-stg/web/sites/default/files\
+        \ -type f | wc -l\n3. Success indicators:\n   - User-uploaded files synced\n   - File permissions correct\n   - No\
+        \ permission errors\n   - Symbolic links preserved\n4. Spot-check specific files exist\n5. Verify files directory\
+        \ size reasonable\n"
       related_docs:
       - docs/reference/commands/prod2stg.md
     - text: Verify staging runs with live content
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. After live2stg, test staging site
-        2. Run: ddev launch <sitename>-stg
-        3. Success indicators:
-           - Staging site loads with live content
-           - Database queries work
-           - Content displays correctly
-           - No errors in watchdog logs
-        4. Test critical functionality works
-        5. Verify config matches live state
+      how_to_verify: "1. After live2stg, test staging site\n2. Run: ddev launch <sitename>-stg\n3. Success indicators:\n \
+        \  - Staging site loads with live content\n   - Database queries work\n   - Content displays correctly\n   - No errors\
+        \ in watchdog logs\n4. Test critical functionality works\n5. Verify config matches live state\n"
       related_docs:
       - docs/reference/commands/live2stg.md
       - docs/deployment/environments.md
@@ -2771,16 +2603,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl live2prod <sitename>
-        2. Verify live test server content deployed to production
-        3. Success indicators:
-           - SSH connection to both servers succeeds
-           - Server-to-server rsync works
-           - Files transferred to production
-           - Database synced to production
-        4. Check production site updated
-        5. Verify deployment steps complete
+      how_to_verify: "1. Run: pl live2prod <sitename>\n2. Verify live test server content deployed to production\n3. Success\
+        \ indicators:\n   - SSH connection to both servers succeeds\n   - Server-to-server rsync works\n   - Files transferred\
+        \ to production\n   - Database synced to production\n4. Check production site updated\n5. Verify deployment steps\
+        \ complete\n"
       related_docs:
       - docs/reference/commands/live2prod.md
       - docs/deployment/production-deployment.md
@@ -2788,16 +2614,9 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Monitor backup step during deployment
-        2. Check production backup created before changes
-        3. Success indicators:
-           - Backup file created in sitebackups/
-           - Database backed up
-           - Files backed up
-           - Backup timestamp recorded
-        4. Verify backup can be restored: pl restore <sitename>
-        5. Check backup size and integrity
+      how_to_verify: "1. Monitor backup step during deployment\n2. Check production backup created before changes\n3. Success\
+        \ indicators:\n   - Backup file created in sitebackups/\n   - Database backed up\n   - Files backed up\n   - Backup\
+        \ timestamp recorded\n4. Verify backup can be restored: pl restore <sitename>\n5. Check backup size and integrity\n"
       related_docs:
       - docs/reference/commands/live2prod.md
       - docs/reference/commands/backup.md
@@ -2806,17 +2625,9 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. After deployment, visit production URL
-        2. Verify site shows live server changes
-        3. Success indicators:
-           - Production loads correctly
-           - Latest changes visible
-           - No errors (HTTP 200)
-           - SSL works
-           - Content displays properly
-        4. Test critical functionality
-        5. Check production logs for errors
+      how_to_verify: "1. After deployment, visit production URL\n2. Verify site shows live server changes\n3. Success indicators:\n\
+        \   - Production loads correctly\n   - Latest changes visible\n   - No errors (HTTP 200)\n   - SSL works\n   - Content\
+        \ displays properly\n4. Test critical functionality\n5. Check production logs for errors\n"
       related_docs:
       - docs/reference/commands/live2prod.md
       - docs/deployment/production-deployment.md
@@ -2824,16 +2635,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. After deployment, test rollback capability
-        2. Run: pl rollback list <sitename>
-        3. Verify rollback point exists from before deployment
-        4. Success indicators:
-           - Rollback point created automatically
-           - Can execute rollback: pl rollback execute <sitename> prod
-           - Site restores to pre-deployment state
-           - Rollback completes successfully
-        5. Verify site works after rollback
+      how_to_verify: "1. After deployment, test rollback capability\n2. Run: pl rollback list <sitename>\n3. Verify rollback\
+        \ point exists from before deployment\n4. Success indicators:\n   - Rollback point created automatically\n   - Can\
+        \ execute rollback: pl rollback execute <sitename> prod\n   - Site restores to pre-deployment state\n   - Rollback\
+        \ completes successfully\n5. Verify site works after rollback\n"
       related_docs:
       - docs/reference/commands/live2prod.md
       - docs/deployment/rollback-procedures.md
@@ -2853,16 +2658,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl produce <sitename>
-        2. Verify production server provisioning initiated
-        3. Success indicators:
-           - Linode instance created (if automated)
-           - Server configuration started
-           - DNS configured
-           - SSL certificate requested
-        4. Note: Currently stub implementation - shows manual setup instructions
-        5. Check cnwp.yml for production config
+      how_to_verify: "1. Run: pl produce <sitename>\n2. Verify production server provisioning initiated\n3. Success indicators:\n\
+        \   - Linode instance created (if automated)\n   - Server configuration started\n   - DNS configured\n   - SSL certificate\
+        \ requested\n4. Note: Currently stub implementation - shows manual setup instructions\n5. Check cnwp.yml for production\
+        \ config\n"
       related_docs:
       - docs/reference/commands/produce.md
       - docs/deployment/linode-deployment.md
@@ -2871,16 +2670,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. After production server setup, check configuration
-        2. SSH to production server
-        3. Verify production settings:
-           - Nginx/Apache configured
-           - PHP-FPM optimized for production
-           - Database tuned for performance
-           - Caching configured (Redis/Memcached)
-        4. Check Drupal production mode: drush status
-        5. Verify performance settings in nginx.conf or .htaccess
+      how_to_verify: "1. After production server setup, check configuration\n2. SSH to production server\n3. Verify production\
+        \ settings:\n   - Nginx/Apache configured\n   - PHP-FPM optimized for production\n   - Database tuned for performance\n\
+        \   - Caching configured (Redis/Memcached)\n4. Check Drupal production mode: drush status\n5. Verify performance settings\
+        \ in nginx.conf or .htaccess\n"
       related_docs:
       - docs/reference/commands/produce.md
       - docs/deployment/production-deployment.md
@@ -2888,17 +2681,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Verify production security measures applied
-        2. Check firewall: sudo ufw status
-        3. Verify security indicators:
-           - UFW firewall enabled
-           - fail2ban running
-           - SSH hardened (key-only auth, no root login)
-           - Unattended security updates enabled
-           - SSL/TLS configured with strong ciphers
-        4. Test: nmap <prod_ip> (should show only 22, 80, 443)
-        5. Check security headers: curl -I https://<prod_domain>
+      how_to_verify: "1. Verify production security measures applied\n2. Check firewall: sudo ufw status\n3. Verify security\
+        \ indicators:\n   - UFW firewall enabled\n   - fail2ban running\n   - SSH hardened (key-only auth, no root login)\n\
+        \   - Unattended security updates enabled\n   - SSL/TLS configured with strong ciphers\n4. Test: nmap <prod_ip> (should\
+        \ show only 22, 80, 443)\n5. Check security headers: curl -I https://<prod_domain>\n"
       related_docs:
       - docs/reference/commands/produce.md
       - docs/deployment/production-deployment.md
@@ -2906,17 +2692,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Check production caching configuration
-        2. Verify performance optimizations:
-           - Page caching enabled
-           - CSS/JS aggregation active
-           - Image optimization configured
-           - CDN integrated (if applicable)
-           - Database query caching enabled
-        3. Test caching: curl -I https://<prod_domain> (check for cache headers)
-        4. Run performance test: drush core:requirements
-        5. Check page load times and optimize as needed
+      how_to_verify: "1. Check production caching configuration\n2. Verify performance optimizations:\n   - Page caching enabled\n\
+        \   - CSS/JS aggregation active\n   - Image optimization configured\n   - CDN integrated (if applicable)\n   - Database\
+        \ query caching enabled\n3. Test caching: curl -I https://<prod_domain> (check for cache headers)\n4. Run performance\
+        \ test: drush core:requirements\n5. Check page load times and optimize as needed\n"
       related_docs:
       - docs/reference/commands/produce.md
       - docs/deployment/production-deployment.md
@@ -3590,6 +3369,19 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl bootstrap-coder --dry-run
+
+        2. Verify no files modified (cnwp.yml, .secrets.yml, git config)
+
+        3. Check output shows: [DRY-RUN] Would create/set/configure
+
+        4. Confirm detection and validation still run
+
+        5. Success: Dry-run completes without changes, shows planned actions
+
+        '
+      related_docs:
+      - docs/reference/commands/bootstrap-coder.md
     verified: false
     verified_by: null
     verified_at: null
@@ -4153,46 +3945,62 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl badges show mysite
+      how_to_verify: '1. Run: pl badges show mysite
+
         2. Verify output includes badge URLs for pipeline status, coverage, release, and license
+
         3. Check that URLs are properly formatted
+
         4. Success: All badge URLs display correctly
+
+        '
       related_docs:
-        - docs/reference/commands/badges.md
+      - docs/reference/commands/badges.md
     - text: Verify markdown generation works
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl badges markdown mysite
+      how_to_verify: '1. Run: pl badges markdown mysite
+
         2. Verify markdown snippet includes all badge types
+
         3. Test rendering in README.md
+
         4. Success: Markdown renders correctly
+
+        '
       related_docs:
-        - docs/reference/commands/badges.md
+      - docs/reference/commands/badges.md
     - text: Test adding badges to site README
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Backup README.md
+      how_to_verify: '1. Backup README.md
+
         2. Run: pl badges add mysite
+
         3. Verify badges added to README
+
         4. Success: Badges display in GitLab
+
+        '
       related_docs:
-        - docs/reference/commands/badges.md
+      - docs/reference/commands/badges.md
     - text: Check coverage threshold validation
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl badges coverage mysite --threshold=80
+      how_to_verify: '1. Run: pl badges coverage mysite --threshold=80
+
         2. Verify coverage check from GitLab CI
+
         3. Test different thresholds
+
         4. Success: Threshold validation works
+
+        '
       related_docs:
-        - docs/reference/commands/badges.md
+      - docs/reference/commands/badges.md
     verified: false
     verified_by: null
     verified_at: null
@@ -4208,32 +4016,68 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl email setup (requires sudo)
+      how_to_verify: '1. Run: pl email setup (requires sudo)
+
         2. Verify Postfix installed
+
         3. Check DKIM keys generated
+
         4. Success: Email infrastructure configured
+
+        '
       related_docs:
-        - docs/reference/commands/email.md
+      - docs/reference/commands/email.md
     - text: Verify email account creation for site
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl email add <sitename>
+
+        2. Check account creation output
+
+        3. Verify email configuration in cnwp.yml
+
+        4. Test sending: pl email test <sitename>
+
+        5. Success: Email account created, configuration saved, test email sends
+
+        '
+      related_docs:
+      - docs/reference/commands/email.md
     - text: Test email deliverability
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl email test mysite
+      how_to_verify: '1. Run: pl email test mysite
+
         2. Verify email sends
+
         3. Check DKIM/SPF pass
+
         4. Success: Email authentication works
+
+        '
       related_docs:
-        - docs/reference/commands/email.md
+      - docs/reference/commands/email.md
     - text: Check email rerouting configuration
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl email reroute <sitename>
+
+        2. Verify Mailpit configuration applied
+
+        3. Send test email from site
+
+        4. Check Mailpit UI: http://localhost:8025
+
+        5. Verify disable works: pl email reroute --disable
+
+        6. Success: Rerouting captures emails, disable restores normal delivery
+
+        '
+      related_docs:
+      - docs/reference/commands/email.md
     verified: false
     verified_by: null
     verified_at: null
@@ -4419,25 +4263,70 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. On feature branch with uncommitted changes
+
+        2. Run: pl contribute
+
+        3. Verify pre-flight checks detect issues (uncommitted changes, not on main, etc.)
+
+        4. Fix issues and re-run
+
+        5. Success: Pre-flight checks run, block invalid states, pass when ready
+
+        '
+      related_docs:
+      - docs/reference/commands/contribute.md
     - text: Verify test execution
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. On feature branch, run: pl contribute
+      how_to_verify: '1. On feature branch, run: pl contribute
+
         2. Verify test-nwp.sh runs
+
         3. Test --no-tests flag
+
         4. Success: Tests gate contribution
+
+        '
       related_docs:
-        - docs/reference/commands/contribute.md
+      - docs/reference/commands/contribute.md
     - text: Check MR description generation
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create test branch with commits
+
+        2. Run: pl contribute
+
+        3. Review generated MR description
+
+        4. Verify includes: Summary, Test Plan, Related Issues, Claude footer
+
+        5. Success: MR description comprehensive, properly formatted
+
+        '
+      related_docs:
+      - docs/reference/commands/contribute.md
     - text: Test GitLab CLI integration
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Install glab or gh CLI
+
+        2. Configure GitLab/GitHub auth
+
+        3. Run: pl contribute on feature branch
+
+        4. Verify MR created automatically
+
+        5. Check MR in GitLab/GitHub web interface
+
+        6. Success: MR created via CLI, all fields populated correctly
+
+        '
+      related_docs:
+      - docs/reference/commands/contribute.md
     verified: false
     verified_by: null
     verified_at: null
@@ -4570,25 +4459,70 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl upstream configure
+      how_to_verify: '1. Run: pl upstream configure
+
         2. Enter upstream URL/tier
+
         3. Verify .nwp-upstream.yml created
+
         4. Success: Upstream configured
+
+        '
       related_docs:
-        - docs/reference/commands/upstream.md
+      - docs/reference/commands/upstream.md
     - text: Verify sync functionality
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Configure upstream: pl upstream configure
+
+        2. Make commits on upstream (or use test repo)
+
+        3. Run: pl upstream sync
+
+        4. Verify local main updated with upstream changes
+
+        5. Check git log shows merge/rebase
+
+        6. Success: Sync pulls upstream changes, merges correctly
+
+        '
+      related_docs:
+      - docs/reference/commands/upstream.md
     - text: Check status reporting
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl upstream status
+
+        2. Verify shows current branch
+
+        3. Check commit count ahead/behind upstream
+
+        4. Review recent upstream commits listed
+
+        5. Success: Status shows sync state, commit summaries, actionable commands
+
+        '
+      related_docs:
+      - docs/reference/commands/upstream.md
     - text: Test merge and rebase strategies
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Test merge: pl upstream sync --merge
+
+        2. Verify merge commit created
+
+        3. Test rebase: pl upstream sync --rebase (on clean branch)
+
+        4. Verify linear history (no merge commit)
+
+        5. Success: Both strategies work, history shows expected structure
+
+        '
+      related_docs:
+      - docs/reference/commands/upstream.md
     verified: false
     verified_by: null
     verified_at: null
@@ -4604,25 +4538,68 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl migrate-secrets --dry-run --nwp
+
+        2. Verify no changes made to filesystem
+
+        3. Check output shows what would be done
+
+        4. Verify backup and template creation are simulated
+
+        5. Success: Dry-run reports actions without making changes
+
+        '
+      related_docs:
+      - docs/reference/commands/migrate-secrets.md
     - text: Verify data secret detection
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Add test data secrets to .secrets.yml (production_database.password, etc.)
+
+        2. Run: pl migrate-secrets --check
+
+        3. Verify script detects data secrets
+
+        4. Check warnings show line numbers and keys
+
+        5. Success: Data secrets detected and reported with locations
+
+        '
+      related_docs:
+      - docs/reference/commands/migrate-secrets.md
     - text: Check backup creation
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: pl migrate-secrets --nwp
+
+        2. Check .secrets.yml.bak.* file created
+
+        3. Verify backup contains original content
+
+        4. Check timestamp in filename
+
+        5. Success: Backup created before migration, original preserved
+
+        '
+      related_docs:
+      - docs/reference/commands/migrate-secrets.md
     - text: Test NWP root migration
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Backup .secrets.yml
+      how_to_verify: '1. Backup .secrets.yml
+
         2. Run: pl migrate-secrets --nwp
+
         3. Verify .secrets.data.yml created
+
         4. Success: Migration completes
+
+        '
       related_docs:
-        - docs/reference/commands/migrate-secrets.md
+      - docs/reference/commands/migrate-secrets.md
     verified: false
     verified_by: null
     verified_at: null
@@ -4906,54 +4883,277 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Install test dependencies: cd sites/nwp && ddev composer require --dev drupal/coder
+
+        2. Run linting only: pl test -l nwp
+
+        3. Verify PHPCS runs on custom modules/themes in web/modules/custom and web/themes/custom
+
+        4. Check output shows coding standards violations or "No violations found"
+
+        5. Verify execution time is fast (~10 seconds)
+
+        Success: PHPCS runs successfully, checks Drupal coding standards, completes in ~10s
+
+        '
+      related_docs:
+      - docs/reference/commands/test.md
+      - docs/testing/testing.md
     - text: Test with -t flag (PHPStan only)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Install test dependencies: cd sites/nwp && ddev composer require --dev phpstan/phpstan
+
+        2. Run static analysis only: pl test -t nwp
+
+        3. Verify PHPStan analyzes custom code for type errors, undefined methods, dead code
+
+        4. Check output shows analysis level (default: 5) and any detected issues
+
+        5. Verify execution time is fast (~20 seconds)
+
+        Success: PHPStan runs successfully at level 5, detects type issues, completes in ~20s
+
+        '
+      related_docs:
+      - docs/reference/commands/test.md
+      - docs/testing/testing.md
     - text: Test with -u flag (PHPUnit unit tests only)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Install test dependencies: cd sites/nwp && ddev composer require --dev phpunit/phpunit
+
+        2. Create test file in web/modules/custom/*/tests/src/Unit/ (if not exists)
+
+        3. Run unit tests only: pl test -u nwp
+
+        4. Verify PHPUnit runs tests from unit test suite (no database required)
+
+        5. Check output shows test results with pass/fail counts
+
+        6. Verify execution time is fast (~30 seconds)
+
+        Success: PHPUnit unit tests run successfully, isolated logic tested, completes in ~30s
+
+        '
+      related_docs:
+      - docs/reference/commands/test.md
+      - docs/testing/testing.md
     - text: Test with -k flag (PHPUnit kernel tests only)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Install test dependencies: cd sites/nwp && ddev composer require --dev phpunit/phpunit
+
+        2. Create test file in web/modules/custom/*/tests/src/Kernel/ (if not exists)
+
+        3. Run kernel tests only: pl test -k nwp
+
+        4. Verify PHPUnit runs kernel tests with database and Drupal API access
+
+        5. Check output shows test results for entity CRUD, service integration tests
+
+        6. Verify execution time is medium (~2 minutes)
+
+        Success: PHPUnit kernel tests run successfully with database, completes in ~2 min
+
+        '
+      related_docs:
+      - docs/reference/commands/test.md
+      - docs/testing/testing.md
     - text: Test with -f flag (PHPUnit functional tests only)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Install test dependencies: cd sites/nwp && ddev composer require --dev phpunit/phpunit
+
+        2. Create test file in web/modules/custom/*/tests/src/Functional/ (if not exists)
+
+        3. Run functional tests only: pl test -f nwp
+
+        4. Verify PHPUnit runs full functional tests with web requests, page rendering
+
+        5. Check output shows test results for form submissions, user workflows
+
+        6. Verify execution time is slow (~5 minutes)
+
+        Success: PHPUnit functional tests run successfully with full Drupal bootstrap, completes in ~5 min
+
+        '
+      related_docs:
+      - docs/reference/commands/test.md
+      - docs/testing/testing.md
     - text: Test with -s flag (Behat smoke tests only)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Install Behat: cd sites/nwp && ddev composer require --dev drupal/drupal-extension
+
+        2. Install Selenium: cd sites/nwp && ddev get ddev/ddev-selenium-standalone-chrome && ddev restart
+
+        3. Run smoke tests only: pl test -s nwp
+
+        4. Verify Behat runs only tests tagged with @smoke (critical user paths)
+
+        5. Check output shows browser automation tests for login/logout, basic functionality
+
+        6. Verify execution time is medium (~30 seconds)
+
+        Success: Behat smoke tests run successfully with Selenium, critical paths tested, completes in ~30s
+
+        '
+      related_docs:
+      - docs/reference/commands/test.md
+      - docs/testing/testing.md
     - text: Test with -b flag (full Behat tests)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Ensure Behat and Selenium installed: cd sites/nwp && ddev composer require --dev drupal/drupal-extension
+
+        2. Run full Behat suite: pl test -b nwp
+
+        3. Verify Behat runs all behavioral tests (not just @smoke)
+
+        4. Check output shows complete user scenarios, feature tests, regression tests
+
+        5. Verify Chrome browser automation executes all scenarios
+
+        6. Verify execution time is slow (~10 minutes)
+
+        Success: Full Behat suite runs successfully, all scenarios tested, completes in ~10 min
+
+        '
+      related_docs:
+      - docs/reference/commands/test.md
+      - docs/testing/testing.md
     - text: Test with -p flag (parallel Behat execution)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Ensure Behat and Selenium installed
+
+        2. Run Behat in parallel: pl test -bp nwp
+
+        3. Verify Behat runs with 2 parallel processes simultaneously
+
+        4. Check output shows tests distributed across processes
+
+        5. Verify execution time is faster than serial (~5 minutes vs ~10 minutes)
+
+        Success: Behat runs in parallel (2 processes), tests complete faster, ~5 min total
+
+        '
+      related_docs:
+      - docs/reference/commands/test.md
+      - docs/testing/testing.md
     - text: Test with -a flag (run all tests)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Ensure all test dependencies installed (PHPCS, PHPStan, PHPUnit, Behat, Selenium)
+
+        2. Run all tests: pl test -a nwp (or just: pl test nwp)
+
+        3. Verify runs PHPCS, PHPStan, PHPUnit (unit, kernel, functional), and Behat
+
+        4. Check output shows results for all test types in sequence
+
+        5. Verify execution time is very slow (~20 minutes for complete suite)
+
+        Success: All tests run successfully (linting, static analysis, unit, kernel, functional, behavioral), completes in
+        ~20 min
+
+        '
+      related_docs:
+      - docs/reference/commands/test.md
+      - docs/testing/testing.md
     - text: Test with --ci flag (CI mode with JUnit output)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Ensure test dependencies installed
+
+        2. Run in CI mode: pl test --ci nwp
+
+        3. Verify output is machine-readable (TAP/JUnit XML format)
+
+        4. Check JUnit XML reports generated in test-reports/ directory
+
+        5. Verify stricter validation enabled (fail on warnings)
+
+        6. Verify exit code 0 for pass, 1 for fail
+
+        Success: CI mode runs with JUnit XML output, reports generated, machine-readable format
+
+        '
+      related_docs:
+      - docs/reference/commands/test.md
+      - docs/testing/testing.md
     - text: 'Test combined flags: -ltu (lint, stan, unit)'
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Ensure PHPCS, PHPStan, and PHPUnit installed
+
+        2. Run combined flags: pl test -ltu nwp
+
+        3. Verify runs only linting, static analysis, and unit tests (not kernel, functional, or Behat)
+
+        4. Check output shows results for each enabled test type
+
+        5. Verify execution time is fast (~1 minute total)
+
+        Success: Combined flags work correctly, only selected tests run, completes in ~1 min
+
+        '
+      related_docs:
+      - docs/reference/commands/test.md
+      - docs/testing/testing.md
     - text: Verify test reports are generated in CI mode
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run tests in CI mode: pl test --ci nwp
+
+        2. Check test-reports/ directory created: ls -la sites/nwp/test-reports/
+
+        3. Verify JUnit XML files exist: phpunit.xml, phpstan.xml, phpcs.xml, behat.xml
+
+        4. Verify XML format is valid: xmllint --noout sites/nwp/test-reports/*.xml
+
+        5. Check reports contain test results, pass/fail counts, execution times
+
+        Success: Test reports generated in test-reports/, valid JUnit XML format, CI-compatible
+
+        '
+      related_docs:
+      - docs/reference/commands/test.md
+      - docs/testing/testing.md
     - text: Check that missing test dependencies are detected
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Remove a test dependency: cd sites/nwp && ddev composer remove --dev drupal/coder
+
+        2. Run tests with linting: pl test -l nwp
+
+        3. Verify script detects missing PHPCS and shows clear warning message
+
+        4. Check warning includes installation command: "composer require --dev drupal/coder"
+
+        5. Verify script skips linting tests gracefully (doesn''t fail completely)
+
+        6. Reinstall dependency and verify detection works correctly
+
+        Success: Missing dependencies detected, clear warnings shown, installation commands provided
+
+        '
+      related_docs:
+      - docs/reference/commands/test.md
+      - docs/testing/testing.md
     verified: false
     verified_by: null
     verified_at: null
@@ -4969,6 +5169,17 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Install OpenSocial site: pl install os avc
+        2. Run Behat tests: ./scripts/commands/testos.sh -b avc
+        3. Verify script auto-installs Behat and Selenium if missing
+        4. Check Behat configuration generated for OpenSocial profile
+        5. Verify tests run against OpenSocial features (groups, events, activity-stream)
+        6. Verify execution completes with test results summary
+        Success: Behat runs on OpenSocial site, auto-configuration works, tests execute
+      related_docs:
+        - docs/reference/commands/testos.md
+        - docs/testing/testing.md
     - text: Test with -u flag (run all PHPUnit tests)
       completed: false
       completed_by: null
@@ -5343,164 +5554,231 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/install-common.sh
+      how_to_verify: '1. Source the library: source lib/install-common.sh
+
         2. Test reading recipe value: get_recipe_value "os" "drupal_version"
+
         3. Verify returns correct value from recipes/os.yml
+
         4. Test nested keys: get_recipe_value "os" "composer.project"
+
         5. Test with non-existent recipe or key returns empty
+
         Success: Recipe YAML values parsed correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/install-common.sh
-        - recipes/os.yml
+      - docs/reference/api/library-functions.md
+      - lib/install-common.sh
+      - recipes/os.yml
     - text: Test get_recipe_list_value for arrays
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/install-common.sh
+      how_to_verify: '1. Source the library: source lib/install-common.sh
+
         2. Test array reading: modules=($(get_recipe_list_value "os" "post_install_modules"))
+
         3. Verify returns array of module names
+
         4. Check array length: echo "${#modules[@]}"
+
         5. Test with empty arrays returns nothing
+
         Success: Recipe arrays parsed into bash arrays correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/install-common.sh
-        - recipes/os.yml
+      - docs/reference/api/library-functions.md
+      - lib/install-common.sh
+      - recipes/os.yml
     - text: Verify get_settings_value function
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/install-common.sh
+      how_to_verify: '1. Source the library: source lib/install-common.sh
+
         2. Test reading settings: get_settings_value "default_recipe"
+
         3. Verify returns value from cnwp.yml settings section
+
         4. Test with nested keys: get_settings_value "ddev.php_version"
+
         5. Test with non-existent keys returns empty or default
+
         Success: Settings values read from cnwp.yml correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/install-common.sh
-        - example.cnwp.yml
+      - docs/reference/api/library-functions.md
+      - lib/install-common.sh
+      - example.cnwp.yml
     - text: Test recipe_exists validation
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/install-common.sh
+      how_to_verify: '1. Source the library: source lib/install-common.sh
+
         2. Test existing recipe: recipe_exists "os" && echo "Exists"
+
         3. Verify returns 0 for recipes/os.yml
+
         4. Test non-existent: recipe_exists "nonexistent" || echo "Not found"
+
         5. Verify returns 1 for missing recipe files
+
         Success: Recipe existence validation works correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/install-common.sh
+      - docs/reference/api/library-functions.md
+      - lib/install-common.sh
     - text: Verify validate_recipe function
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/install-common.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/install-common.sh lib/ui.sh
+
         2. Test valid recipe: validate_recipe "os"
+
         3. Verify checks recipe file exists and has required fields
+
         4. Test invalid recipe: validate_recipe "broken"
+
         5. Verify fails with clear error message
+
         Success: Recipe validation identifies structural issues
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/install-common.sh
-        - recipes/
+      - docs/reference/api/library-functions.md
+      - lib/install-common.sh
+      - recipes/
     - text: Test list_recipes display
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/install-common.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/install-common.sh lib/ui.sh
+
         2. Run: list_recipes
+
         3. Verify displays all recipes from recipes/ directory
+
         4. Check format shows: recipe name, type, description
+
         5. Verify sorted and formatted correctly
+
         Success: All available recipes listed with metadata
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/install-common.sh
-        - docs/reference/commands/install.md
+      - docs/reference/api/library-functions.md
+      - lib/install-common.sh
+      - docs/reference/commands/install.md
     - text: Verify install_git_profile function
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/install-common.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/install-common.sh lib/ui.sh
+
         2. Create test site directory: mkdir -p /tmp/test-site
+
         3. Test: install_git_profile "/tmp/test-site" "https://github.com/test/profile.git" "main"
+
         4. Verify git clone executed to correct location
+
         5. Verify branch checked out correctly
+
         Success: Git profile cloned and checked out correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/install-common.sh
+      - docs/reference/api/library-functions.md
+      - lib/install-common.sh
     - text: Test install_git_modules function
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/install-common.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/install-common.sh lib/ui.sh
+
         2. Create test site: mkdir -p /tmp/test-site/web/modules/custom
+
         3. Test: install_git_modules "/tmp/test-site" "module1:https://git.example.com/module1.git"
+
         4. Verify module cloned to web/modules/custom/module1
+
         5. Test multiple modules with comma-separated list
+
         Success: Git modules cloned to correct locations
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/install-common.sh
+      - docs/reference/api/library-functions.md
+      - lib/install-common.sh
     - text: Verify pre_register_live_dns function
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/install-common.sh lib/cloudflare.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/install-common.sh lib/cloudflare.sh lib/ui.sh
+
         2. Test DNS registration: pre_register_live_dns "test.example.com" "192.0.2.1"
+
         3. Verify Cloudflare API called to create A record
+
         4. Check error handling for invalid domain
+
         5. Verify skips if Cloudflare not configured
+
         Success: DNS records created when Cloudflare configured
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/install-common.sh
-        - lib/cloudflare.sh
+      - docs/reference/api/library-functions.md
+      - lib/install-common.sh
+      - lib/cloudflare.sh
     - text: Test generate_live_settings function
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/install-common.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/install-common.sh lib/ui.sh
+
         2. Test: generate_live_settings "testsite" "test.example.com" "/tmp/settings.php"
+
         3. Verify settings.php generated with correct domain
+
         4. Check includes database credentials placeholders
+
         5. Verify trusted host patterns set correctly
+
         Success: Live settings.php generated with production configuration
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/install-common.sh
+      - docs/reference/api/library-functions.md
+      - lib/install-common.sh
     - text: Verify create_test_content function
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/install-common.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/install-common.sh lib/ui.sh
+
         2. Install test site: pl install --recipe=os test
+
         3. Run: create_test_content "test" 10
+
         4. Verify 10 test nodes created
+
         5. Check content has realistic titles, bodies, dates
+
         6. Verify users, taxonomy terms also created
+
         Success: Test content generated with devel_generate
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/install-common.sh
-        - recipes/
+      - docs/reference/api/library-functions.md
+      - lib/install-common.sh
+      - recipes/
     verified: false
     verified_by: null
     verified_at: null
@@ -5845,160 +6123,229 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/live-server-setup.sh
+      how_to_verify: '1. Source the library: source lib/live-server-setup.sh
+
         2. Set up test variables: TEST_IP="your.server.ip" SSH_KEY="~/.ssh/nwp"
-        3. Test simple command: remote_ssh "$TEST_IP" "echo 'Hello from remote'" "root" "$SSH_KEY"
+
+        3. Test simple command: remote_ssh "$TEST_IP" "echo ''Hello from remote''" "root" "$SSH_KEY"
+
         4. Verify output shows "Hello from remote"
+
         5. Test with error: remote_ssh "$TEST_IP" "exit 1" "root" "$SSH_KEY"
+
         6. Verify exit code is 1: echo $?
+
         Success: Commands execute remotely and return proper exit codes
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/live-server-setup.sh
+      - docs/reference/api/library-functions.md
+      - lib/live-server-setup.sh
     - text: Verify remote_package_installed checking
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/live-server-setup.sh
+      how_to_verify: '1. Source the library: source lib/live-server-setup.sh
+
         2. Check for installed package: remote_package_installed "$SERVER_IP" "curl" "root"
+
         3. Verify returns 0 for installed package
+
         4. Check for missing package: remote_package_installed "$SERVER_IP" "nonexistent-pkg" "root"
+
         5. Verify returns 1 for missing package
+
         Success: Correctly detects installed vs missing packages
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/live-server-setup.sh
+      - docs/reference/api/library-functions.md
+      - lib/live-server-setup.sh
     - text: Test remote_service_running checking
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/live-server-setup.sh
+      how_to_verify: '1. Source the library: source lib/live-server-setup.sh
+
         2. Check running service: remote_service_running "$SERVER_IP" "ssh" "root"
+
         3. Verify returns 0 for running service
+
         4. Check stopped service: remote_service_running "$SERVER_IP" "nonexistent" "root"
+
         5. Verify returns 1 for stopped/missing service
+
         Success: Correctly detects service status via systemctl
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/live-server-setup.sh
+      - docs/reference/api/library-functions.md
+      - lib/live-server-setup.sh
     - text: Verify ensure_php_fpm installation and configuration
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Provision test Linode: TEST_SERVER=$(provision_test_linode "$LINODE_TOKEN" "nwp-phptest")
-        2. Extract IP: SERVER_IP=$(echo $TEST_SERVER | awk '{print $2}')
+      how_to_verify: '1. Provision test Linode: TEST_SERVER=$(provision_test_linode "$LINODE_TOKEN" "nwp-phptest")
+
+        2. Extract IP: SERVER_IP=$(echo $TEST_SERVER | awk ''{print $2}'')
+
         3. Install PHP-FPM: ensure_php_fpm "$SERVER_IP" "8.2" "www-data" "root"
+
         4. Verify package installed: remote_package_installed "$SERVER_IP" "php8.2-fpm" "root"
+
         5. Verify service running: remote_service_running "$SERVER_IP" "php8.2-fpm" "root"
-        6. Check pool config: remote_ssh "$SERVER_IP" "grep 'listen.owner = www-data' /etc/php/8.2/fpm/pool.d/www.conf"
+
+        6. Check pool config: remote_ssh "$SERVER_IP" "grep ''listen.owner = www-data'' /etc/php/8.2/fpm/pool.d/www.conf"
+
         Success: PHP-FPM installed, running, and configured with correct socket permissions
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/live-server-setup.sh
+      - docs/reference/api/library-functions.md
+      - lib/live-server-setup.sh
     - text: Test PHP-FPM socket permissions for nginx
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. After ensure_php_fpm completes on test server
+      how_to_verify: '1. After ensure_php_fpm completes on test server
+
         2. Check socket file: remote_ssh "$SERVER_IP" "ls -la /run/php/php8.2-fpm.sock"
+
         3. Verify owner/group shows www-data:www-data or nginx user
-        4. Check pool config: remote_ssh "$SERVER_IP" "grep -E '(listen.owner|listen.group|listen.mode)' /etc/php/8.2/fpm/pool.d/www.conf"
+
+        4. Check pool config: remote_ssh "$SERVER_IP" "grep -E ''(listen.owner|listen.group|listen.mode)'' /etc/php/8.2/fpm/pool.d/www.conf"
+
         5. Verify mode is 0660
+
         Success: Socket has correct permissions for nginx/gitlab-www access
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/live-server-setup.sh
+      - docs/reference/api/library-functions.md
+      - lib/live-server-setup.sh
     - text: Verify ensure_mariadb installation
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. On test Linode server: ensure_mariadb "$SERVER_IP" "root"
+      how_to_verify: '1. On test Linode server: ensure_mariadb "$SERVER_IP" "root"
+
         2. Verify package installed: remote_package_installed "$SERVER_IP" "mariadb-server" "root"
+
         3. Verify service running: remote_service_running "$SERVER_IP" "mariadb" "root"
-        4. Test connection: remote_ssh "$SERVER_IP" "mysql -e 'SELECT VERSION()'"
+
+        4. Test connection: remote_ssh "$SERVER_IP" "mysql -e ''SELECT VERSION()''"
+
         5. Verify shows MariaDB version
+
         Success: MariaDB installed, running, and accessible
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/live-server-setup.sh
+      - docs/reference/api/library-functions.md
+      - lib/live-server-setup.sh
     - text: Test create_site_database function
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. On test server with MariaDB: create_site_database "$SERVER_IP" "testdb" "testuser" "testpass" "root"
-        2. Verify database created: remote_ssh "$SERVER_IP" "mysql -e 'SHOW DATABASES' | grep testdb"
-        3. Verify user created: remote_ssh "$SERVER_IP" "mysql -e 'SELECT User FROM mysql.user' | grep testuser"
-        4. Test user access: remote_ssh "$SERVER_IP" "mysql -u testuser -ptestpass testdb -e 'SELECT 1'"
+      how_to_verify: '1. On test server with MariaDB: create_site_database "$SERVER_IP" "testdb" "testuser" "testpass" "root"
+
+        2. Verify database created: remote_ssh "$SERVER_IP" "mysql -e ''SHOW DATABASES'' | grep testdb"
+
+        3. Verify user created: remote_ssh "$SERVER_IP" "mysql -e ''SELECT User FROM mysql.user'' | grep testuser"
+
+        4. Test user access: remote_ssh "$SERVER_IP" "mysql -u testuser -ptestpass testdb -e ''SELECT 1''"
+
         5. Verify user can query the database
+
         Success: Database and user created with proper permissions
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/live-server-setup.sh
+      - docs/reference/api/library-functions.md
+      - lib/live-server-setup.sh
     - text: Verify configure_nginx_drupal vhost generation
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. On test server: configure_nginx_drupal "$SERVER_IP" "test.example.com" "/var/www/test" "root"
+      how_to_verify: '1. On test server: configure_nginx_drupal "$SERVER_IP" "test.example.com" "/var/www/test" "root"
+
         2. Check vhost file created: remote_ssh "$SERVER_IP" "ls /etc/nginx/sites-available/test.example.com"
+
         3. Check symlink: remote_ssh "$SERVER_IP" "ls -la /etc/nginx/sites-enabled/ | grep test.example.com"
+
         4. Verify nginx config: remote_ssh "$SERVER_IP" "nginx -t"
+
         5. Check vhost contains proper PHP-FPM socket and Drupal rules
+
         Success: Nginx vhost created with Drupal-optimized configuration
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/live-server-setup.sh
+      - docs/reference/api/library-functions.md
+      - lib/live-server-setup.sh
     - text: Test provision_drupal_stack complete setup
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Provision fresh Linode: TEST_SERVER=$(provision_test_linode "$LINODE_TOKEN" "nwp-fullstack")
-        2. Extract IP: SERVER_IP=$(echo $TEST_SERVER | awk '{print $2}')
+      how_to_verify: '1. Provision fresh Linode: TEST_SERVER=$(provision_test_linode "$LINODE_TOKEN" "nwp-fullstack")
+
+        2. Extract IP: SERVER_IP=$(echo $TEST_SERVER | awk ''{print $2}'')
+
         3. Run full stack: provision_drupal_stack "$SERVER_IP" "test.example.com" "root"
+
         4. Verify PHP-FPM running: remote_service_running "$SERVER_IP" "php8.2-fpm"
+
         5. Verify MariaDB running: remote_service_running "$SERVER_IP" "mariadb"
+
         6. Verify nginx configured: remote_ssh "$SERVER_IP" "nginx -t"
+
         Success: Complete LEMP stack provisioned and operational
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/live-server-setup.sh
+      - docs/reference/api/library-functions.md
+      - lib/live-server-setup.sh
     - text: Verify check_infrastructure_ready status checks
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. On provisioned server: check_infrastructure_ready "$SERVER_IP" "root"
+      how_to_verify: '1. On provisioned server: check_infrastructure_ready "$SERVER_IP" "root"
+
         2. Verify returns 0 when all services running
+
         3. Stop a service: remote_ssh "$SERVER_IP" "systemctl stop php8.2-fpm"
+
         4. Run check again: check_infrastructure_ready "$SERVER_IP" "root"
+
         5. Verify returns 1 and reports missing service
+
         Success: Correctly validates full infrastructure readiness
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/live-server-setup.sh
+      - docs/reference/api/library-functions.md
+      - lib/live-server-setup.sh
     - text: Test with GitLab bundled nginx (gitlab-www group)
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. On server with GitLab installed: ensure_php_fpm "$SERVER_IP" "8.2" "gitlab-www" "root"
-        2. Verify pool config uses gitlab-www: remote_ssh "$SERVER_IP" "grep 'listen.owner = gitlab-www' /etc/php/8.2/fpm/pool.d/www.conf"
+      how_to_verify: '1. On server with GitLab installed: ensure_php_fpm "$SERVER_IP" "8.2" "gitlab-www" "root"
+
+        2. Verify pool config uses gitlab-www: remote_ssh "$SERVER_IP" "grep ''listen.owner = gitlab-www'' /etc/php/8.2/fpm/pool.d/www.conf"
+
         3. Check socket permissions: remote_ssh "$SERVER_IP" "ls -la /run/php/php8.2-fpm.sock | grep gitlab-www"
+
         4. Test nginx can access: remote_ssh "$SERVER_IP" "sudo -u gitlab-www test -r /run/php/php8.2-fpm.sock && echo OK"
+
         5. Verify returns OK
-        Success: PHP-FPM integrates with GitLab's nginx (gitlab-www group)
+
+        Success: PHP-FPM integrates with GitLab''s nginx (gitlab-www group)
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/live-server-setup.sh
-        - docs/guides/gitlab-integration.md
+      - docs/reference/api/library-functions.md
+      - lib/live-server-setup.sh
+      - docs/guides/gitlab-integration.md
     verified: false
     verified_by: null
     verified_at: null
@@ -6014,85 +6361,120 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/terminal.sh
+      how_to_verify: '1. Source the library: source lib/terminal.sh
+
         2. Test cursor positioning: cursor_to 5 10
+
         3. Echo text to verify position: echo "Test"
+
         4. Test multiple positions: cursor_to 1 1; cursor_to 10 20; cursor_to 20 40
+
         5. Verify cursor moves to specified row and column
+
         Success: Cursor moves to specified positions correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/terminal.sh
+      - docs/reference/api/library-functions.md
+      - lib/terminal.sh
     - text: Verify cursor_hide and cursor_show
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/terminal.sh
+      how_to_verify: '1. Source the library: source lib/terminal.sh
+
         2. Test hide: cursor_hide; sleep 2 (cursor should be invisible)
+
         3. Test show: cursor_show (cursor should reappear)
+
         4. Verify cursor visibility toggles correctly
+
         5. Test in interactive script context
+
         Success: Cursor hides and shows on command
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/terminal.sh
+      - docs/reference/api/library-functions.md
+      - lib/terminal.sh
     - text: Test clear_screen and clear_line
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/terminal.sh
+      how_to_verify: '1. Source the library: source lib/terminal.sh
+
         2. Echo some text: echo "Line 1"; echo "Line 2"; echo "Line 3"
+
         3. Test clear screen: clear_screen (should clear all and move to top)
+
         4. Echo text again: echo "Test"
+
         5. Test clear line: clear_line (should clear current line)
+
         Success: Screen and line clearing work correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/terminal.sh
+      - docs/reference/api/library-functions.md
+      - lib/terminal.sh
     - text: Verify read_key function (UP, DOWN, LEFT, RIGHT)
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/terminal.sh
+      how_to_verify: '1. Source the library: source lib/terminal.sh
+
         2. Create test script: key=$(read_key); echo "Key: $key"
+
         3. Press UP arrow, verify outputs "UP"
+
         4. Press DOWN arrow, verify outputs "DOWN"
+
         5. Press LEFT arrow, verify outputs "LEFT"
+
         6. Press RIGHT arrow, verify outputs "RIGHT"
+
         Success: Arrow keys detected and returned correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/terminal.sh
+      - docs/reference/api/library-functions.md
+      - lib/terminal.sh
     - text: Test ENTER and SPACE key detection
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/terminal.sh
+      how_to_verify: '1. Source the library: source lib/terminal.sh
+
         2. Test ENTER: key=$(read_key); echo "Key: $key" (press Enter, should output "ENTER")
+
         3. Test SPACE: key=$(read_key); echo "Key: $key" (press Space, should output "SPACE")
+
         4. Verify both keys detected correctly
+
         Success: ENTER and SPACE keys properly identified
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/terminal.sh
+      - docs/reference/api/library-functions.md
+      - lib/terminal.sh
     - text: Verify ESC key detection
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/terminal.sh
+      how_to_verify: '1. Source the library: source lib/terminal.sh
+
         2. Test ESC: key=$(read_key); echo "Key: $key" (press Esc, should output "ESC")
+
         3. Verify ESC is distinguished from arrow keys (which start with ESC sequence)
+
         4. Test timeout handling for ESC vs arrow keys
+
         Success: ESC key detected correctly, not confused with arrow keys
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/terminal.sh
+      - docs/reference/api/library-functions.md
+      - lib/terminal.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -6170,73 +6552,104 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/yaml-write.sh
+      how_to_verify: '1. Source the library: source lib/yaml-write.sh
+
         2. Test yaml_get function: yaml_get "cnwp.yml" "sites.avc.recipe"
+
         3. Verify returns correct value from YAML file
+
         4. Test with nested keys: yaml_get "cnwp.yml" "sites.avc.live.domain"
+
         5. Test with non-existent keys returns empty
+
         Success: YAML reading works with nested keys, handles missing values
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/yaml-write.sh
+      - docs/reference/api/library-functions.md
+      - lib/yaml-write.sh
     - text: Test writing/updating YAML values
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/yaml-write.sh
+      how_to_verify: '1. Source the library: source lib/yaml-write.sh
+
         2. Create test YAML: echo "test:\n  value: old" > /tmp/test.yml
+
         3. Update value: yaml_set "/tmp/test.yml" "test.value" "new"
+
         4. Verify: yaml_get "/tmp/test.yml" "test.value" (should return "new")
+
         5. Test creating new keys: yaml_set "/tmp/test.yml" "test.newkey" "value"
+
         Success: YAML writing updates existing values and creates new keys
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/yaml-write.sh
+      - docs/reference/api/library-functions.md
+      - lib/yaml-write.sh
     - text: Verify nested value handling
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/yaml-write.sh
+      how_to_verify: '1. Source the library: source lib/yaml-write.sh
+
         2. Test deep nesting: yaml_set "test.yml" "sites.mysite.live.server.port" "443"
+
         3. Verify path is created correctly with proper indentation
+
         4. Read back: yaml_get "test.yml" "sites.mysite.live.server.port"
+
         5. Verify nested structure maintained
+
         Success: Deep nested paths created and read correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/yaml-write.sh
+      - docs/reference/api/library-functions.md
+      - lib/yaml-write.sh
     - text: Check array handling
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/yaml-write.sh
+      how_to_verify: '1. Source the library: source lib/yaml-write.sh
+
         2. Test array writing: yaml_set_array "test.yml" "items" "item1" "item2" "item3"
+
         3. Verify array format: grep -A 3 "items:" test.yml
+
         4. Should show: items:\n  - item1\n  - item2\n  - item3
+
         5. Test reading arrays back
+
         Success: Arrays written in proper YAML list format
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/yaml-write.sh
+      - docs/reference/api/library-functions.md
+      - lib/yaml-write.sh
     - text: Test with special characters in values
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/yaml-write.sh
+      how_to_verify: '1. Source the library: source lib/yaml-write.sh
+
         2. Test with colon: yaml_set "test.yml" "url" "http://example.com:8080"
+
         3. Test with quotes: yaml_set "test.yml" "text" "This is \"quoted\""
+
         4. Test with hash: yaml_set "test.yml" "id" "#abc123"
+
         5. Verify values are properly escaped/quoted in YAML
+
         6. Read back and verify integrity
+
         Success: Special YAML characters handled correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/yaml-write.sh
+      - docs/reference/api/library-functions.md
+      - lib/yaml-write.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -6252,80 +6665,115 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/common.sh
+      how_to_verify: '1. Source the library: source lib/common.sh
+
         2. Ensure .secrets.yml exists with test values
+
         3. Test reading a secret: get_secret "linode.api_token"
+
         4. Verify returns the correct value from .secrets.yml
+
         5. Test with nested keys: get_secret "cloudflare.zones.example.com"
+
         6. Test with non-existent key returns empty or default
+
         Success: Function reads YAML values correctly and handles missing keys gracefully
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/common.sh
-        - .secrets.example.yml
+      - docs/reference/api/library-functions.md
+      - lib/common.sh
+      - .secrets.example.yml
     - text: Test get_setting() reads from cnwp.yml
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/common.sh
+      how_to_verify: '1. Source the library: source lib/common.sh
+
         2. Ensure cnwp.yml exists with test site entries
+
         3. Test reading a setting: get_setting "avc" "recipe"
+
         4. Verify returns correct value from cnwp.yml
+
         5. Test nested settings: get_setting "avc" "live.domain"
+
         6. Test with non-existent site/key returns empty
+
         Success: Function reads site configuration correctly from cnwp.yml
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/common.sh
-        - example.cnwp.yml
+      - docs/reference/api/library-functions.md
+      - lib/common.sh
+      - example.cnwp.yml
     - text: Verify sitename validation
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/common.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/common.sh lib/ui.sh
+
         2. Test valid names: validate_sitename "mysite" && echo "Valid"
+
         3. Test invalid patterns: validate_sitename "../etc" (should fail)
+
         4. Test path traversal: validate_sitename "../../root" (should fail)
+
         5. Test special chars: validate_sitename "site@#$" (should fail)
+
         6. Test absolute paths: validate_sitename "/etc/passwd" (should fail)
+
         7. Verify returns 0 for valid, 1 for invalid with error message
+
         Success: Blocks dangerous patterns (path traversal, absolute paths, special chars)
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/common.sh
-        - docs/DATA_SECURITY_BEST_PRACTICES.md
+      - docs/reference/api/library-functions.md
+      - lib/common.sh
+      - docs/DATA_SECURITY_BEST_PRACTICES.md
     - text: Check prompt functions work correctly
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/common.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/common.sh lib/ui.sh
+
         2. Test yes/no prompt: echo "y" | ask_yes_no "Test question?" "n"
+
         3. Verify returns 0 for yes, 1 for no
+
         4. Test default values: echo "" | ask_yes_no "Test?" "y" (should default to yes)
+
         5. Test case insensitivity: echo "YES" | ask_yes_no "Test?" "n"
+
         Success: Prompts work correctly, handle defaults, case-insensitive input
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/common.sh
+      - docs/reference/api/library-functions.md
+      - lib/common.sh
     - text: Test path handling utilities
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/common.sh
+      how_to_verify: '1. Source the library: source lib/common.sh
+
         2. Test get_project_root: project_root=$(get_project_root); echo "$project_root"
+
         3. Verify returns absolute path to NWP project root
+
         4. Test get_site_dir: site_dir=$(get_site_dir "avc"); echo "$site_dir"
+
         5. Verify returns absolute path to site directory
+
         6. Test path normalization functions handle symlinks and relative paths
+
         Success: Path utilities return correct absolute paths, handle edge cases
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/common.sh
+      - docs/reference/api/library-functions.md
+      - lib/common.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -6341,75 +6789,107 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/ui.sh
+
         2. Test OK status: print_status "OK" "Test passed"
+
         3. Test WARN status: print_status "WARN" "Warning message"
+
         4. Test FAIL status: print_status "FAIL" "Error occurred"
+
         5. Test INFO status: print_status "INFO" "Information message"
+
         6. Verify output includes correct icon/color for each status
+
         Success: Each status type displays with appropriate icon (✓, !, ✗, i) and color
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/ui.sh
+      - docs/reference/api/library-functions.md
+      - lib/ui.sh
     - text: Verify colors display correctly
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/ui.sh
+
         2. Test color variables exist: echo "${RED}Red${NC} ${GREEN}Green${NC} ${BLUE}Blue${NC}"
+
         3. Verify colors render in terminal (should see colors)
+
         4. Test NO_COLOR environment: NO_COLOR=1 source lib/ui.sh
+
         5. Verify colors are disabled when NO_COLOR is set
+
         6. Test non-TTY behavior: source lib/ui.sh | cat (colors should be disabled)
+
         Success: Colors work in TTY, respect NO_COLOR standard, disabled in pipes
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/ui.sh
+      - docs/reference/api/library-functions.md
+      - lib/ui.sh
     - text: Check print_header formatting
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/ui.sh
+
         2. Test header: print_header "Test Header"
+
         3. Verify output includes top and bottom borders (═══)
+
         4. Check text is centered and properly formatted
+
         5. Verify uses BLUE and BOLD colors when TTY available
+
         Success: Header displays with borders, proper formatting, and styling
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/ui.sh
+      - docs/reference/api/library-functions.md
+      - lib/ui.sh
     - text: Test print_error output
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/ui.sh
+
         2. Test error output: print_error "This is an error" 2>&1
+
         3. Verify output goes to stderr (not stdout)
+
         4. Check format: "ERROR: This is an error" in red/bold
+
         5. Test piping: print_error "Test" 2>&1 | grep "ERROR"
+
         Success: Errors output to stderr with proper formatting and color
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/ui.sh
+      - docs/reference/api/library-functions.md
+      - lib/ui.sh
     - text: Verify ocmsg debug output
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/common.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/common.sh lib/ui.sh
+
         2. Test without DEBUG: ocmsg "Debug message" (should not display)
+
         3. Test with DEBUG: DEBUG=true ocmsg "Debug message" (should display)
+
         4. Verify output format: "[DEBUG] Debug message" in cyan
+
         5. Test debug_msg alias: DEBUG=true debug_msg "Test"
+
         Success: Debug messages only display when DEBUG=true, proper formatting
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/ui.sh
-        - lib/common.sh
+      - docs/reference/api/library-functions.md
+      - lib/ui.sh
+      - lib/common.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -6456,72 +6936,102 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source libraries: source lib/cloudflare.sh lib/yaml-write.sh
+      how_to_verify: '1. Source libraries: source lib/cloudflare.sh lib/yaml-write.sh
+
         2. Get credentials: TOKEN=$(get_cloudflare_token ".") ZONE_ID=$(get_cloudflare_zone_id ".")
+
         3. Verify auth: verify_cloudflare_auth "$TOKEN" "$ZONE_ID"
+
         4. Create test A record: cf_create_dns_a "$TOKEN" "$ZONE_ID" "test-$(date +%s)" "192.0.2.1" "false"
+
         5. Verify record ID returned
+
         6. List records: cf_list_dns_records "$TOKEN" "$ZONE_ID" "A" | grep test
+
         Success: DNS A record created successfully, appears in listing
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/cloudflare.sh
+      - docs/reference/api/library-functions.md
+      - lib/cloudflare.sh
     - text: Verify DNS record lookup
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. After creating test record: RECORD_ID=$(cf_get_dns_record_id "$TOKEN" "$ZONE_ID" "test-example" "A")
+      how_to_verify: '1. After creating test record: RECORD_ID=$(cf_get_dns_record_id "$TOKEN" "$ZONE_ID" "test-example" "A")
+
         2. Verify returns record ID for existing record
+
         3. Test non-existent: cf_get_dns_record_id "$TOKEN" "$ZONE_ID" "nonexistent-$(date +%s)" "A"
+
         4. Verify returns empty for non-existent record
+
         Success: Correctly retrieves existing records, returns empty for missing
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/cloudflare.sh
+      - docs/reference/api/library-functions.md
+      - lib/cloudflare.sh
     - text: Check zone ID resolution
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Get zone ID: ZONE_ID=$(get_cloudflare_zone_id ".")
+      how_to_verify: '1. Get zone ID: ZONE_ID=$(get_cloudflare_zone_id ".")
+
         2. Verify returns valid zone ID format (hex string)
+
         3. Get zone details: cf_get_zone "$TOKEN" "$ZONE_ID"
+
         4. Verify returns JSON with zone information
+
         5. Check zone name matches expected domain
+
         Success: Zone ID correctly retrieved and validated
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/cloudflare.sh
+      - docs/reference/api/library-functions.md
+      - lib/cloudflare.sh
     - text: Test API authentication
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Test with valid token: TOKEN=$(get_cloudflare_token ".") ZONE_ID=$(get_cloudflare_zone_id ".")
+      how_to_verify: '1. Test with valid token: TOKEN=$(get_cloudflare_token ".") ZONE_ID=$(get_cloudflare_zone_id ".")
+
         2. Verify: verify_cloudflare_auth "$TOKEN" "$ZONE_ID"
+
         3. Verify returns 0 and shows authenticated zone name
+
         4. Test with invalid token: verify_cloudflare_auth "invalid" "$ZONE_ID"
+
         5. Verify returns 1 and shows error message
+
         Success: Auth succeeds with valid credentials, fails gracefully with invalid
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/cloudflare.sh
+      - docs/reference/api/library-functions.md
+      - lib/cloudflare.sh
     - text: Verify error handling for API failures
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Test with invalid zone: cf_create_dns_a "$TOKEN" "invalid-zone" "test" "192.0.2.1"
+      how_to_verify: '1. Test with invalid zone: cf_create_dns_a "$TOKEN" "invalid-zone" "test" "192.0.2.1"
+
         2. Verify returns 1 and displays error message
+
         3. Test rate limiting: Loop create_dns_a rapidly (mock rate limit)
+
         4. Verify handles API errors gracefully without crashes
+
         5. Check error messages are actionable
+
         Success: All API errors handled gracefully with clear error messages
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/cloudflare.sh
+      - docs/reference/api/library-functions.md
+      - lib/cloudflare.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -6537,72 +7047,103 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source libraries: source lib/linode.sh lib/ui.sh
+      how_to_verify: '1. Source libraries: source lib/linode.sh lib/ui.sh
+
         2. Get token: TOKEN=$(get_linode_token ".")
+
         3. Read SSH key: SSH_KEY=$(cat ~/.ssh/nwp.pub)
-        4. Create test instance: INSTANCE_ID=$(create_linode_instance "$TOKEN" "nwp-test-$(date +%s)" "$SSH_KEY" "us-east" "g6-nanode-1")
+
+        4. Create test instance: INSTANCE_ID=$(create_linode_instance "$TOKEN" "nwp-test-$(date +%s)" "$SSH_KEY" "us-east"
+        "g6-nanode-1")
+
         5. Verify instance ID returned
+
         6. Check instance exists: linode-cli linodes view $INSTANCE_ID
+
         Success: Instance created and appears in Linode account
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/linode.sh
+      - docs/reference/api/library-functions.md
+      - lib/linode.sh
     - text: Verify instance listing
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. List test instances: list_test_linodes "$TOKEN"
+      how_to_verify: '1. List test instances: list_test_linodes "$TOKEN"
+
         2. Verify shows instances with "nwp-test" prefix
+
         3. Check format: "INSTANCE_ID LABEL" pairs
+
         4. Verify only test instances listed (not production)
+
         Success: Lists all nwp-test instances with correct format
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/linode.sh
+      - docs/reference/api/library-functions.md
+      - lib/linode.sh
     - text: Check API token authentication
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Test with valid token: TOKEN=$(get_linode_token ".")
+      how_to_verify: '1. Test with valid token: TOKEN=$(get_linode_token ".")
+
         2. Verify auth: linode-cli account view (using token)
+
         3. Should return account information
+
         4. Test with invalid: export LINODE_API_TOKEN="invalid"
+
         5. Verify fails with clear "Invalid Token" error
+
         Success: Auth works with valid token, fails clearly with invalid
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/linode.sh
+      - docs/reference/api/library-functions.md
+      - lib/linode.sh
     - text: Test instance deletion
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Create test instance first (see create test)
+      how_to_verify: '1. Create test instance first (see create test)
+
         2. Delete: delete_linode_instance "$TOKEN" "$INSTANCE_ID"
+
         3. Verify returns 0
+
         4. Confirm deletion: linode-cli linodes view $INSTANCE_ID (should fail)
+
         5. Test cleanup: cleanup_test_linodes "$TOKEN"
+
         Success: Instance deleted successfully, cleanup removes all test instances
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/linode.sh
+      - docs/reference/api/library-functions.md
+      - lib/linode.sh
     - text: Verify error handling
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Test invalid instance ID: delete_linode_instance "$TOKEN" "99999999"
+      how_to_verify: '1. Test invalid instance ID: delete_linode_instance "$TOKEN" "99999999"
+
         2. Verify returns 1 with error message
+
         3. Test network failure (disconnect): create_linode_instance (should timeout)
+
         4. Verify error messages are actionable
-        5. Check functions don't crash on API errors
+
+        5. Check functions don''t crash on API errors
+
         Success: All error conditions handled gracefully with clear messages
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/linode.sh
+      - docs/reference/api/library-functions.md
+      - lib/linode.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -6618,73 +7159,104 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source library: source lib/b2.sh lib/yaml-write.sh
+      how_to_verify: '1. Source library: source lib/b2.sh lib/yaml-write.sh
+
         2. Get credentials: ACCOUNT_ID=$(get_b2_account_id ".") APP_KEY=$(get_b2_app_key ".")
+
         3. Authorize: b2_authorize "."
+
         4. Verify auth: b2_check_auth
+
         5. Verify returns 0 when authenticated
+
         6. Check account: b2 account get (should show account info)
+
         Success: B2 authenticates successfully with credentials from .secrets.yml
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/b2.sh
+      - docs/reference/api/library-functions.md
+      - lib/b2.sh
     - text: Verify file upload to B2
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Create test file: echo "test content" > /tmp/b2-test-$(date +%s).txt
+      how_to_verify: '1. Create test file: echo "test content" > /tmp/b2-test-$(date +%s).txt
+
         2. Ensure bucket exists: BUCKET="nwp-test-bucket"
+
         3. Upload: b2_upload_file "$BUCKET" "/tmp/b2-test-*.txt" "test-upload.txt"
+
         4. Verify returns 0
+
         5. List files: b2_list_files "$BUCKET" | grep test-upload.txt
+
         Success: File uploaded successfully and appears in bucket listing
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/b2.sh
+      - docs/reference/api/library-functions.md
+      - lib/b2.sh
     - text: Test file download from B2
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. After uploading test file
+      how_to_verify: '1. After uploading test file
+
         2. Download: b2 file download "$BUCKET" "test-upload.txt" "/tmp/download-test.txt"
+
         3. Verify file downloaded: test -f "/tmp/download-test.txt"
+
         4. Compare content: diff /tmp/b2-test-*.txt /tmp/download-test.txt
+
         5. Verify files are identical
+
         Success: File downloaded successfully, content matches uploaded file
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/b2.sh
+      - docs/reference/api/library-functions.md
+      - lib/b2.sh
     - text: Check bucket listing
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. List all buckets: b2_list_buckets
+      how_to_verify: '1. List all buckets: b2_list_buckets
+
         2. Verify shows existing buckets
+
         3. Get specific bucket ID: b2_get_bucket_id "nwp-test-bucket"
+
         4. Verify returns valid bucket ID
+
         5. Get bucket info: b2_get_bucket_info "nwp-test-bucket"
+
         Success: Bucket listing and lookup functions work correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/b2.sh
+      - docs/reference/api/library-functions.md
+      - lib/b2.sh
     - text: Verify error handling for API failures
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Test with non-existent bucket: b2_upload_file "nonexistent-bucket-$(date +%s)" "/tmp/test.txt" "file.txt"
+      how_to_verify: '1. Test with non-existent bucket: b2_upload_file "nonexistent-bucket-$(date +%s)" "/tmp/test.txt" "file.txt"
+
         2. Verify returns 1 with error message
+
         3. Test without auth: b2_check_auth after clearing credentials
+
         4. Verify error message suggests running b2 account authorize
+
         5. Check all API errors are caught and reported clearly
+
         Success: All B2 API errors handled gracefully with actionable messages
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/b2.sh
+      - docs/reference/api/library-functions.md
+      - lib/b2.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -6700,73 +7272,103 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source library: source lib/remote.sh lib/ssh.sh lib/ui.sh
+      how_to_verify: '1. Source library: source lib/remote.sh lib/ssh.sh lib/ui.sh
+
         2. Set up test target: configure remote server in cnwp.yml
+
         3. Test connection: remote_test "sitename" "prod"
+
         4. Verify returns 0 and shows "Connection OK"
+
         5. Check uses proper SSH security options from lib/ssh.sh
+
         Success: SSH connection established with secure defaults
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/remote.sh
-        - lib/ssh.sh
+      - docs/reference/api/library-functions.md
+      - lib/remote.sh
+      - lib/ssh.sh
     - text: Verify file transfer via rsync
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Create test file: echo "test" > /tmp/transfer-test.txt
+      how_to_verify: '1. Create test file: echo "test" > /tmp/transfer-test.txt
+
         2. Use remote_exec with rsync command to transfer file
+
         3. Verify file appears on remote server
+
         4. Check file permissions preserved
+
         5. Test large file transfer (> 100MB)
+
         Success: Files transfer correctly with rsync, preserving permissions
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/remote.sh
+      - docs/reference/api/library-functions.md
+      - lib/remote.sh
     - text: Check remote command execution
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Execute simple command: remote_exec "sitename" "prod" "echo 'hello'"
+      how_to_verify: '1. Execute simple command: remote_exec "sitename" "prod" "echo ''hello''"
+
         2. Verify output shows "hello"
+
         3. Test command with exit code: remote_exec "sitename" "prod" "exit 42"
+
         4. Verify returns 42
+
         5. Test drush command: remote_drush "sitename" "prod" "status"
+
         Success: Remote commands execute correctly, return proper exit codes
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/remote.sh
+      - docs/reference/api/library-functions.md
+      - lib/remote.sh
     - text: Test connection timeout handling
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Set short timeout in SSH options
+      how_to_verify: '1. Set short timeout in SSH options
+
         2. Test with unreachable host: remote_exec "sitename" "unreachable" "echo test"
+
         3. Verify times out within expected period (10 seconds)
+
         4. Check displays timeout error message
-        5. Verify doesn't hang indefinitely
+
+        5. Verify doesn''t hang indefinitely
+
         Success: Connection timeouts work correctly, no indefinite hangs
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/remote.sh
+      - docs/reference/api/library-functions.md
+      - lib/remote.sh
     - text: Verify error handling for failed connections
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Test with missing config: remote_exec "nonexistent" "prod" "echo test"
+      how_to_verify: '1. Test with missing config: remote_exec "nonexistent" "prod" "echo test"
+
         2. Verify returns 1 with "No configuration found" error
+
         3. Test with wrong SSH key: remote_exec with invalid key
+
         4. Verify shows permission denied error
+
         5. Check all errors are actionable
+
         Success: Connection failures report clear, actionable error messages
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/remote.sh
+      - docs/reference/api/library-functions.md
+      - lib/remote.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -6878,58 +7480,82 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/state.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/state.sh lib/ui.sh
+
         2. Test site_exists function: site_exists "avc" && echo "Site exists"
+
         3. Verify returns 0 for existing sites with DDEV config
+
         4. Test with non-existent site: site_exists "nonexistent" || echo "Not found"
+
         5. Verify returns 1 for missing sites
+
         Success: State detection functions identify site existence correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/state.sh
+      - docs/reference/api/library-functions.md
+      - lib/state.sh
     - text: Verify state saving between steps
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/state.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/state.sh lib/ui.sh
+
         2. Test find_recent_backup: backup=$(find_recent_backup "avc" 24)
+
         3. Verify returns path to recent backup within 24 hours
+
         4. Test with longer time window: find_recent_backup "avc" 168
+
         5. Verify function finds backups within specified hours
+
         Success: Backup state tracking finds recent backups correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/state.sh
+      - docs/reference/api/library-functions.md
+      - lib/state.sh
     - text: Check state restoration on resume
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/state.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/state.sh lib/ui.sh
+
         2. Test site_running: site_running "avc" && echo "Site is running"
+
         3. Verify returns 0 if DDEV is running, 1 if not
+
         4. Start site: cd sites/avc && ddev start
+
         5. Test again: site_running "avc" && echo "Now running"
+
         Success: Runtime state detection accurately identifies running sites
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/state.sh
+      - docs/reference/api/library-functions.md
+      - lib/state.sh
     - text: Test state cleanup on completion
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/state.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/state.sh lib/ui.sh
+
         2. Test backup_age_human: age=$(backup_age_human "sitebackups/avc/backup.sql.gz")
+
         3. Verify returns human-readable age string (e.g., "2 hours ago")
+
         4. Test with recent file: touch /tmp/test.sql.gz; backup_age_human "/tmp/test.sql.gz"
+
         5. Verify shows "seconds ago" or "minutes ago"
+
         Success: Age calculation provides human-readable time differences
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/state.sh
+      - docs/reference/api/library-functions.md
+      - lib/state.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -6945,61 +7571,85 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source required libraries: source lib/database-router.sh lib/state.sh lib/ui.sh
+      how_to_verify: '1. Source required libraries: source lib/database-router.sh lib/state.sh lib/ui.sh
+
         2. Test auto selection: download_database "avc" "auto"
+
         3. Verify intelligently selects best source (sanitized backup > recent backup > production > dev)
+
         4. Check priority order is followed
+
         5. Verify selection is logged with reason
+
         Success: Auto mode intelligently selects best available database source
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/database-router.sh
-        - docs/reference/workflows/database-routing.md
+      - docs/reference/api/library-functions.md
+      - lib/database-router.sh
+      - docs/reference/workflows/database-routing.md
     - text: Verify production database access
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/database-router.sh lib/state.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/database-router.sh lib/state.sh lib/ui.sh
+
         2. Test production source: download_database "avc" "production"
+
         3. Verify connects via SSH to production server
+
         4. Check creates fresh database dump from production
+
         5. Verify handles SSH connection failures gracefully
+
         Success: Production database can be downloaded when SSH configured
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/database-router.sh
-        - docs/reference/workflows/database-routing.md
+      - docs/reference/api/library-functions.md
+      - lib/database-router.sh
+      - docs/reference/workflows/database-routing.md
     - text: Test backup database selection
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/database-router.sh lib/state.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/database-router.sh lib/state.sh lib/ui.sh
+
         2. Create test backup: mkdir -p sitebackups/test; touch sitebackups/test/backup.sql.gz
+
         3. Test backup source: download_database "test" "backup:sitebackups/test/backup.sql.gz"
+
         4. Verify uses specified backup file
+
         5. Test with relative and absolute paths
+
         Success: Backup source correctly uses specified backup files
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/database-router.sh
+      - docs/reference/api/library-functions.md
+      - lib/database-router.sh
     - text: Check development database cloning
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/database-router.sh lib/state.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/database-router.sh lib/state.sh lib/ui.sh
+
         2. Ensure source site exists and running: cd sites/avc && ddev start
+
         3. Test dev clone: download_database "avc" "development" "avc-stg"
+
         4. Verify clones database from dev site to target site
+
         5. Check target site receives copy of dev database
+
         Success: Development database successfully cloned to target site
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/database-router.sh
-        - docs/reference/workflows/database-routing.md
+      - docs/reference/api/library-functions.md
+      - lib/database-router.sh
+      - docs/reference/workflows/database-routing.md
     verified: false
     verified_by: null
     verified_at: null
@@ -7015,59 +7665,72 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/testing.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/testing.sh lib/ui.sh
+
         2. Run quick preset: run_tests "avc" "quick"
+
         3. Verify only runs: phpcs, eslint (fast tests)
+
         4. Check execution time is under 2 minutes
+
         5. Verify test results are reported (passed/failed counts)
+
         Success: Quick preset runs fast linting tests only
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/testing.sh
-        - docs/reference/workflows/testing.md
+      - docs/reference/api/library-functions.md
+      - lib/testing.sh
+      - docs/reference/workflows/testing.md
     - text: Verify essential preset
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/testing.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/testing.sh lib/ui.sh
+
         2. Run essential preset: run_tests "avc" "essential"
+
         3. Verify runs: phpunit, phpstan, phpcs (core quality tests)
+
         4. Check all three test types execute
+
         5. Verify summary shows results for each test type
+
         Success: Essential preset runs core quality assurance tests
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/testing.sh
-        - docs/reference/workflows/testing.md
+      - docs/reference/api/library-functions.md
+      - lib/testing.sh
+      - docs/reference/workflows/testing.md
     - text: Check full test suite preset
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/testing.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/testing.sh lib/ui.sh
+
         2. Run full preset: run_tests "avc" "full"
+
         3. Verify runs all test types: phpunit, behat, phpstan, phpcs, eslint, stylelint, security
+
         4. Check estimated duration is displayed before starting
+
         5. Verify comprehensive summary at end with pass/fail counts
+
         Success: Full preset executes complete test suite with all test types
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/testing.sh
-        - docs/reference/workflows/testing.md
+      - docs/reference/api/library-functions.md
+      - lib/testing.sh
+      - docs/reference/workflows/testing.md
     - text: Test custom test selection
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl dev2stg -y -t phpunit,phpstan <sitename>
-        2. Verify only specified tests run
-        3. Success indicators:
-           - Only PHPUnit and PHPStan execute
-           - Other tests skipped
-           - Custom test combination works
-        4. Check test output shows only selected tests
+      how_to_verify: "1. Run: pl dev2stg -y -t phpunit,phpstan <sitename>\n2. Verify only specified tests run\n3. Success\
+        \ indicators:\n   - Only PHPUnit and PHPStan execute\n   - Other tests skipped\n   - Custom test combination works\n\
+        4. Check test output shows only selected tests\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/reference/commands/test.md
@@ -7086,59 +7749,84 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/preflight.sh lib/state.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/preflight.sh lib/state.sh lib/ui.sh
+
         2. Run check_source_site function: check_source_site "avc"
+
         3. Verify checks site directory exists
+
         4. Verify checks .ddev/config.yaml exists
+
         5. Test with non-existent site: check_source_site "nonexistent" (should fail)
+
         Success: Site validation correctly identifies existing/missing sites
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/preflight.sh
+      - docs/reference/api/library-functions.md
+      - lib/preflight.sh
     - text: Verify DDEV status checks
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/preflight.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/preflight.sh lib/ui.sh
+
         2. Run check_ddev function: check_ddev
+
         3. Verify checks DDEV is installed
+
         4. Verify checks Docker is running
+
         5. Verify returns version information
+
         6. Test when Docker is stopped (should fail gracefully)
+
         Success: DDEV and Docker status validated correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/preflight.sh
+      - docs/reference/api/library-functions.md
+      - lib/preflight.sh
     - text: Check git status validation
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/preflight.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/preflight.sh lib/ui.sh
+
         2. Run check_git_status function: check_git_status "avc"
+
         3. Verify checks for uncommitted changes
+
         4. Make test change: cd sites/avc && echo "test" >> test.txt
+
         5. Run again: check_git_status "avc" (should warn about uncommitted files)
+
         Success: Git status check identifies uncommitted changes
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/preflight.sh
+      - docs/reference/api/library-functions.md
+      - lib/preflight.sh
     - text: Test dependency verification
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/preflight.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/preflight.sh lib/ui.sh
+
         2. Run check_required_tools function: check_required_tools
+
         3. Verify checks for: ddev, docker, git, drush
+
         4. Verify checks for optional tools: rsync, ssh, mysql
+
         5. Verify returns 0 if all critical tools present
+
         Success: Required tool validation identifies missing dependencies
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/preflight.sh
+      - docs/reference/api/library-functions.md
+      - lib/preflight.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -7177,47 +7865,65 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/safe-ops.sh
+      how_to_verify: '1. Source the library: source lib/safe-ops.sh
+
         2. Run: safe_server_status prod1
+
         3. Verify output includes: Status, Uptime, Load, Memory, Disk
+
         4. Verify output DOES NOT include: IP addresses, paths with user data, credentials
+
         5. Test with invalid server: safe_server_status nonexistent (should fail gracefully)
+
         Success: Server status returned without exposing sensitive information
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/safe-ops.sh
-        - docs/DATA_SECURITY_BEST_PRACTICES.md
+      - docs/reference/api/library-functions.md
+      - lib/safe-ops.sh
+      - docs/DATA_SECURITY_BEST_PRACTICES.md
     - text: Verify safe_db_status hides credentials
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/safe-ops.sh
+      how_to_verify: '1. Source the library: source lib/safe-ops.sh
+
         2. Run: safe_db_status avc
+
         3. Verify output includes: Table count, Database size (MB), Last backup time
+
         4. Verify output DOES NOT include: Database passwords, connection strings, actual data
+
         5. Test with non-existent site: safe_db_status nonexistent (should fail gracefully)
+
         Success: Database info returned without credentials or user data
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/safe-ops.sh
-        - docs/DATA_SECURITY_BEST_PRACTICES.md
+      - docs/reference/api/library-functions.md
+      - lib/safe-ops.sh
+      - docs/DATA_SECURITY_BEST_PRACTICES.md
     - text: Check safe_security_check sanitization
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/safe-ops.sh
+      how_to_verify: '1. Source the library: source lib/safe-ops.sh
+
         2. Run: safe_security_check avc
+
         3. Verify output includes: Update count, Security issues count
+
         4. Verify output DOES NOT include: Actual passwords, API tokens, database content
+
         5. Check error handling: safe_security_check nonexistent
+
         Success: Security status returned with counts only, no sensitive data
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/safe-ops.sh
-        - docs/DATA_SECURITY_BEST_PRACTICES.md
+      - docs/reference/api/library-functions.md
+      - lib/safe-ops.sh
+      - docs/DATA_SECURITY_BEST_PRACTICES.md
     verified: false
     verified_by: null
     verified_at: null
@@ -7233,51 +7939,73 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/sanitize.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/sanitize.sh lib/ui.sh
+
         2. Create test SQL dump: ddev drush sql:dump --gzip > test.sql.gz
+
         3. Run basic sanitization: sanitize_sql_file "test.sql.gz" "basic"
+
         4. Import and check: gunzip -c test.sql.gz | grep "user.*@example.com"
+
         5. Verify user emails changed to user<uid>@example.com
+
         6. Verify sessions cleared
+
         Success: Basic sanitization anonymizes emails and clears sessions
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/sanitize.sh
-        - docs/DATA_SECURITY_BEST_PRACTICES.md
+      - docs/reference/api/library-functions.md
+      - lib/sanitize.sh
+      - docs/DATA_SECURITY_BEST_PRACTICES.md
     - text: Verify full sanitization (emails, passwords, sessions)
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/sanitize.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/sanitize.sh lib/ui.sh
+
         2. Create test database and run: sanitize_sql_file "test.sql.gz" "full"
+
         3. Verify emails sanitized: user<uid>@example.com
+
         4. Verify sessions truncated: SELECT COUNT(*) FROM sessions (should be 0)
+
         5. Verify watchdog cleared
+
         6. Verify cache tables truncated
+
         7. Verify webform submissions cleared
+
         Success: Full sanitization removes all PII and sensitive data
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/sanitize.sh
-        - docs/DATA_SECURITY_BEST_PRACTICES.md
+      - docs/reference/api/library-functions.md
+      - lib/sanitize.sh
+      - docs/DATA_SECURITY_BEST_PRACTICES.md
     - text: Check admin user preservation
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/sanitize.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/sanitize.sh lib/ui.sh
+
         2. Check sanitization SQL: echo "$SANITIZE_SQL_USERS"
+
         3. Verify WHERE clause: "WHERE uid > 1" (preserves uid 0 and 1)
+
         4. Run sanitization on test database
+
         5. Query admin: SELECT name, mail FROM users_field_data WHERE uid = 1
+
         6. Verify admin (uid 1) not affected
+
         Success: Admin user (uid 1) and anonymous (uid 0) preserved
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/sanitize.sh
-        - docs/DATA_SECURITY_BEST_PRACTICES.md
+      - docs/reference/api/library-functions.md
+      - lib/sanitize.sh
+      - docs/DATA_SECURITY_BEST_PRACTICES.md
     verified: false
     verified_by: null
     verified_at: null
@@ -7293,47 +8021,65 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/import.sh lib/ui.sh lib/common.sh
+      how_to_verify: '1. Source the library: source lib/import.sh lib/ui.sh lib/common.sh
+
         2. Test SSH connection: ssh -i keys/test_key user@server "echo Connected"
+
         3. Verify key-based authentication works
+
         4. Test connection failure handling with invalid host
+
         5. Verify error messages for connection failures
+
         Success: SSH connections work with key authentication, failures handled gracefully
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/import.sh
-        - docs/reference/workflows/import.md
+      - docs/reference/api/library-functions.md
+      - lib/import.sh
+      - docs/reference/workflows/import.md
     - text: Verify database download and import
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/import.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/import.sh lib/ui.sh
+
         2. Run import_step_pull_database: import_step_pull_database "test" "user@server" "keys/key" "/var/www/test"
+
         3. Verify database dump created remotely via drush
+
         4. Check db.sql.gz file downloaded to local site directory
+
         5. Verify file size is > 0 and properly gzipped
+
         Success: Database downloaded from remote server and saved locally
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/import.sh
-        - docs/reference/workflows/import.md
+      - docs/reference/api/library-functions.md
+      - lib/import.sh
+      - docs/reference/workflows/import.md
     - text: Check file synchronization
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source the library: source lib/import.sh lib/ui.sh
+      how_to_verify: '1. Source the library: source lib/import.sh lib/ui.sh
+
         2. Test minimal sync: import_step_pull_files "test" "user@server" "keys/key" "/var/www/test" "web" "n"
+
         3. Verify only essential files synced (composer.json, config/, custom modules/themes)
+
         4. Test full sync: import_step_pull_files "test" "user@server" "keys/key" "/var/www/test" "web" "y"
+
         5. Verify all files synced including public files
+
         Success: File sync works in both minimal and full modes
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/import.sh
-        - docs/reference/workflows/import.md
+      - docs/reference/api/library-functions.md
+      - lib/import.sh
+      - docs/reference/workflows/import.md
     verified: false
     verified_by: null
     verified_at: null
@@ -7372,44 +8118,62 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source library: source lib/server-scan.sh lib/ui.sh
+      how_to_verify: '1. Source library: source lib/server-scan.sh lib/ui.sh
+
         2. Test SSH connection: test_ssh_connection "root@server.ip" "~/.ssh/nwp"
+
         3. Verify returns 0 for successful connection
+
         4. Test with wrong key: test_ssh_connection "root@server.ip" "/nonexistent/key"
+
         5. Verify returns 1 with error message
+
         Success: Connectivity check correctly validates SSH access
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/server-scan.sh
+      - docs/reference/api/library-functions.md
+      - lib/server-scan.sh
     - text: Verify Drupal site detection
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Scan remote server: scan_server_for_sites "root@server.ip" "~/.ssh/nwp"
+      how_to_verify: '1. Scan remote server: scan_server_for_sites "root@server.ip" "~/.ssh/nwp"
+
         2. Verify returns JSON lines for each Drupal site
+
         3. Check detects Drupal 7, 8, 9, 10 sites
+
         4. Verify excludes vendor/core subdirectories
+
         5. Parse JSON: parse_site_json "$json_line" and verify variables set
+
         Success: Detects all Drupal sites, returns valid JSON, correct version detection
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/server-scan.sh
+      - docs/reference/api/library-functions.md
+      - lib/server-scan.sh
     - text: Check database discovery
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Analyze discovered site: analyze_remote_site "root@server.ip" "~/.ssh/nwp" "/var/www/site" "/var/www/site/web"
+      how_to_verify: '1. Analyze discovered site: analyze_remote_site "root@server.ip" "~/.ssh/nwp" "/var/www/site" "/var/www/site/web"
+
         2. Verify returns database size: grep "db_tables=" output
+
         3. Check module counts: grep "modules_enabled=" output
+
         4. Verify PHP version detected: grep "php_version=" output
+
         5. Test without Drush: should gracefully report limited info
+
         Success: Database and site metrics discovered when Drush available
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/server-scan.sh
+      - docs/reference/api/library-functions.md
+      - lib/server-scan.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -7425,59 +8189,84 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source library: source lib/frontend.sh lib/ui.sh
+      how_to_verify: '1. Source library: source lib/frontend.sh lib/ui.sh
+
         2. Find theme with Gulp: THEME_DIR=$(find_theme_dir "opensocial-site")
+
         3. Detect tool: TOOL=$(detect_frontend_tool "$THEME_DIR")
+
         4. Verify returns "gulp" for themes with gulpfile.js
+
         5. Get watch command: get_watch_command "gulp" "$THEME_DIR"
+
         6. Verify returns "gulp watch" or npm script equivalent
+
         Success: Gulp detected correctly, proper commands generated
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/frontend.sh
+      - docs/reference/api/library-functions.md
+      - lib/frontend.sh
     - text: Verify Grunt support
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Find theme with Grunt: THEME_DIR with Gruntfile.js
+      how_to_verify: '1. Find theme with Grunt: THEME_DIR with Gruntfile.js
+
         2. Detect: TOOL=$(detect_frontend_tool "$THEME_DIR")
+
         3. Verify returns "grunt"
+
         4. Check build command: get_build_command "grunt" "$THEME_DIR"
+
         5. Verify returns "grunt" or custom script
+
         Success: Grunt detected and configured correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/frontend.sh
+      - docs/reference/api/library-functions.md
+      - lib/frontend.sh
     - text: Check Webpack integration
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Find theme with webpack.config.js
+      how_to_verify: '1. Find theme with webpack.config.js
+
         2. Detect: TOOL=$(detect_frontend_tool "$THEME_DIR")
+
         3. Verify returns "webpack"
+
         4. Get commands: get_watch_command "webpack" "$THEME_DIR"
+
         5. Verify returns "npm run watch" or equivalent
+
         Success: Webpack detected, npm scripts identified correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/frontend.sh
+      - docs/reference/api/library-functions.md
+      - lib/frontend.sh
     - text: Test Vite support
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Find theme with vite.config.js or vite.config.ts
+      how_to_verify: '1. Find theme with vite.config.js or vite.config.ts
+
         2. Detect: TOOL=$(detect_frontend_tool "$THEME_DIR")
+
         3. Verify returns "vite"
+
         4. Check commands: get_build_command "vite" "$THEME_DIR"
+
         5. Verify returns "npm run build" or "vite build"
+
         Success: Vite detected and configured with correct commands
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/frontend.sh
+      - docs/reference/api/library-functions.md
+      - lib/frontend.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -7493,70 +8282,98 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source library: source lib/avc-moodle.sh
+      how_to_verify: '1. Source library: source lib/avc-moodle.sh
+
         2. Test with existing site: SITE_DIR=$(get_site_directory "avc")
+
         3. Verify returns full path: echo "$SITE_DIR" (should show /home/.../sites/avc)
+
         4. Test non-existent: get_site_directory "nonexistent-site-$(date +%s)"
+
         5. Verify returns 1
+
         Success: Returns correct paths for existing sites, fails gracefully for missing
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/avc-moodle.sh
+      - docs/reference/api/library-functions.md
+      - lib/avc-moodle.sh
     - text: Verify get_site_recipe detection
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Test AVC site: RECIPE=$(get_site_recipe "avc")
+      how_to_verify: '1. Test AVC site: RECIPE=$(get_site_recipe "avc")
+
         2. Verify returns "avc" or "avc-dev"
+
         3. Test Moodle: RECIPE=$(get_site_recipe "moodle-site")
+
         4. Verify returns "m"
+
         5. Test detection from composer.json when cnwp.yml missing
+
         Success: Recipe detected from config or filesystem analysis
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/avc-moodle.sh
+      - docs/reference/api/library-functions.md
+      - lib/avc-moodle.sh
     - text: Test OAuth2 key generation helpers
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Generate OAuth2 keys (if functions exist in library)
+      how_to_verify: '1. Generate OAuth2 keys (if functions exist in library)
+
         2. Verify key format is valid
+
         3. Check keys can be used for Moodle OAuth2 setup
-        4. Test key regeneration doesn't break existing configs
+
+        4. Test key regeneration doesn''t break existing configs
+
         Success: OAuth2 keys generated in correct format for Moodle integration
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/avc-moodle.sh
+      - docs/reference/api/library-functions.md
+      - lib/avc-moodle.sh
     - text: Verify role mapping functions
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Test AVC site validation: avc_moodle_validate_avc_site "avc"
+      how_to_verify: '1. Test AVC site validation: avc_moodle_validate_avc_site "avc"
+
         2. Verify returns 0 for valid AVC site
+
         3. Test with wrong recipe: avc_moodle_validate_avc_site "plain-drupal"
+
         4. Verify returns 1 with error
+
         5. Check Moodle validation: avc_moodle_validate_moodle_site "moodle-site"
+
         Success: Validation correctly identifies AVC and Moodle sites
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/avc-moodle.sh
+      - docs/reference/api/library-functions.md
+      - lib/avc-moodle.sh
     - text: Test cohort synchronization functions
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source library and test site validation
+      how_to_verify: '1. Source library and test site validation
+
         2. Run any cohort sync functions (if implemented)
+
         3. Verify data structures match expected format
+
         4. Test error handling for invalid site combinations
+
         Success: Cohort functions validate sites and handle errors gracefully
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/avc-moodle.sh
+      - docs/reference/api/library-functions.md
+      - lib/avc-moodle.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -7572,71 +8389,98 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source library: source lib/podcast.sh
+      how_to_verify: '1. Source library: source lib/podcast.sh
+
         2. Generate password: PASS=$(generate_password 24)
+
         3. Verify length: echo ${#PASS} (should be 24)
-        4. Check charset: echo "$PASS" | grep -E '^[A-Za-z0-9]+$'
+
+        4. Check charset: echo "$PASS" | grep -E ''^[A-Za-z0-9]+$''
+
         5. Generate multiple: for i in {1..10}; do generate_password; done (should be unique)
+
         Success: Passwords generated with correct length, safe characters, unique
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/podcast.sh
+      - docs/reference/api/library-functions.md
+      - lib/podcast.sh
     - text: Verify generate_castopod_env function
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Generate env: ENV=$(generate_castopod_env "podcast.example.com" "dbpass123" "keyid" "appkey" "bucket-name" "us-west-004")
+      how_to_verify: '1. Generate env: ENV=$(generate_castopod_env "podcast.example.com" "dbpass123" "keyid" "appkey" "bucket-name"
+        "us-west-004")
+
         2. Verify contains CP_BASEURL: echo "$ENV" | grep "CP_BASEURL="
+
         3. Check database settings: echo "$ENV" | grep "CP_DATABASE_PASSWORD=dbpass123"
+
         4. Verify B2 config: echo "$ENV" | grep "CP_MEDIA_S3_BUCKET=bucket-name"
+
         Success: Environment file generated with all required Castopod variables
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/podcast.sh
+      - docs/reference/api/library-functions.md
+      - lib/podcast.sh
     - text: Test Linode orchestration helpers
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Test provisions Linode for podcast hosting
+      how_to_verify: '1. Test provisions Linode for podcast hosting
+
         2. Verify calls create_linode_instance from lib/linode.sh
+
         3. Check waits for instance to be ready
+
         4. Verify returns instance info
+
         Success: Orchestration functions coordinate Linode provisioning correctly
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/podcast.sh
-        - lib/linode.sh
+      - docs/reference/api/library-functions.md
+      - lib/podcast.sh
+      - lib/linode.sh
     - text: Verify Cloudflare DNS configuration
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Test DNS setup calls cf_create_dns_a or cf_upsert_dns_a
+      how_to_verify: '1. Test DNS setup calls cf_create_dns_a or cf_upsert_dns_a
+
         2. Verify creates A record for podcast domain
+
         3. Check creates media subdomain if using B2
+
         4. Verify DNS propagation wait logic
+
         Success: DNS configured correctly for podcast and media domains
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/podcast.sh
-        - lib/cloudflare.sh
+      - docs/reference/api/library-functions.md
+      - lib/podcast.sh
+      - lib/cloudflare.sh
     - text: Test B2 storage configuration
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Test B2 bucket creation for podcast
+      how_to_verify: '1. Test B2 bucket creation for podcast
+
         2. Verify calls b2_create_bucket with correct settings
+
         3. Check creates application key with proper permissions
+
         4. Verify generates correct S3-compatible endpoint URL
+
         Success: B2 storage configured for Castopod media files
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/podcast.sh
-        - lib/b2.sh
+      - docs/reference/api/library-functions.md
+      - lib/podcast.sh
+      - lib/b2.sh
     verified: false
     verified_by: null
     verified_at: null
@@ -7652,75 +8496,105 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Source library: source lib/ssh.sh
+      how_to_verify: '1. Source library: source lib/ssh.sh
+
         2. Test default mode: MODE=$(get_ssh_host_key_checking); echo "$MODE"
+
         3. Verify returns "accept-new" by default
+
         4. Test strict mode: NWP_SSH_STRICT=1 MODE=$(get_ssh_host_key_checking); echo "$MODE"
+
         5. Verify returns "yes" in strict mode
+
         Success: Returns correct host key checking mode based on NWP_SSH_STRICT
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/ssh.sh
-        - docs/SECURITY.md
+      - docs/reference/api/library-functions.md
+      - lib/ssh.sh
+      - docs/SECURITY.md
     - text: Verify show_ssh_security_warning output
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Show warning: show_ssh_security_warning
+      how_to_verify: '1. Show warning: show_ssh_security_warning
+
         2. Verify displays warning about accept-new mode
+
         3. Verify mentions MITM vulnerability
+
         4. Check suggests NWP_SSH_STRICT=1 for strict mode
+
         5. Test with strict: NWP_SSH_STRICT=1 show_ssh_security_warning (should be silent)
+
         Success: Warning displayed in default mode, suppressed in strict mode
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/ssh.sh
-        - docs/SECURITY.md
+      - docs/reference/api/library-functions.md
+      - lib/ssh.sh
+      - docs/SECURITY.md
     - text: Test get_ssh_options array generation
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Get options: get_ssh_options
+      how_to_verify: '1. Get options: get_ssh_options
+
         2. Verify includes "-o" "StrictHostKeyChecking=accept-new"
+
         3. Verify includes "-o" "ConnectTimeout=10"
+
         4. Test in strict mode: NWP_SSH_STRICT=1 get_ssh_options
+
         5. Verify uses "yes" instead of "accept-new"
+
         Success: SSH options array generated correctly for both modes
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/ssh.sh
+      - docs/reference/api/library-functions.md
+      - lib/ssh.sh
     - text: Verify NWP_SSH_STRICT=1 strict mode
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Set strict mode: export NWP_SSH_STRICT=1
+      how_to_verify: '1. Set strict mode: export NWP_SSH_STRICT=1
+
         2. Check mode: is_ssh_strict_mode && echo "Strict" || echo "Relaxed"
+
         3. Verify returns 0 (true)
+
         4. Build SSH command: build_ssh_command
+
         5. Verify includes "StrictHostKeyChecking=yes"
+
         Success: Strict mode enforces known_hosts verification
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/ssh.sh
-        - docs/SECURITY.md
+      - docs/reference/api/library-functions.md
+      - lib/ssh.sh
+      - docs/SECURITY.md
     - text: Test accept-new mode (default)
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Unset strict: unset NWP_SSH_STRICT
+      how_to_verify: '1. Unset strict: unset NWP_SSH_STRICT
+
         2. Check mode: is_ssh_strict_mode && echo "Strict" || echo "Relaxed"
+
         3. Verify returns 1 (false)
+
         4. Build SSH command: build_ssh_command
+
         5. Verify includes "StrictHostKeyChecking=accept-new"
+
         Success: Default mode accepts new hosts, verifies known hosts
+
+        '
       related_docs:
-        - docs/reference/api/library-functions.md
-        - lib/ssh.sh
+      - docs/reference/api/library-functions.md
+      - lib/ssh.sh
     verified: false
     verified_by: null
     verified_at: null

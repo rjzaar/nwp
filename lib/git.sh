@@ -1525,6 +1525,11 @@ git_bundle_full() {
         return 1
     fi
 
+    # Convert bundle_path to absolute path before changing directories
+    if [[ "$bundle_path" != /* ]]; then
+        bundle_path="$(pwd)/$bundle_path"
+    fi
+
     cd "$repo_path" || return 1
 
     # Create bundle with all refs
@@ -1551,6 +1556,11 @@ git_bundle_incremental() {
     if [ ! -d "$repo_path/.git" ]; then
         print_error "Not a git repository: $repo_path"
         return 1
+    fi
+
+    # Convert bundle_path to absolute path before changing directories
+    if [[ "$bundle_path" != /* ]]; then
+        bundle_path="$(pwd)/$bundle_path"
     fi
 
     cd "$repo_path" || return 1

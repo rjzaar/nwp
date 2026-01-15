@@ -10,6 +10,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v0.25.0] - 2026-01-15
+
+### Added
+- Verification Execution Proposal documentation for systematic testing
+- Parallel agent verification strategy (5 agents, 553 items)
+
+### Fixed
+- **lib/git.sh**: Git bundle path issue - relative paths now converted to absolute before `cd` to prevent incorrect path resolution
+- **scripts/commands/restore.sh**: Backup selection error - `print_info` now uses stderr to prevent command substitution issues
+
+### Verified
+- Systematic verification of 70/89 features (78%)
+- 424 checklist items verified, 0 failures
+- lib_linode fully verified including instance creation/deletion
+- Skipped items require external infrastructure (Cloudflare API, remote SSH)
+
+---
+
 ## [v0.24.0] - 2026-01-15
 
 ### Added

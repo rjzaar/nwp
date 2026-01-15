@@ -143,7 +143,7 @@ select_backup() {
 
     if [ ! -d "$backup_dir" ]; then
         print_error "No backups found for site: $sitename"
-        print_info "Backup directory does not exist: $backup_dir"
+        echo "INFO: Backup directory does not exist: $backup_dir" >&2
         return 1
     fi
 

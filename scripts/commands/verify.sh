@@ -1682,32 +1682,65 @@ open_doc_file() {
     # Check if file exists
     if [[ ! -f "$full_path" ]]; then
         echo -e "${RED}File not found: $full_path${NC}"
-        sleep 1
+        read -p "Press Enter to continue..."
         return 1
     fi
 
-    # Detect the best way to open the file
+    # For markdown/text files, prefer terminal-based viewers
+    # This keeps the user in the terminal workflow
+    local ext="${filepath##*.}"
+
     if [[ -n "$EDITOR" ]]; then
-        # Use configured editor
+        # Use configured editor (handles TUI editors properly)
         "$EDITOR" "$full_path"
-    elif command -v xdg-open &>/dev/null; then
-        # Linux
-        xdg-open "$full_path" 2>/dev/null &
-    elif command -v open &>/dev/null; then
-        # macOS
-        open "$full_path"
-    elif command -v code &>/dev/null; then
-        # VS Code
-        code "$full_path"
-    elif command -v nano &>/dev/null; then
-        nano "$full_path"
-    elif command -v less &>/dev/null; then
-        less "$full_path"
-    else
-        echo -e "${RED}No suitable viewer found${NC}"
-        sleep 1
-        return 1
+        return 0
     fi
+
+    # For markdown files, prefer terminal viewers that work well
+    if [[ "$ext" == "md" || "$ext" == "txt" || "$ext" == "sh" ]]; then
+        if command -v less &>/dev/null; then
+            # less with syntax awareness
+            less "$full_path"
+            return 0
+        elif command -v nano &>/dev/null; then
+            nano "$full_path"
+            return 0
+        fi
+    fi
+
+    # Try VS Code (opens in existing window if running)
+    if command -v code &>/dev/null; then
+        code "$full_path"
+        echo -e "${DIM}Opened in VS Code${NC}"
+        sleep 1
+        return 0
+    fi
+
+    # Try GUI openers as last resort
+    if command -v xdg-open &>/dev/null; then
+        xdg-open "$full_path" 2>/dev/null
+        echo -e "${DIM}Opened with system viewer${NC}"
+        sleep 1
+        return 0
+    elif command -v open &>/dev/null; then
+        open "$full_path"
+        echo -e "${DIM}Opened with system viewer${NC}"
+        sleep 1
+        return 0
+    fi
+
+    # Final fallback - just cat it
+    if command -v cat &>/dev/null; then
+        clear
+        cat "$full_path"
+        echo ""
+        read -p "Press Enter to continue..."
+        return 0
+    fi
+
+    echo -e "${RED}No suitable viewer found${NC}"
+    read -p "Press Enter to continue..."
+    return 1
 }
 
 # Create OSC 8 hyperlink (clickable in modern terminals)

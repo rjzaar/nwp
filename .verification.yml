@@ -163,98 +163,510 @@ features:
       completed: true
       completed_by: greg
       completed_at: '2026-01-11T16:59:21-07:00'
+      how_to_verify: '1. Run: `pl install d` and provide a unique site name when prompted
+
+        2. Monitor installation progress through all steps
+
+        3. Verify site created: `ls ~/nwp/sites/[sitename]/` (should show site directory)
+
+        4. Check DDEV status: `cd ~/nwp/sites/[sitename] && ddev describe` (should show running)
+
+        5. Access site URL: Open the URL from ddev describe in a browser
+
+        6. Verify site loads correctly with expected Drupal installation
+
+        Success: Site installs without errors and is accessible in browser'
+      related_docs:
+      - docs/reference/commands/install.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with 'os' recipe (Open Social)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: `pl install os` and provide a unique site name when prompted
+
+        2. Monitor installation progress through all steps
+
+        3. Verify site created: `ls ~/nwp/sites/[sitename]/` (should show site directory)
+
+        4. Check DDEV status: `cd ~/nwp/sites/[sitename] && ddev describe` (should show running)
+
+        5. Access site URL: Open the URL from ddev describe in a browser
+
+        6. Verify site loads correctly with expected Drupal installation
+
+        Success: Site installs without errors and is accessible in browser'
+      related_docs:
+      - docs/reference/commands/install.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with 'nwp' recipe (NWP base)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: `pl install nwp` and provide a unique site name when prompted
+
+        2. Monitor installation progress through all steps
+
+        3. Verify site created: `ls ~/nwp/sites/[sitename]/` (should show site directory)
+
+        4. Check DDEV status: `cd ~/nwp/sites/[sitename] && ddev describe` (should show running)
+
+        5. Access site URL: Open the URL from ddev describe in a browser
+
+        6. Verify site loads correctly with expected Drupal installation
+
+        Success: Site installs without errors and is accessible in browser'
+      related_docs:
+      - docs/reference/commands/install.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with 'avc' recipe (AV Commons)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: `pl install avc` and provide a unique site name when prompted
+
+        2. Monitor installation progress through all steps
+
+        3. Verify site created: `ls ~/nwp/sites/[sitename]/` (should show site directory)
+
+        4. Check DDEV status: `cd ~/nwp/sites/[sitename] && ddev describe` (should show running)
+
+        5. Access site URL: Open the URL from ddev describe in a browser
+
+        6. Verify site loads correctly with expected Drupal installation
+
+        Success: Site installs without errors and is accessible in browser'
+      related_docs:
+      - docs/reference/commands/install.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with 'avc-dev' recipe (AV Commons developer)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: `pl install RECIPE` and provide a unique site name when prompted
+
+        2. Monitor installation progress through all steps
+
+        3. Verify site created: `ls ~/nwp/sites/[sitename]/` (should show site directory)
+
+        4. Check DDEV status: `cd ~/nwp/sites/[sitename] && ddev describe` (should show running)
+
+        5. Access site URL: Open the URL from ddev describe in a browser
+
+        6. Verify site loads correctly with expected Drupal installation
+
+        Success: Site installs without errors and is accessible in browser'
+      related_docs:
+      - docs/reference/commands/install.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with 'dm' recipe (Divine Mercy)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: `pl install dm` and provide a unique site name when prompted
+
+        2. Monitor installation progress through all steps
+
+        3. Verify site created: `ls ~/nwp/sites/[sitename]/` (should show site directory)
+
+        4. Check DDEV status: `cd ~/nwp/sites/[sitename] && ddev describe` (should show running)
+
+        5. Access site URL: Open the URL from ddev describe in a browser
+
+        6. Verify site loads correctly with expected Drupal installation
+
+        Success: Site installs without errors and is accessible in browser'
+      related_docs:
+      - docs/reference/commands/install.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with 'm' recipe (Moodle)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: `pl install m` and provide a unique site name when prompted
+
+        2. Monitor installation progress through all steps
+
+        3. Verify site created: `ls ~/nwp/sites/[sitename]/` (should show site directory)
+
+        4. Check DDEV status: `cd ~/nwp/sites/[sitename] && ddev describe` (should show running)
+
+        5. Access site URL: Open the URL from ddev describe in a browser
+
+        6. Verify site loads correctly with expected Drupal installation
+
+        Success: Site installs without errors and is accessible in browser'
+      related_docs:
+      - docs/reference/commands/install.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with 'gitlab' recipe
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: `pl install gitlab` and provide a unique site name when prompted
+
+        2. Monitor installation progress through all steps
+
+        3. Verify site created: `ls ~/nwp/sites/[sitename]/` (should show site directory)
+
+        4. Check DDEV status: `cd ~/nwp/sites/[sitename] && ddev describe` (should show running)
+
+        5. Access site URL: Open the URL from ddev describe in a browser
+
+        6. Verify site loads correctly with expected Drupal installation
+
+        Success: Site installs without errors and is accessible in browser'
+      related_docs:
+      - docs/reference/commands/install.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with 'pod' recipe (Podcast)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: `pl install pod` and provide a unique site name when prompted
+
+        2. Monitor installation progress through all steps
+
+        3. Verify site created: `ls ~/nwp/sites/[sitename]/` (should show site directory)
+
+        4. Check DDEV status: `cd ~/nwp/sites/[sitename] && ddev describe` (should show running)
+
+        5. Access site URL: Open the URL from ddev describe in a browser
+
+        6. Verify site loads correctly with expected Drupal installation
+
+        Success: Site installs without errors and is accessible in browser'
+      related_docs:
+      - docs/reference/commands/install.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Verify site starts and is accessible via browser
       completed: true
       completed_by: greg
       completed_at: '2026-01-11T16:59:39-07:00'
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: site starts and is accessible via browser
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/install.md
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Check admin login works with generated credentials
       completed: true
       completed_by: greg
       completed_at: '2026-01-11T16:59:48-07:00'
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: admin login works with generated credentials
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/install.md
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with --list flag
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run command with flag: `pl install [recipe] --list`
+
+        2. Verify flag behavior matches documentation
+
+        3. Check command output for expected results
+
+        4. Verify any state changes are correct
+
+        5. Test that flag can be combined with other valid flags if applicable
+
+        Success: Flag works as documented without errors'
+      related_docs:
+      - docs/reference/commands/install.md
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with -s=N (resume from step N)
       completed: true
       completed_by: greg
       completed_at: '2026-01-11T16:59:57-07:00'
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test install with -s=N (resume from step N)
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/install.md
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with --resume flag
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run command with flag: `pl install [recipe] --resume`
+
+        2. Verify flag behavior matches documentation
+
+        3. Check command output for expected results
+
+        4. Verify any state changes are correct
+
+        5. Test that flag can be combined with other valid flags if applicable
+
+        Success: Flag works as documented without errors'
+      related_docs:
+      - docs/reference/commands/install.md
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with -p=t (testing purpose)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test install with -p=t (testing purpose)
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/install.md
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with -p=i (indefinite purpose)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test install with -p=i (indefinite purpose)
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/install.md
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with -p=p (permanent purpose)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test install with -p=p (permanent purpose)
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/install.md
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with -p=m (migration purpose - stub only)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test install with -p=m (migration purpose - stub only)
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/install.md
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with c flag (create test content)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run command with flag: `pl install [recipe] `
+
+        2. Verify flag behavior matches documentation
+
+        3. Check command output for expected results
+
+        4. Verify any state changes are correct
+
+        5. Test that flag can be combined with other valid flags if applicable
+
+        Success: Flag works as documented without errors'
+      related_docs:
+      - docs/reference/commands/install.md
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Verify cnwp.yml is updated correctly after install
       completed: true
       completed_by: greg
       completed_at: '2026-01-11T17:01:47-07:00'
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: cnwp.yml is updated correctly after install
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/install.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with custom target name
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test install with custom target name
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/install.md
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install with auto mode enabled in recipe
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run: `pl install RECIPE` and provide a unique site name when prompted
+
+        2. Monitor installation progress through all steps
+
+        3. Verify site created: `ls ~/nwp/sites/[sitename]/` (should show site directory)
+
+        4. Check DDEV status: `cd ~/nwp/sites/[sitename] && ddev describe` (should show running)
+
+        5. Access site URL: Open the URL from ddev describe in a browser
+
+        6. Verify site loads correctly with expected Drupal installation
+
+        Success: Site installs without errors and is accessible in browser'
+      related_docs:
+      - docs/reference/commands/install.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test install_step tracking in cnwp.yml
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test install_step tracking in cnwp.yml
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/install.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     - text: Test interactive option selection works
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Run command with flag: `pl install [recipe] `
+
+        2. Verify flag behavior matches documentation
+
+        3. Check command output for expected results
+
+        4. Verify any state changes are correct
+
+        5. Test that flag can be combined with other valid flags if applicable
+
+        Success: Flag works as documented without errors'
+      related_docs:
+      - docs/reference/commands/install.md
+      - docs/guides/developer-workflow.md
+      - docs/guides/quickstart.md
     verified: false
     verified_by: null
     verified_at: null
@@ -299,22 +711,98 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Execute the command: `the command`
+
+        2. Observe command output and behavior
+
+        3. Verify output format matches documentation
+
+        4. Check that expected information is displayed
+
+        5. Test command with various scenarios if applicable
+
+        6. Verify command exits with appropriate exit code
+
+        Success: Command runs successfully and produces expected output'
+      related_docs:
+      - docs/reference/commands/status.md
     - text: Run status.sh <sitename> - verify detailed info shown
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Execute the command: `the command`
+
+        2. Observe command output and behavior
+
+        3. Verify output format matches documentation
+
+        4. Check that expected information is displayed
+
+        5. Test command with various scenarios if applicable
+
+        6. Verify command exits with appropriate exit code
+
+        Success: Command runs successfully and produces expected output'
+      related_docs:
+      - docs/reference/commands/status.md
     - text: Check running/stopped status is accurate
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: running/stopped status is accurate
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/status.md
     - text: Verify URLs displayed are correct and accessible
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: URLs displayed are correct and accessible
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/status.md
     - text: Test health check indicators (database, files, config)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test health check indicators (database, files, config)
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/status.md
+      - example.cnwp.yml
     verified: false
     verified_by: null
     verified_at: null
@@ -330,22 +818,103 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Execute the command: `the command`
+
+        2. Observe command output and behavior
+
+        3. Verify output format matches documentation
+
+        4. Check that expected information is displayed
+
+        5. Test command with various scenarios if applicable
+
+        6. Verify command exits with appropriate exit code
+
+        Success: Command runs successfully and produces expected output'
+      related_docs:
+      - docs/reference/commands/modify.md
+      - docs/guides/developer-workflow.md
     - text: Test changing site options (theme, modules, etc.)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test changing site options (theme, modules, etc.)
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/modify.md
+      - docs/guides/developer-workflow.md
     - text: Verify changes are saved to cnwp.yml correctly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: changes are saved to cnwp.yml correctly
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/modify.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
     - text: Test cancel/exit without saving
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test cancel/exit without saving
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/modify.md
+      - docs/guides/developer-workflow.md
     - text: Check keyboard navigation (arrows, enter, escape)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: keyboard navigation (arrows, enter, escape)
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/modify.md
+      - docs/guides/developer-workflow.md
     verified: false
     verified_by: null
     verified_at: null
@@ -363,34 +932,154 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create or use existing test site with content
+
+        2. Run backup command: `pl backup [sitename]`
+
+        3. Verify backup created: `ls -la ~/nwp/backups/[sitename]/` (should show timestamped backup)
+
+        4. Check backup contents match expectations based on test
+
+        5. Verify backup can be listed and identified
+
+        6. Test that backup doesn''t interfere with site operation
+
+        Success: Backup completes successfully with expected results'
+      related_docs:
+      - docs/reference/commands/backup.md
     - text: 'Test database-only backup: ./backup.sh -b <sitename>'
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create or use existing test site with content
+
+        2. Run backup command: `pl backup [sitename]`
+
+        3. Verify backup created: `ls -la ~/nwp/backups/[sitename]/` (should show timestamped backup)
+
+        4. Check backup contents match expectations based on test
+
+        5. Verify backup can be listed and identified
+
+        6. Test that backup doesn''t interfere with site operation
+
+        Success: Backup completes successfully with expected results'
+      related_docs:
+      - docs/reference/commands/backup.md
     - text: Verify backup files created in sitebackups/<sitename>/
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: backup files created in sitebackups/<sitename>/
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/backup.md
     - text: Test --sanitize basic flag
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create or use existing test site with content
+
+        2. Run backup command: `pl backup [sitename]`
+
+        3. Verify backup created: `ls -la ~/nwp/backups/[sitename]/` (should show timestamped backup)
+
+        4. Check backup contents match expectations based on test
+
+        5. Verify backup can be listed and identified
+
+        6. Test that backup doesn''t interfere with site operation
+
+        Success: Backup completes successfully with expected results'
+      related_docs:
+      - docs/reference/commands/backup.md
     - text: Test --sanitize full flag
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create or use existing test site with content
+
+        2. Run backup command: `pl backup [sitename]`
+
+        3. Verify backup created: `ls -la ~/nwp/backups/[sitename]/` (should show timestamped backup)
+
+        4. Check backup contents match expectations based on test
+
+        5. Verify backup can be listed and identified
+
+        6. Test that backup doesn''t interfere with site operation
+
+        Success: Backup completes successfully with expected results'
+      related_docs:
+      - docs/reference/commands/backup.md
     - text: Test --git flag pushes to GitLab repository
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create or use existing test site with content
+
+        2. Run backup command: `pl backup [sitename]`
+
+        3. Verify backup created: `ls -la ~/nwp/backups/[sitename]/` (should show timestamped backup)
+
+        4. Check backup contents match expectations based on test
+
+        5. Verify backup can be listed and identified
+
+        6. Test that backup doesn''t interfere with site operation
+
+        Success: Backup completes successfully with expected results'
+      related_docs:
+      - docs/reference/commands/backup.md
     - text: Test --bundle creates git bundle file
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create or use existing test site with content
+
+        2. Run backup command: `pl backup [sitename]`
+
+        3. Verify backup created: `ls -la ~/nwp/backups/[sitename]/` (should show timestamped backup)
+
+        4. Check backup contents match expectations based on test
+
+        5. Verify backup can be listed and identified
+
+        6. Test that backup doesn''t interfere with site operation
+
+        Success: Backup completes successfully with expected results'
+      related_docs:
+      - docs/reference/commands/backup.md
     - text: Verify backup naming convention includes timestamp
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: backup naming convention includes timestamp
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/backup.md
     verified: false
     verified_by: null
     verified_at: null
@@ -407,26 +1096,120 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create backup: `pl backup [sitename]`
+
+        2. Make changes to site (modify content, config, or files)
+
+        3. Run restore command: `pl restore [sitename]`
+
+        4. Select appropriate backup from list
+
+        5. Verify restoration completes without errors
+
+        6. Check that site state matches backup (content, files, config)
+
+        Success: Site restored to exact state at backup time'
+      related_docs:
+      - docs/reference/commands/restore.md
+      - docs/reference/commands/backup.md
     - text: Test restore from database-only backup
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create backup: `pl backup [sitename]`
+
+        2. Make changes to site (modify content, config, or files)
+
+        3. Run restore command: `pl restore [sitename]`
+
+        4. Select appropriate backup from list
+
+        5. Verify restoration completes without errors
+
+        6. Check that site state matches backup (content, files, config)
+
+        Success: Site restored to exact state at backup time'
+      related_docs:
+      - docs/reference/commands/restore.md
+      - docs/reference/commands/backup.md
     - text: Verify interactive backup selection works
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: interactive backup selection works
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/restore.md
+      - docs/reference/commands/backup.md
     - text: Test restore with specific backup file path
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create backup: `pl backup [sitename]`
+
+        2. Make changes to site (modify content, config, or files)
+
+        3. Run restore command: `pl restore [sitename]`
+
+        4. Select appropriate backup from list
+
+        5. Verify restoration completes without errors
+
+        6. Check that site state matches backup (content, files, config)
+
+        Success: Site restored to exact state at backup time'
+      related_docs:
+      - docs/reference/commands/restore.md
+      - docs/reference/commands/backup.md
     - text: Verify site works correctly after restore
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: site works correctly after restore
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/restore.md
     - text: Test restore to different site name
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Create backup: `pl backup [sitename]`
+
+        2. Make changes to site (modify content, config, or files)
+
+        3. Run restore command: `pl restore [sitename]`
+
+        4. Select appropriate backup from list
+
+        5. Verify restoration completes without errors
+
+        6. Check that site state matches backup (content, files, config)
+
+        Success: Site restored to exact state at backup time'
+      related_docs:
+      - docs/reference/commands/restore.md
     verified: false
     verified_by: null
     verified_at: null
@@ -442,22 +1225,97 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test sync with an imported site
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/sync.md
     - text: Verify database is updated from remote
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: database is updated from remote
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/sync.md
     - text: Check files are synced correctly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: files are synced correctly
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/sync.md
     - text: Test sync with --files-only flag
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test sync with --files-only flag
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/sync.md
     - text: Verify local changes are not overwritten unexpectedly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: local changes are not overwritten unexpectedly
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/sync.md
     verified: false
     verified_by: null
     verified_at: null
@@ -473,26 +1331,123 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test full copy: ./copy.sh source dest
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/copy.md
+      - docs/guides/developer-workflow.md
     - text: 'Test files-only copy: ./copy.sh -f source dest'
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test files-only copy: ./copy.sh -f source dest
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/copy.md
+      - docs/guides/developer-workflow.md
     - text: Verify copied site starts and runs independently
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: copied site starts and runs independently
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/copy.md
+      - docs/guides/developer-workflow.md
     - text: Check database is correctly duplicated
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: database is correctly duplicated
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/copy.md
+      - docs/guides/developer-workflow.md
     - text: Verify cnwp.yml is updated with new site
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: cnwp.yml is updated with new site
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/copy.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
     - text: Test copy to existing site (should warn/fail)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test copy to existing site (should warn/fail)
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/copy.md
+      - docs/guides/developer-workflow.md
     verified: false
     verified_by: null
     verified_at: null
@@ -508,30 +1463,144 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test delete with confirmation prompt
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/delete.md
+      - docs/guides/developer-workflow.md
     - text: Test delete with -y auto-confirm flag
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test delete with -y auto-confirm flag
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/delete.md
+      - docs/guides/developer-workflow.md
     - text: Test delete with -b backup flag (creates backup first)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test delete with -b backup flag (creates backup first)
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/delete.md
+      - docs/guides/developer-workflow.md
+      - docs/reference/commands/backup.md
     - text: Verify DDEV project is stopped and removed
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: DDEV project is stopped and removed
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/delete.md
+      - docs/guides/developer-workflow.md
     - text: Verify site directory is removed
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: site directory is removed
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/delete.md
+      - docs/guides/developer-workflow.md
     - text: Check cnwp.yml is updated to remove site
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: cnwp.yml is updated to remove site
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/delete.md
+      - example.cnwp.yml
+      - docs/guides/developer-workflow.md
     - text: Test protection of production sites (should warn)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test protection of production sites (should warn)
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/delete.md
+      - docs/guides/developer-workflow.md
     verified: false
     verified_by: null
     verified_at: null
@@ -547,26 +1616,123 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test dev mode: ./make.sh -v <sitename>
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/make.md
+      - docs/guides/frontend-theming.md
     - text: 'Test prod mode: ./make.sh -p <sitename>'
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test prod mode: ./make.sh -p <sitename>
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/make.md
+      - docs/guides/frontend-theming.md
     - text: Verify dev mode enables devel module and disables caching
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: dev mode enables devel module and disables caching
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/make.md
+      - docs/guides/frontend-theming.md
     - text: Verify prod mode uninstalls dev modules and enables caching
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: prod mode uninstalls dev modules and enables caching
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/make.md
+      - docs/guides/frontend-theming.md
     - text: Check CSS/JS aggregation settings change correctly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: CSS/JS aggregation settings change correctly
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/make.md
+      - example.cnwp.yml
+      - docs/guides/frontend-theming.md
     - text: Test with -y auto-confirm flag
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test with -y auto-confirm flag
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/make.md
+      - docs/guides/frontend-theming.md
     verified: false
     verified_by: null
     verified_at: null
@@ -582,26 +1748,122 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test migration from Drupal 7 source
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/migration.md
+      - docs/guides/migration-workflow.md
     - text: Test migration from Drupal 9/10 source
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test migration from Drupal 9/10 source
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/migration.md
+      - docs/guides/migration-workflow.md
     - text: Verify content types are migrated correctly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: content types are migrated correctly
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/migration.md
+      - docs/guides/migration-workflow.md
     - text: Check users and roles are migrated
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: users and roles are migrated
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/migration.md
+      - docs/guides/migration-workflow.md
     - text: Verify media/files are migrated
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: media/files are migrated
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/migration.md
+      - docs/guides/migration-workflow.md
     - text: Test migration rollback if available
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test migration rollback if available
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/migration.md
+      - docs/guides/migration-workflow.md
     verified: false
     verified_by: null
     verified_at: null
@@ -620,26 +1882,122 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test import from SSH remote server
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/import.md
+      - docs/guides/migration-workflow.md
     - text: Test interactive server scanning
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test interactive server scanning
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/import.md
+      - docs/guides/migration-workflow.md
     - text: Verify database is imported correctly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: database is imported correctly
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/import.md
+      - docs/guides/migration-workflow.md
     - text: Check files are downloaded and placed correctly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: files are downloaded and placed correctly
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/import.md
+      - docs/guides/migration-workflow.md
     - text: Verify imported site starts and runs
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Complete the prerequisite setup/action for this verification
+
+        2. Inspect the specific aspect: imported site starts and runs
+
+        3. Compare actual behavior/state with expected behavior
+
+        4. Check edge cases or boundary conditions if applicable
+
+        5. Verify no unexpected side effects occurred
+
+        6. Document any discrepancies or issues found
+
+        Success: Verification passes - actual matches expected behavior'
+      related_docs:
+      - docs/reference/commands/import.md
+      - docs/guides/migration-workflow.md
     - text: Test import with specific database/files paths
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up prerequisites for this test scenario
+
+        2. Execute the command or action described: Test import with specific database/files paths
+
+        3. Observe and verify the behavior matches expectations
+
+        4. Check output, logs, or state changes are correct
+
+        5. Test edge cases or error conditions if applicable
+
+        6. Verify no unexpected side effects or errors occurred
+
+        Success: Test scenario completes as expected with correct results'
+      related_docs:
+      - docs/reference/commands/import.md
+      - docs/guides/migration-workflow.md
     verified: false
     verified_by: null
     verified_at: null
@@ -655,15 +2013,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: |
-        1. Run: pl live --type=shared <sitename> (for GitLab server deployment)
-        2. For dedicated: pl live --type=dedicated <sitename>
-        3. Check console output for server creation confirmation
-        4. Success indicators:
-           - "Server created successfully" message
-           - Server IP address displayed
-           - No error messages during provisioning
-        5. Verify server appears in cnwp.yml under sites.<sitename>.live.server_ip
+      how_to_verify: "1. Run: pl live --type=shared <sitename> (for GitLab server deployment)\n2. For dedicated: pl live --type=dedicated\
+        \ <sitename>\n3. Check console output for server creation confirmation\n4. Success indicators:\n   - \"Server created\
+        \ successfully\" message\n   - Server IP address displayed\n   - No error messages during provisioning\n5. Verify\
+        \ server appears in cnwp.yml under sites.<sitename>.live.server_ip\n"
       related_docs:
       - docs/reference/commands/live.md
       - docs/deployment/linode-deployment.md
@@ -2200,18 +3553,46 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl badges show mysite
+        2. Verify output includes badge URLs for pipeline status, coverage, release, and license
+        3. Check that URLs are properly formatted
+        4. Success: All badge URLs display correctly
+      related_docs:
+        - docs/reference/commands/badges.md
     - text: Verify markdown generation works
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl badges markdown mysite
+        2. Verify markdown snippet includes all badge types
+        3. Test rendering in README.md
+        4. Success: Markdown renders correctly
+      related_docs:
+        - docs/reference/commands/badges.md
     - text: Test adding badges to site README
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Backup README.md
+        2. Run: pl badges add mysite
+        3. Verify badges added to README
+        4. Success: Badges display in GitLab
+      related_docs:
+        - docs/reference/commands/badges.md
     - text: Check coverage threshold validation
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl badges coverage mysite --threshold=80
+        2. Verify coverage check from GitLab CI
+        3. Test different thresholds
+        4. Success: Threshold validation works
+      related_docs:
+        - docs/reference/commands/badges.md
     verified: false
     verified_by: null
     verified_at: null
@@ -2227,6 +3608,13 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl email setup (requires sudo)
+        2. Verify Postfix installed
+        3. Check DKIM keys generated
+        4. Success: Email infrastructure configured
+      related_docs:
+        - docs/reference/commands/email.md
     - text: Verify email account creation for site
       completed: false
       completed_by: null
@@ -2235,6 +3623,13 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl email test mysite
+        2. Verify email sends
+        3. Check DKIM/SPF pass
+        4. Success: Email authentication works
+      related_docs:
+        - docs/reference/commands/email.md
     - text: Check email rerouting configuration
       completed: false
       completed_by: null
@@ -2428,6 +3823,13 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. On feature branch, run: pl contribute
+        2. Verify test-nwp.sh runs
+        3. Test --no-tests flag
+        4. Success: Tests gate contribution
+      related_docs:
+        - docs/reference/commands/contribute.md
     - text: Check MR description generation
       completed: false
       completed_by: null
@@ -2568,6 +3970,13 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl upstream configure
+        2. Enter upstream URL/tier
+        3. Verify .nwp-upstream.yml created
+        4. Success: Upstream configured
+      related_docs:
+        - docs/reference/commands/upstream.md
     - text: Verify sync functionality
       completed: false
       completed_by: null
@@ -2607,6 +4016,13 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Backup .secrets.yml
+        2. Run: pl migrate-secrets --nwp
+        3. Verify .secrets.data.yml created
+        4. Success: Migration completes
+      related_docs:
+        - docs/reference/commands/migrate-secrets.md
     verified: false
     verified_by: null
     verified_at: null
@@ -4111,18 +5527,87 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Source the library: source lib/badges.sh
+
+        2. Generate badge URL: generate_badge_url "test-project" "sites" "pipeline" "main"
+
+        3. Verify URL format matches: https://git.DOMAIN/sites/test-project/badges/main/pipeline.svg
+
+        4. Test coverage badge: generate_badge_url "test-project" "sites" "coverage"
+
+        5. Generate full README badges: generate_readme_badges "test-project" "sites"
+
+        6. Check output contains both pipeline and coverage badges in markdown format
+
+        Success: Badge URLs generated with correct format and contain SVG extension
+
+        '
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/badges.sh
     - text: Verify badge generation for failing status
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Set up test project with failing pipeline
+
+        2. Generate badge URL: generate_badge_url "failing-project" "sites" "pipeline"
+
+        3. Access badge SVG URL in browser or curl
+
+        4. Badge should show "failed" or red color status
+
+        5. Test with different badge types (pipeline, coverage, release)
+
+        Success: Badges reflect actual GitLab pipeline/coverage status
+
+        '
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/badges.sh
     - text: Check badge output format (SVG or URL)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Generate badge URLs: generate_badge_urls "mysite" "sites" "main"
+
+        2. Verify output includes all badge types: Pipeline, Coverage, Release
+
+        3. Check markdown format includes: [![Badge](url)](link)
+
+        4. Verify SVG URL paths are correct
+
+        5. Test add_badges_to_readme function: add_badges_to_readme "README.md" "mysite" "sites"
+
+        6. Check badges were inserted after first heading
+
+        Success: All badge URLs are valid SVG paths with proper markdown formatting
+
+        '
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/badges.sh
+      - docs/reference/gitlab/badges.md
     - text: Test badge color coding
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: '1. Check coverage threshold: check_coverage_threshold "80" "/path/to/coverage.xml"
+
+        2. Create test coverage.xml with different percentages
+
+        3. Verify threshold checking: values >= 80 return 0, < 80 return 1
+
+        4. Test badge URL generation with update_readme_badges function
+
+        5. Verify badges update correctly when branch changes
+
+        Success: Coverage threshold logic works, badge colors reflect pass/fail status
+
+        '
+      related_docs:
+      - docs/reference/api/library-functions.md
+      - lib/badges.sh
     verified: false
     verified_by: null
     verified_at: null

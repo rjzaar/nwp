@@ -2070,78 +2070,311 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg --preflight <sitename>
+        2. Verify pre-deployment checks run without actual deployment
+        3. Success indicators:
+           - All validation checks pass
+           - No deployment steps execute
+           - Exit code 0 if checks pass
+        4. Check output lists detected issues (if any)
+        5. Verify staging site not modified
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/deployment/environments.md
     - text: 'Test TUI mode: ./dev2stg.sh <sitename> (navigate DB and test menus)'
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg <sitename> (without -y flag)
+        2. Navigate database source menu using arrow keys
+        3. Navigate test preset menu
+        4. Success indicators:
+           - Interactive menus display correctly
+           - Can select database source (auto/production/development)
+           - Can select test preset (quick/essential/full/skip)
+           - Selected options are applied correctly
+        5. Complete deployment and verify choices were honored
+      related_docs:
+      - docs/reference/commands/dev2stg.md
     - text: 'Test automated mode: ./dev2stg.sh -y <sitename>'
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg -y <sitename>
+        2. Verify deployment proceeds without prompts
+        3. Success indicators:
+           - No interactive prompts appear
+           - Deployment completes automatically
+           - Default options are used (auto DB, essential tests)
+           - Exit code 0 on success
+        4. Check staging site is updated correctly
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/deployment/cicd.md
     - text: Test auto-staging creation when staging doesn't exist
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Delete staging site if exists: pl delete <sitename>-stg
+        2. Run: pl dev2stg <sitename>
+        3. Verify staging site is created automatically
+        4. Success indicators:
+           - Staging site directory created
+           - DDEV config generated
+           - Site appears in pl status output
+           - Deployment proceeds after creation
+        5. Check staging site works: ddev describe <sitename>-stg
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/reference/commands/install.md
     - text: 'Test database source: auto'
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg --db-source=auto <sitename>
+        2. Verify system auto-selects best database source
+        3. Success indicators:
+           - Uses recent production backup if available (<24hrs)
+           - Falls back to development DB if no recent backup
+           - Auto-selection logged in output
+           - Database import succeeds
+        4. Check staging database content matches source
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/deployment/environments.md
     - text: 'Test database source: production'
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg --db-source=production <sitename>
+        2. Verify fresh backup created from production server
+        3. Success indicators:
+           - SSH connection to production succeeds
+           - Database exported from production
+           - Backup imported to staging
+           - Database sanitization applied
+        4. Check user emails are anonymized: ddev drush sql:query "SELECT mail FROM users LIMIT 5"
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/reference/commands/prod2stg.md
     - text: 'Test database source: backup'
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Create manual backup: pl backup <sitename>
+        2. Run: pl dev2stg --db-source=backup <sitename>
+        3. Verify most recent backup file is used
+        4. Success indicators:
+           - Backup file detected in sitebackups/
+           - Backup imported successfully
+           - Database matches backup content
+        5. Check backup timestamp in deployment output
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/reference/commands/backup.md
     - text: 'Test database source: development'
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg --db-source=development <sitename>
+        2. Verify development database cloned to staging
+        3. Success indicators:
+           - Development DB exported
+           - Staging DB replaced with dev content
+           - No production data involved
+           - Fast deployment (no remote fetch)
+        4. Check staging has development test data
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/deployment/environments.md
     - text: Test with --fresh-backup flag (requires production access)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Ensure production server configured and accessible
+        2. Run: pl dev2stg --fresh-backup <sitename>
+        3. Verify new backup created from production (not cached)
+        4. Success indicators:
+           - Production backup created (ignore existing backups)
+           - Fresh data synced to staging
+           - Backup timestamp is current
+        5. Check sitebackups/ for new backup file
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/reference/commands/backup.md
     - text: Test with --dev-db flag (clones from development)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg --dev-db <sitename>
+        2. Verify development database used (shorthand for --db-source=development)
+        3. Success indicators:
+           - Development DB cloned to staging
+           - No production server accessed
+           - Fast deployment
+        4. Check staging database content matches development
+      related_docs:
+      - docs/reference/commands/dev2stg.md
     - text: Test with -t quick (quick test preset)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg -y -t quick <sitename>
+        2. Verify only quick tests run (PHPStan, PHPCS)
+        3. Success indicators:
+           - Tests complete in ~30 seconds
+           - Static analysis and coding standards checked
+           - No unit/functional tests run
+           - Deployment succeeds if tests pass
+        4. Check test output shows only quick test results
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/reference/commands/test.md
     - text: Test with -t essential (essential test preset)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg -y -t essential <sitename>
+        2. Verify essential tests run (PHPUnit, PHPStan, PHPCS)
+        3. Success indicators:
+           - Tests complete in 2-5 minutes
+           - Unit tests, static analysis, and coding standards checked
+           - Core quality gates validated
+        4. Check test output shows all essential test results
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/reference/commands/test.md
     - text: Test with -t full (full test preset)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg -y -t full <sitename>
+        2. Verify all tests run (unit, functional, static analysis, frontend, security)
+        3. Success indicators:
+           - Tests complete in 15-30 minutes
+           - Comprehensive test coverage
+           - All quality gates validated
+        4. Review detailed test report
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/reference/commands/test.md
     - text: Test with -t skip (skip tests)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg -y -t skip <sitename>
+        2. Verify no tests execute (deployment only)
+        3. Success indicators:
+           - Tests skipped in output
+           - Deployment completes quickly
+           - Only deployment steps run
+        4. Useful for rapid iteration during development
+      related_docs:
+      - docs/reference/commands/dev2stg.md
     - text: 'Test custom test selection: -t phpunit,phpstan'
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg -y -t phpunit,phpstan <sitename>
+        2. Verify only specified tests run
+        3. Success indicators:
+           - Only PHPUnit and PHPStan execute
+           - Other tests skipped
+           - Custom test combination works
+        4. Check test output shows only selected tests
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/reference/commands/test.md
     - text: Verify all 11 deployment steps complete successfully
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg -y <sitename>
+        2. Monitor output for all 11 steps:
+           - State detection & preflight
+           - Create/verify staging site
+           - Export configuration
+           - Sync files
+           - Restore/sync database
+           - Composer install --no-dev
+           - Database updates (drush updatedb)
+           - Import configuration (drush cim)
+           - Set production mode
+           - Run tests
+           - Display staging URL
+        3. Success indicators:
+           - Each step shows success checkmark
+           - No errors in any step
+           - Final "Deployment complete" message
+        4. Verify staging URL accessible
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/deployment/production-deployment.md
     - text: Verify staging has production mode (caching enabled, dev modules off)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. After dev2stg deployment, check staging site
+        2. Run: ddev drush <sitename>-stg status
+        3. Verify production settings:
+           - CSS/JS aggregation enabled
+           - Page caching enabled
+           - Development modules disabled (devel, stage_file_proxy)
+           - Error display set to "log only"
+        4. Check: ddev drush <sitename>-stg pml | grep -i devel (should show uninstalled)
+        5. Test caching: curl -I https://<sitename>-stg.ddev.site (check for cache headers)
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/reference/commands/make.md
+      - docs/deployment/environments.md
     - text: Verify database sanitization (user emails anonymized)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. After dev2stg with production database
+        2. Check user emails are anonymized: ddev drush <sitename>-stg sql:query "SELECT name, mail FROM users LIMIT 10"
+        3. Success indicators:
+           - User emails like user1@example.com, user2@example.com
+           - No real user email addresses
+           - Passwords reset to secure hashes
+        4. Verify admin password changed (shown in deployment output)
+        5. Check sensitive config sanitized
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/deployment/environments.md
     - text: 'Test step resume: ./dev2stg.sh -s 5 <sitename>'
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Interrupt deployment at step 5: Ctrl+C during database restore
+        2. Run: pl dev2stg -s 5 <sitename>
+        3. Verify deployment resumes from step 5
+        4. Success indicators:
+           - Steps 1-4 skipped
+           - Step 5 and onward execute
+           - Deployment completes successfully
+        5. Useful for recovery from failures
+      related_docs:
+      - docs/reference/commands/dev2stg.md
     verified: false
     verified_by: null
     verified_at: null
@@ -2157,26 +2390,103 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl stg2prod -b <sitename>
+        2. Verify production backup created before deployment
+        3. Success indicators:
+           - Backup file created in sitebackups/
+           - Backup timestamp recorded
+           - Deployment proceeds after backup
+        4. Check backup can be restored if needed
+        5. Verify backup includes database and files
+      related_docs:
+      - docs/reference/commands/stg2prod.md
+      - docs/reference/commands/backup.md
+      - docs/deployment/rollback-procedures.md
     - text: Verify backup is created before deployment
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. During stg2prod deployment, monitor backup step
+        2. Check console output for backup creation
+        3. Success indicators:
+           - "Creating production backup" message
+           - Backup file path displayed
+           - Backup completes before rsync
+        4. Verify backup file exists: ls sitebackups/<sitename>/prod-*
+        5. Check backup size is reasonable
+      related_docs:
+      - docs/reference/commands/stg2prod.md
+      - docs/reference/commands/backup.md
     - text: Check production site is updated correctly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. After deployment, visit production URL
+        2. Check site loads and displays correctly
+        3. Success indicators:
+           - Site accessible via HTTPS
+           - Latest changes deployed
+           - No 500/503 errors
+           - Drupal site renders properly
+        4. Test critical functionality (login, forms, etc.)
+        5. Check production logs for errors: ssh <prod> tail -f /var/log/nginx/error.log
+      related_docs:
+      - docs/reference/commands/stg2prod.md
+      - docs/deployment/production-deployment.md
     - text: Verify production mode is enforced
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. SSH to production server
+        2. Check Drupal status: cd /var/www/<sitename> && drush status
+        3. Verify production settings:
+           - Caching enabled (page cache, dynamic page cache)
+           - CSS/JS aggregation enabled
+           - Development modules disabled
+           - Error display set to "log only"
+        4. Check devel module not installed: drush pml | grep devel
+        5. Verify .htaccess or nginx config has security headers
+      related_docs:
+      - docs/reference/commands/stg2prod.md
+      - docs/deployment/production-deployment.md
     - text: Test database sync options
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Test different database sync approaches
+        2. Option 1 - Keep production DB: pl stg2prod --no-db <sitename>
+        3. Option 2 - Sync staging DB to prod: pl stg2prod --with-db <sitename>
+        4. Success indicators:
+           - Appropriate database handling based on option
+           - Content preserved or updated as expected
+           - Configuration imported correctly
+        5. Verify drush config:status shows no differences
+      related_docs:
+      - docs/reference/commands/stg2prod.md
+      - docs/deployment/production-deployment.md
     - text: Verify rollback procedure if deployment fails
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Simulate deployment failure (e.g., invalid config)
+        2. Verify automatic rollback prompt appears
+        3. Success indicators:
+           - Rollback offer displayed on failure
+           - Rollback restores pre-deployment state
+           - Production site remains accessible
+           - Backup used for rollback
+        4. Test manual rollback: pl rollback execute <sitename> prod
+        5. Verify site restored to working state
+      related_docs:
+      - docs/reference/commands/stg2prod.md
+      - docs/deployment/rollback-procedures.md
+      - docs/reference/commands/rollback.md
     verified: false
     verified_by: null
     verified_at: null
@@ -2192,22 +2502,86 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl prod2stg <sitename>
+        2. Verify production content pulled to staging
+        3. Success indicators:
+           - SSH connection to production succeeds
+           - Database exported from production
+           - Files synced via rsync
+           - Staging updated with production content
+        4. Check staging database matches production structure
+        5. Verify staging site loads with production content
+      related_docs:
+      - docs/reference/commands/prod2stg.md
+      - docs/deployment/environments.md
     - text: Verify production database is copied to staging
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. After prod2stg, check staging database
+        2. Run: ddev drush <sitename>-stg sql:query "SELECT COUNT(*) FROM node"
+        3. Compare with production: ssh <prod> "drush sql:query 'SELECT COUNT(*) FROM node'"
+        4. Success indicators:
+           - Node counts match
+           - User accounts synced
+           - Content structure identical
+           - Database sanitization applied to staging
+        5. Verify emails anonymized in staging
+      related_docs:
+      - docs/reference/commands/prod2stg.md
+      - docs/deployment/environments.md
     - text: Check files are synced correctly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Verify production files pulled to staging
+        2. Check file counts match: find sites/<sitename>-stg/web/sites/default/files -type f | wc -l
+        3. Success indicators:
+           - User-uploaded files synced
+           - File permissions correct
+           - No permission errors
+           - Symbolic links preserved
+        4. Spot-check specific files exist
+        5. Verify files directory size reasonable
+      related_docs:
+      - docs/reference/commands/prod2stg.md
     - text: Verify staging still has dev code (code not synced)
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. After prod2stg, check staging codebase
+        2. Verify code NOT synced from production (database/files only)
+        3. Success indicators:
+           - Git branch unchanged in staging
+           - Custom modules still present
+           - Development features still available
+           - Only database and files updated
+        4. Check git status shows staging code intact
+        5. Verify staging composer.json unchanged
+      related_docs:
+      - docs/reference/commands/prod2stg.md
+      - docs/deployment/environments.md
     - text: Test sanitization option if available
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl prod2stg --sanitize <sitename>
+        2. Verify production data sanitized for staging
+        3. Success indicators:
+           - User emails anonymized
+           - Passwords reset
+           - Sensitive config removed
+           - PII stripped from database
+        4. Check user table: ddev drush <sitename>-stg sql:query "SELECT mail FROM users LIMIT 5"
+        5. Verify no production credentials in staging
+      related_docs:
+      - docs/reference/commands/prod2stg.md
+      - docs/deployment/environments.md
     verified: false
     verified_by: null
     verified_at: null
@@ -2223,22 +2597,88 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl stg2live <sitename>
+        2. Verify staging deployed to live test server
+        3. Success indicators:
+           - Live server provisioned (if needed)
+           - Files synced via rsync
+           - Database deployed
+           - Site accessible at <sitename>.nwpcode.org
+        4. Check deployment steps complete successfully
+        5. Verify live site matches staging
+      related_docs:
+      - docs/reference/commands/stg2live.md
+      - docs/reference/commands/live.md
+      - docs/deployment/production-deployment.md
     - text: Verify files are synced via rsync/SSH
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Monitor rsync output during deployment
+        2. Check files transferred to live server
+        3. Success indicators:
+           - Rsync completes without errors
+           - File counts match staging
+           - Permissions set correctly
+           - Excludes applied (.ddev, .git, etc.)
+        4. SSH to live and check: ls -la /var/www/<sitename>
+        5. Verify web files present and accessible
+      related_docs:
+      - docs/reference/commands/stg2live.md
+      - docs/deployment/production-deployment.md
     - text: Check database is deployed correctly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Verify database exported from staging and imported to live
+        2. SSH to live server and check database
+        3. Success indicators:
+           - Database created on live server
+           - settings.local.php generated with credentials
+           - Data imported successfully
+           - Drupal bootstrap works
+        4. Test: ssh <live> "cd /var/www/<sitename> && drush status"
+        5. Check database connection and site name
+      related_docs:
+      - docs/reference/commands/stg2live.md
+      - docs/deployment/production-deployment.md
     - text: Verify live site is accessible
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Open browser to https://<sitename>.nwpcode.org
+        2. Verify site loads correctly
+        3. Success indicators:
+           - HTTPS works (SSL certificate valid)
+           - Site renders properly
+           - No errors (HTTP 200 response)
+           - Login works
+           - Images and assets load
+        4. Test critical functionality
+        5. Check browser console for JavaScript errors
+      related_docs:
+      - docs/reference/commands/stg2live.md
+      - docs/reference/commands/live.md
     - text: Test with dry-run mode if available
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl stg2live --dry-run <sitename>
+        2. Verify deployment simulation without changes
+        3. Success indicators:
+           - Rsync shows what would be transferred (--dry-run flag)
+           - No actual files transferred
+           - No database changes
+           - Deployment steps listed but not executed
+        4. Useful for previewing deployment impact
+        5. Check output for potential issues
+      related_docs:
+      - docs/reference/commands/stg2live.md
     verified: false
     verified_by: null
     verified_at: null
@@ -2254,18 +2694,68 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl prod2stg <sitename>
+        2. Verify production content pulled to staging
+        3. Success indicators:
+           - SSH connection to production succeeds
+           - Database exported from production
+           - Files synced via rsync
+           - Staging updated with production content
+        4. Check staging database matches production structure
+        5. Verify staging site loads with production content
+      related_docs:
+      - docs/reference/commands/prod2stg.md
+      - docs/deployment/environments.md
     - text: Verify database is downloaded and imported
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Monitor database export and import steps
+        2. Check database transferred from live to staging
+        3. Success indicators:
+           - Database exported from live server
+           - SQL dump downloaded
+           - Database imported to staging DDEV
+           - Drupal cache cleared
+        4. Test: ddev drush <sitename>-stg status
+        5. Verify database content matches live
+      related_docs:
+      - docs/reference/commands/live2stg.md
     - text: Check files are synced correctly
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Verify production files pulled to staging
+        2. Check file counts match: find sites/<sitename>-stg/web/sites/default/files -type f | wc -l
+        3. Success indicators:
+           - User-uploaded files synced
+           - File permissions correct
+           - No permission errors
+           - Symbolic links preserved
+        4. Spot-check specific files exist
+        5. Verify files directory size reasonable
+      related_docs:
+      - docs/reference/commands/prod2stg.md
     - text: Verify staging runs with live content
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. After live2stg, test staging site
+        2. Run: ddev launch <sitename>-stg
+        3. Success indicators:
+           - Staging site loads with live content
+           - Database queries work
+           - Content displays correctly
+           - No errors in watchdog logs
+        4. Test critical functionality works
+        5. Verify config matches live state
+      related_docs:
+      - docs/reference/commands/live2stg.md
+      - docs/deployment/environments.md
     verified: false
     verified_by: null
     verified_at: null
@@ -2281,18 +2771,73 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl live2prod <sitename>
+        2. Verify live test server content deployed to production
+        3. Success indicators:
+           - SSH connection to both servers succeeds
+           - Server-to-server rsync works
+           - Files transferred to production
+           - Database synced to production
+        4. Check production site updated
+        5. Verify deployment steps complete
+      related_docs:
+      - docs/reference/commands/live2prod.md
+      - docs/deployment/production-deployment.md
     - text: Verify backup is created before promotion
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Monitor backup step during deployment
+        2. Check production backup created before changes
+        3. Success indicators:
+           - Backup file created in sitebackups/
+           - Database backed up
+           - Files backed up
+           - Backup timestamp recorded
+        4. Verify backup can be restored: pl restore <sitename>
+        5. Check backup size and integrity
+      related_docs:
+      - docs/reference/commands/live2prod.md
+      - docs/reference/commands/backup.md
+      - docs/deployment/rollback-procedures.md
     - text: Check production site is updated
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. After deployment, visit production URL
+        2. Verify site shows live server changes
+        3. Success indicators:
+           - Production loads correctly
+           - Latest changes visible
+           - No errors (HTTP 200)
+           - SSL works
+           - Content displays properly
+        4. Test critical functionality
+        5. Check production logs for errors
+      related_docs:
+      - docs/reference/commands/live2prod.md
+      - docs/deployment/production-deployment.md
     - text: Test rollback procedure
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. After deployment, test rollback capability
+        2. Run: pl rollback list <sitename>
+        3. Verify rollback point exists from before deployment
+        4. Success indicators:
+           - Rollback point created automatically
+           - Can execute rollback: pl rollback execute <sitename> prod
+           - Site restores to pre-deployment state
+           - Rollback completes successfully
+        5. Verify site works after rollback
+      related_docs:
+      - docs/reference/commands/live2prod.md
+      - docs/deployment/rollback-procedures.md
+      - docs/reference/commands/rollback.md
     verified: false
     verified_by: null
     verified_at: null
@@ -2308,18 +2853,73 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl produce <sitename>
+        2. Verify production server provisioning initiated
+        3. Success indicators:
+           - Linode instance created (if automated)
+           - Server configuration started
+           - DNS configured
+           - SSL certificate requested
+        4. Note: Currently stub implementation - shows manual setup instructions
+        5. Check cnwp.yml for production config
+      related_docs:
+      - docs/reference/commands/produce.md
+      - docs/deployment/linode-deployment.md
+      - docs/deployment/production-deployment.md
     - text: Verify production settings are applied
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. After production server setup, check configuration
+        2. SSH to production server
+        3. Verify production settings:
+           - Nginx/Apache configured
+           - PHP-FPM optimized for production
+           - Database tuned for performance
+           - Caching configured (Redis/Memcached)
+        4. Check Drupal production mode: drush status
+        5. Verify performance settings in nginx.conf or .htaccess
+      related_docs:
+      - docs/reference/commands/produce.md
+      - docs/deployment/production-deployment.md
     - text: Check security hardening is enabled
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Verify production security measures applied
+        2. Check firewall: sudo ufw status
+        3. Verify security indicators:
+           - UFW firewall enabled
+           - fail2ban running
+           - SSH hardened (key-only auth, no root login)
+           - Unattended security updates enabled
+           - SSL/TLS configured with strong ciphers
+        4. Test: nmap <prod_ip> (should show only 22, 80, 443)
+        5. Check security headers: curl -I https://<prod_domain>
+      related_docs:
+      - docs/reference/commands/produce.md
+      - docs/deployment/production-deployment.md
     - text: Verify caching and performance settings
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Check production caching configuration
+        2. Verify performance optimizations:
+           - Page caching enabled
+           - CSS/JS aggregation active
+           - Image optimization configured
+           - CDN integrated (if applicable)
+           - Database query caching enabled
+        3. Test caching: curl -I https://<prod_domain> (check for cache headers)
+        4. Run performance test: drush core:requirements
+        5. Check page load times and optimize as needed
+      related_docs:
+      - docs/reference/commands/produce.md
+      - docs/deployment/production-deployment.md
     verified: false
     verified_by: null
     verified_at: null
@@ -5689,6 +6289,17 @@ features:
       completed: false
       completed_by: null
       completed_at: null
+      how_to_verify: |
+        1. Run: pl dev2stg -y -t phpunit,phpstan <sitename>
+        2. Verify only specified tests run
+        3. Success indicators:
+           - Only PHPUnit and PHPStan execute
+           - Other tests skipped
+           - Custom test combination works
+        4. Check test output shows only selected tests
+      related_docs:
+      - docs/reference/commands/dev2stg.md
+      - docs/reference/commands/test.md
     verified: false
     verified_by: null
     verified_at: null

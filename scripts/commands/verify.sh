@@ -2781,6 +2781,233 @@ count_total_machine_checkable_items() {
     echo "$total"
 }
 
+# Check if a checklist item has machine.checks at specified depth
+# Usage: has_item_machine_checks feature_id item_index depth
+has_item_machine_checks() {
+    local feature_id="$1"
+    local item_idx="$2"
+    local depth="$3"
+
+    # Use awk to check if machine.checks.{depth} exists for this item
+    awk -v fid="$feature_id" -v idx="$item_idx" -v depth="$depth" '
+    BEGIN {
+        in_features = 0
+        in_feature = 0
+        in_checklist = 0
+        item_count = 0
+        in_machine = 0
+        in_checks = 0
+        found = 0
+    }
+    /^features:/ { in_features = 1; next }
+    in_features && /^  [a-z_]+:$/ {
+        gsub(/:$/, "", $1)
+        gsub(/^  /, "", $1)
+        if ($1 == fid) {
+            in_feature = 1
+        } else {
+            in_feature = 0
+        }
+        in_checklist = 0
+        item_count = 0
+        next
+    }
+    in_feature && /^    checklist:/ { in_checklist = 1; item_count = 0; next }
+    in_feature && in_checklist && /^      - / {
+        if (item_count == idx) {
+            in_machine = 0
+            in_checks = 0
+        }
+        item_count++
+        next
+    }
+    in_feature && in_checklist && item_count == idx + 1 {
+        if (/^        machine:/) { in_machine = 1; next }
+        if (in_machine && /^          checks:/) { in_checks = 1; next }
+        if (in_checks && /^            '"$depth"':/) { found = 1; exit }
+        if (/^        [a-z]/ && !/^        machine:/) { in_machine = 0; in_checks = 0 }
+        if (/^      - /) { exit }
+    }
+    END { exit (found ? 0 : 1) }
+    ' "$VERIFICATION_FILE"
+}
+
+# Get machine check commands for a checklist item at specified depth
+# Usage: get_item_machine_commands feature_id item_index depth
+# Returns commands one per line in format: cmd|expect_exit|timeout|expect_output
+get_item_machine_commands() {
+    local feature_id="$1"
+    local item_idx="$2"
+    local depth="$3"
+
+    awk -v fid="$feature_id" -v idx="$item_idx" -v depth="$depth" '
+    BEGIN {
+        in_features = 0
+        in_feature = 0
+        in_checklist = 0
+        item_count = 0
+        in_machine = 0
+        in_checks = 0
+        in_depth = 0
+        in_commands = 0
+        cmd = ""
+        expect_exit = "0"
+        timeout = "60"
+        expect_output = ""
+    }
+    /^features:/ { in_features = 1; next }
+    in_features && /^  [a-z_]+:$/ {
+        gsub(/:$/, "", $1)
+        gsub(/^  /, "", $1)
+        if ($1 == fid) {
+            in_feature = 1
+        } else {
+            in_feature = 0
+        }
+        in_checklist = 0
+        item_count = 0
+        next
+    }
+    in_feature && /^    checklist:/ { in_checklist = 1; item_count = 0; next }
+    in_feature && in_checklist && /^      - / {
+        item_count++
+        in_machine = 0
+        in_checks = 0
+        in_depth = 0
+        in_commands = 0
+        next
+    }
+    in_feature && in_checklist && item_count == idx + 1 {
+        if (/^        machine:/) { in_machine = 1; next }
+        if (in_machine && /^          checks:/) { in_checks = 1; next }
+        if (in_checks && $0 ~ "^            " depth ":") { in_depth = 1; next }
+        if (in_depth && /^              commands:/) { in_commands = 1; next }
+        if (in_depth && in_commands && /^                - cmd:/) {
+            # Output previous command if exists (use  as delimiter to avoid pipe conflicts)
+            if (cmd != "") {
+                print cmd "\t" expect_exit "\t" timeout "\t" expect_output
+            }
+            # Parse new command - strip YAML prefix and outer double quotes only
+            cmd = $0
+            gsub(/^                - cmd: /, "", cmd)
+            # Only strip matching outer quotes (double or single wrapping the whole command)
+            if (cmd ~ /^".*"$/) {
+                gsub(/^"/, "", cmd)
+                gsub(/"$/, "", cmd)
+            } else if (cmd ~ /^'\''.*'\''$/) {
+                gsub(/^'\''/, "", cmd)
+                gsub(/'\''$/, "", cmd)
+            }
+            expect_exit = "0"
+            timeout = "60"
+            expect_output = ""
+            next
+        }
+        if (in_depth && in_commands && /^                  expect_exit:/) {
+            expect_exit = $2
+            next
+        }
+        if (in_depth && in_commands && /^                  timeout:/) {
+            timeout = $2
+            next
+        }
+        if (in_depth && in_commands && /^                  expect_output/) {
+            expect_output = $0
+            gsub(/^                  expect_output: /, "", expect_output)
+            gsub(/^"/, "", expect_output)
+            gsub(/"$/, "", expect_output)
+            next
+        }
+        # End of depth section
+        if (in_depth && /^            [a-z]/ && $0 !~ "^              ") {
+            if (cmd != "") {
+                print cmd "\t" expect_exit "\t" timeout "\t" expect_output
+            }
+            exit
+        }
+        # End of machine section
+        if (in_machine && /^        [a-z]/ && !/^        machine:/) {
+            if (cmd != "") {
+                print cmd "\t" expect_exit "\t" timeout "\t" expect_output
+            }
+            exit
+        }
+        # End of item
+        if (/^      - /) {
+            if (cmd != "") {
+                print cmd "\t" expect_exit "\t" timeout "\t" expect_output
+            }
+            exit
+        }
+    }
+    END {
+        if (cmd != "") {
+            print cmd "\t" expect_exit "\t" timeout "\t" expect_output
+        }
+    }
+    ' "$VERIFICATION_FILE"
+}
+
+# Execute machine checks for a single item
+# Usage: execute_item_machine_checks feature_id item_index depth test_site
+# Returns: 0 on success, 1 on failure
+execute_item_machine_checks() {
+    local feature_id="$1"
+    local item_idx="$2"
+    local depth="$3"
+    local test_site="$4"
+
+    local commands
+    commands=$(get_item_machine_commands "$feature_id" "$item_idx" "$depth")
+
+    if [[ -z "$commands" ]]; then
+        return 2  # No commands found
+    fi
+
+    local all_passed=true
+    local start_time=$(date +%s)
+
+    while IFS=$'\t' read -r cmd expect_exit timeout expect_output; do
+        [[ -z "$cmd" ]] && continue
+
+        # Replace {site} placeholder with test site
+        cmd="${cmd//\{site\}/$test_site}"
+
+        # Execute the command
+        local output
+        local exit_code
+
+        # Run with timeout
+        output=$(timeout "${timeout:-60}" bash -c "$cmd" 2>&1)
+        exit_code=$?
+
+        # Check exit code
+        if [[ "$exit_code" != "$expect_exit" ]]; then
+            verify_log "ERROR" "Command '$cmd' exited with $exit_code (expected $expect_exit)"
+            all_passed=false
+            break
+        fi
+
+        # Check output if expected
+        if [[ -n "$expect_output" ]]; then
+            if ! echo "$output" | grep -qE "$expect_output"; then
+                verify_log "ERROR" "Output did not match expected pattern: $expect_output"
+                all_passed=false
+                break
+            fi
+        fi
+    done <<< "$commands"
+
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+
+    if [[ "$all_passed" == true ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 # Run machine checks for all or specified features
 # Usage: run_machine_checks [--depth=LEVEL] [--feature=ID] [--all] [--affected] [--prefix=NAME]
 run_machine_checks() {
@@ -2938,17 +3165,9 @@ run_machine_checks() {
             fi
 
             # Check if this item has machine checks at the specified depth
-            # For now, we simulate this - in v3 schema this would check machine.checks.{depth}
-            local has_checks=false
-
-            # Basic simulation: assume items with certain keywords can be automated
-            if [[ "$item_text" =~ (Run|Test|Verify|Check|Create|Install|Backup|Restore) ]]; then
-                has_checks=true
-            fi
-
-            if [[ "$has_checks" == false ]]; then
+            if ! has_item_machine_checks "$f" "$i" "$depth"; then
                 if [[ "$verbose" == true ]]; then
-                    echo -e "  ${DIM}[skip]${NC} $item_text (no machine checks)"
+                    echo -e "  ${DIM}[skip]${NC} $item_text (no machine checks for $depth)"
                 fi
                 item_skipped=$((item_skipped + 1))
                 total_skipped=$((total_skipped + 1))
@@ -2957,22 +3176,32 @@ run_machine_checks() {
                 continue
             fi
 
-            # Execute the check (simulated for now)
-            # In full implementation, this would:
-            # 1. Get commands from machine.checks.{depth}.commands
-            # 2. Execute each command with execute_check()
-            # 3. Update machine.state in YAML
+            # Execute the actual machine checks from YAML
+            local check_result
+            local start_time=$(date +%s)
 
-            # For demonstration, mark as passed
-            echo -e "  ${GREEN}[pass]${NC} $item_text"
-            item_passed=$((item_passed + 1))
-            total_passed=$((total_passed + 1))
+            if execute_item_machine_checks "$f" "$i" "$depth" "$test_site"; then
+                check_result="pass"
+                echo -e "  ${GREEN}[pass]${NC} $item_text"
+                item_passed=$((item_passed + 1))
+                total_passed=$((total_passed + 1))
 
-            # Track result in memory
-            track_result "$f" "$i" "passed" "0" ""
+                # Track result in memory
+                track_result "$f" "$i" "passed" "0" ""
 
-            # Persist machine verification to YAML
-            update_machine_verified "$f" "$i" "$depth" "0"
+                # Persist machine verification to YAML
+                local end_time=$(date +%s)
+                local duration=$((end_time - start_time))
+                update_machine_verified "$f" "$i" "$depth" "$duration"
+            else
+                check_result="fail"
+                echo -e "  ${RED}[FAIL]${NC} $item_text"
+                item_failed=$((item_failed + 1))
+                total_failed=$((total_failed + 1))
+
+                # Track failure
+                track_result "$f" "$i" "failed" "0" "Command check failed"
+            fi
 
             # Update progress
             items_processed=$((items_processed + 1))

@@ -25,12 +25,12 @@ config:
 statistics:
   total_items: 571
   machine:
-    verified: 10
-    coverage_percent: 1.8
+    verified: 21
+    coverage_percent: 3.7
   human:
     verified: 0
     coverage_percent: 0.0
-  fully_verified: 0
+  fully_verified: 2
 
 features:
   setup:
@@ -61,6 +61,41 @@ features:
         - docs/reference/commands/setup.md
         - docs/guides/setup.md
         - docs/guides/quickstart.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl setup --status 2>&1 | head -20"
+                  expect_exit: 0
+                  timeout: 30
+            standard:
+              commands:
+                - cmd: "pl setup --status 2>&1 | head -20"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/setup.sh"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl setup --status 2>&1 | head -20"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/setup.sh"
+                  expect_exit: 0
+                - cmd: "pl doctor 2>&1 | grep -q 'Doctor'"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl setup --status 2>&1 | head -20"
+                  expect_exit: 0
+                - cmd: "pl doctor 2>&1 | grep -q 'Doctor'"
+                  expect_exit: 0
+                - cmd: "docker --version && ddev version"
+                  expect_exit: 0
+          state:
+            verified: true
+            verified_at: '2026-01-16T21:54:14+11:00'
+            depth: basic
+            duration_seconds: 7
       - text: Test Docker installation and verify ddev starts correctly
         completed: true
         completed_by: greg
@@ -82,6 +117,43 @@ features:
         related_docs:
         - docs/reference/commands/setup.md
         - docs/guides/setup.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "docker --version"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "docker --version"
+                  expect_exit: 0
+                - cmd: "docker ps >/dev/null 2>&1"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "docker --version"
+                  expect_exit: 0
+                - cmd: "docker ps >/dev/null 2>&1"
+                  expect_exit: 0
+                - cmd: "ddev version"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "docker --version"
+                  expect_exit: 0
+                - cmd: "docker ps >/dev/null 2>&1"
+                  expect_exit: 0
+                - cmd: "ddev version"
+                  expect_exit: 0
+                - cmd: "groups | grep -q docker"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify mkcert generates valid local certificates
         completed: false
         completed_by: null
@@ -103,6 +175,42 @@ features:
         related_docs:
         - docs/reference/commands/setup.md
         - docs/guides/setup.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "mkcert -version 2>&1 | head -1"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "mkcert -version 2>&1 | head -1"
+                  expect_exit: 0
+                - cmd: "mkcert -CAROOT 2>&1"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "mkcert -version 2>&1 | head -1"
+                  expect_exit: 0
+                - cmd: "mkcert -CAROOT 2>&1"
+                  expect_exit: 0
+                - cmd: "test -f \"$(mkcert -CAROOT)/rootCA.pem\""
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "mkcert -version 2>&1 | head -1"
+                  expect_exit: 0
+                - cmd: "test -f \"$(mkcert -CAROOT)/rootCA.pem\""
+                  expect_exit: 0
+                - cmd: "cd /tmp && mkcert verify-test.local && rm -f verify-test.local*.pem"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test Linode CLI authentication if configured
         completed: false
         completed_by: null
@@ -122,6 +230,36 @@ features:
         related_docs:
         - docs/reference/commands/setup.md
         - docs/guides/setup.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "which linode-cli >/dev/null 2>&1 || echo 'not installed'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "linode-cli --version 2>&1 | head -1"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "linode-cli --version 2>&1 | head -1"
+                  expect_exit: 0
+                - cmd: "test -f ~/.config/linode-cli || test -f ~/.linode-cli"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "linode-cli --version 2>&1 | head -1"
+                  expect_exit: 0
+                - cmd: "linode-cli account view 2>&1 | head -5"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Check that all error messages are clear and actionable
         completed: false
         completed_by: null
@@ -142,6 +280,26 @@ features:
           Success: All error messages include clear explanation of problem and actionable next steps
         related_docs:
         - docs/reference/commands/setup.md
+        machine:
+          automatable: false
+          reason: "Error message quality requires human judgment to assess clarity and actionability"
+          checks:
+            basic:
+              commands:
+                - cmd: "pl setup --help 2>&1 | grep -q 'setup'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl setup --help 2>&1 | grep -q 'setup'"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/setup.sh"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -219,6 +377,49 @@ features:
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl install --help 2>&1 | grep -q 'install'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl install {site} -r d -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "test -d sites/{site}"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl install {site} -r d -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "test -d sites/{site}"
+                  expect_exit: 0
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+            paranoid:
+              commands:
+                - cmd: "pl install {site} -r d -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "test -d sites/{site}"
+                  expect_exit: 0
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -q 'Drupal'"
+                  expect_exit: 0
+                  timeout: 60
+          state:
+            verified: true
+            verified_at: '2026-01-16T21:54:14+11:00'
+            depth: basic
+            duration_seconds: 0
       - text: Test install with 'os' recipe (Open Social)
         completed: false
         completed_by: null
@@ -242,6 +443,44 @@ features:
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl install --help 2>&1 | grep -q 'install'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl install {site}-os -r os -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "test -d sites/{site}-os"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl install {site}-os -r os -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "test -d sites/{site}-os"
+                  expect_exit: 0
+                - cmd: "cd sites/{site}-os && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+            paranoid:
+              commands:
+                - cmd: "pl install {site}-os -r os -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "cd sites/{site}-os && ddev drush status 2>&1 | grep -q 'Drupal'"
+                  expect_exit: 0
+                  timeout: 60
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test install with 'nwp' recipe (NWP base)
         completed: false
         completed_by: null
@@ -265,6 +504,42 @@ features:
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl install --help 2>&1 | grep -q 'install'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl install {site}-nwp -r nwp -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "test -d sites/{site}-nwp"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl install {site}-nwp -r nwp -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "cd sites/{site}-nwp && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+            paranoid:
+              commands:
+                - cmd: "pl install {site}-nwp -r nwp -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "cd sites/{site}-nwp && ddev drush status 2>&1 | grep -q 'Drupal'"
+                  expect_exit: 0
+                  timeout: 60
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test install with 'avc' recipe (AV Commons)
         completed: false
         completed_by: null
@@ -288,6 +563,42 @@ features:
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl install --help 2>&1 | grep -q 'install'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl install {site}-avc -r avc -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "test -d sites/{site}-avc"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl install {site}-avc -r avc -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "cd sites/{site}-avc && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+            paranoid:
+              commands:
+                - cmd: "pl install {site}-avc -r avc -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "cd sites/{site}-avc && ddev drush status 2>&1 | grep -q 'Drupal'"
+                  expect_exit: 0
+                  timeout: 60
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test install with 'avc-dev' recipe (AV Commons developer)
         completed: false
         completed_by: null
@@ -311,6 +622,42 @@ features:
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl install --help 2>&1 | grep -q 'install'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl install {site}-avcdev -r avc-dev -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "test -d sites/{site}-avcdev"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl install {site}-avcdev -r avc-dev -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "cd sites/{site}-avcdev && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+            paranoid:
+              commands:
+                - cmd: "pl install {site}-avcdev -r avc-dev -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "cd sites/{site}-avcdev && ddev drush status 2>&1 | grep -q 'Drupal'"
+                  expect_exit: 0
+                  timeout: 60
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test install with 'dm' recipe (Divine Mercy)
         completed: false
         completed_by: null
@@ -334,6 +681,42 @@ features:
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl install --help 2>&1 | grep -q 'install'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl install {site}-dm -r dm -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "test -d sites/{site}-dm"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl install {site}-dm -r dm -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "cd sites/{site}-dm && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+            paranoid:
+              commands:
+                - cmd: "pl install {site}-dm -r dm -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "cd sites/{site}-dm && ddev drush status 2>&1 | grep -q 'Drupal'"
+                  expect_exit: 0
+                  timeout: 60
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test install with 'm' recipe (Moodle)
         completed: false
         completed_by: null
@@ -357,6 +740,42 @@ features:
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl install --help 2>&1 | grep -q 'install'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl install {site}-m -r m -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "test -d sites/{site}-m"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl install {site}-m -r m -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "cd sites/{site}-m && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+            paranoid:
+              commands:
+                - cmd: "pl install {site}-m -r m -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "cd sites/{site}-m && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test install with 'gitlab' recipe
         completed: false
         completed_by: null
@@ -380,6 +799,42 @@ features:
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl install --help 2>&1 | grep -q 'install'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl install {site}-gitlab -r gitlab -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "test -d sites/{site}-gitlab"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl install {site}-gitlab -r gitlab -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "cd sites/{site}-gitlab && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+            paranoid:
+              commands:
+                - cmd: "pl install {site}-gitlab -r gitlab -y 2>&1"
+                  expect_exit: 0
+                  timeout: 900
+                - cmd: "cd sites/{site}-gitlab && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test install with 'pod' recipe (Podcast)
         completed: false
         completed_by: null
@@ -403,6 +858,42 @@ features:
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl install --help 2>&1 | grep -q 'install'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl install {site}-pod -r pod -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "test -d sites/{site}-pod"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl install {site}-pod -r pod -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "cd sites/{site}-pod && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+            paranoid:
+              commands:
+                - cmd: "pl install {site}-pod -r pod -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "cd sites/{site}-pod && ddev drush status 2>&1 | grep -q 'Drupal'"
+                  expect_exit: 0
+                  timeout: 60
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify site starts and is accessible via browser
         completed: true
         completed_by: greg
@@ -425,6 +916,43 @@ features:
         - docs/reference/commands/install.md
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "test -d sites/{site} && cd sites/{site} && ddev describe 2>&1 | head -10"
+                  expect_exit: 0
+                  timeout: 30
+            standard:
+              commands:
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+            thorough:
+              commands:
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -q 'Drupal'"
+                  expect_exit: 0
+                  timeout: 60
+            paranoid:
+              commands:
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -q 'Connected'"
+                  expect_exit: 0
+                  timeout: 60
+                - cmd: "curl -sI https://{site}.ddev.site 2>&1 | grep -q '200\\|301\\|302'"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Check admin login works with generated credentials
         completed: true
         completed_by: greg
@@ -447,6 +975,28 @@ features:
         - docs/reference/commands/install.md
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
+        machine:
+          automatable: false
+          reason: "Admin login verification requires browser interaction and visual confirmation"
+          checks:
+            basic:
+              commands:
+                - cmd: "cd sites/{site} && ddev drush uli 2>&1 | grep -q 'http'"
+                  expect_exit: 0
+                  timeout: 30
+            standard:
+              commands:
+                - cmd: "cd sites/{site} && ddev drush uli 2>&1 | grep -q 'http'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "cd sites/{site} && ddev drush user:information admin 2>&1 | grep -q 'admin'"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test install with --list flag
         completed: false
         completed_by: null
@@ -467,6 +1017,38 @@ features:
         - docs/reference/commands/install.md
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl install --list 2>&1 | head -20"
+                  expect_exit: 0
+                  timeout: 30
+            standard:
+              commands:
+                - cmd: "pl install --list 2>&1 | grep -q 'd\\|os\\|nwp'"
+                  expect_exit: 0
+                  timeout: 30
+            thorough:
+              commands:
+                - cmd: "pl install --list 2>&1 | grep -q 'd\\|os\\|nwp'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "pl install --list 2>&1 | wc -l | grep -q '[1-9]'"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl install --list 2>&1 | grep -q 'd\\|os\\|nwp'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "for r in d os nwp; do pl install --list 2>&1 | grep -q \"$r\" || exit 1; done"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test install with -s=N (resume from step N)
         completed: true
         completed_by: greg
@@ -788,6 +1370,46 @@ features:
           Success: Command runs successfully and produces expected output
         related_docs:
         - docs/reference/commands/status.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl status 2>&1 | head -20"
+                  expect_exit: 0
+                  timeout: 30
+            standard:
+              commands:
+                - cmd: "pl status 2>&1"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "pl status 2>&1 | grep -q 'Sites\\|Status\\|Name'"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl status 2>&1"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "pl status 2>&1 | grep -q 'Sites\\|Status\\|Name'"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/status.sh"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl status 2>&1"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "pl status 2>&1 | grep -q 'Sites\\|Status\\|Name'"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/status.sh"
+                  expect_exit: 0
+                - cmd: "pl status --help 2>&1 | grep -q 'status'"
+                  expect_exit: 0
+          state:
+            verified: true
+            verified_at: '2026-01-16T21:54:15+11:00'
+            depth: basic
+            duration_seconds: 1
       - text: Run status.sh <sitename> - verify detailed info shown
         completed: false
         completed_by: null
@@ -808,6 +1430,44 @@ features:
           Success: Command runs successfully and produces expected output
         related_docs:
         - docs/reference/commands/status.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl status {site} 2>&1 | head -30"
+                  expect_exit: 0
+                  timeout: 30
+            standard:
+              commands:
+                - cmd: "pl status {site} 2>&1"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "pl status {site} 2>&1 | grep -qi '{site}\\|running\\|stopped'"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl status {site} 2>&1"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "pl status {site} 2>&1 | grep -qi '{site}\\|running\\|stopped'"
+                  expect_exit: 0
+                - cmd: "pl status {site} 2>&1 | grep -qi 'URL\\|http'"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl status {site} 2>&1"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "pl status {site} 2>&1 | grep -qi '{site}\\|running\\|stopped'"
+                  expect_exit: 0
+                - cmd: "pl status {site} 2>&1 | grep -qi 'recipe\\|purpose'"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Check running/stopped status is accurate
         completed: false
         completed_by: null
@@ -828,6 +1488,48 @@ features:
           Success: Verification passes - actual matches expected behavior
         related_docs:
         - docs/reference/commands/status.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl status {site} 2>&1 | grep -qi 'running\\|stopped'"
+                  expect_exit: 0
+                  timeout: 30
+            standard:
+              commands:
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qi 'running\\|stopped'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "pl status {site} 2>&1 | grep -qi 'running\\|stopped'"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qi 'running\\|stopped'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "pl status {site} 2>&1 | grep -qi 'running\\|stopped'"
+                  expect_exit: 0
+                - cmd: "cd sites/{site} && ddev stop && pl status {site} 2>&1 | grep -qi 'stopped' && ddev start"
+                  expect_exit: 0
+                  timeout: 120
+            paranoid:
+              commands:
+                - cmd: "cd sites/{site} && ddev stop"
+                  expect_exit: 0
+                  timeout: 60
+                - cmd: "pl status {site} 2>&1 | grep -qi 'stopped'"
+                  expect_exit: 0
+                - cmd: "cd sites/{site} && ddev start"
+                  expect_exit: 0
+                  timeout: 120
+                - cmd: "pl status {site} 2>&1 | grep -qi 'running'"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify URLs displayed are correct and accessible
         completed: false
         completed_by: null
@@ -848,6 +1550,38 @@ features:
           Success: Verification passes - actual matches expected behavior
         related_docs:
         - docs/reference/commands/status.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl status {site} 2>&1 | grep -qi 'http\\|url'"
+                  expect_exit: 0
+                  timeout: 30
+            standard:
+              commands:
+                - cmd: "pl status {site} 2>&1 | grep -qi 'http\\|url'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "pl status {site} 2>&1 | grep -oE 'https?://[^ ]+' | head -1"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl status {site} 2>&1 | grep -oE 'https?://[^ ]+' | head -1"
+                  expect_exit: 0
+                - cmd: "URL=$(pl status {site} 2>&1 | grep -oE 'https://[^ ]+\\.ddev\\.site' | head -1) && curl -sI \"$URL\" 2>&1 | head -5"
+                  expect_exit: 0
+                  timeout: 30
+            paranoid:
+              commands:
+                - cmd: "URL=$(pl status {site} 2>&1 | grep -oE 'https://[^ ]+\\.ddev\\.site' | head -1) && curl -sI \"$URL\" 2>&1 | grep -q '200\\|301\\|302'"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test health check indicators (database, files, config)
         completed: false
         completed_by: null
@@ -869,6 +1603,41 @@ features:
         related_docs:
         - docs/reference/commands/status.md
         - example.cnwp.yml
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl status {site} 2>&1 | head -30"
+                  expect_exit: 0
+                  timeout: 30
+            standard:
+              commands:
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -qi 'connected\\|database'"
+                  expect_exit: 0
+                  timeout: 60
+            thorough:
+              commands:
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -qi 'connected'"
+                  expect_exit: 0
+                  timeout: 60
+                - cmd: "test -d sites/{site}/web/sites/default/files || test -d sites/{site}/html/sites/default/files"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -qi 'connected'"
+                  expect_exit: 0
+                  timeout: 60
+                - cmd: "test -d sites/{site}/web/sites/default/files || test -d sites/{site}/html/sites/default/files"
+                  expect_exit: 0
+                - cmd: "cd sites/{site} && ddev drush config:status 2>&1 | head -10"
+                  expect_exit: 0
+                  timeout: 60
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -901,6 +1670,40 @@ features:
         related_docs:
         - docs/reference/commands/modify.md
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl modify --help 2>&1 | grep -q 'modify'"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "pl modify --help 2>&1 | grep -q 'modify'"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/modify.sh"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl modify --help 2>&1 | grep -q 'modify'"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/modify.sh"
+                  expect_exit: 0
+                - cmd: "grep -q 'show_main_menu\\|draw_menu' scripts/commands/modify.sh"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl modify --help 2>&1 | grep -q 'modify'"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/modify.sh"
+                  expect_exit: 0
+                - cmd: "source lib/tui.sh 2>/dev/null && type draw_menu >/dev/null 2>&1"
+                  expect_exit: 0
+          state:
+            verified: true
+            verified_at: '2026-01-16T21:54:15+11:00'
+            depth: basic
+            duration_seconds: 0
       - text: Test changing site options (theme, modules, etc.)
         completed: false
         completed_by: null
@@ -944,6 +1747,40 @@ features:
         - docs/reference/commands/modify.md
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "test -f cnwp.yml"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "test -f cnwp.yml"
+                  expect_exit: 0
+                - cmd: "yq eval '.sites' cnwp.yml >/dev/null 2>&1"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "test -f cnwp.yml"
+                  expect_exit: 0
+                - cmd: "yq eval '.sites' cnwp.yml >/dev/null 2>&1"
+                  expect_exit: 0
+                - cmd: "yq eval '.sites.{site}' cnwp.yml >/dev/null 2>&1"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "test -f cnwp.yml"
+                  expect_exit: 0
+                - cmd: "yq eval '.sites' cnwp.yml >/dev/null 2>&1"
+                  expect_exit: 0
+                - cmd: "yq eval '.sites.{site}' cnwp.yml >/dev/null 2>&1"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test cancel/exit without saving
         completed: false
         completed_by: null
@@ -986,6 +1823,40 @@ features:
         related_docs:
         - docs/reference/commands/modify.md
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "test -f lib/tui.sh"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "test -f lib/tui.sh"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/modify.sh"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "test -f lib/tui.sh"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/modify.sh"
+                  expect_exit: 0
+                - cmd: "grep -q tui.sh scripts/commands/modify.sh"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "test -f lib/tui.sh"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/modify.sh"
+                  expect_exit: 0
+                - cmd: "source lib/tui.sh 2>/dev/null || true"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -1022,9 +1893,9 @@ features:
                   expect_exit: 0
           state:
             verified: true
-            verified_at: '2026-01-16T20:56:36+11:00'
+            verified_at: '2026-01-16T21:54:17+11:00'
             depth: basic
-            duration_seconds: 0
+            duration_seconds: 2
         human:
           auto_loggable: true
           trigger_commands:
@@ -1349,6 +2220,50 @@ features:
         related_docs:
         - docs/reference/commands/restore.md
         - docs/reference/commands/backup.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl restore --help 2>&1 | grep -q 'restore'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl restore --help 2>&1 | grep -q 'restore'"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/restore.sh"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl backup {site} -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "pl restore {site} --latest -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -qi 'connected'"
+                  expect_exit: 0
+                  timeout: 60
+            paranoid:
+              commands:
+                - cmd: "pl backup {site} -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "cd sites/{site} && ddev drush sql:query \"SELECT 1\" 2>&1"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "pl restore {site} --latest -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -qi 'connected'"
+                  expect_exit: 0
+                  timeout: 60
+          state:
+            verified: true
+            verified_at: '2026-01-16T21:54:17+11:00'
+            depth: basic
+            duration_seconds: 0
       - text: Test restore from database-only backup
         completed: false
         completed_by: null
@@ -1370,6 +2285,49 @@ features:
         related_docs:
         - docs/reference/commands/restore.md
         - docs/reference/commands/backup.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl restore --help 2>&1 | grep -q 'restore'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl backup {site} --db-only -y 2>&1"
+                  expect_exit: 0
+                  timeout: 120
+                - cmd: "pl restore {site} --latest -y 2>&1"
+                  expect_exit: 0
+                  timeout: 120
+            thorough:
+              commands:
+                - cmd: "pl backup {site} --db-only -y 2>&1"
+                  expect_exit: 0
+                  timeout: 120
+                - cmd: "pl restore {site} --latest -y 2>&1"
+                  expect_exit: 0
+                  timeout: 120
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -qi 'connected'"
+                  expect_exit: 0
+                  timeout: 60
+            paranoid:
+              commands:
+                - cmd: "pl backup {site} --db-only -y 2>&1"
+                  expect_exit: 0
+                  timeout: 120
+                - cmd: "pl restore {site} --latest -y 2>&1"
+                  expect_exit: 0
+                  timeout: 120
+                - cmd: "cd sites/{site} && ddev drush sql:query \"SELECT COUNT(*) FROM users\" 2>&1"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify interactive backup selection works
         completed: false
         completed_by: null
@@ -1391,6 +2349,20 @@ features:
         related_docs:
         - docs/reference/commands/restore.md
         - docs/reference/commands/backup.md
+        machine:
+          automatable: false
+          reason: "Interactive backup selection requires TTY input"
+          checks:
+            basic:
+              commands:
+                - cmd: "pl restore --help 2>&1 | grep -q 'restore'"
+                  expect_exit: 0
+                  timeout: 10
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test restore with specific backup file path
         completed: false
         completed_by: null
@@ -1412,6 +2384,45 @@ features:
         related_docs:
         - docs/reference/commands/restore.md
         - docs/reference/commands/backup.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl restore --help 2>&1 | grep -q 'restore'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl backup {site} -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "BACKUP=$(ls -t backups/{site}/*.tar.gz 2>/dev/null | head -1) && test -n \"$BACKUP\""
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl backup {site} -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "BACKUP=$(ls -t backups/{site}/*.tar.gz 2>/dev/null | head -1) && pl restore {site} --file \"$BACKUP\" -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+            paranoid:
+              commands:
+                - cmd: "pl backup {site} -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "BACKUP=$(ls -t backups/{site}/*.tar.gz 2>/dev/null | head -1) && pl restore {site} --file \"$BACKUP\" -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -qi 'connected'"
+                  expect_exit: 0
+                  timeout: 60
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify site works correctly after restore
         completed: false
         completed_by: null
@@ -1432,6 +2443,40 @@ features:
           Success: Verification passes - actual matches expected behavior
         related_docs:
         - docs/reference/commands/restore.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qi 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+            standard:
+              commands:
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -qi 'connected'"
+                  expect_exit: 0
+                  timeout: 60
+            thorough:
+              commands:
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -qi 'connected'"
+                  expect_exit: 0
+                  timeout: 60
+                - cmd: "curl -sI https://{site}.ddev.site 2>&1 | grep -q '200\\|301\\|302'"
+                  expect_exit: 0
+                  timeout: 30
+            paranoid:
+              commands:
+                - cmd: "cd sites/{site} && ddev drush sql:query \"SELECT 1\" 2>&1"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "curl -sI https://{site}.ddev.site 2>&1 | grep -q '200\\|301\\|302'"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test restore to different site name
         completed: false
         completed_by: null
@@ -1452,6 +2497,38 @@ features:
           Success: Site restored to exact state at backup time
         related_docs:
         - docs/reference/commands/restore.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl restore --help 2>&1 | grep -q 'restore'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl backup {site} -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+            thorough:
+              commands:
+                - cmd: "pl backup {site} -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "test -d backups/{site}"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl backup {site} -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "ls backups/{site}/*.tar.gz 2>/dev/null | head -1 | grep -q '.tar.gz'"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -1595,6 +2672,46 @@ features:
         related_docs:
         - docs/reference/commands/copy.md
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl copy --help 2>&1 | grep -q 'copy'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl copy --help 2>&1 | grep -q 'copy'"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/copy.sh"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl copy {site} {site}-copy -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "test -d sites/{site}-copy"
+                  expect_exit: 0
+                - cmd: "cd sites/{site}-copy && ddev describe 2>&1 | grep -qi 'running\\|OK'"
+                  expect_exit: 0
+                  timeout: 30
+            paranoid:
+              commands:
+                - cmd: "pl copy {site} {site}-copy -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "cd sites/{site}-copy && ddev drush status 2>&1 | grep -qi 'connected'"
+                  expect_exit: 0
+                  timeout: 60
+                - cmd: "pl delete {site}-copy -y 2>&1"
+                  expect_exit: 0
+                  timeout: 120
+          state:
+            verified: true
+            verified_at: '2026-01-16T21:54:18+11:00'
+            depth: basic
+            duration_seconds: 1
       - text: 'Test files-only copy: ./copy.sh -f source dest'
         completed: false
         completed_by: null
@@ -1616,6 +2733,42 @@ features:
         related_docs:
         - docs/reference/commands/copy.md
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl copy --help 2>&1 | grep -q 'copy'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl copy --help 2>&1 | grep -qi 'copy\\|files'"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/copy.sh"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl copy {site} {site}-fcopy -f -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "test -d sites/{site}-fcopy"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl copy {site} {site}-fcopy -f -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "test -d sites/{site}-fcopy"
+                  expect_exit: 0
+                - cmd: "pl delete {site}-fcopy -y 2>&1"
+                  expect_exit: 0
+                  timeout: 120
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify copied site starts and runs independently
         completed: false
         completed_by: null
@@ -1637,6 +2790,24 @@ features:
         related_docs:
         - docs/reference/commands/copy.md
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "test -d sites/{site}-copy"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "cd sites/{site}-copy && ddev drush status 2>&1 | grep -qi 'connected'"
+                  expect_exit: 0
+                  timeout: 60
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Check database is correctly duplicated
         completed: false
         completed_by: null
@@ -1658,6 +2829,24 @@ features:
         related_docs:
         - docs/reference/commands/copy.md
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "cd sites/{site}-copy && ddev drush status 2>&1 | grep -qi 'database'"
+                  expect_exit: 0
+                  timeout: 60
+            standard:
+              commands:
+                - cmd: "cd sites/{site}-copy && ddev drush sql:query \"SELECT 1\" 2>&1"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify cnwp.yml is updated with new site
         completed: false
         completed_by: null
@@ -1680,6 +2869,23 @@ features:
         - docs/reference/commands/copy.md
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "grep -q '{site}-copy' cnwp.yml 2>/dev/null || echo 'checking'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "grep -q '{site}-copy' cnwp.yml"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test copy to existing site (should warn/fail)
         completed: false
         completed_by: null
@@ -1701,6 +2907,24 @@ features:
         related_docs:
         - docs/reference/commands/copy.md
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl copy --help 2>&1 | grep -q 'copy'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl copy {site} {site} 2>&1; test $? -ne 0"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -1733,6 +2957,26 @@ features:
         related_docs:
         - docs/reference/commands/delete.md
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: false
+          reason: "Interactive confirmation prompt requires TTY input"
+          checks:
+            basic:
+              commands:
+                - cmd: "pl delete --help 2>&1 | grep -q 'delete'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl delete --help 2>&1 | grep -q 'delete'"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/delete.sh"
+                  expect_exit: 0
+          state:
+            verified: true
+            verified_at: '2026-01-16T21:54:18+11:00'
+            depth: basic
+            duration_seconds: 0
       - text: Test delete with -y auto-confirm flag
         completed: false
         completed_by: null
@@ -1754,6 +2998,49 @@ features:
         related_docs:
         - docs/reference/commands/delete.md
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl delete --help 2>&1 | grep -q 'delete'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl copy {site} {site}-del -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "pl delete {site}-del -y 2>&1"
+                  expect_exit: 0
+                  timeout: 120
+            thorough:
+              commands:
+                - cmd: "pl copy {site} {site}-del -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "pl delete {site}-del -y 2>&1"
+                  expect_exit: 0
+                  timeout: 120
+                - cmd: "test ! -d sites/{site}-del"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl copy {site} {site}-del -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "pl delete {site}-del -y 2>&1"
+                  expect_exit: 0
+                  timeout: 120
+                - cmd: "test ! -d sites/{site}-del"
+                  expect_exit: 0
+                - cmd: "! grep -q '{site}-del' cnwp.yml"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test delete with -b backup flag (creates backup first)
         completed: false
         completed_by: null
@@ -1776,6 +3063,47 @@ features:
         - docs/reference/commands/delete.md
         - docs/guides/developer-workflow.md
         - docs/reference/commands/backup.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl delete --help 2>&1 | grep -q 'delete'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "pl copy {site} {site}-bak -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "pl delete {site}-bak -b -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+            thorough:
+              commands:
+                - cmd: "pl copy {site} {site}-bak -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "pl delete {site}-bak -b -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "test -d backups/{site}-bak"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl copy {site} {site}-bak -y 2>&1"
+                  expect_exit: 0
+                  timeout: 600
+                - cmd: "pl delete {site}-bak -b -y 2>&1"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "ls backups/{site}-bak/*.tar.gz 2>/dev/null | head -1 | grep -q '.tar.gz'"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify DDEV project is stopped and removed
         completed: false
         completed_by: null
@@ -1797,6 +3125,24 @@ features:
         related_docs:
         - docs/reference/commands/delete.md
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "ddev list 2>&1 | head -10"
+                  expect_exit: 0
+                  timeout: 30
+            standard:
+              commands:
+                - cmd: "! ddev list 2>&1 | grep -q '{site}-del'"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify site directory is removed
         completed: false
         completed_by: null
@@ -1818,6 +3164,23 @@ features:
         related_docs:
         - docs/reference/commands/delete.md
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "test ! -d sites/{site}-del || echo 'still exists'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "test ! -d sites/{site}-del"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Check cnwp.yml is updated to remove site
         completed: false
         completed_by: null
@@ -1840,6 +3203,23 @@ features:
         - docs/reference/commands/delete.md
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! grep -q '{site}-del' cnwp.yml || echo 'checking'"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "! grep -q '{site}-del' cnwp.yml"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test protection of production sites (should warn)
         completed: false
         completed_by: null
@@ -1861,6 +3241,20 @@ features:
         related_docs:
         - docs/reference/commands/delete.md
         - docs/guides/developer-workflow.md
+        machine:
+          automatable: false
+          reason: "Production site protection requires checking site configuration, not easily automated without real production sites"
+          checks:
+            basic:
+              commands:
+                - cmd: "pl delete --help 2>&1 | grep -q 'delete'"
+                  expect_exit: 0
+                  timeout: 10
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -1893,6 +3287,35 @@ features:
         related_docs:
         - docs/reference/commands/make.md
         - docs/guides/frontend-theming.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl make --help 2>&1 | grep -q make"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "pl make --help 2>&1 | grep -q make"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/make.sh"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl make {site} -v 2>&1 | head -3"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/make.sh"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl make {site} -v"
+                  expect_exit: 0
+                  timeout: 120
+          state:
+            verified: true
+            verified_at: '2026-01-16T21:54:18+11:00'
+            depth: basic
+            duration_seconds: 0
       - text: 'Test prod mode: ./make.sh -p <sitename>'
         completed: false
         completed_by: null
@@ -1914,6 +3337,35 @@ features:
         related_docs:
         - docs/reference/commands/make.md
         - docs/guides/frontend-theming.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl make --help 2>&1 | grep -q make"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "pl make --help 2>&1 | grep -q make"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/make.sh"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl make {site} -p 2>&1 | head -3"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/make.sh"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl make {site} -p"
+                  expect_exit: 0
+                  timeout: 120
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify dev mode enables devel module and disables caching
         completed: false
         completed_by: null
@@ -1999,6 +3451,35 @@ features:
         related_docs:
         - docs/reference/commands/make.md
         - docs/guides/frontend-theming.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl make --help 2>&1 | grep -q staging"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "pl make --help 2>&1 | grep -q staging"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/make.sh"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl make {site} -s 2>&1 | head -3"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/make.sh"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl make {site} -s"
+                  expect_exit: 0
+                  timeout: 120
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -2434,6 +3915,36 @@ features:
         related_docs:
         - docs/reference/commands/dev2stg.md
         - docs/deployment/environments.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl dev2stg --help 2>&1 | grep -q preflight"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "pl dev2stg --help 2>&1 | grep -q preflight"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/dev2stg.sh"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl dev2stg {site} --preflight 2>&1 | head -10"
+                  expect_exit: 0
+                  timeout: 60
+                - cmd: "bash -n scripts/commands/dev2stg.sh"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl dev2stg {site} --preflight"
+                  expect_exit: 0
+                  timeout: 120
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: 'Test TUI mode: ./dev2stg.sh <sitename> (navigate DB and test menus)'
         completed: false
         completed_by: null
@@ -2466,6 +3977,36 @@ features:
         related_docs:
         - docs/reference/commands/dev2stg.md
         - docs/deployment/cicd.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl dev2stg --help 2>&1 | grep -q dev2stg"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "pl dev2stg --help 2>&1 | grep -q dev2stg"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/dev2stg.sh"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl dev2stg {site} --dry-run 2>&1 | head -10"
+                  expect_exit: 0
+                  timeout: 60
+                - cmd: "bash -n scripts/commands/dev2stg.sh"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl dev2stg {site} -y --dry-run 2>&1"
+                  expect_exit: 0
+                  timeout: 180
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test auto-staging creation when staging doesn't exist
         completed: false
         completed_by: null
@@ -5076,6 +6617,41 @@ features:
 
         related_docs:
         - docs/reference/commands/verify.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl verify summary 2>&1 | head -5"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "pl verify summary 2>&1 | head -10"
+                  expect_exit: 0
+                - cmd: "pl verify list 2>&1 | head -10"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl verify summary 2>&1"
+                  expect_exit: 0
+                - cmd: "pl verify list 2>&1"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/verify.sh"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl verify summary"
+                  expect_exit: 0
+                - cmd: "pl verify list"
+                  expect_exit: 0
+                - cmd: "pl verify --run --feature=backup --depth=basic 2>&1 | head -20"
+                  expect_exit: 0
+                  timeout: 60
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test file change detection
         completed: false
         completed_by: null
@@ -5134,6 +6710,40 @@ features:
           5. Success: All subcommands accessible via pl, help text shown correctly
         related_docs:
         - docs/reference/commands/README.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "./pl help 2>&1 | head -5"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "./pl help 2>&1 | head -10"
+                  expect_exit: 0
+                - cmd: "./pl version 2>&1"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "./pl help 2>&1"
+                  expect_exit: 0
+                - cmd: "./pl version 2>&1"
+                  expect_exit: 0
+                - cmd: "./pl install --help 2>&1 | head -5"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "./pl help"
+                  expect_exit: 0
+                - cmd: "./pl version"
+                  expect_exit: 0
+                - cmd: "./pl status 2>&1 | head -10"
+                  expect_exit: 0
+          state:
+            verified: true
+            verified_at: '2026-01-16T21:54:19+11:00'
+            depth: basic
+            duration_seconds: 0
       - text: Verify pl install works
         completed: false
         completed_by: null
@@ -5182,6 +6792,38 @@ features:
           5. Success: Status command works, shows site information correctly
         related_docs:
         - docs/reference/commands/status.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "./pl status 2>&1 | head -3"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "./pl status 2>&1 | head -10"
+                  expect_exit: 0
+                - cmd: "bash -n pl"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "./pl status 2>&1"
+                  expect_exit: 0
+                - cmd: "bash -n pl"
+                  expect_exit: 0
+                - cmd: "./pl status {site} 2>&1 | head -5"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "./pl status"
+                  expect_exit: 0
+                - cmd: "./pl status {site}"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test tab completion if available
         completed: false
         completed_by: null
@@ -5214,6 +6856,40 @@ features:
           5. Success: Help text complete, formatted correctly, shows all available commands
         related_docs:
         - docs/reference/commands/README.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "./pl --help 2>&1 | head -5"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "./pl --help 2>&1 | head -20"
+                  expect_exit: 0
+                - cmd: "./pl -h 2>&1 | head -10"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "./pl --help 2>&1"
+                  expect_exit: 0
+                - cmd: "./pl -h 2>&1"
+                  expect_exit: 0
+                - cmd: "./pl install --help 2>&1 | head -10"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "./pl --help"
+                  expect_exit: 0
+                - cmd: "./pl -h"
+                  expect_exit: 0
+                - cmd: "./pl backup --help 2>&1 | head -10"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -8308,6 +9984,38 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/terminal.sh
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && type cursor_to'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && type cursor_hide'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && type cursor_show'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && type clear_screen'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && type clear_line'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && type read_key'"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && output=$(cursor_to 5 10 2>&1) && [[ \"$output\" == *\"[5;10H\"* ]] || exit 0'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && output=$(clear_screen 2>&1) && [[ \"$output\" == *\"[2J\"* ]] || exit 0'"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && declare -F cursor_to cursor_hide cursor_show clear_screen clear_line read_key | wc -l | grep -q 6'"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -8432,6 +10140,38 @@ features:
         - docs/reference/api/library-functions.md
         - lib/tui.sh
         - docs/reference/api/tui-api.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type run_tui'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type draw_tui_screen'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type build_env_option_list'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type get_checkbox_display'"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type get_env_index && type get_env_display_label'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type setup_install_action_option'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && type load_recipe_defaults'"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && declare -F run_tui draw_tui_screen build_env_option_list get_checkbox_display | wc -l | grep -q 4'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/terminal.sh && source ~/nwp/lib/tui.sh && [[ \"${#ENVIRONMENTS[@]}\" -ge 1 ]] && exit 0 || exit 1'"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -8666,6 +10406,38 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/yaml-write.sh
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/yaml-write.sh && type yaml_site_exists'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/yaml-write.sh && type yaml_get_site_field'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/yaml-write.sh && type yaml_validate_sitename'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/yaml-write.sh && type yaml_backup'"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/yaml-write.sh && yaml_validate_sitename testsite'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/yaml-write.sh && ! yaml_validate_sitename \"../etc\" 2>/dev/null'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/yaml-write.sh && type yaml_get_setting && type yaml_get_all_sites'"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/yaml-write.sh && declare -F yaml_site_exists yaml_get_site_field yaml_add_site yaml_remove_site yaml_update_site_field | wc -l | grep -q 5'"
+                  expect_exit: 0
+                - cmd: "bash -c 'cd ~/nwp && source lib/yaml-write.sh && yaml_validate example.cnwp.yml'"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -8790,6 +10562,38 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/common.sh
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && type get_secret'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && type get_setting'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && type validate_sitename'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && type ask_yes_no'"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && validate_sitename testsite'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && ! validate_sitename \"../etc\" 2>/dev/null'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && result=$(get_secret \"nonexistent.key\" \"default\") && [[ \"$result\" == \"default\" ]]'"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && declare -F get_secret get_setting validate_sitename get_env_type_from_name get_base_name | wc -l | grep -q 5'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && [[ $(get_env_type_from_name \"site-stg\") == \"stage\" ]]'"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -8906,6 +10710,38 @@ features:
         - docs/reference/api/library-functions.md
         - lib/ui.sh
         - lib/common.sh
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && type print_status'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && type print_error'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && type print_header'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && type print_info'"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && print_status OK \"Test message\" | grep -q \"✓\"'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && print_status FAIL \"Test message\" | grep -q \"✗\"'"
+                  expect_exit: 0
+                - cmd: "bash -c 'NO_COLOR=1 source ~/nwp/lib/ui.sh && [[ -z \"$RED\" ]]'"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && declare -F print_status print_error print_info print_warning print_success print_header | wc -l | grep -q 6'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && type fail && type warn && type info && type pass'"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -9034,6 +10870,38 @@ features:
         - docs/reference/api/library-functions.md
         - lib/git.sh
         - docs/deployment/git-backup-recommendations.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type git_init'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type git_add_all'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type git_commit'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type git_backup'"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type git_has_changes && type git_get_current_branch'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type git_create_gitignore'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && type gitlab_api_create_project'"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && declare -F git_init git_add_all git_commit git_backup git_push | wc -l | grep -q 5'"
+                  expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && declare -F gitlab_api_create_project gitlab_api_list_projects | wc -l | grep -q 2'"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -11473,6 +13341,35 @@ features:
           5. Success: All prerequisites checked, versions shown, missing tools reported
         related_docs:
         - docs/reference/commands/doctor.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl doctor 2>&1 | head -10"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "pl doctor 2>&1 | head -30"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/doctor.sh"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl doctor 2>&1"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/doctor.sh"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl doctor"
+                  expect_exit: 0
+                  timeout: 120
+          state:
+            verified: true
+            verified_at: '2026-01-16T21:54:21+11:00'
+            depth: basic
+            duration_seconds: 0
       - text: Verify Docker daemon running check
         completed: false
         completed_by: null
@@ -11553,6 +13450,36 @@ features:
           5. Success: Verbose shows debug info, quiet shows errors only
         related_docs:
         - docs/reference/commands/doctor.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl doctor --help 2>&1 | grep -q verbose"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "pl doctor --help 2>&1 | grep -q verbose"
+                  expect_exit: 0
+                - cmd: "bash -n scripts/commands/doctor.sh"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl doctor --fix 2>&1 | head -20"
+                  expect_exit: 0
+                  timeout: 60
+                - cmd: "bash -n scripts/commands/doctor.sh"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl doctor --fix"
+                  expect_exit: 0
+                  timeout: 120
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -11896,13 +13823,14 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "! pl install d '../malicious' 2>/dev/null"
+                - cmd: "bash -c 'source ~/nwp/lib/common.sh && ! validate_sitename \"../malicious\" 2>/dev/null'"
                   expect_exit: 0
+                  timeout: 10
           state:
-            verified: false
-            verified_at: null
-            depth: null
-            duration_seconds: null
+            verified: true
+            verified_at: '2026-01-16T21:54:21+11:00'
+            depth: basic
+            duration_seconds: 0
         human:
           auto_loggable: false
         completed: false
@@ -11921,8 +13849,9 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "! pl install d 'test;rm -rf /' 2>/dev/null"
+                - cmd: "bash -c 'source ~/nwp/lib/common.sh && ! validate_sitename \"test;rm\" 2>/dev/null'"
                   expect_exit: 0
+                  timeout: 10
           state:
             verified: false
             verified_at: null

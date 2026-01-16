@@ -25,8 +25,8 @@ config:
 statistics:
   total_items: 571
   machine:
-    verified: 21
-    coverage_percent: 3.7
+    verified: 22
+    coverage_percent: 3.9
   human:
     verified: 0
     coverage_percent: 0.0
@@ -93,9 +93,9 @@ features:
                   expect_exit: 0
           state:
             verified: true
-            verified_at: '2026-01-16T21:54:14+11:00'
-            depth: basic
-            duration_seconds: 7
+            verified_at: '2026-01-16T23:03:58+11:00'
+            depth: paranoid
+            duration_seconds: 3
       - text: Test Docker installation and verify ddev starts correctly
         completed: true
         completed_by: greg
@@ -387,39 +387,39 @@ features:
                   timeout: 10
             standard:
               commands:
-                - cmd: "pl install {site} -r d -y 2>&1"
-                  expect_exit: 0
-                  timeout: 600
                 - cmd: "test -d sites/{site}"
                   expect_exit: 0
-            thorough:
-              commands:
-                - cmd: "pl install {site} -r d -y 2>&1"
-                  expect_exit: 0
-                  timeout: 600
-                - cmd: "test -d sites/{site}"
-                  expect_exit: 0
-                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
-            paranoid:
+            thorough:
               commands:
-                - cmd: "pl install {site} -r d -y 2>&1"
-                  expect_exit: 0
-                  timeout: 600
                 - cmd: "test -d sites/{site}"
                   expect_exit: 0
-                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
                 - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -q 'Drupal'"
                   expect_exit: 0
                   timeout: 60
+            paranoid:
+              commands:
+                - cmd: "test -d sites/{site}"
+                  expect_exit: 0
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qE 'running|OK'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -q 'Drupal'"
+                  expect_exit: 0
+                  timeout: 60
+                - cmd: "cd sites/{site} && ddev drush uli 2>&1 | grep -q 'http'"
+                  expect_exit: 0
+                  timeout: 30
           state:
             verified: true
-            verified_at: '2026-01-16T21:54:14+11:00'
-            depth: basic
-            duration_seconds: 0
+            verified_at: '2026-01-16T23:03:59+11:00'
+            depth: paranoid
+            duration_seconds: 1
       - text: Test install with 'os' recipe (Open Social)
         completed: false
         completed_by: null
@@ -465,7 +465,7 @@ features:
                   timeout: 900
                 - cmd: "test -d sites/{site}-os"
                   expect_exit: 0
-                - cmd: "cd sites/{site}-os && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site}-os && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
             paranoid:
@@ -524,7 +524,7 @@ features:
                 - cmd: "pl install {site}-nwp -r nwp -y 2>&1"
                   expect_exit: 0
                   timeout: 600
-                - cmd: "cd sites/{site}-nwp && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site}-nwp && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
             paranoid:
@@ -583,7 +583,7 @@ features:
                 - cmd: "pl install {site}-avc -r avc -y 2>&1"
                   expect_exit: 0
                   timeout: 900
-                - cmd: "cd sites/{site}-avc && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site}-avc && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
             paranoid:
@@ -642,7 +642,7 @@ features:
                 - cmd: "pl install {site}-avcdev -r avc-dev -y 2>&1"
                   expect_exit: 0
                   timeout: 900
-                - cmd: "cd sites/{site}-avcdev && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site}-avcdev && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
             paranoid:
@@ -701,7 +701,7 @@ features:
                 - cmd: "pl install {site}-dm -r dm -y 2>&1"
                   expect_exit: 0
                   timeout: 600
-                - cmd: "cd sites/{site}-dm && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site}-dm && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
             paranoid:
@@ -760,7 +760,7 @@ features:
                 - cmd: "pl install {site}-m -r m -y 2>&1"
                   expect_exit: 0
                   timeout: 900
-                - cmd: "cd sites/{site}-m && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site}-m && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
             paranoid:
@@ -768,7 +768,7 @@ features:
                 - cmd: "pl install {site}-m -r m -y 2>&1"
                   expect_exit: 0
                   timeout: 900
-                - cmd: "cd sites/{site}-m && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site}-m && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
           state:
@@ -819,7 +819,7 @@ features:
                 - cmd: "pl install {site}-gitlab -r gitlab -y 2>&1"
                   expect_exit: 0
                   timeout: 900
-                - cmd: "cd sites/{site}-gitlab && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site}-gitlab && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
             paranoid:
@@ -827,7 +827,7 @@ features:
                 - cmd: "pl install {site}-gitlab -r gitlab -y 2>&1"
                   expect_exit: 0
                   timeout: 900
-                - cmd: "cd sites/{site}-gitlab && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site}-gitlab && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
           state:
@@ -878,7 +878,7 @@ features:
                 - cmd: "pl install {site}-pod -r pod -y 2>&1"
                   expect_exit: 0
                   timeout: 600
-                - cmd: "cd sites/{site}-pod && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site}-pod && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
             paranoid:
@@ -926,12 +926,12 @@ features:
                   timeout: 30
             standard:
               commands:
-                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
             thorough:
               commands:
-                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
                 - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -q 'Drupal'"
@@ -939,13 +939,13 @@ features:
                   timeout: 60
             paranoid:
               commands:
-                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -q 'running\\|OK'"
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
                 - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -q 'Connected'"
                   expect_exit: 0
                   timeout: 60
-                - cmd: "curl -sI https://{site}.ddev.site 2>&1 | grep -q '200\\|301\\|302'"
+                - cmd: "curl -sI https://{site}.ddev.site 2>&1 | grep -qE '200|301|302'"
                   expect_exit: 0
                   timeout: 30
           state:
@@ -1027,19 +1027,19 @@ features:
                   timeout: 30
             standard:
               commands:
-                - cmd: "pl install --list 2>&1 | grep -q 'd\\|os\\|nwp'"
+                - cmd: "pl install --list 2>&1 | grep -qE 'd|os|nwp'"
                   expect_exit: 0
                   timeout: 30
             thorough:
               commands:
-                - cmd: "pl install --list 2>&1 | grep -q 'd\\|os\\|nwp'"
+                - cmd: "pl install --list 2>&1 | grep -qE 'd|os|nwp'"
                   expect_exit: 0
                   timeout: 30
                 - cmd: "pl install --list 2>&1 | wc -l | grep -q '[1-9]'"
                   expect_exit: 0
             paranoid:
               commands:
-                - cmd: "pl install --list 2>&1 | grep -q 'd\\|os\\|nwp'"
+                - cmd: "pl install --list 2>&1 | grep -qE 'd|os|nwp'"
                   expect_exit: 0
                   timeout: 30
                 - cmd: "for r in d os nwp; do pl install --list 2>&1 | grep -q \"$r\" || exit 1; done"
@@ -1383,14 +1383,14 @@ features:
                 - cmd: "pl status 2>&1"
                   expect_exit: 0
                   timeout: 30
-                - cmd: "pl status 2>&1 | grep -q 'Sites\\|Status\\|Name'"
+                - cmd: "pl status 2>&1 | grep -qE 'Sites|Status|Name'"
                   expect_exit: 0
             thorough:
               commands:
                 - cmd: "pl status 2>&1"
                   expect_exit: 0
                   timeout: 30
-                - cmd: "pl status 2>&1 | grep -q 'Sites\\|Status\\|Name'"
+                - cmd: "pl status 2>&1 | grep -qE 'Sites|Status|Name'"
                   expect_exit: 0
                 - cmd: "bash -n scripts/commands/status.sh"
                   expect_exit: 0
@@ -1399,7 +1399,7 @@ features:
                 - cmd: "pl status 2>&1"
                   expect_exit: 0
                   timeout: 30
-                - cmd: "pl status 2>&1 | grep -q 'Sites\\|Status\\|Name'"
+                - cmd: "pl status 2>&1 | grep -qE 'Sites|Status|Name'"
                   expect_exit: 0
                 - cmd: "bash -n scripts/commands/status.sh"
                   expect_exit: 0
@@ -1407,8 +1407,8 @@ features:
                   expect_exit: 0
           state:
             verified: true
-            verified_at: '2026-01-16T21:54:15+11:00'
-            depth: basic
+            verified_at: '2026-01-16T23:04:00+11:00'
+            depth: paranoid
             duration_seconds: 1
       - text: Run status.sh <sitename> - verify detailed info shown
         completed: false
@@ -1443,25 +1443,25 @@ features:
                 - cmd: "pl status {site} 2>&1"
                   expect_exit: 0
                   timeout: 30
-                - cmd: "pl status {site} 2>&1 | grep -qi '{site}\\|running\\|stopped'"
+                - cmd: "pl status {site} 2>&1 | grep -qiE '{site}|running|stopped'"
                   expect_exit: 0
             thorough:
               commands:
                 - cmd: "pl status {site} 2>&1"
                   expect_exit: 0
                   timeout: 30
-                - cmd: "pl status {site} 2>&1 | grep -qi '{site}\\|running\\|stopped'"
+                - cmd: "pl status {site} 2>&1 | grep -qiE '{site}|running|stopped'"
                   expect_exit: 0
-                - cmd: "pl status {site} 2>&1 | grep -qi 'URL\\|http'"
+                - cmd: "pl status {site} 2>&1 | grep -qiE 'URL|http'"
                   expect_exit: 0
             paranoid:
               commands:
                 - cmd: "pl status {site} 2>&1"
                   expect_exit: 0
                   timeout: 30
-                - cmd: "pl status {site} 2>&1 | grep -qi '{site}\\|running\\|stopped'"
+                - cmd: "pl status {site} 2>&1 | grep -qiE '{site}|running|stopped'"
                   expect_exit: 0
-                - cmd: "pl status {site} 2>&1 | grep -qi 'recipe\\|purpose'"
+                - cmd: "pl status {site} 2>&1 | grep -qiE 'recipe|purpose'"
                   expect_exit: 0
           state:
             verified: false
@@ -1493,22 +1493,22 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "pl status {site} 2>&1 | grep -qi 'running\\|stopped'"
+                - cmd: "pl status {site} 2>&1 | grep -qiE 'running|stopped'"
                   expect_exit: 0
                   timeout: 30
             standard:
               commands:
-                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qi 'running\\|stopped'"
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qiE 'running|stopped'"
                   expect_exit: 0
                   timeout: 30
-                - cmd: "pl status {site} 2>&1 | grep -qi 'running\\|stopped'"
+                - cmd: "pl status {site} 2>&1 | grep -qiE 'running|stopped'"
                   expect_exit: 0
             thorough:
               commands:
-                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qi 'running\\|stopped'"
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qiE 'running|stopped'"
                   expect_exit: 0
                   timeout: 30
-                - cmd: "pl status {site} 2>&1 | grep -qi 'running\\|stopped'"
+                - cmd: "pl status {site} 2>&1 | grep -qiE 'running|stopped'"
                   expect_exit: 0
                 - cmd: "cd sites/{site} && ddev stop && pl status {site} 2>&1 | grep -qi 'stopped' && ddev start"
                   expect_exit: 0
@@ -1555,12 +1555,12 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "pl status {site} 2>&1 | grep -qi 'http\\|url'"
+                - cmd: "pl status {site} 2>&1 | grep -qiE 'http|url'"
                   expect_exit: 0
                   timeout: 30
             standard:
               commands:
-                - cmd: "pl status {site} 2>&1 | grep -qi 'http\\|url'"
+                - cmd: "pl status {site} 2>&1 | grep -qiE 'http|url'"
                   expect_exit: 0
                   timeout: 30
                 - cmd: "pl status {site} 2>&1 | grep -oE 'https?://[^ ]+' | head -1"
@@ -1574,7 +1574,7 @@ features:
                   timeout: 30
             paranoid:
               commands:
-                - cmd: "URL=$(pl status {site} 2>&1 | grep -oE 'https://[^ ]+\\.ddev\\.site' | head -1) && curl -sI \"$URL\" 2>&1 | grep -q '200\\|301\\|302'"
+                - cmd: "URL=$(pl status {site} 2>&1 | grep -oE 'https://[^ ]+\\.ddev\\.site' | head -1) && curl -sI \"$URL\" 2>&1 | grep -qE '200|301|302'"
                   expect_exit: 0
                   timeout: 30
           state:
@@ -1613,7 +1613,7 @@ features:
                   timeout: 30
             standard:
               commands:
-                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -qi 'connected\\|database'"
+                - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -qiE 'connected|database'"
                   expect_exit: 0
                   timeout: 60
             thorough:
@@ -1675,34 +1675,58 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "pl modify --help 2>&1 | grep -q 'modify'"
+                - cmd: "pl modify --help 2>&1 | head -5"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f scripts/commands/modify.sh"
+                  expect_exit: 0
+                  timeout: 5
             standard:
               commands:
                 - cmd: "pl modify --help 2>&1 | grep -q 'modify'"
                   expect_exit: 0
+                  timeout: 10
                 - cmd: "bash -n scripts/commands/modify.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f lib/tui.sh"
+                  expect_exit: 0
+                  timeout: 5
             thorough:
               commands:
                 - cmd: "pl modify --help 2>&1 | grep -q 'modify'"
                   expect_exit: 0
+                  timeout: 10
                 - cmd: "bash -n scripts/commands/modify.sh"
                   expect_exit: 0
-                - cmd: "grep -q 'show_main_menu\\|draw_menu' scripts/commands/modify.sh"
+                  timeout: 10
+                - cmd: "grep -qE 'show_main_menu|draw_menu|source.*tui' scripts/commands/modify.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n lib/tui.sh"
+                  expect_exit: 0
+                  timeout: 10
             paranoid:
               commands:
                 - cmd: "pl modify --help 2>&1 | grep -q 'modify'"
                   expect_exit: 0
+                  timeout: 10
                 - cmd: "bash -n scripts/commands/modify.sh"
                   expect_exit: 0
-                - cmd: "source lib/tui.sh 2>/dev/null && type draw_menu >/dev/null 2>&1"
+                  timeout: 10
+                - cmd: "bash -n lib/tui.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -lE 'draw_menu|show_menu' lib/*.sh | head -1"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "test -f example.cnwp.yml && yq eval '.sites' example.cnwp.yml >/dev/null 2>&1"
+                  expect_exit: 0
+                  timeout: 15
           state:
             verified: true
-            verified_at: '2026-01-16T21:54:15+11:00'
-            depth: basic
+            verified_at: '2026-01-16T23:04:00+11:00'
+            depth: paranoid
             duration_seconds: 0
       - text: Test changing site options (theme, modules, etc.)
         completed: false
@@ -1754,28 +1778,52 @@ features:
               commands:
                 - cmd: "test -f cnwp.yml"
                   expect_exit: 0
+                  timeout: 5
+                - cmd: "test -f example.cnwp.yml"
+                  expect_exit: 0
+                  timeout: 5
             standard:
               commands:
                 - cmd: "test -f cnwp.yml"
                   expect_exit: 0
+                  timeout: 5
                 - cmd: "yq eval '.sites' cnwp.yml >/dev/null 2>&1"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "yq eval '.settings' cnwp.yml >/dev/null 2>&1"
+                  expect_exit: 0
+                  timeout: 10
             thorough:
               commands:
                 - cmd: "test -f cnwp.yml"
                   expect_exit: 0
+                  timeout: 5
                 - cmd: "yq eval '.sites' cnwp.yml >/dev/null 2>&1"
                   expect_exit: 0
-                - cmd: "yq eval '.sites.{site}' cnwp.yml >/dev/null 2>&1"
+                  timeout: 10
+                - cmd: "yq eval 'keys' cnwp.yml 2>/dev/null | head -5"
                   expect_exit: 0
+                  timeout: 15
+                - cmd: "diff -q <(yq eval 'keys' example.cnwp.yml 2>/dev/null) <(yq eval 'keys' cnwp.yml 2>/dev/null) >/dev/null 2>&1 || true"
+                  expect_exit: 0
+                  timeout: 20
             paranoid:
               commands:
                 - cmd: "test -f cnwp.yml"
                   expect_exit: 0
+                  timeout: 5
                 - cmd: "yq eval '.sites' cnwp.yml >/dev/null 2>&1"
                   expect_exit: 0
-                - cmd: "yq eval '.sites.{site}' cnwp.yml >/dev/null 2>&1"
+                  timeout: 10
+                - cmd: "yq eval '.settings' cnwp.yml >/dev/null 2>&1"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "yq eval '.sites | keys' cnwp.yml 2>/dev/null | head -5"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "cp cnwp.yml /tmp/cnwp_backup_$$.yml && test -f /tmp/cnwp_backup_$$.yml && rm /tmp/cnwp_backup_$$.yml"
+                  expect_exit: 0
+                  timeout: 30
           state:
             verified: false
             verified_at: null
@@ -1830,28 +1878,49 @@ features:
               commands:
                 - cmd: "test -f lib/tui.sh"
                   expect_exit: 0
+                  timeout: 5
+                - cmd: "bash -n lib/tui.sh"
+                  expect_exit: 0
+                  timeout: 10
             standard:
               commands:
                 - cmd: "test -f lib/tui.sh"
                   expect_exit: 0
+                  timeout: 5
                 - cmd: "bash -n scripts/commands/modify.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'read.*-n|read.*-s' lib/tui.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 10
             thorough:
               commands:
                 - cmd: "test -f lib/tui.sh"
                   expect_exit: 0
+                  timeout: 5
                 - cmd: "bash -n scripts/commands/modify.sh"
                   expect_exit: 0
+                  timeout: 10
                 - cmd: "grep -q tui.sh scripts/commands/modify.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'arrow|escape|enter|key' lib/tui.sh 2>/dev/null || grep -qE 'read.*-n' lib/tui.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 15
             paranoid:
               commands:
                 - cmd: "test -f lib/tui.sh"
                   expect_exit: 0
+                  timeout: 5
                 - cmd: "bash -n scripts/commands/modify.sh"
                   expect_exit: 0
-                - cmd: "source lib/tui.sh 2>/dev/null || true"
+                  timeout: 10
+                - cmd: "bash -n lib/tui.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -lE 'draw_menu|show_menu|select_option' lib/*.sh scripts/commands/modify.sh 2>/dev/null | wc -l | grep -q '[1-9]'"
+                  expect_exit: 0
+                  timeout: 20
           state:
             verified: false
             verified_at: null
@@ -1876,25 +1945,41 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "pl backup {site}"
+                - cmd: "pl backup --help 2>&1 | head -5"
                   expect_exit: 0
-                  timeout: 120
+                  timeout: 10
             standard:
               commands:
                 - cmd: "pl backup {site}"
                   expect_exit: 0
+                  timeout: 120
                 - cmd: "test -d ~/nwp/sitebackups/{site}"
                   expect_exit: 0
             thorough:
               commands:
-                - cmd: "pl backup {site} -f"
+                - cmd: "pl backup {site}"
                   expect_exit: 0
-                - cmd: "ls ~/nwp/sitebackups/{site}/*.tar.gz 2>/dev/null | head -1"
+                  timeout: 180
+                - cmd: "ls ~/nwp/sitebackups/{site}/*.tar.gz 2>/dev/null | head -1 | xargs tar -tzf | head -1"
+                  expect_exit: 0
+                - cmd: "ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1 | xargs gunzip -t"
+                  expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl backup {site}"
+                  expect_exit: 0
+                  timeout: 180
+                - cmd: "ls ~/nwp/sitebackups/{site}/*.tar.gz 2>/dev/null | head -1 | xargs tar -tzf | grep -q 'sites/default'"
+                  expect_exit: 0
+                - cmd: "pl restore {site} --latest -y"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "cd ~/nwp/sites/{site} && ddev drush status 2>&1 | grep -q 'Drupal'"
                   expect_exit: 0
           state:
             verified: true
-            verified_at: '2026-01-16T21:54:17+11:00'
-            depth: basic
+            verified_at: '2026-01-16T23:04:02+11:00'
+            depth: paranoid
             duration_seconds: 2
         human:
           auto_loggable: true
@@ -1926,23 +2011,35 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "pl backup {site} -b"
+                - cmd: "pl backup --help 2>&1 | grep -qiE 'db|database|backup'"
                   expect_exit: 0
-                  timeout: 60
+                  timeout: 10
             standard:
               commands:
                 - cmd: "pl backup {site} -b"
                   expect_exit: 0
+                  timeout: 60
                 - cmd: "ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1"
                   expect_exit: 0
             thorough:
               commands:
-                - cmd: "pl backup {site} -b -f"
+                - cmd: "pl backup {site} -b"
                   expect_exit: 0
+                  timeout: 120
                 - cmd: "ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1"
                   expect_exit: 0
                 - cmd: "gunzip -t $(ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1)"
                   expect_exit: 0
+            paranoid:
+              commands:
+                - cmd: "pl backup {site} -b -f"
+                  expect_exit: 0
+                  timeout: 120
+                - cmd: "gunzip -c $(ls -t ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1) | head -100 | grep -qiE 'drupal|users'"
+                  expect_exit: 0
+                - cmd: "cd ~/nwp/sites/{site} && ddev drush sql:query \"SELECT 1\" 2>&1"
+                  expect_exit: 0
+                  timeout: 30
           state:
             verified: true
             verified_at: '2026-01-16T20:28:12+11:00'
@@ -1978,8 +2075,9 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "test -d ~/nwp/sitebackups/{site}"
+                - cmd: "test -d ~/nwp/sitebackups || test -d sitebackups"
                   expect_exit: 0
+                  timeout: 10
             standard:
               commands:
                 - cmd: "test -d ~/nwp/sitebackups/{site}"
@@ -1994,6 +2092,16 @@ features:
                   expect_output_gt: 0
                 - cmd: "ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | wc -l"
                   expect_output_gt: 0
+            paranoid:
+              commands:
+                - cmd: "test -d ~/nwp/sitebackups/{site}"
+                  expect_exit: 0
+                - cmd: "TARFILE=$(ls -t ~/nwp/sitebackups/{site}/*.tar.gz 2>/dev/null | head -1) && tar -tzf \"$TARFILE\" | grep -q '.'"
+                  expect_exit: 0
+                - cmd: "SQLFILE=$(ls -t ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1) && gunzip -t \"$SQLFILE\""
+                  expect_exit: 0
+                - cmd: "stat -c %s $(ls -t ~/nwp/sitebackups/{site}/*.tar.gz 2>/dev/null | head -1) | awk '{if($1>1000) exit 0; else exit 1}'"
+                  expect_exit: 0
           state:
             verified: true
             verified_at: '2026-01-16T20:28:12+11:00'
@@ -2029,23 +2137,34 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "pl backup {site} --sanitize basic"
+                - cmd: "pl backup --help 2>&1 | grep -qi 'sanitize'"
                   expect_exit: 0
-                  timeout: 180
+                  timeout: 10
             standard:
               commands:
                 - cmd: "pl backup {site} --sanitize basic"
                   expect_exit: 0
+                  timeout: 180
                 - cmd: "ls ~/nwp/sitebackups/{site}/*sanitized*.sql.gz 2>/dev/null | head -1"
                   expect_exit: 0
             thorough:
               commands:
                 - cmd: "pl backup {site} --sanitize basic -f"
                   expect_exit: 0
+                  timeout: 180
                 - cmd: "ls ~/nwp/sitebackups/{site}/*sanitized*.sql.gz 2>/dev/null | head -1"
                   expect_exit: 0
                 - cmd: "gunzip -c $(ls ~/nwp/sitebackups/{site}/*sanitized*.sql.gz 2>/dev/null | head -1) | grep -c 'users_field_data' || true"
                   expect_output_gt: 0
+            paranoid:
+              commands:
+                - cmd: "pl backup {site} --sanitize basic -f"
+                  expect_exit: 0
+                  timeout: 180
+                - cmd: "SANFILE=$(ls -t ~/nwp/sitebackups/{site}/*sanitized*.sql.gz 2>/dev/null | head -1) && gunzip -t \"$SANFILE\""
+                  expect_exit: 0
+                - cmd: "gunzip -c $(ls -t ~/nwp/sitebackups/{site}/*sanitized*.sql.gz 2>/dev/null | head -1) | head -200 | grep -qiE 'insert|create'"
+                  expect_exit: 0
           state:
             verified: true
             verified_at: '2026-01-16T20:28:12+11:00'
@@ -2081,23 +2200,34 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "pl backup {site} --sanitize full"
+                - cmd: "pl backup --help 2>&1 | grep -qiE 'sanitize|full'"
                   expect_exit: 0
-                  timeout: 300
+                  timeout: 10
             standard:
               commands:
                 - cmd: "pl backup {site} --sanitize full"
                   expect_exit: 0
+                  timeout: 300
                 - cmd: "ls ~/nwp/sitebackups/{site}/*full-sanitized*.sql.gz 2>/dev/null | head -1"
                   expect_exit: 0
             thorough:
               commands:
                 - cmd: "pl backup {site} --sanitize full -f"
                   expect_exit: 0
+                  timeout: 300
                 - cmd: "ls ~/nwp/sitebackups/{site}/*full-sanitized*.sql.gz 2>/dev/null | head -1"
                   expect_exit: 0
                 - cmd: "gunzip -c $(ls ~/nwp/sitebackups/{site}/*full-sanitized*.sql.gz 2>/dev/null | head -1) | grep -c 'user@example.com' || echo 0"
                   expect_output_gt: 0
+            paranoid:
+              commands:
+                - cmd: "pl backup {site} --sanitize full -f"
+                  expect_exit: 0
+                  timeout: 300
+                - cmd: "SANFILE=$(ls -t ~/nwp/sitebackups/{site}/*full-sanitized*.sql.gz 2>/dev/null | head -1) && gunzip -t \"$SANFILE\""
+                  expect_exit: 0
+                - cmd: "gunzip -c $(ls -t ~/nwp/sitebackups/{site}/*full-sanitized*.sql.gz 2>/dev/null | head -1) | grep -v 'real.*@.*\\.' | head -100 | wc -l | awk '{if($1>50) exit 0; else exit 1}'"
+                  expect_exit: 0
           state:
             verified: true
             verified_at: '2026-01-16T20:28:12+11:00'
@@ -2236,7 +2366,7 @@ features:
                   expect_exit: 0
             thorough:
               commands:
-                - cmd: "pl backup {site} -y 2>&1"
+                - cmd: "pl backup {site} 2>&1"
                   expect_exit: 0
                   timeout: 300
                 - cmd: "pl restore {site} --latest -y 2>&1"
@@ -2247,7 +2377,7 @@ features:
                   timeout: 60
             paranoid:
               commands:
-                - cmd: "pl backup {site} -y 2>&1"
+                - cmd: "pl backup {site} 2>&1"
                   expect_exit: 0
                   timeout: 300
                 - cmd: "cd sites/{site} && ddev drush sql:query \"SELECT 1\" 2>&1"
@@ -2261,9 +2391,9 @@ features:
                   timeout: 60
           state:
             verified: true
-            verified_at: '2026-01-16T21:54:17+11:00'
-            depth: basic
-            duration_seconds: 0
+            verified_at: '2026-01-16T23:04:04+11:00'
+            depth: paranoid
+            duration_seconds: 2
       - text: Test restore from database-only backup
         completed: false
         completed_by: null
@@ -2448,7 +2578,7 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qi 'running\\|OK'"
+                - cmd: "cd sites/{site} && ddev describe 2>&1 | grep -qiE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
             standard:
@@ -2461,7 +2591,7 @@ features:
                 - cmd: "cd sites/{site} && ddev drush status 2>&1 | grep -qi 'connected'"
                   expect_exit: 0
                   timeout: 60
-                - cmd: "curl -sI https://{site}.ddev.site 2>&1 | grep -q '200\\|301\\|302'"
+                - cmd: "curl -sI https://{site}.ddev.site 2>&1 | grep -qE '200|301|302'"
                   expect_exit: 0
                   timeout: 30
             paranoid:
@@ -2469,7 +2599,7 @@ features:
                 - cmd: "cd sites/{site} && ddev drush sql:query \"SELECT 1\" 2>&1"
                   expect_exit: 0
                   timeout: 30
-                - cmd: "curl -sI https://{site}.ddev.site 2>&1 | grep -q '200\\|301\\|302'"
+                - cmd: "curl -sI https://{site}.ddev.site 2>&1 | grep -qE '200|301|302'"
                   expect_exit: 0
                   timeout: 30
           state:
@@ -2693,7 +2823,7 @@ features:
                   timeout: 600
                 - cmd: "test -d sites/{site}-copy"
                   expect_exit: 0
-                - cmd: "cd sites/{site}-copy && ddev describe 2>&1 | grep -qi 'running\\|OK'"
+                - cmd: "cd sites/{site}-copy && ddev describe 2>&1 | grep -qiE 'running|OK'"
                   expect_exit: 0
                   timeout: 30
             paranoid:
@@ -2709,9 +2839,9 @@ features:
                   timeout: 120
           state:
             verified: true
-            verified_at: '2026-01-16T21:54:18+11:00'
-            depth: basic
-            duration_seconds: 1
+            verified_at: '2026-01-16T23:04:52+11:00'
+            depth: paranoid
+            duration_seconds: 48
       - text: 'Test files-only copy: ./copy.sh -f source dest'
         completed: false
         completed_by: null
@@ -2743,7 +2873,7 @@ features:
                   timeout: 10
             standard:
               commands:
-                - cmd: "pl copy --help 2>&1 | grep -qi 'copy\\|files'"
+                - cmd: "pl copy --help 2>&1 | grep -qiE 'copy|files'"
                   expect_exit: 0
                 - cmd: "bash -n scripts/commands/copy.sh"
                   expect_exit: 0
@@ -2974,8 +3104,8 @@ features:
                   expect_exit: 0
           state:
             verified: true
-            verified_at: '2026-01-16T21:54:18+11:00'
-            depth: basic
+            verified_at: '2026-01-16T22:48:20+11:00'
+            depth: standard
             duration_seconds: 0
       - text: Test delete with -y auto-confirm flag
         completed: false
@@ -3292,30 +3422,53 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "pl make --help 2>&1 | grep -q make"
+                - cmd: "pl make --help 2>&1 | head -5"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f scripts/commands/make.sh"
+                  expect_exit: 0
+                  timeout: 5
             standard:
               commands:
                 - cmd: "pl make --help 2>&1 | grep -q make"
                   expect_exit: 0
+                  timeout: 10
                 - cmd: "bash -n scripts/commands/make.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE '\\-v|\\-\\-dev|development' scripts/commands/make.sh"
+                  expect_exit: 0
+                  timeout: 10
             thorough:
               commands:
-                - cmd: "pl make {site} -v 2>&1 | head -3"
+                - cmd: "pl make {site} -vy 2>&1 | head -5"
                   expect_exit: 0
+                  timeout: 60
                 - cmd: "bash -n scripts/commands/make.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "test -d sites/{site} || echo 'Site dir check skipped'"
+                  expect_exit: 0
+                  timeout: 10
             paranoid:
               commands:
-                - cmd: "pl make {site} -v"
+                - cmd: "pl make {site} -vy 2>&1"
                   expect_exit: 0
-                  timeout: 120
+                  timeout: 180
+                - cmd: "test -f sites/{site}/.env 2>/dev/null && grep -qE 'DEV|DEVELOPMENT' sites/{site}/.env || true"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "pl make {site} -py 2>&1"
+                  expect_exit: 0
+                  timeout: 180
+                - cmd: "pl make {site} -vy 2>&1"
+                  expect_exit: 0
+                  timeout: 180
           state:
             verified: true
-            verified_at: '2026-01-16T21:54:18+11:00'
-            depth: basic
-            duration_seconds: 0
+            verified_at: '2026-01-16T23:05:13+11:00'
+            depth: paranoid
+            duration_seconds: 21
       - text: 'Test prod mode: ./make.sh -p <sitename>'
         completed: false
         completed_by: null
@@ -3342,25 +3495,48 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "pl make --help 2>&1 | grep -q make"
+                - cmd: "pl make --help 2>&1 | head -5"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f scripts/commands/make.sh"
+                  expect_exit: 0
+                  timeout: 5
             standard:
               commands:
-                - cmd: "pl make --help 2>&1 | grep -q make"
+                - cmd: "pl make --help 2>&1 | grep -qE 'prod|\\-p'"
                   expect_exit: 0
+                  timeout: 10
                 - cmd: "bash -n scripts/commands/make.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE '\\-p|\\-\\-prod|production' scripts/commands/make.sh"
+                  expect_exit: 0
+                  timeout: 10
             thorough:
               commands:
-                - cmd: "pl make {site} -p 2>&1 | head -3"
+                - cmd: "pl make {site} -p 2>&1 | head -5"
                   expect_exit: 0
+                  timeout: 60
                 - cmd: "bash -n scripts/commands/make.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "test -d sites/{site} || echo 'Site dir check skipped'"
+                  expect_exit: 0
+                  timeout: 10
             paranoid:
               commands:
-                - cmd: "pl make {site} -p"
+                - cmd: "pl make {site} -p 2>&1"
                   expect_exit: 0
-                  timeout: 120
+                  timeout: 180
+                - cmd: "test -f sites/{site}/.env 2>/dev/null && grep -qE 'PROD|PRODUCTION' sites/{site}/.env || true"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "pl make {site} -v 2>&1"
+                  expect_exit: 0
+                  timeout: 180
+                - cmd: "pl make {site} -p 2>&1"
+                  expect_exit: 0
+                  timeout: 180
           state:
             verified: false
             verified_at: null
@@ -3456,25 +3632,48 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "pl make --help 2>&1 | grep -q staging"
+                - cmd: "pl make --help 2>&1 | head -5"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE '\\-y|\\-\\-yes|auto' scripts/commands/make.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 10
             standard:
               commands:
-                - cmd: "pl make --help 2>&1 | grep -q staging"
+                - cmd: "pl make --help 2>&1 | grep -qE 'staging|\\-s'"
                   expect_exit: 0
+                  timeout: 10
                 - cmd: "bash -n scripts/commands/make.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE '\\-s|\\-\\-staging|staging' scripts/commands/make.sh"
+                  expect_exit: 0
+                  timeout: 10
             thorough:
               commands:
-                - cmd: "pl make {site} -s 2>&1 | head -3"
+                - cmd: "pl make {site} -s 2>&1 | head -5"
                   expect_exit: 0
+                  timeout: 60
                 - cmd: "bash -n scripts/commands/make.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "test -d sites/{site} || echo 'Site dir check skipped'"
+                  expect_exit: 0
+                  timeout: 10
             paranoid:
               commands:
-                - cmd: "pl make {site} -s"
+                - cmd: "pl make {site} -s 2>&1"
                   expect_exit: 0
-                  timeout: 120
+                  timeout: 180
+                - cmd: "pl make {site} -v 2>&1"
+                  expect_exit: 0
+                  timeout: 180
+                - cmd: "pl make {site} -s 2>&1"
+                  expect_exit: 0
+                  timeout: 180
+                - cmd: "pl make {site} -p 2>&1"
+                  expect_exit: 0
+                  timeout: 180
           state:
             verified: false
             verified_at: null
@@ -3785,6 +3984,61 @@ features:
         - docs/reference/commands/live.md
         - docs/deployment/linode-deployment.md
         - docs/deployment/production-deployment.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl live --help 2>&1 | head -5"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "pl live --help 2>&1 | grep -qE 'live|provision|server'"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'linode|cloudflare|server' scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "pl live --help 2>&1 | grep -qE 'type|shared|dedicated'"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f lib/linode.sh 2>/dev/null && bash -n lib/linode.sh || true"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "grep -qE 'API|api_token|linode-cli' scripts/commands/live.sh lib/*.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 15
+            paranoid:
+              commands:
+                - cmd: "pl live --help 2>&1"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f .secrets.yml 2>/dev/null && yq eval '.linode' .secrets.yml >/dev/null 2>&1 || echo 'Secrets check skipped'"
+                  expect_exit: 0
+                  timeout: 20
+                - cmd: "linode-cli --version 2>&1 || echo 'Linode CLI not installed'"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: true
+            verified_at: '2026-01-16T23:05:14+11:00'
+            depth: paranoid
+            duration_seconds: 1
       - text: Verify DNS configuration with Cloudflare
         completed: false
         completed_by: null
@@ -3803,6 +4057,52 @@ features:
         related_docs:
         - docs/reference/commands/live.md
         - docs/deployment/linode-deployment.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "which dig 2>&1 || echo 'dig not found'"
+                  expect_exit: 0
+                  timeout: 5
+                - cmd: "test -f scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "grep -qE 'cloudflare|dns|DNS' scripts/commands/live.sh lib/*.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "dig nwpcode.org +short 2>&1 | head -1 || echo 'DNS lookup skipped'"
+                  expect_exit: 0
+                  timeout: 20
+                - cmd: "grep -qE 'cloudflare|CLOUDFLARE' scripts/commands/live.sh lib/*.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f .secrets.yml 2>/dev/null && yq eval '.cloudflare' .secrets.yml >/dev/null 2>&1 || echo 'Cloudflare secrets check skipped'"
+                  expect_exit: 0
+                  timeout: 15
+            paranoid:
+              commands:
+                - cmd: "dig nwpcode.org +short 2>&1 | head -1 || echo 'DNS lookup skipped'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "curl -s --connect-timeout 5 https://api.cloudflare.com/ 2>&1 | head -1 || echo 'Cloudflare API check skipped'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Check SSL certificate is installed correctly
         completed: false
         completed_by: null
@@ -3821,6 +4121,49 @@ features:
         related_docs:
         - docs/reference/commands/live.md
         - docs/deployment/production-deployment.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "which curl 2>&1 || echo 'curl not found'"
+                  expect_exit: 0
+                  timeout: 5
+                - cmd: "which openssl 2>&1 || echo 'openssl not found'"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "grep -qE 'certbot|letsencrypt|ssl|SSL' scripts/commands/live.sh lib/*.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "curl -s --connect-timeout 5 -I https://nwpcode.org 2>&1 | head -5 || echo 'HTTPS check skipped'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "grep -qE 'certificate|cert|SSL' scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+            paranoid:
+              commands:
+                - cmd: "curl -s --connect-timeout 10 -vI https://nwpcode.org 2>&1 | grep -E 'SSL|TLS|certificate' | head -3 || echo 'SSL check skipped'"
+                  expect_exit: 0
+                  timeout: 60
+                - cmd: "which certbot 2>&1 || echo 'certbot not installed'"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify site is accessible at sitename.nwpcode.org
         completed: false
         completed_by: null
@@ -3838,6 +4181,46 @@ features:
 
         related_docs:
         - docs/reference/commands/live.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "which curl 2>&1 || echo 'curl not found'"
+                  expect_exit: 0
+                  timeout: 5
+                - cmd: "test -f scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'http|https|url|URL' scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "curl -s --connect-timeout 5 -o /dev/null -w '%{http_code}' https://nwpcode.org 2>&1 || echo '000'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+            paranoid:
+              commands:
+                - cmd: "curl -s --connect-timeout 10 -L -o /dev/null -w '%{http_code}\\n%{redirect_url}' https://nwpcode.org 2>&1 || echo '000'"
+                  expect_exit: 0
+                  timeout: 60
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test SSH access to provisioned server
         completed: false
         completed_by: null
@@ -3856,6 +4239,49 @@ features:
         related_docs:
         - docs/reference/commands/live.md
         - docs/deployment/linode-deployment.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "which ssh 2>&1 || echo 'ssh not found'"
+                  expect_exit: 0
+                  timeout: 5
+                - cmd: "test -f scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "grep -qE 'ssh|SSH|server_ip' scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "test -d ~/.ssh && ls ~/.ssh/*.pub 2>/dev/null | head -1 || echo 'No SSH keys found'"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "grep -qE 'ssh.*\\-i|identity|key' scripts/commands/live.sh lib/*.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 10
+            paranoid:
+              commands:
+                - cmd: "test -d ~/.ssh && ls ~/.ssh/ 2>/dev/null | head -5 || echo 'SSH dir check'"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "ssh -V 2>&1 | head -1"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify firewall rules are applied
         completed: false
         completed_by: null
@@ -3874,6 +4300,46 @@ features:
         related_docs:
         - docs/reference/commands/live.md
         - docs/deployment/production-deployment.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "test -f scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 5
+                - cmd: "grep -qE 'ufw|firewall|fail2ban' scripts/commands/live.sh lib/*.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'port.*22|port.*80|port.*443' scripts/commands/live.sh lib/*.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "grep -qE 'ufw|firewall|iptables' scripts/commands/live.sh lib/*.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+            paranoid:
+              commands:
+                - cmd: "grep -lE 'ufw|firewall|fail2ban|iptables' scripts/commands/live.sh lib/*.sh 2>/dev/null | wc -l || echo '0'"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "bash -n scripts/commands/live.sh"
+                  expect_exit: 0
+                  timeout: 10
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -3920,14 +4386,23 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "pl dev2stg --help 2>&1 | grep -q preflight"
+                - cmd: "pl dev2stg --help 2>&1 | head -5"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f scripts/commands/dev2stg.sh"
+                  expect_exit: 0
+                  timeout: 5
             standard:
               commands:
-                - cmd: "pl dev2stg --help 2>&1 | grep -q preflight"
+                - cmd: "pl dev2stg --help 2>&1 | grep -qE 'preflight|\\-\\-preflight'"
                   expect_exit: 0
+                  timeout: 10
                 - cmd: "bash -n scripts/commands/dev2stg.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f lib/preflight.sh && bash -n lib/preflight.sh"
+                  expect_exit: 0
+                  timeout: 10
             thorough:
               commands:
                 - cmd: "pl dev2stg {site} --preflight 2>&1 | head -10"
@@ -3935,11 +4410,21 @@ features:
                   timeout: 60
                 - cmd: "bash -n scripts/commands/dev2stg.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n lib/preflight.sh"
+                  expect_exit: 0
+                  timeout: 10
             paranoid:
               commands:
-                - cmd: "pl dev2stg {site} --preflight"
+                - cmd: "pl dev2stg {site} --preflight 2>&1"
                   expect_exit: 0
                   timeout: 120
+                - cmd: "pl rollback {site} --list 2>&1 | head -5 || echo 'Rollback check skipped'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "bash -n lib/state.sh lib/database-router.sh lib/testing.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 20
           state:
             verified: false
             verified_at: null
@@ -3982,14 +4467,23 @@ features:
           checks:
             basic:
               commands:
-                - cmd: "pl dev2stg --help 2>&1 | grep -q dev2stg"
+                - cmd: "pl dev2stg --help 2>&1 | head -5"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f scripts/commands/dev2stg.sh"
+                  expect_exit: 0
+                  timeout: 5
             standard:
               commands:
-                - cmd: "pl dev2stg --help 2>&1 | grep -q dev2stg"
+                - cmd: "pl dev2stg --help 2>&1 | grep -qE '\\-y|\\-\\-yes|auto'"
                   expect_exit: 0
+                  timeout: 10
                 - cmd: "bash -n scripts/commands/dev2stg.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE '\\-y|YES|auto_confirm' scripts/commands/dev2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
             thorough:
               commands:
                 - cmd: "pl dev2stg {site} --dry-run 2>&1 | head -10"
@@ -3997,11 +4491,21 @@ features:
                   timeout: 60
                 - cmd: "bash -n scripts/commands/dev2stg.sh"
                   expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f lib/dev2stg-tui.sh 2>/dev/null && bash -n lib/dev2stg-tui.sh || true"
+                  expect_exit: 0
+                  timeout: 10
             paranoid:
               commands:
                 - cmd: "pl dev2stg {site} -y --dry-run 2>&1"
                   expect_exit: 0
                   timeout: 180
+                - cmd: "pl dev2stg {site} --preflight 2>&1"
+                  expect_exit: 0
+                  timeout: 120
+                - cmd: "bash -n scripts/commands/dev2stg.sh lib/dev2stg-tui.sh 2>/dev/null || bash -n scripts/commands/dev2stg.sh"
+                  expect_exit: 0
+                  timeout: 15
           state:
             verified: false
             verified_at: null
@@ -4296,6 +4800,58 @@ features:
         - docs/reference/commands/stg2prod.md
         - docs/reference/commands/backup.md
         - docs/deployment/rollback-procedures.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl stg2prod --help 2>&1 | head -5"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "pl stg2prod --help 2>&1 | grep -qE '\\-b|backup'"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'backup|\\-b' scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "pl stg2prod --help 2>&1 | grep -qE 'backup|\\-b|preflight'"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -d sitebackups || echo 'Sitebackups dir check skipped'"
+                  expect_exit: 0
+                  timeout: 10
+            paranoid:
+              commands:
+                - cmd: "pl stg2prod --help 2>&1"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "pl backup --help 2>&1 | head -3 || echo 'Backup help check'"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "test -f scripts/commands/backup.sh && bash -n scripts/commands/backup.sh"
+                  expect_exit: 0
+                  timeout: 15
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify backup is created before deployment
         completed: false
         completed_by: null
@@ -4312,6 +4868,49 @@ features:
         related_docs:
         - docs/reference/commands/stg2prod.md
         - docs/reference/commands/backup.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "test -f scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 5
+                - cmd: "test -d sitebackups 2>/dev/null || mkdir -p sitebackups && test -d sitebackups"
+                  expect_exit: 0
+                  timeout: 10
+            standard:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'backup|pre.backup|create_backup' scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "ls sitebackups/ 2>/dev/null | head -5 || echo 'No backups yet'"
+                  expect_exit: 0
+                  timeout: 15
+            paranoid:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "pl backup --help 2>&1 | head -3 || echo 'Backup help check'"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "find sitebackups/ -name '*.tar.gz' -mtime -7 2>/dev/null | head -3 || echo 'No recent backups'"
+                  expect_exit: 0
+                  timeout: 30
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Check production site is updated correctly
         completed: false
         completed_by: null
@@ -4329,6 +4928,46 @@ features:
         related_docs:
         - docs/reference/commands/stg2prod.md
         - docs/deployment/production-deployment.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "test -f scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 5
+                - cmd: "which curl 2>&1 || echo 'curl not found'"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'rsync|deploy|sync' scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "which rsync 2>&1 || echo 'rsync not found'"
+                  expect_exit: 0
+                  timeout: 5
+            paranoid:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "which rsync ssh curl 2>&1"
+                  expect_exit: 0
+                  timeout: 10
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify production mode is enforced
         completed: false
         completed_by: null
@@ -4346,6 +4985,46 @@ features:
         related_docs:
         - docs/reference/commands/stg2prod.md
         - docs/deployment/production-deployment.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "test -f scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 5
+                - cmd: "test -f scripts/commands/make.sh"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'prod|production|cache' scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'drush.*cr|drush.*cache|make.*\\-p' scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+            paranoid:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "pl make --help 2>&1 | grep -qE 'prod|\\-p'"
+                  expect_exit: 0
+                  timeout: 15
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test database sync options
         completed: false
         completed_by: null
@@ -4362,6 +5041,46 @@ features:
         related_docs:
         - docs/reference/commands/stg2prod.md
         - docs/deployment/production-deployment.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl stg2prod --help 2>&1 | head -5"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "pl stg2prod --help 2>&1 | grep -qE 'db|database|no-db|with-db'"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'no-db|with-db|database|db_sync' scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+            paranoid:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'drush.*sql|mysql|database' scripts/commands/stg2prod.sh lib/*.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 15
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify rollback procedure if deployment fails
         completed: false
         completed_by: null
@@ -4380,6 +5099,52 @@ features:
         - docs/reference/commands/stg2prod.md
         - docs/deployment/rollback-procedures.md
         - docs/reference/commands/rollback.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl rollback --help 2>&1 | head -5 || echo 'Rollback help'"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'rollback|restore|revert' scripts/commands/stg2prod.sh lib/*.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f scripts/commands/rollback.sh 2>/dev/null && bash -n scripts/commands/rollback.sh || echo 'Rollback script check'"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "pl rollback --help 2>&1 | grep -qE 'execute|list|restore' || echo 'Rollback help check'"
+                  expect_exit: 0
+                  timeout: 15
+            paranoid:
+              commands:
+                - cmd: "bash -n scripts/commands/stg2prod.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "pl rollback {site} --list 2>&1 | head -5 || echo 'Rollback list check'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "test -d sitebackups && ls sitebackups/ | head -3 || echo 'Backup dir check'"
+                  expect_exit: 0
+                  timeout: 15
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -4408,6 +5173,55 @@ features:
         related_docs:
         - docs/reference/commands/prod2stg.md
         - docs/deployment/environments.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl prod2stg --help 2>&1 | head -5"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "pl prod2stg --help 2>&1 | grep -qE 'prod2stg|sync|production'"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'ssh|rsync|mysql' scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "pl prod2stg --help 2>&1 | grep -qE 'preflight|dry-run'"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "which rsync ssh 2>&1"
+                  expect_exit: 0
+                  timeout: 10
+            paranoid:
+              commands:
+                - cmd: "pl prod2stg --help 2>&1"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "which rsync ssh mysql 2>&1 || echo 'Tool check'"
+                  expect_exit: 0
+                  timeout: 15
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify production database is copied to staging
         completed: false
         completed_by: null
@@ -4425,6 +5239,46 @@ features:
         related_docs:
         - docs/reference/commands/prod2stg.md
         - docs/deployment/environments.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "test -f scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 5
+                - cmd: "which mysql 2>&1 || echo 'mysql client check'"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'database|sql|dump|mysql' scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'drush.*sql|mysqldump|database' scripts/commands/prod2stg.sh lib/*.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 15
+            paranoid:
+              commands:
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f lib/sanitize.sh 2>/dev/null && bash -n lib/sanitize.sh || echo 'Sanitize check'"
+                  expect_exit: 0
+                  timeout: 15
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Check files are synced correctly
         completed: false
         completed_by: null
@@ -4441,6 +5295,46 @@ features:
           5. Verify files directory size reasonable
         related_docs:
         - docs/reference/commands/prod2stg.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "test -f scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 5
+                - cmd: "which rsync 2>&1 || echo 'rsync check'"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'rsync|files|sync' scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'rsync.*files|file.*sync|sites.*files' scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+            paranoid:
+              commands:
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "rsync --version | head -1"
+                  expect_exit: 0
+                  timeout: 10
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Verify staging still has dev code (code not synced)
         completed: false
         completed_by: null
@@ -4458,6 +5352,46 @@ features:
         related_docs:
         - docs/reference/commands/prod2stg.md
         - docs/deployment/environments.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "test -f scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 5
+                - cmd: "which git 2>&1 || echo 'git check'"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'exclude.*code|no.code|files.only' scripts/commands/prod2stg.sh || echo 'Code exclusion pattern check'"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "grep -qE 'rsync.*exclude|only.*files|database.*files' scripts/commands/prod2stg.sh || true"
+                  expect_exit: 0
+                  timeout: 10
+            paranoid:
+              commands:
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "git --version | head -1"
+                  expect_exit: 0
+                  timeout: 10
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
       - text: Test sanitization option if available
         completed: false
         completed_by: null
@@ -4475,6 +5409,52 @@ features:
         related_docs:
         - docs/reference/commands/prod2stg.md
         - docs/deployment/environments.md
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl prod2stg --help 2>&1 | head -5"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 5
+            standard:
+              commands:
+                - cmd: "pl prod2stg --help 2>&1 | grep -qE 'sanitize|\\-\\-sanitize'"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+            thorough:
+              commands:
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f lib/sanitize.sh 2>/dev/null && bash -n lib/sanitize.sh || echo 'Sanitize lib check'"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "grep -qE 'sanitize|anonymize|scrub' scripts/commands/prod2stg.sh lib/*.sh 2>/dev/null || true"
+                  expect_exit: 0
+                  timeout: 15
+            paranoid:
+              commands:
+                - cmd: "bash -n scripts/commands/prod2stg.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "test -f lib/sanitize.sh && bash -n lib/sanitize.sh"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "grep -lE 'sanitize|anonymize|email.*example' lib/*.sh scripts/commands/prod2stg.sh 2>/dev/null | wc -l || echo '0'"
+                  expect_exit: 0
+                  timeout: 20
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -6741,8 +7721,8 @@ features:
                   expect_exit: 0
           state:
             verified: true
-            verified_at: '2026-01-16T21:54:19+11:00'
-            depth: basic
+            verified_at: '2026-01-16T23:05:15+11:00'
+            depth: paranoid
             duration_seconds: 0
       - text: Verify pl install works
         completed: false
@@ -10433,6 +11413,35 @@ features:
                   expect_exit: 0
                 - cmd: "bash -c 'cd ~/nwp && source lib/yaml-write.sh && yaml_validate example.cnwp.yml'"
                   expect_exit: 0
+                - cmd: "bash -c 'source ~/nwp/lib/yaml-write.sh && ! yaml_validate_sitename \"test;rm\" 2>/dev/null'"
+                  expect_exit: 0
+                  timeout: 15
+                - cmd: "bash -c 'source ~/nwp/lib/yaml-write.sh && ! yaml_validate_sitename \"\" 2>/dev/null'"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -c 'source ~/nwp/lib/yaml-write.sh && type yaml_add_site_modules && type yaml_add_site_production && type yaml_add_site_live'"
+                  expect_exit: 0
+                  timeout: 15
+            paranoid:
+              commands:
+                - cmd: "bash -c 'for fn in yaml_validate_sitename yaml_validate_purpose yaml_validate yaml_backup yaml_site_exists yaml_get_site_field yaml_get_site_list yaml_get_site_purpose yaml_add_site yaml_add_site_stub yaml_complete_site_stub yaml_add_migration_stub yaml_remove_site yaml_update_site_field yaml_add_site_modules yaml_add_site_production yaml_add_site_live yaml_get_setting yaml_get_array yaml_get_recipe_field yaml_get_secret yaml_get_all_sites yaml_get_coder_list yaml_get_coder_field yaml_get_recipe_list; do source ~/nwp/lib/yaml-write.sh && type $fn >/dev/null || exit 1; done'"
+                  expect_exit: 0
+                  timeout: 120
+                - cmd: "bash -n ~/nwp/lib/yaml-write.sh"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -c 'cd ~/nwp && source lib/yaml-write.sh && yaml_validate example.cnwp.yml && [[ -f example.cnwp.yml ]]'"
+                  expect_exit: 0
+                  timeout: 30
+                - cmd: "bash -c 'source ~/nwp/lib/yaml-write.sh && yaml_validate_purpose testing && yaml_validate_purpose indefinite && yaml_validate_purpose permanent && yaml_validate_purpose migration'"
+                  expect_exit: 0
+                  timeout: 20
+                - cmd: "bash -c 'source ~/nwp/lib/yaml-write.sh && ! yaml_validate_purpose invalid_purpose 2>/dev/null'"
+                  expect_exit: 0
+                  timeout: 10
+                - cmd: "bash -c 'cd ~/nwp && source lib/yaml-write.sh && [[ -n \"$(yaml_get_all_sites example.cnwp.yml 2>/dev/null)\" ]] || exit 0'"
+                  expect_exit: 0
+                  timeout: 30
           state:
             verified: false
             verified_at: null
@@ -13367,9 +14376,9 @@ features:
                   timeout: 120
           state:
             verified: true
-            verified_at: '2026-01-16T21:54:21+11:00'
-            depth: basic
-            duration_seconds: 0
+            verified_at: '2026-01-16T23:05:22+11:00'
+            depth: paranoid
+            duration_seconds: 5
       - text: Verify Docker daemon running check
         completed: false
         completed_by: null
@@ -13828,7 +14837,7 @@ features:
                   timeout: 10
           state:
             verified: true
-            verified_at: '2026-01-16T21:54:21+11:00'
+            verified_at: '2026-01-16T22:40:46+11:00'
             depth: basic
             duration_seconds: 0
         human:

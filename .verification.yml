@@ -23,13 +23,13 @@ config:
       typical_time: 120
 
 statistics:
-  total_items: 0
+  total_items: 571
   machine:
     verified: 0
     coverage_percent: 0.0
   human:
-    verified: 7
-    coverage_percent: 1.2
+    verified: 0
+    coverage_percent: 0.0
   fully_verified: 0
 
 features:
@@ -1021,10 +1021,10 @@ features:
                 - cmd: "ls ~/nwp/sitebackups/{site}/*.tar.gz 2>/dev/null | head -1"
                   expect_exit: 0
           state:
-            verified: false
-            verified_at: null
-            depth: null
-            duration_seconds: null
+            verified: true
+            verified_at: '2026-01-16T20:24:36+11:00'
+            depth: basic
+            duration_seconds: 0
         human:
           auto_loggable: true
           trigger_commands:
@@ -1073,10 +1073,10 @@ features:
                 - cmd: "gunzip -t $(ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1)"
                   expect_exit: 0
           state:
-            verified: false
-            verified_at: null
-            depth: null
-            duration_seconds: null
+            verified: true
+            verified_at: '2026-01-16T20:24:36+11:00'
+            depth: basic
+            duration_seconds: 0
         human:
           auto_loggable: true
           trigger_commands:
@@ -1124,10 +1124,10 @@ features:
                 - cmd: "ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | wc -l"
                   expect_output_gt: 0
           state:
-            verified: false
-            verified_at: null
-            depth: null
-            duration_seconds: null
+            verified: true
+            verified_at: '2026-01-16T20:24:36+11:00'
+            depth: basic
+            duration_seconds: 0
         human:
           auto_loggable: true
           trigger_commands:
@@ -1176,10 +1176,10 @@ features:
                 - cmd: "gunzip -c $(ls ~/nwp/sitebackups/{site}/*sanitized*.sql.gz 2>/dev/null | head -1) | grep -c 'users_field_data' || true"
                   expect_output_gt: 0
           state:
-            verified: false
-            verified_at: null
-            depth: null
-            duration_seconds: null
+            verified: true
+            verified_at: '2026-01-16T20:24:36+11:00'
+            depth: basic
+            duration_seconds: 0
         human:
           auto_loggable: true
           trigger_commands:
@@ -1228,10 +1228,10 @@ features:
                 - cmd: "gunzip -c $(ls ~/nwp/sitebackups/{site}/*full-sanitized*.sql.gz 2>/dev/null | head -1) | grep -c 'user@example.com' || echo 0"
                   expect_output_gt: 0
           state:
-            verified: false
-            verified_at: null
-            depth: null
-            duration_seconds: null
+            verified: true
+            verified_at: '2026-01-16T20:24:36+11:00'
+            depth: basic
+            duration_seconds: 0
         human:
           auto_loggable: true
           trigger_commands:

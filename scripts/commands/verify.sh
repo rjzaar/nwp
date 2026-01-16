@@ -1233,10 +1233,10 @@ show_summary() {
     local verified=0
     local unverified=0
     local modified=0
-    local total=0
+    local total_features=0
 
     while IFS= read -r feature; do
-        ((++total))
+        ((++total_features))
         local v=$(get_yaml_value "$feature" "verified")
 
         if [[ "$v" == "true" ]]; then
@@ -1251,30 +1251,67 @@ show_summary() {
     done <<< "$(get_feature_ids)"
 
     local pct=0
-    if [[ $total -gt 0 ]]; then
-        pct=$((verified * 100 / total))
+    if [[ $total_features -gt 0 ]]; then
+        pct=$((verified * 100 / total_features))
+    fi
+
+    # Get checklist item counts
+    local total_items=$(count_total_items)
+    local machine_verified=$(count_machine_verified_items)
+    local human_verified=$(count_human_verified_items)
+    local fully_verified=$(count_fully_verified_items)
+
+    local machine_pct=0
+    local human_pct=0
+    local full_pct=0
+
+    if [[ $total_items -gt 0 ]]; then
+        machine_pct=$((machine_verified * 100 / total_items))
+        human_pct=$((human_verified * 100 / total_items))
+        full_pct=$((fully_verified * 100 / total_items))
     fi
 
     echo -e "${BOLD}Verification Summary${NC}"
-    echo -e "${DIM}═══════════════════════════════${NC}"
+    echo -e "${DIM}═══════════════════════════════════════════${NC}"
     echo ""
-    echo -e "  Total features:  $total"
-    echo -e "  ${GREEN}Verified:${NC}        $verified (${pct}%)"
-    echo -e "  ${RED}Unverified:${NC}      $unverified"
-    echo -e "  ${YELLOW}Modified:${NC}        $modified"
+    echo -e "  ${BOLD}Features:${NC}"
+    echo -e "    Total:         $total_features"
+    echo -e "    ${GREEN}Verified:${NC}      $verified (${pct}%)"
+    echo -e "    ${RED}Unverified:${NC}    $unverified"
+    echo -e "    ${YELLOW}Modified:${NC}      $modified"
+    echo ""
+    echo -e "  ${BOLD}Checklist Items:${NC}"
+    printf "    Total:           %d\n" "$total_items"
+    printf "    ${CYAN}Machine Verified:${NC} %d (%d%%)\n" "$machine_verified" "$machine_pct"
+    printf "    ${BLUE}Human Verified:${NC}   %d (%d%%)\n" "$human_verified" "$human_pct"
+    printf "    ${GREEN}Fully Verified:${NC}   %d (%d%%)\n" "$fully_verified" "$full_pct"
     echo ""
 
-    # Progress bar
+    # Progress bar for features
     local bar_width=40
-    local filled=$((verified * bar_width / total))
+    local filled=$((verified * bar_width / total_features))
     local empty=$((bar_width - filled))
 
+    echo -e "  ${DIM}Feature Progress:${NC}"
     printf "  ["
     if [[ $filled -gt 0 ]]; then
         for ((i=0; i<filled; i++)); do printf "${GREEN}█${NC}"; done
     fi
     for ((i=0; i<empty; i++)); do printf "${DIM}░${NC}"; done
     printf "] %d%%\n" $pct
+    echo ""
+
+    # Progress bar for machine verification
+    local machine_filled=$((machine_verified * bar_width / total_items))
+    local machine_empty=$((bar_width - machine_filled))
+
+    echo -e "  ${DIM}Machine Verification:${NC}"
+    printf "  ["
+    if [[ $machine_filled -gt 0 ]]; then
+        for ((i=0; i<machine_filled; i++)); do printf "${CYAN}█${NC}"; done
+    fi
+    for ((i=0; i<machine_empty; i++)); do printf "${DIM}░${NC}"; done
+    printf "] %d%%\n" $machine_pct
 }
 
 # Interactive verification mode
@@ -2391,9 +2428,22 @@ count_total_items() {
 }
 
 # Count machine-verified items
+# Parses checklist items looking for machine.state.verified: true
 count_machine_verified_items() {
-    # For now, return 0 - this would parse machine.state.verified from YAML
-    echo "0"
+    # Count items where machine.state.verified is true in .verification.yml
+    # The structure is: checklist item -> machine -> state -> verified: true
+    # Indentation: machine (8 spaces), state (10 spaces), verified (12 spaces)
+    local count=0
+    count=$(awk '
+    BEGIN { in_machine = 0; in_state = 0; count = 0 }
+    /^        machine:/ { in_machine = 1; in_state = 0; next }
+    in_machine && /^          state:/ { in_state = 1; next }
+    in_machine && in_state && /^            verified: true/ { count++; in_machine = 0; in_state = 0; next }
+    /^        [a-z]/ && !/^        machine:/ { in_machine = 0; in_state = 0 }
+    /^      - text:/ { in_machine = 0; in_state = 0 }
+    END { print count }
+    ' "$VERIFICATION_FILE" 2>/dev/null)
+    echo "${count:-0}"
 }
 
 # Count human-verified items
@@ -2408,15 +2458,174 @@ count_human_verified_items() {
 
 # Count fully verified items (both machine and human)
 count_fully_verified_items() {
-    # For now, count features that are verified=true
-    local total=0
-    while IFS= read -r feature; do
-        local verified=$(get_yaml_value "$feature" "verified")
-        if [[ "$verified" == "true" ]]; then
-            total=$((total + 1))
-        fi
-    done <<< "$(get_feature_ids)"
-    echo "$total"
+    # Count checklist items where BOTH machine.state.verified=true AND completed=true
+    local count=0
+    count=$(awk '
+    BEGIN {
+        in_item = 0
+        machine_verified = 0
+        human_completed = 0
+        count = 0
+    }
+    /^      - text:/ {
+        # New checklist item - check if previous was fully verified
+        if (in_item && machine_verified && human_completed) {
+            count++
+        }
+        in_item = 1
+        machine_verified = 0
+        human_completed = 0
+        next
+    }
+    in_item && /^        completed: true/ {
+        human_completed = 1
+        next
+    }
+    in_item && /^            verified: true/ {
+        machine_verified = 1
+        next
+    }
+    END {
+        # Check last item
+        if (in_item && machine_verified && human_completed) {
+            count++
+        }
+        print count
+    }
+    ' "$VERIFICATION_FILE" 2>/dev/null)
+    echo "${count:-0}"
+}
+
+# Update machine verification state for a checklist item
+# Usage: update_machine_verified FEATURE_ID ITEM_INDEX DEPTH [DURATION]
+# This persists the machine test result to .verification.yml
+update_machine_verified() {
+    local feature="$1"
+    local item_idx="$2"
+    local depth="$3"
+    local duration="${4:-0}"
+    local timestamp=$(date -Iseconds)
+    local tmpfile=$(mktemp)
+
+    # Update machine.state for the specified checklist item
+    # Structure: features -> feature -> checklist -> item[idx] -> machine -> state
+    awk -v feature="$feature" -v idx="$item_idx" -v depth="$depth" \
+        -v timestamp="$timestamp" -v duration="$duration" '
+    BEGIN {
+        in_feature = 0
+        in_checklist = 0
+        current_idx = -1
+        in_target_item = 0
+        in_machine = 0
+        in_state = 0
+        state_updated = 0
+    }
+    /^  [a-z0-9_]+:$/ {
+        test = $0
+        gsub(/^  /, "", test)
+        gsub(/:$/, "", test)
+        if (test == feature) {
+            in_feature = 1
+        } else if (in_feature) {
+            in_feature = 0
+            in_checklist = 0
+            in_target_item = 0
+        }
+    }
+    in_feature && /^    checklist:/ {
+        in_checklist = 1
+        print
+        next
+    }
+    in_feature && in_checklist && /^      - text:/ {
+        current_idx++
+        if (current_idx == idx) {
+            in_target_item = 1
+        } else {
+            in_target_item = 0
+        }
+        in_machine = 0
+        in_state = 0
+        print
+        next
+    }
+    in_target_item && /^        machine:/ {
+        in_machine = 1
+        print
+        next
+    }
+    in_target_item && in_machine && /^          state:/ {
+        in_state = 1
+        print
+        next
+    }
+    in_target_item && in_machine && in_state && /^            verified:/ {
+        print "            verified: true"
+        state_updated = 1
+        next
+    }
+    in_target_item && in_machine && in_state && /^            verified_at:/ {
+        print "            verified_at: '\''" timestamp "'\''"
+        next
+    }
+    in_target_item && in_machine && in_state && /^            depth:/ {
+        print "            depth: " depth
+        next
+    }
+    in_target_item && in_machine && in_state && /^            duration_seconds:/ {
+        print "            duration_seconds: " duration
+        next
+    }
+    # Exit state section on unindent
+    in_state && /^          [a-z]/ && !/^            / {
+        in_state = 0
+    }
+    in_machine && /^        [a-z]/ && !/^          / {
+        in_machine = 0
+        in_state = 0
+    }
+    { print }
+    ' "$VERIFICATION_FILE" > "$tmpfile"
+
+    mv "$tmpfile" "$VERIFICATION_FILE"
+}
+
+# Update statistics section in .verification.yml
+# Usage: update_verification_statistics
+update_verification_statistics() {
+    local total=$(count_total_items)
+    local machine_verified=$(count_machine_verified_items)
+    local human_verified=$(count_human_verified_items)
+    local fully_verified=$(count_fully_verified_items)
+
+    local machine_pct=0
+    local human_pct=0
+
+    if [[ $total -gt 0 ]]; then
+        # Calculate percentage with one decimal place
+        machine_pct=$(awk "BEGIN {printf \"%.1f\", ($machine_verified * 100 / $total)}")
+        human_pct=$(awk "BEGIN {printf \"%.1f\", ($human_verified * 100 / $total)}")
+    fi
+
+    local tmpfile=$(mktemp)
+
+    awk -v total="$total" -v machine="$machine_verified" -v human="$human_verified" \
+        -v fully="$fully_verified" -v mpct="$machine_pct" -v hpct="$human_pct" '
+    BEGIN { in_statistics = 0; in_machine = 0; in_human = 0 }
+    /^statistics:/ { in_statistics = 1; print; next }
+    in_statistics && /^  total_items:/ { print "  total_items: " total; next }
+    in_statistics && /^  machine:/ { in_machine = 1; in_human = 0; print; next }
+    in_statistics && /^  human:/ { in_human = 1; in_machine = 0; print; next }
+    in_statistics && /^  fully_verified:/ { print "  fully_verified: " fully; in_machine = 0; in_human = 0; next }
+    in_statistics && in_machine && /^    verified:/ { print "    verified: " machine; next }
+    in_statistics && in_machine && /^    coverage_percent:/ { print "    coverage_percent: " mpct; next }
+    in_statistics && in_human && /^    verified:/ { print "    verified: " human; next }
+    in_statistics && in_human && /^    coverage_percent:/ { print "    coverage_percent: " hpct; next }
+    /^[a-z]/ && !/^statistics:/ { in_statistics = 0; in_machine = 0; in_human = 0 }
+    { print }
+    ' "$VERIFICATION_FILE" > "$tmpfile"
+
+    mv "$tmpfile" "$VERIFICATION_FILE"
 }
 
 # Run machine checks for all or specified features
@@ -2602,13 +2811,19 @@ run_machine_checks() {
             item_passed=$((item_passed + 1))
             total_passed=$((total_passed + 1))
 
-            # Track result
+            # Track result in memory
             track_result "$f" "$i" "passed" "0" ""
+
+            # Persist machine verification to YAML
+            update_machine_verified "$f" "$i" "$depth" "0"
         done
 
         echo -e "  ${DIM}Results: $item_passed passed, $item_failed failed, $item_skipped skipped${NC}"
         echo ""
     done <<< "$features_to_run"
+
+    # Update statistics in .verification.yml
+    update_verification_statistics
 
     # Cleanup test site
     if [[ -n "$test_site" ]]; then

@@ -25,8 +25,8 @@ config:
 statistics:
   total_items: 571
   machine:
-    verified: 0
-    coverage_percent: 0.0
+    verified: 10
+    coverage_percent: 1.8
   human:
     verified: 0
     coverage_percent: 0.0
@@ -1022,7 +1022,7 @@ features:
                   expect_exit: 0
           state:
             verified: true
-            verified_at: '2026-01-16T20:24:36+11:00'
+            verified_at: '2026-01-16T20:28:12+11:00'
             depth: basic
             duration_seconds: 0
         human:
@@ -1074,7 +1074,7 @@ features:
                   expect_exit: 0
           state:
             verified: true
-            verified_at: '2026-01-16T20:24:36+11:00'
+            verified_at: '2026-01-16T20:28:12+11:00'
             depth: basic
             duration_seconds: 0
         human:
@@ -1125,7 +1125,7 @@ features:
                   expect_output_gt: 0
           state:
             verified: true
-            verified_at: '2026-01-16T20:24:36+11:00'
+            verified_at: '2026-01-16T20:28:12+11:00'
             depth: basic
             duration_seconds: 0
         human:
@@ -1177,7 +1177,7 @@ features:
                   expect_output_gt: 0
           state:
             verified: true
-            verified_at: '2026-01-16T20:24:36+11:00'
+            verified_at: '2026-01-16T20:28:12+11:00'
             depth: basic
             duration_seconds: 0
         human:
@@ -1229,7 +1229,7 @@ features:
                   expect_output_gt: 0
           state:
             verified: true
-            verified_at: '2026-01-16T20:24:36+11:00'
+            verified_at: '2026-01-16T20:28:12+11:00'
             depth: basic
             duration_seconds: 0
         human:
@@ -11898,6 +11898,11 @@ features:
               commands:
                 - cmd: "! pl install d '../malicious' 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
         human:
           auto_loggable: false
         completed: false
@@ -11918,6 +11923,11 @@ features:
               commands:
                 - cmd: "! pl install d 'test;rm -rf /' 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
         human:
           auto_loggable: false
         completed: false
@@ -11938,6 +11948,11 @@ features:
               commands:
                 - cmd: "! pl install d './hidden' 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
         human:
           auto_loggable: false
         completed: false
@@ -11957,6 +11972,11 @@ features:
               commands:
                 - cmd: "! pl install d '/tmp/malicious' 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
         human:
           auto_loggable: false
         completed: false
@@ -11977,6 +11997,11 @@ features:
               commands:
                 - cmd: "! pl install d 'test&whoami' 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
         human:
           auto_loggable: false
         completed: false
@@ -11997,6 +12022,11 @@ features:
               commands:
                 - cmd: "! pl install d 'test site' 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
         human:
           auto_loggable: false
         completed: false
@@ -12016,6 +12046,11 @@ features:
               commands:
                 - cmd: "! pl install 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: true
+            verified_at: '2026-01-16T20:32:45+11:00'
+            depth: basic
+            duration_seconds: 0
         human:
           auto_loggable: false
         completed: false
@@ -12035,6 +12070,11 @@ features:
               commands:
                 - cmd: "! pl backup 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: true
+            verified_at: '2026-01-16T20:32:46+11:00'
+            depth: basic
+            duration_seconds: 0
         human:
           auto_loggable: false
         completed: false
@@ -12054,6 +12094,11 @@ features:
               commands:
                 - cmd: "! pl restore 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: true
+            verified_at: '2026-01-16T20:32:46+11:00'
+            depth: basic
+            duration_seconds: 0
         human:
           auto_loggable: false
         completed: false
@@ -12073,6 +12118,11 @@ features:
               commands:
                 - cmd: "! pl delete 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
         human:
           auto_loggable: false
         completed: false
@@ -12094,6 +12144,11 @@ features:
                   expect_exit: 0
                 - cmd: "! pl copy source 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
         human:
           auto_loggable: false
         completed: false
@@ -12115,6 +12170,11 @@ features:
               commands:
                 - cmd: "! pl backup nonexistent-site-12345 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: true
+            verified_at: '2026-01-16T20:32:46+11:00'
+            depth: basic
+            duration_seconds: 0
         human:
           auto_loggable: false
         completed: false
@@ -12134,6 +12194,11 @@ features:
               commands:
                 - cmd: "! pl restore nonexistent-site-12345 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: true
+            verified_at: '2026-01-16T20:32:46+11:00'
+            depth: basic
+            duration_seconds: 0
         human:
           auto_loggable: false
         completed: false
@@ -12153,6 +12218,11 @@ features:
               commands:
                 - cmd: "! pl delete nonexistent-site-12345 -y 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
         human:
           auto_loggable: false
         completed: false
@@ -12172,6 +12242,11 @@ features:
               commands:
                 - cmd: "! pl copy nonexistent-site-12345 newsite 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
         human:
           auto_loggable: false
         completed: false
@@ -12191,6 +12266,11 @@ features:
               commands:
                 - cmd: "! pl install d 'test`whoami`' 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
         human:
           auto_loggable: false
         completed: false
@@ -12211,6 +12291,11 @@ features:
               commands:
                 - cmd: "! pl install d 'test$(whoami)' 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
         human:
           auto_loggable: false
         completed: false
@@ -12231,6 +12316,11 @@ features:
               commands:
                 - cmd: "! pl install d 'test|cat /etc/passwd' 2>/dev/null"
                   expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
         human:
           auto_loggable: false
         completed: false

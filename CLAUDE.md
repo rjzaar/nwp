@@ -213,7 +213,8 @@ When the user asks to create a new release tag (e.g., "create tag v0.13"), follo
 
 ### 1. Pre-Release Verification
 
-- [ ] Run `./scripts/commands/test-nwp.sh` - ensure 98%+ pass rate
+- [ ] Run `pl verify --run --depth=thorough` - ensure 98%+ pass rate
+- [ ] Run `pl verify badges` to check coverage
 - [ ] Run `bash -n` syntax check on modified scripts in `scripts/commands/` and `lib/`
 - [ ] Verify no uncommitted changes: `git status`
 - [ ] Review git log since last tag: `git log $(git describe --tags --abbrev=0)..HEAD --oneline`

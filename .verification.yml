@@ -1,4 +1,37 @@
-version: 2
+version: 3
+
+config:
+  machine_engine: "verify.sh"
+  human_logging: true
+  badges_enabled: true
+  test_site:
+    prefix: "verify-test"
+    cleanup_on_success: true
+    preserve_on_failure: true
+  depth_levels:
+    basic:
+      description: "Command succeeds"
+      typical_time: 10
+    standard:
+      description: "Output valid, files created"
+      typical_time: 20
+    thorough:
+      description: "State verified, dependencies OK"
+      typical_time: 40
+    paranoid:
+      description: "Round-trip test, integration"
+      typical_time: 120
+
+statistics:
+  total_items: 0
+  machine:
+    verified: 0
+    coverage_percent: 0.0
+  human:
+    verified: 7
+    coverage_percent: 1.2
+  fully_verified: 0
+
 features:
   setup:
     name: Setup Script (setup.sh)
@@ -967,6 +1000,36 @@ features:
     - lib/sanitize.sh
     checklist:
       - text: 'Test full backup: ./backup.sh <sitename>'
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl backup {site}"
+                  expect_exit: 0
+                  timeout: 120
+            standard:
+              commands:
+                - cmd: "pl backup {site}"
+                  expect_exit: 0
+                - cmd: "test -d ~/nwp/sitebackups/{site}"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl backup {site} -f"
+                  expect_exit: 0
+                - cmd: "ls ~/nwp/sitebackups/{site}/*.tar.gz 2>/dev/null | head -1"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
+        human:
+          auto_loggable: true
+          trigger_commands:
+            - pattern: "pl backup *"
+              confidence: 1.0
         completed: false
         completed_by: null
         completed_at: null
@@ -987,6 +1050,38 @@ features:
         related_docs:
         - docs/reference/commands/backup.md
       - text: 'Test database-only backup: ./backup.sh -b <sitename>'
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl backup {site} -b"
+                  expect_exit: 0
+                  timeout: 60
+            standard:
+              commands:
+                - cmd: "pl backup {site} -b"
+                  expect_exit: 0
+                - cmd: "ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl backup {site} -b -f"
+                  expect_exit: 0
+                - cmd: "ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1"
+                  expect_exit: 0
+                - cmd: "gunzip -t $(ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | head -1)"
+                  expect_exit: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
+        human:
+          auto_loggable: true
+          trigger_commands:
+            - pattern: "pl backup * -b"
+              confidence: 1.0
         completed: false
         completed_by: null
         completed_at: null
@@ -1007,6 +1102,37 @@ features:
         related_docs:
         - docs/reference/commands/backup.md
       - text: Verify backup files created in sitebackups/<sitename>/
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "test -d ~/nwp/sitebackups/{site}"
+                  expect_exit: 0
+            standard:
+              commands:
+                - cmd: "test -d ~/nwp/sitebackups/{site}"
+                  expect_exit: 0
+                - cmd: "ls ~/nwp/sitebackups/{site}/ | wc -l"
+                  expect_output_gt: 0
+            thorough:
+              commands:
+                - cmd: "test -d ~/nwp/sitebackups/{site}"
+                  expect_exit: 0
+                - cmd: "ls ~/nwp/sitebackups/{site}/*.tar.gz 2>/dev/null | wc -l"
+                  expect_output_gt: 0
+                - cmd: "ls ~/nwp/sitebackups/{site}/*.sql.gz 2>/dev/null | wc -l"
+                  expect_output_gt: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
+        human:
+          auto_loggable: true
+          trigger_commands:
+            - pattern: "pl backup *"
+              confidence: 0.8
         completed: false
         completed_by: null
         completed_at: null
@@ -1027,6 +1153,38 @@ features:
         related_docs:
         - docs/reference/commands/backup.md
       - text: Test --sanitize basic flag
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl backup {site} --sanitize basic"
+                  expect_exit: 0
+                  timeout: 180
+            standard:
+              commands:
+                - cmd: "pl backup {site} --sanitize basic"
+                  expect_exit: 0
+                - cmd: "ls ~/nwp/sitebackups/{site}/*sanitized*.sql.gz 2>/dev/null | head -1"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl backup {site} --sanitize basic -f"
+                  expect_exit: 0
+                - cmd: "ls ~/nwp/sitebackups/{site}/*sanitized*.sql.gz 2>/dev/null | head -1"
+                  expect_exit: 0
+                - cmd: "gunzip -c $(ls ~/nwp/sitebackups/{site}/*sanitized*.sql.gz 2>/dev/null | head -1) | grep -c 'users_field_data' || true"
+                  expect_output_gt: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
+        human:
+          auto_loggable: true
+          trigger_commands:
+            - pattern: "pl backup * --sanitize basic"
+              confidence: 1.0
         completed: false
         completed_by: null
         completed_at: null
@@ -1047,6 +1205,38 @@ features:
         related_docs:
         - docs/reference/commands/backup.md
       - text: Test --sanitize full flag
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "pl backup {site} --sanitize full"
+                  expect_exit: 0
+                  timeout: 300
+            standard:
+              commands:
+                - cmd: "pl backup {site} --sanitize full"
+                  expect_exit: 0
+                - cmd: "ls ~/nwp/sitebackups/{site}/*full-sanitized*.sql.gz 2>/dev/null | head -1"
+                  expect_exit: 0
+            thorough:
+              commands:
+                - cmd: "pl backup {site} --sanitize full -f"
+                  expect_exit: 0
+                - cmd: "ls ~/nwp/sitebackups/{site}/*full-sanitized*.sql.gz 2>/dev/null | head -1"
+                  expect_exit: 0
+                - cmd: "gunzip -c $(ls ~/nwp/sitebackups/{site}/*full-sanitized*.sql.gz 2>/dev/null | head -1) | grep -c 'user@example.com' || echo 0"
+                  expect_output_gt: 0
+          state:
+            verified: false
+            verified_at: null
+            depth: null
+            duration_seconds: null
+        human:
+          auto_loggable: true
+          trigger_commands:
+            - pattern: "pl backup * --sanitize full"
+              confidence: 1.0
         completed: false
         completed_by: null
         completed_at: null
@@ -11685,6 +11875,374 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/ssh.sh
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+  security_validation:
+    name: "Security Validation"
+    description: "Input validation and security tests"
+    files:
+      - scripts/commands/install.sh
+      - scripts/commands/delete.sh
+      - scripts/commands/backup.sh
+      - scripts/commands/restore.sh
+      - scripts/commands/copy.sh
+    checklist:
+      - text: "Reject path traversal attempts (../)"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl install d '../malicious' 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl install d '../malicious'
+          2. Verify command fails with appropriate error message
+          3. Verify no directory is created outside sites/
+          Success: Path traversal is rejected
+        related_docs:
+        - docs/SECURITY.md
+      - text: "Reject command injection (;)"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl install d 'test;rm -rf /' 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl install d 'test;rm -rf /'
+          2. Verify command fails with appropriate error message
+          3. Verify no malicious command is executed
+          Success: Command injection via semicolon is rejected
+        related_docs:
+        - docs/SECURITY.md
+      - text: "Reject path traversal (./)"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl install d './hidden' 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl install d './hidden'
+          2. Verify command fails with appropriate error message
+          Success: Relative path injection is rejected
+        related_docs:
+        - docs/SECURITY.md
+      - text: "Reject absolute path injection"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl install d '/tmp/malicious' 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl install d '/tmp/malicious'
+          2. Verify command fails with appropriate error message
+          3. Verify no directory is created at /tmp/malicious
+          Success: Absolute path injection is rejected
+        related_docs:
+        - docs/SECURITY.md
+      - text: "Reject special characters (&)"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl install d 'test&whoami' 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl install d 'test&whoami'
+          2. Verify command fails with appropriate error message
+          3. Verify background command is not executed
+          Success: Command injection via ampersand is rejected
+        related_docs:
+        - docs/SECURITY.md
+      - text: "Reject spaces in site names"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl install d 'test site' 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl install d 'test site'
+          2. Verify command fails with appropriate error message
+          Success: Spaces in site names are rejected
+        related_docs:
+        - docs/SECURITY.md
+      - text: "Install requires recipe argument"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl install 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl install (with no arguments)
+          2. Verify command fails with helpful error message
+          Success: Missing recipe argument is handled gracefully
+        related_docs:
+        - docs/reference/commands/install.md
+      - text: "Backup requires site argument"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl backup 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl backup (with no arguments)
+          2. Verify command fails with helpful error message
+          Success: Missing site argument is handled gracefully
+        related_docs:
+        - docs/reference/commands/backup.md
+      - text: "Restore requires site argument"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl restore 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl restore (with no arguments)
+          2. Verify command fails with helpful error message
+          Success: Missing site argument is handled gracefully
+        related_docs:
+        - docs/reference/commands/restore.md
+      - text: "Delete requires site argument"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl delete 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl delete (with no arguments)
+          2. Verify command fails with helpful error message
+          Success: Missing site argument is handled gracefully
+        related_docs:
+        - docs/reference/commands/delete.md
+      - text: "Copy requires source and destination arguments"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl copy 2>/dev/null"
+                  expect_exit: 0
+                - cmd: "! pl copy source 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl copy (with no arguments)
+          2. Verify command fails with helpful error message
+          3. Run: pl copy source (with only one argument)
+          4. Verify command fails with helpful error message
+          Success: Missing arguments are handled gracefully
+        related_docs:
+        - docs/reference/commands/copy.md
+      - text: "Backup handles non-existent site"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl backup nonexistent-site-12345 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl backup nonexistent-site-12345
+          2. Verify command fails with appropriate error message
+          Success: Non-existent site is handled gracefully
+        related_docs:
+        - docs/reference/commands/backup.md
+      - text: "Restore handles non-existent site"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl restore nonexistent-site-12345 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl restore nonexistent-site-12345
+          2. Verify command fails with appropriate error message
+          Success: Non-existent site is handled gracefully
+        related_docs:
+        - docs/reference/commands/restore.md
+      - text: "Delete handles non-existent site"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl delete nonexistent-site-12345 -y 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl delete nonexistent-site-12345 -y
+          2. Verify command fails with appropriate error message
+          Success: Non-existent site is handled gracefully
+        related_docs:
+        - docs/reference/commands/delete.md
+      - text: "Copy handles non-existent source site"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl copy nonexistent-site-12345 newsite 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl copy nonexistent-site-12345 newsite
+          2. Verify command fails with appropriate error message
+          Success: Non-existent source site is handled gracefully
+        related_docs:
+        - docs/reference/commands/copy.md
+      - text: "Reject backtick command substitution"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl install d 'test`whoami`' 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl install d 'test`whoami`'
+          2. Verify command fails with appropriate error message
+          3. Verify no command substitution occurs
+          Success: Backtick command substitution is rejected
+        related_docs:
+        - docs/SECURITY.md
+      - text: "Reject $() command substitution"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl install d 'test$(whoami)' 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl install d 'test$(whoami)'
+          2. Verify command fails with appropriate error message
+          3. Verify no command substitution occurs
+          Success: $() command substitution is rejected
+        related_docs:
+        - docs/SECURITY.md
+      - text: "Reject pipe character (|)"
+        machine:
+          automatable: true
+          checks:
+            basic:
+              commands:
+                - cmd: "! pl install d 'test|cat /etc/passwd' 2>/dev/null"
+                  expect_exit: 0
+        human:
+          auto_loggable: false
+        completed: false
+        completed_by: null
+        completed_at: null
+        how_to_verify: |-
+          1. Run: pl install d 'test|cat /etc/passwd'
+          2. Verify command fails with appropriate error message
+          3. Verify piped command is not executed
+          Success: Pipe character injection is rejected
+        related_docs:
+        - docs/SECURITY.md
     verified: false
     verified_by: null
     verified_at: null

@@ -173,10 +173,20 @@ ${BOLD}ROLLBACK:${NC}
     rollback execute <sitename>     Rollback to pre-deployment state
     rollback cleanup                Remove old rollback points
 
+${BOLD}VERIFICATION:${NC}
+    verify                          Interactive verification TUI
+    verify --run                    Run machine verification tests
+    verify --run --depth=basic      Quick machine tests
+    verify --run --feature=backup   Test specific feature
+    verify ci                       CI mode with JUnit output
+    verify ci --export-json         Generate .badges.json
+    verify badges                   Show badge URLs
+    verify status                   Show verification summary
+    verify report                   Show verification report
+
 ${BOLD}DEVELOPER TOOLS:${NC}
     coder add <name>                Add developer coder environment
     coder list                      List configured coders
-    verify <sitename>               Verify site features and changes
     report                          Generate bug report
 
 ${BOLD}SETUP & UTILITIES:${NC}
@@ -209,6 +219,8 @@ ${BOLD}EXAMPLES:${NC}
     pl backup -g mysite "Update"    Backup with git commit
     pl backup --sanitize mysite     GDPR-safe backup (no PII)
     pl test -s mysite               Run smoke tests
+    pl verify --run                 Run all machine verification tests
+    pl verify ci --export-json      Generate verification badges
     pl dev2stg mysite               Deploy to local staging
     pl stg2prod mysite              Deploy to production server
     pl live mysite                  Provision mysite.nwpcode.org

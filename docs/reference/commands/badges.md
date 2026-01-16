@@ -63,7 +63,7 @@ The command generates badges for:
 
 ## Related Commands
 
-- [test-nwp.sh](test-nwp.md) - Run tests that generate coverage data
+- [verify.sh](verify.md) - Run verification that generates coverage data
 - [status.sh](status.md) - Check overall site status
 
 ## See Also

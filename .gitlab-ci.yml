@@ -193,6 +193,31 @@ test:verification:
     - nwp
   allow_failure: true
 
+# Update badges in repo (only on main branch)
+update-badges:
+  stage: deploy
+  needs: [test:verification]
+  before_script:
+    - git config user.name "GitLab CI"
+    - git config user.email "ci@nwpcode.org"
+  script:
+    # Only update if .badges.json changed
+    - |
+      if git diff --quiet .badges.json 2>/dev/null; then
+        echo "No badge changes, skipping commit"
+      else
+        git add .badges.json
+        git commit -m "CI: Update verification badges [skip ci]"
+        git push "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:$CI_COMMIT_REF_NAME || true
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - .verification.yml
+        - scripts/commands/verify.sh
+        - lib/verify-runner.sh
+  allow_failure: true
+
 ################################################################################
 # DATABASE STAGE
 # Fetch and cache production database for testing

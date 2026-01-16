@@ -367,16 +367,16 @@ Comprehensive testing for OpenSocial sites.
 ./testos.sh -b -f groups mysite   # Specific feature
 ```
 
-## test-nwp.sh - NWP Self-Tests
+## pl verify --run - NWP Verification System
 
-Integration tests for NWP itself.
+Integration verification for NWP itself.
 
 ```bash
-./test-nwp.sh                     # Full test suite
-./test-nwp.sh --verbose           # With debug output
+pl verify --run                   # Full verification suite
+pl verify --run --verbose         # With debug output
 ```
 
-**Test Coverage:** 77 tests, 98% pass rate
+**Verification Coverage:** 77 checks, 98% pass rate
 
 ## verify.sh - Feature Verification
 

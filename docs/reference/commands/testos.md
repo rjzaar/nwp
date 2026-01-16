@@ -211,7 +211,7 @@ ddev restart
 ## See Also
 
 - [test.md](test.md) - Generic Drupal site testing
-- [test-nwp.md](test-nwp.md) - NWP system testing
+- [verify.md](verify.md) - NWP system verification
 - [run-tests.md](run-tests.md) - BATS test runner
 - [OpenSocial Documentation](https://www.drupal.org/project/social) - OpenSocial project
 - [Behat Documentation](https://behat.org/) - Behat testing framework

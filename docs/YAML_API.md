@@ -711,7 +711,7 @@ When contributing code that reads YAML:
 ```bash
 # Before committing
 bats tests/bats/yaml-read.bats
-./scripts/commands/test-nwp.sh
+pl verify --run
 ```
 
 ---

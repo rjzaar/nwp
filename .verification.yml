@@ -1022,7 +1022,7 @@ features:
                   expect_exit: 0
           state:
             verified: true
-            verified_at: '2026-01-16T20:28:12+11:00'
+            verified_at: '2026-01-16T20:56:36+11:00'
             depth: basic
             duration_seconds: 0
         human:

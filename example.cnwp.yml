@@ -193,6 +193,31 @@ settings:
     meta_robots_404: true          # [PLANNED] Add noindex to 404 pages
     canonical_urls: true           # [PLANNED] Enforce canonical URLs
 
+  # === VERIFICATION SYSTEM [ACTIVE] ===
+  # Controls the layered verification system for testing and quality assurance
+  # See: docs/proposals/P50-layered-verification-system.md
+  verification:
+    enabled: true                # [ACTIVE] Enable verification system
+
+    # Consent tracking for verification operations
+    consent:
+      agreed: false              # [ACTIVE] User has agreed to verification terms
+      agreed_at: null            # [ACTIVE] Timestamp of agreement
+      agreed_by: null            # [ACTIVE] User who agreed (username/email)
+
+    # Automatic logging of verification events
+    auto_log:
+      enabled: true              # [ACTIVE] Enable automatic verification logging
+      events:
+        command_success: true    # [ACTIVE] Log successful command executions
+        site_operations: true    # [ACTIVE] Log site install/delete/sync operations
+        data_operations: true    # [ACTIVE] Log data import/export operations
+
+    # Error reporting and failure handling
+    error_reporting:
+      enabled: true              # [ACTIVE] Enable error reporting
+      prompt_on_failure: true    # [ACTIVE] Prompt user to log failures
+
 ################################################################################
 # OTHER CODERS - Multi-Coder DNS Delegation
 ################################################################################

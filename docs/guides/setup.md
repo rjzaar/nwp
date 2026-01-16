@@ -352,7 +352,7 @@ pl
 | `pl status` | status.sh | Show site status |
 | `pl theme <cmd> <site>` | theme.sh | Frontend build tooling |
 | `pl setup` | setup.sh | Run prerequisites check |
-| `pl test-nwp` | test-nwp.sh | Run tests |
+| `pl verify --run` | verify.sh | Run verification system |
 
 ### CLI Aliases
 

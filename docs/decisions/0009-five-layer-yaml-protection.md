@@ -9,7 +9,7 @@
 
 ## Context
 
-On January 13, 2026, a critical bug in `test-nwp.sh` caused **complete data loss** of a user's `cnwp.yml` file. The scenario:
+On January 13, 2026, a critical bug in the verification system caused **complete data loss** of a user's `cnwp.yml` file. The scenario:
 
 1. Test created temporary sites with non-unique names
 2. Cleanup operation used AWK to remove test sites
@@ -33,7 +33,7 @@ This incident exposed a fundamental weakness: **AWK operations on cnwp.yml had n
 
 ### What Happened
 
-**test-nwp.sh cleanup operation:**
+**Verification system cleanup operation:**
 ```bash
 # BAD: No protection
 awk -v site="$site_name" '
@@ -309,7 +309,7 @@ modify_cnwp_yml() {
 
 **Must use 5-layer protection:**
 - `lib/yaml-write.sh` - All site add/remove/modify functions
-- `scripts/commands/test-nwp.sh` - Test site cleanup
+- `scripts/commands/verify.sh` - Verification site cleanup
 - Any script using AWK on `cnwp.yml`
 
 **Does not need protection:**
@@ -366,7 +366,7 @@ yaml_remove_site "test-site" "cnwp.yml"
 
 ### Regression Testing
 
-Added to test-nwp.sh:
+Added to verification system:
 ```bash
 test_yaml_protection() {
     # Test duplicate site handling

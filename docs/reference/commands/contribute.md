@@ -68,7 +68,7 @@ The command performs these checks:
 
 Unless `--no-tests` is specified, the command:
 
-1. Runs `test-nwp.sh`
+1. Runs `pl verify --run`
 2. Captures test output
 3. Fails if tests don't pass
 4. Includes test status in MR description
@@ -162,7 +162,7 @@ Draft MRs:
 ## Related Commands
 
 - [upstream.sh](upstream.md) - Configure upstream repository
-- [test-nwp.sh](test-nwp.md) - Run tests before contributing
+- [verify.sh](verify.md) - Run verification before contributing
 - [coders.sh](coders.md) - Manage contributor accounts
 
 ## See Also

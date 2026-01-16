@@ -1,7 +1,12 @@
 # test-nwp
 
-**Status:** ACTIVE
-**Last Updated:** 2026-01-14
+> **DEPRECATED:** This command has been replaced by `pl verify --run` as part of the layered verification system (P50). This documentation is maintained for historical reference only.
+>
+> **Use instead:** `pl verify --run` - See [verify.md](verify.md) for current documentation.
+
+**Status:** DEPRECATED (as of v0.26.0)
+**Last Updated:** 2026-01-16
+**Replaced By:** [verify.md](verify.md)
 
 Comprehensive end-to-end test suite for NWP that validates all core functionality, workflows, and infrastructure components across 22+ test categories.
 

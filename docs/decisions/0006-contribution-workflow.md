@@ -187,7 +187,7 @@ Per ADR-0005, contributions require:
 1. **Conflict Resolution**: Both merge and rebase can encounter conflicts; user must resolve manually
 2. **Upstream Branch Detection**: Script tries `main` first, then `master` for compatibility
 3. **GitLab CLI Requirement**: Full automation requires `glab` or `gh` CLI installed; manual MR creation fallback provided
-4. **Test Script Dependency**: Expects `scripts/commands/test-nwp.sh` for test execution; skips gracefully if missing
+4. **Test Script Dependency**: Expects `pl verify --run` for test execution; skips gracefully if missing
 5. **CLAUDE.md Updates**: Script warns when upstream sync updates CLAUDE.md (new standing orders)
 6. **Decision Record Changes**: Script notifies when upstream sync brings new ADRs
 

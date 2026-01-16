@@ -145,7 +145,7 @@ The reporter detects non-interactive terminals and skips prompting, making it sa
 ## Related Commands
 
 - All NWP commands can be wrapped with report
-- [test-nwp.sh](test-nwp.md) - Test runner that could benefit from error reporting
+- [verify.sh](verify.md) - Verification runner that could benefit from error reporting
 - [contribute.sh](contribute.md) - Submit fixes for reported issues
 
 ## See Also

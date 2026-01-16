@@ -7,7 +7,7 @@ This document provides comprehensive testing guidance for the Narrow Way Project
 - [Overview](#overview)
 - [Test Scripts](#test-scripts)
 - [OpenSocial Testing (testos.sh)](#opensocial-testing-testossh)
-- [NWP Self-Tests (test-nwp.sh)](#nwp-self-tests-test-nwpsh)
+- [NWP Verification System](#nwp-verification-system)
 - [Behat Framework](#behat-framework)
 - [PHPUnit Testing](#phpunit-testing)
 - [Code Quality Tools](#code-quality-tools)
@@ -21,7 +21,7 @@ NWP provides multiple testing approaches:
 | Tool | Purpose | Speed |
 |------|---------|-------|
 | **testos.sh** | OpenSocial Behat/PHPUnit testing | 5-30 min |
-| **test-nwp.sh** | NWP script validation | 15-20 min |
+| **pl verify --run** | NWP verification system | 15-20 min |
 | **PHPStan** | Static code analysis | 1-2 min |
 | **PHPCS** | Drupal coding standards | 30-60 sec |
 | **Behat** | Behavioral/functional testing | Variable |
@@ -37,9 +37,9 @@ NWP provides multiple testing approaches:
 ./testos.sh -u sitename           # PHPUnit tests
 ./testos.sh -a sitename           # All tests
 
-# NWP self-tests
-./test-nwp.sh                     # Full test suite
-./test-nwp.sh --skip-cleanup      # Keep test sites
+# NWP verification system
+pl verify --run                   # Full verification suite
+pl verify --run --keep            # Keep test sites
 
 # Code quality
 ./testos.sh -p sitename           # PHPStan
@@ -111,21 +111,21 @@ The script automatically:
 4. Creates custom Behat configuration
 5. Runs tests
 
-## NWP Self-Tests (test-nwp.sh)
+## NWP Verification System
 
-The `test-nwp.sh` script validates all NWP core functionality.
+The NWP verification system validates all NWP core functionality.
 
 ### Usage
 
 ```bash
-# Run all tests
-./test-nwp.sh
+# Run all verifications
+pl verify --run
 
 # Keep test sites for inspection
-./test-nwp.sh --skip-cleanup
+pl verify --run --keep
 
 # Verbose output
-./test-nwp.sh --verbose
+pl verify --run --verbose
 ```
 
 ### Test Coverage
@@ -395,11 +395,11 @@ Test results and screenshots are saved to:
 html/profiles/contrib/social/tests/reports/behat/
 ```
 
-### NWP Test Failures
+### NWP Verification Failures
 
 ```bash
 # Check log file
-cat test-nwp-*.log
+cat .logs/verify-*.log
 
 # Run individual commands
 ./install.sh test_site
@@ -434,7 +434,7 @@ cd test_site && ddev describe
 ```bash
 # Non-interactive mode for CI
 ./testos.sh -a -y sitename || exit 1
-./test-nwp.sh || exit 1
+pl verify --run || exit 1
 ```
 
 ### Debug Failed Tests

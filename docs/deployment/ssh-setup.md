@@ -114,7 +114,7 @@ If successful, you should connect without a password prompt.
 Once your SSH key is added to your Linode account:
 
 1. **New instances get the key automatically**: When provisioning new Linode instances via the API, they will include your SSH key
-2. **Tests can use real nodes**: `test-nwp.sh` can provision temporary Linode instances for production deployment testing
+2. **Tests can use real nodes**: The verification system can provision temporary Linode instances for production deployment testing
 3. **Deployments work automatically**: Scripts like `stg2prod.sh` and `prod2stg.sh` can deploy without password prompts
 
 ## File Locations
@@ -188,7 +188,7 @@ After SSH setup is complete:
 2. **Install a site**: Run `./install.sh` to create a Drupal site
 3. **Test deployments**: Use `./dev2stg.sh` to deploy to staging
 4. **Deploy to production**: Use `./stg2prod.sh` when ready
-5. **Run tests**: Use `./test-nwp.sh` to test all functionality
+5. **Run tests**: Use `pl verify --run` to test all functionality
 
 ## See Also
 

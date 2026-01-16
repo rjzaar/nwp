@@ -218,7 +218,7 @@ ddev start
 ## See Also
 
 - [test.md](test.md) - Test individual Drupal sites
-- [test-nwp.md](test-nwp.md) - Comprehensive NWP system tests
+- [verify.md](verify.md) - Comprehensive NWP system verification
 - [testos.md](testos.md) - OpenSocial-specific testing
 - [BATS Documentation](https://bats-core.readthedocs.io/) - BATS testing framework
 - [TAP Protocol](https://testanything.org/) - Test Anything Protocol

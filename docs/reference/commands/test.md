@@ -299,7 +299,7 @@ ddev restart
 
 ## See Also
 
-- [test-nwp.md](test-nwp.md) - Comprehensive NWP system test suite
+- [verify.md](verify.md) - Comprehensive NWP system verification suite
 - [run-tests.md](run-tests.md) - Test runner for BATS unit/integration tests
 - [testos.md](testos.md) - OpenSocial-specific testing script
 - [DDEV Documentation](https://ddev.readthedocs.io/) - DDEV container system

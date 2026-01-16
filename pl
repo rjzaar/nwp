@@ -21,6 +21,9 @@ SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 # Version
 VERSION="0.25.0"
 
+# Source verification auto-logging if available
+[[ -f "${SCRIPT_DIR}/lib/verify-autolog.sh" ]] && source "${SCRIPT_DIR}/lib/verify-autolog.sh"
+
 ################################################################################
 # Color Definitions
 ################################################################################
@@ -293,7 +296,21 @@ run_script() {
         return 1
     fi
 
+    # Execute script and capture exit code
     "$script_path" "$@"
+    local exit_code=$?
+
+    # Auto-log verification if enabled
+    if type log_verification_if_enabled &>/dev/null; then
+        log_verification_if_enabled "$script" "$exit_code"
+    fi
+
+    # Prompt for error report if enabled
+    if type prompt_error_report &>/dev/null; then
+        prompt_error_report "$script" "$exit_code"
+    fi
+
+    return $exit_code
 }
 
 ################################################################################

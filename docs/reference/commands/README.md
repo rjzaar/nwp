@@ -48,7 +48,7 @@ pl <command> [options] [arguments]
 | Command | Description | Documentation |
 |---------|-------------|---------------|
 | `test` | Run site tests | [test.md](test.md) ✓ |
-| `test-nwp` | NWP test runner | [test-nwp.md](test-nwp.md) |
+| `verify --run` | NWP verification runner | [verify.md](verify.md) |
 | `run-tests` | Unified test runner | [run-tests.md](run-tests.md) ✓ |
 | `testos` | OS testing | [testos.md](testos.md) ✓ |
 

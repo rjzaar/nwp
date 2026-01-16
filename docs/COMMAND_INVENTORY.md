@@ -430,10 +430,10 @@ Complete inventory of all 49 commands in the NWP codebase.
 
 ---
 
-### test-nwp.sh
-**Purpose:** Comprehensive NWP functionality testing
+### verify.sh (with --run flag)
+**Purpose:** Comprehensive NWP functionality verification
 **Key Features:**
-- 22+ test categories
+- 22+ verification categories
 - Core operations (install, backup, restore, copy, delete, deploy)
 - Script validation
 - Deployment scripts
@@ -825,7 +825,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 - Backup & Restore: 4 (backup, restore, rollback, schedule)
 - Deployment: 7 (dev2stg, stg2live, stg2prod, live, produce, prod2stg, live2prod, live2stg)
 - Content Sync: 3 (sync, import, copy)
-- Testing: 4 (test, testos, test-nwp, run-tests)
+- Testing: 4 (test, testos, verify --run, run-tests)
 - Utility: 8 (make, theme, security, security-check, seo-check, badges, email, storage, report)
 - Migration: 2 (migration, migrate-secrets)
 - Distributed Contribution: 2 (contribute, upstream)
@@ -835,7 +835,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 
 **Commands with Multiple Verification Points:**
 - install.sh: 6 verification points (drupal, moodle, gitlab, podcast, resume, migration)
-- test-nwp.sh: 22+ test categories
+- verify.sh --run: 22+ verification categories
 - dev2stg.sh: 8 test types, 5 presets
 - setup.sh: 19 components across 6 categories
 
@@ -873,7 +873,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 
 **Commands with Multiple Recipes/Types:**
 - install.sh: drupal, opensocial, moodle, gitlab, podcast
-- test-nwp.sh: 22+ test categories
+- verify.sh --run: 22+ verification categories
 - migration.sh: drupal7/8/9, html, wordpress, joomla, other
 
 ---
@@ -894,7 +894,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 - Provisioning: live, produce
 
 **Testing Patterns:**
-- test, testos, test-nwp, run-tests
+- test, testos, verify --run, run-tests
 
 **Integration Patterns:**
 - <system1>-<system2>-<action>: avc-moodle-setup, avc-moodle-status, avc-moodle-sync, avc-moodle-test

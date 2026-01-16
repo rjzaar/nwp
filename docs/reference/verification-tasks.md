@@ -434,7 +434,7 @@ echo "✓ All features verified (100%)"
 ## Related Commands
 
 - [verify](../reference/commands/verify.md) - Verify command reference
-- [test-nwp](../reference/commands/test-nwp.md) - Automated test suite
+- [verify --run](../reference/commands/verify.md) - Automated verification suite
 
 ## See Also
 

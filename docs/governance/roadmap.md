@@ -202,7 +202,7 @@ ddev backstop approve       # Approve changes as new baseline
 ---
 
 ### F08: Dynamic Cross-Platform Badges
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** verify.sh, test-nwp.sh, GitLab infrastructure
+**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** verify.sh, GitLab infrastructure
 **Proposal:** [DYNAMIC_BADGES_PROPOSAL.md](DYNAMIC_BADGES_PROPOSAL.md)
 
 Add dynamic badges using Shields.io that work on both GitHub and GitLab READMEs, with full support for self-hosted GitLab instances:
@@ -213,7 +213,7 @@ Add dynamic badges using Shields.io that work on both GitHub and GitLab READMEs,
 | Pipeline | GitLab CI native | CI pass/fail status |
 | Coverage | GitLab CI native | Code coverage % |
 | **Verification** | .badges.json | Features verified % |
-| **Tests** | .badges.json | test-nwp pass rate % |
+| **Tests** | .badges.json | Verification pass rate % |
 
 **What is Shields.io?**
 - Free, open-source badge service (shields.io)

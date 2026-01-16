@@ -2733,6 +2733,54 @@ update_verification_statistics() {
     mv "$tmpfile" "$VERIFICATION_FILE"
 }
 
+# Draw a progress bar for verification execution
+# Usage: draw_progress_bar current total [width]
+draw_progress_bar() {
+    local current=$1
+    local total=$2
+    local width=${3:-40}
+
+    if [[ $total -eq 0 ]]; then
+        return
+    fi
+
+    local pct=$((current * 100 / total))
+    local filled=$((current * width / total))
+    local empty=$((width - filled))
+
+    # Build the bar
+    local bar=""
+    for ((i=0; i<filled; i++)); do
+        bar+="█"
+    done
+    for ((i=0; i<empty; i++)); do
+        bar+="░"
+    done
+
+    # Print on single line with carriage return for updates
+    printf "\r${DIM}Progress: [${NC}${GREEN}%s${NC}${DIM}%s${NC}${DIM}] %3d%% (%d/%d)${NC}" \
+        "${bar:0:$filled}" "${bar:$filled}" "$pct" "$current" "$total"
+}
+
+# Clear progress bar line
+clear_progress_bar() {
+    printf "\r%-80s\r" ""
+}
+
+# Count total items with machine checks for progress tracking
+count_total_machine_checkable_items() {
+    local features="$1"
+    local total=0
+
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        local item_count=$(get_checklist_item_count "$f")
+        total=$((total + item_count))
+    done <<< "$features"
+
+    echo "$total"
+}
+
 # Run machine checks for all or specified features
 # Usage: run_machine_checks [--depth=LEVEL] [--feature=ID] [--all] [--affected] [--prefix=NAME]
 run_machine_checks() {
@@ -2830,9 +2878,11 @@ run_machine_checks() {
         return 0
     fi
 
-    # Count features
+    # Count features and total items for progress tracking
     local feature_count=$(echo "$features_to_run" | grep -c '.')
-    echo -e "Features to test: $feature_count"
+    local total_items=$(count_total_machine_checkable_items "$features_to_run")
+    local items_processed=0
+    echo -e "Features to test: $feature_count (${total_items} items)"
     echo ""
 
     # Create test site if needed for commands that require it
@@ -2902,6 +2952,8 @@ run_machine_checks() {
                 fi
                 item_skipped=$((item_skipped + 1))
                 total_skipped=$((total_skipped + 1))
+                items_processed=$((items_processed + 1))
+                draw_progress_bar "$items_processed" "$total_items"
                 continue
             fi
 
@@ -2921,11 +2973,20 @@ run_machine_checks() {
 
             # Persist machine verification to YAML
             update_machine_verified "$f" "$i" "$depth" "0"
+
+            # Update progress
+            items_processed=$((items_processed + 1))
+            draw_progress_bar "$items_processed" "$total_items"
         done
 
+        # Clear progress bar before showing feature results
+        clear_progress_bar
         echo -e "  ${DIM}Results: $item_passed passed, $item_failed failed, $item_skipped skipped${NC}"
         echo ""
     done <<< "$features_to_run"
+
+    # Final progress bar clear
+    clear_progress_bar
 
     # Update statistics in .verification.yml
     update_verification_statistics
@@ -3153,6 +3214,61 @@ EOF
     fi
 }
 
+# Generate verification report
+generate_verification_report() {
+    local output_file="${1:-docs/VERIFICATION_REPORT.md}"
+    local total_items=$(count_total_items)
+    local machine_verified=$(count_machine_verified_items)
+    local human_verified=$(count_human_verified_items)
+    local fully_verified=$(count_fully_verified_items)
+    local timestamp=$(date -Iseconds)
+
+    mkdir -p "$(dirname "$output_file")"
+
+    cat > "$output_file" << EOF
+# NWP Verification Report
+
+**Generated:** $timestamp
+**Version:** $(grep "NWP_VERSION=" pl | cut -d'"' -f2)
+
+## Summary
+
+| Metric | Count | Percentage |
+|--------|-------|------------|
+| Total Items | $total_items | 100% |
+| Machine Verified | $machine_verified | $((machine_verified * 100 / total_items))% |
+| Human Verified | $human_verified | $((human_verified * 100 / total_items))% |
+| Fully Verified | $fully_verified | $((fully_verified * 100 / total_items))% |
+
+## Coverage by Feature
+
+EOF
+
+    # Add per-feature breakdown
+    while IFS= read -r feature; do
+        local name=$(get_yaml_value "$feature" "name")
+        local total=$(get_checklist_item_count "$feature")
+        local machine=$(count_feature_machine_verified "$feature" 2>/dev/null || echo "0")
+        local checkable=$(count_feature_machine_checkable "$feature" 2>/dev/null || echo "0")
+
+        if [[ $total -gt 0 ]]; then
+            echo "### $name ($feature)" >> "$output_file"
+            echo "" >> "$output_file"
+            echo "- Total items: $total" >> "$output_file"
+            if [[ $checkable -gt 0 ]]; then
+                echo "- Machine verified: $machine/$checkable" >> "$output_file"
+            fi
+            echo "" >> "$output_file"
+        fi
+    done <<< "$(get_feature_ids)"
+
+    echo "" >> "$output_file"
+    echo "---" >> "$output_file"
+    echo "*Report generated by \`pl verify report\`*" >> "$output_file"
+
+    echo "Generated: $output_file"
+}
+
 # Main
 main() {
     local command="${1:-console}"
@@ -3216,6 +3332,10 @@ main() {
             shift
             generate_badges "$@"
             ;;
+        report)
+            shift
+            generate_verification_report "$@"
+            ;;
         help|--help|-h)
             echo "Usage: ./verify.sh [command] [args]"
             echo ""
@@ -3250,6 +3370,10 @@ main() {
             echo "Badges:"
             echo "  badges                   Generate badge URLs and .badges.json"
             echo "  badges --update-readme   Update README.md with badges"
+            echo ""
+            echo "Reports:"
+            echo "  report                   Generate verification report (docs/VERIFICATION_REPORT.md)"
+            echo "  report <path>            Generate report at specified path"
             echo ""
             echo "  help          Show this help message"
             echo ""

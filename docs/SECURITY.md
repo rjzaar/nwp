@@ -403,12 +403,12 @@ NWP's `cnwp.yml` is the central configuration file containing site definitions, 
 
 **Applied to:**
 - `lib/yaml-write.sh` - All YAML modification functions
-- `scripts/commands/test-nwp.sh` - Test cleanup and Linode server management
+- `scripts/commands/verify.sh` - Verification system cleanup and Linode server management
 - Any script performing AWK operations on cnwp.yml
 
 **Why This Matters:**
 
-In January 2026, a duplicate entry bug in `test-nwp.sh` caused complete data loss of a user's cnwp.yml file. The AWK operation encountered duplicate site entries and produced an empty output, which was blindly written back to cnwp.yml, wiping all user configurations. The 5-layer protection system prevents this entire class of errors.
+In January 2026, a duplicate entry bug in the verification system caused complete data loss of a user's cnwp.yml file. The AWK operation encountered duplicate site entries and produced an empty output, which was blindly written back to cnwp.yml, wiping all user configurations. The 5-layer protection system prevents this entire class of errors.
 
 ### Input Validation Rules
 
@@ -499,7 +499,7 @@ Audit open ports:
 
 3. **Test security changes**
    ```bash
-   ./pl test-nwp   # Run test suite
+   ./pl verify --run   # Run verification system
    # Verify 98%+ pass rate
    ```
 

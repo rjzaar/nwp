@@ -210,6 +210,6 @@ features:
 
 ## See Also
 
-- [test-nwp](./test-nwp.md) - Automated test suite
+- [verify --run](./verify.md) - Automated verification suite
 - [Human Testing Guide](../../testing/human-testing.md) - Manual testing procedures
 - [Verification Tasks](../../reference/verification-tasks.md) - Complete verification checklist

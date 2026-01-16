@@ -1465,7 +1465,8 @@ build_feature_arrays() {
     FEATURE_IDS=()
     FEATURE_NAMES=()
     FEATURE_CATEGORIES=()
-    FEATURE_STATUS=()  # 0=unverified, 1=verified, 2=modified, 3=partial
+    FEATURE_STATUS=()  # 0=unverified, 1=verified, 2=modified, 3=partial, 4=machine-only
+    FEATURE_MACHINE=()  # "M/N" format for machine verification
     CATEGORY_LIST=()
     declare -gA CATEGORY_START=()  # Start index for each category
     declare -gA CATEGORY_COUNT=()  # Count of features in each category
@@ -1475,6 +1476,7 @@ build_feature_arrays() {
     local -a all_names=()
     local -a all_categories=()
     local -a all_status=()
+    local -a all_machine=()
 
     while IFS= read -r feature; do
         [[ -z "$feature" ]] && continue
@@ -1487,6 +1489,14 @@ build_feature_arrays() {
         # Calculate status based on verification and checklist completion
         local total_items=$(get_checklist_item_count "$feature")
         local completed_items=$(get_completed_checklist_item_count "$feature")
+
+        # Get machine verification counts
+        local machine_verified=$(count_feature_machine_verified "$feature" 2>/dev/null || echo "0")
+        local machine_checkable=$(count_feature_machine_checkable "$feature" 2>/dev/null || echo "0")
+        local machine_info=""
+        if [[ $machine_checkable -gt 0 ]]; then
+            machine_info="${machine_verified}/${machine_checkable}"
+        fi
 
         if [[ "$verified" == "true" ]]; then
             if check_feature_changed "$feature" 2>/dev/null; then
@@ -1503,12 +1513,16 @@ build_feature_arrays() {
             else
                 status=3  # Partial completion
             fi
+        elif [[ $machine_verified -gt 0 ]]; then
+            # Has machine verification but no human verification
+            status=4  # Machine-only partial
         fi
 
         all_features+=("$feature")
         all_names+=("${name:-$feature}")
         all_categories+=("$category")
         all_status+=("$status")
+        all_machine+=("$machine_info")
     done <<< "$(get_feature_ids)"
 
     # Define category order (for consistent ordering)
@@ -1532,6 +1546,7 @@ build_feature_arrays() {
                 FEATURE_NAMES+=("${all_names[$i]}")
                 FEATURE_CATEGORIES+=("$cat")
                 FEATURE_STATUS+=("${all_status[$i]}")
+                FEATURE_MACHINE+=("${all_machine[$i]}")
                 CATEGORY_COUNT["$cat"]=$((CATEGORY_COUNT["$cat"] + 1))
                 idx=$((idx + 1))
             fi
@@ -1600,18 +1615,19 @@ draw_console() {
     echo ""
 
     # Count stats
-    local verified_count=0 unverified_count=0 modified_count=0 partial_count=0
+    local verified_count=0 unverified_count=0 modified_count=0 partial_count=0 machine_count=0
     for stat in "${FEATURE_STATUS[@]}"; do
         case "$stat" in
             0) unverified_count=$((unverified_count + 1)) ;;
             1) verified_count=$((verified_count + 1)) ;;
             2) modified_count=$((modified_count + 1)) ;;
             3) partial_count=$((partial_count + 1)) ;;
+            4) machine_count=$((machine_count + 1)) ;;
         esac
     done
 
-    printf "  ${GREEN}[✓]Verified: %d${NC}  |  ${YELLOW}[◐]Partial: %d${NC}  |  ${DIM}[○]Unverified: %d${NC}  |  ${YELLOW}[!]Modified: %d${NC}  |  Total: %d\n" \
-        "$verified_count" "$partial_count" "$unverified_count" "$modified_count" "${#FEATURE_IDS[@]}"
+    printf "  ${GREEN}[✓]Verified: %d${NC}  |  ${YELLOW}[◐]Partial: %d${NC}  |  ${CYAN}[⚙]Machine: %d${NC}  |  ${DIM}[○]Unverified: %d${NC}  |  ${YELLOW}[!]Modified: %d${NC}\n" \
+        "$verified_count" "$partial_count" "$machine_count" "$unverified_count" "$modified_count"
     printf '─%.0s' $(seq 1 $width)
     echo ""
 
@@ -1651,15 +1667,30 @@ draw_console() {
         local feature="${FEATURE_IDS[$idx]}"
         local name="${FEATURE_NAMES[$idx]}"
         local status="${FEATURE_STATUS[$idx]}"
+        local machine="${FEATURE_MACHINE[$idx]}"
 
         # Status indicator
-        local indicator status_color
+        local indicator status_color machine_indicator=""
         case "$status" in
             0) indicator="$CHECK_OFF"; status_color="$DIM" ;;
             1) indicator="$CHECK_ON"; status_color="$GREEN" ;;
             2) indicator="$CHECK_INVALID"; status_color="$YELLOW" ;;
-            3) indicator="[◐]"; status_color="$YELLOW" ;;  # Partial completion
+            3) indicator="[◐]"; status_color="$YELLOW" ;;  # Partial completion (human)
+            4) indicator="[◐]"; status_color="$CYAN" ;;    # Partial completion (machine)
         esac
+
+        # Add machine verification indicator
+        if [[ -n "$machine" ]]; then
+            local m_done="${machine%/*}"
+            local m_total="${machine#*/}"
+            if [[ "$m_done" -eq "$m_total" ]]; then
+                machine_indicator="${GREEN}⚙${NC}"
+            elif [[ "$m_done" -gt 0 ]]; then
+                machine_indicator="${YELLOW}⚙${NC}"
+            else
+                machine_indicator="${DIM}⚙${NC}"
+            fi
+        fi
 
         # Highlight current selection
         if [[ $i -eq $feat_idx ]]; then
@@ -1669,13 +1700,18 @@ draw_console() {
         fi
 
         # Truncate name if too long
-        local max_name_len=$((width - 30))
+        local max_name_len=$((width - 40))
         local display_name="$name"
         if [[ ${#display_name} -gt $max_name_len ]]; then
             display_name="${display_name:0:$((max_name_len-3))}..."
         fi
 
-        printf " ${status_color}%s${NC} %-16s %s\n" "$indicator" "($feature)" "$display_name"
+        # Display with machine info
+        if [[ -n "$machine_indicator" ]]; then
+            printf " ${status_color}%s${NC} %b %-16s %s ${DIM}(%s)${NC}\n" "$indicator" "$machine_indicator" "($feature)" "$display_name" "$machine"
+        else
+            printf " ${status_color}%s${NC}   %-16s %s\n" "$indicator" "($feature)" "$display_name"
+        fi
         line_count=$((line_count + 1))
 
         # Show checklist preview if enabled

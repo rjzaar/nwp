@@ -170,6 +170,29 @@ test:integration:
     - nwp
   allow_failure: false
 
+# NWP Verification System (P50)
+# Runs machine verification checks and generates badges
+test:verification:
+  stage: test
+  image: ubuntu:22.04
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq bash git jq bc
+  script:
+    - echo "Running NWP verification checks..."
+    - ./scripts/commands/verify.sh ci --depth=basic --export-json
+  artifacts:
+    when: always
+    paths:
+      - .badges.json
+      - .logs/verification/
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  tags:
+    - nwp
+  allow_failure: true
+
 ################################################################################
 # DATABASE STAGE
 # Fetch and cache production database for testing

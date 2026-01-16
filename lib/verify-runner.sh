@@ -455,7 +455,7 @@ cleanup_test_site() {
     fi
 
     # Check if we should preserve due to failures
-    if [[ "$preserve" = "true" ]] && [[ "${#VERIFY_FAILED_ITEMS[@]:-0}" -gt 0 ]]; then
+    if [[ "$preserve" = "true" ]] && [[ -n "${VERIFY_FAILED_ITEMS[*]:-}" ]]; then
         verify_log "INFO" "Preserving test site due to failures: $prefix"
         echo "Test site preserved for debugging: sites/$prefix"
         return 0
@@ -1055,9 +1055,9 @@ print_verify_summary() {
     echo -e "  Pass Rate:    ${pass_rate}%"
     echo ""
 
-    if [[ "${#VERIFY_FAILED_ITEMS[@]:-0}" -gt 0 ]]; then
+    if [[ -n "${VERIFY_FAILED_ITEMS[*]:-}" ]]; then
         echo -e "  ${RED}${BOLD}Failed Items:${NC}"
-        for item in "${VERIFY_FAILED_ITEMS[@]:-}"; do
+        for item in "${VERIFY_FAILED_ITEMS[@]}"; do
             echo -e "    ${RED}-${NC} $item"
         done
         echo ""

@@ -911,10 +911,26 @@ show_status() {
             current_section="$section"
         fi
 
+        # Get machine verification counts for this feature
+        local machine_verified=$(count_feature_machine_verified "$feature" 2>/dev/null || echo "0")
+        local machine_checkable=$(count_feature_machine_checkable "$feature" 2>/dev/null || echo "0")
+
         # Determine checkbox state
         local checkbox
         local status_color
         local status_info=""
+        local machine_info=""
+
+        # Add machine verification indicator if feature has machine checks
+        if [[ $machine_checkable -gt 0 ]]; then
+            if [[ $machine_verified -eq $machine_checkable ]]; then
+                machine_info="${GREEN}⚙${NC}"
+            elif [[ $machine_verified -gt 0 ]]; then
+                machine_info="${YELLOW}⚙${NC}"
+            else
+                machine_info="${DIM}⚙${NC}"
+            fi
+        fi
 
         if [[ "$verified" == "true" ]]; then
             # Check if files have changed
@@ -944,13 +960,23 @@ show_status() {
                 local pct=$((completed_items * 100 / total_items))
                 checkbox="${YELLOW}◐${NC}"
                 status_color="${YELLOW}"
-                status_info=" ${DIM}(${completed_items}/${total_items} checklist items - ${pct}%)${NC}"
+                status_info=" ${DIM}(${completed_items}/${total_items} human)${NC}"
+                ((++partial_count))
+            elif [[ $machine_verified -gt 0 ]]; then
+                checkbox="${CYAN}◐${NC}"
+                status_color="${CYAN}"
+                status_info=" ${DIM}(${machine_verified}/${machine_checkable} machine)${NC}"
                 ((++partial_count))
             else
                 checkbox="${RED}${CHECK_OFF}${NC}"
                 status_color="${RED}"
                 ((++unverified_count))
             fi
+        fi
+
+        # Add machine info if present
+        if [[ -n "$machine_info" ]]; then
+            status_info="${machine_info} ${status_info}"
         fi
 
         # Print feature line
@@ -2454,6 +2480,49 @@ count_human_verified_items() {
         total=$((total + completed))
     done <<< "$(get_feature_ids)"
     echo "$total"
+}
+
+# Count machine-verified items for a specific feature
+# Usage: count_feature_machine_verified FEATURE_ID
+count_feature_machine_verified() {
+    local feature="$1"
+    local count=0
+    count=$(awk -v feat="$feature" '
+    BEGIN { in_feature = 0; in_checklist = 0; in_machine = 0; in_state = 0; count = 0 }
+    /^  [a-z_]+:$/ {
+        gsub(/^  /, ""); gsub(/:$/, "")
+        if ($0 == feat) { in_feature = 1 } else { in_feature = 0 }
+        in_checklist = 0; in_machine = 0; in_state = 0
+        next
+    }
+    in_feature && /^    checklist:/ { in_checklist = 1; next }
+    in_feature && in_checklist && /^      - text:/ { in_machine = 0; in_state = 0; next }
+    in_feature && in_checklist && /^        machine:/ { in_machine = 1; next }
+    in_feature && in_checklist && in_machine && /^          state:/ { in_state = 1; next }
+    in_feature && in_checklist && in_machine && in_state && /^            verified: true/ { count++; in_state = 0; next }
+    END { print count }
+    ' "$VERIFICATION_FILE" 2>/dev/null)
+    echo "${count:-0}"
+}
+
+# Count total machine-checkable items for a specific feature
+# Usage: count_feature_machine_checkable FEATURE_ID
+count_feature_machine_checkable() {
+    local feature="$1"
+    local count=0
+    count=$(awk -v feat="$feature" '
+    BEGIN { in_feature = 0; in_checklist = 0; count = 0 }
+    /^  [a-z_]+:$/ {
+        gsub(/^  /, ""); gsub(/:$/, "")
+        if ($0 == feat) { in_feature = 1 } else { in_feature = 0 }
+        in_checklist = 0
+        next
+    }
+    in_feature && /^    checklist:/ { in_checklist = 1; next }
+    in_feature && in_checklist && /^        machine:/ { count++; next }
+    END { print count }
+    ' "$VERIFICATION_FILE" 2>/dev/null)
+    echo "${count:-0}"
 }
 
 # Count fully verified items (both machine and human)

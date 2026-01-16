@@ -50,9 +50,9 @@ features:
         - docs/reference/commands/setup.md
         - docs/guides/setup.md
       - text: Verify mkcert generates valid local certificates
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:06:10+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check mkcert installation: `mkcert -version` (should show version number)
 
@@ -71,9 +71,9 @@ features:
         - docs/reference/commands/setup.md
         - docs/guides/setup.md
       - text: Test Linode CLI authentication if configured
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:06:15+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check Linode CLI installation: `linode-cli --version` (should show version number)
 
@@ -90,9 +90,9 @@ features:
         - docs/reference/commands/setup.md
         - docs/guides/setup.md
       - text: Check that all error messages are clear and actionable
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:06:33+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Test setup without prerequisites: On fresh system run `pl setup` and deliberately skip a dependency
 
@@ -109,16 +109,12 @@ features:
           Success: All error messages include clear explanation of problem and actionable next steps
         related_docs:
         - docs/reference/commands/setup.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:06:41+11:00"
-    file_hash: ""
-    notes: null
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: notes on setup.
     history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:06:41+11:00"
-        context: "Manual verification"
     - action: notes_updated
       by: greg
       at: '2026-01-11T16:08:58-07:00'
@@ -419,9 +415,9 @@ features:
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
       - text: Test install with --list flag
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:35+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run command with flag: `pl install [recipe] --list`
 
@@ -461,9 +457,9 @@ features:
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
       - text: Test install with --resume flag
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:59+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run command with flag: `pl install [recipe] --resume`
 
@@ -481,9 +477,9 @@ features:
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
       - text: Test install with -p=t (testing purpose)
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:59+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -503,9 +499,9 @@ features:
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
       - text: Test install with -p=i (indefinite purpose)
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:59+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -525,9 +521,9 @@ features:
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
       - text: Test install with -p=p (permanent purpose)
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:59+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -547,9 +543,9 @@ features:
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
       - text: Test install with -p=m (migration purpose - stub only)
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:59+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -612,9 +608,9 @@ features:
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
       - text: Test install with custom target name
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:59+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -634,9 +630,9 @@ features:
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
       - text: Test install with auto mode enabled in recipe
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:59+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run: `pl install RECIPE` and provide a unique site name when prompted
 
@@ -657,9 +653,9 @@ features:
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
       - text: Test install_step tracking in cnwp.yml
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:59+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -680,9 +676,9 @@ features:
         - docs/guides/developer-workflow.md
         - docs/guides/quickstart.md
       - text: Test interactive option selection works
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:59+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run command with flag: `pl install [recipe] `
 
@@ -740,9 +736,9 @@ features:
     - scripts/commands/status.sh
     checklist:
       - text: Run status.sh with no arguments - verify all sites listed
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:07:27+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Execute the command: `the command`
 
@@ -760,9 +756,9 @@ features:
         related_docs:
         - docs/reference/commands/status.md
       - text: Run status.sh <sitename> - verify detailed info shown
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:07:27+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Execute the command: `the command`
 
@@ -780,9 +776,9 @@ features:
         related_docs:
         - docs/reference/commands/status.md
       - text: Check running/stopped status is accurate
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:07:27+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -800,9 +796,9 @@ features:
         related_docs:
         - docs/reference/commands/status.md
       - text: Verify URLs displayed are correct and accessible
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:07:28+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -820,9 +816,9 @@ features:
         related_docs:
         - docs/reference/commands/status.md
       - text: Test health check indicators (database, files, config)
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:07:28+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -840,16 +836,11 @@ features:
         related_docs:
         - docs/reference/commands/status.md
         - example.cnwp.yml
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:07:31+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:07:31+11:00"
-        context: "Manual verification"
   modify:
     name: Modify Script (modify.sh)
     description: Interactive TUI for modifying site options
@@ -857,9 +848,9 @@ features:
     - scripts/commands/modify.sh
     checklist:
       - text: Run modify.sh <sitename> and navigate TUI menus
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:22:36+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Execute the command: `the command`
 
@@ -942,9 +933,9 @@ features:
         - docs/reference/commands/modify.md
         - docs/guides/developer-workflow.md
       - text: Check keyboard navigation (arrows, enter, escape)
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:22:36+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -976,9 +967,9 @@ features:
     - lib/sanitize.sh
     checklist:
       - text: 'Test full backup: ./backup.sh <sitename>'
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:13:39+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create or use existing test site with content
 
@@ -996,9 +987,9 @@ features:
         related_docs:
         - docs/reference/commands/backup.md
       - text: 'Test database-only backup: ./backup.sh -b <sitename>'
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:13:39+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create or use existing test site with content
 
@@ -1016,9 +1007,9 @@ features:
         related_docs:
         - docs/reference/commands/backup.md
       - text: Verify backup files created in sitebackups/<sitename>/
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:13:39+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -1036,9 +1027,9 @@ features:
         related_docs:
         - docs/reference/commands/backup.md
       - text: Test --sanitize basic flag
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:13:39+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create or use existing test site with content
 
@@ -1056,9 +1047,9 @@ features:
         related_docs:
         - docs/reference/commands/backup.md
       - text: Test --sanitize full flag
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:13:39+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create or use existing test site with content
 
@@ -1076,9 +1067,9 @@ features:
         related_docs:
         - docs/reference/commands/backup.md
       - text: Test --git flag pushes to GitLab repository
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:13:39+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create or use existing test site with content
 
@@ -1096,9 +1087,9 @@ features:
         related_docs:
         - docs/reference/commands/backup.md
       - text: Test --bundle creates git bundle file
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:13:39+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create or use existing test site with content
 
@@ -1116,9 +1107,9 @@ features:
         related_docs:
         - docs/reference/commands/backup.md
       - text: Verify backup naming convention includes timestamp
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:13:39+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -1135,16 +1126,11 @@ features:
           Success: Verification passes - actual matches expected behavior
         related_docs:
         - docs/reference/commands/backup.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:13:43+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:13:43+11:00"
-        context: "Manual verification"
   restore:
     name: Restore Script (restore.sh)
     description: Site restoration from backups
@@ -1153,9 +1139,9 @@ features:
     - lib/rollback.sh
     checklist:
       - text: Test restore from full backup
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:18:10+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create backup: `pl backup [sitename]`
 
@@ -1174,9 +1160,9 @@ features:
         - docs/reference/commands/restore.md
         - docs/reference/commands/backup.md
       - text: Test restore from database-only backup
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:18:10+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create backup: `pl backup [sitename]`
 
@@ -1195,9 +1181,9 @@ features:
         - docs/reference/commands/restore.md
         - docs/reference/commands/backup.md
       - text: Verify interactive backup selection works
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:18:10+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -1216,9 +1202,9 @@ features:
         - docs/reference/commands/restore.md
         - docs/reference/commands/backup.md
       - text: Test restore with specific backup file path
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:18:10+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create backup: `pl backup [sitename]`
 
@@ -1237,9 +1223,9 @@ features:
         - docs/reference/commands/restore.md
         - docs/reference/commands/backup.md
       - text: Verify site works correctly after restore
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:18:10+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -1257,9 +1243,9 @@ features:
         related_docs:
         - docs/reference/commands/restore.md
       - text: Test restore to different site name
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:18:10+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create backup: `pl backup [sitename]`
 
@@ -1276,16 +1262,11 @@ features:
           Success: Site restored to exact state at backup time
         related_docs:
         - docs/reference/commands/restore.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:18:14+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:18:14+11:00"
-        context: "Manual verification"
   sync:
     name: Sync Script (sync.sh)
     description: Re-sync imported sites with remote sources
@@ -1404,9 +1385,9 @@ features:
     - scripts/commands/copy.sh
     checklist:
       - text: 'Test full copy: ./copy.sh source dest'
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:21:07+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -1425,9 +1406,9 @@ features:
         - docs/reference/commands/copy.md
         - docs/guides/developer-workflow.md
       - text: 'Test files-only copy: ./copy.sh -f source dest'
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:21:07+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -1446,9 +1427,9 @@ features:
         - docs/reference/commands/copy.md
         - docs/guides/developer-workflow.md
       - text: Verify copied site starts and runs independently
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:21:07+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -1467,9 +1448,9 @@ features:
         - docs/reference/commands/copy.md
         - docs/guides/developer-workflow.md
       - text: Check database is correctly duplicated
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:21:07+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -1488,9 +1469,9 @@ features:
         - docs/reference/commands/copy.md
         - docs/guides/developer-workflow.md
       - text: Verify cnwp.yml is updated with new site
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:21:07+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -1510,9 +1491,9 @@ features:
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
       - text: Test copy to existing site (should warn/fail)
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:21:07+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -1530,16 +1511,11 @@ features:
         related_docs:
         - docs/reference/commands/copy.md
         - docs/guides/developer-workflow.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:21:11+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:21:11+11:00"
-        context: "Manual verification"
   delete:
     name: Delete Script (delete.sh)
     description: Site deletion with safety checks
@@ -1547,9 +1523,9 @@ features:
     - scripts/commands/delete.sh
     checklist:
       - text: Test delete with confirmation prompt
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:19:30+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -1568,9 +1544,9 @@ features:
         - docs/reference/commands/delete.md
         - docs/guides/developer-workflow.md
       - text: Test delete with -y auto-confirm flag
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:19:30+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -1589,9 +1565,9 @@ features:
         - docs/reference/commands/delete.md
         - docs/guides/developer-workflow.md
       - text: Test delete with -b backup flag (creates backup first)
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:19:30+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -1611,9 +1587,9 @@ features:
         - docs/guides/developer-workflow.md
         - docs/reference/commands/backup.md
       - text: Verify DDEV project is stopped and removed
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:19:30+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -1632,9 +1608,9 @@ features:
         - docs/reference/commands/delete.md
         - docs/guides/developer-workflow.md
       - text: Verify site directory is removed
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:19:30+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -1653,9 +1629,9 @@ features:
         - docs/reference/commands/delete.md
         - docs/guides/developer-workflow.md
       - text: Check cnwp.yml is updated to remove site
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:19:30+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -1675,9 +1651,9 @@ features:
         - example.cnwp.yml
         - docs/guides/developer-workflow.md
       - text: Test protection of production sites (should warn)
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:19:30+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -1695,16 +1671,11 @@ features:
         related_docs:
         - docs/reference/commands/delete.md
         - docs/guides/developer-workflow.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:19:34+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:19:34+11:00"
-        context: "Manual verification"
   make:
     name: Make Script (make.sh)
     description: Site mode switching (dev/staging/production)
@@ -1712,9 +1683,9 @@ features:
     - scripts/commands/make.sh
     checklist:
       - text: 'Test dev mode: ./make.sh -v <sitename>'
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:22:12+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -1733,9 +1704,9 @@ features:
         - docs/reference/commands/make.md
         - docs/guides/frontend-theming.md
       - text: 'Test prod mode: ./make.sh -p <sitename>'
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:22:13+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -1754,9 +1725,9 @@ features:
         - docs/reference/commands/make.md
         - docs/guides/frontend-theming.md
       - text: Verify dev mode enables devel module and disables caching
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:22:13+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -1775,9 +1746,9 @@ features:
         - docs/reference/commands/make.md
         - docs/guides/frontend-theming.md
       - text: Verify prod mode uninstalls dev modules and enables caching
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:22:13+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -1796,9 +1767,9 @@ features:
         - docs/reference/commands/make.md
         - docs/guides/frontend-theming.md
       - text: Check CSS/JS aggregation settings change correctly
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:22:13+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Complete the prerequisite setup/action for this verification
 
@@ -1818,9 +1789,9 @@ features:
         - example.cnwp.yml
         - docs/guides/frontend-theming.md
       - text: Test with -y auto-confirm flag
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:22:13+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set up prerequisites for this test scenario
 
@@ -1838,16 +1809,11 @@ features:
         related_docs:
         - docs/reference/commands/make.md
         - docs/guides/frontend-theming.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:16+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:16+11:00"
-        context: "Manual verification"
   migration:
     name: Migration Script (migration.sh)
     description: Site migrations from various sources to Drupal 11
@@ -3221,9 +3187,9 @@ features:
     - scripts/commands/schedule.sh
     checklist:
       - text: Test schedule creation for backups
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:06+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run: pl schedule install test-site --db-schedule="*/5 * * * *"
 
@@ -3237,9 +3203,9 @@ features:
         related_docs:
         - docs/reference/commands/schedule.md
       - text: Verify cron jobs are created correctly
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:06+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run: crontab -l
 
@@ -3253,9 +3219,9 @@ features:
         related_docs:
         - docs/reference/commands/schedule.md
       - text: Check scheduled backups run as expected
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:06+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run: pl schedule run test-site (manual trigger for testing)
 
@@ -3270,9 +3236,9 @@ features:
         - docs/reference/commands/schedule.md
         - docs/reference/commands/backup.md
       - text: Test schedule removal
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:06+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run: pl schedule remove test-site
 
@@ -3286,9 +3252,9 @@ features:
         related_docs:
         - docs/reference/commands/schedule.md
       - text: Verify schedule listing works
-        completed: true
-        completed_by: "claude-agent1"
-        completed_at: "2026-01-15T17:23:06+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Install schedules for 2+ sites
 
@@ -3301,16 +3267,11 @@ features:
           5. Success: Lists all schedules with timing details, organized by site
         related_docs:
         - docs/reference/commands/schedule.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:23:09+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:23:10+11:00"
-        context: "Manual verification"
   security:
     name: Security Script (security.sh)
     description: Security hardening and configuration
@@ -3414,16 +3375,11 @@ features:
           5. Success: Audit detects sensitive files (.env, .secrets.yml, etc.) in webroot
         related_docs:
         - docs/reference/commands/security.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:06:42+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:06:42+11:00"
-        context: "Manual verification"
   setup_ssh:
     name: SSH Setup (setup-ssh.sh)
     description: SSH key generation and management
@@ -3510,16 +3466,11 @@ features:
           5. Success: Public key shown in correct format, accepted by Linode
         related_docs:
         - docs/reference/commands/setup-ssh.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:07:28+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:07:28+11:00"
-        context: "Manual verification"
   uninstall:
     name: Uninstall Script (uninstall_nwp.sh)
     description: Complete NWP uninstallation
@@ -3606,16 +3557,11 @@ features:
           5. Success: Selective uninstall works, kept items preserved
         related_docs:
         - docs/reference/commands/uninstall_nwp.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:07:47+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:07:47+11:00"
-        context: "Manual verification"
   badges:
     name: GitLab Badge Management (badges.sh)
     description: Manages GitLab CI/CD badges for project READMEs
@@ -3683,16 +3629,11 @@ features:
 
         related_docs:
         - docs/reference/commands/badges.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:08:03+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:08:03+11:00"
-        context: "Manual verification"
   email:
     name: Email Management (email.sh)
     description: Unified interface for email setup, testing, and configuration
@@ -3765,16 +3706,11 @@ features:
 
         related_docs:
         - docs/reference/commands/email.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:08:24+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:08:24+11:00"
-        context: "Manual verification"
   report:
     name: Error Reporter (report.sh)
     description: Wrapper for error reporting to GitLab with pre-filled issue URLs
@@ -3854,16 +3790,11 @@ features:
 
         related_docs:
         - docs/reference/commands/report.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:08:52+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:08:52+11:00"
-        context: "Manual verification"
   rollback:
     name: Deployment Rollback (rollback.sh)
     description: Manages deployment rollback points and recovery
@@ -3953,16 +3884,11 @@ features:
 
         related_docs:
         - docs/reference/commands/rollback.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:09:07+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:09:07+11:00"
-        context: "Manual verification"
   storage:
     name: Cloud Storage Management (storage.sh)
     description: Backblaze B2 cloud storage for backups and podcast media
@@ -4041,16 +3967,11 @@ features:
         related_docs:
         - docs/reference/commands/storage.md
         - lib/b2.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:09:19+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:09:19+11:00"
-        context: "Manual verification"
   theme:
     name: Theme Build Tool Management (theme.sh)
     description: Unified frontend build tool management (Gulp, Grunt, Webpack, Vite)
@@ -4138,16 +4059,11 @@ features:
           5. Success: Linting detects errors, shows clear error messages, passes when clean
         related_docs:
         - docs/reference/commands/theme.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:09:31+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:09:31+11:00"
-        context: "Manual verification"
   contribute:
     name: Contribution Submission (contribute.sh)
     description: Submit contributions to upstream repository via merge request
@@ -4222,16 +4138,11 @@ features:
 
         related_docs:
         - docs/reference/commands/contribute.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:09:46+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:09:46+11:00"
-        context: "Manual verification"
   coder_setup:
     name: Coder Setup (coder-setup.sh)
     description: Multi-coder DNS delegation and management
@@ -4319,16 +4230,11 @@ features:
 
         related_docs:
         - docs/reference/commands/coder-setup.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:09:59+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:09:59+11:00"
-        context: "Manual verification"
   coders:
     name: Coder Management TUI (coders.sh)
     description: Interactive TUI for managing NWP coders with onboarding status tracking
@@ -4434,16 +4340,11 @@ features:
         - docs/reference/commands/coders.md
         - lib/developer.sh
         - docs/governance/roles.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:10:29+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:10:29+11:00"
-        context: "Manual verification"
   seo_check:
     name: SEO Check (seo-check.sh)
     description: Comprehensive SEO monitoring and sitemap verification
@@ -4555,16 +4456,11 @@ features:
 
         related_docs:
         - docs/reference/commands/seo-check.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:10:49+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:10:49+11:00"
-        context: "Manual verification"
   run_tests:
     name: Comprehensive Test Runner (run-tests.sh)
     description: 'Runs all levels of tests: unit, integration, and E2E'
@@ -4659,16 +4555,11 @@ features:
         related_docs:
         - docs/reference/commands/run-tests.md
         - docs/testing/testing.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:11:04+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:11:04+11:00"
-        context: "Manual verification"
   upstream:
     name: Upstream Sync (upstream.sh)
     description: Syncs local repository with upstream in distributed contribution model
@@ -4743,16 +4634,11 @@ features:
 
         related_docs:
         - docs/reference/commands/upstream.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:11:17+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:11:17+11:00"
-        context: "Manual verification"
   migrate_secrets:
     name: Secrets Migration (migrate-secrets.sh)
     description: Migrate to two-tier secrets architecture (infrastructure vs data)
@@ -4825,16 +4711,11 @@ features:
 
         related_docs:
         - docs/reference/commands/migrate-secrets.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:11:29+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:11:29+11:00"
-        context: "Manual verification"
   security_check:
     name: HTTP Security Headers Check (security-check.sh)
     description: Tests HTTP security headers on any URL (like Mozilla Observatory)
@@ -4842,8 +4723,8 @@ features:
     - scripts/commands/security-check.sh
     checklist:
       - text: Test HSTS header validation
-        completed: true
-        completed_by: "claude-agent3"
+        completed: false
+        completed_by: null
         completed_at: null
         how_to_verify: |+
           1. Run: pl security-check https://example.com
@@ -4863,9 +4744,9 @@ features:
         related_docs:
         - docs/reference/commands/security-check.md
       - text: Verify CSP header checking
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:08:51+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run: pl security-check https://drupal.org
 
@@ -4882,9 +4763,9 @@ features:
         related_docs:
         - docs/reference/commands/security-check.md
       - text: Check X-Frame-Options validation
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:08:51+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run: pl security-check https://mozilla.org
 
@@ -4901,7 +4782,7 @@ features:
         related_docs:
         - docs/reference/commands/security-check.md
       - text: Test security grading system
-        completed: true
+        completed: false
         completed_by: null
         completed_at: null
         how_to_verify: |+
@@ -4920,9 +4801,9 @@ features:
         related_docs:
         - docs/reference/commands/security-check.md
       - text: Verify JSON output mode
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:08:51+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run: `pl security-check <sitename> --json`
           2. Check output is valid JSON format
@@ -4933,16 +4814,11 @@ features:
         related_docs:
         - docs/reference/commands/security-check.md
         - docs/SECURITY.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:33+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:33+11:00"
-        context: "Manual verification"
   verify:
     name: Feature Verification (verify.sh)
     description: NWP feature verification tracking with interactive TUI console
@@ -4950,9 +4826,9 @@ features:
     - scripts/commands/verify.sh
     checklist:
       - text: Test TUI console navigation
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:09:52+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run: pl verify
 
@@ -4969,9 +4845,9 @@ features:
         related_docs:
         - docs/reference/commands/verify.md
       - text: Verify checklist editing functionality
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:43+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run: pl verify
 
@@ -4990,9 +4866,9 @@ features:
         related_docs:
         - docs/reference/commands/verify.md
       - text: Check verification status tracking
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:09:52+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run: pl verify summary
 
@@ -5011,9 +4887,9 @@ features:
         related_docs:
         - docs/reference/commands/verify.md
       - text: Test file change detection
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:09:52+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Start: `pl verify` and navigate to a verified feature
           2. Modify a source file: `echo "# comment" >> scripts/commands/setup.sh`
@@ -5026,9 +4902,9 @@ features:
         - docs/reference/commands/verify.md
         - docs/reference/verification-tasks.md
       - text: Verify history tracking
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:43+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run: `pl verify` and select a feature
           2. Press 'v' to verify it (complete checklist items first with 'i')
@@ -5041,16 +4917,11 @@ features:
         - docs/reference/commands/verify.md
         - docs/reference/verification-tasks.md
         - docs/decisions/0007-verification-schema-v2-design.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:38+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:38+11:00"
-        context: "Manual verification"
   pl_cli:
     name: PL CLI Wrapper (pl)
     description: Universal CLI wrapper - main command interface
@@ -5058,9 +4929,9 @@ features:
     - pl
     checklist:
       - text: Test pl command with various subcommands
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:10:29+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run: pl install --help
 
@@ -5074,9 +4945,9 @@ features:
         related_docs:
         - docs/reference/commands/README.md
       - text: Verify pl install works
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:47+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run: pl install d test-cli-site
 
@@ -5090,9 +4961,9 @@ features:
         related_docs:
         - docs/reference/commands/install.md
       - text: Verify pl backup works
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:47+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run: pl backup test-cli-site
 
@@ -5106,9 +4977,9 @@ features:
         related_docs:
         - docs/reference/commands/backup.md
       - text: Check pl status works
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:10:29+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run: pl status
 
@@ -5122,9 +4993,9 @@ features:
         related_docs:
         - docs/reference/commands/status.md
       - text: Test tab completion if available
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:10:29+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check for completion script: ls -la pl-completion.bash
 
@@ -5138,9 +5009,9 @@ features:
         related_docs:
         - docs/reference/commands/README.md
       - text: Verify help output is correct
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:10:29+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run: pl --help or pl -h
 
@@ -5153,16 +5024,11 @@ features:
           5. Success: Help text complete, formatted correctly, shows all available commands
         related_docs:
         - docs/reference/commands/README.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:38+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:38+11:00"
-        context: "Manual verification"
   test_nwp:
     name: Test Suite (test-nwp.sh)
     description: Comprehensive test suite - 22 test categories
@@ -5172,9 +5038,9 @@ features:
     - scripts/commands/testos.sh
     checklist:
       - text: 'Run full test suite: ./test-nwp.sh'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:38+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run: ./scripts/commands/test-nwp.sh
 
@@ -5188,9 +5054,9 @@ features:
         related_docs:
         - docs/reference/commands/test-nwp.md
       - text: Verify all test categories pass
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:22:10+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Review test output for each category (Installation, Backup, Restore, etc.)
 
@@ -5204,9 +5070,9 @@ features:
         related_docs:
         - docs/reference/commands/test-nwp.md
       - text: Check test output is clear and readable
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:18:14+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Review terminal output formatting
 
@@ -5220,9 +5086,9 @@ features:
         related_docs:
         - docs/reference/commands/test-nwp.md
       - text: Test individual test categories
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:38+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check test suite source for category isolation capability
 
@@ -5236,9 +5102,9 @@ features:
         related_docs:
         - docs/reference/commands/test-nwp.md
       - text: Verify testos.sh OpenSocial tests work
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:18:14+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Install OpenSocial test site if not present
 
@@ -5253,9 +5119,9 @@ features:
         - docs/reference/commands/test-nwp.md
         - docs/reference/commands/testos.md
       - text: Check Behat/PHPUnit integration if applicable
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:22:10+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Look for test category covering Behat/PHPUnit
 
@@ -5269,16 +5135,11 @@ features:
         related_docs:
         - docs/reference/commands/test-nwp.md
         - docs/reference/commands/test.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:38+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:38+11:00"
-        context: "Manual verification"
   test:
     name: Test Script (test.sh)
     description: Run tests for DDEV sites (PHPCS, PHPStan, PHPUnit, Behat)
@@ -5286,9 +5147,9 @@ features:
     - scripts/commands/test.sh
     checklist:
       - text: Test with -l flag (PHPCS linting only)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:18:21+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Install test dependencies: cd sites/nwp && ddev composer require --dev drupal/coder
 
@@ -5306,9 +5167,9 @@ features:
         - docs/reference/commands/test.md
         - docs/testing/testing.md
       - text: Test with -t flag (PHPStan only)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:52+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Install test dependencies: cd sites/nwp && ddev composer require --dev phpstan/phpstan
 
@@ -5326,9 +5187,9 @@ features:
         - docs/reference/commands/test.md
         - docs/testing/testing.md
       - text: Test with -u flag (PHPUnit unit tests only)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:52+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Install test dependencies: cd sites/nwp && ddev composer require --dev phpunit/phpunit
 
@@ -5348,9 +5209,9 @@ features:
         - docs/reference/commands/test.md
         - docs/testing/testing.md
       - text: Test with -k flag (PHPUnit kernel tests only)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:52+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Install test dependencies: cd sites/nwp && ddev composer require --dev phpunit/phpunit
 
@@ -5370,9 +5231,9 @@ features:
         - docs/reference/commands/test.md
         - docs/testing/testing.md
       - text: Test with -f flag (PHPUnit functional tests only)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:52+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Install test dependencies: cd sites/nwp && ddev composer require --dev phpunit/phpunit
 
@@ -5392,9 +5253,9 @@ features:
         - docs/reference/commands/test.md
         - docs/testing/testing.md
       - text: Test with -s flag (Behat smoke tests only)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:52+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Install Behat: cd sites/nwp && ddev composer require --dev drupal/drupal-extension
 
@@ -5414,9 +5275,9 @@ features:
         - docs/reference/commands/test.md
         - docs/testing/testing.md
       - text: Test with -b flag (full Behat tests)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:52+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Ensure Behat and Selenium installed: cd sites/nwp && ddev composer require --dev drupal/drupal-extension
 
@@ -5436,9 +5297,9 @@ features:
         - docs/reference/commands/test.md
         - docs/testing/testing.md
       - text: Test with -p flag (parallel Behat execution)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:52+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Ensure Behat and Selenium installed
 
@@ -5456,9 +5317,9 @@ features:
         - docs/reference/commands/test.md
         - docs/testing/testing.md
       - text: Test with -a flag (run all tests)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:52+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Ensure all test dependencies installed (PHPCS, PHPStan, PHPUnit, Behat, Selenium)
 
@@ -5476,9 +5337,9 @@ features:
         - docs/reference/commands/test.md
         - docs/testing/testing.md
       - text: Test with --ci flag (CI mode with JUnit output)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:58+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Ensure test dependencies installed
 
@@ -5498,9 +5359,9 @@ features:
         - docs/reference/commands/test.md
         - docs/testing/testing.md
       - text: 'Test combined flags: -ltu (lint, stan, unit)'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:58+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Ensure PHPCS, PHPStan, and PHPUnit installed
 
@@ -5518,9 +5379,9 @@ features:
         - docs/reference/commands/test.md
         - docs/testing/testing.md
       - text: Verify test reports are generated in CI mode
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:18:21+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run tests in CI mode: pl test --ci nwp
 
@@ -5538,9 +5399,9 @@ features:
         - docs/reference/commands/test.md
         - docs/testing/testing.md
       - text: Check that missing test dependencies are detected
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:18:21+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Remove a test dependency: cd sites/nwp && ddev composer remove --dev drupal/coder
 
@@ -5559,16 +5420,11 @@ features:
         related_docs:
         - docs/reference/commands/test.md
         - docs/testing/testing.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:38+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:38+11:00"
-        context: "Manual verification"
   testos:
     name: OpenSocial Test Script (testos.sh)
     description: Comprehensive testing for OpenSocial distributions (Behat, PHPUnit, PHPStan)
@@ -5576,9 +5432,9 @@ features:
     - scripts/commands/testos.sh
     checklist:
       - text: Test with -b flag (run Behat tests)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:18:27+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Install OpenSocial site: pl install os avc
 
@@ -5598,9 +5454,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with -u flag (run all PHPUnit tests)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:06+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run all PHPUnit tests: ./scripts/commands/testos.sh -u avc
 
@@ -5616,9 +5472,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with -U flag (run PHPUnit unit tests only)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:22+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run unit tests only: ./scripts/commands/testos.sh -U avc
 
@@ -5634,9 +5490,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with -k flag (run PHPUnit kernel tests only)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:22+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run kernel tests only: ./scripts/commands/testos.sh -k avc
 
@@ -5652,9 +5508,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with -s flag (run PHPStan static analysis)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:22+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run static analysis: ./scripts/commands/testos.sh -s avc
 
@@ -5670,9 +5526,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with -c flag (run PHP CodeSniffer)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:06+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run code standards check: ./scripts/commands/testos.sh -c avc
 
@@ -5688,9 +5544,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with -a flag (run all tests)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:22+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run all tests: ./scripts/commands/testos.sh -a avc
 
@@ -5706,9 +5562,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with -f flag (run specific Behat feature)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:33+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. List available features: ./scripts/commands/testos.sh --list-features avc
 
@@ -5724,9 +5580,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with -t flag (run tests with specific tag)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:33+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run tests with tag: ./scripts/commands/testos.sh -b -t @api avc
 
@@ -5742,9 +5598,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with --list-features flag
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:33+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. List features: ./scripts/commands/testos.sh --list-features avc
 
@@ -5760,9 +5616,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with --headless flag (Behat headless mode)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:06+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run in headless mode: ./scripts/commands/testos.sh -b --headless avc
 
@@ -5778,9 +5634,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with --headed flag (Behat with visible browser)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:22:05+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run with visible browser: ./scripts/commands/testos.sh -b --headed avc
 
@@ -5796,9 +5652,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with --group flag (PHPUnit test group)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:22:05+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run specific test group: ./scripts/commands/testos.sh -u --group=functional avc
 
@@ -5814,9 +5670,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with --coverage flag (generate code coverage)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:22:05+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run with coverage: ./scripts/commands/testos.sh -u --coverage avc
 
@@ -5832,9 +5688,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with --testdox flag (PHPUnit testdox output)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:22:05+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run with testdox output: ./scripts/commands/testos.sh -u --testdox avc
 
@@ -5850,9 +5706,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Test with --stop-on-failure flag
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:06+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Run with stop-on-failure: ./scripts/commands/testos.sh -u --stop-on-failure avc
 
@@ -5868,9 +5724,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Verify Selenium Chrome installation works
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:22:05+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Remove Selenium if installed: cd sites/avc && ddev delete -O ddev-selenium-standalone-chrome
 
@@ -5888,9 +5744,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Verify Behat configuration generation works
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:22:05+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Remove behat.yml: rm sites/avc/behat.yml
 
@@ -5908,9 +5764,9 @@ features:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
       - text: Check test dependency installation (Behat, PHPUnit, etc.)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:22:06+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Remove test dependencies: cd sites/avc && ddev composer remove --dev drupal/drupal-extension phpunit/phpunit
 
@@ -5927,16 +5783,11 @@ features:
         related_docs:
         - docs/reference/commands/testos.md
         - docs/testing/testing.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:38+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:38+11:00"
-        context: "Manual verification"
   lib_cli_register:
     name: CLI Registration Library (lib/cli-register.sh)
     description: Manages CLI command registration for multiple NWP installations
@@ -5944,9 +5795,9 @@ features:
     - lib/cli-register.sh
     checklist:
       - text: Test register_cli_command function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:15:00+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Source library: source lib/cli-register.sh lib/ui.sh
 
@@ -5963,9 +5814,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/cli-register.sh
       - text: Verify symlink creation in /usr/local/bin/
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:15:00+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Before registration: ls -la /usr/local/bin/pl* (note existing)
 
@@ -5982,9 +5833,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/cli-register.sh
       - text: Test find_available_cli_name (pl, pl1, pl2, etc.)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:15:00+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Source library: source lib/cli-register.sh lib/ui.sh
 
@@ -6003,9 +5854,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/cli-register.sh
       - text: Verify cnwp.yml cli_command setting is updated
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:12+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check before: grep "cli_command:" cnwp.yml (may not exist yet)
 
@@ -6023,9 +5874,9 @@ features:
         - lib/cli-register.sh
         - example.cnwp.yml
       - text: Test unregister_cli_command function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:12+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. First register: source lib/cli-register.sh; register_cli_command "$PWD"
 
@@ -6042,9 +5893,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/cli-register.sh
       - text: Verify get_cli_command reads from cnwp.yml
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:15:00+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Source library: source lib/cli-register.sh
           2. Set test value: echo -e \"
@@ -6059,9 +5910,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/cli-register.sh
       - text: Test switching CLI command names
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:12+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Register as pl: source lib/cli-register.sh; register_cli_command "$PWD" "pl"
 
@@ -6080,9 +5931,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/cli-register.sh
       - text: Verify stale registration cleanup
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:12+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create stale symlink: sudo ln -s /tmp/nonexistent/pl /usr/local/bin/pl
 
@@ -6098,16 +5949,11 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/cli-register.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:42+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:42+11:00"
-        context: "Manual verification"
   lib_ddev_generate:
     name: DDEV Generation Library (lib/ddev-generate.sh)
     description: Generate DDEV configuration from .env and cnwp.yml
@@ -6115,9 +5961,9 @@ features:
     - lib/ddev-generate.sh
     checklist:
       - text: Test DDEV config generation from .env file
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:15:40+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create test site dir: mkdir -p /tmp/test-ddev-site
           2. Create .env: echo -e "PROJECT_NAME=testsite\\nDRUPAL_WEBROOT=web\\nPHP_VERSION=8.2" > /tmp/test-ddev-site/.env
@@ -6130,9 +5976,9 @@ features:
         - lib/ddev-generate.sh
         - docs/guides/setup.md
       - text: Verify config.yaml is created correctly
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:15:40+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Generate config using lib/ddev-generate.sh
           2. Verify file structure: name, type, docroot, php_version, webserver_type, database section
@@ -6144,9 +5990,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/ddev-generate.sh
       - text: Test with different PHP versions (8.1, 8.2, 8.3)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:15:40+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Test PHP 8.1: echo "PHP_VERSION=8.1" > /tmp/test-php/.env && bash lib/ddev-generate.sh /tmp/test-php
           2. Verify: grep 'php_version: "8.1"' /tmp/test-php/.ddev/config.yaml
@@ -6158,9 +6004,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/ddev-generate.sh
       - text: Test with different database types (mysql, mariadb)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:08+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Test MariaDB: echo -e "DATABASE_TYPE=mariadb\\nDATABASE_VERSION=10.11" > /tmp/test-db/.env
           2. Generate: bash lib/ddev-generate.sh /tmp/test-db
@@ -6172,9 +6018,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/ddev-generate.sh
       - text: Verify webserver type configuration (nginx-fpm, apache-fpm)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:08+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Test nginx: echo "WEBSERVER_TYPE=nginx-fpm" > /tmp/test-web/.env
           2. Generate: bash lib/ddev-generate.sh /tmp/test-web
@@ -6186,9 +6032,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/ddev-generate.sh
       - text: Test environment variable injection
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:08+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create .env with env vars: echo -e "DRUPAL_PROFILE=social\\nSTAGE_FILE_PROXY_ORIGIN=https://prod.example.com" > /tmp/test-env/.env
           2. Generate: bash lib/ddev-generate.sh /tmp/test-env
@@ -6200,9 +6046,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/ddev-generate.sh
       - text: Verify config.local.yaml.example generation
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:15:40+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Generate config: bash lib/ddev-generate.sh /tmp/test-local
           2. Verify example created: cat /tmp/test-local/.ddev/config.local.yaml.example
@@ -6214,9 +6060,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/ddev-generate.sh
       - text: Test service recommendations (Redis, Solr, Memcache)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:15:40+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Test with Redis: echo -e "REDIS_ENABLED=1\\nSOLR_ENABLED=1" > /tmp/test-svc/.env
           2. Generate: bash lib/ddev-generate.sh /tmp/test-svc
@@ -6227,16 +6073,11 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/ddev-generate.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:42+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:42+11:00"
-        context: "Manual verification"
   lib_developer:
     name: Developer Identity Library (lib/developer.sh)
     description: Developer roles and permissions management
@@ -6244,9 +6085,9 @@ features:
     - lib/developer.sh
     checklist:
       - text: Test init_developer_config function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:58+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Remove existing config: rm -f /home/rob/nwp/.nwp-developer.yml
 
@@ -6267,9 +6108,9 @@ features:
         - lib/developer.sh
         - docs/governance/roles.md
       - text: Verify .nwp-developer.yml creation
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:16:28+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Check example exists: cat /home/rob/nwp/.nwp-developer.example.yml
 
@@ -6288,9 +6129,9 @@ features:
         - lib/developer.sh
         - docs/governance/roles.md
       - text: Test get_developer_role function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:58+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Create test config with known role: echo ''developer:\\n  role: contributor'' > /tmp/test-dev.yml
 
@@ -6311,9 +6152,9 @@ features:
         - lib/developer.sh
         - docs/governance/roles.md
       - text: Test get_developer_level function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:58+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Test with contributor: echo ''developer:\\n  level: 30'' > /tmp/test-dev.yml
 
@@ -6332,9 +6173,9 @@ features:
         - lib/developer.sh
         - docs/governance/roles.md
       - text: Verify role_to_level and level_to_role conversions
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:16:28+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Source library: source lib/developer.sh
 
@@ -6357,9 +6198,9 @@ features:
         - lib/developer.sh
         - docs/governance/roles.md
       - text: Test can_developer permission checks
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:58+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Create configs for each role level: newcomer(0), contributor(30), core(40), steward(50)
 
@@ -6382,9 +6223,9 @@ features:
         - lib/developer.sh
         - docs/governance/roles.md
       - text: Test set_developer_role function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:20:58+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Create test config: init_developer_config with contributor role
 
@@ -6407,9 +6248,9 @@ features:
         - lib/developer.sh
         - docs/governance/roles.md
       - text: Verify sync_developer_info from GitLab
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:16:28+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Ensure .secrets.yml has gitlab.api_token and gitlab.server.domain
 
@@ -6509,16 +6350,11 @@ features:
         - lib/developer.sh
         - docs/governance/roles.md
         - docs/guides/developer-workflow.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:43+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:43+11:00"
-        context: "Manual verification"
   lib_env_generate:
     name: Environment Generation Library (lib/env-generate.sh)
     description: Generate .env file from cnwp.yml and template
@@ -6526,9 +6362,9 @@ features:
     - lib/env-generate.sh
     checklist:
       - text: Test .env generation from recipe and sitename
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:16:58+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Ensure cnwp.yml has a test recipe configured (e.g., d recipe)
           2. Run generator: bash lib/env-generate.sh d testsite /tmp/test-env-gen
@@ -6541,9 +6377,9 @@ features:
         - lib/env-generate.sh
         - docs/guides/setup.md
       - text: Verify recipe-specific templates are used
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:03+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check templates exist: ls templates/env/.env.*
           2. Create recipe template: echo "CUSTOM_VAR=recipe_specific" > templates/env/.env.testrecipe
@@ -6555,9 +6391,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/env-generate.sh
       - text: Test profile-based template fallback
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:03+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check profile templates: ls templates/env/.env.social .env.varbase .env.standard
           2. Configure recipe with profile in cnwp.yml: profile: social
@@ -6569,9 +6405,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/env-generate.sh
       - text: Verify variable substitution works
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:16:58+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create template with variables: echo 'PROJECT_NAME=${PROJECT_NAME}' > templates/env/.env.test
           2. Run generator: bash lib/env-generate.sh test myproject /tmp/test-subst
@@ -6583,9 +6419,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/env-generate.sh
       - text: Test service configuration (Redis, Solr, Memcache)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:03+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Configure recipe in cnwp.yml with services enabled
           2. Run generator: bash lib/env-generate.sh socialrecipe testsite /tmp/test-services
@@ -6598,9 +6434,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/env-generate.sh
       - text: Verify .env.local.example creation
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:16:58+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run generator: bash lib/env-generate.sh d testsite /tmp/test-local-example
           2. Verify example created: cat /tmp/test-local-example/.env.local.example
@@ -6627,16 +6463,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/env-generate.sh
         - docs/guides/setup.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:43+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:43+11:00"
-        context: "Manual verification"
   lib_install_common:
     name: Install Common Library (lib/install-common.sh)
     description: Shared installation functions for all types (Drupal, Moodle, GitLab, Podcast)
@@ -6644,9 +6475,9 @@ features:
     - lib/install-common.sh
     checklist:
       - text: Test run_interactive_options function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:18+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Source the library: source lib/install-common.sh
 
@@ -6667,9 +6498,9 @@ features:
         - lib/install-common.sh
         - docs/reference/commands/install.md
       - text: Verify update_site_options updates cnwp.yml
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:18+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Source the library and dependencies
 
@@ -6692,9 +6523,9 @@ features:
         - lib/install-common.sh
         - example.cnwp.yml
       - text: Test apply_drupal_options function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:18+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Install Drupal site with options: pl install --recipe=os avc
 
@@ -6713,9 +6544,9 @@ features:
         - lib/install-common.sh
         - lib/options-drupal.sh
       - text: Test apply_moodle_options function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:18+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Install Moodle site: pl install --recipe=moodle ss
 
@@ -6732,9 +6563,9 @@ features:
         - lib/install-common.sh
         - lib/options-moodle.sh
       - text: Test apply_gitlab_options function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:18+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Install GitLab site: pl install --recipe=gitlab git
 
@@ -6751,9 +6582,9 @@ features:
         - lib/install-common.sh
         - lib/install-gitlab.sh
       - text: Verify get_recipe_value YAML parsing
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:18+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Source the library: source lib/install-common.sh
 
@@ -6772,9 +6603,9 @@ features:
         - lib/install-common.sh
         - recipes/os.yml
       - text: Test get_recipe_list_value for arrays
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:18+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Source the library: source lib/install-common.sh
 
@@ -6793,9 +6624,9 @@ features:
         - lib/install-common.sh
         - recipes/os.yml
       - text: Verify get_settings_value function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:17:27+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Source the library: source lib/install-common.sh
 
@@ -6979,16 +6810,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-common.sh
         - recipes/
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:43+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:43+11:00"
-        context: "Manual verification"
   lib_install_drupal:
     name: Drupal Installation Library (lib/install-drupal.sh)
     description: Drupal/OpenSocial installation implementation
@@ -6996,9 +6822,9 @@ features:
     - lib/install-drupal.sh
     checklist:
       - text: Test install_drupal main function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:18:50+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create test site: pl install os test-drupal
 
@@ -7013,9 +6839,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-drupal.sh
       - text: 'Verify Step 1: Initialize project with Composer'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:24+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Install site with composer source: pl install os test-os
 
@@ -7030,9 +6856,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-drupal.sh
       - text: 'Verify Step 1: Clone project from Git (source_git)'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:24+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Configure recipe with source_git instead of source
 
@@ -7047,9 +6873,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-drupal.sh
       - text: 'Verify Step 2: Generate environment configuration'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:24+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. During installation, check .env file created
 
@@ -7065,9 +6891,9 @@ features:
         - lib/install-drupal.sh
         - lib/env-generate.sh
       - text: 'Verify Step 3: Configure DDEV'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:25+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check .ddev/config.yaml created
 
@@ -7083,9 +6909,9 @@ features:
         - lib/install-drupal.sh
         - lib/ddev-generate.sh
       - text: 'Verify Step 4: Memory configuration'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:25+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check PHP memory config: cat sites/test-drupal/.ddev/php/memory.ini
 
@@ -7272,16 +7098,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-drupal.sh
         - lib/yaml.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:48+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:48+11:00"
-        context: "Manual verification"
   lib_install_gitlab:
     name: GitLab Installation Library (lib/install-gitlab.sh)
     description: GitLab CE installation via Docker
@@ -7289,9 +7110,9 @@ features:
     - lib/install-gitlab.sh
     checklist:
       - text: Test install_gitlab main function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:19:04+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create test GitLab instance: pl install gitlab test-gitlab
 
@@ -7306,9 +7127,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-gitlab.sh
       - text: 'Verify Step 1: Create directory structure'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:19:04+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check directory created: ls -la sites/test-gitlab/
 
@@ -7323,9 +7144,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-gitlab.sh
       - text: 'Verify Step 2: Create docker-compose.yml'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:19:04+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check file exists: cat sites/test-gitlab/docker-compose.yml
 
@@ -7340,9 +7161,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-gitlab.sh
       - text: 'Verify Step 3: Create environment configuration'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:30+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check .env file: cat sites/test-gitlab/.env
 
@@ -7357,9 +7178,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-gitlab.sh
       - text: 'Verify Step 4: Start GitLab containers'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:30+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Opt to start containers during install
 
@@ -7374,9 +7195,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-gitlab.sh
       - text: Test reduced memory mode configuration
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:30+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check docker-compose.yml for GITLAB_OMNIBUS_CONFIG
 
@@ -7425,16 +7246,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-gitlab.sh
         - lib/yaml.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:48+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:48+11:00"
-        context: "Manual verification"
   lib_install_moodle:
     name: Moodle Installation Library (lib/install-moodle.sh)
     description: Moodle LMS installation implementation
@@ -7442,9 +7258,9 @@ features:
     - lib/install-moodle.sh
     checklist:
       - text: Test install_moodle main function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:19:18+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Create test Moodle site: pl install moodle test-moodle
 
@@ -7458,9 +7274,9 @@ features:
         related_docs:
         - docs/reference/commands/install.md
       - text: 'Verify Step 1: Clone Moodle from Git'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:19:18+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. During Moodle install, check output for Git clone step
 
@@ -7474,9 +7290,9 @@ features:
         related_docs:
         - docs/reference/commands/install.md
       - text: 'Verify Step 2: Configure DDEV'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:19:18+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check .ddev/config.yaml created for Moodle site
 
@@ -7490,9 +7306,9 @@ features:
         related_docs:
         - docs/reference/commands/install.md
       - text: 'Verify Step 3: Memory configuration'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:36+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check PHP memory limit set for Moodle: cat .ddev/php/moodle.ini
 
@@ -7506,9 +7322,9 @@ features:
         related_docs:
         - docs/reference/commands/install.md
       - text: 'Verify Step 4: Launch DDEV services'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:36+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check DDEV starts: cd sites/test-moodle && ddev status
 
@@ -7522,9 +7338,9 @@ features:
         related_docs:
         - docs/reference/commands/install.md
       - text: 'Verify Step 5: Create moodledata directory'
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:36+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check moodledata directory created outside webroot
 
@@ -7606,16 +7422,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-moodle.sh
         - lib/yaml.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:48+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:48+11:00"
-        context: "Manual verification"
   lib_install_podcast:
     name: Podcast Installation Library (lib/install-podcast.sh)
     description: Castopod podcast platform installation
@@ -7623,9 +7434,9 @@ features:
     - lib/install-podcast.sh
     checklist:
       - text: Test install_podcast main function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:19:32+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Configure Linode and B2 credentials in .secrets.yml
 
@@ -7641,9 +7452,9 @@ features:
         - lib/install-podcast.sh
         - scripts/commands/podcast.sh
       - text: Verify podcast.sh integration
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:19:32+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check podcast.sh exists: ls -la scripts/commands/podcast.sh
 
@@ -7659,9 +7470,9 @@ features:
         - lib/install-podcast.sh
         - scripts/commands/podcast.sh
       - text: Test prerequisite checking
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:40+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Run install without Linode API token
 
@@ -7676,9 +7487,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-podcast.sh
       - text: Verify domain configuration
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:40+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Install with domain: pl install podcast myshow.example.com
 
@@ -7693,9 +7504,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-podcast.sh
       - text: Test Linode region selection
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:40+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Configure recipe with linode_region: us-west
 
@@ -7761,16 +7572,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-podcast.sh
         - lib/yaml.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:48+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:48+11:00"
-        context: "Manual verification"
   lib_install_steps:
     name: Installation Steps Library (lib/install-steps.sh)
     description: Installation step definitions and tracking
@@ -7778,9 +7584,9 @@ features:
     - lib/install-steps.sh
     checklist:
       - text: Test get_steps_for_env function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:17:47+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Source library: source lib/install-steps.sh
 
@@ -7795,9 +7601,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-steps.sh
       - text: Verify get_total_steps for each environment
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:17:47+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Test dev total: get_total_steps dev (expect 10)
 
@@ -7812,9 +7618,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-steps.sh
       - text: Test get_step_info function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:17:47+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Get step 1 info: get_step_info 1 dev
 
@@ -7829,9 +7635,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-steps.sh
       - text: Verify get_install_step from cnwp.yml
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:46+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Start site install, stop at step 3
 
@@ -7846,9 +7652,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-steps.sh
       - text: Test set_install_step updates cnwp.yml
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:47+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Set step: set_install_step test-site 5 cnwp.yml
 
@@ -7863,9 +7669,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-steps.sh
       - text: Verify mark_install_complete function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:47+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Mark complete: mark_install_complete test-site cnwp.yml
 
@@ -7880,9 +7686,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-steps.sh
       - text: Test is_install_complete checking
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:47+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Test incomplete site: is_install_complete partial-site cnwp.yml dev
 
@@ -7897,9 +7703,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-steps.sh
       - text: Verify get_install_status_display function
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:47+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Test not started: get_install_status_display new-site cnwp.yml dev
 
@@ -7914,9 +7720,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-steps.sh
       - text: Test show_steps_detail display
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:21:47+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Show steps: show_steps_detail test-site cnwp.yml dev
 
@@ -7931,9 +7737,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/install-steps.sh
       - text: Verify environment-specific steps (dev, stage, live)
-        completed: true
-        completed_by: "claude-agent3"
-        completed_at: "2026-01-15T17:17:47+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |-
           1. Check dev steps include dev modules (step 9-10)
 
@@ -7947,16 +7753,11 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/install-steps.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:22:48+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:22:48+11:00"
-        context: "Manual verification"
   lib_live_server_setup:
     name: Live Server Setup Library (lib/live-server-setup.sh)
     description: Remote server provisioning on Ubuntu 22.04/24.04 Linode instances
@@ -8317,16 +8118,11 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/terminal.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:12:25+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:12:25+11:00"
-        context: "Manual verification"
   lib_tui:
     name: TUI Library (lib/tui.sh)
     description: Terminal UI framework - menus, checkboxes, forms
@@ -8446,16 +8242,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/tui.sh
         - docs/reference/api/tui-api.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:13:18+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:13:18+11:00"
-        context: "Manual verification"
   lib_checkbox:
     name: Checkbox Library (lib/checkbox.sh)
     description: Advanced interactive checkbox selection
@@ -8572,16 +8363,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/checkbox.sh
         - docs/reference/api/checkbox-api.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:14:05+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:14:05+11:00"
-        context: "Manual verification"
   lib_yaml_write:
     name: YAML Write Library (lib/yaml-write.sh)
     description: YAML file manipulation without yq
@@ -8690,16 +8476,11 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/yaml-write.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:05:48+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:05:48+11:00"
-        context: "Manual verification"
   lib_common:
     name: Common Library (lib/common.sh)
     description: Common utilities - validation, secrets, prompts
@@ -8819,16 +8600,11 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/common.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:06:52+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:06:52+11:00"
-        context: "Manual verification"
   lib_ui:
     name: UI Library (lib/ui.sh)
     description: Basic UI utilities - colors, status messages
@@ -8940,16 +8716,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/ui.sh
         - lib/common.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:07:46+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:07:46+11:00"
-        context: "Manual verification"
   lib_git:
     name: Git Library (lib/git.sh)
     description: Git backup, bundling, GitLab API operations
@@ -9073,16 +8844,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/git.sh
         - docs/deployment/git-backup-recommendations.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:08:41+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:08:41+11:00"
-        context: "Manual verification"
   lib_cloudflare:
     name: Cloudflare Library (lib/cloudflare.sh)
     description: Cloudflare DNS and SSL management
@@ -9201,9 +8967,9 @@ features:
     - lib/linode.sh
     checklist:
       - text: Test Linode instance creation (use test mode)
-        completed: true
-        completed_by: claude
-        completed_at: "2026-01-15T18:37:00+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Source libraries: source lib/linode.sh lib/ui.sh
 
@@ -9223,9 +8989,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/linode.sh
       - text: Verify instance listing
-        completed: true
-        completed_by: "claude"
-        completed_at: "2026-01-15T18:30:00+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. List test instances: list_test_linodes "$TOKEN"
 
@@ -9241,9 +9007,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/linode.sh
       - text: Check API token authentication
-        completed: true
-        completed_by: "claude"
-        completed_at: "2026-01-15T18:30:00+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Test with valid token: TOKEN=$(get_linode_token ".")
 
@@ -9261,9 +9027,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/linode.sh
       - text: Test instance deletion
-        completed: true
-        completed_by: claude
-        completed_at: "2026-01-15T18:37:00+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Create test instance first (see create test)
 
@@ -9281,9 +9047,9 @@ features:
         - docs/reference/api/library-functions.md
         - lib/linode.sh
       - text: Verify error handling
-        completed: true
-        completed_by: "claude"
-        completed_at: "2026-01-15T18:30:00+11:00"
+        completed: false
+        completed_by: null
+        completed_at: null
         how_to_verify: |+
           1. Test invalid instance ID: delete_linode_instance "$TOKEN" "99999999"
 
@@ -9300,22 +9066,11 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/linode.sh
-    verified: true
-    verified_by: claude
-    verified_at: "2026-01-15T18:37:00+11:00"
+    verified: false
+    verified_by: null
+    verified_at: null
     file_hash: null
-    notes: |
-      2026-01-15: Full verification by Claude.
-      VERIFIED (5/5 items):
-      - Item 1: Test Linode instance creation - Created nwp-test-verify (ID: 90029123, IP: 45.33.83.217) successfully
-      - Item 2: Verify instance listing - list_test_linodes works correctly, filters for nwp-test prefix
-      - Item 3: Check API token authentication - get_linode_token loads from .secrets.yml, API calls work, Invalid Token error on bad token
-      - Item 4: Test instance deletion - Deleted test instance 90029123, verified removal from API list
-      - Item 5: Verify error handling - delete_linode_instance returns exit code 1 with clear error for invalid instance ID
-
-      Additional functions verified:
-      - get_linode_ip: Successfully returns IP for instance IDs 89322390 and 89856565
-      - API lists 2 production instances: gitlab-nwp-1767074243 (us-east, 4GB), podcast-gm-20260112 (us-east, nanode)
+    notes: null
   lib_b2:
     name: B2 Library (lib/b2.sh)
     description: Backblaze B2 cloud storage integration
@@ -9632,16 +9387,11 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/badges.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:09:29+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:09:30+11:00"
-        context: "Manual verification"
   lib_state:
     name: State Library (lib/state.sh)
     description: Deployment state tracking and persistence
@@ -9728,16 +9478,11 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/state.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:10:22+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:10:22+11:00"
-        context: "Manual verification"
   lib_database_router:
     name: Database Router Library (lib/database-router.sh)
     description: Multi-source database routing for deployments
@@ -9827,16 +9572,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/database-router.sh
         - docs/reference/workflows/database-routing.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:14:41+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:14:41+11:00"
-        context: "Manual verification"
   lib_testing:
     name: Testing Library (lib/testing.sh)
     description: Test orchestration and preset management
@@ -9921,16 +9661,11 @@ features:
         related_docs:
         - docs/reference/commands/dev2stg.md
         - docs/reference/commands/test.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:11:45+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:11:45+11:00"
-        context: "Manual verification"
   lib_preflight:
     name: Preflight Library (lib/preflight.sh)
     description: Pre-deployment validation checks
@@ -10019,16 +9754,11 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/preflight.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:11:11+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:11:11+11:00"
-        context: "Manual verification"
   lib_dev2stg_tui:
     name: Dev2Stg TUI Library (lib/dev2stg-tui.sh)
     description: Interactive TUI for dev2stg deployment options
@@ -10181,16 +9911,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/safe-ops.sh
         - docs/DATA_SECURITY_BEST_PRACTICES.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:05:23+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:05:23+11:00"
-        context: "Manual verification"
   lib_sanitize:
     name: Sanitize Library (lib/sanitize.sh)
     description: Database sanitization for backups (basic and full modes)
@@ -10268,16 +9993,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/sanitize.sh
         - docs/DATA_SECURITY_BEST_PRACTICES.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:05:57+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:05:57+11:00"
-        context: "Manual verification"
   lib_import:
     name: Import Library (lib/import.sh)
     description: Site import functionality from remote sources
@@ -10347,16 +10067,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/import.sh
         - docs/reference/workflows/import.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:06:15+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:06:15+11:00"
-        context: "Manual verification"
   lib_import_tui:
     name: Import TUI Library (lib/import-tui.sh)
     description: Interactive TUI for import operations
@@ -10435,16 +10150,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/import-tui.sh
         - docs/reference/api/tui-api.md
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:06:31+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:06:31+11:00"
-        context: "Manual verification"
   lib_server_scan:
     name: Server Scan Library (lib/server-scan.sh)
     description: Remote server scanning and site detection
@@ -10511,16 +10221,11 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/server-scan.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:06:47+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:06:47+11:00"
-        context: "Manual verification"
   lib_frontend:
     name: Frontend Library (lib/frontend.sh)
     description: Frontend build tool detection and management
@@ -10609,16 +10314,11 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/frontend.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:07:06+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:07:06+11:00"
-        context: "Manual verification"
   config_example:
     name: Example Configuration (example.cnwp.yml)
     description: Complete configuration template
@@ -10724,16 +10424,11 @@ features:
 
         related_docs:
         - example.cnwp.yml
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:07:37+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:07:37+11:00"
-        context: "Manual verification"
   config_secrets:
     name: Secrets Example (.secrets.example.yml)
     description: Secrets configuration template
@@ -10818,16 +10513,11 @@ features:
 
         related_docs:
         - .secrets.example.yml
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:07:55+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:07:55+11:00"
-        context: "Manual verification"
   avc_moodle_setup:
     name: AVC-Moodle Setup (avc-moodle-setup.sh)
     description: OAuth2 SSO integration setup between AVC and Moodle sites
@@ -11060,16 +10750,11 @@ features:
         related_docs:
         - docs/reference/commands/avc-moodle-setup.md
         - lib/avc-moodle.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:08:22+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:08:22+11:00"
-        context: "Manual verification"
   avc_moodle_status:
     name: AVC-Moodle Status (avc-moodle-status.sh)
     description: Integration health dashboard for AVC-Moodle SSO
@@ -11186,16 +10871,11 @@ features:
         related_docs:
         - docs/reference/commands/avc-moodle-status.md
         - lib/avc-moodle.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:08:22+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:08:22+11:00"
-        context: "Manual verification"
   avc_moodle_sync:
     name: AVC-Moodle Sync (avc-moodle-sync.sh)
     description: Manual role and cohort synchronization between AVC and Moodle
@@ -11309,16 +10989,11 @@ features:
         related_docs:
         - docs/reference/commands/avc-moodle-sync.md
         - lib/avc-moodle.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:08:22+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:08:22+11:00"
-        context: "Manual verification"
   avc_moodle_test:
     name: AVC-Moodle Test (avc-moodle-test.sh)
     description: OAuth2 SSO and integration functionality testing
@@ -11441,16 +11116,11 @@ features:
         related_docs:
         - docs/reference/commands/avc-moodle-test.md
         - lib/avc-moodle.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:08:22+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:08:22+11:00"
-        context: "Manual verification"
   bootstrap_coder:
     name: Bootstrap Coder (bootstrap-coder.sh)
     description: Automated coder identity configuration and NWP setup
@@ -11586,7 +11256,7 @@ features:
 
         related_docs:
         - docs/reference/commands/bootstrap-coder.md
-    verified: true
+    verified: false
     verified_by: null
     verified_at: null
     file_hash: null
@@ -11693,16 +11363,11 @@ features:
           5. Success: Verbose shows debug info, quiet shows errors only
         related_docs:
         - docs/reference/commands/doctor.md
-    verified: true
-    verified_by: "rob"
+    verified: false
+    verified_by: null
     verified_at: null
     file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:08:51+11:00"
-        context: "Manual verification"
   lib_avc_moodle:
     name: AVC-Moodle Integration Library (lib/avc-moodle.sh)
     description: Shared functions for AVC-Moodle SSO, role sync, and data display
@@ -11805,16 +11470,11 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/avc-moodle.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:08:22+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:08:22+11:00"
-        context: "Manual verification"
   lib_podcast:
     name: Podcast Library (lib/podcast.sh)
     description: High-level functions for Castopod podcast hosting infrastructure
@@ -11911,16 +11571,11 @@ features:
         - docs/reference/api/library-functions.md
         - lib/podcast.sh
         - lib/b2.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:09:10+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:09:10+11:00"
-        context: "Manual verification"
   lib_ssh:
     name: SSH Library (lib/ssh.sh)
     description: SSH connection helpers with security controls
@@ -12030,13 +11685,8 @@ features:
         related_docs:
         - docs/reference/api/library-functions.md
         - lib/ssh.sh
-    verified: true
-    verified_by: "rob"
-    verified_at: "2026-01-15T17:09:10+11:00"
-    file_hash: ""
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
     notes: null
-    history:
-      - action: "verified"
-        by: "rob"
-        at: "2026-01-15T17:09:10+11:00"
-        context: "Manual verification"

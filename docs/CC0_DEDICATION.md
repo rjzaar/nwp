@@ -29,7 +29,7 @@ This means anyone can:
 
 **Rob Zaar**, the primary author and maintainer of the Narrow Way Project, hereby dedicates all copyright and related rights in this work to the public domain under CC0 1.0 Universal.
 
-To the extent possible under law, Rob Zaar has waived all copyright and related or neighboring rights to the Narrow Way Project. This work is published from Australia.
+To the extent possible under law, Robert K Zaar has waived all copyright and related or neighboring rights to the Narrow Way Project. This work is published from Australia.
 
 ### AI-Assisted Contributions
 

@@ -41,6 +41,46 @@ CHECK_ON="[✓]"
 CHECK_OFF="[ ]"
 CHECK_INVALID="[!]"
 
+# Detect the best available editor for the current environment
+# Returns editor command or empty string if none found
+# Usage: editor=$(detect_best_editor [--wait])
+#   --wait: Return editor with blocking flag (for editing, not viewing)
+detect_best_editor() {
+    local wait_flag=""
+    [[ "${1:-}" == "--wait" ]] && wait_flag="--wait"
+
+    # Graphical editors (non-blocking by default, good for viewing from TUI)
+    # Only try GUI editors if we're in a graphical environment
+    if [[ -n "${DISPLAY:-}" ]] || [[ -n "${WAYLAND_DISPLAY:-}" ]] || [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]] || [[ "${XDG_SESSION_TYPE:-}" == "x11" ]]; then
+        for editor in codium code code-insiders; do
+            if command -v "$editor" &>/dev/null; then
+                if [[ -n "$wait_flag" ]]; then
+                    echo "$editor --wait"
+                else
+                    echo "$editor"
+                fi
+                return 0
+            fi
+        done
+    fi
+
+    # User preference from environment
+    if [[ -n "${EDITOR:-}" ]] && command -v "$EDITOR" &>/dev/null; then
+        echo "$EDITOR"
+        return 0
+    fi
+
+    # Terminal fallbacks
+    for editor in nano vim vi; do
+        if command -v "$editor" &>/dev/null; then
+            echo "$editor"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 # Calculate SHA256 hash for a list of files
 calculate_hash() {
     local files="$1"
@@ -1692,13 +1732,22 @@ open_doc_file() {
 
     local ext="${filepath##*.}"
 
-    # Use EDITOR if set
-    if [[ -n "$EDITOR" ]]; then
-        "$EDITOR" "$full_path"
-        return 0
+    # Try to detect best editor (non-blocking for viewing)
+    local editor=$(detect_best_editor)
+    if [[ -n "$editor" ]]; then
+        # Check if it's a GUI editor (non-blocking)
+        if [[ "$editor" =~ ^(codium|code) ]]; then
+            # GUI editor - open and return immediately (non-blocking)
+            eval "$editor" '"$full_path"' &>/dev/null &
+            return 0
+        else
+            # Terminal editor - open and wait
+            eval "$editor" '"$full_path"'
+            return 0
+        fi
     fi
 
-    # For text files, display with cat
+    # Fallback: display with cat for text files
     if [[ "$ext" == "md" || "$ext" == "txt" || "$ext" == "sh" ]]; then
         clear
         echo -e "${BOLD}=== $filepath ===${NC}"
@@ -1807,26 +1856,39 @@ show_item_details() {
                     local doc_to_open="${docs_array[$doc_idx]}"
                     local full_doc_path
 
-                    # Build full path (use NWP_ROOT if available, else find it)
+                    # Build full path (use PROJECT_ROOT)
                     if [[ "$doc_to_open" = /* ]]; then
                         full_doc_path="$doc_to_open"
-                    elif [[ -n "$NWP_ROOT" ]]; then
-                        full_doc_path="$NWP_ROOT/$doc_to_open"
                     else
-                        full_doc_path="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/$doc_to_open"
+                        full_doc_path="$PROJECT_ROOT/$doc_to_open"
                     fi
 
-                    clear
-                    echo -e "${BOLD}=== $doc_to_open ===${NC}"
-                    echo ""
-                    if [[ -f "$full_doc_path" ]]; then
-                        cat "$full_doc_path"
+                    # Try to open with best editor
+                    local editor=$(detect_best_editor)
+                    if [[ -n "$editor" ]] && [[ -f "$full_doc_path" ]]; then
+                        # Check if it's a GUI editor (non-blocking)
+                        if [[ "$editor" =~ ^(codium|code) ]]; then
+                            # GUI editor - open and return immediately
+                            eval "$editor" '"$full_doc_path"' &>/dev/null &
+                            sleep 0.2  # Brief pause to let editor launch
+                        else
+                            # Terminal editor - open and wait
+                            eval "$editor" '"$full_doc_path"'
+                        fi
                     else
-                        echo -e "${RED}File not found: $full_doc_path${NC}"
+                        # Fallback to cat display
+                        clear
+                        echo -e "${BOLD}=== $doc_to_open ===${NC}"
+                        echo ""
+                        if [[ -f "$full_doc_path" ]]; then
+                            cat "$full_doc_path"
+                        else
+                            echo -e "${RED}File not found: $full_doc_path${NC}"
+                        fi
+                        echo ""
+                        echo -e "${DIM}─── End of file ───${NC}"
+                        read -p "Press Enter to return..."
                     fi
-                    echo ""
-                    echo -e "${DIM}─── End of file ───${NC}"
-                    read -p "Press Enter to return..."
                 fi
                 ;;
         esac
@@ -1954,20 +2016,12 @@ edit_feature_notes() {
     local feat_name="$2"
     local current_notes=$(get_yaml_value "$feature" "notes")
 
-    # Detect editor: $EDITOR → nano → vim → vi
-    local editor="${EDITOR:-nano}"
-    if ! command -v "$editor" &>/dev/null; then
-        for fallback in nano vim vi; do
-            if command -v "$fallback" &>/dev/null; then
-                editor="$fallback"
-                break
-            fi
-        done
-    fi
+    # Detect best editor (with --wait for blocking behavior)
+    local editor=$(detect_best_editor --wait)
 
-    if ! command -v "$editor" &>/dev/null; then
+    if [[ -z "$editor" ]]; then
         echo -e "${RED}Error: No text editor found${NC}"
-        echo -e "${DIM}Set \$EDITOR or install nano/vim/vi${NC}"
+        echo -e "${DIM}Install codium, nano, vim, or vi${NC}"
         echo ""
         read -p "Press Enter to continue..."
         return 1
@@ -1990,8 +2044,8 @@ edit_feature_notes() {
     echo ""
     read -p "Press Enter to open editor..."
 
-    # Open editor
-    "$editor" "$tmpfile"
+    # Open editor (use eval to handle editors with flags like "codium --wait")
+    eval "$editor" '"$tmpfile"'
 
     # Read back notes
     local new_notes=$(cat "$tmpfile")

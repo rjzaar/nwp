@@ -225,8 +225,11 @@ check_common_issues() {
 
     # DDEV running sites
     if command -v ddev &>/dev/null; then
-        local running_sites=$(ddev list 2>/dev/null | grep -c "OK" || echo "0")
-        if [ "$running_sites" -gt 0 ]; then
+        # Use JSON output for reliable counting (avoids ANSI color code issues)
+        local running_sites=$(ddev list --json-output 2>/dev/null | jq '[.raw[] | select(.status=="running")] | length' 2>/dev/null || echo "0")
+        # Ensure we have a valid integer
+        running_sites="${running_sites:-0}"
+        if [ "$running_sites" -gt 0 ] 2>/dev/null; then
             print_info "DDEV sites running: $running_sites"
         else
             print_info "DDEV sites running: 0"

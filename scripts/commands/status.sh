@@ -446,15 +446,26 @@ get_ddev_status() {
         return
     fi
 
-    # Check if DDEV is running
+    # Check if DDEV is running using JSON output for reliable parsing
     local site_name=$(basename "$directory")
-    if ddev list 2>/dev/null | grep -q "^${site_name}.*running"; then
-        echo "${GREEN}running${NC}"
-    elif ddev list 2>/dev/null | grep -q "^${site_name}"; then
-        echo "${YELLOW}stopped${NC}"
-    else
-        echo "${YELLOW}stopped${NC}"
-    fi
+    local ddev_status=$(ddev list --json-output 2>/dev/null | jq -r ".raw[] | select(.name==\"$site_name\") | .status" 2>/dev/null)
+
+    case "$ddev_status" in
+        running)
+            echo "${GREEN}running${NC}"
+            ;;
+        paused|stopped|exited)
+            echo "${YELLOW}${ddev_status}${NC}"
+            ;;
+        *)
+            # Fallback: site exists in DDEV but status unknown
+            if ddev list --json-output 2>/dev/null | jq -e ".raw[] | select(.name==\"$site_name\")" &>/dev/null; then
+                echo "${YELLOW}stopped${NC}"
+            else
+                echo "${YELLOW}not-registered${NC}"
+            fi
+            ;;
+    esac
 }
 
 # Get disk usage for a directory

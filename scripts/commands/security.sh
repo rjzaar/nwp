@@ -59,18 +59,46 @@ EOF
 # Security Check Functions
 ################################################################################
 
+# Normalize site path - handles both "sitename" and "sites/sitename" inputs
+get_site_path() {
+    local sitename="$1"
+
+    # If already a valid directory, return as-is
+    if [ -d "$sitename" ]; then
+        echo "$sitename"
+        return 0
+    fi
+
+    # Try with sites/ prefix
+    if [ -d "sites/$sitename" ]; then
+        echo "sites/$sitename"
+        return 0
+    fi
+
+    # Try from PROJECT_ROOT
+    if [ -d "${PROJECT_ROOT}/sites/$sitename" ]; then
+        echo "${PROJECT_ROOT}/sites/$sitename"
+        return 0
+    fi
+
+    # Not found
+    return 1
+}
+
 # Check for Drupal security updates
 check_drupal_security() {
     local sitename="$1"
+    local site_path
+
+    site_path=$(get_site_path "$sitename") || {
+        print_header "Drupal Security Check: $sitename"
+        print_error "Site not found: $sitename"
+        return 1
+    }
 
     print_header "Drupal Security Check: $sitename"
 
-    if [ ! -d "$sitename" ]; then
-        print_error "Site not found: $sitename"
-        return 1
-    fi
-
-    cd "$sitename" || return 1
+    cd "$site_path" || return 1
 
     local updates_found=0
 
@@ -94,15 +122,17 @@ check_drupal_security() {
 # Check for Composer security issues
 check_composer_security() {
     local sitename="$1"
+    local site_path
+
+    site_path=$(get_site_path "$sitename") || {
+        print_header "Composer Security Check: $sitename"
+        print_error "Site not found: $sitename"
+        return 1
+    }
 
     print_header "Composer Security Check: $sitename"
 
-    if [ ! -d "$sitename" ]; then
-        print_error "Site not found: $sitename"
-        return 1
-    fi
-
-    cd "$sitename" || return 1
+    cd "$site_path" || return 1
 
     local issues_found=0
 
@@ -160,21 +190,23 @@ security_update() {
     local sitename="$1"
     local auto="${2:-false}"
     local yes="${3:-false}"
+    local site_path
+
+    site_path=$(get_site_path "$sitename") || {
+        print_header "Security Update: $sitename"
+        print_error "Site not found: $sitename"
+        return 1
+    }
 
     print_header "Security Update: $sitename"
 
-    if [ ! -d "$sitename" ]; then
-        print_error "Site not found: $sitename"
-        return 1
-    fi
-
-    cd "$sitename" || return 1
+    cd "$site_path" || return 1
 
     # Backup first
     print_info "Creating backup before updates..."
     cd - > /dev/null
     "${SCRIPT_DIR}/backup.sh" -b "$sitename" "Pre-security-update"
-    cd "$sitename" || return 1
+    cd "$site_path" || return 1
 
     # Update Drupal core and contrib
     print_info "Updating Drupal packages..."
@@ -222,15 +254,17 @@ security_update() {
 
 security_audit() {
     local sitename="$1"
+    local site_path
+
+    site_path=$(get_site_path "$sitename") || {
+        print_header "Security Audit: $sitename"
+        print_error "Site not found: $sitename"
+        return 1
+    }
 
     print_header "Security Audit: $sitename"
 
-    if [ ! -d "$sitename" ]; then
-        print_error "Site not found: $sitename"
-        return 1
-    fi
-
-    cd "$sitename" || return 1
+    cd "$site_path" || return 1
 
     local issues=0
 

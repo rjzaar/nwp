@@ -810,44 +810,100 @@ todo_tui_main() {
                 tui_cycle_filter
                 ;;
             x|X)
-                # Execute selected items
-                local executed=0
+                # Execute selected items (bulk mode)
                 local to_execute=()
+                local exec_commands=()
+                local exec_ids=()
+
+                # Collect selected items
                 for idx in "${TODO_TUI_FILTERED[@]}"; do
                     if [ "${TODO_TUI_SELECTED[$idx]}" = "1" ]; then
-                        to_execute+=("$idx")
+                        local item="${TODO_TUI_ITEMS[$idx]}"
+                        local cmd=$(tui_get_exec_command "$item")
+                        if [ -n "$cmd" ]; then
+                            to_execute+=("$idx")
+                            exec_commands+=("$cmd")
+                            exec_ids+=("$(tui_get_field "$item" "id")")
+                        fi
                     fi
                 done
+
+                # If no selection, use current item
                 if [ ${#to_execute[@]} -eq 0 ]; then
-                    # No selection, execute current item
                     local tab_start=$(tui_get_tab_start)
                     local global_idx=$((tab_start + TODO_TUI_CURRENT_ROW))
-                    to_execute+=("${TODO_TUI_FILTERED[$global_idx]}")
-                fi
-                for idx in "${to_execute[@]}"; do
+                    local idx="${TODO_TUI_FILTERED[$global_idx]}"
                     local item="${TODO_TUI_ITEMS[$idx]}"
-                    if tui_is_executable "$item"; then
-                        tui_clear_screen
-                        tui_execute_item "$item"
-                        ((executed++))
+                    local cmd=$(tui_get_exec_command "$item")
+                    if [ -n "$cmd" ]; then
+                        to_execute+=("$idx")
+                        exec_commands+=("$cmd")
+                        exec_ids+=("$(tui_get_field "$item" "id")")
                     fi
-                done
-                if [ "$executed" -gt 0 ]; then
-                    # Reload data
-                    todo_clear_items
-                    local total_checks=$(todo_get_check_count)
-                    for ((check_idx=0; check_idx<total_checks; check_idx++)); do
-                        todo_run_check_by_index "$check_idx"
-                    done
-                    tui_load_items_from_array
-                    tui_apply_filters
-                    total_tabs=$(tui_get_total_tabs)
-                    [ "$TODO_TUI_CURRENT_TAB" -ge "$total_tabs" ] && TODO_TUI_CURRENT_TAB=$((total_tabs - 1))
-                    [ "$TODO_TUI_CURRENT_TAB" -lt 0 ] && TODO_TUI_CURRENT_TAB=0
-                    tab_items=$(tui_get_tab_item_count)
-                    [ "$TODO_TUI_CURRENT_ROW" -ge "$tab_items" ] && TODO_TUI_CURRENT_ROW=$((tab_items - 1))
-                    [ "$TODO_TUI_CURRENT_ROW" -lt 0 ] && TODO_TUI_CURRENT_ROW=0
                 fi
+
+                if [ ${#exec_commands[@]} -eq 0 ]; then
+                    # Nothing executable
+                    continue
+                fi
+
+                # Show bulk confirmation
+                tui_clear_screen
+                tui_cursor_show
+                echo ""
+                echo -e "${BOLD}Commands to execute (${#exec_commands[@]} items):${NC}"
+                echo "========================================================================"
+                for ((i=0; i<${#exec_commands[@]}; i++)); do
+                    echo -e "  ${CYAN}${exec_commands[$i]}${NC}"
+                done
+                echo "========================================================================"
+                echo ""
+                echo -n "Execute all ${#exec_commands[@]} commands? [y/N] "
+                read -r confirm
+
+                if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+                    local success=0
+                    local failed=0
+                    echo ""
+
+                    for ((i=0; i<${#exec_commands[@]}; i++)); do
+                        echo -e "${DIM}[$((i+1))/${#exec_commands[@]}] Running: ${exec_commands[$i]}${NC}"
+                        echo "------------------------------------------------------------------------"
+
+                        if eval "${exec_commands[$i]}"; then
+                            echo -e "${GREEN}OK${NC}"
+                            add_to_ignored "${exec_ids[$i]}" "Executed" 2>/dev/null
+                            ((success++))
+                        else
+                            echo -e "${RED}FAILED${NC}"
+                            ((failed++))
+                        fi
+                        echo ""
+                    done
+
+                    echo "========================================================================"
+                    echo -e "Completed: ${GREEN}$success succeeded${NC}, ${RED}$failed failed${NC}"
+                    echo ""
+                    echo "Press any key to continue..."
+                    read -rsn1
+                fi
+
+                tui_cursor_hide
+
+                # Reload data
+                todo_clear_items
+                local total_checks=$(todo_get_check_count)
+                for ((check_idx=0; check_idx<total_checks; check_idx++)); do
+                    todo_run_check_by_index "$check_idx"
+                done
+                tui_load_items_from_array
+                tui_apply_filters
+                total_tabs=$(tui_get_total_tabs)
+                [ "$TODO_TUI_CURRENT_TAB" -ge "$total_tabs" ] && TODO_TUI_CURRENT_TAB=$((total_tabs - 1))
+                [ "$TODO_TUI_CURRENT_TAB" -lt 0 ] && TODO_TUI_CURRENT_TAB=0
+                tab_items=$(tui_get_tab_item_count)
+                [ "$TODO_TUI_CURRENT_ROW" -ge "$tab_items" ] && TODO_TUI_CURRENT_ROW=$((tab_items - 1))
+                [ "$TODO_TUI_CURRENT_ROW" -lt 0 ] && TODO_TUI_CURRENT_ROW=0
                 ;;
             p|P)
                 # Process selected items (mark as done)

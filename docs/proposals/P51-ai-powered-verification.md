@@ -161,6 +161,168 @@ S1: Foundation Setup
 
 ## 3. Detailed Scenario Specifications
 
+### S1: Foundation Setup (Pre-requisite Gate)
+
+This scenario MUST pass before any other scenario runs. It validates the development environment using `pl doctor` with full cross-validation.
+
+```yaml
+scenario:
+  id: S1
+  name: Foundation Setup
+  description: Verify development environment meets all requirements
+  depends_on: []  # No dependencies - this is the foundation
+  estimated_duration: 2 minutes
+  is_gate: true  # All other scenarios require S1 to pass
+
+  commands_tested:
+    - setup.sh
+    - doctor.sh
+
+  live_state_commands:
+    - command: pl doctor
+      cross_validation_ref: section 4.5
+      validates:
+        - Docker availability and status
+        - DDEV version and running projects
+        - PHP version
+        - Composer availability
+        - Git version
+        - Disk space available
+        - Memory available
+
+  steps:
+    - name: Run pl doctor
+      cmd: pl doctor --json
+      expect_exit: 0
+      store_as: doctor_output
+
+    - name: Cross-validate Docker availability
+      live_state:
+        command: pl doctor --json | jq '.docker.available'
+        verify: docker --version >/dev/null 2>&1 && echo "true" || echo "false"
+        tolerance: 0
+        on_mismatch: critical
+
+    - name: Cross-validate Docker running
+      live_state:
+        command: pl doctor --json | jq '.docker.running'
+        verify: docker info >/dev/null 2>&1 && echo "true" || echo "false"
+        tolerance: 0
+        on_mismatch: critical
+
+    - name: Cross-validate DDEV version
+      live_state:
+        command: pl doctor --json | jq -r '.ddev.version'
+        verify: ddev version --json-output | jq -r '.raw'
+        tolerance: 0
+        on_mismatch: warning
+
+    - name: Cross-validate disk space
+      live_state:
+        command: pl doctor --json | jq '.disk.available_gb'
+        verify: df -BG . | tail -1 | awk '{print $4}' | tr -d 'G'
+        tolerance: 1
+        minimum: 10  # Require at least 10GB free
+
+    - name: Cross-validate memory
+      live_state:
+        command: pl doctor --json | jq '.memory.available_mb'
+        verify: free -m | awk '/^Mem:/{print $7}'
+        tolerance: 100
+        minimum: 2048  # Require at least 2GB free
+
+    - name: Run pl setup verification
+      cmd: pl setup --check
+      expect_exit: 0
+      validate:
+        - NWP installed correctly:
+            expect_contains: "NWP"
+        - Configuration valid:
+            expect_contains: "valid"
+
+  success_criteria:
+    all_required:
+      - Docker running
+      - DDEV available
+      - Sufficient disk space (>10GB)
+      - Sufficient memory (>2GB)
+      - All cross-validations pass
+
+    gate_behavior: |
+      If S1 fails, no other scenarios will run.
+      The failure report will indicate which
+      cross-validation failed and why.
+```
+
+### S2: Site Lifecycle (with status cross-validation)
+
+```yaml
+scenario:
+  id: S2
+  name: Site Lifecycle
+  description: Verify site install, status reporting, and deletion
+  depends_on: [S1]
+  estimated_duration: 5 minutes
+
+  commands_tested:
+    - install.sh
+    - status.sh
+    - delete.sh
+
+  live_state_commands:
+    - command: pl status
+      cross_validation_ref: section 4.3
+      validates:
+        - User count accuracy
+        - Database size accuracy
+        - Health status accuracy
+
+  steps:
+    - name: Install test site
+      cmd: pl install d verify-s2 --auto
+      expect_exit: 0
+      timeout: 180
+
+    - name: Cross-validate pl status user count
+      live_state:
+        command: pl status -s verify-s2 --json | jq '.users'
+        verify: cd sites/verify-s2 && ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE uid > 0"
+        tolerance: 0
+
+    - name: Cross-validate pl status database size
+      live_state:
+        command: pl status -s verify-s2 --json | jq '.db_size_mb'
+        verify: |
+          cd sites/verify-s2 && ddev mysql -N -e "SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 0) FROM information_schema.tables WHERE table_schema = DATABASE();"
+        tolerance: 1
+
+    - name: Cross-validate pl status health
+      live_state:
+        command: pl status -s verify-s2 --json | jq -r '.health'
+        verify_conditions:
+          healthy:
+            - ddev describe verify-s2 | grep -q "running"
+            - cd sites/verify-s2 && ddev drush status --field=db-status | grep -q "Connected"
+
+    - name: Run security baseline check
+      cmd: pl security-check verify-s2 --json
+      store_as: security_baseline
+      validate:
+        - Settings protected:
+            live_state:
+              command: jq '.permissions.settings_protected' <<< "$security_baseline"
+              verify: |
+                perm=$(stat -c "%a" sites/verify-s2/html/sites/default/settings.php)
+                [[ "$perm" =~ ^4[04][04]$ ]] && echo "true" || echo "false"
+
+    - name: Delete test site
+      cmd: pl delete verify-s2 --yes
+      expect_exit: 0
+
+  cleanup:
+    - cmd: pl delete verify-s2 --yes 2>/dev/null || true
+```
+
 ### S3: Backup-Restore Integrity (Example in Full Detail)
 
 This scenario demonstrates the depth of verification:
@@ -177,6 +339,27 @@ scenario:
     - backup.sh
     - restore.sh
     - status.sh
+
+  live_state_commands:
+    - command: pl status
+      cross_validation_ref: section 4.3
+      validates:
+        - User count accuracy (pre/post restore)
+        - Database size accuracy
+        - Health status accuracy
+      usage: |
+        Used before backup to establish baseline metrics,
+        then after restore to verify data integrity.
+        Mismatch indicates data loss during backup/restore cycle.
+
+    - command: pl storage
+      cross_validation_ref: section 4.6
+      validates:
+        - Backup file size
+        - Total site size comparison
+      usage: |
+        Verifies backup file exists and has appropriate size
+        relative to source site.
 
   checklist_items_covered:
     - backup.0: Test backup creation
@@ -401,7 +584,95 @@ scenario:
             fix: ddev drush cr
 ```
 
-### S8: Quality Assurance Suite (Expanded)
+### S7: Security Hardening (with security-check cross-validation)
+
+```yaml
+scenario:
+  id: S7
+  name: Security Hardening
+  description: Verify security configurations and vulnerability status
+  depends_on: [S2]
+  estimated_duration: 8 minutes
+
+  commands_tested:
+    - security.sh
+    - security-check.sh
+
+  live_state_commands:
+    - command: pl security-check
+      cross_validation_ref: section 4.8
+      validates:
+        - Core update availability
+        - Security updates count
+        - Outdated modules count
+        - Files directory permissions
+        - Settings.php protection
+        - Debug mode status
+        - HTTPS enforcement
+        - User registration restrictions
+
+  steps:
+    - name: Setup test site
+      cmd: pl install d verify-s7 --auto
+      timeout: 180
+
+    - name: Run security hardening
+      cmd: pl security verify-s7
+      expect_exit: 0
+
+    - name: Cross-validate settings.php protection
+      live_state:
+        command: pl security-check verify-s7 --json | jq '.permissions.settings_protected'
+        verify: |
+          perm=$(stat -c "%a" sites/verify-s7/html/sites/default/settings.php 2>/dev/null)
+          [[ "$perm" == "444" || "$perm" == "440" || "$perm" == "400" ]] && echo "true" || echo "false"
+        tolerance: 0
+
+    - name: Cross-validate files directory writable
+      live_state:
+        command: pl security-check verify-s7 --json | jq '.permissions.files_writable'
+        verify: test -w sites/verify-s7/html/sites/default/files && echo "true" || echo "false"
+        tolerance: 0
+
+    - name: Cross-validate debug mode disabled
+      live_state:
+        command: pl security-check verify-s7 --json | jq '.config.debug_disabled'
+        verify: |
+          cd sites/verify-s7 && ddev drush config:get system.logging error_level --format=string 2>/dev/null | grep -q "hide" && echo "true" || echo "false"
+        tolerance: 0
+
+    - name: Cross-validate security updates count
+      live_state:
+        command: pl security-check verify-s7 --json | jq '.updates.security_count'
+        verify: |
+          cd sites/verify-s7 && ddev drush pm:security --format=json 2>/dev/null | jq 'length'
+        tolerance: 0
+
+    - name: Cross-validate outdated modules count
+      live_state:
+        command: pl security-check verify-s7 --json | jq '.updates.outdated_count'
+        verify: |
+          cd sites/verify-s7 && ddev composer outdated --direct --format=json 2>/dev/null | jq '.installed | length'
+        tolerance: 0
+
+    - name: Cross-validate user registration restrictions
+      live_state:
+        command: pl security-check verify-s7 --json | jq '.config.registration_restricted'
+        verify: |
+          cd sites/verify-s7 && ddev drush config:get user.settings register --format=string 2>/dev/null | grep -qv "visitors" && echo "true" || echo "false"
+        tolerance: 0
+
+  cleanup:
+    - cmd: pl delete verify-s7 --yes 2>/dev/null || true
+
+  success_criteria:
+    all_required:
+      - Settings.php properly protected
+      - Debug mode disabled
+      - All cross-validations pass
+```
+
+### S8: Quality Assurance Suite (with testos, seo-check, badges cross-validation)
 
 ```yaml
 scenario:
@@ -418,6 +689,32 @@ scenario:
     - testos.sh
     - seo-check.sh
     - badges.sh
+
+  live_state_commands:
+    - command: pl testos
+      cross_validation_ref: section 4.10
+      validates:
+        - Docker container running
+        - Docker container healthy
+        - Files directory permissions
+        - PHP memory limit
+        - MySQL running
+
+    - command: pl seo-check
+      cross_validation_ref: section 4.9
+      validates:
+        - Meta title present
+        - Meta description present
+        - Sitemap accessible
+        - Robots.txt accessible
+        - Canonical URL present
+
+    - command: pl badges
+      cross_validation_ref: section 4.11
+      validates:
+        - Machine coverage percentage
+        - AI coverage percentage
+        - Badge files exist
 
   steps:
     - name: Setup test site
@@ -439,38 +736,89 @@ scenario:
         test_count: grep -c "test" output
         pass_count: grep -c "pass" output
 
-    - name: Run OS-level tests
-      cmd: pl testos verify-s8
-      expect_exit: 0
-      validate:
-        - Docker health:
-            cmd: docker ps --filter "name=ddev" --format "{{.Status}}"
-            expect_contains: "healthy"
-        - Filesystem permissions:
-            cmd: stat -c "%a" sites/verify-s8/html/sites/default/files
-            expect_output: "775"
+    # testos cross-validation
+    - name: Cross-validate Docker container running
+      live_state:
+        command: pl testos verify-s8 --json | jq '.docker.container_running'
+        verify: |
+          docker ps --filter "name=ddev-verify-s8" --format "{{.Status}}" | grep -q "Up" && echo "true" || echo "false"
+        tolerance: 0
 
-    - name: Run SEO checks
-      cmd: pl seo-check verify-s8
-      expect_exit: 0
-      validate:
-        - Meta tags present:
-            cmd: curl -s https://verify-s8.ddev.site | grep -c "<meta"
-            expect_min: 5
-        - Sitemap accessible:
-            cmd: curl -s -o /dev/null -w "%{http_code}" https://verify-s8.ddev.site/sitemap.xml
-            expect_output: "200"
+    - name: Cross-validate Docker container healthy
+      live_state:
+        command: pl testos verify-s8 --json | jq '.docker.container_healthy'
+        verify: |
+          docker ps --filter "name=ddev-verify-s8-web" --format "{{.Status}}" | grep -q "healthy" && echo "true" || echo "false"
+        tolerance: 0
 
+    - name: Cross-validate files directory permissions
+      live_state:
+        command: pl testos verify-s8 --json | jq -r '.filesystem.files_permissions'
+        verify: stat -c "%a" sites/verify-s8/html/sites/default/files 2>/dev/null
+        tolerance: 0
+
+    - name: Cross-validate PHP memory limit
+      live_state:
+        command: pl testos verify-s8 --json | jq -r '.php.memory_limit'
+        verify: cd sites/verify-s8 && ddev exec "php -r 'echo ini_get(\"memory_limit\");'"
+        tolerance: 0
+
+    - name: Cross-validate MySQL running
+      live_state:
+        command: pl testos verify-s8 --json | jq '.database.mysql_running'
+        verify: cd sites/verify-s8 && ddev mysql -e "SELECT 1" >/dev/null 2>&1 && echo "true" || echo "false"
+        tolerance: 0
+
+    # seo-check cross-validation
+    - name: Cross-validate meta title present
+      live_state:
+        command: pl seo-check verify-s8 --json | jq '.meta.title_present'
+        verify: curl -s https://verify-s8.ddev.site 2>/dev/null | grep -q "<title>" && echo "true" || echo "false"
+        tolerance: 0
+
+    - name: Cross-validate meta description present
+      live_state:
+        command: pl seo-check verify-s8 --json | jq '.meta.description_present'
+        verify: curl -s https://verify-s8.ddev.site 2>/dev/null | grep -qi 'name="description"' && echo "true" || echo "false"
+        tolerance: 0
+
+    - name: Cross-validate sitemap accessible
+      live_state:
+        command: pl seo-check verify-s8 --json | jq '.sitemap.accessible'
+        verify: curl -s -o /dev/null -w "%{http_code}" https://verify-s8.ddev.site/sitemap.xml 2>/dev/null | grep -q "200" && echo "true" || echo "false"
+        tolerance: 0
+
+    - name: Cross-validate robots.txt accessible
+      live_state:
+        command: pl seo-check verify-s8 --json | jq '.robots.accessible'
+        verify: curl -s -o /dev/null -w "%{http_code}" https://verify-s8.ddev.site/robots.txt 2>/dev/null | grep -q "200" && echo "true" || echo "false"
+        tolerance: 0
+
+    - name: Cross-validate page load time
+      live_state:
+        command: pl seo-check verify-s8 --json | jq '.performance.load_time_ms'
+        verify: curl -s -o /dev/null -w "%{time_total}" https://verify-s8.ddev.site 2>/dev/null | awk '{printf "%.0f", $1 * 1000}'
+        tolerance: 500
+
+    # badges cross-validation
     - name: Generate and verify badges
       cmd: pl badges
       expect_exit: 0
-      validate:
-        - Badge files created:
-            cmd: ls .verification-badges/*.svg 2>/dev/null | wc -l
-            expect_min: 3
-        - Machine badge exists:
-            cmd: test -f .verification-badges/machine.svg
-            expect_exit: 0
+
+    - name: Cross-validate machine coverage
+      live_state:
+        command: pl badges --json | jq '.machine.coverage'
+        verify: |
+          total=$(yq '.checklist | length' lib/verification-checklist.yml 2>/dev/null || echo "575")
+          passed=$(grep -c "status: passed" .logs/verification/latest.log 2>/dev/null || echo "0")
+          echo "scale=0; $passed * 100 / $total" | bc
+        tolerance: 1
+
+    - name: Cross-validate badge files exist
+      live_state:
+        command: pl badges --json | jq '.files.machine_svg'
+        verify: test -f .verification-badges/machine.svg && echo "true" || echo "false"
+        tolerance: 0
 
     - name: Run verification system
       cmd: pl verify --run --depth=basic
@@ -479,6 +827,16 @@ scenario:
         - Results logged:
             cmd: ls -la .logs/verification/verify-*.log | tail -1
             expect_exit: 0
+
+  cleanup:
+    - cmd: pl delete verify-s8 --yes 2>/dev/null || true
+
+  success_criteria:
+    all_required:
+      - All testos cross-validations pass
+      - All seo-check cross-validations pass
+      - All badges cross-validations pass
+      - Verification system runs successfully
 ```
 
 ### S10: Full Production Pipeline (Expanded)
@@ -630,7 +988,122 @@ scenario:
             expect_exit: 0
 ```
 
-### S14: Infrastructure & Communication
+### S11: Specialized Installs (with avc-moodle-status cross-validation)
+
+```yaml
+scenario:
+  id: S11
+  name: Specialized Installs
+  description: Verify podcast and AVC Moodle integration installations
+  depends_on: [S1]
+  estimated_duration: 15 minutes
+
+  commands_tested:
+    - podcast.sh
+    - avc-moodle-setup.sh
+    - avc-moodle-status.sh
+    - avc-moodle-sync.sh
+    - avc-moodle-test.sh
+
+  live_state_commands:
+    - command: pl avc-moodle-status
+      cross_validation_ref: section 4.12
+      validates:
+        - Moodle connection status
+        - Last sync timestamp
+        - Users synced count
+        - Courses synced count
+        - Pending enrollments
+        - Sync errors count
+
+  steps:
+    - name: Test podcast installation
+      cmd: pl podcast --help
+      expect_exit: 0
+      validate:
+        - Help displayed:
+            expect_contains: "podcast"
+
+    - name: Setup AVC Moodle integration
+      cmd: pl avc-moodle-setup --check
+      expect_exit: 0
+      validate:
+        - Setup check passes:
+            expect_exit: 0
+
+    # avc-moodle-status cross-validation
+    - name: Cross-validate Moodle connection status
+      live_state:
+        command: pl avc-moodle-status --json | jq -r '.connection.status'
+        verify: |
+          source .secrets.yml 2>/dev/null
+          if [[ -n "${MOODLE_URL:-}" && -n "${MOODLE_TOKEN:-}" ]]; then
+            curl -s -o /dev/null -w "%{http_code}" "${MOODLE_URL}/webservice/rest/server.php?wstoken=${MOODLE_TOKEN}&wsfunction=core_webservice_get_site_info&moodlewsrestformat=json" 2>/dev/null | grep -q "200" && echo "connected" || echo "disconnected"
+          else
+            echo "not_configured"
+          fi
+        tolerance: 0
+
+    - name: Cross-validate users synced count
+      live_state:
+        command: pl avc-moodle-status --json | jq '.sync.users_synced'
+        verify: |
+          if [[ -d sites/avc ]]; then
+            cd sites/avc && ddev drush sqlq "SELECT COUNT(*) FROM user__field_moodle_id WHERE field_moodle_id_value IS NOT NULL" 2>/dev/null || echo "0"
+          else
+            echo "0"
+          fi
+        tolerance: 0
+
+    - name: Cross-validate courses synced count
+      live_state:
+        command: pl avc-moodle-status --json | jq '.sync.courses_synced'
+        verify: |
+          if [[ -d sites/avc ]]; then
+            cd sites/avc && ddev drush sqlq "SELECT COUNT(*) FROM node_field_data WHERE type='moodle_course'" 2>/dev/null || echo "0"
+          else
+            echo "0"
+          fi
+        tolerance: 0
+
+    - name: Cross-validate pending enrollments
+      live_state:
+        command: pl avc-moodle-status --json | jq '.queue.pending_enrollments'
+        verify: |
+          if [[ -d sites/avc ]]; then
+            cd sites/avc && ddev drush sqlq "SELECT COUNT(*) FROM queue WHERE name='moodle_enrollment'" 2>/dev/null || echo "0"
+          else
+            echo "0"
+          fi
+        tolerance: 0
+
+    - name: Cross-validate sync errors count
+      live_state:
+        command: pl avc-moodle-status --json | jq '.errors.count'
+        verify: |
+          grep -c "ERROR" .logs/moodle/sync-*.log 2>/dev/null | tail -1 || echo "0"
+        tolerance: 0
+
+    - name: Test Moodle sync (dry-run)
+      cmd: pl avc-moodle-sync --dry-run
+      expect_exit: 0
+      validate:
+        - Sync plan shown:
+            expect_contains: "sync"
+
+    - name: Test Moodle integration tests
+      cmd: pl avc-moodle-test --quick
+      validate:
+        - Tests run:
+            expect_exit: 0
+
+  success_criteria:
+    all_required:
+      - All avc-moodle-status cross-validations pass
+      - Moodle connection verified (if configured)
+```
+
+### S14: Infrastructure & Communication (with storage cross-validation)
 
 ```yaml
 scenario:
@@ -646,6 +1119,17 @@ scenario:
     - storage.sh
     - schedule.sh
 
+  live_state_commands:
+    - command: pl storage
+      cross_validation_ref: section 4.6
+      validates:
+        - Site files size
+        - Site files count
+        - Database size
+        - Total site size
+        - Backup count
+        - Available disk space
+
   steps:
     - name: Test SSH setup
       cmd: pl setup-ssh --check
@@ -658,24 +1142,49 @@ scenario:
             cmd: test -f ~/.ssh/config
             expect_exit: 0
 
-    - name: Test email configuration
-      cmd: pl install d verify-s14 --auto && pl email verify-s14 --test
+    - name: Install test site for storage verification
+      cmd: pl install d verify-s14 --auto
       timeout: 180
+
+    - name: Test email configuration
+      cmd: pl email verify-s14 --test
       validate:
         - SMTP configured:
             cmd: cd sites/verify-s14 && ddev drush config:get smtp.settings smtp_on 2>/dev/null || echo "not configured"
         - Test email sent:
             expect_contains: "test"
 
-    - name: Test storage management
-      cmd: pl storage verify-s14
-      expect_exit: 0
-      validate:
-        - Storage reported:
-            expect_contains: "MB"
-        - Files directory measured:
-            cmd: du -sh sites/verify-s14/html/sites/default/files 2>/dev/null
-            expect_exit: 0
+    # storage cross-validation
+    - name: Cross-validate site files size
+      live_state:
+        command: pl storage verify-s14 --json | jq '.files_mb'
+        verify: du -sm sites/verify-s14/html/sites/default/files 2>/dev/null | cut -f1
+        tolerance: 1
+
+    - name: Cross-validate site files count
+      live_state:
+        command: pl storage verify-s14 --json | jq '.files_count'
+        verify: find sites/verify-s14/html/sites/default/files -type f 2>/dev/null | wc -l
+        tolerance: 0
+
+    - name: Cross-validate database size
+      live_state:
+        command: pl storage verify-s14 --json | jq '.database_mb'
+        verify: |
+          cd sites/verify-s14 && ddev mysql -N -e "SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 0) FROM information_schema.tables WHERE table_schema = DATABASE();"
+        tolerance: 1
+
+    - name: Cross-validate total site size
+      live_state:
+        command: pl storage verify-s14 --json | jq '.total_mb'
+        verify: du -sm sites/verify-s14 2>/dev/null | cut -f1
+        tolerance: 5
+
+    - name: Cross-validate available disk space
+      live_state:
+        command: pl storage --json | jq '.available_gb'
+        verify: df -BG . | tail -1 | awk '{print $4}' | tr -d 'G'
+        tolerance: 1
 
     - name: Test scheduling system
       cmd: pl schedule --list
@@ -693,6 +1202,15 @@ scenario:
         - Site cron configured:
             cmd: cd sites/verify-s14 && ddev drush cron:status 2>/dev/null || ddev drush status
             expect_exit: 0
+
+  cleanup:
+    - cmd: pl delete verify-s14 --yes 2>/dev/null || true
+
+  success_criteria:
+    all_required:
+      - All storage cross-validations pass
+      - SSH setup verified
+      - Email configuration verified
 ```
 
 ### S15: Migration Pipeline
@@ -760,7 +1278,7 @@ scenario:
             expect_contains: "source"
 ```
 
-### S16: Content & Theming
+### S16: Content & Theming (with report cross-validation)
 
 ```yaml
 scenario:
@@ -774,6 +1292,27 @@ scenario:
     - produce.sh
     - report.sh
     - theme.sh
+
+  live_state_commands:
+    - command: pl report
+      cross_validation_ref: section 4.7
+      validates:
+        - Total nodes
+        - Nodes by type
+        - Published nodes
+        - Total users
+        - Active users
+        - Users by role
+        - Total comments
+        - Total files
+        - Enabled modules count
+        - Last cron run
+
+    - command: pl status
+      cross_validation_ref: section 4.3
+      validates:
+        - Node count accuracy
+        - User count accuracy
 
   steps:
     - name: Setup test site
@@ -794,14 +1333,48 @@ scenario:
             cmd: cd sites/verify-s16 && ddev drush sqlq "SELECT COUNT(*) FROM node_field_data"
             expect_min: 1
 
-    - name: Test reporting
-      cmd: pl report verify-s16
-      expect_exit: 0
-      validate:
-        - Report generated:
-            expect_contains: "report"
-        - Site stats included:
-            expect_contains: "node"
+    # report cross-validation
+    - name: Cross-validate total nodes
+      live_state:
+        command: pl report verify-s16 --json | jq '.content.nodes.total'
+        verify: cd sites/verify-s16 && ddev drush sqlq "SELECT COUNT(*) FROM node_field_data"
+        tolerance: 0
+
+    - name: Cross-validate published nodes
+      live_state:
+        command: pl report verify-s16 --json | jq '.content.nodes.published'
+        verify: cd sites/verify-s16 && ddev drush sqlq "SELECT COUNT(*) FROM node_field_data WHERE status=1"
+        tolerance: 0
+
+    - name: Cross-validate total users
+      live_state:
+        command: pl report verify-s16 --json | jq '.users.total'
+        verify: cd sites/verify-s16 && ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE uid > 0"
+        tolerance: 0
+
+    - name: Cross-validate active users
+      live_state:
+        command: pl report verify-s16 --json | jq '.users.active'
+        verify: cd sites/verify-s16 && ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE uid > 0 AND status = 1"
+        tolerance: 0
+
+    - name: Cross-validate total files
+      live_state:
+        command: pl report verify-s16 --json | jq '.files.total'
+        verify: cd sites/verify-s16 && ddev drush sqlq "SELECT COUNT(*) FROM file_managed"
+        tolerance: 0
+
+    - name: Cross-validate enabled modules count
+      live_state:
+        command: pl report verify-s16 --json | jq '.modules.enabled'
+        verify: cd sites/verify-s16 && ddev drush pm:list --status=enabled --format=list | wc -l
+        tolerance: 0
+
+    - name: Cross-validate last cron run
+      live_state:
+        command: pl report verify-s16 --json | jq -r '.cron.last_run'
+        verify: cd sites/verify-s16 && ddev drush state:get system.cron_last --format=string
+        tolerance: 60
 
     - name: Export report
       cmd: pl report verify-s16 --export
@@ -827,12 +1400,28 @@ scenario:
             cmd: cd sites/verify-s16 && ddev drush config:get system.theme default
             expect_exit: 0
 
-    - name: Verify pl status shows content metrics
-      cmd: pl status -s verify-s16 --json
-      validate:
-        - Node count reported:
-            extract: .nodes
-            expect_type: number
+    # status cross-validation for content metrics
+    - name: Cross-validate pl status node count
+      live_state:
+        command: pl status -s verify-s16 --json | jq '.nodes'
+        verify: cd sites/verify-s16 && ddev drush sqlq "SELECT COUNT(*) FROM node_field_data"
+        tolerance: 0
+
+    - name: Cross-validate pl status user count
+      live_state:
+        command: pl status -s verify-s16 --json | jq '.users'
+        verify: cd sites/verify-s16 && ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE uid > 0"
+        tolerance: 0
+
+  cleanup:
+    - cmd: pl delete verify-s16 --yes 2>/dev/null || true
+
+  success_criteria:
+    all_required:
+      - All report cross-validations pass
+      - All status cross-validations pass
+      - Content generation successful
+      - Theme management verified
 ```
 
 ### S17: Upstream & Maintenance
@@ -999,6 +1588,647 @@ status_verification:
           - DDEV running: ddev describe {site} | grep -q "running"
           - DB connected: ddev drush status --field=db-status | grep -q "Connected"
           - Drupal bootstrapped: ddev drush status --field=bootstrap | grep -q "Successful"
+```
+
+### 4.4 Live State Commands Catalog
+
+Live state commands report on current system state and are critical for verification cross-validation. Each command's output must be verifiable against actual system queries.
+
+```yaml
+live_state_commands:
+  # Commands that report live state (not perform operations)
+  catalog:
+    - command: pl status
+      purpose: Site health, user/node counts, database size
+      scenario: S2, S3, S4, S6, S9, S10, S16, S17
+      cross_validation: section 4.3
+
+    - command: pl doctor
+      purpose: System dependencies, DDEV health, environment checks
+      scenario: S1
+      cross_validation: section 4.5
+
+    - command: pl storage
+      purpose: Disk usage, file counts, backup sizes
+      scenario: S14
+      cross_validation: section 4.6
+
+    - command: pl report
+      purpose: Site statistics, content metrics, activity logs
+      scenario: S16
+      cross_validation: section 4.7
+
+    - command: pl security-check
+      purpose: Security updates, vulnerability status, permissions
+      scenario: S7
+      cross_validation: section 4.8
+
+    - command: pl seo-check
+      purpose: Meta tags, sitemap, robots.txt, page speed
+      scenario: S8
+      cross_validation: section 4.9
+
+    - command: pl testos
+      purpose: Docker health, filesystem permissions, OS state
+      scenario: S8
+      cross_validation: section 4.10
+
+    - command: pl badges
+      purpose: Verification coverage percentages, test results
+      scenario: S8
+      cross_validation: section 4.11
+
+    - command: pl avc-moodle-status
+      purpose: Moodle integration state, sync status
+      scenario: S11
+      cross_validation: section 4.12
+
+  verification_principle: |
+    Every live state command MUST be cross-validated against the actual
+    system state it claims to report. If pl storage says "150MB files",
+    we verify with: du -sh sites/{site}/html/sites/default/files
+```
+
+### 4.5 pl doctor Cross-Validation
+
+```yaml
+doctor_verification:
+  # Verify pl doctor accurately reports system state
+  cross_validate:
+    - name: Docker availability
+      doctor_cmd: pl doctor --json | jq '.docker.available'
+      verify_cmd: docker --version >/dev/null 2>&1 && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Docker running
+      doctor_cmd: pl doctor --json | jq '.docker.running'
+      verify_cmd: docker info >/dev/null 2>&1 && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: DDEV version
+      doctor_cmd: pl doctor --json | jq -r '.ddev.version'
+      verify_cmd: ddev version --json-output | jq -r '.raw'
+      tolerance: 0
+
+    - name: DDEV running projects
+      doctor_cmd: pl doctor --json | jq '.ddev.running_projects'
+      verify_cmd: ddev list --json-output 2>/dev/null | jq '[.raw[] | select(.status == "running")] | length'
+      tolerance: 0
+
+    - name: PHP version
+      doctor_cmd: pl doctor --json | jq -r '.php.version'
+      verify_cmd: php -r "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;"
+      tolerance: 0
+
+    - name: Composer available
+      doctor_cmd: pl doctor --json | jq '.composer.available'
+      verify_cmd: which composer >/dev/null 2>&1 && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Git version
+      doctor_cmd: pl doctor --json | jq -r '.git.version'
+      verify_cmd: git --version | grep -oP '\d+\.\d+\.\d+'
+      tolerance: 0
+
+    - name: Disk space available
+      doctor_cmd: pl doctor --json | jq '.disk.available_gb'
+      verify_cmd: df -BG . | tail -1 | awk '{print $4}' | tr -d 'G'
+      tolerance: 1  # Allow 1GB variance
+
+    - name: Memory available
+      doctor_cmd: pl doctor --json | jq '.memory.available_mb'
+      verify_cmd: free -m | awk '/^Mem:/{print $7}'
+      tolerance: 100  # Allow 100MB variance (dynamic)
+```
+
+### 4.6 pl storage Cross-Validation
+
+```yaml
+storage_verification:
+  # Verify pl storage accurately reports disk usage
+  cross_validate:
+    - name: Site files size
+      storage_cmd: pl storage {site} --json | jq '.files_mb'
+      verify_cmd: |
+        du -sm sites/{site}/html/sites/default/files 2>/dev/null | cut -f1
+      tolerance: 1  # Allow 1MB difference
+
+    - name: Site files count
+      storage_cmd: pl storage {site} --json | jq '.files_count'
+      verify_cmd: |
+        find sites/{site}/html/sites/default/files -type f 2>/dev/null | wc -l
+      tolerance: 0
+
+    - name: Database size
+      storage_cmd: pl storage {site} --json | jq '.database_mb'
+      verify_cmd: |
+        cd sites/{site} && ddev mysql -N -e "SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 0) FROM information_schema.tables WHERE table_schema = DATABASE();"
+      tolerance: 1
+
+    - name: Total site size
+      storage_cmd: pl storage {site} --json | jq '.total_mb'
+      verify_cmd: |
+        du -sm sites/{site} 2>/dev/null | cut -f1
+      tolerance: 5  # Allow 5MB variance (caches, logs)
+
+    - name: Backup count
+      storage_cmd: pl storage {site} --json | jq '.backup_count'
+      verify_cmd: |
+        ls -1 sitebackups/{site}-*.tar.gz 2>/dev/null | wc -l
+      tolerance: 0
+
+    - name: Backup total size
+      storage_cmd: pl storage {site} --json | jq '.backup_mb'
+      verify_cmd: |
+        du -cm sitebackups/{site}-*.tar.gz 2>/dev/null | tail -1 | cut -f1
+      tolerance: 1
+
+    - name: Available disk space
+      storage_cmd: pl storage --json | jq '.available_gb'
+      verify_cmd: df -BG . | tail -1 | awk '{print $4}' | tr -d 'G'
+      tolerance: 1
+```
+
+### 4.7 pl report Cross-Validation
+
+```yaml
+report_verification:
+  # Verify pl report accurately reports site statistics
+  cross_validate:
+    - name: Total nodes
+      report_cmd: pl report {site} --json | jq '.content.nodes.total'
+      verify_cmd: |
+        cd sites/{site} && ddev drush sqlq "SELECT COUNT(*) FROM node_field_data"
+      tolerance: 0
+
+    - name: Nodes by type
+      report_cmd: pl report {site} --json | jq '.content.nodes.by_type.article'
+      verify_cmd: |
+        cd sites/{site} && ddev drush sqlq "SELECT COUNT(*) FROM node_field_data WHERE type='article'"
+      tolerance: 0
+
+    - name: Published nodes
+      report_cmd: pl report {site} --json | jq '.content.nodes.published'
+      verify_cmd: |
+        cd sites/{site} && ddev drush sqlq "SELECT COUNT(*) FROM node_field_data WHERE status=1"
+      tolerance: 0
+
+    - name: Total users
+      report_cmd: pl report {site} --json | jq '.users.total'
+      verify_cmd: |
+        cd sites/{site} && ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE uid > 0"
+      tolerance: 0
+
+    - name: Active users
+      report_cmd: pl report {site} --json | jq '.users.active'
+      verify_cmd: |
+        cd sites/{site} && ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE uid > 0 AND status = 1"
+      tolerance: 0
+
+    - name: Users by role
+      report_cmd: pl report {site} --json | jq '.users.by_role.administrator'
+      verify_cmd: |
+        cd sites/{site} && ddev drush sqlq "SELECT COUNT(*) FROM user__roles WHERE roles_target_id='administrator'"
+      tolerance: 0
+
+    - name: Total comments
+      report_cmd: pl report {site} --json | jq '.content.comments.total'
+      verify_cmd: |
+        cd sites/{site} && ddev drush sqlq "SELECT COUNT(*) FROM comment_field_data" 2>/dev/null || echo "0"
+      tolerance: 0
+
+    - name: Total files
+      report_cmd: pl report {site} --json | jq '.files.total'
+      verify_cmd: |
+        cd sites/{site} && ddev drush sqlq "SELECT COUNT(*) FROM file_managed"
+      tolerance: 0
+
+    - name: Enabled modules count
+      report_cmd: pl report {site} --json | jq '.modules.enabled'
+      verify_cmd: |
+        cd sites/{site} && ddev drush pm:list --status=enabled --format=list | wc -l
+      tolerance: 0
+
+    - name: Last cron run
+      report_cmd: pl report {site} --json | jq -r '.cron.last_run'
+      verify_cmd: |
+        cd sites/{site} && ddev drush state:get system.cron_last --format=string
+      tolerance: 60  # Allow 60 second variance
+```
+
+### 4.8 pl security-check Cross-Validation
+
+```yaml
+security_check_verification:
+  # Verify pl security-check accurately reports security state
+  cross_validate:
+    - name: Core update available
+      security_cmd: pl security-check {site} --json | jq '.updates.core.available'
+      verify_cmd: |
+        cd sites/{site} && ddev drush pm:security --format=json 2>/dev/null | jq '.[] | select(.name == "drupal") | .version' | wc -l | xargs -I{} test {} -gt 0 && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Security updates count
+      security_cmd: pl security-check {site} --json | jq '.updates.security_count'
+      verify_cmd: |
+        cd sites/{site} && ddev drush pm:security --format=json 2>/dev/null | jq 'length'
+      tolerance: 0
+
+    - name: Outdated modules count
+      security_cmd: pl security-check {site} --json | jq '.updates.outdated_count'
+      verify_cmd: |
+        cd sites/{site} && ddev composer outdated --direct --format=json 2>/dev/null | jq '.installed | length'
+      tolerance: 0
+
+    - name: Files directory writable
+      security_cmd: pl security-check {site} --json | jq '.permissions.files_writable'
+      verify_cmd: |
+        test -w sites/{site}/html/sites/default/files && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Settings.php protected
+      security_cmd: pl security-check {site} --json | jq '.permissions.settings_protected'
+      verify_cmd: |
+        perm=$(stat -c "%a" sites/{site}/html/sites/default/settings.php 2>/dev/null)
+        [[ "$perm" == "444" || "$perm" == "440" || "$perm" == "400" ]] && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Debug mode disabled
+      security_cmd: pl security-check {site} --json | jq '.config.debug_disabled'
+      verify_cmd: |
+        cd sites/{site} && ddev drush config:get system.logging error_level --format=string 2>/dev/null | grep -q "hide" && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: HTTPS enforced
+      security_cmd: pl security-check {site} --json | jq '.config.https_enforced'
+      verify_cmd: |
+        cd sites/{site} && ddev drush config:get seckit.settings seckit_ssl.hsts --format=string 2>/dev/null | grep -q "1" && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: User registration restricted
+      security_cmd: pl security-check {site} --json | jq '.config.registration_restricted'
+      verify_cmd: |
+        cd sites/{site} && ddev drush config:get user.settings register --format=string 2>/dev/null | grep -qv "visitors" && echo "true" || echo "false"
+      tolerance: 0
+```
+
+### 4.9 pl seo-check Cross-Validation
+
+```yaml
+seo_check_verification:
+  # Verify pl seo-check accurately reports SEO state
+  cross_validate:
+    - name: Meta title present
+      seo_cmd: pl seo-check {site} --json | jq '.meta.title_present'
+      verify_cmd: |
+        curl -s https://{site}.ddev.site 2>/dev/null | grep -q "<title>" && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Meta description present
+      seo_cmd: pl seo-check {site} --json | jq '.meta.description_present'
+      verify_cmd: |
+        curl -s https://{site}.ddev.site 2>/dev/null | grep -qi 'name="description"' && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Meta tags count
+      seo_cmd: pl seo-check {site} --json | jq '.meta.count'
+      verify_cmd: |
+        curl -s https://{site}.ddev.site 2>/dev/null | grep -c "<meta" || echo "0"
+      tolerance: 2  # Allow variance for dynamic meta
+
+    - name: Sitemap accessible
+      seo_cmd: pl seo-check {site} --json | jq '.sitemap.accessible'
+      verify_cmd: |
+        curl -s -o /dev/null -w "%{http_code}" https://{site}.ddev.site/sitemap.xml 2>/dev/null | grep -q "200" && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Sitemap URL count
+      seo_cmd: pl seo-check {site} --json | jq '.sitemap.url_count'
+      verify_cmd: |
+        curl -s https://{site}.ddev.site/sitemap.xml 2>/dev/null | grep -c "<loc>" || echo "0"
+      tolerance: 5  # Allow variance for dynamic content
+
+    - name: Robots.txt accessible
+      seo_cmd: pl seo-check {site} --json | jq '.robots.accessible'
+      verify_cmd: |
+        curl -s -o /dev/null -w "%{http_code}" https://{site}.ddev.site/robots.txt 2>/dev/null | grep -q "200" && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Canonical URL present
+      seo_cmd: pl seo-check {site} --json | jq '.meta.canonical_present'
+      verify_cmd: |
+        curl -s https://{site}.ddev.site 2>/dev/null | grep -qi 'rel="canonical"' && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Open Graph tags present
+      seo_cmd: pl seo-check {site} --json | jq '.meta.og_present'
+      verify_cmd: |
+        curl -s https://{site}.ddev.site 2>/dev/null | grep -qi 'property="og:' && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Page load time
+      seo_cmd: pl seo-check {site} --json | jq '.performance.load_time_ms'
+      verify_cmd: |
+        curl -s -o /dev/null -w "%{time_total}" https://{site}.ddev.site 2>/dev/null | awk '{printf "%.0f", $1 * 1000}'
+      tolerance: 500  # Allow 500ms variance
+```
+
+### 4.10 pl testos Cross-Validation
+
+```yaml
+testos_verification:
+  # Verify pl testos accurately reports OS/container state
+  cross_validate:
+    - name: Docker container running
+      testos_cmd: pl testos {site} --json | jq '.docker.container_running'
+      verify_cmd: |
+        docker ps --filter "name=ddev-{site}" --format "{{.Status}}" | grep -q "Up" && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Docker container healthy
+      testos_cmd: pl testos {site} --json | jq '.docker.container_healthy'
+      verify_cmd: |
+        docker ps --filter "name=ddev-{site}-web" --format "{{.Status}}" | grep -q "healthy" && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Files directory permissions
+      testos_cmd: pl testos {site} --json | jq -r '.filesystem.files_permissions'
+      verify_cmd: |
+        stat -c "%a" sites/{site}/html/sites/default/files 2>/dev/null
+      tolerance: 0
+
+    - name: Files directory owner
+      testos_cmd: pl testos {site} --json | jq -r '.filesystem.files_owner'
+      verify_cmd: |
+        stat -c "%U" sites/{site}/html/sites/default/files 2>/dev/null
+      tolerance: 0
+
+    - name: Temp directory writable
+      testos_cmd: pl testos {site} --json | jq '.filesystem.temp_writable'
+      verify_cmd: |
+        cd sites/{site} && ddev exec "test -w /tmp && echo true || echo false"
+      tolerance: 0
+
+    - name: PHP memory limit
+      testos_cmd: pl testos {site} --json | jq -r '.php.memory_limit'
+      verify_cmd: |
+        cd sites/{site} && ddev exec "php -r 'echo ini_get(\"memory_limit\");'"
+      tolerance: 0
+
+    - name: PHP max execution time
+      testos_cmd: pl testos {site} --json | jq '.php.max_execution_time'
+      verify_cmd: |
+        cd sites/{site} && ddev exec "php -r 'echo ini_get(\"max_execution_time\");'"
+      tolerance: 0
+
+    - name: MySQL running
+      testos_cmd: pl testos {site} --json | jq '.database.mysql_running'
+      verify_cmd: |
+        cd sites/{site} && ddev mysql -e "SELECT 1" >/dev/null 2>&1 && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Redis available (if configured)
+      testos_cmd: pl testos {site} --json | jq '.services.redis_available'
+      verify_cmd: |
+        cd sites/{site} && ddev redis-cli ping 2>/dev/null | grep -q "PONG" && echo "true" || echo "false"
+      tolerance: 0
+
+    - name: Mailpit available
+      testos_cmd: pl testos {site} --json | jq '.services.mailpit_available'
+      verify_cmd: |
+        curl -s -o /dev/null -w "%{http_code}" https://{site}.ddev.site:8026 2>/dev/null | grep -q "200" && echo "true" || echo "false"
+      tolerance: 0
+```
+
+### 4.11 pl badges Cross-Validation
+
+```yaml
+badges_verification:
+  # Verify pl badges accurately reports verification coverage
+  cross_validate:
+    - name: Machine coverage percentage
+      badges_cmd: pl badges --json | jq '.machine.coverage'
+      verify_cmd: |
+        # Recompute from verification checklist
+        total=$(yq '.checklist | length' lib/verification-checklist.yml)
+        passed=$(grep -c "status: passed" .logs/verification/latest.log 2>/dev/null || echo "0")
+        echo "scale=0; $passed * 100 / $total" | bc
+      tolerance: 1
+
+    - name: Machine items verified
+      badges_cmd: pl badges --json | jq '.machine.items_verified'
+      verify_cmd: |
+        grep -c "status: passed" .logs/verification/latest.log 2>/dev/null || echo "0"
+      tolerance: 0
+
+    - name: AI coverage percentage
+      badges_cmd: pl badges --json | jq '.ai.coverage'
+      verify_cmd: |
+        # Recompute from scenario results
+        if [[ -f .verification-checkpoint.yml ]]; then
+          scenarios_complete=$(yq '.completed_scenarios | length' .verification-checkpoint.yml)
+          total_scenarios=17
+          echo "scale=0; $scenarios_complete * 100 / $total_scenarios" | bc
+        else
+          echo "0"
+        fi
+      tolerance: 1
+
+    - name: AI scenarios complete
+      badges_cmd: pl badges --json | jq '.ai.scenarios_complete'
+      verify_cmd: |
+        yq '.completed_scenarios | length' .verification-checkpoint.yml 2>/dev/null || echo "0"
+      tolerance: 0
+
+    - name: Human coverage percentage
+      badges_cmd: pl badges --json | jq '.human.coverage'
+      verify_cmd: |
+        # Count manual verification entries
+        total=$(yq '.checklist | length' lib/verification-checklist.yml)
+        manual=$(grep -c "verified_by: human" .logs/verification/manual-*.log 2>/dev/null || echo "0")
+        echo "scale=0; $manual * 100 / $total" | bc
+      tolerance: 1
+
+    - name: Peak machine coverage
+      badges_cmd: pl badges --json | jq '.peaks.machine'
+      verify_cmd: |
+        yq '.peaks.machine.coverage' .verification-peaks.yml 2>/dev/null || echo "0"
+      tolerance: 0
+
+    - name: Peak AI coverage
+      badges_cmd: pl badges --json | jq '.peaks.ai'
+      verify_cmd: |
+        yq '.peaks.ai.coverage' .verification-peaks.yml 2>/dev/null || echo "0"
+      tolerance: 0
+
+    - name: Badge files exist
+      badges_cmd: pl badges --json | jq '.files.machine_svg'
+      verify_cmd: |
+        test -f .verification-badges/machine.svg && echo "true" || echo "false"
+      tolerance: 0
+```
+
+### 4.12 pl avc-moodle-status Cross-Validation
+
+```yaml
+avc_moodle_status_verification:
+  # Verify pl avc-moodle-status accurately reports Moodle integration state
+  cross_validate:
+    - name: Moodle connection status
+      moodle_cmd: pl avc-moodle-status --json | jq '.connection.status'
+      verify_cmd: |
+        # Test actual Moodle API connection
+        source .secrets.yml 2>/dev/null
+        curl -s -o /dev/null -w "%{http_code}" "${MOODLE_URL}/webservice/rest/server.php?wstoken=${MOODLE_TOKEN}&wsfunction=core_webservice_get_site_info&moodlewsrestformat=json" 2>/dev/null | grep -q "200" && echo "connected" || echo "disconnected"
+      tolerance: 0
+
+    - name: Last sync timestamp
+      moodle_cmd: pl avc-moodle-status --json | jq -r '.sync.last_sync'
+      verify_cmd: |
+        # Check actual sync log
+        stat -c "%Y" .logs/moodle/last-sync.log 2>/dev/null || echo "0"
+      tolerance: 60  # Allow 60 second variance
+
+    - name: Users synced count
+      moodle_cmd: pl avc-moodle-status --json | jq '.sync.users_synced'
+      verify_cmd: |
+        # Count users with Moodle ID in Drupal
+        cd sites/avc && ddev drush sqlq "SELECT COUNT(*) FROM user__field_moodle_id WHERE field_moodle_id_value IS NOT NULL" 2>/dev/null || echo "0"
+      tolerance: 0
+
+    - name: Courses synced count
+      moodle_cmd: pl avc-moodle-status --json | jq '.sync.courses_synced'
+      verify_cmd: |
+        # Count Moodle courses in Drupal
+        cd sites/avc && ddev drush sqlq "SELECT COUNT(*) FROM node_field_data WHERE type='moodle_course'" 2>/dev/null || echo "0"
+      tolerance: 0
+
+    - name: Pending enrollments
+      moodle_cmd: pl avc-moodle-status --json | jq '.queue.pending_enrollments'
+      verify_cmd: |
+        # Check queue table
+        cd sites/avc && ddev drush sqlq "SELECT COUNT(*) FROM queue WHERE name='moodle_enrollment'" 2>/dev/null || echo "0"
+      tolerance: 0
+
+    - name: Sync errors count
+      moodle_cmd: pl avc-moodle-status --json | jq '.errors.count'
+      verify_cmd: |
+        # Count recent errors in log
+        grep -c "ERROR" .logs/moodle/sync-*.log 2>/dev/null | tail -1 || echo "0"
+      tolerance: 0
+
+    - name: API rate limit remaining
+      moodle_cmd: pl avc-moodle-status --json | jq '.api.rate_limit_remaining'
+      verify_cmd: |
+        # Check actual Moodle rate limit (if available)
+        source .secrets.yml 2>/dev/null
+        curl -s -I "${MOODLE_URL}/webservice/rest/server.php?wstoken=${MOODLE_TOKEN}&wsfunction=core_webservice_get_site_info&moodlewsrestformat=json" 2>/dev/null | grep -i "x-ratelimit-remaining" | awk '{print $2}' || echo "unknown"
+      tolerance: 10
+```
+
+### 4.13 Live State Command Integration Matrix
+
+This matrix shows how each live state command integrates with verification scenarios:
+
+```
+┌─────────────────────┬────────────────────────────────────────────────────────────┐
+│ Command             │ Scenario Integration                                        │
+├─────────────────────┼────────────────────────────────────────────────────────────┤
+│ pl status           │ S2: Baseline capture, S3: Pre/post restore comparison,     │
+│                     │ S4: Copy verification, S6: Import verification,            │
+│                     │ S9: Config change verification, S10: Deployment state,     │
+│                     │ S16: Content metrics, S17: Todo integration                │
+├─────────────────────┼────────────────────────────────────────────────────────────┤
+│ pl doctor           │ S1: Foundation verification (Docker, DDEV, PHP, Composer)  │
+│                     │ Pre-scenario gate: Must pass before any scenario runs      │
+├─────────────────────┼────────────────────────────────────────────────────────────┤
+│ pl storage          │ S14: Storage verification, S3: Backup size verification,   │
+│                     │ Resource monitoring throughout all scenarios               │
+├─────────────────────┼────────────────────────────────────────────────────────────┤
+│ pl report           │ S16: Content metrics, S3: Node/user counts,                │
+│                     │ Post-operation statistics in all content scenarios         │
+├─────────────────────┼────────────────────────────────────────────────────────────┤
+│ pl security-check   │ S7: Security hardening verification,                       │
+│                     │ Post-install security baseline in S2                       │
+├─────────────────────┼────────────────────────────────────────────────────────────┤
+│ pl seo-check        │ S8: QA suite verification,                                 │
+│                     │ Post-deployment SEO state in S5, S10                       │
+├─────────────────────┼────────────────────────────────────────────────────────────┤
+│ pl testos           │ S8: OS-level verification,                                 │
+│                     │ Container health monitoring throughout all scenarios       │
+├─────────────────────┼────────────────────────────────────────────────────────────┤
+│ pl badges           │ S8: Badge generation verification,                         │
+│                     │ Final coverage summary after full verification run         │
+├─────────────────────┼────────────────────────────────────────────────────────────┤
+│ pl avc-moodle-status│ S11: Moodle integration verification                       │
+│                     │ AVC-specific sync state monitoring                         │
+└─────────────────────┴────────────────────────────────────────────────────────────┘
+```
+
+### 4.14 Cross-Validation Execution Protocol
+
+```yaml
+cross_validation_protocol:
+  # Standard protocol for running cross-validation
+
+  execution_order:
+    1. Run live state command with --json flag
+    2. Parse JSON output and extract target values
+    3. Run corresponding verify_cmd
+    4. Compare values within tolerance
+    5. Log result (pass/fail/variance)
+    6. On failure: flag for investigation
+
+  failure_handling:
+    minor_variance:
+      # Within 2x tolerance
+      action: log_warning
+      continue: true
+      message: "{command} reported {reported}, actual is {actual} (within tolerance)"
+
+    major_variance:
+      # Outside tolerance
+      action: log_error
+      continue: true
+      auto_fix:
+        - Retry command after cache clear
+        - Check for stale data
+      message: "{command} MISMATCH: reported {reported}, actual is {actual}"
+
+    critical_failure:
+      # Command fails or returns invalid data
+      action: halt_scenario
+      continue: false
+      escalate: true
+      message: "{command} failed cross-validation - manual investigation required"
+
+  timing_considerations:
+    # Some values change rapidly
+    volatile_fields:
+      - memory_available  # Changes constantly
+      - load_time_ms      # Varies per request
+      - last_cron_run     # Updates periodically
+
+    stable_fields:
+      - user_count        # Only changes with user operations
+      - node_count        # Only changes with content operations
+      - permissions       # Only changes with explicit chmod
+
+    strategy: |
+      For volatile fields: use wider tolerances and multiple samples
+      For stable fields: use zero tolerance and single verification
+
+  caching_awareness:
+    # Commands may cache results
+    force_fresh:
+      - Add --no-cache flag if available
+      - Clear relevant caches before verification
+      - Wait 2 seconds after cache clear
+
+    cache_aware_commands:
+      - pl status       # May cache for 60s
+      - pl storage      # May cache filesystem stats
+      - pl seo-check    # May cache HTTP responses
 ```
 
 ---

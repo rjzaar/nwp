@@ -10,6 +10,7 @@ This directory contains proposal documents for NWP features and enhancements.
 - **F05** - Security Headers & Hardening
 - **F07** - SEO & Search Engine Control
 - **F09** - Comprehensive Testing Infrastructure
+- **F12** - Unified Todo Command
 
 ### In Progress (see [roadmap.md](../governance/roadmap.md))
 - **F03** - Visual Regression Testing
@@ -33,7 +34,7 @@ This directory contains proposal documents for NWP features and enhancements.
 | Prefix | Meaning | Example |
 |--------|---------|---------|
 | **P##** | Core Phase Proposals | P01-P35 (all complete) |
-| **F##** | Feature Enhancements | F01-F11 (4 complete, 7 pending) |
+| **F##** | Feature Enhancements | F01-F12 (5 complete, 7 pending) |
 | **X##** | Experimental/Outlier | X01 (exploratory) |
 
 ## Lifecycle
@@ -44,4 +45,4 @@ This directory contains proposal documents for NWP features and enhancements.
 4. **COMPLETE** - Implemented and verified
 5. **Moved to milestones.md** - Archived as completed work
 
-Last Updated: 2026-01-14
+Last Updated: 2026-01-17

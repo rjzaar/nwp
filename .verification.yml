@@ -21,10 +21,10 @@ config:
       description: Round-trip test, integration
       typical_time: 120
 statistics:
-  total_items: 571
+  total_items: 575
   machine:
     verified: 22
-    coverage_percent: 3.9
+    coverage_percent: 3.8
   human:
     verified: 7
     coverage_percent: 1.2
@@ -95,9 +95,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-16T23:03:58+11:00'
-          depth: paranoid
-          duration_seconds: 3
+          verified_at: '2026-01-17T13:53:10+11:00'
+          depth: basic
+          duration_seconds: 9
     - text: Test Docker installation and verify ddev starts correctly
       completed: true
       completed_by: greg
@@ -23468,6 +23468,153 @@ features:
         Success: Pipe character injection is rejected'
       related_docs:
       - docs/SECURITY.md
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+  todo:
+    name: Todo Command (F12)
+    description: Unified todo command aggregating maintenance tasks from multiple sources
+    files:
+    - scripts/commands/todo.sh
+    - lib/todo-checks.sh
+    - lib/todo-tui.sh
+    - lib/todo-notify.sh
+    - lib/todo-autolog.sh
+    checklist:
+    - text: Run pl todo list and verify output shows todo items
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: bash -n scripts/commands/todo.sh
+              expect_exit: 0
+            - cmd: pl todo list 2>&1 | head -5
+              expect_exit: 0
+          standard:
+            commands:
+            - cmd: bash -n scripts/commands/todo.sh
+              expect_exit: 0
+            - cmd: bash -n lib/todo-checks.sh
+              expect_exit: 0
+            - cmd: pl todo list 2>&1 | head -5
+              expect_exit: 0
+          thorough:
+            commands:
+            - cmd: bash -n scripts/commands/todo.sh
+              expect_exit: 0
+            - cmd: bash -n lib/todo-checks.sh
+              expect_exit: 0
+            - cmd: bash -n lib/todo-tui.sh
+              expect_exit: 0
+            - cmd: bash -n lib/todo-notify.sh
+              expect_exit: 0
+            - cmd: bash -n lib/todo-autolog.sh
+              expect_exit: 0
+            - cmd: pl todo list 2>&1 | head -5
+              expect_exit: 0
+            - cmd: pl todo check --quiet 2>&1
+              expect_exit: 0
+        state:
+          verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
+      human:
+        auto_loggable: false
+      completed: false
+      completed_by: null
+      completed_at: null
+      how_to_verify: '1. Run: pl todo list
+
+        2. Verify output shows header and any todo items found
+
+        3. Run: pl todo check --quiet
+
+        4. Verify quiet output shows counts
+
+        Success: Todo list and check commands work correctly'
+      related_docs:
+      - docs/proposals/F12-todo-command.md
+    - text: Run pl todo help and verify documentation
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: pl todo --help 2>&1 | grep -q 'USAGE'
+              expect_exit: 0
+        state:
+          verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
+      human:
+        auto_loggable: false
+      completed: false
+      completed_by: null
+      completed_at: null
+      how_to_verify: '1. Run: pl todo --help
+
+        2. Verify help shows commands, options, categories, examples
+
+        Success: Help text is complete and accurate'
+      related_docs:
+      - docs/proposals/F12-todo-command.md
+    - text: Run pl todo check --json and verify JSON output
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: pl todo check --json 2>&1 | grep -q '"timestamp"'
+              expect_exit: 0
+        state:
+          verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
+      human:
+        auto_loggable: false
+      completed: false
+      completed_by: null
+      completed_at: null
+      how_to_verify: '1. Run: pl todo check --json
+
+        2. Verify output is valid JSON with timestamp, summary, items
+
+        Success: JSON output is well-formed'
+      related_docs:
+      - docs/proposals/F12-todo-command.md
+    - text: Verify todo configuration exists in example.cnwp.yml
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: grep -q 'todo:' example.cnwp.yml
+              expect_exit: 0
+            - cmd: grep -q 'thresholds:' example.cnwp.yml
+              expect_exit: 0
+        state:
+          verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
+      human:
+        auto_loggable: false
+      completed: false
+      completed_by: null
+      completed_at: null
+      how_to_verify: '1. Check example.cnwp.yml for todo section
+
+        2. Verify thresholds, auto_resolve, notifications sections exist
+
+        Success: Configuration schema is complete'
+      related_docs:
+      - docs/proposals/F12-todo-command.md
     verified: false
     verified_by: null
     verified_at: null

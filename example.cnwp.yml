@@ -218,6 +218,135 @@ settings:
       enabled: true              # [ACTIVE] Enable error reporting
       prompt_on_failure: true    # [ACTIVE] Prompt user to log failures
 
+  # === TODO SYSTEM [ACTIVE] ===
+  # Unified todo command that aggregates maintenance tasks from multiple sources
+  # See: docs/proposals/F12-todo-command.md for full specification
+  todo:
+    enabled: true                    # [ACTIVE] Master switch for todo system
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # THRESHOLD SETTINGS
+    # ═══════════════════════════════════════════════════════════════════════════
+    thresholds:
+      test_instance_warn_days: 7     # [ACTIVE] Days before test site shows as todo
+      test_instance_alert_days: 14   # [ACTIVE] Days before test site becomes HIGH priority
+      token_rotation_days: 90        # [ACTIVE] Days before token rotation reminder
+      backup_warn_days: 7            # [ACTIVE] Days without backup before warning
+      disk_warn_percent: 80          # [ACTIVE] Disk usage percentage for warning
+      disk_alert_percent: 90         # [ACTIVE] Disk usage percentage for HIGH priority
+      ssl_warn_days: 30              # [ACTIVE] Days before SSL expiry for warning
+      ssl_alert_days: 7              # [ACTIVE] Days before SSL expiry for HIGH priority
+      incomplete_install_hours: 24   # [ACTIVE] Hours before incomplete install is HIGH
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # AUTO-RESOLVE SETTINGS
+    # ═══════════════════════════════════════════════════════════════════════════
+    auto_resolve:
+      enabled: true                  # [ACTIVE] Enable auto-resolution of todos
+      git_issues: true               # [ACTIVE] Auto-resolve when GitLab issue closed
+      test_instances: true           # [ACTIVE] Auto-resolve when site deleted
+      token_rotation: true           # [ACTIVE] Auto-resolve when token updated
+      orphaned_sites: true           # [ACTIVE] Auto-resolve when registered or deleted
+      ghost_sites: true              # [ACTIVE] Auto-resolve when ddev cleaned
+      incomplete_installs: true      # [ACTIVE] Auto-resolve when install completes
+      missing_backups: true          # [ACTIVE] Auto-resolve when backup runs
+      missing_schedules: true        # [ACTIVE] Auto-resolve when schedule installed
+      security_updates: true         # [ACTIVE] Auto-resolve when updates applied
+      verification_fails: true       # [ACTIVE] Auto-resolve when tests pass
+      uncommitted_work: true         # [ACTIVE] Auto-resolve when committed
+      disk_usage: true               # [ACTIVE] Auto-resolve when space freed
+      ssl_expiring: true             # [ACTIVE] Auto-resolve when renewed
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # NOTIFICATION SETTINGS
+    # ═══════════════════════════════════════════════════════════════════════════
+    notifications:
+      enabled: false                 # [ACTIVE] Master switch for notifications
+
+      desktop:
+        enabled: false               # [ACTIVE] Desktop notifications (notify-send)
+        min_priority: high           # [ACTIVE] Minimum priority to notify (high/medium/low)
+
+      email:
+        enabled: false               # [ACTIVE] Email notifications
+        min_priority: high           # [ACTIVE] Minimum priority to email
+        recipient: ""                # [ACTIVE] Email address for notifications
+        smtp_profile: "default"      # [ACTIVE] SMTP profile from .secrets.yml
+
+      # When to send notifications
+      on_new_high: true              # [ACTIVE] Notify when new HIGH priority item
+      on_schedule_run: true          # [ACTIVE] Include in scheduled run summary
+      daily_digest: false            # [ACTIVE] Send daily digest of all items
+      digest_time: "08:00"           # [ACTIVE] Time for daily digest (HH:MM)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SCHEDULE SETTINGS
+    # ═══════════════════════════════════════════════════════════════════════════
+    schedule:
+      enabled: false                 # [ACTIVE] Enable scheduled todo checks
+      cron: "0 8 * * *"              # [ACTIVE] Cron expression (default: 8 AM daily)
+      log_file: "/var/log/nwp/todo.log"  # [ACTIVE] Log file for scheduled runs
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # GITLAB INTEGRATION
+    # ═══════════════════════════════════════════════════════════════════════════
+    gitlab:
+      enabled: true                  # [ACTIVE] Check GitLab issues
+      server: ""                     # [ACTIVE] GitLab server (default: from .secrets.yml)
+      project_ids: []                # [ACTIVE] Specific projects to check (empty = all accessible)
+      include_assigned: true         # [ACTIVE] Include issues assigned to you
+      include_unassigned: false      # [ACTIVE] Include unassigned issues
+      labels: []                     # [ACTIVE] Filter by labels (empty = all)
+      exclude_labels:                # [ACTIVE] Exclude issues with these labels
+        - "wontfix"
+        - "on-hold"
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # CATEGORY TOGGLES
+    # ═══════════════════════════════════════════════════════════════════════════
+    categories:
+      git_issues: true               # [ACTIVE] Check GitLab issues
+      test_instances: true           # [ACTIVE] Check for old test sites
+      token_rotation: true           # [ACTIVE] Check token ages
+      orphaned_sites: true           # [ACTIVE] Check for orphaned sites
+      ghost_sites: true              # [ACTIVE] Check for ghost DDEV sites
+      incomplete_installs: true      # [ACTIVE] Check for incomplete installations
+      missing_backups: true          # [ACTIVE] Check for missing backups
+      missing_schedules: true        # [ACTIVE] Check for missing backup schedules
+      security_updates: true         # [ACTIVE] Check for security updates
+      verification_fails: true       # [ACTIVE] Check for verification failures
+      uncommitted_work: true         # [ACTIVE] Check for uncommitted git changes
+      disk_usage: true               # [ACTIVE] Check disk usage
+      ssl_expiring: true             # [ACTIVE] Check SSL certificate expiry
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # TOKEN TRACKING
+    # ═══════════════════════════════════════════════════════════════════════════
+    tokens:
+      linode:
+        last_rotated: ""             # [ACTIVE] ISO8601 timestamp of last rotation
+        notes: ""                    # [ACTIVE] Notes about this token
+      cloudflare:
+        last_rotated: ""
+        notes: ""
+      gitlab:
+        last_rotated: ""
+        notes: ""
+      b2:
+        last_rotated: ""
+        notes: ""
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # IGNORED ITEMS
+    # ═══════════════════════════════════════════════════════════════════════════
+    ignored: []
+    # Example ignored item:
+    # - id: "ORP-001-oldsite"
+    #   reason: "Keeping for reference"
+    #   ignored_at: "2026-01-15T10:00:00Z"
+    #   ignored_by: "rob"
+    #   expires: ""                  # Optional: auto-unignore date
+
 ################################################################################
 # OTHER CODERS - Multi-Coder DNS Delegation
 ################################################################################

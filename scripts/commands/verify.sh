@@ -164,32 +164,33 @@ get_schema_version() {
     awk '/^version:/ {print $2; exit}' "$VERIFICATION_FILE"
 }
 
-# Get checklist items for a feature (v1 format - simple strings)
+# Get checklist items for a feature (v1/v3 format - extracts text field)
 get_feature_checklist() {
     local feature="$1"
 
     awk -v feature="$feature" '
     BEGIN { in_feature = 0; in_checklist = 0 }
-    /^  [a-z0-9_]+:/ {
-        gsub(/^  /, "")
-        gsub(/:.*/, "")
-        if ($0 == feature) {
-            in_feature = 1
-        } else if (in_feature) {
-            in_feature = 0
-            in_checklist = 0
-        }
+    /^  / && $0 ~ "^  " feature ":$" {
+        in_feature = 1
+        next
+    }
+    in_feature && /^  [a-z_]+:$/ {
+        # Another feature started - exit
+        in_feature = 0
+        in_checklist = 0
     }
     in_feature && /^    checklist:/ {
         in_checklist = 1
         next
     }
-    in_feature && in_checklist && /^      - / {
-        gsub(/^      - "?/, "")
-        gsub(/"$/, "")
-        print
+    in_feature && in_checklist && /^    - text:/ {
+        line = $0
+        gsub(/^    - text: */, "", line)
+        gsub(/^"/, "", line)
+        gsub(/"$/, "", line)
+        print line
     }
-    in_feature && in_checklist && /^    [a-z]/ {
+    in_feature && in_checklist && /^    [a-z]/ && !/^    - / && !/^    checklist:/ {
         in_checklist = 0
     }
     ' "$VERIFICATION_FILE"
@@ -2825,7 +2826,7 @@ has_item_machine_checks() {
         next
     }
     in_feature && /^    checklist:/ { in_checklist = 1; item_count = 0; next }
-    in_feature && in_checklist && /^      - / {
+    in_feature && in_checklist && /^    - / {
         if (item_count == idx) {
             in_machine = 0
             in_checks = 0
@@ -2834,11 +2835,11 @@ has_item_machine_checks() {
         next
     }
     in_feature && in_checklist && item_count == idx + 1 {
-        if (/^        machine:/) { in_machine = 1; next }
-        if (in_machine && /^          checks:/) { in_checks = 1; next }
-        if (in_checks && /^            '"$depth"':/) { found = 1; exit }
-        if (/^        [a-z]/ && !/^        machine:/) { in_machine = 0; in_checks = 0 }
-        if (/^      - /) { exit }
+        if (/^      machine:/) { in_machine = 1; next }
+        if (in_machine && /^        checks:/) { in_checks = 1; next }
+        if (in_checks && /^          '"$depth"':/) { found = 1; exit }
+        if (/^      [a-z]/ && !/^      machine:/) { in_machine = 0; in_checks = 0 }
+        if (/^    - /) { exit }
     }
     END { exit (found ? 0 : 1) }
     ' "$VERIFICATION_FILE"

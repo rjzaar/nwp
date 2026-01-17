@@ -44,6 +44,8 @@ sites/*
 !.verification.yml
 !.badges.json
 !migrate-verification-v2.sh
+!.verification-scenarios/
+!.verification-scenarios/**
 
 # Documentation and metadata
 !README.md

@@ -3030,6 +3030,91 @@ execute_item_machine_checks() {
     fi
 }
 
+################################################################################
+# AI-Powered Deep Verification (P51)
+################################################################################
+
+# Run AI verification scenarios
+# Usage: run_ai_verification [--dry-run] [--resume] [--fix] [--scenario=ID]
+run_ai_verification() {
+    # Source scenario library
+    if [[ -f "$PROJECT_ROOT/lib/verify-scenarios.sh" ]]; then
+        source "$PROJECT_ROOT/lib/verify-scenarios.sh"
+    else
+        echo -e "${RED}Error:${NC} AI verification library not found"
+        echo "Expected: $PROJECT_ROOT/lib/verify-scenarios.sh"
+        echo ""
+        echo "P51 AI verification is not fully implemented yet."
+        echo "Run 'pl verify --run' for machine verification (P50)."
+        return 1
+    fi
+
+    # Check yq dependency
+    if ! command -v yq &>/dev/null; then
+        echo -e "${RED}Error:${NC} yq is required for AI verification"
+        echo "Install with: pip install yq"
+        return 1
+    fi
+
+    # Check if scenario directory exists
+    if [[ ! -d "$PROJECT_ROOT/.verification-scenarios" ]]; then
+        echo -e "${RED}Error:${NC} No verification scenarios found"
+        echo "Expected: $PROJECT_ROOT/.verification-scenarios/"
+        return 1
+    fi
+
+    # Parse arguments
+    local dry_run=false
+    local resume=false
+    local auto_fix=false
+    local scenario=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run)
+                dry_run=true
+                shift
+                ;;
+            --resume)
+                resume=true
+                shift
+                ;;
+            --fix)
+                auto_fix=true
+                shift
+                ;;
+            --scenario=*)
+                scenario="${1#*=}"
+                shift
+                ;;
+            *)
+                echo "Unknown option: $1"
+                echo "Usage: verify.sh --ai [--dry-run] [--resume] [--fix] [--scenario=ID]"
+                return 1
+                ;;
+        esac
+    done
+
+    # Build arguments for scenario execution
+    local args=()
+    $dry_run && args+=("--dry-run")
+    $resume && args+=("--resume")
+    $auto_fix && args+=("--fix")
+
+    # Execute specific scenario or all
+    if [[ -n "$scenario" ]]; then
+        echo ""
+        echo "Running scenario: $scenario"
+        scenario_execute "$scenario"
+    else
+        scenario_execute_all "${args[@]}"
+    fi
+}
+
+################################################################################
+# Machine Execution Mode (P50)
+################################################################################
+
 # Run machine checks for all or specified features
 # Usage: run_machine_checks [--depth=LEVEL] [--feature=ID] [--all] [--affected] [--prefix=NAME]
 run_machine_checks() {
@@ -3575,6 +3660,10 @@ main() {
             shift
             run_machine_checks "$@"
             ;;
+        --ai|ai)
+            shift
+            run_ai_verification "$@"
+            ;;
         ci)
             shift
             run_ci_mode "$@"
@@ -3611,6 +3700,13 @@ main() {
             echo "  --run --feature=backup   Test specific feature"
             echo "  --run --affected         Only test features with changed files"
             echo "  --run --prefix=NAME      Custom test site prefix (default: verify-test)"
+            echo ""
+            echo "AI-powered deep verification (P51):"
+            echo "  --ai                     Run AI verification scenarios (S1-S17)"
+            echo "  --ai --dry-run           Show scenario order without executing"
+            echo "  --ai --resume            Resume from checkpoint"
+            echo "  --ai --fix               Enable auto-fix for errors"
+            echo "  --ai --scenario=S1       Run specific scenario only"
             echo ""
             echo "CI/CD mode:"
             echo "  ci                       Machine checks with JUnit output"

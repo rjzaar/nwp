@@ -1,0 +1,137 @@
+# S01: Foundation Setup Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# This is the GATE scenario - it must pass before any other scenarios run.
+# It validates that the development environment meets all requirements
+# for running NWP verification tests.
+#
+# Cross-validates: pl doctor output against actual system state
+
+scenario:
+  id: S1
+  name: "Foundation Setup"
+  description: "Verify development environment meets all requirements"
+  depends_on: []  # No dependencies - this is the foundation
+  estimated_duration: 2
+  is_gate: true  # All other scenarios require S1 to pass
+
+  commands_tested:
+    - setup.sh
+    - doctor.sh
+
+  live_state_commands:
+    - command: pl doctor
+      validates:
+        - Docker availability and status
+        - DDEV version and running projects
+        - PHP version
+        - Composer availability
+        - Git version
+        - Disk space available
+        - Memory available
+
+  steps:
+    - name: Check Docker installation
+      cmd: docker --version
+      expect_exit: 0
+      expect_contains: "Docker"
+      on_failure:
+        severity: critical
+        message: "Docker is not installed or not accessible"
+
+    - name: Check Docker daemon running
+      cmd: docker info >/dev/null 2>&1 && echo "Docker is running"
+      expect_exit: 0
+      expect_contains: "running"
+      on_failure:
+        severity: critical
+        message: "Docker daemon is not running"
+
+    - name: Check DDEV installation
+      cmd: ddev version
+      expect_exit: 0
+      expect_contains: "ddev"
+      on_failure:
+        severity: critical
+        message: "DDEV is not installed"
+
+    - name: Check PHP availability
+      cmd: php -v | head -1
+      expect_exit: 0
+      expect_contains: "PHP"
+
+    - name: Check Composer availability
+      cmd: composer --version 2>/dev/null || which composer
+      expect_exit: 0
+
+    - name: Check Git installation
+      cmd: git --version
+      expect_exit: 0
+      expect_contains: "git"
+
+    - name: Check yq for YAML parsing
+      cmd: yq --version 2>/dev/null || pip show yq | grep Version
+      expect_exit: 0
+      on_failure:
+        severity: high
+        message: "yq is not installed - required for scenario parsing"
+
+    - name: Check disk space
+      cmd: |
+        avail=$(df -BG . | tail -1 | awk '{print $4}' | tr -d 'G')
+        if [[ $avail -ge 10 ]]; then
+          echo "Disk space OK: ${avail}GB available (minimum 10GB)"
+          exit 0
+        else
+          echo "Insufficient disk space: ${avail}GB available (need 10GB)"
+          exit 1
+        fi
+      expect_exit: 0
+      expect_contains: "OK"
+      timeout: 10
+
+    - name: Check available memory
+      cmd: |
+        avail=$(free -m | awk '/^Mem:/{print $7}')
+        if [[ $avail -ge 2048 ]]; then
+          echo "Memory OK: ${avail}MB available (minimum 2048MB)"
+          exit 0
+        else
+          echo "Low memory: ${avail}MB available (recommended 2048MB)"
+          exit 0  # Warning only, not critical
+        fi
+      expect_exit: 0
+      timeout: 10
+
+    - name: Check NWP installation
+      cmd: test -f pl && test -x pl && echo "NWP pl command exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check NWP configuration
+      cmd: test -f cnwp.yml && echo "Configuration file exists"
+      expect_exit: 0
+      expect_contains: "exists"
+      on_failure:
+        severity: warning
+        message: "cnwp.yml not found - run 'cp example.cnwp.yml cnwp.yml'"
+
+    - name: Verify pl doctor runs
+      cmd: ./pl doctor --quiet 2>/dev/null || ./pl doctor 2>&1 | head -5
+      expect_exit: 0
+      timeout: 30
+
+  success_criteria:
+    all_required:
+      - Docker installed and running
+      - DDEV installed
+      - PHP available
+      - Git available
+      - Sufficient disk space (>10GB)
+      - Sufficient memory (>2GB)
+      - NWP installed
+
+    gate_behavior: |
+      If S1 fails, no other scenarios will run.
+      The failure report will indicate which
+      prerequisite check failed and why.

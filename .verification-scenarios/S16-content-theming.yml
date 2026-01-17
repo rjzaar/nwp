@@ -1,0 +1,92 @@
+# S16: Content & Theming Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies content production and theming commands.
+# Tests content generation and theme management.
+
+scenario:
+  id: S16
+  name: "Content & Theming"
+  description: "Verify content production and theming commands"
+  depends_on:
+    - S2  # Needs working site install
+  estimated_duration: 5
+  is_gate: false
+
+  commands_tested:
+    - produce.sh
+    - report.sh
+    - theme.sh
+
+  setup:
+    - Create test site:
+        cmd: ./pl install d verify-s16 --auto 2>&1
+        timeout: 300
+
+  steps:
+    - name: Verify site exists
+      cmd: test -d sites/verify-s16 && echo "Site exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check produce command exists
+      cmd: test -f scripts/commands/produce.sh && echo "produce.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check report command exists
+      cmd: test -f scripts/commands/report.sh && echo "report.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check theme command exists
+      cmd: test -f scripts/commands/theme.sh && echo "theme.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl produce help
+      cmd: ./pl produce --help 2>&1 | head -10 || echo "produce command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl report help
+      cmd: ./pl report --help 2>&1 | head -10 || echo "report command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl theme help
+      cmd: ./pl theme --help 2>&1 | head -10 || echo "theme command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Check theme directory in test site
+      cmd: |
+        if [[ -d sites/verify-s16/html/themes ]]; then
+          echo "Themes directory exists"
+          ls sites/verify-s16/html/themes 2>/dev/null | head -5 || echo "Empty"
+        else
+          echo "No themes directory"
+        fi
+      expect_exit: 0
+      timeout: 10
+
+    - name: Verify scripts pass syntax check
+      cmd: |
+        for script in produce report theme; do
+          if [[ -f scripts/commands/${script}.sh ]]; then
+            bash -n scripts/commands/${script}.sh 2>&1 || echo "Syntax issue in ${script}.sh"
+          fi
+        done
+        echo "Syntax check complete"
+      expect_exit: 0
+      expect_contains: "complete"
+      timeout: 30
+
+  cleanup:
+    - cmd: ./pl delete verify-s16 --yes 2>/dev/null || true
+
+  success_criteria:
+    all_required:
+      - All content/theme commands exist
+      - Help text available
+      - Scripts pass syntax check

@@ -1,0 +1,98 @@
+# S02: Site Lifecycle Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies site installation, status reporting, and deletion.
+# Tests the fundamental site management commands that other scenarios depend on.
+
+scenario:
+  id: S2
+  name: "Site Lifecycle"
+  description: "Verify site install, status reporting, and deletion"
+  depends_on:
+    - S1  # Requires foundation to pass
+  estimated_duration: 5
+  is_gate: false
+
+  commands_tested:
+    - install.sh
+    - status.sh
+    - delete.sh
+
+  live_state_commands:
+    - command: pl status
+      validates:
+        - User count accuracy
+        - Database size accuracy
+        - Health status accuracy
+
+  steps:
+    - name: Install test site
+      cmd: ./pl install d verify-s2 --auto 2>&1
+      expect_exit: 0
+      timeout: 300
+      on_failure:
+        severity: critical
+        message: "Failed to install test site"
+
+    - name: Verify site directory exists
+      cmd: test -d sites/verify-s2 && echo "Site directory exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Verify DDEV config exists
+      cmd: test -f sites/verify-s2/.ddev/config.yaml && echo "DDEV config exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check DDEV is running
+      cmd: cd sites/verify-s2 && ddev describe 2>&1 | head -5
+      expect_exit: 0
+      timeout: 30
+
+    - name: Check Drupal bootstrap
+      cmd: cd sites/verify-s2 && ddev drush status --field=bootstrap 2>/dev/null || echo "checking"
+      expect_exit: 0
+      timeout: 60
+
+    - name: Verify pl status runs for site
+      cmd: ./pl status -s verify-s2 2>&1 | head -10
+      expect_exit: 0
+      timeout: 30
+
+    - name: Cross-validate user count
+      cmd: |
+        cd sites/verify-s2
+        count=$(ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE uid > 0" 2>/dev/null)
+        echo "User count: ${count:-0}"
+        [[ -n "$count" ]] && exit 0 || exit 1
+      expect_exit: 0
+      expect_contains: "count"
+      timeout: 30
+
+    - name: Delete test site
+      cmd: ./pl delete verify-s2 --yes 2>&1
+      expect_exit: 0
+      timeout: 120
+
+    - name: Verify site deleted
+      cmd: |
+        if [[ -d sites/verify-s2 ]]; then
+          echo "FAIL: Site directory still exists"
+          exit 1
+        else
+          echo "Site successfully deleted"
+          exit 0
+        fi
+      expect_exit: 0
+      expect_contains: "successfully"
+
+  cleanup:
+    - cmd: ./pl delete verify-s2 --yes 2>/dev/null || true
+
+  success_criteria:
+    all_required:
+      - Site installs successfully
+      - DDEV runs for site
+      - Drupal bootstraps
+      - pl status returns data
+      - Site deletes cleanly

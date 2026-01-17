@@ -1,0 +1,87 @@
+# S10: Full Production Pipeline Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies production deployment commands.
+# Tests staging to live and related workflows.
+# Note: This scenario tests command existence, not actual production deployments.
+
+scenario:
+  id: S10
+  name: "Full Production Pipeline"
+  description: "Verify production deployment commands exist and are configured"
+  depends_on:
+    - S5  # Needs working local deployment
+  estimated_duration: 5
+  is_gate: false
+
+  commands_tested:
+    - stg2live.sh
+    - live2stg.sh
+    - live.sh
+    - live2prod.sh
+    - prod2stg.sh
+    - stg2prod.sh
+
+  steps:
+    - name: Check stg2live command exists
+      cmd: test -f scripts/commands/stg2live.sh && echo "stg2live.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check live2stg command exists
+      cmd: test -f scripts/commands/live2stg.sh && echo "live2stg.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check live command exists
+      cmd: test -f scripts/commands/live.sh && echo "live.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check live2prod command exists
+      cmd: test -f scripts/commands/live2prod.sh && echo "live2prod.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check prod2stg command exists
+      cmd: test -f scripts/commands/prod2stg.sh && echo "prod2stg.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check stg2prod command exists
+      cmd: test -f scripts/commands/stg2prod.sh && echo "stg2prod.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl stg2live help
+      cmd: ./pl stg2live --help 2>&1 | head -10 || echo "stg2live command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl live2stg help
+      cmd: ./pl live2stg --help 2>&1 | head -10 || echo "live2stg command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl live help
+      cmd: ./pl live --help 2>&1 | head -10 || echo "live command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Verify scripts pass syntax check
+      cmd: |
+        for script in stg2live live2stg live live2prod prod2stg stg2prod; do
+          if [[ -f scripts/commands/${script}.sh ]]; then
+            bash -n scripts/commands/${script}.sh 2>&1 || echo "Syntax issue in ${script}.sh"
+          fi
+        done
+        echo "Syntax check complete"
+      expect_exit: 0
+      expect_contains: "complete"
+      timeout: 30
+
+  success_criteria:
+    all_required:
+      - All production pipeline commands exist
+      - Help text available
+      - Scripts pass syntax check

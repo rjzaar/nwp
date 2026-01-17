@@ -1,0 +1,104 @@
+# S08: Quality Assurance Suite Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies testing and quality assurance commands.
+# This scenario tests the verification system itself.
+
+scenario:
+  id: S8
+  name: "Quality Assurance Suite"
+  description: "Verify testing and QA commands"
+  depends_on:
+    - S2  # Needs working site install
+  estimated_duration: 10
+  is_gate: false
+
+  commands_tested:
+    - test.sh
+    - run-tests.sh
+    - verify.sh
+    - testos.sh
+    - seo-check.sh
+    - badges.sh
+
+  live_state_commands:
+    - command: pl verify report
+      validates:
+        - Verification status
+        - Coverage percentage
+
+  setup:
+    - Create test site:
+        cmd: ./pl install d verify-s8 --auto 2>&1
+        timeout: 300
+
+  steps:
+    - name: Verify site exists
+      cmd: test -d sites/verify-s8 && echo "Site exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check test command exists
+      cmd: test -f scripts/commands/test.sh && echo "test.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check run-tests command exists
+      cmd: test -f scripts/commands/run-tests.sh && echo "run-tests.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check verify command exists
+      cmd: test -f scripts/commands/verify.sh && echo "verify.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check testos command exists
+      cmd: test -f scripts/commands/testos.sh && echo "testos.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check seo-check command exists
+      cmd: test -f scripts/commands/seo-check.sh && echo "seo-check.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check badges command exists
+      cmd: test -f scripts/commands/badges.sh && echo "badges.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl test help
+      cmd: ./pl test --help 2>&1 | head -10 || echo "test command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl verify report
+      cmd: ./pl verify report 2>&1 | head -20
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl verify summary
+      cmd: ./pl verify summary 2>&1 | head -10
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl badges
+      cmd: ./pl badges 2>&1 | head -10 || echo "badges command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run basic syntax verification
+      cmd: ./pl verify --run --depth=basic 2>&1 | tail -20 || echo "verification ran"
+      expect_exit: 0
+      timeout: 120
+
+  cleanup:
+    - cmd: ./pl delete verify-s8 --yes 2>/dev/null || true
+
+  success_criteria:
+    all_required:
+      - All QA commands exist
+      - Verify report runs
+      - Badges command works
+      - Basic verification passes

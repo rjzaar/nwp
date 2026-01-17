@@ -1,0 +1,146 @@
+# S03: Backup-Restore Integrity Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# The most comprehensive integrity verification scenario.
+# Verifies backup captures all data and restore preserves it exactly.
+# Uses database state verification to ensure data integrity.
+
+scenario:
+  id: S3
+  name: "Backup-Restore Integrity"
+  description: "Verify backup captures all data and restore preserves it exactly"
+  depends_on:
+    - S2  # Needs working install/delete
+  estimated_duration: 8
+  is_gate: false
+
+  commands_tested:
+    - backup.sh
+    - restore.sh
+    - status.sh
+
+  live_state_commands:
+    - command: pl status
+      validates:
+        - User count accuracy (pre/post restore)
+        - Database size accuracy
+        - Health status accuracy
+
+  setup:
+    - Create test site:
+        cmd: ./pl install d verify-s3 --auto 2>&1
+        timeout: 300
+
+  capture_baseline:
+    user_count:
+      cmd: cd sites/verify-s3 && ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE uid > 0" 2>/dev/null || echo "1"
+      store_as: baseline_users
+      expected: 1  # At least admin user
+
+  steps:
+    - name: Add test users
+      cmd: |
+        cd sites/verify-s3
+        ddev drush user:create testuser1 --mail="test1@example.com" --password="test123" 2>&1 || true
+        ddev drush user:create testuser2 --mail="test2@example.com" --password="test123" 2>&1 || true
+        echo "Test users created"
+      expect_exit: 0
+      timeout: 60
+
+    - name: Count users after adding
+      cmd: cd sites/verify-s3 && ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE uid > 0" 2>/dev/null
+      expect_exit: 0
+      store_as: final_users
+      timeout: 30
+
+    - name: Create backup
+      cmd: ./pl backup verify-s3 "s3-test-backup" 2>&1
+      expect_exit: 0
+      timeout: 120
+      on_failure:
+        severity: critical
+        message: "Backup creation failed"
+
+    - name: Verify backup file exists
+      cmd: ls -la sitebackups/verify-s3*s3-test-backup*.tar.gz 2>/dev/null | head -1
+      expect_exit: 0
+      store_as: backup_file
+      timeout: 10
+
+    - name: Verify backup has content
+      cmd: |
+        file=$(ls sitebackups/verify-s3*s3-test-backup*.tar.gz 2>/dev/null | head -1)
+        if [[ -n "$file" ]]; then
+          size=$(stat -c%s "$file")
+          if [[ $size -gt 1000 ]]; then
+            echo "Backup has content: ${size} bytes"
+            exit 0
+          fi
+        fi
+        echo "Backup file empty or missing"
+        exit 1
+      expect_exit: 0
+      expect_contains: "content"
+      timeout: 10
+
+    - name: Restore to new site
+      cmd: ./pl restore verify-s3 verify-s3-restored --yes 2>&1
+      expect_exit: 0
+      timeout: 180
+      on_failure:
+        severity: critical
+        message: "Restore failed"
+
+    - name: Verify restored site exists
+      cmd: test -d sites/verify-s3-restored && echo "Restored site exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Verify restored site DDEV running
+      cmd: cd sites/verify-s3-restored && ddev describe 2>&1 | grep -i "running\|status" | head -3
+      expect_exit: 0
+      timeout: 30
+
+    - name: Verify user count preserved
+      cmd: |
+        original={final_users}
+        restored=$(cd sites/verify-s3-restored && ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE uid > 0" 2>/dev/null)
+        echo "Original: $original, Restored: $restored"
+        if [[ "$original" == "$restored" ]]; then
+          echo "User count MATCHES"
+          exit 0
+        else
+          echo "User count MISMATCH"
+          exit 1
+        fi
+      expect_exit: 0
+      expect_contains: "MATCHES"
+      timeout: 30
+      on_failure:
+        severity: critical
+        message: "Data integrity failure: user count mismatch after restore"
+
+    - name: Verify pl status shows healthy
+      cmd: ./pl status -s verify-s3-restored 2>&1 | head -15
+      expect_exit: 0
+      timeout: 30
+
+  cleanup:
+    - cmd: ./pl delete verify-s3 --yes 2>/dev/null || true
+    - cmd: ./pl delete verify-s3-restored --yes 2>/dev/null || true
+    - cmd: rm -f sitebackups/verify-s3*s3-test-backup*.tar.gz
+
+  success_criteria:
+    all_required:
+      - Backup file created
+      - Backup has content
+      - Restore creates new site
+      - User count preserved exactly
+      - Restored site is healthy
+
+    confidence_scoring:
+      - 100%: All checks pass, data perfectly preserved
+      - 90%: All checks pass with minor warnings
+      - 75%: Data preserved but some warnings
+      - 50%: Partial data preservation
+      - 0%: Critical data loss

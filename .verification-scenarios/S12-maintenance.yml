@@ -1,0 +1,69 @@
+# S12: Maintenance Operations Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies maintenance and rollback commands.
+# Tests system maintenance operations.
+
+scenario:
+  id: S12
+  name: "Maintenance Operations"
+  description: "Verify maintenance and rollback commands"
+  depends_on:
+    - S11  # After specialized installs
+  estimated_duration: 4
+  is_gate: false
+
+  commands_tested:
+    - rollback.sh
+    - uninstall_nwp.sh
+
+  steps:
+    - name: Check rollback command exists
+      cmd: test -f scripts/commands/rollback.sh && echo "rollback.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check uninstall_nwp command exists
+      cmd: |
+        if [[ -f scripts/commands/uninstall_nwp.sh ]]; then
+          echo "uninstall_nwp.sh exists"
+        elif [[ -f scripts/commands/uninstall-nwp.sh ]]; then
+          echo "uninstall-nwp.sh exists"
+        else
+          echo "uninstall command not found"
+        fi
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl rollback help
+      cmd: ./pl rollback --help 2>&1 | head -10 || echo "rollback command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Verify rollback script syntax
+      cmd: |
+        if [[ -f scripts/commands/rollback.sh ]]; then
+          bash -n scripts/commands/rollback.sh 2>&1 && echo "Syntax OK"
+        else
+          echo "Script not found"
+        fi
+      expect_exit: 0
+      timeout: 10
+
+    - name: Check backup directory exists
+      cmd: |
+        if [[ -d sitebackups ]]; then
+          echo "Backup directory exists"
+          ls sitebackups 2>/dev/null | head -5 || echo "Empty or inaccessible"
+        else
+          mkdir -p sitebackups
+          echo "Backup directory created"
+        fi
+      expect_exit: 0
+      timeout: 10
+
+  success_criteria:
+    all_required:
+      - Rollback command exists
+      - Maintenance commands functional
+      - Backup infrastructure ready

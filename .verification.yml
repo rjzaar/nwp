@@ -21,14 +21,14 @@ config:
       description: Round-trip test, integration
       typical_time: 120
 statistics:
-  total_items: 1128
+  total_items: 571
   machine:
-    verified: 0
-    coverage_percent: 0.0
+    verified: 22
+    coverage_percent: 3.9
   human:
-    verified: 0
-    coverage_percent: 0.0
-  fully_verified: 0
+    verified: 7
+    coverage_percent: 1.2
+  fully_verified: 2
 features:
   setup:
     name: Setup Script (setup.sh)
@@ -5613,6 +5613,30 @@ features:
         \ are applied correctly\n5. Complete deployment and verify choices were honored\n"
       related_docs:
       - docs/reference/commands/dev2stg.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: test -f scripts/commands/dev2stg.sh
+              expect_exit: 0
+              timeout: 5
+            - cmd: bash -n scripts/commands/dev2stg.sh
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -n scripts/commands/dev2stg.sh
+              expect_exit: 0
+              timeout: 10
+            - cmd: test -f lib/dev2stg-tui.sh && bash -n lib/dev2stg-tui.sh
+              expect_exit: 0
+              timeout: 10
+        state:
+          verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: 0
     - text: 'Test automated mode: ./dev2stg.sh -y <sitename>'
       completed: false
       completed_by: null
@@ -5683,6 +5707,30 @@ features:
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/reference/commands/install.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: test -f scripts/commands/dev2stg.sh
+              expect_exit: 0
+              timeout: 5
+            - cmd: bash -n scripts/commands/dev2stg.sh
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -n scripts/commands/dev2stg.sh
+              expect_exit: 0
+              timeout: 10
+            - cmd: grep -qE 'install|create.*staging|mkdir' scripts/commands/dev2stg.sh
+              expect_exit: 0
+              timeout: 10
+        state:
+          verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: 0
     - text: 'Test database source: auto'
       completed: false
       completed_by: null
@@ -5694,6 +5742,30 @@ features:
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/deployment/environments.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: pl dev2stg --help 2>&1 | head -5
+              expect_exit: 0
+              timeout: 10
+            - cmd: test -f scripts/commands/dev2stg.sh
+              expect_exit: 0
+              timeout: 5
+          standard:
+            commands:
+            - cmd: bash -n scripts/commands/dev2stg.sh
+              expect_exit: 0
+              timeout: 10
+            - cmd: pl dev2stg --help 2>&1 | grep -qE 'db-source|database'
+              expect_exit: 0
+              timeout: 10
+        state:
+          verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: 0
     - text: 'Test database source: production'
       completed: false
       completed_by: null
@@ -5705,6 +5777,30 @@ features:
       related_docs:
       - docs/reference/commands/dev2stg.md
       - docs/reference/commands/prod2stg.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: test -f scripts/commands/dev2stg.sh
+              expect_exit: 0
+              timeout: 5
+            - cmd: bash -n scripts/commands/dev2stg.sh
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -n scripts/commands/dev2stg.sh
+              expect_exit: 0
+              timeout: 10
+            - cmd: grep -qE 'db-source|database.*production|prod.*db' scripts/commands/dev2stg.sh
+              expect_exit: 0
+              timeout: 10
+        state:
+          verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: 0
     - text: 'Test database source: backup'
       completed: false
       completed_by: null
@@ -9670,6 +9766,33 @@ features:
     verified_at: null
     file_hash: null
     notes: null
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: test -f scripts/commands/migrate-secrets.sh
+            expect_exit: 0
+            timeout: 5
+          - cmd: bash -n scripts/commands/migrate-secrets.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n scripts/commands/migrate-secrets.sh
+            expect_exit: 0
+          - cmd: pl migrate-secrets --help 2>&1 | grep -qiE '(usage|migrate|secret)'
+            expect_exit: 0
+        thorough:
+          commands:
+          - cmd: bash -n scripts/commands/migrate-secrets.sh
+            expect_exit: 0
+        paranoid:
+          commands:
+          - cmd: bash -n scripts/commands/migrate-secrets.sh
+            expect_exit: 0
+      state:
+        verified: false
   security_check:
     name: HTTP Security Headers Check (security-check.sh)
     description: Tests HTTP security headers on any URL (like Mozilla Observatory)
@@ -9802,6 +9925,33 @@ features:
     verified_at: null
     file_hash: null
     notes: null
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: test -f scripts/commands/security-check.sh
+            expect_exit: 0
+            timeout: 5
+          - cmd: bash -n scripts/commands/security-check.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n scripts/commands/security-check.sh
+            expect_exit: 0
+          - cmd: pl security-check --help 2>&1 | grep -qiE '(usage|security|header)'
+            expect_exit: 0
+        thorough:
+          commands:
+          - cmd: bash -n scripts/commands/security-check.sh
+            expect_exit: 0
+        paranoid:
+          commands:
+          - cmd: bash -n scripts/commands/security-check.sh
+            expect_exit: 0
+      state:
+        verified: false
   verify:
     name: Feature Verification (verify.sh)
     description: NWP feature verification tracking with interactive TUI console
@@ -12031,30 +12181,6 @@ features:
     description: Manages CLI command registration for multiple NWP installations
     files:
     - lib/cli-register.sh
-      machine:
-        automatable: true
-        checks:
-          basic:
-            commands:
-            - cmd: bash -n ~/nwp/lib/cli-register.sh
-              expect_exit: 0
-              timeout: 10
-            - cmd: grep -qE '^register_cli_command\(\)' ~/nwp/lib/cli-register.sh
-              expect_exit: 0
-          standard:
-            commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
-              expect_exit: 0
-          thorough:
-            commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
-              expect_exit: 0
-          paranoid:
-            commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
-              expect_exit: 0
-        state:
-          verified: false
     checklist:
     - text: Test register_cli_command function
       completed: false
@@ -12403,30 +12529,27 @@ features:
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/cli-register.sh
-      machine:
-        automatable: true
-        checks:
-          basic:
-            commands:
-            - cmd: bash -n ~/nwp/lib/cli-register.sh
-              expect_exit: 0
-              timeout: 10
-            - cmd: grep -qE '^register_cli_command\(\)' ~/nwp/lib/cli-register.sh
-              expect_exit: 0
-          standard:
-            commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
-              expect_exit: 0
-          thorough:
-            commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
-              expect_exit: 0
-          paranoid:
-            commands:
-            - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
-              expect_exit: 0
-        state:
-          verified: false
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/cli-register.sh
+            expect_exit: 0
+            timeout: 10
+          - cmd: grep -qE '^register_cli_command\(\)' lib/cli-register.sh
+            expect_exit: 0
+        standard:
+          commands:
+          - cmd: bash -n lib/cli-register.sh
+            expect_exit: 0
+          - cmd: bash -c 'source lib/cli-register.sh 2>/dev/null && type register_cli_command'
+            expect_exit: 0
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -12437,6 +12560,25 @@ features:
     description: Generate DDEV configuration from .env and cnwp.yml
     files:
     - lib/ddev-generate.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/ddev-generate.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n lib/ddev-generate.sh
+            expect_exit: 0
+          - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null'
+            expect_exit: 0
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     checklist:
     - text: Test DDEV config generation from .env file
       completed: false
@@ -12594,6 +12736,25 @@ features:
     description: Developer roles and permissions management
     files:
     - lib/developer.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/developer.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n lib/developer.sh
+            expect_exit: 0
+          - cmd: bash -c 'source lib/developer.sh 2>/dev/null'
+            expect_exit: 0
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     checklist:
     - text: Test init_developer_config function
       completed: false
@@ -19508,6 +19669,25 @@ features:
     description: Status badge generation
     files:
     - lib/badges.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/badges.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n lib/badges.sh
+            expect_exit: 0
+          - cmd: bash -c 'source lib/badges.sh 2>/dev/null'
+            expect_exit: 0
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     checklist:
     - text: Test badge generation for passing status
       completed: false
@@ -19630,6 +19810,25 @@ features:
     description: Deployment state tracking and persistence
     files:
     - lib/state.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/state.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n lib/state.sh
+            expect_exit: 0
+          - cmd: bash -c 'source lib/state.sh 2>/dev/null'
+            expect_exit: 0
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     checklist:
     - text: Test state initialization
       completed: false
@@ -19745,6 +19944,25 @@ features:
     description: Multi-source database routing for deployments
     files:
     - lib/database-router.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/database-router.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n lib/database-router.sh
+            expect_exit: 0
+          - cmd: bash -c 'source lib/database-router.sh 2>/dev/null'
+            expect_exit: 0
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     checklist:
     - text: Test auto source selection
       completed: false
@@ -19863,6 +20081,25 @@ features:
     description: Test orchestration and preset management
     files:
     - lib/testing.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/testing.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n lib/testing.sh
+            expect_exit: 0
+          - cmd: bash -c 'source lib/testing.sh 2>/dev/null'
+            expect_exit: 0
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     checklist:
     - text: Test quick preset execution
       completed: false
@@ -19965,6 +20202,25 @@ features:
     description: Pre-deployment validation checks
     files:
     - lib/preflight.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/preflight.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n lib/preflight.sh
+            expect_exit: 0
+          - cmd: bash -c 'source lib/preflight.sh 2>/dev/null'
+            expect_exit: 0
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     checklist:
     - text: Test site existence validation
       completed: false
@@ -20083,6 +20339,25 @@ features:
     description: Interactive TUI for dev2stg deployment options
     files:
     - lib/dev2stg-tui.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/dev2stg-tui.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n lib/dev2stg-tui.sh
+            expect_exit: 0
+          - cmd: bash -c 'source lib/dev2stg-tui.sh 2>/dev/null'
+            expect_exit: 0
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     checklist:
     - text: Test database source selection menu
       completed: false
@@ -20184,6 +20459,25 @@ features:
     description: Proxy functions that return sanitized output without exposing secrets
     files:
     - lib/safe-ops.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/safe-ops.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n lib/safe-ops.sh
+            expect_exit: 0
+          - cmd: bash -c 'source lib/safe-ops.sh 2>/dev/null'
+            expect_exit: 0
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     checklist:
     - text: Test safe_server_status returns sanitized data
       completed: false
@@ -20370,6 +20664,19 @@ features:
       - docs/reference/api/library-functions.md
       - lib/sanitize.sh
       - docs/DATA_SECURITY_BEST_PRACTICES.md
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/sanitize.sh
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -20462,6 +20769,19 @@ features:
       - docs/reference/api/library-functions.md
       - lib/import.sh
       - docs/reference/workflows/import.md
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/import.sh
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -20563,6 +20883,19 @@ features:
       - docs/reference/api/library-functions.md
       - lib/import-tui.sh
       - docs/reference/api/tui-api.md
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/import-tui.sh
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -20652,6 +20985,19 @@ features:
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/server-scan.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/server-scan.sh
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -20770,6 +21116,19 @@ features:
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/frontend.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/frontend.sh
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -20912,6 +21271,26 @@ features:
         '
       related_docs:
       - example.cnwp.yml
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: test -f example.cnwp.yml
+            expect_exit: 0
+            timeout: 5
+        standard:
+          commands:
+          - cmd: test -f example.cnwp.yml
+            expect_exit: 0
+          - cmd: python3 -c "import yaml; yaml.safe_load(open('example.cnwp.yml'))"
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -21027,6 +21406,26 @@ features:
         '
       related_docs:
       - .secrets.example.yml
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: test -f .secrets.example.yml
+            expect_exit: 0
+            timeout: 5
+        standard:
+          commands:
+          - cmd: test -f .secrets.example.yml
+            expect_exit: 0
+          - cmd: python3 -c "import yaml; yaml.safe_load(open('.secrets.example.yml'))"
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -21301,6 +21700,26 @@ features:
       related_docs:
       - docs/reference/commands/avc-moodle-setup.md
       - lib/avc-moodle.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n scripts/commands/avc-moodle-setup.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n scripts/commands/avc-moodle-setup.sh
+            expect_exit: 0
+          - cmd: pl avc-moodle-setup --help 2>&1 | head -10
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -21444,6 +21863,26 @@ features:
       related_docs:
       - docs/reference/commands/avc-moodle-status.md
       - lib/avc-moodle.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n scripts/commands/avc-moodle-status.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n scripts/commands/avc-moodle-status.sh
+            expect_exit: 0
+          - cmd: pl avc-moodle-status --help 2>&1 | head -10
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -21585,6 +22024,26 @@ features:
       related_docs:
       - docs/reference/commands/avc-moodle-sync.md
       - lib/avc-moodle.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n scripts/commands/avc-moodle-sync.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n scripts/commands/avc-moodle-sync.sh
+            expect_exit: 0
+          - cmd: pl avc-moodle-sync --help 2>&1 | head -10
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -21690,6 +22149,26 @@ features:
       related_docs:
       - docs/reference/commands/avc-moodle-test.md
       - lib/avc-moodle.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n scripts/commands/avc-moodle-test.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n scripts/commands/avc-moodle-test.sh
+            expect_exit: 0
+          - cmd: pl avc-moodle-test --help 2>&1 | head -10
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -21856,6 +22335,26 @@ features:
         '
       related_docs:
       - docs/reference/commands/bootstrap-coder.md
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n scripts/commands/bootstrap-coder.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n scripts/commands/bootstrap-coder.sh
+            expect_exit: 0
+          - cmd: pl bootstrap-coder --help 2>&1 | head -10
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -22175,6 +22674,19 @@ features:
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/avc-moodle.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/avc-moodle.sh
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -22299,6 +22811,19 @@ features:
       - docs/reference/api/library-functions.md
       - lib/podcast.sh
       - lib/b2.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/podcast.sh
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -22443,6 +22968,19 @@ features:
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/ssh.sh
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: bash -n lib/ssh.sh
+            expect_exit: 0
+            timeout: 10
+      state:
+        verified: false
+        verified_at: null
+        depth: null
+        duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null

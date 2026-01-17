@@ -57,6 +57,8 @@ sites/*
 !IMPLEMENTATION_SUMMARY.md
 !nwp-improvement-proposal.md
 !VERIFY_ENHANCEMENTS.md
+!HANDOVER-P50.md
+!IMPLEMENT-P50.md
 
 # Configuration templates (not user configs)
 !example.cnwp.yml

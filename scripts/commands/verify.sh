@@ -2763,10 +2763,11 @@ draw_progress_bar() {
 
     # Build the bar
     local bar=""
-    for ((i=0; i<filled; i++)); do
+    local j  # Use local variable to avoid clobbering outer loop variables
+    for ((j=0; j<filled; j++)); do
         bar+="█"
     done
-    for ((i=0; i<empty; i++)); do
+    for ((j=0; j<empty; j++)); do
         bar+="░"
     done
 

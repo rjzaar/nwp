@@ -25,6 +25,16 @@ TODO_TUI_ITEMS_PER_TAB=14
 TODO_TUI_FILTER_PRIORITY="all"
 TODO_TUI_SORT_MODE="priority"
 
+# Box drawing characters (ASCII for compatibility)
+BOX_H="-"
+BOX_V="|"
+BOX_TL="+"
+BOX_TR="+"
+BOX_BL="+"
+BOX_BR="+"
+BOX_LT="+"
+BOX_RT="+"
+
 ################################################################################
 # Terminal Control Functions
 ################################################################################
@@ -46,8 +56,8 @@ tui_read_key() {
             '[B') echo "DOWN" ;;
             '[C') echo "RIGHT" ;;
             '[D') echo "LEFT" ;;
-            '[5') echo "PGUP" ;;   # Page Up
-            '[6') echo "PGDN" ;;   # Page Down
+            '[5') echo "PGUP" ;;
+            '[6') echo "PGDN" ;;
             *) echo "ESC" ;;
         esac
     elif [[ $key == $'\t' ]]; then
@@ -159,28 +169,61 @@ tui_get_tab_item_count() {
     echo $((end - start))
 }
 
-# Convert global row index to tab-relative row
-tui_global_to_tab_row() {
-    local global_row="$1"
-    local start=$(tui_get_tab_start)
-    echo $((global_row - start))
-}
-
-# Convert tab-relative row to global index
-tui_tab_to_global_row() {
-    local tab_row="$1"
-    local start=$(tui_get_tab_start)
-    echo $((start + tab_row))
-}
-
 ################################################################################
 # Drawing Functions
 ################################################################################
 
+# Draw a horizontal line
+tui_draw_hline() {
+    local width="$1"
+    local left="${2:-$BOX_TL}"
+    local right="${3:-$BOX_TR}"
+    local fill="${4:-$BOX_H}"
+
+    printf "%s" "$left"
+    for ((i=0; i<width-2; i++)); do
+        printf "%s" "$fill"
+    done
+    printf "%s\n" "$right"
+}
+
+# Draw a text line with borders
+tui_draw_line() {
+    local width="$1"
+    local text="$2"
+    local text_len=${#text}
+    local padding=$((width - text_len - 2))
+
+    printf "%s%s" "$BOX_V" "$text"
+    [ "$padding" -gt 0 ] && printf "%${padding}s" ""
+    printf "%s\n" "$BOX_V"
+}
+
+# Build page tabs string
+tui_build_page_tabs() {
+    local total_tabs=$(tui_get_total_tabs)
+    local result=""
+
+    if [ "$total_tabs" -le 1 ]; then
+        echo ""
+        return
+    fi
+
+    for ((p=0; p<total_tabs; p++)); do
+        if [ "$p" -eq "$TODO_TUI_CURRENT_TAB" ]; then
+            result="${result}${CYAN}[Page $((p+1))]${NC} "
+        else
+            result="${result}[Page $((p+1))] "
+        fi
+    done
+
+    echo "$result"
+}
+
 # Draw the main screen
 tui_draw_screen() {
     local term_width=$(tput cols 2>/dev/null || echo 80)
-    local box_width=69
+    local box_width=72
     [ "$term_width" -lt "$box_width" ] && box_width=$((term_width - 2))
 
     tui_clear_screen
@@ -189,24 +232,36 @@ tui_draw_screen() {
     local total_tabs=$(tui_get_total_tabs)
     local tab_start=$(tui_get_tab_start)
     local tab_end=$(tui_get_tab_end)
-    local tab_items=$((tab_end - tab_start))
 
-    # Header
-    printf "${BOLD}┌─ NWP Todo List "
-    # Tab indicator
+    # Header line
+    tui_draw_hline "$box_width" "$BOX_TL" "$BOX_TR"
+
+    # Title
+    printf "%s ${BOLD}NWP Todo List${NC}" "$BOX_V"
+    printf "%$((box_width - 17))s%s\n" "" "$BOX_V"
+
+    # Separator
+    tui_draw_hline "$box_width" "$BOX_LT" "$BOX_RT"
+
+    # Page tabs (if multiple pages)
     if [ "$total_tabs" -gt 1 ]; then
-        printf "─── Tab %d/%d " "$((TODO_TUI_CURRENT_TAB + 1))" "$total_tabs"
-    fi
-    # Fill rest of header
-    local header_used=17
-    [ "$total_tabs" -gt 1 ] && header_used=$((header_used + 12))
-    local header_fill=$((box_width - header_used - 1))
-    printf "%${header_fill}s┐${NC}\n" "" | tr ' ' '─'
+        local page_tabs=$(tui_build_page_tabs)
+        printf "%s  %s" "$BOX_V" "$page_tabs"
+        # Calculate visible length (without ANSI codes)
+        local visible_len=$((3 + total_tabs * 9))
+        local pad=$((box_width - visible_len - 1))
+        [ "$pad" -gt 0 ] && printf "%${pad}s" ""
+        printf "%s\n" "$BOX_V"
 
-    printf "│%-$((box_width-2))s│\n" ""
+        # Navigation hint
+        printf "%s  ${DIM}<- Left/Right arrows to change page ->${NC}" "$BOX_V"
+        printf "%$((box_width - 44))s%s\n" "" "$BOX_V"
+
+        tui_draw_hline "$box_width" "$BOX_LT" "$BOX_RT"
+    fi
 
     # Filter bar
-    printf "│  Filter: "
+    printf "%s  Filter: " "$BOX_V"
     if [ "$TODO_TUI_FILTER_PRIORITY" = "all" ]; then
         printf "${CYAN}[All]${NC} "
     else
@@ -218,20 +273,20 @@ tui_draw_screen() {
         printf "[High] "
     fi
     if [ "$TODO_TUI_FILTER_PRIORITY" = "medium" ]; then
-        printf "${YELLOW}[Medium]${NC} "
+        printf "${YELLOW}[Med]${NC} "
     else
-        printf "[Medium] "
+        printf "[Med] "
     fi
     if [ "$TODO_TUI_FILTER_PRIORITY" = "low" ]; then
-        printf "[Low] "
+        printf "${DIM}[Low]${NC} "
     else
         printf "[Low] "
     fi
-    # Pad filter line
-    local filter_len=48
-    printf "%$((box_width - filter_len - 1))s│\n" ""
+    printf "  (f to cycle)"
+    printf "%$((box_width - 52))s%s\n" "" "$BOX_V"
 
-    printf "│%-$((box_width-2))s│\n" ""
+    # Empty line
+    tui_draw_line "$box_width" ""
 
     # Count items by priority (total, not just current tab)
     local high_count=0 medium_count=0 low_count=0
@@ -260,20 +315,26 @@ tui_draw_screen() {
         # Section header (only show if first item of this priority on this tab)
         if [ "$priority" != "$current_section" ]; then
             current_section="$priority"
+            local section_text=""
+            local section_color=""
             case "$priority" in
                 high)
-                    printf "│  ${RED}${BOLD}─ HIGH PRIORITY "
-                    printf "%$((box_width - 21))s${NC}│\n" "" | tr ' ' '─'
+                    section_text="--- HIGH PRIORITY "
+                    section_color="${RED}"
                     ;;
                 medium)
-                    printf "│  ${YELLOW}${BOLD}─ MEDIUM PRIORITY "
-                    printf "%$((box_width - 23))s${NC}│\n" "" | tr ' ' '─'
+                    section_text="--- MEDIUM PRIORITY "
+                    section_color="${YELLOW}"
                     ;;
                 low)
-                    printf "│  ${DIM}${BOLD}─ LOW PRIORITY "
-                    printf "%$((box_width - 20))s${NC}│\n" "" | tr ' ' '─'
+                    section_text="--- LOW PRIORITY "
+                    section_color="${DIM}"
                     ;;
             esac
+            printf "%s  ${section_color}${BOLD}%s" "$BOX_V" "$section_text"
+            local fill_len=$((box_width - ${#section_text} - 5))
+            for ((f=0; f<fill_len; f++)); do printf "-"; done
+            printf "${NC} %s\n" "$BOX_V"
             ((row++))
         fi
 
@@ -283,36 +344,36 @@ tui_draw_screen() {
 
         # Checkbox
         local checkbox="[ ]"
-        [ "$selected" = "1" ] && checkbox="[${GREEN}✓${NC}]"
+        [ "$selected" = "1" ] && checkbox="[${GREEN}x${NC}]"
 
         # Highlight current row
         local prefix="  "
-        local color=""
+        local suffix=""
         if [ "$is_current" = true ]; then
-            prefix="${CYAN}>${NC} "
-            color="${BOLD}"
+            prefix="${CYAN}> ${NC}"
+            suffix="${BOLD}"
         fi
 
-        # Priority color
-        local priority_color=""
+        # Priority color for ID
+        local id_color=""
         case "$priority" in
-            high) priority_color="${RED}" ;;
-            medium) priority_color="${YELLOW}" ;;
-            low) priority_color="${DIM}" ;;
+            high) id_color="${RED}" ;;
+            medium) id_color="${YELLOW}" ;;
+            low) id_color="${DIM}" ;;
         esac
 
         # Truncate title if needed
-        local max_title_len=$((box_width - 22))
+        local max_title_len=$((box_width - 24))
         [ ${#title} -gt $max_title_len ] && title="${title:0:$max_title_len}..."
 
         # Print item line
-        printf "│%s$checkbox ${priority_color}%-8s${NC} ${color}%s${NC}" "$prefix" "$id" "$title"
+        printf "%s%s%s ${id_color}%-10s${NC} ${suffix}%s${NC}" "$BOX_V" "$prefix" "$checkbox" "$id" "$title"
 
-        # Pad to border (account for ANSI codes not taking visual space)
-        local visible_len=$((4 + 1 + 9 + ${#title}))
-        local padding=$((box_width - visible_len - 3))
-        [ "$padding" -gt 0 ] && printf "%${padding}s" ""
-        printf "│\n"
+        # Pad to border
+        local content_len=$((4 + 4 + 11 + ${#title}))
+        local pad=$((box_width - content_len - 1))
+        [ "$pad" -gt 0 ] && printf "%${pad}s" ""
+        printf "%s\n" "$BOX_V"
 
         ((row++))
         ((display_row++))
@@ -320,36 +381,30 @@ tui_draw_screen() {
 
     # Fill remaining space to reach 14 rows
     while [ "$row" -lt "$TODO_TUI_ITEMS_PER_TAB" ]; do
-        printf "│%-$((box_width-2))s│\n" ""
+        tui_draw_line "$box_width" ""
         ((row++))
     done
 
-    # Footer with navigation hints
-    printf "├"
-    printf "%$((box_width-2))s" "" | tr ' ' '─'
-    printf "┤\n"
+    # Footer separator
+    tui_draw_hline "$box_width" "$BOX_LT" "$BOX_RT"
 
-    # Navigation line - show tab navigation if multiple tabs
-    if [ "$total_tabs" -gt 1 ]; then
-        printf "│ ${BOLD}[←/→]${NC} Tabs  ${BOLD}[↑/↓]${NC} Navigate  ${BOLD}[Space]${NC} Select  ${BOLD}[Enter]${NC} Details"
-        printf "%$((box_width - 64))s│\n" ""
-    else
-        printf "│ ${BOLD}[↑/↓]${NC} Navigate  ${BOLD}[Space]${NC} Select  ${BOLD}[Enter]${NC} Details  ${BOLD}[f]${NC} Filter"
-        printf "%$((box_width - 60))s│\n" ""
-    fi
+    # Help line 1
+    printf "%s ${BOLD}Enter${NC}=Details  ${BOLD}Space${NC}=Select  ${BOLD}r${NC}=Resolve  ${BOLD}i${NC}=Ignore" "$BOX_V"
+    printf "%$((box_width - 52))s%s\n" "" "$BOX_V"
 
-    printf "│ ${BOLD}[r]${NC} Resolve  ${BOLD}[i]${NC} Ignore  ${BOLD}[a]${NC} All  ${BOLD}[R]${NC} Refresh  ${BOLD}[q]${NC} Quit"
-    printf "%$((box_width - 56))s│\n" ""
+    # Help line 2
+    printf "%s ${BOLD}a${NC}=All  ${BOLD}n${NC}=None  ${BOLD}f${NC}=Filter  ${BOLD}R${NC}=Refresh  ${BOLD}q${NC}=Quit" "$BOX_V"
+    printf "%$((box_width - 48))s%s\n" "" "$BOX_V"
 
-    printf "└"
-    printf "%$((box_width-2))s" "" | tr ' ' '─'
-    printf "┘\n"
+    # Bottom border
+    tui_draw_hline "$box_width" "$BOX_BL" "$BOX_BR"
 
-    # Summary line
+    # Summary line (outside box)
     local total=${#TODO_TUI_FILTERED[@]}
-    printf "\nTotal: ${BOLD}$total items${NC} (${RED}$high_count high${NC}, ${YELLOW}$medium_count medium${NC}, $low_count low)"
+    printf "\nTotal: ${BOLD}%d${NC} items  " "$total"
+    printf "(${RED}%d high${NC}, ${YELLOW}%d medium${NC}, %d low)" "$high_count" "$medium_count" "$low_count"
     if [ "$total_tabs" -gt 1 ]; then
-        printf " │ Showing %d-%d" "$((tab_start + 1))" "$tab_end"
+        printf "  |  Showing %d-%d of %d" "$((tab_start + 1))" "$tab_end" "$total"
     fi
     printf "\n"
 }
@@ -372,7 +427,7 @@ tui_show_details() {
 
     echo ""
     echo -e "${BOLD}Todo Item Details${NC}"
-    echo -e "════════════════════════════════════════════════════════════════════"
+    echo "========================================================================"
     echo ""
     echo -e "  ${BOLD}ID:${NC}          $id"
     echo -e "  ${BOLD}Title:${NC}       $title"
@@ -385,7 +440,7 @@ tui_show_details() {
     [ -n "$action" ] && echo -e "  ${BOLD}Suggested Action:${NC}"
     [ -n "$action" ] && echo -e "    ${CYAN}$action${NC}"
     echo ""
-    echo -e "════════════════════════════════════════════════════════════════════"
+    echo "========================================================================"
     echo ""
     echo -e "Press ${BOLD}[r]${NC} to resolve, ${BOLD}[i]${NC} to ignore, or any key to go back"
 
@@ -474,7 +529,6 @@ todo_tui_main() {
                     # Move to previous tab, last item
                     ((TODO_TUI_CURRENT_TAB--))
                     TODO_TUI_CURRENT_ROW=$((TODO_TUI_ITEMS_PER_TAB - 1))
-                    # Adjust if previous tab has fewer items
                     local prev_tab_items=$(tui_get_tab_item_count)
                     [ "$TODO_TUI_CURRENT_ROW" -ge "$prev_tab_items" ] && TODO_TUI_CURRENT_ROW=$((prev_tab_items - 1))
                 else
@@ -499,25 +553,23 @@ todo_tui_main() {
                 fi
                 ;;
             LEFT|PGUP)
-                # Previous tab
+                # Previous page
                 if [ "$TODO_TUI_CURRENT_TAB" -gt 0 ]; then
                     ((TODO_TUI_CURRENT_TAB--))
                 else
                     TODO_TUI_CURRENT_TAB=$((total_tabs - 1))
                 fi
-                # Adjust row if current tab has fewer items
                 local new_tab_items=$(tui_get_tab_item_count)
                 [ "$TODO_TUI_CURRENT_ROW" -ge "$new_tab_items" ] && TODO_TUI_CURRENT_ROW=$((new_tab_items - 1))
                 [ "$TODO_TUI_CURRENT_ROW" -lt 0 ] && TODO_TUI_CURRENT_ROW=0
                 ;;
             RIGHT|TAB|PGDN)
-                # Next tab
+                # Next page
                 if [ "$TODO_TUI_CURRENT_TAB" -lt $((total_tabs - 1)) ]; then
                     ((TODO_TUI_CURRENT_TAB++))
                 else
                     TODO_TUI_CURRENT_TAB=0
                 fi
-                # Adjust row if current tab has fewer items
                 local new_tab_items=$(tui_get_tab_item_count)
                 [ "$TODO_TUI_CURRENT_ROW" -ge "$new_tab_items" ] && TODO_TUI_CURRENT_ROW=$((new_tab_items - 1))
                 [ "$TODO_TUI_CURRENT_ROW" -lt 0 ] && TODO_TUI_CURRENT_ROW=0
@@ -572,11 +624,9 @@ todo_tui_main() {
                     fi
                 done
                 if [ "$resolved" -gt 0 ]; then
-                    # Reload data
                     json_data=$(run_all_checks)
                     tui_load_items "$json_data"
                     tui_apply_filters
-                    # Adjust position
                     total_tabs=$(tui_get_total_tabs)
                     [ "$TODO_TUI_CURRENT_TAB" -ge "$total_tabs" ] && TODO_TUI_CURRENT_TAB=$((total_tabs - 1))
                     [ "$TODO_TUI_CURRENT_TAB" -lt 0 ] && TODO_TUI_CURRENT_TAB=0
@@ -599,7 +649,6 @@ todo_tui_main() {
                     json_data=$(run_all_checks)
                     tui_load_items "$json_data"
                     tui_apply_filters
-                    # Adjust position
                     total_tabs=$(tui_get_total_tabs)
                     [ "$TODO_TUI_CURRENT_TAB" -ge "$total_tabs" ] && TODO_TUI_CURRENT_TAB=$((total_tabs - 1))
                     [ "$TODO_TUI_CURRENT_TAB" -lt 0 ] && TODO_TUI_CURRENT_TAB=0

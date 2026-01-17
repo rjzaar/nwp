@@ -3035,16 +3035,24 @@ execute_item_machine_checks() {
 ################################################################################
 
 # Run AI verification scenarios
-# Usage: run_ai_verification [--dry-run] [--resume] [--fix] [--scenario=ID]
+# Usage: run_ai_verification [--dry-run] [--resume] [--fix] [--scenario=ID] [--report] [--cross-validate=SITE]
 run_ai_verification() {
-    # Source scenario library
-    if [[ -f "$PROJECT_ROOT/lib/verify-scenarios.sh" ]]; then
-        source "$PROJECT_ROOT/lib/verify-scenarios.sh"
-    else
+    # Source all P51 libraries
+    local p51_libs=("verify-scenarios.sh" "verify-checkpoint.sh" "verify-cross-validate.sh"
+                    "verify-behat.sh" "verify-autofix.sh" "verify-reporting.sh" "verify-peaks.sh")
+
+    for lib in "${p51_libs[@]}"; do
+        if [[ -f "$PROJECT_ROOT/lib/$lib" ]]; then
+            source "$PROJECT_ROOT/lib/$lib"
+        fi
+    done
+
+    # Verify core library exists
+    if ! type -t scenario_execute &>/dev/null; then
         echo -e "${RED}Error:${NC} AI verification library not found"
         echo "Expected: $PROJECT_ROOT/lib/verify-scenarios.sh"
         echo ""
-        echo "P51 AI verification is not fully implemented yet."
+        echo "P51 AI verification libraries not fully installed."
         echo "Run 'pl verify --run' for machine verification (P50)."
         return 1
     fi
@@ -3052,7 +3060,7 @@ run_ai_verification() {
     # Check yq dependency
     if ! command -v yq &>/dev/null; then
         echo -e "${RED}Error:${NC} yq is required for AI verification"
-        echo "Install with: pip install yq"
+        echo "Install Go yq: https://github.com/mikefarah/yq"
         return 1
     fi
 
@@ -3068,6 +3076,8 @@ run_ai_verification() {
     local resume=false
     local auto_fix=false
     local scenario=""
+    local generate_report=false
+    local cross_validate_site=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -3087,13 +3097,50 @@ run_ai_verification() {
                 scenario="${1#*=}"
                 shift
                 ;;
+            --report)
+                generate_report=true
+                shift
+                ;;
+            --cross-validate=*)
+                cross_validate_site="${1#*=}"
+                shift
+                ;;
             *)
                 echo "Unknown option: $1"
-                echo "Usage: verify.sh --ai [--dry-run] [--resume] [--fix] [--scenario=ID]"
+                echo "Usage: verify.sh --ai [OPTIONS]"
+                echo ""
+                echo "Options:"
+                echo "  --dry-run              Show execution order without running"
+                echo "  --resume               Resume from checkpoint"
+                echo "  --fix                  Enable auto-fix for errors"
+                echo "  --scenario=ID          Run specific scenario only"
+                echo "  --report               Generate verification report"
+                echo "  --cross-validate=SITE  Run cross-validation for site"
                 return 1
                 ;;
         esac
     done
+
+    # Handle cross-validation mode
+    if [[ -n "$cross_validate_site" ]]; then
+        echo ""
+        echo "Running cross-validation for: $cross_validate_site"
+        cross_validate_all "$cross_validate_site"
+        return $?
+    fi
+
+    # Initialize checkpoint system
+    if type -t checkpoint_system_init &>/dev/null; then
+        checkpoint_system_init
+    fi
+
+    # Initialize auto-fix if enabled
+    if $auto_fix && type -t autofix_init &>/dev/null; then
+        autofix_init
+    fi
+
+    # Set up interrupt handler for graceful shutdown
+    trap 'checkpoint_mark_interrupted 2>/dev/null; exit 130' INT TERM
 
     # Build arguments for scenario execution
     local args=()
@@ -3101,14 +3148,71 @@ run_ai_verification() {
     $resume && args+=("--resume")
     $auto_fix && args+=("--fix")
 
+    local exit_code=0
+
     # Execute specific scenario or all
     if [[ -n "$scenario" ]]; then
         echo ""
         echo "Running scenario: $scenario"
-        scenario_execute "$scenario"
+        scenario_execute "$scenario" || exit_code=$?
     else
-        scenario_execute_all "${args[@]}"
+        scenario_execute_all "${args[@]}" || exit_code=$?
     fi
+
+    # Update peaks after run
+    if type -t peaks_update_from_checkpoint &>/dev/null; then
+        peaks_update_from_checkpoint 2>/dev/null
+    fi
+
+    # Generate report if requested or on completion
+    if $generate_report || [[ $exit_code -eq 0 ]]; then
+        if type -t report_generate &>/dev/null; then
+            report_generate "all"
+        fi
+    fi
+
+    # Show summary
+    if type -t checkpoint_display_summary &>/dev/null; then
+        checkpoint_display_summary
+    fi
+
+    return $exit_code
+}
+
+# Run peaks subcommand
+# Usage: run_ai_peaks [show|update|badges|trend|history]
+run_ai_peaks() {
+    # Source peaks library
+    if [[ -f "$PROJECT_ROOT/lib/verify-peaks.sh" ]]; then
+        source "$PROJECT_ROOT/lib/verify-peaks.sh"
+    else
+        echo -e "${RED}Error:${NC} Peaks library not found"
+        return 1
+    fi
+
+    local cmd="${1:-show}"
+    shift || true
+
+    case "$cmd" in
+        show|summary)
+            peaks_display_summary
+            ;;
+        update)
+            peaks_update_from_checkpoint
+            ;;
+        badges)
+            peaks_generate_all_badges
+            ;;
+        trend)
+            peaks_get_trend
+            ;;
+        history)
+            peaks_get_history
+            ;;
+        *)
+            echo "Usage: verify.sh peaks [show|update|badges|trend|history]"
+            ;;
+    esac
 }
 
 ################################################################################
@@ -3664,6 +3768,10 @@ main() {
             shift
             run_ai_verification "$@"
             ;;
+        peaks)
+            shift
+            run_ai_peaks "$@"
+            ;;
         ci)
             shift
             run_ci_mode "$@"
@@ -3707,6 +3815,14 @@ main() {
             echo "  --ai --resume            Resume from checkpoint"
             echo "  --ai --fix               Enable auto-fix for errors"
             echo "  --ai --scenario=S1       Run specific scenario only"
+            echo "  --ai --report            Generate verification report"
+            echo "  --ai --cross-validate=SITE  Cross-validate a site's reported values"
+            echo ""
+            echo "Peak tracking (P51):"
+            echo "  peaks                    Show peak coverage metrics"
+            echo "  peaks badges             Generate extended badges (current + peak)"
+            echo "  peaks trend              Show trend analysis"
+            echo "  peaks history            Show peak change history"
             echo ""
             echo "CI/CD mode:"
             echo "  ci                       Machine checks with JUnit output"

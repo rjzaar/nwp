@@ -10,6 +10,10 @@
 
 ---
 
+> **"Implement P51" means:** Build the AI verification infrastructure phase by phase. See **Section 13: Ongoing Implementation** for the systematic process. Current phase: **Phase 1 - Scenario Framework** (0% complete).
+
+---
+
 ## 1. Executive Summary
 
 ### 1.1 The Problem with Current Verification
@@ -2812,7 +2816,203 @@ Badges generated: .verification-badges/
 
 ---
 
-## 12. Approval
+## 13. Ongoing Implementation
+
+This section tracks implementation progress and provides instructions for continuing work when resuming with "implement P51".
+
+### 13.1 Current Status
+
+**Last Updated:** 2026-01-17
+
+| Phase | Status | Progress | Notes |
+|-------|--------|----------|-------|
+| Phase 1: Scenario Framework | NOT STARTED | 0/4 | Design YAML schema first |
+| Phase 2: Database Verification | NOT STARTED | 0/4 | Depends on Phase 1 |
+| Phase 3: Behat Integration | NOT STARTED | 0/4 | Depends on Phase 2 |
+| Phase 4: Auto-Fix Engine | NOT STARTED | 0/4 | Depends on Phase 3 |
+| Phase 5: Progressive Execution | NOT STARTED | 0/4 | Depends on Phase 4 |
+| Phase 6: Reporting & Badges | NOT STARTED | 0/4 | Depends on Phase 5 |
+| Phase 7: Peak Badge System | NOT STARTED | 0/8 | Can parallel with Phase 6 |
+
+**Overall Progress:** 0/32 tasks (0%)
+
+### 13.2 Implementation Process
+
+When continuing P51 implementation, follow this process:
+
+#### Step 1: Check Current Phase
+
+Review the status table above to identify the current phase. Each phase must complete before the next begins (except Phase 7 which can parallel Phase 6).
+
+#### Step 2: Identify Next Task
+
+Within the current phase, find the first unchecked item in Section 9 (Implementation Plan). Tasks should be completed in order.
+
+#### Step 3: Implementation Pattern
+
+For each task:
+
+1. **Create the file/function** in the appropriate location:
+   - Scenario framework → `lib/verify-scenarios.sh`
+   - Cross-validation → `lib/verify-cross-validate.sh`
+   - Auto-fix → `lib/verify-autofix.sh`
+   - CLI integration → `scripts/commands/verify.sh`
+
+2. **Follow existing patterns** from P50's verify system:
+   ```bash
+   # Source existing infrastructure
+   source lib/verify-runner.sh
+   source lib/verify-scenarios.sh  # New for P51
+   ```
+
+3. **Test the implementation**:
+   ```bash
+   # Syntax check
+   bash -n lib/NEW_FILE.sh
+
+   # Function exists
+   source lib/NEW_FILE.sh && type FUNCTION_NAME
+
+   # Basic execution
+   pl verify --ai --dry-run
+   ```
+
+4. **Update this tracking section** after completing each task.
+
+#### Step 4: Mark Progress
+
+After completing a task:
+
+1. Check the box in Section 9 (change `- [ ]` to `- [x]`)
+2. Update the phase progress in Section 13.1
+3. Update the "Last Updated" date
+4. Update the header instruction's current phase if phase completed
+
+#### Step 5: Commit Changes
+
+```bash
+git add lib/verify-*.sh scripts/commands/verify.sh docs/proposals/P51-*.md
+git commit -m "P51 Phase X: [description of completed task]"
+```
+
+### 13.3 File Structure
+
+P51 implementation should create these files:
+
+```
+lib/
+├── verify-scenarios.sh      # Scenario parser and executor (Phase 1)
+├── verify-cross-validate.sh # Live state cross-validation (Phase 2)
+├── verify-behat.sh          # Behat integration (Phase 3)
+├── verify-autofix.sh        # Auto-fix engine (Phase 4)
+├── verify-checkpoint.sh     # Checkpoint/resume system (Phase 5)
+└── verify-badges-ai.sh      # AI badge generation (Phase 6-7)
+
+scripts/commands/
+└── verify.sh                # Add --ai flag support
+
+.verification-scenarios/
+├── S01-foundation.yml       # Scenario definitions
+├── S02-lifecycle.yml
+├── ...
+└── S17-upstream.yml
+```
+
+### 13.4 Phase Completion Criteria
+
+#### Phase 1: Scenario Framework - COMPLETE when:
+- [ ] `lib/verify-scenarios.sh` exists and passes `bash -n`
+- [ ] Scenario YAML schema documented in code comments
+- [ ] `parse_scenario()` function works on S01
+- [ ] `resolve_dependencies()` orders S1→S17 correctly
+- [ ] Basic checkpoint file created/read works
+
+#### Phase 2: Database Verification - COMPLETE when:
+- [ ] `lib/verify-cross-validate.sh` exists
+- [ ] `capture_baseline()` stores user/node counts
+- [ ] `compare_values()` with tolerance works
+- [ ] All 9 live state commands have working cross-validation
+- [ ] Mismatch detection logs errors correctly
+
+#### Phase 3: Behat Integration - COMPLETE when:
+- [ ] `lib/verify-behat.sh` exists
+- [ ] Can run Behat smoke tests on a site
+- [ ] Failure output captured to findings
+- [ ] Retry logic handles flaky tests
+- [ ] Screenshots saved on failure
+
+#### Phase 4: Auto-Fix Engine - COMPLETE when:
+- [ ] `lib/verify-autofix.sh` exists
+- [ ] Pattern matching identifies common errors
+- [ ] Fix execution runs appropriate commands
+- [ ] Fix verification confirms resolution
+- [ ] All fixes logged with before/after state
+
+#### Phase 5: Progressive Execution - COMPLETE when:
+- [ ] `lib/verify-checkpoint.sh` exists
+- [ ] `.verification-checkpoint.yml` created during runs
+- [ ] `--resume` flag continues from checkpoint
+- [ ] Test sites preserved between runs
+- [ ] Progress percentage calculated correctly
+
+#### Phase 6: Reporting & Badges - COMPLETE when:
+- [ ] AI coverage badge generated
+- [ ] Scenario completion report created
+- [ ] Findings exported to JSON
+- [ ] `pl verify --ai` runs end-to-end
+- [ ] Integration test passes all 17 scenarios
+
+#### Phase 7: Peak Badge System - COMPLETE when:
+- [ ] `.verification-peaks.yml` schema implemented
+- [ ] Peak comparison detects new highs
+- [ ] Extended badges show current + peak
+- [ ] `pl verify peaks` command works
+- [ ] Peak history tracks last 10 changes
+
+### 13.5 Completed Items
+
+| Date | Phase | Task | Commit |
+|------|-------|------|--------|
+| 2026-01-17 | Pre-work | Full proposal with cross-validation specs | ceae26b6 |
+| | | | |
+
+### 13.6 Known Dependencies
+
+Before starting implementation:
+
+1. **P50 must be working** - `pl verify --run` should execute successfully
+2. **DDEV available** - Scenarios create test sites using DDEV
+3. **Behat installed** - Phase 3 requires Behat for functional tests
+4. **yq installed** - YAML parsing for scenario files
+
+Check dependencies:
+```bash
+pl verify --run --depth=basic  # P50 works
+ddev version                    # DDEV available
+which yq || pip install yq      # yq for YAML
+```
+
+### 13.7 Quick Start for New Session
+
+When starting a new "implement P51" session:
+
+```bash
+# 1. Check current status
+head -20 docs/proposals/P51-ai-powered-verification.md | grep "Current phase"
+
+# 2. Find next task
+grep -A5 "NOT STARTED\|IN PROGRESS" docs/proposals/P51-ai-powered-verification.md | head -10
+
+# 3. Review the phase requirements
+grep -A10 "Phase [X]:.*COMPLETE when" docs/proposals/P51-ai-powered-verification.md
+
+# 4. Start implementing
+# ... follow Step 3 above ...
+```
+
+---
+
+## 14. Approval
 
 | Role | Name | Date | Signature |
 |------|------|------|-----------|

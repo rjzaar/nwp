@@ -203,16 +203,16 @@ run_tests() {
     print_header "Running Tests"
     echo ""
 
-    # Check if test script exists
-    if [ ! -f "$PROJECT_ROOT/scripts/commands/test-nwp.sh" ]; then
-        print_warning "Test script not found (scripts/commands/test-nwp.sh)"
+    # Check if verify script exists
+    if [ ! -f "$PROJECT_ROOT/scripts/commands/verify.sh" ]; then
+        print_warning "Verify script not found (scripts/commands/verify.sh)"
         return 0
     fi
 
-    print_info "Running NWP tests..."
+    print_info "Running NWP verification tests..."
     echo ""
 
-    if "$PROJECT_ROOT/scripts/commands/test-nwp.sh" 2>&1 | tee .test-output.tmp; then
+    if "$PROJECT_ROOT/scripts/commands/verify.sh" --run --depth=basic 2>&1 | tee .test-output.tmp; then
         rm -f .test-output.tmp
         echo ""
         print_status "OK" "All tests passed"

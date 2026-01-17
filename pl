@@ -645,7 +645,9 @@ main() {
             run_script "testos.sh" "$@"
             ;;
         test-nwp)
-            run_script "test-nwp.sh" "$@"
+            # Deprecated: redirects to verify --run (P50)
+            echo "Note: 'pl test-nwp' is deprecated. Use 'pl verify --run' instead."
+            run_script "verify.sh" --run "$@"
             ;;
 
         # Theming

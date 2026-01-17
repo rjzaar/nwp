@@ -1,6 +1,6 @@
 # NWP Milestones - Completed Implementation History
 
-**Last Updated:** January 15, 2026
+**Last Updated:** January 17, 2026
 
 A summary of all completed development phases and their key achievements.
 
@@ -18,9 +18,10 @@ A summary of all completed development phases and their key achievements.
 | Phase 5b | Infrastructure & Import | P29-P31 | Jan 2026 |
 | Phase 5c | Live Deployment Automation | P32-P35 | Jan 2026 |
 | Phase 6-7 | Governance, Security & Testing | F04, F05, F07, F09 | Jan 2026 |
+| Phase 8 | Unified Verification | P50 | Jan 2026 |
 | AVC | Profile Enhancements | Email Reply | Jan 2026 |
 
-**Total: 39 proposals implemented** (P01-P35 + F04, F05, F07, F09) + AVC Profile Enhancements
+**Total: 40 proposals implemented** (P01-P35 + F04, F05, F07, F09, P50) + AVC Profile Enhancements
 
 ---
 
@@ -273,6 +274,48 @@ Automated testing infrastructure using BATS framework with GitLab CI integration
 | Integration | ~60% | 95% |
 | E2E | ~10% | 80% |
 | **Overall** | **~45%** | **85%** |
+
+---
+
+## Phase 8: Unified Verification System
+
+### P50: Layered Verification System
+Unified verification system combining machine-automated testing with human verification tracking, replacing the deprecated test-nwp.sh script.
+
+**Key Components:**
+| Component | Purpose |
+|-----------|---------|
+| `scripts/commands/verify.sh` | Main verification command (3,600+ lines) |
+| `lib/verify-runner.sh` | Shared test infrastructure |
+| `.verification.yml` | Verification state tracking (571 items) |
+| `.badges.json` | Coverage statistics for README |
+
+**Features:**
+- **Machine Verification**: Automated tests at 4 depth levels (basic, standard, thorough, paranoid)
+- **Human Verification**: Interactive TUI for manual confirmation tracking
+- **Badges**: Shields.io-compatible JSON for README coverage display
+- **CI/CD Integration**: GitLab CI and GitHub Actions examples
+
+**Commands:**
+```bash
+pl verify                        # Interactive TUI
+pl verify --run                  # Run machine tests
+pl verify --run --depth=thorough # Full verification
+pl verify badges                 # Generate coverage badges
+pl verify status                 # Show verification summary
+```
+
+**Coverage:**
+| Metric | Value |
+|--------|-------|
+| Total Items | 571 |
+| Features | 90+ |
+| Machine Verification | 40.7% |
+| Depth Levels | 4 |
+
+**Deprecates:**
+- `test-nwp.sh` - Removed (no wrapper, clean break)
+- `pl test-nwp` - Redirects to `pl verify --run` with deprecation notice
 
 ---
 

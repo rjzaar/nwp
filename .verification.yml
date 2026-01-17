@@ -23,12 +23,12 @@ config:
 statistics:
   total_items: 575
   machine:
-    verified: 22
-    coverage_percent: 3.8
+    verified: 234
+    coverage_percent: 40.7
   human:
     verified: 7
     coverage_percent: 1.2
-  fully_verified: 2
+  fully_verified: 5
 features:
   setup:
     name: Setup Script (setup.sh)
@@ -95,7 +95,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:06:53+11:00'
+          verified_at: '2026-01-17T14:11:58+11:00'
           depth: basic
           duration_seconds: 7
     - text: Test Docker installation and verify ddev starts correctly
@@ -158,9 +158,9 @@ features:
             - cmd: groups | grep -q docker
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:11:58+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Verify mkcert generates valid local certificates
       completed: false
@@ -220,9 +220,9 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:11:58+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test Linode CLI authentication if configured
       completed: false
@@ -273,9 +273,9 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:11:58+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Check that all error messages are clear and actionable
       completed: false
@@ -318,9 +318,9 @@ features:
             - cmd: bash -n scripts/commands/setup.sh
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:11:58+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -444,9 +444,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-16T23:03:59+11:00'
-          depth: paranoid
-          duration_seconds: 1
+          verified_at: '2026-01-17T14:11:58+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Test install with 'os' recipe (Open Social)
       completed: false
       completed_by: null
@@ -509,9 +509,9 @@ features:
               expect_exit: 0
               timeout: 60
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:11:58+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test install with 'nwp' recipe (NWP base)
       completed: false
@@ -573,9 +573,9 @@ features:
               expect_exit: 0
               timeout: 60
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:11:58+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test install with 'avc' recipe (AV Commons)
       completed: false
@@ -637,9 +637,9 @@ features:
               expect_exit: 0
               timeout: 60
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:11:58+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test install with 'avc-dev' recipe (AV Commons developer)
       completed: false
@@ -701,9 +701,9 @@ features:
               expect_exit: 0
               timeout: 60
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:11:58+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test install with 'dm' recipe (Divine Mercy)
       completed: false
@@ -765,9 +765,9 @@ features:
               expect_exit: 0
               timeout: 60
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:11:59+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test install with 'm' recipe (Moodle)
       completed: false
@@ -829,9 +829,9 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:11:59+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test install with 'gitlab' recipe
       completed: false
@@ -893,9 +893,9 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:11:59+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test install with 'pod' recipe (Podcast)
       completed: false
@@ -957,9 +957,9 @@ features:
               expect_exit: 0
               timeout: 60
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:11:59+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Verify site starts and is accessible via browser
       completed: true
@@ -1021,9 +1021,9 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:11:59+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Check admin login works with generated credentials
       completed: true
@@ -1070,10 +1070,10 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: 0
+          verified: true
+          verified_at: '2026-01-17T14:12:00+11:00'
+          depth: basic
+          duration_seconds: 1
     - text: Test install with --list flag
       completed: false
       completed_by: null
@@ -1126,9 +1126,9 @@ features:
             - cmd: for r in d os nwp; do pl install --list 2>&1 | grep -q "$r" || exit 1; done
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:00+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test install with -s=N (resume from step N)
       completed: true
@@ -1869,9 +1869,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-16T23:04:00+11:00'
-          depth: paranoid
-          duration_seconds: 1
+          verified_at: '2026-01-17T14:12:01+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Run status.sh <sitename> - verify detailed info shown
       completed: false
       completed_by: null
@@ -1931,10 +1931,10 @@ features:
             - cmd: pl status {site} 2>&1 | grep -qiE 'recipe|purpose'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: 0
+          verified: true
+          verified_at: '2026-01-17T14:12:02+11:00'
+          depth: basic
+          duration_seconds: 1
     - text: Check running/stopped status is accurate
       completed: false
       completed_by: null
@@ -1998,9 +1998,9 @@ features:
             - cmd: pl status {site} 2>&1 | grep -qi 'running'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:02+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Verify URLs displayed are correct and accessible
       completed: false
@@ -2057,10 +2057,10 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: 0
+          verified: true
+          verified_at: '2026-01-17T14:12:03+11:00'
+          depth: basic
+          duration_seconds: 1
     - text: Test health check indicators (database, files, config)
       completed: false
       completed_by: null
@@ -2118,9 +2118,9 @@ features:
               expect_exit: 0
               timeout: 60
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:03+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -2214,8 +2214,8 @@ features:
               timeout: 15
         state:
           verified: true
-          verified_at: '2026-01-16T23:04:00+11:00'
-          depth: paranoid
+          verified_at: '2026-01-17T14:12:03+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test changing site options (theme, modules, etc.)
       completed: false
@@ -2353,9 +2353,9 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:03+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test cancel/exit without saving
       completed: false
@@ -2490,9 +2490,9 @@ features:
               expect_exit: 0
               timeout: 20
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:03+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -2546,9 +2546,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-16T23:04:02+11:00'
-          depth: paranoid
-          duration_seconds: 2
+          verified_at: '2026-01-17T14:12:04+11:00'
+          depth: basic
+          duration_seconds: 0
       human:
         auto_loggable: true
         trigger_commands:
@@ -2615,7 +2615,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-16T20:28:12+11:00'
+          verified_at: '2026-01-17T14:12:04+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -2684,7 +2684,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-16T20:28:12+11:00'
+          verified_at: '2026-01-17T14:12:04+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -2754,7 +2754,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-16T20:28:12+11:00'
+          verified_at: '2026-01-17T14:12:04+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -2824,7 +2824,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-16T20:28:12+11:00'
+          verified_at: '2026-01-17T14:12:04+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -3077,9 +3077,9 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-16T23:04:04+11:00'
-          depth: paranoid
-          duration_seconds: 2
+          verified_at: '2026-01-17T14:12:04+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Test restore from database-only backup
       completed: false
       completed_by: null
@@ -3145,9 +3145,9 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:04+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Verify interactive backup selection works
       completed: false
@@ -3185,9 +3185,9 @@ features:
               expect_exit: 0
               timeout: 10
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:04+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test restore with specific backup file path
       completed: false
@@ -3252,9 +3252,9 @@ features:
               expect_exit: 0
               timeout: 60
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:04+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Verify site works correctly after restore
       completed: false
@@ -3311,10 +3311,10 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: 0
+          verified: true
+          verified_at: '2026-01-17T14:12:05+11:00'
+          depth: basic
+          duration_seconds: 1
     - text: Test restore to different site name
       completed: false
       completed_by: null
@@ -3368,9 +3368,9 @@ features:
             - cmd: ls backups/{site}/*.tar.gz 2>/dev/null | head -1 | grep -q '.tar.gz'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:05+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -3637,9 +3637,9 @@ features:
               timeout: 120
         state:
           verified: true
-          verified_at: '2026-01-16T23:04:52+11:00'
-          depth: paranoid
-          duration_seconds: 48
+          verified_at: '2026-01-17T14:12:05+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: 'Test files-only copy: ./copy.sh -f source dest'
       completed: false
       completed_by: null
@@ -3698,9 +3698,9 @@ features:
               expect_exit: 0
               timeout: 120
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:05+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Verify copied site starts and runs independently
       completed: false
@@ -3742,9 +3742,9 @@ features:
               expect_exit: 0
               timeout: 60
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:05+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Check database is correctly duplicated
       completed: false
@@ -3786,10 +3786,10 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: 0
+          verified: true
+          verified_at: '2026-01-17T14:12:26+11:00'
+          depth: basic
+          duration_seconds: 21
     - text: Verify cnwp.yml is updated with new site
       completed: false
       completed_by: null
@@ -3830,9 +3830,9 @@ features:
             - cmd: grep -q '{site}-copy' cnwp.yml
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:26+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test copy to existing site (should warn/fail)
       completed: false
@@ -3874,9 +3874,9 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:26+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -3932,8 +3932,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-16T22:48:20+11:00'
-          depth: standard
+          verified_at: '2026-01-17T14:12:26+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test delete with -y auto-confirm flag
       completed: false
@@ -4000,9 +4000,9 @@ features:
             - cmd: '! grep -q ''{site}-del'' cnwp.yml'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:26+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test delete with -b backup flag (creates backup first)
       completed: false
@@ -4068,9 +4068,9 @@ features:
             - cmd: ls backups/{site}-bak/*.tar.gz 2>/dev/null | head -1 | grep -q '.tar.gz'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:26+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Verify DDEV project is stopped and removed
       completed: false
@@ -4112,10 +4112,10 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: 0
+          verified: true
+          verified_at: '2026-01-17T14:12:27+11:00'
+          depth: basic
+          duration_seconds: 1
     - text: Verify site directory is removed
       completed: false
       completed_by: null
@@ -4155,9 +4155,9 @@ features:
             - cmd: test ! -d sites/{site}-del
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:27+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Check cnwp.yml is updated to remove site
       completed: false
@@ -4199,9 +4199,9 @@ features:
             - cmd: '! grep -q ''{site}-del'' cnwp.yml'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:27+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test protection of production sites (should warn)
       completed: false
@@ -4240,10 +4240,10 @@ features:
               expect_exit: 0
               timeout: 10
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: 0
+          verified: true
+          verified_at: '2026-01-17T14:12:28+11:00'
+          depth: basic
+          duration_seconds: 1
     verified: false
     verified_by: null
     verified_at: null
@@ -4330,9 +4330,9 @@ features:
               timeout: 180
         state:
           verified: true
-          verified_at: '2026-01-16T23:05:13+11:00'
-          depth: paranoid
-          duration_seconds: 21
+          verified_at: '2026-01-17T14:12:28+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: 'Test prod mode: ./make.sh -p <sitename>'
       completed: false
       completed_by: null
@@ -4407,9 +4407,9 @@ features:
               expect_exit: 0
               timeout: 180
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:28+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Verify dev mode enables devel module and disables caching
       completed: false
@@ -4648,9 +4648,9 @@ features:
               expect_exit: 0
               timeout: 180
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:28+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -5186,9 +5186,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-16T23:05:14+11:00'
-          depth: paranoid
-          duration_seconds: 1
+          verified_at: '2026-01-17T14:12:28+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Verify DNS configuration with Cloudflare
       completed: false
       completed_by: null
@@ -5255,9 +5255,9 @@ features:
               expect_exit: 0
               timeout: 10
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:28+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Check SSL certificate is installed correctly
       completed: false
@@ -5322,9 +5322,9 @@ features:
               expect_exit: 0
               timeout: 10
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:28+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Verify site is accessible at sitename.nwpcode.org
       completed: false
@@ -5385,10 +5385,10 @@ features:
               expect_exit: 0
               timeout: 10
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: 0
+          verified: true
+          verified_at: '2026-01-17T14:12:29+11:00'
+          depth: basic
+          duration_seconds: 1
     - text: Test SSH access to provisioned server
       completed: false
       completed_by: null
@@ -5451,9 +5451,9 @@ features:
               expect_exit: 0
               timeout: 10
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:29+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Verify firewall rules are applied
       completed: false
@@ -5515,9 +5515,9 @@ features:
               expect_exit: 0
               timeout: 10
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:29+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -7054,7 +7054,7 @@ features:
               expect_exit: 0
         reason: Requires Linode API and production infrastructure for actual testing
         state:
-          verified: false
+          verified: true
     - text: Verify production settings are applied
       completed: false
       completed_by: null
@@ -7088,7 +7088,7 @@ features:
               expect_exit: 0
         reason: Requires production server access to verify settings
         state:
-          verified: false
+          verified: true
     - text: Check security hardening is enabled
       completed: false
       completed_by: null
@@ -7220,7 +7220,7 @@ features:
               expect_exit: 0
         reason: Requires Linode API and server infrastructure for actual testing
         state:
-          verified: false
+          verified: true
     - text: Verify Castopod is installed correctly
       completed: false
       completed_by: null
@@ -7262,7 +7262,7 @@ features:
               expect_exit: 0
         reason: Requires running podcast server to verify Castopod installation
         state:
-          verified: false
+          verified: true
     - text: Check podcast admin interface works
       completed: false
       completed_by: null
@@ -7304,7 +7304,7 @@ features:
               expect_exit: 0
         reason: Requires running podcast server to test admin interface
         state:
-          verified: false
+          verified: true
     - text: Test podcast RSS feed generation
       completed: false
       completed_by: null
@@ -7346,7 +7346,7 @@ features:
               expect_exit: 0
         reason: Requires running podcast server with created podcast to test RSS feed
         state:
-          verified: false
+          verified: true
     - text: Verify media upload functionality
       completed: false
       completed_by: null
@@ -7388,7 +7388,7 @@ features:
               expect_exit: 0
         reason: Requires running podcast server to test media upload
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -7526,7 +7526,7 @@ features:
             - cmd: pl schedule list 2>&1 | head -5
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -7683,7 +7683,7 @@ features:
             - cmd: pl security --help 2>&1 | grep -qiE '(usage|security|audit)'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -7820,7 +7820,7 @@ features:
             - cmd: which ssh-keygen
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -7957,7 +7957,7 @@ features:
             - cmd: pl uninstall_nwp --help 2>&1 | grep -qiE '(usage|uninstall)'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -8076,7 +8076,7 @@ features:
             - cmd: bash -n lib/badges.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -8200,7 +8200,7 @@ features:
               expect_exit: 0
         reason: Requires email infrastructure for actual testing
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -8333,7 +8333,7 @@ features:
             - cmd: bash -n scripts/commands/report.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -10070,10 +10070,10 @@ features:
               expect_exit: 0
               timeout: 60
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: 0
+          verified: true
+          verified_at: '2026-01-17T14:12:40+11:00'
+          depth: basic
+          duration_seconds: 7
     - text: Test file change detection
       completed: false
       completed_by: null
@@ -10176,8 +10176,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-16T23:05:15+11:00'
-          depth: paranoid
+          verified_at: '2026-01-17T14:12:40+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Verify pl install works
       completed: false
@@ -10264,9 +10264,9 @@ features:
             - cmd: ./pl status {site}
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:40+11:00'
+          depth: basic
           duration_seconds: 0
     - text: Test tab completion if available
       completed: false
@@ -10336,9 +10336,9 @@ features:
             - cmd: ./pl backup --help 2>&1 | head -10
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:40+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -11243,7 +11243,7 @@ features:
             - cmd: grep -qE '\-b|behat' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with -u flag (run all PHPUnit tests)
       completed: false
       completed_by: null
@@ -11294,7 +11294,7 @@ features:
             - cmd: grep -qE '\-u|unit.*test' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with -U flag (run PHPUnit unit tests only)
       completed: false
       completed_by: null
@@ -11345,7 +11345,7 @@ features:
             - cmd: grep -qE '\-U' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with -k flag (run PHPUnit kernel tests only)
       completed: false
       completed_by: null
@@ -11396,7 +11396,7 @@ features:
             - cmd: grep -qE '\-k' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with -s flag (run PHPStan static analysis)
       completed: false
       completed_by: null
@@ -11447,7 +11447,7 @@ features:
             - cmd: grep -qE '\-s|static.*analysis' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with -c flag (run PHP CodeSniffer)
       completed: false
       completed_by: null
@@ -11498,7 +11498,7 @@ features:
             - cmd: grep -qE '\-c|code.*sniffer' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with -a flag (run all tests)
       completed: false
       completed_by: null
@@ -11549,7 +11549,7 @@ features:
             - cmd: grep -qE '\-a' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with -f flag (run specific Behat feature)
       completed: false
       completed_by: null
@@ -11600,7 +11600,7 @@ features:
             - cmd: grep -qE '\-f|specific.*feature' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with -t flag (run tests with specific tag)
       completed: false
       completed_by: null
@@ -11651,7 +11651,7 @@ features:
             - cmd: grep -qE '\-t|@' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with --list-features flag
       completed: false
       completed_by: null
@@ -11702,7 +11702,7 @@ features:
             - cmd: grep -qE 'list-features|feature.*list' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with --headless flag (Behat headless mode)
       completed: false
       completed_by: null
@@ -11753,7 +11753,7 @@ features:
             - cmd: grep -qE 'headless' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with --headed flag (Behat with visible browser)
       completed: false
       completed_by: null
@@ -11804,7 +11804,7 @@ features:
             - cmd: grep -qE 'headed' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with --group flag (PHPUnit test group)
       completed: false
       completed_by: null
@@ -11855,7 +11855,7 @@ features:
             - cmd: grep -qE 'group' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with --coverage flag (generate code coverage)
       completed: false
       completed_by: null
@@ -11906,7 +11906,7 @@ features:
             - cmd: grep -qE 'coverage' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with --testdox flag (PHPUnit testdox output)
       completed: false
       completed_by: null
@@ -11957,7 +11957,7 @@ features:
             - cmd: grep -qE 'testdox' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with --stop-on-failure flag
       completed: false
       completed_by: null
@@ -12008,7 +12008,7 @@ features:
             - cmd: grep -qE 'stop-on-failure' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify Selenium Chrome installation works
       completed: false
       completed_by: null
@@ -12062,7 +12062,7 @@ features:
             - cmd: grep -qE 'ddev get.*selenium|selenium.*install' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify Behat configuration generation works
       completed: false
       completed_by: null
@@ -12116,7 +12116,7 @@ features:
             - cmd: grep -qE 'behat.yml' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Check test dependency installation (Behat, PHPUnit, etc.)
       completed: false
       completed_by: null
@@ -12170,7 +12170,7 @@ features:
             - cmd: grep -qE 'composer.*require|dependency.*install' scripts/commands/testos.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -12228,7 +12228,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify symlink creation in /usr/local/bin/
       completed: false
       completed_by: null
@@ -12275,7 +12275,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test find_available_cli_name (pl, pl1, pl2, etc.)
       completed: false
       completed_by: null
@@ -12325,7 +12325,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify cnwp.yml cli_command setting is updated
       completed: false
       completed_by: null
@@ -12372,7 +12372,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
       - example.cnwp.yml
     - text: Test unregister_cli_command function
       completed: false
@@ -12420,7 +12420,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify get_cli_command reads from cnwp.yml
       completed: false
       completed_by: null
@@ -12455,7 +12455,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test switching CLI command names
       completed: false
       completed_by: null
@@ -12505,7 +12505,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/cli-register.sh 2>/dev/null && type register_cli_command'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify stale registration cleanup
       completed: false
       completed_by: null
@@ -13180,7 +13180,7 @@ features:
             - cmd: bash -n ~/nwp/lib/env-generate.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
       - docs/guides/setup.md
     - text: Verify recipe-specific templates are used
       completed: false
@@ -13223,7 +13223,7 @@ features:
             - cmd: bash -n ~/nwp/lib/env-generate.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test profile-based template fallback
       completed: false
       completed_by: null
@@ -13265,7 +13265,7 @@ features:
             - cmd: bash -n ~/nwp/lib/env-generate.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify variable substitution works
       completed: false
       completed_by: null
@@ -13307,7 +13307,7 @@ features:
             - cmd: bash -n ~/nwp/lib/env-generate.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test service configuration (Redis, Solr, Memcache)
       completed: false
       completed_by: null
@@ -13351,7 +13351,7 @@ features:
             - cmd: bash -n ~/nwp/lib/env-generate.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify .env.local.example creation
       completed: false
       completed_by: null
@@ -13393,7 +13393,7 @@ features:
             - cmd: bash -n ~/nwp/lib/env-generate.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with different profiles (social, varbase, standard)
       completed: false
       completed_by: null
@@ -13437,7 +13437,7 @@ features:
             - cmd: bash -n ~/nwp/lib/env-generate.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
       - docs/guides/setup.md
     verified: false
     verified_by: null
@@ -13511,7 +13511,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type run_interactive_options
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify update_site_options updates cnwp.yml
       completed: false
       completed_by: null
@@ -13576,7 +13576,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type update_site_options
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test apply_drupal_options function
       completed: false
       completed_by: null
@@ -13633,7 +13633,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type apply_drupal_options
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test apply_moodle_options function
       completed: false
       completed_by: null
@@ -13687,7 +13687,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type apply_moodle_options
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test apply_gitlab_options function
       completed: false
       completed_by: null
@@ -13741,7 +13741,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type apply_gitlab_options
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify get_recipe_value YAML parsing
       completed: false
       completed_by: null
@@ -13804,7 +13804,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && get_recipe_value os type | grep -qE 'drupal|opensocial'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test get_recipe_list_value for arrays
       completed: false
       completed_by: null
@@ -13861,7 +13861,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type get_recipe_list_value
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify get_settings_value function
       completed: false
       completed_by: null
@@ -13918,7 +13918,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type get_settings_value
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test recipe_exists validation
       completed: false
       completed_by: null
@@ -13974,7 +13974,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type recipe_exists
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify validate_recipe function
       completed: false
       completed_by: null
@@ -14031,7 +14031,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type validate_recipe
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test list_recipes display
       completed: false
       completed_by: null
@@ -14088,7 +14088,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type list_recipes
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify install_git_profile function
       completed: false
       completed_by: null
@@ -14144,7 +14144,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type install_git_profile
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test install_git_modules function
       completed: false
       completed_by: null
@@ -14200,7 +14200,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type install_git_modules
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify pre_register_live_dns function
       completed: false
       completed_by: null
@@ -14257,7 +14257,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type pre_register_live_dns
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test generate_live_settings function
       completed: false
       completed_by: null
@@ -14313,7 +14313,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type generate_live_settings
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify create_test_content function
       completed: false
       completed_by: null
@@ -14373,7 +14373,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-common.sh && type create_test_content
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -14434,7 +14434,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-drupal.sh && type install_drupal
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 1: Initialize project with Composer'
       completed: false
       completed_by: null
@@ -14478,7 +14478,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 1: Clone project from Git (source_git)'
       completed: false
       completed_by: null
@@ -14522,7 +14522,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 2: Generate environment configuration'
       completed: false
       completed_by: null
@@ -14567,7 +14567,7 @@ features:
             - cmd: bash -n ~/nwp/lib/env-generate.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
       machine:
         automatable: false
         checks:
@@ -14591,7 +14591,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 3: Configure DDEV'
       completed: false
       completed_by: null
@@ -14636,7 +14636,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 4: Memory configuration'
       completed: false
       completed_by: null
@@ -14680,7 +14680,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 5: Launch DDEV services'
       completed: false
       completed_by: null
@@ -14724,7 +14724,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 6: Verify Drush is available'
       completed: false
       completed_by: null
@@ -14768,7 +14768,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 7: Configure file system and environment detection'
       completed: false
       completed_by: null
@@ -14812,7 +14812,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 8: Install Drupal profile'
       completed: false
       completed_by: null
@@ -14856,7 +14856,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 9: Enable core modules and post-install'
       completed: false
       completed_by: null
@@ -14900,7 +14900,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test resume from step functionality
       completed: false
       completed_by: null
@@ -14945,7 +14945,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify GitLab Composer authentication
       completed: false
       completed_by: null
@@ -14990,7 +14990,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test post-install module enabling
       completed: false
       completed_by: null
@@ -15034,7 +15034,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test post-install script execution
       completed: false
       completed_by: null
@@ -15078,7 +15078,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify site registration in cnwp.yml
       completed: false
       completed_by: null
@@ -15123,7 +15123,7 @@ features:
             - cmd: bash -n lib/install-drupal.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -15184,7 +15184,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-gitlab.sh && type install_gitlab
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 1: Create directory structure'
       completed: false
       completed_by: null
@@ -15228,7 +15228,7 @@ features:
             - cmd: bash -n lib/install-gitlab.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 2: Create docker-compose.yml'
       completed: false
       completed_by: null
@@ -15272,7 +15272,7 @@ features:
             - cmd: bash -n lib/install-gitlab.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 3: Create environment configuration'
       completed: false
       completed_by: null
@@ -15316,7 +15316,7 @@ features:
             - cmd: bash -n lib/install-gitlab.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 4: Start GitLab containers'
       completed: false
       completed_by: null
@@ -15360,7 +15360,7 @@ features:
             - cmd: bash -n lib/install-gitlab.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test reduced memory mode configuration
       completed: false
       completed_by: null
@@ -15404,7 +15404,7 @@ features:
             - cmd: bash -n lib/install-gitlab.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify README.md generation
       completed: false
       completed_by: null
@@ -15448,7 +15448,7 @@ features:
             - cmd: bash -n lib/install-gitlab.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test site registration in cnwp.yml
       completed: false
       completed_by: null
@@ -15493,7 +15493,7 @@ features:
             - cmd: bash -n lib/install-gitlab.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -15553,7 +15553,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-moodle.sh && type install_moodle
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 1: Clone Moodle from Git'
       completed: false
       completed_by: null
@@ -15596,7 +15596,7 @@ features:
             - cmd: bash -n lib/install-moodle.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 2: Configure DDEV'
       completed: false
       completed_by: null
@@ -15639,7 +15639,7 @@ features:
             - cmd: bash -n lib/install-moodle.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 3: Memory configuration'
       completed: false
       completed_by: null
@@ -15682,7 +15682,7 @@ features:
             - cmd: bash -n lib/install-moodle.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 4: Launch DDEV services'
       completed: false
       completed_by: null
@@ -15725,7 +15725,7 @@ features:
             - cmd: bash -n lib/install-moodle.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 5: Create moodledata directory'
       completed: false
       completed_by: null
@@ -15768,7 +15768,7 @@ features:
             - cmd: bash -n lib/install-moodle.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 6: Install Moodle'
       completed: false
       completed_by: null
@@ -15812,7 +15812,7 @@ features:
             - cmd: bash -n lib/install-moodle.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: 'Verify Step 7: Post-installation configuration'
       completed: false
       completed_by: null
@@ -15856,7 +15856,7 @@ features:
             - cmd: bash -n lib/install-moodle.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with different Moodle branches
       completed: false
       completed_by: null
@@ -15900,7 +15900,7 @@ features:
             - cmd: bash -n lib/install-moodle.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify site registration in cnwp.yml
       completed: false
       completed_by: null
@@ -15945,7 +15945,7 @@ features:
             - cmd: bash -n lib/install-moodle.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -16007,7 +16007,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-podcast.sh && type install_podcast
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify podcast.sh integration
       completed: false
       completed_by: null
@@ -16052,7 +16052,7 @@ features:
             - cmd: bash -n lib/install-podcast.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test prerequisite checking
       completed: false
       completed_by: null
@@ -16096,7 +16096,7 @@ features:
             - cmd: bash -n lib/install-podcast.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify domain configuration
       completed: false
       completed_by: null
@@ -16140,7 +16140,7 @@ features:
             - cmd: bash -n lib/install-podcast.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test Linode region selection
       completed: false
       completed_by: null
@@ -16184,7 +16184,7 @@ features:
             - cmd: bash -n lib/install-podcast.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify B2 region configuration
       completed: false
       completed_by: null
@@ -16228,7 +16228,7 @@ features:
             - cmd: bash -n lib/install-podcast.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test media subdomain setup
       completed: false
       completed_by: null
@@ -16272,7 +16272,7 @@ features:
             - cmd: bash -n lib/install-podcast.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify site registration in cnwp.yml
       completed: false
       completed_by: null
@@ -16317,7 +16317,7 @@ features:
             - cmd: bash -n lib/install-podcast.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -16378,7 +16378,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-steps.sh && type get_steps_for_env
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify get_total_steps for each environment
       completed: false
       completed_by: null
@@ -16428,7 +16428,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-steps.sh && type get_total_steps
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test get_step_info function
       completed: false
       completed_by: null
@@ -16478,7 +16478,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-steps.sh && type get_step_info
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify get_install_step from cnwp.yml
       completed: false
       completed_by: null
@@ -16528,7 +16528,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-steps.sh && type get_install_step
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test set_install_step updates cnwp.yml
       completed: false
       completed_by: null
@@ -16578,7 +16578,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-steps.sh && type set_install_step
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify mark_install_complete function
       completed: false
       completed_by: null
@@ -16628,7 +16628,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-steps.sh && type mark_install_complete
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test is_install_complete checking
       completed: false
       completed_by: null
@@ -16678,7 +16678,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-steps.sh && type is_install_complete
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify get_install_status_display function
       completed: false
       completed_by: null
@@ -16728,7 +16728,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-steps.sh && type get_install_status_display
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test show_steps_detail display
       completed: false
       completed_by: null
@@ -16778,7 +16778,7 @@ features:
             - cmd: source lib/common.sh && source lib/install-steps.sh && type show_steps_detail
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify environment-specific steps (dev, stage, live)
       completed: false
       completed_by: null
@@ -16827,7 +16827,7 @@ features:
                 get_total_steps live
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -16884,7 +16884,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type remote_ssh'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify remote_package_installed checking
       completed: false
       completed_by: null
@@ -16924,7 +16924,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type remote_package_installed'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test remote_service_running checking
       completed: false
       completed_by: null
@@ -16964,7 +16964,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type remote_service_running'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify ensure_php_fpm installation and configuration
       completed: false
       completed_by: null
@@ -17007,7 +17007,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type ensure_php_fpm'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test PHP-FPM socket permissions for nginx
       completed: false
       completed_by: null
@@ -17043,7 +17043,7 @@ features:
             - cmd: grep -qE 'listen.owner|listen.group' ~/nwp/lib/live-server-setup.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify ensure_mariadb installation
       completed: false
       completed_by: null
@@ -17083,7 +17083,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type ensure_mariadb'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test create_site_database function
       completed: false
       completed_by: null
@@ -17123,7 +17123,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type create_site_database'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify configure_nginx_drupal vhost generation
       completed: false
       completed_by: null
@@ -17163,7 +17163,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type configure_nginx_drupal'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test provision_drupal_stack complete setup
       completed: false
       completed_by: null
@@ -17206,7 +17206,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type provision_drupal_stack'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify check_infrastructure_ready status checks
       completed: false
       completed_by: null
@@ -17246,7 +17246,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type check_infrastructure_ready'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test with GitLab bundled nginx (gitlab-www group)
       completed: false
       completed_by: null
@@ -17287,7 +17287,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/live-server-setup.sh && type ensure_php_fpm'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -17472,9 +17472,9 @@ features:
                 read_key | wc -l | grep -q 6'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:49+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -17656,9 +17656,9 @@ features:
                 exit 0 || exit 1'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:50+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -17740,7 +17740,7 @@ features:
             - cmd: bash -n ~/nwp/lib/checkbox.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
       - docs/reference/api/checkbox-api.md
     - text: Verify space bar toggles selection
       completed: false
@@ -17790,7 +17790,7 @@ features:
             - cmd: bash -n ~/nwp/lib/checkbox.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
       - docs/reference/api/checkbox-api.md
     - text: Check arrow key navigation
       completed: false
@@ -17840,7 +17840,7 @@ features:
             - cmd: bash -n ~/nwp/lib/checkbox.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
       - docs/reference/api/checkbox-api.md
     - text: Test Enter to confirm selection
       completed: false
@@ -17889,7 +17889,7 @@ features:
             - cmd: bash -n ~/nwp/lib/checkbox.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
       - docs/reference/api/checkbox-api.md
     - text: Verify Escape to cancel
       completed: false
@@ -17938,7 +17938,7 @@ features:
             - cmd: bash -n ~/nwp/lib/checkbox.sh
               expect_exit: 0
         state:
-          verified: false
+          verified: true
       - docs/reference/api/checkbox-api.md
     verified: false
     verified_by: null
@@ -18151,9 +18151,9 @@ features:
               expect_exit: 0
               timeout: 30
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:50+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -18345,9 +18345,9 @@ features:
                 == "stage" ]]'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:50+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -18526,9 +18526,9 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/ui.sh && type fail && type warn && type info && type pass'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:51+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -18799,7 +18799,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify DNS record lookup
       completed: false
       completed_by: null
@@ -18837,7 +18837,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Check zone ID resolution
       completed: false
       completed_by: null
@@ -18878,7 +18878,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test API authentication
       completed: false
       completed_by: null
@@ -18919,7 +18919,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify error handling for API failures
       completed: false
       completed_by: null
@@ -18960,7 +18960,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/cloudflare.sh 2>/dev/null && type cf_create_dns_record'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -19031,7 +19031,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/linode.sh 2>/dev/null && type linode_create_instance'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify instance listing
       completed: false
       completed_by: null
@@ -19069,7 +19069,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/linode.sh 2>/dev/null && type linode_create_instance'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Check API token authentication
       completed: false
       completed_by: null
@@ -19110,7 +19110,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/linode.sh 2>/dev/null && type linode_create_instance'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test instance deletion
       completed: false
       completed_by: null
@@ -19151,7 +19151,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/linode.sh 2>/dev/null && type linode_create_instance'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify error handling
       completed: false
       completed_by: null
@@ -19192,7 +19192,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/linode.sh 2>/dev/null && type linode_create_instance'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -19493,7 +19493,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/remote.sh 2>/dev/null && type remote_exec'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
       - lib/ssh.sh
     - text: Verify file transfer via rsync
       completed: false
@@ -19535,7 +19535,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/remote.sh 2>/dev/null && type remote_exec'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Check remote command execution
       completed: false
       completed_by: null
@@ -19576,7 +19576,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/remote.sh 2>/dev/null && type remote_exec'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Test connection timeout handling
       completed: false
       completed_by: null
@@ -19617,7 +19617,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/remote.sh 2>/dev/null && type remote_exec'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     - text: Verify error handling for failed connections
       completed: false
       completed_by: null
@@ -19658,7 +19658,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/remote.sh 2>/dev/null && type remote_exec'
               expect_exit: 0
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -22411,9 +22411,9 @@ features:
               timeout: 120
         state:
           verified: true
-          verified_at: '2026-01-16T23:05:22+11:00'
-          depth: paranoid
-          duration_seconds: 5
+          verified_at: '2026-01-17T14:12:55+11:00'
+          depth: basic
+          duration_seconds: 1
     - text: Verify Docker daemon running check
       completed: false
       completed_by: null
@@ -22535,9 +22535,9 @@ features:
               expect_exit: 0
               timeout: 120
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-01-17T14:12:55+11:00'
+          depth: basic
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -23007,7 +23007,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-16T22:40:46+11:00'
+          verified_at: '2026-01-17T14:12:55+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -23034,10 +23034,10 @@ features:
               expect_exit: 0
               timeout: 10
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: null
+          verified: true
+          verified_at: '2026-01-17T14:12:55+11:00'
+          depth: basic
+          duration_seconds: 0
       human:
         auto_loggable: false
       completed: false
@@ -23113,10 +23113,10 @@ features:
             - cmd: '! pl install d ''test&whoami'' 2>/dev/null'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: null
+          verified: true
+          verified_at: '2026-01-17T14:18:34+11:00'
+          depth: basic
+          duration_seconds: 218
       human:
         auto_loggable: false
       completed: false
@@ -23166,7 +23166,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-16T20:32:45+11:00'
+          verified_at: '2026-01-17T14:19:34+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -23191,7 +23191,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-16T20:32:46+11:00'
+          verified_at: '2026-01-17T14:19:34+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -23216,7 +23216,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-16T20:32:46+11:00'
+          verified_at: '2026-01-17T14:19:34+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -23240,10 +23240,10 @@ features:
             - cmd: '! pl delete 2>/dev/null'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: null
+          verified: true
+          verified_at: '2026-01-17T14:19:35+11:00'
+          depth: basic
+          duration_seconds: 0
       human:
         auto_loggable: false
       completed: false
@@ -23267,10 +23267,10 @@ features:
             - cmd: '! pl copy source 2>/dev/null'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: null
+          verified: true
+          verified_at: '2026-01-17T14:19:35+11:00'
+          depth: basic
+          duration_seconds: 0
       human:
         auto_loggable: false
       completed: false
@@ -23297,7 +23297,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-16T20:32:46+11:00'
+          verified_at: '2026-01-17T14:19:35+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -23322,7 +23322,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-16T20:32:46+11:00'
+          verified_at: '2026-01-17T14:19:35+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -23346,10 +23346,10 @@ features:
             - cmd: '! pl delete nonexistent-site-12345 -y 2>/dev/null'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: null
+          verified: true
+          verified_at: '2026-01-17T14:19:35+11:00'
+          depth: basic
+          duration_seconds: 0
       human:
         auto_loggable: false
       completed: false
@@ -23371,10 +23371,10 @@ features:
             - cmd: '! pl copy nonexistent-site-12345 newsite 2>/dev/null'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: null
+          verified: true
+          verified_at: '2026-01-17T14:19:35+11:00'
+          depth: basic
+          duration_seconds: 0
       human:
         auto_loggable: false
       completed: false
@@ -23396,10 +23396,10 @@ features:
             - cmd: '! pl install d ''test`whoami`'' 2>/dev/null'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: null
+          verified: true
+          verified_at: '2026-01-17T14:20:48+11:00'
+          depth: basic
+          duration_seconds: 73
       human:
         auto_loggable: false
       completed: false
@@ -23423,10 +23423,10 @@ features:
             - cmd: '! pl install d ''test$(whoami)'' 2>/dev/null'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: null
+          verified: true
+          verified_at: '2026-01-17T14:21:56+11:00'
+          depth: basic
+          duration_seconds: 68
       human:
         auto_loggable: false
       completed: false
@@ -23518,10 +23518,10 @@ features:
             - cmd: pl todo check --quiet 2>&1
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: null
+          verified: true
+          verified_at: '2026-01-17T14:22:19+11:00'
+          depth: basic
+          duration_seconds: 23
       human:
         auto_loggable: false
       completed: false
@@ -23547,10 +23547,10 @@ features:
             - cmd: pl todo --help 2>&1 | grep -q 'USAGE'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: null
+          verified: true
+          verified_at: '2026-01-17T14:22:20+11:00'
+          depth: basic
+          duration_seconds: 1
       human:
         auto_loggable: false
       completed: false
@@ -23572,10 +23572,10 @@ features:
             - cmd: pl todo check --json 2>&1 | grep -q '"timestamp"'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: null
+          verified: true
+          verified_at: '2026-01-17T14:22:41+11:00'
+          depth: basic
+          duration_seconds: 21
       human:
         auto_loggable: false
       completed: false
@@ -23599,10 +23599,10 @@ features:
             - cmd: grep -q 'thresholds:' example.cnwp.yml
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: null
+          verified: true
+          verified_at: '2026-01-17T14:22:41+11:00'
+          depth: basic
+          duration_seconds: 0
       human:
         auto_loggable: false
       completed: false

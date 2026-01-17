@@ -234,6 +234,62 @@ Next Actions:
   2. Verify remaining features (14)
 ```
 
+## CI/CD Integration
+
+### GitLab CI
+
+Add verification to your `.gitlab-ci.yml`:
+
+```yaml
+verification:
+  stage: test
+  tags:
+    - nwp  # Runner with NWP infrastructure
+  script:
+    - pl verify --run --depth=standard
+  artifacts:
+    when: always
+    paths:
+      - .badges.json
+    expire_in: 1 week
+
+update-badges:
+  stage: deploy
+  tags:
+    - nwp
+  only:
+    - main
+  script:
+    - pl verify badges
+    - |
+      if ! git diff --quiet .badges.json; then
+        git add .badges.json
+        git commit -m "Update verification badges [skip ci]"
+        git push
+      fi
+```
+
+### GitHub Actions
+
+```yaml
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run verification
+        run: pl verify --run --depth=basic
+```
+
+### Pre-commit Hook
+
+Add to `.git/hooks/pre-commit`:
+
+```bash
+#!/bin/bash
+pl verify --run --depth=basic --feature=setup
+```
+
 ## Verification Storage
 
 Verification state is stored in `.verification.yml`:

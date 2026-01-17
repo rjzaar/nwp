@@ -1,16 +1,16 @@
 {
   "version": 1,
   "schemaVersion": 1,
-  "generated": "2026-01-17T12:33:26+11:00",
+  "generated": "2026-01-17T14:23:55+11:00",
   "pipeline": {
     "id": "local",
     "ref": "main",
-    "sha": "e8e60311ef2e2908fa09741c7aa7d490c253ac72"
+    "sha": "7388988f41875c4acedc87bb9a876a0fca43ce8e"
   },
   "badges": {
     "verification_machine": {
       "label": "Machine Verified",
-      "message": "3%",
+      "message": "40%",
       "color": "red"
     },
     "verification_human": {

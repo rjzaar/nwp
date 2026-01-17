@@ -1,12 +1,13 @@
 # P50: Unified Verification System
 
-**Status:** PROPOSED
+**Status:** IMPLEMENTED
 **Created:** 2026-01-16
-**Updated:** 2026-01-16
+**Updated:** 2026-01-17
+**Implemented:** 2026-01-17
 **Author:** Claude Opus 4.5 (architectural design), Rob (requirements)
 **Priority:** High
-**Estimated Effort:** 8-10 weeks
-**Breaking Changes:** Yes - removes test-nwp.sh (no wrapper)
+**Estimated Effort:** 8-10 weeks (completed)
+**Breaking Changes:** Yes - test-nwp.sh removed (redirects to verify --run)
 
 ---
 

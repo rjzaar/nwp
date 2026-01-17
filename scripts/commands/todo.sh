@@ -245,14 +245,28 @@ is_ignored() {
     return 1
 }
 
-# Add item to ignored list
+# Check if item is in ignored list
+is_item_ignored() {
+    local item_id="$1"
+    local config_file="${CONFIG_FILE:-$PROJECT_ROOT/cnwp.yml}"
+
+    [ ! -f "$config_file" ] && return 1
+
+    if command -v yq &>/dev/null; then
+        local found=$(yq eval ".settings.todo.ignored[] | select(.id == \"$item_id\") | .id" "$config_file" 2>/dev/null)
+        [ -n "$found" ] && return 0
+    fi
+    return 1
+}
+
+# Add item to ignored/processed list
 add_to_ignored() {
     local item_id="$1"
     local reason="${2:-Manual ignore}"
     local expires="${3:-}"
 
     if ! command -v yq &>/dev/null; then
-        print_error "yq is required for ignore functionality"
+        print_error "yq is required for this functionality"
         return 1
     fi
 
@@ -267,7 +281,12 @@ add_to_ignored() {
     # Add to ignored array
     yq eval -i ".settings.todo.ignored += [$entry]" "$CONFIG_FILE" 2>/dev/null
 
-    print_status "OK" "Item '$item_id' added to ignored list"
+    # Show appropriate message based on reason
+    if [ "$reason" = "Processed" ]; then
+        print_status "OK" "Item '$item_id' marked as processed"
+    else
+        print_status "OK" "Item '$item_id' ignored"
+    fi
 }
 
 # Remove item from ignored list

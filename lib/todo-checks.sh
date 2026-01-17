@@ -57,7 +57,23 @@ todo_cache_clear() {
 # Todo Item Builder Functions
 ################################################################################
 
-# Add a todo item to the results
+# Check if an item ID is in the ignored list
+# Args: $1=item_id
+# Returns: 0 if ignored, 1 if not
+todo_is_ignored() {
+    local item_id="$1"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/cnwp.yml}"
+
+    [ ! -f "$config_file" ] && return 1
+
+    if command -v yq &>/dev/null; then
+        local found=$(yq eval ".settings.todo.ignored[] | select(.id == \"$item_id\") | .id" "$config_file" 2>/dev/null)
+        [ -n "$found" ] && return 0
+    fi
+    return 1
+}
+
+# Add a todo item to the results (skips if ignored)
 # Args: $1=category $2=id $3=priority $4=title $5=description $6=site $7=action
 todo_add_item() {
     local category="$1"
@@ -71,6 +87,11 @@ todo_add_item() {
     ((TODO_ITEM_ID++))
     local full_id="${category}-$(printf '%03d' $TODO_ITEM_ID)"
     [ -n "$id" ] && full_id="${category}-${id}"
+
+    # Skip if this item is ignored/processed
+    if todo_is_ignored "$full_id"; then
+        return 0
+    fi
 
     # Store as JSON-like format for easy parsing
     local item="{\"id\":\"$full_id\",\"category\":\"$category\",\"priority\":\"$priority\",\"title\":\"$title\",\"description\":\"$description\",\"site\":\"$site\",\"action\":\"$action\"}"
@@ -604,6 +625,51 @@ check_ssl_expiry() {
 ################################################################################
 
 # Run all enabled checks and return combined results
+################################################################################
+# Check Registry for Progressive Loading
+################################################################################
+
+# List of all checks with display names
+# Format: "function_name:Display Name"
+TODO_CHECK_LIST=(
+    "check_ghost_sites:Ghost sites"
+    "check_incomplete_installs:Incomplete installs"
+    "check_security_updates:Security updates"
+    "check_ssl_expiry:SSL certificates"
+    "check_test_instances:Test instances"
+    "check_token_rotation:Token rotation"
+    "check_missing_backups:Missing backups"
+    "check_disk_usage:Disk usage"
+    "check_gitlab_issues:GitLab issues"
+    "check_orphaned_sites:Orphaned sites"
+    "check_missing_schedules:Missing schedules"
+    "check_verification:Verification"
+    "check_uncommitted_work:Uncommitted work"
+)
+
+# Get check count
+todo_get_check_count() {
+    echo "${#TODO_CHECK_LIST[@]}"
+}
+
+# Get check name by index
+todo_get_check_name() {
+    local idx="$1"
+    echo "${TODO_CHECK_LIST[$idx]}" | cut -d: -f2
+}
+
+# Run a single check by index
+# Args: $1=index
+# Returns items found by this check via TODO_ITEMS array
+todo_run_check_by_index() {
+    local idx="$1"
+    local entry="${TODO_CHECK_LIST[$idx]}"
+    local func="${entry%%:*}"
+
+    # Run the check function (it adds to TODO_ITEMS)
+    "$func" 2>/dev/null || true
+}
+
 run_all_checks() {
     local skip_cache="${1:-false}"
 
@@ -613,19 +679,10 @@ run_all_checks() {
     todo_clear_items
 
     # Run all checks (they add to TODO_ITEMS)
-    check_ghost_sites
-    check_incomplete_installs
-    check_security_updates
-    check_ssl_expiry
-    check_test_instances
-    check_token_rotation
-    check_missing_backups
-    check_disk_usage
-    check_gitlab_issues
-    check_orphaned_sites
-    check_missing_schedules
-    check_verification
-    check_uncommitted_work
+    for entry in "${TODO_CHECK_LIST[@]}"; do
+        local func="${entry%%:*}"
+        "$func" 2>/dev/null || true
+    done
 
     # Output results
     todo_output_items
@@ -654,3 +711,7 @@ export -f check_uncommitted_work
 export -f check_disk_usage
 export -f check_ssl_expiry
 export -f run_all_checks
+export -f todo_get_check_count
+export -f todo_get_check_name
+export -f todo_run_check_by_index
+export -f todo_is_ignored

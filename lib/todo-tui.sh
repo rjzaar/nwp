@@ -75,7 +75,7 @@ tui_read_key() {
 # Data Loading
 ################################################################################
 
-# Load todo items from JSON
+# Load todo items from JSON string
 tui_load_items() {
     local json_data="$1"
 
@@ -90,6 +90,18 @@ tui_load_items() {
         TODO_TUI_ITEMS+=("$line")
         TODO_TUI_SELECTED+=("0")
     done <<< "$json_data"
+}
+
+# Load items from TODO_ITEMS array (for progressive loading)
+tui_load_items_from_array() {
+    TODO_TUI_ITEMS=()
+    TODO_TUI_SELECTED=()
+
+    # Copy from global TODO_ITEMS array (populated by checks)
+    for item in "${TODO_ITEMS[@]}"; do
+        TODO_TUI_ITEMS+=("$item")
+        TODO_TUI_SELECTED+=("0")
+    done
 }
 
 # Get field from item JSON
@@ -503,24 +515,55 @@ todo_tui_main() {
         return 1
     fi
 
-    # Load items
-    local json_data
-    json_data=$(run_all_checks)
-    tui_load_items "$json_data"
-    tui_apply_filters
+    # Setup terminal early for progressive loading
+    tui_cursor_hide
+    trap 'tui_cursor_show; tui_clear_screen' EXIT
+
+    # Initialize empty state
+    TODO_TUI_ITEMS=()
+    TODO_TUI_SELECTED=()
+    TODO_TUI_FILTERED=()
+    todo_cache_init
+
+    # Draw initial screen with loading message
+    tui_draw_screen
+    local term_height=$(tput lines 2>/dev/null || echo 24)
+
+    # Progressive loading: run each check and update display
+    local total_checks=$(todo_get_check_count)
+    todo_clear_items
+
+    for ((check_idx=0; check_idx<total_checks; check_idx++)); do
+        local check_name=$(todo_get_check_name "$check_idx")
+
+        # Show loading status at bottom
+        printf "\033[%d;1H" "$term_height"
+        printf "\033[2K"
+        printf " ${DIM}Checking: %s... (%d/%d)${NC}" "$check_name" "$((check_idx+1))" "$total_checks"
+
+        # Run this check (adds to TODO_ITEMS array)
+        todo_run_check_by_index "$check_idx"
+
+        # Convert TODO_ITEMS to TUI format and refresh display
+        tui_load_items_from_array
+        tui_apply_filters
+        tui_draw_screen
+    done
+
+    # Clear loading message
+    printf "\033[%d;1H" "$term_height"
+    printf "\033[2K"
 
     if [ ${#TODO_TUI_FILTERED[@]} -eq 0 ]; then
+        tui_cursor_show
+        tui_clear_screen
         echo ""
         print_status "OK" "No todo items found"
         echo ""
         return 0
     fi
 
-    # Setup terminal
-    tui_cursor_hide
-    trap 'tui_cursor_show; tui_clear_screen' EXIT
-
-    # Initial draw
+    # Final draw
     tui_draw_screen
 
     while true; do
@@ -666,11 +709,21 @@ todo_tui_main() {
                 fi
                 ;;
             r|R)
-                # Refresh data
+                # Refresh data with progressive loading
                 todo_cache_clear 2>/dev/null || true
-                json_data=$(run_all_checks "true")
-                tui_load_items "$json_data"
-                tui_apply_filters
+                todo_clear_items
+                local total_checks=$(todo_get_check_count)
+                local term_height=$(tput lines 2>/dev/null || echo 24)
+
+                for ((check_idx=0; check_idx<total_checks; check_idx++)); do
+                    local check_name=$(todo_get_check_name "$check_idx")
+                    printf "\033[%d;1H\033[2K ${DIM}Refreshing: %s... (%d/%d)${NC}" "$term_height" "$check_name" "$((check_idx+1))" "$total_checks"
+                    todo_run_check_by_index "$check_idx"
+                    tui_load_items_from_array
+                    tui_apply_filters
+                    tui_draw_screen
+                done
+                printf "\033[%d;1H\033[2K" "$term_height"
                 ;;
             q|Q)
                 break
@@ -701,6 +754,7 @@ export -f tui_cursor_show
 export -f tui_clear_screen
 export -f tui_read_key
 export -f tui_load_items
+export -f tui_load_items_from_array
 export -f tui_get_field
 export -f tui_apply_filters
 export -f tui_get_total_tabs

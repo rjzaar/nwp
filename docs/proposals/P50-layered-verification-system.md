@@ -1,6 +1,6 @@
 # P50: Unified Verification System
 
-**Status:** IMPLEMENTED
+**Status:** IMPLEMENTED - COVERAGE ONGOING (42% → 85% target)
 **Created:** 2026-01-16
 **Updated:** 2026-01-17
 **Implemented:** 2026-01-17
@@ -8,6 +8,10 @@
 **Priority:** High
 **Estimated Effort:** 8-10 weeks (completed)
 **Breaking Changes:** Yes - test-nwp.sh removed (redirects to verify --run)
+
+---
+
+> **"Implement P50" means:** The verification system is built. Continue adding machine checks to increase coverage from 42% to 85%. See **Section 14: Ongoing Coverage Improvement** for the systematic process.
 
 ---
 
@@ -1426,7 +1430,131 @@ pl verify migrate                        # Migrate v2 to v3
 
 ---
 
-## 14. Approval
+## 14. Ongoing Coverage Improvement
+
+### 14.1 Current Status
+
+**Last Updated:** 2026-01-17
+
+| Metric | Current | Target |
+|--------|---------|--------|
+| Machine Coverage | 42% (245/575) | 85% |
+| Items with machine checks | 245 | 489 |
+| Items needing checks | ~330 | 0 |
+
+### 14.2 Systematic Process for Adding Machine Checks
+
+When continuing P50 coverage work, follow this process:
+
+#### Step 1: Identify Features Needing Coverage
+
+Run this command to find features with items missing machine checks:
+
+```bash
+awk '
+/^  [a-z_]+:$/ {
+    if (feature != "" && no_machine > 0) {
+        print feature ": " no_machine " items without machine checks"
+    }
+    feature = $1; gsub(/:$/, "", feature); no_machine = 0
+}
+/^    checklist:/ { in_list = 1 }
+/^    - text:/ { if (in_list) { has_machine = 0; in_item = 1 } }
+/^      machine:/ { if (in_item) has_machine = 1 }
+/^    [a-z_]+:$/ && !/^    - / {
+    if (in_item && !has_machine) no_machine++
+    in_item = 0; in_list = 0
+}
+END { if (no_machine > 0) print feature ": " no_machine " items" }
+' .verification.yml | sort -t: -k2 -rn | head -20
+```
+
+#### Step 2: Priority Order
+
+Work through features in this priority:
+
+1. **Library functions** (`lib_*`) - Self-contained, easy to test
+2. **Core commands** (`install`, `backup`, `restore`, `copy`) - High usage
+3. **Deployment** (`dev2stg`, `stg2prod`, etc.) - Critical paths
+4. **Support commands** (`doctor`, `status`, `modify`) - Helper functions
+5. **Infrastructure** (`linode_*`, `live`) - Requires credentials (mark `automatable: false`)
+
+#### Step 3: Machine Check Template
+
+For each item without a machine check, add this structure after `related_docs:`:
+
+```yaml
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: bash -n lib/LIBRARY.sh
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -c 'source lib/LIBRARY.sh && type FUNCTION_NAME 2>/dev/null'
+              expect_exit: 0
+          thorough:
+            commands:
+            - cmd: bash -c 'source lib/LIBRARY.sh && type FUNCTION_NAME 2>/dev/null'
+              expect_exit: 0
+          paranoid:
+            commands:
+            - cmd: bash -c 'source lib/LIBRARY.sh && type FUNCTION_NAME 2>/dev/null'
+              expect_exit: 0
+        state:
+          verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
+```
+
+**For command scripts**, use:
+- `bash -n scripts/commands/SCRIPT.sh` for syntax check
+- `pl COMMAND --help 2>&1 | head -5` for help text check
+
+#### Step 4: Verify Changes
+
+After adding machine checks:
+
+```bash
+# 1. Validate YAML syntax
+python3 -c "import yaml; yaml.safe_load(open('.verification.yml'))"
+
+# 2. Run verification on the feature
+pl verify --run --depth=basic --feature=FEATURE_ID
+
+# 3. Check updated coverage
+pl verify summary
+```
+
+#### Step 5: Track Progress
+
+Update this section's "Current Status" table after each session.
+
+### 14.3 Features Completed
+
+| Feature | Items | Date | Notes |
+|---------|-------|------|-------|
+| lib_developer | 11/11 | 2026-01-17 | All function type checks |
+| setup | 5/5 | 2026-01-17 | Pre-existing |
+| (more to come) | | | |
+
+### 14.4 Known Limitations
+
+Items marked `automatable: false` typically require:
+- External API credentials (Linode, Cloudflare, GitLab)
+- Interactive user input
+- Running production infrastructure
+- Browser-based verification
+
+These should still have a `machine:` section with `automatable: false` and basic syntax checks where possible.
+
+---
+
+## 15. Approval
 
 | Role | Name | Date | Signature |
 |------|------|------|-----------|

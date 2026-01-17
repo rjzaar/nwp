@@ -23,8 +23,8 @@ config:
 statistics:
   total_items: 575
   machine:
-    verified: 234
-    coverage_percent: 40.7
+    verified: 245
+    coverage_percent: 42.6
   human:
     verified: 7
     coverage_percent: 1.2
@@ -95,9 +95,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:58+11:00'
+          verified_at: '2026-01-17T16:58:36+11:00'
           depth: basic
-          duration_seconds: 7
+          duration_seconds: 9
     - text: Test Docker installation and verify ddev starts correctly
       completed: true
       completed_by: greg
@@ -159,7 +159,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:58+11:00'
+          verified_at: '2026-01-17T16:58:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify mkcert generates valid local certificates
@@ -221,7 +221,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:58+11:00'
+          verified_at: '2026-01-17T16:58:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test Linode CLI authentication if configured
@@ -274,7 +274,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:58+11:00'
+          verified_at: '2026-01-17T16:58:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check that all error messages are clear and actionable
@@ -319,7 +319,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:58+11:00'
+          verified_at: '2026-01-17T16:58:36+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -444,7 +444,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:58+11:00'
+          verified_at: '2026-01-17T16:58:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with 'os' recipe (Open Social)
@@ -510,7 +510,7 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:58+11:00'
+          verified_at: '2026-01-17T16:58:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with 'nwp' recipe (NWP base)
@@ -574,9 +574,9 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:58+11:00'
+          verified_at: '2026-01-17T16:58:37+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test install with 'avc' recipe (AV Commons)
       completed: false
       completed_by: null
@@ -638,7 +638,7 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:58+11:00'
+          verified_at: '2026-01-17T16:58:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with 'avc-dev' recipe (AV Commons developer)
@@ -702,7 +702,7 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:58+11:00'
+          verified_at: '2026-01-17T16:58:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with 'dm' recipe (Divine Mercy)
@@ -766,7 +766,7 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:59+11:00'
+          verified_at: '2026-01-17T16:58:37+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with 'm' recipe (Moodle)
@@ -830,7 +830,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:59+11:00'
+          verified_at: '2026-01-17T16:58:37+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with 'gitlab' recipe
@@ -894,7 +894,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:59+11:00'
+          verified_at: '2026-01-17T16:58:37+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with 'pod' recipe (Podcast)
@@ -958,7 +958,7 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:59+11:00'
+          verified_at: '2026-01-17T16:58:38+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify site starts and is accessible via browser
@@ -1022,7 +1022,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T14:11:59+11:00'
+          verified_at: '2026-01-17T16:58:38+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check admin login works with generated credentials
@@ -1071,7 +1071,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T14:12:00+11:00'
+          verified_at: '2026-01-17T16:58:39+11:00'
           depth: basic
           duration_seconds: 1
     - text: Test install with --list flag
@@ -1127,9 +1127,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:12:00+11:00'
+          verified_at: '2026-01-17T16:58:40+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test install with -s=N (resume from step N)
       completed: true
       completed_by: greg
@@ -1185,6 +1185,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test install with --resume flag
       completed: false
       completed_by: null
@@ -1237,6 +1240,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test install with -p=t (testing purpose)
       completed: false
       completed_by: null
@@ -1292,6 +1298,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test install with -p=i (indefinite purpose)
       completed: false
       completed_by: null
@@ -1347,6 +1356,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test install with -p=p (permanent purpose)
       completed: false
       completed_by: null
@@ -1402,6 +1414,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test install with -p=m (migration purpose - stub only)
       completed: false
       completed_by: null
@@ -1457,6 +1472,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test install with c flag (create test content)
       completed: false
       completed_by: null
@@ -1509,6 +1527,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify cnwp.yml is updated correctly after install
       completed: true
       completed_by: greg
@@ -1565,6 +1586,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test install with custom target name
       completed: false
       completed_by: null
@@ -1620,6 +1644,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test install with auto mode enabled in recipe
       completed: false
       completed_by: null
@@ -1676,6 +1703,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test install_step tracking in cnwp.yml
       completed: false
       completed_by: null
@@ -1732,6 +1762,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test interactive option selection works
       completed: false
       completed_by: null
@@ -1869,9 +1902,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:12:01+11:00'
+          verified_at: '2026-01-17T16:58:41+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Run status.sh <sitename> - verify detailed info shown
       completed: false
       completed_by: null
@@ -1932,7 +1965,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:12:02+11:00'
+          verified_at: '2026-01-17T16:58:42+11:00'
           depth: basic
           duration_seconds: 1
     - text: Check running/stopped status is accurate
@@ -1999,9 +2032,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:12:02+11:00'
+          verified_at: '2026-01-17T16:58:43+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify URLs displayed are correct and accessible
       completed: false
       completed_by: null
@@ -2058,9 +2091,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T14:12:03+11:00'
+          verified_at: '2026-01-17T16:58:43+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Test health check indicators (database, files, config)
       completed: false
       completed_by: null
@@ -2119,9 +2152,9 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T14:12:03+11:00'
+          verified_at: '2026-01-17T16:58:44+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     verified: false
     verified_by: null
     verified_at: null
@@ -2271,6 +2304,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify changes are saved to cnwp.yml correctly
       completed: false
       completed_by: null
@@ -2411,6 +2447,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check keyboard navigation (arrows, enter, escape)
       completed: false
       completed_by: null
@@ -2892,6 +2931,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test --bundle creates git bundle file
       completed: false
       completed_by: null
@@ -2945,6 +2987,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify backup naming convention includes timestamp
       completed: false
       completed_by: null
@@ -3419,6 +3464,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify database is updated from remote
       completed: false
       completed_by: null
@@ -3455,6 +3503,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check files are synced correctly
       completed: false
       completed_by: null
@@ -3491,6 +3542,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test sync with --files-only flag
       completed: false
       completed_by: null
@@ -3527,6 +3581,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify local changes are not overwritten unexpectedly
       completed: false
       completed_by: null
@@ -4465,6 +4522,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify prod mode uninstalls dev modules and enables caching
       completed: false
       completed_by: null
@@ -4519,6 +4579,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check CSS/JS aggregation settings change correctly
       completed: false
       completed_by: null
@@ -4574,6 +4637,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -y auto-confirm flag
       completed: false
       completed_by: null
@@ -4700,6 +4766,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test migration from Drupal 9/10 source
       completed: false
       completed_by: null
@@ -4737,6 +4806,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify content types are migrated correctly
       completed: false
       completed_by: null
@@ -4774,6 +4846,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check users and roles are migrated
       completed: false
       completed_by: null
@@ -4811,6 +4886,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify media/files are migrated
       completed: false
       completed_by: null
@@ -4848,6 +4926,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test migration rollback if available
       completed: false
       completed_by: null
@@ -4936,6 +5017,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test interactive server scanning
       completed: false
       completed_by: null
@@ -4973,6 +5057,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify database is imported correctly
       completed: false
       completed_by: null
@@ -5010,6 +5097,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check files are downloaded and placed correctly
       completed: false
       completed_by: null
@@ -5047,6 +5137,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify imported site starts and runs
       completed: false
       completed_by: null
@@ -5084,6 +5177,9 @@ features:
                 timeout: 10
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test import with specific database/files paths
       completed: false
       completed_by: null
@@ -6606,6 +6702,9 @@ features:
         reason: Requires live server infrastructure for actual deployment testing
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify files are synced via rsync/SSH
       completed: false
       completed_by: null
@@ -6642,6 +6741,9 @@ features:
         reason: Requires live server SSH access to verify file sync
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check database is deployed correctly
       completed: false
       completed_by: null
@@ -6676,6 +6778,9 @@ features:
         reason: Requires live server access to verify database deployment
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify live site is accessible
       completed: false
       completed_by: null
@@ -6709,6 +6814,9 @@ features:
         reason: Requires deployed live site to verify accessibility
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with dry-run mode if available
       completed: false
       completed_by: null
@@ -6797,6 +6905,9 @@ features:
         reason: Requires live server infrastructure for actual sync testing
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify database is downloaded and imported
       completed: false
       completed_by: null
@@ -6830,6 +6941,9 @@ features:
         reason: Requires live server access to verify database download
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check files are synced correctly
       completed: false
       completed_by: null
@@ -6900,6 +7014,9 @@ features:
         reason: Requires production server infrastructure for actual deployment testing
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify backup is created before promotion
       completed: false
       completed_by: null
@@ -6934,6 +7051,9 @@ features:
         reason: Requires production server to verify backup creation
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check production site is updated
       completed: false
       completed_by: null
@@ -6967,6 +7087,9 @@ features:
         reason: Requires deployed production site to verify accessibility
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test rollback procedure
       completed: false
       completed_by: null
@@ -7055,6 +7178,9 @@ features:
         reason: Requires Linode API and production infrastructure for actual testing
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify production settings are applied
       completed: false
       completed_by: null
@@ -7089,6 +7215,9 @@ features:
         reason: Requires production server access to verify settings
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check security hardening is enabled
       completed: false
       completed_by: null
@@ -7123,6 +7252,9 @@ features:
         reason: Requires production server to verify security hardening
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify caching and performance settings
       completed: false
       completed_by: null
@@ -7221,6 +7353,9 @@ features:
         reason: Requires Linode API and server infrastructure for actual testing
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify Castopod is installed correctly
       completed: false
       completed_by: null
@@ -7263,6 +7398,9 @@ features:
         reason: Requires running podcast server to verify Castopod installation
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check podcast admin interface works
       completed: false
       completed_by: null
@@ -7305,6 +7443,9 @@ features:
         reason: Requires running podcast server to test admin interface
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test podcast RSS feed generation
       completed: false
       completed_by: null
@@ -7347,6 +7488,9 @@ features:
         reason: Requires running podcast server with created podcast to test RSS feed
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify media upload functionality
       completed: false
       completed_by: null
@@ -10534,6 +10678,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -t flag (PHPStan only)
       completed: false
       completed_by: null
@@ -10588,6 +10735,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -u flag (PHPUnit unit tests only)
       completed: false
       completed_by: null
@@ -10645,6 +10795,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -k flag (PHPUnit kernel tests only)
       completed: false
       completed_by: null
@@ -10702,6 +10855,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -f flag (PHPUnit functional tests only)
       completed: false
       completed_by: null
@@ -10759,6 +10915,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -s flag (Behat smoke tests only)
       completed: false
       completed_by: null
@@ -10816,6 +10975,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -b flag (full Behat tests)
       completed: false
       completed_by: null
@@ -10873,6 +11035,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -p flag (parallel Behat execution)
       completed: false
       completed_by: null
@@ -10927,6 +11092,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -a flag (run all tests)
       completed: false
       completed_by: null
@@ -10982,6 +11150,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with --ci flag (CI mode with JUnit output)
       completed: false
       completed_by: null
@@ -11065,6 +11236,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify test reports are generated in CI mode
       completed: false
       completed_by: null
@@ -11119,6 +11293,9 @@ features:
                 expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check that missing test dependencies are detected
       completed: false
       completed_by: null
@@ -11244,6 +11421,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -u flag (run all PHPUnit tests)
       completed: false
       completed_by: null
@@ -11295,6 +11475,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -U flag (run PHPUnit unit tests only)
       completed: false
       completed_by: null
@@ -11346,6 +11529,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -k flag (run PHPUnit kernel tests only)
       completed: false
       completed_by: null
@@ -11397,6 +11583,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -s flag (run PHPStan static analysis)
       completed: false
       completed_by: null
@@ -11448,6 +11637,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -c flag (run PHP CodeSniffer)
       completed: false
       completed_by: null
@@ -11499,6 +11691,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -a flag (run all tests)
       completed: false
       completed_by: null
@@ -11550,6 +11745,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -f flag (run specific Behat feature)
       completed: false
       completed_by: null
@@ -11601,6 +11799,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with -t flag (run tests with specific tag)
       completed: false
       completed_by: null
@@ -11652,6 +11853,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with --list-features flag
       completed: false
       completed_by: null
@@ -11703,6 +11907,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with --headless flag (Behat headless mode)
       completed: false
       completed_by: null
@@ -11754,6 +11961,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with --headed flag (Behat with visible browser)
       completed: false
       completed_by: null
@@ -11805,6 +12015,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with --group flag (PHPUnit test group)
       completed: false
       completed_by: null
@@ -11856,6 +12069,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with --coverage flag (generate code coverage)
       completed: false
       completed_by: null
@@ -11907,6 +12123,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with --testdox flag (PHPUnit testdox output)
       completed: false
       completed_by: null
@@ -11958,6 +12177,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with --stop-on-failure flag
       completed: false
       completed_by: null
@@ -12009,6 +12231,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify Selenium Chrome installation works
       completed: false
       completed_by: null
@@ -12063,6 +12288,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify Behat configuration generation works
       completed: false
       completed_by: null
@@ -12117,6 +12345,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check test dependency installation (Behat, PHPUnit, etc.)
       completed: false
       completed_by: null
@@ -12229,6 +12460,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify symlink creation in /usr/local/bin/
       completed: false
       completed_by: null
@@ -12276,6 +12510,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test find_available_cli_name (pl, pl1, pl2, etc.)
       completed: false
       completed_by: null
@@ -12326,6 +12563,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify cnwp.yml cli_command setting is updated
       completed: false
       completed_by: null
@@ -12373,7 +12613,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-      - example.cnwp.yml
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test unregister_cli_command function
       completed: false
       completed_by: null
@@ -12421,6 +12663,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify get_cli_command reads from cnwp.yml
       completed: false
       completed_by: null
@@ -12456,6 +12701,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test switching CLI command names
       completed: false
       completed_by: null
@@ -12506,6 +12754,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify stale registration cleanup
       completed: false
       completed_by: null
@@ -12786,6 +13037,33 @@ features:
       - docs/reference/api/library-functions.md
       - lib/developer.sh
       - docs/governance/roles.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: bash -n lib/developer.sh
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -n lib/developer.sh
+              expect_exit: 0
+            - cmd: bash -c 'source lib/developer.sh && type init_developer_config 2>/dev/null'
+              expect_exit: 0
+          thorough:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type init_developer_config 2>/dev/null'
+              expect_exit: 0
+          paranoid:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type init_developer_config 2>/dev/null'
+              expect_exit: 0
+        state:
+          verified: true
+          verified_at: '2026-01-17T17:07:30+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Verify .nwp-developer.yml creation
       completed: false
       completed_by: null
@@ -12813,6 +13091,37 @@ features:
       - docs/reference/api/library-functions.md
       - lib/developer.sh
       - docs/governance/roles.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type has_developer_config 2>/dev/null'
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type has_developer_config 2>/dev/null'
+              expect_exit: 0
+            - cmd: bash -c 'source lib/developer.sh && type create_developer_example 2>/dev/null'
+              expect_exit: 0
+          thorough:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type has_developer_config 2>/dev/null'
+              expect_exit: 0
+            - cmd: test -f .nwp-developer.example.yml || bash -c 'source lib/developer.sh && create_developer_example'
+              expect_exit: 0
+          paranoid:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type has_developer_config 2>/dev/null'
+              expect_exit: 0
+            - cmd: grep -q .nwp-developer.yml .gitignore
+              expect_exit: 0
+        state:
+          verified: true
+          verified_at: '2026-01-17T17:07:30+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Test get_developer_role function
       completed: false
       completed_by: null
@@ -12843,6 +13152,31 @@ features:
       - docs/reference/api/library-functions.md
       - lib/developer.sh
       - docs/governance/roles.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type get_developer_role 2>/dev/null'
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type get_developer_role 2>/dev/null'
+              expect_exit: 0
+          thorough:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type get_developer_role 2>/dev/null'
+              expect_exit: 0
+          paranoid:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type get_developer_role 2>/dev/null'
+              expect_exit: 0
+        state:
+          verified: true
+          verified_at: '2026-01-17T17:07:30+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Test get_developer_level function
       completed: false
       completed_by: null
@@ -12870,6 +13204,31 @@ features:
       - docs/reference/api/library-functions.md
       - lib/developer.sh
       - docs/governance/roles.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type get_developer_level 2>/dev/null'
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type get_developer_level 2>/dev/null'
+              expect_exit: 0
+          thorough:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type get_developer_level 2>/dev/null'
+              expect_exit: 0
+          paranoid:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type get_developer_level 2>/dev/null'
+              expect_exit: 0
+        state:
+          verified: true
+          verified_at: '2026-01-17T17:07:30+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Verify role_to_level and level_to_role conversions
       completed: false
       completed_by: null
@@ -12903,6 +13262,33 @@ features:
       - docs/reference/api/library-functions.md
       - lib/developer.sh
       - docs/governance/roles.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type role_to_level 2>/dev/null'
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type role_to_level 2>/dev/null'
+              expect_exit: 0
+            - cmd: bash -c 'source lib/developer.sh && type level_to_role 2>/dev/null'
+              expect_exit: 0
+          thorough:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && [[ $(role_to_level contributor) == 30 ]]'
+              expect_exit: 0
+          paranoid:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && [[ $(role_to_level contributor) == 30 ]] && [[ $(level_to_role 30) == contributor ]]'
+              expect_exit: 0
+        state:
+          verified: true
+          verified_at: '2026-01-17T17:07:30+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Test can_developer permission checks
       completed: false
       completed_by: null
@@ -12936,6 +13322,31 @@ features:
       - docs/reference/api/library-functions.md
       - lib/developer.sh
       - docs/governance/roles.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type can_developer 2>/dev/null'
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type can_developer 2>/dev/null'
+              expect_exit: 0
+          thorough:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type can_developer 2>/dev/null'
+              expect_exit: 0
+          paranoid:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type can_developer 2>/dev/null'
+              expect_exit: 0
+        state:
+          verified: true
+          verified_at: '2026-01-17T17:07:30+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Test set_developer_role function
       completed: false
       completed_by: null
@@ -12969,6 +13380,31 @@ features:
       - docs/reference/api/library-functions.md
       - lib/developer.sh
       - docs/governance/roles.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type set_developer_role 2>/dev/null'
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type set_developer_role 2>/dev/null'
+              expect_exit: 0
+          thorough:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type set_developer_role 2>/dev/null'
+              expect_exit: 0
+          paranoid:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type set_developer_role 2>/dev/null'
+              expect_exit: 0
+        state:
+          verified: true
+          verified_at: '2026-01-17T17:07:30+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Verify sync_developer_info from GitLab
       completed: false
       completed_by: null
@@ -13002,6 +13438,19 @@ features:
       - docs/reference/api/library-functions.md
       - lib/developer.sh
       - docs/governance/roles.md
+      machine:
+        automatable: false
+        checks:
+          basic:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type sync_developer_info 2>/dev/null'
+              expect_exit: 0
+              timeout: 10
+        state:
+          verified: true
+          verified_at: '2026-01-17T17:07:30+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Test show_developer_status display
       completed: false
       completed_by: null
@@ -13033,6 +13482,31 @@ features:
       - lib/developer.sh
       - docs/governance/roles.md
       - docs/guides/coder-onboarding.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type show_developer_status 2>/dev/null'
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type show_developer_status 2>/dev/null'
+              expect_exit: 0
+          thorough:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type show_developer_status 2>/dev/null'
+              expect_exit: 0
+          paranoid:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type show_developer_status 2>/dev/null'
+              expect_exit: 0
+        state:
+          verified: true
+          verified_at: '2026-01-17T17:07:30+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Verify developer_push wrapper (blocks push to main for non-core)
       completed: false
       completed_by: null
@@ -13070,6 +13544,31 @@ features:
       - lib/developer.sh
       - docs/governance/roles.md
       - docs/guides/developer-workflow.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type developer_push 2>/dev/null'
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type developer_push 2>/dev/null'
+              expect_exit: 0
+          thorough:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type developer_push 2>/dev/null'
+              expect_exit: 0
+          paranoid:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type developer_push 2>/dev/null'
+              expect_exit: 0
+        state:
+          verified: true
+          verified_at: '2026-01-17T17:07:30+11:00'
+          depth: basic
+          duration_seconds: 0
     - text: Verify developer_merge wrapper (blocks merge for non-core)
       completed: false
       completed_by: null
@@ -13104,6 +13603,31 @@ features:
       - lib/developer.sh
       - docs/governance/roles.md
       - docs/guides/developer-workflow.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type developer_merge 2>/dev/null'
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type developer_merge 2>/dev/null'
+              expect_exit: 0
+          thorough:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type developer_merge 2>/dev/null'
+              expect_exit: 0
+          paranoid:
+            commands:
+            - cmd: bash -c 'source lib/developer.sh && type developer_merge 2>/dev/null'
+              expect_exit: 0
+        state:
+          verified: true
+          verified_at: '2026-01-17T17:07:30+11:00'
+          depth: basic
+          duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -13114,7 +13638,7 @@ features:
     description: Generate .env file from cnwp.yml and template
     files:
     - lib/env-generate.sh
-      machine:
+    machine:
         automatable: true
         checks:
           basic:
@@ -13181,7 +13705,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-      - docs/guides/setup.md
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify recipe-specific templates are used
       completed: false
       completed_by: null
@@ -13224,6 +13750,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test profile-based template fallback
       completed: false
       completed_by: null
@@ -13266,6 +13795,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify variable substitution works
       completed: false
       completed_by: null
@@ -13308,6 +13840,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test service configuration (Redis, Solr, Memcache)
       completed: false
       completed_by: null
@@ -13352,6 +13887,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify .env.local.example creation
       completed: false
       completed_by: null
@@ -13394,6 +13932,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with different profiles (social, varbase, standard)
       completed: false
       completed_by: null
@@ -13438,7 +13979,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-      - docs/guides/setup.md
+          verified_at: null
+          depth: null
+          duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -13512,6 +14055,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify update_site_options updates cnwp.yml
       completed: false
       completed_by: null
@@ -13577,6 +14123,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test apply_drupal_options function
       completed: false
       completed_by: null
@@ -13634,6 +14183,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test apply_moodle_options function
       completed: false
       completed_by: null
@@ -13688,6 +14240,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test apply_gitlab_options function
       completed: false
       completed_by: null
@@ -13742,6 +14297,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify get_recipe_value YAML parsing
       completed: false
       completed_by: null
@@ -13805,6 +14363,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test get_recipe_list_value for arrays
       completed: false
       completed_by: null
@@ -13862,6 +14423,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify get_settings_value function
       completed: false
       completed_by: null
@@ -13919,6 +14483,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test recipe_exists validation
       completed: false
       completed_by: null
@@ -13975,6 +14542,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify validate_recipe function
       completed: false
       completed_by: null
@@ -14032,6 +14602,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test list_recipes display
       completed: false
       completed_by: null
@@ -14089,6 +14662,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify install_git_profile function
       completed: false
       completed_by: null
@@ -14145,6 +14721,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test install_git_modules function
       completed: false
       completed_by: null
@@ -14201,6 +14780,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify pre_register_live_dns function
       completed: false
       completed_by: null
@@ -14258,6 +14840,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test generate_live_settings function
       completed: false
       completed_by: null
@@ -14314,6 +14899,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify create_test_content function
       completed: false
       completed_by: null
@@ -14435,6 +15023,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 1: Initialize project with Composer'
       completed: false
       completed_by: null
@@ -14479,6 +15070,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 1: Clone project from Git (source_git)'
       completed: false
       completed_by: null
@@ -14523,6 +15117,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 2: Generate environment configuration'
       completed: false
       completed_by: null
@@ -14592,6 +15189,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 3: Configure DDEV'
       completed: false
       completed_by: null
@@ -14637,6 +15237,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 4: Memory configuration'
       completed: false
       completed_by: null
@@ -14681,6 +15284,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 5: Launch DDEV services'
       completed: false
       completed_by: null
@@ -14725,6 +15331,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 6: Verify Drush is available'
       completed: false
       completed_by: null
@@ -14769,6 +15378,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 7: Configure file system and environment detection'
       completed: false
       completed_by: null
@@ -14813,6 +15425,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 8: Install Drupal profile'
       completed: false
       completed_by: null
@@ -14857,6 +15472,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 9: Enable core modules and post-install'
       completed: false
       completed_by: null
@@ -14901,6 +15519,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test resume from step functionality
       completed: false
       completed_by: null
@@ -14946,6 +15567,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify GitLab Composer authentication
       completed: false
       completed_by: null
@@ -14991,6 +15615,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test post-install module enabling
       completed: false
       completed_by: null
@@ -15035,6 +15662,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test post-install script execution
       completed: false
       completed_by: null
@@ -15079,6 +15709,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify site registration in cnwp.yml
       completed: false
       completed_by: null
@@ -15185,6 +15818,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 1: Create directory structure'
       completed: false
       completed_by: null
@@ -15229,6 +15865,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 2: Create docker-compose.yml'
       completed: false
       completed_by: null
@@ -15273,6 +15912,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 3: Create environment configuration'
       completed: false
       completed_by: null
@@ -15317,6 +15959,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 4: Start GitLab containers'
       completed: false
       completed_by: null
@@ -15361,6 +16006,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test reduced memory mode configuration
       completed: false
       completed_by: null
@@ -15405,6 +16053,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify README.md generation
       completed: false
       completed_by: null
@@ -15449,6 +16100,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test site registration in cnwp.yml
       completed: false
       completed_by: null
@@ -15554,6 +16208,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 1: Clone Moodle from Git'
       completed: false
       completed_by: null
@@ -15597,6 +16254,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 2: Configure DDEV'
       completed: false
       completed_by: null
@@ -15640,6 +16300,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 3: Memory configuration'
       completed: false
       completed_by: null
@@ -15683,6 +16346,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 4: Launch DDEV services'
       completed: false
       completed_by: null
@@ -15726,6 +16392,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 5: Create moodledata directory'
       completed: false
       completed_by: null
@@ -15769,6 +16438,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 6: Install Moodle'
       completed: false
       completed_by: null
@@ -15813,6 +16485,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: 'Verify Step 7: Post-installation configuration'
       completed: false
       completed_by: null
@@ -15857,6 +16532,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with different Moodle branches
       completed: false
       completed_by: null
@@ -15901,6 +16579,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify site registration in cnwp.yml
       completed: false
       completed_by: null
@@ -16008,6 +16689,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify podcast.sh integration
       completed: false
       completed_by: null
@@ -16053,6 +16737,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test prerequisite checking
       completed: false
       completed_by: null
@@ -16097,6 +16784,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify domain configuration
       completed: false
       completed_by: null
@@ -16141,6 +16831,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test Linode region selection
       completed: false
       completed_by: null
@@ -16185,6 +16878,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify B2 region configuration
       completed: false
       completed_by: null
@@ -16229,6 +16925,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test media subdomain setup
       completed: false
       completed_by: null
@@ -16273,6 +16972,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify site registration in cnwp.yml
       completed: false
       completed_by: null
@@ -16379,6 +17081,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify get_total_steps for each environment
       completed: false
       completed_by: null
@@ -16429,6 +17134,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test get_step_info function
       completed: false
       completed_by: null
@@ -16479,6 +17187,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify get_install_step from cnwp.yml
       completed: false
       completed_by: null
@@ -16529,6 +17240,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test set_install_step updates cnwp.yml
       completed: false
       completed_by: null
@@ -16579,6 +17293,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify mark_install_complete function
       completed: false
       completed_by: null
@@ -16629,6 +17346,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test is_install_complete checking
       completed: false
       completed_by: null
@@ -16679,6 +17399,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify get_install_status_display function
       completed: false
       completed_by: null
@@ -16729,6 +17452,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test show_steps_detail display
       completed: false
       completed_by: null
@@ -16779,6 +17505,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify environment-specific steps (dev, stage, live)
       completed: false
       completed_by: null
@@ -16885,6 +17614,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify remote_package_installed checking
       completed: false
       completed_by: null
@@ -16925,6 +17657,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test remote_service_running checking
       completed: false
       completed_by: null
@@ -16965,6 +17700,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify ensure_php_fpm installation and configuration
       completed: false
       completed_by: null
@@ -17008,6 +17746,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test PHP-FPM socket permissions for nginx
       completed: false
       completed_by: null
@@ -17044,6 +17785,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify ensure_mariadb installation
       completed: false
       completed_by: null
@@ -17084,6 +17828,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test create_site_database function
       completed: false
       completed_by: null
@@ -17124,6 +17871,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify configure_nginx_drupal vhost generation
       completed: false
       completed_by: null
@@ -17164,6 +17914,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test provision_drupal_stack complete setup
       completed: false
       completed_by: null
@@ -17207,6 +17960,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify check_infrastructure_ready status checks
       completed: false
       completed_by: null
@@ -17247,6 +18003,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test with GitLab bundled nginx (gitlab-www group)
       completed: false
       completed_by: null
@@ -17670,7 +18429,7 @@ features:
     description: Advanced interactive checkbox selection
     files:
     - lib/checkbox.sh
-      machine:
+    machine:
         automatable: true
         checks:
           basic:
@@ -17741,7 +18500,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-      - docs/reference/api/checkbox-api.md
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify space bar toggles selection
       completed: false
       completed_by: null
@@ -17791,7 +18552,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-      - docs/reference/api/checkbox-api.md
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check arrow key navigation
       completed: false
       completed_by: null
@@ -17841,7 +18604,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-      - docs/reference/api/checkbox-api.md
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test Enter to confirm selection
       completed: false
       completed_by: null
@@ -17890,7 +18655,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-      - docs/reference/api/checkbox-api.md
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify Escape to cancel
       completed: false
       completed_by: null
@@ -17939,7 +18706,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-      - docs/reference/api/checkbox-api.md
+          verified_at: null
+          depth: null
+          duration_seconds: null
     verified: false
     verified_by: null
     verified_at: null
@@ -18740,7 +19509,7 @@ features:
     description: Cloudflare DNS and SSL management
     files:
     - lib/cloudflare.sh
-      machine:
+    machine:
         automatable: false
         reason: Requires Cloudflare API credentials
         checks:
@@ -18800,6 +19569,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify DNS record lookup
       completed: false
       completed_by: null
@@ -18838,6 +19610,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check zone ID resolution
       completed: false
       completed_by: null
@@ -18879,6 +19654,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test API authentication
       completed: false
       completed_by: null
@@ -18920,6 +19698,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify error handling for API failures
       completed: false
       completed_by: null
@@ -18971,7 +19752,7 @@ features:
     description: Linode API operations and provisioning
     files:
     - lib/linode.sh
-      machine:
+    machine:
         automatable: false
         reason: Requires Linode API credentials
         checks:
@@ -19032,6 +19813,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify instance listing
       completed: false
       completed_by: null
@@ -19070,6 +19854,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check API token authentication
       completed: false
       completed_by: null
@@ -19111,6 +19898,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test instance deletion
       completed: false
       completed_by: null
@@ -19152,6 +19942,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify error handling
       completed: false
       completed_by: null
@@ -19203,7 +19996,7 @@ features:
     description: Backblaze B2 cloud storage integration
     files:
     - lib/b2.sh
-      machine:
+    machine:
         automatable: false
         reason: Requires B2 API credentials
         checks:
@@ -19263,6 +20056,9 @@ features:
               expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify file upload to B2
       completed: false
       completed_by: null
@@ -19304,6 +20100,9 @@ features:
               expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test file download from B2
       completed: false
       completed_by: null
@@ -19345,6 +20144,9 @@ features:
               expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check bucket listing
       completed: false
       completed_by: null
@@ -19386,6 +20188,9 @@ features:
               expect_exit: 0
         state:
           verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify error handling for API failures
       completed: false
       completed_by: null
@@ -19437,7 +20242,7 @@ features:
     description: Remote server operations
     files:
     - lib/remote.sh
-      machine:
+    machine:
         automatable: false
         reason: Requires remote server access
         checks:
@@ -19494,7 +20299,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-      - lib/ssh.sh
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify file transfer via rsync
       completed: false
       completed_by: null
@@ -19536,6 +20343,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Check remote command execution
       completed: false
       completed_by: null
@@ -19577,6 +20387,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Test connection timeout handling
       completed: false
       completed_by: null
@@ -19618,6 +20431,9 @@ features:
               expect_exit: 0
         state:
           verified: true
+          verified_at: null
+          depth: null
+          duration_seconds: null
     - text: Verify error handling for failed connections
       completed: false
       completed_by: null

@@ -23,12 +23,12 @@ config:
 statistics:
   total_items: 575
   machine:
-    verified: 575
-    coverage_percent: 100.0
+    verified: 511
+    coverage_percent: 88.9
   human:
     verified: 7
     coverage_percent: 1.2
-  fully_verified: 5
+  fully_verified: 7
 features:
   setup:
     name: Setup Script (setup.sh)
@@ -95,9 +95,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:09+11:00'
+          verified_at: '2026-01-17T21:02:26+11:00'
           depth: basic
-          duration_seconds: 14
+          duration_seconds: 16
     - text: Test Docker installation and verify ddev starts correctly
       completed: true
       completed_by: greg
@@ -158,7 +158,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:09+11:00'
+          verified_at: '2026-01-17T21:02:27+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify mkcert generates valid local certificates
@@ -220,7 +220,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:09+11:00'
+          verified_at: '2026-01-17T21:02:27+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test Linode CLI authentication if configured
@@ -273,7 +273,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:09+11:00'
+          verified_at: '2026-01-17T21:02:27+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check that all error messages are clear and actionable
@@ -318,9 +318,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:10+11:00'
+          verified_at: '2026-01-17T21:02:28+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -443,7 +443,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:10+11:00'
+          verified_at: '2026-01-17T21:02:28+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with 'os' recipe (Open Social)
@@ -509,9 +509,9 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:10+11:00'
+          verified_at: '2026-01-17T21:02:29+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test install with 'nwp' recipe (NWP base)
       completed: false
       completed_by: null
@@ -573,9 +573,9 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:11+11:00'
+          verified_at: '2026-01-17T21:02:29+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Test install with 'avc' recipe (AV Commons)
       completed: false
       completed_by: null
@@ -637,9 +637,9 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:11+11:00'
+          verified_at: '2026-01-17T21:02:30+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test install with 'avc-dev' recipe (AV Commons developer)
       completed: false
       completed_by: null
@@ -701,7 +701,7 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:11+11:00'
+          verified_at: '2026-01-17T21:02:30+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with 'dm' recipe (Divine Mercy)
@@ -765,7 +765,7 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:12+11:00'
+          verified_at: '2026-01-17T21:02:31+11:00'
           depth: basic
           duration_seconds: 1
     - text: Test install with 'm' recipe (Moodle)
@@ -829,7 +829,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:12+11:00'
+          verified_at: '2026-01-17T21:02:31+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with 'gitlab' recipe
@@ -893,9 +893,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:12+11:00'
+          verified_at: '2026-01-17T21:02:32+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test install with 'pod' recipe (Podcast)
       completed: false
       completed_by: null
@@ -957,9 +957,9 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:13+11:00'
+          verified_at: '2026-01-17T21:02:32+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Verify site starts and is accessible via browser
       completed: true
       completed_by: greg
@@ -1021,7 +1021,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:14+11:00'
+          verified_at: '2026-01-17T21:02:33+11:00'
           depth: basic
           duration_seconds: 1
     - text: Check admin login works with generated credentials
@@ -1070,7 +1070,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:16+11:00'
+          verified_at: '2026-01-17T21:02:35+11:00'
           depth: basic
           duration_seconds: 2
     - text: Test install with --list flag
@@ -1126,9 +1126,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:17+11:00'
+          verified_at: '2026-01-17T21:02:37+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 2
     - text: Test install with -s=N (resume from step N)
       completed: true
       completed_by: greg
@@ -1184,7 +1184,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:17+11:00'
+          verified_at: '2026-01-17T21:02:37+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with --resume flag
@@ -1239,9 +1239,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:18+11:00'
+          verified_at: '2026-01-17T21:02:37+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Test install with -p=t (testing purpose)
       completed: false
       completed_by: null
@@ -1297,7 +1297,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:18+11:00'
+          verified_at: '2026-01-17T21:02:38+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with -p=i (indefinite purpose)
@@ -1355,7 +1355,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:18+11:00'
+          verified_at: '2026-01-17T21:02:38+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with -p=p (permanent purpose)
@@ -1413,9 +1413,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:18+11:00'
+          verified_at: '2026-01-17T21:02:39+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test install with -p=m (migration purpose - stub only)
       completed: false
       completed_by: null
@@ -1471,9 +1471,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:19+11:00'
+          verified_at: '2026-01-17T21:02:39+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Test install with c flag (create test content)
       completed: false
       completed_by: null
@@ -1526,9 +1526,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:19+11:00'
+          verified_at: '2026-01-17T21:02:40+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify cnwp.yml is updated correctly after install
       completed: true
       completed_by: greg
@@ -1585,7 +1585,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:19+11:00'
+          verified_at: '2026-01-17T21:02:40+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with custom target name
@@ -1643,7 +1643,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:19+11:00'
+          verified_at: '2026-01-17T21:02:40+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install with auto mode enabled in recipe
@@ -1702,7 +1702,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:20+11:00'
+          verified_at: '2026-01-17T21:02:41+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install_step tracking in cnwp.yml
@@ -1761,7 +1761,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:20+11:00'
+          verified_at: '2026-01-17T21:02:41+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test interactive option selection works
@@ -1901,9 +1901,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:23+11:00'
+          verified_at: '2026-01-17T21:02:45+11:00'
           depth: basic
-          duration_seconds: 2
+          duration_seconds: 3
     - text: Run status.sh <sitename> - verify detailed info shown
       completed: false
       completed_by: null
@@ -1964,7 +1964,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:26+11:00'
+          verified_at: '2026-01-17T21:02:48+11:00'
           depth: basic
           duration_seconds: 3
     - text: Check running/stopped status is accurate
@@ -2031,9 +2031,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:27+11:00'
+          verified_at: '2026-01-17T21:02:50+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 2
     - text: Verify URLs displayed are correct and accessible
       completed: false
       completed_by: null
@@ -2088,7 +2088,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:28+11:00'
+          verified_at: '2026-01-17T21:02:51+11:00'
           depth: basic
           duration_seconds: 1
     - text: Test health check indicators (database, files, config)
@@ -2149,7 +2149,7 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:30+11:00'
+          verified_at: '2026-01-17T21:02:53+11:00'
           depth: basic
           duration_seconds: 2
     verified: false
@@ -2244,7 +2244,7 @@ features:
               timeout: 15
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:30+11:00'
+          verified_at: '2026-01-17T21:02:54+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test changing site options (theme, modules, etc.)
@@ -2301,7 +2301,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:30+11:00'
+          verified_at: '2026-01-17T21:02:54+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify changes are saved to cnwp.yml correctly
@@ -2386,7 +2386,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:30+11:00'
+          verified_at: '2026-01-17T21:02:54+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test cancel/exit without saving
@@ -2443,9 +2443,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:31+11:00'
+          verified_at: '2026-01-17T21:02:55+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Check keyboard navigation (arrows, enter, escape)
       completed: false
       completed_by: null
@@ -2524,7 +2524,7 @@ features:
               timeout: 20
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:31+11:00'
+          verified_at: '2026-01-17T21:02:55+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -2579,7 +2579,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:31+11:00'
+          verified_at: '2026-01-17T21:02:55+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -2648,7 +2648,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:32+11:00'
+          verified_at: '2026-01-17T21:02:56+11:00'
           depth: basic
           duration_seconds: 1
       human:
@@ -2715,7 +2715,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:32+11:00'
+          verified_at: '2026-01-17T21:02:56+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -2783,7 +2783,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:32+11:00'
+          verified_at: '2026-01-17T21:02:56+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -2851,7 +2851,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:32+11:00'
+          verified_at: '2026-01-17T21:02:57+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -2919,7 +2919,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:32+11:00'
+          verified_at: '2026-01-17T21:02:57+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test --bundle creates git bundle file
@@ -2975,9 +2975,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:33+11:00'
+          verified_at: '2026-01-17T21:02:58+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify backup naming convention includes timestamp
       completed: false
       completed_by: null
@@ -3110,9 +3110,9 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:33+11:00'
+          verified_at: '2026-01-17T21:02:59+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test restore from database-only backup
       completed: false
       completed_by: null
@@ -3179,7 +3179,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:33+11:00'
+          verified_at: '2026-01-17T21:02:59+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify interactive backup selection works
@@ -3219,9 +3219,9 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:34+11:00'
+          verified_at: '2026-01-17T21:03:00+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test restore with specific backup file path
       completed: false
       completed_by: null
@@ -3284,7 +3284,7 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:34+11:00'
+          verified_at: '2026-01-17T21:03:00+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify site works correctly after restore
@@ -3343,7 +3343,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:35+11:00'
+          verified_at: '2026-01-17T21:03:01+11:00'
           depth: basic
           duration_seconds: 1
     - text: Test restore to different site name
@@ -3400,9 +3400,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:35+11:00'
+          verified_at: '2026-01-17T21:03:02+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     verified: false
     verified_by: null
     verified_at: null
@@ -3450,7 +3450,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:35+11:00'
+          verified_at: '2026-01-17T21:03:02+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify database is updated from remote
@@ -3489,9 +3489,9 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:36+11:00'
+          verified_at: '2026-01-17T21:03:02+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Check files are synced correctly
       completed: false
       completed_by: null
@@ -3528,7 +3528,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:36+11:00'
+          verified_at: '2026-01-17T21:03:03+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test sync with --files-only flag
@@ -3567,7 +3567,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:36+11:00'
+          verified_at: '2026-01-17T21:03:03+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify local changes are not overwritten unexpectedly
@@ -3680,7 +3680,7 @@ features:
               timeout: 120
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:36+11:00'
+          verified_at: '2026-01-17T21:03:03+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Test files-only copy: ./copy.sh -f source dest'
@@ -3742,9 +3742,9 @@ features:
               timeout: 120
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:37+11:00'
+          verified_at: '2026-01-17T21:03:04+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify copied site starts and runs independently
       completed: false
       completed_by: null
@@ -3874,7 +3874,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:37+11:00'
+          verified_at: '2026-01-17T21:03:04+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test copy to existing site (should warn/fail)
@@ -3918,9 +3918,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:37+11:00'
+          verified_at: '2026-01-17T21:03:05+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     verified: false
     verified_by: null
     verified_at: null
@@ -3975,7 +3975,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:37+11:00'
+          verified_at: '2026-01-17T21:03:05+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test delete with -y auto-confirm flag
@@ -4044,7 +4044,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:38+11:00'
+          verified_at: '2026-01-17T21:03:05+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test delete with -b backup flag (creates backup first)
@@ -4112,7 +4112,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:38+11:00'
+          verified_at: '2026-01-17T21:03:06+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify DDEV project is stopped and removed
@@ -4156,9 +4156,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:41+11:00'
+          verified_at: '2026-01-17T21:03:11+11:00'
           depth: basic
-          duration_seconds: 3
+          duration_seconds: 5
     - text: Verify site directory is removed
       completed: false
       completed_by: null
@@ -4199,7 +4199,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:41+11:00'
+          verified_at: '2026-01-17T21:03:11+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check cnwp.yml is updated to remove site
@@ -4243,7 +4243,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:41+11:00'
+          verified_at: '2026-01-17T21:03:11+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test protection of production sites (should warn)
@@ -4283,7 +4283,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:42+11:00'
+          verified_at: '2026-01-17T21:03:12+11:00'
           depth: basic
           duration_seconds: 1
     verified: false
@@ -4372,7 +4372,7 @@ features:
               timeout: 180
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:42+11:00'
+          verified_at: '2026-01-17T21:03:12+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Test prod mode: ./make.sh -p <sitename>'
@@ -4450,7 +4450,7 @@ features:
               timeout: 180
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:42+11:00'
+          verified_at: '2026-01-17T21:03:13+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify dev mode enables devel module and disables caching
@@ -4507,9 +4507,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:43+11:00'
+          verified_at: '2026-01-17T21:03:13+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Verify prod mode uninstalls dev modules and enables caching
       completed: false
       completed_by: null
@@ -4564,7 +4564,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:43+11:00'
+          verified_at: '2026-01-17T21:03:14+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check CSS/JS aggregation settings change correctly
@@ -4622,7 +4622,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:43+11:00'
+          verified_at: '2026-01-17T21:03:14+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with -y auto-confirm flag
@@ -4700,9 +4700,9 @@ features:
               timeout: 180
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:43+11:00'
+          verified_at: '2026-01-17T21:03:15+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     verified: false
     verified_by: null
     verified_at: null
@@ -4751,7 +4751,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:44+11:00'
+          verified_at: '2026-01-17T21:03:15+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test migration from Drupal 9/10 source
@@ -4791,9 +4791,9 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:44+11:00'
+          verified_at: '2026-01-17T21:03:16+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify content types are migrated correctly
       completed: false
       completed_by: null
@@ -4831,7 +4831,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:44+11:00'
+          verified_at: '2026-01-17T21:03:16+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check users and roles are migrated
@@ -4871,7 +4871,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:44+11:00'
+          verified_at: '2026-01-17T21:03:16+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify media/files are migrated
@@ -4911,7 +4911,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:45+11:00'
+          verified_at: '2026-01-17T21:03:16+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test migration rollback if available
@@ -5002,7 +5002,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:45+11:00'
+          verified_at: '2026-01-17T21:03:17+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test interactive server scanning
@@ -5042,7 +5042,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:45+11:00'
+          verified_at: '2026-01-17T21:03:17+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify database is imported correctly
@@ -5082,7 +5082,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:45+11:00'
+          verified_at: '2026-01-17T21:03:17+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check files are downloaded and placed correctly
@@ -5122,7 +5122,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:46+11:00'
+          verified_at: '2026-01-17T21:03:18+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify imported site starts and runs
@@ -5162,7 +5162,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:46+11:00'
+          verified_at: '2026-01-17T21:03:18+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test import with specific database/files paths
@@ -5228,7 +5228,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:46+11:00'
+          verified_at: '2026-01-17T21:03:18+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -5303,7 +5303,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:46+11:00'
+          verified_at: '2026-01-17T21:03:19+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify DNS configuration with Cloudflare
@@ -5372,7 +5372,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:46+11:00'
+          verified_at: '2026-01-17T21:03:19+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check SSL certificate is installed correctly
@@ -5438,7 +5438,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:46+11:00'
+          verified_at: '2026-01-17T21:03:19+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify site is accessible at sitename.nwpcode.org
@@ -5500,7 +5500,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:47+11:00'
+          verified_at: '2026-01-17T21:03:20+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test SSH access to provisioned server
@@ -5566,7 +5566,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:47+11:00'
+          verified_at: '2026-01-17T21:03:20+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify firewall rules are applied
@@ -5629,7 +5629,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:47+11:00'
+          verified_at: '2026-01-17T21:03:20+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -7676,7 +7676,7 @@ features:
         reason: Requires Linode API and production infrastructure for actual testing
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:51+11:00'
+          verified_at: '2026-01-17T21:03:25+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify production settings are applied
@@ -7710,9 +7710,9 @@ features:
         reason: Requires production server access to verify settings
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:51+11:00'
+          verified_at: '2026-01-17T21:03:26+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Check security hardening is enabled
       completed: false
       completed_by: null
@@ -7842,7 +7842,7 @@ features:
         reason: Requires Linode API and server infrastructure for actual testing
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:52+11:00'
+          verified_at: '2026-01-17T21:03:26+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify Castopod is installed correctly
@@ -7887,7 +7887,7 @@ features:
         reason: Requires running podcast server to verify Castopod installation
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:52+11:00'
+          verified_at: '2026-01-17T21:03:27+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check podcast admin interface works
@@ -7932,7 +7932,7 @@ features:
         reason: Requires running podcast server to test admin interface
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:52+11:00'
+          verified_at: '2026-01-17T21:03:27+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test podcast RSS feed generation
@@ -7977,7 +7977,7 @@ features:
         reason: Requires running podcast server with created podcast to test RSS feed
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:52+11:00'
+          verified_at: '2026-01-17T21:03:27+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify media upload functionality
@@ -8089,7 +8089,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:52+11:00'
+          verified_at: '2026-01-17T21:03:28+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify cron jobs are created correctly
@@ -8148,7 +8148,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:53+11:00'
+          verified_at: '2026-01-17T21:03:28+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check scheduled backups run as expected
@@ -8208,7 +8208,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:53+11:00'
+          verified_at: '2026-01-17T21:03:28+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test schedule removal
@@ -8267,9 +8267,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:53+11:00'
+          verified_at: '2026-01-17T21:03:29+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify schedule listing works
       completed: false
       completed_by: null
@@ -8387,9 +8387,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:54+11:00'
+          verified_at: '2026-01-17T21:03:29+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: 'Test security check: ./security.sh check <sitename>'
       completed: false
       completed_by: null
@@ -8446,9 +8446,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:54+11:00'
+          verified_at: '2026-01-17T21:03:30+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: 'Test security update: ./security.sh update <sitename>'
       completed: false
       completed_by: null
@@ -8506,7 +8506,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:54+11:00'
+          verified_at: '2026-01-17T21:03:30+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify file permissions are checked correctly
@@ -8565,7 +8565,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:54+11:00'
+          verified_at: '2026-01-17T21:03:30+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check dev module detection works
@@ -8624,7 +8624,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:54+11:00'
+          verified_at: '2026-01-17T21:03:30+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify exposed file detection works
@@ -8744,9 +8744,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:55+11:00'
+          verified_at: '2026-01-17T21:03:31+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Verify keys are created in keys/ directory
       completed: false
       completed_by: null
@@ -8803,7 +8803,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:55+11:00'
+          verified_at: '2026-01-17T21:03:31+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check key is installed to ~/.ssh/nwp
@@ -8862,7 +8862,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:55+11:00'
+          verified_at: '2026-01-17T21:03:31+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test connection to remote server with generated key
@@ -8921,7 +8921,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:55+11:00'
+          verified_at: '2026-01-17T21:03:31+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify public key output for Linode
@@ -9041,7 +9041,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:56+11:00'
+          verified_at: '2026-01-17T21:03:32+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify all DDEV projects are stopped
@@ -9100,7 +9100,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:56+11:00'
+          verified_at: '2026-01-17T21:03:32+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check NWP directories are removed
@@ -9159,7 +9159,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:56+11:00'
+          verified_at: '2026-01-17T21:03:33+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify Docker resources are cleaned up
@@ -9218,7 +9218,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:56+11:00'
+          verified_at: '2026-01-17T21:03:33+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test partial uninstall options if available
@@ -9339,7 +9339,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:57+11:00'
+          verified_at: '2026-01-17T21:03:33+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify markdown generation works
@@ -9398,7 +9398,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:57+11:00'
+          verified_at: '2026-01-17T21:03:34+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test adding badges to site README
@@ -9457,7 +9457,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:57+11:00'
+          verified_at: '2026-01-17T21:03:34+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check coverage threshold validation
@@ -9577,7 +9577,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:57+11:00'
+          verified_at: '2026-01-17T21:03:34+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify email account creation for site
@@ -9639,7 +9639,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:58+11:00'
+          verified_at: '2026-01-17T21:03:35+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test email deliverability
@@ -9698,7 +9698,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:58+11:00'
+          verified_at: '2026-01-17T21:03:35+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check email rerouting configuration
@@ -9827,7 +9827,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:58+11:00'
+          verified_at: '2026-01-17T21:03:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify error capture and sanitization
@@ -9892,7 +9892,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:58+11:00'
+          verified_at: '2026-01-17T21:03:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test GitLab issue URL generation
@@ -9951,7 +9951,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:58+11:00'
+          verified_at: '2026-01-17T21:03:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check clipboard copy mode
@@ -10083,7 +10083,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:59+11:00'
+          verified_at: '2026-01-17T21:03:37+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify rollback execution
@@ -10151,7 +10151,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:59+11:00'
+          verified_at: '2026-01-17T21:03:37+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test rollback verification
@@ -10216,7 +10216,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:59+11:00'
+          verified_at: '2026-01-17T21:03:37+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check cleanup functionality
@@ -10284,7 +10284,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:59+11:00'
+          verified_at: '2026-01-17T21:03:37+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -10392,7 +10392,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:04:59+11:00'
+          verified_at: '2026-01-17T21:03:38+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify bucket listing
@@ -10457,7 +10457,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:00+11:00'
+          verified_at: '2026-01-17T21:03:38+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test file upload to bucket
@@ -10522,7 +10522,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:00+11:00'
+          verified_at: '2026-01-17T21:03:38+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check file deletion
@@ -10580,7 +10580,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:00+11:00'
+          verified_at: '2026-01-17T21:03:38+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -10683,7 +10683,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:00+11:00'
+          verified_at: '2026-01-17T21:03:38+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify dependency installation
@@ -10742,7 +10742,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:01+11:00'
+          verified_at: '2026-01-17T21:03:39+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test watch mode for live reload
@@ -10801,7 +10801,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:01+11:00'
+          verified_at: '2026-01-17T21:03:39+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check production build
@@ -10860,7 +10860,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:01+11:00'
+          verified_at: '2026-01-17T21:03:39+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test linting functionality
@@ -10919,7 +10919,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:01+11:00'
+          verified_at: '2026-01-17T21:03:39+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -11023,7 +11023,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:01+11:00'
+          verified_at: '2026-01-17T21:03:40+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify test execution
@@ -11082,7 +11082,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:01+11:00'
+          verified_at: '2026-01-17T21:03:40+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check MR description generation
@@ -11144,9 +11144,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:02+11:00'
+          verified_at: '2026-01-17T21:03:40+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Test GitLab CLI integration
       completed: false
       completed_by: null
@@ -11209,7 +11209,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:02+11:00'
+          verified_at: '2026-01-17T21:03:40+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -11313,7 +11313,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:02+11:00'
+          verified_at: '2026-01-17T21:03:41+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify NS records in Cloudflare
@@ -11378,7 +11378,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:02+11:00'
+          verified_at: '2026-01-17T21:03:41+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test listing coders
@@ -11443,7 +11443,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:02+11:00'
+          verified_at: '2026-01-17T21:03:41+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check coder removal
@@ -11514,7 +11514,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:03+11:00'
+          verified_at: '2026-01-17T21:03:41+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -11625,9 +11625,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:03+11:00'
+          verified_at: '2026-01-17T21:03:42+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify onboarding status checks (GL, GRP, SSH, NS, DNS, SRV, SITE)
       completed: false
       completed_by: null
@@ -11690,7 +11690,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:03+11:00'
+          verified_at: '2026-01-17T21:03:42+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test coder promotion functionality
@@ -11761,7 +11761,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:03+11:00'
+          verified_at: '2026-01-17T21:03:42+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check bulk actions (delete, promote)
@@ -11829,7 +11829,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:03+11:00'
+          verified_at: '2026-01-17T21:03:42+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify GitLab sync functionality
@@ -11888,9 +11888,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:04+11:00'
+          verified_at: '2026-01-17T21:03:42+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -11994,7 +11994,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:04+11:00'
+          verified_at: '2026-01-17T21:03:43+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify X-Robots-Tag header checking
@@ -12059,7 +12059,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:04+11:00'
+          verified_at: '2026-01-17T21:03:43+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test sitemap.xml verification
@@ -12127,7 +12127,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:04+11:00'
+          verified_at: '2026-01-17T21:03:43+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check staging protection verification
@@ -12195,7 +12195,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:04+11:00'
+          verified_at: '2026-01-17T21:03:43+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test production SEO optimization checks
@@ -12266,9 +12266,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:04+11:00'
+          verified_at: '2026-01-17T21:03:44+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     verified: false
     verified_by: null
     verified_at: null
@@ -12373,7 +12373,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:05+11:00'
+          verified_at: '2026-01-17T21:03:44+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify BATS integration tests
@@ -12442,7 +12442,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:05+11:00'
+          verified_at: '2026-01-17T21:03:44+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check test output formatting
@@ -12511,7 +12511,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:05+11:00'
+          verified_at: '2026-01-17T21:03:44+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test selective test execution
@@ -12580,7 +12580,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:05+11:00'
+          verified_at: '2026-01-17T21:03:44+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -12677,7 +12677,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:06+11:00'
+          verified_at: '2026-01-17T21:03:45+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify sync functionality
@@ -12742,7 +12742,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:06+11:00'
+          verified_at: '2026-01-17T21:03:45+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check status reporting
@@ -12804,7 +12804,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:06+11:00'
+          verified_at: '2026-01-17T21:03:45+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test merge and rebase strategies
@@ -12866,7 +12866,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:06+11:00'
+          verified_at: '2026-01-17T21:03:45+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -12966,7 +12966,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:06+11:00'
+          verified_at: '2026-01-17T21:03:46+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify data secret detection
@@ -13028,7 +13028,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:07+11:00'
+          verified_at: '2026-01-17T21:03:46+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check backup creation
@@ -13090,7 +13090,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:07+11:00'
+          verified_at: '2026-01-17T21:03:46+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test NWP root migration
@@ -13149,7 +13149,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:07+11:00'
+          verified_at: '2026-01-17T21:03:46+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -13255,7 +13255,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:08+11:00'
+          verified_at: '2026-01-17T21:03:47+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify CSP header checking
@@ -13320,7 +13320,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:08+11:00'
+          verified_at: '2026-01-17T21:03:47+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check X-Frame-Options validation
@@ -13385,7 +13385,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:08+11:00'
+          verified_at: '2026-01-17T21:03:47+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test security grading system
@@ -13450,7 +13450,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:08+11:00'
+          verified_at: '2026-01-17T21:03:47+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify JSON output mode
@@ -13508,7 +13508,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:08+11:00'
+          verified_at: '2026-01-17T21:03:48+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -13611,7 +13611,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:08+11:00'
+          verified_at: '2026-01-17T21:03:48+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify checklist editing functionality
@@ -13679,7 +13679,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:09+11:00'
+          verified_at: '2026-01-17T21:03:48+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check verification status tracking
@@ -13742,9 +13742,9 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:29+11:00'
+          verified_at: '2026-01-17T21:04:16+11:00'
           depth: basic
-          duration_seconds: 20
+          duration_seconds: 27
     - text: Test file change detection
       completed: false
       completed_by: null
@@ -13802,7 +13802,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:29+11:00'
+          verified_at: '2026-01-17T21:04:16+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify history tracking
@@ -13863,9 +13863,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:30+11:00'
+          verified_at: '2026-01-17T21:04:17+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     verified: false
     verified_by: null
     verified_at: null
@@ -13927,7 +13927,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:30+11:00'
+          verified_at: '2026-01-17T21:04:17+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify pl install works
@@ -13986,7 +13986,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:30+11:00'
+          verified_at: '2026-01-17T21:04:17+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify pl backup works
@@ -14045,7 +14045,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:30+11:00'
+          verified_at: '2026-01-17T21:04:17+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check pl status works
@@ -14096,7 +14096,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:31+11:00'
+          verified_at: '2026-01-17T21:04:18+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test tab completion if available
@@ -14155,7 +14155,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:31+11:00'
+          verified_at: '2026-01-17T21:04:18+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify help output is correct
@@ -14208,7 +14208,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:31+11:00'
+          verified_at: '2026-01-17T21:04:19+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -14645,7 +14645,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:32+11:00'
+          verified_at: '2026-01-17T21:04:20+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with -t flag (PHPStan only)
@@ -14702,9 +14702,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:32+11:00'
+          verified_at: '2026-01-17T21:04:21+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test with -u flag (PHPUnit unit tests only)
       completed: false
       completed_by: null
@@ -14762,9 +14762,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:33+11:00'
+          verified_at: '2026-01-17T21:04:21+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Test with -k flag (PHPUnit kernel tests only)
       completed: false
       completed_by: null
@@ -14822,7 +14822,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:33+11:00'
+          verified_at: '2026-01-17T21:04:21+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with -f flag (PHPUnit functional tests only)
@@ -14882,7 +14882,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:33+11:00'
+          verified_at: '2026-01-17T21:04:22+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with -s flag (Behat smoke tests only)
@@ -14942,9 +14942,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:34+11:00'
+          verified_at: '2026-01-17T21:04:22+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Test with -b flag (full Behat tests)
       completed: false
       completed_by: null
@@ -15002,9 +15002,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:34+11:00'
+          verified_at: '2026-01-17T21:04:23+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test with -p flag (parallel Behat execution)
       completed: false
       completed_by: null
@@ -15059,7 +15059,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:34+11:00'
+          verified_at: '2026-01-17T21:04:23+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with -a flag (run all tests)
@@ -15116,7 +15116,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:34+11:00'
+          verified_at: '2026-01-17T21:04:24+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with --ci flag (CI mode with JUnit output)
@@ -15185,7 +15185,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:34+11:00'
+          verified_at: '2026-01-17T21:04:24+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Test combined flags: -ltu (lint, stan, unit)'
@@ -15242,7 +15242,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:35+11:00'
+          verified_at: '2026-01-17T21:04:25+11:00'
           depth: basic
           duration_seconds: 1
     - text: Verify test reports are generated in CI mode
@@ -15299,7 +15299,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:35+11:00'
+          verified_at: '2026-01-17T21:04:25+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check that missing test dependencies are detected
@@ -15427,7 +15427,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:36+11:00'
+          verified_at: '2026-01-17T21:04:26+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with -u flag (run all PHPUnit tests)
@@ -15481,7 +15481,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:36+11:00'
+          verified_at: '2026-01-17T21:04:27+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with -U flag (run PHPUnit unit tests only)
@@ -15535,7 +15535,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:36+11:00'
+          verified_at: '2026-01-17T21:04:27+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with -k flag (run PHPUnit kernel tests only)
@@ -15589,7 +15589,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:36+11:00'
+          verified_at: '2026-01-17T21:04:28+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with -s flag (run PHPStan static analysis)
@@ -15643,7 +15643,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:37+11:00'
+          verified_at: '2026-01-17T21:04:29+11:00'
           depth: basic
           duration_seconds: 1
     - text: Test with -c flag (run PHP CodeSniffer)
@@ -15697,7 +15697,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:37+11:00'
+          verified_at: '2026-01-17T21:04:29+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with -a flag (run all tests)
@@ -15751,9 +15751,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:37+11:00'
+          verified_at: '2026-01-17T21:04:30+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test with -f flag (run specific Behat feature)
       completed: false
       completed_by: null
@@ -15805,7 +15805,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:37+11:00'
+          verified_at: '2026-01-17T21:04:30+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with -t flag (run tests with specific tag)
@@ -15859,7 +15859,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:38+11:00'
+          verified_at: '2026-01-17T21:04:31+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with --list-features flag
@@ -15913,9 +15913,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:38+11:00'
+          verified_at: '2026-01-17T21:04:32+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test with --headless flag (Behat headless mode)
       completed: false
       completed_by: null
@@ -15967,7 +15967,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:38+11:00'
+          verified_at: '2026-01-17T21:04:32+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with --headed flag (Behat with visible browser)
@@ -16021,9 +16021,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:38+11:00'
+          verified_at: '2026-01-17T21:04:33+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test with --group flag (PHPUnit test group)
       completed: false
       completed_by: null
@@ -16075,9 +16075,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:39+11:00'
+          verified_at: '2026-01-17T21:04:33+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Test with --coverage flag (generate code coverage)
       completed: false
       completed_by: null
@@ -16129,7 +16129,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:39+11:00'
+          verified_at: '2026-01-17T21:04:33+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with --testdox flag (PHPUnit testdox output)
@@ -16183,9 +16183,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:39+11:00'
+          verified_at: '2026-01-17T21:04:34+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test with --stop-on-failure flag
       completed: false
       completed_by: null
@@ -16237,9 +16237,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:40+11:00'
+          verified_at: '2026-01-17T21:04:34+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Verify Selenium Chrome installation works
       completed: false
       completed_by: null
@@ -16294,7 +16294,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:40+11:00'
+          verified_at: '2026-01-17T21:04:34+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify Behat configuration generation works
@@ -16351,7 +16351,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:40+11:00'
+          verified_at: '2026-01-17T21:04:35+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check test dependency installation (Behat, PHPUnit, etc.)
@@ -16466,7 +16466,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:40+11:00'
+          verified_at: '2026-01-17T21:04:35+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify symlink creation in /usr/local/bin/
@@ -16516,9 +16516,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:40+11:00'
+          verified_at: '2026-01-17T21:04:36+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test find_available_cli_name (pl, pl1, pl2, etc.)
       completed: false
       completed_by: null
@@ -16569,9 +16569,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:41+11:00'
+          verified_at: '2026-01-17T21:04:36+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Verify cnwp.yml cli_command setting is updated
       completed: false
       completed_by: null
@@ -16619,7 +16619,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:41+11:00'
+          verified_at: '2026-01-17T21:04:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test unregister_cli_command function
@@ -16669,7 +16669,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:41+11:00'
+          verified_at: '2026-01-17T21:04:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify get_cli_command reads from cnwp.yml
@@ -16704,7 +16704,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:41+11:00'
+          verified_at: '2026-01-17T21:04:37+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test switching CLI command names
@@ -16757,7 +16757,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:41+11:00'
+          verified_at: '2026-01-17T21:04:37+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify stale registration cleanup
@@ -16820,7 +16820,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:41+11:00'
+          verified_at: '2026-01-17T21:04:37+11:00'
           depth: basic
           duration_seconds: 0
     machine:
@@ -16930,7 +16930,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:42+11:00'
+          verified_at: '2026-01-17T21:04:37+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify config.yaml is created correctly
@@ -16988,7 +16988,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:42+11:00'
+          verified_at: '2026-01-17T21:04:38+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with different PHP versions (8.1, 8.2, 8.3)
@@ -17046,7 +17046,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:42+11:00'
+          verified_at: '2026-01-17T21:04:38+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with different database types (mysql, mariadb)
@@ -17104,7 +17104,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:42+11:00'
+          verified_at: '2026-01-17T21:04:38+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify webserver type configuration (nginx-fpm, apache-fpm)
@@ -17162,7 +17162,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:43+11:00'
+          verified_at: '2026-01-17T21:04:39+11:00'
           depth: basic
           duration_seconds: 1
     - text: Test environment variable injection
@@ -17220,7 +17220,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:43+11:00'
+          verified_at: '2026-01-17T21:04:39+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify config.local.yaml.example generation
@@ -17278,7 +17278,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:43+11:00'
+          verified_at: '2026-01-17T21:04:39+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test service recommendations (Redis, Solr, Memcache)
@@ -17336,7 +17336,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:43+11:00'
+          verified_at: '2026-01-17T21:04:39+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -17423,7 +17423,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:43+11:00'
+          verified_at: '2026-01-17T21:04:39+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify .nwp-developer.yml creation
@@ -17481,7 +17481,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:43+11:00'
+          verified_at: '2026-01-17T21:04:40+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test get_developer_role function
@@ -17536,7 +17536,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:44+11:00'
+          verified_at: '2026-01-17T21:04:40+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test get_developer_level function
@@ -17588,7 +17588,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:44+11:00'
+          verified_at: '2026-01-17T21:04:40+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify role_to_level and level_to_role conversions
@@ -17648,7 +17648,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:44+11:00'
+          verified_at: '2026-01-17T21:04:41+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test can_developer permission checks
@@ -17706,7 +17706,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:44+11:00'
+          verified_at: '2026-01-17T21:04:41+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test set_developer_role function
@@ -17764,7 +17764,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:44+11:00'
+          verified_at: '2026-01-17T21:04:41+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify sync_developer_info from GitLab
@@ -17810,9 +17810,9 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:45+11:00'
+          verified_at: '2026-01-17T21:04:41+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Test show_developer_status display
       completed: false
       completed_by: null
@@ -17866,7 +17866,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:45+11:00'
+          verified_at: '2026-01-17T21:04:42+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify developer_push wrapper (blocks push to main for non-core)
@@ -17928,7 +17928,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:45+11:00'
+          verified_at: '2026-01-17T21:04:42+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify developer_merge wrapper (blocks merge for non-core)
@@ -17987,7 +17987,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:45+11:00'
+          verified_at: '2026-01-17T21:04:42+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -18067,7 +18067,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:45+11:00'
+          verified_at: '2026-01-17T21:04:42+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify recipe-specific templates are used
@@ -18112,9 +18112,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:46+11:00'
+          verified_at: '2026-01-17T21:04:43+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Test profile-based template fallback
       completed: false
       completed_by: null
@@ -18157,7 +18157,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:46+11:00'
+          verified_at: '2026-01-17T21:04:43+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify variable substitution works
@@ -18202,7 +18202,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:46+11:00'
+          verified_at: '2026-01-17T21:04:43+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test service configuration (Redis, Solr, Memcache)
@@ -18249,7 +18249,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:46+11:00'
+          verified_at: '2026-01-17T21:04:43+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify .env.local.example creation
@@ -18294,7 +18294,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:46+11:00'
+          verified_at: '2026-01-17T21:04:44+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with different profiles (social, varbase, standard)
@@ -18341,7 +18341,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:46+11:00'
+          verified_at: '2026-01-17T21:04:44+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -18417,7 +18417,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:47+11:00'
+          verified_at: '2026-01-17T21:04:44+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify update_site_options updates cnwp.yml
@@ -18485,7 +18485,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:47+11:00'
+          verified_at: '2026-01-17T21:04:45+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test apply_drupal_options function
@@ -18545,7 +18545,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:47+11:00'
+          verified_at: '2026-01-17T21:04:45+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test apply_moodle_options function
@@ -18602,7 +18602,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:47+11:00'
+          verified_at: '2026-01-17T21:04:45+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test apply_gitlab_options function
@@ -18659,7 +18659,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:47+11:00'
+          verified_at: '2026-01-17T21:04:46+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify get_recipe_value YAML parsing
@@ -18725,9 +18725,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:48+11:00'
+          verified_at: '2026-01-17T21:04:46+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Test get_recipe_list_value for arrays
       completed: false
       completed_by: null
@@ -18785,7 +18785,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:48+11:00'
+          verified_at: '2026-01-17T21:04:46+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify get_settings_value function
@@ -18845,9 +18845,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:48+11:00'
+          verified_at: '2026-01-17T21:04:47+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test recipe_exists validation
       completed: false
       completed_by: null
@@ -18904,7 +18904,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:48+11:00'
+          verified_at: '2026-01-17T21:04:47+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify validate_recipe function
@@ -18964,7 +18964,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:48+11:00'
+          verified_at: '2026-01-17T21:04:47+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test list_recipes display
@@ -19024,7 +19024,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:49+11:00'
+          verified_at: '2026-01-17T21:04:47+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify install_git_profile function
@@ -19083,7 +19083,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:49+11:00'
+          verified_at: '2026-01-17T21:04:48+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test install_git_modules function
@@ -19142,7 +19142,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:49+11:00'
+          verified_at: '2026-01-17T21:04:48+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify pre_register_live_dns function
@@ -19202,7 +19202,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:49+11:00'
+          verified_at: '2026-01-17T21:04:48+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test generate_live_settings function
@@ -19261,9 +19261,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:49+11:00'
+          verified_at: '2026-01-17T21:04:49+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify create_test_content function
       completed: false
       completed_by: null
@@ -19385,7 +19385,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:50+11:00'
+          verified_at: '2026-01-17T21:04:49+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 1: Initialize project with Composer'
@@ -19432,7 +19432,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:50+11:00'
+          verified_at: '2026-01-17T21:04:49+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 1: Clone project from Git (source_git)'
@@ -19479,7 +19479,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:50+11:00'
+          verified_at: '2026-01-17T21:04:50+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 2: Generate environment configuration'
@@ -19527,7 +19527,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:50+11:00'
+          verified_at: '2026-01-17T21:04:50+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 3: Configure DDEV'
@@ -19575,7 +19575,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:50+11:00'
+          verified_at: '2026-01-17T21:04:50+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 4: Memory configuration'
@@ -19622,9 +19622,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:51+11:00'
+          verified_at: '2026-01-17T21:04:51+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: 'Verify Step 5: Launch DDEV services'
       completed: false
       completed_by: null
@@ -19669,7 +19669,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:51+11:00'
+          verified_at: '2026-01-17T21:04:51+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 6: Verify Drush is available'
@@ -19716,7 +19716,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:51+11:00'
+          verified_at: '2026-01-17T21:04:51+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 7: Configure file system and environment detection'
@@ -19763,7 +19763,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:51+11:00'
+          verified_at: '2026-01-17T21:04:51+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 8: Install Drupal profile'
@@ -19810,7 +19810,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:51+11:00'
+          verified_at: '2026-01-17T21:04:51+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 9: Enable core modules and post-install'
@@ -19857,7 +19857,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:51+11:00'
+          verified_at: '2026-01-17T21:04:52+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test resume from step functionality
@@ -19905,7 +19905,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:51+11:00'
+          verified_at: '2026-01-17T21:04:52+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify GitLab Composer authentication
@@ -19953,7 +19953,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:52+11:00'
+          verified_at: '2026-01-17T21:04:52+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test post-install module enabling
@@ -20000,7 +20000,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:52+11:00'
+          verified_at: '2026-01-17T21:04:53+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test post-install script execution
@@ -20047,7 +20047,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:52+11:00'
+          verified_at: '2026-01-17T21:04:53+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify site registration in cnwp.yml
@@ -20156,9 +20156,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:53+11:00'
+          verified_at: '2026-01-17T21:04:54+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: 'Verify Step 1: Create directory structure'
       completed: false
       completed_by: null
@@ -20203,7 +20203,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:53+11:00'
+          verified_at: '2026-01-17T21:04:54+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 2: Create docker-compose.yml'
@@ -20250,7 +20250,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:53+11:00'
+          verified_at: '2026-01-17T21:04:54+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 3: Create environment configuration'
@@ -20297,7 +20297,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:53+11:00'
+          verified_at: '2026-01-17T21:04:54+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 4: Start GitLab containers'
@@ -20344,9 +20344,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:53+11:00'
+          verified_at: '2026-01-17T21:04:55+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test reduced memory mode configuration
       completed: false
       completed_by: null
@@ -20391,7 +20391,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:54+11:00'
+          verified_at: '2026-01-17T21:04:55+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify README.md generation
@@ -20438,7 +20438,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:54+11:00'
+          verified_at: '2026-01-17T21:04:55+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test site registration in cnwp.yml
@@ -20546,9 +20546,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:55+11:00'
+          verified_at: '2026-01-17T21:04:56+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: 'Verify Step 1: Clone Moodle from Git'
       completed: false
       completed_by: null
@@ -20592,7 +20592,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:55+11:00'
+          verified_at: '2026-01-17T21:04:56+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 2: Configure DDEV'
@@ -20638,7 +20638,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:55+11:00'
+          verified_at: '2026-01-17T21:04:56+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 3: Memory configuration'
@@ -20684,7 +20684,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:55+11:00'
+          verified_at: '2026-01-17T21:04:56+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 4: Launch DDEV services'
@@ -20730,7 +20730,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:55+11:00'
+          verified_at: '2026-01-17T21:04:56+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 5: Create moodledata directory'
@@ -20776,7 +20776,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:56+11:00'
+          verified_at: '2026-01-17T21:04:57+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 6: Install Moodle'
@@ -20823,7 +20823,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:56+11:00'
+          verified_at: '2026-01-17T21:04:57+11:00'
           depth: basic
           duration_seconds: 0
     - text: 'Verify Step 7: Post-installation configuration'
@@ -20870,7 +20870,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:56+11:00'
+          verified_at: '2026-01-17T21:04:57+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with different Moodle branches
@@ -20917,9 +20917,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:56+11:00'
+          verified_at: '2026-01-17T21:04:58+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify site registration in cnwp.yml
       completed: false
       completed_by: null
@@ -21027,7 +21027,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:57+11:00'
+          verified_at: '2026-01-17T21:04:58+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify podcast.sh integration
@@ -21075,7 +21075,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:57+11:00'
+          verified_at: '2026-01-17T21:04:58+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test prerequisite checking
@@ -21122,7 +21122,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:57+11:00'
+          verified_at: '2026-01-17T21:04:59+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify domain configuration
@@ -21169,7 +21169,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:58+11:00'
+          verified_at: '2026-01-17T21:04:59+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test Linode region selection
@@ -21216,7 +21216,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:58+11:00'
+          verified_at: '2026-01-17T21:04:59+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify B2 region configuration
@@ -21263,9 +21263,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:58+11:00'
+          verified_at: '2026-01-17T21:05:00+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test media subdomain setup
       completed: false
       completed_by: null
@@ -21310,7 +21310,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:58+11:00'
+          verified_at: '2026-01-17T21:05:00+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify site registration in cnwp.yml
@@ -21419,7 +21419,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:59+11:00'
+          verified_at: '2026-01-17T21:05:00+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify get_total_steps for each environment
@@ -21472,7 +21472,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:05:59+11:00'
+          verified_at: '2026-01-17T21:05:01+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test get_step_info function
@@ -21525,9 +21525,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:00+11:00'
+          verified_at: '2026-01-17T21:05:01+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Verify get_install_step from cnwp.yml
       completed: false
       completed_by: null
@@ -21578,7 +21578,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:00+11:00'
+          verified_at: '2026-01-17T21:05:01+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test set_install_step updates cnwp.yml
@@ -21631,7 +21631,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:00+11:00'
+          verified_at: '2026-01-17T21:05:01+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify mark_install_complete function
@@ -21684,7 +21684,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:00+11:00'
+          verified_at: '2026-01-17T21:05:02+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test is_install_complete checking
@@ -21737,9 +21737,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:01+11:00'
+          verified_at: '2026-01-17T21:05:02+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Verify get_install_status_display function
       completed: false
       completed_by: null
@@ -21790,7 +21790,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:01+11:00'
+          verified_at: '2026-01-17T21:05:02+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test show_steps_detail display
@@ -21843,9 +21843,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:01+11:00'
+          verified_at: '2026-01-17T21:05:03+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify environment-specific steps (dev, stage, live)
       completed: false
       completed_by: null
@@ -21951,9 +21951,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:01+11:00'
+          verified_at: '2026-01-17T21:05:04+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify remote_package_installed checking
       completed: false
       completed_by: null
@@ -21994,9 +21994,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:02+11:00'
+          verified_at: '2026-01-17T21:05:04+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Test remote_service_running checking
       completed: false
       completed_by: null
@@ -22037,7 +22037,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:02+11:00'
+          verified_at: '2026-01-17T21:05:04+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify ensure_php_fpm installation and configuration
@@ -22083,9 +22083,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:02+11:00'
+          verified_at: '2026-01-17T21:05:05+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test PHP-FPM socket permissions for nginx
       completed: false
       completed_by: null
@@ -22122,7 +22122,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:02+11:00'
+          verified_at: '2026-01-17T21:05:05+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify ensure_mariadb installation
@@ -22165,7 +22165,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:02+11:00'
+          verified_at: '2026-01-17T21:05:05+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test create_site_database function
@@ -22208,7 +22208,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:03+11:00'
+          verified_at: '2026-01-17T21:05:06+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify configure_nginx_drupal vhost generation
@@ -22251,7 +22251,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:03+11:00'
+          verified_at: '2026-01-17T21:05:06+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test provision_drupal_stack complete setup
@@ -22297,7 +22297,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:03+11:00'
+          verified_at: '2026-01-17T21:05:06+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify check_infrastructure_ready status checks
@@ -22340,7 +22340,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:03+11:00'
+          verified_at: '2026-01-17T21:05:07+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with GitLab bundled nginx (gitlab-www group)
@@ -22455,7 +22455,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:03+11:00'
+          verified_at: '2026-01-17T21:05:07+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify cursor_hide and cursor_show
@@ -22518,7 +22518,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:03+11:00'
+          verified_at: '2026-01-17T21:05:08+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test clear_screen and clear_line
@@ -22581,7 +22581,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:04+11:00'
+          verified_at: '2026-01-17T21:05:08+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify read_key function (UP, DOWN, LEFT, RIGHT)
@@ -22647,7 +22647,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:04+11:00'
+          verified_at: '2026-01-17T21:05:08+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test ENTER and SPACE key detection
@@ -22710,7 +22710,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:04+11:00'
+          verified_at: '2026-01-17T21:05:09+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify ESC key detection
@@ -22765,7 +22765,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:04+11:00'
+          verified_at: '2026-01-17T21:05:09+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -22843,9 +22843,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:04+11:00'
+          verified_at: '2026-01-17T21:05:10+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify checkbox selection works
       completed: false
       completed_by: null
@@ -22911,7 +22911,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:05+11:00'
+          verified_at: '2026-01-17T21:05:10+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test form input fields
@@ -22978,7 +22978,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:05+11:00'
+          verified_at: '2026-01-17T21:05:10+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check color rendering in different terminals
@@ -23045,7 +23045,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:05+11:00'
+          verified_at: '2026-01-17T21:05:10+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify keyboard shortcuts work correctly
@@ -23107,7 +23107,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:05+11:00'
+          verified_at: '2026-01-17T21:05:11+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -23191,7 +23191,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:06+11:00'
+          verified_at: '2026-01-17T21:05:11+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify space bar toggles selection
@@ -23242,7 +23242,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:06+11:00'
+          verified_at: '2026-01-17T21:05:11+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check arrow key navigation
@@ -23293,7 +23293,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:06+11:00'
+          verified_at: '2026-01-17T21:05:11+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test Enter to confirm selection
@@ -23344,7 +23344,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:06+11:00'
+          verified_at: '2026-01-17T21:05:12+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify Escape to cancel
@@ -23395,7 +23395,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:06+11:00'
+          verified_at: '2026-01-17T21:05:12+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -23472,7 +23472,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:07+11:00'
+          verified_at: '2026-01-17T21:05:12+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test writing/updating YAML values
@@ -23538,7 +23538,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:07+11:00'
+          verified_at: '2026-01-17T21:05:13+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify nested value handling
@@ -23604,7 +23604,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:07+11:00'
+          verified_at: '2026-01-17T21:05:13+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check array handling
@@ -23670,7 +23670,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:07+11:00'
+          verified_at: '2026-01-17T21:05:13+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test with special characters in values
@@ -23760,9 +23760,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:07+11:00'
+          verified_at: '2026-01-17T21:05:14+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     verified: false
     verified_by: null
     verified_at: null
@@ -23841,7 +23841,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:08+11:00'
+          verified_at: '2026-01-17T21:05:14+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test get_setting() reads from cnwp.yml
@@ -23911,7 +23911,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:08+11:00'
+          verified_at: '2026-01-17T21:05:14+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify sitename validation
@@ -23984,7 +23984,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:08+11:00'
+          verified_at: '2026-01-17T21:05:15+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check prompt functions work correctly
@@ -24050,7 +24050,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:09+11:00'
+          verified_at: '2026-01-17T21:05:15+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test path handling utilities
@@ -24111,7 +24111,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:09+11:00'
+          verified_at: '2026-01-17T21:05:15+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -24191,7 +24191,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:09+11:00'
+          verified_at: '2026-01-17T21:05:16+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify colors display correctly
@@ -24260,7 +24260,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:09+11:00'
+          verified_at: '2026-01-17T21:05:16+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check print_header formatting
@@ -24326,9 +24326,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:10+11:00'
+          verified_at: '2026-01-17T21:05:16+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Test print_error output
       completed: false
       completed_by: null
@@ -24392,7 +24392,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:10+11:00'
+          verified_at: '2026-01-17T21:05:16+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify ocmsg debug output
@@ -24451,7 +24451,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:10+11:00'
+          verified_at: '2026-01-17T21:05:17+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -24532,7 +24532,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:10+11:00'
+          verified_at: '2026-01-17T21:05:17+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify git bundle creation
@@ -24604,9 +24604,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:10+11:00'
+          verified_at: '2026-01-17T21:05:18+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test GitLab API project creation
       completed: false
       completed_by: null
@@ -24674,7 +24674,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:11+11:00'
+          verified_at: '2026-01-17T21:05:18+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check git push to remote
@@ -24743,7 +24743,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:11+11:00'
+          verified_at: '2026-01-17T21:05:18+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify incremental backup handling
@@ -24881,7 +24881,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:11+11:00'
+          verified_at: '2026-01-17T21:05:19+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify DNS record lookup
@@ -24922,7 +24922,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:11+11:00'
+          verified_at: '2026-01-17T21:05:19+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check zone ID resolution
@@ -24966,7 +24966,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:12+11:00'
+          verified_at: '2026-01-17T21:05:19+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test API authentication
@@ -25010,7 +25010,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:12+11:00'
+          verified_at: '2026-01-17T21:05:20+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify error handling for API failures
@@ -25124,7 +25124,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:12+11:00'
+          verified_at: '2026-01-17T21:05:20+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify instance listing
@@ -25165,7 +25165,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:12+11:00'
+          verified_at: '2026-01-17T21:05:21+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check API token authentication
@@ -25209,7 +25209,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:13+11:00'
+          verified_at: '2026-01-17T21:05:21+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test instance deletion
@@ -25253,7 +25253,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:13+11:00'
+          verified_at: '2026-01-17T21:05:21+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify error handling
@@ -25610,7 +25610,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:14+11:00'
+          verified_at: '2026-01-17T21:05:22+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify file transfer via rsync
@@ -25654,7 +25654,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:14+11:00'
+          verified_at: '2026-01-17T21:05:22+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check remote command execution
@@ -25698,9 +25698,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:14+11:00'
+          verified_at: '2026-01-17T21:05:23+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test connection timeout handling
       completed: false
       completed_by: null
@@ -25742,7 +25742,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:14+11:00'
+          verified_at: '2026-01-17T21:05:23+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify error handling for failed connections
@@ -25882,7 +25882,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:15+11:00'
+          verified_at: '2026-01-17T21:05:23+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify badge generation for failing status
@@ -25948,9 +25948,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:15+11:00'
+          verified_at: '2026-01-17T21:05:24+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Check badge output format (SVG or URL)
       completed: false
       completed_by: null
@@ -26018,7 +26018,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:15+11:00'
+          verified_at: '2026-01-17T21:05:24+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test badge color coding
@@ -26084,7 +26084,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:16+11:00'
+          verified_at: '2026-01-17T21:05:24+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -26180,7 +26180,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:16+11:00'
+          verified_at: '2026-01-17T21:05:24+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify state saving between steps
@@ -26246,9 +26246,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:16+11:00'
+          verified_at: '2026-01-17T21:05:25+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Check state restoration on resume
       completed: false
       completed_by: null
@@ -26312,7 +26312,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:16+11:00'
+          verified_at: '2026-01-17T21:05:25+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test state cleanup on completion
@@ -26378,7 +26378,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:16+11:00'
+          verified_at: '2026-01-17T21:05:25+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -26475,7 +26475,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:17+11:00'
+          verified_at: '2026-01-17T21:05:26+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify production database access
@@ -26542,7 +26542,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:17+11:00'
+          verified_at: '2026-01-17T21:05:26+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test backup database selection
@@ -26608,7 +26608,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:17+11:00'
+          verified_at: '2026-01-17T21:05:26+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check development database cloning
@@ -26675,7 +26675,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:17+11:00'
+          verified_at: '2026-01-17T21:05:27+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -26772,7 +26772,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:18+11:00'
+          verified_at: '2026-01-17T21:05:27+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify essential preset
@@ -26839,7 +26839,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:18+11:00'
+          verified_at: '2026-01-17T21:05:27+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check full test suite preset
@@ -26906,9 +26906,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:18+11:00'
+          verified_at: '2026-01-17T21:05:28+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test custom test selection
       completed: false
       completed_by: null
@@ -26954,7 +26954,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:18+11:00'
+          verified_at: '2026-01-17T21:05:28+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -27050,7 +27050,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:18+11:00'
+          verified_at: '2026-01-17T21:05:28+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify DDEV status checks
@@ -27119,7 +27119,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:19+11:00'
+          verified_at: '2026-01-17T21:05:28+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check git status validation
@@ -27185,7 +27185,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:19+11:00'
+          verified_at: '2026-01-17T21:05:29+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test dependency verification
@@ -27251,7 +27251,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:19+11:00'
+          verified_at: '2026-01-17T21:05:29+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -27588,7 +27588,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:20+11:00'
+          verified_at: '2026-01-17T21:05:30+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify safe_db_status hides credentials
@@ -27655,7 +27655,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:20+11:00'
+          verified_at: '2026-01-17T21:05:30+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check safe_security_check sanitization
@@ -27722,7 +27722,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:20+11:00'
+          verified_at: '2026-01-17T21:05:30+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -27803,7 +27803,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:20+11:00'
+          verified_at: '2026-01-17T21:05:31+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify full sanitization (emails, passwords, sessions)
@@ -27876,7 +27876,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:21+11:00'
+          verified_at: '2026-01-17T21:05:31+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check admin user preservation
@@ -27946,9 +27946,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:21+11:00'
+          verified_at: '2026-01-17T21:05:32+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     machine:
       automatable: true
       checks:
@@ -28037,7 +28037,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:21+11:00'
+          verified_at: '2026-01-17T21:05:32+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify database download and import
@@ -28104,7 +28104,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:21+11:00'
+          verified_at: '2026-01-17T21:05:32+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check file synchronization
@@ -28171,7 +28171,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:22+11:00'
+          verified_at: '2026-01-17T21:05:32+11:00'
           depth: basic
           duration_seconds: 0
     machine:
@@ -28265,7 +28265,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:22+11:00'
+          verified_at: '2026-01-17T21:05:33+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify site selection interface
@@ -28335,7 +28335,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:22+11:00'
+          verified_at: '2026-01-17T21:05:33+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check import option configuration
@@ -28405,7 +28405,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:22+11:00'
+          verified_at: '2026-01-17T21:05:33+11:00'
           depth: basic
           duration_seconds: 0
     machine:
@@ -28495,7 +28495,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:23+11:00'
+          verified_at: '2026-01-17T21:05:34+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify Drupal site detection
@@ -28561,7 +28561,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:23+11:00'
+          verified_at: '2026-01-17T21:05:34+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check database discovery
@@ -28627,7 +28627,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:23+11:00'
+          verified_at: '2026-01-17T21:05:34+11:00'
           depth: basic
           duration_seconds: 0
     machine:
@@ -28720,9 +28720,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:23+11:00'
+          verified_at: '2026-01-17T21:05:35+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify Grunt support
       completed: false
       completed_by: null
@@ -28786,7 +28786,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:23+11:00'
+          verified_at: '2026-01-17T21:05:35+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check Webpack integration
@@ -28852,7 +28852,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:24+11:00'
+          verified_at: '2026-01-17T21:05:35+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test Vite support
@@ -28918,9 +28918,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:24+11:00'
+          verified_at: '2026-01-17T21:05:36+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     machine:
       automatable: true
       checks:
@@ -29007,7 +29007,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:24+11:00'
+          verified_at: '2026-01-17T21:05:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check default values are sensible
@@ -29075,7 +29075,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:24+11:00'
+          verified_at: '2026-01-17T21:05:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test copying to cnwp.yml works
@@ -29143,7 +29143,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:25+11:00'
+          verified_at: '2026-01-17T21:05:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify comments explain each option
@@ -29208,7 +29208,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:25+11:00'
+          verified_at: '2026-01-17T21:05:36+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check for any missing new options
@@ -29273,7 +29273,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:25+11:00'
+          verified_at: '2026-01-17T21:05:37+11:00'
           depth: basic
           duration_seconds: 0
     machine:
@@ -29369,7 +29369,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:25+11:00'
+          verified_at: '2026-01-17T21:05:37+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check structure matches .secrets.yml expectations
@@ -29434,7 +29434,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:25+11:00'
+          verified_at: '2026-01-17T21:05:37+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify comments explain each secret
@@ -29499,9 +29499,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:25+11:00'
+          verified_at: '2026-01-17T21:05:38+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test copying to .secrets.yml works
       completed: false
       completed_by: null
@@ -29567,7 +29567,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:26+11:00'
+          verified_at: '2026-01-17T21:05:38+11:00'
           depth: basic
           duration_seconds: 0
     machine:
@@ -29668,7 +29668,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:26+11:00'
+          verified_at: '2026-01-17T21:05:38+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify AVC Drupal modules installation (simple_oauth)
@@ -29734,7 +29734,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:26+11:00'
+          verified_at: '2026-01-17T21:05:39+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test Moodle plugin installation
@@ -29800,7 +29800,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:26+11:00'
+          verified_at: '2026-01-17T21:05:39+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify OAuth2 client configuration in AVC
@@ -29848,7 +29848,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:27+11:00'
+          verified_at: '2026-01-17T21:05:39+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test OAuth2 issuer configuration in Moodle
@@ -29896,9 +29896,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:27+11:00'
+          verified_at: '2026-01-17T21:05:40+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify SSO flow testing
       completed: false
       completed_by: null
@@ -29945,7 +29945,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:27+11:00'
+          verified_at: '2026-01-17T21:05:40+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test --regenerate-keys flag
@@ -30014,7 +30014,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:27+11:00'
+          verified_at: '2026-01-17T21:05:40+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify --skip-test flag
@@ -30080,7 +30080,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:27+11:00'
+          verified_at: '2026-01-17T21:05:40+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test --role-sync flag
@@ -30150,7 +30150,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:28+11:00'
+          verified_at: '2026-01-17T21:05:41+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test --badge-display flag
@@ -30219,7 +30219,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:28+11:00'
+          verified_at: '2026-01-17T21:05:41+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify cnwp.yml integration settings update
@@ -30288,7 +30288,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:28+11:00'
+          verified_at: '2026-01-17T21:05:42+11:00'
           depth: basic
           duration_seconds: 0
     machine:
@@ -30387,7 +30387,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:28+11:00'
+          verified_at: '2026-01-17T21:05:42+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify OAuth2 endpoint health checks
@@ -30460,9 +30460,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:28+11:00'
+          verified_at: '2026-01-17T21:05:43+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test last sync time display
       completed: false
       completed_by: null
@@ -30530,7 +30530,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:29+11:00'
+          verified_at: '2026-01-17T21:05:43+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify role sync status
@@ -30600,7 +30600,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:29+11:00'
+          verified_at: '2026-01-17T21:05:43+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test --debug flag output
@@ -30648,7 +30648,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:29+11:00'
+          verified_at: '2026-01-17T21:05:43+11:00'
           depth: basic
           duration_seconds: 0
     machine:
@@ -30750,9 +30750,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:29+11:00'
+          verified_at: '2026-01-17T21:05:44+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify --guild=NAME specific guild sync
       completed: false
       completed_by: null
@@ -30819,7 +30819,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:30+11:00'
+          verified_at: '2026-01-17T21:05:44+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test --user=ID specific user sync
@@ -30888,7 +30888,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:30+11:00'
+          verified_at: '2026-01-17T21:05:44+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify --dry-run mode
@@ -30957,7 +30957,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:30+11:00'
+          verified_at: '2026-01-17T21:05:45+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test --verbose flag output
@@ -31005,7 +31005,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:30+11:00'
+          verified_at: '2026-01-17T21:05:45+11:00'
           depth: basic
           duration_seconds: 0
     machine:
@@ -31086,9 +31086,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:31+11:00'
+          verified_at: '2026-01-17T21:05:45+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     - text: Verify token exchange functionality
       completed: false
       completed_by: null
@@ -31156,7 +31156,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:31+11:00'
+          verified_at: '2026-01-17T21:05:46+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test user authentication flow
@@ -31205,7 +31205,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:31+11:00'
+          verified_at: '2026-01-17T21:05:46+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify role mapping tests
@@ -31254,7 +31254,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:31+11:00'
+          verified_at: '2026-01-17T21:05:46+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test badge display functionality
@@ -31303,7 +31303,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:31+11:00'
+          verified_at: '2026-01-17T21:05:46+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check test result reporting (pass/fail counts)
@@ -31351,7 +31351,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:32+11:00'
+          verified_at: '2026-01-17T21:05:47+11:00'
           depth: basic
           duration_seconds: 0
     machine:
@@ -31441,7 +31441,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:32+11:00'
+          verified_at: '2026-01-17T21:05:47+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify identity validation against GitLab and DNS
@@ -31500,7 +31500,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:32+11:00'
+          verified_at: '2026-01-17T21:05:47+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test cnwp.yml configuration with coder subdomain
@@ -31559,7 +31559,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:32+11:00'
+          verified_at: '2026-01-17T21:05:48+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify git user configuration setup
@@ -31618,7 +31618,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:32+11:00'
+          verified_at: '2026-01-17T21:05:48+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test SSH key verification for GitLab
@@ -31677,7 +31677,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:33+11:00'
+          verified_at: '2026-01-17T21:05:48+11:00'
           depth: basic
           duration_seconds: 0
     - text: Check infrastructure readiness verification
@@ -31736,7 +31736,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:33+11:00'
+          verified_at: '2026-01-17T21:05:49+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test --coder flag with known identity
@@ -31795,7 +31795,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:33+11:00'
+          verified_at: '2026-01-17T21:05:49+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify --dry-run mode
@@ -31857,9 +31857,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:34+11:00'
+          verified_at: '2026-01-17T21:05:49+11:00'
           depth: basic
-          duration_seconds: 1
+          duration_seconds: 0
     machine:
       automatable: true
       checks:
@@ -31936,9 +31936,9 @@ features:
               timeout: 120
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:34+11:00'
+          verified_at: '2026-01-17T21:05:50+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Verify Docker daemon running check
       completed: false
       completed_by: null
@@ -31995,7 +31995,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:34+11:00'
+          verified_at: '2026-01-17T21:05:50+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test configuration file validation (cnwp.yml, .secrets.yml)
@@ -32054,9 +32054,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:34+11:00'
+          verified_at: '2026-01-17T21:05:51+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Check network connectivity tests (Linode, Cloudflare, drupal.org)
       completed: false
       completed_by: null
@@ -32113,7 +32113,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:35+11:00'
+          verified_at: '2026-01-17T21:05:51+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify common issue detection (disk space, memory, DDEV sites)
@@ -32172,7 +32172,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:35+11:00'
+          verified_at: '2026-01-17T21:05:51+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test verbose and quiet modes
@@ -32221,7 +32221,7 @@ features:
               timeout: 120
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:35+11:00'
+          verified_at: '2026-01-17T21:05:52+11:00'
           depth: basic
           duration_seconds: 0
     verified: false
@@ -32298,7 +32298,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:36+11:00'
+          verified_at: '2026-01-17T21:05:52+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify get_site_recipe detection
@@ -32364,9 +32364,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:36+11:00'
+          verified_at: '2026-01-17T21:05:53+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     - text: Test OAuth2 key generation helpers
       completed: false
       completed_by: null
@@ -32427,7 +32427,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:36+11:00'
+          verified_at: '2026-01-17T21:05:53+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify role mapping functions
@@ -32493,7 +32493,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:36+11:00'
+          verified_at: '2026-01-17T21:05:53+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test cohort synchronization functions
@@ -32556,7 +32556,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:37+11:00'
+          verified_at: '2026-01-17T21:05:53+11:00'
           depth: basic
           duration_seconds: 0
     machine:
@@ -32637,7 +32637,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:37+11:00'
+          verified_at: '2026-01-17T21:05:54+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify generate_castopod_env function
@@ -32700,7 +32700,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:37+11:00'
+          verified_at: '2026-01-17T21:05:54+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test Linode orchestration helpers
@@ -32764,7 +32764,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:37+11:00'
+          verified_at: '2026-01-17T21:05:54+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify Cloudflare DNS configuration
@@ -32828,7 +32828,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:38+11:00'
+          verified_at: '2026-01-17T21:05:55+11:00'
           depth: basic
           duration_seconds: 1
     - text: Test B2 storage configuration
@@ -32892,7 +32892,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:38+11:00'
+          verified_at: '2026-01-17T21:05:55+11:00'
           depth: basic
           duration_seconds: 0
     machine:
@@ -32983,7 +32983,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:38+11:00'
+          verified_at: '2026-01-17T21:05:55+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify show_ssh_security_warning output
@@ -33050,7 +33050,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:38+11:00'
+          verified_at: '2026-01-17T21:05:56+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test get_ssh_options array generation
@@ -33116,7 +33116,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:39+11:00'
+          verified_at: '2026-01-17T21:05:56+11:00'
           depth: basic
           duration_seconds: 0
     - text: Verify NWP_SSH_STRICT=1 strict mode
@@ -33183,7 +33183,7 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:39+11:00'
+          verified_at: '2026-01-17T21:05:56+11:00'
           depth: basic
           duration_seconds: 0
     - text: Test accept-new mode (default)
@@ -33249,9 +33249,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:39+11:00'
+          verified_at: '2026-01-17T21:05:57+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
     machine:
       automatable: true
       checks:
@@ -33291,7 +33291,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:39+11:00'
+          verified_at: '2026-01-17T21:05:57+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -33319,7 +33319,7 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-17T19:06:40+11:00'
+          verified_at: '2026-01-17T21:05:57+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -33398,9 +33398,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:18:34+11:00'
+          verified_at: '2026-01-17T21:15:16+11:00'
           depth: basic
-          duration_seconds: 218
+          duration_seconds: 438
       human:
         auto_loggable: false
       completed: false
@@ -33450,9 +33450,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:19:34+11:00'
+          verified_at: '2026-01-17T21:16:17+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
       human:
         auto_loggable: false
       completed: false
@@ -33475,7 +33475,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:19:34+11:00'
+          verified_at: '2026-01-17T21:16:17+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -33500,7 +33500,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:19:34+11:00'
+          verified_at: '2026-01-17T21:16:18+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -33525,7 +33525,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:19:35+11:00'
+          verified_at: '2026-01-17T21:16:18+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -33552,9 +33552,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:19:35+11:00'
+          verified_at: '2026-01-17T21:16:19+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
       human:
         auto_loggable: false
       completed: false
@@ -33581,7 +33581,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:19:35+11:00'
+          verified_at: '2026-01-17T21:16:19+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -33606,9 +33606,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:19:35+11:00'
+          verified_at: '2026-01-17T21:16:20+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
       human:
         auto_loggable: false
       completed: false
@@ -33631,7 +33631,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:19:35+11:00'
+          verified_at: '2026-01-17T21:16:20+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -33656,7 +33656,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:19:35+11:00'
+          verified_at: '2026-01-17T21:16:20+11:00'
           depth: basic
           duration_seconds: 0
       human:
@@ -33832,7 +33832,7 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:22:20+11:00'
+          verified_at: '2026-01-17T21:19:23+11:00'
           depth: basic
           duration_seconds: 1
       human:
@@ -33884,9 +33884,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-17T14:22:41+11:00'
+          verified_at: '2026-01-17T21:20:24+11:00'
           depth: basic
-          duration_seconds: 0
+          duration_seconds: 1
       human:
         auto_loggable: false
       completed: false

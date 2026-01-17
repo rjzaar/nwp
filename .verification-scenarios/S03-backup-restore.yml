@@ -62,14 +62,14 @@ scenario:
         message: "Backup creation failed"
 
     - name: Verify backup file exists
-      cmd: ls -la sitebackups/verify-s3*s3-test-backup*.tar.gz 2>/dev/null | head -1
+      cmd: ls -la sitebackups/verify-s3/*s3-test-backup*.tar.gz 2>/dev/null | head -1
       expect_exit: 0
       store_as: backup_file
       timeout: 10
 
     - name: Verify backup has content
       cmd: |
-        file=$(ls sitebackups/verify-s3*s3-test-backup*.tar.gz 2>/dev/null | head -1)
+        file=$(ls sitebackups/verify-s3/*s3-test-backup*.tar.gz 2>/dev/null | head -1)
         if [[ -n "$file" ]]; then
           size=$(stat -c%s "$file")
           if [[ $size -gt 1000 ]]; then
@@ -84,7 +84,7 @@ scenario:
       timeout: 10
 
     - name: Restore to new site
-      cmd: ./pl restore verify-s3 verify-s3-restored --yes 2>&1
+      cmd: ./pl restore verify-s3 verify-s3-restored --yes --first 2>&1
       expect_exit: 0
       timeout: 180
       on_failure:
@@ -100,6 +100,17 @@ scenario:
       cmd: cd sites/verify-s3-restored && ddev describe 2>&1 | grep -i "running\|status" | head -3
       expect_exit: 0
       timeout: 30
+
+    - name: Ensure drush available on restored site
+      cmd: |
+        cd sites/verify-s3-restored
+        if ! ddev drush status --field=drush-version >/dev/null 2>&1; then
+          echo "Installing drush..."
+          ddev composer require drush/drush --no-interaction 2>&1
+        fi
+        ddev drush status --field=drush-version 2>&1
+      expect_exit: 0
+      timeout: 120
 
     - name: Verify user count preserved
       cmd: |
@@ -128,7 +139,7 @@ scenario:
   cleanup:
     - cmd: ./pl delete verify-s3 --yes 2>/dev/null || true
     - cmd: ./pl delete verify-s3-restored --yes 2>/dev/null || true
-    - cmd: rm -f sitebackups/verify-s3*s3-test-backup*.tar.gz
+    - cmd: rm -rf sitebackups/verify-s3
 
   success_criteria:
     all_required:

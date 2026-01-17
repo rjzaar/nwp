@@ -307,9 +307,15 @@ checkpoint_recalculate_progress() {
     skipped=$(yq '.checkpoint.progress.scenarios.skipped // 0' "$CHECKPOINT_FILE" 2>/dev/null)
     remaining=$((CHECKPOINT_TOTAL_SCENARIOS - completed - failed - skipped))
 
-    # Calculate items verified
-    local items_verified
-    items_verified=$(yq '[.checkpoint.completed_scenarios[].items_verified] | add // 0' "$CHECKPOINT_FILE" 2>/dev/null || echo "0")
+    # Calculate items verified (use bash to handle empty array gracefully)
+    local items_verified=0
+    local items_arr
+    items_arr=$(yq -r '.checkpoint.completed_scenarios[].items_verified' "$CHECKPOINT_FILE" 2>/dev/null)
+    if [[ -n "$items_arr" ]]; then
+        for item in $items_arr; do
+            [[ "$item" =~ ^[0-9]+$ ]] && items_verified=$((items_verified + item))
+        done
+    fi
 
     # Calculate percentage
     local percentage

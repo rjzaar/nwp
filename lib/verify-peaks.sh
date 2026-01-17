@@ -231,7 +231,7 @@ peaks_update() {
                 \"run_id\": \"$run_id\",
                 \"changes\": \"${change_str%;*}\"
             }] + .history.changes |
-            .history.changes = .history.changes[:$PEAKS_HISTORY_MAX]
+            .history.changes |= .[0:$PEAKS_HISTORY_MAX]
         " "$PEAKS_FILE"
     fi
 
@@ -259,8 +259,18 @@ peaks_update_from_checkpoint() {
     items_verified=$(yq '.checkpoint.progress.items.verified // 0' "$checkpoint_file")
     ai_coverage=$((items_verified * 100 / 471))
 
-    # Calculate average confidence
-    avg_confidence=$(yq '[.checkpoint.completed_scenarios[].confidence // 0] | add / length // 0' "$checkpoint_file" 2>/dev/null || echo "0")
+    # Calculate average confidence (handle empty scenarios gracefully)
+    avg_confidence=0
+    local conf_values
+    conf_values=$(yq -r '.checkpoint.completed_scenarios[].confidence' "$checkpoint_file" 2>/dev/null)
+    if [[ -n "$conf_values" ]]; then
+        local sum=0 count=0
+        for conf in $conf_values; do
+            sum=$((sum + conf))
+            count=$((count + 1))
+        done
+        [[ $count -gt 0 ]] && avg_confidence=$((sum / count))
+    fi
 
     # Get machine coverage from verification system if available
     local machine_coverage=0

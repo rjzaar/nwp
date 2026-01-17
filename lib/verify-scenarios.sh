@@ -565,7 +565,19 @@ checkpoint_get() {
         return 1
     fi
 
-    yq -r "$path // empty" "$CHECKPOINT_FILE" 2>/dev/null
+    # Handle paths with pipes by wrapping in parentheses for the alternative operator
+    # yq v4 doesn't support "empty" like jq, use "" as default
+    local result
+    if [[ "$path" == *"|"* ]]; then
+        # Path contains pipe - wrap in parentheses
+        result=$(yq -r "($path) // \"\"" "$CHECKPOINT_FILE" 2>/dev/null)
+    else
+        result=$(yq -r "$path // \"\"" "$CHECKPOINT_FILE" 2>/dev/null)
+    fi
+
+    # Return empty string for null
+    [[ "$result" == "null" ]] && result=""
+    echo "$result"
 }
 
 #######################################
@@ -936,15 +948,39 @@ scenario_execute() {
         echo "  Setup:"
         for ((i=0; i<setup_count; i++)); do
             local setup_cmd
+            local setup_name
+            local setup_timeout=180
+
+            # Try flat structure first: setup[i].cmd
             setup_cmd=$(scenario_get_field "$file" ".scenario.setup[$i].cmd")
-            if [[ -n "$setup_cmd" ]]; then
-                local setup_name
+
+            # If empty, try named structure: setup[i].<name>.cmd
+            if [[ -z "$setup_cmd" ]]; then
+                setup_cmd=$(yq eval ".scenario.setup[$i] | to_entries | .[0].value.cmd" "$file" 2>/dev/null)
+                setup_name=$(yq eval ".scenario.setup[$i] | to_entries | .[0].key" "$file" 2>/dev/null)
+                # Get timeout from named structure if present
+                local named_timeout
+                named_timeout=$(yq eval ".scenario.setup[$i] | to_entries | .[0].value.timeout" "$file" 2>/dev/null)
+                [[ "$named_timeout" != "null" && -n "$named_timeout" ]] && setup_timeout="$named_timeout"
+            else
                 setup_name=$(scenario_get_field "$file" ".scenario.setup[$i]" | yq 'keys[0]' 2>/dev/null || echo "Setup step $((i+1))")
+            fi
+
+            if [[ -n "$setup_cmd" && "$setup_cmd" != "null" ]]; then
+                [[ -z "$setup_name" || "$setup_name" == "null" ]] && setup_name="Setup step $((i+1))"
                 echo -n "  ├─ $setup_name... "
-                if step_execute_cmd "$setup_cmd" 180 >/dev/null 2>&1; then
+                local setup_output
+                setup_output=$(step_execute_cmd "$setup_cmd" "$setup_timeout" 2>&1)
+                local setup_exit=$?
+                if [[ $setup_exit -eq 0 ]]; then
                     echo "✓"
                 else
-                    echo "FAILED"
+                    echo "FAILED (exit $setup_exit)"
+                    # Show last few lines of output for debugging
+                    if [[ -n "$setup_output" ]]; then
+                        echo "  │   Error output:"
+                        echo "$setup_output" | tail -5 | sed 's/^/  │   /'
+                    fi
                 fi
             fi
         done

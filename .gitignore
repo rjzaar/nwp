@@ -42,6 +42,7 @@ sites/*
 
 # Verification tracking
 !.verification.yml
+!.badges.json
 !migrate-verification-v2.sh
 
 # Documentation and metadata

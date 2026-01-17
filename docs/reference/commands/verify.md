@@ -1,37 +1,78 @@
 # verify
 
 **Status:** ACTIVE
-**Last Updated:** 2026-01-14
+**Last Updated:** 2026-01-17
+**Replaces:** [test-nwp](./test-nwp.md) (deprecated)
 
-Interactive verification console for tracking manual testing and feature validation with automatic invalidation on code changes.
+Unified verification system combining automated machine tests with human verification tracking. Supports both interactive TUI mode and automated test execution.
 
 ## Synopsis
 
 ```bash
 pl verify [COMMAND] [ARGS]
+pl verify --run [--depth=LEVEL] [--feature=ID]
 ```
 
 ## Description
 
-The `verify` command provides an interactive TUI for tracking which NWP features have been manually tested and verified. When code changes, verifications are automatically invalidated, ensuring features are re-tested after modifications.
+The `verify` command provides a layered verification system that:
 
-Tracks 42+ features across 10 categories with SHA256 file hashing for change detection.
+1. **Machine Verification** - Automated tests defined in `.verification.yml` that validate NWP functionality
+2. **Human Verification** - Manual confirmation tracked through the interactive TUI
+3. **Badges** - Coverage statistics for README display
+
+This command replaces the deprecated `test-nwp.sh` script as part of the P50 unified verification system.
+
+Tracks 571 checklist items across 90+ features with machine tests and human confirmation.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
 | (default) | Interactive TUI console |
-| `report` | Show verification status report |
-| `check` | Check for invalidated verifications |
-| `details <id>` | Show what changed and verification checklist |
-| `verify` | Interactive verification mode |
+| `--run` | **Machine execution mode** (replaces test-nwp.sh) |
+| `status` | Show verification status report |
+| `badges` | Generate badge URLs and .badges.json |
+| `details <id>` | Show checklist and verification status |
 | `verify <id>` | Mark specific feature as verified |
 | `unverify <id>` | Mark feature as unverified |
 | `list` | List all feature IDs |
-| `summary` | Show summary statistics |
-| `reset` | Reset all verifications |
 | `help` | Show help message |
+
+## Machine Execution Mode
+
+Run automated verification tests:
+
+```bash
+# Run all machine-verifiable tests (replaces test-nwp.sh)
+pl verify --run
+
+# Specify depth level
+pl verify --run --depth=basic       # Quick checks (5-10s per item)
+pl verify --run --depth=standard    # Standard tests (10-20s per item)
+pl verify --run --depth=thorough    # Full verification (20-40s per item)
+pl verify --run --depth=paranoid    # Integration tests (1-5min per item)
+
+# Test specific feature
+pl verify --run --feature=backup
+pl verify --run --feature=setup --depth=thorough
+```
+
+### Depth Levels
+
+| Level | Time | Checks | Use Case |
+|-------|------|--------|----------|
+| basic | 5-10s | Command exits 0 | During development |
+| standard | 10-20s | + Output valid, files created | Pre-commit |
+| thorough | 20-40s | + State verified, dependencies OK | Pre-push |
+| paranoid | 1-5min | + Round-trip test, full integration | Pre-release |
+
+### Pre-Release Verification
+
+```bash
+# Standard release verification (matches old test-nwp.sh coverage)
+pl verify --run --depth=thorough
+```
 
 ## Interactive TUI
 

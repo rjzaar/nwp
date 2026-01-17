@@ -655,7 +655,8 @@ function_name() {
    - Follow patterns from this document
 
 5. **Testing:**
-   - Add test cases to `scripts/commands/test-nwp.sh`
+   - Add machine checks to `.verification.yml` for automated testing
+   - Run tests with `pl verify --run --feature=<feature>`
    - Test with valid and invalid inputs
    - Test error conditions
 

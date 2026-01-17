@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "schemaVersion": 1,
+  "generated": "2026-01-17T12:31:30+11:00",
+  "pipeline": {
+    "id": "local",
+    "ref": "main",
+    "sha": "817cfcbf6730c550d5dfe6c580dd1f4056238166"
+  },
+  "badges": {
+    "verification_machine": {
+      "label": "Machine Verified",
+      "message": "3%",
+      "color": "red"
+    },
+    "verification_human": {
+      "label": "Human Verified",
+      "message": "1%",
+      "color": "red"
+    },
+    "verification_full": {
+      "label": "Fully Verified",
+      "message": "0%",
+      "color": "red"
+    },
+    "issues_open": {
+      "label": "Issues",
+      "message": "0 open",
+      "color": "brightgreen"
+    }
+  }
+}

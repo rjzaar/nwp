@@ -239,7 +239,8 @@ get_checklist_item_count() {
     local feature="$1"
     local version=$(get_schema_version)
 
-    if [[ "$version" == "2" ]]; then
+    if [[ "$version" == "2" || "$version" == "3" ]]; then
+        # v2/v3 format - count checklist items with - text: at 4 spaces
         awk -v feature="$feature" '
         BEGIN { in_feature = 0; in_checklist = 0; count = 0 }
         /^  [a-z0-9_]+:/ {
@@ -255,10 +256,13 @@ get_checklist_item_count() {
             in_checklist = 1
             next
         }
-        in_feature && in_checklist && /^      - text:/ {
+        in_feature && in_checklist && /^    - text:/ {
             count++
         }
-        in_feature && in_checklist && /^    [a-z]/ {
+        in_feature && in_checklist && /^    [a-z]/ && !/^    - / {
+            exit
+        }
+        /^  [a-z]/ && in_feature && in_checklist {
             exit
         }
         END { print count }
@@ -274,7 +278,8 @@ get_completed_checklist_item_count() {
     local feature="$1"
     local version=$(get_schema_version)
 
-    if [[ "$version" == "2" ]]; then
+    if [[ "$version" == "2" || "$version" == "3" ]]; then
+        # v2/v3 format - count items with completed: true at 6 spaces
         awk -v feature="$feature" '
         BEGIN { in_feature = 0; in_checklist = 0; in_item = 0; count = 0; completed = "" }
         /^  [a-z0-9_]+:/ {
@@ -290,18 +295,21 @@ get_completed_checklist_item_count() {
             in_checklist = 1
             next
         }
-        in_feature && in_checklist && /^      - text:/ {
+        in_feature && in_checklist && /^    - text:/ {
             in_item = 1
             completed = ""
         }
-        in_feature && in_checklist && in_item && /^        completed:/ {
-            gsub(/^        completed: */, "")
+        in_feature && in_checklist && in_item && /^      completed:/ {
+            gsub(/^      completed: */, "")
             if ($0 == "true") {
                 count++
             }
             in_item = 0
         }
-        in_feature && in_checklist && /^    [a-z]/ {
+        in_feature && in_checklist && /^    [a-z]/ && !/^    - / {
+            exit
+        }
+        /^  [a-z]/ && in_feature && in_checklist {
             exit
         }
         END { print count }
@@ -789,13 +797,17 @@ show_file_diff() {
 
 # Get all feature IDs
 get_feature_ids() {
+    # Only extract feature IDs from under the features: section
     awk '
-    /^  [a-z0-9_]+:$/ {
+    BEGIN { in_features = 0 }
+    /^features:/ { in_features = 1; next }
+    /^[a-z]/ && !/^features:/ { in_features = 0 }
+    in_features && /^  [a-z0-9_]+:$/ {
         gsub(/^  /, "")
         gsub(/:$/, "")
         print
     }
-    ' "$VERIFICATION_FILE" | grep -v "^version$"
+    ' "$VERIFICATION_FILE"
 }
 
 # Update YAML value
@@ -2494,15 +2506,15 @@ count_total_items() {
 count_machine_verified_items() {
     # Count items where machine.state.verified is true in .verification.yml
     # The structure is: checklist item -> machine -> state -> verified: true
-    # Indentation: machine (8 spaces), state (10 spaces), verified (12 spaces)
+    # Indentation: machine (6 spaces), state (8 spaces), verified (10 spaces)
     local count=0
     count=$(awk '
     BEGIN { in_machine = 0; in_state = 0; count = 0 }
-    /^        machine:/ { in_machine = 1; in_state = 0; next }
-    in_machine && /^          state:/ { in_state = 1; next }
-    in_machine && in_state && /^            verified: true/ { count++; in_machine = 0; in_state = 0; next }
-    /^        [a-z]/ && !/^        machine:/ { in_machine = 0; in_state = 0 }
-    /^      - text:/ { in_machine = 0; in_state = 0 }
+    /^      machine:/ { in_machine = 1; in_state = 0; next }
+    in_machine && /^        state:/ { in_state = 1; next }
+    in_machine && in_state && /^          verified: true/ { count++; in_machine = 0; in_state = 0; next }
+    /^      [a-z]/ && !/^      machine:/ { in_machine = 0; in_state = 0 }
+    /^    - text:/ { in_machine = 0; in_state = 0 }
     END { print count }
     ' "$VERIFICATION_FILE" 2>/dev/null)
     echo "${count:-0}"
@@ -2532,10 +2544,10 @@ count_feature_machine_verified() {
         next
     }
     in_feature && /^    checklist:/ { in_checklist = 1; next }
-    in_feature && in_checklist && /^      - text:/ { in_machine = 0; in_state = 0; next }
-    in_feature && in_checklist && /^        machine:/ { in_machine = 1; next }
-    in_feature && in_checklist && in_machine && /^          state:/ { in_state = 1; next }
-    in_feature && in_checklist && in_machine && in_state && /^            verified: true/ { count++; in_state = 0; next }
+    in_feature && in_checklist && /^    - text:/ { in_machine = 0; in_state = 0; next }
+    in_feature && in_checklist && /^      machine:/ { in_machine = 1; next }
+    in_feature && in_checklist && in_machine && /^        state:/ { in_state = 1; next }
+    in_feature && in_checklist && in_machine && in_state && /^          verified: true/ { count++; in_state = 0; next }
     END { print count }
     ' "$VERIFICATION_FILE" 2>/dev/null)
     echo "${count:-0}"
@@ -2555,7 +2567,7 @@ count_feature_machine_checkable() {
         next
     }
     in_feature && /^    checklist:/ { in_checklist = 1; next }
-    in_feature && in_checklist && /^        machine:/ { count++; next }
+    in_feature && in_checklist && /^      machine:/ { count++; next }
     END { print count }
     ' "$VERIFICATION_FILE" 2>/dev/null)
     echo "${count:-0}"
@@ -2572,7 +2584,7 @@ count_fully_verified_items() {
         human_completed = 0
         count = 0
     }
-    /^      - text:/ {
+    /^    - text:/ {
         # New checklist item - check if previous was fully verified
         if (in_item && machine_verified && human_completed) {
             count++
@@ -2582,11 +2594,11 @@ count_fully_verified_items() {
         human_completed = 0
         next
     }
-    in_item && /^        completed: true/ {
+    in_item && /^      completed: true/ {
         human_completed = 1
         next
     }
-    in_item && /^            verified: true/ {
+    in_item && /^          verified: true/ {
         machine_verified = 1
         next
     }
@@ -2642,7 +2654,7 @@ update_machine_verified() {
         print
         next
     }
-    in_feature && in_checklist && /^      - text:/ {
+    in_feature && in_checklist && /^    - text:/ {
         current_idx++
         if (current_idx == idx) {
             in_target_item = 1
@@ -2654,38 +2666,38 @@ update_machine_verified() {
         print
         next
     }
-    in_target_item && /^        machine:/ {
+    in_target_item && /^      machine:/ {
         in_machine = 1
         print
         next
     }
-    in_target_item && in_machine && /^          state:/ {
+    in_target_item && in_machine && /^        state:/ {
         in_state = 1
         print
         next
     }
-    in_target_item && in_machine && in_state && /^            verified:/ {
-        print "            verified: true"
+    in_target_item && in_machine && in_state && /^          verified:/ {
+        print "          verified: true"
         state_updated = 1
         next
     }
-    in_target_item && in_machine && in_state && /^            verified_at:/ {
-        print "            verified_at: '\''" timestamp "'\''"
+    in_target_item && in_machine && in_state && /^          verified_at:/ {
+        print "          verified_at: '\''" timestamp "'\''"
         next
     }
-    in_target_item && in_machine && in_state && /^            depth:/ {
-        print "            depth: " depth
+    in_target_item && in_machine && in_state && /^          depth:/ {
+        print "          depth: " depth
         next
     }
-    in_target_item && in_machine && in_state && /^            duration_seconds:/ {
-        print "            duration_seconds: " duration
+    in_target_item && in_machine && in_state && /^          duration_seconds:/ {
+        print "          duration_seconds: " duration
         next
     }
     # Exit state section on unindent
-    in_state && /^          [a-z]/ && !/^            / {
+    in_state && /^        [a-z]/ && !/^          / {
         in_state = 0
     }
-    in_machine && /^        [a-z]/ && !/^          / {
+    in_machine && /^      [a-z]/ && !/^        / {
         in_machine = 0
         in_state = 0
     }
@@ -2869,7 +2881,7 @@ get_item_machine_commands() {
         next
     }
     in_feature && /^    checklist:/ { in_checklist = 1; item_count = 0; next }
-    in_feature && in_checklist && /^      - / {
+    in_feature && in_checklist && /^    - / {
         item_count++
         in_machine = 0
         in_checks = 0
@@ -2878,18 +2890,23 @@ get_item_machine_commands() {
         next
     }
     in_feature && in_checklist && item_count == idx + 1 {
-        if (/^        machine:/) { in_machine = 1; next }
-        if (in_machine && /^          checks:/) { in_checks = 1; next }
-        if (in_checks && $0 ~ "^            " depth ":") { in_depth = 1; next }
-        if (in_depth && /^              commands:/) { in_commands = 1; next }
-        if (in_depth && in_commands && /^                - cmd:/) {
-            # Output previous command if exists (use  as delimiter to avoid pipe conflicts)
+        # Match machine: at 6 spaces (inside checklist item)
+        if (/^      machine:/) { in_machine = 1; next }
+        # Match checks: at 8 spaces
+        if (in_machine && /^        checks:/) { in_checks = 1; next }
+        # Match depth level (basic/standard/thorough/paranoid) at 10 spaces
+        if (in_checks && $0 ~ "^          " depth ":") { in_depth = 1; next }
+        # Match commands: at 12 spaces
+        if (in_depth && /^            commands:/) { in_commands = 1; next }
+        # Match - cmd: at 12 spaces
+        if (in_depth && in_commands && /^            - cmd:/) {
+            # Output previous command if exists (use tab as delimiter)
             if (cmd != "") {
                 print cmd "\t" expect_exit "\t" timeout "\t" expect_output
             }
             # Parse new command - strip YAML prefix and outer double quotes only
             cmd = $0
-            gsub(/^                - cmd: /, "", cmd)
+            gsub(/^            - cmd: /, "", cmd)
             # Only strip matching outer quotes (double or single wrapping the whole command)
             if (cmd ~ /^".*"$/) {
                 gsub(/^"/, "", cmd)
@@ -2903,37 +2920,40 @@ get_item_machine_commands() {
             expect_output = ""
             next
         }
-        if (in_depth && in_commands && /^                  expect_exit:/) {
+        # Match expect_exit: at 14 spaces
+        if (in_depth && in_commands && /^              expect_exit:/) {
             expect_exit = $2
             next
         }
-        if (in_depth && in_commands && /^                  timeout:/) {
+        # Match timeout: at 14 spaces
+        if (in_depth && in_commands && /^              timeout:/) {
             timeout = $2
             next
         }
-        if (in_depth && in_commands && /^                  expect_output/) {
+        # Match expect_output at 14 spaces
+        if (in_depth && in_commands && /^              expect_output/) {
             expect_output = $0
-            gsub(/^                  expect_output: /, "", expect_output)
+            gsub(/^              expect_output: /, "", expect_output)
             gsub(/^"/, "", expect_output)
             gsub(/"$/, "", expect_output)
             next
         }
-        # End of depth section
-        if (in_depth && /^            [a-z]/ && $0 !~ "^              ") {
+        # End of depth section (another depth level at 10 spaces)
+        if (in_depth && /^          [a-z]/ && $0 !~ "^            ") {
             if (cmd != "") {
                 print cmd "\t" expect_exit "\t" timeout "\t" expect_output
             }
             exit
         }
-        # End of machine section
-        if (in_machine && /^        [a-z]/ && !/^        machine:/) {
+        # End of machine section (another property at 6 spaces)
+        if (in_machine && /^      [a-z]/ && !/^      machine:/) {
             if (cmd != "") {
                 print cmd "\t" expect_exit "\t" timeout "\t" expect_output
             }
             exit
         }
-        # End of item
-        if (/^      - /) {
+        # End of item (new checklist item)
+        if (/^    - /) {
             if (cmd != "") {
                 print cmd "\t" expect_exit "\t" timeout "\t" expect_output
             }

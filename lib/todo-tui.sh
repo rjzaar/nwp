@@ -389,12 +389,12 @@ tui_draw_screen() {
     tui_draw_hline "$box_width" "$BOX_LT" "$BOX_RT"
 
     # Help line 1
-    printf "%s ${BOLD}Enter${NC}=Details  ${BOLD}Space${NC}=Select  ${BOLD}r${NC}=Resolve  ${BOLD}i${NC}=Ignore" "$BOX_V"
-    printf "%$((box_width - 52))s%s\n" "" "$BOX_V"
+    printf "%s ${BOLD}d${NC}=Details  ${BOLD}Space${NC}=Select  ${BOLD}p${NC}=Process  ${BOLD}i${NC}=Ignore" "$BOX_V"
+    printf "%$((box_width - 51))s%s\n" "" "$BOX_V"
 
     # Help line 2
-    printf "%s ${BOLD}a${NC}=All  ${BOLD}n${NC}=None  ${BOLD}f${NC}=Filter  ${BOLD}R${NC}=Refresh  ${BOLD}q${NC}=Quit" "$BOX_V"
-    printf "%$((box_width - 48))s%s\n" "" "$BOX_V"
+    printf "%s ${BOLD}a${NC}=All  ${BOLD}n${NC}=None  ${BOLD}f${NC}=Filter  ${BOLD}r${NC}=Refresh  ${BOLD}Esc${NC}=Quit" "$BOX_V"
+    printf "%$((box_width - 50))s%s\n" "" "$BOX_V"
 
     # Bottom border
     tui_draw_hline "$box_width" "$BOX_BL" "$BOX_BR"
@@ -442,31 +442,39 @@ tui_show_details() {
     echo ""
     echo "========================================================================"
     echo ""
-    echo -e "Press ${BOLD}[r]${NC} to resolve, ${BOLD}[i]${NC} to ignore, or any key to go back"
+    echo -e "Press ${BOLD}[p]${NC} to process (done), ${BOLD}[i]${NC} to ignore (skip), ${BOLD}Esc${NC} to go back"
 
     local key=$(tui_read_key)
     case "$key" in
-        r|R)
+        p|P)
             tui_cursor_show
             echo ""
-            echo -n "Mark as resolved? [y/N] "
+            echo -n "Mark as processed (done)? [y/N] "
             read -r confirm
             if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-                add_to_ignored "$id" "Manually resolved"
+                add_to_ignored "$id" "Processed"
+                echo -e "${GREEN}Item marked as processed${NC}"
+                sleep 0.5
             fi
             tui_cursor_hide
             ;;
         i|I)
             tui_cursor_show
             echo ""
-            echo -n "Ignore this item? [y/N] "
+            echo -n "Ignore this item (skip without completing)? [y/N] "
             read -r confirm
             if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
                 echo -n "Reason (optional): "
                 read -r reason
-                add_to_ignored "$id" "${reason:-Manual ignore}"
+                add_to_ignored "$id" "${reason:-Ignored}"
+                echo -e "${YELLOW}Item ignored${NC}"
+                sleep 0.5
             fi
             tui_cursor_hide
+            ;;
+        ESC)
+            # Go back to main screen
+            return
             ;;
     esac
 }
@@ -584,9 +592,9 @@ todo_tui_main() {
                     TODO_TUI_SELECTED[$idx]="0"
                 fi
                 ;;
-            ENTER)
+            d|D|ENTER)
                 tui_show_details
-                # Reload data in case item was resolved
+                # Reload data in case item was processed/ignored
                 json_data=$(run_all_checks)
                 tui_load_items "$json_data"
                 tui_apply_filters
@@ -613,17 +621,17 @@ todo_tui_main() {
             f|F)
                 tui_cycle_filter
                 ;;
-            r)
-                # Resolve selected items
-                local resolved=0
+            p|P)
+                # Process selected items (mark as done)
+                local processed=0
                 for idx in "${TODO_TUI_FILTERED[@]}"; do
                     if [ "${TODO_TUI_SELECTED[$idx]}" = "1" ]; then
                         local id=$(tui_get_field "${TODO_TUI_ITEMS[$idx]}" "id")
-                        add_to_ignored "$id" "Manually resolved" 2>/dev/null
-                        ((resolved++))
+                        add_to_ignored "$id" "Processed" 2>/dev/null
+                        ((processed++))
                     fi
                 done
-                if [ "$resolved" -gt 0 ]; then
+                if [ "$processed" -gt 0 ]; then
                     json_data=$(run_all_checks)
                     tui_load_items "$json_data"
                     tui_apply_filters
@@ -636,12 +644,12 @@ todo_tui_main() {
                 fi
                 ;;
             i|I)
-                # Ignore selected items
+                # Ignore selected items (skip without completing)
                 local ignored=0
                 for idx in "${TODO_TUI_FILTERED[@]}"; do
                     if [ "${TODO_TUI_SELECTED[$idx]}" = "1" ]; then
                         local id=$(tui_get_field "${TODO_TUI_ITEMS[$idx]}" "id")
-                        add_to_ignored "$id" "Bulk ignore" 2>/dev/null
+                        add_to_ignored "$id" "Ignored" 2>/dev/null
                         ((ignored++))
                     fi
                 done
@@ -657,14 +665,17 @@ todo_tui_main() {
                     [ "$TODO_TUI_CURRENT_ROW" -lt 0 ] && TODO_TUI_CURRENT_ROW=0
                 fi
                 ;;
-            R)
+            r|R)
                 # Refresh data
                 todo_cache_clear 2>/dev/null || true
                 json_data=$(run_all_checks "true")
                 tui_load_items "$json_data"
                 tui_apply_filters
                 ;;
-            q|Q|ESC)
+            q|Q)
+                break
+                ;;
+            ESC)
                 break
                 ;;
         esac

@@ -401,8 +401,8 @@ tui_draw_screen() {
     tui_draw_hline "$box_width" "$BOX_LT" "$BOX_RT"
 
     # Help line 1
-    printf "%s ${BOLD}d${NC}=Details  ${BOLD}Space${NC}=Select  ${BOLD}p${NC}=Process  ${BOLD}i${NC}=Ignore" "$BOX_V"
-    printf "%$((box_width - 51))s%s\n" "" "$BOX_V"
+    printf "%s ${BOLD}d${NC}=Details  ${BOLD}Space${NC}=Select  ${BOLD}x${NC}=Execute  ${BOLD}p${NC}=Done  ${BOLD}i${NC}=Ignore" "$BOX_V"
+    printf "%$((box_width - 57))s%s\n" "" "$BOX_V"
 
     # Help line 2
     printf "%s ${BOLD}a${NC}=All  ${BOLD}n${NC}=None  ${BOLD}f${NC}=Filter  ${BOLD}r${NC}=Refresh  ${BOLD}Esc${NC}=Quit" "$BOX_V"
@@ -452,12 +452,29 @@ tui_show_details() {
     [ -n "$action" ] && echo -e "  ${BOLD}Suggested Action:${NC}"
     [ -n "$action" ] && echo -e "    ${CYAN}$action${NC}"
     echo ""
+
+    # Check if executable
+    local is_exec=false
+    tui_is_executable "$item" && is_exec=true
+
     echo "========================================================================"
     echo ""
-    echo -e "Press ${BOLD}[p]${NC} to process (done), ${BOLD}[i]${NC} to ignore (skip), ${BOLD}Esc${NC} to go back"
+    if [ "$is_exec" = true ]; then
+        echo -e "Press ${BOLD}[x]${NC} to execute, ${BOLD}[p]${NC} to mark done, ${BOLD}[i]${NC} to ignore, ${BOLD}Esc${NC} to go back"
+    else
+        echo -e "Press ${BOLD}[p]${NC} to mark done, ${BOLD}[i]${NC} to ignore, ${BOLD}Esc${NC} to go back"
+    fi
 
     local key=$(tui_read_key)
     case "$key" in
+        x|X)
+            if [ "$is_exec" = true ]; then
+                tui_execute_item "$item"
+            else
+                echo -e "${YELLOW}This item type is not executable${NC}"
+                sleep 1
+            fi
+            ;;
         p|P)
             tui_cursor_show
             echo ""
@@ -502,6 +519,134 @@ tui_cycle_filter() {
     tui_apply_filters
     TODO_TUI_CURRENT_ROW=0
     TODO_TUI_CURRENT_TAB=0
+}
+
+################################################################################
+# Execute Functions
+################################################################################
+
+# Get executable command for an item (returns empty if not executable)
+tui_get_exec_command() {
+    local item="$1"
+    local action=$(tui_get_field "$item" "action")
+    local category=$(tui_get_field "$item" "category")
+    local site=$(tui_get_field "$item" "site")
+
+    # Extract command from action field
+    local cmd=""
+
+    case "$category" in
+        TST)
+            # Delete test site
+            [ -n "$site" ] && cmd="pl delete $site"
+            ;;
+        BAK)
+            # Run backup
+            [ -n "$site" ] && cmd="pl backup $site"
+            ;;
+        SEC)
+            # Security update
+            [ -n "$site" ] && cmd="pl security update $site"
+            ;;
+        SCH)
+            # Install schedule
+            [ -n "$site" ] && cmd="pl schedule install $site"
+            ;;
+        GHO)
+            # Unlist ghost site
+            [ -n "$site" ] && cmd="ddev stop --unlist $site"
+            ;;
+        ORP)
+            # Delete orphaned site
+            [ -n "$site" ] && cmd="pl delete $site"
+            ;;
+        INC)
+            # Continue incomplete install - extract step from action
+            if [[ "$action" =~ pl\ install\ -s=([0-9]+) ]]; then
+                local step="${BASH_REMATCH[1]}"
+                [ -n "$site" ] && cmd="pl install -s=$step $site"
+            fi
+            ;;
+        VER)
+            # Run verification
+            cmd="pl verify --run"
+            ;;
+        GIT)
+            # Open GitLab URL
+            if [[ "$action" =~ Open:\ (https://[^ ]+) ]]; then
+                local url="${BASH_REMATCH[1]}"
+                cmd="xdg-open '$url' 2>/dev/null || open '$url' 2>/dev/null"
+            fi
+            ;;
+        SSL)
+            # SSL renewal (needs sudo typically)
+            cmd="sudo certbot renew"
+            ;;
+        TOK)
+            # Token rotation tracking
+            local token_name=$(echo "$item" | grep -o '"id":"TOK-[^"]*"' | cut -d'-' -f2 | tr -d '"')
+            [ -n "$token_name" ] && cmd="pl todo token $token_name"
+            ;;
+        *)
+            # Not executable
+            cmd=""
+            ;;
+    esac
+
+    echo "$cmd"
+}
+
+# Check if item is executable
+tui_is_executable() {
+    local item="$1"
+    local cmd=$(tui_get_exec_command "$item")
+    [ -n "$cmd" ]
+}
+
+# Execute an item's action
+tui_execute_item() {
+    local item="$1"
+    local id=$(tui_get_field "$item" "id")
+    local cmd=$(tui_get_exec_command "$item")
+
+    if [ -z "$cmd" ]; then
+        echo -e "${YELLOW}This item type is not executable${NC}"
+        sleep 1
+        return 1
+    fi
+
+    tui_cursor_show
+    echo ""
+    echo -e "${BOLD}Command to execute:${NC}"
+    echo -e "  ${CYAN}$cmd${NC}"
+    echo ""
+    echo -n "Execute this command? [y/N] "
+    read -r confirm
+
+    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+        echo ""
+        echo -e "${DIM}Running...${NC}"
+        echo "------------------------------------------------------------------------"
+
+        # Execute the command
+        if eval "$cmd"; then
+            echo "------------------------------------------------------------------------"
+            echo -e "${GREEN}Command completed successfully${NC}"
+            add_to_ignored "$id" "Executed" 2>/dev/null
+            sleep 1
+        else
+            echo "------------------------------------------------------------------------"
+            echo -e "${RED}Command failed${NC}"
+            echo -n "Mark as processed anyway? [y/N] "
+            read -r mark_anyway
+            if [ "$mark_anyway" = "y" ] || [ "$mark_anyway" = "Y" ]; then
+                add_to_ignored "$id" "Executed (with errors)" 2>/dev/null
+            fi
+            sleep 1
+        fi
+    fi
+
+    tui_cursor_hide
 }
 
 ################################################################################
@@ -664,6 +809,46 @@ todo_tui_main() {
             f|F)
                 tui_cycle_filter
                 ;;
+            x|X)
+                # Execute selected items
+                local executed=0
+                local to_execute=()
+                for idx in "${TODO_TUI_FILTERED[@]}"; do
+                    if [ "${TODO_TUI_SELECTED[$idx]}" = "1" ]; then
+                        to_execute+=("$idx")
+                    fi
+                done
+                if [ ${#to_execute[@]} -eq 0 ]; then
+                    # No selection, execute current item
+                    local tab_start=$(tui_get_tab_start)
+                    local global_idx=$((tab_start + TODO_TUI_CURRENT_ROW))
+                    to_execute+=("${TODO_TUI_FILTERED[$global_idx]}")
+                fi
+                for idx in "${to_execute[@]}"; do
+                    local item="${TODO_TUI_ITEMS[$idx]}"
+                    if tui_is_executable "$item"; then
+                        tui_clear_screen
+                        tui_execute_item "$item"
+                        ((executed++))
+                    fi
+                done
+                if [ "$executed" -gt 0 ]; then
+                    # Reload data
+                    todo_clear_items
+                    local total_checks=$(todo_get_check_count)
+                    for ((check_idx=0; check_idx<total_checks; check_idx++)); do
+                        todo_run_check_by_index "$check_idx"
+                    done
+                    tui_load_items_from_array
+                    tui_apply_filters
+                    total_tabs=$(tui_get_total_tabs)
+                    [ "$TODO_TUI_CURRENT_TAB" -ge "$total_tabs" ] && TODO_TUI_CURRENT_TAB=$((total_tabs - 1))
+                    [ "$TODO_TUI_CURRENT_TAB" -lt 0 ] && TODO_TUI_CURRENT_TAB=0
+                    tab_items=$(tui_get_tab_item_count)
+                    [ "$TODO_TUI_CURRENT_ROW" -ge "$tab_items" ] && TODO_TUI_CURRENT_ROW=$((tab_items - 1))
+                    [ "$TODO_TUI_CURRENT_ROW" -lt 0 ] && TODO_TUI_CURRENT_ROW=0
+                fi
+                ;;
             p|P)
                 # Process selected items (mark as done)
                 local processed=0
@@ -764,4 +949,7 @@ export -f tui_get_tab_item_count
 export -f tui_draw_screen
 export -f tui_show_details
 export -f tui_cycle_filter
+export -f tui_get_exec_command
+export -f tui_is_executable
+export -f tui_execute_item
 export -f todo_tui_main

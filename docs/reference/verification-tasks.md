@@ -179,7 +179,7 @@ NWP tracks 89 features across these categories:
 - `lib_ssh` - SSH helpers with security controls
 
 ### Configuration (2 features)
-- `config_example` - example.cnwp.yml
+- `config_example` - example.nwp.yml
 - `config_secrets` - .secrets.example.yml
 
 ## Verification Commands

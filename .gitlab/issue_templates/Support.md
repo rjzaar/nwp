@@ -16,7 +16,7 @@
 
 ### Relevant Configuration
 ```yaml
-# Paste relevant sections from cnwp.yml (sanitize sensitive data)
+# Paste relevant sections from nwp.yml (sanitize sensitive data)
 ```
 
 ### Documentation Checked

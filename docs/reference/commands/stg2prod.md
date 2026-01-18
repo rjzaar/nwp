@@ -43,7 +43,7 @@ The command automatically appends `-stg` to the site name if not present.
 pl stg2prod nwp
 ```
 
-Deploys `nwp-stg` to production server configured in `cnwp.yml`.
+Deploys `nwp-stg` to production server configured in `nwp.yml`.
 
 ### Auto-Confirm Deployment
 
@@ -122,7 +122,7 @@ Syncing files to production...
 
 ## Configuration
 
-Production deployment configuration is stored in `cnwp.yml`:
+Production deployment configuration is stored in `nwp.yml`:
 
 ### Recipe-level configuration
 ```yaml
@@ -165,7 +165,7 @@ linode:
 - Staging site must be in **production mode** (script will auto-switch if needed)
 - SSH access to production server must be configured
 - Production server must have composer and drush installed
-- Production configuration must be defined in `cnwp.yml`
+- Production configuration must be defined in `nwp.yml`
 
 ## Production Mode Requirement
 
@@ -224,7 +224,7 @@ ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa_linode
 ssh-copy-id -i ~/.ssh/id_rsa_linode root@prod-server
 ```
 
-Configure in `cnwp.yml`:
+Configure in `nwp.yml`:
 
 ```yaml
 linode:
@@ -258,14 +258,14 @@ The script checks if each module is enabled before attempting reinstall.
 1. Verify server is reachable: `ping host`
 2. Test SSH manually: `ssh user@host`
 3. Check SSH key permissions: `chmod 600 ~/.ssh/id_rsa_linode`
-4. Verify SSH key in `cnwp.yml` matches the key on server
+4. Verify SSH key in `nwp.yml` matches the key on server
 
 ### Production Path Not Found
 
 **Symptom:** `Production path not found: /var/www/site`
 
 **Solution:**
-1. Verify `prod_path` in `cnwp.yml` is correct
+1. Verify `prod_path` in `nwp.yml` is correct
 2. Create directory on production server:
    ```bash
    ssh root@prod-server 'mkdir -p /var/www/site'

@@ -32,13 +32,13 @@ The AVC-Moodle SSO integration has been successfully implemented at the **NWP in
 - `avc_moodle_get_issuer_url()` - Get OAuth2 issuer URL
 - `avc_moodle_test_oauth_endpoint()` - Test endpoint accessibility
 - `avc_moodle_display_status()` - Display integration health dashboard
-- `get_site_directory()` - Get site directory from cnwp.yml
-- `get_site_recipe()` - Get site recipe from cnwp.yml
+- `get_site_directory()` - Get site directory from nwp.yml
+- `get_site_recipe()` - Get site recipe from nwp.yml
 
 **Location:** `/home/rob/nwp/lib/avc-moodle.sh`
 **Status:** ✅ Complete and tested
 
-#### 2. Configuration: `example.cnwp.yml` Updates
+#### 2. Configuration: `example.nwp.yml` Updates
 
 **AVC Recipe Additions:**
 ```yaml
@@ -92,7 +92,7 @@ pl avc-moodle-setup avc ss [--role-sync] [--badge-display]
 4. Installs auth plugins in Moodle
 5. Configures OAuth2 settings
 6. Tests SSO flow
-7. Updates cnwp.yml with integration settings
+7. Updates nwp.yml with integration settings
 
 **Status:** ✅ Complete - Ready for testing once modules are ported
 
@@ -149,7 +149,7 @@ pl avc-moodle-test avc ss
 - OAuth2 endpoint accessibility (authorize, token, userinfo)
 - AVC configuration (Simple OAuth enabled, keys exist)
 - Moodle configuration (config.php, wwwroot)
-- cnwp.yml configuration
+- nwp.yml configuration
 - Network connectivity
 - HTTPS enforcement
 
@@ -472,7 +472,7 @@ pl avc-moodle-sync avc ss --full
 │   ├── avc-moodle-status.sh              ✅ Complete
 │   ├── avc-moodle-sync.sh                ✅ Complete
 │   └── avc-moodle-test.sh                ✅ Complete
-├── example.cnwp.yml                      ✅ Updated (avc, avc-dev, m recipes)
+├── example.nwp.yml                      ✅ Updated (avc, avc-dev, m recipes)
 └── docs/
     ├── AVC_MOODLE_INTEGRATION_PROPOSAL.md      (Existing)
     ├── NWP_MOODLE_SSO_IMPLEMENTATION.md        (Existing)
@@ -647,7 +647,7 @@ Planned for future releases:
 ### Phase 1: NWP Infrastructure ✅ COMPLETE
 
 - [x] lib/avc-moodle.sh created with all required functions
-- [x] example.cnwp.yml updated with integration options
+- [x] example.nwp.yml updated with integration options
 - [x] All NWP commands created (setup, status, sync, test)
 - [x] Parent Drupal module structure created
 - [x] OAuth submodule structure created

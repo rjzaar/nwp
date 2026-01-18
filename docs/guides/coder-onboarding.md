@@ -263,7 +263,7 @@ The bootstrap script will automatically configure your identity and NWP installa
 **What the bootstrap script does:**
 
 1. ✅ Validates your identity against GitLab and DNS
-2. ✅ Configures `cnwp.yml` with your subdomain automatically
+2. ✅ Configures `nwp.yml` with your subdomain automatically
 3. ✅ Sets up `.secrets.yml` from example
 4. ✅ Configures git user.name and user.email
 5. ✅ Checks for SSH keys (offers to generate if missing)
@@ -298,7 +298,7 @@ The script will:
   [✓] NS delegation configured
   [!] DNS A records not configured (you'll need to set these up)
 
-[✓] Configured cnwp.yml with identity: yourname
+[✓] Configured nwp.yml with identity: yourname
 [✓] Created .secrets.yml from example
 [✓] Configured git as: yourname <git@yourname.nwpcode.org>
 
@@ -383,7 +383,7 @@ dev_defaults:
     admin_email: admin@<yourname>.nwpcode.org
 ```
 
-### Your `cnwp.yml`
+### Your `nwp.yml`
 
 ```yaml
 settings:

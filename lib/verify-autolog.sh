@@ -4,13 +4,13 @@
 
 # Check if verification consent is enabled
 verification_consent_enabled() {
-    local consent=$(grep -A5 "verification:" cnwp.yml 2>/dev/null | grep "agreed: true" || echo "")
+    local consent=$(grep -A5 "verification:" nwp.yml 2>/dev/null | grep "agreed: true" || echo "")
     [[ -n "$consent" ]]
 }
 
 # Check if auto-logging is enabled
 autolog_enabled() {
-    local enabled=$(grep -A10 "auto_log:" cnwp.yml 2>/dev/null | grep "enabled: true" || echo "")
+    local enabled=$(grep -A10 "auto_log:" nwp.yml 2>/dev/null | grep "enabled: true" || echo "")
     [[ -n "$enabled" ]]
 }
 
@@ -63,7 +63,7 @@ prompt_error_report() {
     local exit_code="$2"
 
     # Check if error reporting enabled
-    local prompt_enabled=$(grep -A5 "error_reporting:" cnwp.yml 2>/dev/null | grep "prompt_on_failure: true" || echo "")
+    local prompt_enabled=$(grep -A5 "error_reporting:" nwp.yml 2>/dev/null | grep "prompt_on_failure: true" || echo "")
     if [[ -z "$prompt_enabled" ]]; then
         return
     fi

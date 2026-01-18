@@ -44,7 +44,7 @@ get_prod_config() {
             print
             exit
         }
-    ' "$PROJECT_ROOT/cnwp.yml"
+    ' "$PROJECT_ROOT/nwp.yml"
 }
 
 show_help() {
@@ -126,7 +126,7 @@ main() {
         if [ -n "$linode_id" ]; then
             print_warning "Would delete Linode $linode_id ($existing_ip)"
             print_info "Manual deletion required via Linode dashboard"
-            print_info "Then remove prod: section from cnwp.yml"
+            print_info "Then remove prod: section from nwp.yml"
         fi
         exit 0
     fi
@@ -158,14 +158,14 @@ main() {
     # 2. Configure DNS (if domain uses Linode)
     # 3. Setup SSL via Let's Encrypt
     # 4. Enable Linode backups
-    # 5. Store config in cnwp.yml
+    # 5. Store config in nwp.yml
 
     print_info "Production server provisioning not yet implemented"
     print_info "For now, use 'pl live' for shared hosting or provision manually"
     echo ""
     print_info "Manual setup steps:"
     echo "  1. Create Linode at dashboard.linode.com"
-    echo "  2. Add prod: section to cnwp.yml with server_ip"
+    echo "  2. Add prod: section to nwp.yml with server_ip"
     echo "  3. Use 'pl stg2prod $BASE_NAME' to deploy"
 
     exit 0

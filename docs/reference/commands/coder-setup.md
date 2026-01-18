@@ -129,7 +129,7 @@ When using `remove`, the command:
 1. Removes NS delegation from base domain
 2. Blocks GitLab user account (unless --keep-gitlab)
 3. Removes from nwp group
-4. Removes from cnwp.yml configuration
+4. Removes from nwp.yml configuration
 5. Logs offboarding action
 6. Optionally archives contribution history (--archive)
 
@@ -150,4 +150,4 @@ When using `remove`, the command:
 
 - [Coder Onboarding Guide](../../guides/coder-onboarding.md) - Complete setup instructions
 - [Distributed Contribution Governance](../../governance/distributed-contribution-governance.md) - Governance model
-- `cnwp.yml` - Coder configuration file
+- `nwp.yml` - Coder configuration file

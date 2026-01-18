@@ -38,12 +38,12 @@ if [ -f "$PROJECT_ROOT/lib/todo-notify.sh" ]; then
 fi
 
 # Configuration
-if [ -f "${PROJECT_ROOT}/cnwp.yml" ]; then
-    CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
-elif [ -f "${PROJECT_ROOT}/example.cnwp.yml" ]; then
-    CONFIG_FILE="${PROJECT_ROOT}/example.cnwp.yml"
+if [ -f "${PROJECT_ROOT}/nwp.yml" ]; then
+    CONFIG_FILE="${PROJECT_ROOT}/nwp.yml"
+elif [ -f "${PROJECT_ROOT}/example.nwp.yml" ]; then
+    CONFIG_FILE="${PROJECT_ROOT}/example.nwp.yml"
 else
-    CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
+    CONFIG_FILE="${PROJECT_ROOT}/nwp.yml"
 fi
 export TODO_CONFIG_FILE="$CONFIG_FILE"
 export TODO_CHECKS_PROJECT_ROOT="$PROJECT_ROOT"
@@ -117,7 +117,7 @@ ${BOLD}EXAMPLES:${NC}
     pl todo schedule install         Set up daily todo checks
 
 ${BOLD}CONFIGURATION:${NC}
-    Configure thresholds and settings in cnwp.yml under settings.todo:
+    Configure thresholds and settings in nwp.yml under settings.todo:
 
     settings:
       todo:
@@ -248,7 +248,7 @@ is_ignored() {
 # Check if item is in ignored list
 is_item_ignored() {
     local item_id="$1"
-    local config_file="${CONFIG_FILE:-$PROJECT_ROOT/cnwp.yml}"
+    local config_file="${CONFIG_FILE:-$PROJECT_ROOT/nwp.yml}"
 
     [ ! -f "$config_file" ] && return 1
 
@@ -650,7 +650,7 @@ main() {
     local enabled=$(get_todo_setting "enabled" "true")
     if [ "$enabled" != "true" ] && [ "$enabled" != "yes" ] && [ "$enabled" != "1" ]; then
         print_warning "Todo system is disabled in configuration"
-        print_info "Enable it with: settings.todo.enabled: true in cnwp.yml"
+        print_info "Enable it with: settings.todo.enabled: true in nwp.yml"
         exit 0
     fi
 

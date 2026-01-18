@@ -73,21 +73,21 @@ install_moodle() {
     fi
 
     # Extract configuration values from YAML
-    local source=$(get_recipe_value "$recipe" "source" "$base_dir/cnwp.yml")
-    local branch=$(get_recipe_value "$recipe" "branch" "$base_dir/cnwp.yml")
-    local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/cnwp.yml")
-    local sitename=$(get_recipe_value "$recipe" "sitename" "$base_dir/cnwp.yml")
+    local source=$(get_recipe_value "$recipe" "source" "$base_dir/nwp.yml")
+    local branch=$(get_recipe_value "$recipe" "branch" "$base_dir/nwp.yml")
+    local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/nwp.yml")
+    local sitename=$(get_recipe_value "$recipe" "sitename" "$base_dir/nwp.yml")
 
     # Get PHP and database: recipe overrides settings, settings overrides defaults
-    local php_version=$(get_recipe_value "$recipe" "php" "$base_dir/cnwp.yml")
-    local database=$(get_recipe_value "$recipe" "database" "$base_dir/cnwp.yml")
+    local php_version=$(get_recipe_value "$recipe" "php" "$base_dir/nwp.yml")
+    local database=$(get_recipe_value "$recipe" "database" "$base_dir/nwp.yml")
 
     # Fall back to settings if not in recipe
     if [ -z "$php_version" ]; then
-        php_version=$(get_settings_value "php" "$base_dir/cnwp.yml")
+        php_version=$(get_settings_value "php" "$base_dir/nwp.yml")
     fi
     if [ -z "$database" ]; then
-        database=$(get_settings_value "database" "$base_dir/cnwp.yml")
+        database=$(get_settings_value "database" "$base_dir/nwp.yml")
     fi
 
     # Set defaults if still not specified (Moodle has different defaults)
@@ -177,7 +177,7 @@ install_moodle() {
         show_step 3 7 "Configuring PHP settings"
         print_header "Step 3: Memory Configuration"
 
-        # Get PHP settings from cnwp.yml (with defaults)
+        # Get PHP settings from nwp.yml (with defaults)
         local php_memory=$(get_setting "php_settings.memory_limit" "512M")
         local php_max_exec=$(get_setting "php_settings.max_execution_time" "600")
         local php_upload_max=$(get_setting "php_settings.upload_max_filesize" "100M")
@@ -429,9 +429,9 @@ MOODLEDATA_EOF
     echo -e "  ${BLUE}ddev ssh${NC}          - SSH into container"
     echo -e "  ${BLUE}ddev exec php admin/cli/cron.php${NC} - Run Moodle cron\n"
 
-    # Register site in cnwp.yml (if YAML library is available)
+    # Register site in nwp.yml (if YAML library is available)
     if command -v yaml_add_site &> /dev/null; then
-        print_info "Registering site in cnwp.yml..."
+        print_info "Registering site in nwp.yml..."
 
         # Get full directory path
         local site_dir=$(pwd)
@@ -448,18 +448,18 @@ MOODLEDATA_EOF
         fi
 
         # Register the site (Moodle doesn't have install_modules typically)
-        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
-            print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
+        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
+            print_status "OK" "Site registered in nwp.yml (purpose: $purpose)"
 
             # Update site with selected options
-            update_site_options "$site_name" "$PROJECT_ROOT/cnwp.yml"
+            update_site_options "$site_name" "$PROJECT_ROOT/nwp.yml"
         else
             # Site already exists or registration failed - not critical
             print_info "Site registration skipped (may already exist)"
 
             # Still try to update options if site exists
-            if yaml_site_exists "$site_name" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
-                update_site_options "$site_name" "$PROJECT_ROOT/cnwp.yml"
+            if yaml_site_exists "$site_name" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
+                update_site_options "$site_name" "$PROJECT_ROOT/nwp.yml"
             fi
         fi
 

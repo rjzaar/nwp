@@ -11,7 +11,7 @@ A practical guide for new coders tasked with verifying NWP functions.
 - **~50,000 lines** of bash code across 60+ files
 - **22 main scripts** for installation, backup, deployment, etc.
 - **25 library files** in `lib/` providing reusable functions
-- **Recipe-driven** configuration via `cnwp.yml`
+- **Recipe-driven** configuration via `nwp.yml`
 - **Two-tier secrets** architecture (infrastructure vs. data secrets)
 
 ---
@@ -231,10 +231,10 @@ head -50 lib/yaml-write.sh
 
 ```bash
 # See all available options
-cat example.cnwp.yml
+cat example.nwp.yml
 
 # See current user config (if exists)
-cat cnwp.yml
+cat nwp.yml
 ```
 
 ---
@@ -316,7 +316,7 @@ source lib/common.sh
 source lib/yaml-write.sh
 
 # Test a function
-yaml_get_value "sites.testsite.recipe" "cnwp.yml"
+yaml_get_value "sites.testsite.recipe" "nwp.yml"
 ```
 
 ### Example: Testing UI Functions
@@ -447,7 +447,7 @@ If you find bugs during verification:
 - `.secrets.data.yml` - Contains production credentials
 - `keys/prod_*` - Production SSH keys
 - `*.sql`, `*.sql.gz` - Database dumps with user data
-- `cnwp.yml` - User's local config (don't commit)
+- `nwp.yml` - User's local config (don't commit)
 
 ### Safe Operations
 
@@ -612,7 +612,7 @@ nwp/
 │   └── env/                  # Environment templates (.env.*, .secrets.*)
 │
 └── lib/                      # Library scripts
-    ├── env-generate.sh       # Generate .env from cnwp.yml
+    ├── env-generate.sh       # Generate .env from nwp.yml
     └── ddev-generate.sh      # Generate DDEV config
 ```
 

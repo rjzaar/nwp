@@ -286,7 +286,7 @@ Package manager is detected from lock files:
 
 ## Per-Site Configuration
 
-Override auto-detection in `cnwp.yml`:
+Override auto-detection in `nwp.yml`:
 
 ```yaml
 sites:
@@ -400,7 +400,7 @@ Tracks which features have been manually verified.
 
 # 8. Configuration System
 
-## cnwp.yml - Main Configuration
+## nwp.yml - Main Configuration
 
 Central configuration file for all NWP settings.
 

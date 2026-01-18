@@ -30,7 +30,7 @@ The complete AVC-Moodle SSO integration has been implemented, providing OAuth2 a
 **Status:** All commands implemented
 
 #### Configuration
-- **File:** `example.cnwp.yml`
+- **File:** `example.nwp.yml`
 - **Section:** `avc_moodle_integration`
 - **Status:** Schema defined with all options
 
@@ -326,7 +326,7 @@ moodle_plugins/auth/avc_oauth2/
 │   ├── avc-moodle-test.sh
 │   ├── avc-moodle-sync.sh
 │   └── avc-moodle-status.sh
-├── example.cnwp.yml (updated)
+├── example.nwp.yml (updated)
 └── docs/
     └── AVC_MOODLE_SSO_IMPLEMENTATION_COMPLETE.md (this file)
 ```

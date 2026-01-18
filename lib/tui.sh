@@ -57,7 +57,7 @@ get_env_display_label() {
 # Installed status tracking (what's currently on the site)
 declare -A OPTION_INSTALLED
 
-# Config status tracking (what cnwp.yml says should be installed)
+# Config status tracking (what nwp.yml says should be installed)
 declare -A OPTION_FROM_CONFIG
 
 # Recipe status tracking (what recipe pre-selects)
@@ -97,7 +97,7 @@ setup_install_status_option() {
     local config_file="$2"
     local environment="$3"
 
-    # Get the site's configured environment from cnwp.yml
+    # Get the site's configured environment from nwp.yml
     local site_env
     if command -v get_site_field &>/dev/null; then
         site_env=$(get_site_field "$site_name" "environment" "$config_file" 2>/dev/null)
@@ -278,7 +278,7 @@ draw_tui_screen() {
     local site_name="$2"
     local environment="$3"
     local current_row="$4"
-    local config_file="${5:-cnwp.yml}"
+    local config_file="${5:-nwp.yml}"
     local total="${#VISIBLE_OPTIONS[@]}"
 
     clear_screen
@@ -506,7 +506,7 @@ run_tui() {
     local site_name="$2"
     local environment="$3"
     local recipe_type="$4"
-    local config_file="${5:-cnwp.yml}"
+    local config_file="${5:-nwp.yml}"
 
     # Determine first option based on mode
     local first_option
@@ -668,7 +668,7 @@ run_tui() {
 # Args: $1 = recipe name, $2 = config file
 load_recipe_defaults() {
     local recipe="$1"
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
 
     # Reset recipe tracking
     OPTION_FROM_RECIPE=()
@@ -730,7 +730,7 @@ load_tui_defaults() {
     local site_name="$2"
     local recipe="$3"
     local environment="$4"
-    local config_file="${5:-cnwp.yml}"
+    local config_file="${5:-nwp.yml}"
 
     # Start with environment defaults
     if command -v apply_environment_defaults &>/dev/null; then

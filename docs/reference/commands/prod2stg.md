@@ -79,7 +79,7 @@ pl prod2stg --step=5 nwp-stg
 
 ## Configuration
 
-Production configuration is read from `cnwp.yml`:
+Production configuration is read from `nwp.yml`:
 
 ### Site-specific config
 ```yaml
@@ -116,7 +116,7 @@ linode:
 
 - Local staging site must exist
 - SSH access to production server configured
-- Production configuration in `cnwp.yml`
+- Production configuration in `nwp.yml`
 - Production server must have drush installed
 
 ## Rsync Excludes
@@ -129,7 +129,7 @@ linode:
 ## Troubleshooting
 
 ### SSH connection failed
-- Verify SSH key path in cnwp.yml
+- Verify SSH key path in nwp.yml
 - Test manual connection: `ssh -i <key> <user>@<host>`
 - Check SSH port if not default 22
 

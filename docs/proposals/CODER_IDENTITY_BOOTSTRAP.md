@@ -2,21 +2,21 @@
 
 **Status:** PROPOSAL
 **Created:** 2026-01-13
-**Problem:** New coders must manually configure their identity in `cnwp.yml`, which is error-prone and confusing
+**Problem:** New coders must manually configure their identity in `nwp.yml`, which is error-prone and confusing
 **Solution:** Automated identity bootstrap with multiple validation methods
 
 ---
 
 ## Executive Summary
 
-The current system requires new coders to manually edit `cnwp.yml` and set `settings.url` to their subdomain. This is error-prone and creates a disconnect between:
+The current system requires new coders to manually edit `nwp.yml` and set `settings.url` to their subdomain. This is error-prone and creates a disconnect between:
 - The admin's registration (running `coder-setup.sh add john`)
 - The coder's local configuration (manually editing `settings.url: john.nwpcode.org`)
 
 **Proposed Solution:** An interactive bootstrap script that:
 1. Automatically detects or prompts for the coder's identity
 2. Validates against GitLab authentication
-3. Configures `cnwp.yml` with correct settings
+3. Configures `nwp.yml` with correct settings
 4. Sets up git config, SSH, and other identity-related settings
 5. Verifies DNS and infrastructure readiness
 
@@ -44,7 +44,7 @@ settings:
 ### 4. **Multi-Step Manual Process**
 From `docs/guides/coder-onboarding.md:243-258`, coder must:
 1. Clone NWP
-2. Copy `example.cnwp.yml` to `cnwp.yml`
+2. Copy `example.nwp.yml` to `nwp.yml`
 3. Manually edit `settings.url`
 4. Copy `.secrets.example.yml` to `.secrets.yml`
 5. Add Linode token
@@ -70,7 +70,7 @@ A three-tiered identity detection system with automatic configuration:
 │                                                              │
 │  1. DETECT (Auto)         2. VALIDATE          3. CONFIGURE │
 │  ─────────────────        ────────────         ───────────  │
-│  • GitLab SSH test        • GitLab API         • cnwp.yml   │
+│  • GitLab SSH test        • GitLab API         • nwp.yml   │
 │  • DNS reverse lookup     • Check registered   • git config │
 │  • Interactive prompt     • Verify DNS exists  • SSH keys   │
 │                                                              │
@@ -117,7 +117,7 @@ cd /root/nwp
 #
 # Automatically configures a new coder's NWP installation with:
 #   - Coder identity detection and validation
-#   - cnwp.yml configuration from example
+#   - nwp.yml configuration from example
 #   - Git user configuration
 #   - SSH key setup for GitLab
 #   - DNS and infrastructure verification
@@ -299,7 +299,7 @@ validate_coder_identity() {
     fi
 }
 
-# Configure cnwp.yml with detected identity
+# Configure nwp.yml with detected identity
 configure_nwp() {
     local coder_name="$1"
     local base_domain=$(get_base_domain_from_example)
@@ -307,33 +307,33 @@ configure_nwp() {
     info "Configuring NWP installation..."
 
     # Backup existing config if present
-    if [ -f "cnwp.yml" ]; then
-        warn "Existing cnwp.yml found"
+    if [ -f "nwp.yml" ]; then
+        warn "Existing nwp.yml found"
         if ! confirm "Overwrite with new configuration?"; then
-            info "Skipping cnwp.yml configuration"
+            info "Skipping nwp.yml configuration"
             return 0
         fi
-        mv cnwp.yml "cnwp.yml.backup.$(date +%Y%m%d_%H%M%S)"
+        mv nwp.yml "nwp.yml.backup.$(date +%Y%m%d_%H%M%S)"
     fi
 
     # Copy example and configure
-    cp example.cnwp.yml cnwp.yml
+    cp example.nwp.yml nwp.yml
 
-    # Set identity in cnwp.yml
+    # Set identity in nwp.yml
     local subdomain="${coder_name}.${base_domain}"
 
     if command -v yq &>/dev/null; then
-        yq -i ".settings.url = \"$subdomain\"" cnwp.yml
-        yq -i ".settings.email.domain = \"$subdomain\"" cnwp.yml
-        yq -i ".settings.email.admin_email = \"admin@${subdomain}\"" cnwp.yml
+        yq -i ".settings.url = \"$subdomain\"" nwp.yml
+        yq -i ".settings.email.domain = \"$subdomain\"" nwp.yml
+        yq -i ".settings.email.admin_email = \"admin@${subdomain}\"" nwp.yml
     else
         # Fallback: sed
-        sed -i "s/url: nwpcode.org/url: $subdomain/" cnwp.yml
-        sed -i "s/domain: nwpcode.org/domain: $subdomain/" cnwp.yml
-        sed -i "s/admin_email: admin@example.com/admin_email: admin@$subdomain/" cnwp.yml
+        sed -i "s/url: nwpcode.org/url: $subdomain/" nwp.yml
+        sed -i "s/domain: nwpcode.org/domain: $subdomain/" nwp.yml
+        sed -i "s/admin_email: admin@example.com/admin_email: admin@$subdomain/" nwp.yml
     fi
 
-    pass "Configured cnwp.yml with identity: $coder_name"
+    pass "Configured nwp.yml with identity: $coder_name"
 
     # Setup .secrets.yml
     if [ ! -f ".secrets.yml" ]; then
@@ -470,14 +470,14 @@ show_next_steps() {
     echo ""
 }
 
-# Get base domain from example.cnwp.yml
+# Get base domain from example.nwp.yml
 get_base_domain_from_example() {
     awk '/^settings:/,/^[a-z]/ {
         if ($1 == "url:" && $2 ~ /\./) {
             print $2
             exit
         }
-    }' example.cnwp.yml | tr -d '"' | head -1
+    }' example.nwp.yml | tr -d '"' | head -1
 }
 
 # Check if GitLab user exists
@@ -625,7 +625,7 @@ cd /root/nwp
 The script will:
 1. Detect your identity (if SSH key added to GitLab)
 2. Validate your registration
-3. Configure cnwp.yml automatically
+3. Configure nwp.yml automatically
 4. Setup git configuration
 5. Verify DNS and infrastructure
 6. Register CLI command
@@ -678,7 +678,7 @@ The script should:
    - Should warn about SSH key
    - Should offer to generate key
 
-3. **Coder with existing cnwp.yml**
+3. **Coder with existing nwp.yml**
    - Should ask to backup/overwrite
    - Should preserve custom settings
 
@@ -768,7 +768,7 @@ This proposal solves the identity configuration problem by:
 
 1. **Automating detection** - Use GitLab SSH, DNS, or interactive prompts
 2. **Validating against sources** - Check GitLab and DNS records
-3. **Configuring automatically** - Set up cnwp.yml, git, SSH correctly
+3. **Configuring automatically** - Set up nwp.yml, git, SSH correctly
 4. **Providing clear feedback** - Show what's working, what needs attention
 5. **Making it idempotent** - Safe to run multiple times
 

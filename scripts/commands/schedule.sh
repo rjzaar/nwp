@@ -81,17 +81,17 @@ EOF
 # Schedule Functions
 ################################################################################
 
-# Get schedule from cnwp.yml for a site
+# Get schedule from nwp.yml for a site
 get_site_schedule() {
     local sitename="$1"
     local schedule_type="$2"  # database, full, bundle
-    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/nwp.yml"
 
     if [ ! -f "$cnwp_file" ]; then
         return 1
     fi
 
-    # Try to get schedule from cnwp.yml git_backup section
+    # Try to get schedule from nwp.yml git_backup section
     awk -v type="$schedule_type" '
         /^git_backup:/ { in_git_backup = 1; next }
         in_git_backup && /^[a-zA-Z]/ && !/^  / { in_git_backup = 0 }

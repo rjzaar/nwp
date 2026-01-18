@@ -1,5 +1,5 @@
 # NWP Configuration File
-# Copy to cnwp.yml and customize for your environment
+# Copy to nwp.yml and customize for your environment
 #
 # Option markers:
 #   [ACTIVE]       - Feature fully implemented and stable
@@ -102,7 +102,7 @@ settings:
     #   https: 8443                # GitLab HTTPS port
 
     # Security hardening options [EXPERIMENTAL]
-    # Script exists at linode/gitlab/gitlab_harden.sh but not yet integrated with cnwp.yml
+    # Script exists at linode/gitlab/gitlab_harden.sh but not yet integrated with nwp.yml
     # Currently run manually: ./linode/gitlab/gitlab_harden.sh --apply
     # hardening:
     #   enabled: true              # [EXPERIMENTAL] Enable hardening during setup
@@ -172,7 +172,7 @@ settings:
   #     reroute_address: ""        # [PLANNED] Leave empty to use Mailpit, or set specific address
 
   # === SITE MANAGEMENT [ACTIVE] ===
-  delete_site_yml: true            # [ACTIVE] Remove site from cnwp.yml when deleted (--keep-yml to preserve)
+  delete_site_yml: true            # [ACTIVE] Remove site from nwp.yml when deleted (--keep-yml to preserve)
 
   # === SEO & SEARCH ENGINE CONTROL ===
   # Controls search engine indexing behavior across environments

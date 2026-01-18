@@ -14,7 +14,7 @@ The following files implement this feature:
 |------|---------|
 | `coder-setup.sh` | Main script to add/remove/list coders |
 | `lib/cloudflare.sh` | NS record API functions |
-| `example.cnwp.yml` | Configuration template with `other_coders` section |
+| `example.nwp.yml` | Configuration template with `other_coders` section |
 | `docs/CODER_ONBOARDING.md` | Comprehensive guide for new coders |
 
 ## Architecture
@@ -157,7 +157,7 @@ linode:
 # No cloudflare needed - DNS managed via Linode
 ```
 
-Coder2's `cnwp.yml` would use their subdomain:
+Coder2's `nwp.yml` would use their subdomain:
 
 ```yaml
 settings:

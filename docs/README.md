@@ -321,8 +321,8 @@ pl verify                    # Interactive verification console (v0.18.0+)
 
 | File | Purpose | Git Status |
 |------|---------|------------|
-| `cnwp.yml` | Main configuration (user-specific) | Not tracked |
-| `example.cnwp.yml` | Configuration template | Tracked |
+| `nwp.yml` | Main configuration (user-specific) | Not tracked |
+| `example.nwp.yml` | Configuration template | Tracked |
 | `.secrets.yml` | Infrastructure credentials | Not tracked |
 | `.secrets.data.yml` | Production credentials (AI-blocked) | Not tracked |
 

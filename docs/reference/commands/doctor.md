@@ -34,7 +34,7 @@ The `doctor` command runs comprehensive diagnostic checks on your NWP installati
 - Git (version control)
 
 ### Configuration Files
-- `cnwp.yml` (exists and valid YAML)
+- `nwp.yml` (exists and valid YAML)
 - `.secrets.yml` (exists, not tracked in git)
 - Recipe validation
 - DDEV configurations
@@ -87,7 +87,7 @@ Checking prerequisites...
   ✓ Git (2.39.1)
 
 Checking configuration...
-  ✓ cnwp.yml exists and is valid
+  ✓ nwp.yml exists and is valid
   ✓ .secrets.yml exists
   ✓ Recipes validated (8 recipes found)
   ⚠ .secrets.data.yml not found (optional)
@@ -124,7 +124,7 @@ Checking prerequisites...
   ✓ Composer (2.6.5)
 
 Checking configuration...
-  ✗ cnwp.yml not found
+  ✗ nwp.yml not found
   ✓ .secrets.yml exists
 
 ═══════════════════════════════════════════════════════════════
@@ -133,7 +133,7 @@ Checking configuration...
 
 Recommendations:
   1. Install DDEV: ./setup.sh
-  2. Create cnwp.yml: cp example.cnwp.yml cnwp.yml
+  2. Create nwp.yml: cp example.nwp.yml nwp.yml
 ```
 
 ## Exit Codes
@@ -175,16 +175,16 @@ open -a Docker
 ### Configuration Missing
 
 ```
-✗ cnwp.yml not found
+✗ nwp.yml not found
 ```
 
 **Solution:**
 ```bash
 # Copy example configuration
-cp example.cnwp.yml cnwp.yml
+cp example.nwp.yml nwp.yml
 
 # Edit with your settings
-nano cnwp.yml
+nano nwp.yml
 ```
 
 ### Network Issues

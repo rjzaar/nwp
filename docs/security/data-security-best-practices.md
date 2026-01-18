@@ -159,7 +159,7 @@ For EU user data:
 ```bash
 # NEVER paste contents of:
 .secrets.yml          # Contains API tokens, passwords
-cnwp.yml              # May contain server IPs, credentials
+nwp.yml              # May contain server IPs, credentials
 keys/*                # SSH private keys
 *.sql                 # Database dumps (may contain PII)
 .env.local            # Local secrets
@@ -170,7 +170,7 @@ settings.php          # Database credentials
 
 ```bash
 # SAFE to share:
-example.cnwp.yml      # Template with placeholder values
+example.nwp.yml      # Template with placeholder values
 .secrets.example.yml  # Template with empty values
 .env.local.example    # Template showing structure
 README.md             # Public documentation
@@ -272,7 +272,7 @@ Claude can be valuable for infrastructure automation (provisioning servers, mana
 |---------|---------|
 | `.secrets.yml` | API tokens for provisioning |
 | `.env`, `.env.local` | Development environment |
-| `cnwp.yml` | Site configuration (after removing embedded creds) |
+| `nwp.yml` | Site configuration (after removing embedded creds) |
 
 #### What's BLOCKED (Data)
 
@@ -431,7 +431,7 @@ grep -l "password" *.yml           # Should be in .secrets.data.yml
 
 ### Essential Security Modules
 
-Configure in `cnwp.yml`:
+Configure in `nwp.yml`:
 
 ```yaml
 live_security:

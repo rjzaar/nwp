@@ -118,4 +118,4 @@ The system supports four coder roles with different access levels:
 
 - [Coder Onboarding Guide](../../guides/coder-onboarding.md) - Complete onboarding instructions
 - [Distributed Contribution Governance](../../governance/distributed-contribution-governance.md) - Governance model
-- `cnwp.yml` - Coder configuration file
+- `nwp.yml` - Coder configuration file

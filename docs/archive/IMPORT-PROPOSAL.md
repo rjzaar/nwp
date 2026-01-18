@@ -18,7 +18,7 @@ This proposal outlines a system to import existing live Drupal sites from Linode
 
 1. **Server Discovery Mode** - SSH into a Linode server, scan `/var/www/` to discover all sites
 2. **Interactive TUI** - Select which sites to import with full option configuration
-3. **Automated Import** - Pull database, files, configure DDEV, and register in cnwp.yml
+3. **Automated Import** - Pull database, files, configure DDEV, and register in nwp.yml
 
 ## Goals
 
@@ -42,7 +42,7 @@ This proposal outlines a system to import existing live Drupal sites from Linode
 | `lib/server-scan.sh` | Remote server scanning functions |
 | `sync.sh` | Re-sync existing imported site from live |
 
-### Configuration Extension (example.cnwp.yml)
+### Configuration Extension (example.nwp.yml)
 
 ```yaml
 settings:
@@ -260,7 +260,7 @@ drush pm:list --status=enabled --format=count
 │  ○ Step 8:  Configure Stage File Proxy                              │
 │  ○ Step 9:  Clear caches                                            │
 │  ○ Step 10: Verify site boots                                       │
-│  ○ Step 11: Register in cnwp.yml                                    │
+│  ○ Step 11: Register in nwp.yml                                    │
 │                                                                     │
 │  Elapsed: 4m 39s   Remaining: ~2m 30s                               │
 │                                                                     │
@@ -373,7 +373,7 @@ drush pm:list --status=enabled --format=count
 
 | Flag | Description |
 |------|-------------|
-| `--server=NAME` | Use server from cnwp.yml linode.servers |
+| `--server=NAME` | Use server from nwp.yml linode.servers |
 | `--ssh=USER@HOST` | SSH connection string |
 | `--key=PATH` | SSH private key path |
 | `--source=PATH` | Remote webroot path (skip discovery) |
@@ -612,15 +612,15 @@ import_site() {
         print_warning "Site may need attention"
     fi
 
-    # Step 11: Register in cnwp.yml
-    print_step 11 "Register in cnwp.yml"
+    # Step 11: Register in nwp.yml
+    print_step 11 "Register in nwp.yml"
     register_imported_site "$site_name" "$ssh_target" "$remote_webroot" "$options"
 }
 ```
 
 ---
 
-## cnwp.yml Site Entry (After Import)
+## nwp.yml Site Entry (After Import)
 
 ```yaml
 sites:
@@ -668,7 +668,7 @@ Re-sync an imported site with production:
 3. Incremental rsync of changed files (if not using stage_file_proxy)
 4. Import database
 5. Re-apply sanitization
-6. Update last_sync timestamp in cnwp.yml
+6. Update last_sync timestamp in nwp.yml
 7. Clear caches
 ```
 
@@ -690,7 +690,7 @@ Re-sync an imported site with production:
 If import fails at step N:
   1. Stop DDEV containers
   2. Remove partially created directory
-  3. Remove cnwp.yml entry
+  3. Remove nwp.yml entry
   4. Display clear error message with diagnostics
   5. Provide resume command: ./import.sh site1 --server=production -s=N
 ```
@@ -724,7 +724,7 @@ After import, all standard NWP commands work:
 - [ ] Essential file sync
 - [ ] Basic sanitization
 - [ ] DDEV configuration
-- [ ] cnwp.yml registration
+- [ ] nwp.yml registration
 
 ### Phase 2: Full TUI
 

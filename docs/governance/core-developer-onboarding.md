@@ -49,7 +49,7 @@ This proposal establishes a streamlined, automated onboarding process for NWP co
   - NS delegation via Cloudflare API for `<coder>.nwpcode.org`
   - GitLab user creation with group membership
   - Developer access level (30) assignment to `nwp` group
-  - Config tracking in `cnwp.yml`
+  - Config tracking in `nwp.yml`
 
 #### 2. Comprehensive Documentation
 - **`CODER_ONBOARDING.md`** (410 lines) - 10-step walkthrough
@@ -494,7 +494,7 @@ When onboarding a new core developer, ensure they have:
 
 ### Configuration
 - [ ] NWP cloned to server
-- [ ] `cnwp.yml` configured with their URL
+- [ ] `nwp.yml` configured with their URL
 - [ ] `.secrets.yml` with Linode token (infra only)
 - [ ] First test site created successfully
 

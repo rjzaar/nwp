@@ -73,7 +73,7 @@
 
 ### Low Priority
 
-11. **Clean up cnwp.yml configuration structure**
+11. **Clean up nwp.yml configuration structure**
     - Remove or clarify duplicate `test-nwp` entry (appears in both sites and recipes)
     - Add comments explaining the intended structure
     - Update documentation to match
@@ -173,7 +173,7 @@ Missing `set -euo pipefail` allows silent failures.
 
 #### Documentation Issues
 
-**9. YAML Configuration Confusion - `cnwp.yml:201-204`**
+**9. YAML Configuration Confusion - `nwp.yml:201-204`**
 `test-nwp` appears both as a site and recipe, violating intended structure.
 
 **10. Known Issue: Linode SSH Timeout (Test 12)**
@@ -319,7 +319,7 @@ Using `$GLOBALS` is generally discouraged in modern PHP. Consider using Drupal's
 | 8 | Medium | Improve YAML parsing | lib/linode.sh:22 | Medium |
 | 9 | Medium | YAML validation after writes | lib/yaml-write.sh | Medium |
 | 10 | Medium | Mode validation whitelist | make.sh:727 | Low |
-| 11 | Low | Clean up cnwp.yml structure | cnwp.yml:201-204 | Low |
+| 11 | Low | Clean up nwp.yml structure | nwp.yml:201-204 | Low |
 | 12 | Low | Add negative test cases | test-nwp.sh | High |
 | 13 | Low | Implement deployment TODO | test-nwp.sh:702 | Medium |
 | 14 | Low | Fix Linode SSH timeout | test-nwp.sh | High |
@@ -347,7 +347,7 @@ These fixes can be implemented quickly with minimal risk:
 2. **Add input validation function** - 15 minutes
 3. **Make test password configurable** - 5 minutes
 4. **Fix mode validation in make.sh** - 5 minutes
-5. **Add comments to cnwp.yml** - 5 minutes
+5. **Add comments to nwp.yml** - 5 minutes
 
 **Total estimated time for quick wins: ~30 minutes**
 
@@ -368,8 +368,8 @@ These fixes can be implemented quickly with minimal risk:
 - `/home/rob/nwp/lib/linode.sh`
 
 ### NWP Configuration
-- `/home/rob/nwp/cnwp.yml`
-- `/home/rob/nwp/example.cnwp.yml`
+- `/home/rob/nwp/nwp.yml`
+- `/home/rob/nwp/example.nwp.yml`
 
 ### NWP Testing
 - `/home/rob/nwp/test-nwp.sh`

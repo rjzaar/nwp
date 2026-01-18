@@ -18,7 +18,7 @@ The test suite checks:
 - OAuth2 endpoint accessibility and response codes
 - AVC Drupal module installation and configuration
 - Moodle plugin installation and configuration
-- cnwp.yml configuration accuracy
+- nwp.yml configuration accuracy
 - Network connectivity and HTTPS enforcement
 - OAuth2 key file permissions and validity
 
@@ -90,13 +90,13 @@ Validates Moodle configuration:
 | Moodle config.php exists | File system | File exists |
 | Moodle wwwroot configured | config.php | Contains wwwroot setting |
 
-### 4. cnwp.yml Configuration Tests
+### 4. nwp.yml Configuration Tests
 
 Validates NWP configuration file:
 
 | Test | Check | Pass Criteria |
 |------|-------|---------------|
-| cnwp.yml exists | File system | File exists in project root |
+| nwp.yml exists | File system | File exists in project root |
 | AVC site configured | YAML structure | AVC site entry exists |
 | Moodle site configured | YAML structure | Moodle site entry exists |
 
@@ -141,10 +141,10 @@ Moodle Site: ss
   Moodle config.php exists...                       ✓ PASS
   Moodle wwwroot configured...                      ✓ PASS
 
-[4/5] Testing cnwp.yml Configuration
-  cnwp.yml exists...                                ✓ PASS
-  AVC site configured in cnwp.yml...                ✓ PASS
-  Moodle site configured in cnwp.yml...             ✓ PASS
+[4/5] Testing nwp.yml Configuration
+  nwp.yml exists...                                ✓ PASS
+  AVC site configured in nwp.yml...                ✓ PASS
+  Moodle site configured in nwp.yml...             ✓ PASS
 
 [5/5] Testing Network Connectivity
   AVC site reachable...                             ✓ PASS
@@ -193,10 +193,10 @@ Moodle Site: ss
   Moodle config.php exists...                       ✓ PASS
   Moodle wwwroot configured...                      ✓ PASS
 
-[4/5] Testing cnwp.yml Configuration
-  cnwp.yml exists...                                ✓ PASS
-  AVC site configured in cnwp.yml...                ✓ PASS
-  Moodle site configured in cnwp.yml...             ✓ PASS
+[4/5] Testing nwp.yml Configuration
+  nwp.yml exists...                                ✓ PASS
+  AVC site configured in nwp.yml...                ✓ PASS
+  Moodle site configured in nwp.yml...             ✓ PASS
 
 [5/5] Testing Network Connectivity
   AVC site reachable...                             ✓ PASS
@@ -375,17 +375,17 @@ AVC site reachable...                             ✗ FAIL
 3. Test URL: `curl -I https://avc.ddev.site`
 4. Check firewall/network settings
 
-### cnwp.yml Missing Configuration
+### nwp.yml Missing Configuration
 
 **Symptom:**
 ```
-AVC site configured in cnwp.yml...                ✗ FAIL
+AVC site configured in nwp.yml...                ✗ FAIL
 ```
 
 **Solution:**
 1. Run setup again: `pl avc-moodle-setup avc ss`
-2. Manually verify cnwp.yml has correct structure
-3. Check for YAML syntax errors: `yq eval '.' cnwp.yml`
+2. Manually verify nwp.yml has correct structure
+3. Check for YAML syntax errors: `yq eval '.' nwp.yml`
 
 ## Test Automation
 

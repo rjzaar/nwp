@@ -4,13 +4,13 @@ set -euo pipefail
 ################################################################################
 # NWP Installation Script
 #
-# Reads cnwp.yml and installs sites based on the specified recipe.
+# Reads nwp.yml and installs sites based on the specified recipe.
 # Supports Drupal/OpenSocial, Moodle, GitLab, and Podcast (Castopod) installations.
 #
 # Usage: ./install.sh <recipe_name> [target_name] [options]
 #
 # Arguments:
-#   recipe_name                  - Name of recipe from cnwp.yml
+#   recipe_name                  - Name of recipe from nwp.yml
 #   target_name                  - Optional: custom directory/site name
 #
 # Examples:
@@ -22,7 +22,7 @@ set -euo pipefail
 # Options:
 #   c, --create-content          - Create test content (5 users, 5 docs, 5 workflow assignments)
 #   s=N, --step=N                - Resume installation from step N
-#   --resume                     - Auto-resume from last tracked step (reads from cnwp.yml)
+#   --resume                     - Auto-resume from last tracked step (reads from nwp.yml)
 #
 # Environment Variables:
 #   TEST_PASSWORD                - Password for test users (default: test123)
@@ -131,7 +131,7 @@ load_installer() {
 handle_migration() {
     local recipe="$1"
     local target="$2"
-    local config_file="${3:-cnwp.yml}"
+    local config_file="${3:-nwp.yml}"
 
     print_header "Migration Site Setup"
 
@@ -193,9 +193,9 @@ MIGRATION_README
 
     print_status "OK" "Created migration stub directory"
 
-    # Register in cnwp.yml
+    # Register in nwp.yml
     if command -v yaml_add_migration_stub &> /dev/null; then
-        print_info "Registering migration site in cnwp.yml..."
+        print_info "Registering migration site in nwp.yml..."
         local site_dir="$PROJECT_ROOT/$migration_name"
 
         # Prompt for source type
@@ -227,10 +227,10 @@ MIGRATION_README
             *) source_type="other" ;;
         esac
 
-        if yaml_add_migration_stub "$migration_name" "$site_dir" "$source_type" "" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
-            print_status "OK" "Migration site registered in cnwp.yml"
+        if yaml_add_migration_stub "$migration_name" "$site_dir" "$source_type" "" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
+            print_status "OK" "Migration site registered in nwp.yml"
         else
-            print_warning "Could not register site in cnwp.yml"
+            print_warning "Could not register site in nwp.yml"
         fi
     fi
 
@@ -255,7 +255,7 @@ main() {
     local target=""
     local start_step=""
     local create_content="n"
-    local config_file="cnwp.yml"
+    local config_file="nwp.yml"
     local purpose="indefinite"
     local positional_args=()
     local next_is_step=""
@@ -332,7 +332,7 @@ main() {
         target="${positional_args[1]}"
     fi
 
-    # Handle --resume: look up install_step from cnwp.yml
+    # Handle --resume: look up install_step from nwp.yml
     if [ -n "$auto_resume" ]; then
         local site_name="${target:-$recipe}"
         if command -v get_install_step &>/dev/null; then

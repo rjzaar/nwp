@@ -4,39 +4,39 @@ This file provides specific instructions for Claude Code when working on this pr
 
 ## Critical: Protected Files
 
-### cnwp.yml - NEVER COMMIT
+### nwp.yml - NEVER COMMIT
 
-The `cnwp.yml` file contains user-specific site configurations and **must never be committed to git**.
+The `nwp.yml` file contains user-specific site configurations and **must never be committed to git**.
 
-- **NEVER add cnwp.yml to git staging**
-- **NEVER commit cnwp.yml**
-- **NEVER include cnwp.yml in any commit**
+- **NEVER add nwp.yml to git staging**
+- **NEVER commit nwp.yml**
+- **NEVER include nwp.yml in any commit**
 
-If you need to make changes to the cnwp.yml schema or add new default options, make those changes to `example.cnwp.yml` instead.
+If you need to make changes to the nwp.yml schema or add new default options, make those changes to `example.nwp.yml` instead.
 
 ### Why?
 
-- `cnwp.yml` is in `.gitignore` for a reason
+- `nwp.yml` is in `.gitignore` for a reason
 - Each user has their own local site configurations
-- `example.cnwp.yml` serves as the template for new installations
-- Users copy `example.cnwp.yml` to `cnwp.yml` and customize it
+- `example.nwp.yml` serves as the template for new installations
+- Users copy `example.nwp.yml` to `nwp.yml` and customize it
 
 ### Correct Workflow
 
-1. New options, structure changes, documentation -> Edit `example.cnwp.yml`
-2. User-specific site data -> Only in `cnwp.yml` (never committed)
-3. When asked to update "the config", clarify: example.cnwp.yml for templates, cnwp.yml for user testing only
+1. New options, structure changes, documentation -> Edit `example.nwp.yml`
+2. User-specific site data -> Only in `nwp.yml` (never committed)
+3. When asked to update "the config", clarify: example.nwp.yml for templates, nwp.yml for user testing only
 
-### Propagating Changes to cnwp.yml
+### Propagating Changes to nwp.yml
 
-When you make changes to `example.cnwp.yml` (adding new options, updating defaults, etc.), you **MUST** offer to update the user's `cnwp.yml` with the same changes:
+When you make changes to `example.nwp.yml` (adding new options, updating defaults, etc.), you **MUST** offer to update the user's `nwp.yml` with the same changes:
 
-1. After editing `example.cnwp.yml`, ask: "Would you like me to update your cnwp.yml with these changes?"
-2. If yes, apply the changes to all relevant sections in `cnwp.yml`:
+1. After editing `example.nwp.yml`, ask: "Would you like me to update your nwp.yml with these changes?"
+2. If yes, apply the changes to all relevant sections in `nwp.yml`:
    - New recipe options -> Update all sites using that recipe
    - New settings -> Add to the settings section
    - New defaults -> Offer to apply to existing sites
-3. Remember: You can READ and EDIT `cnwp.yml` - just never COMMIT it
+3. Remember: You can READ and EDIT `nwp.yml` - just never COMMIT it
 
 ## Two-Tier Secrets Architecture
 
@@ -222,7 +222,7 @@ When the user asks to create a new release tag (e.g., "create tag v0.13"), follo
 ### 2. Version Updates
 
 - [ ] Update version in `pl` script (NWP_VERSION variable)
-- [ ] Update version in `example.cnwp.yml` if schema changed
+- [ ] Update version in `example.nwp.yml` if schema changed
 - [ ] Update "Current Version" in `docs/ROADMAP.md`
 
 ### 3. Documentation Updates
@@ -252,7 +252,7 @@ When the user asks to create a new release tag (e.g., "create tag v0.13"), follo
 ### 6. Final Checks
 
 - [ ] Ensure all significant changes from git log are documented
-- [ ] Verify `example.cnwp.yml` matches current schema
+- [ ] Verify `example.nwp.yml` matches current schema
 - [ ] Check that new commands are documented in help text
 
 ### 7. Create Tag

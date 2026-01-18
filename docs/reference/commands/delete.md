@@ -31,7 +31,7 @@ The `delete` command removes DDEV sites including containers, files, and optiona
 | `-b, --backup` | Create backup before deletion | false |
 | `-k, --keep-backups` | Keep existing backups | prompt or true with `-y` |
 | `-f, --force` | Force deletion (bypass validation) | false |
-| `--keep-yml` | Keep site entry in cnwp.yml | false (removes entry) |
+| `--keep-yml` | Keep site entry in nwp.yml | false (removes entry) |
 
 ## Deletion Process
 
@@ -41,7 +41,7 @@ The `delete` command removes DDEV sites including containers, files, and optiona
 4. Delete DDEV project
 5. Remove site directory
 6. Handle backups (delete or keep)
-7. Remove from cnwp.yml (unless `--keep-yml`)
+7. Remove from nwp.yml (unless `--keep-yml`)
 8. Display summary
 
 ## Examples
@@ -83,8 +83,8 @@ With `-k`:
 
 ### Purpose Protection
 
-Sites with `purpose: permanent` in `cnwp.yml` require:
-1. Manual purpose change in `cnwp.yml` first
+Sites with `purpose: permanent` in `nwp.yml` require:
+1. Manual purpose change in `nwp.yml` first
 2. Or use `-f` flag to force (not recommended)
 
 ## Output

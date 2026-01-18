@@ -85,7 +85,7 @@ setup_fixtures() {
     cp -r "${TEST_FIXTURES_DIR}"/* "${fixture_dest}/" 2>/dev/null || true
 
     # Export fixture paths
-    export FIXTURE_CNWP="${fixture_dest}/cnwp.yml"
+    export FIXTURE_CNWP="${fixture_dest}/nwp.yml"
     export FIXTURE_SECRETS="${fixture_dest}/secrets.yml"
     export FIXTURE_SAMPLE_SITE="${fixture_dest}/sample-site"
 
@@ -102,7 +102,7 @@ cleanup_fixtures() {
 }
 
 # Get path to a fixture file
-# Usage: fixture_path "cnwp.yml"
+# Usage: fixture_path "nwp.yml"
 fixture_path() {
     local filename="$1"
     echo "${TEST_FIXTURES_DIR}/${filename}"

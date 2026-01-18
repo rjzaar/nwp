@@ -158,8 +158,8 @@ nwp/
 
 **Three-tier configuration** (well-designed):
 
-1. **cnwp.yml** - User site definitions (never committed)
-2. **example.cnwp.yml** - Template with documentation (committed)
+1. **nwp.yml** - User site definitions (never committed)
+2. **example.nwp.yml** - Template with documentation (committed)
 3. **Secrets** (Two-tier per ADR-0004):
    - `.secrets.yml` - Infrastructure API tokens (safe for AI)
    - `.secrets.data.yml` - Production credentials (blocked from AI)
@@ -313,7 +313,7 @@ validate_sitename() {
 |-----|--------|----------|
 | **14 docs orphaned** from index | Users can't discover them | High |
 | **DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md** not linked | Key governance doc hidden | High |
-| **140 [PLANNED] options in cnwp.yml** | Users confused about what works | Medium |
+| **140 [PLANNED] options in nwp.yml** | Users confused about what works | Medium |
 | **No command reference matrix** | Hard to find the right script | Medium |
 | **Outdated docs** | Incorrect information | Medium |
 
@@ -534,7 +534,7 @@ However, at 48K lines, bash's limitations are showing. The god objects (`status.
 
 **Verdict: Low-Medium Issue (4/10)**
 
-The custom YAML parsing works fine for the simple flat structure of `cnwp.yml`. The document notes duplication but doesn't mention actual bugs from parsing errors. The `.verification.yml` schema v2 migration worked despite custom parsing.
+The custom YAML parsing works fine for the simple flat structure of `nwp.yml`. The document notes duplication but doesn't mention actual bugs from parsing errors. The `.verification.yml` schema v2 migration worked despite custom parsing.
 
 **Recommendation**: Install `yq` as a recommended (not required) dependency. Refactor the 5+ duplicate YAML parsers into a single `lib/yaml-read.sh` wrapper that uses `yq` if available, falls back to awk otherwise.
 

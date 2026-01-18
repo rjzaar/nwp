@@ -160,7 +160,7 @@ git clone git@github.com:rjzaar/nwp.git
 cd nwp
 
 # Copy config templates
-cp example.cnwp.yml cnwp.yml
+cp example.nwp.yml nwp.yml
 cp .secrets.example.yml .secrets.yml
 
 # Run setup

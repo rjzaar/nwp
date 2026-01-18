@@ -30,7 +30,7 @@ A streamlined installation system for Drupal and Moodle projects using DDEV and 
 
 ## Overview
 
-The Narrow Way Project (NWP) simplifies the process of setting up local development environments for Drupal and Moodle projects. Instead of manually configuring each project, NWP uses a recipe-based system where you define your project requirements in a simple YAML configuration file (`cnwp.yml`), and the installation script handles the rest.
+The Narrow Way Project (NWP) simplifies the process of setting up local development environments for Drupal and Moodle projects. Instead of manually configuring each project, NWP uses a recipe-based system where you define your project requirements in a simple YAML configuration file (`nwp.yml`), and the installation script handles the rest.
 
 **[Complete Documentation →](docs/README.md)** - Comprehensive guides, deployment strategies, testing frameworks, security practices, and API references.
 
@@ -196,7 +196,7 @@ pl install nwp mysite -p=m    # Migration - creates stub for importing sites
 |-------|---------|-------------|-----------------|
 | **t** | Testing | Temporary test sites | Can be freely deleted |
 | **i** | Indefinite | Normal development sites (default) | Can be deleted manually |
-| **p** | Permanent | Production or critical sites | Must change purpose in `cnwp.yml` before deletion |
+| **p** | Permanent | Production or critical sites | Must change purpose in `nwp.yml` before deletion |
 | **m** | Migration | Migration stub for importing external sites | Creates directory structure only |
 
 **Examples:**
@@ -327,9 +327,9 @@ NWP automatically blocks AI access to sensitive files:
 | `keys/prod_*` | Production SSH keys |
 | `*.sql`, `*.sql.gz` | Database dumps with user data |
 | `settings.php` | Drupal production credentials |
-| `cnwp.yml` | May contain site-specific credentials |
+| `nwp.yml` | May contain site-specific credentials |
 
-**Note:** `cnwp.yml` is protected because it may contain user-specific site configurations. Use `example.cnwp.yml` for templates and documentation.
+**Note:** `nwp.yml` is protected because it may contain user-specific site configurations. Use `example.nwp.yml` for templates and documentation.
 
 ### AI Safety Rules
 
@@ -347,7 +347,7 @@ NWP automatically blocks AI access to sensitive files:
 
 **NWP-specific files to NEVER share:**
 - `.secrets.yml` or `.secrets.data.yml` contents
-- `cnwp.yml` (contains user-specific site data)
+- `nwp.yml` (contains user-specific site data)
 - `keys/*` (SSH private keys)
 - `*.sql`, `*.sql.gz` (database dumps)
 - `settings.php` (Drupal credentials)
@@ -361,7 +361,7 @@ NWP automatically blocks AI access to sensitive files:
 | **Public patterns** | "How do I implement X in Drupal?" |
 | **Error messages** | Stack traces (check for embedded secrets first) |
 | **Architecture questions** | "What's the best way to structure Y?" |
-| **Templates** | `example.cnwp.yml`, `.secrets.example.yml` |
+| **Templates** | `example.nwp.yml`, `.secrets.example.yml` |
 | **Documentation** | README files, public API docs |
 
 #### Before Pasting Code to AI
@@ -434,7 +434,7 @@ Hardcoded defaults (lowest priority)
 
 **Example:**
 ```yaml
-# cnwp.yml
+# nwp.yml
 settings:
   services:
     redis:
@@ -457,7 +457,7 @@ This means you can:
 - Keep recipe definitions minimal and focused
 - Avoid repeating the same settings across recipes
 
-See `example.cnwp.yml` for the complete configuration structure.
+See `example.nwp.yml` for the complete configuration structure.
 
 ## Management Scripts
 
@@ -754,7 +754,7 @@ The verification state is stored in `.verification.yml` and tracked in git, so t
 
 NWP automates the following steps:
 
-1. **Configuration Reading**: Reads recipe configuration from `cnwp.yml`
+1. **Configuration Reading**: Reads recipe configuration from `nwp.yml`
 2. **Validation**: Ensures all required fields are present
 3. **Directory Creation**: Creates a numbered directory for the installation
 4. **DDEV Setup**: Configures and starts the DDEV container
@@ -792,7 +792,7 @@ Each directory is a complete, isolated DDEV project with its own:
 ./install.sh <recipe> [target]
 ```
 
-- `<recipe>`: The recipe name from cnwp.yml
+- `<recipe>`: The recipe name from nwp.yml
 - `[target]`: Optional custom directory/site name (defaults to recipe name with auto-numbering)
 
 ### Command-Line Options
@@ -889,7 +889,7 @@ Moodle LMS installation.
 
 ## Configuration File
 
-The `cnwp.yml` file defines all your recipes. Here's the structure:
+The `nwp.yml` file defines all your recipes. Here's the structure:
 
 ```yaml
 # Root-level settings (apply to all recipes)
@@ -938,7 +938,7 @@ recipes:
 
 ## Creating Custom Recipes
 
-You can easily create your own recipes by adding them to `cnwp.yml`:
+You can easily create your own recipes by adding them to `nwp.yml`:
 
 ### Example: Custom Drupal Recipe
 
@@ -1071,7 +1071,7 @@ If validation fails, you'll see helpful error messages:
 ERROR: Recipe 'my_recipe': Missing required field 'profile'
 ERROR: Recipe 'my_recipe': Missing required field 'webroot'
 
-Please check your cnwp.yml and ensure all required fields are present:
+Please check your nwp.yml and ensure all required fields are present:
   For Drupal recipes: source, profile, webroot
   For Moodle recipes: source, branch, webroot
 ```
@@ -1089,11 +1089,11 @@ cd git
 ```
 
 This will:
-- Read your domain from `cnwp.yml` settings
+- Read your domain from `nwp.yml` settings
 - Create a 4GB Linode server
 - Install GitLab CE with SSL
 - Configure SSH keys and access
-- Register the site as permanent in `cnwp.yml`
+- Register the site as permanent in `nwp.yml`
 - Store credentials in `.secrets.yml`
 
 ### Manual GitLab Setup
@@ -1355,7 +1355,7 @@ The error report automatically includes:
 
 **Problem: "Recipe not found"**
 ```bash
-ERROR: Recipe 'myrecipe' not found in cnwp.yml
+ERROR: Recipe 'myrecipe' not found in nwp.yml
 ```
 **Solution**: Check the recipe name spelling or run `./install.sh --list` to see available recipes.
 
@@ -1365,7 +1365,7 @@ ERROR: Recipe 'myrecipe' not found in cnwp.yml
 ```bash
 ERROR: Recipe 'myrecipe': Missing required field 'profile'
 ```
-**Solution**: Add the missing field to your recipe in `cnwp.yml`.
+**Solution**: Add the missing field to your recipe in `nwp.yml`.
 
 ---
 
@@ -1425,7 +1425,7 @@ Could not find package...
 
 ```
 nwp/
-├── cnwp.yml              # Configuration file with all recipes
+├── nwp.yml              # Configuration file with all recipes
 ├── *.sh                  # Command symlinks (→ scripts/commands/)
 ├── .verification.yml     # Verification status tracking
 ├── .gitlab-ci.yml        # GitLab CI pipeline configuration
@@ -1556,9 +1556,9 @@ All site directory contents are automatically gitignored (via `sites/*/` in .git
 
 1. **Use version constraints** in your recipes for stability
 2. **Test recipes** with the `s=99` flag before full installation
-3. **Keep backups** of your `cnwp.yml` configuration
+3. **Keep backups** of your `nwp.yml` configuration
 4. **Use meaningful recipe names** that describe the project
-5. **Document custom recipes** with comments in `cnwp.yml`
+5. **Document custom recipes** with comments in `nwp.yml`
 6. **Validate before installing** - the script does this automatically
 7. **Use `--list`** to review available recipes regularly
 
@@ -1566,7 +1566,7 @@ All site directory contents are automatically gitignored (via `sites/*/` in .git
 
 To add new recipes or improve the installation script:
 
-1. Edit `cnwp.yml` to add new recipes
+1. Edit `nwp.yml` to add new recipes
 2. Test with `./install.sh recipe_name`
 3. Commit your changes
 4. Share your recipes with the community

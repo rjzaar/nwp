@@ -16,7 +16,7 @@ NWP now includes a comprehensive environment variable management system:
 - **.env files**: Standardized environment variable storage
 - **DDEV integration**: Auto-generation of DDEV configuration
 - **Secrets management**: Secure handling of credentials
-- **Enhanced cnwp.yml**: Support for services and environment-specific settings
+- **Enhanced nwp.yml**: Support for services and environment-specific settings
 - **Configuration hierarchy**: Recipe → Settings → Profile → Defaults
 - **Global defaults**: Define common settings once in `settings` section
 - **Recipe overrides**: Override only what you need per recipe
@@ -47,7 +47,7 @@ NWP v0.2 introduces a flexible configuration hierarchy:
 
 **Example:**
 ```yaml
-# cnwp.yml
+# nwp.yml
 settings:
   services:
     redis:
@@ -124,7 +124,7 @@ ddev restart
    - `YOUR_VAR` → find equivalent in vortex/templates/.env.base
    - Custom variables → add to `.env.local`
 
-2. **Convert to cnwp.yml**:
+2. **Convert to nwp.yml**:
    ```yaml
    recipes:
      mysite:
@@ -149,7 +149,7 @@ If you're migrating from a Vortex project:
    - `WEBROOT` → `DRUPAL_WEBROOT`
    - Most `DRUPAL_*` variables work as-is
 
-3. **Create cnwp.yml recipe**:
+3. **Create nwp.yml recipe**:
    ```yaml
    recipes:
      myproject:
@@ -164,10 +164,10 @@ If you're migrating from a Vortex project:
 
 1. **Extract from .ddev/config.yaml**:
    - `docroot` → `DRUPAL_WEBROOT`
-   - `php_version` → add to cnwp.yml settings
+   - `php_version` → add to nwp.yml settings
    - `web_environment` → add to `.env.local`
 
-2. **Create recipe in cnwp.yml**
+2. **Create recipe in nwp.yml**
 
 3. **Generate environment**:
    ```bash
@@ -248,4 +248,4 @@ Future NWP versions will add:
 - Hosting provider integrations
 - CI/CD templates
 
-Check cnwp.yml's `enhanced_example` recipe to see these features in preview.
+Check nwp.yml's `enhanced_example` recipe to see these features in preview.

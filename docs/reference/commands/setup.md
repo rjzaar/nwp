@@ -51,7 +51,7 @@ None. The command operates entirely through the interactive TUI.
 | Component | Priority | Description |
 |-----------|----------|-------------|
 | yq | Required | YAML processor for config parsing |
-| NWP Configuration | Required | Main cnwp.yml config file |
+| NWP Configuration | Required | Main nwp.yml config file |
 | NWP CLI Command | Recommended | Global `pl` command |
 | NWP Secrets | Recommended | Infrastructure secrets file |
 | Script Symlinks | Optional | Backward compatibility symlinks |

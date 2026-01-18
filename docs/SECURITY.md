@@ -358,13 +358,13 @@ echo "$untrusted_data" | ssh user@host "cat >> file"  # Data via stdin
 
 **Critical Configuration File Protection:**
 
-NWP's `cnwp.yml` is the central configuration file containing site definitions, server settings, and deployment configurations. AWK operations on this file require special protection to prevent data loss from edge cases, duplicate entries, or malformed input.
+NWP's `nwp.yml` is the central configuration file containing site definitions, server settings, and deployment configurations. AWK operations on this file require special protection to prevent data loss from edge cases, duplicate entries, or malformed input.
 
 **The 5-Layer Protection System** (implemented in commits fb2f2603 and ea07e155):
 
 1. **Line Count Tracking** - Store original file size before modification
    ```bash
-   original_line_count=$(wc -l < cnwp.yml)
+   original_line_count=$(wc -l < nwp.yml)
    ```
 
 2. **mktemp for Atomic Writes** - Use secure temporary files instead of `.tmp`
@@ -392,10 +392,10 @@ NWP's `cnwp.yml` is the central configuration file containing site definitions, 
    fi
    ```
 
-5. **Atomic Move** - Only update cnwp.yml if all validations pass
+5. **Atomic Move** - Only update nwp.yml if all validations pass
    ```bash
-   mv "$tmpfile" cnwp.yml || {
-       echo "ERROR: Failed to update cnwp.yml"
+   mv "$tmpfile" nwp.yml || {
+       echo "ERROR: Failed to update nwp.yml"
        rm -f "$tmpfile"
        return 1
    }
@@ -404,11 +404,11 @@ NWP's `cnwp.yml` is the central configuration file containing site definitions, 
 **Applied to:**
 - `lib/yaml-write.sh` - All YAML modification functions
 - `scripts/commands/verify.sh` - Verification system cleanup and Linode server management
-- Any script performing AWK operations on cnwp.yml
+- Any script performing AWK operations on nwp.yml
 
 **Why This Matters:**
 
-In January 2026, a duplicate entry bug in the verification system caused complete data loss of a user's cnwp.yml file. The AWK operation encountered duplicate site entries and produced an empty output, which was blindly written back to cnwp.yml, wiping all user configurations. The 5-layer protection system prevents this entire class of errors.
+In January 2026, a duplicate entry bug in the verification system caused complete data loss of a user's nwp.yml file. The AWK operation encountered duplicate site entries and produced an empty output, which was blindly written back to nwp.yml, wiping all user configurations. The 5-layer protection system prevents this entire class of errors.
 
 ### Input Validation Rules
 
@@ -427,7 +427,7 @@ When reviewing shell scripts, check for:
 - [ ] User input is validated before use
 - [ ] No variables in eval or command substitution
 - [ ] Untrusted data passed via stdin, not command line
-- [ ] AWK operations on cnwp.yml use 5-layer protection system
+- [ ] AWK operations on nwp.yml use 5-layer protection system
 - [ ] Shellcheck passes with no warnings
 
 ---
@@ -439,7 +439,7 @@ When reviewing shell scripts, check for:
 NWP enforces HTTPS for all web traffic:
 
 ```yaml
-# example.cnwp.yml
+# example.nwp.yml
 sites:
   mysite:
     dev:

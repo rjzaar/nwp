@@ -16,7 +16,7 @@ The `setup-ssh` command generates SSH keypairs specifically for NWP deployments 
 
 By default, it generates Ed25519 keys (modern, secure, fast) but supports RSA for compatibility with older systems.
 
-The script includes automated key distribution to configured servers in `cnwp.yml` via SSH, making it easy to provision access to existing servers.
+The script includes automated key distribution to configured servers in `nwp.yml` via SSH, making it easy to provision access to existing servers.
 
 ## Arguments
 
@@ -300,7 +300,7 @@ cat /home/rob/nwp/keys/nwp.pub
 
 ## Automated Key Distribution
 
-The script can push keys to servers defined in `cnwp.yml`:
+The script can push keys to servers defined in `nwp.yml`:
 
 ```yaml
 linode:
@@ -314,7 +314,7 @@ linode:
 
 When servers are configured, the script:
 
-1. Reads server configurations from `cnwp.yml`
+1. Reads server configurations from `nwp.yml`
 2. Connects using existing credentials
 3. Appends new public key to `~/.ssh/authorized_keys`
 4. Verifies successful installation
@@ -347,7 +347,7 @@ linode-cli sshkeys create \
 
 ## Configuring for Deployment
 
-After generating keys, update `cnwp.yml` for each deployment target:
+After generating keys, update `nwp.yml` for each deployment target:
 
 ```yaml
 linode:
@@ -406,7 +406,7 @@ sites:
 **Solution:**
 1. Check server is reachable: `ping server.example.com`
 2. Check firewall allows SSH: `telnet server.example.com 22`
-3. Verify SSH port in `cnwp.yml` is correct
+3. Verify SSH port in `nwp.yml` is correct
 4. Try manual connection first: `ssh user@server`
 
 ### Public Key Won't Add to Linode

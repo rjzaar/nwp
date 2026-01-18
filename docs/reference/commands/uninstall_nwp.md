@@ -98,7 +98,7 @@ Remove NWP SSH keys? [y/N]:
 **What it removes:**
 - Symlink in `/usr/local/bin/<cli-command>` (e.g., `/usr/local/bin/pl`)
 - Uses CLI registration library if available
-- Falls back to manual removal based on `cnwp.yml` config
+- Falls back to manual removal based on `nwp.yml` config
 
 **Prompt:**
 ```
@@ -240,13 +240,13 @@ Remove NWP-related lines from ~/.bashrc? [y/N]:
 ### Step 10: Remove Configuration Files
 
 **What it removes:**
-- `cnwp.yml` (NWP configuration)
+- `nwp.yml` (NWP configuration)
 - `~/.nwp/` directory (setup state, configs, SSH keys)
 - Or just setup state files (preserves other configs)
 
 **Prompts:**
 ```
-Remove cnwp.yml configuration file? [y/N]:
+Remove nwp.yml configuration file? [y/N]:
 Remove entire ~/.nwp directory? [y/N]:
 # Or if keeping ~/.nwp:
 Remove only setup state files? [y/N]:
@@ -258,7 +258,7 @@ Remove only setup state files? [y/N]:
 - SSH keys (if not in project)
 - Backup files
 
-**Default:** No for `cnwp.yml`, No for `~/.nwp/`, Yes for state files only
+**Default:** No for `nwp.yml`, No for `~/.nwp/`, Yes for state files only
 
 ## Output
 
@@ -323,8 +323,8 @@ Proceed with uninstall? [y/N]: y
   ✓ ~/.bashrc restored from backup
 
 [9/10] Removing NWP Configuration Files
-  Remove cnwp.yml configuration file? [y/N]: n
-  ℹ Keeping cnwp.yml
+  Remove nwp.yml configuration file? [y/N]: n
+  ℹ Keeping nwp.yml
 
   ℹ NWP configuration directory: /home/john/.nwp
   ℹ This contains:

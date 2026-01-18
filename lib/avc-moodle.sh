@@ -28,15 +28,15 @@ get_site_directory() {
     fi
 }
 
-# Get site recipe from cnwp.yml or by detection
+# Get site recipe from nwp.yml or by detection
 # Usage: get_site_recipe "sitename"
 # Returns: Recipe name (avc, m, os, etc.)
 get_site_recipe() {
     local site=$1
-    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/nwp.yml"
     local recipe=""
 
-    # Try to get from cnwp.yml first
+    # Try to get from nwp.yml first
     if [[ -f "$cnwp_file" && -s "$cnwp_file" ]]; then
         if command -v yq &> /dev/null; then
             recipe=$(yq eval ".sites.${site}.recipe // empty" "$cnwp_file" 2>/dev/null)
@@ -46,7 +46,7 @@ get_site_recipe() {
         fi
     fi
 
-    # If not found in cnwp.yml, try to detect from directory structure
+    # If not found in nwp.yml, try to detect from directory structure
     if [[ -z "$recipe" ]]; then
         local site_dir
         if site_dir=$(get_site_directory "$site" 2>/dev/null); then
@@ -348,10 +348,10 @@ avc_moodle_display_status() {
     avc_url=$(avc_moodle_get_site_url "$avc_site")
     moodle_url=$(avc_moodle_get_site_url "$moodle_site")
 
-    # Check if integration is enabled in cnwp.yml
+    # Check if integration is enabled in nwp.yml
     local enabled="unknown"
-    if [[ -f "$PROJECT_ROOT/cnwp.yml" ]]; then
-        enabled=$(yq eval ".sites.$avc_site.moodle_integration.enabled // false" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null)
+    if [[ -f "$PROJECT_ROOT/nwp.yml" ]]; then
+        enabled=$(yq eval ".sites.$avc_site.moodle_integration.enabled // false" "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
     fi
 
     # Get sync statistics from Drupal state (if available)

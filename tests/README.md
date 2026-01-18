@@ -39,7 +39,7 @@ tests/
 │   └── test-helpers.bash         # Common BATS test helpers
 ├── fixtures/
 │   ├── setup.bash                # Fixture setup script
-│   ├── cnwp.yml                  # Minimal test configuration
+│   ├── nwp.yml                  # Minimal test configuration
 │   ├── secrets.yml               # Mock secrets (no real credentials)
 │   └── sample-site/              # Minimal site structure for testing
 │       ├── .ddev/config.yaml
@@ -182,7 +182,7 @@ Test complete deployment scenarios on real infrastructure.
 
 Test fixtures provide consistent test data for BATS tests. Fixtures are located in `tests/fixtures/` and include:
 
-- **cnwp.yml**: Minimal test configuration (recipes, sites, settings)
+- **nwp.yml**: Minimal test configuration (recipes, sites, settings)
 - **secrets.yml**: Mock secrets file (no real credentials - safe to commit)
 - **sample-site/**: Minimal Drupal site structure for testing
 
@@ -249,7 +249,7 @@ After calling `setup_fixtures` in your test:
 
 | Variable | Description |
 |----------|-------------|
-| `FIXTURE_CNWP` | Path to test cnwp.yml |
+| `FIXTURE_CNWP` | Path to test nwp.yml |
 | `FIXTURE_SECRETS` | Path to mock secrets.yml |
 | `FIXTURE_SAMPLE_SITE` | Path to sample site directory |
 

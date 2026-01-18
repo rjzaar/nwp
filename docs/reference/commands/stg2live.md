@@ -66,7 +66,7 @@ Disable with `--no-password-reset` flag.
 
 ## Security Hardening
 
-By default, security modules are installed from `cnwp.yml` `settings.live_security`:
+By default, security modules are installed from `nwp.yml` `settings.live_security`:
 
 ### Example configuration
 ```yaml
@@ -80,7 +80,7 @@ settings:
       - login_security
 ```
 
-Disable with `--no-security` flag or set `enabled: false` in cnwp.yml.
+Disable with `--no-security` flag or set `enabled: false` in nwp.yml.
 
 ## Deployment Steps
 

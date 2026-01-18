@@ -168,7 +168,7 @@ Sites are categorized automatically:
 - Internet connectivity
 - Site must be publicly accessible via HTTP/HTTPS
 - DNS resolution for domain
-- Valid domain in `cnwp.yml` or provided via `--domain`
+- Valid domain in `nwp.yml` or provided via `--domain`
 
 ## Output Interpretation
 
@@ -208,7 +208,7 @@ Summary
 # Specify domain manually
 pl seo-check check mysite --domain mysite.example.com
 
-# Or add domain to cnwp.yml
+# Or add domain to nwp.yml
 sites:
   mysite:
     live:
@@ -224,7 +224,7 @@ sites:
 2. Check DNS resolution: `host domain.com`
 3. Test SSL certificate: `curl -I https://domain.com`
 4. Check firewall rules
-5. Verify domain in `cnwp.yml` is correct
+5. Verify domain in `nwp.yml` is correct
 
 ### Robots.txt Not Found
 

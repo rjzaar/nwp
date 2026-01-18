@@ -118,7 +118,7 @@ The command performs these steps in order:
 - Provides manual testing instructions
 
 ### Step 8: Configuration Updates
-- Updates cnwp.yml with integration settings
+- Updates nwp.yml with integration settings
 - Records moodle_site and moodle_url in AVC site config
 - Records avc_site and avc_url in Moodle site config
 - Enables optional features if flags specified
@@ -142,7 +142,7 @@ The command performs these steps in order:
 | 1 | Key generation failed |
 | 1 | Module installation failed |
 | 1 | OAuth2 configuration failed |
-| 1 | cnwp.yml update failed |
+| 1 | nwp.yml update failed |
 
 ## Prerequisites
 
@@ -196,8 +196,8 @@ The command produces color-coded output with progress indicators:
   ✓ OAuth2 token endpoint reachable
   ✓ OAuth2 userinfo endpoint reachable
 
-[8/10] Updating cnwp.yml
-  ✓ cnwp.yml updated with integration settings
+[8/10] Updating nwp.yml
+  ✓ nwp.yml updated with integration settings
 
 [9/10] Configuring optional features
   ℹ Role synchronization enabled
@@ -225,7 +225,7 @@ Setup completed in 45s
 
 ## Configuration Files
 
-### cnwp.yml Updates
+### nwp.yml Updates
 
 For the AVC site:
 ```yaml

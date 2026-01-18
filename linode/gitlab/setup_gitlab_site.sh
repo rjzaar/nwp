@@ -5,7 +5,7 @@ set -euo pipefail
 # setup_gitlab_site.sh - Set up a permanent GitLab site
 #
 # Creates a GitLab server on Linode at git.<url> where <url> comes from
-# cnwp.yml settings.url
+# nwp.yml settings.url
 #
 # Usage:
 #   ./setup_gitlab_site.sh [OPTIONS]
@@ -27,7 +27,7 @@ set -euo pipefail
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NWP_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
-CNWP_FILE="$NWP_ROOT/cnwp.yml"
+CNWP_FILE="$NWP_ROOT/nwp.yml"
 SECRETS_FILE="$NWP_ROOT/.secrets.yml"
 
 # Source UI library if available
@@ -87,10 +87,10 @@ done
 # Functions
 ################################################################################
 
-# Get URL from cnwp.yml settings
+# Get URL from nwp.yml settings
 get_base_url() {
     if [ ! -f "$CNWP_FILE" ]; then
-        print_error "cnwp.yml not found at $CNWP_FILE"
+        print_error "nwp.yml not found at $CNWP_FILE"
         exit 1
     fi
 
@@ -106,8 +106,8 @@ get_base_url() {
     ' "$CNWP_FILE")
 
     if [ -z "$url" ]; then
-        print_error "No 'url' found in cnwp.yml settings section"
-        print_info "Add 'url: yourdomain.org' under settings in cnwp.yml"
+        print_error "No 'url' found in nwp.yml settings section"
+        print_info "Add 'url: yourdomain.org' under settings in nwp.yml"
         exit 1
     fi
 
@@ -118,9 +118,9 @@ get_base_url() {
 check_existing_site() {
     local domain="$1"
 
-    # Check cnwp.yml for existing git site
+    # Check nwp.yml for existing git site
     if grep -q "^  git:" "$CNWP_FILE" 2>/dev/null; then
-        print_warning "A 'git' site already exists in cnwp.yml"
+        print_warning "A 'git' site already exists in nwp.yml"
         if [ "$AUTO_YES" != "yes" ]; then
             read -p "Continue anyway? [y/N]: " response
             if [[ ! "$response" =~ ^[yY]$ ]]; then
@@ -341,13 +341,13 @@ EOF
     echo "$server_id:$server_ip:$label"
 }
 
-# Register site in cnwp.yml
+# Register site in nwp.yml
 register_site() {
     local server_id="$1"
     local server_ip="$2"
     local domain="$3"
 
-    print_info "Registering site in cnwp.yml..."
+    print_info "Registering site in nwp.yml..."
 
     # Check if sites section exists
     if ! grep -q "^sites:" "$CNWP_FILE"; then
@@ -417,7 +417,7 @@ EOF
 
 print_header "GitLab Site Setup"
 
-# Get base URL from cnwp.yml
+# Get base URL from nwp.yml
 BASE_URL=$(get_base_url)
 GITLAB_DOMAIN="git.$BASE_URL"
 

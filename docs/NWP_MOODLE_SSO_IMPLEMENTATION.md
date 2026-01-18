@@ -56,8 +56,8 @@ This document provides concrete implementation steps for integrating AVC (Autono
 │       ├── .ddev/
 │       ├── .git/         ← Moodle git repo
 │       └── moodledata/
-├── cnwp.yml              ← User config (NEVER commit)
-├── example.cnwp.yml      ← Template (commit this)
+├── nwp.yml              ← User config (NEVER commit)
+├── example.nwp.yml      ← Template (commit this)
 ├── pl                    ← CLI wrapper
 ├── scripts/commands/     ← All commands
 └── lib/                  ← Shared libraries
@@ -74,7 +74,7 @@ This document provides concrete implementation steps for integrating AVC (Autono
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Layer 1: NWP Infrastructure                                 │
-│  - Recipe definitions (example.cnwp.yml)                     │
+│  - Recipe definitions (example.nwp.yml)                     │
 │  - Installation scripts (lib/install-avc-moodle-sso.sh)      │
 │  - CLI commands (scripts/commands/avc-moodle-*.sh)           │
 └─────────────────────────────────────────────────────────────┘
@@ -104,7 +104,7 @@ This document provides concrete implementation steps for integrating AVC (Autono
 
 ## Recipe Configuration
 
-### Update `example.cnwp.yml`
+### Update `example.nwp.yml`
 
 Add new recipe configuration options:
 
@@ -179,7 +179,7 @@ recipes:
       default_role: student     # Role for all AVC members
 ```
 
-### User Configuration in `cnwp.yml`
+### User Configuration in `nwp.yml`
 
 After installation, users configure integration:
 
@@ -308,7 +308,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/avc-moodle.sh"
 # 5. Create OAuth2 client in AVC
 # 6. Configure OAuth2 issuer in Moodle
 # 7. Test SSO flow
-# 8. Update cnwp.yml with integration config
+# 8. Update nwp.yml with integration config
 ```
 
 ### 2. `avc-moodle-sync.sh` - Manual Sync Trigger
@@ -379,7 +379,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/avc-moodle.sh"
 # 1. Disable OAuth2 authentication in Moodle
 # 2. Disable sync cron jobs
 # 3. Preserve OAuth2 client (don't delete keys)
-# 4. Update cnwp.yml
+# 4. Update nwp.yml
 ```
 
 ---
@@ -403,7 +403,7 @@ pl avc-moodle-setup avc ss
 # [6/10] Installing Moodle plugin...
 # [7/10] Configuring OAuth2 issuer...
 # [8/10] Testing SSO flow...
-# [9/10] Updating cnwp.yml...
+# [9/10] Updating nwp.yml...
 # [10/10] Complete!
 #
 # ✓ SSO enabled: https://avc.ddev.site → https://ss.ddev.site
@@ -1148,7 +1148,7 @@ ddev exec php admin/cli/cfg.php \
 
 **Phase 1: Core Infrastructure (Week 1)**
 - [ ] Create `lib/avc-moodle.sh` library
-- [ ] Update `example.cnwp.yml` with integration options
+- [ ] Update `example.nwp.yml` with integration options
 - [ ] Create `scripts/commands/avc-moodle-setup.sh`
 - [ ] Test with existing AVC + Moodle sites
 
@@ -1182,7 +1182,7 @@ ddev exec php admin/cli/cfg.php \
 ### Phase 1 Complete When:
 - [ ] `pl avc-moodle-setup avc ss` works end-to-end
 - [ ] SSO login successful in DDEV
-- [ ] All configuration stored in `cnwp.yml`
+- [ ] All configuration stored in `nwp.yml`
 - [ ] Commands pass shellcheck
 
 ### Phase 2 Complete When:
@@ -1212,8 +1212,8 @@ ddev exec php admin/cli/cfg.php \
 ### NWP Core Files
 ```
 nwp/
-├── cnwp.yml                          # User config (local only)
-├── example.cnwp.yml                  # Template (commit)
+├── nwp.yml                          # User config (local only)
+├── example.nwp.yml                  # Template (commit)
 ├── pl                                # CLI wrapper
 ├── scripts/
 │   └── commands/

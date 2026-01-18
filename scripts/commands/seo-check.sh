@@ -31,12 +31,12 @@ source "$PROJECT_ROOT/lib/common.sh"
 ################################################################################
 
 # Config file
-if [ -f "${PROJECT_ROOT}/cnwp.yml" ]; then
-    CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
-elif [ -f "${PROJECT_ROOT}/example.cnwp.yml" ]; then
-    CONFIG_FILE="${PROJECT_ROOT}/example.cnwp.yml"
+if [ -f "${PROJECT_ROOT}/nwp.yml" ]; then
+    CONFIG_FILE="${PROJECT_ROOT}/nwp.yml"
+elif [ -f "${PROJECT_ROOT}/example.nwp.yml" ]; then
+    CONFIG_FILE="${PROJECT_ROOT}/example.nwp.yml"
 else
-    CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
+    CONFIG_FILE="${PROJECT_ROOT}/nwp.yml"
 fi
 
 # HTTP timeout for requests
@@ -93,7 +93,7 @@ EOF
 # Site Information Functions
 ################################################################################
 
-# Get site domain from cnwp.yml
+# Get site domain from nwp.yml
 get_site_domain() {
     local site="$1"
 
@@ -130,7 +130,7 @@ get_site_domain() {
     echo ""
 }
 
-# Get site directory from cnwp.yml
+# Get site directory from nwp.yml
 get_site_directory() {
     local site="$1"
 

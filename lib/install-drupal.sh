@@ -24,7 +24,7 @@ install_drupal() {
     local purpose=${5:-indefinite}
     local base_dir=$(pwd)
     local site_name=$(basename "$install_dir")
-    local config_file="$base_dir/cnwp.yml"
+    local config_file="$base_dir/nwp.yml"
 
     # Clean up spinner on exit/error
     trap 'stop_spinner' EXIT INT TERM
@@ -89,26 +89,26 @@ install_drupal() {
     fi
 
     # Extract configuration values from YAML
-    local source=$(get_recipe_value "$recipe" "source" "$base_dir/cnwp.yml")
-    local source_git=$(get_recipe_value "$recipe" "source_git" "$base_dir/cnwp.yml")
-    local profile=$(get_recipe_value "$recipe" "profile" "$base_dir/cnwp.yml")
-    local profile_source=$(get_recipe_value "$recipe" "profile_source" "$base_dir/cnwp.yml")
-    local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/cnwp.yml")
-    local install_modules=$(get_recipe_value "$recipe" "install_modules" "$base_dir/cnwp.yml")
-    local post_install_modules=$(get_recipe_list_value "$recipe" "post_install_modules" "$base_dir/cnwp.yml")
-    local post_install_scripts=$(get_recipe_list_value "$recipe" "post_install_scripts" "$base_dir/cnwp.yml")
-    local default_theme=$(get_recipe_value "$recipe" "default_theme" "$base_dir/cnwp.yml")
+    local source=$(get_recipe_value "$recipe" "source" "$base_dir/nwp.yml")
+    local source_git=$(get_recipe_value "$recipe" "source_git" "$base_dir/nwp.yml")
+    local profile=$(get_recipe_value "$recipe" "profile" "$base_dir/nwp.yml")
+    local profile_source=$(get_recipe_value "$recipe" "profile_source" "$base_dir/nwp.yml")
+    local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/nwp.yml")
+    local install_modules=$(get_recipe_value "$recipe" "install_modules" "$base_dir/nwp.yml")
+    local post_install_modules=$(get_recipe_list_value "$recipe" "post_install_modules" "$base_dir/nwp.yml")
+    local post_install_scripts=$(get_recipe_list_value "$recipe" "post_install_scripts" "$base_dir/nwp.yml")
+    local default_theme=$(get_recipe_value "$recipe" "default_theme" "$base_dir/nwp.yml")
 
     # Get PHP and database: recipe overrides settings, settings overrides defaults
-    local php_version=$(get_recipe_value "$recipe" "php" "$base_dir/cnwp.yml")
-    local database=$(get_recipe_value "$recipe" "database" "$base_dir/cnwp.yml")
+    local php_version=$(get_recipe_value "$recipe" "php" "$base_dir/nwp.yml")
+    local database=$(get_recipe_value "$recipe" "database" "$base_dir/nwp.yml")
 
     # Fall back to settings if not in recipe
     if [ -z "$php_version" ]; then
-        php_version=$(get_settings_value "php" "$base_dir/cnwp.yml")
+        php_version=$(get_settings_value "php" "$base_dir/nwp.yml")
     fi
     if [ -z "$database" ]; then
-        database=$(get_settings_value "database" "$base_dir/cnwp.yml")
+        database=$(get_settings_value "database" "$base_dir/nwp.yml")
     fi
 
     # Set defaults if still not specified
@@ -337,7 +337,7 @@ install_drupal() {
 
         # Generate .env file
         # Note: env-generate.sh expects sitename (not path), so use basename
-        print_info "Generating .env file from cnwp.yml..."
+        print_info "Generating .env file from nwp.yml..."
         if ! "$env_script" "$recipe" "$(basename "$install_dir")" .; then
             print_error "Failed to generate environment configuration"
             return 1
@@ -403,7 +403,7 @@ install_drupal() {
         show_step 4 9 "Configuring memory settings"
         print_header "Step 4: Memory Configuration"
 
-        # Get PHP settings from cnwp.yml (with defaults)
+        # Get PHP settings from nwp.yml (with defaults)
         local php_memory=$(get_setting "php_settings.memory_limit" "512M")
         local php_max_exec=$(get_setting "php_settings.max_execution_time" "600")
         local php_upload_max=$(get_setting "php_settings.upload_max_filesize" "100M")
@@ -888,9 +888,9 @@ CONFIG_SPLIT_EOF
         fi
 
         # Dev modules installation if dev mode enabled
-        local dev=$(get_recipe_value "$recipe" "dev" "$base_dir/cnwp.yml")
+        local dev=$(get_recipe_value "$recipe" "dev" "$base_dir/nwp.yml")
         if [ "$dev" == "y" ]; then
-            local dev_modules=$(get_recipe_value "$recipe" "dev_modules" "$base_dir/cnwp.yml")
+            local dev_modules=$(get_recipe_value "$recipe" "dev_modules" "$base_dir/nwp.yml")
             if [ -n "$dev_modules" ]; then
                 print_header "Installing Development Modules"
                 print_info "Modules: $dev_modules"
@@ -989,9 +989,9 @@ CONFIG_SPLIT_EOF
     echo -e "  ${BLUE}ddev drush uli${NC}    - Get one-time login link"
     echo -e "  ${BLUE}ddev ssh${NC}          - SSH into container\n"
 
-    # Complete site registration in cnwp.yml (stub was created at install start)
+    # Complete site registration in nwp.yml (stub was created at install start)
     if command -v yaml_complete_site_stub &> /dev/null; then
-        print_info "Completing site registration in cnwp.yml..."
+        print_info "Completing site registration in nwp.yml..."
 
         # Get full directory path
         local site_dir=$(pwd)
@@ -1014,32 +1014,32 @@ CONFIG_SPLIT_EOF
         fi
 
         # Complete the stub entry (adds environment, purpose, marks install_step=-1)
-        if yaml_complete_site_stub "$site_name" "$environment" "$purpose" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
-            print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
+        if yaml_complete_site_stub "$site_name" "$environment" "$purpose" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
+            print_status "OK" "Site registered in nwp.yml (purpose: $purpose)"
 
             # Add installed modules if any
             if [ -n "$installed_modules" ] && command -v yaml_add_site_modules &> /dev/null; then
-                yaml_add_site_modules "$site_name" "$installed_modules" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null
+                yaml_add_site_modules "$site_name" "$installed_modules" "$PROJECT_ROOT/nwp.yml" 2>/dev/null
             fi
 
             # Update site with selected options
-            update_site_options "$site_name" "$PROJECT_ROOT/cnwp.yml"
+            update_site_options "$site_name" "$PROJECT_ROOT/nwp.yml"
         else
             # Stub didn't exist (legacy install?) - try full yaml_add_site
             if command -v yaml_add_site &> /dev/null; then
-                if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
-                    print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
+                if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
+                    print_status "OK" "Site registered in nwp.yml (purpose: $purpose)"
                 fi
             fi
 
             # Still try to update options if site exists
-            if yaml_site_exists "$site_name" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
-                update_site_options "$site_name" "$PROJECT_ROOT/cnwp.yml"
+            if yaml_site_exists "$site_name" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
+                update_site_options "$site_name" "$PROJECT_ROOT/nwp.yml"
             fi
         fi
     elif command -v yaml_add_site &> /dev/null; then
         # Fallback for when yaml_complete_site_stub isn't available
-        print_info "Registering site in cnwp.yml..."
+        print_info "Registering site in nwp.yml..."
 
         local site_dir=$(pwd)
         local site_name=$(basename "$site_dir")
@@ -1050,9 +1050,9 @@ CONFIG_SPLIT_EOF
             environment="production"
         fi
 
-        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
-            print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
-            update_site_options "$site_name" "$PROJECT_ROOT/cnwp.yml"
+        if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
+            print_status "OK" "Site registered in nwp.yml (purpose: $purpose)"
+            update_site_options "$site_name" "$PROJECT_ROOT/nwp.yml"
         fi
     fi
 

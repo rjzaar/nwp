@@ -89,7 +89,7 @@ FUNDAMENTALS (Required First)
 │
 ├── NWP Setup
 │   ├── Running setup.sh
-│   ├── Understanding cnwp.yml
+│   ├── Understanding nwp.yml
 │   └── First Site Installation
 
 CORE OPERATIONS (Unlock after Fundamentals)
@@ -283,7 +283,7 @@ Day 16: Mixed review of all backup topics
 
 ### Module 2: Setup & First Installation (20 min)
 - Running setup.sh (3 min video)
-- Understanding cnwp.yml (5 min)
+- Understanding nwp.yml (5 min)
 - Practice: Install your first site (10 min sandbox)
 - Quiz: Setup concepts (2 min)
 

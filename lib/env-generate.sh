@@ -1,5 +1,5 @@
 #!/bin/bash
-# Generate .env file from cnwp.yml and template
+# Generate .env file from nwp.yml and template
 # Usage: ./env-generate.sh <recipe> <sitename> [site_dir]
 
 set -euo pipefail
@@ -21,10 +21,10 @@ if [ -z "$RECIPE" ] || [ -z "$SITENAME" ]; then
     exit 1
 fi
 
-# Read cnwp.yml
-CNWP_FILE="$NWP_ROOT/cnwp.yml"
+# Read nwp.yml
+CNWP_FILE="$NWP_ROOT/nwp.yml"
 if [ ! -f "$CNWP_FILE" ]; then
-    echo "Error: cnwp.yml not found at $CNWP_FILE"
+    echo "Error: nwp.yml not found at $CNWP_FILE"
     exit 1
 fi
 

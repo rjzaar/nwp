@@ -5,7 +5,7 @@
 #
 # Automatically configures a new coder's NWP installation with:
 #   - Coder identity detection and validation
-#   - cnwp.yml configuration from example
+#   - nwp.yml configuration from example
 #   - Git user configuration
 #   - SSH key setup for GitLab
 #   - DNS and infrastructure verification
@@ -28,8 +28,8 @@ source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/cli-register.sh"
 
 # Configuration files
-CONFIG_FILE="$PROJECT_ROOT/cnwp.yml"
-EXAMPLE_CONFIG="$PROJECT_ROOT/example.cnwp.yml"
+CONFIG_FILE="$PROJECT_ROOT/nwp.yml"
+EXAMPLE_CONFIG="$PROJECT_ROOT/example.nwp.yml"
 SECRETS_FILE="$PROJECT_ROOT/.secrets.yml"
 EXAMPLE_SECRETS="$PROJECT_ROOT/.secrets.example.yml"
 
@@ -56,7 +56,7 @@ DESCRIPTION:
 
     1. Detecting or prompting for your coder identity
     2. Validating your identity against GitLab and DNS
-    3. Configuring cnwp.yml with your subdomain
+    3. Configuring nwp.yml with your subdomain
     4. Setting up git configuration
     5. Verifying SSH keys for GitLab
     6. Checking infrastructure readiness
@@ -79,7 +79,7 @@ SEE ALSO:
 EOF
 }
 
-# Get base domain from example.cnwp.yml
+# Get base domain from example.nwp.yml
 get_base_domain_from_example() {
     if [ ! -f "$EXAMPLE_CONFIG" ]; then
         echo "nwpcode.org"
@@ -340,7 +340,7 @@ validate_coder_identity() {
 # Configuration Functions
 ################################################################################
 
-# Configure cnwp.yml with detected identity
+# Configure nwp.yml with detected identity
 configure_nwp() {
     local coder_name="$1"
     local base_domain="$2"
@@ -350,9 +350,9 @@ configure_nwp() {
 
     local subdomain="${coder_name}.${base_domain}"
 
-    # Check if cnwp.yml already exists
+    # Check if nwp.yml already exists
     if [ -f "$CONFIG_FILE" ]; then
-        warn "Existing cnwp.yml found"
+        warn "Existing nwp.yml found"
 
         # Check if it already has the correct identity
         local existing_url
@@ -370,21 +370,21 @@ configure_nwp() {
         ' "$CONFIG_FILE")
 
         if [ "$existing_url" == "$subdomain" ]; then
-            pass "cnwp.yml already configured with correct identity: $subdomain"
+            pass "nwp.yml already configured with correct identity: $subdomain"
             return 0
         fi
 
         if ! confirm "Overwrite with new configuration for '$coder_name'?"; then
-            info "Skipping cnwp.yml configuration"
+            info "Skipping nwp.yml configuration"
             return 0
         fi
 
         if [ "$dry_run" != "true" ]; then
-            local backup_file="cnwp.yml.backup.$(date +%Y%m%d_%H%M%S)"
+            local backup_file="nwp.yml.backup.$(date +%Y%m%d_%H%M%S)"
             mv "$CONFIG_FILE" "$PROJECT_ROOT/$backup_file"
             pass "Backed up existing config to: $backup_file"
         else
-            info "[DRY-RUN] Would backup existing cnwp.yml"
+            info "[DRY-RUN] Would backup existing nwp.yml"
         fi
     fi
 
@@ -392,7 +392,7 @@ configure_nwp() {
     if [ "$dry_run" != "true" ]; then
         cp "$EXAMPLE_CONFIG" "$CONFIG_FILE"
 
-        # Set identity in cnwp.yml
+        # Set identity in nwp.yml
         if command -v yq &>/dev/null; then
             yq -i ".settings.url = \"$subdomain\"" "$CONFIG_FILE"
             yq -i ".settings.email.domain = \"$subdomain\"" "$CONFIG_FILE"
@@ -404,10 +404,10 @@ configure_nwp() {
             sed -i "s|admin_email: admin@example.com|admin_email: admin@$subdomain|" "$CONFIG_FILE"
         fi
 
-        pass "Configured cnwp.yml with identity: $coder_name"
+        pass "Configured nwp.yml with identity: $coder_name"
         info "  Domain: $subdomain"
     else
-        info "[DRY-RUN] Would create cnwp.yml from example"
+        info "[DRY-RUN] Would create nwp.yml from example"
         info "[DRY-RUN] Would set settings.url to: $subdomain"
     fi
 
@@ -564,7 +564,7 @@ register_cli_for_coder() {
             pass "Registered CLI command: $cli_command"
             info "Use '$cli_command' to run NWP commands from anywhere"
 
-            # Update cnwp.yml with the CLI command
+            # Update nwp.yml with the CLI command
             if command -v yq &>/dev/null && [ -f "$CONFIG_FILE" ]; then
                 yq -i ".settings.cli_command = \"$cli_command\"" "$CONFIG_FILE"
             fi

@@ -158,7 +158,7 @@ Protect staging sites from search engine indexing while optimizing production si
 | `scripts/commands/stg2live.sh` | Added `deploy_production_robots()`, sitemap location block |
 | `linode/server_scripts/nwp-createsite.sh` | Added X-Robots-Tag header, environment detection |
 | `lib/live-server-setup.sh` | Added X-Robots-Tag to nginx config |
-| `example.cnwp.yml` | Added `settings.seo` configuration section |
+| `example.nwp.yml` | Added `settings.seo` configuration section |
 
 ### Configuration Schema
 
@@ -313,7 +313,7 @@ tests/README.md
 ```
 .gitlab-ci.yml          (+320 lines)
 CLAUDE.md               (+103 lines)
-example.cnwp.yml        (+19 lines)
+example.nwp.yml        (+19 lines)
 lib/live-server-setup.sh (+15 lines)
 linode/linode_deploy.sh  (+15 lines)
 linode/server_scripts/nwp-createsite.sh (+82 lines)

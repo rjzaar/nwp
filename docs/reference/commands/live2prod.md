@@ -83,8 +83,8 @@ Use `live2prod` only when:
 
 ## Prerequisites
 
-- Live server must be configured in `cnwp.yml`
-- Production server must be configured in `cnwp.yml`
+- Live server must be configured in `nwp.yml`
+- Production server must be configured in `nwp.yml`
 - SSH access to both servers
 
 ## Configuration
@@ -110,7 +110,7 @@ sites:
 - Test SSH: `ssh <user>@<live_ip>`
 
 ### Cannot connect to production server
-- Verify production configuration in cnwp.yml
+- Verify production configuration in nwp.yml
 - Test SSH: `ssh <user>@<prod_ip>`
 
 ### Server-to-server rsync failed

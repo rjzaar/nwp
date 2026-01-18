@@ -92,7 +92,7 @@ This document defines the contributor roles, responsibilities, and access levels
 - GitLab account on git.nwpcode.org
 - Membership in `nwp` group (Developer level)
 - NS delegation for `<name>.nwpcode.org`
-- Listed in cnwp.yml `other_coders` section
+- Listed in nwp.yml `other_coders` section
 
 ### Path to Core Developer
 1. 50+ merged MRs

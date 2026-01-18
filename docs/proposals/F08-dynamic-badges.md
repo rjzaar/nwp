@@ -735,9 +735,9 @@ Create `templates/README.badges.md` (update existing):
 ...
 ```
 
-#### 5. Configuration in cnwp.yml
+#### 5. Configuration in nwp.yml
 
-Add badge settings to `example.cnwp.yml`:
+Add badge settings to `example.nwp.yml`:
 
 ```yaml
 settings:
@@ -892,7 +892,7 @@ ufw allow 443/tcp comment 'GitLab HTTPS (badges)'
 - [ ] Create `templates/gitlab-ci-badges.yml` CI template
 - [ ] Add `gitlab_configure_badges()` function to `lib/git.sh`
 - [ ] Add `--with-badges` option to GitLab setup scripts
-- [ ] Add `settings.gitlab.badges` to `example.cnwp.yml`
+- [ ] Add `settings.gitlab.badges` to `example.nwp.yml`
 - [ ] Integrate badge setup into `install.sh`
 - [ ] Update `coder-setup.sh` with badge configuration
 - [ ] Document self-hosted badge URL options (public/pages/static)

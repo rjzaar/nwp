@@ -109,12 +109,12 @@ scenario:
       expect_contains: "exists"
 
     - name: Check NWP configuration
-      cmd: test -f cnwp.yml && echo "Configuration file exists"
+      cmd: test -f nwp.yml && echo "Configuration file exists"
       expect_exit: 0
       expect_contains: "exists"
       on_failure:
         severity: warning
-        message: "cnwp.yml not found - run 'cp example.cnwp.yml cnwp.yml'"
+        message: "nwp.yml not found - run 'cp example.nwp.yml nwp.yml'"
 
     - name: Verify pl doctor runs
       cmd: ./pl doctor --quiet 2>/dev/null || ./pl doctor 2>&1 | head -5

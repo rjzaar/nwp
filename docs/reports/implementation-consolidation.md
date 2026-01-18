@@ -593,7 +593,7 @@ get_live_config() {
             print
             exit
         }
-    ' "$PROJECT_ROOT/cnwp.yml"
+    ' "$PROJECT_ROOT/nwp.yml"
 }
 
 get_prod_config() {
@@ -613,7 +613,7 @@ get_prod_config() {
             print
             exit
         }
-    ' "$PROJECT_ROOT/cnwp.yml"
+    ' "$PROJECT_ROOT/nwp.yml"
 }
 
 show_help() {
@@ -682,7 +682,7 @@ validate_deployment() {
 
     if [ -z "$prod_ip" ]; then
         print_error "No production server configured for $base_name"
-        print_info "Configure production section in cnwp.yml first"
+        print_info "Configure production section in nwp.yml first"
         return 1
     fi
 
@@ -936,9 +936,9 @@ main "$@"
 ### Current State (live.sh:934-939)
 
 ```bash
-# Remove from cnwp.yml
-print_info "Updating cnwp.yml..."
-# TODO: Remove live section from cnwp.yml
+# Remove from nwp.yml
+print_info "Updating nwp.yml..."
+# TODO: Remove live section from nwp.yml
 
 print_status "OK" "Live server deleted"
 ```
@@ -948,8 +948,8 @@ print_status "OK" "Live server deleted"
 Replace lines 934-939 with:
 
 ```bash
-    # Remove live section from cnwp.yml
-    print_info "Updating cnwp.yml..."
+    # Remove live section from nwp.yml
+    print_info "Updating nwp.yml..."
 
     # Source yaml-write library if not already loaded
     if ! command -v yaml_update_site_field &>/dev/null; then
@@ -958,7 +958,7 @@ Replace lines 934-939 with:
 
     # Remove live configuration from site
     # We use awk to remove the entire live: section
-    local config_file="$PROJECT_ROOT/cnwp.yml"
+    local config_file="$PROJECT_ROOT/nwp.yml"
     local temp_file=$(mktemp)
 
     awk -v site="$BASE_NAME" '
@@ -978,10 +978,10 @@ Replace lines 934-939 with:
 
     if [ -s "$temp_file" ]; then
         mv "$temp_file" "$config_file"
-        print_status "OK" "Removed live configuration from cnwp.yml"
+        print_status "OK" "Removed live configuration from nwp.yml"
     else
         rm -f "$temp_file"
-        print_warning "Could not update cnwp.yml (file may need manual cleanup)"
+        print_warning "Could not update nwp.yml (file may need manual cleanup)"
     fi
 
     print_status "OK" "Live server deleted"
@@ -1618,7 +1618,7 @@ cmd_maintenance() {
 ### Phase 5: Feature Completion
 
 - [ ] Implement full `live2prod.sh` deployment
-- [ ] Complete `live_delete()` cnwp.yml cleanup
+- [ ] Complete `live_delete()` nwp.yml cleanup
 - [ ] Optional: Add extension hook to `cleanup-preview.sh`
 
 ### Phase 6: Dead Code Removal
@@ -1646,7 +1646,7 @@ This implementation plan addresses:
 4. **9 hidden commands** → Register in `pl` help and routing
 5. **Disconnected email module** → Create wrapper and integrate
 6. **Stub `live2prod.sh`** → Full implementation provided
-7. **Incomplete `live_delete()`** → cnwp.yml cleanup implemented
+7. **Incomplete `live_delete()`** → nwp.yml cleanup implemented
 8. **Commented cleanup-preview.sh code** → Confirmed as intentional templates
 9. **~25 orphaned functions** → Removal list provided
 

@@ -40,7 +40,7 @@ get_live_config() {
             print
             exit
         }
-    ' "$PROJECT_ROOT/cnwp.yml"
+    ' "$PROJECT_ROOT/nwp.yml"
 }
 
 get_prod_config() {
@@ -60,7 +60,7 @@ get_prod_config() {
             print
             exit
         }
-    ' "$PROJECT_ROOT/cnwp.yml"
+    ' "$PROJECT_ROOT/nwp.yml"
 }
 
 show_help() {
@@ -129,7 +129,7 @@ validate_deployment() {
 
     if [ -z "$prod_ip" ]; then
         print_error "No production server configured for $base_name"
-        print_info "Configure production section in cnwp.yml first"
+        print_info "Configure production section in nwp.yml first"
         return 1
     fi
 

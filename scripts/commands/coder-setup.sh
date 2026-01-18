@@ -39,8 +39,8 @@ source "$PROJECT_ROOT/lib/yaml-write.sh"
 source "$PROJECT_ROOT/lib/git.sh"
 
 # Configuration
-CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
-EXAMPLE_CONFIG="${PROJECT_ROOT}/example.cnwp.yml"
+CONFIG_FILE="${PROJECT_ROOT}/nwp.yml"
+EXAMPLE_CONFIG="${PROJECT_ROOT}/example.nwp.yml"
 
 ################################################################################
 # Helper Functions
@@ -184,7 +184,7 @@ coder_exists() {
     fi
 }
 
-# Add coder to cnwp.yml
+# Add coder to nwp.yml
 add_coder_to_config() {
     local name="$1"
     local notes="${2:-}"
@@ -234,7 +234,7 @@ add_coder_to_config() {
     fi
 }
 
-# Remove coder from cnwp.yml
+# Remove coder from nwp.yml
 remove_coder_from_config() {
     local name="$1"
 
@@ -435,21 +435,21 @@ cmd_add() {
                     pass "NS delegation created for $subdomain"
                 else
                     warn "Failed to create NS delegation - you can configure DNS manually"
-                    info "The coder will still be added to cnwp.yml"
+                    info "The coder will still be added to nwp.yml"
                 fi
             elif [[ "$dns_provider" == "linode" ]]; then
                 if linode_create_ns_delegation "$linode_token" "$base_domain" "$name" "${nameservers[@]}"; then
                     pass "NS delegation created for $subdomain"
                 else
                     warn "Failed to create NS delegation - you can configure DNS manually"
-                    info "The coder will still be added to cnwp.yml"
+                    info "The coder will still be added to nwp.yml"
                 fi
             fi
         fi
     fi
 
     if $dry_run; then
-        info "Would add coder to cnwp.yml"
+        info "Would add coder to nwp.yml"
         if [ -n "$email" ] && ! $no_gitlab; then
             info "Would create GitLab user:"
             task "Username: $name"
@@ -461,7 +461,7 @@ cmd_add() {
     fi
 
     # Add to config
-    info "Adding coder to cnwp.yml..."
+    info "Adding coder to nwp.yml..."
     add_coder_to_config "$name" "$notes"
     pass "Coder added to configuration"
 
@@ -525,7 +525,7 @@ cmd_add() {
     echo ""
     echo "  The bootstrap script will:"
     echo "    • Configure your identity automatically"
-    echo "    • Set up cnwp.yml with your subdomain"
+    echo "    • Set up nwp.yml with your subdomain"
     echo "    • Validate your GitLab access"
     echo "    • Check DNS configuration"
     echo "    • Guide you through next steps"
@@ -626,7 +626,7 @@ cmd_remove() {
     else
         task "2. (Skipped) Keep GitLab access"
     fi
-    task "4. Remove from cnwp.yml configuration"
+    task "4. Remove from nwp.yml configuration"
     task "5. Log offboarding action"
     if $archive; then
         task "6. Archive contribution history"
@@ -697,7 +697,7 @@ cmd_remove() {
     fi
 
     # Step 4: Remove from config
-    info "Removing from cnwp.yml..."
+    info "Removing from nwp.yml..."
     remove_coder_from_config "$name"
     pass "Coder removed from configuration"
 
@@ -1061,9 +1061,9 @@ cmd_verify() {
 
     # Check if in config
     if coder_exists "$name"; then
-        pass "Coder is registered in cnwp.yml"
+        pass "Coder is registered in nwp.yml"
     else
-        warn "Coder not found in cnwp.yml"
+        warn "Coder not found in nwp.yml"
     fi
 }
 
@@ -1075,7 +1075,7 @@ main() {
     # Check for config file
     if [[ ! -f "$CONFIG_FILE" ]]; then
         print_error "Config file not found: $CONFIG_FILE"
-        print_info "Copy example.cnwp.yml to cnwp.yml first"
+        print_info "Copy example.nwp.yml to nwp.yml first"
         exit 1
     fi
 

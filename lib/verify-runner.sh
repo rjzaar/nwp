@@ -70,7 +70,7 @@ VERIFY_TEST_PREFIX="${VERIFY_TEST_PREFIX:-verify-test}"
 VERIFY_LOG_DIR="${VERIFY_LOG_DIR:-$VERIFY_PROJECT_ROOT/.logs/verification}"
 VERIFY_PRESERVE_ON_FAILURE="${VERIFY_PRESERVE_ON_FAILURE:-true}"
 VERIFY_CLEANUP_ON_SUCCESS="${VERIFY_CLEANUP_ON_SUCCESS:-true}"
-VERIFY_CONFIG_FILE="${VERIFY_CONFIG_FILE:-$VERIFY_PROJECT_ROOT/cnwp.yml}"
+VERIFY_CONFIG_FILE="${VERIFY_CONFIG_FILE:-$VERIFY_PROJECT_ROOT/nwp.yml}"
 VERIFY_YAML_FILE="${VERIFY_YAML_FILE:-$VERIFY_PROJECT_ROOT/.verification.yml}"
 VERIFY_DEFAULT_TIMEOUT="${VERIFY_DEFAULT_TIMEOUT:-300}"
 
@@ -263,7 +263,7 @@ get_site_path() {
 
 #######################################
 # Perform atomic YAML update with 5-layer protection
-# This is the REQUIRED pattern for all AWK operations on cnwp.yml
+# This is the REQUIRED pattern for all AWK operations on nwp.yml
 #
 # Arguments:
 #   $1 - YAML file path
@@ -435,7 +435,7 @@ create_test_site() {
 }
 
 #######################################
-# Clean up test site - stop DDEV, remove directories, clean cnwp.yml
+# Clean up test site - stop DDEV, remove directories, clean nwp.yml
 # Arguments:
 #   $1 - Site name prefix
 #   $2 - Preserve on failure flag (default: VERIFY_PRESERVE_ON_FAILURE)
@@ -473,7 +473,7 @@ cleanup_test_site() {
         verify_log "INFO" "Removed backup directory: sitebackups/$prefix"
     fi
 
-    # Remove from cnwp.yml with 5-layer protection
+    # Remove from nwp.yml with 5-layer protection
     if [[ -f "$VERIFY_CONFIG_FILE" ]] && grep -q "^  ${prefix}:" "$VERIFY_CONFIG_FILE" 2>/dev/null; then
         atomic_yaml_cleanup "$VERIFY_CONFIG_FILE" "$prefix"
     fi

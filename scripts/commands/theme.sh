@@ -52,7 +52,7 @@ ${BOLD}AUTO-DETECTION:${NC}
     - vite.config.js      -> Vite (greenfield projects)
 
 ${BOLD}CONFIGURATION:${NC}
-    Override auto-detection in cnwp.yml:
+    Override auto-detection in nwp.yml:
 
     sites:
       mysite:

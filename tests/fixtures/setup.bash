@@ -18,7 +18,7 @@ FIXTURES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${FIXTURES_DIR}/../.." && pwd)"
 
 # Fixture paths (exported for use by tests)
-export FIXTURE_CNWP="${FIXTURES_DIR}/cnwp.yml"
+export FIXTURE_CNWP="${FIXTURES_DIR}/nwp.yml"
 export FIXTURE_SECRETS="${FIXTURES_DIR}/secrets.yml"
 export FIXTURE_SAMPLE_SITE="${FIXTURES_DIR}/sample-site"
 
@@ -33,10 +33,10 @@ verify_fixtures() {
     echo "Verifying test fixtures..."
 
     if [ ! -f "${FIXTURE_CNWP}" ]; then
-        echo "  [MISSING] cnwp.yml"
+        echo "  [MISSING] nwp.yml"
         missing=$((missing + 1))
     else
-        echo "  [OK] cnwp.yml"
+        echo "  [OK] nwp.yml"
     fi
 
     if [ ! -f "${FIXTURE_SECRETS}" ]; then
@@ -99,7 +99,7 @@ setup_test_environment() {
     mkdir -p "${temp_dir}/backups"
 
     # Copy fixtures
-    cp "${FIXTURE_CNWP}" "${temp_dir}/cnwp.yml"
+    cp "${FIXTURE_CNWP}" "${temp_dir}/nwp.yml"
     cp "${FIXTURE_SECRETS}" "${temp_dir}/.secrets.yml"
     cp -r "${FIXTURE_SAMPLE_SITE}" "${temp_dir}/sites/testsite"
 
@@ -108,7 +108,7 @@ setup_test_environment() {
 
     # Export paths
     export TEST_ENV_DIR="${temp_dir}"
-    export TEST_CNWP="${temp_dir}/cnwp.yml"
+    export TEST_CNWP="${temp_dir}/nwp.yml"
     export TEST_SECRETS="${temp_dir}/.secrets.yml"
     export TEST_SITE="${temp_dir}/sites/testsite"
 
@@ -172,7 +172,7 @@ show_fixtures_info() {
     echo "Location: ${FIXTURES_DIR}"
     echo ""
     echo "Available fixtures:"
-    echo "  - cnwp.yml        : Minimal test configuration"
+    echo "  - nwp.yml        : Minimal test configuration"
     echo "  - secrets.yml     : Mock secrets (no real credentials)"
     echo "  - sample-site/    : Minimal Drupal site structure"
     echo ""

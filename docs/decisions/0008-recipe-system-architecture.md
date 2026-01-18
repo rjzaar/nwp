@@ -5,7 +5,7 @@
 **Decision Makers:** Rob
 **Related Issues:** P06 (Sites Tracking System), P30 (Modular Install Architecture)
 **Related Commits:** 05d13750 (modular refactor), 7956b417 (avc split), e2558617 (post_install_scripts)
-**References:** [example.cnwp.yml](../../example.cnwp.yml), [install-common.sh](../../lib/install-common.sh)
+**References:** [example.nwp.yml](../../example.nwp.yml), [install-common.sh](../../lib/install-common.sh)
 
 ## Context
 
@@ -22,7 +22,7 @@ The key challenge: How to balance **simplicity** (YAML configuration) with **fle
 ## Options Considered
 
 ### Option 1: Recipe System in YAML (Chosen)
-Define recipes as YAML configuration in `cnwp.yml` with fields for all supported options.
+Define recipes as YAML configuration in `nwp.yml` with fields for all supported options.
 
 **Pros:**
 - Human-readable and editable
@@ -202,7 +202,7 @@ This replaced hardcoded logic like "if production, install security modules."
 
 ### Recipe Field Reference
 
-`example.cnwp.yml` includes comprehensive field reference:
+`example.nwp.yml` includes comprehensive field reference:
 ```yaml
 # Recipe Field Reference:
 #
@@ -358,7 +358,7 @@ No code changes required.
 
 1. Document in field reference comments
 2. Add parsing logic in `lib/install-common.sh` or recipe-specific library
-3. Update `example.cnwp.yml` with examples
+3. Update `example.nwp.yml` with examples
 4. Test with existing recipes to ensure backward compatibility
 
 ## Recipe Examples

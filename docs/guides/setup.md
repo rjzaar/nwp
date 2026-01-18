@@ -53,7 +53,7 @@ The setup script will:
 | Component | What It Does |
 |-----------|--------------|
 | NWP CLI | Global `pl` command for running scripts (recommended) |
-| NWP Config | Creates `cnwp.yml` from example |
+| NWP Config | Creates `nwp.yml` from example |
 | NWP Secrets | Creates `.secrets.yml` template |
 | Script Symlinks | Optional: Create `./install.sh` symlinks for backward compatibility |
 
@@ -84,7 +84,7 @@ The setup script will:
    - Save the token - you'll enter it during setup
 
 2. **Set Your Domain** (if deploying GitLab)
-   - Edit `cnwp.yml` after it's created
+   - Edit `nwp.yml` after it's created
    - Add your domain under settings:
      ```yaml
      settings:
@@ -138,7 +138,7 @@ Core Infrastructure:
 
 NWP Tools:
 [✗] NWP CLI Command
-[✗] NWP Configuration (cnwp.yml)
+[✗] NWP Configuration (nwp.yml)
 [✗] NWP Secrets (.secrets.yml)
 ```
 
@@ -196,7 +196,7 @@ Configuring Linode CLI
 
 ## Configuration
 
-### cnwp.yml (Site Configuration)
+### nwp.yml (Site Configuration)
 
 ```yaml
 settings:
@@ -276,7 +276,7 @@ See [DATA_SECURITY_BEST_PRACTICES.md](DATA_SECURITY_BEST_PRACTICES.md) for full 
 
 ### Enabling the CLI
 
-In `cnwp.yml`:
+In `nwp.yml`:
 
 ```yaml
 settings:
@@ -392,7 +392,7 @@ The uninstaller uses the system state snapshot to intelligently remove only what
 5. **Removes Docker Group** - If NWP added user
 6. **Removes Docker** - If NWP installed it
 7. **Restores Shell Config** - Original `~/.bashrc` from backup
-8. **Removes Configuration** - Optionally removes `cnwp.yml` and `~/.nwp`
+8. **Removes Configuration** - Optionally removes `nwp.yml` and `~/.nwp`
 
 ### Confirmation Prompts
 
@@ -403,7 +403,7 @@ The uninstaller asks for confirmation before:
 - Removing DDEV
 - Removing ~/.ddev configuration
 - Restoring ~/.bashrc
-- Removing cnwp.yml
+- Removing nwp.yml
 - Removing ~/.nwp directory
 
 ### Manual Uninstall (No State File)
@@ -466,7 +466,7 @@ ls -la /usr/local/bin/pl
 sudo chmod +x /usr/local/bin/pl
 
 # Verify CLI setting in config
-grep "cli:" cnwp.yml
+grep "cli:" nwp.yml
 ```
 
 ### Reset Setup State
@@ -554,8 +554,8 @@ The interactive setup UI includes "Script Symlinks" as an optional component.
 |------|----------|
 | Setup script | `~/nwp/setup.sh` |
 | Uninstall script | `~/nwp/uninstall_nwp.sh` |
-| Configuration | `~/nwp/cnwp.yml` |
-| Example config | `~/nwp/example.cnwp.yml` |
+| Configuration | `~/nwp/nwp.yml` |
+| Example config | `~/nwp/example.nwp.yml` |
 | State directory | `~/.nwp/setup_state/` |
 | Install log | `~/.nwp/setup_state/install.log` |
 | CLI command | `/usr/local/bin/<cliprompt>` |

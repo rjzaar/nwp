@@ -31,7 +31,7 @@
 │                                                                     │
 │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐              │
 │  │   Recipe    │   │   Config    │   │   Secrets   │              │
-│  │   System    │   │  (cnwp.yml) │   │  (2-tier)   │              │
+│  │   System    │   │  (nwp.yml) │   │  (2-tier)   │              │
 │  └──────┬──────┘   └──────┬──────┘   └──────┬──────┘              │
 │         │                 │                 │                      │
 │         └─────────────────┼─────────────────┘                      │
@@ -181,7 +181,7 @@ LOCAL                           CLOUD
 
 | Item | Priority | Status | Effort | Description |
 |------|----------|--------|--------|-------------|
-| Clean [PLANNED] options | High | TODO | 2h | Remove 77 placeholder options from example.cnwp.yml |
+| Clean [PLANNED] options | High | TODO | 2h | Remove 77 placeholder options from example.nwp.yml |
 | Add NO_COLOR support | Medium | TODO | 1h | Standard terminal color convention |
 | pl doctor command | High | TODO | 10h | Diagnostic command for prerequisites and configuration |
 | Link governance docs | High | TODO | 0.1h | Make governance docs discoverable in main README |

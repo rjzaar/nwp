@@ -43,7 +43,7 @@ source "$PROJECT_ROOT/lib/yaml-write.sh"
 source "$PROJECT_ROOT/lib/git.sh"
 
 # Configuration
-CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
+CONFIG_FILE="${PROJECT_ROOT}/nwp.yml"
 CODER_SETUP="${SCRIPT_DIR}/coder-setup.sh"
 
 # TUI State

@@ -14,7 +14,7 @@ source "$NWP_ROOT/lib/yaml-write.sh"
 
 # Test configuration
 TEST_DIR="/tmp/test_yaml_write_$$"
-TEST_CONFIG="$TEST_DIR/test.cnwp.yml"
+TEST_CONFIG="$TEST_DIR/test.nwp.yml"
 
 # Colors
 RED='\033[0;31m'
@@ -35,7 +35,7 @@ setup() {
     echo -e "${BLUE}Setting up test environment...${NC}"
     mkdir -p "$TEST_DIR"
 
-    # Create a minimal test cnwp.yml
+    # Create a minimal test nwp.yml
     cat > "$TEST_CONFIG" <<'EOF'
 # Test configuration file
 settings:

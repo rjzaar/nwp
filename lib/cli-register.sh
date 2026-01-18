@@ -27,17 +27,17 @@ if [ -f "$PROJECT_ROOT_CLI/lib/yaml-write.sh" ]; then
 fi
 
 #######################################
-# Get the current CLI command name from cnwp.yml
+# Get the current CLI command name from nwp.yml
 # Outputs:
 #   CLI command name (default: pl)
 # Returns:
 #   0 on success
 #######################################
 get_cli_command() {
-    local config_file="${PROJECT_ROOT_CLI}/cnwp.yml"
+    local config_file="${PROJECT_ROOT_CLI}/nwp.yml"
     local cli_command=""
 
-    # Try to read from cnwp.yml settings.cli_command
+    # Try to read from nwp.yml settings.cli_command
     if [ -f "$config_file" ]; then
         cli_command=$(awk '
             /^settings:/ { in_settings = 1; next }
@@ -104,7 +104,7 @@ find_available_cli_name() {
 
 #######################################
 # Register CLI command for this NWP installation
-# Creates symlink in /usr/local/bin/ and stores name in cnwp.yml
+# Creates symlink in /usr/local/bin/ and stores name in nwp.yml
 # Arguments:
 #   $1 - Project root directory (optional, defaults to detected root)
 #   $2 - Preferred command name (optional, will use this if available)
@@ -114,7 +114,7 @@ find_available_cli_name() {
 register_cli_command() {
     local project_root="${1:-$PROJECT_ROOT_CLI}"
     local preferred_name="${2:-}"
-    local config_file="$project_root/cnwp.yml"
+    local config_file="$project_root/nwp.yml"
     local pl_script="$project_root/pl"
 
     # Verify project structure
@@ -194,17 +194,17 @@ register_cli_command() {
         return 1
     fi
 
-    # Update cnwp.yml with cli_command setting
+    # Update nwp.yml with cli_command setting
     if [ -f "$config_file" ]; then
         # Check if settings section exists
         if ! grep -q "^settings:" "$config_file"; then
-            print_warning "No settings section found in cnwp.yml"
+            print_warning "No settings section found in nwp.yml"
         else
             # Check if cli_command already exists
             if grep -q "^  cli_command:" "$config_file"; then
                 # Update existing value
                 sed -i "s/^  cli_command:.*/  cli_command: $cli_command/" "$config_file"
-                print_status "OK" "Updated cli_command in cnwp.yml"
+                print_status "OK" "Updated cli_command in nwp.yml"
             else
                 # Add cli_command to settings section
                 # Insert after settings: line
@@ -217,7 +217,7 @@ register_cli_command() {
                     }
                     { print }
                 ' "$config_file" > "${config_file}.tmp" && mv "${config_file}.tmp" "$config_file"
-                print_status "OK" "Added cli_command to cnwp.yml"
+                print_status "OK" "Added cli_command to nwp.yml"
             fi
         fi
     fi
@@ -229,12 +229,12 @@ register_cli_command() {
 
 #######################################
 # Unregister CLI command for this NWP installation
-# Removes symlink from /usr/local/bin/ and clears cnwp.yml setting
+# Removes symlink from /usr/local/bin/ and clears nwp.yml setting
 # Returns:
 #   0 on success, 1 on failure
 #######################################
 unregister_cli_command() {
-    local config_file="${PROJECT_ROOT_CLI}/cnwp.yml"
+    local config_file="${PROJECT_ROOT_CLI}/nwp.yml"
 
     # Get current CLI command name
     local cli_command=$(get_cli_command)
@@ -265,12 +265,12 @@ unregister_cli_command() {
         print_status "INFO" "CLI command symlink not found"
     fi
 
-    # Clear cli_command from cnwp.yml
+    # Clear cli_command from nwp.yml
     if [ -f "$config_file" ]; then
         if grep -q "^  cli_command:" "$config_file"; then
             # Remove the cli_command line and any comment line immediately before it
             sed -i '/^  # CLI command name for this NWP installation$/,/^  cli_command:/d' "$config_file"
-            print_status "OK" "Removed cli_command from cnwp.yml"
+            print_status "OK" "Removed cli_command from nwp.yml"
         fi
     fi
 

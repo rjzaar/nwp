@@ -244,7 +244,7 @@ build:
 
 ## Using with NWP Recipes
 
-The AVC recipe in `example.cnwp.yml` demonstrates GitLab Composer integration:
+The AVC recipe in `example.nwp.yml` demonstrates GitLab Composer integration:
 
 ```yaml
 recipes:

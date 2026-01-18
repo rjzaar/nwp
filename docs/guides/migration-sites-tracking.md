@@ -4,7 +4,7 @@
 
 This guide helps you migrate existing NWP sites to the new sites tracking system introduced in v0.7+.
 
-The new system automatically tracks installed sites in `cnwp.yml` with:
+The new system automatically tracks installed sites in `nwp.yml` with:
 - Directory path and recipe used
 - Environment type (development/staging/production)
 - Installed modules
@@ -14,13 +14,13 @@ The new system automatically tracks installed sites in `cnwp.yml` with:
 ## What's Changed
 
 ### Before (v0.6 and earlier)
-- Sites were not tracked in cnwp.yml
+- Sites were not tracked in nwp.yml
 - No automatic cleanup when sites were deleted
 - Manual configuration required for production deployments
 - Module reinstallation not supported
 
 ### After (v0.7+)
-- Sites automatically registered in `cnwp.yml` after installation
+- Sites automatically registered in `nwp.yml` after installation
 - Automatic cleanup when sites are deleted (configurable)
 - Production deployment configuration stored and used by `stg2prod.sh`
 - Module reinstallation supported via `reinstall_modules` in recipes
@@ -29,7 +29,7 @@ The new system automatically tracks installed sites in `cnwp.yml` with:
 
 ### Option 1: Automatic Migration (Recommended)
 
-A migration script will be provided to automatically scan your existing sites and register them in `cnwp.yml`.
+A migration script will be provided to automatically scan your existing sites and register them in `nwp.yml`.
 
 ```bash
 # Coming soon: Auto-migration script
@@ -40,16 +40,16 @@ A migration script will be provided to automatically scan your existing sites an
 
 If you prefer to manually register your existing sites:
 
-#### 1. Update cnwp.yml Structure
+#### 1. Update nwp.yml Structure
 
-Ensure your `cnwp.yml` has the new sections:
+Ensure your `nwp.yml` has the new sections:
 
 ```yaml
 settings:
   # ... existing settings ...
 
   # New: Site management settings
-  delete_site_yml: true  # Remove site from cnwp.yml when deleted
+  delete_site_yml: true  # Remove site from nwp.yml when deleted
 ```
 
 Add empty `sites:` section if not present:
@@ -150,8 +150,8 @@ recipes:
 ### Check Site Registration
 
 ```bash
-# View sites section in cnwp.yml
-grep -A 10 "^sites:" cnwp.yml
+# View sites section in nwp.yml
+grep -A 10 "^sites:" nwp.yml
 ```
 
 ### Test YAML Library
@@ -170,7 +170,7 @@ grep -A 10 "^sites:" cnwp.yml
 # Test with --keep-yml flag (preserves entry)
 ./delete.sh --keep-yml test_site
 
-# Normal deletion (removes from cnwp.yml)
+# Normal deletion (removes from nwp.yml)
 ./delete.sh test_site
 ```
 
@@ -189,13 +189,13 @@ grep -A 10 "^sites:" cnwp.yml
 The new system is fully backward compatible:
 
 - ✅ Sites tracking is **optional** - all scripts work without it
-- ✅ Existing cnwp.yml files continue to work
+- ✅ Existing nwp.yml files continue to work
 - ✅ Scripts gracefully handle missing YAML library
 - ✅ No breaking changes to existing functionality
 
 If the YAML library is not available:
 - install.sh: Skips site registration
-- delete.sh: Skips cnwp.yml cleanup
+- delete.sh: Skips nwp.yml cleanup
 - dev2stg.sh/stg2prod.sh: Falls back to base name as recipe
 
 ## Troubleshooting
@@ -208,7 +208,7 @@ If the YAML library is not available:
 ```bash
 # Manually register the site
 source lib/yaml-write.sh
-yaml_add_site "sitename" "/full/path" "recipe" "development" "cnwp.yml"
+yaml_add_site "sitename" "/full/path" "recipe" "development" "nwp.yml"
 ```
 
 ### Site Not Removed After Deletion
@@ -218,11 +218,11 @@ yaml_add_site "sitename" "/full/path" "recipe" "development" "cnwp.yml"
 **Solution**:
 ```bash
 # Check setting
-grep "delete_site_yml" cnwp.yml
+grep "delete_site_yml" nwp.yml
 
 # Manually remove
 source lib/yaml-write.sh
-yaml_remove_site "sitename" "cnwp.yml"
+yaml_remove_site "sitename" "nwp.yml"
 ```
 
 ### Module Reinstallation Not Working
@@ -231,7 +231,7 @@ yaml_remove_site "sitename" "cnwp.yml"
 
 **Solution**:
 ```yaml
-# Add to recipe in cnwp.yml
+# Add to recipe in nwp.yml
 recipes:
   myrecipe:
     reinstall_modules: module1 module2
@@ -244,7 +244,7 @@ recipes:
 **Solution**:
 ```bash
 # Check configuration
-grep -A 5 "prod_" cnwp.yml | grep myrecipe
+grep -A 5 "prod_" nwp.yml | grep myrecipe
 
 # Test SSH connection
 ssh deploy@your-server.com echo "Connection OK"
@@ -259,7 +259,7 @@ If you encounter issues during migration:
 
 1. Check the test results: `./tests/test-yaml-write.sh`
 2. Review the integration tests: `./tests/test-integration.sh`
-3. Check the example configuration: `example.cnwp.yml`
+3. Check the example configuration: `example.nwp.yml`
 4. Review production deployment docs: `docs/PRODUCTION_DEPLOYMENT.md`
 5. Report issues at: https://github.com/anthropics/claude-code/issues
 
@@ -278,4 +278,4 @@ After migration:
 
 - [Production Deployment Guide](../deployment/production-deployment.md)
 - [Roadmap](../governance/roadmap.md) - Project roadmap
-- [example.cnwp.yml](../../example.cnwp.yml) - Configuration examples
+- [example.nwp.yml](../../example.nwp.yml) - Configuration examples

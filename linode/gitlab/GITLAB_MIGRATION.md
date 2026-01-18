@@ -96,9 +96,9 @@ git remote set-url origin git@git.nwpcode.org:nwp/avc.git
 git fetch origin
 ```
 
-## Phase 4: Update cnwp.yml
+## Phase 4: Update nwp.yml
 
-After implementing the code changes, update your local `cnwp.yml`:
+After implementing the code changes, update your local `nwp.yml`:
 
 ```yaml
 # Update profile_source in recipes.avc section
@@ -116,7 +116,7 @@ avc:
 - [ ] Push mirror configured for nwp/avc → rjzaar/avc
 - [ ] Test push from GitLab mirrors to GitHub
 - [ ] Local git remotes updated
-- [ ] `cnwp.yml` profile_source paths updated
+- [ ] `nwp.yml` profile_source paths updated
 
 ## Troubleshooting
 

@@ -680,7 +680,7 @@ Quick decisions that don't warrant full ADRs but should be recorded.
 ### 2026-01-07: Default backup retention
 **Context:** backup.sh enhancement
 **Question:** How many backups to keep by default?
-**Decision:** 10 backups, configurable via cnwp.yml
+**Decision:** 10 backups, configurable via nwp.yml
 **Decided by:** Rob
 **Related:** #230
 ```
@@ -815,7 +815,7 @@ pl contribute
 |-----------|----------|---------|----------|
 | API tokens | Never | Never | `.secrets.yml` (gitignored) |
 | Production credentials | Never | Never | `.secrets.data.yml` (gitignored) |
-| User site configs | Never | Never | `cnwp.yml` (gitignored) |
+| User site configs | Never | Never | `nwp.yml` (gitignored) |
 | Decision records | Yes | Yes | Public, no PII |
 | Error reports | Sanitized | Sanitized | Use `report.sh` |
 

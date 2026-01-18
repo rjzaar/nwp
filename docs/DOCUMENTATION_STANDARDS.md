@@ -338,7 +338,7 @@ Run `pl backup create avc` to create a backup.
 ```markdown
 Run the `pl backup` command to create a backup.
 
-Edit the `/home/rob/nwp/cnwp.yml` file.
+Edit the `/home/rob/nwp/nwp.yml` file.
 
 To deploy:
 

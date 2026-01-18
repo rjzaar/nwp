@@ -17,7 +17,7 @@ Issues:
 1. **Documentation drift** - Code changes, docs don't update
 2. **Stale dates** - "Last Updated" dates months old
 3. **Missing documentation** - New commands added without docs
-4. **Protected files** - cnwp.yml must never be committed (user-specific)
+4. **Protected files** - nwp.yml must never be committed (user-specific)
 
 Traditional solutions:
 - **Manual reviews** - Error-prone, inconsistent
@@ -29,7 +29,7 @@ Traditional solutions:
 Implement **client-side git hooks** for pre-commit validation:
 
 **Hook 1: pre-commit** - Prevents bad commits before they happen
-- Block commits of cnwp.yml (user-specific config)
+- Block commits of nwp.yml (user-specific config)
 - Warn about outdated documentation (Last Updated > 7 days ago)
 - Validate command documentation structure
 
@@ -82,7 +82,7 @@ Implement **client-side git hooks** for pre-commit validation:
 ### What to Enforce
 
 **Critical (block commit):**
-- cnwp.yml commits (user-specific, should never be committed)
+- nwp.yml commits (user-specific, should never be committed)
 - Empty commit messages
 
 **Important (warn, allow bypass):**
@@ -95,31 +95,31 @@ Implement **client-side git hooks** for pre-commit validation:
 - Test failures (use CI/CD)
 - Documentation completeness (too subjective)
 
-### cnwp.yml Protection
+### nwp.yml Protection
 
 **The problem:**
 ```bash
 # User accidentally:
 git add -A
 git commit -m "Update feature"
-# cnwp.yml gets committed with their personal config
+# nwp.yml gets committed with their personal config
 ```
 
 **The solution:**
 ```bash
 # pre-commit hook checks:
-if git diff --cached --name-only | grep -q "^cnwp.yml$"; then
-    echo "ERROR: Refusing to commit cnwp.yml"
+if git diff --cached --name-only | grep -q "^nwp.yml$"; then
+    echo "ERROR: Refusing to commit nwp.yml"
     echo "This file contains user-specific configuration"
     exit 1
 fi
 ```
 
 **Why this matters:**
-- cnwp.yml is in .gitignore, but `git add -A` overrides
+- nwp.yml is in .gitignore, but `git add -A` overrides
 - Contains user paths, secrets references, server IPs
 - Each user has different configuration
-- example.cnwp.yml is the template, cnwp.yml is instance
+- example.nwp.yml is the template, nwp.yml is instance
 
 **How to bypass (if really needed):**
 ```bash
@@ -177,7 +177,7 @@ git commit --no-verify
 ## Consequences
 
 ### Positive
-- **Prevents mistakes** - cnwp.yml protection catches accidents
+- **Prevents mistakes** - nwp.yml protection catches accidents
 - **Maintains quality** - Documentation stays fresh
 - **Immediate feedback** - Before commit created
 - **Automated enforcement** - No manual checking needed
@@ -267,13 +267,13 @@ exit 0
 - [x] Hooks implemented and tested
 - [x] Documentation written
 - [ ] Adoption: % of developers with hooks installed
-- [ ] Effectiveness: # of cnwp.yml commits prevented
+- [ ] Effectiveness: # of nwp.yml commits prevented
 - [ ] False positives: Minimal
 - [ ] Performance: <0.5s per commit
 
 ## Related Decisions
 
-- **ADR-0002: YAML-Based Configuration** - cnwp.yml protection
+- **ADR-0002: YAML-Based Configuration** - nwp.yml protection
 - **ADR-0009: Five-Layer YAML Protection** - File protection strategies
 - **CLAUDE.md**: Release Tag Process - Documentation update checklist
 

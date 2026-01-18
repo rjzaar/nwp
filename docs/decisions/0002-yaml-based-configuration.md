@@ -42,8 +42,8 @@ NWP needs a configuration format for site definitions, settings, and secrets. Op
 ## Decision
 
 Use YAML for all NWP configuration files:
-- `cnwp.yml` - Main site configuration
-- `example.cnwp.yml` - Template configuration
+- `nwp.yml` - Main site configuration
+- `example.nwp.yml` - Template configuration
 - `.secrets.yml` - Infrastructure secrets
 - `.secrets.data.yml` - Data secrets (separate file for security)
 

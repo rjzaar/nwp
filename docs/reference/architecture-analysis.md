@@ -37,7 +37,7 @@ This document consolidates research conducted during NWP development, comparing 
 | **Local Development** | Docker Compose | DDEV |
 | **Hosting Platforms** | Lagoon, Acquia, Generic, Container Registry | Linode |
 | **Task Runner** | Ahoy CLI (30+ commands) | `pl` CLI wrapper |
-| **Configuration** | `.env` files | `cnwp.yml` + `.env` |
+| **Configuration** | `.env` files | `nwp.yml` + `.env` |
 
 ## Vortex Scripts (30+ scripts)
 
@@ -79,7 +79,7 @@ This document consolidates research conducted during NWP development, comparing 
 
 1. **Vortex**: Comprehensive `.env` file + `docker-compose.yml`
 2. **DDEV**: `config.yaml` with `web_environment`
-3. **NWP cnwp.yml**: Custom YAML configuration for project recipes
+3. **NWP nwp.yml**: Custom YAML configuration for project recipes
 
 ## Vortex Environment Structure
 
@@ -116,7 +116,7 @@ VORTEX_PROVISION_SANITIZE_DB_SKIP=0
 NWP adopted a hybrid approach:
 
 ```yaml
-# cnwp.yml
+# nwp.yml
 settings:
   environment:
     development:
@@ -222,7 +222,7 @@ pl live2stg mysite    # Live → Staging
 **Rationale:** Allows AI assistants to help with infrastructure while protecting user data.
 
 ### 5. Recipe-Based Configuration
-**Decision:** Use `cnwp.yml` with recipe inheritance.
+**Decision:** Use `nwp.yml` with recipe inheritance.
 **Rationale:** Define once, use many times. Simpler than per-project configuration.
 
 ### 6. GitLab as Default Remote

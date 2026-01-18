@@ -33,7 +33,7 @@ pl theme list <sitename>      # List all themes
 - Auto-detection of package manager (npm/yarn/pnpm) from lock files
 - Auto-detection of Node version from .nvmrc or package.json
 - Auto-configuration of browser-sync for DDEV URLs
-- Per-site configuration override in cnwp.yml
+- Per-site configuration override in nwp.yml
 
 **New Files:**
 - `lib/frontend.sh` - Core detection and configuration functions
@@ -58,7 +58,7 @@ When you have multiple NWP installations, each can register its own CLI command:
 - Suggests next available name (pl1, pl2, etc.)
 - Editable in setup.sh TUI (press 'e' on NWP CLI Command)
 - Symlinks stored in `/usr/local/bin/`
-- Command name stored in `cnwp.yml` settings
+- Command name stored in `nwp.yml` settings
 
 **New File:** `lib/cli-register.sh` with functions:
 - `register_cli_command` - Creates symlink, stores in config
@@ -68,7 +68,7 @@ When you have multiple NWP installations, each can register its own CLI command:
 
 ### Status TUI Improvements
 
-- **Ghost DDEV site detection:** Finds DDEV containers without matching cnwp.yml entries
+- **Ghost DDEV site detection:** Finds DDEV containers without matching nwp.yml entries
 - **Wrap-around navigation:** Arrow keys wrap from last to first site and vice versa
 - **Delete action for ghost sites:** Can delete orphaned DDEV sites from status TUI
 - **Improved site display:** Better status indicators and formatting
@@ -141,7 +141,7 @@ pl --help            # Show all commands
 - Automatically created, gitignored
 
 **New `.backups/` Directory**:
-- Config backups (cnwp.yml.backup-*) moved to `.backups/`
+- Config backups (nwp.yml.backup-*) moved to `.backups/`
 - Automatic 10-backup retention policy
 - `yaml_backup()` function updated to use new location
 
@@ -425,7 +425,7 @@ lib/
 
 **Code Organization**:
 - Consolidated duplicate functions into shared libraries
-- Cleaned up cnwp.yml configuration structure
+- Cleaned up nwp.yml configuration structure
 - Fixed undefined print_warn function in install.sh
 
 ### Documentation
@@ -439,7 +439,7 @@ lib/
 - 42bf1201 - Add GitLab installation support and setup automation
 - e58f1bfd - Add site purpose tracking and migration workflow
 - f0e23728 - Add negative test cases to test-nwp.sh (Test 13)
-- b8defb8d - Clean up cnwp.yml configuration structure
+- b8defb8d - Clean up nwp.yml configuration structure
 - 1fe376f1 - Add mode and sitename validation to make.sh
 - e1899a1c - Add YAML validation to lib/yaml-write.sh
 - 84c1b459 - Consolidate duplicate functions into shared libraries
@@ -517,7 +517,7 @@ vortex/
 │   ├── .env.local.example      # Local overrides template
 │   └── .secrets.example.yml    # Secrets template
 └── scripts/                     # Utility scripts
-    ├── generate-env.sh         # Generate .env from cnwp.yml
+    ├── generate-env.sh         # Generate .env from nwp.yml
     ├── generate-ddev.sh        # Generate DDEV config from .env
     └── load-secrets.sh         # Load secrets from .secrets.yml
 ```
@@ -529,7 +529,7 @@ vortex/
 - Hardcoded defaults (lowest priority)
 
 **Features**:
-1. ✅ **Automatic .env generation** - Step 2 in install.sh generates .env from cnwp.yml
+1. ✅ **Automatic .env generation** - Step 2 in install.sh generates .env from nwp.yml
 2. ✅ **Template system** - Profile-specific templates with variable substitution
 3. ✅ **DDEV integration** - Auto-generate config.yaml from .env files
 4. ✅ **Service management** - Global defaults for redis, solr, memcache with recipe overrides
@@ -538,7 +538,7 @@ vortex/
 7. ✅ **No external dependencies** - Uses awk instead of yq for YAML parsing
 8. ✅ **DRY principle** - Define defaults once in settings, override per recipe
 
-**cnwp.yml Enhancements**:
+**nwp.yml Enhancements**:
 ```yaml
 settings:
   # Environment profiles
@@ -637,7 +637,7 @@ settings:
 - `install.sh` - Added Step 2 (environment generation), fixed vortex path resolution
 - `test-nwp.sh` - Added Test 1b for vortex compatibility
 - `README.md` - Added environment variables and configuration hierarchy sections
-- `example.cnwp.yml` - Added settings.environment and settings.services
+- `example.nwp.yml` - Added settings.environment and settings.services
 - `.gitignore` - Added vortex whitelist and secrets patterns
 
 ### Breaking Changes
@@ -665,7 +665,7 @@ See `docs/MIGRATION_GUIDE_ENV.md` for detailed migration instructions.
 Completed all items from sections 9.1 and 9.2 of environment-variables-comparison.md:
 
 **9.1 Immediate (High Priority)** ✅
-1. ✅ Environment variable mapping from cnwp.yml to DDEV
+1. ✅ Environment variable mapping from nwp.yml to DDEV
 2. ✅ .env support in NWP scripts
 3. ✅ Environment variables documentation
 4. ✅ .env.example templates for each recipe
@@ -674,7 +674,7 @@ Completed all items from sections 9.1 and 9.2 of environment-variables-compariso
 **9.2 Short-term (Medium Priority)** ✅
 6. ✅ DDEV config generation in install.sh
 7. ✅ Environment selection (dev/staging/prod)
-8. ✅ Service management system in cnwp.yml
+8. ✅ Service management system in nwp.yml
 9. ✅ Secrets management framework
 10. ✅ Migration guide for existing users
 

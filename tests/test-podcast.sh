@@ -202,9 +202,9 @@ print_header "Test 5: Configuration Files"
 
 run_test ".secrets.example.yml has cloudflare section" "grep -q 'cloudflare:' .secrets.example.yml"
 run_test ".secrets.example.yml has b2 section" "grep -q 'b2:' .secrets.example.yml"
-run_test "example.cnwp.yml has pod recipe" "grep -q '^  pod:' example.cnwp.yml"
-run_test "pod recipe has type: podcast" "grep -A1 '^  pod:' example.cnwp.yml | grep -q 'type: podcast'"
-run_test "example.cnwp.yml has podcast settings" "grep -q '^podcast:' example.cnwp.yml"
+run_test "example.nwp.yml has pod recipe" "grep -q '^  pod:' example.nwp.yml"
+run_test "pod recipe has type: podcast" "grep -A1 '^  pod:' example.nwp.yml | grep -q 'type: podcast'"
+run_test "example.nwp.yml has podcast settings" "grep -q '^podcast:' example.nwp.yml"
 
 ################################################################################
 # Test 6: Install.sh Integration

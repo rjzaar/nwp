@@ -4,7 +4,7 @@ set -euo pipefail
 ################################################################################
 # NWP Site Modification Script
 #
-# Interactive TUI for modifying options on existing sites in cnwp.yml
+# Interactive TUI for modifying options on existing sites in nwp.yml
 # Usage: ./modify.sh [site_name]
 #
 # Examples:
@@ -40,7 +40,7 @@ if [ -f "$PROJECT_ROOT/lib/tui.sh" ]; then
     source "$PROJECT_ROOT/lib/tui.sh"
 fi
 
-CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
+CONFIG_FILE="${PROJECT_ROOT}/nwp.yml"
 
 ################################################################################
 # Installation Status Detection
@@ -150,7 +150,7 @@ check_installed_status() {
 # Orphaned Site Detection
 ################################################################################
 
-# Find site directories that have .ddev but are not in cnwp.yml
+# Find site directories that have .ddev but are not in nwp.yml
 find_orphaned_sites() {
     local config_file="$1"
     local script_dir="$2"
@@ -165,7 +165,7 @@ find_orphaned_sites() {
         done < <(find "$script_dir/sites" -maxdepth 2 -name ".ddev" -type d 2>/dev/null)
     fi
 
-    # Get list of sites from cnwp.yml
+    # Get list of sites from nwp.yml
     local yml_sites=()
     if [ -f "$config_file" ]; then
         while read -r site; do
@@ -173,7 +173,7 @@ find_orphaned_sites() {
         done < <(list_sites "$config_file")
     fi
 
-    # Find orphaned sites (have .ddev but not in cnwp.yml)
+    # Find orphaned sites (have .ddev but not in nwp.yml)
     for entry in "${ddev_dirs[@]}"; do
         local name="${entry%%:*}"
         local dir="${entry#*:}"
@@ -271,7 +271,7 @@ build_site_list() {
     SITE_NAMES=()
     SITE_DATA=()
 
-    # Add sites from cnwp.yml
+    # Add sites from nwp.yml
     while read -r site; do
         [ -z "$site" ] && continue
         SITE_NAMES+=("$site")
@@ -280,11 +280,11 @@ build_site_list() {
         local environment=$(get_site_field "$site" "environment" "$config_file")
         local exists="N"
         [ -d "$directory" ] && exists="Y"
-        # Last field indicates source: "yml" = from cnwp.yml, "orphan" = orphaned
+        # Last field indicates source: "yml" = from nwp.yml, "orphan" = orphaned
         SITE_DATA+=("${recipe:-?}|${environment:-dev}|${exists}|${directory:-}|yml")
     done < <(list_sites "$config_file")
 
-    # Add orphaned sites (have .ddev but not in cnwp.yml)
+    # Add orphaned sites (have .ddev but not in nwp.yml)
     while IFS=':' read -r name dir; do
         [ -z "$name" ] && continue
         SITE_NAMES+=("$name")
@@ -335,7 +335,7 @@ draw_site_selection() {
     printf "\n"
     printf "───────────────────────────────────────────────────────────────────────────────\n"
     if [ "$has_orphans" = true ]; then
-        printf "Select a site to modify. ${YELLOW}Yellow${NC} sites are not in cnwp.yml.\n"
+        printf "Select a site to modify. ${YELLOW}Yellow${NC} sites are not in nwp.yml.\n"
     else
         printf "Select a site to modify its options.\n"
     fi
@@ -347,7 +347,7 @@ select_site_interactive() {
     build_site_list "$config_file"
 
     if [ ${#SITE_NAMES[@]} -eq 0 ]; then
-        print_error "No sites found in cnwp.yml or as orphaned directories"
+        print_error "No sites found in nwp.yml or as orphaned directories"
         return 1
     fi
 
@@ -522,7 +522,7 @@ show_site_summary() {
         printf "${BOLD}Installation Status:${NC} %b %s\n\n" "$status_icon" "$install_status"
     fi
 
-    # Show installed_modules from cnwp.yml
+    # Show installed_modules from nwp.yml
     local installed_modules=$(awk -v site="$site_name" '
         /^sites:/ { in_sites = 1; next }
         in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
@@ -538,14 +538,14 @@ show_site_summary() {
     ' "$config_file")
 
     if [ -n "$installed_modules" ]; then
-        printf "${BOLD}Installed Modules (from cnwp.yml):${NC}\n"
+        printf "${BOLD}Installed Modules (from nwp.yml):${NC}\n"
         while read -r mod; do
             printf "  - %s\n" "$mod"
         done <<< "$installed_modules"
         printf "\n"
     fi
 
-    # Show options from cnwp.yml
+    # Show options from nwp.yml
     local options_list=$(awk -v site="$site_name" '
         /^sites:/ { in_sites = 1; next }
         in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
@@ -560,7 +560,7 @@ show_site_summary() {
     ' "$config_file")
 
     if [ -n "$options_list" ]; then
-        printf "${BOLD}Options (from cnwp.yml):${NC}\n"
+        printf "${BOLD}Options (from nwp.yml):${NC}\n"
         while read -r opt; do
             printf "  %s\n" "$opt"
         done <<< "$options_list"
@@ -773,9 +773,9 @@ apply_site_options() {
 
     print_status "OK" "Installed: $installed  Removed: $removed"
 
-    # Always update cnwp.yml with current selections
+    # Always update nwp.yml with current selections
     if command -v yaml_site_exists &>/dev/null && yaml_site_exists "$site_name" "$CONFIG_FILE" 2>/dev/null; then
-        print_info "Updating cnwp.yml..."
+        print_info "Updating nwp.yml..."
         local options_yaml=$(generate_options_yaml "      ")
 
         # Remove existing options section and add new one
@@ -796,7 +796,7 @@ apply_site_options() {
         ' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp"
 
         mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
-        print_status "OK" "cnwp.yml updated"
+        print_status "OK" "nwp.yml updated"
     fi
 
     # Show manual steps
@@ -816,7 +816,7 @@ NWP Site Modification Script
 Usage: ./modify.sh [site_name] [options]
 
 Arguments:
-  site_name          Name of site from cnwp.yml (optional)
+  site_name          Name of site from nwp.yml (optional)
 
 Options:
   -i, --info         Show site info only (no TUI)
@@ -866,7 +866,7 @@ main() {
         printf "\n  %-20s %-12s %-12s %s\n" "SITE" "RECIPE" "ENVIRONMENT" "DIRECTORY"
         printf "  %-20s %-12s %-12s %s\n" "--------------------" "------------" "------------" "---------"
 
-        # Sites from cnwp.yml
+        # Sites from nwp.yml
         while read -r site; do
             [ -z "$site" ] && continue
             local recipe=$(get_site_field "$site" "recipe" "$CONFIG_FILE")
@@ -878,7 +878,7 @@ main() {
         # Orphaned sites
         local orphaned=$(find_orphaned_sites "$CONFIG_FILE" "$PROJECT_ROOT")
         if [ -n "$orphaned" ]; then
-            printf "\n  ${YELLOW}Orphaned sites (not in cnwp.yml):${NC}\n"
+            printf "\n  ${YELLOW}Orphaned sites (not in nwp.yml):${NC}\n"
             while IFS=':' read -r name dir; do
                 [ -z "$name" ] && continue
                 local recipe=$(detect_recipe_from_site "$dir")
@@ -894,7 +894,7 @@ main() {
         site_name=$(select_site_interactive "$CONFIG_FILE") || exit 0
     fi
 
-    # Get site info - first try cnwp.yml, then check if orphaned
+    # Get site info - first try nwp.yml, then check if orphaned
     local directory=$(get_site_field "$site_name" "directory" "$CONFIG_FILE")
     local recipe=$(get_site_field "$site_name" "recipe" "$CONFIG_FILE")
     local environment=$(get_site_field "$site_name" "environment" "$CONFIG_FILE")
@@ -908,9 +908,9 @@ main() {
             recipe=$(detect_recipe_from_site "$directory")
             environment="development"
             is_orphan=true
-            print_warning "Site '$site_name' is orphaned (not in cnwp.yml)"
+            print_warning "Site '$site_name' is orphaned (not in nwp.yml)"
         else
-            print_error "Site '$site_name' not found in cnwp.yml or as orphaned directory"
+            print_error "Site '$site_name' not found in nwp.yml or as orphaned directory"
             exit 1
         fi
     fi

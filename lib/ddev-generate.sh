@@ -1,5 +1,5 @@
 #!/bin/bash
-# Generate DDEV configuration from .env and cnwp.yml
+# Generate DDEV configuration from .env and nwp.yml
 # Usage: ./ddev-generate.sh [site_dir]
 
 set -euo pipefail

@@ -30,7 +30,7 @@ The production deployment system supports:
 - ✅ SSH access configured
 
 ### Configuration Requirements
-- ✅ Linode server defined in `cnwp.yml` under `linode:` section
+- ✅ Linode server defined in `nwp.yml` under `linode:` section
 - ✅ Production config in recipe or sites: section
 - ✅ SSH keys added to server's `authorized_keys`
 
@@ -38,7 +38,7 @@ The production deployment system supports:
 
 ### 1. Configure Linode Server
 
-Add your production server to `cnwp.yml`:
+Add your production server to `nwp.yml`:
 
 ```yaml
 linode:
@@ -55,7 +55,7 @@ linode:
         - www.example.com
 ```
 
-**Security Note**: Store sensitive tokens in environment variables, not directly in cnwp.yml.
+**Security Note**: Store sensitive tokens in environment variables, not directly in nwp.yml.
 
 ### 2. Configure Production Deployment in Recipe
 
@@ -103,7 +103,7 @@ ssh deploy@203.0.113.10 echo "Connection successful"
 When deploying with `pl live`, the system automatically configures site emails:
 
 ```yaml
-# In cnwp.yml settings section:
+# In nwp.yml settings section:
 settings:
   url: nwpcode.org
   email:
@@ -350,10 +350,10 @@ ssh-keyscan -H 203.0.113.10 >> ~/.ssh/known_hosts
 **Solutions**:
 ```bash
 # Check recipe configuration
-grep -A 5 "prod_" cnwp.yml | grep myrecipe
+grep -A 5 "prod_" nwp.yml | grep myrecipe
 
 # Verify linode server exists
-grep -A 10 "linode:" cnwp.yml
+grep -A 10 "linode:" nwp.yml
 ```
 
 ### Composer Install Fails

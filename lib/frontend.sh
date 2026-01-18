@@ -209,9 +209,9 @@ detect_package_manager() {
 get_frontend_config() {
     local sitename="$1"
     local config_key="$2"
-    local config_file="$FRONTEND_PROJECT_ROOT/cnwp.yml"
+    local config_file="$FRONTEND_PROJECT_ROOT/nwp.yml"
 
-    # 1. Check site-level override in cnwp.yml
+    # 1. Check site-level override in nwp.yml
     local site_value=$(awk -v site="$sitename" -v key="$config_key" '
         /^sites:/ { in_sites = 1; next }
         in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }

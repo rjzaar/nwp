@@ -8,7 +8,7 @@
 # Usage:
 #   source "$SCRIPT_DIR/lib/install-steps.sh"
 #   get_step_title 4
-#   get_install_status "sitename" "/path/to/cnwp.yml"
+#   get_install_status "sitename" "/path/to/nwp.yml"
 ################################################################################
 
 # Base installation steps (all environments)
@@ -140,12 +140,12 @@ get_step_description() {
 # Progress Tracking Functions
 ################################################################################
 
-# Get installation status from cnwp.yml
+# Get installation status from nwp.yml
 # Args: $1 = site name, $2 = config file
 # Returns: step number (0 = not started, -1 = complete)
 get_install_step() {
     local site="$1"
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
 
     [ ! -f "$config_file" ] && echo "0" && return
 
@@ -169,7 +169,7 @@ get_install_step() {
 # Args: $1 = site name, $2 = config file, $3 = environment
 is_install_complete() {
     local site="$1"
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
     local env="${3:-dev}"
 
     local step=$(get_install_step "$site" "$config_file")
@@ -178,12 +178,12 @@ is_install_complete() {
     [ "$step" = "-1" ] || [ "$step" -ge "$total" ]
 }
 
-# Set installation step in cnwp.yml
+# Set installation step in nwp.yml
 # Args: $1 = site name, $2 = step number, $3 = config file
 set_install_step() {
     local site="$1"
     local step="$2"
-    local config_file="${3:-cnwp.yml}"
+    local config_file="${3:-nwp.yml}"
 
     [ ! -f "$config_file" ] && return 1
 
@@ -239,9 +239,9 @@ mark_install_complete() {
 # Args: $1 = site name, $2 = config file
 is_site_actually_installed() {
     local site="$1"
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
 
-    # Get directory from cnwp.yml
+    # Get directory from nwp.yml
     local directory=""
     if command -v get_site_field &>/dev/null; then
         directory=$(get_site_field "$site" "directory" "$config_file" 2>/dev/null)
@@ -268,7 +268,7 @@ is_site_actually_installed() {
 # Args: $1 = site name, $2 = config file, $3 = environment
 get_install_status_display() {
     local site="$1"
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
     local env="${3:-dev}"
 
     local step=$(get_install_step "$site" "$config_file")
@@ -294,7 +294,7 @@ get_install_status_display() {
 # Returns: green (complete), yellow (in progress), dim (not started)
 get_install_status_color() {
     local site="$1"
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
     local env="${3:-dev}"
 
     local step=$(get_install_step "$site" "$config_file")
@@ -318,7 +318,7 @@ get_install_status_color() {
 # Args: $1 = site name, $2 = config file, $3 = environment
 show_steps_detail() {
     local site="$1"
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
     local env="${3:-dev}"
 
     local current_step=$(get_install_step "$site" "$config_file")

@@ -75,7 +75,7 @@ Required components:
 
 After installation:
 
-1. **Update cnwp.yml** with site-specific settings:
+1. **Update nwp.yml** with site-specific settings:
    ```yaml
    myproject:
      recipe: d
@@ -607,7 +607,7 @@ export CI_COMMIT_BRANCH=develop
 │   └── composer.json      # Dependencies
 ├── sitebackups/           # Backup storage
 │   └── myproject/
-├── cnwp.yml               # Site configuration
+├── nwp.yml               # Site configuration
 └── .secrets.yml           # API tokens (infrastructure)
 ```
 

@@ -11,7 +11,7 @@
 
 Successfully implemented an automated coder identity bootstrap system that eliminates manual configuration errors and streamlines the onboarding process for new NWP coders.
 
-**Before:** New coders had to manually edit `cnwp.yml` and configure their identity across 6-8 manual steps.
+**Before:** New coders had to manually edit `nwp.yml` and configure their identity across 6-8 manual steps.
 
 **After:** Single command automatically configures everything: `./scripts/commands/bootstrap-coder.sh --coder <name>`
 
@@ -37,7 +37,7 @@ Successfully implemented an automated coder identity bootstrap system that elimi
   - SSH key detection
 
 - ✅ **Automatic configuration**
-  - Creates `cnwp.yml` from `example.cnwp.yml`
+  - Creates `nwp.yml` from `example.nwp.yml`
   - Sets `settings.url` to coder's subdomain
   - Creates `.secrets.yml` from example
   - Configures git user.name and user.email
@@ -102,7 +102,7 @@ Quick Start:
 
   The bootstrap script will:
     • Configure your identity automatically
-    • Set up cnwp.yml with your subdomain
+    • Set up nwp.yml with your subdomain
     • Validate your GitLab access
     • Check DNS configuration
     • Guide you through next steps
@@ -186,11 +186,11 @@ All integration tests passed! ✓
 ### Manual Testing Scenarios
 
 1. **✅ Fresh coder with no existing config**
-   - Script creates cnwp.yml correctly
+   - Script creates nwp.yml correctly
    - Sets correct subdomain
    - Shows appropriate warnings
 
-2. **✅ Coder with existing cnwp.yml**
+2. **✅ Coder with existing nwp.yml**
    - Offers to backup existing config
    - Shows current configuration
    - Allows user to skip or overwrite
@@ -304,7 +304,7 @@ cd nwp
 # ✓ GitLab account exists
 # ! NS delegation configured (propagating)
 # ! DNS A records not configured
-# ✓ Configured cnwp.yml
+# ✓ Configured nwp.yml
 # ✓ Configured git
 
 # John adds Linode token to .secrets.yml
@@ -322,10 +322,10 @@ nano .secrets.yml
 ./scripts/commands/bootstrap-coder.sh --coder john
 
 # Output:
-# ! Existing cnwp.yml found
+# ! Existing nwp.yml found
 # Overwrite with new configuration for 'john'? [y/N]: y
-# ✓ Backed up existing config to: cnwp.yml.backup.20260113_174500
-# ✓ Configured cnwp.yml with identity: john
+# ✓ Backed up existing config to: nwp.yml.backup.20260113_174500
+# ✓ Configured nwp.yml with identity: john
 ```
 
 ### Scenario 3: Testing New Configuration
@@ -335,7 +335,7 @@ nano .secrets.yml
 
 # Output:
 # [DRY-RUN MODE: No changes will be made]
-# [DRY-RUN] Would create cnwp.yml from example
+# [DRY-RUN] Would create nwp.yml from example
 # [DRY-RUN] Would set settings.url to: testuser.nwpcode.org
 # [DRY-RUN] Would set git config:
 #   user.name: testuser
@@ -399,7 +399,7 @@ nano .secrets.yml
 
 ### For Existing Coders
 
-Existing coders don't need to do anything - their `cnwp.yml` configurations continue to work.
+Existing coders don't need to do anything - their `nwp.yml` configurations continue to work.
 
 If they want to reconfigure, they can run:
 ```bash

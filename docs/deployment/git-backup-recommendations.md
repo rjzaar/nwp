@@ -73,7 +73,7 @@ This document provides a systematic comparison of git backup approaches across N
 3. No git bundle creation for offline transfer
 4. No support for multiple remotes
 
-#### Configuration (`cnwp.yml`)
+#### Configuration (`nwp.yml`)
 
 The configuration includes deployment options but lacks git backup configuration:
 ```yaml
@@ -356,7 +356,7 @@ From [GitLab Docs](https://docs.gitlab.com/administration/backup_restore/backup_
 
 #### Configuration Example
 ```yaml
-# cnwp.yml addition
+# nwp.yml addition
 git_remotes:
   github:
     url: git@github.com:username/site.git
@@ -393,7 +393,7 @@ gh auth login
 
 #### Configuration Example
 ```yaml
-# cnwp.yml addition
+# nwp.yml addition
 git_remotes:
   gitlab:
     url: git@gitlab.com:username/site.git
@@ -432,7 +432,7 @@ git remote add local git@localhost:/srv/git/site-backup.git
 
 #### Configuration Example
 ```yaml
-# cnwp.yml addition
+# nwp.yml addition
 git_remotes:
   local:
     url: /srv/git/site-backup.git
@@ -459,10 +459,10 @@ git_remotes:
 
 #### NWP Recipe for GitLab
 
-Based on the existing `cnwp.yml` structure, a GitLab recipe could be:
+Based on the existing `nwp.yml` structure, a GitLab recipe could be:
 
 ```yaml
-# cnwp.yml - GitLab recipe (as already present at line 79-85)
+# nwp.yml - GitLab recipe (as already present at line 79-85)
 gitlab:
   type: gitlab
   source: https://gitlab.com/gitlab-org/gitlab-foss.git
@@ -475,7 +475,7 @@ gitlab:
 #### Enhanced Configuration for Backup Integration
 
 ```yaml
-# cnwp.yml additions for git backup
+# nwp.yml additions for git backup
 git_backup:
   enabled: true
   method: push  # or: bundle
@@ -523,7 +523,7 @@ git_backup:
    - Support custom commit messages
    - Handle existing vs new repository
 
-2. **Add configuration in `cnwp.yml`**
+2. **Add configuration in `nwp.yml`**
    ```yaml
    git_backup:
      enabled: false  # Enable per-site
@@ -717,7 +717,7 @@ push_to_remotes() {
 
 #### 6.3.3 Success Criteria
 
-- [ ] Multiple remotes configurable in cnwp.yml
+- [ ] Multiple remotes configurable in nwp.yml
 - [ ] Push to all configured remotes
 - [ ] Clear status reporting
 - [ ] Handles remote failures gracefully
@@ -782,7 +782,7 @@ EOF
 
 #### 6.4.3 Success Criteria
 
-- [ ] Cron schedule configuration in cnwp.yml
+- [ ] Cron schedule configuration in nwp.yml
 - [ ] Schedule installation command
 - [ ] Schedule removal command
 - [ ] Logs written for each scheduled run
@@ -834,7 +834,7 @@ create_gitlab_backup_repo() {
 #### 6.5.3 Configuration
 
 ```yaml
-# cnwp.yml - GitLab backup server configuration
+# nwp.yml - GitLab backup server configuration
 git_backup:
   nwp_gitlab:
     enabled: true
@@ -869,7 +869,7 @@ nwp/
 │   ├── git-backup.sh           # Git backup functions
 │   ├── git-bundle.sh           # Bundle operations
 │   └── git-remote.sh           # Multi-remote management
-├── cnwp.yml                     # Enhanced with git_backup section
+├── nwp.yml                     # Enhanced with git_backup section
 ├── docs/
 │   ├── GIT_BACKUP_RECOMMENDATIONS.md  # This document
 │   └── GIT_BACKUP_SETUP.md           # User guide
@@ -877,7 +877,7 @@ nwp/
     └── gitignore.template       # Standard .gitignore for sites
 ```
 
-### 7.2 Enhanced cnwp.yml Schema
+### 7.2 Enhanced nwp.yml Schema
 
 ```yaml
 # Full git_backup configuration schema
@@ -1040,7 +1040,7 @@ drush sql:sanitize --sanitize-password='[REDACTED]' --sanitize-email='[REDACTED]
 ### 8.4 Configuration File Security
 
 ```yaml
-# cnwp.yml - sensitive data handling
+# nwp.yml - sensitive data handling
 git_backup:
   # Use environment variables for sensitive data
   remotes:

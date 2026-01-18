@@ -12,7 +12,7 @@
 # Features:
 #   - Redirects all outgoing emails to a test address
 #   - Supports whitelist patterns (e.g., *@nwpcode.org)
-#   - Per-site configuration via cnwp.yml
+#   - Per-site configuration via nwp.yml
 #   - Drupal Reroute Email module integration
 ################################################################################
 
@@ -228,15 +228,15 @@ EOF
 }
 
 ################################################################################
-# Parse site email config from cnwp.yml
+# Parse site email config from nwp.yml
 #
 # Arguments:
 #   $1 - Site name
-#   $2 - cnwp.yml path
+#   $2 - nwp.yml path
 ################################################################################
 get_site_email_config() {
     local site_name="$1"
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
 
     if [ ! -f "$config_file" ]; then
         echo ""
@@ -303,7 +303,7 @@ Functions:
       Generate DDEV Mailpit integration settings
 
   get_site_email_config <site_name> [config_file]
-      Parse email config from cnwp.yml
+      Parse email config from nwp.yml
 
 Examples:
   # Generate Drupal config

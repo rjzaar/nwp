@@ -18,7 +18,7 @@ All foundational components have been successfully created and are ready for use
 - ✅ `/home/rob/nwp/scripts/commands/avc-moodle-test.sh` - Integration testing
 
 **Configuration:**
-- ✅ Updated `/home/rob/nwp/example.cnwp.yml` with integration settings for:
+- ✅ Updated `/home/rob/nwp/example.nwp.yml` with integration settings for:
   - `avc` recipe (moodle_integration section + options)
   - `avc-dev` recipe (moodle_integration section + options)
   - `m` recipe (avc_integration section + options)
@@ -44,7 +44,7 @@ All foundational components have been successfully created and are ready for use
 
 ### Prerequisites
 
-Before testing, sites must be registered in cnwp.yml:
+Before testing, sites must be registered in nwp.yml:
 
 ```yaml
 sites:
@@ -130,7 +130,7 @@ The following modules need business logic ported from the standalone solution:
 │ NWP Infrastructure (Phase 1) ✅         │
 │ - Commands (setup, status, sync, test) │
 │ - Library (avc-moodle.sh)              │
-│ - Configuration (example.cnwp.yml)     │
+│ - Configuration (example.nwp.yml)     │
 └──────────────┬──────────────────────────┘
                │
 ┌──────────────▼──────────────────────────┐
@@ -167,7 +167,7 @@ The following modules need business logic ported from the standalone solution:
 - Installs required modules
 - Configures OAuth2
 - Tests SSO flow
-- Updates cnwp.yml
+- Updates nwp.yml
 
 **avc-moodle-status.sh:**
 - Displays integration health
@@ -204,7 +204,7 @@ Both AVC and Moodle recipes now support:
 
 ## Next Steps
 
-1. Register sites in cnwp.yml (see Prerequisites above)
+1. Register sites in nwp.yml (see Prerequisites above)
 2. Test infrastructure commands
 3. Port OAuth UserInfo controller
 4. Create sync and data modules

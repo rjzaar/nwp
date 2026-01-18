@@ -304,13 +304,13 @@ get_secret_nested() {
     fi
 }
 
-# Get setting value from cnwp.yml with fallback
+# Get setting value from nwp.yml with fallback
 # Usage: get_setting "section.key" "default_value"
 # Example: get_setting "php_settings.memory_limit" "512M"
 get_setting() {
     local path="$1"
     local default="$2"
-    local config_file="${PROJECT_ROOT}/cnwp.yml"
+    local config_file="${PROJECT_ROOT}/nwp.yml"
 
     if [ ! -f "$config_file" ]; then
         echo "$default"

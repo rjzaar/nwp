@@ -12,9 +12,9 @@ pl modify [site_name] [options]
 
 ## Description
 
-The `modify` command provides an interactive TUI for managing options on existing Drupal sites. It detects currently installed modules and services (dev modules, XDebug, Redis, Solr, etc.), allows you to enable or disable them, and updates the site configuration in `cnwp.yml`.
+The `modify` command provides an interactive TUI for managing options on existing Drupal sites. It detects currently installed modules and services (dev modules, XDebug, Redis, Solr, etc.), allows you to enable or disable them, and updates the site configuration in `nwp.yml`.
 
-The command can detect "orphaned" sites (directories with `.ddev` but not in `cnwp.yml`) and provides detailed status information about each site including Drupal version, DDEV status, and installation progress.
+The command can detect "orphaned" sites (directories with `.ddev` but not in `nwp.yml`) and provides detailed status information about each site including Drupal version, DDEV status, and installation progress.
 
 Unlike `install.sh` which creates new sites, `modify` works with existing sites to change their configuration after installation.
 
@@ -22,7 +22,7 @@ Unlike `install.sh` which creates new sites, `modify` works with existing sites 
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `site_name` | No | Site slug from cnwp.yml (prompts if omitted) |
+| `site_name` | No | Site slug from nwp.yml (prompts if omitted) |
 
 ## Options
 
@@ -126,7 +126,7 @@ Infrastructure Status:
   ✓ Drupal installed
     Drupal: 11.1.0
 
-Options (from cnwp.yml):
+Options (from nwp.yml):
   dev_modules: true
   stage_file_proxy: true
   redis: true
@@ -153,11 +153,11 @@ Sites
   avc                  nwp          production   /home/rob/nwp/sites/avc
   nwp5                 d            development  /home/rob/nwp/sites/nwp5
 
-  Orphaned sites (not in cnwp.yml):
+  Orphaned sites (not in nwp.yml):
   oldsite              drupal       (orphan)     /home/rob/nwp/sites/oldsite
 ```
 
-Orphaned sites appear in yellow and can be modified but aren't tracked in `cnwp.yml`.
+Orphaned sites appear in yellow and can be modified but aren't tracked in `nwp.yml`.
 
 ## Interactive TUI
 
@@ -233,22 +233,22 @@ The script will not automatically start DDEV to avoid unexpected resource usage.
 
 ## Orphaned Site Detection
 
-Orphaned sites are directories with `.ddev/` but not in `cnwp.yml`:
+Orphaned sites are directories with `.ddev/` but not in `nwp.yml`:
 
 ```
 /home/rob/nwp/sites/
-  ├── avc/          # In cnwp.yml ✓
+  ├── avc/          # In nwp.yml ✓
   │   └── .ddev/
-  ├── nwp5/         # In cnwp.yml ✓
+  ├── nwp5/         # In nwp.yml ✓
   │   └── .ddev/
-  └── oldtest/      # NOT in cnwp.yml ✗ (orphaned)
+  └── oldtest/      # NOT in nwp.yml ✗ (orphaned)
       └── .ddev/
 ```
 
 Orphaned sites:
 - Show in yellow in site list
 - Can be modified via TUI
-- Don't update `cnwp.yml` (not tracked)
+- Don't update `nwp.yml` (not tracked)
 - Useful for cleanup or migration
 
 ### Recipe Detection
@@ -292,15 +292,15 @@ When you press ENTER, the script:
    [✓] Installed: 2  Removed: 1
    ```
 
-3. Updates `cnwp.yml`:
+3. Updates `nwp.yml`:
    ```
-   [i] Updating cnwp.yml...
-   [✓] cnwp.yml updated
+   [i] Updating nwp.yml...
+   [✓] nwp.yml updated
    ```
 
-## cnwp.yml Updates
+## nwp.yml Updates
 
-Changes are saved to `cnwp.yml` under the site's `options:` section:
+Changes are saved to `nwp.yml` under the site's `options:` section:
 
 ```yaml
 sites:
@@ -454,7 +454,7 @@ rm -rf migration/  # Only if source/ and database/ are empty
 - **Detection requires running site**: DDEV must be running to detect installed options
 - **Services need restart**: Redis and Solr require DDEV restart
 - **Migration folder safety**: Only deletes migration folder if completely empty
-- **Orphaned sites**: Can modify orphaned sites but changes won't persist in cnwp.yml
+- **Orphaned sites**: Can modify orphaned sites but changes won't persist in nwp.yml
 - **Multiple runs**: Safe to run multiple times; detects current state each time
 
 ## Troubleshooting
@@ -498,10 +498,10 @@ pl modify sitename
 **Symptom:** Site exists but doesn't appear in `pl modify --list`
 
 **Solution:**
-1. Check `cnwp.yml` has site entry
+1. Check `nwp.yml` has site entry
 2. Verify site directory exists
 3. Look in orphaned sites section (yellow)
-4. Create site entry manually in `cnwp.yml`
+4. Create site entry manually in `nwp.yml`
 
 ### Can't Remove Migration Folder
 

@@ -362,7 +362,7 @@ ERROR: No backups found for site 'avc'
 - Check backup directory: `ls sitebackups/avc/`
 - Verify site name spelling
 - Create a backup: `pl backup avc`
-- Check backup location in `cnwp.yml`
+- Check backup location in `nwp.yml`
 
 ### Destination Site Not Found
 

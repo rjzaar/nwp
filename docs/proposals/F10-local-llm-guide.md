@@ -1062,7 +1062,7 @@ ollama run qwen2.5-coder:7b
 
 **Configure in NWP (when F10 is implemented):**
 ```yaml
-# cnwp.yml
+# nwp.yml
 ai:
   provider: local
   local:

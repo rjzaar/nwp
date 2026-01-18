@@ -127,9 +127,9 @@ ensure_prod_mode() {
 # Configuration
 ################################################################################
 
-# Get base domain from cnwp.yml settings.url
+# Get base domain from nwp.yml settings.url
 get_base_domain() {
-    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/nwp.yml"
 
     if [ -f "$cnwp_file" ]; then
         awk '
@@ -198,10 +198,10 @@ live_exists() {
     return 1
 }
 
-# Get live server IP from cnwp.yml
+# Get live server IP from nwp.yml
 get_live_ip() {
     local sitename="$1"
-    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/nwp.yml"
 
     if [ -f "$cnwp_file" ]; then
         awk -v site="$sitename" '
@@ -229,11 +229,11 @@ live_status() {
 
     print_header "Live Server Status: $sitename"
 
-    # Check cnwp.yml for config
+    # Check nwp.yml for config
     local server_ip=$(get_live_ip "$sitename")
 
     if [ -n "$server_ip" ]; then
-        print_status "OK" "Configured in cnwp.yml"
+        print_status "OK" "Configured in nwp.yml"
         echo "  IP: ${server_ip}"
         echo "  Domain: https://${domain}"
 
@@ -794,7 +794,7 @@ SECURITY
     fi
 }
 
-# Update cnwp.yml with live server info
+# Update nwp.yml with live server info
 update_cnwp_live() {
     local sitename="$1"
     local ip="$2"
@@ -803,16 +803,16 @@ update_cnwp_live() {
     local base_domain=$(get_base_domain)
     local domain="${sitename}.${base_domain}"
 
-    print_info "Updating cnwp.yml..."
+    print_info "Updating nwp.yml..."
 
     # Source yaml-write library
     source "$PROJECT_ROOT/lib/yaml-write.sh"
 
     # Update site with live configuration using yaml_add_site_live
-    if yaml_add_site_live "$sitename" "$domain" "$ip" "$linode_id" "$type" "${PROJECT_ROOT}/cnwp.yml" 2>/dev/null; then
-        print_status "OK" "cnwp.yml updated"
+    if yaml_add_site_live "$sitename" "$domain" "$ip" "$linode_id" "$type" "${PROJECT_ROOT}/nwp.yml" 2>/dev/null; then
+        print_status "OK" "nwp.yml updated"
     else
-        print_warning "Could not update cnwp.yml (site may not exist yet)"
+        print_warning "Could not update nwp.yml (site may not exist yet)"
     fi
 }
 
@@ -918,7 +918,7 @@ provision_dedicated() {
         return 1
     fi
 
-    # Update cnwp.yml (function handles idempotency - adds missing values only)
+    # Update nwp.yml (function handles idempotency - adds missing values only)
     update_cnwp_live "$sitename" "$ip" "$instance_id" "dedicated" || true
 
     print_header "Live Server Ready"
@@ -1022,7 +1022,7 @@ REMOTE
         return 1
     fi
 
-    # Update cnwp.yml (function handles idempotency - adds missing values only)
+    # Update nwp.yml (function handles idempotency - adds missing values only)
     update_cnwp_live "$sitename" "$ip" "shared" "shared" || true
 
     print_header "Shared Live Server Ready"
@@ -1114,8 +1114,8 @@ REMOTE
             ;;
     esac
 
-    # Remove live section from cnwp.yml
-    print_info "Updating cnwp.yml..."
+    # Remove live section from nwp.yml
+    print_info "Updating nwp.yml..."
 
     # Source yaml-write library if not already loaded
     if ! command -v yaml_update_site_field &>/dev/null; then
@@ -1125,7 +1125,7 @@ REMOTE
     # Remove live configuration from site
     # We use awk to remove the entire live: section
     local BASE_NAME=$(get_base_name "$sitename")
-    local config_file="$PROJECT_ROOT/cnwp.yml"
+    local config_file="$PROJECT_ROOT/nwp.yml"
     local temp_file=$(mktemp)
 
     awk -v site="$BASE_NAME" '
@@ -1145,10 +1145,10 @@ REMOTE
 
     if [ -s "$temp_file" ]; then
         mv "$temp_file" "$config_file"
-        print_status "OK" "Removed live configuration from cnwp.yml"
+        print_status "OK" "Removed live configuration from nwp.yml"
     else
         rm -f "$temp_file"
-        print_warning "Could not update cnwp.yml (file may need manual cleanup)"
+        print_warning "Could not update nwp.yml (file may need manual cleanup)"
     fi
 
     print_status "OK" "Live server deleted"

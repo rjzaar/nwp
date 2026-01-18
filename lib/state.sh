@@ -135,9 +135,9 @@ backup_age_human() {
 check_prod_ssh() {
     local sitename="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local config_file="$script_dir/cnwp.yml"
+    local config_file="$script_dir/nwp.yml"
 
-    # Get live config from cnwp.yml
+    # Get live config from nwp.yml
     if [ ! -f "$config_file" ]; then
         return 1
     fi
@@ -168,7 +168,7 @@ check_prod_ssh() {
 has_live_config() {
     local sitename="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local config_file="$script_dir/cnwp.yml"
+    local config_file="$script_dir/nwp.yml"
 
     if [ ! -f "$config_file" ]; then
         return 1
@@ -186,7 +186,7 @@ has_live_config() {
 get_live_domain() {
     local sitename="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local config_file="$script_dir/cnwp.yml"
+    local config_file="$script_dir/nwp.yml"
 
     if [ ! -f "$config_file" ]; then
         return 1

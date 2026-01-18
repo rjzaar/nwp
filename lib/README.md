@@ -439,7 +439,7 @@ create_linode_server "$token" "us-east" "g6-nanode-1" "myserver"
 **Key Write Functions:**
 - `yaml_write_site()` - Write entire site definition
 - `yaml_update_site_field()` - Update single site field
-- `yaml_delete_site()` - Remove site from cnwp.yml
+- `yaml_delete_site()` - Remove site from nwp.yml
 - `yaml_write_coder()` - Write coder definition
 - `yaml_update_coder_field()` - Update coder field
 
@@ -451,7 +451,7 @@ create_linode_server "$token" "us-east" "g6-nanode-1" "myserver"
 **Dependencies:** ui.sh (for error messages), yq (YAML processor)
 
 **Security Features:**
-- 5-layer protection for cnwp.yml modifications (see docs/SECURITY.md)
+- 5-layer protection for nwp.yml modifications (see docs/SECURITY.md)
 - Line count tracking prevents data loss
 - mktemp for atomic writes
 - Empty output detection

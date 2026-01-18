@@ -21,7 +21,7 @@ install_gitlab() {
     local install_dir=$2
     local start_step=${3:-1}
     local purpose=${4:-indefinite}
-    local config_file="cnwp.yml"
+    local config_file="nwp.yml"
 
     # Get recipe configuration
     local source=$(get_recipe_value "$recipe" "source" "$config_file")
@@ -211,21 +211,21 @@ GITLAB_README
 
     cd "$SCRIPT_DIR"
 
-    # Register site in cnwp.yml
+    # Register site in nwp.yml
     local site_dir="$PROJECT_ROOT/$install_dir"
 
     if command -v yaml_add_site &> /dev/null; then
-        if yaml_add_site "$install_dir" "$site_dir" "$recipe" "development" "$purpose" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
-            print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
+        if yaml_add_site "$install_dir" "$site_dir" "$recipe" "development" "$purpose" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
+            print_status "OK" "Site registered in nwp.yml (purpose: $purpose)"
 
             # Update site with selected options
-            update_site_options "$install_dir" "$PROJECT_ROOT/cnwp.yml"
+            update_site_options "$install_dir" "$PROJECT_ROOT/nwp.yml"
         else
             print_info "Site registration skipped (may already exist)"
 
             # Still try to update options if site exists
-            if yaml_site_exists "$install_dir" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
-                update_site_options "$install_dir" "$PROJECT_ROOT/cnwp.yml"
+            if yaml_site_exists "$install_dir" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
+                update_site_options "$install_dir" "$PROJECT_ROOT/nwp.yml"
             fi
         fi
     fi

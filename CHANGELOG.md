@@ -177,7 +177,7 @@ This release represents the most comprehensive documentation update in NWP histo
 #### Git Hooks Implementation
 
 **Created pre-commit hook:**
-- Prevents committing `cnwp.yml` (user-specific configuration)
+- Prevents committing `nwp.yml` (user-specific configuration)
 - Warns about outdated documentation dates (>7 days)
 - Validates command documentation structure
 - Color-coded output with bypass instructions
@@ -267,7 +267,7 @@ All new documentation follows `DOCUMENTATION_STANDARDS.md`:
   - Added comprehensive CC0 1.0 Universal public domain dedication documentation
   - New `docs/CC0_DEDICATION.md` with full legal details and FAQs
   - Updated `CONTRIBUTING.md` with contributor agreement (CC0 dedication required)
-  - Added license information to `example.cnwp.yml` and `README.md`
+  - Added license information to `example.nwp.yml` and `README.md`
   - Biblical foundation: "Freely you have received, freely give." — Matthew 10:8
 
 - **AVC Help Documentation System**
@@ -314,8 +314,8 @@ All new documentation follows `DOCUMENTATION_STANDARDS.md`:
   - Achieved 99%+ pass rate across test suite
   - Fixed critical test issues for reliable CI/CD
 
-- **cnwp.yml Data Integrity**
-  - Fixed critical bug preventing cnwp.yml from being emptied on duplicate site entries
+- **nwp.yml Data Integrity**
+  - Fixed critical bug preventing nwp.yml from being emptied on duplicate site entries
   - Improved site registration handling
 
 - **AVC Guild Resources UX**
@@ -439,7 +439,7 @@ All new documentation follows `DOCUMENTATION_STANDARDS.md`:
   - Auto-configure site emails during `pl live` deployment
   - Site email set to `sitename@nwpcode.org`
   - Admin email forwarding configured automatically
-  - Configurable via `settings.email` in cnwp.yml
+  - Configurable via `settings.email` in nwp.yml
 
 - **Email Verification in Deployments**
   - Added email verification step to `stg2live` and `stg2prod`

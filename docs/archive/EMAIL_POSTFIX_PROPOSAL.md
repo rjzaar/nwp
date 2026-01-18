@@ -682,7 +682,7 @@ Compile the sieve script:
 sievec /var/mail/vhosts/nwpcode.org/nwp1/.dovecot.sieve
 ```
 
-##### cnwp.yml Site Email Configuration
+##### nwp.yml Site Email Configuration
 
 ```yaml
 sites:

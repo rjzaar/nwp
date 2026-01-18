@@ -55,7 +55,7 @@ After the initial implementation started, the user provided these instructions:
 ### Key Files
 - **Proposal:** `/home/rob/nwp/docs/proposals/P50-layered-verification-system.md`
 - **Standing orders:** `/home/rob/nwp/CLAUDE.md` (read this first!)
-- **Protected files:** Never commit `cnwp.yml`, `.secrets.data.yml`
+- **Protected files:** Never commit `nwp.yml`, `.secrets.data.yml`
 
 ### Session Issues to Avoid
 - **DO NOT read massive output files** without checking size first
@@ -176,7 +176,7 @@ ls -lh /tmp/claude/-home-rob-nwp/tasks/*.output
 ## Critical Constraints
 
 ### From CLAUDE.md (must read full file)
-- **Never commit:** `cnwp.yml`, `.secrets.data.yml`, `.env` files
+- **Never commit:** `nwp.yml`, `.secrets.data.yml`, `.env` files
 - **Protected files:** Two-tier secrets system
 - **Security red flags:** Watch for suspicious changes
 - **Release process:** Specific checklist for version tags

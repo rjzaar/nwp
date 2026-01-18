@@ -259,7 +259,7 @@ test-nwp.sh
 | Library exists | `lib/yaml-write.sh` present | File exists |
 | Test script | `tests/test-yaml-write.sh` | Pass if exists |
 | Integration tests | `tests/test-integration.sh` | Pass if exists |
-| Site registered | Test site in cnwp.yml | Entry present |
+| Site registered | Test site in nwp.yml | Entry present |
 
 ---
 
@@ -275,7 +275,7 @@ test-nwp.sh
 | Check | Description | Pass Criteria |
 |-------|-------------|---------------|
 | Provision instance | Create test Linode | Instance running |
-| Add to config | Register in cnwp.yml | Entry present |
+| Add to config | Register in nwp.yml | Entry present |
 | SSH connection | Connect to instance | SSH succeeds |
 | Server setup | apt-get update | Command succeeds |
 | Scripts exist | stg2prod.sh, prod2stg.sh | Files present |

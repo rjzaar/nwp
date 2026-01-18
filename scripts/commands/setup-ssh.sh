@@ -23,7 +23,7 @@ source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/ssh.sh"
 
-# Get list of Linode servers from cnwp.yml
+# Get list of Linode servers from nwp.yml
 get_linode_servers() {
     awk '
         /^linode:/ { in_linode=1 }
@@ -34,10 +34,10 @@ get_linode_servers() {
             print server
         }
         in_servers && /^  [a-z]/ && !/^  servers:/ { in_servers=0; in_linode=0 }
-    ' "$PROJECT_ROOT/cnwp.yml" 2>/dev/null
+    ' "$PROJECT_ROOT/nwp.yml" 2>/dev/null
 }
 
-# Get server details from cnwp.yml
+# Get server details from nwp.yml
 get_server_detail() {
     local server_name=$1
     local detail=$2
@@ -55,7 +55,7 @@ get_server_detail() {
             exit
         }
         in_server && /^    [a-z]/ { in_server=0 }
-    ' "$PROJECT_ROOT/cnwp.yml" 2>/dev/null
+    ' "$PROJECT_ROOT/nwp.yml" 2>/dev/null
 }
 
 # Push SSH key to specific Linode server
@@ -159,7 +159,7 @@ NEXT STEPS (Manual - Required):
     2. For existing servers, also add key manually:
        ssh-copy-id -i ~/.ssh/nwp user@your-server
 
-    3. Configure deployment in cnwp.yml:
+    3. Configure deployment in nwp.yml:
        linode:
          servers:
            linode_primary:
@@ -392,7 +392,7 @@ echo ""
 echo "Option 3 - Copy from this file:"
 echo "  ${BLUE}cat $PUBLIC_KEY${NC}"
 echo ""
-echo -e "${BOLD}Configure deployment in cnwp.yml:${NC}"
+echo -e "${BOLD}Configure deployment in nwp.yml:${NC}"
 echo ""
 echo "  ${BLUE}linode:"
 echo "    servers:"

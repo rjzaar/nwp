@@ -15,7 +15,7 @@ NWP is a standalone shell script system. Claude Code is entirely optional - all 
 
 # Import existing production site
 ./import.sh                        # Interactive mode
-./import.sh --server=production    # Use specific server from cnwp.yml
+./import.sh --server=production    # Use specific server from nwp.yml
 ./import.sh --ssh=root@example.com # Custom SSH connection
 
 # Deployment

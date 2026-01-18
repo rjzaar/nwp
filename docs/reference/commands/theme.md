@@ -166,7 +166,7 @@ The command automatically detects the build tool based on project files:
 
 ## Configuration
 
-Override auto-detection in `cnwp.yml`:
+Override auto-detection in `nwp.yml`:
 
 ```yaml
 sites:
@@ -214,7 +214,7 @@ brew install node
 The command searches for themes in order:
 
 1. **Explicit path** (if provided via `-t` option)
-2. **cnwp.yml frontend.theme_path** (if configured)
+2. **nwp.yml frontend.theme_path** (if configured)
 3. **Active Drupal theme** (via drush)
 4. **Custom themes directory**: `sites/<sitename>/web/themes/custom/`
 5. **Contrib themes directory**: `sites/<sitename>/web/themes/contrib/`
@@ -249,7 +249,7 @@ ls -la /path/to/theme/webpack.config.js
 ```
 
 2. Add configuration file if missing
-3. Override in cnwp.yml:
+3. Override in nwp.yml:
 ```yaml
 sites:
   mysite:
@@ -432,7 +432,7 @@ build-theme:
 ### Custom Theme Path
 
 ```yaml
-# cnwp.yml
+# nwp.yml
 sites:
   mysite:
     frontend:

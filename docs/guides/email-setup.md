@@ -235,7 +235,7 @@ Inbound:  User Reply → Webhook /api/email/inbound → Queue → Comment
 
 ### Configuration
 
-#### Via Recipe (cnwp.yml)
+#### Via Recipe (nwp.yml)
 
 ```yaml
 recipes:
@@ -429,7 +429,7 @@ MAILPIT_ENABLED=false
 
 ### Global Email Settings
 
-`cnwp.yml`:
+`nwp.yml`:
 ```yaml
 settings:
   email:

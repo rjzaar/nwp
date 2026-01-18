@@ -19,28 +19,28 @@ The pre-commit hook runs automatically before each commit and performs the follo
 
 ### 1. Protected File Check
 
-**Prevents committing `cnwp.yml`**
+**Prevents committing `nwp.yml`**
 
-The `cnwp.yml` file contains user-specific site configurations and must never be committed to git.
+The `nwp.yml` file contains user-specific site configurations and must never be committed to git.
 
 ```
-ERROR: Attempting to commit cnwp.yml
+ERROR: Attempting to commit nwp.yml
 
-cnwp.yml contains user-specific site configurations and must never be committed.
+nwp.yml contains user-specific site configurations and must never be committed.
 
 If you need to update the configuration template:
-  - Edit example.cnwp.yml instead
-  - Each user has their own local cnwp.yml file
+  - Edit example.nwp.yml instead
+  - Each user has their own local nwp.yml file
 
-To unstage cnwp.yml:
-  git reset HEAD cnwp.yml
+To unstage nwp.yml:
+  git reset HEAD nwp.yml
 ```
 
 **Why this exists:**
-- `cnwp.yml` is in `.gitignore` for a reason
+- `nwp.yml` is in `.gitignore` for a reason
 - Each user has their own local site configurations
-- `example.cnwp.yml` serves as the template for new installations
-- Users copy `example.cnwp.yml` to `cnwp.yml` and customize it
+- `example.nwp.yml` serves as the template for new installations
+- Users copy `example.nwp.yml` to `nwp.yml` and customize it
 
 ### 2. Documentation Date Check
 
@@ -117,9 +117,9 @@ To bypass warnings in the future: git commit --no-verify
 ```
 Running NWP pre-commit checks...
 
-ERROR: Attempting to commit cnwp.yml
+ERROR: Attempting to commit nwp.yml
 
-cnwp.yml contains user-specific site configurations and must never be committed.
+nwp.yml contains user-specific site configurations and must never be committed.
 
 Pre-commit check failed with 1 error(s)
 

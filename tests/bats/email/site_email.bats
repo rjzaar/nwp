@@ -4,7 +4,7 @@
 #
 # Tests for automated site email setup:
 #   - add_site_email.sh script
-#   - Email schema in example.cnwp.yml
+#   - Email schema in example.nwp.yml
 #   - --site-mail in install-drupal.sh
 #   - setup_site_email function in live.sh
 #   - setup_git_alias function in setup_email.sh
@@ -22,7 +22,7 @@ setup() {
     SETUP_EMAIL="${PROJECT_ROOT}/email/setup_email.sh"
     INSTALL_DRUPAL="${PROJECT_ROOT}/lib/install-drupal.sh"
     LIVE_SH="${PROJECT_ROOT}/scripts/commands/live.sh"
-    EXAMPLE_CNWP="${PROJECT_ROOT}/example.cnwp.yml"
+    EXAMPLE_NWP="${PROJECT_ROOT}/example.nwp.yml"
 }
 
 ################################################################################
@@ -126,33 +126,33 @@ setup() {
 }
 
 ################################################################################
-# example.cnwp.yml Email Schema Tests
+# example.nwp.yml Email Schema Tests
 ################################################################################
 
-@test "example.cnwp.yml - has settings.email section" {
-    run grep -A5 "^  email:" "$EXAMPLE_CNWP"
+@test "example.nwp.yml - has settings.email section" {
+    run grep -A5 "^  email:" "$EXAMPLE_NWP"
     [ "$status" -eq 0 ]
     [[ "$output" == *"domain"* ]]
 }
 
-@test "example.cnwp.yml - email section has domain setting" {
-    run grep "domain:.*nwpcode.org" "$EXAMPLE_CNWP"
+@test "example.nwp.yml - email section has domain setting" {
+    run grep "domain:.*nwpcode.org" "$EXAMPLE_NWP"
     [ "$status" -eq 0 ]
 }
 
-@test "example.cnwp.yml - email section has admin_email setting" {
-    run grep "admin_email:" "$EXAMPLE_CNWP"
+@test "example.nwp.yml - email section has admin_email setting" {
+    run grep "admin_email:" "$EXAMPLE_NWP"
     [ "$status" -eq 0 ]
 }
 
-@test "example.cnwp.yml - email section has auto_configure setting" {
-    run grep "auto_configure:" "$EXAMPLE_CNWP"
+@test "example.nwp.yml - email section has auto_configure setting" {
+    run grep "auto_configure:" "$EXAMPLE_NWP"
     [ "$status" -eq 0 ]
 }
 
-@test "example.cnwp.yml - coder schema includes email field" {
+@test "example.nwp.yml - coder schema includes email field" {
     # Check for coder email documentation
-    run grep -E "(coder.*email|email:.*coder|# .*email.*forward)" "$EXAMPLE_CNWP"
+    run grep -E "(coder.*email|email:.*coder|# .*email.*forward)" "$EXAMPLE_NWP"
     [ "$status" -eq 0 ]
 }
 

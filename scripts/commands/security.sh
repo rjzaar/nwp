@@ -326,10 +326,10 @@ security_audit() {
 ################################################################################
 
 check_all_sites() {
-    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/nwp.yml"
 
     if [ ! -f "$cnwp_file" ]; then
-        print_error "cnwp.yml not found"
+        print_error "nwp.yml not found"
         return 1
     fi
 

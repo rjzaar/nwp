@@ -12,7 +12,7 @@ pl sync <sitename> [options]
 
 ## Description
 
-The `sync` command pulls fresh database and/or files from a remote server to your local development environment. It's designed for sites that were originally imported using `pl import` and maintains configuration of the source server in `cnwp.yml`.
+The `sync` command pulls fresh database and/or files from a remote server to your local development environment. It's designed for sites that were originally imported using `pl import` and maintains configuration of the source server in `nwp.yml`.
 
 Common use cases:
 - Pull latest production data for local development
@@ -26,7 +26,7 @@ The command handles database export, transfer, import, and sanitization automati
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `sitename` | Yes | Site slug from cnwp.yml |
+| `sitename` | Yes | Site slug from nwp.yml |
 
 ## Options
 
@@ -99,7 +99,7 @@ Combines multiple options: backup, database-only, auto-confirm.
 
 ## Source Configuration
 
-The sync command reads source server configuration from `cnwp.yml`:
+The sync command reads source server configuration from `nwp.yml`:
 
 ```yaml
 sites:
@@ -221,7 +221,7 @@ Runs `drush cache:rebuild` to ensure clean state.
 
 ### 5. Update Timestamp
 
-Updates `last_sync` field in `cnwp.yml`:
+Updates `last_sync` field in `nwp.yml`:
 
 ```yaml
 sites:
@@ -375,8 +375,8 @@ Next steps:
 
 ## Prerequisites
 
-- Site exists and is configured as `type: import` in cnwp.yml
-- Source server configuration in cnwp.yml
+- Site exists and is configured as `type: import` in nwp.yml
+- Source server configuration in nwp.yml
 - SSH access to remote server
 - SSH key configured (~/.ssh/nwp by default)
 - DDEV installed and configured
@@ -444,7 +444,7 @@ Prevents accidental:
 - **Idempotent**: Safe to run multiple times
 - **DDEV auto-start**: Starts DDEV if not running
 - **Composer update**: Runs `composer install` after file sync
-- **Timestamp tracking**: Updates `last_sync` in cnwp.yml
+- **Timestamp tracking**: Updates `last_sync` in nwp.yml
 - **Stage File Proxy**: Consider using for user files instead of syncing
 
 ## Troubleshooting
@@ -455,7 +455,7 @@ Prevents accidental:
 
 **Solution:**
 1. Check site exists: `pl modify --list`
-2. Verify `type: import` in cnwp.yml:
+2. Verify `type: import` in nwp.yml:
    ```yaml
    sites:
      avc:

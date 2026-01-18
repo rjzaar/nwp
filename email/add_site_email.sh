@@ -387,12 +387,12 @@ delete_site_email() {
 }
 
 ################################################################################
-# Setup from cnwp.yml
+# Setup from nwp.yml
 ################################################################################
 
 setup_from_config() {
     local sitename="$1"
-    local config_file="${NWP_DIR}/${sitename}/cnwp.yml"
+    local config_file="${NWP_DIR}/${sitename}/nwp.yml"
 
     if [ ! -f "$config_file" ]; then
         print_error "Config file not found: ${config_file}"

@@ -270,10 +270,10 @@ cmd_analyze() {
     local detected_type=$(detect_drupal_version "$source_dir")
     echo "  Detected: $detected_type"
 
-    # Get configured type from cnwp.yml
+    # Get configured type from nwp.yml
     local configured_type=""
     if command -v yaml_get_site_field &> /dev/null; then
-        configured_type=$(yaml_get_site_field "$sitename" "source_type" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null || echo "")
+        configured_type=$(yaml_get_site_field "$sitename" "source_type" "$PROJECT_ROOT/nwp.yml" 2>/dev/null || echo "")
     fi
 
     if [ -n "$configured_type" ] && [ "$configured_type" != "$detected_type" ]; then
@@ -364,9 +364,9 @@ cmd_analyze() {
             ;;
     esac
 
-    # Update cnwp.yml with analysis results
+    # Update nwp.yml with analysis results
     if command -v yaml_update_site_field &> /dev/null; then
-        yaml_update_site_field "$sitename" "source_type" "$detected_type" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null || true
+        yaml_update_site_field "$sitename" "source_type" "$detected_type" "$PROJECT_ROOT/nwp.yml" 2>/dev/null || true
 
         # Update migration status
         local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -396,7 +396,7 @@ cmd_prepare() {
     # Get source type
     local source_type=""
     if command -v yaml_get_site_field &> /dev/null; then
-        source_type=$(yaml_get_site_field "$sitename" "source_type" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null || echo "other")
+        source_type=$(yaml_get_site_field "$sitename" "source_type" "$PROJECT_ROOT/nwp.yml" 2>/dev/null || echo "other")
     fi
 
     if [ -z "$source_type" ]; then
@@ -452,7 +452,7 @@ cmd_prepare() {
 
     # Update status
     if command -v yaml_update_site_field &> /dev/null; then
-        yaml_update_site_field "$sitename" "status" "prepared" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null || true
+        yaml_update_site_field "$sitename" "status" "prepared" "$PROJECT_ROOT/nwp.yml" 2>/dev/null || true
     fi
 
     print_status "OK" "Target site prepared: $target_name"
@@ -490,7 +490,7 @@ cmd_run() {
     # Get source type
     local source_type=""
     if command -v yaml_get_site_field &> /dev/null; then
-        source_type=$(yaml_get_site_field "$sitename" "source_type" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null || echo "other")
+        source_type=$(yaml_get_site_field "$sitename" "source_type" "$PROJECT_ROOT/nwp.yml" 2>/dev/null || echo "other")
     fi
 
     print_info "Migration type: $source_type"
@@ -518,7 +518,7 @@ cmd_run() {
 
     # Update status
     if command -v yaml_update_site_field &> /dev/null; then
-        yaml_update_site_field "$sitename" "status" "migrating" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null || true
+        yaml_update_site_field "$sitename" "status" "migrating" "$PROJECT_ROOT/nwp.yml" 2>/dev/null || true
     fi
 }
 
@@ -572,11 +572,11 @@ cmd_status() {
 
     print_header "Migration Status: $sitename"
 
-    # Get info from cnwp.yml
+    # Get info from nwp.yml
     if command -v yaml_get_site_field &> /dev/null; then
-        local source_type=$(yaml_get_site_field "$sitename" "source_type" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null)
-        local status=$(yaml_get_site_field "$sitename" "status" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null)
-        local created=$(yaml_get_site_field "$sitename" "created" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null)
+        local source_type=$(yaml_get_site_field "$sitename" "source_type" "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
+        local status=$(yaml_get_site_field "$sitename" "status" "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
+        local created=$(yaml_get_site_field "$sitename" "created" "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
 
         echo "Site: $sitename"
         echo "Source type: ${source_type:-unknown}"

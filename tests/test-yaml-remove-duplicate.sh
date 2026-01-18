@@ -2,7 +2,7 @@
 ################################################################################
 # Regression Test: yaml_remove_site() with Duplicate Entries
 #
-# Tests the fix for the bug where duplicate site entries caused cnwp.yml
+# Tests the fix for the bug where duplicate site entries caused nwp.yml
 # to be emptied when running yaml_remove_site()
 #
 # Bug Report: ROOT_CAUSE_ANALYSIS.md
@@ -215,7 +215,7 @@ EOF
     # Start first removal in background (will hold lock)
     (
         # Acquire lock and hold it for 3 seconds
-        exec 200>"/tmp/cnwp.yml.lock.test"
+        exec 200>"/tmp/nwp.yml.lock.test"
         flock -x 200
         sleep 3
         flock -u 200
@@ -236,7 +236,7 @@ EOF
     # Wait for background process
     wait $bg_pid 2>/dev/null || true
 
-    rm -f "$test_file" "/tmp/cnwp.yml.lock.test"
+    rm -f "$test_file" "/tmp/nwp.yml.lock.test"
 }
 
 ################################################################################
@@ -246,7 +246,7 @@ EOF
 main() {
     print_header "Regression Tests: yaml_remove_site() Duplicate Entry Bug"
 
-    echo "Testing fixes for bug that emptied cnwp.yml on duplicate entries"
+    echo "Testing fixes for bug that emptied nwp.yml on duplicate entries"
     echo "Bug report: ROOT_CAUSE_ANALYSIS.md"
     echo ""
 

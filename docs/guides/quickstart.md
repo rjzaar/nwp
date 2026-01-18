@@ -126,7 +126,7 @@ Common recipes:
 
 ## Configuration
 
-Edit `cnwp.yml` to customize:
+Edit `nwp.yml` to customize:
 
 ```yaml
 settings:

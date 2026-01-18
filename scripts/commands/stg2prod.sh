@@ -80,11 +80,11 @@ build_rsync_ssh_opts() {
     echo "$opts"
 }
 
-# Get recipe value from cnwp.yml
+# Get recipe value from nwp.yml
 get_recipe_value() {
     local recipe=$1
     local key=$2
-    local config_file="${3:-cnwp.yml}"
+    local config_file="${3:-nwp.yml}"
 
     awk -v recipe="$recipe" -v key="$key" '
         BEGIN { in_recipe = 0; found = 0 }
@@ -108,7 +108,7 @@ get_recipe_value() {
 get_linode_config() {
     local server_name=$1
     local field=$2
-    local config_file="${3:-cnwp.yml}"
+    local config_file="${3:-nwp.yml}"
 
     awk -v server="$server_name" -v field="$field" '
         BEGIN { in_servers = 0; in_server = 0 }
@@ -121,7 +121,7 @@ get_linode_config() {
             print
             exit
         }
-    ' "$PROJECT_ROOT/cnwp.yml"
+    ' "$PROJECT_ROOT/nwp.yml"
 }
 
 # Check if site is in production mode
@@ -189,7 +189,7 @@ ${BOLD}OPTIONS:${NC}
     --dry-run               Show what would be done without making changes
 
 ${BOLD}ARGUMENTS:${NC}
-    sitename                Base name of the staging site (production will be configured in cnwp.yml)
+    sitename                Base name of the staging site (production will be configured in nwp.yml)
 
 ${BOLD}EXAMPLES:${NC}
     ./stg2prod.sh nwp                     # Deploy nwp-stg to production
@@ -199,7 +199,7 @@ ${BOLD}EXAMPLES:${NC}
 
 ${BOLD}ENVIRONMENT NAMING:${NC}
     Staging site: <sitename>-stg         (e.g., nwp-stg)
-    Production:   Configured in cnwp.yml linode: section
+    Production:   Configured in nwp.yml linode: section
 
 ${BOLD}DEPLOYMENT WORKFLOW:${NC}
     1. Validate deployment configuration
@@ -215,7 +215,7 @@ ${BOLD}DEPLOYMENT WORKFLOW:${NC}
    11. Clear cache and display production URL
 
 ${BOLD}CONFIGURATION:${NC}
-    Production deployment configuration is stored in cnwp.yml:
+    Production deployment configuration is stored in nwp.yml:
     - linode: section defines server credentials
     - Recipe prod_server, prod_domain, prod_path define deployment target
     - Or sites: section can override recipe-level settings
@@ -249,7 +249,7 @@ validate_deployment() {
     # Get recipe from sites: or use base_name
     local recipe=""
     if command -v yaml_get_site_field &> /dev/null; then
-        recipe=$(yaml_get_site_field "$base_name" "recipe" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null)
+        recipe=$(yaml_get_site_field "$base_name" "recipe" "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
     fi
 
     if [ -z "$recipe" ]; then
@@ -276,20 +276,20 @@ validate_deployment() {
                 print
                 exit
             }
-        ' "$PROJECT_ROOT/cnwp.yml")
+        ' "$PROJECT_ROOT/nwp.yml")
     fi
 
     # If not in sites:, read from recipe
     if [ -z "$prod_method" ]; then
-        prod_method=$(get_recipe_value "$recipe" "prod_method" "$PROJECT_ROOT/cnwp.yml")
-        prod_server=$(get_recipe_value "$recipe" "prod_server" "$PROJECT_ROOT/cnwp.yml")
-        prod_domain=$(get_recipe_value "$recipe" "prod_domain" "$PROJECT_ROOT/cnwp.yml")
-        prod_path=$(get_recipe_value "$recipe" "prod_path" "$PROJECT_ROOT/cnwp.yml")
+        prod_method=$(get_recipe_value "$recipe" "prod_method" "$PROJECT_ROOT/nwp.yml")
+        prod_server=$(get_recipe_value "$recipe" "prod_server" "$PROJECT_ROOT/nwp.yml")
+        prod_domain=$(get_recipe_value "$recipe" "prod_domain" "$PROJECT_ROOT/nwp.yml")
+        prod_path=$(get_recipe_value "$recipe" "prod_path" "$PROJECT_ROOT/nwp.yml")
     fi
 
     if [ -z "$prod_method" ]; then
         print_error "No production deployment method configured for recipe '$recipe'"
-        echo "Add 'prod_method: rsync' to the recipe in cnwp.yml"
+        echo "Add 'prod_method: rsync' to the recipe in nwp.yml"
         return 1
     fi
 
@@ -307,13 +307,13 @@ validate_deployment() {
     fi
 
     # Get server details from linode: section
-    local ssh_user=$(get_linode_config "$prod_server" "ssh_user" "$PROJECT_ROOT/cnwp.yml")
-    local ssh_host=$(get_linode_config "$prod_server" "ssh_host" "$PROJECT_ROOT/cnwp.yml")
-    local ssh_port=$(get_linode_config "$prod_server" "ssh_port" "$PROJECT_ROOT/cnwp.yml")
-    local ssh_key=$(get_linode_config "$prod_server" "ssh_key" "$PROJECT_ROOT/cnwp.yml")
+    local ssh_user=$(get_linode_config "$prod_server" "ssh_user" "$PROJECT_ROOT/nwp.yml")
+    local ssh_host=$(get_linode_config "$prod_server" "ssh_host" "$PROJECT_ROOT/nwp.yml")
+    local ssh_port=$(get_linode_config "$prod_server" "ssh_port" "$PROJECT_ROOT/nwp.yml")
+    local ssh_key=$(get_linode_config "$prod_server" "ssh_key" "$PROJECT_ROOT/nwp.yml")
 
     if [ -z "$ssh_user" ] || [ -z "$ssh_host" ]; then
-        print_error "Server '$prod_server' not found in linode: section of cnwp.yml"
+        print_error "Server '$prod_server' not found in linode: section of nwp.yml"
         return 1
     fi
 
@@ -675,7 +675,7 @@ reinstall_modules_production() {
     fi
 
     # Read reinstall_modules from recipe configuration
-    local reinstall_modules=$(get_recipe_value "$PROD_RECIPE" "reinstall_modules" "$PROJECT_ROOT/cnwp.yml")
+    local reinstall_modules=$(get_recipe_value "$PROD_RECIPE" "reinstall_modules" "$PROJECT_ROOT/nwp.yml")
 
     if [ -z "$reinstall_modules" ]; then
         print_status "INFO" "No modules configured for reinstallation in recipe '$PROD_RECIPE'"

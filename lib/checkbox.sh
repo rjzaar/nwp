@@ -1167,10 +1167,10 @@ edit_option_inputs() {
     done
 }
 
-# Load existing configuration from cnwp.yml site entry
+# Load existing configuration from nwp.yml site entry
 load_existing_config() {
     local site_name="$1"
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
 
     # Initialize OPTION_FROM_CONFIG if not already declared
     if ! declare -p OPTION_FROM_CONFIG &>/dev/null; then

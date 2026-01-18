@@ -3,31 +3,31 @@
 **Status:** Accepted
 **Date:** 2026-01-14 (formalized after incident 2026-01-13)
 **Decision Makers:** Rob
-**Related Issues:** Critical bug fix after cnwp.yml data loss
+**Related Issues:** Critical bug fix after nwp.yml data loss
 **Related Commits:** fb2f2603, ea07e155, 6fde940b
 **References:** [SECURITY.md](../SECURITY.md), [yaml-write.sh](../../lib/yaml-write.sh)
 
 ## Context
 
-On January 13, 2026, a critical bug in the verification system caused **complete data loss** of a user's `cnwp.yml` file. The scenario:
+On January 13, 2026, a critical bug in the verification system caused **complete data loss** of a user's `nwp.yml` file. The scenario:
 
 1. Test created temporary sites with non-unique names
 2. Cleanup operation used AWK to remove test sites
 3. AWK encountered duplicate site entries
 4. AWK produced **empty output** (error condition)
-5. Empty output was **blindly written** back to `cnwp.yml`
+5. Empty output was **blindly written** back to `nwp.yml`
 6. **Result: All user configurations wiped**
 
-This incident exposed a fundamental weakness: **AWK operations on cnwp.yml had no safety mechanisms**.
+This incident exposed a fundamental weakness: **AWK operations on nwp.yml had no safety mechanisms**.
 
-`cnwp.yml` is NWP's **single source of truth** for:
+`nwp.yml` is NWP's **single source of truth** for:
 - All site definitions and configurations
 - Server credentials and deployment settings
 - Recipe definitions
 - Linode/Cloudflare/GitLab integration
 - Coder definitions for distributed governance
 
-**Losing cnwp.yml means losing everything.**
+**Losing nwp.yml means losing everything.**
 
 ## The Incident: Anatomy of Data Loss
 
@@ -41,16 +41,16 @@ awk -v site="$site_name" '
     $0 ~ "^  " site ":" { in_site = 1; next }
     /^  [a-zA-Z]/ { in_site = 0 }
     !in_site { print }
-' cnwp.yml > cnwp.yml.tmp
+' nwp.yml > nwp.yml.tmp
 
-mv cnwp.yml.tmp cnwp.yml  # DANGER: Blindly overwrites cnwp.yml
+mv nwp.yml.tmp nwp.yml  # DANGER: Blindly overwrites nwp.yml
 ```
 
 **When duplicate entries exist:**
 - AWK gets confused by multiple matches
-- Outputs empty file to `cnwp.yml.tmp`
+- Outputs empty file to `nwp.yml.tmp`
 - `mv` command succeeds
-- `cnwp.yml` is now empty
+- `nwp.yml` is now empty
 - **All user data lost**
 
 ### Why This Is Catastrophic
@@ -99,7 +99,7 @@ Always create `.backup` before modification.
 - Backups can get out of sync
 
 ### Option 3: SQLite Database
-Replace YAML with SQLite for cnwp.yml data.
+Replace YAML with SQLite for nwp.yml data.
 
 **Pros:**
 - ACID transactions
@@ -113,7 +113,7 @@ Replace YAML with SQLite for cnwp.yml data.
 - Over-engineering for NWP's scale
 
 ### Option 4: Git Auto-Commit Before Changes
-Commit cnwp.yml to git before each modification.
+Commit nwp.yml to git before each modification.
 
 **Pros:**
 - Full history
@@ -127,7 +127,7 @@ Commit cnwp.yml to git before each modification.
 
 ## Decision
 
-Implement **Five-Layer Protection System** for all AWK operations on `cnwp.yml`:
+Implement **Five-Layer Protection System** for all AWK operations on `nwp.yml`:
 
 ```bash
 # Layer 1: Line Count Tracking
@@ -177,7 +177,7 @@ Each layer catches different failure modes:
 
 **Layer 2 (mktemp):**
 - **Catches:** Race conditions, temp file conflicts
-- **Example:** Two processes writing `cnwp.yml.tmp` simultaneously
+- **Example:** Two processes writing `nwp.yml.tmp` simultaneously
 - **Benefit:** Secure, unique temp files with automatic cleanup
 
 **Layer 3 (Empty Output Detection):**
@@ -214,7 +214,7 @@ Each layer catches different failure modes:
 
 ### Why 100-Line Threshold?
 
-**Analysis of typical cnwp.yml operations:**
+**Analysis of typical nwp.yml operations:**
 - Add site: +5-10 lines
 - Remove site: -5-10 lines
 - Modify site: 0 lines (in-place edit)
@@ -256,11 +256,11 @@ Each layer catches different failure modes:
 
 ### Standard Template
 
-All functions modifying `cnwp.yml` must use this template:
+All functions modifying `nwp.yml` must use this template:
 
 ```bash
 modify_cnwp_yml() {
-    local config_file="${1:-cnwp.yml}"
+    local config_file="${1:-nwp.yml}"
     local search_pattern="$2"
 
     # Layer 1: Track original size
@@ -310,11 +310,11 @@ modify_cnwp_yml() {
 **Must use 5-layer protection:**
 - `lib/yaml-write.sh` - All site add/remove/modify functions
 - `scripts/commands/verify.sh` - Verification site cleanup
-- Any script using AWK on `cnwp.yml`
+- Any script using AWK on `nwp.yml`
 
 **Does not need protection:**
 - Read-only operations (no file modification)
-- Operations on other files (only cnwp.yml is critical)
+- Operations on other files (only nwp.yml is critical)
 - yq operations (has built-in error handling)
 
 ### Integration with yaml-write.sh
@@ -329,8 +329,8 @@ All YAML modification functions now use protection:
 ### Code Review Checklist
 
 When reviewing shell scripts:
-- [ ] Does this modify `cnwp.yml`?
-- [ ] Uses AWK or sed on `cnwp.yml`?
+- [ ] Does this modify `nwp.yml`?
+- [ ] Uses AWK or sed on `nwp.yml`?
 - [ ] Has 5-layer protection applied?
 - [ ] All 5 layers present and correct?
 - [ ] Error messages are descriptive?
@@ -343,7 +343,7 @@ When reviewing shell scripts:
 **Normal operation:**
 ```bash
 # Should succeed
-yaml_remove_site "test-site" "cnwp.yml"
+yaml_remove_site "test-site" "nwp.yml"
 ```
 
 **Empty output (Layer 3):**
@@ -361,7 +361,7 @@ yaml_remove_site "test-site" "cnwp.yml"
 **Disk full (Layer 5):**
 ```bash
 # Simulated: mv fails due to disk full
-# Should fail with: "ERROR: Failed to update cnwp.yml"
+# Should fail with: "ERROR: Failed to update nwp.yml"
 ```
 
 ### Regression Testing
@@ -398,7 +398,7 @@ yq eval '.' "$tmpfile" >/dev/null 2>&1 || {
 
 Show diff and require confirmation:
 ```bash
-diff -u cnwp.yml "$tmpfile"
+diff -u nwp.yml "$tmpfile"
 read -p "Apply these changes? (y/n) " confirm
 ```
 
@@ -412,7 +412,7 @@ read -p "Apply these changes? (y/n) " confirm
 
 Create numbered backups:
 ```bash
-cp cnwp.yml cnwp.yml.backup.$(date +%s)
+cp nwp.yml nwp.yml.backup.$(date +%s)
 # Keep last 10 backups
 ```
 
@@ -455,7 +455,7 @@ fi
 
 **Tunable Thresholds**
 ```bash
-# In cnwp.yml settings section
+# In nwp.yml settings section
 settings:
   yaml_protection:
     max_lines_deleted: 100  # Current default
@@ -468,7 +468,7 @@ settings:
 **Review outcome:** Pending
 
 **Success Metrics:**
-- [x] No cnwp.yml data loss incidents since implementation
+- [x] No nwp.yml data loss incidents since implementation
 - [x] All YAML modification functions use protection
 - [x] Code review checklist includes protection verification
 - [ ] False positives: 0 (no legitimate operations blocked)

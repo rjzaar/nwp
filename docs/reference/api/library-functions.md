@@ -209,12 +209,12 @@ SSH_KEY=$(get_secret_nested ".secrets.data.yml" "production_ssh.server1.key_path
 
 **Signature:** `get_setting <key> [default] [config_file]`
 
-**Purpose:** Retrieves a setting value from cnwp.yml.
+**Purpose:** Retrieves a setting value from nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Setting key
 - `$2` (string, optional) - Default value
-- `$3` (string, optional) - Config file path (default: cnwp.yml)
+- `$3` (string, optional) - Config file path (default: nwp.yml)
 
 **Returns:** Outputs setting value to stdout
 
@@ -890,7 +890,7 @@ remote=$(parse_remote_target "@prod mysite")
 
 **Signature:** `get_remote_config <sitename> <environment>`
 
-**Purpose:** Retrieves remote configuration from cnwp.yml for a site/environment.
+**Purpose:** Retrieves remote configuration from nwp.yml for a site/environment.
 
 **Parameters:**
 - `$1` (string) - Site name
@@ -1464,7 +1464,7 @@ verify_linode_dns "example.com"
 
 ## yaml-write.sh
 
-Comprehensive YAML management library for reading and writing cnwp.yml configuration. Uses AWK-based parsing (no yq dependency) with file locking and atomic writes for safety.
+Comprehensive YAML management library for reading and writing nwp.yml configuration. Uses AWK-based parsing (no yq dependency) with file locking and atomic writes for safety.
 
 **Note:** See [docs/YAML_API.md](/home/rob/nwp/docs/YAML_API.md) for comprehensive coverage of all 40+ functions in this library.
 
@@ -1491,11 +1491,11 @@ Comprehensive YAML management library for reading and writing cnwp.yml configura
 
 **Signature:** `yaml_site_exists <sitename> [config_file]`
 
-**Purpose:** Checks if a site exists in cnwp.yml.
+**Purpose:** Checks if a site exists in nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Site name
-- `$2` (string, optional) - Config file path (default: cnwp.yml)
+- `$2` (string, optional) - Config file path (default: nwp.yml)
 
 **Returns:**
 - `0` - Site exists
@@ -1507,7 +1507,7 @@ Comprehensive YAML management library for reading and writing cnwp.yml configura
 
 **Signature:** `yaml_add_site <sitename> <directory> <recipe> <environment> <purpose> [config_file]`
 
-**Purpose:** Adds a new site to cnwp.yml.
+**Purpose:** Adds a new site to nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Site name
@@ -1529,7 +1529,7 @@ Comprehensive YAML management library for reading and writing cnwp.yml configura
 
 **Signature:** `yaml_remove_site <sitename> [config_file]`
 
-**Purpose:** Removes a site from cnwp.yml.
+**Purpose:** Removes a site from nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Site name
@@ -1545,7 +1545,7 @@ Comprehensive YAML management library for reading and writing cnwp.yml configura
 
 **Signature:** `yaml_update_site_field <sitename> <field> <value> [config_file]`
 
-**Purpose:** Updates a single field for a site in cnwp.yml.
+**Purpose:** Updates a single field for a site in nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Site name
@@ -1563,7 +1563,7 @@ Comprehensive YAML management library for reading and writing cnwp.yml configura
 
 **Signature:** `yaml_get_site_field <sitename> <field> [config_file]`
 
-**Purpose:** Retrieves a field value for a site from cnwp.yml.
+**Purpose:** Retrieves a field value for a site from nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Site name
@@ -1578,7 +1578,7 @@ Comprehensive YAML management library for reading and writing cnwp.yml configura
 
 **Signature:** `yaml_get_site_list [config_file]`
 
-**Purpose:** Lists all sites in cnwp.yml.
+**Purpose:** Lists all sites in nwp.yml.
 
 **Parameters:**
 - `$1` (string, optional) - Config file path
@@ -1591,7 +1591,7 @@ Comprehensive YAML management library for reading and writing cnwp.yml configura
 
 **Signature:** `yaml_backup [config_file]`
 
-**Purpose:** Creates a timestamped backup of cnwp.yml.
+**Purpose:** Creates a timestamped backup of nwp.yml.
 
 **Parameters:**
 - `$1` (string, optional) - Config file path
@@ -1606,7 +1606,7 @@ Comprehensive YAML management library for reading and writing cnwp.yml configura
 
 **Signature:** `yaml_validate [config_file]`
 
-**Purpose:** Validates YAML syntax and structure of cnwp.yml.
+**Purpose:** Validates YAML syntax and structure of nwp.yml.
 
 **Parameters:**
 - `$1` (string, optional) - Config file path
@@ -1832,7 +1832,7 @@ fi
 
 **Signature:** `load_existing_config <sitename> [config_file]`
 
-**Purpose:** Loads existing option configuration for a site from cnwp.yml.
+**Purpose:** Loads existing option configuration for a site from nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Site name
@@ -2019,7 +2019,7 @@ Shared installation functions used across all recipe types (Drupal, Moodle, GitL
 
 **Signature:** `update_site_options <sitename> [config_file]`
 
-**Purpose:** Updates site options in cnwp.yml based on current selection.
+**Purpose:** Updates site options in nwp.yml based on current selection.
 
 **Parameters:**
 - `$1` (string) - Site name
@@ -2083,7 +2083,7 @@ Shared installation functions used across all recipe types (Drupal, Moodle, GitL
 
 **Signature:** `get_recipe_value <recipe> <key> [config_file]`
 
-**Purpose:** Gets a value from a recipe definition in cnwp.yml.
+**Purpose:** Gets a value from a recipe definition in nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Recipe name
@@ -2113,7 +2113,7 @@ Shared installation functions used across all recipe types (Drupal, Moodle, GitL
 
 **Signature:** `get_root_value <key> [config_file]`
 
-**Purpose:** Gets a value from the root level of cnwp.yml.
+**Purpose:** Gets a value from the root level of nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Key name
@@ -2127,7 +2127,7 @@ Shared installation functions used across all recipe types (Drupal, Moodle, GitL
 
 **Signature:** `get_settings_value <key> [config_file]`
 
-**Purpose:** Gets a value from the settings section of cnwp.yml.
+**Purpose:** Gets a value from the settings section of nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Key name
@@ -2141,7 +2141,7 @@ Shared installation functions used across all recipe types (Drupal, Moodle, GitL
 
 **Signature:** `recipe_exists <recipe> [config_file]`
 
-**Purpose:** Checks if a recipe exists in cnwp.yml.
+**Purpose:** Checks if a recipe exists in nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Recipe name
@@ -2511,7 +2511,7 @@ Comprehensive Git operations library. Handles Git initialization, GitLab API int
 
 **Signature:** `get_additional_remotes <sitename>`
 
-**Purpose:** Gets list of additional Git remotes for a site from cnwp.yml.
+**Purpose:** Gets list of additional Git remotes for a site from nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Site name
@@ -2570,7 +2570,7 @@ Comprehensive Git operations library. Handles Git initialization, GitLab API int
 
 **Signature:** `git_configure_remotes <sitename>`
 
-**Purpose:** Configures all remotes for a site from cnwp.yml.
+**Purpose:** Configures all remotes for a site from nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Site name
@@ -3349,7 +3349,7 @@ download_database "mysite" "production"
 - `0` - Database downloaded
 - `1` - Download failed
 
-**Dependencies:** Requires live configuration in cnwp.yml with SSH access.
+**Dependencies:** Requires live configuration in nwp.yml with SSH access.
 
 ---
 
@@ -3560,9 +3560,9 @@ Frontend asset management (CSS, JavaScript, images). Handles asset compilation, 
 
 ## env-generate.sh
 
-**Note:** This is a standalone script (not sourced as library). Generates .env files from cnwp.yml and templates.
+**Note:** This is a standalone script (not sourced as library). Generates .env files from nwp.yml and templates.
 
-**Main Script Purpose:** Reads recipe configuration from cnwp.yml and generates .env file with substituted variables.
+**Main Script Purpose:** Reads recipe configuration from nwp.yml and generates .env file with substituted variables.
 
 **Usage:**
 ```bash
@@ -3579,7 +3579,7 @@ Frontend asset management (CSS, JavaScript, images). Handles asset compilation, 
 
 ## ddev-generate.sh
 
-**Note:** This is a standalone script (not sourced as library). Generates DDEV configuration from .env and cnwp.yml.
+**Note:** This is a standalone script (not sourced as library). Generates DDEV configuration from .env and nwp.yml.
 
 **Main Script Purpose:** Creates .ddev/config.yaml based on project settings.
 
@@ -3680,7 +3680,7 @@ Installation step definitions and tracking. Defines steps for each environment t
 
 **Signature:** `get_install_step <sitename> [config_file]`
 
-**Purpose:** Gets current installation step for a site from cnwp.yml.
+**Purpose:** Gets current installation step for a site from nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Site name
@@ -3711,7 +3711,7 @@ Installation step definitions and tracking. Defines steps for each environment t
 
 **Signature:** `set_install_step <sitename> <step_number> [config_file]`
 
-**Purpose:** Sets the current installation step in cnwp.yml.
+**Purpose:** Sets the current installation step in nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Site name
@@ -3987,7 +3987,7 @@ CLI command registration system. Manages registration of NWP CLI commands (pl, p
 
 **Signature:** `get_cli_command`
 
-**Purpose:** Gets the current CLI command name from cnwp.yml.
+**Purpose:** Gets the current CLI command name from nwp.yml.
 
 **Returns:** Outputs CLI command name (default: pl)
 
@@ -4010,7 +4010,7 @@ CLI command registration system. Manages registration of NWP CLI commands (pl, p
 
 **Signature:** `register_cli_command [project_root] [preferred_name]`
 
-**Purpose:** Registers CLI command in /usr/local/bin and cnwp.yml.
+**Purpose:** Registers CLI command in /usr/local/bin and nwp.yml.
 
 **Parameters:**
 - `$1` (string, optional) - Project root directory
@@ -4033,7 +4033,7 @@ register_cli_command "$PWD" "pl"
 
 **Signature:** `unregister_cli_command`
 
-**Purpose:** Unregisters CLI command from /usr/local/bin and cnwp.yml.
+**Purpose:** Unregisters CLI command from /usr/local/bin and nwp.yml.
 
 **Returns:**
 - `0` - Unregistration successful
@@ -4446,7 +4446,7 @@ Site import operations. Core functions for importing sites from remote servers. 
 
 **Signature:** `import_step_register_site <site_name> <ssh_target> <remote_webroot> [drupal_version] [config_file]`
 
-**Purpose:** Registers imported site in cnwp.yml.
+**Purpose:** Registers imported site in nwp.yml.
 
 **Parameters:**
 - `$1` (string) - Site name

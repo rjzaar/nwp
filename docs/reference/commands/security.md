@@ -132,7 +132,7 @@ This runs at 6 AM daily and sends notifications if issues found.
 ## Check All Sites
 
 With `--all` flag:
-- Reads sites from cnwp.yml
+- Reads sites from nwp.yml
 - Checks each site directory (sites/ or root)
 - Reports issues found per site
 - Provides summary of total sites and issues

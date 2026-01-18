@@ -63,7 +63,7 @@ pl live2stg --db-only mysite
 ## Prerequisites
 
 - Staging site must exist locally
-- Live server must be configured in `cnwp.yml`
+- Live server must be configured in `nwp.yml`
 
 ## Troubleshooting
 

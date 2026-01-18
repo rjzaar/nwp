@@ -17,7 +17,7 @@ source "$NWP_ROOT/lib/yaml-write.sh"
 
 # Test configuration
 TEST_DIR="/tmp/test_integration_$$"
-TEST_CONFIG="$TEST_DIR/cnwp.yml"
+TEST_CONFIG="$TEST_DIR/nwp.yml"
 
 # Colors
 RED='\033[0;31m'
@@ -40,7 +40,7 @@ setup() {
     mkdir -p "$TEST_DIR/testsite"
     mkdir -p "$TEST_DIR/testsite_stg"
 
-    # Create test cnwp.yml with complete structure
+    # Create test nwp.yml with complete structure
     cat > "$TEST_CONFIG" <<'EOF'
 settings:
   database: mariadb
@@ -122,7 +122,7 @@ test_get_recipe_value() {
 get_recipe_value() {
     local recipe=$1
     local key=$2
-    local config_file="${3:-cnwp.yml}"
+    local config_file="${3:-nwp.yml}"
 
     awk -v recipe="$recipe" -v key="$key" '
         BEGIN { in_recipe = 0; found = 0 }
@@ -155,7 +155,7 @@ test_get_recipe_profile() {
 get_recipe_value() {
     local recipe=$1
     local key=$2
-    local config_file="${3:-cnwp.yml}"
+    local config_file="${3:-nwp.yml}"
 
     awk -v recipe="$recipe" -v key="$key" '
         BEGIN { in_recipe = 0; found = 0 }
@@ -188,7 +188,7 @@ test_get_linode_config() {
 get_linode_config() {
     local server_name=$1
     local field=$2
-    local config_file="${3:-cnwp.yml}"
+    local config_file="${3:-nwp.yml}"
 
     awk -v server="$server_name" -v field="$field" '
         BEGIN { in_servers = 0; in_server = 0 }
@@ -347,7 +347,7 @@ test_multiple_modules_parsing() {
 get_recipe_value() {
     local recipe=$1
     local key=$2
-    local config_file="${3:-cnwp.yml}"
+    local config_file="${3:-nwp.yml}"
 
     awk -v recipe="$recipe" -v key="$key" '
         BEGIN { in_recipe = 0; found = 0 }
@@ -384,7 +384,7 @@ test_production_config_reading() {
 get_recipe_value() {
     local recipe=$1
     local key=$2
-    local config_file="${3:-cnwp.yml}"
+    local config_file="${3:-nwp.yml}"
 
     awk -v recipe="$recipe" -v key="$key" '
         BEGIN { in_recipe = 0; found = 0 }
@@ -428,7 +428,7 @@ test_backup_creation() {
 
     # Count backup files (now stored in .backups/ directory)
     local backup_dir="$TEST_DIR/.backups"
-    local backup_count=$(ls -1 "${backup_dir}"/cnwp.yml.backup-* 2>/dev/null | wc -l)
+    local backup_count=$(ls -1 "${backup_dir}"/nwp.yml.backup-* 2>/dev/null | wc -l)
 
     # Should have multiple backups from all operations
     [[ $backup_count -gt 0 ]]
@@ -438,7 +438,7 @@ test_backup_creation() {
 # Test: YAML structure integrity
 #######################################
 test_yaml_structure() {
-    # Verify cnwp.yml has valid structure
+    # Verify nwp.yml has valid structure
     grep -q "^settings:" "$TEST_CONFIG" && \
     grep -q "^linode:" "$TEST_CONFIG" && \
     grep -q "^recipes:" "$TEST_CONFIG" && \
@@ -501,7 +501,7 @@ main() {
     run_test "Register staging site" test_register_staging_site
     run_test "Environment detection from suffix" test_environment_detection
     run_test "Read delete_site_yml setting" test_read_delete_setting
-    run_test "Remove site from cnwp.yml" test_site_removal
+    run_test "Remove site from nwp.yml" test_site_removal
     run_test "Other sites remain after removal" test_other_sites_remain
     run_test "Recipe reading from sites section" test_recipe_from_sites
     run_test "Multiple modules parsing" test_multiple_modules_parsing

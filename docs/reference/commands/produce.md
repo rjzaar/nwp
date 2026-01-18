@@ -153,7 +153,7 @@ When fully implemented, `produce` will:
 - Configure web server (nginx/Apache)
 - Setup PHP-FPM pool
 - Configure database connection
-- Update `cnwp.yml` with production config
+- Update `nwp.yml` with production config
 
 ## Exit Codes
 
@@ -172,7 +172,7 @@ When fully implemented, `produce` will:
 
 ## Configuration
 
-Production configuration stored in `cnwp.yml`:
+Production configuration stored in `nwp.yml`:
 
 ```yaml
 sites:
@@ -204,7 +204,7 @@ Until full implementation:
 # 1. Create Linode manually
 # Visit: dashboard.linode.com
 
-# 2. Add production config to cnwp.yml
+# 2. Add production config to nwp.yml
 sites:
   mysite:
     prod:
@@ -225,7 +225,7 @@ pl stg2prod mysite
 This is expected. Use manual provisioning:
 1. Create Linode at dashboard.linode.com
 2. Configure server manually
-3. Add prod config to `cnwp.yml`
+3. Add prod config to `nwp.yml`
 4. Use `pl stg2prod` to deploy
 
 ### Cannot Determine Base Name
@@ -233,7 +233,7 @@ This is expected. Use manual provisioning:
 **Symptom:** Error about base name determination
 
 **Solution:**
-- Ensure site exists in `cnwp.yml`
+- Ensure site exists in `nwp.yml`
 - Check site directory exists: `ls sites/<sitename>`
 - Verify sitename spelling
 
@@ -243,8 +243,8 @@ This is expected. Use manual provisioning:
 
 **Solution:**
 ```bash
-# Verify cnwp.yml structure
-grep -A 5 "prod:" cnwp.yml
+# Verify nwp.yml structure
+grep -A 5 "prod:" nwp.yml
 
 # Ensure proper indentation (YAML sensitive)
 # Should be:

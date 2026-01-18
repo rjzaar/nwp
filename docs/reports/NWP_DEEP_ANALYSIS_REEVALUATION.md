@@ -748,7 +748,7 @@ webroot=$(yaml_get_recipe_field "drupal10" "webroot")
 
 ---
 
-### 4.2 140 [PLANNED] Options in cnwp.yml
+### 4.2 140 [PLANNED] Options in nwp.yml
 
 **Original Recommendation:**
 - Remove placeholder options
@@ -1735,7 +1735,7 @@ show_step() { ... }
 ### Priority 2: Quick Wins (Do Next - 3 hours total)
 
 3. **Clean up [PLANNED] options** (2 hours) - **TODO**
-   - Remove 77 placeholder options from example.cnwp.yml
+   - Remove 77 placeholder options from example.nwp.yml
    - Only document what actually exists
    - Mark experimental features clearly
 
@@ -1755,7 +1755,7 @@ show_step() { ... }
 
 6. **Add pl doctor command** (10 hours) - **TODO**
    - Check prerequisites (Docker, DDEV, PHP, Composer, yq)
-   - Verify configuration (cnwp.yml, secrets)
+   - Verify configuration (nwp.yml, secrets)
    - Diagnose common issues
    - Recommend fixes
 
@@ -1837,7 +1837,7 @@ The deep analysis document was **thorough and well-intentioned**, but applied **
 ### Next Steps
 
 **Quick Wins (3 hours):**
-- Clean up 77 [PLANNED] options in example.cnwp.yml
+- Clean up 77 [PLANNED] options in example.nwp.yml
 - Link governance doc in docs/README.md
 - Add NO_COLOR support
 

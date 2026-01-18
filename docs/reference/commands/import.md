@@ -16,7 +16,7 @@ pl import <sitename> --server=<name> --source=<path> [options]
 ## Interactive Mode (default)
 
 ```bash
-pl import                          # Select server from cnwp.yml
+pl import                          # Select server from nwp.yml
 pl import --server=production      # Use specific server
 pl import --ssh=root@example.com   # Use custom SSH connection
 ```
@@ -32,7 +32,7 @@ pl import --server=prod --all --yes
 
 | Flag | Description |
 |------|-------------|
-| `--server=NAME` | Use server from cnwp.yml linode.servers |
+| `--server=NAME` | Use server from nwp.yml linode.servers |
 | `--ssh=USER@HOST` | Custom SSH connection string |
 | `--key=PATH` | SSH private key path (default: ~/.ssh/nwp) |
 | `--source=PATH` | Remote webroot path (skip discovery) |
@@ -110,7 +110,7 @@ Use `--full-files` if you need all files locally.
 
 ## Server Configuration
 
-Configure servers in `cnwp.yml`:
+Configure servers in `nwp.yml`:
 
 ```yaml
 linode:

@@ -474,7 +474,7 @@ When run without `-y`, the script launches an interactive TUI that:
 - `get_base_name()` - Extracts base name without suffix
 - `get_staging_name()` - Generates staging name (e.g., `nwp` → `nwp-stg`)
 
-### Configuration (cnwp.yml)
+### Configuration (nwp.yml)
 
 ```yaml
 enhanced_example:

@@ -122,7 +122,7 @@ Many commands support these common options:
 
 Commands read configuration from:
 
-- `cnwp.yml` - Main site configuration
+- `nwp.yml` - Main site configuration
 - `.secrets.yml` - API keys and credentials (never committed)
 - `.env` files - Environment-specific settings
 

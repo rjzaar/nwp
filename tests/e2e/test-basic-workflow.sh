@@ -124,7 +124,7 @@ test_project_structure() {
     run_test "lib/ directory exists" test -d "${PROJECT_ROOT}/lib"
     run_test "scripts/commands/ exists" test -d "${PROJECT_ROOT}/scripts/commands"
     run_test "tests/ directory exists" test -d "${PROJECT_ROOT}/tests"
-    run_test "example.cnwp.yml exists" test -f "${PROJECT_ROOT}/example.cnwp.yml"
+    run_test "example.nwp.yml exists" test -f "${PROJECT_ROOT}/example.nwp.yml"
 }
 
 # Test 2: Validate all core scripts have valid bash syntax
@@ -207,7 +207,7 @@ test_fixtures() {
     log_header "Test Suite: Test Fixtures"
 
     run_test "Fixtures directory exists" test -d "${FIXTURES_DIR}"
-    run_test "cnwp.yml fixture exists" test -f "${FIXTURES_DIR}/cnwp.yml"
+    run_test "nwp.yml fixture exists" test -f "${FIXTURES_DIR}/nwp.yml"
     run_test "secrets.yml fixture exists" test -f "${FIXTURES_DIR}/secrets.yml"
     run_test "sample-site/ exists" test -d "${FIXTURES_DIR}/sample-site"
     run_test "sample-site/composer.json exists" test -f "${FIXTURES_DIR}/sample-site/composer.json"
@@ -215,7 +215,7 @@ test_fixtures() {
 
     # Validate fixture YAML syntax
     if check_command yq; then
-        run_test "cnwp.yml is valid YAML" yq eval '.' "${FIXTURES_DIR}/cnwp.yml"
+        run_test "nwp.yml is valid YAML" yq eval '.' "${FIXTURES_DIR}/nwp.yml"
         run_test "secrets.yml is valid YAML" yq eval '.' "${FIXTURES_DIR}/secrets.yml"
     else
         log_skip "yq not installed - skipping YAML validation"
@@ -233,15 +233,15 @@ test_config_parsing() {
         # Test with fixture config
         export PROJECT_ROOT="${FIXTURES_DIR}"
 
-        if [ -f "${FIXTURES_DIR}/cnwp.yml" ]; then
+        if [ -f "${FIXTURES_DIR}/nwp.yml" ]; then
             # Try to parse configuration
             if command -v yq &>/dev/null; then
                 local php_version
-                php_version=$(yq eval '.settings.php' "${FIXTURES_DIR}/cnwp.yml" 2>/dev/null)
+                php_version=$(yq eval '.settings.php' "${FIXTURES_DIR}/nwp.yml" 2>/dev/null)
                 if [ -n "${php_version}" ] && [ "${php_version}" != "null" ]; then
-                    log_pass "Can read settings.php from cnwp.yml (value: ${php_version})"
+                    log_pass "Can read settings.php from nwp.yml (value: ${php_version})"
                 else
-                    log_fail "Cannot read settings.php from cnwp.yml"
+                    log_fail "Cannot read settings.php from nwp.yml"
                 fi
             else
                 log_skip "yq not installed - skipping config parsing test"

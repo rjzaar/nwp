@@ -778,7 +778,7 @@ echo -e "$MESSAGE" | mail -s "$SUBJECT" "$RECIPIENTS"
 
 ### 4.4 Configuration Schema
 
-**Update: `example.cnwp.yml`**
+**Update: `example.nwp.yml`**
 
 ```yaml
 # Notification settings
@@ -803,7 +803,7 @@ notifications:
 - [ ] `scripts/notify-email.sh` - Email integration
 - [ ] `scripts/notify-webhook.sh` - Generic webhook
 - [ ] `linode/server_scripts/nwp-notify.sh` - Server-side notifications
-- [ ] Update `example.cnwp.yml` with notification config
+- [ ] Update `example.nwp.yml` with notification config
 - [ ] `docs/NOTIFICATIONS.md`
 
 ---
@@ -1006,7 +1006,7 @@ echo "╚═══════════════════════�
 - [ ] `linode/server_scripts/nwp-monitor.sh`
 - [ ] Updated `status.sh` with production status
 - [ ] Cron configuration for monitoring
-- [ ] Alert thresholds in `example.cnwp.yml`
+- [ ] Alert thresholds in `example.nwp.yml`
 - [ ] `docs/MONITORING.md`
 
 ---

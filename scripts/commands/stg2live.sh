@@ -43,7 +43,7 @@ get_stg_name() {
     echo "${base}-stg"
 }
 
-# Get base domain from cnwp.yml settings.url
+# Get base domain from nwp.yml settings.url
 get_base_domain() {
     awk '
         /^settings:/ { in_settings = 1; next }
@@ -56,10 +56,10 @@ get_base_domain() {
             if (length($0) > 0) print
             exit
         }
-    ' "$PROJECT_ROOT/cnwp.yml"
+    ' "$PROJECT_ROOT/nwp.yml"
 }
 
-# Get live server config from cnwp.yml
+# Get live server config from nwp.yml
 get_live_config() {
     local sitename="$1"
     local field="$2"
@@ -77,7 +77,7 @@ get_live_config() {
             print
             exit
         }
-    ' "$PROJECT_ROOT/cnwp.yml"
+    ' "$PROJECT_ROOT/nwp.yml"
 }
 
 # Check if live security is enabled
@@ -93,11 +93,11 @@ is_live_security_enabled() {
             print
             exit
         }
-    ' "$PROJECT_ROOT/cnwp.yml")
+    ' "$PROJECT_ROOT/nwp.yml")
     [ "$enabled" == "true" ]
 }
 
-# Get security modules from cnwp.yml
+# Get security modules from nwp.yml
 get_security_modules() {
     awk '
         /^settings:/ { in_settings = 1; next }
@@ -111,7 +111,7 @@ get_security_modules() {
             gsub(/["'"'"']/, "")
             print
         }
-    ' "$PROJECT_ROOT/cnwp.yml"
+    ' "$PROJECT_ROOT/nwp.yml"
 }
 
 # Secure user passwords before live deployment
@@ -210,7 +210,7 @@ install_security_modules() {
     fi
 
     if ! is_live_security_enabled; then
-        print_info "Live security hardening disabled in cnwp.yml"
+        print_info "Live security hardening disabled in nwp.yml"
         return 0
     fi
 
@@ -846,9 +846,9 @@ ${BOLD}PASSWORD SECURITY:${NC}
     Disable with: --no-password-reset flag
 
 ${BOLD}SECURITY HARDENING:${NC}
-    By default, security modules are installed from cnwp.yml settings.live_security
+    By default, security modules are installed from nwp.yml settings.live_security
     Includes: seckit, honeypot, flood_control, login_security, etc.
-    Disable with: --no-security flag or set enabled: false in cnwp.yml
+    Disable with: --no-security flag or set enabled: false in nwp.yml
 
 ${BOLD}NOTE:${NC}
     If no live server is configured, this script will automatically

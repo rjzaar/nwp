@@ -17,7 +17,7 @@ Automates the onboarding process for new coders by detecting or prompting for co
 This script streamlines the coder onboarding workflow by:
 1. Detecting coder identity via GitLab SSH or interactive prompt
 2. Validating identity against GitLab user accounts and DNS delegation
-3. Configuring `cnwp.yml` with coder's subdomain
+3. Configuring `nwp.yml` with coder's subdomain
 4. Setting up git global configuration
 5. Verifying SSH keys for GitLab access
 6. Checking infrastructure readiness (DNS, GitLab, etc.)
@@ -113,15 +113,15 @@ Validates the detected or entered identity:
 
 ### Step 3: NWP Configuration
 
-Configures `cnwp.yml` with coder identity:
+Configures `nwp.yml` with coder identity:
 
 **Existing Configuration:**
-- If `cnwp.yml` exists, checks if it already has correct identity
+- If `nwp.yml` exists, checks if it already has correct identity
 - If identity matches, skips reconfiguration
 - If different, prompts to overwrite (with backup)
 
 **New Configuration:**
-- Copies `example.cnwp.yml` to `cnwp.yml`
+- Copies `example.nwp.yml` to `nwp.yml`
 - Sets `settings.url` to `<coder>.<base-domain>`
 - Sets `settings.email.domain` to `<coder>.<base-domain>`
 - Sets `settings.email.admin_email` to `admin@<coder>.<base-domain>`
@@ -173,7 +173,7 @@ Registers a system-wide CLI command:
 
 **What it does:**
 - Creates symlink in `/usr/local/bin/` to project's `pl` script
-- Updates `cnwp.yml` with `settings.cli_command`
+- Updates `nwp.yml` with `settings.cli_command`
 - Allows running NWP commands from anywhere
 
 **Fallback:**
@@ -221,7 +221,7 @@ Checking DNS A records...
 
 [3/7] Configuring NWP Installation
 
-✓ Configured cnwp.yml with identity: john
+✓ Configured nwp.yml with identity: john
   Domain: john.nwpcode.org
 ✓ Created .secrets.yml from example
 ⚠ You'll need to add your Linode API token to .secrets.yml
@@ -327,7 +327,7 @@ NWP Coder Identity Bootstrap
 
 [3/7] Configuring NWP Installation
 
-[DRY-RUN] Would create cnwp.yml from example
+[DRY-RUN] Would create nwp.yml from example
 [DRY-RUN] Would set settings.url to: john.nwpcode.org
 [DRY-RUN] Would create .secrets.yml from example
 
@@ -357,7 +357,7 @@ NWP Coder Identity Bootstrap
 
 ### Required
 - NWP project cloned to local machine
-- `example.cnwp.yml` exists
+- `example.nwp.yml` exists
 - `bash` shell
 
 ### Recommended
@@ -375,7 +375,7 @@ Administrator must have:
 
 ## Configuration Files
 
-### cnwp.yml
+### nwp.yml
 
 Updated with coder identity:
 
@@ -477,16 +477,16 @@ Must start with a letter and contain only alphanumeric, underscore, or hyphen
 - Contain only: letters, numbers, underscore, hyphen
 - Examples: `john`, `jane-doe`, `bob_smith`, `alice123`
 
-### cnwp.yml Already Configured
+### nwp.yml Already Configured
 
 **Symptom:**
 ```
-Existing cnwp.yml found
+Existing nwp.yml found
 Overwrite with new configuration for 'john'? [y/N]:
 ```
 
 **Solution:** Choose:
-- `y` - Replace existing config (backs up to `cnwp.yml.backup.YYYYMMDD_HHMMSS`)
+- `y` - Replace existing config (backs up to `nwp.yml.backup.YYYYMMDD_HHMMSS`)
 - `n` - Keep existing config (skip this step)
 
 ### GitLab Account Not Found
@@ -554,7 +554,7 @@ Generate SSH key pair now? [y/N]:
 - Name set to coder identity (not full name)
 - Global configuration (affects all repositories)
 
-### cnwp.yml Protection
+### nwp.yml Protection
 - File is in `.gitignore` (never committed)
 - Contains user-specific subdomain configuration
 - Backed up before overwriting

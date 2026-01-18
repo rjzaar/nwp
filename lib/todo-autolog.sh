@@ -20,10 +20,10 @@ TODO_AUTOLOG_PROJECT_ROOT="${TODO_AUTOLOG_PROJECT_ROOT:-$( cd "$TODO_AUTOLOG_DIR
 get_autoresolve_setting() {
     local category="$1"
     local default="${2:-true}"
-    local config_file="${TODO_CONFIG_FILE:-$TODO_AUTOLOG_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_AUTOLOG_PROJECT_ROOT/nwp.yml}"
 
     if [ ! -f "$config_file" ]; then
-        config_file="$TODO_AUTOLOG_PROJECT_ROOT/example.cnwp.yml"
+        config_file="$TODO_AUTOLOG_PROJECT_ROOT/example.nwp.yml"
     fi
 
     local value=""
@@ -55,7 +55,7 @@ is_autoresolve_enabled() {
 todo_autoresolve_item() {
     local item_id="$1"
     local reason="${2:-Auto-resolved}"
-    local config_file="${TODO_CONFIG_FILE:-$TODO_AUTOLOG_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_AUTOLOG_PROJECT_ROOT/nwp.yml}"
 
     if ! command -v yq &>/dev/null; then
         return 1
@@ -77,7 +77,7 @@ todo_autoresolve_item() {
 # Remove matching items from ignored (when re-opening)
 todo_autoresolve_remove() {
     local pattern="$1"
-    local config_file="${TODO_CONFIG_FILE:-$TODO_AUTOLOG_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_AUTOLOG_PROJECT_ROOT/nwp.yml}"
 
     if ! command -v yq &>/dev/null; then
         return 1
@@ -241,7 +241,7 @@ todo_check_auto_resolve() {
 # Called when token is used/refreshed
 todo_record_token_use() {
     local token_name="$1"
-    local config_file="${TODO_CONFIG_FILE:-$TODO_AUTOLOG_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_AUTOLOG_PROJECT_ROOT/nwp.yml}"
 
     if ! command -v yq &>/dev/null; then
         return 1

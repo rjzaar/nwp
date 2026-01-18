@@ -174,7 +174,7 @@ Matthew 10:8 principle:
 1. **CC0_DEDICATION.md** - Full explanation and rationale
 2. **LICENSE** - Official CC0 1.0 Universal text
 3. **CONTRIBUTING.md** - Contributor agreement (must agree to CC0)
-4. **example.cnwp.yml** - License metadata (informational)
+4. **example.nwp.yml** - License metadata (informational)
 5. **README.md** - License badge and link
 
 ### Contributor Agreement

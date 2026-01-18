@@ -79,8 +79,8 @@ nwp/
 │   └── security.sh       # Security hardening
 │
 ├── Configuration
-│   ├── cnwp.yml              # Your site configurations (gitignored)
-│   ├── example.cnwp.yml      # Configuration template
+│   ├── nwp.yml              # Your site configurations (gitignored)
+│   ├── example.nwp.yml      # Configuration template
 │   ├── .secrets.yml          # Infrastructure secrets (gitignored)
 │   └── .secrets.data.yml     # Production secrets (gitignored, AI-blocked)
 │
@@ -101,7 +101,7 @@ nwp/
 
 ## How NWP Works
 
-1. **Configuration**: Define sites in `cnwp.yml` using recipes
+1. **Configuration**: Define sites in `nwp.yml` using recipes
 2. **Installation**: Run `./install.sh <recipe>` to create a site
 3. **Development**: Use DDEV commands to work on the site
 4. **Management**: Use NWP scripts for backup, restore, copy
@@ -203,7 +203,7 @@ When working with AI assistants (Claude, Copilot, ChatGPT), never share:
 ```bash
 .secrets.yml          # Contains API tokens, passwords
 .secrets.data.yml     # Production credentials
-cnwp.yml              # User-specific site configurations
+nwp.yml              # User-specific site configurations
 keys/*                # SSH private keys
 *.sql, *.sql.gz       # Database dumps (may contain PII)
 settings.php          # Drupal credentials
@@ -217,7 +217,7 @@ settings.php          # Drupal credentials
 | **Anonymized code** | Code with fake credentials: `DB_PASS=example123` |
 | **Public patterns** | "How do I implement X in Drupal?" |
 | **Error messages** | Stack traces (check for embedded secrets first) |
-| **Templates** | `example.cnwp.yml`, `.secrets.example.yml` |
+| **Templates** | `example.nwp.yml`, `.secrets.example.yml` |
 | **Documentation** | README files, public API docs |
 | **Synthetic examples** | Made-up data that preserves structure |
 
@@ -337,14 +337,14 @@ Installing mkcert...
 All prerequisites installed!
 ```
 
-## 3.2 Understanding cnwp.yml
+## 3.2 Understanding nwp.yml
 
-The `cnwp.yml` file is the heart of NWP. It defines all your sites and their configurations.
+The `nwp.yml` file is the heart of NWP. It defines all your sites and their configurations.
 
 ### Creating Your Configuration
 
 ```bash
-cp example.cnwp.yml cnwp.yml
+cp example.nwp.yml nwp.yml
 ```
 
 ### Configuration Structure
@@ -770,7 +770,7 @@ Sites can have a purpose that affects deletion:
 |---------|----------|
 | `testing` | Can be freely deleted |
 | `indefinite` | Normal deletion (default) |
-| `permanent` | Must change purpose in cnwp.yml first |
+| `permanent` | Must change purpose in nwp.yml first |
 
 ### Practice Exercises
 
@@ -1603,7 +1603,7 @@ Configures Castopod infrastructure.
 
 ### Creating Custom Recipes
 
-Add to `cnwp.yml`:
+Add to `nwp.yml`:
 
 ```yaml
 recipes:
@@ -1841,7 +1841,7 @@ ddev restart
 |------|------------|
 | **DDEV** | Docker-based local development environment |
 | **Drush** | Drupal command-line tool |
-| **Recipe** | Pre-defined site configuration in cnwp.yml |
+| **Recipe** | Pre-defined site configuration in nwp.yml |
 | **Webroot** | Directory containing index.php (`web` or `html`) |
 | **Profile** | Drupal installation profile (standard, social, etc.) |
 | **Staging** | Pre-production testing environment |

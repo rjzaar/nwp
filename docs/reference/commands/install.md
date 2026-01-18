@@ -13,7 +13,7 @@ pl install [OPTIONS] <recipe> [target]
 
 ## Description
 
-The `install` command creates new site installations based on recipes defined in `cnwp.yml`. It automates the complete setup process including DDEV configuration, Composer project creation, Drupal/Moodle installation, and optional test content generation.
+The `install` command creates new site installations based on recipes defined in `nwp.yml`. It automates the complete setup process including DDEV configuration, Composer project creation, Drupal/Moodle installation, and optional test content generation.
 
 Supports multiple platform types:
 - **Drupal** - Standard Drupal and OpenSocial distributions
@@ -27,14 +27,14 @@ The installation is resumable - if any step fails, you can restart from that ste
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `recipe` | Yes | Recipe name from `cnwp.yml` (e.g., `d`, `os`, `avc`, `m`) |
+| `recipe` | Yes | Recipe name from `nwp.yml` (e.g., `d`, `os`, `avc`, `m`) |
 | `target` | No | Custom directory/site name (defaults to recipe name) |
 
 ## Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-l, --list` | List all available recipes from `cnwp.yml` | - |
+| `-l, --list` | List all available recipes from `nwp.yml` | - |
 | `-h, --help` | Show help message and usage information | - |
 | `c, --create-content` | Create test content after installation | false |
 | `s=N, --step=N` | Resume installation from step N | - |
@@ -46,7 +46,7 @@ The installation is resumable - if any step fails, you can restart from that ste
 |-------|---------|-------------|-----------------|
 | `t` | Testing | Temporary test sites | Can be freely deleted |
 | `i` | Indefinite | Normal development sites (default) | Can be deleted manually |
-| `p` | Permanent | Production or critical sites | Requires purpose change in `cnwp.yml` before deletion |
+| `p` | Permanent | Production or critical sites | Requires purpose change in `nwp.yml` before deletion |
 | `m` | Migration | Migration stub for imports | Creates directory structure only, no installation |
 
 ## Installation Steps
@@ -118,7 +118,7 @@ pl install d client s=8
 ### List Available Recipes
 
 ```bash
-# Show all recipes defined in cnwp.yml
+# Show all recipes defined in nwp.yml
 pl install --list
 ```
 
@@ -190,7 +190,7 @@ This is useful for:
 | 0 | Installation successful |
 | 1 | General installation error |
 | 2 | Missing required recipe argument |
-| 3 | Recipe not found in `cnwp.yml` |
+| 3 | Recipe not found in `nwp.yml` |
 | 4 | Recipe validation failed |
 | 5 | Directory already exists |
 
@@ -200,13 +200,13 @@ This is useful for:
 - **Docker** - Required by DDEV
 - **Composer** - PHP dependency manager
 - **Git** - Version control system
-- **cnwp.yml** - Valid configuration file with recipe definitions
+- **nwp.yml** - Valid configuration file with recipe definitions
 
 Run `pl setup` or `./setup.sh` to install missing prerequisites.
 
 ## Recipe Configuration
 
-Recipes are defined in `cnwp.yml`. Example:
+Recipes are defined in `nwp.yml`. Example:
 
 ```yaml
 recipes:
@@ -233,7 +233,7 @@ Required fields vary by platform type:
 - `branch` - Git branch (e.g., `MOODLE_404_STABLE`)
 - `webroot` - Web root directory (usually `.`)
 
-See `example.cnwp.yml` for complete recipe examples.
+See `example.nwp.yml` for complete recipe examples.
 
 ## Directory Structure
 
@@ -258,13 +258,13 @@ nwp/
 
 **Symptom:**
 ```
-ERROR: Recipe 'mysite' not found in cnwp.yml
+ERROR: Recipe 'mysite' not found in nwp.yml
 ```
 
 **Solution:**
 - Check recipe name spelling: `pl install --list`
-- Verify `cnwp.yml` exists in NWP root
-- Ensure recipe is properly defined in `cnwp.yml`
+- Verify `nwp.yml` exists in NWP root
+- Ensure recipe is properly defined in `nwp.yml`
 
 ### Directory Already Exists
 

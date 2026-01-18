@@ -62,7 +62,7 @@ ${BOLD}WHAT THIS SCRIPT DOES:${NC}
     5. Configures OAuth2 client in AVC (Drupal Simple OAuth)
     6. Configures OAuth2 issuer in Moodle
     7. Tests SSO flow
-    8. Updates cnwp.yml with integration settings
+    8. Updates nwp.yml with integration settings
 
 ${BOLD}REQUIREMENTS:${NC}
     - Both sites must be installed and accessible
@@ -281,7 +281,7 @@ test_sso_flow() {
     return 0
 }
 
-# Update cnwp.yml with integration settings
+# Update nwp.yml with integration settings
 update_cnwp_yml() {
     local avc_site=$1
     local moodle_site=$2
@@ -289,19 +289,19 @@ update_cnwp_yml() {
 
     moodle_url=$(avc_moodle_get_site_url "$moodle_site")
 
-    info "Updating cnwp.yml"
+    info "Updating nwp.yml"
 
-    if [[ ! -f "$PROJECT_ROOT/cnwp.yml" ]]; then
-        print_error "cnwp.yml not found - cannot update configuration"
+    if [[ ! -f "$PROJECT_ROOT/nwp.yml" ]]; then
+        print_error "nwp.yml not found - cannot update configuration"
         return 1
     fi
 
     # Update AVC site configuration
     print_info "Updating AVC site configuration..."
 
-    yq eval -i ".sites.$avc_site.moodle_integration.enabled = true" "$PROJECT_ROOT/cnwp.yml"
-    yq eval -i ".sites.$avc_site.moodle_integration.moodle_site = \"$moodle_site\"" "$PROJECT_ROOT/cnwp.yml"
-    yq eval -i ".sites.$avc_site.moodle_integration.moodle_url = \"$moodle_url\"" "$PROJECT_ROOT/cnwp.yml"
+    yq eval -i ".sites.$avc_site.moodle_integration.enabled = true" "$PROJECT_ROOT/nwp.yml"
+    yq eval -i ".sites.$avc_site.moodle_integration.moodle_site = \"$moodle_site\"" "$PROJECT_ROOT/nwp.yml"
+    yq eval -i ".sites.$avc_site.moodle_integration.moodle_url = \"$moodle_url\"" "$PROJECT_ROOT/nwp.yml"
 
     # Update Moodle site configuration
     print_info "Updating Moodle site configuration..."
@@ -309,11 +309,11 @@ update_cnwp_yml() {
     local avc_url
     avc_url=$(avc_moodle_get_site_url "$avc_site")
 
-    yq eval -i ".sites.$moodle_site.avc_integration.enabled = true" "$PROJECT_ROOT/cnwp.yml"
-    yq eval -i ".sites.$moodle_site.avc_integration.avc_site = \"$avc_site\"" "$PROJECT_ROOT/cnwp.yml"
-    yq eval -i ".sites.$moodle_site.avc_integration.avc_url = \"$avc_url\"" "$PROJECT_ROOT/cnwp.yml"
+    yq eval -i ".sites.$moodle_site.avc_integration.enabled = true" "$PROJECT_ROOT/nwp.yml"
+    yq eval -i ".sites.$moodle_site.avc_integration.avc_site = \"$avc_site\"" "$PROJECT_ROOT/nwp.yml"
+    yq eval -i ".sites.$moodle_site.avc_integration.avc_url = \"$avc_url\"" "$PROJECT_ROOT/nwp.yml"
 
-    pass "cnwp.yml updated with integration settings"
+    pass "nwp.yml updated with integration settings"
 
     return 0
 }
@@ -454,10 +454,10 @@ else
     print_info "Skipping SSO flow test (--skip-test)"
 fi
 
-# Step 8: Update cnwp.yml
-step 8 10 "Updating cnwp.yml"
+# Step 8: Update nwp.yml
+step 8 10 "Updating nwp.yml"
 if ! update_cnwp_yml "$AVC_SITE" "$MOODLE_SITE"; then
-    print_error "Failed to update cnwp.yml"
+    print_error "Failed to update nwp.yml"
     exit 1
 fi
 
@@ -466,12 +466,12 @@ step 9 10 "Configuring optional features"
 
 if [[ "$ENABLE_ROLE_SYNC" == "true" ]]; then
     print_info "Role synchronization will be enabled once modules are created"
-    yq eval -i ".sites.$AVC_SITE.moodle_integration.role_sync = true" "$PROJECT_ROOT/cnwp.yml"
+    yq eval -i ".sites.$AVC_SITE.moodle_integration.role_sync = true" "$PROJECT_ROOT/nwp.yml"
 fi
 
 if [[ "$ENABLE_BADGE_DISPLAY" == "true" ]]; then
     print_info "Badge display will be enabled once modules are created"
-    yq eval -i ".sites.$AVC_SITE.moodle_integration.badge_display = true" "$PROJECT_ROOT/cnwp.yml"
+    yq eval -i ".sites.$AVC_SITE.moodle_integration.badge_display = true" "$PROJECT_ROOT/nwp.yml"
 fi
 
 # Step 10: Summary and next steps

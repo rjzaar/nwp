@@ -53,7 +53,7 @@ should_run_step() {
     fi
 }
 
-# Get recipe value from cnwp.yml
+# Get recipe value from nwp.yml
 get_recipe_value() {
     local recipe=$1
     local key=$2
@@ -66,10 +66,10 @@ get_recipe_value() {
             print value
             exit
         }
-    ' "$PROJECT_ROOT/cnwp.yml"
+    ' "$PROJECT_ROOT/nwp.yml"
 }
 
-# Get site value from cnwp.yml
+# Get site value from nwp.yml
 get_site_value() {
     local site=$1
     local key=$2
@@ -86,7 +86,7 @@ get_site_value() {
             print value
             exit
         }
-    ' "$PROJECT_ROOT/cnwp.yml"
+    ' "$PROJECT_ROOT/nwp.yml"
 }
 
 # Get production config from site or recipe
@@ -124,7 +124,7 @@ get_linode_server() {
             exit
         }
         in_server_block && /^    [a-z]/ && $0 !~ "^    " server ":" { in_server_block=0 }
-    ' "$PROJECT_ROOT/cnwp.yml"
+    ' "$PROJECT_ROOT/nwp.yml"
 }
 
 # Get SSH connection string
@@ -221,7 +221,7 @@ EXAMPLES:
     ./prod2stg.sh --dry-run nwp-stg
 
 CONFIGURATION:
-    Production configuration is read from cnwp.yml:
+    Production configuration is read from nwp.yml:
     - Site-specific: sites.<sitename>.production_config
     - Recipe default: recipes.<recipe>.prod_*
     - Linode server: linode.servers.<server_name>
@@ -337,7 +337,7 @@ if should_run_step 1 "$START_STEP"; then
 
     if [ -z "$PROD_SERVER" ]; then
         print_error "Production server not configured for $SITENAME"
-        print_info "Add production config to cnwp.yml under sites.$SITENAME.production_config"
+        print_info "Add production config to nwp.yml under sites.$SITENAME.production_config"
         exit 1
     fi
     print_status "OK" "Production server: $PROD_SERVER"
@@ -356,7 +356,7 @@ if should_run_step 1 "$START_STEP"; then
     SSH_CONN=$(get_ssh_connection "$PROD_SERVER")
     if [ -z "$SSH_CONN" ]; then
         print_error "Failed to get SSH connection details for server: $PROD_SERVER"
-        print_info "Check linode.servers.$PROD_SERVER configuration in cnwp.yml"
+        print_info "Check linode.servers.$PROD_SERVER configuration in nwp.yml"
         exit 1
     fi
     print_status "OK" "SSH connection: $SSH_CONN"
@@ -616,7 +616,7 @@ if should_run_step 9 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
         current_recipe == recipe && /^    reinstall_modules:/ { in_modules=1; next }
         in_modules && /^      - / { print $2 }
         in_modules && /^    [a-z_]/ { in_modules=0 }
-    ' "$PROJECT_ROOT/cnwp.yml")
+    ' "$PROJECT_ROOT/nwp.yml")
 
     if [ -n "$REINSTALL_MODULES" ]; then
         if [ "$DRY_RUN" = false ]; then

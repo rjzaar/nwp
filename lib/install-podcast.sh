@@ -21,7 +21,7 @@ install_podcast() {
     local install_dir=$2
     local start_step=${3:-1}
     local purpose=${4:-indefinite}
-    local config_file="cnwp.yml"
+    local config_file="nwp.yml"
 
     # Get recipe configuration
     local domain=$(get_recipe_value "$recipe" "domain" "$config_file")
@@ -85,12 +85,12 @@ install_podcast() {
         -m "$media_subdomain" \
         "$domain"; then
 
-        # Register site in cnwp.yml
+        # Register site in nwp.yml
         local site_dir="$PROJECT_ROOT/$install_dir"
 
         if command -v yaml_add_site &> /dev/null; then
-            if yaml_add_site "$install_dir" "$site_dir" "$recipe" "production" "$purpose" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
-                print_status "OK" "Site registered in cnwp.yml (purpose: $purpose)"
+            if yaml_add_site "$install_dir" "$site_dir" "$recipe" "production" "$purpose" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
+                print_status "OK" "Site registered in nwp.yml (purpose: $purpose)"
             else
                 print_info "Site registration skipped (may already exist)"
             fi

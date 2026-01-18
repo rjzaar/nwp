@@ -568,7 +568,7 @@ public function updateFileScheme(NodeInterface $node, TermInterface $destination
 
 ## Configuration
 
-### cnwp.yml / Settings
+### nwp.yml / Settings
 
 ```yaml
 # AVC Work Management Settings

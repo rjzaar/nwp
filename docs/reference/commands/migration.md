@@ -514,7 +514,7 @@ ddev drush migrate:reset-status migration_name
 **Solution:**
 1. Verify source files are in `sites/sitename/source/`
 2. Check for index.php or other identifying files
-3. Manually specify source_type in cnwp.yml:
+3. Manually specify source_type in nwp.yml:
    ```yaml
    sites:
      mysite:

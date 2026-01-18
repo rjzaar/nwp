@@ -330,7 +330,7 @@ Features:
 
 Via Admin UI: `/admin/config/avc/email-reply`
 
-Via Recipe (cnwp.yml):
+Via Recipe (nwp.yml):
 ```yaml
 recipes:
   avc-dev:
@@ -405,7 +405,7 @@ recipes:
 
 ### Site Email Configuration
 
-Stored in `cnwp.yml`:
+Stored in `nwp.yml`:
 
 ```yaml
 sites:

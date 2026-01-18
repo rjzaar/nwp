@@ -385,14 +385,14 @@ import_step_verify_site() {
     fi
 }
 
-# Step 11: Register site in cnwp.yml
+# Step 11: Register site in nwp.yml
 # Usage: import_step_register_site "site_name" "ssh_target" "remote_webroot" "drupal_version"
 import_step_register_site() {
     local site_name="$1"
     local ssh_target="$2"
     local remote_webroot="$3"
     local drupal_version="${4:-unknown}"
-    local config_file="${5:-cnwp.yml}"
+    local config_file="${5:-nwp.yml}"
     local site_dir="$PWD/$site_name"
 
     # Build the site entry
@@ -423,7 +423,7 @@ import_step_register_site() {
       stage_file_proxy: $(get_import_option "$site_name" "stage_file_proxy")
 SITE_ENTRY
 
-    print_status "OK" "Registered in cnwp.yml"
+    print_status "OK" "Registered in nwp.yml"
     return 0
 }
 
@@ -547,7 +547,7 @@ import_site() {
     import_step_verify_site "$site_name"
     ((step++))
 
-    # Step 11: Register in cnwp.yml
+    # Step 11: Register in nwp.yml
     show_import_progress "$site_name" 10 1 1
     show_step 11 $total_steps "Registering site in configuration"
     import_step_register_site "$site_name" "$ssh_target" "$remote_webroot" "$drupal_version"
@@ -624,7 +624,7 @@ rollback_import() {
         print_status "OK" "Removed directory: $site_dir"
     fi
 
-    # Remove from cnwp.yml (if registered)
+    # Remove from nwp.yml (if registered)
     # This is complex YAML manipulation, skip for now
 
     return 0

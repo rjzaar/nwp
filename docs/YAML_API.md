@@ -9,7 +9,7 @@ NWP provides a consolidated YAML parsing library in `lib/yaml-write.sh` that off
 ```bash
 source "$PROJECT_ROOT/lib/yaml-write.sh"
 
-# Read settings from cnwp.yml
+# Read settings from nwp.yml
 url=$(yaml_get_setting "url")
 email=$(yaml_get_setting "email.domain")
 
@@ -43,7 +43,7 @@ The YAML API consolidates all YAML parsing into a single, well-tested library th
 
 ### yaml_get_setting
 
-Reads a setting value from `cnwp.yml` using dot notation for nested keys.
+Reads a setting value from `nwp.yml` using dot notation for nested keys.
 
 **Usage:**
 ```bash
@@ -84,7 +84,7 @@ enabled=$(yaml_get_setting "features.enabled")  # Returns: true
 
 ### yaml_get_array
 
-Reads an array from `cnwp.yml` and returns space-separated values.
+Reads an array from `nwp.yml` and returns space-separated values.
 
 **Usage:**
 ```bash
@@ -100,7 +100,7 @@ array_values=$(yaml_get_array "path.to.array")
 
 **Examples:**
 ```bash
-# Read array from cnwp.yml
+# Read array from nwp.yml
 modules=$(yaml_get_array "sites.mysite.modules")
 # Returns: "module1 module2 module3"
 
@@ -133,7 +133,7 @@ sites:
 
 ### yaml_get_recipe_field
 
-Reads a field value from a recipe definition in `cnwp.yml`.
+Reads a field value from a recipe definition in `nwp.yml`.
 
 **Usage:**
 ```bash
@@ -237,7 +237,7 @@ fi
 
 ### yaml_write_setting
 
-Writes or updates a setting in `cnwp.yml`.
+Writes or updates a setting in `nwp.yml`.
 
 **Usage:**
 ```bash
@@ -292,7 +292,7 @@ yaml_write_site_field "mysite" "stage" "installed"
 
 ### yaml_write_array
 
-Writes an array to `cnwp.yml`.
+Writes an array to `nwp.yml`.
 
 **Usage:**
 ```bash
@@ -322,7 +322,7 @@ Validates YAML syntax (checks for common errors).
 
 **Usage:**
 ```bash
-if yaml_validate "cnwp.yml"; then
+if yaml_validate "nwp.yml"; then
     echo "YAML is valid"
 else
     echo "YAML has syntax errors"
@@ -337,8 +337,8 @@ Creates a timestamped backup of a YAML file.
 
 **Usage:**
 ```bash
-yaml_backup "cnwp.yml"
-# Creates: cnwp.yml.backup-20260113-192000
+yaml_backup "nwp.yml"
+# Creates: nwp.yml.backup-20260113-192000
 ```
 
 ---
@@ -360,7 +360,7 @@ url=$(awk '
         print;
         exit
     }
-' cnwp.yml)
+' nwp.yml)
 
 # DON'T DO THIS - Inline YAML parsing for arrays
 modules=$(awk '
@@ -373,7 +373,7 @@ modules=$(awk '
         gsub(/"/, "");
         printf "%s ", $0
     }
-' cnwp.yml)
+' nwp.yml)
 ```
 
 **Problems with this approach:**
@@ -428,7 +428,7 @@ modules=$(yaml_get_array "sites.$site_name.modules")
 # Before
 php_version=$(awk '/^settings:/,/^[^ ]/ {
     if ($1 == "php_version:") { print $2; exit }
-}' cnwp.yml | tr -d '"')
+}' nwp.yml | tr -d '"')
 
 # After
 php_version=$(yaml_get_setting "settings.php_version")
@@ -448,7 +448,7 @@ readarray -t modules < <(awk "
         print
     }
     in_modules && /^    [^ ]/ { exit }
-" cnwp.yml)
+" nwp.yml)
 
 # After
 modules=$(yaml_get_array "sites.$site_name.modules")
@@ -467,7 +467,7 @@ source=$(awk "
         print;
         exit
     }
-" cnwp.yml)
+" nwp.yml)
 
 # After
 source=$(yaml_get_recipe_field "$recipe" "source")
@@ -573,13 +573,13 @@ email=$(yaml_get_setting "email_domain")
 
 ```bash
 # Backup before modifying
-yaml_backup "cnwp.yml"
+yaml_backup "nwp.yml"
 
 # Write changes
 yaml_write_setting "settings.php_version" "8.2"
 
 # Validate after write
-if ! yaml_validate "cnwp.yml"; then
+if ! yaml_validate "nwp.yml"; then
     echo "ERROR: YAML validation failed, restoring backup"
     # Restore backup logic here
 fi
@@ -592,7 +592,7 @@ fi
 url=$(yaml_get_setting "url")
 
 # Bad - inline parsing
-url=$(grep "^url:" cnwp.yml | cut -d: -f2 | tr -d ' "')
+url=$(grep "^url:" nwp.yml | cut -d: -f2 | tr -d ' "')
 ```
 
 ---
@@ -622,7 +622,7 @@ source "$PROJECT_ROOT/lib/yaml-write.sh"
 **Debug:**
 ```bash
 # Print the actual YAML structure
-cat cnwp.yml | grep -A 5 "parent:"
+cat nwp.yml | grep -A 5 "parent:"
 
 # Test with simple key first
 result=$(yaml_get_setting "url")
@@ -677,7 +677,7 @@ echo "URL: ${settings_cache[url]}"
 - **`docs/DATA_SECURITY_BEST_PRACTICES.md`** - Secrets architecture and security
 - **`docs/proposals/YAML_PARSER_CONSOLIDATION.md`** - Implementation proposal
 - **`tests/bats/yaml-read.bats`** - Complete test suite with examples
-- **`example.cnwp.yml`** - Configuration file structure
+- **`example.nwp.yml`** - Configuration file structure
 
 ---
 

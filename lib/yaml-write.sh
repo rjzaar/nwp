@@ -1,10 +1,10 @@
 #!/bin/bash
 # YAML Writing Library for NWP
-# Provides functions to add, remove, update, and read site entries in cnwp.yml
+# Provides functions to add, remove, update, and read site entries in nwp.yml
 # Uses AWK for reading and sed for writing (no yq dependency)
 
 # Default config file
-YAML_CONFIG_FILE="${YAML_CONFIG_FILE:-cnwp.yml}"
+YAML_CONFIG_FILE="${YAML_CONFIG_FILE:-nwp.yml}"
 
 # Color output for messages - use existing definitions from lib/ui.sh if available
 # Only define if not already set (maintains TTY-awareness from ui.sh)
@@ -182,7 +182,7 @@ yaml_validate_or_restore() {
 }
 
 #######################################
-# Backup cnwp.yml before modifications
+# Backup nwp.yml before modifications
 # Arguments:
 #   $1 - Config file path (optional, defaults to YAML_CONFIG_FILE)
 # Returns:
@@ -221,7 +221,7 @@ yaml_backup() {
 }
 
 #######################################
-# Check if a site exists in cnwp.yml
+# Check if a site exists in nwp.yml
 # Arguments:
 #   $1 - Site name
 #   $2 - Config file path (optional)
@@ -340,7 +340,7 @@ yaml_validate_purpose() {
 }
 
 #######################################
-# Add a new site entry to cnwp.yml
+# Add a new site entry to nwp.yml
 # Arguments:
 #   $1 - Site name
 #   $2 - Directory path
@@ -631,7 +631,7 @@ yaml_complete_site_stub() {
 }
 
 #######################################
-# Remove a site entry from cnwp.yml
+# Remove a site entry from nwp.yml
 # Arguments:
 #   $1 - Site name
 #   $2 - Config file path (optional)
@@ -641,7 +641,7 @@ yaml_complete_site_stub() {
 yaml_remove_site() {
     local site_name="$1"
     local config_file="${2:-$YAML_CONFIG_FILE}"
-    local lockfile="/tmp/cnwp.yml.lock"
+    local lockfile="/tmp/nwp.yml.lock"
 
     if [[ -z "$site_name" ]]; then
         echo -e "${RED}Error: Site name is required${NC}" >&2
@@ -1174,7 +1174,7 @@ yaml_add_site_live() {
 }
 
 #######################################
-# Add a migration stub entry to cnwp.yml
+# Add a migration stub entry to nwp.yml
 # Creates minimal entry for a site pending migration
 # Arguments:
 #   $1 - Site name
@@ -1280,7 +1280,7 @@ yaml_add_migration_stub() {
 }
 
 #######################################
-# Get site purpose from cnwp.yml
+# Get site purpose from nwp.yml
 # Arguments:
 #   $1 - Site name
 #   $2 - Config file path (optional)
@@ -1696,7 +1696,7 @@ yaml_get_array() {
 # Arguments:
 #   $1 - Recipe name (e.g., "d", "nwp", "dm")
 #   $2 - Field name (e.g., "source", "dev", "webroot")
-#   $3 - Config file path (optional, defaults to example.cnwp.yml)
+#   $3 - Config file path (optional, defaults to example.nwp.yml)
 # Outputs:
 #   Field value or empty string
 # Returns:
@@ -1705,7 +1705,7 @@ yaml_get_array() {
 yaml_get_recipe_field() {
     local recipe_name="$1"
     local field_name="$2"
-    local config_file="${3:-example.cnwp.yml}"
+    local config_file="${3:-example.nwp.yml}"
 
     if [[ -z "$recipe_name" || -z "$field_name" ]]; then
         echo -e "${RED}Error: Recipe name and field name are required${NC}" >&2

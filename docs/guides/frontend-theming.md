@@ -250,7 +250,7 @@ Override auto-detection:
 # Specify theme directory
 pl theme watch avc -t /path/to/theme
 
-# Or in cnwp.yml
+# Or in nwp.yml
 sites:
   avc:
     recipe: os
@@ -262,7 +262,7 @@ sites:
 
 ### Override Build Tool
 
-Configure in `cnwp.yml`:
+Configure in `nwp.yml`:
 
 ```yaml
 sites:
@@ -412,7 +412,7 @@ ERROR: No build tool detected
 
 **Solution:**
 - Verify build file exists (`gulpfile.js`, etc.)
-- Specify manually in `cnwp.yml`
+- Specify manually in `nwp.yml`
 - Check theme path is correct
 
 ### BrowserSync Not Working

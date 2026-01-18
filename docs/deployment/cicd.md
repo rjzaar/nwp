@@ -144,7 +144,7 @@ hooks:
 
 ### Global CI Settings
 
-In `cnwp.yml`, configure default CI behavior:
+In `nwp.yml`, configure default CI behavior:
 
 ```yaml
 settings:
@@ -167,7 +167,7 @@ settings:
 
 ### Per-Site Configuration
 
-Each site in `cnwp.yml` can have its own CI settings:
+Each site in `nwp.yml` can have its own CI settings:
 
 ```yaml
 sites:

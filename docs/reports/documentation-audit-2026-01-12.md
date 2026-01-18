@@ -181,7 +181,7 @@ The main documentation index had no reference to the new console guide, making i
 
 **Contents:**
 - Auto-configuration explanation during `pl live` deployment
-- Configuration example in `cnwp.yml`
+- Configuration example in `nwp.yml`
 - What happens automatically (3 steps)
 - Verification step display example
 - How to skip auto-configuration (YAML and command-line)

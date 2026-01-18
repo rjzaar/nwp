@@ -3,12 +3,12 @@
 > **NOTE: Superseded by `docs/ARCHITECTURE_ANALYSIS.md`**
 >
 > This research has been consolidated into the main architecture analysis document.
-> NWP uses cnwp.yml + .secrets.yml for configuration (see docs/DATA_SECURITY_BEST_PRACTICES.md).
+> NWP uses nwp.yml + .secrets.yml for configuration (see docs/DATA_SECURITY_BEST_PRACTICES.md).
 
 This document compares environment variable structures and configurations from:
 - Vortex (DrevOps framework)
 - Open Social and Varbase Drupal profiles
-- NWP cnwp.yml configuration
+- NWP nwp.yml configuration
 - DDEV configuration approach
 
 ## Executive Summary
@@ -16,7 +16,7 @@ This document compares environment variable structures and configurations from:
 The three main approaches examined are:
 1. **Vortex**: Comprehensive `.env` file + `docker-compose.yml` for Docker-based development
 2. **DDEV**: `config.yaml` with `web_environment` for containerized development
-3. **NWP cnwp.yml**: Custom YAML configuration for project recipes and settings
+3. **NWP nwp.yml**: Custom YAML configuration for project recipes and settings
 
 ## 1. Vortex Configuration Structure
 
@@ -229,7 +229,7 @@ web_environment:
 - **Database management**: Built-in backup/restore
 - **Hooks**: Pre/post hooks for custom commands
 
-## 4. NWP cnwp.yml Configuration
+## 4. NWP nwp.yml Configuration
 
 ### 4.1 Structure
 
@@ -296,10 +296,10 @@ Unlike Vortex and DDEV, the NWP configuration:
 
 ### 5.1 Configuration Scope
 
-| Aspect | Vortex | DDEV | NWP cnwp.yml |
+| Aspect | Vortex | DDEV | NWP nwp.yml |
 |--------|--------|------|--------------|
 | **Scope** | Project environment + deployment | Local development environment | Project recipes + setup |
-| **Format** | `.env` + `docker-compose.yml` | `config.yaml` | `cnwp.yml` |
+| **Format** | `.env` + `docker-compose.yml` | `config.yaml` | `nwp.yml` |
 | **Secrets** | `.env.local` (gitignored) | `config.local.yaml` | Not specified |
 | **Service Definition** | docker-compose services | Built-in + add-ons | Defined in settings |
 | **Hosting Support** | Lagoon, Acquia | DDEV Cloud | Linode (custom) |
@@ -353,7 +353,7 @@ Unlike Vortex and DDEV, the NWP configuration:
 - ⚠️ Production deployment (requires additional tooling)
 - ❌ Complex multi-environment workflows
 
-**NWP cnwp.yml:**
+**NWP nwp.yml:**
 - ✅ Standardized project initialization
 - ✅ Multiple project types (Drupal, Moodle, GitLab)
 - ✅ Recipe-based workflow
@@ -368,7 +368,7 @@ Unlike Vortex and DDEV, the NWP configuration:
 Combine the best aspects of each system:
 
 ```yaml
-# cnwp.yml - Enhanced structure
+# nwp.yml - Enhanced structure
 settings:
   # Stack configuration (keep current)
   database: mariadb
@@ -423,7 +423,7 @@ recipes:
 ### 6.2 Environment Variable Management
 
 **Option 1: Generate DDEV Configuration**
-- NWP reads `cnwp.yml` and generates `.ddev/config.yaml`
+- NWP reads `nwp.yml` and generates `.ddev/config.yaml`
 - Leverage DDEV's mature tooling
 - Better community support
 - Easier onboarding for developers familiar with DDEV
@@ -436,7 +436,7 @@ recipes:
 ```
 
 **Option 2: Generate Vortex Configuration**
-- NWP reads `cnwp.yml` and generates `.env` + `docker-compose.yml`
+- NWP reads `nwp.yml` and generates `.env` + `docker-compose.yml`
 - Suitable for CI/CD-heavy workflows
 - Better for Lagoon/Acquia deployments
 - More complex maintenance
@@ -452,7 +452,7 @@ recipes:
 Create a standardized `.env.example` for each recipe:
 
 ```bash
-# .env.example (generated from cnwp.yml)
+# .env.example (generated from nwp.yml)
 
 # Project
 PROJECT_NAME=sitename
@@ -493,9 +493,9 @@ API_KEYS=
 
 Establish a clear hierarchy:
 
-1. **cnwp.yml** - Project-wide defaults
+1. **nwp.yml** - Project-wide defaults
 2. **cnwp.local.yml** - Local overrides (gitignored)
-3. **.env** - Runtime environment (generated from cnwp.yml)
+3. **.env** - Runtime environment (generated from nwp.yml)
 4. **.env.local** - Local secrets (gitignored)
 5. **.ddev/config.yaml** - DDEV config (if using DDEV)
 6. **.ddev/config.local.yaml** - DDEV local overrides
@@ -535,12 +535,12 @@ ENV_DEBUG=1
 For existing NWP users:
 
 **Phase 1: Backward Compatibility**
-- Keep `cnwp.yml` as primary configuration
-- Auto-generate DDEV/Vortex configs from cnwp.yml
+- Keep `nwp.yml` as primary configuration
+- Auto-generate DDEV/Vortex configs from nwp.yml
 - Support existing workflows
 
 **Phase 2: Enhanced Configuration**
-- Add `environment` section to cnwp.yml
+- Add `environment` section to nwp.yml
 - Introduce `.env` support
 - Provide migration guide
 
@@ -593,11 +593,11 @@ generate_ddev_config() {
   local recipe=$1
   local sitename=$2
 
-  # Read from cnwp.yml
-  local profile=$(yq eval ".recipes.$recipe.profile" cnwp.yml)
-  local webroot=$(yq eval ".recipes.$recipe.webroot" cnwp.yml)
-  local php=$(yq eval ".settings.php" cnwp.yml)
-  local database=$(yq eval ".settings.database" cnwp.yml)
+  # Read from nwp.yml
+  local profile=$(yq eval ".recipes.$recipe.profile" nwp.yml)
+  local webroot=$(yq eval ".recipes.$recipe.webroot" nwp.yml)
+  local php=$(yq eval ".settings.php" nwp.yml)
+  local database=$(yq eval ".settings.database" nwp.yml)
 
   # Generate .ddev/config.yaml
   cat > .ddev/config.yaml <<EOF
@@ -632,10 +632,10 @@ EOF
 
 ### 7.2 Environment-Specific Configurations
 
-Support different environments through cnwp.yml:
+Support different environments through nwp.yml:
 
 ```yaml
-# cnwp.yml
+# nwp.yml
 environments:
   development:
     debug: true
@@ -695,12 +695,12 @@ ddev get ddev/ddev-solr
 
 ### 7.4 Secrets Management
 
-**Never commit secrets to cnwp.yml**
+**Never commit secrets to nwp.yml**
 
 Create a secrets management approach:
 
 ```yaml
-# cnwp.yml (committed)
+# nwp.yml (committed)
 settings:
   secrets_file: .secrets.yml  # gitignored
 
@@ -729,7 +729,7 @@ fi
 
 ### 7.5 Multi-Site Support
 
-Extend cnwp.yml to support multi-site:
+Extend nwp.yml to support multi-site:
 
 ```yaml
 sites:
@@ -765,7 +765,7 @@ additional_hostnames:
 | Feature | Vortex | DDEV | NWP (Current) | NWP (Proposed) |
 |---------|--------|------|---------------|----------------|
 | **Local Dev Environment** | ✅ Docker Compose | ✅ Docker (managed) | ⚠️ Manual | ✅ DDEV-integrated |
-| **Environment Variables** | ✅ .env | ✅ config.yaml | ❌ None | ✅ .env + cnwp.yml |
+| **Environment Variables** | ✅ .env | ✅ config.yaml | ❌ None | ✅ .env + nwp.yml |
 | **Service Management** | ✅ Conditional | ✅ Add-ons | ❌ Manual | ✅ Recipe-defined |
 | **Database Import** | ✅ Multiple sources | ✅ Built-in | ⚠️ Basic | ✅ Enhanced |
 | **Secrets Management** | ✅ .env.local | ✅ config.local.yaml | ❌ None | ✅ .secrets.yml |
@@ -817,7 +817,7 @@ additional_hostnames:
 
 ### 9.1 Immediate (High Priority) ✅ COMPLETED
 
-1. ✅ **Create environment variable mapping** from cnwp.yml to DDEV config
+1. ✅ **Create environment variable mapping** from nwp.yml to DDEV config
 2. ✅ **Add .env support** to NWP scripts for runtime configuration
 3. ✅ **Document environment variables** in README
 4. ✅ **Create .env.example** templates for each recipe
@@ -827,7 +827,7 @@ additional_hostnames:
 
 6. ✅ **Implement DDEV config generation** in install.sh
 7. ✅ **Add environment selection** (development, staging, production) - Added to settings
-8. ✅ **Create service management** system in cnwp.yml - Implemented with defaults + overrides
+8. ✅ **Create service management** system in nwp.yml - Implemented with defaults + overrides
 9. ✅ **Build secrets management** framework - .secrets.yml template created
 10. ✅ **Write migration guide** for existing users
 
@@ -841,10 +841,10 @@ additional_hostnames:
 
 ### 9.3 Long-term (Future Enhancement)
 
-11. **Multi-site support** in cnwp.yml
+11. **Multi-site support** in nwp.yml
 12. **Hosting provider integrations** (Pantheon, Platform.sh, etc.)
 13. **CI/CD templates** (GitHub Actions, GitLab CI)
-14. **GUI configuration tool** for cnwp.yml
+14. **GUI configuration tool** for nwp.yml
 15. **Plugin/extension system** for custom recipes
 
 ## 10. Conclusion
@@ -860,7 +860,7 @@ The comparison reveals three distinct approaches to environment configuration:
 NWP now implements the recommended hybrid approach:
 
 - ✅ **Integrated DDEV** as the local development environment manager
-- ✅ **Enhanced cnwp.yml** with hierarchical configuration (recipe → settings → defaults)
+- ✅ **Enhanced nwp.yml** with hierarchical configuration (recipe → settings → defaults)
 - ✅ **Added environment variable support** via .env files with templates
 - ✅ **Maintained recipe system** as NWP's core differentiator
 - ✅ **Built on DDEV foundation** with auto-generation of DDEV configs

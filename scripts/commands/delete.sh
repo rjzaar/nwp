@@ -45,7 +45,7 @@ ${BOLD}OPTIONS:${NC}
     -b, --backup            Create backup before deletion
     -k, --keep-backups      Keep existing backups (default: ask)
     -f, --force             Force deletion (bypass name validation for cleanup)
-    --keep-yml              Keep site entry in cnwp.yml (default: remove)
+    --keep-yml              Keep site entry in nwp.yml (default: remove)
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Name of the DDEV site to delete
@@ -315,20 +315,20 @@ handle_backups() {
     return 0
 }
 
-# Step 7: Remove from cnwp.yml
+# Step 7: Remove from nwp.yml
 remove_from_cnwp() {
     local sitename=$1
     local keep_yml=$2
 
-    print_header "Step 7: Remove from cnwp.yml"
+    print_header "Step 7: Remove from nwp.yml"
 
     # Check if YAML library is available
     if ! command -v yaml_remove_site &> /dev/null; then
-        print_status "INFO" "YAML library not available, skipping cnwp.yml cleanup"
+        print_status "INFO" "YAML library not available, skipping nwp.yml cleanup"
         return 0
     fi
 
-    # Read default setting from cnwp.yml
+    # Read default setting from nwp.yml
     local delete_site_yml=$(awk '
         /^settings:/ { in_settings = 1; next }
         in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
@@ -338,7 +338,7 @@ remove_from_cnwp() {
             print
             exit
         }
-    ' "$PROJECT_ROOT/cnwp.yml")
+    ' "$PROJECT_ROOT/nwp.yml")
 
     # Default to true if not set
     delete_site_yml=${delete_site_yml:-true}
@@ -348,30 +348,30 @@ remove_from_cnwp() {
 
     # If --keep-yml flag is set, skip removal
     if [ "$keep_yml" == "true" ]; then
-        print_status "INFO" "Keeping site entry in cnwp.yml (--keep-yml flag)"
+        print_status "INFO" "Keeping site entry in nwp.yml (--keep-yml flag)"
         return 0
     fi
 
     # If delete_site_yml is false, skip removal
     if [ "$delete_site_yml" == "false" ]; then
-        print_status "INFO" "Keeping site entry in cnwp.yml (delete_site_yml: false in settings)"
+        print_status "INFO" "Keeping site entry in nwp.yml (delete_site_yml: false in settings)"
         return 0
     fi
 
-    # Check if site exists in cnwp.yml
-    if ! yaml_site_exists "$sitename" "$PROJECT_ROOT/cnwp.yml"; then
-        print_status "INFO" "Site not found in cnwp.yml"
+    # Check if site exists in nwp.yml
+    if ! yaml_site_exists "$sitename" "$PROJECT_ROOT/nwp.yml"; then
+        print_status "INFO" "Site not found in nwp.yml"
         return 0
     fi
 
-    ocmsg "Removing site '$sitename' from cnwp.yml"
+    ocmsg "Removing site '$sitename' from nwp.yml"
 
     # FIX 3: Remove error suppression - show errors to user
     # Remove the site (errors are now visible and informative)
-    if yaml_remove_site "$sitename" "$PROJECT_ROOT/cnwp.yml"; then
-        print_status "OK" "Site removed from cnwp.yml"
+    if yaml_remove_site "$sitename" "$PROJECT_ROOT/nwp.yml"; then
+        print_status "OK" "Site removed from nwp.yml"
     else
-        print_error "Failed to remove site from cnwp.yml"
+        print_error "Failed to remove site from nwp.yml"
         return 1
     fi
 
@@ -469,7 +469,7 @@ fi
 # Check site purpose before deletion
 SITE_PURPOSE=""
 if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ] && command -v yaml_get_site_purpose &> /dev/null; then
-    SITE_PURPOSE=$(yaml_get_site_purpose "$SITENAME" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null)
+    SITE_PURPOSE=$(yaml_get_site_purpose "$SITENAME" "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
 fi
 
 # Handle purpose-based deletion restrictions
@@ -477,8 +477,8 @@ case "$SITE_PURPOSE" in
     permanent)
         print_error "Site '$SITENAME' has purpose 'permanent' and cannot be deleted"
         echo ""
-        print_info "To delete this site, first change its purpose in cnwp.yml:"
-        echo "  1. Edit cnwp.yml"
+        print_info "To delete this site, first change its purpose in nwp.yml:"
+        echo "  1. Edit nwp.yml"
         echo "  2. Find the site entry for '$SITENAME'"
         echo "  3. Change 'purpose: permanent' to 'purpose: indefinite' or 'purpose: testing'"
         echo "  4. Run delete.sh again"
@@ -549,7 +549,7 @@ fi
 # Handle backups
 handle_backups "$SITENAME" "$KEEP_BACKUPS"
 
-# Remove from cnwp.yml
+# Remove from nwp.yml
 remove_from_cnwp "$SITENAME" "$KEEP_YML"
 
 # Show summary

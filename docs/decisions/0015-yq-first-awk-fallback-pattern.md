@@ -10,7 +10,7 @@
 ## Context
 
 NWP uses YAML extensively:
-- `cnwp.yml` - Site configurations (500-2000 lines)
+- `nwp.yml` - Site configurations (500-2000 lines)
 - `.secrets.yml` - Infrastructure secrets
 - `.secrets.data.yml` - Data secrets
 - `.verification.yml` - Verification tracking
@@ -78,7 +78,7 @@ Implement **yq-First with AWK Fallback** pattern:
 ```bash
 yaml_get_setting() {
     local key="$1"
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
 
     # Try yq first (robust, handles all YAML)
     if command -v yq &>/dev/null; then

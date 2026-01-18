@@ -549,8 +549,8 @@ cleanup_test_site() {
         rm -rf "sitebackups/${prefix}"
     fi
 
-    # Clean cnwp.yml entry (with 5-layer protection)
-    atomic_yaml_cleanup "cnwp.yml" "/^  ${prefix}:/,/^  [a-z]/{/^  ${prefix}:/d;/^  [a-z]/!d}"
+    # Clean nwp.yml entry (with 5-layer protection)
+    atomic_yaml_cleanup "nwp.yml" "/^  ${prefix}:/,/^  [a-z]/{/^  ${prefix}:/d;/^  [a-z]/!d}"
 }
 ```
 
@@ -662,7 +662,7 @@ log_verification_if_enabled() {
 ### 7.2 Consent Configuration
 
 ```yaml
-# In cnwp.yml
+# In nwp.yml
 settings:
   verification:
     enabled: true
@@ -1191,13 +1191,13 @@ jobs:
 
 | Deliverable | Description |
 |-------------|-------------|
-| Consent configuration | Settings in cnwp.yml |
+| Consent configuration | Settings in nwp.yml |
 | Auto-logging hooks | Capture command success as verification |
 | Error reporting | Prompt and store issues |
 
 #### 10.4.3 Tasks
 
-- [ ] Add verification settings to cnwp.yml
+- [ ] Add verification settings to nwp.yml
 - [ ] Add consent prompts to setup.sh
 - [ ] Hook command execution in pl script
 - [ ] Map commands to verification items

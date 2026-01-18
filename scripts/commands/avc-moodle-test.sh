@@ -99,21 +99,21 @@ test_moodle_config() {
         "grep -q 'wwwroot' '$moodle_dir/config.php'"
 }
 
-# Test cnwp.yml configuration
+# Test nwp.yml configuration
 test_cnwp_config() {
     local avc_site=$1
     local moodle_site=$2
 
-    print_section "Testing cnwp.yml Configuration"
+    print_section "Testing nwp.yml Configuration"
 
-    run_test "cnwp.yml exists" \
-        "test -f '$PROJECT_ROOT/cnwp.yml'"
+    run_test "nwp.yml exists" \
+        "test -f '$PROJECT_ROOT/nwp.yml'"
 
-    run_test "AVC site configured in cnwp.yml" \
-        "yq eval '.sites.$avc_site' '$PROJECT_ROOT/cnwp.yml' | grep -q '.'"
+    run_test "AVC site configured in nwp.yml" \
+        "yq eval '.sites.$avc_site' '$PROJECT_ROOT/nwp.yml' | grep -q '.'"
 
-    run_test "Moodle site configured in cnwp.yml" \
-        "yq eval '.sites.$moodle_site' '$PROJECT_ROOT/cnwp.yml' | grep -q '.'"
+    run_test "Moodle site configured in nwp.yml" \
+        "yq eval '.sites.$moodle_site' '$PROJECT_ROOT/nwp.yml' | grep -q '.'"
 }
 
 # Test network connectivity
@@ -165,7 +165,7 @@ ${BOLD}TESTS PERFORMED:${NC}
     1. OAuth2 endpoint accessibility
     2. AVC Drupal configuration
     3. Moodle configuration
-    4. cnwp.yml configuration
+    4. nwp.yml configuration
     5. Network connectivity
     6. HTTPS enforcement
 

@@ -317,12 +317,12 @@ dump_remote_database() {
 # Server Configuration
 ################################################################################
 
-# Get server configuration from cnwp.yml
+# Get server configuration from nwp.yml
 # Usage: get_server_config "server_name" "config_file"
 # Output: Key=value pairs for ssh_host, ssh_key, label
 get_server_config() {
     local server_name="$1"
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
 
     if [ ! -f "$config_file" ]; then
         return 1
@@ -352,11 +352,11 @@ get_server_config() {
     ' "$config_file"
 }
 
-# List all configured servers from cnwp.yml
+# List all configured servers from nwp.yml
 # Usage: list_configured_servers "config_file"
 # Output: server_name|ssh_host|label (one per line)
 list_configured_servers() {
-    local config_file="${1:-cnwp.yml}"
+    local config_file="${1:-nwp.yml}"
 
     if [ ! -f "$config_file" ]; then
         return 1

@@ -307,7 +307,7 @@ Detailed log saved to `.logs/test-nwp-<timestamp>.log` containing:
 
 ### Configuration Files
 
-- `cnwp.yml` must exist in project root
+- `nwp.yml` must exist in project root
 - `lib/` directory with all libraries
 - `scripts/commands/` with all command scripts
 - `templates/` directory for test templates
@@ -370,14 +370,14 @@ If you answer 'y':
 1. Stops all test DDEV sites
 2. Removes test site directories from `sites/`
 3. Removes test backups from `sitebackups/`
-4. Removes test-nwp entries from `cnwp.yml`
+4. Removes test-nwp entries from `nwp.yml`
 
 ### Skip Cleanup Mode
 
 With `--skip-cleanup`:
 - All test sites preserved
 - Backups kept for inspection
-- cnwp.yml entries remain
+- nwp.yml entries remain
 - Manual cleanup required
 
 ### Manual Cleanup
@@ -394,7 +394,7 @@ rm -rf sites/test-nwp*
 # Remove backups
 rm -rf sitebackups/test-nwp*
 
-# Edit cnwp.yml to remove test-nwp entries
+# Edit nwp.yml to remove test-nwp entries
 ```
 
 ## Integration with Release Process
@@ -461,9 +461,9 @@ rm -rf sitebackups/test-nwp*
 
 ### "AWK produced empty output"
 
-**Symptom:** Errors during cnwp.yml manipulation
+**Symptom:** Errors during nwp.yml manipulation
 
-**Solution:** This is a protection mechanism. Check if `cnwp.yml` has duplicate test-nwp entries. The script protects against corrupting the file.
+**Solution:** This is a protection mechanism. Check if `nwp.yml` has duplicate test-nwp entries. The script protects against corrupting the file.
 
 ### Low Pass Rate (<98%)
 
@@ -492,7 +492,7 @@ rm -rf sitebackups/test-nwp*
 - Tests automatically skip Linode tests if credentials not available
 - Negative tests (testing error conditions) are expected to "fail" gracefully
 - The test suite is idempotent - can be run multiple times safely
-- cnwp.yml is protected with multiple safeguards during cleanup
+- nwp.yml is protected with multiple safeguards during cleanup
 
 ## See Also
 

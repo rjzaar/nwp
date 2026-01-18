@@ -9,7 +9,7 @@ Enhanced the NWP setup system with configuration-driven installation, system sta
 ### 1. Enhanced setup.sh
 
 **New Features:**
-- **Configuration Reading** - Reads settings from `example.cnwp.yml` on first run, then `cnwp.yml`
+- **Configuration Reading** - Reads settings from `example.nwp.yml` on first run, then `nwp.yml`
 - **System State Snapshot** - Records system state before making any changes
 - **CLI Installation** - Installs global CLI command based on config settings
 - **State Tracking** - Logs all changes for future rollback
@@ -149,13 +149,13 @@ Added `uninstall_nwp.sh` to the whitelist:
    ↓
 4. Backs up ~/.bashrc
    ↓
-5. Reads settings from example.cnwp.yml
+5. Reads settings from example.nwp.yml
    ↓
 6. Checks prerequisites
    ↓
 7. Installs missing components
    ↓
-8. Copies example.cnwp.yml → cnwp.yml
+8. Copies example.nwp.yml → nwp.yml
    ↓
 9. Installs CLI (if cli: y in config)
    ↓
@@ -169,7 +169,7 @@ Added `uninstall_nwp.sh` to the whitelist:
    ↓
 2. Uses existing state snapshot
    ↓
-3. Reads settings from cnwp.yml
+3. Reads settings from nwp.yml
    ↓
 4. Re-checks prerequisites
    ↓
@@ -201,7 +201,7 @@ Added `uninstall_nwp.sh` to the whitelist:
 
 ## Configuration Options
 
-### In cnwp.yml (or example.cnwp.yml)
+### In nwp.yml (or example.nwp.yml)
 
 ```yaml
 settings:
@@ -225,13 +225,13 @@ settings:
 
 1. **First Run** ✓
    - Creates state snapshot
-   - Reads from example.cnwp.yml
-   - Creates cnwp.yml
+   - Reads from example.nwp.yml
+   - Creates nwp.yml
    - Tracks all changes
 
 2. **Subsequent Run** ✓
    - Uses existing state
-   - Reads from cnwp.yml
+   - Reads from nwp.yml
    - Doesn't create duplicate snapshot
 
 3. **CLI Installation** ✓
@@ -294,8 +294,8 @@ The CLI wrapper integrates with:
 
 ### With Configuration System
 
-- Reads from `example.cnwp.yml` on first run
-- Reads from `cnwp.yml` on subsequent runs
+- Reads from `example.nwp.yml` on first run
+- Reads from `nwp.yml` on subsequent runs
 - Follows same pattern as install.sh
 
 ### With URL/GitLab System

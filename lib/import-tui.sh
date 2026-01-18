@@ -146,7 +146,7 @@ draw_footer() {
 # Usage: select_server "config_file"
 # Sets: SELECTED_SERVER_NAME, SELECTED_SSH_HOST, SELECTED_SSH_KEY
 select_server() {
-    local config_file="${1:-cnwp.yml}"
+    local config_file="${1:-nwp.yml}"
     local servers=()
     local cursor=0
 
@@ -634,7 +634,7 @@ declare -a IMPORT_STEPS=(
     "Configure Stage File Proxy"
     "Clear caches"
     "Verify site boots"
-    "Register in cnwp.yml"
+    "Register in nwp.yml"
 )
 
 CURRENT_IMPORT_STEP=0

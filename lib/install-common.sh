@@ -22,7 +22,7 @@ run_interactive_options() {
     local recipe="$1"
     local site_name="$2"
     local recipe_type="$3"
-    local config_file="${4:-cnwp.yml}"
+    local config_file="${4:-nwp.yml}"
 
     # Check if TUI library is available
     if ! command -v run_tui &> /dev/null; then
@@ -88,10 +88,10 @@ run_interactive_options() {
     fi
 }
 
-# Update cnwp.yml with selected options (or remove options section if none selected)
+# Update nwp.yml with selected options (or remove options section if none selected)
 update_site_options() {
     local site_name="$1"
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
 
     # Check if option system is loaded
     if [[ ${#OPTION_LIST[@]} -eq 0 ]]; then
@@ -113,11 +113,11 @@ update_site_options() {
     done
 
     if [[ "$has_options" == "true" ]]; then
-        print_info "Updating options in cnwp.yml..."
+        print_info "Updating options in nwp.yml..."
         # Create options section with selected options only
         local options_yaml=$(generate_options_yaml "      ")
     else
-        print_info "Removing options from cnwp.yml (none selected)..."
+        print_info "Removing options from nwp.yml (none selected)..."
         # Empty options to trigger removal
         local options_yaml=""
     fi
@@ -176,12 +176,12 @@ update_site_options() {
 
     if mv "${config_file}.tmp" "$config_file"; then
         if [[ "$has_options" == "true" ]]; then
-            print_status "OK" "Options saved to cnwp.yml"
+            print_status "OK" "Options saved to nwp.yml"
         else
-            print_status "OK" "Options removed from cnwp.yml"
+            print_status "OK" "Options removed from nwp.yml"
         fi
     else
-        print_warning "Failed to update cnwp.yml with options"
+        print_warning "Failed to update nwp.yml with options"
     fi
 }
 
@@ -417,9 +417,9 @@ pre_register_live_dns() {
     local base_name=$(echo "$site_name" | sed -E 's/[-_](stg|prod|dev)$//')
 
     # Get base domain from settings
-    local base_domain=$(get_settings_value "url" "$PROJECT_ROOT/cnwp.yml")
+    local base_domain=$(get_settings_value "url" "$PROJECT_ROOT/nwp.yml")
     if [ -z "$base_domain" ]; then
-        print_info "DNS pre-registration skipped: No 'url' in cnwp.yml settings"
+        print_info "DNS pre-registration skipped: No 'url' in nwp.yml settings"
         return 0
     fi
 
@@ -503,7 +503,7 @@ pre_register_live_dns() {
 get_recipe_value() {
     local recipe=$1
     local key=$2
-    local config_file="${3:-cnwp.yml}"
+    local config_file="${3:-nwp.yml}"
 
     # Use consolidated YAML function
     if command -v yaml_get_recipe_field &>/dev/null; then
@@ -540,7 +540,7 @@ get_recipe_value() {
 get_recipe_list_value() {
     local recipe=$1
     local key=$2
-    local config_file="${3:-cnwp.yml}"
+    local config_file="${3:-nwp.yml}"
 
     awk -v recipe="$recipe" -v key="$key" '
         BEGIN { in_recipe = 0; in_list = 0 }
@@ -577,7 +577,7 @@ get_recipe_list_value() {
 # Parse YAML file and extract root-level value
 get_root_value() {
     local key=$1
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
 
     # Use awk to extract root-level values (not indented)
     awk -v key="$key" '
@@ -594,7 +594,7 @@ get_root_value() {
 get_settings_value() {
     local key=$1
     local default_value="${2:-}"
-    local config_file="${3:-cnwp.yml}"
+    local config_file="${3:-nwp.yml}"
 
     # If only 2 args and second looks like a file path, treat it as config_file
     if [[ $# -eq 2 && "$2" == */* ]]; then
@@ -638,7 +638,7 @@ get_settings_value() {
 # Check if recipe exists in config file
 recipe_exists() {
     local recipe=$1
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
 
     grep -q "^  ${recipe}:" "$config_file"
     return $?
@@ -646,7 +646,7 @@ recipe_exists() {
 
 # List all available recipes with their descriptions
 list_recipes() {
-    local config_file="${1:-cnwp.yml}"
+    local config_file="${1:-nwp.yml}"
 
     print_header "Available Recipes"
 
@@ -696,7 +696,7 @@ list_recipes() {
 # Validate that a recipe has all required fields
 validate_recipe() {
     local recipe=$1
-    local config_file="${2:-cnwp.yml}"
+    local config_file="${2:-nwp.yml}"
     local errors=0
 
     local recipe_type=$(get_recipe_value "$recipe" "type" "$config_file")
@@ -778,7 +778,7 @@ validate_recipe() {
 
 # Show help information
 show_help() {
-    local config_file="${1:-cnwp.yml}"
+    local config_file="${1:-nwp.yml}"
 
     echo -e "${BOLD}Narrow Way Project Installation Script${NC}"
     echo ""
@@ -786,7 +786,7 @@ show_help() {
     echo -e "  ./install.sh [OPTIONS] <recipe> [target]"
     echo ""
     echo -e "${BOLD}ARGUMENTS:${NC}"
-    echo -e "  recipe                  Recipe name from cnwp.yml (required)"
+    echo -e "  recipe                  Recipe name from nwp.yml (required)"
     echo -e "  target                  Custom directory/site name (optional)"
     echo ""
     echo -e "${BOLD}OPTIONS:${NC}"
@@ -799,7 +799,7 @@ show_help() {
     echo -e "${BOLD}PURPOSE VALUES:${NC}"
     echo -e "  testing (t)             Site can be deleted freely (default for test sites)"
     echo -e "  indefinite (i)          Site not auto-deleted but can be manually deleted (default)"
-    echo -e "  permanent (p)           Site requires manual change in cnwp.yml before deletion"
+    echo -e "  permanent (p)           Site requires manual change in nwp.yml before deletion"
     echo -e "  migration (m)           Migration site - creates folder stub only for importing"
     echo ""
     echo -e "${BOLD}EXAMPLES:${NC}"

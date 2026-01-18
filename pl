@@ -319,10 +319,10 @@ run_script() {
 
 # List all tracked sites
 cmd_list() {
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local cnwp_file="${SCRIPT_DIR}/nwp.yml"
 
     if [ ! -f "$cnwp_file" ]; then
-        print_error "cnwp.yml not found"
+        print_error "nwp.yml not found"
         return 1
     fi
 
@@ -341,11 +341,11 @@ cmd_list() {
     ' "$cnwp_file"
 }
 
-# Get a field from a site in cnwp.yml
+# Get a field from a site in nwp.yml
 get_site_field() {
     local site="$1"
     local field="$2"
-    local config_file="${SCRIPT_DIR}/cnwp.yml"
+    local config_file="${SCRIPT_DIR}/nwp.yml"
 
     awk -v site="$site" -v field="$field" '
         /^sites:/ { in_sites = 1; next }
@@ -363,12 +363,12 @@ get_site_field() {
     ' "$config_file"
 }
 
-# Get a nested field (e.g., live.domain) from a site in cnwp.yml
+# Get a nested field (e.g., live.domain) from a site in nwp.yml
 get_site_nested_field() {
     local site="$1"
     local section="$2"
     local field="$3"
-    local config_file="${SCRIPT_DIR}/cnwp.yml"
+    local config_file="${SCRIPT_DIR}/nwp.yml"
 
     awk -v site="$site" -v section="$section" -v field="$field" '
         /^sites:/ { in_sites = 1; next }
@@ -392,7 +392,7 @@ get_site_nested_field() {
 show_site_status() {
     local sitename="$1"
     local site_dir="sites/$sitename"
-    local cnwp_file="${SCRIPT_DIR}/cnwp.yml"
+    local cnwp_file="${SCRIPT_DIR}/nwp.yml"
     local ddev_running=false
 
     echo -e "${BOLD}$sitename${NC}"
@@ -450,7 +450,7 @@ show_site_status() {
         echo -e "  ${YELLOW}○${NC} Git: not initialized"
     fi
 
-    # Check cnwp.yml registration
+    # Check nwp.yml registration
     if grep -q "^  ${sitename}:" "$cnwp_file" 2>/dev/null; then
         echo -e "  ${GREEN}●${NC} Registered"
     else

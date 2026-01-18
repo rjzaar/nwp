@@ -286,7 +286,7 @@ value=$(get_secret "some.path" "default_value")
 Reads a value from a YAML file.
 
 ```bash
-value=$(get_yaml_value "settings.php" "cnwp.yml")
+value=$(get_yaml_value "settings.php" "nwp.yml")
 ```
 
 ---
@@ -298,7 +298,7 @@ YAML file manipulation without external dependencies.
 ## Configuration
 
 ```bash
-YAML_CONFIG_FILE="cnwp.yml"  # Default config file
+YAML_CONFIG_FILE="nwp.yml"  # Default config file
 ```
 
 ## Functions
@@ -325,7 +325,7 @@ fi
 Validates YAML file structure.
 
 ```bash
-if yaml_validate "cnwp.yml"; then
+if yaml_validate "nwp.yml"; then
     echo "Valid YAML"
 fi
 ```
@@ -335,7 +335,7 @@ fi
 Adds a new site entry.
 
 ```bash
-yaml_add_site "mysite" "nwp" "/path/to/site" "cnwp.yml"
+yaml_add_site "mysite" "nwp" "/path/to/site" "nwp.yml"
 
 # Parameters:
 # $1 - Site name
@@ -349,7 +349,7 @@ yaml_add_site "mysite" "nwp" "/path/to/site" "cnwp.yml"
 Removes a site entry.
 
 ```bash
-yaml_remove_site "mysite" "cnwp.yml"
+yaml_remove_site "mysite" "nwp.yml"
 ```
 
 ### yaml_get_value
@@ -357,7 +357,7 @@ yaml_remove_site "mysite" "cnwp.yml"
 Reads a value from YAML.
 
 ```bash
-value=$(yaml_get_value "sites.mysite.recipe" "cnwp.yml")
+value=$(yaml_get_value "sites.mysite.recipe" "nwp.yml")
 ```
 
 ### yaml_update_value
@@ -365,7 +365,7 @@ value=$(yaml_get_value "sites.mysite.recipe" "cnwp.yml")
 Updates an existing value.
 
 ```bash
-yaml_update_value "sites.mysite.environment" "staging" "cnwp.yml"
+yaml_update_value "sites.mysite.environment" "staging" "nwp.yml"
 ```
 
 ### yaml_site_exists
@@ -373,7 +373,7 @@ yaml_update_value "sites.mysite.environment" "staging" "cnwp.yml"
 Checks if a site exists.
 
 ```bash
-if yaml_site_exists "mysite" "cnwp.yml"; then
+if yaml_site_exists "mysite" "nwp.yml"; then
     echo "Site exists"
 fi
 ```
@@ -1172,7 +1172,7 @@ tool=$(detect_frontend_tool "/path/to/theme")
 ```
 
 Detection priority:
-1. Site config in cnwp.yml (`frontend.build_tool`)
+1. Site config in nwp.yml (`frontend.build_tool`)
 2. Auto-detect from files (gulpfile.js, Gruntfile.js, etc.)
 3. Recipe default
 4. Global default

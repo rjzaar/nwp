@@ -25,10 +25,10 @@ fi
 get_notify_setting() {
     local key_path="$1"
     local default="${2:-}"
-    local config_file="${TODO_CONFIG_FILE:-$TODO_NOTIFY_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_NOTIFY_PROJECT_ROOT/nwp.yml}"
 
     if [ ! -f "$config_file" ]; then
-        config_file="$TODO_NOTIFY_PROJECT_ROOT/example.cnwp.yml"
+        config_file="$TODO_NOTIFY_PROJECT_ROOT/example.nwp.yml"
     fi
 
     local value=""

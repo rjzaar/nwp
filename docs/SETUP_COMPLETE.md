@@ -51,7 +51,7 @@ Successfully ran `pl avc-moodle-setup avc ss` with results:
 ### Successfully Tested ✅
 1. **Site Detection**
    - Automatic recipe detection from directory structure
-   - Works even without cnwp.yml entries
+   - Works even without nwp.yml entries
    - Detected: `avc` (recipe: avc), `ss` (recipe: m)
 
 2. **OAuth2 Key Generation**
@@ -110,7 +110,7 @@ These require actual running sites (DDEV containers):
 │   ├── avc-moodle-status.sh             ✅ 2.6 KB
 │   ├── avc-moodle-sync.sh               ✅ 5.1 KB
 │   └── avc-moodle-test.sh               ✅ 6.8 KB
-└── example.cnwp.yml                      ✅ Updated
+└── example.nwp.yml                      ✅ Updated
 ```
 
 ### Drupal Modules
@@ -191,7 +191,7 @@ INFO: OAuth2 issuer configuration...
 [7/10] Testing SSO flow (70%)
 INFO: Testing OAuth2 endpoints...
 
-[8/10] Updating cnwp.yml (80%)
+[8/10] Updating nwp.yml (80%)
 INFO: Updating AVC site configuration...
 
 [9/10] Configuring optional features (90%)
@@ -216,7 +216,7 @@ Next Steps:
 4. ✅ **Fixed:** Duplicate `get_site_directory()` definitions
 5. ✅ **Fixed:** Duplicate `get_site_recipe()` definitions
 6. ✅ **Added:** Automatic recipe detection from directory structure
-7. ✅ **Added:** Fallback for empty cnwp.yml
+7. ✅ **Added:** Fallback for empty nwp.yml
 
 ---
 
@@ -341,7 +341,7 @@ The three-layer architecture works perfectly:
 ### Phase 1 (NWP Infrastructure)
 - ✅ lib/avc-moodle.sh created with all functions
 - ✅ All 4 NWP commands created and tested
-- ✅ example.cnwp.yml updated
+- ✅ example.nwp.yml updated
 - ✅ Setup command working end-to-end
 - ✅ Site validation working
 - ✅ OAuth2 key generation working

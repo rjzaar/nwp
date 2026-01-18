@@ -50,7 +50,7 @@ get_live_config() {
             print
             exit
         }
-    ' "$PROJECT_ROOT/cnwp.yml"
+    ' "$PROJECT_ROOT/nwp.yml"
 }
 
 show_elapsed_time() {

@@ -1,6 +1,6 @@
 # NWP Infrastructure .gitignore
 # This file ignores everything except the core NWP infrastructure files
-# Users will have their own cnwp.yml configuration (ignored)
+# Users will have their own nwp.yml configuration (ignored)
 # and their own site installations (ignored)
 
 # Ignore everything by default
@@ -63,7 +63,7 @@ sites/*
 !IMPLEMENT-P50.md
 
 # Configuration templates (not user configs)
-!example.cnwp.yml
+!example.nwp.yml
 !.secrets.example.yml
 !.secrets.data.example.yml
 !.nwp-developer.example.yml
@@ -127,7 +127,7 @@ keys/*
 **/.secrets.yaml
 **/.secrets.data.yml
 **/.secrets.data.yaml
-**/cnwp.yml
+**/nwp.yml
 **/.env.local
 **/.ddev/config.local.yaml
 **/.ddev/config.*.yaml

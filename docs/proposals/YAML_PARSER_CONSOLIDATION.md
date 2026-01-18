@@ -89,7 +89,7 @@ value=${!rp}  # Indirect expansion → git@github.com:rjzaar/opencourse.git
 
 1. **Write operations required** - NWP's site registry needs `yaml_add_site()`, `yaml_update_site_field()`, etc.
 2. **Security validation** - NWP validates site names to prevent injection attacks
-3. **Multiple config files** - NWP parses cnwp.yml, .secrets.yml, .nwp-developer.yml
+3. **Multiple config files** - NWP parses nwp.yml, .secrets.yml, .nwp-developer.yml
 4. **Backup/restore** - NWP maintains transaction safety for YAML modifications
 
 ### Lessons to Borrow from Pleasy
@@ -168,7 +168,7 @@ awk '
         print
         exit
     }
-' cnwp.yml
+' nwp.yml
 ```
 
 ```bash
@@ -178,7 +178,7 @@ awk '
     in_sites && /^[a-zA-Z]/ { in_sites = 0 }
     in_sites && $0 ~ "^  " site ":" { found = 1 }
     # ... more parsing ...
-' cnwp.yml
+' nwp.yml
 ```
 
 ```bash
@@ -191,7 +191,7 @@ awk -v site="$sitename" '
         print
         exit
     }
-' cnwp.yml
+' nwp.yml
 ```
 
 ---
@@ -238,8 +238,8 @@ awk -v site="$sitename" '
 
 | File | Purpose | Parsers Used |
 |------|---------|--------------|
-| `cnwp.yml` | Site registry | yaml-write.sh, install-common.sh, state.sh |
-| `example.cnwp.yml` | Template | install-common.sh |
+| `nwp.yml` | Site registry | yaml-write.sh, install-common.sh, state.sh |
+| `example.nwp.yml` | Template | install-common.sh |
 | `.secrets.yml` | Infrastructure secrets | common.sh, linode.sh |
 | `.secrets.data.yml` | Production credentials | common.sh (blocked for AI) |
 | `.nwp-developer.yml` | Developer identity | developer.sh |
@@ -455,7 +455,7 @@ get_base_domain() {
             print
             exit
         }
-    ' cnwp.yml
+    ' nwp.yml
 }
 ```
 
@@ -481,7 +481,7 @@ get_all_sites() {
             sub(/^  /, "")
             print
         }
-    ' cnwp.yml
+    ' nwp.yml
 }
 ```
 
@@ -549,7 +549,7 @@ email=$(yaml_get_setting "email.admin_email")
 
 **Arguments:**
 - `$1` - Key path (dot-notation for nested keys)
-- `$2` - Config file (optional, defaults to cnwp.yml)
+- `$2` - Config file (optional, defaults to nwp.yml)
 
 **Returns:** Value or empty string
 
@@ -811,7 +811,7 @@ modules=$(yaml_get_array "sites.mysite.modules.enabled")
 
 | Step | Task | File | Status |
 |------|------|------|--------|
-| 8.1 | Create JSON schema for cnwp.yml | schemas/cnwp.schema.json | [ ] |
+| 8.1 | Create JSON schema for nwp.yml | schemas/cnwp.schema.json | [ ] |
 | 8.2 | Create JSON schema for .secrets.yml | schemas/secrets.schema.json | [ ] |
 | 8.3 | Implement `yaml_validate_schema()` function | lib/yaml-write.sh | [ ] |
 | 8.4 | Add schema validation to `pl validate` command | scripts/commands/ | [ ] |
@@ -888,9 +888,9 @@ Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 ──► Phase 5 
 
 ### Risk: Incompatibility with edge cases
 **Mitigation:**
-- Test with all existing cnwp.yml variations
+- Test with all existing nwp.yml variations
 - Test with .verification.yml
-- Test with example.cnwp.yml
+- Test with example.nwp.yml
 - Add edge case tests
 
 ---
@@ -1009,13 +1009,13 @@ The de facto standard for YAML in shell:
 
 ```bash
 # Read nested value
-yq eval '.sites.mysite.directory' cnwp.yml
+yq eval '.sites.mysite.directory' nwp.yml
 
 # Update value in place
-yq eval -i '.sites.mysite.enabled = true' cnwp.yml
+yq eval -i '.sites.mysite.enabled = true' nwp.yml
 
 # Delete key
-yq eval -i 'del(.sites.oldsite)' cnwp.yml
+yq eval -i 'del(.sites.oldsite)' nwp.yml
 
 # Merge files
 yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' base.yml overlay.yml

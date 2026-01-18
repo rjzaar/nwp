@@ -13,7 +13,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 **Purpose:** Install sites from recipes (Drupal/OpenSocial, Moodle, GitLab, Podcast)
 **Key Features:**
 - Multi-type installation (drupal, opensocial, moodle, gitlab, podcast)
-- Recipe-based configuration from cnwp.yml
+- Recipe-based configuration from nwp.yml
 - Auto-increment directory naming (nwp, nwp2, nwp3, etc.)
 - Resume from specific step (s=N, --step=N, --resume)
 - Test content generation (c, --create-content)
@@ -63,7 +63,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 - Optional pre-deletion backup (-b, --backup)
 - Keep/remove backup options (-k, --keep-backups)
 - Auto-confirm mode (-y, --yes)
-- cnwp.yml cleanup (configurable via delete_site_yml setting)
+- nwp.yml cleanup (configurable via delete_site_yml setting)
 - Purpose-based protection (permanent sites require manual override)
 - Force mode for cleanup (--force)
 - Keep YAML entry option (--keep-yml)
@@ -126,7 +126,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 **Purpose:** Diagnostic and troubleshooting
 **Key Features:**
 - System prerequisites check (Docker, DDEV, PHP, Composer, yq, git)
-- Configuration file validation (cnwp.yml, .secrets.yml)
+- Configuration file validation (nwp.yml, .secrets.yml)
 - Network connectivity tests (Linode API, Cloudflare API, drupal.org)
 - Common issue detection (Docker daemon, DDEV sites, disk space, memory)
 - Verbose and quiet modes
@@ -173,7 +173,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 **Key Features:**
 - Site selection (interactive or by name)
 - Option modification via checkboxes
-- cnwp.yml updates
+- nwp.yml updates
 - List all sites (-l)
 - Uses yaml-write.sh library
 - Uses checkbox.sh library
@@ -376,7 +376,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 ### import.sh
 **Purpose:** Import live Drupal sites from remote Linode servers
 **Key Features:**
-- Interactive server selection from cnwp.yml
+- Interactive server selection from nwp.yml
 - Custom SSH connection support
 - Source path specification
 - Database and file import
@@ -385,7 +385,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 - Auto-configure from remote settings
 
 **Modes:**
-- Interactive: Select server from cnwp.yml
+- Interactive: Select server from nwp.yml
 - Direct: Specify server (--server=name)
 - SSH: Custom connection (--ssh=root@example.com)
 
@@ -727,7 +727,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 **Purpose:** Automatically configure new coder's NWP installation
 **Key Features:**
 - Coder identity detection and validation
-- cnwp.yml configuration from example
+- nwp.yml configuration from example
 - Git user configuration
 - SSH key setup for GitLab
 - DNS and infrastructure verification
@@ -746,7 +746,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 - nwp/nwp.pub keypair generation
 - Install private key to ~/.ssh/nwp
 - Public key display for Linode account
-- Linode server listing from cnwp.yml
+- Linode server listing from nwp.yml
 
 ---
 

@@ -121,7 +121,7 @@ download_db_production() {
     local sitename="$1"
     local target_site="$2"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local config_file="$script_dir/cnwp.yml"
+    local config_file="$script_dir/nwp.yml"
 
     info "Downloading database from production..."
 

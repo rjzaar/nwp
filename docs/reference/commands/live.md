@@ -98,7 +98,7 @@ For dedicated Linode deployment:
 6. Obtains SSL certificate
 7. Configures email forwarding
 8. Applies server security hardening (fail2ban, ufw, SSH hardening)
-9. Updates cnwp.yml with server info
+9. Updates nwp.yml with server info
 10. Calls `stg2live` to deploy staging site
 
 ## Security Hardening
@@ -136,7 +136,7 @@ Both `pl live mysite` and `pl live mysite-stg` work:
 
 ## Configuration
 
-Stores live server info in `cnwp.yml`:
+Stores live server info in `nwp.yml`:
 
 ```yaml
 sites:

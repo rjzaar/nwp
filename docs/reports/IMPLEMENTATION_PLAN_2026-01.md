@@ -129,10 +129,10 @@ done
 **Status:** TODO
 **Effort:** 1-2 hours
 
-**Current State:** 77 [PLANNED] placeholder options remain in example.cnwp.yml
+**Current State:** 77 [PLANNED] placeholder options remain in example.nwp.yml
 
 **Tasks:**
-1. Audit all [PLANNED] markers in example.cnwp.yml
+1. Audit all [PLANNED] markers in example.nwp.yml
 2. For each [PLANNED] option, determine:
    - Is it now implemented? → Remove [PLANNED] marker (option becomes active)
    - Is it partially implemented? → Mark as [EXPERIMENTAL]
@@ -141,7 +141,7 @@ done
 4. Ensure [PLANNED] options have sensible default values
 
 **Files to Modify:**
-- `example.cnwp.yml`
+- `example.nwp.yml`
 
 **Guidelines:**
 - Keep [PLANNED] markers for future features - they serve as roadmap
@@ -393,7 +393,7 @@ Options:
 
 Checks performed:
     - System prerequisites (Docker, DDEV, PHP, Composer)
-    - Configuration files (cnwp.yml, secrets)
+    - Configuration files (nwp.yml, secrets)
     - Network connectivity (API endpoints)
     - Permission issues
     - Common misconfigurations
@@ -474,16 +474,16 @@ check_configuration() {
 
     print_header "Checking Configuration"
 
-    # cnwp.yml exists
-    if [ -f "$PROJECT_ROOT/cnwp.yml" ]; then
-        print_success "cnwp.yml: Found"
+    # nwp.yml exists
+    if [ -f "$PROJECT_ROOT/nwp.yml" ]; then
+        print_success "nwp.yml: Found"
 
         # Validate YAML syntax
         if command -v yq &>/dev/null; then
-            if yq eval '.' "$PROJECT_ROOT/cnwp.yml" &>/dev/null; then
-                print_success "cnwp.yml: Valid YAML syntax"
+            if yq eval '.' "$PROJECT_ROOT/nwp.yml" &>/dev/null; then
+                print_success "nwp.yml: Valid YAML syntax"
             else
-                print_error "cnwp.yml: Invalid YAML syntax"
+                print_error "nwp.yml: Invalid YAML syntax"
                 ((errors++))
             fi
         fi
@@ -493,11 +493,11 @@ check_configuration() {
         if [ "$site_count" -gt 0 ]; then
             print_success "Sites configured: $site_count"
         else
-            print_warning "No sites configured in cnwp.yml"
+            print_warning "No sites configured in nwp.yml"
         fi
     else
-        print_error "cnwp.yml: NOT FOUND"
-        print_hint "Copy example.cnwp.yml to cnwp.yml and configure"
+        print_error "nwp.yml: NOT FOUND"
+        print_hint "Copy example.nwp.yml to nwp.yml and configure"
         ((errors++))
     fi
 

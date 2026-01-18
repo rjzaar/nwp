@@ -42,7 +42,7 @@ source "$PROJECT_ROOT/lib/import.sh"
 # Configuration
 ################################################################################
 
-CONFIG_FILE="$PROJECT_ROOT/cnwp.yml"
+CONFIG_FILE="$PROJECT_ROOT/nwp.yml"
 
 # Default options
 OPT_SITE_NAME=""
@@ -110,7 +110,7 @@ show_help() {
 # Site Configuration Functions
 ################################################################################
 
-# Get site configuration from cnwp.yml
+# Get site configuration from nwp.yml
 # Usage: get_site_import_config "site_name"
 # Sets: SITE_SSH_HOST, SITE_SSH_KEY, SITE_WEBROOT, SITE_SERVER, etc.
 get_site_import_config() {
@@ -121,7 +121,7 @@ get_site_import_config() {
         return 1
     fi
 
-    # Parse site entry from cnwp.yml
+    # Parse site entry from nwp.yml
     local in_sites=0
     local in_site=0
     local in_source=0
@@ -196,7 +196,7 @@ get_site_import_config() {
     return 0
 }
 
-# Update last_sync timestamp in cnwp.yml
+# Update last_sync timestamp in nwp.yml
 update_last_sync() {
     local site_name="$1"
     local timestamp=$(date -Iseconds)
@@ -430,7 +430,7 @@ main() {
 
     if ! get_site_import_config "$OPT_SITE_NAME"; then
         print_error "Site not found or not an imported site: $OPT_SITE_NAME"
-        print_info "Check cnwp.yml for site configuration"
+        print_info "Check nwp.yml for site configuration"
         exit 1
     fi
 

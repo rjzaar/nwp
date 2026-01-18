@@ -163,7 +163,7 @@ Enable Claude Code to directly interact with NWP GitLab via the Model Context Pr
 1. Generate GitLab personal access token during setup
 2. Store token in `.secrets.yml`
 3. Configure MCP server in Claude Code
-4. Add MCP configuration to `cnwp.yml`
+4. Add MCP configuration to `nwp.yml`
 
 **Success Criteria:**
 - [ ] Token generated during GitLab setup
@@ -321,7 +321,7 @@ pl config set ai.provider anthropic # Switch back to Claude
 pl config get ai.provider            # Show current provider
 ```
 
-**Configuration in cnwp.yml:**
+**Configuration in nwp.yml:**
 
 ```yaml
 ai:
@@ -362,7 +362,7 @@ ai:
 
 ```
 ┌─────────────────────────────────────┐
-│ Developer Choice (cnwp.yml)         │
+│ Developer Choice (nwp.yml)         │
 ├─────────────────────────────────────┤
 │                                     │
 │  [Anthropic Cloud]  [Local LLM]    │
@@ -385,7 +385,7 @@ Protected Files (never sent to AI):
 1. **Foundation** (Week 1)
    - Add `lib/llm.sh` library
    - Ollama detection and validation
-   - Configuration schema in cnwp.yml
+   - Configuration schema in nwp.yml
 
 2. **Core Commands** (Week 2)
    - `pl llm setup` - Guided installation
@@ -442,7 +442,7 @@ tests/unit/test-llm.bats       # Unit tests for LLM functions
 - [ ] `pl llm setup` command with interactive wizard
 - [ ] `pl llm chat` for interactive sessions
 - [ ] `pl llm ask` for one-shot questions
-- [ ] AI provider selection in cnwp.yml
+- [ ] AI provider selection in nwp.yml
 - [ ] `.aiignore` file support (similar to .gitignore)
 - [x] `docs/LOCAL_LLM_GUIDE.md` with setup instructions
 - [ ] Model recommendation based on hardware detection
@@ -826,7 +826,7 @@ pl video-server generate-from-text  # Generate video locally
 **Phase 1: Foundation (2 weeks)**
 - [ ] Research API options (Pictory, Synthesia, Runway)
 - [ ] Create `lib/video-generation.sh` library
-- [ ] Add video API config to cnwp.yml
+- [ ] Add video API config to nwp.yml
 - [ ] Basic API integration for one service
 
 **Phase 2: Drupal Integration (2 weeks)**
@@ -847,7 +847,7 @@ pl video-server generate-from-text  # Generate video locally
 - [ ] Queue management
 - [ ] Error handling and retry logic
 
-**Configuration in cnwp.yml:**
+**Configuration in nwp.yml:**
 
 ```yaml
 video_generation:
@@ -949,7 +949,7 @@ Optional companion Drupal module for UI-based generation:
 - [ ] `pl video setup` command
 - [ ] `pl video blog-to-video` working end-to-end
 - [ ] Generated videos uploaded to Drupal Media
-- [ ] Configuration in cnwp.yml
+- [ ] Configuration in nwp.yml
 - [ ] API keys stored in .secrets.yml
 - [ ] Error handling and retry logic
 - [ ] Documentation with cost analysis
@@ -1165,13 +1165,13 @@ These items were thoroughly evaluated and rejected as over-engineering for NWP's
    ```bash
    # Index 14 orphaned docs
    # Link governance docs from main README
-   # Clean up [PLANNED] markers in cnwp.yml
+   # Clean up [PLANNED] markers in nwp.yml
    ```
 
 3. **Add pl doctor command** (10h)
    ```bash
    # Check prerequisites (DDEV, Docker, PHP, Composer)
-   # Verify configuration (cnwp.yml, .secrets.yml)
+   # Verify configuration (nwp.yml, .secrets.yml)
    # Diagnose common issues (ports, permissions, DNS)
    # Show actionable fix suggestions
    ```

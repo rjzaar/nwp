@@ -65,16 +65,16 @@ _pl_completions() {
         nwp_dir="."
     fi
 
-    # Get list of sites from cnwp.yml
+    # Get list of sites from nwp.yml
     local sites=""
-    if [ -f "${nwp_dir}/cnwp.yml" ]; then
-        sites=$(awk '/^sites:/{in_sites=1;next} in_sites && /^[a-zA-Z]/ && !/^  /{in_sites=0} in_sites && /^  [a-zA-Z_-]+:/{name=$0;gsub(/^  /,"",name);gsub(/:.*/,"",name);print name}' "${nwp_dir}/cnwp.yml" 2>/dev/null)
+    if [ -f "${nwp_dir}/nwp.yml" ]; then
+        sites=$(awk '/^sites:/{in_sites=1;next} in_sites && /^[a-zA-Z]/ && !/^  /{in_sites=0} in_sites && /^  [a-zA-Z_-]+:/{name=$0;gsub(/^  /,"",name);gsub(/:.*/,"",name);print name}' "${nwp_dir}/nwp.yml" 2>/dev/null)
     fi
 
     # Get list of recipes
     local recipes=""
-    if [ -f "${nwp_dir}/cnwp.yml" ]; then
-        recipes=$(awk '/^recipes:/{in_recipes=1;next} in_recipes && /^[a-zA-Z]/ && !/^  /{in_recipes=0} in_recipes && /^  [a-zA-Z_-]+:/{name=$0;gsub(/^  /,"",name);gsub(/:.*/,"",name);print name}' "${nwp_dir}/cnwp.yml" 2>/dev/null)
+    if [ -f "${nwp_dir}/nwp.yml" ]; then
+        recipes=$(awk '/^recipes:/{in_recipes=1;next} in_recipes && /^[a-zA-Z]/ && !/^  /{in_recipes=0} in_recipes && /^  [a-zA-Z_-]+:/{name=$0;gsub(/^  /,"",name);gsub(/:.*/,"",name);print name}' "${nwp_dir}/nwp.yml" 2>/dev/null)
     fi
 
     case "${COMP_CWORD}" in

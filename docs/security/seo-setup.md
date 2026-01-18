@@ -405,7 +405,7 @@ If you suspect a staging site has been indexed:
 
 ## Configuration Reference
 
-### cnwp.yml SEO Settings
+### nwp.yml SEO Settings
 
 ```yaml
 settings:

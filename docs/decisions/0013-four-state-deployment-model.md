@@ -210,6 +210,6 @@ This made `pl stg2live` fully automated.
 
 ## Related Decisions
 
-- **ADR-0002: YAML-Based Configuration** - States defined in cnwp.yml
+- **ADR-0002: YAML-Based Configuration** - States defined in nwp.yml
 - **ADR-0008: Recipe System Architecture** - Environment-specific options
 - **P26: Four-State Deployment Workflow** - Original proposal

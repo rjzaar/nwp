@@ -14,7 +14,7 @@
 > - `lib/todo-tui.sh` - Interactive TUI mode
 > - `lib/todo-notify.sh` - Notification functions
 > - `lib/todo-autolog.sh` - Auto-resolution hooks
-> - Configuration added to `example.cnwp.yml` under `settings.todo`
+> - Configuration added to `example.nwp.yml` under `settings.todo`
 > - Verification items added to `.verification.yml`
 
 ---
@@ -73,8 +73,8 @@ Create a `pl todo` command that:
 ┌───────────────┐    ┌───────────────────┐    ┌───────────────┐
 │  TODO SOURCES │    │   TODO STORAGE    │    │   OUTPUTS     │
 │               │    │                   │    │               │
-│ - GitLab API  │    │ cnwp.yml:         │    │ - CLI text    │
-│ - cnwp.yml    │    │   todo:           │    │ - TUI mode    │
+│ - GitLab API  │    │ nwp.yml:         │    │ - CLI text    │
+│ - nwp.yml    │    │   todo:           │    │ - TUI mode    │
 │ - crontab     │    │     settings:     │    │ - Desktop     │
 │ - filesystem  │    │     ignored:      │    │ - Email       │
 │ - DDEV        │    │     tokens:       │    │ - Cron log    │
@@ -89,11 +89,11 @@ Create a `pl todo` command that:
 | ID | Category | Source | Priority | Auto-Resolve |
 |----|----------|--------|----------|--------------|
 | `GIT` | GitLab Issues | GitLab API | Medium | When closed |
-| `TST` | Test Instances | cnwp.yml purpose=testing | Medium | When deleted |
-| `TOK` | Token Rotation | cnwp.yml todo.tokens | Medium | When rotated |
-| `ORP` | Orphaned Sites | .ddev vs cnwp.yml | Low | When registered/deleted |
+| `TST` | Test Instances | nwp.yml purpose=testing | Medium | When deleted |
+| `TOK` | Token Rotation | nwp.yml todo.tokens | Medium | When rotated |
+| `ORP` | Orphaned Sites | .ddev vs nwp.yml | Low | When registered/deleted |
 | `GHO` | Ghost Sites | DDEV registry | High | When cleaned |
-| `INC` | Incomplete Installs | cnwp.yml install_step | High | When completed |
+| `INC` | Incomplete Installs | nwp.yml install_step | High | When completed |
 | `BAK` | Missing Backups | backup timestamps | Medium | When backed up |
 | `SCH` | Missing Schedules | crontab | Low | When scheduled |
 | `SEC` | Security Updates | drush pm:security | High | When updated |
@@ -130,7 +130,7 @@ LOW (informational):
 
 ## 3. Configuration Schema
 
-### 3.1 cnwp.yml Settings
+### 3.1 nwp.yml Settings
 
 ```yaml
 todo:
@@ -263,9 +263,9 @@ todo:
   #   expires: ""                  # Optional: auto-unignore date
 ```
 
-### 3.2 Default Settings in example.cnwp.yml
+### 3.2 Default Settings in example.nwp.yml
 
-The above schema will be added to `example.cnwp.yml` with sensible defaults:
+The above schema will be added to `example.nwp.yml` with sensible defaults:
 - All checks enabled
 - Notifications disabled (opt-in)
 - Schedule disabled (opt-in)
@@ -446,11 +446,11 @@ lib/
 # lib/todo-checks.sh
 
 check_gitlab_issues()        # GitLab API query for open issues
-check_test_instances()       # cnwp.yml purpose=testing + created date
-check_token_rotation()       # cnwp.yml todo.tokens vs thresholds
+check_test_instances()       # nwp.yml purpose=testing + created date
+check_token_rotation()       # nwp.yml todo.tokens vs thresholds
 check_orphaned_sites()       # Reuse from status.sh
 check_ghost_sites()          # Reuse from status.sh
-check_incomplete_installs()  # cnwp.yml install_step analysis
+check_incomplete_installs()  # nwp.yml install_step analysis
 check_missing_backups()      # Scan backup directories for timestamps
 check_missing_schedules()    # Parse crontab for NWP entries
 check_security_updates()     # Call security.sh check --all --quiet
@@ -592,7 +592,7 @@ todo_scheduled_run() {
 |---------|-------|
 | `lib/ui.sh` | Output formatting, colors |
 | `lib/common.sh` | Validation, user input |
-| `lib/yaml-write.sh` | cnwp.yml read/write |
+| `lib/yaml-write.sh` | nwp.yml read/write |
 | `lib/linode.sh` | Token validation (optional) |
 | `lib/checkbox.sh` | TUI checkbox selection |
 | `lib/tui.sh` | TUI framework |
@@ -679,7 +679,7 @@ todo:
 ### Phase 1: Core Implementation (Week 1-2)
 - [ ] Create `scripts/commands/todo.sh`
 - [ ] Create `lib/todo-checks.sh` with all check functions
-- [ ] Add `todo` section to `example.cnwp.yml`
+- [ ] Add `todo` section to `example.nwp.yml`
 - [ ] Implement text list mode (`pl todo list`)
 - [ ] Implement resolve/ignore commands
 - [ ] Add caching layer
@@ -713,7 +713,7 @@ todo:
 |------|---------|
 | `CLAUDE.md` | Add todo command to release checklist |
 | `docs/COMMAND_INVENTORY.md` | Add todo command documentation |
-| `example.cnwp.yml` | Add todo section with defaults |
+| `example.nwp.yml` | Add todo section with defaults |
 | `README.md` | Mention todo command in features |
 | `lib/README.md` | Document new todo libraries |
 
@@ -741,13 +741,13 @@ Not in scope for F12, but potential future additions:
 | TUI as default mode | Matches existing pl status pattern |
 | Caching with 5-min TTL | Balance freshness vs. performance |
 | Notifications disabled by default | Opt-in to avoid unwanted alerts |
-| Store config in cnwp.yml | Single source of truth, familiar pattern |
+| Store config in nwp.yml | Single source of truth, familiar pattern |
 
 ---
 
 ## Appendix A: Complete Settings Reference
 
-See Section 3.1 for the full `cnwp.yml` schema with all settings documented.
+See Section 3.1 for the full `nwp.yml` schema with all settings documented.
 
 ## Appendix B: Category ID Format
 

@@ -21,9 +21,9 @@
 
 ## 1. Configuration Management
 
-### Why YAML (cnwp.yml) instead of ENV files alone?
+### Why YAML (nwp.yml) instead of ENV files alone?
 
-**Decision:** Use `cnwp.yml` as the single source of truth, generating `.env` files from it.
+**Decision:** Use `nwp.yml` as the single source of truth, generating `.env` files from it.
 
 **Rationale:**
 - YAML supports hierarchical configuration with inheritance
@@ -33,9 +33,9 @@
 
 **Trade-off:** Adds a generation step, but eliminates duplication and drift between configs.
 
-### Why example.cnwp.yml + cnwp.yml pattern?
+### Why example.nwp.yml + nwp.yml pattern?
 
-**Decision:** Template file is committed (`example.cnwp.yml`), user config is gitignored (`cnwp.yml`).
+**Decision:** Template file is committed (`example.nwp.yml`), user config is gitignored (`nwp.yml`).
 
 **Rationale:**
 - Schema changes and defaults go in the example (version controlled)
@@ -102,7 +102,7 @@ db_pass=$(get_data_secret "production_database.password" "")
 
 ### Why recipe-based configuration?
 
-**Decision:** Each site type (Drupal, Moodle, GitLab) defined as a "recipe" in cnwp.yml.
+**Decision:** Each site type (Drupal, Moodle, GitLab) defined as a "recipe" in nwp.yml.
 
 **Rationale:**
 - Single command installs any site type: `pl install avc mysite`
@@ -291,7 +291,7 @@ pl provision mysite      # Provision server
 
 ## Key Architectural Principles
 
-1. **Single Source of Truth:** cnwp.yml for config, examples for templates
+1. **Single Source of Truth:** nwp.yml for config, examples for templates
 2. **Security by Default:** Protected files, validated inputs, strict mode
 3. **Flexibility with Sensible Defaults:** Override when needed, but defaults work
 4. **Self-Hosted First:** NWP GitLab primary, external services optional

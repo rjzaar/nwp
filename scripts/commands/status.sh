@@ -58,12 +58,12 @@ if [ -f "$PROJECT_ROOT/lib/linode.sh" ]; then
 fi
 
 # Configuration
-if [ -f "${PROJECT_ROOT}/cnwp.yml" ]; then
-    CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
-elif [ -f "${PROJECT_ROOT}/example.cnwp.yml" ]; then
-    CONFIG_FILE="${PROJECT_ROOT}/example.cnwp.yml"
+if [ -f "${PROJECT_ROOT}/nwp.yml" ]; then
+    CONFIG_FILE="${PROJECT_ROOT}/nwp.yml"
+elif [ -f "${PROJECT_ROOT}/example.nwp.yml" ]; then
+    CONFIG_FILE="${PROJECT_ROOT}/example.nwp.yml"
 else
-    CONFIG_FILE="${PROJECT_ROOT}/cnwp.yml"
+    CONFIG_FILE="${PROJECT_ROOT}/nwp.yml"
 fi
 
 ################################################################################
@@ -98,7 +98,7 @@ find_ghost_ddev_sites() {
     done
 }
 
-# Find site directories that have .ddev but are not in cnwp.yml
+# Find site directories that have .ddev but are not in nwp.yml
 find_orphaned_sites() {
     local config_file="$1"
     local script_dir="$2"
@@ -111,7 +111,7 @@ find_orphaned_sites() {
         ddev_dirs+=("$site_name:$site_dir")
     done < <(find "$script_dir/sites" -maxdepth 2 -name ".ddev" -type d 2>/dev/null)
 
-    # Get list of sites from cnwp.yml
+    # Get list of sites from nwp.yml
     local yml_sites=()
     if [ -f "$config_file" ]; then
         while read -r site; do
@@ -119,7 +119,7 @@ find_orphaned_sites() {
         done < <(list_sites "$config_file")
     fi
 
-    # Find orphaned sites (have .ddev but not in cnwp.yml)
+    # Find orphaned sites (have .ddev but not in nwp.yml)
     for entry in "${ddev_dirs[@]}"; do
         local name="${entry%%:*}"
         local dir="${entry#*:}"
@@ -763,7 +763,7 @@ show_sites() {
 
     # Show orphaned sites
     if [ -n "$orphaned" ]; then
-        printf "\n  ${YELLOW}Orphaned sites (not in cnwp.yml):${NC}\n"
+        printf "\n  ${YELLOW}Orphaned sites (not in nwp.yml):${NC}\n"
         while IFS=':' read -r name dir; do
             [ -z "$name" ] && continue
             local recipe=$(detect_recipe_from_site "$dir")
@@ -999,17 +999,17 @@ delete_site() {
         print_status "INFO" "Directory already removed"
     fi
 
-    # Always try to remove from cnwp.yml (critical step)
+    # Always try to remove from nwp.yml (critical step)
     if command -v yaml_remove_site &>/dev/null; then
-        print_status "INFO" "Removing from cnwp.yml..."
+        print_status "INFO" "Removing from nwp.yml..."
         if yaml_remove_site "$site" "$config_file" 2>/dev/null; then
             print_status "OK" "Removed from configuration"
         else
             print_status "WARN" "Site may not exist in configuration"
         fi
     else
-        print_warning "Cannot remove from cnwp.yml (yaml-write.sh not available)"
-        print_info "Manually remove the '$site' entry from cnwp.yml"
+        print_warning "Cannot remove from nwp.yml (yaml-write.sh not available)"
+        print_info "Manually remove the '$site' entry from nwp.yml"
         delete_success=false
     fi
 
@@ -1175,7 +1175,7 @@ show_production_dashboard() {
     done <<< "$sites"
 
     if [ "$has_production" = false ]; then
-        printf "║ %-78s ║\n" "No production sites configured (add live.enabled: true to cnwp.yml)"
+        printf "║ %-78s ║\n" "No production sites configured (add live.enabled: true to nwp.yml)"
     fi
 
     echo "╚═══════════════════════════════════════════════════════════════════════════════╝"
@@ -1843,7 +1843,7 @@ build_site_cache_fast() {
             recipe=$(detect_recipe_from_site "$directory")
             purpose="(orphan)"
         else
-            # Normal site - get basic info from cnwp.yml
+            # Normal site - get basic info from nwp.yml
             recipe=$(get_site_field "$site" "recipe" "$config_file")
             purpose=$(get_site_field "$site" "purpose" "$config_file")
             directory=$(get_site_field "$site" "directory" "$config_file")
@@ -1899,7 +1899,7 @@ build_site_cache() {
             recipe=$(detect_recipe_from_site "$directory")
             purpose="(orphan)"
         else
-            # Normal site - get info from cnwp.yml
+            # Normal site - get info from nwp.yml
             recipe=$(get_site_field "$site" "recipe" "$config_file")
             purpose=$(get_site_field "$site" "purpose" "$config_file")
             directory=$(get_site_field "$site" "directory" "$config_file")
@@ -2151,7 +2151,7 @@ run_interactive() {
         return 1
     fi
 
-    # Build arrays from cnwp.yml sites
+    # Build arrays from nwp.yml sites
     SITE_NAMES=()
     SITE_SELECTED=()
     SITE_TYPE=()  # 0=normal, 1=orphan, 2=ghost
@@ -2161,7 +2161,7 @@ run_interactive() {
         SITE_TYPE+=("0")
     done <<< "$sites_str"
 
-    # Add orphaned sites (have .ddev dir but not in cnwp.yml)
+    # Add orphaned sites (have .ddev dir but not in nwp.yml)
     while IFS=':' read -r name dir; do
         [ -z "$name" ] && continue
         SITE_NAMES+=("$name")
@@ -2244,7 +2244,7 @@ run_interactive() {
                 # Refresh site list (in case of deletes)
                 sites_str=$(list_sites "$config_file")
 
-                # Rebuild arrays from cnwp.yml sites
+                # Rebuild arrays from nwp.yml sites
                 SITE_NAMES=()
                 SITE_SELECTED=()
                 SITE_TYPE=()
@@ -2380,7 +2380,7 @@ ${BOLD}INTERACTIVE MODE (default):${NC}
     q           Quit
 
 ${BOLD}COLUMNS (configurable via Setup):${NC}
-    NAME        Site name from cnwp.yml
+    NAME        Site name from nwp.yml
     RECIPE      Recipe used to create the site
     STG         Stages: ${GREEN}d${NC}=dev ${YELLOW}s${NC}=stg ${BLUE}l${NC}=live ${RED}p${NC}=prod
     DDEV        Container status
@@ -2461,7 +2461,7 @@ main() {
     # Check config file exists
     if [ ! -f "$CONFIG_FILE" ]; then
         print_error "Configuration file not found"
-        print_info "Copy example.cnwp.yml to cnwp.yml to get started"
+        print_info "Copy example.nwp.yml to nwp.yml to get started"
         exit 1
     fi
 
@@ -2537,8 +2537,8 @@ main() {
             # Default status display
             print_header "NWP Status"
 
-            if [[ "$CONFIG_FILE" == *"example.cnwp.yml" ]]; then
-                print_info "Using example.cnwp.yml (copy to cnwp.yml for your configuration)"
+            if [[ "$CONFIG_FILE" == *"example.nwp.yml" ]]; then
+                print_info "Using example.nwp.yml (copy to nwp.yml for your configuration)"
                 echo ""
             fi
 

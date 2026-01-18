@@ -18,8 +18,8 @@ Rename the project from NWP to NWO (Narrow Way Operations). This involves renami
 | Category | Current | New |
 |----------|---------|-----|
 | Project directory | `~/nwp` | `~/nwo` |
-| Config file | `cnwp.yml` | `nwo.yml` |
-| Example config | `example.cnwp.yml` | `example.nwo.yml` |
+| Config file | `nwp.yml` | `nwo.yml` |
+| Example config | `example.nwp.yml` | `example.nwo.yml` |
 | Environment prefix | `NWP_*` | `NWO_*` |
 | Function prefix | `nwp_*` | `nwo_*` |
 | Git repository | `nwp/nwp.git` | `nwp/nwo.git` |
@@ -53,8 +53,8 @@ BEFORE                          AFTER
 
 | File | Action |
 |------|--------|
-| `cnwp.yml` | Rename to `nwo.yml` |
-| `example.cnwp.yml` | Rename to `example.nwo.yml` |
+| `nwp.yml` | Rename to `nwo.yml` |
+| `example.nwp.yml` | Rename to `example.nwo.yml` |
 | `.secrets.yml` | Update internal references |
 | `.secrets.example.yml` | Update internal references |
 | `.secrets.data.yml` | Update internal references |
@@ -155,7 +155,7 @@ Each site's `.ddev/config.yaml` may contain:
    - Validates new installation
 
 3. **Update example config first**
-   - Rename `example.cnwp.yml` → `example.nwo.yml`
+   - Rename `example.nwp.yml` → `example.nwo.yml`
    - Test with fresh installation
 
 ### 3.2 Phase 2: Code Changes
@@ -168,7 +168,7 @@ Each site's `.ddev/config.yaml` may contain:
 2. **Bulk rename operations**
    ```bash
    # Rename files
-   git mv example.cnwp.yml example.nwo.yml
+   git mv example.nwp.yml example.nwo.yml
 
    # Update file contents (careful review required)
    find . -type f \( -name "*.sh" -o -name "*.yml" -o -name "*.md" \) \
@@ -233,7 +233,7 @@ Existing `~/nwp` installations should be treated as legacy. Users should:
 
 1. **Backup existing sites and data**
 2. **Fresh clone** of the new `nwo` repository
-3. **Migrate site configurations** manually from `cnwp.yml` to `nwo.yml`
+3. **Migrate site configurations** manually from `nwp.yml` to `nwo.yml`
 4. **Update shell aliases** if using `alias pl='~/nwp/pl'`
 5. **Update cron jobs** if any reference `~/nwp`
 
@@ -263,7 +263,7 @@ Based on comprehensive audit (~7,577 total references):
 
 ### 6.2 File System
 - [ ] **Project directory** (`~/nwp` → `~/nwo`)
-- [ ] **Config files** (`cnwp.yml` → `nwo.yml`, `example.cnwp.yml` → `example.nwo.yml`)
+- [ ] **Config files** (`nwp.yml` → `nwo.yml`, `example.nwp.yml` → `example.nwo.yml`)
 - [ ] **Log directories** (`.logs/` references)
 
 ### 6.3 Verification System

@@ -201,7 +201,7 @@ Backups are automatically rotated to prevent disk space issues:
 - **Age-based** - Remove backups older than specified days
 - **Size-based** - Remove oldest when total size exceeds limit
 
-Configure in `cnwp.yml`:
+Configure in `nwp.yml`:
 ```yaml
 settings:
   backup:

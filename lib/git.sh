@@ -9,10 +9,10 @@
 # Dependencies: lib/ui.sh, lib/common.sh
 ################################################################################
 
-# Get NWP GitLab URL from cnwp.yml settings.url
+# Get NWP GitLab URL from nwp.yml settings.url
 # Returns: git.domain.org format
 get_gitlab_url() {
-    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/nwp.yml"
 
     if [ ! -f "$cnwp_file" ]; then
         echo ""
@@ -83,10 +83,10 @@ check_git_server_alias() {
 # Additional Remote Support (P13)
 ################################################################################
 
-# Get additional remotes from cnwp.yml
+# Get additional remotes from nwp.yml
 # Returns: remote configurations as "name|url|enabled" per line
 get_additional_remotes() {
-    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/nwp.yml"
 
     if [ ! -f "$cnwp_file" ]; then
         return 1
@@ -240,7 +240,7 @@ git_setup_local_bare() {
     fi
 }
 
-# Configure remotes from cnwp.yml for a repository
+# Configure remotes from nwp.yml for a repository
 # Usage: git_configure_remotes "/path/to/repo" "project-name"
 git_configure_remotes() {
     local repo_path="$1"
@@ -309,10 +309,10 @@ git_commit_backup() {
 # GitLab API Automation (P15)
 ################################################################################
 
-# Get default GitLab group from cnwp.yml
+# Get default GitLab group from nwp.yml
 # Returns: group name (default: nwp)
 get_gitlab_default_group() {
-    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/nwp.yml"
     local default_group="nwp"
 
     if [ ! -f "$cnwp_file" ]; then

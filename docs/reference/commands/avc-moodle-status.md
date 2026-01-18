@@ -184,7 +184,7 @@ Provides command shortcuts for common operations.
 
 The status dashboard retrieves information from:
 
-### cnwp.yml Configuration
+### nwp.yml Configuration
 - Integration enabled/disabled status
 - Site URLs and names
 - Feature flags (role_sync, badge_display)
@@ -219,7 +219,7 @@ Integration:  ✗ Disabled
 
 **Solution:**
 1. Run setup: `pl avc-moodle-setup avc ss`
-2. Check cnwp.yml for correct configuration
+2. Check nwp.yml for correct configuration
 3. Verify both sites exist and are accessible
 
 ### OAuth2 Endpoints Failing

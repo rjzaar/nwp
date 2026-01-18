@@ -25,7 +25,7 @@ Options:
 
 Checks performed:
     - System prerequisites (Docker, DDEV, PHP, Composer, yq, git)
-    - Configuration files (cnwp.yml, .secrets.yml)
+    - Configuration files (nwp.yml, .secrets.yml)
     - Network connectivity (Linode API, Cloudflare API, drupal.org)
     - Common issues (Docker daemon, DDEV sites, disk space, memory)
 
@@ -120,37 +120,37 @@ check_configuration() {
 
     print_header "Checking Configuration"
 
-    # cnwp.yml exists
-    if [ -f "$PROJECT_ROOT/cnwp.yml" ]; then
-        print_success "cnwp.yml: Found"
+    # nwp.yml exists
+    if [ -f "$PROJECT_ROOT/nwp.yml" ]; then
+        print_success "nwp.yml: Found"
 
         # Validate YAML syntax
         if command -v yq &>/dev/null; then
-            if yq eval '.' "$PROJECT_ROOT/cnwp.yml" &>/dev/null; then
-                print_success "cnwp.yml: Valid YAML syntax"
+            if yq eval '.' "$PROJECT_ROOT/nwp.yml" &>/dev/null; then
+                print_success "nwp.yml: Valid YAML syntax"
             else
-                print_error "cnwp.yml: Invalid YAML syntax"
-                print_hint "Check for syntax errors: yq eval . cnwp.yml"
+                print_error "nwp.yml: Invalid YAML syntax"
+                print_hint "Check for syntax errors: yq eval . nwp.yml"
                 ((errors++))
             fi
         fi
 
         # Check for sites defined
         local site_count=0
-        if grep -q "^sites:" "$PROJECT_ROOT/cnwp.yml" 2>/dev/null; then
+        if grep -q "^sites:" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
             # Count site entries (lines that start with 2 spaces followed by a word and colon)
-            site_count=$(awk '/^sites:/{flag=1;next}/^[a-zA-Z]/{flag=0}flag && /^  [a-zA-Z]/ && /:$/{count++}END{print count+0}' "$PROJECT_ROOT/cnwp.yml")
+            site_count=$(awk '/^sites:/{flag=1;next}/^[a-zA-Z]/{flag=0}flag && /^  [a-zA-Z]/ && /:$/{count++}END{print count+0}' "$PROJECT_ROOT/nwp.yml")
         fi
 
         if [ "$site_count" -gt 0 ]; then
             print_success "Sites configured: $site_count"
         else
-            print_warning "No sites configured in cnwp.yml"
+            print_warning "No sites configured in nwp.yml"
             print_hint "Create a site with: pl install <sitename> <recipe>"
         fi
     else
-        print_error "cnwp.yml: NOT FOUND"
-        print_hint "Copy example.cnwp.yml to cnwp.yml and configure"
+        print_error "nwp.yml: NOT FOUND"
+        print_hint "Copy example.nwp.yml to nwp.yml and configure"
         ((errors++))
     fi
 

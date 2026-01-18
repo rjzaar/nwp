@@ -8,7 +8,7 @@ NWP uses SSH keys for secure, passwordless deployment to Linode servers. The set
 
 1. Generating an SSH keypair locally
 2. Manually adding the public key to your Linode account
-3. Configuring servers in `cnwp.yml`
+3. Configuring servers in `nwp.yml`
 
 Once configured, all deployment scripts (`stg2prod.sh`, `prod2stg.sh`) will work automatically.
 
@@ -19,7 +19,7 @@ Once configured, all deployment scripts (`stg2prod.sh`, `prod2stg.sh`) will work
 ./setup-ssh.sh
 
 # 2. Follow on-screen instructions to add public key to Linode
-# 3. Configure servers in cnwp.yml
+# 3. Configure servers in nwp.yml
 ```
 
 ## Step-by-Step Instructions
@@ -62,7 +62,7 @@ You only need to add keys to your Linode profile if you want to:
    - Paste the public key displayed by `setup-ssh.sh`
    - Click "Add Key"
 
-### Step 3: Configure Servers in cnwp.yml
+### Step 3: Configure Servers in nwp.yml
 
 Add your Linode server configuration:
 
@@ -158,7 +158,7 @@ Once your SSH key is added to your Linode account:
 **Problem**: Connection works but can't deploy
 
 **Solutions**:
-1. Verify `ssh_user` in `cnwp.yml` matches actual server username
+1. Verify `ssh_user` in `nwp.yml` matches actual server username
 2. Verify `ssh_host` is correct IP or hostname
 3. Test connection manually: `ssh -i ~/.ssh/nwp user@host`
 

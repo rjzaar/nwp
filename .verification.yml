@@ -368,7 +368,7 @@ features:
       context: Item 1 completed
   install:
     name: Install Script (install.sh)
-    description: Main installation script - reads cnwp.yml and installs sites
+    description: Main installation script - reads nwp.yml and installs sites
     files:
     - scripts/commands/install.sh
     - lib/install-common.sh
@@ -400,7 +400,7 @@ features:
         Success: Site installs without errors and is accessible in browser'
       related_docs:
       - docs/reference/commands/install.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       - docs/guides/quickstart.md
       machine:
@@ -471,7 +471,7 @@ features:
         Success: Site installs without errors and is accessible in browser'
       related_docs:
       - docs/reference/commands/install.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       - docs/guides/quickstart.md
       machine:
@@ -537,7 +537,7 @@ features:
         Success: Site installs without errors and is accessible in browser'
       related_docs:
       - docs/reference/commands/install.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       - docs/guides/quickstart.md
       machine:
@@ -601,7 +601,7 @@ features:
         Success: Site installs without errors and is accessible in browser'
       related_docs:
       - docs/reference/commands/install.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       - docs/guides/quickstart.md
       machine:
@@ -665,7 +665,7 @@ features:
         Success: Site installs without errors and is accessible in browser'
       related_docs:
       - docs/reference/commands/install.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       - docs/guides/quickstart.md
       machine:
@@ -729,7 +729,7 @@ features:
         Success: Site installs without errors and is accessible in browser'
       related_docs:
       - docs/reference/commands/install.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       - docs/guides/quickstart.md
       machine:
@@ -793,7 +793,7 @@ features:
         Success: Site installs without errors and is accessible in browser'
       related_docs:
       - docs/reference/commands/install.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       - docs/guides/quickstart.md
       machine:
@@ -857,7 +857,7 @@ features:
         Success: Site installs without errors and is accessible in browser'
       related_docs:
       - docs/reference/commands/install.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       - docs/guides/quickstart.md
       machine:
@@ -921,7 +921,7 @@ features:
         Success: Site installs without errors and is accessible in browser'
       related_docs:
       - docs/reference/commands/install.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       - docs/guides/quickstart.md
       machine:
@@ -1529,14 +1529,14 @@ features:
           verified_at: '2026-01-17T21:02:40+11:00'
           depth: basic
           duration_seconds: 1
-    - text: Verify cnwp.yml is updated correctly after install
+    - text: Verify nwp.yml is updated correctly after install
       completed: true
       completed_by: greg
       completed_at: '2026-01-11T17:01:47-07:00'
       how_to_verify: '1. Complete the prerequisite setup/action for this verification
 
 
-        2. Inspect the specific aspect: cnwp.yml is updated correctly after install
+        2. Inspect the specific aspect: nwp.yml is updated correctly after install
 
 
         3. Compare actual behavior/state with expected behavior
@@ -1554,7 +1554,7 @@ features:
         Success: Verification passes - actual matches expected behavior'
       related_docs:
       - docs/reference/commands/install.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       - docs/guides/quickstart.md
       machine:
@@ -1562,26 +1562,26 @@ features:
         checks:
           basic:
             commands:
-            - cmd: test -f cnwp.yml
+            - cmd: test -f nwp.yml
               expect_exit: 0
               timeout: 10
           standard:
             commands:
             - cmd: bash -n scripts/commands/install.sh
               expect_exit: 0
-            - cmd: yq eval '.sites' cnwp.yml >/dev/null 2>&1
+            - cmd: yq eval '.sites' nwp.yml >/dev/null 2>&1
               expect_exit: 0
           thorough:
             commands:
             - cmd: bash -n scripts/commands/install.sh
               expect_exit: 0
-            - cmd: grep -q '{site}' cnwp.yml 2>/dev/null || yq eval '.sites' cnwp.yml >/dev/null 2>&1
+            - cmd: grep -q '{site}' nwp.yml 2>/dev/null || yq eval '.sites' nwp.yml >/dev/null 2>&1
               expect_exit: 0
           paranoid:
             commands:
             - cmd: bash -n scripts/commands/install.sh
               expect_exit: 0
-            - cmd: yq eval '.sites | keys' cnwp.yml 2>/dev/null | head -5
+            - cmd: yq eval '.sites | keys' nwp.yml 2>/dev/null | head -5
               expect_exit: 0
         state:
           verified: true
@@ -1671,7 +1671,7 @@ features:
         Success: Site installs without errors and is accessible in browser'
       related_docs:
       - docs/reference/commands/install.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       - docs/guides/quickstart.md
       machine:
@@ -1705,14 +1705,14 @@ features:
           verified_at: '2026-01-17T21:02:41+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Test install_step tracking in cnwp.yml
+    - text: Test install_step tracking in nwp.yml
       completed: false
       completed_by: null
       completed_at: null
       how_to_verify: '1. Set up prerequisites for this test scenario
 
 
-        2. Execute the command or action described: Test install_step tracking in cnwp.yml
+        2. Execute the command or action described: Test install_step tracking in nwp.yml
 
 
         3. Observe and verify the behavior matches expectations
@@ -1730,7 +1730,7 @@ features:
         Success: Test scenario completes as expected with correct results'
       related_docs:
       - docs/reference/commands/install.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       - docs/guides/quickstart.md
       machine:
@@ -1751,7 +1751,7 @@ features:
             commands:
             - cmd: bash -n scripts/commands/install.sh
               expect_exit: 0
-            - cmd: yq eval '.sites.*.install_step' cnwp.yml 2>/dev/null || grep -qE 'install_step' scripts/commands/install.sh
+            - cmd: yq eval '.sites.*.install_step' nwp.yml 2>/dev/null || grep -qE 'install_step' scripts/commands/install.sh
               expect_exit: 0
           paranoid:
             commands:
@@ -2116,7 +2116,7 @@ features:
         Success: Test scenario completes as expected with correct results'
       related_docs:
       - docs/reference/commands/status.md
-      - example.cnwp.yml
+      - example.nwp.yml
       machine:
         automatable: true
         checks:
@@ -2239,7 +2239,7 @@ features:
             - cmd: grep -lE 'draw_menu|show_menu' lib/*.sh | head -1
               expect_exit: 0
               timeout: 15
-            - cmd: test -f example.cnwp.yml && yq eval '.sites' example.cnwp.yml >/dev/null 2>&1
+            - cmd: test -f example.nwp.yml && yq eval '.sites' example.nwp.yml >/dev/null 2>&1
               expect_exit: 0
               timeout: 15
         state:
@@ -2304,14 +2304,14 @@ features:
           verified_at: '2026-01-17T21:02:54+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Verify changes are saved to cnwp.yml correctly
+    - text: Verify changes are saved to nwp.yml correctly
       completed: false
       completed_by: null
       completed_at: null
       how_to_verify: '1. Complete the prerequisite setup/action for this verification
 
 
-        2. Inspect the specific aspect: changes are saved to cnwp.yml correctly
+        2. Inspect the specific aspect: changes are saved to nwp.yml correctly
 
 
         3. Compare actual behavior/state with expected behavior
@@ -2329,59 +2329,59 @@ features:
         Success: Verification passes - actual matches expected behavior'
       related_docs:
       - docs/reference/commands/modify.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       machine:
         automatable: true
         checks:
           basic:
             commands:
-            - cmd: test -f cnwp.yml
+            - cmd: test -f nwp.yml
               expect_exit: 0
               timeout: 5
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 5
           standard:
             commands:
-            - cmd: test -f cnwp.yml
+            - cmd: test -f nwp.yml
               expect_exit: 0
               timeout: 5
-            - cmd: yq eval '.sites' cnwp.yml >/dev/null 2>&1
+            - cmd: yq eval '.sites' nwp.yml >/dev/null 2>&1
               expect_exit: 0
               timeout: 10
-            - cmd: yq eval '.settings' cnwp.yml >/dev/null 2>&1
+            - cmd: yq eval '.settings' nwp.yml >/dev/null 2>&1
               expect_exit: 0
               timeout: 10
           thorough:
             commands:
-            - cmd: test -f cnwp.yml
+            - cmd: test -f nwp.yml
               expect_exit: 0
               timeout: 5
-            - cmd: yq eval '.sites' cnwp.yml >/dev/null 2>&1
+            - cmd: yq eval '.sites' nwp.yml >/dev/null 2>&1
               expect_exit: 0
               timeout: 10
-            - cmd: yq eval 'keys' cnwp.yml 2>/dev/null | head -5
+            - cmd: yq eval 'keys' nwp.yml 2>/dev/null | head -5
               expect_exit: 0
               timeout: 15
-            - cmd: diff -q <(yq eval 'keys' example.cnwp.yml 2>/dev/null) <(yq eval 'keys' cnwp.yml 2>/dev/null) >/dev/null 2>&1 || true
+            - cmd: diff -q <(yq eval 'keys' example.nwp.yml 2>/dev/null) <(yq eval 'keys' nwp.yml 2>/dev/null) >/dev/null 2>&1 || true
               expect_exit: 0
               timeout: 20
           paranoid:
             commands:
-            - cmd: test -f cnwp.yml
+            - cmd: test -f nwp.yml
               expect_exit: 0
               timeout: 5
-            - cmd: yq eval '.sites' cnwp.yml >/dev/null 2>&1
+            - cmd: yq eval '.sites' nwp.yml >/dev/null 2>&1
               expect_exit: 0
               timeout: 10
-            - cmd: yq eval '.settings' cnwp.yml >/dev/null 2>&1
+            - cmd: yq eval '.settings' nwp.yml >/dev/null 2>&1
               expect_exit: 0
               timeout: 10
-            - cmd: yq eval '.sites | keys' cnwp.yml 2>/dev/null | head -5
+            - cmd: yq eval '.sites | keys' nwp.yml 2>/dev/null | head -5
               expect_exit: 0
               timeout: 15
-            - cmd: cp cnwp.yml /tmp/cnwp_backup_$$.yml && test -f /tmp/cnwp_backup_$$.yml && rm /tmp/cnwp_backup_$$.yml
+            - cmd: cp nwp.yml /tmp/cnwp_backup_$$.yml && test -f /tmp/cnwp_backup_$$.yml && rm /tmp/cnwp_backup_$$.yml
               expect_exit: 0
               timeout: 30
         state:
@@ -3833,14 +3833,14 @@ features:
           verified_at: '2026-01-17T14:12:26+11:00'
           depth: basic
           duration_seconds: 21
-    - text: Verify cnwp.yml is updated with new site
+    - text: Verify nwp.yml is updated with new site
       completed: false
       completed_by: null
       completed_at: null
       how_to_verify: '1. Complete the prerequisite setup/action for this verification
 
 
-        2. Inspect the specific aspect: cnwp.yml is updated with new site
+        2. Inspect the specific aspect: nwp.yml is updated with new site
 
 
         3. Compare actual behavior/state with expected behavior
@@ -3858,19 +3858,19 @@ features:
         Success: Verification passes - actual matches expected behavior'
       related_docs:
       - docs/reference/commands/copy.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       machine:
         automatable: true
         checks:
           basic:
             commands:
-            - cmd: grep -q '{site}-copy' cnwp.yml 2>/dev/null || echo 'checking'
+            - cmd: grep -q '{site}-copy' nwp.yml 2>/dev/null || echo 'checking'
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: grep -q '{site}-copy' cnwp.yml
+            - cmd: grep -q '{site}-copy' nwp.yml
               expect_exit: 0
         state:
           verified: true
@@ -4040,7 +4040,7 @@ features:
               timeout: 120
             - cmd: test ! -d sites/{site}-del
               expect_exit: 0
-            - cmd: '! grep -q ''{site}-del'' cnwp.yml'
+            - cmd: '! grep -q ''{site}-del'' nwp.yml'
               expect_exit: 0
         state:
           verified: true
@@ -4202,14 +4202,14 @@ features:
           verified_at: '2026-01-17T21:03:11+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Check cnwp.yml is updated to remove site
+    - text: Check nwp.yml is updated to remove site
       completed: false
       completed_by: null
       completed_at: null
       how_to_verify: '1. Complete the prerequisite setup/action for this verification
 
 
-        2. Inspect the specific aspect: cnwp.yml is updated to remove site
+        2. Inspect the specific aspect: nwp.yml is updated to remove site
 
 
         3. Compare actual behavior/state with expected behavior
@@ -4227,19 +4227,19 @@ features:
         Success: Verification passes - actual matches expected behavior'
       related_docs:
       - docs/reference/commands/delete.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/developer-workflow.md
       machine:
         automatable: true
         checks:
           basic:
             commands:
-            - cmd: '! grep -q ''{site}-del'' cnwp.yml || echo ''checking'''
+            - cmd: '! grep -q ''{site}-del'' nwp.yml || echo ''checking'''
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: '! grep -q ''{site}-del'' cnwp.yml'
+            - cmd: '! grep -q ''{site}-del'' nwp.yml'
               expect_exit: 0
         state:
           verified: true
@@ -4592,7 +4592,7 @@ features:
         Success: Verification passes - actual matches expected behavior'
       related_docs:
       - docs/reference/commands/make.md
-      - example.cnwp.yml
+      - example.nwp.yml
       - docs/guides/frontend-theming.md
       machine:
         automatable: true
@@ -5246,7 +5246,7 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Run: pl live --type=shared <sitename> (for GitLab server deployment)\n2. For dedicated: pl live --type=dedicated <sitename>\n3. Check console output for server creation confirmation\n4. Success indicators:\n   - \\\"Server created successfully\\\" message\n   - Server IP address displayed\n   - No error messages during provisioning\n5. Verify server appears in cnwp.yml under sites.<sitename>.live.server_ip\n"
+      how_to_verify: "1. Run: pl live --type=shared <sitename> (for GitLab server deployment)\n2. For dedicated: pl live --type=dedicated <sitename>\n3. Check console output for server creation confirmation\n4. Success indicators:\n   - \\\"Server created successfully\\\" message\n   - Server IP address displayed\n   - No error messages during provisioning\n5. Verify server appears in nwp.yml under sites.<sitename>.live.server_ip\n"
       related_docs:
       - docs/reference/commands/live.md
       - docs/deployment/linode-deployment.md
@@ -5510,7 +5510,7 @@ features:
       how_to_verify: '1. Run: pl live --ssh <sitename>
 
 
-        2. Or: ssh <user>@<server-ip> (check cnwp.yml for IP)
+        2. Or: ssh <user>@<server-ip> (check nwp.yml for IP)
 
 
         3. Verify successful SSH connection
@@ -7643,7 +7643,7 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Run: pl produce <sitename>\n2. Verify production server provisioning initiated\n3. Success indicators:\n   - Linode instance created (if automated)\n   - Server configuration started\n   - DNS configured\n   - SSL certificate requested\n4. Note: Currently stub implementation - shows manual setup instructions\n5. Check cnwp.yml for production config\n"
+      how_to_verify: "1. Run: pl produce <sitename>\n2. Verify production server provisioning initiated\n3. Success indicators:\n   - Linode instance created (if automated)\n   - Server configuration started\n   - DNS configured\n   - SSL certificate requested\n4. Note: Currently stub implementation - shows manual setup instructions\n5. Check nwp.yml for production config\n"
       related_docs:
       - docs/reference/commands/produce.md
       - docs/deployment/linode-deployment.md
@@ -9231,7 +9231,7 @@ features:
         2. When prompted, choose to keep some components (e.g., SSH keys, config files)
 
 
-        3. Verify kept components remain: ls ~/.ssh/nwp, ls cnwp.yml
+        3. Verify kept components remain: ls ~/.ssh/nwp, ls nwp.yml
 
 
         4. Verify removed components are gone
@@ -9590,7 +9590,7 @@ features:
         2. Check account creation output
 
 
-        3. Verify email configuration in cnwp.yml
+        3. Verify email configuration in nwp.yml
 
 
         4. Test sending: pl email test <sitename>
@@ -11261,7 +11261,7 @@ features:
         2. Check success message with coder added
 
 
-        3. Verify testcoder added to cnwp.yml in coders section
+        3. Verify testcoder added to nwp.yml in coders section
 
 
         4. Run: pl coder-setup list
@@ -11468,7 +11468,7 @@ features:
         6. Confirm coder no longer in listing
 
 
-        7. Verify removed from cnwp.yml
+        7. Verify removed from nwp.yml
 
 
         Success: Coder removed from DNS, configuration, and no longer listed
@@ -11715,7 +11715,7 @@ features:
         6. Verify role updated in display
 
 
-        7. Check cnwp.yml shows updated role
+        7. Check nwp.yml shows updated role
 
 
         Success: Promotion workflow works, role updated in configuration and display
@@ -16572,17 +16572,17 @@ features:
           verified_at: '2026-01-17T21:04:36+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Verify cnwp.yml cli_command setting is updated
+    - text: Verify nwp.yml cli_command setting is updated
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Check before: grep "cli_command:" cnwp.yml (may not exist yet)
+      how_to_verify: '1. Check before: grep "cli_command:" nwp.yml (may not exist yet)
 
 
         2. Run registration: source lib/cli-register.sh; register_cli_command "$PWD"
 
 
-        3. Check after: grep "cli_command:" cnwp.yml
+        3. Check after: grep "cli_command:" nwp.yml
 
 
         4. Verify format: should be under settings: section, e.g., "cli_command: pl"
@@ -16591,7 +16591,7 @@ features:
         5. Run get_cli_command, verify returns same value
 
 
-        Success: cnwp.yml updated with cli_command setting under settings section'
+        Success: nwp.yml updated with cli_command setting under settings section'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/cli-register.sh
@@ -16638,10 +16638,10 @@ features:
         4. Verify symlink removed: ls /usr/local/bin/pl (should not exist or point elsewhere)
 
 
-        5. Verify cnwp.yml cleaned: grep "cli_command:" cnwp.yml (should be empty)
+        5. Verify nwp.yml cleaned: grep "cli_command:" nwp.yml (should be empty)
 
 
-        Success: Symlink removed, cnwp.yml setting cleared, clean unregistration'
+        Success: Symlink removed, nwp.yml setting cleared, clean unregistration'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/cli-register.sh
@@ -16672,11 +16672,11 @@ features:
           verified_at: '2026-01-17T21:04:36+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Verify get_cli_command reads from cnwp.yml
+    - text: Verify get_cli_command reads from nwp.yml
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Source library: source lib/cli-register.sh\n2. Set test value: echo -e \\\"\nsettings:\n  cli_command: testcmd\\\" >> cnwp.yml\n3. Run function: result=$(get_cli_command)\n4. Verify: echo \\\"$result\\\" (should output \\\"testcmd\\\")\n5. Clean up: git checkout cnwp.yml\n6. Test default: get_cli_command (should return \\\"pl\\\" when setting missing)\nSuccess: Reads from cnwp.yml settings section, defaults to 'pl' if not found"
+      how_to_verify: "1. Source library: source lib/cli-register.sh\n2. Set test value: echo -e \\\"\nsettings:\n  cli_command: testcmd\\\" >> nwp.yml\n3. Run function: result=$(get_cli_command)\n4. Verify: echo \\\"$result\\\" (should output \\\"testcmd\\\")\n5. Clean up: git checkout nwp.yml\n6. Test default: get_cli_command (should return \\\"pl\\\" when setting missing)\nSuccess: Reads from nwp.yml settings section, defaults to 'pl' if not found"
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/cli-register.sh
@@ -16726,10 +16726,10 @@ features:
         5. Verify new exists: which pl2
 
 
-        6. Check cnwp.yml: grep "cli_command:" cnwp.yml (should show "pl2")
+        6. Check nwp.yml: grep "cli_command:" nwp.yml (should show "pl2")
 
 
-        Success: Old symlink removed, new created, cnwp.yml updated to new name'
+        Success: Old symlink removed, new created, nwp.yml updated to new name'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/cli-register.sh
@@ -16851,7 +16851,7 @@ features:
     notes: null
   lib_ddev_generate:
     name: DDEV Generation Library (lib/ddev-generate.sh)
-    description: Generate DDEV configuration from .env and cnwp.yml
+    description: Generate DDEV configuration from .env and nwp.yml
     files:
     - lib/ddev-generate.sh
     machine:
@@ -17997,7 +17997,7 @@ features:
     notes: null
   lib_env_generate:
     name: Environment Generation Library (lib/env-generate.sh)
-    description: Generate .env file from cnwp.yml and template
+    description: Generate .env file from nwp.yml and template
     files:
     - lib/env-generate.sh
     machine:
@@ -18029,7 +18029,7 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Ensure cnwp.yml has a test recipe configured (e.g., d recipe)
+      how_to_verify: '1. Ensure nwp.yml has a test recipe configured (e.g., d recipe)
 
         2. Run generator: bash lib/env-generate.sh d testsite /tmp/test-env-gen
 
@@ -18121,7 +18121,7 @@ features:
       completed_at: null
       how_to_verify: '1. Check profile templates: ls templates/env/.env.social .env.varbase .env.standard
 
-        2. Configure recipe with profile in cnwp.yml: profile: social
+        2. Configure recipe with profile in nwp.yml: profile: social
 
         3. Run generator for recipe without specific template
 
@@ -18174,7 +18174,7 @@ features:
 
         5. Verify proper escaping of special chars
 
-        Success: All ${VAR} placeholders replaced with actual values from cnwp.yml/defaults'
+        Success: All ${VAR} placeholders replaced with actual values from nwp.yml/defaults'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/env-generate.sh
@@ -18209,7 +18209,7 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Configure recipe in cnwp.yml with services enabled
+      how_to_verify: '1. Configure recipe in nwp.yml with services enabled
 
         2. Run generator: bash lib/env-generate.sh socialrecipe testsite /tmp/test-services
 
@@ -18221,7 +18221,7 @@ features:
 
         6. Test profile defaults: social/varbase should enable Redis/Solr by default
 
-        Success: Service configuration from cnwp.yml propagated to .env, profile defaults work'
+        Success: Service configuration from nwp.yml propagated to .env, profile defaults work'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/env-generate.sh
@@ -18420,7 +18420,7 @@ features:
           verified_at: '2026-01-17T21:04:44+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Verify update_site_options updates cnwp.yml
+    - text: Verify update_site_options updates nwp.yml
       completed: false
       completed_by: null
       completed_at: null
@@ -18433,7 +18433,7 @@ features:
         3. Select some options during interactive install
 
 
-        4. After install, check cnwp.yml: yq eval ''''.sites.test-site.options'''' cnwp.yml
+        4. After install, check nwp.yml: yq eval ''''.sites.test-site.options'''' nwp.yml
 
 
         5. Verify selected options appear under site entry
@@ -18445,14 +18445,14 @@ features:
         7. Verify options section is removed when empty
 
 
-        Success: Selected options are written to cnwp.yml, empty options are removed
+        Success: Selected options are written to nwp.yml, empty options are removed
 
 
         '
       related_docs:
       - docs/reference/api/library-functions.md#update_site_options
       - lib/install-common.sh
-      - example.cnwp.yml
+      - example.nwp.yml
       machine:
         automatable: true
         checks:
@@ -18469,7 +18469,7 @@ features:
               expect_exit: 0
             - cmd: grep -qE 'update_site_options\(\).*\{' lib/install-common.sh
               expect_exit: 0
-            - cmd: grep -q 'cnwp.yml' lib/install-common.sh
+            - cmd: grep -q 'nwp.yml' lib/install-common.sh
               expect_exit: 0
           thorough:
             commands:
@@ -18798,7 +18798,7 @@ features:
         2. Test reading settings: get_settings_value "default_recipe"
 
 
-        3. Verify returns value from cnwp.yml settings section
+        3. Verify returns value from nwp.yml settings section
 
 
         4. Test with nested keys: get_settings_value "ddev.php_version"
@@ -18807,14 +18807,14 @@ features:
         5. Test with non-existent keys returns empty or default
 
 
-        Success: Settings values read from cnwp.yml correctly
+        Success: Settings values read from nwp.yml correctly
 
 
         '
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/install-common.sh
-      - example.cnwp.yml
+      - example.nwp.yml
       machine:
         automatable: true
         checks:
@@ -19498,7 +19498,7 @@ features:
         4. Confirm env-generate.sh was called
 
 
-        5. Success: .env file contains correct configuration from cnwp.yml'
+        5. Success: .env file contains correct configuration from nwp.yml'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/install-drupal.sh
@@ -19867,7 +19867,7 @@ features:
       how_to_verify: '1. Start fresh install, interrupt at step 3: pl install os test-resume
 
 
-        2. Check cnwp.yml has install_step recorded
+        2. Check nwp.yml has install_step recorded
 
 
         3. Resume from step 3: pl install -s=3 os test-resume
@@ -20050,14 +20050,14 @@ features:
           verified_at: '2026-01-17T21:04:53+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Verify site registration in cnwp.yml
+    - text: Verify site registration in nwp.yml
       completed: false
       completed_by: null
       completed_at: null
       how_to_verify: '1. Install new site: pl install os test-register
 
 
-        2. Check cnwp.yml for site entry: grep -A 10 "test-register:" cnwp.yml
+        2. Check nwp.yml for site entry: grep -A 10 "test-register:" nwp.yml
 
 
         3. Verify directory, recipe, environment, purpose fields
@@ -20066,7 +20066,7 @@ features:
         4. Check install_step set to -1 (complete)
 
 
-        5. Success: Site registered in cnwp.yml with complete metadata'
+        5. Success: Site registered in nwp.yml with complete metadata'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/install-drupal.sh
@@ -20441,14 +20441,14 @@ features:
           verified_at: '2026-01-17T21:04:55+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Test site registration in cnwp.yml
+    - text: Test site registration in nwp.yml
       completed: false
       completed_by: null
       completed_at: null
       how_to_verify: '1. Install GitLab instance: pl install gitlab test-gitlab
 
 
-        2. Check cnwp.yml for entry: grep -A 8 "test-gitlab:" cnwp.yml
+        2. Check nwp.yml for entry: grep -A 8 "test-gitlab:" nwp.yml
 
 
         3. Verify directory, recipe type (gitlab), environment
@@ -20457,7 +20457,7 @@ features:
         4. Check purpose field recorded
 
 
-        5. Success: GitLab site registered in cnwp.yml with metadata'
+        5. Success: GitLab site registered in nwp.yml with metadata'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/install-gitlab.sh
@@ -20920,14 +20920,14 @@ features:
           verified_at: '2026-01-17T21:04:58+11:00'
           depth: basic
           duration_seconds: 1
-    - text: Verify site registration in cnwp.yml
+    - text: Verify site registration in nwp.yml
       completed: false
       completed_by: null
       completed_at: null
       how_to_verify: '1. Install Moodle site: pl install moodle test-moodle
 
 
-        2. Check cnwp.yml entry: grep -A 8 "test-moodle:" cnwp.yml
+        2. Check nwp.yml entry: grep -A 8 "test-moodle:" nwp.yml
 
 
         3. Verify recipe type (moodle), directory, environment
@@ -20936,7 +20936,7 @@ features:
         4. Check install_step marked complete (-1)
 
 
-        5. Success: Moodle site registered in cnwp.yml with metadata'
+        5. Success: Moodle site registered in nwp.yml with metadata'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/install-moodle.sh
@@ -21313,14 +21313,14 @@ features:
           verified_at: '2026-01-17T21:05:00+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Verify site registration in cnwp.yml
+    - text: Verify site registration in nwp.yml
       completed: false
       completed_by: null
       completed_at: null
       how_to_verify: '1. Install podcast: pl install podcast myshow.example.com
 
 
-        2. Check cnwp.yml entry: grep -A 8 "myshow:" cnwp.yml
+        2. Check nwp.yml entry: grep -A 8 "myshow:" nwp.yml
 
 
         3. Verify recipe type (podcast), environment (production)
@@ -21329,7 +21329,7 @@ features:
         4. Check purpose field recorded
 
 
-        5. Success: Podcast site registered in cnwp.yml'
+        5. Success: Podcast site registered in nwp.yml'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/install-podcast.sh
@@ -21528,14 +21528,14 @@ features:
           verified_at: '2026-01-17T21:05:01+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Verify get_install_step from cnwp.yml
+    - text: Verify get_install_step from nwp.yml
       completed: false
       completed_by: null
       completed_at: null
       how_to_verify: '1. Start site install, stop at step 3
 
 
-        2. Check step recorded: get_install_step test-site cnwp.yml
+        2. Check step recorded: get_install_step test-site nwp.yml
 
 
         3. Verify returns "3"
@@ -21544,7 +21544,7 @@ features:
         4. Test non-existent site returns "0"
 
 
-        5. Success: Correctly reads install_step from cnwp.yml'
+        5. Success: Correctly reads install_step from nwp.yml'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/install-steps.sh
@@ -21581,23 +21581,23 @@ features:
           verified_at: '2026-01-17T21:05:01+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Test set_install_step updates cnwp.yml
+    - text: Test set_install_step updates nwp.yml
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Set step: set_install_step test-site 5 cnwp.yml
+      how_to_verify: '1. Set step: set_install_step test-site 5 nwp.yml
 
 
-        2. Verify updated: grep "install_step:" cnwp.yml | grep "5"
+        2. Verify updated: grep "install_step:" nwp.yml | grep "5"
 
 
-        3. Update again: set_install_step test-site 7 cnwp.yml
+        3. Update again: set_install_step test-site 7 nwp.yml
 
 
         4. Verify changed to 7
 
 
-        5. Success: install_step field updated in cnwp.yml'
+        5. Success: install_step field updated in nwp.yml'
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/install-steps.sh
@@ -21638,10 +21638,10 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Mark complete: mark_install_complete test-site cnwp.yml
+      how_to_verify: '1. Mark complete: mark_install_complete test-site nwp.yml
 
 
-        2. Verify step set to -1: get_install_step test-site cnwp.yml
+        2. Verify step set to -1: get_install_step test-site nwp.yml
 
 
         3. Check is_install_complete returns true
@@ -21691,13 +21691,13 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Test incomplete site: is_install_complete partial-site cnwp.yml dev
+      how_to_verify: '1. Test incomplete site: is_install_complete partial-site nwp.yml dev
 
 
         2. Verify returns false (exit 1)
 
 
-        3. Test complete site: is_install_complete complete-site cnwp.yml dev
+        3. Test complete site: is_install_complete complete-site nwp.yml dev
 
 
         4. Verify returns true (exit 0)
@@ -21744,13 +21744,13 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Test not started: get_install_status_display new-site cnwp.yml dev
+      how_to_verify: '1. Test not started: get_install_status_display new-site nwp.yml dev
 
 
         2. Should show "Not started"
 
 
-        3. Test in progress: get_install_status_display partial-site cnwp.yml dev
+        3. Test in progress: get_install_status_display partial-site nwp.yml dev
 
 
         4. Should show "Stopped at step X (Title)"
@@ -21797,7 +21797,7 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Show steps: show_steps_detail test-site cnwp.yml dev
+      how_to_verify: '1. Show steps: show_steps_detail test-site nwp.yml dev
 
 
         2. Verify formatted table with checkmarks for completed steps
@@ -23416,13 +23416,13 @@ features:
       how_to_verify: '1. Source the library: source lib/yaml-write.sh
 
 
-        2. Test yaml_get function: yaml_get "cnwp.yml" "sites.avc.recipe"
+        2. Test yaml_get function: yaml_get "nwp.yml" "sites.avc.recipe"
 
 
         3. Verify returns correct value from YAML file
 
 
-        4. Test with nested keys: yaml_get "cnwp.yml" "sites.avc.live.domain"
+        4. Test with nested keys: yaml_get "nwp.yml" "sites.avc.live.domain"
 
 
         5. Test with non-existent keys returns empty
@@ -23727,7 +23727,7 @@ features:
             commands:
             - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && declare -F yaml_site_exists yaml_get_site_field yaml_add_site yaml_remove_site yaml_update_site_field | wc -l | grep -q 5'
               expect_exit: 0
-            - cmd: bash -c 'cd ~/nwp && source lib/yaml-write.sh && yaml_validate example.cnwp.yml'
+            - cmd: bash -c 'cd ~/nwp && source lib/yaml-write.sh && yaml_validate example.nwp.yml'
               expect_exit: 0
             - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && ! yaml_validate_sitename "test;rm" 2>/dev/null'
               expect_exit: 0
@@ -23746,7 +23746,7 @@ features:
             - cmd: bash -n ~/nwp/lib/yaml-write.sh
               expect_exit: 0
               timeout: 10
-            - cmd: bash -c 'cd ~/nwp && source lib/yaml-write.sh && yaml_validate example.cnwp.yml && [[ -f example.cnwp.yml ]]'
+            - cmd: bash -c 'cd ~/nwp && source lib/yaml-write.sh && yaml_validate example.nwp.yml && [[ -f example.nwp.yml ]]'
               expect_exit: 0
               timeout: 30
             - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && yaml_validate_purpose testing && yaml_validate_purpose indefinite && yaml_validate_purpose permanent && yaml_validate_purpose migration'
@@ -23755,7 +23755,7 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/yaml-write.sh && ! yaml_validate_purpose invalid_purpose 2>/dev/null'
               expect_exit: 0
               timeout: 10
-            - cmd: bash -c 'cd ~/nwp && source lib/yaml-write.sh && [[ -n "$(yaml_get_all_sites example.cnwp.yml 2>/dev/null)" ]] || exit 0'
+            - cmd: bash -c 'cd ~/nwp && source lib/yaml-write.sh && [[ -n "$(yaml_get_all_sites example.nwp.yml 2>/dev/null)" ]] || exit 0'
               expect_exit: 0
               timeout: 30
         state:
@@ -23844,20 +23844,20 @@ features:
           verified_at: '2026-01-17T21:05:14+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Test get_setting() reads from cnwp.yml
+    - text: Test get_setting() reads from nwp.yml
       completed: false
       completed_by: null
       completed_at: null
       how_to_verify: '1. Source the library: source lib/common.sh
 
 
-        2. Ensure cnwp.yml exists with test site entries
+        2. Ensure nwp.yml exists with test site entries
 
 
         3. Test reading a setting: get_setting "avc" "recipe"
 
 
-        4. Verify returns correct value from cnwp.yml
+        4. Verify returns correct value from nwp.yml
 
 
         5. Test nested settings: get_setting "avc" "live.domain"
@@ -23866,14 +23866,14 @@ features:
         6. Test with non-existent site/key returns empty
 
 
-        Success: Function reads site configuration correctly from cnwp.yml
+        Success: Function reads site configuration correctly from nwp.yml
 
 
         '
       related_docs:
       - docs/reference/api/library-functions.md
       - lib/common.sh
-      - example.cnwp.yml
+      - example.nwp.yml
       machine:
         automatable: true
         checks:
@@ -25576,7 +25576,7 @@ features:
       how_to_verify: '1. Source library: source lib/remote.sh lib/ssh.sh lib/ui.sh
 
 
-        2. Set up test target: configure remote server in cnwp.yml
+        2. Set up test target: configure remote server in nwp.yml
 
 
         3. Test connection: remote_test "sitename" "prod"
@@ -28205,10 +28205,10 @@ features:
       how_to_verify: '1. Source library: source lib/import-tui.sh lib/ui.sh
 
 
-        2. Ensure cnwp.yml has servers configured
+        2. Ensure nwp.yml has servers configured
 
 
-        3. Run selector: select_server "cnwp.yml"
+        3. Run selector: select_server "nwp.yml"
 
 
         4. Navigate with UP/DOWN arrows through server list
@@ -28940,16 +28940,16 @@ features:
     file_hash: null
     notes: null
   config_example:
-    name: Example Configuration (example.cnwp.yml)
+    name: Example Configuration (example.nwp.yml)
     description: Complete configuration template
     files:
-    - example.cnwp.yml
+    - example.nwp.yml
     checklist:
     - text: Verify all recipe options are documented
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Open: example.cnwp.yml
+      how_to_verify: '1. Open: example.nwp.yml
 
 
         2. Check recipes section contains: os, d, nwp, dm, avc, m, gitlab, pod
@@ -28969,40 +28969,40 @@ features:
 
         '
       related_docs:
-      - example.cnwp.yml
+      - example.nwp.yml
       machine:
         automatable: true
         checks:
           basic:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
           thorough:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
-            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.cnwp.yml'))"
+            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.nwp.yml'))"
               expect_exit: 0
               timeout: 30
           paranoid:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
-            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.cnwp.yml'))"
+            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.nwp.yml'))"
               expect_exit: 0
               timeout: 30
         state:
@@ -29014,7 +29014,7 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Review example.cnwp.yml default values
+      how_to_verify: '1. Review example.nwp.yml default values
 
 
         2. Check php_version defaults to supported version (8.1+)
@@ -29037,40 +29037,40 @@ features:
 
         '
       related_docs:
-      - example.cnwp.yml
+      - example.nwp.yml
       machine:
         automatable: true
         checks:
           basic:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
           thorough:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
-            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.cnwp.yml'))"
+            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.nwp.yml'))"
               expect_exit: 0
               timeout: 30
           paranoid:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
-            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.cnwp.yml'))"
+            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.nwp.yml'))"
               expect_exit: 0
               timeout: 30
         state:
@@ -29078,67 +29078,67 @@ features:
           verified_at: '2026-01-17T21:05:36+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Test copying to cnwp.yml works
+    - text: Test copying to nwp.yml works
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Backup existing cnwp.yml: cp cnwp.yml cnwp.yml.bak
+      how_to_verify: '1. Backup existing nwp.yml: cp nwp.yml nwp.yml.bak
 
 
-        2. Copy example: cp example.cnwp.yml cnwp.yml
+        2. Copy example: cp example.nwp.yml nwp.yml
 
 
-        3. Edit cnwp.yml with a test site
+        3. Edit nwp.yml with a test site
 
 
         4. Run: pl install d testsite
 
 
-        5. Verify installation reads from cnwp.yml successfully
+        5. Verify installation reads from nwp.yml successfully
 
 
-        6. Restore: mv cnwp.yml.bak cnwp.yml
+        6. Restore: mv nwp.yml.bak nwp.yml
 
 
-        Success: example.cnwp.yml can be copied and used as working configuration
+        Success: example.nwp.yml can be copied and used as working configuration
 
 
         '
       related_docs:
-      - example.cnwp.yml
+      - example.nwp.yml
       machine:
         automatable: true
         checks:
           basic:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
           thorough:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
-            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.cnwp.yml'))"
+            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.nwp.yml'))"
               expect_exit: 0
               timeout: 30
           paranoid:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
-            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.cnwp.yml'))"
+            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.nwp.yml'))"
               expect_exit: 0
               timeout: 30
         state:
@@ -29150,7 +29150,7 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Open: example.cnwp.yml
+      how_to_verify: '1. Open: example.nwp.yml
 
 
         2. Check each option has inline or above-line comment
@@ -29170,40 +29170,40 @@ features:
 
         '
       related_docs:
-      - example.cnwp.yml
+      - example.nwp.yml
       machine:
         automatable: true
         checks:
           basic:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
           thorough:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
-            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.cnwp.yml'))"
+            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.nwp.yml'))"
               expect_exit: 0
               timeout: 30
           paranoid:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
-            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.cnwp.yml'))"
+            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.nwp.yml'))"
               expect_exit: 0
               timeout: 30
         state:
@@ -29221,7 +29221,7 @@ features:
         2. Check recipe files for new options: grep "get_recipe_option" recipes/*.sh
 
 
-        3. Compare with example.cnwp.yml
+        3. Compare with example.nwp.yml
 
 
         4. Verify all get_recipe_option calls have corresponding example entries
@@ -29230,45 +29230,45 @@ features:
         5. Check lib/ files for new configuration options
 
 
-        Success: No new options missing from example.cnwp.yml, all features documented
+        Success: No new options missing from example.nwp.yml, all features documented
 
 
         '
       related_docs:
-      - example.cnwp.yml
+      - example.nwp.yml
       machine:
         automatable: true
         checks:
           basic:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
           standard:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
           thorough:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
-            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.cnwp.yml'))"
+            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.nwp.yml'))"
               expect_exit: 0
               timeout: 30
           paranoid:
             commands:
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
               timeout: 10
-            - cmd: test -f example.cnwp.yml
+            - cmd: test -f example.nwp.yml
               expect_exit: 0
-            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.cnwp.yml'))"
+            - cmd: python3 -c "import yaml; yaml.safe_load(open('example.nwp.yml'))"
               expect_exit: 0
               timeout: 30
         state:
@@ -29281,14 +29281,14 @@ features:
       checks:
         basic:
           commands:
-          - cmd: test -f example.cnwp.yml
+          - cmd: test -f example.nwp.yml
             expect_exit: 0
             timeout: 5
         standard:
           commands:
-          - cmd: test -f example.cnwp.yml
+          - cmd: test -f example.nwp.yml
             expect_exit: 0
-          - cmd: python3 -c "import yaml; yaml.safe_load(open('example.cnwp.yml'))"
+          - cmd: python3 -c "import yaml; yaml.safe_load(open('example.nwp.yml'))"
             expect_exit: 0
             timeout: 10
       state:
@@ -30090,7 +30090,7 @@ features:
       how_to_verify: '1. Run setup with flag: pl avc-moodle-setup avc ss --role-sync
 
 
-        2. Check cnwp.yml for role_sync setting: yq eval ''''.sites.avc.moodle_integration.role_sync'''' cnwp.yml
+        2. Check nwp.yml for role_sync setting: yq eval ''''.sites.avc.moodle_integration.role_sync'''' nwp.yml
 
 
         3. Verify it shows "true"
@@ -30099,13 +30099,13 @@ features:
         4. Run without flag: pl avc-moodle-setup avc ss
 
 
-        5. Check cnwp.yml again - role_sync should be false or absent
+        5. Check nwp.yml again - role_sync should be false or absent
 
 
         6. When enabled, role synchronization should occur during SSO login
 
 
-        Success: role_sync flag correctly updates cnwp.yml configuration
+        Success: role_sync flag correctly updates nwp.yml configuration
 
 
         '
@@ -30160,7 +30160,7 @@ features:
       how_to_verify: '1. Run setup with flag: pl avc-moodle-setup avc ss --badge-display
 
 
-        2. Check cnwp.yml for badge_display: yq eval ''''.sites.avc.moodle_integration.badge_display'''' cnwp.yml
+        2. Check nwp.yml for badge_display: yq eval ''''.sites.avc.moodle_integration.badge_display'''' nwp.yml
 
 
         3. Verify it shows "true"
@@ -30169,13 +30169,13 @@ features:
         4. Run without flag: pl avc-moodle-setup avc ss
 
 
-        5. Check cnwp.yml again - badge_display should be false or absent
+        5. Check nwp.yml again - badge_display should be false or absent
 
 
         6. When enabled, Moodle badges should display on AVC user profiles
 
 
-        Success: badge_display flag correctly updates cnwp.yml configuration
+        Success: badge_display flag correctly updates nwp.yml configuration
 
 
         '
@@ -30222,20 +30222,20 @@ features:
           verified_at: '2026-01-17T21:05:41+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Verify cnwp.yml integration settings update
+    - text: Verify nwp.yml integration settings update
       completed: false
       completed_by: null
       completed_at: null
       how_to_verify: '1. Run setup: pl avc-moodle-setup avc ss
 
 
-        2. Check AVC site config: yq eval ''''.sites.avc.moodle_integration'''' cnwp.yml
+        2. Check AVC site config: yq eval ''''.sites.avc.moodle_integration'''' nwp.yml
 
 
         3. Should show: enabled: true, moodle_site: ss, moodle_url: https://ss.ddev.site
 
 
-        4. Check Moodle site config: yq eval ''''.sites.ss.avc_integration'''' cnwp.yml
+        4. Check Moodle site config: yq eval ''''.sites.ss.avc_integration'''' nwp.yml
 
 
         5. Should show: enabled: true, avc_site: avc, avc_url: https://avc.ddev.site
@@ -30244,7 +30244,7 @@ features:
         6. Verify both sites cross-reference each other correctly
 
 
-        Success: cnwp.yml updated with integration settings for both sites
+        Success: nwp.yml updated with integration settings for both sites
 
 
         '
@@ -30336,7 +30336,7 @@ features:
         3. Should show "✓ Active" if integration enabled, "✗ Disabled" if not
 
 
-        4. Verify integration status matches cnwp.yml: yq eval ''''.sites.avc.moodle_integration.enabled'''' cnwp.yml
+        4. Verify integration status matches nwp.yml: yq eval ''''.sites.avc.moodle_integration.enabled'''' nwp.yml
 
 
         5. Toggle integration and verify status changes accordingly
@@ -30546,7 +30546,7 @@ features:
         3. Check "Configuration" section for "Role Sync: ✓ Enabled"
 
 
-        4. Verify in cnwp.yml: yq eval ''''.sites.avc.moodle_integration.role_sync'''' cnwp.yml
+        4. Verify in nwp.yml: yq eval ''''.sites.avc.moodle_integration.role_sync'''' nwp.yml
 
 
         5. Check sync statistics showing synced users/cohorts counts
@@ -31261,7 +31261,7 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Enable badge display: pl avc-moodle-setup avc ss --badge-display\n2. Run test suite: pl avc-moodle-test avc ss\n3. Verify badge display test checks:\n   - Moodle badges are accessible via API\n   - Badge data can be fetched from Moodle\n   - Badges can be rendered on AVC user profiles (when module available)\n4. Check badge configuration in cnwp.yml\n5. Test requires custom avc_moodle_data module for full functionality\nSuccess: Badge display tests verify badge data accessibility\n"
+      how_to_verify: "1. Enable badge display: pl avc-moodle-setup avc ss --badge-display\n2. Run test suite: pl avc-moodle-test avc ss\n3. Verify badge display test checks:\n   - Moodle badges are accessible via API\n   - Badge data can be fetched from Moodle\n   - Badges can be rendered on AVC user profiles (when module available)\n4. Check badge configuration in nwp.yml\n5. Test requires custom avc_moodle_data module for full functionality\nSuccess: Badge display tests verify badge data accessibility\n"
       related_docs:
       - docs/reference/commands/avc-moodle-test.md
       - docs/reference/commands/avc-moodle-setup.md
@@ -31503,23 +31503,23 @@ features:
           verified_at: '2026-01-17T21:05:47+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Test cnwp.yml configuration with coder subdomain
+    - text: Test nwp.yml configuration with coder subdomain
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Backup existing: cp cnwp.yml cnwp.yml.backup
+      how_to_verify: '1. Backup existing: cp nwp.yml nwp.yml.backup
 
 
         2. Run bootstrap with test coder name
 
 
-        3. Check cnwp.yml: grep settings.url cnwp.yml
+        3. Check nwp.yml: grep settings.url nwp.yml
 
 
         4. Verify subdomain set: <coder>.nwpcode.org
 
 
-        5. Success: cnwp.yml updated with coder subdomain, email domain configured'
+        5. Success: nwp.yml updated with coder subdomain, email domain configured'
       related_docs:
       - docs/reference/commands/bootstrap-coder.md
       machine:
@@ -31805,7 +31805,7 @@ features:
       how_to_verify: '1. Run: pl bootstrap-coder --dry-run
 
 
-        2. Verify no files modified (cnwp.yml, .secrets.yml, git config)
+        2. Verify no files modified (nwp.yml, .secrets.yml, git config)
 
 
         3. Check output shows: [DRY-RUN] Would create/set/configure
@@ -31998,7 +31998,7 @@ features:
           verified_at: '2026-01-17T21:05:50+11:00'
           depth: basic
           duration_seconds: 0
-    - text: Test configuration file validation (cnwp.yml, .secrets.yml)
+    - text: Test configuration file validation (nwp.yml, .secrets.yml)
       completed: false
       completed_by: null
       completed_at: null
@@ -32008,10 +32008,10 @@ features:
         2. Check "Checking configuration" section
 
 
-        3. Verify cnwp.yml validated (YAML syntax check)
+        3. Verify nwp.yml validated (YAML syntax check)
 
 
-        4. Test with invalid YAML: add malformed entry to cnwp.yml
+        4. Test with invalid YAML: add malformed entry to nwp.yml
 
 
         5. Success: Valid configs pass, invalid YAML syntax detected and reported'
@@ -32317,7 +32317,7 @@ features:
         4. Verify returns "m"
 
 
-        5. Test detection from composer.json when cnwp.yml missing
+        5. Test detection from composer.json when nwp.yml missing
 
 
         Success: Recipe detected from config or filesystem analysis
@@ -33872,15 +33872,15 @@ features:
         Success: JSON output is well-formed'
       related_docs:
       - docs/proposals/F12-todo-command.md
-    - text: Verify todo configuration exists in example.cnwp.yml
+    - text: Verify todo configuration exists in example.nwp.yml
       machine:
         automatable: true
         checks:
           basic:
             commands:
-            - cmd: grep -q 'todo:' example.cnwp.yml
+            - cmd: grep -q 'todo:' example.nwp.yml
               expect_exit: 0
-            - cmd: grep -q 'thresholds:' example.cnwp.yml
+            - cmd: grep -q 'thresholds:' example.nwp.yml
               expect_exit: 0
         state:
           verified: true
@@ -33892,7 +33892,7 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: '1. Check example.cnwp.yml for todo section
+      how_to_verify: '1. Check example.nwp.yml for todo section
 
         2. Verify thresholds, auto_resolve, notifications sections exist
 

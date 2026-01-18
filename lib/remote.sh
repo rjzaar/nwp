@@ -35,12 +35,12 @@ parse_remote_target() {
     return 1
 }
 
-# Get remote configuration from cnwp.yml
+# Get remote configuration from nwp.yml
 # Usage: get_remote_config "sitename" "environment"
 get_remote_config() {
     local sitename="$1"
     local environment="$2"
-    local cnwp_file="${PROJECT_ROOT}/cnwp.yml"
+    local cnwp_file="${PROJECT_ROOT}/nwp.yml"
 
     if [ ! -f "$cnwp_file" ]; then
         return 1

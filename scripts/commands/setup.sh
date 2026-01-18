@@ -29,8 +29,8 @@ STATE_DIR="$HOME/.nwp/setup_state"
 ORIGINAL_STATE_FILE="$STATE_DIR/original_state.json"
 CURRENT_STATE_FILE="$STATE_DIR/current_state.json"
 INSTALL_LOG="$STATE_DIR/install.log"
-CONFIG_FILE="$PROJECT_ROOT/cnwp.yml"
-EXAMPLE_CONFIG="$PROJECT_ROOT/example.cnwp.yml"
+CONFIG_FILE="$PROJECT_ROOT/nwp.yml"
+EXAMPLE_CONFIG="$PROJECT_ROOT/example.nwp.yml"
 
 # Source UI library for colors
 source "$PROJECT_ROOT/lib/ui.sh"
@@ -94,7 +94,7 @@ declare -a COMPONENTS=(
 
     # NWP Tools
     "yq|yq YAML Processor|-|tools|required|Command-line YAML processor for robust config parsing (like jq for YAML)|"
-    "nwp_config|NWP Configuration (cnwp.yml)|-|tools|required|Main config file defining sites, recipes, and settings|"
+    "nwp_config|NWP Configuration (nwp.yml)|-|tools|required|Main config file defining sites, recipes, and settings|"
     "nwp_cli|NWP CLI Command|nwp_config|tools|recommended|Global command to run NWP from any directory (pl, pl1, pl2, etc.)|cli_command"
     "nwp_secrets|NWP Secrets (.secrets.yml)|-|tools|recommended|API tokens for Linode, Cloudflare, GitLab integration|"
     "script_symlinks|Script Symlinks (backward compat)|-|tools|optional|Symlinks in project root for legacy ./install.sh usage|"
@@ -995,8 +995,8 @@ install_nwp_cli() {
 }
 
 install_nwp_config() {
-    print_status "INFO" "Creating cnwp.yml..."
-    [ -f "$EXAMPLE_CONFIG" ] && cp "$EXAMPLE_CONFIG" "$CONFIG_FILE" && print_status "OK" "cnwp.yml created"
+    print_status "INFO" "Creating nwp.yml..."
+    [ -f "$EXAMPLE_CONFIG" ] && cp "$EXAMPLE_CONFIG" "$CONFIG_FILE" && print_status "OK" "nwp.yml created"
 }
 
 install_nwp_secrets() {

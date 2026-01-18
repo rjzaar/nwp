@@ -141,7 +141,7 @@ This plan uses **text-based interactive learning** instead of videos:
   - Step-by-step walkthrough
   - Expected output examples
   - Troubleshooting common issues
-- [ ] 3.3.2 Create content page: "Understanding cnwp.yml"
+- [ ] 3.3.2 Create content page: "Understanding nwp.yml"
   - YAML structure explanation
   - Recipe definition syntax
   - Settings hierarchy
@@ -149,7 +149,7 @@ This plan uses **text-based interactive learning** instead of videos:
 - [ ] 3.3.4 Create asciinema recording: First site installation
 - [ ] 3.3.5 Create CodeRunner exercises:
   - Write a valid recipe definition
-  - Identify errors in cnwp.yml
+  - Identify errors in nwp.yml
   - Run installation command
 - [ ] 3.3.6 Create practice task: Install your first site
 - [ ] 3.3.7 Create quiz: Setup & Configuration (10 questions)

@@ -362,9 +362,9 @@ location = /health {
 htpasswd -bc /etc/nginx/.htpasswd staging "$STAGING_PASSWORD"
 ```
 
-### 7. Recipe/cnwp.yml Integration
+### 7. Recipe/nwp.yml Integration
 
-**New settings in cnwp.yml**:
+**New settings in nwp.yml**:
 ```yaml
 settings:
   seo:
@@ -413,8 +413,8 @@ recipes:
 
 ### Phase 4: Recipe Integration
 
-- [ ] Add `seo` settings section to cnwp.yml schema
-- [ ] Update example.cnwp.yml with SEO options
+- [ ] Add `seo` settings section to nwp.yml schema
+- [ ] Update example.nwp.yml with SEO options
 - [ ] Integrate settings into deployment scripts
 - [ ] Document in NWP_TRAINING_BOOKLET.md
 
@@ -446,7 +446,7 @@ recipes:
 
 ### Configuration
 
-- [ ] SEO settings in cnwp.yml documented
+- [ ] SEO settings in nwp.yml documented
 - [ ] Templates in `templates/` directory
 - [ ] Deployment scripts handle environment detection
 - [ ] Existing sites updated

@@ -62,7 +62,7 @@ todo_cache_clear() {
 # Returns: 0 if ignored, 1 if not
 todo_is_ignored() {
     local item_id="$1"
-    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/nwp.yml}"
 
     [ ! -f "$config_file" ] && return 1
 
@@ -128,10 +128,10 @@ todo_clear_items() {
 get_todo_setting() {
     local key_path="$1"
     local default="${2:-}"
-    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/nwp.yml}"
 
     if [ ! -f "$config_file" ]; then
-        config_file="$TODO_CHECKS_PROJECT_ROOT/example.cnwp.yml"
+        config_file="$TODO_CHECKS_PROJECT_ROOT/example.nwp.yml"
     fi
 
     local value=""
@@ -233,7 +233,7 @@ check_gitlab_issues() {
 check_test_instances() {
     is_category_enabled "test_instances" || return 0
 
-    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/nwp.yml}"
     [ ! -f "$config_file" ] && return 0
 
     local warn_days=$(get_todo_setting "thresholds.test_instance_warn_days" "7")
@@ -269,7 +269,7 @@ check_test_instances() {
 check_token_rotation() {
     is_category_enabled "token_rotation" || return 0
 
-    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/nwp.yml}"
     local rotation_days=$(get_todo_setting "thresholds.token_rotation_days" "90")
     local now_epoch=$(date +%s)
 
@@ -304,7 +304,7 @@ check_token_rotation() {
 check_orphaned_sites() {
     is_category_enabled "orphaned_sites" || return 0
 
-    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/nwp.yml}"
 
     # Reuse find_orphaned_sites from status.sh if available
     if command -v find_orphaned_sites &>/dev/null; then
@@ -362,7 +362,7 @@ check_ghost_sites() {
 check_incomplete_installs() {
     is_category_enabled "incomplete_installs" || return 0
 
-    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/nwp.yml}"
     [ ! -f "$config_file" ] && return 0
 
     local alert_hours=$(get_todo_setting "thresholds.incomplete_install_hours" "24")
@@ -396,7 +396,7 @@ check_incomplete_installs() {
 check_missing_backups() {
     is_category_enabled "missing_backups" || return 0
 
-    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/nwp.yml}"
     [ ! -f "$config_file" ] && return 0
 
     local warn_days=$(get_todo_setting "thresholds.backup_warn_days" "7")
@@ -446,7 +446,7 @@ check_missing_backups() {
 check_missing_schedules() {
     is_category_enabled "missing_schedules" || return 0
 
-    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/nwp.yml}"
     [ ! -f "$config_file" ] && return 0
 
     # Get crontab entries for NWP
@@ -471,7 +471,7 @@ check_missing_schedules() {
 check_security_updates() {
     is_category_enabled "security_updates" || return 0
 
-    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/nwp.yml}"
     [ ! -f "$config_file" ] && return 0
 
     while read -r site; do
@@ -531,7 +531,7 @@ check_verification() {
 check_uncommitted_work() {
     is_category_enabled "uncommitted_work" || return 0
 
-    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/nwp.yml}"
     [ ! -f "$config_file" ] && return 0
 
     while read -r site; do
@@ -581,7 +581,7 @@ check_disk_usage() {
 check_ssl_expiry() {
     is_category_enabled "ssl_expiring" || return 0
 
-    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/cnwp.yml}"
+    local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/nwp.yml}"
     local warn_days=$(get_todo_setting "thresholds.ssl_warn_days" "30")
     local alert_days=$(get_todo_setting "thresholds.ssl_alert_days" "7")
 

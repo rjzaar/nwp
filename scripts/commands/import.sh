@@ -11,7 +11,7 @@ set -euo pipefail
 #        ./import.sh <sitename> --server=<name> --source=<path> [options]
 #
 # Interactive Mode (default):
-#   ./import.sh                          - Select server from cnwp.yml
+#   ./import.sh                          - Select server from nwp.yml
 #   ./import.sh --server=production      - Use specific server
 #   ./import.sh --ssh=root@example.com   - Use custom SSH connection
 #
@@ -20,7 +20,7 @@ set -euo pipefail
 #   ./import.sh --server=prod --all --yes
 #
 # Options:
-#   --server=NAME           Use server from cnwp.yml linode.servers
+#   --server=NAME           Use server from nwp.yml linode.servers
 #   --ssh=USER@HOST         Custom SSH connection string
 #   --key=PATH              SSH private key path (default: ~/.ssh/nwp)
 #   --source=PATH           Remote webroot path (skip discovery)
@@ -68,7 +68,7 @@ source "$PROJECT_ROOT/lib/import.sh"
 # Configuration
 ################################################################################
 
-CONFIG_FILE="$PROJECT_ROOT/cnwp.yml"
+CONFIG_FILE="$PROJECT_ROOT/nwp.yml"
 
 # Default options
 OPT_SERVER=""
@@ -203,7 +203,7 @@ validate_prerequisites() {
     # Check config file exists
     if [ ! -f "$CONFIG_FILE" ]; then
         print_warning "Config file not found: $CONFIG_FILE"
-        print_info "Using defaults. Copy example.cnwp.yml to cnwp.yml to configure servers."
+        print_info "Using defaults. Copy example.nwp.yml to nwp.yml to configure servers."
     fi
 }
 

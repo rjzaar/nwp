@@ -49,7 +49,7 @@ Help texts include combined flag examples for all scripts.
 ## Phase 2: Production & Tracking
 
 ### P06: Sites Tracking System
-Automatic site registration in `cnwp.yml` with `lib/yaml-write.sh` (9 YAML functions).
+Automatic site registration in `nwp.yml` with `lib/yaml-write.sh` (9 YAML functions).
 
 ### P07: Module Reinstallation
 Reads `reinstall_modules` from recipe config for automated module management.
@@ -61,7 +61,7 @@ Reads `reinstall_modules` from recipe config for automated module management.
 Enhanced `setup.sh` with 18 components, rollback support, GitLab provisioning.
 
 ### P10: Configuration System Enhancement
-Extended `cnwp.yml` schema with settings, recipes, sites, and linode sections.
+Extended `nwp.yml` schema with settings, recipes, sites, and linode sections.
 
 ---
 
@@ -233,7 +233,7 @@ Comprehensive search engine control ensuring staging sites are protected while p
 - `templates/robots-staging.txt` for staging environments
 - `templates/robots-production.txt` with sitemap reference
 - Environment detection in deployment scripts (`stg2live.sh`, `linode_deploy.sh`)
-- SEO settings in cnwp.yml schema
+- SEO settings in nwp.yml schema
 
 ### F09: Comprehensive Testing Infrastructure
 Automated testing infrastructure using BATS framework with GitLab CI integration, plus interactive verification console.
@@ -343,7 +343,7 @@ Inbound:  User Reply → Webhook /api/email/inbound → Queue → Comment
 - Drush commands: `email-reply:status`, `email-reply:enable`, `email-reply:configure`, etc.
 - DDEV testing command: `ddev email-reply-test`
 - Web UI testing: `/admin/config/avc/email-reply/test`
-- Auto-configuration via recipe system in `cnwp.yml`
+- Auto-configuration via recipe system in `nwp.yml`
 - Post-install script for environment-aware setup
 
 **Files:**

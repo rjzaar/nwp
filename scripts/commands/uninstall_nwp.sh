@@ -22,7 +22,7 @@ STATE_DIR="$HOME/.nwp/setup_state"
 ORIGINAL_STATE_FILE="$STATE_DIR/original_state.json"
 LEGACY_STATE_FILE="$STATE_DIR/pre_setup_state.json"
 INSTALL_LOG="$STATE_DIR/install.log"
-CONFIG_FILE="$PROJECT_ROOT/cnwp.yml"
+CONFIG_FILE="$PROJECT_ROOT/nwp.yml"
 
 ################################################################################
 # State Reading Functions
@@ -343,11 +343,11 @@ remove_config_files() {
     print_header "Removing NWP Configuration Files"
 
     if [ -f "$CONFIG_FILE" ]; then
-        if ask_yes_no "Remove cnwp.yml configuration file?" "n"; then
+        if ask_yes_no "Remove nwp.yml configuration file?" "n"; then
             rm -f "$CONFIG_FILE"
-            print_status "OK" "cnwp.yml removed"
+            print_status "OK" "nwp.yml removed"
         else
-            print_status "INFO" "Keeping cnwp.yml"
+            print_status "INFO" "Keeping nwp.yml"
         fi
     fi
 

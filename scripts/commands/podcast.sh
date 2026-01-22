@@ -136,7 +136,7 @@ check_dns_providers() {
     local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
     local cf_zone_id=$(get_cloudflare_zone_id "$PROJECT_ROOT")
 
-    # Check Cloudflare
+    # Check Cloudflare (use || true to prevent pipefail exits)
     if [ -n "$cf_token" ] && [ -n "$cf_zone_id" ]; then
         if verify_cloudflare_auth "$cf_token" "$cf_zone_id" 2>/dev/null; then
             DNS_CLOUDFLARE_OK=true
@@ -144,8 +144,10 @@ check_dns_providers() {
     fi
 
     # Check Linode DNS (if domain exists in Linode DNS Manager)
+    # Use || true because linode_get_domain_id uses grep which fails with pipefail when not found
     if [ -n "$linode_token" ] && [ -n "$base_domain" ]; then
-        local domain_id=$(linode_get_domain_id "$linode_token" "$base_domain")
+        local domain_id
+        domain_id=$(linode_get_domain_id "$linode_token" "$base_domain" 2>/dev/null) || true
         if [ -n "$domain_id" ]; then
             DNS_LINODE_OK=true
         fi

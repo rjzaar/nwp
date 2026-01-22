@@ -120,6 +120,46 @@ EOF
 }
 
 ################################################################################
+# DNS Provider Availability Check
+################################################################################
+
+# Check which DNS providers are available
+# Usage: check_dns_providers "base_domain"
+# Sets: DNS_CLOUDFLARE_OK, DNS_LINODE_OK
+# Returns: 0 if at least one provider is available
+check_dns_providers() {
+    local base_domain=$1
+    DNS_CLOUDFLARE_OK=false
+    DNS_LINODE_OK=false
+
+    local linode_token=$(get_linode_token "$PROJECT_ROOT")
+    local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
+    local cf_zone_id=$(get_cloudflare_zone_id "$PROJECT_ROOT")
+
+    # Check Cloudflare
+    if [ -n "$cf_token" ] && [ -n "$cf_zone_id" ]; then
+        if verify_cloudflare_auth "$cf_token" "$cf_zone_id" 2>/dev/null; then
+            DNS_CLOUDFLARE_OK=true
+        fi
+    fi
+
+    # Check Linode DNS (if domain exists in Linode DNS Manager)
+    if [ -n "$linode_token" ] && [ -n "$base_domain" ]; then
+        local domain_id=$(linode_get_domain_id "$linode_token" "$base_domain")
+        if [ -n "$domain_id" ]; then
+            DNS_LINODE_OK=true
+        fi
+    fi
+
+    # Return success if at least one provider is available
+    if $DNS_CLOUDFLARE_OK || $DNS_LINODE_OK; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+################################################################################
 # Status Check
 ################################################################################
 
@@ -170,16 +210,31 @@ check_status() {
         echo "Cloudflare:"
         local cf_token=$(get_cloudflare_token "$PROJECT_ROOT")
         local cf_zone=$(get_cloudflare_zone_id "$PROJECT_ROOT")
+        local cf_available=false
         if [ -n "$cf_token" ] && [ -n "$cf_zone" ]; then
             print_status "OK" "API token and Zone ID configured"
             if verify_cloudflare_auth "$cf_token" "$cf_zone" 2>/dev/null; then
                 print_status "OK" "Credentials valid"
+                cf_available=true
             else
                 print_status "WARN" "Credentials may be invalid"
             fi
         else
             print_status "FAIL" "Credentials not found in .secrets.yml"
-            all_ok=false
+        fi
+
+        # Show Linode DNS as fallback option if Cloudflare is not available
+        if ! $cf_available; then
+            echo ""
+            echo "Linode DNS (fallback):"
+            local linode_token=$(get_linode_token "$PROJECT_ROOT")
+            if [ -n "$linode_token" ]; then
+                print_status "INFO" "Linode API configured - can use Linode DNS as fallback"
+                print_info "Add your domain to Linode DNS Manager to enable auto-fallback"
+            else
+                print_status "FAIL" "Linode API not configured - no DNS fallback available"
+                all_ok=false
+            fi
         fi
     else
         echo ""
@@ -258,6 +313,35 @@ do_setup() {
     if [[ ! "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$ ]]; then
         print_error "Invalid domain format: $domain"
         exit 1
+    fi
+
+    # Extract base domain for DNS checks
+    local base_domain="${domain#*.}"
+
+    # Auto-detect DNS provider if not in explicit linode-only mode
+    if ! $LINODE_ONLY; then
+        echo "Checking DNS providers..."
+        check_dns_providers "$base_domain"
+
+        if $DNS_CLOUDFLARE_OK; then
+            print_status "OK" "Cloudflare DNS available"
+        else
+            if $DNS_LINODE_OK; then
+                print_warning "Cloudflare not available, falling back to Linode DNS"
+                print_info "Domain '$base_domain' found in Linode DNS Manager"
+                LINODE_ONLY=true
+                echo ""
+                echo "Switching to Linode-only mode:"
+                echo "  - DNS: Linode DNS Manager"
+                echo "  - Storage: Local (on VPS)"
+                echo ""
+            else
+                print_error "No DNS provider available"
+                print_info "Either configure Cloudflare in .secrets.yml"
+                print_info "Or add '$base_domain' to Linode DNS Manager"
+                exit 1
+            fi
+        fi
     fi
 
     # Check prerequisites

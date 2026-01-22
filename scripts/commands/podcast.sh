@@ -49,6 +49,7 @@ B2_REGION="us-west-004"
 AUTO_CONFIRM=false
 DEBUG=false
 LINODE_ONLY=false  # When true, use Linode DNS and local storage (no Cloudflare/B2)
+SERVER_IP=""       # When set, use existing server instead of creating new Linode
 
 ################################################################################
 # Help
@@ -72,6 +73,7 @@ OPTIONS:
     -r, --region        Linode region (default: us-east)
     -m, --media         Media subdomain (default: media)
     -b, --b2-region     B2 region (default: us-west-004)
+    -s, --server <IP>   Use existing server instead of creating new Linode
     -l, --linode-only   Use Linode DNS and local storage (no Cloudflare/B2)
     -y, --yes           Auto-confirm prompts
     -v, --verbose       Enable debug output
@@ -80,6 +82,9 @@ OPTIONS:
 EXAMPLES:
     # Full automated setup (with Cloudflare + B2)
     ./podcast.sh setup podcast.example.com
+
+    # Setup on existing server (no new Linode created)
+    ./podcast.sh setup --server 192.168.1.100 podcast.example.com
 
     # Linode-only setup (uses Linode DNS and local storage)
     ./podcast.sh setup --linode-only podcast.example.com
@@ -302,7 +307,11 @@ do_setup() {
 
     print_header "NWP Podcast Setup"
     echo "Domain: $domain"
-    echo "Linode Region: $LINODE_REGION"
+    if [ -n "$SERVER_IP" ]; then
+        echo "Server: $SERVER_IP (existing)"
+    else
+        echo "Linode Region: $LINODE_REGION"
+    fi
     if $LINODE_ONLY; then
         echo "Mode: Linode-only (Linode DNS + local storage)"
     else
@@ -452,72 +461,95 @@ do_setup() {
         print_status "OK" "Application key created"
     fi
 
-    # Step 2: Create Linode
-    print_header "Step 2: Creating Linode Instance"
-
-    # Find SSH key
+    # Step 2: Create Linode (or use existing server)
+    # Find SSH key (needed for both new and existing servers)
     local ssh_key_path="$PROJECT_ROOT/keys/nwp.pub"
     if [ ! -f "$ssh_key_path" ]; then
         ssh_key_path="$HOME/.ssh/nwp.pub"
     fi
-    local ssh_public_key=$(cat "$ssh_key_path")
-
-    echo "Creating Linode in $LINODE_REGION..."
-    local label="podcast-${podcast_subdomain}-$(date +%Y%m%d)"
-    linode_id=$(create_linode_instance "$linode_token" "$label" "$ssh_public_key" "$LINODE_REGION" "g6-nanode-1" "linode/ubuntu22.04")
-    if [ -z "$linode_id" ]; then
-        print_error "Failed to create Linode instance"
-        exit 1
-    fi
-    print_status "OK" "Instance created: $linode_id (label: $label)"
-
-    # Wait for boot
-    echo "Waiting for instance to boot..."
-    if ! wait_for_linode "$linode_token" "$linode_id" 300; then
-        print_error "Instance failed to boot"
-        exit 1
-    fi
-
-    # Get IP
-    server_ip=$(get_linode_ip "$linode_token" "$linode_id")
-    print_status "OK" "Instance IP: $server_ip"
-
-    # Wait for SSH
-    echo "Waiting for SSH (this may take a few minutes)..."
     local ssh_key_private="${ssh_key_path%.pub}"
-    if ! wait_for_ssh "$server_ip" "$ssh_key_private" 600; then
-        print_error "SSH not available"
-        exit 1
+
+    if [ -n "$SERVER_IP" ]; then
+        # Use existing server
+        print_header "Step 2: Using Existing Server"
+        server_ip="$SERVER_IP"
+        print_status "OK" "Using server: $server_ip"
+    else
+        # Create new Linode instance
+        print_header "Step 2: Creating Linode Instance"
+
+        local ssh_public_key=$(cat "$ssh_key_path")
+
+        echo "Creating Linode in $LINODE_REGION..."
+        local label="podcast-${podcast_subdomain}-$(date +%Y%m%d)"
+        linode_id=$(create_linode_instance "$linode_token" "$label" "$ssh_public_key" "$LINODE_REGION" "g6-nanode-1" "linode/ubuntu22.04")
+        if [ -z "$linode_id" ]; then
+            print_error "Failed to create Linode instance"
+            exit 1
+        fi
+        print_status "OK" "Instance created: $linode_id (label: $label)"
+
+        # Wait for boot
+        echo "Waiting for instance to boot..."
+        if ! wait_for_linode "$linode_token" "$linode_id" 300; then
+            print_error "Instance failed to boot"
+            exit 1
+        fi
+
+        # Get IP
+        server_ip=$(get_linode_ip "$linode_token" "$linode_id")
+        print_status "OK" "Instance IP: $server_ip"
+    fi
+
+    # Wait for SSH (shorter timeout for existing servers)
+    if [ -n "$SERVER_IP" ]; then
+        echo "Checking SSH connectivity..."
+        if ! wait_for_ssh "$server_ip" "$ssh_key_private" 30; then
+            print_error "SSH not available on $server_ip"
+            print_info "Ensure SSH key is authorized on the server"
+            exit 1
+        fi
+    else
+        echo "Waiting for SSH (this may take a few minutes)..."
+        if ! wait_for_ssh "$server_ip" "$ssh_key_private" 600; then
+            print_error "SSH not available"
+            exit 1
+        fi
     fi
     print_status "OK" "SSH ready"
 
-    # Install Docker on server
-    echo "Installing Docker on server..."
+    # Install Docker on server (check if already installed for existing servers)
+    echo "Checking/Installing Docker on server..."
     ssh -i "$ssh_key_private" -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
         root@$server_ip 'bash -s' << 'DOCKER_INSTALL'
 set -e
 export DEBIAN_FRONTEND=noninteractive
 
-# Update system
-apt-get update
-apt-get install -y ca-certificates curl gnupg
+# Check if Docker is already installed
+if command -v docker &>/dev/null && docker compose version &>/dev/null; then
+    echo "Docker already installed, skipping installation"
+else
+    echo "Installing Docker..."
+    # Update system
+    apt-get update
+    apt-get install -y ca-certificates curl gnupg
 
-# Add Docker repo
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-chmod a+r /etc/apt/keyrings/docker.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+    # Add Docker repo
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    chmod a+r /etc/apt/keyrings/docker.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
 
-# Install Docker
-apt-get update
-apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    # Install Docker
+    apt-get update
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    echo "Docker installed successfully"
+fi
 
 # Create castopod directory
 mkdir -p /root/castopod
-
-echo "Docker installed successfully"
 DOCKER_INSTALL
-    print_status "OK" "Docker installed"
+    print_status "OK" "Docker ready"
 
     # Step 3: Create DNS records
     if $LINODE_ONLY; then
@@ -590,7 +622,34 @@ START_CASTOPOD
     trap - ERR
 
     # Save deployment info
-    if $LINODE_ONLY; then
+    if [ -n "$SERVER_IP" ]; then
+        # Existing server mode
+        cat > "$output_dir/deployment-info.txt" << EOF
+NWP Podcast Deployment Info (Existing Server)
+==============================================
+Date: $(date)
+Domain: $domain
+Mode: Existing server (shared)
+
+Server:
+  IP: $server_ip
+  Type: Shared/Existing
+
+DNS:
+  Podcast DNS Record: $dns_podcast_record
+
+Storage: Local (on server)
+
+SSH Access:
+  ssh -i ${ssh_key_private} root@${server_ip}
+
+Castopod Setup:
+  https://${domain}/admin/install
+
+Note: This podcast is hosted on an existing server.
+      Teardown requires manual removal of castopod directory.
+EOF
+    elif $LINODE_ONLY; then
         cat > "$output_dir/deployment-info.txt" << EOF
 NWP Podcast Deployment Info (Linode-only mode)
 ===============================================
@@ -1049,6 +1108,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -b|--b2-region)
             B2_REGION="$2"
+            shift 2
+            ;;
+        -s|--server)
+            SERVER_IP="$2"
             shift 2
             ;;
         -l|--linode-only)

@@ -1056,13 +1056,22 @@ recipes:
   pod:
     type: podcast                  # [ACTIVE] Recipe type
     # Usage: ./install.sh pod <target>
+    #
     # Domain configuration (choose ONE):
     #   Option 1: base_domain - domain constructed as <target>.<base_domain>
     #             e.g., base_domain: example.com with target 'gm' = gm.example.com
     #   Option 2: domain - use explicit full domain (ignores target name)
     # base_domain: example.com
     domain: podcast.example.com
-    # Linode region for the server
+    #
+    # Server configuration (choose ONE):
+    #   Option 1: use_server - install on existing server from another site
+    #             Looks up sites.<sitename>.live.server_ip from nwp.yml
+    #             e.g., use_server: nwp  (uses same server as 'nwp' site)
+    #   Option 2: (default) - create new Linode instance
+    # use_server: nwp
+    #
+    # Linode region for new server (ignored if use_server is set)
     linode_region: us-east
     # B2 region for media storage
     b2_region: us-west-004

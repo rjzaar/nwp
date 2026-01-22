@@ -23,8 +23,16 @@ install_podcast() {
     local purpose=${4:-indefinite}
     local config_file="nwp.yml"
 
-    # Get recipe configuration
-    local domain=$(get_recipe_value "$recipe" "domain" "$config_file")
+    # Get site-specific domain first, then fall back to recipe default
+    local domain=""
+    if declare -f yaml_get_site_field &>/dev/null; then
+        domain=$(yaml_get_site_field "$install_dir" "domain" "$config_file" 2>/dev/null) || true
+    fi
+    if [ -z "$domain" ]; then
+        domain=$(get_recipe_value "$recipe" "domain" "$config_file")
+    fi
+
+    # Get other recipe configuration
     local linode_region=$(get_recipe_value "$recipe" "linode_region" "$config_file")
     local b2_region=$(get_recipe_value "$recipe" "b2_region" "$config_file")
     local media_subdomain=$(get_recipe_value "$recipe" "media_subdomain" "$config_file")

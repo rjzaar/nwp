@@ -64,15 +64,17 @@ install_podcast() {
     # If use_server is specified, look up the server IP from that site's config
     local server_ip=""
     if [ -n "$use_server" ]; then
-        if declare -f yaml_get_site_field &>/dev/null; then
-            server_ip=$(yaml_get_site_field "$use_server" "live.server_ip" "$config_file" 2>/dev/null) || true
-            if [ -z "$server_ip" ]; then
+        # Use yq for nested path lookup (sites.<name>.live.server_ip)
+        if command -v yq &>/dev/null; then
+            server_ip=$(yq ".sites.${use_server}.live.server_ip" "$config_file" 2>/dev/null) || true
+            # yq returns "null" for missing values
+            if [ -z "$server_ip" ] || [ "$server_ip" = "null" ]; then
                 print_error "Could not find server_ip for site '$use_server' in nwp.yml"
                 print_info "Ensure sites.$use_server.live.server_ip is configured"
                 return 1
             fi
         else
-            print_error "yaml_get_site_field not available"
+            print_error "yq is required for use_server lookup"
             return 1
         fi
     fi

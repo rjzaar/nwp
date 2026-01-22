@@ -357,11 +357,7 @@ main() {
         exit 1
     fi
 
-    print_header "NWP OpenSocial Installation"
-
-    if [ -n "$start_step" ]; then
-        print_info "Resuming from step $start_step"
-    fi
+    # Header will be printed after we know the recipe type
 
     # Check if config file exists
     if [ ! -f "$config_file" ]; then
@@ -464,6 +460,20 @@ main() {
         recipe_type="drupal"
     fi
 
+    # Print header based on recipe type
+    local install_type_name="Site"
+    case "$recipe_type" in
+        podcast) install_type_name="Podcast" ;;
+        moodle) install_type_name="Moodle" ;;
+        gitlab) install_type_name="GitLab" ;;
+        drupal|*) install_type_name="Drupal" ;;
+    esac
+    print_header "NWP $install_type_name Installation"
+
+    if [ -n "$start_step" ]; then
+        print_info "Resuming from step $start_step"
+    fi
+
     # Set defaults for display
     if [ -z "$webroot" ]; then
         webroot="html"
@@ -480,7 +490,7 @@ main() {
     if [ -n "$start_step" ]; then
         echo -e "${YELLOW}${BOLD}This will resume installation from step $start_step.${NC}"
     else
-        echo -e "${YELLOW}${BOLD}This will install OpenSocial in a new directory.${NC}"
+        echo -e "${YELLOW}${BOLD}This will install $install_type_name in a new directory.${NC}"
     fi
     echo ""
     echo -e "${BOLD}Installation Details:${NC}"

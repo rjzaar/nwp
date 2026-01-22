@@ -321,7 +321,8 @@ do_setup() {
     # Auto-detect DNS provider if not in explicit linode-only mode
     if ! $LINODE_ONLY; then
         echo "Checking DNS providers..."
-        check_dns_providers "$base_domain"
+        # Use || true to prevent set -e from exiting; we check the variables below
+        check_dns_providers "$base_domain" || true
 
         if $DNS_CLOUDFLARE_OK; then
             print_status "OK" "Cloudflare DNS available"

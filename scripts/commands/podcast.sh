@@ -365,16 +365,65 @@ do_setup() {
     print_status "OK" "All prerequisites met"
     echo ""
 
+    # Calculate base domain early for server detection
+    local base_domain="${domain#*.}"
+
+    # Check for existing server on same base domain (if not already using --server)
+    if [ -z "$SERVER_IP" ] && command -v yq &>/dev/null && [ -f "$PROJECT_ROOT/nwp.yml" ]; then
+        # Find any site with live.domain matching *.<base_domain> and has server_ip
+        local existing_site=""
+        local existing_ip=""
+        local existing_domain=""
+
+        while IFS='|' read -r site_name site_domain site_ip; do
+            if [ -n "$site_ip" ] && [ "$site_ip" != "null" ]; then
+                # Check if site's domain shares the same base domain
+                local site_base="${site_domain#*.}"
+                if [ "$site_base" = "$base_domain" ]; then
+                    existing_site="$site_name"
+                    existing_ip="$site_ip"
+                    existing_domain="$site_domain"
+                    break
+                fi
+            fi
+        done < <(yq -r '.sites | to_entries[] | select(.value.live.server_ip != null) | "\(.key)|\(.value.live.domain)|\(.value.live.server_ip)"' "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
+
+        if [ -n "$existing_ip" ]; then
+            echo ""
+            print_info "Found existing server for $base_domain:"
+            echo "  Site:   $existing_site ($existing_domain)"
+            echo "  Server: $existing_ip"
+            echo ""
+            if ask_yes_no "Install podcast on this existing server instead of creating a new one?" "y"; then
+                SERVER_IP="$existing_ip"
+                print_status "OK" "Will use existing server: $existing_ip"
+                echo ""
+            fi
+        fi
+    fi
+
     # Confirm
     if ! $AUTO_CONFIRM; then
-        echo "This will create:"
-        echo "  - Linode VPS (~\$5/month for Nanode)"
-        if $LINODE_ONLY; then
-            echo "  - Linode DNS A record"
-            echo "  - Local media storage on VPS"
+        if [ -n "$SERVER_IP" ]; then
+            echo "This will:"
+            echo "  - Deploy to existing server ($SERVER_IP)"
+            if $LINODE_ONLY; then
+                echo "  - Create Linode DNS A record"
+                echo "  - Use local media storage"
+            else
+                echo "  - Create B2 bucket (free tier: 10GB)"
+                echo "  - Create Cloudflare DNS records"
+            fi
         else
-            echo "  - B2 bucket (free tier: 10GB)"
-            echo "  - Cloudflare DNS records (free)"
+            echo "This will create:"
+            echo "  - Linode VPS (~\$5/month for Nanode)"
+            if $LINODE_ONLY; then
+                echo "  - Linode DNS A record"
+                echo "  - Local media storage on VPS"
+            else
+                echo "  - B2 bucket (free tier: 10GB)"
+                echo "  - Cloudflare DNS records (free)"
+            fi
         fi
         echo ""
         if ! ask_yes_no "Continue with setup?" "n"; then
@@ -394,14 +443,14 @@ do_setup() {
         cf_zone_id=$(get_cloudflare_zone_id "$PROJECT_ROOT")
     fi
 
-    local base_domain="${domain#*.}"
+    # base_domain already set earlier for server detection
     local podcast_subdomain="${domain%%.*}"
     local media_domain="${MEDIA_SUBDOMAIN}.${base_domain}"
     local bucket_name="${podcast_subdomain}-media"
 
     # Track created resources for potential rollback
     local linode_id=""
-    local server_ip=""
+    local server_ip="$SERVER_IP"  # May be set from existing server detection
     local bucket_id=""
     local b2_key_id=""
     local b2_app_key=""

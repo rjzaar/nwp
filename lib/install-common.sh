@@ -741,9 +741,10 @@ validate_recipe() {
     elif [ "$recipe_type" == "podcast" ]; then
         # Podcast required fields - uses podcast.sh for Castopod setup
         local domain=$(get_recipe_value "$recipe" "domain" "$config_file")
-        # Podcast needs domain - everything else has defaults
-        if [ -z "$domain" ]; then
-            print_error "Recipe '$recipe': Missing required field 'domain'"
+        local base_domain=$(get_recipe_value "$recipe" "base_domain" "$config_file")
+        # Podcast needs either domain or base_domain - everything else has defaults
+        if [ -z "$domain" ] && [ -z "$base_domain" ]; then
+            print_error "Recipe '$recipe': Missing required field 'domain' or 'base_domain'"
             errors=$((errors + 1))
         fi
     elif [ "$recipe_type" == "migration" ]; then

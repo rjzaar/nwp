@@ -23,13 +23,31 @@ install_podcast() {
     local purpose=${4:-indefinite}
     local config_file="nwp.yml"
 
+    # Determine target name (strip sites/ prefix if present)
+    local target_name="${install_dir#sites/}"
+
     # Get site-specific domain first, then fall back to recipe default
+    # Check: sites.<site>.domain, then sites.<site>.live.domain, then recipe base_domain + target, then recipe domain
     local domain=""
     if declare -f yaml_get_site_field &>/dev/null; then
-        domain=$(yaml_get_site_field "$install_dir" "domain" "$config_file" 2>/dev/null) || true
+        # Try direct domain field first
+        domain=$(yaml_get_site_field "$target_name" "domain" "$config_file" 2>/dev/null) || true
+        # Try live.domain if direct domain not found
+        if [ -z "$domain" ]; then
+            domain=$(yaml_get_site_field "$target_name" "live.domain" "$config_file" 2>/dev/null) || true
+        fi
     fi
+
+    # If no site-specific domain, check for recipe base_domain to construct domain
     if [ -z "$domain" ]; then
-        domain=$(get_recipe_value "$recipe" "domain" "$config_file")
+        local base_domain=$(get_recipe_value "$recipe" "base_domain" "$config_file")
+        if [ -n "$base_domain" ]; then
+            # Construct domain from target + base_domain (e.g., gm + nwpcode.org = gm.nwpcode.org)
+            domain="${target_name}.${base_domain}"
+        else
+            # Fall back to explicit domain in recipe
+            domain=$(get_recipe_value "$recipe" "domain" "$config_file")
+        fi
     fi
 
     # Get other recipe configuration

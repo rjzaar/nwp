@@ -1,12 +1,13 @@
 # NWP Roadmap - Pending & Future Work
 
-**Last Updated:** January 15, 2026
+**Last Updated:** January 24, 2026
 
 Pending implementation items and future improvements for NWP.
 
 > **For completed work, see [Milestones](../reports/milestones.md)**
 > - Phase 1-5c: P01-P35 (Foundation through Live Deployment)
 > - Phase 6-7: F04 (phases 1-5), F05, F07, F09
+> - Phase 8: P50, P51 (Unified Verification System)
 
 ---
 
@@ -14,12 +15,12 @@ Pending implementation items and future improvements for NWP.
 
 | Metric | Value |
 |--------|-------|
-| Current Version | v0.21.0 |
-| Test Success Rate | 93% |
-| Completed Proposals | P01-P35, F04, F05, F07, F09 |
-| Pending Proposals | F01-F03, F06, F08, F10, F11 |
+| Current Version | v0.25.0 |
+| Test Success Rate | 88% (Machine Verified) |
+| Completed Proposals | P01-P35, P50, P51, F04, F05, F07, F09 |
+| Pending Proposals | P52, P53, P54, P55, P56, P57, P58, F01-F03, F06, F08, F10-F12 |
 | Experimental/Outlier | X01 |
-| Recent Enhancements | AVC Email Reply System, YAML Parser Consolidation (v0.21.0), Documentation restructure (v0.20.0) |
+| Recent Enhancements | P51 AI-Powered Verification (v0.25.0), P50 Unified Verification (v0.24.0), Verification Instructions (v0.24.0) |
 
 ---
 
@@ -69,7 +70,8 @@ Based on dependencies, current progress, and priority:
 | 8 | F08 | PROPOSED | Needs stable GitLab infrastructure |
 | 9 | F10 | PROPOSED | Independent, developer privacy/experience |
 | 10 | F11 | PROPOSED | Depends on F10, hardware-specific config |
-| 11 | F02 | PLANNED | Depends on F01, lowest priority |
+| 11 | F12 | PROPOSED | Minimal version (6h) recommended, full version over-engineered |
+| 12 | F02 | PLANNED | Depends on F01, lowest priority |
 | - | X01 | EXPLORATORY | Outlier - significant scope expansion |
 
 ---
@@ -685,6 +687,37 @@ Complex Tasks (Claude API):
 
 ---
 
+### F12: SSH User Management
+**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Low (6h minimal) / High (80h full) | **Dependencies:** None
+**Proposal:** [SSH_USER_MANAGEMENT_PROPOSAL.md](SSH_USER_MANAGEMENT_PROPOSAL.md)
+
+Unify NWP's 7 different approaches to SSH user determination.
+
+**Problem:**
+- Hardcoded user assumptions in `live2stg.sh` and `remote.sh`
+- Inconsistent behavior between commands
+- Cognitive overhead when debugging SSH issues
+
+**Worth It Evaluation:** Full proposal is over-engineered for 1-2 developers with few servers. Security hardening, auto-registration, and migration tooling solve hypothetical problems.
+
+**Minimal Version (DO IT - 6 hours):**
+1. Create `get_ssh_user()` function in `lib/ssh.sh` (2h)
+2. Fix hardcoded scripts: `live2stg.sh:139-140`, `lib/remote.sh:99` (1h)
+3. Document standard `ssh_user` config field (1h)
+4. Update `example.nwp.yml` with examples (1h)
+
+**Full Version (DON'T - unless scaling):**
+- Auto-registration, migration tooling, security hardening
+- Only implement if: adding external contributors, compliance requirements, or managing 20+ servers
+
+**Success Criteria (Minimal):**
+- [ ] `get_ssh_user()` function with fallback chain
+- [ ] `live2stg.sh` uses dynamic SSH user
+- [ ] `lib/remote.sh` uses dynamic SSH user
+- [ ] Standard documented in example.nwp.yml
+
+---
+
 ### F09: Comprehensive Testing Infrastructure
 **Status:** ✅ COMPLETE (infrastructure) | **Proposal:** [COMPREHENSIVE_TESTING_PROPOSAL.md](COMPREHENSIVE_TESTING_PROPOSAL.md)
 
@@ -1253,6 +1286,7 @@ Do not attempt these items - they were thoroughly evaluated and rejected:
 | 9 | F10 | MEDIUM | Medium | None | 8 | Proposed |
 | 10 | F11 | MEDIUM | Low | F10 | 8 | Proposed |
 | 11 | F02 | LOW | Medium | F01 | 7b | Planned |
+| 12 | F12 | MEDIUM | Low | None | 8 | Proposed |
 | - | X01 | LOW | High | F10 (optional) | X | Exploratory |
 
 ---
@@ -1280,6 +1314,7 @@ Do not attempt these items - they were thoroughly evaluated and rejected:
 - [SEO_ROBOTS_PROPOSAL.md](SEO_ROBOTS_PROPOSAL.md) - SEO & search engine control (F07)
 - [DYNAMIC_BADGES_PROPOSAL.md](DYNAMIC_BADGES_PROPOSAL.md) - Cross-platform badges (F08)
 - [COMPREHENSIVE_TESTING_PROPOSAL.md](COMPREHENSIVE_TESTING_PROPOSAL.md) - Testing infrastructure (F09)
+- [SSH_USER_MANAGEMENT_PROPOSAL.md](SSH_USER_MANAGEMENT_PROPOSAL.md) - SSH user management (F12)
 
 ### Guides
 - [LOCAL_LLM_GUIDE.md](LOCAL_LLM_GUIDE.md) - Complete guide to running open source AI models locally (F10)
@@ -1296,3 +1331,4 @@ Do not attempt these items - they were thoroughly evaluated and rejected:
 *X01 (AI Video Generation) added as experimental outlier: January 10, 2026*
 *Phase X (Experimental/Outliers) created: January 10, 2026*
 *F11 (Developer Workstation Local LLM Config) added: January 11, 2026*
+*F12 (SSH User Management) added: January 24, 2026*

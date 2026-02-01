@@ -8,9 +8,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [v0.26.0] - 2026-02-01
+
+### Added
+
+- **F12**: SSH User Management proposal with worth-it evaluation
+- **F13**: Timezone Configuration proposal
+- **F14**: Claude API Integration proposal for team provisioning and spend controls
+- Comprehensive NWP analysis report (2026-01-20)
+- Podcast recipe: `use_server` option to install on existing server
+- Podcast recipe: `base_domain` support for domain construction
+- Automatic Cloudflare to Linode DNS fallback in podcast setup
+- Auto-detect and offer existing server for same base domain
+- `fin-monitor.sh` command
+
+### Fixed
+
+- DNS provider check exiting early due to `set -e`
+- `linode_get_domain_id` failing with `pipefail`
+- Podcast install to use site-specific domain over recipe default
+- Podcast install header and `use_server` lookup
+- yq v4 compatibility issues in P51 verification libraries
+
+### Changed
+
+- Renamed config file from `cnwp.yml` to `nwp.yml` for consistency
+
 ### Documentation
 
-- Updated ROADMAP.md with current version (v0.25.0) and P50/P51 completion status
+- Updated ROADMAP.md with current version and P50/P51 completion status
 - Updated MILESTONES.md with P51 AI-Powered Deep Verification milestone
 - Updated KNOWN_ISSUES.md with verification test infrastructure issues (P54)
 - Added P52-P58 proposals for future work tracking

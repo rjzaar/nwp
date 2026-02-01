@@ -19,7 +19,7 @@ done
 SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
 # Version
-VERSION="0.25.0"
+VERSION="0.26.0"
 
 # Source verification auto-logging if available
 [[ -f "${SCRIPT_DIR}/lib/verify-autolog.sh" ]] && source "${SCRIPT_DIR}/lib/verify-autolog.sh"

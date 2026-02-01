@@ -368,36 +368,112 @@ do_setup() {
     # Calculate base domain early for server detection
     local base_domain="${domain#*.}"
 
-    # Check for existing server on same base domain (if not already using --server)
-    if [ -z "$SERVER_IP" ] && command -v yq &>/dev/null && [ -f "$PROJECT_ROOT/nwp.yml" ]; then
-        # Find any site with live.domain matching *.<base_domain> and has server_ip
-        local existing_site=""
-        local existing_ip=""
-        local existing_domain=""
+    # Check for existing servers on same base domain (if not already using --server)
+    # SSH_USER will be set if using an existing server with a configured user
+    local SSH_USER="root"  # Default for new servers
 
+    if [ -z "$SERVER_IP" ] && command -v yq &>/dev/null && [ -f "$PROJECT_ROOT/nwp.yml" ]; then
+        # Collect all available servers
+        local -a server_names=()
+        local -a server_ips=()
+        local -a server_users=()
+        local -a server_urls=()
+        local -a server_labels=()
+        local -a server_sources=()  # "primary" or "site"
+
+        # Source 1: Check linode.servers for servers with matching domain
+        while IFS='|' read -r server_name server_domain server_ssh_host server_label; do
+            if [ -n "$server_ssh_host" ] && [ "$server_ssh_host" != "null" ] && [ -n "$server_domain" ] && [ "$server_domain" != "null" ]; then
+                if [ "$server_domain" = "$base_domain" ]; then
+                    # Parse user@ip from ssh_host
+                    local srv_user="${server_ssh_host%@*}"
+                    local srv_ip="${server_ssh_host#*@}"
+                    # Handle case where there's no @ (just IP)
+                    if [ "$srv_user" = "$server_ssh_host" ]; then
+                        srv_user="root"
+                        srv_ip="$server_ssh_host"
+                    fi
+                    server_names+=("$server_name")
+                    server_ips+=("$srv_ip")
+                    server_users+=("$srv_user")
+                    server_urls+=("$server_domain")
+                    server_labels+=("${server_label:-$server_name}")
+                    server_sources+=("primary")
+                fi
+            fi
+        done < <(yq -r '.linode.servers | to_entries[] | select(.value.domain != null) | "\(.key)|\(.value.domain)|\(.value.ssh_host)|\(.value.label)"' "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
+
+        # Source 2: Check sites with matching base domain
         while IFS='|' read -r site_name site_domain site_ip; do
             if [ -n "$site_ip" ] && [ "$site_ip" != "null" ]; then
                 # Check if site's domain shares the same base domain
                 local site_base="${site_domain#*.}"
                 if [ "$site_base" = "$base_domain" ]; then
-                    existing_site="$site_name"
-                    existing_ip="$site_ip"
-                    existing_domain="$site_domain"
-                    break
+                    # Avoid duplicates (same IP already added from linode.servers)
+                    local is_duplicate=false
+                    for existing_ip in "${server_ips[@]}"; do
+                        if [ "$existing_ip" = "$site_ip" ]; then
+                            is_duplicate=true
+                            break
+                        fi
+                    done
+                    if ! $is_duplicate; then
+                        server_names+=("$site_name")
+                        server_ips+=("$site_ip")
+                        server_users+=("root")  # Sites default to root
+                        server_urls+=("$site_domain")
+                        server_labels+=("$site_name")
+                        server_sources+=("site")
+                    fi
                 fi
             fi
         done < <(yq -r '.sites | to_entries[] | select(.value.live.server_ip != null) | "\(.key)|\(.value.live.domain)|\(.value.live.server_ip)"' "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
 
-        if [ -n "$existing_ip" ]; then
+        # If servers found, let user choose
+        if [ ${#server_ips[@]} -gt 0 ]; then
             echo ""
-            print_info "Found existing server for $base_domain:"
-            echo "  Site:   $existing_site ($existing_domain)"
-            echo "  Server: $existing_ip"
+            print_info "Install ${BOLD}$domain${NC} on which server?"
             echo ""
-            if ask_yes_no "Install podcast on this existing server instead of creating a new one?" "y"; then
-                SERVER_IP="$existing_ip"
-                print_status "OK" "Will use existing server: $existing_ip"
+
+            local i=1
+            for idx in "${!server_ips[@]}"; do
+                local source_tag=""
+                if [ "${server_sources[$idx]}" = "primary" ]; then
+                    source_tag="[primary]"
+                else
+                    source_tag="[site]"
+                fi
+                printf "  %d) %-15s %-16s %s\n" "$i" "${server_names[$idx]}" "${server_ips[$idx]}" "$source_tag"
+                if [ -n "${server_labels[$idx]}" ] && [ "${server_labels[$idx]}" != "${server_names[$idx]}" ]; then
+                    printf "     └─ %s (hosts %s)\n" "${server_labels[$idx]}" "${server_urls[$idx]}"
+                else
+                    printf "     └─ hosts %s\n" "${server_urls[$idx]}"
+                fi
+                ((i++))
+            done
+            printf "  %d) Create new Linode server (in %s)\n" "$i" "$LINODE_REGION"
+            printf "  q) Quit\n"
+            echo ""
+
+            local choice
+            read -p "Select server [1]: " choice
+            choice="${choice:-1}"
+
+            if [[ "$choice" =~ ^[Qq]$ ]]; then
+                print_info "Aborted."
+                exit 0
+            elif [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#server_ips[@]} ]; then
+                local selected_idx=$((choice - 1))
+                SERVER_IP="${server_ips[$selected_idx]}"
+                SSH_USER="${server_users[$selected_idx]}"
+                print_status "OK" "Will use server: ${server_names[$selected_idx]} ($SSH_USER@$SERVER_IP)"
                 echo ""
+            elif [ "$choice" = "$i" ]; then
+                print_info "Will create new Linode server"
+                echo ""
+            else
+                print_error "Invalid selection"
+                exit 1
             fi
         fi
     fi
@@ -518,11 +594,18 @@ do_setup() {
     fi
     local ssh_key_private="${ssh_key_path%.pub}"
 
+    # Determine remote home directory and castopod path based on SSH user
+    local remote_home="/root"
+    if [ "$SSH_USER" != "root" ]; then
+        remote_home="/home/$SSH_USER"
+    fi
+    local castopod_dir="$remote_home/castopod"
+
     if [ -n "$SERVER_IP" ]; then
         # Use existing server
         print_header "Step 2: Using Existing Server"
         server_ip="$SERVER_IP"
-        print_status "OK" "Using server: $server_ip"
+        print_status "OK" "Using server: $SSH_USER@$server_ip"
     else
         # Create new Linode instance
         print_header "Step 2: Creating Linode Instance"
@@ -570,9 +653,17 @@ do_setup() {
     # Install Docker on server (check if already installed for existing servers)
     echo "Checking/Installing Docker on server..."
     ssh -i "$ssh_key_private" -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
-        root@$server_ip 'bash -s' << 'DOCKER_INSTALL'
+        "${SSH_USER}@${server_ip}" "bash -s" "$castopod_dir" "$SSH_USER" << 'DOCKER_INSTALL'
 set -e
 export DEBIAN_FRONTEND=noninteractive
+CASTOPOD_DIR="$1"
+REMOTE_USER="$2"
+
+# Use sudo if not root
+SUDO=""
+if [ "$REMOTE_USER" != "root" ]; then
+    SUDO="sudo"
+fi
 
 # Check if Docker is already installed
 if command -v docker &>/dev/null && docker compose version &>/dev/null; then
@@ -580,23 +671,28 @@ if command -v docker &>/dev/null && docker compose version &>/dev/null; then
 else
     echo "Installing Docker..."
     # Update system
-    apt-get update
-    apt-get install -y ca-certificates curl gnupg
+    $SUDO apt-get update
+    $SUDO apt-get install -y ca-certificates curl gnupg
 
     # Add Docker repo
-    install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    chmod a+r /etc/apt/keyrings/docker.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+    $SUDO install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | $SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    $SUDO chmod a+r /etc/apt/keyrings/docker.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
 
     # Install Docker
-    apt-get update
-    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    $SUDO apt-get update
+    $SUDO apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+    # Add user to docker group if not root
+    if [ "$REMOTE_USER" != "root" ]; then
+        $SUDO usermod -aG docker "$REMOTE_USER"
+    fi
     echo "Docker installed successfully"
 fi
 
 # Create castopod directory
-mkdir -p /root/castopod
+mkdir -p "$CASTOPOD_DIR"
 DOCKER_INSTALL
     print_status "OK" "Docker ready"
 
@@ -653,12 +749,12 @@ DOCKER_INSTALL
     echo "Deploying to server..."
     scp -i "$ssh_key_private" -o BatchMode=yes \
         "$output_dir/.env" "$output_dir/docker-compose.yml" "$output_dir/Caddyfile" \
-        root@$server_ip:/root/castopod/
+        "${SSH_USER}@${server_ip}:${castopod_dir}/"
 
     # Start Castopod
     echo "Starting Castopod..."
-    ssh -i "$ssh_key_private" -o BatchMode=yes root@$server_ip << 'START_CASTOPOD'
-cd /root/castopod
+    ssh -i "$ssh_key_private" -o BatchMode=yes "${SSH_USER}@${server_ip}" "bash -s" "$castopod_dir" << 'START_CASTOPOD'
+cd "$1"
 set -a
 source .env
 set +a
@@ -690,7 +786,10 @@ DNS:
 Storage: Local (on server)
 
 SSH Access:
-  ssh -i ${ssh_key_private} root@${server_ip}
+  ssh -i ${ssh_key_private} ${SSH_USER}@${server_ip}
+
+Castopod Directory:
+  ${castopod_dir}
 
 Castopod Setup:
   https://${domain}/admin/install
@@ -718,7 +817,10 @@ DNS (Linode):
 Storage: Local (on VPS)
 
 SSH Access:
-  ssh -i ${ssh_key_private} root@${server_ip}
+  ssh -i ${ssh_key_private} ${SSH_USER}@${server_ip}
+
+Castopod Directory:
+  ${castopod_dir}
 
 Castopod Setup:
   https://${domain}/admin/install
@@ -750,7 +852,10 @@ Cloudflare:
   Media DNS Record: $dns_media_record
 
 SSH Access:
-  ssh -i ${ssh_key_private} root@${server_ip}
+  ssh -i ${ssh_key_private} ${SSH_USER}@${server_ip}
+
+Castopod Directory:
+  ${castopod_dir}
 
 Castopod Setup:
   https://${domain}/admin/install
@@ -774,7 +879,9 @@ EOF
     fi
     echo ""
     echo "SSH Access:"
-    echo "  ssh -i $ssh_key_private root@$server_ip"
+    echo "  ssh -i $ssh_key_private $SSH_USER@$server_ip"
+    echo ""
+    echo "Castopod Directory: $castopod_dir"
     echo ""
     echo "Complete Castopod setup at:"
     echo "  https://$domain/admin/install"
@@ -1020,12 +1127,32 @@ do_deploy() {
 
     # Read server IP from deployment-info.txt if it exists
     local server_ip=""
+    # Try to extract connection info from deployment-info.txt
+    local ssh_user="root"
+    local castopod_dir="/root/castopod"
+
     if [ -f "$dir/deployment-info.txt" ]; then
         server_ip=$(grep "IP:" "$dir/deployment-info.txt" | head -1 | awk '{print $2}')
+        # Extract user from SSH Access line (e.g., "ssh -i /path/to/key user@ip")
+        local ssh_line=$(grep "ssh -i" "$dir/deployment-info.txt" | head -1)
+        if [ -n "$ssh_line" ]; then
+            local user_at_ip=$(echo "$ssh_line" | awk '{print $NF}')
+            ssh_user="${user_at_ip%@*}"
+        fi
+        # Extract castopod directory
+        local dir_line=$(grep "Castopod Directory:" "$dir/deployment-info.txt" | head -1)
+        if [ -n "$dir_line" ]; then
+            castopod_dir=$(echo "$dir_line" | awk '{print $NF}')
+        fi
     fi
 
     if [ -z "$server_ip" ]; then
         read -p "Enter server IP address: " server_ip
+    fi
+
+    # Determine remote home if castopod_dir not found
+    if [ "$castopod_dir" = "/root/castopod" ] && [ "$ssh_user" != "root" ]; then
+        castopod_dir="/home/$ssh_user/castopod"
     fi
 
     # Find SSH key
@@ -1037,22 +1164,22 @@ do_deploy() {
         read -p "Enter SSH key path: " ssh_key
     fi
 
-    echo "Deploying to $server_ip..."
+    echo "Deploying to $ssh_user@$server_ip..."
 
     # Ensure directory exists
-    ssh -i "$ssh_key" -o BatchMode=yes root@$server_ip "mkdir -p /root/castopod"
+    ssh -i "$ssh_key" -o BatchMode=yes "${ssh_user}@${server_ip}" "mkdir -p '$castopod_dir'"
 
     # Copy files
     scp -i "$ssh_key" -o BatchMode=yes \
         "$dir/.env" "$dir/docker-compose.yml" "$dir/Caddyfile" \
-        root@$server_ip:/root/castopod/
+        "${ssh_user}@${server_ip}:${castopod_dir}/"
 
     print_status "OK" "Files copied"
 
     # Start containers
     echo "Starting containers..."
-    ssh -i "$ssh_key" -o BatchMode=yes root@$server_ip << 'DEPLOY_SCRIPT'
-cd /root/castopod
+    ssh -i "$ssh_key" -o BatchMode=yes "${ssh_user}@${server_ip}" "bash -s" "$castopod_dir" << 'DEPLOY_SCRIPT'
+cd "$1"
 set -a
 source .env
 set +a

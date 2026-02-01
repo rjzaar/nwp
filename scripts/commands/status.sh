@@ -1242,22 +1242,24 @@ show_server_stats() {
         return 1
     fi
 
+    # Check if jq is available for reliable JSON parsing
+    if ! command -v jq &>/dev/null; then
+        print_error "jq not installed - required for JSON parsing"
+        print_info "Install with: sudo apt install jq"
+        return 1
+    fi
+
     echo ""
-    printf "  ${BOLD}%-20s %-12s %-10s %-15s %s${NC}\n" "LABEL" "STATUS" "REGION" "IP" "TYPE"
-    printf "  %-20s %-12s %-10s %-15s %s\n" "--------------------" "------------" "----------" "---------------" "----"
+    printf "  ${BOLD}%-25s %-12s %-10s %-15s %s${NC}\n" "LABEL" "STATUS" "REGION" "IP" "TYPE"
+    printf "  %-25s %-12s %-10s %-15s %s\n" "-------------------------" "------------" "----------" "---------------" "----"
 
-    echo "$response" | grep -o '{[^{}]*"label"[^{}]*}' | while read -r instance; do
-        local label=$(echo "$instance" | grep -o '"label":"[^"]*"' | cut -d'"' -f4)
-        local status=$(echo "$instance" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
-        local region=$(echo "$instance" | grep -o '"region":"[^"]*"' | cut -d'"' -f4)
-        local ip=$(echo "$instance" | grep -o '"ipv4":\["[^"]*"' | cut -d'"' -f4)
-        local type=$(echo "$instance" | grep -o '"type":"[^"]*"' | cut -d'"' -f4)
-
+    # Use jq for reliable JSON parsing
+    echo "$response" | jq -r '.data[] | "\(.label)|\(.status)|\(.region)|\(.ipv4[0] // "N/A")|\(.type)"' 2>/dev/null | while IFS='|' read -r label status region ip type; do
         local status_color="${YELLOW}"
         [ "$status" == "running" ] && status_color="${GREEN}"
         [ "$status" == "offline" ] && status_color="${RED}"
 
-        printf "  ${CYAN}%-20s${NC} ${status_color}%-12s${NC} %-10s %-15s %s\n" \
+        printf "  ${CYAN}%-25s${NC} ${status_color}%-12s${NC} %-10s %-15s %s\n" \
             "$label" "$status" "$region" "$ip" "$type"
     done
 

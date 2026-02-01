@@ -543,6 +543,17 @@ linode:
       ssh_key: ~/.ssh/nwp          # [ACTIVE] Path to SSH private key
       label: "Staging Server"      # [ACTIVE] Display label in TUI
 
+    # Primary server with domain mapping [ACTIVE]
+    # Use 'domain' field to link a base domain to this server
+    # Podcast setup will auto-detect servers for matching domains
+    # Example:
+    #   primary:
+    #     ssh_host: root@192.0.2.10   # [ACTIVE] SSH connection string
+    #     ssh_key: ~/.ssh/nwp         # [ACTIVE] Path to SSH private key
+    #     label: "Primary Server"     # [ACTIVE] Display label in TUI
+    #     domain: example.com         # [ACTIVE] Primary domain for this server
+    #     linode_id: 12345678         # [ACTIVE] Links to Linode instance ID
+
     # Legacy format (still supported)
     linode_primary:
       ssh_user: deploy             # [ACTIVE] SSH username for deployment
@@ -1064,14 +1075,18 @@ recipes:
     # base_domain: example.com
     domain: podcast.example.com
     #
-    # Server configuration (choose ONE):
-    #   Option 1: use_server - install on existing server from another site
-    #             Looks up sites.<sitename>.live.server_ip from nwp.yml
-    #             e.g., use_server: nwp  (uses same server as 'nwp' site)
-    #   Option 2: (default) - create new Linode instance
-    # use_server: nwp
+    # Server configuration:
+    #   Default (recommended): Leave use_server empty/unset
+    #     - Auto-detects servers from linode.servers with matching domain
+    #     - Falls back to sites with matching base domain
+    #     - Prompts user: "Install on existing server or create new?"
     #
-    # Linode region for new server (ignored if use_server is set)
+    #   Explicit: Set use_server to skip auto-detection
+    #     use_server: mysite  # Uses sites.mysite.live.server_ip directly
+    #
+    # use_server:
+    #
+    # Linode region (used when creating new server)
     linode_region: us-east
     # B2 region for media storage
     b2_region: us-west-004

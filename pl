@@ -492,19 +492,25 @@ show_site_status() {
 
 # Show site status (all sites or specific site)
 cmd_status() {
-    local sitename="${1:-}"
+    local arg="${1:-}"
+
+    # Valid subcommands that should be passed to status.sh
+    local -a subcommands=(health production info delete start stop restart servers)
 
     # If first arg is a flag, pass all args to status.sh
-    if [[ "$sitename" == -* ]]; then
+    if [[ "$arg" == -* ]]; then
         exec "${SCRIPT_DIR}/scripts/commands/status.sh" "$@"
-    elif [ -z "$sitename" ]; then
+    elif [ -z "$arg" ]; then
         # Launch interactive TUI for overview
         exec "${SCRIPT_DIR}/scripts/commands/status.sh"
+    elif [[ " ${subcommands[*]} " =~ " ${arg} " ]]; then
+        # Valid subcommand - pass through to status.sh
+        exec "${SCRIPT_DIR}/scripts/commands/status.sh" "$@"
     else
         # Show detailed single site view
         echo -e "${BOLD}Site Status:${NC}"
         echo ""
-        show_site_status "$sitename"
+        show_site_status "$arg"
     fi
 }
 

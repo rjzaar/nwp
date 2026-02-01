@@ -25,6 +25,7 @@ This directory contains proposal documents for NWP features and enhancements.
 - **F08** - Dynamic Cross-Platform Badges
 - **F10** - Local LLM Support & Privacy Options
 - **F11** - Developer Workstation Local LLM Configuration
+- **F13** - Timezone Configuration
 
 ### Exploratory
 - **X01** - AI Video Generation Integration
@@ -45,4 +46,4 @@ This directory contains proposal documents for NWP features and enhancements.
 4. **COMPLETE** - Implemented and verified
 5. **Moved to milestones.md** - Archived as completed work
 
-Last Updated: 2026-01-17
+Last Updated: 2026-01-31

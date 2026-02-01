@@ -2,7 +2,7 @@
 
 This document tracks known issues and limitations in the NWP system.
 
-**Last Updated**: 2026-01-05
+**Last Updated**: 2026-01-20
 
 See also: [Roadmap](docs/governance/roadmap.md) for planned improvements.
 
@@ -10,7 +10,48 @@ See also: [Roadmap](docs/governance/roadmap.md) for planned improvements.
 
 ## Active Issues
 
-### 1. Linode SSH Timeout (Test 12)
+### 1. Verification Test Infrastructure (~65 failing tests)
+
+**Status**: PLANNED FIX (P54)
+**Priority**: High
+
+**Description**:
+The verification system shows ~88% pass rate with approximately 65 failing automatable tests due to test infrastructure issues, not code failures.
+
+**Root Causes**:
+1. `test-nwp.sh` was deleted but verification tests still reference it (exit 127)
+2. Scripts execute `main "$@"` when sourced for validation
+3. Missing library functions (`git_add_all`, `git_has_changes`, `git_get_current_branch`)
+4. Interactive TUI (coders.sh) times out waiting for input
+5. Grep-based tests check for unimplemented features
+
+**Workaround**:
+Run verification with `--depth=basic` for quicker results.
+
+**Solution**:
+See [P54 Proposal](docs/proposals/P54-verification-test-fixes.md) for comprehensive fix plan.
+
+---
+
+### 2. Verification Badge Accuracy
+
+**Status**: PROPOSED FIX (P53)
+**Priority**: Medium
+
+**Description**:
+The "Machine Verified" percentage uses incorrect math:
+- Current: 511 verified / 575 total = 88%
+- Problem: 117 items are marked `automatable: false`
+- Correct: 511 verified / 458 automatable = ~89.7%
+
+Also, "AI Verification" naming is misleading - the system uses bash/drush scenario testing with zero AI/LLM calls.
+
+**Solution**:
+See [P53 Proposal](docs/proposals/p53.md) for categorization and badge accuracy fixes.
+
+---
+
+### 3. Linode SSH Timeout (Test 12)
 
 **Status**: FAILING (600s timeout insufficient)
 **Priority**: Medium
@@ -36,7 +77,7 @@ Use larger instance types (g6-standard-1 or higher) for faster boot times, or ma
 
 ---
 
-### 2. Social Profile Drush Conflict
+### 4. Social Profile Drush Conflict
 
 **Status**: KNOWN LIMITATION (tests skip gracefully)
 **Priority**: Low (external dependency)
@@ -54,6 +95,23 @@ Use a different recipe (nwp, drupal10) for testing dev/prod functionality.
 
 **Long-term Solution**:
 Wait for social profile maintainers to update their composer.json drush requirement.
+
+---
+
+### 5. Coder Management Security Gap
+
+**Status**: INVESTIGATION NEEDED
+**Priority**: Low (requires intentional misuse)
+
+**Description**:
+Admin status for coders is determined solely from local `nwp.yml` without GitLab API validation. A coder could theoretically self-promote by editing their local nwp.yml.
+
+**Mitigations**:
+- Audit logging tracks all coder changes
+- Critical operations still require actual GitLab permissions
+
+**Proposed Solution**:
+Add GitLab API validation for sensitive operations requiring steward permissions.
 
 ---
 

@@ -1,11 +1,11 @@
 {
   "version": 1,
   "schemaVersion": 1,
-  "generated": "2026-01-17T19:17:49+11:00",
+  "generated": "2026-01-20T21:46:38+11:00",
   "pipeline": {
     "id": "local",
     "ref": "main",
-    "sha": "3994096f0ce4775941a118878bab9a8fd48300a8"
+    "sha": "4b77ccb1ac76b0c9a970e076819ee27726c61170"
   },
   "badges": {
     "verification_machine": {

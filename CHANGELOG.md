@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Documentation
+
+- Updated ROADMAP.md with current version (v0.25.0) and P50/P51 completion status
+- Updated MILESTONES.md with P51 AI-Powered Deep Verification milestone
+- Updated KNOWN_ISSUES.md with verification test infrastructure issues (P54)
+- Added P52-P58 proposals for future work tracking
+- Updated key metrics to reflect 88% machine verification rate
+
+### Proposals Added
+
+- **P52**: Rename NWP to NWO (Narrow Way Operations) - PROPOSED
+- **P53**: Verification Badge Accuracy - PROPOSED
+- **P54**: Verification Test Fixes - PLANNED
+- **P55**: Opportunistic Human Verification - PROPOSED
+- **P56**: Produce Security Hardening - PROPOSED
+- **P57**: Produce Performance - PROPOSED
+- **P58**: Test Dependency Handling - PROPOSED
+
 ---
 
 ## [v0.25.0] - 2026-01-15

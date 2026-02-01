@@ -18,7 +18,7 @@ Pending implementation items and future improvements for NWP.
 | Current Version | v0.25.0 |
 | Test Success Rate | 88% (Machine Verified) |
 | Completed Proposals | P01-P35, P50, P51, F04, F05, F07, F09 |
-| Pending Proposals | P52, P53, P54, P55, P56, P57, P58, F01-F03, F06, F08, F10-F12 |
+| Pending Proposals | P52, P53, P54, P55, P56, P57, P58, F01-F03, F06, F08, F10-F14 |
 | Experimental/Outlier | X01 |
 | Recent Enhancements | P51 AI-Powered Verification (v0.25.0), P50 Unified Verification (v0.24.0), Verification Instructions (v0.24.0) |
 
@@ -29,7 +29,7 @@ Pending implementation items and future improvements for NWP.
 | Prefix | Meaning | Count | Example |
 |--------|---------|-------|---------|
 | **P##** | Core Phase Proposals | 35 complete | P01-P35: Foundation→Live Deployment |
-| **F##** | Feature Enhancements | 4 complete, 7 pending | F04: Governance, F09: Testing |
+| **F##** | Feature Enhancements | 4 complete, 8 pending | F04: Governance, F09: Testing |
 | **X##** | Experimental Outliers | 1 exploratory | X01: AI Video (scope expansion) |
 
 **Why different prefixes?**
@@ -72,6 +72,7 @@ Based on dependencies, current progress, and priority:
 | 10 | F11 | PROPOSED | Depends on F10, hardware-specific config |
 | 11 | F12 | PROPOSED | Minimal version (6h) recommended, full version over-engineered |
 | 12 | F02 | PLANNED | Depends on F01, lowest priority |
+| 13 | F14 | PROPOSED | Claude API team management, spend controls |
 | - | X01 | EXPLORATORY | Outlier - significant scope expansion |
 
 ---
@@ -718,6 +719,71 @@ Unify NWP's 7 different approaches to SSH user determination.
 
 ---
 
+### F13: Timezone Configuration
+**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** None
+**Proposal:** [F13-timezone-configuration.md](../proposals/F13-timezone-configuration.md)
+
+Centralize timezone configuration in `nwp.yml` instead of hardcoding across 14+ scripts.
+
+**Problem:**
+- Timezone hardcoded in 3 different values across 14 files (`America/New_York`, `Australia/Sydney`, `UTC`)
+- No way to change timezone without editing multiple scripts
+- Cron jobs, server provisioning, and status displays make independent assumptions
+
+**Solution:**
+- `settings.timezone` global default in `nwp.yml`
+- `sites.<name>.timezone` per-site override
+- Inheritance: site → settings → UTC (fallback)
+- Helper functions for any script to read effective timezone
+
+**Affected Areas:**
+- Linode server provisioning (6 files)
+- Financial monitor cron and scheduling (3 files)
+- Backup scheduling (`schedule.sh`)
+- GitLab Rails timezone
+- DDEV container timezone
+- Drupal site timezone during install
+
+**Success Criteria:**
+- [ ] `settings.timezone` in `nwp.yml` and `example.nwp.yml`
+- [ ] Per-site override documented in `example.nwp.yml`
+- [ ] Helper functions for timezone access
+- [ ] No hardcoded timezone values remain (except UTC fallback)
+- [ ] `fin-monitor` reads timezone from nwp.yml
+- [ ] Linode provisioning reads timezone from nwp.yml
+
+---
+
+### F14: Claude API Integration
+**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** None (benefits from F10)
+**Proposal:** [F14-claude-api-integration.md](../proposals/F14-claude-api-integration.md)
+
+Integrate Claude API key management into NWP's two-tier secrets architecture for team provisioning, spend control, and consistent configuration.
+
+**Problem:**
+- No managed way to provision Claude API access for coders
+- No spend limits or usage visibility across the team
+- Each coder configures Claude Code independently
+- No key rotation or security controls
+
+**Solution:**
+- `claude:` section in `.secrets.yml` for org/admin API keys
+- `settings.claude:` in `nwp.yml` for spend limits and model defaults
+- `bootstrap-coder.sh` provisions workspace-scoped API keys during onboarding
+- Admin API enforces per-coder monthly spend limits
+- Key rotation, usage monitoring, OpenTelemetry integration
+
+**Success Criteria:**
+- [ ] Claude secrets in `.secrets.example.yml`
+- [ ] Claude settings in `example.nwp.yml`
+- [ ] `lib/claude-api.sh` with provisioning and rotation functions
+- [ ] `bootstrap-coder.sh` provisions API keys during onboarding
+- [ ] Per-coder spend limits enforced via Admin API
+- [ ] Usage monitoring and OTEL metrics export
+- [ ] Claude Code managed settings with deny rules
+
+---
+
 ### F09: Comprehensive Testing Infrastructure
 **Status:** ✅ COMPLETE (infrastructure) | **Proposal:** [COMPREHENSIVE_TESTING_PROPOSAL.md](COMPREHENSIVE_TESTING_PROPOSAL.md)
 
@@ -1287,6 +1353,8 @@ Do not attempt these items - they were thoroughly evaluated and rejected:
 | 10 | F11 | MEDIUM | Low | F10 | 8 | Proposed |
 | 11 | F02 | LOW | Medium | F01 | 7b | Planned |
 | 12 | F12 | MEDIUM | Low | None | 8 | Proposed |
+| 13 | F13 | MEDIUM | Low | None | 8 | Proposed |
+| 14 | F14 | MEDIUM | Medium | None | 8 | Proposed |
 | - | X01 | LOW | High | F10 (optional) | X | Exploratory |
 
 ---
@@ -1332,3 +1400,4 @@ Do not attempt these items - they were thoroughly evaluated and rejected:
 *Phase X (Experimental/Outliers) created: January 10, 2026*
 *F11 (Developer Workstation Local LLM Config) added: January 11, 2026*
 *F12 (SSH User Management) added: January 24, 2026*
+*F14 (Claude API Integration) added: February 1, 2026*

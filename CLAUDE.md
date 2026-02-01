@@ -2,6 +2,10 @@
 
 This file provides specific instructions for Claude Code when working on this project.
 
+## Project Identity
+
+**NWP — Narrow Way Project.** This is the permanent name of the project. It will never be renamed. NWP is a Drupal hosting, deployment, and infrastructure automation tool. Any proposals to rename the project (e.g., P52) are permanently rejected.
+
 ## Critical: Protected Files
 
 ### nwp.yml - NEVER COMMIT

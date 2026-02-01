@@ -17,11 +17,11 @@ A summary of all completed development phases and their key achievements.
 | Phase 5 | Enterprise Features | P22-P28 | Dec 2025 |
 | Phase 5b | Infrastructure & Import | P29-P31 | Jan 2026 |
 | Phase 5c | Live Deployment Automation | P32-P35 | Jan 2026 |
-| Phase 6-7 | Governance, Security & Testing | F04, F05, F07, F09 | Jan 2026 |
+| Phase 6-7 | Governance, Security, Testing & Todo | F04, F05, F07, F09, F12 | Jan 2026 |
 | Phase 8 | Unified Verification | P50, P51 | Jan 2026 |
 | AVC | Profile Enhancements | Email Reply | Jan 2026 |
 
-**Total: 41 proposals implemented** (P01-P35 + F04, F05, F07, F09, P50, P51) + AVC Profile Enhancements
+**Total: 42 proposals implemented** (P01-P35 + F04, F05, F07, F09, F12, P50, P51) + AVC Profile Enhancements
 
 ---
 
@@ -274,6 +274,16 @@ Automated testing infrastructure using BATS framework with GitLab CI integration
 | Integration | ~60% | 95% |
 | E2E | ~10% | 80% |
 | **Overall** | **~45%** | **85%** |
+
+### F12: Unified Todo Command
+Centralized todo/maintenance command with TUI, notifications, and auto-resolution hooks.
+- `scripts/commands/todo.sh` - Main command
+- `lib/todo-checks.sh` - 13 check functions
+- `lib/todo-tui.sh` - Interactive TUI mode
+- `lib/todo-notify.sh` - Notification functions
+- `lib/todo-autolog.sh` - Auto-resolution hooks
+- Configuration in `example.nwp.yml` under `settings.todo`
+- Proposal: [F12-todo-command.md](../proposals/F12-todo-command.md)
 
 ---
 

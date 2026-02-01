@@ -1,12 +1,14 @@
 # NWP Roadmap - Pending & Future Work
 
-**Last Updated:** January 24, 2026
+**NWP — Narrow Way Project** | Drupal hosting, deployment & infrastructure automation
+
+**Last Updated:** February 1, 2026
 
 Pending implementation items and future improvements for NWP.
 
 > **For completed work, see [Milestones](../reports/milestones.md)**
 > - Phase 1-5c: P01-P35 (Foundation through Live Deployment)
-> - Phase 6-7: F04 (phases 1-5), F05, F07, F09
+> - Phase 6-7: F04 (phases 1-5), F05, F07, F09, F12
 > - Phase 8: P50, P51 (Unified Verification System)
 
 ---
@@ -17,8 +19,9 @@ Pending implementation items and future improvements for NWP.
 |--------|-------|
 | Current Version | v0.26.0 |
 | Test Success Rate | 88% (Machine Verified) |
-| Completed Proposals | P01-P35, P50, P51, F04, F05, F07, F09 |
-| Pending Proposals | P52, P53, P54, P55, P56, P57, P58, F01-F03, F06, F08, F10-F14 |
+| Completed Proposals | P01-P35, P50, P51, F04, F05, F07, F09, F12 |
+| Pending Proposals | P53, P54, P55, P56, P57, P58, F01-F03, F06, F08, F10-F11, F13-F15 |
+| Rejected Proposals | P52 (rename — NWP is the permanent project name) |
 | Experimental/Outlier | X01 |
 | Recent Enhancements | P51 AI-Powered Verification (v0.25.0), P50 Unified Verification (v0.24.0), Verification Instructions (v0.24.0) |
 
@@ -29,7 +32,7 @@ Pending implementation items and future improvements for NWP.
 | Prefix | Meaning | Count | Example |
 |--------|---------|-------|---------|
 | **P##** | Core Phase Proposals | 35 complete | P01-P35: Foundation→Live Deployment |
-| **F##** | Feature Enhancements | 4 complete, 8 pending | F04: Governance, F09: Testing |
+| **F##** | Feature Enhancements | 5 complete, 10 pending | F04: Governance, F09: Testing, F12: Todo |
 | **X##** | Experimental Outliers | 1 exploratory | X01: AI Video (scope expansion) |
 
 **Why different prefixes?**
@@ -45,12 +48,14 @@ Pending implementation items and future improvements for NWP.
 |-------|-------|-----------|--------|
 | Phase 1-5b | Foundation through Import | P01-P31 | ✅ Complete |
 | Phase 5c | Live Deployment Automation | P32-P35 | ✅ Complete |
-| Phase 6 | Governance & Security | F04, F05, F07 | ✅ Complete |
-| Phase 6b | Security Pipeline | F06 | Planned |
+| Phase 6 | Governance & Security | F04, F05, F07, F12 | ✅ Complete |
+| Phase 6b | Security Pipeline | F06 | Possible |
 | Phase 7 | Testing & CI Enhancement | F09 | ✅ Complete |
-| **Phase 7b** | **CI Enhancements** | **F01-F03, F08** | **Future** |
-| **Phase 8** | **Developer Experience** | **F10, F11** | **Future** |
-| **Phase X** | **Experimental/Outliers** | **X01** | **Exploratory** |
+| **Phase 7b** | **CI Enhancements** | **F01-F03, F08** | **Possible** |
+| **Phase 8** | **Unified Verification** | **P50, P51** | **✅ Complete** |
+| **Phase 9** | **Verification & Production Hardening** | **P52-P58** | **Proposed** |
+| **Phase 10** | **Developer Experience** | **F10, F11, F13, F14, F15** | **Future** |
+| **Phase X** | **Experimental/Outliers** | **X01** | **Possible** |
 
 ---
 
@@ -60,28 +65,45 @@ Based on dependencies, current progress, and priority:
 
 | Order | Proposal | Status | Rationale |
 |-------|----------|--------|-----------|
+| | **Completed** | | |
 | 1 | F05 | ✅ COMPLETE | Security headers in all deployment scripts |
-| 2 | F04 | ✅ COMPLETE | All 8 phases done, governance framework complete |
+| 2 | F04 | ✅ COMPLETE | Governance framework (phases 1-5) |
 | 3 | F09 | ✅ COMPLETE | Testing infrastructure with BATS, CI integration |
 | 4 | F07 | ✅ COMPLETE | SEO/robots.txt for staging/production |
-| 5 | F06 | PLANNED | Depends on F04 (now complete) |
-| 6 | F01 | PLANNED | Foundation for F02, enhances CI |
-| 7 | F03 | IN PROGRESS | Independent, visual testing |
-| 8 | F08 | PROPOSED | Needs stable GitLab infrastructure |
-| 9 | F10 | PROPOSED | Independent, developer privacy/experience |
-| 10 | F11 | PROPOSED | Depends on F10, hardware-specific config |
-| 11 | F12 | PROPOSED | Minimal version (6h) recommended, full version over-engineered |
-| 12 | F02 | PLANNED | Depends on F01, lowest priority |
-| 13 | F14 | PROPOSED | Claude API team management, spend controls |
-| - | X01 | EXPLORATORY | Outlier - significant scope expansion |
+| 5 | F12 | ✅ COMPLETE | Unified todo command with TUI and notifications |
+| 6 | P50 | ✅ COMPLETE | Unified verification system |
+| 7 | P51 | ✅ COMPLETE | AI-powered (functional) verification |
+| | **Next: Verification Fixes (Phase 9a)** | | *Fix what's broken before building more* |
+| 8 | P54 | PLANNED | Fix ~65 failing verification tests, 98%+ pass rate |
+| 9 | P53 | PROPOSED | Fix misleading "AI" naming and badge accuracy |
+| 10 | P58 | PROPOSED | Test dependency handling (helpful error messages) |
+| | **Next: Production Hardening (Phase 9b)** | | *Features tests expect but don't exist yet* |
+| 11 | P56 | PROPOSED | UFW, fail2ban, SSL hardening for production servers |
+| 12 | P57 | PROPOSED | Redis/Memcache, PHP-FPM tuning, nginx optimization |
+| | **Next: Developer Experience (Phase 10)** | | *Quality of life improvements* |
+| 13 | F13 | PROPOSED | Centralize timezone configuration |
+| 14 | F15 | PROPOSED | SSH user management + developer key onboarding (~10h) |
+| 15 | F10 | PROPOSED | Local LLM support and privacy options |
+| 16 | F11 | PROPOSED | Developer workstation LLM config (depends on F10) |
+| 17 | F14 | PROPOSED | Claude API team management, spend controls |
+| | **Later / Conditional** | | |
+| 18 | P55 | PROPOSED | Opportunistic human verification (4-5 weeks, opt-in) |
+| - | P52 | ❌ REJECTED | Rename rejected — NWP is the permanent project name |
+| 20 | F03 | IN PROGRESS | Visual regression testing (stalled since Jan 3) |
+| | **Possible (deprioritized)** | | *Reconsidered only if circumstances change* |
+| - | F01 | POSSIBLE | GitLab MCP Integration |
+| - | F02 | POSSIBLE | Automated CI Error Resolution |
+| - | F06 | POSSIBLE | Malicious Code Detection Pipeline |
+| - | F08 | POSSIBLE | Dynamic Cross-Platform Badges |
+| - | X01 | POSSIBLE | AI Video Generation |
 
 ---
 
 ## Phase 6: Governance & Security
 
 ### F04: Distributed Contribution Governance (Phases 6-8)
-**Status:** PENDING | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** GitLab
-**Proposal:** [DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md)
+**Status:** PARTIAL (Phases 1-5 Complete, Phases 6-8 Pending) | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** GitLab
+**Proposal:** [distributed-contribution-governance.md](distributed-contribution-governance.md)
 
 **Phases 1-5 Complete** (see [Milestones](../reports/milestones.md#f04-distributed-contribution-governance-phases-1-5)):
 - Foundation, Developer Roles, Onboarding Automation, Developer Detection, Coders TUI
@@ -109,7 +131,7 @@ Based on dependencies, current progress, and priority:
 ---
 
 ### F07: SEO & Search Engine Control
-**Status:** ✅ COMPLETE (implementation) | **Proposal:** [SEO_ROBOTS_PROPOSAL.md](SEO_ROBOTS_PROPOSAL.md)
+**Status:** ✅ COMPLETE (implementation) | **Proposal:** [F07-seo-robots.md](../proposals/F07-seo-robots.md)
 
 **Implementation Complete** (see [Milestones](../reports/milestones.md#f07-seo--search-engine-control)):
 - All 4-layer staging protection implemented
@@ -121,8 +143,8 @@ Based on dependencies, current progress, and priority:
 ---
 
 ### F06: Malicious Code Detection Pipeline
-**Status:** PLANNED | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** F04, GitLab CI
-**Proposal:** Part of [DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md)
+**Status:** POSSIBLE (deprioritized by Deep Analysis re-evaluation) | **Priority:** LOW | **Effort:** Medium | **Dependencies:** F04, GitLab CI
+**Proposal:** Part of [distributed-contribution-governance.md](distributed-contribution-governance.md)
 
 Automated security scanning for merge requests:
 
@@ -152,7 +174,7 @@ Automated security scanning for merge requests:
 ## Phase 7: Testing & CI Enhancement (FUTURE)
 
 ### F01: GitLab MCP Integration for Claude Code
-**Status:** PLANNED | **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** NWP GitLab server
+**Status:** POSSIBLE (deprioritized by Deep Analysis re-evaluation) | **Priority:** LOW | **Effort:** Low | **Dependencies:** NWP GitLab server
 
 Enable Claude Code to directly interact with NWP GitLab via the Model Context Protocol (MCP):
 
@@ -205,8 +227,8 @@ ddev backstop approve       # Approve changes as new baseline
 ---
 
 ### F08: Dynamic Cross-Platform Badges
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** verify.sh, GitLab infrastructure
-**Proposal:** [DYNAMIC_BADGES_PROPOSAL.md](DYNAMIC_BADGES_PROPOSAL.md)
+**Status:** POSSIBLE (deprioritized by Deep Analysis re-evaluation) | **Priority:** LOW | **Effort:** Medium | **Dependencies:** verify.sh, GitLab infrastructure
+**Proposal:** [F08-dynamic-badges.md](../proposals/F08-dynamic-badges.md)
 
 Add dynamic badges using Shields.io that work on both GitHub and GitLab READMEs, with full support for self-hosted GitLab instances:
 
@@ -249,7 +271,7 @@ Add dynamic badges using Shields.io that work on both GitHub and GitLab READMEs,
 ---
 
 ### F02: Automated CI Error Resolution
-**Status:** PLANNED | **Priority:** LOW | **Effort:** Medium | **Dependencies:** F01
+**Status:** POSSIBLE (deprioritized by Deep Analysis re-evaluation) | **Priority:** LOW | **Effort:** Medium | **Dependencies:** F01
 
 Extend MCP integration to automatically detect and fix common CI errors:
 
@@ -271,7 +293,7 @@ Extend MCP integration to automatically detect and fix common CI errors:
 
 ### F10: Local LLM Support & Privacy Options
 **Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** None
-**Guide:** [LOCAL_LLM_GUIDE.md](LOCAL_LLM_GUIDE.md) - Complete guide to using open source AI models
+**Guide:** [F10-local-llm-guide.md](../proposals/F10-local-llm-guide.md) - Complete guide to using open source AI models
 
 Provide developers with privacy-focused alternatives to cloud-based AI by integrating local LLM support into NWP workflows:
 
@@ -688,33 +710,34 @@ Complex Tasks (Claude API):
 
 ---
 
-### F12: SSH User Management
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Low (6h minimal) / High (80h full) | **Dependencies:** None
-**Proposal:** [SSH_USER_MANAGEMENT_PROPOSAL.md](SSH_USER_MANAGEMENT_PROPOSAL.md)
+### F15: SSH User Management
+**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** ~10 hours (practical version) | **Dependencies:** None
+**Proposal:** [F15-ssh-user-management.md](../proposals/F15-ssh-user-management.md)
 
-Unify NWP's 7 different approaches to SSH user determination.
+Unify NWP's 7 different approaches to SSH user determination and add per-developer SSH key management.
 
 **Problem:**
 - Hardcoded user assumptions in `live2stg.sh` and `remote.sh`
 - Inconsistent behavior between commands
-- Cognitive overhead when debugging SSH issues
+- No streamlined flow for developer SSH key onboarding
 
-**Worth It Evaluation:** Full proposal is over-engineered for 1-2 developers with few servers. Security hardening, auto-registration, and migration tooling solve hypothetical problems.
-
-**Minimal Version (DO IT - 6 hours):**
-1. Create `get_ssh_user()` function in `lib/ssh.sh` (2h)
+**Practical Version (DO IT - ~10 hours):**
+1. Create `get_ssh_user()` function in `lib/ssh.sh` with resolution chain (2h)
 2. Fix hardcoded scripts: `live2stg.sh:139-140`, `lib/remote.sh:99` (1h)
-3. Document standard `ssh_user` config field (1h)
-4. Update `example.nwp.yml` with examples (1h)
+3. Add `ssh_user` field to recipe definitions and `example.nwp.yml` (1h)
+4. Add `--ssh-key` / `--ssh-key-file` flags to `coder-setup.sh add` (2h)
+5. Add `pl coder-setup deploy-key` for server key deployment (2h)
+6. Add `pl coder-setup key-audit` for annual SSH key review (1h)
+7. Update fail2ban in StackScripts to whitelist known developer IPs (1h)
 
-**Full Version (DON'T - unless scaling):**
-- Auto-registration, migration tooling, security hardening
-- Only implement if: adding external contributors, compliance requirements, or managing 20+ servers
+**Postponed (implement only if scaling):**
+- Two-tier sudo access, audit logging, automated key rotation, migration tooling
 
-**Success Criteria (Minimal):**
+**Success Criteria:**
 - [ ] `get_ssh_user()` function with fallback chain
-- [ ] `live2stg.sh` uses dynamic SSH user
-- [ ] `lib/remote.sh` uses dynamic SSH user
+- [ ] `live2stg.sh` and `lib/remote.sh` use dynamic SSH user
+- [ ] `coder-setup.sh add --ssh-key` registers key to GitLab and servers
+- [ ] Annual key audit available via `pl coder-setup key-audit`
 - [ ] Standard documented in example.nwp.yml
 
 ---
@@ -785,7 +808,7 @@ Integrate Claude API key management into NWP's two-tier secrets architecture for
 ---
 
 ### F09: Comprehensive Testing Infrastructure
-**Status:** ✅ COMPLETE (infrastructure) | **Proposal:** [COMPREHENSIVE_TESTING_PROPOSAL.md](COMPREHENSIVE_TESTING_PROPOSAL.md)
+**Status:** ✅ COMPLETE (infrastructure) | **Proposal:** [F09-comprehensive-testing.md](../proposals/F09-comprehensive-testing.md)
 
 **Infrastructure Complete** (see [Milestones](../reports/milestones.md#f09-comprehensive-testing-infrastructure)):
 - BATS framework with 148 tests (76 unit + 72 integration)
@@ -800,12 +823,176 @@ Integrate Claude API key management into NWP's two-tier secrets architecture for
 
 ---
 
+## Phase 9: Verification & Production Hardening (PROPOSED)
+
+> **Dependency chain:** P54 must come first — it fixes the test infrastructure that P53, P56, P57, and P58 all depend on. P55 and P52 are independent but should come later.
+
+### Phase 9a: Fix What's Broken
+
+#### P54: Verification Test Infrastructure Fixes
+**Status:** PLANNED | **Priority:** HIGH | **Effort:** 2-3 days | **Dependencies:** P50
+**Proposal:** [P54-verification-test-fixes.md](../proposals/P54-verification-test-fixes.md)
+
+Fix ~65 failing automatable verification tests caused by systemic issues, not real bugs. Root causes:
+
+| Category | Count | Problem |
+|----------|-------|---------|
+| Missing script | 6 | `test-nwp.sh` deleted but still referenced |
+| Script sourcing | ~35 | Scripts run `main "$@"` when sourced for testing |
+| Missing functions | 9 | `lib/git.sh` tests expect functions that don't exist |
+| Interactive TUI | 5 | `coders.sh` times out waiting for input |
+| Grep-based detection | 6 | Tests grep for unimplemented features (→ P56/P57/P58) |
+| Site dependencies | ~8 | Backup tests need running site that may not exist |
+
+**Implementation:**
+1. Remove orphaned test-nwp references from `.verification.yml`
+2. Add execution guards (`BASH_SOURCE` check) to 15 scripts
+3. Add missing `git_add_all()`, `git_has_changes()`, `git_get_current_branch()` to `lib/git.sh`
+4. Add `--collect` flag to `coders.sh` for machine-readable output
+5. Replace grep-based tests with functional tests (or remove for unimplemented features)
+6. Add test dependency sequencing (`depends_on`, `skip_if_missing`)
+7. Create pre-commit hook to prevent future orphaned tests
+
+**Success Criteria:**
+- [ ] `pl verify --run --depth=thorough` reaches 98%+ pass rate
+- [ ] Execution guards on 15 affected scripts
+- [ ] 3 git functions added and passing
+- [ ] Pre-commit hook preventing orphaned tests
+
+---
+
+#### P53: Verification Categorization & Badge Accuracy
+**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** 2-3 days | **Dependencies:** P50
+**Proposal:** [P53-verification-badge-accuracy.md](../proposals/P53-verification-badge-accuracy.md)
+
+Fix three accuracy issues in the verification system:
+
+1. **"AI Verification" is misleading** — P51's "AI-Powered Deep Verification" contains zero AI/LLM calls. It's scenario-based bash/drush testing. Rename `--ai` flag to `--functional`.
+2. **Machine % denominator is wrong** — 88% badge includes 123 non-automatable items in denominator, deflating the score. Correct: 411/458 automatable = 90%.
+3. **No category distinction** — Human-judgment items lumped with automatable ones.
+
+**Changes:**
+- Rename `--ai` → `--functional` (breaking: remove `--ai` entirely)
+- Fix percentage calculation to exclude non-automatable items from denominator
+- Add `category` field to `.verification.yml` schema
+- Update badge display to show per-category coverage
+
+**Success Criteria:**
+- [ ] `--functional` flag replaces `--ai`
+- [ ] Badge percentages use correct denominators
+- [ ] Categories distinguish automatable vs human-required items
+
+---
+
+#### P58: Test Command Dependency Handling
+**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** 3-5 days | **Dependencies:** P54
+**Proposal:** [P58-test-dependency-handling.md](../proposals/P58-test-dependency-handling.md)
+
+Add dependency checking and helpful error messages to `test.sh` when PHPCS, PHPStan, or PHPUnit are missing. Currently tests fail silently or with cryptic errors.
+
+**Features:**
+- `check_test_dependencies()` function detecting missing tools
+- Clear error messages with installation instructions
+- `--check-deps` flag to show status of all test dependencies
+- `--install-deps` flag for auto-installation
+- `--skip-missing` flag to skip unavailable test suites gracefully
+
+**Success Criteria:**
+- [ ] Clear error messages when test tools are missing
+- [ ] `--check-deps`, `--install-deps`, `--skip-missing` flags working
+- [ ] Combined flags documentation satisfies grep test
+
+---
+
+### Phase 9b: Production Hardening
+
+#### P56: Production Security Hardening
+**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** 1-2 weeks | **Dependencies:** P54
+**Proposal:** [P56-produce-security-hardening.md](../proposals/P56-produce-security-hardening.md)
+
+Add security hardening features to `produce.sh` for production server provisioning. Currently verification tests expect these features but they don't exist. Also includes developer SSH key management for secure onboarding (see P56 Section 7).
+
+**Features:**
+- UFW firewall configuration (deny incoming, allow SSH/HTTP/HTTPS)
+- Fail2ban intrusion prevention (SSH, nginx brute-force protection)
+- SSL hardening (TLSv1.2+, strong ciphers, DH parameters, HSTS)
+- Security headers (X-Frame-Options, CSP, X-Content-Type-Options)
+- Developer SSH key onboarding via `coder-setup.sh` (key submission, approval, deployment, revocation)
+- Annual SSH key audit
+
+**CLI options:** `--no-firewall`, `--no-fail2ban`, `--no-ssl-hardening`, `--security-only`
+
+**Success Criteria:**
+- [ ] UFW, fail2ban, SSL hardening implemented in `produce.sh`
+- [ ] SSL Labs test scores A or A+
+- [ ] All features optional via CLI flags
+- [ ] Developer SSH key onboarding integrated with `coder-setup.sh`
+
+---
+
+#### P57: Production Caching & Performance
+**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** 1-2 weeks | **Dependencies:** P54
+**Proposal:** [P57-produce-performance.md](../proposals/P57-produce-performance.md)
+
+Add caching and performance optimization to `produce.sh`. Currently no caching features exist despite verification tests expecting them.
+
+**Features:**
+- Redis caching with Drupal integration (default cache backend)
+- Memcached as alternative for memory-constrained servers
+- PHP-FPM tuning based on server memory (dynamic `max_children` calculation)
+- Nginx optimization (gzip, open file cache, static asset caching)
+
+**CLI options:** `--cache redis|memcache|none`, `--memory SIZE`, `--performance-only`
+
+**Expected impact:** 50%+ page load reduction, 90%+ cache hit rate.
+
+**Success Criteria:**
+- [ ] Redis/Memcache integration in `produce.sh`
+- [ ] PHP-FPM tuned based on server memory
+- [ ] Nginx gzip and caching enabled
+- [ ] All features optional via CLI flags
+
+---
+
+### Phase 9c: Advanced Verification & Rename
+
+#### P55: Opportunistic Human Verification
+**Status:** PROPOSED | **Priority:** LOW | **Effort:** 4-5 weeks | **Dependencies:** P50
+**Proposal:** [P55-opportunistic-human-verification.md](../proposals/P55-opportunistic-human-verification.md)
+
+Opt-in system where designated testers receive interactive prompts after running commands, capturing real-world verification without dedicated test sessions. Includes bug report system with automatic diagnostics, GitLab issue submission, and a `pl fix` TUI for AI-assisted issue resolution.
+
+**Key components:**
+- Tester role system (opt-in via `pl coders tester --enable`)
+- Post-command verification prompts with full how-to-verify details
+- Bug report creation with automatic diagnostics collection
+- `pl fix` TUI for Claude-assisted issue resolution
+- Integration with `pl todo` (bugs category)
+- Issue lifecycle: open → investigating → fixed → verified
+
+**Why later:** Large scope (4-5 weeks), requires stable verification system (P54 first), opt-in feature that doesn't block other work.
+
+**Success Criteria:**
+- [ ] Tester role with opt-in prompts
+- [ ] Bug reports with automatic diagnostics
+- [ ] `pl fix` TUI for issue resolution
+- [ ] Integration with `pl todo`
+
+---
+
+#### P52: Rename NWP to NWO
+**Status:** ❌ REJECTED | **Decision Date:** February 1, 2026
+
+This proposal is permanently rejected. The project is and will remain **NWP — Narrow Way Project**. This name reflects the project's ethos and is the permanent identity. No rename will be considered.
+
+---
+
 ## Phase X: Experimental & Outlier Features
 
 > **Note:** These proposals explore capabilities outside NWP's core mission of Drupal hosting/deployment. They are marked as "outliers" because they represent significant scope expansion. Implementation would only occur if there's strong user demand and clear use cases.
 
 ### X01: AI Video Generation Integration
-**Status:** EXPLORATORY | **Priority:** LOW | **Effort:** High | **Dependencies:** F10 (Local LLM)
+**Status:** POSSIBLE (deprioritized by Deep Analysis re-evaluation) | **Priority:** LOW | **Effort:** High | **Dependencies:** F10 (Local LLM)
 **Type:** OUTLIER - Significant scope expansion beyond core NWP mission
 
 Integrate AI video generation capabilities into NWP for automated content creation on Drupal sites:
@@ -1178,13 +1365,15 @@ These items were thoroughly evaluated and rejected as over-engineering for NWP's
 
 #### Feature Over-Engineering (150+ hours)
 
-| Item | Why Not | Hours Saved |
-|------|---------|-------------|
-| **GitLab MCP Integration** | Saves 5 seconds per CI failure. Not worth 16 hours. | 16 |
-| **Auto-Fix CI Errors** | Way over-engineered. Developers can fix their own errors. | 40-80 |
-| **Badge System** | Private tool with no audience. Who's seeing these badges? | 20-40 |
-| **Video Generation** | Massive scope creep. Not infrastructure tool's job. | 40-80 |
-| **Malicious Code Detection** | No external contributors. Solving non-existent problem. | 20-40 |
+| Item | Proposal | Why Not | Hours Saved |
+|------|----------|---------|-------------|
+| **GitLab MCP Integration** | F01 | Saves 5 seconds per CI failure. Not worth 16 hours. | 16 |
+| **Auto-Fix CI Errors** | F02 | Way over-engineered. Developers can fix their own errors. | 40-80 |
+| **Badge System** | F08 | Private tool with no audience. Who's seeing these badges? | 20-40 |
+| **Video Generation** | X01 | Massive scope creep. Not infrastructure tool's job. | 40-80 |
+| **Malicious Code Detection** | F06 | No external contributors. Solving non-existent problem. | 20-40 |
+
+> **Note:** These proposals are now categorized as [Possible (Not Prioritized)](#possible-not-prioritized) rather than active.
 
 #### UX Over-Engineering (30+ hours)
 
@@ -1316,13 +1505,6 @@ Do not attempt these items - they were thoroughly evaluated and rejected:
 - TUI testing framework
 - Comprehensive E2E suites
 
-❌ **Features:**
-- GitLab MCP integration
-- Auto-fix CI errors
-- Badge systems
-- Video generation
-- Malicious code detection (without contributors)
-
 ❌ **UX:**
 - Group confirmation prompts
 - --json output
@@ -1335,27 +1517,55 @@ Do not attempt these items - they were thoroughly evaluated and rejected:
 
 **Reasoning:** These items solve hypothetical problems, not real ones. They're over-engineered for a 1-2 developer project. Time is better spent on features users actually want.
 
+### Possible (Not Prioritized)
+
+These feature proposals were deprioritized by the Deep Analysis re-evaluation. They remain documented but are not recommended unless circumstances change (e.g., external contributors join, scaling demands emerge):
+
+| Proposal | Name | Condition to Reconsider |
+|----------|------|------------------------|
+| F01 | GitLab MCP Integration | If CI failure debugging becomes a major time sink |
+| F02 | Automated CI Error Resolution | If F01 is implemented and CI errors are frequent |
+| F06 | Malicious Code Detection Pipeline | If external contributors start submitting code |
+| F08 | Dynamic Cross-Platform Badges | If NWP becomes a public/community tool |
+| X01 | AI Video Generation | If 5+ users explicitly request it |
+
 ---
 
 ## Priority Matrix
 
 | Order | Proposal | Priority | Effort | Dependencies | Phase | Status |
 |-------|----------|----------|--------|--------------|-------|--------|
+| | **Completed** | | | | | |
 | 1 | F05 | HIGH | Low | stg2live | 6 | ✅ Complete |
 | 2 | F04 | HIGH | High | GitLab | 6 | ✅ Complete |
 | 3 | F09 | HIGH | High | Linode, GitLab CI | 7 | ✅ Complete |
 | 4 | F07 | HIGH | Medium | stg2live, recipes | 6 | ✅ Complete |
-| 5 | F06 | HIGH | Medium | F04, GitLab CI | 6b | Planned |
-| 6 | F01 | MEDIUM | Low | GitLab | 7b | Planned |
-| 7 | F03 | MEDIUM | Medium | Behat | 7b | In Progress |
-| 8 | F08 | MEDIUM | Medium | verify.sh, test-nwp.sh, GitLab | 7b | Proposed |
-| 9 | F10 | MEDIUM | Medium | None | 8 | Proposed |
-| 10 | F11 | MEDIUM | Low | F10 | 8 | Proposed |
-| 11 | F02 | LOW | Medium | F01 | 7b | Planned |
-| 12 | F12 | MEDIUM | Low | None | 8 | Proposed |
-| 13 | F13 | MEDIUM | Low | None | 8 | Proposed |
-| 14 | F14 | MEDIUM | Medium | None | 8 | Proposed |
-| - | X01 | LOW | High | F10 (optional) | X | Exploratory |
+| 5 | F12 | MEDIUM | Medium | None | 6 | ✅ Complete |
+| 6 | P50 | HIGH | High | None | 8 | ✅ Complete |
+| 7 | P51 | HIGH | High | P50 | 8 | ✅ Complete |
+| | **Phase 9a: Verification Fixes** | | | | | |
+| 8 | P54 | HIGH | Low (2-3d) | P50 | 9 | Planned |
+| 9 | P53 | MEDIUM | Low (2-3d) | P50 | 9 | Proposed |
+| 10 | P58 | MEDIUM | Low (3-5d) | P54 | 9 | Proposed |
+| | **Phase 9b: Production Hardening** | | | | | |
+| 11 | P56 | MEDIUM | Medium (1-2w) | P54 | 9 | Proposed |
+| 12 | P57 | MEDIUM | Medium (1-2w) | P54 | 9 | Proposed |
+| | **Phase 10: Developer Experience** | | | | | |
+| 13 | F13 | MEDIUM | Low | None | 10 | Proposed |
+| 14 | F15 | MEDIUM | Low (~10h) | None | 10 | Proposed |
+| 15 | F10 | MEDIUM | Medium | None | 10 | Proposed |
+| 16 | F11 | MEDIUM | Low | F10 | 10 | Proposed |
+| 17 | F14 | MEDIUM | Medium | None | 10 | Proposed |
+| | **Later / Conditional** | | | | | |
+| 18 | P55 | LOW | High (4-5w) | P50 | 9 | Proposed |
+| - | P52 | - | - | - | - | ❌ Rejected |
+| 20 | F03 | LOW | Medium | Behat | 7b | Stalled |
+| | **Possible (deprioritized)** | | | | | |
+| - | F01 | LOW | Low | GitLab | 7b | Possible |
+| - | F02 | LOW | Medium | F01 | 7b | Possible |
+| - | F06 | LOW | Medium | F04, GitLab CI | 6b | Possible |
+| - | F08 | LOW | Medium | verify.sh, GitLab | 7b | Possible |
+| - | X01 | LOW | High | F10 (optional) | X | Possible |
 
 ---
 
@@ -1378,14 +1588,25 @@ Do not attempt these items - they were thoroughly evaluated and rejected:
 - [Data Security Best Practices](../security/data-security-best-practices.md) - Security architecture
 - [Working with Claude Securely](../guides/working-with-claude-securely.md) - Secure AI workflows
 
-### Proposals
-- [SEO_ROBOTS_PROPOSAL.md](SEO_ROBOTS_PROPOSAL.md) - SEO & search engine control (F07)
-- [DYNAMIC_BADGES_PROPOSAL.md](DYNAMIC_BADGES_PROPOSAL.md) - Cross-platform badges (F08)
-- [COMPREHENSIVE_TESTING_PROPOSAL.md](COMPREHENSIVE_TESTING_PROPOSAL.md) - Testing infrastructure (F09)
-- [SSH_USER_MANAGEMENT_PROPOSAL.md](SSH_USER_MANAGEMENT_PROPOSAL.md) - SSH user management (F12)
+### Proposals - Phase 9 (Verification & Production)
+- [P52-rename-nwp-to-nwo.md](../proposals/P52-rename-nwp-to-nwo.md) - ~~Rename project~~ REJECTED (P52)
+- [P53-verification-badge-accuracy.md](../proposals/P53-verification-badge-accuracy.md) - Badge accuracy & categorization (P53)
+- [P54-verification-test-fixes.md](../proposals/P54-verification-test-fixes.md) - Verification test fixes (P54)
+- [P55-opportunistic-human-verification.md](../proposals/P55-opportunistic-human-verification.md) - Opportunistic human verification (P55)
+- [P56-produce-security-hardening.md](../proposals/P56-produce-security-hardening.md) - Production security hardening (P56)
+- [P57-produce-performance.md](../proposals/P57-produce-performance.md) - Production caching & performance (P57)
+- [P58-test-dependency-handling.md](../proposals/P58-test-dependency-handling.md) - Test dependency handling (P58)
+
+### Proposals - Features
+- [F07-seo-robots.md](../proposals/F07-seo-robots.md) - SEO & search engine control (F07)
+- [F08-dynamic-badges.md](../proposals/F08-dynamic-badges.md) - Cross-platform badges (F08)
+- [F09-comprehensive-testing.md](../proposals/F09-comprehensive-testing.md) - Testing infrastructure (F09)
+- [F13-timezone-configuration.md](../proposals/F13-timezone-configuration.md) - Timezone configuration (F13)
+- [F14-claude-api-integration.md](../proposals/F14-claude-api-integration.md) - Claude API integration (F14)
+- [F15-ssh-user-management.md](../proposals/F15-ssh-user-management.md) - SSH user management (F15)
 
 ### Guides
-- [LOCAL_LLM_GUIDE.md](LOCAL_LLM_GUIDE.md) - Complete guide to running open source AI models locally (F10)
+- [F10-local-llm-guide.md](../proposals/F10-local-llm-guide.md) - Complete guide to running open source AI models locally (F10)
 
 ---
 
@@ -1399,5 +1620,12 @@ Do not attempt these items - they were thoroughly evaluated and rejected:
 *X01 (AI Video Generation) added as experimental outlier: January 10, 2026*
 *Phase X (Experimental/Outliers) created: January 10, 2026*
 *F11 (Developer Workstation Local LLM Config) added: January 11, 2026*
-*F12 (SSH User Management) added: January 24, 2026*
+*F12 (Unified Todo Command) completed: January 17, 2026*
+*F15 (SSH User Management) added: January 24, 2026*
 *F14 (Claude API Integration) added: February 1, 2026*
+*Phase 9 (P52-P58 Verification & Production Hardening) added: February 1, 2026*
+*F12 renumber conflict resolved (F12=Todo, F15=SSH): February 1, 2026*
+*F01, F02, F06, F08, X01 reclassified as POSSIBLE per Deep Analysis: February 1, 2026*
+*Broken proposal links fixed, Phase numbering updated: February 1, 2026*
+*F15 expanded to ~10h practical scope with developer key onboarding: February 1, 2026*
+*P56 updated with SSH key management for coder onboarding (Section 7): February 1, 2026*

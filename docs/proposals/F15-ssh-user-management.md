@@ -1,8 +1,8 @@
-# F12: Comprehensive SSH User Management System
+# F15: Comprehensive SSH User Management System
 
 **Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Low (minimal) / High (full) | **Dependencies:** None
 
-> **TL;DR:** Full proposal is over-engineered. Implement minimal version (~6 hours) instead of full version (~80 hours). See [2. Worth It Evaluation](#2-worth-it-evaluation).
+> **TL;DR:** Full proposal was over-engineered. Implement practical version (~10 hours) covering all useful phases, skipping only two-tier sudo and audit logging (postponed until external contributors join). See [2. Worth It Evaluation](#2-worth-it-evaluation).
 
 ---
 
@@ -98,46 +98,50 @@ Applying the Deep Analysis Re-Evaluation framework (YAGNI, 80/20, real vs hypoth
 | # | Proposed Feature | YAGNI Verdict | Reasoning | Ref |
 |---|------------------|---------------|-----------|-----|
 | 2.2.1 | `get_ssh_user()` helper | **DO IT** | Solves real duplication, 2-4 hours | [4.2](#42-centralized-ssh-helper-functions) |
-| 2.2.2 | `ssh_exec()` wrapper | **MAYBE** | Nice abstraction, but scripts work fine | [4.2](#42-centralized-ssh-helper-functions) |
-| 2.2.3 | Auto-registration | **DON'T** | How many servers/year? 2-3? Manual is fine | [4.3](#43-auto-registration-after-server-creation) |
-| 2.2.4 | Migration tooling | **DON'T** | Few servers exist, migrate manually | [5.3](#53-phase-3-migration-tooling) |
-| 2.2.5 | Two-tier sudo model | **DON'T** | No external contributors, no incidents | [4.5](#45-security-hardening) |
-| 2.2.6 | Audit logging | **DON'T** | Solving hypothetical security problem | [4.5](#45-security-hardening) |
-| 2.2.7 | Fail2ban | **MAYBE** | Already on servers? Check first | [4.5](#45-security-hardening) |
-| 2.2.8 | Per-developer keys | **DON'T** | 1-2 developers, shared key is fine | [4.5](#45-security-hardening) |
-| 2.2.9 | Key rotation policy | **DON'T** | Enterprise solution for solo developer | [4.5](#45-security-hardening) |
+| 2.2.2 | `ssh_exec()` wrapper | **DO IT** | Small incremental effort once get_ssh_user exists | [4.2](#42-centralized-ssh-helper-functions) |
+| 2.2.3 | Auto-registration | **DO IT** | Few lines at each integration point, data already available | [4.3](#43-auto-registration-after-server-creation) |
+| 2.2.4 | Migration tooling | **DO IT** | Simple audit script, run once, ~1 hour | [5.3](#53-phase-3-migration-tooling) |
+| 2.2.5 | Two-tier sudo model | **POSTPONED** | Implement when external contributors join | [4.5](#45-security-hardening) |
+| 2.2.6 | Audit logging | **POSTPONED** | Implement when external contributors join | [4.5](#45-security-hardening) |
+| 2.2.7 | Fail2ban | **DO IT** | ~20 lines in StackScripts, also covered by P56 | [4.5](#45-security-hardening) |
+| 2.2.8 | Per-developer keys | **DO IT** | Essential for onboarding — see coder-setup.sh `--ssh-key` enhancement | [4.5](#45-security-hardening) |
+| 2.2.9 | Key rotation policy | **ANNUAL** | Yearly review of active keys, not automated rotation | [4.5](#45-security-hardening) |
 
-### 2.3 The 80/20 Version
+### 2.3 The Practical Version (~10 hours)
 
-**20% of effort that solves 80% of pain:**
+**Everything useful, nothing over-engineered:**
 
 | # | Task | Effort | Details | Ref |
 |---|------|--------|---------|-----|
-| 2.3.1 | Create `get_ssh_user()` function | 2 hours | Resolution chain: config field → parse user@host → recipe default → root. Add to `lib/ssh.sh` | [4.2](#42-centralized-ssh-helper-functions) |
-| 2.3.2 | Fix the 2 hardcoded scripts | 1 hour | `live2stg.sh:139-140` and `lib/remote.sh:99` - use `get_ssh_user()` | [5.4](#54-phase-4-update-scripts) |
-| 2.3.3 | Document the standard | 1 hour | Recommend `ssh_user` field in configs. Update `example.nwp.yml` with examples | [4.1](#41-unified-configuration-schema) |
+| 2.3.1 | Create `get_ssh_user()` + `ssh_exec()` | 3 hours | Resolution chain: config → parse user@host → recipe → root. Add to `lib/ssh.sh` | [4.2](#42-centralized-ssh-helper-functions) |
+| 2.3.2 | Add `ssh_user` to recipe definitions | 15 min | Add field to recipes in `example.nwp.yml` | [4.4](#44-recipe-ssh-user-specification) |
+| 2.3.3 | Update ALL scripts using SSH | 2 hours | Replace all hardcoded patterns with `get_ssh_user()` | [5.4](#54-phase-4-update-scripts) |
+| 2.3.4 | Auto-register servers after creation | 2 hours | Hook into `create_linode_instance()` and podcast creation | [5.2](#52-phase-2-auto-registration) |
+| 2.3.5 | Migration audit command | 1 hour | `pl migrate-ssh-config audit` to show current state | [5.3](#53-phase-3-migration-tooling) |
+| 2.3.6 | SSH key onboarding via coder-setup | 1 hour | Add `--ssh-key` flag to `coder-setup.sh add`, calls `gitlab_add_user_ssh_key()` | New |
+| 2.3.7 | Documentation + emergency recovery | 1 hour | SSH management guide, config schema, extract emergency procedures | [5.6](#56-phase-6-documentation) |
 
-**Total: ~4 hours** vs **~80+ hours for full proposal**
+**Total: ~10 hours** — everything useful from the original 80-hour proposal
 
-### 2.4 What NOT To Build
+### 2.4 What To Postpone
 
-| # | Component | Effort | Why Not | Ref |
-|---|-----------|--------|---------|-----|
-| 2.4.1 | Security Hardening | 40+ hours | No external contributors = no malicious sudo abuse risk. NOPASSWD:ALL is fine for 1-2 trusted developers. Audit logging is enterprise theater. | [4.5](#45-security-hardening), [5.5](#55-phase-5-security-hardening) |
-| 2.4.2 | Migration Tooling | 16+ hours | How many servers exist? Probably < 10. Manual migration takes 5 minutes per server. Building tooling for 50 minutes of manual work. | [5.3](#53-phase-3-migration-tooling) |
-| 2.4.3 | Auto-Registration | 8+ hours | Creating ~2-3 servers per year. Adding 4 lines to nwp.yml manually is fine. Automation ROI is negative. | [4.3](#43-auto-registration-after-server-creation), [5.2](#52-phase-2-auto-registration) |
+| # | Component | Effort | When To Implement | Ref |
+|---|-----------|--------|-------------------|-----|
+| 2.4.1 | Two-tier sudo model | 8+ hours | When external contributors start submitting code | [4.5](#45-security-hardening) |
+| 2.4.2 | Audit logging (auditd) | 4+ hours | When external contributors start submitting code | [4.5](#45-security-hardening) |
+| 2.4.3 | Automated key rotation | 8+ hours | Not needed — annual manual review sufficient at current scale | [4.5.6](#45-security-hardening) |
 
 ### 2.5 Revised Recommendation
 
 | # | Component | Original Effort | Revised | Action | Ref |
 |---|-----------|-----------------|---------|--------|-----|
-| 2.5.1 | Phase 1: Foundation | 2 weeks | **4 hours** | `get_ssh_user()` only | [5.1](#51-phase-1-foundation) |
-| 2.5.2 | Phase 2: Auto-Registration | 1 week | **0** | Skip - manual is fine | [5.2](#52-phase-2-auto-registration) |
-| 2.5.3 | Phase 3: Migration Tooling | 1 week | **0** | Skip - few servers | [5.3](#53-phase-3-migration-tooling) |
-| 2.5.4 | Phase 4: Update Scripts | 2 weeks | **1 hour** | Fix 2 scripts only | [5.4](#54-phase-4-update-scripts) |
-| 2.5.5 | Phase 5: Security Hardening | 1 week | **0** | Skip - no threat model | [5.5](#55-phase-5-security-hardening) |
-| 2.5.6 | Phase 6: Documentation | 1 week | **1 hour** | Brief section in existing docs | [5.6](#56-phase-6-documentation) |
-| | **TOTAL** | **8 weeks** | **~6 hours** | | |
+| 2.5.1 | Phase 1: Foundation | 2 weeks | **3 hours** | `get_ssh_user()` + `ssh_exec()` + recipe fields | [5.1](#51-phase-1-foundation) |
+| 2.5.2 | Phase 2: Auto-Registration | 1 week | **2 hours** | Hook into server creation, few lines each | [5.2](#52-phase-2-auto-registration) |
+| 2.5.3 | Phase 3: Migration Tooling | 1 week | **1 hour** | Simple audit command, run once | [5.3](#53-phase-3-migration-tooling) |
+| 2.5.4 | Phase 4: Update Scripts | 2 weeks | **2 hours** | Update all scripts, not just 2 | [5.4](#54-phase-4-update-scripts) |
+| 2.5.5 | Phase 5: Security Hardening | 1 week | **1 hour** | Fail2ban in StackScripts only (P56 handles rest). Per-developer keys via coder-setup `--ssh-key`. Annual key review. Two-tier sudo and auditd **postponed**. | [5.5](#55-phase-5-security-hardening) |
+| 2.5.6 | Phase 6: Documentation | 1 week | **1 hour** | SSH management guide + emergency recovery + config schema | [5.6](#56-phase-6-documentation) |
+| | **TOTAL** | **8 weeks** | **~10 hours** | | |
 
 ### 2.6 Decision Framework
 
@@ -158,18 +162,19 @@ Applying the Deep Analysis Re-Evaluation framework (YAGNI, 80/20, real vs hypoth
 
 ### 2.7 Conclusion
 
-**The full proposal is over-engineered for NWP's current scale.**
+**The practical version (~10 hours) covers everything useful.**
 
-The 7 SSH patterns (3.2) are real but not causing significant pain. The security hardening (4.5) solves hypothetical problems with no evidence of actual risk. The migration (5.3) and auto-registration (5.2) tooling has negative ROI given the small number of servers.
+All phases are now included at reduced scope: foundation, auto-registration, migration audit, full script updates, per-developer key onboarding, fail2ban, documentation. Only two-tier sudo and audit logging are postponed (implement when external contributors join).
 
 **Recommended path:**
 | # | Action | Ref |
 |---|--------|-----|
-| 2.7.1 | Implement minimal version (6 hours): `get_ssh_user()` + fix 2 scripts + document | [2.3](#23-the-8020-version) |
-| 2.7.2 | Revisit full proposal only if scaling to many contributors/servers | [2.6.4-2.6.7](#26-decision-framework) |
-| 2.7.3 | Move security hardening to "implement when needed" list | [2.4.1](#24-what-not-to-build) |
+| 2.7.1 | Implement practical version (10 hours): all phases at reduced scope | [2.3](#23-the-practical-version-10-hours) |
+| 2.7.2 | Add `--ssh-key` to `coder-setup.sh add` for onboarding | [2.3.6](#23-the-practical-version-10-hours) |
+| 2.7.3 | Annual SSH key review (check active keys, revoke departed devs) | [2.2.9](#22-applying-yagni) |
+| 2.7.4 | Postpone two-tier sudo + auditd until external contributors join | [2.4](#24-what-to-postpone) |
 
-**Time saved by not over-engineering: ~74 hours**
+**Time saved vs full proposal: ~70 hours**
 
 ---
 

@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
-- **F12**: SSH User Management proposal with worth-it evaluation
+- **F15**: SSH User Management proposal with worth-it evaluation
 - **F13**: Timezone Configuration proposal
 - **F14**: Claude API Integration proposal for team provisioning and spend controls
 - Comprehensive NWP analysis report (2026-01-20)
@@ -46,7 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Proposals Added
 
-- **P52**: Rename NWP to NWO (Narrow Way Operations) - PROPOSED
+- **P52**: ~~Rename NWP to NWO~~ - REJECTED (NWP = Narrow Way Project, permanent name)
 - **P53**: Verification Badge Accuracy - PROPOSED
 - **P54**: Verification Test Fixes - PLANNED
 - **P55**: Opportunistic Human Verification - PROPOSED

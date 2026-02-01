@@ -1,15 +1,19 @@
-# P52: Rename NWP to NWO (Narrow Way Operations)
+# P52: ~~Rename NWP to NWO~~ — REJECTED
 
-**Status:** PROPOSED
-**Created:** 2026-01-18
-**Author:** Rob, Claude Opus 4.5
-**Priority:** Medium
-**Estimated Effort:** 2-3 days
-**Breaking Changes:** Yes - complete fresh start (no backward compatibility)
+**Status:** ❌ REJECTED
+**Decision Date:** February 1, 2026
+**Reason:** NWP stands for **Narrow Way Project**. This is the permanent name reflecting the project's ethos. No rename will be considered.
 
 ---
 
-## 1. Executive Summary
+*The original proposal content is preserved below for historical reference.*
+
+---
+
+**Created:** 2026-01-18
+**Author:** Rob, Claude Opus 4.5
+
+## 1. Executive Summary (Historical)
 
 Rename the project from NWP to NWO (Narrow Way Operations). This involves renaming directories, configuration files, scripts, documentation, and all internal references. This is a clean break with no backward compatibility period.
 

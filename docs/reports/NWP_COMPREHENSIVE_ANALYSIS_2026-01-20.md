@@ -154,7 +154,7 @@ No orphaned documentation found. The `docs/README.md` serves as an effective ind
 
 | Proposal | Title | Status | Priority | Effort |
 |----------|-------|--------|----------|--------|
-| **P52** | Rename NWP to NWO | PROPOSED | Low | Low |
+| **P52** | ~~Rename NWP to NWO~~ | ❌ REJECTED | - | - |
 | **P53** | Verification Badge Accuracy | PROPOSED | Medium | 2-3 days |
 | **P54** | Verification Test Fixes | PLANNED | **High** | 2-3 days |
 | **P55** | Opportunistic Human Verification | PROPOSED | Low | 1-2 days |
@@ -255,7 +255,7 @@ CLAUDE.md contains comprehensive security red flags section. No additional flags
 |---|--------|--------|--------|
 | 8 | Implement P56 (security hardening in produce.sh) | Medium | 3-5 days |
 | 9 | Implement P57 (performance caching in produce.sh) | Medium | 3-5 days |
-| 10 | Consider P52 (rename to NWO) | Low | 2-3 days |
+| ~~10~~ | ~~Consider P52 (rename to NWO)~~ | ❌ REJECTED | - |
 
 ### 6.4 NOT Recommended
 

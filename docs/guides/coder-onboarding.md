@@ -78,7 +78,7 @@ You'll receive:
 1. Go to https://git.nwpcode.org
 2. Log in with the credentials provided by the administrator
 3. **Change your password** immediately (Profile → Password)
-4. Add your SSH public key (Profile → SSH Keys)
+4. Add your SSH public key (Profile → SSH Keys), or send it to the lead developer for streamlined setup via `pl coder-setup add --ssh-key-file` (see P56 §7)
 
 You now have access to the NWP codebase and can clone repositories.
 
@@ -145,7 +145,7 @@ linode-cli domains create \
    - **Plan:** Nanode 1 GB ($5/month) or Linode 2 GB ($12/month)
    - **Label:** `<yourname>-nwp`
    - **Root Password:** Strong password
-   - **SSH Keys:** Add your public key
+   - **SSH Keys:** Add your public key (or have lead developer add it via `pl coder-setup add --ssh-key`)
 4. Click **Create Linode**
 5. Note the **IP address** once provisioned
 

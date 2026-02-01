@@ -291,10 +291,134 @@ TLSv1.2 minimum balances security vs compatibility:
 
 ---
 
-## 7. Related Proposals
+## 7. Developer SSH Key Management
+
+### 7.1 Problem
+
+Currently, when onboarding a new developer:
+1. Admin runs `coder-setup.sh add john --email john@example.com`
+2. Developer must manually add their SSH public key to GitLab profile
+3. Admin can only verify the key exists via `pl coders` (SSH column Y/N)
+
+There is no streamlined flow for the developer to submit their public key and the lead developer to approve and deploy it.
+
+### 7.2 Proposed: SSH Key Onboarding via `coder-setup.sh`
+
+**Enhancement to `coder-setup.sh add`:**
+
+```bash
+# Lead developer onboards new coder with SSH key in one command
+pl coder-setup add john \
+  --email john@example.com \
+  --fullname "John Doe" \
+  --ssh-key "ssh-ed25519 AAAA... john@laptop"
+
+# Or from a file the developer sent (email, Slack, etc.)
+pl coder-setup add john \
+  --email john@example.com \
+  --ssh-key-file /tmp/john_id_ed25519.pub
+```
+
+**What happens:**
+1. GitLab account created (existing)
+2. Added to nwp group (existing)
+3. **NEW:** SSH public key registered to their GitLab account via `gitlab_add_user_ssh_key()`
+4. **NEW:** SSH public key added to relevant server `authorized_keys` (optional, via `--deploy-to-servers`)
+5. Developer can immediately `git clone` via SSH — no manual step needed
+
+**Implementation:** ~30 lines in `coder-setup.sh` — the library function `gitlab_add_user_ssh_key()` already exists in `lib/git.sh`.
+
+### 7.3 Developer Key Submission Flow
+
+**Recommended workflow for new developers:**
+
+```
+Developer                          Lead Developer
+─────────                          ──────────────
+1. Generate keypair:
+   ssh-keygen -t ed25519
+
+2. Send public key to lead:
+   cat ~/.ssh/id_ed25519.pub
+   → email/Slack/secure channel  ──→  3. Receives public key
+
+                                      4. Verify key fingerprint:
+                                         ssh-keygen -lf /tmp/john.pub
+
+                                      5. Onboard with key:
+                                         pl coder-setup add john \
+                                           --email john@example.com \
+                                           --ssh-key-file /tmp/john.pub
+
+                                      6. Optionally deploy to servers:
+                                         pl coder-setup deploy-key john \
+                                           --servers nwpcode,production
+
+Developer receives credentials  ←──  7. Send GitLab credentials + confirmation
+
+8. Clone immediately:
+   git clone git@nwpcode.org:nwp/nwp.git
+```
+
+### 7.4 Server Key Deployment
+
+For servers where the developer needs direct SSH access:
+
+```bash
+# Deploy a coder's key to specific servers
+pl coder-setup deploy-key john --servers nwpcode,production
+
+# What it does:
+# 1. Reads john's public key from GitLab API
+# 2. SSH to each server as current admin
+# 3. Appends key to /home/<ssh_user>/.ssh/authorized_keys
+# 4. Records deployment in nwp.yml under coders.john.server_keys
+```
+
+### 7.5 Key Revocation
+
+When a developer leaves:
+
+```bash
+# Remove developer and revoke all keys
+pl coder-setup remove john
+
+# What it does:
+# 1. Removes SSH keys from GitLab account
+# 2. Removes keys from all servers where deployed
+# 3. Blocks GitLab account
+# 4. Updates nwp.yml (status: removed)
+```
+
+### 7.6 Annual Key Review
+
+Once per year, the lead developer runs:
+
+```bash
+pl coder-setup key-audit
+
+# Output:
+# ┌─────────────────────────────────────────────────────┐
+# │ SSH Key Audit - 2026-02-01                          │
+# ├──────────┬──────────────┬────────────┬──────────────┤
+# │ Coder    │ GitLab Key   │ Server Keys│ Last Active  │
+# ├──────────┼──────────────┼────────────┼──────────────┤
+# │ rob      │ ed25519 (2y) │ 3 servers  │ 2026-02-01   │
+# │ greg     │ ed25519 (1y) │ 2 servers  │ 2026-01-15   │
+# │ sarah    │ NONE         │ 0 servers  │ 2025-12-01   │
+# └──────────┴──────────────┴────────────┴──────────────┘
+#
+# ⚠ sarah: No SSH key registered and inactive for 62 days
+# ⚠ rob: Key is 2 years old, consider regenerating
+```
+
+---
+
+## 8. Related Proposals
 
 | Proposal | Relationship |
 |----------|--------------|
 | P54 | Removes grep test that expects this feature |
 | P57 | Companion caching/performance proposal |
 | P50 | Verification system this integrates with |
+| F15 | SSH user management — per-developer keys and fail2ban overlap |

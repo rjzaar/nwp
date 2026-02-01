@@ -683,4 +683,6 @@ main() {
     show_elapsed_time "Migration"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

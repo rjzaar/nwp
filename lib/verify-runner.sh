@@ -1194,8 +1194,7 @@ generate_badges_json() {
 
     cat > "$output_file" << EOF
 {
-  "version": 1,
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "generated": "$(date -Iseconds)",
   "pipeline": {
     "id": "${CI_PIPELINE_ID:-local}",
@@ -1203,24 +1202,24 @@ generate_badges_json() {
     "sha": "${CI_COMMIT_SHA:-$git_sha}"
   },
   "badges": {
-    "verification_machine": {
-      "label": "Machine Verified",
+    "machine_verified": {
+      "label": "Automated Tests",
       "message": "${machine_pct}%",
       "color": "$machine_color"
     },
-    "verification_human": {
+    "human_verified": {
       "label": "Human Verified",
       "message": "${human_pct}%",
       "color": "$human_color"
     },
-    "verification_full": {
+    "fully_verified": {
       "label": "Fully Verified",
       "message": "${full_pct}%",
       "color": "$full_color"
     },
-    "issues_open": {
-      "label": "Issues",
-      "message": "${issues} open",
+    "issues": {
+      "label": "Open Issues",
+      "message": "${issues}",
       "color": "$issues_color"
     }
   }
@@ -1241,14 +1240,14 @@ print_badge_urls() {
 
     echo "Badge URLs for README.md:"
     echo ""
-    echo "Machine Verified:"
-    echo "![Machine Verified](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.verification_machine.message&label=Machine%20Verified&color=brightgreen&logo=checkmarx)"
+    echo "Automated Tests:"
+    echo "![Automated Tests](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.machine_verified.message&label=Automated%20Tests&color=brightgreen&logo=checkmarx)"
     echo ""
     echo "Human Verified:"
-    echo "![Human Verified](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.verification_human.message&label=Human%20Verified&color=yellow&logo=statuspal)"
+    echo "![Human Verified](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.human_verified.message&label=Human%20Verified&color=yellow&logo=statuspal)"
     echo ""
     echo "Fully Verified:"
-    echo "![Fully Verified](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.verification_full.message&label=Fully%20Verified&color=green&logo=qualitybadge)"
+    echo "![Fully Verified](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.fully_verified.message&label=Fully%20Verified&color=green&logo=qualitybadge)"
     echo ""
 }
 

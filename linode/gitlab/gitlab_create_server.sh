@@ -282,7 +282,7 @@ STACKSCRIPT_DATA=$(cat <<EOF
     "ssh_pubkey": "$SSH_PUBKEY",
     "hostname": "$HOSTNAME",
     "email": "$EMAIL",
-    "timezone": "America/New_York",
+    "timezone": "$(source "$PROJECT_ROOT/lib/timezone.sh" && get_default_timezone "$PROJECT_ROOT/nwp.yml")",
     "disable_root": "yes",
     "gitlab_external_url": "$GITLAB_EXTERNAL_URL",
     "install_runner": "$INSTALL_RUNNER",

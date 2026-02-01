@@ -29,6 +29,38 @@ settings:
   # Allows multiple NWP installations to coexist with unique commands (pl, pl1, pl2, etc.)
   # cli_command: pl                # [ACTIVE] Set automatically by setup.sh
 
+  # === TIMEZONE [ACTIVE] ===
+  # Timezone for server provisioning, cron jobs, and site defaults
+  # Uses IANA timezone format: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  # Per-site override: add 'timezone: Region/City' under any site
+  timezone: Australia/Sydney
+
+  # === CLAUDE API INTEGRATION [EXPERIMENTAL] ===
+  # Claude API integration (F14)
+  # Requires API keys in .secrets.yml
+  claude:
+    enabled: false
+    default_model: claude-sonnet-4-5
+    max_monthly_spend_usd: 500
+    per_coder_monthly_limit_usd: 100
+    prompt_caching: true
+    models_allowed:
+      - claude-sonnet-4-5
+      - claude-haiku-3-5
+
+  # === TESTER PROMPTS [EXPERIMENTAL] ===
+  # Opportunistic human verification (P55)
+  tester_prompts:
+    prompt_mode: unverified    # unverified | all | never
+    prompt_timeout: 30         # seconds to wait for response
+    skip_commands:             # don't prompt for read-only commands
+      - status
+      - doctor
+      - help
+      - verify
+      - coders
+      - todo
+
   # === STACK SETTINGS [ACTIVE] ===
   # These are read by install scripts and can be overridden per-recipe
   database: mariadb                # [ACTIVE] Database type: mariadb, mysql, postgres [DEFAULT: mysql]
@@ -378,6 +410,7 @@ other_coders:
   #     added: 2024-01-15T10:30:00Z
   #     status: active
   #     email: coder2@example.com      # [ACTIVE] Personal email for site email forwarding
+  #     tester: false                  # [EXPERIMENTAL] Participates in tester prompts (P55)
   #     notes: "John's development environment"
   coders:
     # coder2:
@@ -644,6 +677,7 @@ recipes:
     profile: standard              # [ACTIVE] Drupal install profile
     webroot: web                   # [ACTIVE] Document root
     auto: y                        # [ACTIVE] Auto-confirm installation
+    # ssh_user: gitlab    # Default SSH user for this recipe type (F15)
     # Optional overrides (if not set, uses settings defaults)
     # php: 8.3                     # [ACTIVE] Override settings.php
     # database: mysql              # [ACTIVE] Override settings.database
@@ -1115,6 +1149,14 @@ sites:
   #     server_ip: 203.0.113.10
   #     linode_id: shared
   #     type: shared
+  #   vrt:                                 # Visual regression testing (F03)
+  #     pages:
+  #       - url: /
+  #         name: homepage
+  #       - url: /user/login
+  #         name: login
+  #     threshold: 0.1
+  #     viewport: 1920x1080
   #   frontend:                            # [ACTIVE] Per-site frontend config (overrides recipe/global)
   #     build_tool: gulp                   # gulp, grunt, webpack, vite (auto-detected if not set)
   #     package_manager: yarn              # npm, yarn, pnpm (auto-detected from lock files)

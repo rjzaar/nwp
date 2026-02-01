@@ -1,32 +1,36 @@
 {
-  "version": 1,
-  "schemaVersion": 1,
-  "generated": "2026-01-20T21:46:38+11:00",
-  "pipeline": {
-    "id": "local",
-    "ref": "main",
-    "sha": "4b77ccb1ac76b0c9a970e076819ee27726c61170"
-  },
+  "schemaVersion": 2,
+  "generated": "2026-02-01",
   "badges": {
-    "verification_machine": {
-      "label": "Machine Verified",
+    "machine_verified": {
+      "label": "Automated Tests",
       "message": "88%",
       "color": "brightgreen"
     },
-    "verification_human": {
+    "human_verified": {
       "label": "Human Verified",
       "message": "1%",
       "color": "red"
     },
-    "verification_full": {
+    "fully_verified": {
       "label": "Fully Verified",
       "message": "1%",
       "color": "red"
     },
-    "issues_open": {
-      "label": "Issues",
-      "message": "0 open",
+    "issues": {
+      "label": "Open Issues",
+      "message": "0",
       "color": "brightgreen"
+    }
+  },
+  "categories": {
+    "automatable": {
+      "total": 458,
+      "verified": 411
+    },
+    "human_required": {
+      "total": 117,
+      "verified": 7
     }
   }
 }

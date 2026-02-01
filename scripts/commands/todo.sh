@@ -23,6 +23,9 @@ if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
     source "$PROJECT_ROOT/lib/yaml-write.sh"
 fi
 source "$PROJECT_ROOT/lib/todo-checks.sh"
+if [ -f "$PROJECT_ROOT/lib/verify-issues.sh" ]; then
+    source "$PROJECT_ROOT/lib/verify-issues.sh"
+fi
 
 # TUI library (optional - for interactive mode)
 if [ -f "$PROJECT_ROOT/lib/todo-tui.sh" ]; then
@@ -78,6 +81,7 @@ ${BOLD}OPTIONS:${NC}
     -c, --category=CAT  Filter by category (git,test,token,orphan,ghost,etc.)
     -p, --priority=PRI  Filter by priority (high,medium,low)
     -s, --site=SITE     Filter by site name
+    --bugs              Show only open bug reports from .logs/issues/
     -q, --quiet         Only show counts (summary mode)
     -j, --json          Output as JSON
     --no-cache          Skip cache, run fresh checks
@@ -379,6 +383,33 @@ show_list() {
         done
     fi
 
+    # Show open bugs if any exist
+    if type list_issues &>/dev/null && [[ -d "${PROJECT_ROOT}/.logs/issues" ]]; then
+        local bug_count=0
+        for issue_file in "${PROJECT_ROOT}/.logs/issues"/*.yml; do
+            [[ ! -f "$issue_file" ]] && continue
+            local istatus
+            istatus=$(awk '/^status:/{print $2}' "$issue_file")
+            [[ "$istatus" == "open" ]] && ((bug_count++))
+        done
+        if [[ "$bug_count" -gt 0 ]]; then
+            echo ""
+            echo -e "${RED}${BOLD}BUGS ($bug_count open issue(s))${NC}"
+            echo -e "────────────────────────────────────────────────────────────────────"
+            for issue_file in "${PROJECT_ROOT}/.logs/issues"/*.yml; do
+                [[ ! -f "$issue_file" ]] && continue
+                local istatus iid icmd
+                istatus=$(awk '/^status:/{print $2}' "$issue_file")
+                [[ "$istatus" != "open" ]] && continue
+                iid=$(awk '/^id:/{print $2}' "$issue_file")
+                icmd=$(awk '/^command:/{print $2}' "$issue_file")
+                echo -e "  ${RED}[${iid}]${NC} Command: ${icmd}"
+            done
+            echo -e "  ${CYAN}Run: pl fix${NC}"
+            echo ""
+        fi
+    fi
+
     # Summary
     echo -e "════════════════════════════════════════════════════════════════════"
     echo -e "Summary: ${BOLD}$total items${NC} total (${RED}$high_count high${NC}, ${YELLOW}$medium_count medium${NC}, $low_count low)"
@@ -621,6 +652,10 @@ main() {
                 SHOW_IGNORED=true
                 shift
                 ;;
+            --bugs)
+                command="bugs"
+                shift
+                ;;
             --no-cache)
                 NO_CACHE=true
                 shift
@@ -726,6 +761,16 @@ main() {
                     ;;
             esac
             ;;
+        bugs)
+            echo ""
+            echo -e "${BOLD}${BLUE}BUGS (Open Issues)${NC}"
+            echo -e "────────────────────────────────────────────────────────────────────"
+            if type list_issues &>/dev/null; then
+                list_issues "open"
+            else
+                print_info "No issue tracking available (lib/verify-issues.sh not found)"
+            fi
+            ;;
         "")
             # Default: TUI mode if available, otherwise list
             if [ "$HAS_TUI" = true ] && [ -t 1 ]; then
@@ -744,4 +789,6 @@ main() {
     esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

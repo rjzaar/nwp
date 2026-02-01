@@ -373,4 +373,6 @@ main() {
     print_info "Production URL: https://$(get_prod_config "$BASE_NAME" "domain")"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

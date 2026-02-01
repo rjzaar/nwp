@@ -1,8 +1,8 @@
 # Narrow Way Project (NWP)
 
-[![Machine Verified](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/rjzaar/nwp/main/.badges.json&query=$.badges.verification_machine.message&label=Machine%20Verified&color=blue&logo=checkmarx)](https://github.com/rjzaar/nwp)
-[![Human Verified](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/rjzaar/nwp/main/.badges.json&query=$.badges.verification_human.message&label=Human%20Verified&color=blue&logo=statuspal)](https://github.com/rjzaar/nwp)
-[![Fully Verified](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/rjzaar/nwp/main/.badges.json&query=$.badges.verification_full.message&label=Fully%20Verified&color=blue&logo=qualitybadge)](https://github.com/rjzaar/nwp)
+[![Automated Tests](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/rjzaar/nwp/main/.badges.json&query=$.badges.machine_verified.message&label=Automated%20Tests&color=blue&logo=checkmarx)](https://github.com/rjzaar/nwp)
+[![Human Verified](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/rjzaar/nwp/main/.badges.json&query=$.badges.human_verified.message&label=Human%20Verified&color=blue&logo=statuspal)](https://github.com/rjzaar/nwp)
+[![Fully Verified](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/rjzaar/nwp/main/.badges.json&query=$.badges.fully_verified.message&label=Fully%20Verified&color=blue&logo=qualitybadge)](https://github.com/rjzaar/nwp)
 
 A streamlined installation system for Drupal and Moodle projects using DDEV and recipe-based configurations.
 

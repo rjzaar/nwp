@@ -1296,6 +1296,8 @@ show_summary() {
 
     # Get checklist item counts
     local total_items=$(count_total_items)
+    local automatable_items=$(count_automatable_items)
+    local human_required_items=$((total_items - automatable_items))
     local machine_verified=$(count_machine_verified_items)
     local human_verified=$(count_human_verified_items)
     local fully_verified=$(count_fully_verified_items)
@@ -1304,8 +1306,11 @@ show_summary() {
     local human_pct=0
     local full_pct=0
 
+    # Machine percentage uses only automatable items as denominator (P53 fix)
+    if [[ $automatable_items -gt 0 ]]; then
+        machine_pct=$((machine_verified * 100 / automatable_items))
+    fi
     if [[ $total_items -gt 0 ]]; then
-        machine_pct=$((machine_verified * 100 / total_items))
         human_pct=$((human_verified * 100 / total_items))
         full_pct=$((fully_verified * 100 / total_items))
     fi
@@ -1321,7 +1326,9 @@ show_summary() {
     echo ""
     echo -e "  ${BOLD}Checklist Items:${NC}"
     printf "    Total:           %d\n" "$total_items"
-    printf "    ${CYAN}Machine Verified:${NC} %d (%d%%)\n" "$machine_verified" "$machine_pct"
+    printf "    Automatable:     %d\n" "$automatable_items"
+    printf "    Human-required:  %d\n" "$human_required_items"
+    printf "    ${CYAN}Automated Tests:${NC} %d/%d (%d%%)\n" "$machine_verified" "$automatable_items" "$machine_pct"
     printf "    ${BLUE}Human Verified:${NC}   %d (%d%%)\n" "$human_verified" "$human_pct"
     printf "    ${GREEN}Fully Verified:${NC}   %d (%d%%)\n" "$fully_verified" "$full_pct"
     echo ""
@@ -1340,11 +1347,14 @@ show_summary() {
     printf "] %d%%\n" $pct
     echo ""
 
-    # Progress bar for machine verification
-    local machine_filled=$((machine_verified * bar_width / total_items))
+    # Progress bar for automated test coverage
+    local machine_filled=0
+    if [[ $automatable_items -gt 0 ]]; then
+        machine_filled=$((machine_verified * bar_width / automatable_items))
+    fi
     local machine_empty=$((bar_width - machine_filled))
 
-    echo -e "  ${DIM}Machine Verification:${NC}"
+    echo -e "  ${DIM}Automated Test Coverage:${NC}"
     printf "  ["
     if [[ $machine_filled -gt 0 ]]; then
         for ((i=0; i<machine_filled; i++)); do printf "${CYAN}█${NC}"; done
@@ -2502,6 +2512,18 @@ count_total_items() {
     echo "$total"
 }
 
+# Count total automatable items (items that have a machine: block)
+# This is the correct denominator for machine verification percentage
+count_automatable_items() {
+    local count=0
+    count=$(awk '
+    BEGIN { count = 0 }
+    /^      machine:/ { count++ }
+    END { print count }
+    ' "$VERIFICATION_FILE" 2>/dev/null)
+    echo "${count:-0}"
+}
+
 # Count machine-verified items
 # Parses checklist items looking for machine.state.verified: true
 count_machine_verified_items() {
@@ -2712,6 +2734,7 @@ update_machine_verified() {
 # Usage: update_verification_statistics
 update_verification_statistics() {
     local total=$(count_total_items)
+    local automatable=$(count_automatable_items)
     local machine_verified=$(count_machine_verified_items)
     local human_verified=$(count_human_verified_items)
     local fully_verified=$(count_fully_verified_items)
@@ -2719,9 +2742,11 @@ update_verification_statistics() {
     local machine_pct=0
     local human_pct=0
 
+    # Machine percentage uses only automatable items as denominator (P53 fix)
+    if [[ $automatable -gt 0 ]]; then
+        machine_pct=$(awk "BEGIN {printf \"%.1f\", ($machine_verified * 100 / $automatable)}")
+    fi
     if [[ $total -gt 0 ]]; then
-        # Calculate percentage with one decimal place
-        machine_pct=$(awk "BEGIN {printf \"%.1f\", ($machine_verified * 100 / $total)}")
         human_pct=$(awk "BEGIN {printf \"%.1f\", ($human_verified * 100 / $total)}")
     fi
 
@@ -3031,11 +3056,12 @@ execute_item_machine_checks() {
 }
 
 ################################################################################
-# AI-Powered Deep Verification (P51)
+# Functional Deep Verification (P51)
 ################################################################################
 
-# Run AI verification scenarios
+# Run functional verification scenarios
 # Usage: run_ai_verification [--dry-run] [--resume] [--fix] [--scenario=ID] [--report] [--cross-validate=SITE]
+# Note: --functional flag (formerly --ai) - no LLM/AI calls are used
 run_ai_verification() {
     # Source all P51 libraries
     local p51_libs=("verify-scenarios.sh" "verify-checkpoint.sh" "verify-cross-validate.sh"
@@ -3049,17 +3075,17 @@ run_ai_verification() {
 
     # Verify core library exists
     if ! type -t scenario_execute &>/dev/null; then
-        echo -e "${RED}Error:${NC} AI verification library not found"
+        echo -e "${RED}Error:${NC} Functional verification library not found"
         echo "Expected: $PROJECT_ROOT/lib/verify-scenarios.sh"
         echo ""
-        echo "P51 AI verification libraries not fully installed."
+        echo "P51 functional verification libraries not fully installed."
         echo "Run 'pl verify --run' for machine verification (P50)."
         return 1
     fi
 
     # Check yq dependency
     if ! command -v yq &>/dev/null; then
-        echo -e "${RED}Error:${NC} yq is required for AI verification"
+        echo -e "${RED}Error:${NC} yq is required for functional verification"
         echo "Install Go yq: https://github.com/mikefarah/yq"
         return 1
     fi
@@ -3107,7 +3133,7 @@ run_ai_verification() {
                 ;;
             *)
                 echo "Unknown option: $1"
-                echo "Usage: verify.sh --ai [OPTIONS]"
+                echo "Usage: verify.sh --functional [OPTIONS]"
                 echo ""
                 echo "Options:"
                 echo "  --dry-run              Show execution order without running"
@@ -3502,6 +3528,7 @@ run_ci_mode() {
         echo -e "${BLUE}Generating .badges.json...${NC}"
 
         local total=$(count_total_items)
+        local automatable=$(count_automatable_items)
         local machine_verified=$(count_machine_verified_items)
         local human_verified=$(count_human_verified_items)
         local fully_verified=$(count_fully_verified_items)
@@ -3510,8 +3537,11 @@ run_ci_mode() {
         local human_pct=0
         local full_pct=0
 
+        # Machine percentage uses only automatable items as denominator (P53 fix)
+        if [[ $automatable -gt 0 ]]; then
+            machine_pct=$((machine_verified * 100 / automatable))
+        fi
         if [[ $total -gt 0 ]]; then
-            machine_pct=$((machine_verified * 100 / total))
             human_pct=$((human_verified * 100 / total))
             full_pct=$((fully_verified * 100 / total))
         fi
@@ -3567,6 +3597,8 @@ generate_badges() {
 
     # Calculate coverage
     local total=$(count_total_items)
+    local automatable=$(count_automatable_items)
+    local human_required=$((total - automatable))
     local machine_verified=$(count_machine_verified_items)
     local human_verified=$(count_human_verified_items)
     local fully_verified=$(count_fully_verified_items)
@@ -3575,15 +3607,20 @@ generate_badges() {
     local human_pct=0
     local full_pct=0
 
+    # Machine percentage uses only automatable items as denominator (P53 fix)
+    if [[ $automatable -gt 0 ]]; then
+        machine_pct=$((machine_verified * 100 / automatable))
+    fi
     if [[ $total -gt 0 ]]; then
-        machine_pct=$((machine_verified * 100 / total))
         human_pct=$((human_verified * 100 / total))
         full_pct=$((fully_verified * 100 / total))
     fi
 
     echo "Coverage Statistics:"
     echo "  Total items:      $total"
-    echo "  Machine verified: $machine_verified ($machine_pct%)"
+    echo "  Automatable:      $automatable"
+    echo "  Human-required:   $human_required"
+    echo "  Automated tests:  $machine_verified/$automatable ($machine_pct%)"
     echo "  Human verified:   $human_verified ($human_pct%)"
     echo "  Fully verified:   $fully_verified ($full_pct%)"
     echo ""
@@ -3597,8 +3634,7 @@ generate_badges() {
 
     cat > "$badge_file" << EOF
 {
-  "version": 1,
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "generated": "$(date -Iseconds)",
   "pipeline": {
     "id": "${CI_PIPELINE_ID:-local}",
@@ -3606,25 +3642,35 @@ generate_badges() {
     "sha": "${CI_COMMIT_SHA:-$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || echo "unknown")}"
   },
   "badges": {
-    "verification_machine": {
-      "label": "Machine Verified",
+    "machine_verified": {
+      "label": "Automated Tests",
       "message": "${machine_pct}%",
       "color": "$machine_color"
     },
-    "verification_human": {
+    "human_verified": {
       "label": "Human Verified",
       "message": "${human_pct}%",
       "color": "$human_color"
     },
-    "verification_full": {
+    "fully_verified": {
       "label": "Fully Verified",
       "message": "${full_pct}%",
       "color": "$full_color"
     },
-    "issues_open": {
-      "label": "Issues",
-      "message": "0 open",
+    "issues": {
+      "label": "Open Issues",
+      "message": "0",
       "color": "brightgreen"
+    }
+  },
+  "categories": {
+    "automatable": {
+      "total": $automatable,
+      "verified": $machine_verified
+    },
+    "human_required": {
+      "total": $human_required,
+      "verified": $human_verified
     }
   }
 }
@@ -3637,14 +3683,14 @@ EOF
     local base_url="https://raw.githubusercontent.com/rjzaar/nwp/main/.badges.json"
     echo "Badge URLs for README.md:"
     echo ""
-    echo "Machine Verified:"
-    echo "![Machine Verified](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.verification_machine.message&label=Machine%20Verified&color=brightgreen&logo=checkmarx)"
+    echo "Automated Tests:"
+    echo "![Automated Tests](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.machine_verified.message&label=Automated%20Tests&color=brightgreen&logo=checkmarx)"
     echo ""
     echo "Human Verified:"
-    echo "![Human Verified](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.verification_human.message&label=Human%20Verified&color=yellow&logo=statuspal)"
+    echo "![Human Verified](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.human_verified.message&label=Human%20Verified&color=yellow&logo=statuspal)"
     echo ""
     echo "Fully Verified:"
-    echo "![Fully Verified](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.verification_full.message&label=Fully%20Verified&color=green&logo=qualitybadge)"
+    echo "![Fully Verified](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.fully_verified.message&label=Fully%20Verified&color=green&logo=qualitybadge)"
     echo ""
 
     if [[ "$update_readme" == true ]]; then
@@ -3658,10 +3704,17 @@ EOF
 generate_verification_report() {
     local output_file="${1:-docs/VERIFICATION_REPORT.md}"
     local total_items=$(count_total_items)
+    local automatable_items=$(count_automatable_items)
+    local human_required_items=$((total_items - automatable_items))
     local machine_verified=$(count_machine_verified_items)
     local human_verified=$(count_human_verified_items)
     local fully_verified=$(count_fully_verified_items)
     local timestamp=$(date -Iseconds)
+
+    local machine_pct=0
+    if [[ $automatable_items -gt 0 ]]; then
+        machine_pct=$((machine_verified * 100 / automatable_items))
+    fi
 
     mkdir -p "$(dirname "$output_file")"
 
@@ -3676,7 +3729,9 @@ generate_verification_report() {
 | Metric | Count | Percentage |
 |--------|-------|------------|
 | Total Items | $total_items | 100% |
-| Machine Verified | $machine_verified | $((machine_verified * 100 / total_items))% |
+| Automatable | $automatable_items | $((automatable_items * 100 / total_items))% |
+| Human-required | $human_required_items | $((human_required_items * 100 / total_items))% |
+| Automated Tests | $machine_verified / $automatable_items | ${machine_pct}% |
 | Human Verified | $human_verified | $((human_verified * 100 / total_items))% |
 | Fully Verified | $fully_verified | $((fully_verified * 100 / total_items))% |
 
@@ -3764,7 +3819,7 @@ main() {
             shift
             run_machine_checks "$@"
             ;;
-        --ai|ai)
+        --functional|functional|--ai|ai)
             shift
             run_ai_verification "$@"
             ;;
@@ -3775,6 +3830,24 @@ main() {
         ci)
             shift
             run_ci_mode "$@"
+            ;;
+        issues)
+            source "$PROJECT_ROOT/lib/verify-issues.sh"
+            shift
+            case "${1:-}" in
+                --show)
+                    show_issue "${2:-}"
+                    ;;
+                --resolve)
+                    resolve_issue "${2:-}" "fixed" "${3:-}"
+                    ;;
+                --all)
+                    list_issues "all"
+                    ;;
+                *)
+                    list_issues "open"
+                    ;;
+            esac
             ;;
         badges)
             shift
@@ -3809,14 +3882,14 @@ main() {
             echo "  --run --affected         Only test features with changed files"
             echo "  --run --prefix=NAME      Custom test site prefix (default: verify-test)"
             echo ""
-            echo "AI-powered deep verification (P51):"
-            echo "  --ai                     Run AI verification scenarios (S1-S17)"
-            echo "  --ai --dry-run           Show scenario order without executing"
-            echo "  --ai --resume            Resume from checkpoint"
-            echo "  --ai --fix               Enable auto-fix for errors"
-            echo "  --ai --scenario=S1       Run specific scenario only"
-            echo "  --ai --report            Generate verification report"
-            echo "  --ai --cross-validate=SITE  Cross-validate a site's reported values"
+            echo "Functional deep verification (P51):"
+            echo "  --functional             Run functional verification scenarios (S1-S17)"
+            echo "  --functional --dry-run   Show scenario order without executing"
+            echo "  --functional --resume    Resume from checkpoint"
+            echo "  --functional --fix       Enable auto-fix for errors"
+            echo "  --functional --scenario=S1  Run specific scenario only"
+            echo "  --functional --report    Generate verification report"
+            echo "  --functional --cross-validate=SITE  Cross-validate a site's reported values"
             echo ""
             echo "Peak tracking (P51):"
             echo "  peaks                    Show peak coverage metrics"
@@ -3829,6 +3902,12 @@ main() {
             echo "  ci --export-json         Generate .badges.json"
             echo "  ci --depth=LEVEL         Specify depth level"
             echo "  ci --junit               Generate JUnit XML report"
+            echo ""
+            echo "Issues (P55):"
+            echo "  issues                   List open bug reports"
+            echo "  issues --show ID         Show a specific issue"
+            echo "  issues --resolve ID      Mark an issue as fixed"
+            echo "  issues --all             Show all issues (open and fixed)"
             echo ""
             echo "Badges:"
             echo "  badges                   Generate badge URLs and .badges.json"
@@ -3860,4 +3939,6 @@ main() {
     esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

@@ -42,6 +42,10 @@ EMAIL="test@example.com"
 SSH_USER="nwp"
 HOSTNAME="nwp-test"
 
+# Source timezone helper
+source "$PROJECT_ROOT/lib/timezone.sh"
+TIMEZONE=$(get_default_timezone "$PROJECT_ROOT/nwp.yml")
+
 # Helper functions
 print_header() {
     echo -e "\n${BLUE}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
@@ -157,7 +161,7 @@ RESPONSE=$(linode-cli linodes create \
     --image "linode/ubuntu24.04" \
     --root_pass "$ROOT_PASS" \
     --stackscript_id "$STACKSCRIPT_ID" \
-    --stackscript_data "{\"ssh_user\":\"$SSH_USER\",\"ssh_pubkey\":\"$SSH_PUBKEY\",\"hostname\":\"$HOSTNAME\",\"email\":\"$EMAIL\",\"timezone\":\"America/New_York\",\"disable_root\":\"yes\"}" \
+    --stackscript_data "{\"ssh_user\":\"$SSH_USER\",\"ssh_pubkey\":\"$SSH_PUBKEY\",\"hostname\":\"$HOSTNAME\",\"email\":\"$EMAIL\",\"timezone\":\"$TIMEZONE\",\"disable_root\":\"yes\"}" \
     --json 2>&1)
 
 # Parse response

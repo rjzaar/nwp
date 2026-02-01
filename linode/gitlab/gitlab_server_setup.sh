@@ -28,7 +28,7 @@
 # <UDF name="ssh_pubkey" label="SSH Public Key" example="ssh-ed25519 AAAA..." />
 # <UDF name="hostname" label="Server Hostname" default="gitlab-server" example="gitlab.example.com" />
 # <UDF name="email" label="Administrator Email" example="admin@example.com" />
-# <UDF name="timezone" label="Timezone" default="America/New_York" example="America/New_York" />
+# <UDF name="timezone" label="Timezone" default="Australia/Sydney" example="Australia/Sydney" />
 # <UDF name="disable_root" label="Disable Root SSH Login" oneof="yes,no" default="yes" />
 # <UDF name="gitlab_external_url" label="GitLab External URL" default="http://gitlab.example.com" example="https://gitlab.example.com" />
 # <UDF name="install_runner" label="Install GitLab Runner" oneof="yes,no" default="yes" />

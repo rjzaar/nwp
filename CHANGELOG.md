@@ -10,6 +10,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v0.28.0] - 2026-02-01
+
+### Added
+- **P54**: Verification test fixes - execution guards on 35 scripts, 3 git functions, --collect for coders
+- **P53**: Badge accuracy - fixed percentage calculations, renamed AI→Functional, v2 badge schema
+- **P58**: Test dependency handling - --check-deps, --install-deps, --skip-missing flags
+- **P56**: Production security hardening - UFW firewall, fail2ban, SSL hardening in produce.sh
+- **P57**: Production performance - Redis/Memcache caching, PHP-FPM tuning, nginx optimization
+- **F13**: Timezone configuration - centralized timezone in settings, updated StackScripts and fin-monitor
+- **F15**: SSH user management - get_ssh_user() resolution chain, deploy-key, key-audit commands
+- **F14**: Claude API integration - workspace provisioning, per-coder API keys, spend limits
+- **P55**: Opportunistic human verification - tester prompts, bug reports, pl fix command
+- **F03**: Visual regression testing - pl vrt baseline/compare/report/accept
+
+### Changed
+- Badge schema updated from v1 to v2 with category breakdowns
+- verify.sh --ai renamed to --functional (--ai still accepted for compatibility)
+- Badge label "Machine Verified" renamed to "Automated Tests"
+- produce.sh now includes security and performance provisioning steps
+
+### New Files
+- lib/timezone.sh - Timezone configuration helpers
+- lib/claude-api.sh - Claude API provisioning and management
+- lib/verify-opportunistic.sh - Tester prompt system
+- lib/verify-issues.sh - Bug report and issue management
+- scripts/commands/fix.sh - AI-assisted issue fixing (pl fix)
+- scripts/commands/vrt.sh - Visual regression testing (pl vrt)
+- docs/proposals/F03-visual-regression-testing.md
+
+---
+
 ## [v0.26.0] - 2026-02-01
 
 ### Added

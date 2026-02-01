@@ -96,7 +96,7 @@ remote_exec() {
 
     # Parse config
     local server_ip=""
-    local ssh_user="root"
+    local ssh_user=""
     local site_path="/var/www/html"
 
     while IFS='=' read -r key val; do
@@ -110,6 +110,15 @@ remote_exec() {
     if [ -z "$server_ip" ]; then
         print_error "No server IP configured for ${sitename}@${environment}"
         return 1
+    fi
+
+    # If no ssh_user from config, use resolution chain
+    if [ -z "$ssh_user" ]; then
+        if type -t get_ssh_user &>/dev/null; then
+            ssh_user=$(get_ssh_user "$sitename")
+        else
+            ssh_user="root"
+        fi
     fi
 
     # Validate site_path - must be absolute path without dangerous characters

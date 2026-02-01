@@ -10,6 +10,8 @@ Pending implementation items and future improvements for NWP.
 > - Phase 1-5c: P01-P35 (Foundation through Live Deployment)
 > - Phase 6-7: F04 (phases 1-5), F05, F07, F09, F12
 > - Phase 8: P50, P51 (Unified Verification System)
+> - Phase 9: P53-P58 (Verification & Production Hardening)
+> - Phase 10 (partial): F03, F13, F14, F15 (Developer Experience)
 
 ---
 
@@ -17,13 +19,13 @@ Pending implementation items and future improvements for NWP.
 
 | Metric | Value |
 |--------|-------|
-| Current Version | v0.26.0 |
+| Current Version | v0.28.0 |
 | Test Success Rate | 88% (Machine Verified) |
-| Completed Proposals | P01-P35, P50, P51, F04, F05, F07, F09, F12 |
-| Pending Proposals | P53, P54, P55, P56, P57, P58, F01-F03, F06, F08, F10-F11, F13-F15 |
+| Completed Proposals | P01-P35, P50-P51, P53-P58, F03-F05, F07, F09, F12-F15 |
+| Pending Proposals | F01-F02, F06, F08, F10-F11 |
 | Rejected Proposals | P52 (rename — NWP is the permanent project name) |
 | Experimental/Outlier | X01 |
-| Recent Enhancements | P51 AI-Powered Verification (v0.25.0), P50 Unified Verification (v0.24.0), Verification Instructions (v0.24.0) |
+| Recent Enhancements | v0.28.0: P53-P58, F03, F13-F15 (10 proposals implemented) |
 
 ---
 
@@ -32,7 +34,7 @@ Pending implementation items and future improvements for NWP.
 | Prefix | Meaning | Count | Example |
 |--------|---------|-------|---------|
 | **P##** | Core Phase Proposals | 35 complete | P01-P35: Foundation→Live Deployment |
-| **F##** | Feature Enhancements | 5 complete, 10 pending | F04: Governance, F09: Testing, F12: Todo |
+| **F##** | Feature Enhancements | 9 complete, 6 pending | F04: Governance, F09: Testing, F12: Todo |
 | **X##** | Experimental Outliers | 1 exploratory | X01: AI Video (scope expansion) |
 
 **Why different prefixes?**
@@ -53,8 +55,8 @@ Pending implementation items and future improvements for NWP.
 | Phase 7 | Testing & CI Enhancement | F09 | ✅ Complete |
 | **Phase 7b** | **CI Enhancements** | **F01-F03, F08** | **Possible** |
 | **Phase 8** | **Unified Verification** | **P50, P51** | **✅ Complete** |
-| **Phase 9** | **Verification & Production Hardening** | **P52-P58** | **Proposed** |
-| **Phase 10** | **Developer Experience** | **F10, F11, F13, F14, F15** | **Future** |
+| **Phase 9** | **Verification & Production Hardening** | **P52-P58** | **✅ Complete** |
+| **Phase 10** | **Developer Experience** | **F10, F11, F13, F14, F15** | **Partial (F13, F14, F15 ✅)** |
 | **Phase X** | **Experimental/Outliers** | **X01** | **Possible** |
 
 ---
@@ -74,22 +76,22 @@ Based on dependencies, current progress, and priority:
 | 6 | P50 | ✅ COMPLETE | Unified verification system |
 | 7 | P51 | ✅ COMPLETE | AI-powered (functional) verification |
 | | **Next: Verification Fixes (Phase 9a)** | | *Fix what's broken before building more* |
-| 8 | P54 | PLANNED | Fix ~65 failing verification tests, 98%+ pass rate |
-| 9 | P53 | PROPOSED | Fix misleading "AI" naming and badge accuracy |
-| 10 | P58 | PROPOSED | Test dependency handling (helpful error messages) |
+| 8 | P54 | ✅ COMPLETE | Fix ~65 failing verification tests, 98%+ pass rate |
+| 9 | P53 | ✅ COMPLETE | Fix misleading "AI" naming and badge accuracy |
+| 10 | P58 | ✅ COMPLETE | Test dependency handling (helpful error messages) |
 | | **Next: Production Hardening (Phase 9b)** | | *Features tests expect but don't exist yet* |
-| 11 | P56 | PROPOSED | UFW, fail2ban, SSL hardening for production servers |
-| 12 | P57 | PROPOSED | Redis/Memcache, PHP-FPM tuning, nginx optimization |
+| 11 | P56 | ✅ COMPLETE | UFW, fail2ban, SSL hardening for production servers |
+| 12 | P57 | ✅ COMPLETE | Redis/Memcache, PHP-FPM tuning, nginx optimization |
 | | **Next: Developer Experience (Phase 10)** | | *Quality of life improvements* |
-| 13 | F13 | PROPOSED | Centralize timezone configuration |
-| 14 | F15 | PROPOSED | SSH user management + developer key onboarding (~10h) |
+| 13 | F13 | ✅ COMPLETE | Centralize timezone configuration |
+| 14 | F15 | ✅ COMPLETE | SSH user management + developer key onboarding (~10h) |
 | 15 | F10 | PROPOSED | Local LLM support and privacy options |
 | 16 | F11 | PROPOSED | Developer workstation LLM config (depends on F10) |
-| 17 | F14 | PROPOSED | Claude API team management, spend controls |
+| 17 | F14 | ✅ COMPLETE | Claude API team management, spend controls |
 | | **Later / Conditional** | | |
-| 18 | P55 | PROPOSED | Opportunistic human verification (4-5 weeks, opt-in) |
+| 18 | P55 | ✅ COMPLETE | Opportunistic human verification (4-5 weeks, opt-in) |
 | - | P52 | ❌ REJECTED | Rename rejected — NWP is the permanent project name |
-| 20 | F03 | IN PROGRESS | Visual regression testing (stalled since Jan 3) |
+| 20 | F03 | ✅ COMPLETE | Visual regression testing (pl vrt) |
 | | **Possible (deprioritized)** | | *Reconsidered only if circumstances change* |
 | - | F01 | POSSIBLE | GitLab MCP Integration |
 | - | F02 | POSSIBLE | Automated CI Error Resolution |
@@ -199,7 +201,7 @@ Enable Claude Code to directly interact with NWP GitLab via the Model Context Pr
 ---
 
 ### F03: Visual Regression Testing (VRT)
-**Status:** IN PROGRESS | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** Behat BDD Framework
+**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** Behat BDD Framework
 
 Automated visual regression testing using BackstopJS:
 
@@ -711,7 +713,7 @@ Complex Tasks (Claude API):
 ---
 
 ### F15: SSH User Management
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** ~10 hours (practical version) | **Dependencies:** None
+**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** ~10 hours (practical version) | **Dependencies:** None
 **Proposal:** [F15-ssh-user-management.md](../proposals/F15-ssh-user-management.md)
 
 Unify NWP's 7 different approaches to SSH user determination and add per-developer SSH key management.
@@ -743,7 +745,7 @@ Unify NWP's 7 different approaches to SSH user determination and add per-develop
 ---
 
 ### F13: Timezone Configuration
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** None
+**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** None
 **Proposal:** [F13-timezone-configuration.md](../proposals/F13-timezone-configuration.md)
 
 Centralize timezone configuration in `nwp.yml` instead of hardcoding across 14+ scripts.
@@ -778,7 +780,7 @@ Centralize timezone configuration in `nwp.yml` instead of hardcoding across 14+ 
 ---
 
 ### F14: Claude API Integration
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** None (benefits from F10)
+**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** None (benefits from F10)
 **Proposal:** [F14-claude-api-integration.md](../proposals/F14-claude-api-integration.md)
 
 Integrate Claude API key management into NWP's two-tier secrets architecture for team provisioning, spend control, and consistent configuration.
@@ -823,14 +825,14 @@ Integrate Claude API key management into NWP's two-tier secrets architecture for
 
 ---
 
-## Phase 9: Verification & Production Hardening (PROPOSED)
+## Phase 9: Verification & Production Hardening (✅ COMPLETE)
 
 > **Dependency chain:** P54 must come first — it fixes the test infrastructure that P53, P56, P57, and P58 all depend on. P55 and P52 are independent but should come later.
 
 ### Phase 9a: Fix What's Broken
 
 #### P54: Verification Test Infrastructure Fixes
-**Status:** PLANNED | **Priority:** HIGH | **Effort:** 2-3 days | **Dependencies:** P50
+**Status:** ✅ IMPLEMENTED | **Priority:** HIGH | **Effort:** 2-3 days | **Dependencies:** P50
 **Proposal:** [P54-verification-test-fixes.md](../proposals/P54-verification-test-fixes.md)
 
 Fix ~65 failing automatable verification tests caused by systemic issues, not real bugs. Root causes:
@@ -862,7 +864,7 @@ Fix ~65 failing automatable verification tests caused by systemic issues, not re
 ---
 
 #### P53: Verification Categorization & Badge Accuracy
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** 2-3 days | **Dependencies:** P50
+**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** 2-3 days | **Dependencies:** P50
 **Proposal:** [P53-verification-badge-accuracy.md](../proposals/P53-verification-badge-accuracy.md)
 
 Fix three accuracy issues in the verification system:
@@ -885,7 +887,7 @@ Fix three accuracy issues in the verification system:
 ---
 
 #### P58: Test Command Dependency Handling
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** 3-5 days | **Dependencies:** P54
+**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** 3-5 days | **Dependencies:** P54
 **Proposal:** [P58-test-dependency-handling.md](../proposals/P58-test-dependency-handling.md)
 
 Add dependency checking and helpful error messages to `test.sh` when PHPCS, PHPStan, or PHPUnit are missing. Currently tests fail silently or with cryptic errors.
@@ -907,7 +909,7 @@ Add dependency checking and helpful error messages to `test.sh` when PHPCS, PHPS
 ### Phase 9b: Production Hardening
 
 #### P56: Production Security Hardening
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** 1-2 weeks | **Dependencies:** P54
+**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** 1-2 weeks | **Dependencies:** P54
 **Proposal:** [P56-produce-security-hardening.md](../proposals/P56-produce-security-hardening.md)
 
 Add security hardening features to `produce.sh` for production server provisioning. Currently verification tests expect these features but they don't exist. Also includes developer SSH key management for secure onboarding (see P56 Section 7).
@@ -931,7 +933,7 @@ Add security hardening features to `produce.sh` for production server provisioni
 ---
 
 #### P57: Production Caching & Performance
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** 1-2 weeks | **Dependencies:** P54
+**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** 1-2 weeks | **Dependencies:** P54
 **Proposal:** [P57-produce-performance.md](../proposals/P57-produce-performance.md)
 
 Add caching and performance optimization to `produce.sh`. Currently no caching features exist despite verification tests expecting them.
@@ -957,7 +959,7 @@ Add caching and performance optimization to `produce.sh`. Currently no caching f
 ### Phase 9c: Advanced Verification & Rename
 
 #### P55: Opportunistic Human Verification
-**Status:** PROPOSED | **Priority:** LOW | **Effort:** 4-5 weeks | **Dependencies:** P50
+**Status:** ✅ IMPLEMENTED | **Priority:** LOW | **Effort:** 4-5 weeks | **Dependencies:** P50
 **Proposal:** [P55-opportunistic-human-verification.md](../proposals/P55-opportunistic-human-verification.md)
 
 Opt-in system where designated testers receive interactive prompts after running commands, capturing real-world verification without dedicated test sessions. Includes bug report system with automatic diagnostics, GitLab issue submission, and a `pl fix` TUI for AI-assisted issue resolution.
@@ -1544,22 +1546,22 @@ These feature proposals were deprioritized by the Deep Analysis re-evaluation. T
 | 6 | P50 | HIGH | High | None | 8 | ✅ Complete |
 | 7 | P51 | HIGH | High | P50 | 8 | ✅ Complete |
 | | **Phase 9a: Verification Fixes** | | | | | |
-| 8 | P54 | HIGH | Low (2-3d) | P50 | 9 | Planned |
-| 9 | P53 | MEDIUM | Low (2-3d) | P50 | 9 | Proposed |
-| 10 | P58 | MEDIUM | Low (3-5d) | P54 | 9 | Proposed |
+| 8 | P54 | HIGH | Low (2-3d) | P50 | 9 | ✅ Complete |
+| 9 | P53 | MEDIUM | Low (2-3d) | P50 | 9 | ✅ Complete |
+| 10 | P58 | MEDIUM | Low (3-5d) | P54 | 9 | ✅ Complete |
 | | **Phase 9b: Production Hardening** | | | | | |
-| 11 | P56 | MEDIUM | Medium (1-2w) | P54 | 9 | Proposed |
-| 12 | P57 | MEDIUM | Medium (1-2w) | P54 | 9 | Proposed |
+| 11 | P56 | MEDIUM | Medium (1-2w) | P54 | 9 | ✅ Complete |
+| 12 | P57 | MEDIUM | Medium (1-2w) | P54 | 9 | ✅ Complete |
 | | **Phase 10: Developer Experience** | | | | | |
-| 13 | F13 | MEDIUM | Low | None | 10 | Proposed |
-| 14 | F15 | MEDIUM | Low (~10h) | None | 10 | Proposed |
+| 13 | F13 | MEDIUM | Low | None | 10 | ✅ Complete |
+| 14 | F15 | MEDIUM | Low (~10h) | None | 10 | ✅ Complete |
 | 15 | F10 | MEDIUM | Medium | None | 10 | Proposed |
 | 16 | F11 | MEDIUM | Low | F10 | 10 | Proposed |
-| 17 | F14 | MEDIUM | Medium | None | 10 | Proposed |
+| 17 | F14 | MEDIUM | Medium | None | 10 | ✅ Complete |
 | | **Later / Conditional** | | | | | |
-| 18 | P55 | LOW | High (4-5w) | P50 | 9 | Proposed |
+| 18 | P55 | LOW | High (4-5w) | P50 | 9 | ✅ Complete |
 | - | P52 | - | - | - | - | ❌ Rejected |
-| 20 | F03 | LOW | Medium | Behat | 7b | Stalled |
+| 20 | F03 | LOW | Medium | Behat | 7b | ✅ Complete |
 | | **Possible (deprioritized)** | | | | | |
 | - | F01 | LOW | Low | GitLab | 7b | Possible |
 | - | F02 | LOW | Medium | F01 | 7b | Possible |

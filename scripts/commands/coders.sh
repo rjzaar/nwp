@@ -1428,6 +1428,33 @@ cmd_sync() {
     fi
 }
 
+# Output coder data as JSON (for scripting/automation)
+cmd_collect() {
+    load_coders
+
+    local first=true
+    printf '[\n'
+    for i in "${!CODERS[@]}"; do
+        local name="${CODERS[$i]}"
+        local data="${CODER_DATA[$i]:-contributor|active||0|0|0}"
+        local role=$(echo "$data" | cut -d'|' -f1)
+        local status=$(echo "$data" | cut -d'|' -f2)
+        local added=$(echo "$data" | cut -d'|' -f3)
+        local commits=$(echo "$data" | cut -d'|' -f4)
+        local mrs=$(echo "$data" | cut -d'|' -f5)
+        local reviews=$(echo "$data" | cut -d'|' -f6)
+
+        if [ "$first" = true ]; then
+            first=false
+        else
+            printf ',\n'
+        fi
+        printf '  {"name":"%s","role":"%s","status":"%s","added":"%s","commits":%s,"merge_requests":%s,"reviews":%s}' \
+            "$name" "$role" "$status" "$added" "${commits:-0}" "${mrs:-0}" "${reviews:-0}"
+    done
+    printf '\n]\n'
+}
+
 ################################################################################
 # Main Entry Point
 ################################################################################
@@ -1447,6 +1474,9 @@ main() {
         sync)
             cmd_sync
             ;;
+        --collect|collect)
+            cmd_collect
+            ;;
         -h|--help|help)
             cat << EOF
 NWP Coders Management TUI
@@ -1457,6 +1487,7 @@ Commands:
   (none)    Launch interactive TUI
   list      List all coders (non-interactive)
   sync      Sync from GitLab (non-interactive)
+  collect   Output coder data as JSON
   help      Show this help
 
 TUI Controls:
@@ -1507,4 +1538,6 @@ EOF
     esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

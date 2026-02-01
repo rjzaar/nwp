@@ -1,6 +1,6 @@
 # NWP Milestones - Completed Implementation History
 
-**Last Updated:** January 20, 2026
+**Last Updated:** February 1, 2026
 
 A summary of all completed development phases and their key achievements.
 
@@ -19,9 +19,11 @@ A summary of all completed development phases and their key achievements.
 | Phase 5c | Live Deployment Automation | P32-P35 | Jan 2026 |
 | Phase 6-7 | Governance, Security, Testing & Todo | F04, F05, F07, F09, F12 | Jan 2026 |
 | Phase 8 | Unified Verification | P50, P51 | Jan 2026 |
+| Phase 9 | Verification & Production Hardening | P53-P58 | Feb 2026 |
+| Phase 10 (partial) | Developer Experience | F03, F13, F14, F15 | Feb 2026 |
 | AVC | Profile Enhancements | Email Reply | Jan 2026 |
 
-**Total: 42 proposals implemented** (P01-P35 + F04, F05, F07, F09, F12, P50, P51) + AVC Profile Enhancements
+**Total: 52 proposals implemented** (P01-P35, P50-P51, P53-P58, F03-F05, F07, F09, F12-F15) + AVC Profile Enhancements
 
 ---
 
@@ -361,6 +363,40 @@ Extends the P50 verification system with advanced scenario-based testing, state 
 
 ---
 
+## Phase 9: Verification & Production Hardening (v0.28.0)
+
+### P54: Verification Test Infrastructure Fixes
+Fixed ~65 failing automatable verification tests. Added execution guards on 35 scripts, 3 missing git functions (`git_add_all()`, `git_has_changes()`, `git_get_current_branch()`), and `--collect` flag for coders.sh machine-readable output.
+
+### P53: Verification Categorization & Badge Accuracy
+Fixed misleading "AI" naming (renamed to `--functional`), corrected percentage calculations to exclude non-automatable items from denominator, updated badge schema from v1 to v2 with category breakdowns, renamed badge label from "Machine Verified" to "Automated Tests".
+
+### P58: Test Command Dependency Handling
+Added `--check-deps`, `--install-deps`, and `--skip-missing` flags to test.sh. Clear error messages when PHPCS, PHPStan, or PHPUnit are missing, with installation instructions.
+
+### P56: Production Security Hardening
+Added UFW firewall configuration, fail2ban intrusion prevention, SSL hardening (TLSv1.2+, strong ciphers, HSTS), and security headers to produce.sh. All features optional via CLI flags (`--no-firewall`, `--no-fail2ban`, `--no-ssl-hardening`, `--security-only`).
+
+### P57: Production Caching & Performance
+Added Redis/Memcache caching with Drupal integration, PHP-FPM tuning based on server memory, and nginx optimization (gzip, open file cache, static asset caching) to produce.sh. CLI options: `--cache redis|memcache|none`, `--memory SIZE`, `--performance-only`.
+
+### P55: Opportunistic Human Verification
+Opt-in tester prompt system where designated testers receive interactive prompts after running commands. Includes bug report creation with automatic diagnostics, `pl fix` TUI for AI-assisted issue resolution, and integration with `pl todo`.
+
+### F03: Visual Regression Testing
+Added `pl vrt` command with baseline/compare/report/accept subcommands for visual regression testing using BackstopJS.
+
+### F13: Timezone Configuration
+Centralized timezone configuration in `nwp.yml` settings. Created `lib/timezone.sh` with helper functions. Updated StackScripts and fin-monitor to read timezone from configuration instead of hardcoding.
+
+### F14: Claude API Integration
+Integrated Claude API key management into NWP's two-tier secrets architecture. Workspace provisioning via bootstrap-coder.sh, per-coder API keys with spend limits, usage monitoring. Created `lib/claude-api.sh`.
+
+### F15: SSH User Management
+Created `get_ssh_user()` resolution chain in `lib/ssh.sh`. Fixed hardcoded SSH user assumptions in `live2stg.sh` and `lib/remote.sh`. Added `deploy-key` and `key-audit` commands to coder-setup.sh.
+
+---
+
 ## AVC Profile Enhancements
 
 ### AVC Email Reply System
@@ -417,7 +453,7 @@ Inbound:  User Reply → Webhook /api/email/inbound → Queue → Comment
 | install.sh Code Reduction | 82% |
 | Manual Steps Automated | 85%+ |
 | Total Verification Items | 575 |
-| Completed Proposals | 41 |
+| Completed Proposals | 52 |
 
 ---
 

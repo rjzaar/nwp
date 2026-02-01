@@ -71,6 +71,19 @@ ${BOLD}EXAMPLES:${NC}
     ./test.sh -b nwp                 # Full Behat tests
     ./test.sh -bp nwp                # Parallel Behat tests
     ./test.sh -ltu nwp               # Lint, stan, and unit tests
+    ./test.sh --check-deps nwp       # Check test dependencies
+    ./test.sh --install-deps nwp     # Install missing dependencies
+    ./test.sh --skip-missing -a nwp  # Skip tests with missing dependencies
+
+${BOLD}DEPENDENCY FLAGS:${NC}
+    --check-deps            Check test dependencies and exit
+    --install-deps          Install missing test dependencies
+    --skip-missing          Skip tests whose dependencies are not installed
+
+${BOLD}COMBINED FLAGS:${NC}
+    -ltu runs lint+stan+unit tests together
+    -lsu runs lint+smoke+unit tests together
+    Use individual flags for selective testing: -l (lint), -s (smoke), -u (unit)
 
 ${BOLD}TEST SPEED:${NC}
     -l (lint)       Fast (~10s)
@@ -86,6 +99,65 @@ EOF
 ################################################################################
 # Test Functions
 ################################################################################
+
+# Check all test dependencies with summary
+# Usage: check_test_dependencies [test_type]
+# Returns: number of missing dependencies
+check_test_dependencies() {
+    local test_type="${1:-all}"
+    local missing=0
+
+    print_info "Checking test dependencies..."
+
+    # Check based on requested test type
+    if [[ "$test_type" == "all" || "$test_type" == "lint" ]]; then
+        if command -v phpcs &>/dev/null || [[ -f "vendor/bin/phpcs" ]]; then
+            print_success "phpcs (PHP CodeSniffer) - installed"
+        else
+            print_warning "phpcs (PHP CodeSniffer) - not installed"
+            print_hint "Install: composer require --dev squizlabs/php_codesniffer"
+            ((missing++))
+        fi
+    fi
+
+    if [[ "$test_type" == "all" || "$test_type" == "stan" ]]; then
+        if command -v phpstan &>/dev/null || [[ -f "vendor/bin/phpstan" ]]; then
+            print_success "phpstan (Static Analysis) - installed"
+        else
+            print_warning "phpstan (Static Analysis) - not installed"
+            print_hint "Install: composer require --dev phpstan/phpstan"
+            ((missing++))
+        fi
+    fi
+
+    if [[ "$test_type" == "all" || "$test_type" == "unit" ]]; then
+        if command -v phpunit &>/dev/null || [[ -f "vendor/bin/phpunit" ]]; then
+            print_success "phpunit (Unit Testing) - installed"
+        else
+            print_warning "phpunit (Unit Testing) - not installed"
+            print_hint "Install: composer require --dev phpunit/phpunit"
+            ((missing++))
+        fi
+    fi
+
+    return $missing
+}
+
+# Install missing test dependencies
+install_test_dependencies() {
+    local site_path="${1:-.}"
+    print_info "Installing missing test dependencies..."
+
+    (cd "$site_path" && composer require --dev \
+        squizlabs/php_codesniffer \
+        phpstan/phpstan \
+        phpunit/phpunit 2>&1) || {
+        print_error "Failed to install dependencies. Check composer is available."
+        return 1
+    }
+
+    print_success "Test dependencies installed"
+}
 
 # Check if test dependencies are available
 check_test_deps() {
@@ -319,10 +391,17 @@ main() {
     local RUN_SMOKE=false
     local RUN_BEHAT=false
     local RUN_ALL=true
+    local CHECK_DEPS=false
+    local INSTALL_DEPS=false
+    local SKIP_MISSING=false
+
+    # Combined flags: -ltu runs lint+stan+unit tests together
+    # Combined flags: -lsu runs lint+smoke+unit tests together
+    # Use individual flags for selective testing: -l (lint), -s (smoke), -u (unit)
 
     # Use getopt for option parsing
     local OPTIONS=hdltukfsbpa
-    local LONGOPTS=help,debug,lint,stan,unit,kernel,functional,smoke,behat,parallel,all,ci
+    local LONGOPTS=help,debug,lint,stan,unit,kernel,functional,smoke,behat,parallel,all,ci,check-deps,install-deps,skip-missing
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -388,6 +467,18 @@ main() {
                 CI_MODE=true
                 shift
                 ;;
+            --check-deps)
+                CHECK_DEPS=true
+                shift
+                ;;
+            --install-deps)
+                INSTALL_DEPS=true
+                shift
+                ;;
+            --skip-missing)
+                SKIP_MISSING=true
+                shift
+                ;;
             --)
                 shift
                 break
@@ -435,6 +526,19 @@ main() {
     # Update SITENAME to use the found path
     SITENAME="$SITE_PATH"
 
+    # Handle --check-deps: check and exit
+    if [ "$CHECK_DEPS" = "true" ]; then
+        print_header "Dependency Check: $SITENAME"
+        (cd "$SITENAME" && check_test_dependencies "all") || true
+        exit 0
+    fi
+
+    # Handle --install-deps: install and exit
+    if [ "$INSTALL_DEPS" = "true" ]; then
+        install_test_dependencies "$SITENAME"
+        exit $?
+    fi
+
     print_header "NWP Test Suite: $SITENAME"
 
     # Track test results
@@ -442,68 +546,60 @@ main() {
     local TESTS_PASSED=0
     local TESTS_FAILED=0
 
-    # Run selected tests or all tests
-    if [ "$RUN_ALL" = "true" ] || [ "$RUN_LINT" = "true" ]; then
+    # Helper: run a test with skip-missing support
+    # Usage: run_test_with_skip <dep_tool> <dep_label> <command...>
+    # Returns: 0=passed, 1=failed, 2=skipped
+    local TESTS_SKIPPED=0
+    _run_or_skip() {
+        local dep_tool="$1"
+        local dep_label="$2"
+        shift 2
+
+        # Check if dependency is available in site path
+        if ! (cd "$SITENAME" && { command -v "$dep_tool" &>/dev/null || [[ -f "vendor/bin/$dep_tool" ]]; }); then
+            if [ "$SKIP_MISSING" = "true" ]; then
+                print_warning "Skipping $dep_label - dependency not installed (missing $dep_tool)"
+                TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+                return 2
+            fi
+        fi
+
         TESTS_RUN=$((TESTS_RUN + 1))
-        if run_phpcs "$SITENAME" "$CI_MODE"; then
+        if "$@"; then
             TESTS_PASSED=$((TESTS_PASSED + 1))
         else
             TESTS_FAILED=$((TESTS_FAILED + 1))
         fi
+        return 0
+    }
+
+    # Run selected tests or all tests
+    if [ "$RUN_ALL" = "true" ] || [ "$RUN_LINT" = "true" ]; then
+        _run_or_skip "phpcs" "PHPCS linting" run_phpcs "$SITENAME" "$CI_MODE" || true
     fi
 
     if [ "$RUN_ALL" = "true" ] || [ "$RUN_STAN" = "true" ]; then
-        TESTS_RUN=$((TESTS_RUN + 1))
-        if run_phpstan "$SITENAME" "$CI_MODE"; then
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-        else
-            TESTS_FAILED=$((TESTS_FAILED + 1))
-        fi
+        _run_or_skip "phpstan" "PHPStan analysis" run_phpstan "$SITENAME" "$CI_MODE" || true
     fi
 
     if [ "$RUN_ALL" = "true" ] || [ "$RUN_UNIT" = "true" ]; then
-        TESTS_RUN=$((TESTS_RUN + 1))
-        if run_phpunit "$SITENAME" "unit" "$CI_MODE"; then
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-        else
-            TESTS_FAILED=$((TESTS_FAILED + 1))
-        fi
+        _run_or_skip "phpunit" "PHPUnit unit tests" run_phpunit "$SITENAME" "unit" "$CI_MODE" || true
     fi
 
     if [ "$RUN_KERNEL" = "true" ]; then
-        TESTS_RUN=$((TESTS_RUN + 1))
-        if run_phpunit "$SITENAME" "kernel" "$CI_MODE"; then
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-        else
-            TESTS_FAILED=$((TESTS_FAILED + 1))
-        fi
+        _run_or_skip "phpunit" "PHPUnit kernel tests" run_phpunit "$SITENAME" "kernel" "$CI_MODE" || true
     fi
 
     if [ "$RUN_FUNCTIONAL" = "true" ]; then
-        TESTS_RUN=$((TESTS_RUN + 1))
-        if run_phpunit "$SITENAME" "functional" "$CI_MODE"; then
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-        else
-            TESTS_FAILED=$((TESTS_FAILED + 1))
-        fi
+        _run_or_skip "phpunit" "PHPUnit functional tests" run_phpunit "$SITENAME" "functional" "$CI_MODE" || true
     fi
 
     if [ "$RUN_SMOKE" = "true" ]; then
-        TESTS_RUN=$((TESTS_RUN + 1))
-        if run_behat "$SITENAME" "@smoke" "$PARALLEL" "$CI_MODE"; then
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-        else
-            TESTS_FAILED=$((TESTS_FAILED + 1))
-        fi
+        _run_or_skip "behat" "Behat smoke tests" run_behat "$SITENAME" "@smoke" "$PARALLEL" "$CI_MODE" || true
     fi
 
     if [ "$RUN_ALL" = "true" ] || [ "$RUN_BEHAT" = "true" ]; then
-        TESTS_RUN=$((TESTS_RUN + 1))
-        if run_behat "$SITENAME" "" "$PARALLEL" "$CI_MODE"; then
-            TESTS_PASSED=$((TESTS_PASSED + 1))
-        else
-            TESTS_FAILED=$((TESTS_FAILED + 1))
-        fi
+        _run_or_skip "behat" "Behat tests" run_behat "$SITENAME" "" "$PARALLEL" "$CI_MODE" || true
     fi
 
     # Summary
@@ -511,6 +607,9 @@ main() {
     echo "Tests run:    $TESTS_RUN"
     echo "Tests passed: $TESTS_PASSED"
     echo "Tests failed: $TESTS_FAILED"
+    if [ $TESTS_SKIPPED -gt 0 ]; then
+        echo "Tests skipped: $TESTS_SKIPPED (missing dependencies)"
+    fi
 
     show_elapsed_time "Testing"
 
@@ -524,4 +623,6 @@ main() {
 }
 
 # Run main
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

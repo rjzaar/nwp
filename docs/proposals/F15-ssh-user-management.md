@@ -1,6 +1,6 @@
 # F15: Comprehensive SSH User Management System
 
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Low (minimal) / High (full) | **Dependencies:** None
+**Status:** IMPLEMENTED | **Priority:** MEDIUM | **Effort:** Low (minimal) / High (full) | **Dependencies:** None
 
 > **TL;DR:** Full proposal was over-engineered. Implement practical version (~10 hours) covering all useful phases, skipping only two-tier sudo and audit logging (postponed until external contributors join). See [2. Worth It Evaluation](#2-worth-it-evaluation).
 

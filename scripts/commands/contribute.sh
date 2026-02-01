@@ -461,4 +461,6 @@ main() {
     create_merge_request
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

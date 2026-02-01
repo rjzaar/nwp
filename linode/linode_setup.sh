@@ -691,7 +691,7 @@ api:
 server:
   ssh_user: "nwp"
   ssh_port: 22
-  timezone: "America/New_York"
+  timezone: "Australia/Sydney"
   ssh_key_path: "~/.nwp/linode/keys/nwp_linode.pub"
 
 # Email for SSL certificates

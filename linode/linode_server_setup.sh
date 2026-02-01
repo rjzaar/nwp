@@ -33,7 +33,7 @@
 # <UDF name="ssh_pubkey" label="SSH Public Key" example="ssh-ed25519 AAAA..." />
 # <UDF name="hostname" label="Server Hostname" default="nwp-server" example="test.nwp.org" />
 # <UDF name="email" label="Administrator Email" example="admin@example.com" />
-# <UDF name="timezone" label="Timezone" default="America/New_York" example="America/New_York" />
+# <UDF name="timezone" label="Timezone" default="Australia/Sydney" example="Australia/Sydney" />
 # <UDF name="disable_root" label="Disable Root SSH Login" oneof="yes,no" default="yes" />
 
 set -e  # Exit on error

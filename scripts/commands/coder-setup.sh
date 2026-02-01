@@ -37,6 +37,7 @@ source "$PROJECT_ROOT/lib/cloudflare.sh"
 source "$PROJECT_ROOT/lib/linode.sh"
 source "$PROJECT_ROOT/lib/yaml-write.sh"
 source "$PROJECT_ROOT/lib/git.sh"
+source "$PROJECT_ROOT/lib/ssh.sh"
 
 # Configuration
 CONFIG_FILE="${PROJECT_ROOT}/nwp.yml"
@@ -55,6 +56,8 @@ Commands:
   add <name>       Add NS delegation and optionally GitLab account for a new coder
   remove <name>    Remove NS delegation and revoke access for a coder
   provision <name> Provision Linode server and DNS for a coder
+  deploy-key <name> Deploy coder's SSH key to servers
+  key-audit        Audit SSH keys across coders and servers
   list             List all configured coders
   verify <name>    Verify DNS delegation is working
   gitlab-users     List all GitLab users
@@ -65,7 +68,12 @@ Options for 'add':
   --fullname "nm"  Full name for GitLab account (default: coder name)
   --gitlab-group   GitLab group to add user to (default: nwp)
   --no-gitlab      Skip GitLab user creation even if email provided
+  --ssh-key "key"  SSH public key string to register in GitLab
+  --ssh-key-file f Path to SSH public key file to register in GitLab
   --dry-run        Show what would be done without making changes
+
+Options for 'deploy-key':
+  --servers "s1,s2" Comma-separated list of servers to deploy key to
 
 Options for 'provision':
   --region         Linode region (default: us-east)
@@ -308,6 +316,7 @@ cmd_add() {
     local gitlab_group="nwp"
     local no_gitlab=false
     local dry_run=false
+    local ssh_key=""
     shift || true
 
     # Parse additional options
@@ -336,6 +345,14 @@ cmd_add() {
             --dry-run)
                 dry_run=true
                 shift
+                ;;
+            --ssh-key)
+                ssh_key="$2"
+                shift 2
+                ;;
+            --ssh-key-file)
+                ssh_key="$(cat "$2")"
+                shift 2
                 ;;
             *)
                 print_error "Unknown option: $1"
@@ -491,6 +508,16 @@ cmd_add() {
         info "GitLab account created - credentials shown above"
         info "Login at: https://$(get_gitlab_url)"
         echo ""
+    fi
+
+    # Register SSH key with GitLab if provided
+    if [[ -n "$ssh_key" ]]; then
+        info "Registering SSH key with GitLab..."
+        if gitlab_add_user_ssh_key "$name" "$ssh_key" "${name}-key"; then
+            pass "SSH key registered in GitLab"
+        else
+            warn "Failed to register SSH key - coder can add it manually"
+        fi
     fi
 
     # Show onboarding command for the new coder
@@ -1067,6 +1094,141 @@ cmd_verify() {
     fi
 }
 
+# Deploy SSH key to servers
+cmd_deploy_key() {
+    local coder_name="$1"
+    local servers=""
+    shift || true
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --servers)
+                servers="$2"
+                shift 2
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                return 1
+                ;;
+        esac
+    done
+
+    if [[ -z "$coder_name" ]]; then
+        print_error "Usage: pl coder-setup deploy-key <coder> --servers <server1,server2>"
+        return 1
+    fi
+
+    if [[ -z "$servers" ]]; then
+        print_error "No servers specified. Use --servers <server1,server2>"
+        return 1
+    fi
+
+    # Get the coder's SSH key from GitLab
+    print_info "Deploying SSH key for ${coder_name}..."
+
+    local gitlab_url
+    gitlab_url=$(get_gitlab_url)
+    local token
+    token=$(get_infra_secret "gitlab.api_token" "")
+
+    if [[ -z "$token" ]]; then
+        print_error "GitLab API token not configured"
+        return 1
+    fi
+
+    # Get user ID from GitLab
+    local user_id
+    user_id=$(curl -s -H "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/users?username=${coder_name}" | jq -r '.[0].id // empty')
+
+    if [[ -z "$user_id" ]]; then
+        print_error "Could not find GitLab user: $coder_name"
+        return 1
+    fi
+
+    # Get SSH keys for user
+    local keys
+    keys=$(curl -s -H "PRIVATE-TOKEN: $token" \
+        "https://${gitlab_url}/api/v4/users/${user_id}/keys" | jq -r '.[].key' 2>/dev/null)
+
+    if [[ -z "$keys" ]]; then
+        print_error "No SSH keys found for $coder_name in GitLab"
+        return 1
+    fi
+
+    IFS=',' read -ra server_list <<< "$servers"
+    for server in "${server_list[@]}"; do
+        print_info "Deploying to ${server}..."
+        local ssh_conn
+        ssh_conn=$(get_ssh_connection "$server")
+
+        # Append keys to authorized_keys on the server
+        while IFS= read -r key; do
+            if ssh "$ssh_conn" "grep -qF '$key' ~/.ssh/authorized_keys 2>/dev/null" 2>/dev/null; then
+                info "Key already present on $server"
+            else
+                echo "$key" | ssh "$ssh_conn" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+                pass "Key deployed to ${server}"
+            fi
+        done <<< "$keys"
+    done
+}
+
+# Audit SSH keys across GitLab and servers
+cmd_key_audit() {
+    print_info "SSH Key Audit - $(date +%Y-%m-%d)"
+    echo ""
+    printf "%-12s %-15s %-12s %-15s\n" "Coder" "GitLab Key" "Server Keys" "Last Active"
+    printf "%-12s %-15s %-12s %-15s\n" "-----" "----------" "-----------" "-----------"
+
+    local gitlab_url
+    gitlab_url=$(get_gitlab_url 2>/dev/null || echo "")
+    local token
+    token=$(get_infra_secret "gitlab.api_token" "" 2>/dev/null || echo "")
+
+    # Read coders from nwp.yml and check their key status
+    local coders
+    coders=$(list_coders_from_config)
+
+    if [[ -z "$coders" ]]; then
+        info "No coders configured"
+        return 0
+    fi
+
+    while IFS= read -r coder_name; do
+        local gl_key_status="unknown"
+        local server_key_status="-"
+        local last_active="-"
+
+        if [[ -n "$gitlab_url" && -n "$token" ]]; then
+            # Check GitLab for SSH keys
+            local user_id
+            user_id=$(curl -s -H "PRIVATE-TOKEN: $token" \
+                "https://${gitlab_url}/api/v4/users?username=${coder_name}" | jq -r '.[0].id // empty' 2>/dev/null)
+
+            if [[ -n "$user_id" ]]; then
+                local key_count
+                key_count=$(curl -s -H "PRIVATE-TOKEN: $token" \
+                    "https://${gitlab_url}/api/v4/users/${user_id}/keys" | jq 'length' 2>/dev/null)
+                gl_key_status="${key_count:-0} key(s)"
+
+                # Get last activity
+                last_active=$(curl -s -H "PRIVATE-TOKEN: $token" \
+                    "https://${gitlab_url}/api/v4/users/${user_id}" | jq -r '.last_activity_on // "-"' 2>/dev/null)
+            else
+                gl_key_status="no user"
+            fi
+        else
+            gl_key_status="no API"
+        fi
+
+        printf "%-12s %-15s %-12s %-15s\n" "$coder_name" "$gl_key_status" "$server_key_status" "$last_active"
+    done <<< "$coders"
+
+    echo ""
+    print_info "Key audit complete"
+}
+
 ################################################################################
 # Main Entry Point
 ################################################################################
@@ -1099,6 +1261,12 @@ main() {
         verify)
             cmd_verify "$@"
             ;;
+        deploy-key)
+            cmd_deploy_key "$@"
+            ;;
+        key-audit)
+            cmd_key_audit
+            ;;
         gitlab-users)
             print_header "GitLab Users"
             gitlab_list_users
@@ -1119,4 +1287,6 @@ main() {
     esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

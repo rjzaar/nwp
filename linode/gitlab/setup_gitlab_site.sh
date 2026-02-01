@@ -284,7 +284,7 @@ create_gitlab_server() {
     "ssh_pubkey": "$ssh_pubkey",
     "hostname": "$domain",
     "email": "$email",
-    "timezone": "America/New_York",
+    "timezone": "$(source "$NWP_ROOT/lib/timezone.sh" && get_default_timezone "$NWP_ROOT/nwp.yml")",
     "disable_root": "yes",
     "gitlab_external_url": "https://$domain",
     "install_runner": "yes",

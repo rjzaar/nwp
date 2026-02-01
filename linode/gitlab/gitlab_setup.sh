@@ -686,7 +686,7 @@ api:
 server:
   ssh_user: "gitlab"
   ssh_port: 22
-  timezone: "America/New_York"
+  timezone: "Australia/Sydney"
   ssh_key_path: "~/.ssh/gitlab_linode.pub"
 
 # GitLab Configuration

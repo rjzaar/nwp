@@ -1,6 +1,6 @@
 # P55: Opportunistic Human Verification
 
-**Status:** PROPOSED
+**Status:** IMPLEMENTED
 **Created:** 2026-01-18
 **Author:** Rob, Claude Opus 4.5
 **Priority:** Medium

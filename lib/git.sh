@@ -288,6 +288,29 @@ git_configure_remotes() {
 # Basic Git Operations
 ################################################################################
 
+# Add all changes to git staging area
+# Usage: git_add_all [repo_path]
+git_add_all() {
+    local repo_path="${1:-.}"
+    (cd "$repo_path" && git add -A)
+}
+
+# Check if repository has uncommitted changes
+# Usage: git_has_changes [repo_path]
+# Returns: 0 if changes exist, 1 if clean
+git_has_changes() {
+    local repo_path="${1:-.}"
+    (cd "$repo_path" && ! git diff --quiet HEAD 2>/dev/null) || \
+    (cd "$repo_path" && ! git diff --cached --quiet HEAD 2>/dev/null)
+}
+
+# Get the current branch name
+# Usage: git_get_current_branch [repo_path]
+git_get_current_branch() {
+    local repo_path="${1:-.}"
+    (cd "$repo_path" && git branch --show-current 2>/dev/null || git rev-parse --abbrev-ref HEAD 2>/dev/null)
+}
+
 # Initialize git repository (wrapper for git_init_repo)
 # Usage: git_init "/path/to/repo"
 git_init() {

@@ -16,6 +16,7 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 # Source shared libraries
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
+source "$PROJECT_ROOT/lib/ssh.sh"
 
 # Trap handler to ensure spinners are stopped
 trap 'stop_spinner' EXIT INT TERM
@@ -135,9 +136,9 @@ main() {
         exit 1
     fi
 
-    # Determine SSH user
-    local ssh_user="gitlab"
-    [ "$server_type" == "dedicated" ] && ssh_user="root"
+    # Determine SSH user via resolution chain
+    local ssh_user
+    ssh_user=$(get_ssh_user "$BASE_NAME")
 
     # Test SSH
     show_step 1 4 "Testing SSH connection to live server"
@@ -204,4 +205,6 @@ main() {
     show_elapsed_time
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

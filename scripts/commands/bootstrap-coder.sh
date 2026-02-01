@@ -580,6 +580,70 @@ register_cli_for_coder() {
 }
 
 ################################################################################
+# Claude API Setup
+################################################################################
+
+# Setup Claude API key for coder (F14)
+setup_claude_api() {
+    local coder_name="$1"
+    local dry_run="$2"
+
+    # Check if Claude integration is enabled
+    if ! is_claude_enabled "$CONFIG_FILE" 2>/dev/null; then
+        info "Claude API integration not enabled (set settings.claude.enabled: true to enable)"
+        return 0
+    fi
+
+    print_header "Claude API Setup"
+
+    source "$PROJECT_ROOT/lib/claude-api.sh"
+
+    # Get or create workspace
+    local workspace_id
+    workspace_id=$(awk '/^settings:/{found=1} found && /claude:/{in_claude=1} in_claude && /workspace_id:/{print $2; exit}' "$CONFIG_FILE" 2>/dev/null)
+
+    if [[ -z "$workspace_id" ]]; then
+        if [[ "$dry_run" == "true" ]]; then
+            info "[DRY-RUN] Would create Claude workspace 'nwp'"
+            info "[DRY-RUN] Would provision API key for ${coder_name}"
+            return 0
+        fi
+
+        workspace_id=$(create_nwp_workspace "nwp")
+        if [[ -z "$workspace_id" ]]; then
+            warn "Could not create Claude workspace - skipping API setup"
+            info "You can configure Claude API manually later"
+            return 0
+        fi
+    fi
+
+    # Provision coder API key
+    if [[ "$dry_run" == "true" ]]; then
+        info "[DRY-RUN] Would provision Claude API key for ${coder_name}"
+        return 0
+    fi
+
+    local api_key
+    api_key=$(provision_coder_api_key "$coder_name" "$workspace_id")
+
+    if [[ -n "$api_key" ]]; then
+        # Write ANTHROPIC_API_KEY to coder's environment
+        local env_file="$HOME/.nwp_env"
+        if [[ -f "$env_file" ]]; then
+            # Remove existing ANTHROPIC_API_KEY if present
+            sed -i '/^export ANTHROPIC_API_KEY=/d' "$env_file"
+        fi
+        echo "export ANTHROPIC_API_KEY=\"${api_key}\"" >> "$env_file"
+        pass "Claude API key written to ${env_file}"
+        info "Source it with: source ${env_file}"
+    else
+        warn "Could not provision Claude API key - you can set it up manually later"
+    fi
+
+    echo ""
+}
+
+################################################################################
 # Next Steps Display
 ################################################################################
 
@@ -719,7 +783,10 @@ main() {
     # Step 6: Register CLI command
     register_cli_for_coder "$coder_name" "$dry_run"
 
-    # Step 7: Show next steps
+    # Step 7: Setup Claude API (F14)
+    setup_claude_api "$coder_name" "$dry_run"
+
+    # Step 8: Show next steps
     show_next_steps "$coder_name" "$base_domain"
 
     if $dry_run; then
@@ -730,4 +797,6 @@ main() {
 }
 
 # Run main function
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

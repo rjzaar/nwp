@@ -21,10 +21,10 @@ config:
       description: Round-trip test, integration
       typical_time: 120
 statistics:
-  total_items: 575
+  total_items: 569
   machine:
-    verified: 511
-    coverage_percent: 88.9
+    verified: 514
+    coverage_percent: 90.3
   human:
     verified: 7
     coverage_percent: 1.2
@@ -95,9 +95,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:02+11:00'
-          depth: basic
-          duration_seconds: 9
+          verified_at: '2026-02-01T21:12:20+11:00'
+          depth: thorough
+          duration_seconds: 6
     - text: Test Docker installation and verify ddev starts correctly
       completed: true
       completed_by: greg
@@ -158,8 +158,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:03+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:21+11:00'
+          depth: thorough
           duration_seconds: 1
     - text: Verify mkcert generates valid local certificates
       completed: false
@@ -220,8 +220,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:03+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:21+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test Linode CLI authentication if configured
       completed: false
@@ -273,9 +273,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:03+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:12:22+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Check that all error messages are clear and actionable
       completed: false
       completed_by: null
@@ -443,9 +443,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:03+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:12:24+11:00'
+          depth: thorough
+          duration_seconds: 2
     - text: Test install with 'os' recipe (Open Social)
       completed: false
       completed_by: null
@@ -1021,9 +1021,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:05+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:12:27+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Check admin login works with generated credentials
       completed: true
       completed_by: greg
@@ -1126,8 +1126,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:07+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:29+11:00'
+          depth: thorough
           duration_seconds: 1
     - text: Test install with -s=N (resume from step N)
       completed: true
@@ -1184,9 +1184,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:07+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:12:30+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Test install with --resume flag
       completed: false
       completed_by: null
@@ -1239,8 +1239,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:07+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:30+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test install with -p=t (testing purpose)
       completed: false
@@ -1297,8 +1297,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:07+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:30+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test install with -p=i (indefinite purpose)
       completed: false
@@ -1355,9 +1355,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:08+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:12:30+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Test install with -p=p (permanent purpose)
       completed: false
       completed_by: null
@@ -1413,8 +1413,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:08+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:30+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test install with -p=m (migration purpose - stub only)
       completed: false
@@ -1471,8 +1471,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:08+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:30+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test install with c flag (create test content)
       completed: false
@@ -1526,9 +1526,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:08+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:12:31+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Verify nwp.yml is updated correctly after install
       completed: true
       completed_by: greg
@@ -1585,8 +1585,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:08+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:31+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test install with custom target name
       completed: false
@@ -1643,8 +1643,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:08+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:31+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test install with auto mode enabled in recipe
       completed: false
@@ -1702,8 +1702,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:08+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:31+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test install_step tracking in nwp.yml
       completed: false
@@ -1761,9 +1761,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:09+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:12:31+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Test interactive option selection works
       completed: false
       completed_by: null
@@ -1901,9 +1901,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:10+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:12:32+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Run status.sh <sitename> - verify detailed info shown
       completed: false
       completed_by: null
@@ -1964,8 +1964,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:12+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:35+11:00'
+          depth: thorough
           duration_seconds: 2
     - text: Check running/stopped status is accurate
       completed: false
@@ -2088,8 +2088,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:13+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:37+11:00'
+          depth: thorough
           duration_seconds: 1
     - text: Test health check indicators (database, files, config)
       completed: false
@@ -2149,9 +2149,9 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:13+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:12:39+11:00'
+          depth: thorough
+          duration_seconds: 2
     verified: false
     verified_by: null
     verified_at: null
@@ -2244,8 +2244,8 @@ features:
               timeout: 15
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:14+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:40+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test changing site options (theme, modules, etc.)
       completed: false
@@ -2291,7 +2291,7 @@ features:
             commands:
             - cmd: bash -n scripts/commands/modify.sh
               expect_exit: 0
-            - cmd: grep -qE 'set_option|change.*option' scripts/commands/modify.sh
+            - cmd: grep -qiE 'option.*install|modify.*option|OPTION_INSTALLED' scripts/commands/modify.sh
               expect_exit: 0
           paranoid:
             commands:
@@ -2301,8 +2301,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:14+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:40+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify changes are saved to nwp.yml correctly
       completed: false
@@ -2386,8 +2386,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:14+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:40+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test cancel/exit without saving
       completed: false
@@ -2443,8 +2443,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:14+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:41+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check keyboard navigation (arrows, enter, escape)
       completed: false
@@ -2524,8 +2524,8 @@ features:
               timeout: 20
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:14+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:41+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -2579,9 +2579,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:14+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:12:50+11:00'
+          depth: thorough
+          duration_seconds: 9
       human:
         auto_loggable: true
         trigger_commands:
@@ -2648,9 +2648,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:14+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:12:51+11:00'
+          depth: thorough
+          duration_seconds: 1
       human:
         auto_loggable: true
         trigger_commands:
@@ -2975,8 +2975,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:15+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:12:51+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify backup naming convention includes timestamp
       completed: false
@@ -3110,9 +3110,9 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:15+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:13:01+11:00'
+          depth: thorough
+          duration_seconds: 10
     - text: Test restore from database-only backup
       completed: false
       completed_by: null
@@ -3343,9 +3343,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:16+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:13:04+11:00'
+          depth: thorough
+          duration_seconds: 3
     - text: Test restore to different site name
       completed: false
       completed_by: null
@@ -3680,9 +3680,9 @@ features:
               timeout: 120
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:17+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:14:15+11:00'
+          depth: thorough
+          duration_seconds: 71
     - text: 'Test files-only copy: ./copy.sh -f source dest'
       completed: false
       completed_by: null
@@ -4044,9 +4044,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:19+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:15:15+11:00'
+          depth: thorough
+          duration_seconds: 59
     - text: Test delete with -b backup flag (creates backup first)
       completed: false
       completed_by: null
@@ -4112,9 +4112,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:19+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:16:15+11:00'
+          depth: thorough
+          duration_seconds: 60
     - text: Verify DDEV project is stopped and removed
       completed: false
       completed_by: null
@@ -4372,8 +4372,8 @@ features:
               timeout: 180
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:23+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:16+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Test prod mode: ./make.sh -p <sitename>'
       completed: false
@@ -4450,8 +4450,8 @@ features:
               timeout: 180
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:23+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:16+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify dev mode enables devel module and disables caching
       completed: false
@@ -4507,8 +4507,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:23+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:16+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify prod mode uninstalls dev modules and enables caching
       completed: false
@@ -4564,8 +4564,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:23+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:16+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check CSS/JS aggregation settings change correctly
       completed: false
@@ -4612,7 +4612,7 @@ features:
             commands:
             - cmd: bash -n scripts/commands/make.sh
               expect_exit: 0
-            - cmd: grep -qE 'css.*aggregat|js.*aggregat' scripts/commands/make.sh
+            - cmd: grep -qiE 'css.*aggregat|js.*aggregat' scripts/commands/make.sh
               expect_exit: 0
           paranoid:
             commands:
@@ -4622,8 +4622,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:23+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:16+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with -y auto-confirm flag
       completed: false
@@ -4700,8 +4700,8 @@ features:
               timeout: 180
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:23+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:17+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -5228,8 +5228,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:24+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:18+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -5303,8 +5303,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:25+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:18+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify DNS configuration with Cloudflare
       completed: false
@@ -5372,8 +5372,8 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:25+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:18+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check SSL certificate is installed correctly
       completed: false
@@ -5438,8 +5438,8 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:25+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:19+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify site is accessible at sitename.nwpcode.org
       completed: false
@@ -5500,8 +5500,8 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:25+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:19+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test SSH access to provisioned server
       completed: false
@@ -5566,8 +5566,8 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:25+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:19+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify firewall rules are applied
       completed: false
@@ -5629,8 +5629,8 @@ features:
               timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:25+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:19+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -7676,9 +7676,9 @@ features:
         reason: Requires Linode API and production infrastructure for actual testing
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:27+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:16:23+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Verify production settings are applied
       completed: false
       completed_by: null
@@ -7710,8 +7710,8 @@ features:
         reason: Requires production server access to verify settings
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:27+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:23+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check security hardening is enabled
       completed: false
@@ -7743,10 +7743,10 @@ features:
               expect_exit: 0
         reason: Requires production server to verify security hardening
         state:
-          verified: false
-          verified_at: null
-          depth: null
-          duration_seconds: null
+          verified: true
+          verified_at: '2026-02-01T21:16:23+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Verify caching and performance settings
       completed: false
       completed_by: null
@@ -7777,7 +7777,7 @@ features:
               expect_exit: 0
         reason: Requires production server to verify caching configuration
         state:
-          verified: false
+          verified: true
     verified: false
     verified_by: null
     verified_at: null
@@ -7842,8 +7842,8 @@ features:
         reason: Requires Linode API and server infrastructure for actual testing
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:27+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:23+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify Castopod is installed correctly
       completed: false
@@ -7887,8 +7887,8 @@ features:
         reason: Requires running podcast server to verify Castopod installation
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:27+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:23+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check podcast admin interface works
       completed: false
@@ -7932,9 +7932,9 @@ features:
         reason: Requires running podcast server to test admin interface
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:28+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:16:23+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Test podcast RSS feed generation
       completed: false
       completed_by: null
@@ -7977,8 +7977,8 @@ features:
         reason: Requires running podcast server with created podcast to test RSS feed
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:23+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify media upload functionality
       completed: false
@@ -8089,8 +8089,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:24+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify cron jobs are created correctly
       completed: false
@@ -8148,8 +8148,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:24+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check scheduled backups run as expected
       completed: false
@@ -8208,8 +8208,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:24+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test schedule removal
       completed: false
@@ -8267,8 +8267,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:24+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify schedule listing works
       completed: false
@@ -8387,8 +8387,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:25+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Test security check: ./security.sh check <sitename>'
       completed: false
@@ -8446,8 +8446,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:25+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Test security update: ./security.sh update <sitename>'
       completed: false
@@ -8506,8 +8506,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:25+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify file permissions are checked correctly
       completed: false
@@ -8565,8 +8565,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:29+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:25+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check dev module detection works
       completed: false
@@ -8624,9 +8624,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:29+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:16:26+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Verify exposed file detection works
       completed: false
       completed_by: null
@@ -8744,8 +8744,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:29+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:26+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify keys are created in keys/ directory
       completed: false
@@ -8803,8 +8803,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:29+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:26+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check key is installed to ~/.ssh/nwp
       completed: false
@@ -8862,8 +8862,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:29+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:26+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test connection to remote server with generated key
       completed: false
@@ -8921,8 +8921,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:29+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:26+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify public key output for Linode
       completed: false
@@ -9041,8 +9041,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:29+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:27+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify all DDEV projects are stopped
       completed: false
@@ -9100,8 +9100,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:29+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:27+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check NWP directories are removed
       completed: false
@@ -9159,9 +9159,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:30+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:16:27+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Verify Docker resources are cleaned up
       completed: false
       completed_by: null
@@ -9218,8 +9218,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:30+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:27+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test partial uninstall options if available
       completed: false
@@ -9339,8 +9339,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:30+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:28+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify markdown generation works
       completed: false
@@ -9398,8 +9398,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:30+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:28+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test adding badges to site README
       completed: false
@@ -9457,8 +9457,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:30+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:28+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check coverage threshold validation
       completed: false
@@ -9577,8 +9577,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:30+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:28+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify email account creation for site
       completed: false
@@ -9639,9 +9639,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:30+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:16:29+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Test email deliverability
       completed: false
       completed_by: null
@@ -9698,8 +9698,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:30+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:29+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check email rerouting configuration
       completed: false
@@ -9827,8 +9827,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:29+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify error capture and sanitization
       completed: false
@@ -9892,8 +9892,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:29+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test GitLab issue URL generation
       completed: false
@@ -9951,8 +9951,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:29+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check clipboard copy mode
       completed: false
@@ -10083,8 +10083,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:30+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify rollback execution
       completed: false
@@ -10151,8 +10151,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:30+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test rollback verification
       completed: false
@@ -10216,8 +10216,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:30+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check cleanup functionality
       completed: false
@@ -10284,8 +10284,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:30+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -10392,8 +10392,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:30+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify bucket listing
       completed: false
@@ -10457,8 +10457,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:30+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test file upload to bucket
       completed: false
@@ -10522,8 +10522,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:31+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check file deletion
       completed: false
@@ -10580,8 +10580,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:31+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -10683,8 +10683,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:31+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify dependency installation
       completed: false
@@ -10742,8 +10742,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:31+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test watch mode for live reload
       completed: false
@@ -10801,8 +10801,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:31+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check production build
       completed: false
@@ -10860,8 +10860,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:32+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test linting functionality
       completed: false
@@ -10919,8 +10919,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:32+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -11023,8 +11023,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:32+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify test execution
       completed: false
@@ -11082,8 +11082,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:32+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check MR description generation
       completed: false
@@ -11144,8 +11144,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:32+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test GitLab CLI integration
       completed: false
@@ -11209,9 +11209,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:33+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:16:32+11:00'
+          depth: thorough
+          duration_seconds: 0
     verified: false
     verified_by: null
     verified_at: null
@@ -11313,8 +11313,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:33+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:33+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify NS records in Cloudflare
       completed: false
@@ -11378,8 +11378,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:33+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:33+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test listing coders
       completed: false
@@ -11443,8 +11443,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:33+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:33+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check coder removal
       completed: false
@@ -11514,8 +11514,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:33+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:33+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -11625,8 +11625,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:33+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:34+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify onboarding status checks (GL, GRP, SSH, NS, DNS, SRV, SITE)
       completed: false
@@ -11690,8 +11690,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:33+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:34+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test coder promotion functionality
       completed: false
@@ -11761,8 +11761,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:33+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:34+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check bulk actions (delete, promote)
       completed: false
@@ -11829,8 +11829,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:33+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:34+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify GitLab sync functionality
       completed: false
@@ -11888,8 +11888,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:33+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:34+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -11994,8 +11994,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:34+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:35+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify X-Robots-Tag header checking
       completed: false
@@ -12059,8 +12059,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:34+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:35+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test sitemap.xml verification
       completed: false
@@ -12127,8 +12127,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:34+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:35+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check staging protection verification
       completed: false
@@ -12195,8 +12195,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:34+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:35+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test production SEO optimization checks
       completed: false
@@ -12266,8 +12266,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:34+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:35+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -12373,8 +12373,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:34+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:36+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify BATS integration tests
       completed: false
@@ -12442,8 +12442,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:34+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:36+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check test output formatting
       completed: false
@@ -12511,8 +12511,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:34+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:36+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test selective test execution
       completed: false
@@ -12580,8 +12580,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:34+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:36+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -12677,8 +12677,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:35+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:36+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify sync functionality
       completed: false
@@ -12742,9 +12742,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:35+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:16:37+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Check status reporting
       completed: false
       completed_by: null
@@ -12804,8 +12804,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:35+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:37+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test merge and rebase strategies
       completed: false
@@ -12866,8 +12866,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:35+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:37+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -12966,8 +12966,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:35+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:37+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify data secret detection
       completed: false
@@ -13028,8 +13028,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:35+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:37+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check backup creation
       completed: false
@@ -13090,9 +13090,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:35+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:16:38+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Test NWP root migration
       completed: false
       completed_by: null
@@ -13149,8 +13149,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:35+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:38+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -13255,8 +13255,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:35+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:38+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify CSP header checking
       completed: false
@@ -13320,8 +13320,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:35+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:38+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check X-Frame-Options validation
       completed: false
@@ -13385,8 +13385,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:36+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:38+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test security grading system
       completed: false
@@ -13450,8 +13450,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:36+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:38+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify JSON output mode
       completed: false
@@ -13508,8 +13508,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:36+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:39+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -13611,8 +13611,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:36+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:39+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify checklist editing functionality
       completed: false
@@ -13679,8 +13679,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:36+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:39+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check verification status tracking
       completed: false
@@ -13742,8 +13742,8 @@ features:
               timeout: 60
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:49+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:52+11:00'
+          depth: thorough
           duration_seconds: 13
     - text: Test file change detection
       completed: false
@@ -13802,8 +13802,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:49+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:52+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify history tracking
       completed: false
@@ -13863,9 +13863,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:49+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:16:53+11:00'
+          depth: thorough
+          duration_seconds: 1
     verified: false
     verified_by: null
     verified_at: null
@@ -13927,8 +13927,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:49+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:53+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify pl install works
       completed: false
@@ -13986,8 +13986,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:49+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:53+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify pl backup works
       completed: false
@@ -14045,8 +14045,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:49+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:53+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check pl status works
       completed: false
@@ -14096,8 +14096,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:50+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:55+11:00'
+          depth: thorough
           duration_seconds: 1
     - text: Test tab completion if available
       completed: false
@@ -14155,8 +14155,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:50+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:55+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify help output is correct
       completed: false
@@ -14208,8 +14208,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:50+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:55+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -14276,9 +14276,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:50+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:16:56+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Test with -t flag (PHPStan only)
       completed: false
       completed_by: null
@@ -14333,8 +14333,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:51+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:56+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with -u flag (PHPUnit unit tests only)
       completed: false
@@ -14393,8 +14393,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:51+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:56+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with -k flag (PHPUnit kernel tests only)
       completed: false
@@ -14453,8 +14453,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:51+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:56+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with -f flag (PHPUnit functional tests only)
       completed: false
@@ -14513,8 +14513,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:51+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:56+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with -s flag (Behat smoke tests only)
       completed: false
@@ -14573,8 +14573,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:51+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:56+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with -b flag (full Behat tests)
       completed: false
@@ -14633,8 +14633,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:51+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:56+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with -p flag (parallel Behat execution)
       completed: false
@@ -14690,9 +14690,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:52+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:16:56+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Test with -a flag (run all tests)
       completed: false
       completed_by: null
@@ -14747,8 +14747,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:52+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:57+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with --ci flag (CI mode with JUnit output)
       completed: false
@@ -14816,8 +14816,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:52+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:57+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Test combined flags: -ltu (lint, stan, unit)'
       completed: false
@@ -14863,7 +14863,7 @@ features:
             commands:
             - cmd: bash -n scripts/commands/test.sh
               expect_exit: 0
-            - cmd: grep -qE 'combined|multiple.*flag|\-l.*\-t' scripts/commands/test.sh
+            - cmd: grep -qiE 'combined|multiple.*flag|\-l.*\-t' scripts/commands/test.sh
               expect_exit: 0
           paranoid:
             commands:
@@ -14873,8 +14873,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:52+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:57+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify test reports are generated in CI mode
       completed: false
@@ -14930,8 +14930,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:52+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:57+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check that missing test dependencies are detected
       completed: false
@@ -15058,8 +15058,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:52+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:57+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with -u flag (run all PHPUnit tests)
       completed: false
@@ -15112,9 +15112,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:53+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:16:58+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Test with -U flag (run PHPUnit unit tests only)
       completed: false
       completed_by: null
@@ -15166,8 +15166,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:53+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:58+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with -k flag (run PHPUnit kernel tests only)
       completed: false
@@ -15220,8 +15220,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:53+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:58+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with -s flag (run PHPStan static analysis)
       completed: false
@@ -15274,8 +15274,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:53+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:58+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with -c flag (run PHP CodeSniffer)
       completed: false
@@ -15328,8 +15328,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:53+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:58+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with -a flag (run all tests)
       completed: false
@@ -15382,8 +15382,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:53+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:58+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with -f flag (run specific Behat feature)
       completed: false
@@ -15436,9 +15436,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:54+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:16:58+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Test with -t flag (run tests with specific tag)
       completed: false
       completed_by: null
@@ -15490,8 +15490,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:54+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:59+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with --list-features flag
       completed: false
@@ -15544,8 +15544,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:54+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:59+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with --headless flag (Behat headless mode)
       completed: false
@@ -15598,8 +15598,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:54+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:59+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with --headed flag (Behat with visible browser)
       completed: false
@@ -15652,8 +15652,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:54+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:59+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with --group flag (PHPUnit test group)
       completed: false
@@ -15706,8 +15706,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:54+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:16:59+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with --coverage flag (generate code coverage)
       completed: false
@@ -15760,9 +15760,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:54+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:00+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Test with --testdox flag (PHPUnit testdox output)
       completed: false
       completed_by: null
@@ -15814,8 +15814,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:55+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:00+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with --stop-on-failure flag
       completed: false
@@ -15868,8 +15868,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:55+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:00+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify Selenium Chrome installation works
       completed: false
@@ -15925,8 +15925,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:55+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:00+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify Behat configuration generation works
       completed: false
@@ -15982,8 +15982,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:55+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:00+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check test dependency installation (Behat, PHPUnit, etc.)
       completed: false
@@ -16097,8 +16097,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:55+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:01+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify symlink creation in /usr/local/bin/
       completed: false
@@ -16147,8 +16147,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:55+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:01+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test find_available_cli_name (pl, pl1, pl2, etc.)
       completed: false
@@ -16200,8 +16200,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:55+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:01+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify nwp.yml cli_command setting is updated
       completed: false
@@ -16250,9 +16250,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:56+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:17:01+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Test unregister_cli_command function
       completed: false
       completed_by: null
@@ -16300,8 +16300,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:56+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:01+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify get_cli_command reads from nwp.yml
       completed: false
@@ -16335,8 +16335,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:56+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:01+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test switching CLI command names
       completed: false
@@ -16388,8 +16388,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:56+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:02+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify stale registration cleanup
       completed: false
@@ -16451,8 +16451,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:56+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:02+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -16497,7 +16497,7 @@ features:
           commands:
           - cmd: bash -n lib/ddev-generate.sh
             expect_exit: 0
-          - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null'
+          - cmd: test -f lib/ddev-generate.sh
             expect_exit: 0
       state:
         verified: false
@@ -16546,9 +16546,9 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
           paranoid:
             commands:
             - cmd: bash -n lib/ddev-generate.sh
@@ -16556,13 +16556,13 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:56+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:02+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify config.yaml is created correctly
       completed: false
@@ -16604,9 +16604,9 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
           paranoid:
             commands:
             - cmd: bash -n lib/ddev-generate.sh
@@ -16614,13 +16614,13 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:56+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:02+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with different PHP versions (8.1, 8.2, 8.3)
       completed: false
@@ -16662,9 +16662,9 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
           paranoid:
             commands:
             - cmd: bash -n lib/ddev-generate.sh
@@ -16672,13 +16672,13 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:56+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:02+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with different database types (mysql, mariadb)
       completed: false
@@ -16720,9 +16720,9 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
           paranoid:
             commands:
             - cmd: bash -n lib/ddev-generate.sh
@@ -16730,13 +16730,13 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:56+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:02+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify webserver type configuration (nginx-fpm, apache-fpm)
       completed: false
@@ -16778,9 +16778,9 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
           paranoid:
             commands:
             - cmd: bash -n lib/ddev-generate.sh
@@ -16788,13 +16788,13 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:56+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:03+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test environment variable injection
       completed: false
@@ -16836,9 +16836,9 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
           paranoid:
             commands:
             - cmd: bash -n lib/ddev-generate.sh
@@ -16846,13 +16846,13 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:57+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:03+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify config.local.yaml.example generation
       completed: false
@@ -16894,9 +16894,9 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
           paranoid:
             commands:
             - cmd: bash -n lib/ddev-generate.sh
@@ -16904,13 +16904,13 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:57+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:03+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test service recommendations (Redis, Solr, Memcache)
       completed: false
@@ -16952,9 +16952,9 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
           paranoid:
             commands:
             - cmd: bash -n lib/ddev-generate.sh
@@ -16962,13 +16962,13 @@ features:
               timeout: 10
             - cmd: test -f lib/ddev-generate.sh
               expect_exit: 0
-            - cmd: bash -c 'source lib/ddev-generate.sh 2>/dev/null; exit 0'
+            - cmd: grep -q 'ddev-generate' lib/ddev-generate.sh
               expect_exit: 0
-              timeout: 30
+              timeout: 10
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:57+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:03+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -17054,8 +17054,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:57+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:03+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify .nwp-developer.yml creation
       completed: false
@@ -17112,8 +17112,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:57+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:03+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test get_developer_role function
       completed: false
@@ -17167,8 +17167,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:57+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:04+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test get_developer_level function
       completed: false
@@ -17219,8 +17219,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:57+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:04+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify role_to_level and level_to_role conversions
       completed: false
@@ -17279,8 +17279,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:57+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:04+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test can_developer permission checks
       completed: false
@@ -17337,8 +17337,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:57+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:04+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test set_developer_role function
       completed: false
@@ -17395,8 +17395,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:58+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:04+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify sync_developer_info from GitLab
       completed: false
@@ -17497,8 +17497,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:58+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:04+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify developer_push wrapper (blocks push to main for non-core)
       completed: false
@@ -17559,9 +17559,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:58+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:05+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Verify developer_merge wrapper (blocks merge for non-core)
       completed: false
       completed_by: null
@@ -17618,8 +17618,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:58+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:05+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -17698,8 +17698,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:58+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:05+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify recipe-specific templates are used
       completed: false
@@ -17743,9 +17743,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:59+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:17:05+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Test profile-based template fallback
       completed: false
       completed_by: null
@@ -17788,8 +17788,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:59+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:05+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify variable substitution works
       completed: false
@@ -17833,8 +17833,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:59+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:05+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test service configuration (Redis, Solr, Memcache)
       completed: false
@@ -17880,8 +17880,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:59+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:05+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify .env.local.example creation
       completed: false
@@ -17925,8 +17925,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:59+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:06+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with different profiles (social, varbase, standard)
       completed: false
@@ -17972,8 +17972,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:59+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:06+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -18048,8 +18048,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:59+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:06+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify update_site_options updates nwp.yml
       completed: false
@@ -18116,8 +18116,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:59+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:06+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test apply_drupal_options function
       completed: false
@@ -18176,8 +18176,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:07:59+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:06+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test apply_moodle_options function
       completed: false
@@ -18233,8 +18233,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:00+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:06+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test apply_gitlab_options function
       completed: false
@@ -18290,8 +18290,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:00+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:07+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify get_recipe_value YAML parsing
       completed: false
@@ -18356,8 +18356,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:00+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:07+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test get_recipe_list_value for arrays
       completed: false
@@ -18416,8 +18416,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:00+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:07+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify get_settings_value function
       completed: false
@@ -18476,8 +18476,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:00+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:07+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test recipe_exists validation
       completed: false
@@ -18535,8 +18535,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:00+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:07+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify validate_recipe function
       completed: false
@@ -18595,8 +18595,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:00+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:07+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test list_recipes display
       completed: false
@@ -18655,9 +18655,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:01+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:17:08+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Verify install_git_profile function
       completed: false
       completed_by: null
@@ -18714,8 +18714,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:01+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:08+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test install_git_modules function
       completed: false
@@ -18773,8 +18773,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:01+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:08+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify pre_register_live_dns function
       completed: false
@@ -18833,8 +18833,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:01+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:08+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test generate_live_settings function
       completed: false
@@ -18892,8 +18892,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:01+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:08+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify create_test_content function
       completed: false
@@ -19016,8 +19016,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:01+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:09+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 1: Initialize project with Composer'
       completed: false
@@ -19063,8 +19063,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:01+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:09+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 1: Clone project from Git (source_git)'
       completed: false
@@ -19110,8 +19110,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:02+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:09+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 2: Generate environment configuration'
       completed: false
@@ -19158,8 +19158,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:02+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:09+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 3: Configure DDEV'
       completed: false
@@ -19206,8 +19206,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:02+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:09+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 4: Memory configuration'
       completed: false
@@ -19253,8 +19253,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:02+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:09+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 5: Launch DDEV services'
       completed: false
@@ -19300,9 +19300,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:02+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:10+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: 'Verify Step 6: Verify Drush is available'
       completed: false
       completed_by: null
@@ -19347,8 +19347,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:02+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:10+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 7: Configure file system and environment detection'
       completed: false
@@ -19394,8 +19394,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:02+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:10+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 8: Install Drupal profile'
       completed: false
@@ -19441,8 +19441,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:02+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:10+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 9: Enable core modules and post-install'
       completed: false
@@ -19488,8 +19488,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:03+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:10+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test resume from step functionality
       completed: false
@@ -19536,8 +19536,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:03+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:10+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify GitLab Composer authentication
       completed: false
@@ -19584,8 +19584,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:03+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:10+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test post-install module enabling
       completed: false
@@ -19631,9 +19631,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:03+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:11+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Test post-install script execution
       completed: false
       completed_by: null
@@ -19678,8 +19678,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:03+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:11+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify site registration in nwp.yml
       completed: false
@@ -19787,8 +19787,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:03+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:11+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 1: Create directory structure'
       completed: false
@@ -19834,9 +19834,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:04+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:17:11+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: 'Verify Step 2: Create docker-compose.yml'
       completed: false
       completed_by: null
@@ -19881,8 +19881,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:04+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:11+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 3: Create environment configuration'
       completed: false
@@ -19928,8 +19928,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:04+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:12+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 4: Start GitLab containers'
       completed: false
@@ -19975,8 +19975,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:04+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:12+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test reduced memory mode configuration
       completed: false
@@ -20022,8 +20022,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:04+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:12+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify README.md generation
       completed: false
@@ -20069,8 +20069,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:04+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:12+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test site registration in nwp.yml
       completed: false
@@ -20177,8 +20177,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:04+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:12+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 1: Clone Moodle from Git'
       completed: false
@@ -20223,8 +20223,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:05+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:13+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 2: Configure DDEV'
       completed: false
@@ -20269,8 +20269,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:05+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:13+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 3: Memory configuration'
       completed: false
@@ -20315,8 +20315,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:05+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:13+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 4: Launch DDEV services'
       completed: false
@@ -20361,8 +20361,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:05+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:13+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 5: Create moodledata directory'
       completed: false
@@ -20407,8 +20407,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:05+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:13+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 6: Install Moodle'
       completed: false
@@ -20454,8 +20454,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:05+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:13+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: 'Verify Step 7: Post-installation configuration'
       completed: false
@@ -20501,8 +20501,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:05+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:14+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with different Moodle branches
       completed: false
@@ -20548,8 +20548,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:05+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:14+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify site registration in nwp.yml
       completed: false
@@ -20658,8 +20658,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:06+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:14+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify podcast.sh integration
       completed: false
@@ -20706,8 +20706,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:06+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:15+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test prerequisite checking
       completed: false
@@ -20753,8 +20753,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:06+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:15+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify domain configuration
       completed: false
@@ -20800,8 +20800,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:06+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:15+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test Linode region selection
       completed: false
@@ -20847,8 +20847,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:06+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:15+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify B2 region configuration
       completed: false
@@ -20894,9 +20894,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:07+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:17:15+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Test media subdomain setup
       completed: false
       completed_by: null
@@ -20941,8 +20941,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:07+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:15+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify site registration in nwp.yml
       completed: false
@@ -21050,8 +21050,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:07+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:16+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify get_total_steps for each environment
       completed: false
@@ -21103,8 +21103,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:07+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:16+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test get_step_info function
       completed: false
@@ -21156,8 +21156,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:07+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:16+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify get_install_step from nwp.yml
       completed: false
@@ -21209,8 +21209,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:07+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:16+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test set_install_step updates nwp.yml
       completed: false
@@ -21262,9 +21262,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:08+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:17:16+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Verify mark_install_complete function
       completed: false
       completed_by: null
@@ -21315,8 +21315,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:08+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:16+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test is_install_complete checking
       completed: false
@@ -21368,8 +21368,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:08+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:17+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify get_install_status_display function
       completed: false
@@ -21421,8 +21421,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:08+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:17+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test show_steps_detail display
       completed: false
@@ -21474,8 +21474,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:08+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:17+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify environment-specific steps (dev, stage, live)
       completed: false
@@ -22086,8 +22086,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:10+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:18+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify cursor_hide and cursor_show
       completed: false
@@ -22149,8 +22149,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:10+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:18+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test clear_screen and clear_line
       completed: false
@@ -22212,8 +22212,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:10+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:18+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify read_key function (UP, DOWN, LEFT, RIGHT)
       completed: false
@@ -22278,8 +22278,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:10+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:19+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test ENTER and SPACE key detection
       completed: false
@@ -22341,8 +22341,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:10+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:19+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify ESC key detection
       completed: false
@@ -22396,8 +22396,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:10+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:19+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -22474,8 +22474,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:11+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:19+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify checkbox selection works
       completed: false
@@ -22542,8 +22542,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:11+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:19+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test form input fields
       completed: false
@@ -22609,9 +22609,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:11+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:20+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Check color rendering in different terminals
       completed: false
       completed_by: null
@@ -22676,8 +22676,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:11+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:20+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify keyboard shortcuts work correctly
       completed: false
@@ -22738,8 +22738,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:11+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:20+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -22822,9 +22822,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:12+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:17:20+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Verify space bar toggles selection
       completed: false
       completed_by: null
@@ -22873,8 +22873,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:12+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:20+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check arrow key navigation
       completed: false
@@ -22924,8 +22924,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:12+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:20+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test Enter to confirm selection
       completed: false
@@ -22975,8 +22975,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:12+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:21+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify Escape to cancel
       completed: false
@@ -23026,8 +23026,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:12+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:21+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -23103,8 +23103,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:12+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:21+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test writing/updating YAML values
       completed: false
@@ -23169,8 +23169,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:12+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:21+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify nested value handling
       completed: false
@@ -23235,8 +23235,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:13+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:21+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check array handling
       completed: false
@@ -23301,8 +23301,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:13+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:21+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test with special characters in values
       completed: false
@@ -23391,8 +23391,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:13+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:22+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -23472,8 +23472,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:13+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:22+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test get_setting() reads from nwp.yml
       completed: false
@@ -23542,8 +23542,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:13+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:22+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify sitename validation
       completed: false
@@ -23615,8 +23615,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:13+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:22+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check prompt functions work correctly
       completed: false
@@ -23681,8 +23681,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:13+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:22+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test path handling utilities
       completed: false
@@ -23742,8 +23742,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:14+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:23+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -23822,8 +23822,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:14+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:23+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify colors display correctly
       completed: false
@@ -23891,8 +23891,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:14+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:23+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check print_header formatting
       completed: false
@@ -23957,8 +23957,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:14+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:23+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test print_error output
       completed: false
@@ -24023,9 +24023,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:14+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:24+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Verify ocmsg debug output
       completed: false
       completed_by: null
@@ -24082,8 +24082,8 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:14+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:24+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -24163,8 +24163,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:15+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:24+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify git bundle creation
       completed: false
@@ -24235,8 +24235,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:15+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:24+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test GitLab API project creation
       completed: false
@@ -24305,8 +24305,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:15+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:24+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check git push to remote
       completed: false
@@ -24374,8 +24374,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:15+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:25+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify incremental backup handling
       completed: false
@@ -24438,9 +24438,9 @@ features:
             - cmd: bash -c 'source ~/nwp/lib/ui.sh && source ~/nwp/lib/common.sh && source ~/nwp/lib/git.sh && declare -F gitlab_api_create_project gitlab_api_list_projects | wc -l | grep -q 2'
               expect_exit: 0
         state:
-          verified: false
-          verified_at: null
-          depth: null
+          verified: true
+          verified_at: '2026-02-01T21:17:25+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -25513,9 +25513,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:18+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:27+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Verify badge generation for failing status
       completed: false
       completed_by: null
@@ -25579,8 +25579,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:18+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:27+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check badge output format (SVG or URL)
       completed: false
@@ -25649,8 +25649,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:18+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:27+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test badge color coding
       completed: false
@@ -25715,8 +25715,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:18+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:27+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -25811,8 +25811,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:18+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:27+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify state saving between steps
       completed: false
@@ -25877,9 +25877,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:18+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:28+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Check state restoration on resume
       completed: false
       completed_by: null
@@ -25943,8 +25943,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:18+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:28+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test state cleanup on completion
       completed: false
@@ -26009,8 +26009,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:19+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:28+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -26106,8 +26106,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:19+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:28+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify production database access
       completed: false
@@ -26173,8 +26173,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:19+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:28+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test backup database selection
       completed: false
@@ -26239,9 +26239,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:19+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:29+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Check development database cloning
       completed: false
       completed_by: null
@@ -26306,8 +26306,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:19+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:29+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -26403,8 +26403,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:19+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:29+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify essential preset
       completed: false
@@ -26470,8 +26470,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:20+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:29+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check full test suite preset
       completed: false
@@ -26537,8 +26537,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:20+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:29+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test custom test selection
       completed: false
@@ -26585,8 +26585,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:20+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:30+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -26681,8 +26681,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:20+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:30+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify DDEV status checks
       completed: false
@@ -26750,8 +26750,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:20+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:30+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check git status validation
       completed: false
@@ -26816,8 +26816,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:20+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:30+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test dependency verification
       completed: false
@@ -26882,8 +26882,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:20+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:30+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -27219,8 +27219,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:21+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:31+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify safe_db_status hides credentials
       completed: false
@@ -27286,8 +27286,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:21+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:31+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check safe_security_check sanitization
       completed: false
@@ -27353,8 +27353,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:21+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:31+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -27434,8 +27434,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:21+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:32+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify full sanitization (emails, passwords, sessions)
       completed: false
@@ -27507,8 +27507,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:21+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:32+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check admin user preservation
       completed: false
@@ -27577,8 +27577,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:21+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:32+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -27668,8 +27668,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:22+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:32+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify database download and import
       completed: false
@@ -27735,9 +27735,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:22+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:33+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Check file synchronization
       completed: false
       completed_by: null
@@ -27802,8 +27802,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:22+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:33+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -27896,8 +27896,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:22+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:33+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify site selection interface
       completed: false
@@ -27966,8 +27966,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:22+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:33+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check import option configuration
       completed: false
@@ -28036,8 +28036,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:22+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:33+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -28126,8 +28126,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:23+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:34+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify Drupal site detection
       completed: false
@@ -28192,8 +28192,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:23+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:34+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check database discovery
       completed: false
@@ -28258,8 +28258,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:23+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:34+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -28351,8 +28351,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:23+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:34+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify Grunt support
       completed: false
@@ -28417,8 +28417,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:23+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:35+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check Webpack integration
       completed: false
@@ -28483,8 +28483,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:23+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:35+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test Vite support
       completed: false
@@ -28549,8 +28549,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:23+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:35+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -28638,9 +28638,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:24+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:36+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Check default values are sensible
       completed: false
       completed_by: null
@@ -28706,8 +28706,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:24+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:36+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test copying to nwp.yml works
       completed: false
@@ -28774,8 +28774,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:24+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:37+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify comments explain each option
       completed: false
@@ -28839,8 +28839,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:24+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:37+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check for any missing new options
       completed: false
@@ -28904,8 +28904,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:24+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:38+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -29000,8 +29000,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:24+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:38+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check structure matches .secrets.yml expectations
       completed: false
@@ -29065,9 +29065,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:24+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:39+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Verify comments explain each secret
       completed: false
       completed_by: null
@@ -29130,9 +29130,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:25+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:17:39+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Test copying to .secrets.yml works
       completed: false
       completed_by: null
@@ -29198,8 +29198,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:25+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:39+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -29299,9 +29299,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:25+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:40+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Verify AVC Drupal modules installation (simple_oauth)
       completed: false
       completed_by: null
@@ -29365,8 +29365,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:25+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:40+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test Moodle plugin installation
       completed: false
@@ -29431,8 +29431,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:25+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:40+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify OAuth2 client configuration in AVC
       completed: false
@@ -29479,8 +29479,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:25+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:40+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test OAuth2 issuer configuration in Moodle
       completed: false
@@ -29527,8 +29527,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:25+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:40+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify SSO flow testing
       completed: false
@@ -29576,8 +29576,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:26+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:41+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test --regenerate-keys flag
       completed: false
@@ -29645,8 +29645,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:26+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:41+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify --skip-test flag
       completed: false
@@ -29711,8 +29711,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:26+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:41+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test --role-sync flag
       completed: false
@@ -29781,8 +29781,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:26+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:41+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test --badge-display flag
       completed: false
@@ -29850,8 +29850,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:26+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:42+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify nwp.yml integration settings update
       completed: false
@@ -29919,8 +29919,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:26+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:42+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -30018,8 +30018,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:26+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:42+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify OAuth2 endpoint health checks
       completed: false
@@ -30091,8 +30091,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:27+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:42+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test last sync time display
       completed: false
@@ -30161,9 +30161,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:27+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:43+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Verify role sync status
       completed: false
       completed_by: null
@@ -30231,8 +30231,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:27+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:43+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test --debug flag output
       completed: false
@@ -30279,8 +30279,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:27+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:43+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -30381,8 +30381,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:27+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:43+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify --guild=NAME specific guild sync
       completed: false
@@ -30450,9 +30450,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:27+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:44+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Test --user=ID specific user sync
       completed: false
       completed_by: null
@@ -30519,9 +30519,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:28+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:17:44+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Verify --dry-run mode
       completed: false
       completed_by: null
@@ -30588,8 +30588,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:44+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test --verbose flag output
       completed: false
@@ -30636,8 +30636,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:44+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -30717,8 +30717,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:44+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify token exchange functionality
       completed: false
@@ -30787,8 +30787,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:45+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test user authentication flow
       completed: false
@@ -30836,8 +30836,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:45+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify role mapping tests
       completed: false
@@ -30885,8 +30885,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:28+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:45+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test badge display functionality
       completed: false
@@ -30934,8 +30934,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:29+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:45+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check test result reporting (pass/fail counts)
       completed: false
@@ -30982,8 +30982,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:29+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:45+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -31072,8 +31072,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:29+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:46+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify identity validation against GitLab and DNS
       completed: false
@@ -31131,8 +31131,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:29+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:46+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test nwp.yml configuration with coder subdomain
       completed: false
@@ -31190,8 +31190,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:29+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:46+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify git user configuration setup
       completed: false
@@ -31249,8 +31249,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:29+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:46+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test SSH key verification for GitLab
       completed: false
@@ -31308,8 +31308,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:30+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:47+11:00'
+          depth: thorough
           duration_seconds: 1
     - text: Check infrastructure readiness verification
       completed: false
@@ -31367,8 +31367,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:30+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:47+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test --coder flag with known identity
       completed: false
@@ -31426,8 +31426,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:30+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:47+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify --dry-run mode
       completed: false
@@ -31488,8 +31488,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:30+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:47+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -31567,9 +31567,9 @@ features:
               timeout: 120
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:30+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:51+11:00'
+          depth: thorough
+          duration_seconds: 4
     - text: Verify Docker daemon running check
       completed: false
       completed_by: null
@@ -31626,8 +31626,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:30+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:51+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test configuration file validation (nwp.yml, .secrets.yml)
       completed: false
@@ -31685,8 +31685,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:30+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:51+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Check network connectivity tests (Linode, Cloudflare, drupal.org)
       completed: false
@@ -31744,8 +31744,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:52+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify common issue detection (disk space, memory, DDEV sites)
       completed: false
@@ -31803,8 +31803,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:52+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test verbose and quiet modes
       completed: false
@@ -31852,8 +31852,8 @@ features:
               timeout: 120
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:52+11:00'
+          depth: thorough
           duration_seconds: 0
     verified: false
     verified_by: null
@@ -31929,8 +31929,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:52+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify get_site_recipe detection
       completed: false
@@ -31995,9 +31995,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:31+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:53+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Test OAuth2 key generation helpers
       completed: false
       completed_by: null
@@ -32058,8 +32058,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:31+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:53+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify role mapping functions
       completed: false
@@ -32124,9 +32124,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:32+11:00'
-          depth: basic
-          duration_seconds: 1
+          verified_at: '2026-02-01T21:17:53+11:00'
+          depth: thorough
+          duration_seconds: 0
     - text: Test cohort synchronization functions
       completed: false
       completed_by: null
@@ -32187,8 +32187,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:53+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -32268,8 +32268,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:53+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify generate_castopod_env function
       completed: false
@@ -32331,8 +32331,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:54+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test Linode orchestration helpers
       completed: false
@@ -32395,8 +32395,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:54+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify Cloudflare DNS configuration
       completed: false
@@ -32459,8 +32459,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:54+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test B2 storage configuration
       completed: false
@@ -32523,8 +32523,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:32+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:54+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -32614,9 +32614,9 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:33+11:00'
-          depth: basic
-          duration_seconds: 0
+          verified_at: '2026-02-01T21:17:55+11:00'
+          depth: thorough
+          duration_seconds: 1
     - text: Verify show_ssh_security_warning output
       completed: false
       completed_by: null
@@ -32681,8 +32681,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:33+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:55+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test get_ssh_options array generation
       completed: false
@@ -32747,8 +32747,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:33+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:55+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Verify NWP_SSH_STRICT=1 strict mode
       completed: false
@@ -32814,8 +32814,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:33+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:55+11:00'
+          depth: thorough
           duration_seconds: 0
     - text: Test accept-new mode (default)
       completed: false
@@ -32880,8 +32880,8 @@ features:
               timeout: 30
         state:
           verified: true
-          verified_at: '2026-01-18T19:08:33+11:00'
-          depth: basic
+          verified_at: '2026-02-01T21:17:55+11:00'
+          depth: thorough
           duration_seconds: 0
     machine:
       automatable: true
@@ -33434,9 +33434,9 @@ features:
               expect_exit: 0
         state:
           verified: true
-          verified_at: '2026-01-18T19:18:16+11:00'
-          depth: basic
-          duration_seconds: 35
+          verified_at: '2026-02-01T21:18:25+11:00'
+          depth: thorough
+          duration_seconds: 28
       human:
         auto_loggable: false
       completed: false

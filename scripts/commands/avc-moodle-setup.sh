@@ -322,188 +322,198 @@ update_cnwp_yml() {
 # Main Script Logic
 ################################################################################
 
-# Parse command line arguments
-REGENERATE_KEYS=false
-SKIP_TEST=false
-ENABLE_ROLE_SYNC=false
-ENABLE_BADGE_DISPLAY=false
+main() {
+    # Parse command line arguments
+    local REGENERATE_KEYS=false
+    local SKIP_TEST=false
+    local ENABLE_ROLE_SYNC=false
+    local ENABLE_BADGE_DISPLAY=false
 
-# Parse options
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        -d|--debug)
-            DEBUG=true
-            shift
-            ;;
-        --regenerate-keys)
-            REGENERATE_KEYS=true
-            shift
-            ;;
-        --skip-test)
-            SKIP_TEST=true
-            shift
-            ;;
-        --role-sync)
-            ENABLE_ROLE_SYNC=true
-            shift
-            ;;
-        --badge-display)
-            ENABLE_BADGE_DISPLAY=true
-            shift
-            ;;
-        -*)
-            print_error "Unknown option: $1"
-            show_help
-            exit 1
-            ;;
-        *)
-            break
-            ;;
-    esac
-done
+    # Parse options
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                show_help
+                return 0
+                ;;
+            -d|--debug)
+                DEBUG=true
+                shift
+                ;;
+            --regenerate-keys)
+                REGENERATE_KEYS=true
+                shift
+                ;;
+            --skip-test)
+                SKIP_TEST=true
+                shift
+                ;;
+            --role-sync)
+                ENABLE_ROLE_SYNC=true
+                shift
+                ;;
+            --badge-display)
+                ENABLE_BADGE_DISPLAY=true
+                shift
+                ;;
+            -*)
+                print_error "Unknown option: $1"
+                show_help
+                return 1
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
 
-# Check required arguments
-if [[ $# -lt 2 ]]; then
-    print_error "Missing required arguments"
-    show_help
-    exit 1
-fi
-
-AVC_SITE=$1
-MOODLE_SITE=$2
-
-# Validate site names
-if ! validate_sitename "$AVC_SITE" "AVC site name"; then
-    exit 1
-fi
-
-if ! validate_sitename "$MOODLE_SITE" "Moodle site name"; then
-    exit 1
-fi
-
-# Display header
-print_header "AVC-Moodle SSO Setup"
-print_info "AVC Site: $AVC_SITE"
-print_info "Moodle Site: $MOODLE_SITE"
-echo ""
-
-# Step 1: Validate both sites
-step 1 10 "Validating sites"
-if ! avc_moodle_validate_avc_site "$AVC_SITE"; then
-    print_error "AVC site validation failed"
-    exit 1
-fi
-
-if ! avc_moodle_validate_moodle_site "$MOODLE_SITE"; then
-    print_error "Moodle site validation failed"
-    exit 1
-fi
-
-# Step 2: Generate OAuth2 keys
-step 2 10 "Generating OAuth2 keys"
-
-if avc_moodle_keys_exist "$AVC_SITE" && [[ "$REGENERATE_KEYS" != "true" ]]; then
-    print_info "OAuth2 keys already exist - skipping generation"
-    print_info "Use --regenerate-keys to force regeneration"
-else
-    if ! avc_moodle_generate_keys "$AVC_SITE"; then
-        print_error "Failed to generate OAuth2 keys"
-        exit 1
+    # Check required arguments
+    if [[ $# -lt 2 ]]; then
+        print_error "Missing required arguments"
+        show_help
+        return 1
     fi
-fi
 
-# Step 3: Install AVC modules
-step 3 10 "Installing AVC modules"
-if ! install_avc_modules "$AVC_SITE"; then
-    print_error "Failed to install AVC modules"
-    exit 1
-fi
+    local AVC_SITE=$1
+    local MOODLE_SITE=$2
 
-# Step 4: Install Moodle plugins
-step 4 10 "Installing Moodle plugins"
-if ! install_moodle_plugins "$MOODLE_SITE"; then
-    print_error "Failed to install Moodle plugins"
-    exit 1
-fi
-
-# Step 5: Configure OAuth2 in AVC
-step 5 10 "Configuring OAuth2 in AVC"
-if ! configure_avc_oauth "$AVC_SITE" "$MOODLE_SITE"; then
-    print_error "Failed to configure OAuth2 in AVC"
-    exit 1
-fi
-
-# Step 6: Configure OAuth2 in Moodle
-step 6 10 "Configuring OAuth2 in Moodle"
-if ! configure_moodle_oauth "$AVC_SITE" "$MOODLE_SITE"; then
-    print_error "Failed to configure OAuth2 in Moodle"
-    exit 1
-fi
-
-# Step 7: Test SSO flow
-step 7 10 "Testing SSO flow"
-if [[ "$SKIP_TEST" != "true" ]]; then
-    if ! test_sso_flow "$AVC_SITE" "$MOODLE_SITE"; then
-        print_warning "SSO flow test had issues - review output above"
+    # Validate site names
+    if ! validate_sitename "$AVC_SITE" "AVC site name"; then
+        return 1
     fi
-else
-    print_info "Skipping SSO flow test (--skip-test)"
+
+    if ! validate_sitename "$MOODLE_SITE" "Moodle site name"; then
+        return 1
+    fi
+
+    # Display header
+    print_header "AVC-Moodle SSO Setup"
+    print_info "AVC Site: $AVC_SITE"
+    print_info "Moodle Site: $MOODLE_SITE"
+    echo ""
+
+    # Step 1: Validate both sites
+    step 1 10 "Validating sites"
+    if ! avc_moodle_validate_avc_site "$AVC_SITE"; then
+        print_error "AVC site validation failed"
+        return 1
+    fi
+
+    if ! avc_moodle_validate_moodle_site "$MOODLE_SITE"; then
+        print_error "Moodle site validation failed"
+        return 1
+    fi
+
+    # Step 2: Generate OAuth2 keys
+    step 2 10 "Generating OAuth2 keys"
+
+    if avc_moodle_keys_exist "$AVC_SITE" && [[ "$REGENERATE_KEYS" != "true" ]]; then
+        print_info "OAuth2 keys already exist - skipping generation"
+        print_info "Use --regenerate-keys to force regeneration"
+    else
+        if ! avc_moodle_generate_keys "$AVC_SITE"; then
+            print_error "Failed to generate OAuth2 keys"
+            return 1
+        fi
+    fi
+
+    # Step 3: Install AVC modules
+    step 3 10 "Installing AVC modules"
+    if ! install_avc_modules "$AVC_SITE"; then
+        print_error "Failed to install AVC modules"
+        return 1
+    fi
+
+    # Step 4: Install Moodle plugins
+    step 4 10 "Installing Moodle plugins"
+    if ! install_moodle_plugins "$MOODLE_SITE"; then
+        print_error "Failed to install Moodle plugins"
+        return 1
+    fi
+
+    # Step 5: Configure OAuth2 in AVC
+    step 5 10 "Configuring OAuth2 in AVC"
+    if ! configure_avc_oauth "$AVC_SITE" "$MOODLE_SITE"; then
+        print_error "Failed to configure OAuth2 in AVC"
+        return 1
+    fi
+
+    # Step 6: Configure OAuth2 in Moodle
+    step 6 10 "Configuring OAuth2 in Moodle"
+    if ! configure_moodle_oauth "$AVC_SITE" "$MOODLE_SITE"; then
+        print_error "Failed to configure OAuth2 in Moodle"
+        return 1
+    fi
+
+    # Step 7: Test SSO flow
+    step 7 10 "Testing SSO flow"
+    if [[ "$SKIP_TEST" != "true" ]]; then
+        if ! test_sso_flow "$AVC_SITE" "$MOODLE_SITE"; then
+            print_warning "SSO flow test had issues - review output above"
+        fi
+    else
+        print_info "Skipping SSO flow test (--skip-test)"
+    fi
+
+    # Step 8: Update nwp.yml
+    step 8 10 "Updating nwp.yml"
+    if ! update_cnwp_yml "$AVC_SITE" "$MOODLE_SITE"; then
+        print_error "Failed to update nwp.yml"
+        return 1
+    fi
+
+    # Step 9: Enable optional features
+    step 9 10 "Configuring optional features"
+
+    if [[ "$ENABLE_ROLE_SYNC" == "true" ]]; then
+        print_info "Role synchronization will be enabled once modules are created"
+        yq eval -i ".sites.$AVC_SITE.moodle_integration.role_sync = true" "$PROJECT_ROOT/nwp.yml"
+    fi
+
+    if [[ "$ENABLE_BADGE_DISPLAY" == "true" ]]; then
+        print_info "Badge display will be enabled once modules are created"
+        yq eval -i ".sites.$AVC_SITE.moodle_integration.badge_display = true" "$PROJECT_ROOT/nwp.yml"
+    fi
+
+    # Step 10: Summary and next steps
+    step 10 10 "Setup complete"
+
+    local AVC_URL
+    local MOODLE_URL
+    AVC_URL=$(avc_moodle_get_site_url "$AVC_SITE")
+    MOODLE_URL=$(avc_moodle_get_site_url "$MOODLE_SITE")
+
+    pass "AVC-Moodle SSO setup completed successfully!"
+    echo ""
+    info "Next Steps"
+    echo "1. Complete OAuth2 client setup in AVC:"
+    echo "   Visit: ${AVC_URL}/admin/config/services/consumer"
+    echo ""
+    echo "2. Complete OAuth2 issuer setup in Moodle:"
+    echo "   Visit: ${MOODLE_URL}/admin/settings.php?section=oauth2"
+    echo ""
+    echo "3. Test SSO login:"
+    echo "   Visit: ${MOODLE_URL}"
+    echo "   Click 'Login with AVC'"
+    echo ""
+    echo "4. Check integration status:"
+    echo "   pl avc-moodle-status $AVC_SITE $MOODLE_SITE"
+    echo ""
+    print_info "Once custom modules are installed, you can enable:"
+    print_info "  - Role synchronization: Automatically sync guild roles to Moodle"
+    print_info "  - Badge display: Show Moodle badges on AVC user profiles"
+    echo ""
+
+    # Calculate execution time
+    local END_TIME
+    local DURATION
+    END_TIME=$(date +%s)
+    DURATION=$((END_TIME - START_TIME))
+    print_info "Setup completed in ${DURATION}s"
+
+    return 0
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
 fi
-
-# Step 8: Update nwp.yml
-step 8 10 "Updating nwp.yml"
-if ! update_cnwp_yml "$AVC_SITE" "$MOODLE_SITE"; then
-    print_error "Failed to update nwp.yml"
-    exit 1
-fi
-
-# Step 9: Enable optional features
-step 9 10 "Configuring optional features"
-
-if [[ "$ENABLE_ROLE_SYNC" == "true" ]]; then
-    print_info "Role synchronization will be enabled once modules are created"
-    yq eval -i ".sites.$AVC_SITE.moodle_integration.role_sync = true" "$PROJECT_ROOT/nwp.yml"
-fi
-
-if [[ "$ENABLE_BADGE_DISPLAY" == "true" ]]; then
-    print_info "Badge display will be enabled once modules are created"
-    yq eval -i ".sites.$AVC_SITE.moodle_integration.badge_display = true" "$PROJECT_ROOT/nwp.yml"
-fi
-
-# Step 10: Summary and next steps
-step 10 10 "Setup complete"
-
-AVC_URL=$(avc_moodle_get_site_url "$AVC_SITE")
-MOODLE_URL=$(avc_moodle_get_site_url "$MOODLE_SITE")
-
-pass "AVC-Moodle SSO setup completed successfully!"
-echo ""
-info "Next Steps"
-echo "1. Complete OAuth2 client setup in AVC:"
-echo "   Visit: ${AVC_URL}/admin/config/services/consumer"
-echo ""
-echo "2. Complete OAuth2 issuer setup in Moodle:"
-echo "   Visit: ${MOODLE_URL}/admin/settings.php?section=oauth2"
-echo ""
-echo "3. Test SSO login:"
-echo "   Visit: ${MOODLE_URL}"
-echo "   Click 'Login with AVC'"
-echo ""
-echo "4. Check integration status:"
-echo "   pl avc-moodle-status $AVC_SITE $MOODLE_SITE"
-echo ""
-print_info "Once custom modules are installed, you can enable:"
-print_info "  - Role synchronization: Automatically sync guild roles to Moodle"
-print_info "  - Badge display: Show Moodle badges on AVC user profiles"
-echo ""
-
-# Calculate execution time
-END_TIME=$(date +%s)
-DURATION=$((END_TIME - START_TIME))
-print_info "Setup completed in ${DURATION}s"
-
-exit 0

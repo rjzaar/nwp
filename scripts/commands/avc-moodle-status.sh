@@ -55,59 +55,65 @@ ${BOLD}OUTPUT:${NC}
 EOF
 }
 
-# Parse options
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        -d|--debug)
-            DEBUG=true
-            shift
-            ;;
-        -*)
-            print_error "Unknown option: $1"
-            show_help
-            exit 1
-            ;;
-        *)
-            break
-            ;;
-    esac
-done
+main() {
+    # Parse options
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                show_help
+                return 0
+                ;;
+            -d|--debug)
+                DEBUG=true
+                shift
+                ;;
+            -*)
+                print_error "Unknown option: $1"
+                show_help
+                return 1
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
 
-# Check required arguments
-if [[ $# -lt 2 ]]; then
-    print_error "Missing required arguments"
-    show_help
-    exit 1
+    # Check required arguments
+    if [[ $# -lt 2 ]]; then
+        print_error "Missing required arguments"
+        show_help
+        return 1
+    fi
+
+    local AVC_SITE=$1
+    local MOODLE_SITE=$2
+
+    # Validate site names
+    if ! validate_sitename "$AVC_SITE" "AVC site name"; then
+        return 1
+    fi
+
+    if ! validate_sitename "$MOODLE_SITE" "Moodle site name"; then
+        return 1
+    fi
+
+    # Validate both sites exist
+    if ! avc_moodle_validate_avc_site "$AVC_SITE" >/dev/null 2>&1; then
+        print_error "AVC site validation failed: $AVC_SITE"
+        return 1
+    fi
+
+    if ! avc_moodle_validate_moodle_site "$MOODLE_SITE" >/dev/null 2>&1; then
+        print_error "Moodle site validation failed: $MOODLE_SITE"
+        return 1
+    fi
+
+    # Display status dashboard
+    avc_moodle_display_status "$AVC_SITE" "$MOODLE_SITE"
+
+    return 0
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
 fi
-
-AVC_SITE=$1
-MOODLE_SITE=$2
-
-# Validate site names
-if ! validate_sitename "$AVC_SITE" "AVC site name"; then
-    exit 1
-fi
-
-if ! validate_sitename "$MOODLE_SITE" "Moodle site name"; then
-    exit 1
-fi
-
-# Validate both sites exist
-if ! avc_moodle_validate_avc_site "$AVC_SITE" >/dev/null 2>&1; then
-    print_error "AVC site validation failed: $AVC_SITE"
-    exit 1
-fi
-
-if ! avc_moodle_validate_moodle_site "$MOODLE_SITE" >/dev/null 2>&1; then
-    print_error "Moodle site validation failed: $MOODLE_SITE"
-    exit 1
-fi
-
-# Display status dashboard
-avc_moodle_display_status "$AVC_SITE" "$MOODLE_SITE"
-
-exit 0

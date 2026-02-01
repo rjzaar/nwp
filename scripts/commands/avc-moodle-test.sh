@@ -172,94 +172,105 @@ ${BOLD}TESTS PERFORMED:${NC}
 EOF
 }
 
-# Parse options
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        -d|--debug)
-            DEBUG=true
-            shift
-            ;;
-        -*)
-            print_error "Unknown option: $1"
-            show_help
-            exit 1
-            ;;
-        *)
-            break
-            ;;
-    esac
-done
+main() {
+    # Parse options
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                show_help
+                return 0
+                ;;
+            -d|--debug)
+                DEBUG=true
+                shift
+                ;;
+            -*)
+                print_error "Unknown option: $1"
+                show_help
+                return 1
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
 
-# Check required arguments
-if [[ $# -lt 2 ]]; then
-    print_error "Missing required arguments"
-    show_help
-    exit 1
+    # Check required arguments
+    if [[ $# -lt 2 ]]; then
+        print_error "Missing required arguments"
+        show_help
+        return 1
+    fi
+
+    local AVC_SITE=$1
+    local MOODLE_SITE=$2
+
+    # Validate site names
+    if ! validate_sitename "$AVC_SITE" "AVC site name"; then
+        return 1
+    fi
+
+    if ! validate_sitename "$MOODLE_SITE" "Moodle site name"; then
+        return 1
+    fi
+
+    # Display header
+    print_header "AVC-Moodle Integration Tests"
+    print_info "AVC Site: $AVC_SITE"
+    print_info "Moodle Site: $MOODLE_SITE"
+    echo ""
+
+    # Validate both sites
+    if ! avc_moodle_validate_avc_site "$AVC_SITE" >/dev/null 2>&1; then
+        print_error "AVC site validation failed: $AVC_SITE"
+        return 1
+    fi
+
+    if ! avc_moodle_validate_moodle_site "$MOODLE_SITE" >/dev/null 2>&1; then
+        print_error "Moodle site validation failed: $MOODLE_SITE"
+        return 1
+    fi
+
+    # Get site info
+    local AVC_DIR
+    local MOODLE_DIR
+    local AVC_URL
+    local MOODLE_URL
+    AVC_DIR=$(get_site_directory "$AVC_SITE")
+    MOODLE_DIR=$(get_site_directory "$MOODLE_SITE")
+    AVC_URL=$(avc_moodle_get_site_url "$AVC_SITE")
+    MOODLE_URL=$(avc_moodle_get_site_url "$MOODLE_SITE")
+
+    # Run tests
+    test_oauth_endpoints "$AVC_URL"
+    test_avc_config "$AVC_DIR"
+    test_moodle_config "$MOODLE_DIR"
+    test_cnwp_config "$AVC_SITE" "$MOODLE_SITE"
+    test_connectivity "$AVC_URL" "$MOODLE_URL"
+
+    # Display results
+    echo ""
+    print_section "Test Results"
+
+    local EXIT_CODE=0
+    if [[ $TESTS_FAILED -eq 0 ]]; then
+        print_success "All tests passed! ($TESTS_PASSED/$TOTAL_TESTS)"
+        EXIT_CODE=0
+    else
+        print_error "Some tests failed: $TESTS_PASSED passed, $TESTS_FAILED failed (Total: $TOTAL_TESTS)"
+        EXIT_CODE=1
+    fi
+
+    echo ""
+    print_info "Test Summary:"
+    echo "  Total Tests:  $TOTAL_TESTS"
+    echo "  Passed:       $TESTS_PASSED"
+    echo "  Failed:       $TESTS_FAILED"
+    echo "  Success Rate: $(( TESTS_PASSED * 100 / TOTAL_TESTS ))%"
+
+    return $EXIT_CODE
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
 fi
-
-AVC_SITE=$1
-MOODLE_SITE=$2
-
-# Validate site names
-if ! validate_sitename "$AVC_SITE" "AVC site name"; then
-    exit 1
-fi
-
-if ! validate_sitename "$MOODLE_SITE" "Moodle site name"; then
-    exit 1
-fi
-
-# Display header
-print_header "AVC-Moodle Integration Tests"
-print_info "AVC Site: $AVC_SITE"
-print_info "Moodle Site: $MOODLE_SITE"
-echo ""
-
-# Validate both sites
-if ! avc_moodle_validate_avc_site "$AVC_SITE" >/dev/null 2>&1; then
-    print_error "AVC site validation failed: $AVC_SITE"
-    exit 1
-fi
-
-if ! avc_moodle_validate_moodle_site "$MOODLE_SITE" >/dev/null 2>&1; then
-    print_error "Moodle site validation failed: $MOODLE_SITE"
-    exit 1
-fi
-
-# Get site info
-AVC_DIR=$(get_site_directory "$AVC_SITE")
-MOODLE_DIR=$(get_site_directory "$MOODLE_SITE")
-AVC_URL=$(avc_moodle_get_site_url "$AVC_SITE")
-MOODLE_URL=$(avc_moodle_get_site_url "$MOODLE_SITE")
-
-# Run tests
-test_oauth_endpoints "$AVC_URL"
-test_avc_config "$AVC_DIR"
-test_moodle_config "$MOODLE_DIR"
-test_cnwp_config "$AVC_SITE" "$MOODLE_SITE"
-test_connectivity "$AVC_URL" "$MOODLE_URL"
-
-# Display results
-echo ""
-print_section "Test Results"
-
-if [[ $TESTS_FAILED -eq 0 ]]; then
-    print_success "All tests passed! ($TESTS_PASSED/$TOTAL_TESTS)"
-    EXIT_CODE=0
-else
-    print_error "Some tests failed: $TESTS_PASSED passed, $TESTS_FAILED failed (Total: $TOTAL_TESTS)"
-    EXIT_CODE=1
-fi
-
-echo ""
-print_info "Test Summary:"
-echo "  Total Tests:  $TOTAL_TESTS"
-echo "  Passed:       $TESTS_PASSED"
-echo "  Failed:       $TESTS_FAILED"
-echo "  Success Rate: $(( TESTS_PASSED * 100 / TOTAL_TESTS ))%"
-
-exit $EXIT_CODE

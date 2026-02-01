@@ -176,6 +176,7 @@ NOTE:
 EOF
 }
 
+main() {
 # Parse arguments
 FORCE=false
 KEY_TYPE="ed25519"
@@ -405,3 +406,9 @@ echo ""
 print_status "SSH key setup complete!"
 
 exit 0
+}
+
+# Only run main when executed directly, not when sourced
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

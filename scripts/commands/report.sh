@@ -477,9 +477,11 @@ wrapper_mode() {
 # Main
 ################################################################################
 
-# Handle --report mode or wrapper mode
-if [[ $# -gt 0 && "$1" == "--report" ]]; then
-    direct_report "$@"
-else
-    wrapper_mode "$@"
+# Only run when executed directly, not when sourced
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    if [[ $# -gt 0 && "$1" == "--report" ]]; then
+        direct_report "$@"
+    else
+        wrapper_mode "$@"
+    fi
 fi

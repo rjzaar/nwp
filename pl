@@ -19,7 +19,7 @@ done
 SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
 # Version
-VERSION="0.26.0"
+VERSION="0.29.0"
 
 # Source verification auto-logging if available
 [[ -f "${SCRIPT_DIR}/lib/verify-autolog.sh" ]] && source "${SCRIPT_DIR}/lib/verify-autolog.sh"
@@ -391,7 +391,7 @@ get_site_nested_field() {
 # Show status for a single site
 show_site_status() {
     local sitename="$1"
-    local site_dir="sites/$sitename"
+    local site_dir="${SCRIPT_DIR}/sites/$sitename"
     local cnwp_file="${SCRIPT_DIR}/nwp.yml"
     local ddev_running=false
 

@@ -1654,7 +1654,7 @@ CC0 is the most permissive option, removing all restrictions and maximizing free
 
 For issues, questions, or contributions, please refer to the project repository or contact the maintainer.
 
-## Environment Variables (New in v0.2)
+## Environment Variables
 
 NWP now includes comprehensive environment variable management:
 
@@ -1705,7 +1705,7 @@ NWP uses a two-tier secrets system for AI assistant safety:
 | `.secrets.yml` | API tokens, dev credentials | Allowed |
 | `.secrets.data.yml` | Production passwords, SSH keys | Blocked |
 
-See [DATA_SECURITY_BEST_PRACTICES.md](docs/DATA_SECURITY_BEST_PRACTICES.md) for details.
+See [Data Security Best Practices](docs/security/data-security-best-practices.md) for details.
 
 ### Manual Generation
 

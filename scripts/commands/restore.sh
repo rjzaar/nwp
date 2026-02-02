@@ -131,8 +131,8 @@ list_backups() {
         return 1
     fi
 
-    # List SQL files (sorted by date, newest first)
-    find "$backup_dir" -name "*.sql" -type f | sort -r
+    # List SQL files (sorted by date, newest first) - supports both .sql.gz and .sql
+    find "$backup_dir" \( -name "*.sql.gz" -o -name "*.sql" \) -type f | sort -r
 }
 
 select_backup() {
@@ -168,9 +168,12 @@ select_backup() {
 
     local i=1
     for backup in "${backups[@]}"; do
-        local basename=$(basename "$backup" .sql)
+        local basename=$(basename "$backup" .sql.gz)
+        basename=$(basename "$basename" .sql)
         local size_sql=$(du -h "$backup" 2>/dev/null | cut -f1)
-        local tar_file="${backup%.sql}.tar.gz"
+        local tar_base="${backup%.sql.gz}"
+        tar_base="${tar_base%.sql}"
+        local tar_file="${tar_base}.tar.gz"
         local size_tar="N/A"
         if [ -f "$tar_file" ]; then
             size_tar=$(du -h "$tar_file" 2>/dev/null | cut -f1)
@@ -207,7 +210,9 @@ restore_files() {
 
     print_header "Step 3: Restore Files"
 
-    local tar_file="${backup_file%.sql}.tar.gz"
+    local tar_base="${backup_file%.sql.gz}"
+    tar_base="${tar_base%.sql}"
+    local tar_file="${tar_base}.tar.gz"
 
     if [ ! -f "$tar_file" ]; then
         print_error "Files backup not found: $tar_file"
@@ -258,10 +263,12 @@ restore_database() {
     mkdir -p .ddev
 
     # Copy backup to .ddev directory for import
-    local temp_db=".ddev/import.sql"
+    local temp_ext="sql"
+    [[ "$abs_backup" == *.gz ]] && temp_ext="sql.gz"
+    local temp_db=".ddev/import.${temp_ext}"
     cp "$abs_backup" "$temp_db"
 
-    # Import database using DDEV
+    # Import database using DDEV (supports both .sql and .sql.gz)
     start_spinner "Importing database..."
     if ddev import-db --file="$temp_db" > /dev/null 2>&1; then
         stop_spinner
@@ -449,7 +456,9 @@ restore_site() {
         fi
 
         BACKUP_FILE="$selected_backup"
-        print_info "Selected backup: ${BOLD}$(basename "$BACKUP_FILE" .sql)${NC}"
+        local display_name=$(basename "$BACKUP_FILE" .sql.gz)
+        display_name=$(basename "$display_name" .sql)
+        print_info "Selected backup: ${BOLD}${display_name}${NC}"
     else
         print_status "INFO" "Skipping Step 1: Using existing backup selection"
     fi
@@ -518,7 +527,9 @@ restore_site() {
     local webroot="html"
     if [ "$db_only" != "true" ]; then
         # Try to detect from backup archive
-        local tar_file="${BACKUP_FILE%.sql}.tar.gz"
+        local tar_base="${BACKUP_FILE%.sql.gz}"
+        tar_base="${tar_base%.sql}"
+        local tar_file="${tar_base}.tar.gz"
         if [ -f "$tar_file" ]; then
             if tar -tzf "$tar_file" | grep -q "^web/" 2>/dev/null; then
                 webroot="web"
@@ -610,7 +621,9 @@ restore_site() {
     print_header "Restore Summary"
     echo -e "${GREEN}✓${NC} Source: $from_site"
     echo -e "${GREEN}✓${NC} Destination: $to_site"
-    echo -e "${GREEN}✓${NC} Backup: $(basename "$BACKUP_FILE" .sql)"
+    local restore_display=$(basename "$BACKUP_FILE" .sql.gz)
+    restore_display=$(basename "$restore_display" .sql)
+    echo -e "${GREEN}✓${NC} Backup: $restore_display"
     echo ""
     echo -e "${BOLD}Site URL:${NC}"
     local dest_dir="sites/$to_site"

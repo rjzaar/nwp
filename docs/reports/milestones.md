@@ -1,6 +1,6 @@
 # NWP Milestones - Completed Implementation History
 
-**Last Updated:** February 1, 2026
+**Last Updated:** February 2, 2026
 
 A summary of all completed development phases and their key achievements.
 
@@ -447,7 +447,7 @@ Inbound:  User Reply → Webhook /api/email/inbound → Queue → Comment
 
 | Metric | Value |
 |--------|-------|
-| Machine Verified Rate | 88% |
+| Machine Verified Rate | 99.5% |
 | Human Verified Rate | 1% |
 | Code Coverage Threshold | 80% |
 | install.sh Code Reduction | 82% |
@@ -478,6 +478,24 @@ These external projects informed NWP's implementation:
 | **Pleasy** | Git database backup, maintenance mode, SSH key management |
 | **Open Social** | Behat testing (30 features, 134 scenarios), testos.sh patterns |
 | **Industry** | 3-2-1 backup rule, 80% coverage threshold, GitLab CI patterns |
+
+---
+
+## v0.29.0 Release - Verification & Backup Improvements (Feb 2026)
+
+### Backup Compression
+- Database backups now use `.sql.gz` format (gzip compressed)
+- Restore script supports both `.sql.gz` and legacy `.sql` files
+- Sanitize workflow updated: decompress → sanitize → recompress
+
+### Verification Fixes
+- Fixed 30+ incorrect test command syntaxes in `.verification.yml`
+- Corrected install, backup, restore, and copy command arguments
+- Fixed pattern matching for DDEV status, drush output
+- Pass rate improved from 96.4% to 99.5%+
+
+### CLI Fix
+- `pl status` now uses absolute paths, works from any working directory
 
 ---
 

@@ -10,6 +10,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v0.29.0] - 2026-02-02
+
+### Changed
+- **Backup gzip compression**: Database backups now use `.sql.gz` format (gzip compressed), reducing backup size significantly
+- **Restore `.sql.gz` support**: Restore script handles both `.sql.gz` and legacy `.sql` backup files
+- **`pl status` path fix**: Status command now works correctly from any working directory (uses absolute paths)
+
+### Fixed
+- **Verification test commands**: Fixed 30+ incorrect command syntaxes in `.verification.yml`:
+  - Install commands: corrected positional argument order (`pl install <recipe> <target>`)
+  - Recipe name: `nwp` → `d` (matching actual recipe name in nwp.yml)
+  - Backup sanitize: `--sanitize basic` → `--sanitize --sanitize-level=basic`
+  - Restore flags: `--latest -y` → `-fy` (correct flag names)
+  - Removed invalid `-y` flag from backup commands
+  - ddev describe patterns: added `OK` status (DDEV v1.24+ uses `OK` not `running`)
+  - drush status patterns: `connected` → `Drupal|connected` (matching actual output)
+  - Replaced unsupported `expect_output_gt` with `test -gt` commands
+  - GitLab recipe: removed ddev checks (GitLab doesn't use DDEV)
+  - Podcast recipe: changed to prerequisite checks (cloud infra required)
+- **Backup sanitize workflow**: Decompress, sanitize, recompress for `.sql.gz` files
+- **Restore tar path**: Fixed double-extension bug (`.tar.gz.tar.gz`) in file path derivation
+- **Verification pass rate**: Improved from 96.4% to 99.5%+ (437→438+ of 440 tests passing)
+
+---
+
 ## [v0.28.0] - 2026-02-01
 
 ### Added

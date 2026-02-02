@@ -70,11 +70,11 @@ ${BOLD}COMBINED FLAGS:${NC}
 ${BOLD}OUTPUT:${NC}
     Backups are stored in: sitebackups/<sitename>/
 
-    Naming convention: YYYYMMDDTHHmmss-branch-commit-message.{sql,tar.gz}
-    Example: 20241221T143022-main-a1b2c3d4-fixed_error.sql
+    Naming convention: YYYYMMDDTHHmmss-branch-commit-message.{sql.gz,tar.gz}
+    Example: 20241221T143022-main-a1b2c3d4-fixed_error.sql.gz
 
 ${BOLD}FILES CREATED:${NC}
-    - Database backup (.sql)
+    - Database backup (.sql.gz, gzip compressed)
     - Files backup (.tar.gz)
 
 EOF
@@ -141,7 +141,7 @@ backup_database() {
 
     # Use absolute path for backup directory
     local abs_backup_dir=$(cd "$(dirname "$backup_dir")" && pwd)/$(basename "$backup_dir")
-    local db_file="${abs_backup_dir}/${backup_name}.sql"
+    local db_file="${abs_backup_dir}/${backup_name}.sql.gz"
 
     ocmsg "Exporting database to: $db_file"
 
@@ -152,10 +152,10 @@ backup_database() {
         return 1
     }
 
-    # Export database using DDEV to .ddev directory first
-    local temp_file=".ddev/${backup_name}.sql"
+    # Export database using DDEV with gzip compression
+    local temp_file=".ddev/${backup_name}.sql.gz"
     start_spinner "Exporting database..."
-    if ddev export-db --file="$temp_file" --gzip=false > /dev/null 2>&1; then
+    if ddev export-db --file="$temp_file" --gzip > /dev/null 2>&1; then
         stop_spinner
         # Move from .ddev to backup directory
         if [ -f "$temp_file" ]; then
@@ -327,16 +327,20 @@ backup_site() {
 
     # Sanitize database backup if requested
     if [ "$sanitize" == "true" ]; then
-        local sql_file="${backup_base}/${backup_name}.sql"
-        if [ -f "$sql_file" ]; then
+        local sql_gz_file="${backup_base}/${backup_name}.sql.gz"
+        if [ -f "$sql_gz_file" ]; then
+            # Decompress, sanitize, recompress
+            gunzip "$sql_gz_file"
+            local sql_file="${backup_base}/${backup_name}.sql"
             sanitize_database "$site_dir" "$sql_file" "$sanitize_level"
+            gzip "$sql_file"
             echo -e "${GREEN}✓${NC} Sanitized: Level $sanitize_level"
         fi
     fi
 
     # Summary
     print_header "Backup Summary"
-    echo -e "${GREEN}✓${NC} Database: ${backup_base}/${backup_name}.sql"
+    echo -e "${GREEN}✓${NC} Database: ${backup_base}/${backup_name}.sql.gz"
     if [ "$db_only" != "true" ]; then
         echo -e "${GREEN}✓${NC} Files:    ${backup_base}/${backup_name}.tar.gz"
     fi

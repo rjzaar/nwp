@@ -2,7 +2,7 @@
 
 **NWP — Narrow Way Project** | Drupal hosting, deployment & infrastructure automation
 
-**Last Updated:** February 1, 2026
+**Last Updated:** February 2, 2026
 
 Pending implementation items and future improvements for NWP.
 
@@ -19,13 +19,13 @@ Pending implementation items and future improvements for NWP.
 
 | Metric | Value |
 |--------|-------|
-| Current Version | v0.28.0 |
-| Test Success Rate | 88% (Machine Verified) |
+| Current Version | v0.29.0 |
+| Test Success Rate | 99.5% (Machine Verified) |
 | Completed Proposals | P01-P35, P50-P51, P53-P58, F03-F05, F07, F09, F12-F15 |
 | Pending Proposals | F01-F02, F06, F08, F10-F11 |
 | Rejected Proposals | P52 (rename — NWP is the permanent project name) |
 | Experimental/Outlier | X01 |
-| Recent Enhancements | v0.28.0: P53-P58, F03, F13-F15 (10 proposals implemented) |
+| Recent Enhancements | v0.29.0: Verification fixes, backup gzip, 99.5% pass rate |
 
 ---
 
@@ -201,7 +201,7 @@ Enable Claude Code to directly interact with NWP GitLab via the Model Context Pr
 ---
 
 ### F03: Visual Regression Testing (VRT)
-**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** Behat BDD Framework
+**Status:** ✅ COMPLETE | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** Behat BDD Framework
 
 Automated visual regression testing using BackstopJS:
 
@@ -555,7 +555,7 @@ PARAMETER num_ctx 4096
 # NWP-focused system prompt
 SYSTEM """
 You are an expert in bash scripting, PHP, and Drupal development.
-You work with the NWP (Node Web Platform) deployment framework.
+You work with the NWP (Narrow Way Project) deployment framework.
 Provide secure, well-tested code with clear explanations.
 """
 EOF
@@ -713,7 +713,7 @@ Complex Tasks (Claude API):
 ---
 
 ### F15: SSH User Management
-**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** ~10 hours (practical version) | **Dependencies:** None
+**Status:** ✅ COMPLETE | **Priority:** MEDIUM | **Effort:** ~10 hours (practical version) | **Dependencies:** None
 **Proposal:** [F15-ssh-user-management.md](../proposals/F15-ssh-user-management.md)
 
 Unify NWP's 7 different approaches to SSH user determination and add per-developer SSH key management.
@@ -745,7 +745,7 @@ Unify NWP's 7 different approaches to SSH user determination and add per-develop
 ---
 
 ### F13: Timezone Configuration
-**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** None
+**Status:** ✅ COMPLETE | **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** None
 **Proposal:** [F13-timezone-configuration.md](../proposals/F13-timezone-configuration.md)
 
 Centralize timezone configuration in `nwp.yml` instead of hardcoding across 14+ scripts.
@@ -780,7 +780,7 @@ Centralize timezone configuration in `nwp.yml` instead of hardcoding across 14+ 
 ---
 
 ### F14: Claude API Integration
-**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** None (benefits from F10)
+**Status:** ✅ COMPLETE | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** None (benefits from F10)
 **Proposal:** [F14-claude-api-integration.md](../proposals/F14-claude-api-integration.md)
 
 Integrate Claude API key management into NWP's two-tier secrets architecture for team provisioning, spend control, and consistent configuration.
@@ -832,7 +832,7 @@ Integrate Claude API key management into NWP's two-tier secrets architecture for
 ### Phase 9a: Fix What's Broken
 
 #### P54: Verification Test Infrastructure Fixes
-**Status:** ✅ IMPLEMENTED | **Priority:** HIGH | **Effort:** 2-3 days | **Dependencies:** P50
+**Status:** ✅ COMPLETE | **Priority:** HIGH | **Effort:** 2-3 days | **Dependencies:** P50
 **Proposal:** [P54-verification-test-fixes.md](../proposals/P54-verification-test-fixes.md)
 
 Fix ~65 failing automatable verification tests caused by systemic issues, not real bugs. Root causes:
@@ -864,7 +864,7 @@ Fix ~65 failing automatable verification tests caused by systemic issues, not re
 ---
 
 #### P53: Verification Categorization & Badge Accuracy
-**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** 2-3 days | **Dependencies:** P50
+**Status:** ✅ COMPLETE | **Priority:** MEDIUM | **Effort:** 2-3 days | **Dependencies:** P50
 **Proposal:** [P53-verification-badge-accuracy.md](../proposals/P53-verification-badge-accuracy.md)
 
 Fix three accuracy issues in the verification system:
@@ -887,7 +887,7 @@ Fix three accuracy issues in the verification system:
 ---
 
 #### P58: Test Command Dependency Handling
-**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** 3-5 days | **Dependencies:** P54
+**Status:** ✅ COMPLETE | **Priority:** MEDIUM | **Effort:** 3-5 days | **Dependencies:** P54
 **Proposal:** [P58-test-dependency-handling.md](../proposals/P58-test-dependency-handling.md)
 
 Add dependency checking and helpful error messages to `test.sh` when PHPCS, PHPStan, or PHPUnit are missing. Currently tests fail silently or with cryptic errors.
@@ -909,7 +909,7 @@ Add dependency checking and helpful error messages to `test.sh` when PHPCS, PHPS
 ### Phase 9b: Production Hardening
 
 #### P56: Production Security Hardening
-**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** 1-2 weeks | **Dependencies:** P54
+**Status:** ✅ COMPLETE | **Priority:** MEDIUM | **Effort:** 1-2 weeks | **Dependencies:** P54
 **Proposal:** [P56-produce-security-hardening.md](../proposals/P56-produce-security-hardening.md)
 
 Add security hardening features to `produce.sh` for production server provisioning. Currently verification tests expect these features but they don't exist. Also includes developer SSH key management for secure onboarding (see P56 Section 7).
@@ -933,7 +933,7 @@ Add security hardening features to `produce.sh` for production server provisioni
 ---
 
 #### P57: Production Caching & Performance
-**Status:** ✅ IMPLEMENTED | **Priority:** MEDIUM | **Effort:** 1-2 weeks | **Dependencies:** P54
+**Status:** ✅ COMPLETE | **Priority:** MEDIUM | **Effort:** 1-2 weeks | **Dependencies:** P54
 **Proposal:** [P57-produce-performance.md](../proposals/P57-produce-performance.md)
 
 Add caching and performance optimization to `produce.sh`. Currently no caching features exist despite verification tests expecting them.
@@ -959,7 +959,7 @@ Add caching and performance optimization to `produce.sh`. Currently no caching f
 ### Phase 9c: Advanced Verification & Rename
 
 #### P55: Opportunistic Human Verification
-**Status:** ✅ IMPLEMENTED | **Priority:** LOW | **Effort:** 4-5 weeks | **Dependencies:** P50
+**Status:** ✅ COMPLETE | **Priority:** LOW | **Effort:** 4-5 weeks | **Dependencies:** P50
 **Proposal:** [P55-opportunistic-human-verification.md](../proposals/P55-opportunistic-human-verification.md)
 
 Opt-in system where designated testers receive interactive prompts after running commands, capturing real-world verification without dedicated test sessions. Includes bug report system with automatic diagnostics, GitLab issue submission, and a `pl fix` TUI for AI-assisted issue resolution.

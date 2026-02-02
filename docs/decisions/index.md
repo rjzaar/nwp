@@ -80,4 +80,4 @@ For decisions that don't warrant a full ADR, see [decision-log.md](decision-log.
 
 ---
 
-*See also: [DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](../DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md) for the full governance framework.*
+*See also: [Distributed Contribution Governance](../governance/distributed-contribution-governance.md) for the full governance framework.*

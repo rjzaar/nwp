@@ -1,0 +1,16 @@
+mass_times.settings:
+  type: config_object
+  label: 'Mass Times settings'
+  mapping:
+    centre_lat:
+      type: float
+      label: 'Centre latitude'
+    centre_lng:
+      type: float
+      label: 'Centre longitude'
+    radius_km:
+      type: integer
+      label: 'Radius in kilometres'
+    shadow_mode:
+      type: boolean
+      label: 'Shadow mode (flag all data as provisional)'

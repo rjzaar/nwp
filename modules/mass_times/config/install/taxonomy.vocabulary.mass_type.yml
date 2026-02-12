@@ -1,0 +1,10 @@
+langcode: en
+status: true
+dependencies:
+  enforced:
+    module:
+      - mass_times
+name: 'Mass Type'
+vid: mass_type
+description: 'Types of masses (Regular, Vigil, Holy Day, Latin, etc.).'
+weight: 0

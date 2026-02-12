@@ -1,0 +1,21 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.paragraph.field_notes
+    - paragraphs.paragraphs_type.mass_time
+  enforced:
+    module:
+      - mass_times
+id: paragraph.mass_time.field_notes
+field_name: field_notes
+entity_type: paragraph
+bundle: mass_time
+label: Notes
+description: 'Additional notes (e.g. first Friday only, seasonal).'
+required: false
+translatable: false
+default_value: {}
+default_value_callback: ''
+settings: {}
+field_type: string_long

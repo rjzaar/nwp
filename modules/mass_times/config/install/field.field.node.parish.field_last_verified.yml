@@ -1,0 +1,23 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_last_verified
+    - node.type.parish
+  module:
+    - datetime
+  enforced:
+    module:
+      - mass_times
+id: node.parish.field_last_verified
+field_name: field_last_verified
+entity_type: node
+bundle: parish
+label: 'Last Verified'
+description: 'When the mass times were last verified by the extraction pipeline.'
+required: false
+translatable: false
+default_value: {}
+default_value_callback: ''
+settings: {}
+field_type: datetime

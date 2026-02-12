@@ -1,0 +1,13 @@
+langcode: en
+status: true
+dependencies:
+  enforced:
+    module:
+      - mass_times
+name: Parish
+type: parish
+description: 'A Catholic parish with mass times and location.'
+help: ''
+new_revision: true
+preview_mode: 1
+display_submitted: false

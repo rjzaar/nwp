@@ -1,0 +1,23 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.paragraph.field_day
+    - paragraphs.paragraphs_type.mass_time
+  module:
+    - options
+  enforced:
+    module:
+      - mass_times
+id: paragraph.mass_time.field_day
+field_name: field_day
+entity_type: paragraph
+bundle: mass_time
+label: Day
+description: 'Day of the week.'
+required: true
+translatable: false
+default_value: {}
+default_value_callback: ''
+settings: {}
+field_type: list_string

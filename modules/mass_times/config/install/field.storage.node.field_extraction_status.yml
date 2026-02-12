@@ -1,0 +1,25 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - node
+  enforced:
+    module:
+      - mass_times
+id: node.field_extraction_status
+field_name: field_extraction_status
+entity_type: node
+type: list_string
+settings:
+  allowed_values:
+    - { value: confirmed, label: Confirmed }
+    - { value: provisional, label: Provisional }
+    - { value: flagged, label: Flagged }
+    - { value: stale, label: Stale }
+module: options
+locked: false
+cardinality: 1
+translatable: false
+indexes: {}
+persist_with_no_fields: false
+custom_storage: false

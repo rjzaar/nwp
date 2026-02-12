@@ -1,0 +1,33 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_mass_times
+    - node.type.parish
+    - paragraphs.paragraphs_type.mass_time
+  module:
+    - entity_reference_revisions
+  enforced:
+    module:
+      - mass_times
+id: node.parish.field_mass_times
+field_name: field_mass_times
+entity_type: node
+bundle: parish
+label: 'Mass Times'
+description: 'Scheduled mass times for this parish.'
+required: false
+translatable: false
+default_value: {}
+default_value_callback: ''
+settings:
+  handler: 'default:paragraph'
+  handler_settings:
+    target_bundles:
+      mass_time: mass_time
+    negate: 0
+    target_bundles_drag_drop:
+      mass_time:
+        enabled: true
+        weight: 0
+field_type: entity_reference_revisions

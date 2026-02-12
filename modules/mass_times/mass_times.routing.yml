@@ -1,0 +1,15 @@
+mass_times.admin:
+  path: '/admin/mass-times'
+  defaults:
+    _controller: '\Drupal\mass_times\Controller\MassTimesController::adminDashboard'
+    _title: 'Mass Times Dashboard'
+  requirements:
+    _permission: 'administer mass_times'
+
+mass_times.settings:
+  path: '/admin/mass-times/settings'
+  defaults:
+    _form: '\Drupal\mass_times\Form\SettingsForm'
+    _title: 'Mass Times Settings'
+  requirements:
+    _permission: 'administer mass_times'

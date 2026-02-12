@@ -1,0 +1,122 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - node.type.parish
+  module:
+    - node
+    - user
+  enforced:
+    module:
+      - mass_times
+id: mass_times_admin
+label: 'Mass Times Admin'
+module: views
+description: 'Admin view of parishes with extraction details.'
+tag: mass_times
+base_table: node_field_data
+base_field: nid
+display:
+  default:
+    id: default
+    display_title: Default
+    display_plugin: default
+    position: 0
+    display_options:
+      title: 'Mass Times Admin'
+      fields:
+        title:
+          id: title
+          table: node_field_data
+          field: title
+          entity_type: node
+          entity_field: title
+          label: Parish
+          type: string
+          settings:
+            link_to_entity: true
+          plugin_id: field
+        field_extraction_status:
+          id: field_extraction_status
+          table: node__field_extraction_status
+          field: field_extraction_status
+          label: Status
+          type: list_default
+          plugin_id: field
+        field_last_verified:
+          id: field_last_verified
+          table: node__field_last_verified
+          field: field_last_verified
+          label: 'Last Verified'
+          type: datetime_default
+          settings:
+            format_type: short
+          plugin_id: field
+        field_parish_slug:
+          id: field_parish_slug
+          table: node__field_parish_slug
+          field: field_parish_slug
+          label: Slug
+          type: string
+          plugin_id: field
+      pager:
+        type: full
+        options:
+          items_per_page: 100
+      sorts:
+        title:
+          id: title
+          table: node_field_data
+          field: title
+          entity_type: node
+          entity_field: title
+          order: ASC
+          plugin_id: standard
+      filters:
+        type:
+          id: type
+          table: node_field_data
+          field: type
+          entity_type: node
+          entity_field: type
+          value:
+            parish: parish
+          plugin_id: bundle
+        status:
+          id: status
+          table: node_field_data
+          field: status
+          entity_type: node
+          entity_field: status
+          value: '1'
+          plugin_id: boolean
+        field_extraction_status:
+          id: field_extraction_status
+          table: node__field_extraction_status
+          field: field_extraction_status_value
+          exposed: true
+          expose:
+            label: 'Extraction Status'
+            operator_id: field_extraction_status_value_op
+          plugin_id: list_field
+      style:
+        type: table
+      row:
+        type: fields
+      access:
+        type: perm
+        options:
+          perm: 'administer mass_times'
+      cache:
+        type: tag
+  page_1:
+    id: page_1
+    display_title: Page
+    display_plugin: page
+    position: 1
+    display_options:
+      path: admin/mass-times/parishes
+      menu:
+        type: tab
+        title: Parishes
+        weight: 5

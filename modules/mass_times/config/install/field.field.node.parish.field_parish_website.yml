@@ -1,0 +1,25 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_parish_website
+    - node.type.parish
+  module:
+    - link
+  enforced:
+    module:
+      - mass_times
+id: node.parish.field_parish_website
+field_name: field_parish_website
+entity_type: node
+bundle: parish
+label: Website
+description: 'Parish website URL.'
+required: false
+translatable: false
+default_value: {}
+default_value_callback: ''
+settings:
+  link_type: 16
+  title: 0
+field_type: link

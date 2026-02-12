@@ -1,0 +1,21 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_parish_address
+    - node.type.parish
+  enforced:
+    module:
+      - mass_times
+id: node.parish.field_parish_address
+field_name: field_parish_address
+entity_type: node
+bundle: parish
+label: Address
+description: 'Street address of the parish.'
+required: false
+translatable: true
+default_value: {}
+default_value_callback: ''
+settings: {}
+field_type: string_long

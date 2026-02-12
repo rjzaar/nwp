@@ -1,0 +1,270 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the Mass Times module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function mass_times_schema() {
+  $schema = [];
+
+  $schema['mass_times_source_endpoints'] = [
+    'description' => 'Source endpoints discovered for each parish.',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ],
+      'parish_nid' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Drupal node ID of the parish.',
+      ],
+      'source_type' => [
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'description' => 'ical_feed, structured_data, website_page, pdf_bulletin, facebook_page.',
+      ],
+      'url' => [
+        'type' => 'text',
+        'not null' => TRUE,
+      ],
+      'check_frequency_hours' => [
+        'type' => 'int',
+        'default' => 48,
+      ],
+      'last_checked_at' => [
+        'type' => 'varchar',
+        'length' => 32,
+      ],
+      'last_changed_at' => [
+        'type' => 'varchar',
+        'length' => 32,
+      ],
+      'is_primary' => [
+        'type' => 'int',
+        'size' => 'tiny',
+        'default' => 0,
+      ],
+      'status' => [
+        'type' => 'varchar',
+        'length' => 16,
+        'default' => 'active',
+      ],
+      'created_at' => [
+        'type' => 'varchar',
+        'length' => 32,
+      ],
+    ],
+    'primary key' => ['id'],
+    'indexes' => [
+      'parish_nid' => ['parish_nid'],
+    ],
+  ];
+
+  $schema['mass_times_templates'] = [
+    'description' => 'Parish extraction templates.',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ],
+      'parish_nid' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ],
+      'template_json' => [
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => TRUE,
+      ],
+      'accuracy_score' => [
+        'type' => 'numeric',
+        'precision' => 5,
+        'scale' => 4,
+      ],
+      'build_method' => [
+        'type' => 'varchar',
+        'length' => 16,
+        'default' => 'automated',
+      ],
+      'version' => [
+        'type' => 'int',
+        'default' => 1,
+      ],
+      'created_at' => [
+        'type' => 'varchar',
+        'length' => 32,
+      ],
+      'superseded_at' => [
+        'type' => 'varchar',
+        'length' => 32,
+      ],
+    ],
+    'primary key' => ['id'],
+    'indexes' => [
+      'parish_nid' => ['parish_nid'],
+    ],
+  ];
+
+  $schema['mass_times_extractions'] = [
+    'description' => 'Extraction audit log.',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ],
+      'parish_nid' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ],
+      'source_endpoint_id' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ],
+      'extraction_tier' => [
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+      ],
+      'raw_content_hash' => [
+        'type' => 'varchar',
+        'length' => 64,
+      ],
+      'raw_content_path' => [
+        'type' => 'text',
+      ],
+      'extracted_json' => [
+        'type' => 'text',
+        'size' => 'big',
+      ],
+      'confidence_score' => [
+        'type' => 'numeric',
+        'precision' => 5,
+        'scale' => 4,
+      ],
+      'validation_status' => [
+        'type' => 'varchar',
+        'length' => 16,
+      ],
+      'llm_model' => [
+        'type' => 'varchar',
+        'length' => 64,
+      ],
+      'llm_cost_usd' => [
+        'type' => 'numeric',
+        'precision' => 8,
+        'scale' => 6,
+      ],
+      'created_at' => [
+        'type' => 'varchar',
+        'length' => 32,
+      ],
+    ],
+    'primary key' => ['id'],
+    'indexes' => [
+      'parish_nid' => ['parish_nid'],
+      'extraction_tier' => ['extraction_tier'],
+    ],
+  ];
+
+  $schema['mass_times_diffs'] = [
+    'description' => 'Change tracking between extractions.',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ],
+      'extraction_id' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ],
+      'previous_extraction_id' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ],
+      'changes_json' => [
+        'type' => 'text',
+        'size' => 'big',
+      ],
+      'change_type' => [
+        'type' => 'varchar',
+        'length' => 16,
+      ],
+      'reviewed_by' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ],
+      'reviewed_at' => [
+        'type' => 'varchar',
+        'length' => 32,
+      ],
+    ],
+    'primary key' => ['id'],
+    'indexes' => [
+      'extraction_id' => ['extraction_id'],
+    ],
+  ];
+
+  $schema['mass_times_user_reports'] = [
+    'description' => 'User correction reports.',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ],
+      'parish_nid' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ],
+      'report_type' => [
+        'type' => 'varchar',
+        'length' => 32,
+      ],
+      'description' => [
+        'type' => 'text',
+      ],
+      'reporter_email' => [
+        'type' => 'varchar',
+        'length' => 255,
+      ],
+      'status' => [
+        'type' => 'varchar',
+        'length' => 16,
+        'default' => 'new',
+      ],
+      'resolution_notes' => [
+        'type' => 'text',
+      ],
+      'created_at' => [
+        'type' => 'varchar',
+        'length' => 32,
+      ],
+      'resolved_at' => [
+        'type' => 'varchar',
+        'length' => 32,
+      ],
+    ],
+    'primary key' => ['id'],
+    'indexes' => [
+      'parish_nid' => ['parish_nid'],
+      'status' => ['status'],
+    ],
+  ];
+
+  return $schema;
+}

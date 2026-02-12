@@ -48,6 +48,30 @@ settings:
       - claude-sonnet-4-5
       - claude-haiku-3-5
 
+  # === MASS TIMES SCRAPER [EXPERIMENTAL] ===
+  # Automated Catholic mass times scraping for mt.nwpcode.org (F16)
+  # Code-first extraction: regex, CSS selectors, PDF parsing. LLM is Tier 3 fallback only.
+  # Requires API keys in .secrets.yml
+  mass_times:
+    enabled: false
+    schedule: "0 3 * * *"             # [EXPERIMENTAL] Default cron: 3am daily
+    # Geographic scope
+    centre_lat: -37.8131              # [EXPERIMENTAL] Ringwood, Melbourne
+    centre_lng: 145.2285
+    radius_km: 20
+    # LLM settings (Tier 3 fallback only)
+    fallback_model: claude-sonnet-4-5  # [EXPERIMENTAL] Model for Tier 3 LLM fallback
+    max_monthly_llm_usd: 5            # [EXPERIMENTAL] Monthly LLM cost cap
+    tier3_daily_limit: 10             # [EXPERIMENTAL] Max Tier 3 extractions per day
+    # Email notifications
+    alert_on_failure: true
+    weekly_summary: true
+    summary_day: friday
+    # Drupal sync
+    drupal_site: mt
+    drupal_api_user: mass_times_bot
+    sync_after_extraction: true
+
   # === TESTER PROMPTS [EXPERIMENTAL] ===
   # Opportunistic human verification (P55)
   tester_prompts:

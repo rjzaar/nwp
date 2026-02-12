@@ -1,0 +1,4 @@
+administer mass_times:
+  title: 'Administer Mass Times'
+  description: 'Access the mass times admin dashboard, manage parishes and extraction settings.'
+  restrict access: true

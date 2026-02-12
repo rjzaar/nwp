@@ -1,0 +1,22 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.paragraph.field_language
+    - paragraphs.paragraphs_type.mass_time
+  enforced:
+    module:
+      - mass_times
+id: paragraph.mass_time.field_language
+field_name: field_language
+entity_type: paragraph
+bundle: mass_time
+label: Language
+description: 'Language of the mass.'
+required: false
+translatable: false
+default_value:
+  - value: English
+default_value_callback: ''
+settings: {}
+field_type: string

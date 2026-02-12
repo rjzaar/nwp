@@ -1,0 +1,26 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - paragraphs
+  enforced:
+    module:
+      - mass_times
+id: paragraph.field_mass_type
+field_name: field_mass_type
+entity_type: paragraph
+type: list_string
+settings:
+  allowed_values:
+    - { value: Regular, label: Regular }
+    - { value: Vigil, label: Vigil }
+    - { value: 'Holy Day', label: 'Holy Day' }
+    - { value: Latin, label: Latin }
+    - { value: Reconciliation, label: Reconciliation }
+module: options
+locked: false
+cardinality: 1
+translatable: false
+indexes: {}
+persist_with_no_fields: false
+custom_storage: false

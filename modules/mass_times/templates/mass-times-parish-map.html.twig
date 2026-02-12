@@ -1,0 +1,33 @@
+{#
+/**
+ * @file
+ * Template for the parish map block.
+ *
+ * Variables:
+ * - centre_lat: Centre latitude.
+ * - centre_lng: Centre longitude.
+ * - radius_km: Search radius.
+ * - parishes: Array of parish marker data.
+ */
+#}
+<div class="mass-times-parish-map"
+     data-centre-lat="{{ centre_lat }}"
+     data-centre-lng="{{ centre_lng }}"
+     data-radius-km="{{ radius_km }}">
+
+  {% if parishes is empty %}
+    <p>{{ 'No parishes found within the configured radius.'|t }}</p>
+  {% else %}
+    <div class="parish-map-container" id="mass-times-map" style="height: 400px; width: 100%;"></div>
+    <ul class="parish-list">
+      {% for parish in parishes %}
+        <li class="parish-item"
+            data-lat="{{ parish.lat }}"
+            data-lng="{{ parish.lng }}">
+          <a href="{{ parish.url }}">{{ parish.title }}</a>
+          <span class="parish-distance">({{ parish.distance }} km)</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>

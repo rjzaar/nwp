@@ -1,0 +1,8 @@
+services:
+  mass_times.commands:
+    class: Drupal\mass_times\Commands\MassTimesCommands
+    arguments:
+      - '@database'
+      - '@entity_type.manager'
+    tags:
+      - { name: drush.command }

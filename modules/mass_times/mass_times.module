@@ -1,0 +1,50 @@
+<?php
+
+/**
+ * @file
+ * Mass Times module - displays Catholic mass times for nearby parishes.
+ *
+ * Data is provided by the NWP mass times scraper pipeline (F16),
+ * which uses code-first extraction (regex, CSS selectors, PDF parsing)
+ * with LLM as a Tier 3 fallback.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+
+/**
+ * Implements hook_theme().
+ */
+function mass_times_theme() {
+  return [
+    'mass_times_parish_map' => [
+      'variables' => [
+        'centre_lat' => NULL,
+        'centre_lng' => NULL,
+        'radius_km' => NULL,
+        'parishes' => [],
+      ],
+    ],
+  ];
+}
+
+/**
+ * Implements hook_help().
+ */
+function mass_times_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    case 'help.page.mass_times':
+      $output = '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('The Mass Times module displays Catholic mass times for parishes within 20km of Ringwood, Melbourne.') . '</p>';
+      $output .= '<h3>' . t('How it works') . '</h3>';
+      $output .= '<ul>';
+      $output .= '<li>' . t('Parish data is scraped automatically by the NWP mass times pipeline.') . '</li>';
+      $output .= '<li>' . t('Data is synced via JSON:API from the Python extraction pipeline.') . '</li>';
+      $output .= '<li>' . t('Users can report incorrect times via a webform on each parish page.') . '</li>';
+      $output .= '</ul>';
+      $output .= '<h3>' . t('Administration') . '</h3>';
+      $output .= '<p>' . t('Visit <a href=":admin">Mass Times admin</a> to view extraction status and manage parishes.', [
+        ':admin' => '/admin/mass-times',
+      ]) . '</p>';
+      return $output;
+  }
+}

@@ -1,0 +1,16 @@
+name: 'Mass Times'
+description: 'Displays Catholic mass times for parishes near Ringwood, Melbourne. Data provided by the NWP mass times scraper (F16).'
+type: module
+core_version_requirement: ^10 || ^11
+package: 'NWP'
+
+dependencies:
+  - drupal:node
+  - drupal:taxonomy
+  - drupal:jsonapi
+  - drupal:link
+  - drupal:datetime
+  - drupal:options
+  - paragraphs:paragraphs
+  - geofield:geofield
+  - entity_reference_revisions:entity_reference_revisions

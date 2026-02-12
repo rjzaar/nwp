@@ -1,0 +1,10 @@
+services:
+  mass_times.parish_data:
+    class: Drupal\mass_times\Service\ParishDataService
+    arguments:
+      - '@entity_type.manager'
+      - '@database'
+      - '@mass_times.proximity'
+
+  mass_times.proximity:
+    class: Drupal\mass_times\Service\ProximityService

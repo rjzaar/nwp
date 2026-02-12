@@ -1,0 +1,13 @@
+mass_times.admin:
+  title: 'Mass Times'
+  route_name: mass_times.admin
+  description: 'View extraction status, manage parishes, and review user reports.'
+  parent: system.admin
+  weight: 50
+
+mass_times.settings:
+  title: 'Settings'
+  route_name: mass_times.settings
+  description: 'Configure mass times scraper settings.'
+  parent: mass_times.admin
+  weight: 100

@@ -110,6 +110,21 @@ sites/*
 !avcbits/
 !avcbits/**
 
+# Mass Times scraper (F16)
+!mt/
+!mt/**
+mt/.venv/
+mt/venv/
+mt/data/
+mt/mass-times.conf
+mt/mass-times.log
+mt/**/__pycache__/
+mt/**/.pytest_cache/
+
+# Drupal custom modules
+!modules/
+!modules/**
+
 # SSH keys directory (structure tracked, contents ignored)
 !keys/
 !keys/.gitkeep

@@ -1609,6 +1609,7 @@ These feature proposals were deprioritized by the Deep Analysis re-evaluation. T
 
 ### Guides
 - [F10-local-llm-guide.md](../proposals/F10-local-llm-guide.md) - Complete guide to running open source AI models locally (F10)
+- [Moodle Microsoft SSO](../guides/moodle-microsoft-sso.md) - Creating a Moodle site with Microsoft SSO using NWP
 
 ---
 

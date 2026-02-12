@@ -52,6 +52,7 @@ Step-by-step guides for common workflows:
 | [Coder Onboarding](guides/coder-onboarding.md) | Multi-coder infrastructure setup |
 | [Email Setup](guides/email-setup.md) | Email configuration, SMTP, and email reply system |
 | [Working with Claude Securely](guides/working-with-claude-securely.md) | AI assistant security guidelines |
+| [Moodle Microsoft SSO](guides/moodle-microsoft-sso.md) | Create a Moodle site with Microsoft account sign-on |
 | [Migration Sites Tracking](guides/migration-sites-tracking.md) | Migrate to sites tracking system |
 | [Git Hooks](development/git-hooks.md) | Automated code quality checks |
 

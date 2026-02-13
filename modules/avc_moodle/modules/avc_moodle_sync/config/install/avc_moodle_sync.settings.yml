@@ -1,0 +1,8 @@
+moodle_url: ''
+webservice_token: ''
+enable_sync: false
+enable_automatic_sync: false
+sync_on_login: false
+role_mapping: {}
+batch_size: 50
+enable_logging: false

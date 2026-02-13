@@ -1,0 +1,10 @@
+name: 'AVC Moodle Data'
+description: 'Displays Moodle badges and course completions on AVC profiles.'
+type: module
+core_version_requirement: ^10 || ^11
+package: 'AVC'
+
+dependencies:
+  - avc_moodle:avc_moodle
+  - drupal:block
+  - drupal:user

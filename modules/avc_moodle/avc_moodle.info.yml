@@ -1,0 +1,16 @@
+name: 'AVC Moodle Integration'
+description: 'Parent module for AVC-Moodle SSO, role synchronization, and data display integration.'
+type: module
+core_version_requirement: ^10 || ^11
+package: 'AVC'
+
+# This is a parent module that provides common functionality for all AVC-Moodle integration
+# submodules. It does not provide any functionality on its own.
+#
+# Submodules:
+#   - avc_moodle_oauth: OAuth2 provider for SSO
+#   - avc_moodle_sync: Role and cohort synchronization
+#   - avc_moodle_data: Badge and course completion display
+
+dependencies:
+  - drupal:simple_oauth

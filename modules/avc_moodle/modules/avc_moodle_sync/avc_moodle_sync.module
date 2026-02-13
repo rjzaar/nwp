@@ -1,0 +1,92 @@
+<?php
+
+/**
+ * @file
+ * AVC Moodle Sync module.
+ *
+ * Synchronizes AVC guild roles to Moodle cohorts and roles.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\user\Entity\User;
+
+/**
+ * Implements hook_help().
+ */
+function avc_moodle_sync_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    case 'help.page.avc_moodle_sync':
+      $output = '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('The AVC Moodle Sync module synchronizes AVC guild memberships and roles to Moodle cohorts and roles.') . '</p>';
+      $output .= '<h3>' . t('Configuration') . '</h3>';
+      $output .= '<p>' . t('Visit the <a href=":settings">AVC Moodle Sync settings</a> page to configure the module.', [
+        ':settings' => \Drupal\Core\Url::fromRoute('avc_moodle_sync.settings')->toString(),
+      ]) . '</p>';
+      $output .= '<h3>' . t('Drush Commands') . '</h3>';
+      $output .= '<dl>';
+      $output .= '<dt><code>drush avc-moodle:sync-user [user]</code></dt>';
+      $output .= '<dd>' . t('Sync a specific user') . '</dd>';
+      $output .= '<dt><code>drush avc-moodle:sync-guild [guild]</code></dt>';
+      $output .= '<dd>' . t('Sync all members of a guild') . '</dd>';
+      $output .= '<dt><code>drush avc-moodle:sync-all</code></dt>';
+      $output .= '<dd>' . t('Perform full sync of all guilds') . '</dd>';
+      $output .= '<dt><code>drush avc-moodle:test-connection</code></dt>';
+      $output .= '<dd>' . t('Test Moodle API connection') . '</dd>';
+      $output .= '</dl>';
+      return $output;
+  }
+}
+
+/**
+ * Implements hook_user_login().
+ */
+function avc_moodle_sync_user_login($account) {
+  $config = \Drupal::config('avc_moodle_sync.settings');
+
+  // Check if sync on login is enabled.
+  if ($config->get('sync_on_login') && $config->get('enable_sync')) {
+    $user = User::load($account->id());
+    if ($user) {
+      // Queue user for sync.
+      $queue = \Drupal::queue('avc_moodle_sync_user');
+      $queue->createItem([
+        'user_id' => $user->id(),
+        'timestamp' => time(),
+      ]);
+    }
+  }
+}
+
+/**
+ * Implements hook_cron().
+ */
+function avc_moodle_sync_cron() {
+  // Process queued sync operations.
+  $queue = \Drupal::queue('avc_moodle_sync_user');
+  $queue_worker = \Drupal::service('plugin.manager.queue_worker')->createInstance('avc_moodle_sync_user');
+
+  $config = \Drupal::config('avc_moodle_sync.settings');
+  $batch_size = $config->get('batch_size') ?? 50;
+
+  $processed = 0;
+  while ($processed < $batch_size && ($item = $queue->claimItem())) {
+    try {
+      $queue_worker->processItem($item->data);
+      $queue->deleteItem($item);
+      $processed++;
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('avc_moodle_sync')->error('Error processing sync queue: @message', [
+        '@message' => $e->getMessage(),
+      ]);
+      // Release item back to queue for retry.
+      $queue->releaseItem($item);
+    }
+  }
+
+  if ($processed > 0) {
+    \Drupal::logger('avc_moodle_sync')->info('Processed @count queued sync operations', [
+      '@count' => $processed,
+    ]);
+  }
+}

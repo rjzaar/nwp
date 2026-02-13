@@ -1,0 +1,24 @@
+{#
+/**
+ * @file
+ * Template for displaying Moodle badges.
+ */
+#}
+<div class="moodle-badges">
+  <h3>{{ 'Moodle Badges'|t }}</h3>
+  {% if badges %}
+    <div class="badge-list">
+      {% for badge in badges %}
+        <div class="badge-item">
+          {% if badge.badgeurl %}
+            <img src="{{ badge.badgeurl }}" alt="{{ badge.name }}" />
+          {% endif %}
+          <div class="badge-name">{{ badge.name }}</div>
+          <div class="badge-date">{{ badge.dateissued|date('Y-m-d') }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>{{ 'No badges earned yet.'|t }}</p>
+  {% endif %}
+</div>

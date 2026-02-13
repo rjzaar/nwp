@@ -1,0 +1,28 @@
+avc_moodle_oauth.settings:
+  type: config_object
+  label: 'AVC Moodle OAuth Provider settings'
+  mapping:
+    moodle_url:
+      type: string
+      label: 'Moodle URL'
+    enable_auto_provisioning:
+      type: boolean
+      label: 'Enable automatic user provisioning'
+    token_lifetime:
+      type: integer
+      label: 'Access token lifetime (seconds)'
+    refresh_token_lifetime:
+      type: integer
+      label: 'Refresh token lifetime (seconds)'
+    include_guilds:
+      type: boolean
+      label: 'Include guild memberships in UserInfo'
+    include_guild_roles:
+      type: boolean
+      label: 'Include guild roles in UserInfo'
+    include_profile_picture:
+      type: boolean
+      label: 'Include profile picture in UserInfo'
+    enable_logging:
+      type: boolean
+      label: 'Enable debug logging'

@@ -1,0 +1,158 @@
+<?php
+
+/**
+ * @file
+ * AVC Moodle OAuth Provider module.
+ *
+ * Provides OAuth2 authentication endpoints for Moodle SSO integration.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+
+/**
+ * Implements hook_help().
+ */
+function avc_moodle_oauth_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    case 'help.page.avc_moodle_oauth':
+      $output = '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('The AVC Moodle OAuth Provider module extends Simple OAuth to provide OAuth2 authentication endpoints specifically for Moodle integration.') . '</p>';
+      $output .= '<h3>' . t('OAuth2 Endpoints') . '</h3>';
+      $output .= '<dl>';
+      $output .= '<dt>' . t('Authorization URL') . '</dt>';
+      $output .= '<dd><code>/oauth/authorize</code></dd>';
+      $output .= '<dt>' . t('Token URL') . '</dt>';
+      $output .= '<dd><code>/oauth/token</code></dd>';
+      $output .= '<dt>' . t('UserInfo URL') . '</dt>';
+      $output .= '<dd><code>/oauth/userinfo</code></dd>';
+      $output .= '</dl>';
+      $output .= '<h3>' . t('Configuration') . '</h3>';
+      $output .= '<p>' . t('Visit the <a href=":settings">AVC Moodle OAuth settings</a> page to configure the module.', [
+        ':settings' => \Drupal\Core\Url::fromRoute('avc_moodle_oauth.settings')->toString(),
+      ]) . '</p>';
+      return $output;
+  }
+}
+
+/**
+ * Implements hook_simple_oauth_oidc_claims_alter().
+ *
+ * Adds custom AVC claims to the OAuth2 token response.
+ */
+function avc_moodle_oauth_simple_oauth_oidc_claims_alter(array &$claims, $account) {
+  $config = \Drupal::config('avc_moodle_oauth.settings');
+
+  // Add guild memberships if enabled.
+  if ($config->get('include_guilds')) {
+    $guilds = _avc_moodle_oauth_get_user_guilds($account);
+    if (!empty($guilds)) {
+      $claims['guilds'] = $guilds;
+    }
+  }
+
+  // Add guild roles if enabled.
+  if ($config->get('include_guild_roles')) {
+    $guild_roles = _avc_moodle_oauth_get_user_guild_roles($account);
+    if (!empty($guild_roles)) {
+      $claims['guild_roles'] = $guild_roles;
+    }
+  }
+}
+
+/**
+ * Helper function to get user's guild memberships.
+ *
+ * @param \Drupal\Core\Session\AccountInterface $account
+ *   User account.
+ *
+ * @return array
+ *   Array of guild data.
+ */
+function _avc_moodle_oauth_get_user_guilds($account) {
+  $guilds = [];
+  $user = \Drupal\user\Entity\User::load($account->id());
+
+  if (!$user) {
+    return $guilds;
+  }
+
+  // Check if group module is installed.
+  if (\Drupal::moduleHandler()->moduleExists('group')) {
+    $group_membership_service = \Drupal::service('group.membership_loader');
+    $group_memberships = $group_membership_service->loadByUser($user);
+
+    foreach ($group_memberships as $membership) {
+      $group = $membership->getGroup();
+      $guilds[$group->id()] = $group->label();
+    }
+  }
+  // Check if og (Organic Groups) module is installed.
+  elseif (\Drupal::moduleHandler()->moduleExists('og')) {
+    $og_memberships = \Drupal::service('og.membership_manager')->getMemberships($user->id());
+
+    foreach ($og_memberships as $membership) {
+      $group = $membership->getGroup();
+      $guilds[$group->id()] = $group->label();
+    }
+  }
+
+  return $guilds;
+}
+
+/**
+ * Helper function to get user's guild roles.
+ *
+ * @param \Drupal\Core\Session\AccountInterface $account
+ *   User account.
+ *
+ * @return array
+ *   Array of guild roles.
+ */
+function _avc_moodle_oauth_get_user_guild_roles($account) {
+  $guild_roles = [];
+  $user = \Drupal\user\Entity\User::load($account->id());
+
+  if (!$user) {
+    return $guild_roles;
+  }
+
+  // Check if group module is installed.
+  if (\Drupal::moduleHandler()->moduleExists('group')) {
+    $group_membership_service = \Drupal::service('group.membership_loader');
+    $group_memberships = $group_membership_service->loadByUser($user);
+
+    foreach ($group_memberships as $membership) {
+      $group = $membership->getGroup();
+      $roles = $membership->getRoles();
+
+      $role_ids = [];
+      foreach ($roles as $role) {
+        $role_ids[] = $role->id();
+      }
+
+      if (!empty($role_ids)) {
+        $guild_roles[$group->id()] = $role_ids;
+      }
+    }
+  }
+  // Check if og (Organic Groups) module is installed.
+  elseif (\Drupal::moduleHandler()->moduleExists('og')) {
+    $og_memberships = \Drupal::service('og.membership_manager')->getMemberships($user->id());
+
+    foreach ($og_memberships as $membership) {
+      $group = $membership->getGroup();
+      $roles = $membership->getRoles();
+
+      $role_ids = [];
+      foreach ($roles as $role) {
+        $role_ids[] = $role->getName();
+      }
+
+      if (!empty($role_ids)) {
+        $guild_roles[$group->id()] = $role_ids;
+      }
+    }
+  }
+
+  return $guild_roles;
+}

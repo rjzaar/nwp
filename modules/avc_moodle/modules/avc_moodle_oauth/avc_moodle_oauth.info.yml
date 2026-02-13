@@ -1,0 +1,9 @@
+name: 'AVC Moodle OAuth Provider'
+description: 'Provides OAuth2 endpoints for Moodle SSO authentication.'
+type: module
+core_version_requirement: ^10 || ^11
+package: 'AVC'
+
+dependencies:
+  - avc_moodle:avc_moodle
+  - drupal:simple_oauth

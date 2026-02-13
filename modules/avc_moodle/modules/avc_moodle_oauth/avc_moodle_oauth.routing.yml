@@ -1,0 +1,20 @@
+# OAuth2 userinfo endpoint for Moodle
+avc_moodle_oauth.userinfo:
+  path: '/oauth/userinfo'
+  defaults:
+    _controller: '\Drupal\avc_moodle_oauth\Controller\UserInfoController::userInfo'
+    _title: 'OAuth UserInfo'
+  requirements:
+    _permission: 'access content'
+  options:
+    _auth: ['oauth2']
+    no_cache: TRUE
+
+# Configuration form
+avc_moodle_oauth.settings:
+  path: '/admin/config/services/avc-moodle/oauth'
+  defaults:
+    _form: '\Drupal\avc_moodle_oauth\Form\SettingsForm'
+    _title: 'AVC Moodle OAuth Settings'
+  requirements:
+    _permission: 'administer site configuration'

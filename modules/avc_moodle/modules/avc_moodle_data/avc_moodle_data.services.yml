@@ -1,0 +1,8 @@
+services:
+  avc_moodle_data.moodle_data:
+    class: Drupal\avc_moodle_data\MoodleDataService
+    arguments: ['@config.factory', '@http_client', '@logger.factory', '@cache.default']
+
+  avc_moodle_data.cache_manager:
+    class: Drupal\avc_moodle_data\CacheManager
+    arguments: ['@cache.default', '@config.factory']

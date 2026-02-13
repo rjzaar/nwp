@@ -1,0 +1,8 @@
+moodle_url: ''
+enable_auto_provisioning: true
+token_lifetime: 3600
+refresh_token_lifetime: 1209600
+include_guilds: true
+include_guild_roles: true
+include_profile_picture: true
+enable_logging: false

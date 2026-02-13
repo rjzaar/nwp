@@ -1,0 +1,19 @@
+avc_moodle_data.settings:
+  type: config_object
+  label: 'AVC Moodle Data settings'
+  mapping:
+    moodle_url:
+      type: string
+      label: 'Moodle URL'
+    webservice_token:
+      type: string
+      label: 'Webservice token'
+    cache_lifetime:
+      type: integer
+      label: 'Cache lifetime (seconds)'
+    enable_badges:
+      type: boolean
+      label: 'Enable badges display'
+    enable_courses:
+      type: boolean
+      label: 'Enable course completions display'

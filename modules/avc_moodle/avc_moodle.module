@@ -1,0 +1,80 @@
+<?php
+
+/**
+ * @file
+ * AVC Moodle Integration parent module.
+ *
+ * This module provides common functionality for AVC-Moodle integration submodules.
+ * It does not provide any user-facing features on its own.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+
+/**
+ * Implements hook_help().
+ */
+function avc_moodle_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    case 'help.page.avc_moodle':
+      $output = '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('The AVC Moodle Integration module provides integration between AV Commons (Drupal/OpenSocial) and Moodle LMS, including:') . '</p>';
+      $output .= '<ul>';
+      $output .= '<li>' . t('<strong>Single Sign-On (SSO):</strong> OAuth2-based authentication allowing AVC members to log in to Moodle with their AVC credentials.') . '</li>';
+      $output .= '<li>' . t('<strong>Role Synchronization:</strong> Automatic synchronization of guild roles from AVC to Moodle cohorts and roles.') . '</li>';
+      $output .= '<li>' . t('<strong>Badge Display:</strong> Display Moodle badges and course completions on AVC user profiles.') . '</li>';
+      $output .= '</ul>';
+      $output .= '<h3>' . t('Submodules') . '</h3>';
+      $output .= '<dl>';
+      $output .= '<dt>' . t('AVC Moodle OAuth Provider') . '</dt>';
+      $output .= '<dd>' . t('Provides OAuth2 endpoints for Moodle authentication.') . '</dd>';
+      $output .= '<dt>' . t('AVC Moodle Sync') . '</dt>';
+      $output .= '<dd>' . t('Synchronizes guild roles to Moodle cohorts and roles.') . '</dd>';
+      $output .= '<dt>' . t('AVC Moodle Data') . '</dt>';
+      $output .= '<dd>' . t('Displays Moodle badges and course completions on AVC profiles.') . '</dd>';
+      $output .= '</dl>';
+      $output .= '<h3>' . t('Configuration') . '</h3>';
+      $output .= '<p>' . t('Configure the integration at <a href=":config">Configuration > AVC Moodle</a>.', [
+        ':config' => \Drupal\Core\Url::fromRoute('avc_moodle.settings')->toString(),
+      ]) . '</p>';
+      return $output;
+  }
+}
+
+/**
+ * Get Moodle site URL from configuration.
+ *
+ * @return string|null
+ *   The Moodle site URL or NULL if not configured.
+ */
+function avc_moodle_get_moodle_url() {
+  $config = \Drupal::config('avc_moodle.settings');
+  return $config->get('moodle_url');
+}
+
+/**
+ * Get Moodle Web Services API token from configuration.
+ *
+ * @return string|null
+ *   The API token or NULL if not configured.
+ */
+function avc_moodle_get_api_token() {
+  $config = \Drupal::config('avc_moodle.settings');
+  return $config->get('api_token');
+}
+
+/**
+ * Get role mapping configuration.
+ *
+ * @return array
+ *   Array of guild role => moodle role mappings.
+ */
+function avc_moodle_get_role_mapping() {
+  $config = \Drupal::config('avc_moodle.settings');
+  return $config->get('role_mapping') ?: [
+    'guild_admin' => 'manager',
+    'guild_facilitator' => 'teacher',
+    'guild_mentor' => 'teacher',
+    'guild_member' => 'student',
+    'default' => 'student',
+  ];
+}

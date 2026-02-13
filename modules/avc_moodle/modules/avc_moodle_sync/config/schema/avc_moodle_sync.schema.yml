@@ -1,0 +1,40 @@
+avc_moodle_sync.settings:
+  type: config_object
+  label: 'AVC Moodle Sync settings'
+  mapping:
+    moodle_url:
+      type: string
+      label: 'Moodle URL'
+    webservice_token:
+      type: string
+      label: 'Webservice token'
+    enable_sync:
+      type: boolean
+      label: 'Enable synchronization'
+    enable_automatic_sync:
+      type: boolean
+      label: 'Enable automatic synchronization'
+    sync_on_login:
+      type: boolean
+      label: 'Sync on user login'
+    role_mapping:
+      type: sequence
+      label: 'Role mapping'
+      sequence:
+        type: mapping
+        mapping:
+          cohort:
+            type: string
+            label: 'Moodle cohort identifier'
+          roles:
+            type: sequence
+            label: 'Role mappings'
+            sequence:
+              type: integer
+              label: 'Moodle role ID'
+    batch_size:
+      type: integer
+      label: 'Batch size'
+    enable_logging:
+      type: boolean
+      label: 'Enable debug logging'

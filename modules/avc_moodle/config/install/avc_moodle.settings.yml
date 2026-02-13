@@ -1,0 +1,10 @@
+moodle_url: ''
+api_token: ''
+oauth2_token_lifetime: 300
+sync_interval: 3600
+role_mapping:
+  guild_admin: 'manager'
+  guild_facilitator: 'teacher'
+  guild_mentor: 'teacher'
+  guild_member: 'student'
+  default: 'student'

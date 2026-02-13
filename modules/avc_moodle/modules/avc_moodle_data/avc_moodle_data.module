@@ -1,0 +1,22 @@
+<?php
+
+/**
+ * @file
+ * AVC Moodle Data module.
+ */
+
+/**
+ * Implements hook_theme().
+ */
+function avc_moodle_data_theme($existing, $type, $theme, $path) {
+  return [
+    'avc_moodle_badges' => [
+      'variables' => ['badges' => []],
+      'template' => 'avc-moodle-badges',
+    ],
+    'avc_moodle_courses' => [
+      'variables' => ['courses' => []],
+      'template' => 'avc-moodle-courses',
+    ],
+  ];
+}

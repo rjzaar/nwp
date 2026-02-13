@@ -1,0 +1,8 @@
+# Configuration form
+avc_moodle_sync.settings:
+  path: '/admin/config/services/avc-moodle/sync'
+  defaults:
+    _form: '\Drupal\avc_moodle_sync\Form\SettingsForm'
+    _title: 'AVC Moodle Sync Settings'
+  requirements:
+    _permission: 'administer site configuration'

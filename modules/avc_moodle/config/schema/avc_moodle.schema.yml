@@ -1,0 +1,37 @@
+# Schema for avc_moodle configuration
+
+avc_moodle.settings:
+  type: config_object
+  label: 'AVC Moodle Integration Settings'
+  mapping:
+    moodle_url:
+      type: string
+      label: 'Moodle Site URL'
+    api_token:
+      type: string
+      label: 'Moodle Web Services API Token'
+    oauth2_token_lifetime:
+      type: integer
+      label: 'OAuth2 Token Lifetime (seconds)'
+    sync_interval:
+      type: integer
+      label: 'Role Sync Interval (seconds)'
+    role_mapping:
+      type: mapping
+      label: 'Role Mapping Configuration'
+      mapping:
+        guild_admin:
+          type: string
+          label: 'Guild Admin Role'
+        guild_facilitator:
+          type: string
+          label: 'Guild Facilitator Role'
+        guild_mentor:
+          type: string
+          label: 'Guild Mentor Role'
+        guild_member:
+          type: string
+          label: 'Guild Member Role'
+        default:
+          type: string
+          label: 'Default Role'

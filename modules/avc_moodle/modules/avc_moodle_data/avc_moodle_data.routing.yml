@@ -1,0 +1,8 @@
+# Configuration form
+avc_moodle_data.settings:
+  path: '/admin/config/services/avc-moodle/data'
+  defaults:
+    _form: '\Drupal\avc_moodle_data\Form\SettingsForm'
+    _title: 'AVC Moodle Data Settings'
+  requirements:
+    _permission: 'administer site configuration'

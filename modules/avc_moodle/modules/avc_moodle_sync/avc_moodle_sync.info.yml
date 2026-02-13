@@ -1,0 +1,9 @@
+name: 'AVC Moodle Sync'
+description: 'Synchronizes AVC guild roles to Moodle cohorts and roles.'
+type: module
+core_version_requirement: ^10 || ^11
+package: 'AVC'
+
+dependencies:
+  - avc_moodle:avc_moodle
+  - drupal:user

@@ -1,0 +1,14 @@
+services:
+  avc_moodle_sync.api_client:
+    class: Drupal\avc_moodle_sync\MoodleApiClient
+    arguments: ['@config.factory', '@http_client', '@logger.factory']
+
+  avc_moodle_sync.role_sync:
+    class: Drupal\avc_moodle_sync\RoleSyncService
+    arguments: ['@avc_moodle_sync.api_client', '@config.factory', '@entity_type.manager', '@logger.factory']
+
+  avc_moodle_sync.guild_membership_subscriber:
+    class: Drupal\avc_moodle_sync\EventSubscriber\GuildMembershipSubscriber
+    arguments: ['@avc_moodle_sync.role_sync']
+    tags:
+      - { name: event_subscriber }

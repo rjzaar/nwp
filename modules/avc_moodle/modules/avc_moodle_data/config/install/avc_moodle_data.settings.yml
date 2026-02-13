@@ -1,0 +1,5 @@
+moodle_url: ''
+webservice_token: ''
+cache_lifetime: 3600
+enable_badges: true
+enable_courses: true

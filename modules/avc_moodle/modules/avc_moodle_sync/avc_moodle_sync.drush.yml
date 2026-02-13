@@ -1,0 +1,6 @@
+services:
+  avc_moodle_sync.commands:
+    class: \Drupal\avc_moodle_sync\Commands\SyncCommands
+    arguments: ['@avc_moodle_sync.role_sync', '@avc_moodle_sync.api_client', '@entity_type.manager']
+    tags:
+      - { name: drush.command }

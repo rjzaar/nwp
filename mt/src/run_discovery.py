@@ -37,13 +37,20 @@ def main():
         config.radius_km, config.centre_lat, config.centre_lng,
     )
 
-    parishes, sources = discovery.run()
+    result = discovery.run()
 
-    logger.info("Found %d parishes with %d source endpoints", len(parishes), len(sources))
+    logger.info(
+        "Found %d parishes with %d source endpoints",
+        len(result.parishes), len(result.endpoints),
+    )
+
+    if result.errors:
+        for err in result.errors:
+            logger.warning("Discovery error: %s", err)
 
     if args.dry_run:
         logger.info("Dry run — not saving results")
-        for p in parishes:
+        for p in result.parishes:
             print(f"  {p.id}: {p.name} ({p.distance_km:.1f} km)")
         return
 
@@ -51,7 +58,7 @@ def main():
     data_dir = config.data_dir
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    discovery.save_results(parishes, sources, data_dir)
+    discovery.save_results(result, data_dir)
     logger.info("Results saved to %s", data_dir)
 
 

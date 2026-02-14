@@ -1152,6 +1152,21 @@ recipes:
     media_subdomain: media
     auto: y                        # [ACTIVE]
 
+  mt:
+    # [ACTIVE] Mass Times Drupal site (F16/F17)
+    # Displays Catholic mass times for parishes near Ringwood, Melbourne.
+    # Usage: ./install.sh mt mt
+    source: drupal/recommended-project:^10.2
+    profile: standard
+    webroot: web
+    auto: y
+    install_modules: drupal/geofield drupal/geocoder drupal/leaflet drupal/paragraphs drupal/entity_reference_revisions drupal/jsonapi_extras drupal/pathauto drupal/metatag drupal/simple_sitemap drupal/webform
+    options:
+      environment_indicator: y
+      cron: y
+      backup: y
+      ssl: y
+
 ################################################################################
 # SITES - Auto-populated Site Registry
 ################################################################################

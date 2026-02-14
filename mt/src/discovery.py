@@ -172,37 +172,54 @@ class ParishDiscovery:
     def discover_archdiocese(self) -> list[Parish]:
         """Discover parishes from the Melbourne Archdiocese directory.
 
-        Scrapes melbournecatholic.org parish listings.
+        Scrapes melbournecatholic.org/directory/parishes listings.
+        Follows pagination (p2, p3, ...) to get all parishes.
         """
         parishes = []
-        url = "https://melbournecatholic.org/parishes"
+        base_url = "https://melbournecatholic.org/directory/parishes"
+        page = 1
 
-        resp = self._fetch(url)
-        if not resp:
-            logger.warning("Could not access archdiocese directory")
-            return []
+        while True:
+            url = base_url if page == 1 else f"{base_url}/p{page}"
+            resp = self._fetch(url)
+            if not resp:
+                if page == 1:
+                    logger.warning("Could not access archdiocese directory")
+                break
 
-        soup = BeautifulSoup(resp.text, "html.parser")
+            soup = BeautifulSoup(resp.text, "html.parser")
+            page_parishes = []
 
-        # Look for parish listing links
-        for link in soup.find_all("a", href=True):
-            text = link.get_text(strip=True)
-            href = link["href"]
+            for link in soup.find_all("a", href=True):
+                text = link.get_text(strip=True)
+                href = link["href"]
 
-            # Parish links typically contain parish names
-            if not re.search(r'parish|church|catholic', href, re.IGNORECASE):
-                continue
-            if len(text) < 3:
-                continue
+                # Only match actual parish detail pages
+                if not re.search(r'/directory/parishes/[a-z]', href):
+                    continue
+                # Skip pagination links
+                if re.search(r'/directory/parishes/p\d+$', href):
+                    continue
+                if len(text) < 3:
+                    continue
 
-            parish = Parish(
-                id=slug_from_name(text),
-                name=text,
-                website=urljoin(url, href),
-            )
-            parishes.append(parish)
+                parish = Parish(
+                    id=slug_from_name(text),
+                    name=text,
+                    website=urljoin(url, href),
+                )
+                page_parishes.append(parish)
 
-        logger.info("Archdiocese directory: found %d parishes", len(parishes))
+            parishes.extend(page_parishes)
+
+            # Check for next page
+            next_link = soup.find("a", href=re.compile(rf'/directory/parishes/p{page + 1}'))
+            if next_link and page_parishes:
+                page += 1
+            else:
+                break
+
+        logger.info("Archdiocese directory: found %d parishes across %d pages", len(parishes), page)
         return parishes
 
     def discover_masstimes_org(self) -> list[Parish]:
@@ -289,11 +306,55 @@ class ParishDiscovery:
         logger.info("After dedup: %d parishes (from %d)", len(result), len(all_parishes))
         return result
 
+    def _extract_parish_website(self, soup: BeautifulSoup, directory_url: str) -> str | None:
+        """Extract the actual parish website URL from an archdiocese directory page.
+
+        The melbournecatholic.org directory pages link to each parish's own
+        website under a "Website" label in the contact details section.
+        """
+        directory_host = urlparse(directory_url).hostname or ""
+        skip_hosts = {
+            "facebook.com", "www.facebook.com",
+            "twitter.com", "www.twitter.com", "x.com",
+            "instagram.com", "www.instagram.com",
+            "youtube.com", "www.youtube.com",
+            "linkedin.com", "www.linkedin.com",
+            "cem.edu.au", "www.cem.edu.au",
+        }
+
+        # First pass: look for a link specifically labeled "Website"
+        for a in soup.find_all("a", href=True):
+            text = a.get_text(strip=True).lower()
+            if text in ("website", "visit website", "parish website"):
+                href = a["href"]
+                parsed = urlparse(href)
+                if parsed.scheme and parsed.hostname and parsed.hostname != directory_host:
+                    if parsed.hostname not in skip_hosts:
+                        return href
+
+        # Second pass: look for external links in contact section
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            parsed = urlparse(href)
+            if not parsed.scheme or not parsed.hostname:
+                continue
+            if parsed.hostname == directory_host:
+                continue
+            if parsed.hostname in skip_hosts:
+                continue
+            # Match parish-like domains
+            if re.search(r'\.org\.au|\.com\.au|catholic|parish', href, re.I):
+                return href
+
+        return None
+
     def discover_sources(self, parish: Parish) -> list[SourceEndpoint]:
         """Discover source endpoints for a single parish.
 
         Crawls the parish website to find bulletin pages, mass times pages,
         iCal feeds, structured data, and platform indicators.
+        If the initial page is a directory page, follows external links to
+        the parish's own website.
         """
         endpoints = []
 
@@ -306,6 +367,17 @@ class ParishDiscovery:
 
         soup = BeautifulSoup(resp.text, "html.parser")
         base_url = parish.website
+
+        # 0. If this is a directory page, try to find the actual parish website
+        if "melbournecatholic.org/directory" in base_url:
+            actual_url = self._extract_parish_website(soup, base_url)
+            if actual_url:
+                logger.info("Found parish website for %s: %s", parish.id, actual_url)
+                parish.website = actual_url
+                resp = self._fetch(actual_url)
+                if resp:
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    base_url = actual_url
 
         # 1. Check for iCal feeds
         for link in soup.find_all("link", rel="alternate"):

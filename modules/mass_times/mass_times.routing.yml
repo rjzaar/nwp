@@ -1,3 +1,11 @@
+mass_times.map:
+  path: '/map'
+  defaults:
+    _controller: '\Drupal\mass_times\Controller\MassTimesController::map'
+    _title: 'Parish Map'
+  requirements:
+    _access: 'TRUE'
+
 mass_times.admin:
   path: '/admin/mass-times'
   defaults:

@@ -1,0 +1,9 @@
+parish_map:
+  css:
+    component:
+      css/parish-map.css: {}
+  js:
+    js/parish-map.js: {}
+  dependencies:
+    - core/drupal
+    - leaflet/leaflet

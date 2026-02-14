@@ -1,0 +1,39 @@
+.mass-times-parish-map {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+#mass-times-map {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-bottom: 1.5em;
+}
+
+.parish-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  columns: 2;
+  column-gap: 2em;
+}
+
+@media (max-width: 600px) {
+  .parish-list {
+    columns: 1;
+  }
+}
+
+.parish-item {
+  break-inside: avoid;
+  padding: 0.4em 0;
+  border-bottom: 1px solid #eee;
+}
+
+.parish-item a {
+  font-weight: 600;
+}
+
+.parish-distance {
+  color: #666;
+  font-size: 0.9em;
+}

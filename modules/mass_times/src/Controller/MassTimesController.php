@@ -4,10 +4,11 @@ namespace Drupal\mass_times\Controller;
 
 use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\Database\Connection;
+use Drupal\mass_times\Service\ParishDataService;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
- * Controller for Mass Times admin pages.
+ * Controller for Mass Times pages.
  */
 class MassTimesController extends ControllerBase {
 
@@ -19,10 +20,18 @@ class MassTimesController extends ControllerBase {
   protected $database;
 
   /**
+   * The parish data service.
+   *
+   * @var \Drupal\mass_times\Service\ParishDataService
+   */
+  protected $parishData;
+
+  /**
    * Constructs a MassTimesController.
    */
-  public function __construct(Connection $database) {
+  public function __construct(Connection $database, ParishDataService $parish_data) {
     $this->database = $database;
+    $this->parishData = $parish_data;
   }
 
   /**
@@ -30,8 +39,49 @@ class MassTimesController extends ControllerBase {
    */
   public static function create(ContainerInterface $container) {
     return new static(
-      $container->get('database')
+      $container->get('database'),
+      $container->get('mass_times.parish_data')
     );
+  }
+
+  /**
+   * Public parish map page.
+   */
+  public function map() {
+    $config = $this->config('mass_times.settings');
+    $centre_lat = $config->get('centre_lat');
+    $centre_lng = $config->get('centre_lng');
+    $radius_km = $config->get('radius_km');
+
+    $parishes = $this->parishData->getParishesNear($centre_lat, $centre_lng, $radius_km);
+
+    $markers = [];
+    foreach ($parishes as $result) {
+      $node = $result['node'];
+      if (!$node->hasField('field_location') || $node->get('field_location')->isEmpty()) {
+        continue;
+      }
+      $location = $node->get('field_location')->first();
+      $markers[] = [
+        'title' => $node->getTitle(),
+        'lat' => $location->get('lat')->getValue(),
+        'lng' => $location->get('lon')->getValue(),
+        'distance' => round($result['distance'], 1),
+        'url' => $node->toUrl()->toString(),
+      ];
+    }
+
+    return [
+      '#theme' => 'mass_times_parish_map',
+      '#centre_lat' => $centre_lat,
+      '#centre_lng' => $centre_lng,
+      '#radius_km' => $radius_km,
+      '#parishes' => $markers,
+      '#attached' => [
+        'library' => ['mass_times/parish_map'],
+      ],
+      '#cache' => ['max-age' => 86400],
+    ];
   }
 
   /**

@@ -1,0 +1,125 @@
+# NWP GrumPHP Configuration Template
+# Automated pre-commit code quality checks
+#
+# Copy this to your site's root directory
+# Install: composer require --dev phpro/grumphp
+#
+# GrumPHP automatically runs checks before each commit
+
+grumphp:
+  # Stop on first failure
+  stop_on_failure: true
+
+  # ASCII art on success/failure
+  ascii:
+    failed: ~
+    succeeded: ~
+
+  # Hide circumvention tip
+  hide_circumvention_tip: true
+
+  # Parallel task execution
+  parallel:
+    enabled: true
+    max_workers: 4
+
+  # Tasks to run on commit
+  tasks:
+    # Git commit message format
+    git_commit_message:
+      enforce_capitalized_subject: true
+      enforce_no_subject_trailing_period: true
+      enforce_single_lined_subject: true
+      max_subject_width: 72
+      max_body_width: 80
+      matchers:
+        # Allow conventional commits or simple messages
+        - '/^(feat|fix|docs|style|refactor|test|chore)(\(.+\))?: .{1,50}$/'
+        - '/^.{1,50}$/'
+      case_insensitive: true
+
+    # PHPCS - Drupal coding standards
+    phpcs:
+      standard:
+        - Drupal
+        - DrupalPractice
+      triggered_by:
+        - php
+        - module
+        - inc
+        - install
+        - profile
+        - theme
+
+    # PHPStan - static analysis
+    phpstan:
+      configuration: phpstan.neon
+      memory_limit: "-1"
+      use_grumphp_paths: false
+
+    # PHP syntax check
+    phplint:
+      triggered_by:
+        - php
+        - module
+        - inc
+        - install
+
+    # YAML validation
+    yamllint:
+      whitelist_patterns:
+        - /^web\/modules\/custom\/.+\.yml$/
+        - /^web\/themes\/custom\/.+\.yml$/
+        - /^config\/.+\.yml$/
+      ignore_patterns: []
+
+    # JSON validation
+    jsonlint:
+      detect_key_conflicts: true
+
+    # Composer validation
+    composer:
+      file: ./composer.json
+      no_check_all: true
+      no_check_publish: true
+
+    # Security checker
+    securitychecker_enlightn:
+      lockfile: ./composer.lock
+      run_always: true
+
+    # Twig linting (if available)
+    # twigcs:
+    #   path: web/themes/custom
+    #   severity: warning
+    #   ruleset: FriendsOfTwig\Twigcs\Ruleset\Official
+
+  # Extensions
+  extensions:
+    - GrumPHP\Extension\Parallel
+
+  # Environment variables
+  environment:
+    paths:
+      - vendor/bin
+
+# Test environment configuration (for CI)
+testsuites:
+  git_commit_msg:
+    tasks:
+      - git_commit_message
+
+  code_quality:
+    tasks:
+      - phpcs
+      - phpstan
+      - phplint
+
+  all:
+    tasks:
+      - phpcs
+      - phpstan
+      - phplint
+      - yamllint
+      - jsonlint
+      - composer

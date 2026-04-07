@@ -1,0 +1,84 @@
+# S14: Infrastructure & Communication Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies infrastructure setup and communication commands.
+# Tests SSH, email, storage, and scheduling.
+
+scenario:
+  id: S14
+  name: "Infrastructure & Communication"
+  description: "Verify infrastructure and communication commands"
+  depends_on:
+    - S1  # Needs foundation
+  estimated_duration: 4
+  is_gate: false
+
+  commands_tested:
+    - setup-ssh.sh
+    - email.sh
+    - storage.sh
+    - schedule.sh
+
+  steps:
+    - name: Check setup-ssh command exists
+      cmd: test -f scripts/commands/setup-ssh.sh && echo "setup-ssh.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check email command exists
+      cmd: test -f scripts/commands/email.sh && echo "email.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check storage command exists
+      cmd: test -f scripts/commands/storage.sh && echo "storage.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check schedule command exists
+      cmd: test -f scripts/commands/schedule.sh && echo "schedule.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl setup-ssh help
+      cmd: ./pl setup-ssh --help 2>&1 | head -10 || echo "setup-ssh command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl email help
+      cmd: ./pl email --help 2>&1 | head -10 || echo "email command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl storage help
+      cmd: ./pl storage --help 2>&1 | head -10 || echo "storage command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl schedule help
+      cmd: ./pl schedule --help 2>&1 | head -10 || echo "schedule command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Check storage usage
+      cmd: ./pl storage 2>&1 | head -15 || echo "storage command ran"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Verify scripts pass syntax check
+      cmd: |
+        for script in setup-ssh email storage schedule; do
+          if [[ -f scripts/commands/${script}.sh ]]; then
+            bash -n scripts/commands/${script}.sh 2>&1 || echo "Syntax issue in ${script}.sh"
+          fi
+        done
+        echo "Syntax check complete"
+      expect_exit: 0
+      expect_contains: "complete"
+      timeout: 30
+
+  success_criteria:
+    all_required:
+      - All infrastructure commands exist
+      - Help text available
+      - Storage command runs

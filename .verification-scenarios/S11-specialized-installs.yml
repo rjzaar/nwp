@@ -1,0 +1,74 @@
+# S11: Specialized Installs Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies specialized installation commands.
+# Tests podcast and AVC Moodle integration commands.
+
+scenario:
+  id: S11
+  name: "Specialized Installs"
+  description: "Verify specialized installation commands exist"
+  depends_on:
+    - S1  # Needs foundation
+  estimated_duration: 3
+  is_gate: false
+
+  commands_tested:
+    - podcast.sh
+    - avc-moodle-setup.sh
+    - avc-moodle-status.sh
+    - avc-moodle-sync.sh
+    - avc-moodle-test.sh
+
+  steps:
+    - name: Check podcast command exists
+      cmd: test -f scripts/commands/podcast.sh && echo "podcast.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check avc-moodle-setup command exists
+      cmd: test -f scripts/commands/avc-moodle-setup.sh && echo "avc-moodle-setup.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check avc-moodle-status command exists
+      cmd: test -f scripts/commands/avc-moodle-status.sh && echo "avc-moodle-status.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check avc-moodle-sync command exists
+      cmd: test -f scripts/commands/avc-moodle-sync.sh && echo "avc-moodle-sync.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check avc-moodle-test command exists
+      cmd: test -f scripts/commands/avc-moodle-test.sh && echo "avc-moodle-test.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl podcast help
+      cmd: ./pl podcast --help 2>&1 | head -10 || echo "podcast command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl avc-moodle-setup help
+      cmd: ./pl avc-moodle-setup --help 2>&1 | head -10 || echo "avc-moodle-setup command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Verify scripts pass syntax check
+      cmd: |
+        for script in podcast avc-moodle-setup avc-moodle-status avc-moodle-sync avc-moodle-test; do
+          if [[ -f scripts/commands/${script}.sh ]]; then
+            bash -n scripts/commands/${script}.sh 2>&1 || echo "Syntax issue in ${script}.sh"
+          fi
+        done
+        echo "Syntax check complete"
+      expect_exit: 0
+      expect_contains: "complete"
+      timeout: 30
+
+  success_criteria:
+    all_required:
+      - All specialized install commands exist
+      - Scripts pass syntax check

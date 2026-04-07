@@ -1,0 +1,80 @@
+# S06: Content Import Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies content import and sync functionality.
+# Tests importing content from external sources and syncing between sites.
+
+scenario:
+  id: S6
+  name: "Content Import"
+  description: "Verify content import and sync functionality"
+  depends_on:
+    - S3  # Needs working backup/restore
+  estimated_duration: 6
+  is_gate: false
+
+  commands_tested:
+    - import.sh
+    - sync.sh
+    - status.sh
+
+  live_state_commands:
+    - command: pl status
+      validates:
+        - Content count after import
+        - Database changes
+
+  setup:
+    - Create test site:
+        cmd: ./pl install d verify-s6 --auto 2>&1
+        timeout: 300
+
+  steps:
+    - name: Verify site exists
+      cmd: test -d sites/verify-s6 && echo "Site exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check import command exists
+      cmd: test -f scripts/commands/import.sh && echo "import.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check sync command exists
+      cmd: test -f scripts/commands/sync.sh && echo "sync.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl import help
+      cmd: ./pl import --help 2>&1 | head -10 || echo "import command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl sync help
+      cmd: ./pl sync --help 2>&1 | head -10 || echo "sync command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Get baseline content count
+      cmd: |
+        cd sites/verify-s6
+        count=$(ddev drush sqlq "SELECT COUNT(*) FROM node_field_data" 2>/dev/null || echo "0")
+        echo "Content count: ${count}"
+      expect_exit: 0
+      store_as: baseline_content
+      timeout: 30
+
+    - name: Verify status shows site
+      cmd: ./pl status -s verify-s6 2>&1 | head -10
+      expect_exit: 0
+      timeout: 30
+
+  cleanup:
+    - cmd: ./pl delete verify-s6 --yes 2>/dev/null || true
+
+  success_criteria:
+    all_required:
+      - Import command exists
+      - Sync command exists
+      - Help text available
+      - Status reports data

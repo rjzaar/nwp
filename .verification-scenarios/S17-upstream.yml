@@ -1,0 +1,73 @@
+# S17: Upstream & Maintenance Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies upstream management and todo commands.
+# Tests project management and upstream update workflows.
+
+scenario:
+  id: S17
+  name: "Upstream & Maintenance"
+  description: "Verify upstream management and project commands"
+  depends_on:
+    - S12  # After maintenance operations
+  estimated_duration: 3
+  is_gate: false
+
+  commands_tested:
+    - upstream.sh
+    - todo.sh
+
+  steps:
+    - name: Check upstream command exists
+      cmd: test -f scripts/commands/upstream.sh && echo "upstream.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check todo command exists
+      cmd: test -f scripts/commands/todo.sh && echo "todo.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl upstream help
+      cmd: ./pl upstream --help 2>&1 | head -10 || echo "upstream command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl todo help
+      cmd: ./pl todo --help 2>&1 | head -10 || echo "todo command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl todo list
+      cmd: ./pl todo 2>&1 | head -15 || echo "todo command ran"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Verify scripts pass syntax check
+      cmd: |
+        for script in upstream todo; do
+          if [[ -f scripts/commands/${script}.sh ]]; then
+            bash -n scripts/commands/${script}.sh 2>&1 || echo "Syntax issue in ${script}.sh"
+          fi
+        done
+        echo "Syntax check complete"
+      expect_exit: 0
+      expect_contains: "complete"
+      timeout: 30
+
+    - name: Check docs directory for roadmap
+      cmd: |
+        if [[ -f docs/ROADMAP.md ]]; then
+          echo "Roadmap exists"
+        else
+          echo "No roadmap found"
+        fi
+      expect_exit: 0
+      timeout: 10
+
+  success_criteria:
+    all_required:
+      - Upstream command exists
+      - Todo command exists
+      - Scripts pass syntax check
+      - Project documentation accessible

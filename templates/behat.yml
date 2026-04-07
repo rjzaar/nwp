@@ -1,0 +1,155 @@
+# NWP Behat Configuration Template
+# Copy this to your site's root directory and customize
+#
+# Usage:
+#   ddev exec vendor/bin/behat                    # All tests
+#   ddev exec vendor/bin/behat --tags=@smoke      # Smoke tests only
+#   ddev exec vendor/bin/behat --profile=p0       # Parallel group 0
+#   ddev exec vendor/bin/behat --profile=remote   # Test remote site
+
+default:
+  suites:
+    default:
+      paths:
+        features: "%paths.base%/tests/behat/features"
+      contexts:
+        - Drupal\DrupalExtension\Context\DrupalContext
+        - Drupal\DrupalExtension\Context\MinkContext
+        - Drupal\DrupalExtension\Context\MessageContext
+        - Drupal\DrupalExtension\Context\DrushContext
+        - FeatureContext
+
+  extensions:
+    Drupal\MinkExtension:
+      # DDEV provides the hostname
+      base_url: "https://${DDEV_SITENAME}.ddev.site"
+      # Alternative: http://localhost:8080 for docker-compose.test.yml
+      ajax_timeout: 10
+      sessions:
+        default:
+          goutte: ~
+        javascript:
+          selenium2:
+            wd_host: "http://chrome:4444/wd/hub"
+            capabilities:
+              browserName: chrome
+              extra_capabilities:
+                goog:chromeOptions:
+                  args:
+                    - "--disable-gpu"
+                    - "--headless"
+                    - "--no-sandbox"
+                    - "--disable-dev-shm-usage"
+                    - "--window-size=1920,1080"
+
+    Drupal\DrupalExtension:
+      # Blackbox testing by default (no bootstrap)
+      blackbox: ~
+      api_driver: drupal
+      drush:
+        alias: '@self'
+      drupal:
+        drupal_root: "%paths.base%/web"
+      region_map:
+        header: "#header"
+        main_content: "#main-content"
+        footer: "#footer"
+        sidebar_first: "#sidebar-first"
+        sidebar_second: "#sidebar-second"
+        navigation: "#navigation"
+      selectors:
+        message_selector: ".messages"
+        error_message_selector: ".messages--error"
+        success_message_selector: ".messages--status"
+        warning_message_selector: ".messages--warning"
+
+  formatters:
+    progress: ~
+
+  # Filter by tags
+  gherkin:
+    filters:
+      # Exclude @wip (work in progress) by default
+      tags: "~@wip"
+
+# Parallel execution profiles
+# Split tests across multiple processes
+p0:
+  suites:
+    default:
+      filters:
+        tags: "@p0"
+
+p1:
+  suites:
+    default:
+      filters:
+        tags: "@p1"
+
+p2:
+  suites:
+    default:
+      filters:
+        tags: "@p2"
+
+p3:
+  suites:
+    default:
+      filters:
+        tags: "@p3"
+
+# Smoke tests - quick validation (~30 seconds)
+smoke:
+  suites:
+    default:
+      filters:
+        tags: "@smoke"
+  formatters:
+    pretty: ~
+
+# API tests - headless, fast
+api:
+  suites:
+    default:
+      filters:
+        tags: "@api"
+
+# JavaScript tests - browser required, slow
+javascript:
+  suites:
+    default:
+      filters:
+        tags: "@javascript"
+
+# Remote testing profiles
+remote:
+  extensions:
+    Drupal\MinkExtension:
+      base_url: "https://example.com"
+      sessions:
+        default:
+          goutte: ~
+        javascript:
+          selenium2:
+            wd_host: "http://localhost:4444/wd/hub"
+
+staging:
+  extensions:
+    Drupal\MinkExtension:
+      base_url: "https://staging.example.com"
+
+production:
+  extensions:
+    Drupal\MinkExtension:
+      base_url: "https://www.example.com"
+  gherkin:
+    filters:
+      # Only non-destructive tests on production
+      tags: "~@destructive"
+
+# CI mode - JUnit output
+ci:
+  formatters:
+    progress: ~
+    junit:
+      output_path: "reports/behat"

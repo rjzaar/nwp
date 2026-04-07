@@ -1,0 +1,223 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "NWP Automated Dependency Updates - Renovate Configuration",
+  "extends": [
+    "config:recommended",
+    "github>drevops/renovate-drupal"
+  ],
+  "timezone": "America/New_York",
+  "schedule": [
+    "after 10pm every weekday",
+    "before 5am every weekday",
+    "every weekend"
+  ],
+  "assignees": [],
+  "reviewers": [],
+  "labels": [
+    "dependencies",
+    "automated"
+  ],
+  "prConcurrentLimit": 5,
+  "prCreation": "not-pending",
+  "stabilityDays": 3,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": [
+      "security",
+      "priority"
+    ],
+    "prCreation": "immediate",
+    "stabilityDays": 0
+  },
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Dependency Updates Dashboard",
+  "packageRules": [
+    {
+      "description": "Drupal core updates - daily check, auto-merge patches",
+      "matchPackageNames": [
+        "drupal/core",
+        "drupal/core-recommended",
+        "drupal/core-composer-scaffold",
+        "drupal/core-project-message"
+      ],
+      "schedule": [
+        "every day"
+      ],
+      "minimumReleaseAge": "1 day",
+      "automerge": true,
+      "automergeType": "pr",
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "labels": [
+        "drupal-core",
+        "auto-merge"
+      ]
+    },
+    {
+      "description": "Drupal core minor/major - manual review required",
+      "matchPackageNames": [
+        "drupal/core",
+        "drupal/core-recommended",
+        "drupal/core-composer-scaffold",
+        "drupal/core-project-message"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "major"
+      ],
+      "automerge": false,
+      "labels": [
+        "drupal-core",
+        "needs-review"
+      ]
+    },
+    {
+      "description": "Drupal contrib modules - weekly check, auto-merge patches",
+      "matchPackagePatterns": [
+        "^drupal/"
+      ],
+      "excludePackageNames": [
+        "drupal/core",
+        "drupal/core-recommended",
+        "drupal/core-composer-scaffold",
+        "drupal/core-project-message"
+      ],
+      "schedule": [
+        "every monday"
+      ],
+      "minimumReleaseAge": "3 days",
+      "automerge": true,
+      "automergeType": "pr",
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "groupName": "Drupal contrib modules (patch)",
+      "labels": [
+        "drupal-contrib",
+        "auto-merge"
+      ]
+    },
+    {
+      "description": "Drupal contrib minor updates - group and require review",
+      "matchPackagePatterns": [
+        "^drupal/"
+      ],
+      "excludePackageNames": [
+        "drupal/core",
+        "drupal/core-recommended",
+        "drupal/core-composer-scaffold",
+        "drupal/core-project-message"
+      ],
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "automerge": false,
+      "groupName": "Drupal contrib modules (minor)",
+      "labels": [
+        "drupal-contrib",
+        "needs-review"
+      ]
+    },
+    {
+      "description": "Security updates - immediate, high priority",
+      "matchDatasources": [
+        "packagist"
+      ],
+      "vulnerabilitySeverity": [
+        "critical",
+        "high",
+        "medium"
+      ],
+      "prCreation": "immediate",
+      "prPriority": 10,
+      "schedule": [
+        "at any time"
+      ],
+      "minimumReleaseAge": "0 days",
+      "stabilityDays": 0,
+      "automerge": false,
+      "labels": [
+        "security",
+        "priority",
+        "needs-immediate-review"
+      ],
+      "assignees": [],
+      "reviewers": []
+    },
+    {
+      "description": "PHP dependencies - conservative updates",
+      "matchDatasources": [
+        "packagist"
+      ],
+      "excludePackagePatterns": [
+        "^drupal/"
+      ],
+      "schedule": [
+        "every 2 weeks on monday"
+      ],
+      "minimumReleaseAge": "7 days",
+      "automerge": false,
+      "groupName": "PHP dependencies",
+      "labels": [
+        "php-dependencies"
+      ]
+    },
+    {
+      "description": "Dev dependencies - lower priority",
+      "matchDepTypes": [
+        "require-dev"
+      ],
+      "schedule": [
+        "every month"
+      ],
+      "automerge": true,
+      "automergeType": "pr",
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "groupName": "Dev dependencies",
+      "labels": [
+        "dev-dependencies",
+        "low-priority"
+      ]
+    },
+    {
+      "description": "Lock file maintenance",
+      "matchUpdateTypes": [
+        "lockFileMaintenance"
+      ],
+      "schedule": [
+        "before 3am on the first day of the month"
+      ],
+      "automerge": true,
+      "automergeType": "pr",
+      "labels": [
+        "maintenance"
+      ]
+    }
+  ],
+  "composer": {
+    "enabled": true
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 3am on the first day of the month"
+    ]
+  },
+  "separateMajorMinor": true,
+  "separateMinorPatch": false,
+  "rebaseWhen": "behind-base-branch",
+  "baseBranches": [
+    "main",
+    "develop"
+  ],
+  "ignorePaths": [
+    "**/vendor/**",
+    "**/node_modules/**",
+    "**/web/core/**",
+    "**/web/modules/contrib/**",
+    "**/web/themes/contrib/**"
+  ]
+}

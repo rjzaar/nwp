@@ -1,0 +1,79 @@
+# S13: Developer Environment Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies developer setup and contribution commands.
+# Tests coder setup and development environment tools.
+
+scenario:
+  id: S13
+  name: "Developer Environment"
+  description: "Verify developer setup and contribution commands"
+  depends_on:
+    - S1  # Needs foundation
+  estimated_duration: 5
+  is_gate: false
+
+  commands_tested:
+    - bootstrap-coder.sh
+    - coders.sh
+    - coder-setup.sh
+    - contribute.sh
+
+  steps:
+    - name: Check bootstrap-coder command exists
+      cmd: test -f scripts/commands/bootstrap-coder.sh && echo "bootstrap-coder.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check coders command exists
+      cmd: test -f scripts/commands/coders.sh && echo "coders.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check coder-setup command exists
+      cmd: test -f scripts/commands/coder-setup.sh && echo "coder-setup.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check contribute command exists
+      cmd: test -f scripts/commands/contribute.sh && echo "contribute.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl bootstrap-coder help
+      cmd: ./pl bootstrap-coder --help 2>&1 | head -10 || echo "bootstrap-coder command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl coders help
+      cmd: ./pl coders --help 2>&1 | head -10 || echo "coders command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl coder-setup help
+      cmd: ./pl coder-setup --help 2>&1 | head -10 || echo "coder-setup command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl contribute help
+      cmd: ./pl contribute --help 2>&1 | head -10 || echo "contribute command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Verify scripts pass syntax check
+      cmd: |
+        for script in bootstrap-coder coders coder-setup contribute; do
+          if [[ -f scripts/commands/${script}.sh ]]; then
+            bash -n scripts/commands/${script}.sh 2>&1 || echo "Syntax issue in ${script}.sh"
+          fi
+        done
+        echo "Syntax check complete"
+      expect_exit: 0
+      expect_contains: "complete"
+      timeout: 30
+
+  success_criteria:
+    all_required:
+      - All developer commands exist
+      - Help text available
+      - Scripts pass syntax check

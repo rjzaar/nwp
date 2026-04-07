@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 2,
+  "generated": "2026-02-02T19:32:29+11:00",
+  "pipeline": {
+    "id": "local",
+    "ref": "main",
+    "sha": "426e2fc8324a989efeefd1a14d250237b6b6b03e"
+  },
+  "badges": {
+    "machine_verified": {
+      "label": "Automated Tests",
+      "message": "90%",
+      "color": "brightgreen"
+    },
+    "human_verified": {
+      "label": "Human Verified",
+      "message": "1%",
+      "color": "red"
+    },
+    "fully_verified": {
+      "label": "Fully Verified",
+      "message": "1%",
+      "color": "red"
+    },
+    "issues": {
+      "label": "Open Issues",
+      "message": "0",
+      "color": "brightgreen"
+    }
+  },
+  "categories": {
+    "automatable": {
+      "total": 569,
+      "verified": 514
+    },
+    "human_required": {
+      "total": 0,
+      "verified": 7
+    }
+  }
+}

@@ -1,0 +1,253 @@
+# Contributing to NWP
+
+Welcome! We're glad you're interested in contributing to NWP. This document explains how to get started.
+
+## Quick Start
+
+### For Simple Contributions (Fork-Based)
+
+Most contributors should use the fork-based workflow:
+
+```bash
+# 1. Fork the repository on GitHub
+# 2. Clone your fork
+git clone git@github.com:YOUR_USERNAME/nwp.git
+cd nwp
+
+# 3. Add upstream remote
+git remote add upstream git@github.com:rjzaar/nwp.git
+
+# 4. Create a feature branch
+git checkout -b fix/your-fix-description
+
+# 5. Make changes and commit
+git add -A
+git commit -m "Fix: description of your fix"
+
+# 6. Push and create PR
+git push origin fix/your-fix-description
+# Then create PR via GitHub web interface
+```
+
+### For Core Development (Full Access)
+
+If you need your own subdomain and GitLab access, see [docs/guides/coder-onboarding.md](docs/guides/coder-onboarding.md).
+
+## Contribution Workflow
+
+### 1. Find or Create an Issue
+
+- Check existing issues before starting work
+- For bugs: Create an issue with reproduction steps
+- For features: Discuss in an issue before implementing
+
+### 2. Branch Naming
+
+Use descriptive branch names:
+- `fix/issue-123-backup-path` - Bug fixes
+- `feature/add-s3-support` - New features
+- `docs/update-readme` - Documentation
+- `refactor/cleanup-lib-common` - Refactoring
+
+### 3. Commit Messages
+
+Write clear commit messages:
+```
+Fix: Handle spaces in backup paths (#123)
+
+- Quote all path variables in backup.sh
+- Add test for paths with spaces
+- Update documentation
+
+Closes #123
+```
+
+### 4. Code Standards
+
+- Run `shellcheck` on bash scripts
+- Follow existing code style
+- Add tests for new functionality
+- Update documentation as needed
+
+### 5. Pull Request Process
+
+1. Ensure tests pass locally
+2. Update CHANGES.md if applicable
+3. Create PR with clear description
+4. Respond to review feedback
+5. Squash commits if requested
+
+## Contributor Roles
+
+| Role | Access | How to Get |
+|------|--------|------------|
+| **Newcomer** | Fork-based PRs | Anyone can start |
+| **Contributor** | Push to branches, own subdomain | 5+ merged PRs |
+| **Core Developer** | Merge to main, review others | 50+ merged PRs, 6+ months |
+| **Steward** | Full admin, architecture decisions | Appointed by vote |
+
+See [docs/ROLES.md](docs/ROLES.md) for full details.
+
+## What to Contribute
+
+### Good First Issues
+
+Look for issues labeled `good first issue` or `help wanted`.
+
+### Types of Contributions
+
+- **Bug fixes** - Fix something broken
+- **Documentation** - Improve docs, add examples
+- **Tests** - Increase test coverage
+- **Features** - New functionality (discuss first)
+- **Recipes** - New installation recipes
+
+### Areas Where Help is Needed
+
+- Test coverage for existing scripts
+- Documentation improvements
+- Recipe development for new platforms
+- CI/CD pipeline enhancements
+
+## Code of Conduct
+
+### Be Respectful
+- Welcome newcomers
+- Assume good intentions
+- Give constructive feedback
+- Disagree professionally
+
+### Be Collaborative
+- Share knowledge
+- Help others learn
+- Credit contributions
+- Build on others' work
+
+### Be Responsible
+- Own your mistakes
+- Fix what you break
+- Test before submitting
+- Document your work
+
+## Decision Making
+
+### Architecture Decision Records (ADRs)
+
+Major decisions are documented in `docs/decisions/`:
+- Browse existing decisions before proposing changes
+- New architectural changes may require an ADR
+- Check if your idea conflicts with previous decisions
+
+### Governance
+
+See [docs/DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](docs/DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md) for our full governance framework.
+
+## Development Setup
+
+### Prerequisites
+
+- Docker and Docker Compose
+- DDEV
+- Git
+- Bash 4+
+- yq (optional, for YAML editing)
+
+### Local Development
+
+```bash
+# Clone repository
+git clone git@github.com:rjzaar/nwp.git
+cd nwp
+
+# Copy config templates
+cp example.nwp.yml nwp.yml
+cp .secrets.example.yml .secrets.yml
+
+# Run setup
+./scripts/commands/setup.sh
+
+# Create a test site
+./install.sh d testsite
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+./tests/run-tests.sh
+
+# Run specific test
+bats tests/backup.bats
+```
+
+## Getting Help
+
+- **Documentation:** `docs/` folder
+- **Issues:** [GitHub Issues](https://github.com/rjzaar/nwp/issues)
+- **Questions:** Open a support issue
+
+## Recognition
+
+Contributors are recognized in:
+- Git commit history
+- CHANGES.md for significant contributions
+- README.md contributors section (for major contributors)
+
+## License and Copyright
+
+### CC0 Public Domain Dedication
+
+> *"Freely you have received, freely give."* — Matthew 10:8
+
+*This beautiful verse from Matthew 10:8 provides spiritual and philosophical context for the CC0 dedication, connecting the legal choice to a deeper principle of generosity and freely sharing what has been given. It perfectly captures the spirit of public domain dedication! — summary generated by Claude*
+
+**The Narrow Way Project is dedicated to the public domain under CC0 1.0 Universal.**
+
+By contributing to this project, you agree to dedicate your contributions to the public domain under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/). This means:
+
+- ✓ Your contributions can be used by anyone for any purpose
+- ✓ No attribution is required (though appreciated)
+- ✓ Your contributions remain freely available forever
+- ✓ Users can incorporate NWP into proprietary software without restrictions
+
+### Why CC0?
+
+We use CC0 to ensure maximum freedom and utility:
+- **No legal barriers** - Anyone can use NWP without license compliance burden
+- **Commercial friendly** - Businesses can adopt without legal review delays
+- **Educational value** - Students can learn from and build upon the code
+- **Public good** - Development infrastructure should be freely available
+
+### What This Means for You
+
+When you submit a pull request or contribution, you are dedicating that work to the public domain. You:
+- **Waive copyright** to the extent possible under law
+- **Grant permission** for any use without restriction
+- **Agree** that your contribution may be modified, redistributed, or incorporated into other works
+
+### Contributor Agreement
+
+By submitting a contribution (code, documentation, examples, etc.), you certify that:
+
+1. The contribution is your original work, or you have permission to submit it under CC0
+2. You understand and agree to dedicate your contribution to the public domain under CC0 1.0 Universal
+3. You understand that this dedication is irrevocable
+
+### Third-Party Code
+
+If your contribution includes third-party code:
+- Clearly identify it in your pull request
+- Ensure the third-party license is compatible with CC0
+- Document the source and license in appropriate files
+
+**Note:** Most copyleft licenses (GPL, LGPL) are NOT compatible with public domain dedication. When in doubt, ask first.
+
+### Questions?
+
+- **Full details:** See [docs/CC0_DEDICATION.md](docs/CC0_DEDICATION.md)
+- **Legal text:** See [LICENSE](LICENSE) file
+- **Questions:** Open a GitHub issue with the "license" label
+
+---
+
+Thank you for contributing to NWP and helping keep it freely available for everyone!

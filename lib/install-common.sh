@@ -1,0 +1,1479 @@
+#!/bin/bash
+################################################################################
+# NWP Install Common Library
+#
+# Shared functions for all installation types (Drupal, Moodle, GitLab, Podcast)
+# This file is sourced by install.sh before loading type-specific installers.
+################################################################################
+
+# Guard against multiple sourcing
+if [ "${_INSTALL_COMMON_LOADED:-}" = "1" ]; then
+    return 0
+fi
+_INSTALL_COMMON_LOADED=1
+
+################################################################################
+# Interactive Option Selection
+################################################################################
+
+# Run interactive option selection using TUI (with checkbox fallback)
+# Returns selected options in OPTION_SELECTED associative array
+run_interactive_options() {
+    local recipe="$1"
+    local site_name="$2"
+    local recipe_type="$3"
+    local config_file="${4:-nwp.yml}"
+
+    # Check if TUI library is available
+    if ! command -v run_tui &> /dev/null; then
+        # Fall back to checkbox library
+        if command -v interactive_select_options &> /dev/null; then
+            local environment="dev"
+            [[ "$site_name" =~ -stg$ ]] && environment="stage"
+            [[ "$site_name" =~ _live$ ]] && environment="live"
+            [[ "$site_name" =~ _prod$ ]] && environment="prod"
+            interactive_select_options "$environment" "$recipe_type" ""
+            return $?
+        fi
+        print_warning "Interactive options not available"
+        return 0
+    fi
+
+    # Determine environment from site name suffix
+    local environment="dev"
+    if [[ "$site_name" =~ -stg$ ]]; then
+        environment="stage"
+    elif [[ "$site_name" =~ _live$ ]]; then
+        environment="live"
+    elif [[ "$site_name" =~ _prod$ ]]; then
+        environment="prod"
+    fi
+
+    # Load options for recipe type
+    case "$recipe_type" in
+        moodle|m) define_moodle_options ;;
+        gitlab) define_gitlab_options ;;
+        *) define_drupal_options ;;
+    esac
+
+    # Load defaults with recipe pre-selections
+    load_tui_defaults "install" "$site_name" "$recipe" "$environment" "$config_file"
+
+    # Run interactive TUI (goes directly to options like modify.sh)
+    if run_tui "install" "$site_name" "$environment" "$recipe_type" "$config_file"; then
+        # User confirmed - show summary
+        echo ""
+        print_header "Selected Options Summary"
+        local selected_count=0
+        for key in "${OPTION_LIST[@]}"; do
+            if [[ "${OPTION_SELECTED[$key]}" == "y" ]]; then
+                local recipe_hint=""
+                [[ "${OPTION_FROM_RECIPE[$key]:-n}" == "y" ]] && recipe_hint=" ${DIM}(recipe)${NC}"
+                echo -e "  ${GREEN}✓${NC} ${OPTION_LABELS[$key]}${recipe_hint}"
+                ((++selected_count))
+            fi
+        done
+
+        if [[ $selected_count -eq 0 ]]; then
+            echo -e "  ${DIM}No options selected${NC}"
+        fi
+        echo ""
+        echo "Total: $selected_count options selected"
+        echo ""
+        return 0
+    else
+        # User cancelled
+        print_warning "Installation cancelled"
+        return 1
+    fi
+}
+
+# Update nwp.yml with selected options (or remove options section if none selected)
+update_site_options() {
+    local site_name="$1"
+    local config_file="${2:-nwp.yml}"
+
+    # Check if option system is loaded
+    if [[ ${#OPTION_LIST[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    # Check if site exists in config
+    if ! yaml_site_exists "$site_name" "$config_file" 2>/dev/null; then
+        return 0
+    fi
+
+    # Check if any options are selected
+    local has_options=false
+    for key in "${OPTION_LIST[@]}"; do
+        if [[ "${OPTION_SELECTED[$key]}" == "y" ]]; then
+            has_options=true
+            break
+        fi
+    done
+
+    if [[ "$has_options" == "true" ]]; then
+        print_info "Updating options in nwp.yml..."
+        # Create options section with selected options only
+        local options_yaml=$(generate_options_yaml "      ")
+    else
+        print_info "Removing options from nwp.yml (none selected)..."
+        # Empty options to trigger removal
+        local options_yaml=""
+    fi
+
+    # Use awk to add/replace/remove options section in site entry
+    awk -v site="$site_name" -v options="$options_yaml" '
+        BEGIN { in_site = 0; in_sites = 0; in_options = 0; added = 0 }
+
+        /^sites:/ {
+            in_sites = 1
+            print
+            next
+        }
+
+        in_sites && /^[a-zA-Z]/ && !/^  / && !/^#/ {
+            in_sites = 0
+        }
+
+        in_sites && $0 ~ "^  " site ":" {
+            in_site = 1
+            print
+            next
+        }
+
+        # Skip existing options section (will be replaced or removed)
+        in_site && /^    options:/ {
+            in_options = 1
+            next
+        }
+
+        in_options && /^      / {
+            next
+        }
+
+        in_options && !/^      / {
+            in_options = 0
+        }
+
+        # End of site, add options before next site (if we have any)
+        in_site && (/^  [a-zA-Z0-9_-]+:/ || (/^[a-zA-Z]/ && !/^  / && !/^#/)) {
+            if (!added && options != "") {
+                print options
+            }
+            added = 1
+            in_site = 0
+        }
+
+        { print }
+
+        END {
+            if (in_site && !added && options != "") {
+                print options
+            }
+        }
+    ' "$config_file" > "${config_file}.tmp"
+
+    if mv "${config_file}.tmp" "$config_file"; then
+        if [[ "$has_options" == "true" ]]; then
+            print_status "OK" "Options saved to nwp.yml"
+        else
+            print_status "OK" "Options removed from nwp.yml"
+        fi
+    else
+        print_warning "Failed to update nwp.yml with options"
+    fi
+}
+
+# Show manual steps guide at installation end
+show_installation_guide() {
+    local site_name="$1"
+    local environment="$2"
+
+    if command -v generate_manual_steps &> /dev/null && [[ ${#OPTION_LIST[@]} -gt 0 ]]; then
+        generate_manual_steps "$site_name" "$environment"
+    fi
+}
+
+################################################################################
+# Apply Selected Options
+################################################################################
+
+# Apply selected options during Drupal/OpenSocial installation
+apply_drupal_options() {
+    if [[ ${#OPTION_LIST[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    local applied=0
+
+    print_header "Applying Selected Options"
+
+    # Development Modules
+    if [[ "${OPTION_SELECTED[dev_modules]}" == "y" ]]; then
+        print_info "Installing development modules..."
+        if ddev drush pm:enable devel kint webprofiler -y 2>/dev/null; then
+            print_status "OK" "Development modules installed"
+            ((++applied))
+        else
+            print_warning "Some dev modules may not be available"
+        fi
+    fi
+
+    # XDebug
+    if [[ "${OPTION_SELECTED[xdebug]}" == "y" ]]; then
+        print_info "Enabling XDebug..."
+        if ddev xdebug on 2>/dev/null; then
+            print_status "OK" "XDebug enabled"
+            ((++applied))
+        else
+            print_warning "XDebug may need manual configuration"
+        fi
+    fi
+
+    # Stage File Proxy
+    if [[ "${OPTION_SELECTED[stage_file_proxy]}" == "y" ]]; then
+        print_info "Installing Stage File Proxy..."
+        if ddev composer require drupal/stage_file_proxy && ddev drush pm:enable stage_file_proxy -y 2>/dev/null; then
+            print_status "OK" "Stage File Proxy installed"
+            ((++applied))
+        else
+            print_warning "Stage File Proxy installation may need manual steps"
+        fi
+    fi
+
+    # Config Split
+    if [[ "${OPTION_SELECTED[config_split]}" == "y" ]]; then
+        print_info "Installing Config Split..."
+        if ddev composer require drupal/config_split && ddev drush pm:enable config_split -y 2>/dev/null; then
+            print_status "OK" "Config Split installed"
+            ((++applied))
+        else
+            print_warning "Config Split installation may need manual steps"
+        fi
+    fi
+
+    # Security Modules
+    if [[ "${OPTION_SELECTED[security_modules]}" == "y" ]]; then
+        print_info "Installing security modules..."
+        local security_mods="seckit honeypot login_security flood_control"
+        for mod in $security_mods; do
+            if ddev composer require "drupal/$mod" 2>/dev/null; then
+                ddev drush pm:enable "$mod" -y 2>/dev/null || true
+            fi
+        done
+        print_status "OK" "Security modules installed"
+        ((++applied))
+    fi
+
+    # Redis
+    if [[ "${OPTION_SELECTED[redis]}" == "y" ]]; then
+        print_info "Enabling Redis..."
+        if ddev get ddev/ddev-redis 2>/dev/null; then
+            ddev restart 2>/dev/null
+            ddev composer require drupal/redis 2>/dev/null
+            ddev drush pm:enable redis -y 2>/dev/null
+            print_status "OK" "Redis enabled (configure settings.php manually)"
+            ((++applied))
+        else
+            print_warning "Redis installation may need manual steps"
+        fi
+    fi
+
+    # Solr
+    if [[ "${OPTION_SELECTED[solr]}" == "y" ]]; then
+        print_info "Enabling Solr..."
+        if ddev get ddev/ddev-solr 2>/dev/null; then
+            local core="${OPTION_VALUES[solr_core]:-drupal}"
+            ddev restart 2>/dev/null
+            ddev solr create -c "$core" 2>/dev/null || true
+            ddev composer require drupal/search_api_solr 2>/dev/null
+            print_status "OK" "Solr enabled with core: $core"
+            ((++applied))
+        else
+            print_warning "Solr installation may need manual steps"
+        fi
+    fi
+
+    # Migration Folder
+    if [[ "${OPTION_SELECTED[migration]}" == "y" ]]; then
+        print_info "Creating migration folder..."
+        local site_dir="$PWD"
+        if command -v setup_migration_folder &>/dev/null; then
+            local source_type="${OPTION_VALUES[source_type]:-other}"
+            if setup_migration_folder "$site_dir" "$source_type"; then
+                ((++applied))
+            fi
+        else
+            # Fallback if function not available
+            mkdir -p "$site_dir/migration/source"
+            mkdir -p "$site_dir/migration/database"
+            print_status "OK" "Migration folder created"
+            ((++applied))
+        fi
+    fi
+
+    if [[ $applied -gt 0 ]]; then
+        print_info "Clearing cache after option application..."
+        ddev drush cr 2>/dev/null || true
+        print_status "OK" "Applied $applied options"
+    else
+        print_info "No automated options to apply"
+    fi
+
+    return 0
+}
+
+# Apply selected options during Moodle installation
+apply_moodle_options() {
+    if [[ ${#OPTION_LIST[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    local applied=0
+
+    print_header "Applying Selected Options"
+
+    # Debug Mode
+    if [[ "${OPTION_SELECTED[debug_mode]}" == "y" ]]; then
+        print_info "Enabling debug mode..."
+        # Add debug settings to config.php
+        if [ -f "config.php" ]; then
+            cat >> config.php << 'MOODLE_DEBUG'
+
+// Debug settings (added by install script)
+@error_reporting(E_ALL | E_STRICT);
+@ini_set('display_errors', '1');
+$CFG->debug = (E_ALL | E_STRICT);
+$CFG->debugdisplay = 1;
+MOODLE_DEBUG
+            print_status "OK" "Debug mode enabled"
+            ((++applied))
+        fi
+    fi
+
+    # Redis Session Store
+    if [[ "${OPTION_SELECTED[redis]}" == "y" ]]; then
+        print_info "Configuring Redis for sessions..."
+        if ddev get ddev/ddev-redis 2>/dev/null; then
+            ddev restart 2>/dev/null
+            print_status "OK" "Redis container added (configure config.php manually)"
+            ((++applied))
+        else
+            print_warning "Redis installation may need manual steps"
+        fi
+    fi
+
+    if [[ $applied -gt 0 ]]; then
+        print_status "OK" "Applied $applied options"
+    else
+        print_info "No automated options to apply"
+    fi
+
+    return 0
+}
+
+# Apply selected options during GitLab installation
+apply_gitlab_options() {
+    if [[ ${#OPTION_LIST[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    local applied=0
+
+    print_header "Applying Selected Options"
+
+    # Reduced Memory Mode
+    if [[ "${OPTION_SELECTED[reduced_memory]}" == "y" ]]; then
+        print_info "Reduced memory mode already configured in docker-compose.yml"
+        ((++applied))
+    fi
+
+    # Disable Signups
+    if [[ "${OPTION_SELECTED[disable_signups]}" == "y" ]]; then
+        print_info "Note: Disable signups in GitLab Admin > Settings > General > Sign-up restrictions"
+        ((++applied))
+    fi
+
+    if [[ $applied -gt 0 ]]; then
+        print_status "OK" "Applied $applied options"
+    else
+        print_info "No automated options to apply"
+    fi
+
+    return 0
+}
+
+################################################################################
+# DNS Pre-registration for Live Sites
+################################################################################
+
+# Pre-register DNS entry for future live site deployment
+# This eliminates DNS propagation wait time when running pl live
+pre_register_live_dns() {
+    local site_name="$1"
+
+    # Get base name (strip -stg or _prod suffix)
+    local base_name=$(echo "$site_name" | sed -E 's/[-_](stg|prod|dev)$//')
+
+    # Get base domain from settings
+    local base_domain=$(get_settings_value "url" "$PROJECT_ROOT/nwp.yml")
+    if [ -z "$base_domain" ]; then
+        print_info "DNS pre-registration skipped: No 'url' in nwp.yml settings"
+        return 0
+    fi
+
+    # Get Linode API token
+    local token=""
+    if command -v get_linode_token &> /dev/null; then
+        token=$(get_linode_token "$PROJECT_ROOT")
+    fi
+
+    if [ -z "$token" ]; then
+        print_info "DNS pre-registration skipped: No Linode API token in .secrets.yml"
+        return 0
+    fi
+
+    # Get shared GitLab server IP
+    local gitlab_host="git.${base_domain}"
+    local server_ip=""
+
+    # Try to get IP via SSH first
+    if ssh -o BatchMode=yes -o ConnectTimeout=3 "gitlab@${gitlab_host}" "hostname -I" 2>/dev/null | awk '{print $1}' | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+        server_ip=$(ssh -o BatchMode=yes -o ConnectTimeout=3 "gitlab@${gitlab_host}" "hostname -I" 2>/dev/null | awk '{print $1}')
+    else
+        # Fall back to DNS lookup
+        server_ip=$(dig +short "$gitlab_host" 2>/dev/null | head -1)
+    fi
+
+    if [ -z "$server_ip" ]; then
+        print_info "DNS pre-registration skipped: Cannot reach shared server ${gitlab_host}"
+        return 0
+    fi
+
+    # Get domain ID
+    local domain_id=""
+    local response=$(curl -s -H "Authorization: Bearer $token" "https://api.linode.com/v4/domains")
+
+    if command -v jq &> /dev/null; then
+        domain_id=$(echo "$response" | jq -r ".data[] | select(.domain == \"${base_domain}\") | .id")
+    fi
+
+    if [ -z "$domain_id" ]; then
+        print_info "DNS pre-registration skipped: Domain ${base_domain} not found in Linode"
+        return 0
+    fi
+
+    # Check if DNS record already exists
+    local existing=$(curl -s -H "Authorization: Bearer $token" \
+        "https://api.linode.com/v4/domains/${domain_id}/records" | \
+        grep -o "\"name\":\"${base_name}\"" || true)
+
+    if [ -n "$existing" ]; then
+        print_info "DNS record already exists: ${base_name}.${base_domain}"
+        return 0
+    fi
+
+    # Create A record
+    print_info "Pre-registering DNS for future live site: ${base_name}.${base_domain}"
+
+    local create_response=$(curl -s -X POST \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json" \
+        "https://api.linode.com/v4/domains/${domain_id}/records" \
+        -d "{
+            \"type\": \"A\",
+            \"name\": \"${base_name}\",
+            \"target\": \"${server_ip}\",
+            \"ttl_sec\": 300
+        }")
+
+    if echo "$create_response" | grep -q '"id"'; then
+        print_status "OK" "DNS pre-registered: ${base_name}.${base_domain} -> ${server_ip}"
+    fi
+
+    return 0
+}
+
+################################################################################
+# YAML Parsing Functions
+################################################################################
+
+# Resolve the path to a project-shipped recipe.yml for the given recipe name.
+# Project-specific recipes (e.g. mt, dir) live alongside their site at
+# sites/<recipe>/recipe.yml so that the standalone project ships with its
+# own recipe instead of polluting NWP core's example.nwp.yml.
+#
+# Echos the path if found and exits 0; exits 1 if not found.
+_resolve_project_recipe() {
+    local recipe=$1
+    local config_file="${2:-nwp.yml}"
+
+    # Determine NWP root: prefer $PROJECT_ROOT if set, else infer from config_file path.
+    local nwp_root
+    if [[ -n "${PROJECT_ROOT:-}" ]]; then
+        nwp_root="$PROJECT_ROOT"
+    else
+        local resolved
+        resolved="$(readlink -f "$config_file" 2>/dev/null || echo "$config_file")"
+        nwp_root="$(dirname "$resolved")"
+    fi
+
+    local site_recipe="$nwp_root/sites/${recipe}/recipe.yml"
+    if [[ -f "$site_recipe" ]]; then
+        echo "$site_recipe"
+        return 0
+    fi
+    return 1
+}
+
+# Parse YAML file and extract value for a given recipe and key.
+# Falls back to sites/<recipe>/recipe.yml for project-shipped recipes.
+get_recipe_value() {
+    local recipe=$1
+    local key=$2
+    local config_file="${3:-nwp.yml}"
+
+    # Use consolidated YAML function
+    local value=""
+    if command -v yaml_get_recipe_field &>/dev/null; then
+        value=$(yaml_get_recipe_field "$recipe" "$key" "$config_file" 2>/dev/null || true)
+    else
+        # Fallback to inline AWK if yaml-write.sh not available
+        value=$(awk -v recipe="$recipe" -v key="$key" '
+            BEGIN { in_recipe = 0; found = 0 }
+            /^  [a-zA-Z0-9_-]+:/ {
+                if ($1 == recipe":") {
+                    in_recipe = 1
+                } else if (in_recipe && /^  [a-zA-Z0-9_-]+:/) {
+                    in_recipe = 0
+                }
+            }
+            in_recipe && $0 ~ "^    " key ":" {
+                sub("^    " key ": *", "")
+                sub(" *#.*$", "")  # Strip trailing YAML comments
+                print
+                found = 1
+                exit
+            }
+        ' "$config_file")
+    fi
+
+    # Fallback to project-shipped recipe.yml if not found in main config
+    if [[ -z "$value" ]]; then
+        local site_recipe
+        if site_recipe=$(_resolve_project_recipe "$recipe" "$config_file"); then
+            if command -v yaml_get_recipe_field &>/dev/null; then
+                value=$(yaml_get_recipe_field "$recipe" "$key" "$site_recipe" 2>/dev/null || true)
+            else
+                value=$(awk -v recipe="$recipe" -v key="$key" '
+                    BEGIN { in_recipe = 0 }
+                    /^  [a-zA-Z0-9_-]+:/ {
+                        if ($1 == recipe":") {
+                            in_recipe = 1
+                        } else if (in_recipe && /^  [a-zA-Z0-9_-]+:/) {
+                            in_recipe = 0
+                        }
+                    }
+                    in_recipe && $0 ~ "^    " key ":" {
+                        sub("^    " key ": *", "")
+                        sub(" *#.*$", "")
+                        print
+                        exit
+                    }
+                ' "$site_recipe")
+            fi
+        fi
+    fi
+
+    echo "$value"
+}
+
+# Get a list value from a recipe (returns space-separated items)
+# Usage: get_recipe_list_value "recipe_name" "key" "config_file"
+# For YAML like:
+#   post_install_modules:
+#     - module1
+#     - module2
+# Returns: "module1 module2"
+# Falls back to sites/<recipe>/recipe.yml for project-shipped recipes.
+get_recipe_list_value() {
+    local recipe=$1
+    local key=$2
+    local config_file="${3:-nwp.yml}"
+
+    _awk_recipe_list() {
+        awk -v recipe="$recipe" -v key="$key" '
+            BEGIN { in_recipe = 0; in_list = 0 }
+            /^  [a-zA-Z0-9_-]+:/ {
+                if ($1 == recipe":") {
+                    in_recipe = 1
+                } else if (in_recipe) {
+                    in_recipe = 0
+                    in_list = 0
+                }
+            }
+            in_recipe && $0 ~ "^    " key ":" {
+                in_list = 1
+                next
+            }
+            in_recipe && in_list {
+                # Check if we hit another key (not a list item)
+                if (/^    [a-zA-Z0-9_-]+:/) {
+                    in_list = 0
+                    exit
+                }
+                # Extract list items (lines starting with "      - ")
+                if (/^      - /) {
+                    sub("^      - *", "")
+                    sub(" *#.*$", "")  # Strip trailing YAML comments
+                    gsub(/["'"'"']/, "")  # Remove quotes
+                    printf "%s ", $0
+                }
+            }
+            END { print "" }
+        ' "$1" | sed 's/ *$//'
+    }
+
+    local result
+    result=$(_awk_recipe_list "$config_file")
+
+    # Fallback to project-shipped recipe.yml if not found in main config
+    if [[ -z "$result" ]]; then
+        local site_recipe
+        if site_recipe=$(_resolve_project_recipe "$recipe" "$config_file"); then
+            result=$(_awk_recipe_list "$site_recipe")
+        fi
+    fi
+
+    echo "$result"
+}
+
+# Parse YAML file and extract root-level value
+get_root_value() {
+    local key=$1
+    local config_file="${2:-nwp.yml}"
+
+    # Use awk to extract root-level values (not indented)
+    awk -v key="$key" '
+        /^[a-zA-Z0-9_-]+:/ && $1 == key":" {
+            sub("^" key ": *", "")
+            print
+            exit
+        }
+    ' "$config_file"
+}
+
+# Get value from settings section
+# Usage: get_settings_value "key" ["default_value"] ["config_file"]
+get_settings_value() {
+    local key=$1
+    local default_value="${2:-}"
+    local config_file="${3:-nwp.yml}"
+
+    # If only 2 args and second looks like a file path, treat it as config_file
+    if [[ $# -eq 2 && "$2" == */* ]]; then
+        config_file="$2"
+        default_value=""
+    fi
+
+    # Use consolidated YAML function
+    local result
+    if command -v yaml_get_setting &>/dev/null; then
+        result=$(yaml_get_setting "$key" "$config_file" 2>/dev/null || true)
+    else
+        # Fallback to inline AWK if yaml-write.sh not available
+        result=$(awk -v key="$key" '
+            BEGIN { in_settings = 0 }
+            /^settings:/ {
+                in_settings = 1
+                next
+            }
+            in_settings && /^[a-zA-Z0-9_-]+:/ {
+                # Exited settings section
+                in_settings = 0
+            }
+            in_settings && /^  [a-zA-Z0-9_-]+:/ && $1 == key":" {
+                sub("^  " key ": *", "")
+                sub(/[[:space:]]*#.*$/, "")  # Strip trailing comments
+                print
+                exit
+            }
+        ' "$config_file" 2>/dev/null)
+    fi
+
+    # Return result or default
+    if [[ -n "$result" ]]; then
+        echo "$result"
+    else
+        echo "$default_value"
+    fi
+}
+
+# Check if recipe exists in config file (or project-shipped recipe.yml).
+recipe_exists() {
+    local recipe=$1
+    local config_file="${2:-nwp.yml}"
+
+    if grep -q "^  ${recipe}:" "$config_file" 2>/dev/null; then
+        return 0
+    fi
+
+    # Fallback: project-shipped recipe at sites/<recipe>/recipe.yml
+    _resolve_project_recipe "$recipe" "$config_file" >/dev/null
+}
+
+# List all available recipes with their descriptions.
+# Includes both core recipes (from $config_file) and project-shipped
+# recipes (sites/*/recipe.yml).
+list_recipes() {
+    local config_file="${1:-nwp.yml}"
+
+    print_header "Available Recipes"
+
+    echo -e "${BOLD}Recipes defined in $config_file:${NC}\n"
+
+    # Extract recipe names only from the recipes: section
+    local recipes=$(awk '
+        /^recipes:/ { in_recipes = 1; next }
+        /^[a-zA-Z]/ { in_recipes = 0 }
+        in_recipes && /^  [a-zA-Z0-9_-]+:/ {
+            match($0, /^  ([a-zA-Z0-9_-]+):/, arr)
+            if (arr[1]) print arr[1]
+        }
+    ' "$config_file")
+
+    # Discover project-shipped recipes at sites/*/recipe.yml
+    local nwp_root
+    if [[ -n "${PROJECT_ROOT:-}" ]]; then
+        nwp_root="$PROJECT_ROOT"
+    else
+        nwp_root="$(dirname "$(readlink -f "$config_file" 2>/dev/null || echo "$config_file")")"
+    fi
+    if [[ -d "$nwp_root/sites" ]]; then
+        local site_dir
+        for site_dir in "$nwp_root"/sites/*/; do
+            local site_name="${site_dir%/}"
+            site_name="${site_name##*/}"
+            if [[ -f "$site_dir/recipe.yml" ]] && ! echo "$recipes" | grep -qx "$site_name"; then
+                recipes="$recipes
+$site_name"
+            fi
+        done
+    fi
+
+    for recipe in $recipes; do
+        local recipe_type=$(get_recipe_value "$recipe" "type" "$config_file")
+        local source=$(get_recipe_value "$recipe" "source" "$config_file")
+        local profile=$(get_recipe_value "$recipe" "profile" "$config_file")
+        local branch=$(get_recipe_value "$recipe" "branch" "$config_file")
+
+        # Default to drupal if type not specified
+        if [ -z "$recipe_type" ]; then
+            recipe_type="drupal"
+        fi
+
+        echo -e "${BLUE}${BOLD}$recipe${NC} (${recipe_type})"
+
+        if [ "$recipe_type" == "moodle" ]; then
+            echo -e "  Source: $source"
+            [ -n "$branch" ] && echo -e "  Branch: $branch"
+        else
+            echo -e "  Source: $source"
+            [ -n "$profile" ] && echo -e "  Profile: $profile"
+        fi
+
+        echo ""
+    done
+
+    echo -e "${BOLD}Usage:${NC}"
+    echo -e "  ./install.sh <recipe>           Install the specified recipe"
+    echo -e "  ./install.sh <recipe> c         Install with test content creation"
+    echo -e "  ./install.sh <recipe> s=N       Start from step N"
+    echo ""
+}
+
+# Validate that a recipe has all required fields
+validate_recipe() {
+    local recipe=$1
+    local config_file="${2:-nwp.yml}"
+    local errors=0
+
+    local recipe_type=$(get_recipe_value "$recipe" "type" "$config_file")
+
+    # Default to drupal if type not specified
+    if [ -z "$recipe_type" ]; then
+        recipe_type="drupal"
+    fi
+
+    # Check required fields based on type
+    if [ "$recipe_type" == "moodle" ]; then
+        # Moodle required fields
+        local source=$(get_recipe_value "$recipe" "source" "$config_file")
+        local source_git=$(get_recipe_value "$recipe" "source_git" "$config_file")
+        local branch=$(get_recipe_value "$recipe" "branch" "$config_file")
+        local webroot=$(get_recipe_value "$recipe" "webroot" "$config_file")
+
+        # Accept either source or source_git
+        if [ -z "$source" ] && [ -z "$source_git" ]; then
+            print_error "Recipe '$recipe': Missing required field 'source' or 'source_git'"
+            errors=$((errors + 1))
+        fi
+
+        if [ -z "$branch" ]; then
+            print_error "Recipe '$recipe': Missing required field 'branch'"
+            errors=$((errors + 1))
+        fi
+
+        if [ -z "$webroot" ]; then
+            print_error "Recipe '$recipe': Missing required field 'webroot'"
+            errors=$((errors + 1))
+        fi
+    elif [ "$recipe_type" == "gitlab" ]; then
+        # GitLab required fields - uses Docker, minimal requirements
+        local source=$(get_recipe_value "$recipe" "source" "$config_file")
+        local source_git=$(get_recipe_value "$recipe" "source_git" "$config_file")
+        # GitLab only needs source (git URL) - everything else has defaults
+        if [ -z "$source" ] && [ -z "$source_git" ]; then
+            print_error "Recipe '$recipe': Missing required field 'source' or 'source_git'"
+            errors=$((errors + 1))
+        fi
+    elif [ "$recipe_type" == "podcast" ]; then
+        # Podcast required fields - uses podcast.sh for Castopod setup
+        local domain=$(get_recipe_value "$recipe" "domain" "$config_file")
+        local base_domain=$(get_recipe_value "$recipe" "base_domain" "$config_file")
+        # Podcast needs either domain or base_domain - everything else has defaults
+        if [ -z "$domain" ] && [ -z "$base_domain" ]; then
+            print_error "Recipe '$recipe': Missing required field 'domain' or 'base_domain'"
+            errors=$((errors + 1))
+        fi
+    elif [ "$recipe_type" == "migration" ]; then
+        # Migration type has no required fields - just creates stub
+        :
+    else
+        # Drupal required fields
+        local source=$(get_recipe_value "$recipe" "source" "$config_file")
+        local source_git=$(get_recipe_value "$recipe" "source_git" "$config_file")
+        local profile=$(get_recipe_value "$recipe" "profile" "$config_file")
+        local webroot=$(get_recipe_value "$recipe" "webroot" "$config_file")
+
+        # Accept either source or source_git
+        if [ -z "$source" ] && [ -z "$source_git" ]; then
+            print_error "Recipe '$recipe': Missing required field 'source' or 'source_git'"
+            errors=$((errors + 1))
+        fi
+
+        if [ -z "$profile" ]; then
+            print_error "Recipe '$recipe': Missing required field 'profile'"
+            errors=$((errors + 1))
+        fi
+
+        if [ -z "$webroot" ]; then
+            print_error "Recipe '$recipe': Missing required field 'webroot'"
+            errors=$((errors + 1))
+        fi
+    fi
+
+    return $errors
+}
+
+# Show help information
+show_help() {
+    local config_file="${1:-nwp.yml}"
+
+    echo -e "${BOLD}Narrow Way Project Installation Script${NC}"
+    echo ""
+    echo -e "${BOLD}USAGE:${NC}"
+    echo -e "  ./install.sh [OPTIONS] <recipe> [target]"
+    echo ""
+    echo -e "${BOLD}ARGUMENTS:${NC}"
+    echo -e "  recipe                  Recipe name from nwp.yml (required)"
+    echo -e "  target                  Custom directory/site name (optional)"
+    echo ""
+    echo -e "${BOLD}OPTIONS:${NC}"
+    echo -e "  -l, --list              List all available recipes"
+    echo -e "  -h, --help              Show this help message"
+    echo -e "  c, --create-content     Create test content after installation"
+    echo -e "  s=N, --step=N           Start installation from step N"
+    echo -e "  -p=X, --purpose=X       Set site purpose (t=testing, i=indefinite, p=permanent, m=migration)"
+    echo ""
+    echo -e "${BOLD}PURPOSE VALUES:${NC}"
+    echo -e "  testing (t)             Site can be deleted freely (default for test sites)"
+    echo -e "  indefinite (i)          Site not auto-deleted but can be manually deleted (default)"
+    echo -e "  permanent (p)           Site requires manual change in nwp.yml before deletion"
+    echo -e "  migration (m)           Migration site - creates folder stub only for importing"
+    echo ""
+    echo -e "${BOLD}EXAMPLES:${NC}"
+    echo -e "  ./install.sh --list              List available recipes"
+    echo -e "  ./install.sh nwp                 Install nwp recipe in 'nwp' directory"
+    echo -e "  ./install.sh nwp client1         Install nwp recipe in 'client1' directory"
+    echo -e "  ./install.sh nwp mysite c        Install nwp as 'mysite' with test content"
+    echo -e "  ./install.sh nwp site2 s=3       Resume 'site2' from step 3"
+    echo -e "  ./install.sh nwp prod -p=p       Install with permanent purpose"
+    echo -e "  ./install.sh d oldsite -p=m      Create migration stub for importing old site"
+    echo ""
+    echo -e "${BOLD}TARGET NAMES:${NC}"
+    echo -e "  The target parameter allows you to create multiple sites from the same recipe."
+    echo -e "  If not specified, the recipe name is used as the directory/site name."
+    echo -e "  Examples:"
+    echo -e "    ./install.sh nwp          -> Creates site in directory 'nwp'"
+    echo -e "    ./install.sh nwp client1  -> Creates site in directory 'client1'"
+    echo -e "    ./install.sh nwp client2  -> Creates site in directory 'client2'"
+    echo ""
+    echo -e "${BOLD}AVAILABLE RECIPES:${NC}"
+    local recipes=$(awk '
+        /^recipes:/ { in_recipes = 1; next }
+        /^[a-zA-Z]/ { in_recipes = 0 }
+        in_recipes && /^  [a-zA-Z0-9_-]+:/ {
+            match($0, /^  ([a-zA-Z0-9_-]+):/, arr)
+            if (arr[1]) print arr[1]
+        }
+    ' "$config_file")
+    for recipe in $recipes; do
+        echo -e "  - $recipe"
+    done
+    echo ""
+    echo -e "For detailed recipe information, use: ./install.sh --list"
+    echo ""
+}
+
+################################################################################
+# Utility Functions
+################################################################################
+
+# Extract module name from git URL
+get_module_name_from_git_url() {
+    local git_url=$1
+    # Extract last part of path and remove .git extension
+    # Handles both git@github.com:user/repo.git and https://github.com/user/repo.git
+    echo "$git_url" | sed -e 's/.*[:/]\([^/]*\)\.git$/\1/' -e 's/.*\/\([^/]*\)\.git$/\1/'
+}
+
+# Check if a string is a git URL
+is_git_url() {
+    local url=$1
+    if [[ "$url" =~ ^git@ ]] || [[ "$url" =~ \.git$ ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# Install a Drupal profile from a git repository
+# Usage: install_git_profile "git@git.example.org:group/repo.git" "profile_name" "html"
+#
+# The profile will be cloned to: webroot/profiles/custom/<profile_name>
+# This allows active development on the profile while working on the site.
+#
+# After cloning, automatically creates symlinks for:
+# - Modules in $profile_path/modules/ -> $webroot/modules/custom/
+# - Themes in $profile_path/themes/ -> $webroot/themes/custom/
+#
+install_git_profile() {
+    local git_url=$1
+    local profile_name=$2
+    local webroot=$3
+    local profiles_dir="${webroot}/profiles/custom"
+    local profile_path="${profiles_dir}/${profile_name}"
+
+    print_info "Installing profile from git repository..."
+
+    # Create custom profiles directory if it doesn't exist
+    if [ ! -d "$profiles_dir" ]; then
+        mkdir -p "$profiles_dir"
+        print_status "OK" "Created custom profiles directory: $profiles_dir"
+    fi
+
+    if [ -d "$profile_path" ]; then
+        print_status "WARN" "Profile $profile_name already exists at $profile_path"
+        # Check if it's a git repo and pull latest
+        if [ -d "$profile_path/.git" ]; then
+            print_info "Pulling latest changes for $profile_name..."
+            if (cd "$profile_path" && git pull); then
+                print_status "OK" "Profile $profile_name updated"
+            else
+                print_status "WARN" "Could not pull updates for $profile_name"
+            fi
+        fi
+        # Still create symlinks in case profile was updated with new modules/themes
+        _create_profile_symlinks "$profile_name" "$webroot"
+        return 0
+    fi
+
+    print_info "Cloning $profile_name from $git_url..."
+    if git clone "$git_url" "$profile_path"; then
+        print_status "OK" "Profile $profile_name cloned to $profile_path"
+        print_status "INFO" "You can now work on the profile directly in $profile_path"
+
+        # Create symlinks for profile modules and themes
+        _create_profile_symlinks "$profile_name" "$webroot"
+
+        return 0
+    else
+        print_error "Failed to clone profile $profile_name from $git_url"
+        return 1
+    fi
+}
+
+# Create symlinks for modules and themes in a profile
+# Usage: _create_profile_symlinks "profile_name" "webroot"
+#
+# This internal function scans a profile's modules/ and themes/ directories
+# and creates symlinks in the site's modules/custom/ and themes/custom/ directories.
+#
+_create_profile_symlinks() {
+    local profile_name=$1
+    local webroot=$2
+    local profile_path="${webroot}/profiles/custom/${profile_name}"
+    local modules_source="${profile_path}/modules"
+    local themes_source="${profile_path}/themes"
+    local modules_target="${webroot}/modules/custom"
+    local themes_target="${webroot}/themes/custom"
+
+    # Create symlinks for profile modules
+    if [ -d "$modules_source" ]; then
+        # Create modules/custom directory if it doesn't exist
+        if [ ! -d "$modules_target" ]; then
+            mkdir -p "$modules_target"
+            print_info "Created custom modules directory: $modules_target"
+        fi
+
+        # Scan for modules in profile
+        local module_count=0
+        for module_dir in "$modules_source"/*; do
+            if [ -d "$module_dir" ]; then
+                local module_name=$(basename "$module_dir")
+                local symlink_path="${modules_target}/${module_name}"
+
+                # Skip if symlink already exists
+                if [ -L "$symlink_path" ] || [ -d "$symlink_path" ]; then
+                    print_info "Module symlink already exists: $module_name"
+                    continue
+                fi
+
+                # Create relative symlink: ../../profiles/custom/<profile>/modules/<module_name>
+                local relative_path="../../profiles/custom/${profile_name}/modules/${module_name}"
+                if ln -s "$relative_path" "$symlink_path" 2>/dev/null; then
+                    print_status "OK" "Created module symlink: $module_name"
+                    ((++module_count))
+                else
+                    print_warning "Failed to create module symlink: $module_name"
+                fi
+            fi
+        done
+
+        if [ $module_count -gt 0 ]; then
+            print_info "Created $module_count module symlink(s) from profile"
+        fi
+    fi
+
+    # Create symlinks for profile themes
+    if [ -d "$themes_source" ]; then
+        # Create themes/custom directory if it doesn't exist
+        if [ ! -d "$themes_target" ]; then
+            mkdir -p "$themes_target"
+            print_info "Created custom themes directory: $themes_target"
+        fi
+
+        # Scan for themes in profile
+        local theme_count=0
+        for theme_dir in "$themes_source"/*; do
+            if [ -d "$theme_dir" ]; then
+                local theme_name=$(basename "$theme_dir")
+                local symlink_path="${themes_target}/${theme_name}"
+
+                # Skip if symlink already exists
+                if [ -L "$symlink_path" ] || [ -d "$symlink_path" ]; then
+                    print_info "Theme symlink already exists: $theme_name"
+                    continue
+                fi
+
+                # Create relative symlink: ../../profiles/custom/<profile>/themes/<theme_name>
+                local relative_path="../../profiles/custom/${profile_name}/themes/${theme_name}"
+                if ln -s "$relative_path" "$symlink_path" 2>/dev/null; then
+                    print_status "OK" "Created theme symlink: $theme_name"
+                    ((++theme_count))
+                else
+                    print_warning "Failed to create theme symlink: $theme_name"
+                fi
+            fi
+        done
+
+        if [ $theme_count -gt 0 ]; then
+            print_info "Created $theme_count theme symlink(s) from profile"
+        fi
+    fi
+}
+
+# Install modules from git repositories
+install_git_modules() {
+    local git_modules=$1
+    local webroot=$2
+    local custom_dir="${webroot}/modules/custom"
+
+    print_info "Installing modules from git repositories..."
+
+    # Create custom modules directory if it doesn't exist
+    if [ ! -d "$custom_dir" ]; then
+        mkdir -p "$custom_dir"
+        print_status "OK" "Created custom modules directory: $custom_dir"
+    fi
+
+    # Process each git module
+    for git_url in $git_modules; do
+        local module_name=$(get_module_name_from_git_url "$git_url")
+        local module_path="${custom_dir}/${module_name}"
+
+        if [ -d "$module_path" ]; then
+            print_status "WARN" "Module $module_name already exists, skipping clone"
+            continue
+        fi
+
+        print_info "Cloning $module_name from $git_url..."
+        if git clone "$git_url" "$module_path"; then
+            print_status "OK" "Module $module_name cloned successfully"
+        else
+            print_error "Failed to clone module $module_name from $git_url"
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+# Find available directory name for recipe installation
+get_available_dirname() {
+    local recipe=$1
+    local dirname="sites/$recipe"
+    local counter=1
+
+    # If directory doesn't exist, return it
+    if [ ! -d "$dirname" ]; then
+        echo "$dirname"
+        return 0
+    fi
+
+    # Otherwise, find the next available numbered directory
+    while [ -d "sites/${recipe}${counter}" ]; do
+        counter=$((counter + 1))
+    done
+
+    echo "sites/${recipe}${counter}"
+    return 0
+}
+
+################################################################################
+# Installation Step Functions
+################################################################################
+
+# Check if current step should be executed
+should_run_step() {
+    local current_step=$1
+    local start_step=$2
+
+    if [ -z "$start_step" ] || [ "$current_step" -ge "$start_step" ]; then
+        return 0  # true - run this step
+    else
+        return 1  # false - skip this step
+    fi
+}
+
+################################################################################
+# Production Settings Generation
+################################################################################
+
+# Generate production-ready settings.local.php for live deployment
+# Usage: generate_live_settings "site_dir" "webroot" "db_name" "db_user" "db_pass" ["db_host"]
+#
+# This function creates a settings.local.php file with production-ready configuration:
+# - Production database credentials (localhost by default, not DDEV's 'db')
+# - Generated hash_salt using openssl
+# - Production performance settings (CSS/JS aggregation enabled)
+# - Error hiding for security
+# - Trusted host patterns based on site name
+#
+# The function is idempotent - it won't overwrite an existing settings.local.php
+#
+generate_live_settings() {
+    local site_dir=$1
+    local webroot=$2
+    local db_name=$3
+    local db_user=$4
+    local db_pass=$5
+    local db_host=${6:-localhost}
+
+    local settings_local="${site_dir}/${webroot}/sites/default/settings.local.php"
+    local settings_php="${site_dir}/${webroot}/sites/default/settings.php"
+
+    # Check if settings.local.php already exists
+    if [ -f "$settings_local" ]; then
+        print_status "WARN" "settings.local.php already exists, skipping generation"
+        print_info "Delete $settings_local if you want to regenerate it"
+        return 0
+    fi
+
+    print_info "Generating production settings.local.php..."
+
+    # Generate hash_salt
+    local hash_salt=$(openssl rand -hex 32)
+
+    # Extract domain pattern from site name for trusted hosts
+    # If site_dir is "avc", domain pattern would be "avc.nwpcode.org"
+    local base_name=$(basename "$site_dir")
+    # Remove -stg, _prod, _live suffixes to get base name
+    base_name=$(echo "$base_name" | sed -E 's/[-_](stg|prod|live)$//')
+
+    # Create settings.local.php with heredoc
+    cat > "$settings_local" << PRODUCTION_SETTINGS
+<?php
+
+/**
+ * @file
+ * Production settings - auto-generated by NWP.
+ *
+ * This file contains production-ready configuration including:
+ * - Database credentials
+ * - Performance optimizations
+ * - Security settings
+ */
+
+// Database connection
+\$databases['default']['default'] = [
+  'database' => '$db_name',
+  'username' => '$db_user',
+  'password' => '$db_pass',
+  'host' => '$db_host',
+  'port' => '3306',
+  'driver' => 'mysql',
+  'prefix' => '',
+  'collation' => 'utf8mb4_general_ci',
+];
+
+// Hash salt for security
+\$settings['hash_salt'] = '$hash_salt';
+
+// Enable CSS/JS aggregation for performance
+\$config['system.performance']['css']['preprocess'] = TRUE;
+\$config['system.performance']['js']['preprocess'] = TRUE;
+
+// Hide error messages for security
+\$config['system.logging']['error_level'] = 'hide';
+
+// Trusted host patterns (update with actual domain if needed)
+\$settings['trusted_host_patterns'] = [
+  '^${base_name}\.nwpcode\.org$',
+  '^www\.${base_name}\.nwpcode\.org$',
+  '^${base_name}\..*$',
+];
+
+// Private file path
+\$settings['file_private_path'] = '../private';
+
+// Disable update manager for production
+\$settings['update_free_access'] = FALSE;
+
+// Skip permissions hardening (handled by deployment)
+\$settings['skip_permissions_hardening'] = TRUE;
+PRODUCTION_SETTINGS
+
+    chmod 644 "$settings_local"
+    print_status "OK" "Generated settings.local.php"
+
+    # Ensure settings.php includes settings.local.php
+    if [ -f "$settings_php" ]; then
+        if ! grep -q "settings.local.php" "$settings_php" 2>/dev/null; then
+            print_info "Adding settings.local.php include to settings.php..."
+
+            cat >> "$settings_php" << 'INCLUDE_LOCAL'
+
+// Include local settings if available
+if (file_exists($app_root . '/' . $site_path . '/settings.local.php')) {
+  include $app_root . '/' . $site_path . '/settings.local.php';
+}
+INCLUDE_LOCAL
+
+            print_status "OK" "Updated settings.php to include settings.local.php"
+        else
+            print_info "settings.php already includes settings.local.php"
+        fi
+    else
+        print_status "WARN" "settings.php not found at $settings_php"
+    fi
+
+    return 0
+}
+
+################################################################################
+# Test Content Creation (Drupal-specific but used by main install flow)
+################################################################################
+
+# Create test content for workflow_assignment module
+create_test_content() {
+    print_header "Creating Test Content"
+
+    print_info "Enabling workflow_assignment module..."
+    if ! ddev drush pm:enable workflow_assignment -y 2>&1 | grep -v "Deprecated"; then
+        print_error "Failed to enable workflow_assignment module"
+        return 1
+    fi
+
+    print_info "Enabling page content type for workflow support and clearing cache..."
+    if ! ddev drush php:eval "
+        \$config = \Drupal::configFactory()->getEditable('workflow_assignment.settings');
+        \$enabled_types = \$config->get('enabled_content_types') ?: [];
+        if (!in_array('page', \$enabled_types)) {
+            \$enabled_types[] = 'page';
+            \$config->set('enabled_content_types', \$enabled_types);
+            \$config->save();
+        }
+        drupal_flush_all_caches();
+    " 2>&1 | grep -v "Deprecated" >/dev/null; then
+        print_warning "Could not configure workflow settings (may already be configured)"
+    fi
+
+    print_info "Creating 5 test users with complex passwords..."
+    local users=()
+    local user_passwords=()
+    for i in {1..5}; do
+        local username="testuser$i"
+        local email="testuser$i@example.com"
+
+        if ddev drush user:info "$username" &>/dev/null; then
+            print_info "User $username already exists, skipping..."
+        else
+            # Generate complex random password (16 characters)
+            local password=$(ddev drush php:eval "echo \Drupal::service('password_generator')->generate(16);" 2>/dev/null)
+            if ddev drush user:create "$username" --mail="$email" --password="$password" 2>&1 | grep -v "Deprecated" >/dev/null; then
+                print_info "Created user: $username (password: $password)"
+                user_passwords+=("$username: $password")
+            else
+                print_warning "Failed to create user: $username"
+            fi
+        fi
+        users+=("$username")
+    done
+
+    print_info "Creating 5 test documents..."
+    local doc_nids=()
+    for i in {1..5}; do
+        local title="Test Document $i"
+        local body="This is test document number $i for workflow assignment testing."
+
+        local nid=$(ddev drush php:eval "
+            \$node = \Drupal\node\Entity\Node::create([
+                'type' => 'page',
+                'title' => '$title',
+                'body' => [
+                    'value' => '$body',
+                    'format' => 'basic_html',
+                ],
+                'uid' => 1,
+                'status' => 1,
+            ]);
+            \$node->save();
+            echo \$node->id();
+        " 2>/dev/null | tail -1)
+
+        if [ -n "$nid" ]; then
+            doc_nids+=("$nid")
+            print_info "Created document: $title (NID: $nid)"
+        fi
+    done
+
+    print_info "Creating 5 workflow assignments..."
+    local workflow_ids=()
+    for i in {1..5}; do
+        local user_index=$((i - 1))
+        local username="${users[$user_index]}"
+        local wf_id="test_workflow_$i"
+
+        if ddev drush php:eval "
+            \$users = \Drupal::entityTypeManager()
+                ->getStorage('user')
+                ->loadByProperties(['name' => '$username']);
+            \$user = reset(\$users);
+
+            if (\$user) {
+                \$workflow = \Drupal::entityTypeManager()
+                    ->getStorage('workflow_list')
+                    ->create([
+                        'id' => '${wf_id}',
+                        'label' => 'Workflow Task $i',
+                        'description' => 'This is test workflow assignment $i for testing purposes.',
+                        'assigned_type' => 'user',
+                        'assigned_id' => \$user->id(),
+                        'comments' => 'Test comment for workflow $i',
+                    ]);
+                \$workflow->save();
+                echo 'OK';
+            } else {
+                echo 'USER_NOT_FOUND';
+            }
+        " 2>/dev/null | grep -q "OK"; then
+            workflow_ids+=("$wf_id")
+            print_info "Created workflow: Workflow Task $i (assigned to $username)"
+        else
+            print_warning "Failed to create workflow: Workflow Task $i"
+        fi
+    done
+
+    # Link workflows to the first document
+    if [ ${#doc_nids[@]} -gt 0 ] && [ ${#workflow_ids[@]} -gt 0 ]; then
+        local target_nid="${doc_nids[0]}"
+
+        print_info "Linking workflows to document (NID: $target_nid)..."
+        # Build workflow IDs string safely
+        local wf_ids_str=""
+        for wf_id in "${workflow_ids[@]}"; do
+            [ -n "$wf_ids_str" ] && wf_ids_str+=", "
+            wf_ids_str+="'$wf_id'"
+        done
+
+        if ddev drush php:eval "
+            \$node = \Drupal\node\Entity\Node::load($target_nid);
+            if (\$node && \$node->hasField('field_workflow_list')) {
+                \$workflow_ids = [$wf_ids_str];
+                \$node->set('field_workflow_list', \$workflow_ids);
+                \$node->save();
+                echo 'OK';
+            } else {
+                echo 'FIELD_NOT_FOUND';
+            }
+        " 2>/dev/null | grep -q "OK"; then
+            print_status "OK" "Test content created successfully"
+        else
+            print_warning "Could not link workflows to document (field may not exist)"
+            print_status "OK" "Test content partially created"
+        fi
+
+        # Get one-time login URL and append workflow tab destination
+        local uli_url=$(ddev drush uli --uri=default 2>/dev/null | tail -n 1)
+        local workflow_url="${uli_url%/login}/login?destination=/node/${target_nid}/workflow"
+
+        echo ""
+        echo -e "${BOLD}Test Content Summary:${NC}"
+        echo -e "  ${GREEN}✓${NC} ${#users[@]} users created with complex passwords:"
+        for user_pass in "${user_passwords[@]}"; do
+            echo -e "    ${CYAN}${user_pass}${NC}"
+        done
+        echo -e "  ${GREEN}✓${NC} ${#doc_nids[@]} documents created (NIDs: ${doc_nids[*]})"
+        echo -e "  ${GREEN}✓${NC} ${#workflow_ids[@]} workflow assignments linked to document $target_nid"
+        echo ""
+        echo -e "${BOLD}Login and view workflow assignments:${NC}"
+        echo -e "  ${BLUE}${workflow_url}${NC}"
+        echo ""
+
+        # Try to open in browser with login URL that redirects to workflow tab
+        if command -v xdg-open &> /dev/null; then
+            xdg-open "$workflow_url" &>/dev/null &
+            print_status "OK" "Browser opened with login to workflow tab"
+        elif command -v open &> /dev/null; then
+            open "$workflow_url" &>/dev/null &
+            print_status "OK" "Browser opened with login to workflow tab"
+        fi
+    else
+        print_error "No documents or workflows were created"
+        return 1
+    fi
+
+    return 0
+}

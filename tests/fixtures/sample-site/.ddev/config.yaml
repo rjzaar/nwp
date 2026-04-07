@@ -1,0 +1,17 @@
+# Test DDEV Configuration
+# This is a fixture for testing - NOT a real DDEV config
+name: testsite
+type: drupal10
+docroot: html
+php_version: "8.3"
+webserver_type: nginx-fpm
+database:
+  type: mariadb
+  version: "10.11"
+router_http_port: "80"
+router_https_port: "443"
+additional_hostnames: []
+additional_fqdns: []
+disable_settings_management: false
+timezone: UTC
+composer_version: "2"

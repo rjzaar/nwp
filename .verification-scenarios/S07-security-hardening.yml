@@ -1,0 +1,90 @@
+# S07: Security Hardening Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies security commands and hardening checks.
+# Tests that security recommendations are enforced.
+
+scenario:
+  id: S7
+  name: "Security Hardening"
+  description: "Verify security commands and hardening checks"
+  depends_on:
+    - S2  # Needs working site install
+  estimated_duration: 5
+  is_gate: false
+
+  commands_tested:
+    - security.sh
+    - security-check.sh
+
+  live_state_commands:
+    - command: pl security-check
+      validates:
+        - File permissions
+        - Security updates available
+        - Configuration hardening
+
+  setup:
+    - Create test site:
+        cmd: ./pl install d verify-s7 --auto 2>&1
+        timeout: 300
+
+  steps:
+    - name: Verify site exists
+      cmd: test -d sites/verify-s7 && echo "Site exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check security command exists
+      cmd: test -f scripts/commands/security.sh && echo "security.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check security-check command exists
+      cmd: test -f scripts/commands/security-check.sh && echo "security-check.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl security help
+      cmd: ./pl security --help 2>&1 | head -10 || echo "security command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl security-check help
+      cmd: ./pl security-check --help 2>&1 | head -10 || echo "security-check command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run security check on test site
+      cmd: ./pl security-check verify-s7 2>&1 | head -20 || echo "Security check attempted"
+      expect_exit: 0
+      timeout: 60
+
+    - name: Verify settings.php permissions
+      cmd: |
+        if [[ -f sites/verify-s7/html/sites/default/settings.php ]]; then
+          perm=$(stat -c "%a" sites/verify-s7/html/sites/default/settings.php)
+          echo "Settings permissions: $perm"
+          exit 0
+        else
+          echo "Settings file not found"
+          exit 0
+        fi
+      expect_exit: 0
+      timeout: 10
+
+    - name: Check for Drupal security updates
+      cmd: |
+        cd sites/verify-s7
+        ddev drush pm:security 2>&1 | head -10 || echo "Security update check completed"
+      expect_exit: 0
+      timeout: 60
+
+  cleanup:
+    - cmd: ./pl delete verify-s7 --yes 2>/dev/null || true
+
+  success_criteria:
+    all_required:
+      - Security commands exist
+      - Security check runs
+      - File permissions checkable

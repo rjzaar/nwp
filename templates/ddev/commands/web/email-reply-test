@@ -1,0 +1,139 @@
+#!/bin/bash
+
+## Description: Test the email reply system
+## Usage: email-reply-test [command]
+## Example: "ddev email-reply-test status" or "ddev email-reply-test simulate"
+
+COMMAND="${1:-help}"
+
+case "$COMMAND" in
+  status)
+    echo "Checking email reply system status..."
+    drush email-reply:status
+    ;;
+
+  enable)
+    echo "Enabling email reply system..."
+    drush email-reply:enable --domain="${DDEV_SITENAME}.ddev.site"
+    ;;
+
+  disable)
+    echo "Disabling email reply system..."
+    drush email-reply:disable
+    ;;
+
+  setup)
+    echo "Setting up test infrastructure..."
+    drush email-reply:setup-test --enable --domain="${DDEV_SITENAME}.ddev.site"
+    ;;
+
+  test)
+    echo "Running end-to-end test..."
+    drush email-reply:test
+    ;;
+
+  simulate)
+    if [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; then
+      echo "Usage: ddev email-reply-test simulate <node_id> <user_id> \"reply text\""
+      echo ""
+      echo "Example:"
+      echo "  ddev email-reply-test simulate 1 2 \"This is my test reply\""
+      exit 1
+    fi
+
+    NODE_ID="$2"
+    USER_ID="$3"
+    REPLY_TEXT="$4"
+
+    echo "Generating token for node $NODE_ID, user $USER_ID..."
+    TOKEN=$(drush email-reply:generate-token "$NODE_ID" "$USER_ID" --format=string 2>/dev/null | grep "Token:" | awk '{print $2}')
+
+    if [ -z "$TOKEN" ]; then
+      echo "Failed to generate token. Running verbose command..."
+      drush email-reply:generate-token "$NODE_ID" "$USER_ID"
+      exit 1
+    fi
+
+    echo "Token generated: ${TOKEN:0:20}..."
+
+    # Get user email
+    USER_EMAIL=$(drush user:information "$USER_ID" --format=json 2>/dev/null | php -r "echo json_decode(file_get_contents('php://stdin'), true)['mail'] ?? '';")
+
+    if [ -z "$USER_EMAIL" ]; then
+      USER_EMAIL="test@test.local"
+      echo "Could not get user email, using: $USER_EMAIL"
+    fi
+
+    echo "Simulating reply from $USER_EMAIL..."
+    drush email-reply:simulate "$TOKEN" "$USER_EMAIL" "$REPLY_TEXT"
+    ;;
+
+  webhook)
+    if [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; then
+      echo "Usage: ddev email-reply-test webhook <token> <from_email> \"reply text\""
+      echo ""
+      echo "This sends a POST request to the webhook endpoint, simulating an email provider."
+      exit 1
+    fi
+
+    TOKEN="$2"
+    FROM_EMAIL="$3"
+    REPLY_TEXT="$4"
+    TO_EMAIL="reply+${TOKEN}@${DDEV_SITENAME}.ddev.site"
+
+    echo "Sending webhook request to /api/email/inbound..."
+    echo "  From: $FROM_EMAIL"
+    echo "  To: $TO_EMAIL"
+    echo "  Text: $REPLY_TEXT"
+    echo ""
+
+    # Send POST request to webhook endpoint
+    curl -X POST "https://${DDEV_SITENAME}.ddev.site/api/email/inbound" \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      -d "from=${FROM_EMAIL}" \
+      -d "to=${TO_EMAIL}" \
+      -d "subject=Re: Test" \
+      -d "text=${REPLY_TEXT}" \
+      -d "spam_score=0.0" \
+      -d "SPF=pass" \
+      -d "dkim=pass" \
+      -k -s -w "\nHTTP Status: %{http_code}\n"
+
+    echo ""
+    echo "Check queue with: ddev drush queue:list"
+    echo "Process queue with: ddev drush queue:run avc_email_reply"
+    ;;
+
+  queue)
+    echo "Processing email reply queue..."
+    drush email-reply:process-queue
+    ;;
+
+  help|*)
+    echo "Email Reply Test Commands"
+    echo "========================="
+    echo ""
+    echo "Usage: ddev email-reply-test <command>"
+    echo ""
+    echo "Commands:"
+    echo "  status     - Check system status"
+    echo "  enable     - Enable email reply for this DDEV site"
+    echo "  disable    - Disable email reply"
+    echo "  setup      - Set up test infrastructure (users, nodes)"
+    echo "  test       - Run end-to-end test"
+    echo "  simulate   - Simulate a reply: simulate <node_id> <user_id> \"text\""
+    echo "  webhook    - Send webhook request: webhook <token> <email> \"text\""
+    echo "  queue      - Process the email reply queue"
+    echo "  help       - Show this help"
+    echo ""
+    echo "Quick Start:"
+    echo "  1. ddev email-reply-test setup    # Create test data"
+    echo "  2. ddev email-reply-test test     # Run automated test"
+    echo ""
+    echo "Manual Testing:"
+    echo "  1. ddev email-reply-test simulate 1 2 \"My reply\""
+    echo ""
+    echo "Web UI Testing:"
+    echo "  Visit: https://${DDEV_SITENAME}.ddev.site/admin/config/avc/email-reply/test"
+    ;;
+esac

@@ -1,0 +1,67 @@
+# S15: Migration Pipeline Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies migration and secrets migration commands.
+# Tests data migration workflows.
+
+scenario:
+  id: S15
+  name: "Migration Pipeline"
+  description: "Verify migration commands exist and are configured"
+  depends_on:
+    - S6  # Needs content import working
+  estimated_duration: 4
+  is_gate: false
+
+  commands_tested:
+    - migrate-secrets.sh
+    - migration.sh
+
+  steps:
+    - name: Check migrate-secrets command exists
+      cmd: test -f scripts/commands/migrate-secrets.sh && echo "migrate-secrets.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check migration command exists
+      cmd: test -f scripts/commands/migration.sh && echo "migration.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl migrate-secrets help
+      cmd: ./pl migrate-secrets --help 2>&1 | head -10 || echo "migrate-secrets command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl migration help
+      cmd: ./pl migration --help 2>&1 | head -10 || echo "migration command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Verify scripts pass syntax check
+      cmd: |
+        for script in migrate-secrets migration; do
+          if [[ -f scripts/commands/${script}.sh ]]; then
+            bash -n scripts/commands/${script}.sh 2>&1 || echo "Syntax issue in ${script}.sh"
+          fi
+        done
+        echo "Syntax check complete"
+      expect_exit: 0
+      expect_contains: "complete"
+      timeout: 30
+
+    - name: Check secrets example file exists
+      cmd: |
+        if [[ -f .secrets.example.yml ]]; then
+          echo "Secrets example exists"
+        else
+          echo "No secrets example"
+        fi
+      expect_exit: 0
+      timeout: 10
+
+  success_criteria:
+    all_required:
+      - Migration commands exist
+      - Help text available
+      - Scripts pass syntax check

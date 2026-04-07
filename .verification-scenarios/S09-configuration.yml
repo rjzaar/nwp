@@ -1,0 +1,71 @@
+# S09: Configuration Management Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies site configuration and modification commands.
+# Tests changing site settings and validating changes persist.
+
+scenario:
+  id: S9
+  name: "Configuration Management"
+  description: "Verify site configuration modification and persistence"
+  depends_on:
+    - S2  # Needs working site install
+  estimated_duration: 5
+  is_gate: false
+
+  commands_tested:
+    - modify.sh
+    - status.sh
+
+  live_state_commands:
+    - command: pl status
+      validates:
+        - Configuration state
+        - Site settings
+
+  setup:
+    - Create test site:
+        cmd: ./pl install d verify-s9 --auto 2>&1
+        timeout: 300
+
+  steps:
+    - name: Verify site exists
+      cmd: test -d sites/verify-s9 && echo "Site exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check modify command exists
+      cmd: test -f scripts/commands/modify.sh && echo "modify.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl modify help
+      cmd: ./pl modify --help 2>&1 | head -10 || echo "modify command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Check site DDEV config
+      cmd: test -f sites/verify-s9/.ddev/config.yaml && echo "DDEV config exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Verify drush config status
+      cmd: |
+        cd sites/verify-s9
+        ddev drush config:status 2>&1 | head -10 || echo "Config status checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Verify status reflects configuration
+      cmd: ./pl status -s verify-s9 2>&1 | head -10
+      expect_exit: 0
+      timeout: 30
+
+  cleanup:
+    - cmd: ./pl delete verify-s9 --yes 2>/dev/null || true
+
+  success_criteria:
+    all_required:
+      - Modify command exists
+      - Configuration accessible
+      - Status reflects state

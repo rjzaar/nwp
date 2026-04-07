@@ -1,0 +1,65 @@
+# S04: Site Copy & Clone Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies site copy functionality preserves data integrity.
+
+scenario:
+  id: S4
+  name: "Site Copy & Clone"
+  description: "Verify site copy preserves content and functionality"
+  depends_on:
+    - S2  # Needs working install
+  estimated_duration: 6
+  is_gate: false
+
+  commands_tested:
+    - copy.sh
+    - status.sh
+    - test.sh
+
+  steps:
+    - name: Install source site
+      cmd: ./pl install d verify-s4-source --auto 2>&1
+      expect_exit: 0
+      timeout: 300
+
+    - name: Get source user count
+      cmd: cd sites/verify-s4-source && ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE uid > 0" 2>/dev/null || echo "1"
+      expect_exit: 0
+      store_as: source_users
+      timeout: 30
+
+    - name: Copy site
+      cmd: ./pl copy verify-s4-source verify-s4-copy 2>&1
+      expect_exit: 0
+      timeout: 180
+
+    - name: Verify copy exists
+      cmd: test -d sites/verify-s4-copy && echo "Copy exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Verify copy DDEV running
+      cmd: cd sites/verify-s4-copy && ddev describe 2>&1 | head -5
+      expect_exit: 0
+      timeout: 30
+
+    - name: Verify user count matches
+      cmd: |
+        source_count={source_users}
+        copy_count=$(cd sites/verify-s4-copy && ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE uid > 0" 2>/dev/null)
+        echo "Source: $source_count, Copy: $copy_count"
+        [[ "$source_count" == "$copy_count" ]] && echo "MATCHES" || echo "MISMATCH"
+      expect_exit: 0
+      expect_contains: "MATCHES"
+      timeout: 30
+
+  cleanup:
+    - cmd: ./pl delete verify-s4-source --yes 2>/dev/null || true
+    - cmd: ./pl delete verify-s4-copy --yes 2>/dev/null || true
+
+  success_criteria:
+    all_required:
+      - Copy creates new site
+      - User count preserved
+      - Copy is functional

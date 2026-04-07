@@ -1,0 +1,80 @@
+# NWP PHPStan Configuration Template
+# Copy this to your site's root directory
+#
+# Usage:
+#   ddev exec vendor/bin/phpstan analyse
+#   ddev exec vendor/bin/phpstan analyse --memory-limit=512M
+
+includes:
+  # Drupal-specific rules
+  - vendor/mglaman/phpstan-drupal/extension.neon
+  # Deprecation rules (optional)
+  # - vendor/phpstan/phpstan-deprecation-rules/rules.neon
+
+parameters:
+  # Analysis level (0-9, higher is stricter)
+  # Level 5 is a good balance for Drupal projects
+  level: 5
+
+  # Paths to analyze
+  paths:
+    - web/modules/custom
+    - web/themes/custom
+
+  # Paths to exclude
+  excludePaths:
+    - */node_modules/*
+    - */tests/*
+    - */.ddev/*
+
+  # Drupal-specific settings
+  drupal:
+    drupal_root: web
+
+  # Error baseline (ignore existing errors)
+  # Generate with: vendor/bin/phpstan analyse --generate-baseline
+  # baseline: phpstan-baseline.neon
+
+  # Memory limit
+  # memoryLimit: 512M
+
+  # Parallel processing
+  parallel:
+    maximumNumberOfProcesses: 4
+
+  # Ignore specific errors
+  ignoreErrors:
+    # Common Drupal patterns that PHPStan doesn't understand
+    - '#Call to an undefined method Drupal\\Core\\Entity\\EntityInterface::#'
+    - '#Access to an undefined property Drupal\\Core\\Entity\\EntityInterface::\$#'
+    # Form state values
+    - '#Cannot access offset .* on mixed#'
+    # Plugin annotations
+    - '#Property .* has no type specified#'
+
+  # Report unmatched ignored errors
+  reportUnmatchedIgnoredErrors: false
+
+  # Treat PHPDoc types as certain
+  treatPhpDocTypesAsCertain: false
+
+  # Check for missing typehints
+  checkMissingIterableValueType: false
+  checkGenericClassInNonGenericObjectType: false
+
+  # Dynamic return types for Drupal services
+  dynamicConstantNames:
+    - Drupal::VERSION
+    - Drupal::CORE_COMPATIBILITY
+
+  # Universal object crates (Drupal's FormState, etc.)
+  universalObjectCratesClasses:
+    - Drupal\Core\Form\FormStateInterface
+    - Drupal\Core\Plugin\Context\ContextInterface
+
+# Service configuration
+services:
+  -
+    class: PHPStan\Rules\Classes\UnusedConstructorParametersRule
+    tags:
+      - phpstan.rules.rule

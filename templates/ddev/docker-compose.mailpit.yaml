@@ -1,0 +1,52 @@
+# DDEV Mailpit Integration
+#
+# Copy this file to any DDEV site's .ddev/ directory to enable Mailpit.
+#
+# After copying:
+#   ddev restart
+#
+# Access:
+#   Web UI: https://<sitename>.ddev.site:8026
+#   SMTP:   Inside DDEV: mailpit:1025
+#
+# Configure Drupal to use Mailpit:
+#   $config['symfony_mailer.mailer_transport.smtp']['configuration'] = [
+#     'host' => 'mailpit',
+#     'port' => 1025,
+#   ];
+#
+version: '3.6'
+
+services:
+  mailpit:
+    container_name: ddev-${DDEV_SITENAME}-mailpit
+    image: axllent/mailpit:latest
+    restart: "no"
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: ${DDEV_APPROOT}
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+      MP_MAX_MESSAGES: 500
+      VIRTUAL_HOST: ${DDEV_HOSTNAME}
+      HTTP_EXPOSE: "8026:8025"
+      HTTPS_EXPOSE: "8027:8025"
+    volumes:
+      - ".:/mnt/ddev_config:ro"
+      - "mailpit-data:/data"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8025/api/v1/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mailpit-data:
+
+# web service configuration to use mailpit for sendmail
+services:
+  web:
+    environment:
+      - MAILPIT_SMTP_HOST=mailpit
+      - MAILPIT_SMTP_PORT=1025

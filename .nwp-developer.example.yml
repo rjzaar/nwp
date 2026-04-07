@@ -1,0 +1,41 @@
+# NWP Developer Identity
+#
+# Copy this file to .nwp-developer.yml and configure your identity.
+# This file is gitignored and should not be committed.
+#
+# Role Hierarchy:
+#   newcomer (0)     - Fork-based contributions only
+#   contributor (30) - Developer access, feature branches, own subdomain
+#   core (40)        - Maintainer access, merge to main
+#   steward (50)     - Owner access, full admin
+
+developer:
+  # Your coder name (as registered with NWP)
+  name: yourname
+
+  # Your email address
+  email: you@example.com
+
+  # Your role (set by admin during onboarding)
+  role: contributor
+
+  # GitLab access level (matches role)
+  level: 30
+
+  # Your subdomain (if you have one)
+  subdomain: yourname.nwpcode.org
+
+  # Upstream GitLab server
+  upstream: git.nwpcode.org
+
+  # Auto-populated fields
+  registered: null
+  last_sync: null
+
+  # Contribution stats (synced from GitLab)
+  contributions:
+    commits: 0
+    merge_requests: 0
+    reviews: 0
+    issues_created: 0
+    issues_closed: 0

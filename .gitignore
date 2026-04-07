@@ -1,0 +1,124 @@
+# NWP Infrastructure .gitignore
+# This file ignores everything except the core NWP infrastructure files
+# Users will have their own nwp.yml configuration (ignored)
+# and their own site installations (ignored)
+
+# Ignore everything by default
+/*
+
+# Whitelist NWP infrastructure files
+
+# Sites directory (where site installations go)
+# The folder is tracked but contents are ignored
+!sites/
+sites/*
+!sites/.gitkeep
+
+# Command entry points
+# Users run ./setup.sh to bootstrap
+# After setup, use the `pl` CLI command to run all other scripts
+# (F23: legacy podcast.sh / install.sh root symlinks were removed; commands
+#  live in scripts/commands/ and dispatch through `pl`.)
+!setup.sh
+
+# CLI completion (installed by setup)
+!pl
+!pl-completion.bash
+
+# CI/CD and code quality
+!.gitlab-ci.yml
+!.github/
+!.github/**
+!.gitlab/
+!.gitlab/**
+!.hooks/
+!.hooks/**
+!renovate.json
+!phpstan.neon
+
+# Scripts directory
+!scripts/
+!scripts/**
+
+# Verification tracking
+# .verification.yml is intentionally tracked: it documents which commands have
+# been verified (real run vs. syntax-only) so badges and external readers can
+# see what's actually exercised. It churns on every `pl verify` run, which is
+# the price of that transparency.
+!.verification.yml
+!.badges.json
+!.verification-scenarios/
+!.verification-scenarios/**
+
+# Documentation and metadata
+!README.md
+!CHANGELOG.md
+!CONTRIBUTING.md
+!KNOWN_ISSUES.md
+!LICENSE
+!CLAUDE.md
+
+# Configuration templates (not user configs)
+!example.nwp.yml
+!.secrets.example.yml
+!.secrets.data.example.yml
+!.nwp-developer.example.yml
+
+# Migration scripts (access via pl or scripts/commands/)
+
+# Documentation directory
+!docs/
+!docs/**
+
+# Libraries
+!lib/
+!lib/**
+
+# Tests
+!tests/
+!tests/**
+
+# Templates for new sites
+!templates/
+!templates/**
+
+# F23 Phase 8: per-server infrastructure (email/, linode/, git/) now lives
+# under servers/<name>/ — see the servers/ block below.
+# F23 Phase 3: Mass Times scraper now lives in sites/mt/pipeline/.
+# F23 Phase 2: Drupal custom modules now live in sites/<name>/web/modules/custom/.
+# Pipelines and modules are intentionally untracked by the parent NWP repo
+# (see the /sites/* rule above).
+
+# Servers directory (Phase 8 server infrastructure)
+# Folder is tracked but contents are ignored — each server has its own repo or is local-only
+!servers/
+servers/*
+!servers/.gitkeep
+
+# SSH keys directory (structure tracked, contents ignored)
+!keys/
+!keys/.gitkeep
+
+# Keep .gitignore itself
+!.gitignore
+
+# However, always ignore secrets and local overrides anywhere in the tree
+# SSH key contents (keep directory but ignore all keys)
+keys/*
+!keys/.gitkeep
+
+# Secrets files - NEVER commit these
+**/.secrets.yml
+**/.secrets.yaml
+**/.secrets.data.yml
+**/.secrets.data.yaml
+**/nwp.yml
+**/.env.local
+**/.ddev/config.local.yaml
+**/.ddev/config.*.yaml
+!**/.ddev/config.yaml
+**/*.local.yml
+**/*.local.yaml
+
+# Generated output directories
+scripts/commands/podcast-setup-*/

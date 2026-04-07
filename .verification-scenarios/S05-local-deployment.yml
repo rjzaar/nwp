@@ -1,0 +1,80 @@
+# S05: Local Deployment Scenario
+# Part of P51: AI-Powered Deep Verification
+#
+# Verifies local deployment workflows (dev2stg, make, test).
+# Tests building artifacts and promoting code between environments.
+
+scenario:
+  id: S5
+  name: "Local Deployment"
+  description: "Verify local deployment workflows and artifact building"
+  depends_on:
+    - S4  # Needs working site copy
+  estimated_duration: 8
+  is_gate: false
+
+  commands_tested:
+    - dev2stg.sh
+    - make.sh
+    - test.sh
+
+  live_state_commands:
+    - command: pl status
+      validates:
+        - Site health after deployment
+        - Database integrity
+
+  setup:
+    - Create source site:
+        cmd: ./pl install d verify-s5-dev --auto 2>&1
+        timeout: 300
+
+  steps:
+    - name: Verify source site exists
+      cmd: test -d sites/verify-s5-dev && echo "Source exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Check source site DDEV running
+      cmd: cd sites/verify-s5-dev && ddev describe 2>&1 | head -5
+      expect_exit: 0
+      timeout: 30
+
+    - name: Test make command exists
+      cmd: test -f scripts/commands/make.sh && echo "make.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Test dev2stg command exists
+      cmd: test -f scripts/commands/dev2stg.sh && echo "dev2stg.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl make help
+      cmd: ./pl make --help 2>&1 | head -10 || echo "make command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Run pl dev2stg help
+      cmd: ./pl dev2stg --help 2>&1 | head -10 || echo "dev2stg command checked"
+      expect_exit: 0
+      timeout: 30
+
+    - name: Verify test command exists
+      cmd: test -f scripts/commands/test.sh && echo "test.sh exists"
+      expect_exit: 0
+      expect_contains: "exists"
+
+    - name: Run pl test help
+      cmd: ./pl test --help 2>&1 | head -10 || echo "test command checked"
+      expect_exit: 0
+      timeout: 30
+
+  cleanup:
+    - cmd: ./pl delete verify-s5-dev --yes 2>/dev/null || true
+
+  success_criteria:
+    all_required:
+      - Deployment commands exist
+      - Help text available
+      - Source site functional

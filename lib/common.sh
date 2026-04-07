@@ -22,6 +22,14 @@ if [[ -f "$_common_sh_dir/server-resolver.sh" ]]; then
     # shellcheck source=server-resolver.sh
     source "$_common_sh_dir/server-resolver.sh"
 fi
+# SSH hardening helpers (nwp_ssh / nwp_scp / nwp_rsync wrappers and the
+# NWP_SSH_HARDENING_OPTS variable). Auto-sourcing here means every script
+# that already sources lib/common.sh gets the lockout-safe ssh wrappers
+# without needing an extra `source lib/ssh.sh`.
+if [[ -f "$_common_sh_dir/ssh.sh" ]]; then
+    # shellcheck source=ssh.sh
+    source "$_common_sh_dir/ssh.sh"
+fi
 unset _common_sh_dir
 
 # Debug message - only prints when DEBUG=true

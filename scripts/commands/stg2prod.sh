@@ -59,22 +59,25 @@ should_run_step() {
 }
 
 # Build SSH command with optional key
+# IdentitiesOnly=yes prevents ssh from offering every key in ~/.ssh/, which
+# would otherwise trip fail2ban after 3 attempts on the production server.
 build_ssh_cmd() {
-    local ssh_opts=""
+    local ssh_opts="-o IdentitiesOnly=yes"
 
     if [ -n "$SSH_KEY" ]; then
-        ssh_opts="-i $SSH_KEY"
+        ssh_opts="$ssh_opts -i $SSH_KEY"
     fi
 
     echo "ssh $ssh_opts -p $SSH_PORT $SSH_USER@$SSH_HOST"
 }
 
 # Build rsync SSH options
+# IdentitiesOnly=yes prevents ssh from offering every key in ~/.ssh/.
 build_rsync_ssh_opts() {
-    local opts="-e ssh -p $SSH_PORT"
+    local opts="-e \"ssh -o IdentitiesOnly=yes -p $SSH_PORT\""
 
     if [ -n "$SSH_KEY" ]; then
-        opts="-e ssh -i $SSH_KEY -p $SSH_PORT"
+        opts="-e \"ssh -o IdentitiesOnly=yes -i $SSH_KEY -p $SSH_PORT\""
     fi
 
     echo "$opts"
@@ -449,9 +452,10 @@ sync_files() {
     )
 
     # Build SSH options for rsync
-    local ssh_opts="ssh -p $SSH_PORT"
+    # IdentitiesOnly=yes prevents fail2ban lockouts from key spraying.
+    local ssh_opts="ssh -o IdentitiesOnly=yes -p $SSH_PORT"
     if [ -n "$SSH_KEY" ]; then
-        ssh_opts="ssh -i $SSH_KEY -p $SSH_PORT"
+        ssh_opts="ssh -o IdentitiesOnly=yes -i $SSH_KEY -p $SSH_PORT"
     fi
 
     # Rsync (quiet by default, verbose with -v flag)
@@ -591,14 +595,14 @@ verify_site_email() {
     print_info "Checking email forwarding on $gitlab_host..."
     local alias_exists=false
 
-    if ssh -o BatchMode=yes -o ConnectTimeout=5 "${mail_ssh_user}@${gitlab_host}" \
+    if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes -o ConnectTimeout=5 "${mail_ssh_user}@${gitlab_host}" \
         "grep -q '^${site_email}' /etc/postfix/virtual 2>/dev/null" 2>/dev/null; then
         alias_exists=true
         print_status "OK" "Email forwarding exists: $site_email"
 
         # Verify it forwards to the correct address
         local current_forward
-        current_forward=$(ssh -o BatchMode=yes "${mail_ssh_user}@${gitlab_host}" \
+        current_forward=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${mail_ssh_user}@${gitlab_host}" \
             "grep '^${site_email}' /etc/postfix/virtual 2>/dev/null | awk '{print \$2}'" 2>/dev/null)
 
         if [ "$current_forward" != "$admin_email" ] && [ -n "$current_forward" ]; then
@@ -610,8 +614,8 @@ verify_site_email() {
             local email_script="${PROJECT_ROOT}/servers/nwpcode/email/add_site_email.sh"
             [ -f "$email_script" ] || email_script="${PROJECT_ROOT}/email/add_site_email.sh"
             if [ -f "$email_script" ]; then
-                if scp -q "$email_script" "${mail_ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
-                    if ssh "${mail_ssh_user}@${gitlab_host}" \
+                if scp $(nwp_ssh_opts "$base_name") -q "$email_script" "${mail_ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
+                    if ssh $(nwp_ssh_opts "$base_name") "${mail_ssh_user}@${gitlab_host}" \
                         "sudo bash /tmp/add_site_email.sh ${base_name} --forward-only ${admin_email} -y && rm /tmp/add_site_email.sh" 2>/dev/null; then
                         print_status "OK" "Email forwarding updated: $site_email -> $admin_email"
                     else
@@ -631,8 +635,8 @@ verify_site_email() {
         local email_script="${PROJECT_ROOT}/servers/nwpcode/email/add_site_email.sh"
         [ -f "$email_script" ] || email_script="${PROJECT_ROOT}/email/add_site_email.sh"
         if [ -f "$email_script" ]; then
-            if scp -q "$email_script" "${mail_ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
-                if ssh "${mail_ssh_user}@${gitlab_host}" \
+            if scp $(nwp_ssh_opts "$base_name") -q "$email_script" "${mail_ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
+                if ssh $(nwp_ssh_opts "$base_name") "${mail_ssh_user}@${gitlab_host}" \
                     "sudo bash /tmp/add_site_email.sh ${base_name} --forward-only ${admin_email} -y && rm /tmp/add_site_email.sh" 2>/dev/null; then
                     print_status "OK" "Email forwarding created: $site_email -> $admin_email"
                 else

@@ -143,7 +143,7 @@ main() {
     # Test SSH
     show_step 1 4 "Testing SSH connection to live server"
     start_spinner "Connecting to ${server_ip}"
-    if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "${ssh_user}@${server_ip}" "echo ok" >/dev/null 2>&1; then
+    if ! ssh $(nwp_ssh_opts "$BASE_NAME") -o BatchMode=yes -o ConnectTimeout=5 "${ssh_user}@${server_ip}" "echo ok" >/dev/null 2>&1; then
         stop_spinner
         print_error "Cannot connect to live server"
         exit 1
@@ -158,7 +158,7 @@ main() {
     if [ "$DB_ONLY" != "true" ]; then
         show_step 2 4 "Pulling files from live server"
         start_spinner "Syncing files via rsync"
-        rsync -avz --delete \
+        rsync -e "ssh $(nwp_ssh_opts "$BASE_NAME")" -avz --delete \
             --exclude=".ddev" \
             --exclude=".git" \
             --exclude="web/sites/default/files" \
@@ -178,8 +178,8 @@ main() {
 
         # Export from live
         start_spinner "Exporting database from live"
-        ssh "${ssh_user}@${server_ip}" "$sudo_prefix -u www-data sh -c 'cd /var/www/${BASE_NAME} && drush sql:dump --gzip'" > "$tmp_sql" 2>/dev/null || \
-            ssh "${ssh_user}@${server_ip}" "$sudo_prefix -u www-data sh -c 'cd /var/www/${BASE_NAME}/web && ../vendor/bin/drush sql:dump --gzip'" > "$tmp_sql"
+        ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$sudo_prefix -u www-data sh -c 'cd /var/www/${BASE_NAME} && drush sql:dump --gzip'" > "$tmp_sql" 2>/dev/null || \
+            ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$sudo_prefix -u www-data sh -c 'cd /var/www/${BASE_NAME}/web && ../vendor/bin/drush sql:dump --gzip'" > "$tmp_sql"
         stop_spinner
 
         # Import to staging

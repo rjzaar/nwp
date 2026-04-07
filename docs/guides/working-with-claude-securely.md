@@ -209,10 +209,10 @@ Based on the sanitized output, Claude can identify problems:
 
 ```bash
 # What happens inside safe_db_status:
-ssh -i "$ssh_key" user@host "SELECT COUNT(*) FROM tables..."
-#     ^^^^^^^^^^^          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-#     Uses real key        Runs real query
-#     (Claude can't see)   (Claude can't see)
+ssh -o IdentitiesOnly=yes -i "$ssh_key" user@host "SELECT COUNT(*) FROM tables..."
+#     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#     Uses real key (pinned)                     Runs real query
+#     (Claude can't see)                         (Claude can't see)
 
 # What Claude sees:
 # "Tables: 284"

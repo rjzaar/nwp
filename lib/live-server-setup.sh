@@ -34,7 +34,7 @@ remote_ssh() {
     local ssh_user="${3:-root}"
     local ssh_key="${4:-}"
 
-    local ssh_opts="-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
+    local ssh_opts="-o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new"
 
     if [ -n "$ssh_key" ]; then
         ssh_opts="$ssh_opts -i $ssh_key"

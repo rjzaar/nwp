@@ -257,7 +257,7 @@ live_status() {
         # Check SSH
         local status_ssh_user
         status_ssh_user=$(get_ssh_user "$sitename")
-        if ssh -o BatchMode=yes -o ConnectTimeout=5 "${status_ssh_user}@${server_ip}" exit 2>/dev/null; then
+        if ssh $(nwp_ssh_opts "$sitename") -o BatchMode=yes -o ConnectTimeout=5 "${status_ssh_user}@${server_ip}" exit 2>/dev/null; then
             print_status "OK" "SSH accessible (user: $status_ssh_user)"
         else
             print_warning "SSH not accessible"
@@ -277,7 +277,7 @@ live_ssh() {
         local base_domain=$(get_base_domain)
         local gitlab_host="git.${base_domain}"
         print_info "Connecting to shared server ($gitlab_host)..."
-        ssh "gitlab@${gitlab_host}"
+        ssh $(nwp_ssh_opts "$sitename") "gitlab@${gitlab_host}"
         return $?
     fi
 
@@ -286,7 +286,7 @@ live_ssh() {
     ssh_user=$(get_ssh_user "$sitename")
 
     print_info "Connecting to $sitename live server ($server_ip)..."
-    ssh "${ssh_user}@${server_ip}"
+    ssh $(nwp_ssh_opts "$sitename") "${ssh_user}@${server_ip}"
 }
 
 # Add DNS record for the site
@@ -360,7 +360,7 @@ setup_nginx_vhost() {
     ssh_user=$(get_ssh_user "$sitename")
 
     # Check if nginx config already exists
-    if ssh -o BatchMode=yes "${ssh_user}@${ip}" "test -f /etc/nginx/sites-available/${sitename}" 2>/dev/null; then
+    if ssh $(nwp_ssh_opts "$sitename") -o BatchMode=yes "${ssh_user}@${ip}" "test -f /etc/nginx/sites-available/${sitename}" 2>/dev/null; then
         print_status "OK" "Nginx vhost already configured for ${domain}"
         return 0
     fi
@@ -390,7 +390,7 @@ setup_nginx_vhost() {
 }"
 
     # SSH to server and configure
-    ssh -T "${ssh_user}@${ip}" << REMOTE
+    ssh $(nwp_ssh_opts "$sitename") -T "${ssh_user}@${ip}" << REMOTE
 set -e
 
 # Check if nginx is installed
@@ -442,7 +442,7 @@ setup_ssl() {
     ssh_user=$(get_ssh_user "$sitename")
 
     # Check if SSL cert already exists
-    if ssh -o BatchMode=yes "${ssh_user}@${ip}" "test -d /etc/letsencrypt/live/${domain}" 2>/dev/null; then
+    if ssh $(nwp_ssh_opts "$sitename") -o BatchMode=yes "${ssh_user}@${ip}" "test -d /etc/letsencrypt/live/${domain}" 2>/dev/null; then
         print_status "OK" "SSL certificate already exists for ${domain}"
         return 0
     fi
@@ -487,7 +487,7 @@ setup_ssl() {
     fi
 
     # Get SSL certificate
-    ssh "${ssh_user}@${ip}" "sudo certbot --nginx -d ${domain} --non-interactive --agree-tos --email admin@${base_domain} || true"
+    ssh $(nwp_ssh_opts "$sitename") "${ssh_user}@${ip}" "sudo certbot --nginx -d ${domain} --non-interactive --agree-tos --email admin@${base_domain} || true"
 
     print_status "OK" "SSL setup attempted"
 }
@@ -531,7 +531,7 @@ setup_site_email() {
     print_info "Forward to: $admin_email"
 
     # Check if email infrastructure exists on GitLab server
-    if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "${ssh_user}@${gitlab_host}" "test -f /etc/postfix/virtual" 2>/dev/null; then
+    if ! ssh $(nwp_ssh_opts "$sitename") -o BatchMode=yes -o ConnectTimeout=5 "${ssh_user}@${gitlab_host}" "test -f /etc/postfix/virtual" 2>/dev/null; then
         print_warning "Email infrastructure not configured on $gitlab_host"
         print_info "Run 'pl email setup' on the GitLab server first"
         return 1
@@ -548,8 +548,8 @@ setup_site_email() {
 
     # Copy script to server and run it
     print_info "Creating email forwarding..."
-    if scp -q "$email_script" "${ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
-        if ssh "${ssh_user}@${gitlab_host}" "sudo bash /tmp/add_site_email.sh ${sitename} --forward-only ${admin_email} -y && rm /tmp/add_site_email.sh" 2>/dev/null; then
+    if scp $(nwp_ssh_opts "$sitename") -q "$email_script" "${ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
+        if ssh $(nwp_ssh_opts "$sitename") "${ssh_user}@${gitlab_host}" "sudo bash /tmp/add_site_email.sh ${sitename} --forward-only ${admin_email} -y && rm /tmp/add_site_email.sh" 2>/dev/null; then
             print_status "OK" "Email forwarding configured: $site_email -> $admin_email"
         else
             print_warning "Could not create email forwarding (may already exist)"
@@ -564,7 +564,7 @@ setup_site_email() {
     local sudo_prefix=""
     [ "$ssh_user" == "gitlab" ] && sudo_prefix="sudo -u www-data"
 
-    if ssh -o BatchMode=yes "${ssh_user}@${server_ip}" \
+    if ssh $(nwp_ssh_opts "$sitename") -o BatchMode=yes "${ssh_user}@${server_ip}" \
         "cd /var/www/${sitename} && $sudo_prefix vendor/bin/drush config:set system.site mail '${site_email}' -y" 2>/dev/null; then
         print_status "OK" "Drupal site email set to $site_email"
     else
@@ -585,7 +585,7 @@ verify_ssh_connectivity() {
     print_info "Verifying SSH connectivity to ${user}@${ip}..."
 
     while [ $retry -lt $max_retries ]; do
-        if ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "${user}@${ip}" "echo SSH_OK" 2>/dev/null | grep -q "SSH_OK"; then
+        if ssh $(nwp_ssh_opts "") -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "${user}@${ip}" "echo SSH_OK" 2>/dev/null | grep -q "SSH_OK"; then
             print_status "OK" "SSH connectivity verified"
             return 0
         fi
@@ -612,7 +612,7 @@ setup_server_security() {
     ssh_user=$(get_ssh_user "$sitename")
 
     # Check and apply security features
-    ssh -T "${ssh_user}@${ip}" << 'SECURITY'
+    ssh $(nwp_ssh_opts "$sitename") -T "${ssh_user}@${ip}" << 'SECURITY'
 set -e
 
 echo "Checking server security..."
@@ -948,7 +948,7 @@ provision_shared() {
     print_info "Host: ${gitlab_host}"
 
     # Check GitLab server access
-    if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "gitlab@${gitlab_host}" exit 2>/dev/null; then
+    if ! ssh $(nwp_ssh_opts "$sitename") -o BatchMode=yes -o ConnectTimeout=5 "gitlab@${gitlab_host}" exit 2>/dev/null; then
         print_error "Cannot access GitLab server: ${gitlab_host}"
         print_info "Ensure SSH access is configured"
         return 1
@@ -960,7 +960,7 @@ provision_shared() {
     local ip=$(get_secret_nested "gitlab.server.ip" "")
     if [ -z "$ip" ]; then
         # Fallback to SSH if not in secrets
-        ip=$(ssh -o BatchMode=yes "gitlab@${gitlab_host}" "hostname -I | awk '{print \$1}'" 2>/dev/null)
+        ip=$(ssh $(nwp_ssh_opts "$sitename") -o BatchMode=yes "gitlab@${gitlab_host}" "hostname -I | awk '{print \$1}'" 2>/dev/null)
     fi
 
     if [ -z "$ip" ]; then
@@ -970,13 +970,13 @@ provision_shared() {
     fi
 
     # Check if site directory already exists
-    if ssh -o BatchMode=yes "gitlab@${gitlab_host}" "test -d /var/www/${sitename}" 2>/dev/null; then
+    if ssh $(nwp_ssh_opts "$sitename") -o BatchMode=yes "gitlab@${gitlab_host}" "test -d /var/www/${sitename}" 2>/dev/null; then
         print_status "OK" "Site directory already exists: /var/www/${sitename}"
     else
         # Setup on GitLab server
         print_info "Creating site directory on GitLab server..."
 
-        ssh "gitlab@${gitlab_host}" << REMOTE
+        ssh $(nwp_ssh_opts "$sitename") "gitlab@${gitlab_host}" << REMOTE
 set -e
 
 # Create site directory
@@ -1101,7 +1101,7 @@ live_delete() {
             local gitlab_host="git.${base_domain}"
             print_info "Removing site from shared server..."
 
-            ssh "gitlab@${gitlab_host}" << REMOTE || true
+            ssh $(nwp_ssh_opts "$sitename") "gitlab@${gitlab_host}" << REMOTE || true
 sudo rm -f /etc/nginx/sites-enabled/${sitename}
 sudo rm -f /etc/nginx/sites-available/${sitename}
 sudo rm -rf /var/www/${sitename}

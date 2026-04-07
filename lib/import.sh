@@ -122,7 +122,7 @@ import_step_pull_files() {
         # Full file sync including public files
         start_spinner "Syncing all files from remote server..."
         rsync -avz --progress \
-            -e "ssh -i $ssh_key -o StrictHostKeyChecking=accept-new" \
+            -e "ssh -o IdentitiesOnly=yes -i $ssh_key -o StrictHostKeyChecking=accept-new" \
             --exclude=".git" \
             --exclude="vendor" \
             --exclude="node_modules" \
@@ -141,7 +141,7 @@ import_step_pull_files() {
         # Minimal sync: composer files, config, custom code
         start_spinner "Syncing essential files from remote server..."
         rsync -avz \
-            -e "ssh -i $ssh_key -o StrictHostKeyChecking=accept-new" \
+            -e "ssh -o IdentitiesOnly=yes -i $ssh_key -o StrictHostKeyChecking=accept-new" \
             --include="composer.json" \
             --include="composer.lock" \
             --include="config/***" \

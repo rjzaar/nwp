@@ -104,10 +104,16 @@ chmod 600 ~/.ssh/authorized_keys
 Test your SSH connection:
 
 ```bash
-ssh -i ~/.ssh/nwp deploy@203.0.113.10
+ssh -o IdentitiesOnly=yes -i ~/.ssh/nwp deploy@203.0.113.10
 ```
 
 If successful, you should connect without a password prompt.
+
+> **Why `-o IdentitiesOnly=yes`?** Without it, SSH offers every key in `~/.ssh/`
+> and every key in `ssh-agent` until one succeeds. With several keys present, the
+> rejected attempts trip fail2ban (`maxretry=3`) and lock you out of the server.
+> Always pin the key you actually want to use. NWP scripts do this automatically;
+> when you ssh manually, add `-o IdentitiesOnly=yes` whenever you also pass `-i`.
 
 ## How This Enables Automated Testing
 
@@ -142,7 +148,7 @@ Once your SSH key is added to your Linode account:
 **Solutions**:
 1. Verify key is added to Linode account
 2. Check private key permissions: `chmod 600 ~/.ssh/nwp`
-3. Test with verbose output: `ssh -vvv -i ~/.ssh/nwp user@host`
+3. Test with verbose output: `ssh -vvv -o IdentitiesOnly=yes -i ~/.ssh/nwp user@host`
 4. Ensure public key is in server's `~/.ssh/authorized_keys`
 
 ### Key not found
@@ -160,7 +166,7 @@ Once your SSH key is added to your Linode account:
 **Solutions**:
 1. Verify `ssh_user` in `nwp.yml` matches actual server username
 2. Verify `ssh_host` is correct IP or hostname
-3. Test connection manually: `ssh -i ~/.ssh/nwp user@host`
+3. Test connection manually: `ssh -o IdentitiesOnly=yes -i ~/.ssh/nwp user@host`
 
 ## Advanced Options
 

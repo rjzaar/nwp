@@ -130,7 +130,7 @@ linode:
 
 ### SSH connection failed
 - Verify SSH key path in nwp.yml
-- Test manual connection: `ssh -i <key> <user>@<host>`
+- Test manual connection: `ssh -o IdentitiesOnly=yes -i <key> <user>@<host>`
 - Check SSH port if not default 22
 
 ### Database export failed

@@ -94,9 +94,11 @@ push_key_to_server() {
     fi
 
     # Add security options from ssh.sh library
+    # IdentitiesOnly=yes prevents fail2ban lockouts: without it, ssh would
+    # offer every key in ~/.ssh/ and trip the 3-attempt limit.
     local host_key_mode
     host_key_mode=$(get_ssh_host_key_checking)
-    ssh_cmd+=(-o "StrictHostKeyChecking=$host_key_mode" -o BatchMode=no)
+    ssh_cmd+=(-o IdentitiesOnly=yes -o "StrictHostKeyChecking=$host_key_mode" -o BatchMode=no)
 
     # Read public key from file
     local public_key

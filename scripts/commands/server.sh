@@ -104,7 +104,7 @@ _status_one() {
 
     if [[ -n "$ip" && -n "$user" ]]; then
         if [[ -f "$key" ]]; then
-            if ssh -i "$key" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+            if ssh -i "$key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
                 "${user}@${ip}" "true" 2>/dev/null; then
                 printf "  SSH=ok\n"
             else

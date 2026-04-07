@@ -445,7 +445,7 @@ Domain: https://podcast.example.com
 Media:  https://media.example.com
 
 SSH Access:
-  ssh -i /home/rob/.ssh/nwp root@192.0.2.100
+  ssh -o IdentitiesOnly=yes -i /home/rob/.ssh/nwp root@192.0.2.100
 
 Complete Castopod setup at:
   https://podcast.example.com/admin/install
@@ -497,7 +497,7 @@ Domain: https://podcast.example.com
 Storage: Local (on VPS)
 
 SSH Access:
-  ssh -i /home/rob/.ssh/nwp root@192.0.2.100
+  ssh -o IdentitiesOnly=yes -i /home/rob/.ssh/nwp root@192.0.2.100
 
 Complete Castopod setup at:
   https://podcast.example.com/admin/install
@@ -586,7 +586,7 @@ Container castopod is not running
 **Solution:**
 ```bash
 # SSH to server
-ssh -i ~/.ssh/nwp root@<server-ip>
+ssh -o IdentitiesOnly=yes -i ~/.ssh/nwp root@<server-ip>
 
 # Check container logs
 cd /root/castopod

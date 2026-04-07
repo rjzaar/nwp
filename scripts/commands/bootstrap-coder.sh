@@ -122,7 +122,7 @@ detect_from_gitlab_ssh() {
 
     # Test SSH connection
     local ssh_response
-    ssh_response=$(ssh -T -o BatchMode=yes -o ConnectTimeout=5 \
+    ssh_response=$(ssh -T -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 \
         "git@${gitlab_url}" 2>&1 || true)
 
     # GitLab responds with: "Welcome to GitLab, @username!"
@@ -226,7 +226,7 @@ check_gitlab_user_exists() {
 
     # Try SSH test first
     local ssh_response
-    ssh_response=$(ssh -T -o BatchMode=yes -o ConnectTimeout=5 \
+    ssh_response=$(ssh -T -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 \
         "git@${gitlab_url}" 2>&1 || true)
 
     if echo "$ssh_response" | grep -q "Welcome to GitLab.*@${username}"; then

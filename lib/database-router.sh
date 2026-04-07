@@ -150,7 +150,7 @@ download_db_production() {
     # Assumes drush is available on production server
     local remote_path="/var/www/$sitename"
 
-    if ssh -o ConnectTimeout=10 "$server_ip" "cd $remote_path && drush sql:dump --gzip" > "$backup_file" 2>/dev/null; then
+    if ssh -o IdentitiesOnly=yes -o ConnectTimeout=10 "$server_ip" "cd $remote_path && drush sql:dump --gzip" > "$backup_file" 2>/dev/null; then
         pass "Database downloaded from production"
         note "Saved to: $backup_file"
 

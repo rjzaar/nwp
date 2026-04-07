@@ -1163,11 +1163,12 @@ cmd_deploy_key() {
         ssh_conn=$(get_ssh_connection "$server")
 
         # Append keys to authorized_keys on the server
+        # IdentitiesOnly=yes prevents fail2ban lockouts from key spraying.
         while IFS= read -r key; do
-            if ssh "$ssh_conn" "grep -qF '$key' ~/.ssh/authorized_keys 2>/dev/null" 2>/dev/null; then
+            if ssh $(nwp_ssh_opts "$server") "$ssh_conn" "grep -qF '$key' ~/.ssh/authorized_keys 2>/dev/null" 2>/dev/null; then
                 info "Key already present on $server"
             else
-                echo "$key" | ssh "$ssh_conn" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+                echo "$key" | ssh $(nwp_ssh_opts "$server") "$ssh_conn" "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
                 pass "Key deployed to ${server}"
             fi
         done <<< "$keys"

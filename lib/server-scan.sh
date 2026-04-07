@@ -23,7 +23,7 @@ _SERVER_SCAN_SH_LOADED=1
 test_ssh_connection() {
     local ssh_target="$1"
     local ssh_key="${2:-$HOME/.ssh/nwp}"
-    local ssh_opts="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes"
+    local ssh_opts="-o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes"
 
     if [ ! -f "$ssh_key" ]; then
         print_error "SSH key not found: $ssh_key"
@@ -39,9 +39,13 @@ test_ssh_connection() {
 
 # Get SSH options string
 # Usage: get_ssh_opts "ssh_key_path"
+#
+# IdentitiesOnly=yes is critical: without it, ssh offers every key in
+# ~/.ssh/ (and every key in ssh-agent) on every connection. With ~10+
+# keys this trips fail2ban (default maxretry=3) and locks the user out.
 get_ssh_opts() {
     local ssh_key="${1:-$HOME/.ssh/nwp}"
-    echo "-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -i $ssh_key"
+    echo "-o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -i $ssh_key"
 }
 
 ################################################################################

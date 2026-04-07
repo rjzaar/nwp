@@ -49,7 +49,7 @@ safe_server_status() {
 
     # Execute remote command and sanitize output
     local status_output
-    status_output=$(ssh -i "$ssh_key" -o StrictHostKeyChecking=no -o BatchMode=yes \
+    status_output=$(ssh -i "$ssh_key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o BatchMode=yes \
         "${ssh_user}@${ssh_host}" \
         'echo "Status: $(systemctl is-system-running 2>/dev/null || echo unknown)"; \
          echo "Uptime: $(uptime -p 2>/dev/null || echo unknown)"; \

@@ -434,10 +434,11 @@ SSH_KEY="${ssh_key_path%.pub}"
 echo "Deploying Castopod to \$SERVER_IP..."
 
 # Copy files to server
-scp -i "\$SSH_KEY" -r .env docker-compose.yml Caddyfile deploy.sh root@\$SERVER_IP:/root/castopod/
+# IdentitiesOnly=yes prevents fail2ban lockouts from key spraying.
+scp -o IdentitiesOnly=yes -i "\$SSH_KEY" -r .env docker-compose.yml Caddyfile deploy.sh root@\$SERVER_IP:/root/castopod/
 
 # Run deployment
-ssh -i "\$SSH_KEY" root@\$SERVER_IP "cd /root/castopod && chmod +x deploy.sh && ./deploy.sh"
+ssh -o IdentitiesOnly=yes -i "\$SSH_KEY" root@\$SERVER_IP "cd /root/castopod && chmod +x deploy.sh && ./deploy.sh"
 
 echo ""
 echo "Deployment complete!"

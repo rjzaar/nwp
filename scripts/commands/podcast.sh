@@ -652,7 +652,7 @@ do_setup() {
 
     # Install Docker on server (check if already installed for existing servers)
     echo "Checking/Installing Docker on server..."
-    ssh -i "$ssh_key_private" -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+    ssh -i "$ssh_key_private" -o IdentitiesOnly=yes -oStrictHostKeyChecking=accept-new -o BatchMode=yes \
         "${SSH_USER}@${server_ip}" "bash -s" "$castopod_dir" "$SSH_USER" << 'DOCKER_INSTALL'
 set -e
 export DEBIAN_FRONTEND=noninteractive
@@ -747,13 +747,13 @@ DOCKER_INSTALL
 
     # Copy to server
     echo "Deploying to server..."
-    scp -i "$ssh_key_private" -o BatchMode=yes \
+    scp -i "$ssh_key_private" -o IdentitiesOnly=yes -oBatchMode=yes \
         "$output_dir/.env" "$output_dir/docker-compose.yml" "$output_dir/Caddyfile" \
         "${SSH_USER}@${server_ip}:${castopod_dir}/"
 
     # Start Castopod
     echo "Starting Castopod..."
-    ssh -i "$ssh_key_private" -o BatchMode=yes "${SSH_USER}@${server_ip}" "bash -s" "$castopod_dir" << 'START_CASTOPOD'
+    ssh -i "$ssh_key_private" -o IdentitiesOnly=yes -oBatchMode=yes "${SSH_USER}@${server_ip}" "bash -s" "$castopod_dir" << 'START_CASTOPOD'
 cd "$1"
 set -a
 source .env
@@ -786,7 +786,7 @@ DNS:
 Storage: Local (on server)
 
 SSH Access:
-  ssh -i ${ssh_key_private} ${SSH_USER}@${server_ip}
+  ssh -i ${ssh_key_private} -o IdentitiesOnly=yes ${SSH_USER}@${server_ip}
 
 Castopod Directory:
   ${castopod_dir}
@@ -817,7 +817,7 @@ DNS (Linode):
 Storage: Local (on VPS)
 
 SSH Access:
-  ssh -i ${ssh_key_private} ${SSH_USER}@${server_ip}
+  ssh -i ${ssh_key_private} -o IdentitiesOnly=yes ${SSH_USER}@${server_ip}
 
 Castopod Directory:
   ${castopod_dir}
@@ -852,7 +852,7 @@ Cloudflare:
   Media DNS Record: $dns_media_record
 
 SSH Access:
-  ssh -i ${ssh_key_private} ${SSH_USER}@${server_ip}
+  ssh -i ${ssh_key_private} -o IdentitiesOnly=yes ${SSH_USER}@${server_ip}
 
 Castopod Directory:
   ${castopod_dir}
@@ -879,7 +879,7 @@ EOF
     fi
     echo ""
     echo "SSH Access:"
-    echo "  ssh -i $ssh_key_private $SSH_USER@$server_ip"
+    echo "  ssh -i $ssh_key_private -o IdentitiesOnly=yes $SSH_USER@$server_ip"
     echo ""
     echo "Castopod Directory: $castopod_dir"
     echo ""
@@ -1167,10 +1167,10 @@ do_deploy() {
     echo "Deploying to $ssh_user@$server_ip..."
 
     # Ensure directory exists
-    ssh -i "$ssh_key" -o BatchMode=yes "${ssh_user}@${server_ip}" "mkdir -p '$castopod_dir'"
+    ssh -i "$ssh_key" -o IdentitiesOnly=yes -oBatchMode=yes "${ssh_user}@${server_ip}" "mkdir -p '$castopod_dir'"
 
     # Copy files
-    scp -i "$ssh_key" -o BatchMode=yes \
+    scp -i "$ssh_key" -o IdentitiesOnly=yes -oBatchMode=yes \
         "$dir/.env" "$dir/docker-compose.yml" "$dir/Caddyfile" \
         "${ssh_user}@${server_ip}:${castopod_dir}/"
 
@@ -1178,7 +1178,7 @@ do_deploy() {
 
     # Start containers
     echo "Starting containers..."
-    ssh -i "$ssh_key" -o BatchMode=yes "${ssh_user}@${server_ip}" "bash -s" "$castopod_dir" << 'DEPLOY_SCRIPT'
+    ssh -i "$ssh_key" -o IdentitiesOnly=yes -oBatchMode=yes "${ssh_user}@${server_ip}" "bash -s" "$castopod_dir" << 'DEPLOY_SCRIPT'
 cd "$1"
 set -a
 source .env

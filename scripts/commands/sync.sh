@@ -291,8 +291,9 @@ sync_files() {
     local start_time=$(date +%s)
 
     # Incremental rsync of custom code and config
+    # IdentitiesOnly=yes prevents fail2ban lockouts from key spraying.
     rsync -avz \
-        -e "ssh -i $ssh_key -o StrictHostKeyChecking=accept-new" \
+        -e "ssh -o IdentitiesOnly=yes -i $ssh_key -o StrictHostKeyChecking=accept-new" \
         --include="composer.json" \
         --include="composer.lock" \
         --include="config/***" \

@@ -106,7 +106,7 @@ setup_firewall() {
 
     print_info "Configuring UFW firewall..."
 
-    ssh "root@${server_ip}" << 'REMOTE_SCRIPT'
+    ssh -o IdentitiesOnly=yes "root@${server_ip}" << 'REMOTE_SCRIPT'
         # Install ufw if not present
         apt-get install -y ufw
 
@@ -136,7 +136,7 @@ setup_fail2ban() {
 
     print_info "Configuring fail2ban..."
 
-    ssh "root@${server_ip}" << 'REMOTE_SCRIPT'
+    ssh -o IdentitiesOnly=yes "root@${server_ip}" << 'REMOTE_SCRIPT'
         # Install fail2ban
         apt-get install -y fail2ban
 
@@ -187,7 +187,7 @@ harden_ssl() {
 
     print_info "Hardening SSL configuration..."
 
-    ssh "root@${server_ip}" << 'REMOTE_SCRIPT'
+    ssh -o IdentitiesOnly=yes "root@${server_ip}" << 'REMOTE_SCRIPT'
         # Generate strong DH parameters (if not exists)
         if [[ ! -f /etc/ssl/certs/dhparam.pem ]]; then
             openssl dhparam -out /etc/ssl/certs/dhparam.pem 2048
@@ -233,7 +233,7 @@ setup_redis() {
 
     print_info "Setting up Redis cache..."
 
-    ssh "root@${server_ip}" << 'REMOTE_SCRIPT'
+    ssh -o IdentitiesOnly=yes "root@${server_ip}" << 'REMOTE_SCRIPT'
         apt-get install -y redis-server
 
         # Configure Redis
@@ -257,7 +257,7 @@ setup_memcache() {
 
     print_info "Setting up Memcached..."
 
-    ssh "root@${server_ip}" << 'REMOTE_SCRIPT'
+    ssh -o IdentitiesOnly=yes "root@${server_ip}" << 'REMOTE_SCRIPT'
         apt-get install -y memcached libmemcached-tools
 
         # Configure Memcached
@@ -280,7 +280,7 @@ tune_php_fpm() {
 
     print_info "Tuning PHP-FPM (${memory_mb}MB RAM, ${max_children} workers)..."
 
-    ssh "root@${server_ip}" << REMOTE_SCRIPT
+    ssh -o IdentitiesOnly=yes "root@${server_ip}" << REMOTE_SCRIPT
         PHP_VERSION=\$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
 
         # Update PHP-FPM pool config
@@ -322,7 +322,7 @@ optimize_nginx() {
 
     print_info "Optimizing nginx..."
 
-    ssh "root@${server_ip}" << 'REMOTE_SCRIPT'
+    ssh -o IdentitiesOnly=yes "root@${server_ip}" << 'REMOTE_SCRIPT'
         cat > /etc/nginx/conf.d/performance.conf << 'EOF'
 # File cache
 open_file_cache max=10000 inactive=30s;

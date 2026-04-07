@@ -192,7 +192,7 @@ After setup, verify each component:
 **Server:**
 ```bash
 # SSH into server
-ssh -i keys/nwp root@<server-ip>
+ssh -o IdentitiesOnly=yes -i keys/nwp root@<server-ip>
 
 # Check Docker containers
 docker compose -f ~/castopod/docker-compose.yml ps

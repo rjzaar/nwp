@@ -135,14 +135,14 @@ validate_deployment() {
 
     # Test SSH connections
     print_info "Testing SSH connection to live server ($live_ip)..."
-    if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "${live_user:-root}@${live_ip}" "echo OK" &>/dev/null; then
+    if ! ssh $(nwp_ssh_opts "$base_name") -o ConnectTimeout=5 -o BatchMode=yes "${live_user:-root}@${live_ip}" "echo OK" &>/dev/null; then
         print_error "Cannot connect to live server: ${live_user:-root}@${live_ip}"
         return 1
     fi
     print_status "OK" "Live server accessible"
 
     print_info "Testing SSH connection to production server ($prod_ip)..."
-    if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "${prod_user:-root}@${prod_ip}" "echo OK" &>/dev/null; then
+    if ! ssh $(nwp_ssh_opts "$base_name") -o ConnectTimeout=5 -o BatchMode=yes "${prod_user:-root}@${prod_ip}" "echo OK" &>/dev/null; then
         print_error "Cannot connect to production server: ${prod_user:-root}@${prod_ip}"
         return 1
     fi
@@ -167,7 +167,7 @@ backup_production() {
     local backup_name="${base_name}_pre_deploy_$(date +%Y%m%d_%H%M%S)"
     local backup_cmd="cd $PROD_PATH && drush sql-dump --gzip > /tmp/${backup_name}.sql.gz"
 
-    if ssh "${PROD_USER}@${PROD_IP}" "$backup_cmd"; then
+    if ssh $(nwp_ssh_opts "$base_name") "${PROD_USER}@${PROD_IP}" "$backup_cmd"; then
         print_status "OK" "Production database backed up: ${backup_name}.sql.gz"
     else
         print_error "Failed to backup production database"
@@ -182,7 +182,7 @@ export_live_config() {
 
     local export_cmd="cd $LIVE_PATH && drush config:export -y"
 
-    if ssh "${LIVE_USER}@${LIVE_IP}" "$export_cmd"; then
+    if ssh $(nwp_ssh_opts "$base_name") "${LIVE_USER}@${LIVE_IP}" "$export_cmd"; then
         print_status "OK" "Configuration exported on live"
     else
         print_error "Failed to export configuration"
@@ -204,7 +204,7 @@ sync_files() {
         ${LIVE_USER}@${LIVE_IP}:${LIVE_PATH}/ \
         ${PROD_PATH}/"
 
-    if ssh "${PROD_USER}@${PROD_IP}" "$rsync_cmd"; then
+    if ssh $(nwp_ssh_opts "$base_name") "${PROD_USER}@${PROD_IP}" "$rsync_cmd"; then
         print_status "OK" "Files synced to production"
     else
         print_error "Failed to sync files"
@@ -219,7 +219,7 @@ run_composer() {
 
     local composer_cmd="cd $PROD_PATH && composer install --no-dev --optimize-autoloader"
 
-    if ssh "${PROD_USER}@${PROD_IP}" "$composer_cmd"; then
+    if ssh $(nwp_ssh_opts "$base_name") "${PROD_USER}@${PROD_IP}" "$composer_cmd"; then
         print_status "OK" "Composer dependencies installed"
     else
         print_error "Composer install failed"
@@ -234,7 +234,7 @@ run_db_updates() {
 
     local update_cmd="cd $PROD_PATH && drush updatedb -y"
 
-    if ssh "${PROD_USER}@${PROD_IP}" "$update_cmd"; then
+    if ssh $(nwp_ssh_opts "$base_name") "${PROD_USER}@${PROD_IP}" "$update_cmd"; then
         print_status "OK" "Database updates complete"
     else
         print_warning "Database updates returned non-zero (may be OK)"
@@ -248,7 +248,7 @@ import_config() {
 
     local import_cmd="cd $PROD_PATH && drush config:import -y"
 
-    if ssh "${PROD_USER}@${PROD_IP}" "$import_cmd"; then
+    if ssh $(nwp_ssh_opts "$base_name") "${PROD_USER}@${PROD_IP}" "$import_cmd"; then
         print_status "OK" "Configuration imported"
     else
         print_error "Configuration import failed"
@@ -263,7 +263,7 @@ clear_caches() {
 
     local cache_cmd="cd $PROD_PATH && drush cache:rebuild"
 
-    if ssh "${PROD_USER}@${PROD_IP}" "$cache_cmd"; then
+    if ssh $(nwp_ssh_opts "$base_name") "${PROD_USER}@${PROD_IP}" "$cache_cmd"; then
         print_status "OK" "Caches cleared"
     else
         print_warning "Cache clear returned non-zero"

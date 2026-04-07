@@ -288,16 +288,16 @@ setup_live_database() {
     fi
 
     # Check if MySQL/MariaDB is available
-    if ! ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix mysql -e 'SELECT 1' >/dev/null 2>&1"; then
+    if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix mysql -e 'SELECT 1' >/dev/null 2>&1"; then
         print_error "MySQL/MariaDB not accessible on live server"
         return 1
     fi
 
     # Create database if it doesn't exist
-    ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix mysql -e \"CREATE DATABASE IF NOT EXISTS \\\`${db_name}\\\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\"" 2>/dev/null
+    ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix mysql -e \"CREATE DATABASE IF NOT EXISTS \\\`${db_name}\\\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\"" 2>/dev/null
 
     # Create user and grant privileges (idempotent - will update if exists)
-    ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix mysql -e \"
+    ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix mysql -e \"
         CREATE USER IF NOT EXISTS '${db_user}'@'localhost' IDENTIFIED BY '${db_pass}';
         ALTER USER '${db_user}'@'localhost' IDENTIFIED BY '${db_pass}';
         GRANT ALL PRIVILEGES ON \\\`${db_name}\\\`.* TO '${db_user}'@'localhost';
@@ -334,7 +334,7 @@ generate_live_settings() {
     fi
 
     # Create settings.local.php with database credentials
-    ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix tee ${settings_path}/settings.local.php > /dev/null" << EOF
+    ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix tee ${settings_path}/settings.local.php > /dev/null" << EOF
 <?php
 /**
  * Live server database configuration
@@ -372,17 +372,17 @@ EOF
 
     if [ $? -eq 0 ]; then
         # Ensure settings.local.php is included from settings.php
-        ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix grep -q 'settings.local.php' ${settings_path}/settings.php || $sudo_prefix bash -c 'echo \"
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix grep -q 'settings.local.php' ${settings_path}/settings.php || $sudo_prefix bash -c 'echo \"
 if (file_exists(\\\$app_root . \\\"/\" . \\\$site_path . \\\"/settings.local.php\\\")) {
   include \\\$app_root . \\\"/\" . \\\$site_path . \\\"/settings.local.php\\\";
 }\" >> ${settings_path}/settings.php'" 2>/dev/null
 
         # Set correct permissions
-        ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix chown www-data:www-data ${settings_path}/settings.local.php" 2>/dev/null
-        ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix chmod 440 ${settings_path}/settings.local.php" 2>/dev/null
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix chown www-data:www-data ${settings_path}/settings.local.php" 2>/dev/null
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix chmod 440 ${settings_path}/settings.local.php" 2>/dev/null
 
         # Create private files directory
-        ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix mkdir -p ${site_path}/private && $sudo_prefix chown www-data:www-data ${site_path}/private && $sudo_prefix chmod 750 ${site_path}/private" 2>/dev/null
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix mkdir -p ${site_path}/private && $sudo_prefix chown www-data:www-data ${site_path}/private && $sudo_prefix chmod 750 ${site_path}/private" 2>/dev/null
 
         print_status "OK" "settings.local.php created"
         return 0
@@ -420,7 +420,7 @@ deploy_database() {
 
     # Transfer to live server
     print_info "Transferring database to live server..."
-    if scp -o BatchMode=yes "$dump_file" "${ssh_user}@${server_ip}:/tmp/" 2>/dev/null; then
+    if scp $(nwp_ssh_opts "$base_name") -o BatchMode=yes "$dump_file" "${ssh_user}@${server_ip}:/tmp/" 2>/dev/null; then
         print_status "OK" "Database transferred"
     else
         print_error "Failed to transfer database"
@@ -436,15 +436,15 @@ deploy_database() {
     fi
 
     local remote_dump="/tmp/${stg_site}_live_deploy.sql.gz"
-    if ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "gunzip -c $remote_dump | $sudo_prefix mysql ${db_name}" 2>/dev/null; then
+    if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "gunzip -c $remote_dump | $sudo_prefix mysql ${db_name}" 2>/dev/null; then
         print_status "OK" "Database imported"
         # Cleanup
-        ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "rm -f $remote_dump" 2>/dev/null
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "rm -f $remote_dump" 2>/dev/null
         rm -f "$dump_file"
         return 0
     else
         print_error "Failed to import database"
-        ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "rm -f $remote_dump" 2>/dev/null
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "rm -f $remote_dump" 2>/dev/null
         rm -f "$dump_file"
         return 1
     fi
@@ -465,23 +465,23 @@ setup_ssl_certificate() {
     fi
 
     # Check if certbot is installed
-    if ! ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "which certbot >/dev/null 2>&1"; then
+    if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "which certbot >/dev/null 2>&1"; then
         print_info "Installing certbot..."
-        ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix apt-get update && $sudo_prefix apt-get install -y certbot" 2>/dev/null || {
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix apt-get update && $sudo_prefix apt-get install -y certbot" 2>/dev/null || {
             print_status "WARN" "Could not install certbot - SSL setup skipped"
             return 1
         }
     fi
 
     # Check if certificate already exists
-    if ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix test -f /etc/letsencrypt/live/${domain}/fullchain.pem" 2>/dev/null; then
+    if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix test -f /etc/letsencrypt/live/${domain}/fullchain.pem" 2>/dev/null; then
         print_status "OK" "SSL certificate already exists"
         return 0
     fi
 
     # Get certificate using webroot method
     local webroot="/var/www/${base_name}/html"
-    if ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix certbot certonly --webroot -w $webroot -d $domain --non-interactive --agree-tos --email admin@nwpcode.org" 2>/dev/null; then
+    if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix certbot certonly --webroot -w $webroot -d $domain --non-interactive --agree-tos --email admin@nwpcode.org" 2>/dev/null; then
         print_status "OK" "SSL certificate obtained"
 
         # Update nginx config to use SSL
@@ -531,16 +531,16 @@ deploy_production_robots() {
     local site_path="/var/www/${base_name}"
     local webroot_path="${site_path}/html"
 
-    if ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix test -d ${site_path}/web" 2>/dev/null; then
+    if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix test -d ${site_path}/web" 2>/dev/null; then
         webroot_path="${site_path}/web"
     fi
 
     # Write robots.txt to server
-    echo "$robots_content" | ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix tee ${webroot_path}/robots.txt > /dev/null" 2>/dev/null
+    echo "$robots_content" | ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix tee ${webroot_path}/robots.txt > /dev/null" 2>/dev/null
 
     if [ $? -eq 0 ]; then
         # Set correct permissions
-        ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix chown www-data:www-data ${webroot_path}/robots.txt && $sudo_prefix chmod 644 ${webroot_path}/robots.txt" 2>/dev/null
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix chown www-data:www-data ${webroot_path}/robots.txt && $sudo_prefix chmod 644 ${webroot_path}/robots.txt" 2>/dev/null
         print_status "OK" "robots.txt deployed"
         return 0
     else
@@ -564,7 +564,7 @@ update_nginx_ssl() {
     print_info "Updating nginx config for SSL..."
 
     # Create updated nginx config with SSL
-    ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix tee /etc/nginx/conf.d/${base_name}.conf > /dev/null" << EOF
+    ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix tee /etc/nginx/conf.d/${base_name}.conf > /dev/null" << EOF
 server {
     listen 80;
     server_name ${domain};
@@ -646,8 +646,8 @@ server {
 EOF
 
     # Reload nginx (GitLab's nginx)
-    ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix gitlab-ctl hup nginx" 2>/dev/null || \
-        ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix systemctl reload nginx" 2>/dev/null || true
+    ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix gitlab-ctl hup nginx" 2>/dev/null || \
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix systemctl reload nginx" 2>/dev/null || true
 
     print_status "OK" "Nginx SSL config updated"
 }
@@ -740,13 +740,13 @@ verify_site_email() {
     # Check if email forwarding exists on mail server
     print_info "Checking email forwarding on $gitlab_host..."
 
-    if ssh -o BatchMode=yes -o ConnectTimeout=5 "${mail_ssh_user}@${gitlab_host}" \
+    if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes -o ConnectTimeout=5 "${mail_ssh_user}@${gitlab_host}" \
         "grep -q '^${site_email}' /etc/postfix/virtual 2>/dev/null" 2>/dev/null; then
         print_status "OK" "Email forwarding exists: $site_email"
 
         # Verify it forwards to the correct address
         local current_forward
-        current_forward=$(ssh -o BatchMode=yes "${mail_ssh_user}@${gitlab_host}" \
+        current_forward=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${mail_ssh_user}@${gitlab_host}" \
             "grep '^${site_email}' /etc/postfix/virtual 2>/dev/null | awk '{print \$2}'" 2>/dev/null)
 
         if [ "$current_forward" != "$admin_email" ] && [ -n "$current_forward" ]; then
@@ -757,8 +757,8 @@ verify_site_email() {
             local email_script="${PROJECT_ROOT}/servers/nwpcode/email/add_site_email.sh"
             [ -f "$email_script" ] || email_script="${PROJECT_ROOT}/email/add_site_email.sh"
             if [ -f "$email_script" ]; then
-                if scp -q "$email_script" "${mail_ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
-                    if ssh "${mail_ssh_user}@${gitlab_host}" \
+                if scp $(nwp_ssh_opts "$base_name") -q "$email_script" "${mail_ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
+                    if ssh $(nwp_ssh_opts "$base_name") "${mail_ssh_user}@${gitlab_host}" \
                         "sudo bash /tmp/add_site_email.sh ${base_name} --forward-only ${admin_email} -y && rm /tmp/add_site_email.sh" 2>/dev/null; then
                         print_status "OK" "Email forwarding updated: $site_email -> $admin_email"
                     else
@@ -777,8 +777,8 @@ verify_site_email() {
         local email_script="${PROJECT_ROOT}/servers/nwpcode/email/add_site_email.sh"
         [ -f "$email_script" ] || email_script="${PROJECT_ROOT}/email/add_site_email.sh"
         if [ -f "$email_script" ]; then
-            if scp -q "$email_script" "${mail_ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
-                if ssh "${mail_ssh_user}@${gitlab_host}" \
+            if scp $(nwp_ssh_opts "$base_name") -q "$email_script" "${mail_ssh_user}@${gitlab_host}:/tmp/add_site_email.sh" 2>/dev/null; then
+                if ssh $(nwp_ssh_opts "$base_name") "${mail_ssh_user}@${gitlab_host}" \
                     "sudo bash /tmp/add_site_email.sh ${base_name} --forward-only ${admin_email} -y && rm /tmp/add_site_email.sh" 2>/dev/null; then
                     print_status "OK" "Email forwarding created: $site_email -> $admin_email"
                 else
@@ -801,7 +801,7 @@ verify_site_email() {
     fi
 
     local current_drupal_email
-    current_drupal_email=$(ssh -o BatchMode=yes "${ssh_user}@${server_ip}" \
+    current_drupal_email=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
         "cd /var/www/${base_name} && $sudo_prefix vendor/bin/drush config:get system.site mail --format=string 2>/dev/null" 2>/dev/null)
 
     if [ "$current_drupal_email" == "$site_email" ]; then
@@ -810,7 +810,7 @@ verify_site_email() {
         print_status "WARN" "Drupal site email mismatch: $current_drupal_email (expected: $site_email)"
         print_info "Updating Drupal site email..."
 
-        if ssh -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
             "cd /var/www/${base_name} && $sudo_prefix vendor/bin/drush config:set system.site mail '${site_email}' -y" 2>/dev/null; then
             print_status "OK" "Drupal site email updated to: $site_email"
         else
@@ -924,7 +924,7 @@ deploy_to_live() {
 
     # Test SSH connection
     print_info "Testing SSH connection..."
-    if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "${ssh_user}@${server_ip}" "echo ok" >/dev/null 2>&1; then
+    if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes -o ConnectTimeout=5 "${ssh_user}@${server_ip}" "echo ok" >/dev/null 2>&1; then
         print_error "Cannot connect to live server: ${ssh_user}@${server_ip}"
         return 1
     fi
@@ -960,10 +960,10 @@ deploy_to_live() {
     fi
 
     # Ensure target directory exists with correct ownership for rsync
-    ssh "${ssh_user}@${server_ip}" "$sudo_prefix mkdir -p /var/www/${base_name}" 2>/dev/null || true
+    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "$sudo_prefix mkdir -p /var/www/${base_name}" 2>/dev/null || true
     if [ "$ssh_user" == "gitlab" ]; then
         # Give gitlab user ownership temporarily for rsync
-        ssh "${ssh_user}@${server_ip}" "sudo chown -R gitlab:www-data /var/www/${base_name}" 2>/dev/null || true
+        ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "sudo chown -R gitlab:www-data /var/www/${base_name}" 2>/dev/null || true
     fi
 
     # Rsync (quiet by default, verbose with -v flag)
@@ -972,7 +972,7 @@ deploy_to_live() {
         rsync_opts="-avz"
     fi
 
-    if rsync $rsync_opts --delete "${excludes[@]}" \
+    if rsync -e "ssh $(nwp_ssh_opts "$base_name")" $rsync_opts --delete "${excludes[@]}" \
         "$PROJECT_ROOT/sites/$stg_site/" \
         "${ssh_user}@${server_ip}:/var/www/${base_name}/"; then
         print_status "OK" "Files synced"
@@ -983,7 +983,7 @@ deploy_to_live() {
 
     # Set permissions
     print_info "Setting permissions..."
-    ssh "${ssh_user}@${server_ip}" "$sudo_prefix chown -R www-data:www-data /var/www/${base_name}" 2>/dev/null || true
+    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "$sudo_prefix chown -R www-data:www-data /var/www/${base_name}" 2>/dev/null || true
 
     # Deploy database (creates DB, generates settings.local.php, imports data)
     if ! full_database_deployment "$stg_site" "$base_name" "$server_ip" "$ssh_user" "$webroot"; then
@@ -1005,8 +1005,8 @@ deploy_to_live() {
 
     # Clear cache via drush if available
     print_info "Clearing cache..."
-    ssh "${ssh_user}@${server_ip}" "cd /var/www/${base_name} && $sudo_prefix -u www-data drush cr" 2>/dev/null || \
-        ssh "${ssh_user}@${server_ip}" "cd /var/www/${base_name}/$webroot && $sudo_prefix -u www-data ../vendor/bin/drush cr" 2>/dev/null || \
+    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd /var/www/${base_name} && $sudo_prefix -u www-data drush cr" 2>/dev/null || \
+        ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd /var/www/${base_name}/$webroot && $sudo_prefix -u www-data ../vendor/bin/drush cr" 2>/dev/null || \
         print_status "WARN" "Could not clear cache (drush may not be available)"
 
     # Verify and configure site email

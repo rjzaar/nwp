@@ -204,7 +204,7 @@ wait_for_ssh() {
 
     while [ $elapsed -lt $max_wait ]; do
         # Try SSH connection with verbose error capturing
-        if ssh -i "$ssh_key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 \
+        if ssh -i "$ssh_key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 \
             -o BatchMode=yes root@$ip "exit" 2>/dev/null; then
             stop_spinner
             if declare -f pass &>/dev/null; then

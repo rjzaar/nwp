@@ -21,7 +21,7 @@ Pending implementation items and future improvements for NWP.
 |--------|-------|
 | Current Version | v0.30.0 (in progress — F23 phases 1–8, 10) |
 | Test Success Rate | 99.5% (Machine Verified) |
-| Completed Proposals | P01-P35, P50-P51, P53-P58, F03-F05, F07, F09, F12-F17, F23 (phases 1–8, 10) |
+| Completed Proposals | P01-P35, P50-P51, P53-P59, F03-F05, F07, F09, F12-F17, F23 (phases 1–8, 10) |
 | Pending Proposals | F01-F02, F06, F08, F10-F11, F18-F22, F23 (phase 9), F24 |
 | Rejected Proposals | P52 (rename — NWP is the permanent project name) |
 | Experimental/Outlier | X01 |
@@ -929,6 +929,32 @@ Add security hardening features to `produce.sh` for production server provisioni
 - [ ] SSL Labs test scores A or A+
 - [ ] All features optional via CLI flags
 - [ ] Developer SSH key onboarding integrated with `coder-setup.sh`
+
+---
+
+#### P59: SSH IdentitiesOnly Hardening (Fail2ban Lockout Fix)
+**Status:** ✅ COMPLETE (v0.31.0) | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** None
+**Proposal:** [P59-ssh-identitiesonly-hardening.md](../proposals/P59-ssh-identitiesonly-hardening.md)
+
+Force `IdentitiesOnly=yes` on every `ssh`, `scp`, and `rsync` call in NWP so that SSH does not offer every key in `~/.ssh/` on every connection. Without this, developers with several keys trip fail2ban (`maxretry=3`) and are locked out of nwpcode.org.
+
+**Problem:**
+- Developers with >3 keys in `~/.ssh/` were intermittently locked out of `97.107.137.88` by fail2ban
+- Root cause: NWP scripts ssh by raw IP, bypassing `~/.ssh/config` Host aliases, so OpenSSH offers every key it knows about until one succeeds
+- ~80 ssh/scp/rsync call sites across `lib/` and `scripts/commands/` had no `IdentitiesOnly` option
+
+**Solution:**
+- New helpers in `lib/ssh.sh`: `nwp_ssh_opts <name>`, `nwp_ssh`, `nwp_scp`, `nwp_rsync`, `_nwp_ssh_args_for`, `NWP_SSH_HARDENING_OPTS`
+- `lib/common.sh` auto-sources `lib/ssh.sh` so every script gets the helpers for free
+- Migrated 13 commands and 11 lib files: every ssh/scp/rsync call now includes `-o IdentitiesOnly=yes` plus a per-site `-i <key>` resolved from `nwp.yml`
+- Server-provisioning scripts (`produce.sh`) add `-o IdentitiesOnly=yes` directly since they have no site context yet
+
+**Success Criteria:**
+- [x] No `ssh`/`scp`/`rsync` call in `lib/` or `scripts/commands/` runs without `-o IdentitiesOnly=yes`
+- [x] `nwp_ssh_opts` and friends available in every script that sources `lib/common.sh`
+- [x] All 27 modified files pass `bash -n`
+- [x] Generated scripts (e.g. `lib/podcast.sh` deploy template) emit hardened ssh/scp
+- [ ] Documentation updated to show the safe form (tracked alongside this proposal)
 
 ---
 

@@ -126,6 +126,8 @@ get_server_ssh_key() {
 }
 
 # Build an `ssh -i KEY USER@IP` command string. Caller may append flags.
+# IdentitiesOnly=yes prevents fail2ban lockouts: without it, ssh would offer
+# every key in ~/.ssh/ on every connection and trip the 3-attempt limit.
 get_server_ssh_command() {
     local server_name="$1"
     local ip user key
@@ -133,7 +135,7 @@ get_server_ssh_command() {
     user=$(get_server_user "$server_name")
     key=$(get_server_ssh_key "$server_name")
     [[ -z "$ip" || -z "$user" || -z "$key" ]] && return 1
-    echo "ssh -i $key $user@$ip"
+    echo "ssh -o IdentitiesOnly=yes -i $key $user@$ip"
 }
 
 # Discover all servers on disk. Echoes one name per line.

@@ -130,7 +130,7 @@ remote_exec() {
     ocmsg "Executing on ${ssh_user}@${server_ip}..."
     # SECURITY FIX: Properly quote variables in SSH command to prevent injection
     # The site_path is validated above; command is passed as-is (caller's responsibility)
-    ssh -o BatchMode=yes -o ConnectTimeout=10 "${ssh_user}@${server_ip}" \
+    ssh -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 "${ssh_user}@${server_ip}" \
         "cd '${site_path}' && ${command}"
 }
 
@@ -196,7 +196,8 @@ remote_backup() {
     # Download
     print_info "Downloading backup..."
     # SECURITY FIX: Quote paths properly in scp command
-    scp "${ssh_user}@${server_ip}:/tmp/${backup_name}.sql.gz" "${local_path}/"
+    # IdentitiesOnly=yes prevents fail2ban lockouts from key spraying.
+    scp -o IdentitiesOnly=yes "${ssh_user}@${server_ip}:/tmp/${backup_name}.sql.gz" "${local_path}/"
 
     # Cleanup remote
     # SECURITY FIX: Quote path in remote rm command

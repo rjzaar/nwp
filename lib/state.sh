@@ -158,7 +158,7 @@ check_prod_ssh() {
     fi
 
     # Try SSH connection with timeout
-    if ssh -o ConnectTimeout=5 -o BatchMode=yes "$server_ip" exit 2>/dev/null; then
+    if ssh -o IdentitiesOnly=yes -o ConnectTimeout=5 -o BatchMode=yes "$server_ip" exit 2>/dev/null; then
         return 0
     fi
     return 1

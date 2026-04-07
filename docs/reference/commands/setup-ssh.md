@@ -242,8 +242,12 @@ Private key is copied to user's SSH directory:
 This allows the key to be used from any directory:
 
 ```bash
-ssh -i ~/.ssh/nwp user@server
+ssh -o IdentitiesOnly=yes -i ~/.ssh/nwp user@server
 ```
+
+Always pair `-i <key>` with `-o IdentitiesOnly=yes`. Without it, SSH offers
+every key in `~/.ssh/` until one succeeds — which can trip fail2ban
+(`maxretry=3`) on the remote server and lock you out.
 
 ## Security Considerations
 
@@ -383,7 +387,7 @@ sites:
 **Solution:**
 1. Verify key is on server: `ssh user@server 'cat ~/.ssh/authorized_keys'`
 2. Check key permissions: `ls -la ~/.ssh/nwp` (should be 600)
-3. Try explicit key: `ssh -i ~/.ssh/nwp user@server`
+3. Try explicit key: `ssh -o IdentitiesOnly=yes -i ~/.ssh/nwp user@server`
 4. Check server logs: `sudo tail /var/log/auth.log`
 
 ### Key Already Exists

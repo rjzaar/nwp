@@ -265,7 +265,7 @@ Use `--no-sanitize` when:
 
 ```bash
 rsync -avz \
-  -e "ssh -i ~/.ssh/nwp -o StrictHostKeyChecking=accept-new" \
+  -e "ssh -o IdentitiesOnly=yes -i ~/.ssh/nwp -o StrictHostKeyChecking=accept-new" \
   --include="composer.json" \
   --include="composer.lock" \
   --include="config/***" \
@@ -412,8 +412,12 @@ First sync is slower (downloads everything). Subsequent syncs are much faster (o
 Uses key-based authentication (no passwords):
 
 ```bash
-ssh -i ~/.ssh/nwp user@server
+ssh -o IdentitiesOnly=yes -i ~/.ssh/nwp user@server
 ```
+
+`IdentitiesOnly=yes` prevents SSH from offering every key in `~/.ssh/` (which
+would trip fail2ban on the remote server). NWP scripts always include this
+option; you should too whenever you ssh manually with `-i`.
 
 ### Host Key Checking
 
@@ -468,7 +472,7 @@ Prevents accidental:
 **Symptom:** "Cannot connect to example.com"
 
 **Solution:**
-1. Test manual SSH: `ssh -i ~/.ssh/nwp user@server`
+1. Test manual SSH: `ssh -o IdentitiesOnly=yes -i ~/.ssh/nwp user@server`
 2. Check SSH key permissions: `chmod 600 ~/.ssh/nwp`
 3. Verify host is reachable: `ping server`
 4. Check firewall allows SSH (port 22)
@@ -497,7 +501,7 @@ Prevents accidental:
 3. Check disk space locally: `df -h`
 4. Try manual rsync:
    ```bash
-   rsync -avz -e "ssh -i ~/.ssh/nwp" \
+   rsync -avz -e "ssh -o IdentitiesOnly=yes -i ~/.ssh/nwp" \
      user@server:/path/to/files/ \
      sites/sitename/
    ```

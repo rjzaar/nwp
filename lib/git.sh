@@ -72,7 +72,7 @@ get_gitlab_ssh_host() {
 
 # Check if git-server SSH alias is configured
 check_git_server_alias() {
-    if ssh -o BatchMode=yes -o ConnectTimeout=5 git-server exit 2>/dev/null; then
+    if ssh -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 git-server exit 2>/dev/null; then
         return 0
     else
         return 1
@@ -780,13 +780,13 @@ gitlab_create_project() {
     ocmsg "Creating GitLab project: $group/$project_name"
 
     # Check if we can SSH to gitlab server
-    if ! ssh -o BatchMode=yes -o ConnectTimeout=5 gitlab@git.nwpcode.org exit 2>/dev/null; then
+    if ! ssh -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 gitlab@git.nwpcode.org exit 2>/dev/null; then
         print_warning "Cannot SSH to GitLab server to create project"
         return 1
     fi
 
     # Create project via gitlab-rails runner
-    local result=$(ssh gitlab@git.nwpcode.org "sudo gitlab-rails runner \"
+    local result=$(ssh -o IdentitiesOnly=yes gitlab@git.nwpcode.org "sudo gitlab-rails runner \"
         g = Group.find_by(path: '$group')
         if g.nil?
             puts 'GROUP_NOT_FOUND'

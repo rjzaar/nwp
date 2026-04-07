@@ -392,7 +392,7 @@ if should_run_step 2 "$START_STEP"; then
     print_header "Step 2: Test SSH Connection"
 
     if [ "$DRY_RUN" = false ]; then
-        if ssh $SSH_CONN "cd $PROD_PATH && pwd" >/dev/null 2>&1; then
+        if ssh $(nwp_ssh_opts "$SITENAME") $SSH_CONN "cd $PROD_PATH && pwd" >/dev/null 2>&1; then
             print_status "OK" "SSH connection successful"
         else
             print_error "SSH connection failed"
@@ -401,7 +401,7 @@ if should_run_step 2 "$START_STEP"; then
         fi
 
         # Check production path exists
-        if ssh $SSH_CONN "[ -d $PROD_PATH ]"; then
+        if ssh $(nwp_ssh_opts "$SITENAME") $SSH_CONN "[ -d $PROD_PATH ]"; then
             print_status "OK" "Production path exists"
         else
             print_error "Production path not found: $PROD_PATH"
@@ -444,13 +444,21 @@ if should_run_step 4 "$START_STEP" && [ "$DB_ONLY" = false ]; then
         print_info "Destination: $SITENAME/"
 
         # Build SSH options for rsync
-        local rsync_ssh="ssh"
+        # IdentitiesOnly=yes prevents fail2ban lockouts from key spraying.
+        local rsync_ssh="ssh -o IdentitiesOnly=yes"
         if echo "$SSH_CONN" | grep -q '\-p'; then
             local port=$(echo "$SSH_CONN" | grep -o '\-p [0-9]*' | awk '{print $2}')
             rsync_ssh="$rsync_ssh -p $port"
         fi
         if [ -n "$SSH_KEY" ]; then
             rsync_ssh="$rsync_ssh -i $SSH_KEY"
+        else
+            # Fall back to nwp.yml-resolved key for the site if available.
+            local _key
+            _key=$(get_ssh_key "$SITENAME" 2>/dev/null)
+            if [ -n "$_key" ] && [ -f "$_key" ]; then
+                rsync_ssh="$rsync_ssh -i $_key"
+            fi
         fi
 
         # Extract user@host (first part before any options)
@@ -490,22 +498,29 @@ if should_run_step 5 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
         TMP_SQL="/tmp/prod2stg_${SITENAME}_$(date +%s).sql.gz"
 
         # Build SCP options
-        local scp_opts=""
+        # IdentitiesOnly=yes prevents fail2ban lockouts from key spraying.
+        local scp_opts="-o IdentitiesOnly=yes"
         if echo "$SSH_CONN" | grep -q '\-p'; then
             local port=$(echo "$SSH_CONN" | grep -o '\-p [0-9]*' | awk '{print $2}')
-            scp_opts="-P $port"
+            scp_opts="$scp_opts -P $port"
         fi
         if [ -n "$SSH_KEY" ]; then
             scp_opts="$scp_opts -i $SSH_KEY"
+        else
+            local _key
+            _key=$(get_ssh_key "$SITENAME" 2>/dev/null)
+            if [ -n "$_key" ] && [ -f "$_key" ]; then
+                scp_opts="$scp_opts -i $_key"
+            fi
         fi
 
         # Extract user@host
         local user_host=$(echo "$SSH_CONN" | cut -d' ' -f1)
 
         # Export database via SSH
-        if ssh $SSH_CONN "cd $PROD_PATH && drush sql:dump --gzip --result-file=/tmp/prod_export.sql" && \
+        if ssh $(nwp_ssh_opts "$SITENAME") $SSH_CONN "cd $PROD_PATH && drush sql:dump --gzip --result-file=/tmp/prod_export.sql" && \
            scp $scp_opts "$user_host:/tmp/prod_export.sql.gz" "$TMP_SQL" && \
-           ssh $SSH_CONN "rm /tmp/prod_export.sql.gz"; then
+           ssh $(nwp_ssh_opts "$SITENAME") $SSH_CONN "rm /tmp/prod_export.sql.gz"; then
             print_status "OK" "Database exported"
             print_info "Temp file: $TMP_SQL"
         else

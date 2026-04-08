@@ -696,6 +696,33 @@ Quick orientation for operators:
   that Strix Halo reports (that number is the unified-memory GTT, not
   real fast memory; physical RAM is the actual constraint)
 
+### Reaching mini's ollama from dev
+
+The daemon binds to `127.0.0.1:11434` on mini only — it is deliberately
+not exposed on the LAN. The interim way to talk to it from another
+machine on the home LAN (e.g. the dev workstation) is an ad-hoc SSH
+port-forward:
+
+```bash
+# From dev — forwards localhost:11434 on dev to 127.0.0.1:11434 on mini.
+# Leave this running in one terminal.
+ssh -N -L 11434:127.0.0.1:11434 mini
+
+# Then in another terminal on dev, point any ollama client at localhost:
+curl http://127.0.0.1:11434/api/tags
+OLLAMA_HOST=http://127.0.0.1:11434 ollama list
+```
+
+This is the **interim** reach-mini pattern. Once F21 Phase 1 (Headscale)
+is up, mini's ollama endpoint will be reachable over the overlay by its
+tailnet name and the tunnel will no longer be needed. Don't promote the
+tunnel to a systemd unit or SSH `ProxyCommand` — it's intentionally
+ad-hoc so it has zero survivorship once Phase 1 lands.
+
+The `pl mini llm health` diagnostic does **not** need this tunnel — it
+SSHes into mini and runs its checks on the far side. The tunnel is only
+useful when you want to hit the ollama API directly from tools on dev.
+
 ### Manual integration today
 
 No `pl llm …` CLI integration exists yet — F21 Phase 3a deliberately

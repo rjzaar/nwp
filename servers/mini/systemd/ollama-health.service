@@ -1,0 +1,16 @@
+[Unit]
+Description=Mini LLM stack health check (F21 Phase 3a)
+# Don't run until the ollama daemon itself is up.
+After=ollama.service
+Requires=ollama.service
+
+[Service]
+Type=oneshot
+# Uses the local fast-path checker (no SSH), not `pl mini llm health`.
+# The pl-side command is dev-only and assumes SSH back to mini; running
+# it here would self-loop.
+ExecStart=%h/.local/bin/ollama-health-check
+# Fail loudly if the check script returns non-zero; systemctl --failed
+# will pick it up and the journal carries the detail.
+StandardOutput=journal
+StandardError=journal

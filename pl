@@ -199,6 +199,7 @@ ${BOLD}SETUP & UTILITIES:${NC}
     list                            List all tracked sites
     status [options] [sitename]     Show site status (-f for fast text)
     doctor                          Diagnose common issues and verify configuration
+    mini llm health [--json|--quick] Check the local LLM stack on mini (F21 Phase 3a)
     version                         Show NWP version
 
 ${BOLD}MAINTENANCE:${NC}
@@ -744,6 +745,11 @@ main() {
         # Per-server config / schema management (F23 Phase 8)
         server)
             run_script "server.sh" "$@"
+            ;;
+
+        # Mini-specific utilities (F21 Phase 3a)
+        mini)
+            run_script "mini.sh" "$@"
             ;;
 
         # Cross-site proposal aggregator (F23 §7.4)

@@ -94,6 +94,12 @@ sites/*
 !servers/
 servers/*
 !servers/.gitkeep
+# mini has no separate repo; its infra lives in the nwp repo under servers/mini/
+!servers/mini/
+!servers/mini/**
+# but never track python bytecode under mini's bot skeleton
+servers/mini/**/__pycache__/
+servers/mini/**/*.pyc
 
 # SSH keys directory (structure tracked, contents ignored)
 !keys/

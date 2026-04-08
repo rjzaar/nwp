@@ -1,0 +1,15 @@
+[Unit]
+Description=Run mini LLM stack health check every 5 minutes (F21 Phase 3a)
+
+[Timer]
+# First run 60s after boot — give ollama.service time to settle.
+OnBootSec=60s
+# Then every 5 minutes.
+OnUnitActiveSec=5min
+# If a scheduled run was missed (suspend/reboot/whatever), run once on
+# recovery so we don't have an unexplained gap in the journal.
+Persistent=true
+Unit=ollama-health.service
+
+[Install]
+WantedBy=timers.target

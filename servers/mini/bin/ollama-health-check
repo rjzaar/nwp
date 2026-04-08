@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# ollama-health-check — local fast-path health check for mini's LLM stack.
+#
+# Intended to be run by the `ollama-health.service` timer every 5 minutes.
+# This is the on-mini counterpart to `pl mini llm health --quick` on dev:
+# same five checks, no SSH round-trip, no benchmarks. Each run is a few
+# hundred milliseconds.
+#
+# The dev-side `pl mini llm health` command is the authoritative human
+# interface. This script exists so the timer can run cheaply without
+# SSHing into mini from mini.
+#
+# Exit 0 if all checks pass, 1 otherwise. Failures are logged to the
+# journal via systemd's StandardOutput=journal.
+#
+# Deployed from nwp repo: `servers/mini/bin/ollama-health-check`.
+set -euo pipefail
+
+MODEL_CHAT="llama3.1:8b"
+MODEL_CODER="qwen2.5-coder:14b"
+
+overall=0
+
+check() {
+    local label="$1"
+    local status="$2"
+    local detail="$3"
+    if [[ "$status" == "ok" ]]; then
+        echo "OK:   $label — $detail"
+    else
+        echo "FAIL: $label — $detail"
+        overall=1
+    fi
+}
+
+# 1. systemd unit
+if state=$(systemctl --user is-active ollama.service 2>&1); then
+    check "systemd unit" ok "$state"
+else
+    check "systemd unit" fail "${state:-<unreachable>}"
+fi
+
+# 2. Daemon reachable
+http=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 3 \
+    http://127.0.0.1:11434/api/tags 2>/dev/null || echo "000")
+if [[ "$http" == "200" ]]; then
+    check "daemon reachable" ok "HTTP $http on /api/tags"
+else
+    check "daemon reachable" fail "HTTP $http on /api/tags"
+fi
+
+# 3. Loopback-only bind
+listen=$(ss -tlnH 'sport = :11434' 2>/dev/null | awk '{print $4}' || true)
+if [[ "$listen" == "127.0.0.1:11434" ]]; then
+    check "loopback bind" ok "$listen"
+else
+    check "loopback bind" fail "${listen:-<no listener>} (expected 127.0.0.1:11434)"
+fi
+
+# 4+5. Models registered
+if [[ "$http" == "200" ]]; then
+    models=$(~/.local/bin/ollama list 2>/dev/null | awk 'NR>1 {print $1}') || models=""
+    for model in "$MODEL_CHAT" "$MODEL_CODER"; do
+        if grep -Fxq "$model" <<< "$models"; then
+            check "model $model" ok "registered"
+        else
+            check "model $model" fail "NOT registered"
+        fi
+    done
+else
+    check "model $MODEL_CHAT"  fail "skipped (daemon unreachable)"
+    check "model $MODEL_CODER" fail "skipped (daemon unreachable)"
+fi
+
+if [[ "$overall" -eq 0 ]]; then
+    echo "mini LLM stack: HEALTHY"
+else
+    echo "mini LLM stack: UNHEALTHY"
+fi
+
+exit "$overall"

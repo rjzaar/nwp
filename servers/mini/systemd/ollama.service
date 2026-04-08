@@ -1,0 +1,20 @@
+[Unit]
+Description=Ollama local LLM daemon
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/ollama serve
+Restart=on-failure
+RestartSec=3
+Environment=OLLAMA_HOST=127.0.0.1:11434
+# Vulkan iGPU acceleration on Strix Halo (Radeon 8060S via Mesa RADV).
+# ~1.9x speedup vs CPU on llama3.1:8b (45 vs 23 tok/s, 2026-04-08).
+Environment=OLLAMA_VULKAN=1
+# Pin context default. Without this, ollama auto-sizes from the iGPU's
+# Vulkan heap, which on Strix Halo reports a misleading ~111 GiB (the
+# unified-memory GTT, NOT real VRAM) and blows up to a 262K window.
+# Per-request num_ctx can still override.
+Environment=OLLAMA_CONTEXT_LENGTH=8192
+
+[Install]
+WantedBy=default.target

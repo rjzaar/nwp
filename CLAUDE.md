@@ -6,6 +6,41 @@ This file provides specific instructions for Claude Code when working on this pr
 
 **NWP — Narrow Way Project.** This is the permanent name of the project. It will never be renamed. NWP is a Drupal hosting, deployment, and infrastructure automation tool. Any proposals to rename the project (e.g., P52) are permanently rejected.
 
+## Threat Model
+
+NWP operates under a **paranoid + open-source + local-first** threat model. When suggesting tools, architectures, or workflows, defer to these assumptions rather than reasoning from generic industry defaults.
+
+### Trust Assumptions
+
+- **Third-party SaaS is distrusted by default.** Prefer self-hosted, open-source alternatives even when they require more setup (e.g., Headscale over Tailscale, Gotify over Pushover, GitLab self-hosted over GitLab.com).
+  - **Bounded SaaS exception for PSTN voice/SMS access** — see [ADR-0018](docs/decisions/0018-twilio-bounded-saas-for-pstn.md). The `prefer self-hosted` rule holds everywhere else; this is the single documented exception, scoped to the audio transport layer only. Do not cite ADR-0018 as a precedent for other SaaS additions — each is evaluated on its own merits.
+- **AI agents (including Claude) are distrusted for production access.** No AI-run machine may hold a key that reaches a production server. AI's blast radius is bounded to dev/stg/live and CI.
+- **Hardware-rooted keys for irreversible actions.** Anything that writes to prod must be gated by a hardware security token with user presence + PIN (Solo 2C+ NFC, Trussed-based open firmware — YubiKey is explicitly rejected due to closed firmware).
+- **Trust flows through signatures, not machines.** Artifacts are trusted because they carry a valid minisign signature from a known key, not because they came from a "trusted" host. This is the load-bearing property that lets an AI-driven build host (mmt) feed an air-gapped deploy host (mons) without compromising prod.
+
+### Distributed Actor Glossary
+
+| Actor | Location | Runs AI? | Prod access? | Role |
+|-------|----------|----------|--------------|------|
+| dev workstation (this machine) | home | yes (Claude) | no | Authoring, signed commits |
+| met (metabox) | home | yes | no | CI/CD runner, heavy builds |
+| mini (Beelink 395) | home | yes (local LLM) | no | Day-to-day agent, routine tasks, monitoring |
+| mmt (met + mini team) | home | yes | no | Combined build/test/sign tier |
+| mons (offline-by-default laptop) | home | **no** | **yes** | Verifies signed artifacts, deploys to prod via dedicated WireGuard tunnel, creates bug reports back to mmt |
+| git.nwpcode.org | au-mel Linode | no | no | Code + artifact distribution (GitLab + Packages) |
+| prod servers (avc, ss, dir1, …) | us-iad Linode | no | yes (from mons only) | User-facing sites |
+
+### Practical Implications for AI Suggestions
+
+- **Never propose a path where an AI-accessible machine writes to prod.** The mons boundary is inviolable. If a workflow seems to require it, the workflow is wrong.
+- **The sanitizer is security-critical.** Sanitization happens on the prod server (raw user data never leaves prod). Any change to sanitization scripts requires explicit human review — treat it with the same scrutiny as authentication code.
+- **Signed commits and signed artifacts are mandatory, not optional.** Don't suggest workflows that bypass verification "for convenience."
+- **Don't expose SSH to the public internet.** External access is via Headscale VPN only. Never propose opening port 22 on home routers or cloud hosts.
+- **Don't put mons on the Headscale mesh.** mons is offline by default and connects only while actively deploying, via a phone hotspot or dedicated cellular modem — never via the home LAN and never as a Headscale member alongside met/mini. During deploys mons reaches `git.nwpcode.org` over public HTTPS (with signature verification) and reaches prod through a dedicated one-to-one WireGuard tunnel where mons and prod are the only peers and prod's sshd binds only to the tunnel interface. Don't suggest adding mons to Headscale or putting its traffic over the home router.
+- **Prefer open-source, self-hosted, local-first tools** when recommending new infrastructure. If a SaaS is the only reasonable option, flag the trade-off explicitly.
+
+See [ADR-0017: Distributed Build/Deploy Pipeline](docs/decisions/0017-distributed-build-deploy-pipeline.md) for the full architecture and rationale.
+
 ## Critical: Protected Files
 
 ### nwp.yml - NEVER COMMIT
@@ -103,15 +138,15 @@ See `docs/DATA_SECURITY_BEST_PRACTICES.md` for the full security architecture.
   - `lib/migrate-schema.sh` - Schema migration framework for `.nwp.yml`, global `nwp.yml`, and `servers/*/.nwp-server.yml`
   - `lib/migrations/{site,global,server}/` - Numbered migration scripts (one function `migrate_NNN_to_MMM` per file)
 - `recipes/` - Recipe definitions (os, d, nwp, dm, etc.)
-- `sites/` - Each site is self-contained (F23):
+- `sites/` - Each site is self-contained (F17, formerly F23):
   - `sites/<name>/.nwp.yml` - Per-site config; carries `schema_version`, `project.*`, `live.*`, `backups.directory`. Production sites (avc, ss) have their own git repos; experimental sites (mt, cathnet, dir1, cccrdf) are filesystem-only
   - `sites/<name>/web/` or `sites/<name>/html/` - Drupal webroot
   - `sites/<name>/web/modules/custom/` - Project-specific Drupal modules (no longer at repo root)
   - `sites/<name>/pipeline/` - Project-specific Python pipelines (mt, cathnet, fin)
   - `sites/<name>/backups/` - Per-site database backups (replaces former `sitebackups/<name>/`)
   - `sites/<name>/docs/proposals/` - Per-site proposals; aggregated by `pl proposals`
-- `servers/` - Per-server infrastructure (F23 Phase 8):
-  - `servers/<name>/.nwp-server.yml` - Server identity (gitignored plaintext; SOPS-encrypted version comes with F24)
+- `servers/` - Per-server infrastructure (F17 Phase 8, formerly F23):
+  - `servers/<name>/.nwp-server.yml` - Server identity (gitignored plaintext; SOPS-encrypted version comes with F18)
   - `servers/<name>/{email,linode,nginx}/` - Service configs and provisioning scripts
   - Each server is its own local git repo (e.g. `servers/nwpcode/`)
 - `scripts/commands/` - All executable commands (accessed via `pl` CLI)

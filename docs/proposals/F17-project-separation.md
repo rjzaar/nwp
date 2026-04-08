@@ -1,13 +1,28 @@
-# F23: Project Separation — Self-Contained Sites Within NWP
+# F17: Project Separation — Self-Contained Sites Within NWP
 
-**Status:** IMPLEMENTED (phases 1–8, 10) — Phase 9 (per-site git automation) DEFERRED
+> **Renumbered 2026-04-08:** Previously **F23**. The old number is still used
+> in some external references; treat F23 as an alias for F17.
+
+**Status:** IMPLEMENTED (phases 1–8, 10) — Phase 9 extracted to a separate AVC project proposal
 **Created:** 2026-04-06
 **Author:** Rob Zaar, Claude Opus 4.6
 **Priority:** High (architectural)
 **Depends On:** None
 **Breaking Changes:** Yes (managed via expand-migrate-contract)
-**Estimated Effort:** 80-107 hours across 10 phases
-**Supersedes:** F23 v1 — see `docs/archive/F23-project-separation-v1-superseded.md`
+**Estimated Effort:** 80-107 hours across 10 phases (Phase 9 split out — see below)
+**Supersedes:** F17 (formerly F23) v1 — see `docs/archive/F23-project-separation-v1-superseded.md`
+
+> **Phase 9 was always AVC-specific.** As of 2026-04-08, the original Phase 9
+> (OAuth2 authentication + AVC Coders Guild → NWP `other_coders` sync) has
+> been moved to its own proposal in the AVC project:
+>
+> &nbsp;&nbsp;&nbsp;&nbsp;**`sites/avc/docs/proposals/A03-oauth2-guild-sync.md`**
+>
+> That proposal owns the `avc_oidc_claims` Drupal module, the OAuth2 client
+> registration, the `pl auth` CLI surface, and the `pl coders sync-guild`
+> pull-based sync. The NWP-side CLI work is implemented as part of A03 because
+> it cannot be tested without the AVC side. F17 itself no longer carries any
+> Phase 9 design content — see Section 8 below for the integration pointer.
 
 ---
 
@@ -36,7 +51,7 @@ NWP currently mixes core tooling and project-specific code in a single repo with
 **Everything within `~/nwp/`.** No external config directories. One folder to back up and share.
 
 - **Each project is fully self-contained** in `~/nwp/sites/<project>/` — its modules, pipelines, backups, proposals, and per-project config all live inside.
-- **Per-site git is optional.** Production sites (`avc`, `ss`) keep their independent repos. Experimental sites (`cathnet`, `cccrdf`, `dir1`, `mt`, `fin`) remain untracked and are protected by F24's backup layer. The NWP parent repo `.gitignore`s all `sites/*/` contents regardless.
+- **Per-site git is optional.** Production sites (`avc`, `ss`) keep their independent repos. Experimental sites (`cathnet`, `cccrdf`, `dir1`, `mt`, `fin`) remain untracked and are protected by F18's backup layer. The NWP parent repo `.gitignore`s all `sites/*/` contents regardless.
 - **Per-site `.nwp.yml`** holds project-specific config. The root `nwp.yml` retains only global NWP settings.
 - **`pl` discovers sites** by scanning `~/nwp/sites/*/` for `.nwp.yml` markers. No external registry needed.
 - **AVC Coders Guild integration** provides automated `other_coders` provisioning via OAuth2 authentication + pull-based API sync.
@@ -166,7 +181,7 @@ Sites reference it via `live.server_ip` in their config, but there's no single p
 ├── recipes/                            # Recipe definitions
 ├── templates/                          # DDEV, env, docker templates
 ├── docs/                               # NWP-only documentation
-│   ├── proposals/                      #   NWP-only proposals (F23, etc.)
+│   ├── proposals/                      #   NWP-only proposals (F17, etc.)
 │   ├── decisions/                      #   Architecture Decision Records
 │   └── ...                             #   Guides, governance, security
 ├── tests/                              # NWP tool-level tests
@@ -272,7 +287,7 @@ Sites reference it via `live.server_ip` in their config, but there's no single p
 
 ### 3.2 Nested Git Architecture
 
-**Not every site needs its own git repo.** Production sites (avc, ss) have independent repos; experimental sites (cathnet, cccrdf, dir1, mt) stay filesystem-only and rely on F24's backup layer for protection. See Phase 7 for the full policy.
+**Not every site needs its own git repo.** Production sites (avc, ss) have independent repos; experimental sites (cathnet, cccrdf, dir1, mt) stay filesystem-only and rely on F18's backup layer for protection. See Phase 7 for the full policy.
 
 Regardless of whether a site has its own `.git/`, the NWP parent repo ignores all `sites/*/` contents:
 
@@ -504,7 +519,7 @@ Backups move inside each site:
 ~/nwp/sites/mt/backups/20260401-main-abc123.sql.gz
 ```
 
-Where a site has its own git repo, `backups/` is gitignored (large binary data doesn't belong in version control). Because the directory lives inside `~/nwp/`, it's still captured by F24's restic-to-SSD backup regardless of git status.
+Where a site has its own git repo, `backups/` is gitignored (large binary data doesn't belong in version control). Because the directory lives inside `~/nwp/`, it's still captured by F18's restic-to-SSD backup regardless of git status.
 
 ### 3.6 Per-Site Proposals
 
@@ -512,11 +527,11 @@ Project-specific proposals move into their sites:
 
 | Proposal | Current Location | New Location |
 |----------|-----------------|-------------|
-| F16, F17 (Mass Times) | `docs/proposals/` | `sites/mt/docs/proposals/` |
-| F18, F19, F21 (CathNet) | `docs/proposals/` | `sites/cathnet/docs/proposals/` |
-| F20 (Faith Formation) | `docs/proposals/` | `sites/ss/docs/proposals/` |
-| F22 (Claude Code Web) | `docs/proposals/` | Stays in `docs/proposals/` (NWP infrastructure) |
-| F23 (This proposal) | `docs/proposals/` | Stays in `docs/proposals/` (NWP infrastructure) |
+| (old F16, F17 Mass Times) | `docs/proposals/` | `sites/mt/docs/proposals/M01, M02` |
+| (old F18, F19, F21 CathNet) | `docs/proposals/` | `sites/cathnet/docs/proposals/C01, C02, C03` |
+| (old F20 Faith Formation) | `docs/proposals/` | `sites/ss/docs/proposals/S01` |
+| F16 (Claude Code Web) | `docs/proposals/` | Stays in `docs/proposals/` (NWP infrastructure) |
+| F17 (This proposal) | `docs/proposals/` | Stays in `docs/proposals/` (NWP infrastructure) |
 
 NWP-level proposals (infrastructure, tool features) stay in `~/nwp/docs/proposals/`. When `pl` aggregates proposals across all projects, it scans `sites/*/docs/proposals/` plus the NWP-level directory.
 
@@ -549,7 +564,7 @@ A migration is needed whenever NWP encounters a config file with `schema_version
 | Trigger | What Happens |
 |---------|-------------|
 | **`pl site import <path>`** | Importing an existing site directory. NWP checks `schema_version`, prompts to migrate if outdated. |
-| **`pl rebuild`** (F24) | Restoring sites from backup. Migration runs automatically as part of restore. |
+| **`pl rebuild`** (F18) | Restoring sites from backup. Migration runs automatically as part of restore. |
 | **`pl doctor`** | Reports any sites with outdated schema, suggests `pl site migrate`. |
 | **First run after `pl update`** | NWP itself was upgraded. Auto-checks all sites for schema lag, prompts. |
 | **`pl site migrate <site>`** | Manual invocation. |
@@ -722,7 +737,7 @@ The full flow for the user's scenario — a site backed up under NWP 0.29 being 
 git clone git@git.nwpcode.org:nwp/nwp.git ~/nwp
 cd ~/nwp && ./setup.sh
 
-# 2. User restores an old site (from F24 restic backup or manual copy)
+# 2. User restores an old site (from F18 restic backup or manual copy)
 pl rebuild --site mt
 #   OR
 cp -r /old-backup/sites/mt ~/nwp/sites/mt
@@ -771,7 +786,7 @@ A table maintained in `docs/reference/schema-versions.md`:
 
 | Version | NWP Release | Change | Migration Script |
 |---------|------------|--------|-----------------|
-| 1 | 0.29 | Initial `.nwp.yml` introduced (F23) | `001-initial.sh` |
+| 1 | 0.29 | Initial `.nwp.yml` introduced (F17) | `001-initial.sh` |
 | 2 | 0.31 | `live.server_ip` → `live.server` (named ref to `servers/`) | `002-rename-server-ip.sh` |
 | 3 | 0.32 | New `vrt:` section for visual regression config | `003-add-vrt-section.sh` |
 | 4 | 0.33 | `mass_times.*` → `settings.mass_times.*` | `004-flatten-mass-times.sh` |
@@ -842,11 +857,11 @@ The parent repo ignores everything inside `sites/` and `servers/` with a single 
 ```gitignore
 # ~/nwp/.gitignore additions
 
-# Site directories — managed independently or untracked (see F23 §3.2, Phase 7)
+# Site directories — managed independently or untracked (see F17 §3.2, Phase 7)
 /sites/*
 !/sites/.gitkeep
 
-# Server directories — independent repos (see F23 §6)
+# Server directories — independent repos (see F17 §6)
 /servers/*
 !/servers/.gitkeep
 
@@ -870,329 +885,23 @@ Note: `verify-test-*` sites are created and destroyed by `verify.sh` and live in
 
 ## 5. AVC Coders Guild → NWP `other_coders` Integration
 
-### 5.1 Current State
+> **MOVED:** The full design for OAuth2 authentication (`pl auth login`) and
+> the AVC Coders Guild → NWP `other_coders` pull-based sync now lives in the
+> AVC project as
+> [`sites/avc/docs/proposals/A03-oauth2-guild-sync.md`](../../sites/avc/docs/proposals/A03-oauth2-guild-sync.md).
+>
+> The integration is intentionally owned by AVC because it depends on
+> AVC-specific assets (the `coders_guild` group, the `avc_oidc_claims` Drupal
+> module, AVC's role names) and is useful only to NWP installs that use AVC
+> as their identity provider. The NWP-side CLI surface (`pl auth`,
+> `pl coders sync-guild`) is implemented as part of A03 because it cannot be
+> tested without the AVC side.
+>
+> F17 (this proposal) does not depend on A03. AVC-aware features remain
+> opt-in: NWP installs that do not run AVC simply do not enable A03.
 
-Two disconnected systems:
-
-| System | What It Manages | Where |
-|--------|----------------|-------|
-| **AVC Coders Guild** | Drupal group membership on the AVC site. Users join the guild, get roles (admin, facilitator, mentor, member) | AVC Drupal site |
-| **NWP `other_coders`** | DNS delegation, GitLab accounts, SSH keys, server provisioning, contribution tracking | `nwp.yml` + `coder-setup.sh` + `coders.sh` |
-
-Currently: A human manually runs `pl coder add george` to create a coder entry, separately from the user joining the AVC Coders Guild. No automated connection.
-
-### 5.2 Two Problems to Solve
-
-**Problem A: Identity.** How does a developer running NWP locally prove they are "george" on the AVC site? Currently there's no link between a local NWP coder and their AVC account.
-
-**Problem B: Sync.** How does guild membership on AVC automatically update `other_coders` in `nwp.yml`? Currently this is a manual process.
-
-### 5.3 Solution: OAuth2 Authentication + Pull-Based Sync
-
-**Architecture:**
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  DEVELOPER AUTHENTICATION (Problem A)                    │
-│                                                          │
-│  Developer runs: pl auth login                           │
-│    → Browser opens AVC OAuth2 authorize URL              │
-│    → Developer logs into AVC (if not already)            │
-│    → AVC shows: "NWP CLI wants to access your profile"  │
-│    → Developer clicks Allow                              │
-│    → Browser redirects to localhost:9876/callback         │
-│    → pl receives auth code, exchanges for tokens         │
-│    → OIDC ID token contains: username, email, guild roles│
-│    → pl stores token at ~/nwp/.auth.yml (gitignored)    │
-│    → Developer is now authenticated as their AVC identity│
-└─────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────┐
-│  MEMBERSHIP SYNC (Problem B)                             │
-│                                                          │
-│  NWP server cron (every 5 min): pl coders sync-guild     │
-│    → Server queries AVC API with service account token   │
-│    → GET /jsonapi/group_content/coders_guild_membership  │
-│    → Receives current member list with roles              │
-│    → Compares with nwp.yml other_coders                  │
-│    → Adds new members, deactivates removed ones          │
-│    → No inbound webhook endpoint needed                  │
-└─────────────────────────────────────────────────────────┘
-```
-
-### 5.4 Developer Authentication: `pl auth login`
-
-**Why OAuth2 Authorization Code flow?**
-- Developer proves their AVC identity through the AVC site itself
-- NWP never sees or stores AVC passwords
-- Guild roles come from the OIDC token's `groups` claim
-- Same protocol used for "Sign in with Google/GitHub"
-- AVC already has Simple OAuth installed (for Moodle SSO)
-
-**Flow:**
-
-```bash
-pl auth login
-```
-
-1. `pl` starts a temporary HTTP server on `localhost:9876`
-2. Opens browser to:
-   ```
-   https://avc.nwpcode.org/oauth/authorize?
-     client_id=nwp-cli&
-     redirect_uri=http://localhost:9876/callback&
-     response_type=code&
-     scope=openid+profile+email&
-     state=<random-csrf-token>&
-     code_challenge=<PKCE-challenge>&
-     code_challenge_method=S256
-   ```
-3. Developer authenticates on AVC site (or is already logged in)
-4. AVC shows consent screen: "NWP CLI wants to access your profile. Allow?"
-5. AVC redirects to `localhost:9876/callback?code=<auth-code>&state=<csrf-token>`
-6. `pl` validates `state` parameter matches what it sent (CSRF protection)
-7. `pl` exchanges auth code for tokens:
-   ```bash
-   curl -X POST https://avc.nwpcode.org/oauth/token \
-     -d grant_type=authorization_code \
-     -d code=$AUTH_CODE \
-     -d redirect_uri=http://localhost:9876/callback \
-     -d client_id=nwp-cli \
-     -d code_verifier=$PKCE_VERIFIER
-   ```
-8. Response contains `access_token`, `refresh_token`, `id_token`
-9. `pl` decodes ID token to get: `sub`, `preferred_username`, `email`, `groups`
-10. Stores in `~/nwp/.auth.yml` (gitignored):
-    ```yaml
-    # ~/nwp/.auth.yml (GITIGNORED — never committed)
-    auth:
-      provider: avc.nwpcode.org
-      username: george
-      email: george@example.com
-      guild_roles: [guild_member]
-      access_token: eyJ...
-      refresh_token: dGh...
-      token_expiry: "2026-04-07T10:00:00Z"
-      authenticated_at: "2026-04-06T10:00:00Z"
-    ```
-
-**Security measures:**
-- **PKCE (Proof Key for Code Exchange):** Prevents authorization code interception — the code is useless without the code_verifier, which never leaves the developer's machine.
-- **State parameter:** Prevents CSRF attacks on the callback.
-- **localhost callback:** Token never passes through an external server.
-- **Tokens stored locally:** `~/nwp/.auth.yml` is gitignored and mode 0600.
-- **Token refresh:** `pl` automatically refreshes expired tokens using the refresh token. If the developer is removed from the guild, the refresh fails → `pl` marks auth as invalid.
-
-**Subsequent commands use the authenticated identity:**
-
-```bash
-pl status           # Shows "Authenticated as: george (contributor)"
-pl auth status      # Shows current auth state, token expiry, guild roles
-pl auth logout      # Clears stored tokens
-pl auth refresh     # Force-refreshes tokens and guild roles
-```
-
-### 5.5 Custom OIDC Claims Module (Drupal Side)
-
-AVC already has Simple OAuth. Add a tiny module (~20 lines) to include guild roles in the OIDC response:
-
-```php
-// sites/avc/html/modules/custom/avc_oidc_claims/avc_oidc_claims.module
-
-/**
- * Implements hook_simple_oauth_oidc_claims_alter().
- */
-function avc_oidc_claims_simple_oauth_oidc_claims_alter(array &$claims, array &$context) {
-  $account = $context['account'];
-  $groups = [];
-
-  $membership_loader = \Drupal::service('group.membership_loader');
-  foreach ($membership_loader->loadByUser($account) as $membership) {
-    $group = $membership->getGroup();
-    $roles = array_map(fn($r) => $r->id(), $membership->getRoles());
-    $groups[] = [
-      'group' => $group->label(),
-      'group_id' => $group->id(),
-      'roles' => $roles,
-    ];
-  }
-
-  $claims['groups'] = $groups;
-  $claims['roles'] = $account->getRoles(TRUE);
-}
-```
-
-**Also register the NWP CLI as an OAuth2 client** in AVC's Simple OAuth settings:
-- Client ID: `nwp-cli`
-- Client secret: (none — public client with PKCE)
-- Redirect URI: `http://localhost:9876/callback`
-- Scopes: `openid`, `profile`, `email`
-- Grant type: Authorization Code
-
-### 5.6 Server-Side Membership Sync: Pull-Based (Secure)
-
-**Why pull, not webhooks?**
-
-| Concern | Webhook (push) | API Polling (pull) |
-|---------|---------------|-------------------|
-| **Attack surface** | Exposes an HTTP endpoint that attackers can probe | Zero inbound surface — NWP initiates all connections |
-| **Spoofing** | Must verify HMAC signatures | Impossible — NWP controls the request |
-| **Replay attacks** | Must check timestamps | N/A |
-| **Shell injection** | Risk if payload reaches bash | N/A — NWP constructs its own queries |
-| **Complexity** | ~130 lines (receiver + nginx + signing) | ~60 lines (cron script) |
-| **Latency** | Real-time | Up to 5 minutes (configurable) |
-| **Reliability** | Must handle delivery failures, retries | Self-healing on every poll |
-
-For guild membership changes, 5-minute latency is perfectly acceptable. The pull approach eliminates an entire class of security concerns.
-
-**Implementation:**
-
-```bash
-# scripts/commands/coders.sh — add 'sync-guild' subcommand
-# Runs on the NWP server via cron:
-# */5 * * * * /opt/nwp/pl coders sync-guild
-
-sync_guild() {
-    local api_url="https://avc.nwpcode.org"
-    local token
-    token=$(get_infra_secret "avc.api_token" "")
-
-    # 1. Fetch current guild members from AVC JSON:API
-    local members_json
-    members_json=$(curl -sf \
-        -H "Authorization: Bearer $token" \
-        "$api_url/jsonapi/group_content/coders-group_membership?include=entity_id" \
-        2>/dev/null) || { log_error "Failed to fetch guild members"; return 1; }
-
-    # 2. Parse with Python (safe — no shell interpolation of user data)
-    python3 "$NWP_DIR/scripts/helpers/sync-guild-members.py" \
-        --members-json "$members_json" \
-        --config "$NWP_DIR/nwp.yml"
-}
-```
-
-**Python sync script** (`scripts/helpers/sync-guild-members.py`):
-
-```python
-#!/usr/bin/env python3
-"""Sync AVC Coders Guild membership to nwp.yml other_coders.
-
-Security: All user-controlled data (usernames, emails) is validated
-with strict regex before touching the YAML file. No shell commands
-are constructed from user data.
-"""
-import json, re, sys
-from datetime import datetime, timezone
-from ruamel.yaml import YAML
-
-USERNAME_RE = re.compile(r'^[a-zA-Z0-9_-]{1,64}$')
-EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
-
-ROLE_MAP = {
-    'guild_admin': 'core',
-    'guild_facilitator': 'contributor',
-    'guild_mentor': 'contributor',
-    'guild_member': 'newcomer',
-}
-
-def sync(members_json: str, config_path: str):
-    members = json.loads(members_json)
-    yaml = YAML()
-    yaml.preserve_quotes = True
-
-    with open(config_path) as f:
-        config = yaml.load(f)
-
-    coders = config.setdefault('other_coders', {}).setdefault('coders', {})
-    guild_usernames = set()
-
-    for member in members.get('data', []):
-        username = member.get('attributes', {}).get('name', '')
-        email = member.get('attributes', {}).get('mail', '')
-        guild_role = member.get('attributes', {}).get('group_role', 'guild_member')
-
-        # Strict validation — reject anything unexpected
-        if not USERNAME_RE.match(username):
-            continue
-        if email and not EMAIL_RE.match(email):
-            continue
-
-        guild_usernames.add(username)
-        nwp_role = ROLE_MAP.get(guild_role, 'newcomer')
-
-        if username not in coders:
-            coders[username] = {
-                'added': datetime.now(timezone.utc).isoformat(),
-                'status': 'active',
-                'email': email,
-                'role': nwp_role,
-                'source': 'avc_guild',
-            }
-        else:
-            coders[username]['role'] = nwp_role
-            coders[username]['status'] = 'active'
-
-    # Deactivate coders no longer in guild (only those sourced from guild)
-    for name, coder in coders.items():
-        if coder.get('source') == 'avc_guild' and name not in guild_usernames:
-            coder['status'] = 'inactive'
-
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f)
-
-if __name__ == '__main__':
-    import argparse
-    p = argparse.ArgumentParser()
-    p.add_argument('--members-json', required=True)
-    p.add_argument('--config', required=True)
-    args = p.parse_args()
-    sync(args.members_json, args.config)
-```
-
-**Security properties:**
-- **No inbound endpoints.** The NWP server never exposes a webhook URL.
-- **No shell injection.** User data never enters shell commands — Python handles all YAML manipulation.
-- **Strict input validation.** Usernames must match `^[a-zA-Z0-9_-]{1,64}$`. Emails are regex-validated. Anything else is silently skipped.
-- **Source tagging.** Only coders with `source: avc_guild` are auto-managed. Manually-added coders are never touched.
-- **Authenticated API calls.** The service account token is stored in `.secrets.yml` and used for bearer auth over HTTPS.
-- **Self-healing.** Every poll cycle compares full membership — missed events are automatically corrected.
-
-### 5.7 Role Mapping
-
-| AVC Guild Role | NWP Role | GitLab Access | Capabilities |
-|---------------|----------|--------------|-------------|
-| `guild_admin` | `core` (40) | Maintainer | merge, release, admin |
-| `guild_facilitator` | `contributor` (30) | Developer | push, feature branches, own subdomain |
-| `guild_mentor` | `contributor` (30) | Developer | push, feature branches |
-| `guild_member` | `newcomer` (0) | Reporter | fork-based contributions only |
-
-### 5.8 Full Authentication Flow: From Guild to Code
-
-```
-1. User joins AVC Coders Guild (via AVC website)
-   └── Guild role assigned: guild_member
-
-2. Server-side sync (within 5 min):
-   └── pl coders sync-guild
-       └── Adds user to nwp.yml other_coders (role: newcomer, source: avc_guild)
-
-3. Developer sets up local NWP:
-   └── pl auth login
-       └── Browser → AVC OAuth2 → Consent → Callback
-       └── ID token proves: "I am george, I have guild_member role"
-       └── Token stored in ~/nwp/.auth.yml
-
-4. Developer uses authenticated NWP:
-   └── pl coder-setup provision george
-       └── Checks: george exists in other_coders with source: avc_guild ✓
-       └── Checks: local auth matches george ✓
-       └── Provisions: DNS delegation, GitLab account, SSH key
-
-5. Token refresh (automatic, periodic):
-   └── pl auth refresh
-       └── If guild role changed → updates local auth + other_coders
-       └── If removed from guild → refresh fails → marks inactive
-```
+(Original section 5 content — about ~330 lines covering Sections 5.1–5.8 —
+was moved verbatim into A03 on 2026-04-08 as part of the namespace cleanup.)
 
 ---
 
@@ -1321,7 +1030,7 @@ get_ssh_key_path() {
 
 SSH keys are user-level credentials, not project artifacts. Keeping them in `~/.ssh/` means OpenSSH enforces `StrictModes` permissions, `ssh-agent` works automatically, and the developer can `ssh nwpcode` directly without NWP-specific tooling. The server directory tracks *configuration* (nginx, email, scripts, server metadata); the credential that unlocks the server is user-scoped.
 
-Backup of SSH keys is the user's responsibility and handled outside NWP (encrypted USB, password manager, hardware token, etc.). F24's backup strategy covers NWP state; it does not touch `~/.ssh/`.
+Backup of SSH keys is the user's responsibility and handled outside NWP (encrypted USB, password manager, hardware token, etc.). F18's backup strategy covers NWP state; it does not touch `~/.ssh/`.
 
 ### 6.4 How Sites Reference Servers
 
@@ -1455,7 +1164,7 @@ The server's own `.gitignore` protects the plaintext `.nwp-server.yml` while per
 
 ```gitignore
 # servers/nwpcode/.gitignore
-.nwp-server.yml                 # Plaintext — gitignored; SOPS-encrypted version committed (see F24 §2)
+.nwp-server.yml                 # Plaintext — gitignored; SOPS-encrypted version committed (see F18 §2)
 backups/                        # Large
 ```
 
@@ -1532,7 +1241,7 @@ Scans:
 
 ### 7.5 Secrets Per Site
 
-Each site can have its own `.secrets.yml` for project-specific credentials. If the site has its own git repo, `.secrets.yml` is gitignored there; in either case the file is excluded from F24 restic backups in plaintext (and included only in SOPS-encrypted form):
+Each site can have its own `.secrets.yml` for project-specific credentials. If the site has its own git repo, `.secrets.yml` is gitignored there; in either case the file is excluded from F18 restic backups in plaintext (and included only in SOPS-encrypted form):
 
 ```yaml
 # ~/nwp/sites/mt/.secrets.yml (gitignored)
@@ -1644,11 +1353,11 @@ Create `sites/fin/` as a new site with `.nwp.yml`.
 
 | Proposals | Destination |
 |-----------|------------|
-| F16-mass-times-scraper.md, F17-mt-site-creation.md | `sites/mt/docs/proposals/` |
-| F18-cathnet-acmc.md, F19-*.md, F21-*.md | `sites/cathnet/docs/proposals/` |
-| F20-ss-faith-formation-app.md | `sites/ss/docs/proposals/` |
+| (old F16/F17 mass times) → M01, M02 | `sites/mt/docs/proposals/` |
+| (old F18/F19/F21 cathnet) → C01, C02, C03 | `sites/cathnet/docs/proposals/` |
+| (old F20 faith formation) → S01 | `sites/ss/docs/proposals/` |
 
-Keep NWP-level proposals (F03-F15, F22, F23, etc.) in `~/nwp/docs/proposals/`.
+Keep NWP-level proposals (F03-F15, F16, F17, etc.) in `~/nwp/docs/proposals/`.
 
 ### Phase 6: Update Script Path Resolution (16-20 hours)
 
@@ -1701,7 +1410,7 @@ backup_dir="$site_path/backups"
 | Category | Has own git repo? | Example | Rationale |
 |----------|-------------------|---------|-----------|
 | **Production** | Yes — independent repo | `avc`, `ss` | Deployed to live servers; history matters; already have repos |
-| **Experimental** | No — filesystem only | `cathnet`, `cccrdf`, `dir1`, `mt` | Scratch work; churn is high; version control would be noise; backed up via F24 |
+| **Experimental** | No — filesystem only | `cathnet`, `cccrdf`, `dir1`, `mt` | Scratch work; churn is high; version control would be noise; backed up via F18 |
 | **Verify test** | No — generated | `verify-test-*` | Created and destroyed by test runs |
 | **Generated scaffolds** | No | `tmp`, `latest` | Build artifacts |
 
@@ -1716,7 +1425,7 @@ backup_dir="$site_path/backups"
 
 2. **Confirm production sites keep their existing repos.** No new repos are created in this phase. `avc/` and `ss/` already have `.git/` — leave them alone.
 
-3. **Experimental sites stay untracked.** `cathnet`, `cccrdf`, `dir1`, `mt` do not get `git init`. They are protected solely by F24's backup layer (restic snapshots to an attached SSD).
+3. **Experimental sites stay untracked.** `cathnet`, `cccrdf`, `dir1`, `mt` do not get `git init`. They are protected solely by F18's backup layer (restic snapshots to an attached SSD).
 
 4. **`pl install` default:** when creating a new site, `pl install <recipe> <name>` does NOT init a git repo by default. An opt-in flag `--with-git [--remote <url>]` initializes one and optionally sets a remote. This keeps experimental sites friction-free.
 
@@ -1737,17 +1446,17 @@ backup_dir="$site_path/backups"
 9. Update site `.nwp.yml` files: replace `server_ip` with `server: nwpcode`
 10. Init git repo, push to `git.nwpcode.org:nwp/nwpcode-server.git`
 
-### Phase 9: OAuth2 Authentication + Guild Sync (10-14 hours)
+### Phase 9: AVC OAuth2 + Guild Sync — MOVED OUT OF F17
 
-**Goal:** Automated developer authentication and coder provisioning.
+This phase has been extracted into the AVC project as
+[`sites/avc/docs/proposals/A03-oauth2-guild-sync.md`](../../sites/avc/docs/proposals/A03-oauth2-guild-sync.md).
+F17 no longer owns the OAuth2 / guild-sync work — it lives with the AVC
+project because every line of it (the `avc_oidc_claims` module, the
+OAuth2 client registration, the role mapping table, the `pl auth` and
+`pl coders sync-guild` CLI surfaces) is AVC-specific.
 
-1. Implement `avc_oidc_claims` Drupal module on AVC site (Section 5.5)
-2. Register NWP CLI as OAuth2 client in AVC Simple OAuth settings
-3. Implement `pl auth login/status/logout/refresh` commands (Section 5.4)
-4. Implement `scripts/helpers/sync-guild-members.py` pull-based sync (Section 5.6)
-5. Add `sync-guild` subcommand to `scripts/commands/coders.sh`
-6. Set up server cron for `pl coders sync-guild` (every 5 min)
-7. Test full flow: guild join → sync → `pl auth login` → provision
+There is no Phase 9 in F17 anymore. Phase 10 still exists; it has not
+been renumbered to keep cross-references to "F17 Phase 10" stable.
 
 ### Phase 10: Verification + Documentation (6-8 hours)
 
@@ -1889,7 +1598,7 @@ sites/fin/
 |---------|----------|-------|-------|
 | **AVC** | Production | 1. Create `.nwp.yml` 2. Move `modules/avc_moodle/` → `html/modules/custom/` 3. Move backups | Already has own git repo — leave it |
 | **SS** | Production | 1. Create `.nwp.yml` 2. Move `moodle_plugins/auth/avc_oauth2/` → `auth/avc_oauth2/` 3. Move proposals 4. Move backups | Already has own git repo; Faith Formation already in place |
-| **MT** | Experimental | 1. Create `.nwp.yml` 2. Move `modules/mass_times/` → `web/modules/custom/` 3. Move `mt/` → `pipeline/` 4. Move backups 5. Move proposals | No git init — backed up via F24 |
+| **MT** | Experimental | 1. Create `.nwp.yml` 2. Move `modules/mass_times/` → `web/modules/custom/` 3. Move `mt/` → `pipeline/` 4. Move backups 5. Move proposals | No git init — backed up via F18 |
 | **CathNet** | Experimental | Same pattern as MT | 7.8GB pipeline data; no git init |
 | **DIR** | Experimental | 1. Create `.nwp.yml` 2. Move `modules/dir_search/` → `web/modules/custom/` 3. Move backups | Simple module move; no git init |
 | **CCCRDF** | Experimental | 1. Create `.nwp.yml` | Minimal changes; no git init |
@@ -1914,7 +1623,7 @@ sites/fin/
 |------|-----------|
 | DDEV configuration | DDEV uses relative paths — should work after move |
 | Deployment scripts hardcode old paths | Update and test one project at a time |
-| Large pipeline data for CathNet (7.8GB) | Excluded from F24 restic include list; site is untracked (experimental) |
+| Large pipeline data for CathNet (7.8GB) | Excluded from F18 restic include list; site is untracked (experimental) |
 
 ### Low Risk
 
@@ -1942,7 +1651,7 @@ sites/fin/
 - [ ] `cd ~/nwp/sites/mt && pl backup` works (context-aware)
 - [ ] `pl status --all` discovers all sites via `sites/*/.nwp.yml`
 - [ ] `pl proposals` aggregates proposals from NWP + all sites
-- [ ] Production sites (`avc`, `ss`) retain their existing independent git repos; experimental sites remain untracked and are protected by F24 backups
+- [ ] Production sites (`avc`, `ss`) retain their existing independent git repos; experimental sites remain untracked and are protected by F18 backups
 - [ ] FIN monitor exists as `sites/fin/` with `.nwp.yml`
 - [ ] AVC Coders Guild changes propagate to `nwp.yml` `other_coders` via pull-based sync
 - [ ] `pl auth login` authenticates developer via OAuth2 PKCE against AVC site

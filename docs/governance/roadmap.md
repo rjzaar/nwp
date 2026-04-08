@@ -2,16 +2,31 @@
 
 **NWP — Narrow Way Project** | Drupal hosting, deployment & infrastructure automation
 
-**Last Updated:** April 7, 2026
+**Last Updated:** April 8, 2026
 
-Pending implementation items and future improvements for NWP.
+Pending implementation items and future improvements for **NWP core**.
+
+> **NWP-only.** This roadmap covers NWP itself. Site-specific roadmaps for
+> AVC, Sacred Sources (ss), Mass Times (mt), CathNet, and Directory Search
+> (dir1) live inside each site at `sites/<name>/docs/proposals/`. Use
+> `pl proposals` to aggregate everything into one view.
+
+> **2026-04-08 renumbering.** The NWP F-series was made consecutive on
+> 2026-04-08. Old F22–F26 slots became F16–F20; F18–F21 (the old
+> site-specific proposals) moved into per-project namespaces (M01, M02,
+> C01, C02, C02a, C03, S01). A new F21 was created for the distributed
+> build/deploy pipeline (ADR-0017). See
+> [docs/proposals/README.md](../proposals/README.md) for the full
+> mapping. Old IDs survive as aliases inside each renamed file.
 
 > **For completed work, see [Milestones](../reports/milestones.md)**
 > - Phase 1-5c: P01-P35 (Foundation through Live Deployment)
 > - Phase 6-7: F04 (phases 1-5), F05, F07, F09, F12
 > - Phase 8: P50, P51 (Unified Verification System)
-> - Phase 9: P53-P58 (Verification & Production Hardening)
+> - Phase 9: P53-P59 (Verification & Production Hardening)
 > - Phase 10 (partial): F03, F13, F14, F15 (Developer Experience)
+> - Phase 11: F17 (Project Separation, formerly F23 — phases 1–8, 10)
+> - Phase 12: F19 (Pre-Baseline Cleanup, formerly F25)
 
 ---
 
@@ -19,13 +34,15 @@ Pending implementation items and future improvements for NWP.
 
 | Metric | Value |
 |--------|-------|
-| Current Version | v0.30.0 (in progress — F23 phases 1–8, 10) |
+| Current Version | v0.30.0 (F17 phases 1–8, 10 landed; F19 baseline reset complete) |
 | Test Success Rate | 99.5% (Machine Verified) |
-| Completed Proposals | P01-P35, P50-P51, P53-P59, F03-F05, F07, F09, F12-F17, F23 (phases 1–8, 10) |
-| Pending Proposals | F01-F02, F06, F08, F10-F11, F18-F22, F23 (phase 9), F24 |
-| Rejected Proposals | P52 (rename — NWP is the permanent project name) |
-| Experimental/Outlier | X01 |
-| Recent Enhancements | v0.30.0: F23 project separation v2 — per-site `.nwp.yml`, schema migrations, `pl site/server/proposals` commands, modules/pipelines/backups moved into sites |
+| Completed NWP Proposals | P01–P35, P50–P51, P53–P60, F03–F05, F07, F09, F12–F15, F17 (phases 1–8, 10), F19 |
+| Proposed NWP Proposals | F16 (Claude Code Web), F18 (Unified Backup), F20 (SolveIt), F21 (Distributed Build/Deploy Pipeline) |
+| Pending NWP Proposals | F01, F02, F06, F08 |
+| Rejected NWP Proposals | P52 (rename — NWP is the permanent project name) |
+| Experimental/Outlier | X01, X02 |
+| Recent Enhancements | v0.30.0: F17 project separation v2 — per-site `.nwp.yml`, schema migrations, `pl site/server/proposals` commands, modules/pipelines/backups moved into sites |
+| Site-specific work | See `sites/<name>/docs/proposals/` and `pl proposals` |
 
 ---
 
@@ -35,7 +52,7 @@ Pending implementation items and future improvements for NWP.
 |--------|---------|-------|---------|
 | **P##** | Core Phase Proposals | 35 complete | P01-P35: Foundation→Live Deployment |
 | **F##** | Feature Enhancements | 9 complete, 6 pending | F04: Governance, F09: Testing, F12: Todo |
-| **X##** | Experimental Outliers | 1 exploratory | X01: AI Video (scope expansion) |
+| **X##** | Experimental Outliers | 2 exploratory | X01: AI Video, X02: Local Voice Agent |
 
 **Why different prefixes?**
 - P01-P35: Core NWP infrastructure built during phases 1-5c (all complete)
@@ -55,9 +72,13 @@ Pending implementation items and future improvements for NWP.
 | Phase 7 | Testing & CI Enhancement | F09 | ✅ Complete |
 | **Phase 7b** | **CI Enhancements** | **F01-F03, F08** | **Possible** |
 | **Phase 8** | **Unified Verification** | **P50, P51** | **✅ Complete** |
-| **Phase 9** | **Verification & Production Hardening** | **P52-P58** | **✅ Complete** |
-| **Phase 10** | **Developer Experience** | **F10, F11, F13, F14, F15** | **Partial (F13, F14, F15 ✅)** |
-| **Phase X** | **Experimental/Outliers** | **X01** | **Possible** |
+| **Phase 9** | **Verification & Production Hardening** | **P53-P59** | **✅ Complete** |
+| **Phase 10** | **Developer Experience** | **F13, F14, F15** (F10 → [guide](../guides/local-llm.md), F11 subsumed) | **✅ Complete** |
+| **Phase 11** | **Project Separation** | **F17 (was F23)** | **✅ Complete (phases 1–8, 10)** |
+| **Phase 12** | **Baseline Reset & v0.30.0** | **F19 (was F25)** | **✅ Complete** |
+| **Phase 13** | **Distributed Build/Deploy Pipeline** | **F21 (new, implements ADR-0017)** | **PROPOSED** |
+| **Phase 14** | **Claude Code Web + Backup + SolveIt** | **F16 (was F22), F18 (was F24), F20 (was F26)** | **PROPOSED** |
+| **Phase X** | **Experimental/Outliers** | **X01, X02** | **X01 Possible, X02 Proposed** |
 
 ---
 
@@ -85,8 +106,8 @@ Based on dependencies, current progress, and priority:
 | | **Next: Developer Experience (Phase 10)** | | *Quality of life improvements* |
 | 13 | F13 | ✅ COMPLETE | Centralize timezone configuration |
 | 14 | F15 | ✅ COMPLETE | SSH user management + developer key onboarding (~10h) |
-| 15 | F10 | PROPOSED | Local LLM support and privacy options |
-| 16 | F11 | PROPOSED | Developer workstation LLM config (depends on F10) |
+| — | F10 | → GUIDE | Local LLM Support → [docs/guides/local-llm.md](../guides/local-llm.md) (2026-04-08); provisioning tracked under F21 Phase 3a |
+| — | F11 | RETIRED | Developer workstation LLM config — subsumed by local-llm guide + F21 Phase 3a |
 | 17 | F14 | ✅ COMPLETE | Claude API team management, spend controls |
 | | **Later / Conditional** | | |
 | 18 | P55 | ✅ COMPLETE | Opportunistic human verification (4-5 weeks, opt-in) |
@@ -293,422 +314,39 @@ Extend MCP integration to automatically detect and fix common CI errors:
 
 ## Phase 8: Developer Experience (FUTURE)
 
-### F10: Local LLM Support & Privacy Options
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** None
-**Guide:** [F10-local-llm-guide.md](../proposals/F10-local-llm-guide.md) - Complete guide to using open source AI models
+### F10: Local LLM Support & Privacy Options — PROMOTED TO GUIDE (2026-04-08)
 
-Provide developers with privacy-focused alternatives to cloud-based AI by integrating local LLM support into NWP workflows:
+The F10 proposal content was always a how-to guide — installation steps,
+hardware sizing, model selection, privacy trade-offs — not a feature
+proposal with phases and success criteria. On 2026-04-08 it was moved to
+[`docs/guides/local-llm.md`](../guides/local-llm.md) and the proposal slot
+was retired.
 
-**Why This Matters:**
-- Privacy concerns with cloud-based AI processing codebase/secrets
-- Data sovereignty requirements
-- Offline development capability
-- Cost optimization for high-volume usage
-- Developer autonomy and choice
+The actual "install and persist a local LLM on a NWP-managed machine" work
+is now tracked under **F21 Phase 3a — mini as local-LLM agent**
+([proposal](../proposals/F21-distributed-build-deploy-pipeline.md)), which
+is the concrete provisioning plan the guide describes at the abstract level.
 
-**Supported Local LLM Platforms:**
-
-| Platform | Best For | Integration Level |
-|----------|----------|-------------------|
-| Ollama | General purpose, easiest setup | Primary target |
-| LM Studio | GUI users, model exploration | Documentation |
-| llama.cpp | Advanced users, custom builds | Documentation |
-| text-generation-webui | Full-featured local UI | Documentation |
-
-**Recommended Models for NWP Work:**
-
-| Model | Size | Purpose | Hardware |
-|-------|------|---------|----------|
-| qwen2.5-coder | 7B-32B | Bash/PHP coding | 16-64GB RAM |
-| deepseek-coder-v2 | 16B | Code generation | 32GB+ RAM |
-| llama3.2 | 3B-70B | General tasks | 8-128GB RAM |
-| codestral | 22B | Multi-language coding | 32GB+ RAM |
-
-**Implementation Approach:**
-
-```bash
-# 1. Detection & Setup
-pl llm setup                    # Interactive setup wizard
-pl llm setup --provider ollama  # Auto-configure Ollama
-pl llm doctor                   # Verify installation
-
-# 2. Model Management
-pl llm models list              # Show available/installed models
-pl llm models install qwen2.5-coder:7b
-pl llm models benchmark         # Test performance on sample tasks
-
-# 3. Integration with Existing Tools
-pl llm chat                     # Interactive chat (like Claude)
-pl llm code-review issue-123    # Review code using local LLM
-pl llm ask "How do I fix this bash error?"
-
-# 4. AI Provider Selection
-pl config set ai.provider local     # Switch to local LLM
-pl config set ai.provider anthropic # Switch back to Claude
-pl config get ai.provider            # Show current provider
-```
-
-**Configuration in nwp.yml:**
-
-```yaml
-ai:
-  # Provider: anthropic (Claude API), local (Ollama/local), none (disabled)
-  provider: anthropic
-
-  # Claude API settings (when provider=anthropic)
-  anthropic:
-    api_key_env: ANTHROPIC_API_KEY
-    model: claude-sonnet-4-5
-
-  # Local LLM settings (when provider=local)
-  local:
-    backend: ollama                    # ollama, lm-studio, llama-cpp
-    endpoint: http://localhost:11434   # API endpoint
-    model: qwen2.5-coder:7b            # Default model
-    timeout: 120                       # Seconds
-
-  # Feature flags
-  features:
-    code_review: true        # AI-assisted code review
-    commit_messages: true    # AI-generated commit messages
-    error_analysis: true     # Analyze CI/test errors
-    documentation: false     # AI-generated docs (opt-in)
-```
-
-**Integration Points:**
-
-| Feature | Current | With Local LLM |
-|---------|---------|----------------|
-| Code review | Manual | `pl llm review <file>` |
-| Commit messages | Manual | `pl commit --ai-message` |
-| Error debugging | Manual log reading | `pl llm explain <error-log>` |
-| Documentation | Manual writing | `pl llm doc <function>` |
-| Test generation | Manual writing | `pl llm test <file>` |
-
-**Privacy Architecture:**
-
-```
-┌─────────────────────────────────────┐
-│ Developer Choice (nwp.yml)         │
-├─────────────────────────────────────┤
-│                                     │
-│  [Anthropic Cloud]  [Local LLM]    │
-│        ↓                ↓           │
-│   Claude API        Ollama         │
-│   (paid, powerful)  (free, private)│
-│   Data sent out     Data stays     │
-│                                     │
-└─────────────────────────────────────┘
-
-Protected Files (never sent to AI):
-- .secrets.data.yml (always blocked)
-- keys/prod_* (always blocked)
-- *.sql, *.sql.gz (always blocked)
-- User can add to .aiignore
-```
-
-**Implementation Phases:**
-
-1. **Foundation** (Week 1)
-   - Add `lib/llm.sh` library
-   - Ollama detection and validation
-   - Configuration schema in nwp.yml
-
-2. **Core Commands** (Week 2)
-   - `pl llm setup` - Guided installation
-   - `pl llm chat` - Interactive chat interface
-   - `pl llm ask` - One-shot questions
-   - Provider switching logic
-
-3. **Tool Integration** (Week 3)
-   - Code review integration
-   - Commit message generation
-   - Error log analysis
-   - `.aiignore` file support
-
-4. **Documentation** (Week 4)
-   - Installation guides for Ollama/LM Studio
-   - Model selection guide
-   - Privacy comparison chart
-   - Troubleshooting guide
-
-**File Structure:**
-
-```
-lib/llm.sh                     # LLM integration library
-scripts/commands/llm.sh        # LLM management commands
-docs/LOCAL_LLM_GUIDE.md        # Complete setup guide
-templates/aiignore.txt         # Default .aiignore template
-tests/unit/test-llm.bats       # Unit tests for LLM functions
-```
-
-**Hardware Requirements Guide:**
-
-| Use Case | Recommended Model | RAM | GPU | Speed |
-|----------|-------------------|-----|-----|-------|
-| Quick scripts | qwen2.5-coder:3b | 8GB | No | Fast |
-| General dev | qwen2.5-coder:7b | 16GB | Optional | Good |
-| Complex code | qwen2.5-coder:32b | 64GB | Yes | Slow |
-| Production | Claude API | N/A | N/A | Fast |
-
-**Comparison Matrix:**
-
-| Feature | Claude API | Local LLM |
-|---------|------------|-----------|
-| **Privacy** | Data sent to Anthropic | All local |
-| **Cost** | $3-15 per million tokens | Free after setup |
-| **Quality** | Excellent | Good to Very Good |
-| **Speed** | Fast | Depends on hardware |
-| **Offline** | No | Yes |
-| **Setup** | API key only | Install + models |
-| **Maintenance** | None | Update models |
-
-**Success Criteria:**
-
-- [ ] `lib/llm.sh` library with Ollama integration
-- [ ] `pl llm setup` command with interactive wizard
-- [ ] `pl llm chat` for interactive sessions
-- [ ] `pl llm ask` for one-shot questions
-- [ ] AI provider selection in nwp.yml
-- [ ] `.aiignore` file support (similar to .gitignore)
-- [x] `docs/LOCAL_LLM_GUIDE.md` with setup instructions
-- [ ] Model recommendation based on hardware detection
-- [ ] Integration with existing `pl` commands (opt-in flags)
-- [x] Privacy comparison documentation
-- [ ] Benchmark command to test local model performance
-- [ ] Graceful fallback when local LLM unavailable
-
-**Security Considerations:**
-
-- `.aiignore` file to exclude sensitive paths
-- Same data protection rules as Claude integration
-- No secrets sent to any AI (local or cloud)
-- User consent required for any AI features
-- Clear indication of which provider is active
-
-**Documentation Deliverables:**
-
-- Setup guide for Ollama (Linux, macOS, Windows)
-- Model selection guide (speed vs quality tradeoffs)
-- Privacy comparison (cloud vs local)
-- Hardware requirements calculator
-- Troubleshooting common issues
-- Integration examples for common workflows
-
-**Future Enhancements:**
-
-- Model fine-tuning on NWP codebase
-- Custom model training for site-specific patterns
-- Multi-model support (use different models for different tasks)
-- Model quantization recommendations
-- Distributed inference (multiple machines)
+Any previously planned `pl llm …` CLI surface is deliberately *not*
+committed to yet. F21 Phase 3a leaves the CLI question open until mini's
+agent role has stabilised; the guide documents the manual `ollama` CLI and
+REST API until then.
 
 ---
 
-### F11: Developer Workstation Local LLM Configuration
-**Status:** PROPOSED | **Priority:** MEDIUM | **Effort:** Low | **Dependencies:** F10 (Local LLM Support)
-**Hardware Target:** Ryzen 9 12-core, 32GB RAM, 1TB SSD, NVIDIA RTX 2060 (6GB VRAM)
+### F11: Developer Workstation Local LLM Configuration — SUBSUMED (2026-04-08)
 
-Provide optimized local LLM configuration for mid-range developer workstations, enabling privacy-focused AI assistance without cloud dependencies.
+F11 described an ideal local LLM configuration for a specific developer
+workstation (Ryzen 9 + RTX 2060) and never had a corresponding file. Its
+intent is fully covered by:
 
-**Hardware Analysis:**
+- [`docs/guides/local-llm.md`](../guides/local-llm.md) — the hardware-agnostic guide (promoted from F10)
+- **F21 Phase 3a — mini as local-LLM agent** — the concrete provisioning
+  of NWP's actual production local-LLM machine (mini, Beelink Ryzen AI
+  MAX+ 395 with Radeon 8060S iGPU via Vulkan, which landed ~2× the
+  benchmark speed the F11 RTX 2060 target was designed around)
 
-| Component | Spec | LLM Impact |
-|-----------|------|------------|
-| CPU | Ryzen 9 12-core | Excellent for CPU inference, ~15-25 tokens/sec on 7B |
-| RAM | 32GB | Comfortable for 7B-14B models with headroom |
-| SSD | 1TB NVMe | Store 5-10 models simultaneously |
-| GPU | RTX 2060 6GB | Partial offload (3-4 layers), ~20% speedup |
-
-**Recommended Models (Optimized for 32GB RAM + RTX 2060):**
-
-| Model | Size | RAM Used | GPU Layers | Speed | Best For |
-|-------|------|----------|------------|-------|----------|
-| **qwen2.5-coder:7b** | 4.7GB | ~10GB | 8-10 | Fast | Daily coding (PRIMARY) |
-| **qwen2.5-coder:14b** | 9GB | ~18GB | 4-6 | Good | Complex refactoring |
-| **deepseek-coder-v2:16b** | 10GB | ~20GB | 4-5 | Moderate | Multi-language |
-| **llama3.2:8b** | 4.9GB | ~12GB | 8-10 | Fast | General Q&A |
-| **phi3:3.8b** | 2.4GB | ~6GB | Full | Very Fast | Quick lookups |
-| **mistral:7b** | 4.1GB | ~10GB | 8-10 | Fast | Fast general purpose |
-
-**Optimal Configuration for RTX 2060:**
-
-```bash
-# Install Ollama
-curl -fsSL https://ollama.com/install.sh | sh
-
-# Pull recommended models for your hardware
-ollama pull qwen2.5-coder:7b      # Primary coding model
-ollama pull phi3:3.8b              # Fast lookups
-ollama pull llama3.2:8b            # General tasks
-
-# Configure GPU layers (RTX 2060 = 6GB VRAM)
-# Create custom modelfile for optimal performance
-cat > ~/.ollama/Modelfile-nwp <<'EOF'
-FROM qwen2.5-coder:7b
-
-# Optimize for RTX 2060 (6GB VRAM) + 32GB RAM
-PARAMETER num_gpu 10
-PARAMETER num_thread 12
-PARAMETER num_ctx 4096
-
-# NWP-focused system prompt
-SYSTEM """
-You are an expert in bash scripting, PHP, and Drupal development.
-You work with the NWP (Narrow Way Project) deployment framework.
-Provide secure, well-tested code with clear explanations.
-"""
-EOF
-
-ollama create nwp-coder -f ~/.ollama/Modelfile-nwp
-```
-
-**Performance Expectations:**
-
-| Task | Model | Expected Speed | Quality |
-|------|-------|----------------|---------|
-| Quick script help | phi3:3.8b | 2-3 sec | Good |
-| Code review | qwen2.5-coder:7b | 5-8 sec | Very Good |
-| Complex refactor | qwen2.5-coder:14b | 15-25 sec | Excellent |
-| General Q&A | llama3.2:8b | 4-6 sec | Very Good |
-
-**GPU Acceleration Setup (RTX 2060):**
-
-```bash
-# Verify NVIDIA drivers
-nvidia-smi
-
-# Check CUDA support
-nvidia-smi -L
-
-# Ollama auto-detects GPU, but verify:
-ollama run qwen2.5-coder:7b "test"
-# Should show GPU utilization in nvidia-smi
-
-# Monitor GPU during inference
-watch -n 1 nvidia-smi
-```
-
-**Memory Management (32GB Optimization):**
-
-```bash
-# Keep ~8GB free for system/browser
-# Recommended concurrent usage:
-# - 1 large model (14B) + development tools
-# - OR 2 medium models (7B each) for comparison
-# - OR 1 medium (7B) + coding + browser
-
-# Check memory before loading large model
-free -h
-
-# Unload unused models
-ollama stop qwen2.5-coder:14b
-```
-
-**Storage Layout (1TB SSD):**
-
-```
-~/. ollama/models/           # ~50-80GB for models
-├── qwen2.5-coder:7b        # 4.7GB
-├── qwen2.5-coder:14b       # 9GB
-├── deepseek-coder-v2:16b   # 10GB
-├── llama3.2:8b             # 4.9GB
-├── phi3:3.8b               # 2.4GB
-└── mistral:7b              # 4.1GB
-                            # Total: ~35GB
-                            # Plenty of room for more
-```
-
-**NWP Integration Commands:**
-
-```bash
-# Quick coding help (uses phi3 for speed)
-alias ai-quick='ollama run phi3:3.8b'
-
-# Code review (uses qwen2.5-coder:7b)
-alias ai-code='ollama run nwp-coder'
-
-# Complex tasks (uses 14b when needed)
-alias ai-deep='ollama run qwen2.5-coder:14b'
-
-# Add to ~/.bashrc or ~/.zshrc
-```
-
-**Benchmarking Your Setup:**
-
-```bash
-#!/bin/bash
-# benchmark-llm.sh - Test your hardware
-
-models=("phi3:3.8b" "qwen2.5-coder:7b" "llama3.2:8b")
-prompt="Write a bash function to safely backup a Drupal database"
-
-echo "Benchmarking Local LLM Performance"
-echo "Hardware: Ryzen 9 12-core, 32GB RAM, RTX 2060"
-echo "-------------------------------------------"
-
-for model in "${models[@]}"; do
-    echo -n "Testing $model... "
-    start=$(date +%s.%N)
-    ollama run "$model" "$prompt" > /dev/null 2>&1
-    end=$(date +%s.%N)
-    duration=$(echo "$end - $start" | bc)
-    echo "${duration}s"
-done
-```
-
-**Comparison: Your Hardware vs Cloud API:**
-
-| Metric | Your Workstation | Claude API |
-|--------|------------------|------------|
-| Privacy | 100% local | Data sent to Anthropic |
-| Cost | $0/month (electricity ~$5) | $50-200/month |
-| Speed (7B) | 15-25 tok/sec | 50-100 tok/sec |
-| Quality (7B) | Very Good | Excellent |
-| Offline | Yes | No |
-| Best For | Daily coding, privacy | Complex architecture |
-
-**Hybrid Workflow Recommendation:**
-
-```
-Daily Development (Local):
-├── Code review → qwen2.5-coder:7b
-├── Quick scripts → phi3:3.8b
-├── Debug errors → llama3.2:8b
-└── Commit messages → qwen2.5-coder:7b
-
-Complex Tasks (Claude API):
-├── Architecture decisions
-├── Security audits
-└── Novel problem solving
-```
-
-**Success Criteria:**
-
-- [ ] Ollama installed with GPU acceleration verified
-- [ ] qwen2.5-coder:7b running at 15+ tokens/sec
-- [ ] Custom nwp-coder modelfile created
-- [ ] Shell aliases configured for quick access
-- [ ] Benchmark script confirms expected performance
-- [ ] Memory usage stays under 24GB during inference
-- [ ] GPU shows utilization during model inference
-
-**What You CAN'T Run Efficiently:**
-
-| Model | Why Not |
-|-------|---------|
-| qwen2.5-coder:32b | Needs 64GB RAM |
-| llama3.1:70b | Needs 128GB RAM |
-| codestral:22b | Needs 48GB+ RAM |
-| Any model fully on GPU | 6GB VRAM too small |
-
-**Upgrade Path (If Needed Later):**
-
-| Upgrade | Cost | Benefit |
-|---------|------|---------|
-| +32GB RAM (64GB total) | ~$80 | Run 32B models |
-| RTX 4060 Ti 16GB | ~$400 | 2-3x faster inference |
-| RTX 4070 12GB | ~$550 | Full 7B on GPU |
+The F11 slot is **retired**; do not reclaim the number.
 
 ---
 
@@ -780,7 +418,7 @@ Centralize timezone configuration in `nwp.yml` instead of hardcoding across 14+ 
 ---
 
 ### F14: Claude API Integration
-**Status:** ✅ COMPLETE | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** None (benefits from F10)
+**Status:** ✅ COMPLETE | **Priority:** MEDIUM | **Effort:** Medium | **Dependencies:** None (complements the [local LLM guide](../guides/local-llm.md) for provider-choice scenarios)
 **Proposal:** [F14-claude-api-integration.md](../proposals/F14-claude-api-integration.md)
 
 Integrate Claude API key management into NWP's two-tier secrets architecture for team provisioning, spend control, and consistent configuration.
@@ -1015,12 +653,44 @@ This proposal is permanently rejected. The project is and will remain **NWP — 
 
 ---
 
+## Phase 13: Distributed Build/Deploy Pipeline (PROPOSED)
+
+### F21: Distributed Build/Deploy Pipeline (mmt build, mons deploy)
+**Status:** PROPOSED | **Priority:** HIGH | **Effort:** Multi-week (~13 phases) | **Dependencies:** F17 (Project Separation), F18 (Unified Backup)
+**Proposal:** [F21-distributed-build-deploy-pipeline.md](../proposals/F21-distributed-build-deploy-pipeline.md)
+**Architecture decision record:** [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md)
+
+Move from a single-machine, AI-co-located build/deploy model to a distributed
+pipeline that:
+
+- Runs build/test/lint on home hardware (`met` + `mini` = `mmt`)
+- Air-gaps a separate AI-free deploy machine (`mons`) with hardware-token
+  prod SSH keys (Solo 2C+)
+- Migrates `git.nwpcode.org` from Newark to `au-mel` for sub-10 ms RTT
+- Hosts production sites in `us-iad`
+- Replaces in-place prod overwrites with blue-green slot swaps and
+  forward-compat migrations
+- Sanitizes production data on prod and publishes the snapshots as the
+  CI test substrate (clean PII boundary, makes site source open-sourceable)
+
+**Why now:** AI is now a meaningful share of NWP's code authoring. The
+single-tier model where AI agents and prod credentials share a trust domain
+is the dominant risk in the current threat model.
+
+**Phases:** See F21 § 4 for the full 13-phase breakdown. Phases 1–4 are
+reversible and can start without hardware tokens; phase 5 requires Solo
+2C+ tokens (long lead time, order in phase 1); phase 9 is the
+end-to-end "moment of truth"; phases 11–13 are stabilization, per-site
+rollout, and tabletop drills.
+
+---
+
 ## Phase X: Experimental & Outlier Features
 
 > **Note:** These proposals explore capabilities outside NWP's core mission of Drupal hosting/deployment. They are marked as "outliers" because they represent significant scope expansion. Implementation would only occur if there's strong user demand and clear use cases.
 
 ### X01: AI Video Generation Integration
-**Status:** POSSIBLE (deprioritized by Deep Analysis re-evaluation) | **Priority:** LOW | **Effort:** High | **Dependencies:** F10 (Local LLM)
+**Status:** POSSIBLE (deprioritized by Deep Analysis re-evaluation) | **Priority:** LOW | **Effort:** High | **Dependencies:** [Local LLM guide](../guides/local-llm.md) (optional)
 **Type:** OUTLIER - Significant scope expansion beyond core NWP mission
 
 Integrate AI video generation capabilities into NWP for automated content creation on Drupal sites:
@@ -1314,6 +984,63 @@ Should X01 be implemented? Only if:
 
 ---
 
+### X02: Local Voice Agent on mini (Twilio + Pipecat + local LLM)
+**Status:** PROPOSED | **Priority:** LOW | **Effort:** ~4 phases | **Dependencies:** [Local LLM guide](../guides/local-llm.md), F21 Phase 3a (mini as local-LLM agent), F21 Phase 1 (Headscale — soft)
+**Proposal:** [X02-local-voice-agent-on-mini.md](../proposals/X02-local-voice-agent-on-mini.md)
+**Architecture decision record:** [ADR-0018: Twilio as bounded SaaS dependency](../decisions/0018-twilio-bounded-saas-for-pstn.md)
+**Type:** OUTLIER — voice telephony is scope expansion beyond NWP's core Drupal mission
+
+Run an AI voice agent on **mini** (Beelink Ryzen AI Max+ 395) that answers
+phone calls on a Twilio US 10DLC number using a fully local stack: Pipecat
+orchestration + faster-whisper STT + Llama 3.1 8B (or Qwen 2.5 7B) on
+Ollama + Piper/Kokoro TTS. Zero cloud AI inference.
+
+**⚠️ Why This is an Outlier:**
+- NWP's core mission: Drupal deployment, hosting, site management
+- Voice telephony: communication channel, not infrastructure
+- Introduces NWP's first bounded third-party SaaS dependency (Twilio); see ADR-0018 for the trust-boundary decision
+- Must coexist with mini's primary tenant (the coding agent) without evicting it
+
+**Coexistence strategy:** Ollama `keep_alive=24h` on the coding model
+(resident), `keep_alive=5m` on the voice model (loads on call, unloads
+after). STT and TTS run on CPU so the iGPU is only contended for LLM work.
+Phase 0 preflight validates memory headroom before anything else is built.
+
+**Threat model alignment:**
+- mini has no prod access; voice agent tool allowlist starts empty and
+  nothing prod-adjacent is ever added
+- Twilio sees audio only; all STT/LLM/TTS/state local on mini
+- No inbound port on the home router — Twilio reaches mini via a
+  Headscale-routed ingress on the `au-mel` Linode
+- Call logs, transcripts, and conversation state stay in local SQLite
+- Pipecat's transport abstraction means swapping Twilio for Telnyx /
+  Bandwidth / SignalWire / self-hosted Asterisk is a single-file change,
+  verified by the Phase 3 runbook
+
+**Phases** (see proposal for detail):
+
+1. **Phase 0** — Preflight: verify mini can run 8B at voice-grade latency
+   alongside the coding agent
+2. **Phase 1** — Twilio paid account + US 10DLC number + TwiML hello-world
+   (no A2P 10DLC dependency)
+3. **Phase 2** — Pipecat pipeline: `TwilioFrameSerializer` + Whisper +
+   Ollama + Piper + systemd
+4. **Phase 3** — Polish, coexistence load test, observability, provider-swap runbook
+5. **Phase 4** *(parallel, slow track)* — SMS via A2P 10DLC registration
+   (TCR 10–15 day review; gated on business registration details and an
+   updated privacy policy that explicitly mentions SMS; voice is unaffected)
+
+**Self-contained:** Everything lives under `servers/mini/voice-agent/`.
+No changes to `lib/`, `scripts/commands/`, `pl`, or `recipes/`. Deletes
+cleanly if the experiment fails.
+
+**Success Criteria:** see proposal § 7. Headline: local LLM answers calls
+with < 1.5 s p50 latency, coding agent tokens/sec degrades < 10 %, no
+inbound port on the home router, 7 days operation with ≥ 10 test calls
+and no incident.
+
+---
+
 ## Deep Analysis Re-Evaluation (January 2026)
 
 **Full Report:** [NWP_DEEP_ANALYSIS_REEVALUATION.md](../reports/NWP_DEEP_ANALYSIS_REEVALUATION.md)
@@ -1581,8 +1308,7 @@ These feature proposals were deprioritized by the Deep Analysis re-evaluation. T
 | | **Phase 10: Developer Experience** | | | | | |
 | 13 | F13 | MEDIUM | Low | None | 10 | ✅ Complete |
 | 14 | F15 | MEDIUM | Low (~10h) | None | 10 | ✅ Complete |
-| 15 | F10 | MEDIUM | Medium | None | 10 | Proposed |
-| 16 | F11 | MEDIUM | Low | F10 | 10 | Proposed |
+| — | F10, F11 | — | — | — | — | → Promoted to [local-llm guide](../guides/local-llm.md) + F21 Phase 3a (2026-04-08) |
 | 17 | F14 | MEDIUM | Medium | None | 10 | ✅ Complete |
 | | **Later / Conditional** | | | | | |
 | 18 | P55 | LOW | High (4-5w) | P50 | 9 | ✅ Complete |
@@ -1593,7 +1319,25 @@ These feature proposals were deprioritized by the Deep Analysis re-evaluation. T
 | - | F02 | LOW | Medium | F01 | 7b | Possible |
 | - | F06 | LOW | Medium | F04, GitLab CI | 6b | Possible |
 | - | F08 | LOW | Medium | verify.sh, GitLab | 7b | Possible |
-| - | X01 | LOW | High | F10 (optional) | X | Possible |
+| - | X01 | LOW | High | Local LLM guide (optional) | X | Possible |
+
+---
+
+## Site-specific Roadmaps
+
+NWP intentionally does not carry site-specific roadmap content. Each site
+manages its own work in its own project directory.
+
+| Site | Where its proposals live | Notes |
+|---|---|---|
+| AVC | [`sites/avc/docs/proposals/`](../../sites/avc/docs/proposals/) | A01 (Guild multi-verification), A02 (Workflow system), A03 (OAuth2/Guild sync — extracted from F23 phase 9) |
+| Sacred Sources (ss) | [`sites/ss/docs/proposals/`](../../sites/ss/docs/proposals/) | S01 (Faith Formation app, in progress) |
+| Mass Times (mt) | [`sites/mt/docs/proposals/`](../../sites/mt/docs/proposals/) | M01 (Scraper & Display, implemented), M02 (Site creation, deployed) |
+| CathNet | [`sites/cathnet/docs/proposals/`](../../sites/cathnet/docs/proposals/) | C01 (ACMC), C02 (NLP QA), C02a (Synthesis amendment), C03 (Neo4j KG) |
+| Directory Search (dir1) | [`sites/dir1/docs/proposals/`](../../sites/dir1/docs/proposals/) | None yet |
+
+Run `pl proposals` to aggregate NWP and every site's proposals into one
+list, filtered by status or by site.
 
 ---
 
@@ -1634,7 +1378,7 @@ These feature proposals were deprioritized by the Deep Analysis re-evaluation. T
 - [F15-ssh-user-management.md](../proposals/F15-ssh-user-management.md) - SSH user management (F15)
 
 ### Guides
-- [F10-local-llm-guide.md](../proposals/F10-local-llm-guide.md) - Complete guide to running open source AI models locally (F10)
+- [Local LLM Guide](../guides/local-llm.md) - Running open source AI models locally (promoted from F10 on 2026-04-08)
 - [Moodle Microsoft SSO](../guides/moodle-microsoft-sso.md) - Creating a Moodle site with Microsoft SSO using NWP
 
 ---
@@ -1649,6 +1393,7 @@ These feature proposals were deprioritized by the Deep Analysis re-evaluation. T
 *X01 (AI Video Generation) added as experimental outlier: January 10, 2026*
 *Phase X (Experimental/Outliers) created: January 10, 2026*
 *F11 (Developer Workstation Local LLM Config) added: January 11, 2026*
+*F10 promoted to guide (`docs/guides/local-llm.md`) and F11 subsumed: 2026-04-08 — the provisioning work they described is now tracked under F21 Phase 3a*
 *F12 (Unified Todo Command) completed: January 17, 2026*
 *F15 (SSH User Management) added: January 24, 2026*
 *F14 (Claude API Integration) added: February 1, 2026*
@@ -1658,3 +1403,4 @@ These feature proposals were deprioritized by the Deep Analysis re-evaluation. T
 *Broken proposal links fixed, Phase numbering updated: February 1, 2026*
 *F15 expanded to ~10h practical scope with developer key onboarding: February 1, 2026*
 *P56 updated with SSH key management for coder onboarding (Section 7): February 1, 2026*
+*X02 (Local Voice Agent on mini) added as experimental outlier; ADR-0018 added (Twilio as bounded SaaS): April 8, 2026*

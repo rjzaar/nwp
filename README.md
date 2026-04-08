@@ -484,9 +484,9 @@ NWP includes a comprehensive set of management scripts for working with your sit
 | `verify.sh` | Feature verification | Track which features need manual re-verification |
 | `report.sh` | Error reporting | Wrapper to report errors to GitLab with captured output |
 | `theme.sh` | Frontend tooling | Unified frontend build tool management (Gulp, Grunt, Webpack, Vite) |
-| `site.sh` | Per-site config (F23) | `pl site list/show/schema/migrate/init` — manage `sites/<name>/.nwp.yml` |
-| `server.sh` | Per-server config (F23) | `pl server list/show/status/sites/migrate` — manage `servers/<name>/.nwp-server.yml` |
-| `proposals.sh` | Proposal aggregator (F23) | `pl proposals` — list NWP root + per-site proposals with filters |
+| `site.sh` | Per-site config (F17) | `pl site list/show/schema/migrate/init` — manage `sites/<name>/.nwp.yml` |
+| `server.sh` | Per-server config (F17) | `pl server list/show/status/sites/migrate` — manage `servers/<name>/.nwp-server.yml` |
+| `proposals.sh` | Proposal aggregator (F17) | `pl proposals` — list NWP root + per-site proposals with filters |
 | `doctor.sh` | Diagnostics | `pl doctor` — checks prerequisites, network, site/server schemas |
 
 ### Notification Scripts
@@ -1088,7 +1088,7 @@ NWP includes automated GitLab server deployment on Linode infrastructure.
 
 ```bash
 # Set up a permanent GitLab site at git.<your-domain>
-# (F23 Phase 8: GitLab provisioning lives under servers/<server>/git/)
+# (F17 Phase 8: GitLab provisioning lives under servers/<server>/git/)
 cd servers/nwpcode/git
 ./setup_gitlab_site.sh
 ```
@@ -1490,7 +1490,7 @@ nwp/
 │   ├── notify-webhook.sh               # Webhook notifications
 │   └── security-update.sh              # Security update automation
 │
-│  (Note: F23 Phase 8 moved per-server infrastructure into `servers/<name>/`.
+│  (Note: F17 Phase 8 moved per-server infrastructure into `servers/<name>/`.
 │   See the `servers/` block below for `email/`, `linode/`, `git/`, etc.)
 │
 ├── .github/              # GitHub configuration
@@ -1521,12 +1521,12 @@ nwp/
 │       ├── webpack.sh                  # Webpack support
 │       └── vite.sh                     # Vite support
 │
-├── servers/              # Per-server infrastructure (F23 Phase 8, gitignored)
+├── servers/              # Per-server infrastructure (F17 Phase 8, gitignored)
 │   └── <server>/         # e.g. servers/nwpcode/
 │       ├── .nwp-server.yml          # Server identity (gitignored plaintext)
 │       ├── email/                   # postfix + mailpit setup scripts
 │       └── linode/                  # provisioning scripts and stackscripts
-└── sites/                # Self-contained site projects (F23, gitignored)
+└── sites/                # Self-contained site projects (F17, gitignored)
     └── <sitename>/       # Each site is its own project
         ├── .nwp.yml                 # Per-site config + schema_version
         ├── .ddev/                   # DDEV configuration

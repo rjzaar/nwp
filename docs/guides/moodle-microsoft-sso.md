@@ -361,7 +361,7 @@ Set up AVC SSO using NWP's built-in integration:
 pl avc-moodle-setup avc mysite
 ```
 
-See `docs/projects/avc/moodle-sso-nwp.md` for the full AVC integration guide.
+See `sites/avc/docs/projects/moodle-sso-nwp.md` for the full AVC integration guide.
 
 ---
 

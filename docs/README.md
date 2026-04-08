@@ -52,6 +52,7 @@ Step-by-step guides for common workflows:
 | [Coder Onboarding](guides/coder-onboarding.md) | Multi-coder infrastructure setup |
 | [Email Setup](guides/email-setup.md) | Email configuration, SMTP, and email reply system |
 | [Working with Claude Securely](guides/working-with-claude-securely.md) | AI assistant security guidelines |
+| [Local LLM Guide](guides/local-llm.md) | Running open source AI models locally (Ollama, hardware, model selection) |
 | [Moodle Microsoft SSO](guides/moodle-microsoft-sso.md) | Create a Moodle site with Microsoft account sign-on |
 | [Migration Sites Tracking](guides/migration-sites-tracking.md) | Migrate to sites tracking system |
 | [Git Hooks](development/git-hooks.md) | Automated code quality checks |
@@ -160,7 +161,6 @@ Current proposals under consideration:
 | [F07: SEO & Robots](proposals/F07-seo-robots.md) | SEO optimization and robots.txt |
 | [F08: Dynamic Badges](proposals/F08-dynamic-badges.md) | Badge generation system |
 | [F09: Comprehensive Testing](proposals/F09-comprehensive-testing.md) | Enhanced testing framework |
-| [F10: Local LLM Guide](proposals/F10-local-llm-guide.md) | Local AI development guide |
 | [NWP Deep Analysis](proposals/nwp-deep-analysis.md) | Comprehensive system analysis |
 | [YAML Parser Consolidation](proposals/YAML_PARSER_CONSOLIDATION.md) | Consolidate duplicate YAML parsers |
 | [API Client Abstraction](proposals/API_CLIENT_ABSTRACTION.md) | Abstraction layer for API calls |
@@ -357,7 +357,7 @@ See [Documentation Standards](governance/documentation-standards.md) for:
 - [CLAUDE.md](../CLAUDE.md) - AI assistant standing orders
 - [CHANGELOG.md](../CHANGELOG.md) - Version changelog
 - [KNOWN_ISSUES.md](../KNOWN_ISSUES.md) - Current known issues
-- [Server Configs](../servers/) - Per-server provisioning, GitLab, Linode, email scripts (F23 Phase 8)
+- [Server Configs](../servers/) - Per-server provisioning, GitLab, Linode, email scripts (F17 Phase 8)
 
 ---
 

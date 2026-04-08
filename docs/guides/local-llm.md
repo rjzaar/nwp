@@ -1,6 +1,13 @@
-# Local LLM Guide - Running Open Source AI Models
+# Local LLM Guide — Running Open Source AI Models
 
-**Last Updated:** January 10, 2026
+**Last Updated:** 2026-04-08
+
+> **History.** This was originally filed as proposal **F10: Local LLM Support
+> & Privacy Options** on 2026-01-10. On 2026-04-08 it was promoted from the
+> proposals directory to `docs/guides/` because it is a how-to, not a feature
+> proposal — there is no work to track, no success criteria, no phases. The
+> actual "install a local LLM on a NWP-managed machine" work lives under
+> [F21 Phase 3a — mini as local-LLM agent](../proposals/F21-distributed-build-deploy-pipeline.md#phase-3a--mini-as-local-llm-agent-reversible).
 
 A comprehensive guide to running open source AI models locally for privacy, cost savings, and offline development.
 
@@ -669,32 +676,31 @@ ollama run qwen2.5-coder:32b
 
 ## Using with NWP
 
-### Current Status (January 2026)
+### Current deployment — mini
 
-**F10 (Local LLM Support) is PROPOSED** but not yet implemented.
+The only NWP-managed machine currently running a local LLM is **mini**
+(Beelink Ryzen AI Max+ 395, Radeon 8060S iGPU, 32 GB RAM). See
+[F21 Phase 3a](../proposals/F21-distributed-build-deploy-pipeline.md#phase-3a--mini-as-local-llm-agent-reversible)
+for the provisioning plan and rationale.
 
-**When F10 is implemented, you'll be able to:**
+Quick orientation for operators:
 
-```bash
-# Configure AI provider
-pl config set ai.provider local
-pl config set ai.local.model qwen2.5-coder:7b
+- **Daemon:** ollama 0.20.3, installed user-space at `~/.local/bin/ollama`
+- **Service:** systemd user unit at `~/.config/systemd/user/ollama.service`,
+  enabled and lingered so it survives reboot without Rob logging in
+- **Endpoint:** `127.0.0.1:11434` only (not exposed to the LAN)
+- **Acceleration:** Vulkan on the Radeon 8060S via Mesa RADV
+  (`OLLAMA_VULKAN=1`); ~1.9x faster than CPU on llama3.1:8b
+- **Context default:** pinned to `OLLAMA_CONTEXT_LENGTH=8192` to stop
+  ollama from auto-sizing against the misleading 111 GiB Vulkan heap
+  that Strix Halo reports (that number is the unified-memory GTT, not
+  real fast memory; physical RAM is the actual constraint)
 
-# Use AI features
-pl llm chat                    # Interactive chat
-pl llm ask "question"          # One-shot questions
-pl llm code-review file.sh     # Review code
-pl commit --ai-message         # AI-generated commit messages
+### Manual integration today
 
-# Switch between providers
-pl config set ai.provider anthropic  # Use Claude
-pl config set ai.provider local      # Use local LLM
-pl config set ai.provider none       # Disable AI
-```
-
-### Manual Integration (Today)
-
-While F10 is not implemented, you can still use local LLMs manually:
+No `pl llm …` CLI integration exists yet — F21 Phase 3a deliberately
+does not commit to one until the agent role for mini has stabilised.
+Until then, use local LLMs via the ollama CLI or the REST API directly:
 
 **1. Code Review:**
 ```bash
@@ -1060,15 +1066,9 @@ export OLLAMA_HOST=192.168.1.100:11434
 ollama run qwen2.5-coder:7b
 ```
 
-**Configure in NWP (when F10 is implemented):**
-```yaml
-# nwp.yml
-ai:
-  provider: local
-  local:
-    endpoint: http://192.168.1.100:11434
-    model: qwen2.5-coder:7b
-```
+There is no `pl`/`nwp.yml` provider-switching integration yet.
+F21 Phase 3a intentionally leaves the CLI surface unspecified until mini's
+agent role has stabilised; see that phase for the current thinking.
 
 ### Monitoring Performance
 
@@ -1142,9 +1142,9 @@ done
 - Ollama GitHub Discussions: https://github.com/ollama/ollama/discussions
 
 ### NWP Integration
-- F10 Proposal: See [Roadmap](../governance/roadmap.md) (Phase 8)
-- Status: PROPOSED (not yet implemented)
-- Track progress: https://github.com/yourusername/nwp/issues
+- [F21: Distributed Build/Deploy Pipeline](../proposals/F21-distributed-build-deploy-pipeline.md) — Phase 3a provisions mini as NWP's local-LLM agent
+- [X02: Local Voice Agent on mini](../proposals/X02-local-voice-agent-on-mini.md) — downstream use of the mini LLM baseline
+- [CLAUDE.md § Threat Model](../../CLAUDE.md) — why local LLMs matter to NWP's trust story
 
 ---
 
@@ -1165,5 +1165,5 @@ done
 
 ---
 
-**Last Updated:** January 10, 2026
-**Related:** F10 proposal in [Roadmap](../governance/roadmap.md)
+**Last Updated:** 2026-04-08
+**Related:** [F21 Phase 3a](../proposals/F21-distributed-build-deploy-pipeline.md#phase-3a--mini-as-local-llm-agent-reversible), [X02 Voice Agent](../proposals/X02-local-voice-agent-on-mini.md)

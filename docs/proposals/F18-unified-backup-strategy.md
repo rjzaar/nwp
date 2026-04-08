@@ -1,10 +1,13 @@
-# F24: Unified Backup Strategy — Secrets, Config, Databases, and Full Rebuild
+# F18: Unified Backup Strategy — Secrets, Config, Databases, and Full Rebuild
+
+> **Renumbered 2026-04-08:** Previously **F24**. The old number is still used
+> in some external references; treat F24 as an alias for F18.
 
 **Status:** PROPOSED
 **Created:** 2026-04-06
 **Author:** Rob Zaar, Claude Opus 4.6
 **Priority:** High (data safety)
-**Depends On:** F23 (Project Separation) — partial; Phases 1-4 of F23 must land first
+**Depends On:** F17 (Project Separation) — partial; Phases 1-4 of F17 must land first
 **Breaking Changes:** No
 **Estimated Effort:** 30-42 hours across 6 phases
 
@@ -24,7 +27,7 @@ NWP's `~/nwp/` directory is 22GB, but the vast majority is **regeneratable** —
 
 4. **No backup scheduling.** All backups are manual (`pl backup`). The cron infrastructure is not connected.
 
-5. **Git provides code backup but not the full picture.** Git tracks NWP core and (after F23) each site's code, but everything else — secrets, databases, user uploads, local config — is unprotected.
+5. **Git provides code backup but not the full picture.** Git tracks NWP core and (after F17) each site's code, but everything else — secrets, databases, user uploads, local config — is unprotected.
 
 ### 1.2 Proposed Solution
 
@@ -66,7 +69,7 @@ IRREPLACEABLE (must back up):
   nwp.yml                          ~65 KB    All NWP configuration
   keys/                            ~0.5 KB   SSH keys
   .auth.yml                        ~0.5 KB   OAuth2 tokens
-  sites/*/.nwp.yml (after F23)     ~5 KB ea  Per-site config
+  sites/*/.nwp.yml (after F17)     ~5 KB ea  Per-site config
   Database dumps (all sites)       ~1-2 GB   Content, users, settings
   sites/*/files/ (user uploads)    ~0.5 GB   Media, documents
   sites/ss_moodledata/             ~2.5 MB   Course files
@@ -481,7 +484,7 @@ rebuild_site() {
     [ -f .secrets.yml.enc ] && sops decrypt .secrets.yml.enc > .secrets.yml
     chmod 600 .nwp.yml .secrets.yml 2>/dev/null
 
-    # 2a. Migrate schema if config came from an older NWP version (F23 §3.7)
+    # 2a. Migrate schema if config came from an older NWP version (F17 §3.7)
     pl site migrate "$site" --quiet || {
         log_error "Schema migration failed for $site — manual intervention required"
         return 1
@@ -907,19 +910,19 @@ Phases 1 and 2 can run in parallel. Phase 3 depends on 2. Phase 4 depends on 1-3
 
 ---
 
-## 13. Relationship to F23 (Project Separation)
+## 13. Relationship to F17 (Project Separation)
 
-F24 is designed to work with both the current layout and the F23 target layout:
+F18 is designed to work with both the current layout and the F17 target layout:
 
-| F23 Phase | F24 Impact |
+| F17 Phase | F18 Impact |
 |-----------|-----------|
-| Before F23 | Restic backs up `sitebackups/`, `modules/`, `mt/`, etc. from current locations |
-| After F23 Phase 1 (schema framework) | `pl rebuild` calls `pl site migrate` to upgrade old-version configs from backups (F23 §3.7) |
-| After F23 Phase 4 (backups moved into sites) | Restic backs up `sites/*/backups/` instead |
-| After F23 Phase 7 (per-site git) | SOPS-encrypted configs committed to each site's git repo |
-| After F23 Phase 8 (servers/) | Server configs SOPS-encrypted in `servers/*/` git repos |
+| Before F17 | Restic backs up `sitebackups/`, `modules/`, `mt/`, etc. from current locations |
+| After F17 Phase 1 (schema framework) | `pl rebuild` calls `pl site migrate` to upgrade old-version configs from backups (F17 §3.7) |
+| After F17 Phase 4 (backups moved into sites) | Restic backs up `sites/*/backups/` instead |
+| After F17 Phase 7 (per-site git) | SOPS-encrypted configs committed to each site's git repo |
+| After F17 Phase 8 (servers/) | Server configs SOPS-encrypted in `servers/*/` git repos |
 
-**Recommendation:** Start F24 Phase 1-2 now (SOPS + restic setup). These work regardless of F23 progress. Phases 3-6 can adapt to whichever layout exists at implementation time.
+**Recommendation:** Start F18 Phase 1-2 now (SOPS + restic setup). These work regardless of F17 progress. Phases 3-6 can adapt to whichever layout exists at implementation time.
 
 ---
 

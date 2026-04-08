@@ -203,8 +203,8 @@ LOCAL                           CLOUD
 | F01 - GitLab MCP | Deferred | Saves 3 seconds per CI failure (8-16h investment) |
 | F02 - Auto CI error resolution | Deferred | Masks real problems (40h investment) |
 | F08 - Dynamic badges | Deferred | Vanity metric for private tool (8-16h investment) |
-| F10 - Local LLM support | Deferred | Claude API works fine, hobby project (40-60h) |
-| F11 - LLM workstation config | Deferred | Depends on F10 which isn't needed (2-4h) |
+| F10 - Local LLM support | Promoted to guide | Always was a how-to, not a feature; moved to `docs/guides/local-llm.md` (2026-04-08). Actual provisioning tracked under F21 Phase 3a. |
+| F11 - LLM workstation config | Retired | Subsumed by the local-llm guide + F21 Phase 3a (mini). |
 
 **Estimated avoided over-engineering:** ~400-650 hours saved by following pragmatic re-evaluation
 

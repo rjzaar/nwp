@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+> **2026-04-08 proposal renumbering.** The NWP F-series was made consecutive
+> and several site-specific proposals moved to their own projects. Historical
+> entries below retain the old F-numbers (F22–F26, etc.) as they appeared at
+> release time. The renumbering map:
+>
+> - F22 → **F16** (Claude Code Web Access)
+> - F23 → **F17** (Project Separation)
+> - F24 → **F18** (Unified Backup Strategy)
+> - F25 → **F19** (Pre-Baseline Cleanup)
+> - F26 → **F20** (SolveIt Methodology)
+> - F23 Phase 9 → `sites/avc/docs/proposals/A03-oauth2-guild-sync.md`
+> - Old F16/F17 (Mass Times) → `sites/mt/docs/proposals/M01, M02`
+> - Old F18/F19/F21 (CathNet) → `sites/cathnet/docs/proposals/C01, C02, C03`
+> - Old F20 (Faith Formation) → `sites/ss/docs/proposals/S01`
+>
+> See `docs/proposals/README.md` for the full mapping and rationale.
+
 ---
 
 ## [Unreleased]

@@ -4,7 +4,7 @@
 **Created:** 2026-02-01
 **Author:** Rob, Claude Opus 4.5
 **Priority:** Medium
-**Depends On:** None (benefits from F10 for provider switching)
+**Depends On:** None (complements [`docs/guides/local-llm.md`](../guides/local-llm.md) for provider-choice scenarios)
 **Estimated Effort:** 2-3 weeks
 **Breaking Changes:** No - additive feature
 

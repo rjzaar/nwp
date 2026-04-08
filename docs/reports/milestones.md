@@ -1,12 +1,24 @@
 # NWP Milestones - Completed Implementation History
 
-**Last Updated:** April 7, 2026
+**Last Updated:** April 8, 2026
 
-A summary of all completed development phases and their key achievements.
+A summary of all completed **NWP core** development phases and their key
+achievements.
+
+> **NWP-only.** Per-site milestones (mass times deployment, ss faith
+> formation app shipping, cathnet phases, avc profile features) live in
+> each site's own `sites/<name>/docs/proposals/` directory. This file
+> covers NWP itself.
+
+> **2026-04-08 renumbering.** F23 → F17, F25 → F19; site-specific
+> proposals (old F16/F17/F18/F19/F20/F21) moved into per-project schemes
+> (M01, M02, C01, C02, C02a, C03, S01). Old IDs survive as aliases inside
+> each renamed file. See [docs/proposals/README.md](../proposals/README.md)
+> for the full mapping.
 
 ---
 
-## Overview
+## Overview (NWP core)
 
 | Phase | Focus | Proposals | Completed |
 |-------|-------|-----------|-----------|
@@ -19,13 +31,17 @@ A summary of all completed development phases and their key achievements.
 | Phase 5c | Live Deployment Automation | P32-P35 | Jan 2026 |
 | Phase 6-7 | Governance, Security, Testing & Todo | F04, F05, F07, F09, F12 | Jan 2026 |
 | Phase 8 | Unified Verification | P50, P51 | Jan 2026 |
-| Phase 9 | Verification & Production Hardening | P53-P58 | Feb 2026 |
+| Phase 9 | Verification & Production Hardening | P53-P59, P60 | Feb–Mar 2026 |
 | Phase 10 (partial) | Developer Experience | F03, F13, F14, F15 | Feb 2026 |
-| Phase 11 | Mass Times Pipeline | F16, F17 | Mar 2026 |
-| Phase 12 | Project Separation | F23 (phases 1–8, 10) | Apr 2026 |
-| AVC | Profile Enhancements | Email Reply | Jan 2026 |
+| Phase 11 | Project Separation | F17 (formerly F23, phases 1–8, 10) | Apr 2026 |
+| Phase 12 | Pre-Baseline Cleanup | F19 (formerly F25) | Apr 2026 |
 
-**Total: 55 proposals implemented** (P01-P35, P50-P51, P53-P58, F03-F05, F07, F09, F12-F17, F23 phases 1–8 + 10) + AVC Profile Enhancements
+**Total: ~50 NWP-core proposals implemented** (P01–P35, P50–P51, P53–P60,
+F03–F05, F07, F09, F12–F15, F17 phases 1–8 + 10, F19).
+
+For per-site delivery history (Mass Times deployment, Faith Formation
+app, AVC profile features, etc.), see each site's own
+`sites/<name>/docs/proposals/` directory.
 
 ---
 
@@ -399,49 +415,24 @@ Created `get_ssh_user()` resolution chain in `lib/ssh.sh`. Fixed hardcoded SSH u
 
 ---
 
-## AVC Profile Enhancements
+## Site-specific Milestones (moved out)
 
-### AVC Email Reply System
-Allows group members to reply to notification emails to create comments on content. Users receive notification emails with `Reply-To: reply+{token}@domain` headers and can respond directly via email.
+The previous "AVC Profile Enhancements" section, the Mass Times deployment
+write-up, and any other site-specific delivery history have moved to the
+respective site's project directory under
+`sites/<name>/docs/proposals/`. NWP's milestone log only tracks NWP-core
+work.
 
-**Architecture:**
-```
-Outbound: Notification → Reply-To: reply+{token}@domain → User Inbox
-Inbound:  User Reply → Webhook /api/email/inbound → Queue → Comment
-```
+| Site | Where its history lives |
+|---|---|
+| AVC | [`sites/avc/docs/proposals/`](../../sites/avc/docs/proposals/) |
+| Sacred Sources (ss) | [`sites/ss/docs/proposals/`](../../sites/ss/docs/proposals/) |
+| Mass Times (mt) | [`sites/mt/docs/proposals/`](../../sites/mt/docs/proposals/) |
+| CathNet | [`sites/cathnet/docs/proposals/`](../../sites/cathnet/docs/proposals/) |
+| Directory Search (dir1) | [`sites/dir1/docs/proposals/`](../../sites/dir1/docs/proposals/) |
 
-**Key Components:**
-- HMAC-SHA256 token generation with 30-day expiration
-- Email provider integration (SendGrid Inbound Parse, Mailgun Routes)
-- Queue-based async processing for reliability
-- Rate limiting (10/hour, 50/day per user; 100/hour per group)
-- Spam filtering with configurable score threshold
-- Content sanitization before comment creation
-
-**Implementation:**
-- `avc_email_reply` module with controller, services, queue worker
-- Drush commands: `email-reply:status`, `email-reply:enable`, `email-reply:configure`, etc.
-- DDEV testing command: `ddev email-reply-test`
-- Web UI testing: `/admin/config/avc/email-reply/test`
-- Auto-configuration via recipe system in `nwp.yml`
-- Post-install script for environment-aware setup
-
-**Files:**
-| File | Purpose |
-|------|---------|
-| `InboundEmailController.php` | Webhook endpoint for email providers |
-| `EmailReplyTestController.php` | Testing UI |
-| `ReplyTokenService.php` | Token generation/validation |
-| `EmailReplyProcessor.php` | Email processing logic |
-| `EmailReplyWorker.php` | Queue worker |
-| `EmailRateLimiter.php` | Rate limiting service |
-| `EmailReplyCommands.php` | Drush commands |
-| `configure_email_reply.php` | Post-install configuration |
-
-**Testing:**
-- DDEV command: `ddev email-reply-test {setup|test|simulate|webhook|queue}`
-- Web UI: `/admin/config/avc/email-reply/test`
-- End-to-end automated testing via Drush commands
+Run `pl proposals --status=complete` to see what has shipped across NWP
+and every site.
 
 ---
 

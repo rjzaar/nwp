@@ -1,4 +1,7 @@
-# F22: Claude Code Web Access — Remote CLI via Drupal
+# F16: Claude Code Web Access — Remote CLI via Drupal
+
+> **Renumbered 2026-04-08:** Previously **F22**. The old number is still used
+> in some external references; treat F22 as an alias for F16.
 
 **Status:** PROPOSED
 **Created:** 2026-03-23

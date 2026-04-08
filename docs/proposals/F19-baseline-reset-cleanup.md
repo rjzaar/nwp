@@ -1,4 +1,13 @@
-# F25: Pre-Baseline Cleanup for v0.30.0 Fresh Repo Reset
+# F19: Pre-Baseline Cleanup for v0.30.0 Fresh Repo Reset
+
+> **Renumbered 2026-04-08:** Previously **F25**. The old number is still used
+> in some external references; treat F25 as an alias for F19.
+>
+> **Historical F-numbers inside this document.** This proposal documents work
+> done *before* the 2026-04-08 renumbering and uses the old F-series IDs
+> throughout (F23 → now F17, F24 → now F18, F25 → this proposal, F26 → now
+> F20). The body is preserved as a historical record; cross-reference using
+> the alias table in `docs/proposals/README.md` if needed.
 
 **Status:** IMPLEMENTED (Phases 1–7 complete; Phase 8 pending user confirmation)
 **Created:** 2026-04-07

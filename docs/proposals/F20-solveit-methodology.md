@@ -1,4 +1,7 @@
-# F26: Integrating the SolveIt Methodology into NWP
+# F20: Integrating the SolveIt Methodology into NWP
+
+> **Renumbered 2026-04-08:** Previously **F26**. The old number is still used
+> in some external references; treat F26 as an alias for F20.
 
 **Status:** PROPOSED
 **Created:** 2026-03 (renumbered as F26 on 2026-04-07)

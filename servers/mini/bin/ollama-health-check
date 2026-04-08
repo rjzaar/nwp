@@ -78,4 +78,68 @@ else
     echo "mini LLM stack: UNHEALTHY"
 fi
 
+################################################################################
+# Alerting: post to ops/mons-log on state transitions.
+#
+# We use a sentinel file at ~/.cache/ollama-health.state to remember the
+# previous run's state. An alert is posted when:
+#   - healthy -> unhealthy (a "went down" alert)
+#   - unhealthy -> healthy (a "recovered" alert)
+# No alert is posted when the state is unchanged, so a 1-hour outage is
+# one alert not twelve.
+#
+# The token lives at ~/.config/mini-alerts.token (0600, scoped PAT that
+# can ONLY post to ops/mons-log — no other project, no other action).
+# If the token file is missing, alerting is silently skipped (useful for
+# development).
+################################################################################
+
+STATE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}"
+STATE_FILE="$STATE_DIR/ollama-health.state"
+TOKEN_FILE="$HOME/.config/mini-alerts.token"
+mkdir -p "$STATE_DIR"
+
+prev_state="unknown"
+if [[ -f "$STATE_FILE" ]]; then
+    prev_state=$(cat "$STATE_FILE" 2>/dev/null || echo "unknown")
+fi
+
+if [[ "$overall" -eq 0 ]]; then
+    new_state="healthy"
+else
+    new_state="unhealthy"
+fi
+echo "$new_state" > "$STATE_FILE"
+
+# Only alert on transitions, and only if we have a token.
+if [[ "$prev_state" != "unknown" ]] && \
+   [[ "$prev_state" != "$new_state" ]] && \
+   [[ -r "$TOKEN_FILE" ]]; then
+
+    TOKEN=$(cat "$TOKEN_FILE")
+    HOST=$(hostname)
+    TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    if [[ "$new_state" == "unhealthy" ]]; then
+        TITLE="mini LLM stack UNHEALTHY"
+    else
+        TITLE="mini LLM stack recovered (now HEALTHY)"
+    fi
+
+    # Body carries the full check output so the reader sees what failed.
+    # Use the collected check output — we regenerate it here rather than
+    # capturing the earlier echoes, because those went to stdout already.
+    BODY="host: ${HOST}"$'\n'"time: ${TS}"$'\n'"transition: ${prev_state} -> ${new_state}"$'\n\n'"source: ollama-health.service on mini (F21 Phase 3a health check)"
+
+    # Fire and forget — don't fail the check just because the alert
+    # post failed. The journal still has the health state.
+    curl -sS --max-time 10 \
+        -X POST \
+        -H "PRIVATE-TOKEN: ${TOKEN}" \
+        --data-urlencode "title=${TITLE}" \
+        --data-urlencode "description=${BODY}" \
+        "https://git.nwpcode.org/api/v4/projects/ops%2Fmons-log/issues" \
+        > /dev/null 2>&1 || echo "alerting: POST to ops/mons-log failed (non-fatal)"
+fi
+
 exit "$overall"

@@ -14,3 +14,9 @@ ExecStart=%h/.local/bin/ollama-health-check
 # will pick it up and the journal carries the detail.
 StandardOutput=journal
 StandardError=journal
+# Tag the check's stdout with the unit name so `journalctl -u
+# ollama-health.service` shows both the systemd unit events AND the
+# check script's OK/FAIL lines in one place. Without this, stdout
+# gets journalled under `_COMM=ollama-health-check` and is invisible
+# to a unit-scoped query.
+SyslogIdentifier=ollama-health.service

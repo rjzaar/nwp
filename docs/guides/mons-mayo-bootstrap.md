@@ -57,22 +57,24 @@ to do the missing pieces today.
 
 ## Credentials you'll need
 
-Two secrets, currently only living in this conversation's scrollback on
-dev. Copy them somewhere durable BEFORE you start, because they will be
-overwritten by the next time Claude rotates them:
+All credentials for this bootstrap live in `~/nwp/.secrets.yml` on dev
+(decision recorded 2026-04-08 — see "Persisting the credentials"
+section below). Ask the dev Claude session for the specific value when
+you need it; do not commit it into this guide or anywhere else on mons.
 
-| What | Value | Use |
+| What | Where in `.secrets.yml` | Use |
 |---|---|---|
-| `mini` user login on git.nwpcode.org | (ask dev session, see "Credentials persistence" item) | Web UI login as the mini-bot |
-| Mini-bot Personal Access Token | (ask dev session, see "Credentials persistence" item) | HTTPS git auth from mons |
+| `mons-bot` PAT | `gitlab.mons_bot_token` | HTTPS git clone/pull of `mayo/*` repos from mons. Read-only, cannot push, cannot touch other groups. Scopes: `read_api`, `read_repository`. Expires **2027-04-08**. |
+| `mons-bot` user password | see comment in `.secrets.yml` | Web UI login if you need to browse git.nwpcode.org from mons (you usually won't). |
+| `mons-log` project token | `gitlab.mons_log_token` | `mons-say` helper only. Scoped to `ops/mons-log` alone. |
+| `mayo1` SSH key | `~/.ssh/opencat` on mons | SSH from mons to the mayo1 Linode. Passphrase-protected per Step 2. |
 
-The PAT scopes are `api`, `read_repository`, `write_repository`, and it
-expires **2027-04-08**.
-
-> The dev session intentionally did not write these to a file before
-> handing off to you. Decide where they live (`.secrets.yml` on dev or a
-> password manager) before continuing — see "Persisting the credentials"
-> at the bottom.
+**Do not use the mini-bot PAT on mons.** That token has write access
+to the mayo group and belongs to the build tier (met/mini), which mons
+is explicitly separated from. If you see an older copy of this guide
+or a stale clone on mons that references `mini-bot`, re-run Step 3
+with the `mons-bot` PAT instead and delete the old clone's
+`.git/config` credentials.
 
 ## Step 1 — Mons baseline checks
 
@@ -148,8 +150,10 @@ in memory once per session, so you only type it on first use.
 mkdir -p ~/nwp-repos
 cd ~/nwp-repos
 
-# Clone using the mini-bot PAT (see "Credentials" above)
-# Replace TOKEN with the actual glpat- value
+# Clone using the mons-bot PAT (see "Credentials" above).
+# Replace TOKEN with the literal glpat- value from .secrets.yml on dev.
+# Type the whole line on one line — no leading slash, no placeholder
+# word "TOKEN" surviving into the actual command.
 git clone "https://oauth2:TOKEN@git.nwpcode.org/mayo/mayo.git"
 cd mayo
 ```
@@ -158,7 +162,8 @@ cd mayo
 
 ```bash
 git log --oneline
-# Expected: two commits
+# Expected: three commits (as of 2026-04-08 bootstrap):
+#   3156d38 Round-trip marker: NWPMANAGED 2026-04-08
 #   31b9e6c Initial import of mayostudios.org
 #   739b284 Initial commit
 
@@ -257,6 +262,35 @@ Expected: `absent — good`.
 Tell the dev session "round-trip green" and the bootstrap is done for
 the day.
 
+### Rotating off the mini-bot PAT (one-time, if needed)
+
+During the 2026-04-08 bootstrap we initially used the mini-bot PAT on
+mons because the mons-bot identity didn't exist yet. That was wrong
+under the threat model: mini-bot is the build tier (read/write on
+mayo), mons should be the deploy tier (read-only). The guide above
+now tells you to use the mons-bot PAT from the start.
+
+If your mons already has a clone set up with the old mini-bot PAT in
+the credential cache or in `.git/config`, clean it up next time you
+bring mons online:
+
+```bash
+cd ~/nwp-repos/mayo
+
+# Strip any embedded token from the remote URL
+git remote set-url origin https://git.nwpcode.org/mayo/mayo.git
+
+# Clear the git credential cache so it doesn't re-use the old PAT
+git credential-cache exit 2>/dev/null || true
+
+# Test a pull — it should prompt for username/password, enter
+# "oauth2" and paste the mons-bot PAT from .secrets.yml on dev
+git pull
+```
+
+The mini-bot PAT itself is not revoked (it's still used by met/mini
+for CI), just no longer used on mons.
+
 ## What changes after today
 
 Once F21 P5–P8 ship, this manual procedure becomes:
@@ -276,25 +310,27 @@ None of that exists yet. Today we are proving the trust path with the
 weakest acceptable security (passphrase-protected SSH key, HTTPS pull,
 rsync dry-run) so we have a working baseline to harden against.
 
-## Persisting the credentials before you finish
+## Persisting the credentials (decision recorded 2026-04-08)
 
-Before mons goes back into its offline-by-default state, decide where
-the mini login password and PAT live long-term. Three options:
+**Decision:** credentials live in `~/nwp/.secrets.yml` on dev. Claude
+is allowed to read that file per the two-tier secrets architecture and
+dev-side automation (like the `mons-bot` identity split) needs
+programmatic access.
 
-1. **`~/nwp/.secrets.yml` on dev** — Claude is allowed to read this file
-   per the NWP two-tier secrets architecture. Add a `mayo:` block to it.
-   Pros: easy for dev-side automation. Cons: another secret on a
-   network-attached machine.
-2. **A local password manager on mons** (KeePassXC, pass, etc.) — most
-   in line with the threat model. Cons: dev-side automation can't pull
-   the PAT later (you'd retype it).
-3. **Both** — store in the password manager as the source of truth, and
-   also in `.secrets.yml` for the convenience of automation. Rotate the
-   PAT before its 2027-04-08 expiry.
+What's in there today:
 
-The dev session is waiting for your decision on this; tell it which
-option you picked and it'll either update `.secrets.yml` or stay out of
-the way.
+- `gitlab.api_token` — admin PAT (use sparingly; prefer scoped tokens)
+- `gitlab.mons_log_token` — project access token for `ops/mons-log`
+- `gitlab.mons_bot_token` — read-only PAT for mayo group from mons
+- `gitlab.mini_bot_token` — read/write PAT for mayo group from mini/met
+
+Expiry is **2027-04-08** for all three of the scoped tokens; rotate
+before that date. The admin PAT doesn't expire.
+
+If at any point you want a second copy in a password manager on mons
+(recommended if mons starts accumulating unique state that dev can't
+reconstruct), keep the password manager as the source of truth and
+treat `.secrets.yml` as a cached mirror. Not necessary today.
 
 ## Step 7 — Install `mons-say` (the mons → dev message queue)
 

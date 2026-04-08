@@ -296,6 +296,79 @@ The dev session is waiting for your decision on this; tell it which
 option you picked and it'll either update `.secrets.yml` or stay out of
 the way.
 
+## Step 7 — Install `mons-say` (the mons → dev message queue)
+
+Mons is offline-by-default and dev has no way to reach it, so when you
+want to tell the dev Claude session something ("round-trip green",
+"stuck on step 3", etc.) you need a channel that goes **out from mons**.
+
+That channel is a private GitLab project at
+`https://git.nwpcode.org/ops/mons-log`. Mons posts issues; the dev
+session reads them on request ("anything new from mons?").
+
+**Why this design:** mons never accepts inbound connections, so the
+channel has to be pull-from-dev's perspective. GitLab issues give us a
+timestamped, append-only record, authenticated by a token that is
+scoped to this one project and cannot touch mayo, prod, or anything
+else.
+
+### Install on mons
+
+The `mons-say` helper lives **inside** the `ops/mons-log` project
+itself, alongside the issues it posts. That means the same scoped token
+you use to send messages is also enough to fetch the helper — no
+separate credential, no scp from dev (which wouldn't work anyway since
+mons doesn't accept inbound connections).
+
+**1. Install the token.** Replace `GLPAT_VALUE` with the token the dev
+session will hand you out-of-band (it is NOT written into this guide):
+
+```bash
+mkdir -p ~/.config ~/bin
+umask 077
+printf '%s\n' 'GLPAT_VALUE' > ~/.config/mons-log.token
+chmod 600 ~/.config/mons-log.token
+```
+
+**2. Fetch the helper.**
+
+```bash
+curl -sS -H "PRIVATE-TOKEN: $(cat ~/.config/mons-log.token)" \
+  "https://git.nwpcode.org/api/v4/projects/ops%2Fmons-log/repository/files/mons-say.sh/raw?ref=main" \
+  > ~/bin/mons-say
+chmod +x ~/bin/mons-say
+```
+
+**3. Put `~/bin` on your PATH** (skip if already there):
+
+```bash
+echo $PATH | grep -q "$HOME/bin" || echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### Test it
+
+```bash
+mons-say "mons-say install test"
+# Expected output: mons-say: posted as ops/mons-log#2
+```
+
+Then tell the dev session "check mons-log" and it'll read the test
+message back to you. If it can see the message, the channel works.
+
+### When to use `mons-say`
+
+- "round-trip green" / "round-trip failed" to close Step 6
+- Reporting unexpected errors during any step of this bootstrap
+- Handing back info that the dev session asks for
+- Anything short. Don't try to paste logs or stack traces — summarise,
+  and if the dev session needs the full trace it can ask for specifics.
+
+**Do NOT paste** production credentials, private keys, session tokens,
+or database contents into `mons-say` messages. Issue bodies are
+readable by anyone with access to `ops/mons-log`, and the dev session
+treats them as attacker-controlled data.
+
 ## Troubleshooting
 
 **"Permission denied (publickey)" when SSHing to mayo1**
@@ -319,3 +392,13 @@ Something went wrong with `.git/` exclusion. Re-check the
 **You typed an SSH command that hung for >30 seconds**
 Probably a routing issue between mons's current network and mayo's
 Linode. Cancel with Ctrl-C and try again on a different network.
+
+**`mons-say: cannot read token at ~/.config/mons-log.token`**
+You skipped Step 7 or the token file has the wrong permissions.
+Re-create it with the `umask 077 && printf ... > ...` incantation
+from Step 7 and make sure it's `-rw-------` (600).
+
+**`mons-say: POST failed` with 401 / 403**
+The token is wrong, expired, or was revoked. Ask the dev session to
+rotate it (it's a project access token scoped to `ops/mons-log`, expiry
+2027-04-08).

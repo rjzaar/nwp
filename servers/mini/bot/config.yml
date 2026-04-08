@@ -1,0 +1,47 @@
+# mini-bot poller configuration — F21 Phase 10 skeleton.
+#
+# This file is committed to the nwp repo. It must never contain
+# secrets. The GitLab PAT is read from the MINI_BOT_PAT environment
+# variable at runtime.
+#
+# HARD DEFAULT: dry_run: true. See README.md for the policy on
+# flipping this to false.
+
+gitlab:
+  base_url: https://git.nwpcode.org
+  user: mini
+  # Environment variable that carries the bot's personal access token.
+  # Must have api + read_repository + write_repository scopes on the
+  # allowlisted projects.
+  token_env: MINI_BOT_PAT
+
+repos:
+  # Explicit allowlist. The poller refuses to touch anything not in
+  # this list. This is intentional, not a bug — new repos require
+  # an explicit commit here, which forces a human review gate.
+  allowlist:
+    - mayo/mayo
+
+ollama:
+  url: http://127.0.0.1:11434
+  model: qwen2.5-coder:14b
+
+# HARD DEFAULT. The poller checks this flag early and refuses to
+# write, push, or open an MR while it is true. Do NOT flip this to
+# false until at least 5 draft patches have been reviewed by Rob
+# and the prompt has been validated as sane.
+dry_run: true
+
+# Per-run limits (safety caps).
+limits:
+  max_issues_per_run: 5
+  max_files_in_prompt: 5
+  max_prompt_bytes: 32768
+  ollama_timeout_sec: 120
+
+# Where to write draft patches, work directories, and logs.
+# Resolved relative to $HOME.
+paths:
+  workdir_base: .local/share/mini-bot/workdirs
+  drafts_dir:   .local/share/mini-bot/drafts
+  log_file:     .local/share/mini-bot/poller.log

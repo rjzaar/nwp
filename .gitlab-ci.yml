@@ -105,22 +105,37 @@ workflow:
     - if: $CI_COMMIT_BRANCH
 
 ################################################################################
+# SIGNATURE VERIFICATION (placeholder)
+# Will enforce signed commits once commit signing is configured
+################################################################################
+
+verify-signature:
+  stage: .pre
+  script:
+    - echo "Signature verification — placeholder until signing is configured"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+  tags:
+    - nwp
+    - met
+  allow_failure: true  # flip to false once signing is live
+
+################################################################################
 # LINT STAGE
 # Fast syntax and style validation
 ################################################################################
 
-# Bash syntax validation
+# Bash syntax validation (shell executor on met — no Docker image needed)
 lint:bash:
   stage: lint
-  image: ubuntu:22.04
   script:
-    - apt-get update -qq && apt-get install -y -qq bash
     - echo "Validating bash syntax for all scripts and libraries..."
     - find scripts/commands lib -name "*.sh" -type f -exec bash -n {} \;
   rules:
     - if: $CI_PIPELINE_SOURCE == "push"
   tags:
     - nwp
+    - met
 
 ################################################################################
 # TEST STAGE

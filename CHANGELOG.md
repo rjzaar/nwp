@@ -25,7 +25,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added — F21 Phase 3a: mini as local-LLM agent (2026-04-08)
+- **`servers/mini/systemd/`** — systemd user units for mini's ollama stack now tracked in the nwp repo: `ollama.service` (the daemon, with `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_VULKAN=1`, `OLLAMA_CONTEXT_LENGTH=8192` pinned), `ollama-health.service` (oneshot health runner), `ollama-health.timer` (5-minute cadence, `Persistent=true`). `.gitignore` gets a targeted exception for `servers/mini/` since the default `servers/*` ignore rule keeps per-server infra out of the nwp repo — mini has no separate git repo of its own.
+- **`servers/mini/bin/ollama-health-check`** — local fast-path health script invoked by the timer. Five checks: systemd unit active, daemon reachable on loopback, loopback-only bind, both baseline models (`llama3.1:8b`, `qwen2.5-coder:14b`) registered. Runs without SSH so the timer doesn't self-loop.
+- **`scripts/commands/mini.sh` + `pl mini llm health`** — dev-side diagnostic (default / `--quick` / `--json` modes) that wraps the on-mini checks over SSH. Seven checks including end-to-end benchmark gates (chat ≥25 tok/s, coder ≥20 tok/s).
+- **`docs/guides/local-llm.md`** — documents the interim dev→mini SSH port-forward pattern (`ssh -N -L 11434:127.0.0.1:11434 mini`) for reaching mini's ollama from the dev workstation until F21 Phase 1 (Headscale overlay) lands. Explicitly marked interim.
+- **F21 proposal** — Phase 3a marked ✅ complete; Phase 10 annotated with the dry-run skeleton landing; overall F21 status changed from PROPOSED to IN PROGRESS.
+
+### Added — F21 Phase 10: mini-bot poller skeleton (2026-04-08, dry-run only)
+- **`servers/mini/bot/`** — inert skeleton for the future AI-fix loop: `poll.py` (~470 lines, stdlib + PyYAML), `config.yml` with **hard-default `dry_run: true`** and static `repos.allowlist: [mayo/mayo]`, operational `README.md` with a five-item checklist that must be satisfied before `dry_run: false` is ever considered.
+- **Prompt-injection defence** — untrusted issue bodies and repo file contents are wrapped in explicit `<<<ISSUE_BODY_BEGIN>>>` / `<<<REPO_FILES_BEGIN>>>` delimiters; the system prompt instructs the model to treat those blocks as untrusted data, not instructions. Backed by the dry-run default, the human-in-the-loop review rule, branch protection, the static allowlist, and mini's position in the AI-accessible tier (no prod credentials) per CLAUDE.md § Distributed Actor Glossary.
+- **Diff extraction + framing tests** — 13 unit tests (`tests/test_diff_parser.py`) cover the fenced-diff parser (`diff`/`patch`/unlabelled fences, prose wrapping, empty-decline blocks), the unified-diff sanity checker, and the prompt-framing invariants. All run against static fixtures, no network. The poller hard-refuses to start if `dry_run: false` is set, because the live apply/branch/push/MR path is intentionally unimplemented.
+- Not yet wired to anything — the mayo issue channel that would feed it does not exist, and mons (Phase 5) does not exist to emit the signed crash reports that would be its real input.
 
 ---
 

@@ -109,7 +109,10 @@ See [milestones.md](../reports/milestones.md) for the full version history.
 - **F16** — Claude Code Web Access (formerly F22)
 - **F18** — Unified Backup Strategy (formerly F24)
 - **F20** — Integrating the SolveIt Methodology into NWP (formerly F26)
-- **F21** — Distributed Build/Deploy Pipeline (mmt build, mons deploy) — *new, implements [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md)*
+
+### In Progress (NWP core)
+
+- **F21** — Distributed Build/Deploy Pipeline (mmt build, mons deploy) — *implements [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md)*; Phase 3a ✅ complete (2026-04-08), Phase 10 dry-run skeleton landed (2026-04-08), phases 1–2, 4–9, 11–13 outstanding
 
 ### Pending (see [roadmap.md](../governance/roadmap.md))
 
@@ -150,4 +153,4 @@ Use `pl proposals` to aggregate everything below into one view.
 4. **COMPLETE** — Implemented and verified
 5. **Moved to milestones.md** — Archived as completed work
 
-Last Updated: 2026-04-08
+Last Updated: 2026-04-09

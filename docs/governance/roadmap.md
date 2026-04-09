@@ -2,7 +2,7 @@
 
 **NWP — Narrow Way Project** | Drupal hosting, deployment & infrastructure automation
 
-**Last Updated:** April 8, 2026
+**Last Updated:** April 9, 2026
 
 Pending implementation items and future improvements for **NWP core**.
 
@@ -37,7 +37,8 @@ Pending implementation items and future improvements for **NWP core**.
 | Current Version | v0.30.0 (F17 phases 1–8, 10 landed; F19 baseline reset complete) |
 | Test Success Rate | 99.5% (Machine Verified) |
 | Completed NWP Proposals | P01–P35, P50–P51, P53–P60, F03–F05, F07, F09, F12–F15, F17 (phases 1–8, 10), F19 |
-| Proposed NWP Proposals | F16 (Claude Code Web), F18 (Unified Backup), F20 (SolveIt), F21 (Distributed Build/Deploy Pipeline) |
+| Proposed NWP Proposals | F16 (Claude Code Web), F18 (Unified Backup), F20 (SolveIt) |
+| In-Progress NWP Proposals | F21 (Distributed Build/Deploy Pipeline — Phase 3a ✅ complete, Phase 10 dry-run skeleton landed) |
 | Pending NWP Proposals | F01, F02, F06, F08 |
 | Rejected NWP Proposals | P52 (rename — NWP is the permanent project name) |
 | Experimental/Outlier | X01, X02 |
@@ -76,7 +77,7 @@ Pending implementation items and future improvements for **NWP core**.
 | **Phase 10** | **Developer Experience** | **F13, F14, F15** (F10 → [guide](../guides/local-llm.md), F11 subsumed) | **✅ Complete** |
 | **Phase 11** | **Project Separation** | **F17 (was F23)** | **✅ Complete (phases 1–8, 10)** |
 | **Phase 12** | **Baseline Reset & v0.30.0** | **F19 (was F25)** | **✅ Complete** |
-| **Phase 13** | **Distributed Build/Deploy Pipeline** | **F21 (new, implements ADR-0017)** | **PROPOSED** |
+| **Phase 13** | **Distributed Build/Deploy Pipeline** | **F21 (new, implements ADR-0017)** | **IN PROGRESS (Phase 3a ✅, Phase 10 skeleton; phases 1–2, 4–9, 11–13 pending)** |
 | **Phase 14** | **Claude Code Web + Backup + SolveIt** | **F16 (was F22), F18 (was F24), F20 (was F26)** | **PROPOSED** |
 | **Phase X** | **Experimental/Outliers** | **X01, X02** | **X01 Possible, X02 Proposed** |
 
@@ -653,10 +654,10 @@ This proposal is permanently rejected. The project is and will remain **NWP — 
 
 ---
 
-## Phase 13: Distributed Build/Deploy Pipeline (PROPOSED)
+## Phase 13: Distributed Build/Deploy Pipeline (IN PROGRESS)
 
 ### F21: Distributed Build/Deploy Pipeline (mmt build, mons deploy)
-**Status:** PROPOSED | **Priority:** HIGH | **Effort:** Multi-week (~13 phases) | **Dependencies:** F17 (Project Separation), F18 (Unified Backup)
+**Status:** IN PROGRESS (Phase 3a ✅ complete 2026-04-08; Phase 10 dry-run skeleton landed 2026-04-08) | **Priority:** HIGH | **Effort:** Multi-week (~13 phases) | **Dependencies:** F17 (Project Separation), F18 (Unified Backup)
 **Proposal:** [F21-distributed-build-deploy-pipeline.md](../proposals/F21-distributed-build-deploy-pipeline.md)
 **Architecture decision record:** [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md)
 
@@ -682,6 +683,28 @@ reversible and can start without hardware tokens; phase 5 requires Solo
 2C+ tokens (long lead time, order in phase 1); phase 9 is the
 end-to-end "moment of truth"; phases 11–13 are stabilization, per-site
 rollout, and tabletop drills.
+
+**Progress as of 2026-04-08:**
+- **Phase 3a (mini as local-LLM agent) ✅ complete.** ollama under
+  user-systemd + linger on mini, Vulkan pinned, `llama3.1:8b` and
+  `qwen2.5-coder:14b` both past benchmark thresholds, reboot-tested.
+  Persistence: `servers/mini/systemd/` (ollama.service, ollama-health.service,
+  ollama-health.timer), `servers/mini/bin/ollama-health-check`.
+  Diagnostic: `pl mini llm health` in `scripts/commands/mini.sh`.
+  SSH-tunnel interim pattern documented in
+  [docs/guides/local-llm.md](../guides/local-llm.md) (to be replaced
+  when Phase 1 Headscale lands).
+- **Phase 10 (AI-fix loop) — dry-run skeleton landed, inert.**
+  `servers/mini/bot/poll.py` + 13 unit tests, hard-default `dry_run:
+  true`, static `repos.allowlist: [mayo/mayo]`, prompt-injection
+  defence framing. See `servers/mini/bot/README.md` for the five-item
+  checklist that gates flipping `dry_run: false`. Blocked on mons
+  (Phase 5) and the mayo issue channel for real input.
+- **Phases 1, 2, 4:** reversible and unblocked; not started yet. Phase
+  1 (Headscale) would replace the current dev→mini SSH-tunnel
+  workaround.
+- **Phase 5 onward:** blocked on Solo 2C+ hardware procurement
+  (long lead time — flagged in § 6 Risk as an item to order early).
 
 ---
 
@@ -1404,3 +1427,4 @@ list, filtered by status or by site.
 *F15 expanded to ~10h practical scope with developer key onboarding: February 1, 2026*
 *P56 updated with SSH key management for coder onboarding (Section 7): February 1, 2026*
 *X02 (Local Voice Agent on mini) added as experimental outlier; ADR-0018 added (Twilio as bounded SaaS): April 8, 2026*
+*F21 Phase 3a ✅ complete; F21 Phase 10 dry-run skeleton landed at `servers/mini/bot/`: April 8, 2026 (status rows updated April 9)*

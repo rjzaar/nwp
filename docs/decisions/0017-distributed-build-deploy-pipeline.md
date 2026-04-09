@@ -1,6 +1,6 @@
 # ADR-0017: Distributed Build/Deploy Pipeline (mmt build, mons deploy)
 
-**Status:** Proposed
+**Status:** Accepted (2026-04-08 — implementation started, F21 Phase 3a complete)
 **Date:** 2026-04-07
 **Decision Makers:** Rob
 **Related Issues:** —

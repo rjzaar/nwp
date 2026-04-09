@@ -1,6 +1,6 @@
 # F21: Distributed Build/Deploy Pipeline (mmt build, mons deploy)
 
-**Status:** PROPOSED
+**Status:** IN PROGRESS (Phase 3a ✅ complete 2026-04-08; Phase 10 dry-run skeleton landed 2026-04-08; phases 1, 2, 3, 4, 5–9, 11–13 outstanding)
 **Created:** 2026-04-08
 **Author:** Rob Zaar, Claude Opus 4.6
 **Priority:** High (security architecture; gates open-source release)
@@ -178,7 +178,16 @@ green for the pilot project.
 **Success:** A signed pipeline run produces a signed artifact in the
 package registry. Unsigned commits are rejected.
 
-### Phase 3a — mini as local-LLM agent *(reversible)*
+### Phase 3a — mini as local-LLM agent *(reversible)* — ✅ COMPLETE (2026-04-08)
+
+**Status:** Landed 2026-04-08. All nine steps below are done, the
+reboot gate criterion passed, and the on-mini state has been persisted
+into the nwp repo under `servers/mini/systemd/` and
+`servers/mini/bin/ollama-health-check` (commit `7580ea3`). The
+diagnostic side of the work — `pl mini llm health`
+(`scripts/commands/mini.sh`) and the 5-minute systemd user timer
+`ollama-health.timer` — shipped in the same commit. The §8 open
+question "Local LLM on Beelink" is closed.
 
 **Goal:** Stand up a persistent, GPU-accelerated local LLM on mini so
 that downstream phases (Phase 10's AI-fix loop, Phase 12's alerting) and
@@ -457,13 +466,29 @@ it reaches users.
 **Goal:** mons reports failures in a structured form; mini's local LLM
 proposes fixes; the loop closes on a deliberate drill.
 
+**Skeleton landed 2026-04-08 (commit `b716ac9`):** an inert, dry-run-only
+poller now lives at `servers/mini/bot/` with a hard-default `dry_run:
+true`, a static `repos.allowlist: [mayo/mayo]`, prompt-injection-defence
+delimiters around untrusted issue bodies and repo files, 13 unit tests
+for diff parsing and prompt framing, and a five-item checklist that
+must be satisfied before `dry_run: false` is considered. The skeleton
+refuses to start if the flag is flipped without the live apply/push/MR
+code being written. See `servers/mini/bot/README.md` for the full
+operational policy. The skeleton is not yet wired to anything — the
+mayo issue channel (step 1) does not exist, so the poller has no input.
+
 1. Standardize mons failure reports as signed JSON pushed to a dedicated
-   repo on `git.nwpcode.org`.
+   repo on `git.nwpcode.org`. *(Blocked: mons does not exist yet;
+   waits on Phase 5.)*
 2. Subscribe mini's local LLM to the failure report stream.
+   *(Plumbing in place via `servers/mini/bot/poll.py`; waits on step 1
+   for real input.)*
 3. Implement the AI-fix proposal flow: mini drafts an MR, mmt CI runs
-   it, human reviews and merges if appropriate.
+   it, human reviews and merges if appropriate. *(Dry-run half is
+   ready; the live apply/branch/push/MR code is intentionally
+   unimplemented.)*
 4. Run a deliberate fault-injection drill (e.g. break a migration on
-   purpose) to exercise the loop end to end.
+   purpose) to exercise the loop end to end. *(Blocked on steps 1–3.)*
 
 **Success:** A deliberately broken commit triggers the failure path, the
 local LLM produces a plausible fix MR, and the human reviewer can decide

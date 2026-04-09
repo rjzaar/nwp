@@ -1,6 +1,6 @@
 # NWP Milestones - Completed Implementation History
 
-**Last Updated:** April 8, 2026
+**Last Updated:** April 9, 2026
 
 A summary of all completed **NWP core** development phases and their key
 achievements.
@@ -35,9 +35,11 @@ achievements.
 | Phase 10 (partial) | Developer Experience | F03, F13, F14, F15 | Feb 2026 |
 | Phase 11 | Project Separation | F17 (formerly F23, phases 1–8, 10) | Apr 2026 |
 | Phase 12 | Pre-Baseline Cleanup | F19 (formerly F25) | Apr 2026 |
+| Phase 13 (partial) | Distributed Build/Deploy Pipeline | F21 Phase 3a ✅, F21 Phase 10 skeleton | Apr 8, 2026 |
 
 **Total: ~50 NWP-core proposals implemented** (P01–P35, P50–P51, P53–P60,
-F03–F05, F07, F09, F12–F15, F17 phases 1–8 + 10, F19).
+F03–F05, F07, F09, F12–F15, F17 phases 1–8 + 10, F19), plus F21 Phase 3a
+(complete) and a dry-run-only F21 Phase 10 skeleton.
 
 For per-site delivery history (Mass Times deployment, Faith Formation
 app, AVC profile features, etc.), see each site's own
@@ -412,6 +414,18 @@ Integrated Claude API key management into NWP's two-tier secrets architecture. W
 
 ### F15: SSH User Management
 Created `get_ssh_user()` resolution chain in `lib/ssh.sh`. Fixed hardcoded SSH user assumptions in `live2stg.sh` and `lib/remote.sh`. Added `deploy-key` and `key-audit` commands to coder-setup.sh.
+
+---
+
+## Phase 13 (partial): Distributed Build/Deploy Pipeline (April 2026)
+
+Overall F21 is IN PROGRESS — phases 1–2, 4–9, 11–13 remain. The two items below are the complete-and-landed subset.
+
+### F21 Phase 3a: mini as local-LLM agent ✅ (2026-04-08)
+Stood up a persistent, Vulkan-accelerated local LLM on mini (Beelink Ryzen AI Max+ 395). ollama runs under user-level systemd with linger; `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_VULKAN=1`, and `OLLAMA_CONTEXT_LENGTH=8192` pinned in the unit file to avoid the Strix Halo 111 GiB footgun. Two baseline models registered and benchmarked past thresholds: `llama3.1:8b` (44.72/48 tok/s chat) and `qwen2.5-coder:14b` (24.86/30 tok/s coder). Reboot gate passed. State persisted to the nwp repo at `servers/mini/systemd/{ollama.service,ollama-health.service,ollama-health.timer}` and `servers/mini/bin/ollama-health-check`. Dev-side diagnostic `pl mini llm health` (default / `--quick` / `--json` modes) added via `scripts/commands/mini.sh`. A 5-minute systemd user timer runs the local health checker and writes to journal. Interim dev→mini SSH port-forward pattern documented in `docs/guides/local-llm.md` until F21 Phase 1 (Headscale overlay) lands. The §8 open question "Local LLM on Beelink" is closed.
+
+### F21 Phase 10: bug-report / AI-fix loop — dry-run skeleton (2026-04-08, inert)
+Not complete — this is a scaffold commit. `servers/mini/bot/` contains `poll.py` (~470 lines, stdlib + PyYAML), `config.yml` with **hard-default `dry_run: true`** and static `repos.allowlist: [mayo/mayo]`, a full operational `README.md` with a five-item checklist gating any flip of `dry_run: false`, and 13 unit tests covering the fenced-diff parser, the unified-diff sanity checker, and the prompt-framing invariants. Prompt-injection defence wraps untrusted issue bodies and repo files in explicit `<<<ISSUE_BODY_BEGIN>>>`/`<<<REPO_FILES_BEGIN>>>` delimiters, backed by human-in-the-loop review, static allowlist, and mini's position in the AI-accessible tier per CLAUDE.md § Distributed Actor Glossary. The poller hard-refuses to start if the flag is flipped because the live apply/branch/push/MR code is intentionally unimplemented. Currently wired to nothing — the mayo issue channel and mons do not exist yet.
 
 ---
 

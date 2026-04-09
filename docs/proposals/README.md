@@ -18,7 +18,7 @@ NWP uses three prefix series in this directory:
 | Prefix | Meaning | Range in use |
 |--------|---------|---|
 | **P##** | Core Phase Proposals — foundational architecture, phases of the original NWP buildout | P01–P60 |
-| **F##** | Feature Enhancements — additive features and refactors | F01–F21 |
+| **F##** | Feature Enhancements — additive features and refactors | F01–F23 |
 | **X##** | Experimental / Outlier — speculative ideas not yet on the roadmap | X01 |
 
 Per-project local schemes (each site is its own namespace, numbering
@@ -109,6 +109,8 @@ See [milestones.md](../reports/milestones.md) for the full version history.
 - **F16** — Claude Code Web Access (formerly F22)
 - **F18** — Unified Backup Strategy (formerly F24)
 - **F20** — Integrating the SolveIt Methodology into NWP (formerly F26)
+- **F22** — Gotify Remote Reachability
+- **F23** — Site Environment Layout — per-site directory restructure (dev/ subdir, sync script fixes, -stg cleanup)
 
 ### In Progress (NWP core)
 
@@ -142,6 +144,7 @@ Use `pl proposals` to aggregate everything below into one view.
 | Mass Times | `sites/mt/docs/proposals/` | M01 (Scraper & Display), M02 (Site creation) |
 | CathNet | `sites/cathnet/docs/proposals/` | C01 (ACMC), C02 (NLP QA), C02a (Synthesis amendment), C03 (Neo4j KG) |
 | Directory Search | `sites/dir1/docs/proposals/` | None yet |
+| benedicta.art | `sites/ba/docs/proposals/` | None yet |
 
 ---
 

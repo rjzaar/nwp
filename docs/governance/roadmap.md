@@ -37,7 +37,7 @@ Pending implementation items and future improvements for **NWP core**.
 | Current Version | v0.30.0 (F17 phases 1–8, 10 landed; F19 baseline reset complete) |
 | Test Success Rate | 99.5% (Machine Verified) |
 | Completed NWP Proposals | P01–P35, P50–P51, P53–P60, F03–F05, F07, F09, F12–F15, F17 (phases 1–8, 10), F19 |
-| Proposed NWP Proposals | F16 (Claude Code Web), F18 (Unified Backup), F20 (SolveIt) |
+| Proposed NWP Proposals | F16 (Claude Code Web), F18 (Unified Backup), F20 (SolveIt), F22 (Gotify Remote), F23 (Site Env Layout) |
 | In-Progress NWP Proposals | F21 (Distributed Build/Deploy Pipeline — Phase 3a ✅ complete, Phase 10 dry-run skeleton landed) |
 | Pending NWP Proposals | F01, F02, F06, F08 |
 | Rejected NWP Proposals | P52 (rename — NWP is the permanent project name) |
@@ -78,7 +78,9 @@ Pending implementation items and future improvements for **NWP core**.
 | **Phase 11** | **Project Separation** | **F17 (was F23)** | **✅ Complete (phases 1–8, 10)** |
 | **Phase 12** | **Baseline Reset & v0.30.0** | **F19 (was F25)** | **✅ Complete** |
 | **Phase 13** | **Distributed Build/Deploy Pipeline** | **F21 (new, implements ADR-0017)** | **IN PROGRESS (Phase 3a ✅, Phase 10 skeleton; phases 1–2, 4–9, 11–13 pending)** |
-| **Phase 14** | **Claude Code Web + Backup + SolveIt** | **F16 (was F22), F18 (was F24), F20 (was F26)** | **PROPOSED** |
+| **Phase 14** | **Site Environment Layout** | **F23** | **PROPOSED** — restructure site dirs (dev/ + stg/), fix sync scripts, absorb -stg siblings |
+| **Phase 15** | **Claude Code Web + Backup + SolveIt** | **F16 (was F22), F18 (was F24), F20 (was F26)** | **PROPOSED** — F18 depends on F23 for stable backup paths |
+| **Phase 16** | **Gotify Remote Reachability** | **F22** | **PROPOSED** — blocked on F21 Phase 1 for long-term option |
 | **Phase X** | **Experimental/Outliers** | **X01, X02** | **X01 Possible, X02 Proposed** |
 
 ---
@@ -114,6 +116,14 @@ Based on dependencies, current progress, and priority:
 | 18 | P55 | ✅ COMPLETE | Opportunistic human verification (4-5 weeks, opt-in) |
 | - | P52 | ❌ REJECTED | Rename rejected — NWP is the permanent project name |
 | 20 | F03 | ✅ COMPLETE | Visual regression testing (pl vrt) |
+| | **Next: Site Environment Layout (Phase 14)** | | *Fix site dir structure before backup work* |
+| 21 | F23 | PROPOSED | Restructure sites to dev/+stg/ subdirs, fix sync scripts, absorb -stg siblings (12-18h) |
+| | **Next: Backup + Tooling (Phase 15)** | | *F18 depends on F23 for stable paths* |
+| 22 | F18 | PROPOSED | Unified backup strategy — restic/borg, secrets encryption, rebuild script |
+| 23 | F16 | PROPOSED | Claude Code web access |
+| 24 | F20 | PROPOSED | SolveIt methodology integration |
+| | **Next: Gotify Remote (Phase 16)** | | *Blocked on F21 Phase 1 for long-term option* |
+| 25 | F22 | PROPOSED | Gotify remote reachability — interim WireGuard or wait for Headscale |
 | | **Possible (deprioritized)** | | *Reconsidered only if circumstances change* |
 | - | F01 | POSSIBLE | GitLab MCP Integration |
 | - | F02 | POSSIBLE | Automated CI Error Resolution |

@@ -37,82 +37,72 @@ START_TIME=$(date +%s)
 # Helper Functions
 ################################################################################
 
-# Get staging name
-get_stg_name() {
+# Get staging directory path (F23: v2 sites/<name>/stg/)
+get_stg_dir() {
     local site=$1
     local base=$(get_base_name "$site")
-    echo "${base}-stg"
+    resolve_project "$base" "stg"
 }
 
-# Get base domain from nwp.yml settings.url
+# Get base domain from nwp.yml settings.url (fallback to nwpcode.org)
 get_base_domain() {
-    awk '
-        /^settings:/ { in_settings = 1; next }
-        in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
-        in_settings && /^  url:/ {
-            sub("^  url: *", "")
-            sub(/#.*/, "")
-            gsub(/["'"'"']/, "")
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "")
-            if (length($0) > 0) print
-            exit
-        }
-    ' "$PROJECT_ROOT/nwp.yml"
+    local root="${PROJECT_ROOT:-$HOME/nwp}"
+    local global_config="$root/nwp.yml"
+    if [[ -f "$global_config" ]] && command -v yq &>/dev/null; then
+        local url
+        url=$(yq eval '.settings.url // ""' "$global_config" 2>/dev/null)
+        [[ -n "$url" && "$url" != "null" ]] && { echo "$url"; return; }
+    fi
+    echo "nwpcode.org"
 }
 
-# Get live server config from nwp.yml
+# Get live server config (F23: reads per-site .nwp.yml, falls back to nwp.yml)
 get_live_config() {
     local sitename="$1"
     local field="$2"
+    local base=$(get_base_name "$sitename")
 
-    awk -v site="$sitename" -v field="$field" '
-        /^sites:/ { in_sites = 1; next }
-        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
-        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
-        in_site && /^  [a-zA-Z]/ && !/^    / { in_site = 0 }
-        in_site && /^    live:/ { in_live = 1; next }
-        in_live && /^    [a-zA-Z]/ && !/^      / { in_live = 0 }
-        in_live && $0 ~ "^      " field ":" {
-            sub("^      " field ": *", "")
-            gsub(/["'"'"']/, "")
-            print
-            exit
-        }
-    ' "$PROJECT_ROOT/nwp.yml"
+    local yq_path
+    case "$field" in
+        server_ip)
+            local server_name
+            server_name=$(get_site_config_value "$base" '.live.server' "")
+            if [[ -n "$server_name" ]]; then
+                get_server_config "$server_name" "ip" ""
+                return
+            fi
+            get_site_config_value "$base" '.live.server_ip' ""
+            return
+            ;;
+        domain)      yq_path='.live.domain' ;;
+        type)        yq_path='.live.type' ;;
+        server)      yq_path='.live.server' ;;
+        remote_path) yq_path='.live.remote_path' ;;
+        *)           yq_path=".live.$field" ;;
+    esac
+    get_site_config_value "$base" "$yq_path" ""
 }
 
-# Check if live security is enabled
+# Check if live security is enabled (reads global nwp.yml settings)
 is_live_security_enabled() {
-    local enabled=$(awk '
-        /^settings:/ { in_settings = 1; next }
-        in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
-        in_settings && /^  live_security:/ { in_security = 1; next }
-        in_security && /^  [a-zA-Z]/ && !/^    / { in_security = 0 }
-        in_security && /^    enabled:/ {
-            sub("^    enabled: *", "")
-            gsub(/["'"'"']/, "")
-            print
-            exit
-        }
-    ' "$PROJECT_ROOT/nwp.yml")
-    [ "$enabled" == "true" ]
+    local root="${PROJECT_ROOT:-$HOME/nwp}"
+    local global_config="$root/nwp.yml"
+    if [[ -f "$global_config" ]] && command -v yq &>/dev/null; then
+        local enabled
+        enabled=$(yq eval '.settings.live_security.enabled // false' "$global_config" 2>/dev/null)
+        [ "$enabled" == "true" ]
+    else
+        return 1
+    fi
 }
 
-# Get security modules from nwp.yml
+# Get security modules from nwp.yml settings
 get_security_modules() {
-    awk '
-        /^settings:/ { in_settings = 1; next }
-        in_settings && /^[a-zA-Z]/ && !/^  / { in_settings = 0 }
-        in_settings && /^  live_security:/ { in_security = 1; next }
-        in_security && /^  [a-zA-Z]/ && !/^    / { in_security = 0 }
-        in_security && /^    modules:/ { in_modules = 1; next }
-        in_modules && /^    [a-zA-Z]/ && !/^      / { in_modules = 0 }
-        in_modules && /^      - / {
-            sub("^      - *", "")
-            gsub(/["'"'"']/, "")
-            print
-        }
-    ' "$PROJECT_ROOT/nwp.yml"
+    local root="${PROJECT_ROOT:-$HOME/nwp}"
+    local global_config="$root/nwp.yml"
+    if [[ -f "$global_config" ]] && command -v yq &>/dev/null; then
+        yq eval '.settings.live_security.modules[]' "$global_config" 2>/dev/null
+    fi
 }
 
 # Secure user passwords before live deployment
@@ -131,7 +121,7 @@ secure_user_passwords() {
     print_header "Securing User Passwords"
 
     local original_dir=$(pwd)
-    cd "$PROJECT_ROOT/sites/$stg_site" || return 1
+    cd "$stg_site" || return 1
 
     # Generate secure admin password (16 chars, alphanumeric)
     local new_admin_pass=$(openssl rand -base64 24 | tr -d '/=+' | cut -c -16)
@@ -224,7 +214,7 @@ install_security_modules() {
     fi
 
     local original_dir=$(pwd)
-    cd "$PROJECT_ROOT/sites/$stg_site" || return 1
+    cd "$stg_site" || return 1
 
     # Install each module via composer and enable
     while IFS= read -r module; do
@@ -404,10 +394,10 @@ deploy_database() {
     print_info "Exporting database from staging..."
 
     local original_dir=$(pwd)
-    cd "$PROJECT_ROOT/sites/$stg_site" || return 1
+    cd "$stg_site" || return 1
 
     # Export database from DDEV
-    local dump_file="/tmp/${stg_site}_live_deploy.sql.gz"
+    local dump_file="/tmp/${base_name}_stg_live_deploy.sql.gz"
     if ddev export-db --gzip --file="$dump_file" 2>/dev/null; then
         print_status "OK" "Database exported"
     else
@@ -435,7 +425,7 @@ deploy_database() {
         sudo_prefix="sudo"
     fi
 
-    local remote_dump="/tmp/${stg_site}_live_deploy.sql.gz"
+    local remote_dump="/tmp/${base_name}_stg_live_deploy.sql.gz"
     if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "gunzip -c $remote_dump | $sudo_prefix mysql ${db_name}" 2>/dev/null; then
         print_status "OK" "Database imported"
         # Cleanup
@@ -846,8 +836,8 @@ ${BOLD}ARGUMENTS:${NC}
     sitename                Site name (with or without _stg suffix)
 
 ${BOLD}EXAMPLES:${NC}
-    ./stg2live.sh mysite              # Deploy mysite-stg to mysite.nwpcode.org
-    ./stg2live.sh mysite-stg          # Same as above
+    ./stg2live.sh mysite              # Deploy mysite/stg/ to mysite.nwpcode.org
+    ./stg2live.sh mysite-stg          # Same as above (legacy name accepted)
     ./stg2live.sh -y mysite           # Deploy without confirmation
     ./stg2live.sh --no-security mysite  # Deploy without security modules
 
@@ -907,8 +897,8 @@ deploy_to_live() {
     echo ""
 
     # Check staging site exists
-    if [ ! -d "$PROJECT_ROOT/sites/$stg_site" ]; then
-        print_error "Staging site not found: $PROJECT_ROOT/sites/$stg_site"
+    if [ ! -d "$stg_site" ]; then
+        print_error "Staging site not found: $stg_site"
         return 1
     fi
 
@@ -932,15 +922,21 @@ deploy_to_live() {
 
     # Get webroot from staging site
     local webroot="web"
-    if [ -f "$PROJECT_ROOT/sites/$stg_site/.ddev/config.yaml" ]; then
-        webroot=$(grep "^docroot:" "$PROJECT_ROOT/sites/$stg_site/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
+    if [ -f "$stg_site/.ddev/config.yaml" ]; then
+        webroot=$(grep "^docroot:" "$stg_site/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
         [ -z "$webroot" ] && webroot="web"
     fi
+
+    # F23: read remote_path from per-site config, default to /var/www/<name>
+    local remote_path
+    remote_path=$(get_live_config "$base_name" "remote_path")
+    [ -z "$remote_path" ] && remote_path="/var/www/${base_name}"
 
     # Build rsync excludes
     local excludes=(
         "--exclude=.ddev"
         "--exclude=.git"
+        "--exclude=.nwp.yml"
         "--exclude=$webroot/sites/default/settings.local.php"
         "--exclude=$webroot/sites/default/files"
         "--exclude=private"
@@ -952,7 +948,7 @@ deploy_to_live() {
     # Sync files
     print_header "Syncing Files"
     print_info "Source: $stg_site/"
-    print_info "Destination: ${ssh_user}@${server_ip}:/var/www/${base_name}/"
+    print_info "Destination: ${ssh_user}@${server_ip}:${remote_path}/"
 
     local sudo_prefix=""
     if [ "$ssh_user" == "gitlab" ]; then
@@ -960,10 +956,10 @@ deploy_to_live() {
     fi
 
     # Ensure target directory exists with correct ownership for rsync
-    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "$sudo_prefix mkdir -p /var/www/${base_name}" 2>/dev/null || true
+    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "$sudo_prefix mkdir -p ${remote_path}" 2>/dev/null || true
     if [ "$ssh_user" == "gitlab" ]; then
         # Give gitlab user ownership temporarily for rsync
-        ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "sudo chown -R gitlab:www-data /var/www/${base_name}" 2>/dev/null || true
+        ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "sudo chown -R gitlab:www-data ${remote_path}" 2>/dev/null || true
     fi
 
     # Rsync (quiet by default, verbose with -v flag)
@@ -973,8 +969,8 @@ deploy_to_live() {
     fi
 
     if rsync -e "ssh $(nwp_ssh_opts "$base_name")" $rsync_opts --delete "${excludes[@]}" \
-        "$PROJECT_ROOT/sites/$stg_site/" \
-        "${ssh_user}@${server_ip}:/var/www/${base_name}/"; then
+        "$stg_site/" \
+        "${ssh_user}@${server_ip}:${remote_path}/"; then
         print_status "OK" "Files synced"
     else
         print_error "File sync failed"
@@ -983,7 +979,7 @@ deploy_to_live() {
 
     # Set permissions
     print_info "Setting permissions..."
-    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "$sudo_prefix chown -R www-data:www-data /var/www/${base_name}" 2>/dev/null || true
+    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "$sudo_prefix chown -R www-data:www-data ${remote_path}" 2>/dev/null || true
 
     # Deploy database (creates DB, generates settings.local.php, imports data)
     if ! full_database_deployment "$stg_site" "$base_name" "$server_ip" "$ssh_user" "$webroot"; then
@@ -1005,8 +1001,8 @@ deploy_to_live() {
 
     # Clear cache via drush if available
     print_info "Clearing cache..."
-    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd /var/www/${base_name} && $sudo_prefix -u www-data drush cr" 2>/dev/null || \
-        ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd /var/www/${base_name}/$webroot && $sudo_prefix -u www-data ../vendor/bin/drush cr" 2>/dev/null || \
+    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd ${remote_path} && $sudo_prefix -u www-data drush cr" 2>/dev/null || \
+        ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd ${remote_path}/$webroot && $sudo_prefix -u www-data ../vendor/bin/drush cr" 2>/dev/null || \
         print_status "WARN" "Could not clear cache (drush may not be available)"
 
     # Verify and configure site email
@@ -1071,7 +1067,14 @@ main() {
 
     # Normalize names
     local BASE_NAME=$(get_base_name "$SITENAME")
-    local STG_NAME=$(get_stg_name "$SITENAME")
+
+    # F23: resolve stg directory (v2: sites/<name>/stg/, v1: sites/<name>-stg/)
+    local STG_DIR
+    STG_DIR=$(get_stg_dir "$SITENAME")
+    if [ -z "$STG_DIR" ]; then
+        print_error "Cannot resolve staging directory for $BASE_NAME"
+        exit 1
+    fi
 
     # Export for use in deploy function
     export SKIP_SECURITY VERBOSE
@@ -1096,11 +1099,11 @@ main() {
     fi
 
     # Run deployment
-    if deploy_to_live "$STG_NAME" "$BASE_NAME" "$YES"; then
+    if deploy_to_live "$STG_DIR" "$BASE_NAME" "$YES"; then
         show_elapsed_time
         exit 0
     else
-        print_error "Deployment to live failed: $STG_NAME → $BASE_NAME"
+        print_error "Deployment to live failed: $STG_DIR → $BASE_NAME"
         exit 1
     fi
 }

@@ -36,9 +36,10 @@ achievements.
 | Phase 11 | Project Separation | F17 (formerly F23, phases 1–8, 10) | Apr 2026 |
 | Phase 12 | Pre-Baseline Cleanup | F19 (formerly F25) | Apr 2026 |
 | Phase 13 (partial) | Distributed Build/Deploy Pipeline | F21 Phase 3a ✅, F21 Phase 10 skeleton | Apr 8, 2026 |
+| Phase 14 | Site Environment Layout | F23 (dev/+stg/ restructure, sync script fixes) | Apr 9, 2026 |
 
-**Total: ~50 NWP-core proposals implemented** (P01–P35, P50–P51, P53–P60,
-F03–F05, F07, F09, F12–F15, F17 phases 1–8 + 10, F19), plus F21 Phase 3a
+**Total: ~51 NWP-core proposals implemented** (P01–P35, P50–P51, P53–P60,
+F03–F05, F07, F09, F12–F15, F17 phases 1–8 + 10, F19, F23), plus F21 Phase 3a
 (complete) and a dry-run-only F21 Phase 10 skeleton.
 
 For per-site delivery history (Mass Times deployment, Faith Formation
@@ -426,6 +427,25 @@ Stood up a persistent, Vulkan-accelerated local LLM on mini (Beelink Ryzen AI Ma
 
 ### F21 Phase 10: bug-report / AI-fix loop — dry-run skeleton (2026-04-08, inert)
 Not complete — this is a scaffold commit. `servers/mini/bot/` contains `poll.py` (~470 lines, stdlib + PyYAML), `config.yml` with **hard-default `dry_run: true`** and static `repos.allowlist: [mayo/mayo]`, a full operational `README.md` with a five-item checklist gating any flip of `dry_run: false`, and 13 unit tests covering the fenced-diff parser, the unified-diff sanity checker, and the prompt-framing invariants. Prompt-injection defence wraps untrusted issue bodies and repo files in explicit `<<<ISSUE_BODY_BEGIN>>>`/`<<<REPO_FILES_BEGIN>>>` delimiters, backed by human-in-the-loop review, static allowlist, and mini's position in the AI-accessible tier per CLAUDE.md § Distributed Actor Glossary. The poller hard-refuses to start if the flag is flipped because the live apply/branch/push/MR code is intentionally unimplemented. Currently wired to nothing — the mayo issue channel and mons do not exist yet.
+
+---
+
+## Phase 14: Site Environment Layout (April 2026)
+
+### F23: Site Environment Layout ✅ (2026-04-09)
+
+Restructured all NWP sites from flat v1 layout (`sites/<name>/` with everything mixed) to nested v2 layout (`sites/<name>/dev/` + `sites/<name>/stg/` + `sites/<name>/backups/`). This was the last prerequisite for `pl live2stg` and `pl stg2live` to work on F17-migrated sites.
+
+**Key changes:**
+- Schema migration framework bumped `CURRENT_SITE_SCHEMA` to 2; migration script `lib/migrations/site/002-env-layout.sh` moves all DDEV/code contents into `dev/`, creates `stg/` for live-enabled sites, absorbs existing `-stg` siblings
+- 9 sites migrated: avc, ba, cathnet, cccrdf, dir, dir1, fin, mt, ss. 3 `-stg` siblings absorbed (avc-stg, cathnet-stg, dir1-stg)
+- `lib/project-resolver.sh` updated: `resolve_project()` takes optional env parameter (`dev`/`stg`/`site`), new helpers `resolve_site_dir()`, `is_v2_layout()`, `list_site_envs()`, `get_env_config_value()`
+- Sync scripts (`live2stg.sh`, `stg2live.sh`, `dev2stg.sh`, `live2prod.sh`) rewritten to read per-site `.nwp.yml` via `get_site_config_value()` instead of AWK parsing root `nwp.yml`, and target `sites/<name>/stg/` instead of `sites/<name>-stg/`
+- `get_ssh_user()` in `lib/ssh.sh` updated to try per-site config first
+- Two-tier `.nwp.yml`: site-level (identity, live server) + env-level (environment, DDEV name)
+- DDEV projects renamed to `<name>-dev` and `<name>-stg` for unambiguous listing
+
+**Unblocks:** F18 (Unified Backup Strategy) now has stable backup paths at `sites/<name>/backups/`
 
 ---
 

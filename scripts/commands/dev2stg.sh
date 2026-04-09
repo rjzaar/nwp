@@ -149,6 +149,19 @@ get_stg_name() {
     echo "${base}-stg"
 }
 
+# F23: resolve dev and stg directories for v2 layout
+get_dev_dir() {
+    local site=$1
+    local base=$(get_base_name "$site")
+    resolve_project "$base" "dev"
+}
+
+get_stg_dir_v2() {
+    local site=$1
+    local base=$(get_base_name "$site")
+    resolve_project "$base" "stg"
+}
+
 get_webroot() {
     local site=$1
     local webroot=$(grep "^docroot:" "$site/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
@@ -167,7 +180,7 @@ create_staging_site() {
     show_step "Creating staging site: $stg_site"
 
     # Create directory
-    if [ -d "$PROJECT_ROOT/sites/$stg_site" ]; then
+    if [ -d "$stg_site" ]; then
         warn "Staging directory already exists"
         return 0
     fi
@@ -176,7 +189,7 @@ create_staging_site() {
     rsync -av --exclude='.ddev' --exclude='vendor' \
           --exclude='node_modules' --exclude='*.sql*' \
           --exclude='private/' \
-          "$PROJECT_ROOT/sites/$dev_site/" "$PROJECT_ROOT/sites/$stg_site/" > /dev/null 2>&1
+          "$dev_site/" "$stg_site/" > /dev/null 2>&1
     local rsync_result=$?
     stop_spinner $rsync_result
 
@@ -186,15 +199,15 @@ create_staging_site() {
     fi
 
     task "Creating DDEV configuration..."
-    mkdir -p "$PROJECT_ROOT/sites/$stg_site/.ddev"
+    mkdir -p "$stg_site/.ddev"
 
     # Copy and modify DDEV config
-    local webroot=$(get_webroot "$PROJECT_ROOT/sites/$dev_site")
+    local webroot=$(get_webroot "$dev_site")
     local dev_name=$(basename "$dev_site")
     local stg_name=$(basename "$stg_site")
 
     # Create new DDEV config
-    cat > "$PROJECT_ROOT/sites/$stg_site/.ddev/config.yaml" << DDEVEOF
+    cat > "$stg_site/.ddev/config.yaml" << DDEVEOF
 name: $stg_name
 type: drupal
 docroot: $webroot
@@ -206,7 +219,7 @@ database:
 DDEVEOF
 
     start_spinner "Starting DDEV for staging site"
-    (cd "$PROJECT_ROOT/sites/$stg_site" && ddev start > /dev/null 2>&1)
+    (cd "$stg_site" && ddev start > /dev/null 2>&1)
     local ddev_result=$?
     stop_spinner $ddev_result
 
@@ -226,8 +239,8 @@ export_config_dev() {
     show_step "Export configuration from dev"
 
     local original_dir=$(pwd)
-    cd "$PROJECT_ROOT/sites/$dev_site" || {
-        fail "Cannot access dev site: $PROJECT_ROOT/sites/$dev_site"
+    cd "$dev_site" || {
+        fail "Cannot access dev site: $dev_site"
         return 1
     }
 
@@ -253,7 +266,7 @@ sync_files() {
 
     show_step "Sync files from dev to staging"
 
-    local webroot=$(get_webroot "$PROJECT_ROOT/sites/$dev_site")
+    local webroot=$(get_webroot "$dev_site")
 
     local excludes=(
         "--exclude=.ddev/"
@@ -270,7 +283,7 @@ sync_files() {
     )
 
     start_spinner "Syncing files with rsync"
-    rsync -av --delete "${excludes[@]}" "$PROJECT_ROOT/sites/$dev_site/" "$PROJECT_ROOT/sites/$stg_site/" > /dev/null 2>&1
+    rsync -av --delete "${excludes[@]}" "$dev_site/" "$stg_site/" > /dev/null 2>&1
     local rsync_result=$?
     stop_spinner $rsync_result
 
@@ -322,7 +335,7 @@ run_composer_staging() {
     show_step "Run composer install --no-dev"
 
     local original_dir=$(pwd)
-    cd "$PROJECT_ROOT/sites/$stg_site" || {
+    cd "$stg_site" || {
         fail "Cannot access staging site"
         return 1
     }
@@ -349,7 +362,7 @@ run_db_updates() {
     show_step "Run database updates"
 
     local original_dir=$(pwd)
-    cd "$PROJECT_ROOT/sites/$stg_site" || {
+    cd "$stg_site" || {
         fail "Cannot access staging site"
         return 1
     }
@@ -376,7 +389,7 @@ import_config_staging() {
     show_step "Import configuration (${CONFIG_IMPORT_RETRIES}x retry)"
 
     local original_dir=$(pwd)
-    cd "$PROJECT_ROOT/sites/$stg_site" || {
+    cd "$stg_site" || {
         fail "Cannot access staging site"
         return 1
     }
@@ -410,7 +423,7 @@ clear_cache_staging() {
     local stg_site=$1
 
     local original_dir=$(pwd)
-    cd "$PROJECT_ROOT/sites/$stg_site" || return 1
+    cd "$stg_site" || return 1
 
     start_spinner "Clearing cache"
     ddev drush cache:rebuild > /dev/null 2>&1
@@ -442,7 +455,7 @@ enable_prod_mode() {
     else
         start_spinner "Disabling dev modules manually"
         local original_dir=$(pwd)
-        cd "$PROJECT_ROOT/sites/$stg_site" || return 0
+        cd "$stg_site" || return 0
 
         # Disable common dev modules
         for module in devel webprofiler kint stage_file_proxy; do
@@ -493,7 +506,7 @@ display_staging_url() {
     show_step "Deployment complete"
 
     local original_dir=$(pwd)
-    cd "$PROJECT_ROOT/sites/$stg_site" || return 0
+    cd "$stg_site" || return 0
 
     local stg_url=$(ddev describe 2>/dev/null | grep -oP 'https://[^ ,]+' | head -1)
 
@@ -528,30 +541,36 @@ deploy_dev2stg() {
     local create_stg=$6
     local sanitize=$7
 
-    # Determine site names
+    # F23: resolve dev and stg directories using v2 layout
     local base_name=$(get_base_name "$dev_site")
-    local stg_site="${base_name}-stg"
+    local dev_dir stg_dir
+    dev_dir=$(get_dev_dir "$dev_site")
+    stg_dir=$(get_stg_dir_v2 "$dev_site")
+
+    # Fallback for v1 sites
+    [ -z "$dev_dir" ] && dev_dir="$dev_site"
+    [ -z "$stg_dir" ] && stg_dir="$PROJECT_ROOT/sites/${base_name}-stg"
 
     print_header "NWP Dev to Staging Deployment"
-    info "Source: $dev_site (development)"
-    info "Target: $stg_site (staging)"
+    info "Source: $dev_dir (development)"
+    info "Target: $stg_dir (staging)"
     echo ""
 
     # Preflight check (quick for -y mode, full otherwise)
     if [ "$auto_yes" = "true" ]; then
         quick_preflight "$dev_site" || return 1
     else
-        if ! preflight_check "$dev_site" "$stg_site"; then
+        if ! preflight_check "$dev_site" "${base_name}-stg"; then
             fail "Preflight checks failed"
             return 1
         fi
     fi
 
     # Check if staging exists
-    if [ ! -d "$PROJECT_ROOT/sites/$stg_site" ]; then
+    if [ ! -d "$stg_dir" ]; then
         if [ "$create_stg" = "true" ] || [ "$auto_yes" = "true" ]; then
             info "Staging site does not exist - creating..."
-            create_staging_site "$dev_site" "$stg_site" || return 1
+            create_staging_site "$dev_dir" "$stg_dir" || return 1
         elif [ "$create_stg" = "false" ]; then
             fail "Staging site does not exist and --no-create-stg specified"
             return 1
@@ -562,14 +581,14 @@ deploy_dev2stg() {
                 info "Deployment cancelled"
                 return 1
             fi
-            create_staging_site "$dev_site" "$stg_site" || return 1
+            create_staging_site "$dev_dir" "$stg_dir" || return 1
         fi
     fi
 
     # Ensure staging DDEV is running
-    if [ -d "$PROJECT_ROOT/sites/$stg_site" ]; then
+    if [ -d "$stg_dir" ]; then
         start_spinner "Ensuring staging DDEV is running"
-        (cd "$PROJECT_ROOT/sites/$stg_site" && ddev start > /dev/null 2>&1)
+        (cd "$stg_dir" && ddev start > /dev/null 2>&1)
         stop_spinner $?
     fi
 
@@ -577,48 +596,48 @@ deploy_dev2stg() {
     local current_step=2
 
     if [ "$start_step" -le "$current_step" ]; then
-        export_config_dev "$dev_site" || return 1
+        export_config_dev "$dev_dir" || return 1
     fi
     ((current_step++))
 
     if [ "$start_step" -le "$current_step" ]; then
-        sync_files "$dev_site" "$stg_site" || return 1
+        sync_files "$dev_dir" "$stg_dir" || return 1
     fi
     ((current_step++))
 
     if [ "$start_step" -le "$current_step" ]; then
-        sync_database "$dev_site" "$stg_site" "$db_source" "$sanitize" || return 1
+        sync_database "$dev_dir" "$stg_dir" "$db_source" "$sanitize" || return 1
     fi
     ((current_step++))
 
     if [ "$start_step" -le "$current_step" ]; then
-        run_composer_staging "$stg_site" || return 1
+        run_composer_staging "$stg_dir" || return 1
     fi
     ((current_step++))
 
     if [ "$start_step" -le "$current_step" ]; then
-        run_db_updates "$stg_site" || return 1
+        run_db_updates "$stg_dir" || return 1
     fi
     ((current_step++))
 
     if [ "$start_step" -le "$current_step" ]; then
-        import_config_staging "$stg_site" || return 1
+        import_config_staging "$stg_dir" || return 1
     fi
     ((current_step++))
 
     if [ "$start_step" -le "$current_step" ]; then
-        clear_cache_staging "$stg_site"
-        enable_prod_mode "$stg_site" || return 1
+        clear_cache_staging "$stg_dir"
+        enable_prod_mode "$stg_dir" || return 1
     fi
     ((current_step++))
 
     if [ "$start_step" -le "$current_step" ]; then
-        run_deployment_tests "$stg_site" "$test_selection"
+        run_deployment_tests "$stg_dir" "$test_selection"
         # Don't fail deployment on test failures
     fi
     ((current_step++))
 
-    display_staging_url "$stg_site"
+    display_staging_url "$stg_dir"
 
     return 0
 }

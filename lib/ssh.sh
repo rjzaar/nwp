@@ -160,12 +160,31 @@ get_ssh_user() {
     local config_file="${2:-${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/nwp.yml}"
     local user=""
 
+    # F23: try per-site .nwp.yml first (via get_site_config_value if available)
+    if declare -F get_site_config_value &>/dev/null; then
+        user=$(get_site_config_value "$name" '.live.ssh_user' "")
+        if [[ -n "$user" ]]; then
+            echo "$user"
+            return
+        fi
+        # Also try resolving via server name → server config
+        local server_name
+        server_name=$(get_site_config_value "$name" '.live.server' "")
+        if [[ -n "$server_name" ]] && declare -F get_server_config &>/dev/null; then
+            user=$(get_server_config "$server_name" "ssh_user" "")
+            if [[ -n "$user" ]]; then
+                echo "$user"
+                return
+            fi
+        fi
+    fi
+
     if [[ ! -f "$config_file" ]]; then
         echo "root"
         return
     fi
 
-    # 1. Check sites.<name>.live.ssh_user
+    # Legacy: Check sites.<name>.live.ssh_user in root nwp.yml
     user=$(awk -v site="$name" '
         /^sites:/{in_sites=1; next}
         in_sites && /^  [a-zA-Z]/{

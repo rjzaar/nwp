@@ -26,21 +26,28 @@ START_TIME=$(date +%s)
 get_live_config() {
     local sitename="$1"
     local field="$2"
+    local base=$(get_base_name "$sitename")
 
-    awk -v site="$sitename" -v field="$field" '
-        /^sites:/ { in_sites = 1; next }
-        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
-        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
-        in_site && /^  [a-zA-Z]/ && !/^    / { in_site = 0 }
-        in_site && /^    live:/ { in_live = 1; next }
-        in_live && /^    [a-zA-Z]/ && !/^      / { in_live = 0 }
-        in_live && $0 ~ "^      " field ":" {
-            sub("^      " field ": *", "")
-            gsub(/["'"'"']/, "")
-            print
-            exit
-        }
-    ' "$PROJECT_ROOT/nwp.yml"
+    # F23: read from per-site .nwp.yml via layered config reader.
+    local yq_path
+    case "$field" in
+        server_ip)
+            local server_name
+            server_name=$(get_site_config_value "$base" '.live.server' "")
+            if [[ -n "$server_name" ]]; then
+                get_server_config "$server_name" "ip" ""
+                return
+            fi
+            get_site_config_value "$base" '.live.server_ip' ""
+            return
+            ;;
+        domain)      yq_path='.live.domain' ;;
+        type)        yq_path='.live.type' ;;
+        server)      yq_path='.live.server' ;;
+        remote_path) yq_path='.live.remote_path' ;;
+        *)           yq_path=".live.$field" ;;
+    esac
+    get_site_config_value "$base" "$yq_path" ""
 }
 
 get_prod_config() {

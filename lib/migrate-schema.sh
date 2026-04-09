@@ -14,7 +14,7 @@
 
 # Current schema versions expected by the running NWP code.
 # Bump these when adding a new migration under lib/migrations/<scope>/.
-CURRENT_SITE_SCHEMA=1
+CURRENT_SITE_SCHEMA=2
 CURRENT_GLOBAL_SCHEMA=1
 CURRENT_SERVER_SCHEMA=1
 
@@ -173,6 +173,7 @@ migrate_all_sites() {
         case "$name" in
             tmp|latest|vendor|ss_moodledata) continue ;;
             20260117T212337-no-git-no-git) continue ;;
+            *-stg) continue ;;  # F23: -stg siblings absorbed by parent migration
         esac
         if [[ -f "$dir/.nwp.yml" ]]; then
             if ! migrate_site "$name"; then

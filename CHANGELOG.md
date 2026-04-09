@@ -25,6 +25,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — F23: Site Environment Layout (2026-04-09)
+- **Schema v2 migration** — all 9 sites migrated from flat v1 to nested v2 layout (`sites/<name>/dev/` + `sites/<name>/stg/` + `sites/<name>/backups/`). 3 orphaned `-stg` siblings absorbed into parent sites.
+- **`lib/migrations/site/002-env-layout.sh`** — migration script: moves DDEV/code into `dev/`, creates `stg/` for live-enabled sites, absorbs `-stg` siblings, renames DDEV projects to `<name>-dev`/`<name>-stg`.
+- **`lib/project-resolver.sh`** — `resolve_project()` now accepts optional env parameter (`dev`/`stg`/`site`). New helpers: `resolve_site_dir()`, `is_v2_layout()`, `list_site_envs()`, `get_env_config_value()`.
+- **Sync script fixes** — `live2stg.sh`, `stg2live.sh`, `dev2stg.sh`, `live2prod.sh` rewritten to read per-site `.nwp.yml` instead of AWK-parsing root `nwp.yml`. Targets `sites/<name>/stg/` instead of the old `sites/<name>-stg/` convention.
+- **`lib/ssh.sh`** — `get_ssh_user()` tries per-site `.nwp.yml` and server-resolver before falling back to root `nwp.yml`.
+- **Two-tier `.nwp.yml`** — site-level config (identity, live server, backup path) + env-level config (environment name, DDEV project name, staging settings).
+- **Unblocks F18** (Unified Backup Strategy) — backup paths now stable at `sites/<name>/backups/`.
+
 ### Added — F21 Phase 3a: mini as local-LLM agent (2026-04-08)
 - **`servers/mini/systemd/`** — systemd user units for mini's ollama stack now tracked in the nwp repo: `ollama.service` (the daemon, with `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_VULKAN=1`, `OLLAMA_CONTEXT_LENGTH=8192` pinned), `ollama-health.service` (oneshot health runner), `ollama-health.timer` (5-minute cadence, `Persistent=true`). `.gitignore` gets a targeted exception for `servers/mini/` since the default `servers/*` ignore rule keeps per-server infra out of the nwp repo — mini has no separate git repo of its own.
 - **`servers/mini/bin/ollama-health-check`** — local fast-path health script invoked by the timer. Five checks: systemd unit active, daemon reachable on loopback, loopback-only bind, both baseline models (`llama3.1:8b`, `qwen2.5-coder:14b`) registered. Runs without SSH so the timer doesn't self-loop.

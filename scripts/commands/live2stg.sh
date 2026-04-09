@@ -28,30 +28,40 @@ START_TIME=$(date +%s)
 # Helper Functions
 ################################################################################
 
-get_stg_name() {
+get_stg_dir() {
     local site=$1
     local base=$(get_base_name "$site")
-    echo "${base}-stg"
+    resolve_project "$base" "stg"
 }
 
 get_live_config() {
     local sitename="$1"
     local field="$2"
+    local base=$(get_base_name "$sitename")
 
-    awk -v site="$sitename" -v field="$field" '
-        /^sites:/ { in_sites = 1; next }
-        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
-        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
-        in_site && /^  [a-zA-Z]/ && !/^    / { in_site = 0 }
-        in_site && /^    live:/ { in_live = 1; next }
-        in_live && /^    [a-zA-Z]/ && !/^      / { in_live = 0 }
-        in_live && $0 ~ "^      " field ":" {
-            sub("^      " field ": *", "")
-            gsub(/["'"'"']/, "")
-            print
-            exit
-        }
-    ' "$PROJECT_ROOT/nwp.yml"
+    # F23: read from per-site .nwp.yml via layered config reader.
+    # Maps legacy field names to yq paths in the new per-site schema.
+    local yq_path
+    case "$field" in
+        server_ip)
+            # Resolve via server name → server-resolver
+            local server_name
+            server_name=$(get_site_config_value "$base" '.live.server' "")
+            if [[ -n "$server_name" ]]; then
+                get_server_config "$server_name" "ip" ""
+                return
+            fi
+            # Direct IP fallback (legacy)
+            get_site_config_value "$base" '.live.server_ip' ""
+            return
+            ;;
+        domain)    yq_path='.live.domain' ;;
+        type)      yq_path='.live.type' ;;
+        server)    yq_path='.live.server' ;;
+        remote_path) yq_path='.live.remote_path' ;;
+        *)         yq_path=".live.$field" ;;
+    esac
+    get_site_config_value "$base" "$yq_path" ""
 }
 
 show_elapsed_time() {
@@ -80,7 +90,7 @@ ${BOLD}OPTIONS:${NC}
     --db-only               Pull database only, skip files
 
 ${BOLD}EXAMPLES:${NC}
-    ./live2stg.sh mysite              # Pull live to mysite-stg
+    ./live2stg.sh mysite              # Pull live to mysite/stg/
     ./live2stg.sh --files-only mysite # Pull files only
 
 EOF
@@ -114,9 +124,16 @@ main() {
     fi
 
     local BASE_NAME=$(get_base_name "$SITENAME")
-    local STG_NAME=$(get_stg_name "$SITENAME")
 
-    # Get live server config
+    # F23: resolve stg directory (v2: sites/<name>/stg/, v1: sites/<name>-stg/)
+    local STG_DIR
+    STG_DIR=$(get_stg_dir "$SITENAME")
+    if [ -z "$STG_DIR" ]; then
+        print_error "Cannot resolve staging directory for $BASE_NAME"
+        exit 1
+    fi
+
+    # Get live server config (reads per-site .nwp.yml, falls back to nwp.yml)
     local server_ip=$(get_live_config "$BASE_NAME" "server_ip")
     local server_type=$(get_live_config "$BASE_NAME" "type")
 
@@ -127,12 +144,12 @@ main() {
 
     print_header "Pull Live to Staging"
     echo -e "${BOLD}Live:${NC}     $BASE_NAME @ $server_ip"
-    echo -e "${BOLD}Staging:${NC} $STG_NAME"
+    echo -e "${BOLD}Staging:${NC} $STG_DIR"
     echo ""
 
     # Check staging exists
-    if [ ! -d "$PROJECT_ROOT/sites/$STG_NAME" ]; then
-        print_error "Staging site not found: $PROJECT_ROOT/sites/$STG_NAME"
+    if [ ! -d "$STG_DIR" ]; then
+        print_error "Staging site not found: $STG_DIR"
         exit 1
     fi
 
@@ -154,6 +171,11 @@ main() {
     local sudo_prefix=""
     [ "$ssh_user" == "gitlab" ] && sudo_prefix="sudo"
 
+    # F23: read remote_path from per-site config, default to /var/www/<name>
+    local remote_path
+    remote_path=$(get_live_config "$BASE_NAME" "remote_path")
+    [ -z "$remote_path" ] && remote_path="/var/www/${BASE_NAME}"
+
     # Pull files
     if [ "$DB_ONLY" != "true" ]; then
         show_step 2 4 "Pulling files from live server"
@@ -161,10 +183,11 @@ main() {
         rsync -e "ssh $(nwp_ssh_opts "$BASE_NAME")" -avz --delete \
             --exclude=".ddev" \
             --exclude=".git" \
+            --exclude=".nwp.yml" \
             --exclude="web/sites/default/files" \
             --exclude="private" \
-            "${ssh_user}@${server_ip}:/var/www/${BASE_NAME}/" \
-            "$PROJECT_ROOT/sites/$STG_NAME/" 2>&1 | grep -v "^sending incremental file list$" | grep -v "^$" || true
+            "${ssh_user}@${server_ip}:${remote_path}/" \
+            "$STG_DIR/" 2>&1 | grep -v "^sending incremental file list$" | grep -v "^$" || true
         stop_spinner
         print_status "OK" "Files pulled"
     fi
@@ -178,13 +201,13 @@ main() {
 
         # Export from live
         start_spinner "Exporting database from live"
-        ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$sudo_prefix -u www-data sh -c 'cd /var/www/${BASE_NAME} && drush sql:dump --gzip'" > "$tmp_sql" 2>/dev/null || \
-            ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$sudo_prefix -u www-data sh -c 'cd /var/www/${BASE_NAME}/web && ../vendor/bin/drush sql:dump --gzip'" > "$tmp_sql"
+        ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$sudo_prefix -u www-data sh -c 'cd ${remote_path} && drush sql:dump --gzip'" > "$tmp_sql" 2>/dev/null || \
+            ssh $(nwp_ssh_opts "$BASE_NAME") "${ssh_user}@${server_ip}" "$sudo_prefix -u www-data sh -c 'cd ${remote_path}/web && ../vendor/bin/drush sql:dump --gzip'" > "$tmp_sql"
         stop_spinner
 
         # Import to staging
         start_spinner "Importing database to staging"
-        cd "$PROJECT_ROOT/sites/$STG_NAME"
+        cd "$STG_DIR"
         ddev import-db --file="$tmp_sql" >/dev/null 2>&1
         rm -f "$tmp_sql"
         cd "$PROJECT_ROOT"
@@ -195,7 +218,7 @@ main() {
     # Clear cache
     show_step 4 4 "Clearing Drupal cache"
     start_spinner "Running drush cache:rebuild"
-    cd "$PROJECT_ROOT/sites/$STG_NAME"
+    cd "$STG_DIR"
     ddev drush cr 2>/dev/null || true
     cd "$PROJECT_ROOT"
     stop_spinner

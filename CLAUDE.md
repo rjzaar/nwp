@@ -138,12 +138,13 @@ See `docs/DATA_SECURITY_BEST_PRACTICES.md` for the full security architecture.
   - `lib/migrate-schema.sh` - Schema migration framework for `.nwp.yml`, global `nwp.yml`, and `servers/*/.nwp-server.yml`
   - `lib/migrations/{site,global,server}/` - Numbered migration scripts (one function `migrate_NNN_to_MMM` per file)
 - `recipes/` - Recipe definitions (os, d, nwp, dm, etc.)
-- `sites/` - Each site is self-contained (F17, formerly F23):
-  - `sites/<name>/.nwp.yml` - Per-site config; carries `schema_version`, `project.*`, `live.*`, `backups.directory`. Production sites (avc, ss) have their own git repos; experimental sites (mt, cathnet, dir1, cccrdf) are filesystem-only
-  - `sites/<name>/web/` or `sites/<name>/html/` - Drupal webroot
-  - `sites/<name>/web/modules/custom/` - Project-specific Drupal modules (no longer at repo root)
-  - `sites/<name>/pipeline/` - Project-specific Python pipelines (mt, cathnet, fin)
-  - `sites/<name>/backups/` - Per-site database backups (replaces former `sitebackups/<name>/`)
+- `sites/` - Each site uses v2 nested layout (F17 + F23):
+  - `sites/<name>/.nwp.yml` - Site-level config (schema v2); `project.*`, `live.*`, `environments`, `backups.directory`
+  - `sites/<name>/dev/` - Development DDEV project (`<name>-dev`); `.ddev/`, `web/`, `composer.json`, env-level `.nwp.yml`
+  - `sites/<name>/stg/` - Staging DDEV project (`<name>-stg`); live-enabled sites only; sanitised live DB
+  - `sites/<name>/backups/` - Per-site database backups (shared, outside DDEV/git)
+  - `sites/<name>/scripts/` - Maintenance scripts (shared, outside DDEV)
+  - `sites/<name>/dev/pipeline/` - Project-specific Python pipelines (mt, cathnet, fin)
   - `sites/<name>/docs/proposals/` - Per-site proposals; aggregated by `pl proposals`
 - `servers/` - Per-server infrastructure (F17 Phase 8, formerly F23):
   - `servers/<name>/.nwp-server.yml` - Server identity (gitignored plaintext; SOPS-encrypted version comes with F18)

@@ -97,6 +97,7 @@ See [milestones.md](../reports/milestones.md) for the full version history.
 - **F15** — SSH User Management
 - **F17** — Project Separation (formerly F23; phases 1–8, 10 complete; phase 9 extracted to AVC A03)
 - **F19** — Pre-Baseline Cleanup (formerly F25; the work that produced the v0.30.0 baseline)
+- **F23** — Site Environment Layout (per-site directory restructure: dev/stg subdirs, sync script fixes, -stg sibling absorption)
 
 ### Rejected
 
@@ -110,7 +111,6 @@ See [milestones.md](../reports/milestones.md) for the full version history.
 - **F18** — Unified Backup Strategy (formerly F24)
 - **F20** — Integrating the SolveIt Methodology into NWP (formerly F26)
 - **F22** — Gotify Remote Reachability
-- **F23** — Site Environment Layout — per-site directory restructure (dev/ subdir, sync script fixes, -stg cleanup)
 
 ### In Progress (NWP core)
 

@@ -271,7 +271,6 @@ database:
     - when: on_success
   script:
     - echo "Checking for cached database..."
-    # Try to use cached database from nightly job
     - |
       if [ -f .data/db.sql.gz ]; then
         echo "Using cached database from nightly job"
@@ -301,18 +300,11 @@ build:
   needs: ["database"]
   script:
     - echo "Starting build process for ${SITE_NAME}..."
-
-    # Install system dependencies for DDEV
     - apt-get update -qq
     - apt-get install -y -qq docker.io docker-compose
-
-    # Run the build script
     - ./scripts/ci/build.sh
-
-    # Show build information
     - echo "Build completed successfully"
     - ddev describe || true
-
   artifacts:
     paths:
       - vendor/
@@ -343,8 +335,6 @@ coverage:
   needs: ["build"]
   script:
     - echo "Checking code coverage..."
-
-    # Check if coverage report exists
     - |
       if [ -f .logs/coverage/clover.xml ]; then
         ./scripts/ci/check-coverage.sh 80 .logs/coverage/clover.xml
@@ -380,8 +370,6 @@ security:scan:
     - when: on_success
   script:
     - echo "Starting security scans..."
-
-    # Dependency audit - check for known vulnerabilities
     - echo "=== Composer Security Audit ==="
     - |
       if [ -f composer.json ]; then
@@ -389,8 +377,6 @@ security:scan:
       else
         echo "No composer.json found, skipping composer audit"
       fi
-
-    # NPM audit if package.json exists
     - echo ""
     - echo "=== NPM Security Audit ==="
     - |
@@ -399,67 +385,49 @@ security:scan:
       else
         echo "No package.json found, skipping npm audit"
       fi
-
-    # Secret detection patterns
     - echo ""
     - echo "=== Secret Detection ==="
     - |
       echo "Scanning for exposed secrets..."
       secrets_found=0
-
-      # API keys and tokens
       if grep -rn --include="*.php" --include="*.sh" --include="*.js" --include="*.yml" \
           -E "(api_key|api_token|access_token|secret_key|private_key)\s*=\s*['\"][^'\"]{20,}" \
           . 2>/dev/null | grep -v ".gitlab-ci.yml" | grep -v "example" | grep -v "test"; then
         echo "WARNING: Potential hardcoded secrets found"
         secrets_found=1
       fi
-
-      # AWS keys
       if grep -rn --include="*.php" --include="*.sh" --include="*.js" --include="*.yml" \
           -E "AKIA[0-9A-Z]{16}" . 2>/dev/null; then
         echo "WARNING: Potential AWS keys found"
         secrets_found=1
       fi
-
-      # Private keys
       if grep -rn --include="*" -l "BEGIN.*PRIVATE KEY" . 2>/dev/null | grep -v "test" | grep -v "example"; then
         echo "WARNING: Private keys found in repository"
         secrets_found=1
       fi
-
       if [ $secrets_found -eq 0 ]; then
         echo "OK: No secrets detected"
       fi
-
-    # Suspicious pattern detection
     - echo ""
     - echo "=== Suspicious Pattern Scan ==="
     - |
       echo "Scanning for suspicious code patterns..."
       suspicious_found=0
-
-      # Code execution patterns
       if grep -rn --include="*.php" --include="*.sh" \
           -E "(eval|base64_decode|exec|system|passthru|shell_exec|proc_open)\s*\(" \
           . 2>/dev/null | grep -v ".gitlab-ci.yml" | grep -v "test" | grep -v "vendor"; then
         echo "WARNING: Potentially dangerous code execution patterns found"
         suspicious_found=1
       fi
-
-      # Obfuscation patterns
       if grep -rn --include="*.php" --include="*.js" \
           -E "(chr\([0-9]+\)|\\\\x[0-9a-f]{2}){5,}" \
           . 2>/dev/null | grep -v "vendor" | grep -v "test"; then
         echo "WARNING: Potential code obfuscation found"
         suspicious_found=1
       fi
-
       if [ $suspicious_found -eq 0 ]; then
         echo "OK: No suspicious patterns detected"
       fi
-
-    # File permission checks
     - echo ""
     - echo "=== File Permission Check ==="
     - |
@@ -469,8 +437,6 @@ security:scan:
       else
         echo "OK: No world-writable files"
       fi
-
-    # External URL detection in new code
     - echo ""
     - echo "=== External URL Check ==="
     - |
@@ -487,7 +453,6 @@ security:scan:
       else
         echo "Skipping (not a merge request)"
       fi
-
     - echo ""
     - echo "=== Security Scan Complete ==="
 
@@ -515,28 +480,19 @@ security:review:
   script:
     - echo "=== Merge Request Security Review ==="
     - echo ""
-    - echo "MR Title: $CI_MERGE_REQUEST_TITLE"
-    - echo "Source Branch: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"
-    - echo "Target Branch: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - 'echo "MR Title: $CI_MERGE_REQUEST_TITLE"'
+    - 'echo "Source Branch: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"'
+    - 'echo "Target Branch: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME"'
     - echo ""
-
-    # Fetch target branch for comparison
     - git fetch origin $CI_MERGE_REQUEST_TARGET_BRANCH_NAME
-
-    # File count analysis
     - echo "=== Scope Analysis ==="
     - |
       files_changed=$(git diff --name-only origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..HEAD | wc -l)
       echo "Files changed: $files_changed"
-
       if [ $files_changed -gt 20 ]; then
         echo "INFO: Large changeset - thorough review recommended"
       fi
-
-    # Lines changed
     - git diff --stat origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..HEAD | tail -1
-
-    # Sensitive file modifications
     - echo ""
     - echo "=== Sensitive File Check ==="
     - |
@@ -546,8 +502,6 @@ security:review:
       else
         echo "OK: No sensitive files modified"
       fi
-
-    # New dependencies
     - echo ""
     - echo "=== Dependency Changes ==="
     - |
@@ -556,16 +510,14 @@ security:review:
       else
         echo "OK: No dependency changes"
       fi
-
-    # Scope verification hint
     - echo ""
     - echo "=== Scope Verification ==="
-    - echo "Review: Does the diff match the MR title and description?"
-    - echo "Red flags:"
-    - echo "  - Large changeset for small fix"
-    - echo "  - Unrelated file modifications"
-    - echo "  - New external dependencies"
-    - echo "  - Authentication/security changes"
+    - 'echo "Review: Does the diff match the MR title and description?"'
+    - 'echo "Red flags:"'
+    - 'echo "  - Large changeset for small fix"'
+    - 'echo "  - Unrelated file modifications"'
+    - 'echo "  - New external dependencies"'
+    - 'echo "  - Authentication/security changes"'
 
   artifacts:
     paths:
@@ -594,15 +546,11 @@ deploy:staging:
       when: manual
   script:
     - echo "Deploying to staging environment..."
-
-    # Set up SSH key for deployment
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
     - echo "$STAGING_SSH_KEY" | base64 -d > ~/.ssh/id_rsa
     - chmod 600 ~/.ssh/id_rsa
     - ssh-keyscan -H $STAGING_HOST >> ~/.ssh/known_hosts
-
-    # Deploy to staging using rsync
     - |
       rsync -avz \
         --exclude='.git' \
@@ -612,8 +560,6 @@ deploy:staging:
         --exclude='sitebackups' \
         --delete \
         ./ ${STAGING_USER}@${STAGING_HOST}:${STAGING_PATH}/
-
-    # Run deployment commands on staging server
     - |
       ssh ${STAGING_USER}@${STAGING_HOST} "
         cd ${STAGING_PATH}
@@ -627,12 +573,6 @@ deploy:staging:
     on_stop: stop:staging
   tags:
     - nwp
-  only:
-    variables:
-      # Only run if staging variables are configured
-      - $STAGING_HOST
-      - $STAGING_USER
-      - $STAGING_PATH
 
 # Stop staging environment
 stop:staging:
@@ -648,10 +588,6 @@ stop:staging:
     action: stop
   tags:
     - nwp
-  only:
-    variables:
-      - $STAGING_HOST
-      - $STAGING_USER
 
 # Deploy to production environment
 # Runs on main/production branch, manual trigger required
@@ -665,23 +601,17 @@ deploy:production:
       when: manual
   script:
     - echo "Deploying to production environment..."
-
-    # Set up SSH key for deployment
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
     - echo "$PRODUCTION_SSH_KEY" | base64 -d > ~/.ssh/id_rsa
     - chmod 600 ~/.ssh/id_rsa
     - ssh-keyscan -H $PRODUCTION_HOST >> ~/.ssh/known_hosts
-
-    # Create backup before deployment
     - |
       ssh ${PRODUCTION_USER}@${PRODUCTION_HOST} "
         cd ${PRODUCTION_PATH}
         echo 'Creating backup before deployment...'
         ddev snapshot --name=pre-deploy-${CI_COMMIT_SHORT_SHA}
       "
-
-    # Deploy to production using rsync
     - |
       rsync -avz \
         --exclude='.git' \
@@ -692,8 +622,6 @@ deploy:production:
         --exclude='web/sites/*/files' \
         --delete \
         ./ ${PRODUCTION_USER}@${PRODUCTION_HOST}:${PRODUCTION_PATH}/
-
-    # Run deployment commands on production server
     - |
       ssh ${PRODUCTION_USER}@${PRODUCTION_HOST} "
         cd ${PRODUCTION_PATH}
@@ -702,8 +630,6 @@ deploy:production:
         ddev drush cr
         echo 'Production deployment completed successfully'
       "
-
-    # Verify deployment
     - |
       ssh ${PRODUCTION_USER}@${PRODUCTION_HOST} "
         cd ${PRODUCTION_PATH}
@@ -714,14 +640,7 @@ deploy:production:
     url: https://${SITE_NAME}.${BASE_DOMAIN}
   tags:
     - nwp
-  # Do not allow failure for production deployments
   allow_failure: false
-  only:
-    variables:
-      # Only run if production variables are configured
-      - $PRODUCTION_HOST
-      - $PRODUCTION_USER
-      - $PRODUCTION_PATH
 
 ################################################################################
 # CI/CD Variables Required
@@ -787,17 +706,12 @@ deploy:preview:
   script:
     - echo "Creating preview environment for MR $CI_MERGE_REQUEST_IID..."
 
-    # Install DDEV if not available
     - |
       if ! command -v ddev >/dev/null 2>&1; then
         echo "Installing DDEV..."
         curl -fsSL https://raw.githubusercontent.com/ddev/ddev/master/scripts/install_ddev.sh | bash
       fi
-
-    # Create preview environment
     - ./scripts/ci/create-preview.sh "mr-$CI_MERGE_REQUEST_IID"
-
-    # Get preview URL for artifacts
     - |
       if [ -f .preview-env ]; then
         source .preview-env
@@ -832,17 +746,12 @@ cleanup:preview:
       allow_failure: true
   script:
     - echo "Cleaning up preview environment for MR $CI_MERGE_REQUEST_IID..."
-
-    # Install DDEV if not available
     - |
       if ! command -v ddev >/dev/null 2>&1; then
         echo "Installing DDEV..."
         curl -fsSL https://raw.githubusercontent.com/ddev/ddev/master/scripts/install_ddev.sh | bash
       fi
-
-    # Cleanup preview environment
     - ./scripts/ci/cleanup-preview.sh "mr-$CI_MERGE_REQUEST_IID" || true
-
     - echo "Preview environment cleaned up"
 
   environment:
@@ -914,7 +823,7 @@ e2e:production:
   image: ubuntu:22.04
   script:
     - echo "E2E production tests not yet implemented"
-    - echo "Future: Test staging -> production deployment"
+    - 'echo "Future: Test staging -> production deployment"'
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: manual

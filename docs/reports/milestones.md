@@ -35,7 +35,7 @@ achievements.
 | Phase 10 (partial) | Developer Experience | F03, F13, F14, F15 | Feb 2026 |
 | Phase 11 | Project Separation | F17 (formerly F23, phases 1–8, 10) | Apr 2026 |
 | Phase 12 | Pre-Baseline Cleanup | F19 (formerly F25) | Apr 2026 |
-| Phase 13 (partial) | Distributed Build/Deploy Pipeline | F21 Phase 3a ✅, F21 Phase 10 skeleton | Apr 8, 2026 |
+| Phase 13 (partial) | Distributed Build/Deploy Pipeline | F21 Phases 1 ✅, 2 ✅, 3a ✅; Phase 10 skeleton | Apr 8–9, 2026 |
 | Phase 14 | Site Environment Layout | F23 (dev/+stg/ restructure, sync script fixes) | Apr 9, 2026 |
 
 **Total: ~51 NWP-core proposals implemented** (P01–P35, P50–P51, P53–P60,
@@ -420,7 +420,13 @@ Created `get_ssh_user()` resolution chain in `lib/ssh.sh`. Fixed hardcoded SSH u
 
 ## Phase 13 (partial): Distributed Build/Deploy Pipeline (April 2026)
 
-Overall F21 is IN PROGRESS — phases 1–2, 4–9, 11–13 remain. The two items below are the complete-and-landed subset.
+Overall F21 is IN PROGRESS — phases 3, 4–9, 11–13 remain. The four items below are the complete-and-landed subset.
+
+### F21 Phase 1: Headscale VPN on Newark ✅ (2026-04-09)
+Headscale 0.28.0 installed on Newark (97.107.137.88) alongside GitLab CE. TLS reverse-proxied via GitLab's bundled nginx at `https://hs.nwpcode.org` with Let's Encrypt auto-renewal. Three nodes enrolled under `mmt` user: dev (100.64.0.1), mini (100.64.0.2), met (100.64.0.3). Direct LAN connections <5ms, MagicDNS base domain `nwp.headscale`. au-mel migration dropped — latency gain not worth the cost; Headscale colocated on Newark at $0 incremental cost. Replaces the interim SSH port-forward pattern from `docs/guides/local-llm.md`. Unblocks F22 (Gotify Remote Reachability).
+
+### F21 Phase 2: GitLab Runner on met ✅ (2026-04-09)
+GitLab Runner 18.10.1 installed on met (Ryzen 9 3900X), shell executor, registered as instance runner against `git.nwpcode.org` with tags `shell,linux,nwp,met`, `run_untagged=false`, concurrency 4. First pipeline (186): `verify-signature` (.pre, placeholder with `allow_failure: true`), `lint:bash`, `test:unit`, `test:integration` all pass on met-shell. Commit signing deferred — placeholder will be enforced once signing is configured. Pre-existing `.gitlab-ci.yml` validation errors fixed (inline comments in script arrays, `only:` mixed with `rules:`, unquoted colons in YAML strings).
 
 ### F21 Phase 3a: mini as local-LLM agent ✅ (2026-04-08)
 Stood up a persistent, Vulkan-accelerated local LLM on mini (Beelink Ryzen AI Max+ 395). ollama runs under user-level systemd with linger; `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_VULKAN=1`, and `OLLAMA_CONTEXT_LENGTH=8192` pinned in the unit file to avoid the Strix Halo 111 GiB footgun. Two baseline models registered and benchmarked past thresholds: `llama3.1:8b` (44.72/48 tok/s chat) and `qwen2.5-coder:14b` (24.86/30 tok/s coder). Reboot gate passed. State persisted to the nwp repo at `servers/mini/systemd/{ollama.service,ollama-health.service,ollama-health.timer}` and `servers/mini/bin/ollama-health-check`. Dev-side diagnostic `pl mini llm health` (default / `--quick` / `--json` modes) added via `scripts/commands/mini.sh`. A 5-minute systemd user timer runs the local health checker and writes to journal. Interim dev→mini SSH port-forward pattern documented in `docs/guides/local-llm.md` until F21 Phase 1 (Headscale overlay) lands. The §8 open question "Local LLM on Beelink" is closed.

@@ -53,7 +53,7 @@ Proposed → Accepted → [Deprecated | Superseded]
 | [0014](0014-git-hooks-documentation-enforcement.md) | Git hooks for documentation enforcement | 2026-01-14 | Accepted |
 | [0015](0015-yq-first-awk-fallback-pattern.md) | yq-first with AWK fallback pattern | 2026-01-13 | Accepted |
 | [0016](0016-avc-email-reply-architecture.md) | AVC email reply architecture | 2026-01-15 | Accepted |
-| [0017](0017-distributed-build-deploy-pipeline.md) | Distributed build/deploy pipeline (mmt build, mons deploy) | 2026-04-07 | Accepted (implementation started; F21 Phase 3a ✅) |
+| [0017](0017-distributed-build-deploy-pipeline.md) | Distributed build/deploy pipeline (mmt build, mons deploy) | 2026-04-07 | Accepted (implementation started; F21 Phases 1 ✅, 2 ✅, 3a ✅) |
 | [0018](0018-twilio-bounded-saas-for-pstn.md) | Twilio as bounded SaaS dependency for PSTN voice/SMS | 2026-04-08 | Accepted |
 
 ## Rejected Proposals

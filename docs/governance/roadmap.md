@@ -39,7 +39,7 @@ Pending implementation items and future improvements for **NWP core**.
 | Test Success Rate | 99.5% (Machine Verified) |
 | Completed NWP Proposals | P01–P35, P50–P51, P53–P60, F03–F05, F07, F09, F12–F15, F17 (phases 1–8, 10), F19 |
 | Proposed NWP Proposals | F16 (Claude Code Web), F18 (Unified Backup), F20 (SolveIt), F22 (Gotify Remote) |
-| In-Progress NWP Proposals | F21 (Distributed Build/Deploy Pipeline — Phase 3a ✅ complete, Phase 10 dry-run skeleton landed) |
+| In-Progress NWP Proposals | F21 (Distributed Build/Deploy Pipeline — Phases 1 ✅, 2 ✅, 3a ✅; Phase 10 dry-run skeleton) |
 | Pending NWP Proposals | F01, F02, F06, F08 |
 | Rejected NWP Proposals | P52 (rename — NWP is the permanent project name) |
 | Experimental/Outlier | X01, X02 |
@@ -78,10 +78,10 @@ Pending implementation items and future improvements for **NWP core**.
 | **Phase 10** | **Developer Experience** | **F13, F14, F15** (F10 → [guide](../guides/local-llm.md), F11 subsumed) | **✅ Complete** |
 | **Phase 11** | **Project Separation** | **F17 (was F23)** | **✅ Complete (phases 1–8, 10)** |
 | **Phase 12** | **Baseline Reset & v0.30.0** | **F19 (was F25)** | **✅ Complete** |
-| **Phase 13** | **Distributed Build/Deploy Pipeline** | **F21 (new, implements ADR-0017)** | **IN PROGRESS (Phase 3a ✅, Phase 10 skeleton; phases 1–2, 4–9, 11–13 pending)** |
+| **Phase 13** | **Distributed Build/Deploy Pipeline** | **F21 (new, implements ADR-0017)** | **IN PROGRESS (Phases 1 ✅, 2 ✅, 3a ✅; Phase 10 skeleton; phases 3, 4–9, 11–13 pending)** |
 | **Phase 14** | **Site Environment Layout** | **F23** | **✅ Complete (2026-04-09)** — sites restructured to dev/+stg/ subdirs, sync scripts fixed, -stg siblings absorbed |
 | **Phase 15** | **Claude Code Web + Backup + SolveIt** | **F16 (was F22), F18 (was F24), F20 (was F26)** | **PROPOSED** — F18 now unblocked (F23 complete) |
-| **Phase 16** | **Gotify Remote Reachability** | **F22** | **PROPOSED** — blocked on F21 Phase 1 for long-term option |
+| **Phase 16** | **Gotify Remote Reachability** | **F22** | **PROPOSED** — F21 Phase 1 (Headscale) now complete; unblocked |
 | **Phase X** | **Experimental/Outliers** | **X01, X02** | **X01 Possible, X02 Proposed** |
 
 ---
@@ -124,7 +124,7 @@ Based on dependencies, current progress, and priority:
 | 23 | F16 | PROPOSED | Claude Code web access |
 | 24 | F20 | PROPOSED | SolveIt methodology integration |
 | | **Next: Gotify Remote (Phase 16)** | | *Blocked on F21 Phase 1 for long-term option* |
-| 25 | F22 | PROPOSED | Gotify remote reachability — interim WireGuard or wait for Headscale |
+| 25 | F22 | PROPOSED | Gotify remote reachability — Headscale now available (F21 Phase 1 ✅) |
 | | **Possible (deprioritized)** | | *Reconsidered only if circumstances change* |
 | - | F01 | POSSIBLE | GitLab MCP Integration |
 | - | F02 | POSSIBLE | Automated CI Error Resolution |
@@ -695,27 +695,28 @@ reversible and can start without hardware tokens; phase 5 requires Solo
 end-to-end "moment of truth"; phases 11–13 are stabilization, per-site
 rollout, and tabletop drills.
 
-**Progress as of 2026-04-08:**
-- **Phase 3a (mini as local-LLM agent) ✅ complete.** ollama under
-  user-systemd + linger on mini, Vulkan pinned, `llama3.1:8b` and
-  `qwen2.5-coder:14b` both past benchmark thresholds, reboot-tested.
-  Persistence: `servers/mini/systemd/` (ollama.service, ollama-health.service,
-  ollama-health.timer), `servers/mini/bin/ollama-health-check`.
-  Diagnostic: `pl mini llm health` in `scripts/commands/mini.sh`.
-  SSH-tunnel interim pattern documented in
-  [docs/guides/local-llm.md](../guides/local-llm.md) (to be replaced
-  when Phase 1 Headscale lands).
+**Progress as of 2026-04-09:**
+- **Phase 1 (Headscale VPN) ✅ complete (2026-04-09).** Headscale 0.28.0
+  on Newark alongside GitLab (not au-mel — migration dropped). TLS at
+  `https://hs.nwpcode.org` via GitLab nginx + Let's Encrypt. Three nodes:
+  dev, mini, met — direct LAN connections <5ms, MagicDNS working. $0
+  incremental cost. Replaces the SSH-tunnel interim pattern.
+- **Phase 2 (GitLab Runner on met) ✅ complete (2026-04-09).** GitLab
+  Runner 18.10.1 (shell executor) registered on met. Pipeline working:
+  verify-signature placeholder, lint:bash, test:unit, test:integration
+  all pass. Commit signing deferred. Pre-existing `.gitlab-ci.yml`
+  validation errors fixed.
+- **Phase 3a (mini as local-LLM agent) ✅ complete (2026-04-08).** ollama
+  under user-systemd + linger on mini, Vulkan pinned, both baseline
+  models past benchmark thresholds. Diagnostic: `pl mini llm health`.
 - **Phase 10 (AI-fix loop) — dry-run skeleton landed, inert.**
   `servers/mini/bot/poll.py` + 13 unit tests, hard-default `dry_run:
-  true`, static `repos.allowlist: [mayo/mayo]`, prompt-injection
-  defence framing. See `servers/mini/bot/README.md` for the five-item
-  checklist that gates flipping `dry_run: false`. Blocked on mons
+  true`, static `repos.allowlist: [mayo/mayo]`. Blocked on mons
   (Phase 5) and the mayo issue channel for real input.
-- **Phases 1, 2, 4:** reversible and unblocked; not started yet. Phase
-  1 (Headscale) would replace the current dev→mini SSH-tunnel
-  workaround.
+- **Phase 4:** deferred — no concrete reason to migrate GitLab from
+  Newark currently.
 - **Phase 5 onward:** blocked on Solo 2C+ hardware procurement
-  (long lead time — flagged in § 6 Risk as an item to order early).
+  (ordered 2026-04-09; long lead time).
 
 ---
 

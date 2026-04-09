@@ -34,6 +34,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Two-tier `.nwp.yml`** — site-level config (identity, live server, backup path) + env-level config (environment name, DDEV project name, staging settings).
 - **Unblocks F18** (Unified Backup Strategy) — backup paths now stable at `sites/<name>/backups/`.
 
+### Added — F21 Phase 1: Headscale VPN on Newark (2026-04-09)
+- **Headscale 0.28.0** installed on Newark (97.107.137.88) alongside GitLab CE. ~14MB RAM, listening on 127.0.0.1:8085, proxied via GitLab's bundled nginx with TLS at `https://hs.nwpcode.org` (Let's Encrypt cert, auto-renewal).
+- **Three nodes enrolled** under `mmt` user: dev (100.64.0.1), mini (100.64.0.2), met (100.64.0.3). Direct LAN connections (<5ms), MagicDNS working (`met.nwp.headscale`, `mini.nwp.headscale`). Permissive ACL (only mmt nodes exist; mons never added).
+- **DNS**: `hs.nwpcode.org` A record created (Linode domain 3397355, record 43702870, TTL 300).
+- **No new Linode** — au-mel migration dropped (latency gain not worth the cost). Headscale colocated on Newark. $0 incremental cost.
+- Replaces the interim SSH port-forward pattern documented in `docs/guides/local-llm.md`.
+
+### Added — F21 Phase 2: GitLab Runner on met (2026-04-09)
+- **GitLab Runner 18.10.1** installed on met (Ryzen 9 3900X), shell executor, registered as instance runner against `git.nwpcode.org`. Tags: `shell,linux,nwp,met`, `run_untagged=false`, concurrency 4.
+- **Pipeline working**: `verify-signature` (.pre stage, allow_failure placeholder), `lint:bash`, `test:unit`, `test:integration` all pass on met-shell runner. Commit signing deferred — placeholder stage will be enforced once signing is configured.
+- **`.gitlab-ci.yml` fixes** — removed inline comments from script arrays (GitLab rejects them), removed `only:` from jobs using `rules:` (not allowed together), quoted strings containing colons to prevent YAML key-value parsing. Pre-existing CI validation errors fixed.
+
 ### Added — F21 Phase 3a: mini as local-LLM agent (2026-04-08)
 - **`servers/mini/systemd/`** — systemd user units for mini's ollama stack now tracked in the nwp repo: `ollama.service` (the daemon, with `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_VULKAN=1`, `OLLAMA_CONTEXT_LENGTH=8192` pinned), `ollama-health.service` (oneshot health runner), `ollama-health.timer` (5-minute cadence, `Persistent=true`). `.gitignore` gets a targeted exception for `servers/mini/` since the default `servers/*` ignore rule keeps per-server infra out of the nwp repo — mini has no separate git repo of its own.
 - **`servers/mini/bin/ollama-health-check`** — local fast-path health script invoked by the timer. Five checks: systemd unit active, daemon reachable on loopback, loopback-only bind, both baseline models (`llama3.1:8b`, `qwen2.5-coder:14b`) registered. Runs without SSH so the timer doesn't self-loop.

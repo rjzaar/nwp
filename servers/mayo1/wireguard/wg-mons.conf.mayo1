@@ -1,0 +1,27 @@
+# WireGuard config for mayo1 (production server side)
+# F21 Phase 5: Dedicated mons↔mayo1 tunnel
+#
+# Install: sudo cp wg-mons.conf.mayo1 /etc/wireguard/wg-mons.conf
+# Then edit to replace placeholder keys with real values.
+# Enable: sudo systemctl enable --now wg-quick@wg-mons
+
+[Interface]
+# mayo1's tunnel address
+Address = 10.99.0.2/32
+ListenPort = 51820
+# Replace with mayo1's actual private key
+PrivateKey = MAYO1_PRIVATE_KEY
+
+# Optional: run a script after tunnel comes up (e.g., log the event)
+# PostUp = echo "$(date -Iseconds) wg-mons UP" >> /var/log/nwp/wireguard.log
+# PostDown = echo "$(date -Iseconds) wg-mons DOWN" >> /var/log/nwp/wireguard.log
+
+[Peer]
+# mons — the only allowed peer
+# Replace with mons's actual public key
+PublicKey = MONS_PUBLIC_KEY
+# mons's tunnel address
+AllowedIPs = 10.99.0.1/32
+# mons is behind NAT (phone hotspot), so no Endpoint configured here.
+# mayo1 will learn mons's endpoint from the first handshake.
+# PersistentKeepalive not needed on the server side.

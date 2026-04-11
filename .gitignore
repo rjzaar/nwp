@@ -100,6 +100,9 @@ servers/*
 # but never track python bytecode under mini's bot skeleton
 servers/mini/**/__pycache__/
 servers/mini/**/*.pyc
+# mayo1 server scripts (WireGuard configs, blue-green, sanitizer)
+!servers/mayo1/
+!servers/mayo1/**
 
 # SSH keys directory (structure tracked, contents ignored)
 !keys/

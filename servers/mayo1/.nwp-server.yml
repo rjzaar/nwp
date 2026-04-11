@@ -1,0 +1,47 @@
+# mayo1 server configuration
+# Linode VPS hosting mayostudios.org and saintschool.mayostudios.org
+# Managed by NWP — do not edit on the server directly
+
+server:
+  name: mayo1
+  hostname: mayostudios.org
+  ip: 172.105.183.226
+  ssh_user: mayo
+  ssh_key: ~/.ssh/opencat
+  region: ap-southeast (Sydney)
+  provider: linode
+  linode_id: shared
+  os: ubuntu
+
+services:
+  - nginx
+  - postfix
+  - certbot
+  - fail2ban
+  - ufw
+  - drupal
+
+sites:
+  - name: mayo
+    domain: mayostudios.org
+    path: /var/www/mayostudios.org
+    profile: avc
+    status: active
+  - name: saintschool
+    domain: saintschool.mayostudios.org
+    path: /var/www/saintschool
+    profile: social
+    status: planned
+
+deploy:
+  method: bluegreen
+  slots:
+    blue: /var/www/mayostudios.org-blue
+    green: /var/www/mayostudios.org-green
+    live_symlink: /var/www/mayostudios.org
+  wireguard:
+    interface: wg-mons
+    listen_port: 51820
+    # Keys generated during provisioning — values are placeholders
+    # Real keys stored on mayo1 and mons only, never in this file
+    peer_name: mons

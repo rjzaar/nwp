@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# quokka-toggle — Gotify-driven on/off toggle for voice-agent on mini.
+#
+# Architecture:
+#   Phone shortcut POSTs to Gotify (quokka-control app, ID 2).
+#   This watcher polls for new messages every 2 s and:
+#     - starts or stops voice-agent in a tmux session named "quokka"
+#     - sends a status notification via Gotify (quokka-status app, ID 3)
+#       so both phones see the new state
+#
+# Credentials (all 0600 on mini):
+#   ~/.config/gotify-admin.pass            — admin password for message polling
+#   ~/.config/gotify-quokka-status.token   — app token for status notifications
+#
+# Phone shortcut URL (one-liner, POST with no body needed):
+#   POST http://192.168.0.11:8080/message?token=Ax6ZeOueAfRTwTr
+#        -F "title=toggle" -F "message=toggle" -F "priority=0"
+#
+# See docs/guides/voice-agent.md for full context.
+
+set -euo pipefail
+
+GOTIFY_URL="http://127.0.0.1:8080"
+ADMIN_USER="rob"
+ADMIN_PASS_FILE="$HOME/.config/gotify-admin.pass"
+STATUS_TOKEN_FILE="$HOME/.config/gotify-quokka-status.token"
+CONTROL_APP_ID=2
+POLL_INTERVAL=2
+
+# --- pre-flight -----------------------------------------------------------
+
+for f in "$ADMIN_PASS_FILE" "$STATUS_TOKEN_FILE"; do
+    [[ -r "$f" ]] || { echo "quokka-toggle: missing $f" >&2; exit 1; }
+done
+for bin in curl jq tmux; do
+    command -v "$bin" >/dev/null 2>&1 || { echo "quokka-toggle: missing $bin" >&2; exit 1; }
+done
+
+ADMIN_PASS=$(cat "$ADMIN_PASS_FILE")
+STATUS_TOKEN=$(cat "$STATUS_TOKEN_FILE")
+
+# --- helpers ---------------------------------------------------------------
+
+get_state() {
+    if tmux has-session -t quokka 2>/dev/null; then
+        echo "ON"
+    else
+        echo "OFF"
+    fi
+}
+
+toggle() {
+    if tmux has-session -t quokka 2>/dev/null; then
+        tmux kill-session -t quokka 2>/dev/null || true
+        echo "OFF"
+    else
+        tmux new-session -d -s quokka "$HOME/.local/bin/voice-agent --hands-free"
+        echo "ON"
+    fi
+}
+
+notify() {
+    local state="$1"
+    curl -sS --max-time 5 \
+        -X POST "${GOTIFY_URL}/message?token=${STATUS_TOKEN}" \
+        -F "title=Quokka ${state}" \
+        -F "message=Voice agent is now ${state}" \
+        -F "priority=5" >/dev/null 2>&1 || true
+}
+
+get_latest_msg_id() {
+    curl -sS --max-time 5 \
+        -u "${ADMIN_USER}:${ADMIN_PASS}" \
+        "${GOTIFY_URL}/application/${CONTROL_APP_ID}/message?limit=1" 2>/dev/null \
+    | jq -r '.messages[0].id // 0'
+}
+
+# --- main loop -------------------------------------------------------------
+
+LAST_MSG_ID=$(get_latest_msg_id)
+echo "quokka-toggle: started, voice-agent is $(get_state), last_msg_id=${LAST_MSG_ID}"
+
+while true; do
+    sleep "$POLL_INTERVAL"
+
+    NEW_ID=$(get_latest_msg_id)
+    [[ "$NEW_ID" == "0" || "$NEW_ID" == "" ]] && continue
+    [[ "$NEW_ID" -le "$LAST_MSG_ID" ]] && continue
+
+    LAST_MSG_ID=$NEW_ID
+    NEW_STATE=$(toggle)
+    notify "$NEW_STATE"
+    echo "quokka-toggle: toggled → ${NEW_STATE} (msg_id=${NEW_ID})"
+done

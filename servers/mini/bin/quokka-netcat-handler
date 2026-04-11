@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# quokka-netcat-handler — per-connection handler for the netcat bridge.
+#
+# Reads a WAV from stdin, runs whisper+ollama+piper, writes structured
+# response to stdout. Conversation history persists across connections
+# via a shared file.
+#
+# Not called directly — launched by ncat:
+#   ncat -l -k -p 9999 --sh-exec /path/to/quokka-netcat-handler
+#
+# Protocol:
+#   stdin:  raw WAV data (client closes write-side when done)
+#   stdout: line 1 = transcript
+#           line 2 = LLM reply
+#           remaining bytes = TTS WAV
+
+set -euo pipefail
+
+MODEL="${QUOKKA_MODEL:-llama3.1:8b}"
+VOICE="$HOME/.local/share/piper/voices/en_GB-alba-medium.onnx"
+WHISPER_MODEL="$HOME/.local/share/whisper/ggml-base.en.bin"
+WORKDIR=/tmp/quokka-netcat
+HISTORY="$WORKDIR/history.json"
+
+mkdir -p "$WORKDIR"
+
+SYSTEM_PROMPT='Your name is Quokka. You are a helpful voice assistant running locally on a Beelink mini-PC called mini. Your user is Rob. Keep spoken answers short — one to three sentences. For non-code questions, answer conversationally. Avoid markdown formatting.'
+
+# Initialise history if missing
+if [[ ! -f "$HISTORY" ]]; then
+    echo "[{\"role\":\"system\",\"content\":$(printf '%s' "$SYSTEM_PROMPT" | jq -Rs .)}]" > "$HISTORY"
+fi
+
+sanitize_for_speech() {
+    sed \
+        -e 's/```[a-z]*//g' -e 's/```//g' \
+        -e 's/\*\*\([^*]*\)\*\*/\1/g' -e 's/\*\([^*]*\)\*/\1/g' \
+        -e 's/__\([^_]*\)__/\1/g' -e 's/_\([^_]*\)_/\1/g' \
+        -e 's/`\([^`]*\)`/\1/g' \
+        -e 's/^#\{1,\}[[:space:]]//g' \
+        -e 's|https\{0,1\}://[^ ]*||g' \
+        | tr -s ' \n' ' ' | sed 's/^ //; s/ $//'
+}
+
+# Use a lock so concurrent connections don't corrupt history
+LOCK="$WORKDIR/lock"
+exec 9>"$LOCK"
+flock 9
+
+# Read incoming WAV from stdin
+TS=$(date +%s%N)
+INPUT="$WORKDIR/input-${TS}.wav"
+cat > "$INPUT"
+
+input_size=$(stat -c%s "$INPUT" 2>/dev/null || echo 0)
+if [[ "$input_size" -le 100 ]]; then
+    echo "__EMPTY__"
+    echo ""
+    rm -f "$INPUT"
+    exit 0
+fi
+
+# STT
+~/.local/bin/whisper-cli -m "$WHISPER_MODEL" -f "$INPUT" \
+    -nt -np -otxt -of "$WORKDIR/transcript-${TS}" 2>/dev/null
+text=$(cat "$WORKDIR/transcript-${TS}.txt" 2>/dev/null | tr -s ' \n' ' ' | sed 's/^ //; s/ $//')
+rm -f "$INPUT" "$WORKDIR/transcript-${TS}.txt"
+
+if [[ -z "$text" || "$text" == "[BLANK_AUDIO]" ]]; then
+    echo "__BLANK__"
+    echo ""
+    exit 0
+fi
+
+# Handle /new command (client can send a WAV of silence with "new" as a special case,
+# or we check the transcript)
+if [[ "$text" == *"reset"* || "$text" == *"new conversation"* || "$text" == *"start over"* ]]; then
+    echo "[{\"role\":\"system\",\"content\":$(printf '%s' "$SYSTEM_PROMPT" | jq -Rs .)}]" > "$HISTORY"
+fi
+
+# LLM
+jq --arg c "$text" '. + [{"role":"user","content":$c}]' "$HISTORY" > "$HISTORY.tmp"
+mv "$HISTORY.tmp" "$HISTORY"
+
+payload=$(jq -n --arg model "$MODEL" --slurpfile msgs "$HISTORY" \
+    '{model:$model, messages:$msgs[0], stream:false, options:{num_ctx:4096}}')
+
+resp=$(curl -sS -X POST http://127.0.0.1:11434/api/chat \
+    -H "Content-Type: application/json" -d "$payload")
+reply=$(printf '%s' "$resp" | jq -r '.message.content // .error // "<empty>"')
+
+jq --arg c "$reply" '. + [{"role":"assistant","content":$c}]' "$HISTORY" > "$HISTORY.tmp"
+mv "$HISTORY.tmp" "$HISTORY"
+
+# TTS
+clean=$(printf '%s' "$reply" | sanitize_for_speech)
+REPLY_WAV="$WORKDIR/reply-${TS}.wav"
+printf '%s' "$clean" | ~/.local/bin/piper \
+    --model "$VOICE" --output_file "$REPLY_WAV" >/dev/null 2>&1
+
+# Output: transcript line, reply line, then WAV bytes
+echo "$text"
+echo "$reply"
+cat "$REPLY_WAV"
+rm -f "$REPLY_WAV"

@@ -97,6 +97,8 @@ fi
 STATE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}"
 STATE_FILE="$STATE_DIR/ollama-health.state"
 TOKEN_FILE="$HOME/.config/mini-alerts.token"
+GOTIFY_TOKEN_FILE="$HOME/.config/gotify-mini-alerts.token"
+GOTIFY_URL="http://127.0.0.1:8080"
 mkdir -p "$STATE_DIR"
 
 prev_state="unknown"
@@ -140,6 +142,35 @@ if [[ "$prev_state" != "unknown" ]] && \
         --data-urlencode "description=${BODY}" \
         "https://git.nwpcode.org/api/v4/projects/ops%2Fmons-log/issues" \
         > /dev/null 2>&1 || echo "alerting: POST to ops/mons-log failed (non-fatal)"
+fi
+
+# Also post to Gotify (local push notification server on mini) so the
+# Android app gets an actual push. Same transition rules — only fire on
+# state change. Loopback URL: Gotify runs on 127.0.0.1:8080 on this
+# same host. Priority 8 for unhealthy, 5 for recovery.
+if [[ "$prev_state" != "unknown" ]] && \
+   [[ "$prev_state" != "$new_state" ]] && \
+   [[ -r "$GOTIFY_TOKEN_FILE" ]]; then
+
+    GOTIFY_TOKEN=$(cat "$GOTIFY_TOKEN_FILE")
+    HOST=$(hostname)
+    TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    if [[ "$new_state" == "unhealthy" ]]; then
+        G_TITLE="mini LLM stack UNHEALTHY"
+        G_PRIORITY=8
+    else
+        G_TITLE="mini LLM stack recovered"
+        G_PRIORITY=5
+    fi
+    G_BODY="host: ${HOST} / time: ${TS} / transition: ${prev_state} -> ${new_state}"
+
+    curl -sS --max-time 10 \
+        -X POST "${GOTIFY_URL}/message?token=${GOTIFY_TOKEN}" \
+        -F "title=${G_TITLE}" \
+        -F "message=${G_BODY}" \
+        -F "priority=${G_PRIORITY}" \
+        > /dev/null 2>&1 || echo "alerting: POST to Gotify failed (non-fatal)"
 fi
 
 exit "$overall"

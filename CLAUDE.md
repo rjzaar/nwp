@@ -145,7 +145,7 @@ See `docs/DATA_SECURITY_BEST_PRACTICES.md` for the full security architecture.
   - `sites/<name>/backups/` - Per-site database backups (shared, outside DDEV/git)
   - `sites/<name>/scripts/` - Maintenance scripts (shared, outside DDEV)
   - `sites/<name>/dev/pipeline/` - Project-specific Python pipelines (mt, cathnet, fin)
-  - `sites/<name>/docs/proposals/` - Per-site proposals; aggregated by `pl proposals`
+  - Per-site proposals live inside each site's profile repo (e.g. `sites/avc/dev/html/profiles/custom/avc/docs/proposals/`); aggregated by `pl proposals`
 - `servers/` - Per-server infrastructure (F17 Phase 8, formerly F23):
   - `servers/<name>/.nwp-server.yml` - Server identity (gitignored plaintext; SOPS-encrypted version comes with F18)
   - `servers/<name>/{email,linode,nginx}/` - Service configs and provisioning scripts

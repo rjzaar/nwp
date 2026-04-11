@@ -1,7 +1,7 @@
 # NWP GitLab CI Configuration Template
 # Copy this to your site's root directory
 #
-# Stages: BUILD -> VALIDATE -> TEST -> DEPLOY
+# Stages: BUILD -> VALIDATE -> TEST
 # Pipeline architecture follows NWP best practices
 #
 # Features:
@@ -10,13 +10,15 @@
 # - Skip flags for selective testing
 # - JUnit reporting for all test types
 # - Coverage reporting
-# - Deploy to staging/production
+#
+# NOTE: Deploy stages were removed in F24 Phase 3 Step 1 per ADR-0017
+# (no AI-accessible runner may hold a prod SSH key). The replacement
+# build-artifact -> mons signed-bundle handoff is tracked in F28.
 
 stages:
   - build
   - validate
   - test
-  - deploy
 
 # Global variables
 variables:
@@ -357,41 +359,6 @@ behat:full:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-
-# -----------------------------------------------------------------------------
-# DEPLOY STAGE
-# -----------------------------------------------------------------------------
-
-deploy:staging:
-  stage: deploy
-  needs: ["phpunit:unit", "phpunit:kernel", "behat:smoke"]
-  script:
-    - echo "Deploying to staging..."
-    # Add your deployment commands here
-    # Example: rsync to staging server
-    # - rsync -avz --delete --exclude='.git' ./ ${STAGING_USER}@${STAGING_HOST}:${STAGING_PATH}/
-  environment:
-    name: staging
-    url: https://staging.${CI_PROJECT_NAME}.example.com
-  rules:
-    - if: $CI_COMMIT_BRANCH == "develop"
-      when: manual
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: manual
-
-deploy:production:
-  stage: deploy
-  needs: ["deploy:staging"]
-  script:
-    - echo "Deploying to production..."
-    # Add your deployment commands here
-  environment:
-    name: production
-    url: https://${CI_PROJECT_NAME}.example.com
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: manual
-  allow_failure: false
 
 # -----------------------------------------------------------------------------
 # SCHEDULED JOBS

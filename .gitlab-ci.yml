@@ -298,6 +298,12 @@ database:
 build:
   stage: build
   needs: ["database"]
+  # Only run when the repo is an actual Drupal site (composer.json at root).
+  # The NWP meta-repo itself has no composer.json, so this job is skipped
+  # there — build.sh assumes a DDEV site and cannot run against the meta-repo.
+  rules:
+    - exists:
+        - composer.json
   script:
     - echo "Starting build process for ${SITE_NAME}..."
     - apt-get update -qq
@@ -333,6 +339,10 @@ build:
 coverage:
   stage: build
   needs: ["build"]
+  # Same gate as build: meta-repo has no PHPUnit coverage to check.
+  rules:
+    - exists:
+        - composer.json
   script:
     - echo "Checking code coverage..."
     - |
@@ -366,8 +376,9 @@ security:scan:
   stage: security
   needs: ["build"]
   rules:
-    # Run on all branches
-    - when: on_success
+    # Only run on Drupal-site pipelines (needs build artifacts: composer/npm audit)
+    - exists:
+        - composer.json
   script:
     - echo "Starting security scans..."
     - echo "=== Composer Security Audit ==="
@@ -473,7 +484,13 @@ security:scan:
 # Performs scope verification and red flag detection
 security:review:
   stage: security
-  needs: ["build"]
+  # build is optional: this job only uses git diff / git fetch — no build
+  # artifacts are read. On Drupal-site MRs build runs and security:review
+  # waits for it (preserving ordering); on meta-repo MRs build is pruned
+  # by its composer.json gate and security:review still runs.
+  needs:
+    - job: build
+      optional: true
   rules:
     # Only run for merge requests
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -701,8 +718,11 @@ deploy:preview:
   stage: preview
   needs: ["build"]
   rules:
-    # Only run for merge requests
+    # Only run for merge requests, and only for Drupal-site repos.
+    # The NWP meta-repo has no .ddev/ project to preview.
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      exists:
+        - composer.json
   script:
     - echo "Creating preview environment for MR $CI_MERGE_REQUEST_IID..."
 

@@ -1,6 +1,6 @@
 # X02: Local Voice Agent on mini (Twilio + Pipecat + local LLM)
 
-**Status:** PROPOSED
+**Status:** PROPOSED — Phase 0 preflight **DONE** (2026-04-08 F21 Phase 3a work); direct-mic push-to-talk loop **DONE** (2026-04-09, see § 11 Progress Notes)
 **Created:** 2026-04-08
 **Author:** Rob Zaar, Claude Opus 4.6
 **Priority:** Low (scope expansion; exploratory)
@@ -385,3 +385,107 @@ three small edits in 5.2) fully removes it.
 - **[ADR-0004: Two-tier Secrets Architecture](../decisions/0004-two-tier-secrets-architecture.md)** — classifies Twilio credentials as infra tier
 - **[ADR-0011: Proposal Designation System](../decisions/0011-proposal-designation-system.md)** — justifies the X## prefix
 - **[ADR-0017: Distributed Build/Deploy Pipeline](../decisions/0017-distributed-build-deploy-pipeline.md)** — mini's trust boundary
+
+---
+
+## 11. Progress Notes
+
+### 2026-04-09 — Direct-mic push-to-talk loop delivered
+
+A push-to-talk voice loop that talks to mini directly via its attached
+mic and speaker (no Twilio, no PSTN) is now working. This is *not* the
+X02 endgame — it is a useful side-effect that validates the local
+STT/LLM/TTS pipeline before Phase 2 wires it up to Pipecat.
+
+**Stack as deployed on mini:**
+
+- STT: `whisper.cpp` (ggml base.en model, CPU, ~150 ms cold, handles
+  3-second clips in well under a second)
+- LLM: `ollama` with `llama3.1:8b` over loopback (same daemon as the
+  coding agent — verified coexistence)
+- TTS: `piper` (en_US-lessac-medium, CPU, real-time factor ≈ 0.03)
+- Mic: POROSVOC USB (`plughw:2,0`)
+- Speaker: motherboard ALC897 analog (`plughw:1,0`)
+- Glue: `servers/mini/bin/voice-agent` bash script, push-to-talk UX
+
+**What this validates for X02 Phase 2:**
+
+1. whisper.cpp + piper work on mini without Vulkan/GPU (frees the iGPU
+   for the coding LLM during calls)
+2. The STT/LLM/TTS latency budget is achievable — Phase 2's 1.5 s p50
+   target is plausible because all three components are measurably fast
+3. Ollama's `keep_alive` coexistence assumption holds in practice —
+   llama3.1:8b shares a daemon with qwen2.5-coder:14b without eviction
+   issues under short-conversation load
+4. ALSA device paths for mic/speaker are known and stable; Pipecat's
+   audio transport can target the same devices when not routing through
+   Twilio
+
+**Pre-requisite unblocked during this work:** `rob` was not in the
+`audio` group on mini — PipeWire saw only dummy sinks. Fixed with
+`sudo usermod -aG audio rob`. Documented here so the Phase 2 runbook
+includes the group check.
+
+**Not yet done:**
+
+- Wake-word detection (Phase 3 polish; current loop is ENTER-to-record)
+- Streaming STT (whisper.cpp is batch-at-end; Pipecat will need
+  faster-whisper for streaming)
+- Interruption handling (user cutting off the assistant mid-reply)
+- Twilio/Pipecat integration (the actual X02 Phase 2 work)
+
+**Files of record:**
+
+- `servers/mini/bin/voice-agent` — the push-to-talk script
+- `servers/mini/systemd/gotify.service` — related work: push
+  notifications (Track A from the same session)
+
+### 2026-04-09 — Accent benchmark + TTS upgrade candidates
+
+Follow-up to the push-to-talk delivery. Rob and Julie ran a
+whisper-model benchmark to evaluate whether stock `ggml-base.en` was
+mishandling Australian accents, and whether a bigger or multilingual
+model was warranted. Full results are in
+`docs/guides/voice-agent.md` § "Whisper model benchmark (2026-04-09)";
+the implications for Phase 2 are summarised here.
+
+**New assets on mini** (not in repo):
+
+- `~/.local/share/whisper/ggml-medium.en.bin` (1.5 GB) — downloaded
+  for benchmark, kept for future re-evaluation
+- `~/.local/share/whisper/ggml-large-v3-turbo.bin` (1.6 GB) —
+  multilingual candidate, kept
+- `~/.local/share/piper/voices/en_GB-cori-high.onnx(+.json)` (109 MB)
+  — the only `en_GB` voice piper ships at "high" quality; closest
+  in-piper candidate to an Australian voice, ready for A/B against
+  the current `en_US-lessac-medium`
+
+**Benchmark conclusion (short form):** accent-bias hypothesis was
+weaker than expected. `base.en` correctly transcribed `docile`,
+`fertile`, `dance`, `castle`, `tomato`, `pasta`, `water`, `Melbourne`
+on both speakers. The one genuine accent error
+(`"say an Our Father"` → `"say in our father"`) is shared by **all
+three models including the multilingual `large-v3-turbo`**, so it is
+an LM-level decoding bias, not fixable by model swap.
+
+**Implications for Phase 2:**
+
+1. **Don't assume bigger = better for accent handling.** Budget for
+   post-processing and prompt-level fixes, not a blanket upgrade to
+   large-v3.
+2. **Custom vocabulary hints are load-bearing.** Whisper's `--prompt`
+   flag (or `initial_prompt` in `faster-whisper`) should be part of
+   the Phase 2 STT config — seed it with known names, prayer
+   references, place names, and Aussie lexicon the user cares about.
+3. **Piper has no `en_AU` voices.** If Phase 2 calls for an Australian
+   voice specifically, that requires a different TTS engine — Coqui
+   XTTS-v2 (voice cloning) or Kokoro-82M — both Python-only. Flag this
+   as a scope decision at the start of Phase 2; don't try to sneak it
+   into incremental bash improvements (ground rule #1).
+4. **Limitation #9 (no remote transport) hit in practice.** The
+   benchmark required recording on dev's mic and `scp`'ing to mini
+   because the speakers were physically at dev, not mini. The POROSVOC
+   on mini captured `peak=0` silence because nobody was in mini's
+   room. This reinforces that the current script assumes "human
+   physically at mini," and Phase 2's Pipecat transport is the real
+   fix — not a bash-script patch.

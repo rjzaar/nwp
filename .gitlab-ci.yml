@@ -6,16 +6,18 @@
 # Pipeline Stages:
 #   database - Fetch/cache production database for testing
 #   build    - Install dependencies, prepare environment
-#   deploy   - Deploy to staging/production environments
+#   preview  - Per-MR preview environments
 #
 # Features:
 # - Nightly database caching for faster builds
 # - Production database import with sanitization
 # - Automatic composer and npm builds
-# - Drupal deployment (updb, cim, cr)
-# - Environment-specific deployments
 # - Test coverage reporting
 # - Artifact management
+#
+# NOTE: Legacy deploy:staging / deploy:production jobs were deleted in
+# F24 Phase 3 Step 1 — see ADR-0017 (trust model) for rationale. The
+# replacement build-artifact → mons handoff is tracked in F28.
 
 stages:
   - lint
@@ -528,149 +530,6 @@ security:review:
   allow_failure: true
 
 ################################################################################
-# DEPLOY STAGE
-# Deploy to staging and production environments
-################################################################################
-
-# Deploy to staging environment
-# Runs on develop branch, manual trigger required
-deploy:staging:
-  stage: deploy
-  needs: ["build"]
-  rules:
-    # Deploy to staging on develop branch (manual)
-    - if: $CI_COMMIT_BRANCH == "develop"
-      when: manual
-    # Also allow manual deploy from main branch to staging
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: manual
-  script:
-    - echo "Deploying to staging environment..."
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - echo "$STAGING_SSH_KEY" | base64 -d > ~/.ssh/id_rsa
-    - chmod 600 ~/.ssh/id_rsa
-    - ssh-keyscan -H $STAGING_HOST >> ~/.ssh/known_hosts
-    - |
-      rsync -avz \
-        --exclude='.git' \
-        --exclude='.ddev' \
-        --exclude='node_modules' \
-        --exclude='.data' \
-        --exclude='sitebackups' \
-        --delete \
-        ./ ${STAGING_USER}@${STAGING_HOST}:${STAGING_PATH}/
-    - |
-      ssh ${STAGING_USER}@${STAGING_HOST} "
-        cd ${STAGING_PATH}
-        ddev drush deploy -y
-        ddev drush cr
-        echo 'Staging deployment completed'
-      "
-  environment:
-    name: staging
-    url: https://staging.${SITE_NAME}.${BASE_DOMAIN}
-    on_stop: stop:staging
-  tags:
-    - nwp
-
-# Stop staging environment
-stop:staging:
-  stage: deploy
-  rules:
-    - if: $CI_COMMIT_BRANCH == "develop"
-      when: manual
-  script:
-    - echo "Stopping staging environment..."
-    - ssh ${STAGING_USER}@${STAGING_HOST} "cd ${STAGING_PATH} && ddev stop"
-  environment:
-    name: staging
-    action: stop
-  tags:
-    - nwp
-
-# Deploy to production environment
-# Runs on main/production branch, manual trigger required
-# This is the final step and requires explicit approval
-deploy:production:
-  stage: deploy
-  needs: ["build"]
-  rules:
-    # Deploy to production only on main branch (manual trigger)
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "production"
-      when: manual
-  script:
-    - echo "Deploying to production environment..."
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - echo "$PRODUCTION_SSH_KEY" | base64 -d > ~/.ssh/id_rsa
-    - chmod 600 ~/.ssh/id_rsa
-    - ssh-keyscan -H $PRODUCTION_HOST >> ~/.ssh/known_hosts
-    - |
-      ssh ${PRODUCTION_USER}@${PRODUCTION_HOST} "
-        cd ${PRODUCTION_PATH}
-        echo 'Creating backup before deployment...'
-        ddev snapshot --name=pre-deploy-${CI_COMMIT_SHORT_SHA}
-      "
-    - |
-      rsync -avz \
-        --exclude='.git' \
-        --exclude='.ddev' \
-        --exclude='node_modules' \
-        --exclude='.data' \
-        --exclude='sitebackups' \
-        --exclude='web/sites/*/files' \
-        --delete \
-        ./ ${PRODUCTION_USER}@${PRODUCTION_HOST}:${PRODUCTION_PATH}/
-    - |
-      ssh ${PRODUCTION_USER}@${PRODUCTION_HOST} "
-        cd ${PRODUCTION_PATH}
-        echo 'Running Drupal deployment tasks...'
-        ddev drush deploy -y
-        ddev drush cr
-        echo 'Production deployment completed successfully'
-      "
-    - |
-      ssh ${PRODUCTION_USER}@${PRODUCTION_HOST} "
-        cd ${PRODUCTION_PATH}
-        ddev drush status
-      "
-  environment:
-    name: production
-    url: https://${SITE_NAME}.${BASE_DOMAIN}
-  tags:
-    - nwp
-  allow_failure: false
-
-################################################################################
-# CI/CD Variables Required
-################################################################################
-#
-# Configure these in GitLab: Settings > CI/CD > Variables
-#
-# Database & Build:
-#   (none required - uses local database fetch)
-#
-# Staging Deployment:
-#   STAGING_HOST         - Staging server hostname/IP
-#   STAGING_USER         - SSH username for staging
-#   STAGING_PATH         - Path to site on staging server
-#   STAGING_SSH_KEY      - Base64-encoded SSH private key
-#   BASE_DOMAIN          - Base domain for environments (e.g., nwpcode.org)
-#
-# Production Deployment:
-#   PRODUCTION_HOST      - Production server hostname/IP
-#   PRODUCTION_USER      - SSH username for production
-#   PRODUCTION_PATH      - Path to site on production server
-#   PRODUCTION_SSH_KEY   - Base64-encoded SSH private key
-#   BASE_DOMAIN          - Base domain for production (e.g., example.com)
-#
-# To encode SSH key for CI/CD variables:
-#   cat ~/.ssh/id_rsa | base64 -w 0
-#
-################################################################################
-
-################################################################################
 # Scheduled Pipeline Configuration
 ################################################################################
 #
@@ -772,9 +631,11 @@ cleanup:preview:
 #   4. Pipeline runs again: database → build → preview
 #   5. Preview environment created with unique URL
 #   6. Review and test in preview environment
-#   7. After merge to develop: manual deploy to staging
-#   8. After merge to main: manual deploy to production
-#   9. Preview environment auto-cleans up after 1 week
+#   7. Merge to main after approval
+#   8. Preview environment auto-cleans up after 1 week
+#
+# Deployment to staging/production is not performed by this pipeline;
+# see F28 for the planned mmt → mons → prod signed-artifact handoff.
 #
 # Nightly workflow:
 #   1. Scheduled pipeline runs at 2 AM

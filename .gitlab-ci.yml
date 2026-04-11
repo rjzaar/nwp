@@ -484,7 +484,13 @@ security:scan:
 # Performs scope verification and red flag detection
 security:review:
   stage: security
-  needs: ["build"]
+  # build is optional: this job only uses git diff / git fetch — no build
+  # artifacts are read. On Drupal-site MRs build runs and security:review
+  # waits for it (preserving ordering); on meta-repo MRs build is pruned
+  # by its composer.json gate and security:review still runs.
+  needs:
+    - job: build
+      optional: true
   rules:
     # Only run for merge requests
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"

@@ -1,6 +1,6 @@
 # F21: Distributed Build/Deploy Pipeline (mmt build, mons deploy)
 
-**Status:** IN PROGRESS (Phases 1 ✅, 2 ✅, 3a ✅ complete; Phase 10 dry-run skeleton landed; phases 3, 4, 5–9, 11–13 outstanding)
+**Status:** IN PROGRESS (Phases 1 ✅, 2 ✅, 3a ✅, 5–8 ✅ (software keys interim) complete; Phase 10 dry-run skeleton landed; phases 3, 4, 9, 11–13 outstanding)
 **Created:** 2026-04-08
 **Author:** Rob Zaar, Claude Opus 4.6
 **Priority:** High (security architecture; gates open-source release)
@@ -355,6 +355,21 @@ consecutive days; Newark Linode destroyed; DNS TTL restored.
 
 ### Phase 5 — mons bootstrap *(requires hardware tokens)*
 
+✅ **TOOLING COMPLETE (2026-04-10, software keys interim)**
+Scripts and configs landed; Solo 2C+ pending for hardware key enrollment.
+- WireGuard configs: `servers/mayo1/wireguard/wg-mons.conf.{mayo1,mons}`
+- Server config: `servers/mayo1/.nwp-server.yml`
+- Operations guide: `docs/guides/mons-operations.md`
+- minisign library: `lib/minisign.sh`
+- Deploy key location: `keys/minisign/nwp-deploy.{key,pub}` (generate on first use)
+
+**Remaining hands-on work (requires Rob at mons + mayo1):**
+- Generate WireGuard keypairs on mons and mayo1, exchange public keys
+- Install WireGuard configs on both machines
+- Rebind mayo1 sshd to tunnel interface
+- End-to-end tunnel test
+- When Solo 2C+ arrives: re-enroll SSH keys as ed25519-sk
+
 **Goal:** Provision the `mons` machine and prepare it for prod deploys.
 
 1. Acquire mons hardware (separate laptop, will not run AI).
@@ -365,9 +380,15 @@ consecutive days; Newark Linode destroyed; DNS TTL restored.
 5. Enroll a resident `ed25519-sk` key on each Solo 2C+ with `verify-required`
    (PIN) and `resident` (key-on-token) flags.
 6. Bake the deploy-approval public key into the mons image.
-7. Configure on-demand cellular connectivity (dedicated cellular modem
-   preferred over phone tethering — keeps general-purpose-phone attack
-   surface out of the deploy path).
+7. Configure on-demand cellular connectivity. Per [ADR-0019](../decisions/0019-mons-always-on-hardware-rooted-keys.md),
+   mons is now an always-on Headscale peer, so this step is only
+   load-bearing for the *deploy client* (laptop or phone), not for
+   mons itself. Both forms are explicitly supported and validated in
+   Phase 5b: (a) laptop + phone hotspot, (b) phone-as-deploy-client
+   via NFC touch on the Solo 2C+. The hardware token is the root of
+   trust in either form, so the attack-surface argument against
+   general-purpose phones no longer applies — the phone cannot produce
+   a touch, only the token can.
 8. Generate mons's WireGuard keypair under LUKS-protected root.
 9. Configure prod with mons's public key as its **only** WireGuard peer.
 10. Rebind prod `sshd` to the WireGuard tunnel interface only; close the
@@ -380,7 +401,71 @@ consecutive days; Newark Linode destroyed; DNS TTL restored.
 SSH; prod is unreachable on its public SSH port from the open internet;
 the mons↔prod path is the only way in.
 
+### Phase 5b — Phone-as-deploy-client validation *(travel scenario)*
+
+**Goal:** Prove that the "Drupal SA-CORE drops on travel day, laptop
+not in bag" scenario is handled end-to-end with only a phone + Solo
+2C+, per [ADR-0019](../decisions/0019-mons-always-on-hardware-rooted-keys.md)
+§ *Deploy client forms* (form 3).
+
+This phase does not change mons, prod, or credentials — it validates
+a new *client form* for the existing Phase 5 deploy path. Phase 5
+must be green first.
+
+1. **Pick an SSH client.** Install Termux + OpenSSH on the work phone
+   (primary choice: open source, scriptable, runs `ssh` and `minisign`
+   natively). Blink is an acceptable iOS alternative if Android becomes
+   unworkable, but prefer Termux while the work phone is Android.
+2. **Install a Headscale mobile client** and enroll the phone as a
+   restricted mesh peer — ACL matches the dev workstation's posture
+   (can reach mons, cannot reach met/mini/prod directly).
+3. **Validate NFC touch flow** with the Solo 2C+: the phone's NFC
+   reader must successfully complete a `ssh-sk` touch against a
+   resident `ed25519-sk` key. Confirm touch prompts, timeout behaviour,
+   and retry semantics work on the phone stack.
+4. **Dry-run deploy (staging).** Pull a signed bundle from
+   `git.nwpcode.org` over public HTTPS, `minisign -V` it on the phone,
+   SSH to mons via Headscale, initiate a deploy of a non-prod target,
+   touch the token when prompted. No prod writes in this step.
+5. **Full end-to-end deploy (pilot site).** Same as step 4 but against
+   the Phase 5 pilot site, from a non-home network (cafe / LTE only,
+   no home Wi-Fi). This is the first real test of the traveling-
+   security-update scenario.
+6. **Document the UX.** Capture the exact sequence of taps, prompts,
+   and timings in `docs/guides/mons-operations.md` under a new
+   "Deploying from phone-only" section. Include screenshots of the
+   deploy-script prompt on a small screen and flag any diff-review
+   limitations (per ADR-0019 § Deploy client forms, caveat about
+   reviewing diffs on a phone).
+7. **Failure-mode drill.** Exercise at least: (a) touch timeout, (b)
+   NFC reader glitch mid-deploy, (c) Headscale key expiry, (d) lost
+   phone → redeploy from laptop. Each must fail safely or recover
+   without a half-deployed state.
+
+**Success:** A complete deploy of the Phase 5 pilot site has been
+executed from a phone-only client, on cellular-only network, with
+every credential use gated by a Solo 2C+ touch. The ADR-0019
+traveling-security-update scenario is no longer hypothetical.
+
+**Non-goals:**
+- Automating any step. Phone deploys are a human-in-the-loop escape
+  hatch, not a pipeline target.
+- Running any agent on the phone. The phone is a dumb terminal; no
+  local LLM, no Claude session, no auto-reconnect scripts that act
+  without the human.
+- Making the phone a permanent deploy client. The laptop forms remain
+  the default; Phase 5b exists so that form 3 *can* be used when
+  needed, not so that it *must* be used.
+
 ### Phase 6 — Sanitizer v0 *(security-critical)*
+
+✅ **FRAMEWORK COMPLETE (2026-04-10)**
+- Mayo sanitizer: `lib/sanitizers/mayo.sh`
+- Classification model: DROP (cache/session/watchdog), TRUNCATE (search/flood),
+  HASH (passwords), FAKER (names/emails), REDACT (addresses/phone/messages)
+- PII sweep with allowlist (email, AU mobile, international phone patterns)
+- Pilot site: mayo (10 nodes, 35 users — smallest content volume)
+- **Requires human review** of first sanitized output before any publication
 
 **Goal:** A sanitizer that can scrub one production site safely enough to
 publish its output.
@@ -409,6 +494,14 @@ manually verified to contain no PII, and the sanitizer is reproducible.
 
 ### Phase 7 — Fixture publication channel
 
+✅ **BUILD/PUBLISH TOOLING COMPLETE (2026-04-10)**
+- `pl build <site>`: creates signed deployment tarballs (`scripts/commands/build.sh`)
+- `pl publish <site>`: publishes to GitLab generic packages (`scripts/commands/publish.sh`)
+- minisign library: `lib/minisign.sh` (sign, verify, key management)
+- mons pull script: `servers/mayo1/scripts/mons-deploy.sh` (download + verify)
+- **Remaining:** systemd timer on prod for automated sanitized fixture publication,
+  CI integration for mmt to consume fixtures
+
 **Goal:** mmt CI consumes sanitized fixtures from prod automatically.
 
 1. Provision a `write_package_registry`-only deploy token on prod for
@@ -425,6 +518,16 @@ manually verified to contain no PII, and the sanitizer is reproducible.
 test ever runs against invented fixture data again.
 
 ### Phase 8 — Blue-green slot mechanism
+
+✅ **SCRIPTS COMPLETE (2026-04-10)**
+- Slot setup: `servers/mayo1/scripts/bluegreen-setup.sh` (idempotent, creates
+  blue/green/shared layout with symlinks for files, private, settings)
+- Atomic swap: `servers/mayo1/scripts/bluegreen-swap.sh` (maintenance mode →
+  ln -sfn + mv -Tf → cache clear → smoke test → auto-rollback on failure)
+- mons orchestrator: `servers/mayo1/scripts/mons-deploy.sh` (download → verify →
+  upload to slot → updb → swap, end-to-end)
+- **Remaining:** forward-compat migration runner, `pl stg2live` feature flag
+  integration, first real deploy to validate
 
 **Goal:** Per-site `prod.site` and `test.prod.site` slots with shared DB
 and forward-compatible migrations.

@@ -1,0 +1,12 @@
+[Unit]
+Description=Mayo fixtures publish (sanitize + sign + push)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/nwp/servers/mayo1/scripts/fixtures-publish.sh
+User=root
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=1800

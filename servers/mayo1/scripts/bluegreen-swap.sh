@@ -171,6 +171,18 @@ else
 fi
 
 ################################################################################
+# Step 1b: Stamp deployment identifier on target
+################################################################################
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "$SCRIPT_DIR/stamp-deployment-identifier.sh" ]]; then
+    echo "[1b/5] Stamping deployment identifier on ${TARGET_NAME}..."
+    "$SCRIPT_DIR/stamp-deployment-identifier.sh" "${TARGET_DIR}/html"
+else
+    echo "[1b/5] stamp-deployment-identifier.sh not found, skipping"
+fi
+
+################################################################################
 # Step 2: Maintenance mode
 ################################################################################
 
@@ -208,8 +220,14 @@ echo "  ${SITE} -> ${TARGET_DIR}"
 # Step 4: Post-swap cache clear
 ################################################################################
 
-echo "[4/5] Post-swap: cache clear and maintenance mode off..."
+echo "[4/5] Post-swap: deploy hooks, cache clear, maintenance mode off..."
 cd "$TARGET_DIR"
+# Run deploy hooks (updates content, runs hook_deploy_N).
+if sudo -u "$WEB_USER" ./vendor/bin/drush deploy -y 2>&1; then
+    echo "  drush deploy: OK"
+else
+    echo "  WARNING: drush deploy returned non-zero (site may still work)"
+fi
 if ! sudo -u "$WEB_USER" ./vendor/bin/drush cr 2>/dev/null; then
     echo "  WARNING: cache clear failed (site may still work)"
 fi

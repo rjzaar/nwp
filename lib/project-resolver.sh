@@ -271,7 +271,8 @@ discover_sites() {
         local name
         name=$(basename "$dir")
         case "$name" in
-            tmp|latest|vendor|ss_moodledata) continue ;;
+            tmp|latest|vendor) continue ;;
+            *_moodledata) continue ;;  # Moodle data dirs (sibling to Moodle sites by convention)
             20260117T212337-no-git-no-git) continue ;;
         esac
         if [[ -f "$dir/.nwp.yml" ]]; then

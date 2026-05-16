@@ -49,7 +49,8 @@ fi
 _site_is_skippable() {
     local name="$1"
     case "$name" in
-        tmp|latest|vendor|ss_moodledata) return 0 ;;
+        tmp|latest|vendor)               return 0 ;;
+        *_moodledata)                    return 0 ;;  # Moodle data dirs (sibling to Moodle sites)
         20260117T212337-no-git-no-git)   return 0 ;;
         verify-test*)                    return 0 ;;
         bats-test-*)                     return 0 ;;

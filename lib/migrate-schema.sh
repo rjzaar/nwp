@@ -171,7 +171,8 @@ migrate_all_sites() {
         name=$(basename "$dir")
         # Skip well-known generated/scratch dirs
         case "$name" in
-            tmp|latest|vendor|ss_moodledata) continue ;;
+            tmp|latest|vendor) continue ;;
+            *_moodledata) continue ;;  # Moodle data dirs (sibling to Moodle sites by convention)
             20260117T212337-no-git-no-git) continue ;;
             *-stg) continue ;;  # F23: -stg siblings absorbed by parent migration
         esac

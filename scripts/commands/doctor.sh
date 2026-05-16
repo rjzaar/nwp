@@ -296,7 +296,8 @@ check_site_schemas() {
 
         # Skip known scratch/verify sites
         case "$name" in
-            tmp|latest|vendor|ss_moodledata) continue ;;
+            tmp|latest|vendor) continue ;;
+            *_moodledata) continue ;;  # Moodle data dirs (sibling to Moodle sites)
             20260117T212337-no-git-no-git) continue ;;
             verify-test*|bats-test-*|trace-del*|*-stg) continue ;;
         esac

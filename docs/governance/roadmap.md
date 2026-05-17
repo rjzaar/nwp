@@ -38,7 +38,7 @@ Pending implementation items and future improvements for **NWP core**.
 | Current Version | v0.30.0 (F17 phases 1–8, 10 landed; F19 baseline reset complete) |
 | Test Success Rate | 99.5% (Machine Verified) |
 | Completed NWP Proposals | P01–P35, P50–P51, P53–P60, F03–F05, F07, F09, F12–F15, F17 (phases 1–8, 10), F19 |
-| Proposed NWP Proposals | F16 (Claude Code Web), F18 (Unified Backup), F20 (SolveIt), F22 (Gotify Remote) |
+| Proposed NWP Proposals | F16 (Claude Code Web), F18 (Unified Backup), F20 (SolveIt), F22 (Gotify Remote), F25 (Mayo NWP — superseded by F29), F26 (OIDC), F27 (Feedback Ingest), F28 (Unified Pipeline), F29 (Mayo Comprehensive), F30 (Content Federation Network) |
 | In-Progress NWP Proposals | F21 (Distributed Build/Deploy Pipeline — Phases 1 ✅, 2 ✅, 3a ✅; Phase 10 dry-run skeleton) |
 | Pending NWP Proposals | F01, F02, F06, F08 |
 | Rejected NWP Proposals | P52 (rename — NWP is the permanent project name) |
@@ -82,6 +82,8 @@ Pending implementation items and future improvements for **NWP core**.
 | **Phase 14** | **Site Environment Layout** | **F23** | **✅ Complete (2026-04-09)** — sites restructured to dev/+stg/ subdirs, sync scripts fixed, -stg siblings absorbed |
 | **Phase 15** | **Claude Code Web + Backup + SolveIt** | **F16 (was F22), F18 (was F24), F20 (was F26)** | **PROPOSED** — F18 now unblocked (F23 complete) |
 | **Phase 16** | **Gotify Remote Reachability** | **F22** | **PROPOSED** — F21 Phase 1 (Headscale) now complete; unblocked |
+| **Phase 17** | **Multi-Site Integration** | **F25 (superseded), F26, F27, F28, F29** | **PROPOSED** — mayo integration, OIDC, feedback ingest, unified pipeline, mayo comprehensive |
+| **Phase 18** | **Content Federation Network** | **F30** | **PROPOSED** — course registry, three-stage review, theocat integration, cross-site content sharing |
 | **Phase X** | **Experimental/Outliers** | **X01, X02** | **X01 Possible, X02 Proposed** |
 
 ---
@@ -717,6 +719,58 @@ rollout, and tabletop drills.
   Newark currently.
 - **Phase 5 onward:** blocked on Solo 2C+ hardware procurement
   (ordered 2026-04-09; long lead time).
+
+---
+
+## Phase 17: Multi-Site Integration
+
+### F25: Mayo NWP Integration
+**Status:** SUPERSEDED BY F29 | **Proposal:** [F25-mayo-nwp-integration.md](../proposals/F25-mayo-nwp-integration.md)
+
+All F25 work is absorbed into F29.
+
+### F26: AVC↔SS OIDC Single Sign-On
+**Status:** PROPOSED | **Priority:** Medium | **Effort:** Medium | **Dependencies:** F23 ✅, F21 Phase 2 ✅
+**Proposal:** [F26-avc-ss-oidc.md](../proposals/F26-avc-ss-oidc.md)
+
+Cross-site SSO: AVC as OIDC identity provider, Moodle as client. UID lock, deterministic email hashing for sanitized previews, per-MR preview environments, wildcard TLS via certbot-dns-linode.
+
+### F27: Feedback Ingest — Prod → mmt via Signed Packages
+**Status:** PROPOSED | **Priority:** Medium | **Effort:** Medium | **Dependencies:** F21, F29 Phase 5
+**Proposal:** [F27-feedback-ingest.md](../proposals/F27-feedback-ingest.md)
+
+Reverse pipeline: prod writes structured feedback to GitLab Packages API (write-only token), met polls and creates GitLab issues. First tenant: mayo.
+
+### F28: Unified Pipeline — mmt → mons → prod Signed-Artifact Handoff
+**Status:** PROPOSED | **Priority:** High | **Effort:** Large | **Dependencies:** F21
+**Proposal:** [F28-unified-pipeline.md](../proposals/F28-unified-pipeline.md)
+
+Three-hop pipeline: mmt builds+signs → GitLab Packages → mons verifies+deploys via WireGuard + Solo 2C+. Immutable signed bundles, idempotent apply, atomic rollback.
+
+### F29: Mayo Comprehensive Integration
+**Status:** PROPOSED | **Priority:** High | **Effort:** Large | **Dependencies:** F21, F23 ✅, F26
+**Proposal:** [F29-mayo-comprehensive-integration.md](../proposals/F29-mayo-comprehensive-integration.md)
+
+10-phase plan: document relocation, mayo/mayo repo bootstrap, policy content lifecycle, two-tier sanitization, saintschool bootstrap, OIDC integration, CI/CD, example site packaging.
+
+---
+
+## Phase 18: Content Federation Network
+
+### F30: Content Federation Network
+**Status:** PROPOSED | **Priority:** High | **Effort:** Large | **Dependencies:** F26, F28, F29, S05, A02 ✅, A09 ✅
+**Proposal:** [F30-content-federation-network.md](../proposals/F30-content-federation-network.md)
+
+Architectural keystone connecting nwprog.org, saint.school, mayostudios.org, avcommons.org into a coherent content ecosystem:
+
+- **Central course repository** (`nwp/courses`) with 49 courses in S05 YAML format
+- **Three-stage review workflow:** Writer's Check → Pedagogy Check → Theology Check (using AVC's workflow_assignment module)
+- **Theocat integration:** Automated quote verification, citation validation, theological grade classification, copyright scan for the theology review stage
+- **Adaptation overlays:** Sites like mayo create youth adaptations without forking; overlays contain only what differs
+- **Per-site course manifests:** Each site declares which courses it uses and which adaptation layer
+- **Git-based distribution:** Signed course packages via F28 pipeline to each site's Moodle
+
+10 phases from course repo bootstrap through public distribution.
 
 ---
 

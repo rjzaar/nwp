@@ -1,0 +1,216 @@
+NOTICE — Legal Notices Pertaining to this Repository
+
+This NOTICE supplements the LICENSE file at the root of this
+repository. In case of conflict, the operative grant in CC0 1.0
+Universal or the MIT Licence (as applicable) prevails over any
+narrower wording in this NOTICE.
+
+================================================================
+1. AUTHORSHIP
+
+Primary author: Robert Karsten Zaar (Melbourne, Victoria, Australia).
+
+Contributors: as recorded in the AUTHORS file at the root of this
+repository (if present), plus any individual whose Signed-off-by
+trailer appears in the git commit history.
+
+================================================================
+2. LICENCE
+
+This work is dual-licensed at the recipient's option under either
+CC0 1.0 Universal or the MIT Licence. See LICENSE for the canonical
+statement. Per-file SPDX-License-Identifier headers indicate the
+applicable licence(s) for each file once they have been added.
+
+================================================================
+3. MORAL RIGHTS CONSENT (AUSTRALIA)
+
+Where the author of any work in this repository (whether the original
+author or any contributor) is subject to Australian law, the author
+gives the following consent under section 195AW of the Copyright Act
+1968 (Cth) in respect of moral rights:
+
+The author consents to all acts and omissions (including all acts and
+omissions occurring after the date of this consent) by the project,
+its maintainers, its successors, its assignees, its licensees, and
+any user of the project, in relation to the author's contribution and
+any work derived from or incorporating the author's contribution,
+that would otherwise infringe the author's right of attribution of
+authorship or right of integrity of authorship. This consent extends
+without limitation to:
+
+  (a) the omission of any identification of the author on any
+      reproduction, communication, publication, performance,
+      exhibition, or adaptation of the contribution or any
+      derivative thereof;
+
+  (b) the use of the contribution under any name, pseudonym, or
+      attribution chosen by the project or by any downstream user,
+      including no attribution at all;
+
+  (c) the alteration, addition to, deletion from, mutilation,
+      distortion, refactoring, translation, transformation,
+      combination with other works, and adaptation of the
+      contribution, in any manner and for any purpose, including
+      modifications that may be considered prejudicial to the
+      author's honour or reputation, save that this consent does
+      not extend to the deliberate insertion of material into the
+      contribution that would (i) attribute the contribution
+      misleadingly to a real person other than the actual author,
+      or (ii) be objectively defamatory of any identified person;
+
+  (d) the use of the contribution in any context (including
+      political, religious, commercial, satirical, or otherwise)
+      without further reference to the author; and
+
+  (e) the inclusion of the contribution in works that are themselves
+      attributed to other persons, projects, or organisations.
+
+This consent is given in respect of all contributions the author has
+made to the project before the date of this consent and all
+contributions the author makes to the project at any time after the
+date of this consent. The project (as identified in the LICENSE file
+at the root of this repository) is the specified work, and the
+description "any code, documentation, configuration, asset, or other
+material the author contributes to the project" is the specified
+description for the purposes of section 195AW(1)(b).
+
+The author does NOT consent to acts that infringe the author's right
+not to have authorship falsely attributed (Copyright Act 1968 (Cth)
+s 195AC). The project respects this right and any downstream user
+should refrain from misattributing the contribution to a real person
+other than the actual author.
+
+If the author is an employee and the contribution was made in the
+course of employment, this consent is also given on behalf of the
+employer to the extent permitted by section 195AWA, and the author
+warrants having authority to give such consent.
+
+The author acknowledges that this consent is given freely and not
+under duress, that the author has had the opportunity to seek
+independent legal advice, and that the author understands that under
+Australian law moral rights cannot be assigned but may be consented
+to specific acts or omissions in the manner provided by section
+195AW.
+
+================================================================
+4. AI-ASSISTED AUTHORSHIP
+
+Portions of this work were drafted with substantial assistance from
+Anthropic Claude (Claude Code, Claude API, and/or Claude Desktop).
+The author's contribution to AI-assisted portions ranges from
+(i) prompting and accepting the output with little or no further
+editing, to (ii) substantially editing, reworking, and integrating
+the AI output into the author's own intellectual effort. Both are
+intended by the author to result in material that is freely usable
+by any person.
+
+  *  Where any AI-generated portion is held not to attract copyright
+     under the law of any jurisdiction (including any portion produced
+     under pathway (i) above where the legal threshold for human
+     authorship is not met), the author makes no claim of copyright
+     over that portion and acknowledges that it is freely usable by
+     any person.
+
+  *  Where any AI-generated portion does attract copyright (whether
+     because the human contribution under pathway (ii) clears the
+     authorship threshold, because the AI service provider has
+     assigned its "right, title, and interest (if any)" to the
+     author under its terms of service, or for any other reason),
+     the author dedicates that portion to the public domain under
+     the same dual `CC0-1.0 OR MIT` licence applied to the rest of
+     the work.
+
+The author's stated intent is therefore that both pathways result in
+the same end-state for every recipient: the work is free for any
+person to use, modify, redistribute, or build upon, for any purpose,
+forever. The dual disclosure above is belt-and-braces to ensure that
+no gap in the underlying copyright law of any jurisdiction can defeat
+that intent.
+
+The author makes NO representation or warranty that any AI-generated
+portion does not reproduce material from any third-party training
+corpus. Recipients are notified that AI systems may, in some
+circumstances, reproduce protected expression from their training
+data, and recipients should perform their own diligence appropriate
+to their use case.
+
+This disclosure is provided in accordance with best practice as
+articulated by the United States Copyright Office in its January 2025
+report "Copyright and Artificial Intelligence, Part 2:
+Copyrightability", and to support transparency obligations under
+Article 50 of Regulation (EU) 2024/1689 (the EU AI Act) effective
+2 August 2026.
+
+================================================================
+5. PATENT GRANT
+
+To the extent the author or any contributor holds any patent rights
+in subject matter embodied in this work, that author or contributor
+grants a perpetual, worldwide, non-exclusive, no-charge, royalty-free,
+irrevocable licence under those patent rights to make, have made,
+use, offer to sell, sell, import, and otherwise transfer this work
+and any product or service incorporating it.
+
+================================================================
+6. TRADEMARK EXCLUSION
+
+No trademark or service-mark right is granted by this LICENSE or
+NOTICE. The project name "Narrow Way Project" / "NWP", the
+"nwpcode.org" / "nwpcom.org" marks, the per-site marks
+("AV Commons", "Saint School", "DIR Search", "SD Search"), the
+"NWP Toolkit" / "nwptoolkit" mark, and any associated logo or
+brand element are not licensed under CC0, MIT, or any other licence
+applied to the code.
+
+================================================================
+7. THIRD-PARTY RIGHTS
+
+The author and contributors disclaim responsibility for clearing
+rights of other persons that may apply to this work or any use
+thereof, including without limitation any person's copyright,
+patents, or trademarks. Recipients are notified that, where this
+work was drafted with AI assistance, the AI output may in some
+circumstances reproduce protected expression from third-party
+training data; recipients should perform their own diligence
+appropriate to their use case.
+
+This work, taken as a whole, is a composite of layers with
+different copyright postures. The author's dedication operates only
+on layers the author (or a contributor bound by the project's
+contributor agreement) authored. Pre-existing third-party rights
+are respected per their own terms.
+
+================================================================
+8. GRATUITOUS SUPPLY
+
+This work is provided gratuitously and not in trade or commerce. The
+author derives no remuneration, advertising revenue, or other
+commercial benefit from supplying it and is not engaged in any
+business of supplying it. To the extent the Australian Consumer Law
+(Schedule 2 to the Competition and Consumer Act 2010 (Cth))
+nonetheless applies, nothing in CC0, the MIT Licence, or this NOTICE
+excludes, restricts, or modifies any consumer guarantee that cannot
+lawfully be excluded, restricted, or modified.
+
+================================================================
+9. GOVERNING LAW
+
+This NOTICE and any licence formed under it (whether by acceptance,
+estoppel, or otherwise) is governed by the laws in force in Victoria,
+Australia. The non-exclusive jurisdiction of the courts of Victoria
+is accepted by the author. Lex loci protectionis (the law of the
+country where copyright protection is claimed, per Article 5(2) of
+the Berne Convention) governs subsistence and infringement of
+copyright in any jurisdiction.
+
+================================================================
+10. DEED OF RELEASE
+
+A formally-executed Deed of Release and Public Licence covering this
+and other works of the author may, at the author's option, be
+executed and committed to this repository as DEED-OF-RELEASE.pdf,
+and would be incorporated by reference. As of the date of this
+NOTICE no such Deed has been executed; recipients who require a
+counter-signed instrument for compliance purposes should contact
+the author at rjzaar@gmail.com.

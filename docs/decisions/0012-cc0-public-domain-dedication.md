@@ -1,11 +1,33 @@
 # ADR-0012: CC0 Public Domain Dedication
 
-**Status:** Accepted
+**Status:** Accepted (superseded in part by composite recommendation 2026-05-17 — see "2026-05-17 amendment" below)
 **Date:** 2026-01-14
-**Decision Makers:** Rob Zaar
-**Related Issues:** License choice, v0.22.0 release
+**Decision Makers:** Robert Karsten Zaar
+**Related Issues:** Licence choice, v0.22.0 release
 **Related Commits:** ceffcda9, e17553c2
-**References:** [CC0_DEDICATION.md](../CC0_DEDICATION.md), [CONTRIBUTING.md](../../CONTRIBUTING.md), [LICENSE](../../LICENSE)
+**References:** [CC0_DEDICATION.md](../CC0_DEDICATION.md), [CONTRIBUTING.md](../../CONTRIBUTING.md), [LICENSE](../../LICENSE), [NOTICE](../../NOTICE)
+
+## 2026-05-17 amendment — composite refinement
+
+Per the legal-research composite at `~/central/copyright/12-LEGAL-SOLUTION-MASTER.md`,
+the original CC0-only dedication is refined to a **dual `CC0-1.0 OR MIT`**
+composite. CC0 expresses author intent; MIT is the universally-recognised
+permissive fallback for jurisdictions in which CC0's §2 abandonment may
+not operate (notably Australia, where unilateral abandonment of copyright
+has no settled appellate authority).
+
+The composite at present:
+1. Dual `CC0-1.0 OR MIT` LICENSE (the operative grant)
+2. Express s 195AW moral-rights consent (NOTICE §3)
+3. DCO `Signed-off-by:` on every commit (CONTRIBUTING.md)
+4. Two-pathway AI-assistance disclosure (NOTICE §4)
+5. Victorian choice-of-law (NOTICE §9)
+6. Per-repo author audit (`~/central/copyright/audit_nwp_*.txt`)
+7. Optional: Victorian deed of release (deferred per
+   `~/central/COPYRIGHT-TRIAGE-REPORT.md`)
+
+The original CC0 decision and its rationale below remain accurate;
+the dual-licence is additive, not a reversal.
 
 ## Context
 
@@ -194,10 +216,13 @@ By contributing to NWP, contributors agree to dedicate their contributions to pu
 
 Offer users choice of license.
 
-**Rejected because:**
-- Adds complexity
-- CC0 already covers everything MIT does
-- Confusing for users
+**Originally rejected; later adopted (2026-05-17).** See the
+"2026-05-17 amendment" at the top of this document. The original
+rejection rationale (added complexity; user confusion) was outweighed
+by the jurisdictional-resilience benefit identified in the legal
+composite at `~/central/copyright/12-LEGAL-SOLUTION-MASTER.md`. The
+Rust ecosystem's `MIT OR Apache-2.0` standard demonstrates that
+dual-licensing is well-understood by tooling.
 
 ### Alternative 2: Copyleft License (GPL/AGPL)
 

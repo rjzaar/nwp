@@ -67,6 +67,38 @@ default:
   # Allow pipeline interruption for newer runs
   interruptible: true
 
+################################################################################
+# Measured-job template (F36 §6.5 / Phase 1.5)
+#
+# Apply to any job to record its duration + check against the adaptive
+# threshold via lib/ci-stats.sh. The library handles bootstrap fallbacks
+# (.ci-stats/bootstrap.yml) so freshly-added metrics don't break.
+#
+# Usage:
+#   somejob:
+#     <<: *measured
+#     stage: lint
+#     script:
+#       - ...
+#
+# Persistence to the `stats` branch is a separate piece of work — until
+# wired, TSVs are written locally per job and lost when the runner
+# cleans up. See docs/reference/ci-stats.md for the operational plan.
+#
+# Intentionally NOT YET applied to existing jobs during the Phase 1.5
+# soak period. Apply opportunistically in Phase 2+ once the persistence
+# story is in place.
+################################################################################
+
+.measured: &measured
+  before_script:
+    - export NWP_JOB_START=$(date +%s)
+  after_script:
+    - duration=$(( $(date +%s) - ${NWP_JOB_START:-$(date +%s)} ))
+    - outcome="${CI_JOB_STATUS:-success}"
+    - ./lib/ci-stats.sh record "ci.${CI_JOB_NAME}.seconds" "$duration" "$outcome" 2>/dev/null || true
+    - ./lib/ci-stats.sh check  "ci.${CI_JOB_NAME}.seconds" "$duration" warn 2>/dev/null || true
+
   # Retry on infrastructure failures
   retry:
     max: 2

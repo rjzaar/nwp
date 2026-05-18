@@ -1,0 +1,29 @@
+# Cold-start thresholds for ci-stats.sh (F36 §6.5).
+#
+# When a metric has fewer than CI_STATS_BOOTSTRAP_MIN successful samples
+# in its rolling window (default 5), ci_stats_check uses the value here
+# as the soft threshold instead of computing one from history.
+#
+# Once the rolling window has 5+ samples, the bootstrap entry is ignored
+# and thresholds are computed as p95 × CI_STATS_REGRESSION_FACTOR
+# (default 1.5).
+#
+# Metric names: [a-z0-9._-]+
+# Values: numeric (seconds, bytes, percent — context-dependent on the metric).
+#
+# Conventionally we name metrics `<area>.<job>.<unit>`:
+#   ci.lint-bash.seconds    — duration of lint:bash job
+#   ci.lint-leakage.seconds — duration of lint:leakage job
+#   verify.spec-foo.bytes   — size of .verification-specs/foo.yml
+#
+# Tune these initially by running each job a few times and picking a
+# value comfortably above the observed runtime (e.g. ~2× the typical
+# duration). Once enough samples accumulate, the adaptive layer takes
+# over.
+
+metrics:
+  # Lint jobs (.gitlab-ci.yml). Conservative ceilings until adaptive kicks in.
+  ci.lint-bash.seconds:    300    # bash -n across ~80k LoC; expect <1m typically
+  ci.lint-leakage.seconds: 600    # gitleaks full repo + history scan
+  ci.test-unit.seconds:    300    # BATS unit suite
+  ci.test-integration.seconds: 1800  # BATS integration (DDEV-touching)

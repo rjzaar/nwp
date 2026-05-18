@@ -1,6 +1,6 @@
 # NWP Libraries Reference
 
-**Last Updated:** 2026-01-14
+**Last Updated:** 2026-05-18
 **Version:** 0.20.0+
 
 This directory contains reusable bash libraries for NWP. All libraries follow consistent patterns for security, error handling, and documentation.
@@ -360,6 +360,36 @@ ssh -o "StrictHostKeyChecking=$host_key_mode" user@host
 ```
 
 ### Specialized Libraries
+
+#### ci-stats.sh
+**Purpose:** Adaptive thresholds via rolling-window p95 (F36 §6.5).
+Replaces hand-picked numeric limits (lint timeouts, artifact expiry,
+spec sizes, etc.) with measurements derived from the last 20 job runs.
+
+**Key Functions:**
+- `ci_stats_record <metric> <value> [outcome]` — append a sample
+- `ci_stats_p95 <metric>` — p95 of last 20 successful samples
+- `ci_stats_n <metric>` — successful-sample count
+- `ci_stats_band <metric>` — echo `"<low> <high>"` operating band
+- `ci_stats_check <metric> <value> [warn|fail]` — in-band check
+
+**Also runnable as CLI** for use from `.gitlab-ci.yml`:
+```bash
+./lib/ci-stats.sh record ci.lint-bash.seconds 47
+./lib/ci-stats.sh check  ci.lint-bash.seconds 47 warn
+```
+
+**Dependencies:** ui.sh (soft — falls back to plain stderr if missing).
+Requires `yq` for reading `.ci-stats/bootstrap.yml`.
+
+**Storage:** `.ci-stats/bootstrap.yml` (on `main`, cold-start
+thresholds) + `.ci-stats/<metric>.tsv` (on `stats` branch only,
+gitignored on `main`).
+
+**Tests:** 29 BATS tests in `tests/unit/test-ci-stats.bats`.
+
+**See also:** [docs/reference/ci-stats.md](../docs/reference/ci-stats.md)
+for the full operational model.
 
 #### remote.sh
 **Purpose:** Remote server operations via SSH

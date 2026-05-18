@@ -55,6 +55,13 @@ sites/tmp/**
 !.verification-scenarios/
 !.verification-scenarios/**
 
+# CI stats (F36 §6.5) — bootstrap config + readme tracked on main;
+# runtime *.tsv samples live on the `stats` branch only (deny rule
+# at the bottom of this file).
+!.ci-stats/
+!.ci-stats/README.md
+!.ci-stats/bootstrap.yml
+
 # Documentation and metadata
 !README.md
 !CHANGELOG.md
@@ -149,3 +156,7 @@ keys/*
 
 # Generated output directories
 scripts/commands/podcast-setup-*/
+
+# CI stats runtime samples (F36 §6.5). Bootstrap config is checked in;
+# *.tsv sample files live on the `stats` branch only.
+.ci-stats/*.tsv

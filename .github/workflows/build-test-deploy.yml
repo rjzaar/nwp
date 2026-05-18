@@ -66,6 +66,9 @@ jobs:
         uses: ddev/github-action-setup-ddev@v1
         with:
           autostart: false
+          # Pin DDEV binary version per F36 A-O3. The @v1 action tag is a
+          # moving label; this pins the actual DDEV CLI we test against.
+          version: v1.24.8
 
       - name: Build and provision site
         run: |
@@ -153,6 +156,9 @@ jobs:
         uses: ddev/github-action-setup-ddev@v1
         with:
           autostart: false
+          # Pin DDEV binary version per F36 A-O3. The @v1 action tag is a
+          # moving label; this pins the actual DDEV CLI we test against.
+          version: v1.24.8
 
       - name: Restore database cache
         uses: actions/cache/restore@v4
@@ -228,6 +234,9 @@ jobs:
         uses: ddev/github-action-setup-ddev@v1
         with:
           autostart: false
+          # Pin DDEV binary version per F36 A-O3. The @v1 action tag is a
+          # moving label; this pins the actual DDEV CLI we test against.
+          version: v1.24.8
 
       - name: Cleanup preview environment
         run: |

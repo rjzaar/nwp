@@ -61,8 +61,8 @@ variables:
 ################################################################################
 
 default:
-  # Use DDEV-compatible image
-  image: ddev/ddev-webserver:latest
+  # Use DDEV-compatible image — pinned per F36 A-O3
+  image: ddev/ddev-webserver:v1.24.8
 
   # Allow pipeline interruption for newer runs
   interruptible: true
@@ -379,7 +379,7 @@ coverage:
     paths:
       - .logs/coverage/
     expire_in: 1 week
-  coverage: '/^\s*Lines:\s*\d+.\d+\%/'
+  coverage: '/^\s*Lines:\s*\d+\.\d+\%/'
   tags:
     - nwp
   allow_failure: true

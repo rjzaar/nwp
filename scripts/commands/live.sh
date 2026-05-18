@@ -4,7 +4,7 @@ set -euo pipefail
 ################################################################################
 # NWP Live Server Provisioning
 #
-# Automatically provision live test servers at sitename.nwpcode.org
+# Automatically provision live test servers at sitename.<prod-domain>
 #
 # Usage: ./live.sh [OPTIONS] <sitename>
 ################################################################################
@@ -31,7 +31,7 @@ ${BOLD}USAGE:${NC}
     ./live.sh [OPTIONS] <sitename>
 
     Note: This script deploys from the staging site to a live server.
-    The live URL uses the base name: mysite.nwpcode.org (not mysite-stg)
+    The live URL uses the base name: mysite.<prod-domain> (not mysite-stg)
     Both 'pl live mysite' and 'pl live mysite-stg' deploy mysite-stg.
     If staging is in dev mode, it will be switched to prod mode first.
 
@@ -59,7 +59,7 @@ ${BOLD}SERVER TYPES:${NC}
     temporary    Auto-delete after N days (PR reviews)
 
 ${BOLD}RESULT:${NC}
-    Creates: https://sitename.nwpcode.org
+    Creates: https://sitename.<prod-domain>
 
 EOF
 }

@@ -42,7 +42,7 @@ generate_badge_url() {
 
     # Fallback to default
     if [ -z "$gitlab_domain" ]; then
-        gitlab_domain="git.nwpcode.org"
+        gitlab_domain="${NWP_GITLAB_HOST:-<gitlab-host>}"
     fi
 
     local base="https://${gitlab_domain}/${group}/${project_name}"
@@ -94,7 +94,7 @@ generate_badge_urls() {
 
     # Fallback to default
     if [ -z "$gitlab_domain" ]; then
-        gitlab_domain="git.nwpcode.org"
+        gitlab_domain="${NWP_GITLAB_HOST:-<gitlab-host>}"
     fi
 
     local base="https://${gitlab_domain}/${group}/${project_name}"
@@ -140,7 +140,7 @@ generate_readme_badges() {
     fi
 
     if [ -z "$gitlab_domain" ]; then
-        gitlab_domain="git.nwpcode.org"
+        gitlab_domain="${NWP_GITLAB_HOST:-<gitlab-host>}"
     fi
 
     local base="https://${gitlab_domain}/${group}/${project_name}"
@@ -229,7 +229,7 @@ update_readme_badges() {
     fi
 
     if [ -z "$gitlab_domain" ]; then
-        gitlab_domain="git.nwpcode.org"
+        gitlab_domain="${NWP_GITLAB_HOST:-<gitlab-host>}"
     fi
 
     local base="https://${gitlab_domain}/${group}/${project_name}"

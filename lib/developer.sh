@@ -194,7 +194,7 @@ init_developer_config() {
 
     read -p "Developer name (e.g., john): " name
     read -p "Email address: " email
-    read -p "Subdomain (e.g., john.nwpcode.org, or empty if fork-based): " subdomain
+    read -p "Subdomain (e.g., john.<coder-domain>, or empty if fork-based): " subdomain
 
     # Determine role from subdomain
     if [[ -n "$subdomain" ]]; then
@@ -217,7 +217,7 @@ developer:
   role: $role
   level: $level
   subdomain: $subdomain
-  upstream: git.nwpcode.org
+  upstream: ${NWP_GITLAB_HOST:-<gitlab-host>}
 
   # Registration info (auto-populated)
   registered: $(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -428,10 +428,10 @@ developer:
   level: 30
 
   # Your subdomain (if you have one)
-  subdomain: yourname.nwpcode.org
+  subdomain: yourname.<coder-domain>
 
   # Upstream GitLab server
-  upstream: git.nwpcode.org
+  upstream: ${NWP_GITLAB_HOST:-<gitlab-host>}
 
   # Auto-populated fields
   registered: null

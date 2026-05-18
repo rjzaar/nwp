@@ -779,14 +779,16 @@ gitlab_create_project() {
 
     ocmsg "Creating GitLab project: $group/$project_name"
 
+    local gitlab_host="${NWP_GITLAB_HOST:-<gitlab-host>}"
+
     # Check if we can SSH to gitlab server
-    if ! ssh -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 gitlab@git.nwpcode.org exit 2>/dev/null; then
+    if ! ssh -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 "gitlab@${gitlab_host}" exit 2>/dev/null; then
         print_warning "Cannot SSH to GitLab server to create project"
         return 1
     fi
 
     # Create project via gitlab-rails runner
-    local result=$(ssh -o IdentitiesOnly=yes gitlab@git.nwpcode.org "sudo gitlab-rails runner \"
+    local result=$(ssh -o IdentitiesOnly=yes "gitlab@${gitlab_host}" "sudo gitlab-rails runner \"
         g = Group.find_by(path: '$group')
         if g.nil?
             puts 'GROUP_NOT_FOUND'
@@ -997,7 +999,7 @@ gitlab_get_project_id() {
 # If project-path is not provided, it's derived from composer.json name.
 #
 # Example:
-#   gitlab_composer_publish "/home/rob/avcgs" "v1.0.0" "root/avc"
+#   gitlab_composer_publish "$HOME/avcgs" "v1.0.0" "root/avc"
 #
 gitlab_composer_publish() {
     local package_path="$1"

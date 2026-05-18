@@ -445,7 +445,10 @@ setup_ssl_certificate() {
     local base_name="$1"
     local server_ip="$2"
     local ssh_user="$3"
-    local domain="${base_name}.nwpcode.org"
+    # Default site-naming convention: <site>.<NWP_PROD_DOMAIN>; operator
+    # can override per-instance via NWP_PROD_DOMAIN.
+    local prod_domain="${NWP_PROD_DOMAIN:-example.org}"
+    local domain="${base_name}.${prod_domain}"
 
     print_info "Setting up SSL certificate for $domain..."
 
@@ -836,7 +839,7 @@ ${BOLD}ARGUMENTS:${NC}
     sitename                Site name (with or without _stg suffix)
 
 ${BOLD}EXAMPLES:${NC}
-    ./stg2live.sh mysite              # Deploy mysite/stg/ to mysite.nwpcode.org
+    ./stg2live.sh mysite              # Deploy mysite/stg/ to mysite.<prod-domain>
     ./stg2live.sh mysite-stg          # Same as above (legacy name accepted)
     ./stg2live.sh -y mysite           # Deploy without confirmation
     ./stg2live.sh --no-security mysite  # Deploy without security modules

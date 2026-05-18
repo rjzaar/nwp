@@ -24,8 +24,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 
-# GitLab project URL
-GITLAB_URL="https://git.nwpcode.org/root/nwp"
+# GitLab project URL (override host via NWP_GITLAB_HOST env var)
+GITLAB_URL="https://${NWP_GITLAB_HOST:-<gitlab-host>}/root/nwp"
 
 # Temp file for capturing output
 OUTPUT_FILE=""

@@ -2,22 +2,24 @@
 set -euo pipefail
 
 ################################################################################
-# mons Deploy Script: mayo
+# verifier Deploy Script: mayo
 #
-# F21 Phases 5-8: End-to-end deployment script for mons.
+# F21 Phases 5-8: End-to-end deployment script run on the verifier.
 # Pulls a signed tarball from GitLab Packages, verifies the minisign
-# signature, deploys to the inactive blue-green slot on mayo1, and swaps.
+# signature, deploys to the inactive blue-green slot on the prod host, and swaps.
 #
-# This script runs ON MONS, not on dev or met.
+# This script runs ON THE VERIFIER, not on the authoring host or mirror-store.
 #
 # Prerequisites:
-#   - WireGuard tunnel to mayo1 is UP (sudo wg-quick up wg-mons)
-#   - mons-bot PAT stored at ~/.config/mayo-deploy.token
-#   - NWP deploy public key at ~/.config/nwp-deploy.pub
-#   - SSH access to mayo1 configured in ~/.ssh/config
-#   - minisign installed on mons
+#   - WireGuard tunnel to the prod host is UP (sudo wg-quick up wg-verifier)
+#     TODO: read interface name from $NWP_INSTANCES_DIR/instance-manifest.yml
+#   - verifier-bot PAT stored at $HOME/.config/mayo-deploy.token
+#   - NWP deploy public key at $HOME/.config/nwp-deploy.pub
+#   - SSH access to the prod host configured in $HOME/.ssh/config
+#     TODO: read SSH_HOST from $NWP_INSTANCES_DIR/instance-manifest.yml
+#   - minisign installed on the verifier
 #
-# Usage: ./mons-deploy.sh <site> <version> [OPTIONS]
+# Usage: ./verifier-deploy.sh <site> <version> [OPTIONS]
 #
 # Options:
 #   --dry-run        Download and verify but do not deploy
@@ -31,17 +33,17 @@ set -euo pipefail
 #   1. Pre-flight checks (minisign, token, pubkey, tunnel, SSH)
 #   2. Download tarball and signature from GitLab Packages
 #   3. Verify minisign signature
-#   4. Upload and extract to inactive slot on mayo1
+#   4. Upload and extract to inactive slot on the prod host
 #   5. Swap slots (blue-green atomic swap)
 #
 # Error Reporting:
-#   If a step fails, the script prints a mons-say command and a
-#   Claude-friendly message you can paste into the dev session.
+#   If a step fails, the script prints a verifier-say command and a
+#   reviewer-friendly message you can paste into the authoring session.
 #
 # Examples:
-#   ./mons-deploy.sh mayo abc123-20260410-120000
-#   ./mons-deploy.sh mayo abc123-20260410-120000 --dry-run
-#   ./mons-deploy.sh mayo abc123-20260410-120000 --step 4  # resume from step 4
+#   ./verifier-deploy.sh mayo abc123-20260410-120000
+#   ./verifier-deploy.sh mayo abc123-20260410-120000 --dry-run
+#   ./verifier-deploy.sh mayo abc123-20260410-120000 --step 4  # resume from step 4
 ################################################################################
 
 SITE=""
@@ -53,14 +55,14 @@ AUTO_YES=false
 START_STEP=1
 
 # Configuration
-GITLAB_HOST="git.nwpcode.org"
+GITLAB_HOST="<gitlab-host>"  # TODO: read from $NWP_INSTANCES_DIR/instance-manifest.yml
 GITLAB_API="https://${GITLAB_HOST}/api/v4"
 TOKEN_FILE="$HOME/.config/mayo-deploy.token"
 PUBKEY_FILE="$HOME/.config/nwp-deploy.pub"
 WORK_DIR="$HOME/deploy-staging"
-SSH_HOST="mayo1"
+SSH_HOST="mayo1"  # TODO: read from $NWP_INSTANCES_DIR/instance-manifest.yml
 WEBROOT="/var/www"
-LOG_FILE="$HOME/deploy-staging/mons-deploy.log"
+LOG_FILE="$HOME/deploy-staging/verifier-deploy.log"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -90,8 +92,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$SITE" || -z "$VERSION" ]]; then
-    echo "Usage: ./mons-deploy.sh <site> <version> [OPTIONS]"
-    echo "  e.g.: ./mons-deploy.sh mayo abc123-20260410-120000"
+    echo "Usage: ./verifier-deploy.sh <site> <version> [OPTIONS]"
+    echo "  e.g.: ./verifier-deploy.sh mayo abc123-20260410-120000"
     exit 2
 fi
 
@@ -103,7 +105,7 @@ SIG_NAME="${TARBALL_NAME}.minisig"
 
 # Ensure work directory and log file exist
 mkdir -p "$WORK_DIR"
-LOG_FILE="${WORK_DIR}/mons-deploy.log"
+LOG_FILE="${WORK_DIR}/verifier-deploy.log"
 
 ################################################################################
 # Logging and error reporting
@@ -121,17 +123,17 @@ report_error() {
     echo ""
     echo "  Error: ${detail}"
     echo ""
-    echo "  To report via mons-say:"
-    echo "    mons-say \"mons-deploy step ${step} failed: ${detail}\""
+    echo "  To report via verifier-say:"
+    echo "    verifier-say \"verifier-deploy step ${step} failed: ${detail}\""
     echo ""
-    echo "  Or paste this to the dev Claude session:"
+    echo "  Or paste this to the authoring session:"
     echo "    ---"
-    echo "    The mons-deploy script failed at step ${step}."
+    echo "    The verifier-deploy script failed at step ${step}."
     echo "    Site: ${SITE}"
     echo "    Version: ${VERSION}"
     echo "    Error: ${detail}"
     echo "    Log file: ${LOG_FILE}"
-    echo "    Resume with: ./mons-deploy.sh ${SITE} ${VERSION} --step ${step}"
+    echo "    Resume with: ./verifier-deploy.sh ${SITE} ${VERSION} --step ${step}"
     echo "    ---"
     echo ""
     echo "  Full log: cat ${LOG_FILE}"
@@ -169,9 +171,14 @@ run_step_1() {
     log "  Public key: OK"
 
     # Check WireGuard tunnel
+    # TODO: read WG_IFACE from $NWP_INSTANCES_DIR/instance-manifest.yml.
+    # Default is a generic role label; operator must set WG_IFACE in env to
+    # match the actual WireGuard interface name configured on this host
+    # (e.g. WG_IFACE=wg-<role> before invocation).
+    : "${WG_IFACE:=wg-verifier}"
     if [[ "$SKIP_TUNNEL" != true ]]; then
-        if ! sudo wg show wg-mons &>/dev/null 2>&1; then
-            report_error 1 "WireGuard tunnel wg-mons is not up (sudo wg-quick up wg-mons)"
+        if ! sudo wg show "$WG_IFACE" &>/dev/null 2>&1; then
+            report_error 1 "WireGuard tunnel ${WG_IFACE} is not up (sudo wg-quick up ${WG_IFACE})"
             return 1
         fi
         log "  WireGuard: UP"
@@ -179,7 +186,7 @@ run_step_1() {
         log "  WireGuard: SKIPPED (--skip-tunnel)"
     fi
 
-    # Check SSH to mayo1
+    # Check SSH to prod host
     if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "$SSH_HOST" 'echo ok' &>/dev/null; then
         report_error 1 "Cannot SSH to ${SSH_HOST} — check tunnel and SSH config"
         return 1
@@ -479,9 +486,9 @@ run_step_5() {
 ################################################################################
 
 # Initialise log
-echo "=== mons Deploy $(date -Iseconds) ===" >> "$LOG_FILE"
+echo "=== verifier Deploy $(date -Iseconds) ===" >> "$LOG_FILE"
 
-log "=== mons Deploy: ${SITE} ==="
+log "=== verifier Deploy: ${SITE} ==="
 log "  Version:   ${VERSION}"
 log "  Package:   ${PACKAGE_NAME}"
 log "  Dry run:   ${DRY_RUN}"
@@ -519,5 +526,5 @@ log "  ssh ${SSH_HOST} 'sudo /tmp/bluegreen-swap.sh --site ${SITE} --rollback -y
 log "  (or re-upload the swap script if /tmp/ was cleaned)"
 log ""
 log "To report success:"
-log "  mons-say \"deploy ${SITE} ${VERSION} complete -- smoke test passed\""
+log "  verifier-say \"deploy ${SITE} ${VERSION} complete -- smoke test passed\""
 log ""

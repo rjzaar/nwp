@@ -192,7 +192,7 @@ check_gitlab_issues() {
     fi
 
     if [ -z "$server" ]; then
-        server="git.nwpcode.org"
+        server="${NWP_GITLAB_HOST:-<gitlab-host>}"
     fi
 
     # Get user ID

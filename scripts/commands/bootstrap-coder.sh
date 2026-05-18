@@ -196,7 +196,7 @@ detect_coder_identity() {
     print_header "Enter Your Coder Identity"
     info "Please enter your registered coder name"
     info "This should match the name the administrator registered for you"
-    info "Example: If your subdomain is john.nwpcode.org, enter 'john'"
+    info "Example: If your subdomain is john.<coder-domain>, enter 'john'"
     echo ""
     read -p "Coder name: " coder_name
 

@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
-# pl mini - mini-specific utilities (F21 Phase 3a)
+# pl ai-host - LLM-host (AI) utilities (F21 Phase 3a)
 #
-# Currently supports: pl mini llm health
+# (File retains its legacy hostname-prefixed filename to avoid breaking
+#  external references; the role-labeled successor name is `ai-host.sh`.
+#  The legacy `pl <legacy-host-label>` subcommand still works as an alias.
+#  See docs/reference/role-vocabulary.md for the host-to-role mapping.)
+#
+# Currently supports: pl ai-host llm health
 #
 # Rationale: Phase 3a deliberately leaves the generic `pl llm` namespace
-# unclaimed until the agent role stabilises after Phase 10. `pl mini` is
-# mini-scoped, so it can carry targeted diagnostics without locking in
-# a cross-provider LLM CLI shape.
+# unclaimed until the agent role stabilises after Phase 10. `pl ai-host` is
+# scoped to the operator's local LLM host, so it can carry targeted
+# diagnostics without locking in a cross-provider LLM CLI shape.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,8 +20,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/ui.sh"
 
-# SSH host alias for mini. Default assumes ~/.ssh/config has a `mini` entry.
-MINI_SSH_HOST="${NWP_MINI_SSH_HOST:-mini}"
+# SSH host alias for the AI/LLM host. Default assumes ~/.ssh/config has an
+# entry matching the operator's local convention; override with the env var.
+AI_HOST_SSH="${NWP_AI_HOST_SSH:-${NWP_MINI_SSH_HOST:-ai-host}}"
 
 # Models baselined in F21 Phase 3a.
 MODEL_CHAT="llama3.1:8b"
@@ -32,12 +38,12 @@ THRESHOLD_CODER_TOKS=20
 
 show_help() {
     cat << 'EOF'
-Usage: pl mini SUBCOMMAND [OPTIONS]
+Usage: pl ai-host SUBCOMMAND [OPTIONS]
 
-Mini-specific utilities (F21 Phase 3a).
+AI/LLM-host utilities (F21 Phase 3a).
 
 Subcommands:
-    llm health       Check the local LLM stack on mini
+    llm health       Check the local LLM stack on the AI host
 
 Options for `llm health`:
     --json           Emit structured JSON (for Phase 12 alerting consumers)
@@ -58,12 +64,13 @@ Exit codes:
     1 - One or more checks failed
 
 Environment:
-    NWP_MINI_SSH_HOST - SSH host alias for mini (default: mini)
+    NWP_AI_HOST_SSH - SSH host alias for the AI host (default: ai-host;
+                      back-compat: also honours NWP_MINI_SSH_HOST)
 
 Examples:
-    pl mini llm health
-    pl mini llm health --quick
-    pl mini llm health --json | jq .
+    pl ai-host llm health
+    pl ai-host llm health --quick
+    pl ai-host llm health --json | jq .
 
 References:
     docs/proposals/F21-distributed-build-deploy-pipeline.md (Phase 3a)
@@ -75,8 +82,8 @@ EOF
 # SSH helper
 ################################################################################
 
-mini_ssh() {
-    ssh -o BatchMode=yes -o ConnectTimeout=5 "$MINI_SSH_HOST" "$@"
+ai_host_ssh() {
+    ssh -o BatchMode=yes -o ConnectTimeout=5 "$AI_HOST_SSH" "$@"
 }
 
 ################################################################################
@@ -90,7 +97,7 @@ mini_ssh() {
 
 check_systemd_active() {
     local state
-    state=$(mini_ssh 'systemctl --user is-active ollama.service' 2>/dev/null || echo "unreachable")
+    state=$(ai_host_ssh 'systemctl --user is-active ollama.service' 2>/dev/null || echo "unreachable")
     CHECK_SYSTEMD_DETAIL="$state"
     if [[ "$state" == "active" ]]; then
         CHECK_SYSTEMD_STATUS=ok
@@ -102,7 +109,7 @@ check_systemd_active() {
 
 check_daemon_reachable() {
     local http
-    http=$(mini_ssh 'curl -sS -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:11434/api/tags' 2>/dev/null || echo "000")
+    http=$(ai_host_ssh 'curl -sS -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:11434/api/tags' 2>/dev/null || echo "000")
     CHECK_DAEMON_DETAIL="HTTP $http on 127.0.0.1:11434/api/tags"
     if [[ "$http" == "200" ]]; then
         CHECK_DAEMON_STATUS=ok
@@ -114,7 +121,7 @@ check_daemon_reachable() {
 
 check_loopback_only() {
     local listen
-    listen=$(mini_ssh "ss -tlnH 'sport = :11434' 2>/dev/null | awk '{print \$4}'" 2>/dev/null || true)
+    listen=$(ai_host_ssh "ss -tlnH 'sport = :11434' 2>/dev/null | awk '{print \$4}'" 2>/dev/null || true)
     CHECK_BIND_DETAIL="${listen:-<no listener>}"
     if [[ "$listen" == "127.0.0.1:11434" ]]; then
         CHECK_BIND_STATUS=ok
@@ -128,7 +135,7 @@ check_model_registered() {
     local model="$1"
     local var_prefix="$2"
     local found
-    found=$(mini_ssh '~/.local/bin/ollama list' 2>/dev/null | awk '{print $1}' | grep -Fx "$model" || true)
+    found=$(ai_host_ssh '~/.local/bin/ollama list' 2>/dev/null | awk '{print $1}' | grep -Fx "$model" || true)
     if [[ -n "$found" ]]; then
         printf -v "CHECK_${var_prefix}_MODEL_STATUS" "ok"
         printf -v "CHECK_${var_prefix}_MODEL_DETAIL" "%s registered" "$model"
@@ -141,14 +148,14 @@ check_model_registered() {
 
 # Benchmark a single model. Uses a fixed short prompt, streams off so we get
 # a single JSON blob with eval_count + eval_duration. Parses on dev (we know
-# python3 is available locally; mini may or may not have jq).
+# python3 is available locally; the AI host may or may not have jq).
 benchmark_model() {
     local model="$1"
     local floor="$2"
     local var_prefix="$3"
     local prompt='Write one short sentence greeting the world.'
     local payload
-    payload=$(mini_ssh "curl -sS --max-time 60 http://127.0.0.1:11434/api/generate -d '{\"model\":\"$model\",\"prompt\":\"$prompt\",\"stream\":false}'" 2>/dev/null || true)
+    payload=$(ai_host_ssh "curl -sS --max-time 60 http://127.0.0.1:11434/api/generate -d '{\"model\":\"$model\",\"prompt\":\"$prompt\",\"stream\":false}'" 2>/dev/null || true)
 
     if [[ -z "$payload" ]]; then
         printf -v "CHECK_${var_prefix}_BENCH_STATUS" "fail"
@@ -189,7 +196,7 @@ except Exception:
 
 emit_human() {
     local status="$1"
-    print_header "Mini LLM Health"
+    print_header "AI-host LLM Health"
 
     if [[ "$CHECK_SYSTEMD_STATUS" == "ok" ]]; then
         print_status OK "systemd --user unit: $CHECK_SYSTEMD_DETAIL"
@@ -236,9 +243,9 @@ emit_human() {
 
     echo
     if [[ "$status" == "ok" ]]; then
-        print_success "mini LLM stack healthy"
+        print_success "AI-host LLM stack healthy"
     else
-        print_error "mini LLM stack unhealthy — see checks above"
+        print_error "AI-host LLM stack unhealthy — see checks above"
     fi
 }
 
@@ -248,7 +255,7 @@ emit_json() {
     python3 - <<PY
 import json
 doc = {
-    "host": "${MINI_SSH_HOST}",
+    "host": "${AI_HOST_SSH}",
     "status": "${status}",
     "quick": bool(int("${quick}")),
     "checks": {

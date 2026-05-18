@@ -12,12 +12,13 @@
 #      layout (manifest.json, payload/, scripts/, manifest.json.minisig).
 #   3. manifest.json is valid JSON with the expected fields.
 #   4. manifest.json.minisig verifies against the pinned public key.
-#      (Skippable via BUNDLE_VERIFY_NO_SIG=1 for dev/tests — never on mons.)
+#      (Skippable via BUNDLE_VERIFY_NO_SIG=1 for dev/tests — never on the
+#       verifier host.)
 #   5. The recomputed sha256 of payload/ matches manifest.sha256_payload.
 #   6. The recomputed sha256 of scripts/ matches manifest.sha256_scripts.
 #
 # Any failure aborts verification with a non-zero return and a clear
-# error on stderr. This is by design: mons never "partially verifies".
+# error on stderr. This is by design: the verifier never "partially verifies".
 #
 # Source: source "$PROJECT_ROOT/lib/bundle-verify.sh"
 # Main entry points:
@@ -109,7 +110,7 @@ _bundle_extract() {
 #
 # Environment overrides:
 #   BUNDLE_VERIFY_NO_SIG=1   - skip minisign verification (dev/tests only;
-#                              NEVER set on mons)
+#                              NEVER set on the verifier host)
 #
 # Returns 0 on success, non-zero on any verification failure.
 bundle_verify() {

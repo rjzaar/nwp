@@ -4,7 +4,7 @@ set -euo pipefail
 ################################################################################
 # NWP Mass Times Scraper Command
 #
-# Automated Catholic mass times scraping for mt.nwpcode.org (F16).
+# Automated Catholic mass times scraping for the masstimes site (F16).
 # Code-first extraction using regex, CSS selectors, and PDF parsing.
 # LLM used only as a Tier 3 fallback.
 #

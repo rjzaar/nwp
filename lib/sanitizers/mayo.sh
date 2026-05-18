@@ -30,16 +30,18 @@ set -euo pipefail
 #   -h, --help       Show help
 #
 # Error Reporting:
-#   If a step fails, the script prints a message formatted for mons-say.
+#   If a step fails, the script prints a message formatted for verifier-say.
 #   Copy and paste it to report the error back to the dev session:
 #
-#     mons-say "sanitizer step 3 failed: <error details>"
+#     verifier-say "sanitizer step 3 failed: <error details>"
 #
 # Security:
-#   - This script MUST run on the production server, not on dev or met
+#   - This script MUST run on the production server, not on dev or any
+#     mirror/build host
 #   - Raw database data NEVER leaves this machine
 #   - The sanitized output is what gets published (after human review)
-#   - AI-accessible machines (dev, met, mini) only ever see sanitized data
+#   - AI-accessible machines (dev, mirror-store, ai-host) only ever see
+#     sanitized data
 ################################################################################
 
 OUTPUT="/tmp/mayo-sanitized.sql.gz"
@@ -97,7 +99,7 @@ report_error() {
     echo "  Error: ${detail}"
     echo ""
     echo "  To report this error, run:"
-    echo "    mons-say \"sanitizer step ${step} failed: ${detail}\""
+    echo "    verifier-say \"sanitizer step ${step} failed: ${detail}\""
     echo ""
     echo "  Or paste this to the dev Claude session:"
     echo "    The mayo sanitizer failed at step ${step}: ${detail}"
@@ -612,7 +614,7 @@ run_step_6() {
         log ""
         log "  DO NOT publish this file."
         log ""
-        log "  To report: mons-say \"sanitizer PII sweep failed: ${found} pattern(s)\""
+        log "  To report: verifier-say \"sanitizer PII sweep failed: ${found} pattern(s)\""
         log "  Or tell Claude: 'The mayo sanitizer PII sweep found ${found} pattern types"
         log "  in ${OUTPUT}. The patterns and matches are in ${LOG_FILE}.'"
         return 1
@@ -710,5 +712,5 @@ if [[ "$DRY_RUN" != true ]]; then
     log "    zcat ${OUTPUT} | grep -i 'INSERT INTO .users_field_data' | head -5"
     log "    zcat ${OUTPUT} | grep -oP '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}' | sort -u | head -20"
     log ""
-    log "  To report success: mons-say \"sanitizer complete, PII sweep passed\""
+    log "  To report success: verifier-say \"sanitizer complete, PII sweep passed\""
 fi

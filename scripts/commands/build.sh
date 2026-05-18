@@ -10,7 +10,7 @@ set -euo pipefail
 #
 # F21 Phase 5/7: Part of the signed-artifact pipeline.
 # Tarballs are signed with minisign and published to GitLab Packages
-# via `pl publish`. mons pulls and verifies before deploying.
+# via `pl publish`. The verifier host pulls and verifies before deploying.
 #
 # Usage: pl build <sitename> [OPTIONS]
 #

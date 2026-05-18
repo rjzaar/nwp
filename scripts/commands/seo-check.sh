@@ -73,7 +73,7 @@ ${BOLD}EXAMPLES:${NC}
     ./seo-check.sh staging avc-stg        # Verify staging protection
     ./seo-check.sh production avc         # Verify production SEO
     ./seo-check.sh sitemap avc            # Check sitemap configuration
-    ./seo-check.sh index-risk avc-stg.nwpcode.org  # Check indexation risk
+    ./seo-check.sh index-risk avc-stg.<example-prod-domain>  # Check indexation risk
 
 ${BOLD}ENVIRONMENT DETECTION:${NC}
     - Sites ending in '-stg' or '_stg' are treated as staging

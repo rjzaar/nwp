@@ -6,7 +6,7 @@ set -euo pipefail
 #
 # Publishes a signed deployment tarball to GitLab's Generic Packages registry.
 # The tarball and its .minisig signature are uploaded as a versioned package
-# that mons can pull for deployment.
+# that the verifier host can pull for deployment.
 #
 # F21 Phase 7: Part of the fixture publication channel.
 #
@@ -68,8 +68,8 @@ PACKAGE_VERSION=""
 GITLAB_PROJECT=""
 DRY_RUN=false
 
-# GitLab config
-GITLAB_HOST="git.nwpcode.org"
+# GitLab config (override host via NWP_GITLAB_HOST env var)
+GITLAB_HOST="${NWP_GITLAB_HOST:-<gitlab-host>}"
 GITLAB_API="https://${GITLAB_HOST}/api/v4"
 
 show_help() {
@@ -270,7 +270,7 @@ echo "  Download:"
 echo "    Tarball: ${DOWNLOAD_URL}/${TARBALL_BASENAME}"
 echo "    Sig:     ${DOWNLOAD_URL}/${SIG_BASENAME}"
 echo ""
-echo "On mons, pull with:"
+echo "On the verifier host, pull with:"
 echo "  curl -H 'PRIVATE-TOKEN: \$TOKEN' -o ${TARBALL_BASENAME} '${DOWNLOAD_URL}/${TARBALL_BASENAME}'"
 echo "  curl -H 'PRIVATE-TOKEN: \$TOKEN' -o ${SIG_BASENAME} '${DOWNLOAD_URL}/${SIG_BASENAME}'"
 echo ""

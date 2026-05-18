@@ -13,7 +13,7 @@
 #   ~/.config/gotify-quokka-status.token   — app token for status notifications
 #
 # Phone shortcut URL (one-liner, POST with no body needed):
-#   POST http://192.168.0.11:8080/message?token=Ax6ZeOueAfRTwTr
+#   POST http://<gotify-host>:8080/message?token=<gotify-quokka-control-token>
 #        -F "title=toggle" -F "message=toggle" -F "priority=0"
 #
 # See docs/guides/voice-agent.md for full context.

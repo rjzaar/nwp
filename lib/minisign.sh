@@ -7,15 +7,15 @@
 # Source this file: source "$PROJECT_ROOT/lib/minisign.sh"
 #
 # F21 Phase 5/7: Provides the signing primitives used by:
-#   - pl build  (sign tarballs on dev/met)
+#   - pl build  (sign tarballs on dev / mirror-store)
 #   - pl publish (include .minisig alongside artifact)
-#   - mons deploy script (verify before deploying)
+#   - verifier deploy script (verify before deploying)
 #
 # Key management:
 #   - Secret key: $NWP_ROOT/keys/minisign/nwp-deploy.key (software interim)
 #   - Public key: $NWP_ROOT/keys/minisign/nwp-deploy.pub
 #   - When Solo 2C+ arrives, the secret key moves to hardware; the public
-#     key stays the same on mons and in CI.
+#     key stays the same on the verifier and in CI.
 ################################################################################
 
 # Resolve NWP root if not already set
@@ -79,8 +79,8 @@ minisign_generate_keys() {
         echo "Keys generated. Public key:"
         cat "$MINISIGN_PUBLIC_KEY"
         echo ""
-        echo "Copy the public key to mons: ${MINISIGN_PUBLIC_KEY}"
-        echo "The secret key MUST NOT leave this machine (or met)."
+        echo "Copy the public key to the verifier host: ${MINISIGN_PUBLIC_KEY}"
+        echo "The secret key MUST NOT leave this machine (or the mirror-store)."
         return 0
     else
         echo "ERROR: Key generation failed" >&2

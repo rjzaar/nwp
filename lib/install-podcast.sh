@@ -42,7 +42,7 @@ install_podcast() {
     if [ -z "$domain" ]; then
         local base_domain=$(get_recipe_value "$recipe" "base_domain" "$config_file")
         if [ -n "$base_domain" ]; then
-            # Construct domain from target + base_domain (e.g., gm + nwpcode.org = gm.nwpcode.org)
+            # Construct domain from target + base_domain (e.g., gm + example.org = gm.example.org)
             domain="${target_name}.${base_domain}"
         else
             # Fall back to explicit domain in recipe

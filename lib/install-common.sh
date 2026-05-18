@@ -1217,7 +1217,7 @@ generate_live_settings() {
     local hash_salt=$(openssl rand -hex 32)
 
     # Extract domain pattern from site name for trusted hosts
-    # If site_dir is "avc", domain pattern would be "avc.nwpcode.org"
+    # If site_dir is "avc", domain pattern would be "avc.<prod-domain>"
     local base_name=$(basename "$site_dir")
     # Remove -stg, _prod, _live suffixes to get base name
     base_name=$(echo "$base_name" | sed -E 's/[-_](stg|prod|live)$//')

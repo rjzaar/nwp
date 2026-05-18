@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-01-14 (formalized after incident 2026-01-13)
-**Decision Makers:** Rob
+**Decision Makers:** Robert Karsten Zaar
 **Related Issues:** Critical bug fix after nwp.yml data loss
 **Related Commits:** fb2f2603, ea07e155, 6fde940b
 **References:** [SECURITY.md](../SECURITY.md), [yaml-write.sh](../../lib/yaml-write.sh)

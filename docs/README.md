@@ -315,7 +315,7 @@ pl verify                    # Interactive verification console (v0.18.0+)
 |-------------|---------|---------|
 | Development | `sitename` | `mysite` |
 | Staging | `sitename-stg` | `mysite-stg` |
-| Live | `sitename.domain` | `mysite.nwpcode.org` |
+| Live | `sitename.domain` | `mysite.<prod-domain>` |
 | Production | Custom domain | `mysite.com` |
 
 ### Configuration Files

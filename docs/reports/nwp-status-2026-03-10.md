@@ -1,8 +1,8 @@
 # Narrow Way Project (NWP): Comprehensive Achievement Report
 
 **Date:** 10 March 2026
-**Author:** Rob Zaar, with Claude Opus 4.6
-**Scope:** All projects across ~/nwp, ~/prayer, ~/logic, ~/carmel, ~/dir, ~/ciytools, ~/claudemax, ~/dos, ~/truth
+**Author:** Robert Karsten Zaar (with AI assistance)
+**Scope:** All projects across $HOME/nwp, $HOME/prayer, $HOME/logic, $HOME/carmel, $HOME/dir, $HOME/ciytools, $HOME/claudemax, $HOME/dos, $HOME/truth
 
 ---
 
@@ -12,8 +12,8 @@ Over the course of approximately four months (December 2025 -- March 2026), a si
 
 The end-game vision, crystallised in proposal F20 and informed by all preceding work, is a **faith formation application** that:
 
-- Ships with all 49 courses from ss.nwpcode.org -- the complete Divine Intimacy Radio mini-course catalogue covering Foundations through the Interior Castle
-- Can be updated with additional courses as they are added to ss.nwpcode.org (Moodle LMS)
+- Ships with all 49 courses from <site>.example.org -- the complete Divine Intimacy Radio short-course catalogue covering Foundations through the Interior Castle
+- Can be updated with additional courses as they are added to <site>.example.org (Moodle LMS)
 - Can integrate the CathNet interactive Catechism concept map for doctrinal exploration
 - Can connect to collaborative communities via the AVC Drupal site
 - Can incorporate the theological and spiritual research libraries for deep study
@@ -53,7 +53,7 @@ This report documents what has been achieved, the methods used, the architecture
 |---------|-----------|------|------|--------|
 | **NWP** (Narrow Way Project) | `~/nwp` | Infrastructure & hosting | 200+ docs, 38 libs, 48 commands | Production (v0.29.0) |
 | **CIYTools** | `~/ciytools` | Transcription pipeline | 6.7 GB, 365 episodes | Complete (CIY), 78% (DIR) |
-| **DIR** (Divine Intimacy Radio) | `~/dir` | Searchable archive + courses | 648 episodes, 288K segments | Live at dir.nwpcode.org |
+| **DIR** (Divine Intimacy Radio) | `~/dir` | Searchable archive + courses | 648 episodes, 288K segments | Live at <site>.example.org |
 | **Prayer** | `~/prayer` | Theological library + curriculum | 13 GB, 81,600+ files | Active development |
 | **Logic** | `~/logic` | Aristotelian logic curriculum | 221 files, 8 lessons | Active development |
 | **Carmel** | `~/carmel` | Interlinear reading system | 773 MB texts, 364 imported | Active development |
@@ -80,12 +80,12 @@ This report documents what has been achieved, the methods used, the architecture
 
 | Site | URL | Platform | Purpose |
 |------|-----|----------|---------|
-| AVC | avc.nwpcode.org | Drupal | Audio-Visual Commons community |
-| CathNet | cathnet.nwpcode.org | Drupal | Catechism concept map |
-| DIR | dir.nwpcode.org | Drupal | Podcast transcript archive |
-| MT | mt.nwpcode.org | Drupal | Mass times display |
-| SS | ss.nwpcode.org | Moodle | Faith formation courses |
-| GitLab | git.nwpcode.org | GitLab | Source code hosting |
+| AVC | <site>.example.org | Drupal | Audio-Visual Commons community |
+| CathNet | <site>.example.org | Drupal | Catechism concept map |
+| DIR | <site>.example.org | Drupal | Podcast transcript archive |
+| MT | <site>.example.org | Drupal | Mass times display |
+| SS | <site>.example.org | Moodle | Faith formation courses |
+| GitLab | <gitlab-host> | GitLab | Source code hosting |
 
 ### Why It Matters
 
@@ -126,7 +126,7 @@ CIYTools is a 10-stage transcription pipeline that converts Catholic podcast aud
 
 The Divine Intimacy Radio project takes the CIYTools output and transforms 648 episodes of Catholic spiritual teaching into a live, searchable web archive.
 
-**Live at:** https://dir.nwpcode.org/dir
+**Live at:** https://<site>.example.org/dir
 
 **Features:**
 - Full-text search across 648 episodes and 288,236 timestamped segments
@@ -136,7 +136,7 @@ The Divine Intimacy Radio project takes the CIYTools output and transforms 648 e
 
 **Educational Content Derived:**
 - 10 comprehensive Moodle course specifications (100 KB proposal)
-- 49 standalone mini-courses (224 KB specification) designed for 15-minute mobile sessions
+- 49 standalone short-courses (224 KB specification) designed for 15-minute mobile sessions
 - "Spiritual Life Explained" systematic teaching guide (36 KB)
 - "Disciplines Tree" skill-tree map of spiritual development (84 KB)
 - Video guide with best teaching clips and timestamps (52 KB)
@@ -164,9 +164,9 @@ This content pipeline demonstrates a repeatable pattern: **audio -> transcriptio
 | Linux build | 56 MB release binary | Complete |
 | PWA server | Python serve_pwa.py for USB distribution | Complete |
 
-### Bundled Courses (49 courses from ss.nwpcode.org)
+### Bundled Courses (49 courses from <site>.example.org)
 
-The app ships with the complete Divine Intimacy Radio standalone mini-course catalogue, organised into 10 categories:
+The app ships with the complete Divine Intimacy Radio standalone short-course catalogue, organised into 10 categories:
 
 | Category | Courses | Topics |
 |----------|---------|--------|
@@ -187,7 +187,7 @@ The home screen groups courses by category with per-category progress counters a
 
 ### Pending Phases
 
-- **Phase 8: Server Sync** -- Optional connectivity to ss.nwpcode.org for content sync and progress upload via Moodle Web Services
+- **Phase 8: Server Sync** -- Optional connectivity to <site>.example.org for content sync and progress upload via Moodle Web Services
 - **Phase 9: Content Packs** -- Extensible content system (ZIP containing `.db` + metadata JSON) for adding courses without rebuilding the app, including CathNet catechism integration (25 MB database)
 
 ### Build Targets
@@ -206,7 +206,7 @@ This means the app can be distributed through app stores, served as a PWA from a
 
 ## 5. The Knowledge Graph: CathNet (F18/F19)
 
-CathNet realises Robert Zaar's 2005 MEd(Research) proposal at Australian Catholic University: "Automatically Concept Mapping the Catechism." In 2005, NLP accuracy was insufficient for theological text and no XML standard existed for Catholic catechetical knowledge. In 2026, both barriers have been overcome.
+CathNet realises Robert Karsten Zaar's 2005 MEd(Research) proposal at Australian Catholic University: "Automatically Concept Mapping the Catechism." In 2005, NLP accuracy was insufficient for theological text and no XML standard existed for Catholic catechetical knowledge. In 2026, both barriers have been overcome.
 
 ### F18: Interactive Concept Map (10 phases)
 
@@ -260,7 +260,7 @@ CathNet is designed to ship as a **25 MB content pack** that can be loaded into 
 
 ## 6. Theological Research Library: Prayer
 
-The Prayer project is the scholarly backbone -- a 13 GB theological research library and curriculum development workspace serving Mazenod College, Melbourne (a Catholic boys' secondary school, Years 7--10, 42% non-Catholic student population).
+The Prayer project is the scholarly backbone -- a 13 GB theological research library and curriculum development workspace serving <sponsor-school>, Melbourne (a Catholic boys' secondary school, Years 7--10, 42% non-Catholic student population).
 
 ### The Library (8.4 GB primary sources)
 
@@ -315,11 +315,11 @@ The Logic project is a multi-model Aristotelian logic curriculum based on Peter 
 - Complete treatment of Aristotelian logic: Three Laws of Thought, Categories, Predicables, Square of Opposition, Syllogisms, Fallacies, Definition, Dialectic
 - **"Fallacies Against the Catholic Faith"** (42 KB): 30+ common anti-Catholic arguments systematically refuted using formal logic
 - **Relativism and Self-Refutation analysis**: proof by reductio ad absurdum that "there is no absolute truth" is self-contradictory
-- **VCE-aligned teaching proposal** on St. Eugene de Mazenod with three significant life experiences
+- **VCE-aligned teaching proposal** on <sponsor-school-patron> with three significant life experiences
 
 ### Integration with the Platform
 
-Logic lessons can be packaged as Moodle courses on ss.nwpcode.org and distributed through the faith formation app. The quiz generation pipeline (Learnosity JSON) can be adapted to Moodle question bank format. The "Fallacies Against the Catholic Faith" document is a natural candidate for a standalone mini-course in the DIR/Moodle framework.
+Logic lessons can be packaged as Moodle courses on <site>.example.org and distributed through the faith formation app. The quiz generation pipeline (Learnosity JSON) can be adapted to Moodle question bank format. The "Fallacies Against the Catholic Faith" document is a natural candidate for a standalone short-course in the DIR/Moodle framework.
 
 ---
 
@@ -411,7 +411,7 @@ A scholarly translation and comparative analysis of St. Ignatius of Loyola's 14 
 
 ### Integration with the Platform
 
-Both projects provide **foundational content** for apologetics and discernment courses. The Truth project's evidence-based approach to demonstrating the reasonableness of Catholic faith is directly applicable to courses on apologetics and evangelisation. The DOS translation work feeds directly into the Discernment of Spirits course (Course 4 of the DIR Moodle programme and Category D of the 49 standalone mini-courses).
+Both projects provide **foundational content** for apologetics and discernment courses. The Truth project's evidence-based approach to demonstrating the reasonableness of Catholic faith is directly applicable to courses on apologetics and evangelisation. The DOS translation work feeds directly into the Discernment of Spirits course (Course 4 of the DIR Moodle programme and Category D of the 49 standalone short-courses).
 
 ---
 
@@ -468,7 +468,7 @@ The entire ecosystem was built by a single developer using Claude Code (Anthropi
 | Item | Cost |
 |------|------|
 | Linode shared server (all sites) | ~$20/month |
-| Domain (nwpcode.org) | ~$12/year |
+| Domain (<example-prod-domain>) | ~$12/year |
 | SSL certificates | Free (Let's Encrypt) |
 | CathNet concept extraction (one-time) | ~$15 |
 | CathNet RAG queries (ongoing) | ~$3/month |
@@ -501,7 +501,7 @@ Faith Formation App (Flutter)
 ```
 Faith Formation App
 ├── All Phase 1 features (49 bundled courses)
-├── Sync with ss.nwpcode.org
+├── Sync with <site>.example.org
 │   ├── Download updated or new courses
 │   ├── Upload progress/scores
 │   └── Queue offline, sync when connected
@@ -581,7 +581,7 @@ The guild model draws on medieval craft guild structures adapted for spiritual a
 
 | Level | Title | Requirements | Content Source |
 |-------|-------|-------------|---------------|
-| Apprentice | Seeker | Complete Foundations + Prayer courses (DIR Course 1-2) | DIR mini-courses, ss.nwpcode.org |
+| Apprentice | Seeker | Complete Foundations + Prayer courses (DIR Course 1-2) | DIR short-courses, <site>.example.org |
 | Journeyman | Practitioner | Complete Discernment + Ascetical Life + one elective (DIR Course 3-6) | DIR courses, DOS translation |
 | Craftsman | Director-in-Training | Complete all 10 DIR courses + Interior Castle Capstone | Full DIR programme |
 | Master | Spiritual Director | 1 year mentored practice, verified by guild mentor | AVC community, mentor matching |
@@ -616,11 +616,11 @@ The guild model draws on medieval craft guild structures adapted for spiritual a
 - Bundled with all 49 formation courses (Foundations through Interior Castle)
 - Optional in-app content pack downloads (CathNet, Logic, Apologetics, etc.)
 - Free to download; content packs also free (mission-driven, not commercial)
-- Online sync to ss.nwpcode.org for progress tracking and community features
+- Online sync to <site>.example.org for progress tracking and community features
 
 ### Scenario 2: Progressive Web App (PWA)
 
-- Served from any web server (ss.nwpcode.org or parish-hosted)
+- Served from any web server (<site>.example.org or parish-hosted)
 - No app store approval required
 - Works on any device with a modern browser
 - Service worker enables offline functionality after first load
@@ -656,7 +656,7 @@ The guild model draws on medieval craft guild structures adapted for spiritual a
 
 ### Immediate Priorities (Next 4 weeks)
 
-1. **Complete F20 Phase 8 (Server Sync):** Implement Moodle Web Services client for bidirectional sync between the app and ss.nwpcode.org. This unlocks the connected experience.
+1. **Complete F20 Phase 8 (Server Sync):** Implement Moodle Web Services client for bidirectional sync between the app and <site>.example.org. This unlocks the connected experience.
 
 2. **Complete F20 Phase 9 (Content Packs):** Define and implement the content pack format (ZIP containing `.db` + metadata JSON). Build the first content pack from the existing CathNet data.
 
@@ -666,11 +666,11 @@ The guild model draws on medieval craft guild structures adapted for spiritual a
 
 ### Medium-Term (1--3 months)
 
-5. **Enrich existing Moodle courses:** The 49 courses on ss.nwpcode.org are live and bundled in the app. Enhance them with H5P interactive content, additional video timestamps, and habit formation prompts as specified in MOODLE_COURSE_PROPOSAL.md.
+5. **Enrich existing Moodle courses:** The 49 courses on <site>.example.org are live and bundled in the app. Enhance them with H5P interactive content, additional video timestamps, and habit formation prompts as specified in MOODLE_COURSE_PROPOSAL.md.
 
 6. **Implement CathNet F18 Phase 6 (Drupal visualisation):** The data pipeline is complete; the interactive Cytoscape.js concept map needs to be built in the Drupal module.
 
-7. **Package Logic curriculum for Moodle:** Convert the 8 lesson sets and Learnosity quizzes to Moodle question bank format. Deploy as courses on ss.nwpcode.org and export to the app.
+7. **Package Logic curriculum for Moodle:** Convert the 8 lesson sets and Learnosity quizzes to Moodle question bank format. Deploy as courses on <site>.example.org and export to the app.
 
 8. **App Store submission:** Prepare and submit to Google Play Store and Apple App Store with appropriate metadata, screenshots, and privacy policy.
 
@@ -742,7 +742,7 @@ The extractive (not generative) approach to AI in CathNet is theologically impor
 | Sentence embeddings | 5,937 |
 | Church Fathers in library | 342 |
 | Moodle courses live + bundled in app | 49 (A1--J7) |
-| Moodle courses specified (full programme) | 10 full + 49 mini |
+| Moodle courses specified (full programme) | 10 full + 49 short |
 | Logic lessons created | 8 x 3 variants = 24+ |
 | Carmelite texts imported | 364 |
 | Unique Spanish words extracted | 61,636 |

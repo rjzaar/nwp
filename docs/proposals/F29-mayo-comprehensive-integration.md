@@ -2,7 +2,7 @@
 
 **Status:** PROPOSED
 **Created:** 2026-04-13
-**Author:** Rob Zaar, Claude Opus 4.6
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** High (consolidates and sequences all pending mayo work into a single actionable plan)
 **Depends On:** F21 (distributed pipeline — phases 1-3a done), F23 (site layout — done), F25 (mayo NWP integration — proposed, subsumed here), F26 (OIDC — proposed, adapted here for mayo↔saintschool)
 **Supersedes:** F25 is fully absorbed into this proposal (phases 1-8 of F25 become phases 2-5 here). F25 should be marked SUPERSEDED BY F29.
@@ -20,11 +20,11 @@ Mayo has working dev infrastructure (DDEV, AVC profile, mayo_content module, 35 
 
 2. **Nothing under `sites/mayo/` is in git.** All code, config, and content module files are unversioned. F25 proposed fixing this but has not been actioned.
 
-3. **saintschool.mayostudios.org exists only as a one-line entry** in `servers/mayo1/.nwp-server.yml` (status: planned). There is no site directory, no repo, no DDEV project, no content, and no OIDC integration with mayo's user base.
+3. **saintschool.<mayo-domain> exists only as a one-line entry** in `servers/mayo1/.nwp-server.yml` (status: planned). There is no site directory, no repo, no DDEV project, no content, and no OIDC integration with mayo's user base.
 
 4. **The sanitizer produces one tier of output** (internal dev/stg fixtures). There is no mechanism to produce a second tier — a public, zero-PII-risk example site that can ship with NWP as a demonstration of what AVC looks like in production.
 
-5. **Policy content lives in three disconnected places**: `.docx` files in `~/MAYO/`, hardcoded strings in `mayo_content.install`, and (eventually) rendered pages on mayostudios.org. There is no lifecycle connecting them, so updating a policy means manually editing code, which is error-prone and unauditable.
+5. **Policy content lives in three disconnected places**: `.docx` files in `~/MAYO/`, hardcoded strings in `mayo_content.install`, and (eventually) rendered pages on <mayo-domain>. There is no lifecycle connecting them, so updating a policy means manually editing code, which is error-prone and unauditable.
 
 ### 1.2 Proposed Solution
 
@@ -35,18 +35,18 @@ A single end-to-end plan in 10 phases that:
 3. **Establishes a policy content lifecycle** from source `.md` files through the mayo_content module to the live site, with a diff-auditable update path.
 4. **Modernises the content module** with deploy hooks (absorbing F25 phase 3-4).
 5. **Builds out stg and the signed pipeline** (absorbing F25 phases 5-8).
-6. **Bootstraps saintschool.mayostudios.org** as a second AVC site on mayo1, sharing mayo's user base via OIDC.
+6. **Bootstraps saintschool.<mayo-domain>** as a second AVC site on mayo1, sharing mayo's user base via OIDC.
 7. **Implements two-tier sanitization**: Tier 1 (internal, sanitized prod data) and Tier 2 (public, synthetic from scratch — zero real data ever present).
 8. **Packages Tier 2 as an NWP example site** that ships with tagged NWP releases.
 9. **Wires CI/CD for both sites** with shared fixture infrastructure.
-10. **End-to-end cross-site integration test** (mayo ↔ saintschool OIDC, both sanitization tiers, mons deploy).
+10. **End-to-end cross-site integration test** (mayo ↔ saintschool OIDC, both sanitization tiers, verifier deploy).
 
 ### 1.3 Design Rationale
 
 - **One proposal, not five.** F25, the saintschool bootstrap, the doc relocation, the two-tier sanitization, and the example-site packaging are deeply interdependent. Executing them as separate proposals creates sequencing confusion and orphaned work. This proposal establishes the canonical execution order.
 - **Tier 2 sanitization is a clean-room build, not a second sanitizer pass.** The safest way to produce a public example site is to never involve real data at all. A fresh `drush site:install avc` + mayo_content install hooks + seed-sanitized-users.sh produces a fully populated site with zero PII risk. This is both simpler and more secure than running a second, more aggressive sanitizer pass over production data.
 - **Policy lifecycle flows from docs/ to code to site.** Source markdown files in the repo are the single source of truth. The content module reads from them (or is updated to match them). The live site receives updates via `drush deploy`. Auditing a policy change means reviewing a git diff of the markdown file and the corresponding module update.
-- **saintschool mirrors the mayo pattern** — same repo structure, same pipeline, same deploy path via mons. The OIDC integration follows F26's architecture with mayo as the identity provider.
+- **saintschool mirrors the mayo pattern** — same repo structure, same pipeline, same deploy path via verifier. The OIDC integration follows F26's architecture with mayo as the identity provider.
 
 ---
 
@@ -62,16 +62,16 @@ A single end-to-end plan in 10 phases that:
 | Sanitizer | `lib/sanitizers/mayo.sh` | 6-step pipeline, PII sweep, resume capability |
 | OIDC email helper | `lib/sanitizers/oidc-email.sh` | Deterministic cross-site email hashing |
 | User seeder | `sites/mayo/scripts/seed-sanitized-users.sh` | 35 synthetic users, role distribution |
-| Safety email setup | `sites/mayo/scripts/setup-safety-email.sh` | Postfix alias for safety@mayostudios.org |
+| Safety email setup | `sites/mayo/scripts/setup-safety-email.sh` | Postfix alias for safety@<mayo-domain> |
 | Server config | `servers/mayo1/.nwp-server.yml` | mayo (active) + saintschool (planned) |
-| Server scripts | `servers/mayo1/scripts/` | bluegreen-setup.sh, bluegreen-swap.sh, mons-deploy.sh |
-| WireGuard configs | `servers/mayo1/wireguard/` | wg-mons.conf for both sides |
+| Server scripts | `servers/mayo1/scripts/` | bluegreen-setup.sh, bluegreen-swap.sh, verifier-deploy.sh |
+| WireGuard configs | `servers/mayo1/wireguard/` | wg-verifier.conf for both sides |
 | Backups | `sites/mayo/backups/` | mayo-avc-fresh.sql, mayo-live, pre-avc-migration |
 | Pre-AVC archive | `sites/mayo/dev-pre-avc/` | Original Open Social codebase |
 | Integration guide | `docs/guides/mayo-avc-integration.md` | WIP, 15 sections |
-| Bootstrap guide | `docs/guides/mons-mayo-bootstrap.md` | Interim procedure |
-| Operations guide | `docs/guides/mons-operations.md` | mayo1 references |
-| GitLab repo | `git@git.nwpcode.org:mayo/mayo.git` | Empty, bootstrap proven 2026-04-08 |
+| Bootstrap guide | `docs/guides/verifier-mayo-bootstrap.md` | Interim procedure |
+| Operations guide | `docs/guides/verifier-operations.md` | mayo1 references |
+| GitLab repo | `git@<gitlab-host>:mayo/mayo.git` | Empty, bootstrap proven 2026-04-08 |
 
 ### 2.2 What Exists in ~/MAYO/ (Untracked)
 
@@ -157,7 +157,7 @@ sites/mayo/dev/docs/
 | **Purpose** | Dev/stg/CI testing with realistic data shape | NWP distribution, demo, public showcase |
 | **Data source** | Production database on mayo1 | Fresh install — zero prod data involved |
 | **Process** | `lib/sanitizers/mayo.sh` on mayo1 → export → sign → publish | `drush site:install avc` → mayo_content hooks → seed users → export |
-| **Where it runs** | On mayo1 (raw data never leaves prod) | On met or dev workstation (no prod access needed) |
+| **Where it runs** | On mayo1 (raw data never leaves prod) | On mirror-store or dev workstation (no prod access needed) |
 | **Schedule** | Nightly timer on mayo1 | On-demand or on tagged NWP release |
 | **PII risk** | Low (faker names/emails, redacted profiles, hashed passwords, PII sweep verification) | **Zero** (no real data ever present) |
 | **Content** | Real content structure preserved (node count, group count matches prod) | 13 pages, 10 groups, menus, footer from mayo_content module |
@@ -202,7 +202,7 @@ If a richer demo is desired in future (e.g., sample images for groups, placehold
 
 **Goal:** All `~/MAYO/` documents tracked in `sites/mayo/dev/docs/`, policy pack extracted to individual markdown files, audit trail preserved.
 
-**Autonomy level:** Fully autonomous except step 1.6 (policy extraction requires reading .docx content which Claude cannot do directly — Rob must extract or confirm the AI-generated markdown matches the .docx).
+**Autonomy level:** Fully autonomous except step 1.6 (policy extraction requires reading .docx content which Claude cannot do directly — the operator must extract or confirm the AI-generated markdown matches the .docx).
 
 1.1. Create directory structure:
 ```bash
@@ -241,7 +241,7 @@ cp ~/MAYO/mayo_policy_pack.docx \
 
 1.5. Create `sites/mayo/dev/docs/README.md` — index linking to governance/, policies/, proposals/.
 
-1.6. **Extract policies from `mayo_policy_pack.docx` to individual markdown files.** This step requires Rob to either:
+1.6. **Extract policies from `mayo_policy_pack.docx` to individual markdown files.** This step requires the operator to either:
    - (a) Open the `.docx` and copy-paste each policy section into the corresponding `policies/NN-*.md` file, OR
    - (b) Use `pandoc` to convert: `pandoc mayo_policy_pack.docx -t markdown -o policies-raw.md` then split into individual files.
    Each policy file gets YAML frontmatter:
@@ -272,7 +272,7 @@ After verification, `rm -rf ~/MAYO` and `mv ~/MAYO.migrated ~/MAYO` (optional co
 
 ### Phase 2 — Bootstrap mayo/mayo Git Repo
 
-**Goal:** All mayo site code tracked in `git@git.nwpcode.org:mayo/mayo.git`. DDEV still works after git init.
+**Goal:** All mayo site code tracked in `git@<gitlab-host>:mayo/mayo.git`. DDEV still works after git init.
 
 **Autonomy level:** Fully autonomous. Steps from F25 Phase 1, adapted.
 
@@ -319,7 +319,7 @@ html/modules/custom/
 
 2.9. Push to GitLab:
 ```bash
-git remote add origin git@git.nwpcode.org:mayo/mayo.git
+git remote add origin git@<gitlab-host>:mayo/mayo.git
 git push -u origin main
 ```
 
@@ -333,7 +333,7 @@ git push -u origin main
 
 **Goal:** Updating a policy means editing a markdown file, running a script, and deploying. The content module stays in sync with the source docs.
 
-**Autonomy level:** Steps 3.1-3.4 autonomous. Step 3.5 requires Rob to verify policy text matches .docx originals.
+**Autonomy level:** Steps 3.1-3.4 autonomous. Step 3.5 requires the operator to verify policy text matches .docx originals.
 
 3.1. Create `sites/mayo/dev/scripts/sync-policies.sh` — a script that reads each `docs/policies/NN-*.md` file, extracts the body (below the YAML frontmatter), converts markdown to Drupal-safe HTML (via `pandoc -f markdown -t html` or a simple sed pipeline for basic formatting), and outputs a PHP array that the content module can consume. The script writes to `html/modules/custom/mayo_content/policy-content.generated.php` (gitignored — generated artifact, not source).
 
@@ -353,7 +353,7 @@ function mayo_content_deploy_0001_ensure_structural_content(&$sandbox): void {
 
 3.4. Add `drupal/config_ignore ^3.3`, `drupal/config_filter ^2.6`, and `drupal/update_helper ^4` to composer.json. Run `ddev composer update`.
 
-3.5. **Rob reviews**: run `ddev drush deploy` on dev. Verify zero DB changes (idempotency). Open each policy page in the browser and confirm content matches the `.docx` originals.
+3.5. **The operator reviews**: run `ddev drush deploy` on dev. Verify zero DB changes (idempotency). Open each policy page in the browser and confirm content matches the `.docx` originals.
 
 3.6. Commit to mayo/mayo:
 ```bash
@@ -413,7 +413,7 @@ git commit -S -m "Policy content lifecycle: source markdown → deploy hooks"
 
 **Goal:** Tagged releases of mayo/mayo produce signed tarballs in GitLab Packages. Nightly fixture publication from mayo1.
 
-**Autonomy level:** Pipeline YAML and scripts are autonomous. GitLab CI variable configuration and runner registration require Rob.
+**Autonomy level:** Pipeline YAML and scripts are autonomous. GitLab CI variable configuration and runner registration require the operator.
 
 5.1. Create `mayo/mayo-fixtures` private repo on GitLab with Git LFS enabled.
 
@@ -427,7 +427,7 @@ git commit -S -m "Policy content lifecycle: source markdown → deploy hooks"
 
 5.4. Create `scripts/ci/fetch-mayo-fixture.sh` — downloads latest fixture from Package registry, verifies minisign, SQL sanity check.
 
-5.5. Register dedicated `met-sign` runner (concurrency 1, protected-tags-only) with minisign installed.
+5.5. Register dedicated `mirror-store-sign` runner (concurrency 1, protected-tags-only) with minisign installed.
 
 5.6. Configure GitLab CI/CD variables on `mayo/mayo` (project-scoped, not group-wide):
 - `MAYO_FIXTURES_DEPLOY_TOKEN` (masked, protected)
@@ -443,21 +443,21 @@ git commit -S -m "Policy content lifecycle: source markdown → deploy hooks"
 
 5.9. Create `servers/mayo1/systemd/mayo-fixtures-publish.{service,timer}` — nightly 02:00 AEST.
 
-5.10. First tagged release: `git tag -a v0.1.0 -m "First mayo production release"` → full pipeline → signed tarball in Packages → `ops/mons-log` issue.
+5.10. First tagged release: `git tag -a v0.1.0 -m "First mayo production release"` → full pipeline → signed tarball in Packages → `ops/verifier-log` issue.
 
 ---
 
 ### Phase 6 — Saintschool Bootstrap
 
-**Goal:** saintschool.mayostudios.org has a working dev environment, git repo, and NWP site structure.
+**Goal:** saintschool.<mayo-domain> has a working dev environment, git repo, and NWP site structure.
 
-**Autonomy level:** Fully autonomous except step 6.8 (mons-bot identity split requires Rob).
+**Autonomy level:** Fully autonomous except step 6.8 (verifier-bot identity split requires the operator).
 
 6.1. Create identity split (per mayo-sites-scope memory):
-- Create `mons-bot` GitLab user with read-only access to mayo group
-- Issue mons its own PAT
-- Revoke mons's use of mini-bot's PAT
-- mini-bot stays the build-tier identity (read/write)
+- Create `verifier-bot` GitLab user with read-only access to mayo group
+- Issue verifier its own PAT
+- Revoke verifier's use of ai-host-bot's PAT
+- ai-host-bot stays the build-tier identity (read/write)
 
 6.2. Create NWP site directory structure:
 ```bash
@@ -479,7 +479,7 @@ project:
 
 live:
   enabled: true
-  domain: saintschool.mayostudios.org
+  domain: saintschool.<mayo-domain>
   server: mayo1
   linode_id: shared
   type: shared
@@ -512,7 +512,7 @@ cd ~/nwp/sites/saintschool/dev
 git init -b main
 # Stage with explicit file list (same pattern as Phase 2)
 git commit -S -m "Initial saintschool site template"
-git remote add origin git@git.nwpcode.org:mayo/saintschool.git
+git remote add origin git@<gitlab-host>:mayo/saintschool.git
 git push -u origin main
 ```
 
@@ -530,7 +530,7 @@ git push -u origin main
   └── settings.local.php
 ```
 
-6.11. Configure nginx for `saintschool.mayostudios.org` on mayo1 (virtual host, SSL via certbot).
+6.11. Configure nginx for `saintschool.<mayo-domain>` on mayo1 (virtual host, SSL via certbot).
 
 ---
 
@@ -538,7 +538,7 @@ git push -u origin main
 
 **Goal:** A user with a mayo account can log into saintschool with "Log in with Mayo". Mayo is the identity provider. Saintschool is the OIDC client.
 
-**Autonomy level:** Steps 7.1-7.8 autonomous. Step 7.9 (first real cross-site login test) requires Rob.
+**Autonomy level:** Steps 7.1-7.8 autonomous. Step 7.9 (first real cross-site login test) requires the operator.
 
 This phase adapts F26's architecture (AVC as OIDC provider, SS as client) to the mayo context. The pattern is identical; only the domain names change.
 
@@ -581,7 +581,7 @@ This phase adapts F26's architecture (AVC as OIDC provider, SS as client) to the
 
 7.8. Commit OIDC configuration to both repos.
 
-7.9. **Rob tests**: end-to-end cross-site login on dev with sanitized fixture data.
+7.9. **The operator tests**: end-to-end cross-site login on dev with sanitized fixture data.
 
 ---
 
@@ -638,7 +638,7 @@ This is done via a SQL UPDATE after the mayo_content install, targeting the know
 8.7. Test the full cycle:
 - `pl example build --tag v0.1.0`
 - `pl example publish --tag v0.1.0`
-- On a clean machine (or met): create a fresh AVC site, import the example DB, verify 13 pages + 10 groups + 35 users + example banner.
+- On a clean machine (or mirror-store): create a fresh AVC site, import the example DB, verify 13 pages + 10 groups + 35 users + example banner.
 
 8.8. Commit scripts and command wrappers.
 
@@ -666,42 +666,42 @@ This is done via a SQL UPDATE after the mayo_content install, targeting the know
 
 9.6. Configure GitLab CI/CD variables on `mayo/saintschool` (same pattern as Phase 5.6).
 
-9.7. First tagged release: `git tag -a v0.1.0` → pipeline → signed tarball → `ops/mons-log` issue.
+9.7. First tagged release: `git tag -a v0.1.0` → pipeline → signed tarball → `ops/verifier-log` issue.
 
 ---
 
 ### Phase 10 — End-to-End Integration Test
 
-**Goal:** Both sites deployed to mayo1 via mons, cross-site OIDC working, both sanitization tiers verified.
+**Goal:** Both sites deployed to mayo1 via verifier, cross-site OIDC working, both sanitization tiers verified.
 
-**Autonomy level:** Steps 10.1-10.4 require Rob at mons. Steps 10.5-10.8 are verification that can be partially automated.
+**Autonomy level:** Steps 10.1-10.4 require the operator at verifier. Steps 10.5-10.8 are verification that can be partially automated.
 
 10.1. **WireGuard tunnel activation** (if not already done from F21):
-- Generate WireGuard keypairs on mons and mayo1
+- Generate WireGuard keypairs on verifier and mayo1
 - Exchange public keys
 - Install configs from `servers/mayo1/wireguard/`
 - Rebind mayo1 sshd to tunnel interface
 - End-to-end tunnel test
 
-10.2. **Deploy mayo v0.1.0 via mons:**
-- Power up mons, bring up `wg-mons`
-- `mons-deploy.sh mayo v0.1.0`
+10.2. **Deploy mayo v0.1.0 via verifier:**
+- Power up verifier, bring up `wg-verifier`
+- `verifier-deploy.sh mayo v0.1.0`
 - Verify: site loads, 13 pages, 10 groups, user count unchanged
-- `mons-say "deploy mayo v0.1.0 complete"`
+- `verifier-say "deploy mayo v0.1.0 complete"`
 
-10.3. **Deploy saintschool v0.1.0 via mons:**
-- `mons-deploy.sh saintschool v0.1.0`
+10.3. **Deploy saintschool v0.1.0 via verifier:**
+- `verifier-deploy.sh saintschool v0.1.0`
 - Verify: site loads, structural content present
-- `mons-say "deploy saintschool v0.1.0 complete"`
+- `verifier-say "deploy saintschool v0.1.0 complete"`
 
 10.4. **Cross-site OIDC test on production:**
-- Log into mayostudios.org as a test account
-- Navigate to saintschool.mayostudios.org, click "Log in with Mayo"
+- Log into <mayo-domain> as a test account
+- Navigate to saintschool.<mayo-domain>, click "Log in with Mayo"
 - Verify: seamless login, correct user profile, correct permissions
 
 10.5. **Tier 1 (internal) fixture verification:**
 - On mayo1: `sudo systemctl start mayo-fixtures-publish.service`
-- On met: pull mayo-fixtures, verify minisign, import to stg
+- On mirror-store: pull mayo-fixtures, verify minisign, import to stg
 - Verify: stg shows realistic data (node count matches prod, no PII in sweep)
 
 10.6. **Tier 2 (public) fixture verification:**
@@ -709,7 +709,7 @@ This is done via a SQL UPDATE after the mayo_content install, targeting the know
 - Import into a fresh AVC DDEV project
 - Verify: 13 pages, 10 groups, 35 users, example banner, zero real data
 - `pl example publish --tag v0.1.0`
-- On met: download from Packages, verify minisign, import, verify again
+- On mirror-store: download from Packages, verify minisign, import, verify again
 
 10.7. **Cross-site OIDC with Tier 1 fixtures:**
 - Import mayo Tier 1 fixture into mayo-stg
@@ -719,7 +719,7 @@ This is done via a SQL UPDATE after the mayo_content install, targeting the know
 
 10.8. **Documentation updates:**
 - Update `docs/guides/mayo-avc-integration.md` with final state
-- Update `docs/guides/mons-operations.md` with saintschool deploy procedure
+- Update `docs/guides/verifier-operations.md` with saintschool deploy procedure
 - Create `docs/guides/nwp-example-site.md` — how to use the Tier 2 example
 
 ---
@@ -775,7 +775,7 @@ This is done via a SQL UPDATE after the mayo_content install, targeting the know
 | `servers/mayo1/.nwp-server.yml` | 6 | saintschool status → active |
 | `lib/sanitizers/mayo.sh` | 7 | Call oidc_email_sanitize for user emails |
 | `docs/guides/mayo-avc-integration.md` | 10 | Final state update |
-| `docs/guides/mons-operations.md` | 10 | Saintschool deploy procedure |
+| `docs/guides/verifier-operations.md` | 10 | Saintschool deploy procedure |
 | `docs/proposals/F25-mayo-nwp-integration.md` | — | Mark SUPERSEDED BY F29 |
 
 ### 6.3 Existing Files Reused
@@ -789,7 +789,7 @@ This is done via a SQL UPDATE after the mayo_content install, targeting the know
 | `scripts/commands/publish.sh` | Phases 5, 8, 9 (`pl publish`) |
 | `scripts/ci/create-preview.sh` | Phase 5 (review apps) |
 | `scripts/ci/cleanup-preview.sh` | Phase 5 (review app cleanup) |
-| `servers/mayo1/scripts/mons-deploy.sh` | Phase 10 (deploy orchestrator) |
+| `servers/mayo1/scripts/verifier-deploy.sh` | Phase 10 (deploy orchestrator) |
 | `servers/mayo1/scripts/bluegreen-setup.sh` | Phase 6 (saintschool slot setup) |
 
 ---
@@ -803,7 +803,7 @@ This is done via a SQL UPDATE after the mayo_content install, targeting the know
 
 ### Phase 2
 - [ ] `cd ~/nwp/sites/mayo/dev && git log --oneline` shows signed commits
-- [ ] `git remote -v` points at `git.nwpcode.org:mayo/mayo.git`
+- [ ] `git remote -v` points at `<gitlab-host>:mayo/mayo.git`
 - [ ] `ddev drush status` on mayo-dev still works
 
 ### Phase 3
@@ -818,13 +818,13 @@ This is done via a SQL UPDATE after the mayo_content install, targeting the know
 ### Phase 5
 - [ ] Pipeline green on mayo/mayo v0.1.0 tag
 - [ ] Signed tarball in GitLab Packages
-- [ ] `ops/mons-log` issue created
+- [ ] `ops/verifier-log` issue created
 - [ ] Nightly fixture timer running on mayo1
 
 ### Phase 6
 - [ ] `ddev drush status` on saintschool-dev works
 - [ ] saintschool git repo on GitLab with protected main
-- [ ] mons-bot identity split complete (separate PAT from mini-bot)
+- [ ] verifier-bot identity split complete (separate PAT from ai-host-bot)
 
 ### Phase 7
 - [ ] Cross-site OIDC login works on dev (mayo → saintschool)
@@ -842,11 +842,11 @@ This is done via a SQL UPDATE after the mayo_content install, targeting the know
 - [ ] Saintschool fixture timer running on mayo1
 
 ### Phase 10
-- [ ] Mayo and saintschool deployed to mayo1 via mons
+- [ ] Mayo and saintschool deployed to mayo1 via verifier
 - [ ] Cross-site OIDC working on production
 - [ ] Tier 1 fixtures verified (realistic, no PII)
 - [ ] Tier 2 example verified (synthetic, zero PII, importable)
-- [ ] `mons-say` confirmations received
+- [ ] `verifier-say` confirmations received
 
 ---
 
@@ -860,7 +860,7 @@ This is done via a SQL UPDATE after the mayo_content install, targeting the know
 | Saintschool content module duplicates mayo_content patterns | Low | Acceptable duplication — sites have different content needs; shared helpers extracted only if pattern repeats 3+ times |
 | Nightly fixture timer fails silently | Medium | Timer logs to journal; gotify alert on failure (if F22 Gotify is available); CI falls back to prior fixture with warning |
 | Two-tier naming confusion | Low | Consistent naming: "internal fixture" (Tier 1) and "example site" (Tier 2) in all docs and scripts |
-| mons-bot / mini-bot PAT split breaks existing pipeline | Medium | Do the split in Phase 6 before saintschool repo exists; test existing mayo pipeline with both identities |
+| verifier-bot / ai-host-bot PAT split breaks existing pipeline | Medium | Do the split in Phase 6 before saintschool repo exists; test existing mayo pipeline with both identities |
 
 ---
 
@@ -903,7 +903,7 @@ This proposal is done when:
 
 1. All 10 phases complete with verification checklists passing.
 2. `~/MAYO/` is empty (all docs in mayo/mayo repo).
-3. mayo v0.1.0 and saintschool v0.1.0 deployed to mayo1 via mons.
+3. mayo v0.1.0 and saintschool v0.1.0 deployed to mayo1 via verifier.
 4. Cross-site OIDC login works end-to-end on production.
 5. Tier 1 nightly fixtures publishing from mayo1 for both sites.
 6. Tier 2 example site importable by a new NWP user via `pl example build`.
@@ -917,8 +917,20 @@ This proposal is done when:
 | Proposal | Relationship |
 |---|---|
 | **F25** (Mayo NWP Integration) | **Superseded.** F25 phases 1-8 are absorbed into F29 phases 2-5. Mark F25 as SUPERSEDED BY F29. |
-| **F21** (Distributed Pipeline) | **Depends on.** F29 consumes F21's pipeline infrastructure (build, publish, minisign, mons-deploy, blue-green). F21 phases 5-8 (WireGuard, hardware tokens) are prerequisites for F29 Phase 10. |
-| **F26** (AVC↔SS OIDC) | **Adapted.** F29 Phase 7 applies F26's OIDC architecture to mayo↔saintschool. F26 remains its own proposal for the avc.nwpcode.org ↔ ss.nwpcode.org pair. |
+| **F21** (Distributed Pipeline) | **Depends on.** F29 consumes F21's pipeline infrastructure (build, publish, minisign, verifier-deploy, blue-green). F21 phases 5-8 (WireGuard, hardware tokens) are prerequisites for F29 Phase 10. |
+| **F26** (AVC↔SS OIDC) | **Adapted.** F29 Phase 7 applies F26's OIDC architecture to mayo↔saintschool. F26 remains its own proposal for the <site>.example.org ↔ <site>.example.org pair. |
 | **F27** (Feedback Ingest) | **Unblocked by.** F27's first tenant is mayo. F29 Phase 5 provides the mayo pipeline that F27 Phase 3 needs. |
 | **F28** (Unified Pipeline) | **Aligned.** F29's pipeline structure follows F28's bundle/verify conventions. |
-| **F23** (Site Environment Layout) | **Prerequisite met.** F23 is complete; F29 builds on its dev/stg layout. |
+| **F23** (Site Environment Layout) | **Prerequisite mirror-store.** F23 is complete; F29 builds on its dev/stg layout. |
+
+---
+
+## 12. Reference deployment
+
+This public proposal is written in role-label form per
+[F34](F34-role-label-proposal-rewrite.md). The operator-specific
+bindings (actual hostnames for the `mirror-store`, `ai-host`, and
+`verifier`; the `<gitlab-host>` and `<mayo-domain>` concrete domains;
+the specific Mayo Studios deployment context; and
+milestone-to-commit-hash mapping) live in the private instance
+addendum at `nwp-instances/_proposals-private/F29-instance.md`.

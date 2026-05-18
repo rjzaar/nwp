@@ -201,7 +201,7 @@ Pulls production data back to staging.
 Provisions and deploys to a live server (Linode).
 
 ```bash
-./live.sh mysite                  # Deploy to mysite.nwpcode.org
+./live.sh mysite                  # Deploy to mysite.<prod-domain>
 ```
 
 ---

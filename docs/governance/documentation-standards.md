@@ -338,12 +338,12 @@ Run `pl backup create avc` to create a backup.
 ```markdown
 Run the `pl backup` command to create a backup.
 
-Edit the `/home/rob/nwp/nwp.yml` file.
+Edit the `<nwp-root>/nwp.yml` file.
 
 To deploy:
 
     ```bash
-    cd /home/rob/nwp
+    cd "$NWP_ROOT"
     pl live deploy avc
     ```
 ```
@@ -517,7 +517,7 @@ See the [ROADMAP](../../ROADMAP.md) for future plans.
 **Bad cross-references:**
 - "See the backup guide" (no link)
 - "See [here](../guides/backup-restore.md)" (non-descriptive link text)
-- "See `/home/rob/nwp/docs/guides/backup-restore.md`" (absolute path)
+- "See `<nwp-root>/docs/guides/backup-restore.md`" (absolute path)
 
 ## Status Labels
 

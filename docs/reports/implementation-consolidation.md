@@ -361,7 +361,7 @@ source "${BASH_SOURCE%/*}/terminal.sh"
 
 ### Implementation: Update pl help text
 
-Add to `show_help()` in `/home/rob/nwp/pl`:
+Add to `show_help()` in `<nwp-root>/pl`:
 
 ```bash
 ${BOLD}IMPORT & SYNC:${NC}
@@ -548,7 +548,7 @@ The script is a stub that only displays help and suggestions.
 
 ### Implementation
 
-Replace `/home/rob/nwp/scripts/commands/live2prod.sh` with:
+Replace `<nwp-root>/scripts/commands/live2prod.sh` with:
 
 ```bash
 #!/bin/bash

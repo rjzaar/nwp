@@ -77,7 +77,7 @@ This proposal establishes a governance framework for distributed NWP development
                                    │
                     ┌──────────────┴──────────────────────┐
                     │         TIER 1: PRIMARY             │
-                    │   git.nwpcode.org/nwp/nwp           │
+                    │   <gitlab-host>/nwp/nwp           │
                     │   (Rob's GitLab - auto-push to T0)  │
                     └──────────────┬──────────────────────┘
                                    │
@@ -113,7 +113,7 @@ Each tier's GitLab stores its upstream in `.nwp-upstream.yml`:
 ```yaml
 # .nwp-upstream.yml
 upstream:
-  url: git@git.nwpcode.org:nwp/nwp.git
+  url: git@<gitlab-host>:nwp/nwp.git
   tier: 1
   maintainer: rob@nwpcode.org
 
@@ -141,7 +141,7 @@ For contributors who don't need or want to run their own GitLab infrastructure, 
 └────────────────────────────┬────────────────────────────────┘
                              │
 ┌────────────────────────────┴────────────────────────────────┐
-│              TIER 1: git.nwpcode.org/nwp/nwp                │
+│              TIER 1: <gitlab-host>/nwp/nwp                │
 │                   (Primary maintainer)                       │
 └────────────────────────────┬────────────────────────────────┘
                              │
@@ -211,7 +211,7 @@ git push origin fix/issue-123-backup-path
 
 # 5. Create Pull Request via GitHub/GitLab web UI
 #    - PR from: YOUR_USERNAME/nwp:fix/issue-123-backup-path
-#    - PR to:   nwp/nwp:main (or git.nwpcode.org for Tier 1)
+#    - PR to:   nwp/nwp:main (or <gitlab-host> for Tier 1)
 ```
 
 #### Keeping Fork in Sync
@@ -674,14 +674,14 @@ Quick decisions that don't warrant full ADRs but should be recorded.
 **Context:** During report.sh implementation
 **Question:** Should error messages include timestamps?
 **Decision:** No, keep messages concise. Timestamps in log files only.
-**Decided by:** Rob
+**Decided by:** Robert Karsten Zaar
 **Related:** #234
 
 ### 2026-01-07: Default backup retention
 **Context:** backup.sh enhancement
 **Question:** How many backups to keep by default?
 **Decision:** 10 backups, configurable via nwp.yml
-**Decided by:** Rob
+**Decided by:** Robert Karsten Zaar
 **Related:** #230
 ```
 

@@ -34,7 +34,7 @@ rollback path.
    ~/nwp/sites/ss_moodledata/ ~/nwp/sites/ss1_moodledata/`.
 3. Update `~/nwp/sites/ss1/.nwp.yml`:
    - `project.name`: `ss` → `ss1`
-   - `live.domain`: `ss.nwpcode.org` → `ss1.nwpcode.org` (or whatever
+   - `live.domain`: `ss.<example-prod-domain>` → `ss1.<example-prod-domain>` (or whatever
      domain the operator passes via `--domain`)
    - `live.remote_path`: `/var/www/ss` → `/var/www/ss1`
    - `live.moodle_data_path`: `/var/www/ss_moodledata` →

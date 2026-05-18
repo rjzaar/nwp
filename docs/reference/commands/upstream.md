@@ -68,7 +68,7 @@ Interactive configuration:
   Configure Upstream Repository
 ═══════════════════════════════════════════════════════════════
 
-[!] Upstream already configured: /home/rob/nwp/.nwp-upstream.yml
+[!] Upstream already configured: <nwp-root>/.nwp-upstream.yml
 
 Reconfigure? (y/N) y
 
@@ -80,7 +80,7 @@ Maintainer email: maintainer@example.com
 Auto pull frequency (never/daily/weekly) [daily]: weekly
 Auto push (auto/manual) [manual]: manual
 
-[✓] Configuration saved to /home/rob/nwp/.nwp-upstream.yml
+[✓] Configuration saved to <nwp-root>/.nwp-upstream.yml
 
 [i] Adding git remote 'upstream'...
 [✓] Remote added
@@ -108,7 +108,7 @@ Output:
   Upstream Configuration
 ═══════════════════════════════════════════════════════════════
 
-[i] Configuration file: /home/rob/nwp/.nwp-upstream.yml
+[i] Configuration file: <nwp-root>/.nwp-upstream.yml
 
 Upstream Repository:
   URL:        git@github.com:example/nwp-fork.git

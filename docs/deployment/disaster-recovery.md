@@ -63,7 +63,7 @@ prod_full_20260105_030000_uploads.tar.gz
 
 ### Automated Backup Schedule
 
-Backups are automated via cron (see `/home/rob/nwp/linode/server_scripts/nwp-cron.conf`):
+Backups are automated via cron (see `<nwp-root>/linode/server_scripts/nwp-cron.conf`):
 
 ```bash
 # Database backups every 6 hours
@@ -152,7 +152,7 @@ curl -I https://your-site.com
 
 ```bash
 # On local machine
-cd /home/rob/nwp
+cd <nwp-root>
 
 # Check what was deployed
 git log -5 --oneline
@@ -353,7 +353,7 @@ This procedure assumes you need to provision a new Linode server and restore fro
 
 ```bash
 # On local machine
-cd /home/rob/nwp
+cd <nwp-root>
 
 # Option A: Use Linode CLI (if configured)
 # Create a new Linode with same specs as original
@@ -802,9 +802,9 @@ openssl s_client -connect your-site.com:443 -servername your-site.com
 
 ### Support Resources
 
-- **NWP Repository**: `/home/rob/nwp`
-- **Documentation**: `/home/rob/nwp/docs/`
-- **Scripts**: `/home/rob/nwp/linode/server_scripts/`
+- **NWP Repository**: `<nwp-root>`
+- **Documentation**: `<nwp-root>/docs/`
+- **Scripts**: `<nwp-root>/linode/server_scripts/`
 
 ### Related Documentation
 

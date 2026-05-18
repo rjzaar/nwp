@@ -62,7 +62,7 @@ The script performs these steps in reverse dependency order:
 **Output:**
 ```
 ✓ Found installation state from: 2024-12-15 14:23:45
-ℹ State file: /home/john/.nwp/setup_state/original_state.json
+ℹ State file: $HOME/.nwp/setup_state/original_state.json
 
 ℹ The uninstaller will:
   - Skip removing tools that existed before NWP setup
@@ -273,7 +273,7 @@ NWP Uninstaller
 ⚠ Make sure you have backups of any important data!
 
 ✓ Found installation state from: 2024-12-15 14:23:45
-ℹ State file: /home/john/.nwp/setup_state/original_state.json
+ℹ State file: $HOME/.nwp/setup_state/original_state.json
 
 ℹ The uninstaller will:
   - Skip removing tools that existed before NWP setup
@@ -326,7 +326,7 @@ Proceed with uninstall? [y/N]: y
   Remove nwp.yml configuration file? [y/N]: n
   ℹ Keeping nwp.yml
 
-  ℹ NWP configuration directory: /home/john/.nwp
+  ℹ NWP configuration directory: $HOME/.nwp
   ℹ This contains:
     - Setup state snapshots
     - Linode/GitLab configurations
@@ -369,8 +369,8 @@ NWP Uninstaller
 
 ⚠ No installation state file found
 ℹ Checked locations:
-  - /home/john/.nwp/setup_state/original_state.json (new format)
-  - /home/john/.nwp/setup_state/pre_setup_state.json (legacy format)
+  - $HOME/.nwp/setup_state/original_state.json (new format)
+  - $HOME/.nwp/setup_state/pre_setup_state.json (legacy format)
 
 ℹ Without a state file, the uninstaller cannot determine what was
 ℹ installed by NWP vs. what was already on your system.
@@ -616,7 +616,7 @@ The reinstallation will create a new state snapshot.
 ## Related Commands
 
 - `./setup.sh` - Initial NWP installation
-- CLI unregistration library: `/home/rob/nwp/lib/cli-register.sh`
+- CLI unregistration library: `<nwp-root>/lib/cli-register.sh`
 
 ## See Also
 

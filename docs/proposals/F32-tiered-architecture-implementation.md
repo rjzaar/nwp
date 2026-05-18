@@ -57,8 +57,8 @@ nwp:
   tier: 3                              # preset: expands to coherent defaults
 hosts:
   dev:     { local: true, roles: [authoring, deployer] }
-  ci-host: { ssh: user@ci-host.local, roles: [ci-host, build-host] }
-  ai-host: { ssh: user@ai-host.local, roles: [ai-host] }
+  ci-host: { ssh: user@ci-host.tailnet, roles: [ci-host, build-host] }
+  ai-host: { ssh: user@ai-host.tailnet, roles: [ai-host] }
 features:
   ci:
     enabled: true

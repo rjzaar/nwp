@@ -83,12 +83,12 @@ Added onboarding instructions that administrators receive after creating a new c
 Welcome to NWP! Your account has been created.
 
 GitLab Access:
-  URL: https://git.nwpcode.org
+  URL: https://<gitlab-host>
   Username: john
   Password: (shown above)
   Action: Change your password and add SSH key
 
-Your subdomain: john.nwpcode.org
+Your subdomain: john.<coder-domain>
 DNS Status: Delegation configured (propagation takes 24-48 hours)
 
 Quick Start:
@@ -336,10 +336,10 @@ nano .secrets.yml
 # Output:
 # [DRY-RUN MODE: No changes will be made]
 # [DRY-RUN] Would create nwp.yml from example
-# [DRY-RUN] Would set settings.url to: testuser.nwpcode.org
+# [DRY-RUN] Would set settings.url to: testuser.<coder-domain>
 # [DRY-RUN] Would set git config:
 #   user.name: testuser
-#   user.email: git@testuser.nwpcode.org
+#   user.email: git@testuser.<coder-domain>
 ```
 
 ---

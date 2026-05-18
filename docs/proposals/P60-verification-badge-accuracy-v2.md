@@ -2,7 +2,7 @@
 
 **Status:** PROPOSED
 **Created:** 2026-02-02
-**Author:** Claude (Opus 4.5)
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** Medium
 **Depends On:** P53 (Verification Categorization & Badge Accuracy)
 **Estimated Effort:** 2-3 days

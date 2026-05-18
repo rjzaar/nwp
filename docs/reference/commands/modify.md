@@ -89,9 +89,9 @@ NWP Modify  |  ↑↓:Navigate  ENTER:Select  q:Quit
 
    SITE                 RECIPE       ENVIRONMENT  EXISTS DIRECTORY
    -------------------- ------------ ------------ ------ ---------
-▸  avc                  nwp          production   Yes    /home/rob/nwp/sites/avc
-   nwp5                 d            development  Yes    /home/rob/nwp/sites/nwp5
-   testsite             drupal       development  No     /home/rob/nwp/sites/testsite
+▸  avc                  nwp          production   Yes    <nwp-root>/sites/avc
+   nwp5                 d            development  Yes    <nwp-root>/sites/nwp5
+   testsite             drupal       development  No     <nwp-root>/sites/testsite
 ```
 
 ### Modify Specific Site
@@ -112,7 +112,7 @@ Displays detailed site information without opening TUI:
 
 ```
 Site: avc
-Directory: /home/rob/nwp/sites/avc
+Directory: <nwp-root>/sites/avc
 Recipe: nwp
 Purpose: Main production site
 
@@ -150,11 +150,11 @@ Sites
 
   SITE                 RECIPE       ENVIRONMENT  DIRECTORY
   -------------------- ------------ ------------ ---------
-  avc                  nwp          production   /home/rob/nwp/sites/avc
-  nwp5                 d            development  /home/rob/nwp/sites/nwp5
+  avc                  nwp          production   <nwp-root>/sites/avc
+  nwp5                 d            development  <nwp-root>/sites/nwp5
 
   Orphaned sites (not in nwp.yml):
-  oldsite              drupal       (orphan)     /home/rob/nwp/sites/oldsite
+  oldsite              drupal       (orphan)     <nwp-root>/sites/oldsite
 ```
 
 Orphaned sites appear in yellow and can be modified but aren't tracked in `nwp.yml`.
@@ -236,7 +236,7 @@ The script will not automatically start DDEV to avoid unexpected resource usage.
 Orphaned sites are directories with `.ddev/` but not in `nwp.yml`:
 
 ```
-/home/rob/nwp/sites/
+<nwp-root>/sites/
   ├── avc/          # In nwp.yml ✓
   │   └── .ddev/
   ├── nwp5/         # In nwp.yml ✓
@@ -305,7 +305,7 @@ Changes are saved to `nwp.yml` under the site's `options:` section:
 ```yaml
 sites:
   avc:
-    directory: /home/rob/nwp/sites/avc
+    directory: <nwp-root>/sites/avc
     recipe: nwp
     options:
       dev_modules: true

@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2025-12-15 (original design), refined 2026-01-14
-**Decision Makers:** Rob
+**Decision Makers:** the operator
 **Related Issues:** P06 (Sites Tracking System), P30 (Modular Install Architecture)
 **Related Commits:** 05d13750 (modular refactor), 7956b417 (avc split), e2558617 (post_install_scripts)
 **References:** [example.nwp.yml](../../example.nwp.yml), [install-common.sh](../../lib/install-common.sh)
@@ -249,8 +249,8 @@ avc:
 **avc-dev recipe (profile developers):**
 ```yaml
 avc-dev:
-  source_git: https://git.nwpcode.org/nwp/avc-project.git
-  profile_source: https://git.nwpcode.org/nwp/avc.git
+  source_git: https://<gitlab-host>/nwp/avc-project.git
+  profile_source: https://<gitlab-host>/nwp/avc.git
   profile: avc
 ```
 

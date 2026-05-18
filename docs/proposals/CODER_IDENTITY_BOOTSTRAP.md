@@ -11,7 +11,7 @@
 
 The current system requires new coders to manually edit `nwp.yml` and set `settings.url` to their subdomain. This is error-prone and creates a disconnect between:
 - The admin's registration (running `coder-setup.sh add john`)
-- The coder's local configuration (manually editing `settings.url: john.nwpcode.org`)
+- The coder's local configuration (manually editing `settings.url: john.<coder-domain>`)
 
 **Proposed Solution:** An interactive bootstrap script that:
 1. Automatically detects or prompts for the coder's identity
@@ -28,7 +28,7 @@ The current system requires new coders to manually edit `nwp.yml` and set `setti
 ```yaml
 # Coder must manually edit this correctly:
 settings:
-  url: john.nwpcode.org  # Could misspell, forget, or misunderstand
+  url: john.<coder-domain>  # Could misspell, forget, or misunderstand
 ```
 
 ### 2. **No Identity Validation**
@@ -545,7 +545,7 @@ main "$@"
 When a coder adds their SSH key to GitLab and tests the connection:
 
 ```bash
-$ ssh -T git@git.nwpcode.org
+$ ssh -T git@<gitlab-host>
 Welcome to GitLab, @john!
 ```
 

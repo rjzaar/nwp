@@ -266,8 +266,8 @@ developer:
   email: john@example.com
   role: contributor  # newcomer, contributor, core, steward
   level: 30          # GitLab access level
-  subdomain: john.nwpcode.org
-  upstream: git.nwpcode.org
+  subdomain: john.<coder-domain>
+  upstream: <gitlab-host>
 
   # Auto-populated by sync
   registered: 2026-01-08
@@ -378,7 +378,7 @@ A comprehensive interactive TUI for managing all coders, their access levels, an
    [ ] carol       Contrib    inactive 2025-11-15       28      7       3
 
 ───────────────────────────────────────────────────────────────────────────
- john - Contrib | 47 commits, 12 MRs | john.nwpcode.org
+ john - Contrib | 47 commits, 12 MRs | john.<coder-domain>
  ↑↓ Navigate  Space Select  Enter Details  Modify  Promote  Delete  Add  Sync  Quit
 ```
 
@@ -411,7 +411,7 @@ Identity
   Role:       Contrib (level 30)
   Status:     active
   Registered: 2026-01-08
-  Subdomain:  john.nwpcode.org
+  Subdomain:  john.<coder-domain>
 
 Contributions
   Commits:          47  ████████████████████████████████████████████████
@@ -479,7 +479,7 @@ The header shows selection count: `[3 selected]`
 When onboarding a new core developer, ensure they have:
 
 ### Identity & Access
-- [ ] GitLab account on git.nwpcode.org
+- [ ] GitLab account on <gitlab-host>
 - [ ] Added to `nwp` group with appropriate level
 - [ ] SSH key registered in GitLab
 - [ ] Email on distribution list (if applicable)

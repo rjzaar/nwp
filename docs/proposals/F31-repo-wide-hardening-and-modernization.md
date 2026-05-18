@@ -2,8 +2,8 @@
 
 **Status:** PROPOSED
 **Created:** 2026-04-17
-**Author:** Rob Zaar, Claude Opus 4.7
-**Priority:** High (consolidates the 2026-Q2 audit findings into a single actionable plan; unblocks honest verification claims and closes mons-boundary enforcement gaps)
+**Author:** Robert Karsten Zaar (with AI assistance)
+**Priority:** High (consolidates the 2026-Q2 audit findings into a single actionable plan; unblocks honest verification claims and closes verifier-boundary enforcement gaps)
 **Depends On:** F21 (distributed pipeline — phases 1–3a done, Phase 5/6 pending), F28 (unified pipeline — proposed), F26 (OIDC — proposed)
 **Breaking Changes:** No (all items are additive enforcement, test coverage, documentation, or refactors preserving existing public behavior)
 **Supersedes / absorbs:** `YAML_PARSER_CONSOLIDATION.md` (Phase 8 Item 31 here), parts of `P60` data-hygiene work (Phase 4 Item 11)
@@ -14,9 +14,9 @@
 
 ### 1.1 Problem Statement
 
-A comprehensive 2026-Q2 audit of `/home/rob/nwp` and the user's Claude Code harness identified 37 concrete issues plus 6 longer-horizon opportunities. The findings cluster into six categories:
+A comprehensive 2026-Q2 audit of `$HOME/nwp` and the user's Claude Code harness identified 37 concrete issues plus 6 longer-horizon opportunities. The findings cluster into six categories:
 
-1. **Stated security model vs. implementation drift.** CLAUDE.md declares "trust flows through signatures, not machines" and "two-person approval for sensitive paths." In practice: CI signature verification is a placeholder with `allow_failure: true`; sensitive-path approval is documented but not enforced by CODEOWNERS or branch protection; ADR-0017 (mons offline-by-default) and ADR-0019 (mons always-on with hardware token) are in direct conflict and neither is authoritative.
+1. **Stated security model vs. implementation drift.** CLAUDE.md declares "trust flows through signatures, not machines" and "two-person approval for sensitive paths." In practice: CI signature verification is a placeholder with `allow_failure: true`; sensitive-path approval is documented but not enforced by CODEOWNERS or branch protection; ADR-0017 (verifier offline-by-default) and ADR-0019 (verifier always-on with hardware token) are in direct conflict and neither is authoritative.
 
 2. **Bash correctness footguns.** 62 of 71 `lib/*.sh` files lack `set -euo pipefail`, while `pl` itself uses it — this drift hides failure modes. 30+ instances of `cd $var` without `|| exit` span the library. One production-critical script (`lib/live-server-setup.sh:43`) has an unquoted variable subject to word-splitting.
 
@@ -24,7 +24,7 @@ A comprehensive 2026-Q2 audit of `/home/rob/nwp` and the user's Claude Code harn
 
 4. **"99.5% machine verified" is aspirational, not empirical.** The badge computes `verified / total = 514 / 569`, but 102 items are flagged `automatable:false && verified:true` (manual checklist items misclassified), 40 infrastructure-dependent items counted as passing without being testable locally. P60 documented this; the data has not been cleaned.
 
-5. **Documentation lags shipped features.** F21 Phases 1–3a (Headscale, met runner, mini LLM) shipped without a deployment guide. ADR-0019 is not listed in `docs/decisions/index.md`. The OIDC email sanitizer (shipped 2026-03-26) has no canonical reference under `docs/deployment/`. `docs/guides/mayo-avc-integration.md` still says "❌ Sanitizer (wired in later)" weeks after it landed.
+5. **Documentation lags shipped features.** F21 Phases 1–3a (Headscale, mirror-store runner, ai-host LLM) shipped without a deployment guide. ADR-0019 is not listed in `docs/decisions/index.md`. The OIDC email sanitizer (shipped 2026-03-26) has no canonical reference under `docs/deployment/`. `docs/guides/mayo-avc-integration.md` still says "❌ Sanitizer (wired in later)" weeks after it landed.
 
 6. **External 2026 landscape drift.** GitLab has shipped three high-severity CVEs in 2026-Q1; Headscale 0.29 has a breaking ACL wildcard change; Moodle 5.1 changed document root to `public/` (NWP's ss deploy scripts assume flat `/var/www/ss/`); Nitrokey 3 has emerged as a documented backup to Solo 2C+ under the same Trussed firmware; Authelia offers a certified lightweight OIDC provider that may be a better fit for F26 than Drupal-as-IdP.
 
@@ -32,7 +32,7 @@ A comprehensive 2026-Q2 audit of `/home/rob/nwp` and the user's Claude Code harn
 
 A 10-phase hardening and modernization plan, sequenced so each phase stands alone and unblocks the next:
 
-1. **Phase 1 — Critical security gates.** Flip CI signing enforcement from `allow_failure:true` to blocking. Resolve ADR-0017/0019 conflict. Implement CODEOWNERS + branch protection for sensitive paths. Repair `docs/decisions/index.md`.
+1. **Phase 1 — Critical security gates.** Flip CI signing enforcement from `allow_failure:true` to blocking. Resolve the ADR-0017/0019 conflict. Implement CODEOWNERS + branch protection for sensitive paths. Repair `docs/decisions/index.md`.
 2. **Phase 2 — Bash correctness sweep.** Add `set -euo pipefail` to all `lib/*.sh` that lack it. Fix every `cd $var` without a guard. Fix the `live-server-setup.sh:43` word-splitting bug.
 3. **Phase 3 — Security-critical test coverage.** Add round-trip and tamper-detection tests for bundle sign/verify. Add an integration test for the OIDC email sanitizer. Add tests for the migration framework. Enable `02-backup-restore.bats` in CI.
 4. **Phase 4 — Honest verification badge.** Clean P60 data issues (102 inconsistencies). Split the single "machine verified" number into category-specific percentages (Unit / Integration / Manual).
@@ -47,7 +47,7 @@ A separate "Watch and Evaluate" section lists six longer-horizon opportunities (
 
 ### 1.3 Design Rationale
 
-- **Phases are ordered by blast-radius reduction, not by effort.** Phase 1 closes the widest-open security gaps (unsigned artifacts, unenforced CODEOWNERS, ambiguous mons posture). Phase 2 prevents silent bash failures from masking incidents. Phase 3 stops security-critical code from merging without tests. Everything else builds on that foundation.
+- **Phases are ordered by blast-radius reduction, not by effort.** Phase 1 closes the widest-open security gaps (unsigned artifacts, unenforced CODEOWNERS, ambiguous verifier posture). Phase 2 prevents silent bash failures from masking incidents. Phase 3 stops security-critical code from merging without tests. Everything else builds on that foundation.
 - **Each phase is independently shippable.** Gates between phases are soft — Phase 4 does not block Phase 5 — but within a phase the items are tightly coupled (e.g., flipping CI `allow_failure` only after minisign tests exist).
 - **Items are numbered 1–37 globally, not restarted per phase.** This preserves traceability back to the 2026-Q2 audit findings. Each item maps one-to-one to an audit recommendation.
 - **The proposal does not absorb F26's architectural decision.** Phase 8 Item 27 flags Authelia vs. Drupal-as-IdP as a decision point. If the decision goes toward Authelia, F26 is amended (not by F31); if it stays Drupal-as-IdP, F26 proceeds unchanged.
@@ -68,7 +68,7 @@ A separate "Watch and Evaluate" section lists six longer-horizon opportunities (
 | Integration tests in CI | All gated on `ENABLE_DDEV_TESTS=true`, which is not set in `.github/workflows/build-test-deploy.yml`. |
 | Verification badge | Claims 99.5% machine-verified. Actual category split: unit tests ~30% of workflows; integration disabled in CI; 102 documented data-consistency issues unfixed per P60. |
 | ADR-0019 in index | Missing. `docs/decisions/index.md` does not list it; CLAUDE.md references it as authoritative. |
-| Sanitizer docs under `docs/deployment/` | None. References scattered across `guides/production-site-integration.md`, `guides/mayo-avc-integration.md`, `guides/mons-operations.md`. |
+| Sanitizer docs under `docs/deployment/` | None. References scattered across `guides/production-site-integration.md`, `guides/mayo-avc-integration.md`, `guides/verifier-operations.md`. |
 | F21 Phase 1–3a deployment guide | Not written. Only interim SSH port-forward pattern documented in `docs/guides/local-llm.md` (marked deprecated). |
 | CODEOWNERS / branch protection | None. CLAUDE.md §239–252 lists sensitive paths advisory-only. |
 | Claude Code harness | Two hooks active (`check-session-size.sh`, `play-chime.sh`). `claude-conversation-monitor.sh` present but unused and contains `pkill Claude` logic. No PreToolUse hook for prod-path denial. |
@@ -87,8 +87,8 @@ The findings in this proposal came from six parallel audits run on 2026-04-17:
 1. **Bash code quality review** — 143 shell scripts, ~77K lines across `lib/` and `scripts/commands/`. Grep-based scan for strict-mode adoption, `cd` guards, word-splitting hazards, duplication, and test coverage.
 2. **Documentation review** — 210 files under `docs/` checked for staleness, redundancy, missing operational guides for shipped features, ADR health, and proposal-format consistency.
 3. **Proposal coherence review** — F21–F30 dependency graph analysis, threat-model compliance check, naming-convention audit, supersession chains.
-4. **Security and infrastructure review** — ADR-0017/0018/0019 alignment, mons boundary integrity, minisign enforcement, sanitizer fail-closed behavior, CI/CD exposure, key rotation runbook presence.
-5. **Claude Code harness review** — `~/.claude/settings.json`, `settings.local.json`, hooks, memory system, skills, plugin list, session size.
+4. **Security and infrastructure review** — ADR-0017/0018/0019 alignment, verifier boundary integrity, minisign enforcement, sanitizer fail-closed behavior, CI/CD exposure, key rotation runbook presence.
+5. **Claude Code harness review** — `$HOME/.claude/settings.json`, `settings.local.json`, hooks, memory system, skills, plugin list, session size.
 6. **Tests and verification audit** — BATS framework coverage, `.verification.yml` data integrity, badge computation, CI pipeline vs `pl verify` divergence, P50–P60 proposals delivered vs aspirational.
 
 Plus **external best-practices research** on 12 topics covering minisign alternatives, hardware keys, Drupal 11/12, Moodle 5.x, self-hosted GitLab, Headscale, immutable deployment, Claude Code 2026 features, bash testing at scale, self-hosted observability, OIDC IdPs, and supply-chain attestation.
@@ -105,7 +105,7 @@ Goal: close the widest-open security gaps before anything else ships.
 
 1. **Flip CI signature verification to blocking.** `.gitlab-ci.yml:114-123` has `allow_failure: true` with comment "flip to false once signing is live". Change to `false`. Gate `BUNDLE_NO_SIGN=1` in `lib/bundle-build.sh` behind an explicit test-mode env flag so it cannot be set in production. Depends on Phase 3 Item 7 landing first so the test suite proves the gate works. **Effort:** 30 min (after Item 7).
 
-2. **Resolve ADR-0017 vs ADR-0019 conflict.** ADR-0017 (Accepted) says mons is offline-by-default; ADR-0019 (Proposed, one day later) says mons is always-on Headscale peer. Pick one, mark the other Superseded or Rejected. If 0019 wins, every checkbox in its hardening checklist (aide, auditd, fail2ban, LUKS verify, unattended-upgrades scope) must land before mons goes online. **Effort:** decision + 2 hr if 0019 wins.
+2. **Resolve ADR-0017 vs ADR-0019 conflict.** ADR-0017 (Accepted) says the verifier is offline-by-default; ADR-0019 (Proposed, one day later) says the verifier is an always-on Headscale peer. Pick one, mark the other Superseded or Rejected. If 0019 wins, every checkbox in its hardening checklist (aide, auditd, fail2ban, LUKS verify, unattended-upgrades scope) must land before the verifier goes online. **Effort:** decision + 2 hr if 0019 wins.
 
 3. **Add CODEOWNERS and branch protection for sensitive paths.** CLAUDE.md §239–252 lists paths requiring two-person approval (`lib/auth*`, `lib/*secret*`, `lib/bundle*`, `lib/minisign*`, `lib/sanitize*`, `scripts/commands/live*`, `scripts/commands/stg2prod*`, `.gitlab-ci.yml`, `CLAUDE.md`, `keys/**`, `.env*`). Create `.gitlab/CODEOWNERS`; enable branch protection on `main` requiring CODEOWNER approval for matching paths. **Effort:** 1 hr.
 
@@ -143,7 +143,7 @@ Goal: make the 99.5% claim survive scrutiny.
 
 Goal: close the gap between what shipped and what is documented.
 
-12. **Write F21 Phases 1–3a deployment guide.** Create `docs/deployment/f21-build-deploy-pipeline.md` covering: Headscale bootstrap, ACL template, GitLab Runner on met, mini LLM health probes, mons bootstrap skeleton (Phase 5). Replace deprecated SSH port-forward pattern in `docs/guides/local-llm.md` with a pointer to the new guide. **Effort:** 3 hr.
+12. **Write F21 Phases 1–3a deployment guide.** Create `docs/deployment/f21-build-deploy-pipeline.md` covering: Headscale bootstrap, ACL template, GitLab Runner on the mirror-store, ai-host LLM health probes, verifier bootstrap skeleton (Phase 5). Replace deprecated SSH port-forward pattern in `docs/guides/local-llm.md` with a pointer to the new guide. **Effort:** 3 hr.
 
 14. **Create canonical sanitizer reference.** `docs/deployment/sanitization.md`, linking to per-site sanitizers (mayo, ss, avc) and the OIDC email module. Remove duplicated content from `guides/production-site-integration.md` and `guides/mayo-avc-integration.md`; leave pointers. **Effort:** 1 hr.
 
@@ -170,19 +170,19 @@ Goal: make AI-distrust enforcement deterministic, not documentation-based.
 
 19. **Pre-commit warning on sensitive-path edits.** Same hook prints a red warning (not blocking) when diff touches `lib/auth*`, `lib/*secret*`, `lib/sanitize*`, `lib/bundle*`, `lib/minisign*`, `scripts/commands/live*`, `scripts/commands/stg2prod*`. Prompts for "yes, I reviewed this" confirmation. **Effort:** 20 min (extension of Item 18).
 
-20. **PreToolUse Claude Code hook denying bash access to prod paths.** Per 2026 Claude Code guidance, PreToolUse hooks are deterministic. Deny any bash command referencing `keys/prod_*`, `.secrets.data.yml`, or known prod IPs (97.107.137.88 and any entries in `.secrets.data.yml` that this user-level hook cannot read — use a public allowlist kept in plain files). Install in `~/.claude/settings.json`. **Effort:** 1 hr.
+20. **PreToolUse Claude Code hook denying bash access to prod paths.** Per 2026 Claude Code guidance, PreToolUse hooks are deterministic. Deny any bash command referencing `keys/prod_*`, `.secrets.data.yml`, or known prod IPs (the public Linode IP and any entries in `.secrets.data.yml` that this user-level hook cannot read — use a public allowlist kept in plain files). Install in `$HOME/.claude/settings.json`. **Effort:** 1 hr.
 
 21. **Delete `claude-conversation-monitor.sh`.** Unused, redundant with `check-session-size.sh`, contains a `pkill Claude` hazard. **Effort:** 5 min.
 
-22. **Annotate stale memory entries.** `~/.claude/projects/-home-rob-nwp/memory/mini-llm-baseline.md` (2026-04-09) cites F21 Phase 3a / X02 Phase 0 state that may have moved. Either refresh from current project state or add a "verify before citing — last confirmed 2026-04-09" banner. Audit MEMORY.md index for other >30-day-old entries referencing in-flight phases. **Effort:** 15 min.
+22. **Annotate stale memory entries.** The operator's per-project memory file for the ai-host LLM baseline (2026-04-09) cites F21 Phase 3a / X02 Phase 0 state that may have moved. Either refresh from current project state or add a "verify before citing — last confirmed 2026-04-09" banner. Audit MEMORY.md index for other >30-day-old entries referencing in-flight phases. **Effort:** 15 min.
 
 ### Phase 8 — External Dependency Patching
 
 Goal: align with 2026-Q2 best-practice advisories.
 
-23. **Verify `git.nwpcode.org` GitLab version.** 2026-Q1 CVEs: CVSS 8.1 email-hijack (March), CVSS 7.7 GraphQL DoS (March), 2FA bypass (January), SSH DoS (January). Patched in 18.10.3 / 18.9.5 / 18.8.9. Also verify Runner is scoped (not instance-wide) and uses Docker executor, not shell. **Effort:** 1 hr (check + patch plan).
+23. **Verify `<gitlab-host>` GitLab version.** 2026-Q1 CVEs: CVSS 8.1 email-hijack (March), CVSS 7.7 GraphQL DoS (March), 2FA bypass (January), SSH DoS (January). Patched in 18.10.3 / 18.9.5 / 18.8.9. Also verify Runner is scoped (not instance-wide) and uses Docker executor, not shell. **Effort:** 1 hr (check + patch plan).
 
-24. **Plan Headscale 0.29 upgrade.** Breaking change: wildcard `*` now resolves to CGNAT (100.64.0.0/10) instead of all IPs. Audit current ACL wildcards before upgrading. Evaluate the new SSH `check` action — would let us gate inter-node SSH (met↔mini) via OIDC with hardware-key step-up. **Effort:** research 1 hr, plan 2 hr.
+24. **Plan Headscale 0.29 upgrade.** Breaking change: wildcard `*` now resolves to CGNAT (100.64.0.0/10) instead of all IPs. Audit current ACL wildcards before upgrading. Evaluate the new SSH `check` action — would let us gate inter-node SSH (mirror-store↔ai-host) via OIDC with hardware-key step-up. **Effort:** research 1 hr, plan 2 hr.
 
 25. **Evaluate ntfy as Gotify replacement.** ntfy now has first-party iOS (via APNs), richer ACLs, emoji, broader integration matrix. Same self-hosted-simple-push niche as Gotify; Apache-licensed. Decision only; implementation is a separate proposal if we switch. **Effort:** 30 min research.
 
@@ -196,7 +196,7 @@ Goal: align with 2026-Q2 best-practice advisories.
 
 Goal: every irreversible action has a runbook; every lint runs in CI.
 
-29. **Create `docs/runbooks/key-rotation.md`.** Sections: (a) minisign key rotation (generate new, re-sign all published artifacts, update mons public key); (b) Solo 2C+ loss recovery (enroll backup, revoke old prod SSH key, rotate WireGuard PSK); (c) Headscale auth key rotation; (d) GitLab PAT / deploy token rotation; (e) SSH host key rotation on new server provisioning (mayo1 baseline). ADR-0019 mentions this as a requirement but the runbook does not exist. **Effort:** half day.
+29. **Create `docs/runbooks/key-rotation.md`.** Sections: (a) minisign key rotation (generate new, re-sign all published artifacts, update the verifier's public key); (b) Solo 2C+ loss recovery (enroll backup, revoke old prod SSH key, rotate WireGuard PSK); (c) Headscale auth key rotation; (d) GitLab PAT / deploy token rotation; (e) SSH host key rotation on new server provisioning (mayo1 baseline). ADR-0019 mentions this as a requirement but the runbook does not exist. **Effort:** half day.
 
 30. **Enable shellcheck and phpstan as blocking CI stages.** `phpstan.neon` exists but is not in CI. Shellcheck is referenced in source comments but not enforced. Add stages to `.gitlab-ci.yml` and `.github/workflows/build-test-deploy.yml` that fail on high-severity issues. Baseline existing violations (fix or waive with documented reason). **Effort:** 2 hr (setup) + 2–4 hr (baseline).
 
@@ -210,7 +210,7 @@ Goal: low-priority cleanup after the higher-blast-radius work lands.
 
 33. **Refresh `KNOWN_ISSUES.md`.** Last updated 2026-01-20; says "65 failing tests" while badge claims 99.5%. Replace with current issues (if any) or mark "All tracked issues resolved as of 2026-04-17; see docs/proposals/ for active work." **Effort:** 15 min.
 
-34. **Slim down Claude Code allow-list.** 383 entries in `~/.claude/settings.local.json`, many are verbose bash fragments rather than tool+method patterns. Consolidate using the shipped `less-permission-prompts` skill. Expect ~50 entries after consolidation. **Effort:** 2 hr.
+34. **Slim down Claude Code allow-list.** 383 entries in `$HOME/.claude/settings.local.json`, many are verbose bash fragments rather than tool+method patterns. Consolidate using the shipped `less-permission-prompts` skill. Expect ~50 entries after consolidation. **Effort:** 2 hr.
 
 35. **Fix `cat file | grep` anti-patterns.** 17 instances in `lib/` and `pl`. Replace with direct `grep file`. Style only; no correctness issue. **Effort:** 30 min.
 
@@ -224,8 +224,8 @@ Goal: low-priority cleanup after the higher-blast-radius work lands.
 
 Six longer-horizon opportunities identified in the audit but not scoped into this proposal. Each becomes a separate F## proposal if/when committed.
 
-- **SLSA L2-equivalent via in-toto JSON + CycloneDX SBOM, co-signed with the existing minisign key.** Preserves the offline-mons boundary (no Fulcio/Rekor round-trip), gives supply-chain provenance without adopting the full Sigstore stack.
-- **deploy-rs "magic rollback" pattern** — after mons pushes a bundle, self-verify reachability and auto-revert to previous symlink on failure. Directly applicable to NWP's atomic deploy model without adopting Nix.
+- **SLSA L2-equivalent via in-toto JSON + CycloneDX SBOM, co-signed with the existing minisign key.** Preserves the offline-verifier boundary (no Fulcio/Rekor round-trip), gives supply-chain provenance without adopting the full Sigstore stack.
+- **deploy-rs "magic rollback" pattern** — after the verifier pushes a bundle, self-verify reachability and auto-revert to previous symlink on failure. Directly applicable to NWP's atomic deploy model without adopting Nix.
 - **Drupal core Recipes for the avc profile.** Drupal 11.2+ ships Recipes as the successor to install profiles. avc could be authored as a Recipe, composable across sites.
 - **ShellSpec for new `lib/` function-level tests.** BATS's weak spot is function-level testing; ShellSpec does it natively. Don't migrate existing tests; adopt for new coverage only.
 - **Bash-to-Python migration at the 77K-line scale.** Keep `pl` as bash orchestration, but state-machine code (resolvers, migration framework, server provisioning) would benefit from a typed language long-term. Python 3 is always present in NWP's target environments. Not urgent.
@@ -318,7 +318,7 @@ Phase 7:
 - [ ] Item 22: Memory index has no >30-day-old entries without a verify-before-use note
 
 Phase 8:
-- [ ] Item 23: GitLab on `git.nwpcode.org` is ≥18.10.3; Runner is Docker-executor + scoped
+- [ ] Item 23: GitLab on `<gitlab-host>` is ≥18.10.3; Runner is Docker-executor + scoped
 - [ ] Item 24: Headscale upgrade plan written; ACL wildcard audit completed before upgrade
 - [ ] Item 25: ntfy evaluation decision recorded (adopt / defer / reject)
 - [ ] Item 26: ADR-0019 includes Nitrokey 3 backup path paragraph
@@ -344,7 +344,7 @@ Phase 10:
 | Risk | Impact | Mitigation |
 |------|--------|------------|
 | Phase 1 Item 1 (flip CI signing to blocking) breaks in-flight MRs | Medium — existing MRs may not sign artifacts yet | Land Phase 3 Item 7 (round-trip tests) first; announce the flip in a pinned issue; give 48 hr for in-flight MRs to rebase |
-| Phase 1 Item 2 (ADR-0017 vs 0019 decision) blocks mons-dependent work | High — F28 deployment depends on which ADR wins | Set a hard decision deadline (1 week); if indecision persists, default to 0017 (offline-by-default) as the safer posture |
+| Phase 1 Item 2 (ADR-0017 vs 0019 decision) blocks verifier-dependent work | High — F28 deployment depends on which ADR wins | Set a hard decision deadline (1 week); if indecision persists, default to 0017 (offline-by-default) as the safer posture |
 | Phase 2 Item 4 (add strict mode) exposes latent bugs that were silently ignored | Medium — tests may fail that previously passed | Run full test suite after each batch; fix or scope-limit strict mode as issues surface |
 | Phase 3 Item 10 (enable DDEV in CI) slows CI by ~10 min | Low — acceptable trade-off | Limit trigger to `lib/backup*`, `lib/restore*` path filters; run full matrix nightly only |
 | Phase 4 Item 11 (honest badge) makes the project "look worse" | Low — but honesty is the stated goal of P60 | Frame in changelog as "replacing one aspirational number with three measurable ones"; link to P60 for history |

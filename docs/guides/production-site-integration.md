@@ -6,7 +6,7 @@
 
 This is the definitive guide for bringing an existing production Drupal site
 into NWP and deploying it via the signed-artifact pipeline. It was written
-from real experience integrating mayostudios.org (April 2026) and includes
+from real experience integrating the first mayo site (April 2026) and includes
 every step, script, pitfall, and decision encountered along the way.
 
 ---
@@ -21,10 +21,10 @@ every step, script, pitfall, and decision encountered along the way.
 6. [Phase 4: Multi-Machine Replication](#6-phase-4-multi-machine-replication)
 7. [Phase 5: Server Configuration](#7-phase-5-server-configuration)
 8. [Phase 6: Database Sanitizer](#8-phase-6-database-sanitizer)
-9. [Phase 7: Build and Publish (dev/met)](#9-phase-7-build-and-publish)
-10. [Phase 8: Blue-Green Deployment Setup (mayo1)](#10-phase-8-blue-green-deployment-setup)
-11. [Phase 9: WireGuard Tunnel (mons to prod)](#11-phase-9-wireguard-tunnel)
-12. [Phase 10: First Deploy via mons](#12-phase-10-first-deploy-via-mons)
+9. [Phase 7: Build and Publish (authoring/ci-host)](#9-phase-7-build-and-publish)
+10. [Phase 8: Blue-Green Deployment Setup (mayo host)](#10-phase-8-blue-green-deployment-setup)
+11. [Phase 9: WireGuard Tunnel (verifier to prod)](#11-phase-9-wireguard-tunnel)
+12. [Phase 10: First Deploy via verifier](#12-phase-10-first-deploy-via-verifier)
 13. [Ongoing Operations](#13-ongoing-operations)
 14. [Open Social to AVC Migration](#14-open-social-to-avc-migration)
 15. [Error Reporting and Recovery](#15-error-reporting-and-recovery)
@@ -39,12 +39,12 @@ every step, script, pitfall, and decision encountered along the way.
 
 Integration is a multi-phase process that takes a Drupal site from "running
 somewhere, managed manually" to "fully managed by NWP with signed-artifact
-deployment via mons."
+deployment via the verifier."
 
 The pipeline looks like this:
 
 ```
-Developer (dev/met)              mons (offline laptop)         prod server
+Developer (authoring/ci-host)    verifier (offline machine)    prod server
     |                                |                            |
     |  Phase 1-4: scaffold,          |                            |
     |  codebase, content,            |                            |
@@ -58,7 +58,7 @@ Developer (dev/met)              mons (offline laptop)         prod server
     |   (upload to GitLab           |                            |
     |    Packages registry)         |                            |
     |                                |                            |
-    |                               |-- mons-deploy.sh           |
+    |                               |-- verifier-deploy.sh       |
     |                               |   (download, verify sig,   |
     |                               |    upload to inactive slot) |
     |                               |                            |
@@ -72,25 +72,25 @@ Developer (dev/met)              mons (offline laptop)         prod server
 
 | Step | Machine | Script | AI Present? |
 |------|---------|--------|-------------|
-| Scaffold and develop | dev (this machine) | Manual / DDEV | Yes (Claude) |
-| Build tarball | dev or met | `pl build <site>` | Yes |
-| Sign tarball | dev or met | (part of `pl build`) | Yes |
-| Publish to GitLab | dev or met | `pl publish <site>` | Yes |
-| Download + verify | mons | `mons-deploy.sh` | **No** |
-| Deploy to slot | mons -> prod | `mons-deploy.sh` (via SSH) | **No** |
+| Scaffold and develop | authoring | Manual / DDEV | Yes |
+| Build tarball | authoring or ci-host | `pl build <site>` | Yes |
+| Sign tarball | authoring or ci-host | (part of `pl build`) | Yes |
+| Publish to GitLab | authoring or ci-host | `pl publish <site>` | Yes |
+| Download + verify | verifier | `verifier-deploy.sh` | **No** |
+| Deploy to slot | verifier -> prod | `verifier-deploy.sh` (via SSH) | **No** |
 | Swap slots | prod server | `bluegreen-swap.sh` | **No** |
 | Sanitize DB | prod server | `lib/sanitizers/<site>.sh` | **No** |
 
 ### Security Model
 
-- **AI never touches production.** Dev/met build and sign. Mons verifies
-  and deploys. Mons has no AI tooling.
+- **AI never touches production.** authoring/ci-host build and sign. The verifier verifies
+  and deploys. The verifier has no AI tooling.
 - **Trust flows through signatures.** Artifacts are trusted because they
   carry a valid minisign signature, not because they came from a "trusted"
   host.
 - **Raw user data never leaves prod.** The sanitizer runs on prod. Only
   sanitized database dumps are exported.
-- **Dedicated WireGuard tunnel.** mons connects to prod via a one-to-one
+- **Dedicated WireGuard tunnel.** The verifier connects to prod via a one-to-one
   WireGuard tunnel, not via Headscale or the home LAN.
 
 ---
@@ -160,7 +160,7 @@ sites/<name>/
 ### Create the Directories
 
 ```bash
-cd ~/nwp
+cd $HOME/nwp
 mkdir -p sites/<name>/{dev,stg,backups,scripts}
 ```
 
@@ -269,7 +269,7 @@ dependencies.
     "repositories": [
         {
             "type": "composer",
-            "url": "https://git.nwpcode.org/api/v4/group/nwp/-/packages/composer/packages.json"
+            "url": "https://<gitlab-host>/api/v4/group/nwp/-/packages/composer/packages.json"
         },
         {
             "type": "composer",
@@ -329,7 +329,7 @@ dependencies.
 ```json
 {
     "http-basic": {
-        "git.nwpcode.org": {
+        "<gitlab-host>": {
             "username": "token",
             "password": "<your-gitlab-pat>"
         }
@@ -458,14 +458,14 @@ Regardless of strategy, these always need manual handling:
 
 ## 6. Phase 4: Multi-Machine Replication
 
-Once the dev environment works, replicate to other machines (met, mini).
+Once the dev environment works, replicate to other machines (ci-host, ai-host).
 
 ### Push Code to GitLab
 
 ```bash
 cd sites/<name>/dev
 git init
-git remote add origin git@git.nwpcode.org:<group>/<name>.git
+git remote add origin git@<gitlab-host>:<group>/<name>.git
 git add -A
 git commit -m "Initial <profile>-based <name> project"
 git push -u origin main
@@ -475,11 +475,11 @@ git push -u origin main
 
 ```bash
 # Update NWP if needed
-cd ~/nwp && git pull origin main
+cd $HOME/nwp && git pull origin main
 
 # Clone the site's dev project
-cd ~/nwp/sites/<name>
-git clone git@git.nwpcode.org:<group>/<name>.git dev
+cd $HOME/nwp/sites/<name>
+git clone git@<gitlab-host>:<group>/<name>.git dev
 cd dev
 
 # Copy auth.json with GitLab PAT
@@ -493,13 +493,13 @@ ddev composer install
 ### Import the Database
 
 ```bash
-# From the dev workstation
-cd ~/nwp/sites/<name>/dev
+# From the authoring workstation
+cd $HOME/nwp/sites/<name>/dev
 ddev drush sql:dump --gzip > /tmp/<name>-dev.sql.gz
-scp /tmp/<name>-dev.sql.gz rob@<remote>:~/nwp/sites/<name>/dev/
+scp /tmp/<name>-dev.sql.gz <operator>@<remote>:$HOME/nwp/sites/<name>/dev/
 
 # On the remote machine
-cd ~/nwp/sites/<name>/dev
+cd $HOME/nwp/sites/<name>/dev
 zcat <name>-dev.sql.gz | ddev drush sql:cli
 ddev drush cr
 ```
@@ -511,7 +511,7 @@ ddev drush cr
 | DDEV config YAML broken | Don't use `sed -i` on DDEV config files -- it corrupts commented template sections |
 | Git branch divergence | `git fetch origin && git reset --hard origin/main` (after confirming no local work) |
 | Different PHP version | Match the PHP version in `.ddev/config.yaml` on both machines |
-| Missing auth.json | Copy from dev workstation or generate new GitLab PAT |
+| Missing auth.json | Copy from authoring workstation or generate new GitLab PAT |
 
 ---
 
@@ -550,7 +550,7 @@ deploy:
     blue: /var/www/<domain>-blue
     green: /var/www/<domain>-green
   shared: /var/www/<domain>-shared
-  interface: wg-mons
+  interface: wg-verifier
 ```
 
 ### .gitignore
@@ -639,7 +639,7 @@ After sanitization, the sanitizer runs a regex sweep on the output file
 checking for patterns that should not appear:
 
 - Email addresses (excluding allowlisted domains: `@example.com`,
-  `@drupal.org`, `@nwpcode.org`, and site-specific public contacts)
+  `@drupal.org`, `<example-prod-domain>`, and site-specific public contacts)
 - Australian mobile numbers (`04XX XXX XXX`)
 - International numbers (`+61...`)
 - 1300/1800 numbers (excluding published safety/reporting numbers)
@@ -658,7 +658,7 @@ Step 5: Export sanitized database
 Step 6: PII sweep verification
 ```
 
-If a step fails, the script prints a `mons-say` command and a paste-ready
+If a step fails, the script prints a `verifier-say` command and a paste-ready
 block for reporting the error.
 
 ### Usage
@@ -677,7 +677,7 @@ sudo -u www-data ./lib/sanitizers/<name>.sh --verify         # PII sweep only
 
 ### Prerequisites
 
-Install minisign on dev/met:
+Install minisign on authoring/ci-host:
 
 ```bash
 sudo apt-get install -y minisign
@@ -686,7 +686,7 @@ sudo apt-get install -y minisign
 Generate a signing keypair (one-time):
 
 ```bash
-cd ~/nwp
+cd $HOME/nwp
 source lib/minisign.sh
 minisign_generate_keys
 ```
@@ -694,7 +694,7 @@ minisign_generate_keys
 Keys are stored at `keys/minisign/nwp-deploy.{key,pub}`.
 
 **When Solo 2C+ arrives:** Regenerate the keypair on hardware and update
-the public key on mons.
+the public key on the verifier.
 
 ### Build
 
@@ -730,7 +730,7 @@ What happens:
 
 The package is published to:
 ```
-https://git.nwpcode.org/api/v4/projects/<group>%2F<name>/packages/generic/<name>-deploy/<version>/
+https://<gitlab-host>/api/v4/projects/<group>%2F<name>/packages/generic/<name>-deploy/<version>/
 ```
 
 Options:
@@ -741,7 +741,7 @@ Options:
 
 ### After Publishing
 
-Tell the mons operator the version string:
+Tell the verifier operator the version string:
 
 ```
 Deploy ready: <name> <version>
@@ -778,7 +778,7 @@ The setup script is at `servers/<server>/scripts/bluegreen-setup.sh`. Copy
 it to the production server and run:
 
 ```bash
-# From mons (via WireGuard tunnel)
+# From the verifier (via WireGuard tunnel)
 scp servers/<server>/scripts/bluegreen-setup.sh <ssh-host>:/tmp/
 ssh <ssh-host> 'sudo /tmp/bluegreen-setup.sh --site <domain> && rm /tmp/bluegreen-setup.sh'
 ```
@@ -806,15 +806,15 @@ ssh <ssh-host> 'curl -sI http://127.0.0.1 -H "Host: <domain>"' | head -5
 
 ## 11. Phase 9: WireGuard Tunnel
 
-The WireGuard tunnel provides a dedicated, encrypted link between mons and
-the production server. This is **not** part of the Headscale mesh. mons
+The WireGuard tunnel provides a dedicated, encrypted link between the verifier and
+the production server. This is **not** part of the Headscale mesh. The verifier
 must never join Headscale.
 
 ### Addressing
 
 | Machine | Tunnel IP | Role |
 |---------|-----------|------|
-| mons | 10.99.0.1 | Deploy machine (initiates connections) |
+| verifier | 10.99.0.1 | Deploy machine (initiates connections) |
 | prod server | 10.99.0.2 | Production server (listens on 51820) |
 
 ### Key Generation
@@ -833,10 +833,10 @@ verification). Never transmit private keys.
 
 Configs are stored in the NWP repo at `servers/<server>/wireguard/`:
 
-- `wg-mons.conf.mons` -- mons-side config (Address 10.99.0.1, Endpoint: prod-ip:51820)
-- `wg-mons.conf.<server>` -- server-side config (Address 10.99.0.2, ListenPort 51820)
+- `wg-verifier.conf.verifier` -- verifier-side config (Address 10.99.0.1, Endpoint: prod-ip:51820)
+- `wg-verifier.conf.<server>` -- server-side config (Address 10.99.0.2, ListenPort 51820)
 
-Install to `/etc/wireguard/wg-mons.conf` on each machine after replacing
+Install to `/etc/wireguard/wg-verifier.conf` on each machine after replacing
 placeholder keys with real keys.
 
 ### Firewall
@@ -845,7 +845,7 @@ On the production server, allow WireGuard and SSH on the tunnel:
 
 ```bash
 sudo ufw allow 51820/udp          # WireGuard
-sudo ufw allow in on wg-mons to any port 22  # SSH over tunnel only
+sudo ufw allow in on wg-verifier to any port 22  # SSH over tunnel only
 ```
 
 Eventually, rebind sshd to the tunnel interface only (`ListenAddress
@@ -855,58 +855,58 @@ reliable, with Lish console access as a fallback.
 ### Testing
 
 ```bash
-# On mons
-sudo wg-quick up wg-mons
+# On the verifier
+sudo wg-quick up wg-verifier
 ping -c 3 10.99.0.2
 ssh -o ConnectTimeout=5 <ssh-host> hostname
-sudo wg-quick down wg-mons
+sudo wg-quick down wg-verifier
 ```
 
 ---
 
-## 12. Phase 10: First Deploy via mons
+## 12. Phase 10: First Deploy via verifier
 
-### Prerequisites on mons
+### Prerequisites on the verifier
 
 - [ ] minisign installed (`sudo apt-get install -y minisign`)
-- [ ] NWP deploy public key at `~/.config/nwp-deploy.pub`
-- [ ] Deploy token at `~/.config/<name>-deploy.token` (chmod 600)
+- [ ] NWP deploy public key at `$HOME/.config/nwp-deploy.pub`
+- [ ] Deploy token at `$HOME/.config/<name>-deploy.token` (chmod 600)
 - [ ] SSH config entry for the prod server (pointing to tunnel IP)
-- [ ] WireGuard config at `/etc/wireguard/wg-mons.conf`
-- [ ] Deploy scripts in `~/deploy-scripts/` (copy from NWP repo)
-- [ ] `mons-say` installed (for error reporting back to dev)
+- [ ] WireGuard config at `/etc/wireguard/wg-verifier.conf`
+- [ ] Deploy scripts in `$HOME/deploy-scripts/` (copy from NWP repo)
+- [ ] `verifier-say` installed (for error reporting back to authoring)
 
 ### Dry Run First
 
 ```bash
-# Bring mons online (phone hotspot, NOT home LAN)
-sudo wg-quick up wg-mons
+# Bring the verifier online (phone hotspot, NOT home LAN)
+sudo wg-quick up wg-verifier
 
 # Dry run -- download and verify only, no deployment
-~/deploy-scripts/mons-deploy.sh <name> <version> --dry-run
+$HOME/deploy-scripts/verifier-deploy.sh <name> <version> --dry-run
 ```
 
 ### Full Deploy
 
 ```bash
 # 1. Start tunnel
-sudo wg-quick up wg-mons
+sudo wg-quick up wg-verifier
 
 # 2. Deploy
-~/deploy-scripts/mons-deploy.sh <name> <version>
+$HOME/deploy-scripts/verifier-deploy.sh <name> <version>
 
 # 3. Verify
 ssh <ssh-host> 'curl -sI http://127.0.0.1 -H "Host: <domain>"' | head -5
 ssh <ssh-host> 'cd /var/www/<domain> && sudo -u www-data ./vendor/bin/drush status --fields=drupal-version,install-profile'
 
 # 4. Tear down tunnel
-sudo wg-quick down wg-mons
+sudo wg-quick down wg-verifier
 
 # 5. Report
-mons-say "deploy <name> <version> complete -- smoke test passed"
+verifier-say "deploy <name> <version> complete -- smoke test passed"
 ```
 
-### What mons-deploy.sh Does
+### What verifier-deploy.sh Does
 
 The script has 5 steps with `--step N` resume capability:
 
@@ -938,16 +938,16 @@ The previous slot remains intact. Rollback is instant (another atomic swap).
 ### Regular Deploy Cycle
 
 ```bash
-# On dev/met
+# On authoring/ci-host
 pl build <name>
 pl publish <name>
 
-# Tell mons operator the version
-# On mons
-sudo wg-quick up wg-mons
-~/deploy-scripts/mons-deploy.sh <name> <version>
-sudo wg-quick down wg-mons
-mons-say "deploy <name> <version> complete"
+# Tell the verifier operator the version
+# On the verifier
+sudo wg-quick up wg-verifier
+$HOME/deploy-scripts/verifier-deploy.sh <name> <version>
+sudo wg-quick down wg-verifier
+verifier-say "deploy <name> <version> complete"
 ```
 
 ### Database Sanitization (for dev/stg fixtures)
@@ -956,11 +956,11 @@ mons-say "deploy <name> <version> complete"
 # On prod server
 sudo -u www-data ./lib/sanitizers/<name>.sh
 
-# Download the sanitized dump via mons
-scp <ssh-host>:/tmp/<name>-sanitized.sql.gz ~/
+# Download the sanitized dump via the verifier
+scp <ssh-host>:/tmp/<name>-sanitized.sql.gz $HOME/
 
-# Transfer to dev (via USB, mons-say, or another secure channel)
-# On dev, import to stg:
+# Transfer to authoring (via USB, verifier-say, or another secure channel)
+# On authoring, import to stg:
 cd sites/<name>/stg
 zcat <name>-sanitized.sql.gz | ddev drush sql:cli
 ddev drush cr
@@ -1049,10 +1049,10 @@ Social modules directly (not as a composer dependency) and adds:
 
 ### The Problem
 
-Scripts run on mons and prod servers where Claude cannot help directly.
+Scripts run on the verifier and prod servers where AI assistants cannot help directly.
 When something fails, the operator needs:
 1. To understand what went wrong
-2. To report the error back to the dev session
+2. To report the error back to the authoring session
 3. To resume from where it failed
 
 ### Error Message Format
@@ -1064,21 +1064,21 @@ All deployment scripts use a common error reporting pattern:
   STEP 4 FAILED
 ================================================================
 
-  Error: Extract to green slot on mayo1 failed
+  Error: Extract to green slot on mayo-host failed
 
-  To report via mons-say:
-    mons-say "mons-deploy step 4 failed: Extract to green slot failed"
+  To report via verifier-say:
+    verifier-say "verifier-deploy step 4 failed: Extract to green slot failed"
 
-  Or paste this to the dev Claude session:
+  Or paste this to the authoring session:
     ---
-    The mons-deploy script failed at step 4.
+    The verifier-deploy script failed at step 4.
     Site: mayo, Version: abc123-20260410-120000
-    Error: Extract to green slot on mayo1 failed
-    Log file: ~/deploy-staging/mons-deploy.log
-    Resume with: ./mons-deploy.sh mayo abc123-20260410-120000 --step 4
+    Error: Extract to green slot on mayo-host failed
+    Log file: $HOME/deploy-staging/verifier-deploy.log
+    Resume with: ./verifier-deploy.sh mayo abc123-20260410-120000 --step 4
     ---
 
-  Full log: cat ~/deploy-staging/mons-deploy.log
+  Full log: cat $HOME/deploy-staging/verifier-deploy.log
 ================================================================
 ```
 
@@ -1086,15 +1086,15 @@ All deployment scripts use a common error reporting pattern:
 
 | Channel | When to Use | How |
 |---------|------------|-----|
-| **mons-say** | On mons, for async reporting | `mons-say "<message>"` -- creates a GitLab issue in ops/mons-log |
-| **Claude paste** | On any machine with dev access | Copy the `---` block into the Claude session |
+| **verifier-say** | On the verifier, for async reporting | `verifier-say "<message>"` -- creates a GitLab issue in ops/verifier-log |
+| **authoring paste** | On any machine with authoring access | Copy the `---` block into the authoring AI session |
 | **Direct SSH** | On prod server | Check logs: `cat /var/log/nwp/deployments.log` |
 
 ### Resume Capability
 
 | Script | Resume Flag | How It Works |
 |--------|------------|--------------|
-| `mons-deploy.sh` | `--step N` | Skips steps 1 through N-1 |
+| `verifier-deploy.sh` | `--step N` | Skips steps 1 through N-1 |
 | sanitizer | `--step N` | Skips steps 0 through N-1 |
 | `bluegreen-setup.sh` | (none needed) | Idempotent -- re-run from scratch |
 | `bluegreen-swap.sh` | (none needed) | Auto-rollback on failure |
@@ -1105,7 +1105,7 @@ All deployment scripts use a common error reporting pattern:
 
 | Script | Log Location |
 |--------|-------------|
-| `mons-deploy.sh` | `~/deploy-staging/mons-deploy.log` (on mons) |
+| `verifier-deploy.sh` | `$HOME/deploy-staging/verifier-deploy.log` (on the verifier) |
 | sanitizer | `/tmp/<name>-sanitizer.log` (on prod) |
 | `bluegreen-swap.sh` | `/var/log/nwp/deployments.log` (on prod) |
 
@@ -1122,7 +1122,7 @@ sudo apt-get install -y minisign
 
 **"No minisign keys found"**
 ```bash
-cd ~/nwp
+cd $HOME/nwp
 source lib/minisign.sh
 minisign_generate_keys
 ```
@@ -1144,13 +1144,13 @@ GitLab API token expired or wrong. Check `.secrets.yml` for the current
 Token doesn't have write access to the project. Check the token's scopes
 on GitLab.
 
-### Deploy Phase (mons)
+### Deploy Phase (verifier)
 
-**"WireGuard tunnel wg-mons is not up"**
+**"WireGuard tunnel wg-verifier is not up"**
 ```bash
-sudo wg-quick up wg-mons
+sudo wg-quick up wg-verifier
 ```
-If it fails, check `/etc/wireguard/wg-mons.conf`.
+If it fails, check `/etc/wireguard/wg-verifier.conf`.
 
 **"Cannot SSH to server"**
 1. Check tunnel: `ping -c 3 10.99.0.2`
@@ -1158,7 +1158,7 @@ If it fails, check `/etc/wireguard/wg-mons.conf`.
 3. Fallback to public IP temporarily if tunnel is down
 
 **"Signature verification FAILED"**
-DO NOT deploy. Report to dev: `mons-say "signature verification failed for <version>"`.
+DO NOT deploy. Report to authoring: `verifier-say "signature verification failed for <version>"`.
 The tarball may be corrupted or tampered with.
 
 **"Live symlink points to unexpected target"**
@@ -1193,20 +1193,20 @@ Key decisions made during the mayo integration, applicable to future sites:
 |----------|-----------|
 | **Fresh install, not in-place profile swap** | Drupal doesn't support it. Small content volume makes manual faster. |
 | **Software-only minisign keys (interim)** | Solo 2C+ not arrived. Architecture identical; only key storage changes. |
-| **Dedicated WireGuard, not Headscale** | mons must never join Headscale. One-to-one tunnel only. |
+| **Dedicated WireGuard, not Headscale** | The verifier must never join Headscale. One-to-one tunnel only. |
 | **Blue-green with symlinks** | Simpler than rsync-based deploys. Shared directory for state. Atomic swap. Instant rollback. |
 | **Sanitizer on prod only** | Raw data never leaves prod. AI machines only see sanitized data. |
 | **Schema-verified sanitizer tables** | First draft had wrong tables. Always verify against `SHOW TABLES`. |
 | **Per-site sanitizers** | Every site's schema is different. A generic sanitizer misses site-specific PII. |
-| **mons-say for error reporting** | Asynchronous, works offline. Creates GitLab issues that dev can process later. |
+| **verifier-say for error reporting** | Asynchronous, works offline. Creates GitLab issues that the authoring side can process later. |
 | **Multi-step with resume** | Long-running scripts on remote machines need resume capability after failures. |
-| **No AI on mons** | The mons boundary is inviolable. Deploy machine must be free of AI tooling. |
+| **No AI on the verifier** | The verifier boundary is inviolable. Deploy machine must be free of AI tooling. |
 
 ---
 
 ## 18. Script Inventory
 
-### On dev/met (Claude-accessible)
+### On authoring/ci-host (AI-accessible)
 
 | Script | Command | Purpose |
 |--------|---------|---------|
@@ -1215,11 +1215,11 @@ Key decisions made during the mayo integration, applicable to future sites:
 | `lib/minisign.sh` | (sourced) | minisign wrapper library |
 | `lib/sanitizers/<site>.sh` | (copied to prod) | Per-site database sanitizer |
 
-### On mons (offline, no AI)
+### On the verifier (offline, no AI)
 
 | Script | Location | Purpose |
 |--------|----------|---------|
-| `mons-deploy.sh` | `~/deploy-scripts/` | End-to-end deploy orchestrator |
+| `verifier-deploy.sh` | `$HOME/deploy-scripts/` | End-to-end deploy orchestrator |
 
 ### On prod server (run via SSH)
 
@@ -1233,7 +1233,7 @@ Key decisions made during the mayo integration, applicable to future sites:
 
 All scripts live in the NWP repo and are copied to their target machines:
 
-- `servers/<server>/scripts/mons-deploy.sh` -> mons `~/deploy-scripts/`
+- `servers/<server>/scripts/verifier-deploy.sh` -> verifier `$HOME/deploy-scripts/`
 - `servers/<server>/scripts/bluegreen-setup.sh` -> prod `/tmp/` (one-time)
 - `servers/<server>/scripts/bluegreen-swap.sh` -> prod `/tmp/` (per-deploy)
 - `lib/sanitizers/<site>.sh` -> prod (manual copy)
@@ -1277,7 +1277,7 @@ All scripts live in the NWP repo and are copied to their target machines:
 ### Phase 4: Multi-Machine
 
 - [ ] Push code to GitLab
-- [ ] Clone and configure on second machine (met)
+- [ ] Clone and configure on second machine (ci-host)
 - [ ] Import database on second machine
 - [ ] Verify site works identically
 
@@ -1299,7 +1299,7 @@ All scripts live in the NWP repo and are copied to their target machines:
 
 ### Phase 7: Build and Publish
 
-- [ ] Install minisign on dev/met
+- [ ] Install minisign on authoring/ci-host
 - [ ] Generate minisign keypair
 - [ ] `pl build <name>` succeeds
 - [ ] `pl publish <name>` succeeds
@@ -1314,20 +1314,20 @@ All scripts live in the NWP repo and are copied to their target machines:
 
 ### Phase 9: WireGuard Tunnel
 
-- [ ] Generate WireGuard keys on mons and prod server
+- [ ] Generate WireGuard keys on verifier and prod server
 - [ ] Exchange public keys out-of-band
 - [ ] Install configs on both machines
-- [ ] Test tunnel: `ping 10.99.0.2` from mons
+- [ ] Test tunnel: `ping 10.99.0.2` from the verifier
 - [ ] Test SSH over tunnel: `ssh <host> hostname`
 - [ ] Configure firewall on prod server
 
 ### Phase 10: First Deploy
 
-- [ ] Install prerequisites on mons (minisign, pubkey, token, scripts)
-- [ ] Dry run: `mons-deploy.sh <name> <version> --dry-run`
-- [ ] Full deploy: `mons-deploy.sh <name> <version>`
+- [ ] Install prerequisites on the verifier (minisign, pubkey, token, scripts)
+- [ ] Dry run: `verifier-deploy.sh <name> <version> --dry-run`
+- [ ] Full deploy: `verifier-deploy.sh <name> <version>`
 - [ ] Verify production site works
-- [ ] Report success: `mons-say "deploy complete"`
+- [ ] Report success: `verifier-say "deploy complete"`
 
 ### Ongoing
 
@@ -1341,8 +1341,8 @@ All scripts live in the NWP repo and are copied to their target machines:
 ## Related Documents
 
 - [mayo-avc-integration.md](./mayo-avc-integration.md) -- Complete record of the mayo integration
-- [mons-operations.md](./mons-operations.md) -- mons deploy procedures (site-specific)
-- [mons-mayo-bootstrap.md](./mons-mayo-bootstrap.md) -- Initial bootstrap (superseded by mons-operations.md)
+- [verifier-operations.md](./verifier-operations.md) -- verifier deploy procedures (site-specific)
+- [verifier-mayo-bootstrap.md](./verifier-mayo-bootstrap.md) -- Initial bootstrap (superseded by verifier-operations.md)
 - [migration-workflow.md](./migration-workflow.md) -- Content migration from other platforms
 - [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md) -- F21 pipeline architecture
 - [F21 proposal](../proposals/F21-distributed-build-deploy-pipeline.md) -- Implementation plan with phase status

@@ -1466,7 +1466,7 @@ verify_linode_dns "example.com"
 
 Comprehensive YAML management library for reading and writing nwp.yml configuration. Uses AWK-based parsing (no yq dependency) with file locking and atomic writes for safety.
 
-**Note:** See [docs/YAML_API.md](/home/rob/nwp/docs/YAML_API.md) for comprehensive coverage of all 40+ functions in this library.
+**Note:** See [docs/YAML_API.md](../yaml-api.md) for comprehensive coverage of all 40+ functions in this library.
 
 **Key Functions:**
 
@@ -1632,7 +1632,7 @@ Comprehensive YAML management library for reading and writing nwp.yml configurat
 
 ---
 
-For complete documentation of all 40+ YAML functions, see [docs/YAML_API.md](/home/rob/nwp/docs/YAML_API.md).
+For complete documentation of all 40+ YAML functions, see [docs/YAML_API.md](../yaml-api.md).
 
 ---
 
@@ -4511,9 +4511,9 @@ Site import operations. Core functions for importing sites from remote servers. 
 
 This API reference documents **38 library files** with **400+ functions** across the NWP codebase. For more detailed documentation:
 
-- **YAML Operations:** See [docs/YAML_API.md](/home/rob/nwp/docs/YAML_API.md)
-- **Security Architecture:** See [docs/DATA_SECURITY_BEST_PRACTICES.md](/home/rob/nwp/docs/DATA_SECURITY_BEST_PRACTICES.md)
+- **YAML Operations:** See [docs/YAML_API.md](../yaml-api.md)
+- **Security Architecture:** See [docs/DATA_SECURITY_BEST_PRACTICES.md](../../security/data-security-best-practices.md)
 - **Testing System:** See testing.sh documentation in this file
 - **Installation Flow:** See install-drupal.sh and install-common.sh documentation
 
-For questions or contributions, see the main [README.md](/home/rob/nwp/README.md).
+For questions or contributions, see the main [README.md](../../../README.md).

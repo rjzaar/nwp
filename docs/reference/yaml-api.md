@@ -498,7 +498,7 @@ token=$(yaml_get_secret "linode.api_token")
 
 ```bash
 # Run all YAML read tests
-cd /home/rob/nwp
+cd "$NWP_ROOT"
 bats tests/bats/yaml-read.bats
 
 # Run specific test

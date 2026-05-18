@@ -75,7 +75,7 @@ pl verify                    # Same, via pl CLI
 ### Step 1: Check Current Status
 
 ```bash
-cd /home/rob/nwp
+cd "$NWP_ROOT"
 ./verify.sh        # Opens interactive console (v0.19.0+)
 # or
 ./verify.sh report # Traditional status report

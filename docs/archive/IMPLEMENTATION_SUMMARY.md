@@ -87,7 +87,7 @@ pl --list             # List available recipes
 {
   "setup_date": "2025-12-28T18:09:43+11:00",
   "user": "rob",
-  "hostname": "carlo",
+  "hostname": "<authoring>",
   "had_docker": true,
   "had_docker_compose": true,
   "was_in_docker_group": true,

@@ -434,7 +434,7 @@ Run periodic tests via cron:
 
 ## See Also
 
-- AVC-Moodle Integration Library: `/home/rob/nwp/lib/avc-moodle.sh`
+- AVC-Moodle Integration Library: `<nwp-root>/lib/avc-moodle.sh`
 - Simple OAuth Testing: https://www.drupal.org/docs/contributed-modules/simple-oauth
 - OAuth2 Security Best Practices: https://oauth.net/2/
 - Moodle Authentication Testing: https://docs.moodle.org/en/OAuth_2_authentication

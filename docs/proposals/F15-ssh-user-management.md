@@ -273,7 +273,7 @@ sites:
   mysite:
     live:
       enabled: true
-      domain: mysite.nwpcode.org
+      domain: mysite.<prod-domain>
       server_ip: 97.107.137.88
       server_ref: nwpcode            # Reference to linode.servers entry
       ssh_user: gitlab               # Explicit user

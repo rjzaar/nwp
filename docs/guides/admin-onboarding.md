@@ -72,7 +72,7 @@ pl coder-setup add <username> \
 ```
 
 That's it! The developer can now:
-- Log into GitLab at `https://git.nwpcode.org`
+- Log into GitLab at `https://<gitlab-host>`
 - Clone repositories from the assigned group
 - Push code changes
 
@@ -89,7 +89,7 @@ pl coder-setup gitlab-users
 
 Or list groups directly:
 ```bash
-PROJECT_ROOT=/home/rob/nwp bash -c '
+PROJECT_ROOT="${NWP_ROOT:-$HOME/nwp}" bash -c '
 source lib/git.sh
 gitlab_url=$(get_gitlab_url)
 token=$(get_gitlab_token)
@@ -137,7 +137,7 @@ pl coder-setup add john \
   --gitlab-group nwp
 
 # If Cloudflare is configured in .secrets.yml:
-#   → Creates NS delegation for john.nwpcode.org
+#   → Creates NS delegation for john.<example-prod-domain>
 #   → Creates GitLab user
 #
 # If Cloudflare is NOT configured:
@@ -151,7 +151,7 @@ pl coder-setup add john \
 If developer provides SSH key upfront:
 
 ```bash
-PROJECT_ROOT=/home/rob/nwp bash -c '
+PROJECT_ROOT="${NWP_ROOT:-$HOME/nwp}" bash -c '
 source lib/git.sh
 gitlab_url=$(get_gitlab_url)
 token=$(get_gitlab_token)
@@ -184,13 +184,13 @@ Your NWP GitLab account has been created:
 
 • Username: [username]
 • Password: [temporary_password]
-• Login: https://git.nwpcode.org
+• Login: https://<gitlab-host>
 • Group: [group_name]
 
 Next steps:
 1. Log in and change your password
 2. Add your SSH key (Settings → SSH Keys)
-3. Clone repositories: git clone git@git.nwpcode.org:[group]/[repo].git
+3. Clone repositories: git clone git@<gitlab-host>:[group]/[repo].git
 
 Documentation:
 - Developer Guide: docs/DEVELOPER_LIFECYCLE_GUIDE.md
@@ -222,7 +222,7 @@ pl coder-setup add alice --email "alice@example.com" --no-gitlab
 After login, developer:
 1. Goes to Profile → SSH Keys
 2. Pastes their public key
-3. Tests: `ssh -T git@git.nwpcode.org`
+3. Tests: `ssh -T git@<gitlab-host>`
 
 **Pros:** Developer controls their keys, more secure
 **Cons:** Requires extra step
@@ -301,7 +301,7 @@ fi
 pl coder-setup gitlab-users
 
 # Detailed information
-PROJECT_ROOT=/home/rob/nwp bash -c '
+PROJECT_ROOT="${NWP_ROOT:-$HOME/nwp}" bash -c '
 source lib/git.sh
 gitlab_url=$(get_gitlab_url)
 token=$(get_gitlab_token)
@@ -314,7 +314,7 @@ curl -s --header "PRIVATE-TOKEN: $token" \
 ### Check User's Group Memberships
 
 ```bash
-PROJECT_ROOT=/home/rob/nwp bash -c '
+PROJECT_ROOT="${NWP_ROOT:-$HOME/nwp}" bash -c '
 source lib/git.sh
 gitlab_url=$(get_gitlab_url)
 token=$(get_gitlab_token)
@@ -336,7 +336,7 @@ curl -s --header "PRIVATE-TOKEN: $token" \
 
 ```bash
 # Promote to Maintainer (40)
-PROJECT_ROOT=/home/rob/nwp bash -c '
+PROJECT_ROOT="${NWP_ROOT:-$HOME/nwp}" bash -c '
 source lib/git.sh
 gitlab_url=$(get_gitlab_url)
 token=$(get_gitlab_token)
@@ -365,7 +365,7 @@ curl -s -X PUT --header "PRIVATE-TOKEN: $token" \
 
 ```bash
 # Block user (revoke all access)
-PROJECT_ROOT=/home/rob/nwp bash -c '
+PROJECT_ROOT="${NWP_ROOT:-$HOME/nwp}" bash -c '
 source lib/git.sh
 gitlab_url=$(get_gitlab_url)
 token=$(get_gitlab_token)
@@ -404,7 +404,7 @@ pl coder-setup remove john --archive
 ### Create New Group
 
 ```bash
-PROJECT_ROOT=/home/rob/nwp bash -c '
+PROJECT_ROOT="${NWP_ROOT:-$HOME/nwp}" bash -c '
 source lib/git.sh
 gitlab_url=$(get_gitlab_url)
 token=$(get_gitlab_token)
@@ -424,7 +424,7 @@ curl -s --header "PRIVATE-TOKEN: $token" \
 ### List Group Members
 
 ```bash
-PROJECT_ROOT=/home/rob/nwp bash -c '
+PROJECT_ROOT="${NWP_ROOT:-$HOME/nwp}" bash -c '
 source lib/git.sh
 gitlab_url=$(get_gitlab_url)
 token=$(get_gitlab_token)
@@ -443,7 +443,7 @@ curl -s --header "PRIVATE-TOKEN: $token" \
 ### Add User to Additional Group
 
 ```bash
-PROJECT_ROOT=/home/rob/nwp bash -c '
+PROJECT_ROOT="${NWP_ROOT:-$HOME/nwp}" bash -c '
 source lib/ui.sh
 source lib/git.sh
 gitlab_add_user_to_group john avc 30  # Developer access
@@ -453,7 +453,7 @@ gitlab_add_user_to_group john avc 30  # Developer access
 ### Remove User from Group
 
 ```bash
-PROJECT_ROOT=/home/rob/nwp bash -c '
+PROJECT_ROOT="${NWP_ROOT:-$HOME/nwp}" bash -c '
 source lib/git.sh
 gitlab_url=$(get_gitlab_url)
 token=$(get_gitlab_token)
@@ -501,7 +501,7 @@ pl coder-setup add john --email "john@example.com" --gitlab-group nwp
 
 **Solution:** This is fine - user already has access. Verify:
 ```bash
-PROJECT_ROOT=/home/rob/nwp bash -c '
+PROJECT_ROOT="${NWP_ROOT:-$HOME/nwp}" bash -c '
 source lib/git.sh
 gitlab_url=$(get_gitlab_url)
 token=$(get_gitlab_token)
@@ -518,7 +518,7 @@ curl -s --header "PRIVATE-TOKEN: $token" \
 **Checklist:**
 1. Verify user is in correct group: `pl coder-setup gitlab-users`
 2. Check access level (should be ≥30 for push)
-3. Verify SSH key: User runs `ssh -T git@git.nwpcode.org`
+3. Verify SSH key: User runs `ssh -T git@<gitlab-host>`
 4. Check branch protection rules (may prevent direct push to main)
 
 **Fix:**
@@ -550,7 +550,7 @@ Regenerate token:
 **Checklist:**
 1. Key format: Must be `ssh-ed25519` or `ssh-rsa` + full key + comment
 2. Key added to GitLab: Check user's SSH Keys settings
-3. Test connection: `ssh -Tv git@git.nwpcode.org`
+3. Test connection: `ssh -Tv git@<gitlab-host>`
 
 **Add key manually:**
 ```bash
@@ -566,7 +566,7 @@ Regenerate token:
 
 All snippets require:
 ```bash
-PROJECT_ROOT=/home/rob/nwp
+PROJECT_ROOT="${NWP_ROOT:-$HOME/nwp}"
 source lib/git.sh
 gitlab_url=$(get_gitlab_url)
 token=$(get_gitlab_token)
@@ -613,7 +613,7 @@ curl -s --header "PRIVATE-TOKEN: $token" \
 
 ### Complete API Documentation
 
-GitLab API docs: `https://git.nwpcode.org/help/api/index.md`
+GitLab API docs: `https://<gitlab-host>/help/api/index.md`
 
 Key endpoints:
 - Users: `/api/v4/users`
@@ -669,7 +669,7 @@ echo "Batch onboarding complete!"
 Promote all nwp group Developers to Maintainers:
 ```bash
 #!/bin/bash
-PROJECT_ROOT=/home/rob/nwp
+PROJECT_ROOT="${NWP_ROOT:-$HOME/nwp}"
 source "$PROJECT_ROOT/lib/git.sh"
 
 gitlab_url=$(get_gitlab_url)

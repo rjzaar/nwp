@@ -1,10 +1,10 @@
-## F28: Unified Pipeline — mmt → mons → prod Signed-Artifact Handoff
+## F28: Unified Pipeline — build-tier → verifier → prod Signed-Artifact Handoff
 
 **Status:** PROPOSED
 **Created:** 2026-04-12
-**Author:** Rob Zaar, Claude Opus 4.6
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** High (formal successor to F24 Phase 3; unblocks prod deploys under ADR-0017)
-**Depends On:** F21 Phase 2 (met runner) ✅, F21 Phase 5 (mons bootstrap — tooling complete, hardware token pending), ADR-0019 (mons posture), F23 (site layout) ✅
+**Depends On:** F21 Phase 2 (mirror-store runner) ✅, F21 Phase 5 (verifier bootstrap — tooling complete, hardware token pending), ADR-0019 (verifier posture), F23 (site layout) ✅
 **Breaking Changes:** Yes — replaces the deleted legacy `deploy:staging` / `deploy:production` CI stages (see commits `24baecd`, `05d181a`, `4bb1264`)
 **Estimated Effort:** Large — this is the load-bearing spine of the distributed pipeline; phased over weeks
 
@@ -26,13 +26,13 @@ That deletion was *necessary and sufficient* to stop the old path
 from being accidentally used, but it leaves NWP with a concrete
 gap:
 
-- `build` still runs on met (under composer.json gating) and
+- `build` still runs on mirror-store (under composer.json gating) and
   produces artifacts.
 - There is no path from those artifacts to prod.
-- mons exists, has WireGuard configs, has a minisign library, and
-  is documented in `docs/guides/mons-operations.md` — but has no
+- verifier exists, has WireGuard configs, has a minisign library, and
+  is documented in `docs/guides/verifier-operations.md` — but has no
   CI-side counterpart that actually produces the signed bundles
-  mons knows how to consume.
+  verifier knows how to consume.
 
 F28 is the formal design for that missing spine. It absorbs what
 F24 Phase 3 would have been if it had specified the *replacement*
@@ -46,8 +46,8 @@ A three-hop pipeline where the only trust-inversion happens
 ```
        (AI-accessible tier)               (human tier, hardware-token-gated)
   ┌─────────────────────────────┐   ┌────────────────────────────┐
-  │          mmt                │   │          mons              │
-  │ (met + mini, dev, CI)       │   │ (offline-default laptop,    │
+  │          build-tier                │   │          verifier              │
+  │ (mirror-store + ai-host, dev, CI)       │   │ (offline-default laptop,    │
   │                             │   │  Solo 2C+, per ADR-0019)   │
   │ build → test → sanitize →  │   │                            │
   │ sign artifact → upload to  │──>│ pull from Packages API →   │
@@ -61,35 +61,35 @@ A three-hop pipeline where the only trust-inversion happens
                  │                                v
                  │                      ┌─────────────────────┐
                  v                      │     prod servers    │
-        git.nwpcode.org                 │ (avc, ss, dir1, …)  │
+        <gitlab-host>                 │ (avc, ss, dir1, …)  │
         (GitLab Packages API)           │ sshd bound to       │
         (authority: minisign public     │ WireGuard iface only│
-        key on mons, NOT mmt's token)   └─────────────────────┘
+        key on verifier, NOT build-tier's token)   └─────────────────────┘
 ```
 
 Key design properties:
 
-1. **mmt never writes to prod.** mmt's only write destination is
-   the GitLab Packages API on `git.nwpcode.org`. Its token scope
+1. **build-tier never writes to prod.** build-tier's only write destination is
+   the GitLab Packages API on `<gitlab-host>`. Its token scope
    is `write_package_registry` on a single package path.
-2. **mons never runs CI.** mons has no gitlab-runner, no Claude,
+2. **verifier never runs CI.** verifier has no gitlab-runner, no Claude,
    no local LLM. It runs a single deploy script per invocation,
    driven by human hands.
 3. **Trust flows through the minisign signature, not through the
    network.** An artifact is trusted because it verifies against a
-   public key held on mons, and the public key was installed at
+   public key held on verifier, and the public key was installed at
    bootstrap time, not fetched at deploy time. An attacker who
-   compromises `git.nwpcode.org` cannot forge a signature; an
+   compromises `<gitlab-host>` cannot forge a signature; an
    attacker who intercepts the HTTPS pull cannot forge a signature;
    the only credential-compromise path to prod runs through
-   physical theft of the signing key (which lives on mmt under
-   LUKS, offline when not in use) AND the Solo 2C+ on mons AND a
+   physical theft of the signing key (which lives on build-tier under
+   LUKS, offline when not in use) AND the Solo 2C+ on verifier AND a
    network path to prod. Three factors, three locations, three
    trust tiers.
 4. **The deploy *trigger* is a human tap, not a CI event.** When
-   mmt finishes a build and uploads a signed bundle, nothing
-   happens automatically. mons polls (or is manually run by Rob)
-   and surfaces the available bundle; Rob reviews what's being
+   build-tier finishes a build and uploads a signed bundle, nothing
+   happens automatically. verifier polls (or is manually run by the operator)
+   and surfaces the available bundle; the operator reviews what's being
    deployed, taps the Solo 2C+, and the tunnel comes up. This is
    the inversion of the deleted `deploy:production` job and is the
    whole point of F28.
@@ -99,40 +99,40 @@ Key design properties:
 - **F24** identified the need and executed the *deletion* half
   (Phase 3 Step 1, merged). F28 is the *construction* half. F24 is
   complete; F28 supersedes it for all forward design work.
-- **F21** provides the infrastructure (Headscale, met runner, mons
+- **F21** provides the infrastructure (Headscale, mirror-store runner, verifier
   bootstrap) that F28 depends on. F28 does not build any new
   infrastructure — it wires together what F21 has already provided.
 - **F26 (OIDC)** and **F27 (feedback ingest)** are downstream
   consumers of F28's signed-artifact shape. F27 uses the *same*
-  Packages API primitive in the *reverse* direction (prod → mmt).
-  F26's per-MR preview provisioning lives entirely on mmt and
+  Packages API primitive in the *reverse* direction (prod → build-tier).
+  F26's per-MR preview provisioning lives entirely on build-tier and
   never triggers an F28 deploy, but shares the CI job definitions.
 - **ADR-0017** is the trust model F28 implements. If F28 contradicts
   ADR-0017, F28 is wrong.
-- **ADR-0019** changes mons's posture from "offline by default" to
+- **ADR-0019** changes verifier's posture from "offline by default" to
   "always-on with hardware-rooted keys". F28 respects both postures
-  — the always-on property means mons can *poll* for bundles rather
-  than needing Rob to physically open it, but the hardware-token
+  — the always-on property means verifier can *poll* for bundles rather
+  than needing the operator to physically open it, but the hardware-token
   gate means every deploy still requires a human tap.
 
 ## 2. Goals & Non-Goals
 
 ### Goals
 
-- A signed artifact produced by mmt's CI can be deployed to a prod
-  site through a single Rob-initiated mons command, with full
+- A signed artifact produced by build-tier's CI can be deployed to a prod
+  site through a single operator-initiated verifier command, with full
   signature verification at every step and no AI agent in the hot
   path.
 - The pipeline is *observable*: every build produces a bundle with
   a manifest that says what it contains, which sites it targets,
-  which commit it builds from, and who signed it. mons logs every
+  which commit it builds from, and who signed it. verifier logs every
   verify and every deploy.
 - The pipeline is *reversible*: every deploy is a bundle, every
   bundle is addressable, and rolling back is "deploy the previous
   bundle". No in-place mutation of prod state.
 - The pipeline is *minimal*: no new services, no new daemons on
   prod, no new SaaS dependencies. Uses only what already exists:
-  gitlab-runner on met, GitLab Packages API on `git.nwpcode.org`,
+  gitlab-runner on mirror-store, GitLab Packages API on `<gitlab-host>`,
   minisign, WireGuard, OpenSSH, and the pl script.
 - The replacement for the deleted `deploy:staging` / `deploy:production`
   stages is **clearly named in the CI config as an F28 reference**
@@ -143,7 +143,7 @@ Key design properties:
 
 - Not an auto-deploy-on-green pipeline. F28 is designed so that
   green CI is *necessary but not sufficient* for a deploy. The
-  sufficient condition is a human tap on mons.
+  sufficient condition is a human tap on verifier.
 - Not a blue-green deploy system. That's F21 Phase 8 — F28 is the
   *transport layer* that blue-green slots will sit on top of. A
   Phase 8 deploy will still be an F28 bundle; it just happens to
@@ -151,7 +151,7 @@ Key design properties:
 - Not a multi-signer system. There is one minisign signing key at
   a time (with one offsite backup). Multi-party signing is a
   future proposal if and when it's needed.
-- Not a replacement for F22 (Gotify alerting) or the mons alert
+- Not a replacement for F22 (Gotify alerting) or the verifier alert
   path. F28 is a deploy channel, not a monitoring channel.
 
 ## 3. Architecture
@@ -181,11 +181,11 @@ nwp-bundle-<site>-<commit>-<ts>.tar.gz
 
 - `schema_version` — bumped when the format changes
 - `nwp_version` — the `pl` version that built the bundle
-- `site` — the target site name (avc, ss, dir1, mayostudios, …)
+- `site` — the target site name (avc, ss, dir1, `<mayo-site>`, …)
 - `git_commit` — full SHA of the source commit
 - `git_branch` — branch name at build time (informational)
 - `built_at` — ISO-8601 timestamp
-- `built_by` — the mmt host that built it (met typically)
+- `built_by` — the build-tier host that built it (mirror-store typically)
 - `signing_key_fingerprint` — minisign public key fingerprint
 - `targets` — list of prod hosts the bundle is intended for
 - `sha256_payload` — of the `payload/` tree, for local integrity
@@ -199,19 +199,19 @@ the manifest signature and then verifying the sha256s is equivalent
 to signing the whole bundle, with the advantage that the manifest
 can be read without touching the payload.
 
-### 3.2 The mmt → Packages API upload
+### 3.2 The build-tier → Packages API upload
 
 `lib/packages-upload.sh` (shared primitive with F27, to be built
 once) takes a bundle path + a Packages API URL + a project id +
 a package name + a token, and uploads via the Packages API. On
-mmt, the token has `write_package_registry` scope on exactly the
+build-tier, the token has `write_package_registry` scope on exactly the
 bundle-publishing project, and nothing else.
 
 The upload happens as a new `publish:bundle` CI job, replacing
 the deleted `deploy:staging` / `deploy:production` slot in
 `.gitlab-ci.yml`. This job:
 
-- runs on the met shell runner (`tags: [met, shell]`),
+- runs on the mirror-store shell runner (`tags: [mirror-store, shell]`),
 - is gated by `exists: [composer.json]` (so the NWP meta-repo
   doesn't try to publish itself),
 - is gated by `rules: if: $CI_COMMIT_BRANCH == "main"` so feature
@@ -221,26 +221,26 @@ the deleted `deploy:staging` / `deploy:production` slot in
 
 Importantly, the `publish:bundle` job does **not** run on MRs.
 F26's preview-deploy flow is a separate path and does not produce
-signed bundles — its artifacts live only on met, never go to
-`git.nwpcode.org` Packages, and never reach mons.
+signed bundles — its artifacts live only on mirror-store, never go to
+`<gitlab-host>` Packages, and never reach verifier.
 
-### 3.3 The mons pull + verify + deploy
+### 3.3 The verifier pull + verify + deploy
 
-`pl deploy` on mons (superseding the placeholder script referenced
+`pl deploy` on verifier (superseding the placeholder script referenced
 in ADR-0019 § Deploy script changes) does, in order:
 
 1. **List available bundles** for a given site by calling the
    GitLab Packages API with a *read-only* token. This token is
    scoped to `read_package_registry` on exactly the bundle
-   project. Yes, mons holds a token with read access to Packages
+   project. Yes, verifier holds a token with read access to Packages
    — this is acceptable because Packages content is already
    signature-verified, and a token leak grants only "can read
    public bundles" which is a no-op against the threat model.
 2. **Display the top N bundles** with their manifest summaries
-   (commit, date, diff summary if available). Rob picks one.
+   (commit, date, diff summary if available). The operator picks one.
 3. **Download the chosen bundle** over public HTTPS.
 4. **Verify the signature** against the pinned minisign public
-   key installed on mons at bootstrap time. A verify failure
+   key installed on verifier at bootstrap time. A verify failure
    **aborts the deploy and posts a Gotify alert**. No retry, no
    fallback, no "maybe the key rotated" path.
 5. **Verify the manifest sha256s** against the payload and scripts
@@ -248,7 +248,7 @@ in ADR-0019 § Deploy script changes) does, in order:
 6. **Print a deploy summary** and require a Solo 2C+ touch:
    `"about to deploy commit abc123 to avc — touch to confirm"`.
 7. **Bring up the WireGuard tunnel** to the target prod host.
-   The tunnel config is static on mons (installed at bootstrap);
+   The tunnel config is static on verifier (installed at bootstrap);
    `wg-quick up` requires a second touch because the WG private
    key is gated behind `pam_u2f` (ADR-0019 alternative to
    on-disk-key).
@@ -259,9 +259,9 @@ in ADR-0019 § Deploy script changes) does, in order:
 9. **Tear down the tunnel** on exit (success or failure).
 10. **Post a Gotify notification** summarising the deploy: bundle
     id, site, commit, exit status, duration, number of touches.
-11. **Log the deploy** to a mons-local append-only audit trail
+11. **Log the deploy** to a verifier-local append-only audit trail
     that is also shipped via the signed-artifact monitoring path
-    to `git.nwpcode.org`.
+    to `<gitlab-host>`.
 
 A deploy failure at any step leaves the tunnel torn down and
 prod untouched (pre-deploy, apply, and post-deploy are required
@@ -274,12 +274,12 @@ Rollback in F28 is just "deploy the previous bundle". Because
 bundles are immutable addressable artifacts in the Packages API,
 and because `apply.sh` is idempotent by design, rolling back is
 operationally identical to rolling forward — the only difference
-is which bundle id Rob picks at step 2.
+is which bundle id the operator picks at step 2.
 
-The bundle `dependencies` field in the manifest enables mons to
+The bundle `dependencies` field in the manifest enables verifier to
 warn when the chosen rollback target is "too old" (e.g., the user
 is trying to roll back across a schema migration). The warning is
-advisory; Rob can still proceed with a second touch.
+advisory; the operator can still proceed with a second touch.
 
 ### 3.5 Idempotent apply contract
 
@@ -290,7 +290,7 @@ The F28 contract requires `apply.sh` to satisfy:
 - **Fails loud.** Any step that cannot complete exits non-zero
   and writes a marker file on prod that `pre-deploy.sh` checks
   on the next deploy. If the marker is present, the next deploy
-  refuses to run until Rob clears it.
+  refuses to run until the operator clears it.
 - **No partial writes.** Where possible, use atomic file moves
   (`mv` of staged tree into place) rather than in-place edits.
 
@@ -305,34 +305,34 @@ they can be onboarded to F28.
 
 | Key | Location | Custody | Usage |
 |---|---|---|---|
-| minisign secret (sign bundles) | mmt, LUKS-encrypted home | Rob, passphrase-wrapped | Touched only during `publish:bundle`; CI runner unlocks via a sidecar that requires Rob to have been present in the last N minutes |
-| minisign public (verify bundles) | mons, in root-owned file | Pinned at bootstrap | Read by every deploy; never rotated without a full re-bootstrap |
-| Packages write token | mmt | In met CI variables, masked | `write_package_registry` scope only |
-| Packages read token | mons | In mons secret store | `read_package_registry` scope only |
+| minisign secret (sign bundles) | build-tier, LUKS-encrypted home | the operator, passphrase-wrapped | Touched only during `publish:bundle`; CI runner unlocks via a sidecar that requires the operator to have been present in the last N minutes |
+| minisign public (verify bundles) | verifier, in root-owned file | Pinned at bootstrap | Read by every deploy; never rotated without a full re-bootstrap |
+| Packages write token | build-tier | In mirror-store CI variables, masked | `write_package_registry` scope only |
+| Packages read token | verifier | In verifier secret store | `read_package_registry` scope only |
 | Prod SSH key | Solo 2C+ (ed25519-sk) | Hardware token, touch-required | Used once per deploy action |
-| WireGuard key | mons, pam_u2f-gated | Touch-required on tunnel up | Used once per deploy |
+| WireGuard key | verifier, pam_u2f-gated | Touch-required on tunnel up | Used once per deploy |
 
-The minisign secret on mmt is the highest-value key in this system.
+The minisign secret on build-tier is the highest-value key in this system.
 Its compromise means an attacker can sign a malicious bundle that
-mons will happily deploy. Mitigations:
+verifier will happily deploy. Mitigations:
 
 - It is passphrase-wrapped.
-- It is only unlocked when Rob is physically at mmt in a CI-adjacent
+- It is only unlocked when the operator is physically at build-tier in a CI-adjacent
   window.
-- Publication of a bundle produces a Gotify notification that Rob
-  sees on his phone; an unexpected publication is a signal.
-- mons logs every verify it performs, and the audit trail is
-  shipped to `git.nwpcode.org` as a signed artifact of its own. An
-  attacker who forges a bundle also has to silence the mons audit
-  trail, which requires compromising mons — two independent
+- Publication of a bundle produces a Gotify notification that the operator
+  sees on their phone; an unexpected publication is a signal.
+- verifier logs every verify it performs, and the audit trail is
+  shipped to `<gitlab-host>` as a signed artifact of its own. An
+  attacker who forges a bundle also has to silence the verifier audit
+  trail, which requires compromising verifier — two independent
   compromises.
 
-### 4.2 Why mons can hold a read-Packages token
+### 4.2 Why verifier can hold a read-Packages token
 
-mons's threat model forbids AI, forbids prod-reachable secrets
+verifier's threat model forbids AI, forbids prod-reachable secrets
 without hardware gating, and forbids disk-resident credentials for
 prod actions. A `read_package_registry` token is none of these —
-it can only pull signed artifacts, which mons will verify before
+it can only pull signed artifacts, which verifier will verify before
 trusting. Compromise of this token by an attacker grants "can
 download bundles that I, the attacker, have no way to forge the
 signatures for". That is not a useful capability.
@@ -342,9 +342,9 @@ signatures for". That is not a useful capability.
 The deleted `deploy:staging` / `deploy:production` jobs were
 wired for a world where CI is allowed to write to prod. They
 held SSH keys in CI variables. An attacker who compromised the
-met runner (or tricked a CI variable extraction vulnerability)
+mirror-store runner (or tricked a CI variable extraction vulnerability)
 could have shelled into prod directly. F28 removes this
-capability — there is no path from a compromised met runner to
+capability — there is no path from a compromised mirror-store runner to
 prod. The deploy decision sits with a human on a machine that
 CI cannot reach.
 
@@ -354,7 +354,7 @@ green". That capability is not coming back. It was the threat.
 ### 4.4 Review gates
 
 - Changes to `lib/minisign.sh`, `lib/packages-upload.sh`, the
-  `publish:bundle` job, or the `pl deploy` script on mons
+  `publish:bundle` job, or the `pl deploy` script on verifier
   require **2 human approvers** from day one (no single-reviewer
   phase). F28's security is load-bearing and these files are
   the seams.
@@ -363,15 +363,15 @@ green". That capability is not coming back. It was the threat.
   been deployed via F28 for 30 days, then 2.
 - Addition of a new site to F28's target list requires 2
   approvers and a written onboarding note in
-  `docs/guides/mons-operations.md`.
+  `docs/guides/verifier-operations.md`.
 
 ## 5. Phases
 
 ### Phase 1 — Packages primitive *(reversible, no prod)*
 
 Build `lib/packages-upload.sh` and `lib/packages-download.sh`.
-Smoke-test against a throwaway project on `git.nwpcode.org`. No
-changes to mons, prod, or CI. This primitive is shared with F27
+Smoke-test against a throwaway project on `<gitlab-host>`. No
+changes to verifier, prod, or CI. This primitive is shared with F27
 and is the first thing both proposals consume.
 
 ### Phase 2 — Bundle format + signing *(reversible, no prod)*
@@ -383,24 +383,24 @@ tampers with a payload file, reverifies, and asserts the second
 verify fails. This is the point where the manifest schema
 stabilises.
 
-### Phase 3 — `publish:bundle` CI job *(reversible, mmt only)*
+### Phase 3 — `publish:bundle` CI job *(reversible, build-tier only)*
 
 Add `publish:bundle` to `.gitlab-ci.yml`, gated on `main` only and
 `composer.json` existence. On green build + sanitize, it produces
 a bundle and uploads it to the Packages API. Does not touch
-mons or prod. Verify by inspecting the uploaded package manually
+verifier or prod. Verify by inspecting the uploaded package manually
 after the first run.
 
-### Phase 4 — `pl deploy` on mons *(reversible, no prod writes yet)*
+### Phase 4 — `pl deploy` on verifier *(reversible, no prod writes yet)*
 
-Build `pl deploy` on mons to list, download, and verify bundles.
+Build `pl deploy` on verifier to list, download, and verify bundles.
 In this phase, the script **stops short of the WireGuard tunnel**
 — it prints "would deploy: <summary>" and exits. This lets the
 pull + verify flow be exercised end-to-end without touching prod.
 
 ### Phase 5 — First real F28 deploy *(pilot site, gated)*
 
-Enable the WireGuard + SSH + apply path on mons for one pilot
+Enable the WireGuard + SSH + apply path on verifier for one pilot
 site. First real F28 deploy runs against that site. This is the
 moment the spine is load-bearing. Require 2 approvers on the
 bundle *and* on the PR that enables apply for that site.
@@ -428,7 +428,7 @@ The `publish:bundle` job, in shape (not final form):
 ```yaml
 publish:bundle:
   stage: publish
-  tags: [met, shell]
+  tags: [mirror-store, shell]
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
       exists: [composer.json]
@@ -446,16 +446,16 @@ publish:bundle:
   variables:
     NWP_BUNDLE_PROJECT_ID: "<set in CI variables>"
   # no artifacts: pipelines do not hand bundles back to GitLab CI;
-  # the only consumer is the Packages API, and mons pulls from there
+  # the only consumer is the Packages API, and verifier pulls from there
 ```
 
 ## 7. Open questions
 
 - Does the `publish:bundle` job run on every main commit, or only
-  on tagged commits? **Proposed: every main commit, but mons
+  on tagged commits? **Proposed: every main commit, but verifier
   displays tagged bundles more prominently. Untagged bundles are
-  deployable but Rob has to explicitly ask for them.**
-- Does mons poll the Packages API, or is `pl deploy` always
+  deployable but the operator has to explicitly ask for them.**
+- Does verifier poll the Packages API, or is `pl deploy` always
   manually invoked? **Proposed: manually invoked in Phase 4 and
   Phase 5 so the flow is exercised by humans end-to-end. Polling
   can be added as a convenience in a later phase if it proves
@@ -474,11 +474,22 @@ publish:bundle:
 ## 8. References
 
 - [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md) — trust boundaries
-- [ADR-0019](../decisions/0019-mons-always-on-hardware-rooted-keys.md) — mons posture + deploy client forms
-- [F21](F21-distributed-build-deploy-pipeline.md) — infrastructure (Headscale, met runner, mons bootstrap, sanitizer)
-- [F24](F24-relocate-dev-tree-to-met.md) — F28 supersedes its Phase 3 for forward design
+- [ADR-0019](../decisions/0019-verifier-always-on-hardware-rooted-keys.md) — verifier posture + deploy client forms
+- [F21](F21-distributed-build-deploy-pipeline.md) — infrastructure (Headscale, mirror-store runner, verifier bootstrap, sanitizer)
+- [F24](F24-relocate-dev-tree-to-mirror-store.md) — F28 supersedes its Phase 3 for forward design
 - [F26](F26-avc-ss-oidc.md) — cross-site consumer; uses F28 bundles for prod cut-over
 - [F27](F27-feedback-ingest.md) — reverse-direction consumer of the same Packages primitive
 - `lib/minisign.sh` — existing signing library (F21 Phase 5)
-- `docs/guides/mons-operations.md` — existing operational runbook
+- `docs/guides/verifier-operations.md` — existing operational runbook
 - CI deletions that F28 supersedes: commits `24baecd`, `05d181a`, `4bb1264`
+
+---
+
+## 9. Reference deployment
+
+This public proposal is written in role-label form per
+[F34](F34-role-label-proposal-rewrite.md). The operator-specific
+bindings (actual hostnames for `mirror-store`, `ai-host`, `verifier`,
+the `<gitlab-host>` domain, the per-site target hosts, hardware SKUs,
+and milestone-to-commit-hash mapping) live in the private instance
+addendum at `nwp-instances/_proposals-private/F28-instance.md`.

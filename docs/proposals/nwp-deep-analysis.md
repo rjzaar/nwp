@@ -388,7 +388,7 @@ echo "Run 'pl --help' for available commands" >&2
 ═══════════════════════════════════════
 
 Site:        mysite
-Location:    /home/user/nwp/sitebackups/mysite/
+Location:    $HOME/nwp/sitebackups/mysite/
 File:        20260110T143022-main-a1b2c3d4.sql.gz
 Size:        45.2 MB
 Duration:    32 seconds

@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-01-08
-**Decision Makers:** Rob
+**Decision Makers:** Robert Karsten Zaar
 **Related Issues:** N/A (security architecture)
 
 ## Context

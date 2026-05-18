@@ -310,7 +310,7 @@ If you have multiple NWP installations (e.g., different projects), each gets a u
 **Checking which installation a command points to:**
 ```bash
 readlink /usr/local/bin/pl
-# Output: /home/user/nwp/pl
+# Output: $HOME/nwp/pl
 ```
 
 **Changing the command name:**

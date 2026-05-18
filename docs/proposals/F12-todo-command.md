@@ -3,7 +3,7 @@
 **Status:** IMPLEMENTED
 **Created:** 2026-01-17
 **Updated:** 2026-01-17
-**Author:** Claude Opus 4.5 (architectural design), Rob (requirements)
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** Medium
 **Estimated Effort:** 3-4 weeks
 **Breaking Changes:** None

@@ -4,7 +4,7 @@ Manage NS delegation and infrastructure for additional NWP coders.
 
 ## Overview
 
-The `coder-setup` command manages DNS delegation for additional coders who have their own subdomains under the base domain (e.g., nwpcode.org). Each coder gets full DNS autonomy and can create their own subdomains like git.coder.nwpcode.org.
+The `coder-setup` command manages DNS delegation for additional coders who have their own subdomains under the operator's coder-onboarding base domain (referred to here as `<coder-domain>`). Each coder gets full DNS autonomy and can create their own subdomains like `git.coder.<coder-domain>`.
 
 ## Usage
 
@@ -91,10 +91,10 @@ pl coder-setup gitlab-users
 
 When you add a coder, they receive:
 
-1. **NS Delegation**: coder.nwpcode.org → Linode nameservers
+1. **NS Delegation**: coder.<coder-domain> → Linode nameservers
 2. **Full DNS Autonomy**: Can create any subdomain via their own Linode account
 3. **GitLab Account**: (if --email provided) Access to NWP repository
-4. **Subdomain Examples**: git.coder.nwpcode.org, nwp.coder.nwpcode.org
+4. **Subdomain Examples**: git.coder.<coder-domain>, nwp.coder.<coder-domain>
 
 ## DNS Provider Support
 

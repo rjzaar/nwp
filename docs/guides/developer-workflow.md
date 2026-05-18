@@ -599,7 +599,7 @@ export CI_COMMIT_BRANCH=develop
 ### File Locations
 
 ```
-/home/rob/nwp/
+<nwp-root>/
 ├── myproject/              # Site directory
 │   ├── web/               # Drupal webroot
 │   ├── config/            # Configuration sync

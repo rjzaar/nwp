@@ -10,7 +10,7 @@
 
 ### 1.1 Symptoms
 
-Developers with several keys in `~/.ssh/` (>3) were intermittently locked out of `97.107.137.88` (`git.nwpcode.org`) by fail2ban. The lockouts:
+Developers with several keys in `~/.ssh/` (>3) were intermittently locked out of the operator's GitLab IP (`<gitlab-host>`) by fail2ban. The lockouts:
 
 - Affected `pl stg2live`, `pl live`, `pl podcast`, and any direct `ssh gitlab@97.107.137.88` from a script.
 - Did **not** affect connections that went through a `Host` alias in `~/.ssh/config` (those already pinned an `IdentityFile`).

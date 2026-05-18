@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-01-14 (v0.23.0)
-**Decision Makers:** Rob
+**Decision Makers:** Robert Karsten Zaar
 **Related Issues:** Documentation standards, v0.23.0 major documentation release
 **Related Commits:** 8e19d5ab (comprehensive documentation)
 **References:** [git-hooks.md](../development/git-hooks.md), [.git/hooks/pre-commit](../../.git/hooks/pre-commit)

@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2025-12-01 (original), refined 2026-01-14
-**Decision Makers:** Rob
+**Decision Makers:** Robert Karsten Zaar
 **Related Issues:** P31 (Enhanced Site Management TUI), F04 (Coders TUI)
 **References:** [checkbox.sh](../../lib/checkbox.sh) (1487 lines), [tui.sh](../../lib/tui.sh) (758 lines)
 

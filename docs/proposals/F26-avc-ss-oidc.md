@@ -2,9 +2,9 @@
 
 **Status:** PROPOSED
 **Created:** 2026-04-12
-**Author:** Rob Zaar, Claude Opus 4.6
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** Medium (unblocks cross-site UX for the AVC Moodle integration)
-**Depends On:** F23 (site environment layout) ✅, F21 Phase 2 (met runner) ✅, sanitizer framework (F21 Phase 6)
+**Depends On:** F23 (site environment layout) ✅, F21 Phase 2 (mirror-store runner) ✅, sanitizer framework (F21 Phase 6)
 **Breaking Changes:** No (new issuer + new client; existing logins untouched until flag flip)
 **Estimated Effort:** Medium — ~2 days Drupal issuer setup, ~1 day Moodle client wiring, ~half day sanitizer coupling, ~half day per-MR preview plumbing
 
@@ -14,7 +14,7 @@
 
 ### 1.1 Problem statement
 
-avc.nwpcode.org (Drupal) and ss.nwpcode.org (Moodle) are separate
+avc.<example-prod-domain> (Drupal) and <site>.example.org (Moodle) are separate
 sites with overlapping audiences. A user who already has an AVC
 account shouldn't need a second account to access the SS Moodle
 courses, and a staff-side change to a user's AVC profile shouldn't
@@ -64,7 +64,7 @@ The load-bearing design decisions are:
    time a new sanitizer run happened. This is a deliberate deviation
    from "rotate all salts on a schedule" and is justified in § 4.2.
 4. **Per-MR preview environments get their own subdomain per site**:
-   `mock-<mr-id>.avc.nwpcode.org` and `mock-<mr-id>.ss.nwpcode.org`.
+   `mock-<mr-id>.avc.<example-prod-domain>` and `mock-<mr-id>.<site>.example.org`.
    A cross-site MR produces *both* URLs and the OIDC flow between
    them is configured at preview-provision time.
 5. **TLS for preview subdomains comes from certbot-dns-linode**
@@ -76,9 +76,9 @@ The load-bearing design decisions are:
 ### 1.3 Relationship to ADR-0017, F21, F23
 
 F26 sits entirely inside the dev tier under ADR-0017 — preview
-environments are built on met, sanitized fixtures come from the
+environments are built on the mirror-store, sanitized fixtures come from the
 F21 Phase 6 sanitizer, and the wildcard TLS automation runs on the
-met runner. Prod sites (production AVC + production SS) are
+mirror-store runner. Prod sites (production AVC + production SS) are
 reconfigured at deploy time through the F28 pipeline, not by F26
 directly. F23 provides the site environment layout (`sites/avc/dev`,
 `sites/ss/dev`) that the preview provisioning script consumes.
@@ -121,7 +121,7 @@ directly. F23 provides the site environment layout (`sites/avc/dev`,
                   │ user's browser   │
                   └────────┬─────────┘
                            │
-                    (1) GET ss.nwpcode.org/some-course
+                    (1) GET <site>.example.org/some-course
                            │
                            v
                   ┌──────────────────┐
@@ -197,12 +197,12 @@ creates a Moodle row that tracks the corresponding Drupal row.
 ### 3.4 Per-MR preview environments
 
 When a merge request is opened on AVC or SS (or both simultaneously
-as a cross-site change), the met runner:
+as a cross-site change), the mirror-store runner:
 
-1. Provisions `mock-<mr-id>.avc.nwpcode.org` and/or
-   `mock-<mr-id>.ss.nwpcode.org` as DDEV projects on met.
+1. Provisions `mock-<mr-id>.avc.<example-prod-domain>` and/or
+   `mock-<mr-id>.<site>.example.org` as DDEV projects on the mirror-store.
 2. Requests a wildcard cert via `certbot-dns-linode` for
-   `*.avc.nwpcode.org` and `*.ss.nwpcode.org` (both held in a
+   `*.avc.<example-prod-domain>` and `*.<site>.example.org` (both held in a
    single Linode zone; the Linode API token has `domains:read_write`
    scope only).
 3. Injects the preview URLs into `simple_oauth`'s redirect URI
@@ -219,7 +219,7 @@ as a cross-site change), the met runner:
 Cross-site MRs (one branch on AVC's repo, one on SS's, same MR id)
 produce two URLs linked to each other. Single-site MRs produce one
 URL linked to a stable shared preview of the other site (named
-`mock-main.<site>.nwpcode.org`).
+`mock-main.<site>.<example-prod-domain>`).
 
 ### 3.5 Wildcard TLS via Linode DNS (not Cloudflare)
 
@@ -229,10 +229,10 @@ Requirements:
 
 - A Linode personal access token with `domains:read_write` scope
   (and no other scopes — this is a different token than the
-  infrastructure token in `.secrets.yml`, and it lives on met only).
-- The Linode API token stored in the F21 secret loader on met,
+  infrastructure token in `.secrets.yml`, and it lives on the mirror-store only).
+- The Linode API token stored in the F21 secret loader on the mirror-store,
   loaded into certbot via its standard credentials-file mechanism.
-- Renewal on a met systemd timer, weekly.
+- Renewal on a mirror-store systemd timer, weekly.
 
 Cloudflare is explicitly **not** used for this flow. Reason: the
 DNS already lives at Linode, and adding Cloudflare would create a
@@ -252,7 +252,7 @@ sensitive part is the signing key, which stays on the AVC host and
 never leaves.
 
 Preview environments expose the same endpoints on the
-`mock-<mr-id>.avc.nwpcode.org` subdomain. Because each preview has
+`mock-<mr-id>.avc.<example-prod-domain>` subdomain. Because each preview has
 a freshly generated signing key (generated at DDEV-spin-up time, not
 copied from prod), a compromised preview signing key cannot forge
 tokens for prod. **This is load-bearing: the provisioning script
@@ -279,7 +279,7 @@ The mitigations:
   attacker who does not also have the salt.
 - Preview environments are firewall-gated: wildcard DNS + Let's
   Encrypt means the URL is guessable, but the DDEV project is only
-  accessible from met's public interface and is torn down on MR
+  accessible from the mirror-store's public interface and is torn down on MR
   close. An attacker would need to race MR lifetime.
 - If the salt ever *is* compromised, the recovery is to rotate it
   once and accept that historical fixture archives become unusable.
@@ -307,7 +307,7 @@ during the build-out phase.
 ### Phase 1 — Issuer on preview AVC *(reversible, no prod)*
 
 Install and configure `simple_oauth` on a preview AVC provisioned
-on met. Confirm `.well-known/openid-configuration` is served,
+on the mirror-store. Confirm `.well-known/openid-configuration` is served,
 signing key is fresh per-preview, and a test client (a local
 `curl` or `requests` script) can complete the authorization code
 flow end-to-end.
@@ -329,7 +329,7 @@ fake email for the same real input.
 
 ### Phase 4 — Preview provisioning plumbing
 
-Extend the existing met preview provisioning (used by `deploy:preview`
+Extend the existing mirror-store preview provisioning (used by `deploy:preview`
 in `.gitlab-ci.yml`) to handle F26's cross-site case: detect
 cross-site MRs, allocate both subdomains, request (or reuse) the
 wildcard cert, inject the redirect URI + issuer URL into both
@@ -338,7 +338,7 @@ close.
 
 ### Phase 5 — Wildcard TLS automation
 
-Install `certbot-dns-linode` on met, provision the scoped Linode
+Install `certbot-dns-linode` on the mirror-store, provision the scoped Linode
 API token, set up the weekly renewal timer, verify a preview URL
 serves a valid wildcard cert end-to-end.
 
@@ -365,7 +365,7 @@ login path available for 30 days as a fallback, then remove it.
 ## 7. References
 
 - [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md) — trust boundaries
-- [F21](F21-distributed-build-deploy-pipeline.md) — met infrastructure + sanitizer
+- [F21](F21-distributed-build-deploy-pipeline.md) — mirror-store infrastructure + sanitizer
 - [F23](F23-site-environment-layout.md) — site layout dev/stg split
 - [F28](F28-unified-pipeline.md) — unified pipeline (consumer of preview plumbing)
 - Drupal `simple_oauth`: `https://www.drupal.org/project/simple_oauth`

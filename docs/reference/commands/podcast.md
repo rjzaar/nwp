@@ -445,7 +445,7 @@ Domain: https://podcast.example.com
 Media:  https://media.example.com
 
 SSH Access:
-  ssh -o IdentitiesOnly=yes -i /home/rob/.ssh/nwp root@192.0.2.100
+  ssh -o IdentitiesOnly=yes -i $HOME/.ssh/nwp root@192.0.2.100
 
 Complete Castopod setup at:
   https://podcast.example.com/admin/install
@@ -497,7 +497,7 @@ Domain: https://podcast.example.com
 Storage: Local (on VPS)
 
 SSH Access:
-  ssh -o IdentitiesOnly=yes -i /home/rob/.ssh/nwp root@192.0.2.100
+  ssh -o IdentitiesOnly=yes -i $HOME/.ssh/nwp root@192.0.2.100
 
 Complete Castopod setup at:
   https://podcast.example.com/admin/install
@@ -695,10 +695,10 @@ Check site availability:
 ## Related Commands
 
 - [setup-ssh](../../../setup-ssh.sh) - Generate SSH keys for server access
-- Podcast library: `/home/rob/nwp/lib/podcast.sh`
-- Linode library: `/home/rob/nwp/lib/linode.sh`
-- Cloudflare library: `/home/rob/nwp/lib/cloudflare.sh`
-- B2 library: `/home/rob/nwp/lib/b2.sh`
+- Podcast library: `<nwp-root>/lib/podcast.sh`
+- Linode library: `<nwp-root>/lib/linode.sh`
+- Cloudflare library: `<nwp-root>/lib/cloudflare.sh`
+- B2 library: `<nwp-root>/lib/b2.sh`
 
 ## See Also
 

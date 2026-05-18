@@ -172,12 +172,12 @@ Each site in `nwp.yml` can have its own CI settings:
 ```yaml
 sites:
   mysite:
-    directory: /home/user/nwp/mysite
+    directory: $HOME/nwp/mysite
     recipe: d
     environment: development
     ci:
       enabled: true
-      repo: git@git.nwpcode.org:nwp/mysite.git
+      repo: git@<gitlab-host>:nwp/mysite.git
       branch: main
       mirrors:
         github: git@github.com:user/mysite.git
@@ -286,7 +286,7 @@ git push origin main
 # Manual trigger via API
 curl --request POST \
   --header "PRIVATE-TOKEN: <your-token>" \
-  "https://git.nwpcode.org/api/v4/projects/<project-id>/pipeline" \
+  "https://<gitlab-host>/api/v4/projects/<project-id>/pipeline" \
   --form "ref=main"
 ```
 

@@ -1,7 +1,7 @@
-# Voice Agent on mini — Dev Briefing
+# Voice Agent — Dev Briefing
 
 This doc is the **kick-off briefing for a Claude Code session focused on
-improving the voice chat loop on mini**. It is deliberately short on
+improving the voice chat loop on the voice-agent host**. It is deliberately short on
 history and long on concrete pointers. If you are a fresh Claude session
 that has just been handed this file, read it end-to-end before touching
 anything.
@@ -10,18 +10,18 @@ anything.
 
 Paste this into a new Claude Code session in `~/nwp`:
 
-> Read `docs/guides/voice-agent.md` for context on mini's local voice
+> Read `docs/guides/voice-agent.md` for context on the voice-agent host's local voice
 > agent. I want to improve it — ask me what aspect first, then propose
 > concrete changes. Don't start coding until we've agreed on scope. The
-> agent runs on a remote host (`mini`, reachable via `ssh mini` from
-> this dev workstation); treat `ssh mini '<cmd>'` as your normal way to
+> agent runs on a remote host (the voice-agent role, reachable via `ssh <voice-agent>` from
+> this dev workstation); treat `ssh <voice-agent> '<cmd>'` as your normal way to
 > probe state.
 
 Then tell Claude which improvement area you want (§ "Improvement ideas").
 
 ## What exists today (as of 2026-04-09)
 
-A **push-to-talk voice loop** on mini that records from a USB mic,
+A **push-to-talk voice loop** on the voice-agent host that records from a USB mic,
 transcribes with whisper.cpp, sends to ollama's `llama3.1:8b`, speaks
 the reply with piper. Fully local — no cloud inference, no PSTN, no
 Twilio. This is **not** the X02 Twilio endgame; it is a useful
@@ -39,17 +39,17 @@ ENTER (start) → arecord from plughw:2,0 (POROSVOC USB mic, 16 kHz mono)
               → loop
 ```
 
-### Files of record (dev-side in this repo, deployed to mini)
+### Files of record (dev-side in this repo, deployed to voice-agent host)
 
 | Path in repo | Deployed to | Purpose |
 |---|---|---|
-| `servers/mini/bin/voice-agent` | `~/.local/bin/voice-agent` | The bash loop itself |
-| `servers/mini/bin/ollama-health-check` | `~/.local/bin/ollama-health-check` | Unrelated but colocated |
-| `docs/proposals/X02-local-voice-agent-on-mini.md` §11 | — | Historical progress notes |
+| `servers/<voice-agent>/bin/voice-agent` | `~/.local/bin/voice-agent` | The bash loop itself |
+| `servers/<voice-agent>/bin/ollama-health-check` | `~/.local/bin/ollama-health-check` | Unrelated but colocated |
+| `docs/proposals/X02-local-voice-agent.md` §11 | — | Historical progress notes |
 
-### Binaries + models on mini (NOT in repo)
+### Binaries + models on the voice-agent host (NOT in repo)
 
-| Path on mini | What | Install origin |
+| Path on voice-agent host | What | Install origin |
 |---|---|---|
 | `~/.local/bin/whisper-cli` | whisper.cpp CLI | Built from `~/src/whisper.cpp` (CPU release, no Vulkan) |
 | `~/.local/share/whisper/ggml-base.en.bin` | whisper base.en (142 MB) — **currently used by the script** | HF `ggerganov/whisper.cpp` |
@@ -63,7 +63,7 @@ ENTER (start) → arecord from plughw:2,0 (POROSVOC USB mic, 16 kHz mono)
 
 ### Audio hardware
 
-Three sound cards visible to the kernel on mini:
+Three sound cards visible to the kernel on the voice-agent host:
 
 - card 0 — AMD Radeon HDMI (playback only, not used)
 - card 1 — ALC897 motherboard, analog **playback AND capture** (`plughw:1,0`)
@@ -72,10 +72,10 @@ Three sound cards visible to the kernel on mini:
 Defaults in the script: `MIC_DEVICE=plughw:2,0`, `SPEAKER_DEVICE=plughw:1,0`.
 Override via env vars `VOICE_AGENT_MIC` / `VOICE_AGENT_SPEAKER`.
 
-**Critical gotcha:** the `rob` user on mini must be in the `audio`
+**Critical gotcha:** the operator user on the voice-agent host must be in the `audio`
 group. Earlier this week the group was missing and PipeWire only
-showed a `auto_null` Dummy-Driver. Fixed with `sudo usermod -aG audio rob`.
-If you find audio is broken, check `groups` on mini first.
+showed a `auto_null` Dummy-Driver. Fixed with `sudo usermod -aG audio <operator>`.
+If you find audio is broken, check `groups` on the voice-agent host first.
 
 ### Verified working
 
@@ -87,7 +87,7 @@ If you find audio is broken, check `groups` on mini first.
 - ✓ whisper-cli transcribes (correctly reports `[BLANK_AUDIO]` on silence)
 - ✓ ollama chat API returns replies through the existing loopback daemon
 - ✓ End-to-end: voice-agent script deployed and passes `bash -n`
-- ✓ Whisper `base.en` / `medium.en` / `large-v3-turbo` all run on mini
+- ✓ Whisper `base.en` / `medium.en` / `large-v3-turbo` all run on the voice-agent host
   CPU within budget for push-to-talk (see §Whisper benchmark, 2026-04-09)
 - ✓ POROSVOC confirmed native format: `S16_LE / 16000 Hz / mono`
   **only** (per `/proc/asound/card2/stream0`) — script's defaults
@@ -101,13 +101,13 @@ If you find audio is broken, check `groups` on mini first.
 
 - Physical audibility of the speaker (no one has confirmed sound
   actually came out of the 3.5 mm jack during our test)
-- **POROSVOC capturing real voice from a human physically at mini.**
+- **POROSVOC capturing real voice from a human physically at the voice-agent host.**
   On 2026-04-09 we tried this from dev and got `peak=0` silence: the
   mic enumerates fine (USB bus 003 dev 008, `/proc/asound/card2/stream0`
   healthy, ALSA mixer at 100%, nothing holding `/dev/snd/*`) but nobody
-  was in mini's room, so there was nothing for the capsule to hear.
+  was in the voice-agent room, so there was nothing for the capsule to hear.
   Workaround used for the whisper benchmark: record on dev's mic,
-  `scp` WAV to mini, run whisper-cli there. See limitation #9.
+  `scp` WAV to the voice-agent host, run whisper-cli there. See limitation #9.
 - A full end-to-end voice conversation with a real user speaking to
   the mic (the accent benchmark used dev-mic clips, not POROSVOC clips)
 
@@ -117,9 +117,9 @@ Two speakers (both Australian English), same sentence constructed to
 pack accent-tricky phonemes: `g'day, reckon, barbie, arvo, fertile,
 docile, water, dance, castle, tomato, pasta, no worries, mate,
 Melbourne, schedule, Our Father, cheers`. Clips recorded on dev's
-digital mic (16 kHz mono S16_LE, ~25 s each) and `scp`'d to mini for
-transcription. Test clips preserved at `mini:/tmp/voice-test-{rob,julie}.wav`
-and `dev:/tmp/dev_{rob,julie}.wav` for reproducibility.
+digital mic (16 kHz mono S16_LE, ~25 s each) and `scp`'d to the voice-agent host for
+transcription. Test clips preserved at `<voice-agent>:/tmp/voice-test-{op1,op2}.wav`
+and `dev:/tmp/dev_{op1,op2}.wav` for reproducibility.
 
 **Latency per model** (25-sec clip, CPU, 4 threads):
 
@@ -146,10 +146,10 @@ The right fix is a post-processing regex or a custom vocabulary prompt
 
 **Other minor errors observed:**
 
-- `base.en` on Rob's clip transcribed `arvo` as `arbo` (single data point;
-  `base.en` got it right on Julie's clip)
-- `base.en` on Rob's clip capitalized `Barbie` (the doll)
-- `large-v3-turbo` on Julie's clip capitalized `Arvo` (as a name)
+- `base.en` on Speaker 1's clip transcribed `arvo` as `arbo` (single data point;
+  `base.en` got it right on Speaker 2's clip)
+- `base.en` on Speaker 1's clip capitalized `Barbie` (the doll)
+- `large-v3-turbo` on Speaker 2's clip capitalized `Arvo` (as a name)
 - `Our Father` is never capitalized by any model — none recognize it as
   a proper-noun prayer reference
 
@@ -188,15 +188,15 @@ future re-benchmarking against more varied material.
    prompt asks it not to, but piper will happily try to speak `**bold**`
    if the LLM leaks it. Needs a post-processing sanitizer.
 8. **jq dependency.** Not a problem, just a note: the script uses jq
-   for conversation history; it's already installed on mini.
-9. **No remote transport.** You must `ssh mini` to run it. If the goal
-   is "talk to mini while I'm at dev," you need one of: run the script
+   for conversation history; it's already installed on the voice-agent host.
+9. **No remote transport.** You must `ssh <voice-agent>` to run it. If the goal
+   is "talk to the voice-agent while I'm at dev," you need one of: run the script
    over the SSH session with audio forwarded (hard); run the
    LLM-chat loop on dev instead with ollama as the backend (easy, but
-   then it's not "mini"); or build a network protocol (complex).
+   then it's not "voice-agent"); or build a network protocol (complex).
    **This limitation bit us during the 2026-04-09 accent benchmark** —
-   we had to record on dev's mic and `scp` the WAV to mini because the
-   speakers were physically at dev, not mini. Fine as a one-off test
+   we had to record on dev's mic and `scp` the WAV to the voice-agent host because the
+   speakers were physically at dev, not the voice-agent host. Fine as a one-off test
    workaround; not a real solution for conversation. The real fix is
    X02 Phase 2 (Pipecat transport), not bash-script patches.
 10. **LLM personality is thin.** The system prompt is one sentence.
@@ -205,7 +205,7 @@ future re-benchmarking against more varied material.
 11. **Piper has no en_AU voices.** Voices ship only for `en_GB` and
     `en_US`. Closest in-piper option is `en_GB-cori-high` (the only
     `en_GB` voice piper ships at "high" quality — already downloaded
-    to mini, ready for A/B testing against the current
+    to the voice-agent host, ready for A/B testing against the current
     `en_US-lessac-medium`). A **genuine** Australian voice requires a
     different TTS engine entirely — Coqui XTTS-v2 (voice cloning from
     a reference clip of an AU speaker) or Kokoro-82M — both Python-only.
@@ -233,7 +233,7 @@ future re-benchmarking against more varied material.
 - Persist conversation history to `~/.local/share/voice-agent/history.jsonl`
 - Nicer system prompt with explicit tone and boundaries
 - **A/B the new `en_GB-cori-high` piper voice** against current
-  `en_US-lessac-medium` — files already on mini, closest piper gets to
+  `en_US-lessac-medium` — files already on the voice-agent host, closest piper gets to
   an Australian voice. Single-line change once a winner is picked.
 
 **High value, moderate effort:**
@@ -254,7 +254,7 @@ future re-benchmarking against more varied material.
 **Speculative:**
 - Swap LLMs mid-conversation based on intent ("/code" → qwen2.5-coder,
   default → llama3.1)
-- Tool use: let the agent run a whitelisted set of commands on mini
+- Tool use: let the agent run a whitelisted set of commands on the voice-agent host
   (dangerous; needs the same scope review X02 §3.3 demands)
 
 ## How to test a change
@@ -263,68 +263,68 @@ The loop is fast enough to iterate in real time. Typical cycle:
 
 ```bash
 # dev side: edit and push
-$EDITOR servers/mini/bin/voice-agent
-scp servers/mini/bin/voice-agent mini:.local/bin/voice-agent
+$EDITOR servers/<voice-agent>/bin/voice-agent
+scp servers/<voice-agent>/bin/voice-agent <voice-agent>:.local/bin/voice-agent
 
 # sanity
-ssh mini 'bash -n ~/.local/bin/voice-agent && echo OK'
+ssh <voice-agent> 'bash -n ~/.local/bin/voice-agent && echo OK'
 
 # smoke test STT alone
-ssh mini 'arecord -D plughw:2,0 -f S16_LE -r 16000 -c 1 -d 3 /tmp/t.wav && \
+ssh <voice-agent> 'arecord -D plughw:2,0 -f S16_LE -r 16000 -c 1 -d 3 /tmp/t.wav && \
           ~/.local/bin/whisper-cli -m ~/.local/share/whisper/ggml-base.en.bin \
             -f /tmp/t.wav -nt -np 2>/dev/null'
 
 # smoke test TTS alone
-ssh mini 'echo hello | ~/.local/bin/piper \
+ssh <voice-agent> 'echo hello | ~/.local/bin/piper \
             --model ~/.local/share/piper/voices/en_US-lessac-medium.onnx \
             --output_file /tmp/t.wav && aplay -D plughw:1,0 /tmp/t.wav'
 
 # smoke test LLM alone (uses the same ollama daemon the voice agent hits)
-ssh mini 'curl -sS http://127.0.0.1:11434/api/chat \
+ssh <voice-agent> 'curl -sS http://127.0.0.1:11434/api/chat \
             -d "{\"model\":\"llama3.1:8b\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":false}" \
             | jq -r .message.content'
 
-# full loop (interactive — you need to be sitting at mini or speaking loudly through ssh)
-ssh mini 'voice-agent'
+# full loop (interactive — you need to be sitting at the voice-agent host or speaking loudly through ssh)
+ssh <voice-agent> 'voice-agent'
 ```
 
 ## Related reading (load these into context as needed)
 
 - `docs/guides/local-llm.md` — the ollama baseline this builds on
-- `docs/proposals/X02-local-voice-agent-on-mini.md` — the long-term plan.
+- `docs/proposals/X02-local-voice-agent.md` — the long-term plan.
   Phase 0 done, §11 documents what this script delivers.
 - `docs/proposals/F21-distributed-build-deploy-pipeline.md` Phase 3a —
-  provisioning context for mini as the local-LLM host
-- `CLAUDE.md` § "Threat Model" — mini is in the **AI-accessible tier**;
+  provisioning context for the voice-agent host as the local-LLM host
+- `CLAUDE.md` § "Threat Model" — the voice-agent host is in the **AI-accessible tier**;
   it has **no prod access** and must never gain any. The voice agent's
   tool allowlist is **empty** and stays empty until an explicit scope
   review happens
-- Memory: `mini-llm-baseline.md` has the reboot-tested state of the
+- Memory: `voice-agent-llm-baseline.md` has the reboot-tested state of the
   ollama daemon, model benchmarks, and the audio-group gotcha
 
 ## Ground rules for changes
 
 1. **Keep the bash script bash.** If you need Python, that is a signal
-   you are crossing into X02 Phase 2 territory; stop and talk to Rob
+   you are crossing into X02 Phase 2 territory; stop and talk to the operator
    about whether this is still "incremental improvement" or "start the
    rewrite." Don't sneak a venv in under the bash-improvement banner.
 2. **Keep it local.** No new cloud dependencies. No new SaaS. The entire
-   point of this thing is that audio never leaves mini.
+   point of this thing is that audio never leaves the voice-agent host.
 3. **Don't add tool use without scope review.** See CLAUDE.md and X02
    §3.3. The tool allowlist is empty.
-4. **Signing:** commit edits to `servers/mini/bin/voice-agent` from dev,
-   not from mini. Mini is AI-accessible; dev is where the signing key
+4. **Signing:** commit edits to `servers/<voice-agent>/bin/voice-agent` from dev,
+   not from the voice-agent host. The voice-agent host is AI-accessible; dev is where the signing key
    lives. Deploy via `scp`.
-5. **Threat model carries over.** mini's ollama is on loopback, not LAN.
+5. **Threat model carries over.** the voice-agent ollama is on loopback, not LAN.
    Do not bind it to `0.0.0.0` for convenience.
 
 ## Open questions a new session should ask before coding
 
 - Which improvement area is the priority *right now*? (streaming?
   wake-word? interruption? prompt quality? metrics?)
-- Is the target still "bash script on mini driven by SSH," or has the
+- Is the target still "bash script on the voice-agent host driven by SSH," or has the
   remote-from-dev question (limitation #9) become urgent?
 - Is the speaker physically connected and audible? (If not, a lot of
   this work is academic until that is fixed.)
-- Does Rob have latency he can tolerate, or is it "tune it until it
+- Does the operator have latency he can tolerate, or is it "tune it until it
   feels good"? Without a number you will over-tune.

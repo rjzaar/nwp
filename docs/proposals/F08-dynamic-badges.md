@@ -42,7 +42,7 @@ This proposal adds **dynamic badges** using Shields.io that:
 
 **CI Strategy: GitLab-Primary**
 
-NWP GitLab (git.nwpcode.org) is the canonical repository and the only place where badge data is generated:
+NWP GitLab (<gitlab-host>) is the canonical repository and the only place where badge data is generated:
 
 | Repository | Role | Badge Generation |
 |------------|------|------------------|
@@ -121,10 +121,10 @@ The current system generates GitLab-native badges:
 
 ```bash
 # Pipeline badge
-https://git.nwpcode.org/sites/avc/badges/main/pipeline.svg
+https://<gitlab-host>/sites/avc/badges/main/pipeline.svg
 
 # Coverage badge
-https://git.nwpcode.org/sites/avc/badges/main/coverage.svg
+https://<gitlab-host>/sites/avc/badges/main/coverage.svg
 ```
 
 **Functions available:**
@@ -206,7 +206,7 @@ Currently, badges must be manually added to READMEs. CI should automate badge da
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│              NWP GITLAB CI (git.nwpcode.org)                     │
+│              NWP GITLAB CI (<gitlab-host>)                     │
 │                    [CANONICAL SOURCE]                            │
 └─────────────────────────────────┬───────────────────────────────┘
                                   │
@@ -455,12 +455,12 @@ For **both GitHub and NWP GitLab READMEs**:
 # NWP
 
 <!-- GitLab Native Badges -->
-[![Pipeline](https://git.nwpcode.org/nwp/nwp/badges/main/pipeline.svg)](https://git.nwpcode.org/nwp/nwp/-/pipelines)
-[![Coverage](https://git.nwpcode.org/nwp/nwp/badges/main/coverage.svg)](https://git.nwpcode.org/nwp/nwp/-/graphs/main/charts)
+[![Pipeline](https://<gitlab-host>/nwp/nwp/badges/main/pipeline.svg)](https://<gitlab-host>/nwp/nwp/-/pipelines)
+[![Coverage](https://<gitlab-host>/nwp/nwp/badges/main/coverage.svg)](https://<gitlab-host>/nwp/nwp/-/graphs/main/charts)
 
 <!-- Shields.io Dynamic Badges -->
-[![Verified](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/nwp/nwp/main/.badges.json&query=$.verification.message&label=verified&color=auto)](https://git.nwpcode.org/nwp/nwp/-/blob/main/.verification.yml)
-[![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/nwp/nwp/main/.badges.json&query=$.tests.message&label=tests&color=auto)](https://git.nwpcode.org/nwp/nwp/-/blob/main/scripts/commands/test-nwp.sh)
+[![Verified](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/nwp/nwp/main/.badges.json&query=$.verification.message&label=verified&color=auto)](https://<gitlab-host>/nwp/nwp/-/blob/main/.verification.yml)
+[![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/nwp/nwp/main/.badges.json&query=$.tests.message&label=tests&color=auto)](https://<gitlab-host>/nwp/nwp/-/blob/main/scripts/commands/test-nwp.sh)
 ```
 
 **Alternative: Static badges updated by CI** (if endpoint approach has CORS issues):
@@ -543,7 +543,7 @@ GitHub is a **mirror** of NWP GitLab. Badge data (`.badges.json`) is generated o
 
 The GitHub mirror will receive `.badges.json` when it syncs from GitLab, and Shields.io will read from:
 - `https://raw.githubusercontent.com/nwp/nwp/main/.badges.json` (GitHub raw)
-- `https://git.nwpcode.org/nwp/nwp/-/raw/main/.badges.json` (GitLab raw)
+- `https://<gitlab-host>/nwp/nwp/-/raw/main/.badges.json` (GitLab raw)
 
 Both URLs will serve the same data since GitHub mirrors GitLab.
 

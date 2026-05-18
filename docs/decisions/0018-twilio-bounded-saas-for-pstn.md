@@ -3,9 +3,9 @@
 **Status:** Accepted
 **Date:** 2026-04-08
 **Accepted:** 2026-04-08
-**Decision Makers:** Rob
+**Decision Makers:** Robert Karsten Zaar
 **Related Issues:** X02
-**References:** [ADR-0004](0004-two-tier-secrets-architecture.md), [ADR-0017](0017-distributed-build-deploy-pipeline.md), [CLAUDE.md § Threat Model](../../CLAUDE.md), [X02](../proposals/X02-local-voice-agent-on-mini.md)
+**References:** [ADR-0004](0004-two-tier-secrets-architecture.md), [ADR-0017](0017-distributed-build-deploy-pipeline.md), [CLAUDE.md § Threat Model](../../CLAUDE.md), [X02](../proposals/X02-local-voice-agent.md)
 
 ## Context
 
@@ -13,10 +13,10 @@ NWP's threat model (CLAUDE.md § Threat Model) assumes "third-party SaaS is
 distrusted by default. Prefer self-hosted, open-source alternatives even
 when they require more setup." Existing examples of this preference in
 practice: Headscale over Tailscale, Gotify over Pushover, GitLab
-self-hosted over GitLab.com, local LLM on mini, minisign over
+self-hosted over GitLab.com, local LLM on the voice-agent host, minisign over
 sigstore/cosign.
 
-Proposal X02 (Local Voice Agent on mini) wants to give mini an inbound
+Proposal X02 (Local Voice Agent) wants to give the voice-agent host an inbound
 phone channel. Unlike VPN, push notifications, source-code hosting,
 artifact signing, or LLM inference, **PSTN access has no self-hostable
 equivalent at any reasonable cost**. The public switched telephone network
@@ -36,7 +36,7 @@ carrier. There are four routes, and three of them are SaaS:
    dependency.
 4. **Don't have a phone number.** Foregoes the use case.
 
-Even a fully self-hosted Asterisk server on mini still requires a SIP
+Even a fully self-hosted Asterisk server on the voice-agent host still requires a SIP
 trunk to reach the PSTN, and that SIP trunk is a SaaS account at some
 other company's wholesale carrier.
 
@@ -75,7 +75,7 @@ Reject X02. Honor the threat model rule strictly.
   - No new SaaS dependency
   - Threat model stays pristine
 - **Cons:**
-  - X02 cannot exist; the "voice agent on mini" experiment is forgone
+  - X02 cannot exist; the "voice agent on the voice-agent host" experiment is forgone
   - The precedent becomes overly rigid: "if it touches any SaaS at all,
     it's forbidden" would eventually block other reasonable things that
     have no self-hosted equivalent (e.g. external DNS, CAs, OS package
@@ -115,7 +115,7 @@ Use Twilio (or equivalent) for the PSTN bridge, but:
 - Route all interaction with the provider through a single adapter
   (Pipecat's `TwilioFrameSerializer` in X02's case).
 - Keep STT, LLM, TTS, call logs, and conversation state strictly local
-  on mini.
+  on the voice-agent host.
 - Design and document a provider-swap procedure and verify it is a
   single-file code change.
 - Never let the telephony provider touch anything above the audio layer.
@@ -149,18 +149,18 @@ voice/SMS access. The bounding rules are:
    telephony provider's SDK or webhook formats. For X02 that is Pipecat's
    `TwilioFrameSerializer` — NWP only depends on Pipecat, which
    abstracts the provider. If a custom adapter is ever needed, it lives
-   in exactly one file under `servers/mini/voice-agent/` and does
+   in exactly one file under `servers/<voice-agent>/voice-agent/` and does
    nothing else.
 
 2. **Local processing above the audio layer.** STT, LLM inference, TTS
    synthesis, call logs, and any conversation state run on NWP-owned
-   infrastructure (mini for X02). The telephony provider sees audio
+   infrastructure (the voice-agent host for X02). The telephony provider sees audio
    bytes only — never transcripts, never model outputs, never user
    identity beyond the caller phone number the PSTN already reveals.
 
 3. **No webhook on the open internet.** The telephony provider reaches
    NWP through a Headscale-routed ingress on an NWP-controlled Linode
-   (the same `au-mel` Linode that hosts `git.nwpcode.org` post-F21
+   (the same au-mel Linode that hosts the `<gitlab-host>` instance post-F21
    Phase 4, or a sibling). Home-LAN infrastructure is never directly
    exposed to the telephony provider. No inbound port opens on the home
    router.
@@ -181,7 +181,7 @@ voice/SMS access. The bounding rules are:
    starts with no tools at all. A voice caller is an untrusted input
    source and a voice-accessible tool is reachable by anyone who dials
    the number. Any future tool addition requires an explicit scope
-   review. Nothing prod-adjacent is ever exposed — mini's existing
+   review. Nothing prod-adjacent is ever exposed — the voice-agent host's existing
    no-prod-access rule from [ADR-0017](0017-distributed-build-deploy-pipeline.md)
    is preserved unchanged.
 
@@ -242,7 +242,7 @@ Two reasons:
 2. **Local LLM is the load-bearing technical bet of this project.** If
    X02 sent audio to cloud STT and cloud LLM, it would be a different
    proposal — "put an AI voice agent behind a Twilio number." The point
-   of X02 is specifically to test "can mini's local stack do this." If
+   of X02 is specifically to test "can the voice-agent host's local stack do this." If
    we allow cloud STT/LLM here, the whole experiment is invalid.
 
 ### Why cap the blast radius with an empty tool allowlist?
@@ -262,7 +262,7 @@ boundary sits in NWP's threat model, and decisions of that shape belong
 in ADRs so the reasoning is preserved and future readers (including
 future AI agents) can audit it. CLAUDE.md will reference this ADR in a
 single sentence; future proposals touching SaaS boundaries will cite
-it; future-Rob in two years will be able to reconstruct why this
+it; the operator in two years will be able to reconstruct why this
 exception was made without re-deriving the argument.
 
 ### Why not require Option 2 (CLEC)?
@@ -277,7 +277,7 @@ is feasible; PSTN CLEC registration is not feasible. The rule is
 Because the bounding rules are specific to the "no self-hosted
 alternative exists at reasonable cost" test. Slack has Matrix. Discord
 has Matrix. Pushover has Gotify. Cloud LLMs have Ollama/local LLM on
-mini. Cloud STT has faster-whisper. Cloud TTS has Piper. Every
+the voice-agent host. Cloud STT has faster-whisper. Cloud TTS has Piper. Every
 plausible future "please add this SaaS" request has a self-hosted
 answer that X02 does not have. The single distinguishing property of
 PSTN is that the physical-network layer is carrier-owned. That is not a
@@ -304,7 +304,7 @@ property of any of the above, so the ADR does not extend to them.
 - First explicit third-party SaaS exception in NWP's core dependency
   tree beyond hosting and certs
 - Twilio can see audio content (TLS in transit; Twilio infrastructure
-  terminates the TLS and re-encrypts toward mini's ingress). Mitigation
+  terminates the TLS and re-encrypts toward the voice-agent ingress). Mitigation
   is "provider swap is a first-class requirement", not elimination.
 - Twilio can terminate service (account policy, billing, regulatory).
   Provider-swap procedure mitigates but does not eliminate this — a
@@ -320,7 +320,7 @@ property of any of the above, so the ADR does not extend to them.
 ### Neutral
 
 - [ADR-0017](0017-distributed-build-deploy-pipeline.md) (distributed
-  build/deploy) is unchanged — Twilio is not in the deploy path, mini
+  build/deploy) is unchanged — Twilio is not in the deploy path, the voice-agent host
   has no prod access, and the voice agent's tool allowlist is empty.
 - [ADR-0004](0004-two-tier-secrets-architecture.md) (two-tier secrets)
   gains one more infra-tier credential type without schema changes.
@@ -364,14 +364,14 @@ new credential tier or secrets schema change is needed.
 ### Provider swap runbook sketch
 
 The real runbook lives in X02 Phase 3 under
-`servers/mini/voice-agent/README.md`. Sketched here for completeness so
+`servers/<voice-agent>/voice-agent/README.md`. Sketched here for completeness so
 this ADR is self-contained:
 
 1. Identify the new provider's equivalent of Twilio Media Streams (e.g.
    Telnyx bidirectional audio streaming, SignalWire realtime voice,
    Bandwidth BXML Transcription).
 2. Replace the `TwilioFrameSerializer` import in
-   `servers/mini/voice-agent/pipeline.py` with the new provider's
+   `servers/<voice-agent>/voice-agent/pipeline.py` with the new provider's
    serializer class from Pipecat.
 3. Update `.secrets.yml` with the new provider's credentials (same
    infra-tier classification).
@@ -397,7 +397,7 @@ execution is optional and only happens if Twilio becomes untenable.
       a real call, zero cloud AI)
 - [ ] Provider-swap runbook drafted in X02 Phase 3
 - [ ] CLAUDE.md cross-reference added
-- [ ] No NWP-owned code outside `servers/mini/voice-agent/` imports
+- [ ] No NWP-owned code outside `servers/<voice-agent>/voice-agent/` imports
       Twilio-specific types or references Twilio SDK classes
 
 **Review question at 30 days:** has the single-adapter discipline held,
@@ -417,10 +417,10 @@ and possibly an explicit "rejected citations" log in this ADR.
   — Twilio credentials classified as infra tier under the existing
   schema. No new credential tier required.
 - **[ADR-0017: Distributed Build/Deploy Pipeline](0017-distributed-build-deploy-pipeline.md)**
-  — Orthogonal. Twilio is not in the deploy path; mini has no prod
+  — Orthogonal. Twilio is not in the deploy path; the voice-agent host has no prod
   access; the voice agent's tool allowlist is empty; ADR-0018 does not
   weaken any property ADR-0017 establishes.
-- **[X02: Local Voice Agent on mini](../proposals/X02-local-voice-agent-on-mini.md)**
+- **[X02: Local Voice Agent](../proposals/X02-local-voice-agent.md)**
   — The proposal this ADR unblocks and scopes.
 - **CLAUDE.md § Threat Model** — The standing order this ADR makes an
   explicit, bounded exception to.

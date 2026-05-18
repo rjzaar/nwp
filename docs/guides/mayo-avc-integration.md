@@ -5,7 +5,7 @@
 **Covers:** Conversations from 2026-04-08 to 2026-04-10
 
 This document records everything discussed, recommended, and achieved in
-integrating mayostudios.org into the NWP ecosystem as an AVC-enabled site.
+integrating the mayo site into the NWP ecosystem as an AVC-enabled site.
 It serves as the single reference for the entire effort -- what was done,
 what is pending, and what decisions were made along the way.
 
@@ -21,7 +21,7 @@ what is pending, and what decisions were made along the way.
 6. [F21 Pipeline (Build, Sign, Publish, Deploy)](#6-f21-pipeline-build-sign-publish-deploy)
 7. [Database Sanitizer](#7-database-sanitizer)
 8. [Blue-Green Deployment](#8-blue-green-deployment)
-9. [WireGuard Tunnel (mons to mayo1)](#9-wireguard-tunnel-mons-to-mayo1)
+9. [WireGuard Tunnel (verifier to mayo host)](#9-wireguard-tunnel-verifier-to-mayo-host)
 10. [Governance and Compliance Documents](#10-governance-and-compliance-documents)
 11. [Email Setup](#11-email-setup)
 12. [Error Reporting and Operability](#12-error-reporting-and-operability)
@@ -34,10 +34,9 @@ what is pending, and what decisions were made along the way.
 
 ## 1. Background
 
-**mayostudios.org** is the website for Mission Action Youth Organisation
-(MAYO), a Catholic youth group in Victoria, Australia. The site was
+The mayo site is the website for a youth ministry organisation. The site was
 running vanilla Open Social (community platform built on Drupal) on a
-Linode VPS (`mayo1`, IP 172.105.183.226, Sydney region).
+Linode VPS (`mayo` host, Sydney region).
 
 The integration effort has three goals:
 
@@ -74,35 +73,35 @@ with manual content re-entry** rather than automated migration scripts.
 - Site-level and environment-level `.nwp.yml` configs
 - DDEV development environment (`mayo-dev`) with AVC profile installed
 - Pre-AVC codebase archived (`sites/mayo/dev-pre-avc/`)
-- Composer project with `nwp/avc` package from `git.nwpcode.org` registry
-- Development environment replicated on metabox (met) via git
+- Composer project with `nwp/avc` package from `<gitlab-host>` registry
+- Development environment replicated on the `ci-host` via git
 - Server config (`servers/mayo1/.nwp-server.yml`)
 - `pl build mayo` command -- creates signed deployment tarballs
 - `pl publish mayo` command -- uploads to GitLab Packages
-- `mons-deploy.sh` -- end-to-end deploy orchestrator for mons
+- `verifier-deploy.sh` -- end-to-end deploy orchestrator for the verifier
 - `bluegreen-setup.sh` -- one-time blue-green slot layout creation
 - `bluegreen-swap.sh` -- atomic slot swap with auto-rollback
 - Database sanitizer (`lib/sanitizers/mayo.sh`) with correct AVC schema
-- WireGuard tunnel configs for mons-to-mayo1
-- Operations guide (`docs/guides/mons-operations.md`)
+- WireGuard tunnel configs for verifier-to-mayo-host
+- Operations guide (`docs/guides/verifier-operations.md`)
 - Production site integration guide (`docs/guides/production-site-integration.md`)
-- Technical implementation plan (`~/MAYO/mayo_technical_implementation_plan.md`)
-- Incorporation and governance guide (`~/MAYO/mayo_incorporation_and_governance.md`)
-- All scripts updated with multi-step error reporting and mons-say integration
+- Technical implementation plan (`$HOME/MAYO/mayo_technical_implementation_plan.md`)
+- Incorporation and governance guide (`$HOME/MAYO/mayo_incorporation_and_governance.md`)
+- All scripts updated with multi-step error reporting and verifier-say integration
 
 ### Pending (requires hands-on or external)
 
-- Install minisign on dev workstation (`sudo apt-get install -y minisign`)
+- Install minisign on authoring workstation (`sudo apt-get install -y minisign`)
 - Generate minisign keypair (`source lib/minisign.sh && minisign_generate_keys`)
 - Solo 2C+ hardware tokens (ordered, not yet arrived)
-- WireGuard key exchange between mons and mayo1 (requires physical access)
+- WireGuard key exchange between verifier and mayo host (requires physical access)
 - First actual build/publish/deploy cycle
-- Blue-green slot setup on mayo1 (one-time, requires SSH)
-- Rebinding mayo1 sshd to tunnel interface
-- safety@mayostudios.org email alias configuration on mayo1
+- Blue-green slot setup on mayo host (one-time, requires SSH)
+- Rebinding mayo-host sshd to tunnel interface
+- safety@<mayo-domain> email alias configuration on mayo host
 - Content migration (manual re-entry of ~35 users, 10 groups, 10 pages)
 - Policy page creation on the AVC site
-- saintschool.mayostudios.org (planned, not yet started)
+- Sister site on the same mayo host (planned, not yet started)
 
 ---
 
@@ -112,7 +111,7 @@ with manual content re-entry** rather than automated migration scripts.
 
 ```
 sites/mayo/
-  .nwp.yml              # recipe: avc, live: mayostudios.org, server: mayo1
+  .nwp.yml              # recipe: avc, live: <mayo-domain>, server: mayo1
   dev/                   # DDEV project "mayo-dev" with AVC installed
     .nwp.yml             # environment: development
     .ddev/config.yaml
@@ -133,17 +132,17 @@ sites/mayo/
 **`sites/mayo/.nwp.yml`:**
 - Schema version: 2
 - Recipe: `avc`
-- Live domain: `mayostudios.org`
+- Live domain: `<mayo-domain>`
 - Server: `mayo1`
-- Remote path: `/var/www/mayostudios.org`
+- Remote path: `/var/www/<mayo-domain>`
 
-### Second Machine Setup (met/metabox)
+### Second Machine Setup (ci-host)
 
-The development environment was replicated on metabox:
-1. `git clone` the mayo dev project to `~/nwp/sites/mayo/dev` on met
+The development environment was replicated on the `ci-host`:
+1. `git clone` the mayo dev project to `$HOME/nwp/sites/mayo/dev` on the ci-host
 2. Copy `auth.json` with GitLab PAT
 3. `ddev start && ddev composer install`
-4. Import database from dev workstation
+4. Import database from authoring workstation
 
 This enables development from any machine on the Headscale VPN overlay.
 
@@ -184,7 +183,7 @@ The AVC profile is installed via composer from the NWP GitLab registry:
     "repositories": [
         {
             "type": "composer",
-            "url": "https://git.nwpcode.org/api/v4/group/nwp/-/packages/composer/packages.json"
+            "url": "https://<gitlab-host>/api/v4/group/nwp/-/packages/composer/packages.json"
         }
     ]
 }
@@ -222,7 +221,7 @@ For the actual production migration (still pending):
 
 | Property | Value |
 |---------|-------|
-| IP | 172.105.183.226 |
+| IP | (in private instance addendum) |
 | SSH user | mayo |
 | SSH key | ~/.ssh/opencat |
 | Region | ap-southeast (Sydney) |
@@ -240,13 +239,14 @@ tunnel).
 
 | Site | Domain | Profile | Status |
 |------|--------|---------|--------|
-| mayo | mayostudios.org | avc | active |
-| saintschool | saintschool.mayostudios.org | social | planned |
+| mayo | <mayo-domain> | avc | active |
+| sister-site | <sister-site>.<mayo-domain> | social | planned |
 
 ### .gitignore Updated
 
 Added `!servers/mayo1/` and `!servers/mayo1/**` exceptions to track
-the mayo1 server configuration in git (same pattern as `servers/mini/`).
+the mayo-host server configuration in git (same pattern as the `ai-host`
+server entry).
 
 ---
 
@@ -259,7 +259,7 @@ from code change to live site.
 ### Pipeline Flow
 
 ```
-Developer (dev/met)              mons (offline laptop)         mayo1 (prod)
+Developer (authoring/ci-host)    verifier (offline machine)    mayo1 (prod)
     |                                |                            |
     |-- pl build mayo               |                            |
     |   (composer --no-dev,         |                            |
@@ -269,7 +269,7 @@ Developer (dev/met)              mons (offline laptop)         mayo1 (prod)
     |   (upload to GitLab           |                            |
     |    Packages registry)         |                            |
     |                               |                            |
-    |                               |-- mons-deploy.sh mayo VER  |
+    |                               |-- verifier-deploy.sh mayo VER
     |                               |   (download, verify sig,   |
     |                               |    upload to inactive slot,|
     |                               |    drush updb)             |
@@ -286,9 +286,9 @@ Developer (dev/met)              mons (offline laptop)         mayo1 (prod)
 
 | Script | Location | Runs On | Purpose |
 |--------|----------|---------|---------|
-| `pl build` | `scripts/commands/build.sh` | dev/met | Create signed tarball from dev environment |
-| `pl publish` | `scripts/commands/publish.sh` | dev/met | Upload tarball + signature to GitLab Packages |
-| `mons-deploy.sh` | `servers/mayo1/scripts/` | mons | Download, verify, deploy, swap |
+| `pl build` | `scripts/commands/build.sh` | authoring/ci-host | Create signed tarball from dev environment |
+| `pl publish` | `scripts/commands/publish.sh` | authoring/ci-host | Upload tarball + signature to GitLab Packages |
+| `verifier-deploy.sh` | `servers/mayo1/scripts/` | verifier | Download, verify, deploy, swap |
 | `bluegreen-setup.sh` | `servers/mayo1/scripts/` | mayo1 | One-time blue-green layout creation |
 | `bluegreen-swap.sh` | `servers/mayo1/scripts/` | mayo1 | Atomic slot swap with rollback |
 
@@ -298,17 +298,17 @@ Developer (dev/met)              mons (offline laptop)         mayo1 (prod)
 - **Key location:** `keys/minisign/nwp-deploy.{key,pub}`
 - **Library:** `lib/minisign.sh` (check, generate, sign, verify, key_id)
 - **Interim:** Software-only keys until Solo 2C+ hardware tokens arrive
-- **Key on mons:** Public key at `~/.config/nwp-deploy.pub`
+- **Key on the verifier:** Public key at `$HOME/.config/nwp-deploy.pub`
 
 ### GitLab Packages
 
 Tarballs are published to the GitLab generic packages registry:
 ```
-PUT https://git.nwpcode.org/api/v4/projects/mayo%2Fmayo/packages/generic/mayo-deploy/<version>/<filename>
+PUT https://<gitlab-host>/api/v4/projects/mayo%2Fmayo/packages/generic/mayo-deploy/<version>/<filename>
 ```
 
 Both the tarball (`.tar.gz`) and signature (`.tar.gz.minisig`) are
-uploaded. mons downloads both and verifies the signature before any
+uploaded. The verifier downloads both and verifies the signature before any
 deployment action.
 
 ---
@@ -355,7 +355,7 @@ The sanitizer covers:
 ### PII Sweep
 
 After sanitization, a regex sweep checks the output file for:
-- Email addresses (excluding `@example.com`, `@drupal.org`, `@nwpcode.org`, public contacts)
+- Email addresses (excluding `@example.com`, `@drupal.org`, `<example-prod-domain>`, public contacts)
 - Australian mobile numbers (`04XX XXX XXX`)
 - International AU numbers (`+61...`)
 - 1300/1800 numbers (excluding published safety numbers)
@@ -372,7 +372,7 @@ The sanitizer has 6 steps with `--step N` resume capability:
 6. PII sweep verification
 
 Each step has pause-between-steps prompts (skippable with `--no-pause`)
-and `report_error` output with mons-say commands for error reporting.
+and `report_error` output with verifier-say commands for error reporting.
 
 ### Key Design Decision
 
@@ -389,10 +389,10 @@ rewrite used the real schema to ensure completeness.
 ### Layout on mayo1
 
 ```
-/var/www/mayostudios.org         -> symlink to active slot
-/var/www/mayostudios.org-blue/   -> slot A (codebase)
-/var/www/mayostudios.org-green/  -> slot B (codebase)
-/var/www/mayostudios.org-shared/ -> shared state
+/var/www/<mayo-domain>         -> symlink to active slot
+/var/www/<mayo-domain>-blue/   -> slot A (codebase)
+/var/www/<mayo-domain>-green/  -> slot B (codebase)
+/var/www/<mayo-domain>-shared/ -> shared state
   files/                          (user uploads)
   private/                        (private file system)
   settings.local.php              (DB credentials)
@@ -416,35 +416,35 @@ differs.
 ### Rollback
 
 ```bash
-sudo ./bluegreen-swap.sh --site mayostudios.org --rollback -y
+sudo ./bluegreen-swap.sh --site <mayo-domain> --rollback -y
 ```
 
 The previous slot remains intact and can be swapped back at any time.
 
 ---
 
-## 9. WireGuard Tunnel (mons to mayo1)
+## 9. WireGuard Tunnel (verifier to mayo host)
 
 ### Design
 
-A dedicated one-to-one WireGuard tunnel between mons and mayo1. This is
-NOT part of the Headscale mesh. mons must never join Headscale.
+A dedicated one-to-one WireGuard tunnel between the verifier and mayo1. This is
+NOT part of the Headscale mesh. The verifier must never join Headscale.
 
 | Endpoint | Tunnel IP | Role |
 |----------|-----------|------|
-| mons | 10.99.0.1 | Deploy machine (initiates connections) |
+| verifier | 10.99.0.1 | Deploy machine (initiates connections) |
 | mayo1 | 10.99.0.2 | Production server (listens on 51820) |
 
 ### Configs Created
 
-- `servers/mayo1/wireguard/wg-mons.conf.mons` -- mons-side config
-- `servers/mayo1/wireguard/wg-mons.conf.mayo1` -- mayo1-side config
+- `servers/mayo1/wireguard/wg-verifier.conf.verifier` -- verifier-side config
+- `servers/mayo1/wireguard/wg-verifier.conf.mayo1` -- mayo1-side config
 - `servers/mayo1/wireguard/README.md` -- setup instructions, key
   generation, sshd rebinding, firewall rules, rollback via Lish
 
 ### Connectivity
 
-mons connects via phone hotspot or dedicated cellular modem. Never via
+The verifier connects via phone hotspot or dedicated cellular modem. Never via
 the home LAN, never via Headscale. The tunnel only activates during
 deploys.
 
@@ -461,11 +461,11 @@ deploys.
 ## 10. Governance and Compliance Documents
 
 Three major documents were created or updated based on the downloaded
-Mayo consultation materials (`~/MAYO/`):
+consultation materials (`$HOME/MAYO/`):
 
 ### Technical Implementation Plan
 
-`~/MAYO/mayo_technical_implementation_plan.md`
+`$HOME/MAYO/mayo_technical_implementation_plan.md`
 
 A committee-readable document covering 5 phases:
 1. Platform upgrade (Open Social to AVC)
@@ -480,9 +480,9 @@ procedure with rollback plan, cost summary ($0 additional), and timeline
 
 ### Incorporation and Governance Guide
 
-`~/MAYO/mayo_incorporation_and_governance.md`
+`$HOME/MAYO/mayo_incorporation_and_governance.md`
 
-Comprehensive guide for MAYO's incorporation under the Associations
+Comprehensive guide for the project's incorporation under the Associations
 Incorporation Reform Act 2012 (Vic):
 - Pre-incorporation checklist (people, name, rules, purposes)
 - Incorporation process (online application, $37.60)
@@ -518,7 +518,7 @@ From the consultation, these pages need to be created on the AVC site:
 | Child Safe Code of Conduct | Standard 7 |
 | Privacy Policy | Privacy Act 1988 |
 | Safety commitment statement | Homepage/prominent |
-| Safety contact (safety@mayostudios.org) | All policy pages + footer |
+| Safety contact (safety@<mayo-domain>) | All policy pages + footer |
 | External reporting numbers | All policy pages |
 | Acknowledgement of Country | Homepage/about |
 
@@ -537,7 +537,7 @@ From the consultation, these pages need to be created on the AVC site:
 
 ## 11. Email Setup
 
-A role-based email address `safety@mayostudios.org` was recommended to
+A role-based email address `safety@<mayo-domain>` was recommended to
 be configured on mayo1's postfix as a forwarding alias to the current
 Child Safety Officer's personal email.
 
@@ -554,11 +554,11 @@ add the alias to `/etc/aliases` or the virtual alias table.
 
 All deployment scripts were updated with structured error reporting:
 
-### mons-say Integration
+### verifier-say Integration
 
-Scripts running on mons or mayo1 produce formatted error messages with:
-1. A `mons-say` command for reporting through the GitLab issue queue
-2. A paste-ready block for the dev Claude session with:
+Scripts running on the verifier or mayo1 produce formatted error messages with:
+1. A `verifier-say` command for reporting through the GitLab issue queue
+2. A paste-ready block for the authoring AI session with:
    - Step number and description
    - Error details
    - Site and version info
@@ -566,7 +566,7 @@ Scripts running on mons or mayo1 produce formatted error messages with:
 
 ### Multi-Step with Resume
 
-**mons-deploy.sh** -- 5 steps, `--step N` resume:
+**verifier-deploy.sh** -- 5 steps, `--step N` resume:
 1. Pre-flight checks (minisign, token, pubkey, tunnel, SSH)
 2. Download tarball and signature from GitLab
 3. Verify minisign signature
@@ -586,8 +586,8 @@ Scripts running on mons or mayo1 produce formatted error messages with:
 
 **bluegreen-setup.sh** -- 6 steps, idempotent (fix and re-run)
 
-**build.sh** and **publish.sh** -- error context formatted for Claude
-paste (no mons-say needed since they run where Claude is available)
+**build.sh** and **publish.sh** -- error context formatted for authoring
+paste (no verifier-say needed since they run where the AI assistant is available)
 
 ### Error Message Format
 
@@ -598,15 +598,15 @@ paste (no mons-say needed since they run where Claude is available)
 
   Error: Extract to green slot on mayo1 failed
 
-  To report via mons-say:
-    mons-say "mons-deploy step 4 failed: Extract to green slot on mayo1 failed"
+  To report via verifier-say:
+    verifier-say "verifier-deploy step 4 failed: Extract to green slot on mayo1 failed"
 
-  Or paste this to the dev Claude session:
+  Or paste this to the authoring session:
     ---
-    The mons-deploy script failed at step 4.
+    The verifier-deploy script failed at step 4.
     Site: mayo, Version: abc123-20260410-120000
     Error: Extract to green slot on mayo1 failed
-    Resume with: ./mons-deploy.sh mayo abc123-20260410-120000 --step 4
+    Resume with: ./verifier-deploy.sh mayo abc123-20260410-120000 --step 4
     ---
 ================================================================
 ```
@@ -675,7 +675,7 @@ with a single install hook. It:
 | 10 flexible groups (Committee, Facilitators, Chaplaincy, Seniors, Youth, Events, Formation, Music, Outreach, Safeguarding) | Same |
 | Policies menu (3 public links in main menu) | Same |
 | Footer block with external reporting numbers (000, 13 12 78, 1300 78 29 78, Kids Helpline, Lifeline) | Same |
-| CSO email in page bodies (safety@mayostudios.org) | Same |
+| CSO email in page bodies (safety@<mayo-domain>) | Same |
 
 All content is keyed by stable UUID so re-runs of the hook do not create
 duplicates. Future edits to policy text ship as numbered
@@ -735,12 +735,12 @@ sites/default/files/css/          # aggregated CSS
 
 Even public profile photos should be scrubbed at pull time: the pulled
 `public://pictures/` tree is replaced with a directory of stock placeholder
-images keyed by `uid` before the dev workstation ever sees it.
+images keyed by `uid` before the authoring workstation ever sees it.
 
 > **Note:** The existing `pl live:snapshot` command in NWP is DB-focused. A
 > dedicated `pl live:files-sync` that honours the exclude list is planned
 > for F21 Phase 9. Until then, file sync for mayo is manual and must be
-> reviewed by a human before landing on a dev workstation.
+> reviewed by a human before landing on the authoring workstation.
 
 ### Layer 4 — Full Restore Path for Prod
 
@@ -758,32 +758,32 @@ WWCCs, and uploaded photos remain untouched throughout this cycle.
 
 1. Install minisign: `sudo apt-get install -y minisign`
 2. Generate minisign keypair: `source lib/minisign.sh && minisign_generate_keys`
-3. Copy public key to mons: `~/.config/nwp-deploy.pub`
-4. Create mons-bot deploy token on GitLab, save to mons: `~/.config/mayo-deploy.token`
-5. Generate WireGuard keys on mons and mayo1, exchange public keys
+3. Copy public key to the verifier: `$HOME/.config/nwp-deploy.pub`
+4. Create verifier-bot deploy token on GitLab, save to the verifier: `$HOME/.config/mayo-deploy.token`
+5. Generate WireGuard keys on the verifier and mayo1, exchange public keys
 6. Install WireGuard configs on both machines
 7. Run `bluegreen-setup.sh` on mayo1 (one-time)
-8. Test tunnel: `ping 10.99.0.2` from mons
-9. First `pl build mayo && pl publish mayo` from dev
-10. First `mons-deploy.sh mayo <version> --dry-run` from mons
+8. Test tunnel: `ping 10.99.0.2` from the verifier
+9. First `pl build mayo && pl publish mayo` from authoring
+10. First `verifier-deploy.sh mayo <version> --dry-run` from the verifier
 11. First real deploy
 
 ### Content and Compliance — DONE on dev (2026-04-11)
 
-12. ✅ `mayo_content` custom module created and enabled on dev.
-13. ✅ 3 public policy pages created (Child Safety, Code of Conduct, Privacy).
-14. ✅ 7 members-only policy pages created (CSO, Mandatory Reporting, Risk
+12. `mayo_content` custom module created and enabled on dev.
+13. 3 public policy pages created (Child Safety, Code of Conduct, Privacy).
+14. 7 members-only policy pages created (CSO, Mandatory Reporting, Risk
     Management, Online Chat CoC, Conflict Resolution, Photography Consent,
     Emergency Procedures).
-15. ✅ 3 information pages created (About, Mission, Join).
-16. ✅ 10 groups created (non-PII labels, flexible_group type).
-17. ✅ Policies menu populated with 3 public policy links in main menu.
-18. ✅ Footer block with external reporting numbers created.
-19. ✅ 35 sanitized users seeded on dev via `seed-sanitized-users.sh`.
+15. 3 information pages created (About, Mission, Join).
+16. 10 groups created (non-PII labels, flexible_group type).
+17. Policies menu populated with 3 public policy links in main menu.
+18. Footer block with external reporting numbers created.
+19. 35 sanitized users seeded on dev via `seed-sanitized-users.sh`.
 
 ### Content and Compliance — Still outstanding
 
-20. Configure `safety@mayostudios.org` email alias on mayo1 (requires SSH to
+20. Configure `safety@<mayo-domain>` email alias on mayo1 (requires SSH to
     prod, not a dev task).
 21. Replace CSO placeholder ("[To be appointed at incorporation]") with real
     name and phone after the inaugural general meeting — edit via Drupal UI
@@ -799,15 +799,15 @@ WWCCs, and uploaded photos remain untouched throughout this cycle.
 
 24. Re-enroll SSH keys as `ed25519-sk` with `verify-required` and `resident`
 25. Regenerate minisign keypair on hardware
-26. Update `~/.config/nwp-deploy.pub` on mons
+26. Update `$HOME/.config/nwp-deploy.pub` on the verifier
 27. Complete F21 Phase 5 (full hardware-rooted signing)
 
 ### Future
 
 28. Rebind mayo1 sshd to WireGuard tunnel interface only
-29. Set up saintschool.mayostudios.org on mayo1
+29. Set up the sister site on mayo1
 30. Systemd timer on mayo1 for automated sanitized fixture publication
-31. CI integration for mmt to consume fixtures in pipeline
+31. CI integration for the build tier to consume fixtures in pipeline
 
 ---
 
@@ -817,15 +817,15 @@ WWCCs, and uploaded photos remain untouched throughout this cycle.
 |----------|-----------|
 | **Fresh AVC install, not in-place profile swap** | Drupal doesn't support profile changes. Small content volume makes manual re-entry faster than migration scripts. |
 | **Software-only minisign keys (interim)** | Solo 2C+ ordered but not arrived. Architecture is identical; only key storage changes when hardware arrives. |
-| **Dedicated WireGuard tunnel, not Headscale** | mons must never join the Headscale mesh. One-to-one tunnel between mons and mayo1 only. |
-| **Blue-green slots with symlinks** | Simpler than the nwpcode server's existing 552-line bluegreen script. Shared directory for files, private, settings. Atomic swap via ln/mv. |
+| **Dedicated WireGuard tunnel, not Headscale** | The verifier must never join the Headscale mesh. One-to-one tunnel between the verifier and mayo1 only. |
+| **Blue-green slots with symlinks** | Simpler than the upstream server's existing 552-line bluegreen script. Shared directory for files, private, settings. Atomic swap via ln/mv. |
 | **Sanitizer runs on prod only** | Raw user data never leaves the production server. Sanitized output is what gets published. |
 | **Sanitizer table list from real schema** | First draft had incorrect tables. Rewritten after SHOW TABLES against the actual AVC database. |
 | **Content strategy: deployable custom module, not manual re-entry** | Policy pages and structural content are carried by the `mayo_content` module so the same content that exists on dev lands on prod via `drush updb` after every deploy. Prod never has to click through Drupal forms to build out the site. |
 | **Sanitized fixture users, not prod user migration** | Dev has 35 fake users with non-PII names/emails covering the role distribution. Prod keeps its own real users untouched. Dev never sees prod user data, but the site still feels realistic for testing. |
-| **File-system excludes for `private/`, `wwcc/`, `documents/`** | WWCC scans, incident reports, and medical forms must never reach a dev workstation. DB sanitizer is not enough — file sync must honour an explicit exclude list, and profile photos must be swapped for placeholders at pull time. |
+| **File-system excludes for `private/`, `wwcc/`, `documents/`** | WWCC scans, incident reports, and medical forms must never reach the authoring workstation. DB sanitizer is not enough — file sync must honour an explicit exclude list, and profile photos must be swapped for placeholders at pull time. |
 | **au-mel GitLab migration dropped** | Latency gain not worth the cost. GitLab stays on Newark alongside Headscale. |
-| **No AI on mons** | Inviolable. No Claude, no ollama, no LLM agents on the deploy machine. |
+| **No AI on the verifier** | Inviolable. No cloud AI, no ollama, no LLM agents on the deploy machine. |
 | **Webmaster role added to governance** | Was missing from the committee position guides despite having a community platform. |
 
 ---
@@ -836,7 +836,7 @@ WWCCs, and uploaded photos remain untouched throughout this cycle.
 
 | File | Purpose |
 |------|---------|
-| `sites/mayo/.nwp.yml` | Site config (recipe: avc, live: mayostudios.org) |
+| `sites/mayo/.nwp.yml` | Site config (recipe: avc, live: `<mayo-domain>`) |
 | `sites/mayo/dev/` | DDEV development environment with AVC |
 | `sites/mayo/dev/html/modules/custom/mayo_content/` | Deployable custom module: 13 pages, 10 groups, menu links, footer block |
 | `sites/mayo/dev/html/modules/custom/mayo_content/mayo_content.info.yml` | Module definition |
@@ -846,17 +846,17 @@ WWCCs, and uploaded photos remain untouched throughout this cycle.
 | `sites/mayo/stg/.nwp.yml` | Staging environment config |
 | `sites/mayo/scripts/seed-sanitized-users.sh` | Dev-only 35 sanitized user fixtures |
 | `servers/mayo1/.nwp-server.yml` | Server identity and deploy config |
-| `servers/mayo1/scripts/mons-deploy.sh` | mons deploy orchestrator |
+| `servers/mayo1/scripts/verifier-deploy.sh` | verifier deploy orchestrator |
 | `servers/mayo1/scripts/bluegreen-setup.sh` | One-time slot setup |
 | `servers/mayo1/scripts/bluegreen-swap.sh` | Atomic slot swap |
-| `servers/mayo1/wireguard/wg-mons.conf.mons` | mons-side WireGuard config |
-| `servers/mayo1/wireguard/wg-mons.conf.mayo1` | mayo1-side WireGuard config |
+| `servers/mayo1/wireguard/wg-verifier.conf.verifier` | verifier-side WireGuard config |
+| `servers/mayo1/wireguard/wg-verifier.conf.mayo1` | mayo1-side WireGuard config |
 | `servers/mayo1/wireguard/README.md` | WireGuard setup instructions |
 | `scripts/commands/build.sh` | `pl build` command |
 | `scripts/commands/publish.sh` | `pl publish` command |
 | `lib/minisign.sh` | minisign wrapper library |
 | `lib/sanitizers/mayo.sh` | Mayo database sanitizer |
-| `docs/guides/mons-operations.md` | mons operations guide |
+| `docs/guides/verifier-operations.md` | verifier operations guide |
 | `docs/guides/production-site-integration.md` | Production site migration guide |
 | `docs/proposals/F21-*.md` | Updated with Phase 5-8 completion notes |
 | `.gitignore` | Added `!servers/mayo1/` exceptions |
@@ -865,14 +865,14 @@ WWCCs, and uploaded photos remain untouched throughout this cycle.
 
 | File | Purpose |
 |------|---------|
-| `~/MAYO/mayo_technical_implementation_plan.md` | Committee-readable tech plan |
-| `~/MAYO/mayo_incorporation_and_governance.md` | Incorporation guide + position guides |
+| `$HOME/MAYO/mayo_technical_implementation_plan.md` | Committee-readable tech plan |
+| `$HOME/MAYO/mayo_incorporation_and_governance.md` | Incorporation guide + position guides |
 
 ### Related Existing Guides
 
 | File | Relevance |
 |------|-----------|
-| `docs/guides/mons-mayo-bootstrap.md` | Superseded by mons-operations.md |
+| `docs/guides/verifier-mayo-bootstrap.md` | Superseded by verifier-operations.md |
 | `docs/decisions/0017-distributed-build-deploy-pipeline.md` | F21 architecture (the "why") |
 | `docs/decisions/0018-twilio-bounded-saas-for-pstn.md` | Only SaaS exception (not mayo-related) |
 

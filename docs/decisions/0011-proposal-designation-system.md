@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-01-10 (formalized in roadmap reorganization)
-**Decision Makers:** Rob
+**Decision Makers:** Robert Karsten Zaar
 **Related Issues:** Roadmap organization, proposal lifecycle management
 **Related Commits:** 039dce6a (roadmap reorganization)
 **References:** [roadmap.md](../governance/roadmap.md), [milestones.md](../reports/milestones.md)

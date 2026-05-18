@@ -99,12 +99,12 @@ Scans all `.secrets.yml` files and reports data secrets:
 ```
 [INFO] Checking for data secrets in .secrets.yml files...
 
-[INFO] Checking: /home/rob/nwp/.secrets.yml
+[INFO] Checking: <nwp-root>/.secrets.yml
 [WARN]   Line 12: admin_password: "secretpass123"
 [WARN]   Line 18: ssh_key: ~/.ssh/prod_key
 [OK]   No data secrets found
 
-[INFO] Checking: /home/rob/nwp/sites/avc/.secrets.yml
+[INFO] Checking: <nwp-root>/sites/avc/.secrets.yml
 [WARN]   Line 8: production_database.password: "dbpass456"
 [OK]   No data secrets found
 
@@ -128,8 +128,8 @@ Shows what would be migrated without making changes:
 [INFO] Running in DRY RUN mode - no changes will be made
 
 [INFO] Migrating NWP root secrets...
-[INFO] [DRY RUN] Would analyze: /home/rob/nwp/.secrets.yml
-[INFO] Checking: /home/rob/nwp/.secrets.yml
+[INFO] [DRY RUN] Would analyze: <nwp-root>/.secrets.yml
+[INFO] Checking: <nwp-root>/.secrets.yml
 [WARN]   Line 12: admin_password: "secretpass123"
 [WARN]   Line 18: ssh_key: ~/.ssh/prod_key
 ```
@@ -153,16 +153,16 @@ Migrates the main `.secrets.yml`:
 
 [INFO]
 [INFO] MANUAL STEPS REQUIRED:
-[INFO] 1. Review /home/rob/nwp/.secrets.yml for data secrets
-[INFO] 2. Move the following to /home/rob/nwp/.secrets.data.yml:
+[INFO] 1. Review <nwp-root>/.secrets.yml for data secrets
+[INFO] 2. Move the following to <nwp-root>/.secrets.data.yml:
 [INFO]    - gitlab.admin.password
 [INFO]    - gitlab.server.ssh_key (if for prod access)
 [INFO]    - Any production database passwords
 [INFO]    - Any production SSH credentials
-[INFO] 3. Remove moved values from /home/rob/nwp/.secrets.yml
+[INFO] 3. Remove moved values from <nwp-root>/.secrets.yml
 [INFO] 4. Run: ./migrate-secrets.sh --check
 
-[INFO] Checking: /home/rob/nwp/.secrets.yml
+[INFO] Checking: <nwp-root>/.secrets.yml
 [WARN]   Line 12: admin_password: "secretpass123"
 ```
 
@@ -184,7 +184,7 @@ Migrates a site's secrets:
 [INFO] 1. Move production credentials to .secrets.data.yml
 [INFO] 2. Keep only dev/staging credentials in .secrets.yml
 
-[INFO] Checking: /home/rob/nwp/sites/avc/.secrets.yml
+[INFO] Checking: <nwp-root>/sites/avc/.secrets.yml
 [WARN]   Line 8: production_database.password: "dbpass456"
 ```
 
@@ -294,7 +294,7 @@ This is automatically configured by `pl setup` when selecting "Claude Code Secur
 Backups are created with timestamps:
 
 ```
-/home/rob/nwp/
+<nwp-root>/
   ├── .secrets.yml
   ├── .secrets.yml.bak.20260114_103045  # Backup
   ├── .secrets.data.yml                 # New file

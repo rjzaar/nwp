@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-01-09
-**Decision Makers:** Rob
+**Decision Makers:** the operator
 **Related Issues:** N/A (implements governance framework from ADR-0005)
 
 ## Context
@@ -137,7 +137,7 @@ The `pl contribute` command enforces:
                                         |
                     +-------------------+---------------------+
                     |         TIER 1: PRIMARY                 |
-                    |   git.nwpcode.org/nwp/nwp               |
+                    |   <gitlab-host>/nwp/nwp               |
                     |   (Rob's GitLab - auto-push to T0)      |
                     +-------------------+---------------------+
                                         |
@@ -155,7 +155,7 @@ The `pl contribute` command enforces:
 `.nwp-upstream.yml`:
 ```yaml
 upstream:
-  url: git@git.nwpcode.org:nwp/nwp.git
+  url: git@<gitlab-host>:nwp/nwp.git
   tier: 1
   maintainer: rob@nwpcode.org
 

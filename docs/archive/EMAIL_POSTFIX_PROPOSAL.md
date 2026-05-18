@@ -1038,9 +1038,9 @@ done
 ```bash
 # /etc/cron.daily/email-monitor
 #!/bin/bash
-/home/gitlab/email/test_email.sh > /var/log/email-monitor.log 2>&1
+$HOME/email/test_email.sh > /var/log/email-monitor.log 2>&1
 grep -q "MISSING\|STOPPED\|LISTED" /var/log/email-monitor.log && \
-  mail -s "Email Monitor Alert" admin@nwpcode.org < /var/log/email-monitor.log
+  mail -s "Email Monitor Alert" admin@<example-prod-domain> < /var/log/email-monitor.log
 ```
 
 **Success Criteria:**
@@ -1090,7 +1090,7 @@ echo "Update DNS and wait for propagation before removing old key"
 **Rotation Schedule:**
 ```bash
 # /etc/cron.monthly/dkim-rotate
-/home/gitlab/email/rotate_dkim.sh | mail -s "DKIM Key Rotation" admin@nwpcode.org
+$HOME/email/rotate_dkim.sh | mail -s "DKIM Key Rotation" admin@<example-prod-domain>
 ```
 
 **Success Criteria:**

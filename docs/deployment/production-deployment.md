@@ -234,7 +234,7 @@ ddev drush cex -y  # Export config
 **Step 2: Run Dry Run**
 
 ```bash
-cd /home/rob/nwp
+cd "$NWP_ROOT"
 ./stg2prod.sh --dry-run mysite
 ```
 
@@ -284,7 +284,7 @@ ddev drush cst
 ddev launch
 
 # 3. Deploy to production
-cd /home/rob/nwp
+cd "$NWP_ROOT"
 ./stg2prod.sh -y mysite
 ```
 

@@ -77,6 +77,17 @@ When you make changes to `example.nwp.yml` (adding new options, updating default
    - New defaults -> Offer to apply to existing sites
 3. Remember: You can READ and EDIT `nwp.yml` - just never COMMIT it
 
+### sites/tmp/ — NEVER CREATE
+
+Do **not** create `sites/tmp/` or any project beneath it (e.g. `sites/tmp/foo`, `sites/tmp/scratch`). This applies to DDEV projects, scratch directories, throwaway test fixtures, anything.
+
+- For test fixtures, use the existing test layout under `tests/` or `.verification-scenarios/`.
+- For ad-hoc scratch work, use `/tmp/` outside the repo, not `sites/tmp/`.
+- If a workflow seems to require `sites/tmp/`, the workflow is wrong — ask the user before improvising a new top-level path under `sites/`.
+- After any `ddev config` you initiate, you are responsible for `ddev delete --omit-snapshot --yes` on completion or failure, *before* the session ends — `ddev stop` alone leaves orphan Docker volumes and built images that survive session crashes.
+
+Why this rule exists: on 2026-01-16 an autonomous P50-verification session created `sites/tmp/malicious` and `sites/tmp/malicious1` as negative-test fixtures, then crashed (the 7.3 GB conversation log corrupted). The directories were eventually deleted but the orphan Docker volumes and images survived for four months before being noticed.
+
 ## Two-Tier Secrets Architecture
 
 NWP uses a two-tier secrets system that allows you to help with infrastructure while protecting user data:

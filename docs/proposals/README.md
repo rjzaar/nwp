@@ -114,7 +114,7 @@ See [milestones.md](../reports/milestones.md) for the full version history.
 
 ### In Progress (NWP core)
 
-- **F21** — Distributed Build/Deploy Pipeline (mmt build, mons deploy) — *implements [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md)*; Phase 3a ✅ complete (2026-04-08), Phase 10 dry-run skeleton landed (2026-04-08), phases 1–2, 4–9, 11–13 outstanding
+- **F21** — Distributed Build/Deploy Pipeline (build-tier build, verifier deploy) — *implements [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md)*; Phase 3a ✅ complete (2026-04-08), Phase 10 dry-run skeleton landed (2026-04-08), phases 1–2, 4–9, 11–13 outstanding
 
 ### Pending (see [roadmap.md](../governance/roadmap.md))
 

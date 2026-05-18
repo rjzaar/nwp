@@ -5,7 +5,7 @@
 
 **Status:** IMPLEMENTED (phases 1–8, 10) — Phase 9 extracted to a separate AVC project proposal
 **Created:** 2026-04-06
-**Author:** Rob Zaar, Claude Opus 4.6
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** High (architectural)
 **Depends On:** None
 **Breaking Changes:** Yes (managed via expand-migrate-contract)
@@ -63,7 +63,7 @@ NWP currently mixes core tooling and project-specific code in a single repo with
 2. **Sites are self-contained.** Move `sites/mt/` to another machine and it carries everything: code, modules, pipeline, backups, proposals, config.
 3. **Git is opt-in per site.** Production sites use independent repos; experimental sites rely on filesystem backups. No `.gitmodules`, no submodules.
 4. **NWP core is clean.** After separation, `~/nwp/` root contains only the tool: `pl`, `lib/`, `scripts/`, `recipes/`, `templates/`, `docs/`, `tests/`, config files.
-5. **Canonical remotes (when used).** Where a site has its own repo, the git.nwpcode.org remote holds the canonical version. Local copies can diverge. Nested module repos can have their own remotes.
+5. **Canonical remotes (when used).** Where a site has its own repo, the <gitlab-host> remote holds the canonical version. Local copies can diverge. Nested module repos can have their own remotes.
 
 ---
 
@@ -327,11 +327,11 @@ sites/avc/                              # Site git repo
 **How this works:**
 - Git naturally ignores subdirectories that have their own `.git/` when the parent `.gitignore` lists them
 - Each level can push/pull to its own remote independently
-- The remote (git.nwpcode.org) holds the **canonical** version
+- The remote (<gitlab-host>) holds the **canonical** version
 - Developers can modify their local copy; `git pull` from remote to get canonical updates
 - No submodules, no `.gitmodules` file, no `git submodule update` commands
 
-**Remote structure on git.nwpcode.org:**
+**Remote structure on <gitlab-host>:**
 ```
 nwp/nwp.git          # NWP core tool
 nwp/avc.git          # AVC site (production — existing repo)
@@ -403,7 +403,7 @@ project:
 
 live:
   enabled: true
-  domain: mt.nwpcode.org
+  domain: mt.example.org
   server_ip: 97.107.137.88
   linode_id: 12345
   remote_path: /var/www/mt
@@ -734,7 +734,7 @@ The full flow for the user's scenario — a site backed up under NWP 0.29 being 
 
 ```bash
 # 1. User installs new NWP
-git clone git@git.nwpcode.org:nwp/nwp.git ~/nwp
+git clone git@<gitlab-host>:nwp/nwp.git ~/nwp
 cd ~/nwp && ./setup.sh
 
 # 2. User restores an old site (from F18 restic backup or manual copy)
@@ -826,10 +826,10 @@ This workflow applies only to sites that have their own git repo (currently `avc
 **Initial setup (for a developer):**
 ```bash
 cd ~/nwp/sites
-git clone git@git.nwpcode.org:nwp/avc.git
+git clone git@<gitlab-host>:nwp/avc.git
 cd avc
 # If there are nested repos (e.g., the avc Drupal profile):
-git clone git@git.nwpcode.org:nwp/avc-profile.git html/profiles/custom/avc
+git clone git@<gitlab-host>:nwp/avc-profile.git html/profiles/custom/avc
 ```
 
 **Daily work:**
@@ -930,9 +930,9 @@ Servers get their own top-level directory (parallel to `sites/`), since they are
 │   │   ├── .git/                       # Own git repo
 │   │   ├── nginx/
 │   │   │   ├── sites-available/
-│   │   │   │   ├── mt.nwpcode.org.conf
-│   │   │   │   ├── ss.nwpcode.org.conf
-│   │   │   │   └── dir.nwpcode.org.conf
+│   │   │   │   ├── mt.example.org.conf
+│   │   │   │   ├── ss.example.org.conf
+│   │   │   │   └── dir.example.org.conf
 │   │   │   └── snippets/
 │   │   ├── email/                      # ← Moved from ~/nwp/email/
 │   │   │   ├── setup_email.sh
@@ -988,12 +988,12 @@ services:
 # Derived automatically by scanning sites/*/.nwp.yml
 # (or listed explicitly for documentation)
 hosted_sites:
-  - mt.nwpcode.org
-  - ss.nwpcode.org
-  - dir.nwpcode.org
-  - avc.nwpcode.org
-  - cathnet.nwpcode.org
-  - git.nwpcode.org
+  - mt.example.org
+  - ss.example.org
+  - dir.example.org
+  - avc.example.org
+  - cathnet.example.org
+  - <gitlab-host>
 ```
 
 ```yaml
@@ -1005,7 +1005,7 @@ nwp_version_updated: "0.30.0"
 server:
   name: george-dev
   ip: 192.0.2.50
-  domain: george.nwpcode.org
+  domain: george.example.org
   ssh_user: george
   ssh_key: ~/.ssh/nwp_george_dev
   linode_id: 67890
@@ -1040,7 +1040,7 @@ Each site's `.nwp.yml` names the server it deploys to:
 # ~/nwp/sites/mt/.nwp.yml
 live:
   server: nwpcode                       # Name matches servers/nwpcode/
-  domain: mt.nwpcode.org
+  domain: mt.example.org
   remote_path: /var/www/mt
 ```
 
@@ -1098,10 +1098,10 @@ pl server                               # "nwpcode (97.107.137.88)"
 # Which sites are on this server?
 pl server sites nwpcode                 # Scans sites/*/.nwp.yml for server: nwpcode
 # Output:
-#   mt.nwpcode.org    (sites/mt/)
-#   ss.nwpcode.org    (sites/ss/)
-#   dir.nwpcode.org   (sites/dir1/)
-#   avc.nwpcode.org   (sites/avc/)
+#   mt.example.org    (sites/mt/)
+#   ss.example.org    (sites/ss/)
+#   dir.example.org   (sites/dir1/)
+#   avc.example.org   (sites/avc/)
 ```
 
 ### 6.7 Migration: `linode.*` Section
@@ -1444,7 +1444,7 @@ backup_dir="$site_path/backups"
 7. Implement `pl server list/status/deploy` commands (Section 6.5)
 8. Update `stg2live.sh`, `live2stg.sh` to resolve server via `.nwp-server.yml`
 9. Update site `.nwp.yml` files: replace `server_ip` with `server: nwpcode`
-10. Init git repo, push to `git.nwpcode.org:nwp/nwpcode-server.git`
+10. Init git repo, push to `<gitlab-host>:nwp/nwpcode-server.git`
 
 ### Phase 9: AVC OAuth2 + Guild Sync — MOVED OUT OF F17
 

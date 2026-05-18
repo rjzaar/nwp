@@ -184,7 +184,7 @@ This recursive self-analysis suggests that documenting the process itself is con
 ## Methodology
 
 This analysis was created by:
-1. Reading `/home/rob/.claude/history.jsonl` (1,734 lines)
+1. Reading `$HOME/.claude/history.jsonl` (1,734 lines)
 2. Extracting user requests related to documentation
 3. Matching requests to git commits
 4. Identifying patterns and relationships
@@ -203,11 +203,11 @@ This analysis is itself an example of the meta-documentation pattern identified 
 
 ## Related Documents
 
-- `/home/rob/nwp/docs/governance/roadmap.md` - Current roadmap
-- `/home/rob/nwp/docs/reports/milestones.md` - Completed work
-- `/home/rob/nwp/docs/reports/documentation-audit-2026-01-12.md` - Jan 12 audit
-- `/home/rob/nwp/docs/security/design-decisions.md` - Why certain choices were made
-- `/home/rob/nwp/CLAUDE.md` - Standing orders that shaped documentation
+- `<nwp-root>/docs/governance/roadmap.md` - Current roadmap
+- `<nwp-root>/docs/reports/milestones.md` - Completed work
+- `<nwp-root>/docs/reports/documentation-audit-2026-01-12.md` - Jan 12 audit
+- `<nwp-root>/docs/security/design-decisions.md` - Why certain choices were made
+- `<nwp-root>/CLAUDE.md` - Standing orders that shaped documentation
 
 ## How to Use This Analysis
 

@@ -11,7 +11,7 @@
 ---
 
 **Created:** 2026-01-18
-**Author:** Rob, Claude Opus 4.5
+**Author:** Robert Karsten Zaar (with AI assistance)
 
 ## 1. Executive Summary (Historical)
 
@@ -217,7 +217,7 @@ Since this is a complete fresh start with no backward compatibility:
 ```bash
 # Clone the renamed repository
 cd ~
-git clone git@git.nwpcode.org:nwp/nwo.git
+git clone git@<gitlab-host>:nwp/nwo.git
 
 # Copy and configure
 cd ~/nwo

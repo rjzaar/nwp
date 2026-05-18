@@ -1,18 +1,18 @@
 # New Coder Onboarding Guide
 
-This guide walks you through setting up your own NWP development environment with a dedicated subdomain under nwpcode.org.
+This guide walks you through setting up your own NWP development environment with a dedicated subdomain under the operator's coder-onboarding domain (referred to as `<coder-domain>` below).
 
 ## Overview
 
 As a new coder, you'll receive:
 
-- **GitLab account** on the central NWP GitLab server (`git.nwpcode.org`)
-- A delegated subdomain: `<yourname>.nwpcode.org`
+- **GitLab account** on the central NWP GitLab server (`<gitlab-host>`)
+- A delegated subdomain: `<yourname>.<coder-domain>`
 - Full DNS control via your own Linode account
 - Ability to create services like:
-  - `git.<yourname>.nwpcode.org` - Your own GitLab instance (optional)
-  - `nwp.<yourname>.nwpcode.org` - Your NWP sites
-  - `*.yourname.nwpcode.org` - Any other subdomains you need
+  - `git.<yourname>.<coder-domain>` - Your own GitLab instance (optional)
+  - `nwp.<yourname>.<coder-domain>` - Your NWP sites
+  - `*.yourname.<coder-domain>` - Any other subdomains you need
 
 ## Quick Start (New!)
 
@@ -63,8 +63,8 @@ The NWP administrator will run:
 ```
 
 This automatically:
-1. Creates NS delegation for `<yourname>.nwpcode.org`
-2. Creates your GitLab account on `git.nwpcode.org`
+1. Creates NS delegation for `<yourname>.<coder-domain>`
+2. Creates your GitLab account on `<gitlab-host>`
 3. Adds you to the `nwp` group with Developer access
 
 You'll receive:
@@ -75,7 +75,7 @@ You'll receive:
 
 ## Step 1b: Log into GitLab
 
-1. Go to https://git.nwpcode.org
+1. Go to https://<gitlab-host>
 2. Log in with the credentials provided by the administrator
 3. **Change your password** immediately (Profile → Password)
 4. Add your SSH public key (Profile → SSH Keys), or send it to the lead developer for streamlined setup via `pl coder-setup add --ssh-key-file` (see P56 §7)
@@ -112,7 +112,7 @@ You now have access to the NWP codebase and can clone repositories.
 1. Go to [Domains](https://cloud.linode.com/domains) in Linode Cloud Manager
 2. Click **Create Domain**
 3. Fill in:
-   - **Domain:** `<yourname>.nwpcode.org`
+   - **Domain:** `<yourname>.<coder-domain>`
    - **SOA Email:** Your email address
    - **Insert Default Records:** No
 4. Click **Create Domain**
@@ -128,7 +128,7 @@ linode-cli configure
 
 # Create the domain
 linode-cli domains create \
-  --domain <yourname>.nwpcode.org \
+  --domain <yourname>.<coder-domain> \
   --type master \
   --soa_email your@email.com
 ```
@@ -180,7 +180,7 @@ Once your server has an IP address, add DNS records.
 
 ```bash
 # Get your domain ID
-DOMAIN_ID=$(linode-cli domains list --json | jq -r '.[] | select(.domain=="<yourname>.nwpcode.org") | .id')
+DOMAIN_ID=$(linode-cli domains list --json | jq -r '.[] | select(.domain=="<yourname>.<coder-domain>") | .id')
 
 # Add root A record
 linode-cli domains records-create $DOMAIN_ID \
@@ -201,17 +201,17 @@ Test that your DNS is working:
 
 ```bash
 # Check NS delegation (may take up to 48 hours)
-dig NS <yourname>.nwpcode.org
+dig NS <yourname>.<coder-domain>
 
 # Should return ns1-ns5.linode.com
 
 # Check A record
-dig A <yourname>.nwpcode.org
+dig A <yourname>.<coder-domain>
 
 # Should return your server IP
 
 # Check git subdomain
-dig A git.<yourname>.nwpcode.org
+dig A git.<yourname>.<coder-domain>
 
 # Should return your server IP
 ```
@@ -221,7 +221,7 @@ dig A git.<yourname>.nwpcode.org
 SSH into your new server:
 
 ```bash
-ssh root@<yourname>.nwpcode.org
+ssh root@<yourname>.<coder-domain>
 # Or use the IP if DNS hasn't propagated:
 ssh root@YOUR_SERVER_IP
 ```
@@ -300,7 +300,7 @@ The script will:
 
 [✓] Configured nwp.yml with identity: yourname
 [✓] Created .secrets.yml from example
-[✓] Configured git as: yourname <git@yourname.nwpcode.org>
+[✓] Configured git as: yourname <git@yourname.<coder-domain>>
 
 [i] Next steps shown below...
 ```
@@ -329,7 +329,7 @@ If you want your own GitLab instance:
 ./linode/gitlab/setup_gitlab_site.sh
 ```
 
-This will set up GitLab at `git.<yourname>.nwpcode.org`.
+This will set up GitLab at `git.<yourname>.<coder-domain>`.
 
 ## Step 10: Create Your First Site
 
@@ -344,7 +344,7 @@ This will set up GitLab at `git.<yourname>.nwpcode.org`.
 ./install.sh avc mysite
 ```
 
-Access your site at: `https://mysite.<yourname>.nwpcode.org`
+Access your site at: `https://mysite.<yourname>.<coder-domain>`
 
 ## SSL Certificates
 
@@ -352,10 +352,10 @@ Let's Encrypt certificates are automatically configured. If you need to manually
 
 ```bash
 # Single domain
-certbot --nginx -d <yourname>.nwpcode.org
+certbot --nginx -d <yourname>.<coder-domain>
 
 # Multiple domains
-certbot --nginx -d <yourname>.nwpcode.org -d git.<yourname>.nwpcode.org
+certbot --nginx -d <yourname>.<coder-domain> -d git.<yourname>.<coder-domain>
 ```
 
 ## Configuration Reference
@@ -372,7 +372,7 @@ linode:
 # GitLab (after installation)
 gitlab:
   server:
-    domain: git.<yourname>.nwpcode.org
+    domain: git.<yourname>.<coder-domain>
     ip: YOUR_SERVER_IP
   api_token: "gitlab_api_token"
 
@@ -380,14 +380,14 @@ gitlab:
 dev_defaults:
   drupal:
     admin_user: admin
-    admin_email: admin@<yourname>.nwpcode.org
+    admin_email: admin@<yourname>.<coder-domain>
 ```
 
 ### Your `nwp.yml`
 
 ```yaml
 settings:
-  url: <yourname>.nwpcode.org
+  url: <yourname>.<coder-domain>
 
   gitlab:
     default_group: nwp
@@ -407,7 +407,7 @@ sites:
 ### DNS Not Resolving
 
 1. Wait 24-48 hours for propagation
-2. Check NS delegation: `dig NS <yourname>.nwpcode.org`
+2. Check NS delegation: `dig NS <yourname>.<coder-domain>`
 3. Verify zone exists in Linode: `linode-cli domains list`
 4. Check records: `linode-cli domains records-list $DOMAIN_ID`
 
@@ -428,7 +428,7 @@ certbot certificates
 certbot renew
 
 # Debug issues
-certbot --nginx -d <yourname>.nwpcode.org --dry-run
+certbot --nginx -d <yourname>.<coder-domain> --dry-run
 ```
 
 ### GitLab Not Starting
@@ -517,9 +517,9 @@ Administrators can manage coders using the interactive TUI:
 
 | Service | URL |
 |---------|-----|
-| Your Domain | `<yourname>.nwpcode.org` |
-| GitLab | `git.<yourname>.nwpcode.org` |
-| Sites | `sitename.<yourname>.nwpcode.org` |
+| Your Domain | `<yourname>.<coder-domain>` |
+| GitLab | `git.<yourname>.<coder-domain>` |
+| Sites | `sitename.<yourname>.<coder-domain>` |
 
 | Command | Description |
 |---------|-------------|

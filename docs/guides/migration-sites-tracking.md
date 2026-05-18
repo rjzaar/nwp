@@ -66,7 +66,7 @@ For each existing site, add an entry under `sites:`:
 ```yaml
 sites:
   mysite:
-    directory: /home/user/nwp/mysite
+    directory: $HOME/nwp/mysite
     recipe: nwp
     environment: development
     created: 2024-12-29T00:00:00Z

@@ -163,8 +163,8 @@ yours under whatever terms you choose.
 
 ### Third-party content on Phase 1 sites
 Site content drawn from third-party sources (e.g. transcripts of
-copyrighted audio on `dir.nwpcode.org` and the planned
-`sd.nwpcode.org`) retains its upstream copyright posture. The
+copyrighted audio on `dir.<example-prod-domain>` and the planned
+`sd.<example-prod-domain>`) retains its upstream copyright posture. The
 project's CC0 dedication is bounded to material the author and
 CC0-bound contributors authored. See `~/central/copyright/03-THIRD-PARTY-CONTENT-REGISTER.md`
 for the full composite-copyright stack.
@@ -197,7 +197,7 @@ This dedication can be verified by:
 - Checking the project README.md licence section
 
 **Repository:** https://github.com/rjzaar/nwp (mirror); canonical at
-https://git.nwpcode.org/nwp/nwp
+https://<gitlab-host>/nwp/nwp
 **Primary Maintainer:** Robert Karsten Zaar
 **Contact:** rjzaar@gmail.com
 

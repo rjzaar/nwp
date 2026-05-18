@@ -87,7 +87,7 @@ Display SEO-related HTTP headers (X-Robots-Tag, Link, Cache-Control).
 ### Check Indexation Risk
 
 ```bash
-pl seo-check index-risk avc-stg.nwpcode.org
+pl seo-check index-risk avc-stg.<example-prod-domain>
 ```
 
 Simulates Google crawler checks to assess if site might be indexed.

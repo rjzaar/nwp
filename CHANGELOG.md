@@ -35,29 +35,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Unblocks F18** (Unified Backup Strategy) — backup paths now stable at `sites/<name>/backups/`.
 
 ### Added — F21 Phase 1: Headscale VPN on Newark (2026-04-09)
-- **Headscale 0.28.0** installed on Newark (97.107.137.88) alongside GitLab CE. ~14MB RAM, listening on 127.0.0.1:8085, proxied via GitLab's bundled nginx with TLS at `https://hs.nwpcode.org` (Let's Encrypt cert, auto-renewal).
-- **Three nodes enrolled** under `mmt` user: dev (100.64.0.1), mini (100.64.0.2), met (100.64.0.3). Direct LAN connections (<5ms), MagicDNS working (`met.nwp.headscale`, `mini.nwp.headscale`). Permissive ACL (only mmt nodes exist; mons never added).
-- **DNS**: `hs.nwpcode.org` A record created (Linode domain 3397355, record 43702870, TTL 300).
+- **Headscale 0.28.0** installed on Newark alongside GitLab CE. ~14MB RAM, listening on 127.0.0.1:8085, proxied via GitLab's bundled nginx with TLS at `https://hs.<example-prod-domain>` (Let's Encrypt cert, auto-renewal).
+- **Three nodes enrolled** under `build-tier` user: dev (100.64.0.1), ai-host (100.64.0.2), mirror-store (100.64.0.3). Direct LAN connections (<5ms), MagicDNS working (`mirror-store.nwp.headscale`, `ai-host.nwp.headscale`). Permissive ACL (only build-tier nodes exist; verifier never added).
+- **DNS**: `hs.<example-prod-domain>` A record created (Linode domain ID redacted, TTL 300).
 - **No new Linode** — au-mel migration dropped (latency gain not worth the cost). Headscale colocated on Newark. $0 incremental cost.
 - Replaces the interim SSH port-forward pattern documented in `docs/guides/local-llm.md`.
 
-### Added — F21 Phase 2: GitLab Runner on met (2026-04-09)
-- **GitLab Runner 18.10.1** installed on met (Ryzen 9 3900X), shell executor, registered as instance runner against `git.nwpcode.org`. Tags: `shell,linux,nwp,met`, `run_untagged=false`, concurrency 4.
-- **Pipeline working**: `verify-signature` (.pre stage, allow_failure placeholder), `lint:bash`, `test:unit`, `test:integration` all pass on met-shell runner. Commit signing deferred — placeholder stage will be enforced once signing is configured.
+### Added — F21 Phase 2: GitLab Runner on mirror-store (2026-04-09)
+- **GitLab Runner 18.10.1** installed on the mirror-store (workstation-class CPU box), shell executor, registered as instance runner against `<gitlab-host>`. Tags: `shell,linux,nwp,mirror-store`, `run_untagged=false`, concurrency 4.
+- **Pipeline working**: `verify-signature` (.pre stage, allow_failure placeholder), `lint:bash`, `test:unit`, `test:integration` all pass on mirror-store shell runner. Commit signing deferred — placeholder stage will be enforced once signing is configured.
 - **`.gitlab-ci.yml` fixes** — removed inline comments from script arrays (GitLab rejects them), removed `only:` from jobs using `rules:` (not allowed together), quoted strings containing colons to prevent YAML key-value parsing. Pre-existing CI validation errors fixed.
 
-### Added — F21 Phase 3a: mini as local-LLM agent (2026-04-08)
-- **`servers/mini/systemd/`** — systemd user units for mini's ollama stack now tracked in the nwp repo: `ollama.service` (the daemon, with `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_VULKAN=1`, `OLLAMA_CONTEXT_LENGTH=8192` pinned), `ollama-health.service` (oneshot health runner), `ollama-health.timer` (5-minute cadence, `Persistent=true`). `.gitignore` gets a targeted exception for `servers/mini/` since the default `servers/*` ignore rule keeps per-server infra out of the nwp repo — mini has no separate git repo of its own.
-- **`servers/mini/bin/ollama-health-check`** — local fast-path health script invoked by the timer. Five checks: systemd unit active, daemon reachable on loopback, loopback-only bind, both baseline models (`llama3.1:8b`, `qwen2.5-coder:14b`) registered. Runs without SSH so the timer doesn't self-loop.
-- **`scripts/commands/mini.sh` + `pl mini llm health`** — dev-side diagnostic (default / `--quick` / `--json` modes) that wraps the on-mini checks over SSH. Seven checks including end-to-end benchmark gates (chat ≥25 tok/s, coder ≥20 tok/s).
-- **`docs/guides/local-llm.md`** — documents the interim dev→mini SSH port-forward pattern (`ssh -N -L 11434:127.0.0.1:11434 mini`) for reaching mini's ollama from the dev workstation until F21 Phase 1 (Headscale overlay) lands. Explicitly marked interim.
+### Added — F21 Phase 3a: ai-host as local-LLM agent (2026-04-08)
+- **`servers/<ai-host>/systemd/`** — systemd user units for the ai-host's ollama stack now tracked in the nwp repo: `ollama.service` (the daemon, with `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_VULKAN=1`, `OLLAMA_CONTEXT_LENGTH=8192` pinned), `ollama-health.service` (oneshot health runner), `ollama-health.timer` (5-minute cadence, `Persistent=true`). `.gitignore` gets a targeted exception for `servers/<ai-host>/` since the default `servers/*` ignore rule keeps per-server infra out of the nwp repo — the ai-host has no separate git repo of its own.
+- **`servers/<ai-host>/bin/ollama-health-check`** — local fast-path health script invoked by the timer. Five checks: systemd unit active, daemon reachable on loopback, loopback-only bind, both baseline models (`llama3.1:8b`, `qwen2.5-coder:14b`) registered. Runs without SSH so the timer doesn't self-loop.
+- **`scripts/commands/ai-host.sh` + `pl ai-host llm health`** — dev-side diagnostic (default / `--quick` / `--json` modes) that wraps the on-ai-host checks over SSH. Seven checks including end-to-end benchmark gates (chat ≥25 tok/s, coder ≥20 tok/s).
+- **`docs/guides/local-llm.md`** — documents the interim dev→ai-host SSH port-forward pattern (`ssh -N -L 11434:127.0.0.1:11434 ai-host`) for reaching the ai-host's ollama from the dev workstation until F21 Phase 1 (Headscale overlay) lands. Explicitly marked interim.
 - **F21 proposal** — Phase 3a marked ✅ complete; Phase 10 annotated with the dry-run skeleton landing; overall F21 status changed from PROPOSED to IN PROGRESS.
 
-### Added — F21 Phase 10: mini-bot poller skeleton (2026-04-08, dry-run only)
-- **`servers/mini/bot/`** — inert skeleton for the future AI-fix loop: `poll.py` (~470 lines, stdlib + PyYAML), `config.yml` with **hard-default `dry_run: true`** and static `repos.allowlist: [mayo/mayo]`, operational `README.md` with a five-item checklist that must be satisfied before `dry_run: false` is ever considered.
-- **Prompt-injection defence** — untrusted issue bodies and repo file contents are wrapped in explicit `<<<ISSUE_BODY_BEGIN>>>` / `<<<REPO_FILES_BEGIN>>>` delimiters; the system prompt instructs the model to treat those blocks as untrusted data, not instructions. Backed by the dry-run default, the human-in-the-loop review rule, branch protection, the static allowlist, and mini's position in the AI-accessible tier (no prod credentials) per CLAUDE.md § Distributed Actor Glossary.
+### Added — F21 Phase 10: ai-host bot poller skeleton (2026-04-08, dry-run only)
+- **`servers/<ai-host>/bot/`** — inert skeleton for the future AI-fix loop: `poll.py` (~470 lines, stdlib + PyYAML), `config.yml` with **hard-default `dry_run: true`** and static `repos.allowlist: [mayo/mayo]`, operational `README.md` with a five-item checklist that must be satisfied before `dry_run: false` is ever considered.
+- **Prompt-injection defence** — untrusted issue bodies and repo file contents are wrapped in explicit `<<<ISSUE_BODY_BEGIN>>>` / `<<<REPO_FILES_BEGIN>>>` delimiters; the system prompt instructs the model to treat those blocks as untrusted data, not instructions. Backed by the dry-run default, the human-in-the-loop review rule, branch protection, the static allowlist, and the ai-host's position in the AI-accessible tier (no prod credentials) per CLAUDE.md § Distributed Actor Glossary.
 - **Diff extraction + framing tests** — 13 unit tests (`tests/test_diff_parser.py`) cover the fenced-diff parser (`diff`/`patch`/unlabelled fences, prose wrapping, empty-decline blocks), the unified-diff sanity checker, and the prompt-framing invariants. All run against static fixtures, no network. The poller hard-refuses to start if `dry_run: false` is set, because the live apply/branch/push/MR path is intentionally unimplemented.
-- Not yet wired to anything — the mayo issue channel that would feed it does not exist, and mons (Phase 5) does not exist to emit the signed crash reports that would be its real input.
+- Not yet wired to anything — the mayo issue channel that would feed it does not exist, and the verifier (Phase 5) does not exist to emit the signed crash reports that would be its real input.
 
 ---
 

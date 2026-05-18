@@ -1,7 +1,7 @@
 # NWP vs. the Catholic AI Landscape: Comprehensive Analysis
 
 **Date:** 12 March 2026
-**Author:** Rob Zaar, with Claude Opus 4.6
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Scope:** Deep comparison of all NWP subprojects against 75+ Catholic AI projects, open-source tools, and institutional initiatives
 
 ---
@@ -373,7 +373,7 @@ Launching 2026. First Catholic Small Language Model, trained on 80,000+ digitize
 
 5. **Run Phase 7B (answer bank).** Framework exists, code is written (`cathnet/src/nlp/answer_bank_builder.py`), just needs to be executed. ~$12.50 one-time for 1,600 pre-computed answers using Claude Batch API (50% discount). This makes CathNet Q&A feel instant.
 
-6. **Deploy cathnet.nwpcode.org.** DNS record + Drupal install + systemd service for the NLP microservice at localhost:8019. The data pipeline (Phases 1-7A) and Drupal module (12 routes, Cytoscape.js map, search UI) are production-ready.
+6. **Deploy cathnet.<example-prod-domain>.** DNS record + Drupal install + systemd service for the NLP microservice at localhost:8019. The data pipeline (Phases 1-7A) and Drupal module (12 routes, Cytoscape.js map, search UI) are production-ready.
 
 7. **Cross-validate concepts against Magisterium API.** Use Magisterium's Search API ($4/1K requests) to verify that CathNet's 1,514 extracted concepts align with the broader magisterial corpus of 28K+ documents.
 
@@ -463,7 +463,7 @@ Launching 2026. First Catholic Small Language Model, trained on 80,000+ digitize
 | Priority | Action | Effort | Cost |
 |----------|--------|--------|------|
 | 5 | Run CathNet Phase 7B answer bank | 30 min + API | $12.50 |
-| 6 | Deploy cathnet.nwpcode.org | 2-3 hours | $0 |
+| 6 | Deploy cathnet.<example-prod-domain> | 2-3 hours | $0 |
 | 7 | Test F20 Android APK on physical device | 1 hour | $0 |
 | 8 | Submit NWP components to awesome-catholic list | 30 min | $0 |
 | 9 | Apply to SENT Ventures | 1 hour | TBD |
@@ -527,7 +527,7 @@ Launching 2026. First Catholic Small Language Model, trained on 80,000+ digitize
 
 **Content Pipeline:**
 ```
-ss.nwpcode.org Moodle
+ss.<example-prod-domain> Moodle
     |
     v
 moodle_live_export.py --all  (SSH + PHP CLI, batch export)

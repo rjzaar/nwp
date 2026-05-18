@@ -2,7 +2,7 @@
 
 **Status:** IMPLEMENTED
 **Created:** 2026-01-18
-**Author:** Rob, Claude Opus 4.5
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** Medium
 **Depends On:** P50 (Unified Verification System)
 **Estimated Effort:** 4-5 weeks
@@ -389,7 +389,7 @@ $ pl install d mysite
 │  Bug report created: NWP-20260118-143052                                     │
 │                                                                              │
 │  Submit to GitLab? [y/N] y                                                   │
-│  ✓ Created: https://git.nwpcode.org/nwp/nwp/-/issues/47                      │
+│  ✓ Created: https://<gitlab-host>/nwp/nwp/-/issues/47                      │
 │                                                                              │
 │  View locally: pl verify issues --show NWP-20260118-143052                   │
 └──────────────────────────────────────────────────────────────────────────────┘
@@ -455,7 +455,7 @@ issue:
     shell: "bash 5.1.16"
     ddev_version: "1.23.0"
     docker_version: "24.0.7"
-    pwd: "/home/rob/nwp"
+    pwd: "<nwp-root>"
 
   # User description
   description: |
@@ -657,7 +657,7 @@ $ pl verify issues --resolve NWP-20260118-143052 --fix-commit abc123
 
 # Submit local issue to GitLab
 $ pl verify issues --submit NWP-20260118-143052
-✓ Created GitLab issue: https://git.nwpcode.org/nwp/nwp/-/issues/47
+✓ Created GitLab issue: https://<gitlab-host>/nwp/nwp/-/issues/47
 
 # List issues for a specific feature
 $ pl verify issues --feature backup
@@ -1289,8 +1289,8 @@ $ pl verify contributions
 
 | Role | Name | Date | Signature |
 |------|------|------|-----------|
-| Author | Claude Opus 4.5 | 2026-01-18 | |
-| Requirements | Rob | 2026-01-18 | |
+| Author | Robert Karsten Zaar (with AI assistance) | 2026-01-18 | |
+| Requirements | Robert Karsten Zaar | 2026-01-18 | |
 | Reviewer | | | |
 | Approver | | | |
 

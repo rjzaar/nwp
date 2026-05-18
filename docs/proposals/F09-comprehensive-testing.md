@@ -914,12 +914,12 @@ multi-coder-test:
     coder1:
       name: "nwp-test-coder1-${CI_JOB_ID}"
       type: g6-nanode-1
-      subdomain: coder1.test.nwpcode.org
+      subdomain: coder1.test.<example-prod-domain>
 
     coder2:
       name: "nwp-test-coder2-${CI_JOB_ID}"
       type: g6-nanode-1
-      subdomain: coder2.test.nwpcode.org
+      subdomain: coder2.test.<example-prod-domain>
 
   lifetime: 4 hours (auto-delete)
 

@@ -6,7 +6,7 @@
 **Date:** 2026-05-09
 **Decision Makers:** Robert Karsten Zaar
 **Related Issues:** Threat-model boundary at the verifier; AI-free build-time guarantee
-**References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md), [ADR-0019](0019-mons-always-on-hardware-rooted-keys.md), [ADR-0020](0020-tiered-architecture-model.md), [F32](../proposals/F32-tiered-architecture-implementation.md)
+**References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md), [ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md), [ADR-0020](0020-tiered-architecture-model.md), [F32](../proposals/F32-tiered-architecture-implementation.md)
 
 ## Context
 
@@ -55,7 +55,7 @@ Adopt **Option 3**: a separately-built `nwp-verifier` binary for the verifier ro
 - Build system (`Makefile` / `bin/build`) gains a `nwp-verifier` target alongside `nwp`.
 - `nwp-verifier` is built from the same source tree but with build tags / Cargo features / Bash script-includes that exclude the AI, CI, and SaaS modules.
 - `nwp-verifier` is reproducible: identical bit-for-bit output from a checkout + the official build environment. Build provenance recorded via SLSA-style attestations or equivalent.
-- `nwp-verifier` is signed by the operator's hardware-rooted key (per [ADR-0019](0019-mons-always-on-hardware-rooted-keys.md)) and distributed to the verifier through the same offline channel as production deploy artefacts.
+- `nwp-verifier` is signed by the operator's hardware-rooted key (per [ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md)) and distributed to the verifier through the same offline channel as production deploy artefacts.
 - The verifier host runs `nwp-verifier` only. `nwp` is not installed there.
 - All other roles (authoring, CI, AI, mirror-store, voice-agent, etc.) run `nwp`.
 - The shared CLI surface — `pl deploy`, `pl verify`, `pl status` — works on both binaries; commands not relevant to the verifier (`pl install`, `pl ai *`, `pl ci *`) are absent from `nwp-verifier` and produce a "command not available in nwp-verifier" error.
@@ -138,6 +138,6 @@ The signed-deploy chain in ADR-0017 already requires reproducible builds for pro
 ## Related Decisions
 
 - [ADR-0017](0017-distributed-build-deploy-pipeline.md) — establishes the verifier role and the AI-free constraint.
-- [ADR-0019](0019-mons-always-on-hardware-rooted-keys.md) — hardware-rooted keys on the verifier; signing covers `nwp-verifier` artefacts as well as deploy artefacts.
+- [ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md) — hardware-rooted keys on the verifier; signing covers `nwp-verifier` artefacts as well as deploy artefacts.
 - [ADR-0020](0020-tiered-architecture-model.md) — single-binary tier model; this ADR is the one justified exception.
 - [F32](../proposals/F32-tiered-architecture-implementation.md) Phase D — implements the build target and verifier installation procedure.

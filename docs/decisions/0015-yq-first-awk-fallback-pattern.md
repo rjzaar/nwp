@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-01-13 (v0.21.0 YAML consolidation)
-**Decision Makers:** Rob
+**Decision Makers:** Robert Karsten Zaar
 **Related Issues:** P17 (YAML Parser Consolidation), v0.21.0
 **Related Commits:** b2cc9033, cd67b9d3, a23b48d3
 **References:** [yaml-api.md](../reference/api/yaml-api.md), [yaml-write.sh](../../lib/yaml-write.sh)

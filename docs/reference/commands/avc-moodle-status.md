@@ -281,6 +281,6 @@ Performance:
 
 ## See Also
 
-- AVC-Moodle Integration Library: `/home/rob/nwp/lib/avc-moodle.sh`
+- AVC-Moodle Integration Library: `<nwp-root>/lib/avc-moodle.sh`
 - OAuth2 Monitoring Best Practices
 - Moodle Authentication Troubleshooting: https://docs.moodle.org/en/OAuth_2_authentication

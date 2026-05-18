@@ -42,10 +42,10 @@ This document outlines tests that require human verification because they cannot
 **Verify in GitLab UI:**
 ```bash
 # Check pipeline status
-open https://git.nwpcode.org/<project>/-/pipelines
+open https://<gitlab-host>/<project>/-/pipelines
 
 # Check environments
-open https://git.nwpcode.org/<project>/-/environments
+open https://<gitlab-host>/<project>/-/environments
 ```
 
 ### 1.2 GitHub Actions Workflow (.github/workflows/build-test-deploy.yml)
@@ -110,7 +110,7 @@ open https://github.com/<org>/<repo>/actions
 export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 
 # Test success
-./scripts/notify-slack.sh "Deployment successful" "success" "https://avc.nwpcode.org"
+./scripts/notify-slack.sh "Deployment successful" "success" "https://avc.<example-prod-domain>"
 
 # Test failure
 ./scripts/notify-slack.sh "Deployment failed: config import error" "error" ""
@@ -134,7 +134,7 @@ export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 export EMAIL_RECIPIENTS="dev@example.com,ops@example.com"
 
 # Test email
-./scripts/notify-email.sh "Build completed successfully" "success" "https://avc.nwpcode.org"
+./scripts/notify-email.sh "Build completed successfully" "success" "https://avc.<example-prod-domain>"
 ```
 
 **Visual verification:** Check email inbox for properly formatted messages.
@@ -154,7 +154,7 @@ export EMAIL_RECIPIENTS="dev@example.com,ops@example.com"
 export WEBHOOK_URL="https://requestbin.com/r/YOUR_BIN"
 
 # Test webhook
-./scripts/notify-webhook.sh "Deployment complete" "success" "https://avc.nwpcode.org"
+./scripts/notify-webhook.sh "Deployment complete" "success" "https://avc.<example-prod-domain>"
 
 # Verify JSON payload at webhook endpoint
 ```
@@ -175,7 +175,7 @@ export SLACK_WEBHOOK_URL="..."
 export EMAIL_RECIPIENTS="..."
 export WEBHOOK_URL="..."
 
-./scripts/notify.sh --event deploy_success --site avc --url "https://avc.nwpcode.org"
+./scripts/notify.sh --event deploy_success --site avc --url "https://avc.<example-prod-domain>"
 ```
 
 ---

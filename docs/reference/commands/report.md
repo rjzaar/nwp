@@ -128,7 +128,7 @@ Generated issues include:
 
 GitLab project URL is hardcoded to:
 ```
-https://git.nwpcode.org/root/nwp
+https://<gitlab-host>/root/nwp
 ```
 
 ## Exit Codes
@@ -150,5 +150,5 @@ The reporter detects non-interactive terminals and skips prompting, making it sa
 
 ## See Also
 
-- GitLab Issues: https://git.nwpcode.org/root/nwp/-/issues
+- GitLab Issues: https://<gitlab-host>/root/nwp/-/issues
 - Bug reporting guidelines

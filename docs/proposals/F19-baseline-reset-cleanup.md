@@ -12,7 +12,7 @@
 **Status:** IMPLEMENTED (Phases 1–7 complete; Phase 8 pending user confirmation)
 **Created:** 2026-04-07
 **Completed:** 2026-04-07 (cleanup phases)
-**Author:** Rob Zaar, Claude Opus 4.6
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** Critical (blocks fresh repo commit)
 **Depends On:** F23 phases 1-8 + 10 (complete)
 **Breaking Changes:** None (documentation, config, and cosmetic code only)

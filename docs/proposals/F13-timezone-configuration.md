@@ -2,7 +2,7 @@
 
 **Status:** IMPLEMENTED
 **Created:** 2026-01-31
-**Author:** Rob, Claude Opus 4.5
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** Medium
 **Depends On:** None
 **Breaking Changes:** No - additive feature

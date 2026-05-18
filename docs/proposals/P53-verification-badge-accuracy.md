@@ -4,7 +4,7 @@
 
 **Status:** IMPLEMENTED
 **Created:** 2026-01-18
-**Author:** Claude Opus 4.5 (research/design), Rob (requirements)
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** Medium
 **Estimated Effort:** 2-3 days
 **Breaking Changes:** Yes - `--ai` flag removed (use `--functional`)

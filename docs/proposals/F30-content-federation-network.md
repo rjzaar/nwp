@@ -3,8 +3,8 @@
 **Status:** PROPOSED
 **Created:** 2026-04-14
 **Updated:** 2026-04-19 (domain rename `nwprog.org` → `nwpcom.org`; avcommons.org reframed as federation member, not fork; Domain Rollout section added; canonical-library role clarified — `saint.school` is the canonical learning library, `nwpcom.org` is the canonical governance/community site, three federation members each have their own user base; Editorial Loop §6.6 added)
-**Author:** Rob Zaar, Claude Opus 4.6, Claude Opus 4.7
-**Priority:** High (architectural keystone connecting nwpcom.org, saint.school, mayostudios.org, avcommons.org, and future sites into a coherent content ecosystem)
+**Author:** Robert Karsten Zaar (with AI assistance)
+**Priority:** High (architectural keystone connecting nwpcom.org, saint.school, <mayo-domain>, avcommons.org, and future sites into a coherent content ecosystem)
 **Depends On:** F26 (OIDC — proposed; cross-domain SSO is load-bearing for the multi-site federation), F28 (unified pipeline — proposed), F29 (mayo integration — proposed), S05 (cognitive redesign — in progress), A02 (workflow system — complete), A09 (blueprints — complete)
 **Breaking Changes:** No (new infrastructure; existing sites gain new capabilities without disrupting current operation)
 
@@ -16,11 +16,11 @@
 
 NWP manages multiple sites that share overlapping audiences, overlapping content, and overlapping educational goals — but have no mechanism to share *course content* between them:
 
-1. **nwpcom.org** is the canonical **governance / community / authoring** site (production). It is the editorial home for Catholic formation content — where reviewers approve changes, where the editorial team coordinates, and where the canonical AVC member community lives. It has its own user base. Today it runs at `avc.nwpcode.org` (test) and is being migrated through `nwpcode.org` (intermediate test deployment) before the final cutover to `nwpcom.org` — see §16 Domain Rollout.
+1. **nwpcom.org** is the canonical **governance / community / authoring** site (production). It is the editorial home for Catholic formation content — where reviewers approve changes, where the editorial team coordinates, and where the canonical AVC member community lives. It has its own user base. Today it runs at `avc.<example-prod-domain>` (test) and is being migrated through `nwpcode.org` (intermediate test deployment) before the final cutover to `nwpcom.org` — see §16 Domain Rollout.
 
-2. **saint.school** is the **canonical learning library** (production) — the single user-facing source of truth for approved Catholic formation courses. It currently runs at `ss.nwpcode.org` pending the prod cutover. It hosts 49 Moodle courses with 217 learning points across 6 depth levels (S05), 584 quiz items (S06), and a spaced-repetition engine. The canonical *source store* for this library is `git.nwpcom.org:nwp/courses` (YAML); `saint.school` is the canonical *delivery instance* of that store. Today this content is locked to one Moodle instance and changes flow one-way from authors to delivery — there is no structured feedback loop and no mechanism for other sites to consume the same courses.
+2. **saint.school** is the **canonical learning library** (production) — the single user-facing source of truth for approved Catholic formation courses. It currently runs at `ss.<example-prod-domain>` pending the prod cutover. It hosts 49 Moodle courses with 217 learning points across 6 depth levels (S05), 584 quiz items (S06), and a spaced-repetition engine. The canonical *source store* for this library is `git.nwpcom.org:nwp/courses` (YAML); `saint.school` is the canonical *delivery instance* of that store. Today this content is locked to one Moodle instance and changes flow one-way from authors to delivery — there is no structured feedback loop and no mechanism for other sites to consume the same courses.
 
-3. **mayostudios.org** is a youth-focused AVC member site with **its own user base** (Catholic youth and youth ministers). It needs many of the same courses as saint.school, but adapted for a younger audience: simplified language, youth-relevant examples, a chooseable youth theme. Today there is no mechanism to create, track, or distribute youth adaptations of canonical content.
+3. **<mayo-domain>** is a youth-focused AVC member site with **its own user base** (Catholic youth and youth ministers). It needs many of the same courses as saint.school, but adapted for a younger audience: simplified language, youth-relevant examples, a chooseable youth theme. Today there is no mechanism to create, track, or distribute youth adaptations of canonical content.
 
 4. **avcommons.org** is a federated AVC member site with **its own user base** (AV members), NOT a code fork — see §1.3 and §6.5. It serves AV-specific courses via its own site manifest and an `avc` adaptation layer. The same pattern applies to any future AVC member site: select courses from the canonical library at saint.school, optionally adapt them via overlay, and contribute new courses back via merge request.
 
@@ -34,7 +34,7 @@ NWP manages multiple sites that share overlapping audiences, overlapping content
 
 A **Content Federation Network** that connects all NWP sites through a central git-based course registry with structured review, adaptation overlays, and per-site course selection:
 
-1. **Central course repository** (`git.nwpcode.org:nwp/courses`) stores all canonical course content in the proven S05 YAML format. Each learning point is a versioned, individually-reviewable entity.
+1. **Central course repository** (`<gitlab-host>:nwp/courses`) stores all canonical course content in the proven S05 YAML format. Each learning point is a versioned, individually-reviewable entity.
 
 2. **Three-stage review workflow** using AVC's existing `workflow_assignment` module: Writer's Check → Pedagogy Check → Theology Check. Each learning point passes all three stages independently before reaching Approved status.
 
@@ -44,13 +44,13 @@ A **Content Federation Network** that connects all NWP sites through a central g
 
 5. **Per-site course manifest** declares which courses each site uses and which adaptation layer to apply. The build pipeline reads the manifest and produces site-specific Moodle packages.
 
-6. **Git-based distribution** using the existing F28 signed-artifact pipeline. Approved content is tagged, signed, published to GitLab Packages, and deployed to each site's Moodle instance via mons.
+6. **Git-based distribution** using the existing F28 signed-artifact pipeline. Approved content is tagged, signed, published to GitLab Packages, and deployed to each site's Moodle instance via the verifier.
 
 7. **Contribution-back via merge requests.** Sites submit new courses or adaptations as MRs to the central repository. The same three-stage review applies.
 
 ### 1.3 Design Rationale
 
-- **Git, not MoodleNet.** MoodleNet uses ActivityPub for federated resource sharing between Moodle instances. It has no version control, no branching, no adaptation mechanism, no approval workflow, and is a third-party SaaS (violating the threat model). Git provides all of these and runs on git.nwpcode.org. MoodleNet can be an *additional* public distribution channel for approved content in future (see Phase 10), but the primary mechanism must be git.
+- **Git, not MoodleNet.** MoodleNet uses ActivityPub for federated resource sharing between Moodle instances. It has no version control, no branching, no adaptation mechanism, no approval workflow, and is a third-party SaaS (violating the threat model). Git provides all of these and runs on <gitlab-host>. MoodleNet can be an *additional* public distribution channel for approved content in future (see Phase 10), but the primary mechanism must be git.
 
 - **YAML, not Moodle backup (.mbz).** The S05 pipeline already proves that structured YAML is the right authoring format: human-readable, diffable, version-controllable, and convertible to both Moodle activities (via `populate_courses.php`) and Flutter app databases (via `build_seed_db.py`). Course backups (.mbz) are opaque, undiffable, and tied to specific Moodle versions.
 
@@ -68,7 +68,7 @@ A **Content Federation Network** that connects all NWP sites through a central g
 DRUPAL (AVC Profile — community/governance/identity)     CANONICAL LIBRARY
 ──────────────────────────────────────────────────       ─────────────────
 nwpcom.org      (governance + canonical community)        saint.school
-mayostudios.org (youth member, own user base)             (canonical Moodle
+<mayo-domain> (youth member, own user base)             (canonical Moodle
 avcommons.org   (AVC member,   own user base)              learning library)
         │                                                          ▲
         │  OIDC (F26 — multi-domain)                               │
@@ -77,7 +77,7 @@ avcommons.org   (AVC member,   own user base)              learning library)
    ┌────────────────────────────────────────────────┐              │
    │                                                │              │
    │           Optional per-member Moodle           │              │
-   │           (ss.mayostudios.org,                 │              │
+   │           (ss.<mayo-domain>,                 │              │
    │            ss.avcommons.org)                   │              │
    │           Pulls content from saint.school      │──────────────┘
    │           via the federation pipeline          │
@@ -88,7 +88,7 @@ avcommons.org   (AVC member,   own user base)              learning library)
                                    │  feedback → review → approve → deploy
                                    ▼
                         git.nwpcom.org           (prod, post-cutover)
-                        git.nwpcode.org          (test alias during migration)
+                        <gitlab-host>          (test alias during migration)
                         (GitLab: source of truth for nwp/courses)
                                    ▲
                                    │ verification tools + PD corpus
@@ -100,12 +100,12 @@ Roles:
 
 - **`saint.school`** is the **canonical learning library** — the single user-facing source of truth for approved courses. The canonical *source store* is `git.nwpcom.org:nwp/courses` (YAML); `saint.school` is the canonical *delivery instance*.
 - **`nwpcom.org`** is the canonical **governance / community / authoring** site — where the editorial team reviews feedback, approves changes, and the canonical AVC member community lives. It has its own user base.
-- **`mayostudios.org`** and **`avcommons.org`** are **federation members** — they run the same AVC code as `nwpcom.org` (no fork), each with their own user base (youth, AV members). They optionally run their own Moodle delivery (`ss.mayostudios.org`, `ss.avcommons.org`) which pulls content from the canonical library at `saint.school` via the federation pipeline. Members can also point users directly at `saint.school` if they don't need a member-specific Moodle delivery.
-- **`git.nwpcom.org`** is the distribution backbone for both code and content (today served by `git.nwpcode.org`, aliased through the cutover — see §16).
+- **`<mayo-domain>`** and **`avcommons.org`** are **federation members** — they run the same AVC code as `nwpcom.org` (no fork), each with their own user base (youth, AV members). They optionally run their own Moodle delivery (`ss.<mayo-domain>`, `ss.avcommons.org`) which pulls content from the canonical library at `saint.school` via the federation pipeline. Members can also point users directly at `saint.school` if they don't need a member-specific Moodle delivery.
+- **`git.nwpcom.org`** is the distribution backbone for both code and content (today served by `<gitlab-host>`, aliased through the cutover — see §16).
 - **OIDC** (F26) ties identities together across all sites, with member-site users able to sign in to `saint.school` using their member-site account. F26 must support multiple issuer/client domains.
 - **theocat** provides the theological verification layer feeding the three-stage review.
 
-Each Drupal AVC site (`nwpcom.org`, `mayostudios.org`, `avcommons.org`) is its **own community** with its **own user base**. They are not redirects to a central authority — they are independent member sites that participate in a shared canonical course library. The `saint.school` library is the shared substrate; community life is per-site.
+Each Drupal AVC site (`nwpcom.org`, `<mayo-domain>`, `avcommons.org`) is its **own community** with its **own user base**. They are not redirects to a central authority — they are independent member sites that participate in a shared canonical course library. The `saint.school` library is the shared substrate; community life is per-site.
 
 See §6.5 for federation-vs-fork, §6.6 for the editorial feedback loop, §3.4 for manifest examples.
 
@@ -134,9 +134,9 @@ See §6.5 for federation-vs-fork, §6.6 for the editorial feedback loop, §3.4 f
 | Pseudo-Catechism (S02) | `~/theocat/projects/pseudo-catechism/` | In progress (50 learning points, 2,840 CCC paragraphs mapped) |
 | copyright_scan.py (S07) | SS site tools | Complete (0 HIGH-risk across all content) |
 | F26 OIDC architecture | `docs/proposals/F26-avc-ss-oidc.md` | Designed (AVC issuer, Moodle client, UID lock, email hashing) |
-| F28 signed pipeline | `docs/proposals/F28-unified-pipeline.md` | Designed (mmt→Packages→mons→prod) |
+| F28 signed pipeline | `docs/proposals/F28-unified-pipeline.md` | Designed (build-tier→Packages→verifier→prod) |
 | F29 mayo integration | `docs/proposals/F29-mayo-comprehensive-integration.md` | Designed (10 phases, two-tier sanitization) |
-| git.nwpcode.org | Running | GitLab with Packages registry, CI/CD |
+| <gitlab-host> | Running | GitLab with Packages registry, CI/CD |
 
 ### 2.2 What Does NOT Exist
 
@@ -147,7 +147,7 @@ See §6.5 for federation-vs-fork, §6.6 for the editorial feedback loop, §3.4 f
 - Per-site course manifest format
 - Course build pipeline that reads manifests and merges overlays
 - Any mechanism for mayo/avcommons to select, adapt, or contribute courses
-- ss.mayostudios.org or ss.avcommons.org Moodle instances
+- ss.<mayo-domain> or ss.avcommons.org Moodle instances
 - Youth adaptation of any course content
 - avcommons.org AVC instance
 
@@ -287,8 +287,8 @@ courses:
 
 ```yaml
 # sites/mayo.yaml
-site: mayostudios.org
-moodle: ss.mayostudios.org
+site: <mayo-domain>
+moodle: ss.<mayo-domain>
 context: mayo                # A09 blueprint context
 adaptation: youth            # Default adaptation layer
 
@@ -515,7 +515,7 @@ Tagged release → signed package published to GitLab Packages
     ↓
 Each site's build pipeline reads its manifest, builds Moodle package
     ↓
-Deploy via F28 pipeline: mmt → Packages → mons → prod Moodle instances
+Deploy via F28 pipeline: build-tier → Packages → verifier → prod Moodle instances
 ```
 
 ### 6.2 Youth Adaptation (mayo → canonical)
@@ -525,7 +525,7 @@ Mayo youth author adapts canonical A1.01 for youth audience
     ↓
 Creates overlay YAML in adaptations/mayo/A1/learning-points/A1.01.yaml
     ↓
-Local three-stage review on mayostudios.org
+Local three-stage review on <mayo-domain>
   (Writer: youth-appropriate language?
    Pedagogy: suitable for 13-18 age range?
    Theology: doctrinal substance preserved?)
@@ -536,7 +536,7 @@ Canonical three-stage review (nwpcom.org reviewers)
     ↓
 Approved → merged to main → available to ALL sites as "youth" adaptation
     ↓
-Deployed to ss.mayostudios.org (default: youth)
+Deployed to ss.<mayo-domain> (default: youth)
 Also selectable on saint.school (user preference: "youth presentation")
 ```
 
@@ -545,9 +545,9 @@ Also selectable on saint.school (user preference: "youth presentation")
 ```
 Mayo develops new course MAYO-L01 "Youth Leadership"
     ↓
-Full three-stage review on mayostudios.org
+Full three-stage review on <mayo-domain>
     ↓
-Deployed locally to ss.mayostudios.org
+Deployed locally to ss.<mayo-domain>
     ↓
 Optionally: MR to nwp/courses for canonical adoption
     ↓
@@ -628,7 +628,7 @@ The editorial loop closes those signals back into the canonical content without 
    │  ─ Sign artifact (F28 minisign)                                  │
    │  ─ Publish to GitLab Packages                                    │
    └──────────────────────────────┬───────────────────────────────────┘
-                                  │  Signed package, mons verifies
+                                  │  Signed package, verifier checks signature
                                   ▼
    ┌──────────────────────────────────────────────────────────────────┐
    │  saint.school  (deploy)                                          │
@@ -645,7 +645,7 @@ The editorial loop closes those signals back into the canonical content without 
 - saint.school stays focused on learning delivery (Moodle, mod_depthcontent, spaced repetition)
 - The reviewer dashboard, role assignments, and approval audit trail all live in the Drupal/AVC stack on nwpcom.org
 
-**Member-site signals.** Editorial feedback can also originate from `mayostudios.org` (or `ss.mayostudios.org`), `avcommons.org` (or `ss.avcommons.org`), and any future member. These sites surface issues against either:
+**Member-site signals.** Editorial feedback can also originate from `<mayo-domain>` (or `ss.<mayo-domain>`), `avcommons.org` (or `ss.avcommons.org`), and any future member. These sites surface issues against either:
 - A canonical learning point → MR against `courses/<id>/learning-points/<lp>.yaml` (canonical review on nwpcom.org)
 - An adaptation overlay → MR against `adaptations/<member>/<id>/learning-points/<lp>.yaml` (adaptation review per §4.3, scoped to the member)
 
@@ -679,7 +679,7 @@ nwp/courses/
 │   ├── ...
 │   └── J7/                             # All 49 existing courses
 ├── adaptations/
-│   ├── mayo/                           # Youth adaptations (mayostudios.org)
+│   ├── mayo/                           # Youth adaptations (<mayo-domain>)
 │   │   ├── adaptation.yaml             # Layer metadata (name, audience, theme)
 │   │   ├── A1/
 │   │   │   └── learning-points/
@@ -748,7 +748,7 @@ nwp/courses/
 The output JSON format is identical to what `populate_courses.php` already consumes. This means:
 
 - **saint.school:** Existing S04/S05 pipeline works unchanged (it already reads JSON)
-- **ss.mayostudios.org:** Same pipeline, different input (merged canonical + youth overlay)
+- **ss.<mayo-domain>:** Same pipeline, different input (merged canonical + youth overlay)
 - **Faith Formation app (S01):** `build_seed_db.py` reads the same YAML, so the app can also offer adaptation selection
 
 ### 8.3 Signing and Distribution
@@ -762,7 +762,7 @@ minisign signs each package
     ↓
 Published to GitLab Packages: nwp/courses/<site>/<version>.tar.gz
     ↓
-mons downloads, verifies signature, deploys to site's Moodle
+verifier downloads, checks signature, deploys to site's Moodle
     ↓
 populate_courses.php imports into Moodle database
     ↓
@@ -779,7 +779,7 @@ Moodle cache purge
 
 **Autonomy level:** Fully autonomous (moving existing files + defining schemas).
 
-1.1. Create GitLab project `nwp/courses` at git.nwpcode.org.
+1.1. Create GitLab project `nwp/courses` at <gitlab-host>.
 
 1.2. Copy existing course YAML files:
 ```bash
@@ -1044,7 +1044,7 @@ CREATE TABLE depthcontent_adaptations (
 
 ---
 
-### Phase 8 — ss.mayostudios.org Moodle Bootstrap
+### Phase 8 — ss.<mayo-domain> Moodle Bootstrap
 
 **Goal:** Mayo's Moodle instance running with youth-adapted courses.
 
@@ -1055,16 +1055,16 @@ CREATE TABLE depthcontent_adaptations (
 - Configure `mod_depthcontent` with youth adaptation as default
 - Populate courses via `populate_courses.php` using mayo manifest
 
-8.2. OIDC: mayostudios.org as identity provider → ss.mayostudios.org as client (per F26/F29 architecture).
+8.2. OIDC: <mayo-domain> as identity provider → ss.<mayo-domain> as client (per F26/F29 architecture).
 
-8.3. Default adaptation preference set to "youth" for all users on ss.mayostudios.org.
+8.3. Default adaptation preference set to "youth" for all users on ss.<mayo-domain>.
 
 8.4. Mayo-originated courses (MAYO-L01, etc.) installed alongside canonical courses.
 
 **Verification:**
-- [ ] ss.mayostudios.org Moodle running with courses from mayo manifest
+- [ ] ss.<mayo-domain> Moodle running with courses from mayo manifest
 - [ ] Youth-adapted content displayed by default
-- [ ] OIDC login from mayostudios.org works
+- [ ] OIDC login from <mayo-domain> works
 - [ ] Mayo-originated courses present and functional
 
 ---
@@ -1079,7 +1079,7 @@ CREATE TABLE depthcontent_adaptations (
 
 9.2. Create Moodle instance at ss.avcommons.org.
 
-9.3. OIDC: avcommons.org as provider → ss.avcommons.org as client. Per F26, avcommons.org is a peer issuer alongside nwpcom.org and mayostudios.org — multi-domain OIDC support is the prerequisite.
+9.3. OIDC: avcommons.org as provider → ss.avcommons.org as client. Per F26, avcommons.org is a peer issuer alongside nwpcom.org and <mayo-domain> — multi-domain OIDC support is the prerequisite.
 
 9.4. Create `adaptations/avc/` layer in `nwp/courses` repo:
 - `adaptation.yaml` — layer metadata (name: avc, audience: "AV members", theme: avc)
@@ -1162,8 +1162,8 @@ CREATE TABLE depthcontent_adaptations (
 - [ ] Seamless fallback to canonical for non-overlaid points
 
 ### Phase 8
-- [ ] ss.mayostudios.org running with youth-adapted courses
-- [ ] OIDC from mayostudios.org working
+- [ ] ss.<mayo-domain> running with youth-adapted courses
+- [ ] OIDC from <mayo-domain> working
 - [ ] Default adaptation: youth
 
 ### Phase 9
@@ -1184,7 +1184,7 @@ CREATE TABLE depthcontent_adaptations (
 | Overlay format too rigid for complex adaptations | Medium | Start with 5-course pilot (Phase 6); iterate format based on real experience before scaling |
 | Youth rewrites inadvertently change doctrine | High | Theology check is mandatory for all adaptations; theocat report flags doctrinal divergence |
 | Canonical content changes break overlays | Medium | `base_version` field in overlays; build pipeline warns on mismatch; overlay author notified |
-| Three-stage review creates bottleneck (not enough reviewers) | Medium | Start with Rob as all three reviewers; expand as community grows; A06 tier gating applies (small sites need fewer stages) |
+| Three-stage review creates bottleneck (not enough reviewers) | Medium | Start with the operator as all three reviewers; expand as community grows; A06 tier gating applies (small sites need fewer stages) |
 | theocat corpus gaps produce false negatives (unverified quotes pass) | Low | Report clearly shows "not in corpus" vs "verified"; theology reviewer checks manually; corpus expanded over time |
 | Schema migration for existing 49 courses | Low | Phase 1 is a file move, not a rewrite; existing YAML format is the canonical format |
 | mod_depthcontent adaptation table adds complexity | Low | Single new table with simple schema; population handled by existing populate script |
@@ -1247,7 +1247,7 @@ Phases 1, 2, and 3 can run in parallel. Phase 4 requires 1 and 3. Phases 8, 9, a
 | **A02** (Workflow System) | **Extended.** Workflow_assignment module powers the three-stage review. A02's versioning and re-edit support apply to learning point content entities. |
 | **A09** (Blueprints) | **Leveraged.** Blueprint contexts (mayo, parish, community) determine which courses a site selects. The `avc_moodle` specialist module handles course sync. |
 | **F26** (OIDC) | **Prerequisite.** Cross-site SSO enables users to access courses on any Moodle instance with a single account from their AVC site. |
-| **F28** (Unified Pipeline) | **Prerequisite.** Signed-artifact distribution pipeline delivers course packages to production Moodle instances via mons. |
+| **F28** (Unified Pipeline) | **Prerequisite.** Signed-artifact distribution pipeline delivers course packages to production Moodle instances via the verifier. |
 | **F29** (Mayo Integration) | **Coordinated.** F29 Phase 6 (saintschool bootstrap) provides the Moodle instance that F30 Phase 8 populates with courses. |
 | **F21** (Distributed Pipeline) | **Infrastructure.** Build/sign/deploy infrastructure that F30 uses for course package distribution. |
 | **A03** (OAuth2 + Coders Guild Sync) | **Parallel.** A03 handles developer identity; F30 handles content identity. Both use AVC as the identity provider. |
@@ -1263,55 +1263,55 @@ This proposal is done when:
 3. `theocat review` produces accurate reports and runs in CI.
 4. At least 5 courses have approved youth adaptations.
 5. A user on saint.school can switch between canonical and youth presentation.
-6. ss.mayostudios.org serves youth-adapted courses with OIDC from mayostudios.org.
+6. ss.<mayo-domain> serves youth-adapted courses with OIDC from <mayo-domain>.
 7. The build pipeline produces correct, signed course packages for each site from their manifests.
 8. A new site (avcommons.org or other) can be bootstrapped by creating a manifest and running the build pipeline — no bespoke course setup required.
-9. The Domain Rollout (§16) reaches Phase 2 — `nwpcom.org` and `saint.school` serving prod with multi-domain OIDC operational; `avc.nwpcode.org` retired.
+9. The Domain Rollout (§16) reaches Phase 2 — `nwpcom.org` and `saint.school` serving prod with multi-domain OIDC operational; `avc.<example-prod-domain>` retired.
 
 ---
 
 ## 16. Domain Rollout
 
-The federation operates across multiple domains that are migrating from test (`*.nwpcode.org`) to prod (`*.nwpcom.org`, `saint.school`, `avcommons.org`, `mayostudios.org`). This section captures the domain-state machine so that manifest paths, OIDC client configs, and signed-package distribution endpoints stay coherent across the cutover.
+The federation operates across multiple domains that are migrating from test (`*.nwpcode.org`) to prod (`*.nwpcom.org`, `saint.school`, `avcommons.org`, `<mayo-domain>`). This section captures the domain-state machine so that manifest paths, OIDC client configs, and signed-package distribution endpoints stay coherent across the cutover.
 
 ### 16.1 Domain inventory
 
 | Role | Test (today) | Intermediate test | Production (target) |
 |---|---|---|---|
-| Canonical AVC site | `avc.nwpcode.org` | `nwpcode.org` | **`nwpcom.org`** |
-| Canonical Moodle | `ss.nwpcode.org` | `ss.nwpcode.org` | **`saint.school`** (alias `saintschool.org`) |
-| Code distribution | `git.nwpcode.org` | `git.nwpcode.org` | **`git.nwpcom.org`** |
-| Youth member AVC | n/a | `mayostudios.org` | `mayostudios.org` |
-| Youth member Moodle | n/a | `ss.mayostudios.org` | `ss.mayostudios.org` |
+| Canonical AVC site | `avc.<example-prod-domain>` | `nwpcode.org` | **`nwpcom.org`** |
+| Canonical Moodle | `ss.<example-prod-domain>` | `ss.<example-prod-domain>` | **`saint.school`** (alias `saintschool.org`) |
+| Code distribution | `<gitlab-host>` | `<gitlab-host>` | **`git.nwpcom.org`** |
+| Youth member AVC | n/a | `<mayo-domain>` | `<mayo-domain>` |
+| Youth member Moodle | n/a | `ss.<mayo-domain>` | `ss.<mayo-domain>` |
 | AVC member site | n/a | `avcommons.org` | `avcommons.org` |
 | AVC member Moodle | n/a | `ss.avcommons.org` | `ss.avcommons.org` |
 
-Member domains (`mayostudios.org`, `avcommons.org`) are stable across the cutover — only the canonical AVC + Moodle + git domains change.
+Member domains (`<mayo-domain>`, `avcommons.org`) are stable across the cutover — only the canonical AVC + Moodle + git domains change.
 
 ### 16.2 Phased cutover
 
-**Phase 0 — Today (test mapping).** `avc.nwpcode.org` is the live AVC test site, `ss.nwpcode.org` is its Moodle pair, `git.nwpcode.org` is the code/content host. F30 development happens against these domains under an explicit mapping:
+**Phase 0 — Today (test mapping).** `avc.<example-prod-domain>` is the live AVC test site, `ss.<example-prod-domain>` is its Moodle pair, `<gitlab-host>` is the code/content host. F30 development happens against these domains under an explicit mapping:
 
 | Logical role (production) | Acted by (today, test) |
 |---|---|
-| `nwpcom.org` — canonical AVC + governance | `nwpcode.org` (Phase 1+) / `avc.nwpcode.org` (today) |
-| `saint.school` — canonical Moodle library | `ss.nwpcode.org` |
-| `git.nwpcom.org` — code + course registry | `git.nwpcode.org` |
+| `nwpcom.org` — canonical AVC + governance | `nwpcode.org` (Phase 1+) / `avc.<example-prod-domain>` (today) |
+| `saint.school` — canonical Moodle library | `ss.<example-prod-domain>` |
+| `git.nwpcom.org` — code + course registry | `<gitlab-host>` |
 
 Reviewers, the editorial loop (§6.6), and the build pipeline all run against this mapping. F30 manifests, OIDC client configs, and signed-package URIs use the test domains during Phase 0–1 and only swap to production names at Phase 2 cutover. Anywhere this proposal says "nwpcom.org" or "saint.school" without qualification, read it as "the production target — currently acted by the test domain in the table above."
 
-**Phase 1 — Test consolidation.** Move the AVC test site from `avc.nwpcode.org` to `nwpcode.org` (root domain). `ss.nwpcode.org` stays. `git.nwpcode.org` stays. Goal: prove the canonical AVC profile on a clean root domain before the prod cut. F30 manifests still reference `nwpcode.org` / `saint.school` (logical names) — only DNS/server config changes.
+**Phase 1 — Test consolidation.** Move the AVC test site from `avc.<example-prod-domain>` to `nwpcode.org` (root domain). `ss.<example-prod-domain>` stays. `<gitlab-host>` stays. Goal: prove the canonical AVC profile on a clean root domain before the prod cut. F30 manifests still reference `nwpcode.org` / `saint.school` (logical names) — only DNS/server config changes.
 
-**Phase 2 — Prod cutover.** Stand up `nwpcom.org`, `saint.school` (with `saintschool.org` redirect), `git.nwpcom.org`. Migrate the AVC instance, Moodle instance, and GitLab project namespace. `git.nwpcode.org` is aliased to `git.nwpcom.org` for a transition window so existing remotes/clones keep working; new clones use `git.nwpcom.org`. Update OIDC issuer URLs (F26) for all member sites. Retire `avc.nwpcode.org`.
+**Phase 2 — Prod cutover.** Stand up `nwpcom.org`, `saint.school` (with `saintschool.org` redirect), `git.nwpcom.org`. Migrate the AVC instance, Moodle instance, and GitLab project namespace. `<gitlab-host>` is aliased to `git.nwpcom.org` for a transition window so existing remotes/clones keep working; new clones use `git.nwpcom.org`. Update OIDC issuer URLs (F26) for all member sites. Retire `avc.<example-prod-domain>`.
 
-**Phase 3 — Member onboarding.** Stand up `avcommons.org` + `ss.avcommons.org` per Phase 9. Mayo (`mayostudios.org` + `ss.mayostudios.org`) joins per F29. Both register as OIDC clients of `nwpcom.org` and as content consumers of `nwp/courses` on `git.nwpcom.org`.
+**Phase 3 — Member onboarding.** Stand up `avcommons.org` + `ss.avcommons.org` per Phase 9. Mayo (`<mayo-domain>` + `ss.<mayo-domain>`) joins per F29. Both register as OIDC clients of `nwpcom.org` and as content consumers of `nwp/courses` on `git.nwpcom.org`.
 
 ### 16.3 Manifest / config naming convention
 
 F30 references **logical site names** (`nwpcom`, `saint.school`, `avcommons`, `mayo`) rather than current physical hostnames. This means:
 
-- `sites/nwpcom.yaml` is the canonical manifest, not `sites/avc.nwpcode.org.yaml` — the manifest survives the cutover unchanged.
-- Build commands use logical names: `build-site-courses.sh --site nwpcom`, not `--site avc.nwpcode.org`.
+- `sites/nwpcom.yaml` is the canonical manifest, not `sites/avc.<example-prod-domain>.yaml` — the manifest survives the cutover unchanged.
+- Build commands use logical names: `build-site-courses.sh --site nwpcom`, not `--site avc.<example-prod-domain>`.
 - Physical hostnames live in deployment config (DNS, Nginx, OIDC client URIs), not in F30 manifests.
 
 This decoupling lets the test→prod cutover be a deployment change, not a content-pipeline change.
@@ -1319,10 +1319,10 @@ This decoupling lets the test→prod cutover be a deployment change, not a conte
 ### 16.4 Cross-cutting effects
 
 - **F26 (OIDC):** Multi-domain OIDC is required for federation. F26 must support multiple issuer/client domains and survive the `nwpcode.org` → `nwpcom.org` issuer rename. Every OIDC client config (Moodle plugin, member-site auth) needs a config update at Phase 2.
-- **F28 (signed pipeline):** Package distribution endpoint changes from `git.nwpcode.org` (Packages) to `git.nwpcom.org` at Phase 2. Existing signatures stay valid (they sign the artifact, not the URL); only the download URL changes.
-- **F29 (mayo integration):** Mayo's `ss.mayostudios.org` consumes course packages from `git.nwp{code,com}.org` per the active phase. Mayo's OIDC client for `mayostudios.org` ↔ `ss.mayostudios.org` is internal to mayo and unaffected by the canonical cutover.
-- **DNS aliasing:** `git.nwpcode.org` → `git.nwpcom.org` alias kept indefinitely (or until measured zero traffic). `avc.nwpcode.org` retired with 301 → `nwpcom.org`. `ss.nwpcode.org` retired with 301 → `saint.school`.
-- **Member domains:** No change required at Phase 2 cutover — `avcommons.org` / `mayostudios.org` re-point their OIDC trust to `nwpcom.org` and their content source to `git.nwpcom.org`. One config edit per member.
+- **F28 (signed pipeline):** Package distribution endpoint changes from `<gitlab-host>` (Packages) to `git.nwpcom.org` at Phase 2. Existing signatures stay valid (they sign the artifact, not the URL); only the download URL changes.
+- **F29 (mayo integration):** Mayo's `ss.<mayo-domain>` consumes course packages from `git.nwp{code,com}.org` per the active phase. Mayo's OIDC client for `<mayo-domain>` ↔ `ss.<mayo-domain>` is internal to mayo and unaffected by the canonical cutover.
+- **DNS aliasing:** `<gitlab-host>` → `git.nwpcom.org` alias kept indefinitely (or until measured zero traffic). `avc.<example-prod-domain>` retired with 301 → `nwpcom.org`. `ss.<example-prod-domain>` retired with 301 → `saint.school`.
+- **Member domains:** No change required at Phase 2 cutover — `avcommons.org` / `<mayo-domain>` re-point their OIDC trust to `nwpcom.org` and their content source to `git.nwpcom.org`. One config edit per member.
 
 ### 16.5 Risk
 

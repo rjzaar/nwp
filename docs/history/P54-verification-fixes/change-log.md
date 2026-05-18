@@ -5,7 +5,7 @@
 **Related Documents**:
 - [Baseline State](baseline-state.md)
 - [test-nwp Equivalents](test-nwp-equivalents.md)
-- [Implementation Plan](/home/rob/nwp/docs/P54-IMPLEMENTATION-PLAN.md)
+- [Implementation Plan](../../reports/P54-IMPLEMENTATION-PLAN.md)
 
 ---
 

@@ -4,7 +4,7 @@
 **Created:** 2026-01-16
 **Updated:** 2026-01-17
 **Implemented:** 2026-01-17
-**Author:** Claude Opus 4.5 (architectural design), Rob (requirements)
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** High
 **Estimated Effort:** 8-10 weeks (completed)
 **Breaking Changes:** Yes - test-nwp.sh removed (redirects to verify --run)
@@ -716,7 +716,7 @@ prompt_error_report() {
 
 ### 8.1 Cross-Platform Badge Strategy
 
-Badges must work on both git.nwpcode.org (GitLab) AND github.com/rjzaar/nwp (mirror).
+Badges must work on both <gitlab-host> (GitLab) AND github.com/rjzaar/nwp (mirror).
 
 **Challenge:** GitLab pipeline badges don't work on GitHub because:
 - GitHub can't fetch from external GitLab instances
@@ -860,7 +860,7 @@ GitLab is the canonical repository; GitHub is a push mirror. All CI runs on GitL
 ┌─────────────────────────────────────────────────────────────────┐
 │                     CI/CD WORKFLOW                               │
 │                                                                  │
-│  Developer → git push → git.nwpcode.org (GitLab)                │
+│  Developer → git push → <gitlab-host> (GitLab)                │
 │                              │                                   │
 │                              ├── GitLab CI runs verification     │
 │                              │   └── pl verify ci --depth=std    │
@@ -1298,7 +1298,7 @@ jobs:
 
 #### 10.6.4 Success Criteria
 - [ ] GitLab CI runs verification on every push
-- [ ] Badges visible on both git.nwpcode.org AND github.com
+- [ ] Badges visible on both <gitlab-host> AND github.com
 - [ ] `pl test-nwp` returns "command not found" (clean break)
 - [ ] CLAUDE.md release process uses `pl verify --run --depth=thorough`
 - [ ] All documentation references updated
@@ -1558,8 +1558,8 @@ These should still have a `machine:` section with `automatable: false` and basic
 
 | Role | Name | Date | Signature |
 |------|------|------|-----------|
-| Author | Claude Opus 4.5 | 2026-01-16 | |
-| Requirements | Rob | 2026-01-16 | |
+| Author | Robert Karsten Zaar (with AI assistance) | 2026-01-16 | |
+| Requirements | Robert Karsten Zaar | 2026-01-16 | |
 | Reviewer | | | |
 | Approver | | | |
 

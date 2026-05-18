@@ -198,7 +198,7 @@ brew install bats-core
 
 **Solution:** Ensure you're running from project root:
 ```bash
-cd /home/rob/nwp
+cd "$NWP_ROOT"
 ./scripts/commands/run-tests.sh
 ```
 

@@ -9,13 +9,13 @@
 
 Over four months (December 2025 -- March 2026), a single developer with AI-assisted tooling has built an integrated Catholic faith formation ecosystem spanning 9 project repositories, 6 production websites, ~100,000 files, and 20 GB of structured content -- all running on a $26/month infrastructure.
 
-The platform's centrepiece is a **cross-platform faith formation app** (F20) that bundles 49 courses from ss.nwpcode.org and runs offline on phones, tablets, laptops, and desktops from a single Flutter codebase. The app is designed as a shell that progressively integrates content from every other project in the ecosystem.
+The platform's centrepiece is a **cross-platform faith formation app** (F20) that bundles 49 courses from ss.<example-prod-domain> and runs offline on phones, tablets, laptops, and desktops from a single Flutter codebase. The app is designed as a shell that progressively integrates content from every other project in the ecosystem.
 
 ---
 
 ## The Faith Formation App (F20) -- Phases 1-7 Complete
 
-The app ships with the complete Divine Intimacy Radio standalone mini-course catalogue: **49 courses across 10 categories** (Foundations, Prayer, Growing in Prayer, Discernment of Spirits, The Ascetical Life, Suffering & Warfare, Marriage & Community, Saints as Guides, False Teachings, The Interior Castle), covering the full arc of Catholic spiritual formation from beginner to advanced.
+The app ships with the complete Divine Intimacy Radio standalone short-course catalogue: **49 courses across 10 categories** (Foundations, Prayer, Growing in Prayer, Discernment of Spirits, The Ascetical Life, Suffering & Warfare, Marriage & Community, Saints as Guides, False Teachings, The Interior Castle), covering the full arc of Catholic spiritual formation from beginner to advanced.
 
 **Bundled database:** 49 courses, 315 sections, 160 quizzes, 732 questions, 1,797 answers. All 160 quizzes are fully populated and working.
 
@@ -39,9 +39,9 @@ A repeatable pipeline converts podcast audio into structured educational content
 
 1. **CIYTools** -- 10-stage dual-precision transcription (INT8 on GPU + FP32 on CPU) with CCC source text alignment, producing letter-perfect doctrinal quotations. 1,013 episodes transcribed (365 CIY (Catechism in a Year) complete, 648 DIR in progress), ~3.3 million words.
 
-2. **DIR** -- 648 episodes of Divine Intimacy Radio live at dir.nwpcode.org with full-text search across 288,236 timestamped segments. Educational derivatives include 10 comprehensive Moodle course specifications and the 49 mini-courses now bundled in the app.
+2. **DIR** -- 648 episodes of Divine Intimacy Radio live at <site>.example.org with full-text search across 288,236 timestamped segments. Educational derivatives include 10 comprehensive Moodle course specifications and the 49 short-courses now bundled in the app.
 
-3. **Moodle (ss.nwpcode.org)** -- Courses authored and managed in Moodle, exported to the app via a single SSH/PHP call (`moodle_live_export.py --all`), converted to a seed SQLite database, and bundled as a Flutter asset.
+3. **Moodle (ss.<example-prod-domain>)** -- Courses authored and managed in Moodle, exported to the app via a single SSH/PHP call (`moodle_live_export.py --all`), converted to a seed SQLite database, and bundled as a Flutter asset.
 
 ---
 
@@ -86,7 +86,7 @@ The app ships as a self-contained package with all 49 courses, 160 quizzes, and 
 
 ### Phase 2: Connected (F20 Phase 8)
 
-Adding optional Moodle Web Services connectivity turns the app into a two-way sync client for ss.nwpcode.org. Users who have internet access can download updated or newly published courses, and upload their quiz scores and progress to the central Moodle server. Sync is queue-based: actions are stored locally when offline and transmitted automatically when connectivity returns. A simple "Connect to Moodle" toggle in settings keeps the offline-first experience intact for users who prefer it.
+Adding optional Moodle Web Services connectivity turns the app into a two-way sync client for ss.<example-prod-domain>. Users who have internet access can download updated or newly published courses, and upload their quiz scores and progress to the central Moodle server. Sync is queue-based: actions are stored locally when offline and transmitted automatically when connectivity returns. A simple "Connect to Moodle" toggle in settings keeps the offline-first experience intact for users who prefer it.
 
 ### Phase 3: Extensible (F20 Phase 9)
 

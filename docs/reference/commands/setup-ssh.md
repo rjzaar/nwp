@@ -103,7 +103,7 @@ Combines RSA type with custom email comment.
   Step 1: Create Keys Directory
 ═══════════════════════════════════════════════════════════════
 
-[✓] Keys directory exists: /home/rob/nwp/keys
+[✓] Keys directory exists: <nwp-root>/keys
 ```
 
 ### Step 2: Check Existing Keys
@@ -114,9 +114,9 @@ Combines RSA type with custom email comment.
 ═══════════════════════════════════════════════════════════════
 
 [!] SSH keys already exist:
-  - /home/rob/nwp/keys/nwp
-  - /home/rob/nwp/keys/nwp.pub
-  - /home/rob/.ssh/nwp
+  - <nwp-root>/keys/nwp
+  - <nwp-root>/keys/nwp.pub
+  - $HOME/.ssh/nwp
 
 Overwrite existing keys? (y/N)
 ```
@@ -130,12 +130,12 @@ Overwrite existing keys? (y/N)
 
 [i] Generating Ed25519 key (modern, secure, fast)
 Generating public/private ed25519 key pair.
-Your identification has been saved in /home/rob/nwp/keys/nwp
-Your public key has been saved in /home/rob/nwp/keys/nwp.pub
+Your identification has been saved in <nwp-root>/keys/nwp
+Your public key has been saved in <nwp-root>/keys/nwp.pub
 
 [✓] Keypair generated successfully
-[i] Private key: /home/rob/nwp/keys/nwp
-[i] Public key: /home/rob/nwp/keys/nwp.pub
+[i] Private key: <nwp-root>/keys/nwp
+[i] Public key: <nwp-root>/keys/nwp.pub
 ```
 
 ### Step 4: Set Permissions
@@ -155,7 +155,7 @@ Your public key has been saved in /home/rob/nwp/keys/nwp.pub
   Step 5: Install Private Key
 ═══════════════════════════════════════════════════════════════
 
-[✓] Private key installed to: /home/rob/.ssh/nwp
+[✓] Private key installed to: $HOME/.ssh/nwp
 ```
 
 ### Setup Complete
@@ -225,7 +225,7 @@ Follow these steps:
 Keys are created in the project `keys/` directory (gitignored):
 
 ```
-/home/rob/nwp/keys/
+<nwp-root>/keys/
   ├── nwp         # Private key (600)
   └── nwp.pub     # Public key (644)
 ```
@@ -297,7 +297,7 @@ ssh user@your-server 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'
 ### Option 3: Copy from File
 
 ```bash
-cat /home/rob/nwp/keys/nwp.pub
+cat <nwp-root>/keys/nwp.pub
 # Copy the output
 # Manually append to remote ~/.ssh/authorized_keys
 ```

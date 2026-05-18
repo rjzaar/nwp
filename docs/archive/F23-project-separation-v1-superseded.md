@@ -7,7 +7,7 @@
 
 **Status:** SUPERSEDED (by F23 v2, 2026-04-06)
 **Created:** 2026-04-06
-**Author:** Rob Zaar, Claude Opus 4.6
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** High (architectural)
 **Depends On:** None
 **Breaking Changes:** Yes (managed via expand-migrate-contract)
@@ -57,7 +57,7 @@ Restructure NWP into a **core tool + independent project repos** architecture, f
 
 ### 2.1 Repository Inventory
 
-The NWP repo at `/home/rob/nwp/` currently contains:
+The NWP repo at `$HOME/nwp/` currently contains:
 
 | Category | Contents | Belongs To |
 |----------|----------|-----------|
@@ -373,15 +373,15 @@ pl backup ~/projects/mt         # Absolute path
 # ~/.nwp/projects.yml (auto-maintained)
 projects:
   avc:
-    path: /home/rob/projects/avc
+    path: $HOME/projects/avc
     recipe: avc
     registered: "2026-04-10T10:00:00+10:00"
   mt:
-    path: /home/rob/projects/mt
+    path: $HOME/projects/mt
     recipe: mt
     registered: "2026-04-10T10:00:00+10:00"
   ss:
-    path: /home/rob/projects/ss
+    path: $HOME/projects/ss
     recipe: m
     registered: "2026-04-10T10:00:00+10:00"
 ```
@@ -414,7 +414,7 @@ Backups move from central `sitebackups/` to per-project:
 
 ```
 # Old (centralized):
-/home/rob/nwp/sitebackups/mt/20260401-main-abc123.sql.gz
+$HOME/nwp/sitebackups/mt/20260401-main-abc123.sql.gz
 
 # New (per-project):
 ~/projects/mt/backups/20260401-main-abc123.sql.gz
@@ -918,7 +918,7 @@ For each project, use `git filter-repo` to extract its history:
 
 **MT (Mass Times):**
 ```bash
-git clone /home/rob/nwp /tmp/mt-extract
+git clone $HOME/nwp /tmp/mt-extract
 cd /tmp/mt-extract
 git filter-repo \
     --path sites/mt/ \
@@ -931,7 +931,7 @@ git filter-repo \
 
 **CathNet:**
 ```bash
-git clone /home/rob/nwp /tmp/cathnet-extract
+git clone $HOME/nwp /tmp/cathnet-extract
 cd /tmp/cathnet-extract
 git filter-repo \
     --path sites/cathnet/ \
@@ -944,7 +944,7 @@ git filter-repo \
 
 **DIR:**
 ```bash
-git clone /home/rob/nwp /tmp/dir-extract
+git clone $HOME/nwp /tmp/dir-extract
 cd /tmp/dir-extract
 git filter-repo \
     --path sites/dir1/ \
@@ -955,7 +955,7 @@ git filter-repo \
 
 **SS (Moodle) + Faith Formation:**
 ```bash
-git clone /home/rob/nwp /tmp/ss-extract
+git clone $HOME/nwp /tmp/ss-extract
 cd /tmp/ss-extract
 git filter-repo \
     --path sites/ss/ \
@@ -970,7 +970,7 @@ git filter-repo \
 
 **FIN Monitor:**
 ```bash
-git clone /home/rob/nwp /tmp/fin-extract
+git clone $HOME/nwp /tmp/fin-extract
 cd /tmp/fin-extract
 git filter-repo --path fin/ --path-rename fin/:.
 ```

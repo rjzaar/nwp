@@ -1433,7 +1433,7 @@ The `live.sh` script deploys sites to live servers (Linode).
 ./live.sh nwp5
 ```
 
-Creates a live site at `nwp5.nwpcode.org`.
+Creates a live site at `nwp5.<example-prod-domain>`.
 
 ### What Happens
 

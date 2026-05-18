@@ -53,7 +53,7 @@ This document covers three critical security areas:
 ### Backup Locations
 
 ```
-Local:     /home/rob/nwp/sitebackups/<sitename>/
+Local:     <nwp-root>/sitebackups/<sitename>/
 Off-site:  GitLab repository (via --git flag)
 Archive:   Git bundle files (via --bundle flag)
 ```
@@ -245,7 +245,7 @@ Claude can be valuable for infrastructure automation (provisioning servers, mana
 #### File Structure
 
 ```
-/home/user/nwp/
+$HOME/nwp/
 ├── .secrets.yml              # Infrastructure (Claude CAN read)
 ├── .secrets.data.yml         # Data secrets (Claude CANNOT read)
 ├── .secrets.example.yml      # Template for infrastructure

@@ -47,10 +47,10 @@ the signal level rather than trying to threshold around it.
 
 ## What works
 
-1. **ec binary built and installed** at `~/.local/bin/ec` on mini
+1. **ec binary built and installed** at `~/.local/bin/ec` on the voice-agent host
    - Build deps: `libasound2-dev libspeexdsp-dev pkg-config`
    - Source: `https://github.com/voice-engine/ec.git`
-   - Setup script: `servers/mini/bin/setup-ec` (repo) / `~/.local/bin/setup-ec` (mini)
+   - Setup script: `servers/<voice-agent>/bin/setup-ec` (repo) / `~/.local/bin/setup-ec` (voice-agent host)
 
 2. **ec data flow verified** — manual test confirms audio flows through:
    ```bash
@@ -86,7 +86,7 @@ Listening...
 Transcribing...
 you: youyou
 Thinking...
-mini: It looks like you might have accidentally typed something there, Rob!
+voice-agent: It looks like you might have accidentally typed something there, operator!
 Listening...
 Enable AEC
 playback filled 648 bytes zero
@@ -117,7 +117,7 @@ or writes in a different format/rate.
 
 ## Current state of the code
 
-### `servers/mini/bin/voice-agent` (repo, partially edited)
+### `servers/<voice-agent>/bin/voice-agent` (repo, partially edited)
 
 The file has ec integration code that was being debugged when we stopped.
 Key functions:
@@ -132,14 +132,14 @@ Key functions:
 - `start_drain()` / `stop_drain()` — **the drain was being removed when
   we stopped; this code needs to be cleaned up or replaced**
 
-### `servers/mini/bin/voice-agent` (deployed on mini)
+### `servers/<voice-agent>/bin/voice-agent` (deployed on the voice-agent host)
 
 The deployed version still has the drain code. Quokka was stopped before
 the fix was deployed.
 
-### `servers/mini/bin/setup-ec` (complete, working)
+### `servers/<voice-agent>/bin/setup-ec` (complete, working)
 
-One-shot build script. Already run successfully on mini. Does not need changes.
+One-shot build script. Already run successfully on the voice-agent host. Does not need changes.
 
 ## What needs to be done
 
@@ -222,7 +222,7 @@ you'd expect. The flags mean "input to speaker" and "output from mic."
 
 ```
 Read docs/guides/voice-agent-ec-handoff.md for where the ec barge-in
-integration left off. The ec binary is installed on mini, and the
+integration left off. The ec binary is installed on the voice-agent host, and the
 voice-agent script has partial ec integration that needs debugging.
 Fix the "empty recordings after first exchange" bug, test barge-in
 end-to-end, then update the voice-agent guide.
@@ -232,9 +232,9 @@ end-to-end, then update the voice-agent guide.
 
 | File | Location | Status |
 |------|----------|--------|
-| `servers/mini/bin/voice-agent` | repo + mini | Partially edited, needs drain fix |
-| `servers/mini/bin/setup-ec` | repo + mini | Complete, working |
-| `servers/mini/bin/quokka-toggle` | repo + mini | Working, no changes needed |
-| `servers/mini/systemd/quokka-toggle.service` | repo + mini | Working |
+| `servers/<voice-agent>/bin/voice-agent` | repo + voice-agent host | Partially edited, needs drain fix |
+| `servers/<voice-agent>/bin/setup-ec` | repo + voice-agent host | Complete, working |
+| `servers/<voice-agent>/bin/quokka-toggle` | repo + voice-agent host | Working, no changes needed |
+| `servers/<voice-agent>/systemd/quokka-toggle.service` | repo + voice-agent host | Working |
 | `docs/guides/voice-agent.md` | repo | Stale, needs update |
 | `docs/guides/voice-agent-ec-handoff.md` | repo | This file |

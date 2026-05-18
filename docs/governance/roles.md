@@ -89,9 +89,9 @@ This document defines the contributor roles, responsibilities, and access levels
 - Keep subdomain infrastructure maintained
 
 ### Access Provisioned
-- GitLab account on git.nwpcode.org
+- GitLab account on `<gitlab-host>`
 - Membership in `nwp` group (Developer level)
-- NS delegation for `<name>.nwpcode.org`
+- NS delegation for `<name>.<coder-domain>`
 - Listed in nwp.yml `other_coders` section
 
 ### Path to Core Developer

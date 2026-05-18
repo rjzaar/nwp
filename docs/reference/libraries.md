@@ -1111,10 +1111,10 @@ Registers or updates a CLI command symlink.
 source lib/cli-register.sh
 
 # Register with auto-detected name (pl, pl1, pl2, etc.)
-register_cli_command "/home/user/nwp"
+register_cli_command "$HOME/nwp"
 
 # Register with preferred name
-register_cli_command "/home/user/nwp" "mypl"
+register_cli_command "$HOME/nwp" "mypl"
 ```
 
 ### unregister_cli_command
@@ -1122,7 +1122,7 @@ register_cli_command "/home/user/nwp" "mypl"
 Removes a CLI command registration.
 
 ```bash
-unregister_cli_command "/home/user/nwp"
+unregister_cli_command "$HOME/nwp"
 ```
 
 ### get_cli_command
@@ -1130,7 +1130,7 @@ unregister_cli_command "/home/user/nwp"
 Gets the current CLI command for an installation.
 
 ```bash
-cmd=$(get_cli_command "/home/user/nwp")
+cmd=$(get_cli_command "$HOME/nwp")
 echo "Current command: $cmd"  # e.g., "pl" or "pl1"
 ```
 

@@ -42,7 +42,7 @@ This proposal establishes a layered defense for staging sites and SEO best pract
 | X-Robots-Tag | Not implemented | N/A for production |
 | Canonical URLs | Drupal default | Works but not verified |
 
-**Example: avc.nwpcode.org**
+**Example: avc.<example-prod-domain>**
 ```
 robots.txt: Standard Drupal (allows crawling, blocks /admin/, /user/, etc.)
 sitemap.xml: Returns 404 (NOT CONFIGURED)
@@ -59,7 +59,7 @@ X-Robots-Tag: None
 | HTTP Auth | Not enforced | Publicly accessible |
 | noindex meta | Not configured | Pages can be indexed |
 
-**Critical Risk**: Staging sites (e.g., `avc-stg.nwpcode.org`) are fully indexable by search engines.
+**Critical Risk**: Staging sites (e.g., `avc-stg.<example-prod-domain>`) are fully indexable by search engines.
 
 ### Environment Detection
 
@@ -457,17 +457,17 @@ recipes:
 
 ```bash
 # Check staging protection
-curl -sI https://avc-stg.nwpcode.org | grep -i "x-robots-tag"
+curl -sI https://avc-stg.<example-prod-domain> | grep -i "x-robots-tag"
 # Expected: X-Robots-Tag: noindex, nofollow
 
-curl -s https://avc-stg.nwpcode.org/robots.txt
+curl -s https://avc-stg.<example-prod-domain>/robots.txt
 # Expected: User-agent: * / Disallow: /
 
 # Check production optimization
-curl -s https://avc.nwpcode.org/robots.txt | grep -i sitemap
-# Expected: Sitemap: https://avc.nwpcode.org/sitemap.xml
+curl -s https://avc.<example-prod-domain>/robots.txt | grep -i sitemap
+# Expected: Sitemap: https://avc.<example-prod-domain>/sitemap.xml
 
-curl -sI https://avc.nwpcode.org/sitemap.xml
+curl -sI https://avc.<example-prod-domain>/sitemap.xml
 # Expected: HTTP/2 200, Content-Type: application/xml
 ```
 

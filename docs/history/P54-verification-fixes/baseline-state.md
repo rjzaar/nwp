@@ -39,7 +39,7 @@ Failed Items:
   - security_validation:17 # security validation
 ```
 
-Log file: `/home/rob/nwp/.logs/verification/verify-20260118-190436.log`
+Log file: `<nwp-root>/.logs/verification/verify-20260118-190436.log`
 
 ## Failure Categories (Actual)
 
@@ -116,9 +116,9 @@ Backup/restore/copy tests require a running site `verify-test`:
 
 ## Files to Reference
 
-- `/home/rob/nwp/p54.md` - Original root cause analysis
-- `/home/rob/nwp/docs/P54-IMPLEMENTATION-PLAN.md` - Detailed fix plan
-- `/home/rob/nwp/.verification.yml` - Verification definition file
+- `<nwp-root>/p54.md` - Original root cause analysis
+- `<nwp-root>/docs/P54-IMPLEMENTATION-PLAN.md` - Detailed fix plan
+- `<nwp-root>/.verification.yml` - Verification definition file
 
 ---
 

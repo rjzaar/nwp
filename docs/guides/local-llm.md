@@ -7,7 +7,7 @@
 > proposals directory to `docs/guides/` because it is a how-to, not a feature
 > proposal — there is no work to track, no success criteria, no phases. The
 > actual "install a local LLM on a NWP-managed machine" work lives under
-> [F21 Phase 3a — mini as local-LLM agent](../proposals/F21-distributed-build-deploy-pipeline.md#phase-3a--mini-as-local-llm-agent-reversible).
+> [F21 Phase 3a — llm-host as local-LLM agent](../proposals/F21-distributed-build-deploy-pipeline.md#phase-3a--llm-host-as-local-llm-agent-reversible).
 
 A comprehensive guide to running open source AI models locally for privacy, cost savings, and offline development.
 
@@ -676,18 +676,18 @@ ollama run qwen2.5-coder:32b
 
 ## Using with NWP
 
-### Current deployment — mini
+### Current deployment — llm-host
 
-The only NWP-managed machine currently running a local LLM is **mini**
+The only NWP-managed machine currently running a local LLM is the **llm-host**
 (Beelink Ryzen AI Max+ 395, Radeon 8060S iGPU, 32 GB RAM). See
-[F21 Phase 3a](../proposals/F21-distributed-build-deploy-pipeline.md#phase-3a--mini-as-local-llm-agent-reversible)
+[F21 Phase 3a](../proposals/F21-distributed-build-deploy-pipeline.md#phase-3a--llm-host-as-local-llm-agent-reversible)
 for the provisioning plan and rationale.
 
 Quick orientation for operators:
 
 - **Daemon:** ollama 0.20.3, installed user-space at `~/.local/bin/ollama`
 - **Service:** systemd user unit at `~/.config/systemd/user/ollama.service`,
-  enabled and lingered so it survives reboot without Rob logging in
+  enabled and lingered so it survives reboot without the operator logging in
 - **Endpoint:** `127.0.0.1:11434` only (not exposed to the LAN)
 - **Acceleration:** Vulkan on the Radeon 8060S via Mesa RADV
   (`OLLAMA_VULKAN=1`); ~1.9x faster than CPU on llama3.1:8b
@@ -696,37 +696,37 @@ Quick orientation for operators:
   that Strix Halo reports (that number is the unified-memory GTT, not
   real fast memory; physical RAM is the actual constraint)
 
-### Reaching mini's ollama from dev
+### Reaching the llm-host ollama from dev
 
-The daemon binds to `127.0.0.1:11434` on mini only — it is deliberately
+The daemon binds to `127.0.0.1:11434` on the llm-host only — it is deliberately
 not exposed on the LAN. The interim way to talk to it from another
 machine on the home LAN (e.g. the dev workstation) is an ad-hoc SSH
 port-forward:
 
 ```bash
-# From dev — forwards localhost:11434 on dev to 127.0.0.1:11434 on mini.
+# From dev — forwards localhost:11434 on dev to 127.0.0.1:11434 on the llm-host.
 # Leave this running in one terminal.
-ssh -N -L 11434:127.0.0.1:11434 mini
+ssh -N -L 11434:127.0.0.1:11434 <llm-host>
 
 # Then in another terminal on dev, point any ollama client at localhost:
 curl http://127.0.0.1:11434/api/tags
 OLLAMA_HOST=http://127.0.0.1:11434 ollama list
 ```
 
-This is the **interim** reach-mini pattern. Once F21 Phase 1 (Headscale)
-is up, mini's ollama endpoint will be reachable over the overlay by its
+This is the **interim** reach-llm-host pattern. Once F21 Phase 1 (Headscale)
+is up, the llm-host's ollama endpoint will be reachable over the overlay by its
 tailnet name and the tunnel will no longer be needed. Don't promote the
 tunnel to a systemd unit or SSH `ProxyCommand` — it's intentionally
 ad-hoc so it has zero survivorship once Phase 1 lands.
 
-The `pl mini llm health` diagnostic does **not** need this tunnel — it
-SSHes into mini and runs its checks on the far side. The tunnel is only
+The `pl llm-host llm health` diagnostic does **not** need this tunnel — it
+SSHes into the llm-host and runs its checks on the far side. The tunnel is only
 useful when you want to hit the ollama API directly from tools on dev.
 
 ### Manual integration today
 
 No `pl llm …` CLI integration exists yet — F21 Phase 3a deliberately
-does not commit to one until the agent role for mini has stabilised.
+does not commit to one until the agent role for the llm-host has stabilised.
 Until then, use local LLMs via the ollama CLI or the REST API directly:
 
 **1. Code Review:**
@@ -1094,7 +1094,7 @@ ollama run qwen2.5-coder:7b
 ```
 
 There is no `pl`/`nwp.yml` provider-switching integration yet.
-F21 Phase 3a intentionally leaves the CLI surface unspecified until mini's
+F21 Phase 3a intentionally leaves the CLI surface unspecified until the llm-host's
 agent role has stabilised; see that phase for the current thinking.
 
 ### Monitoring Performance
@@ -1169,8 +1169,8 @@ done
 - Ollama GitHub Discussions: https://github.com/ollama/ollama/discussions
 
 ### NWP Integration
-- [F21: Distributed Build/Deploy Pipeline](../proposals/F21-distributed-build-deploy-pipeline.md) — Phase 3a provisions mini as NWP's local-LLM agent
-- [X02: Local Voice Agent on mini](../proposals/X02-local-voice-agent-on-mini.md) — downstream use of the mini LLM baseline
+- [F21: Distributed Build/Deploy Pipeline](../proposals/F21-distributed-build-deploy-pipeline.md) — Phase 3a provisions the llm-host as NWP's local-LLM agent
+- [X02: Local Voice Agent](../proposals/X02-local-voice-agent.md) — downstream use of the llm-host LLM baseline
 - [CLAUDE.md § Threat Model](../../CLAUDE.md) — why local LLMs matter to NWP's trust story
 
 ---
@@ -1193,4 +1193,4 @@ done
 ---
 
 **Last Updated:** 2026-04-08
-**Related:** [F21 Phase 3a](../proposals/F21-distributed-build-deploy-pipeline.md#phase-3a--mini-as-local-llm-agent-reversible), [X02 Voice Agent](../proposals/X02-local-voice-agent-on-mini.md)
+**Related:** [F21 Phase 3a](../proposals/F21-distributed-build-deploy-pipeline.md#phase-3a--llm-host-as-local-llm-agent-reversible), [X02 Voice Agent](../proposals/X02-local-voice-agent.md)

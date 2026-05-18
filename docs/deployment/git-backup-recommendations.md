@@ -50,7 +50,7 @@ This document provides a systematic comparison of git backup approaches across N
 
 ## 2. Current State Analysis
 
-### 2.1 NWP Implementation (`/home/rob/git/`)
+### 2.1 NWP Implementation (`$HOME/git/`)
 
 #### Backup Script Analysis (`backup.sh`)
 
@@ -62,7 +62,7 @@ This document provides a systematic comparison of git backup approaches across N
 - ✅ Endpoint specification (`-e` flag)
 - ⚠️ Git backup flag exists (`-g`) but is a stub
 
-**Code Reference:** `/home/rob/git/backup.sh:87-89`
+**Code Reference:** `$HOME/git/backup.sh:87-89`
 ```bash
 -g, --git               Create supplementary git backup
 ```
@@ -88,11 +88,11 @@ prod_method: rsync                # Production method: git, tar, rsync
 - No `backup_git_method` (bundle vs push)
 - No `backup_git_schedule` for automation
 
-### 2.2 Pleasy Implementation (`/home/rob/tmp/pleasy/`)
+### 2.2 Pleasy Implementation (`$HOME/tmp/pleasy/`)
 
 #### Server Git Backup Scripts
 
-**Database Git Backup** (`/home/rob/tmp/pleasy/server/gitbackupdb.sh`):
+**Database Git Backup** (`$HOME/tmp/pleasy/server/gitbackupdb.sh`):
 ```bash
 # Key operations (lines 32-43):
 drush sset system.maintenance_mode TRUE
@@ -119,7 +119,7 @@ git push
 - ❌ No bundle creation option
 - ❌ No incremental backup support
 
-**Files Git Backup** (`/home/rob/tmp/pleasy/server/gitbackupfiles.sh`):
+**Files Git Backup** (`$HOME/tmp/pleasy/server/gitbackupfiles.sh`):
 ```bash
 # Key operations (lines 30-36):
 cd $(dirname $prod_docroot)
@@ -128,18 +128,18 @@ git commit -m "backup$2"
 git push
 ```
 
-**Production Backup** (`/home/rob/tmp/pleasy/server/backupprod.sh`):
+**Production Backup** (`$HOME/tmp/pleasy/server/backupprod.sh`):
 ```bash
 # Naming convention (line 54):
 Name=$(date +%Y%m%d\T%H%M%S-)$(git branch | grep \* | cut -d ' ' -f2)...
 ```
 
-**Git Commit Script** (`/home/rob/tmp/pleasy/scripts/gcom.sh`):
+**Git Commit Script** (`$HOME/tmp/pleasy/scripts/gcom.sh`):
 - Combines config export with git operations
 - Optional backup after commit (`-b` flag)
 - Supports pleasy itself as a target
 
-### 2.3 Vortex Implementation (`/home/rob/tmp/vortex/`)
+### 2.3 Vortex Implementation (`$HOME/tmp/vortex/`)
 
 #### Key Patterns from Vortex
 
@@ -482,7 +482,7 @@ git_backup:
   remotes:
     primary:
       type: nwp_gitlab  # Uses NWP-installed GitLab
-      url: git@gitlab.local:backups/site.git
+      url: git@<gitlab-host>:backups/site.git
       auto_create_repo: true
     secondary:
       type: github
@@ -539,7 +539,7 @@ git_backup:
 
 #### 6.1.2 Implementation Reference
 
-Based on Pleasy patterns (`/home/rob/tmp/pleasy/server/gitbackupdb.sh`):
+Based on Pleasy patterns (`$HOME/tmp/pleasy/server/gitbackupdb.sh`):
 
 ```bash
 # backup.sh addition for -g flag implementation
@@ -838,7 +838,7 @@ create_gitlab_backup_repo() {
 git_backup:
   nwp_gitlab:
     enabled: true
-    url: https://gitlab.local
+    url: https://<gitlab-host>
     token_env: GITLAB_BACKUP_TOKEN
     group: backups
     auto_create: true
@@ -903,7 +903,7 @@ git_backup:
       branch: main
     secondary:
       type: nwp_gitlab
-      url: git@gitlab.local:backups/site.git
+      url: git@<gitlab-host>:backups/site.git
       branch: backup
     tertiary:
       type: local
@@ -1075,10 +1075,10 @@ git_backup:
 - [Git workflow for managing Drupal 8 configuration - Nuvole](https://nuvole.org/blog/2014/aug/20/git-workflow-managing-drupal-8-configuration)
 
 ### Codebase References
-- NWP: `/home/rob/git/backup.sh` - Current backup implementation
-- Pleasy: `/home/rob/tmp/pleasy/server/gitbackupdb.sh` - Git database backup reference
-- Pleasy: `/home/rob/tmp/pleasy/server/gitbackupfiles.sh` - Git files backup reference
-- Vortex: `/home/rob/tmp/vortex/.vortex/CLAUDE.md` - Modern Drupal project patterns
+- NWP: `$HOME/git/backup.sh` - Current backup implementation
+- Pleasy: `$HOME/tmp/pleasy/server/gitbackupdb.sh` - Git database backup reference
+- Pleasy: `$HOME/tmp/pleasy/server/gitbackupfiles.sh` - Git files backup reference
+- Vortex: `$HOME/tmp/vortex/.vortex/CLAUDE.md` - Modern Drupal project patterns
 
 ---
 

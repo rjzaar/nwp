@@ -308,7 +308,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 ### live.sh
 **Purpose:** Provision live test servers
 **Key Features:**
-- Automatic provisioning at sitename.nwpcode.org
+- Automatic provisioning at sitename.<prod-domain>
 - Linode VPS creation
 - DNS configuration (Cloudflare/Linode)
 - SSL certificate installation
@@ -707,7 +707,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 ### coder-setup.sh
 **Purpose:** NS delegation for additional coders
 **Key Features:**
-- NS delegation for subdomains (coder.nwpcode.org)
+- NS delegation for subdomains (coder.<coder-domain>)
 - DNS autonomy via Linode
 - Add/remove coder operations
 - Note management
@@ -925,9 +925,9 @@ Legacy direct access also supported:
 
 ## Documentation References
 
-- Main README: `/home/rob/nwp/README.md`
-- Roadmap: `/home/rob/nwp/docs/ROADMAP.md`
-- Milestones: `/home/rob/nwp/docs/MILESTONES.md`
-- Changelog: `/home/rob/nwp/CHANGELOG.md`
-- ADRs: `/home/rob/nwp/docs/decisions/`
+- Main README: `<nwp-root>/README.md`
+- Roadmap: `<nwp-root>/docs/ROADMAP.md`
+- Milestones: `<nwp-root>/docs/MILESTONES.md`
+- Changelog: `<nwp-root>/CHANGELOG.md`
+- ADRs: `<nwp-root>/docs/decisions/`
 - Individual command help: `pl <command> --help`

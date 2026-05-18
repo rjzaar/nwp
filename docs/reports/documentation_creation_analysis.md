@@ -2,11 +2,11 @@
 
 ## Overview
 
-This document analyzes the Claude conversation history (`/home/rob/.claude/history.jsonl`) to extract all instances where documentation was requested and created for the NWP project. It maps user requests to the resulting documentation files and git commits.
+This document analyzes the Claude conversation history (`$HOME/.claude/history.jsonl`) to extract all instances where documentation was requested and created for the NWP project. It maps user requests to the resulting documentation files and git commits.
 
 **Analysis Date**: 2026-01-14
 **Conversation History Lines Analyzed**: 1,734
-**Project**: /home/rob/nwp
+**Project**: $HOME/nwp
 
 ---
 
@@ -34,7 +34,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 
 **Git Commit**: 2025-12-30 17:13:52 +1100
 **Commit Message**: "git suggestions."
-**File Created**: `/home/rob/nwp/docs/GIT_BACKUP_RECOMMENDATIONS.md`
+**File Created**: `$HOME/nwp/docs/GIT_BACKUP_RECOMMENDATIONS.md`
 
 #### NWP_CI_TESTING_STRATEGY.md
 **User Request** (2025-12-30 18:00):
@@ -44,7 +44,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 
 **Git Commit**: 2025-12-30 18:15:22 +1100
 **Commit Message**: "CI research."
-**File Created**: `/home/rob/nwp/docs/NWP_CI_TESTING_STRATEGY.md`
+**File Created**: `$HOME/nwp/docs/NWP_CI_TESTING_STRATEGY.md`
 
 #### improvementsv2.md Request
 **User Request** (2025-12-30 18:23):
@@ -68,7 +68,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 #### NWP_TRAINING_BOOKLET.md
 **Git Commit**: 2026-01-03 07:07:56 +1100
 **Commit Message**: "Add comprehensive NWP training booklet"
-**File Created**: `/home/rob/nwp/docs/NWP_TRAINING_BOOKLET.md`
+**File Created**: `$HOME/nwp/docs/NWP_TRAINING_BOOKLET.md`
 
 **Context**: Created as a comprehensive onboarding guide for new NWP users, combining setup instructions, workflow explanations, and best practices.
 
@@ -84,7 +84,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 
 **Git Commit**: 2026-01-03 08:03:41 +1100
 **Commit Message**: "Add data security best practices documentation"
-**File Created**: `/home/rob/nwp/docs/DATA_SECURITY_BEST_PRACTICES.md`
+**File Created**: `$HOME/nwp/docs/DATA_SECURITY_BEST_PRACTICES.md`
 
 **Implementation Follow-up**:
 - Same day (2026-01-03 09:20): Implemented two-tier secrets architecture
@@ -103,7 +103,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 
 **Git Commit**: 2026-01-05 12:28:22 +1100
 **Commit Message**: "Add coder-setup NS delegation and consolidate documentation"
-**File Created**: `/home/rob/nwp/docs/WHY.md`
+**File Created**: `$HOME/nwp/docs/WHY.md`
 
 **Note**: This was a "deep task" that required Claude to analyze its own conversation history - similar to the current task!
 
@@ -114,8 +114,8 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 **Context**: Followed a discussion about handling multiple coders working on the same site with DNS management. Led to coder-setup.sh enhancements.
 
 **Git Commit**: 2026-01-05 12:28:22 +1100 (same as WHY.md)
-**File Created**: `/home/rob/nwp/docs/multi-coder-dns-proposal.md`
-**Later Archived**: `/home/rob/nwp/docs/archive/multi-coder-dns-proposal-IMPLEMENTED.md`
+**File Created**: `$HOME/nwp/docs/multi-coder-dns-proposal.md`
+**Later Archived**: `$HOME/nwp/docs/archive/multi-coder-dns-proposal-IMPLEMENTED.md`
 
 ---
 
@@ -129,7 +129,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 
 **Git Commit**: 2026-01-05 11:55:11 +1100
 **Commit Message**: "Add NWP developer lifecycle guide and improvement proposal"
-**File Created**: `/home/rob/nwp/docs/DEVELOPER_LIFECYCLE_GUIDE.md`
+**File Created**: `$HOME/nwp/docs/DEVELOPER_LIFECYCLE_GUIDE.md`
 
 #### NWP_COMPLETE_ROADMAP.md
 **User Request** (2026-01-05 12:17):
@@ -139,7 +139,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 
 **Git Commit**: 2026-01-05 12:21:04 +1100
 **Commit Message**: "Add unified NWP Complete Roadmap merging all proposals"
-**File Created**: `/home/rob/nwp/docs/NWP_COMPLETE_ROADMAP.md`
+**File Created**: `$HOME/nwp/docs/NWP_COMPLETE_ROADMAP.md`
 
 #### Major Implementation: Phases 1-9
 **Context**: After creating the roadmap, user instructed Claude to implement phases automatically using Sonnet:
@@ -156,8 +156,8 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 **Git Commit**: 2026-01-05 15:27:07 +1100
 **Commit Message**: "Restructure documentation: split ROADMAP into MILESTONES + slim ROADMAP"
 **Files Created**:
-- `/home/rob/nwp/docs/MILESTONES.md` (completed work)
-- Refactored `/home/rob/nwp/docs/ROADMAP.md` (pending work)
+- `$HOME/nwp/docs/MILESTONES.md` (completed work)
+- Refactored `$HOME/nwp/docs/ROADMAP.md` (pending work)
 
 #### Documentation Consolidation Review
 **User Request** (2026-01-05 15:00):
@@ -168,7 +168,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 **Git Commit**: 2026-01-05 15:07:09 +1100
 **Commit Message**: "Consolidate documentation - archive implemented proposals"
 **Actions**:
-- Created `/home/rob/nwp/docs/archive/` directory
+- Created `$HOME/nwp/docs/archive/` directory
 - Moved completed proposals to archive
 - Archived: VORTEX_COMPARISON, environment-variables-comparison, IMPORT-PROPOSAL, etc.
 
@@ -184,7 +184,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 
 **Git Commit**: 2026-01-07 20:55:36 +1100
 **Commit Message**: "Add documentation for working with Claude securely"
-**File Created**: `/home/rob/nwp/docs/WORKING_WITH_CLAUDE_SECURELY.md`
+**File Created**: `$HOME/nwp/docs/WORKING_WITH_CLAUDE_SECURELY.md`
 
 #### AVC Mobile App Documentation
 **Git Commit**: 2026-01-07 21:28:28 +1100
@@ -211,7 +211,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 
 **Git Commit**: 2026-01-08 07:16:08 +1100
 **Commit Message**: "Add distributed contribution governance proposal"
-**File Created**: `/home/rob/nwp/docs/DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md`
+**File Created**: `$HOME/nwp/docs/DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md`
 
 **Follow-up Commits**:
 - 2026-01-08 07:24: "Add malicious code detection section to governance proposal"
@@ -231,7 +231,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 
 **Git Commit**: 2026-01-08 13:50:08 +1100
 **Commit Message**: "Add executive summary for non-technical stakeholders"
-**File Created**: `/home/rob/nwp/docs/EXECUTIVE_SUMMARY.md`
+**File Created**: `$HOME/nwp/docs/EXECUTIVE_SUMMARY.md`
 
 **Revision** (2026-01-09 18:38):
 > "Please create an executive summary for a CTO"
@@ -243,7 +243,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 #### SEO_ROBOTS_PROPOSAL.md (F07)
 **Git Commit**: 2026-01-08 13:44:16 +1100
 **Commit Message**: "Add SEO & Search Engine Control proposal (F07)"
-**File Created**: `/home/rob/nwp/docs/SEO_ROBOTS_PROPOSAL.md`
+**File Created**: `$HOME/nwp/docs/SEO_ROBOTS_PROPOSAL.md`
 
 **Context**: Proposal for automated robots.txt management and SEO control for multi-environment sites.
 
@@ -258,7 +258,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 
 **Git Commit**: 2026-01-08 18:31:35 +1100
 **Commit Message**: "Implement distributed contribution governance (F04) phases 1-5"
-**File Created**: `/home/rob/nwp/docs/CORE_DEVELOPER_ONBOARDING_PROPOSAL.md`
+**File Created**: `$HOME/nwp/docs/CORE_DEVELOPER_ONBOARDING_PROPOSAL.md`
 
 **Implementation**: Created `pl coders` TUI (Text User Interface) for managing developer access and contributions.
 
@@ -270,7 +270,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 
 **Git Commit**: 2026-01-08 18:23:52 +1100
 **Commit Message**: "Add F08 Dynamic Badges proposal with GitLab-primary CI strategy"
-**File Created**: `/home/rob/nwp/docs/DYNAMIC_BADGES_PROPOSAL.md`
+**File Created**: `$HOME/nwp/docs/DYNAMIC_BADGES_PROPOSAL.md`
 
 ---
 
@@ -279,7 +279,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 #### ADMIN_DEVELOPER_ONBOARDING.md
 **Git Commit**: 2026-01-09 18:40:40 +1100
 **Commit Message**: "Add admin guide for developer onboarding to GitLab"
-**File Created**: `/home/rob/nwp/docs/ADMIN_DEVELOPER_ONBOARDING.md`
+**File Created**: `$HOME/nwp/docs/ADMIN_DEVELOPER_ONBOARDING.md`
 
 **Context**: Companion document to core developer onboarding, covering admin tasks for onboarding new team members.
 
@@ -291,7 +291,7 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 
 **Git Commit**: 2026-01-09 21:00:26 +1100
 **Commit Message**: "Clarify Cloudflare is optional for coder-setup"
-**File Created**: `/home/rob/nwp/docs/COMPREHENSIVE_TESTING_PROPOSAL.md`
+**File Created**: `$HOME/nwp/docs/COMPREHENSIVE_TESTING_PROPOSAL.md`
 
 **Follow-up**:
 - 2026-01-09 21:42: Added F09 to roadmap
@@ -313,14 +313,14 @@ This document analyzes the Claude conversation history (`/home/rob/.claude/histo
 #### LOCAL_LLM_GUIDE.md (F10)
 **Git Commit**: 2026-01-10 07:34:33 +1100
 **Commit Message**: "Add F10 (Local LLM) and X01 (Video Gen) proposals with guide"
-**File Created**: `/home/rob/nwp/docs/LOCAL_LLM_GUIDE.md`
+**File Created**: `$HOME/nwp/docs/LOCAL_LLM_GUIDE.md`
 
 **Context**: Guide for using local Large Language Models as an alternative to cloud-based AI assistants, addressing data security and cost concerns.
 
 #### NWP_DEEP_ANALYSIS_PROPOSAL.md
 **Git Commit**: 2026-01-10 04:14:42 +1100
 **Commit Message**: "Security fixes and deep analysis proposal"
-**File Created**: `/home/rob/nwp/docs/NWP_DEEP_ANALYSIS_PROPOSAL.md`
+**File Created**: `$HOME/nwp/docs/NWP_DEEP_ANALYSIS_PROPOSAL.md`
 
 **Context**: Proposal for comprehensive code analysis and modernization.
 

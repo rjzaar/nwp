@@ -5,7 +5,7 @@
 
 **Status:** PROPOSED
 **Created:** 2026-04-06
-**Author:** Rob Zaar, Claude Opus 4.6
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** High (data safety)
 **Depends On:** F17 (Project Separation) — partial; Phases 1-4 of F17 must land first
 **Breaking Changes:** No
@@ -35,7 +35,7 @@ A **layered backup strategy** that minimises footprint while enabling full rebui
 
 | Layer | What | Tool | Destination |
 |-------|------|------|-------------|
-| **Code** | NWP core + per-site repos | Git (already done) | git.nwpcode.org |
+| **Code** | NWP core + per-site repos | Git (already done) | <gitlab-host> |
 | **Secrets** | `.secrets.yml`, `.secrets.data.yml`, `.auth.yml`, `nwp.yml`, `.nwp.yml`, `.nwp-server.yml` | SOPS + age encryption → git | Encrypted in repos |
 | **Databases** | Per-site SQL dumps | restic (stdin capture) | Local repo + Linode Object Storage |
 | **User files** | Uploaded media, Moodle data | restic (deduplicated) | Local repo + Linode Object Storage |
@@ -393,20 +393,20 @@ A full NWP environment requires:
 
 | Component | Source | How to Restore |
 |-----------|--------|----------------|
-| NWP core tool | git.nwpcode.org:nwp/nwp.git | `git clone` |
+| NWP core tool | <gitlab-host>:nwp/nwp.git | `git clone` |
 | Global config | SOPS-encrypted `nwp.yml.enc` in git | `sops decrypt` |
 | Global secrets | SOPS-encrypted `.secrets.yml.enc` in git | `sops decrypt` |
 | Data secrets | SOPS-encrypted `.secrets.data.yml.enc` in git | `sops decrypt` |
 | SSH keys | SOPS-encrypted in git or restic backup | `sops decrypt` or `restic restore` |
 | Auth tokens | Restic backup (or re-authenticate) | `restic restore` or `pl auth login` |
-| Per-site code | git.nwpcode.org:nwp/<site>.git | `git clone` into `sites/` |
+| Per-site code | <gitlab-host>:nwp/<site>.git | `git clone` into `sites/` |
 | Per-site config | SOPS-encrypted `.nwp.yml.enc` in site git | `sops decrypt` |
 | Per-site secrets | SOPS-encrypted `.secrets.yml.enc` in site git | `sops decrypt` |
 | Drupal core + vendor | composer.json in site repo | `composer install` |
 | Database content | Restic snapshot (stdin capture) | `restic restore` + `ddev import-db` |
 | User uploads | Restic snapshot (files/) | `restic restore` |
 | Moodle data | Restic snapshot (moodledata/) | `restic restore` |
-| Server configs | git.nwpcode.org:nwp/nwpcode-server.git | `git clone` into `servers/` |
+| Server configs | <gitlab-host>:nwp/nwpcode-server.git | `git clone` into `servers/` |
 | Server secrets | SOPS-encrypted in server git | `sops decrypt` |
 | DDEV config | Site repo (`.ddev/config.yaml`) | `git clone` (already there) |
 | Python venvs | requirements.txt in site repo | `pip install -r requirements.txt` |
@@ -429,7 +429,7 @@ rebuild_full() {
     echo "Prerequisites:"
     echo "  1. age private key at ~/.config/sops/age/keys.txt"
     echo "  2. Restic password at ~/.config/restic/nwp-password"
-    echo "  3. Access to git.nwpcode.org (SSH key)"
+    echo "  3. Access to <gitlab-host> (SSH key)"
     echo ""
 
     # Phase 1: NWP Core
@@ -459,7 +459,7 @@ rebuild_full() {
     # Phase 3: Servers
     echo "--- Phase 3: Restoring server configs ---"
     cd "$NWP_DIR/servers"
-    git clone git@git.nwpcode.org:nwp/nwpcode-server.git nwpcode
+    git clone git@<gitlab-host>:nwp/<server-config-repo>.git nwpcode
     cd nwpcode
     sops decrypt .nwp-server.yml.enc > .nwp-server.yml
 
@@ -476,7 +476,7 @@ rebuild_site() {
 
     # 1. Clone site repo
     cd "$NWP_DIR/sites"
-    git clone "git@git.nwpcode.org:nwp/$site.git" "$site" 2>/dev/null || true
+    git clone "git@<gitlab-host>:nwp/$site.git" "$site" 2>/dev/null || true
 
     # 2. Decrypt site config and secrets
     cd "$site_dir"
@@ -588,21 +588,24 @@ pl backup --status              # Show backup health: last backup time, repo siz
 
 ```bash
 # /etc/cron.d/nwp-backup (installed by pl backup --install-cron)
+# Substitute $USER and $NWP_ROOT with concrete values at install time;
+# cron lines cannot expand environment variables, so the installer renders
+# them to e.g. /opt/nwp/pl or $HOME/nwp/pl.
 
 # Daily full backup at 2am
-0 2 * * * rob /home/rob/nwp/pl backup --full --offsite --quiet 2>&1 | logger -t nwp-backup
+0 2 * * * <user> <nwp-root>/pl backup --full --offsite --quiet 2>&1 | logger -t nwp-backup
 
 # Database snapshots every 6 hours for active sites
-0 */6 * * * rob /home/rob/nwp/pl backup --database --all --quiet 2>&1 | logger -t nwp-backup-db
+0 */6 * * * <user> <nwp-root>/pl backup --database --all --quiet 2>&1 | logger -t nwp-backup-db
 
 # Weekly retention cleanup (Sunday 4am)
-0 4 * * 0 rob /home/rob/nwp/pl backup --prune --quiet 2>&1 | logger -t nwp-backup-prune
+0 4 * * 0 <user> <nwp-root>/pl backup --prune --quiet 2>&1 | logger -t nwp-backup-prune
 
 # Monthly backup verification (1st of month, 5am)
-0 5 1 * * rob /home/rob/nwp/pl backup --verify --quiet 2>&1 | logger -t nwp-backup-verify
+0 5 1 * * <user> <nwp-root>/pl backup --verify --quiet 2>&1 | logger -t nwp-backup-verify
 
 # Daily SOPS encryption of secrets (3am — after full backup)
-0 3 * * * rob /home/rob/nwp/pl backup --secrets --quiet 2>&1 | logger -t nwp-secrets
+0 3 * * * <user> <nwp-root>/pl backup --secrets --quiet 2>&1 | logger -t nwp-secrets
 ```
 
 ### 5.3 Backup Health Monitoring
@@ -851,7 +854,7 @@ SSH keys (~/.ssh/)
 | Both age keys lost | Restic backup still has plaintext secrets (encrypted by restic's own password) |
 | Restic password lost | SOPS-encrypted secrets in git still recoverable with age key |
 | Break-glass key compromised | Rotate: generate new break-glass key, re-encrypt all secrets |
-| All local copies destroyed | Cloud restic repo + git.nwpcode.org have everything needed for full rebuild |
+| All local copies destroyed | Cloud restic repo + <gitlab-host> have everything needed for full rebuild |
 
 ### 9.4 What NOT to Back Up
 

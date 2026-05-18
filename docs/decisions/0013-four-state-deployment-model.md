@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2025-12-20 (P26), refined 2026-01-05 (P32-P35)
-**Decision Makers:** Rob
+**Decision Makers:** Robert Karsten Zaar
 **Related Issues:** P26 (Four-State Deployment Workflow), P32-P35 (Live Deployment Automation)
 **References:** [milestones.md](../reports/milestones.md#phase-5-enterprise-features), [stg2live.sh](../../scripts/commands/stg2live.sh)
 

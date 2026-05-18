@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-01-10
-**Decision Makers:** Rob
+**Decision Makers:** Robert Karsten Zaar
 **Related Issues:** F09 (Comprehensive Testing Infrastructure), v0.18.0
 **Related Commits:** 37a2c3d5, bc0c796c, 54e5b218
 **References:** [VERIFY_ENHANCEMENTS.md](../testing/verify-enhancements.md), [verification-tasks.md](../reference/verification-tasks.md)

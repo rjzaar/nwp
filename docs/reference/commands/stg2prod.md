@@ -82,10 +82,10 @@ Show detailed rsync file transfer output.
 The command displays progress for each step with status indicators:
 
 ```
-[OK] Staging site exists: /home/rob/nwp/sites/nwp-stg
+[OK] Staging site exists: <nwp-root>/sites/nwp-stg
 [OK] Deployment method: rsync
 [OK] Server: prod1 (root@192.0.2.10:22)
-[OK] SSH key: /home/rob/.ssh/id_rsa_linode
+[OK] SSH key: $HOME/.ssh/id_rsa_linode
 [OK] Remote path: /var/www/nwp
 [OK] Domain: example.com
 

@@ -200,7 +200,7 @@ NWP Coder Identity Bootstrap
 
 This script will configure your NWP installation with your coder identity
 
-Base domain: nwpcode.org
+Base domain: <example-prod-domain>
 
 [1/7] Detecting Coder Identity
 
@@ -214,15 +214,15 @@ Checking GitLab account...
 ✓ GitLab account exists for 'john'
 
 Checking NS delegation...
-✓ NS delegation configured for john.nwpcode.org
+✓ NS delegation configured for <coder>.<example-prod-domain>
 
 Checking DNS A records...
-✓ DNS A record configured: john.nwpcode.org -> 192.0.2.100
+✓ DNS A record configured: <coder>.<example-prod-domain> -> 192.0.2.100
 
 [3/7] Configuring NWP Installation
 
 ✓ Configured nwp.yml with identity: john
-  Domain: john.nwpcode.org
+  Domain: <coder>.<example-prod-domain>
 ✓ Created .secrets.yml from example
 ⚠ You'll need to add your Linode API token to .secrets.yml
 
@@ -230,21 +230,21 @@ Checking DNS A records...
 
 Git already configured as: John Doe <john@example.com>
 Keep existing git configuration? [y/N]: n
-✓ Configured git as: john <git@john.nwpcode.org>
+✓ Configured git as: john <git@<coder>.<example-prod-domain>>
 
 [5/7] Infrastructure Verification
 
 DNS Status:
   ✓ NS delegation: ns1.linode.com. ns2.linode.com.
-  ✓ A record: john.nwpcode.org -> 192.0.2.100
+  ✓ A record: <coder>.<example-prod-domain> -> 192.0.2.100
 
 GitLab Status:
-  ✓ GitLab reachable: https://git.nwpcode.org
+  ✓ GitLab reachable: https://<gitlab-host>
 
 SSH Keys:
-  ✓ ED25519 key exists: /home/john/.ssh/id_ed25519.pub
+  ✓ ED25519 key exists: $HOME/.ssh/id_ed25519.pub
   ⚠ Make sure to add your public key to GitLab!
-  GitLab SSH Keys: https://git.nwpcode.org/-/profile/keys
+  GitLab SSH Keys: https://<gitlab-host>/-/profile/keys
 
 [6/7] Registering CLI Command
 
@@ -254,7 +254,7 @@ SSH Keys:
 [7/7] Bootstrap Complete!
 
 ✓ Your NWP installation is configured as: john
-ℹ Subdomain: john.nwpcode.org
+ℹ Subdomain: <coder>.<example-prod-domain>
 
 ================================================================================
 Next Steps
@@ -266,13 +266,13 @@ Next Steps
    Permissions needed: Domains (Read/Write), Linodes (Read/Write)
 
 2. Add SSH Key to GitLab
-   Go to: https://git.nwpcode.org/-/profile/keys
+   Go to: https://<gitlab-host>/-/profile/keys
    Your public key:
-   ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbCdEfGhIjKlMnOpQrStUvWxYz git@john.nwpcode.org
+   ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbCdEfGhIjKlMnOpQrStUvWxYz git@<coder>.<example-prod-domain>
 
 3. Configure DNS A Records in Linode
    Go to: https://cloud.linode.com/domains
-   Domain: john.nwpcode.org
+   Domain: <coder>.<example-prod-domain>
    Add A records:
      @ (root)     -> Your server IP
      git          -> Your server IP
@@ -280,12 +280,12 @@ Next Steps
    See: docs/guides/coder-onboarding.md Step 6
 
 4. Test Your Setup
-   SSH to GitLab: ssh -T git@git.nwpcode.org
+   SSH to GitLab: ssh -T git@<gitlab-host>
    Should see: Welcome to GitLab, @john!
 
 5. Create Your First Site
    john install d mysite
-   Access: https://mysite.john.nwpcode.org
+   Access: https://mysite.<coder>.<example-prod-domain>
 
 Documentation:
   Onboarding: docs/guides/coder-onboarding.md
@@ -301,7 +301,7 @@ Checking GitLab account...
 ✓ GitLab account exists for 'john'
 
 Checking NS delegation...
-⚠ NS delegation not found for john.nwpcode.org
+⚠ NS delegation not found for <coder>.<example-prod-domain>
 ⚠ Contact administrator to run: ./coder-setup.sh add john
 ℹ DNS propagation can take 24-48 hours
 
@@ -328,14 +328,14 @@ NWP Coder Identity Bootstrap
 [3/7] Configuring NWP Installation
 
 [DRY-RUN] Would create nwp.yml from example
-[DRY-RUN] Would set settings.url to: john.nwpcode.org
+[DRY-RUN] Would set settings.url to: <coder>.<example-prod-domain>
 [DRY-RUN] Would create .secrets.yml from example
 
 [4/7] Configuring Git
 
 [DRY-RUN] Would set git config:
   user.name: john
-  user.email: git@john.nwpcode.org
+  user.email: git@<coder>.<example-prod-domain>
 
 [6/7] Registering CLI Command
 
@@ -381,10 +381,10 @@ Updated with coder identity:
 
 ```yaml
 settings:
-  url: john.nwpcode.org
+  url: <coder>.<example-prod-domain>
   email:
-    domain: john.nwpcode.org
-    admin_email: admin@john.nwpcode.org
+    domain: <coder>.<example-prod-domain>
+    admin_email: admin@<coder>.<example-prod-domain>
   cli_command: john
 ```
 
@@ -395,14 +395,14 @@ Git global configuration set:
 ```ini
 [user]
     name = john
-    email = git@john.nwpcode.org
+    email = git@<coder>.<example-prod-domain>
 ```
 
 ### /usr/local/bin/<command>
 
 Symlink created (requires sudo):
 ```bash
-/usr/local/bin/john -> /home/john/nwp/pl
+/usr/local/bin/john -> $HOME/nwp/pl
 ```
 
 ## Identity Detection Methods
@@ -411,7 +411,7 @@ Symlink created (requires sudo):
 
 **How it works:**
 ```bash
-ssh -T git@git.nwpcode.org
+ssh -T git@<gitlab-host>
 # Response: "Welcome to GitLab, @john!"
 # Extracts: "john"
 ```
@@ -509,7 +509,7 @@ You may need to:
 
 **Symptom:**
 ```
-⚠ NS delegation not found for john.nwpcode.org
+⚠ NS delegation not found for <coder>.<example-prod-domain>
 Contact administrator to run: ./coder-setup.sh add john
 ```
 
@@ -540,7 +540,7 @@ Generate SSH key pair now? [y/N]:
 
 **Solution:** Choose:
 - `y` - Script generates ED25519 key pair automatically
-- `n` - Generate manually later: `ssh-keygen -t ed25519 -C "git@john.nwpcode.org"`
+- `n` - Generate manually later: `ssh-keygen -t ed25519 -C "git@<coder>.<example-prod-domain>"`
 
 ## Security Considerations
 
@@ -568,7 +568,7 @@ Generate SSH key pair now? [y/N]:
 
 - `./coder-setup.sh` - Administrator tool for registering coders
 - `./setup-ssh.sh` - Manual SSH key generation
-- CLI registration library: `/home/rob/nwp/lib/cli-register.sh`
+- CLI registration library: `$HOME/nwp/lib/cli-register.sh`
 
 ## See Also
 

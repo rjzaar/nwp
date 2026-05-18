@@ -384,7 +384,7 @@ OAuth2 client creation requires manual setup
 
 ## See Also
 
-- AVC-Moodle Integration Library: `/home/rob/nwp/lib/avc-moodle.sh`
+- AVC-Moodle Integration Library: `<nwp-root>/lib/avc-moodle.sh`
 - Simple OAuth Module: https://www.drupal.org/project/simple_oauth
 - Moodle OAuth2 Documentation: https://docs.moodle.org/en/OAuth_2_authentication
 - OAuth2 Specification: https://oauth.net/2/

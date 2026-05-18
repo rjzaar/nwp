@@ -3,7 +3,7 @@
 **Status:** COMPLETE
 **Created:** 2026-04-09
 **Completed:** 2026-04-09
-**Author:** Rob Zaar, Claude Opus 4.6
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** High (blocks F18 backup paths; blocks `pl live2stg` / `pl stg2live` for F17-migrated sites)
 **Depends On:** F17 (Project Separation) — phases 1-8 complete (prerequisite satisfied)
 **Breaking Changes:** Yes — site directory paths change; all commands that resolve site paths require updates
@@ -186,7 +186,7 @@ project:
   created: "2026-04-07T12:27:44Z"
 live:
   enabled: true
-  domain: ba.nwpcode.org
+  domain: ba.<example-prod-domain>
   server: nwpcode
   remote_path: /var/www/ba
 environments:
@@ -460,7 +460,7 @@ Requirements:
 
 **Decided option:** Option 3 — dev/ + stg/ inside site wrapper
 **Decision date:** 2026-04-09
-**Decision maker:** Rob
+**Decision maker:** Robert Karsten Zaar
 
 **Implementation notes:**
 - Phases 1-4 implemented in a single session on 2026-04-09

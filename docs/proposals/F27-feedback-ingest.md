@@ -1,12 +1,12 @@
-## F27: Feedback Ingest — Prod → mmt via Signed Packages
+## F27: Feedback Ingest — Prod → build-tier via Signed Packages
 
 **Status:** PROPOSED
 **Created:** 2026-04-12
-**Author:** Rob Zaar, Claude Opus 4.6
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** Medium (unblocks closed-loop QA on mayo without opening prod→dev trust)
-**Depends On:** F21 Phase 2 (met runner) ✅, F25 (mayo↔NWP integration), F28 (unified pipeline) for the handoff shape
+**Depends On:** F21 Phase 2 (mirror-store runner) ✅, F25 (mayo↔NWP integration), F28 (unified pipeline) for the handoff shape
 **Breaking Changes:** No (new channel; does not touch existing deploy path)
-**Estimated Effort:** Medium — ~1 day for the Packages-upload primitive + met timer, plus ~half day for the Drupal feedback module wiring
+**Estimated Effort:** Medium — ~1 day for the Packages-upload primitive + mirror-store timer, plus ~half day for the Drupal feedback module wiring
 
 ---
 
@@ -16,7 +16,7 @@
 
 Prod sites currently have no first-class way to send structured
 feedback back to dev. When something breaks, a logged-in user might
-email Rob, or an error lands in a Drupal watchdog log that nobody
+email the operator, or an error lands in a Drupal watchdog log that nobody
 reads until the next audit. There is no channel that:
 
 - lets an end-user flag "this page is wrong" in-context without
@@ -24,11 +24,11 @@ reads until the next audit. There is no channel that:
 - lets prod ship that report back to the dev environment with
   enough metadata to reproduce,
 - preserves ADR-0017's trust posture — no AI-accessible host may
-  hold a credential that reaches prod, and the mons boundary is
+  hold a credential that reaches prod, and the verifier boundary is
   inviolable in *both* directions.
 
 The last constraint is the hard one. The obvious architectures
-(prod → webhook → met, prod → SSH into met, prod → IMAP → parse)
+(prod → webhook → mirror-store, prod → SSH into mirror-store, prod → IMAP → parse)
 all either open a hole from prod back into dev, or bolt on a
 credential that prod must protect in perpetuity. Neither is
 acceptable for a mayo-scale deployment where feedback volume is
@@ -37,8 +37,8 @@ low but authenticity matters.
 ### 1.2 Proposed solution
 
 Prod writes feedback items to **GitLab Packages API** on
-`git.nwpcode.org`, using a write-only Packages-API token scoped to a
-single repository and a single package name. A met systemd timer
+`<gitlab-host>`, using a write-only Packages-API token scoped to a
+single repository and a single package name. A mirror-store systemd timer
 polls for new packages, converts each one into a GitLab issue in the
 project's issue tracker, and closes the package. The token on prod
 has **no** ability to read issues, read code, or write anywhere
@@ -48,27 +48,27 @@ to deposit.
 This is **option (i)** from the Q11 discussion (approved). The
 alternatives considered and rejected were:
 
-- **(ii) IMAP mailbox on met.** Works, but reintroduces email as a
+- **(ii) IMAP mailbox on mirror-store.** Works, but reintroduces email as a
   control path and requires parsing untrusted MIME in a shell
   environment. Rejected.
-- **(iii) Prod-to-mini push over Headscale.** Requires mini to be a
+- **(iii) Prod-to-ai-host push over Headscale.** Requires the `ai-host` to be a
   receiver on a path prod can reach, which pokes a hole in the
-  "prod only talks to mons via WireGuard" rule. Rejected.
+  "prod only talks to the verifier via WireGuard" rule. Rejected.
 - **(iv) Manual CSV export.** Loses the closed loop, defeats the
   point. Rejected.
 
 Option (i) keeps prod strictly *outbound HTTPS* and keeps all
-ingestion logic on met, where AI access is already permitted under
+ingestion logic on the mirror-store, where AI access is already permitted under
 ADR-0017.
 
 ### 1.3 Relationship to F28, F25, ADR-0017
 
 F27 is a *consumer* of the F28 handoff shape (signed artifacts
 travelling through GitLab Packages) applied in the reverse
-direction: F28 moves build → mons → prod, F27 moves prod → met. The
+direction: F28 moves build → verifier → prod, F27 moves prod → mirror-store. The
 signing, verification, and package-naming conventions are shared so
 the two pipelines can reuse `lib/minisign.sh` and the Packages API
-client wrapper. F25 is the first real tenant — mayostudios.org is
+client wrapper. F25 is the first real tenant — <mayo-domain> is
 where the feedback button will first appear.
 
 ## 2. Goals & Non-Goals
@@ -77,13 +77,13 @@ where the feedback button will first appear.
 
 - A logged-in end-user on a mayo prod site can click "Report a
   problem on this page", write a short message, and submit.
-- The submission reaches a met-hosted GitLab issue within the polling
+- The submission reaches a mirror-store-hosted GitLab issue within the polling
   interval (target: ≤ 5 minutes) with enough context to reproduce:
   URL, user id (hashed, not raw — see § 4.3), Drupal version,
   user-agent, a short free-text message, and a server-side
   correlation ID that links to the prod watchdog log line.
-- The channel is one-way (prod → met). There is no path from met
-  back to prod triggered by a feedback submission. Replies, if any,
+- The channel is one-way (prod → mirror-store). There is no path from the
+  mirror-store back to prod triggered by a feedback submission. Replies, if any,
   happen out-of-band once the bug is fixed and a release is cut.
 - The Packages token on prod can be revoked in one click without
   disabling any other prod function.
@@ -95,10 +95,10 @@ where the feedback button will first appear.
 - Not a bug bounty channel. The feedback button is visible only to
   logged-in users.
 - Not an incident-response pager. For that, see F22 (Gotify) and the
-  mons alerting path.
+  verifier alerting path.
 - Not a support ticketing system. If volume grows past what a GitLab
   issue tracker handles comfortably, F27 will be *extended* (new
-  consumer on the met side), not replaced.
+  consumer on the mirror-store side), not replaced.
 - Not a data-collection channel. The sanitizer in the other direction
   (F26 etc.) is about *removing* PII from prod→dev data flows; F27
   must be held to the same standard for the small amount of context
@@ -118,12 +118,12 @@ where the feedback button will first appear.
                                  minisigns it, POSTs to Packages)
                                            |
                                            v  HTTPS (443 only)
-                                  git.nwpcode.org
+                                  <gitlab-host>
                                   Packages registry:
                                   feedback/<site>/<ts>.tar.gz
                                            |
                                            v  systemd timer (5 min)
-                                [met: feedback-ingest]
+                                [mirror-store: feedback-ingest]
                                 (downloads new packages, verifies
                                  minisig, extracts, creates issues,
                                  closes packages)
@@ -146,15 +146,15 @@ where the feedback button will first appear.
    - `FEEDBACK_SIGNING_KEY` — minisign secret key, passphrase-wrapped.
      Passphrase held in a Drupal-readable sidecar that only
      `feedback-publisher` can decrypt (via a boot-time unlock).
-3. **git.nwpcode.org** enforces the token scope at GitLab's edge. An
+3. **<gitlab-host>** enforces the token scope at GitLab's edge. An
    attacker who steals the token cannot list projects, read code,
    or open issues.
-4. **met `feedback-ingest`** runs as the `gitlab-runner` user and
+4. **mirror-store `feedback-ingest`** runs as the `gitlab-runner` user and
    holds a *separate* token with `api` scope on the same project
-   — this is the high-privilege token, but it lives on met (AI-
+   — this is the high-privilege token, but it lives on the mirror-store (AI-
    accessible, inside Headscale), not on prod.
-5. **Signature verification on met** is load-bearing: an attacker
-   who somehow uploaded an unsigned package would produce a met
+5. **Signature verification on the mirror-store** is load-bearing: an attacker
+   who somehow uploaded an unsigned package would produce a mirror-store
    issue titled "SIGNATURE INVALID — possible tampering", which is
    the only thing the ingest pipeline will do with an untrusted
    payload.
@@ -179,7 +179,7 @@ feedback-<site>-<ts>/
 `drupal_version`, `user_agent`, `message`, `correlation_id`.
 
 No raw email, no raw username, no IP address. The hashed `user_ref`
-is deterministic per-site per-salt so a met maintainer can cluster
+is deterministic per-site per-salt so a mirror-store maintainer can cluster
 reports from the same user without knowing who they are.
 
 ## 4. Security posture
@@ -197,9 +197,9 @@ Headscale membership, no new VPN, no new systemd socket.
 The worst case if `FEEDBACK_TOKEN` is stolen from prod:
 
 - Attacker can upload junk packages to the one feedback project on
-  `git.nwpcode.org`. The met ingest timer will try to verify them,
+  `<gitlab-host>`. The mirror-store ingest timer will try to verify them,
   the signatures will fail (signing key is separate and not exposed
-  by the token path), and met will create a flood of "SIGNATURE
+  by the token path), and the mirror-store will create a flood of "SIGNATURE
   INVALID" issues. That is loud, not silent.
 - Attacker **cannot** read any code, any issue, any other package,
   any other project. GitLab enforces scope at the API layer.
@@ -230,13 +230,13 @@ mayo-only phase.
 Build `lib/packages-upload.sh` as a wrapper around `curl` + the
 GitLab Packages API, plus a dry-run mode that just prints the
 request. Smoke-test against a throwaway project on
-`git.nwpcode.org`. No prod touched. No Drupal touched.
+`<gitlab-host>`. No prod touched. No Drupal touched.
 
-### Phase 2 — met ingest timer *(reversible, met only)*
+### Phase 2 — mirror-store ingest timer *(reversible, mirror-store only)*
 
-Build `servers/met/bin/feedback-ingest` + a systemd timer running
+Build `servers/<mirror-store>/bin/feedback-ingest` + a systemd timer running
 every 5 minutes. Downloads new packages, verifies minisig, extracts
-items, creates issues, closes the package. All visible on met;
+items, creates issues, closes the package. All visible on the mirror-store;
 nothing leaves the home LAN except the GitLab API calls.
 
 Smoke-test by uploading hand-crafted test packages from a laptop
@@ -247,7 +247,7 @@ Smoke-test by uploading hand-crafted test packages from a laptop
 Ship a Drupal module `nwp_feedback` that adds a per-page "Report a
 problem" link for logged-in users, writes items to a local queue,
 and exposes a drush command to run the publisher. Initial rollout:
-mayostudios.org only, behind a config flag.
+<mayo-domain> only, behind a config flag.
 
 ### Phase 4 — Token provisioning + cron *(first-use gate)*
 
@@ -258,14 +258,14 @@ it requires explicit human approval (1 approver).
 
 ### Phase 5 — First real submission + dogfood
 
-Rob (as a logged-in mayo user) files the first feedback item on
-mayostudios.org. The full chain from click → met issue is exercised
+The operator (as a logged-in mayo user) files the first feedback item on
+<mayo-domain>. The full chain from click → mirror-store issue is exercised
 end-to-end. Close the loop in the issue tracker, confirm no stray
 credentials leaked to the issue body.
 
 ### Phase 6 — Second site rollout *(triggers 2-approver gate)*
 
-When `saintschool.mayostudios.org` is ready (see "mayo Linode sites
+When `saintschool.<mayo-domain>` is ready (see "mayo Linode sites
 scope" memory), add it as the second tenant. This is the trigger to
 raise the review gate from 1 approver to 2, per § 4.4.
 
@@ -276,13 +276,13 @@ raise the review gate from 1 approver to 2, per § 4.4.
   submission synchronous on a slow GitLab API. **Proposed default:
   hourly cron with a 5-item flush threshold — a burst uploads
   immediately, a trickle waits up to an hour.**
-- Does F27 need its own project on `git.nwpcode.org`, or does it
+- Does F27 need its own project on `<gitlab-host>`, or does it
   attach to each site's existing project? **Proposed: each site gets
   a dedicated `nwp-feedback/<site>` project, separate from the code
   project, so the write-only token can't even name the code
   repository.**
 - What happens when a feedback item contains a secret the user
-  pasted in by mistake (API key, password)? **Proposed: met-side
+  pasted in by mistake (API key, password)? **Proposed: mirror-store-side
   scrubber with the same regex set as F26's sanitizer, running on
   the item body before issue creation. First offence: issue is
   created with the body redacted and the original stored in an
@@ -291,7 +291,7 @@ raise the review gate from 1 approver to 2, per § 4.4.
 ## 7. References
 
 - [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md) — trust boundaries
-- [F21](F21-distributed-build-deploy-pipeline.md) — met runner infrastructure
+- [F21](F21-distributed-build-deploy-pipeline.md) — mirror-store runner infrastructure
 - [F25](F25-mayo-nwp-integration.md) — mayo integration (first tenant)
 - [F28](F28-unified-pipeline.md) — signed-artifact handoff shape (shared with F27)
 - GitLab Packages API: `https://docs.gitlab.com/ee/user/packages/`

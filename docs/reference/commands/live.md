@@ -6,7 +6,7 @@ Provision and manage live test servers.
 
 ## Overview
 
-The `live` command provisions live test servers at `sitename.nwpcode.org`. It supports three server types: shared (GitLab server), dedicated (one Linode per site), and temporary (auto-delete).
+The `live` command provisions live test servers at `sitename.<prod-domain>`. It supports three server types: shared (GitLab server), dedicated (one Linode per site), and temporary (auto-delete).
 
 ## Usage
 
@@ -77,7 +77,7 @@ pl live --ssh nwp
 
 For shared (GitLab) server deployment:
 
-1. Checks GitLab server access (git.nwpcode.org)
+1. Checks GitLab server access (<gitlab-host>)
 2. Creates site directory (`/var/www/<sitename>`)
 3. Configures nginx vhost
 4. Adds DNS record (if Linode API token available)
@@ -113,7 +113,7 @@ Automatically applies:
 
 Uses Let's Encrypt via certbot:
 - Waits for DNS propagation (up to 5 minutes)
-- Obtains wildcard-free certificate for sitename.nwpcode.org
+- Obtains wildcard-free certificate for sitename.<prod-domain>
 - Configures nginx for HTTPS redirection
 - Adds security headers
 
@@ -131,7 +131,7 @@ The live command ensures the staging site is in production mode before deploymen
 ## Site Naming
 
 Both `pl live mysite` and `pl live mysite-stg` work:
-- Live URL always uses base name: `mysite.nwpcode.org`
+- Live URL always uses base name: `mysite.<prod-domain>`
 - Deploys from `mysite-stg` staging site
 
 ## Configuration
@@ -144,7 +144,7 @@ sites:
     recipe: nwp
     live:
       server_ip: 192.0.2.10
-      domain: mysite.nwpcode.org
+      domain: mysite.<prod-domain>
       linode_id: 12345678  # (dedicated only)
       type: dedicated  # or shared, temporary
 ```
@@ -152,7 +152,7 @@ sites:
 ## Prerequisites
 
 ### For shared servers:
-- SSH access to GitLab server (git.nwpcode.org)
+- SSH access to GitLab server (<gitlab-host>)
 - Staging site must exist
 
 ### For dedicated servers:
@@ -164,7 +164,7 @@ sites:
 
 ### Cannot access GitLab server
 - Verify SSH keys are configured
-- Test: `ssh gitlab@git.nwpcode.org`
+- Test: `ssh gitlab@<gitlab-host>`
 
 ### Linode API token not found
 - Add to `.secrets.yml`:
@@ -175,7 +175,7 @@ sites:
 
 ### DNS not propagating
 - Wait 5-10 minutes for DNS changes
-- Check: `dig sitename.nwpcode.org`
+- Check: `dig sitename.<prod-domain>`
 - SSL will retry if DNS fails
 
 ### SSH connectivity lost after security hardening

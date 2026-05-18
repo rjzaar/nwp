@@ -450,7 +450,7 @@ Sync specific high-activity guild every hour:
 
 ## See Also
 
-- AVC-Moodle Integration Library: `/home/rob/nwp/lib/avc-moodle.sh`
+- AVC-Moodle Integration Library: `<nwp-root>/lib/avc-moodle.sh`
 - Moodle Cohorts Documentation: https://docs.moodle.org/en/Cohorts
 - Drupal Group Module: https://www.drupal.org/project/group
 - OAuth2 User Provisioning Best Practices

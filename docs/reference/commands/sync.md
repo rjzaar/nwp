@@ -104,7 +104,7 @@ The sync command reads source server configuration from `nwp.yml`:
 ```yaml
 sites:
   avc:
-    directory: /home/rob/nwp/sites/avc
+    directory: <nwp-root>/sites/avc
     type: import
     source:
       server: prod1          # Server reference (or "custom")
@@ -278,7 +278,7 @@ rsync -avz \
   --exclude=".git" \
   --prune-empty-dirs \
   user@server:/var/www/html/ \
-  /home/rob/nwp/sites/avc/
+  <nwp-root>/sites/avc/
 ```
 
 ### What Gets Synced
@@ -342,7 +342,7 @@ Continue? (Y/n)
 ═══════════════════════════════════════════════════════════════
 
 [i] Source: example.com:/var/www/html/web
-[i] Local:  /home/rob/nwp/sites/avc
+[i] Local:  <nwp-root>/sites/avc
 
 [i] Testing connection...
 [✓] Connected

@@ -5,11 +5,11 @@
 
 **Status:** PROPOSED
 **Created:** 2026-03-23
-**Author:** Rob Zaar, Claude Opus 4.6
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** Medium
 **Depends On:** None (standalone, uses existing NWP infrastructure)
 **Breaking Changes:** No
-**Site:** Any NWP-managed Drupal site (e.g., nwp.nwpcode.org)
+**Site:** Any NWP-managed Drupal site (e.g., nwp.<example-prod-domain>)
 **Design Principle:** Enable secure, authenticated access to Claude Code CLI sessions from any web browser, allowing remote interaction with the NWP development server from anywhere.
 
 ---
@@ -79,7 +79,7 @@ Browser --> HTTPS --> nginx (reverse proxy) --> ttyd (:7681) --> claude CLI
 
 #### Phase A4: nginx Reverse Proxy with TLS (1 hr)
 
-1. Create nginx server block for `claude.nwpcode.org` (or a subpath on an existing site)
+1. Create nginx server block for `claude.<example-prod-domain>` (or a subpath on an existing site)
 2. Configure reverse proxy to `localhost:7681`
 3. Enable WebSocket proxying (`proxy_set_header Upgrade`, `Connection`)
 4. Obtain Let's Encrypt certificate via certbot
@@ -174,7 +174,7 @@ Browser --> HTTPS --> nginx --> Guacamole Web App (Tomcat :8080)
 
 #### Phase B4: nginx Reverse Proxy with TLS (1 hr)
 
-1. Create nginx server block for `claude.nwpcode.org`
+1. Create nginx server block for `claude.<example-prod-domain>`
 2. Configure reverse proxy to Tomcat (`localhost:8080/guacamole`)
 3. Enable WebSocket proxying for Guacamole's tunnel
 4. Obtain Let's Encrypt certificate
@@ -203,7 +203,7 @@ Browser --> HTTPS --> nginx --> Guacamole Web App (Tomcat :8080)
 #### Phase B7: Drupal Integration (Optional) (1 hr)
 
 1. Create Drupal page with iframe embedding Guacamole
-2. Alternatively, link from Drupal admin menu to `claude.nwpcode.org`
+2. Alternatively, link from Drupal admin menu to `claude.<example-prod-domain>`
 3. Restrict access to Drupal admin role
 
 ### 3.4 Pros
@@ -439,7 +439,7 @@ Browser --> HTTPS --> nginx --> Drupal (or standalone app)
    - Admin page that loads the frontend app
    - Passes Drupal auth token to backend for validation
    - Settings form for backend URL configuration
-2. Alternatively, deploy as standalone app at `claude.nwpcode.org`
+2. Alternatively, deploy as standalone app at `claude.<example-prod-domain>`
 3. Add link in Drupal admin toolbar
 
 #### Phase D7: Security Hardening (2 hr)
@@ -559,9 +559,9 @@ This gives immediate CLI access, a convenient chat interface for simple question
 
 ## 10. Open Questions
 
-1. **DNS:** Should this live at `claude.nwpcode.org`, a subpath like `nwp.nwpcode.org/claude`, or elsewhere?
+1. **DNS:** Should this live at `claude.<example-prod-domain>`, a subpath like `nwp.<example-prod-domain>/claude`, or elsewhere?
 2. **User:** Which system user should Claude Code sessions run as? (`gitlab`, a dedicated `claude` user, or containerised?)
-3. **Scope:** Should Claude Code have access to all of `/home/rob/nwp` or a restricted subset?
+3. **Scope:** Should Claude Code have access to all of `$NWP_ROOT` or a restricted subset?
 4. **API budget:** For Option C, what monthly API spend is acceptable?
 5. **SDK availability:** Is the Claude Code SDK currently available for programmatic use, or is it still in preview?
 

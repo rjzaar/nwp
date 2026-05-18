@@ -337,12 +337,12 @@ proposal with phases and success criteria. On 2026-04-08 it was moved to
 was retired.
 
 The actual "install and persist a local LLM on a NWP-managed machine" work
-is now tracked under **F21 Phase 3a — mini as local-LLM agent**
+is now tracked under **F21 Phase 3a — ai-host as local-LLM agent**
 ([proposal](../proposals/F21-distributed-build-deploy-pipeline.md)), which
 is the concrete provisioning plan the guide describes at the abstract level.
 
 Any previously planned `pl llm …` CLI surface is deliberately *not*
-committed to yet. F21 Phase 3a leaves the CLI question open until mini's
+committed to yet. F21 Phase 3a leaves the CLI question open until the ai-host's
 agent role has stabilised; the guide documents the manual `ollama` CLI and
 REST API until then.
 
@@ -355,10 +355,10 @@ workstation (Ryzen 9 + RTX 2060) and never had a corresponding file. Its
 intent is fully covered by:
 
 - [`docs/guides/local-llm.md`](../guides/local-llm.md) — the hardware-agnostic guide (promoted from F10)
-- **F21 Phase 3a — mini as local-LLM agent** — the concrete provisioning
-  of NWP's actual production local-LLM machine (mini, Beelink Ryzen AI
-  MAX+ 395 with Radeon 8060S iGPU via Vulkan, which landed ~2× the
-  benchmark speed the F11 RTX 2060 target was designed around)
+- **F21 Phase 3a — ai-host as local-LLM agent** — the concrete provisioning
+  of NWP's actual production local-LLM machine (a compact AMD APU box with
+  a unified-memory iGPU running Vulkan, which landed ~2× the benchmark
+  speed the F11 dGPU target was designed around)
 
 The F11 slot is **retired**; do not reclaim the number.
 
@@ -669,7 +669,7 @@ This proposal is permanently rejected. The project is and will remain **NWP — 
 
 ## Phase 13: Distributed Build/Deploy Pipeline (IN PROGRESS)
 
-### F21: Distributed Build/Deploy Pipeline (mmt build, mons deploy)
+### F21: Distributed Build/Deploy Pipeline (build-tier build, verifier deploy)
 **Status:** IN PROGRESS (Phase 3a ✅ complete 2026-04-08; Phase 10 dry-run skeleton landed 2026-04-08) | **Priority:** HIGH | **Effort:** Multi-week (~13 phases) | **Dependencies:** F17 (Project Separation), F18 (Unified Backup)
 **Proposal:** [F21-distributed-build-deploy-pipeline.md](../proposals/F21-distributed-build-deploy-pipeline.md)
 **Architecture decision record:** [ADR-0017](../decisions/0017-distributed-build-deploy-pipeline.md)
@@ -677,10 +677,10 @@ This proposal is permanently rejected. The project is and will remain **NWP — 
 Move from a single-machine, AI-co-located build/deploy model to a distributed
 pipeline that:
 
-- Runs build/test/lint on home hardware (`met` + `mini` = `mmt`)
-- Air-gaps a separate AI-free deploy machine (`mons`) with hardware-token
+- Runs build/test/lint on home hardware (`mirror-store` + `ai-host` = `build-tier`)
+- Air-gaps a separate AI-free deploy machine (`verifier`) with hardware-token
   prod SSH keys (Solo 2C+)
-- Migrates `git.nwpcode.org` from Newark to `au-mel` for sub-10 ms RTT
+- Migrates `<gitlab-host>` from Newark to `au-mel` for sub-10 ms RTT
 - Hosts production sites in `us-iad`
 - Replaces in-place prod overwrites with blue-green slot swaps and
   forward-compat migrations
@@ -700,20 +700,20 @@ rollout, and tabletop drills.
 **Progress as of 2026-04-09:**
 - **Phase 1 (Headscale VPN) ✅ complete (2026-04-09).** Headscale 0.28.0
   on Newark alongside GitLab (not au-mel — migration dropped). TLS at
-  `https://hs.nwpcode.org` via GitLab nginx + Let's Encrypt. Three nodes:
-  dev, mini, met — direct LAN connections <5ms, MagicDNS working. $0
+  `https://hs.<example-prod-domain>` via GitLab nginx + Let's Encrypt. Three nodes:
+  dev, llm-host, mirror-store — direct LAN connections <5ms, MagicDNS working. $0
   incremental cost. Replaces the SSH-tunnel interim pattern.
-- **Phase 2 (GitLab Runner on met) ✅ complete (2026-04-09).** GitLab
-  Runner 18.10.1 (shell executor) registered on met. Pipeline working:
+- **Phase 2 (GitLab Runner on mirror-store) ✅ complete (2026-04-09).** GitLab
+  Runner 18.10.1 (shell executor) registered on the mirror-store. Pipeline working:
   verify-signature placeholder, lint:bash, test:unit, test:integration
   all pass. Commit signing deferred. Pre-existing `.gitlab-ci.yml`
   validation errors fixed.
-- **Phase 3a (mini as local-LLM agent) ✅ complete (2026-04-08).** ollama
-  under user-systemd + linger on mini, Vulkan pinned, both baseline
-  models past benchmark thresholds. Diagnostic: `pl mini llm health`.
+- **Phase 3a (llm-host as local-LLM agent) ✅ complete (2026-04-08).** ollama
+  under user-systemd + linger on the llm-host, Vulkan pinned, both baseline
+  models past benchmark thresholds. Diagnostic: `pl llm-host llm health`.
 - **Phase 10 (AI-fix loop) — dry-run skeleton landed, inert.**
-  `servers/mini/bot/poll.py` + 13 unit tests, hard-default `dry_run:
-  true`, static `repos.allowlist: [mayo/mayo]`. Blocked on mons
+  `servers/<ai-host>/bot/poll.py` + 13 unit tests, hard-default `dry_run:
+  true`, static `repos.allowlist: [mayo/mayo]`. Blocked on the verifier
   (Phase 5) and the mayo issue channel for real input.
 - **Phase 4:** deferred — no concrete reason to migrate GitLab from
   Newark currently.
@@ -735,17 +735,17 @@ All F25 work is absorbed into F29.
 
 Cross-site SSO: AVC as OIDC identity provider, Moodle as client. UID lock, deterministic email hashing for sanitized previews, per-MR preview environments, wildcard TLS via certbot-dns-linode.
 
-### F27: Feedback Ingest — Prod → mmt via Signed Packages
+### F27: Feedback Ingest — Prod → build-tier via Signed Packages
 **Status:** PROPOSED | **Priority:** Medium | **Effort:** Medium | **Dependencies:** F21, F29 Phase 5
 **Proposal:** [F27-feedback-ingest.md](../proposals/F27-feedback-ingest.md)
 
-Reverse pipeline: prod writes structured feedback to GitLab Packages API (write-only token), met polls and creates GitLab issues. First tenant: mayo.
+Reverse pipeline: prod writes structured feedback to GitLab Packages API (write-only token), the mirror-store polls and creates GitLab issues. First tenant: mayo.
 
-### F28: Unified Pipeline — mmt → mons → prod Signed-Artifact Handoff
+### F28: Unified Pipeline — build-tier → verifier → prod Signed-Artifact Handoff
 **Status:** PROPOSED | **Priority:** High | **Effort:** Large | **Dependencies:** F21
 **Proposal:** [F28-unified-pipeline.md](../proposals/F28-unified-pipeline.md)
 
-Three-hop pipeline: mmt builds+signs → GitLab Packages → mons verifies+deploys via WireGuard + Solo 2C+. Immutable signed bundles, idempotent apply, atomic rollback.
+Three-hop pipeline: build-tier builds+signs → GitLab Packages → verifier verifies+deploys via WireGuard + Solo 2C+. Immutable signed bundles, idempotent apply, atomic rollback.
 
 ### F29: Mayo Comprehensive Integration
 **Status:** PROPOSED | **Priority:** High | **Effort:** Large | **Dependencies:** F21, F23 ✅, F26
@@ -1073,13 +1073,13 @@ Should X01 be implemented? Only if:
 
 ---
 
-### X02: Local Voice Agent on mini (Twilio + Pipecat + local LLM)
-**Status:** PROPOSED | **Priority:** LOW | **Effort:** ~4 phases | **Dependencies:** [Local LLM guide](../guides/local-llm.md), F21 Phase 3a (mini as local-LLM agent), F21 Phase 1 (Headscale — soft)
-**Proposal:** [X02-local-voice-agent-on-mini.md](../proposals/X02-local-voice-agent-on-mini.md)
+### X02: Local Voice Agent (Twilio + Pipecat + local LLM)
+**Status:** PROPOSED | **Priority:** LOW | **Effort:** ~4 phases | **Dependencies:** [Local LLM guide](../guides/local-llm.md), F21 Phase 3a (llm-host as local-LLM agent), F21 Phase 1 (Headscale — soft)
+**Proposal:** [X02-local-voice-agent.md](../proposals/X02-local-voice-agent.md)
 **Architecture decision record:** [ADR-0018: Twilio as bounded SaaS dependency](../decisions/0018-twilio-bounded-saas-for-pstn.md)
 **Type:** OUTLIER — voice telephony is scope expansion beyond NWP's core Drupal mission
 
-Run an AI voice agent on **mini** (Beelink Ryzen AI Max+ 395) that answers
+Run an AI voice agent on the **voice-agent host** (compact PC with integrated GPU and unified memory) that answers
 phone calls on a Twilio US 10DLC number using a fully local stack: Pipecat
 orchestration + faster-whisper STT + Llama 3.1 8B (or Qwen 2.5 7B) on
 Ollama + Piper/Kokoro TTS. Zero cloud AI inference.
@@ -1088,7 +1088,7 @@ Ollama + Piper/Kokoro TTS. Zero cloud AI inference.
 - NWP's core mission: Drupal deployment, hosting, site management
 - Voice telephony: communication channel, not infrastructure
 - Introduces NWP's first bounded third-party SaaS dependency (Twilio); see ADR-0018 for the trust-boundary decision
-- Must coexist with mini's primary tenant (the coding agent) without evicting it
+- Must coexist with the voice-agent host's primary tenant (the coding agent) without evicting it
 
 **Coexistence strategy:** Ollama `keep_alive=24h` on the coding model
 (resident), `keep_alive=5m` on the voice model (loads on call, unloads
@@ -1096,10 +1096,10 @@ after). STT and TTS run on CPU so the iGPU is only contended for LLM work.
 Phase 0 preflight validates memory headroom before anything else is built.
 
 **Threat model alignment:**
-- mini has no prod access; voice agent tool allowlist starts empty and
+- the voice-agent host has no prod access; voice agent tool allowlist starts empty and
   nothing prod-adjacent is ever added
-- Twilio sees audio only; all STT/LLM/TTS/state local on mini
-- No inbound port on the home router — Twilio reaches mini via a
+- Twilio sees audio only; all STT/LLM/TTS/state local on the voice-agent host
+- No inbound port on the home router — Twilio reaches the voice-agent host via a
   Headscale-routed ingress on the `au-mel` Linode
 - Call logs, transcripts, and conversation state stay in local SQLite
 - Pipecat's transport abstraction means swapping Twilio for Telnyx /
@@ -1108,7 +1108,7 @@ Phase 0 preflight validates memory headroom before anything else is built.
 
 **Phases** (see proposal for detail):
 
-1. **Phase 0** — Preflight: verify mini can run 8B at voice-grade latency
+1. **Phase 0** — Preflight: verify the voice-agent host can run 8B at voice-grade latency
    alongside the coding agent
 2. **Phase 1** — Twilio paid account + US 10DLC number + TwiML hello-world
    (no A2P 10DLC dependency)
@@ -1119,7 +1119,7 @@ Phase 0 preflight validates memory headroom before anything else is built.
    (TCR 10–15 day review; gated on business registration details and an
    updated privacy policy that explicitly mentions SMS; voice is unaffected)
 
-**Self-contained:** Everything lives under `servers/mini/voice-agent/`.
+**Self-contained:** Everything lives under `servers/<voice-agent>/voice-agent/`.
 No changes to `lib/`, `scripts/commands/`, `pl`, or `recipes/`. Deletes
 cleanly if the experiment fails.
 
@@ -1492,5 +1492,5 @@ list, filtered by status or by site.
 *Broken proposal links fixed, Phase numbering updated: February 1, 2026*
 *F15 expanded to ~10h practical scope with developer key onboarding: February 1, 2026*
 *P56 updated with SSH key management for coder onboarding (Section 7): February 1, 2026*
-*X02 (Local Voice Agent on mini) added as experimental outlier; ADR-0018 added (Twilio as bounded SaaS): April 8, 2026*
-*F21 Phase 3a ✅ complete; F21 Phase 10 dry-run skeleton landed at `servers/mini/bot/`: April 8, 2026 (status rows updated April 9)*
+*X02 (Local Voice Agent) added as experimental outlier; ADR-0018 added (Twilio as bounded SaaS): April 8, 2026*
+*F21 Phase 3a ✅ complete; F21 Phase 10 dry-run skeleton landed at `servers/<ai-host>/bot/`: April 8, 2026 (status rows updated April 9)*

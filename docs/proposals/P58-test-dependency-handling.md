@@ -2,7 +2,7 @@
 
 **Status:** IMPLEMENTED
 **Created:** 2026-01-18
-**Author:** Rob, Claude Opus 4.5
+**Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** Medium
 **Depends On:** P54 (removes grep tests expecting this feature)
 **Estimated Effort:** 3-5 days

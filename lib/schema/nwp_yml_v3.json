@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nwpcode.org/schemas/nwp-yml-v3.json",
+  "title": "nwp.yml v3",
+  "description": "NWP per-operator instance configuration. v3 introduces tier presets, role-bound hosts, feature flags with adapter selectors (per ADR-0020 + F32 Phase A). See docs/reference/nwp.yml.md for prose documentation.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["nwp"],
+  "properties": {
+    "nwp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version"],
+      "properties": {
+        "version": {
+          "description": "Schema version. Integer 3 for this schema (OQ-1 default: integer).",
+          "type": "integer",
+          "enum": [3]
+        },
+        "tier": {
+          "description": "Tier preset (sugar for feature defaults). Per-feature flags override this.",
+          "type": "integer",
+          "enum": [1, 2, 3, 4]
+        },
+        "operator_alias": {
+          "description": "Short label for this operator's instance, used in pl status headers.",
+          "type": "string"
+        }
+      }
+    },
+    "hosts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "local": {
+            "type": "boolean",
+            "description": "True if this host IS the current machine."
+          },
+          "ssh": {
+            "type": "string",
+            "description": "SSH target (e.g. user@host)."
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "authoring",
+                "ci-host",
+                "build-host",
+                "ai-host",
+                "llm-host",
+                "voice-agent",
+                "transcription-worker",
+                "transcription-gpu",
+                "mirror-store",
+                "rag-backend",
+                "verifier",
+                "signed-deploy",
+                "gitlab-host",
+                "prod-cluster"
+              ]
+            },
+            "uniqueItems": true
+          }
+        },
+        "required": ["roles"]
+      }
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ci": { "$ref": "#/$defs/feature_with_backend" },
+        "ai": { "$ref": "#/$defs/feature_with_backend" },
+        "deploy_mode": { "$ref": "#/$defs/feature_with_backend" },
+        "secrets": { "$ref": "#/$defs/feature_with_backend" },
+        "backup": { "$ref": "#/$defs/feature_with_backend" },
+        "vpn": { "$ref": "#/$defs/feature_with_backend" },
+        "dns": { "$ref": "#/$defs/feature_with_backend" },
+        "voice_agent": { "$ref": "#/$defs/feature_with_backend" },
+        "rag": { "$ref": "#/$defs/feature_with_backend" },
+        "transcription": { "$ref": "#/$defs/feature_with_backend" }
+      }
+    },
+    "sites": {
+      "description": "Per-site list. Per-site config lives at instance-overlay/<site>/nwp.yml (see F33). This block carries cross-cutting per-site defaults only.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object"
+      }
+    }
+  },
+  "$defs": {
+    "feature_with_backend": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "backend": {
+          "type": "string",
+          "description": "Adapter selector. See lib/adapters/<feature>/<backend>/ for available adapters."
+        }
+      },
+      "required": ["enabled"]
+    }
+  }
+}

@@ -1,0 +1,28 @@
+# P61 §4.4 — GitHub Actions equivalent of the GitLab CI leakage gate.
+# Applies to any GitHub mirror of the public NWP repo. Pull requests to
+# main fail this job on any leakage finding; the workflow has no bypass
+# from the contributor side. Configure branch protection on `main` to
+# require this check.
+
+name: leakage-check
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  gitleaks:
+    name: gitleaks (operator-specific ruleset)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_NOTIFY_USER_LIST: ""

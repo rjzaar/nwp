@@ -20,14 +20,69 @@ git remote add upstream git@github.com:rjzaar/nwp.git
 # 4. Create a feature branch
 git checkout -b fix/your-fix-description
 
-# 5. Make changes and commit
+# 5. Install the leakage gate (one-time per clone)
+pipx install pre-commit && pre-commit install
+
+# 6. Make changes and commit
 git add -A
 git commit -m "Fix: description of your fix"
 
-# 6. Push and create PR
+# 7. Push and create PR
 git push origin fix/your-fix-description
 # Then create PR via GitHub web interface
 ```
+
+## Leakage gate (required before first commit)
+
+NWP enforces a **leakage hygiene gate** (per P61) at two layers: a local
+pre-commit hook for fast feedback, and a non-bypassable CI job that blocks
+merge to `main`. The gate refuses commits that introduce:
+
+- Hardcoded `/home/<user>/` paths
+- Internal bare hostnames bound to roles in any operator's instance
+  manifest (e.g. specific machine names)
+- Internal FQDNs (`*.home`, `*.local`, `*.tunnel`)
+- Operator-specific organisation names
+- Standard credential patterns (AWS / GCP / GitHub / Slack / generic
+  high-entropy tokens)
+
+**Install the local hook once per clone:**
+
+```bash
+pipx install pre-commit   # one-time, system-wide
+cd nwp
+pre-commit install        # one-time per clone
+```
+
+**If the gate fires on your change:**
+
+- If the match is real (a hostname, a path, an organisation name leaking
+  into public docs): rewrite using the role-label vocabulary at
+  [`docs/reference/role-vocabulary.md`](docs/reference/role-vocabulary.md).
+- If the match is legitimate (you're documenting the rule itself, or
+  citing a name in a CHANGELOG context that has no alternative): add a
+  narrow path-pinned entry to `.gitleaksignore` with a one-line rationale
+  comment immediately above.
+- **Never bypass with `--no-verify` without an entry in `.gitleaksignore`** —
+  the CI gate is non-bypassable and your PR will fail to merge.
+
+The full ruleset lives in [`.gitleaks.toml`](.gitleaks.toml); the
+allowlist lives in [`.gitleaksignore`](.gitleaksignore).
+
+## License acceptance (DCO)
+
+NWP is dual-licensed under `CC0-1.0 OR MIT`. By contributing, you assert
+that you have the right to do so and you agree your contribution may be
+distributed under either licence at the recipient's choice. Sign your
+commits per the Developer Certificate of Origin:
+
+```bash
+git commit -s -m "Your message"
+```
+
+The `Signed-off-by:` trailer is the operational evidence of your DCO
+assertion. See [`LICENSE`](LICENSE), [`NOTICE`](NOTICE), and the project's
+NOTICE file for the full text.
 
 ### For Core Development (Full Access)
 

@@ -17,7 +17,7 @@
 #
 # NOTE: Legacy deploy:staging / deploy:production jobs were deleted in
 # F24 Phase 3 Step 1 — see ADR-0017 (trust model) for rationale. The
-# replacement build-artifact → mons handoff is tracked in F28.
+# replacement build-artifact → verifier handoff is tracked in F28.
 
 stages:
   - lint
@@ -127,7 +127,7 @@ verify-signature:
 # Fast syntax and style validation
 ################################################################################
 
-# Bash syntax validation (shell executor on met — no Docker image needed)
+# Bash syntax validation (shell executor — no Docker image needed)
 lint:bash:
   stage: lint
   script:
@@ -137,7 +137,24 @@ lint:bash:
     - if: $CI_PIPELINE_SOURCE == "push"
   tags:
     - nwp
-    - met
+    - ci-host
+
+# Leakage gate — refuses MRs / main pushes that introduce operator-specific
+# identifiers (hostnames, paths, organisations) or generic credentials.
+# Per P61 §4.4. Configure `main` branch protection to require this job to
+# pass before merge.
+lint:leakage:
+  stage: lint
+  image: zricethezav/gitleaks:v8.30.0
+  script:
+    - gitleaks detect --source . --config=.gitleaks.toml --redact --verbose --exit-code 1
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+  tags:
+    - nwp
+    - ci-host
+  allow_failure: false
 
 ################################################################################
 # TEST STAGE
@@ -655,7 +672,7 @@ cleanup:preview:
 #   8. Preview environment auto-cleans up after 1 week
 #
 # Deployment to staging/production is not performed by this pipeline;
-# see F28 for the planned mmt → mons → prod signed-artifact handoff.
+# see F28 for the planned build-tier → verifier → prod signed-artifact handoff.
 #
 # Nightly workflow:
 #   1. Scheduled pipeline runs at 2 AM

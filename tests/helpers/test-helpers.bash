@@ -438,6 +438,24 @@ skip_if_not_ddev() {
     fi
 }
 
+# Safely tear down a DDEV project so volumes and images are released.
+# Replaces the legacy `ddev stop --unlist` pattern, which leaves orphan
+# Docker volumes — the 2026-01 incident behind the no-`sites/tmp/` rule
+# in CLAUDE.md. `ddev delete --omit-snapshot --yes` releases all DDEV-
+# managed resources without prompting and without retaining a snapshot.
+# Safe to call on a non-existent path or a site without DDEV config.
+#
+# Usage: ddev_teardown_site <absolute-site-path>
+ddev_teardown_site() {
+    local site_path="$1"
+    [ -z "${site_path}" ] && return 0
+    [ -d "${site_path}" ] || return 0
+
+    if [ -f "${site_path}/.ddev/config.yaml" ] && command -v ddev &>/dev/null; then
+        (cd "${site_path}" && ddev delete --omit-snapshot --yes 2>/dev/null) || true
+    fi
+}
+
 # Assert that a variable is set and non-empty
 # Usage: assert_set "$variable"
 assert_set() {

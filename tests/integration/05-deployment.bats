@@ -29,9 +29,7 @@ teardown_file() {
         for site in "${TEST_SITE}" "${TEST_SITE_STG}"; do
             if [ -d "${PROJECT_ROOT}/sites/${site}" ]; then
                 cd "${PROJECT_ROOT}"
-                if [ -f "${PROJECT_ROOT}/sites/${site}/.ddev/config.yaml" ]; then
-                    (cd "${PROJECT_ROOT}/sites/${site}" && ddev stop --unlist 2>/dev/null) || true
-                fi
+                ddev_teardown_site "${PROJECT_ROOT}/sites/${site}"
                 ./scripts/commands/delete.sh -y "${site}" 2>/dev/null || rm -rf "${PROJECT_ROOT}/sites/${site}"
             fi
         done

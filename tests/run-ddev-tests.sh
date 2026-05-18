@@ -167,9 +167,10 @@ cleanup_test_sites() {
                 sitename=$(basename "$site")
                 echo -e "  Removing ${CYAN}${sitename}${NC}..."
 
-                # Stop DDEV if running
+                # Release DDEV-managed resources (volumes + images) per F36 A-T4.
+                # `ddev stop --unlist` leaves orphan volumes — the 2026-01 incident.
                 if [ -f "$site/.ddev/config.yaml" ]; then
-                    (cd "$site" && ddev stop --unlist 2>/dev/null) || true
+                    (cd "$site" && ddev delete --omit-snapshot --yes 2>/dev/null) || true
                 fi
 
                 # Use delete.sh if available

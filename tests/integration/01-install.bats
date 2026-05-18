@@ -25,14 +25,10 @@ setup_file() {
 
 # File-level teardown - runs once after all tests
 teardown_file() {
-    # Cleanup test site if it exists
     if [ "${CLEANUP_SITES:-true}" = "true" ]; then
         if [ -d "${PROJECT_ROOT}/sites/${TEST_SITE}" ]; then
             cd "${PROJECT_ROOT}"
-            # Stop DDEV first to release resources
-            if [ -f "${PROJECT_ROOT}/sites/${TEST_SITE}/.ddev/config.yaml" ]; then
-                (cd "${PROJECT_ROOT}/sites/${TEST_SITE}" && ddev stop --unlist 2>/dev/null) || true
-            fi
+            ddev_teardown_site "${PROJECT_ROOT}/sites/${TEST_SITE}"
             ./scripts/commands/delete.sh -fy "${TEST_SITE}" 2>/dev/null || true
         fi
     fi

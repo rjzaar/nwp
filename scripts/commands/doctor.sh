@@ -141,11 +141,11 @@ check_configuration() {
             fi
         fi
 
-        # Check for sites defined
+        # Check for sites defined (F36 A-C2: yq-first per ADR-0015)
         local site_count=0
         if grep -q "^sites:" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
-            # Count site entries (lines that start with 2 spaces followed by a word and colon)
-            site_count=$(awk '/^sites:/{flag=1;next}/^[a-zA-Z]/{flag=0}flag && /^  [a-zA-Z]/ && /:$/{count++}END{print count+0}' "$PROJECT_ROOT/nwp.yml")
+            site_count=$(yq eval '.sites | length' "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
+            [ -z "$site_count" ] || [ "$site_count" = "null" ] && site_count=0
         fi
 
         if [ "$site_count" -gt 0 ]; then

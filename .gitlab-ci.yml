@@ -171,6 +171,34 @@ lint:bash:
     - nwp
     - ci-host
 
+# yq-first enforcement (F36 A-C2 / ADR-0015). Refuses commits that
+# reintroduce AWK YAML parsers in pl, scripts/commands/, or lib/. yq
+# is the sanctioned YAML reader; AWK uses for non-YAML field extraction
+# (du output, port parsing, etc.) remain fine — the regex below only
+# matches `awk` invocations that read a `.yml` file.
+lint:yq-first:
+  stage: lint
+  script:
+    - |
+      echo "Scanning for AWK YAML parsers (forbidden per ADR-0015)..."
+      # Match `awk` lines that pipe / read a .yml file in the same command.
+      # Three patterns: `awk ... nwp.yml`, `awk ... .yml"` (quoted path),
+      # and `awk ... | <yaml file>` patterns.
+      if grep -RHnE 'awk[^|]*(\.yml|nwp\.yml)' pl scripts/commands/ lib/ \
+          --include='*.sh' --include='pl' 2>/dev/null; then
+        echo ""
+        echo "ERROR: AWK YAML parser detected. Use yq instead (ADR-0015)."
+        echo "See lib/ci-stats.sh and pl get_site_field for the yq pattern."
+        exit 1
+      fi
+      echo "OK — no AWK YAML parsers found."
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  tags:
+    - nwp
+    - ci-host
+
 # Leakage gate — refuses MRs / main pushes that introduce operator-specific
 # identifiers (hostnames, paths, organisations) or generic credentials.
 # Per P61 §4.4. Configure `main` branch protection to require this job to

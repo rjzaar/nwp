@@ -85,47 +85,27 @@ build_rsync_ssh_opts() {
 }
 
 # Get recipe value from nwp.yml
+# F36 A-C2: yq-first per ADR-0015 (replaces legacy AWK YAML parser).
 get_recipe_value() {
     local recipe=$1
     local key=$2
     local config_file="${3:-nwp.yml}"
 
-    awk -v recipe="$recipe" -v key="$key" '
-        BEGIN { in_recipe = 0; found = 0 }
-        /^  [a-zA-Z0-9_-]+:/ {
-            if ($1 == recipe":") {
-                in_recipe = 1
-            } else if (in_recipe && /^  [a-zA-Z0-9_-]+:/) {
-                in_recipe = 0
-            }
-        }
-        in_recipe && $0 ~ "^    " key ":" {
-            sub("^    " key ": *", "")
-            print
-            found = 1
-            exit
-        }
-    ' "$config_file"
+    recipe="$recipe" key="$key" yq eval \
+        '.recipes[env(recipe)] | .[env(key)] | select(tag == "!!str" or tag == "!!int" or tag == "!!float" or tag == "!!bool") // ""' \
+        "$config_file" 2>/dev/null
 }
 
 # Get Linode server configuration
+# F36 A-C2: yq-first per ADR-0015.
 get_linode_config() {
     local server_name=$1
     local field=$2
     local config_file="${3:-nwp.yml}"
 
-    awk -v server="$server_name" -v field="$field" '
-        BEGIN { in_servers = 0; in_server = 0 }
-        /^linode:/ { in_linode = 1; next }
-        in_linode && /^  servers:/ { in_servers = 1; next }
-        in_servers && $0 ~ "^    " server ":" { in_server = 1; next }
-        in_server && /^    [a-zA-Z]/ && !/^      / { in_server = 0 }
-        in_server && $0 ~ "^      " field ":" {
-            sub("^      " field ": *", "")
-            print
-            exit
-        }
-    ' "$PROJECT_ROOT/nwp.yml"
+    server_name="$server_name" field="$field" yq eval \
+        '.linode.servers[env(server_name)] | .[env(field)] | select(tag == "!!str" or tag == "!!int" or tag == "!!float" or tag == "!!bool") // ""' \
+        "$PROJECT_ROOT/nwp.yml" 2>/dev/null
 }
 
 # Check if site is in production mode
@@ -267,20 +247,10 @@ validate_deployment() {
     local prod_server prod_domain prod_path prod_method
 
     if command -v yaml_get_site_field &> /dev/null; then
-        # Check if site has production_config
-        prod_method=$(awk -v site="$base_name" '
-            BEGIN { in_site = 0; in_prod = 0 }
-            /^sites:/ { in_sites = 1; next }
-            in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
-            in_site && /^  [a-zA-Z]/ { in_site = 0 }
-            in_site && /^    production_config:/ { in_prod = 1; next }
-            in_prod && /^    [a-zA-Z]/ && !/^      / { in_prod = 0 }
-            in_prod && /^      method:/ {
-                sub("^      method: *", "")
-                print
-                exit
-            }
-        ' "$PROJECT_ROOT/nwp.yml")
+        # Check if site has production_config (F36 A-C2: yq-first per ADR-0015)
+        prod_method=$(site="$base_name" yq eval \
+            '.sites[env(site)].production_config.method | select(tag == "!!str" or tag == "!!int" or tag == "!!float" or tag == "!!bool") // ""' \
+            "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
     fi
 
     # If not in sites:, read from recipe

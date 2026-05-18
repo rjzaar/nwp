@@ -331,63 +331,35 @@ cmd_list() {
     echo -e "${BOLD}Tracked Sites:${NC}"
     echo ""
 
-    awk '
-        /^sites:/ { in_sites = 1; next }
-        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
-        in_sites && /^  [a-zA-Z0-9_-]+:/ {
-            name = $0
-            gsub(/^  /, "", name)
-            gsub(/:.*/, "", name)
-            printf "  %s\n", name
-        }
-    ' "$cnwp_file"
+    # F36 A-C2: yq-first per ADR-0015 (replaces legacy AWK YAML parser)
+    yq eval '.sites | keys | .[]' "$cnwp_file" 2>/dev/null | sed 's/^/  /'
 }
 
 # Get a field from a site in nwp.yml
+# F36 A-C2: yq-first per ADR-0015. Scalar filter preserves the old
+# AWK behaviour of returning empty for non-scalar fields and missing keys
+# (caller variables passed via env() for injection-safety).
 get_site_field() {
     local site="$1"
     local field="$2"
     local config_file="${SCRIPT_DIR}/nwp.yml"
 
-    awk -v site="$site" -v field="$field" '
-        /^sites:/ { in_sites = 1; next }
-        in_sites && /^[a-zA-Z]/ && !/^  / { exit }
-        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
-        in_site && /^  [a-zA-Z]/ && !/^    / { exit }
-        in_site && $0 ~ "^    " field ":" {
-            sub("^    " field ": *", "")
-            gsub(/["'"'"']/, "")
-            sub(/ *#.*$/, "")
-            gsub(/^[ \t]+|[ \t]+$/, "")
-            print
-            exit
-        }
-    ' "$config_file"
+    site="$site" field="$field" yq eval \
+        '.sites[env(site)] | .[env(field)] | select(tag == "!!str" or tag == "!!int" or tag == "!!float" or tag == "!!bool") // ""' \
+        "$config_file" 2>/dev/null
 }
 
 # Get a nested field (e.g., live.domain) from a site in nwp.yml
+# F36 A-C2: yq-first per ADR-0015. See get_site_field for caveats.
 get_site_nested_field() {
     local site="$1"
     local section="$2"
     local field="$3"
     local config_file="${SCRIPT_DIR}/nwp.yml"
 
-    awk -v site="$site" -v section="$section" -v field="$field" '
-        /^sites:/ { in_sites = 1; next }
-        in_sites && /^[a-zA-Z]/ && !/^  / { exit }
-        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
-        in_site && /^  [a-zA-Z]/ && !/^    / { exit }
-        in_site && $0 ~ "^    " section ":" { in_section = 1; next }
-        in_section && /^    [a-zA-Z]/ && !/^      / { in_section = 0 }
-        in_section && $0 ~ "^      " field ":" {
-            sub("^      " field ": *", "")
-            gsub(/["'"'"']/, "")
-            sub(/ *#.*$/, "")
-            gsub(/^[ \t]+|[ \t]+$/, "")
-            print
-            exit
-        }
-    ' "$config_file"
+    site="$site" section="$section" field="$field" yq eval \
+        '.sites[env(site)] | .[env(section)] | .[env(field)] | select(tag == "!!str" or tag == "!!int" or tag == "!!float" or tag == "!!bool") // ""' \
+        "$config_file" 2>/dev/null
 }
 
 # Show status for a single site

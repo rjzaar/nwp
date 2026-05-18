@@ -55,39 +55,25 @@ should_run_step() {
 }
 
 # Get recipe value from nwp.yml
+# F36 A-C2: yq-first per ADR-0015 (replaces legacy AWK YAML parser).
 get_recipe_value() {
     local recipe=$1
     local key=$2
 
-    awk -v recipe="$recipe" -v key="$key" '
-        /^  [a-z_]+:/ { current_recipe = $1; sub(/:$/, "", current_recipe) }
-        current_recipe == recipe && $0 ~ "^    " key ": " {
-            value = $0
-            sub(/^    [^:]+: /, "", value)
-            print value
-            exit
-        }
-    ' "$PROJECT_ROOT/nwp.yml"
+    recipe="$recipe" key="$key" yq eval \
+        '.recipes[env(recipe)] | .[env(key)] | select(tag == "!!str" or tag == "!!int" or tag == "!!float" or tag == "!!bool") // ""' \
+        "$PROJECT_ROOT/nwp.yml" 2>/dev/null
 }
 
 # Get site value from nwp.yml
+# F36 A-C2: yq-first per ADR-0015.
 get_site_value() {
     local site=$1
     local key=$2
 
-    awk -v site="$site" -v key="$key" '
-        /^  [a-z_0-9]+:/ && $0 !~ /^    / {
-            current_site = $1
-            sub(/:$/, "", current_site)
-        }
-        $0 ~ /^sites:/ { in_sites=1 }
-        in_sites && current_site == site && $0 ~ "^    " key ": " {
-            value = $0
-            sub(/^    [^:]+: /, "", value)
-            print value
-            exit
-        }
-    ' "$PROJECT_ROOT/nwp.yml"
+    site="$site" key="$key" yq eval \
+        '.sites[env(site)] | .[env(key)] | select(tag == "!!str" or tag == "!!int" or tag == "!!float" or tag == "!!bool") // ""' \
+        "$PROJECT_ROOT/nwp.yml" 2>/dev/null
 }
 
 # Get production config from site or recipe
@@ -110,22 +96,14 @@ get_prod_config() {
 }
 
 # Get Linode server config
+# F36 A-C2: yq-first per ADR-0015.
 get_linode_server() {
     local server_name=$1
     local key=$2
 
-    awk -v server="$server_name" -v key="$key" '
-        /^linode:/ { in_linode=1 }
-        in_linode && /^  servers:/ { in_servers=1 }
-        in_servers && $0 ~ "^    " server ":" { current_server=server; in_server_block=1 }
-        in_server_block && $0 ~ "^      " key ": " {
-            value = $0
-            sub(/^      [^:]+: /, "", value)
-            print value
-            exit
-        }
-        in_server_block && /^    [a-z]/ && $0 !~ "^    " server ":" { in_server_block=0 }
-    ' "$PROJECT_ROOT/nwp.yml"
+    server_name="$server_name" key="$key" yq eval \
+        '.linode.servers[env(server_name)] | .[env(key)] | select(tag == "!!str" or tag == "!!int" or tag == "!!float" or tag == "!!bool") // ""' \
+        "$PROJECT_ROOT/nwp.yml" 2>/dev/null
 }
 
 # Get SSH connection string
@@ -626,13 +604,10 @@ if should_run_step 9 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
         RECIPE="$BASE_NAME"
     fi
 
-    # Read reinstall_modules from recipe
-    REINSTALL_MODULES=$(awk -v recipe="$RECIPE" '
-        /^  [a-z_]+:/ { current_recipe = $1; sub(/:$/, "", current_recipe) }
-        current_recipe == recipe && /^    reinstall_modules:/ { in_modules=1; next }
-        in_modules && /^      - / { print $2 }
-        in_modules && /^    [a-z_]/ { in_modules=0 }
-    ' "$PROJECT_ROOT/nwp.yml")
+    # Read reinstall_modules from recipe (F36 A-C2: yq-first per ADR-0015)
+    REINSTALL_MODULES=$(recipe="$RECIPE" yq eval \
+        '.recipes[env(recipe)].reinstall_modules // [] | .[]' \
+        "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
 
     if [ -n "$REINSTALL_MODULES" ]; then
         if [ "$DRY_RUN" = false ]; then

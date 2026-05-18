@@ -322,19 +322,36 @@ sites:
 #     backend: cloudflare
 
 ################################################################################
+# Recipes (legacy v2 key; still supported via additionalProperties)
+#
+# Recipes describe the install profile for a site. The recipe name appears
+# in `sites.<name>.recipe`. The pod recipe (podcast) is shown as a
+# canonical example; the full annotated catalogue (d, os, avc, avc-dev,
+# dm, m, gitlab, pod) lives in `example.nwp.v2.yml`.
+
+recipes:
+  pod:
+    type: podcast
+    description: Podcast hosting site (audio publishing + RSS feed)
+    profile: standard
+    install_modules: [pathauto, simple_sitemap, podcast_publisher]
+
+################################################################################
 # Extension fields
 #
 # The schema sets `additionalProperties: true` at the document root, so
-# operators may add operator-private blocks (e.g. `linode:`, `recipes:`,
-# `import_defaults:`) without breaking validation. Those blocks belong
-# in your operator overlay (`$HOME/nwp-instances/_global/nwp.yml`), not
-# in this public template.
+# operators may add operator-private blocks (e.g. `linode:`,
+# `import_defaults:`, `other_coders:`, expanded `recipes:` catalogues)
+# without breaking validation. Those blocks belong in your operator
+# overlay (`$HOME/nwp-instances/_global/nwp.yml`), not in this public
+# template.
 #
 # Examples of legitimate extension blocks documented in the legacy v2
 # template (`example.nwp.v2.yml`) include:
 #   - `settings:` — global PHP / email / SEO / verification defaults
 #   - `linode:`   — Linode server inventory (operator-specific IPs)
-#   - `recipes:`  — site install profiles (drupal, moodle, gitlab, podcast)
+#   - `recipes:`  — full site install profiles catalogue
+#                  (drupal, opensocial, avc, dm, moodle, gitlab variants)
 #   - `other_coders:` — multi-coder DNS delegation
 #   - `import_defaults:` — `pl import` knobs
 #

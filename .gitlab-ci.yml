@@ -119,7 +119,7 @@ verify-signature:
     - if: $CI_PIPELINE_SOURCE == "push"
   tags:
     - nwp
-    - met
+    - ci-host
   allow_failure: true  # flip to false once signing is live
 
 ################################################################################

@@ -1,0 +1,107 @@
+# .gitleaksignore — committed (P61 §4.2)
+# Format: <fingerprint> where fingerprint = "<path>:<rule-id>:<line>" or "<commit>:<path>:<rule-id>:<line>"
+# Per P61 OQ-2 default: path-pinned (commit-agnostic). Each entry MUST have
+# a rationale comment immediately above.
+
+# The leakage gate itself cites the patterns it bans, by necessity.
+docs/proposals/P61-leakage-hygiene-ci.md:internal-bare-hostname
+docs/proposals/P61-leakage-hygiene-ci.md:operator-home-path
+docs/proposals/P61-leakage-hygiene-ci.md:operator-organisation
+docs/proposals/P61-leakage-hygiene-ci.md:internal-hostname-fqdn
+docs/proposals/P61-leakage-hygiene-ci.md:live-internal-domain
+
+# The F34 rewrite proposal explains the rule and gives test greps for the
+# patterns. It must cite them to explain what to look for.
+docs/proposals/F34-role-label-proposal-rewrite.md:internal-bare-hostname
+docs/proposals/F34-role-label-proposal-rewrite.md:operator-home-path
+
+# The canonical role-vocabulary doc (when it lands, F32 Phase A) carries
+# the "do not use these in public" warning and necessarily lists them.
+docs/reference/role-vocabulary.md:internal-bare-hostname
+docs/reference/role-vocabulary.md:operator-home-path
+
+# CHANGELOG mentions the pre-restart archive remote and any historical
+# legacy paths once they are documented (Phase 4 work).
+CHANGELOG.md:operator-organisation
+
+# WireGuard config template uses uppercase placeholder constants
+# (MAYO1_PRIVATE_KEY etc.) that look secret-shaped to the entropy heuristic.
+servers/mayo1/wireguard/wg-mons.conf.mayo1:generic-api-key
+servers/mayo1/wireguard/wg-mons.conf.mons:generic-api-key
+
+# Top-level CLAUDE.md is the operator's machine map. By design it references
+# the operator's specific hostnames in the Distributed Actor Glossary; that's
+# the document's purpose. Public contributors should read docs/reference/role-vocabulary.md.
+CLAUDE.md:internal-bare-hostname
+CLAUDE.md:operator-home-path
+CLAUDE.md:operator-organisation
+CLAUDE.md:internal-hostname-fqdn
+
+# .verification.yml tracks verified commands; some of those commands name
+# the operator's tier hosts when verifying tier-specific behaviour. The
+# file is allowed to reference them; the gate ensures NEW additions still
+# stay narrow.
+.verification.yml:internal-bare-hostname
+.verification.yml:operator-home-path
+.verification.yml:internal-hostname-fqdn
+
+# servers/<role>/ trees are operator-specific by design (F33 §4.1) and
+# will move out of the public repo in F33 Phase 4. Until then, they're
+# allowlisted from the bare-hostname / fqdn rules; they ARE in scope for
+# the generic-credential rules.
+servers/mini:internal-bare-hostname
+servers/mini:operator-home-path
+servers/mini:internal-hostname-fqdn
+servers/mayo1:internal-bare-hostname
+servers/mayo1:operator-home-path
+servers/mayo1:internal-hostname-fqdn
+servers/nwpcode:internal-bare-hostname
+servers/nwpcode:operator-home-path
+servers/nwpcode:internal-hostname-fqdn
+
+# Archive directory holds historical documents that record the operator's
+# original infrastructure. Cleaning them defeats the purpose of an archive.
+docs/archive:internal-bare-hostname
+docs/archive:operator-home-path
+docs/archive:operator-organisation
+docs/archive:internal-hostname-fqdn
+docs/archive:live-internal-domain
+
+# Standard third-party config filenames whose names happen to end in `.local`
+# (Drupal's settings.local.php, dotenv's .env.local, fail2ban's jail.local,
+# DDEV's config.local.yaml, Open Social's social.local default URL, and
+# NWP's own .nwp.local.yml per-developer overrides). These are not internal
+# hostnames; they are well-known filename conventions. The rule cannot
+# distinguish a filename from a hostname, so we pin the files that
+# legitimately reference them.
+scripts/commands/stg2live.sh:internal-hostname-fqdn
+scripts/commands/stg2prod.sh:internal-hostname-fqdn
+scripts/commands/live.sh:internal-hostname-fqdn
+scripts/commands/live2stg.sh:internal-hostname-fqdn
+scripts/commands/prod2stg.sh:internal-hostname-fqdn
+lib/install-common.sh:internal-hostname-fqdn
+lib/install-drupal.sh:internal-hostname-fqdn
+lib/import.sh:internal-hostname-fqdn
+lib/env-generate.sh:internal-hostname-fqdn
+lib/ddev-generate.sh:internal-hostname-fqdn
+lib/project-resolver.sh:internal-hostname-fqdn
+lib/frontend/gulp.sh:internal-hostname-fqdn
+lib/verify-behat.sh:internal-hostname-fqdn
+docs/proposals/F17-project-separation.md:internal-hostname-fqdn
+docs/proposals/F18-unified-backup-strategy.md:internal-hostname-fqdn
+docs/proposals/F31-repo-wide-hardening-and-modernization.md:internal-hostname-fqdn
+docs/proposals/F09-comprehensive-testing.md:internal-hostname-fqdn
+docs/security/data-security-best-practices.md:internal-hostname-fqdn
+docs/reference/commands/stg2prod.md:internal-hostname-fqdn
+docs/deployment/production-deployment.md:internal-hostname-fqdn
+
+# F15 documents the conventional `gitlab` system service-user account that
+# owns /home/gitlab/.ssh. This is a standard service account home, not the
+# operator's personal home leak. Allowlisted narrowly.
+docs/proposals/F15-ssh-user-management.md:operator-home-path
+
+# Migration script lib/migrations/global/migrate_002_to_003.sh maps legacy
+# bare hostnames (mini, metabox, mons, carlo) onto role labels; it has to
+# name them to do its job. New hostnames must NOT be added without
+# updating this allowlist + the migration's mapping table.
+lib/migrations/global/migrate_002_to_003.sh:internal-bare-hostname

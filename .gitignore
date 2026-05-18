@@ -119,6 +119,16 @@ servers/mini/**/*.pyc
 # Keep .gitignore itself
 !.gitignore
 
+# P61 leakage-hygiene gate files (authored as part of P61 + F32 Phase A)
+!.gitleaks.toml
+!.gitleaksignore
+!.pre-commit-config.yaml
+
+# bin/ holds operational helper scripts (audit-authors, migrate-* per F33, etc.)
+# tracked alongside lib/ and scripts/
+!bin/
+!bin/**
+
 # However, always ignore secrets and local overrides anywhere in the tree
 # SSH key contents (keep directory but ignore all keys)
 keys/*

@@ -1,0 +1,36 @@
+# .pre-commit-config.yaml — P61 §4.3
+# Install: pipx install pre-commit && pre-commit install
+# See CONTRIBUTING.md "Leakage Gate" for details.
+#
+# This hook runs gitleaks against staged changes and refuses commits
+# containing operator-specific identifiers (hostnames, paths, organisations)
+# or generic credential patterns. To allow a legitimate reference, add a
+# narrow path-pinned entry to .gitleaksignore with a one-line rationale.
+#
+# Bypass is `--no-verify` (locally only); CI gate (.gitlab-ci.yml) is
+# non-bypassable.
+
+repos:
+  # Local hook so we can pass --config=.gitleaks.toml correctly; the
+  # upstream gitleaks pre-commit hook's `entry` does not accept arbitrary
+  # extra args via this file's `args:`, so we re-author the entry locally.
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (operator-specific ruleset)
+        entry: gitleaks git --pre-commit --redact --staged --verbose --config=.gitleaks.toml --no-banner
+        language: system
+        pass_filenames: false
+
+  # Preserve the existing PHP code-quality checks (phpcs + phpstan) that
+  # used to live in .hooks/pre-commit. They run only when PHP files are
+  # staged; skip silently when phpcs/phpstan aren't installed.
+  - repo: local
+    hooks:
+      - id: php-codesniffer-and-phpstan
+        name: PHP CodeSniffer + PHPStan (Drupal standards)
+        entry: .hooks/pre-commit
+        language: script
+        types: [php]
+        pass_filenames: false
+        stages: [pre-commit]

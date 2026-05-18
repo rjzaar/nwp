@@ -1,0 +1,127 @@
+# .gitleaks.toml — public NWP leakage gate (P61 §4.1)
+# When a new operator-bound role name appears in instance-manifest.yml,
+# add it to internal-bare-hostname's regex. For legitimate references that
+# must remain (filename `.local.php`, the rule docs themselves, the
+# servers/ tree pending F33 Phase 4 move, etc.) use the per-rule
+# [rules.allowlist] blocks below (path-pinned, gitleaks-supported).
+
+title = "NWP leakage gate"
+
+[extend]
+useDefault = true   # inherit AWS / GCP / GitHub / Slack / etc. credential rules
+
+# Top-level allowlist: paths that are out of scope for ALL rules.
+# Use sparingly — prefer per-rule allowlists below.
+[allowlist]
+description = "global path exclusions"
+paths = [
+  # Operator's machine map (Distributed Actor Glossary) — by design.
+  '''^CLAUDE\.md$''',
+  # Test verification ledger — references operator's tier hosts intentionally.
+  '''^\.verification\.yml$''',
+  # Archive directory holds historical infrastructure documents — defeats the purpose to scrub.
+  '''^docs/archive/.*''',
+  # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers in F33 Phase 4.
+  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Role vocabulary doc must cite the banned tokens (it's the rule definition).
+  '''^docs/reference/role-vocabulary\.md$''',
+  # The proposals that define the rule must cite the tokens they ban.
+  '''^docs/proposals/F34-role-label-proposal-rewrite\.md$''',
+  '''^docs/proposals/P61-leakage-hygiene-ci\.md$''',
+  # CHANGELOG mentions the pre-restart archive remote and historical org names; allowlisted-only for organisation, but we allowlist broadly here for now (revisit when CHANGELOG is rewritten).
+  '''^CHANGELOG\.md$''',
+  # Migration script maps legacy hostnames to role labels — has to name them.
+  '''^lib/migrations/global/migrate_002_to_003\.sh$''',
+  # F15 documents the conventional gitlab system service-account home (/home/gitlab/.ssh) — well-known service account, not the operator's personal home.
+  '''^docs/proposals/F15-ssh-user-management\.md$''',
+  # Audit-authors script encodes the operator's name regex on purpose.
+  '''^bin/audit-authors\.sh$''',
+  # Example and template files that demonstrate placeholder values
+  # (example.nwp.yml, .nwp-developer.example.yml, templates/) are not real
+  # operator config. The placeholders look hostname-shaped but they're
+  # explicitly mysite.example.com / yourname.local style.
+  '''^example\.nwp\.yml$''',
+  '''^\.nwp-developer\.example\.yml$''',
+  '''^templates/.*''',
+  # The pl CLI's help-text examples reference mysite.example.com etc.
+  '''^pl$''',
+  # Test fixtures intentionally include leaky-looking content for the test.
+  '''^tests/.*''',
+  # The gitleaksignore file itself names the patterns it ignores.
+  '''^\.gitleaksignore$''',
+  # Historical reports document the operator's original infrastructure
+  # — same principle as docs/archive/ being allowlisted.
+  '''^docs/reports/.*''',
+]
+
+[[rules]]
+id = "operator-home-path"
+description = "Hardcoded operator home directory leak"
+regex = '''/home/[a-z][a-z0-9_-]+/'''
+tags = ["leak", "path"]
+
+[[rules]]
+id = "internal-hostname-fqdn"
+description = "Internal hostname (.home / .local / .tunnel) leak"
+regex = '''\b[a-z][a-z0-9-]+\.(home|local|tunnel)\b'''
+tags = ["leak", "hostname"]
+
+[rules.allowlist]
+description = "Standard config filenames ending in .local (settings.local.php, .env.local, jail.local, config.local.yaml, social.local, settings.local.json, .nwp.local.yml, .nwp-developer.local.yml etc.) — these are filename conventions, not internal hostnames. regexTarget=line matches against the surrounding line so any of these tokens in context suppresses the match."
+regexTarget = "line"
+regexes = [
+  '''settings\.local\.php''',
+  '''\.env\.local''',
+  '''jail\.local''',
+  '''config\.local\.(yaml|yml|json)''',
+  '''social\.local''',
+  '''settings\.local\.json''',
+  '''\.nwp\.local\.yml''',
+  '''\.nwp-developer\.local\.yml''',
+  '''\.behat\.local\.yml''',
+  '''composer\.local\.json''',
+  '''package\.local\.json''',
+  '''docker-compose\.local\.yml''',
+  '''behat\.local\.yml''',
+  # NWP's own gitignore/gitleaksignore files necessarily mention these patterns.
+  '''^[#\s]*\*\*/.*\.local\.''',
+]
+paths = [
+  '''^\.gitignore$''',
+  '''^\.gitleaks\.toml$''',
+  '''^\.gitleaksignore$''',
+  '''^docs/decisions/0021-public-only-repo-scope\.md$''',
+]
+
+[[rules]]
+id = "internal-bare-hostname"
+description = "Internal bare hostname leak (operator's role-bound names)"
+# Per P61 §4.1 OQ-1 (narrow ruleset). When a new role-bound host name is
+# added to instance-manifest.yml, append it here.
+# Note: `met` is NOT included as a bare word because it collides with
+# English usage ("prerequisites met"); `metabox` covers the full form.
+regex = '''\b(mini|metabox|mons|carlo|mmt)\b'''
+tags = ["leak", "hostname"]
+path = '''(?i).*\.(md|markdown|rst|txt|yml|yaml|json|toml|sh|bash|py|php|js|ts|html)$'''
+
+[[rules]]
+id = "operator-organisation"
+description = "Operator-specific organisation name leak"
+regex = '''(?i)\b(mazenod|mazenod\s+college|oblate|oblatesmi|omi)\b'''
+tags = ["leak", "organisation"]
+
+[[rules]]
+id = "live-internal-domain"
+description = "Live internal domain leak (subdomains of operator domains)"
+regex = '''\b[a-z0-9_-]+\.(nwpcode\.org|mayostudios\.org)\b'''
+tags = ["leak", "domain"]
+
+[rules.allowlist]
+description = "Bare domain mentions in the format <subdomain>.<example-prod-domain> placeholders or known-public subdomains the operator does want to reference."
+regexes = [
+  '''<gitlab-host>''',
+  '''<example-prod-domain>''',
+  '''<mayo-domain>''',
+  '''<coder-domain>''',
+  '''<headscale-host>''',
+]

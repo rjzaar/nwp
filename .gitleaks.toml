@@ -41,6 +41,12 @@ paths = [
   # operator config. The placeholders look hostname-shaped but they're
   # explicitly mysite.example.com / yourname.local style.
   '''^example\.nwp\.yml$''',
+  # Legacy v2 example preserved as migration reference (see commit message
+  # for F32 Phase A v3 example rewrite). Retains the legacy v2 shape with
+  # all original operator-specific values for users with v2 configs to
+  # cross-reference while running migrate_002_to_003.sh. Will eventually
+  # be removed in a later release.
+  '''^example\.nwp\.v2\.yml$''',
   '''^\.nwp-developer\.example\.yml$''',
   '''^templates/.*''',
   # The pl CLI's help-text examples reference mysite.example.com etc.

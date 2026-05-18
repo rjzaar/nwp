@@ -1,0 +1,1248 @@
+# NWP Configuration File
+# Copy to nwp.yml and customize for your environment
+#
+# Option markers:
+#   [ACTIVE]       - Feature fully implemented and stable
+#   [EXPERIMENTAL] - Feature partially implemented, may change
+#   [PLANNED]      - Feature not yet implemented, placeholder for future
+#   [DEFAULT]      - Value shown is the hardcoded default if not specified
+#   [DOCUMENTATION] - Informational only, not read by code
+
+################################################################################
+# SETTINGS - Global NWP Configuration
+################################################################################
+settings:
+  # === LICENSE INFORMATION [DOCUMENTATION] ===
+  # "Freely you have received, freely give." — Matthew 10:8
+  # This project is dedicated to the public domain under CC0 1.0 Universal
+  # See: docs/CC0_DEDICATION.md for full details
+  # See: LICENSE file for legal text
+  # See: CONTRIBUTING.md for contributor agreement
+  license:
+    type: CC0-1.0                  # [DOCUMENTATION] License type - informational only
+    dedication: public_domain      # [DOCUMENTATION] Public domain dedication
+    attribution_required: false    # [DOCUMENTATION] No attribution required (but appreciated)
+    url: https://creativecommons.org/publicdomain/zero/1.0/
+
+  # === CLI SETTINGS [ACTIVE] ===
+  # CLI command name for this NWP installation (auto-assigned during setup)
+  # Allows multiple NWP installations to coexist with unique commands (pl, pl1, pl2, etc.)
+  # cli_command: pl                # [ACTIVE] Set automatically by setup.sh
+
+  # === TIMEZONE [ACTIVE] ===
+  # Timezone for server provisioning, cron jobs, and site defaults
+  # Uses IANA timezone format: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  # Per-site override: add 'timezone: Region/City' under any site
+  timezone: Australia/Sydney
+
+  # === CLAUDE API INTEGRATION [EXPERIMENTAL] ===
+  # Claude API integration (F14)
+  # Requires API keys in .secrets.yml
+  claude:
+    enabled: false
+    default_model: claude-sonnet-4-5
+    max_monthly_spend_usd: 500
+    per_coder_monthly_limit_usd: 100
+    prompt_caching: true
+    models_allowed:
+      - claude-sonnet-4-5
+      - claude-haiku-3-5
+
+  # === MASS TIMES SCRAPER [EXPERIMENTAL] ===
+  # Automated Catholic mass times scraping for mt.nwpcode.org (F16)
+  # Code-first extraction: regex, CSS selectors, PDF parsing. LLM is Tier 3 fallback only.
+  # Requires API keys in .secrets.yml
+  mass_times:
+    enabled: false
+    schedule: "0 3 * * *"             # [EXPERIMENTAL] Default cron: 3am daily
+    # Geographic scope
+    centre_lat: -37.8131              # [EXPERIMENTAL] Ringwood, Melbourne
+    centre_lng: 145.2285
+    radius_km: 20
+    # LLM settings (Tier 3 fallback only)
+    fallback_model: claude-sonnet-4-5  # [EXPERIMENTAL] Model for Tier 3 LLM fallback
+    max_monthly_llm_usd: 5            # [EXPERIMENTAL] Monthly LLM cost cap
+    tier3_daily_limit: 10             # [EXPERIMENTAL] Max Tier 3 extractions per day
+    # Email notifications
+    alert_on_failure: true
+    weekly_summary: true
+    summary_day: friday
+    # Drupal sync
+    drupal_site: mt
+    drupal_api_user: mass_times_bot
+    sync_after_extraction: true
+
+  # === TESTER PROMPTS [EXPERIMENTAL] ===
+  # Opportunistic human verification (P55)
+  tester_prompts:
+    prompt_mode: unverified    # unverified | all | never
+    prompt_timeout: 30         # seconds to wait for response
+    skip_commands:             # don't prompt for read-only commands
+      - status
+      - doctor
+      - help
+      - verify
+      - coders
+      - todo
+
+  # === STACK SETTINGS [ACTIVE] ===
+  # These are read by install scripts and can be overridden per-recipe
+  database: mariadb                # [ACTIVE] Database type: mariadb, mysql, postgres [DEFAULT: mysql]
+  php: 8.2                         # [ACTIVE] PHP version for DDEV [DEFAULT: 8.3 for Drupal, 8.1 for Moodle]
+
+  # === STACK SETTINGS [PLANNED] ===
+  # database_version: "10.11"      # [PLANNED] Database version for DDEV - not configurable yet
+  # webserver: nginx               # [PLANNED] Webserver type - always nginx in DDEV currently
+  # os: ubuntu                     # [PLANNED] OS type - always ubuntu for Linode currently
+
+  # === FRONTEND SETTINGS [ACTIVE] ===
+  # Global defaults for frontend build tools (can be overridden per-site)
+  # Auto-detected from project files if not specified
+  frontend:
+    node_version: "20"             # [ACTIVE] Required Node.js version [DEFAULT: 20]
+    # build_tool: gulp             # [ACTIVE] gulp, grunt, webpack, vite (auto-detected)
+    # package_manager: npm         # [ACTIVE] npm, yarn, pnpm (auto-detected from lock files)
+
+  # === DEPLOYMENT SETTINGS ===
+  url: nwpcode.org                 # [ACTIVE] Base domain for live sites - used for GitLab URL (git.{url})
+  # linodeuse: all                 # [PLANNED] When to use Linode: testing, gitlab, all, or blank
+  # urluse: all                    # [PLANNED] When to use custom URL: testing, gitlab, all, or blank
+
+  # === EMAIL CONFIGURATION [ACTIVE] ===
+  # Site emails are auto-configured during pl live deployment
+  # Each site gets [sitename]@{url} which forwards to admin_email
+  email:
+    domain: nwpcode.org              # [ACTIVE] Email domain for site addresses (defaults to settings.url)
+    admin_email: admin@example.com   # [ACTIVE] Default admin email - receives forwarded site emails
+    auto_configure: true             # [ACTIVE] Auto-configure email during pl live
+
+  # === PHP SETTINGS [ACTIVE] ===
+  # These override hardcoded defaults in install scripts
+  php_settings:
+    memory_limit: 512M             # [ACTIVE] PHP memory limit [DEFAULT: 512M]
+    max_execution_time: 600        # [ACTIVE] Max script execution time (seconds) [DEFAULT: 600]
+    upload_max_filesize: 100M      # [ACTIVE] Max upload file size [DEFAULT: 100M]
+    post_max_size: 100M            # [ACTIVE] Max POST data size [DEFAULT: 100M]
+
+  # === TIMEOUT SETTINGS [PLANNED] ===
+  # timeouts:
+  #   dns_propagation: 300         # [PLANNED] DNS propagation wait (seconds)
+  #   ssh_connection: 600          # [PLANNED] SSH connection timeout (seconds)
+  #   health_check: 10             # [PLANNED] Health check interval (seconds)
+
+  # === GITLAB SETTINGS ===
+  # For local GitLab Docker installations and production GitLab servers
+  gitlab:
+    # Default group/namespace for new projects [ACTIVE]
+    default_group: nwp
+
+    # Core NWP repositories [DOCUMENTATION ONLY]
+    # These are documentation - not read by code, set up manually during GitLab initialization
+    # repos:
+    #   nwp: nwp/nwp                         # NWP codebase
+    #   avc: nwp/avc                         # AV Commons profile (source)
+    #   avc-project: nwp/avc-project         # AV Commons project template
+
+    # GitHub mirror targets [DOCUMENTATION ONLY]
+    # Push mirrors are configured manually in GitLab UI
+    # github_mirrors:
+    #   nwp/nwp: rjzaar/nwp
+    #   nwp/avc: rjzaar/avc
+    #   nwp/avc-project: rjzaar/avc-project
+
+    # Local Docker ports [DOCUMENTATION ONLY]
+    # These are defaults - not read by code
+    # ports:
+    #   ssh: 2222                  # GitLab SSH port
+    #   http: 8080                 # GitLab HTTP port
+    #   https: 8443                # GitLab HTTPS port
+
+    # Security hardening options [EXPERIMENTAL]
+    # Script exists at linode/gitlab/gitlab_harden.sh but not yet integrated with nwp.yml
+    # Currently run manually: ./linode/gitlab/gitlab_harden.sh --apply
+    # hardening:
+    #   enabled: true              # [EXPERIMENTAL] Enable hardening during setup
+    #   disable_signups: true      # [EXPERIMENTAL] Disable public user registration
+    #   require_2fa: false         # [EXPERIMENTAL] Require 2FA for all users
+    #   password_min_length: 12    # [EXPERIMENTAL] Minimum password length
+    #   session_timeout: 60        # [EXPERIMENTAL] Session timeout (minutes)
+    #   ip_allowlist: []           # [EXPERIMENTAL] Restrict to specific IPs
+    #   audit_logging: true        # [EXPERIMENTAL] Enable audit event logging
+    #   # Security scanning in CI pipelines
+    #   sast_enabled: true         # [PLANNED] Static Application Security Testing
+    #   dependency_scanning: true  # [PLANNED] Dependency vulnerability scanning
+    #   secret_detection: true     # [PLANNED] Detect secrets in commits
+
+    # Repository mirroring [PLANNED]
+    # Push mirrors to external services (GitHub, external GitLab)
+    mirroring:
+      enabled: false               # [PLANNED] Enable repository mirroring
+      # targets:                   # [PLANNED] Mirror destinations
+      #   - type: github
+      #     url: https://github.com/username
+      #     token_secret: github.api_token  # Reference to .secrets.yml
+      #     mirror_protected_only: true
+
+  # === ENVIRONMENT CONFIGURATION [PLANNED] ===
+  # Default environment settings (can be overridden per recipe)
+  environment:
+    development:
+      debug: true                  # [PLANNED] Enable debug mode
+      xdebug: false                # [PLANNED] XDebug off by default
+      database_import: always      # [PLANNED] Always import database
+      stage_file_proxy: false      # [PLANNED] Disabled by default
+    staging:
+      debug: false                 # [PLANNED]
+      database_sanitize: true      # [PLANNED] Sanitize database on import
+      stage_file_proxy: true       # [PLANNED]
+    production:
+      debug: false                 # [PLANNED]
+      database_sanitize: false     # [PLANNED]
+      redis: true                  # [PLANNED] Enable Redis in production
+      caching: aggressive          # [PLANNED]
+
+  # === SERVICES CONFIGURATION ===
+  # Default services (can be overridden per recipe)
+  # Note: Redis and Solr are available as TUI options during install
+  # These settings would provide defaults for those options
+  services:
+    redis:
+      enabled: false               # [PLANNED] Redis disabled by default
+      version: "7"                 # [PLANNED] Version not configurable yet
+    solr:
+      enabled: false               # [PLANNED] Solr disabled by default
+      version: "8"                 # [PLANNED] Version not configurable yet
+      core: drupal                 # [PLANNED] Core name not configurable yet
+    memcache:
+      enabled: false               # [PLANNED] Memcache not implemented
+
+  # === TESTING CONFIGURATION [PLANNED] ===
+  # Local testing tools and email safety - not yet implemented
+  # testing:
+  #   bats:
+  #     enabled: true              # [PLANNED] Install BATS testing framework via setup.sh
+  #     run_on_commit: false       # [PLANNED] Run tests before commits (via hook)
+  #   email:
+  #     use_mailpit: true          # [PLANNED] Use Mailpit for dev email capture
+  #     reroute_dev: true          # [PLANNED] Reroute dev emails to test address
+  #     reroute_address: ""        # [PLANNED] Leave empty to use Mailpit, or set specific address
+
+  # === SITE MANAGEMENT [ACTIVE] ===
+  delete_site_yml: true            # [ACTIVE] Remove site from nwp.yml when deleted (--keep-yml to preserve)
+
+  # === SEO & SEARCH ENGINE CONTROL ===
+  # Controls search engine indexing behavior across environments
+  # See: docs/security/seo-setup.md for complete specification
+  seo:
+    # Staging protection - Prevent staging sites from being indexed
+    staging_noindex: true          # [ACTIVE] Add X-Robots-Tag header to staging sites
+    staging_robots_block: true     # [ACTIVE] Deploy blocking robots.txt to staging
+    staging_http_auth: false       # [PLANNED] Enable HTTP Basic Auth on staging
+
+    # Live site protection - Block crawlers on live sites by default
+    # Live sites get blocking robots.txt (same as staging) unless robots_allow is set
+    live_robots_block: true        # [ACTIVE] Deploy blocking robots.txt to live sites by default
+
+    # Production optimization - Improve search engine indexing
+    # Only sites with robots_allow: true get the permissive robots.txt
+    production_robots: true        # [ACTIVE] Deploy optimized robots.txt with sitemap
+    sitemap_enabled: true          # [PLANNED] Enable sitemap.xml generation (requires Simple XML Sitemap module)
+    ai_bots_allowed: true          # [PLANNED] Allow AI training crawlers (GPTBot, ClaudeBot, etc.)
+    crawl_delay: 1                 # [ACTIVE] Seconds between crawler requests in robots.txt
+
+    # Meta tags configuration
+    meta_robots_404: true          # [PLANNED] Add noindex to 404 pages
+    canonical_urls: true           # [PLANNED] Enforce canonical URLs
+
+  # === VERIFICATION SYSTEM [ACTIVE] ===
+  # Controls the layered verification system for testing and quality assurance
+  # See: docs/proposals/P50-layered-verification-system.md
+  verification:
+    enabled: true                # [ACTIVE] Enable verification system
+
+    # Consent tracking for verification operations
+    consent:
+      agreed: false              # [ACTIVE] User has agreed to verification terms
+      agreed_at: null            # [ACTIVE] Timestamp of agreement
+      agreed_by: null            # [ACTIVE] User who agreed (username/email)
+
+    # Automatic logging of verification events
+    auto_log:
+      enabled: true              # [ACTIVE] Enable automatic verification logging
+      events:
+        command_success: true    # [ACTIVE] Log successful command executions
+        site_operations: true    # [ACTIVE] Log site install/delete/sync operations
+        data_operations: true    # [ACTIVE] Log data import/export operations
+
+    # Error reporting and failure handling
+    error_reporting:
+      enabled: true              # [ACTIVE] Enable error reporting
+      prompt_on_failure: true    # [ACTIVE] Prompt user to log failures
+
+  # === TODO SYSTEM [ACTIVE] ===
+  # Unified todo command that aggregates maintenance tasks from multiple sources
+  # See: docs/proposals/F12-todo-command.md for full specification
+  todo:
+    enabled: true                    # [ACTIVE] Master switch for todo system
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # THRESHOLD SETTINGS
+    # ═══════════════════════════════════════════════════════════════════════════
+    thresholds:
+      test_instance_warn_days: 7     # [ACTIVE] Days before test site shows as todo
+      test_instance_alert_days: 14   # [ACTIVE] Days before test site becomes HIGH priority
+      token_rotation_days: 90        # [ACTIVE] Days before token rotation reminder
+      backup_warn_days: 7            # [ACTIVE] Days without backup before warning
+      disk_warn_percent: 80          # [ACTIVE] Disk usage percentage for warning
+      disk_alert_percent: 90         # [ACTIVE] Disk usage percentage for HIGH priority
+      ssl_warn_days: 30              # [ACTIVE] Days before SSL expiry for warning
+      ssl_alert_days: 7              # [ACTIVE] Days before SSL expiry for HIGH priority
+      incomplete_install_hours: 24   # [ACTIVE] Hours before incomplete install is HIGH
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # AUTO-RESOLVE SETTINGS
+    # ═══════════════════════════════════════════════════════════════════════════
+    auto_resolve:
+      enabled: true                  # [ACTIVE] Enable auto-resolution of todos
+      git_issues: true               # [ACTIVE] Auto-resolve when GitLab issue closed
+      test_instances: true           # [ACTIVE] Auto-resolve when site deleted
+      token_rotation: true           # [ACTIVE] Auto-resolve when token updated
+      orphaned_sites: true           # [ACTIVE] Auto-resolve when registered or deleted
+      ghost_sites: true              # [ACTIVE] Auto-resolve when ddev cleaned
+      incomplete_installs: true      # [ACTIVE] Auto-resolve when install completes
+      missing_backups: true          # [ACTIVE] Auto-resolve when backup runs
+      missing_schedules: true        # [ACTIVE] Auto-resolve when schedule installed
+      security_updates: true         # [ACTIVE] Auto-resolve when updates applied
+      verification_fails: true       # [ACTIVE] Auto-resolve when tests pass
+      uncommitted_work: true         # [ACTIVE] Auto-resolve when committed
+      disk_usage: true               # [ACTIVE] Auto-resolve when space freed
+      ssl_expiring: true             # [ACTIVE] Auto-resolve when renewed
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # NOTIFICATION SETTINGS
+    # ═══════════════════════════════════════════════════════════════════════════
+    notifications:
+      enabled: false                 # [ACTIVE] Master switch for notifications
+
+      desktop:
+        enabled: false               # [ACTIVE] Desktop notifications (notify-send)
+        min_priority: high           # [ACTIVE] Minimum priority to notify (high/medium/low)
+
+      email:
+        enabled: false               # [ACTIVE] Email notifications
+        min_priority: high           # [ACTIVE] Minimum priority to email
+        recipient: ""                # [ACTIVE] Email address for notifications
+        smtp_profile: "default"      # [ACTIVE] SMTP profile from .secrets.yml
+
+      # When to send notifications
+      on_new_high: true              # [ACTIVE] Notify when new HIGH priority item
+      on_schedule_run: true          # [ACTIVE] Include in scheduled run summary
+      daily_digest: false            # [ACTIVE] Send daily digest of all items
+      digest_time: "08:00"           # [ACTIVE] Time for daily digest (HH:MM)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SCHEDULE SETTINGS
+    # ═══════════════════════════════════════════════════════════════════════════
+    schedule:
+      enabled: false                 # [ACTIVE] Enable scheduled todo checks
+      cron: "0 8 * * *"              # [ACTIVE] Cron expression (default: 8 AM daily)
+      log_file: "/var/log/nwp/todo.log"  # [ACTIVE] Log file for scheduled runs
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # GITLAB INTEGRATION
+    # ═══════════════════════════════════════════════════════════════════════════
+    gitlab:
+      enabled: true                  # [ACTIVE] Check GitLab issues
+      server: ""                     # [ACTIVE] GitLab server (default: from .secrets.yml)
+      project_ids: []                # [ACTIVE] Specific projects to check (empty = all accessible)
+      include_assigned: true         # [ACTIVE] Include issues assigned to you
+      include_unassigned: false      # [ACTIVE] Include unassigned issues
+      labels: []                     # [ACTIVE] Filter by labels (empty = all)
+      exclude_labels:                # [ACTIVE] Exclude issues with these labels
+        - "wontfix"
+        - "on-hold"
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # CATEGORY TOGGLES
+    # ═══════════════════════════════════════════════════════════════════════════
+    categories:
+      git_issues: true               # [ACTIVE] Check GitLab issues
+      test_instances: true           # [ACTIVE] Check for old test sites
+      token_rotation: true           # [ACTIVE] Check token ages
+      orphaned_sites: true           # [ACTIVE] Check for orphaned sites
+      ghost_sites: true              # [ACTIVE] Check for ghost DDEV sites
+      incomplete_installs: true      # [ACTIVE] Check for incomplete installations
+      missing_backups: true          # [ACTIVE] Check for missing backups
+      missing_schedules: true        # [ACTIVE] Check for missing backup schedules
+      security_updates: true         # [ACTIVE] Check for security updates
+      verification_fails: true       # [ACTIVE] Check for verification failures
+      uncommitted_work: true         # [ACTIVE] Check for uncommitted git changes
+      disk_usage: true               # [ACTIVE] Check disk usage
+      ssl_expiring: true             # [ACTIVE] Check SSL certificate expiry
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # TOKEN TRACKING
+    # ═══════════════════════════════════════════════════════════════════════════
+    tokens:
+      linode:
+        last_rotated: ""             # [ACTIVE] ISO8601 timestamp of last rotation
+        notes: ""                    # [ACTIVE] Notes about this token
+      cloudflare:
+        last_rotated: ""
+        notes: ""
+      gitlab:
+        last_rotated: ""
+        notes: ""
+      b2:
+        last_rotated: ""
+        notes: ""
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # IGNORED ITEMS
+    # ═══════════════════════════════════════════════════════════════════════════
+    ignored: []
+    # Example ignored item:
+    # - id: "ORP-001-oldsite"
+    #   reason: "Keeping for reference"
+    #   ignored_at: "2026-01-15T10:00:00Z"
+    #   ignored_by: "rob"
+    #   expires: ""                  # Optional: auto-unignore date
+
+################################################################################
+# OTHER CODERS - Multi-Coder DNS Delegation
+################################################################################
+# Configure additional coders who have their own subdomains under nwpcode.org
+# Each coder gets NS delegation for their subdomain (e.g., coder2.nwpcode.org)
+# allowing them to manage their own DNS via their own Linode account.
+#
+# Usage: ./coder-setup.sh add <coder_name>
+#        ./coder-setup.sh remove <coder_name>
+#        ./coder-setup.sh list
+#
+# See docs/CODER_ONBOARDING.md for complete setup instructions.
+other_coders:
+  # Base domain comes from settings.url above
+
+  # Nameservers to delegate to (Linode's nameservers) [ACTIVE]
+  nameservers:
+    - ns1.linode.com
+    - ns2.linode.com
+    - ns3.linode.com
+    - ns4.linode.com
+    - ns5.linode.com
+
+  # Registered coders [ACTIVE]
+  # Each entry creates NS delegation: <name>.nwpcode.org -> Linode nameservers
+  # The email field is used for forwarding site emails (sitename@nwpcode.org -> coder email)
+  # Example:
+  #   coder2:
+  #     added: 2024-01-15T10:30:00Z
+  #     status: active
+  #     email: coder2@example.com      # [ACTIVE] Personal email for site email forwarding
+  #     tester: false                  # [EXPERIMENTAL] Participates in tester prompts (P55)
+  #     notes: "John's development environment"
+  coders:
+    # coder2:
+    #   added: 2024-01-15T10:30:00Z
+    #   status: active
+    #   email: coder2@example.com
+    #   notes: "Example coder entry"
+
+  # === CI/CD CONFIGURATION [PLANNED] ===
+  # Global CI settings - can be overridden per site
+  ci:
+    enabled: true                  # [PLANNED] Enable CI by default for new sites
+    platform: gitlab               # [PLANNED] Primary CI platform: gitlab (NWP GitLab)
+    auto_setup: false              # [PLANNED] Auto-setup CI during pl install
+
+    # Pipeline stages to run
+    stages:
+      lint: true                   # [PLANNED] Run linting (phpcs, shellcheck)
+      test: true                   # [PLANNED] Run tests (phpunit, behat)
+      security: true               # [PLANNED] Security scanning
+      deploy: false                # [PLANNED] Auto-deploy (manual by default)
+
+    # Test configuration
+    testing:
+      phpcs: true                  # [PLANNED] PHP CodeSniffer
+      phpstan: true                # [PLANNED] PHPStan static analysis
+      phpstan_level: 5             # [PLANNED] PHPStan level (0-9)
+      phpunit: true                # [PLANNED] PHPUnit tests
+      behat: false                 # [PLANNED] Behat tests (disabled by default)
+
+    # Coverage thresholds
+    coverage:
+      enabled: false               # [PLANNED] Enable coverage reporting
+      threshold: 80                # [PLANNED] Minimum coverage percentage
+
+    # Mirror to external services
+    mirrors:
+      github: false                # [PLANNED] Mirror to GitHub
+      gitlab_com: false            # [PLANNED] Mirror to gitlab.com
+
+  # === LIVE SITE SECURITY [ACTIVE] ===
+  # Modules installed automatically when deploying to live servers (pl stg2live)
+  live_security:
+    enabled: true                  # [ACTIVE] Enable security hardening
+    # Core security modules [ACTIVE] - installed automatically by stg2live
+    modules:
+      - seckit                     # HTTP security headers, XSS/CSRF protection
+      - honeypot                   # Spam bot protection (no user friction)
+      - flood_control              # Brute force protection UI
+      - login_security             # Login attempt limits, blocking
+      - username_enumeration_prevention  # Prevents username discovery
+      - password_policy            # Strong password requirements (length, complexity)
+      - password_strength          # Entropy-based password strength checking
+    # Optional modules [PLANNED] - not installed automatically yet
+    # optional_modules:
+    #   - antibot                  # Behavior-based bot detection
+    #   - better_passwords         # NIST 800-63B compliant password checking
+    #   - turnstile                # Cloudflare CAPTCHA (requires API key)
+    # Module configurations [PLANNED] - not applied automatically yet
+    # seckit_config:
+    #   xss:
+    #     csp_policy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    #   clickjacking:
+    #     x_frame_options: SAMEORIGIN
+    #   ssl:
+    #     hsts: true
+    #     hsts_max_age: 31536000   # 1 year
+    # honeypot_config:
+    #   protect_all_forms: true
+    #   time_limit: 5              # Seconds before form can be submitted
+    # login_security_config:
+    #   user_wrong_count: 5        # Failed attempts before soft block
+    #   host_wrong_count: 10       # Failed attempts from IP before block
+    #   activity_threshold: 100    # Max login attempts per hour
+    # password_policy_config:
+    #   min_length: 12             # Minimum password length
+    #   require_uppercase: 1       # Minimum uppercase characters
+    #   require_lowercase: 1       # Minimum lowercase characters
+    #   require_digit: 1           # Minimum digits
+    #   require_special: 1         # Minimum special characters
+    #   max_age: 0                 # Password expiration days (0 = never)
+    #   history: 3                 # Remember last N passwords
+
+################################################################################
+# SETUP - One-time Setup Options
+################################################################################
+setup:
+  creategitlab: n                  # [PLANNED] Auto-create GitLab server
+
+################################################################################
+# PODCAST - Castopod Hosting Configuration [DOCUMENTATION ONLY]
+################################################################################
+# These are documentation defaults - podcast settings are configured per-recipe
+# See the podcast recipe type in the recipes section
+# podcast:
+#   linode_region: us-east           # Default Linode region for podcast servers
+#   linode_type: g6-nanode-1         # Linode plan type ($5/month)
+#   b2_region: us-west-004           # Default B2 region for media storage
+#   media_subdomain: media           # Subdomain for media files
+#   compose_version: "3.9"           # Docker Compose version
+#   castopod_image: castopod/castopod:latest
+#   admin_email_template: "admin@{domain}"
+#
+#   # Podcast sites are tracked automatically when created:
+#   # sites:
+#   #   podcast.example.com:
+#   #     linode_id: 12345678
+#   #     server_ip: 192.0.2.1
+#   #     b2_bucket: podcast-media
+
+################################################################################
+# IMPORT - Live Site Import Configuration
+################################################################################
+# Configuration for ./import.sh - importing live sites from remote servers
+import_defaults:
+  # Database sanitization options [ACTIVE]
+  sanitize: true                   # [ACTIVE] Sanitize user data (emails, passwords)
+  truncate_cache: true             # [ACTIVE] Clear cache tables
+  truncate_watchdog: true          # [ACTIVE] Clear log entries
+  truncate_sessions: true          # [ACTIVE] Clear active sessions
+
+  # File handling options [ACTIVE]
+  stage_file_proxy: true           # [ACTIVE] Download files on-demand (recommended)
+  full_file_sync: false            # [ACTIVE] Download all files (slower, more disk)
+  exclude_generated: true          # [ACTIVE] Skip js/*, css/*, styles/*
+
+  # Local environment options [ACTIVE]
+  environment_indicator: true      # [ACTIVE] Show dev/stg/prod badge
+  dev_modules: false               # [ACTIVE] Install devel, webprofiler
+  config_split: true               # [ACTIVE] Environment-specific config
+
+  # Exclude patterns for file sync [ACTIVE]
+  exclude_patterns:
+    - "*.log"
+    - "js/*"
+    - "css/*"
+    - "php/*"
+    - "styles/*"
+
+################################################################################
+# LINODE - Production Server Configuration
+################################################################################
+linode:
+  # Default settings for new Linode instances [ACTIVE]
+  defaults:
+    image: linode/ubuntu22.04      # [ACTIVE] Default OS image
+    region: us-east                # [ACTIVE] Default region
+    type: g6-nanode-1              # [ACTIVE] Default instance type (1GB)
+    gitlab_type: g6-standard-1     # [ACTIVE] GitLab needs 2GB minimum
+
+  # Server configurations for import and deployment [ACTIVE]
+  # Used by: ./import.sh, ./stg2prod.sh, ./live.sh
+  servers:
+    # Production server - used for importing live sites
+    production:
+      ssh_host: root@203.0.113.10  # [ACTIVE] SSH connection string
+      ssh_key: ~/.ssh/nwp          # [ACTIVE] Path to SSH private key
+      label: "Production Server"   # [ACTIVE] Display label in TUI
+
+    # Staging server
+    staging:
+      ssh_host: root@203.0.113.20  # [ACTIVE] SSH connection string
+      ssh_key: ~/.ssh/nwp          # [ACTIVE] Path to SSH private key
+      label: "Staging Server"      # [ACTIVE] Display label in TUI
+
+    # Primary server with domain mapping [ACTIVE]
+    # Use 'domain' field to link a base domain to this server
+    # Podcast setup will auto-detect servers for matching domains
+    # Example:
+    #   primary:
+    #     ssh_host: root@192.0.2.10   # [ACTIVE] SSH connection string
+    #     ssh_key: ~/.ssh/nwp         # [ACTIVE] Path to SSH private key
+    #     label: "Primary Server"     # [ACTIVE] Display label in TUI
+    #     domain: example.com         # [ACTIVE] Primary domain for this server
+    #     linode_id: 12345678         # [ACTIVE] Links to Linode instance ID
+
+    # Legacy format (still supported)
+    linode_primary:
+      ssh_user: deploy             # [ACTIVE] SSH username for deployment
+      ssh_host: 203.0.113.10       # [ACTIVE] Server IP or hostname
+      ssh_port: 22                 # [ACTIVE] SSH port
+      ssh_key: ~/.ssh/nwp          # [ACTIVE] Path to SSH private key
+      api_token: ${LINODE_API_TOKEN}  # [ACTIVE] Use environment variable
+      server_ips:
+        - 203.0.113.10             # [ACTIVE] Primary IP
+      domains:
+        - example.com              # [ACTIVE] Primary domain
+        - www.example.com          # [ACTIVE] Additional domains
+
+    linode_backup:
+      ssh_user: deploy
+      ssh_host: 203.0.113.20
+      ssh_port: 22
+      ssh_key: ~/.ssh/nwp
+      api_token: ${LINODE_API_TOKEN}
+      server_ips:
+        - 203.0.113.20
+      domains:
+        - backup.example.com
+
+################################################################################
+# RECIPES - Site Installation Templates
+################################################################################
+# Recipe Field Reference:
+#
+# CORE FIELDS (all recipes):
+#   source:          [REQUIRED*] Composer package (e.g., nwp/avc-project)
+#   source_git:      [REQUIRED*] Git URL to clone project (preserves git history)
+#                    * One of source or source_git is required
+#                    Use source_git for developer recipes where you need project-level git
+#   type:            [OPTIONAL] drupal (default), moodle, gitlab, podcast
+#   webroot:         [OPTIONAL] Document root - DEFAULT: html (drupal), . (moodle/gitlab)
+#   auto:            [OPTIONAL] Auto-confirm install - DEFAULT: n
+#
+# DRUPAL-SPECIFIC:
+#   profile:         [REQUIRED] Install profile name (standard, social, avc, etc.)
+#   profile_source:  [OPTIONAL] Git URL to clone profile for development
+#   install_modules: [OPTIONAL] Space-separated composer packages to require
+#   post_install_modules: [OPTIONAL] List of modules to enable after install
+#   default_theme:   [OPTIONAL] Theme to set as default
+#
+# ENVIRONMENT OVERRIDES (override settings section):
+#   php:             [OPTIONAL] PHP version - DEFAULT: 8.3 (drupal), 8.1 (moodle)
+#   database:        [OPTIONAL] Database type - DEFAULT: mysql (drupal), mariadb (moodle)
+#
+# DEVELOPMENT MODE:
+#   dev:             [OPTIONAL] y/n - Enable dev module installation
+#   dev_modules:     [OPTIONAL] Space-separated modules to install when dev: y
+#                    Example: devel webprofiler kint stage_file_proxy
+#
+# DEPLOYMENT (for stg2prod):
+#   prod_method:     [OPTIONAL] git, tar, rsync
+#   prod_server:     [OPTIONAL] Reference to linode.servers entry
+#   prod_domain:     [OPTIONAL] Production domain name
+#   prod_path:       [OPTIONAL] Remote deployment path
+#   reinstall_modules: [OPTIONAL] Modules to reinstall during sync
+#
+# NON-DRUPAL FIELDS:
+#   branch:          [MOODLE/GITLAB] Git branch to clone
+#   sitename:        [MOODLE/GITLAB] Site display name
+#   domain:          [PODCAST] Podcast domain
+#   linode_region:   [PODCAST] Linode region
+#   b2_region:       [PODCAST] B2 storage region
+#   media_subdomain: [PODCAST] Media files subdomain
+#
+# OPTIONS (TUI checkboxes - value 'y' = pre-selected):
+#   options:
+#     dev_modules:           # Development tools
+#     xdebug:                # Step debugging
+#     environment_indicator: # Visual environment badge
+#     config_split:          # Environment-specific config
+#     security_modules:      # Security hardening
+#     redis:                 # Object caching
+#     solr:                  # Full-text search
+#     cron:                  # Automated tasks
+#     backup:                # Automated backups
+#     ssl:                   # HTTPS setup
+#
+recipes:
+  # === DRUPAL RECIPES ===
+  d:
+    # [ACTIVE] Standard Drupal installation
+    source: drupal/recommended-project:^10.2
+    profile: standard              # [ACTIVE] Drupal install profile
+    webroot: web                   # [ACTIVE] Document root
+    auto: y                        # [ACTIVE] Auto-confirm installation
+    # ssh_user: gitlab    # Default SSH user for this recipe type (F15)
+    # Optional overrides (if not set, uses settings defaults)
+    # php: 8.3                     # [ACTIVE] Override settings.php
+    # database: mysql              # [ACTIVE] Override settings.database
+    # Development mode
+    # dev: y                       # [ACTIVE] Enable dev module installation
+    # dev_modules: devel webprofiler kint  # [ACTIVE] Modules to install when dev: y
+    # Additional packages
+    install_modules:               # [ACTIVE] Additional composer packages
+    # Options: TUI checkbox selections during install (y = pre-selected)
+    options:
+      # === Development (environment: dev) ===
+      dev_modules:                    # Enable devel, webprofiler for debugging
+      xdebug:                         # Step-through debugging with IDE
+      stage_file_proxy:               # Proxy production files locally
+
+      # === Configuration (environment: all) ===
+      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
+      config_split:                   # Environment-specific config
+
+      # === Staging (environment: stage) ===
+      db_sanitize:                    # Anonymize user data on sync
+      staging_domain:                 # Custom staging domain
+
+      # === Security (environment: live) ===
+      security_modules:               # Security hardening modules
+
+      # === Performance (environment: live) ===
+      redis:                          # Object caching for performance
+      solr:                           # Advanced full-text search
+
+      # === Production Infrastructure (environment: live) ===
+      cron:                           # Automated task scheduling
+      backup:                         # Automated backups
+      ssl:                            # HTTPS configuration
+      cdn:                            # CDN integration
+
+      # === Production Deployment (environment: prod) ===
+      live_domain:                    # Production domain name
+      dns_records:                    # Auto-configure DNS via Linode
+      monitoring:                     # Uptime and performance monitoring
+      robots_allow:                   # Allow search engine indexing (default: blocked)
+
+      # === Migration (environment: all) ===
+      migration:                      # Create migration folder for importing content
+
+  os:
+    # [ACTIVE] Open Social installation
+    source: goalgorilla/social_template:dev-master
+    profile: social                # [ACTIVE]
+    webroot: html                  # [ACTIVE]
+    auto: y                        # [ACTIVE]
+    # Optional overrides (if not set, uses settings defaults)
+    # php: 8.2                     # [ACTIVE] Open Social requires PHP 8.2
+    # database: mariadb            # [ACTIVE] Override settings.database
+    # Development mode
+    # dev: y                       # [ACTIVE] Enable dev module installation
+    # dev_modules: devel webprofiler kint  # [ACTIVE] Modules to install when dev: y
+    # Additional packages
+    install_modules:               # [ACTIVE]
+    # Options: TUI checkbox selections during install (y = pre-selected)
+    options:
+      # === Development (environment: dev) ===
+      dev_modules:                    # Enable devel, webprofiler for debugging
+      xdebug:                         # Step-through debugging with IDE
+      stage_file_proxy:               # Proxy production files locally
+
+      # === Configuration (environment: all) ===
+      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
+      config_split:                   # Environment-specific config
+
+      # === Staging (environment: stage) ===
+      db_sanitize:                    # Anonymize user data on sync
+      staging_domain:                 # Custom staging domain
+
+      # === Security (environment: live) ===
+      security_modules:               # Security hardening modules
+
+      # === Performance (environment: live) ===
+      redis:                          # Object caching for performance
+      solr:                           # Advanced full-text search
+
+      # === Production Infrastructure (environment: live) ===
+      cron:                           # Automated task scheduling
+      backup:                         # Automated backups
+      ssl:                            # HTTPS configuration
+      cdn:                            # CDN integration
+
+      # === Production Deployment (environment: prod) ===
+      live_domain:                    # Production domain name
+      dns_records:                    # Auto-configure DNS via Linode
+      monitoring:                     # Uptime and performance monitoring
+
+      # === Migration (environment: all) ===
+      migration:                      # Create migration folder for importing content
+
+  # === AVC RECIPES ===
+  # AV Commons uses a split architecture:
+  #   - nwp/avc-project: Project template (like drupal/recommended-project)
+  #   - nwp/avc: The Drupal profile with all AVC modules
+  #
+  # Choose your recipe based on your use case:
+  #   avc     - For SITE BUILDERS: Deploy AVC sites, customize config
+  #             Uses composer, profile updates via composer update
+  #   avc-dev - For PROFILE DEVELOPERS: Work on AVC profile code
+  #             Uses git clone, profile is editable in profiles/contrib/avc
+
+  avc:
+    # [ACTIVE] AV Commons - For site builders and production deployments
+    # Use this when: Building sites with AVC, not modifying the profile itself
+    # Profile updates: Run `composer update nwp/avc` to get latest version
+    source: nwp/avc-project              # [ACTIVE] AVC project template from GitLab
+    profile: avc                         # [ACTIVE] AVC profile (installed via composer)
+    webroot: html                        # [ACTIVE]
+    auto: y                              # [ACTIVE]
+    # Optional overrides (if not set, uses settings defaults)
+    # php: 8.2                           # [ACTIVE] Override settings.php
+    # database: mariadb                  # [ACTIVE] Override settings.database
+    # Development mode (disabled for production recipe)
+    # dev: n                             # [ACTIVE] Don't install dev modules
+
+    # === Moodle Integration Settings [ACTIVE] ===
+    # Configure SSO and data synchronization with Moodle LMS
+    moodle_integration:
+      moodle_site: ""                    # [ACTIVE] Linked Moodle site name (e.g., 'ss')
+      moodle_url: ""                     # [ACTIVE] Moodle URL (auto-detected if empty)
+      oauth2_token_lifetime: 300         # [ACTIVE] OAuth2 token lifetime (seconds, default: 5 minutes)
+      sync_interval: 3600                # [ACTIVE] Role sync interval for cron (seconds, default: 1 hour)
+
+      # Role Mapping: AVC Guild Role → Moodle Role
+      # These mappings control how guild roles in AVC translate to Moodle permissions
+      role_mapping:
+        guild_admin: manager             # [ACTIVE] Guild admin → Moodle manager
+        guild_facilitator: teacher       # [ACTIVE] Guild facilitator → Moodle teacher
+        guild_mentor: teacher            # [ACTIVE] Guild mentor → Moodle teacher
+        guild_member: student            # [ACTIVE] Guild member → Moodle student
+        default: student                 # [ACTIVE] Default role for all AVC members
+
+    # Options: TUI checkbox selections during install (y = pre-selected)
+    options:
+      # === Development (environment: dev) ===
+      dev_modules:                       # Enable devel, webprofiler for debugging
+      xdebug:                            # Step-through debugging with IDE
+      stage_file_proxy:                  # Proxy production files locally
+
+      # === Configuration (environment: all) ===
+      environment_indicator: y           # [RECOMMENDED] Visual environment indicator
+      config_split: y                    # [RECOMMENDED] Environment-specific config
+
+      # === Staging (environment: stage) ===
+      db_sanitize:                       # Anonymize user data on sync
+      staging_domain:                    # Custom staging domain
+
+      # === Security (environment: live) ===
+      security_modules:                  # Security hardening modules
+
+      # === Performance (environment: live) ===
+      redis:                             # Object caching for performance
+      solr:                              # Advanced full-text search
+
+      # === Production Infrastructure (environment: live) ===
+      cron:                              # Automated task scheduling
+      backup:                            # Automated backups
+      ssl:                               # HTTPS configuration
+      cdn:                               # CDN integration
+
+      # === Production Deployment (environment: prod) ===
+      live_domain:                       # Production domain name
+      dns_records:                       # Auto-configure DNS via Linode
+      monitoring:                        # Uptime and performance monitoring
+
+      # === Migration (environment: all) ===
+      migration:                         # Create migration folder for importing content
+
+      # === Moodle Integration (environment: all) [ACTIVE] ===
+      moodle_sso:                        # Enable OAuth2 SSO with Moodle LMS
+      moodle_role_sync:                  # Auto-sync guild roles to Moodle cohorts
+      moodle_badge_display:              # Display Moodle badges on AVC profiles
+
+      # === Email Reply (environment: all) [ACTIVE] ===
+      email_reply:                       # Enable email reply for group notifications
+
+    # === Email Reply Settings [ACTIVE] ===
+    # Configure email reply functionality for group notifications
+    # Users can reply to notification emails to post comments
+    email_reply:
+      enabled: false                     # [ACTIVE] Enable email reply (requires email provider setup)
+      reply_domain: ""                   # [ACTIVE] Domain for reply-to addresses (e.g., reply.example.com)
+      email_provider: sendgrid           # [ACTIVE] Email provider: sendgrid or mailgun
+      webhook_secret: ""                 # [ACTIVE] Webhook verification secret (from .secrets.yml)
+      token_expiry_days: 30              # [ACTIVE] Days before reply tokens expire
+      spam_score_threshold: 5.0          # [ACTIVE] Reject replies with spam score above this
+      debug_mode: false                  # [ACTIVE] Enable debug logging
+      rate_limits:
+        per_user_per_hour: 10            # [ACTIVE] Max replies per user per hour
+        per_user_per_day: 50             # [ACTIVE] Max replies per user per day
+        per_group_per_hour: 100          # [ACTIVE] Max replies per group per hour
+      # Environment-specific overrides
+      environments:
+        dev:
+          enabled: true                  # [ACTIVE] Auto-enable in dev for testing
+          reply_domain: "test.local"     # [ACTIVE] Use test domain in dev
+          debug_mode: true               # [ACTIVE] Enable debug in dev
+        stage:
+          enabled: true                  # [ACTIVE] Enable in staging
+          debug_mode: true               # [ACTIVE] Enable debug in staging
+        live:
+          enabled: true                  # [ACTIVE] Enable in production
+          debug_mode: false              # [ACTIVE] Disable debug in production
+
+  avc-dev:
+    # [ACTIVE] AV Commons - For profile/module developers
+    # Use this when: Developing AVC modules, fixing bugs, adding features
+    # Profile location: profiles/custom/avc (git repo, editable)
+    # Workflow: Edit code -> commit -> push to nwp/avc -> tag release
+    #
+    # source_git vs source:
+    #   source_git: Clone project via git (preserves git history for project-level changes)
+    #   source: Use composer create-project (no git history, simpler for non-developers)
+    #
+    source_git: git@git.nwpcode.org:nwp/avc-project.git  # [ACTIVE] Clone project via git
+    profile: avc                         # [ACTIVE] Profile name
+    profile_source: git@git.nwpcode.org:nwp/avc.git  # [ACTIVE] Clone profile from git
+    webroot: html                        # [ACTIVE]
+    auto: y                              # [ACTIVE]
+    # Optional overrides (if not set, uses settings defaults)
+    # php: 8.2                           # [ACTIVE] Override settings.php
+    # database: mariadb                  # [ACTIVE] Override settings.database
+    # Development mode (enabled for developer recipe)
+    dev: y                               # [ACTIVE] Install dev modules
+    dev_modules: devel webprofiler kint  # [ACTIVE] Modules to install
+
+    # Sample content generation modules for development/testing
+    post_install_modules:
+      - avc_devel                        # [ACTIVE] AVC content generation and cleanup tools
+      - social_demo                      # [ACTIVE] Social demo content generation
+      - graphql                          # [ACTIVE] GraphQL API (required by social_demo)
+
+    # Post-install scripts for development setup
+    post_install_scripts:
+      - profiles/custom/avc/modules/avc_features/avc_content/scripts/migrate_help_to_book.php  # [ACTIVE] Create help documentation as book pages
+      - profiles/custom/avc/modules/avc_features/avc_content/scripts/seed_content_data.php
+      - profiles/custom/avc/modules/avc_features/workflow_assignment/scripts/seed_workflow_data.php
+      - profiles/custom/avc/modules/avc_features/avc_email_reply/scripts/configure_email_reply.php  # [ACTIVE] Configure email reply for environment
+      - profiles/custom/avc/scripts/generate_sample_content.sh  # [ACTIVE] Auto-generate comprehensive sample content
+
+    # === Moodle Integration Settings [ACTIVE] ===
+    # Configure SSO and data synchronization with Moodle LMS
+    moodle_integration:
+      moodle_site: ""                    # [ACTIVE] Linked Moodle site name (e.g., 'ss')
+      moodle_url: ""                     # [ACTIVE] Moodle URL (auto-detected if empty)
+      oauth2_token_lifetime: 300         # [ACTIVE] OAuth2 token lifetime (seconds, default: 5 minutes)
+      sync_interval: 3600                # [ACTIVE] Role sync interval for cron (seconds, default: 1 hour)
+
+      # Role Mapping: AVC Guild Role → Moodle Role
+      # These mappings control how guild roles in AVC translate to Moodle permissions
+      role_mapping:
+        guild_admin: manager             # [ACTIVE] Guild admin → Moodle manager
+        guild_facilitator: teacher       # [ACTIVE] Guild facilitator → Moodle teacher
+        guild_mentor: teacher            # [ACTIVE] Guild mentor → Moodle teacher
+        guild_member: student            # [ACTIVE] Guild member → Moodle student
+        default: student                 # [ACTIVE] Default role for all AVC members
+
+    # Options: TUI checkbox selections during install (y = pre-selected)
+    options:
+      # === Development (environment: dev) ===
+      # Note: dev_modules handled by dev: y above
+      xdebug:                            # Step-through debugging with IDE
+      stage_file_proxy:                  # Proxy production files locally
+
+      # === Configuration (environment: all) ===
+      environment_indicator: y           # [RECOMMENDED] Visual environment indicator
+      config_split: y                    # [RECOMMENDED] Environment-specific config
+
+      # === Staging (environment: stage) ===
+      db_sanitize:                       # Anonymize user data on sync
+      staging_domain:                    # Custom staging domain
+
+      # === Security (environment: live) ===
+      security_modules:                  # Security hardening modules
+
+      # === Performance (environment: live) ===
+      redis:                             # Object caching for performance
+      solr:                              # Advanced full-text search
+
+      # === Production Infrastructure (environment: live) ===
+      cron:                              # Automated task scheduling
+      backup:                            # Automated backups
+      ssl:                               # HTTPS configuration
+      cdn:                               # CDN integration
+
+      # === Production Deployment (environment: prod) ===
+      live_domain:                       # Production domain name
+      dns_records:                       # Auto-configure DNS via Linode
+      monitoring:                        # Uptime and performance monitoring
+
+      # === Migration (environment: all) ===
+      migration:                         # Create migration folder for importing content
+
+      # === Moodle Integration (environment: all) [ACTIVE] ===
+      moodle_sso:                        # Enable OAuth2 SSO with Moodle LMS
+      moodle_role_sync:                  # Auto-sync guild roles to Moodle cohorts
+      moodle_badge_display:              # Display Moodle badges on AVC profiles
+
+      # === Email Reply (environment: all) [ACTIVE] ===
+      email_reply: y                     # [DEV DEFAULT] Enable email reply for group notifications
+
+    # === Email Reply Settings [ACTIVE] ===
+    # Configure email reply functionality for group notifications
+    # In dev mode, auto-enabled with test configuration for DDEV testing
+    email_reply:
+      enabled: true                      # [DEV] Auto-enabled in dev mode
+      reply_domain: ""                   # [DEV] Auto-set to sitename.ddev.site
+      email_provider: sendgrid           # [ACTIVE] Email provider: sendgrid or mailgun
+      webhook_secret: ""                 # [DEV] Not required for local testing
+      token_expiry_days: 30              # [ACTIVE] Days before reply tokens expire
+      spam_score_threshold: 5.0          # [ACTIVE] Reject replies with spam score above this
+      debug_mode: true                   # [DEV] Enable debug logging in dev
+      rate_limits:
+        per_user_per_hour: 100           # [DEV] Higher limits for testing
+        per_user_per_day: 500            # [DEV] Higher limits for testing
+        per_group_per_hour: 1000         # [DEV] Higher limits for testing
+      # Environment-specific overrides
+      environments:
+        dev:
+          enabled: true                  # [ACTIVE] Auto-enable in dev
+          debug_mode: true               # [ACTIVE] Enable debug in dev
+        stage:
+          enabled: true                  # [ACTIVE] Enable in staging
+          debug_mode: true               # [ACTIVE] Enable debug in staging
+        live:
+          enabled: true                  # [ACTIVE] Enable in production
+          debug_mode: false              # [ACTIVE] Disable debug in production
+
+  dm:
+    # [ACTIVE] Divine Mercy recipe
+    source: drupal/recommended-project:^10.2
+    profile: standard
+    webroot: web
+    auto: y
+    # Optional overrides (if not set, uses settings defaults)
+    # php: 8.3                       # [ACTIVE] Override settings.php
+    # database: mysql                # [ACTIVE] Override settings.database
+    # Development mode
+    # dev: y                         # [ACTIVE] Enable dev module installation
+    # dev_modules: devel webprofiler kint  # [ACTIVE] Modules to install when dev: y
+    # Additional packages
+    install_modules: git@github.com:rjzaar/divine_mercy.git
+    # Options: TUI checkbox selections during install (y = pre-selected)
+    options:
+      # === Development (environment: dev) ===
+      dev_modules:                    # Enable devel, webprofiler for debugging
+      xdebug:                         # Step-through debugging with IDE
+      stage_file_proxy:               # Proxy production files locally
+
+      # === Configuration (environment: all) ===
+      environment_indicator: y        # [RECOMMENDED] Visual environment indicator in toolbar
+      config_split:                   # Environment-specific config
+
+      # === Staging (environment: stage) ===
+      db_sanitize:                    # Anonymize user data on sync
+      staging_domain:                 # Custom staging domain
+
+      # === Security (environment: live) ===
+      security_modules:               # Security hardening modules
+
+      # === Performance (environment: live) ===
+      redis:                          # Object caching for performance
+      solr:                           # Advanced full-text search
+
+      # === Production Infrastructure (environment: live) ===
+      cron:                           # Automated task scheduling
+      backup:                         # Automated backups
+      ssl:                            # HTTPS configuration
+      cdn:                            # CDN integration
+
+      # === Production Deployment (environment: prod) ===
+      live_domain:                    # Production domain name
+      dns_records:                    # Auto-configure DNS via Linode
+      monitoring:                     # Uptime and performance monitoring
+
+      # === Migration (environment: all) ===
+      migration:                      # Create migration folder for importing content
+
+  # === MOODLE RECIPE ===
+  m:
+    type: moodle                   # [ACTIVE] Recipe type
+    source: https://github.com/moodle/moodle.git
+    branch: MOODLE_404_STABLE      # [ACTIVE] Git branch
+    webroot: .                     # [ACTIVE]
+    sitename: "My Moodle Site"     # [ACTIVE] Site title
+    auto: y                        # [ACTIVE]
+    # Optional overrides (if not set, uses settings defaults, then Moodle defaults)
+    php: 8.1                       # [ACTIVE] Moodle 4.x requires PHP 8.1
+    database: mariadb              # [ACTIVE] Moodle default database
+
+    # === AVC Integration Settings [ACTIVE] ===
+    # Configure OAuth2 authentication from AV Commons sites
+    avc_integration:
+      avc_site: ""                 # [ACTIVE] Linked AVC site name (e.g., 'avc')
+      avc_url: ""                  # [ACTIVE] AVC URL (auto-detected if empty)
+      default_role: student        # [ACTIVE] Default Moodle role for all AVC members
+
+    # Options: TUI checkbox selections during install (y = pre-selected)
+    options:
+      # === AVC Integration (environment: all) [ACTIVE] ===
+      avc_sso:                     # Enable OAuth2 authentication from AVC
+      avc_cohort_sync:             # Enable automatic cohort-role synchronization
+
+  # === GITLAB RECIPE ===
+  gitlab:
+    type: gitlab                   # [ACTIVE] Recipe type
+    source: https://gitlab.com/gitlab-org/gitlab-foss.git
+    branch: master                 # [ACTIVE]
+    webroot: .                     # [ACTIVE]
+    sitename: "GitLab Instance"    # [ACTIVE]
+    auto: y                        # [ACTIVE]
+    # Optional overrides
+    # php: 8.2                     # [ACTIVE] Override settings.php
+    # database: postgres           # [ACTIVE] GitLab prefers PostgreSQL
+
+  # === PODCAST RECIPE ===
+  pod:
+    type: podcast                  # [ACTIVE] Recipe type
+    # Usage: ./install.sh pod <target>
+    #
+    # Domain configuration (choose ONE):
+    #   Option 1: base_domain - domain constructed as <target>.<base_domain>
+    #             e.g., base_domain: example.com with target 'gm' = gm.example.com
+    #   Option 2: domain - use explicit full domain (ignores target name)
+    # base_domain: example.com
+    domain: podcast.example.com
+    #
+    # Server configuration:
+    #   Default (recommended): Leave use_server empty/unset
+    #     - Auto-detects servers from linode.servers with matching domain
+    #     - Falls back to sites with matching base domain
+    #     - Prompts user: "Install on existing server or create new?"
+    #
+    #   Explicit: Set use_server to skip auto-detection
+    #     use_server: mysite  # Uses sites.mysite.live.server_ip directly
+    #
+    # use_server:
+    #
+    # Linode region (used when creating new server)
+    linode_region: us-east
+    # B2 region for media storage
+    b2_region: us-west-004
+    # Media subdomain (e.g., media.example.com)
+    media_subdomain: media
+    auto: y                        # [ACTIVE]
+
+  # === PROJECT-SHIPPED RECIPES ===
+  #
+  # Project-specific recipes (mt, dir, etc.) live alongside their
+  # site at sites/<name>/recipe.yml — not here in core. NWP discovers
+  # them automatically via lib/install-common.sh's _resolve_project_recipe()
+  # fallback. See:
+  #
+  #   sites/mt/recipe.yml   — Mass Times (F16/F17)
+  #   sites/dir/recipe.yml  — Divine Intimacy Radio
+  #
+  # To add your own project recipe, drop a recipe.yml in your site
+  # folder using the same `recipes:` schema as the core recipes above.
+
+################################################################################
+# SITES - Auto-populated Site Registry
+################################################################################
+# Automatically populated when sites are created with install.sh or import.sh
+# Stores site metadata, production configuration, and deployment settings
+sites:
+  # Example recipe-based site entry (created by install.sh):
+  # mysite:
+  #   directory: /home/user/nwp/mysite    # [ACTIVE] Full path
+  #   recipe: d                            # [ACTIVE] Recipe used
+  #   environment: development             # [ACTIVE] Environment type
+  #   created: 2024-12-28T10:30:00Z       # [ACTIVE] Creation timestamp
+  #   purpose: indefinite                  # [ACTIVE] Site purpose
+  #   installed_modules:                   # [ACTIVE] Additional modules
+  #     - drupal/admin_toolbar
+  #   live:                                # [ACTIVE] Live deployment config
+  #     enabled: true
+  #     domain: mysite.example.com
+  #     server_ip: 203.0.113.10
+  #     linode_id: shared
+  #     type: shared
+  #   vrt:                                 # Visual regression testing (F03)
+  #     pages:
+  #       - url: /
+  #         name: homepage
+  #       - url: /user/login
+  #         name: login
+  #     threshold: 0.1
+  #     viewport: 1920x1080
+  #   frontend:                            # [ACTIVE] Per-site frontend config (overrides recipe/global)
+  #     build_tool: gulp                   # gulp, grunt, webpack, vite (auto-detected if not set)
+  #     package_manager: yarn              # npm, yarn, pnpm (auto-detected from lock files)
+  #     node_version: "20"                 # Required Node.js version
+  #   ci:                                  # [PLANNED] Per-site CI configuration
+  #     enabled: true                      # Enable CI for this site
+  #     repo: git@git.nwpcode.org:nwp/mysite.git  # GitLab repository URL
+  #     branch: main                       # Branch to run CI on
+  #     stages:                            # Override global stages
+  #       lint: true
+  #       test: true
+  #       security: true
+  #       deploy: false
+  #     mirrors:                           # Mirror destinations
+  #       github: git@github.com:user/mysite.git
+  #     notifications:                     # CI notifications
+  #       email: admin@example.com
+  #       slack_webhook: ""
+  #   email:                               # [ACTIVE] Per-site email configuration
+  #     enabled: true                      # [ACTIVE] Enable email for this site (default: true for live)
+  #     address: mysite@nwpcode.org        # [ACTIVE] Site's email address (auto-generated: sitename@domain)
+  #     forward: admin@example.com         # [ACTIVE] Forward site emails to this address
+  #     # Forward defaults to:
+  #     #   1. Coder's email from other_coders.coders.<name>.email
+  #     #   2. settings.email.admin_email if no coder email
+  #     # Site email is automatically configured during pl live deployment
+  #
+  # Example imported site entry (created by import.sh):
+  # imported_site:
+  #   directory: /home/user/nwp/imported_site  # [ACTIVE] Full path
+  #   type: import                              # [ACTIVE] Marks as imported site
+  #   source:                                   # [ACTIVE] Remote source info
+  #     server: production                      # [ACTIVE] Server from linode.servers
+  #     ssh_host: root@203.0.113.10            # [ACTIVE] SSH connection
+  #     webroot: /var/www/imported_site/web    # [ACTIVE] Remote webroot path
+  #   drupal_version: "10.3.2"                  # [ACTIVE] Detected Drupal version
+  #   php_version: "8.2"                        # [ACTIVE] PHP version used
+  #   environment: development                  # [ACTIVE] Local environment
+  #   imported: 2024-12-29T10:30:00Z           # [ACTIVE] Import timestamp
+  #   last_sync: 2024-12-29T10:30:00Z          # [ACTIVE] Last sync timestamp
+  #   options:                                  # [ACTIVE] Import options used
+  #     sanitize: true                          # Database sanitization enabled
+  #     stage_file_proxy: true                  # Using stage file proxy
+  #     origin_url: "https://example.com"       # Origin URL for file proxy
+  #     environment_indicator: true             # Environment indicator enabled
+  #     config_split: true                      # Config split enabled

@@ -1,6 +1,6 @@
 # F34: Role-Label Proposal Rewrite
 
-**Status:** PROPOSED
+**Status:** IN PROGRESS — Phase 3 complete (commits `acc9549`, `cbf9d97`); Phases 1, 2, 4 pending
 **Created:** 2026-05-09
 **Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** Medium (cosmetic but blocks public release of existing proposals)

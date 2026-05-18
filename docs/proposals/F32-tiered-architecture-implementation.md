@@ -1,6 +1,6 @@
 # F32: Tiered Architecture Implementation
 
-**Status:** PROPOSED
+**Status:** IN PROGRESS — Phase A complete (commits `e9ad8f2`, `2017799`, `9f9632d`); Phases B–G pending
 **Created:** 2026-05-09
 **Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** High (architectural change; gates the public release)

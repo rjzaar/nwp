@@ -1,9 +1,10 @@
 # NWP Command Inventory
 
-Complete inventory of all 49 commands in the NWP codebase.
+Complete inventory of all commands in the NWP codebase.
 
-**Last Updated:** 2026-01-14
-**Total Commands:** 49
+**Last Updated:** 2026-05-18
+**Total Commands:** 58 (excludes one timestamped legacy backup file,
+`podcast-setup-20260112-195917`, scheduled for removal)
 
 ---
 
@@ -817,7 +818,7 @@ Complete inventory of all 49 commands in the NWP codebase.
 
 ## Command Summary Statistics
 
-**Total Commands:** 49
+**Total Commands:** 58 (plus one legacy backup file pending removal)
 
 **By Category:**
 - Core Lifecycle: 4 (install, setup, delete, uninstall)
@@ -826,12 +827,15 @@ Complete inventory of all 49 commands in the NWP codebase.
 - Deployment: 7 (dev2stg, stg2live, stg2prod, live, produce, prod2stg, live2prod, live2stg)
 - Content Sync: 3 (sync, import, copy)
 - Testing: 4 (test, testos, verify --run, run-tests)
-- Utility: 8 (make, theme, security, security-check, seo-check, badges, email, storage, report)
+- Utility: 9 (make, theme, security, security-check, seo-check, badges, email, storage, report, fix, todo)
+- Build & Publish: 2 (build, publish — F28 artifact bundle pipeline)
+- Server & Site Config (F23): 3 (server, site, proposals)
 - Migration: 2 (migration, migrate-secrets)
 - Distributed Contribution: 2 (contribute, upstream)
 - Coder Management: 4 (coders, coder-setup, bootstrap-coder, setup-ssh)
-- AVC-Moodle Integration: 4 (avc-moodle-setup, avc-moodle-status, avc-moodle-sync, avc-moodle-test)
+- AVC-Moodle Integration: 5 (avc-moodle-setup, avc-moodle-status, avc-moodle-sync, avc-moodle-test, mass-times)
 - Podcast Hosting: 1 (podcast)
+- Distributed Pipeline (ADR-0017): 1 (`pl ai-host` — LLM-host utilities; on-disk filename retained per F34 / role-vocabulary)
 
 **Commands with Multiple Verification Points:**
 - install.sh: 6 verification points (drupal, moodle, gitlab, podcast, resume, migration)
@@ -902,6 +906,68 @@ Complete inventory of all 49 commands in the NWP codebase.
 **Management Patterns:**
 - <resource>-<action>: coder-setup, setup-ssh, migrate-secrets
 - <resource>.sh: coders, badges, email, storage, podcast, theme, security
+
+---
+
+## Recently Added Commands (post-2026-01)
+
+These commands were added between the previous inventory revision
+(2026-01-14) and this one (2026-05-18) and have stub entries below.
+Run `pl <command> --help` (or read the header comment in the script)
+for full usage.
+
+### build.sh
+**Purpose:** NWP build script — invokes the F28 bundle build pipeline
+to produce a signed, reproducible artifact tarball for distribution.
+**Pairs with:** `publish.sh` (uploads the bundle).
+**Library:** `lib/bundle-build.sh`.
+
+### publish.sh
+**Purpose:** Uploads the signed artifact bundle produced by `build.sh`
+to the GitLab Packages registry (F28 §3.1 generic-package format).
+**Prerequisites:** `gitlab.api_token` in `.secrets.yml`; bundle must
+verify clean via `lib/bundle-verify.sh` before upload.
+
+### server.sh
+**Purpose:** `pl server` subcommand family — lists and inspects server
+records under `servers/<name>/.nwp-server.yml` (F23 Phase 8).
+**Subcommands:** `list`, `show <name>`, `status <name>`, `sites <name>`,
+`schema <name>`, `migrate <name>`.
+
+### site.sh
+**Purpose:** `pl site` subcommand family — manages per-site
+configuration files (`.nwp.yml`) and schema migrations.
+**Subcommands:** `list`, `show <name>`, `schema <name>`, `migrate
+<name>`, `init <name>`.
+
+### proposals.sh
+**Purpose:** `pl proposals` — aggregates proposal documents across the
+NWP root and all sites (F23 §7.4 / Phase 10). Reads per-site proposals
+under each site's profile repo and surfaces them in one view.
+**Flags:** `--site=<name>`, `--status=<status>`, `--root`, `--sites`.
+
+### todo.sh
+**Purpose:** `pl todo` command — manages an operator-local task list
+of pending work items (interactive TUI). Distinct from the F36
+proposal-tracking system: this is for ad-hoc operational TODOs.
+
+### fix.sh
+**Purpose:** `pl fix [issue_id]` — AI-assisted issue fixing. Lists open
+issues from the tracker and helps work through them one by one.
+
+### ai-host
+**Purpose:** `pl ai-host` — LLM-host utilities for the AI tier of the
+distributed pipeline (F21 Phase 3a). Manages the local LLM
+(Ollama/Vulkan), voice agent, and RAG ingestion.
+**Note:** The on-disk filename predates F34's role-label vocabulary
+and is retained to avoid breaking external references; see
+`docs/reference/role-vocabulary.md` for the legacy-to-role mapping
+and the path-allowlist context that lets the leakage gate accept it.
+
+### mass-times.sh
+**Purpose:** NWP Mass Times scraper command — fetches and normalizes
+mass-time schedules for AVC sites. Site-specific to the AV Commons /
+Catholic parish use case; not a general-purpose command.
 
 ---
 

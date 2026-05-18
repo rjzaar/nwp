@@ -1,6 +1,6 @@
 # F33: Repository Topology Refactor
 
-**Status:** PROPOSED
+**Status:** IN PROGRESS — Phase 1 + partial Phase 4 complete (commit `1669a06`, instance-overlay scaffolding); Phases 2, 3, 5 pending
 **Created:** 2026-05-09
 **Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** High (blocks public release; foundation for F32 and F34)

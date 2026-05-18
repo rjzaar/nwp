@@ -46,12 +46,12 @@ NWP uses a verification tracking system (`.verification.yml`) to ensure all feat
 ### Example Enhanced Checklist Item
 
 ```yaml
-- text: Run setup.sh on a fresh system and verify all prerequisites install
+- text: Run the setup command on a fresh system and verify all prerequisites install
   completed: false
   completed_by: null
   completed_at: null
   how_to_verify: |
-    1. On a fresh Ubuntu/Debian system: `cd ~/nwp && ./scripts/commands/setup.sh` or `pl setup`
+    1. On a fresh Ubuntu/Debian system: `cd ~/nwp && ./pl setup` (or `./scripts/commands/setup.sh` for direct access)
     2. Use arrow keys to navigate and SPACE to select required components
     3. Press ENTER to apply and watch installation process
     4. Verify Docker: `docker --version` (should show v20+)

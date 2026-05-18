@@ -735,7 +735,7 @@ The full flow for the user's scenario — a site backed up under NWP 0.29 being 
 ```bash
 # 1. User installs new NWP
 git clone git@<gitlab-host>:nwp/nwp.git ~/nwp
-cd ~/nwp && ./setup.sh
+cd ~/nwp && ./pl setup
 
 # 2. User restores an old site (from F18 restic backup or manual copy)
 pl rebuild --site mt

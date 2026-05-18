@@ -16,7 +16,7 @@ git clone git@github.com:rjzaar/nwp.git ~/nwp
 cd ~/nwp
 
 # Run automated setup
-./setup.sh --auto
+./pl setup --auto
 ```
 
 This installs Docker, DDEV, mkcert, and the NWP CLI (`pl` command).
@@ -141,7 +141,7 @@ recipes:
 
 ## Next Steps
 
-1. **Full Setup** - Run `./setup.sh` for interactive component selection
+1. **Full Setup** - Run `./pl setup` for interactive component selection
 2. **Testing** - Read [Testing Guide](../testing/testing.md) for test details
 3. **CI/CD** - Read [CI/CD Guide](../deployment/cicd.md) for automation
 4. **Production** - Read [Production Deployment](../deployment/production-deployment.md)
@@ -158,7 +158,7 @@ sudo usermod -aG docker $USER
 ### DDEV Not Found
 
 ```bash
-./setup.sh --auto
+./pl setup --auto
 ```
 
 ### Site Won't Start

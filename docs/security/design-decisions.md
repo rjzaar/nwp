@@ -148,7 +148,7 @@ db_pass=$(get_data_secret "production_database.password" "")
 
 ### Why NWP GitLab as primary remote?
 
-**Decision:** Self-hosted GitLab created by setup.sh is the default git remote.
+**Decision:** Self-hosted GitLab created during `pl setup` is the default git remote.
 
 **Rationale:**
 - Full data sovereignty
@@ -279,7 +279,7 @@ pl provision mysite      # Provision server
 
 ### Why step resumption (s=N)?
 
-**Decision:** Installation can resume from any step with `./install.sh recipe s=5`.
+**Decision:** Installation can resume from any step with `./pl install recipe s=5`.
 
 **Rationale:**
 - Installations can fail at any step

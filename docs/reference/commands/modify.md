@@ -16,7 +16,7 @@ The `modify` command provides an interactive TUI for managing options on existin
 
 The command can detect "orphaned" sites (directories with `.ddev` but not in `nwp.yml`) and provides detailed status information about each site including Drupal version, DDEV status, and installation progress.
 
-Unlike `install.sh` which creates new sites, `modify` works with existing sites to change their configuration after installation.
+Unlike `pl install` which creates new sites, `modify` works with existing sites to change their configuration after installation.
 
 ## Arguments
 
@@ -524,7 +524,7 @@ pl modify sitename
 
 ## Related Commands
 
-- [install.sh](../scripts/install.sh) - Create new sites
+- [install](./install.md) - Create new sites
 - [status.md](./status.md) - Check site status
 - [sync.md](./sync.md) - Sync from remote site
 

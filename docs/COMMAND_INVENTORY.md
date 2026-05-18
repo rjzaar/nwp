@@ -918,8 +918,10 @@ pl2 <command> [options]  # Alternative name
 Legacy direct access also supported:
 ```bash
 ./scripts/commands/<command>.sh [options]
-./<command>.sh [options]  # Via symlinks in project root
 ```
+
+(F23 removed the root-level `./<command>.sh` symlinks; use the `pl`
+dispatcher or invoke the file directly from `scripts/commands/`.)
 
 ---
 

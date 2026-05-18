@@ -604,18 +604,18 @@ After uninstalling, to reinstall NWP:
 
 ```bash
 # Re-run setup
-./setup.sh
+./pl setup
 
 # Or if you kept the project directory
 cd ~/nwp
-./setup.sh
+./pl setup
 ```
 
 The reinstallation will create a new state snapshot.
 
 ## Related Commands
 
-- `./setup.sh` - Initial NWP installation
+- `./pl setup` - Initial NWP installation
 - CLI unregistration library: `<nwp-root>/lib/cli-register.sh`
 
 ## See Also

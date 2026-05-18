@@ -335,13 +335,13 @@ This will set up GitLab at `git.<yourname>.<coder-domain>`.
 
 ```bash
 # Create a Drupal site
-./install.sh d mysite
+./pl install d mysite
 
 # Or create an Open Social site
-./install.sh os mysite
+./pl install os mysite
 
 # Or create an AVC site
-./install.sh avc mysite
+./pl install avc mysite
 ```
 
 Access your site at: `https://mysite.<yourname>.<coder-domain>`
@@ -523,8 +523,8 @@ Administrators can manage coders using the interactive TUI:
 
 | Command | Description |
 |---------|-------------|
-| `./install.sh d sitename` | Create Drupal site |
-| `./install.sh os sitename` | Create Open Social site |
+| `./pl install d sitename` | Create Drupal site |
+| `./pl install os sitename` | Create Open Social site |
 | `./delete.sh sitename` | Delete a site |
 | `./status.sh` | Show all sites |
 | `./backup.sh sitename` | Backup a site |

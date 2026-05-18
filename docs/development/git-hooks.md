@@ -240,7 +240,7 @@ If you find yourself frequently using `--no-verify`:
 
 Git hooks in `.git/hooks/` are **not** tracked by Git. They are installed automatically by:
 
-1. **Initial setup:** Running `./setup.sh` copies hooks to `.git/hooks/`
+1. **Initial setup:** Running `./pl setup` copies hooks to `.git/hooks/`
 2. **Manual installation:** Copy hooks from `.hooks/` (if we add that directory)
 
 **Current approach:** Hooks are created directly in `.git/hooks/` and documented here.

@@ -285,8 +285,8 @@ Add dynamic badges using Shields.io that work on both GitHub and GitLab READMEs,
 
 **Self-Hosted GitLab Support:**
 ```bash
-./setup.sh gitlab --domain git.example.org --with-badges
-./setup.sh gitlab-badges  # Add to existing GitLab
+./pl setup gitlab --domain git.example.org --with-badges
+./pl setup gitlab-badges  # Add to existing GitLab
 ```
 
 **Implementation:**

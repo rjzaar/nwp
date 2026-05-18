@@ -341,7 +341,7 @@ jobs:
         uses: ddev/github-action-setup-ddev@v1
 
       - name: Install site
-        run: ./install.sh nwp -y
+        run: ./pl install nwp -y
 
       - name: Run Behat tests
         run: |
@@ -371,7 +371,7 @@ jobs:
         run: |
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^)
           git checkout $PREVIOUS_TAG
-          ./install.sh nwp -y
+          ./pl install nwp -y
 
       - name: Update to current version
         run: |

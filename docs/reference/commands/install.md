@@ -202,7 +202,7 @@ This is useful for:
 - **Git** - Version control system
 - **nwp.yml** - Valid configuration file with recipe definitions
 
-Run `pl setup` or `./setup.sh` to install missing prerequisites.
+Run `pl setup` (or `./pl setup` from the repo root before `pl` is on `$PATH`) to install missing prerequisites.
 
 ## Recipe Configuration
 

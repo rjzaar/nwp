@@ -132,7 +132,7 @@ Checking configuration...
 ═══════════════════════════════════════════════════════════════
 
 Recommendations:
-  1. Install DDEV: ./setup.sh
+  1. Install DDEV: ./pl setup
   2. Create nwp.yml: cp example.nwp.yml nwp.yml
 ```
 
@@ -169,7 +169,7 @@ open -a Docker
 **Solution:**
 ```bash
 # Install prerequisites
-./setup.sh
+./pl setup
 ```
 
 ### Configuration Missing

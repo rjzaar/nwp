@@ -102,7 +102,7 @@ nwp/
 ## How NWP Works
 
 1. **Configuration**: Define sites in `nwp.yml` using recipes
-2. **Installation**: Run `./install.sh <recipe>` to create a site
+2. **Installation**: Run `./pl install <recipe>` to create a site
 3. **Development**: Use DDEV commands to work on the site
 4. **Management**: Use NWP scripts for backup, restore, copy
 5. **Deployment**: Promote through dev → staging → production
@@ -308,13 +308,13 @@ git clone git@github.com:rjzaar/nwp.git
 cd nwp
 ```
 
-### Run Setup Script
+### Run the Setup Command
 
 ```bash
-./setup.sh
+./pl setup
 ```
 
-The setup script will:
+The setup command will:
 1. Check which prerequisites are already installed
 2. Install only the missing ones
 3. Configure your system for DDEV
@@ -401,7 +401,7 @@ recipes:
 ### List Available Recipes
 
 ```bash
-./install.sh --list
+./pl install --list
 ```
 
 Output:
@@ -419,7 +419,7 @@ Available Recipes
 ### Install a Site
 
 ```bash
-./install.sh d
+./pl install d
 ```
 
 This creates a new Drupal site in `./sites/d/` (or `./sites/d1/` if `d` exists).
@@ -427,7 +427,7 @@ This creates a new Drupal site in `./sites/d/` (or `./sites/d1/` if `d` exists).
 ### Install with Custom Name
 
 ```bash
-./install.sh d myproject
+./pl install d myproject
 ```
 
 Creates the site in `./sites/myproject/`.
@@ -435,7 +435,7 @@ Creates the site in `./sites/myproject/`.
 ### Install with Test Content
 
 ```bash
-./install.sh d c
+./pl install d c
 ```
 
 The `c` flag creates test users and content for development.
@@ -445,7 +445,7 @@ The `c` flag creates test users and content for development.
 If installation fails at step 5:
 
 ```bash
-./install.sh d s=5
+./pl install d s=5
 ```
 
 ### Installation Steps
@@ -1659,12 +1659,12 @@ NWP's `lib/` directory contains reusable functions:
 
 | Command | Description |
 |---------|-------------|
-| `./setup.sh` | Install prerequisites |
-| `./install.sh --list` | List available recipes |
-| `./install.sh <recipe>` | Install a site |
-| `./install.sh <recipe> <name>` | Install with custom name |
-| `./install.sh <recipe> c` | Install with test content |
-| `./install.sh <recipe> s=N` | Resume from step N |
+| `./pl setup` | Install prerequisites |
+| `./pl install --list` | List available recipes |
+| `./pl install <recipe>` | Install a site |
+| `./pl install <recipe> <name>` | Install with custom name |
+| `./pl install <recipe> c` | Install with test content |
+| `./pl install <recipe> s=N` | Resume from step N |
 
 ### Site Management
 
@@ -1830,7 +1830,7 @@ ddev restart
 
 1. **Check logs:** `ddev logs`
 2. **Describe site:** `ddev describe`
-3. **NWP help:** `./install.sh --help`
+3. **NWP help:** `./pl install --help`
 4. **DDEV docs:** https://ddev.readthedocs.io
 
 ---

@@ -107,12 +107,16 @@ More information about security below.
    cd nwp
    ```
 
-2. **Run the setup script** (installs missing prerequisites):
+2. **Run the setup command** (installs missing prerequisites):
    ```bash
-   ./setup.sh
+   ./pl setup
    ```
 
-   The setup script will:
+   The `pl` script is committed at the repo root and bootstraps itself
+   from `lib/` — only `bash` is required to run the line above on a
+   fresh clone.
+
+   The setup command will:
    - Check which prerequisites are already installed
    - Install only the missing prerequisites
    - Configure your system for DDEV
@@ -120,13 +124,16 @@ More information about security below.
 
 3. **View available recipes**:
    ```bash
-   pl --list
+   ./pl --list
    ```
 
 4. **Install a project using a recipe**:
    ```bash
-   pl install nwp
+   ./pl install nwp
    ```
+
+   (After `./pl setup` adds `pl` to your PATH you can drop the `./` prefix
+   and run `pl install nwp` from any directory.)
 
 5. **Access your site**:
    - The script will display the URL when installation completes
@@ -165,10 +172,6 @@ If you prefer or need to run scripts directly (without the CLI wrapper):
 # From NWP root directory
 ./scripts/commands/install.sh d mysite
 ./scripts/commands/backup.sh mysite
-
-# Or with traditional symlinks (if enabled during setup)
-./install.sh d mysite    # Requires ./setup.sh --symlinks
-./backup.sh mysite
 ```
 
 **When to use direct scripts:**
@@ -222,7 +225,7 @@ If you have multiple NWP installations (e.g., different projects), each register
 | Third | `pl2` |
 | Custom | Any name you choose |
 
-During `./setup.sh`, you can customize the CLI command name in the TUI using the 'e' key on the "NWP CLI Command" row.
+During `./pl setup`, you can customize the CLI command name in the TUI using the 'e' key on the "NWP CLI Command" row.
 
 ## Security Architecture Details
 
@@ -254,7 +257,7 @@ NWP uses a two-tier security system.
 
 ### Quick Setup
 
-When you run `./setup.sh`, it automatically configures the two-tier security system. For manual setup:
+When you run `./pl setup`, it automatically configures the two-tier security system. For manual setup:
 
 ```bash
 # Infrastructure secrets (AI can help with these)
@@ -477,7 +480,7 @@ NWP includes a comprehensive set of management scripts for working with your sit
 | `delete.sh` | Delete sites | Graceful site deletion with optional backup (`-b`) |
 | `status.sh` | Site status | Interactive site management, `production` dashboard |
 | `testos.sh` | Test OpenSocial sites | Behat, PHPUnit, PHPStan testing with auto-setup |
-| `setup.sh` | Setup prerequisites | Install DDEV, configure Claude security, manage symlinks |
+| `pl setup` | Setup prerequisites | Install DDEV, configure Claude security |
 | `security.sh` | Security audits | Run security audits, check for updates |
 | `coder-setup.sh` | Multi-coder setup | DNS delegation for team members |
 | `migrate-secrets.sh` | Two-tier secrets | Migrate to infrastructure/data secrets split |
@@ -526,13 +529,7 @@ pl status
 ```bash
 # Direct path (no CLI needed)
 ./scripts/commands/install.sh nwp
-
-# Traditional symlinks (optional - for backward compatibility)
-./setup.sh --symlinks    # Creates ./install.sh etc. in root
-./install.sh nwp         # Then works like before
 ```
-
-The interactive `./setup.sh` also includes a "Script Symlinks" component for backward compatibility.
 
 ### Quick Examples
 
@@ -771,7 +768,7 @@ NWP automates the following steps:
 
 ### Directory Structure
 
-When you run `./install.sh nwp`, it creates:
+When you run `./pl install nwp`, it creates:
 
 ```
 nwp/
@@ -793,7 +790,7 @@ Each directory is a complete, isolated DDEV project with its own:
 ### Basic Usage
 
 ```bash
-./install.sh <recipe> [target]
+./pl install <recipe> [target]
 ```
 
 - `<recipe>`: The recipe name from nwp.yml
@@ -812,32 +809,32 @@ Each directory is a complete, isolated DDEV project with its own:
 
 **Install the nwp recipe:**
 ```bash
-./install.sh nwp
+./pl install nwp
 ```
 
 **Install with custom directory name:**
 ```bash
-./install.sh nwp mysite    # Uses nwp recipe but creates 'mysite' directory
+./pl install nwp mysite    # Uses nwp recipe but creates 'mysite' directory
 ```
 
 **Install with test content creation:**
 ```bash
-./install.sh nwp c
+./pl install nwp c
 ```
 
 **Resume from step 5:**
 ```bash
-./install.sh nwp s=5
+./pl install nwp s=5
 ```
 
 **View all available recipes:**
 ```bash
-./install.sh --list
+./pl install --list
 ```
 
 **Show help:**
 ```bash
-./install.sh --help
+./pl install --help
 ```
 
 ## Available Recipes
@@ -1035,7 +1032,7 @@ The install script will automatically:
 The `c` flag creates test content for workflow development:
 
 ```bash
-./install.sh nwp c
+./pl install nwp c
 ```
 
 This creates:
@@ -1049,7 +1046,7 @@ This creates:
 If an installation fails, you can resume from a specific step:
 
 ```bash
-./install.sh nwp s=5
+./pl install nwp s=5
 ```
 
 Installation steps:
@@ -1067,7 +1064,7 @@ Installation steps:
 The install script automatically validates recipes before installation:
 
 ```bash
-./install.sh my_recipe
+./pl install my_recipe
 ```
 
 If validation fails, you'll see helpful error messages:
@@ -1362,7 +1359,7 @@ The error report automatically includes:
 ```bash
 ERROR: Recipe 'myrecipe' not found in nwp.yml
 ```
-**Solution**: Check the recipe name spelling or run `./install.sh --list` to see available recipes.
+**Solution**: Check the recipe name spelling or run `./pl install --list` to see available recipes.
 
 ---
 
@@ -1401,13 +1398,13 @@ Could not find package...
 **Solution**:
 - Press Ctrl+C to cancel
 - Check the last step that completed
-- Resume from the next step: `./install.sh recipe s=N`
+- Resume from the next step: `./pl install recipe s=N`
 
 ### Getting Help
 
 1. **View available recipes and their configuration:**
    ```bash
-   ./install.sh --list
+   ./pl install --list
    ```
 
 2. **Check DDEV logs:**
@@ -1422,7 +1419,7 @@ Could not find package...
 
 4. **Test configuration:**
    ```bash
-   ./install.sh recipe s=99
+   ./pl install recipe s=99
    ```
    (Uses an invalid step number to test validation without installing)
 
@@ -1572,7 +1569,7 @@ All site directory contents are automatically gitignored (via `sites/*/` in .git
 To add new recipes or improve the installation script:
 
 1. Edit `nwp.yml` to add new recipes
-2. Test with `./install.sh recipe_name`
+2. Test with `./pl install recipe_name`
 3. Commit your changes
 4. Share your recipes with the community
 
@@ -1668,7 +1665,7 @@ NWP now includes comprehensive environment variable management:
 Environment configuration is automatic when creating new sites:
 
 ```bash
-./install.sh d mysite
+./pl install d mysite
 ```
 
 This generates:

@@ -8,7 +8,7 @@ NWP is a standalone shell script system. Claude Code is entirely optional - all 
 
 ```bash
 # Site management
-./install.sh d mysite              # Create new Drupal site
+./pl install d mysite              # Create new Drupal site
 ./backup.sh mysite                 # Backup site
 ./restore.sh mysite                # Restore from backup
 ./delete.sh mysite                 # Remove site

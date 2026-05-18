@@ -191,7 +191,7 @@ Generate different key types:
 After SSH setup is complete:
 
 1. **Configure Linode API token**: Add to `.secrets.yml` for automated testing
-2. **Install a site**: Run `./install.sh` to create a Drupal site
+2. **Install a site**: Run `./pl install` to create a Drupal site
 3. **Test deployments**: Use `./dev2stg.sh` to deploy to staging
 4. **Deploy to production**: Use `./stg2prod.sh` when ready
 5. **Run tests**: Use `pl verify --run` to test all functionality

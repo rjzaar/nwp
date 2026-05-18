@@ -110,7 +110,7 @@ This shows:
 ```bash
 ./backup.sh --help
 ./restore.sh --help
-./install.sh --help --list
+./pl install --help --list
 ```
 
 **Check the documentation:**
@@ -128,10 +128,10 @@ This shows:
 
 ```bash
 # Quick test site (uses 'nwp' recipe)
-./install.sh testsite
+./pl install testsite
 
 # Or specific recipe
-./install.sh testsite -r d   # Standard Drupal
+./pl install testsite -r d   # Standard Drupal
 ```
 
 **Run the feature with various options:**
@@ -180,7 +180,7 @@ See [Verify Enhancements](../VERIFY_ENHANCEMENTS.md) for detailed console usage.
 Every script supports `--help`:
 
 ```bash
-./install.sh --help    # Usage, options, examples
+./pl install --help    # Usage, options, examples
 ./modify.sh --help     # Site modification options
 ./dev2stg.sh --help    # Deployment options
 ```
@@ -356,7 +356,7 @@ Run these after making changes to verify nothing broke.
 
 ### Verifying backup.sh
 
-1. Create a test site: `./install.sh verifytest`
+1. Create a test site: `./pl install verifytest`
 2. Full backup: `./backup.sh verifytest`
 3. DB-only backup: `./backup.sh verifytest -b`
 4. With git: `./backup.sh verifytest -bg`
@@ -376,12 +376,12 @@ Run these after making changes to verify nothing broke.
 
 1. Install with different recipes:
    ```bash
-   ./install.sh test1 -r nwp
-   ./install.sh test2 -r d
-   ./install.sh test3 -r os
+   ./pl install test1 -r nwp
+   ./pl install test2 -r d
+   ./pl install test3 -r os
    ```
-2. Test resume: `./install.sh test1 --step=3`
-3. Test content creation: `./install.sh test1 --create-content`
+2. Test resume: `./pl install test1 --step=3`
+3. Test content creation: `./pl install test1 --create-content`
 4. Verify: `./verify.sh verify install`
 
 ### Verifying modify.sh
@@ -404,8 +404,8 @@ Begin with simpler features like `ui.sh` functions before tackling complex scrip
 Always test on dedicated test sites, never on real project sites.
 
 ```bash
-./install.sh verifytest1 -r d
-./install.sh verifytest2 -r nwp
+./pl install verifytest1 -r d
+./pl install verifytest2 -r nwp
 ```
 
 ### 3. Clean Up After Testing
@@ -477,7 +477,7 @@ get_data_secret "production_database.password" ""
 ./modify.sh sitename          # TUI with explanations
 
 # Test sites
-./install.sh testsite -r d    # Create
+./pl install testsite -r d    # Create
 ./delete.sh testsite -y       # Remove
 
 # After testing

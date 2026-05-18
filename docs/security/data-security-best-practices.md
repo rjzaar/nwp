@@ -256,11 +256,11 @@ $HOME/nwp/
     └── .secrets.data.yml     # Site production secrets (blocked)
 ```
 
-#### Install via setup.sh
+#### Install via the setup command
 
 ```bash
 # Install Claude security config with two-tier rules
-./setup.sh
+./pl setup
 
 # Or run migration check
 ./migrate-secrets.sh --check

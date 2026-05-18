@@ -36,9 +36,9 @@ Creates new Drupal/Moodle sites using recipe-based configuration.
 
 **Examples:**
 ```bash
-./install.sh d mysite              # Install Drupal with recipe 'd'
-./install.sh nwp c                 # Install with test content
-./install.sh nwp mysite s=5        # Resume from step 5
+./pl install d mysite              # Install Drupal with recipe 'd'
+./pl install nwp c                 # Install with test content
+./pl install nwp mysite s=5        # Resume from step 5
 ```
 
 ## copy.sh - Duplicate Sites
@@ -321,8 +321,8 @@ Interactive setup wizard for NWP prerequisites.
 - GitLab server
 
 ```bash
-./setup.sh                        # Interactive
-./setup.sh --auto                 # Auto-install core
+./pl setup                        # Interactive
+./pl setup --auto                 # Auto-install core
 ```
 
 ## GitLab Server (linode/gitlab/)
@@ -490,18 +490,21 @@ Migrates to two-tier secrets architecture.
 
 If CLI is installed, use the `pl` command from anywhere:
 
-| Command | Equivalent |
-|---------|------------|
-| `pl install d mysite` | `./install.sh d mysite` |
-| `pl backup mysite` | `./backup.sh mysite` |
-| `pl restore mysite` | `./restore.sh mysite` |
-| `pl copy src dst` | `./copy.sh src dst` |
-| `pl delete mysite` | `./delete.sh mysite` |
-| `pl dev2stg mysite` | `./dev2stg.sh mysite` |
-| `pl test mysite` | `./testos.sh -a mysite` |
-| `pl theme watch mysite` | `./theme.sh watch mysite` |
-| `pl status` | `./status.sh` |
-| `pl --list` | `./install.sh --list` |
+| Command | Direct-script equivalent |
+|---------|--------------------------|
+| `pl install d mysite` | `./scripts/commands/install.sh d mysite` |
+| `pl backup mysite` | `./scripts/commands/backup.sh mysite` |
+| `pl restore mysite` | `./scripts/commands/restore.sh mysite` |
+| `pl copy src dst` | `./scripts/commands/copy.sh src dst` |
+| `pl delete mysite` | `./scripts/commands/delete.sh mysite` |
+| `pl dev2stg mysite` | `./scripts/commands/dev2stg.sh mysite` |
+| `pl test mysite` | `./scripts/commands/testos.sh -a mysite` |
+| `pl theme watch mysite` | `./scripts/commands/theme.sh watch mysite` |
+| `pl status` | `./scripts/commands/status.sh` |
+| `pl --list` | `./scripts/commands/install.sh --list` |
+
+(F23 removed the root-level `./<command>.sh` symlinks. Use `pl` or
+invoke the script directly under `scripts/commands/`.)
 
 ## Multiple NWP Installations
 
@@ -514,7 +517,7 @@ If you have multiple NWP installations, each registers a unique command:
 | Third | `pl2` |
 | Custom | `nwp`, `dev`, etc. |
 
-Set during `./setup.sh` - editable with 'e' key on "NWP CLI Command" row.
+Set during `./pl setup` - editable with 'e' key on "NWP CLI Command" row.
 
 ---
 

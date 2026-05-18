@@ -219,10 +219,10 @@ cp example.nwp.yml nwp.yml
 cp .secrets.example.yml .secrets.yml
 
 # Run setup
-./scripts/commands/setup.sh
+./pl setup
 
 # Create a test site
-./install.sh d testsite
+./pl install d testsite
 ```
 
 ### Running Tests

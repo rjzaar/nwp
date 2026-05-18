@@ -21,10 +21,10 @@ git clone git@github.com:rjzaar/nwp.git ~/nwp
 cd ~/nwp
 
 # Run interactive setup
-./setup.sh
+./pl setup
 
 # Or auto-install core components only
-./setup.sh --auto
+./pl setup --auto
 ```
 
 The setup script will:
@@ -55,7 +55,6 @@ The setup script will:
 | NWP CLI | Global `pl` command for running scripts (recommended) |
 | NWP Config | Creates `nwp.yml` from example |
 | NWP Secrets | Creates `.secrets.yml` template |
-| Script Symlinks | Optional: Create `./install.sh` symlinks for backward compatibility |
 
 ### Linode Infrastructure (Server Provisioning)
 
@@ -116,7 +115,7 @@ The setup script will:
 ```bash
 git clone git@github.com:rjzaar/nwp.git ~/nwp
 cd ~/nwp
-./setup.sh
+./pl setup
 ```
 
 ### Step 2: Review Current Status
@@ -291,7 +290,7 @@ NWP uses a symlink-based CLI registration system that:
 - Automatically detects conflicts with existing commands
 - Supports multiple NWP installations with unique names
 
-During `./setup.sh`, the TUI shows the "NWP CLI Command" row where you can:
+During `./pl setup`, the TUI shows the "NWP CLI Command" row where you can:
 - Press **Enter** to accept the suggested command name
 - Press **e** to edit and choose a custom name
 - The system suggests `pl`, then `pl1`, `pl2`, etc. if conflicts exist
@@ -314,7 +313,7 @@ readlink /usr/local/bin/pl
 ```
 
 **Changing the command name:**
-1. Run `./setup.sh` from the NWP installation
+1. Run `./pl setup` from the NWP installation
 2. Navigate to "NWP CLI Command"
 3. Press 'e' to edit and enter a new name
 
@@ -428,7 +427,7 @@ sudo usermod -aG docker $USER
 ```bash
 # Reconfigure with correct token
 rm ~/.config/linode-cli
-./setup.sh
+./pl setup
 # Re-enter token when prompted
 ```
 
@@ -476,7 +475,7 @@ grep "cli:" nwp.yml
 rm -rf ~/.nwp/setup_state
 
 # Run setup again
-./setup.sh
+./pl setup
 ```
 
 ### State File Location
@@ -497,7 +496,7 @@ Setup state is stored in `~/.nwp/setup_state/`:
 cat ~/.nwp/setup_state/pre_setup_state.json
 
 # Check setup status
-./setup.sh --status
+./pl setup --status
 ```
 
 ## Setup Profiles
@@ -507,7 +506,7 @@ cat ~/.nwp/setup_state/pre_setup_state.json
 For just local Drupal/Moodle development:
 
 ```bash
-./setup.sh --auto
+./pl setup --auto
 ```
 
 This installs:
@@ -519,7 +518,7 @@ This installs:
 For complete setup including GitLab:
 
 ```bash
-./setup.sh
+./pl setup
 # Select all components in the UI
 ```
 
@@ -539,14 +538,8 @@ pl status
 
 Sites are installed to `~/nwp/sites/<sitename>/` directory.
 
-**Optional symlinks for backward compatibility:**
-
-```bash
-./setup.sh --symlinks      # Create ./install.sh etc. in root
-./setup.sh --no-symlinks   # Remove symlinks
-```
-
-The interactive setup UI includes "Script Symlinks" as an optional component.
+(F23 removed the root-level `./<command>.sh` symlinks; use the `pl`
+dispatcher or invoke `scripts/commands/<command>.sh` directly.)
 
 ## File Locations
 

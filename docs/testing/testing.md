@@ -402,7 +402,7 @@ html/profiles/contrib/social/tests/reports/behat/
 cat .logs/verify-*.log
 
 # Run individual commands
-./install.sh test_site
+./pl install test_site
 ./backup.sh test_site
 ./restore.sh test_site
 

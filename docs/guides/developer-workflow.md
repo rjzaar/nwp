@@ -47,7 +47,7 @@ Before starting, ensure your system has:
 
 ```bash
 # Run NWP setup to check/install prerequisites
-./setup.sh
+./pl setup
 ```
 
 Required components:
@@ -60,15 +60,15 @@ Required components:
 
 ```bash
 # List available recipes
-./install.sh --list
+./pl install --list
 
 # Install using a recipe (e.g., Drupal CMS, OpenSocial)
-./install.sh myproject
+./pl install myproject
 
 # Or install with specific recipe
-./install.sh -r d myproject      # Standard Drupal
-./install.sh -r os myproject     # OpenSocial
-./install.sh -r nwp myproject    # NWP custom recipe
+./pl install -r d myproject      # Standard Drupal
+./pl install -r os myproject     # OpenSocial
+./pl install -r nwp myproject    # NWP custom recipe
 ```
 
 ### 2.3 Initial Configuration
@@ -558,8 +558,8 @@ Keep documentation current:
 
 ```bash
 # Installation
-./install.sh -r d mysite              # New Drupal site
-./install.sh -r os mysite             # New OpenSocial site
+./pl install -r d mysite              # New Drupal site
+./pl install -r os mysite             # New OpenSocial site
 
 # Local development
 ddev start                            # Start environment

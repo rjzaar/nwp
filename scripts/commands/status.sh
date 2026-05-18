@@ -42,6 +42,21 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 
+# F33 Phase 4 — surface where per-site config is being read from. When
+# the operator still has content in the legacy sites/ path, the helper
+# prints a deprecation notice on stderr; the full subcommand refactor to
+# `site_path` / `site_config_path` is tracked as F33 Phase 4b follow-up.
+if [ -f "$PROJECT_ROOT/lib/common/find-instance-dir.sh" ]; then
+    __saved_script_dir="$SCRIPT_DIR"
+    SCRIPT_DIR="$PROJECT_ROOT"
+    # shellcheck source=../../lib/common/find-instance-dir.sh
+    source "$PROJECT_ROOT/lib/common/find-instance-dir.sh"
+    NWP_RESOLVED_INSTANCE_DIR="$(find_instance_dir)"
+    SCRIPT_DIR="$__saved_script_dir"
+    unset __saved_script_dir
+    export NWP_RESOLVED_INSTANCE_DIR
+fi
+
 # Source YAML library if available
 if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
     source "$PROJECT_ROOT/lib/yaml-write.sh"

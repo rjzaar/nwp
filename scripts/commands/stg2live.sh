@@ -525,10 +525,18 @@ setup_ssl_certificate() {
     local base_name="$1"
     local server_ip="$2"
     local ssh_user="$3"
-    # Default site-naming convention: <site>.<NWP_PROD_DOMAIN>; operator
-    # can override per-instance via NWP_PROD_DOMAIN.
-    local prod_domain="${NWP_PROD_DOMAIN:-example.org}"
-    local domain="${base_name}.${prod_domain}"
+    # Domain resolution chain (same chain used for rsync destination):
+    #   .nwp.yml .live.domain → settings.url base → NWP_PROD_DOMAIN env.
+    # The previous default ("example.org") produced certbot calls against
+    # nonexistent nwc.example.org. Wrong, never going to succeed.
+    local domain
+    domain=$(get_live_config "$base_name" "domain" 2>/dev/null)
+    if [ -z "$domain" ]; then
+        local base_domain
+        base_domain=$(get_base_domain 2>/dev/null)
+        [ -z "$base_domain" ] && base_domain="${NWP_PROD_DOMAIN:-nwpcode.org}"
+        domain="${base_name}.${base_domain}"
+    fi
 
     print_info "Setting up SSL certificate for $domain..."
 

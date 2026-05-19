@@ -1,0 +1,35 @@
+# NWC agent-loop cron schedule
+#
+# Install with:
+#   crontab -l > /tmp/cron.bak
+#   cat /home/rob/nwp/scripts/agent-loop/crontab.entry >> /tmp/cron.bak
+#   crontab /tmp/cron.bak
+#   crontab -l    # verify
+#
+# Uninstall:
+#   crontab -l | grep -v '/home/rob/nwp/scripts/agent-loop/' | crontab -
+#
+# Pause without uninstall:
+#   touch /home/rob/nwp/.loop-paused
+# Resume:
+#   rm /home/rob/nwp/.loop-paused
+#
+# Secrets handling
+# ----------------
+# Do NOT put GITLAB_TOKEN inline in crontab. Instead, source it from an
+# env file that lives in the operator's $HOME (gitignored):
+#
+#   echo 'GITLAB_TOKEN=<your-glpat-token>' >> ~/.nwp-agent-loop.env
+#   chmod 600 ~/.nwp-agent-loop.env
+#
+# The cron line below sources that file before invoking the script.
+# AGENT_LOOP_*: see agent-loop.sh header for the full list.
+
+# Sync new NWC feedback entities to GitLab issues — every 15 minutes.
+*/15 * * * * cd /home/rob/nwp/sites/nwc/dev && /usr/bin/ddev drush nwc-feedback:sync-to-gitlab --limit=10 >> /home/rob/nwp/logs/feedback-sync.log 2>&1
+
+# Drive the agent-loop (issue → PR) — every 30 minutes; 1 issue per run.
+0,30 * * * * . $HOME/.nwp-agent-loop.env && AGENT_LOOP_MAX_PER_RUN=1 /home/rob/nwp/scripts/agent-loop/agent-loop.sh
+
+# Optional: nightly state file rotation so logs don't grow unbounded.
+5 4 * * * /usr/bin/find /home/rob/nwp/logs -name '*.log' -size +50M -exec gzip {} \;

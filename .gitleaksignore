@@ -105,3 +105,50 @@ docs/proposals/F15-ssh-user-management.md:operator-home-path
 # name them to do its job. New hostnames must NOT be added without
 # updating this allowlist + the migration's mapping table.
 lib/migrations/global/migrate_002_to_003.sh:internal-bare-hostname
+
+# Agent-loop runtime scripts: cron line + deploy worker + webhook receiver
+# need absolute paths (cron doesn't expand ~) and live FQDN refs (smoke
+# checks must hit nwc.nwpcode.org etc. by name). Tokens are NEVER inline —
+# they're sourced from $HOME/.nwp-agent-loop.env (chmod 600, gitignored).
+# Reviewed for real secret leaks: clean.
+scripts/agent-loop/crontab.entry:operator-home-path
+scripts/agent-loop/crontab.entry:live-internal-domain
+scripts/agent-loop/crontab.entry:internal-hostname-fqdn
+scripts/agent-loop/agent-loop.sh:operator-home-path
+scripts/agent-loop/agent-loop.sh:live-internal-domain
+scripts/agent-loop/agent-loop.sh:internal-hostname-fqdn
+scripts/agent-loop/deploy-on-merge.sh:operator-home-path
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain
+scripts/agent-loop/deploy-on-merge.sh:internal-hostname-fqdn
+scripts/agent-loop/gitlab-webhook-receiver.py:operator-home-path
+scripts/agent-loop/gitlab-webhook-receiver.py:live-internal-domain
+scripts/agent-loop/gitlab-webhook-receiver.py:internal-hostname-fqdn
+
+# Agent-loop scripts: see commit message for rationale.
+scripts/agent-loop/crontab.entry:operator-home-path:5
+scripts/agent-loop/crontab.entry:operator-home-path:10
+scripts/agent-loop/crontab.entry:operator-home-path:13
+scripts/agent-loop/crontab.entry:operator-home-path:15
+scripts/agent-loop/crontab.entry:operator-home-path:29
+scripts/agent-loop/crontab.entry:operator-home-path:29
+scripts/agent-loop/crontab.entry:operator-home-path:32
+scripts/agent-loop/crontab.entry:operator-home-path:35
+scripts/agent-loop/gitlab-webhook-receiver.py:operator-home-path:14
+scripts/agent-loop/gitlab-webhook-receiver.py:operator-home-path:41
+scripts/agent-loop/gitlab-webhook-receiver.py:operator-home-path:62
+scripts/agent-loop/gitlab-webhook-receiver.py:live-internal-domain:21
+scripts/agent-loop/deploy-on-merge.sh:operator-home-path:31
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:34
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:116
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:218
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:219
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:220
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:221
+scripts/agent-loop/deploy-on-merge.sh:live-internal-domain:222
+scripts/agent-loop/agent-loop.sh:operator-home-path:7
+scripts/agent-loop/agent-loop.sh:operator-home-path:9
+scripts/agent-loop/agent-loop.sh:operator-home-path:29
+scripts/agent-loop/agent-loop.sh:operator-home-path:106
+scripts/agent-loop/agent-loop.sh:live-internal-domain:12
+scripts/agent-loop/agent-loop.sh:live-internal-domain:21
+scripts/agent-loop/agent-loop.sh:live-internal-domain:42

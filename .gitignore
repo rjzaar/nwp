@@ -160,3 +160,11 @@ scripts/commands/podcast-setup-*/
 # CI stats runtime samples (F36 §6.5). Bootstrap config is checked in;
 # *.tsv sample files live on the `stats` branch only.
 .ci-stats/*.tsv
+
+# Agent loop runtime state (P-agent-loop)
+# The driver and helpers are tracked under scripts/agent-loop/; their state
+# files and the kill switch are local-only.
+.loop-paused
+.agent-loop.state.json
+/logs/
+/logs/**

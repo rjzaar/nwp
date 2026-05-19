@@ -13,6 +13,58 @@ fi
 _INSTALL_DRUPAL_LOADED=1
 
 ################################################################################
+# Helpers
+################################################################################
+
+# Delete active config that belongs to dev modules not currently enabled.
+# Handles the retry-after-partial-failure case where a previous pm:enable
+# installed config (kint.*, system.menu.devel, etc.) but never registered
+# the module in core.extension, leaving PreExistingConfigException on retry.
+#
+# Args: <webroot> <module> [<module>...]
+clean_orphan_dev_config() {
+    local webroot="$1"
+    shift
+    [ -z "$1" ] && return 0
+
+    local cleaned=""
+    for module in "$@"; do
+        # Skip modules that are actually enabled — their config is legitimate.
+        if ddev drush pm:list --status=enabled --type=module --format=list 2>/dev/null | grep -qx "$module"; then
+            continue
+        fi
+        # Locate module dir (contrib, custom, or core).
+        local module_dir=""
+        for candidate in "$webroot/modules/contrib/$module" "$webroot/modules/custom/$module" "$webroot/core/modules/$module"; do
+            if [ -d "$candidate/config/install" ]; then
+                module_dir="$candidate"
+                break
+            fi
+        done
+        [ -z "$module_dir" ] && continue
+
+        # Collect every config item the module would install on enable.
+        local cfg_names=""
+        while IFS= read -r f; do
+            cfg_names="$cfg_names $(basename "$f" .yml)"
+        done < <(find "$module_dir/config/install" -maxdepth 1 -name '*.yml' 2>/dev/null)
+        [ -z "$cfg_names" ] && continue
+
+        # Delete any that exist in active config — drush bootstraps Drupal,
+        # so this respects config schema and cache invalidation.
+        for cfg in $cfg_names; do
+            if ddev drush php-eval "\$c = \Drupal::configFactory()->getEditable('$cfg'); if (!\$c->isNew()) { \$c->delete(); print 'deleted: $cfg'; }" 2>/dev/null | grep -q "^deleted:"; then
+                cleaned="${cleaned}${cfg} "
+            fi
+        done
+    done
+
+    if [ -n "$cleaned" ]; then
+        print_info "Cleaned orphan config from previous install attempts: $cleaned"
+    fi
+}
+
+################################################################################
 # Main Drupal Installation Function
 ################################################################################
 
@@ -47,16 +99,31 @@ install_drupal() {
     # Setup installation directory
     local project_dir=""
 
-    if [ -n "$start_step" ]; then
-        # When resuming, directory must already exist
-        if [ ! -d "$install_dir" ]; then
-            print_error "Installation directory '$install_dir' does not exist. Cannot resume from step $start_step"
-            print_info "To resume an installation, the directory must already exist"
+    # Detect source_local up front (also read again below) — if set, the dir is pre-existing
+    local source_local_check=$(get_recipe_value "$recipe" "source_local" "$base_dir/nwp.yml")
+    if [ -n "$source_local_check" ]; then
+        source_local_check="${source_local_check/#\~/$HOME}"
+    fi
+
+    if [ -n "$start_step" ] || [ -n "$source_local_check" ]; then
+        # Either resuming OR using source_local — directory must already exist.
+        # install_dir is either relative ("sites/foo") or absolute (when source_local).
+        local target_dir="$install_dir"
+        if [ ! -d "$target_dir" ] && [ -d "$base_dir/$install_dir" ]; then
+            target_dir="$base_dir/$install_dir"
+        fi
+        if [ ! -d "$target_dir" ]; then
+            print_error "Installation directory '$install_dir' does not exist."
+            if [ -n "$source_local_check" ]; then
+                print_info "For source_local recipes, scaffold the directory before running pl install."
+            else
+                print_info "To resume an installation, the directory must already exist"
+            fi
             return 1
         fi
 
-        if ! cd "$install_dir"; then
-            print_error "Failed to enter directory: $install_dir"
+        if ! cd "$target_dir"; then
+            print_error "Failed to enter directory: $target_dir"
             return 1
         fi
 
@@ -91,6 +158,13 @@ install_drupal() {
     # Extract configuration values from YAML
     local source=$(get_recipe_value "$recipe" "source" "$base_dir/nwp.yml")
     local source_git=$(get_recipe_value "$recipe" "source_git" "$base_dir/nwp.yml")
+    # source_local: path to an existing local site dir (no clone or create-project; just composer install).
+    # Used when the operator has manually scaffolded a site (e.g. during a refactor like AVC→NWC)
+    # and wants pl to drive the remaining install steps. Path may use ~ which is expanded here.
+    local source_local=$(get_recipe_value "$recipe" "source_local" "$base_dir/nwp.yml")
+    if [ -n "$source_local" ]; then
+        source_local="${source_local/#\~/$HOME}"
+    fi
     local profile=$(get_recipe_value "$recipe" "profile" "$base_dir/nwp.yml")
     local profile_source=$(get_recipe_value "$recipe" "profile_source" "$base_dir/nwp.yml")
     local webroot=$(get_recipe_value "$recipe" "webroot" "$base_dir/nwp.yml")
@@ -121,10 +195,21 @@ install_drupal() {
         print_info "No database specified, using default: mysql"
     fi
 
-    # Validate required values - need either source or source_git
-    if [ -z "$source" ] && [ -z "$source_git" ]; then
-        print_error "Recipe '$recipe' does not specify 'source' or 'source_git'"
+    # Validate required values - need source, source_git, or source_local
+    if [ -z "$source" ] && [ -z "$source_git" ] && [ -z "$source_local" ]; then
+        print_error "Recipe '$recipe' does not specify 'source', 'source_git', or 'source_local'"
         return 1
+    fi
+    # source_local must point at an existing directory with a composer.json
+    if [ -n "$source_local" ]; then
+        if [ ! -d "$source_local" ]; then
+            print_error "source_local path does not exist: $source_local"
+            return 1
+        fi
+        if [ ! -f "$source_local/composer.json" ]; then
+            print_error "source_local path has no composer.json: $source_local"
+            return 1
+        fi
     fi
 
     if [ -z "$profile" ]; then
@@ -138,7 +223,9 @@ install_drupal() {
     fi
 
     print_info "Configuration:"
-    if [ -n "$source_git" ]; then
+    if [ -n "$source_local" ]; then
+        echo "  Source:   $source_local (local path — already scaffolded)"
+    elif [ -n "$source_git" ]; then
         echo "  Source:   $source_git (git clone)"
     else
         echo "  Source:   $source (composer)"
@@ -152,7 +239,44 @@ install_drupal() {
     # Step 1: Initialize Project
     if should_run_step 1 "$start_step"; then
         show_step 1 9 "Initializing project"
-        if [ -n "$source_git" ]; then
+        if [ -n "$source_local" ]; then
+            print_header "Step 1: Use Existing Local Project (source_local)"
+            print_info "Site already scaffolded at: $source_local"
+            print_info "Skipping create-project / git clone."
+
+            # Verify pwd matches the source_local target (pl install changes dir
+            # to install_dir before this function runs). If not, that's a bug.
+            local pwd_norm=$(realpath -m "$(pwd)")
+            local src_norm=$(realpath -m "$source_local")
+            if [ "$pwd_norm" != "$src_norm" ]; then
+                print_warn "Working dir $pwd_norm does not match source_local $src_norm"
+                print_warn "Continuing anyway — composer install will run in $pwd_norm"
+            fi
+
+            # Set up GitLab authentication for composer (reuses cached auth.json if present)
+            local composer_auth=""
+            local gitlab_url=$(get_gitlab_url)
+            local gitlab_token=$(get_gitlab_token)
+            if [ -n "$gitlab_url" ] && [ -n "$gitlab_token" ]; then
+                composer_auth="COMPOSER_AUTH={\"gitlab-token\":{\"${gitlab_url}\":\"${gitlab_token}\"}}"
+                print_info "Using GitLab authentication for composer"
+            fi
+
+            # Composer install (idempotent — does nothing if vendor/ already populated)
+            if [ ! -d vendor ]; then
+                print_info "Running composer install (this may take 5-15 minutes)..."
+                start_spinner "Installing composer dependencies..."
+                if ! env $composer_auth composer install --no-interaction --no-security-blocking; then
+                    stop_spinner
+                    print_error "Failed to install composer dependencies"
+                    return 1
+                fi
+                stop_spinner
+                print_status "OK" "Dependencies installed"
+            else
+                print_status "OK" "vendor/ already present; skipping composer install"
+            fi
+        elif [ -n "$source_git" ]; then
             print_header "Step 1: Clone Project from Git"
             print_info "Cloning project repository..."
 
@@ -336,9 +460,20 @@ install_drupal() {
         fi
 
         # Generate .env file
-        # Note: env-generate.sh expects sitename (not path), so use basename
-        print_info "Generating .env file from nwp.yml..."
-        if ! "$env_script" "$recipe" "$(basename "$install_dir")" .; then
+        # Derive sitename: for nested layouts like sites/<x>/<y> (used by
+        # source_local recipes), produce "<x>-<y>" so DDEV/project name
+        # matches the conventional <tenant>-<tier> form (e.g. nwc-dev).
+        # For flat sites/<x> layouts, parent dir is "sites" — fall back to leaf.
+        local site_parent_dir
+        site_parent_dir=$(basename "$(dirname "$install_dir")")
+        local site_leaf
+        site_leaf=$(basename "$install_dir")
+        local sitename="$site_leaf"
+        if [ -n "$site_parent_dir" ] && [ "$site_parent_dir" != "sites" ] && [ "$site_parent_dir" != "." ] && [ "$site_parent_dir" != "/" ]; then
+            sitename="${site_parent_dir}-${site_leaf}"
+        fi
+        print_info "Generating .env file from nwp.yml (sitename: $sitename)..."
+        if ! "$env_script" "$recipe" "$sitename" .; then
             print_error "Failed to generate environment configuration"
             return 1
         fi
@@ -911,6 +1046,18 @@ CONFIG_SPLIT_EOF
                     print_error "Failed to install dev modules via composer"
                 else
                     print_status "OK" "Dev modules installed via composer"
+
+                    # Refresh container so newly-required modules' classes are
+                    # discoverable before pm:enable scans services.
+                    ddev drush cr >/dev/null 2>&1 || true
+
+                    # Clean orphan config from any previously-failed enable.
+                    # If a prior pm:enable installed config but failed during
+                    # cache rebuild, the leftover rows trigger
+                    # PreExistingConfigException on retry. For each module that
+                    # is NOT currently enabled, delete any config it would
+                    # install (read from its config/install/*.yml manifest).
+                    clean_orphan_dev_config "$webroot" $dev_modules
 
                     # Now enable the modules
                     if ! ddev drush pm:enable $dev_modules -y; then

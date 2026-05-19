@@ -436,9 +436,28 @@ main() {
     # Ensure sites directory exists
     mkdir -p sites
 
-    # Determine installation directory based on whether we're resuming
+    # Check for source_local — if set, the site is already scaffolded locally
+    # and we use its path as the install_dir (no mkdir, no auto-increment).
+    local source_local_raw=$(get_recipe_value "$recipe" "source_local" "$config_file")
+    local source_local_resolved=""
+    if [ -n "$source_local_raw" ]; then
+        # Expand ~ (tilde) → $HOME
+        source_local_resolved="${source_local_raw/#\~/$HOME}"
+        # Validate that the dir exists; this is an existing-scaffold workflow
+        if [ ! -d "$source_local_resolved" ]; then
+            print_error "Recipe '$recipe' source_local does not exist: $source_local_resolved"
+            exit 1
+        fi
+    fi
+
+    # Determine installation directory based on whether we're resuming or using source_local
     local install_dir=""
-    if [ -n "$start_step" ]; then
+    if [ -n "$source_local_resolved" ]; then
+        # source_local — use its path; relative to current base_dir (typically ~/nwp/)
+        # Compute relative path from current dir
+        install_dir=$(realpath -m --relative-to="$(pwd)" "$source_local_resolved")
+        print_info "Using source_local installation directory: $install_dir"
+    elif [ -n "$start_step" ]; then
         # When resuming, use base name with sites/ prefix (no auto-increment)
         install_dir="sites/$base_name"
     else

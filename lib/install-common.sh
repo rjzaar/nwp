@@ -854,12 +854,13 @@ validate_recipe() {
         # Drupal required fields
         local source=$(get_recipe_value "$recipe" "source" "$config_file")
         local source_git=$(get_recipe_value "$recipe" "source_git" "$config_file")
+        local source_local=$(get_recipe_value "$recipe" "source_local" "$config_file")
         local profile=$(get_recipe_value "$recipe" "profile" "$config_file")
         local webroot=$(get_recipe_value "$recipe" "webroot" "$config_file")
 
-        # Accept either source or source_git
-        if [ -z "$source" ] && [ -z "$source_git" ]; then
-            print_error "Recipe '$recipe': Missing required field 'source' or 'source_git'"
+        # Accept source, source_git, or source_local
+        if [ -z "$source" ] && [ -z "$source_git" ] && [ -z "$source_local" ]; then
+            print_error "Recipe '$recipe': Missing required field 'source', 'source_git', or 'source_local'"
             errors=$((errors + 1))
         fi
 

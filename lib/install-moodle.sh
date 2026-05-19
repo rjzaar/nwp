@@ -159,15 +159,26 @@ install_moodle() {
             ddev_database="mariadb:10.11"
         fi
 
-        # Moodle uses php project type
-        start_spinner "Configuring DDEV project..."
-        if ! ddev config --project-type=php --docroot="$webroot" --php-version="$php_version" --database="$ddev_database" >/dev/null 2>&1; then
+        # Moodle uses php project type. Derive DDEV project name as
+        # <tenant>-<env> when the install dir has v2 nested layout
+        # (sites/<x>/<y>) — otherwise bare ddev config picks up the
+        # leaf basename ("dev" / "stg") and every site collides.
+        local proj_name
+        local leaf=$(basename "$PWD")
+        local parent=$(basename "$(dirname "$PWD")")
+        if [ -n "$parent" ] && [ "$parent" != "sites" ] && [ "$parent" != "." ] && [ "$parent" != "/" ]; then
+            proj_name="${parent}-${leaf}"
+        else
+            proj_name="$leaf"
+        fi
+        start_spinner "Configuring DDEV project ($proj_name)..."
+        if ! ddev config --project-name="$proj_name" --project-type=php --docroot="$webroot" --php-version="$php_version" --database="$ddev_database" >/dev/null 2>&1; then
             stop_spinner
             print_error "Failed to configure DDEV"
             return 1
         fi
         stop_spinner
-        print_status "OK" "DDEV configured (Database: $ddev_database)"
+        print_status "OK" "DDEV configured (name=$proj_name, database=$ddev_database)"
     else
         print_status "INFO" "Skipping Step 2: DDEV already configured"
     fi

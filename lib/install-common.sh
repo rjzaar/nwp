@@ -1147,13 +1147,22 @@ get_available_dirname() {
     local dirname="sites/$recipe"
     local counter=1
 
-    # If directory doesn't exist, return it
+    # If directory doesn't exist, return it as a fresh v1 flat dir.
     if [ ! -d "$dirname" ]; then
         echo "$dirname"
         return 0
     fi
 
-    # Otherwise, find the next available numbered directory
+    # v2 layout detection: if sites/<name>/.nwp.yml exists (a site
+    # container) and sites/<name>/dev/ doesn't, install INTO the
+    # container's dev/ subdir. Avoids auto-incrementing to <name>1
+    # just because the operator pre-created the .nwp.yml.
+    if [ -f "$dirname/.nwp.yml" ] && [ ! -d "$dirname/dev" ]; then
+        echo "$dirname/dev"
+        return 0
+    fi
+
+    # Otherwise, find the next available numbered directory.
     while [ -d "sites/${recipe}${counter}" ]; do
         counter=$((counter + 1))
     done

@@ -219,12 +219,24 @@ create_staging_site() {
         stg_name="$stg_leaf"
     fi
 
-    # Create new DDEV config
+    # Read dev's DDEV project type + PHP version so stg matches.
+    # Previously hardcoded type=drupal which made Moodle (type=php) stg
+    # broken. Falls back to drupal/8.2 if the dev config is missing.
+    local dev_type="drupal"
+    local dev_php="8.2"
+    if [ -f "$dev_site/.ddev/config.yaml" ]; then
+        local t=$(grep "^type:" "$dev_site/.ddev/config.yaml" | head -1 | awk '{print $2}')
+        local p=$(grep "^php_version:" "$dev_site/.ddev/config.yaml" | head -1 | awk '{print $2}' | tr -d '"')
+        [ -n "$t" ] && dev_type="$t"
+        [ -n "$p" ] && dev_php="$p"
+    fi
+
+    # Create new DDEV config matching the dev project's shape.
     cat > "$stg_site/.ddev/config.yaml" << DDEVEOF
 name: $stg_name
-type: drupal
+type: $dev_type
 docroot: $webroot
-php_version: "8.2"
+php_version: "$dev_php"
 webserver_type: nginx-fpm
 database:
   type: mariadb

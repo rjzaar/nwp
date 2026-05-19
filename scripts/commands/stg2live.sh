@@ -554,14 +554,57 @@ setup_ssl_certificate() {
         }
     fi
 
-    # Check if certificate already exists
+    # Check if certificate already exists. If it does, skip cert
+    # acquisition but STILL run update_nginx_ssl below so that the
+    # per-site nginx config gets written/refreshed. Without this,
+    # a re-run after an interrupted previous run leaves the site
+    # with an HTTP-only or stale nginx config.
+    local cert_exists=0
     if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix test -f /etc/letsencrypt/live/${domain}/fullchain.pem" 2>/dev/null; then
-        print_status "OK" "SSL certificate already exists"
-        return 0
+        print_status "OK" "SSL certificate already exists; refreshing nginx config"
+        cert_exists=1
+        update_nginx_ssl "$base_name" "$server_ip" "$ssh_user" "$domain"
+        return $?
     fi
 
-    # Get certificate using webroot method
+    # Get certificate using webroot method.
+    #
+    # CHICKEN-AND-EGG: certbot --webroot needs nginx to ALREADY serve
+    # /.well-known/acme-challenge/<token> from the webroot. On a first
+    # deploy there's no per-site nginx config yet, so requests fall
+    # through to the GitLab default (404). Bootstrap a minimal HTTP-only
+    # config first — certbot can then place + retrieve its challenge,
+    # and update_nginx_ssl below replaces it with the full HTTPS config.
     local webroot="/var/www/${base_name}/html"
+    # Auto-detect webroot for Moodle (no /html subdir) and Drupal-with-web.
+    if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix test ! -d $webroot" 2>/dev/null; then
+        if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix test -d /var/www/${base_name}/web" 2>/dev/null; then
+            webroot="/var/www/${base_name}/web"
+        else
+            webroot="/var/www/${base_name}"
+        fi
+    fi
+
+    if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix test -f /etc/nginx/conf.d/${base_name}.conf" 2>/dev/null; then
+        print_info "Writing HTTP-only nginx bootstrap config for ACME challenge..."
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix tee /etc/nginx/conf.d/${base_name}.conf > /dev/null" << ACMEEOF
+server {
+    listen 80;
+    server_name ${domain};
+    root ${webroot};
+    location /.well-known/acme-challenge/ { allow all; }
+    location / { return 301 https://\$server_name\$request_uri; }
+}
+ACMEEOF
+        if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix nginx -t" >/dev/null 2>&1; then
+            print_error "Bootstrap nginx config failed validation; removing"
+            ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix rm -f /etc/nginx/conf.d/${base_name}.conf" 2>/dev/null || true
+            return 1
+        fi
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix gitlab-ctl hup nginx" 2>/dev/null || \
+            ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix systemctl reload nginx" 2>/dev/null || true
+    fi
+
     if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix certbot certonly --webroot -w $webroot -d $domain --non-interactive --agree-tos --email admin@nwpcode.org" 2>/dev/null; then
         print_status "OK" "SSL certificate obtained"
 

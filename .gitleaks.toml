@@ -21,6 +21,8 @@ paths = [
   '''^\.verification\.yml$''',
   # Archive directory holds historical infrastructure documents — defeats the purpose to scrub.
   '''^docs/archive/.*''',
+  # Coder onboarding docs deliberately name operator infrastructure (mini, nwpcode.org, /home/rob/) — that's their teaching purpose. Same shape as CLAUDE.md.
+  '''^docs/onboarding/.*''',
   # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers in F33 Phase 4.
   '''^servers/(mini|mayo1|nwpcode)/.*''',
   # Role vocabulary doc must cite the banned tokens (it's the rule definition).

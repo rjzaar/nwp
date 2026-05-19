@@ -205,7 +205,19 @@ create_staging_site() {
     # Copy and modify DDEV config
     local webroot=$(get_webroot "$dev_site")
     local dev_name=$(basename "$dev_site")
-    local stg_name=$(basename "$stg_site")
+
+    # DDEV project name: derive as <tenant>-<env> for v2 nested layouts.
+    # For sites/<tenant>/<env>/ the leaf basename is "stg" — collides with
+    # every other tenant's staging project. Use parent-leaf composition
+    # when the leaf is a known env tier; fall back to leaf otherwise.
+    local stg_name
+    local stg_leaf=$(basename "$stg_site")
+    local stg_parent=$(basename "$(dirname "$stg_site")")
+    if [ -n "$stg_parent" ] && [ "$stg_parent" != "sites" ] && [ "$stg_parent" != "." ] && [ "$stg_parent" != "/" ]; then
+        stg_name="${stg_parent}-${stg_leaf}"
+    else
+        stg_name="$stg_leaf"
+    fi
 
     # Create new DDEV config
     cat > "$stg_site/.ddev/config.yaml" << DDEVEOF

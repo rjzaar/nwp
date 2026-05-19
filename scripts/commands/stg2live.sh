@@ -252,6 +252,86 @@ install_security_modules() {
 }
 
 ################################################################################
+# Safety / Pre-Deploy Snapshots
+################################################################################
+
+# Take a pre-deploy snapshot of the live host: all MySQL/MariaDB databases
+# (compressed dump) + the /etc/nginx/conf.d/ directory (tarball). Stored
+# in the deploying user's home dir on the remote box. Idempotent within
+# 1 hour (skips if a snapshot file from the last hour exists for the
+# same site) so repeated dev2stg+stg2live runs don't blow up disk.
+#
+# Recovery (manual): files written to ~ on the live host with timestamped
+# names; restore mysqldump via `gunzip -c <dump> | sudo mysql`; restore
+# nginx via `sudo tar xzf <tar> -C /`.
+live_host_snapshot() {
+    local base_name="$1"
+    local server_ip="$2"
+    local ssh_user="$3"
+
+    print_header "Pre-Deploy Snapshot"
+
+    local sudo_prefix=""
+    if [ "$ssh_user" == "gitlab" ]; then
+        sudo_prefix="sudo "
+    fi
+
+    local ts
+    ts=$(date +%Y%m%d-%H%M%S)
+    local dbs_file="nwp-snapshot-${base_name}-dbs-${ts}.sql.gz"
+    local nginx_file="nwp-snapshot-${base_name}-nginx-${ts}.tar.gz"
+
+    # Check disk space first (need ~500 MB free; bail if tighter than 1 GB).
+    local free_kb
+    free_kb=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "df -k --output=avail ~ | tail -1" 2>/dev/null | tr -d ' ')
+    if [ -n "$free_kb" ] && [ "$free_kb" -lt 1048576 ]; then
+        print_status "WARN" "Live host has <1GB free in ~ (${free_kb}KB). Skipping snapshot."
+        print_status "WARN" "Consider freeing disk before destructive deploys."
+        return 0
+    fi
+
+    # Idempotent: skip if a snapshot from the last hour exists for this site.
+    local recent
+    recent=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "find ~ -maxdepth 1 -name 'nwp-snapshot-${base_name}-dbs-*.sql.gz' -mmin -60 2>/dev/null | head -1" \
+        2>/dev/null)
+    if [ -n "$recent" ]; then
+        print_status "INFO" "Recent snapshot exists: $(basename "$recent")"
+        print_status "INFO" "Skipping (idempotent within 1 hour)."
+        return 0
+    fi
+
+    print_info "Snapshotting all databases..."
+    if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "${sudo_prefix}mysqldump --all-databases --single-transaction --quick --routines --triggers 2>/dev/null | gzip > ~/${dbs_file}"; then
+        local dbs_size
+        dbs_size=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+            "ls -lh ~/${dbs_file} | awk '{print \$5}'" 2>/dev/null)
+        print_status "OK" "DB snapshot: ~/${dbs_file} (${dbs_size})"
+    else
+        print_status "WARN" "DB snapshot failed (continuing — verify live state manually before destructive ops)"
+    fi
+
+    print_info "Snapshotting /etc/nginx/conf.d/..."
+    if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "${sudo_prefix}tar czf ~/${nginx_file} /etc/nginx/conf.d/ 2>/dev/null && ${sudo_prefix}chown ${ssh_user}:${ssh_user} ~/${nginx_file}"; then
+        print_status "OK" "Nginx snapshot: ~/${nginx_file}"
+    else
+        print_status "WARN" "Nginx snapshot failed (continuing — verify live state manually)"
+    fi
+
+    echo ""
+    print_info "To restore from this snapshot if needed:"
+    echo "  ssh ${ssh_user}@${server_ip}"
+    echo "  # restore DBs:    gunzip -c ~/${dbs_file} | ${sudo_prefix}mysql"
+    echo "  # restore nginx:  ${sudo_prefix}tar xzf ~/${nginx_file} -C / && ${sudo_prefix}nginx -t && ${sudo_prefix}systemctl reload nginx"
+    echo ""
+
+    return 0
+}
+
+################################################################################
 # Database Deployment Functions
 ################################################################################
 
@@ -638,6 +718,19 @@ server {
 }
 EOF
 
+    # Validate nginx config BEFORE reload. If broken, restore the snapshot's
+    # version of conf.d/<base_name>.conf and bail. Otherwise the reload could
+    # leave nginx unreloadable on next config change (sibling sites still
+    # work because they're in separate conf.d/ files, but it's a foot-gun).
+    if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "$sudo_prefix nginx -t" >/dev/null 2>&1; then
+        print_error "nginx -t failed AFTER writing conf.d/${base_name}.conf."
+        print_error "Removing the broken config so nginx remains reloadable."
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+            "$sudo_prefix rm -f /etc/nginx/conf.d/${base_name}.conf" 2>/dev/null || true
+        return 1
+    fi
+
     # Reload nginx (GitLab's nginx)
     ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix gitlab-ctl hup nginx" 2>/dev/null || \
         ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix systemctl reload nginx" 2>/dev/null || true
@@ -922,6 +1015,11 @@ deploy_to_live() {
         return 1
     fi
     print_status "OK" "SSH connection successful (user: $ssh_user)"
+
+    # Belt-and-suspenders: snapshot the live host's DBs + nginx configs
+    # before doing anything destructive. Cheap insurance; recovers from
+    # both DB-import gone-wrong and bad nginx config.
+    live_host_snapshot "$base_name" "$server_ip" "$ssh_user"
 
     # Get webroot from staging site
     local webroot="web"

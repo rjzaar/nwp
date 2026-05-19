@@ -314,12 +314,17 @@ download_db_development() {
         }
     fi
 
-    # Create temporary dump
+    # Create temporary dump. Try drush first (Drupal); fall back to
+    # ddev export-db (Moodle and anything else that doesn't ship drush).
     local temp_dump=$(mktemp --suffix=.sql)
     task "Exporting from $source_site..."
 
-    if ! ddev drush sql:dump > "$temp_dump" 2>/dev/null; then
-        fail "Could not export database from $source_site"
+    if ddev drush sql:dump > "$temp_dump" 2>/dev/null && [ -s "$temp_dump" ]; then
+        :  # drush export succeeded
+    elif ddev export-db --file="$temp_dump" >/dev/null 2>&1 && [ -s "$temp_dump" ]; then
+        :  # ddev export-db succeeded (Moodle / non-drush)
+    else
+        fail "Could not export database from $source_site (tried drush + ddev export-db)"
         rm -f "$temp_dump"
         cd "$original_dir"
         return 1
@@ -343,18 +348,27 @@ download_db_development() {
         }
     fi
 
-    # Drop and import
+    # Drop and import. Drush variant for Drupal; ddev import-db otherwise.
     task "Dropping target database..."
-    ddev drush sql:drop -y &>/dev/null
+    ddev drush sql:drop -y &>/dev/null || ddev mysql -e "DROP DATABASE IF EXISTS db; CREATE DATABASE db;" 2>/dev/null || true
 
     task "Importing to $target_site..."
     if ddev drush sql:cli < "$temp_dump" 2>/dev/null; then
-        pass "Database cloned from development"
+        pass "Database cloned from development (via drush)"
     else
-        fail "Database import failed"
-        rm -f "$temp_dump"
-        cd "$original_dir"
-        return 1
+        # ddev import-db reads the file from the container's namespace,
+        # so copy it into the project dir before passing the path.
+        local in_project_dump="$target_dir/.ddev/import-tmp.sql"
+        cp "$temp_dump" "$in_project_dump"
+        if ddev import-db --file=".ddev/import-tmp.sql" >/dev/null 2>&1; then
+            pass "Database cloned from development (via ddev import-db)"
+        else
+            fail "Database import failed (tried drush + ddev import-db)"
+            rm -f "$temp_dump" "$in_project_dump"
+            cd "$original_dir"
+            return 1
+        fi
+        rm -f "$in_project_dump"
     fi
 
     rm -f "$temp_dump"

@@ -17,6 +17,49 @@ DB_SOURCE_DEVELOPMENT="development"
 DB_SOURCE_URL="url"
 
 ################################################################################
+# Helpers
+################################################################################
+
+# Normalise a site identifier to an absolute DDEV project directory.
+# Accepts:
+#   - absolute path to a v2 project dir (e.g. /home/.../sites/nwc/dev)
+#   - name of a v1 flat site (e.g. "avc-dev" → sites/avc-dev/)
+#   - name with v2 env suffix (e.g. "nwc-stg" → sites/nwc/stg/)
+#
+# Echoes the resolved absolute path; returns 0 on success, 1 if no
+# directory could be found.
+_db_router_resolve_dir() {
+    local id="$1"
+    local script_dir="${2:-${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}}"
+
+    # Absolute path passed in.
+    if [ -d "$id" ] && [ -f "$id/.ddev/config.yaml" ]; then
+        (cd "$id" && pwd)
+        return 0
+    fi
+    # v1 flat: sites/<id>/.ddev/
+    if [ -d "$script_dir/sites/$id" ] && [ -f "$script_dir/sites/$id/.ddev/config.yaml" ]; then
+        (cd "$script_dir/sites/$id" && pwd)
+        return 0
+    fi
+    # v2 nested with env suffix: <tenant>-<env> → sites/<tenant>/<env>/
+    if [[ "$id" =~ ^(.+)-(dev|stg|live|test)$ ]]; then
+        local tenant="${BASH_REMATCH[1]}"
+        local env="${BASH_REMATCH[2]}"
+        if [ -f "$script_dir/sites/$tenant/$env/.ddev/config.yaml" ]; then
+            (cd "$script_dir/sites/$tenant/$env" && pwd)
+            return 0
+        fi
+    fi
+    # v2 nested bare tenant name → default to dev/
+    if [ -f "$script_dir/sites/$id/dev/.ddev/config.yaml" ]; then
+        (cd "$script_dir/sites/$id/dev" && pwd)
+        return 0
+    fi
+    return 1
+}
+
+################################################################################
 # Main Router Function
 ################################################################################
 
@@ -226,23 +269,38 @@ download_db_backup() {
     return 0
 }
 
-# Clone from development site
+# Clone from development site.
+#
+# Accepts either a site name or an absolute directory path for both
+# source and target arguments. v2 (nested) layouts pass directories;
+# v1 (flat) layouts pass names. The helper below normalises either form.
 download_db_development() {
     local source_site="$1"
     local target_site="$2"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 
-    if [ "$source_site" = "$target_site" ]; then
-        fail "Source and target cannot be the same"
+    # Resolve to absolute project dirs (handles both v1 name + v2 path).
+    local source_dir target_dir
+    source_dir=$(_db_router_resolve_dir "$source_site" "$script_dir") || {
+        fail "Cannot access source site: $source_site"
+        return 1
+    }
+    target_dir=$(_db_router_resolve_dir "$target_site" "$script_dir") || {
+        fail "Cannot access target site: $target_site"
+        return 1
+    }
+
+    if [ "$source_dir" = "$target_dir" ]; then
+        fail "Source and target cannot be the same directory: $source_dir"
         return 1
     fi
 
-    info "Cloning database from $source_site to $target_site..."
+    info "Cloning database from $source_dir to $target_dir..."
 
     local original_dir=$(pwd)
 
     # Ensure source is running
-    cd "$script_dir/sites/$source_site" || {
+    cd "$source_dir" || {
         fail "Cannot access source site: $source_site"
         return 1
     }
@@ -268,7 +326,7 @@ download_db_development() {
     fi
 
     # Ensure target is running
-    cd "$script_dir/sites/$target_site" || {
+    cd "$target_dir" || {
         fail "Cannot access target site: $target_site"
         rm -f "$temp_dump"
         cd "$original_dir"

@@ -308,15 +308,25 @@ sync_database() {
     show_step "Restore/sync database"
 
     start_spinner "Syncing database from $db_source"
-    # Use the database router
-    download_database "$(basename "$dev_site")" "$db_source" "$(basename "$stg_site")" > /dev/null 2>&1
+    # Use the database router. Capture stderr so the actual cause can be
+    # surfaced if it fails (previously >/dev/null 2>&1 swallowed everything).
+    local db_log=$(mktemp)
+    # Pass full paths so the database router can resolve v2 nested layouts
+    # (e.g. /sites/nwc/dev) which the basename alone couldn't distinguish
+    # from each other (both basename to "dev"/"stg").
+    download_database "$dev_site" "$db_source" "$stg_site" >"$db_log" 2>&1
     local db_result=$?
     stop_spinner $db_result
 
     if [ $db_result -ne 0 ]; then
         fail "Database sync failed"
+        echo "--- download_database output ---"
+        cat "$db_log"
+        echo "--- end ---"
+        rm -f "$db_log"
         return 1
     fi
+    rm -f "$db_log"
 
     # Sanitize if not already sanitized
     if [ "$sanitize" = "true" ] && [[ ! "$db_source" =~ sanitized ]]; then

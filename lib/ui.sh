@@ -206,13 +206,22 @@ stop_spinner() {
     unset SPINNER_PID
 }
 
-# Step indicator for multi-step operations
-# Usage: show_step 1 5 "Installing dependencies"
+# Step indicator for multi-step operations.
+# Two call shapes are supported:
+#   show_step 1 5 "Installing dependencies"  → "[1/5] Installing dependencies"
+#   show_step "Installing dependencies"      → "[*] Installing dependencies"
+# The single-arg form is used by older scripts (dev2stg.sh) where total
+# isn't tracked; before F36 Phase 0 added `set -euo pipefail`, missing
+# args would have silently expanded to empty.
 show_step() {
-    local current=$1
-    local total=$2
-    local message=$3
-    printf "[%d/%d] %s\n" "$current" "$total" "$message"
+    if [ "$#" -eq 1 ]; then
+        printf "[*] %s\n" "$1"
+    else
+        local current=$1
+        local total=${2:-?}
+        local message=${3:-}
+        printf "[%d/%s] %s\n" "$current" "$total" "$message"
+    fi
 }
 
 # Progress bar for known-length operations

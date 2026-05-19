@@ -43,8 +43,14 @@ resolve_project() {
         if [[ -d "$site_dir/dev" ]]; then
             if [[ -d "$site_dir/$env" ]]; then
                 echo "$site_dir/$env"
-            else
+            elif [[ "$env" == "dev" ]]; then
                 echo "$site_dir/dev"
+            else
+                # v2 site with non-dev env that doesn't exist yet (e.g. stg
+                # before first dev2stg run). Return the EXPECTED path so
+                # callers can create it. Falling back to dev/ was wrong:
+                # dev2stg would treat source=target and never build staging.
+                echo "$site_dir/$env"
             fi
             return 0
         fi

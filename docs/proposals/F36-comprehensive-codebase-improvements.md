@@ -1,5 +1,11 @@
 # F36: Comprehensive Codebase Improvements (2026-05 audit)
 
+> **Historical snapshot (2026-05-19).** Written during the AVC era; most
+> points still apply to NWC. Forward-looking work is tracked in
+> `~/central/NWC-ARCHITECTURE.md` §13/§14 and ADRs at
+> `~/nwp/sites/nwc/dev/html/profiles/custom/nwc/docs/decisions/`. AVC
+> remains live as comparison per ADR-0015; this doc isn't being rewritten.
+
 **Status:** PROPOSED
 **Created:** 2026-05-18
 **Author:** Robert Karsten Zaar (with AI assistance — multi-agent codebase audit)

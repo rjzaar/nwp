@@ -89,12 +89,15 @@ if [ -n "${STAGE_FILE_PROXY_ORIGIN:-}" ]; then
 fi
 
 # Add hooks
+# Note: NO post-start `composer install` hook. Running composer install
+# inside the container on every ddev start can corrupt state if a previous
+# install was partial (e.g. removed html/core when vendor/drupal/core had
+# only metadata installed). composer install is invoked explicitly during
+# pl install Step 1 — we don't need it re-run on every container start.
 cat >> "$CONFIG_FILE" << 'EOF'
 
 # Hooks
-hooks:
-  post-start:
-    - exec: composer install
+hooks: {}
 EOF
 
 # Check if we should enable services

@@ -266,7 +266,7 @@ install_drupal() {
             if [ ! -d vendor ]; then
                 print_info "Running composer install (this may take 5-15 minutes)..."
                 start_spinner "Installing composer dependencies..."
-                if ! env $composer_auth composer install --no-interaction --no-security-blocking; then
+                if ! env $composer_auth composer install --no-interaction; then
                     stop_spinner
                     print_error "Failed to install composer dependencies"
                     return 1

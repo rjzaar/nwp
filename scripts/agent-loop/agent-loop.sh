@@ -291,6 +291,20 @@ for pid in "${project_arr[@]}"; do
     description="$(printf '%s' "$issue_one" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("description","") or "")')"
     web_url="$(printf '%s' "$issue_one" | python3 -c 'import sys,json; print(json.load(sys.stdin)["web_url"])')"
 
+    # Extract the tier marker from the issue's labels (set by drush
+    # nwc-feedback:sync-to-gitlab as tier-1 / tier-2 / tier-3). Map to
+    # T1/T2/T3 so the deploy script can read "Tier: T<n>" from MR body.
+    tier="$(printf '%s' "$issue_one" | python3 -c '
+import sys, json
+labels = json.load(sys.stdin).get("labels", []) or []
+m = {"tier-1": "T1", "tier-2": "T2", "tier-3": "T3"}
+for label in labels:
+    if label in m:
+        print(m[label]); break
+else:
+    print("T2")
+')"
+
     # Compose the prompt.
     cat >"${work_dir}/PROMPT.md" <<EOF
 # Agent-loop task: project ${pid}, issue ${iid}
@@ -411,16 +425,60 @@ EOF
       continue
     fi
 
-    # Open MR.
+    # Compose a structured MR description with the 9 sections required by
+    # docs/onboarding/pr-review-checklist.md. The deploy-on-merge.sh script
+    # parses "Tier: T<n>" out of this body to decide auto-vs-manual live.
+    diff_stat="$(cd "$work_dir" && git diff --stat HEAD~1 2>/dev/null | head -20 || true)"
+    diff_files="$(cd "$work_dir" && git diff --name-only HEAD~1 2>/dev/null | head -20 || true)"
+    commit_msg="$(cd "$work_dir" && git log -1 --format='%B' 2>/dev/null | head -5 || true)"
     mr_payload="$(python3 -c '
-import json, sys
+import json, sys, os
+branch, title, iid, tier, web_url, diff_stat, diff_files, commit_msg = sys.argv[1:9]
+files_lines = []
+for f in (diff_files or "").splitlines():
+    if f.strip():
+        files_lines.append(f"- `{f.strip()}`")
+files_block = "\n".join(files_lines) if files_lines else "_(no files reported)_"
+description = (
+    f"Closes #{iid} ({web_url})\n"
+    f"\n"
+    f"**Tier:** {tier}\n"
+    f"\n"
+    f"## What changed\n"
+    f"{commit_msg.strip() or title}\n"
+    f"\n"
+    f"## Why\n"
+    f"See the linked issue body for the user-reported failure mode.\n"
+    f"\n"
+    f"## Files changed\n"
+    f"{files_block}\n"
+    f"\n"
+    f"## Diff stat\n"
+    f"```\n{diff_stat}\n```\n"
+    f"\n"
+    f"## Tests added/modified\n"
+    f"See files-changed list above; any path under `tests/` is new or modified test coverage.\n"
+    f"\n"
+    f"## Test results\n"
+    f"Agent did not run the full Behat+PHPUnit suite locally. Reviewer must verify CI green before approving.\n"
+    f"\n"
+    f"## Rollback plan\n"
+    f"`git revert <merge-sha>`. No schema migration in this diff (verify in Files changed if unsure).\n"
+    f"\n"
+    f"## Self-flags\n"
+    f"_(Agent-loop has limited self-awareness. Reviewer must scan the diff for: ⚠ auth touch, ⚠ schema migration, ⚠ ADR change, ⚠ cross-site bridge.)_\n"
+    f"\n"
+    f"---\n"
+    f"_Opened by agent-loop. Human review required; this MR will NOT auto-merge._\n"
+)
 print(json.dumps({
-  "source_branch": sys.argv[1],
+  "source_branch": branch,
   "target_branch": "main",
-  "title": "[agent-loop] " + sys.argv[2],
-  "description": f"Closes #{sys.argv[3]}\n\nOpened by agent-loop. Human review required before merge.",
+  "title": "[agent-loop] " + title,
+  "description": description,
+  "labels": tier,
   "remove_source_branch": True,
-}))' "$branch" "$title" "$iid")"
+}))' "$branch" "$title" "$iid" "$tier" "$web_url" "$diff_stat" "$diff_files" "$commit_msg")"
     mr_resp="$(gitlab_curl POST "/api/v4/projects/${pid}/merge_requests" "$mr_payload" 2>>"$LOG_FILE" || echo '{}')"
     mr_url="$(printf '%s' "$mr_resp" | python3 -c 'import sys,json
 try: d=json.load(sys.stdin); print(d.get("web_url",""))

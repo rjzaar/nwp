@@ -506,13 +506,31 @@ main() {
         exit 1
     fi
 
-    # Check if site exists - look in sites/ subdirectory first
+    # Check if site exists - look in sites/ subdirectory first.
+    # v2-aware: try v1 flat (sites/<name>/) first, then v2 env-suffixed
+    # (sites/<tenant>/<env>/) via resolve_project, then bare absolute path.
     local SITE_PATH=""
-    if [ -d "sites/$SITENAME" ]; then
+    if [ -d "sites/$SITENAME" ] && [ -f "sites/$SITENAME/.ddev/config.yaml" ]; then
         SITE_PATH="sites/$SITENAME"
-    elif [ -d "$SITENAME" ]; then
+    elif command -v resolve_project >/dev/null 2>&1; then
+        # v2 layout: nwt-stg → sites/nwt/stg/, nwt → sites/nwt/dev/
+        local resolved_dir=""
+        if [[ "$SITENAME" =~ ^(.+)-(dev|stg|prod|live|test)$ ]]; then
+            local tenant="${BASH_REMATCH[1]}"
+            local env="${BASH_REMATCH[2]}"
+            resolved_dir=$(resolve_project "$tenant" "$env" 2>/dev/null || true)
+        fi
+        if [ -z "$resolved_dir" ]; then
+            resolved_dir=$(resolve_project "$SITENAME" "dev" 2>/dev/null || true)
+        fi
+        if [ -n "$resolved_dir" ] && [ -f "$resolved_dir/.ddev/config.yaml" ]; then
+            SITE_PATH="$resolved_dir"
+        fi
+    fi
+    if [ -z "$SITE_PATH" ] && [ -d "$SITENAME" ]; then
         SITE_PATH="$SITENAME"
-    else
+    fi
+    if [ -z "$SITE_PATH" ]; then
         print_error "Site directory not found: $SITENAME"
         exit 1
     fi

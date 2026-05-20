@@ -410,6 +410,37 @@ get_base_name() {
     echo "$site" | sed -E 's/[-_](stg|prod)$//'
 }
 
+# Resolve the site name from a directory path (v1 or v2 aware).
+#
+# v1 (flat):   sites/<name>/         → site name = <name>
+# v2 (nested): sites/<name>/<env>/   → site name = <name>, not <env>
+#
+# Without this helper, $(basename "$install_dir") returns "dev" / "stg" /
+# "prod" / "live" for every v2 site, which collides across all v2 sites
+# in nwp.yml and breaks DNS pre-registration. Found 2026-05-20 during the
+# nwt system-test exercise.
+#
+# Usage: get_site_name_from_dir "/path/to/sites/nwt/dev" → "nwt"
+get_site_name_from_dir() {
+    local dir="$1"
+    [[ -z "$dir" ]] && return 1
+    local leaf parent grandparent
+    leaf=$(basename "$dir")
+    parent=$(dirname "$dir")
+    grandparent=$(basename "$(dirname "$parent")")
+
+    case "$leaf" in
+        dev|stg|prod|live)
+            # v2 layout if grandparent is "sites"
+            if [[ "$grandparent" == "sites" ]]; then
+                basename "$parent"
+                return 0
+            fi
+            ;;
+    esac
+    echo "$leaf"
+}
+
 # Get Drupal environment from a running DDEV site
 # Usage: get_drupal_environment "sitename"
 # Returns: local, dev, stage, prod, ci, or "unknown"
@@ -679,6 +710,7 @@ export -f get_data_secret_nested
 export -f get_setting
 export -f get_env_type_from_name
 export -f get_base_name
+export -f get_site_name_from_dir
 export -f get_drupal_environment
 export -f get_env_color
 export -f print_env_status

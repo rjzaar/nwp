@@ -477,8 +477,20 @@ enable_prod_mode() {
 
     # Use make.sh if available
     if [ -x "$SCRIPT_DIR/make.sh" ]; then
-        start_spinner "Running make.sh -py"
-        "$SCRIPT_DIR/make.sh" -py "$(basename "$stg_site")" > /dev/null 2>&1
+        # For v2 layout (sites/<name>/stg/), basename = "stg" which make.sh
+        # can't resolve to a site. Build "<name>-stg" so make.sh's
+        # normalise_sitename_to_v2_path resolves it correctly.
+        local make_target
+        local stg_leaf=$(basename "$stg_site")
+        local stg_parent=$(basename "$(dirname "$stg_site")")
+        if [ -n "$stg_parent" ] && [ "$stg_parent" != "sites" ] && [ "$stg_parent" != "." ]; then
+            make_target="${stg_parent}-${stg_leaf}"
+        else
+            make_target="$stg_leaf"
+        fi
+
+        start_spinner "Running make.sh -py $make_target"
+        "$SCRIPT_DIR/make.sh" -py "$make_target" > /dev/null 2>&1
         local make_result=$?
         stop_spinner $make_result
 

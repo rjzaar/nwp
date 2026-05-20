@@ -22,6 +22,49 @@ source "$PROJECT_ROOT/lib/common.sh"
 START_TIME=$(date +%s)
 
 ################################################################################
+# v2-layout normalisation
+################################################################################
+#
+# Make's body code is full of hardcoded `sites/$sitename` references. For
+# v2 sites (sites/<name>/<env>/) the caller may pass either:
+#   - the bare site name (`nwt`)      → normalise to `nwt/dev`
+#   - an env-suffixed name (`nwt-stg`) → normalise to `nwt/stg`
+#   - the full leaf (`stg`)            → cannot resolve, error
+# Result: all the body `sites/$sitename` references still resolve correctly
+# without rewriting them.
+#
+# Without this normalisation, dev2stg's call `make.sh -py stg` (because
+# basename of /sites/nwt/stg is "stg") would look for `sites/stg` and
+# fail. Found 2026-05-20 during nwt-system-test.
+normalise_sitename_to_v2_path() {
+    local sitename="$1"
+    # If sites/<name>/ exists as a flat dir with .ddev, it's v1; keep as-is.
+    if [ -d "$PROJECT_ROOT/sites/$sitename" ] && \
+       [ -f "$PROJECT_ROOT/sites/$sitename/.ddev/config.yaml" ]; then
+        echo "$sitename"
+        return 0
+    fi
+    # Env-suffixed v2: nwt-stg → nwt/stg
+    if [[ "$sitename" =~ ^(.+)-(dev|stg|live|test|prod)$ ]]; then
+        local tenant="${BASH_REMATCH[1]}"
+        local env="${BASH_REMATCH[2]}"
+        if [ -f "$PROJECT_ROOT/sites/$tenant/$env/.ddev/config.yaml" ]; then
+            echo "$tenant/$env"
+            return 0
+        fi
+    fi
+    # Bare tenant → default to dev
+    if [ -f "$PROJECT_ROOT/sites/$sitename/dev/.ddev/config.yaml" ]; then
+        echo "$sitename/dev"
+        return 0
+    fi
+    # Pass through unchanged; the body's existence check will fail
+    # with a clear error message and the caller can adjust.
+    echo "$sitename"
+    return 0
+}
+
+################################################################################
 # Script-specific Functions
 ################################################################################
 
@@ -686,10 +729,15 @@ main() {
 
     SITENAME="$1"
 
-    # Validate sitename
+    # Validate sitename (validation runs against the user-supplied name).
     if ! validate_sitename "$SITENAME" "site name"; then
         exit 1
     fi
+
+    # Normalise to a sites/-relative path. For v2 (sites/<name>/<env>) this
+    # becomes "<name>/<env>" so the hardcoded `sites/$sitename` paths in
+    # the body still resolve. For v1 (sites/<name>) this is a no-op.
+    SITENAME=$(normalise_sitename_to_v2_path "$SITENAME")
 
     # Check that mode is specified and valid (whitelist validation)
     if [ -z "$MODE" ]; then

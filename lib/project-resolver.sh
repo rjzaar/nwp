@@ -176,19 +176,29 @@ get_site_config_value() {
     local site_dir
     site_dir=$(resolve_project "$site" "site") || { echo "$default"; return 1; }
 
+    # IMPORTANT: yq's `// X` alt-coalesce treats boolean `false` as falsy,
+    # so `.live.enabled // ""` on `enabled: false` returns the alternative
+    # instead of "false". That silently dropped every false flag —
+    # including the safety-critical live.enabled toggle. Use the bare path
+    # and treat the literal string "null" (yq's output for missing keys)
+    # as "not found"; "false" is a real value.
     local value=""
     local found=0
 
     # 1. .nwp.local.yml (per-developer override)
     if [[ -f "$site_dir/.nwp.local.yml" ]]; then
-        value=$("$yq_bin" eval "$path // \"\"" "$site_dir/.nwp.local.yml" 2>/dev/null || echo "")
-        [[ -n "$value" && "$value" != "null" ]] && found=1
+        value=$("$yq_bin" eval "$path" "$site_dir/.nwp.local.yml" 2>/dev/null || echo "null")
+        if [[ -n "$value" && "$value" != "null" ]]; then
+            found=1
+        fi
     fi
 
     # 2. .nwp.yml (site-level config)
     if [[ "$found" == "0" && -f "$site_dir/.nwp.yml" ]]; then
-        value=$("$yq_bin" eval "$path // \"\"" "$site_dir/.nwp.yml" 2>/dev/null || echo "")
-        [[ -n "$value" && "$value" != "null" ]] && found=1
+        value=$("$yq_bin" eval "$path" "$site_dir/.nwp.yml" 2>/dev/null || echo "null")
+        if [[ -n "$value" && "$value" != "null" ]]; then
+            found=1
+        fi
     fi
 
     # 3. Global nwp.yml (legacy: .sites.<name>.<path>)
@@ -196,8 +206,10 @@ get_site_config_value() {
         local global_config="${NWP_DIR:-${PROJECT_ROOT:-$HOME/nwp}}/nwp.yml"
         if [[ -f "$global_config" ]]; then
             local global_path=".sites.\"$site\"${path}"
-            value=$("$yq_bin" eval "$global_path // \"\"" "$global_config" 2>/dev/null || echo "")
-            [[ -n "$value" && "$value" != "null" ]] && found=1
+            value=$("$yq_bin" eval "$global_path" "$global_config" 2>/dev/null || echo "null")
+            if [[ -n "$value" && "$value" != "null" ]]; then
+                found=1
+            fi
         fi
     fi
 
@@ -230,8 +242,11 @@ get_env_config_value() {
     env_dir=$(resolve_project "$site" "$env") || { echo "$default"; return 1; }
 
     if [[ -f "$env_dir/.nwp.yml" ]]; then
+        # Same caveat as get_site_config_value — yq's `// X` alt-coalesce
+        # treats boolean false as missing. Use bare path + literal "null"
+        # detection so `false` survives.
         local value
-        value=$("$yq_bin" eval "$path // \"\"" "$env_dir/.nwp.yml" 2>/dev/null || echo "")
+        value=$("$yq_bin" eval "$path" "$env_dir/.nwp.yml" 2>/dev/null || echo "null")
         if [[ -n "$value" && "$value" != "null" ]]; then
             echo "$value"
             return 0

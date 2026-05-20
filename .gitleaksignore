@@ -152,3 +152,16 @@ scripts/agent-loop/agent-loop.sh:operator-home-path:106
 scripts/agent-loop/agent-loop.sh:live-internal-domain:12
 scripts/agent-loop/agent-loop.sh:live-internal-domain:21
 scripts/agent-loop/agent-loop.sh:live-internal-domain:42
+
+# Coder onboarding docs are deliberately operator-specific: they teach the
+# PR reviewer where to find the deploy host (`mini`), what URLs the live
+# sites have (`nwc.nwpcode.org` etc.), and where the kill switch lives
+# (`/home/rob/nwp/.loop-paused`). Same shape as CLAUDE.md's allowlist:
+# the document's *purpose* is to name these things. New external-audience
+# docs added under docs/onboarding/ inherit the allowlist; review them
+# for any genuinely-secret content before they land.
+docs/onboarding:internal-bare-hostname
+docs/onboarding:operator-home-path
+docs/onboarding:operator-organisation
+docs/onboarding:internal-hostname-fqdn
+docs/onboarding:live-internal-domain

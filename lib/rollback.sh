@@ -12,6 +12,14 @@
 # Rollback data directory
 ROLLBACK_DIR="${SCRIPT_DIR}/.rollback"
 
+# Remote rollback subsystem (registers snapshots written by pl stg2live
+# on the live host so they show up in pl rollback list and can be
+# restored via pl rollback execute).
+# This file lives at PROJECT_ROOT/lib/rollback.sh; the sibling lives
+# next to us regardless of what SCRIPT_DIR is set to by the caller.
+# shellcheck disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/rollback-remote.sh"
+
 ################################################################################
 # Deployment History
 ################################################################################
@@ -84,17 +92,35 @@ rollback_list() {
     print_header "Available Rollback Points"
 
     local found=0
-    for entry in "${ROLLBACK_DIR}"/*.json; do
+    # Sort so the most recent shows last (operators tend to scan from the bottom).
+    # `|| true` keeps us alive under set -euo pipefail when the glob is empty.
+    local entries
+    entries=$(ls -1 "${ROLLBACK_DIR}"/*.json 2>/dev/null | sort || true)
+    for entry in $entries; do
         if [ -f "$entry" ] && [ "$(basename "$entry")" != "history.json" ]; then
             if [ -z "$sitename" ] || grep -q "\"sitename\": \"${sitename}\"" "$entry"; then
-                local site=$(grep '"sitename"' "$entry" | sed 's/.*: *"\([^"]*\)".*/\1/')
-                local env=$(grep '"environment"' "$entry" | sed 's/.*: *"\([^"]*\)".*/\1/')
-                local ts=$(grep '"timestamp"' "$entry" | sed 's/.*: *"\([^"]*\)".*/\1/')
-                local backup=$(grep '"backup_path"' "$entry" | sed 's/.*: *"\([^"]*\)".*/\1/')
+                local site env ts type backup host snap_dbs
+                # `|| true` on each field extract: under `set -euo pipefail`, a
+                # legacy entry lacking the "type" key would otherwise crash here.
+                site=$(grep -m1 '"sitename"' "$entry" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+                env=$(grep -m1 '"environment"' "$entry" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+                ts=$(grep -m1 '"timestamp"' "$entry" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+                type=$(grep -m1 '"type"' "$entry" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+                # Legacy entries lack `type`; default to "local".
+                [ -z "$type" ] && type="local"
 
-                echo "  ${site}@${env}"
+                echo "  ${site}@${env} (${type})"
                 echo "    Time: $ts"
-                echo "    Backup: $backup"
+                if [ "$type" = "remote" ]; then
+                    host=$(grep -m1 '"host"' "$entry" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+                    snap_dbs=$(grep -m1 '"snapshot_dbs"' "$entry" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+                    echo "    Host: $host"
+                    echo "    DB:   $snap_dbs"
+                else
+                    backup=$(grep -m1 '"backup_path"' "$entry" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+                    echo "    Backup: $backup"
+                fi
+                echo "    Entry: $(basename "$entry")"
                 echo ""
                 found=1
             fi
@@ -103,6 +129,7 @@ rollback_list() {
 
     if [ $found -eq 0 ]; then
         print_info "No rollback points available"
+        print_info "Hint: pl rollback backfill <sitename>   # discover existing remote snapshots"
     fi
 }
 
@@ -163,21 +190,42 @@ rollback_backup_before() {
 ################################################################################
 
 # Perform rollback
-# Usage: rollback_execute "sitename" "environment"
+# Usage: rollback_execute "sitename" "environment" [--dry-run]
 rollback_execute() {
     local sitename="$1"
     local environment="${2:-prod}"
+    local dry_run="${3:-}"
 
     print_header "Executing Rollback: ${sitename}@${environment}"
 
-    # Get last rollback point
-    local entry=$(rollback_get_last "$sitename" "$environment")
+    # Find the latest entry — prefer the timestamped naming (new), fall
+    # back to the legacy `<site>_<env>.json` (old, single-history).
+    # `|| true` keeps us alive under set -euo pipefail when the glob is empty.
+    local entry_file
+    entry_file=$(ls -1 "${ROLLBACK_DIR}/${sitename}_${environment}_"*.json 2>/dev/null | sort | tail -1 || true)
+    if [ -z "$entry_file" ]; then
+        entry_file="${ROLLBACK_DIR}/${sitename}_${environment}.json"
+    fi
 
-    if [ -z "$entry" ]; then
+    if [ ! -f "$entry_file" ]; then
         print_error "No rollback point found for ${sitename}@${environment}"
+        print_info "Try: pl rollback list ${sitename}"
         return 1
     fi
 
+    # Dispatch on type (legacy entries have no type → "local").
+    local type
+    type=$(grep -m1 '"type"' "$entry_file" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/')
+    [ -z "$type" ] && type="local"
+
+    if [ "$type" = "remote" ]; then
+        rollback_execute_remote_from_entry "$entry_file" "$dry_run"
+        return $?
+    fi
+
+    # ---- Legacy local-DDEV path below (unchanged) ----
+    local entry
+    entry=$(cat "$entry_file")
     local backup_path=$(echo "$entry" | grep '"backup_path"' | sed 's/.*: *"\([^"]*\)".*/\1/')
     local timestamp=$(echo "$entry" | grep '"timestamp"' | sed 's/.*: *"\([^"]*\)".*/\1/')
 

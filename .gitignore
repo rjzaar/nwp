@@ -51,6 +51,13 @@ private/**
 !scripts/
 !scripts/**
 
+# Rollback registry: per-host runtime data (snapshot paths point at
+# specific remote files in the operator's home dir on the live host).
+# Not portable, not for the repo. MUST come after the `!scripts/**`
+# whitelist above so it actually wins.
+scripts/commands/.rollback/
+scripts/commands/.rollback/**
+
 # Verification tracking
 # .verification.yml is intentionally tracked: it documents which commands have
 # been verified (real run vs. syntax-only) so badges and external readers can

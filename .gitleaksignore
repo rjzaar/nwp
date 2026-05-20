@@ -153,6 +153,11 @@ scripts/agent-loop/agent-loop.sh:live-internal-domain:12
 scripts/agent-loop/agent-loop.sh:live-internal-domain:21
 scripts/agent-loop/agent-loop.sh:live-internal-domain:42
 
+# Remote-rollback library default-resolves to the live host (git.nwpcode.org)
+# when .nwp.yml doesn't supply a live.server value. The name is the operator's
+# documented live infra; same shape as the agent-loop allowlist above.
+lib/rollback-remote.sh:live-internal-domain:100
+
 # Coder onboarding docs are deliberately operator-specific: they teach the
 # PR reviewer where to find the deploy host (`mini`), what URLs the live
 # sites have (`nwc.nwpcode.org` etc.), and where the kill switch lives

@@ -147,8 +147,14 @@ download_db_auto() {
         return $?
     fi
 
-    # Priority 4: Clone from development
-    if site_exists "$sitename" && [ "$sitename" != "$target_site" ]; then
+    # Priority 4: Clone from development. Use the v1/v2-aware resolver
+    # rather than site_exists (which only handles v1 flat names and would
+    # reject a v2 absolute path passed in by dev2stg, causing the auto
+    # selector to fail for every fresh nwt/nwc/nwd stg deploy).
+    local source_dir target_dir
+    source_dir=$(_db_router_resolve_dir "$sitename" "$script_dir" 2>/dev/null || true)
+    target_dir=$(_db_router_resolve_dir "$target_site" "$script_dir" 2>/dev/null || true)
+    if [ -n "$source_dir" ] && [ "$source_dir" != "$target_dir" ]; then
         task "Using development database"
         download_db_development "$sitename" "$target_site"
         return $?

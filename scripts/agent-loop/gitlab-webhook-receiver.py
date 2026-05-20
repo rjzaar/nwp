@@ -34,7 +34,10 @@ Setup
 
 Security notes
 --------------
-- Bind 127.0.0.1 only; never expose 0.0.0.0.
+- Bind 127.0.0.1 by default. Override via NWP_WEBHOOK_HOST env var; pin to
+  your tailnet IP (e.g. 100.64.0.1) when you want tailnet-only ingress.
+  Never bind to 0.0.0.0 unless the host is firewalled to accept only
+  trusted source IPs.
 - Token comparison is constant-time.
 - We refuse hooks with no token even if GITLAB_WEBHOOK_SECRET is empty (fail-closed).
 - Bodies > 1 MB are rejected.
@@ -55,7 +58,7 @@ from pathlib import Path
 
 # --- config ---------------------------------------------------------------
 
-LISTEN_HOST = '127.0.0.1'
+LISTEN_HOST = os.environ.get('NWP_WEBHOOK_HOST', '127.0.0.1')
 LISTEN_PORT = int(os.environ.get('NWP_WEBHOOK_PORT', '5099'))
 MAX_BODY_BYTES = 1024 * 1024  # 1 MB
 

@@ -344,13 +344,68 @@ ${description}
    \`Co-Authored-By: Claude (agent-loop) <noreply@anthropic.com>\`.
 5. DO NOT push. The driver will push and open the MR.
 
-## Test commands (run before committing if applicable)
+## Repo-specific testing conventions (MUST READ before writing tests)
 
-- \`composer phpcs\` or equivalent if the repo has one
-- \`ddev drush cr\` if you changed a Drupal module's services/info
+This is a Drupal install profile (\`profiles/custom/nwc/\`). All custom
+modules live at \`profiles/custom/nwc/modules/nwc_features/<module>/\`.
+That nesting affects which PHPUnit base class will work:
 
-If no tests apply, that is OK — keep the change small enough that a human
-reviewer (Greg) can eyeball it.
+- **Kernel tests (\`KernelTestBase\`) WORK** for profile-nested modules.
+  They bypass Drupal's profile-extension filter. List modules in
+  \`static \$modules\`; they will be loaded.
+- **BrowserTestBase / WebDriverTestBase tests DO NOT WORK** out of the
+  box. Drupal's ExtensionDiscovery filters out modules under
+  \`profiles/custom/nwc/modules/\` when the active test profile is
+  \`testing\` (the BrowserTestBase default). Setting
+  \`protected \$profile = 'nwc';\` would fix discovery but triggers a
+  full Open Social install per test — too slow, frequently flaky.
+
+**Pattern:** for new tests, prefer \`KernelTestBase\` and assert on
+service contracts via mocks (use \`\\Drupal\\Core\\DependencyInjection\\ContainerBuilder\`
++ \`\$this->createMock()\`). Look at
+\`profiles/custom/nwc/modules/nwc_features/nwc_editorial/tests/src/Kernel/StateMachineTest.php\`
+as the reference template — it covers the editorial state machine
+end-to-end without browser overhead.
+
+**When you DO need a browser:** add a Behat scenario under
+\`profiles/custom/nwc/modules/nwc_features/<module>/tests/src/Behat/\`
+instead of a PHPUnit Functional test. Behat is configured at the
+project root (\`behat.yml.dist\`) and runs against the live ddev site,
+which has the nwc profile already installed.
+
+**Other gotchas:**
+
+- The Feedback entity has a \`guild_id\` reference to the contrib \`group\`
+  module. Do NOT \`installEntitySchema('feedback')\` in a kernel test
+  unless you also list \`group\` in \`\$modules\` — and that drags in heavy
+  dependencies. Prefer mock-based assertions on the service contract.
+- All NWC entities reference the \`user\` entity type. Install user
+  schema (\`\$this->installEntitySchema('user')\`) before touching any
+  entity that has an author/owner field.
+- The \`workflow_assignment\` module is required by \`nwc_core\`; list
+  both in \`\$modules\` when testing modules that depend on nwc_core.
+
+## Test commands (run before committing — these MUST pass)
+
+\`\`\`bash
+# From inside the worktree (you are at the profile root):
+PROFILE=\$(pwd)
+
+# Kernel test on the changed module (substitute the module name):
+ddev exec "cd /var/www/html && vendor/bin/phpunit -c /var/www/html/phpunit.xml \\
+  /var/www/html/html/profiles/custom/nwc/modules/nwc_features/<module>/tests/src/Kernel/"
+
+# Editorial baseline must remain green:
+ddev exec "cd /var/www/html && vendor/bin/phpunit -c /var/www/html/phpunit.xml \\
+  /var/www/html/html/profiles/custom/nwc/modules/nwc_features/nwc_editorial/tests/src/Kernel/"
+\`\`\`
+
+If tests fail and the fix is unclear, write \`AGENT-NOTE.md\` explaining
+what you tried and stop. Do NOT commit a known-broken test — the
+reviewer will reject it anyway and the loop wastes a retry budget.
+
+If no tests apply, that is OK — keep the change small enough that a
+human reviewer (Greg) can eyeball it.
 
 EOF
 
@@ -430,7 +485,10 @@ EOF
     # parses "Tier: T<n>" out of this body to decide auto-vs-manual live.
     diff_stat="$(cd "$work_dir" && git diff --stat HEAD~1 2>/dev/null | head -20 || true)"
     diff_files="$(cd "$work_dir" && git diff --name-only HEAD~1 2>/dev/null | head -20 || true)"
-    commit_msg="$(cd "$work_dir" && git log -1 --format='%B' 2>/dev/null | head -5 || true)"
+    # Full commit message — earlier we used `head -5` which clipped paragraphs
+    # mid-sentence in the MR body. Capture the whole body; the MR description
+    # tolerates length better than truncation.
+    commit_msg="$(cd "$work_dir" && git log -1 --format='%B' 2>/dev/null || true)"
     mr_payload="$(python3 -c '
 import json, sys, os
 branch, title, iid, tier, web_url, diff_stat, diff_files, commit_msg = sys.argv[1:9]

@@ -24,6 +24,10 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/ssh.sh"
+# rollback.sh sets ROLLBACK_DIR=${SCRIPT_DIR}/.rollback. SCRIPT_DIR
+# (set at the top of this file) is scripts/commands/ — same dir the
+# rollback dispatcher uses, so both writers/readers share one registry.
+source "$PROJECT_ROOT/lib/rollback.sh"
 
 # Source install-common for get_settings_value
 if [ -f "$PROJECT_ROOT/lib/install-common.sh" ]; then
@@ -321,8 +325,33 @@ live_host_snapshot() {
         print_status "WARN" "Nginx snapshot failed (continuing — verify live state manually)"
     fi
 
+    # Register the snapshot as a rollback point so `pl rollback list` /
+    # `pl rollback execute` can find it. Failure here is non-fatal — the
+    # snapshot files are written regardless; we just lose the
+    # registry-driven discovery for this particular point.
+    if command -v rollback_record_remote >/dev/null 2>&1; then
+        local commit_sha=""
+        if [ -d "${PROJECT_ROOT}/.git" ]; then
+            commit_sha=$(cd "$PROJECT_ROOT" && git rev-parse HEAD 2>/dev/null || true)
+        fi
+        # Remote paths are relative to ssh_user's home; expand for the
+        # registry so restore commands work without re-resolving ~.
+        local dbs_remote nginx_remote home_dir
+        home_dir=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+            'echo $HOME' 2>/dev/null || echo "/home/${ssh_user}")
+        dbs_remote="${home_dir}/${dbs_file}"
+        nginx_remote="${home_dir}/${nginx_file}"
+        rollback_record_remote "$base_name" "prod" "$ssh_user" "$server_ip" \
+            "$ts" "$dbs_remote" "$nginx_remote" "$commit_sha" \
+            || print_status "WARN" "Could not register rollback point (snapshot files OK)."
+    fi
+
     echo ""
     print_info "To restore from this snapshot if needed:"
+    echo "  pl rollback execute ${base_name} prod --dry-run    # preview"
+    echo "  pl rollback execute ${base_name} prod              # apply (with confirmation)"
+    echo ""
+    print_info "Or restore manually:"
     echo "  ssh ${ssh_user}@${server_ip}"
     echo "  # restore DBs:    gunzip -c ~/${dbs_file} | ${sudo_prefix}mysql"
     echo "  # restore nginx:  ${sudo_prefix}tar xzf ~/${nginx_file} -C / && ${sudo_prefix}nginx -t && ${sudo_prefix}systemctl reload nginx"

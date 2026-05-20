@@ -1228,6 +1228,21 @@ main() {
         exit 1
     fi
 
+    # Honor the per-site live.enabled flag. Without this guard, every site
+    # with a `live.server: <known-server>` entry deploys to that server
+    # regardless of whether live deployment was intentionally disabled —
+    # which is exactly the misfire the "enabled" flag exists to prevent.
+    # Found 2026-05-20: a system-test fixture had `live.enabled: false`
+    # set explicitly but stg2live still progressed to "Pre-Deploy
+    # Snapshot" on the live host because the flag was never checked.
+    local live_enabled
+    live_enabled=$(get_live_config "$BASE_NAME" "enabled")
+    if [ "$live_enabled" = "false" ]; then
+        print_error "Live deployment disabled for '$BASE_NAME' (live.enabled: false in sites/$BASE_NAME/.nwp.yml)"
+        print_info "To enable: set live.enabled: true in the site's .nwp.yml, or pass --force-enabled (not yet implemented)."
+        exit 1
+    fi
+
     # Export for use in deploy function
     export SKIP_SECURITY VERBOSE
     export SKIP_PASSWORD_RESET

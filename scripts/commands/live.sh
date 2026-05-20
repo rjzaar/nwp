@@ -1226,6 +1226,19 @@ main() {
     elif [ "$DELETE" == "true" ]; then
         live_delete "$BASE_NAME" "$TYPE" "$YES"
     else
+        # Honor the per-site live.enabled flag (mirror of stg2live's check).
+        # Without this guard, `pl live <site>` provisions a Linode + DNS
+        # even when the operator has explicitly set live.enabled: false.
+        # Found 2026-05-20 during the nwt-system-test exercise.
+        if command -v get_site_config_value >/dev/null 2>&1; then
+            local _live_enabled
+            _live_enabled=$(get_site_config_value "$BASE_NAME" '.live.enabled' "")
+            if [ "$_live_enabled" = "false" ]; then
+                print_error "Live deployment disabled for '$BASE_NAME' (live.enabled: false in sites/$BASE_NAME/.nwp.yml)"
+                print_info "To enable: set live.enabled: true in the site's .nwp.yml."
+                exit 1
+            fi
+        fi
         case "$TYPE" in
             dedicated)
                 provision_dedicated "$BASE_NAME" "$YES"

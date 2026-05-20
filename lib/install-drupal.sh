@@ -75,7 +75,11 @@ install_drupal() {
     local create_content=$4
     local purpose=${5:-indefinite}
     local base_dir=$(pwd)
-    local site_name=$(basename "$install_dir")
+    # Use v1/v2-aware site name resolution. For v2 (sites/<name>/<env>),
+    # basename "$install_dir" returns the env leaf ("dev"/"stg") — wrong.
+    # get_site_name_from_dir returns <name> for v2 and the leaf for v1.
+    local site_name
+    site_name=$(get_site_name_from_dir "$install_dir")
     local config_file="$base_dir/nwp.yml"
 
     # Clean up spinner on exit/error
@@ -1140,19 +1144,32 @@ CONFIG_SPLIT_EOF
     if command -v yaml_complete_site_stub &> /dev/null; then
         print_info "Completing site registration in nwp.yml..."
 
-        # Get full directory path
+        # Get full directory path. For v2 layout (sites/<name>/<env>),
+        # use get_site_name_from_dir so we don't register every site as "dev".
         local site_dir=$(pwd)
-        local site_name=$(basename "$site_dir")
+        local site_name
+        site_name=$(get_site_name_from_dir "$site_dir")
 
-        # Determine environment type from directory suffix
+        # Determine environment type. For v2 layout the leaf IS the env
+        # (dev/stg/prod). For v1 the leaf may have a -stg/_prod suffix.
+        local site_leaf
+        site_leaf=$(basename "$site_dir")
         local environment="development"
-        if [[ "$site_name" =~ -stg$ ]]; then
-            environment="staging"
-        elif [[ "$site_name" =~ _prod$ ]]; then
-            environment="production"
-        elif [[ "$site_name" =~ _dev$ ]]; then
-            environment="development"
-        fi
+        case "$site_leaf" in
+            stg) environment="staging" ;;
+            prod) environment="production" ;;
+            live) environment="production" ;;
+            dev) environment="development" ;;
+            *)
+                if [[ "$site_leaf" =~ -stg$ ]]; then
+                    environment="staging"
+                elif [[ "$site_leaf" =~ _prod$ ]]; then
+                    environment="production"
+                elif [[ "$site_leaf" =~ _dev$ ]]; then
+                    environment="development"
+                fi
+                ;;
+        esac
 
         # Get installed modules from install_modules if any
         local installed_modules=""
@@ -1189,13 +1206,23 @@ CONFIG_SPLIT_EOF
         print_info "Registering site in nwp.yml..."
 
         local site_dir=$(pwd)
-        local site_name=$(basename "$site_dir")
+        local site_name
+        site_name=$(get_site_name_from_dir "$site_dir")
+        local site_leaf
+        site_leaf=$(basename "$site_dir")
         local environment="development"
-        if [[ "$site_name" =~ -stg$ ]]; then
-            environment="staging"
-        elif [[ "$site_name" =~ _prod$ ]]; then
-            environment="production"
-        fi
+        case "$site_leaf" in
+            stg) environment="staging" ;;
+            prod|live) environment="production" ;;
+            dev) environment="development" ;;
+            *)
+                if [[ "$site_leaf" =~ -stg$ ]]; then
+                    environment="staging"
+                elif [[ "$site_leaf" =~ _prod$ ]]; then
+                    environment="production"
+                fi
+                ;;
+        esac
 
         if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then
             print_status "OK" "Site registered in nwp.yml (purpose: $purpose)"

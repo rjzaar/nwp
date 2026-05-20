@@ -444,19 +444,30 @@ MOODLEDATA_EOF
     if command -v yaml_add_site &> /dev/null; then
         print_info "Registering site in nwp.yml..."
 
-        # Get full directory path
+        # Get full directory path. For v2 layout (sites/<name>/<env>),
+        # use get_site_name_from_dir so we don't register every site as "dev".
         local site_dir=$(pwd)
-        local site_name=$(basename "$site_dir")
+        local site_name
+        site_name=$(get_site_name_from_dir "$site_dir")
+        local site_leaf
+        site_leaf=$(basename "$site_dir")
 
-        # Determine environment type from directory suffix
+        # Determine environment type from directory leaf.
         local environment="development"
-        if [[ "$site_name" =~ -stg$ ]]; then
-            environment="staging"
-        elif [[ "$site_name" =~ _prod$ ]]; then
-            environment="production"
-        elif [[ "$site_name" =~ _dev$ ]]; then
-            environment="development"
-        fi
+        case "$site_leaf" in
+            stg) environment="staging" ;;
+            prod|live) environment="production" ;;
+            dev) environment="development" ;;
+            *)
+                if [[ "$site_leaf" =~ -stg$ ]]; then
+                    environment="staging"
+                elif [[ "$site_leaf" =~ _prod$ ]]; then
+                    environment="production"
+                elif [[ "$site_leaf" =~ _dev$ ]]; then
+                    environment="development"
+                fi
+                ;;
+        esac
 
         # Register the site (Moodle doesn't have install_modules typically)
         if yaml_add_site "$site_name" "$site_dir" "$recipe" "$environment" "$purpose" "$PROJECT_ROOT/nwp.yml" 2>/dev/null; then

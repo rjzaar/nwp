@@ -9,7 +9,7 @@
 If you only remember three things:
 
 1. **Pause the loop first** (`touch /home/rob/nwp/.loop-paused` on mini). Stops new PRs while you investigate.
-2. **`pl rollback nwc`** (and `pl rollback nwd`) restores the last snapshot. Always works because every `stg2live` takes a snapshot.
+2. **`pl rollback execute nwc prod`** (and the same for `nwd`) restores the last snapshot. Always works because every `stg2live` takes a snapshot. Use `pl rollback list` to see available restore points first.
 3. **Write what happened** in the relevant PR comment + post in Slack. Don't silently roll back — someone needs to know.
 
 ---
@@ -59,22 +59,30 @@ ssh mini
 # 2. Pause the loop so no new PRs land while you fix this
 touch /home/rob/nwp/.loop-paused
 
-# 3. Roll back the affected profile(s)
-pl rollback nwc        # restores last snapshot for nwc.nwpcode.org
-pl rollback nwd        # restores last snapshot for nwd.nwpcode.org
+# 3. List available rollback points (optional but recommended)
+pl rollback list nwc   # show snapshot timestamps available for nwc
+pl rollback list nwd   # ditto for nwd
 
-# 4. Confirm: hit the smoke URLs
+# 4. Roll back the affected profile(s)
+pl rollback execute nwc prod   # restore last snapshot for nwc.nwpcode.org
+pl rollback execute nwd prod   # restore last snapshot for nwd.nwpcode.org
+
+# 5. Verify the rollback succeeded
+pl rollback verify nwc
+pl rollback verify nwd
+
+# 6. Confirm: hit the smoke URLs
 curl -sI https://nwc.nwpcode.org/ | head -1     # expect 200
 curl -sI https://nwd.nwpcode.org/ | head -1     # expect 200
 curl -s  https://nwc.nwpcode.org/ | grep -i "narrow way"
 
-# 5. Comment on the offending PR
-gh pr comment <PR-URL> --body "Rolled back live at $(date -u +%Y-%m-%dT%H:%M:%SZ) — <reason>. Site restored to <previous-sha>."
+# 7. Comment on the offending PR (via GitLab UI or `gh pr comment` if you have the gh CLI configured for git.nwpcode.org)
+# Example body: "Rolled back live at $(date -u +%Y-%m-%dT%H:%M:%SZ) — <reason>. Site restored to <previous-sha>."
 
-# 6. Tell Rob (Slack / WhatsApp / whatever you've agreed)
+# 8. Tell Rob (Slack / WhatsApp / whatever you've agreed)
 ```
 
-After step 6: investigate. The agent's PR description has its rollback plan; if the actual rollback differed, that's a finding to flag.
+After step 8: investigate. The agent's PR description has its rollback plan; if the actual rollback differed, that's a finding to flag.
 
 `pl rollback` restores:
 - The MariaDB database (from the mysqldump snapshot taken at the previous `stg2live`)

@@ -84,7 +84,7 @@ Terms grouped by where you'll encounter them. Anything in **bold** is a defined 
 
 **live** — production. `nwc.nwpcode.org` + `nwd.nwpcode.org` + `ssc.nwpcode.org` + `ssd.nwpcode.org`.
 
-**Snapshot** — the mysqldump + nginx config bundle taken before every `stg2live`. Used by `pl rollback`. Lives at `/var/backups/nwc-snapshots/<timestamp>/`. Last 14 kept.
+**Snapshot** — the mysqldump + nginx config bundle taken before every `stg2live`. Used by `pl rollback execute <profile> prod`. Lives at `/var/backups/nwc-snapshots/<timestamp>/`. Last 14 kept. Use `pl rollback list` to see them.
 
 **Smoke check** — a 5-URL HTTP probe after every live deploy. See [deploy-pipeline.md §3](./deploy-pipeline.md#3-the-5-url-smoke-check). Auto-rolls-back on failure.
 

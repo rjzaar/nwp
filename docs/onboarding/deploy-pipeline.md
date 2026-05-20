@@ -154,7 +154,9 @@ If a deploy went sideways, the audit log is the canonical "what happened" record
 | `pl dev2stg <profile> -y --dev-db` | Same, but use the dev DB snapshot (not stg's). Used by deploy pipeline.              |
 | `pl stg2live <profile> -y`    | Same, but stg → live. Includes mysqldump snapshot + nginx confs backup before promotion.  |
 | `pl stg2live <profile> -y --dry-run` | Print what would happen, don't actually copy. Useful for sanity checks.            |
-| `pl rollback <profile>`       | Restore last snapshot taken before stg2live. See rollback-playbook.md.                    |
+| `pl rollback list <profile>`         | List snapshot timestamps available for restore.                                          |
+| `pl rollback execute <profile> prod` | Restore last snapshot taken before stg2live. See rollback-playbook.md.                  |
+| `pl rollback verify <profile>`       | Verify a restore succeeded (smoke check + governance audit).                            |
 
 All `pl` invocations write to `~/nwp/logs/pl-<date>.log` on mini.
 

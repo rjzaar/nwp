@@ -19,6 +19,12 @@ sites/*
 sites/tmp/
 sites/tmp/**
 
+# /private/ holds operator-private handoff packs (Coder/Greg setup script,
+# handbook, credentials). Defense in depth — explicit deny so even if a
+# later whitelist accidentally re-includes it, this stays ignored.
+private/
+private/**
+
 # Command entry points
 # Users run ./setup.sh to bootstrap
 # After setup, use the `pl` CLI command to run all other scripts

@@ -127,6 +127,18 @@ secure_user_passwords() {
     local original_dir=$(pwd)
     cd "$stg_site" || return 1
 
+    # Skip cleanly if drush isn't available in this staging site. `pl dev2stg`
+    # runs `composer install --no-dev` which removes drush in projects where
+    # it's a dev-only dependency; the deploy script shouldn't treat that as
+    # a hard error. The cache-clear step on the live side (line ~1185)
+    # already follows this pattern.
+    if ! ddev drush --version >/dev/null 2>&1; then
+        print_status "WARN" "drush unavailable in staging — skipping password security"
+        print_info "  To enable: ddev composer require drush/drush in $stg_site (or make drush a non-dev requirement upstream)"
+        cd "$original_dir"
+        return 0
+    fi
+
     # Generate secure admin password (16 chars, alphanumeric)
     local new_admin_pass=$(openssl rand -base64 24 | tr -d '/=+' | cut -c -16)
 
@@ -219,6 +231,13 @@ install_security_modules() {
 
     local original_dir=$(pwd)
     cd "$stg_site" || return 1
+
+    # Skip cleanly if drush isn't available — module enable uses drush.
+    if ! ddev drush --version >/dev/null 2>&1; then
+        print_status "WARN" "drush unavailable in staging — skipping security module install"
+        cd "$original_dir"
+        return 0
+    fi
 
     # Install each module via composer and enable
     while IFS= read -r module; do

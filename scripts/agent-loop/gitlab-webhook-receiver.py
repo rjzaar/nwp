@@ -53,6 +53,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -64,8 +65,16 @@ MAX_BODY_BYTES = 1024 * 1024  # 1 MB
 
 NWP_ROOT = Path(os.environ.get('NWP_ROOT', '/home/rob/nwp'))
 DEPLOY_SCRIPT = NWP_ROOT / 'scripts' / 'agent-loop' / 'deploy-on-merge.sh'
+AGENT_LOOP_SCRIPT = NWP_ROOT / 'scripts' / 'agent-loop' / 'agent-loop.sh'
+RESPAWN_DIR = NWP_ROOT / '.agent-respawn'
+RESPAWN_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = NWP_ROOT / 'logs' / 'webhook.log'
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+POWER_USERS_FILE = Path(os.environ.get(
+    'NWP_POWER_USERS_FILE',
+    str(Path.home() / '.nwp-power-users.json'),
+))
 
 # Pre-flight: secret must be set (fail-closed).
 SECRET = os.environ.get('GITLAB_WEBHOOK_SECRET', '').strip()
@@ -73,7 +82,7 @@ if not SECRET:
     print('FATAL: GITLAB_WEBHOOK_SECRET env var must be set + non-empty', file=sys.stderr)
     sys.exit(1)
 
-# Allowlist: only fire deploys for these repos.
+# Allowlist: only fire deploys / instant re-spawns for these repos.
 ALLOWED_REPOS = {
     'nwp/nwc',
     'nwp/nwc-project',
@@ -105,6 +114,71 @@ def is_merge_event(payload: dict) -> bool:
     return attrs.get('state') == 'merged' and attrs.get('action') in {'merge', 'close'}
 
 
+def load_power_users() -> dict:
+    """Read the power-user allowlist on every hook (so edits take effect without restart)."""
+    try:
+        raw = POWER_USERS_FILE.read_text()
+    except FileNotFoundError:
+        return {'gitlab_usernames': [], 'drupal_uids': {}, 'trigger_phrases': []}
+    except OSError as e:
+        logger.warning('power-users file unreadable (%s); failing closed', e)
+        return {'gitlab_usernames': [], 'drupal_uids': {}, 'trigger_phrases': []}
+    try:
+        return json.loads(raw)
+    except ValueError as e:
+        logger.warning('power-users file is not JSON (%s); failing closed', e)
+        return {'gitlab_usernames': [], 'drupal_uids': {}, 'trigger_phrases': []}
+
+
+def is_gitlab_power_user(username: str | None, cfg: dict) -> bool:
+    if not username:
+        return False
+    return username in (cfg.get('gitlab_usernames') or [])
+
+
+def comment_matches_trigger(body: str | None, cfg: dict) -> bool:
+    if not body:
+        return False
+    needles = cfg.get('trigger_phrases') or ['@agent-loop', '/agent fix']
+    haystack = body.lower()
+    return any(needle.lower() in haystack for needle in needles)
+
+
+def write_marker(kind: str, payload: dict) -> Path:
+    """Drop a JSON marker for agent-loop.sh to pick up. Idempotent on (kind, project, iid)."""
+    project_id = payload.get('project_id', 0)
+    iid = payload.get('iid', 0)
+    name = f'{kind}-{project_id}-{iid}.json'
+    path = RESPAWN_DIR / name
+    payload = dict(payload, kind=kind, written_at=int(time.time()))
+    path.write_text(json.dumps(payload, indent=2) + '\n')
+    logger.info('marker written: %s', path.name)
+    return path
+
+
+def fire_agent_loop() -> None:
+    """Kick agent-loop.sh in the background. The cron tick still runs every 30 min
+    as a safety net; this just bypasses that wait for power-user events."""
+    if not AGENT_LOOP_SCRIPT.exists():
+        logger.warning('agent-loop script missing at %s; marker still written', AGENT_LOOP_SCRIPT)
+        return
+    env_file = Path.home() / '.nwp-agent-loop.env'
+    if env_file.exists():
+        cmd = ['/bin/bash', '-c', f'. {env_file} && exec {AGENT_LOOP_SCRIPT}']
+    else:
+        cmd = ['/bin/bash', str(AGENT_LOOP_SCRIPT)]
+    logger.info('firing agent-loop: %s', cmd)
+    subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        close_fds=True,
+        start_new_session=True,
+        env={**os.environ},
+    )
+
+
 def spawn_deploy(repo_full_path: str, sha: str, tier: str | None) -> None:
     """Spawn deploy-on-merge.sh as a detached subprocess. Don't block the hook."""
     repo_short = repo_full_path.rsplit('/', 1)[-1]
@@ -121,6 +195,140 @@ def spawn_deploy(repo_full_path: str, sha: str, tier: str | None) -> None:
         start_new_session=True,
         env={**os.environ},
     )
+
+
+# --- handlers for new event types ----------------------------------------
+
+def handle_note_hook(payload: dict, cfg: dict) -> tuple[int, dict]:
+    """Note Hook: comment on issue or MR. Re-spawn only if power user + trigger phrase."""
+    note = payload.get('object_attributes') or {}
+    user = payload.get('user') or {}
+    username = user.get('username')
+
+    if not is_gitlab_power_user(username, cfg):
+        return 200, {'ok': True, 'action': 'ignored', 'reason': 'not a power user'}
+
+    body = note.get('note') or note.get('description') or ''
+    if not comment_matches_trigger(body, cfg):
+        return 200, {'ok': True, 'action': 'ignored', 'reason': 'no trigger phrase'}
+
+    project = payload.get('project') or {}
+    full_path = project.get('path_with_namespace') or ''
+    if full_path not in ALLOWED_REPOS:
+        return 200, {'ok': True, 'action': 'ignored', 'reason': 'repo not allowlisted'}
+
+    # The Note Hook payload includes the target issue/MR under different keys.
+    target_mr = payload.get('merge_request') or {}
+    target_issue = payload.get('issue') or {}
+    if target_mr:
+        iid = target_mr.get('iid')
+        target = 'mr'
+    elif target_issue:
+        iid = target_issue.get('iid')
+        target = 'issue'
+    else:
+        return 200, {'ok': True, 'action': 'ignored', 'reason': 'note has no target iid'}
+
+    project_id = project.get('id')
+    write_marker('respawn', {
+        'project_id': project_id,
+        'project_path': full_path,
+        'iid': iid,
+        'target': target,
+        'actor': username,
+        'reason': 'power-user comment',
+        'comment_excerpt': body[:500],
+    })
+    fire_agent_loop()
+    return 202, {'ok': True, 'action': 'respawn-queued', 'target': target, 'iid': iid, 'actor': username}
+
+
+def handle_mr_action(payload: dict, cfg: dict) -> tuple[int, dict] | None:
+    """MR Hook for non-merge actions: label change or review state. Returns None if
+    nothing to do (caller falls through to other MR-event handlers)."""
+    attrs = payload.get('object_attributes') or {}
+    if attrs.get('state') == 'merged':
+        return None  # handled by is_merge_event
+
+    user = payload.get('user') or {}
+    username = user.get('username')
+    if not is_gitlab_power_user(username, cfg):
+        return None  # silently ignore; the 30-min poll catches non-power-user actions
+
+    project = payload.get('project') or {}
+    full_path = project.get('path_with_namespace') or ''
+    if full_path not in ALLOWED_REPOS:
+        return None
+
+    # Did the actor just add the "needs-agent-fix" label?
+    changes = payload.get('changes') or {}
+    labels_change = changes.get('labels') or {}
+    previous_labels = {l.get('title') for l in (labels_change.get('previous') or [])}
+    current_labels = {l.get('title') for l in (labels_change.get('current') or [])}
+    added = current_labels - previous_labels
+
+    review_action = attrs.get('action') == 'approval' and attrs.get('approval_state') == 'requested_changes'
+
+    if 'needs-agent-fix' not in added and not review_action:
+        return None
+
+    project_id = project.get('id')
+    iid = attrs.get('iid')
+    write_marker('respawn', {
+        'project_id': project_id,
+        'project_path': full_path,
+        'iid': iid,
+        'target': 'mr',
+        'actor': username,
+        'reason': 'label-added: needs-agent-fix' if 'needs-agent-fix' in added else 'review: requested_changes',
+    })
+    fire_agent_loop()
+    return 202, {'ok': True, 'action': 'respawn-queued', 'target': 'mr', 'iid': iid, 'actor': username}
+
+
+# --- handler for /feedback endpoint --------------------------------------
+
+def handle_feedback_endpoint(payload: dict) -> tuple[int, dict]:
+    """POST /feedback — called by nwc_feedback Drupal hook *after* it has already
+    synced the feedback to a GitLab issue via GitLabSyncService::push(). This
+    endpoint is the "kick the loop" signal: it verifies the submitter is a
+    Drupal power user, writes a marker for the existing issue, and fires
+    agent-loop. We deliberately do NOT create the GitLab issue here, to keep
+    the Drupal classifier as the single source of truth for tier + labels.
+
+    Expected payload: {site, feedback_id, user_uid, project_id, issue_iid, web_url?}.
+    """
+    cfg = load_power_users()
+    site = (payload.get('site') or '').strip()
+    user_uid = int(payload.get('user_uid') or 0)
+    project_id = int(payload.get('project_id') or 0)
+    issue_iid = int(payload.get('issue_iid') or 0)
+
+    if not site or not project_id or not issue_iid:
+        return 400, {'ok': False, 'error': 'site, project_id, issue_iid required'}
+
+    allowed_uids = (cfg.get('drupal_uids') or {}).get(site) or []
+    if user_uid not in allowed_uids:
+        # Not a power user — fall back to the existing 15-min cron sync. No-op here.
+        return 200, {'ok': True, 'action': 'ignored', 'reason': 'not a drupal power user'}
+
+    write_marker('respawn', {
+        'project_id': project_id,
+        'iid': issue_iid,
+        'target': 'issue',
+        'site': site,
+        'feedback_id': payload.get('feedback_id'),
+        'web_url': payload.get('web_url'),
+        'actor': f'drupal:{site}:{user_uid}',
+        'reason': 'power-user feedback submission',
+    })
+    fire_agent_loop()
+    return 202, {
+        'ok': True,
+        'action': 'loop-fired',
+        'issue_iid': issue_iid,
+        'project_id': project_id,
+    }
 
 
 # --- HTTP handler ---------------------------------------------------------
@@ -144,7 +352,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self._reply(404, {'ok': False, 'error': 'not found'})
 
     def do_POST(self):
-        if self.path != '/webhook':
+        if self.path not in ('/webhook', '/feedback'):
             self._reply(404, {'ok': False, 'error': 'not found'})
             return
 
@@ -167,8 +375,31 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self._reply(400, {'ok': False, 'error': 'bad json'})
             return
 
+        # /feedback is the Drupal fast-path. No GitLab event header; raw JSON.
+        if self.path == '/feedback':
+            code, body = handle_feedback_endpoint(payload)
+            self._reply(code, body)
+            return
+
         event = self.headers.get('X-Gitlab-Event') or 'unknown'
         logger.info('event=%s', event)
+
+        cfg = load_power_users()
+
+        # Note Hook = comment on issue or MR.
+        if event == 'Note Hook' or payload.get('object_kind') == 'note':
+            code, body = handle_note_hook(payload, cfg)
+            self._reply(code, body)
+            return
+
+        # MR Hook: first try non-merge actions (label / approval); fall through
+        # to the existing merge handler if those don't match.
+        if payload.get('object_kind') == 'merge_request':
+            mr_action = handle_mr_action(payload, cfg)
+            if mr_action is not None:
+                code, body = mr_action
+                self._reply(code, body)
+                return
 
         if not is_merge_event(payload):
             self._reply(200, {'ok': True, 'action': 'ignored', 'reason': 'not a merge'})

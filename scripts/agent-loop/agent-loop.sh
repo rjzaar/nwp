@@ -32,6 +32,7 @@ STATE_FILE="${NWP_ROOT}/.agent-loop.state.json"
 LOG_DIR="${NWP_ROOT}/logs"
 LOG_FILE="${LOG_DIR}/agent-loop.log"
 WORK_ROOT="/tmp/agent-work"
+RESPAWN_DIR="${NWP_ROOT}/.agent-respawn"
 
 DAILY_CAP="${AGENT_LOOP_DAILY_CAP:-5}"
 MAX_PER_RUN="${AGENT_LOOP_MAX_PER_RUN:-1}"
@@ -43,7 +44,7 @@ GITLAB_BASE_URL="${AGENT_LOOP_GITLAB_BASE_URL:-https://git.nwpcode.org}"
 PROJECT_IDS="${AGENT_LOOP_PROJECT_IDS:-16}"
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 
-mkdir -p "$LOG_DIR" "$WORK_ROOT"
+mkdir -p "$LOG_DIR" "$WORK_ROOT" "$RESPAWN_DIR"
 
 log() {
   printf '[%s] %s\n' "$(date -Iseconds)" "$*" | tee -a "$LOG_FILE"
@@ -71,6 +72,17 @@ fi
 
 if [[ -z "${GITLAB_TOKEN:-}" ]]; then
   log "ERROR: GITLAB_TOKEN not set; refusing to run"
+  exit 0
+fi
+
+# Singleton lock so cron tick + webhook-fired invocation don't race on the
+# marker dir + state file. A non-blocking acquire; if another instance is
+# already running we just exit clean — the running instance will drain any
+# markers we would have processed.
+LOCK_FILE="${NWP_ROOT}/.agent-loop.lock"
+exec 200>"$LOCK_FILE"
+if ! flock -n 200; then
+  log "another agent-loop is running (lock=$LOCK_FILE) — exiting clean"
   exit 0
 fi
 
@@ -170,10 +182,119 @@ p.write_text(json.dumps(d, indent=2) + "\n")
 PY
 }
 
+# --- marker drain (instant power-user re-spawn) ------------------------
+
+# The webhook receiver writes JSON markers into RESPAWN_DIR when a power user
+# comments `@agent-loop` on an MR/issue, labels an MR `needs-agent-fix`, or
+# submits feedback via /feedback. Each marker names a specific (project_id,
+# iid) and the action to take. We process them here before the regular poll
+# so the 30-min cron interval doesn't gate power-user latency.
+#
+# Marker schema (written by gitlab-webhook-receiver.py):
+#   {"kind": "respawn"|"feedback", "project_id": N, "iid": N,
+#    "project_path": "nwp/nwc", "target": "mr"|"issue",
+#    "actor": "username", "reason": "...", ...}
+#
+# For respawn-on-MR: close the MR, re-add `agent-eligible` to the linked
+# issue, increment retry_count. The next section's poll picks it up.
+# For respawn-on-issue: just ensure `agent-eligible` label is present.
+# For feedback markers: the issue was already created by the webhook with
+# `agent-eligible`; we just consume the marker so it's not reprocessed.
+drain_respawn_markers() {
+  shopt -s nullglob
+  local markers=("$RESPAWN_DIR"/*.json)
+  shopt -u nullglob
+  if (( ${#markers[@]} == 0 )); then
+    return 0
+  fi
+  log "draining ${#markers[@]} respawn marker(s)"
+
+  local marker
+  for marker in "${markers[@]}"; do
+    local kind project_id iid project_path target actor reason
+    kind="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("kind",""))' "$marker" 2>/dev/null || echo "")"
+    project_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("project_id",0))' "$marker" 2>/dev/null || echo 0)"
+    iid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("iid",0))' "$marker" 2>/dev/null || echo 0)"
+    project_path="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("project_path",""))' "$marker" 2>/dev/null || echo "")"
+    target="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("target",""))' "$marker" 2>/dev/null || echo "")"
+    actor="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("actor",""))' "$marker" 2>/dev/null || echo "")"
+    reason="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("reason",""))' "$marker" 2>/dev/null || echo "")"
+
+    if [[ -z "$kind" || -z "$project_id" || "$project_id" == "0" ]]; then
+      log "  marker $(basename "$marker") malformed; removing"
+      rm -f "$marker"
+      continue
+    fi
+
+    log "  marker kind=$kind project=$project_id iid=$iid target=$target actor=$actor reason=$reason"
+
+    case "$kind" in
+      respawn)
+        if [[ "$target" == "mr" && "$iid" != "0" ]]; then
+          # Find the linked issue. Closed-issues field on MR points back.
+          mr_json="$(gitlab_curl GET "/api/v4/projects/${project_id}/merge_requests/${iid}" 2>>"$LOG_FILE" || echo '{}')"
+          linked_issue_iid="$(printf '%s' "$mr_json" | python3 -c '
+import sys, json, re
+try: d = json.load(sys.stdin)
+except Exception: d = {}
+# Try description first: "Closes #<n>".
+desc = d.get("description") or ""
+m = re.search(r"Closes\s+#(\d+)", desc)
+print(m.group(1) if m else "")
+' 2>/dev/null || echo "")"
+
+          if [[ -n "$linked_issue_iid" ]]; then
+            issue_key="${project_id}#${linked_issue_iid}"
+            retries="$(state_get_retry "$issue_key")"
+            if (( retries >= MAX_RETRIES )); then
+              log "    skip respawn: retry budget exhausted (${retries}/${MAX_RETRIES})"
+            else
+              log "    closing MR !${iid} and re-eligibilising issue #${linked_issue_iid}"
+              # Post a note on the MR explaining the close.
+              gitlab_curl POST "/api/v4/projects/${project_id}/merge_requests/${iid}/notes" \
+                "$(python3 -c 'import json,sys; print(json.dumps({"body": sys.argv[1]}))' \
+                   "Closing for agent-loop re-spawn (triggered by ${actor}: ${reason}). The agent will open a fresh MR.")" \
+                >>"$LOG_FILE" 2>&1 || true
+              # Close the MR.
+              gitlab_curl PUT "/api/v4/projects/${project_id}/merge_requests/${iid}" \
+                '{"state_event":"close"}' >>"$LOG_FILE" 2>&1 || true
+              # Re-add agent-eligible, strip pr-opened, on the linked issue.
+              gitlab_curl PUT "/api/v4/projects/${project_id}/issues/${linked_issue_iid}" \
+                '{"add_labels":"agent-eligible","remove_labels":"pr-opened"}' >>"$LOG_FILE" 2>&1 || true
+              state_bump_retry "$issue_key"
+            fi
+          else
+            log "    skip respawn: could not find linked issue for MR !${iid}"
+          fi
+        elif [[ "$target" == "issue" && "$iid" != "0" ]]; then
+          # Just ensure agent-eligible is on the issue.
+          log "    re-eligibilising issue #${iid}"
+          gitlab_curl PUT "/api/v4/projects/${project_id}/issues/${iid}" \
+            '{"add_labels":"agent-eligible"}' >>"$LOG_FILE" 2>&1 || true
+        else
+          log "    skip: unknown target/iid"
+        fi
+        ;;
+      feedback)
+        # The webhook already created the issue with agent-eligible. The
+        # regular poll below picks it up — nothing to do here except log.
+        log "    feedback marker: issue #${iid} pre-created with agent-eligible"
+        ;;
+      *)
+        log "    unknown marker kind: $kind"
+        ;;
+    esac
+
+    rm -f "$marker"
+  done
+}
+
 # --- main loop ---------------------------------------------------------
 
 log "agent-loop start (max_per_run=${MAX_PER_RUN} daily_cap=${DAILY_CAP} projects=${PROJECT_IDS} dry_run=${DRY_RUN})"
 state_set_last_run "$(date -Iseconds)"
+
+drain_respawn_markers
 
 count_today="$(prs_today)"
 if (( count_today >= DAILY_CAP )); then

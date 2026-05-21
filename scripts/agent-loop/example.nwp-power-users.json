@@ -1,0 +1,18 @@
+{
+  "_comment": "Power-user allowlist for the agent-loop. Real file lives at ~/.nwp-power-users.json (chmod 600, outside the repo). Edit that, not this.",
+  "_schema_version": 1,
+  "gitlab_usernames": [
+    "rjzaar"
+  ],
+  "drupal_uids": {
+    "nwc": [1, 12],
+    "nwd": [1, 12]
+  },
+  "trigger_phrases": [
+    "@agent-loop",
+    "/agent fix",
+    "/agent retry"
+  ],
+  "delegated_by": "rjzaar",
+  "last_updated": "2026-05-21"
+}

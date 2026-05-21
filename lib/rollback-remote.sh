@@ -105,7 +105,7 @@ rollback_backfill_remote() {
 
     # List snapshot pairs on the remote, sorted oldest -> newest.
     local listing
-    listing=$(ssh -o BatchMode=yes "${ssh_user}@${server_ip}" \
+    listing=$(ssh -n -o BatchMode=yes "${ssh_user}@${server_ip}" \
         "ls -1 ~/nwp-snapshot-${sitename}-dbs-*.sql.gz 2>/dev/null | sort" 2>/dev/null || true)
 
     if [ -z "$listing" ]; then
@@ -125,7 +125,7 @@ rollback_backfill_remote() {
         nginx_path=$(dirname "$dbs_path")"/nwp-snapshot-${sitename}-nginx-${ts}.tar.gz"
 
         # Verify nginx tar exists too (warn if not — DB-only restore is still possible).
-        if ! ssh -o BatchMode=yes "${ssh_user}@${server_ip}" "test -f '$nginx_path'" 2>/dev/null; then
+        if ! ssh -n -o BatchMode=yes "${ssh_user}@${server_ip}" "test -f '$nginx_path'" 2>/dev/null; then
             print_status "WARN" "DB snapshot ${ts} has no matching nginx tar; registering DB-only."
             nginx_path=""
         fi
@@ -176,7 +176,7 @@ rollback_execute_remote_from_entry() {
 
     # Verify the snapshot files still exist on the remote.
     if [ "$dry_run" != "--dry-run" ]; then
-        if ! ssh -o BatchMode=yes "${user}@${host}" "test -f '${dbs}'" 2>/dev/null; then
+        if ! ssh -n -o BatchMode=yes "${user}@${host}" "test -f '${dbs}'" 2>/dev/null; then
             print_error "DB snapshot missing on remote: ${dbs}"
             print_error "(Was it pruned? Run `pl rollback list ${site}` to see other points.)"
             return 1
@@ -216,7 +216,7 @@ rollback_execute_remote_from_entry() {
     fi
 
     print_info "Restoring DB from ${dbs}..."
-    if ssh -o BatchMode=yes "${user}@${host}" "${restore_dbs_cmd}"; then
+    if ssh -n -o BatchMode=yes "${user}@${host}" "${restore_dbs_cmd}"; then
         print_status "OK" "Database restored."
     else
         print_error "DB restore FAILED. Live state is now indeterminate. INVESTIGATE IMMEDIATELY."
@@ -225,7 +225,7 @@ rollback_execute_remote_from_entry() {
 
     if [ -n "$restore_nginx_cmd" ]; then
         print_info "Restoring nginx confs from ${nginx}..."
-        if ssh -o BatchMode=yes "${user}@${host}" "${restore_nginx_cmd}"; then
+        if ssh -n -o BatchMode=yes "${user}@${host}" "${restore_nginx_cmd}"; then
             print_status "OK" "Nginx restored + validated + reloaded."
         else
             print_error "Nginx restore failed. Site may still be serving (old config in memory), but config-on-disk is now inconsistent."

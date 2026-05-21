@@ -1163,11 +1163,12 @@ main() {
     local STATUS=false
     local SSH=false
     local YES=false
+    local DRY_RUN=false
     local SITENAME=""
 
     # Parse options
     local OPTIONS=hdy
-    local LONGOPTS=help,debug,delete,type:,expires:,status,ssh,yes
+    local LONGOPTS=help,debug,delete,type:,expires:,status,ssh,yes,dry-run
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -1186,10 +1187,18 @@ main() {
             --expires) EXPIRES="$2"; shift 2 ;;
             --status) STATUS=true; shift ;;
             --ssh) SSH=true; shift ;;
+            --dry-run) DRY_RUN=true; shift ;;
             --) shift; break ;;
             *) echo "Programming error"; exit 3 ;;
         esac
     done
+
+    # Export so the recursive stg2live invocation can see it. NOTE: provisioning
+    # (Linode + DNS) is not yet dry-run aware — running `pl live --dry-run`
+    # against a site with no live server provisioned will still abort with an
+    # error rather than print what would be provisioned. Scope of this flag in
+    # live.sh is limited to propagating into the stg2live step.
+    export DRY_RUN
 
     # Get sitename
     if [ $# -ge 1 ]; then
@@ -1239,6 +1248,26 @@ main() {
                 exit 1
             fi
         fi
+
+        # Dry-run dispatch: if a live server already exists for this site we
+        # delegate to stg2live --dry-run (which previews rsync + DB plan). If
+        # no server exists yet, we don't have a dry-run path for the Linode
+        # + DNS provisioning step yet — abort with a clear message rather
+        # than silently doing the provision.
+        if [ "$DRY_RUN" == "true" ]; then
+            local _server_ip
+            _server_ip=$(get_live_config "$BASE_NAME" "server_ip" 2>/dev/null || echo "")
+            if [ -n "$_server_ip" ]; then
+                print_info "[dry-run] live server already provisioned (ip=${_server_ip}); delegating to stg2live --dry-run"
+                exec "${SCRIPT_DIR}/stg2live.sh" --dry-run --no-provision "$BASE_NAME"
+            else
+                print_error "[dry-run] no live server provisioned for ${BASE_NAME} yet."
+                print_info  "         live.sh's provisioning path (Linode create + DNS) is not yet dry-run aware."
+                print_info  "         To preview only the deploy step on an existing server, provision first then re-run."
+                exit 1
+            fi
+        fi
+
         case "$TYPE" in
             dedicated)
                 provision_dedicated "$BASE_NAME" "$YES"

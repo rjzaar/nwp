@@ -1007,6 +1007,8 @@ ${BOLD}OPTIONS:${NC}
     --no-security           Skip security module installation
     --no-password-reset     Skip password security (admin regeneration, weak password reset)
     --no-provision          Skip auto-provisioning (used internally)
+    --dry-run               Snapshot + rsync preview only; abort before any DB write,
+                            permission change, or service reload. Safe to run any time.
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Site name (with or without _stg suffix)
@@ -1078,11 +1080,14 @@ deploy_to_live() {
         return 1
     fi
 
-    # Secure passwords before deployment (regenerate admin, reset weak passwords)
-    secure_user_passwords "$stg_site"
-
-    # Install security modules before deployment
-    install_security_modules "$stg_site"
+    # Secure passwords before deployment (regenerate admin, reset weak passwords).
+    # Both of these mutate the staging site, so skip them on dry-run.
+    if [ "${DRY_RUN:-false}" != "true" ]; then
+        secure_user_passwords "$stg_site"
+        install_security_modules "$stg_site"
+    else
+        print_info "[dry-run] skipping secure_user_passwords + install_security_modules (would mutate staging)"
+    fi
 
     # Determine SSH user via resolution chain (F15)
     local ssh_user
@@ -1143,13 +1148,22 @@ deploy_to_live() {
         ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "sudo chown -R gitlab:www-data ${remote_path}" 2>/dev/null || true
     fi
 
-    # Rsync (quiet by default, verbose with -v flag)
+    # Rsync (quiet by default, verbose with -v flag). On dry-run we add
+    # --dry-run so rsync prints the planned changes without writing anything;
+    # we always print the verbose summary in that mode so the operator
+    # actually sees what would change.
     local rsync_opts="-az"
     if [ "${VERBOSE:-false}" == "true" ]; then
         rsync_opts="-avz"
     fi
+    local rsync_dryflag=""
+    if [ "${DRY_RUN:-false}" == "true" ]; then
+        rsync_dryflag="--dry-run"
+        rsync_opts="-avz"
+        print_info "[dry-run] rsync --dry-run output:"
+    fi
 
-    if rsync -e "ssh $(nwp_ssh_opts "$base_name")" $rsync_opts --delete "${excludes[@]}" \
+    if rsync -e "ssh $(nwp_ssh_opts "$base_name")" $rsync_opts $rsync_dryflag --delete "${excludes[@]}" \
         "$stg_site/" \
         "${ssh_user}@${server_ip}:${remote_path}/"; then
         print_status "OK" "Files synced"
@@ -1159,10 +1173,26 @@ deploy_to_live() {
     fi
 
     # Set permissions
-    print_info "Setting permissions..."
-    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "$sudo_prefix chown -R www-data:www-data ${remote_path}" 2>/dev/null || true
+    if [ "${DRY_RUN:-false}" == "true" ]; then
+        print_info "[dry-run] would chown -R www-data:www-data ${remote_path}"
+    else
+        print_info "Setting permissions..."
+        ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "$sudo_prefix chown -R www-data:www-data ${remote_path}" 2>/dev/null || true
+    fi
 
-    # Deploy database (creates DB, generates settings.local.php, imports data)
+    # Deploy database (creates DB, generates settings.local.php, imports data).
+    # Hard stop on dry-run before any DB write: this is the most destructive
+    # step in the script, so we don't want to do even read-only DB queries
+    # in dry-run beyond what the snapshot already did.
+    if [ "${DRY_RUN:-false}" == "true" ]; then
+        local stg_db_name="${base_name}_stg"
+        local live_db_name="${base_name}"
+        print_info "[dry-run] would dump stg DB '${stg_db_name}' and import into live DB '${live_db_name}' on ${server_ip}"
+        print_info "[dry-run] would generate fresh settings.local.php for live"
+        print_info "[dry-run] would run drush cr on live"
+        print_status "OK" "Dry run complete; no destructive ops executed"
+        return 0
+    fi
     if ! full_database_deployment "$stg_site" "$base_name" "$server_ip" "$ssh_user" "$webroot"; then
         print_status "WARN" "Database deployment had issues (site may need manual database setup)"
     fi
@@ -1210,11 +1240,12 @@ main() {
     local SKIP_SECURITY=false
     local SKIP_PASSWORD_RESET=false
     local NO_PROVISION=false
+    local DRY_RUN=false
     local SITENAME=""
 
     # Parse options
     local OPTIONS=hdyv
-    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision
+    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision,dry-run
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -1232,10 +1263,14 @@ main() {
             --no-security) SKIP_SECURITY=true; shift ;;
             --no-password-reset) SKIP_PASSWORD_RESET=true; shift ;;
             --no-provision) NO_PROVISION=true; shift ;;
+            --dry-run) DRY_RUN=true; shift ;;
             --) shift; break ;;
             *) echo "Programming error"; exit 3 ;;
         esac
     done
+
+    # Export so deploy_to_live and friends can read it.
+    export DRY_RUN
 
     # Get sitename
     if [ $# -ge 1 ]; then

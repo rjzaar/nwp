@@ -70,6 +70,12 @@ RESPAWN_DIR = NWP_ROOT / '.agent-respawn'
 RESPAWN_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = NWP_ROOT / 'logs' / 'webhook.log'
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+# Append-only audit trail for every power-user-triggered action. Lives in its
+# own file (not webhook.log) so it can be reviewed without noise from the
+# normal hook traffic. Tamper resistance is best-effort — anyone with write
+# access to the agent host can edit the file; for real evidentiary value
+# this would need to be mirrored to an external append-only sink.
+AUDIT_LOG = NWP_ROOT / 'logs' / 'power-user-audit.jsonl'
 
 POWER_USERS_FILE = Path(os.environ.get(
     'NWP_POWER_USERS_FILE',
@@ -156,6 +162,27 @@ def write_marker(kind: str, payload: dict) -> Path:
     return path
 
 
+def audit(event_type: str, actor: str, target: dict, action: str, extra: dict | None = None) -> None:
+    """Append one JSON line to the power-user audit trail. Never raises — audit
+    failure must not block a webhook response. Caller passes the actor (a power
+    user identifier, e.g. gitlab username or `drupal:nwc:1`), a target dict
+    (project_id, iid, kind...), and a one-word action string."""
+    try:
+        entry = {
+            'ts': int(time.time()),
+            'event_type': event_type,
+            'actor': actor,
+            'target': target,
+            'action': action,
+        }
+        if extra:
+            entry['extra'] = extra
+        with AUDIT_LOG.open('a', encoding='utf-8') as f:
+            f.write(json.dumps(entry, sort_keys=True) + '\n')
+    except OSError as e:
+        logger.warning('audit log write failed: %s', e)
+
+
 def fire_agent_loop() -> None:
     """Kick agent-loop.sh in the background. The cron tick still runs every 30 min
     as a safety net; this just bypasses that wait for power-user events."""
@@ -239,6 +266,10 @@ def handle_note_hook(payload: dict, cfg: dict) -> tuple[int, dict]:
         'reason': 'power-user comment',
         'comment_excerpt': body[:500],
     })
+    audit('note', username,
+          {'project_id': project_id, 'project_path': full_path, 'iid': iid, 'target': target},
+          'respawn-queued',
+          {'comment_excerpt': body[:200]})
     fire_agent_loop()
     return 202, {'ok': True, 'action': 'respawn-queued', 'target': target, 'iid': iid, 'actor': username}
 
@@ -274,14 +305,19 @@ def handle_mr_action(payload: dict, cfg: dict) -> tuple[int, dict] | None:
 
     project_id = project.get('id')
     iid = attrs.get('iid')
+    reason = 'label-added: needs-agent-fix' if 'needs-agent-fix' in added else 'review: requested_changes'
     write_marker('respawn', {
         'project_id': project_id,
         'project_path': full_path,
         'iid': iid,
         'target': 'mr',
         'actor': username,
-        'reason': 'label-added: needs-agent-fix' if 'needs-agent-fix' in added else 'review: requested_changes',
+        'reason': reason,
     })
+    audit('mr-action', username,
+          {'project_id': project_id, 'project_path': full_path, 'iid': iid, 'target': 'mr'},
+          'respawn-queued',
+          {'reason': reason})
     fire_agent_loop()
     return 202, {'ok': True, 'action': 'respawn-queued', 'target': 'mr', 'iid': iid, 'actor': username}
 
@@ -312,6 +348,7 @@ def handle_feedback_endpoint(payload: dict) -> tuple[int, dict]:
         # Not a power user — fall back to the existing 15-min cron sync. No-op here.
         return 200, {'ok': True, 'action': 'ignored', 'reason': 'not a drupal power user'}
 
+    actor = f'drupal:{site}:{user_uid}'
     write_marker('respawn', {
         'project_id': project_id,
         'iid': issue_iid,
@@ -319,9 +356,14 @@ def handle_feedback_endpoint(payload: dict) -> tuple[int, dict]:
         'site': site,
         'feedback_id': payload.get('feedback_id'),
         'web_url': payload.get('web_url'),
-        'actor': f'drupal:{site}:{user_uid}',
+        'actor': actor,
         'reason': 'power-user feedback submission',
     })
+    audit('feedback', actor,
+          {'project_id': project_id, 'iid': issue_iid, 'site': site,
+           'feedback_id': payload.get('feedback_id')},
+          'loop-fired',
+          {'web_url': payload.get('web_url')})
     fire_agent_loop()
     return 202, {
         'ok': True,

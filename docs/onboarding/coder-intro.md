@@ -81,6 +81,8 @@ Claude opens an MR on the same repo, self-classifies tier, attaches diff
     │
     ├── approve → merge → deploy-on-merge.sh → live (auto for T1/T2; manual gate for T3)
     └── request changes → agent picks up your comments, opens a new MR
+                                ↑
+                  (see §3.1 for the exact triggers)
 ```
 
 Key properties of the loop you must know:
@@ -98,6 +100,22 @@ Key properties of the loop you must know:
 4. **Kill switches above the loop:** The loop has a global rate limit (max 5 open MRs at once) and a daily MR cap. If something's spamming you with PRs, the rate limit will save your inbox — but if it's pathological, pause the loop.
 
 For the full agent-loop spec, see [agent-loop-primer.md](./agent-loop-primer.md).
+
+### 3.1 How to send the agent back to the drawing board
+
+The loop reacts to **three signals** from you when an MR needs another pass. Pick whichever feels most natural for the situation:
+
+| Signal | How | Latency | When to use |
+|---|---|---|---|
+| **Add a label** | Click "Edit" on the MR sidebar → add `needs-agent-fix` | Seconds | Cleanest. The label survives review-tool restarts and is unambiguous in the audit log. |
+| **GitLab "Request Changes" review** | Use the standard review UI → "Submit review" → "Request changes" | Seconds | The most discoverable for a GitLab-native workflow. Also keeps your specific review comments attached to lines. |
+| **Comment with `@agent-loop` or `/agent fix`** | Plain MR comment containing one of those phrases | Seconds | Best when you want to give natural-language steering: "@agent-loop the new test should be a Kernel test, not Functional — see existing examples in nwc_editorial/tests/src/Kernel/". |
+
+Behind the scenes, any of those three writes a marker to `~/nwp/.agent-respawn/` on the agent host, which fires `agent-loop.sh` within seconds (vs. the default 30-min cron tick). The loop then closes the existing MR, re-eligibilises the linked issue, and the next cron tick spawns Claude with your comments as additional context. **`MAX_RETRIES=3` per issue** — after three respawns the `agent-eligible` label is stripped and the issue waits for a human.
+
+All three signals require **power-user status** (your GitLab account is on the allowlist). Submissions from anyone not on the list silently fall back to the 30-min poll, which still catches label changes / changes-requested reviews — they just don't get the instant turnaround. Every power-user-triggered respawn is logged to `~/nwp/logs/power-user-audit.jsonl` so we can review delegation patterns later.
+
+Same trust unit applies to **NWC site users**: if you submit feedback from `nwc.nwpcode.org` while logged in as a UID on the Drupal allowlist (admin or rjzaar today), the feedback is synced to GitLab and queued for agent attention in seconds rather than the default 15-min cron lag.
 
 ---
 

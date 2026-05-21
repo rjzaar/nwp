@@ -100,12 +100,19 @@ gitlab_curl() {
   fi
 }
 
-# Returns local checkout path for a project_id. Empty if unknown.
+# Returns local checkout path for a project_id. Always under .agent-checkouts/
+# (gitignored, outside sites/) so the loop never resets the operator's
+# working tree. The directory is created on first use via `git clone`
+# (see the loop body below).
+#
+# We deliberately do NOT point this at sites/nwc/dev/html/profiles/custom/nwc
+# any more, even though that directory is a valid clone of nwp/nwc. The loop
+# does `git checkout main` + `git pull` inside the resolved path, which
+# silently switches the operator off whatever feature branch they had
+# checked out. Surfaced during the power-user fast-path test on 2026-05-21.
 project_local_path() {
-  case "$1" in
-    16) echo "/home/rob/nwp/sites/nwc/dev/html/profiles/custom/nwc" ;;
-    *)  echo "" ;;
-  esac
+  local pid="$1"
+  echo "${NWP_ROOT}/.agent-checkouts/p${pid}"
 }
 
 # Returns SSH URL for a project_id by hitting the API.
@@ -241,8 +248,10 @@ for pid in "${project_arr[@]}"; do
     # Need a local checkout path.
     local_path="$(project_local_path "$pid")"
     if [[ -z "$local_path" || ! -d "$local_path/.git" ]]; then
-      # Clone fresh into ~/nwp/sites/agent-loop-checkouts/<id>.
-      local_path="${NWP_ROOT}/sites/agent-loop-checkouts/p${pid}"
+      # First run for this project: clone into the dedicated dir. Hidden
+      # dot-dir at the repo root so it's gitignored by default (the repo's
+      # .gitignore uses an aggressive whitelist) and stays well away from
+      # the operator's sites/ tree.
       mkdir -p "$(dirname "$local_path")"
       if [[ ! -d "$local_path/.git" ]]; then
         ssh_url="$(project_ssh_url "$pid")"

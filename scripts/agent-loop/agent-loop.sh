@@ -387,25 +387,42 @@ which has the nwc profile already installed.
 
 ## Test commands (run before committing — these MUST pass)
 
+Run BOTH of these. Behat is the user-visible safety net; PHPUnit Kernel
+is the contract-level check. If the change touches a service or entity
+type that's never user-facing, the Behat suite still has to be green
+because something else on the site may exercise it. Skipping Behat is
+the most common way the loop has shipped a regression.
+
 \`\`\`bash
 # From inside the worktree (you are at the profile root):
 PROFILE=\$(pwd)
 
-# Kernel test on the changed module (substitute the module name):
+# 1. Kernel test on the changed module (substitute the module name):
 ddev exec "cd /var/www/html && vendor/bin/phpunit -c /var/www/html/phpunit.xml \\
   /var/www/html/html/profiles/custom/nwc/modules/nwc_features/<module>/tests/src/Kernel/"
 
-# Editorial baseline must remain green:
+# 2. Editorial baseline must remain green:
 ddev exec "cd /var/www/html && vendor/bin/phpunit -c /var/www/html/phpunit.xml \\
   /var/www/html/html/profiles/custom/nwc/modules/nwc_features/nwc_editorial/tests/src/Kernel/"
+
+# 3. Behat suite — runs against the live ddev site. Required even when
+#    the change looks "backend-only", because Behat covers the user flows
+#    that real members will hit:
+ddev exec "cd /var/www/html && vendor/bin/behat --config=behat.yml.dist --suite=nwc_editorial --no-progress"
+
+# 4. If the changed module ships its own Behat scenarios, run those too:
+ddev exec "cd /var/www/html && vendor/bin/behat --config=behat.yml.dist \\
+  /var/www/html/html/profiles/custom/nwc/modules/nwc_features/<module>/tests/src/Behat/ --no-progress"
 \`\`\`
 
 If tests fail and the fix is unclear, write \`AGENT-NOTE.md\` explaining
 what you tried and stop. Do NOT commit a known-broken test — the
 reviewer will reject it anyway and the loop wastes a retry budget.
 
-If no tests apply, that is OK — keep the change small enough that a
-human reviewer (Greg) can eyeball it.
+If Behat times out or can't find the suite (e.g. behat.yml.dist absent),
+write that in \`AGENT-NOTE.md\` along with the PHPUnit results and let
+the reviewer decide. Don't ship without at least an explicit note about
+which level you got coverage at.
 
 EOF
 
@@ -518,7 +535,7 @@ description = (
     f"See files-changed list above; any path under `tests/` is new or modified test coverage.\n"
     f"\n"
     f"## Test results\n"
-    f"Agent did not run the full Behat+PHPUnit suite locally. Reviewer must verify CI green before approving.\n"
+    f"Agent ran Behat + PHPUnit Kernel suites locally per prompt; see AGENT-NOTE.md if any step couldn't run. Reviewer must still verify CI green before approving.\n"
     f"\n"
     f"## Rollback plan\n"
     f"`git revert <merge-sha>`. No schema migration in this diff (verify in Files changed if unsure).\n"

@@ -467,6 +467,15 @@ generate_live_settings() {
 
 // Hash salt (generate unique for this site)
 \$settings['hash_salt'] = '$(openssl rand -hex 32)';
+
+// Operator-managed overrides — never touched by the deploy. Put any
+// per-host config (e.g. \$config['nwc_feedback.agent_fast_path'][...])
+// in settings.local.overrides.php; the deploy regenerates everything
+// else above on every stg2live run, but leaves the overrides file
+// alone. Also excluded from rsync --delete so it survives file sync.
+if (file_exists(__DIR__ . '/settings.local.overrides.php')) {
+  include __DIR__ . '/settings.local.overrides.php';
+}
 EOF
 
     if [ $? -eq 0 ]; then
@@ -1119,6 +1128,7 @@ deploy_to_live() {
         "--exclude=.git"
         "--exclude=.nwp.yml"
         "--exclude=$webroot/sites/default/settings.local.php"
+        "--exclude=$webroot/sites/default/settings.local.overrides.php"
         "--exclude=$webroot/sites/default/files"
         "--exclude=private"
         "--exclude=node_modules"

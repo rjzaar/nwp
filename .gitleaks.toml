@@ -79,6 +79,7 @@ description = "Standard config filenames ending in .local (settings.local.php, .
 regexTarget = "line"
 regexes = [
   '''settings\.local\.php''',
+  '''settings\.local\.overrides\.php''',
   '''\.env\.local''',
   '''jail\.local''',
   '''config\.local\.(yaml|yml|json)''',

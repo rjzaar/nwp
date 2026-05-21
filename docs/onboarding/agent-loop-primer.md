@@ -78,12 +78,18 @@ All on `mini`. All in `~/nwp/scripts/agent-loop/`.
 
 | Component                       | What it does                                                         | Triggered by                          |
 |---------------------------------|----------------------------------------------------------------------|---------------------------------------|
-| `agent-loop.sh`                 | Polls GitLab, picks an issue, spawns Claude Code, opens MR           | Cron every 30 minutes                 |
+| `agent-loop.sh`                 | Polls GitLab, drains marker dir, picks an issue, spawns Claude Code, opens MR | Cron every 30 minutes + power-user respawn signals |
 | `nwc_feedback` sync drush cmd   | Reads `feedback` entities, posts to GitLab as issues                 | Cron every 15 minutes                 |
-| `gitlab-webhook-receiver.py`    | HTTP server on 127.0.0.1:5099, listens for MR-merged webhooks        | GitLab webhook (when an MR merges)    |
+| `nwc_feedback` queue worker     | Drains the fast-path queue (power-user submissions); calls sync + webhook | Drupal cron + `drush queue:run nwc_feedback_fast_path` |
+| `gitlab-webhook-receiver.py`    | HTTP server on tailnet:5099, handles MR-merged, Note Hook, label changes, `/feedback` | GitLab webhook + Drupal hook POST |
 | `deploy-on-merge.sh`            | Runs the full deploy pipeline (dev → stg → tier-gate → live → smoke) | Webhook receiver fork                 |
 | `smoke-live.sh`                 | Runs the 5-URL smoke check post-deploy                               | Called by deploy-on-merge.sh          |
+| `rotate-webhook-secret.sh`      | Atomically rotates the webhook secret across env file + GitLab webhooks + restart | Manual (when secret leaks)         |
 | `.agent-loop.state.json`        | Tracks per-issue retry counts, daily PR count, last-poll timestamp   | Read/written by agent-loop.sh         |
+| `.agent-respawn/*.json`         | Marker queue: webhook writes, agent-loop.sh drains and fires actions | Webhook receiver / agent-loop.sh      |
+| `.agent-loop.lock`              | Flock-based singleton; prevents cron + webhook from racing on state  | agent-loop.sh entry                   |
+| `~/.nwp-power-users.json`       | Allowlist of GitLab usernames + Drupal UIDs that trigger instant respawn | Edited by hand (operator)         |
+| `logs/power-user-audit.jsonl`   | Append-only JSONL record of every power-user-triggered action        | Written by webhook receiver           |
 | `.loop-paused`                  | Kill switch. If present, agent-loop.sh exits early.                  | Manually touched/removed              |
 
 ---

@@ -187,7 +187,14 @@ rollback_execute_remote_from_entry() {
     local restore_dbs_cmd="gunzip -c '${dbs}' | ${sudo_prefix}mysql"
     local restore_nginx_cmd=""
     if [ -n "$nginx" ]; then
-        restore_nginx_cmd="${sudo_prefix}tar xzf '${nginx}' -C / && ${sudo_prefix}nginx -t && ${sudo_prefix}systemctl reload nginx"
+        # Reload: try gitlab-ctl first (hosts running GitLab Omnibus serve
+        # /etc/nginx/conf.d via their embedded nginx, not the systemd
+        # service — the systemd nginx is intentionally failed on a
+        # GitLab Omnibus host because the two would conflict), fall back
+        # to systemctl reload on a standalone host. stg2live.sh's
+        # setup_ssl_certificate and update_nginx_ssl already use this
+        # pattern; mirroring it here.
+        restore_nginx_cmd="${sudo_prefix}tar xzf '${nginx}' -C / && ${sudo_prefix}nginx -t && (${sudo_prefix}gitlab-ctl hup nginx 2>/dev/null || ${sudo_prefix}systemctl reload nginx)"
     fi
 
     if [ "$dry_run" = "--dry-run" ]; then

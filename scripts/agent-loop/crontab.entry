@@ -31,5 +31,15 @@
 # Drive the agent-loop (issue → PR) — every 30 minutes; 1 issue per run.
 0,30 * * * * . $HOME/.nwp-agent-loop.env && AGENT_LOOP_MAX_PER_RUN=1 /home/rob/nwp/scripts/agent-loop/agent-loop.sh
 
-# Optional: nightly state file rotation so logs don't grow unbounded.
+# Log rotation — two-tier:
+#   1. Size-based: gzip any uncompressed log >50M, so a runaway hour
+#      doesn't fill the disk.
+#   2. Age-based: delete gzipped logs older than 90 days, so the
+#      ~/nwp/logs/ directory doesn't accumulate forever. 90 days is
+#      a deliberate trade-off: long enough for a quarterly review of
+#      what went wrong, short enough that disk usage stays bounded.
+#      Untouched .log files (the live ones) are never deleted; only
+#      .log.gz files are pruned. Adjust the +90 if a different
+#      retention policy is needed.
 5 4 * * * /usr/bin/find /home/rob/nwp/logs -name '*.log' -size +50M -exec gzip {} \;
+10 4 * * * /usr/bin/find /home/rob/nwp/logs -name '*.log.gz' -mtime +90 -delete

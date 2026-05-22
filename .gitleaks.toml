@@ -60,6 +60,10 @@ paths = [
   # Historical reports document the operator's original infrastructure
   # — same principle as docs/archive/ being allowlisted.
   '''^docs/reports/.*''',
+  # The agent-loop crontab.entry is operator-specific documentation; cron
+  # has no $HOME so the path has to be absolute. Same principle as the
+  # other operator-bound files allowlisted above.
+  '''^scripts/agent-loop/crontab\.entry$''',
 ]
 
 [[rules]]

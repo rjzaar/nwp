@@ -19,6 +19,15 @@ sites/*
 sites/tmp/
 sites/tmp/**
 
+# Servers directory (where per-host operator config goes — same pattern as sites/)
+# The folder is tracked but contents are ignored. Per-host configs
+# (wireguard, deploy scripts, server YAMLs) are operator-specific and
+# never belong in the public tool repo.
+!servers/
+servers/*
+!servers/.gitkeep
+!servers/example-*.yml
+
 # /private/ holds operator-private handoff packs (Coder/Greg setup script,
 # handbook, credentials). Defense in depth — explicit deny so even if a
 # later whitelist accidentally re-includes it, this stays ignored.

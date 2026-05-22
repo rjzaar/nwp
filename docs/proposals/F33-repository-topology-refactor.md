@@ -1,15 +1,14 @@
 # F33: Repository Topology Refactor
 
-**Status:** IN PROGRESS — Phase 1 + partial Phase 4 complete (commit `1669a06`, instance-overlay scaffolding); Phases 2, 3, 5 pending
+**Status:** SUPERSEDED 2026-05-22 — simpler gitignore-only approach adopted
 **Created:** 2026-05-09
+**Superseded by:** gitignoring `servers/*` to match the existing `sites/*` pattern; no separate `~/nwp-instances/` repo required. See §10 below for the rationale.
 **Author:** Robert Karsten Zaar (with AI assistance)
-**Priority:** High (blocks public release; foundation for F32 and F34)
-**Depends On:** [P61](P61-leakage-hygiene-ci.md) (leakage gate must land first so the cutover commits are clean)
-**Breaking Changes:** Yes — `nwp/sites/<name>/` directories move to a separate private repository
-**Estimated Effort:** ~5 phases; one weekend of focused work plus a deprecation window
-**Architecture decision record:** [ADR-0021](../decisions/0021-public-only-repo-scope.md)
+**Architecture decision record:** [ADR-0021](../decisions/0021-public-only-repo-scope.md) (still in effect — public/private split is real; mechanism simplified)
 
-> **Why this proposal exists.** [ADR-0021](../decisions/0021-public-only-repo-scope.md) decides that NWP becomes a public framework with a separate private instance overlay. F33 is the cutover plan: which files move where, in what order, with what backwards-compatibility window, and how `pl` is taught to find the new layout.
+> **Why this proposal is superseded.** Audit of `~/nwp/` git state on 2026-05-22 showed that `sites/`, `nwp.yml`, `.secrets.yml`, `keys/prod_*`, and `private/` are *already* gitignored; only `servers/<host>/` was tracked. Extending the existing gitignore pattern from `sites/` to `servers/` achieves the public/private split (G1 + G3 from §2) without the overhead of a parallel `~/nwp-instances/` repo, `pl` layout detection (§4.2), or an `instance-manifest.yml` (§4.3). The full move-out remains a valid future direction if multi-operator / multi-machine private-overlay sync becomes a real need (see §10).
+
+> **Original proposal below** is preserved verbatim for context. The simpler resolution lives in the new §10.
 
 ---
 
@@ -260,3 +259,34 @@ The cutover is staged so each phase can be committed independently and verified 
 - [F32](F32-tiered-architecture-implementation.md) — tiered architecture implementation; consumes the cleaner repo layout.
 - [F34](F34-role-label-proposal-rewrite.md) — content of existing proposals; depends on this proposal having moved per-site content.
 - [P61](P61-leakage-hygiene-ci.md) — leakage gate; must land first.
+
+## 11. Supersession rationale (2026-05-22)
+
+Audit of the actual tracked state in `~/nwp/` on 2026-05-22:
+
+| Path | Tracked? | Ever in history? |
+|---|---|---|
+| `sites/*` | already gitignored | one per-site `docs/` subtree was tracked, removed in two cleanup commits |
+| `nwp.yml` | already gitignored | never |
+| `.secrets.yml` / `.secrets.data.yml` | already gitignored | never |
+| `keys/prod_*` | already gitignored | never |
+| `private/` | already gitignored | (likely never) |
+| **`servers/<role>/`** | **41 files tracked** | yes, throughout |
+
+So the public/private split goals (G1, G3) reduce to one concrete action: **extend the `sites/*` gitignore pattern to `servers/*`**. That happened in the same commit that flipped this proposal to SUPERSEDED.
+
+What F33's full move-out *would* have bought that gitignore alone does not:
+
+- Versioned private config (server YAMLs as their own git history)
+- A backup pipeline for the private overlay
+- Cross-machine sync of private config (overlay pulled to other operator hosts independently)
+- A single `instance-manifest.yml` binding role labels to actual hosts
+- `pl` layout-detection (`NWP_INSTANCES_DIR` / `find-instance-dir.sh`)
+
+For a sole operator on one authoring host, none of those is load-bearing. If they later become load-bearing (multi-operator team, second authoring host, separate backup tier for private config) this proposal can be revived as a phased migration on top of the gitignore-only baseline.
+
+**What still has to happen** for the public release that F33 was blocking:
+
+- `git ls-files | xargs grep -l ...` finds ~99 tracked files containing internal hostnames or the live internal domain. Most are content references in docs/proposals — handled by **F34** (role-label rewrite).
+- Force-push to the public remote still required — pre-2026-05-22 history contains `servers/<role>/` configs (including a wireguard config file) and the past per-site `docs/` commits, which gitignore cannot retroactively remove. The archive remote (Stream B Phase 1) preserves that history privately.
+- F34 + P61 remain on the path.

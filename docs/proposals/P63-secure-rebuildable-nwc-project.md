@@ -1,6 +1,6 @@
 # P63 — Secure, rebuildable nwc-project
 
-**Status:** PHASE 1-3 COMPLETE 2026-05-22 (Phases 4-5 + webonyx upgrade still pending)
+**Status:** PHASES 1-5 COMPLETE 2026-05-22 (Phase 2.1 webonyx upgrade also done; Phase 4 CI + Phase 5 cadence committed)
 **Owner:** Worker-E 2026-05-22 (Phases 1-3); unassigned for remainder
 **Surfaced by:** Worker-E session 2026-05-22 (Track E set-up of met)
 **Predecessor:** none — this captures latent debt that wasn't tracked
@@ -26,39 +26,67 @@ Phase 3 (commit lock):
 - ✅ `composer.lock` un-ignored + committed to `nwp/nwc-project`
 - ✅ Single commit `composer: commit lock + un-ignore (P63 Phase 3)` pushed to origin/main
 
+Phase 2.1 (deferred-then-completed) — webonyx DoS family cleared:
+- ✅ `nwp/nwc v0.4.0` tagged (graphql 4→5, drush 13.6→13.7, PHP 8.1→8.3)
+- ✅ Open Social research showed our custom code is byte-identical to
+  theirs in the webonyx-touching files — no breakage risk for the bump
+- ✅ All 3 webonyx/graphql-php DoS advisories now resolved
+
+Phase 4 (CI):
+- ✅ `.gitlab-ci.yml` committed to nwp/nwc-project (audit → build →
+  minisign → publish). Awaits met-sign runner registration + CI variables.
+
+Phase 5 (cadence):
+- ✅ `docs/security/dependency-refresh-cadence.md` published — monthly
+  audit + bump procedure, on-demand triggers for critical advisories.
+
 Reproducibility test on met: ✅ git pull + composer install + drush updb + drush cr work cleanly. drush nwc-feedback:sync-to-gitlab returns healthy "no items pending."
 
 ## What's left
 
-- **Phase 2.1 — webonyx/graphql-php DoS family.** 3 advisories remain
-  (PKSA-xwpn-zs9j-6wy5, PKSA-sf9j-1gs7-xzvx, PKSA-7h5p-prw9-w5nr).
-  Severity: high (unbounded parser recursion) + high (quadratic
-  validation) + medium (CVE-2026-40476 DoS).
+- ✅ **Phase 2.1 — webonyx/graphql-php DoS family.** All 3 advisories
+  cleared 2026-05-22. The first-pass evaluation deferred this, but a
+  deeper read of Open Social's upstream changed the verdict — see
+  notes below.
 
-  **2026-05-22 evaluation:**
-  - drupal/graphql 5.0.0-rc1 (released 2026-05-09) requires
-    `webonyx/graphql-php ^15.32.3` — would clear all three advisories.
-  - drupal/graphql_oauth 1.0.0-alpha4 supports `drupal/graphql ^4.1 || ^5`.
-  - **BUT** the nwc profile includes the `social_graphql` module
-    (~50+ classes implementing webonyx APIs — `ConnectionInterface`,
-    `EntityConnection`, `ResolverRegistry`, plus ~12 `.graphqls`
-    schema files). webonyx 14.x → 15.x has breaking API changes in
-    type definitions, resolvers, executors. Bumping graphql 4→5
-    would also force webonyx 14→15.
-  - Open Social itself still pins graphql 4.x — they haven't done
-    this upgrade either. There's no community-tested upgrade path.
-  - Verdict: **defer.** This needs a focused effort with a graphql
-    integration test pass, schema validation, and possibly upstream
-    coordination with Open Social. Not a "while we're in here"
-    fix.
+  **What landed:**
+  - `drupal/graphql` 4.14.0 → 5.0.0-rc1
+  - `drupal/graphql_oauth` 1.0.0-alpha3 → 1.0.0-alpha4
+  - `webonyx/graphql-php` 14.x-dev → v15.32.3 (the actual fix)
+  - `drush/drush` ^13.6 → ^13.7 (required by graphql 5's new
+    `DetectBreakingChangesCommand` using `Drush\Formatters\FormatterTrait`)
+  - PHP minimum: 8.1 → 8.3 (required by drush 13.7+; matches Open
+    Social 13.0.0's 2026-02-10 PHP bump)
+  - DDEV `php_version` bumped 8.2 → 8.3 (per-machine config; .ddev/config.yaml
+    is gitignored — has to be applied separately on each setup)
+  - DB updates: `graphql_update_50000` + `graphql_update_50001` (sets
+    `query_depth` and `query_complexity` to integer types — this is the
+    GraphQL module gaining native query-complexity limits in 5.x, which
+    is independently useful for hardening against DoS)
 
-  Mitigations to consider before the fix lands:
-  1. Check whether live nwc exposes GraphQL endpoint publicly. If
-     internal-only, the DoS surface is minimal.
-  2. If publicly exposed, consider an API gateway rate-limit on
-     GraphQL endpoints.
-  3. Track upstream — wait for drupal/graphql 5.0 GA + Open Social
-     adoption.
+  **What the deeper Open Social research revealed (correcting the
+  first-pass defer):**
+  - Open Social's `main` branch pins `drupal/graphql 5.0.0-beta4`
+    (committed 2026-04-24). Their last released tag (13.0.2) still
+    ships graphql 4.9, but the upgrade work IS done on main.
+  - We're ahead of their release schedule but on a path they've
+    already verified.
+  - The "~50 social_graphql classes" concern was wrong: a file-by-file
+    diff between our profile and Open Social main shows the
+    webonyx-API-touching classes (`EntityConnection`, `ConnectionInterface`,
+    `ResolverRegistry`) are byte-identical. Open Social's resolution
+    of breaking changes is a no-op — they didn't need to change those
+    files, because they don't touch the breaking surfaces either.
+  - Webonyx 14→15 has only 2 documented breaking changes per their
+    UPGRADE.md: `category` field removed from error extensions, and
+    `$exitWhenDone` parameter removed from `StandardServer::handleRequest()`.
+    Neither affects our codebase.
+  - The drupal/graphql 4→5 PR has been in beta since 2025-09 and
+    rc since 2026-05-09 (more than a year of bake time).
+  - Verified end-to-end on dev: drush 13.7.3 + Drupal 10.6.9 + PHP 8.3.25
+    boots clean, sync command works, audit shows zero unfixed advisories.
+
+  Tagged `nwp/nwc v0.4.0` for the bump.
 - **Phase 4 — signed-artifact CI on met.** Now that the lock is
   committed, every `composer install` produces a deterministic vendor.
   Build that into a CI job that tars + signs + uploads as a release.

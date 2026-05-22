@@ -118,6 +118,23 @@ Run the procedure immediately when:
   webonyx/graphql-php)
 - A maintainer reports active exploitation
 
+## How findings reach you
+
+A **daily audit cron** runs on met at 02:30 UTC (`~/bin/nwp-daily-audit`)
+and posts a GitLab issue into the ops message queue when *any* of these
+change relative to yesterday's baseline:
+
+- new composer audit advisory on an installed package
+- new outdated direct dep (or one caught up)
+- Open Social main bumping a `drupal/*` or `webonyx/*` constraint
+  relative to ours
+- a package going abandoned (or recovering)
+
+If nothing changes, no issue is created. Operator triages via the
+existing ops-queue polling commands. See the `nwp-daily-audit.md`
+auto-memory entry for full details on the producer, token, and SITES
+config.
+
 ## Common gotchas
 
 - **`composer.lock` MUST stay committed.** If you find yourself

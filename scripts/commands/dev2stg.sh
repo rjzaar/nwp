@@ -39,6 +39,10 @@ source "$PROJECT_ROOT/lib/database-router.sh"
 source "$PROJECT_ROOT/lib/testing.sh"
 source "$PROJECT_ROOT/lib/preflight.sh"
 source "$PROJECT_ROOT/lib/dev2stg-tui.sh"
+# rollback.sh: lets dev2stg register a pre-deploy snapshot in the same
+# registry that pl rollback list/execute reads, so an operator can roll
+# the stg DB back to its pre-dev2stg state after a bad import.
+source "$PROJECT_ROOT/lib/rollback.sh"
 
 # YAML library (if available)
 if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
@@ -330,6 +334,22 @@ sync_database() {
     local sanitize=$4
 
     show_step "Restore/sync database"
+
+    # Pre-deploy rollback point: if the stg DDEV project exists and is
+    # reachable, snapshot its current DB before we overwrite it. Lets
+    # `pl rollback execute <site> stg` recover a bad dev2stg.
+    # First-run dev2stg has no existing stg DB and this is a no-op.
+    local stg_name
+    stg_name=$(basename "$stg_site")
+    if (cd "$stg_site" && ddev describe >/dev/null 2>&1); then
+        # rollback_backup_before silently logs via >/dev/null in the lib.
+        # Failure to snapshot is non-fatal — print a warning and proceed
+        # rather than blocking dev2stg, since the new DB import is the
+        # whole point of the command.
+        if ! rollback_backup_before "$stg_name" "stg" >/dev/null 2>&1; then
+            print_warning "Pre-dev2stg rollback snapshot failed; deploy continues without a rollback point."
+        fi
+    fi
 
     start_spinner "Syncing database from $db_source"
     # Use the database router. Capture stderr so the actual cause can be

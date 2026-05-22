@@ -392,24 +392,59 @@ setup_live_database() {
         return 1
     fi
 
-    # Create database if it doesn't exist
-    ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix mysql -e \"CREATE DATABASE IF NOT EXISTS \\\`${db_name}\\\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\"" 2>/dev/null
-
-    # Create user and grant privileges (idempotent - will update if exists)
-    ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix mysql -e \"
+    # Create database if it doesn't exist. Stderr no longer suppressed —
+    # silent failures here are how the DB-credentials-drift bug of
+    # 2026-05-22 happened: ALTER USER errored under load, output was
+    # discarded, the deploy proceeded, and nwc was 500ing on Access
+    # denied. Let real errors surface; the caller already prints them.
+    local setup_out
+    setup_out=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix mysql -e \"
+        CREATE DATABASE IF NOT EXISTS \\\`${db_name}\\\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
         CREATE USER IF NOT EXISTS '${db_user}'@'localhost' IDENTIFIED BY '${db_pass}';
         ALTER USER '${db_user}'@'localhost' IDENTIFIED BY '${db_pass}';
         GRANT ALL PRIVILEGES ON \\\`${db_name}\\\`.* TO '${db_user}'@'localhost';
         FLUSH PRIVILEGES;
-    \"" 2>/dev/null
+    \"" 2>&1)
+    local setup_rc=$?
 
-    if [ $? -eq 0 ]; then
-        print_status "OK" "Database '${db_name}' ready"
-        return 0
-    else
-        print_error "Failed to setup database"
+    if [ $setup_rc -ne 0 ]; then
+        print_error "Database setup failed (rc=$setup_rc): $setup_out"
         return 1
     fi
+
+    # Verify the user can actually authenticate with the password we just
+    # set. Catches the drift case where ALTER USER reports success but the
+    # auth plugin or some MySQL quirk leaves the password in a different
+    # state than we expect. One retry, then fail loudly so the deploy
+    # aborts before generate_live_settings writes a credential file that
+    # doesn't match the live DB.
+    local verify_rc
+    ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "mysql -u${db_user} -p'${db_pass}' -e 'SELECT 1' >/dev/null 2>&1"
+    verify_rc=$?
+
+    if [ $verify_rc -ne 0 ]; then
+        print_warning "Initial auth check failed; retrying ALTER USER..."
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" "$sudo_prefix mysql -e \"
+            ALTER USER '${db_user}'@'localhost' IDENTIFIED BY '${db_pass}';
+            FLUSH PRIVILEGES;
+        \"" 2>&1 || true
+
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+            "mysql -u${db_user} -p'${db_pass}' -e 'SELECT 1' >/dev/null 2>&1"
+        verify_rc=$?
+    fi
+
+    if [ $verify_rc -ne 0 ]; then
+        print_error "Database user '${db_user}'@'localhost' cannot authenticate with the deploy-generated password."
+        print_error "This is the credentials-drift bug class — generate_live_settings would write a settings.local.php with the wrong password and the site would 500."
+        print_error "Recovery: ssh to the live host and run as root:"
+        print_error "  sudo mysql -e \"ALTER USER '${db_user}'@'localhost' IDENTIFIED BY '<password-from-settings.local.php>'; FLUSH PRIVILEGES;\""
+        return 1
+    fi
+
+    print_status "OK" "Database '${db_name}' ready (auth verified)"
+    return 0
 }
 
 # Generate settings.local.php with database credentials for live server

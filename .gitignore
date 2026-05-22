@@ -19,15 +19,6 @@ sites/*
 sites/tmp/
 sites/tmp/**
 
-# Servers directory (where per-host operator config goes — same pattern as sites/)
-# The folder is tracked but contents are ignored. Per-host configs
-# (wireguard, deploy scripts, server YAMLs) are operator-specific and
-# never belong in the public tool repo.
-!servers/
-servers/*
-!servers/.gitkeep
-!servers/example-*.yml
-
 # /private/ holds operator-private handoff packs (Coder/Greg setup script,
 # handbook, credentials). Defense in depth — explicit deny so even if a
 # later whitelist accidentally re-includes it, this stays ignored.
@@ -126,20 +117,16 @@ scripts/commands/.rollback/**
 # Pipelines and modules are intentionally untracked by the parent NWP repo
 # (see the /sites/* rule above).
 
-# Servers directory (Phase 8 server infrastructure)
-# Folder is tracked but contents are ignored — each server has its own repo or is local-only
+# Servers directory (per-host operator config — same pattern as sites/)
+# Folder is tracked but contents are ignored. Per-host configs (wireguard,
+# deploy scripts, server YAMLs) are operator-specific and never belong in
+# the public tool repo. F33 (now SUPERSEDED) originally proposed moving
+# these to a separate ~/nwp-instances/ repo; gitignoring matches sites/
+# and is the simpler resolution.
 !servers/
 servers/*
 !servers/.gitkeep
-# mini has no separate repo; its infra lives in the nwp repo under servers/mini/
-!servers/mini/
-!servers/mini/**
-# but never track python bytecode under mini's bot skeleton
-servers/mini/**/__pycache__/
-servers/mini/**/*.pyc
-# mayo1 server scripts (WireGuard configs, blue-green, sanitizer)
-!servers/mayo1/
-!servers/mayo1/**
+!servers/example-*.yml
 
 # SSH keys directory (structure tracked, contents ignored)
 !keys/

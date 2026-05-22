@@ -11,6 +11,7 @@ This guide provides procedures for recovering from various disaster scenarios in
   - [Scenario 1: Bad Deployment](#scenario-1-bad-deployment)
   - [Scenario 2: Database Corruption](#scenario-2-database-corruption)
   - [Scenario 3: Complete Server Loss](#scenario-3-complete-server-loss)
+  - [Scenario 4: nginx port conflict after reboot](#scenario-4-nginx-port-conflict-after-reboot-gitlab-omnibus-hosts)
 - [Pre-Disaster Preparation](#pre-disaster-preparation)
 - [Post-Recovery Verification](#post-recovery-verification)
 - [Contact Information](#contact-information)
@@ -636,6 +637,62 @@ sudo crontab -e
 - **Use Infrastructure as Code** for server provisioning
 - **Monitor server health** and set up alerts
 - **Implement redundancy** for critical sites (load balancers, database replication)
+
+---
+
+## Scenario 4: nginx port conflict after reboot (GitLab Omnibus hosts)
+
+**Symptoms after a reboot or fresh provision:**
+- All sites on the box return TIMEOUT (TCP connects but no HTTP response, or 502).
+- `gitlab-ctl status` shows `nginx: (pid X) Ns; run: log: ...` cycling — the
+  GitLab Omnibus nginx is restart-looping.
+- `/var/log/gitlab/nginx/current` contains
+  `[emerg] bind() to 0.0.0.0:80 failed (98: Address already in use)`.
+
+**Root cause:** The Linode is running TWO nginx services. The Drupal/Moodle
+vhosts in `/etc/nginx/conf.d/*.conf` are included by GitLab Omnibus's
+embedded nginx (which runs under runit). On a fresh install or after
+`apt-get install nginx`, the systemd `nginx.service` gets enabled and
+auto-starts on reboot — it binds 80 + 443 first, and Omnibus's nginx
+can't start. Drupal sites are still served (by the systemd nginx), but
+GitLab is unreachable.
+
+Surfaced 2026-05-22 after a load-induced reboot on the production
+Linode. Diagnosis time: ~10 minutes. Recovery time: <2 minutes once
+diagnosed.
+
+**Fix (one-time, persists across reboots):**
+
+```bash
+sudo systemctl stop nginx
+sudo systemctl disable nginx
+sudo gitlab-ctl restart nginx
+```
+
+Then verify both serve correctly:
+
+```bash
+# GitLab side
+curl -sIL "https://${GITLAB_HOST}/" | head -3
+# Drupal sites (handled by the embedded nginx via /etc/nginx/conf.d/)
+for s in <site-1> <site-2> <site-3>; do
+  printf '%-30s %s\n' "${s}.${BASE_DOMAIN}" \
+    "$(curl -s -o /dev/null -w '%{http_code}' -L "https://${s}.${BASE_DOMAIN}/")"
+done
+```
+
+**Prevention on new boxes:** during provisioning, never install the
+distro `nginx` package on a GitLab Omnibus host. If something pulled it
+in transitively (e.g. via `certbot --nginx` defaults), explicitly
+`apt-mark hold nginx` or run `systemctl disable nginx` immediately
+after install, before the next reboot.
+
+**Why the distro nginx exists at all on this host:** historically the
+operator installed it for SSL termination before GitLab Omnibus was
+adopted. The conf files in `/etc/nginx/conf.d/` are now consumed by
+Omnibus's nginx via the include directive in its packaged config,
+which is why the Drupal sites kept working when systemd nginx was
+disabled — same conf files, different process.
 
 ---
 

@@ -3,7 +3,7 @@
 **Status:** PROPOSED
 **Created:** 2026-05-16
 **Author:** Robert Karsten Zaar (with AI assistance)
-**Priority:** Medium (no current pain — but the ss → ss1 rename of 2026-05-16 exposed a multi-step manual recipe that future renames will hit again)
+**Priority:** Medium (and rising — the ss → ss1 rename of 2026-05-16 and the ss1 → ss2 rename of 2026-05-23 both exposed the same multi-step manual recipe; future renames will hit it again)
 **Depends On:** [F23](F23-project-separation-v2.md) (per-site `.nwp.yml` is the schema this command must keep consistent)
 **Breaking Changes:** No (new command; existing sites unaffected unless renamed)
 **Estimated Effort:** ~2 phases (renamer + cutover orchestrator); ~1 week
@@ -11,11 +11,14 @@
 
 > **Why this proposal exists.** On 2026-05-16, the SS Moodle site was
 > renamed (`~/nwp/sites/ss/` → `~/nwp/sites/ss1/`) to free the `ss` name
-> for a v3 rebuild. The rename touched at least nine files across two
-> repositories, plus a separate manual server-side cutover sequence that
-> `pl stg2live` was not designed to handle. The recipe is documented in
-> `~/dir/courses_v3/MIGRATION_PLAN.md`, but every future site rename
-> would have to re-derive it. This proposal makes the recipe a
+> for a v3 rebuild. On 2026-05-23, the same v1 tree was renamed again
+> (`~/nwp/sites/ss1/` → `~/nwp/sites/ss2/`) to align with the new
+> `ss2.<example-prod-domain>` prod surface created during the 2026-05-22
+> v3 cutover. Both renames touched at least nine files across two
+> repositories, plus a separate manual server-side cutover sequence
+> that `pl stg2live` was not designed to handle. The recipe is
+> documented in `~/dir/courses_v3/MIGRATION_PLAN.md`, but every future
+> site rename has to re-derive it. This proposal makes the recipe a
 > first-class `pl` command.
 
 ---

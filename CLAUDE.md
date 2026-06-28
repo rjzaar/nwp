@@ -1,5 +1,12 @@
 # Claude Code Instructions
 
+> **READ-FIRST (operating model):** before any ops work, read
+> `~/central/nwc-internal/OPERATING-MODEL.md` (the self-driving operating model +
+> session-start protocol). **Work is tracked as GitLab issues in `nwp/ops`**, not docs.
+> **Oversight = `pl rag`** (per-site Red/Amber/Green fleet rollup). Execution runbooks live
+> in `~/central/nwc-internal/`. Don't re-derive what those already assert; verify any
+> unstated claim against live code before acting.
+
 This file provides specific instructions for Claude Code when working on this project.
 
 ## Project Identity

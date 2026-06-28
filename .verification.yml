@@ -29378,7 +29378,7 @@ features:
         4. Verify plugin status via CLI: cd sites/ss && ddev exec php admin/cli/plugin_info.php
 
 
-        5. Check Moodle plugins page: Visit https://ss1-dev.ddev.site/admin/plugins.php
+        5. Check Moodle plugins page: Visit https://ss2-dev.ddev.site/admin/plugins.php
 
 
         Success: Required plugins are installed and show in Moodle''''s plugin list
@@ -29432,7 +29432,7 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. After running setup, visit: https://avc.ddev.site/admin/config/services/consumer\n2. Create OAuth2 client with:\n   - Client ID: moodle_ss\n   - Redirect URI: https://ss1-dev.ddev.site/admin/oauth2callback.php\n   - Grant Types: Authorization Code\n   - Scopes: openid profile email\n3. Verify Simple OAuth key paths: cd sites/avc && ddev drush config:get simple_oauth.settings\n4. Check token expiration (should be 300s): cd sites/avc && ddev drush config:get simple_oauth.settings token_expiration\nSuccess: OAuth2 client exists with correct configuration, keys configured\n"
+      how_to_verify: "1. After running setup, visit: https://avc.ddev.site/admin/config/services/consumer\n2. Create OAuth2 client with:\n   - Client ID: moodle_ss\n   - Redirect URI: https://ss2-dev.ddev.site/admin/oauth2callback.php\n   - Grant Types: Authorization Code\n   - Scopes: openid profile email\n3. Verify Simple OAuth key paths: cd sites/avc && ddev drush config:get simple_oauth.settings\n4. Check token expiration (should be 300s): cd sites/avc && ddev drush config:get simple_oauth.settings token_expiration\nSuccess: OAuth2 client exists with correct configuration, keys configured\n"
       related_docs:
       - docs/reference/commands/avc-moodle-setup.md
       - lib/avc-moodle.sh
@@ -29480,7 +29480,7 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. After running setup, visit: https://ss1-dev.ddev.site/admin/settings.php?section=oauth2\n2. Configure OAuth2 issuer with:\n   - Name: AVC\n   - Client ID: moodle_ss (from AVC setup)\n   - Client Secret: (from AVC OAuth2 client)\n   - Authorization Endpoint: https://avc.ddev.site/oauth/authorize\n   - Token Endpoint: https://avc.ddev.site/oauth/token\n   - UserInfo Endpoint: https://avc.ddev.site/oauth/userinfo\n3. Test endpoints work: curl -k https://avc.ddev.site/oauth/authorize\nSuccess: OAuth2 issuer configured in Moodle, all endpoints accessible\n"
+      how_to_verify: "1. After running setup, visit: https://ss2-dev.ddev.site/admin/settings.php?section=oauth2\n2. Configure OAuth2 issuer with:\n   - Name: AVC\n   - Client ID: moodle_ss (from AVC setup)\n   - Client Secret: (from AVC OAuth2 client)\n   - Authorization Endpoint: https://avc.ddev.site/oauth/authorize\n   - Token Endpoint: https://avc.ddev.site/oauth/token\n   - UserInfo Endpoint: https://avc.ddev.site/oauth/userinfo\n3. Test endpoints work: curl -k https://avc.ddev.site/oauth/authorize\nSuccess: OAuth2 issuer configured in Moodle, all endpoints accessible\n"
       related_docs:
       - docs/reference/commands/avc-moodle-setup.md
       - lib/avc-moodle.sh
@@ -29528,7 +29528,7 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Run setup without --skip-test: pl avc-moodle-setup avc ss\n2. Check output for OAuth2 endpoint tests (authorize, token, userinfo)\n3. Manually test SSO flow:\n   - Visit https://ss1-dev.ddev.site\n   - Click \\\"Login with AVC\\\" button\n   - Should redirect to AVC authorize page\n   - Login with AVC credentials\n   - Should redirect back to Moodle logged in\n4. Run test command: pl avc-moodle-test avc ss\nSuccess: All OAuth2 endpoints return 200/302, manual login flow completes\n"
+      how_to_verify: "1. Run setup without --skip-test: pl avc-moodle-setup avc ss\n2. Check output for OAuth2 endpoint tests (authorize, token, userinfo)\n3. Manually test SSO flow:\n   - Visit https://ss2-dev.ddev.site\n   - Click \\\"Login with AVC\\\" button\n   - Should redirect to AVC authorize page\n   - Login with AVC credentials\n   - Should redirect back to Moodle logged in\n4. Run test command: pl avc-moodle-test avc ss\nSuccess: All OAuth2 endpoints return 200/302, manual login flow completes\n"
       related_docs:
       - docs/reference/commands/avc-moodle-setup.md
       - docs/reference/commands/avc-moodle-test.md
@@ -29857,7 +29857,7 @@ features:
         2. Check AVC site config: yq eval ''''.sites.avc.moodle_integration'''' nwp.yml
 
 
-        3. Should show: enabled: true, moodle_site: ss, moodle_url: https://ss1-dev.ddev.site
+        3. Should show: enabled: true, moodle_site: ss, moodle_url: https://ss2-dev.ddev.site
 
 
         4. Check Moodle site config: yq eval ''''.sites.ss.avc_integration'''' nwp.yml
@@ -30788,7 +30788,7 @@ features:
       completed: false
       completed_by: null
       completed_at: null
-      how_to_verify: "1. Run test suite: pl avc-moodle-test avc ss\n2. Manually test full authentication flow:\n   - Visit Moodle: https://ss1-dev.ddev.site\n   - Click \\\"Login with AVC\\\" button\n   - Redirects to AVC authorize endpoint\n   - Login with AVC credentials\n   - Should redirect back to Moodle with user logged in\n3. Verify user profile exists in Moodle after SSO login\n4. Check OAuth2 userinfo endpoint provides user data\nSuccess: Complete OAuth2 authentication flow works end-to-end\n"
+      how_to_verify: "1. Run test suite: pl avc-moodle-test avc ss\n2. Manually test full authentication flow:\n   - Visit Moodle: https://ss2-dev.ddev.site\n   - Click \\\"Login with AVC\\\" button\n   - Redirects to AVC authorize endpoint\n   - Login with AVC credentials\n   - Should redirect back to Moodle with user logged in\n3. Verify user profile exists in Moodle after SSO login\n4. Check OAuth2 userinfo endpoint provides user data\nSuccess: Complete OAuth2 authentication flow works end-to-end\n"
       related_docs:
       - docs/reference/commands/avc-moodle-test.md
       - docs/reference/commands/avc-moodle-setup.md

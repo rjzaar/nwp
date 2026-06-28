@@ -209,7 +209,12 @@ lint:leakage:
     GIT_DEPTH: "0"   # need the base commit reachable for the <base>..HEAD range
   script:
     - |
-      command -v gitleaks >/dev/null 2>&1 || { echo "gitleaks not installed on the runner host — install the same binary the pre-commit hook uses"; exit 1; }
+      if ! command -v gitleaks >/dev/null 2>&1; then
+        ver=8.30.0
+        echo "Installing gitleaks ${ver} (shell runner has no gitleaks, no Docker executor)..."
+        curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz" | tar -xz -C /tmp gitleaks && export PATH="/tmp:$PATH"
+      fi
+      command -v gitleaks >/dev/null 2>&1 || { echo "gitleaks unavailable and auto-download failed"; exit 1; }
       base="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-${CI_COMMIT_BEFORE_SHA:-}}"
       case "$base" in ""|0000000000000000000000000000000000000000) base="$(git rev-parse HEAD~1 2>/dev/null || echo HEAD)" ;; esac
       echo "gitleaks: scanning new commits only (${base}..HEAD)"

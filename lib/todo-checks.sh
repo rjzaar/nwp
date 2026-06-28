@@ -620,6 +620,67 @@ check_ssl_expiry() {
     done < <(yaml_get_all_sites "$config_file" 2>/dev/null)
 }
 
+# SEC: Check secret/token expiry from the tokenless registry.
+# Reads ONLY expiry dates from private/secrets-registry.yml — needs no secret value,
+# so it is safe to run unattended (this is the "auto alerts, no token on the host" path).
+check_secret_expiry() {
+    is_category_enabled "secret_expiry" || return 0
+
+    local registry="$TODO_CHECKS_PROJECT_ROOT/private/secrets-registry.yml"
+    [ -f "$registry" ] || return 0
+    command -v yq &>/dev/null || return 0
+
+    local warn_days=$(get_todo_setting "thresholds.secret_warn_days" "14")
+    local alert_days=$(get_todo_setting "thresholds.secret_alert_days" "3")
+    local now_epoch=$(date +%s)
+
+    local count
+    count=$(yq eval '.secrets | length' "$registry" 2>/dev/null || echo 0)
+    { [ -z "$count" ] || [ "$count" = "null" ]; } && count=0
+
+    local i untracked=0
+    for ((i=0; i<count; i++)); do
+        local id expires status
+        id=$(yq eval ".secrets[$i].id // \"\"" "$registry" 2>/dev/null | grep -v '^null$')
+        [ -z "$id" ] && continue
+        status=$(yq eval ".secrets[$i].status // \"\"" "$registry" 2>/dev/null | grep -v '^null$')
+        [ "$status" = "not-provisioned" ] && continue
+        expires=$(yq eval ".secrets[$i].expires // \"unknown\"" "$registry" 2>/dev/null | grep -v '^null$')
+
+        if [ -z "$expires" ] || [ "$expires" = "unknown" ]; then
+            untracked=$((untracked+1))   # rolled into one summary item after the loop
+            continue
+        fi
+
+        local exp_epoch
+        exp_epoch=$(date -d "$expires" +%s 2>/dev/null || echo 0)
+        [ "$exp_epoch" = "0" ] && continue
+        local days_until=$(( (exp_epoch - now_epoch) / 86400 ))
+
+        if [ "$days_until" -lt 0 ]; then
+            todo_add_item "SEC" "$id" "high" \
+                "Secret EXPIRED $(( -days_until )) days ago: $id" \
+                "Expired: $expires" "" "pl secrets rotate $id"
+        elif [ "$days_until" -le "$alert_days" ]; then
+            todo_add_item "SEC" "$id" "high" \
+                "Secret expires in $days_until days: $id" \
+                "Expires: $expires" "" "pl secrets rotate $id"
+        elif [ "$days_until" -le "$warn_days" ]; then
+            todo_add_item "SEC" "$id" "medium" \
+                "Secret expires in $days_until days: $id" \
+                "Expires: $expires" "" "pl secrets rotate $id"
+        fi
+    done
+
+    # One roll-up nag while the registry doesn't yet reflect reality.
+    if [ "$untracked" -gt 0 ]; then
+        todo_add_item "SEC" "untracked" "medium" \
+            "$untracked of $count secret(s) have no recorded rotation" \
+            "The registry only tracks what you record. Check each at its provider, then 'pl secrets done <#|id>' (or rotate via 'pl secrets rotate <#>')." \
+            "" "pl secrets status"
+    fi
+}
+
 ################################################################################
 # Main Check Runner
 ################################################################################
@@ -638,6 +699,7 @@ TODO_CHECK_LIST=(
     "check_ssl_expiry:SSL certificates"
     "check_test_instances:Test instances"
     "check_token_rotation:Token rotation"
+    "check_secret_expiry:Secret expiry"
     "check_missing_backups:Missing backups"
     "check_disk_usage:Disk usage"
     "check_gitlab_issues:GitLab issues"
@@ -710,6 +772,7 @@ export -f check_verification
 export -f check_uncommitted_work
 export -f check_disk_usage
 export -f check_ssl_expiry
+export -f check_secret_expiry
 export -f run_all_checks
 export -f todo_get_check_count
 export -f todo_get_check_name

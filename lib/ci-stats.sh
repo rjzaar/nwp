@@ -113,16 +113,41 @@ _ci_stats_trim() {
 
 # Read bootstrap threshold for a metric from .ci-stats/bootstrap.yml
 # Echoes the value, or empty string if no config / no entry.
+# Uses yq when present; falls back to a pure-awk parse of the flat
+# `metrics: { <name>: <value> }` structure so this works in minimal CI
+# images (the test:unit job ships only bats+git, no yq).
 _ci_stats_bootstrap() {
     local metric="$1"
-    local config
+    local config value
     config="$(_ci_stats_dir)/bootstrap.yml"
     [[ -f "$config" ]] || { echo ""; return 0; }
-    command -v yq >/dev/null 2>&1 || { echo ""; return 0; }
-    # yq returns "null" for missing keys; normalize to empty
-    local value
-    value=$(yq eval ".metrics.\"${metric}\" // \"\"" "$config" 2>/dev/null)
-    [[ "$value" == "null" ]] && value=""
+
+    if command -v yq >/dev/null 2>&1; then
+        # yq returns "null" for missing keys; normalize to empty
+        value=$(yq eval ".metrics.\"${metric}\" // \"\"" "$config" 2>/dev/null)
+        [[ "$value" == "null" ]] && value=""
+        echo "$value"
+        return 0
+    fi
+
+    # Fallback: parse the `metrics:` block without yq. Keys live one level
+    # under `metrics:` as `  <name>: <value>` (name optionally quoted; names
+    # may contain dots). Match by exact key, echo the trimmed scalar value.
+    value=$(awk -v want="$metric" '
+        /^[^[:space:]#]/ { inm = ($0 ~ /^metrics:[[:space:]]*$/) ? 1 : 0; next }
+        inm && /^[[:space:]]+[^[:space:]#]/ {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            key = line; sub(/:.*/, "", key)
+            gsub(/^["\x27]|["\x27]$/, "", key)        # strip surrounding quotes
+            if (key == want) {
+                val = line; sub(/^[^:]*:[[:space:]]*/, "", val)
+                gsub(/[[:space:]]+$/, "", val)
+                gsub(/^["\x27]|["\x27]$/, "", val)
+                print val; exit
+            }
+        }
+    ' "$config")
     echo "$value"
 }
 

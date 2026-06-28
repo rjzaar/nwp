@@ -768,6 +768,11 @@ main() {
             echo "NWP CLI (pl) version $VERSION"
             ;;
 
+        # Secrets lifecycle (registry-driven; no token stored on host)
+        secrets)
+            run_script "secrets.sh" "$@"
+            ;;
+
         # Maintenance
         migrate-secrets)
             run_script "migrate-secrets.sh" "$@"

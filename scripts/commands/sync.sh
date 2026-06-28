@@ -182,7 +182,14 @@ get_site_import_config() {
 
     # Get SSH key from server config if server is specified
     if [ -n "$SITE_SERVER" ] && [ "$SITE_SERVER" != "custom" ]; then
-        eval "$(get_server_config "$SITE_SERVER" "$config_file")"
+        # [F9 de-eval 2026-06] parse known keys without executing config values
+        while IFS="=" read -r _nwp_k _nwp_v; do
+            case "$_nwp_k" in
+                SERVER_SSH_HOST) SERVER_SSH_HOST="$_nwp_v" ;;
+                SERVER_SSH_KEY)  SERVER_SSH_KEY="$_nwp_v" ;;
+                SERVER_LABEL)    SERVER_LABEL="$_nwp_v" ;;
+            esac
+        done < <(get_server_config "$SITE_SERVER" "$config_file")
         SITE_SSH_KEY="${SERVER_SSH_KEY:-$HOME/.ssh/nwp}"
     else
         SITE_SSH_KEY="$HOME/.ssh/nwp"

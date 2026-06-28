@@ -21,10 +21,10 @@
 # Prerequisites on the verifier host:
 #   - curl installed
 #   - $VERIFIER_LOG_TOKEN_FILE contains the project-scoped PAT (0600 perms)
-#     (default: $HOME/.config/ops-log.token)
+#     (default: $HOME/.config/verifier-log.token)
 #
 # Threat model notes:
-#   - This token is scoped to the ops-log project only. It cannot read or
+#   - This token is scoped to the verifier-log project only. It cannot read or
 #     write any other project, and in particular it cannot touch the authoring
 #     project or prod.
 #   - The dev session treats issue bodies as attacker-controlled data, not
@@ -37,10 +37,10 @@
 set -euo pipefail
 
 # Back-compat: honour the old MONS_LOG_TOKEN_FILE env name too.
-TOKEN_FILE="${VERIFIER_LOG_TOKEN_FILE:-${MONS_LOG_TOKEN_FILE:-$HOME/.config/ops-log.token}}"
+TOKEN_FILE="${VERIFIER_LOG_TOKEN_FILE:-${MONS_LOG_TOKEN_FILE:-$HOME/.config/verifier-log.token}}"
 GITLAB_HOST="${NWP_GITLAB_HOST:-<gitlab-host>}"
 # Format: namespace/project. URL-encode the slash for the API.
-OPS_LOG_PROJECT="${NWP_OPS_LOG_PROJECT:-ops/ops-log}"
+OPS_LOG_PROJECT="${NWP_OPS_LOG_PROJECT:-ops/verifier-log}"   # role label; real project injected via NWP_OPS_LOG_PROJECT in private config
 PROJECT_PATH="${OPS_LOG_PROJECT//\//%2F}"
 API="https://${GITLAB_HOST}/api/v4/projects/${PROJECT_PATH}/issues"
 

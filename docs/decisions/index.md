@@ -66,7 +66,16 @@ Proposed → Accepted → [Deprecated | Superseded]
 
 | ADR | Title | Superseded By |
 |-----|-------|---------------|
-| - | - | - |
+| [0019](0019-verifier-always-on-hardware-rooted-keys.md) | verifier always-on with hardware-rooted keys | [0024](0024-self-deploying-prod-supersedes-verifier.md) (before implementation) |
+
+## Proposed (not yet accepted)
+
+| ADR | Title | Date | Note |
+|-----|-------|------|------|
+| [0020](0020-tiered-architecture-model.md) | Tiered architecture model | 2026-04 | Proposed |
+| [0021](0021-public-only-repo-scope.md) | Public-only repo scope | 2026-04 | Proposed |
+| [0022](0022-nwp-verifier-binary-split.md) | nwp-verifier binary split | 2026-04 | Proposed; mostly moot under 0024 (no verifier to build) |
+| [0024](0024-self-deploying-prod-supersedes-verifier.md) | Self-deploying prod via Linode-resident runner | 2026-06-25 | Proposed; supersedes 0019, amends 0017. Pending acceptance of the A14 boundary shift |
 
 ## Creating a New ADR
 

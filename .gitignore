@@ -177,3 +177,10 @@ scripts/commands/podcast-setup-*/
 .agent-loop.state.json
 /logs/
 /logs/**
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Point-in-time security audit snapshots — private, not committed (findings + hostnames)
+docs/security/audit-2026-05/

@@ -1,10 +1,21 @@
 # ADR-0019: verifier Always-On with Hardware-Rooted Keys
 
-**Status:** Proposed
+**Status:** Superseded by [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (before implementation)
 **Date:** 2026-04-09
 **Decision Makers:** Robert Karsten Zaar (with AI assistance)
 **Related Issues:** —
-**References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md), [CLAUDE.md § Threat Model](../../CLAUDE.md), [F21](../proposals/F21-distributed-build-deploy-pipeline.md)
+**References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md), [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md), [CLAUDE.md § Threat Model](../../CLAUDE.md), [F21](../proposals/F21-distributed-build-deploy-pipeline.md)
+
+> **Superseded 2026-06-25 (before implementation) by [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md).**
+> The always-on hardware-token verifier was never built. ADR-0024 adopts a
+> *self-deploying prod* model (a protected Linode-resident runner; no off-box
+> prod credential; phone approval via GitLab WebAuthn), which makes the verifier
+> unnecessary at current stakes. The posture below is **held in reserve as the
+> high-stakes escalation** — its escalation triggers are listed in ADR-0024.
+> Two facts that motivated the supersession: (1) the phone-NFC-SSH-deploy form
+> (§ *Deploy client forms* #3) relies on the Solo doing `ed25519-sk` over NFC,
+> which doesn't work reliably — the Solo's NFC strength is WebAuthn; (2)
+> removing prod credentials from *every* machine beats guarding them on one.
 
 ## Context
 

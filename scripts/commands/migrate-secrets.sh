@@ -92,15 +92,20 @@ check_secrets_file() {
 
     log_info "Checking: $file"
 
-    # Use grep to find all matches at once (much faster)
+    # Use grep to find all matches at once (much faster).
+    # NOTE: comment filter must run AFTER the line-number prefix is present.
     local matches
-    matches=$(grep -inE "$DATA_SECRET_PATTERN" "$file" 2>/dev/null | grep -v "^[[:space:]]*#" | head -20)
+    matches=$(grep -inE "$DATA_SECRET_PATTERN" "$file" 2>/dev/null | grep -vE '^[0-9]+:[[:space:]]*#' | head -20)
 
     if [ -n "$matches" ]; then
         echo "$matches" | while IFS= read -r match; do
-            local line_num=$(echo "$match" | cut -d: -f1)
-            local content=$(echo "$match" | cut -d: -f2- | head -c 60)
-            log_warn "  Line $line_num: ${content}..."
+            local line_num=${match%%:*}
+            local rest=${match#*:}
+            # SECURITY: never echo the value. Show only the key name, value redacted.
+            local key
+            key=$(printf '%s' "$rest" | sed -E 's/^[[:space:]]*([A-Za-z0-9_.-]+)[[:space:]]*:.*/\1/')
+            [ -z "$key" ] && key="(field)"
+            log_warn "  Line $line_num: ${key}: [REDACTED]"
         done
     else
         log_success "  No data secrets found"

@@ -1,10 +1,10 @@
 # ADR-0017: Distributed Build/Deploy Pipeline (build-tier build, verifier deploy)
 
-**Status:** Accepted (2026-04-08 — implementation started; F21 Phases 1, 2, 3a complete)
+**Status:** Accepted (2026-04-08 — implementation started; F21 Phases 1, 2, 3a complete). **Deploy-authority half amended by [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (Proposed, 2026-06-25):** the "verifier is the sole prod-writer" model is replaced by *self-deploying prod* (a protected Linode-resident runner; no off-box prod credential). The build-tier / signing / sanitise-on-prod / no-AI-on-prod-path properties below are unchanged.
 **Date:** 2026-04-07
 **Decision Makers:** Robert Karsten Zaar (with AI assistance)
 **Related Issues:** —
-**References:** [ADR-0004](0004-two-tier-secrets-architecture.md), [ADR-0005](0005-distributed-contribution-governance.md), [ADR-0006](0006-contribution-workflow.md), [ADR-0009](0009-five-layer-yaml-protection.md), [ADR-0013](0013-four-state-deployment-model.md)
+**References:** [ADR-0004](0004-two-tier-secrets-architecture.md), [ADR-0005](0005-distributed-contribution-governance.md), [ADR-0006](0006-contribution-workflow.md), [ADR-0009](0009-five-layer-yaml-protection.md), [ADR-0013](0013-four-state-deployment-model.md), [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md)
 
 ## Context
 

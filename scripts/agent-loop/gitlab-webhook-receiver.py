@@ -208,6 +208,7 @@ def fire_agent_loop() -> None:
 
 def spawn_deploy(repo_full_path: str, sha: str, tier: str | None) -> None:
     """Spawn deploy-on-merge.sh as a detached subprocess. Don't block the hook."""
+    return  # [Day0 2026-06] auto-deploy DISABLED — re-enable only via signed pipeline (ADR-0017)
     repo_short = repo_full_path.rsplit('/', 1)[-1]
     args = [str(DEPLOY_SCRIPT), repo_short, sha]
     if tier:

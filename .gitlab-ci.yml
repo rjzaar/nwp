@@ -356,8 +356,11 @@ database:
     # Skip on scheduled pipelines (nightly job handles this)
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
-    # Run on all other pipelines
-    - when: on_success
+    # Only when the repo is an actual Drupal site — this job fetches/sanitises a prod
+    # DB to feed `build`, which is itself gated on composer.json. The NWP meta-repo has
+    # no composer.json (and no site to back up), so skip here instead of failing.
+    - exists:
+        - composer.json
   script:
     - echo "Checking for cached database..."
     - |

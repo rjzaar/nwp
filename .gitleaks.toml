@@ -19,6 +19,10 @@ paths = [
   '''^CLAUDE\.md$''',
   # Test verification ledger — references operator's tier hosts intentionally.
   '''^\.verification\.yml$''',
+  # Internal ops tooling that legitimately names operator infra (same class as CLAUDE.md):
+  # the GitLab webhook receiver and the Saint School admin-reset helper.
+  '''^scripts/agent-loop/gitlab-webhook-receiver\.py$''',
+  '''^scripts/ss-admin-reset\.sh$''',
   # Archive directory holds historical infrastructure documents — defeats the purpose to scrub.
   '''^docs/archive/.*''',
   # Coder onboarding docs deliberately name operator infrastructure (mini, nwpcode.org, /home/rob/) — that's their teaching purpose. Same shape as CLAUDE.md.

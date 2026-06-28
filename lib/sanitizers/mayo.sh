@@ -27,6 +27,7 @@ set -euo pipefail
 #   --dry-run        Show what would be done without doing it
 #   --verify         Run PII sweep on existing output file only
 #   --no-pause       Skip confirmation prompts between steps
+#   --keep-scratch   Keep the scratch DB after a successful run (debug)
 #   -h, --help       Show help
 #
 # Error Reporting:
@@ -38,6 +39,10 @@ set -euo pipefail
 # Security:
 #   - This script MUST run on the production server, not on dev or any
 #     mirror/build host
+#   - The LIVE database is treated as READ-ONLY. The script dumps it once, loads
+#     that dump into a throwaway SCRATCH database, and runs every DROP/TRUNCATE/
+#     UPDATE against the scratch copy. The export is a dump of the scratch copy.
+#     **Live production user data is never mutated by this script.**
 #   - Raw database data NEVER leaves this machine
 #   - The sanitized output is what gets published (after human review)
 #   - AI-accessible machines (dev, mirror-store, ai-host) only ever see
@@ -53,6 +58,8 @@ START_STEP=1
 SITE_DIR="/var/www/mayostudios.org"
 ERRORS=()
 LOG_FILE="/tmp/mayo-sanitizer.log"
+KEEP_SCRATCH=false
+SANITIZE_OK=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -61,6 +68,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run) DRY_RUN=true; shift ;;
         --verify) VERIFY_ONLY=true; shift ;;
         --no-pause) NO_PAUSE=true; shift ;;
+        --keep-scratch) KEEP_SCRATCH=true; shift ;;
         --step) START_STEP="$2"; shift 2 ;;
         --site-dir) SITE_DIR="$2"; shift 2 ;;
         -h|--help)
@@ -108,6 +116,114 @@ report_error() {
     echo ""
     echo "  Full log: cat ${LOG_FILE}"
     echo "================================================================"
+}
+
+################################################################################
+# Database access — every mutation happens on a SCRATCH COPY, never live
+################################################################################
+# The live production database is READ-ONLY to this script. We dump it once
+# (safety backup + working copy), load that dump into a throwaway scratch
+# database, and run all DROP/TRUNCATE/UPDATE there. The sanitized export is a dump
+# of the scratch copy. Live user data is never modified.
+#
+# The scratch DB name is DETERMINISTIC (<live-db><suffix>) so a --step N resume can
+# find and reuse it. On success the scratch DB is dropped; on failure it is kept so
+# a resume can continue from the failed step.
+
+SCRATCH_SUFFIX="_sanitize"
+SCRATCH_DB=""
+LIVE_DB=""
+MYSQL_CNF=""
+WORKING_DUMP=""
+
+mysql_cli()     { mysql --defaults-extra-file="$MYSQL_CNF" "$@"; }
+mysqldump_cli() { mysqldump --defaults-extra-file="$MYSQL_CNF" "$@"; }
+
+# Read live DB connection options from Drupal and build a 0600 mysql option file so
+# the password never appears in argv/ps. Sets LIVE_DB, SCRATCH_DB, MYSQL_CNF.
+init_db_access() {
+    cd "$SITE_DIR" 2>/dev/null || { log_error "site directory not found: ${SITE_DIR}"; return 1; }
+    local creds
+    creds=$($DRUSH php:eval '
+        $o = \Drupal::database()->getConnectionOptions();
+        foreach (["database","username","password","host","port","unix_socket"] as $k) {
+            printf("%s\t%s\n", $k, isset($o[$k]) ? $o[$k] : "");
+        }' 2>>"$LOG_FILE") || { log_error "could not read DB connection options via drush"; return 1; }
+
+    local db user pass host port sock
+    db=$(awk   -F'\t' '$1=="database"{print $2}'    <<<"$creds")
+    user=$(awk -F'\t' '$1=="username"{print $2}'    <<<"$creds")
+    pass=$(awk -F'\t' '$1=="password"{print $2}'    <<<"$creds")
+    host=$(awk -F'\t' '$1=="host"{print $2}'        <<<"$creds")
+    port=$(awk -F'\t' '$1=="port"{print $2}'        <<<"$creds")
+    sock=$(awk -F'\t' '$1=="unix_socket"{print $2}' <<<"$creds")
+
+    [[ -n "$db" && -n "$user" ]] || { log_error "incomplete DB credentials from drush"; return 1; }
+
+    LIVE_DB="$db"
+    SCRATCH_DB="${db}${SCRATCH_SUFFIX}"
+
+    MYSQL_CNF=$(mktemp); chmod 600 "$MYSQL_CNF"
+    {
+        echo "[client]"
+        echo "user=${user}"
+        echo "password=${pass}"
+        [[ -n "$host" ]] && echo "host=${host}"
+        [[ -n "$port" ]] && echo "port=${port}"
+        [[ -n "$sock" ]] && echo "socket=${sock}"
+    } > "$MYSQL_CNF"
+    return 0
+}
+
+# Run SQL against the SCRATCH database (all inspection + mutation in live mode).
+scratch_query() { mysql_cli -N -B "$SCRATCH_DB" -e "$1"; }
+
+# Inspect a database: scratch in live mode, LIVE (read-only via drush) in dry-run.
+db_query() {
+    if [[ "$DRY_RUN" == true ]]; then
+        $DRUSH sql:query "$1"
+    else
+        scratch_query "$1"
+    fi
+}
+
+scratch_exists() {
+    [[ -n "$SCRATCH_DB" ]] || return 1
+    mysql_cli -N -B -e "SHOW DATABASES LIKE '${SCRATCH_DB}'" 2>/dev/null | grep -qx "$SCRATCH_DB"
+}
+
+# (Re)create the scratch DB from a gzipped live dump. Destroys any prior scratch.
+build_scratch() {  # $1 = path to gzipped live dump
+    local dump="$1"
+    log "  Creating scratch database: ${SCRATCH_DB}"
+    if ! mysql_cli -e "DROP DATABASE IF EXISTS \`${SCRATCH_DB}\`; CREATE DATABASE \`${SCRATCH_DB}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" 2>>"$LOG_FILE"; then
+        log_error "failed to create scratch DB ${SCRATCH_DB}"
+        return 1
+    fi
+    log "  Loading live snapshot into scratch (this can take a while)…"
+    if ! zcat "$dump" | mysql_cli "$SCRATCH_DB" 2>>"$LOG_FILE"; then
+        log_error "failed to load snapshot into scratch DB"
+        return 1
+    fi
+    return 0
+}
+
+drop_scratch() {
+    scratch_exists || return 0
+    mysql_cli -e "DROP DATABASE IF EXISTS \`${SCRATCH_DB}\`" 2>/dev/null || true
+}
+
+# On success: drop the scratch copy. On failure: keep it for --step resume.
+cleanup() {
+    if [[ "$SANITIZE_OK" == true && "$KEEP_SCRATCH" != true ]]; then
+        drop_scratch
+    elif [[ "$SANITIZE_OK" != true ]] && scratch_exists; then
+        log ""
+        log "  NOTE: scratch DB '${SCRATCH_DB}' kept for resume (live DB untouched)."
+        log "        Resume:  $0 --step <N> --site-dir ${SITE_DIR}"
+        log "        Drop it: mysql --defaults-extra-file=<creds> -e \"DROP DATABASE \\\`${SCRATCH_DB}\\\`\""
+    fi
+    [[ -n "$MYSQL_CNF" && -f "$MYSQL_CNF" ]] && rm -f "$MYSQL_CNF"
 }
 
 ################################################################################
@@ -342,23 +458,38 @@ run_step_0() {
 
 run_step_1() {
     log ""
-    log "=== Step 1/6: Create safety backup ==="
+    log "=== Step 1/6: Snapshot live + build scratch copy ==="
     log ""
 
     local backup="/tmp/mayo-pre-sanitize-$(date +%Y%m%d-%H%M%S).sql.gz"
 
     cd "$SITE_DIR"
-    if $DRUSH sql:dump --gzip --result-file="${backup%.gz}" 2>>"$LOG_FILE"; then
-        log "  Backup: ${backup} ($(du -h "$backup" | cut -f1))"
-        log "  Step 1: PASSED"
-        log ""
-        log "  If sanitization goes wrong, restore with:"
-        log "    zcat ${backup} | $DRUSH sql:cli"
-    else
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log "  [DRY] Would dump live DB (read-only) to: ${backup}"
+        log "  [DRY] Would load it into scratch DB: ${LIVE_DB:-<db>}${SCRATCH_SUFFIX}"
+        log "  Step 1: SKIPPED (dry run)"
+        return 0
+    fi
+
+    # Read-only dump of the LIVE database (safety backup AND working copy source).
+    if ! $DRUSH sql:dump --gzip --result-file="${backup%.gz}" 2>>"$LOG_FILE"; then
         log_error "Database backup failed"
         report_error 1 "drush sql:dump failed"
         return 1
     fi
+    WORKING_DUMP="$backup"
+    log "  Snapshot: ${backup} ($(du -h "$backup" | cut -f1))"
+
+    # Load the snapshot into a throwaway scratch DB. ALL sanitization runs there;
+    # the live DB is never modified.
+    if ! build_scratch "$backup"; then
+        report_error 1 "could not build scratch database from snapshot"
+        return 1
+    fi
+
+    log "  Scratch ready: ${SCRATCH_DB} (live DB untouched)"
+    log "  Step 1: PASSED"
 }
 
 ################################################################################
@@ -377,12 +508,12 @@ run_step_2() {
     # Pattern-based drops (cache_%)
     for pattern in "${TABLES_DROP_PATTERNS[@]}"; do
         local tables
-        tables=$($DRUSH sql:query "SHOW TABLES LIKE '${pattern}'" 2>/dev/null || true)
+        tables=$(db_query "SHOW TABLES LIKE '${pattern}'" 2>/dev/null || true)
         for table in $tables; do
             if [[ "$DRY_RUN" == true ]]; then
                 log "  [DRY] Would drop: ${table}"
             else
-                if $DRUSH sql:query "DROP TABLE IF EXISTS \`${table}\`" 2>>"$LOG_FILE"; then
+                if scratch_query "DROP TABLE IF EXISTS \`${table}\`" 2>>"$LOG_FILE"; then
                     dropped=$((dropped + 1))
                 else
                     log_error "Failed to drop ${table}"
@@ -394,11 +525,11 @@ run_step_2() {
     # Exact-name drops
     for table in "${TABLES_DROP_EXACT[@]}"; do
         # Check table exists first
-        if $DRUSH sql:query "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '${table}'" 2>/dev/null | grep -q 1; then
+        if db_query "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '${table}'" 2>/dev/null | grep -q 1; then
             if [[ "$DRY_RUN" == true ]]; then
                 log "  [DRY] Would drop: ${table}"
             else
-                if $DRUSH sql:query "DROP TABLE IF EXISTS \`${table}\`" 2>>"$LOG_FILE"; then
+                if scratch_query "DROP TABLE IF EXISTS \`${table}\`" 2>>"$LOG_FILE"; then
                     dropped=$((dropped + 1))
                 else
                     log_error "Failed to drop ${table}"
@@ -427,13 +558,13 @@ run_step_3() {
     local skipped=0
 
     for table in "${TABLES_TRUNCATE[@]}"; do
-        if $DRUSH sql:query "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '${table}'" 2>/dev/null | grep -q 1; then
+        if db_query "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '${table}'" 2>/dev/null | grep -q 1; then
             if [[ "$DRY_RUN" == true ]]; then
                 local count
-                count=$($DRUSH sql:query "SELECT COUNT(*) FROM \`${table}\`" 2>/dev/null || echo "?")
+                count=$(db_query "SELECT COUNT(*) FROM \`${table}\`" 2>/dev/null || echo "?")
                 log "  [DRY] Would truncate: ${table} (${count} rows)"
             else
-                if $DRUSH sql:query "TRUNCATE TABLE \`${table}\`" 2>>"$LOG_FILE"; then
+                if scratch_query "TRUNCATE TABLE \`${table}\`" 2>>"$LOG_FILE"; then
                     truncated=$((truncated + 1))
                 else
                     log_error "Failed to truncate ${table}"
@@ -466,7 +597,7 @@ run_step_4() {
         IFS=':' read -r table column strategy id_col <<< "$spec"
 
         # Check table exists
-        if ! $DRUSH sql:query "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '${table}'" 2>/dev/null | grep -q 1; then
+        if ! db_query "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '${table}'" 2>/dev/null | grep -q 1; then
             skipped=$((skipped + 1))
             continue
         fi
@@ -498,10 +629,10 @@ run_step_4() {
 
         if [[ "$DRY_RUN" == true ]]; then
             local count
-            count=$($DRUSH sql:query "SELECT COUNT(*) FROM \`${table}\` WHERE \`${column}\` IS NOT NULL AND \`${column}\` != ''" 2>/dev/null || echo "?")
+            count=$(db_query "SELECT COUNT(*) FROM \`${table}\` WHERE \`${column}\` IS NOT NULL AND \`${column}\` != ''" 2>/dev/null || echo "?")
             log "  [DRY] ${table}.${column} [${strategy}] — ${count} rows"
         else
-            if $DRUSH sql:query "$sql" 2>>"$LOG_FILE"; then
+            if scratch_query "$sql" 2>>"$LOG_FILE"; then
                 sanitized=$((sanitized + 1))
             else
                 log_error "Failed to sanitize ${table}.${column}"
@@ -510,16 +641,12 @@ run_step_4() {
         fi
     done
 
-    # Special: reset all passwords to a known bcrypt hash for 'sanitized'
+    # Special: reset all passwords to a fixed placeholder hash (scratch copy only)
     if [[ "$DRY_RUN" != true ]]; then
-        # Generate a real bcrypt hash for the password 'sanitized'
-        local sanitized_hash
-        sanitized_hash=$($DRUSH php:eval "echo \Drupal\Core\Password\PhpassHashedPassword::class;" 2>/dev/null || true)
-        # Fallback: use a pre-computed hash for 'sanitized'
-        $DRUSH sql:query "UPDATE users_field_data SET pass = '\$S\$EsanitizedPasswordHashReplacedBySanitizer000000000000000000' WHERE uid > 1;" 2>>"$LOG_FILE" || true
+        scratch_query "UPDATE users_field_data SET pass = '\$S\$EsanitizedPasswordHashReplacedBySanitizer000000000000000000' WHERE uid > 1;" 2>>"$LOG_FILE" || true
 
         # Preserve uid=1 as admin
-        $DRUSH sql:query "UPDATE users_field_data SET name = 'admin', mail = 'admin@example.com', init = 'admin@example.com' WHERE uid = 1;" 2>>"$LOG_FILE"
+        scratch_query "UPDATE users_field_data SET name = 'admin', mail = 'admin@example.com', init = 'admin@example.com' WHERE uid = 1;" 2>>"$LOG_FILE"
         log "  Admin (uid=1): preserved as admin@example.com"
     fi
 
@@ -546,18 +673,26 @@ run_step_5() {
     cd "$SITE_DIR"
 
     if [[ "$DRY_RUN" == true ]]; then
-        log "  [DRY] Would dump to: ${OUTPUT}"
+        log "  [DRY] Would dump scratch DB to: ${OUTPUT}"
         log "  Step 5: SKIPPED (dry run)"
         return 0
     fi
 
-    if $DRUSH sql:dump --gzip --result-file="${OUTPUT%.gz}" 2>>"$LOG_FILE"; then
+    # Export the SCRATCH copy (already sanitized) — never the live DB.
+    if ! scratch_exists; then
+        log_error "scratch DB ${SCRATCH_DB} not found"
+        report_error 5 "scratch DB missing — re-run from step 1"
+        return 1
+    fi
+
+    if mysqldump_cli --no-tablespaces --single-transaction --skip-lock-tables \
+            "$SCRATCH_DB" 2>>"$LOG_FILE" | gzip > "$OUTPUT"; then
         log "  Output: ${OUTPUT}"
         log "  Size: $(du -h "$OUTPUT" | cut -f1)"
         log "  Step 5: PASSED"
     else
         log_error "Database export failed"
-        report_error 5 "drush sql:dump --gzip failed"
+        report_error 5 "mysqldump of scratch DB failed"
         return 1
     fi
 }
@@ -628,10 +763,23 @@ run_step_6() {
 # Main
 ################################################################################
 
-# Verify-only mode
+# Verify-only mode (scans the output file; no DB access)
 if [[ "$VERIFY_ONLY" == true ]]; then
     run_step_6
     exit $?
+fi
+
+# From here on we touch the DB. Set up scratch-DB access + cleanup trap.
+# (Dry-run inspects LIVE read-only via drush and creates no scratch.)
+trap cleanup EXIT
+if [[ "$DRY_RUN" != true ]]; then
+    init_db_access || { report_error 0 "could not initialise DB access"; exit 1; }
+    # A resume (--step >1) reuses the scratch DB left by the failed run.
+    if [[ "$START_STEP" -gt 1 ]] && ! scratch_exists; then
+        log_error "scratch DB ${SCRATCH_DB} not found — resume must start from --step 1"
+        report_error "$START_STEP" "scratch DB missing; re-run from step 1"
+        exit 1
+    fi
 fi
 
 log "================================================================"
@@ -684,6 +832,11 @@ for step in 0 1 2 3 4 5 6; do
         6) run_step_6 || exit 1 ;;
     esac
 done
+
+# All steps completed without an early exit → the run succeeded. The EXIT trap
+# will now drop the scratch copy (unless --keep-scratch). On any earlier failure
+# we exited non-zero with SANITIZE_OK=false, so the trap keeps scratch for resume.
+SANITIZE_OK=true
 
 # Final summary
 log ""

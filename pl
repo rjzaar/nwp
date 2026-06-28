@@ -146,6 +146,9 @@ ${BOLD}GIT & GITLAB:${NC}
 
 ${BOLD}IMPORT & SYNC:${NC}
     import <server>                 Import sites from remote server
+    onboard <site> --server=…       Chain a prod site into the fleet (create repo →
+            --source=… --recipe=…   supervised sanitize → PII gate → scaffold → register).
+                                    Dry-run by default; add --execute to run.
     sync <sitename>                 Sync database/files from source
     modify <sitename>               Modify site options interactively
 
@@ -666,6 +669,9 @@ main() {
         # Import & Sync
         import)
             run_script "import.sh" "$@"
+            ;;
+        onboard)
+            run_script "onboard.sh" "$@"
             ;;
         sync)
             run_script "sync.sh" "$@"

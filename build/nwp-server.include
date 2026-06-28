@@ -12,15 +12,30 @@
 # status) and nothing else.
 #
 # As lib/ is partitioned into lib/ai|ci|saas (the 08 K1.1/K1.2 follow-up), shared
-# libs that currently fail the deny scan (e.g. lib/common.sh references SaaS
-# helpers) can be split and their clean halves added here. Until then this set is
-# deliberately the verified-clean core.
+# libs that fail the deny scan are split and their clean halves added here. The
+# apply/rollback/publish capability libs below were verified clean (they only READ
+# nwp.yml config keys; they contain no SaaS client). The only capability lib still
+# pending partition is the FLEET status command (scripts/commands/status.sh), whose
+# optional Linode server-stats block is real SaaS — nwp-server will ship a minimal
+# LOCAL status instead (ADR-0024 "status (local JSON)").
+
+# ── config resolution (read nwp.yml; reach prod over ssh) ───────────────────
+lib/ui.sh
+lib/common.sh
+lib/project-resolver.sh
+lib/server-resolver.sh
+lib/ssh.sh
 
 # ── pull + verify (signature + payload integrity) ───────────────────────────
-lib/ui.sh
 lib/minisign.sh
 lib/bundle-verify.sh
+
+# ── apply + rollback (deploy a verified bundle; restore on failure) ─────────
+lib/rollback.sh
+lib/rollback-remote.sh
+scripts/commands/rollback.sh
 
 # ── snapshot → sanitize → verify → publish (fail-closed PII gate) ────────────
 lib/pii-gate.sh
 lib/sanitizers/
+scripts/commands/publish.sh

@@ -33,10 +33,11 @@ to a concrete hostname lives only in the operator's private overlay
 | `transcription-gpu` | Whisper Vulkan / CUDA. GPU-resident. | AI-tier. |
 | `mirror-store` | F24-style corpus mirror. Always-on, large-disk, holds working trees mirrored from `authoring`. | CI-tier. |
 | `rag-backend` | X03-style local RAG service (sqlite-vec + FTS5). Serves the voice-agent / coding agents. | CI-tier; reads `mirror-store`. |
-| `verifier` | Offline signed-deploy verifier. Holds the hardware-rooted signing key. **Only role that reaches prod.** | Prod-trust tier. Air-gapped except for outbound WireGuard. Never AI-accessible. |
+| `verifier` | Offline signed-deploy verifier. Holds the hardware-rooted signing key. Reaches prod for **hardware-gated / irreversible** deploys and as a fallback (per ADR-0024, no longer the *sole* prod writer). | Prod-trust tier. Air-gapped except for outbound WireGuard. Never AI-accessible. |
 | `signed-deploy` | Synonym for `verifier` in deploy-context narration. | Same as `verifier`. |
 | `gitlab-host` | Self-hosted GitLab + artefact distribution. | Trusted by build tier; distrusted by `verifier` (signatures, not paths). |
-| `prod-cluster` | User-facing Drupal sites. Receives signed deploys from `verifier`. | Public-facing; tightly hardened. |
+| `prod-cluster` | User-facing Drupal sites. Receives signed deploys; runs the `prod-agent` to self-apply (ADR-0024). | Public-facing; tightly hardened. |
+| `prod-agent` | The minimal, AI-free `nwp-server` agent that runs ON `prod-cluster`: pull+verify a signed bundle, apply (roll back on failure), snapshot→sanitize→publish (fail-closed PII gate), rollback, local status. A build target of `nwp`, not a separate repo (ADR-0022/0024). | Prod-trust tier. Holds exactly three one-way keys (read-only pull, write-only-own-repo publish, minisign pubkey). Zero AI code, zero control-plane creds. |
 
 These labels are stable. Renaming a role label is a breaking change to
 proposals, ADRs, and the example configs that reference it.

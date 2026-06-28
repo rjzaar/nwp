@@ -9,10 +9,12 @@
 > to `nwp-verifier` in ADR-0019/0022 should be read as the predecessor of
 > `nwp-server`.
 
-**Status:** Proposed — gated on decision **A14** (grant the production host a
-verify-and-apply capability). Until A14 is decided, ADR-0017's "the verifier is
-the sole prod-writer; prod runs no deploy logic" remains in force.
-**Date:** 2026-06-28
+**Status:** Accepted — **decision A14 resolved in favour (2026-06-29):** production
+hosts MAY verify-and-apply their own signed deploys via the `nwp-server` agent.
+This amends ADR-0017's "the verifier is the sole prod-writer; prod runs no deploy
+logic." The offline `verifier` role is retained for hardware-gated/irreversible
+actions and as a fallback (see §"Naming reconciliation").
+**Date:** 2026-06-28 (A14 resolved 2026-06-29)
 **Decision Makers:** Robert Karsten Zaar
 **Related Issues:** nwp/ops#4 (Session D); the prod-participation capability set
 **References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md),
@@ -179,10 +181,17 @@ any AI-capable machine — the blast radius is that single box.
 
 ## Migration Path
 
-**Effective:** when A14 is decided in favour and the `lib/ai|ci|saas` partition
-lands. Until then, `nwp-server` may be **built and audited** (the build target and
-deny scan exist now) but is **not installed on a prod host with apply authority** —
-ADR-0017's offline-verifier path remains the only prod writer.
+**A14 resolved in favour (2026-06-29).** `nwp-server` is cleared to be installed on
+a prod host *with apply authority* once two build-out gates are met:
+1. The capability set is assembled and `pl build-server` passes the fail-closed
+   deny-scan (apply/rollback/publish/config-resolution libs landed on
+   `feat/nwp-server-buildout`; a minimal LOCAL `status` is the remaining verb).
+2. The three-key, one-way credential ledger is provisioned on the target host.
+
+Until both gates are met, `nwp-server` is **built and audited** but the offline
+`verifier` path stays the active prod writer. The `lib/ai|ci|saas` physical
+partition is no longer a hard prerequisite — the allowlist already excludes those
+modules by construction — but remains worthwhile for repo hygiene.
 
 ## Review
 

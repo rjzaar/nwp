@@ -7,11 +7,20 @@
 #
 # The artifact is built from an ALLOWLIST (build/nwp-server.include), so this scan
 # is defence in depth: it catches an AI/CI/SaaS reference that sneaks in via an
-# allowlisted file (e.g. a shared lib that grew an `import linode`).
+# allowlisted file (e.g. a shared lib that grew a SaaS client call).
 #
 # Self-hosted infra is NOT denied: the self-hosted git/artifact host, headscale,
 # gotify, minisign, wireguard are all allowed. Only AI vendors, CI runners, and
 # distrusted SaaS are.
+#
+# Granularity note (important): AI/CI tokens are matched BROADLY (bare vendor
+# names) — those words have no legitimate place in this artifact. SaaS infra
+# tokens are matched at the API/CLIENT SURFACE, not as bare words, because the
+# legacy nwp.yml schema names its servers block `linode:` — so a bare `linode`
+# would false-positive on every config-key read. nwp-server legitimately READS
+# those keys (it must know how to reach prod); what it must never CONTAIN is the
+# SaaS client itself (`lib/linode.sh`, an `api.linode.com` call, a token accessor).
+# The allowlist remains the primary fail-closed guarantee; this list is the net.
 
 # ── AI vendors / LLM clients ────────────────────────────────────────────────
 anthropic
@@ -29,11 +38,21 @@ gitlab-ci
 \.gitlab-ci
 github/workflows
 
-# ── Distrusted SaaS (self-hosted equivalents are preferred per CLAUDE.md) ────
-linode
-cloudflare
-backblaze
-\bb2\b
+# ── Distrusted SaaS — matched at the API/client surface (see granularity note) ─
+# Linode
+api\.linode\.com
+linode-cli
+lib/linode\.sh
+get_linode_token
+# Cloudflare
+api\.cloudflare\.com
+lib/cloudflare\.sh
+get_cloudflare_
+# Backblaze B2 / object storage
+backblazeb2
+lib/b2\.sh
+lib/storage\.sh
+# Other distrusted SaaS (no config-key collision → bare names are safe)
 twilio
 gitlab\.com
 github\.com

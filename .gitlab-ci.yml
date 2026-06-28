@@ -151,7 +151,6 @@ verify-signature:
     - if: $CI_PIPELINE_SOURCE == "push"
   tags:
     - nwp
-    - ci-host
   allow_failure: true  # flip to false once signing is live
 
 ################################################################################
@@ -169,7 +168,6 @@ lint:bash:
     - if: $CI_PIPELINE_SOURCE == "push"
   tags:
     - nwp
-    - ci-host
 
 # yq-first enforcement (F36 A-C2 / ADR-0015). Refuses commits that
 # reintroduce AWK YAML parsers in pl, scripts/commands/, or lib/. yq
@@ -197,7 +195,6 @@ lint:yq-first:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   tags:
     - nwp
-    - ci-host
 
 # Leakage gate — refuses MRs / main pushes that introduce operator-specific
 # identifiers (hostnames, paths, organisations) or generic credentials.
@@ -205,15 +202,23 @@ lint:yq-first:
 # pass before merge.
 lint:leakage:
   stage: lint
-  image: zricethezav/gitleaks:v8.30.0
+  # Shell runner (no Docker executor available): use the host gitleaks and scan ONLY
+  # the new commits (MR diff / push range). A full-history scan is slow — it re-flags
+  # thousands of already-reviewed historical strings — and was the stuck/timeout cause.
+  variables:
+    GIT_DEPTH: "0"   # need the base commit reachable for the <base>..HEAD range
   script:
-    - gitleaks detect --source . --config=.gitleaks.toml --redact --verbose --exit-code 1
+    - |
+      command -v gitleaks >/dev/null 2>&1 || { echo "gitleaks not installed on the runner host — install the same binary the pre-commit hook uses"; exit 1; }
+      base="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-${CI_COMMIT_BEFORE_SHA:-}}"
+      case "$base" in ""|0000000000000000000000000000000000000000) base="$(git rev-parse HEAD~1 2>/dev/null || echo HEAD)" ;; esac
+      echo "gitleaks: scanning new commits only (${base}..HEAD)"
+      gitleaks git --config=.gitleaks.toml --redact --no-banner --exit-code 1 --log-opts="${base}..HEAD"
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
   tags:
     - nwp
-    - ci-host
   allow_failure: false
 
 ################################################################################

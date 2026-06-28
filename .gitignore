@@ -102,6 +102,13 @@ scripts/commands/.rollback/**
 !lib/
 !lib/**
 
+# nwp-server build-target manifests (ADR-0022/0024). The assembled artifact
+# (build/out/) is a build product and stays ignored; only the manifests track.
+!build/
+build/*
+!build/nwp-server.include
+!build/nwp-server.deny-symbols
+
 # Tests
 !tests/
 !tests/**

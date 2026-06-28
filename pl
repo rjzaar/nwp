@@ -146,6 +146,9 @@ ${BOLD}GIT & GITLAB:${NC}
 
 ${BOLD}IMPORT & SYNC:${NC}
     import <server>                 Import sites from remote server
+    onboard <site> --server=…       Chain a prod site into the fleet (create repo →
+            --source=… --recipe=…   supervised sanitize → PII gate → scaffold → register).
+                                    Dry-run by default; add --execute to run.
     sync <sitename>                 Sync database/files from source
     modify <sitename>               Modify site options interactively
 
@@ -160,6 +163,12 @@ ${BOLD}EMAIL:${NC}
     email add <sitename>            Add email account for site
     email test <sitename>           Test email deliverability
     email reroute <sitename>        Route email to Mailpit (dev)
+
+${BOLD}BUILD TARGETS:${NC}
+    build-server                    Assemble the AI-free nwp-server artifact
+                                    (allowlist + fail-closed AI/CI/SaaS deny-scan; ADR-0022/0024)
+    build-server --list             Show the include allowlist
+    build-server --scan-only DIR    Re-scan an assembled artifact (independent verify)
 
 ${BOLD}CI/CD:${NC}
     badges show <sitename>          Show GitLab badge URLs
@@ -667,6 +676,9 @@ main() {
         import)
             run_script "import.sh" "$@"
             ;;
+        onboard)
+            run_script "onboard.sh" "$@"
+            ;;
         sync)
             run_script "sync.sh" "$@"
             ;;
@@ -702,6 +714,11 @@ main() {
         # Rollback
         rollback)
             run_script "rollback.sh" "$@"
+            ;;
+
+        # Build targets
+        build-server)
+            run_script "scripts/build-nwp-server.sh" "$@"
             ;;
 
         # Developer tools

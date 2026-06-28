@@ -1,0 +1,43 @@
+# build/nwp-server.deny-symbols — the fail-closed AI-free guarantee (ADR-0022/0024).
+#
+# Each non-comment line is an extended-regex (ERE), matched case-insensitively
+# against the ASSEMBLED nwp-server artifact. ANY match fails the build. This is
+# the mechanical form of ADR-0022's success metric: "a `strings` check returns
+# zero matches for AI-vendor library symbols."
+#
+# The artifact is built from an ALLOWLIST (build/nwp-server.include), so this scan
+# is defence in depth: it catches an AI/CI/SaaS reference that sneaks in via an
+# allowlisted file (e.g. a shared lib that grew an `import linode`).
+#
+# Self-hosted infra is NOT denied: the self-hosted git/artifact host, headscale,
+# gotify, minisign, wireguard are all allowed. Only AI vendors, CI runners, and
+# distrusted SaaS are.
+
+# ── AI vendors / LLM clients ────────────────────────────────────────────────
+anthropic
+openai
+\bclaude\b
+\bollama\b
+\bllm\b
+agent-loop
+\bcoder(s|-setup)?\b
+claude-api
+
+# ── CI runners / pipeline integration ───────────────────────────────────────
+ci-stats
+gitlab-ci
+\.gitlab-ci
+github/workflows
+
+# ── Distrusted SaaS (self-hosted equivalents are preferred per CLAUDE.md) ────
+linode
+cloudflare
+backblaze
+\bb2\b
+twilio
+gitlab\.com
+github\.com
+pushover
+tailscale
+sigstore
+cosign

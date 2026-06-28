@@ -1,0 +1,26 @@
+# build/nwp-server.include — the ALLOWLIST that composes the nwp-server artifact.
+#
+# nwp-server is a BUILD TARGET of the nwp source tree (ADR-0022/0024), NOT its own
+# repo. The AI-free guarantee is a build-time property: only the files listed here
+# enter the artifact, and the build then runs build/nwp-server.deny-symbols over
+# the result fail-closed. Anything not listed is ABSENT by construction — an
+# allowlist is fail-closed where an exclude-list is fail-open.
+#
+# Each non-comment line is a path relative to the repo root. A trailing '/' means
+# "this directory, recursively". Keep this set MINIMAL: it is the capability set
+# of the prod agent (pull+verify / apply / snapshot+sanitize+publish / rollback /
+# status) and nothing else.
+#
+# As lib/ is partitioned into lib/ai|ci|saas (the 08 K1.1/K1.2 follow-up), shared
+# libs that currently fail the deny scan (e.g. lib/common.sh references SaaS
+# helpers) can be split and their clean halves added here. Until then this set is
+# deliberately the verified-clean core.
+
+# ── pull + verify (signature + payload integrity) ───────────────────────────
+lib/ui.sh
+lib/minisign.sh
+lib/bundle-verify.sh
+
+# ── snapshot → sanitize → verify → publish (fail-closed PII gate) ────────────
+lib/pii-gate.sh
+lib/sanitizers/

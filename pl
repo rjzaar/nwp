@@ -164,6 +164,12 @@ ${BOLD}EMAIL:${NC}
     email test <sitename>           Test email deliverability
     email reroute <sitename>        Route email to Mailpit (dev)
 
+${BOLD}BUILD TARGETS:${NC}
+    build-server                    Assemble the AI-free nwp-server artifact
+                                    (allowlist + fail-closed AI/CI/SaaS deny-scan; ADR-0022/0024)
+    build-server --list             Show the include allowlist
+    build-server --scan-only DIR    Re-scan an assembled artifact (independent verify)
+
 ${BOLD}CI/CD:${NC}
     badges show <sitename>          Show GitLab badge URLs
     badges add <sitename>           Add badges to README.md
@@ -708,6 +714,11 @@ main() {
         # Rollback
         rollback)
             run_script "rollback.sh" "$@"
+            ;;
+
+        # Build targets
+        build-server)
+            run_script "scripts/build-nwp-server.sh" "$@"
             ;;
 
         # Developer tools

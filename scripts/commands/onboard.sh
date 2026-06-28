@@ -10,12 +10,13 @@ set -euo pipefail
 #   → FAIL-CLOSED PII gate → scaffold dev + load sanitized DB → register → pl status
 #
 # ── Security posture (read before changing) ──────────────────────────────────
-# The per-site sanitizer (lib/sanitizers/<site>.sh) mutates the DB drush points at
-# and is therefore run ON PROD, UNDER HUMAN SUPERVISION — never by this command,
-# which has no production access and cannot read DB credentials. onboard CONSUMES
-# the sanitized dump the human produced and re-screens it with lib/pii-gate.sh
-# (defence in depth) BEFORE it is allowed onto dev. Any PII match aborts. This is
-# the inviolable boundary: raw user data never crosses onto dev.
+# The per-site sanitizer (lib/sanitizers/<site>.sh) sanitizes a throwaway SCRATCH
+# COPY of the DB on prod (the live DB is read-only) and is run ON PROD, UNDER HUMAN
+# SUPERVISION — never by this command, which has no production access and cannot
+# read DB credentials. onboard CONSUMES the sanitized dump the human produced and
+# re-screens it with lib/pii-gate.sh (defence in depth) BEFORE it is allowed onto
+# dev. Any PII match aborts. This is the inviolable boundary: raw user data never
+# crosses onto dev.
 #
 # Default mode is DRY-RUN (prints the plan, touches nothing). Pass --execute to run.
 #
@@ -145,7 +146,7 @@ step_sanitize_and_gate(){
     # command and stop; they re-invoke with --sanitized-db once it has produced output.
     print_warning "no --sanitized-db supplied — the prod sanitize step is HUMAN-SUPERVISED."
     echo
-    print_info "Run this ON the production server (it mutates the live DB after taking a backup):"
+    print_info "Run this ON the production server (it sanitizes a scratch copy; live DB stays read-only):"
     echo "    scp -i $OPT_KEY lib/sanitizers/$OPT_SITE.sh <prod>:/tmp/$OPT_SITE-sanitizer.sh"
     echo "    ssh -i $OPT_KEY <prod> \\"
     echo "        \"cd '$remote_root' && sudo -u www-data /tmp/$OPT_SITE-sanitizer.sh \\"

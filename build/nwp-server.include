@@ -39,3 +39,7 @@ scripts/commands/rollback.sh
 lib/pii-gate.sh
 lib/sanitizers/
 scripts/commands/publish.sh
+
+# ── backup (DR: raw restic snapshot to ver, custodian-pull) — ADR-0025 ───────
+scripts/commands/server-backup.sh
+scripts/commands/ver-backup-pull.sh

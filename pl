@@ -169,6 +169,9 @@ ${BOLD}BUILD TARGETS:${NC}
                                     (allowlist + fail-closed AI/CI/SaaS deny-scan; ADR-0022/0024)
     build-server --list             Show the include allowlist
     build-server --scan-only DIR    Re-scan an assembled artifact (independent verify)
+    server-backup --site-dir DIR    DR backup of a prod site to a local restic repo
+                                    (raw; pulled by ver). Dry-run by default. ADR-0025
+    ver-pull --from R --to R        ver drains prod's snapshots, prunes, verifies (ADR-0025)
 
 ${BOLD}CI/CD:${NC}
     badges show <sitename>          Show GitLab badge URLs
@@ -719,6 +722,14 @@ main() {
         # Build targets
         build-server)
             run_script "scripts/build-nwp-server.sh" "$@"
+            ;;
+
+        # Production agent (nwp-server) — DR backup (ADR-0025)
+        server-backup)
+            run_script "server-backup.sh" "$@"
+            ;;
+        ver-pull)
+            run_script "ver-backup-pull.sh" "$@"
             ;;
 
         # Developer tools

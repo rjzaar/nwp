@@ -73,6 +73,24 @@ cathnet, dir1, mayo, mg, mt, nwt) + nwc(2) + 5 amber, matching the issue's fleet
   what `--execute` would send. `main` captures the grader's exit code (3-on-red)
   around the sync so the sync still runs, then exits with the RAG code.
 
+### Cadence (SHIPPED) — Stage 1 of §6 now runs itself
+
+`pl rag --sync-issues --execute` was being run by hand. It's now wired to run
+**daily at 04:30 UTC**, just after the audit-awareness refresh (~04:00), via:
+
+- **`scripts/agent-loop/rag-sync.sh`** — a thin cron wrapper: sets a cron-safe
+  PATH (yq lives in `~/.local/bin`), honours a `.rag-sync-paused` kill switch,
+  logs to `logs/rag-sync.log`, and treats `pl rag`'s exit 3 (RED present) as
+  normal (only a usage/plumbing exit 1 is a cron failure).
+- **`scripts/agent-loop/crontab.entry`** — adds the `30 4 * * *` line (and the
+  uninstall grep on `/scripts/agent-loop/` still catches it). Installed live on
+  the dev workstation.
+
+It reads its token from `.secrets.yml` (least-privilege `ops_note_token`), needs
+no env file, and is **dev-side only** — it files/updates/closes issues, never
+bumps packages or deploys. This closes the "RAG grades but doesn't open an issue"
+half of §6; the issue→agent half stays gated (D2).
+
 ---
 
 ## Deliverable 2 — agent-loop fix-repo routing (DESIGNED, GATED — do not ship yet)

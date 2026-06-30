@@ -267,12 +267,30 @@ yaml_get_site_field() {
         return 1
     fi
 
+    # yq-first (ADR-0015). The previous inline awk bounded a site's block with
+    # /^  [a-zA-Z_]+:/, which EXCLUDES digits/hyphens — so it never stopped at a
+    # next-sibling header like `ss2:` or `dir1:`. A query for a field a site does
+    # NOT have (e.g. nwd has no `directory:`) then ran past the block and returned
+    # a LATER site's value (nwd → ss2's directory), making `pl audit` skip nwd as
+    # "not a Drupal site". yq resolves the path unambiguously.
+    local yq_bin; yq_bin="$(command -v yq || true)"
+    if [[ -n "$yq_bin" ]]; then
+        local val
+        val=$(SITE="$site_name" FIELD="$field_name" \
+              "$yq_bin" e '.sites[strenv(SITE)][strenv(FIELD)] // ""' "$config_file" 2>/dev/null)
+        [[ -z "$val" || "$val" == "null" ]] && return 1
+        printf '%s\n' "$val"
+        return 0
+    fi
+
+    # Fallback when yq is unavailable: inline awk with the block-boundary regex
+    # fixed to allow digits/hyphens in the next site header.
     awk -v site="$site_name" -v field="$field_name" '
         BEGIN { in_site = 0; found = 0 }
         /^sites:/ { in_sites = 1; next }
         in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
         in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
-        in_site && /^  [a-zA-Z_]+:/ && !/^    / { in_site = 0 }
+        in_site && /^  [a-zA-Z0-9_-]+:/ && !/^    / { in_site = 0 }
         in_site && $0 ~ "^    " field ":" {
             sub("^    " field ": *", "")
             print

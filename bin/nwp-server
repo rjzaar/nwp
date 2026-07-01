@@ -1,0 +1,100 @@
+#!/bin/bash
+set -euo pipefail
+################################################################################
+# nwp-server — the minimal, AI-free production agent (ADR-0022 / ADR-0024).
+#
+# This is the ENTRYPOINT of the `nwp-server` build target: the single command a
+# production host runs to participate in the self-healing deploy loop. It is NOT
+# `pl` — `pl` carries the authoring/AI/CI/SaaS surface, none of which may exist on
+# a host that can write to prod. This dispatcher and everything it reaches are
+# assembled by `scripts/build-nwp-server.sh` from an allowlist and then scanned
+# fail-closed for AI/CI/SaaS vendor tokens; the artifact is separately signed with
+# a hardware-rooted key.
+#
+# Capability set (ADR-0024) — exactly these verbs, and nothing else:
+#   pull      fetch a signed bundle over HTTPS and verify it fail-closed
+#   verify    verify a local signed bundle (the pull step, standalone)
+#   apply     verify + snapshot + run the bundle's own apply, roll back on failure
+#   publish   snapshot -> sanitize -> fail-closed PII gate -> publish sanitized
+#   backup    raw restic DR snapshot bound for the offline custodian (ADR-0025)
+#   rollback  restore the previous release/DB on THIS host
+#   status    emit local health as JSON for the control plane to read
+#
+# There is deliberately no `install`, no `ai`/`ci` verb, and no SaaS client. The
+# credential ledger on a prod host is exactly three one-way keys (read-only pull,
+# write-only-own-repo publish, minisign public key) — see ADR-0024.
+################################################################################
+
+# ── Resolve our own location (symlink-safe, mirrors `pl`) ─────────────────────
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+BIN_DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+NWP_ROOT="$( cd "$BIN_DIR/.." && pwd )"
+# The capability scripts source lib/common.sh which reads config relative to
+# PROJECT_ROOT; in the assembled artifact that IS the artifact root.
+PROJECT_ROOT="$NWP_ROOT"
+export NWP_ROOT PROJECT_ROOT
+COMMANDS_DIR="$NWP_ROOT/scripts/commands"
+
+# Independent version line, distinct from `nwp` (ADR-0024 naming reconciliation).
+NWP_SERVER_VERSION="0.1.0"
+
+# shellcheck source=/dev/null
+source "$NWP_ROOT/lib/ui.sh" 2>/dev/null || { echo "[!] lib/ui.sh missing — artifact incomplete" >&2; exit 1; }
+
+usage() {
+    cat <<EOF
+nwp-server v${NWP_SERVER_VERSION} — AI-free production deploy agent (ADR-0024)
+
+Usage: nwp-server <verb> [options]
+
+Verbs (the entire capability set — nothing else exists):
+  pull      Fetch a signed bundle over HTTPS and verify it (fail-closed)
+  verify    Verify a local signed bundle without downloading
+  apply     Verify, snapshot, run the bundle's apply; roll back on failure
+            (dry-run by default; pass --execute to mutate this host)
+  publish   Snapshot -> sanitize -> fail-closed PII gate -> publish sanitized
+  backup    Raw restic DR snapshot for the offline custodian (ADR-0025)
+  rollback  Restore the previous release/DB on this host
+  status    Emit local health as JSON
+
+  version   Print the agent version (nwp-server vX.Y.Z)
+  help      Show this help
+
+Run 'nwp-server <verb> --help' for verb-specific options.
+
+This agent holds no AI, CI, or SaaS code by construction (build-time exclusion,
+verified by a fail-closed deny-symbol scan). It never signs on prod and never
+holds a credential that reaches another host or the control plane.
+EOF
+}
+
+# Route a verb to its capability script, replacing this process so exit status
+# and signals pass straight through.
+run() { exec bash "$COMMANDS_DIR/$1" "${@:2}"; }
+
+verb="${1:-help}"
+shift || true
+
+case "$verb" in
+    pull)                 run server-pull.sh "$@" ;;
+    verify)               run server-pull.sh --verify-only "$@" ;;
+    apply)                run server-apply.sh "$@" ;;
+    publish)              run publish.sh "$@" ;;
+    backup)               run server-backup.sh "$@" ;;
+    rollback)             run rollback.sh "$@" ;;
+    status)               run server-status.sh "$@" ;;
+    version|--version|-V) echo "nwp-server v${NWP_SERVER_VERSION}" ;;
+    help|-h|--help)       usage ;;
+    *)
+        print_error "unknown verb: '${verb}'"
+        print_hint  "nwp-server exposes only: pull verify apply publish backup rollback status"
+        echo >&2
+        usage >&2
+        exit 2
+        ;;
+esac

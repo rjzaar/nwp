@@ -41,6 +41,11 @@ if ! declare -F minisign_check &>/dev/null; then
     # shellcheck source=lib/minisign.sh
     source "${NWP_ROOT}/lib/minisign.sh"
 fi
+# Deterministic tree hash — shared with the verifier (lib/bundle-hash.sh).
+if ! declare -F bundle_tree_sha256 &>/dev/null; then
+    # shellcheck source=lib/bundle-hash.sh
+    source "${NWP_ROOT}/lib/bundle-hash.sh"
+fi
 
 BUNDLE_SCHEMA_VERSION=1
 
@@ -60,28 +65,8 @@ bundle_check_tools() {
     return 0
 }
 
-# Compute a deterministic sha256 of a directory tree.
-# Uses sorted file paths + per-file sha256 + a final sha256 over the
-# concatenation so that the same tree always produces the same hash
-# regardless of inode order or filesystem layout.
-#
-# Usage: bundle_tree_sha256 <dir>
-bundle_tree_sha256() {
-    local dir="$1"
-    if [[ ! -d "$dir" ]]; then
-        echo "ERROR: not a directory: $dir" >&2
-        return 1
-    fi
-    # Use a subshell + find for stable ordering
-    (
-        cd "$dir" || exit 1
-        find . -type f -print0 2>/dev/null \
-            | LC_ALL=C sort -z \
-            | xargs -0 sha256sum 2>/dev/null \
-            | sha256sum \
-            | awk '{print $1}'
-    )
-}
+# bundle_tree_sha256 now lives in the shared lib/bundle-hash.sh (sourced above)
+# so the AI-free verifier can reuse it without the rest of this builder.
 
 # Get the NWP version from the pl script, or "unknown"
 bundle_nwp_version() {

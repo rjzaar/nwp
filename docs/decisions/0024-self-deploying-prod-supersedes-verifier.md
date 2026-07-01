@@ -1,7 +1,15 @@
 # ADR-0024: Self-Deploying Prod via Linode-Resident Runner (supersedes the verifier deploy model)
 
 **Status:** Accepted (decision A14 accepted by operator 2026-06-28; operational wiring gated on the linchpin — least-privilege tokens / Developer-only bot users complete)
-**Date:** 2026-06-25 (accepted 2026-06-28)
+
+> **Operator authority grant — 2026-07-01 (A14 scoping):** The operator granted the AI
+> (Claude Code) **deploy authority to the LIVE TEST tier** (the shared test box) — on the basis
+> that these are **test sites, not real production**. Consistent with the threat model's "AI blast
+> radius = dev/stg/live". **Unchanged:** any real user-facing production tier remains **gated by
+> the offline deploy host + hardware token** per ADR-0017; this grant does NOT extend AI write
+> access to that boundary. Scope: the test fleet only.
+
+**Date:** 2026-06-25 (accepted 2026-06-28; test-tier deploy authority granted 2026-07-01)
 **Decision Makers:** Robert Karsten Zaar (with AI assistance)
 **Related Issues:** —
 **References:** [ADR-0017](0017-distributed-build-deploy-pipeline.md) (amends its deploy-authority half), [ADR-0019](0019-verifier-always-on-hardware-rooted-keys.md) (**supersedes, before implementation**), [ADR-0004](0004-two-tier-secrets-architecture.md), [F21](../proposals/F21-distributed-build-deploy-pipeline.md), [F28](../proposals/F28-unified-pipeline.md); reeval `07-PIPELINE-EXPLAINER §9–§10`, `08-VISION…CONTROL-PLANE Part III-A & IV`, `09-PROGRESS §3`; decision A14.

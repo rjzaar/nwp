@@ -1,0 +1,60 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# mons verification + error-reporting stanza  (paste into the site's nwp.yml)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# This is the `verification:` block for the offline verifier host "mons"
+# (role: ver). It ships DISABLED — copy it under the `nwp:` mapping in the
+# local nwp.yml on mons and follow the "TO TURN ON" notes below.
+#
+# What it does when enabled:
+#   - error_reporting.via: verifier-say routes on-failure reports to the ops
+#     queue (a GitLab issue) through the `verifier-say` helper — NOT a browser.
+#   - auto_post makes that non-interactive so it works on headless mons.
+#
+# Safety:
+#   - consent.agreed stays false here. Do NOT flip it unless the operator has
+#     actually agreed to verification auto-logging. Error reporting via
+#     verifier-say does NOT require consent (consent gates auto_log only).
+#   - Reports contain only: command, exit code, timestamp, git commit,
+#     hostname. Never secrets, file contents, or command output.
+#
+# `scripts/mons-setup.sh` can append this block for you (it asks first).
+
+  # === VERIFICATION SYSTEM ===
+  verification:
+    enabled: true                # Enable the verification subsystem
+
+    # Consent tracking — leave OFF unless the operator has agreed.
+    consent:
+      agreed: false              # TO TURN ON auto_log: set true + fill the two below
+      agreed_at: null            # e.g. 2026-07-01T00:00:00Z
+      agreed_by: null            # e.g. operator@example
+
+    # Automatic logging of verification events (gated on consent.agreed).
+    auto_log:
+      enabled: true
+      events:
+        command_success: true
+        site_operations: true
+        data_operations: true
+
+    # Error reporting and failure handling.
+    error_reporting:
+      enabled: true              # Enable error reporting
+      prompt_on_failure: true    # Legacy browser-URL path (used only when via is unset)
+
+      # --- verifier-say channel (mons) ---------------------------------------
+      # Route failures to the ops queue via the `verifier-say` helper instead
+      # of opening a browser. Leave `via` unset (or delete it) to keep the
+      # legacy browser-URL behaviour.
+      #
+      # TO TURN ON (mons):
+      #   1. Uncomment `via: verifier-say`.
+      #   2. On a headless host, also uncomment `auto_post: true` so it never
+      #      blocks on a prompt. On an interactive host you may leave auto_post
+      #      off to be asked [Y/n] before each post.
+      #   (Env override: `export NWP_REPORT_VIA=verifier-say` does the same as
+      #    `via:` for a single session, without editing this file.)
+      #
+      # via: verifier-say        # route on-failure reports through verifier-say
+      # auto_post: false         # set true on headless mons to post w/o prompting

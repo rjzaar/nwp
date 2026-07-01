@@ -68,6 +68,12 @@ paths = [
   # has no $HOME so the path has to be absolute. Same principle as the
   # other operator-bound files allowlisted above.
   '''^scripts/agent-loop/crontab\.entry$''',
+  # Verifier-host (ver) setup kit — operator-bound files that must name the
+  # host they configure and reference their own role-bound filenames. Same
+  # class as scripts/ss-admin-reset.sh and docs/onboarding/ above.
+  '''^scripts/mons-setup\.sh$''',
+  '''^docs/guides/mons-verification\.stanza\.yml$''',
+  '''^docs/guides/mons-operational-readiness\.md$''',
 ]
 
 [[rules]]

@@ -57,19 +57,108 @@ log_verification_if_enabled() {
     } 2>/dev/null &
 }
 
+# Read the configured error-reporting channel.
+#   env NWP_REPORT_VIA overrides nwp.yml's `error_reporting.via:`.
+#   Empty (the default) => the legacy interactive browser-URL path.
+error_reporting_via() {
+    if [[ -n "${NWP_REPORT_VIA:-}" ]]; then
+        printf '%s\n' "$NWP_REPORT_VIA"
+        return
+    fi
+    grep -A8 "error_reporting:" nwp.yml 2>/dev/null \
+        | grep -E "^[[:space:]]*via:" | head -1 \
+        | sed -E 's/.*via:[[:space:]]*//; s/[[:space:]]*(#.*)?$//' \
+        | tr -d "\"'"
+}
+
+# Post a failure to the ops queue via the `verifier-say` mechanism.
+# Non-interactive-safe: on a headless host (no TTY) it only posts when
+# error_reporting.auto_post is true, and never blocks on a prompt.
+# Composes a minimal report — command, exit code, timestamp, git commit,
+# hostname. NO secrets, NO file contents. Robust: a reporting failure is
+# non-fatal and never masks the original command's exit code.
+report_via_verifier_say() {
+    local command="$1"
+    local exit_code="$2"
+
+    # Locate the helper: prefer a `verifier-say` on PATH (the installed name),
+    # fall back to the in-repo copy (legacy filename `*-say.sh`; matched by glob
+    # so this lib names no role-bound host). If neither exists, stay quiet.
+    local say_bin="" cand
+    if command -v verifier-say >/dev/null 2>&1; then
+        say_bin="verifier-say"
+    else
+        for cand in ./scripts/*-say.sh; do
+            [[ -x "$cand" ]] && { say_bin="$cand"; break; }
+        done
+    fi
+    [[ -n "$say_bin" ]] || return 0
+
+    # auto_post: true => post without prompting (required for a headless host).
+    local auto_post
+    auto_post=$(grep -A8 "error_reporting:" nwp.yml 2>/dev/null | grep "auto_post: true" || echo "")
+
+    if [[ -z "$auto_post" ]]; then
+        # No auto_post. Only prompt when we actually have a TTY; on a headless
+        # host with no auto_post, do nothing (never block).
+        if [[ ! -t 0 ]]; then
+            return 0
+        fi
+        echo ""
+        echo -e "\033[33mCommand failed. Post an error report to the ops queue? [Y/n]\033[0m"
+        local response
+        read -r -t 10 response || response="n"
+        case "$response" in
+            Y|y|"") : ;;   # proceed
+            *) return 0 ;;
+        esac
+    fi
+
+    # Compose the report. Deliberately minimal — no env, no output, no paths.
+    local host commit ts title body
+    host=$(hostname 2>/dev/null || echo unknown)
+    commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+    ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    title="nwp failure: ${command} exit ${exit_code} on ${host}"
+    body="command:    ${command}
+exit_code:  ${exit_code}
+host:       ${host}
+git_commit: ${commit}
+timestamp:  ${ts}
+
+(auto-reported by nwp error_reporting via verifier-say —
+ no secrets, no file contents, no command output included)"
+
+    # Post quietly. Let verifier-say print its own one-line "posted as …#N"
+    # confirmation on success; a failure here is non-fatal.
+    if ! printf '%s\n' "$body" | "$say_bin" --stdin "$title"; then
+        echo "nwp: verifier-say error report failed (non-fatal)" >&2
+    fi
+    return 0
+}
+
 # Prompt for error report on failure
 prompt_error_report() {
     local command="$1"
     local exit_code="$2"
 
-    # Check if error reporting enabled
-    local prompt_enabled=$(grep -A5 "error_reporting:" nwp.yml 2>/dev/null | grep "prompt_on_failure: true" || echo "")
-    if [[ -z "$prompt_enabled" ]]; then
+    # Only act on failures
+    if [[ "$exit_code" == "0" ]]; then
         return
     fi
 
-    # Only prompt on failures
-    if [[ "$exit_code" == "0" ]]; then
+    # Channel selection. Defaults to empty => legacy browser-URL path below,
+    # so behaviour is unchanged unless the operator opts in.
+    local via
+    via=$(error_reporting_via)
+    if [[ "$via" == "verifier-say" ]]; then
+        report_via_verifier_say "$command" "$exit_code"
+        return
+    fi
+
+    # Check if error reporting enabled
+    local prompt_enabled=$(grep -A5 "error_reporting:" nwp.yml 2>/dev/null | grep "prompt_on_failure: true" || echo "")
+    if [[ -z "$prompt_enabled" ]]; then
         return
     fi
 

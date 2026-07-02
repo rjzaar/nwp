@@ -724,6 +724,11 @@ main() {
             run_script "scripts/build-nwp-server.sh" "$@"
             ;;
 
+        # Validate the mons deploy-tier setup on throwaway Linodes (nwp/ops#29)
+        test-mons)
+            run_script "test-mons.sh" "$@"
+            ;;
+
         # Production agent (nwp-server) — DR backup (ADR-0025)
         server-backup)
             run_script "server-backup.sh" "$@"

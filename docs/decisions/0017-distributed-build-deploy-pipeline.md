@@ -1,6 +1,6 @@
 # ADR-0017: Distributed Build/Deploy Pipeline (build-tier build, verifier deploy)
 
-**Status:** Accepted (2026-04-08 — implementation started; F21 Phases 1, 2, 3a complete). **Deploy-authority half amended by [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (Proposed, 2026-06-25):** the "verifier is the sole prod-writer" model is replaced by *self-deploying prod* (a protected Linode-resident runner; no off-box prod credential). The build-tier / signing / sanitise-on-prod / no-AI-on-prod-path properties below are unchanged.
+**Status:** Accepted (2026-04-08 — implementation started; F21 Phases 1, 2, 3a complete). **Deploy-authority half amended by [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md) (Accepted 2026-06-28; not yet operational):** the "verifier is the sole prod-writer" model is replaced by *self-deploying prod* (a protected runner resident on the prod host; no off-box prod credential) — but until ADR-0024's preconditions land, this ADR's offline deploy host + hardware token remains the active gate for real user-facing production. The build-tier / signing / sanitise-on-prod / no-AI-on-prod-path properties below are unchanged.
 **Date:** 2026-04-07
 **Decision Makers:** Robert Karsten Zaar (with AI assistance)
 **Related Issues:** —

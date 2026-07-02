@@ -11,7 +11,7 @@
 
 The AI-free `nwp-server` artifact was designed as the **prod-agent / `ver`** build
 target — the minimal, separately-signed thing that runs on a production host or the
-offline custodian (ADR-0022 / ADR-0024). But look at what it actually *is*: a
+offline custodian (ADR-0022 / ADR-0026). But look at what it actually *is*: a
 self-contained set of commands that can **verify, apply, roll back, publish, and
 back up** a Drupal site, with **no AI, no fleet, no SaaS, and no control plane**.
 
@@ -56,10 +56,22 @@ The `nwp-server` capability set on one box (see [`ver-setup.md`](ver-setup.md) �
 - **publish** a sanitized artifact behind a **fail-closed PII gate**
   (`pl publish`, `lib/pii-gate.sh`);
 - **backup** (raw restic snapshot, ADR-0025) with `pl server-backup`;
-- **local status** (JSON) — *the one verb still to be added to the artifact*.
+- **local status** (JSON) — landed and validated 2026-07-02.
 
 Build it with `pl build-server`; the deny-scan guarantees the AI/CI/SaaS code is
 simply **not present**. This is the whole install — nothing else required.
+
+> **State of play (2026-07-02).** This core was field-validated end-to-end on a
+> disposable prod-boundary test host (nwp/ops#23): signed pull → verify (tamper
+> negative-test rejected) → apply → rollback → status. Exception: the `publish`
+> verb is mis-wired (build-tier uploader, no PII gate) and must not be used
+> until fixed — see ADR-0026's validation record.
+>
+> **Tier framing:** the **live-test tier** self-deploys via this agent today
+> (2026-07-01 operator grant, ADR-0024 header); **real user-facing prod today**
+> stays behind the offline deploy host + hardware token (ADR-0017); real prod's
+> **target** model is the runner-resident ADR-0024 once its preconditions land;
+> the agent is the capability set plus the escalation/reserve path (ADR-0026).
 
 ### (b) Add oversight
 
@@ -89,7 +101,7 @@ Here is the honest tension, surfaced as a **decision, not a fait accompli**:
 
 The `prod-agent` build is deliberately **narrow** — five (soon six) capabilities and
 nothing else — because on a production host *every extra verb is extra attack surface*
-(ADR-0024's success metric is literally "the capability set is exactly these verbs —
+(ADR-0026's success metric is literally "the capability set is exactly these verbs —
 no `install`, no `ai *`, no SaaS"). That narrowness is a **feature** for prod.
 
 But a **single-machine newcomer** plausibly wants more of the ordinary local
@@ -122,5 +134,5 @@ is worth maintaining is the operator's call.
 
 - [`ver-setup.md`](ver-setup.md) — the artifact, its build, and its capabilities in detail
 - [`using-nwp.md`](using-nwp.md) — the whole-system map and command surface
-- [ADR-0022](../decisions/0022-nwp-verifier-binary-split.md) · [ADR-0024](../decisions/0024-self-deploying-prod-agent.md) — why the build is narrow and AI-free
+- [ADR-0022](../decisions/0022-nwp-verifier-binary-split.md) · [ADR-0026](../decisions/0026-nwp-server-capability-agent.md) — why the build is narrow and AI-free
 - `build/nwp-server.include` — the allowlist that defines the artifact's scope

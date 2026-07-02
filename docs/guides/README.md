@@ -51,7 +51,7 @@ index (ADRs, references, proposals) see [`../README.md`](../README.md).
 ---
 
 > **Follow-up (stale docs):** `verifier-operations.md` and `verifier-mayo-bootstrap.md`
-> predate the ADR-0022/0024 binary split and the `ver` / `prod-agent` role vocabulary
+> predate the ADR-0022/0026 binary split and the `ver` / `prod-agent` role vocabulary
 > (they still describe the F21 SSH-rsync/blue-green pipeline and the `verifier` binary
 > by its old name). They should be reconciled with [ver-setup.md](ver-setup.md) or
 > marked superseded. Not done here to avoid mass-rewriting; tracked as a follow-up.

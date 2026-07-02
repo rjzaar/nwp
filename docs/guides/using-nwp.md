@@ -67,9 +67,11 @@ capability.** Trust flows through **signatures**, not machines.
 > **Verifying commands exist:** everything above dispatches through `pl` (explicit
 > case or the `scripts/commands/<name>.sh` fallback). Note the DR pull command is
 > **`pl ver-pull`** (script `ver-backup-pull.sh`). There is deliberately **no**
-> `pl apply` / `pl pull` verb yet — pull+verify+apply live as libraries
-> (`lib/bundle-verify.sh`, `lib/rollback.sh`) inside the artifact and are still being
-> exercised (see [`ver-setup.md`](ver-setup.md) §5).
+> `pl apply` / `pl pull` verb — pull+verify+apply live inside the AI-free artifact
+> (`lib/bundle-verify.sh`, `lib/rollback.sh`) and were **validated end-to-end on
+> 2026-07-02** on a disposable prod-boundary test host (nwp/ops#23), the `publish`
+> verb excepted (mis-wired — see [`ver-setup.md`](ver-setup.md) §5 and ADR-0026's
+> validation record).
 
 ## 3. The self-driving loop
 
@@ -113,6 +115,7 @@ fixes**. The human approves merges and watches `pl status`. This is what ends th
   `PUBLISH-SCRUB` runbooks for each workstream.
 - **ADRs** — [ADR-0020 tiered model](../decisions/0020-tiered-architecture-model.md),
   [ADR-0022 binary split](../decisions/0022-nwp-verifier-binary-split.md),
-  [ADR-0024 self-deploying prod](../decisions/0024-self-deploying-prod-agent.md),
+  [ADR-0024 self-deploying prod / deploy authority](../decisions/0024-self-deploying-prod-supersedes-verifier.md),
+  [ADR-0026 the `nwp-server` capability agent](../decisions/0026-nwp-server-capability-agent.md),
   [ADR-0025 backup to `ver`](../decisions/0025-production-backup-to-ver.md).
 - **[`../README.md`](../README.md)** — the full documentation index.

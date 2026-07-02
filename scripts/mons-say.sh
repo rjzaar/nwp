@@ -15,7 +15,7 @@
 # Messages land as issues at:
 #   ${NWP_GITLAB_HOST}/${NWP_OPS_LOG_PROJECT}/-/issues
 #
-# The dev Claude session polls that queue on request ("anything new from the
+# The dev session polls that queue on request ("anything new from the
 # verifier?") and reads/closes issues as it processes them.
 #
 # Prerequisites on the verifier host:

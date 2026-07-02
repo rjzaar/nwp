@@ -241,6 +241,50 @@ build tier never wrote to the box).
    (`+<payload-hash>`) with a fail-closed no-overwrite guard (`BUNDLE_OVERWRITE=1`
    to force).
 
+## Triggering deploys from CI — the `prod-deploy` runner
+
+To close the self-healing loop (OPERATING-MODEL §6), an **approved** pipeline can
+trigger the agent via a **GitLab Runner on the deploy-tier box**. Real prod stays
+ver/hardware-gated (A14); use this on the `*.nwpcode.org` test tier for the
+autonomous loop. The runner box stays **AI-free** and holds only a runner
+authentication token (`glrt-…`) — never an `api` PAT.
+
+**Set-up** (`scripts/prod-deploy-runner-setup.sh` — infra around the agent, NOT part
+of the AI-free artifact):
+1. Create the runner in the control plane **locked**: `tag_list=prod-deploy`,
+   `run_untagged=false`, `locked=true`, `access_level=ref_protected`
+   (`POST /api/v4/user/runners`). These are enforced server-side by the token.
+2. On the box: `sudo prod-deploy-runner-setup.sh --url <gitlab-host-url> --token glrt-…`
+   It installs `gitlab-runner`, registers a **shell** executor, runs the service so
+   **jobs execute as a non-root `deploy` user**, grants that user read on the
+   `nwp-server` ledger, and a **scoped `NOPASSWD` sudo for the `nwp-server` binary
+   only** (the single privileged deploy action). `--verify-only` prints the lock-down.
+
+**Pipeline job** (in the site's deploy repo — ⚠️ `.gitlab-ci.yml` is a two-person-review
+path per CLAUDE.md):
+```yaml
+deploy:prod:
+  tags: [prod-deploy]                 # only the locked prod runner picks this up
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'   # test tier: on_success. real prod: when: manual
+  script:
+    - "sudo /usr/local/bin/nwp-server pull --url \"$BUNDLE_URL\" --out /var/lib/nwp-server/bundles --token-file /etc/nwp-server/pull.token --pubkey /etc/nwp-server/nwp-deploy.pub"
+    - "B=/var/lib/nwp-server/bundles/$(basename \"$BUNDLE_URL\")"
+    - "sudo /usr/local/bin/nwp-server apply \"$B\" --site <s> --site-dir <dir> --pubkey /etc/nwp-server/nwp-deploy.pub --execute"
+```
+`BUNDLE_URL` is a CI/CD variable; the **pull token stays an on-box `0600` file, not a
+CI variable** (keeps it off the control plane). Double-quote script lines — a bare
+`grep 'X: y'` has a colon-space that YAML parses as a mapping.
+
+**Validated end-to-end** (throwaway Linode, 2026-07-02, then torn down): push to
+protected `main` → the tag-gated locked runner ran `nwp-server pull`+`apply` as the
+non-root `deploy` user and deployed the bundle (marker `v2` on disk), Job succeeded.
+Lock-down asserted: runner `run_untagged=false`/`locked`/`ref_protected`; box AI-free,
+no full `nwp`, no `.secrets.yml`, no api-PAT; jobs run non-root.
+Gotchas the runbook now handles: the runner user needs a real login shell (not
+`nologin`) and a neutralised `~/.bash_logout` (stock `clear_console` fails without a
+TTY → "prepare environment: exit status 1").
+
 ## See Also
 
 - [ADR-0024](../decisions/0024-self-deploying-prod-agent.md) — the self-deploying

@@ -172,6 +172,8 @@ ${BOLD}BUILD TARGETS:${NC}
     server-backup --site-dir DIR    DR backup of a prod site to a local restic repo
                                     (raw; pulled by ver). Dry-run by default. ADR-0025
     ver-pull --from R --to R        ver drains prod's snapshots, prunes, verifies (ADR-0025)
+    test-ver <provision|assert|…>   Validate the ver (signed-deploy) tier on throwaway
+                                    Linodes: WG tunnel + fail-closed invariant sweep (ops#29)
 
 ${BOLD}CI/CD:${NC}
     badges show <sitename>          Show GitLab badge URLs
@@ -724,9 +726,9 @@ main() {
             run_script "scripts/build-nwp-server.sh" "$@"
             ;;
 
-        # Validate the mons deploy-tier setup on throwaway Linodes (nwp/ops#29)
-        test-mons)
-            run_script "test-mons.sh" "$@"
+        # Validate the ver (signed-deploy) tier setup on throwaway Linodes (nwp/ops#29)
+        test-ver)
+            run_script "test-ver.sh" "$@"
             ;;
 
         # Production agent (nwp-server) — DR backup (ADR-0025)

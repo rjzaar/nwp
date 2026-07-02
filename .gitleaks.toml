@@ -23,11 +23,6 @@ paths = [
   # the GitLab webhook receiver and the Saint School admin-reset helper.
   '''^scripts/agent-loop/gitlab-webhook-receiver\.py$''',
   '''^scripts/ss-admin-reset\.sh$''',
-  # The mons deploy-tier tester (nwp/ops#29) legitimately names the mons/mmt roles
-  # and the WireGuard tunnel scheme (10.99.0.x) — that IS its purpose, same class as
-  # the webhook receiver above. Carries NO credentials (tokens read from 0600 files /
-  # env at runtime, never literals). Reviewed 2026-07-02.
-  '''^scripts/commands/test-mons\.sh$''',
   # Archive directory holds historical infrastructure documents — defeats the purpose to scrub.
   '''^docs/archive/.*''',
   # Coder onboarding docs deliberately name operator infrastructure (mini, nwpcode.org, /home/rob/) — that's their teaching purpose. Same shape as CLAUDE.md.

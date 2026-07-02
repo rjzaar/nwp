@@ -49,6 +49,9 @@ if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
     source "$PROJECT_ROOT/lib/yaml-write.sh"
 fi
 
+# canonical.sh: canonicality-phase content-flow guards (nwp/ops#33)
+source "$PROJECT_ROOT/lib/canonical.sh"
+
 ################################################################################
 # Configuration
 ################################################################################
@@ -623,6 +626,15 @@ deploy_dev2stg() {
     info "Target: $stg_dir (staging)"
     echo ""
 
+    # Canonicality (nwp/ops#33): dev→stg itself is always allowed (stg is
+    # disposable), but when the site is not dev-canonical the operator should
+    # know this content can never reach live/prod; under canonical: prod,
+    # uncommitted work directly on main violates the branch-only rule.
+    canonical_warn_dev_content "$base_name"
+    if ! canonical_enforce_branch_policy "$base_name" "work"; then
+        return 1
+    fi
+
     # Preflight check (quick for -y mode, full otherwise)
     if [ "$auto_yes" = "true" ]; then
         quick_preflight "$dev_site" || return 1
@@ -705,6 +717,12 @@ deploy_dev2stg() {
     ((current_step++))
 
     display_staging_url "$stg_dir"
+
+    # Stamp the canonical phase into a deploy manifest (nwp/ops#33)
+    local deploy_manifest
+    deploy_manifest=$(canonical_deploy_manifest "$base_name" "dev2stg" \
+        "db_source=${db_source}" 2>/dev/null) || true
+    [ -n "$deploy_manifest" ] && info "Deploy manifest: $deploy_manifest"
 
     return 0
 }

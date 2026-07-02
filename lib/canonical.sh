@@ -140,7 +140,9 @@ canonical_guard_content_push() {
     print_info  "The supported flow while canonical: $phase is a SANITIZED pull toward dev:"
     print_info  "  pl live2stg $site          # sanitized live → stg"
     print_info  "  pl import $site            # pull from the canonical host"
-    print_info  "Code/config-only deploys are still allowed: re-run with --code-only."
+    if [ "$target" = "live" ]; then
+        print_info "Code/config-only deploys are still allowed: re-run with --code-only."
+    fi
     print_info  "To push content anyway (clobbers $phase): re-run with --override-canonical."
     return 1
 }

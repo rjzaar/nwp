@@ -19,6 +19,8 @@ source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/git.sh"
 source "$PROJECT_ROOT/lib/sanitize.sh"
+# canonical.sh: canonicality-phase stamping (nwp/ops#33)
+source "$PROJECT_ROOT/lib/canonical.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -254,6 +256,52 @@ backup_files() {
     fi
 }
 
+# Write a sidecar manifest next to the backup artifacts (nwp/ops#33).
+# Records the canonical phase the backup was taken under plus the code
+# anchors (git branch/commit, composer.lock sha256) so a restore/build can
+# match a content snapshot to the code that produced it (P65 item 4 is the
+# runtime counterpart).
+write_backup_manifest() {
+    local site_dir=$1
+    local backup_dir=$2
+    local backup_name=$3
+    local sitename=$4
+    local endpoint=$5
+    local db_only=$6
+    local sanitized=$7
+
+    local abs_backup_dir=$(cd "$(dirname "$backup_dir")" && pwd)/$(basename "$backup_dir")
+    local manifest="${abs_backup_dir}/${backup_name}.manifest.json"
+
+    local git_branch="" git_commit=""
+    if [ -d "$site_dir/.git" ]; then
+        git_branch=$(git -C "$site_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+        git_commit=$(git -C "$site_dir" rev-parse HEAD 2>/dev/null || true)
+    fi
+    local lock_sha=""
+    if [ -f "$site_dir/composer.lock" ]; then
+        lock_sha=$(sha256sum "$site_dir/composer.lock" 2>/dev/null | awk '{print $1}')
+    fi
+
+    {
+        printf '{\n'
+        printf '  "site": "%s",\n' "$sitename"
+        printf '  "endpoint": "%s",\n' "$endpoint"
+        printf '  "backup_name": "%s",\n' "$backup_name"
+        printf '  "canonical_phase": "%s",\n' "$(canonical_get_phase "$sitename")"
+        printf '  "created": "%s",\n' "$(date -u +%FT%TZ)"
+        printf '  "by": "%s",\n' "$(canonical_actor)"
+        printf '  "git_branch": "%s",\n' "$git_branch"
+        printf '  "git_commit": "%s",\n' "$git_commit"
+        printf '  "composer_lock_sha256": "%s",\n' "$lock_sha"
+        printf '  "db_only": %s,\n' "$db_only"
+        printf '  "sanitized": %s\n' "$sanitized"
+        printf '}\n'
+    } > "$manifest"
+
+    echo "$manifest"
+}
+
 # Main backup function
 backup_site() {
     local sitename=$1
@@ -341,11 +389,19 @@ backup_site() {
         fi
     fi
 
+    # Sidecar manifest with the canonical phase + code anchors (nwp/ops#33)
+    local manifest_file
+    manifest_file=$(write_backup_manifest "$site_dir" "$backup_base" "$backup_name" \
+        "$sitename" "$endpoint" "$db_only" "$sanitize" 2>/dev/null) || true
+
     # Summary
     print_header "Backup Summary"
     echo -e "${GREEN}✓${NC} Database: ${backup_base}/${backup_name}.sql.gz"
     if [ "$db_only" != "true" ]; then
         echo -e "${GREEN}✓${NC} Files:    ${backup_base}/${backup_name}.tar.gz"
+    fi
+    if [ -n "$manifest_file" ]; then
+        echo -e "${GREEN}✓${NC} Manifest: ${manifest_file} (canonical: $(canonical_get_phase "$sitename"))"
     fi
 
     # Determine backup type for git operations

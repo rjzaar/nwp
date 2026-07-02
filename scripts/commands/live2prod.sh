@@ -15,6 +15,8 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 # Source shared libraries
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
+# canonical.sh: canonicality-phase content-flow guards (nwp/ops#33)
+source "$PROJECT_ROOT/lib/canonical.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -287,12 +289,15 @@ main() {
     local START_STEP=1
     local SITENAME=""
 
+    local OVERRIDE_CANONICAL=false
+
     while [[ $# -gt 0 ]]; do
         case $1 in
             -h|--help) show_help; exit 0 ;;
             -y|--yes) YES=true; shift ;;
             -s|--step) START_STEP="$2"; shift 2 ;;
             --skip-backup) SKIP_BACKUP=true; shift ;;
+            --override-canonical) OVERRIDE_CANONICAL=true; shift ;;
             -*) print_error "Unknown option: $1"; exit 1 ;;
             *) SITENAME="$1"; shift ;;
         esac
@@ -305,6 +310,16 @@ main() {
     fi
 
     local BASE_NAME=$(get_base_name "$SITENAME")
+
+    # Canonicality guard (nwp/ops#33): under canonical: prod, content changes
+    # happen on prod ONLY — a live→prod push would clobber the canonical
+    # source (under dev/live it is the seed/cutover path and stays allowed).
+    if ! canonical_guard_content_push "$BASE_NAME" "prod" "$OVERRIDE_CANONICAL" "live2prod"; then
+        exit 1
+    fi
+    if ! canonical_enforce_branch_policy "$BASE_NAME" "deploy"; then
+        exit 1
+    fi
 
     print_header "Live to Production Deployment: $BASE_NAME"
 
@@ -376,6 +391,13 @@ main() {
 
     print_header "Deployment Complete"
     print_status "OK" "Live deployed to production successfully"
+
+    # Stamp the canonical phase into a deploy manifest (nwp/ops#33)
+    local deploy_manifest
+    deploy_manifest=$(canonical_deploy_manifest "$BASE_NAME" "live2prod" \
+        "override=${OVERRIDE_CANONICAL:-false}" 2>/dev/null) || true
+    [ -n "$deploy_manifest" ] && print_info "Deploy manifest: $deploy_manifest"
+
     echo ""
     print_info "Production URL: https://$(get_prod_config "$BASE_NAME" "domain")"
 }

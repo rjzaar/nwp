@@ -169,8 +169,25 @@ bundle_build() {
     local built_by
     built_by=$(hostname -f 2>/dev/null || hostname)
 
-    local bundle_name="nwp-bundle-${site}-${short_commit}-${ts}"
+    # Content-addressed disambiguator: the git commit + a wall-clock second is
+    # NOT unique — two different payloads built in the same second under the same
+    # resolved commit (e.g. a non-git payload that falls back to the nwp HEAD)
+    # would otherwise produce an identical filename and SILENTLY overwrite one
+    # another in the artifact store. Fold in a short hash of the payload code
+    # tree so distinct payloads get distinct names (and an identical payload is
+    # idempotently the same name).
+    local payload_hash
+    payload_hash=$(bundle_tree_sha256 "$payload_src/code") || return 1
+    local short_payload="${payload_hash:0:8}"
+    local bundle_name="nwp-bundle-${site}-${short_commit}-${short_payload}-${ts}"
     local bundle_path="${output_dir}/${bundle_name}.tar.gz"
+
+    # Fail-closed: never silently clobber an existing artifact.
+    if [[ -e "$bundle_path" && "${BUNDLE_OVERWRITE:-0}" != "1" ]]; then
+        echo "ERROR: refusing to overwrite existing bundle: $bundle_path" >&2
+        echo "       (set BUNDLE_OVERWRITE=1 to force)" >&2
+        return 1
+    fi
 
     # Work in a temp directory so partial builds do not litter $output_dir
     local work_dir

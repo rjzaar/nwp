@@ -193,9 +193,49 @@ band; prod verifies the signature before install.
   set `BUNDLE_VERIFY_NO_SIG`.
 - **Three keys, all one-way.** Read-only-in, write-only-out, minisign pubkey. No
   PATs, no control-plane creds, no key that reaches another host.
-- **Raw data never leaves prod.** The `publish` path sanitizes on this host behind
-  a fail-closed PII gate; `backup` ships raw restic snapshots only to the offline
-  custodian `ver`, which this host cannot delete.
+- **Raw data never leaves prod.** The `publish` path is *intended* to sanitize on
+  this host behind a fail-closed PII gate before publishing; `backup` ships raw
+  restic snapshots only to the offline custodian `ver`, which this host cannot
+  delete. **See the field-validation gap on `publish` below — the verb is not yet
+  wired to the PII gate.**
+
+## Field validation (tp1 rehearsal, 2026-07-02, nwp/ops#23)
+
+The agent was deployed to a throwaway prod-boundary Linode (`tp1`, real Drupal 11
+site) as it would be on real prod — artifact only, three-key ledger, **no PAT, no
+AI, no full `nwp`** — and driven through a full signed cycle. The box pulled the
+artifact and every bundle from the self-hosted registry over HTTPS (the AI-driven
+build tier never wrote to the box).
+
+**Validated end-to-end (green):**
+- `pull` — HTTPS download + fail-closed verify (minisign + payload/scripts SHA-256).
+- `verify` — standalone; **tamper negative-test correctly rejected** a 1-byte-appended bundle.
+- `apply --dry-run` (no mutation) and `apply --execute` — ran the bundle's own
+  `pre-deploy`/`apply`/`post-deploy`; a code deploy took effect (v1→v2) and
+  **rollback = re-apply previous bundle** restored v1.
+- `status` — local JSON; `db_connected`/`drupal_bootstrap` reflected real site state.
+- **AI-free assertion on the installed artifact** (grep for vendor tokens) = clean;
+  no `.secrets.yml`, no `pl` authoring tree on the box.
+
+**Gaps found (fix before relying on these paths):**
+1. **`publish` verb is mis-wired.** `bin/nwp-server publish` routes to the build-tier
+   `scripts/commands/publish.sh` (a *registry uploader*): it reads a full-`api`
+   `gitlab.api_token` from `.secrets.yml` and uploads an already-built tarball. It
+   does **not** snapshot, sanitize, or invoke `lib/pii-gate.sh`. As shipped, the
+   prod `publish` verb neither matches ADR-0024's capability nor honours the
+   three-key ledger (it would require a PAT on prod). The sanitize→PII-gate→publish
+   capability must be implemented as its own prod-side script before the verb is used.
+2. **Bundle `apply.sh` must sync by content.** A code-only edit that preserves file
+   size and mtime (e.g. `v1`→`v2`) is **silently skipped** by `rsync -a`'s
+   size+mtime heuristic — the apply "succeeds" but the code never changes. Bundle
+   authors must use `rsync -a --checksum` (or `-I`) in `apply.sh`, and point drush at
+   the docroot explicitly (`--root=<site>/web`) rather than relying on CWD detection.
+3. **Bundle name collisions (fixed).** `lib/bundle-build.sh` named bundles
+   `<site>-<commit>-<ts>`; a non-git payload falls back to the nwp HEAD commit, so
+   two different payloads built in the same second produced an identical filename and
+   **silently overwrote** each other in the artifact store. Now content-addressed
+   (`+<payload-hash>`) with a fail-closed no-overwrite guard (`BUNDLE_OVERWRITE=1`
+   to force).
 
 ## See Also
 

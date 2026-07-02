@@ -126,3 +126,93 @@ non-live policy). This is why P65 lands install-time Class-3 content as publishe
   content authoring = ops#22 #3, human); `guilds/README.md` stale (lists files that no
   longer exist); no upstreaming/content-contribution mechanism decided (F30 proposal
   exists, unreferenced by any accepted ADR).
+
+---
+
+# Part 2 — Site identity & fresh-site starting content (3 agents, same day)
+
+## E. Substitution inventory (every baked site/operator string in shipped content)
+
+**Half a mechanism already exists:** nwc_mailer templates use `[site:name]`/`[site:url]`;
+the nwc_growth first-run wizard collects the community name → `system.site.name` (treats
+literal "Narrow Way Commons" as the unset sentinel, FirstRunWizardForm ~L126/158). Baked
+literals live in: **legal docs** (`canonical-text/*.md` — operator name ×8, contact email
+×12, Melbourne/Victoria jurisdiction, AU statutes, AUD 100 cap, nwpcode.org URL family,
+infra facts in privacy.md:64); **help book** (`migrate_help_to_book.php` — "Narrow Way
+Commons" ×25 incl. the book-root title that doubles as the book-tree parent key at L224/282/
+840/901/935; two mailto: contacts L946/956); **guild seeds** (founder name in
+initial_members notes ×6 files; "NWC" in every IG charter one-liner; Saint School/Avila
+SSF/formation curriculum in sojourners/trialing/theology YAMLs); **apply webform**
+(`webform.webform.apply.yml` — title, Apostoli Viae fieldset L40-58, s195AW consent L213/227,
+**hardcoded `to_mail: <operator email>` at L363 bypassing the `approver_email` setting** —
+latent bug); **notification Twig templates** (hardcoded brand in daily/weekly digest +
+workflow-advance footers); recipe descriptions (admin-facing, low priority). `nwc_help`
+topics are already generic (clean). nwc_theme = metadata only.
+
+**Sufficient parameter set (~10):** site_name (=system.site), site_short_name,
+operator_legal_name, operator_type, contact_email, general_inquiries_email,
+operator_locality, governing_law_region, base_url (=[site:url]), sister_site_url.
+
+**NOT string-substitutable (authoring):** AU statute citations (Copyright Act 1968
+ss40/41/195AW, Privacy Act 1988/OAIC, ACL) — swapping the region name makes them FALSE;
+currency/liability cap; operator infra facts (Linode/us-iad/Gmail retention);
+formation curriculum (Sojourners 12 levels, theology Class A/B/C, Narrow Way Examen);
+Apostoli Viae fieldset; posture/"pre-counsel"/effective-date prose; real-person notes
+(media-guild.yml:228 "Greg"/"Rob").
+
+## F. Build mechanics (verified on core 10.6.12 / drush 13 / data_policy 2.0.8 / token 1.15)
+
+- **Recipe `input:` = config-only channel.** Schema: description+data_type(primitive)+
+  constraints+prompt+default(value|config) (Recipe.php:182-240). Values substitute ONLY
+  into config actions as `${<recipe-dirname>.<key>}` (RecipeRunner.php:95-126,336-346);
+  the DefaultContent Importer takes no replacements — content imports byte-for-byte.
+  `drush recipe <path> --input=dir.key=value` works (core RecipeCommand registered by
+  drush; ConsoleInputCollector.php:42-50); non-interactive = defaults, no error. Inputs
+  namespaced per defining recipe (parent can supply a child's value, not inject).
+- **Tokens can't fix legal docs:** token module enabled, `token_filter` ABSENT;
+  data_policy `field_description` is text_long rendered by **basic_string** formatter —
+  no filter pipeline ever runs (core.entity_view_display…default.yml:15). nwc_copyright's
+  own render path emits Markup directly (LegalController.php:39-43).
+- **The choke point:** `LegalDocRenderer::toCleanHtml()` (LegalDocRenderer.php:79) is
+  shared by render() AND DataPolicySync::syncDoc/publishFromEditorial — one strtr() there
+  covers every legal surface; doing it at sync time bakes identity into the stored
+  revision (correct for consent semantics). `cleanMarkdown()` already strips the
+  `**Operator:**` metadata header lines from public render (L116) — inline prose still
+  carries literals. versions.yml has no identity fields today.
+- **First-run wizard persists only site_name** (SetupManager.php:28-30); steps 2/4/5 not
+  persisted; no site_identity config exists anywhere (grep clean); `nwc_core` has no
+  config/ dir — natural home for `nwc_core.site_identity`.
+- **pl install** does `drush site:install <profile> --site-name --site-mail` (lib/
+  install-drupal.sh:932-938); post-install `drush config:set` is an established pattern
+  (import.sh:333, stg2live.sh:1024). **`nwc-copyright:sync` is called by NO install path**
+  → a fresh site has zero legal docs until someone runs it manually.
+
+## G. Prior art (web-verified)
+
+- **WordPress core:** privacy-policy tooling creates a DRAFT page + Privacy Policy Guide;
+  only auto-substitution in core's text is the site URL; shipped disclaimer: "It is your
+  responsibility to write a comprehensive privacy policy…"; drift notices when suggested
+  text changes after publication (policy_text_changed_notice). Plugins register suggested
+  sections via wp_add_privacy_policy_content().
+- **Discourse:** 2018 counsel-rewritten templates use `{{Company Name}}`/`{{Governing
+  Law}}`/`{{{Company Address}}}` etc. bound to site settings company_name/governing_law/
+  city_for_disputes (config/site_settings.yml, default ""); TOS/privacy topics are seeded
+  ONLY once company_name is supplied (live placeholder-leak embarrassments documented,
+  e.g. Racket forum); CDCK: "can't guarantee the template terms… will be the best terms
+  for any particular operator", won't take "attorney-like responsibility". External-URL
+  escape hatch (tos_url/privacy_policy_url).
+- **Moodle tool_policy:** ships EMPTY (high confidence, inferred from docs+repo); no
+  substitution mechanism; draft default state; version-bump reconsent as known.
+- **Drupal:** core ships nothing (#2850879 postponed since 2017 over jurisdiction
+  specificity); **Drupal CMS creates an UNPUBLISHED privacy-policy stub** + footer link +
+  "consult your lawyer" guidance — incompleteness is structurally visible (Klaro consent
+  manager links to it; unfinished = visibly broken); contrib `legal` module ships no text
+  (minimally maintained). No maintained contrib generates/templates legal text.
+- **Template corpora:** basecamp/policies (CC BY 4.0, archived, "edit them, adapt them",
+  no merge fields) and Automattic/legalmattic (CC BY-SA 4.0 — the lineage Discourse's
+  original TOS came from). No cross-project placeholder-syntax standard exists.
+- **Converged pattern:** template-as-draft + explicit identity placeholders (identity/
+  venue ONLY — never substantive clauses) + counsel disclaimer + a gate before text is
+  live + drift notices. Nobody detects "published with literal placeholders" — P65 §3b's
+  enforcement-layer gate closes that hole; Discourse's company_name gate is the nearest
+  precedent.

@@ -98,6 +98,75 @@ never shipped as live text):
 5. Adopt Moodle's **minor-change flag** in versions.yml (typo fixes shouldn't force
    every user to re-consent).
 
+## 3b. Site identity & fresh-site starting content (amendment, 2026-07-02 — 3-agent research)
+
+**The deeper issue (operator, 2026-07-02):** §3's fail-closed template gate stops a fork
+shipping OUR legal texts, but leaves a fresh site with NOTHING usable — and the help book
+installs saying "Narrow Way Commons" whatever the site is called. Research (substitution
+inventory / build mechanics / WordPress+Discourse+Moodle+Drupal-CMS prior art — annex §E-G)
+resolves it as follows.
+
+**Finding that reframes the problem:** a fresh install today has NO legal documents at all —
+`nwc-copyright:sync` is not called by any install path; the consent gate is simply off.
+And a half-mechanism already exists: mailer templates use `[site:name]` tokens, and the
+first-run wizard already collects the community name (writing `system.site.name`, treating
+the literal "Narrow Way Commons" as its unset sentinel). The gap is that legal docs, the
+help book, guild seeds, notification Twig templates, and the apply webform bake literals.
+
+**Ecosystem verdict (verified):** nobody ships enforceable legal text. WordPress = suggested
+text into a DRAFT + guide + "your responsibility" disclaimer + drift notices; Discourse =
+templates with `{{Company Name}}`/`{{Governing Law}}` placeholders bound to site settings,
+seeded ONLY once the operator supplies `company_name` (after live sites leaked literal
+placeholders); Moodle/Drupal-core/contrib-legal = empty; Drupal CMS = unpublished stub whose
+absence is structurally visible (broken consent link). Substitution scope is universally
+**identity/venue fields only — never substantive clauses** (GDPR-era guidance: the policy
+must describe YOUR actual practice; statute citations can't be find/replaced).
+
+### The design
+
+1. **`nwc_core.site_identity` config object** — single source for the ~10 identity keys the
+   inventory found sufficient (annex §E): operator_legal_name, operator_type, contact_email,
+   general_inquiries_email, operator_locality, governing_law_region, site_short_name,
+   sister_site_url (reuse `system.site` name/mail where they suffice). Populated by any of:
+   first-run wizard (extend Step 1 — the write path exists), recipe `input:` (verified: a
+   config-ONLY channel — `${dirname.key}` into config actions; `drush recipe --input=…`
+   works non-interactively; inputs can NEVER reach content files), or `pl install` from
+   per-site nwp.yml via `drush config:set` (established pattern in install scripts).
+   Expose `[nwc:*]` tokens for render-time surfaces.
+2. **Legal docs = per-jurisdiction template sets + identity substitution at the choke
+   point.** Canonical texts get explicit `{{placeholders}}` for identity/venue fields only.
+   Substitution happens in `LegalDocRenderer::toCleanHtml()` — the single point both the
+   page render AND `DataPolicySync` pass through — so identity is BAKED into the stored
+   policy revision at sync time (consent must attach to immutable text; render-time tokens
+   are wrong here, and mechanically impossible anyway: data_policy's body renders via
+   `basic_string`, no filter pipeline). The current AU texts become the AU template set;
+   statute citations stay inside the jurisdiction set, never substituted. A generic
+   no-statute international baseline is an authoring task.
+3. **Fail-closed gate, refined (supersedes §3.2):** `DataPolicySync` refuses to sync/enforce
+   a document if ANY of: required site_identity keys empty · unresolved `{{placeholders}}`
+   remain after substitution · doc marked `template: true` with operator confirmation absent.
+   This is Discourse's company_name gate moved to the ENFORCEMENT layer — stricter than
+   anything surveyed, and it closes the one failure mode the whole ecosystem still leaks
+   (operator publishes with literal placeholders). Until the gate passes: consent gate off
+   + persistent admin warning (Drupal-CMS-style structural visibility).
+4. **Install flow closes the no-legal-docs gap:** collect identity (wizard / --input /
+   nwp.yml) → sync → docs live + consent gate on. Plus a WordPress-style **drift notice**:
+   when the shipped template version advances past the operator's fork point
+   (versions.yml template_version vs local), surface an admin notice — never auto-apply.
+5. **Help book & other prose:** generalize to site-neutral phrasing where possible
+   ("this site"); where the name genuinely helps, `{{site_name}}`/`{{contact_email}}`
+   substituted by a small **post-import step** (recipe inputs can't reach content;
+   token_filter absent — a strtr pass at import time in the Class-3 import service is the
+   mechanism; the book root title doubles as the book-tree parent key, so substitution must
+   be consistent). Notification Twig templates take a `site_name` variable; the apply
+   webform is rewritten generic — incl. fixing the hardcoded `to_mail` that bypasses the
+   existing `approver_email` setting (latent bug), and dropping the operator-specific
+   Apostoli Viae fieldset to an opt-in.
+6. **Explicitly NOT substitutable (needs authoring — feeds FORK_GUIDE):** jurisdiction
+   statute citations, operator infrastructure facts in the privacy policy, monetary/liability
+   caps, the formation curriculum (Sojourners levels, theology credentials), external-
+   apostolate integrations, posture/effective-date prose, real-person founder notes.
+
 ## 4. Concrete work items (ordered)
 
 1. **[bug] Unify data_policy version bookkeeping** across sync + publishFromEditorial (§1.3).
@@ -122,6 +191,16 @@ never shipped as live text):
 7. **[later, when nwc_editorial lands]** demo editorial samples should *transition* into
    their states rather than writing `state` directly; pipeline-origin sampling gates and
    trial minimums need code if the doctrine is to be enforced (agent D gap #3).
+8. **[site identity]** `nwc_core.site_identity` config + schema + `[nwc:*]` tokens;
+   extend first-run wizard; `pl install` wiring from per-site nwp.yml (§3b.1).
+9. **[legal templates]** placeholderize canonical texts (identity/venue only) +
+   substitution in `toCleanHtml()` + refined fail-closed gate + drift notice + sync wired
+   into the install flow (§3b.2-4). Extends item 2; land together.
+10. **[prose generalization]** help book site-neutralization + post-import substitution
+    step; notification Twig `site_name` variable; apply-webform rewrite incl. the
+    hardcoded-`to_mail`-bypasses-`approver_email` bug (§3b.5).
+11. **[jurisdiction sets]** restructure canonical-text as per-jurisdiction template sets
+    (AU = current docs); author the generic no-statute baseline (human + counsel review).
 
 ## 5. What this deliberately does NOT do
 

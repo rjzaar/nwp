@@ -97,6 +97,9 @@ get_git_info() {
         if [ -z "$branch" ]; then
             branch="no-branch"
         fi
+        # Slashed branches (feat/foo) would put a subdirectory in the
+        # backup filename and break ddev export-db.
+        branch="${branch//\//-}"
 
         # Get commit hash (first 8 characters)
         local commit=$(git rev-parse HEAD 2>/dev/null | cut -c 1-8)

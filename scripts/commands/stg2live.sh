@@ -28,6 +28,8 @@ source "$PROJECT_ROOT/lib/ssh.sh"
 # (set at the top of this file) is scripts/commands/ — same dir the
 # rollback dispatcher uses, so both writers/readers share one registry.
 source "$PROJECT_ROOT/lib/rollback.sh"
+# canonical.sh: canonicality-phase content-flow guards (nwp/ops#33)
+source "$PROJECT_ROOT/lib/canonical.sh"
 
 # Source install-common for get_settings_value
 if [ -f "$PROJECT_ROOT/lib/install-common.sh" ]; then
@@ -1053,6 +1055,12 @@ ${BOLD}OPTIONS:${NC}
     --no-provision          Skip auto-provisioning (used internally)
     --dry-run               Snapshot + rsync preview only; abort before any DB write,
                             permission change, or service reload. Safe to run any time.
+    --code-only             Deploy code/config only — skip the database push so live
+                            CONTENT is preserved. The allowed deploy shape when the
+                            site is canonical: live|prod (see 'pl canonical').
+    --override-canonical    Push content even though the site is NOT canonical: dev.
+                            OVERWRITES the canonical content source. Warns loudly and
+                            records who/when in private/canonical/<site>.log.
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Site name (with or without _stg suffix)
@@ -1125,9 +1133,16 @@ deploy_to_live() {
     fi
 
     # Secure passwords before deployment (regenerate admin, reset weak passwords).
-    # Both of these mutate the staging site, so skip them on dry-run.
+    # Both of these mutate the staging site, so skip them on dry-run. On
+    # --code-only the DB never leaves staging, so the password reset would
+    # change nothing on live while printing a misleading new admin password —
+    # skip it too (security modules still apply: they ship as code+config).
     if [ "${DRY_RUN:-false}" != "true" ]; then
-        secure_user_passwords "$stg_site"
+        if [ "${CODE_ONLY:-false}" != "true" ]; then
+            secure_user_passwords "$stg_site"
+        else
+            print_info "[code-only] skipping secure_user_passwords (database is not pushed)"
+        fi
         install_security_modules "$stg_site"
     else
         print_info "[dry-run] skipping secure_user_passwords + install_security_modules (would mutate staging)"
@@ -1238,7 +1253,9 @@ deploy_to_live() {
         print_status "OK" "Dry run complete; no destructive ops executed"
         return 0
     fi
-    if ! full_database_deployment "$stg_site" "$base_name" "$server_ip" "$ssh_user" "$webroot"; then
+    if [ "${CODE_ONLY:-false}" == "true" ]; then
+        print_info "[code-only] skipping database push — live content preserved (canonical: $(canonical_get_phase "$base_name"))"
+    elif ! full_database_deployment "$stg_site" "$base_name" "$server_ip" "$ssh_user" "$webroot"; then
         print_status "WARN" "Database deployment had issues (site may need manual database setup)"
     fi
 
@@ -1267,6 +1284,15 @@ deploy_to_live() {
     # Success
     print_header "Deployment Complete"
     print_status "OK" "Staging deployed to live server"
+
+    # Stamp the canonical phase into a deploy manifest (nwp/ops#33) so a
+    # restore/audit can tell which content-flow regime this deploy ran under.
+    local deploy_manifest
+    deploy_manifest=$(canonical_deploy_manifest "$base_name" "stg2live" \
+        "code_only=${CODE_ONLY:-false}" "override=${OVERRIDE_CANONICAL:-false}" \
+        "domain=${domain}" 2>/dev/null) || true
+    [ -n "$deploy_manifest" ] && print_info "Deploy manifest: $deploy_manifest"
+
     echo ""
     echo -e "  ${BOLD}Live URL:${NC} ${GREEN}https://${domain}${NC}"
     echo ""
@@ -1286,11 +1312,13 @@ main() {
     local SKIP_PASSWORD_RESET=false
     local NO_PROVISION=false
     local DRY_RUN=false
+    local CODE_ONLY=false
+    local OVERRIDE_CANONICAL=false
     local SITENAME=""
 
     # Parse options
     local OPTIONS=hdyv
-    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision,dry-run
+    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision,dry-run,code-only,override-canonical
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -1309,13 +1337,15 @@ main() {
             --no-password-reset) SKIP_PASSWORD_RESET=true; shift ;;
             --no-provision) NO_PROVISION=true; shift ;;
             --dry-run) DRY_RUN=true; shift ;;
+            --code-only) CODE_ONLY=true; shift ;;
+            --override-canonical) OVERRIDE_CANONICAL=true; shift ;;
             --) shift; break ;;
             *) echo "Programming error"; exit 3 ;;
         esac
     done
 
     # Export so deploy_to_live and friends can read it.
-    export DRY_RUN
+    export DRY_RUN CODE_ONLY OVERRIDE_CANONICAL
 
     # Get sitename
     if [ $# -ge 1 ]; then
@@ -1349,6 +1379,21 @@ main() {
     if [ "$live_enabled" = "false" ]; then
         print_error "Live deployment disabled for '$BASE_NAME' (live.enabled: false in sites/$BASE_NAME/.nwp.yml)"
         print_info "To enable: set live.enabled: true in the site's .nwp.yml, or pass --force-enabled (not yet implemented)."
+        exit 1
+    fi
+
+    # Canonicality guard (nwp/ops#33): a dev→live CONTENT push is allowed only
+    # while the site is canonical: dev — otherwise it would clobber the
+    # canonical content source. --code-only skips the DB push (content
+    # preserved) and is always allowed; --override-canonical is the audited
+    # escape hatch (loud warning + private/canonical/<site>.log record).
+    # canonical: prod additionally requires deploys from a clean CI-gated main.
+    if [ "$CODE_ONLY" != "true" ]; then
+        if ! canonical_guard_content_push "$BASE_NAME" "live" "$OVERRIDE_CANONICAL" "stg2live"; then
+            exit 1
+        fi
+    fi
+    if ! canonical_enforce_branch_policy "$BASE_NAME" "deploy"; then
         exit 1
     fi
 

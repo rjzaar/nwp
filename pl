@@ -98,6 +98,12 @@ ${BOLD}DEPLOYMENT (Remote):${NC}
     live2stg <sitename>             Pull live to staging
     live2prod <sitename>            Deploy live to production
 
+${BOLD}CANONICALITY (content-flow phases, ops#33):${NC}
+    canonical show [site]           Show per-site canonical phase (dev|live|prod)
+    canonical set <site> <phase>    Explicit phase transition (records who/when)
+    canonical check <site>          Show which content-flow guards are in force
+    canonical log <site>            Transition/override ledger for a site
+
 ${BOLD}PROVISIONING:${NC}
     live <sitename>                 Provision live test server
     live --type=shared <sitename>   Provision on shared GitLab server
@@ -621,6 +627,11 @@ main() {
             ;;
         live2prod)
             run_script "live2prod.sh" "$@"
+            ;;
+
+        # Canonicality phases + content-flow guards (nwp/ops#33)
+        canonical)
+            run_script "canonical.sh" "$@"
             ;;
 
         # Provisioning

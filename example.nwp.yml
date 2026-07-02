@@ -113,6 +113,21 @@ sites:
     php: "8.2"                               # override stack default
     database: mariadb
     live_domain: <example-prod-domain>       # placeholder — never a real domain here
+    # Canonicality phase (nwp/ops#33) — which host owns the site's CONTENT.
+    # Enforced by the deploy commands, not just documented:
+    #   dev  — dev DB is the source of truth; dev→live pushes allowed
+    #          (dev overwrites live; anything authored on live is disposable).
+    #   live — content changes on live ONLY; dev gets a sanitized live→dev
+    #          copy; dev→live CONTENT pushes are refused (code/config-only
+    #          deploys still flow via `pl stg2live --code-only`).
+    #   prod — prod is the source; live/dev are downstream sanitized copies;
+    #          code work is branch-only with a protected CI-gated main
+    #          (ADR-0024).
+    # Default when absent: dev (today's behavior). Change phases with an
+    # explicit operator action — `pl canonical set <site> <phase>` — which
+    # records canonical_set_by/canonical_set_at here and appends to the
+    # private/canonical/<site>.log ledger.
+    canonical: dev
     options:
       environment_indicator: y
       config_split: y

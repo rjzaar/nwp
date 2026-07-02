@@ -39,8 +39,11 @@ if ! declare -F minisign_check &>/dev/null; then
     source "${NWP_ROOT}/lib/minisign.sh"
 fi
 if ! declare -F bundle_tree_sha256 &>/dev/null; then
-    # shellcheck source=lib/bundle-build.sh
-    source "${NWP_ROOT}/lib/bundle-build.sh"
+    # Only the shared tree-hash is needed — NOT the whole builder. This keeps the
+    # AI-free nwp-server artifact minimal (it ships lib/bundle-hash.sh, never the
+    # builder). See build/nwp-server.include.
+    # shellcheck source=lib/bundle-hash.sh
+    source "${NWP_ROOT}/lib/bundle-hash.sh"
 fi
 
 # Required manifest fields for schema version 1.

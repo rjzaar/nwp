@@ -1,0 +1,63 @@
+# nginx reverse-proxy vhost for a nwptoolkit (vid) set site.
+#
+# Unlike the php-fpm docroot vhosts (setup_nginx_vhost / configure_nginx_drupal),
+# this one proxies to the ONE shared nwptoolkit instance on 127.0.0.1:${PORT}.
+# The `proxy_set_header Host $host` line is load-bearing: it preserves the
+# original Host so nwptoolkit's Host->set middleware can scope the request to
+# the set whose public_surface.domain == this ${DOMAIN}. One instance, many
+# vhosts.
+#
+# FULLY GATED (v1 login policy): auth_basic is set at the SERVER level so it
+# covers EVERY location — `/`, `/api/`, `/static/`, and the HTML player routes.
+# No anonymous request returns content: an unauthenticated GET /api/search must
+# 401 exactly like the home page. (certbot injects the 443 server + redirect.)
+#
+# Template variables (substitute before install, e.g. via envsubst or sed):
+#   ${DOMAIN}    public vhost, e.g. rgv.<example-prod-domain>  (must match set.yml public_surface.domain)
+#   ${PORT}      shared nwptoolkit bind port         (default 8071)
+#   ${HTPASSWD}  path to the htpasswd file           (e.g. /etc/nginx/htpasswd/${DOMAIN})
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN};
+
+    # --- full-site basic-auth gate (applies to ALL locations below) ---------
+    # Single server-level gate => nothing (search API, static assets, pages)
+    # is reachable without credentials. Stage-10 smoke: 401 unauth -> 200 auth,
+    # including /api/search.
+    auth_basic           "nwptoolkit (vid) — login required";
+    auth_basic_user_file ${HTPASSWD};
+
+    # Let certbot's HTTP-01 challenge through WITHOUT auth (chicken-and-egg:
+    # the cert can't be issued if the webroot 401s the ACME probe).
+    location ^~ /.well-known/acme-challenge/ {
+        auth_basic off;
+        root /var/www/html;
+        allow all;
+    }
+
+    # --- reverse proxy to the shared nwptoolkit instance --------------------
+    location / {
+        proxy_pass http://127.0.0.1:${PORT};
+
+        # Preserve the original Host so the Host->set middleware resolves the
+        # correct set. Do NOT rewrite Host to the upstream address.
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+
+        proxy_http_version 1.1;
+        proxy_read_timeout 60s;
+        proxy_redirect     off;
+    }
+
+    # Staging sites: keep search engines out (mirrors configure_nginx_drupal).
+    set $is_staging 0;
+    if ($host ~* "([-_]stg|staging)") { set $is_staging 1; }
+    if ($is_staging = 1) {
+        add_header X-Robots-Tag "noindex, nofollow, noarchive, nosnippet" always;
+    }
+}

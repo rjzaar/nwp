@@ -3061,7 +3061,7 @@ execute_item_machine_checks() {
 
 # Run functional verification scenarios
 # Usage: run_ai_verification [--dry-run] [--resume] [--fix] [--scenario=ID] [--report] [--cross-validate=SITE]
-# Note: --functional flag (formerly --ai) - no LLM/AI calls are used
+# Note: --functional flag (formerly --ai) - no language-model calls are used
 run_ai_verification() {
     # Source all P51 libraries
     local p51_libs=("verify-scenarios.sh" "verify-checkpoint.sh" "verify-cross-validate.sh"
@@ -3086,7 +3086,7 @@ run_ai_verification() {
     # Check yq dependency
     if ! command -v yq &>/dev/null; then
         echo -e "${RED}Error:${NC} yq is required for functional verification"
-        echo "Install Go yq: https://github.com/mikefarah/yq"
+        echo "Install Go yq: see the yq project releases page (<vcs-host>/mikefarah/yq)"
         return 1
     fi
 

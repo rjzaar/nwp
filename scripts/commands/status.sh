@@ -41,6 +41,8 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 # Source shared libraries
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
+# canonical.sh: canonicality phases for the PHASE column (nwp/ops#33)
+source "$PROJECT_ROOT/lib/canonical.sh"
 
 # F33 Phase 4 — surface where per-site config is being read from. When
 # the operator still has content in the legacy sites/ path, the helper
@@ -388,6 +390,23 @@ get_site_field() {
     yaml_get_site_field "$site" "$field" "$config_file"
 }
 
+# Canonical phase for the PHASE column (nwp/ops#33): explicit values plain,
+# the implicit default parenthesized, unparseable values surfaced verbatim.
+get_phase_display() {
+    local site="$1"
+    local config_file="$2"
+
+    local phase
+    phase=$(canonical_get_phase "$site" "$config_file")
+    if canonical_phase_is_explicit "$site" "$config_file"; then
+        echo "$phase"
+    elif [[ "$phase" == invalid:* ]]; then
+        echo "$phase"
+    else
+        echo "(dev)"
+    fi
+}
+
 get_site_nested_field() {
     local site="$1"
     local section="$2"
@@ -710,15 +729,16 @@ show_sites() {
 
     if [ "$show_all" == "true" ]; then
         # Full view with all details
-        printf "  ${BOLD}%-16s %-10s %-10s %-12s %-8s %-6s %-6s %-8s %s${NC}\n" \
-            "NAME" "RECIPE" "PURPOSE" "STAGES" "DDEV" "DISK" "DB" "HEALTH" "ACTIVITY"
-        printf "  %-16s %-10s %-10s %-12s %-8s %-6s %-6s %-8s %s\n" \
-            "----------------" "----------" "----------" "------------" "--------" "------" "------" "--------" "--------"
+        printf "  ${BOLD}%-16s %-10s %-10s %-7s %-12s %-8s %-6s %-6s %-8s %s${NC}\n" \
+            "NAME" "RECIPE" "PURPOSE" "PHASE" "STAGES" "DDEV" "DISK" "DB" "HEALTH" "ACTIVITY"
+        printf "  %-16s %-10s %-10s %-7s %-12s %-8s %-6s %-6s %-8s %s\n" \
+            "----------------" "----------" "----------" "-------" "------------" "--------" "------" "------" "--------" "--------"
 
         while read -r site; do
             local recipe=$(get_site_field "$site" "recipe" "$config_file")
             local purpose=$(get_site_field "$site" "purpose" "$config_file")
             local directory=$(get_site_field "$site" "directory" "$config_file")
+            local phase=$(get_phase_display "$site" "$config_file")
             local stages=$(get_site_stages "$site" "$config_file")
             local ddev_status=$(get_ddev_status "$directory")
             local disk=$(get_disk_usage "$directory")
@@ -726,18 +746,19 @@ show_sites() {
             local health=$(check_site_health "$directory")
             local activity=$(get_last_activity "$directory")
 
-            printf "  ${CYAN}%-16s${NC} %-10s %-10s %-20b %-14b %-6s %-6s %-14b %s\n" \
-                "$site" "${recipe:-?}" "${purpose:--}" "$stages" "$ddev_status" "$disk" "$db_size" "$health" "$activity"
+            printf "  ${CYAN}%-16s${NC} %-10s %-10s %-7s %-20b %-14b %-6s %-6s %-14b %s\n" \
+                "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$stages" "$ddev_status" "$disk" "$db_size" "$health" "$activity"
         done <<< "$sites"
 
     elif [ "$verbose" == "true" ]; then
         # Verbose view with purpose and domain
-        printf "  ${BOLD}%-18s %-10s %-12s %-15s %s${NC}\n" "NAME" "RECIPE" "PURPOSE" "STATUS" "DOMAIN"
-        printf "  %-18s %-10s %-12s %-15s %s\n" "------------------" "----------" "------------" "---------------" "------"
+        printf "  ${BOLD}%-18s %-10s %-12s %-7s %-15s %s${NC}\n" "NAME" "RECIPE" "PURPOSE" "PHASE" "STATUS" "DOMAIN"
+        printf "  %-18s %-10s %-12s %-7s %-15s %s\n" "------------------" "----------" "------------" "-------" "---------------" "------"
 
         while read -r site; do
             local recipe=$(get_site_field "$site" "recipe" "$config_file")
             local purpose=$(get_site_field "$site" "purpose" "$config_file")
+            local phase=$(get_phase_display "$site" "$config_file")
             local stages=$(get_site_stages "$site" "$config_file")
             local domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
 
@@ -747,18 +768,19 @@ show_sites() {
                 status_display=$(get_install_progress_display "$site" "$config_file")
             fi
 
-            printf "  ${CYAN}%-18s${NC} %-10s %-12s %-30b %s\n" \
-                "$site" "${recipe:-?}" "${purpose:--}" "$status_display" "${domain:-}"
+            printf "  ${CYAN}%-18s${NC} %-10s %-12s %-7s %-30b %s\n" \
+                "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$status_display" "${domain:-}"
         done <<< "$sites"
 
     else
         # Default compact view with purpose
-        printf "  ${BOLD}%-18s %-10s %-12s %s${NC}\n" "NAME" "RECIPE" "PURPOSE" "STAGES"
-        printf "  %-18s %-10s %-12s %s\n" "------------------" "----------" "------------" "------"
+        printf "  ${BOLD}%-18s %-10s %-12s %-7s %s${NC}\n" "NAME" "RECIPE" "PURPOSE" "PHASE" "STAGES"
+        printf "  %-18s %-10s %-12s %-7s %s\n" "------------------" "----------" "------------" "-------" "------"
 
         while read -r site; do
             local recipe=$(get_site_field "$site" "recipe" "$config_file")
             local purpose=$(get_site_field "$site" "purpose" "$config_file")
+            local phase=$(get_phase_display "$site" "$config_file")
             local stages=$(get_site_stages "$site" "$config_file")
 
             # Check for incomplete installation
@@ -769,9 +791,9 @@ show_sites() {
 
             if [ -n "$install_progress" ]; then
                 # Show incomplete installation status
-                printf "  ${CYAN}%-18s${NC} %-10s %-12s %b\n" "$site" "${recipe:-?}" "${purpose:--}" "$install_progress"
+                printf "  ${CYAN}%-18s${NC} %-10s %-12s %-7s %b\n" "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$install_progress"
             else
-                printf "  ${CYAN}%-18s${NC} %-10s %-12s %b\n" "$site" "${recipe:-?}" "${purpose:--}" "$stages"
+                printf "  ${CYAN}%-18s${NC} %-10s %-12s %-7s %b\n" "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$stages"
             fi
         done <<< "$sites"
     fi
@@ -825,6 +847,7 @@ show_site_info() {
     printf "  %-20s %s\n" "Name:" "$site"
     printf "  %-20s %s\n" "Recipe:" "$(get_site_field "$site" "recipe" "$config_file")"
     printf "  %-20s %s\n" "Purpose:" "$(get_site_field "$site" "purpose" "$config_file")"
+    printf "  %-20s %s\n" "Canonical:" "$(get_phase_display "$site" "$config_file")"
     printf "  %-20s %s\n" "Directory:" "$directory"
     printf "  %-20s %s\n" "Created:" "$(get_site_field "$site" "created" "$config_file")"
     printf "  %-20s %s\n" "Environment:" "$(get_site_field "$site" "environment" "$config_file")"

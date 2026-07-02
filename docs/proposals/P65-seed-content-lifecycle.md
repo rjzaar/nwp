@@ -1,6 +1,9 @@
 # P65 — Seed-content lifecycle: shipped content vs the site's editorial workflow
 
-**Status:** PROPOSED (synthesis of 4-agent research, 2026-07-02, ops#3 session)
+**Status:** APPROVED (operator, 2026-07-02). Synthesis of 7-agent research (2026-07-02,
+ops#3 session; §3b amendment same day). Implementation tracked in nwp/ops (see issue
+created at approval); item 1 = ops#31. Item 6 (ADR + FORK_GUIDE.md) ratifies this
+document's decisions into the canonical record.
 **Question (operator, 2026-07-02):** package-shipped seed content lands on sites whose
 whole editorial apparatus exists to review content before it's live — and the package
 will be installed by other operators (federation). How is seed content best managed

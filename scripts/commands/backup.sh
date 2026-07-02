@@ -97,6 +97,9 @@ get_git_info() {
         if [ -z "$branch" ]; then
             branch="no-branch"
         fi
+        # Slashed branches (feat/foo) would put a subdirectory in the
+        # backup filename and break ddev export-db.
+        branch="${branch//\//-}"
 
         # Get commit hash (first 8 characters)
         local commit=$(git rev-parse HEAD 2>/dev/null | cut -c 1-8)
@@ -276,12 +279,13 @@ backup_site() {
         print_header "NWP Site Backup: $sitename"
     fi
 
-    # Check if site directory exists
-    local site_dir="sites/$sitename"
-    if [ ! -d "$site_dir" ]; then
-        print_error "Site directory not found: $site_dir"
-        echo "Current directory: $(pwd)"
-        echo "Looking for: $site_dir"
+    # Resolve the DDEV project dir: v2 layout keeps it under
+    # sites/<name>/dev/, v1 is the flat sites/<name>/ (resolve_project
+    # handles both, plus explicit paths like <name>/stg).
+    local site_dir
+    if ! site_dir=$(resolve_project "$sitename"); then
+        print_error "Site not found: $sitename"
+        echo "Looked under: ${NWP_DIR:-${PROJECT_ROOT:-$HOME/nwp}}/sites/"
         return 1
     fi
 

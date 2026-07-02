@@ -84,7 +84,7 @@ case "$verb" in
     pull)                 run server-pull.sh "$@" ;;
     verify)               run server-pull.sh --verify-only "$@" ;;
     apply)                run server-apply.sh "$@" ;;
-    publish)              run publish.sh "$@" ;;
+    publish)              run server-publish.sh "$@" ;;
     backup)               run server-backup.sh "$@" ;;
     rollback)             run rollback.sh "$@" ;;
     status)               run server-status.sh "$@" ;;

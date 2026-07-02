@@ -44,10 +44,13 @@ scripts/commands/server-apply.sh
 # ── local status (JSON; no SaaS, no outbound network) ───────────────────────
 scripts/commands/server-status.sh
 
-# ── snapshot → sanitize → verify → publish (fail-closed PII gate) ────────────
+# ── snapshot → sanitize → fail-closed PII gate → publish (write-only token) ──
+# The prod publish verb is scripts/commands/server-publish.sh. The build-tier
+# scripts/commands/publish.sh (registry uploader needing a full-api PAT) is
+# DELIBERATELY EXCLUDED — it must never reach a prod host (ADR-0024 ledger).
 lib/pii-gate.sh
 lib/sanitizers/
-scripts/commands/publish.sh
+scripts/commands/server-publish.sh
 
 # ── backup (DR: raw restic snapshot to ver, custodian-pull) — ADR-0025 ───────
 scripts/commands/server-backup.sh

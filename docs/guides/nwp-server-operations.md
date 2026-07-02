@@ -193,11 +193,11 @@ band; prod verifies the signature before install.
   set `BUNDLE_VERIFY_NO_SIG`.
 - **Three keys, all one-way.** Read-only-in, write-only-out, minisign pubkey. No
   PATs, no control-plane creds, no key that reaches another host.
-- **Raw data never leaves prod.** The `publish` path is *intended* to sanitize on
-  this host behind a fail-closed PII gate before publishing; `backup` ships raw
-  restic snapshots only to the offline custodian `ver`, which this host cannot
-  delete. **See the field-validation gap on `publish` below — the verb is not yet
-  wired to the PII gate.**
+- **Raw data never leaves prod.** The `publish` path (`scripts/commands/server-publish.sh`)
+  snapshots the live DB read-only into a throwaway scratch copy, sanitizes it, runs the
+  fail-closed `lib/pii-gate.sh` (abort on ANY residual PII), and uploads only the gated
+  artifact via a **write-only deploy token** — no `api` PAT. `backup` ships raw restic
+  snapshots only to the offline custodian `ver`, which this host cannot delete.
 
 ## Field validation (tp1 rehearsal, 2026-07-02, nwp/ops#23)
 
@@ -218,13 +218,17 @@ build tier never wrote to the box).
   no `.secrets.yml`, no `pl` authoring tree on the box.
 
 **Gaps found (fix before relying on these paths):**
-1. **`publish` verb is mis-wired.** `bin/nwp-server publish` routes to the build-tier
-   `scripts/commands/publish.sh` (a *registry uploader*): it reads a full-`api`
-   `gitlab.api_token` from `.secrets.yml` and uploads an already-built tarball. It
-   does **not** snapshot, sanitize, or invoke `lib/pii-gate.sh`. As shipped, the
-   prod `publish` verb neither matches ADR-0024's capability nor honours the
-   three-key ledger (it would require a PAT on prod). The sanitize→PII-gate→publish
-   capability must be implemented as its own prod-side script before the verb is used.
+1. **`publish` verb was mis-wired — NOW FIXED** (commit on nwp/ops#23; validated on a
+   throwaway Linode 2026-07-02). It previously routed to the build-tier
+   `scripts/commands/publish.sh` (a *registry uploader* needing a full-`api` PAT, no
+   PII gate). It now routes to `scripts/commands/server-publish.sh`:
+   snapshot→sanitize→**fail-closed `lib/pii-gate.sh`**→publish via a **write-only deploy
+   token** (the api-PAT uploader is excluded from the artifact allowlist). Verified:
+   POSITIVE run anonymised a real user email and published (audited: real email absent,
+   `user*@example.com` present); NEGATIVE run (config PII the sanitizer can't know about)
+   tripped the gate and refused to publish. Requirement: the site's sanitizer
+   (`lib/sanitizers/<site>.sh`, default `standard.sh`) needs DB privileges to create the
+   `<db>_sanitize_scratch` scratch database.
 2. **Bundle `apply.sh` must sync by content.** A code-only edit that preserves file
    size and mtime (e.g. `v1`→`v2`) is **silently skipped** by `rsync -a`'s
    size+mtime heuristic — the apply "succeeds" but the code never changes. Bundle

@@ -5,6 +5,20 @@ but nothing turns a 🔴/🟠 into a tracked issue, and the agent-loop isn't wir
 `nwp/ops`. Two deliverables: D1 ships (dev-side, safe), D2 is **designed but
 gated** (it touches the human-merge / A14 boundary).
 
+> **UPDATE 2026-07-03 (ops#41): D2 SHIPPED.** The design below (D2.1 fix-repo
+> map, D2.2 prompt-template selector, D2.3 gating) is implemented in
+> `scripts/agent-loop/agent-loop.sh` + `fix-repo-map.json` + `prompts/*.md`.
+> Differences from the design as written: routing precedence is
+> `repo::<path>` label → **kinds map** (config/docs → `nwp/nwp`, nwc-drupal →
+> `nwp/nwc`) → `site::<name>` → that site's composer project root
+> (`nwp/<site>-project`), because a kind whose code always lives in one repo
+> must not be misrouted by its site label; and the map is a checked-in JSON
+> file rather than `.nwp.yml` `ci.repo` (no site `.nwp.yml` carries a repo
+> today). Unroutable ops issues get one explanatory comment and lose
+> `agent-eligible`. The per-site RAG grade also renders in the `pl status`
+> table now (RAG column). Gating unchanged: promotion to `agent-eligible`
+> stays a deliberate human act; MRs never auto-merge.
+
 ---
 
 ## Deliverable 1 — `pl rag --sync-issues` (SHIPPED)

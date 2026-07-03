@@ -1,0 +1,51 @@
+# ver ↔ prod dedicated 1:1 WireGuard tunnel (ADR-0017/0025; ops#25).
+#
+# ONE tunnel PER prod host, exactly TWO peers. This is NOT the mesh/tailnet:
+# `ver` never joins the mesh (threat model — see CLAUDE.md "Don't put the
+# verifier host on the mesh"). `ver` dials OUT to the prod host's public
+# endpoint; nothing dials in to `ver`.
+#
+# Fill the <PLACEHOLDERS>; generate each side's keypair ON that side
+# (`wg genkey | tee privatekey | wg pubkey > publickey`) — private keys never
+# cross the tunnel or any other channel.
+#
+# Addressing convention (per prod host N): 10.66.N.1 = prod, 10.66.N.2 = ver.
+
+# ══════════════════════════════════════════════════════════════════════════
+# ver side — /etc/wireguard/verprod<N>.conf   (brought up/down per session by
+# ver-pull-session.sh --wg verprod<N>; never left up)
+# ══════════════════════════════════════════════════════════════════════════
+# [Interface]
+# Address    = 10.66.<N>.2/30
+# PrivateKey = <VER_TUNNEL_PRIVATE_KEY>
+#
+# [Peer]
+# PublicKey  = <PROD_TUNNEL_PUBLIC_KEY>
+# Endpoint   = <PROD_PUBLIC_IP>:51820
+# AllowedIPs = 10.66.<N>.1/32
+# PersistentKeepalive = 25
+
+# ══════════════════════════════════════════════════════════════════════════
+# prod side — /etc/wireguard/verlink.conf   (may stay up; it accepts only ver)
+# ══════════════════════════════════════════════════════════════════════════
+# [Interface]
+# Address    = 10.66.<N>.1/30
+# ListenPort = 51820
+# PrivateKey = <PROD_TUNNEL_PRIVATE_KEY>
+#
+# [Peer]
+# PublicKey  = <VER_TUNNEL_PUBLIC_KEY>
+# AllowedIPs = 10.66.<N>.2/32
+
+# prod-side hardening that goes WITH this tunnel:
+#   - the backup user's sshd access is constrained to the tunnel address:
+#     in /etc/ssh/sshd_config:
+#         Match User <BACKUP_USER> Address 10.66.<N>.2
+#             AllowTcpForwarding no
+#             X11Forwarding no
+#         Match User <BACKUP_USER> Address *,!10.66.<N>.2
+#             DenyUsers <BACKUP_USER>
+#   - the key itself is forced-command sftp-read-only:
+#     see templates/ver-restic-authorized-keys.tmpl
+#   - firewall: allow udp/51820 from anywhere (WireGuard authenticates by key);
+#     no NEW tcp ports exposed publicly.

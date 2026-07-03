@@ -24,10 +24,10 @@ set -euo pipefail
 #   --kit DIR     kit directory (default: the directory this script's parent kit
 #                 root, i.e. ../ relative to scripts/)
 #   --with-publish-key   also generate the write-only sanitized-publish key.
-#                 OFF by default: the `publish` verb has a known open defect
-#                 (mis-wired to the build-tier uploader — nwp/ops#23) and `ver`
-#                 itself does not publish; issue this key only for a prod-agent
-#                 host once the defect is fixed.
+#                 OFF by default because `ver` itself does not publish; use it
+#                 when provisioning a `prod-agent` host (the publish verb runs
+#                 sanitize → fail-closed PII gate → write-only-token upload,
+#                 validated 2026-07-02; nwp/ops#23).
 #
 # Credential ledger this provisions on `ver` (ADR-0024/0025/0026):
 #   1. bundle-pull  (read-only)   pull signed bundles from the artifact host
@@ -165,9 +165,8 @@ do_issue_keys(){
     sed 's/^/     /' "$KEYS/sanitized-publish_ed25519.pub"
     echo
   else
-    echo "3. sanitized-publish key NOT generated (default). ver does not publish;"
-    echo "   the nwp-server publish verb has an open defect (nwp/ops#23). Use"
-    echo "   --with-publish-key on a prod-agent host once that is fixed."
+    echo "3. sanitized-publish key NOT generated (default) — ver does not publish."
+    echo "   Use --with-publish-key when provisioning a prod-agent host instead."
   fi
 }
 

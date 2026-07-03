@@ -253,16 +253,27 @@ AI**. The full signed cycle ran end-to-end:
 - **rollback** — re-applying the previous bundle restored the prior state;
 - **status** — local JSON reflected real site state.
 
-### Known defect: the `publish` verb is mis-wired (open)
+### Known defect: the `publish` verb was mis-wired (RESOLVED 2026-07-02)
 
-As shipped, `nwp-server publish` routes to the **build-tier registry uploader**:
-it expects a full-`api` Personal Access Token and **never invokes the
-snapshot → sanitize → fail-closed PII gate** chain this ADR specifies. That
-violates the three-key credential ledger (a PAT must never exist on an
-agent host) and does not deliver the sanitized-publish capability. **The
-`publish` verb MUST NOT be used until a prod-side
-snapshot → sanitize → PII-gate → publish implementation replaces the mis-wired
-routing.** Tracked as open work in nwp/ops#23.
+As first shipped, `nwp-server publish` routed to the **build-tier registry
+uploader**: it expected a full-`api` Personal Access Token and **never invoked
+the snapshot → sanitize → fail-closed PII gate** chain this ADR specifies —
+violating the three-key credential ledger and not delivering the
+sanitized-publish capability. Found during the 2026-07-02 field validation
+(nwp/ops#23).
+
+**Resolved the same day** (branch `fix/server-publish`, merged): the verb now
+runs `scripts/commands/server-publish.sh` — read-only dump into a scratch copy
+→ per-site sanitizer (`lib/sanitizers/<site>.sh`, default
+`lib/sanitizers/standard.sh`) → independent fail-closed `lib/pii-gate.sh` pass
+→ upload of the gated artifact only, via a **write-only deploy token** (zero
+api-PAT). The old build-tier uploader is **excluded from the artifact
+allowlist**. Validated on a throwaway host: a real email was sanitized and the
+gate passed (published, independently audited absent from the upload); injected
+PII the sanitizer could not know about made the gate **fail closed** (exit 1,
+nothing uploaded). Requirement documented on nwp/ops#23: the DB user needs
+CREATE/DROP on the `<db>_sanitize_scratch` schema — a narrower grant fails
+closed (no dump), never leaks.
 
 ## Review
 

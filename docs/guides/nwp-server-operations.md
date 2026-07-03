@@ -1,6 +1,6 @@
 # nwp-server Agent Operations Guide
 
-> **Status:** ACTIVE (self-deploying-prod path; ADR-0024). Complements — does not
+> **Status:** ACTIVE (the `nwp-server` capability agent, ADR-0026; deploy authority per ADR-0024). Complements — does not
 > replace — `verifier-operations.md`, which covers the offline blue-green flow
 > retained for hardware-gated/irreversible actions.
 > **Last Updated:** 2026-07-01
@@ -12,7 +12,7 @@
 
 ## What This Is
 
-`nwp-server` is a **build target** of the `nwp` source tree (ADR-0022/0024), not a
+`nwp-server` is a **build target** of the `nwp` source tree (ADR-0022/0026), not a
 separate repo. It is assembled by `pl build-server` from an allowlist
 (`build/nwp-server.include`) and then scanned **fail-closed** against
 `build/nwp-server.deny-symbols`; any AI/CI/SaaS vendor token in the assembled
@@ -41,7 +41,7 @@ nwp-server <verb> --help
 ## The Credential Ledger (the inviolable part)
 
 An `nwp-server` host holds **exactly three** credentials and nothing else
-(ADR-0024). Provisioning them is the last gate before the agent may apply with
+(ADR-0026). Provisioning them is the last gate before the agent may apply with
 authority:
 
 1. a **read-only deploy key/token** — pull signed bundles (inbound, one-way);
@@ -287,8 +287,8 @@ TTY → "prepare environment: exit status 1").
 
 ## See Also
 
-- [ADR-0024](../decisions/0024-self-deploying-prod-agent.md) — the self-deploying
-  prod agent decision and capability set.
+- [ADR-0026](../decisions/0026-nwp-server-capability-agent.md) — the capability
+  agent decision and capability set (renumbered from a duplicate ADR-0024).
 - [ADR-0022](../decisions/0022-nwp-verifier-binary-split.md) — the build-time
   AI-free split this target inherits.
 - [ADR-0025](../decisions/0025-production-backup-to-ver.md) — the raw restic DR

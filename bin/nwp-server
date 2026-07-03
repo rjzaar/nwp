@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 ################################################################################
-# nwp-server — the minimal, AI-free production agent (ADR-0022 / ADR-0024).
+# nwp-server — the minimal, AI-free production agent (ADR-0022 / ADR-0026).
 #
 # This is the ENTRYPOINT of the `nwp-server` build target: the single command a
 # production host runs to participate in the self-healing deploy loop. It is NOT
@@ -11,7 +11,7 @@ set -euo pipefail
 # fail-closed for AI/CI/SaaS vendor tokens; the artifact is separately signed with
 # a hardware-rooted key.
 #
-# Capability set (ADR-0024) — exactly these verbs, and nothing else:
+# Capability set (ADR-0026) — exactly these verbs, and nothing else:
 #   pull      fetch a signed bundle over HTTPS and verify it fail-closed
 #   verify    verify a local signed bundle (the pull step, standalone)
 #   apply     verify + snapshot + run the bundle's own apply, roll back on failure
@@ -22,7 +22,7 @@ set -euo pipefail
 #
 # There is deliberately no `install`, no `ai`/`ci` verb, and no SaaS client. The
 # credential ledger on a prod host is exactly three one-way keys (read-only pull,
-# write-only-own-repo publish, minisign public key) — see ADR-0024.
+# write-only-own-repo publish, minisign public key) — see ADR-0026.
 ################################################################################
 
 # ── Resolve our own location (symlink-safe, mirrors `pl`) ─────────────────────
@@ -40,7 +40,7 @@ PROJECT_ROOT="$NWP_ROOT"
 export NWP_ROOT PROJECT_ROOT
 COMMANDS_DIR="$NWP_ROOT/scripts/commands"
 
-# Independent version line, distinct from `nwp` (ADR-0024 naming reconciliation).
+# Independent version line, distinct from `nwp` (ADR-0026 naming reconciliation).
 NWP_SERVER_VERSION="0.1.0"
 
 # shellcheck source=/dev/null
@@ -48,7 +48,7 @@ source "$NWP_ROOT/lib/ui.sh" 2>/dev/null || { echo "[!] lib/ui.sh missing — ar
 
 usage() {
     cat <<EOF
-nwp-server v${NWP_SERVER_VERSION} — AI-free production deploy agent (ADR-0024)
+nwp-server v${NWP_SERVER_VERSION} — AI-free production deploy agent (ADR-0026)
 
 Usage: nwp-server <verb> [options]
 

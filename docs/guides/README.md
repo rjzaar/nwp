@@ -17,6 +17,7 @@ index (ADRs, references, proposals) see [`../README.md`](../README.md).
 | Guide | What it covers |
 |-------|----------------|
 | [ver-setup.md](ver-setup.md) | Set up `ver` / the AI-free `nwp-server` build: trust posture, `pl build-server`, the three-key credential ledger, restic backups (ADR-0025), verify/apply/rollback, smoke tests |
+| [ver-provisioning-runbook.md](ver-provisioning-runbook.md) | **Turnkey provisioning sequence for `ver`** (ops#25): signed tool kit, sealed keystore (FIDO2), Solo enrollment checklist, one-way keys, tunnel, first backup pull — AI-prepared vs operator+hardware steps marked throughout |
 | [verifier-operations.md](verifier-operations.md) | Older F21 signed-tarball deploy pipeline. **Stale** vs the `nwp-server`/`ver` model — see the follow-up note below |
 | [verifier-mayo-bootstrap.md](verifier-mayo-bootstrap.md) | Interim bootstrap guide, superseded by the above |
 | [production-site-integration.md](production-site-integration.md) | Integrating a production site |

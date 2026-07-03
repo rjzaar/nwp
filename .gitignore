@@ -191,3 +191,7 @@ __pycache__/
 
 # Point-in-time security audit snapshots — private, not committed (findings + hostnames)
 docs/security/audit-2026-05/
+
+# ver provisioning kit: operator-verified tool pins (local trust anchors; see
+# scripts/ver-provision/ver-kit.pins.example) and the assembled kit output
+scripts/ver-provision/ver-kit.pins

@@ -1,0 +1,32 @@
+# ver-kit.pins — operator-verified tool pins for prepare-ver-kit.sh (ops#25).
+#
+# Copy to scripts/ver-provision/ver-kit.pins (gitignored) and fill in.
+#
+# HOW TO FILL A PIN (fail-closed — the kit will not build without it):
+#   1. Pick the version from the upstream project's releases page.
+#   2. Run:  scripts/ver-provision/prepare-ver-kit.sh --print-sha256 <tool>
+#      (downloads the release artifact and prints the observed sha256; installs nothing)
+#   3. Confirm that hash against the checksums the upstream project PUBLISHES
+#      (restic: SHA256SUMS, GPG-signed — verify the signature per the restic docs;
+#       age / age-plugin-fido2-hmac: the checksums file on the release page).
+#      Do this over a channel independent of the download itself.
+#   4. Only then write the hash below.
+#
+# The default download URL is constructed from the version (linux/amd64 release
+# asset). If an upstream renames its assets, override with <tool>_url=… and
+# re-verify the pin.
+
+# restic — the DR backup engine (ADR-0025)
+restic_version=
+restic_sha256=
+#restic_url=
+
+# age — seals ver's restic keystore at rest (ADR-0025)
+age_version=
+age_sha256=
+#age_url=
+
+# age-plugin-fido2-hmac — FIDO2 hmac-secret (Solo 2) age identity for the keystore
+fido2hmac_version=
+fido2hmac_sha256=
+#fido2hmac_url=

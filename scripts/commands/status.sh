@@ -548,10 +548,93 @@ get_disk_usage() {
     du -sh "$directory" 2>/dev/null | awk '{print $1}' || echo "?"
 }
 
+# Resolve a site's primary directory for status checks. The registry's
+# `directory:` field covers v1 sites; v2 sites (sites/<name>/dev, F23)
+# usually carry no directory field, so fall back to resolve_project.
+# Without this fallback every directory-derived column (disk, db, health,
+# activity, users) is blank for v2 sites.
+resolve_status_directory() {
+    local site="$1"
+    local config_file="$2"
+
+    local directory
+    directory=$(get_site_field "$site" "directory" "$config_file" 2>/dev/null) || directory=""
+    if [ -n "$directory" ]; then
+        if [[ "$directory" != /* ]] && [[ "$directory" != sites/* ]]; then
+            directory="sites/$directory"
+        fi
+        # A stale v1 directory: field may point at the v2 container dir
+        # (sites/<name>/, no .ddev) — the real project is its dev/ child.
+        if [ ! -d "$directory/.ddev" ] && [ -d "$directory/dev/.ddev" ]; then
+            directory="$directory/dev"
+        fi
+        echo "$directory"
+        return 0
+    fi
+    if command -v resolve_project >/dev/null 2>&1; then
+        resolve_project "$site" "dev" 2>/dev/null && return 0
+    fi
+    echo ""
+}
+
+# DDEV project name for a directory. basename() is wrong for the v2
+# layout (sites/<name>/dev → "dev"); the truth is the `name:` field in
+# .ddev/config.yaml (e.g. "<name>-dev").
+get_ddev_project_name() {
+    local directory="$1"
+
+    local name=""
+    if [ -f "$directory/.ddev/config.yaml" ]; then
+        name=$(awk '/^name:/ {print $2; exit}' "$directory/.ddev/config.yaml")
+    fi
+    if [ -n "$name" ]; then
+        echo "$name"
+    else
+        basename "$directory" 2>/dev/null
+    fi
+}
+
+# One "project status primary_url" line per DDEV project, from
+# `ddev list -j`. The human table output is box-drawn and its STATUS
+# column wording varies, so grepping it (the previous approach) silently
+# never matched — JSON is the stable interface. Cache the result and
+# query it with ddev_project_running / get_ddev_primary_url below.
+get_ddev_status_lines() {
+    ddev list -j 2>/dev/null | "${YQ:-yq}" e -p=json '.raw[] | .name + " " + .status + " " + (.primary_url // "")' - 2>/dev/null || true
+}
+
+# $1 = output of get_ddev_status_lines, $2 = project name
+ddev_project_running() {
+    awk -v p="$2" '$1 == p && $2 == "running" { found=1; exit } END { exit !found }' <<< "$1"
+}
+
+# $1 = output of get_ddev_status_lines, $2 = project name
+get_ddev_primary_url() {
+    awk -v p="$2" '$1 == p { print $3; exit }' <<< "$1"
+}
+
+# Is this site directory's DDEV project running? (standalone form for the
+# text-view helpers that check a single site)
+is_ddev_running() {
+    local directory="$1"
+    local project
+    project=$(get_ddev_project_name "$directory")
+    [ -n "$project" ] || return 1
+    ddev_project_running "$(get_ddev_status_lines)" "$project"
+}
+
+# Is a TUI column currently visible?
+is_column_visible() {
+    local key="$1" k
+    for k in "${VISIBLE_COLUMNS[@]}"; do
+        [ "$k" = "$key" ] && return 0
+    done
+    return 1
+}
+
 # Get database size for a site
 get_db_size() {
     local directory="$1"
-    local site_name=$(basename "$directory")
 
     if [ ! -d "$directory/.ddev" ]; then
         echo "-"
@@ -559,7 +642,7 @@ get_db_size() {
     fi
 
     # Check if DDEV is running
-    if ! ddev list 2>/dev/null | grep -q "^${site_name}.*running"; then
+    if ! is_ddev_running "$directory"; then
         echo "-"
         return
     fi
@@ -590,7 +673,7 @@ get_last_activity() {
 # Health check - ping site URL
 check_site_health() {
     local directory="$1"
-    local site_name=$(basename "$directory")
+    local site_name=$(get_ddev_project_name "$directory")
 
     if [ ! -d "$directory/.ddev" ]; then
         echo "${YELLOW}N/A${NC}"
@@ -598,7 +681,7 @@ check_site_health() {
     fi
 
     # Check if DDEV is running
-    if ! ddev list 2>/dev/null | grep -q "^${site_name}.*running"; then
+    if ! is_ddev_running "$directory"; then
         echo "${YELLOW}stopped${NC}"
         return
     fi
@@ -653,8 +736,7 @@ get_user_count() {
     local site="$1"
     local config_file="$2"
 
-    local directory=$(get_site_field "$site" "directory" "$config_file")
-    local recipe=$(get_site_field "$site" "recipe" "$config_file")
+    local directory=$(resolve_status_directory "$site" "$config_file")
 
     # Determine which directory to check (prod > live > stg > dev)
     # Support both hyphen and legacy underscore formats during migration
@@ -693,28 +775,24 @@ get_user_count() {
         return
     fi
 
-    local site_basename=$(basename "$check_dir")
-    if ! ddev list 2>/dev/null | grep -q "^${site_basename}.*running"; then
+    if ! is_ddev_running "$check_dir"; then
         echo "-"
         return
     fi
 
-    # Get user count based on recipe type
+    # Get user count by platform. Recipe names are open-ended (d, os, avc,
+    # mt, dir, ...) so a recipe allowlist can't work — detect the platform
+    # from the tree instead: Moodle roots carry config.php + version.php,
+    # everything else NWP installs is Drupal-based (a failed query just
+    # yields "-" below).
+    # awk NF: ddev exec output ends with a trailing blank line, so a bare
+    # `tail -1` always captured the empty line and the count read as "-".
     local count=""
-    case "$recipe" in
-        drupal|nwp|"")
-            # Drupal: count users from database
-            count=$(cd "$check_dir" && ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE status=1" 2>/dev/null | tail -1)
-            ;;
-        moodle)
-            # Moodle: count users from database
-            count=$(cd "$check_dir" && ddev mysql -N -e "SELECT COUNT(*) FROM mdl_user WHERE deleted=0 AND suspended=0" 2>/dev/null | tail -1)
-            ;;
-        *)
-            echo "-"
-            return
-            ;;
-    esac
+    if [ -f "$check_dir/config.php" ] && [ -f "$check_dir/version.php" ]; then
+        count=$(cd "$check_dir" && ddev mysql -N -e "SELECT COUNT(*) FROM mdl_user WHERE deleted=0 AND suspended=0" 2>/dev/null | awk 'NF' | tail -1)
+    else
+        count=$(cd "$check_dir" && ddev drush sqlq "SELECT COUNT(*) FROM users_field_data WHERE status=1" 2>/dev/null | awk 'NF' | tail -1)
+    fi
 
     if [ -n "$count" ] && [[ "$count" =~ ^[0-9]+$ ]]; then
         echo "${count}"
@@ -737,6 +815,97 @@ get_ci_status() {
 
     # Would need GitLab API token to actually check
     echo "${CYAN}enabled${NC}"
+}
+
+# Compute the seven extended TUI row fields for one site and echo them as
+# "domain|users|db|health|activity|ssl|ci" (plain text — draw_screen adds
+# color). Shared by build_site_cache and load_all_site_data: these used to
+# be duplicated, and the load_all_site_data copy hardcoded dashes — which
+# is why the DOMAIN/USERS/DB/HEALTH/ACTIVITY/SSL/CI columns showed "-" for
+# every site after the initial progressive load (found 2026-07-03).
+# Expensive fields are computed only when their column is visible;
+# users/db/health additionally require the site's DDEV project to be
+# running (they are live queries).
+#   $1 site, $2 site_type, $3 directory, $4 domain, $5 config_file,
+#   $6 ddev status lines (from get_ddev_status_lines)
+compute_extended_fields() {
+    local site="$1"
+    local site_type="$2"
+    local directory="$3"
+    local domain="$4"
+    local config_file="$5"
+    local ddev_list="$6"
+
+    local users="-" db="-" health="-" activity="-" ssl="-" ci="-"
+
+    local running=false
+    if [ "$site_type" != "2" ] && [ -n "$directory" ] && [ -d "$directory/.ddev" ]; then
+        local project
+        project=$(get_ddev_project_name "$directory")
+        [ -n "$project" ] && ddev_project_running "$ddev_list" "$project" && running=true
+    fi
+
+    # Database size (live query — needs a running project)
+    if is_column_visible "db" && [ "$running" = "true" ]; then
+        db=$(cd "$directory" && ddev mysql -N -e "SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) FROM information_schema.tables WHERE table_schema = DATABASE();" 2>/dev/null | tail -1)
+        if [ -n "$db" ] && [ "$db" != "NULL" ]; then db="${db}M"; else db="-"; fi
+    fi
+
+    # Health check (HTTP probe against the running project's primary URL)
+    if is_column_visible "health" && [ "$running" = "true" ]; then
+        local project url
+        project=$(get_ddev_project_name "$directory")
+        url=$(get_ddev_primary_url "$ddev_list" "$project")
+        [ -n "$url" ] || url="https://${project}.ddev.site"
+        # curl -w prints 000 itself on connect failure — appending another
+        # 000 via || (the previous approach) yielded literal "000000".
+        local http_code
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "$url" 2>/dev/null) || true
+        [ -z "$http_code" ] && http_code="000"
+        case "$http_code" in
+            200|301|302|303) health="OK" ;;
+            401|403) health="auth" ;;
+            404) health="404" ;;
+            500|502|503) health="err" ;;
+            000) health="down" ;;
+            *) health="$http_code" ;;
+        esac
+    fi
+
+    # Last activity (git commit age)
+    if is_column_visible "activity" && [ -n "$directory" ]; then
+        if [ -d "$directory/.git" ] || [ -f "$directory/.git" ]; then
+            activity=$(cd "$directory" && git log -1 --format="%ar" 2>/dev/null | sed 's/ ago//' | sed 's/ /-/g') || activity="-"
+            [ -z "$activity" ] && activity="-"
+        fi
+    fi
+
+    # SSL expiry (network probe — only for sites with a live domain)
+    if is_column_visible "ssl" && [ -n "$domain" ]; then
+        local expiry
+        expiry=$(echo | timeout 3 openssl s_client -servername "$domain" -connect "${domain}:443" 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+        if [ -n "$expiry" ]; then
+            local expiry_epoch now_epoch days_left
+            expiry_epoch=$(date -d "$expiry" +%s 2>/dev/null)
+            now_epoch=$(date +%s)
+            days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+            if [ "$days_left" -lt 0 ]; then ssl="exp"; else ssl="${days_left}d"; fi
+        fi
+    fi
+
+    # CI flag (pure config read)
+    if is_column_visible "ci"; then
+        local ci_enabled
+        ci_enabled=$(get_site_nested_field "$site" "ci" "enabled" "$config_file")
+        [ "$ci_enabled" == "true" ] && ci="on"
+    fi
+
+    # User count (live DB query — get_user_count does its own running check)
+    if is_column_visible "users" && [ "$running" = "true" ]; then
+        users=$(get_user_count "$site" "$config_file")
+    fi
+
+    echo "${domain:-}|${users}|${db}|${health}|${activity}|${ssl}|${ci}"
 }
 
 ################################################################################
@@ -771,7 +940,7 @@ show_sites() {
         while read -r site; do
             local recipe=$(get_site_field "$site" "recipe" "$config_file")
             local purpose=$(get_site_field "$site" "purpose" "$config_file")
-            local directory=$(get_site_field "$site" "directory" "$config_file")
+            local directory=$(resolve_status_directory "$site" "$config_file")
             local rag=$(get_rag_display "$site")
             local phase=$(get_phase_display "$site" "$config_file")
             local stages=$(get_site_stages "$site" "$config_file")
@@ -882,7 +1051,7 @@ show_site_info() {
     local site="$1"
     local config_file="$2"
 
-    local directory=$(get_site_field "$site" "directory" "$config_file")
+    local directory=$(resolve_status_directory "$site" "$config_file")
 
     if [ -z "$directory" ]; then
         print_error "Site '$site' not found in configuration"
@@ -1935,13 +2104,11 @@ build_site_cache_fast() {
             recipe=$(detect_recipe_from_site "$directory")
             purpose="(orphan)"
         else
-            # Normal site - get basic info from nwp.yml
+            # Normal site - get basic info from nwp.yml (v2 directory via
+            # resolve_status_directory)
             recipe=$(get_site_field "$site" "recipe" "$config_file")
             purpose=$(get_site_field "$site" "purpose" "$config_file")
-            directory=$(get_site_field "$site" "directory" "$config_file")
-            if [[ "$directory" != /* ]] && [[ "$directory" != sites/* ]]; then
-                directory="sites/$directory"
-            fi
+            directory=$(resolve_status_directory "$site" "$config_file")
             domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
         fi
 
@@ -1968,9 +2135,9 @@ build_site_cache() {
     local config_file="$1"
     SITE_DATA=()
 
-    # Get DDEV list once for all sites (expensive operation)
+    # Get DDEV status once for all sites (expensive operation)
     local ddev_list=""
-    ddev_list=$(ddev list 2>/dev/null) || true
+    ddev_list=$(get_ddev_status_lines)
 
     local idx=0
     for site in "${SITE_NAMES[@]}"; do
@@ -1991,24 +2158,23 @@ build_site_cache() {
             recipe=$(detect_recipe_from_site "$directory")
             purpose="(orphan)"
         else
-            # Normal site - get info from nwp.yml
+            # Normal site - get info from nwp.yml (v2 sites resolve their
+            # directory via resolve_project — see resolve_status_directory)
             recipe=$(get_site_field "$site" "recipe" "$config_file")
             purpose=$(get_site_field "$site" "purpose" "$config_file")
-            directory=$(get_site_field "$site" "directory" "$config_file")
-            # If directory is not absolute and doesn't start with sites/, prefix with sites/
-            if [[ "$directory" != /* ]] && [[ "$directory" != sites/* ]]; then
-                directory="sites/$directory"
-            fi
+            directory=$(resolve_status_directory "$site" "$config_file")
             domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
         fi
 
-        # Stages (support both hyphen and legacy underscore formats during migration)
+        # Stages (v1 suffix dirs, legacy underscore, and v2 sibling stg/)
         local stages=""
         if [ "$site_type" = "2" ]; then
             stages="-"
         else
             [ -n "$directory" ] && [ -d "$directory" ] && stages="${stages}d"
-            [ -d "${directory}-stg" ] || [ -d "${directory}_stg" ] && stages="${stages}s"
+            if [ -n "$directory" ]; then
+                { [ -d "${directory}-stg" ] || [ -d "${directory}_stg" ] || { [ "$(basename "$directory")" = "dev" ] && [ -d "$(dirname "$directory")/stg" ]; }; } && stages="${stages}s"
+            fi
             if [ "$site_type" = "0" ]; then
                 local live_enabled=$(get_site_nested_field "$site" "live" "enabled" "$config_file")
                 [ "$live_enabled" == "true" ] && stages="${stages}l"
@@ -2017,13 +2183,13 @@ build_site_cache() {
             [ -z "$stages" ] && stages="-"
         fi
 
-        # DDEV status (use cached list)
+        # DDEV status (use cached list; project name from .ddev/config.yaml,
+        # not basename — v2 dirs all end in /dev)
         local ddev="-"
         if [ "$site_type" = "2" ]; then
             ddev="ghost"
         elif [ -n "$directory" ] && [ -d "$directory/.ddev" ]; then
-            local site_basename=$(basename "$directory")
-            if echo "$ddev_list" | grep -q "^${site_basename}.*running"; then
+            if ddev_project_running "$ddev_list" "$(get_ddev_project_name "$directory")"; then
                 ddev="run"
             else
                 ddev="stop"
@@ -2034,100 +2200,13 @@ build_site_cache() {
         local disk="-"
         [ -n "$directory" ] && [ -d "$directory" ] && disk=$(du -sh "$directory" 2>/dev/null | awk '{print $1}')
 
-        # Database size (only if DDEV running and column visible)
-        local db="-"
-        for vcol in "${VISIBLE_COLUMNS[@]}"; do
-            if [ "$vcol" = "db" ]; then
-                if [ -d "$directory/.ddev" ]; then
-                    local site_basename=$(basename "$directory")
-                    if echo "$ddev_list" | grep -q "^${site_basename}.*running"; then
-                        db=$(cd "$directory" && ddev mysql -N -e "SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) FROM information_schema.tables WHERE table_schema = DATABASE();" 2>/dev/null | tail -1)
-                        [ -n "$db" ] && [ "$db" != "NULL" ] && db="${db}M" || db="-"
-                    fi
-                fi
-                break
-            fi
-        done
-
-        # Health check (only if DDEV running and column visible)
-        local health="-"
-        for vcol in "${VISIBLE_COLUMNS[@]}"; do
-            if [ "$vcol" = "health" ]; then
-                if [ -d "$directory/.ddev" ]; then
-                    local site_basename=$(basename "$directory")
-                    if echo "$ddev_list" | grep -q "^${site_basename}.*running"; then
-                        local url="https://${site_basename}.ddev.site"
-                        local http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "$url" 2>/dev/null || echo "000")
-                        case "$http_code" in
-                            200|301|302|303) health="OK" ;;
-                            401|403) health="auth" ;;
-                            404) health="404" ;;
-                            500|502|503) health="err" ;;
-                            000) health="down" ;;
-                            *) health="$http_code" ;;
-                        esac
-                    fi
-                fi
-                break
-            fi
-        done
-
-        # Last activity (git commit)
-        local activity="-"
-        for vcol in "${VISIBLE_COLUMNS[@]}"; do
-            if [ "$vcol" = "activity" ]; then
-                if [ -d "$directory/.git" ] || [ -f "$directory/.git" ]; then
-                    activity=$(cd "$directory" && git log -1 --format="%ar" 2>/dev/null | sed 's/ ago//' | sed 's/ /-/g') || activity="-"
-                fi
-                break
-            fi
-        done
-
-        # SSL expiry (only if live domain exists and column visible)
-        local ssl="-"
-        for vcol in "${VISIBLE_COLUMNS[@]}"; do
-            if [ "$vcol" = "ssl" ]; then
-                if [ -n "$domain" ]; then
-                    local expiry=$(echo | timeout 3 openssl s_client -servername "$domain" -connect "${domain}:443" 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
-                    if [ -n "$expiry" ]; then
-                        local expiry_epoch=$(date -d "$expiry" +%s 2>/dev/null)
-                        local now_epoch=$(date +%s)
-                        local days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
-                        if [ "$days_left" -lt 0 ]; then
-                            ssl="exp"
-                        elif [ "$days_left" -lt 30 ]; then
-                            ssl="${days_left}d"
-                        else
-                            ssl="${days_left}d"
-                        fi
-                    fi
-                fi
-                break
-            fi
-        done
-
-        # CI status
-        local ci="-"
-        for vcol in "${VISIBLE_COLUMNS[@]}"; do
-            if [ "$vcol" = "ci" ]; then
-                local ci_enabled=$(get_site_nested_field "$site" "ci" "enabled" "$config_file")
-                [ "$ci_enabled" == "true" ] && ci="on"
-                break
-            fi
-        done
-
-        # User count (expensive - only calculate if column is visible)
-        local users="-"
-        for vcol in "${VISIBLE_COLUMNS[@]}"; do
-            if [ "$vcol" = "users" ]; then
-                users=$(get_user_count "$site" "$config_file")
-                break
-            fi
-        done
+        # Extended fields (domain|users|db|health|activity|ssl|ci)
+        local extended
+        extended=$(compute_extended_fields "$site" "$site_type" "$directory" "$domain" "$config_file" "$ddev_list")
 
         # Store as pipe-delimited string (order must match column key order in draw_screen)
         # recipe|stages|ddev|purpose|disk|domain|users|db|health|activity|ssl|ci
-        SITE_DATA+=("${recipe:-?}|${stages}|${ddev}|${purpose:--}|${disk:-?}|${domain:-}|${users}|${db}|${health}|${activity}|${ssl}|${ci}")
+        SITE_DATA+=("${recipe:-?}|${stages}|${ddev}|${purpose:--}|${disk:-?}|${extended}")
 
         idx=$((idx + 1))
     done
@@ -2139,9 +2218,9 @@ load_all_site_data() {
     local current_row="${2:-0}"
     local current_action="${3:-0}"
 
-    # Get DDEV list once (expensive operation)
+    # Get DDEV status once (expensive operation)
     local ddev_list=""
-    ddev_list=$(ddev list 2>/dev/null) || true
+    ddev_list=$(get_ddev_status_lines)
 
     # Get terminal height for status row
     local term_height=$(tput lines 2>/dev/null || echo 24)
@@ -2173,23 +2252,23 @@ load_all_site_data() {
             recipe=$(detect_recipe_from_site "$directory" 2>/dev/null || echo "?")
             purpose="(orphan)"
         else
-            # Normal site
+            # Normal site (v2 sites resolve their directory via
+            # resolve_project — see resolve_status_directory)
             recipe=$(get_site_field "$site" "recipe" "$config_file" 2>/dev/null || echo "?")
             purpose=$(get_site_field "$site" "purpose" "$config_file" 2>/dev/null || echo "-")
-            directory=$(get_site_field "$site" "directory" "$config_file" 2>/dev/null || echo "")
-            if [[ -n "$directory" && "$directory" != /* ]] && [[ "$directory" != sites/* ]]; then
-                directory="sites/$directory"
-            fi
+            directory=$(resolve_status_directory "$site" "$config_file")
             domain=$(get_site_nested_field "$site" "live" "domain" "$config_file" 2>/dev/null || echo "")
         fi
 
-        # Stages
+        # Stages (v1 suffix dirs, legacy underscore, and v2 sibling stg/)
         local stages=""
         if [ "$site_type" = "2" ]; then
             stages="-"
         else
             [ -n "$directory" ] && [ -d "$directory" ] && stages="${stages}d"
-            [ -d "${directory}-stg" ] || [ -d "${directory}_stg" ] && stages="${stages}s"
+            if [ -n "$directory" ]; then
+                { [ -d "${directory}-stg" ] || [ -d "${directory}_stg" ] || { [ "$(basename "$directory")" = "dev" ] && [ -d "$(dirname "$directory")/stg" ]; }; } && stages="${stages}s"
+            fi
             if [ "$site_type" = "0" ]; then
                 local live_enabled=$(get_site_nested_field "$site" "live" "enabled" "$config_file" 2>/dev/null || echo "")
                 [ "$live_enabled" == "true" ] && stages="${stages}l"
@@ -2198,13 +2277,12 @@ load_all_site_data() {
             [ -z "$stages" ] && stages="-"
         fi
 
-        # DDEV status
+        # DDEV status (project name from .ddev/config.yaml, not basename)
         local ddev="-"
         if [ "$site_type" = "2" ]; then
             ddev="ghost"
         elif [ -n "$directory" ] && [ -d "$directory/.ddev" ]; then
-            local site_basename=$(basename "$directory" 2>/dev/null || echo "")
-            if [ -n "$site_basename" ] && echo "$ddev_list" | grep -q "^${site_basename}.*running"; then
+            if ddev_project_running "$ddev_list" "$(get_ddev_project_name "$directory")"; then
                 ddev="run"
             else
                 ddev="stop"
@@ -2217,8 +2295,14 @@ load_all_site_data() {
             disk=$(du -sh "$directory" 2>/dev/null | awk '{print $1}' || echo "?")
         fi
 
+        # Extended fields (domain|users|db|health|activity|ssl|ci). This
+        # used to be hardcoded dashes, wiping the values the initial cache
+        # had computed — the "-" columns bug.
+        local extended
+        extended=$(compute_extended_fields "$site" "$site_type" "$directory" "$domain" "$config_file" "$ddev_list")
+
         # Update this site's data
-        SITE_DATA[$idx]="${recipe:-?}|${stages}|${ddev}|${purpose:--}|${disk}|-|-|-|-|-|-|-"
+        SITE_DATA[$idx]="${recipe:-?}|${stages}|${ddev}|${purpose:--}|${disk}|${extended}"
 
         # Redraw screen with current position
         draw_screen "$current_row" "$current_action" 2>/dev/null || true

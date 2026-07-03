@@ -119,10 +119,11 @@ this box cannot pivot to the control plane, another prod host, or any AI machine
 **VALIDATED 2026-07-02 (nwp/ops#23)** on a disposable prod-boundary test host,
 artifact-only, three-key ledger, no PAT, no AI: signed pull → verify (including
 a tamper negative-test that was correctly **rejected**) → apply → rollback →
-status all ran end-to-end. The **`publish` verb is the exception** — it is
-mis-wired to the build-tier registry uploader (needs a full-`api` PAT, never
-invokes the PII gate) and **must not be used** until fixed (see ADR-0026's
-validation record; tracked in nwp/ops#23). There is no standalone `pl apply` /
+status all ran end-to-end. The `publish` verb, initially mis-wired to the
+build-tier uploader, was **reworked and validated the same day**: it now runs
+the prod-side snapshot → sanitize → fail-closed PII gate → write-only-token
+upload chain (`server-publish.sh`; positive and fail-closed negative tests both
+passed — see ADR-0026's validation record). There is no standalone `pl apply` /
 `pl pull` verb — the verify/apply path is carried by the shipped libraries via
 the artifact's own entrypoint:
 
@@ -138,8 +139,7 @@ the artifact's own entrypoint:
 > The pull/verify/apply/rollback/status paths **ran end-to-end on 2026-07-02**
 > on a disposable test host (nwp/ops#23) — but not yet on a live `ver` or a real
 > prod host. Treat the first run on any *new* host as supervised, with a dry-run
-> first (`pl rollback execute … --dry-run`). Do **not** use the `publish` verb
-> until its mis-wiring is fixed (see above).
+> first (`pl rollback execute … --dry-run`, `nwp-server publish … --dry-run`).
 
 ## 6. Backups — restic, custodian-pull, sealed keystore (ADR-0025)
 
@@ -179,7 +179,7 @@ test-restored is not a backup.
 | 3 | `sha256sum -c MANIFEST.sha256` inside the transferred artifact | all OK | PENDING (needs transfer) |
 | 4 | credential ledger check: exactly 3 keys, all one-way | 3 keys, no PAT | PENDING (not provisioned) |
 | 5 | `pl rollback list <site>` | lists rollback points (or empty, cleanly) | **VALIDATED** 2026-07-02 on a disposable test host (rollback = re-apply of the previous bundle); rerun on `ver` once provisioned |
-| 6 | `pl publish <site> --dry-run` | shows the upload, uploads nothing | **BLOCKED — known defect:** the `publish` verb is mis-wired to the build-tier uploader (no PII gate, needs a PAT); do not use until fixed (nwp/ops#23) |
+| 6 | `nwp-server publish <site> --dry-run` | sanitize + PII gate run, uploads nothing | **VALIDATED** 2026-07-02 (reworked `server-publish.sh`: positive + fail-closed negative test; nwp/ops#23); rerun on the target host once provisioned |
 | 7 | `pl server-backup --site-dir DIR` (dry-run) then `--execute` | local restic snapshot created | PENDING (needs restic + site) |
 | 8 | `pl ver-pull --from … --to …` (dry-run) then `--execute` | snapshots drained, `restic check` passes | PENDING (needs tunnel + keystore) |
 | 9 | monthly restore drill into a sandbox | a site reconstructed from `ver`'s repo | PENDING |
@@ -192,7 +192,7 @@ test-restored is not a backup.
 | Deny-scan passes fail-closed | **DONE** |
 | Reproducible build (identical MANIFEST on two hosts) | **DONE** |
 | Capability paths (pull/verify/apply/rollback/status) exercised | **VALIDATED 2026-07-02** — full signed cycle incl. tamper negative-test on a disposable prod-boundary test host (nwp/ops#23) |
-| `publish` verb | **DEFECT (open)** — mis-wired to the build-tier registry uploader; violates the three-key ledger; do not use (nwp/ops#23, ADR-0026) |
+| `publish` verb | **FIXED + VALIDATED 2026-07-02** — reworked to snapshot → sanitize → fail-closed PII gate → write-only-token upload (`server-publish.sh`); old build-tier uploader excluded from the allowlist (nwp/ops#23, ADR-0026) |
 | server-backup / ver-pull (ADR-0025) tested | **PENDING** (needs restic, tunnel, sealed keystore) |
 | `ver` provisioned / on tailnet | **PENDING — not provisioned** |
 | Three-key credential ledger issued on `ver` | **PENDING** (exercised on the test host 2026-07-02) |

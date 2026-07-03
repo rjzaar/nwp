@@ -11,7 +11,7 @@ set -euo pipefail
 #
 # Threat model (ADR-0025): this is the DR flow — raw data, restic-encrypted, bound
 # for `ver` ONLY (the prod-trust, offline, hardware-keyed custodian). It is NOT the
-# sanitized-publish flow (ADR-0024); raw data never reaches the dev/AI tier.
+# sanitized-publish flow (ADR-0026); raw data never reaches the dev/AI tier.
 #
 # Usage:
 #   nwp-server backup --site-dir DIR [opts]

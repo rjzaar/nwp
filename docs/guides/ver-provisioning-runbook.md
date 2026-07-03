@@ -187,10 +187,10 @@ Prints the two public halves and exact registration instructions:
       forced-command template** (`templates/ver-restic-authorized-keys.tmpl`:
       `internal-sftp -R`, rooted at the repo parent, `restrict`) plus the sshd
       `Match`-address block from the WireGuard template.
-- [ ] The **sanitized-publish** key is deliberately **not** issued (default):
-      `ver` doesn't publish, and the `nwp-server publish` verb has an open
-      defect (nwp/ops#23 — wired to the build-tier uploader). Revisit with
-      `--with-publish-key` on a `prod-agent` host once fixed.
+- [ ] The **sanitized-publish** key is deliberately **not** issued here:
+      `ver` doesn't publish. When provisioning a `prod-agent` host, add
+      `--with-publish-key` — the publish verb's sanitize → PII-gate →
+      write-only-upload chain was validated 2026-07-02 (nwp/ops#23).
 - [ ] Optional (recommended): the **verifier-say** post-only token, so `ver` can
       report errors to the ops queue — the documented least-privilege exception
       to "zero tokens" (it can post issues to one log project, nothing else).

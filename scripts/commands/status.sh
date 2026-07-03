@@ -474,15 +474,15 @@ get_site_stages() {
     local site="$1"
     local config_file="$2"
     local stages=""
-    local directory=$(get_site_field "$site" "directory" "$config_file")
+    local directory=$(resolve_status_directory "$site" "$config_file")
 
     # Dev
     if [ -n "$directory" ] && [ -d "$directory" ]; then
         stages="${stages}${GREEN}d${NC}"
     fi
 
-    # Staging (support both -stg and legacy _stg during migration)
-    if [ -d "${directory}-stg" ] || [ -d "${directory}_stg" ]; then
+    # Staging (v1 -stg/_stg suffix dirs, or the v2 sibling stg/)
+    if [ -d "${directory}-stg" ] || [ -d "${directory}_stg" ] || { [ "$(basename "$directory")" = "dev" ] && [ -d "$(dirname "$directory")/stg" ]; }; then
         stages="${stages}${YELLOW}s${NC}"
     fi
 
@@ -514,8 +514,10 @@ get_ddev_status() {
         return
     fi
 
-    # Check if DDEV is running using JSON output for reliable parsing
-    local site_name=$(basename "$directory")
+    # Check if DDEV is running using JSON output for reliable parsing.
+    # Project name comes from .ddev/config.yaml — basename is wrong for
+    # the v2 layout (sites/<name>/dev → "dev").
+    local site_name=$(get_ddev_project_name "$directory")
     local ddev_status=$(ddev list --json-output 2>/dev/null | jq -r ".raw[] | select(.name==\"$site_name\") | .status" 2>/dev/null)
 
     case "$ddev_status" in
@@ -1156,7 +1158,7 @@ run_health_checks() {
     printf "  %-18s %-10s %-10s %-10s %s\n" "------------------" "----------" "----------" "----------" "-----"
 
     while read -r site; do
-        local directory=$(get_site_field "$site" "directory" "$config_file")
+        local directory=$(resolve_status_directory "$site" "$config_file")
         local ddev_status=$(get_ddev_status "$directory")
         local health=$(check_site_health "$directory")
         local domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
@@ -1187,13 +1189,31 @@ delete_site() {
     local config_file="$2"
     local force="${3:-false}"
 
+    # Deletion targets the whole site tree: the registry directory (v1
+    # project dir, or the v2 container holding dev/ + stg/ + backups/).
+    # Do NOT use resolve_status_directory here — it narrows to the dev/
+    # project, and deleting only dev/ would strand the rest of the site.
     local directory=$(get_site_field "$site" "directory" "$config_file")
     local delete_success=true
+
+    # v2 sites often have no directory: field — the container is sites/<name>/
+    if [ -z "$directory" ] && [ -d "$PROJECT_ROOT/sites/$site" ]; then
+        directory="$PROJECT_ROOT/sites/$site"
+    fi
 
     if [ -z "$directory" ]; then
         print_error "Site '$site' not found in configuration"
         return 1
     fi
+
+    # Every DDEV project living under the tree we are about to remove.
+    # These MUST be torn down with `ddev delete` before `rm -rf` — removing
+    # the files alone leaves orphan Docker volumes/images (the 2026-01
+    # incident class).
+    local ddev_dirs=() _dd
+    for _dd in "$directory" "$directory/dev" "$directory/stg"; do
+        [ -d "$_dd/.ddev" ] && ddev_dirs+=("$_dd")
+    done
 
     print_header "Delete Site: $site"
 
@@ -1203,6 +1223,13 @@ delete_site() {
     printf "  %-15s %s\n" "Recipe:" "$(get_site_field "$site" "recipe" "$config_file")"
     printf "  %-15s %s\n" "Purpose:" "$(get_site_field "$site" "purpose" "$config_file")"
     printf "  %-15s %s\n" "Disk Usage:" "$(get_disk_usage "$directory")"
+    if [ ${#ddev_dirs[@]} -gt 0 ]; then
+        local _projects=""
+        for _dd in "${ddev_dirs[@]}"; do
+            _projects="${_projects} $(get_ddev_project_name "$_dd")"
+        done
+        printf "  %-15s %s\n" "DDEV projects:" "${_projects# }"
+    fi
     echo ""
 
     # Check for related directories (support both -stg/-prod and legacy _stg/_prod)
@@ -1229,17 +1256,19 @@ delete_site() {
     echo ""
     print_info "Deleting site '$site'..."
 
-    # Stop DDEV if running (trap errors to ensure cleanup continues)
-    if [ -d "$directory/.ddev" ]; then
-        print_status "INFO" "Stopping DDEV..."
-        if ! (cd "$directory" && ddev stop 2>/dev/null); then
+    # Tear down every DDEV project under the tree (trap errors so cleanup
+    # continues). Previously only $directory itself was checked, so v2
+    # sites (projects in dev/ and stg/) skipped teardown entirely and the
+    # rm below orphaned their Docker volumes.
+    for _dd in "${ddev_dirs[@]}"; do
+        print_status "INFO" "Removing DDEV project: $(get_ddev_project_name "$_dd")"
+        if ! (cd "$_dd" && ddev stop 2>/dev/null); then
             print_status "WARN" "DDEV stop failed (continuing anyway)"
         fi
-        print_status "INFO" "Removing DDEV project..."
-        if ! (cd "$directory" && ddev delete -O -y 2>/dev/null); then
+        if ! (cd "$_dd" && ddev delete -O -y 2>/dev/null); then
             print_status "WARN" "DDEV delete failed (continuing anyway)"
         fi
-    fi
+    done
 
     # Remove directory
     if [ -d "$directory" ]; then
@@ -1282,7 +1311,7 @@ start_site() {
     local site="$1"
     local config_file="$2"
 
-    local directory=$(get_site_field "$site" "directory" "$config_file")
+    local directory=$(resolve_status_directory "$site" "$config_file")
 
     if [ -z "$directory" ]; then
         print_error "Site '$site' not found in configuration"
@@ -1303,7 +1332,7 @@ start_site() {
     (cd "$directory" && ddev start)
     print_status "OK" "Site '$site' is now running"
     echo ""
-    print_info "URL: https://${site}.ddev.site"
+    print_info "URL: https://$(get_ddev_project_name "$directory").ddev.site"
 }
 
 # Stop DDEV for a site
@@ -1311,7 +1340,7 @@ stop_site() {
     local site="$1"
     local config_file="$2"
 
-    local directory=$(get_site_field "$site" "directory" "$config_file")
+    local directory=$(resolve_status_directory "$site" "$config_file")
 
     if [ -z "$directory" ]; then
         print_error "Site '$site' not found in configuration"
@@ -1333,7 +1362,7 @@ restart_site() {
     local site="$1"
     local config_file="$2"
 
-    local directory=$(get_site_field "$site" "directory" "$config_file")
+    local directory=$(resolve_status_directory "$site" "$config_file")
 
     if [ -z "$directory" ]; then
         print_error "Site '$site' not found in configuration"
@@ -2030,7 +2059,7 @@ run_action() {
             ;;
         health)
             for site in "${sites[@]}"; do
-                local directory=$(get_site_field "$site" "directory" "$config_file")
+                local directory=$(resolve_status_directory "$site" "$config_file")
                 printf "${BOLD}%s:${NC} " "$site"
                 printf "DDEV=%b " "$(get_ddev_status "$directory")"
                 printf "Health=%b " "$(check_site_health "$directory")"

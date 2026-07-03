@@ -681,6 +681,54 @@ check_secret_expiry() {
     fi
 }
 
+# LOOP: agent-loop daily MR cap (nwp/ops#46).
+# The loop exits clean when it has opened AGENT_LOOP_DAILY_CAP (default 5) MRs in
+# a UTC day — silently. Surface that here so `pl todo` (and `pl rag`, as amber)
+# says "throughput is being clipped: runaway, or raise the cap?". Stateless: the
+# loop's state file lives on the ai-host, so count today's MRs by their `agent/`
+# source-branch prefix via the GitLab API instead. Cap override:
+# settings.todo.thresholds.agent_loop_daily_cap (keep it matching the loop's
+# AGENT_LOOP_DAILY_CAP on the ai-host).
+check_agent_loop_cap() {
+    is_category_enabled "agent_loop" || return 0
+
+    local secrets_file="$TODO_CHECKS_PROJECT_ROOT/.secrets.yml"
+    local api_token="" server=""
+    if [ -f "$secrets_file" ] && command -v yq &>/dev/null; then
+        api_token=$(yq eval '.gitlab.api_token // ""' "$secrets_file" 2>/dev/null | grep -v '^null$')
+        server=$(yq eval '.gitlab.server.domain // ""' "$secrets_file" 2>/dev/null | grep -v '^null$')
+    fi
+    [ -z "$api_token" ] && return 0
+    [ -z "$server" ] && server="${NWP_GITLAB_HOST:-}"
+    [ -z "$server" ] && return 0
+
+    local cap
+    cap=$(get_todo_setting "thresholds.agent_loop_daily_cap" "5")
+
+    # MRs created since UTC midnight whose source branch is the loop's agent/ prefix.
+    local since mrs count
+    since=$(date -u +%Y-%m-%dT00:00:00Z)
+    mrs=$(curl -sf -H "PRIVATE-TOKEN: $api_token" \
+        "https://$server/api/v4/merge_requests?scope=all&created_after=$since&per_page=100" 2>/dev/null)
+    [ -z "$mrs" ] && return 0
+    count=$(echo "$mrs" | grep -o '"source_branch":"agent/[^"]*"' | wc -l)
+
+    [ "$count" -ge "$cap" ] || return 0
+
+    # Queue depth: how much eligible work is now waiting behind the cap.
+    local queued
+    queued=$(curl -sf -H "PRIVATE-TOKEN: $api_token" \
+        "https://$server/api/v4/issues?labels=agent-eligible&state=opened&scope=all&per_page=100" 2>/dev/null \
+        | grep -o '"iid":[0-9]*' | wc -l)
+
+    local hint="none queued — check the MRs are wanted (runaway?)"
+    [ "$queued" -gt 0 ] && hint="$queued agent-eligible issue(s) now wait for tomorrow"
+    todo_add_item "LOOP" "daily-cap" "medium" \
+        "Agent-loop hit its daily MR cap ($count/$cap today)" \
+        "Review today's agent/* MRs first; $hint. If throughput is legit, raise AGENT_LOOP_DAILY_CAP in the loop env on the ai-host (and match your merge cadence)." \
+        "" "pl issue ls"
+}
+
 ################################################################################
 # Main Check Runner
 ################################################################################
@@ -703,6 +751,7 @@ TODO_CHECK_LIST=(
     "check_missing_backups:Missing backups"
     "check_disk_usage:Disk usage"
     "check_gitlab_issues:GitLab issues"
+    "check_agent_loop_cap:Agent-loop cap"
     "check_orphaned_sites:Orphaned sites"
     "check_missing_schedules:Missing schedules"
     "check_verification:Verification"
@@ -773,6 +822,7 @@ export -f check_uncommitted_work
 export -f check_disk_usage
 export -f check_ssl_expiry
 export -f check_secret_expiry
+export -f check_agent_loop_cap
 export -f run_all_checks
 export -f todo_get_check_count
 export -f todo_get_check_name

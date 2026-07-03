@@ -407,6 +407,40 @@ get_phase_display() {
     fi
 }
 
+# Per-site RAG grade for the RAG column (nwp/ops#41): read once from the cached
+# `pl rag` rollup (private/rag/state.json — refreshed by `pl rag` and the 04:30
+# rag-sync cron). This folds the §6 oversight signal into the default status
+# table without re-running the (slow) fleet sweep. Dim dot = no cached grade.
+declare -A RAG_GRADES
+RAG_STATE_LOADED=false
+load_rag_grades() {
+    [ "$RAG_STATE_LOADED" = "true" ] && return 0
+    RAG_STATE_LOADED=true
+    local f="$PROJECT_ROOT/private/rag/state.json"
+    [ -f "$f" ] || return 0
+    local s g
+    while read -r s g; do
+        [ -n "$s" ] && RAG_GRADES["$s"]="$g"
+    done < <(python3 -c '
+import json, sys
+try: d = json.load(open(sys.argv[1]))
+except Exception: sys.exit()
+for r in d.get("sites", []):
+    print(r.get("site", ""), r.get("rag", ""))
+' "$f" 2>/dev/null)
+}
+
+get_rag_display() {
+    local site="$1"
+    load_rag_grades
+    case "${RAG_GRADES[$site]:-}" in
+        RED)   printf '%b' "${RED}●${NC}" ;;
+        AMBER) printf '%b' "${YELLOW}●${NC}" ;;
+        GREEN) printf '%b' "${GREEN}●${NC}" ;;
+        *)     printf '%b' "${DIM:-}·${NC}" ;;
+    esac
+}
+
 get_site_nested_field() {
     local site="$1"
     local section="$2"
@@ -729,15 +763,16 @@ show_sites() {
 
     if [ "$show_all" == "true" ]; then
         # Full view with all details
-        printf "  ${BOLD}%-16s %-10s %-10s %-7s %-12s %-8s %-6s %-6s %-8s %s${NC}\n" \
-            "NAME" "RECIPE" "PURPOSE" "PHASE" "STAGES" "DDEV" "DISK" "DB" "HEALTH" "ACTIVITY"
-        printf "  %-16s %-10s %-10s %-7s %-12s %-8s %-6s %-6s %-8s %s\n" \
-            "----------------" "----------" "----------" "-------" "------------" "--------" "------" "------" "--------" "--------"
+        printf "  ${BOLD}%-3s %-16s %-10s %-10s %-7s %-12s %-8s %-6s %-6s %-8s %s${NC}\n" \
+            "RAG" "NAME" "RECIPE" "PURPOSE" "PHASE" "STAGES" "DDEV" "DISK" "DB" "HEALTH" "ACTIVITY"
+        printf "  %-3s %-16s %-10s %-10s %-7s %-12s %-8s %-6s %-6s %-8s %s\n" \
+            "---" "----------------" "----------" "----------" "-------" "------------" "--------" "------" "------" "--------" "--------"
 
         while read -r site; do
             local recipe=$(get_site_field "$site" "recipe" "$config_file")
             local purpose=$(get_site_field "$site" "purpose" "$config_file")
             local directory=$(get_site_field "$site" "directory" "$config_file")
+            local rag=$(get_rag_display "$site")
             local phase=$(get_phase_display "$site" "$config_file")
             local stages=$(get_site_stages "$site" "$config_file")
             local ddev_status=$(get_ddev_status "$directory")
@@ -746,18 +781,19 @@ show_sites() {
             local health=$(check_site_health "$directory")
             local activity=$(get_last_activity "$directory")
 
-            printf "  ${CYAN}%-16s${NC} %-10s %-10s %-7s %-20b %-14b %-6s %-6s %-14b %s\n" \
-                "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$stages" "$ddev_status" "$disk" "$db_size" "$health" "$activity"
+            printf "  %b   ${CYAN}%-16s${NC} %-10s %-10s %-7s %-20b %-14b %-6s %-6s %-14b %s\n" \
+                "$rag" "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$stages" "$ddev_status" "$disk" "$db_size" "$health" "$activity"
         done <<< "$sites"
 
     elif [ "$verbose" == "true" ]; then
         # Verbose view with purpose and domain
-        printf "  ${BOLD}%-18s %-10s %-12s %-7s %-15s %s${NC}\n" "NAME" "RECIPE" "PURPOSE" "PHASE" "STATUS" "DOMAIN"
-        printf "  %-18s %-10s %-12s %-7s %-15s %s\n" "------------------" "----------" "------------" "-------" "---------------" "------"
+        printf "  ${BOLD}%-3s %-18s %-10s %-12s %-7s %-15s %s${NC}\n" "RAG" "NAME" "RECIPE" "PURPOSE" "PHASE" "STATUS" "DOMAIN"
+        printf "  %-3s %-18s %-10s %-12s %-7s %-15s %s\n" "---" "------------------" "----------" "------------" "-------" "---------------" "------"
 
         while read -r site; do
             local recipe=$(get_site_field "$site" "recipe" "$config_file")
             local purpose=$(get_site_field "$site" "purpose" "$config_file")
+            local rag=$(get_rag_display "$site")
             local phase=$(get_phase_display "$site" "$config_file")
             local stages=$(get_site_stages "$site" "$config_file")
             local domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
@@ -768,18 +804,19 @@ show_sites() {
                 status_display=$(get_install_progress_display "$site" "$config_file")
             fi
 
-            printf "  ${CYAN}%-18s${NC} %-10s %-12s %-7s %-30b %s\n" \
-                "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$status_display" "${domain:-}"
+            printf "  %b   ${CYAN}%-18s${NC} %-10s %-12s %-7s %-30b %s\n" \
+                "$rag" "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$status_display" "${domain:-}"
         done <<< "$sites"
 
     else
         # Default compact view with purpose
-        printf "  ${BOLD}%-18s %-10s %-12s %-7s %s${NC}\n" "NAME" "RECIPE" "PURPOSE" "PHASE" "STAGES"
-        printf "  %-18s %-10s %-12s %-7s %s\n" "------------------" "----------" "------------" "-------" "------"
+        printf "  ${BOLD}%-3s %-18s %-10s %-12s %-7s %s${NC}\n" "RAG" "NAME" "RECIPE" "PURPOSE" "PHASE" "STAGES"
+        printf "  %-3s %-18s %-10s %-12s %-7s %s\n" "---" "------------------" "----------" "------------" "-------" "------"
 
         while read -r site; do
             local recipe=$(get_site_field "$site" "recipe" "$config_file")
             local purpose=$(get_site_field "$site" "purpose" "$config_file")
+            local rag=$(get_rag_display "$site")
             local phase=$(get_phase_display "$site" "$config_file")
             local stages=$(get_site_stages "$site" "$config_file")
 
@@ -791,14 +828,15 @@ show_sites() {
 
             if [ -n "$install_progress" ]; then
                 # Show incomplete installation status
-                printf "  ${CYAN}%-18s${NC} %-10s %-12s %-7s %b\n" "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$install_progress"
+                printf "  %b   ${CYAN}%-18s${NC} %-10s %-12s %-7s %b\n" "$rag" "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$install_progress"
             else
-                printf "  ${CYAN}%-18s${NC} %-10s %-12s %-7s %b\n" "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$stages"
+                printf "  %b   ${CYAN}%-18s${NC} %-10s %-12s %-7s %b\n" "$rag" "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$stages"
             fi
         done <<< "$sites"
     fi
 
-    # Show orphaned sites
+    # Show orphaned sites (a real fleet site can be un-onboarded yet graded —
+    # e.g. mg — so the RAG dot applies here too)
     if [ -n "$orphaned" ]; then
         printf "\n  ${YELLOW}Orphaned sites (not in nwp.yml):${NC}\n"
         while IFS=':' read -r name dir; do
@@ -806,8 +844,18 @@ show_sites() {
             local recipe=$(detect_recipe_from_site "$dir")
             local stages=""
             [ -d "$dir" ] && stages="${GREEN}d${NC}"
-            printf "  ${YELLOW}%-18s${NC} %-10s %-12s %b\n" "$name" "${recipe:-?}" "(orphan)" "$stages"
+            printf "  %b   ${YELLOW}%-18s${NC} %-10s %-12s %b\n" "$(get_rag_display "$name")" "$name" "${recipe:-?}" "(orphan)" "$stages"
         done <<< "$orphaned"
+    fi
+
+    # RAG column provenance: the dot comes from the cached pl rag rollup, not
+    # a live sweep — say how fresh it is (dim, one line).
+    local rag_state="$PROJECT_ROOT/private/rag/state.json"
+    if [ -f "$rag_state" ]; then
+        printf "\n  ${DIM}RAG column: 'pl rag' rollup from %s (refresh: pl rag)${NC}\n" \
+            "$(date -r "$rag_state" '+%Y-%m-%d %H:%M' 2>/dev/null || echo '?')"
+    else
+        printf "\n  ${DIM}RAG column: no rollup cached yet — run 'pl rag' to grade the fleet${NC}\n"
     fi
 
     # Check for incomplete installations and show hint

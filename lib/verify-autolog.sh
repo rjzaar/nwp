@@ -17,13 +17,26 @@ autolog_enabled() {
 # Find verification items matching a command pattern
 find_items_for_command() {
     local command="$1"
-    # Map commands to verification features
+    # Map a pl command (script name, e.g. "backup.sh") to the verification
+    # feature id(s) that should be auto-logged on success. Every target below
+    # is an actual top-level key under `features:` in .verification.yml — this
+    # mapping is registry-id-driven, so commands with no matching feature
+    # (audit, rag, secrets, onboard, publish, build, refresh, fetch, …) are
+    # deliberately left unmapped and fall through to the empty default, which
+    # makes the auto-log hook a safe no-op. A command may emit several
+    # space-separated ids if the registry models it as multiple features.
     case "$command" in
         *backup*) echo "backup" ;;
         *restore*) echo "restore" ;;
         *install*) echo "install" ;;
         *delete*) echo "delete" ;;
         *copy*) echo "copy" ;;
+        *dev2stg*) echo "dev2stg" ;;
+        *stg2live*) echo "stg2live" ;;
+        *rollback*) echo "rollback" ;;
+        *status*) echo "status" ;;
+        *verify*) echo "verify" ;;
+        *todo*) echo "todo" ;;
         *) echo "" ;;
     esac
 }

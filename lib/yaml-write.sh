@@ -826,6 +826,106 @@ yaml_update_site_field() {
 }
 
 #######################################
+# Check whether a scalar field exists in a site entry (regardless of value)
+# yaml_get_site_field can't answer this: it returns 1 for both "field
+# absent" and "field present but empty", which is exactly the distinction
+# an update-or-insert writer needs to avoid emitting a duplicate key.
+# Arguments:
+#   $1 - Site name
+#   $2 - Field name
+#   $3 - Config file path (optional)
+# Returns:
+#   0 if the field line exists in the site block, 1 if not
+#######################################
+yaml_site_field_exists() {
+    local site_name="$1"
+    local field_name="$2"
+    local config_file="${3:-$YAML_CONFIG_FILE}"
+
+    awk -v site="$site_name" -v field="$field_name" '
+        BEGIN { found = 0 }
+        /^sites:/ { in_sites = 1; next }
+        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
+        in_sites && $0 ~ "^  " site ":" { in_site = 1; next }
+        in_site && /^  [a-zA-Z0-9_-]+:/ && !/^    / { in_site = 0 }
+        in_site && $0 ~ "^    " field ":" { found = 1; exit }
+        END { exit !found }
+    ' "$config_file"
+}
+
+#######################################
+# Set (update-or-insert) a scalar field on a site entry
+# yaml_update_site_field only rewrites an EXISTING field line and merely
+# warns when the field is absent; this wrapper inserts the field directly
+# under the site header when missing. awk-based like the rest of this
+# library so comments/formatting in the user config survive untouched.
+# Arguments:
+#   $1 - Site name
+#   $2 - Field name
+#   $3 - New value
+#   $4 - Config file path (optional)
+# Returns:
+#   0 on success, 1 on failure
+#######################################
+yaml_set_site_field() {
+    local site_name="$1"
+    local field_name="$2"
+    local new_value="$3"
+    local config_file="${4:-$YAML_CONFIG_FILE}"
+
+    if [[ -z "$site_name" || -z "$field_name" ]]; then
+        echo -e "${RED}Error: Site name and field name are required${NC}" >&2
+        return 1
+    fi
+
+    if ! yaml_validate_sitename "$site_name"; then
+        return 1
+    fi
+
+    if ! yaml_site_exists "$site_name" "$config_file"; then
+        echo -e "${RED}Error: Site '$site_name' not found in $config_file${NC}" >&2
+        return 1
+    fi
+
+    if yaml_site_field_exists "$site_name" "$field_name" "$config_file"; then
+        yaml_update_site_field "$site_name" "$field_name" "$new_value" "$config_file"
+        return $?
+    fi
+
+    if ! yaml_backup "$config_file"; then
+        return 1
+    fi
+
+    awk -v site="$site_name" -v field="$field_name" -v value="$new_value" '
+        BEGIN { in_sites = 0; inserted = 0 }
+        /^sites:/ { in_sites = 1; print; next }
+        in_sites && /^[a-zA-Z]/ && !/^  / { in_sites = 0 }
+        {
+            print
+            if (in_sites && !inserted && $0 ~ "^  " site ":") {
+                print "    " field ": " value
+                inserted = 1
+            }
+        }
+        END { exit !inserted }
+    ' "$config_file" > "${config_file}.tmp"
+
+    if [ $? -ne 0 ]; then
+        rm -f "${config_file}.tmp"
+        echo -e "${RED}Error: Could not insert '$field_name' for site '$site_name'${NC}" >&2
+        return 1
+    fi
+
+    if mv "${config_file}.tmp" "$config_file"; then
+        echo -e "${GREEN}Field '$field_name' set for site '$site_name'${NC}" >&2
+        return 0
+    else
+        echo -e "${RED}Error: Failed to update $config_file${NC}" >&2
+        return 1
+    fi
+}
+
+#######################################
 # Add installed modules to a site entry
 # Arguments:
 #   $1 - Site name

@@ -39,11 +39,12 @@ gaps, and hygiene. Priority tiers; each item marked **[auto]** (I can do without
    role_delegation) blocked by the `nwp/avc` **profile** exact-pins. Fix = relax pins in the profile
    (safe, verified) — but entangled with #3 (95 dirty files) + the registry release train (0.3.1 vs
    v0.8 drift). Cleanest: a **0.3.2 backport** from the `v0.3.1` tag → publish → `composer update`.
-5. **nwc / nwt graphql** (3 each, `audit.ignore`'d) — **unreachable** (graphql modules OFF); real
-   fix = OS graphql-5 (ops#3). **WARNING: nwd is DIFFERENT — graphql modules are ENABLED on nwd**,
-   so its 3 graphql DoS advisories are **REACHABLE (a real exposure)** and must NOT be ignored.
-   Decide: disable graphql on nwd if unused (removes exposure), or upgrade to graphql-5. Do NOT
-   copy nwc's ignore to nwd blindly.
+5. **nwc / nwt / nwd graphql** (3 each, `audit.ignore`'d) — **unreachable** (graphql modules OFF);
+   real fix = OS graphql-5 (ops#3). ~~WARNING: nwd is DIFFERENT — graphql ENABLED~~ **CORRECTED
+   2026-07-02 (verified):** all five graphql modules (`graphql`, `graphql_oauth`, `social_graphql`,
+   2 examples) are **Disabled** on nwd — confirmed via `drush pml` + a live `moduleHandler` check;
+   `pl audit --site nwd` = 0 active (+7 justified ignores). Same safe posture as nwc/nwt. The old
+   warning was stale (predates the nwd rebuild around the 2026-07-01 nwc-2.0 rename).
 6. **[auto] Secret rotation tracking** — `pl todo`: **11 of 21 secrets have no recorded rotation**.
    `pl secrets status` → verify at provider → `pl secrets done`.
 7. **[auto] Backups** — ss / ss2 have none; avc backup **166 days old**; avc-stg no backup dir.

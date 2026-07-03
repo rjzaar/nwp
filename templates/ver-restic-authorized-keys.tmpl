@@ -1,0 +1,16 @@
+# Prod-side authorized_keys entry for `ver`'s restic-pull key (ADR-0025; ops#25).
+#
+# Append ONE line (unwrapped) to the backup user's ~/.ssh/authorized_keys on the
+# prod host. It locks the key to: read-only sftp, rooted at the restic staging
+# repo parent, no pty/forwarding/agent — so the credential can drain snapshots
+# (`restic copy` over sftp) and do NOTHING else. Combined with the sshd Match
+# block in ver-prod-wireguard.conf.tmpl it is also tunnel-address-only.
+#
+#   <VER_RESTIC_PULL_PUBKEY> = contents of ver's /etc/nwp-server/keys/restic-pull_ed25519.pub
+#   <REPO_PARENT>            = e.g. /var/backups/nwp-server
+#
+# Note `-R` (read-only) is the property that keeps "prod holds no credential
+# that can delete ver's copy" symmetric: ver's credential on prod cannot write
+# prod either.
+
+command="internal-sftp -R -d <REPO_PARENT>",restrict <VER_RESTIC_PULL_PUBKEY>

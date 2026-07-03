@@ -98,6 +98,12 @@ ${BOLD}DEPLOYMENT (Remote):${NC}
     live2stg <sitename>             Pull live to staging
     live2prod <sitename>            Deploy live to production
 
+${BOLD}CANONICALITY (content-flow phases, ops#33):${NC}
+    canonical show [site]           Show per-site canonical phase (dev|live|prod)
+    canonical set <site> <phase>    Explicit phase transition (records who/when)
+    canonical check <site>          Show which content-flow guards are in force
+    canonical log <site>            Transition/override ledger for a site
+
 ${BOLD}PROVISIONING:${NC}
     live <sitename>                 Provision live test server
     live --type=shared <sitename>   Provision on shared GitLab server
@@ -172,6 +178,8 @@ ${BOLD}BUILD TARGETS:${NC}
     server-backup --site-dir DIR    DR backup of a prod site to a local restic repo
                                     (raw; pulled by ver). Dry-run by default. ADR-0025
     ver-pull --from R --to R        ver drains prod's snapshots, prunes, verifies (ADR-0025)
+    test-ver <provision|assert|…>   Validate the ver (signed-deploy) tier on throwaway
+                                    Linodes: WG tunnel + fail-closed invariant sweep (ops#29)
 
 ${BOLD}CI/CD:${NC}
     badges show <sitename>          Show GitLab badge URLs
@@ -621,6 +629,11 @@ main() {
             run_script "live2prod.sh" "$@"
             ;;
 
+        # Canonicality phases + content-flow guards (nwp/ops#33)
+        canonical)
+            run_script "canonical.sh" "$@"
+            ;;
+
         # Provisioning
         live)
             run_script "live.sh" "$@"
@@ -722,6 +735,11 @@ main() {
         # Build targets
         build-server)
             run_script "scripts/build-nwp-server.sh" "$@"
+            ;;
+
+        # Validate the ver (signed-deploy) tier setup on throwaway Linodes (nwp/ops#29)
+        test-ver)
+            run_script "test-ver.sh" "$@"
             ;;
 
         # Production agent (nwp-server) — DR backup (ADR-0025)

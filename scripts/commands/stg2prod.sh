@@ -28,6 +28,9 @@ if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
     source "$PROJECT_ROOT/lib/yaml-write.sh"
 fi
 
+# canonical.sh: canonicality-phase content-flow guards (nwp/ops#33)
+source "$PROJECT_ROOT/lib/canonical.sh"
+
 # Script start time
 START_TIME=$(date +%s)
 
@@ -850,8 +853,10 @@ main() {
     # Export for use in functions
     export DEBUG AUTO_YES DRY_RUN VERBOSE
 
+    local OVERRIDE_CANONICAL=false
+
     local OPTIONS=hdyvs:
-    local LONGOPTS=help,debug,yes,verbose,step:,dry-run
+    local LONGOPTS=help,debug,yes,verbose,step:,dry-run,override-canonical
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -880,6 +885,10 @@ main() {
                 ;;
             --dry-run)
                 DRY_RUN=true
+                shift
+                ;;
+            --override-canonical)
+                OVERRIDE_CANONICAL=true
                 shift
                 ;;
             -s|--step)
@@ -916,6 +925,17 @@ main() {
     ocmsg "Auto yes: $AUTO_YES"
     ocmsg "Dry run: $DRY_RUN"
     ocmsg "Start step: $START_STEP"
+
+    # Canonicality guard (nwp/ops#33): under canonical: prod, content changes
+    # happen on prod ONLY — a stg→prod push would clobber the canonical source.
+    local base_name
+    base_name=$(get_base_name "$SITENAME")
+    if ! canonical_guard_content_push "$base_name" "prod" "$OVERRIDE_CANONICAL" "stg2prod"; then
+        exit 1
+    fi
+    if ! canonical_enforce_branch_policy "$base_name" "deploy"; then
+        exit 1
+    fi
 
     # Ensure staging site is in production mode before deploying to prod
     if [ "$DRY_RUN" != "true" ] && [ -d "$PROJECT_ROOT/sites/$SITENAME" ]; then

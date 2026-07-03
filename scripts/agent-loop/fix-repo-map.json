@@ -1,0 +1,20 @@
+{
+  "_comment": "agent-loop fix-repo routing (ops#41 / OPERATING-MODEL §6). For issues that live in the nwp/ops tracker (project 21) the code being fixed lives elsewhere; this map resolves the GitLab project (path_with_namespace) where the fix branch + MR go. Resolution order in agent-loop.sh: an explicit repo::<path> label on the issue wins, then kinds.<kind> (kinds whose code always lives in one repo: config/docs -> the nwp meta repo, nwc-drupal -> the nwc profile repo), then sites.<name> from the site::<name> label (security bumps land in that site's composer project root). Unroutable ops issues are de-eligibilised with a comment, never guessed.",
+  "sites": {
+    "avc": "nwp/avc-project",
+    "ba": "nwp/ba-project",
+    "cathnet": "nwp/cathnet-project",
+    "dir1": "nwp/dir1-project",
+    "mayo": "mayo/mayo",
+    "mg": "nwp/mg-project",
+    "mt": "nwp/mt-project",
+    "nwc": "nwp/nwc-project",
+    "nwd": "nwp/nwd-project",
+    "nwt": "nwp/nwt-project"
+  },
+  "kinds": {
+    "config": "nwp/nwp",
+    "docs": "nwp/nwp",
+    "nwc-drupal": "nwp/nwc"
+  }
+}

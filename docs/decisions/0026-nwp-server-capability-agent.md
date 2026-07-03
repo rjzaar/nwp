@@ -214,11 +214,23 @@ any AI-capable machine — the blast radius is that single box.
 **A14 resolved in favour (2026-06-29).** `nwp-server` is cleared to be installed on
 a host *with apply authority* (within the tier scope above) once two build-out
 gates are met:
-1. The capability set is assembled and `pl build-server` passes the fail-closed
-   deny-scan (apply/rollback/publish/config-resolution libs landed on
-   `feat/nwp-server-buildout`; the LOCAL `status` verb has since landed and was
-   exercised in the 2026-07-02 field validation below).
+1. **DONE (2026-07-01).** The full capability set is assembled and `pl build-server`
+   passes the fail-closed deny-scan (21 files). The agent entrypoint `bin/nwp-server`
+   dispatches exactly the five verbs:
+   - `bin/nwp-server` — the AI-free dispatcher (the only thing prod runs; not `pl`);
+   - `server-pull.sh` — `pull`/`verify` (HTTPS fetch with the read-only token, then
+     fail-closed `bundle_verify`);
+   - `server-apply.sh` — the apply orchestration (verify → opt-in DR snapshot → run
+     the bundle's own idempotent `pre-deploy`/`apply`/`post-deploy`; F28 rollback =
+     re-apply the previous bundle; dry-run by default);
+   - `server-status.sh` — the minimal LOCAL status verb (JSON, zero SaaS/network).
+   Also factored `bundle_tree_sha256` into `lib/bundle-hash.sh` so the verifier no
+   longer drags the whole builder onto prod (the artifact ships the hash lib, not
+   `lib/bundle-build.sh`). Verified end-to-end against a stub-signed bundle
+   (good→verifies, dry-run→no changes, execute→applies, tampered→rejected), and
+   exercised again in the 2026-07-02 field validation below.
 2. The three-key, one-way credential ledger is provisioned on the target host.
+   **(Still outstanding — this is now the sole remaining gate before install.)**
 
 Until both gates are met on a real production host, `nwp-server` is **built and
 audited** but the offline `verifier` path stays the active real-prod writer. The

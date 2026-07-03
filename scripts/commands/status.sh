@@ -2536,7 +2536,7 @@ show_help() {
 ${BOLD}NWP Status - System Overview and Site Management${NC}
 
 ${BOLD}USAGE:${NC}
-    ./status.sh [command] [options]
+    pl status [command] [options]
 
 ${BOLD}COMMANDS:${NC}
     (none)              Interactive mode (default)
@@ -2559,16 +2559,16 @@ ${BOLD}OPTIONS:${NC}
     -h, --help          Show this help
 
 ${BOLD}EXAMPLES:${NC}
-    ./status.sh                  Interactive mode (instant load with ? placeholders)
-    ./status.sh -f               Fast text status view
-    ./status.sh -s               Sites-only text view
-    ./status.sh -v               Verbose text status with domains
-    ./status.sh -a               Full status with health, disk, db info
-    ./status.sh health           Run health checks on all sites
-    ./status.sh info avc         Show detailed info for 'avc' site
-    ./status.sh delete test-nwp  Delete test-nwp site
-    ./status.sh start avc        Start DDEV for avc
-    ./status.sh servers          Show Linode server stats
+    pl status                    Interactive mode (instant load with ? placeholders)
+    pl status -f                 Fast text status view
+    pl status -s                 Sites-only text view
+    pl status -v                 Verbose text status with domains
+    pl status -a                 Full status with health, disk, db info
+    pl status health             Run health checks on all sites
+    pl status info avc           Show detailed info for 'avc' site
+    pl status delete test-nwp    Delete test-nwp site
+    pl status start avc          Start DDEV for avc
+    pl status servers            Show Linode server stats
 
 ${BOLD}INTERACTIVE MODE (default):${NC}
     Initial load shows '?' for data being loaded
@@ -2584,20 +2584,37 @@ ${BOLD}INTERACTIVE MODE (default):${NC}
     s           Setup - configure visible columns
     q           Quit
 
-${BOLD}COLUMNS (configurable via Setup):${NC}
+${BOLD}COLUMNS (interactive columns configurable via Setup / 's'):${NC}
+    RAG         Fleet oversight grade from 'pl rag' (text views):
+                ${RED}●${NC} red = open security advisory or high-priority security todo
+                ${YELLOW}●${NC} amber = other open todo items / drift    ${GREEN}●${NC} green = clear
+                · = no cached grade yet — run 'pl rag' to (re)grade the fleet
     NAME        Site name from nwp.yml
     RECIPE      Recipe used to create the site
-    STG         Stages: ${GREEN}d${NC}=dev ${YELLOW}s${NC}=stg ${BLUE}l${NC}=live ${RED}p${NC}=prod
-    DDEV        Container status
-    PURPOSE     Site purpose
-    DISK        Directory size
-    DOMAIN      Live domain
-    USERS       Active user count (from prod/live/stg/dev)
-    DB          Database size
-    HEALTH      Site health check status
-    ACTIVITY    Last git commit time
-    SSL         SSL certificate expiry
-    CI          CI/CD enabled status
+    PURPOSE     Site purpose (testing/indefinite/permanent/migration)
+    PHASE       Canonicality phase — which host owns the site's CONTENT
+                (dev|live|prod, enforced by the deploy guards; ops#33):
+                  dev    dev is source of truth; dev→live pushes allowed
+                  live   content changes on live only; dev→live content REFUSED
+                  prod   prod is source; branch-only work, CI-gated main
+                  (dev)  = default, phase not set — 'pl canonical set <site> <phase>'
+    STG/STAGES  Configured stages: ${GREEN}d${NC}=dev ${YELLOW}s${NC}=stg ${BLUE}l${NC}=live ${RED}p${NC}=prod
+    DDEV        Container status (run/stop/paused; ghost = registered but no dir)
+    DISK        Site directory size
+    DOMAIN      Live domain from the site's live.domain config
+    USERS       Active user count (live DB query; prefers prod>live>stg>dev copy)
+    DB          Database size (live query)
+    HEALTH      HTTP probe of the running project's URL (OK/auth/404/err/down)
+    ACTIVITY    Time since last git commit in the site directory
+    SSL         Days until the live domain's certificate expires
+    CI          'on' when ci.enabled is set for the site
+
+${BOLD}READING '-' IN A COLUMN:${NC}
+    USERS/DB/HEALTH are live queries — they show '-' whenever the site's
+    DDEV project is not running (that is expected, not an error).
+    DOMAIN/SSL are '-' for sites with no live domain; CI '-' = not enabled.
+    Expensive columns are only computed while visible — hide them via
+    Setup ('s') to speed up the interactive refresh.
 
 EOF
 }

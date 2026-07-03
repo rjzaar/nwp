@@ -1,12 +1,15 @@
 # Setting up `ver` — the offline verifier / single-machine AI-free nwp
 
-> **Status:** DRAFT — the build is real and reproducible; the runtime capabilities
-> are **not yet exercised end-to-end**. `ver` is **not provisioned** and not on the
-> tailnet. Read the DONE / PENDING markers in each section before acting.
-> **Date:** 2026-07-01
+> **Status:** DRAFT — the build is real and reproducible, and the runtime
+> capabilities were **validated end-to-end on 2026-07-02** on a disposable
+> prod-boundary test host (nwp/ops#23; `publish` verb excepted — see §5). `ver`
+> itself is **not provisioned** and not on the tailnet. Read the DONE / PENDING
+> markers in each section before acting.
+> **Date:** 2026-07-01 (updated 2026-07-02)
 > **Audience:** the operator, sitting at `ver`. Every command here is something
 > **you** type at the machine — `ai-host`/`authoring` assistants cannot reach it.
-> **See also:** ADR-0022, ADR-0024, ADR-0025, [`docs/reference/role-vocabulary.md`](../reference/role-vocabulary.md),
+> **See also:** ADR-0022, ADR-0024 (deploy authority), ADR-0026 (the capability
+> agent), ADR-0025, [`docs/reference/role-vocabulary.md`](../reference/role-vocabulary.md),
 > and [`nwp-single-machine.md`](nwp-single-machine.md) (the reframing: this same
 > build is the minimal one-machine install).
 
@@ -20,10 +23,18 @@ outbound WireGuard session, and **never AI-accessible**.
 
 The software `ver` runs is the **`nwp-server` build target**: a minimal, separately-built,
 **AI-free** artifact assembled from the `nwp` source tree (ADR-0022, renamed and
-re-scoped by ADR-0024). The AI-free property is a **build-time guarantee** — the
+re-scoped by ADR-0026). The AI-free property is a **build-time guarantee** — the
 AI / CI / SaaS modules are *absent from the artifact*, not merely disabled by a flag.
 
-The capability set, and nothing else (ADR-0024 + ADR-0025):
+> **Tier framing (who deploys what, today).** The **live-test tier** self-deploys
+> via this agent — validated end-to-end 2026-07-02 (per the 2026-07-01 operator
+> grant recorded in ADR-0024). **Real user-facing prod today** is gated by the
+> offline deploy host + hardware token (ADR-0017). **Real prod's target model**
+> is the runner-resident ADR-0024, once its preconditions (token downscope,
+> WebAuthn, protected runner) land. The agent remains the capability set and the
+> documented escalation / reserve path for real prod (ADR-0026).
+
+The capability set, and nothing else (ADR-0026 + ADR-0025):
 
 | Verb | What it does | Backed by |
 |------|--------------|-----------|
@@ -34,8 +45,8 @@ The capability set, and nothing else (ADR-0024 + ADR-0025):
 | backup (DR) | raw restic snapshot to a local repo; `ver` later pulls it (ADR-0025) | `scripts/commands/server-backup.sh`, `scripts/commands/ver-backup-pull.sh` |
 | status | emit local health as JSON (local-only subset) | *(pending — see §7)* |
 
-> **Naming.** ADR-0022 called this target `nwp-verifier`; ADR-0024 renamed it
-> **`nwp-server`** for the self-deploying-prod role. `ver` (the offline custodian)
+> **Naming.** ADR-0022 called this target `nwp-verifier`; ADR-0026 renamed it
+> **`nwp-server`** for the self-deploying role. `ver` (the offline custodian)
 > and `prod-agent` (the same build running *on* a prod host) are the two roles that
 > carry this artifact. This guide uses `ver`.
 
@@ -85,7 +96,7 @@ Transfer the assembled tree to `ver` through the operator's offline channel
 (signed, per ADR-0019 once the hardware key is in place). `nwp` itself is **not**
 installed on `ver` — only this artifact.
 
-## 4. The credential ledger (ADR-0024 — the inviolable part)
+## 4. The credential ledger (ADR-0026 — the inviolable part)
 
 A host carrying this artifact holds **exactly three** credentials and nothing else:
 
@@ -98,14 +109,22 @@ A host carrying this artifact holds **exactly three** credentials and nothing el
 that reach another prod host. Both data directions are one-way, so a compromise of
 this box cannot pivot to the control plane, another prod host, or any AI machine.
 
-> **PENDING.** `ver` is not yet provisioned; these keys are **not yet issued**.
-> Provisioning them is gate 2 of the ADR-0024 migration path.
+> **PENDING for `ver`.** `ver` is not yet provisioned; its keys are **not yet
+> issued**. Provisioning them is gate 2 of the ADR-0026 migration path. (The
+> ledger itself has been exercised: the 2026-07-02 field validation ran on a
+> disposable test host with exactly the three keys and no PAT.)
 
 ## 5. Verify a signed bundle, then apply / rollback
 
-**PENDING — libraries present in the artifact, not yet exercised end-to-end.**
-The verify/apply path is carried by the shipped libraries, not (yet) by a
-standalone `pl apply` / `pl pull` verb:
+**VALIDATED 2026-07-02 (nwp/ops#23)** on a disposable prod-boundary test host,
+artifact-only, three-key ledger, no PAT, no AI: signed pull → verify (including
+a tamper negative-test that was correctly **rejected**) → apply → rollback →
+status all ran end-to-end. The **`publish` verb is the exception** — it is
+mis-wired to the build-tier registry uploader (needs a full-`api` PAT, never
+invokes the PII gate) and **must not be used** until fixed (see ADR-0026's
+validation record; tracked in nwp/ops#23). There is no standalone `pl apply` /
+`pl pull` verb — the verify/apply path is carried by the shipped libraries via
+the artifact's own entrypoint:
 
 - **Verify:** `lib/bundle-verify.sh` checks that the bundle is a well-formed tarball,
   that `manifest.json.minisig` verifies against the pinned public key, and that the
@@ -116,10 +135,11 @@ standalone `pl apply` / `pl pull` verb:
   underlying `lib/rollback.sh`) manage rollback points; apply enters maintenance and
   **rolls back on failure**, this host only.
 
-> These capability scripts currently have **zero functional test coverage** and have
-> **not run end-to-end** (no live `ver`/prod yet). Treat the first real run as
-> supervised, with a dry-run first (`pl rollback execute … --dry-run`,
-> `pl publish … --dry-run`).
+> The pull/verify/apply/rollback/status paths **ran end-to-end on 2026-07-02**
+> on a disposable test host (nwp/ops#23) — but not yet on a live `ver` or a real
+> prod host. Treat the first run on any *new* host as supervised, with a dry-run
+> first (`pl rollback execute … --dry-run`). Do **not** use the `publish` verb
+> until its mis-wiring is fixed (see above).
 
 ## 6. Backups — restic, custodian-pull, sealed keystore (ADR-0025)
 
@@ -158,8 +178,8 @@ test-restored is not a backup.
 | 2 | `pl build-server --scan-only <artifact>` on `ver` | deny-scan PASSED, 0 AI/CI/SaaS symbols | **DONE** on build-host; rerun on `ver` after transfer |
 | 3 | `sha256sum -c MANIFEST.sha256` inside the transferred artifact | all OK | PENDING (needs transfer) |
 | 4 | credential ledger check: exactly 3 keys, all one-way | 3 keys, no PAT | PENDING (not provisioned) |
-| 5 | `pl rollback list <site>` | lists rollback points (or empty, cleanly) | PENDING (untested) |
-| 6 | `pl publish <site> --dry-run` | shows the upload, uploads nothing | PENDING (untested) |
+| 5 | `pl rollback list <site>` | lists rollback points (or empty, cleanly) | **VALIDATED** 2026-07-02 on a disposable test host (rollback = re-apply of the previous bundle); rerun on `ver` once provisioned |
+| 6 | `pl publish <site> --dry-run` | shows the upload, uploads nothing | **BLOCKED — known defect:** the `publish` verb is mis-wired to the build-tier uploader (no PII gate, needs a PAT); do not use until fixed (nwp/ops#23) |
 | 7 | `pl server-backup --site-dir DIR` (dry-run) then `--execute` | local restic snapshot created | PENDING (needs restic + site) |
 | 8 | `pl ver-pull --from … --to …` (dry-run) then `--execute` | snapshots drained, `restic check` passes | PENDING (needs tunnel + keystore) |
 | 9 | monthly restore drill into a sandbox | a site reconstructed from `ver`'s repo | PENDING |
@@ -171,16 +191,20 @@ test-restored is not a backup.
 | `pl build-server` builds a 16-file AI-free artifact | **DONE** |
 | Deny-scan passes fail-closed | **DONE** |
 | Reproducible build (identical MANIFEST on two hosts) | **DONE** |
-| Capability scripts (rollback/publish/server-backup/ver-pull) tested | **PENDING — zero functional coverage, no end-to-end run** |
+| Capability paths (pull/verify/apply/rollback/status) exercised | **VALIDATED 2026-07-02** — full signed cycle incl. tamper negative-test on a disposable prod-boundary test host (nwp/ops#23) |
+| `publish` verb | **DEFECT (open)** — mis-wired to the build-tier registry uploader; violates the three-key ledger; do not use (nwp/ops#23, ADR-0026) |
+| server-backup / ver-pull (ADR-0025) tested | **PENDING** (needs restic, tunnel, sealed keystore) |
 | `ver` provisioned / on tailnet | **PENDING — not provisioned** |
-| Three-key credential ledger issued | **PENDING** |
-| A local `status` verb in the artifact | **PENDING** (ADR-0024 lists it as the remaining verb) |
+| Three-key credential ledger issued on `ver` | **PENDING** (exercised on the test host 2026-07-02) |
+| A local `status` verb in the artifact | **DONE** — validated 2026-07-02 (local JSON reflected real site state) |
 
 ## Related
 
 - [ADR-0022 — nwp-verifier binary split](../decisions/0022-nwp-verifier-binary-split.md)
-- [ADR-0024 — self-deploying prod via the `nwp-server` agent](../decisions/0024-self-deploying-prod-agent.md)
-  (see also the **duplicate-numbered** `0024-self-deploying-prod-supersedes-verifier.md`)
+- [ADR-0024 — self-deploying prod via a runner resident on the prod host](../decisions/0024-self-deploying-prod-supersedes-verifier.md)
+  (canonical for production deploy authority)
+- [ADR-0026 — the `nwp-server` capability agent](../decisions/0026-nwp-server-capability-agent.md)
+  (renumbered from a duplicate ADR-0024 on 2026-07-02)
 - [ADR-0025 — production backup to `ver`](../decisions/0025-production-backup-to-ver.md)
 - [`nwp-single-machine.md`](nwp-single-machine.md) — the same build as the minimal one-machine install
 - [`using-nwp.md`](using-nwp.md) — the whole-system map

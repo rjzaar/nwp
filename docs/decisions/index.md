@@ -55,6 +55,9 @@ Proposed → Accepted → [Deprecated | Superseded]
 | [0016](0016-avc-email-reply-architecture.md) | AVC email reply architecture | 2026-01-15 | Accepted |
 | [0017](0017-distributed-build-deploy-pipeline.md) | Distributed build/deploy pipeline (build-tier build, verifier deploy) | 2026-04-07 | Accepted (implementation started; F21 Phases 1 ✅, 2 ✅, 3a ✅) |
 | [0018](0018-twilio-bounded-saas-for-pstn.md) | Twilio as bounded SaaS dependency for PSTN voice/SMS | 2026-04-08 | Accepted |
+| [0024](0024-self-deploying-prod-supersedes-verifier.md) | Self-deploying prod via a runner resident on the prod host — **canonical for production deploy authority** | 2026-06-25 | Accepted 2026-06-28 (A14); **not operational** until the linchpin (token downscope) + WebAuthn + protected runner land. Supersedes 0019, amends 0017. Live-test-tier deploy grant 2026-07-01 |
+| [0025](0025-production-backup-to-ver.md) | Production backup to `ver` (restic, custodian-pull, append-only) | 2026-06-29 | Accepted |
+| [0026](0026-nwp-server-capability-agent.md) | The `nwp-server` AI-free capability agent | 2026-06-28 | Accepted (renumbered from a duplicate 0024, 2026-07-02); field-validated 2026-07-02 (nwp/ops#23), `publish` verb defect open |
 
 ## Rejected Proposals
 
@@ -74,8 +77,8 @@ Proposed → Accepted → [Deprecated | Superseded]
 |-----|-------|------|------|
 | [0020](0020-tiered-architecture-model.md) | Tiered architecture model | 2026-04 | Proposed |
 | [0021](0021-public-only-repo-scope.md) | Public-only repo scope | 2026-04 | Proposed |
-| [0022](0022-nwp-verifier-binary-split.md) | nwp-verifier binary split | 2026-04 | Proposed; mostly moot under 0024 (no verifier to build) |
-| [0024](0024-self-deploying-prod-supersedes-verifier.md) | Self-deploying prod via Linode-resident runner | 2026-06-25 | Proposed; supersedes 0019, amends 0017. Pending acceptance of the A14 boundary shift |
+| [0022](0022-nwp-verifier-binary-split.md) | nwp-verifier binary split | 2026-04 | Proposed; its build target was renamed/re-scoped to `nwp-server` by 0026; no standalone verifier host to build under 0024 |
+| 0023 | *(reserved for the AI Confidentiality Boundary, P67 — not yet drafted)* | — | Reserved |
 
 ## Creating a New ADR
 

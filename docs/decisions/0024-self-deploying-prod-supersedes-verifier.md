@@ -1,6 +1,23 @@
 # ADR-0024: Self-Deploying Prod via Linode-Resident Runner (supersedes the verifier deploy model)
 
-**Status:** Accepted (decision A14 accepted by operator 2026-06-28; operational wiring gated on the linchpin — least-privilege tokens / Developer-only bot users complete)
+> **Reconciliation note (2026-07-02, nwp/ops#28).** A second, duplicate ADR-0024
+> existed (`0024-self-deploying-prod-agent.md`, the `nwp-server` agent). By
+> operator decision it has been renumbered to
+> [ADR-0026](0026-nwp-server-capability-agent.md) and re-scoped as the
+> **`nwp-server` AI-free capability agent**. **This file is canonical ADR-0024
+> and canonical for production deploy authority**; ADR-0026 governs the agent's
+> capability set (pull+verify, apply/rollback, sanitized publish, backup,
+> status) and its three-key credential ledger.
+
+**Status:** Accepted (decision A14 accepted by operator 2026-06-28; operational wiring gated on the linchpin — least-privilege tokens / Developer-only bot users complete).
+**This model is Accepted but NOT operational.** The linchpin is **not yet
+satisfied** — a full-`api` admin Personal Access Token still exists on an
+AI-reachable workstation — and this ADR's own terms forbid partial adoption. No
+part of the runner-resident deploy path may carry authority until **all three**
+land: the linchpin (token downscope to Developer-only / `read_repository`),
+WebAuthn enrolment for the operator's forge account, and the protected
+`prod-deploy` runner. Until then, real user-facing production deploys remain
+gated by the offline deploy host + hardware token (ADR-0017).
 
 > **Operator authority grant — 2026-07-01 (A14 scoping):** The operator granted the AI
 > (Claude Code) **deploy authority to the LIVE TEST tier** (the shared test box) — on the basis

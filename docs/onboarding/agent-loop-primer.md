@@ -1,7 +1,12 @@
 # Agent Loop Primer
 
 **Audience:** Coder, understanding the machine that produces the PRs you review.
-**Status:** v1 — 2026-05-20.
+**Status:** v1 — 2026-05-20. **Partially superseded 2026-07-03 (ops#41):** the
+loop now also polls the `nwp/ops` tracker and routes those issues to a
+*different* repo than the issue lives in (fix-repo map + per-kind prompt
+templates) — this doc's "same repo" flow still holds for `nwp/nwc` feedback
+issues. System-level picture + current stages:
+[docs/guides/self-healing-loop-guide.md](../guides/self-healing-loop-guide.md).
 **Read time:** 12 minutes.
 
 The PRs you review are produced by a closed loop running on `mini` (one of Rob's home boxes). This doc explains the loop end-to-end so you can recognize when it's misbehaving and decide what to do about it.

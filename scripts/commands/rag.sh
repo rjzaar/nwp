@@ -142,7 +142,13 @@ for site in sorted(eligible):
           "- Todo (high/med/low): %d/%d/%d\n\n"
           "Opened/updated automatically from `private/rag/state.json`; "
           "**auto-closes** when the site goes \U0001f7e2 green. Triage item for a "
-          "human — _not_ `agent-eligible` (see nwp/ops#6 Deliverable 2).\n\n"
+          "human — _not_ `agent-eligible` by default.\n\n"
+          "**To hand the fix to the agent-loop** (a deliberate human act — the "
+          "A14 gate): confirm the fix is dev-repo-bounded + low-risk, then add "
+          "`kind::security-bump` (or `kind::config` / `kind::docs`) plus "
+          "`agent-eligible`. The `site::` label routes the MR to that site's "
+          "code repo via `scripts/agent-loop/fix-repo-map.json`; merge stays "
+          "human.\n\n"
           "_Last synced: %s_") % (mk,dot,sec,top,h,m_,l,now)
     title="[RAG] %s: %s" % (site, "security advisories" if grade=="RED" else "needs attention")
     want = ["rag-auto", f"site::{site}"] + (["priority::high","security"] if grade=="RED" else ["priority::medium"])

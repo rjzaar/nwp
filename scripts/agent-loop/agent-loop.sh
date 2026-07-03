@@ -19,8 +19,25 @@
 #   AGENT_LOOP_KEEP_FAILED      (default 1; set to 0 to clean failed worktrees)
 #   AGENT_LOOP_DRY_RUN          (default 0; set to 1 to skip claude + push)
 #   AGENT_LOOP_GITLAB_BASE_URL  (default https://git.nwpcode.org)
-#   AGENT_LOOP_PROJECT_IDS      (default "16"; comma-separated list)
+#   AGENT_LOOP_PROJECT_IDS      (default "16,21"; comma-separated list)
+#   AGENT_LOOP_OPS_PROJECT_ID   (default 21 = nwp/ops; issues polled from this
+#                                tracker are ROUTED: the fix branch + MR go to
+#                                the repo resolved from the issue's labels via
+#                                fix-repo-map.json — see "fix-repo routing")
+#   AGENT_LOOP_FIX_REPO_MAP     (default <script dir>/fix-repo-map.json)
+#   AGENT_LOOP_PROMPT_DIR       (default <script dir>/prompts; one <kind>.md
+#                                per kind:: label — security-bump / config /
+#                                docs / nwc-drupal)
 #   CLAUDE_BIN                  (default "claude")
+#
+# Fix-repo routing + gating (ops#41, OPERATING-MODEL §6):
+#   nwp/ops is a tracker with no code. An ops issue is picked up ONLY when a
+#   human has labelled it agent-eligible (deliberate promotion — the A14
+#   boundary) AND it carries routing labels: kind::<template> plus
+#   site::<name> or repo::<path>. Unroutable ops issues get one explanatory
+#   comment and lose agent-eligible so the cron doesn't re-hit them. MRs are
+#   opened on the FIX repo with a cross-project "Closes nwp/ops#N" footer and
+#   NEVER auto-merge — human review is the gate, same as project 16.
 #
 # Exits 0 always so cron stays happy. Real errors land in the log file.
 
@@ -41,8 +58,12 @@ MAX_RETRIES="${AGENT_LOOP_MAX_RETRIES:-3}"
 KEEP_FAILED="${AGENT_LOOP_KEEP_FAILED:-1}"
 DRY_RUN="${AGENT_LOOP_DRY_RUN:-0}"
 GITLAB_BASE_URL="${AGENT_LOOP_GITLAB_BASE_URL:-https://git.nwpcode.org}"
-PROJECT_IDS="${AGENT_LOOP_PROJECT_IDS:-16}"
+PROJECT_IDS="${AGENT_LOOP_PROJECT_IDS:-16,21}"
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OPS_PROJECT_ID="${AGENT_LOOP_OPS_PROJECT_ID:-21}"
+FIX_REPO_MAP="${AGENT_LOOP_FIX_REPO_MAP:-${SCRIPT_DIR}/fix-repo-map.json}"
+PROMPT_DIR="${AGENT_LOOP_PROMPT_DIR:-${SCRIPT_DIR}/prompts}"
 
 mkdir -p "$LOG_DIR" "$WORK_ROOT" "$RESPAWN_DIR"
 
@@ -132,6 +153,72 @@ project_ssh_url() {
   local pid="$1"
   gitlab_curl GET "/api/v4/projects/${pid}" \
     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("ssh_url_to_repo",""))'
+}
+
+# --- fix-repo routing helpers (ops#41) ----------------------------------
+
+# Resolve a project by path_with_namespace ("nwp/avc-project").
+# Prints "id<TAB>ssh_url"; prints nothing when the project can't be fetched.
+project_by_path() {
+  local path="$1"
+  gitlab_curl GET "/api/v4/projects/${path//\//%2F}" 2>>"$LOG_FILE" \
+    | python3 -c '
+import sys, json
+try: d = json.load(sys.stdin)
+except Exception: d = {}
+i, u = d.get("id", ""), d.get("ssh_url_to_repo", "")
+if i and u: print(f"{i}\t{u}")'
+}
+
+# Value of the first "<prefix>::<value>" scoped label on an issue (stdin JSON).
+issue_scoped_label() { # $1=prefix (kind / site / repo)
+  python3 -c '
+import sys, json
+pre = sys.argv[1] + "::"
+d = json.load(sys.stdin)
+for l in d.get("labels", []) or []:
+    if l.startswith(pre):
+        print(l[len(pre):]); break
+' "$1"
+}
+
+# Resolve the fix-repo path for an ops-tracker issue. Precedence: an explicit
+# repo::<path> label > kinds.<kind> in the map (kinds whose code always lives
+# in one repo — config/docs → meta repo, nwc-drupal → profile repo) >
+# sites.<site> (security bumps → that site's composer project root). Prints
+# nothing when unresolvable — the caller de-eligibilises rather than guessing.
+resolve_fix_repo_path() { # $1=repo-label $2=site-label $3=kind-label
+  python3 - "$FIX_REPO_MAP" "$1" "$2" "$3" <<'PY'
+import json, sys
+mapfile, repo, site, kind = sys.argv[1:5]
+if repo:
+    print(repo); raise SystemExit
+try:
+    m = json.load(open(mapfile))
+except Exception:
+    raise SystemExit
+p = (m.get("kinds", {}).get(kind) if kind else None) or \
+    (m.get("sites", {}).get(site) if site else None)
+if p: print(p)
+PY
+}
+
+# Take an ops issue out of the queue with one explanatory note: its routing
+# labels are missing/wrong and a human must fix them before re-adding
+# agent-eligible. Without this the 30-min cron would re-hit it forever.
+unroutable_issue() { # $1=pid $2=iid $3=reason
+  local pid="$1" iid="$2" reason="$3"
+  log "    unroutable: $reason"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    log "    DRY_RUN=1 — would comment + remove agent-eligible on ${pid}#${iid}"
+    return 0
+  fi
+  gitlab_curl POST "/api/v4/projects/${pid}/issues/${iid}/notes" \
+    "$(python3 -c 'import json,sys; print(json.dumps({"body": sys.argv[1]}))' \
+       "Agent-loop cannot route this issue: ${reason}. Add the routing labels (\`kind::security-bump\` / \`kind::config\` / \`kind::docs\` / \`kind::nwc-drupal\`, plus \`site::<name>\` or \`repo::<path>\` for code fixes — see \`scripts/agent-loop/fix-repo-map.json\`) and re-add \`agent-eligible\`.")" \
+    >>"$LOG_FILE" 2>&1 || true
+  gitlab_curl PUT "/api/v4/projects/${pid}/issues/${iid}" \
+    '{"remove_labels":"agent-eligible"}' >>"$LOG_FILE" 2>&1 || true
 }
 
 # Count PRs already opened today (from state file).
@@ -239,19 +326,36 @@ drain_respawn_markers() {
       respawn)
         if [[ "$target" == "mr" && "$iid" != "0" ]]; then
           # Find the linked issue. Closed-issues field on MR points back.
+          # Routed MRs (ops#41) use the cross-project form "Closes nwp/ops#N",
+          # so capture an optional project path and resolve it — the issue
+          # lives THERE, not on the MR's project.
           mr_json="$(gitlab_curl GET "/api/v4/projects/${project_id}/merge_requests/${iid}" 2>>"$LOG_FILE" || echo '{}')"
-          linked_issue_iid="$(printf '%s' "$mr_json" | python3 -c '
+          linked_issue_ref="$(printf '%s' "$mr_json" | python3 -c '
 import sys, json, re
 try: d = json.load(sys.stdin)
 except Exception: d = {}
-# Try description first: "Closes #<n>".
 desc = d.get("description") or ""
-m = re.search(r"Closes\s+#(\d+)", desc)
-print(m.group(1) if m else "")
+m = re.search(r"Closes\s+([A-Za-z0-9][A-Za-z0-9_./-]*)?#(\d+)", desc)
+print((m.group(1) or "") + "|" + m.group(2) if m else "")
 ' 2>/dev/null || echo "")"
+          linked_issue_path="${linked_issue_ref%%|*}"
+          linked_issue_iid="${linked_issue_ref#*|}"
+          [[ "$linked_issue_ref" == *"|"* ]] || linked_issue_iid=""
+          issue_pid="$project_id"
+          if [[ -n "$linked_issue_iid" && -n "$linked_issue_path" ]]; then
+            issue_pid="$(gitlab_curl GET "/api/v4/projects/${linked_issue_path//\//%2F}" 2>>"$LOG_FILE" \
+              | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("id",""))
+except Exception: print("")')"
+            if [[ -z "$issue_pid" ]]; then
+              log "    skip respawn: cannot resolve issue project '${linked_issue_path}'"
+              rm -f "$marker"
+              continue
+            fi
+          fi
 
           if [[ -n "$linked_issue_iid" ]]; then
-            issue_key="${project_id}#${linked_issue_iid}"
+            issue_key="${issue_pid}#${linked_issue_iid}"
             retries="$(state_get_retry "$issue_key")"
             if (( retries >= MAX_RETRIES )); then
               log "    skip respawn: retry budget exhausted (${retries}/${MAX_RETRIES})"
@@ -265,8 +369,9 @@ print(m.group(1) if m else "")
               # Close the MR.
               gitlab_curl PUT "/api/v4/projects/${project_id}/merge_requests/${iid}" \
                 '{"state_event":"close"}' >>"$LOG_FILE" 2>&1 || true
-              # Re-add agent-eligible, strip pr-opened, on the linked issue.
-              gitlab_curl PUT "/api/v4/projects/${project_id}/issues/${linked_issue_iid}" \
+              # Re-add agent-eligible, strip pr-opened, on the linked issue
+              # (its own project — may differ from the MR's for routed fixes).
+              gitlab_curl PUT "/api/v4/projects/${issue_pid}/issues/${linked_issue_iid}" \
                 '{"add_labels":"agent-eligible","remove_labels":"pr-opened"}' >>"$LOG_FILE" 2>&1 || true
               state_bump_retry "$issue_key"
             fi
@@ -359,6 +464,13 @@ for pid in "${project_arr[@]}"; do
       continue
     fi
 
+    # Belt-and-braces vs. cross-project MR linking lag: pr-opened is set by us
+    # when an MR opens and removed by the respawn path when a retry is wanted.
+    if printf '%s' "$issue_one" | python3 -c 'import sys,json; sys.exit(0 if "pr-opened" in (json.load(sys.stdin).get("labels") or []) else 1)'; then
+      log "    skip: pr-opened label present"
+      continue
+    fi
+
     # Retry budget.
     retries="$(state_get_retry "$issue_key")"
     if (( retries >= MAX_RETRIES )); then
@@ -366,8 +478,52 @@ for pid in "${project_arr[@]}"; do
       continue
     fi
 
+    # --- fix-repo routing (ops#41). nwp/ops is a tracker with no code: an
+    # ops issue's fix branch + MR must go to the repo named by its labels.
+    # For every other project the fix repo IS the issue repo (no regression).
+    kind="$(printf '%s' "$issue_one" | issue_scoped_label kind)"
+    fix_pid="$pid"
+    fix_ssh_url=""
+    issue_ref="#${iid}"   # what the MR's Closes footer cites
+    if [[ "$pid" == "$OPS_PROJECT_ID" ]]; then
+      repo_label="$(printf '%s' "$issue_one" | issue_scoped_label repo)"
+      site_label="$(printf '%s' "$issue_one" | issue_scoped_label site)"
+      if [[ -z "$kind" ]]; then
+        unroutable_issue "$pid" "$iid" "no kind:: label (required for ops-tracker issues)"
+        processed=$((processed + 1))
+        continue
+      fi
+      fix_path="$(resolve_fix_repo_path "$repo_label" "$site_label" "$kind")"
+      if [[ -z "$fix_path" ]]; then
+        unroutable_issue "$pid" "$iid" "no fix repo resolvable from site::${site_label:-<none>} / repo::${repo_label:-<none>} / kind::${kind}"
+        processed=$((processed + 1))
+        continue
+      fi
+      fix_info="$(project_by_path "$fix_path")"
+      fix_pid="${fix_info%%$'\t'*}"
+      fix_ssh_url="${fix_info#*$'\t'}"
+      if [[ -z "$fix_pid" || -z "$fix_ssh_url" || "$fix_pid" == "$fix_info" ]]; then
+        log "    skip: cannot fetch project '${fix_path}' via API (transient? will retry next tick)"
+        continue
+      fi
+      issue_project_path="$(gitlab_curl GET "/api/v4/projects/${pid}" 2>>"$LOG_FILE" \
+        | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("path_with_namespace",""))
+except Exception: print("")')"
+      issue_ref="${issue_project_path:-nwp/ops}#${iid}"
+      log "    routed: ops issue -> ${fix_path} (project ${fix_pid}), kind=${kind}"
+    else
+      kind="${kind:-nwc-drupal}"
+    fi
+    template_file="${PROMPT_DIR}/${kind}.md"
+    if [[ ! -f "$template_file" ]]; then
+      unroutable_issue "$pid" "$iid" "unknown kind::${kind} (no template at ${template_file})"
+      processed=$((processed + 1))
+      continue
+    fi
+
     # Need a local checkout path.
-    local_path="$(project_local_path "$pid")"
+    local_path="$(project_local_path "$fix_pid")"
     if [[ -z "$local_path" || ! -d "$local_path/.git" ]]; then
       # First run for this project: clone into the dedicated dir. Hidden
       # dot-dir at the repo root so it's gitignored by default (the repo's
@@ -375,9 +531,9 @@ for pid in "${project_arr[@]}"; do
       # the operator's sites/ tree.
       mkdir -p "$(dirname "$local_path")"
       if [[ ! -d "$local_path/.git" ]]; then
-        ssh_url="$(project_ssh_url "$pid")"
+        ssh_url="${fix_ssh_url:-$(project_ssh_url "$fix_pid")}"
         if [[ -z "$ssh_url" ]]; then
-          log "    skip: no local path AND no SSH URL for project ${pid}"
+          log "    skip: no local path AND no SSH URL for project ${fix_pid}"
           continue
         fi
         log "    cloning $ssh_url -> $local_path"
@@ -397,9 +553,14 @@ for pid in "${project_arr[@]}"; do
       GIT_SSH_COMMAND="ssh -i ~/.ssh/nwp -o IdentitiesOnly=yes" git pull --ff-only origin main >>"$LOG_FILE" 2>&1 || true
     ) || log "    WARN: refresh-main returned non-zero (continuing)"
 
-    # Build worktree.
+    # Build worktree. Routed issues get the issue project in the branch/dir
+    # name so two trackers' same-numbered issues can't collide on a fix repo.
     branch="agent/issue-${iid}"
     work_dir="${WORK_ROOT}/p${pid}-issue-${iid}"
+    if [[ "$fix_pid" != "$pid" ]]; then
+      branch="agent/p${pid}-issue-${iid}"
+      work_dir="${WORK_ROOT}/p${fix_pid}-from-p${pid}-issue-${iid}"
+    fi
     if [[ -d "$work_dir" ]]; then
       log "    cleaning stale worktree dir $work_dir"
       (cd "$local_path" && git worktree remove --force "$work_dir" >>"$LOG_FILE" 2>&1 || true)
@@ -473,88 +634,16 @@ ${description}
    the message is multi-line if useful. Sign off with
    \`Co-Authored-By: Claude (agent-loop) <noreply@anthropic.com>\`.
 5. DO NOT push. The driver will push and open the MR.
-
-## Repo-specific testing conventions (MUST READ before writing tests)
-
-This is a Drupal install profile (\`profiles/custom/nwc/\`). All custom
-modules live at \`profiles/custom/nwc/modules/nwc_features/<module>/\`.
-That nesting affects which PHPUnit base class will work:
-
-- **Kernel tests (\`KernelTestBase\`) WORK** for profile-nested modules.
-  They bypass Drupal's profile-extension filter. List modules in
-  \`static \$modules\`; they will be loaded.
-- **BrowserTestBase / WebDriverTestBase tests DO NOT WORK** out of the
-  box. Drupal's ExtensionDiscovery filters out modules under
-  \`profiles/custom/nwc/modules/\` when the active test profile is
-  \`testing\` (the BrowserTestBase default). Setting
-  \`protected \$profile = 'nwc';\` would fix discovery but triggers a
-  full Open Social install per test — too slow, frequently flaky.
-
-**Pattern:** for new tests, prefer \`KernelTestBase\` and assert on
-service contracts via mocks (use \`\\Drupal\\Core\\DependencyInjection\\ContainerBuilder\`
-+ \`\$this->createMock()\`). Look at
-\`profiles/custom/nwc/modules/nwc_features/nwc_editorial/tests/src/Kernel/StateMachineTest.php\`
-as the reference template — it covers the editorial state machine
-end-to-end without browser overhead.
-
-**When you DO need a browser:** add a Behat scenario under
-\`profiles/custom/nwc/modules/nwc_features/<module>/tests/src/Behat/\`
-instead of a PHPUnit Functional test. Behat is configured at the
-project root (\`behat.yml.dist\`) and runs against the live ddev site,
-which has the nwc profile already installed.
-
-**Other gotchas:**
-
-- The Feedback entity has a \`guild_id\` reference to the contrib \`group\`
-  module. Do NOT \`installEntitySchema('feedback')\` in a kernel test
-  unless you also list \`group\` in \`\$modules\` — and that drags in heavy
-  dependencies. Prefer mock-based assertions on the service contract.
-- All NWC entities reference the \`user\` entity type. Install user
-  schema (\`\$this->installEntitySchema('user')\`) before touching any
-  entity that has an author/owner field.
-- The \`workflow_assignment\` module is required by \`nwc_core\`; list
-  both in \`\$modules\` when testing modules that depend on nwc_core.
-
-## Test commands (run before committing — these MUST pass)
-
-Run BOTH of these. Behat is the user-visible safety net; PHPUnit Kernel
-is the contract-level check. If the change touches a service or entity
-type that's never user-facing, the Behat suite still has to be green
-because something else on the site may exercise it. Skipping Behat is
-the most common way the loop has shipped a regression.
-
-\`\`\`bash
-# From inside the worktree (you are at the profile root):
-PROFILE=\$(pwd)
-
-# 1. Kernel test on the changed module (substitute the module name):
-ddev exec "cd /var/www/html && vendor/bin/phpunit -c /var/www/html/phpunit.xml \\
-  /var/www/html/html/profiles/custom/nwc/modules/nwc_features/<module>/tests/src/Kernel/"
-
-# 2. Editorial baseline must remain green:
-ddev exec "cd /var/www/html && vendor/bin/phpunit -c /var/www/html/phpunit.xml \\
-  /var/www/html/html/profiles/custom/nwc/modules/nwc_features/nwc_editorial/tests/src/Kernel/"
-
-# 3. Behat suite — runs against the live ddev site. Required even when
-#    the change looks "backend-only", because Behat covers the user flows
-#    that real members will hit:
-ddev exec "cd /var/www/html && vendor/bin/behat --config=behat.yml.dist --suite=nwc_editorial --no-progress"
-
-# 4. If the changed module ships its own Behat scenarios, run those too:
-ddev exec "cd /var/www/html && vendor/bin/behat --config=behat.yml.dist \\
-  /var/www/html/html/profiles/custom/nwc/modules/nwc_features/<module>/tests/src/Behat/ --no-progress"
-\`\`\`
-
-If tests fail and the fix is unclear, write \`AGENT-NOTE.md\` explaining
-what you tried and stop. Do NOT commit a known-broken test — the
-reviewer will reject it anyway and the loop wastes a retry budget.
-
-If Behat times out or can't find the suite (e.g. behat.yml.dist absent),
-write that in \`AGENT-NOTE.md\` along with the PHPUnit results and let
-the reviewer decide. Don't ship without at least an explicit note about
-which level you got coverage at.
+6. HARD BOUNDARY: if the fix would touch CI config (\`.gitlab-ci.yml\`,
+   \`.github/\`), auth or secret handling (\`lib/auth*\`, \`*secret*\`,
+   \`keys/\`, \`.env*\`), sanitizers, or production deploy scripts
+   (\`scripts/commands/live*.sh\`), STOP and write \`AGENT-NOTE.md\`
+   instead — those paths require human review (the A14 boundary).
 
 EOF
+
+    # Append the kind-specific conventions + test-commands template (ops#41).
+    cat "$template_file" >>"${work_dir}/PROMPT.md"
 
     log "    spawning claude on $work_dir"
     claude_log="${work_dir}/CLAUDE.log"
@@ -638,14 +727,14 @@ EOF
     commit_msg="$(cd "$work_dir" && git log -1 --format='%B' 2>/dev/null || true)"
     mr_payload="$(python3 -c '
 import json, sys, os
-branch, title, iid, tier, web_url, diff_stat, diff_files, commit_msg = sys.argv[1:9]
+branch, title, iid, tier, web_url, diff_stat, diff_files, commit_msg, issue_ref = sys.argv[1:10]
 files_lines = []
 for f in (diff_files or "").splitlines():
     if f.strip():
         files_lines.append(f"- `{f.strip()}`")
 files_block = "\n".join(files_lines) if files_lines else "_(no files reported)_"
 description = (
-    f"Closes #{iid} ({web_url})\n"
+    f"Closes {issue_ref} ({web_url})\n"
     f"\n"
     f"**Tier:** {tier}\n"
     f"\n"
@@ -665,7 +754,7 @@ description = (
     f"See files-changed list above; any path under `tests/` is new or modified test coverage.\n"
     f"\n"
     f"## Test results\n"
-    f"Agent ran Behat + PHPUnit Kernel suites locally per prompt; see AGENT-NOTE.md if any step couldn't run. Reviewer must still verify CI green before approving.\n"
+    f"Agent ran the kind-specific test commands from its prompt; see AGENT-NOTE.md if any step could not run. Reviewer must still verify CI green before approving.\n"
     f"\n"
     f"## Rollback plan\n"
     f"`git revert <merge-sha>`. No schema migration in this diff (verify in Files changed if unsure).\n"
@@ -683,8 +772,8 @@ print(json.dumps({
   "description": description,
   "labels": tier,
   "remove_source_branch": True,
-}))' "$branch" "$title" "$iid" "$tier" "$web_url" "$diff_stat" "$diff_files" "$commit_msg")"
-    mr_resp="$(gitlab_curl POST "/api/v4/projects/${pid}/merge_requests" "$mr_payload" 2>>"$LOG_FILE" || echo '{}')"
+}))' "$branch" "$title" "$iid" "$tier" "$web_url" "$diff_stat" "$diff_files" "$commit_msg" "$issue_ref")"
+    mr_resp="$(gitlab_curl POST "/api/v4/projects/${fix_pid}/merge_requests" "$mr_payload" 2>>"$LOG_FILE" || echo '{}')"
     mr_url="$(printf '%s' "$mr_resp" | python3 -c 'import sys,json
 try: d=json.load(sys.stdin); print(d.get("web_url",""))
 except Exception: print("")')"

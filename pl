@@ -74,7 +74,8 @@ ${BOLD}USAGE:${NC}
 
 ${BOLD}SITE MANAGEMENT:${NC}
     install <recipe> <sitename>     Install a new Drupal site
-    delete <sitename>               Delete a site
+    delete <sitename>               Delete a site (backups archived to sitebackups/)
+    delete --purge <sitename>       Delete EVERYTHING incl. backups (type name to confirm)
     make <sitename>                 Switch dev/prod mode (-v dev, -p prod)
     uninstall                       Uninstall NWP completely
 
@@ -235,7 +236,7 @@ ${BOLD}SCRIPT-SPECIFIC OPTIONS:${NC}
     backup:    -b (db-only), -g (git), --bundle, --sanitize, --push-all
     restore:   -b (db-only), -f (force), -o (overwrite)
     copy:      -f (files-only), -y (yes), -o (overwrite)
-    delete:    -b (backup first), -k (keep backups), -y (yes)
+    delete:    -b (backup first), --purge (incl. backups), -y (yes; report still prints)
     make:      -v (dev mode), -p (prod mode)
     test:      -l -u -k -f -s -b -p (see TESTING above)
 

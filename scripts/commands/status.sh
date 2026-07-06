@@ -1184,6 +1184,84 @@ run_health_checks() {
 ################################################################################
 
 # Delete a site
+# Pre-deletion impact report — everything computed live in bash (du, docker
+# volume ls, git plumbing; nothing inferred or AI-generated) so the operator
+# confirms deletion knowing exactly what is destroyed and what survives.
+#   $1 site, $2 directory (the tree to be removed), $3 config_file,
+#   remaining args: the DDEV project dirs that will be torn down
+show_delete_impact() {
+    local site="$1"
+    local directory="$2"
+    local config_file="$3"
+    shift 3
+    local ddev_dirs=("$@")
+
+    echo -e "${BOLD}${RED}WILL BE PERMANENTLY DELETED:${NC}"
+    printf "  %-10s %s (%s)\n" "Files:" "$directory" "$(get_disk_usage "$directory")"
+    if [ -d "$directory/backups" ]; then
+        local bk_count bk_size
+        bk_count=$(find "$directory/backups" -type f 2>/dev/null | wc -l)
+        bk_size=$(du -sh "$directory/backups" 2>/dev/null | awk '{print $1}')
+        printf "  %-10s %s file(s), %s — these live INSIDE the tree above\n" "Backups:" "$bk_count" "${bk_size:-?}"
+    fi
+
+    local _dd project pstate vols status_lines
+    status_lines=$(get_ddev_status_lines)
+    for _dd in "${ddev_dirs[@]}"; do
+        project=$(get_ddev_project_name "$_dd")
+        pstate="stopped"
+        ddev_project_running "$status_lines" "$project" && pstate="running"
+        vols=$(docker volume ls --format '{{.Name}}' 2>/dev/null | grep "^${project}-" | paste -sd ',' - | sed 's/,/, /g')
+        printf "  %-10s %s (%s) — containers + Docker volumes: %s\n" "DDEV:" "$project" "$pstate" "${vols:-none found}"
+    done
+    printf "  %-10s '%s' entry removed from nwp.yml (timestamped copy kept in .backups/)\n" "Config:" "$site"
+
+    # Data-loss warnings from live git state: work that exists ONLY here.
+    local warnings=() repo rel dirty unpushed remotes
+    for repo in "$directory" "$directory/dev" "$directory/stg"; do
+        [ -d "$repo/.git" ] || continue
+        rel="${repo#"$directory"}"; rel="${rel#/}"; [ -z "$rel" ] && rel="(root)"
+        remotes=$(git -C "$repo" remote 2>/dev/null | wc -l)
+        dirty=$(git -C "$repo" status --porcelain 2>/dev/null | wc -l)
+        unpushed=$(git -C "$repo" log --branches --not --remotes --oneline 2>/dev/null | wc -l)
+        if [ "$remotes" -eq 0 ]; then
+            warnings+=("git repo $rel: NO remote configured — this directory holds the ONLY copy of its history")
+        elif [ "$unpushed" -gt 0 ]; then
+            warnings+=("git repo $rel: $unpushed commit(s) not pushed to any remote — they will be lost")
+        fi
+        if [ "$dirty" -gt 0 ]; then
+            warnings+=("git repo $rel: $dirty uncommitted change(s) — they will be lost")
+        fi
+    done
+    if [ ${#warnings[@]} -gt 0 ]; then
+        echo ""
+        echo -e "${BOLD}${YELLOW}DATA-LOSS WARNINGS:${NC}"
+        local w
+        for w in "${warnings[@]}"; do
+            echo -e "  ${YELLOW}⚠${NC} $w"
+        done
+    fi
+
+    echo ""
+    echo -e "${BOLD}${GREEN}NOT AFFECTED:${NC}"
+    local live_domain live_enabled
+    live_domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
+    live_enabled=$(get_site_nested_field "$site" "live" "enabled" "$config_file")
+    if [ -n "$live_domain" ] || [ "$live_enabled" == "true" ]; then
+        echo "  • The live server${live_domain:+ (https://$live_domain)} — its files, database and certificates stay"
+    fi
+    if command -v get_backup_dir >/dev/null 2>&1; then
+        local bdir
+        bdir=$(get_backup_dir "$site" 2>/dev/null) || bdir=""
+        if [ -n "$bdir" ] && [ -d "$bdir" ] && [[ "$bdir" != "$directory"* ]]; then
+            echo "  • Backups stored outside the tree: $bdir ($(du -sh "$bdir" 2>/dev/null | awk '{print $1}'))"
+        fi
+    fi
+    echo "  • Anything already pushed to a git remote (GitLab keeps those commits)"
+    echo "  • Other sites' DDEV projects, volumes and directories"
+    echo ""
+}
+
 delete_site() {
     local site="$1"
     local config_file="$2"
@@ -1218,21 +1296,18 @@ delete_site() {
     print_header "Delete Site: $site"
 
     echo -e "${BOLD}Site Details:${NC}"
-    printf "  %-15s %s\n" "Name:" "$site"
-    printf "  %-15s %s\n" "Directory:" "$directory"
-    printf "  %-15s %s\n" "Recipe:" "$(get_site_field "$site" "recipe" "$config_file")"
-    printf "  %-15s %s\n" "Purpose:" "$(get_site_field "$site" "purpose" "$config_file")"
-    printf "  %-15s %s\n" "Disk Usage:" "$(get_disk_usage "$directory")"
-    if [ ${#ddev_dirs[@]} -gt 0 ]; then
-        local _projects=""
-        for _dd in "${ddev_dirs[@]}"; do
-            _projects="${_projects} $(get_ddev_project_name "$_dd")"
-        done
-        printf "  %-15s %s\n" "DDEV projects:" "${_projects# }"
-    fi
+    printf "  %-10s %s\n" "Name:" "$site"
+    printf "  %-10s %s\n" "Recipe:" "$(get_site_field "$site" "recipe" "$config_file")"
+    printf "  %-10s %s\n" "Purpose:" "$(get_site_field "$site" "purpose" "$config_file")"
     echo ""
 
-    # Check for related directories (support both -stg/-prod and legacy _stg/_prod)
+    # Full bash-computed impact report: what gets destroyed (files, backups,
+    # DDEV projects + Docker volumes, registry entry), what unrecoverable
+    # work exists only here (dirty/unpushed git), and what survives.
+    show_delete_impact "$site" "$directory" "$config_file" "${ddev_dirs[@]}"
+
+    # v1 sibling dirs are NOT deleted — but surface them so the operator
+    # knows this delete leaves them behind (legacy -stg/_stg/-prod/_prod)
     local related_dirs=""
     [ -d "${directory}-stg" ] && related_dirs="${related_dirs} ${directory}-stg"
     [ -d "${directory}_stg" ] && related_dirs="${related_dirs} ${directory}_stg"
@@ -1240,7 +1315,7 @@ delete_site() {
     [ -d "${directory}_prod" ] && related_dirs="${related_dirs} ${directory}_prod"
 
     if [ -n "$related_dirs" ]; then
-        print_warning "Related directories found:$related_dirs"
+        print_warning "Related directories exist and will NOT be deleted:$related_dirs"
         echo ""
     fi
 

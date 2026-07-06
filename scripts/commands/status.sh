@@ -474,15 +474,15 @@ get_site_stages() {
     local site="$1"
     local config_file="$2"
     local stages=""
-    local directory=$(get_site_field "$site" "directory" "$config_file")
+    local directory=$(resolve_status_directory "$site" "$config_file")
 
     # Dev
     if [ -n "$directory" ] && [ -d "$directory" ]; then
         stages="${stages}${GREEN}d${NC}"
     fi
 
-    # Staging (support both -stg and legacy _stg during migration)
-    if [ -d "${directory}-stg" ] || [ -d "${directory}_stg" ]; then
+    # Staging (v1 -stg/_stg suffix dirs, or the v2 sibling stg/)
+    if [ -d "${directory}-stg" ] || [ -d "${directory}_stg" ] || { [ "$(basename "$directory")" = "dev" ] && [ -d "$(dirname "$directory")/stg" ]; }; then
         stages="${stages}${YELLOW}s${NC}"
     fi
 
@@ -514,8 +514,10 @@ get_ddev_status() {
         return
     fi
 
-    # Check if DDEV is running using JSON output for reliable parsing
-    local site_name=$(basename "$directory")
+    # Check if DDEV is running using JSON output for reliable parsing.
+    # Project name comes from .ddev/config.yaml — basename is wrong for
+    # the v2 layout (sites/<name>/dev → "dev").
+    local site_name=$(get_ddev_project_name "$directory")
     local ddev_status=$(ddev list --json-output 2>/dev/null | jq -r ".raw[] | select(.name==\"$site_name\") | .status" 2>/dev/null)
 
     case "$ddev_status" in
@@ -1156,7 +1158,7 @@ run_health_checks() {
     printf "  %-18s %-10s %-10s %-10s %s\n" "------------------" "----------" "----------" "----------" "-----"
 
     while read -r site; do
-        local directory=$(get_site_field "$site" "directory" "$config_file")
+        local directory=$(resolve_status_directory "$site" "$config_file")
         local ddev_status=$(get_ddev_status "$directory")
         local health=$(check_site_health "$directory")
         local domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
@@ -1182,30 +1184,130 @@ run_health_checks() {
 ################################################################################
 
 # Delete a site
+# Pre-deletion impact report — everything computed live in bash (du, docker
+# volume ls, git plumbing; nothing inferred or AI-generated) so the operator
+# confirms deletion knowing exactly what is destroyed and what survives.
+#   $1 site, $2 directory (the tree to be removed), $3 config_file,
+#   remaining args: the DDEV project dirs that will be torn down
+show_delete_impact() {
+    local site="$1"
+    local directory="$2"
+    local config_file="$3"
+    shift 3
+    local ddev_dirs=("$@")
+
+    echo -e "${BOLD}${RED}WILL BE PERMANENTLY DELETED:${NC}"
+    printf "  %-10s %s (%s)\n" "Files:" "$directory" "$(get_disk_usage "$directory")"
+    if [ -d "$directory/backups" ]; then
+        local bk_count bk_size
+        bk_count=$(find "$directory/backups" -type f 2>/dev/null | wc -l)
+        bk_size=$(du -sh "$directory/backups" 2>/dev/null | awk '{print $1}')
+        printf "  %-10s %s file(s), %s — these live INSIDE the tree above\n" "Backups:" "$bk_count" "${bk_size:-?}"
+    fi
+
+    local _dd project pstate vols status_lines
+    status_lines=$(get_ddev_status_lines)
+    for _dd in "${ddev_dirs[@]}"; do
+        project=$(get_ddev_project_name "$_dd")
+        pstate="stopped"
+        ddev_project_running "$status_lines" "$project" && pstate="running"
+        vols=$(docker volume ls --format '{{.Name}}' 2>/dev/null | grep "^${project}-" | paste -sd ',' - | sed 's/,/, /g')
+        printf "  %-10s %s (%s) — containers + Docker volumes: %s\n" "DDEV:" "$project" "$pstate" "${vols:-none found}"
+    done
+    printf "  %-10s '%s' entry removed from nwp.yml (timestamped copy kept in .backups/)\n" "Config:" "$site"
+
+    # Data-loss warnings from live git state: work that exists ONLY here.
+    local warnings=() repo rel dirty unpushed remotes
+    for repo in "$directory" "$directory/dev" "$directory/stg"; do
+        [ -d "$repo/.git" ] || continue
+        rel="${repo#"$directory"}"; rel="${rel#/}"; [ -z "$rel" ] && rel="(root)"
+        remotes=$(git -C "$repo" remote 2>/dev/null | wc -l)
+        dirty=$(git -C "$repo" status --porcelain 2>/dev/null | wc -l)
+        unpushed=$(git -C "$repo" log --branches --not --remotes --oneline 2>/dev/null | wc -l)
+        if [ "$remotes" -eq 0 ]; then
+            warnings+=("git repo $rel: NO remote configured — this directory holds the ONLY copy of its history")
+        elif [ "$unpushed" -gt 0 ]; then
+            warnings+=("git repo $rel: $unpushed commit(s) not pushed to any remote — they will be lost")
+        fi
+        if [ "$dirty" -gt 0 ]; then
+            warnings+=("git repo $rel: $dirty uncommitted change(s) — they will be lost")
+        fi
+    done
+    if [ ${#warnings[@]} -gt 0 ]; then
+        echo ""
+        echo -e "${BOLD}${YELLOW}DATA-LOSS WARNINGS:${NC}"
+        local w
+        for w in "${warnings[@]}"; do
+            echo -e "  ${YELLOW}⚠${NC} $w"
+        done
+    fi
+
+    echo ""
+    echo -e "${BOLD}${GREEN}NOT AFFECTED:${NC}"
+    local live_domain live_enabled
+    live_domain=$(get_site_nested_field "$site" "live" "domain" "$config_file")
+    live_enabled=$(get_site_nested_field "$site" "live" "enabled" "$config_file")
+    if [ -n "$live_domain" ] || [ "$live_enabled" == "true" ]; then
+        echo "  • The live server${live_domain:+ (https://$live_domain)} — its files, database and certificates stay"
+    fi
+    if command -v get_backup_dir >/dev/null 2>&1; then
+        local bdir
+        bdir=$(get_backup_dir "$site" 2>/dev/null) || bdir=""
+        if [ -n "$bdir" ] && [ -d "$bdir" ] && [[ "$bdir" != "$directory"* ]]; then
+            echo "  • Backups stored outside the tree: $bdir ($(du -sh "$bdir" 2>/dev/null | awk '{print $1}'))"
+        fi
+    fi
+    echo "  • Anything already pushed to a git remote (GitLab keeps those commits)"
+    echo "  • Other sites' DDEV projects, volumes and directories"
+    echo ""
+}
+
 delete_site() {
     local site="$1"
     local config_file="$2"
     local force="${3:-false}"
 
+    # Deletion targets the whole site tree: the registry directory (v1
+    # project dir, or the v2 container holding dev/ + stg/ + backups/).
+    # Do NOT use resolve_status_directory here — it narrows to the dev/
+    # project, and deleting only dev/ would strand the rest of the site.
     local directory=$(get_site_field "$site" "directory" "$config_file")
     local delete_success=true
+
+    # v2 sites often have no directory: field — the container is sites/<name>/
+    if [ -z "$directory" ] && [ -d "$PROJECT_ROOT/sites/$site" ]; then
+        directory="$PROJECT_ROOT/sites/$site"
+    fi
 
     if [ -z "$directory" ]; then
         print_error "Site '$site' not found in configuration"
         return 1
     fi
 
+    # Every DDEV project living under the tree we are about to remove.
+    # These MUST be torn down with `ddev delete` before `rm -rf` — removing
+    # the files alone leaves orphan Docker volumes/images (the 2026-01
+    # incident class).
+    local ddev_dirs=() _dd
+    for _dd in "$directory" "$directory/dev" "$directory/stg"; do
+        [ -d "$_dd/.ddev" ] && ddev_dirs+=("$_dd")
+    done
+
     print_header "Delete Site: $site"
 
     echo -e "${BOLD}Site Details:${NC}"
-    printf "  %-15s %s\n" "Name:" "$site"
-    printf "  %-15s %s\n" "Directory:" "$directory"
-    printf "  %-15s %s\n" "Recipe:" "$(get_site_field "$site" "recipe" "$config_file")"
-    printf "  %-15s %s\n" "Purpose:" "$(get_site_field "$site" "purpose" "$config_file")"
-    printf "  %-15s %s\n" "Disk Usage:" "$(get_disk_usage "$directory")"
+    printf "  %-10s %s\n" "Name:" "$site"
+    printf "  %-10s %s\n" "Recipe:" "$(get_site_field "$site" "recipe" "$config_file")"
+    printf "  %-10s %s\n" "Purpose:" "$(get_site_field "$site" "purpose" "$config_file")"
     echo ""
 
-    # Check for related directories (support both -stg/-prod and legacy _stg/_prod)
+    # Full bash-computed impact report: what gets destroyed (files, backups,
+    # DDEV projects + Docker volumes, registry entry), what unrecoverable
+    # work exists only here (dirty/unpushed git), and what survives.
+    show_delete_impact "$site" "$directory" "$config_file" "${ddev_dirs[@]}"
+
+    # v1 sibling dirs are NOT deleted — but surface them so the operator
+    # knows this delete leaves them behind (legacy -stg/_stg/-prod/_prod)
     local related_dirs=""
     [ -d "${directory}-stg" ] && related_dirs="${related_dirs} ${directory}-stg"
     [ -d "${directory}_stg" ] && related_dirs="${related_dirs} ${directory}_stg"
@@ -1213,7 +1315,7 @@ delete_site() {
     [ -d "${directory}_prod" ] && related_dirs="${related_dirs} ${directory}_prod"
 
     if [ -n "$related_dirs" ]; then
-        print_warning "Related directories found:$related_dirs"
+        print_warning "Related directories exist and will NOT be deleted:$related_dirs"
         echo ""
     fi
 
@@ -1229,17 +1331,19 @@ delete_site() {
     echo ""
     print_info "Deleting site '$site'..."
 
-    # Stop DDEV if running (trap errors to ensure cleanup continues)
-    if [ -d "$directory/.ddev" ]; then
-        print_status "INFO" "Stopping DDEV..."
-        if ! (cd "$directory" && ddev stop 2>/dev/null); then
+    # Tear down every DDEV project under the tree (trap errors so cleanup
+    # continues). Previously only $directory itself was checked, so v2
+    # sites (projects in dev/ and stg/) skipped teardown entirely and the
+    # rm below orphaned their Docker volumes.
+    for _dd in "${ddev_dirs[@]}"; do
+        print_status "INFO" "Removing DDEV project: $(get_ddev_project_name "$_dd")"
+        if ! (cd "$_dd" && ddev stop 2>/dev/null); then
             print_status "WARN" "DDEV stop failed (continuing anyway)"
         fi
-        print_status "INFO" "Removing DDEV project..."
-        if ! (cd "$directory" && ddev delete -O -y 2>/dev/null); then
+        if ! (cd "$_dd" && ddev delete -O -y 2>/dev/null); then
             print_status "WARN" "DDEV delete failed (continuing anyway)"
         fi
-    fi
+    done
 
     # Remove directory
     if [ -d "$directory" ]; then
@@ -1282,7 +1386,7 @@ start_site() {
     local site="$1"
     local config_file="$2"
 
-    local directory=$(get_site_field "$site" "directory" "$config_file")
+    local directory=$(resolve_status_directory "$site" "$config_file")
 
     if [ -z "$directory" ]; then
         print_error "Site '$site' not found in configuration"
@@ -1303,7 +1407,7 @@ start_site() {
     (cd "$directory" && ddev start)
     print_status "OK" "Site '$site' is now running"
     echo ""
-    print_info "URL: https://${site}.ddev.site"
+    print_info "URL: https://$(get_ddev_project_name "$directory").ddev.site"
 }
 
 # Stop DDEV for a site
@@ -1311,7 +1415,7 @@ stop_site() {
     local site="$1"
     local config_file="$2"
 
-    local directory=$(get_site_field "$site" "directory" "$config_file")
+    local directory=$(resolve_status_directory "$site" "$config_file")
 
     if [ -z "$directory" ]; then
         print_error "Site '$site' not found in configuration"
@@ -1333,7 +1437,7 @@ restart_site() {
     local site="$1"
     local config_file="$2"
 
-    local directory=$(get_site_field "$site" "directory" "$config_file")
+    local directory=$(resolve_status_directory "$site" "$config_file")
 
     if [ -z "$directory" ]; then
         print_error "Site '$site' not found in configuration"
@@ -2030,7 +2134,7 @@ run_action() {
             ;;
         health)
             for site in "${sites[@]}"; do
-                local directory=$(get_site_field "$site" "directory" "$config_file")
+                local directory=$(resolve_status_directory "$site" "$config_file")
                 printf "${BOLD}%s:${NC} " "$site"
                 printf "DDEV=%b " "$(get_ddev_status "$directory")"
                 printf "Health=%b " "$(check_site_health "$directory")"
@@ -2507,7 +2611,7 @@ show_help() {
 ${BOLD}NWP Status - System Overview and Site Management${NC}
 
 ${BOLD}USAGE:${NC}
-    ./status.sh [command] [options]
+    pl status [command] [options]
 
 ${BOLD}COMMANDS:${NC}
     (none)              Interactive mode (default)
@@ -2530,16 +2634,16 @@ ${BOLD}OPTIONS:${NC}
     -h, --help          Show this help
 
 ${BOLD}EXAMPLES:${NC}
-    ./status.sh                  Interactive mode (instant load with ? placeholders)
-    ./status.sh -f               Fast text status view
-    ./status.sh -s               Sites-only text view
-    ./status.sh -v               Verbose text status with domains
-    ./status.sh -a               Full status with health, disk, db info
-    ./status.sh health           Run health checks on all sites
-    ./status.sh info avc         Show detailed info for 'avc' site
-    ./status.sh delete test-nwp  Delete test-nwp site
-    ./status.sh start avc        Start DDEV for avc
-    ./status.sh servers          Show Linode server stats
+    pl status                    Interactive mode (instant load with ? placeholders)
+    pl status -f                 Fast text status view
+    pl status -s                 Sites-only text view
+    pl status -v                 Verbose text status with domains
+    pl status -a                 Full status with health, disk, db info
+    pl status health             Run health checks on all sites
+    pl status info avc           Show detailed info for 'avc' site
+    pl status delete test-nwp    Delete test-nwp site
+    pl status start avc          Start DDEV for avc
+    pl status servers            Show Linode server stats
 
 ${BOLD}INTERACTIVE MODE (default):${NC}
     Initial load shows '?' for data being loaded
@@ -2555,20 +2659,37 @@ ${BOLD}INTERACTIVE MODE (default):${NC}
     s           Setup - configure visible columns
     q           Quit
 
-${BOLD}COLUMNS (configurable via Setup):${NC}
+${BOLD}COLUMNS (interactive columns configurable via Setup / 's'):${NC}
+    RAG         Fleet oversight grade from 'pl rag' (text views):
+                ${RED}●${NC} red = open security advisory or high-priority security todo
+                ${YELLOW}●${NC} amber = other open todo items / drift    ${GREEN}●${NC} green = clear
+                · = no cached grade yet — run 'pl rag' to (re)grade the fleet
     NAME        Site name from nwp.yml
     RECIPE      Recipe used to create the site
-    STG         Stages: ${GREEN}d${NC}=dev ${YELLOW}s${NC}=stg ${BLUE}l${NC}=live ${RED}p${NC}=prod
-    DDEV        Container status
-    PURPOSE     Site purpose
-    DISK        Directory size
-    DOMAIN      Live domain
-    USERS       Active user count (from prod/live/stg/dev)
-    DB          Database size
-    HEALTH      Site health check status
-    ACTIVITY    Last git commit time
-    SSL         SSL certificate expiry
-    CI          CI/CD enabled status
+    PURPOSE     Site purpose (testing/indefinite/permanent/migration)
+    PHASE       Canonicality phase — which host owns the site's CONTENT
+                (dev|live|prod, enforced by the deploy guards; ops#33):
+                  dev    dev is source of truth; dev→live pushes allowed
+                  live   content changes on live only; dev→live content REFUSED
+                  prod   prod is source; branch-only work, CI-gated main
+                  (dev)  = default, phase not set — 'pl canonical set <site> <phase>'
+    STG/STAGES  Configured stages: ${GREEN}d${NC}=dev ${YELLOW}s${NC}=stg ${BLUE}l${NC}=live ${RED}p${NC}=prod
+    DDEV        Container status (run/stop/paused; ghost = registered but no dir)
+    DISK        Site directory size
+    DOMAIN      Live domain from the site's live.domain config
+    USERS       Active user count (live DB query; prefers prod>live>stg>dev copy)
+    DB          Database size (live query)
+    HEALTH      HTTP probe of the running project's URL (OK/auth/404/err/down)
+    ACTIVITY    Time since last git commit in the site directory
+    SSL         Days until the live domain's certificate expires
+    CI          'on' when ci.enabled is set for the site
+
+${BOLD}READING '-' IN A COLUMN:${NC}
+    USERS/DB/HEALTH are live queries — they show '-' whenever the site's
+    DDEV project is not running (that is expected, not an error).
+    DOMAIN/SSL are '-' for sites with no live domain; CI '-' = not enabled.
+    Expensive columns are only computed while visible — hide them via
+    Setup ('s') to speed up the interactive refresh.
 
 EOF
 }

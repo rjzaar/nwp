@@ -9,7 +9,7 @@
 > capability set (pull+verify, apply/rollback, sanitized publish, backup,
 > status) and its three-key credential ledger.
 
-**Status:** Accepted (decision A14 accepted by operator 2026-06-28; operational wiring gated on the linchpin — least-privilege tokens / Developer-only bot users complete).
+**Status:** Accepted (decision A14 accepted by operator 2026-06-28; operational wiring gated on the linchpin — least-privilege tokens / Developer-only bot users — **not yet complete**).
 **This model is Accepted but NOT operational.** The linchpin is **not yet
 satisfied** — a full-`api` admin Personal Access Token still exists on an
 AI-reachable workstation — and this ADR's own terms forbid partial adoption. No

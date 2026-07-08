@@ -57,7 +57,7 @@ Proposed → Accepted → [Deprecated | Superseded]
 | [0018](0018-twilio-bounded-saas-for-pstn.md) | Twilio as bounded SaaS dependency for PSTN voice/SMS | 2026-04-08 | Accepted |
 | [0024](0024-self-deploying-prod-supersedes-verifier.md) | Self-deploying prod via a runner resident on the prod host — **canonical for production deploy authority** | 2026-06-25 | Accepted 2026-06-28 (A14); **not operational** until the linchpin (token downscope) + WebAuthn + protected runner land. Supersedes 0019, amends 0017. Live-test-tier deploy grant 2026-07-01 |
 | [0025](0025-production-backup-to-ver.md) | Production backup to `ver` (restic, custodian-pull, append-only) | 2026-06-29 | Accepted |
-| [0026](0026-nwp-server-capability-agent.md) | The `nwp-server` AI-free capability agent | 2026-06-28 | Accepted (renumbered from a duplicate 0024, 2026-07-02); field-validated 2026-07-02 (nwp/ops#23), `publish` verb defect open |
+| [0026](0026-nwp-server-capability-agent.md) | The `nwp-server` AI-free capability agent | 2026-06-28 | Accepted (renumbered from a duplicate 0024, 2026-07-02); field-validated 2026-07-02 (nwp/ops#23), `publish` verb defect resolved 2026-07-02 |
 
 ## Rejected Proposals
 

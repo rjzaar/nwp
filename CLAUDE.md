@@ -297,7 +297,7 @@ When the user asks to create a new release tag (e.g., "create tag v0.13"), follo
 
 - [ ] Update version in `pl` script (NWP_VERSION variable)
 - [ ] Update version in `example.nwp.yml` if schema changed
-- [ ] Update "Current Version" in `docs/ROADMAP.md`
+- [ ] Update "Current Version" in `docs/governance/roadmap.md`
 
 ### 3. Documentation Updates
 
@@ -308,7 +308,7 @@ When the user asks to create a new release tag (e.g., "create tag v0.13"), follo
 
 ### 4. Roadmap & Milestones
 
-- [ ] Move completed proposals from `docs/ROADMAP.md` to `docs/MILESTONES.md`
+- [ ] Move completed proposals from `docs/governance/roadmap.md` to `docs/reports/milestones.md`
 - [ ] Update proposal statuses (PLANNED → IN PROGRESS → COMPLETE)
 - [ ] Add any new proposals discovered during development
 - [ ] Update success criteria checkboxes (mark completed items with [x])

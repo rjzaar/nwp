@@ -1,6 +1,11 @@
 # P62: Documentation-Truth Gate
 
-**Status:** PROPOSED
+**Status:** PARTIALLY IMPLEMENTED (2026-07-08, nwp/ops#53) — two sibling gates now exist:
+`~/central/bin/central-verify` (Phase 1, the private-index host-pin checker described below)
+and **`pl doc-truth`** (`scripts/commands/doc-truth.sh`), the public-repo structural gate that
+asserts NWP docs' file-links + ADR references resolve against the tree, with a
+`.doc-truth-baseline` for pre-existing rot. Remaining: schedule central-verify (Phase 4 cron),
+wire `pl doc-truth` into `pl verify`/CI, and burn down the 148 baselined dead links.
 **Created:** 2026-05-11
 **Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** Medium (does not gate the public release; catches drift between central docs and machine reality)

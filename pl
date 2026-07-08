@@ -105,6 +105,11 @@ ${BOLD}CANONICALITY (content-flow phases, ops#33):${NC}
     canonical check <site>          Show which content-flow guards are in force
     canonical log <site>            Transition/override ledger for a site
 
+${BOLD}MATURITY (code-flow classes, P67/ops#48):${NC}
+    maturity show [site]            Show per-site class (incubating|stabilizing|production)
+    maturity set <site> <class>     Explicit transition (ledgered; downgrades typed-confirm)
+    maturity check <site>           Show which code-deploy gate is in force
+
 ${BOLD}PROVISIONING:${NC}
     live <sitename>                 Provision live test server
     live --type=shared <sitename>   Provision on shared GitLab server
@@ -633,6 +638,11 @@ main() {
         # Canonicality phases + content-flow guards (nwp/ops#33)
         canonical)
             run_script "canonical.sh" "$@"
+            ;;
+
+        # Maturity classes + code-flow guards (P67 / nwp/ops#48)
+        maturity)
+            run_script "maturity.sh" "$@"
             ;;
 
         # Provisioning

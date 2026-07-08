@@ -176,6 +176,10 @@ cmd_set() {
     echo ""
 
     if [ "$auto_yes" != "true" ]; then
+        if [ ! -t 0 ]; then
+            print_error "No terminal for confirmation and -y not given — aborting."
+            return 1
+        fi
         read -r -p "Proceed with $site: $cur → $new_phase? [y/N] " reply
         case "$reply" in
             y|Y|yes|YES) ;;

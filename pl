@@ -110,6 +110,13 @@ ${BOLD}MATURITY (code-flow classes, P67/ops#48):${NC}
     maturity set <site> <class>     Explicit transition (ledgered; downgrades typed-confirm)
     maturity check <site>           Show which code-deploy gate is in force
 
+${BOLD}BRANCH TWINS (P67/ops#48):${NC}
+    branch <site> <git-ref>         Create a disposable twin on a branch
+    branch list [site]              Twins nested under parents, code Δ + content age
+    branch content <twin> --from=parent   Refresh twin DB (re-stamps provenance)
+    branch merge <twin>             Push twin branch + print MR URL
+    branch delete <twin>            Delete twin (impact report, backups archived)
+
 ${BOLD}PROVISIONING:${NC}
     live <sitename>                 Provision live test server
     live --type=shared <sitename>   Provision on shared GitLab server
@@ -643,6 +650,11 @@ main() {
         # Maturity classes + code-flow guards (P67 / nwp/ops#48)
         maturity)
             run_script "maturity.sh" "$@"
+            ;;
+
+        # Branch twin sites (P67 §5c / nwp/ops#48)
+        branch)
+            run_script "branch.sh" "$@"
             ;;
 
         # Provisioning

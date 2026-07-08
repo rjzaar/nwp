@@ -414,6 +414,26 @@ get_maturity_display() {
     fi
 }
 
+# Print branch-twin sub-rows under a parent site row (P67 §5b): one compact
+# line per twin — branch name, code Δ vs origin/main, content provenance.
+print_twin_subrows() {
+    local parent="$1"
+    local config_file="$2"
+    local all_sites="$3"
+
+    local t tp tdir tbranch
+    while read -r t; do
+        [ -z "$t" ] && continue
+        tp=$(site_branch_parent "$t" "$config_file")
+        [ "$tp" = "$parent" ] || continue
+        tdir=$(resolve_status_directory "$t" "$config_file")
+        tbranch="?"
+        [ -n "$tdir" ] && [ -d "$tdir/.git" ] && tbranch=$(git -C "$tdir" branch --show-current 2>/dev/null || echo "?")
+        printf "       ${DIM:-}└─${NC} ${CYAN}%-14s${NC} [%s  %s  content: %s]\n" \
+            "$t" "$tbranch" "$(site_code_delta "$tdir")" "$(site_content_provenance "$t" "$config_file")"
+    done <<< "$all_sites"
+}
+
 # Canonical phase for the PHASE column (nwp/ops#33): explicit values plain,
 # the implicit default parenthesized, unparseable values surfaced verbatim.
 get_phase_display() {
@@ -964,6 +984,7 @@ show_sites() {
             "---" "----------------" "----------" "----------" "-------" "------" "------------" "--------" "------" "------" "--------" "--------"
 
         while read -r site; do
+            if [ -n "$(site_branch_parent "$site" "$config_file")" ]; then continue; fi
             local recipe=$(get_site_field "$site" "recipe" "$config_file")
             local purpose=$(get_site_field "$site" "purpose" "$config_file")
             local directory=$(resolve_status_directory "$site" "$config_file")
@@ -979,6 +1000,7 @@ show_sites() {
 
             printf "  %b   ${CYAN}%-16s${NC} %-10s %-10s %-7s %-6s %-20b %-14b %-6s %-6s %-14b %s\n" \
                 "$rag" "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$mat" "$stages" "$ddev_status" "$disk" "$db_size" "$health" "$activity"
+            print_twin_subrows "$site" "$config_file" "$sites"
         done <<< "$sites"
 
     elif [ "$verbose" == "true" ]; then
@@ -987,6 +1009,7 @@ show_sites() {
         printf "  %-3s %-18s %-10s %-12s %-7s %-6s %-15s %s\n" "---" "------------------" "----------" "------------" "-------" "------" "---------------" "------"
 
         while read -r site; do
+            if [ -n "$(site_branch_parent "$site" "$config_file")" ]; then continue; fi
             local recipe=$(get_site_field "$site" "recipe" "$config_file")
             local purpose=$(get_site_field "$site" "purpose" "$config_file")
             local rag=$(get_rag_display "$site")
@@ -1003,6 +1026,7 @@ show_sites() {
 
             printf "  %b   ${CYAN}%-18s${NC} %-10s %-12s %-7s %-6s %-30b %s\n" \
                 "$rag" "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$mat" "$status_display" "${domain:-}"
+            print_twin_subrows "$site" "$config_file" "$sites"
         done <<< "$sites"
 
     else
@@ -1011,6 +1035,7 @@ show_sites() {
         printf "  %-3s %-18s %-10s %-12s %-7s %-6s %s\n" "---" "------------------" "----------" "------------" "-------" "------" "------"
 
         while read -r site; do
+            if [ -n "$(site_branch_parent "$site" "$config_file")" ]; then continue; fi
             local recipe=$(get_site_field "$site" "recipe" "$config_file")
             local purpose=$(get_site_field "$site" "purpose" "$config_file")
             local rag=$(get_rag_display "$site")
@@ -1030,6 +1055,7 @@ show_sites() {
             else
                 printf "  %b   ${CYAN}%-18s${NC} %-10s %-12s %-7s %-6s %b\n" "$rag" "$site" "${recipe:-?}" "${purpose:--}" "$phase" "$mat" "$stages"
             fi
+            print_twin_subrows "$site" "$config_file" "$sites"
         done <<< "$sites"
     fi
 

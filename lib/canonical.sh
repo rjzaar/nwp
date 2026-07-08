@@ -379,3 +379,60 @@ maturity_guard_deploy() {
     fi
     return 0
 }
+
+################################################################################
+# Branch-twin lineage (P67 §5b/§5c) — sites that are branches of another site
+################################################################################
+
+# Echo the parent site name if <site> is a branch twin, else nothing.
+site_branch_parent() {
+    local site="$1"
+    local config="${2:-$(canonical_config_file)}"
+    yaml_get_site_field "$site" "branch_of" "$config" 2>/dev/null || true
+}
+
+# Code delta of a repo vs origin/main: echoes "+<ahead>/-<behind>" (or "?" when
+# no origin/main ref exists, or "=" when even).
+site_code_delta() {
+    local dev_dir="$1"
+    [ -d "$dev_dir/.git" ] || { echo "?"; return 0; }
+    if ! git -C "$dev_dir" rev-parse --verify -q origin/main >/dev/null 2>&1; then
+        echo "?"
+        return 0
+    fi
+    local counts behind ahead
+    counts=$(git -C "$dev_dir" rev-list --left-right --count origin/main...HEAD 2>/dev/null) || { echo "?"; return 0; }
+    behind=$(awk '{print $1}' <<< "$counts")
+    ahead=$(awk '{print $2}' <<< "$counts")
+    if [ "${ahead:-0}" -eq 0 ] && [ "${behind:-0}" -eq 0 ]; then
+        echo "="
+    else
+        echo "+${ahead:-0}/-${behind:-0}"
+    fi
+    return 0
+}
+
+# Content provenance display: "canonical" for a site that owns its content,
+# else "<source>@<MM-DD>" from the content_source/content_as_of stamps
+# (written by pl branch / pl branch content), "?" when unstamped.
+site_content_provenance() {
+    local site="$1"
+    local config="${2:-$(canonical_config_file)}"
+    local parent
+    parent=$(site_branch_parent "$site" "$config")
+    local src as_of
+    src=$(yaml_get_site_field "$site" "content_source" "$config" 2>/dev/null || true)
+    as_of=$(yaml_get_site_field "$site" "content_as_of" "$config" 2>/dev/null || true)
+    if [ -z "$src" ]; then
+        if [ -z "$parent" ]; then
+            echo "canonical"
+        else
+            echo "?"
+        fi
+        return 0
+    fi
+    local short=""
+    [ -n "$as_of" ] && short="@$(cut -c6-10 <<< "$as_of")"
+    echo "${src}${short}"
+    return 0
+}

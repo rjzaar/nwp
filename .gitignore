@@ -147,6 +147,9 @@ servers/*
 !.gitleaksignore
 !.pre-commit-config.yaml
 
+# P62 documentation-truth gate baseline (pl doc-truth; ops#53)
+!.doc-truth-baseline
+
 # bin/ holds operational helper scripts (audit-authors, migrate-* per F33, etc.)
 # tracked alongside lib/ and scripts/
 !bin/

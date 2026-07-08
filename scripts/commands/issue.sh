@@ -54,6 +54,59 @@ cmd_ls(){
   print_hint "open one in its OWN window:  start a fresh Claude in ~/nwp and say  \"work on nwp/ops#<#>\""
 }
 
+
+# pl issue board — one screen: every open op grouped by kind (P67 §5e).
+# WORK ITEMS (human/agent work) vs RAG-AUTO (fleet-health auto-issues) vs
+# recently closed. Same token/plumbing as ls; no MR join (the ops token is
+# least-privilege and cannot read code repos — deliberate).
+cmd_board(){
+  [ -n "$YQ" ] || die "yq required"
+  local json closed
+  json=$(_api_get "/projects/$PROJECT_ID/issues?state=opened&per_page=100&order_by=created_at&sort=asc")
+  [ -n "$json" ] || die "no response from GitLab (token rejected, or host unreachable)"
+  closed=$(_api_get "/projects/$PROJECT_ID/issues?state=closed&per_page=10&order_by=updated_at&sort=desc")
+
+  print_header "nwp/ops board"
+
+  echo -e "${BOLD}WORK ITEMS (open):${NC}"
+  printf "  %-5s %-52s %-10s %s
+" "#" "TITLE" "PRIORITY" "FLAGS"
+  "$YQ" e -p=json -o=tsv \
+      '.[] | select((.labels | contains(["rag-auto"])) | not) | [.iid, .title, (.labels | join(","))]' \
+      <<<"$json" 2>/dev/null \
+  | while IFS=$'\t' read -r iid title labels; do
+      local prio="-" flags=""
+      case ",$labels," in *,priority::high,*) prio="high" ;; *,priority::medium,*) prio="medium" ;; *,priority::low,*) prio="low" ;; esac
+      case ",$labels," in *,agent-eligible,*) flags="agent-eligible" ;; esac
+      printf "  ${BOLD}%-5s${NC} %-52.52s %-10s %s
+" "$iid" "$title" "$prio" "$flags"
+    done
+
+  echo ""
+  echo -e "${BOLD}RAG-AUTO (fleet health, auto-managed — clears when the site goes green):${NC}"
+  "$YQ" e -p=json -o=tsv \
+      '.[] | select(.labels | contains(["rag-auto"])) | [.iid, .title, (.labels | join(","))]' \
+      <<<"$json" 2>/dev/null \
+  | while IFS=$'\t' read -r iid title labels; do
+      local sev="🟠"
+      case ",$labels," in *,security,*) sev="🔴" ;; esac
+      printf "  %s #%-4s %-52.52s
+" "$sev" "$iid" "$title"
+    done
+
+  if [ -n "$closed" ] && [ "$("$YQ" e -p=json 'length' <<<"$closed" 2>/dev/null)" != "0" ]; then
+    echo ""
+    echo -e "${BOLD}RECENTLY CLOSED:${NC}"
+    "$YQ" e -p=json -o=tsv '.[] | [.iid, .title, .closed_at]' <<<"$closed" 2>/dev/null \
+    | while IFS=$'\t' read -r iid title closed_at; do
+        printf "  ${DIM:-}✓ #%-4s %-52.52s %s${NC}
+" "$iid" "$title" "${closed_at:0:10}"
+      done
+  fi
+  echo ""
+  print_hint "detail: pl issue show <#>   ·   fleet state: pl rag   ·   work queue: pl todo"
+}
+
 cmd_url(){
   local iid="${1:-}"; [ -n "$iid" ] || die "usage: pl issue url <iid>"
   printf 'https://%s/nwp/ops/-/issues/%s\n' "$(_host)" "$iid"
@@ -282,6 +335,7 @@ main(){
   local sub="${1:-ls}"; shift || true
   case "$sub" in
     ls|list)    cmd_ls "$@" ;;
+    board)      cmd_board "$@" ;;
     show|view)  cmd_show "$@" ;;
     url)        cmd_url "$@" ;;
     create|new) cmd_create "$@" ;;

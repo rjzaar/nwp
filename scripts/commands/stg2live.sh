@@ -1396,6 +1396,12 @@ main() {
     if ! canonical_enforce_branch_policy "$BASE_NAME" "deploy"; then
         exit 1
     fi
+    # Maturity guard (P67/ops#48): the code-flow class gates HOW code may
+    # reach live — incubating: direct; stabilizing: clean merged main only;
+    # production: signed-bundle path only.
+    if ! maturity_guard_deploy "$BASE_NAME" "stg2live"; then
+        exit 1
+    fi
 
     # Export for use in deploy function
     export SKIP_SECURITY VERBOSE

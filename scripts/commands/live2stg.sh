@@ -17,6 +17,10 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/ssh.sh"
+# canonical.sh: phase decides the sanitize default (P67 §5d);
+# database-router.sh: sanitize_staging_db
+source "$PROJECT_ROOT/lib/canonical.sh"
+source "$PROJECT_ROOT/lib/database-router.sh"
 
 # Trap handler to ensure spinners are stopped
 trap 'stop_spinner' EXIT INT TERM
@@ -104,6 +108,7 @@ main() {
     local YES=false
     local FILES_ONLY=false
     local DB_ONLY=false
+    local SANITIZE="auto"
     local SITENAME=""
 
     while [[ $# -gt 0 ]]; do
@@ -112,6 +117,8 @@ main() {
             -y|--yes) YES=true; shift ;;
             --files-only) FILES_ONLY=true; shift ;;
             --db-only) DB_ONLY=true; shift ;;
+            --sanitize) SANITIZE=true; shift ;;
+            --no-sanitize) SANITIZE=false; shift ;;
             -*) print_error "Unknown option: $1"; exit 1 ;;
             *) SITENAME="$1"; shift ;;
         esac
@@ -213,6 +220,35 @@ main() {
         cd "$PROJECT_ROOT"
         stop_spinner
         print_status "OK" "Database imported"
+
+        # Sanitize the pulled DB (P67 §5d). Default: ON when the site is
+        # canonical: live|prod — the pulled data is then the canonical user
+        # content and the ops#33 guards promise "sanitized live→dev". For
+        # dev-canonical sites the live copy is the operator's own disposable
+        # content, so the default is off. --sanitize / --no-sanitize override.
+        local phase do_sanitize
+        phase=$(canonical_get_phase "$BASE_NAME")
+        do_sanitize="$SANITIZE"
+        if [ "$do_sanitize" = "auto" ]; then
+            case "$phase" in
+                live|prod) do_sanitize=true ;;
+                *)         do_sanitize=false ;;
+            esac
+        fi
+        if [ "$do_sanitize" = "true" ]; then
+            local stg_rel="${STG_DIR#"$PROJECT_ROOT"/sites/}"
+            start_spinner "Sanitizing staging database (canonical: $phase)"
+            sanitize_staging_db "$stg_rel" >/dev/null 2>&1 || {
+                stop_spinner
+                print_error "Sanitization FAILED — the staging DB still holds RAW $phase data."
+                print_info  "Re-run sanitize: pl dev2stg tooling, or drop the stg DB. Not continuing silently."
+                exit 1
+            }
+            stop_spinner
+            print_status "OK" "Database sanitized (PII anonymized, sessions/logs truncated)"
+        else
+            print_status "INFO" "Sanitize skipped (canonical: $phase, sanitize=$do_sanitize)"
+        fi
     fi
 
     # Clear cache

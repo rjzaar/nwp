@@ -243,15 +243,20 @@ main() {
         fi
     fi
 
-    # Canonical phases (ops#33) for the PHASE column: "site=phase site=phase …".
-    # Only explicit values are passed; python defaults the rest to (dev).
-    local phases="" _ps _pp
+    # Canonical phases (ops#33) + maturity classes (P67) for the PHASE/MAT
+    # columns: "site=value …". Only explicit values are passed; python
+    # defaults the rest to (dev)/(inc).
+    local phases="" mats="" _ps _pp
     if [ -f "$PROJECT_ROOT/nwp.yml" ] && command -v yaml_get_all_sites >/dev/null 2>&1; then
         while read -r _ps; do
             [ -z "$_ps" ] && continue
             if canonical_phase_is_explicit "$_ps" "$PROJECT_ROOT/nwp.yml"; then
                 _pp=$(canonical_get_phase "$_ps" "$PROJECT_ROOT/nwp.yml")
                 phases+="${_ps}=${_pp} "
+            fi
+            if maturity_class_is_explicit "$_ps" "$PROJECT_ROOT/nwp.yml"; then
+                _pp=$(maturity_get_class "$_ps" "$PROJECT_ROOT/nwp.yml")
+                mats+="${_ps}=${_pp} "
             fi
         done < <(yaml_get_all_sites "$PROJECT_ROOT/nwp.yml" 2>/dev/null)
     fi
@@ -265,7 +270,7 @@ main() {
     local rag_rc=0
     set +e
     { AUDIT_DIR="$AUDIT_DIR" TODO_JSON="$todo_json" STATE_DIR="$STATE_DIR" \
-    SITE="$SITE" JSON="$JSON" PHASES="$phases" \
+    SITE="$SITE" JSON="$JSON" PHASES="$phases" MATURITIES="$mats" \
     RED="$RED" YEL="$YELLOW" GRN="$GREEN" NC="$NC" BOLD="$BOLD" DIM="${DIM:-}" \
     python3 - <<'PY'
 import os, json, glob
@@ -275,8 +280,10 @@ audit_dir=os.environ["AUDIT_DIR"]; state_dir=os.environ["STATE_DIR"]
 site_filter=os.environ.get("SITE",""); as_json=os.environ.get("JSON")=="true"
 RED,YEL,GRN,NC,BOLD=(os.environ[k] for k in ("RED","YEL","GRN","NC","BOLD"))
 
-# canonical phases (ops#33): explicit "site=phase" pairs; absent = default dev
+# canonical phases (ops#33) + maturity classes (P67): explicit pairs; absent = defaults
 phases=dict(kv.split("=",1) for kv in os.environ.get("PHASES","").split() if "=" in kv)
+mats=dict(kv.split("=",1) for kv in os.environ.get("MATURITIES","").split() if "=" in kv)
+MAT_ABBR={"incubating":"inc","stabilizing":"stab","production":"prod"}
 
 # --- security signal from pl audit records ---
 sec={}  # site -> {count, stale}
@@ -319,6 +326,7 @@ rows=[]
 for s in sorted(sites):
     g=grade(s); sc=sec.get(s,{}); wk=work.get(s,{})
     rows.append({"site":s,"rag":g,"phase":phases.get(s,"(dev)"),
+        "maturity":MAT_ABBR.get(mats.get(s,""),"(inc)") if mats.get(s) else "(inc)",
         "security":sc.get("count",0),"ignored":sc.get("ignored",0),"stale":sc.get("stale",False),
         "todo_high":wk.get("high",0),"todo_med":wk.get("med",0),"todo_low":wk.get("low",0),
         "top":wk.get("top","")})
@@ -333,11 +341,11 @@ if as_json:
     print(json.dumps(state, indent=2))
 else:
     dot={"RED":RED+"●"+NC,"AMBER":YEL+"●"+NC,"GREEN":GRN+"●"+NC}
-    print(f"\n  {'':2} {'SITE':<16} {'PHASE':<7} {'SEC':>4} {'TODO(h/m/l)':>12}  TOP")
+    print(f"\n  {'':2} {'SITE':<16} {'PHASE':<7} {'MAT':<6} {'SEC':>4} {'TODO(h/m/l)':>12}  TOP")
     for r in sorted(rows, key=lambda x:{"RED":0,"AMBER":1,"GREEN":2}[x["rag"]]):
         sec_s=str(r["security"]) + (f"+{r['ignored']}i" if r["ignored"] else "") + ("*" if r["stale"] else "")
         td=f"{r['todo_high']}/{r['todo_med']}/{r['todo_low']}"
-        print(f"  {dot[r['rag']]}  {r['site']:<16} {r['phase']:<7} {sec_s:>4} {td:>12}  {r['top']}")
+        print(f"  {dot[r['rag']]}  {r['site']:<16} {r['phase']:<7} {r['maturity']:<6} {sec_s:>4} {td:>12}  {r['top']}")
     print(f"\n  {BOLD}Fleet:{NC} {RED}● {counts['RED']} red{NC}  {YEL}● {counts['AMBER']} amber{NC}  {GRN}● {counts['GREEN']} green{NC}"
           f"   ({len(rows)} sites)   legend: SEC *=cache-stale, +Ni=ignored")
     print(f"  state → {os.path.join(state_dir,'state.json')}")

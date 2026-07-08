@@ -237,6 +237,7 @@ canonical_deploy_manifest() {
         printf '  "site": "%s",\n' "$site"
         printf '  "action": "%s",\n' "$action"
         printf '  "canonical_phase": "%s",\n' "$(canonical_get_phase "$site")"
+        printf '  "maturity": "%s",\n' "$(maturity_get_class "$site")"
         printf '  "timestamp": "%s",\n' "$(date -u +%FT%TZ)"
         printf '  "by": "%s",\n' "$(canonical_actor)"
         printf '  "nwp_sha": "%s"' "$nwp_sha"
@@ -248,4 +249,190 @@ canonical_deploy_manifest() {
     } > "$file"
 
     echo "$file"
+}
+
+################################################################################
+# Maturity classes — the CODE-flow axis beside canonical's content axis (P67)
+#
+#   incubating  (default) — direct pl stg2live allowed (A14 test tier);
+#                agent-loop may work promoted issues; today's behavior.
+#   stabilizing — code reaches live only from a clean checkout of main that is
+#                fully merged to origin/main; direct pushes from a branch or
+#                dirty tree are refused.
+#   production  — direct SSH/rsync deploys refused outright; deploys go via
+#                the signed-bundle path (pl build-server / server-pull /
+#                server-apply) or the ADR-0024 protected runner once its
+#                preconditions land. WebAuthn-gated merge is the authority.
+#
+# Same contract as the canonical phase: absent field = incubating (zero
+# behavior change until the operator sets a class); unparseable values fail
+# closed in every guard. Transitions via `pl maturity set` (ledgered).
+################################################################################
+
+MATURITY_CLASSES="incubating stabilizing production"
+
+# Echo the site's maturity class. Absent/unregistered → "incubating";
+# present but unrecognized → "invalid:<raw>" so guards fail closed.
+# Always returns 0 (callers run under set -e).
+maturity_get_class() {
+    local site="$1"
+    local config="${2:-$(canonical_config_file)}"
+    local raw=""
+    if [ -n "$site" ] && [ -f "$config" ]; then
+        raw=$(yaml_get_site_field "$site" "maturity" "$config" 2>/dev/null || true)
+    fi
+    case "$raw" in
+        incubating|stabilizing|production) echo "$raw" ;;
+        "")                                echo "incubating" ;;
+        *)                                 echo "invalid:$raw" ;;
+    esac
+    return 0
+}
+
+# 0 if sites.<site>.maturity is present and valid in nwp.yml
+maturity_class_is_explicit() {
+    local site="$1"
+    local config="${2:-$(canonical_config_file)}"
+    [ -f "$config" ] || return 1
+    local raw
+    raw=$(yaml_get_site_field "$site" "maturity" "$config" 2>/dev/null || true)
+    case "$raw" in
+        incubating|stabilizing|production) return 0 ;;
+        *)                                 return 1 ;;
+    esac
+}
+
+# Validate a (maturity, canonical) pair. The invalid corners (P67 §2):
+#   incubating + canonical:prod  — prod content demands prod code discipline
+#   production + canonical:dev   — a production site whose content source of
+#                                  truth is a dev DDEV box is a contradiction
+# Returns 0 = valid; 1 = invalid (prints why).
+maturity_validate_pair() {
+    local class="$1"
+    local phase="$2"
+    case "$class:$phase" in
+        incubating:prod)
+            print_error "Invalid pair: maturity 'incubating' with canonical 'prod' — prod content demands at least 'stabilizing' code discipline."
+            return 1 ;;
+        production:dev)
+            print_error "Invalid pair: maturity 'production' with canonical 'dev' — a production site cannot have its content source of truth on a dev box."
+            return 1 ;;
+    esac
+    return 0
+}
+
+# Guard a CODE deploy per the site's maturity class. Returns 0 allow, 1 refuse.
+#   $1 site, $2 cmd label (stg2live|stg2prod|live2prod|...)
+# incubating: allowed. stabilizing: only from a clean checkout of main that is
+# fully merged to origin/main (nothing local-only). production: refused —
+# points at the signed-bundle path. Invalid class: fail closed.
+maturity_guard_deploy() {
+    local site="$1"
+    local cmd="${2:-deploy}"
+
+    local class; class=$(maturity_get_class "$site")
+    case "$class" in
+        incubating) return 0 ;;
+        invalid:*)
+            print_error "Site '$site' has an unrecognized maturity class in nwp.yml: '${class#invalid:}'"
+            print_error "Guards fail closed on unparseable classes. Fix it: pl maturity set $site <incubating|stabilizing|production>"
+            return 1 ;;
+        production)
+            print_error "REFUSED: '$site' is maturity: production — direct $cmd deploys are not allowed."
+            print_info  "Production code ships via the signed-bundle path:"
+            print_info  "  pl build-server && pl server-pull ... && pl server-apply ...   (ADR-0026)"
+            print_info  "or the protected prod-deploy runner once ADR-0024's preconditions land."
+            print_info  "To change the class (ledgered): pl maturity set $site stabilizing"
+            return 1 ;;
+    esac
+
+    # stabilizing: require clean main, fully merged to origin/main
+    local dev_dir=""
+    if command -v resolve_project >/dev/null 2>&1; then
+        dev_dir=$(resolve_project "$site" "dev" 2>/dev/null || true)
+    fi
+    if [ -z "$dev_dir" ] || [ ! -d "$dev_dir/.git" ]; then
+        print_warning "maturity: stabilizing — no git repo found for '$site' dev; cannot verify the merged-main rule (allowing; the canonical guards still apply)."
+        return 0
+    fi
+
+    local branch dirty=false ahead=0
+    branch=$(git -C "$dev_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    [ -n "$(git -C "$dev_dir" status --porcelain 2>/dev/null)" ] && dirty=true
+    if git -C "$dev_dir" rev-parse --verify -q origin/main >/dev/null 2>&1; then
+        ahead=$(git -C "$dev_dir" rev-list --count origin/main..HEAD 2>/dev/null || echo 0)
+    fi
+
+    if [ "$branch" != "main" ] && [ "$branch" != "master" ]; then
+        print_error "REFUSED: '$site' is maturity: stabilizing — deploys only from main (repo is on '$branch')."
+        print_info  "Merge via MR, then: git -C $dev_dir switch main && git pull"
+        return 1
+    fi
+    if [ "$dirty" = "true" ]; then
+        print_error "REFUSED: '$site' is maturity: stabilizing — the working tree has uncommitted changes."
+        return 1
+    fi
+    if [ "${ahead:-0}" -gt 0 ]; then
+        print_error "REFUSED: '$site' is maturity: stabilizing — main has $ahead commit(s) not on origin/main (unmerged/unpushed)."
+        print_info  "Push + merge via MR first; deploys ship only reviewed, merged code."
+        return 1
+    fi
+    return 0
+}
+
+################################################################################
+# Branch-twin lineage (P67 §5b/§5c) — sites that are branches of another site
+################################################################################
+
+# Echo the parent site name if <site> is a branch twin, else nothing.
+site_branch_parent() {
+    local site="$1"
+    local config="${2:-$(canonical_config_file)}"
+    yaml_get_site_field "$site" "branch_of" "$config" 2>/dev/null || true
+}
+
+# Code delta of a repo vs origin/main: echoes "+<ahead>/-<behind>" (or "?" when
+# no origin/main ref exists, or "=" when even).
+site_code_delta() {
+    local dev_dir="$1"
+    [ -d "$dev_dir/.git" ] || { echo "?"; return 0; }
+    if ! git -C "$dev_dir" rev-parse --verify -q origin/main >/dev/null 2>&1; then
+        echo "?"
+        return 0
+    fi
+    local counts behind ahead
+    counts=$(git -C "$dev_dir" rev-list --left-right --count origin/main...HEAD 2>/dev/null) || { echo "?"; return 0; }
+    behind=$(awk '{print $1}' <<< "$counts")
+    ahead=$(awk '{print $2}' <<< "$counts")
+    if [ "${ahead:-0}" -eq 0 ] && [ "${behind:-0}" -eq 0 ]; then
+        echo "="
+    else
+        echo "+${ahead:-0}/-${behind:-0}"
+    fi
+    return 0
+}
+
+# Content provenance display: "canonical" for a site that owns its content,
+# else "<source>@<MM-DD>" from the content_source/content_as_of stamps
+# (written by pl branch / pl branch content), "?" when unstamped.
+site_content_provenance() {
+    local site="$1"
+    local config="${2:-$(canonical_config_file)}"
+    local parent
+    parent=$(site_branch_parent "$site" "$config")
+    local src as_of
+    src=$(yaml_get_site_field "$site" "content_source" "$config" 2>/dev/null || true)
+    as_of=$(yaml_get_site_field "$site" "content_as_of" "$config" 2>/dev/null || true)
+    if [ -z "$src" ]; then
+        if [ -z "$parent" ]; then
+            echo "canonical"
+        else
+            echo "?"
+        fi
+        return 0
+    fi
+    local short=""
+    [ -n "$as_of" ] && short="@$(cut -c6-10 <<< "$as_of")"
+    echo "${src}${short}"
+    return 0
 }

@@ -17,6 +17,10 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 # Source shared libraries
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
+# canonical.sh: phase decides the sanitize default (P67 §5d);
+# database-router.sh: sanitize_staging_db
+source "$PROJECT_ROOT/lib/canonical.sh"
+source "$PROJECT_ROOT/lib/database-router.sh"
 
 # Source YAML library
 if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
@@ -219,6 +223,7 @@ DRY_RUN=false
 FILES_ONLY=false
 DB_ONLY=false
 SITENAME=""
+NO_SANITIZE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -240,6 +245,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --files-only)
             FILES_ONLY=true
+            shift
+            ;;
+        --no-sanitize)
+            NO_SANITIZE=true
             shift
             ;;
         --db-only)
@@ -536,6 +545,21 @@ if should_run_step 6 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
         fi
 
         cd "$PROJECT_ROOT"
+
+        # Sanitize the pulled DB (P67 §5d): prod data is by definition the
+        # canonical user content — default ON unless --no-sanitize.
+        if [ "${NO_SANITIZE:-false}" != "true" ]; then
+            print_info "Sanitizing staging database (prod pull)..."
+            if sanitize_staging_db "$SITENAME" >/dev/null 2>&1; then
+                print_status "OK" "Database sanitized (PII anonymized, sessions/logs truncated)"
+            else
+                print_error "Sanitization FAILED — the staging DB still holds RAW prod data."
+                print_info  "Not continuing silently. Re-run, or drop the stg DB."
+                exit 1
+            fi
+        else
+            print_warning "Sanitize SKIPPED (--no-sanitize): staging now holds RAW prod data."
+        fi
     else
         print_status "INFO" "Would import database to staging"
     fi

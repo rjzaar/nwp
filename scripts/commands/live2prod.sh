@@ -320,6 +320,10 @@ main() {
     if ! canonical_enforce_branch_policy "$BASE_NAME" "deploy"; then
         exit 1
     fi
+    # Maturity guard (P67/ops#48): code-flow class gate
+    if ! maturity_guard_deploy "$BASE_NAME" "live2prod"; then
+        exit 1
+    fi
 
     print_header "Live to Production Deployment: $BASE_NAME"
 

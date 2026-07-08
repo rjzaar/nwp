@@ -936,6 +936,10 @@ main() {
     if ! canonical_enforce_branch_policy "$base_name" "deploy"; then
         exit 1
     fi
+    # Maturity guard (P67/ops#48): code-flow class gate
+    if ! maturity_guard_deploy "$base_name" "stg2prod"; then
+        exit 1
+    fi
 
     # Ensure staging site is in production mode before deploying to prod
     if [ "$DRY_RUN" != "true" ] && [ -d "$PROJECT_ROOT/sites/$SITENAME" ]; then

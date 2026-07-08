@@ -25,6 +25,10 @@ source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/yaml-write.sh"
 source "$PROJECT_ROOT/lib/canonical.sh"
+# impact.sh: consistent confirmation tiers (the only rm -rf here removes the
+# twin's own partial copy on a failed create; real deletion delegates to
+# delete.sh, which carries the full fate-manifest contract)
+source "$PROJECT_ROOT/lib/impact.sh"
 
 show_help() {
     cat << EOF
@@ -113,13 +117,9 @@ cmd_create() {
     echo -e "  ${BOLD}Deploy:${NC}   incapable by construction (no live: block, purpose: testing)"
     echo ""
 
-    if [ "$auto_yes" != "true" ]; then
-        if [ ! -t 0 ]; then
-            print_error "No terminal for confirmation and -y not given — aborting."
-            return 1
-        fi
-        read -r -p "Create twin '$twin'? [y/N] " reply
-        case "$reply" in y|Y|yes|YES) ;; *) print_info "Aborted."; return 1 ;; esac
+    if ! impact_confirm standard "create twin '$twin'" "$auto_yes"; then
+        print_info "Aborted."
+        return 1
     fi
 
     # 1. Copy the dev tree (includes .git — full history travels with the twin)

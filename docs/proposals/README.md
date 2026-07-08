@@ -17,9 +17,9 @@ NWP uses three prefix series in this directory:
 
 | Prefix | Meaning | Range in use |
 |--------|---------|---|
-| **P##** | Core Phase Proposals — foundational architecture, phases of the original NWP buildout | P01–P60 |
-| **F##** | Feature Enhancements — additive features and refactors | F01–F23 |
-| **X##** | Experimental / Outlier — speculative ideas not yet on the roadmap | X01 |
+| **P##** | Core Phase Proposals — foundational architecture, phases of the original NWP buildout | P01–P35, P50–P69 |
+| **F##** | Feature Enhancements — additive features and refactors | F01–F36 |
+| **X##** | Experimental / Outlier — speculative ideas not yet on the roadmap | X02–X03 |
 
 Per-project local schemes (each site is its own namespace, numbering
 restarts at 01):
@@ -131,7 +131,36 @@ See [milestones.md](../reports/milestones.md) for the full version history.
 - **F02** — Automated CI Error Resolution
 - **F06** — Malicious Code Detection Pipeline
 - **F08** — Dynamic Cross-Platform Badges
-- **X01** — AI Video Generation Integration
+- **X01** — AI Video Generation Integration *(idea only; no proposal file)*
+
+### Recent proposals (2026-05 → 2026-07)
+
+Newer additions not yet folded into the by-status lists above. Run `pl proposals`
+for the live picture.
+
+| ID | Title | Status |
+|----|-------|--------|
+| P61 | Leakage-hygiene CI | PROPOSED |
+| P62 | Documentation-truth gate | PROPOSED |
+| P63 | Secure rebuildable nwc project | ✅ COMPLETE (2026-05-22) |
+| P64 | Clip-choice as data, not content | PROPOSED |
+| P65 | Seed-content lifecycle | APPROVED (2026-07-02; impl nwp/ops#32) |
+| P66 | Module passports + scoped AI fixes | PROPOSED |
+| P67 | Per-site workflow maturity | PROPOSED (nwp/ops#48) |
+| P69 | Fix-engine bake-off | PROPOSED (renumbered from a duplicate P67, 2026-07-08) |
+| F31 | Repo-wide hardening & modernization | PROPOSED |
+| F32 | Tiered architecture implementation | IN PROGRESS (Phase A) |
+| F33 | Repository topology refactor | SUPERSEDED (2026-05-22) |
+| F34 | Role-label proposal rewrite | IN PROGRESS (Phase 3) |
+| F35 | pl site rename | PROPOSED |
+| F36 | Comprehensive codebase improvements | PROPOSED |
+| X02 | Local voice agent | PROPOSED (Phase 0 done) |
+| X03 | Quokka RAG via mirror-store | PROPOSED |
+
+> **Notes.** P68 (legal-doc authoring) lives with the nwc site work (nwp/ops#50/#51).
+> No P36–P49 files exist (historical gap). X01 (AI Video Generation) is referenced
+> historically but has no proposal file. `F36-handover-2026-05-19.md` is a handover,
+> not proposal F36.
 
 ### Site-specific proposals
 
@@ -156,4 +185,4 @@ Use `pl proposals` to aggregate everything below into one view.
 4. **COMPLETE** — Implemented and verified
 5. **Moved to milestones.md** — Archived as completed work
 
-Last Updated: 2026-04-09
+Last Updated: 2026-07-08

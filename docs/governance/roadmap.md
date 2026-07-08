@@ -2,7 +2,7 @@
 
 **NWP — Narrow Way Project** | Drupal hosting, deployment & infrastructure automation
 
-**Last Updated:** April 9, 2026
+**Last Updated:** July 8, 2026
 
 Pending implementation items and future improvements for **NWP core**.
 
@@ -37,14 +37,42 @@ Pending implementation items and future improvements for **NWP core**.
 |--------|-------|
 | Current Version | v0.30.0 (F17 phases 1–8, 10 landed; F19 baseline reset complete) |
 | Test Success Rate | 99.5% (Machine Verified) |
-| Completed NWP Proposals | P01–P35, P50–P51, P53–P60, F03–F05, F07, F09, F12–F15, F17 (phases 1–8, 10), F19 |
+| Completed NWP Proposals | P01–P35, P50–P51, P53–P60, P63, F03–F05, F07, F09, F12–F15, F17 (phases 1–8, 10), F19, F23 |
 | Proposed NWP Proposals | F16 (Claude Code Web), F18 (Unified Backup), F20 (SolveIt), F22 (Gotify Remote), F25 (Mayo NWP — superseded by F29), F26 (OIDC), F27 (Feedback Ingest), F28 (Unified Pipeline), F29 (Mayo Comprehensive), F30 (Content Federation Network) |
 | In-Progress NWP Proposals | F21 (Distributed Build/Deploy Pipeline — Phases 1 ✅, 2 ✅, 3a ✅; Phase 10 dry-run skeleton) |
 | Pending NWP Proposals | F01, F02, F06, F08 |
 | Rejected NWP Proposals | P52 (rename — NWP is the permanent project name) |
-| Experimental/Outlier | X01, X02 |
+| Experimental/Outlier | X01 (idea only, no file), X02, X03 |
 | Recent Enhancements | v0.30.0: F17 project separation v2 — per-site `.nwp.yml`, schema migrations, `pl site/server/proposals` commands, modules/pipelines/backups moved into sites |
 | Site-specific work | See `sites/<name>/docs/proposals/` and `pl proposals` |
+
+---
+
+## Recent Proposals (2026-05 → 2026-07)
+
+Post-v0.30.0 additions, catalogued here as a pointer; see each file under
+`docs/proposals/` (and `docs/proposals/README.md`) for detail, and run
+`pl proposals` for the live cross-site view.
+
+| ID | Title | Status |
+|----|-------|--------|
+| P61 | Leakage-hygiene CI | PROPOSED |
+| P62 | Documentation-truth gate | PROPOSED (not yet built on the NWP side — nwp/ops#53) |
+| P63 | Secure rebuildable nwc project | ✅ COMPLETE (2026-05-22) |
+| P64 | Clip-choice as data, not content | PROPOSED |
+| P65 | Seed-content lifecycle | APPROVED (2026-07-02; impl nwp/ops#32) |
+| P66 | Module passports + scoped AI fixes | PROPOSED |
+| P67 | Per-site workflow maturity | PROPOSED (nwp/ops#48) |
+| P69 | Fix-engine bake-off | PROPOSED |
+| F31 | Repo-wide hardening & modernization | PROPOSED |
+| F32 | Tiered architecture implementation | IN PROGRESS (Phase A) |
+| F33 | Repository topology refactor | SUPERSEDED (2026-05-22) |
+| F34 | Role-label proposal rewrite | IN PROGRESS (Phase 3) |
+| F35 | pl site rename | PROPOSED |
+| F36 | Comprehensive codebase improvements | PROPOSED |
+| X03 | Quokka RAG via mirror-store | PROPOSED |
+
+> P68 (legal-doc authoring) is tracked with the nwc site work (nwp/ops#50/#51).
 
 ---
 
@@ -52,9 +80,9 @@ Pending implementation items and future improvements for **NWP core**.
 
 | Prefix | Meaning | Count | Example |
 |--------|---------|-------|---------|
-| **P##** | Core Phase Proposals | 35 complete | P01-P35: Foundation→Live Deployment |
-| **F##** | Feature Enhancements | 9 complete, 6 pending | F04: Governance, F09: Testing, F12: Todo |
-| **X##** | Experimental Outliers | 2 exploratory | X01: AI Video, X02: Local Voice Agent |
+| **P##** | Core Phase Proposals | P01–P35, P50–P69 (P63 latest complete) | P01-P35: Foundation→Live Deployment |
+| **F##** | Feature Enhancements | F01–F36 (F17/F19/F23 done; F32/F34 in progress) | F04: Governance, F09: Testing, F12: Todo |
+| **X##** | Experimental Outliers | X02, X03 (X01 idea-only) | X02: Local Voice Agent, X03: Quokka RAG |
 
 **Why different prefixes?**
 - P01-P35: Core NWP infrastructure built during phases 1-5c (all complete)

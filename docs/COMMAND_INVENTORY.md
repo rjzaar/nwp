@@ -2,9 +2,15 @@
 
 Complete inventory of all commands in the NWP codebase.
 
-**Last Updated:** 2026-05-18
-**Total Commands:** 58 (excludes one timestamped legacy backup file,
-`podcast-setup-20260112-195917`, scheduled for removal)
+**Last Updated:** 2026-07-08 (partial refresh — nwp/ops#53)
+**Total Commands:** 72 `scripts/commands/*.sh` files.
+
+> ⚠️ **This inventory is stale and incomplete.** It documents ~58 commands; the
+> tree now holds 72. Verbs missing below include: `audit`, `canonical`, `host`,
+> `issue`, `onboard`, `rag`, `secrets`, `server-apply`/`-backup`/`-publish`/`-pull`/`-status`,
+> `test-ver`, `vrt`, and the ai-host LLM-host utilities command. Regenerate from
+> `ls scripts/commands/*.sh`. The `ai-host` entry below is a **phantom** — there is
+> no `ai-host.sh`, so `pl ai-host` does not resolve.
 
 ---
 
@@ -956,13 +962,14 @@ proposal-tracking system: this is for ad-hoc operational TODOs.
 issues from the tracker and helps work through them one by one.
 
 ### ai-host
-**Purpose:** `pl ai-host` — LLM-host utilities for the AI tier of the
-distributed pipeline (F21 Phase 3a). Manages the local LLM
-(Ollama/Vulkan), voice agent, and RAG ingestion.
-**Note:** The on-disk filename predates F34's role-label vocabulary
-and is retained to avoid breaking external references; see
-`docs/reference/role-vocabulary.md` for the legacy-to-role mapping
-and the path-allowlist context that lets the leakage gate accept it.
+**Purpose:** LLM-host utilities for the AI tier of the distributed pipeline
+(F21 Phase 3a) — local LLM (Ollama/Vulkan), voice agent, and RAG ingestion.
+**Note (2026-07-08):** `pl ai-host` is **not** a live verb (there is no
+`ai-host.sh`). The command's on-disk script is named for the host that carries
+the `ai-host` role (an F34 legacy naming), so it is invoked under that name, not
+`ai-host`. See `docs/reference/role-vocabulary.md` for the role→host mapping.
+A future cleanup should rename the script to a role label so `pl` and this
+inventory can name it directly.
 
 ### mass-times.sh
 **Purpose:** NWP Mass Times scraper command — fetches and normalizes

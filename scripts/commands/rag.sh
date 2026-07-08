@@ -158,21 +158,24 @@ for site in sorted(eligible):
             "payload":json.dumps({"title":title,"description":body,"labels":",".join(want)})})
         continue
     iid=iss["iid"]; prev=marker(iss.get("description",""))
-    changed = prev.get("grade")!=grade or prev.get("sec")!=str(sec)
-    if not changed:
+    state_changed = prev.get("grade")!=grade or prev.get("sec")!=str(sec)
+    title_stale   = iss.get("title","") != title   # e.g. red→amber left a stale "security advisories" title
+    if not (state_changed or title_stale):
         actions.append({"act":"noop","summary":f"noop  #{iid} {site} (unchanged: {grade}/{sec})"})
         continue
     cur=set(iss.get("labels",[]))
     add=[x for x in want if x not in cur]
     rem=[x for x in (["priority::medium"] if grade=="RED" else ["priority::high","security"]) if x in cur]
-    payload={"description":body}
+    payload={"title":title,"description":body}   # title MUST be in the payload so red→amber corrects it
     if add: payload["add_labels"]=",".join(add)
     if rem: payload["remove_labels"]=",".join(rem)
-    actions.append({"act":"update","summary":f"UPDATE #{iid} {site} ({prev.get('grade','?')}/{prev.get('sec','?')} → {grade}/{sec})",
+    reason = (f"{prev.get('grade','?')}/{prev.get('sec','?')} → {grade}/{sec}" if state_changed else "title/label refresh")
+    actions.append({"act":"update","summary":f"UPDATE #{iid} {site} ({reason})",
         "method":"PUT","path":f"/projects/{pid}/issues/{iid}","payload":json.dumps(payload)})
-    actions.append({"act":"comment","summary":f"  └ comment material change on #{iid}",
-        "method":"POST","path":f"/projects/{pid}/issues/{iid}/notes",
-        "payload":json.dumps({"body":f"\U0001f504 `pl rag` {now}: now {grade}, {sec} advisor%s, todo {h}/{m_}/{l} (was {prev.get('grade','?')}/{prev.get('sec','?')})." % ("y" if sec==1 else "ies")})})
+    if state_changed:   # only comment on a real posture change, not a cosmetic title refresh
+        actions.append({"act":"comment","summary":f"  └ comment material change on #{iid}",
+            "method":"POST","path":f"/projects/{pid}/issues/{iid}/notes",
+            "payload":json.dumps({"body":f"\U0001f504 `pl rag` {now}: now {grade}, {sec} advisor%s, todo {h}/{m_}/{l} (was {prev.get('grade','?')}/{prev.get('sec','?')})." % ("y" if sec==1 else "ies")})})
 print(json.dumps(actions))
 PY
 )

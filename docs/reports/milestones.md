@@ -1,6 +1,6 @@
 # NWP Milestones - Completed Implementation History
 
-**Last Updated:** April 9, 2026
+**Last Updated:** July 8, 2026
 
 A summary of all completed **NWP core** development phases and their key
 achievements.
@@ -37,8 +37,9 @@ achievements.
 | Phase 12 | Pre-Baseline Cleanup | F19 (formerly F25) | Apr 2026 |
 | Phase 13 (partial) | Distributed Build/Deploy Pipeline | F21 Phases 1 ✅, 2 ✅, 3a ✅; Phase 10 skeleton | Apr 8–9, 2026 |
 | Phase 14 | Site Environment Layout | F23 (dev/+stg/ restructure, sync script fixes) | Apr 9, 2026 |
+| Phase 15 | Secure Rebuildable NWC Project | P63 (phases 1–5, audit-clean; tagged v0.3.1/v0.4.0) | May 2026 |
 
-**Total: ~51 NWP-core proposals implemented** (P01–P35, P50–P51, P53–P60,
+**Total: ~52 NWP-core proposals implemented** (P01–P35, P50–P51, P53–P60, P63,
 F03–F05, F07, F09, F12–F15, F17 phases 1–8 + 10, F19, F23), plus F21 Phase 3a
 (complete) and a dry-run-only F21 Phase 10 skeleton.
 

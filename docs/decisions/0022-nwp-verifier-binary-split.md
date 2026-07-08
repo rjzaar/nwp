@@ -2,7 +2,7 @@
 
 > **Naming note.** The verifier binary is named after the role it performs (`verifier`), not after any specific host that carries the role. Earlier internal references (after the operator's own historical host name for this role) are preserved in ADR-0019; that ADR will be rewritten by [F34](../proposals/F34-role-label-proposal-rewrite.md) to use the verifier role label.
 
-**Status:** Proposed
+**Status:** Proposed (build target since renamed/re-scoped to the `nwp-server` agent — see [ADR-0026](0026-nwp-server-capability-agent.md), which supersedes this ADR's `nwp-verifier` naming; production deploy authority is now [ADR-0024](0024-self-deploying-prod-supersedes-verifier.md))
 **Date:** 2026-05-09
 **Decision Makers:** Robert Karsten Zaar
 **Related Issues:** Threat-model boundary at the verifier; AI-free build-time guarantee

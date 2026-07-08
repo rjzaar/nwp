@@ -9,6 +9,14 @@
 **Estimated Effort:** ~7 phases, multi-week buildout
 **Architecture decision records:** [ADR-0020](../decisions/0020-tiered-architecture-model.md), [ADR-0022](../decisions/0022-nwp-verifier-binary-split.md)
 
+> **Rename note (2026-07-08, nwp/ops#53).** The Tier-4 build target is described
+> throughout this proposal (Phase D, §4.4) as `nwp-verifier`, per ADR-0022. It has
+> since been renamed/re-scoped to the **`nwp-server`** AI-free capability agent —
+> see [ADR-0026](../decisions/0026-nwp-server-capability-agent.md), which supersedes
+> the `nwp-verifier` naming and defines the shipped `bin/nwp-server` + `pl build-server`
+> surface. Read every `nwp-verifier` / `build-nwp-verifier.sh` reference below as the
+> `nwp-server` equivalent.
+
 > **Why this proposal exists.** [ADR-0020](../decisions/0020-tiered-architecture-model.md) captures the architectural *decision* for a tiered architecture model. This proposal is the *implementation plan* — a phased, numbered work breakdown that can be tracked in the roadmap, milestone'd as phases complete, and pointed at by code references. The ADR is the "why"; F32 is the "what to build, in what order, and how to know each phase is done."
 
 ---

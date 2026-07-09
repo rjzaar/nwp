@@ -30,6 +30,9 @@ fi
 
 # canonical.sh: canonicality-phase content-flow guards (nwp/ops#33)
 source "$PROJECT_ROOT/lib/canonical.sh"
+# deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op unless
+# configured (ver) — the AI test tier (A14) is unaffected.
+source "$PROJECT_ROOT/lib/deploy-gate.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -939,6 +942,13 @@ main() {
     # Maturity guard (P67/ops#48): code-flow class gate
     if ! maturity_guard_deploy "$base_name" "stg2prod"; then
         exit 1
+    fi
+
+    # Hardware+signature gate on the production write (ADR-0028). No-op on the
+    # test tier (unconfigured); on ver it requires a live Solo touch.
+    if [ "${DRY_RUN:-false}" != "true" ]; then
+        deploy_gate_require "$base_name" "prod" \
+            "push staging → production (files + DB)" || exit 1
     fi
 
     # Ensure staging site is in production mode before deploying to prod

@@ -206,8 +206,12 @@ download_db_production() {
         # Import to target
         download_db_backup "$backup_file" "$target_site"
 
-        # Sanitize after import
-        sanitize_staging_db "$target_site"
+        # Sanitize after import — FAIL-CLOSED: a failed sanitize must not report
+        # success (raw production PII would otherwise remain in the target DB).
+        if ! sanitize_staging_db "$target_site"; then
+            fail "Sanitization failed after production import — target may hold PII"
+            return 1
+        fi
 
         return 0
     else
@@ -440,8 +444,29 @@ download_db_url() {
 # Database Sanitization
 ################################################################################
 
-# Sanitize database on staging site
+# Run one PII-critical sanitize mutation, FAIL-CLOSED.
+# Unlike the volatile cache/session truncations (which are best-effort hygiene),
+# a failure here means PII may remain, so the error must NOT be swallowed.
+# Returns the drush exit code.
+_san_critical_query() {
+    ddev drush sql:query "$1" >/dev/null 2>&1
+}
+
+# Sanitize database on staging site.
 # Usage: sanitize_staging_db "target_site"
+#
+# FAIL-CLOSED contract (hardened): this used to run every mutation with
+# `2>/dev/null` and then `return 0` unconditionally, always printing
+# "sanitized" — even when the lone anonymize query hit a non-existent table
+# (e.g. a Moodle schema has no users_field_data), so PII silently survived while
+# the function reported success. It now:
+#   1. DETECTS the schema first and REFUSES ("no sanitizer for this schema")
+#      rather than falsely reporting sanitized on a non-Drupal DB;
+#   2. hard-checks the exit code of each PII-critical mutation and returns 1 on
+#      failure (cache/session truncations stay best-effort);
+#   3. asserts a POST-CONDITION — zero user rows (uid > 1) retain a non-example
+#      email — and returns 1 if any PII remains.
+# The independent lib/pii-gate.sh scan remains the outer backstop.
 sanitize_staging_db() {
     local target_site="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
@@ -454,39 +479,80 @@ sanitize_staging_db() {
         return 1
     }
 
-    # Run sanitization queries
+    # ── Step 0: DETECT the schema before mutating. This generic pass only
+    #    understands the core Drupal user schema (users_field_data). On any other
+    #    schema (Moodle, a bespoke app, an empty DB) the anonymize query is a
+    #    silent no-op, so we must REFUSE rather than falsely report "sanitized".
+    task "Detecting schema..."
+    local schema_probe
+    schema_probe=$(ddev drush sql:query \
+        "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'users_field_data' LIMIT 1" \
+        2>/dev/null | tr -d '[:space:]')
+    if [ "$schema_probe" != "1" ]; then
+        fail "No sanitizer for this schema: '$target_site' has no Drupal users_field_data table"
+        note "This generic sanitizer only handles a standard Drupal schema."
+        note "Refusing to report 'sanitized' on an unknown schema (fail-closed)."
+        cd "$original_dir"
+        return 1
+    fi
+
+    # ── Volatile / cache tables: best-effort hygiene (not PII-critical). A
+    #    missing table here is harmless, so these stay tolerant.
     task "Truncating cache tables..."
-    ddev drush sql:query "TRUNCATE TABLE cache_bootstrap" 2>/dev/null
-    ddev drush sql:query "TRUNCATE TABLE cache_config" 2>/dev/null
-    ddev drush sql:query "TRUNCATE TABLE cache_container" 2>/dev/null
-    ddev drush sql:query "TRUNCATE TABLE cache_data" 2>/dev/null
-    ddev drush sql:query "TRUNCATE TABLE cache_default" 2>/dev/null
-    ddev drush sql:query "TRUNCATE TABLE cache_discovery" 2>/dev/null
-    ddev drush sql:query "TRUNCATE TABLE cache_dynamic_page_cache" 2>/dev/null
-    ddev drush sql:query "TRUNCATE TABLE cache_entity" 2>/dev/null
-    ddev drush sql:query "TRUNCATE TABLE cache_menu" 2>/dev/null
-    ddev drush sql:query "TRUNCATE TABLE cache_page" 2>/dev/null
-    ddev drush sql:query "TRUNCATE TABLE cache_render" 2>/dev/null
+    local t
+    for t in cache_bootstrap cache_config cache_container cache_data cache_default \
+             cache_discovery cache_dynamic_page_cache cache_entity cache_menu \
+             cache_page cache_render; do
+        ddev drush sql:query "TRUNCATE TABLE $t" 2>/dev/null || true
+    done
 
     task "Truncating session and log tables..."
-    ddev drush sql:query "TRUNCATE TABLE sessions" 2>/dev/null
-    ddev drush sql:query "TRUNCATE TABLE watchdog" 2>/dev/null
-    ddev drush sql:query "TRUNCATE TABLE flood" 2>/dev/null
+    for t in sessions watchdog flood; do
+        ddev drush sql:query "TRUNCATE TABLE $t" 2>/dev/null || true
+    done
 
+    # ── PII-critical mutation: FAIL-CLOSED on error.
     task "Anonymizing user data..."
-    ddev drush sql:query "UPDATE users_field_data SET mail = CONCAT('user', uid, '@example.com'), name = CONCAT('user', uid) WHERE uid > 1" 2>/dev/null
+    if ! _san_critical_query "UPDATE users_field_data SET mail = CONCAT('user', uid, '@example.com'), name = CONCAT('user', uid) WHERE uid > 1"; then
+        fail "User anonymization query failed — PII may remain (fail-closed)"
+        cd "$original_dir"
+        return 1
+    fi
 
     task "Resetting admin password..."
-    ddev drush upwd admin admin 2>/dev/null
+    if ! ddev drush upwd admin admin >/dev/null 2>&1; then
+        fail "Admin password reset failed (fail-closed)"
+        cd "$original_dir"
+        return 1
+    fi
 
     task "Clearing sensitive config..."
-    ddev drush cdel system.mail --quiet 2>/dev/null
-    ddev drush cdel smtp.settings --quiet 2>/dev/null
+    ddev drush cdel system.mail --quiet 2>/dev/null || true
+    ddev drush cdel smtp.settings --quiet 2>/dev/null || true
+
+    # ── POST-CONDITION assertion: no real emails may survive. A count of user
+    #    rows (uid > 1) whose mail is NOT an @example.com address must be 0. A
+    #    non-numeric result (query failed) is also a failure — fail-closed.
+    task "Verifying no PII remains..."
+    local residual
+    residual=$(ddev drush sql:query \
+        "SELECT COUNT(*) FROM users_field_data WHERE uid > 1 AND mail NOT LIKE '%@example.com'" \
+        2>/dev/null | tr -d '[:space:]')
+    if ! [[ "$residual" =~ ^[0-9]+$ ]]; then
+        fail "Could not verify sanitization (post-condition query failed) — fail-closed"
+        cd "$original_dir"
+        return 1
+    fi
+    if [ "$residual" != "0" ]; then
+        fail "Sanitization incomplete: $residual user row(s) still hold a non-example email (PII remains)"
+        cd "$original_dir"
+        return 1
+    fi
 
     task "Rebuilding cache..."
-    ddev drush cr 2>/dev/null
+    ddev drush cr 2>/dev/null || true
 
-    pass "Database sanitized"
+    pass "Database sanitized (verified: 0 residual PII rows for uid > 1)"
 
     cd "$original_dir"
     return 0

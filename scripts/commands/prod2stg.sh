@@ -18,9 +18,11 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 # canonical.sh: phase decides the sanitize default (P67 §5d);
-# database-router.sh: sanitize_staging_db
+# database-router.sh: sanitize_staging_db;
+# pii-gate.sh: independent fail-closed PII backstop (pii_gate_scan)
 source "$PROJECT_ROOT/lib/canonical.sh"
 source "$PROJECT_ROOT/lib/database-router.sh"
+source "$PROJECT_ROOT/lib/pii-gate.sh"
 
 # Source YAML library
 if [ -f "$PROJECT_ROOT/lib/yaml-write.sh" ]; then
@@ -433,16 +435,18 @@ if should_run_step 4 "$START_STEP" && [ "$DB_ONLY" = false ]; then
 
         # Build SSH options for rsync
         # IdentitiesOnly=yes prevents fail2ban lockouts from key spraying.
-        local rsync_ssh="ssh -o IdentitiesOnly=yes"
+        # NOTE: `local` is invalid outside a function and is FATAL under `set -e`
+        # (these step bodies run at top level, not in a function) — use plain
+        # assignments here.
+        rsync_ssh="ssh -o IdentitiesOnly=yes"
         if echo "$SSH_CONN" | grep -q '\-p'; then
-            local port=$(echo "$SSH_CONN" | grep -o '\-p [0-9]*' | awk '{print $2}')
+            port=$(echo "$SSH_CONN" | grep -o '\-p [0-9]*' | awk '{print $2}')
             rsync_ssh="$rsync_ssh -p $port"
         fi
         if [ -n "$SSH_KEY" ]; then
             rsync_ssh="$rsync_ssh -i $SSH_KEY"
         else
             # Fall back to nwp.yml-resolved key for the site if available.
-            local _key
             _key=$(get_ssh_key "$SITENAME" 2>/dev/null)
             if [ -n "$_key" ] && [ -f "$_key" ]; then
                 rsync_ssh="$rsync_ssh -i $_key"
@@ -450,7 +454,7 @@ if should_run_step 4 "$START_STEP" && [ "$DB_ONLY" = false ]; then
         fi
 
         # Extract user@host (first part before any options)
-        local user_host=$(echo "$SSH_CONN" | cut -d' ' -f1)
+        user_host=$(echo "$SSH_CONN" | cut -d' ' -f1)
 
         # Rsync with SSH
         if rsync -avz --delete \
@@ -487,15 +491,16 @@ if should_run_step 5 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
 
         # Build SCP options
         # IdentitiesOnly=yes prevents fail2ban lockouts from key spraying.
-        local scp_opts="-o IdentitiesOnly=yes"
+        # NOTE: plain assignments — `local` outside a function is FATAL under
+        # `set -e` (this step body runs at top level, not in a function).
+        scp_opts="-o IdentitiesOnly=yes"
         if echo "$SSH_CONN" | grep -q '\-p'; then
-            local port=$(echo "$SSH_CONN" | grep -o '\-p [0-9]*' | awk '{print $2}')
+            port=$(echo "$SSH_CONN" | grep -o '\-p [0-9]*' | awk '{print $2}')
             scp_opts="$scp_opts -P $port"
         fi
         if [ -n "$SSH_KEY" ]; then
             scp_opts="$scp_opts -i $SSH_KEY"
         else
-            local _key
             _key=$(get_ssh_key "$SITENAME" 2>/dev/null)
             if [ -n "$_key" ] && [ -f "$_key" ]; then
                 scp_opts="$scp_opts -i $_key"
@@ -503,7 +508,7 @@ if should_run_step 5 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
         fi
 
         # Extract user@host
-        local user_host=$(echo "$SSH_CONN" | cut -d' ' -f1)
+        user_host=$(echo "$SSH_CONN" | cut -d' ' -f1)
 
         # Export database via SSH
         if ssh $(nwp_ssh_opts "$SITENAME") $SSH_CONN "cd $PROD_PATH && drush sql:dump --gzip --result-file=/tmp/prod_export.sql" && \
@@ -557,6 +562,35 @@ if should_run_step 6 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
                 print_info  "Not continuing silently. Re-run, or drop the stg DB."
                 exit 1
             fi
+
+            # ── Independent fail-closed PII gate (defence in depth) ───────────
+            # sanitize_staging_db mutates the DB in place. Mirror how
+            # server-publish.sh chains sanitize → pii_gate_scan: re-export the
+            # now-sanitized DB to an artifact and scan it with the INDEPENDENT
+            # gate. Any residual PII (or an export/decompress error) ABORTS —
+            # a sanitizer bug must not silently let raw prod PII persist on
+            # the dev/stg tier. (ddev export-db --file=*.sql.gz yields gzip, as
+            # already relied on by lib/database-router.sh download_db_development.)
+            print_info "Running independent PII gate over sanitized DB..."
+            _verify_gz="$(mktemp --suffix=.sql.gz)"
+            cd "$PROJECT_ROOT/sites/$SITENAME" || exit 1
+            if ddev export-db --file="$_verify_gz" >/dev/null 2>&1 && [ -s "$_verify_gz" ]; then
+                cd "$PROJECT_ROOT"
+                if pii_gate_scan "$_verify_gz"; then
+                    print_status "OK" "Independent PII gate passed (re-scan of sanitized DB)"
+                else
+                    _gate_rc=$?
+                    print_error "PII gate FAILED (exit $_gate_rc) — staging DB still holds PII. Aborting (fail-closed)."
+                    rm -f "$_verify_gz"
+                    exit 1
+                fi
+            else
+                cd "$PROJECT_ROOT"
+                print_error "Could not export sanitized DB for the independent PII gate — fail-closed abort."
+                rm -f "$_verify_gz"
+                exit 1
+            fi
+            rm -f "$_verify_gz"
         else
             print_warning "Sanitize SKIPPED (--no-sanitize): staging now holds RAW prod data."
         fi

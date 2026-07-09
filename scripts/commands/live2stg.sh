@@ -18,9 +18,11 @@ source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/ssh.sh"
 # canonical.sh: phase decides the sanitize default (P67 §5d);
-# database-router.sh: sanitize_staging_db
+# database-router.sh: sanitize_staging_db;
+# pii-gate.sh: independent fail-closed PII backstop (pii_gate_scan)
 source "$PROJECT_ROOT/lib/canonical.sh"
 source "$PROJECT_ROOT/lib/database-router.sh"
+source "$PROJECT_ROOT/lib/pii-gate.sh"
 
 # Trap handler to ensure spinners are stopped
 trap 'stop_spinner' EXIT INT TERM
@@ -246,6 +248,35 @@ main() {
             }
             stop_spinner
             print_status "OK" "Database sanitized (PII anonymized, sessions/logs truncated)"
+
+            # ── Independent fail-closed PII gate (defence in depth) ───────────
+            # Mirror server-publish.sh's sanitize → pii_gate_scan chain: export
+            # the now-sanitized DB and re-scan it with the INDEPENDENT gate. Any
+            # residual PII (or an export/decompress error) ABORTS — a sanitizer
+            # bug must not silently let raw live PII persist on the dev/stg tier.
+            local _verify_gz
+            _verify_gz="$(mktemp --suffix=.sql.gz)"
+            start_spinner "Independent PII gate over sanitized DB"
+            cd "$STG_DIR"
+            if ddev export-db --file="$_verify_gz" >/dev/null 2>&1 && [ -s "$_verify_gz" ]; then
+                cd "$PROJECT_ROOT"
+                stop_spinner
+                if pii_gate_scan "$_verify_gz"; then
+                    print_status "OK" "Independent PII gate passed (re-scan of sanitized DB)"
+                else
+                    local _gate_rc=$?
+                    print_error "PII gate FAILED (exit $_gate_rc) — staging DB still holds PII. Aborting (fail-closed)."
+                    rm -f "$_verify_gz"
+                    exit 1
+                fi
+            else
+                cd "$PROJECT_ROOT"
+                stop_spinner
+                print_error "Could not export sanitized DB for the independent PII gate — fail-closed abort."
+                rm -f "$_verify_gz"
+                exit 1
+            fi
+            rm -f "$_verify_gz"
         else
             print_status "INFO" "Sanitize skipped (canonical: $phase, sanitize=$do_sanitize)"
         fi
@@ -260,7 +291,8 @@ main() {
     stop_spinner
 
     print_header "Pull Complete"
-    print_status "OK" "Live pulled to staging: $STG_NAME"
+    # $STG_DIR (was $STG_NAME, an undefined var → fatal under `set -u`).
+    print_status "OK" "Live pulled to staging: $STG_DIR"
     show_elapsed_time
 }
 

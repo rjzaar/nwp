@@ -98,12 +98,35 @@ pii_gate_scan() {
     _pii_gate_load_file "$extra_allow" allow
     local allow_union=""; [ "${#allow[@]}" -gt 0 ] && allow_union=$(IFS='|'; echo "${allow[*]}")
 
-    # Pull candidate lines that match any PII pattern.
-    local candidates rc
+    # ── Decompress-integrity pre-check (FAIL-CLOSED) ──────────────────────────
+    # A truncated or corrupt .gz must NEVER scan clean. The previous code did:
+    #     candidates=$(_pii_gate_cat "$file" | grep …); rc=${PIPESTATUS[0]}
+    # but after a `var=$(pipeline)` assignment, ${PIPESTATUS[0]} reflects the
+    # ASSIGNMENT (i.e. grep's) exit status, not the decompressor's — the pipeline
+    # ran inside a command-substitution subshell. A gunzip failure was therefore
+    # discarded, so a corrupt/truncated .gz scanned CLEAN and PASSED: a fail-OPEN
+    # in the LAST backstop before publish/import. We now validate the entire
+    # compressed stream (CRC32 + ISIZE length) up front, so any decompress
+    # failure returns non-zero here before a single byte is trusted.
+    case "$file" in
+        *.gz)
+            command -v gunzip >/dev/null 2>&1 || {
+                echo "pii_gate_scan: gunzip missing — cannot verify $file" >&2
+                return 2   # fail-closed
+            }
+            if ! gunzip -t -- "$file" 2>/dev/null; then
+                echo "pii_gate_scan: corrupt or truncated gzip — refusing to scan $file" >&2
+                return 2   # fail-closed
+            fi
+            ;;
+    esac
+
+    # Pull candidate lines that match any PII pattern. Stream integrity is
+    # guaranteed by the pre-check above, so grep's own exit status now suffices.
+    local candidates
     candidates=$(_pii_gate_cat "$file" 2>/dev/null | grep -E -- "$union" 2>/dev/null)
-    rc=${PIPESTATUS[0]}
-    if [ "$rc" -eq 2 ] || [ "$candidates" = "__PII_GATE_NO_GUNZIP__" ]; then
-        echo "pii_gate_scan: could not decompress $file (gunzip missing or corrupt)" >&2
+    if [ "$candidates" = "__PII_GATE_NO_GUNZIP__" ]; then
+        echo "pii_gate_scan: could not decompress $file (gunzip missing)" >&2
         return 2   # fail-closed
     fi
     [ -z "$candidates" ] && return 0   # nothing matched any PII pattern → clean

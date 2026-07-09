@@ -1,6 +1,12 @@
 # ADR-0021: Public-Only NWP Repository Scope
 
-**Status:** Proposed
+> **Rejected / Withdrawn (2026-07-09).** Never accepted (stayed Proposed). Its chosen
+> option — a *separate* private `nwp-instances/` repository, cut over by F33 — was
+> abandoned: F33 is superseded and nwc is now the canonical 2.0 tree *in-tree*, so the
+> public/private boundary is enforced by the leakage gate (P61) + role-vocabulary (F34)
+> rather than a repo split. Retained for history.
+
+**Status:** Rejected / Withdrawn (separate-repo option abandoned; F33 superseded, nwc canonical in-tree)
 **Date:** 2026-05-09
 **Decision Makers:** Robert Karsten Zaar
 **Related Issues:** Generic OSS release; per-instance configuration leakage

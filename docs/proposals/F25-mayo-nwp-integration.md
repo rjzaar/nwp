@@ -1,6 +1,6 @@
 # F25: Mayo NWP Integration (repo, fixtures, content lifecycle, CI/CD)
 
-**Status:** PROPOSED
+**Status:** Superseded by [F29](F29-mayo-comprehensive-integration.md) — F29 consolidates and re-sequences all pending mayo work (docs, saintschool, two-tier sanitization, example site) into a single actionable plan. Retained for history.
 **Created:** 2026-04-11
 **Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** High (blocks production deploy of `<mayo-domain>`; blocks sanitized-fixture testing)

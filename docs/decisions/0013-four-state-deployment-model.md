@@ -1,6 +1,13 @@
 # ADR-0013: Four-State Deployment Model (dev/stg/live/prod)
 
-**Status:** Accepted
+> **Superseded by [ADR-0030](0030-per-site-canonical-maturity-axes.md) (2026-07-09).**
+> The shipped model is not four linear states. Code recognises two orthogonal per-site
+> axes — `canonical: dev|live|prod` (content flow, `lib/canonical.sh`, ops#33) and
+> `maturity: incubating|stabilizing|production` (code flow, P67/ops#48) — and **rejects
+> `stg` as a state** (staging is a transient working copy). This record is retained for
+> history; the current model is ADR-0030.
+
+**Status:** Superseded by [ADR-0030](0030-per-site-canonical-maturity-axes.md)
 **Date:** 2025-12-20 (P26), refined 2026-01-05 (P32-P35)
 **Decision Makers:** Robert Karsten Zaar
 **Related Issues:** P26 (Four-State Deployment Workflow), P32-P35 (Live Deployment Automation)

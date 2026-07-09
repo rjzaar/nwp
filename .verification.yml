@@ -13537,6 +13537,106 @@ features:
             expect_exit: 0
       state:
         verified: false
+  doc_truth:
+    name: Documentation-Truth Gate (doc-truth.sh)
+    description: P62 structural documentation-truth gate — asserts every repo-relative
+      markdown link and every ADR-NNNN reference resolves against the tree; baseline-safe
+      (fails only on NEW drift). Wired into CI as lint:doc-truth (ADR-0030).
+    files:
+    - scripts/commands/doc-truth.sh
+    checklist:
+    - text: Verify the doc-truth gate passes against the current tree (no new drift)
+      completed: false
+      completed_by: null
+      completed_at: null
+      how_to_verify: '1. Run: pl doc-truth
+
+        2. Confirm it reports "no new drift" and exits 0 (pre-existing rot is captured
+        in .doc-truth-baseline).
+
+        3. Run: pl doc-truth --json and confirm valid JSON with "new":0.
+
+        4. Introduce a bogus [link](docs/nope.md) in a scratch doc and confirm pl
+        doc-truth now exits 1 and names it.
+
+        Success: gate passes clean on the tree, machine-readable summary works, and a
+        planted dead link is caught.'
+      related_docs:
+      - docs/decisions/0030-per-site-canonical-maturity-axes.md
+      machine:
+        automatable: true
+        checks:
+          basic:
+            commands:
+            - cmd: bash -n scripts/commands/doc-truth.sh
+              expect_exit: 0
+              timeout: 10
+          standard:
+            commands:
+            - cmd: bash -n scripts/commands/doc-truth.sh
+              expect_exit: 0
+              timeout: 10
+            - cmd: pl doc-truth --json 2>/dev/null | grep -qE '"new":[0-9]+'
+              expect_exit: 0
+              timeout: 30
+          thorough:
+            commands:
+            - cmd: bash -n scripts/commands/doc-truth.sh
+              expect_exit: 0
+              timeout: 10
+            - cmd: pl doc-truth --json 2>/dev/null | grep -qE '"new":[0-9]+'
+              expect_exit: 0
+              timeout: 30
+            - cmd: pl doc-truth
+              expect_exit: 0
+              timeout: 60
+          paranoid:
+            commands:
+            - cmd: bash -n scripts/commands/doc-truth.sh
+              expect_exit: 0
+              timeout: 10
+            - cmd: pl doc-truth
+              expect_exit: 0
+              timeout: 60
+        state:
+          verified: false
+          verified_at: null
+          depth: null
+          duration_seconds: 0
+    verified: false
+    verified_by: null
+    verified_at: null
+    file_hash: null
+    notes: null
+    machine:
+      automatable: true
+      checks:
+        basic:
+          commands:
+          - cmd: test -f scripts/commands/doc-truth.sh
+            expect_exit: 0
+            timeout: 5
+          - cmd: bash -n scripts/commands/doc-truth.sh
+            expect_exit: 0
+            timeout: 10
+        standard:
+          commands:
+          - cmd: bash -n scripts/commands/doc-truth.sh
+            expect_exit: 0
+          - cmd: pl doc-truth --help 2>&1 | grep -qiE '(usage|doc-truth|drift)'
+            expect_exit: 0
+        thorough:
+          commands:
+          - cmd: pl doc-truth
+            expect_exit: 0
+            timeout: 60
+        paranoid:
+          commands:
+          - cmd: pl doc-truth
+            expect_exit: 0
+            timeout: 60
+      state:
+        verified: false
   verify:
     name: Feature Verification (verify.sh)
     description: NWP feature verification tracking with interactive TUI console

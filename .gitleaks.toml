@@ -144,7 +144,7 @@ description = "Live internal domain leak (subdomains of operator domains)"
 regex = '''\b[a-z0-9_-]+\.(nwpcode\.org|mayostudios\.org)\b'''
 tags = ["leak", "domain"]
 
-[rules.allowlist]
+[[rules.allowlists]]
 description = "Bare domain mentions in the format <subdomain>.<example-prod-domain> placeholders or known-public subdomains the operator does want to reference."
 regexes = [
   '''<gitlab-host>''',
@@ -152,4 +152,20 @@ regexes = [
   '''<mayo-domain>''',
   '''<coder-domain>''',
   '''<headscale-host>''',
+]
+
+# Public GitLab project URLs on the git host (git.nwpcode.org) are not
+# site-subdomain leaks — they are public issue / MR / source links. Scoped
+# narrowly to the GitLab `/-/(issues|merge_requests|blob|tree)/` path form
+# on the git host only, matched against the whole line. A bare site
+# subdomain (e.g. avc.nwpcode.org) is NOT on the git host and lacks the
+# `/-/.../` path, so it still fires — even avc.nwpcode.org/-/issues/1 is
+# not suppressed because the host is not git.nwpcode.org. (Decision 14,
+# 2026-07-09: docs commits kept tripping this rule on legitimate issue/MR
+# links and had to use --no-verify.)
+[[rules.allowlists]]
+description = "Public git.nwpcode.org GitLab issue/MR/blob/tree URLs (public project links, not subdomain leaks)."
+regexTarget = "line"
+regexes = [
+  '''git\.nwpcode\.org/[\w./-]+/-/(issues|merge_requests|blob|tree)/''',
 ]

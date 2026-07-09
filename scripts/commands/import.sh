@@ -315,7 +315,7 @@ run_non_interactive() {
 
     # List sites
     for site_json in "${DISCOVERED_SITES[@]}"; do
-        eval "$(parse_site_json "$site_json")"
+        parse_site_json "$site_json"
         echo "  - $SITE_NAME ($SITE_VERSION) DB: $SITE_DB_SIZE MB, Files: $SITE_FILES_SIZE"
     done
 
@@ -331,7 +331,7 @@ run_non_interactive() {
         for ((i = 0; i < ${#DISCOVERED_SITES[@]}; i++)); do
             SELECTED_SITES+=($i)
 
-            eval "$(parse_site_json "${DISCOVERED_SITES[$i]}")"
+            parse_site_json "${DISCOVERED_SITES[$i]}"
 
             # Set options for each site
             IMPORT_OPTIONS["${SITE_NAME}:sanitize"]="$OPT_SANITIZE"
@@ -409,7 +409,7 @@ run_interactive() {
     while IFS= read -r site_json; do
         if [ -n "$site_json" ]; then
             DISCOVERED_SITES+=("$site_json")
-            eval "$(parse_site_json "$site_json")"
+            parse_site_json "$site_json"
             DISCOVERED_SITE_NAMES+=("$SITE_NAME")
         fi
     done < <(scan_server_for_sites "$SELECTED_SSH_HOST" "$SELECTED_SSH_KEY")

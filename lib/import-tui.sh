@@ -289,7 +289,7 @@ select_sites_to_import() {
         local selected_count=0
 
         for site_json in "${DISCOVERED_SITES[@]}"; do
-            eval "$(parse_site_json "$site_json")"
+            parse_site_json "$site_json"
 
             # Checkbox state
             local checkbox="[ ]"
@@ -537,7 +537,7 @@ configure_import_options() {
                 read -p "Apply these options to all selected sites? [Y/n]: " confirm
                 if [[ ! "$confirm" =~ ^[Nn]$ ]]; then
                     for site_idx in "${SELECTED_SITES[@]}"; do
-                        eval "$(parse_site_json "${DISCOVERED_SITES[$site_idx]}")"
+                        parse_site_json "${DISCOVERED_SITES[$site_idx]}"
                         local other_name="$SITE_NAME"
                         if [ "$other_name" != "$site_name" ]; then
                             for opt in "${IMPORT_OPTION_ORDER[@]}"; do
@@ -566,7 +566,7 @@ configure_import_options() {
 # Usage: configure_all_import_options
 configure_all_import_options() {
     for site_idx in "${SELECTED_SITES[@]}"; do
-        eval "$(parse_site_json "${DISCOVERED_SITES[$site_idx]}")"
+        parse_site_json "${DISCOVERED_SITES[$site_idx]}"
         if ! configure_import_options "$SITE_NAME"; then
             return 1
         fi
@@ -589,7 +589,7 @@ confirm_import() {
     echo ""
 
     for site_idx in "${SELECTED_SITES[@]}"; do
-        eval "$(parse_site_json "${DISCOVERED_SITES[$site_idx]}")"
+        parse_site_json "${DISCOVERED_SITES[$site_idx]}"
 
         echo -e "  ┌─────────────────────────────────────────────────────────────────┐"
         echo -e "  │ ${BOLD}$SITE_NAME${NC}"

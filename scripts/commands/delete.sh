@@ -317,6 +317,14 @@ remove_site_directory() {
 
     print_header "Remove Site Directory"
 
+    # Non-empty floor applies in BOTH modes. --force relaxes the character policy
+    # (so invalid-but-non-empty names can be cleaned up) but must NEVER bypass the
+    # empty-name check, which would resolve to `rm -rf $PROJECT_ROOT/sites/`.
+    if [[ -z "$sitename" ]]; then
+        print_error "Refusing to remove site directory: empty site name (not bypassable with --force)"
+        return 1
+    fi
+
     if [[ "$force" != "true" ]]; then
         if ! validate_sitename "$sitename" "site directory"; then
             print_info "Tip: Use --force flag to delete sites with invalid names"
@@ -326,7 +334,7 @@ remove_site_directory() {
         print_warning "Force mode: skipping name validation for cleanup"
     fi
 
-    local site_dir="$PROJECT_ROOT/sites/$sitename"
+    local site_dir="${PROJECT_ROOT:?PROJECT_ROOT required}/sites/${sitename:?sitename required}"
     local dir_size=$(du -sh "$site_dir" 2>/dev/null | awk '{print $1}')
 
     if rm -rf "$site_dir" 2>/dev/null; then

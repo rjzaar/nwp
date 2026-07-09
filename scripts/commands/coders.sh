@@ -205,7 +205,9 @@ check_gitlab_ssh() {
 # Get base domain (works with or without yq)
 get_base_domain_for_check() {
     if command -v yq &>/dev/null; then
-        get_base_domain_for_check
+        local result
+        result=$(yq eval '.settings.url // ""' "$CONFIG_FILE" 2>/dev/null | grep -v '^null$')
+        echo "${result:-nwpcode.org}"
     else
         local result=$(awk '
             /^settings:/ { in_section = 1; next }

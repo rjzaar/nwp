@@ -1101,10 +1101,13 @@ live_delete() {
             local gitlab_host="git.${base_domain}"
             print_info "Removing site from shared server..."
 
+            # Non-empty floor: an empty sitename here would send `rm -rf /var/www/`
+            # to the remote. The heredoc is unquoted, so ${sitename:?} is expanded
+            # locally and aborts the command before any remote deletion runs.
             ssh $(nwp_ssh_opts "$sitename") "gitlab@${gitlab_host}" << REMOTE || true
-sudo rm -f /etc/nginx/sites-enabled/${sitename}
-sudo rm -f /etc/nginx/sites-available/${sitename}
-sudo rm -rf /var/www/${sitename}
+sudo rm -f /etc/nginx/sites-enabled/${sitename:?sitename required}
+sudo rm -f /etc/nginx/sites-available/${sitename:?sitename required}
+sudo rm -rf /var/www/${sitename:?sitename required}
 sudo nginx -t && sudo systemctl reload nginx
 echo "Site removed"
 REMOTE

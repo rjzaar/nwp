@@ -16,6 +16,19 @@
 > capability agent; renumbered from a duplicate ADR-0024 — lands with MR !28),
 > ADR-0022 (AI-free build split).
 
+> **⚠ AMENDED BY [ADR-0028](../decisions/0028-ver-single-operator-human-gated-workstation.md) (2026-07-09).**
+> ver is now a **single-operator desktop workstation running the full `pl`
+> surface**, with **browser-based AI allowed** (read-only, human-gated — **no live
+> AI agent / loop / MCP on the box**). This supersedes §2's "minimal server / no
+> desktop / no browser" posture. Hardware is **two WebAuthn tokens — Solo W + Solo
+> W2 (backup)** — *not* the Solo K/W split in §4; the **Solo K keystore + restic
+> DR-backup half (§4-Solo-K, §5, §8) is DEFERRED** (a separate DR capability, not
+> needed to deploy). Per-deploy authorization is an **SSH `ed25519-sk` Solo touch**
+> (`lib/deploy-gate.sh`); minisign is retained only for the one-time kit bootstrap.
+> **Deploy-half fast path:** §1 + §3 (kit) + only the **Solo W** part of §4 + the
+> linchpin sweep — skip §4-Solo-K, §5, §8. Operator walkthrough:
+> [`ver-soloW-setup-walkthrough.md`](ver-soloW-setup-walkthrough.md).
+
 ---
 
 ## 0. What's AI-prepared vs. what needs your hands
@@ -72,9 +85,12 @@ signature per restic's docs). The kit build fails closed without pins.
 
 ## 2. On `ver` — base OS + posture  *(OPERATOR)*
 
-- [ ] Minimal current Debian/Ubuntu server install, full-disk encryption,
-      strong local password. No desktop, no browser profile, no password
-      manager, **no AI tooling of any kind**.
+- [ ] Current Ubuntu/Debian install, **full-disk encryption** (LUKS; ideally
+      Solo-touch unlock via `systemd-cryptenroll --fido2-device`). **Per ADR-0028 a
+      desktop is fine** (operator workstation) and a **browser is permitted** for
+      reference/AI — but **no live AI agent, loop, or MCP server** ever runs on the
+      box, and the full `pl` checkout is expected (`cd ~/nwp`). ("No AI on ver" =
+      no AI *process with a shell*, not "no browser".)
 - [ ] Create the working user; sshd **disabled or not installed** (nothing
       dials into `ver` — all its connections are outbound).
 - [ ] **No mesh/tailnet client** (see the §0 warning). Network default-off:
@@ -107,11 +123,18 @@ is trust-on-first-use for the key. Close the loop by comparing the key ID with
 the one on `build-host` (`minisign -V` prints it) over a second channel — read
 it off the other screen; the key is public, only its *authenticity* matters.
 
-## 4. Solo enrollment checklist  *(OPERATOR + HARDWARE — the whole section)*
+## 4. Solo enrollment checklist  *(OPERATOR + HARDWARE)*
 
-Two Solo 2-class tokens with **distinct jobs — never cross-enroll them**:
+> **ADR-0028 (2026-07-09) supersedes the K/W split below.** Both tokens are now
+> **WebAuthn** tokens: **Solo W** (primary carry) + **Solo W2** (independently
+> enrolled backup — FIDO2 keys can't be cloned, so register W2 *separately* on
+> GitLab, it is not a copy). Do the **Solo W** subsection for *both* (label the
+> second `W2`). The **Solo K keystore** subsection is **DEFERRED** with the
+> DR-backup half — skip it unless/until you set up restic backups. If you already
+> part-built Solo K, **factory-reset it** and re-enrol it as Solo W. Full operator
+> steps: [`ver-soloW-setup-walkthrough.md`](ver-soloW-setup-walkthrough.md).
 
-### Solo K — the keystore token (stays with `ver`)
+### Solo K — the keystore token (stays with `ver`)  *(DEFERRED per ADR-0028 — skip for the deploy-half fast path)*
 
 - [ ] Physically label it `K` (tape/engrave).
 - [ ] Set a FIDO2 PIN (8+ digits, in the vault):

@@ -7,6 +7,14 @@
 > **Status:** setup kit ready; mons not yet provisioned (see "Current gaps").
 > The feature ships **OFF by default** — nothing in this guide changes `nwp`/`pl`
 > behaviour until you opt in.
+>
+> **Posture ([ADR-0028](../decisions/0028-ver-single-operator-human-gated-workstation.md), 2026-07-09):**
+> running the full `pl` on this host via `cd ~/nwp` is **intended**, not a gap — the
+> `ver` host is a single-operator **desktop** workstation with full `pl` + browser-AI
+> (no live AI agent on the box). It is also **deliberately off the tailnet/mesh**
+> (ops#25, 2026-07-03): its only connectivity is outbound HTTPS to the GitLab host +
+> the per-session 1:1 WireGuard tunnel. Where "Current gaps" frames "not on the
+> tailnet" as a gap, read it as **by design**.
 
 ## What "run nwp on mons AI-free" means
 
@@ -110,10 +118,11 @@ operator has actually agreed to auto-logging.
 
 ## Current gaps (as of this kit)
 
-- **mons is not yet provisioned / not on the tailnet.** These steps are ready to
-  run but assume mons exists with the nwp checkout, `curl`, and outbound network
-  to `$NWP_GITLAB_HOST`. See `docs/guides/verifier-mayo-bootstrap.md` and
-  `docs/guides/verifier-operations.md` for the host bootstrap.
+- **The `ver` host is not yet provisioned.** These steps assume it exists with the
+  nwp checkout, `curl`, and outbound network to `$NWP_GITLAB_HOST`. It is **off the
+  tailnet by design** (ADR-0028 / ops#25) — not a gap. See
+  `docs/guides/verifier-mayo-bootstrap.md` and `docs/guides/verifier-operations.md`
+  for the host bootstrap.
 - **`verify.sh` and `verifier-say` are NOT in the signed `nwp-server` artifact by
   default.** They are now **deny-clean** (they pass `pl build-server
   --scan-only`), so they *can* be added to `build/nwp-server.include` — but

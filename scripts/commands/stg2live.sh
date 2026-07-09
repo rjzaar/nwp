@@ -30,6 +30,9 @@ source "$PROJECT_ROOT/lib/ssh.sh"
 source "$PROJECT_ROOT/lib/rollback.sh"
 # canonical.sh: canonicality-phase content-flow guards (nwp/ops#33)
 source "$PROJECT_ROOT/lib/canonical.sh"
+# deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op unless
+# configured (ver) — the AI test tier (A14) is unaffected.
+source "$PROJECT_ROOT/lib/deploy-gate.sh"
 
 # Source install-common for get_settings_value
 if [ -f "$PROJECT_ROOT/lib/install-common.sh" ]; then
@@ -1395,6 +1398,14 @@ main() {
     fi
     if ! canonical_enforce_branch_policy "$BASE_NAME" "deploy"; then
         exit 1
+    fi
+
+    # Hardware+signature gate on the live write (ADR-0028). No-op on the test
+    # tier (unconfigured); on ver it requires a live Solo touch. Skipped for
+    # a dry run (nothing is written).
+    if [ "${DRY_RUN:-false}" != "true" ]; then
+        deploy_gate_require "$BASE_NAME" "live" \
+            "rsync files → live webroot (--delete); DB push unless --code-only" || exit 1
     fi
 
     # Export for use in deploy function

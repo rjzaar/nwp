@@ -17,6 +17,9 @@ source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 # canonical.sh: canonicality-phase content-flow guards (nwp/ops#33)
 source "$PROJECT_ROOT/lib/canonical.sh"
+# deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op unless
+# configured (ver) — the AI test tier (A14) is unaffected.
+source "$PROJECT_ROOT/lib/deploy-gate.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -322,6 +325,13 @@ main() {
     fi
 
     print_header "Live to Production Deployment: $BASE_NAME"
+
+    # Hardware+signature gate on the production write (ADR-0028). No-op on the
+    # test tier (unconfigured); on ver it requires a live Solo touch.
+    if [ "${DRY_RUN:-false}" != "true" ]; then
+        deploy_gate_require "$BASE_NAME" "prod" \
+            "push live → production (files + DB)" || exit 1
+    fi
 
     # Validate configuration
     if ! validate_deployment "$BASE_NAME"; then

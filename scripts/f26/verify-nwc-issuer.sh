@@ -5,11 +5,22 @@
 #
 # Checks:
 #   1. JWKS is served and contains at least one key (=> signing keys registered).
-#   2. /oauth/userinfo rejects an unauthenticated request with 401 (=> not open,
-#      no anonymous shortcut).
+#   2. /oauth/userinfo (now served by the NATIVE simple_oauth endpoint after F26
+#      rec (a) removed the custom nwc_moodle_oauth controller) rejects an
+#      unauthenticated request: a no-token request is bounced to login (3xx) and
+#      an INVALID bearer token gets 401 — i.e. not open, no anonymous shortcut,
+#      no claim leak.
 #   3. /oauth/authorize responds (302/200/400 — i.e. the route exists and runs,
 #      not a 404) to a well-formed authorization-code request for our client.
 #   4. The ss_moodle consumer exists, is confidential, and has PKCE required.
+#   5. OIDC discovery (F26 rec (b)): /.well-known/openid-configuration serves
+#      valid metadata with issuer, jwks_uri and the authz/token/userinfo
+#      endpoints (=> Moodle can auto-configure instead of hand-entering URLs).
+#
+# For a positive proof that the native userinfo returns the expected claims
+# (including the guild claims) for a VALID token, see the companion script
+# scripts/f26/verify-native-userinfo.sh (that one mints a short-lived dev token
+# and is therefore NOT read-only).
 #
 # Usage: scripts/f26/verify-nwc-issuer.sh [ddev-project-dir]
 set -uo pipefail
@@ -34,9 +45,20 @@ else
   no "JWKS missing/empty -> keys not registered (run provision-nwc-issuer.sh)"
 fi
 
-# 2. userinfo unauthenticated -> 401
+# 2a. userinfo with NO token -> rejected (native endpoint bounces cookie-anon to
+#     login: 3xx/403/401). Must NOT be 200 (that would mean it served claims).
+BODY_ANON="$(ddev exec curl -sk -H "Host: $HOST" "https://localhost/oauth/userinfo" 2>/dev/null)"
 CODE="$(ddev exec curl -sk -o /dev/null -w '%{http_code}' -H "Host: $HOST" "https://localhost/oauth/userinfo" 2>/dev/null)"
-[[ "$CODE" == "401" ]] && ok "userinfo rejects anonymous (401)" || no "userinfo returned $CODE (expected 401 — auth surface must not be open)"
+if [[ "$CODE" != "200" ]] && ! echo "$BODY_ANON" | grep -q '"sub"'; then
+  ok "userinfo rejects no-token request (HTTP $CODE, no claims served)"
+else
+  no "userinfo served content to an anonymous request (HTTP $CODE) — auth surface must not be open"
+fi
+
+# 2b. userinfo with an INVALID bearer token -> 401 (OIDC-correct rejection).
+BADTOK="not.a.valid.token"
+CODE="$(ddev exec curl -sk -o /dev/null -w '%{http_code}' -H "Host: $HOST" -H "Authorization: Bearer $BADTOK" "https://localhost/oauth/userinfo" 2>/dev/null)"
+[[ "$CODE" == "401" ]] && ok "userinfo rejects an invalid bearer token (401)" || no "userinfo returned $CODE for an invalid token (expected 401)"
 
 # 3. authorize route runs (not 404)
 AUTHZ="/oauth/authorize?response_type=code&client_id=ss_moodle&redirect_uri=https%3A%2F%2Fss-dev.ddev.site%2Fadmin%2Foauth2callback.php&scope=openid%20email%20profile&state=x&code_challenge=abc&code_challenge_method=S256"
@@ -57,6 +79,18 @@ if echo "$INFO" | grep -q 'pkce=1' && echo "$INFO" | grep -q 'conf=1'; then
   ok "ss_moodle consumer is confidential + PKCE required"
 else
   no "ss_moodle consumer missing/weak ($INFO)"
+fi
+
+# 5. OIDC discovery (.well-known/openid-configuration) — F26 rec (b).
+DISCO="$(ddev exec curl -sk -H "Host: $HOST" "https://localhost/.well-known/openid-configuration" 2>/dev/null)"
+missing=""
+for key in '"issuer"' '"jwks_uri"' '"authorization_endpoint"' '"token_endpoint"' '"userinfo_endpoint"'; do
+  echo "$DISCO" | grep -q "$key" || missing="$missing ${key//\"/}"
+done
+if echo "$DISCO" | grep -q '"issuer"' && [ -z "$missing" ]; then
+  ok "discovery serves openid-configuration (issuer + jwks_uri + authz/token/userinfo endpoints)"
+else
+  no "discovery missing/incomplete (absent:${missing:- none but issuer not found}) — is simple_oauth_server_metadata enabled?"
 fi
 
 echo "== $pass passed, $fail failed =="

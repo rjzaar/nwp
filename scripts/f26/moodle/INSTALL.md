@@ -14,10 +14,14 @@ Run once against the Drupal issuer:
 
 ```bash
 scripts/f26/provision-nwc-issuer.sh            # registers keys + ss_moodle client
-scripts/f26/verify-nwc-issuer.sh               # 4/4 endpoints OK
+scripts/f26/verify-nwc-issuer.sh               # 6/6 (endpoints + anon-gate + discovery)
+scripts/f26/verify-native-userinfo.sh          # 3/3 (native userinfo returns claims + guilds)
 ```
 
-Note the printed endpoints and the client secret file
+The nwc issuer also has OIDC discovery enabled (F26 rec b — the
+`simple_oauth_server_metadata` module from `e0ipso/simple_oauth_21`), so
+`https://nwc-dev.ddev.site/.well-known/openid-configuration` serves the full
+provider metadata. Note the client secret file
 `scripts/f26/.f26-moodle-client-secret` (gitignored — copy by hand).
 
 ## 1. Install the plugin
@@ -40,23 +44,36 @@ Site admin > Server > **OAuth 2 services** > *Create new custom service*:
 | Scopes included | `openid email profile` |
 | This service will be used | *Login page and internal* |
 
-Then set the endpoints (simple_oauth 6.1.1 core does **not** serve
-`.well-known/openid-configuration`, so enter them manually):
+**Prefer auto-discovery (F26 rec b).** The nwc issuer now serves
+`/.well-known/openid-configuration`, so let Moodle discover the endpoints
+instead of hand-entering them:
+
+- Set **Service base URL** to `https://nwc-dev.ddev.site` and save. Moodle's
+  OAuth2 issuer discovery (`\core\oauth2\api::discover_endpoints()`) fetches
+  `<base>/.well-known/openid-configuration` and auto-populates the
+  authorization, token, userinfo and JWKS endpoints. Confirm they were filled
+  in under the issuer's **Endpoints** after saving.
+
+Manual entry remains available as a fallback (e.g. if discovery is blocked):
 
 | Endpoint | URL |
 |---|---|
 | Authorization | `https://nwc-dev.ddev.site/oauth/authorize` |
 | Token | `https://nwc-dev.ddev.site/oauth/token` |
 | Userinfo | `https://nwc-dev.ddev.site/oauth/userinfo` |
-| JWKS / discovery | `https://nwc-dev.ddev.site/.well-known/jwks.json` |
+| JWKS | `https://nwc-dev.ddev.site/.well-known/jwks.json` |
+| Discovery | `https://nwc-dev.ddev.site/.well-known/openid-configuration` |
 
 Configure user-field mappings: `sub → idnumber`, `email → email`,
 `given_name → firstname`, `family_name → lastname`. The `sub → idnumber`
 mapping is what makes the UID-lock durable. Note the numeric **issuer id**.
 
-> To get auto-discovery instead of manual endpoints, add the
-> `simple_oauth_server_metadata` submodule on the nwc side (composer). Left out
-> here to avoid an un-reviewed dependency add (CLAUDE.md red flag).
+> Discovery is provided by the `simple_oauth_server_metadata` module (submodule
+> of `e0ipso/simple_oauth_21`). It is **not** on packages.drupal.org, so it is
+> installed via a git VCS composer repo pinned to a tag — see the F26 review
+> report §Discovery. Same maintainer as `simple_oauth` itself. For non-dev
+> environments, mirror it into `git.<gitlab-host>` per the NWP threat model rather
+> than pulling from GitHub at deploy time.
 
 ## 3. Enable + point the plugin at the issuer
 

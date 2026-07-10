@@ -58,6 +58,7 @@ Proposed → Accepted → [Deprecated | Superseded]
 | [0026](0026-nwp-server-capability-agent.md) | The `nwp-server` AI-free capability agent | 2026-06-28 | Accepted (renumbered from a duplicate 0024, 2026-07-02); field-validated 2026-07-02 (nwp/ops#23), `publish` verb defect resolved 2026-07-02 |
 | [0027](0027-unified-course-content-architecture.md) | Unified course-content architecture (one canonical model, federation by overlay, trust-ceremony spectrum) | 2026-07-08 | Accepted 2026-07-09. **Supersedes F30** (specifics), **amends P70** (attribution → member-level/CC0); ops#61 canonical + `adaptations/<member>/` overlays + signed provenance |
 | [0028](0028-ver-single-operator-human-gated-workstation.md) | ver as a single-operator, human-gated desktop workstation | 2026-07-09 | Accepted. Amends 0017/0026 (ver *operating posture* only); ver runs full `pl` on a desktop, browser-AI allowed, **no live AI execution on the box**; prod-writes hardware+signature-gated; Solo **W/W2**; DR-backup half deferred |
+| [0031](0031-paired-site-versioning-and-promotion.md) | Paired-site versioning & promotion — five planes, versioned pair contract, provider-first ordering | 2026-07-10 | Accepted |
 
 ## Rejected Proposals
 

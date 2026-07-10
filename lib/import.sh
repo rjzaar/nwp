@@ -575,7 +575,7 @@ import_selected_sites() {
     for site_idx in "${SELECTED_SITES[@]}"; do
         ((current++))
 
-        eval "$(parse_site_json "${DISCOVERED_SITES[$site_idx]}")"
+        parse_site_json "${DISCOVERED_SITES[$site_idx]}"
 
         local local_name=$(get_local_site_name "$SITE_NAME")
         local start_time=$(date +%s)

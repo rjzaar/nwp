@@ -457,6 +457,13 @@ cleanup_test_site() {
     local prefix="$1"
     local preserve="${2:-$VERIFY_PRESERVE_ON_FAILURE}"
 
+    # Non-empty floor: never let an empty prefix or root turn a targeted cleanup
+    # into `rm -rf <root>/sites/` (or similar). Fail loudly rather than delete broadly.
+    if [[ -z "$prefix" || -z "${VERIFY_PROJECT_ROOT:-}" ]]; then
+        verify_log "ERROR" "cleanup_test_site: refusing to run with empty prefix or VERIFY_PROJECT_ROOT"
+        return 1
+    fi
+
     verify_log "INFO" "Cleaning up test site: $prefix (preserve_on_failure=$preserve)"
 
     # Stop DDEV
@@ -474,17 +481,17 @@ cleanup_test_site() {
 
     # Remove site directory
     if [[ -d "$VERIFY_PROJECT_ROOT/sites/$prefix" ]]; then
-        rm -rf "$VERIFY_PROJECT_ROOT/sites/$prefix"
+        rm -rf "${VERIFY_PROJECT_ROOT:?}/sites/${prefix:?}"
         verify_log "INFO" "Removed site directory: sites/$prefix"
     fi
 
     # Remove backups (F23 Phase 4: new location + legacy fallback)
     if [[ -d "$VERIFY_PROJECT_ROOT/sites/$prefix/backups" ]]; then
-        rm -rf "$VERIFY_PROJECT_ROOT/sites/$prefix/backups"
+        rm -rf "${VERIFY_PROJECT_ROOT:?}/sites/${prefix:?}/backups"
         verify_log "INFO" "Removed backup directory: sites/$prefix/backups"
     fi
     if [[ -d "$VERIFY_PROJECT_ROOT/sitebackups/$prefix" ]]; then
-        rm -rf "$VERIFY_PROJECT_ROOT/sitebackups/$prefix"
+        rm -rf "${VERIFY_PROJECT_ROOT:?}/sitebackups/${prefix:?}"
         verify_log "INFO" "Removed legacy backup directory: sitebackups/$prefix"
     fi
 

@@ -102,17 +102,28 @@ check_drupal_security() {
 
     local updates_found=0
 
-    # Check with drush
+    # Check with drush.
+    # IMPORTANT: `drush pm:security` EXITS NON-ZERO when advisories exist. We must
+    # capture output+rc ONCE and classify three states, never re-run and never treat
+    # a non-zero exit as "clean". Three states:
+    #   rc == 0                         -> clean (no advisories)
+    #   rc != 0 with advisory content   -> vulnerable (fail, updates_found=1)
+    #   rc != 0 without advisory content-> UNKNOWN (fail loud, return non-zero)
     print_info "Checking Drupal security advisories..."
-    if ddev drush pm:security 2>/dev/null; then
-        if ddev drush pm:security 2>&1 | grep -qE "(SECURITY UPDATE|SA-)"; then
-            print_warning "Security updates available!"
-            updates_found=1
-        else
-            print_status "OK" "No Drupal security updates"
-        fi
+    local drush_output drush_rc
+    drush_output=$(ddev drush pm:security 2>&1)
+    drush_rc=$?
+
+    if [ $drush_rc -eq 0 ]; then
+        print_status "OK" "No Drupal security updates"
+    elif echo "$drush_output" | grep -qE "(SECURITY UPDATE|SA-|advisor)"; then
+        print_warning "Security updates available!"
+        updates_found=1
     else
-        print_warning "Could not run drush pm:security"
+        print_error "Could not determine Drupal security status (drush pm:security failed with no advisory output)"
+        [ -n "$drush_output" ] && print_info "$drush_output"
+        cd - > /dev/null
+        return 2
     fi
 
     cd - > /dev/null
@@ -136,17 +147,28 @@ check_composer_security() {
 
     local issues_found=0
 
-    # Use composer audit
+    # Use composer audit.
+    # IMPORTANT: `composer audit` EXITS NON-ZERO when vulnerabilities exist. Capture
+    # output+rc ONCE and classify three states; never re-run and never treat a
+    # non-zero exit as "clean":
+    #   rc == 0                          -> clean
+    #   rc != 0 with advisory content    -> vulnerable (fail, issues_found=1)
+    #   rc != 0 without advisory content -> UNKNOWN (fail loud, return non-zero)
     print_info "Running composer audit..."
-    if ddev composer audit 2>&1; then
-        if ddev composer audit 2>&1 | grep -q "Found"; then
-            print_warning "Composer vulnerabilities found!"
-            issues_found=1
-        else
-            print_status "OK" "No Composer vulnerabilities"
-        fi
+    local audit_output audit_rc
+    audit_output=$(ddev composer audit 2>&1)
+    audit_rc=$?
+
+    if [ $audit_rc -eq 0 ]; then
+        print_status "OK" "No Composer vulnerabilities"
+    elif echo "$audit_output" | grep -qiE "(found|advisor|CVE|GHSA)"; then
+        print_warning "Composer vulnerabilities found!"
+        issues_found=1
     else
-        print_warning "Could not run composer audit"
+        print_error "Could not determine Composer security status (composer audit failed with no advisory output)"
+        [ -n "$audit_output" ] && print_info "$audit_output"
+        cd - > /dev/null
+        return 2
     fi
 
     cd - > /dev/null

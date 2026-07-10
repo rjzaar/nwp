@@ -134,23 +134,31 @@ scan_server_for_sites() {
 REMOTE_SCAN_SCRIPT
 }
 
-# Parse JSON site data into bash variables
-# Usage: eval "$(parse_site_json "$json_line")"
+# Parse JSON site data into bash variables.
+#
+# Usage: parse_site_json "$json_line"   (then read $SITE_NAME, $SITE_DIR, ...)
+#
+# SECURITY: This data originates from REMOTE, scanned directory names, so it is
+# untrusted. It must NEVER be passed through `eval`. This function assigns the
+# SITE_* variables directly in the caller's scope (via `declare -g`) — the values
+# are captured as literal text by command substitution and never interpreted as
+# shell code. Do not reintroduce the old "echo KEY=VALUE" + eval pattern.
 parse_site_json() {
     local json="$1"
 
-    # Extract values using grep/sed (avoids jq dependency)
-    echo "SITE_NAME=$(echo "$json" | grep -oP '"name":"\K[^"]+')"
-    echo "SITE_DIR=$(echo "$json" | grep -oP '"site_dir":"\K[^"]+')"
-    echo "SITE_WEBROOT=$(echo "$json" | grep -oP '"webroot":"\K[^"]+')"
-    echo "SITE_WEBROOT_NAME=$(echo "$json" | grep -oP '"webroot_name":"\K[^"]+')"
-    echo "SITE_VERSION=$(echo "$json" | grep -oP '"version":"\K[^"]+')"
-    echo "SITE_DRUPAL_MAJOR=$(echo "$json" | grep -oP '"drupal_major":"\K[^"]+')"
-    echo "SITE_DB_SIZE=$(echo "$json" | grep -oP '"db_size_mb":"\K[^"]+')"
-    echo "SITE_FILES_SIZE=$(echo "$json" | grep -oP '"files_size":"\K[^"]+')"
-    echo "SITE_PRIVATE_SIZE=$(echo "$json" | grep -oP '"private_size":"\K[^"]+')"
-    echo "SITE_HAS_DRUSH=$(echo "$json" | grep -oP '"has_drush":"\K[^"]+')"
-    echo "SITE_IS_CONFIGURED=$(echo "$json" | grep -oP '"is_configured":"\K[^"]+')"
+    # Extract values using grep (avoids jq dependency). Each assignment is a plain
+    # variable assignment of literal text — no code execution path.
+    declare -g SITE_NAME="$(echo "$json" | grep -oP '"name":"\K[^"]+')"
+    declare -g SITE_DIR="$(echo "$json" | grep -oP '"site_dir":"\K[^"]+')"
+    declare -g SITE_WEBROOT="$(echo "$json" | grep -oP '"webroot":"\K[^"]+')"
+    declare -g SITE_WEBROOT_NAME="$(echo "$json" | grep -oP '"webroot_name":"\K[^"]+')"
+    declare -g SITE_VERSION="$(echo "$json" | grep -oP '"version":"\K[^"]+')"
+    declare -g SITE_DRUPAL_MAJOR="$(echo "$json" | grep -oP '"drupal_major":"\K[^"]+')"
+    declare -g SITE_DB_SIZE="$(echo "$json" | grep -oP '"db_size_mb":"\K[^"]+')"
+    declare -g SITE_FILES_SIZE="$(echo "$json" | grep -oP '"files_size":"\K[^"]+')"
+    declare -g SITE_PRIVATE_SIZE="$(echo "$json" | grep -oP '"private_size":"\K[^"]+')"
+    declare -g SITE_HAS_DRUSH="$(echo "$json" | grep -oP '"has_drush":"\K[^"]+')"
+    declare -g SITE_IS_CONFIGURED="$(echo "$json" | grep -oP '"is_configured":"\K[^"]+')"
 }
 
 ################################################################################

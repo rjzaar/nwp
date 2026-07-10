@@ -25,8 +25,31 @@ LOG="$LOG_DIR/rag-sync.log"
 
 ts(){ date -u +%FT%TZ; }
 
-if [ -f "$NWP_DIR/.rag-sync-paused" ]; then
+# Wrapper-enforced part gate (lib/loop-parts.sh, deep-audit C0). rag-sync is a
+# distinct part of the self-healing loop; an operator can disable it on its own
+# via `pl loop disable rag-sync`, and the global kill / legacy .rag-sync-paused
+# sentinel also stop it. If the library is absent (older checkout) we fall back
+# to the legacy sentinel only, which is fail-safe.
+export NWP_ROOT="$NWP_DIR"
+LOOP_PARTS_LIB="$NWP_DIR/lib/loop-parts.sh"
+if [ -f "$LOOP_PARTS_LIB" ]; then
+  # shellcheck source=/dev/null
+  . "$LOOP_PARTS_LIB"
+  if ! loop_part_enabled rag-sync; then
+    echo "$(ts) rag-sync part disabled (parts.state / global / .rag-sync-paused) — skipping" >> "$LOG"
+    exit 0
+  fi
+elif [ -f "$NWP_DIR/.rag-sync-paused" ]; then
   echo "$(ts) paused (.rag-sync-paused present) — skipping" >> "$LOG"
+  exit 0
+fi
+
+# Single-instance guard (ops#37): a slow `pl rag` run must not overlap the next
+# cron tick and double-file issues. Non-blocking; a second instance exits clean.
+LOCK="$NWP_DIR/.rag-sync.lock"
+exec 201>"$LOCK"
+if ! flock -n 201; then
+  echo "$(ts) another rag-sync is running (lock=$LOCK) — skipping" >> "$LOG"
   exit 0
 fi
 

@@ -82,6 +82,16 @@ POWER_USERS_FILE = Path(os.environ.get(
     str(Path.home() / '.nwp-power-users.json'),
 ))
 
+# Wrapper-enforced part state (deep-audit C0). Mirrors lib/loop-parts.sh: the
+# same host-local `part=enabled|disabled` file governs whether this receiver may
+# act. Read on every hook so `pl loop disable webhook` takes effect without a
+# restart. Fail-safe: unreadable/missing = documented default (enabled), but a
+# hook is only ever acted on after loop_part_enabled('webhook') returns True.
+LOOP_STATE_FILE = Path(os.environ.get(
+    'NWP_LOOP_STATE',
+    str(Path.home() / '.config' / 'nwp-loop' / 'parts.state'),
+))
+
 # Pre-flight: secret must be set (fail-closed).
 SECRET = os.environ.get('GITLAB_WEBHOOK_SECRET', '').strip()
 if not SECRET:
@@ -110,6 +120,40 @@ logger = logging.getLogger('nwp.webhook')
 def constant_time_token_ok(token: str) -> bool:
     """Constant-time compare against GITLAB_WEBHOOK_SECRET."""
     return hmac.compare_digest(token, SECRET)
+
+
+def _loop_state_raw(part: str) -> str:
+    """Last `part=value` line wins; '' if unset/unreadable. Mirrors lib/loop-parts.sh."""
+    try:
+        text = LOOP_STATE_FILE.read_text()
+    except OSError:
+        return ''
+    val = ''
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, raw = line.split('=', 1)
+        if key.strip() == part:
+            parts = raw.split()
+            val = parts[0] if parts else ''
+    return val
+
+
+def loop_global_killed() -> bool:
+    """True if the whole loop is killed: `.loop-paused` sentinel OR all=disabled."""
+    if (NWP_ROOT / '.loop-paused').exists():
+        return True
+    return _loop_state_raw('all') == 'disabled'
+
+
+def loop_part_enabled(part: str) -> bool:
+    """Wrapper-enforced gate mirroring lib/loop-parts.sh. Fail-safe precedence:
+    global kill -> off; explicit `disabled` -> off; anything else -> documented
+    default (enabled)."""
+    if loop_global_killed():
+        return False
+    return _loop_state_raw(part) != 'disabled'
 
 
 def is_merge_event(payload: dict) -> bool:
@@ -416,6 +460,15 @@ class WebhookHandler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError) as e:
             logger.warning('bad json from %s: %s', self.client_address[0], e)
             self._reply(400, {'ok': False, 'error': 'bad json'})
+            return
+
+        # Wrapper-enforced kill switch (deep-audit C0). If the webhook part is
+        # disabled — or the loop is globally killed — accept the hook but take NO
+        # action: no marker written, no loop fired, no deploy spawned. Checked
+        # here, before any handler, so a disabled part is provably inert.
+        if not loop_part_enabled('webhook'):
+            logger.info('webhook part disabled — ignoring POST %s', self.path)
+            self._reply(200, {'ok': True, 'action': 'ignored', 'reason': 'webhook part disabled'})
             return
 
         # /feedback is the Drupal fast-path. No GitLab event header; raw JSON.

@@ -166,22 +166,356 @@ if [ "$VERIFY_ONLY" = true ]; then
 fi
 
 ################################################################################
-# moodle_sanitize — THE OPERATOR IMPLEMENTS THIS.
+# moodle_sanitize — IMPLEMENTED (ops#76 / ADR-0031 plane 5b).
 #
-# Fill in per the INTERFACE CONTRACT above: read config.php creds → 0600 option
-# file → dump live (read-only) → scratch → anonymise the plane-5b tables →
-# export scratch → post-condition asserts → pii_sweep. Until then it MUST keep
-# refusing (return non-zero). DO NOT weaken this without human review.
+# Security model — identical to lib/sanitizers/standard.sh + mayo.sh:
+#   The LIVE DB is READ-ONLY. Dump it once → load that dump into a throwaway
+#   SCRATCH DB → run every mutation against the scratch copy → export the
+#   scratch copy. Live Moodle user data is never modified and never leaves this
+#   host un-sanitized. Run this ON the Moodle prod server, never on dev/AI hosts.
+#
+#   Creds come from the Moodle root's config.php ($CFG->*), NOT drush (Moodle
+#   ships none). The table prefix ($CFG->prefix) is RESOLVED from config.php and
+#   used for every table name — never hardcoded 'mdl_'.
+#
+#   Emails are anonymised with the SHARED-SALT OIDC primitive (oidc-email.sh) so
+#   the same real email hashes to the same fake email on both AVC (Drupal) and
+#   SS (Moodle), preserving the SSO join in dev/preview (F26 §3.3).
+#
+#   Injection safety: real PII values (emails/usernames) are ONLY fed to
+#   sha256sum to compute the deterministic fake; they are never interpolated
+#   into SQL. Row keys are integer `id` columns, validated `^[0-9]+$` before use.
 ################################################################################
-moodle_sanitize() {
-    log_error "Moodle sanitizer not yet implemented — operator must author the mdl_user* / consent anonymisation"
-    log_error "See the INTERFACE CONTRACT header (plane-5b table inventory + post-condition contract)."
-    log_error "Refusing to produce a Moodle dump un-sanitized (fail-closed)."
-    return 1
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/oidc-email.sh"
+
+# Module-level DB handles, populated by _moodle_init_db_access.
+MYSQL_CNF=""
+SCRATCH_DB=""
+LIVE_DB=""
+PREFIX=""
+LIVE_DUMP=""
+
+mysql_cli() { mysql --defaults-extra-file="$MYSQL_CNF" "$@"; }
+sq()        { mysql_cli -N -B "$SCRATCH_DB" -e "$1"; }
+
+_moodle_cleanup() {
+    if [ -n "${SCRATCH_DB:-}" ] && [ -n "${MYSQL_CNF:-}" ] && [ -f "${MYSQL_CNF:-}" ]; then
+        mysql_cli -e "DROP DATABASE IF EXISTS \`${SCRATCH_DB}\`" 2>/dev/null || true
+    fi
+    [ -n "${MYSQL_CNF:-}" ] && rm -f "$MYSQL_CNF"
+    [ -n "${LIVE_DUMP:-}" ] && rm -f "$LIVE_DUMP"
+    return 0
 }
 
-[ -n "$SITE_DIR" ] || { log_error "--site-dir DIR is required"; exit 2; }
+# Read $CFG->* from config.php WITHOUT bootstrapping Moodle. Uses Moodle's own
+# ABORT_AFTER_CONFIG guard so lib/setup.php returns before any DB connection is
+# made. Emits TSV: key<TAB>value for dbname/dbuser/dbpass/dbhost/dbport/dbsocket/
+# prefix. The password reaches only this TSV → a 0600 option file (never argv).
+_moodle_read_config() {
+    local site_dir="$1"
+    local cfg="$site_dir/config.php"
+    [ -f "$cfg" ] || { log_error "config.php not found in Moodle root: $cfg"; return 1; }
+    command -v php >/dev/null 2>&1 || { log_error "php required to read Moodle config.php"; return 1; }
+    php -d error_reporting=0 -d display_errors=0 -r '
+        define("CLI_SCRIPT", true);
+        define("ABORT_AFTER_CONFIG", true);       // Moodle returns from setup.php before DB init
+        require($argv[1]);
+        $o = (isset($CFG->dboptions) && is_array($CFG->dboptions)) ? $CFG->dboptions : array();
+        $g = function($k) use ($CFG) { return isset($CFG->$k) ? $CFG->$k : ""; };
+        printf("dbname\t%s\n",   $g("dbname"));
+        printf("dbuser\t%s\n",   $g("dbuser"));
+        printf("dbpass\t%s\n",   $g("dbpass"));
+        printf("dbhost\t%s\n",   $g("dbhost"));
+        printf("dbport\t%s\n",   isset($o["dbport"])   ? $o["dbport"]   : "");
+        printf("dbsocket\t%s\n", isset($o["dbsocket"]) ? $o["dbsocket"] : "");
+        printf("prefix\t%s\n",   $g("prefix"));
+    ' "$cfg" 2>/dev/null
+}
 
-# FAIL-CLOSED: the sanitize body is unimplemented, so we never write OUTPUT.
-moodle_sanitize
-exit $?
+# Resolve DB creds + prefix from config.php into module globals + a 0600 option
+# file. Fail-closed if creds or $CFG->prefix are missing (never guess 'mdl_').
+_moodle_init_db_access() {
+    local site_dir="$1"
+    local creds
+    creds=$(_moodle_read_config "$site_dir") || return 1
+    local db user pass host port sock prefix
+    db=$(awk   -F'\t' '$1=="dbname"{print $2}'   <<<"$creds")
+    user=$(awk -F'\t' '$1=="dbuser"{print $2}'   <<<"$creds")
+    pass=$(awk -F'\t' '$1=="dbpass"{print $2}'   <<<"$creds")
+    host=$(awk -F'\t' '$1=="dbhost"{print $2}'   <<<"$creds")
+    port=$(awk -F'\t' '$1=="dbport"{print $2}'   <<<"$creds")
+    sock=$(awk -F'\t' '$1=="dbsocket"{print $2}' <<<"$creds")
+    prefix=$(awk -F'\t' '$1=="prefix"{print $2}' <<<"$creds")
+
+    [ -n "$db" ] && [ -n "$user" ] || { log_error "incomplete DB credentials from config.php"; return 1; }
+    # The prefix is configurable; refusing to guess 'mdl_' is fail-closed — a
+    # wrong prefix would silently anonymise nothing.
+    [ -n "$prefix" ] || { log_error "\$CFG->prefix is empty in config.php (refusing to assume 'mdl_')"; return 1; }
+
+    LIVE_DB="$db"; PREFIX="$prefix"
+    SCRATCH_DB="${db}${SCRATCH_SUFFIX}"
+    MYSQL_CNF="$(mktemp)"; chmod 600 "$MYSQL_CNF"
+    {
+        echo "[client]"
+        echo "user=${user}"
+        echo "password=${pass}"
+        [ -n "$host" ] && echo "host=${host}"
+        [ -n "$port" ] && echo "port=${port}"
+        [ -n "$sock" ] && echo "socket=${sock}"
+    } > "$MYSQL_CNF"
+    log "resolved Moodle DB '${LIVE_DB}', table prefix '${PREFIX}'"
+    return 0
+}
+
+# Dump live (read-only) → throwaway scratch DB. All mutations run on scratch.
+_moodle_build_scratch() {
+    LIVE_DUMP="$(mktemp --suffix=.sql.gz)"
+    log "dumping live Moodle DB (read-only) → scratch copy"
+    mysqldump --defaults-extra-file="$MYSQL_CNF" --no-tablespaces --single-transaction \
+        --skip-lock-tables --quick "$LIVE_DB" 2>/dev/null | gzip > "$LIVE_DUMP" \
+        || { log_error "live dump failed"; return 1; }
+    mysql_cli -e "DROP DATABASE IF EXISTS \`${SCRATCH_DB}\`; CREATE DATABASE \`${SCRATCH_DB}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" \
+        || { log_error "scratch create failed (DB user needs CREATE on ${SCRATCH_DB})"; return 1; }
+    zcat "$LIVE_DUMP" | mysql_cli "$SCRATCH_DB" || { log_error "scratch load failed"; return 1; }
+    return 0
+}
+
+_moodle_table_exists() {
+    [ -n "$(sq "SELECT 1 FROM information_schema.tables WHERE table_schema='${SCRATCH_DB}' AND table_name='$1' LIMIT 1;")" ]
+}
+
+_moodle_column_exists() { # $1 table  $2 column
+    [ -n "$(sq "SELECT 1 FROM information_schema.columns WHERE table_schema='${SCRATCH_DB}' AND table_name='$1' AND column_name='$2' LIMIT 1;")" ]
+}
+
+_moodle_truncate_if_exists() {
+    if _moodle_table_exists "$1"; then
+        log "  truncate $1"
+        sq "TRUNCATE \`$1\`;" || { log_error "truncate $1 failed"; return 1; }
+    fi
+    return 0
+}
+
+# Deterministically rewrite an email-bearing column via the SHARED OIDC rule.
+# Only rows whose value is email-shaped (contains '@') are touched; the row key
+# is the integer `id` PK (validated). Table/column absence is a no-op (return 0).
+#   $1 table   $2 column   [$3 extra WHERE clause]
+_moodle_oidc_rewrite_column() {
+    local t="$1" c="$2" extra="${3:-}"
+    _moodle_table_exists "$t"       || return 0
+    _moodle_column_exists "$t" "$c" || return 0
+    local where="\`${c}\` IS NOT NULL AND \`${c}\` LIKE '%@%'"
+    [ -n "$extra" ] && where="${where} AND ${extra}"
+    local rows sqlfile id val fake
+    rows=$(sq "SELECT id, \`${c}\` FROM \`${t}\` WHERE ${where};")
+    sqlfile="$(mktemp)"
+    while IFS=$'\t' read -r id val; do
+        [ -n "$id" ] || continue
+        [[ "$id" =~ ^[0-9]+$ ]] || { log_error "non-numeric id from ${t}.${c} — refusing (fail-closed)"; rm -f "$sqlfile"; return 1; }
+        fake=$(oidc_email_sanitize "$val") || { log_error "oidc rewrite failed on ${t}.${c}"; rm -f "$sqlfile"; return 1; }
+        [ -n "$fake" ] || continue
+        printf "UPDATE \`%s\` SET \`%s\`='%s' WHERE id=%s;\n" "$t" "$c" "$fake" "$id" >> "$sqlfile"
+    done <<< "$rows"
+    if [ -s "$sqlfile" ]; then
+        mysql_cli "$SCRATCH_DB" < "$sqlfile" || { log_error "apply oidc rewrite ${t}.${c} failed"; rm -f "$sqlfile"; return 1; }
+    fi
+    rm -f "$sqlfile"
+    return 0
+}
+
+# Anonymise the core PII surface: <prefix>user (+ user_info_data via truncate).
+_moodle_anonymise_users() {
+    local ut="${PREFIX}user"
+    _moodle_table_exists "$ut" || { log_error "table ${ut} not found — is \$CFG->prefix correct?"; return 1; }
+
+    # 1. Non-email identity columns → deterministic, PII-free values. Built only
+    #    from columns that actually exist (Moodle schema drifts across versions).
+    declare -A scrub=(
+        [firstname]="CONCAT('First', id)"
+        [lastname]="CONCAT('User', id)"
+        [idnumber]="''"
+        [phone1]="''"
+        [phone2]="''"
+        [institution]="''"
+        [department]="''"
+        [address]="''"
+        [city]="''"
+        [lastip]="'0.0.0.0'"
+        [secret]="''"
+        [description]="''"
+        [imagealt]="''"
+        [lastnamephonetic]="''"
+        [firstnamephonetic]="''"
+        [middlename]="''"
+        [alternatename]="''"
+        [moodlenetprofile]="''"
+        [url]="''"
+        [password]="'not cached'"
+    )
+    local existing col set_clause=""
+    existing=$(sq "SELECT column_name FROM information_schema.columns WHERE table_schema='${SCRATCH_DB}' AND table_name='${ut}';")
+    while IFS= read -r col; do
+        [ -n "$col" ] || continue
+        if [ -n "${scrub[$col]:-}" ]; then
+            [ -n "$set_clause" ] && set_clause+=", "
+            set_clause+="\`$col\`=${scrub[$col]}"
+        fi
+    done <<< "$existing"
+    if [ -n "$set_clause" ]; then
+        sq "UPDATE \`${ut}\` SET ${set_clause} WHERE id > 1;" \
+            || { log_error "user identity anonymisation failed"; return 1; }
+    fi
+
+    # 2. Emails (id>1) → deterministic OIDC fake (preserves the AVC↔SS join).
+    _moodle_oidc_rewrite_column "$ut" "email" "id > 1" || return 1
+    # Any malformed non-'@' residue for id>1 → a safe example.com placeholder.
+    sq "UPDATE \`${ut}\` SET email=CONCAT('user', id, '@example.com') WHERE id > 1 AND email <> '' AND email NOT LIKE '%@%';" \
+        || { log_error "residual-email cleanup failed"; return 1; }
+
+    # 3. Usernames: email-shaped → OIDC (keeps the join when username IS the
+    #    email); everything else not-yet-sanitized → deterministic user<id>.
+    _moodle_oidc_rewrite_column "$ut" "username" "id > 1" || return 1
+    sq "UPDATE \`${ut}\` SET username=CONCAT('user', id) WHERE id > 1 AND username NOT LIKE '%@sanitized.test';" \
+        || { log_error "username anonymisation failed"; return 1; }
+
+    # 4. Guest (id=1): tidy any stray email/idnumber (not real PII, but clean).
+    sq "UPDATE \`${ut}\` SET email='', idnumber='' WHERE id = 1;" 2>/dev/null || true
+    return 0
+}
+
+# Preserve the OIDC linkage table but strip its PII: the external subject email
+# / username go through the SAME shared-salt rule as <prefix>user.email, so the
+# AVC↔SS dev join still resolves. Tokens are cleared.
+_moodle_anonymise_oauth_links() {
+    local t="${PREFIX}auth_oauth2_linked_login"
+    _moodle_table_exists "$t" || { log "  (${t} absent — no OIDC linkage to anonymise)"; return 0; }
+    log "anonymising OIDC linked-login identity (preserving the AVC↔SS join)"
+    _moodle_oidc_rewrite_column "$t" "email"    || return 1
+    _moodle_oidc_rewrite_column "$t" "username" || return 1
+    _moodle_column_exists "$t" "confirmtoken" && \
+        { sq "UPDATE \`${t}\` SET confirmtoken='' WHERE confirmtoken IS NOT NULL;" || return 1; }
+    return 0
+}
+
+# Consent (tool_policy_acceptances) — handled EXPLICITLY, never silently dropped
+# (ADR-0031 D5). The anonymised fixture users never accepted any policy, so the
+# per-user acceptance rows are TRUNCATED and the action is logged. The policy
+# DEFINITIONS (<prefix>tool_policy / <prefix>tool_policy_versions) are site
+# config, not PII, and are KEPT so the staging site still has its policy set.
+_moodle_handle_consent() {
+    local t="${PREFIX}tool_policy_acceptances"
+    if _moodle_table_exists "$t"; then
+        local n
+        n=$(sq "SELECT COUNT(*) FROM \`${t}\`;")
+        log "consent: ${t} holds ${n} real-user acceptance row(s) → TRUNCATE (fixture users never consented)."
+        log "consent: policy definitions in ${PREFIX}tool_policy / ${PREFIX}tool_policy_versions are KEPT (site config, not PII)."
+        sq "TRUNCATE \`${t}\`;" || { log_error "consent acceptance truncate failed"; return 1; }
+        n=$(sq "SELECT COUNT(*) FROM \`${t}\`;")
+        [ "$n" = "0" ] || { log_error "consent post-condition FAIL: ${n} acceptance row(s) remain"; return 1; }
+    else
+        log "consent: ${t} not present — nothing to handle"
+    fi
+    return 0
+}
+
+# POST-CONDITION (fail-closed): zero <prefix>user rows (id>1) may retain a real
+# email, real username, or idnumber. A non-numeric count (query failed) is also
+# a failure. Callable standalone so it can be unit-tested against a scratch DB.
+_moodle_assert_no_pii() {
+    local ut="${PREFIX}user" bad
+    # Emails: must be @sanitized.test (OIDC rule) or an @example.* placeholder.
+    bad=$(sq "SELECT COUNT(*) FROM \`${ut}\` WHERE id>1 AND email<>'' AND email NOT LIKE '%@sanitized.test' AND email NOT LIKE '%@example.%';")
+    [[ "$bad" =~ ^[0-9]+$ ]] || { log_error "post-condition email query failed — fail-closed"; return 1; }
+    [ "$bad" = "0" ] || { log_error "post-condition FAIL: ${bad} user row(s) retain a non-sanitized email"; return 1; }
+    # Usernames: must be user<n> or the @sanitized.test OIDC form.
+    bad=$(sq "SELECT COUNT(*) FROM \`${ut}\` WHERE id>1 AND username<>'' AND username NOT LIKE '%@sanitized.test' AND username NOT REGEXP '^user[0-9]+\$';")
+    [[ "$bad" =~ ^[0-9]+$ ]] || { log_error "post-condition username query failed — fail-closed"; return 1; }
+    [ "$bad" = "0" ] || { log_error "post-condition FAIL: ${bad} user row(s) retain a non-sanitized username"; return 1; }
+    # idnumber (external student id): must be blank for id>1.
+    bad=$(sq "SELECT COUNT(*) FROM \`${ut}\` WHERE id>1 AND idnumber<>'';")
+    [[ "$bad" =~ ^[0-9]+$ ]] || { log_error "post-condition idnumber query failed — fail-closed"; return 1; }
+    [ "$bad" = "0" ] || { log_error "post-condition FAIL: ${bad} user row(s) retain an idnumber"; return 1; }
+    log "post-condition: 0 residual real email / username / idnumber for id>1"
+    return 0
+}
+
+# Orchestrator. Reads config.php → scratch → anonymise → truncate volatile +
+# learning-attempt free-text → consent → post-condition → export → PII sweep.
+moodle_sanitize() {
+    local site_dir="${1:-$SITE_DIR}"
+    [ -n "$site_dir" ] || { log_error "--site-dir DIR is required"; return 2; }
+    # version.php confirms this is a Moodle root (not a Drupal site handed to us).
+    [ -f "$site_dir/version.php" ] || {
+        log_error "not a Moodle root (version.php missing): $site_dir — refusing (fail-closed)"; return 1; }
+
+    _moodle_init_db_access "$site_dir" || return 1
+    _moodle_build_scratch || return 1
+
+    log "anonymising ${PREFIX}user (identity + OIDC emails, id>1) and OIDC linkage"
+    _moodle_anonymise_users || return 1
+    _moodle_anonymise_oauth_links || return 1
+
+    # Volatile / log / message / token / free-text-profile tables → TRUNCATE.
+    # Names are enumerated (not pattern-matched) so we never blow away messaging
+    # CONFIG tables (message_processors / message_providers).
+    log "truncating volatile / log / message / token / profile-free-text tables"
+    local t
+    for t in sessions logstore_standard_log log events_queue \
+             user_password_history user_password_resets user_devices \
+             user_preferences user_lastaccess user_info_data \
+             messages message message_read message_contacts message_conversations \
+             message_conversation_members message_conversation_actions \
+             message_user_actions message_popup message_popup_notifications \
+             notifications; do
+        _moodle_truncate_if_exists "${PREFIX}${t}" || return 1
+    done
+
+    # Learning-attempt tables that carry FREE-TEXT student responses (plane 5b
+    # PII) → TRUNCATE. Numeric aggregate grades / enrolments / role assignments
+    # are LEFT: once <prefix>user is anonymised the identity is severed, so the
+    # remaining integer FKs are no longer PII, and a working fixture keeps them.
+    # (Operator may tighten this per deployment — see header inventory.)
+    log "truncating free-text learning-attempt tables (plane 5b PII)"
+    for t in quiz_attempts question_attempts question_attempt_steps \
+             question_attempt_step_data lesson_attempts \
+             assign_submission assignsubmission_onlinetext assignsubmission_file \
+             scorm_scoes_track; do
+        _moodle_truncate_if_exists "${PREFIX}${t}" || return 1
+    done
+
+    _moodle_handle_consent || return 1
+
+    log "asserting PII post-condition on scratch copy"
+    _moodle_assert_no_pii || return 1
+
+    log "exporting sanitized scratch copy → $OUTPUT"
+    mkdir -p "$(dirname "$OUTPUT")"
+    mysqldump --defaults-extra-file="$MYSQL_CNF" --no-tablespaces --single-transaction \
+        --skip-lock-tables --quick "$SCRATCH_DB" 2>/dev/null | gzip > "$OUTPUT" \
+        || { log_error "sanitized export failed"; return 1; }
+    [ -s "$OUTPUT" ] || { log_error "sanitized dump is empty"; return 1; }
+
+    pii_sweep "$OUTPUT" || { log_error "built-in PII sweep found residue — refusing to hand off"; return 1; }
+
+    # moodledata is a SEPARATE surface (not in the DB): user/private files,
+    # profile pictures under filedir, sessions/, temp/, trashdir/. This SQL pass
+    # does NOT touch it. A Moodle backup is not "sanitized" until a sibling step
+    # scrubs/omits moodledata (ADR-0031 D8). Documented, explicit deferral.
+    log "NOTE: moodledata file-scrub (user/private files, filedir profile pics,"
+    log "      sessions/temp/trashdir) is OUT OF SCOPE for this SQL pass and MUST be"
+    log "      handled by a sibling step before this backup is treated as sanitized."
+    log "done: $OUTPUT"
+    return 0
+}
+
+# ── main (guarded so the file can be sourced by unit tests without executing) ──
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    [ -n "$SITE_DIR" ] || { log_error "--site-dir DIR is required"; exit 2; }
+    trap _moodle_cleanup EXIT
+    moodle_sanitize "$SITE_DIR"
+    exit $?
+fi

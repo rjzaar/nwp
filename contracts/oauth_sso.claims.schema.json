@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.example/nwp/contracts/oauth_sso.claims.schema.json",
+  "title": "nwc → ss OIDC userinfo claim set",
+  "description": "The CLOSED allow-list of claims nwc (provider, native simple_oauth /oauth/userinfo) emits to the Moodle consumer (auth_nwc_oauth2). Derived from NwcOidcClaimsServiceProvider::REQUIRED_CLAIMS. additionalProperties:false is deliberate — it is the data-minimisation gate (P74 §Phase-0 / intersite-contract research §2). Adding a claim here is a boundary change: it must go through the contract_version bump + the ss side's review. `sub` is the load-bearing UID-lock join key (= Drupal uid).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sub"],
+  "properties": {
+    "sub": {
+      "description": "Subject identifier = Drupal user.uid (simple_oauth default). THE UID-lock join key → mdl_user.idnumber. Must be stable and never reused (see intersite research open-question Q4).",
+      "type": "string",
+      "minLength": 1
+    },
+    "name": { "type": "string" },
+    "preferred_username": { "type": "string" },
+    "email": { "type": "string", "format": "email" },
+    "email_verified": {
+      "description": "MUST be the real verification state (never hardcoded true — see F26 M1). A hardcoded true enables takeover-by-email on the Moodle side.",
+      "type": "boolean"
+    },
+    "locale": { "type": "string" },
+    "profile": { "type": "string" },
+    "updated_at": {
+      "description": "Seconds since epoch (OIDC core) — integer, not a date string.",
+      "type": "integer"
+    },
+    "zoneinfo": { "type": "string" },
+    "guilds": {
+      "description": "The ONE custom claim. Guild membership + per-guild role machine-names. Sole writer = nwc_oidc_claims (after the F26 flat-vs-nested collision fix). Role machine-names are a shared vocabulary across the boundary — renaming one silently changes what Moodle receives (see research §1 silent-break risks).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "roles"],
+        "properties": {
+          "id": { "type": "integer" },
+          "label": { "type": "string" },
+          "roles": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

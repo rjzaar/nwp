@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.example/nwp/contracts/feedback_bridge.message.schema.json",
+  "title": "ss → nwc cross-site feedback message",
+  "description": "The POST body the Moodle consumer (local/feedback) sends to nwc CrossSiteFeedbackController (POST /api/feedback/log). Consumer-driven surface (Moodle posts). Validated by CrossSiteFeedbackController::validate(). Idempotent on (source, source_ref=ss_feedback:<id>, reason).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ss_feedback_id", "ss_userid", "oauth_sub", "type", "title", "status", "timecreated"],
+  "properties": {
+    "ss_feedback_id": {
+      "description": "Moodle-local feedback row id. Part of the idempotency key.",
+      "type": "integer"
+    },
+    "ss_userid": {
+      "description": "Moodle-local user id (NOT the Drupal uid — see oauth_sub for the cross-site key).",
+      "type": "integer"
+    },
+    "oauth_sub": {
+      "description": "== Drupal uid: the UID-lock echoed back. Depends on the oauth_sso surface's `sub` claim (research §1 surface 2).",
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "type": "string",
+      "enum": ["suggestion", "question", "issue", "praise"]
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["submitted", "approved", "implemented", "rejected", "duplicate"]
+    },
+    "timecreated": {
+      "description": "Seconds since epoch.",
+      "type": "integer"
+    },
+    "score": {
+      "description": "Optional Tester/Trialing-Guild score.",
+      "type": "integer"
+    },
+    "reviewer_nwc_uid": {
+      "description": "Optional Drupal uid of the reviewer.",
+      "type": "integer"
+    }
+  }
+}

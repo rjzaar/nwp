@@ -653,6 +653,14 @@ main() {
             run_script "maturity.sh" "$@"
             ;;
 
+        # Paired-site versioning: contract status/guard (ADR-0031 / nwp/ops#75)
+        pair)
+            run_script "pair.sh" "$@"
+            ;;
+        pair-smoke)
+            run_script "pair-smoke.sh" "$@"
+            ;;
+
         # Branch twin sites (P67 §5c / nwp/ops#48)
         branch)
             run_script "branch.sh" "$@"

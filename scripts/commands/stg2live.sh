@@ -33,6 +33,9 @@ source "$PROJECT_ROOT/lib/canonical.sh"
 # deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op unless
 # configured (ver) — the AI test tier (A14) is unaffected.
 source "$PROJECT_ROOT/lib/deploy-gate.sh"
+# pair.sh: paired-site versioning guard (ADR-0031/ops#75); no-op unless the site
+# is declared paired (paired_with:) — fail-closed on a declared-but-missing contract.
+source "$PROJECT_ROOT/lib/pair.sh"
 
 # Source install-common for get_settings_value
 if [ -f "$PROJECT_ROOT/lib/install-common.sh" ]; then
@@ -1064,6 +1067,9 @@ ${BOLD}OPTIONS:${NC}
     --override-canonical    Push content even though the site is NOT canonical: dev.
                             OVERWRITES the canonical content source. Warns loudly and
                             records who/when in private/canonical/<site>.log.
+    --override-pair         Proceed past a paired-site guard (ADR-0031): provider-first
+                            ordering, the D6 UID-lock/--code-only rule, or a red pair.
+                            Ledgered in private/pairs/<pair>.log. For paired sites only.
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Site name (with or without _stg suffix)
@@ -1317,11 +1323,12 @@ main() {
     local DRY_RUN=false
     local CODE_ONLY=false
     local OVERRIDE_CANONICAL=false
+    local OVERRIDE_PAIR=false
     local SITENAME=""
 
     # Parse options
     local OPTIONS=hdyv
-    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision,dry-run,code-only,override-canonical
+    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision,dry-run,code-only,override-canonical,override-pair
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -1342,13 +1349,14 @@ main() {
             --dry-run) DRY_RUN=true; shift ;;
             --code-only) CODE_ONLY=true; shift ;;
             --override-canonical) OVERRIDE_CANONICAL=true; shift ;;
+            --override-pair) OVERRIDE_PAIR=true; shift ;;
             --) shift; break ;;
             *) echo "Programming error"; exit 3 ;;
         esac
     done
 
     # Export so deploy_to_live and friends can read it.
-    export DRY_RUN CODE_ONLY OVERRIDE_CANONICAL
+    export DRY_RUN CODE_ONLY OVERRIDE_CANONICAL OVERRIDE_PAIR
 
     # Get sitename
     if [ $# -ge 1 ]; then
@@ -1405,6 +1413,13 @@ main() {
     if ! maturity_guard_deploy "$BASE_NAME" "stg2live"; then
         exit 1
     fi
+    # Pair guard (ADR-0031/ops#75): for a paired site (ssc↔nwc, ssd↔nwd) refuse a
+    # promotion that violates provider-first ordering, the D6 UID-lock/--code-only
+    # rule, or a red pair. No-op for unpaired sites; fail-closed on a declared pair
+    # whose contract is missing. --override-pair is the ledgered escape.
+    if ! pair_guard "$BASE_NAME" "live" "stg2live" "$CODE_ONLY" "$OVERRIDE_PAIR"; then
+        exit 1
+    fi
 
     # Hardware+signature gate on the live write (ADR-0028). No-op on the test
     # tier (unconfigured); on ver it requires a live Solo touch. Skipped for
@@ -1438,6 +1453,12 @@ main() {
 
     # Run deployment
     if deploy_to_live "$STG_DIR" "$BASE_NAME" "$YES"; then
+        # Record the pair contract_version this half reached at live so the
+        # provider-first ordering check can compare halves (best-effort; a
+        # dry run wrote nothing so it is skipped). No-op for unpaired sites.
+        if [ "${DRY_RUN:-false}" != "true" ]; then
+            pair_guard_record_success "$BASE_NAME" "live" || true
+        fi
         show_elapsed_time
         exit 0
     else

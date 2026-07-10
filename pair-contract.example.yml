@@ -1,0 +1,111 @@
+# =============================================================================
+# pair-contract.example.yml — ADR-0031 D2 versioned pair contract (TEMPLATE)
+# =============================================================================
+# This is a TEMPLATE, not a live contract. Copy it to the pair-contract
+# directory (default: $PROJECT_ROOT/pairs/) named "<consumer>.pair-contract.yml"
+# — e.g. pairs/ssc.pair-contract.yml — and fill in the real versions/URLs for
+# that pair. The pair id is the CONSUMER site name (each consumer has exactly
+# one provider).
+#
+# Consumed by lib/pair.sh (pair_guard) at the deploy choke-points and by
+# scripts/commands/pair-smoke.sh. Contains NO secrets — only versions and
+# public endpoint URLs — so a real contract is safe to commit in pairs/.
+#
+# ⚠ The OAuth/OIDC WIRING these endpoints describe is F26-gated and NOT
+#   implemented in Phase C — the issuer URLs below are configuration only.
+#   See docs/guides/ops75-pair-contract-schema.md §OAuth (STUB).
+# =============================================================================
+
+pair: ssc-nwc                 # human label "<consumer>-<provider>"
+contract_version: 1           # monotonically increasing INTEGER; bump = expand-contract change
+provider: nwc                 # Drupal/Open Social — OIDC issuer, copyright source, feedback sink
+consumer: ssc                 # Moodle — SSO client, copyright receiver, real students
+
+# --- F28 signed-bundle linkage (ADR-0031 D5) --------------------------------
+# First use of the F28 manifest `dependencies` field: a paired bundle carries
+# the counterpart bundle id so the verifier tier can check "this consumer
+# bundle expects that provider bundle applied".
+dependencies:
+  provider_bundle: "nwc@0.5.0"
+  consumer_bundle: "auth_nwc_oauth2@1.1.0"
+
+# --- Code surfaces: minimum counterpart versions (expand-contract; D2) -------
+# Each surface names the minimum version the OTHER side must be running.
+surfaces:
+  oauth_sso:
+    provider_min: "0.5.0"       # nwc simple_oauth issuer
+    consumer_min: "1.1.0"       # auth_nwc_oauth2 Moodle plugin (F26)
+  copyright_sync:
+    provider_min: "0.5.0"       # nwc_copyright document versions
+    consumer_min: "0.2.0"       # local_nwc_copyright_sync
+  feedback_bridge:
+    provider_min: "0.5.0"       # nwc feedback sink
+    consumer_min: "0.1.0"       # local_feedback
+
+# --- Data rails (ADR-0031 D2) ------------------------------------------------
+identity:
+  # F26 UID-lock: mdl_user.idnumber locks to the Drupal uid on first SSO.
+  uid_lock: true
+  # D6 directional invariant: once real consumer users UID-lock against the
+  # provider's user-bearing tier, a FULL-DB push to that tier (either half) is
+  # forbidden — it renumbers/replaces users and severs SSO identity. pair_guard
+  # refuses a full-DB push to any tier listed here (use --code-only).
+  coupled_tiers: [live, prod]
+
+policy:
+  # ADR-0031 D2(b) / ops#31: the copyright version is ONE real field with ONE
+  # writer; both sync paths READ it. Never dual-write (a spurious bump forces
+  # sitewide student re-consent).
+  writer: nwc_copyright
+  readers: [local_nwc_copyright_sync]
+
+render_id_stability:
+  # ADR-0027 §7: rendered Moodle rows (plane 5a) are disposable ONLY because
+  # re-render is id-stable on this join key; user state (grades/attempts) hangs
+  # off it. Declared in the nwp/courses schema, enforced by the shared adapter
+  # test-suite — named here so the contract records the guarantee.
+  join_key: canonical_id
+  guaranteed_by: shared-adapter-test-suite
+
+# --- Per-environment provider endpoints (makes paired_with/oauth2 keys live) -
+# The OIDC issuer URL per tier. Consumed as CONFIGURATION; the actual client/
+# issuer provisioning is F26-gated (STUB — see schema doc §OAuth).
+endpoints:
+  dev:
+    issuer: "https://nwc-dev.ddev.site"
+  stg:
+    issuer: "https://nwc-stg.ddev.site"
+  live:
+    issuer: "https://nwc.<example-prod-domain>"
+  # prod: add when the provider has a prod tier.
+
+# --- Onboarding smoke: the 5-URL set checked after any promotion (D5) --------
+# pair-smoke.sh probes these on the given side (provider|consumer) at the
+# resolved tier. A failure sets the pair RAG to red (which pair_guard then
+# blocks on). Paths are relative to that side's tier base URL.
+smoke_urls:
+  - name: oidc_discovery
+    side: provider
+    path: "/.well-known/openid-configuration"
+    method: GET
+    expect_status: "200"
+  - name: provider_health
+    side: provider
+    path: "/user/login"
+    method: GET
+    expect_status: "200"
+  - name: oauth_callback
+    side: consumer
+    path: "/auth/oauth2/login.php"
+    method: GET
+    expect_status: "200,302"
+  - name: copyright_status
+    side: consumer
+    path: "/local/nwc_copyright_sync/status.php"
+    method: GET
+    expect_status: "200"
+  - name: feedback_post
+    side: consumer
+    path: "/local/feedback/api.php"
+    method: POST
+    expect_status: "200,401"     # 401 acceptable without a token; token round-trip is non-prod only

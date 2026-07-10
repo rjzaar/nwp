@@ -159,6 +159,55 @@ sites:
     avc_integration:
       avc_site: example-drupal               # link by site key, not domain
       default_role: student
+    # Paired-site link (ADR-0031). `paired_with` names the PROVIDER site (the
+    # Drupal/OIDC issuer + copyright source). Declaring it turns on `pair_guard`
+    # (lib/pair.sh) for this CONSUMER's promotions. See the paired block below.
+    paired_with: example-drupal
+
+  # ---------------------------------------------------------------------------
+  # PAIRED SITES (ADR-0031 / ops#75) — nwc↔ssc (real) and nwd↔ssd (demo twins)
+  #
+  # NWP runs paired sites across two stacks coupled by OAuth2/OIDC SSO,
+  # copyright-policy sync and a feedback bridge:
+  #     nwc (Drupal/Open Social, PROVIDER) ↔ ssc (Moodle, real students, CONSUMER)
+  #     nwd (Drupal demo,        PROVIDER) ↔ ssd (Moodle demo,           CONSUMER)
+  #
+  # The CONSUMER carries `paired_with: <provider>`. That single key makes the
+  # otherwise-dead pairing live: `pair_guard` refuses a promotion that breaks
+  # provider-first ordering, the D6 UID-lock/--code-only rule, or a red pair.
+  # Off-unless-configured: a site with no `paired_with` is untouched.
+  #
+  # The versioned CONTRACT (contract_version, per-surface minimum versions,
+  # per-tier issuer URLs, smoke URLs) lives in a separate file per pair at
+  # pairs/<consumer>.pair-contract.yml — copy pair-contract.example.yml and fill
+  # it in. lib/pair.sh fails CLOSED if a site is declared paired here but its
+  # contract is missing/invalid. Inspect with `pl pair status <consumer>`.
+  #
+  # ⚠ D6 STANDING RULE: while ssc users hold UID-locks against nwc's live tier,
+  #   NO full-DB `pl stg2live nwc` — use --code-only (or flip nwc to
+  #   canonical: live). pair_guard enforces this once the contract is authored.
+  #
+  # ⚠ The OAuth/OIDC WIRING is F26-gated and NOT implemented in Phase C.
+  #
+  # Copy these into nwp.yml (never commit nwp.yml) once the sites are registered:
+  #
+  #   nwc:                        # PROVIDER (Drupal/Open Social)
+  #     project: { type: drupal }
+  #     canonical: dev            # community content source-of-truth (today)
+  #     # maturity: incubating
+  #   ssc:                        # CONSUMER (Moodle, real students)
+  #     project: { type: moodle } # ⚠ nothing reads project.type yet (ops D)
+  #     paired_with: nwc
+  #     canonical: live           # real students → user state canonical (D6)
+  #     # maturity: <operator-assigned>
+  #   nwd:                        # PROVIDER demo twin
+  #     project: { type: drupal }
+  #     canonical: dev
+  #   ssd:                        # CONSUMER demo twin
+  #     project: { type: moodle, demo: true }
+  #     paired_with: nwd
+  #     canonical: dev            # demo — throwaway user state
+  # ---------------------------------------------------------------------------
 
 ################################################################################
 # === TIER 2 — adds ci-host =====================================================

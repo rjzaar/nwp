@@ -20,6 +20,8 @@ source "$PROJECT_ROOT/lib/canonical.sh"
 # deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op unless
 # configured (ver) — the AI test tier (A14) is unaffected.
 source "$PROJECT_ROOT/lib/deploy-gate.sh"
+# pair.sh: paired-site versioning guard (ADR-0031/ops#75); no-op unless paired.
+source "$PROJECT_ROOT/lib/pair.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -91,6 +93,11 @@ ${BOLD}OPTIONS:${NC}
     -y, --yes               Skip confirmation prompts
     -s, --step <n>          Start from step n
     --skip-backup           Skip production backup (dangerous!)
+    --code-only             Signal code/config-only intent to the pair guard
+                            (ADR-0031 D6) — satisfies the UID-lock rule for a paired
+                            provider/consumer prod deploy.
+    --override-pair         Proceed past a paired-site guard (ADR-0031). Ledgered in
+                            private/pairs/<pair>.log. For paired sites only.
 
 ${BOLD}WORKFLOW:${NC}
     1. Validate live and production configurations
@@ -293,6 +300,8 @@ main() {
     local SITENAME=""
 
     local OVERRIDE_CANONICAL=false
+    local OVERRIDE_PAIR=false
+    local CODE_ONLY=false
 
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -301,6 +310,8 @@ main() {
             -s|--step) START_STEP="$2"; shift 2 ;;
             --skip-backup) SKIP_BACKUP=true; shift ;;
             --override-canonical) OVERRIDE_CANONICAL=true; shift ;;
+            --override-pair) OVERRIDE_PAIR=true; shift ;;
+            --code-only) CODE_ONLY=true; shift ;;
             -*) print_error "Unknown option: $1"; exit 1 ;;
             *) SITENAME="$1"; shift ;;
         esac
@@ -325,6 +336,12 @@ main() {
     fi
     # Maturity guard (P67/ops#48): code-flow class gate
     if ! maturity_guard_deploy "$BASE_NAME" "live2prod"; then
+        exit 1
+    fi
+    # Pair guard (ADR-0031/ops#75): refuse a paired promotion that breaks
+    # provider-first ordering, the D6 UID-lock/--code-only rule, or a red pair.
+    # No-op for unpaired sites; fail-closed on a declared-but-missing contract.
+    if ! pair_guard "$BASE_NAME" "prod" "live2prod" "$CODE_ONLY" "$OVERRIDE_PAIR"; then
         exit 1
     fi
 
@@ -411,6 +428,10 @@ main() {
     deploy_manifest=$(canonical_deploy_manifest "$BASE_NAME" "live2prod" \
         "override=${OVERRIDE_CANONICAL:-false}" 2>/dev/null) || true
     [ -n "$deploy_manifest" ] && print_info "Deploy manifest: $deploy_manifest"
+
+    # Record the pair contract_version this half reached at prod (best-effort;
+    # no-op for unpaired sites) so provider-first ordering can compare halves.
+    pair_guard_record_success "$BASE_NAME" "prod" || true
 
     echo ""
     print_info "Production URL: https://$(get_prod_config "$BASE_NAME" "domain")"

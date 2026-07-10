@@ -411,7 +411,7 @@ main() {
     fi
 
     if [ $missing_deps -eq 1 ]; then
-        print_error "Missing required dependencies. Please run setup.sh first."
+        print_error "Missing required dependencies. Run 'pl init' to install them all (or 'pl setup')."
         exit 1
     fi
 

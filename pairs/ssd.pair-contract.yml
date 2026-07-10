@@ -23,13 +23,13 @@ consumer: ssd                 # Moodle demo — SSO client, copyright receiver (
 # --- F28 signed-bundle linkage (ADR-0031 D5) --------------------------------
 dependencies:
   provider_bundle: "nwd@0.5.0"
-  consumer_bundle: "auth_nwc_oauth2@1.1.0"
+  consumer_bundle: "auth_nwc@1.0.0"
 
 # --- Code surfaces: minimum counterpart versions (expand-contract; D2) -------
 surfaces:
   oauth_sso:
     provider_min: "0.5.0"
-    consumer_min: "1.1.0"
+    consumer_min: "1.0.0"       # auth_nwc (F26)
   copyright_sync:
     provider_min: "0.5.0"
     consumer_min: "0.2.0"

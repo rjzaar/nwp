@@ -227,7 +227,8 @@ ${BOLD}DEVELOPER TOOLS:${NC}
     report                          Generate bug report
 
 ${BOLD}SETUP & UTILITIES:${NC}
-    setup                           Run setup wizard (18 components)
+    init                            Install ALL required software (Docker, DDEV, Composer, …) — one command
+    setup                           Run setup wizard (18 components; --all/--auto = non-interactive)
     setup-ssh                       Setup SSH keys for deployment
     list                            List all tracked sites
     status [options] [sitename]     Show site status (-f for fast text)

@@ -425,7 +425,9 @@ main() {
     echo ""
 
     # Run all checks
-    check_prerequisites || total_errors=$((total_errors + $?))
+    local prereq_errors=0
+    if check_prerequisites; then prereq_errors=0; else prereq_errors=$?; fi
+    total_errors=$((total_errors + prereq_errors))
     echo ""
 
     check_configuration || total_errors=$((total_errors + $?))
@@ -451,6 +453,9 @@ main() {
         exit 0
     else
         print_error "$total_errors issue(s) found"
+        if [ "$prereq_errors" -gt 0 ]; then
+            print_hint "Missing prerequisites — run 'pl init' to install them all automatically"
+        fi
         print_hint "Fix the issues above and run 'pl doctor' again"
         exit 1
     fi

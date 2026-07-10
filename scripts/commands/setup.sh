@@ -1261,7 +1261,7 @@ main() {
     case "${1:-}" in
         --help|-h) show_help; exit 0 ;;
         --status) show_status; exit 0 ;;
-        --auto)
+        --auto|--all)
             init_components
             save_original_state
             detect_all_current_states

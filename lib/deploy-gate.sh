@@ -22,17 +22,35 @@
 #   (abort the deploy) instead of no-op — do this on ver so a missing key can
 #   never silently drop the gate.
 #
+#   ENV VARS CAN BE STRIPPED (sudo env_reset, cron, desktop launchers), which
+#   would silently turn fail-closed back into fail-open. So REQUIRE can also
+#   be pinned by a marker FILE, which survives env stripping (ops#79):
+#     /etc/nwp/deploy-gate-require            (host-wide; root-owned — preferred on ver)
+#     $PROJECT_ROOT/keys/deploy-gate.require  (per-checkout)
+#   If either file exists, an unconfigured gate fails closed regardless of env.
+#
 # Config (env overrides; sane defaults):
 #   NWP_DEPLOY_ALLOWED_SIGNERS  default: $PROJECT_ROOT/keys/allowed_signers
 #   NWP_DEPLOY_SK_KEY           default: ~/.ssh/id_ed25519_sk
 #   NWP_DEPLOY_GATE_REQUIRE     "true" ⇒ unconfigured = fail-closed
 #
-# allowed_signers line format (public keys only — safe to keep in-repo):
-#   rob@nwp ssh-ed25519-sk AAAA...   (one line per authorized signer)
+# allowed_signers line format (public keys only):
+#   rob@nwp sk-ssh-ed25519@openssh.com AAAA...   (one line per authorized signer;
+#   first field is the principal; key type+blob = fields 1-2 of the sk .pub file)
 ################################################################################
 
 _dg_allowed_signers() { printf '%s' "${NWP_DEPLOY_ALLOWED_SIGNERS:-${PROJECT_ROOT:-$HOME/nwp}/keys/allowed_signers}"; }
 _dg_sk_key()          { printf '%s' "${NWP_DEPLOY_SK_KEY:-$HOME/.ssh/id_ed25519_sk}"; }
+
+# _dg_require_enforced — is fail-closed-when-unconfigured demanded? True if the
+# env var says so OR a marker file exists (files survive sudo env_reset / cron
+# env stripping — the env-only version was silently bypassable, ops#79).
+_dg_require_enforced() {
+    [ "${NWP_DEPLOY_GATE_REQUIRE:-false}" = "true" ] && return 0
+    [ -e /etc/nwp/deploy-gate-require ] && return 0
+    [ -e "${PROJECT_ROOT:-$HOME/nwp}/keys/deploy-gate.require" ] && return 0
+    return 1
+}
 
 # deploy_gate_configured — 0 if both the allowed_signers file and a signing key
 # are present (i.e. this host is set up to enforce the gate).
@@ -63,7 +81,7 @@ deploy_gate_require() {
     _dg_note "╰───────────────────────────────────────────────────────────"
 
     if ! deploy_gate_configured; then
-        if [ "${NWP_DEPLOY_GATE_REQUIRE:-false}" = "true" ]; then
+        if _dg_require_enforced; then
             _dg_err "Hardware signature gate REQUIRED but not configured (ADR-0028):"
             _dg_err "  need $(_dg_allowed_signers) and $(_dg_sk_key). Aborting."
             return 1
@@ -91,16 +109,26 @@ deploy_gate_require() {
     trap "rm -f '$sig'" RETURN
 
     _dg_note "  → Touch your Solo now to authorize this deploy ..."
-    if ! printf '%s' "$manifest" | ssh-keygen -Y sign -n nwp-deploy -f "$sk" > "$sig" 2>/dev/null; then
+    # NOTE: ssh-keygen's own stderr stays visible on purpose — it carries the
+    # "Confirm user presence"/PIN prompts and the real failure reason (ops#79).
+    if ! printf '%s' "$manifest" | ssh-keygen -Y sign -n nwp-deploy -f "$sk" > "$sig"; then
         _dg_err "  Signing failed (no touch / wrong key / device absent). Deploy aborted."
         return 1
     fi
 
+    # Two-step authorization (ops#79 — find-principals alone only matches the
+    # embedded pubkey; it does NOT check the signature over the manifest):
+    #   1. find-principals: whose key is this?  2. verify: did that principal
+    #   really sign THIS manifest (site/target/commit/host binding)?
     signer="$(printf '%s' "$manifest" | ssh-keygen -Y find-principals -s "$sig" -f "$signers" 2>/dev/null | head -n1)"
-    if [ -n "$signer" ]; then
-        _dg_ok "  ✓ authorized by: $signer  — proceeding."
-        return 0
+    if [ -z "$signer" ]; then
+        _dg_err "  Signer not listed in $signers — not authorized. Deploy aborted."
+        return 1
     fi
-    _dg_err "  Signature did NOT verify against $signers (signer not authorized). Deploy aborted."
-    return 1
+    if ! printf '%s' "$manifest" | ssh-keygen -Y verify -f "$signers" -I "$signer" -n nwp-deploy -s "$sig" >/dev/null; then
+        _dg_err "  Signature did NOT cryptographically verify for principal '$signer'. Deploy aborted."
+        return 1
+    fi
+    _dg_ok "  ✓ authorized by: $signer  — signature verified, proceeding."
+    return 0
 }

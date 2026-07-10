@@ -349,10 +349,11 @@ main() {
 
     # Hardware+signature gate on the production write (ADR-0028). No-op on the
     # test tier (unconfigured); on ver it requires a live Solo touch.
-    if [ "${DRY_RUN:-false}" != "true" ]; then
-        deploy_gate_require "$BASE_NAME" "prod" \
-            "push live → production (files + DB)" || exit 1
-    fi
+    # UNCONDITIONAL: live2prod has no dry-run mode, so there is nothing to
+    # exempt — the old `[ "$DRY_RUN" != true ]` guard let an *inherited* env
+    # var skip the gate while every deploy step still ran for real (ops#79).
+    deploy_gate_require "$BASE_NAME" "prod" \
+        "push live → production (files + DB)" || exit 1
 
     # Validate configuration
     if ! validate_deployment "$BASE_NAME"; then

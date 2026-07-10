@@ -21,5 +21,61 @@ pairs/ssd.pair-contract.yml    # nwd (provider) ↔ ssd (consumer)
 
 Deployed-version + RAG **state** lives elsewhere — `private/pairs/` (gitignored).
 
-> No real contract is committed yet: authoring the ssc/nwc and ssd/nwd contracts
-> is an operator step (real deployed versions + the F26-gated issuer wiring).
+## Committed contracts (ops#75)
+
+| File | Pair | contract_version | identity coupling |
+|---|---|---|---|
+| [`ssc.pair-contract.yml`](ssc.pair-contract.yml) | nwc (provider) ↔ ssc (consumer, **real students**) | 1 | `uid_lock`, `coupled_tiers: [live, prod]` — D6 `--code-only` applies |
+| [`ssd.pair-contract.yml`](ssd.pair-contract.yml) | nwd (provider) ↔ ssd (consumer, **demo twin**) | 1 | none (`uid_lock: false`, `coupled_tiers: []`) — full-DB rebuild is fine |
+
+Both hold only versions + public URLs (no secrets) and pass `pair_contract_valid`.
+The OAuth/OIDC issuer wiring the `endpoints.*` describe is **F26-gated** (config
+only) — see [`../docs/guides/ops75-pair-contract-schema.md`](../docs/guides/ops75-pair-contract-schema.md) §OAuth.
+
+## Operator activation
+
+The contracts above are inert until the two consumer sites declare their
+provider in the **operator's** `nwp.yml` (which is gitignored — **never
+committed**; the template lives in `example.nwp.yml`). Add, under `sites:`:
+
+```yaml
+sites:
+  nwc:                        # PROVIDER (Drupal/Open Social)
+    project: { type: drupal }
+    canonical: dev            # community content source-of-truth (today)
+  ssc:                        # CONSUMER (Moodle, real students)
+    project: { type: moodle }
+    paired_with: nwc          # ← turns on pair_guard for ssc's promotions
+    canonical: live           # real students → user state canonical (D6)
+  nwd:                        # PROVIDER demo twin
+    project: { type: drupal }
+    canonical: dev
+  ssd:                        # CONSUMER demo twin
+    project: { type: moodle, demo: true }
+    paired_with: nwd          # ← turns on pair_guard for ssd's promotions
+    canonical: dev            # demo — throwaway user state
+```
+
+`paired_with:` is the single opt-in key: a consumer that declares it activates
+`pair_guard`; its provider is auto-derived (any site another site points at).
+
+### Verify (no network, no deploy)
+
+```bash
+pl pair list                        # shows nwc↔ssc, nwd↔ssd once paired_with is set
+pl pair status ssc                  # both sides' recorded cv vs the ssc contract
+pl pair status ssd
+pl pair check ssc live              # dry-run pair_guard's decision for a tier
+pl pair-smoke ssc --dry-run         # prints the 5-URL plan; touches NO network (default)
+pl pair-smoke ssd --dry-run
+```
+
+Until the provider has a recorded deployment at a tier, `pl pair status` shows
+the consumer as "provider-first pending" and a consumer promotion there is
+refused (D5) — bootstrap the first record with `pl pair record nwc-side...` or
+let the deploy verbs record it on the first successful provider promotion.
+
+> **D6 standing rule (ssc only):** while ssc students hold UID-locks against
+> nwc's live tier, no full-DB `pl stg2live nwc` — use `--code-only`. `pair_guard`
+> enforces this once `paired_with: nwc` is set. ssd (demo) is uncoupled, so a
+> full-DB rebuild of either half is allowed.

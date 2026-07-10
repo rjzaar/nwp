@@ -1,0 +1,103 @@
+# =============================================================================
+# pairs/ssc.pair-contract.yml — REAL pair contract (ADR-0031 D2 / ops#75)
+# =============================================================================
+#   nwc (Drupal/Open Social, PROVIDER)  ↔  ssc (Moodle, real students, CONSUMER)
+#
+# The pair id is the CONSUMER site key (ssc). Consumed by lib/pair.sh
+# (pair_guard) at the stg2live / stg2prod / live2prod choke-points and by
+# scripts/commands/pair-smoke.sh. Committable — holds ONLY versions and public
+# endpoint URLs, NO secrets.
+#
+# ⚠ D6 STANDING RULE (this is the REAL pair with real students): while ssc users
+#   hold UID-locks against nwc's user-bearing tier, NO full-DB push to a
+#   coupled tier for EITHER half — pair_guard refuses it unless --code-only.
+#
+# ⚠ The OAuth/OIDC WIRING these endpoints describe is F26-gated and NOT
+#   implemented in Phase C — the issuer URLs below are configuration only.
+#   See docs/guides/ops75-pair-contract-schema.md §OAuth (STUB).
+# =============================================================================
+
+pair: ssc-nwc                 # human label "<consumer>-<provider>"
+contract_version: 1           # monotonically increasing INTEGER; bump = expand-contract change
+provider: nwc                 # Drupal/Open Social — OIDC issuer, copyright source, feedback sink
+consumer: ssc                 # Moodle — SSO client, copyright receiver, REAL students
+
+# --- F28 signed-bundle linkage (ADR-0031 D5) --------------------------------
+dependencies:
+  provider_bundle: "nwc@0.5.0"
+  consumer_bundle: "auth_nwc_oauth2@1.1.0"
+
+# --- Code surfaces: minimum counterpart versions (expand-contract; D2) -------
+surfaces:
+  oauth_sso:
+    provider_min: "0.5.0"       # nwc simple_oauth issuer
+    consumer_min: "1.1.0"       # auth_nwc_oauth2 Moodle plugin (F26)
+  copyright_sync:
+    provider_min: "0.5.0"       # nwc_copyright document versions
+    consumer_min: "0.2.0"       # local_nwc_copyright_sync
+  feedback_bridge:
+    provider_min: "0.5.0"       # nwc feedback sink
+    consumer_min: "0.1.0"       # local_feedback
+
+# --- Data rails (ADR-0031 D2/D6) ---------------------------------------------
+identity:
+  # F26 UID-lock: mdl_user.idnumber locks to the Drupal uid on first SSO.
+  uid_lock: true
+  # Real students → user state is canonical on live. A FULL-DB push to a tier
+  # listed here is refused for EITHER half (use --code-only): on nwc it would
+  # renumber Drupal uids and sever every ssc SSO identity; on ssc it would
+  # clobber real students' learning records (minors' PII, plane 5b).
+  coupled_tiers: [live, prod]
+
+policy:
+  # ADR-0031 D2(b) / ops#31: ONE writer, both sync paths READ. Never dual-write.
+  writer: nwc_copyright
+  readers: [local_nwc_copyright_sync]
+
+render_id_stability:
+  # ADR-0027 §7: rendered Moodle rows (plane 5a) are re-render-safe only because
+  # the join key is id-stable; user state hangs off it.
+  join_key: canonical_id
+  guaranteed_by: shared-adapter-test-suite
+
+# --- Per-environment provider endpoints (OIDC issuer per tier) ---------------
+# Consumed as CONFIGURATION only; the actual client/issuer provisioning is
+# F26-gated (STUB — see schema doc §OAuth).
+endpoints:
+  dev:
+    issuer: "https://nwc-dev.ddev.site"
+  stg:
+    issuer: "https://nwc-stg.ddev.site"
+  live:
+    issuer: "https://nwc.<example-prod-domain>"
+  # prod: add when the provider has a dedicated prod tier (offline-deploy-gated).
+
+# --- Onboarding smoke: the 5-URL set checked after any promotion (D5) --------
+# Paths are relative to that side's tier base URL. A failure sets the pair RAG
+# red (which pair_guard then blocks on).
+smoke_urls:
+  - name: oidc_discovery
+    side: provider
+    path: "/.well-known/openid-configuration"
+    method: GET
+    expect_status: "200"
+  - name: provider_health
+    side: provider
+    path: "/user/login"
+    method: GET
+    expect_status: "200"
+  - name: oauth_callback
+    side: consumer
+    path: "/auth/oauth2/login.php"
+    method: GET
+    expect_status: "200,302"
+  - name: copyright_status
+    side: consumer
+    path: "/local/nwc_copyright_sync/status.php"
+    method: GET
+    expect_status: "200"
+  - name: feedback_post
+    side: consumer
+    path: "/local/feedback/api.php"
+    method: POST
+    expect_status: "200,401"     # 401 acceptable without a token; token round-trip is non-prod only

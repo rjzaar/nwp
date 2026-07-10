@@ -1,0 +1,91 @@
+# =============================================================================
+# pairs/ssd.pair-contract.yml — REAL pair contract (ADR-0031 D2 / ops#75)
+# =============================================================================
+#   nwd (Drupal demo,  PROVIDER)  ↔  ssd (Moodle demo,  CONSUMER)
+#
+# The DEMO twin of the ssc↔nwc pair. Same code surfaces, but demo user state is
+# THROWAWAY: ssd is canonical on dev, so no tier is identity-coupled — a full-DB
+# rebuild of either half is fine (uid_lock is off). pair_guard therefore never
+# invokes the D6 --code-only refusal here; it still enforces provider-first
+# ordering (D5) and the red-pair block.
+#
+# Committable — versions + public URLs only, NO secrets.
+#
+# ⚠ The OAuth/OIDC WIRING is F26-gated and NOT implemented in Phase C — the
+#   issuer URLs below are configuration only.
+# =============================================================================
+
+pair: ssd-nwd                 # human label "<consumer>-<provider>"
+contract_version: 1           # monotonically increasing INTEGER; bump = expand-contract change
+provider: nwd                 # Drupal demo — OIDC issuer, copyright source, feedback sink
+consumer: ssd                 # Moodle demo — SSO client, copyright receiver (throwaway users)
+
+# --- F28 signed-bundle linkage (ADR-0031 D5) --------------------------------
+dependencies:
+  provider_bundle: "nwd@0.5.0"
+  consumer_bundle: "auth_nwc_oauth2@1.1.0"
+
+# --- Code surfaces: minimum counterpart versions (expand-contract; D2) -------
+surfaces:
+  oauth_sso:
+    provider_min: "0.5.0"
+    consumer_min: "1.1.0"
+  copyright_sync:
+    provider_min: "0.5.0"
+    consumer_min: "0.2.0"
+  feedback_bridge:
+    provider_min: "0.5.0"
+    consumer_min: "0.1.0"
+
+# --- Data rails (ADR-0031 D2/D6) ---------------------------------------------
+identity:
+  # Demo twin: user state is throwaway, so NO UID-lock and NO coupled tiers.
+  # A full-DB push is permitted on every tier — the D6 --code-only refusal does
+  # not apply to this pair.
+  uid_lock: false
+  coupled_tiers: []
+
+policy:
+  writer: nwc_copyright
+  readers: [local_nwc_copyright_sync]
+
+render_id_stability:
+  join_key: canonical_id
+  guaranteed_by: shared-adapter-test-suite
+
+# --- Per-environment provider endpoints (OIDC issuer per tier) ---------------
+endpoints:
+  dev:
+    issuer: "https://nwd-dev.ddev.site"
+  stg:
+    issuer: "https://nwd-stg.ddev.site"
+  live:
+    issuer: "https://nwd.<example-prod-domain>"
+
+# --- Onboarding smoke: the 5-URL set checked after any promotion (D5) --------
+smoke_urls:
+  - name: oidc_discovery
+    side: provider
+    path: "/.well-known/openid-configuration"
+    method: GET
+    expect_status: "200"
+  - name: provider_health
+    side: provider
+    path: "/user/login"
+    method: GET
+    expect_status: "200"
+  - name: oauth_callback
+    side: consumer
+    path: "/auth/oauth2/login.php"
+    method: GET
+    expect_status: "200,302"
+  - name: copyright_status
+    side: consumer
+    path: "/local/nwc_copyright_sync/status.php"
+    method: GET
+    expect_status: "200"
+  - name: feedback_post
+    side: consumer
+    path: "/local/feedback/api.php"
+    method: POST
+    expect_status: "200,401"

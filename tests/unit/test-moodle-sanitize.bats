@@ -107,3 +107,12 @@ EOF
     run bash "$SANITIZER" --verify --output "$TMP/nope.sql.gz"
     [ "$status" -eq 2 ]
 }
+
+@test "moodle.sh --verify: a corrupt/non-gzip artifact is fail-closed (never 'clean')" {
+    # A file that is NOT valid gzip and DOES contain a real email must NOT pass.
+    dump="$TMP/corrupt.sql.gz"
+    printf "not-a-gzip real.person@school.example\n" > "$dump"
+    run bash "$SANITIZER" --verify --output "$dump"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not a valid gzip"* || "$output" == *"fail-closed"* ]]
+}

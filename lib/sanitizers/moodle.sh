@@ -60,6 +60,8 @@ set -euo pipefail
 #     user_info_data          free-text custom profile field values (PII)
 #     user_preferences        may hold tokens / message provider settings
 #     user_devices            mobile push tokens (PII / secrets)
+#     external_tokens         TRUNCATE (live web-service auth tokens = credentials)
+#     user_private_key        TRUNCATE (per-user WS/MNet private keys = credentials)
 #     user_password_history   TRUNCATE (hashes)
 #     user_password_resets    TRUNCATE (reset tokens)
 #     user_lastaccess         TRUNCATE or keep (attainment metadata, low PII)
@@ -148,6 +150,11 @@ log_error() { echo "[moodle-sanitizer] ERROR: $*" >&2; }
 pii_sweep() { # $1 = gz dump
     local f="$1"
     command -v zcat >/dev/null 2>&1 || { log_error "zcat missing"; return 2; }
+    # FAIL-CLOSED on an unreadable/corrupt/truncated gzip: a swallowed zcat error
+    # must NEVER read as "clean". Integrity-check + assert a non-empty stream
+    # BEFORE the sweep (else `hits` is empty for the wrong reason → false clean).
+    gzip -t -- "$f" 2>/dev/null || { log_error "PII sweep: '$f' is not a valid gzip (corrupt/truncated) — refusing (fail-closed)"; return 2; }
+    [ "$(zcat -- "$f" 2>/dev/null | head -c1 | wc -c)" -gt 0 ] || { log_error "PII sweep: '$f' decompresses to empty — refusing (fail-closed)"; return 2; }
     local hits
     hits=$(zcat -- "$f" 2>/dev/null \
         | grep -E -- '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' 2>/dev/null \
@@ -260,6 +267,9 @@ _moodle_init_db_access() {
     # space would be an identifier-injection foothold — refuse anything but the
     # Moodle-legal charset. Fail-closed.
     [[ "$prefix" =~ ^[A-Za-z0-9_]+$ ]] || { log_error "\$CFG->prefix '${prefix}' has unexpected characters — refusing (identifier-injection guard)"; return 1; }
+    # Same guard for the DB name: it becomes `${db}_sanitize_scratch` (a backticked
+    # identifier) and a `table_schema='...'` literal. Same trust level as prefix.
+    [[ "$db" =~ ^[A-Za-z0-9_]+$ ]] || { log_error "\$CFG->dbname '${db}' has unexpected characters — refusing (identifier-injection guard)"; return 1; }
 
     LIVE_DB="$db"; PREFIX="$prefix"
     SCRATCH_DB="${db}${SCRATCH_SUFFIX}"
@@ -471,6 +481,7 @@ moodle_sanitize() {
     local t
     for t in sessions logstore_standard_log log events_queue \
              user_password_history user_password_resets user_devices \
+             external_tokens user_private_key \
              user_preferences user_lastaccess user_info_data \
              messages message message_read message_contacts message_conversations \
              message_conversation_members message_conversation_actions \

@@ -33,6 +33,8 @@ source "$PROJECT_ROOT/lib/canonical.sh"
 # deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op unless
 # configured (ver) — the AI test tier (A14) is unaffected.
 source "$PROJECT_ROOT/lib/deploy-gate.sh"
+# pair.sh: paired-site versioning guard (ADR-0031/ops#75); no-op unless paired.
+source "$PROJECT_ROOT/lib/pair.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -177,6 +179,11 @@ ${BOLD}OPTIONS:${NC}
     -v, --verbose           Show detailed rsync output
     -s N, --step=N          Resume from step N
     --dry-run               Show what would be done without making changes
+    --code-only             Signal a code/config-only intent to the pair guard
+                            (ADR-0031 D6) — satisfies the UID-lock rule for a paired
+                            provider/consumer prod deploy.
+    --override-pair         Proceed past a paired-site guard (ADR-0031). Ledgered in
+                            private/pairs/<pair>.log. For paired sites only.
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Base name of the staging site (production will be configured in nwp.yml)
@@ -857,9 +864,11 @@ main() {
     export DEBUG AUTO_YES DRY_RUN VERBOSE
 
     local OVERRIDE_CANONICAL=false
+    local OVERRIDE_PAIR=false
+    local CODE_ONLY=false
 
     local OPTIONS=hdyvs:
-    local LONGOPTS=help,debug,yes,verbose,step:,dry-run,override-canonical
+    local LONGOPTS=help,debug,yes,verbose,step:,dry-run,override-canonical,override-pair,code-only
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -892,6 +901,14 @@ main() {
                 ;;
             --override-canonical)
                 OVERRIDE_CANONICAL=true
+                shift
+                ;;
+            --override-pair)
+                OVERRIDE_PAIR=true
+                shift
+                ;;
+            --code-only)
+                CODE_ONLY=true
                 shift
                 ;;
             -s|--step)
@@ -943,6 +960,12 @@ main() {
     if ! maturity_guard_deploy "$base_name" "stg2prod"; then
         exit 1
     fi
+    # Pair guard (ADR-0031/ops#75): refuse a paired promotion that breaks
+    # provider-first ordering, the D6 UID-lock/--code-only rule, or a red pair.
+    # No-op for unpaired sites; fail-closed on a declared-but-missing contract.
+    if ! pair_guard "$base_name" "prod" "stg2prod" "$CODE_ONLY" "$OVERRIDE_PAIR"; then
+        exit 1
+    fi
 
     # Hardware+signature gate on the production write (ADR-0028). No-op on the
     # test tier (unconfigured); on ver it requires a live Solo touch.
@@ -961,6 +984,11 @@ main() {
 
     # Run deployment
     if deploy_stg2prod "$SITENAME" "$AUTO_YES" "$START_STEP" "$DRY_RUN"; then
+        # Record the pair contract_version this half reached at prod (best-effort;
+        # no-op for unpaired sites and dry runs).
+        if [ "${DRY_RUN:-false}" != "true" ]; then
+            pair_guard_record_success "$base_name" "prod" || true
+        fi
         show_elapsed_time
         exit 0
     else

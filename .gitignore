@@ -92,6 +92,13 @@ scripts/commands/.rollback/**
 !.secrets.data.example.yml
 !.nwp-developer.example.yml
 
+# Pair contracts (ADR-0031 / ops#75): the template + the committable per-pair
+# contracts (versions + public URLs only — no secrets). Deployed-version + RAG
+# STATE lives in private/pairs/ which the private/ deny rule above keeps out.
+!pair-contract.example.yml
+!pairs/
+!pairs/**
+
 # Migration scripts (access via pl or scripts/commands/)
 
 # Documentation directory

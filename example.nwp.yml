@@ -163,6 +163,42 @@ sites:
     # Drupal/OIDC issuer + copyright source). Declaring it turns on `pair_guard`
     # (lib/pair.sh) for this CONSUMER's promotions. See the paired block below.
     paired_with: example-drupal
+    project:
+      type: moodle                           # routes the Moodle promotion substrate
+    # ── Moodle promotion substrate (ADR-0031 D8 / ops D) ──────────────────────
+    # Per-tier values the Moodle settings-writer (lib/moodle-promote.sh, via
+    # `pl moodle-promote`) uses to rewrite config.php when this site is promoted
+    # to a NON-canonical tier. Only dev/stg/test are written — a live/prod Moodle
+    # root is REFUSED (fail-closed). NO passwords here: $CFG->dbpass is resolved
+    # at write time from get_data_secret (moodle.<site>.<tier>.db_password), or
+    # the well-known ddev default when dbpass_ddev_default: true.
+    moodle:
+      tiers:
+        dev:
+          wwwroot: "https://example-moodle-dev.ddev.site"
+          dataroot: "/var/www/example-moodle/dev/moodledata"
+          dbtype: mariadb
+          dbhost: db
+          dbname: db
+          dbuser: db
+          prefix: "mdl_"
+          dbpass_ddev_default: true          # ddev dev DB pass is the non-secret 'db'
+        stg:
+          wwwroot: "https://example-moodle-stg.ddev.site"
+          dataroot: "/var/www/example-moodle/stg/moodledata"
+          dbtype: mariadb
+          dbhost: db
+          dbname: db
+          dbuser: db
+          prefix: "mdl_"
+          dbpass_ddev_default: true
+      # OAuth consumer wiring (F26; OFF-BY-DEFAULT). The issuer URL per tier comes
+      # from the PAIR CONTRACT endpoints.<tier>.issuer, NOT here — this only names
+      # the non-secret client id + where the client SECRET is looked up.
+      oauth:
+        client_id: ss_moodle
+        client_secret_source: "moodle.example-moodle.oauth.client_secret"  # get_data_secret path
+        enabled: false                       # operator flips true after provisioning the secret
 
   # ---------------------------------------------------------------------------
   # PAIRED SITES (ADR-0031 / ops#75) — nwc↔ssc (real) and nwd↔ssd (demo twins)
@@ -196,7 +232,9 @@ sites:
   #     canonical: dev            # community content source-of-truth (today)
   #     # maturity: incubating
   #   ssc:                        # CONSUMER (Moodle, real students)
-  #     project: { type: moodle } # ⚠ nothing reads project.type yet (ops D)
+  #     project: { type: moodle } # routes the sanitize dispatch (ops#76) + the
+  #                               # Moodle promotion substrate (ops D); add a
+  #                               # `moodle:` block (see example-moodle) for tiers
   #     paired_with: nwc
   #     canonical: live           # real students → user state canonical (D6)
   #     # maturity: <operator-assigned>

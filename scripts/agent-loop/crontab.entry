@@ -9,10 +9,17 @@
 # Uninstall:
 #   crontab -l | grep -v '/home/rob/nwp/scripts/agent-loop/' | crontab -
 #
-# Pause without uninstall:
-#   touch /home/rob/nwp/.loop-paused
-# Resume:
-#   rm /home/rob/nwp/.loop-paused
+# Pause without uninstall — WRAPPER-ENFORCED per-part switches (deep-audit C0):
+#   pl loop disable fix-loop        # stop the autonomous issue->MR poll only
+#   pl loop disable respawn-drain   # stop the power-user instant re-spawn only
+#   pl loop disable rag-sync        # stop RAG->issues (stage 1) only
+#   pl loop disable webhook         # make the webhook receiver inert
+#   pl loop disable all             # GLOBAL kill-switch (every part)
+#   pl loop enable <part|all>       # re-arm; pl loop / pl loop parts show state
+# State is host-local at ~/.config/nwp-loop/parts.state (each host is separate).
+# The legacy whole-loop sentinels still work and still mean "off":
+#   touch /home/rob/nwp/.loop-paused        (global);  rm to resume
+#   touch /home/rob/nwp/.rag-sync-paused    (rag-sync); rm to resume
 #
 # Secrets handling
 # ----------------

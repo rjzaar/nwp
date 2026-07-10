@@ -86,8 +86,22 @@ ok_or_exit_clean() {
 }
 trap ok_or_exit_clean EXIT
 
-if [[ -f "$KILL_SWITCH" ]]; then
-  log "kill switch present at $KILL_SWITCH — exiting clean"
+# Per-part, WRAPPER-ENFORCED kill switch (lib/loop-parts.sh, deep-audit C0).
+# This wrapper consults the part state BEFORE spawning any agent logic, so a
+# disabled part is provably skipped here — not merely asked-not-to-run inside a
+# prompt. If the library is missing (older checkout) we fall back to the legacy
+# whole-loop .loop-paused sentinel only, which is fail-safe.
+LOOP_PARTS_LIB="${SCRIPT_DIR}/../../lib/loop-parts.sh"
+if [[ -f "$LOOP_PARTS_LIB" ]]; then
+  # shellcheck source=/dev/null
+  source "$LOOP_PARTS_LIB"
+else
+  loop_global_killed() { [[ -f "$KILL_SWITCH" ]]; }
+  loop_part_enabled()  { return 0; }
+fi
+
+if loop_global_killed; then
+  log "loop globally disabled (.loop-paused or parts.state all=disabled) — exiting clean"
   exit 0
 fi
 
@@ -406,7 +420,21 @@ except Exception: print("")')"
 log "agent-loop start (max_per_run=${MAX_PER_RUN} daily_cap=${DAILY_CAP} projects=${PROJECT_IDS} dry_run=${DRY_RUN})"
 state_set_last_run "$(date -Iseconds)"
 
-drain_respawn_markers
+# Power-user instant re-spawn path — gated independently of the autonomous poll
+# so an operator can leave fast-path fixes on while quieting the poller (or vice
+# versa).
+if loop_part_enabled respawn-drain; then
+  drain_respawn_markers
+else
+  log "respawn-drain part disabled — skipping power-user marker drain"
+fi
+
+# Autonomous issue -> MR poll. A disabled fix-loop stops here, before any issue
+# is fetched or any claude is spawned.
+if ! loop_part_enabled fix-loop; then
+  log "fix-loop part disabled — skipping autonomous issue poll"
+  exit 0
+fi
 
 count_today="$(prs_today)"
 if (( count_today >= DAILY_CAP )); then

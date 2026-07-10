@@ -116,6 +116,12 @@ declare -a COMPONENTS=(
     "gitlab_dns|GitLab DNS Record|gitlab_server|gitlab|optional|DNS A record pointing to your GitLab server|"
     "gitlab_ssh_config|GitLab SSH Config|gitlab_server|gitlab|optional|SSH config entry for easy git@git-server access|"
     "gitlab_composer|GitLab Composer Registry|gitlab_server|gitlab|optional|Private Composer package registry on GitLab|"
+
+    # Editor (VSCodium)
+    "codium|VSCodium Editor|-|editor|optional|FOSS VS Code build (no Microsoft telemetry), installed from the official VSCodium apt repo|"
+    "codium_core_ext|Editor Extensions (core)|codium|editor|optional|Curated Drupal/DDEV + bash/YAML/git/markdown extensions from Open VSX|"
+    "codium_lang_ext|Editor Extensions (Flutter/Python)|codium|editor|optional|Dart/Flutter + Python (Ruff) — install where you edit those|"
+    "codium_hygiene|Editor Security Defaults|codium|editor|optional|Telemetry off + secrets/keys excluded from editor indexing and search|"
 )
 
 # Track component states
@@ -137,10 +143,12 @@ COMP_EDITABLE_KEYS=()
 declare -a PAGE_CATEGORIES
 PAGE_CATEGORIES[0]="core tools testing"
 PAGE_CATEGORIES[1]="security linode gitlab"
+PAGE_CATEGORIES[2]="editor"
 declare -a PAGE_NAMES
 PAGE_NAMES[0]="Core & Tools"
 PAGE_NAMES[1]="Infrastructure"
-NUM_PAGES=2
+PAGE_NAMES[2]="Editor"
+NUM_PAGES=3
 CURRENT_PAGE=0
 
 # Per-page component indices
@@ -148,6 +156,17 @@ declare -a PAGE_COMP_INDICES
 
 # Editing state (-1 = not editing)
 EDITING_ROW=-1
+
+# Editor (VSCodium) extension sets — all IDs verified on Open VSX
+CODIUM_CORE_EXTS=(
+  bmewburn.vscode-intelephense-client andrewdavidblum.drupal-smart-snippets
+  nadim-vscode.twig-code-snippets devsense.composer-php-vscode esbenp.prettier-vscode
+  ms-azuretools.vscode-docker ms-azuretools.vscode-containers telesoho.vscode-markdown-paste-image
+  timonwong.shellcheck mkhl.shfmt redhat.vscode-yaml eamodio.gitlens
+  DavidAnson.vscode-markdownlint EditorConfig.EditorConfig
+)
+CODIUM_LANG_EXTS=( Dart-Code.dart-code Dart-Code.flutter charliermarsh.ruff )
+CODIUM_SETTINGS="$HOME/.config/VSCodium/User/settings.json"
 
 ################################################################################
 # TUI Functions
@@ -289,7 +308,16 @@ get_category_name() {
         security) echo "Security" ;;
         linode)   echo "Linode Infrastructure" ;;
         gitlab)   echo "GitLab Deployment" ;;
+        editor)   echo "Editor (VSCodium)" ;;
         *)        echo "$1" ;;
+    esac
+}
+
+# Get category note (operator guidance shown under the header); empty for most
+get_category_note() {
+    case "$1" in
+        editor) echo "AI-assistant extensions are intentionally excluded (a live AI with editor+shell reach violates ADR-0028 on the ver deploy box — add manually on dev only). Extensions come from Open VSX, not the MS Marketplace. Secrets hygiene is applied because PATs previously leaked into VSCodium local history (ops#25)." ;;
+        *)      echo "" ;;
     esac
 }
 
@@ -337,6 +365,8 @@ draw_setup_screen() {
         if [ "$category" != "$current_category" ]; then
             current_category="$category"
             printf "\n  ${BOLD}$(get_category_name "$category")${NC}\n"
+            local cat_note=$(get_category_note "$category")
+            [ -n "$cat_note" ] && printf "    ${DIM}%s${NC}\n" "$cat_note"
         fi
 
         # Indentation for children
@@ -742,6 +772,19 @@ check_gitlab_composer_exists() {
         "https://${gitlab_url}/api/v4/packages" &>/dev/null
 }
 
+check_codium_installed() { command -v codium &>/dev/null; }
+check_codium_core_ext_installed() {
+    command -v codium &>/dev/null || return 1
+    local have; have="$(codium --list-extensions 2>/dev/null)"
+    local e; for e in "${CODIUM_CORE_EXTS[@]}"; do echo "$have" | grep -qix "$e" || return 1; done
+}
+check_codium_lang_ext_installed() {
+    command -v codium &>/dev/null || return 1
+    local have; have="$(codium --list-extensions 2>/dev/null)"
+    local e; for e in "${CODIUM_LANG_EXTS[@]}"; do echo "$have" | grep -qix "$e" || return 1; done
+}
+check_codium_hygiene_applied() { [ -f "$CODIUM_SETTINGS" ] && grep -q '"telemetry.telemetryLevel": *"off"' "$CODIUM_SETTINGS"; }
+
 detect_component_state() {
     local id="$1"
     case "$id" in
@@ -769,6 +812,10 @@ detect_component_state() {
         gitlab_ssh_config) check_gitlab_ssh_config_exists ;;
         gitlab_composer)  check_gitlab_composer_exists ;;
         claude_config)    check_claude_config_exists ;;
+        codium)           check_codium_installed ;;
+        codium_core_ext)  check_codium_core_ext_installed ;;
+        codium_lang_ext)  check_codium_lang_ext_installed ;;
+        codium_hygiene)   check_codium_hygiene_applied ;;
         *)                return 1 ;;
     esac
 }
@@ -1113,6 +1160,59 @@ EOF
     print_status "OK" "Claude security config created"
 }
 
+install_codium() {
+    print_status "INFO" "Installing VSCodium..."
+    log_action "Installing VSCodium"
+    if command -v codium &>/dev/null; then
+        print_status "OK" "VSCodium already installed"
+        return 0
+    fi
+    wget -qO- https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.gpg | gpg --dearmor | sudo dd of=/usr/share/keyrings/vscodium-archive-keyring.gpg
+    echo 'deb [ signed-by=/usr/share/keyrings/vscodium-archive-keyring.gpg ] https://download.vscodium.com/debs vscodium main' | sudo tee /etc/apt/sources.list.d/vscodium.list >/dev/null
+    sudo apt-get update && sudo apt-get install -y codium
+    print_status "OK" "VSCodium installed"
+}
+
+install_codium_core_ext() {
+    print_status "INFO" "Installing core editor extensions..."
+    log_action "Installing Codium core extensions"
+    # Linter binaries the extensions drive (shfmt may be absent on some releases)
+    sudo apt-get install -y shellcheck || true
+    sudo apt-get install -y shfmt || true
+    local e
+    for e in "${CODIUM_CORE_EXTS[@]}"; do codium --install-extension "$e" --force || true; done
+    print_status "OK" "Core editor extensions installed"
+}
+
+install_codium_lang_ext() {
+    print_status "INFO" "Installing Flutter/Python editor extensions..."
+    log_action "Installing Codium lang extensions"
+    local e
+    for e in "${CODIUM_LANG_EXTS[@]}"; do codium --install-extension "$e" --force || true; done
+    print_status "OK" "Flutter/Python editor extensions installed"
+}
+
+install_codium_hygiene() {
+    print_status "INFO" "Applying editor security defaults..."
+    log_action "Applying Codium security hygiene"
+    mkdir -p "$(dirname "$CODIUM_SETTINGS")"
+    python3 - "$CODIUM_SETTINGS" <<'PY'
+import json,sys,os
+p=sys.argv[1]
+cur={}
+if os.path.exists(p):
+    try: cur=json.load(open(p))
+    except Exception: cur={}
+excl={"**/.secrets.data.yml":True,"**/keys/**":True,"**/*.sql":True,"**/*.sql.gz":True}
+cur["telemetry.telemetryLevel"]="off"
+cur.setdefault("files.exclude",{}).update(excl)
+cur.setdefault("search.exclude",{}).update(excl)
+cur.setdefault("files.watcherExclude",{}).update({"**/.secrets.data.yml":True,"**/keys/**":True})
+json.dump(cur,open(p,"w"),indent=2)
+PY
+    print_status "OK" "Editor security defaults applied (telemetry off, secrets excluded)"
+}
+
 install_component() {
     local id="$1"
     case "$id" in
@@ -1140,6 +1240,10 @@ install_component() {
         gitlab_ssh_config) install_gitlab_ssh_config ;;
         gitlab_composer)  install_gitlab_composer ;;
         claude_config)    install_claude_config ;;
+        codium)           install_codium ;;
+        codium_core_ext)  install_codium_core_ext ;;
+        codium_lang_ext)  install_codium_lang_ext ;;
+        codium_hygiene)   install_codium_hygiene ;;
     esac
 }
 
@@ -1240,7 +1344,12 @@ show_status() {
         local category="${COMP_CATEGORIES[$i]}"
         local priority="${COMP_PRIORITIES[$i]}"
 
-        [ "$category" != "$current_category" ] && { current_category="$category"; echo -e "\n${BOLD}$(get_category_name "$category")${NC}"; }
+        if [ "$category" != "$current_category" ]; then
+            current_category="$category"
+            echo -e "\n${BOLD}$(get_category_name "$category")${NC}"
+            local cat_note=$(get_category_note "$category")
+            [ -n "$cat_note" ] && echo -e "  ${DIM}${cat_note}${NC}"
+        fi
 
         local status_icon="${RED}✗${NC}"
         [ "${COMPONENT_INSTALLED[$id]:-0}" = "1" ] && status_icon="${GREEN}✓${NC}"

@@ -124,10 +124,13 @@ teardown() {
   [[ "$output" == *"not yet implemented"* ]]
 }
 
-# ── the standalone prod-native stub also fails closed ────────────────────────
+# ── the standalone prod-native sanitizer fails closed on a non-Moodle dir ─────
+# moodle_sanitize() is now IMPLEMENTED (see tests/unit/test-moodle-sanitize.bats
+# and tests/integration/test-moodle-sanitize-synthetic.sh). Handed a directory
+# that is not a Moodle root (no version.php), it must still refuse — fail-closed.
 
-@test "lib/sanitizers/moodle.sh stub exits non-zero when asked to sanitize" {
+@test "lib/sanitizers/moodle.sh refuses a non-Moodle dir (no version.php, fail-closed)" {
   run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/moodle.sh" --site-dir "${TEST_TMP}"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"not yet implemented"* ]]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"version.php"* ]]
 }

@@ -25,7 +25,7 @@ consumer: ssc                 # Moodle — SSO client, copyright receiver, REAL 
 # --- F28 signed-bundle linkage (ADR-0031 D5) --------------------------------
 dependencies:
   provider_bundle: "nwc@0.5.0"
-  consumer_bundle: "auth_nwc_oauth2@1.1.0"
+  consumer_bundle: "auth_nwc@1.0.0"
 
 # --- Code surfaces: minimum counterpart versions (expand-contract; D2) -------
 surfaces:
@@ -33,7 +33,7 @@ surfaces:
   # pair_guard does not yet enforce the sha (Phase 3) — inert-but-present today.
   oauth_sso:
     provider_min: "0.5.0"       # nwc simple_oauth issuer
-    consumer_min: "1.1.0"       # auth_nwc_oauth2 Moodle plugin (F26)
+    consumer_min: "1.0.0"       # auth_nwc Moodle plugin (F26; 1.0.0 tag at !49 merge, now 0.1.0-f26)
     schema: "contracts/oauth_sso.claims.schema.json"
     schema_sha256: "1f6add0b00f595662a13cc093ac6224e9790e6be39473de394a49540c17a6572"
   copyright_sync:

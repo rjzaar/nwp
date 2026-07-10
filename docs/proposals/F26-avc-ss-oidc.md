@@ -1,6 +1,10 @@
 ## F26: AVC↔SS OIDC Single Sign-On
 
-**Status:** PROPOSED
+**Status:** SIGNED OFF (2026-07-10, operator) — approved to build. OIDC SSO is the
+sanctioned path for the paired sites (ssc↔nwc, ssd↔nwd) per ADR-0031 / ops#73–76.
+**Implementation caveat:** the code MR (nwp!49) must first reconcile the issuer to
+**nwc** (not avc) per the 2026-07-09 deep audit before it merges — the design decision
+is signed off here; the stale-spec reconcile is a merge gate on the implementation.
 **Created:** 2026-04-12
 **Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** Medium (unblocks cross-site UX for the AVC Moodle integration)

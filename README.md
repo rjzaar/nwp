@@ -9,6 +9,7 @@ A streamlined installation system for Drupal and Moodle projects using DDEV and 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Get Started](#get-started)
 - [License](#license-tldr)
 - [Prerequisites](#prerequisites)
 - [Security Architecture](#security-architecture)
@@ -33,6 +34,25 @@ A streamlined installation system for Drupal and Moodle projects using DDEV and 
 The Narrow Way Project (NWP) simplifies the process of setting up local development environments for Drupal and Moodle projects. Instead of manually configuring each project, NWP uses a recipe-based system where you define your project requirements in a simple YAML configuration file (`nwp.yml`), and the installation script handles the rest.
 
 **[Complete Documentation →](docs/README.md)** - Comprehensive guides, deployment strategies, testing frameworks, security practices, and API references.
+
+## Get Started
+
+Three lines from a fresh machine to a running site — only `git` and `bash` are needed up front (`pl setup` installs the rest):
+
+```bash
+git clone https://github.com/rjzaar/nwp.git ~/nwp
+cd ~/nwp
+./pl setup          # installs prerequisites (Docker/DDEV/Composer) + registers the `pl` command
+```
+
+Then verify and create your first site:
+
+```bash
+pl doctor           # confirm the environment is healthy
+pl install nwp      # create your first site (the URL prints when it finishes)
+```
+
+See the full [Quick Start](#quick-start) below for the step-by-step version.
 
 ## License (TL;DR)
 
@@ -101,15 +121,17 @@ More information about security below.
 
 ## Quick Start
 
-1. **Clone the repository**:
+1. **Clone the repository** (HTTPS needs no SSH key):
    ```bash
-   git clone git@github.com:rjzaar/nwp.git
-   cd nwp
+   git clone https://github.com/rjzaar/nwp.git ~/nwp
+   cd ~/nwp
    ```
+   (Prefer SSH? `git clone git@github.com:rjzaar/nwp.git`.)
 
 2. **Run the setup command** (installs missing prerequisites):
    ```bash
    ./pl setup
+   pl doctor        # verify the environment once setup finishes
    ```
 
    The `pl` script is committed at the repo root and bootstraps itself

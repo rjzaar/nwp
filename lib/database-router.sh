@@ -464,8 +464,8 @@ _san_critical_query() {
 #      rather than falsely reporting sanitized on a non-Drupal DB;
 #   2. hard-checks the exit code of each PII-critical mutation and returns 1 on
 #      failure (cache/session truncations stay best-effort);
-#   3. asserts a POST-CONDITION — zero user rows (uid > 1) retain a non-example
-#      email — and returns 1 if any PII remains.
+#   3. asserts a POST-CONDITION — zero user rows (uid > 0, incl. admin) retain a
+#      non-example mail or init — and returns 1 if any PII remains.
 # The independent lib/pii-gate.sh scan remains the outer backstop.
 sanitize_staging_db() {
     local target_site="$1"
@@ -511,10 +511,22 @@ sanitize_staging_db() {
         ddev drush sql:query "TRUNCATE TABLE $t" 2>/dev/null || true
     done
 
-    # ── PII-critical mutation: FAIL-CLOSED on error.
-    task "Anonymizing user data..."
-    if ! _san_critical_query "UPDATE users_field_data SET mail = CONCAT('user', uid, '@example.com'), name = CONCAT('user', uid) WHERE uid > 1"; then
-        fail "User anonymization query failed — PII may remain (fail-closed)"
+    # ── PII-critical mutation: FAIL-CLOSED on error. Emails (mail + init) are
+    #    anonymized for ALL real users INCLUDING admin (uid > 0), matching the
+    #    prod-native lib/sanitizers/standard.sh. The USERNAME rename stays scoped
+    #    to uid > 1 so the admin account keeps its 'admin' name — required for the
+    #    `drush upwd admin` reset below and for staging login. (Usernames are not
+    #    PII; the real email is. `init` is Drupal's registration-email field —
+    #    previously left untouched, so real PII survived there.)
+    task "Anonymizing user emails (incl. admin)..."
+    if ! _san_critical_query "UPDATE users_field_data SET mail = CONCAT('user', uid, '@example.com'), init = CONCAT('user', uid, '@example.com') WHERE uid > 0"; then
+        fail "User email anonymization query failed — PII may remain (fail-closed)"
+        cd "$original_dir"
+        return 1
+    fi
+    task "Anonymizing non-admin usernames..."
+    if ! _san_critical_query "UPDATE users_field_data SET name = CONCAT('user', uid) WHERE uid > 1"; then
+        fail "Username anonymization query failed — PII may remain (fail-closed)"
         cd "$original_dir"
         return 1
     fi
@@ -531,12 +543,13 @@ sanitize_staging_db() {
     ddev drush cdel smtp.settings --quiet 2>/dev/null || true
 
     # ── POST-CONDITION assertion: no real emails may survive. A count of user
-    #    rows (uid > 1) whose mail is NOT an @example.com address must be 0. A
-    #    non-numeric result (query failed) is also a failure — fail-closed.
+    #    rows (uid > 0, incl. admin) whose mail OR init is NOT an @example.com
+    #    address must be 0. A non-numeric result (query failed) is also a failure
+    #    — fail-closed.
     task "Verifying no PII remains..."
     local residual
     residual=$(ddev drush sql:query \
-        "SELECT COUNT(*) FROM users_field_data WHERE uid > 1 AND mail NOT LIKE '%@example.com'" \
+        "SELECT COUNT(*) FROM users_field_data WHERE uid > 0 AND (mail NOT LIKE '%@example.com' OR init NOT LIKE '%@example.com')" \
         2>/dev/null | tr -d '[:space:]')
     if ! [[ "$residual" =~ ^[0-9]+$ ]]; then
         fail "Could not verify sanitization (post-condition query failed) — fail-closed"
@@ -552,7 +565,7 @@ sanitize_staging_db() {
     task "Rebuilding cache..."
     ddev drush cr 2>/dev/null || true
 
-    pass "Database sanitized (verified: 0 residual PII rows for uid > 1)"
+    pass "Database sanitized (verified: 0 residual PII rows for uid > 0, incl. admin)"
 
     cd "$original_dir"
     return 0

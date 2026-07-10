@@ -4,7 +4,7 @@
 **Created:** 2026-04-12
 **Author:** Robert Karsten Zaar (with AI assistance)
 **Priority:** High (formal successor to F24 Phase 3; unblocks prod deploys under ADR-0017)
-**Depends On:** F21 Phase 2 (mirror-store runner) ✅, F21 Phase 5 (verifier bootstrap — tooling complete, hardware token pending), ADR-0019 (verifier posture), F23 (site layout) ✅
+**Depends On:** F21 Phase 2 (mirror-store runner) ✅, F21 Phase 5 (verifier bootstrap — tooling complete, hardware token pending), [ADR-0024](../decisions/0024-self-deploying-prod-supersedes-verifier.md) (deploy-authority posture — supersedes the withdrawn ADR-0019 this proposal originally cited), F23 (site layout) ✅
 **Breaking Changes:** Yes — replaces the deleted legacy `deploy:staging` / `deploy:production` CI stages (see commits `24baecd`, `05d181a`, `4bb1264`)
 **Estimated Effort:** Large — this is the load-bearing spine of the distributed pipeline; phased over weeks
 

@@ -1,7 +1,7 @@
 # ADR-0027: Unified Course-Content Architecture — one canonical model, federation by overlay, and the trust-ceremony spectrum
 
-**Status:** Proposed (2026-07-08)
-**Date:** 2026-07-08
+**Status:** Accepted (2026-07-09) — supersedes F30 (specifics), amends P70 (attribution → member-level/CC0)
+**Date:** 2026-07-08 (accepted 2026-07-09)
 **Decision Makers:** Robert Karsten Zaar (with AI assistance)
 **Related Issues:** ops#61 (canonical content model), ops#32 (P65 seed-content lifecycle),
 ops#48 (P67 per-site axes), ops#60 (nwc write-back), ops#62 (NWC onboarding + Class-3 preservation)

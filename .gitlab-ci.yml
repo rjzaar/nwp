@@ -226,6 +226,32 @@ lint:leakage:
     - nwp
   allow_failure: false
 
+# Documentation-truth gate (P62 / ADR-0030). Runs `pl doc-truth`, which asserts
+# the *structural* claims NWP docs make against the tree — every repo-relative
+# markdown link resolves, and every `ADR-NNNN` mention resolves to a real
+# docs/decisions file. Pre-existing rot is captured in `.doc-truth-baseline`
+# (like `.gitleaksignore`), so the gate fails ONLY on NEW drift and is therefore
+# safe to enforce (allow_failure: false). Scoped to MRs / main pushes that touch
+# any markdown file. To accept intentional new drift: `pl doc-truth --baseline`.
+lint:doc-truth:
+  stage: lint
+  # Shell runner (no Docker image needed): doc-truth.sh is pure bash + coreutils,
+  # sources only lib/ui.sh, and reads the working tree — no site/composer needed.
+  script:
+    - echo "Checking documentation-truth (P62): structural doc claims vs the tree..."
+    - ./scripts/commands/doc-truth.sh --json || true   # machine summary to the log
+    - ./scripts/commands/doc-truth.sh                  # human report; exit 1 on NEW drift
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "**/*.md"
+    - if: $CI_COMMIT_BRANCH == "main"
+      changes:
+        - "**/*.md"
+  tags:
+    - nwp
+  allow_failure: false
+
 ################################################################################
 # TEST STAGE
 # Unit and integration tests

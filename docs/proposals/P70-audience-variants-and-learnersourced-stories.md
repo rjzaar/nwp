@@ -2,6 +2,11 @@
 
 **Status:** PROPOSED — 2026-07-08. Operator decisions this session: (1) write as a short
 proposal; (2) capture user-contributed content in **nwc/Drupal** (not Moodle). Ready to schedule.
+**Amended by [ADR-0027](../decisions/0027-unified-course-content-architecture.md) (2026-07-09):**
+`story_contribution` attribution changes to **member-level + CC0** (identity severed at the site
+boundary; no individual author travels with the content); the write-back is the micro end of
+ADR-0027's ceremony-scales-with-trust-distance spectrum, and the `audience` vocabulary is fixed to
+ADR-0027 Decision 1.
 **Parent:** **ops#61** (canonical CMS-neutral course-content model). P70 is a *scoped extension of
 ops#61's schema* — it does not introduce a second source of truth.
 **Research base:** two parallel research passes 2026-07-08 — a Moodle-4.5 capability survey and a

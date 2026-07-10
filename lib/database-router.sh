@@ -452,8 +452,139 @@ _san_critical_query() {
     ddev drush sql:query "$1" >/dev/null 2>&1
 }
 
-# Sanitize database on staging site.
+################################################################################
+# ADR-0031 Phase D (ops#76): promotion-pipeline TYPE DISPATCH
+#
+# The sanitize path below was Drupal-only: every statement in
+# _sanitize_staging_db_drupal (users_field_data, drush upwd, cache_* truncation)
+# assumes a Drupal schema and fails on a Moodle DB. D8 requires a per-stack
+# dispatch so a Moodle target routes to a Moodle-specific handler instead of
+# silently running Drupal SQL against Moodle tables.
+#
+# This layer is PLUMBING ONLY. The Moodle handler is a FAIL-CLOSED STUB — the
+# operator authors the actual mdl_user* / consent anonymisation under
+# human-review (CLAUDE.md: the sanitizer is security-critical; plane 5b is
+# students' learning records + tool_policy consent rows).
+################################################################################
+
+# Map a config `project.type` value to a sanitizer stack.
+# Only an explicit `moodle` routes to the Moodle handler; every other value
+# (drupal, podcast, utility, shared, empty/unknown) keeps the existing Drupal
+# path unchanged — i.e. the dispatch is OFF unless a Moodle target is hit.
+# Echoes: "drupal" | "moodle"
+_stack_from_type() {
+    case "$1" in
+        moodle|Moodle|MOODLE) echo "moodle" ;;
+        *)                    echo "drupal" ;;
+    esac
+}
+
+# Runtime schema probe fallback, used only when config gives no answer.
+# Kept as its own function so the config-driven dispatch can be unit-tested
+# with no ddev/drush available (tests never invoke this).
+# Echoes: "drupal" | "moodle" | "unknown"
+#
+# Detection rule (defensive, prefix-agnostic — Moodle's table prefix is
+# configurable, default `mdl_`):
+#   - Drupal  → a `users_field_data` table exists
+#   - Moodle  → a `*config` table coexists with a `*course` table AND there is
+#               NO `users_field_data` (Moodle has `<prefix>config`/`<prefix>course`)
+_stack_schema_probe() {
+    # Requires a DDEV project in CWD. Never invoked by the unit tests.
+    local has_drupal has_moodle
+    has_drupal=$(ddev drush sql:query \
+        "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'users_field_data' LIMIT 1" \
+        2>/dev/null | tr -d '[:space:]')
+    if [ "$has_drupal" = "1" ]; then
+        echo "drupal"; return 0
+    fi
+    has_moodle=$(ddev drush sql:query \
+        "SELECT 1 FROM information_schema.tables t1 WHERE t1.table_schema = DATABASE() AND t1.table_name LIKE '%config' AND EXISTS (SELECT 1 FROM information_schema.tables t2 WHERE t2.table_schema = DATABASE() AND t2.table_name LIKE '%course') LIMIT 1" \
+        2>/dev/null | tr -d '[:space:]')
+    if [ "$has_moodle" = "1" ]; then
+        echo "moodle"; return 0
+    fi
+    echo "unknown"
+}
+
+# Detect the promotion stack for a target site.
+# Precedence:
+#   1. Site config `project.type` (authoritative; unit-testable, no ddev).
+#      The tenant is derived by stripping a -dev/-stg/-live/-test env suffix.
+#   2. If config yields nothing usable, fall back to the runtime schema probe
+#      (only reached on a live DDEV site).
+# Echoes: "drupal" | "moodle"  (never "unknown" — unknown resolves to the
+# existing Drupal path, whose own schema probe then fail-closes if wrong).
+detect_site_stack() {
+    local target_site="$1"
+
+    # Derive tenant name for config lookup (nwc-stg → nwc, ss2-live → ss2).
+    local tenant="$target_site"
+    if [[ "$tenant" =~ ^(.+)-(dev|stg|live|test)$ ]]; then
+        tenant="${BASH_REMATCH[1]}"
+    fi
+
+    # 1. Config-driven (authoritative). get_site_config_value is provided by
+    #    lib/project-resolver.sh (auto-sourced via lib/common.sh).
+    local cfg_type=""
+    if declare -F get_site_config_value >/dev/null 2>&1; then
+        cfg_type=$(get_site_config_value "$tenant" '.project.type' '' 2>/dev/null || echo '')
+    fi
+    if [ -n "$cfg_type" ] && [ "$cfg_type" != "null" ]; then
+        _stack_from_type "$cfg_type"
+        return 0
+    fi
+
+    # 2. Runtime schema probe fallback (never hit by unit tests).
+    local probed
+    probed=$(_stack_schema_probe 2>/dev/null || echo "unknown")
+    case "$probed" in
+        moodle) echo "moodle" ;;
+        *)      echo "drupal" ;;   # drupal OR unknown → existing Drupal path
+    esac
+}
+
+# Moodle sanitize handler — FAIL-CLOSED STUB (ops#76 plumbing).
+# This deliberately REFUSES to proceed. The operator authors the real Moodle
+# anonymisation under human-review (see lib/sanitizers/moodle.sh for the
+# interface spec and the plane-5b table inventory). Until then, no Moodle DB
+# may be promoted un-sanitized: this returns non-zero so every caller
+# (prod2stg/live2stg/download_db_*) that fail-closes on sanitize will abort.
+_sanitize_staging_db_moodle() {
+    local target_site="$1"
+    fail "Moodle sanitizer not yet implemented — operator must author the mdl_user* / consent anonymisation"
+    note "Target '$target_site' is a Moodle stack (ADR-0031 plane 5b: student learning records + tool_policy consent)."
+    note "Plumbing only: see lib/sanitizers/moodle.sh for the interface the operator must implement."
+    note "Refusing to promote a Moodle DB un-sanitized (fail-closed)."
+    return 1
+}
+
+# Sanitize database on staging site — TYPE-DISPATCHING entrypoint (ops#76).
 # Usage: sanitize_staging_db "target_site"
+#
+# Detects the target stack and routes to the matching handler:
+#   drupal → _sanitize_staging_db_drupal (existing path, unchanged)
+#   moodle → _sanitize_staging_db_moodle (fail-closed stub; operator authors it)
+# Drupal remains the default for every non-Moodle/unknown target, so existing
+# Drupal flows are byte-for-byte unchanged.
+sanitize_staging_db() {
+    local target_site="$1"
+    local stack
+    stack=$(detect_site_stack "$target_site")
+    case "$stack" in
+        moodle)
+            _sanitize_staging_db_moodle "$target_site"
+            return $?
+            ;;
+        drupal|*)
+            _sanitize_staging_db_drupal "$target_site"
+            return $?
+            ;;
+    esac
+}
+
+# Drupal sanitize handler (formerly sanitize_staging_db).
+# Usage: _sanitize_staging_db_drupal "target_site"
 #
 # FAIL-CLOSED contract (hardened): this used to run every mutation with
 # `2>/dev/null` and then `return 0` unconditionally, always printing
@@ -467,7 +598,7 @@ _san_critical_query() {
 #   3. asserts a POST-CONDITION — zero user rows (uid > 0, incl. admin) retain a
 #      non-example mail or init — and returns 1 if any PII remains.
 # The independent lib/pii-gate.sh scan remains the outer backstop.
-sanitize_staging_db() {
+_sanitize_staging_db_drupal() {
     local target_site="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 

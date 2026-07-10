@@ -661,6 +661,14 @@ main() {
             run_script "pair-smoke.sh" "$@"
             ;;
 
+        # Moodle promotion substrate + smoke (ADR-0031 D8 / ops D)
+        moodle-promote)
+            run_script "moodle-promote.sh" "$@"
+            ;;
+        moodle-smoke)
+            run_script "moodle-smoke.sh" "$@"
+            ;;
+
         # Branch twin sites (P67 §5c / nwp/ops#48)
         branch)
             run_script "branch.sh" "$@"

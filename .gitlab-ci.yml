@@ -252,6 +252,38 @@ lint:doc-truth:
     - nwp
   allow_failure: false
 
+# Intersite change-impact classifier (P74 Phase 2 / boundary gate). Cloned from
+# lint:doc-truth above. Runs `pl impact --json` on an MR to classify the diff
+# INTERNAL vs BOUNDARY-TOUCHING against pairs/ssc.pair-contract.yml's `boundary:`
+# block, and artifacts the JSON verdict. Uses the merge-base sha GitLab sets for
+# MR pipelines as the compare base; a missing/unfetched base makes `pl impact`
+# fail-safe CLOSED (⇒ BOUNDARY), never silently "internal".
+#
+# ADVISORY ONLY for now (allow_failure: true; the classifier itself exits 0):
+# it informs, it does not block. The parts that BLOCK — the contract_version
+# bump gate, CODEOWNERS review scoped to the boundary paths, and the schema
+# compat (expand-contract) checker — are a LATER phase (P74 Phase 3); wire them
+# here (and flip allow_failure) then. Shell runner: needs bash + git + yq (yq is
+# what reads the boundary map; without it every diff would look internal).
+boundary:classify:
+  stage: lint
+  script:
+    - echo "Classifying diff against the nwc<->ssc boundary (P74 Phase 2)..."
+    - BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-main}"
+    - echo "Compare base ${BASE}"
+    - ./scripts/commands/impact.sh --base="${BASE}"                 # human report
+    - ./scripts/commands/impact.sh --base="${BASE}" --json | tee impact.json
+    - ./scripts/commands/impact.sh --honesty                        # manifest-honesty (advisory)
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  tags:
+    - nwp
+  allow_failure: true
+  artifacts:
+    when: always
+    paths:
+      - impact.json
+
 ################################################################################
 # TEST STAGE
 # Unit and integration tests

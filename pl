@@ -110,6 +110,10 @@ ${BOLD}MATURITY (code-flow classes, P67/ops#48):${NC}
     maturity set <site> <class>     Explicit transition (ledgered; downgrades typed-confirm)
     maturity check <site>           Show which code-deploy gate is in force
 
+${BOLD}INTERSITE BOUNDARY (P74 change-impact gate):${NC}
+    impact [--base=main] [--json]   Classify a diff INTERNAL vs BOUNDARY-TOUCHING (nwc↔ssc)
+    impact --honesty                Check no boundary symbol leaks outside its declared paths
+
 ${BOLD}BRANCH TWINS (P67/ops#48):${NC}
     branch <site> <git-ref>         Create a disposable twin on a branch
     branch list [site]              Twins nested under parents, code Δ + content age
@@ -662,6 +666,11 @@ main() {
             ;;
 
         # Moodle promotion substrate + smoke (ADR-0031 D8 / ops D)
+        # Intersite change-impact classifier (P74 Phase 2 / boundary gate)
+        impact)
+            run_script "impact.sh" "$@"
+            ;;
+
         moodle-promote)
             run_script "moodle-promote.sh" "$@"
             ;;

@@ -255,6 +255,11 @@ _moodle_init_db_access() {
     # The prefix is configurable; refusing to guess 'mdl_' is fail-closed — a
     # wrong prefix would silently anonymise nothing.
     [ -n "$prefix" ] || { log_error "\$CFG->prefix is empty in config.php (refusing to assume 'mdl_')"; return 1; }
+    # Defense-in-depth: the prefix becomes a backticked SQL identifier for every
+    # table. config.php is operator-controlled (trusted), but a stray backtick/
+    # space would be an identifier-injection foothold — refuse anything but the
+    # Moodle-legal charset. Fail-closed.
+    [[ "$prefix" =~ ^[A-Za-z0-9_]+$ ]] || { log_error "\$CFG->prefix '${prefix}' has unexpected characters — refusing (identifier-injection guard)"; return 1; }
 
     LIVE_DB="$db"; PREFIX="$prefix"
     SCRATCH_DB="${db}${SCRATCH_SUFFIX}"

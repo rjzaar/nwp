@@ -65,6 +65,25 @@ EOF
     [[ "$output" == *"prefix"* ]]
 }
 
+@test "moodle.sh: refuses a prefix with illegal chars (identifier-injection guard)" {
+    touch "$TMP/version.php"
+    cat > "$TMP/config.php" <<'EOF'
+<?php
+$CFG = new stdClass();
+$CFG->dbname = 'x';
+$CFG->dbuser = 'y';
+$CFG->dbpass = 'z';
+$CFG->dbhost = '127.0.0.1';
+$CFG->prefix = 'mdl`;DROP';
+require_once(__DIR__ . '/lib/setup.php');
+EOF
+    mkdir -p "$TMP/lib"
+    echo '<?php return;' > "$TMP/lib/setup.php"
+    run bash "$SANITIZER" --site-dir "$TMP"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"identifier-injection guard"* || "$output" == *"unexpected characters"* ]]
+}
+
 # ── --verify PII sweep (reads an artifact; no DB) ─────────────────────────────
 
 @test "moodle.sh --verify: passes a clean dump (sanitized emails only)" {

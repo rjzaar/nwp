@@ -20,6 +20,13 @@ ROLLBACK_DIR="${SCRIPT_DIR}/.rollback"
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/rollback-remote.sh"
 
+# deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op
+# unless configured (ver) — the AI test tier (A14) is unaffected. Needed here
+# because a REMOTE rollback restores DBs + nginx on the live/prod host — a
+# prod write that must pass the same gate as a deploy (ops#79 finding 7).
+# shellcheck disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/deploy-gate.sh"
+
 ################################################################################
 # Deployment History
 ################################################################################
@@ -219,6 +226,14 @@ rollback_execute() {
     [ -z "$type" ] && type="local"
 
     if [ "$type" = "remote" ]; then
+        # Hardware+signature gate (ADR-0028/ops#79): a remote rollback writes
+        # DBs + nginx config on the live/prod host. Gate it exactly like a
+        # deploy. Local-DDEV rollbacks (below) never prompt; dry runs write
+        # nothing so they are exempt.
+        if [ "$dry_run" != "--dry-run" ]; then
+            deploy_gate_require "$sitename" "$environment" \
+                "rollback: restore DBs + nginx on the production host" || return 1
+        fi
         rollback_execute_remote_from_entry "$entry_file" "$dry_run"
         return $?
     fi

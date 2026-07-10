@@ -416,6 +416,30 @@ _moodle_anonymise_oauth_links() {
     return 0
 }
 
+# Loginability restore (independent review 2026-07-11): anonymising the admin sets
+# its password to 'not cached' + a fake email, which on a manual-auth staging site
+# leaves NO usable admin login. Zero-secret fix: set the primary site admin back to
+# auth='manual' on the SCRATCH copy so the operator can `admin/cli/reset_password.php`
+# after load. Identity stays anonymised (no PII regression; the sweep still passes).
+# The primary admin uid comes from <prefix>config `siteadmins` (a comma-list, can be
+# non-2/multiple), fallback 2. Guest (id=1) is untouched.
+_moodle_restore_dev_admin() {
+    local cfg="${PREFIX}config"
+    local admin_uid=""
+    if _moodle_table_exists "$cfg"; then
+        local list
+        list=$(sq "SELECT value FROM \`${cfg}\` WHERE name='siteadmins' LIMIT 1;")
+        admin_uid="${list%%,*}"           # first uid in the comma list
+    fi
+    [[ "$admin_uid" =~ ^[0-9]+$ ]] || admin_uid=2   # Moodle default primary admin
+    _moodle_column_exists "${PREFIX}user" "auth" || return 0
+    sq "UPDATE \`${PREFIX}user\` SET auth='manual' WHERE id=${admin_uid} AND deleted=0;" \
+        || { log_error "could not restore admin loginability on scratch"; return 1; }
+    log "admin loginability: uid ${admin_uid} set auth='manual' (identity stays anonymised)."
+    log "  → after loading this dump on staging, run: php admin/cli/reset_password.php"
+    return 0
+}
+
 # Consent (tool_policy_acceptances) — handled EXPLICITLY, never silently dropped
 # (ADR-0031 D5). The anonymised fixture users never accepted any policy, so the
 # per-user acceptance rows are TRUNCATED and the action is logged. The policy
@@ -473,6 +497,7 @@ moodle_sanitize() {
     log "anonymising ${PREFIX}user (identity + OIDC emails, id>1) and OIDC linkage"
     _moodle_anonymise_users || return 1
     _moodle_anonymise_oauth_links || return 1
+    _moodle_restore_dev_admin || return 1
 
     # Volatile / log / message / token / free-text-profile tables → TRUNCATE.
     # Names are enumerated (not pattern-matched) so we never blow away messaging
@@ -490,18 +515,49 @@ moodle_sanitize() {
         _moodle_truncate_if_exists "${PREFIX}${t}" || return 1
     done
 
-    # Learning-attempt tables that carry FREE-TEXT student responses (plane 5b
-    # PII) → TRUNCATE. Numeric aggregate grades / enrolments / role assignments
-    # are LEFT: once <prefix>user is anonymised the identity is severed, so the
-    # remaining integer FKs are no longer PII, and a working fixture keeps them.
-    # (Operator may tighten this per deployment — see header inventory.)
-    log "truncating free-text learning-attempt tables (plane 5b PII)"
+    # Free-text student CONTENT + learning-attempt tables (plane 5b PII) → TRUNCATE.
+    # These carry names/emails/opinions a student TYPED, which the user-table
+    # anonymisation never reaches — leaving them would ship real PII in a dump the
+    # sanitizer claims is clean. (Independent security review 2026-07-11 + GDPR
+    # data-minimisation: a dev/preview fixture needs valid rows, not content.)
+    log "truncating free-text content + learning-attempt tables (plane 5b PII)"
     for t in quiz_attempts question_attempts question_attempt_steps \
              question_attempt_step_data lesson_attempts \
              assign_submission assignsubmission_onlinetext assignsubmission_file \
-             scorm_scoes_track; do
+             scorm_scoes_track \
+             forum_posts forum_discussions \
+             data_content glossary_entries \
+             wiki_pages wiki_versions book_chapters \
+             comments assignfeedback_comments \
+             post feedback_value feedback_valuetmp survey_answers \
+             chat_messages workshop_submissions workshop_assessments; do
         _moodle_truncate_if_exists "${PREFIX}${t}" || return 1
     done
+
+    # Numeric attainment (grades / completions / badges). RETENTION-POLICY DIAL:
+    # <prefix>user email is rewritten with a DELIBERATELY re-linkable shared salt,
+    # so kept grades are pseudonymous — under GDPR still personal data, and
+    # singling-out survives in tiny cohorts. A dev/preview copy needs valid rows,
+    # not real marks (cf. Moodle local_datacleaner, which fakes/drops them). Also
+    # fixes the prior inconsistency (quiz_attempts truncated but quiz_grades kept).
+    # DEFAULT = TRUNCATE; to keep realistic marks, delete this loop.
+    log "truncating numeric attainment (grades/completions/badges) — retention dial"
+    for t in grade_grades grade_grades_history \
+             quiz_grades assign_grades \
+             course_completions course_modules_completion \
+             badge_issued; do
+        _moodle_truncate_if_exists "${PREFIX}${t}" || return 1
+    done
+
+    # KEPT for fixture usability: user_enrolments / role_assignments / groups_members
+    # (structure only; identity already severed). For MINORS, drop these too —
+    # export NWP_MOODLE_SANITIZE_MINORS=true.
+    if [ "${NWP_MOODLE_SANITIZE_MINORS:-false}" = "true" ]; then
+        log "minors mode: truncating enrolment / role / group membership too"
+        for t in user_enrolments role_assignments groups_members; do
+            _moodle_truncate_if_exists "${PREFIX}${t}" || return 1
+        done
+    fi
 
     _moodle_handle_consent || return 1
 

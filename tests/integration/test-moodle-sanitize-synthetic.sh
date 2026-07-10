@@ -121,6 +121,20 @@ INSERT INTO ${PREFIX}sessions VALUES (1,3,'sessionidsecret1'),(2,4,'sessionidsec
 
 CREATE TABLE ${PREFIX}user_password_history (id BIGINT PRIMARY KEY, userid BIGINT, hash VARCHAR(255));
 INSERT INTO ${PREFIX}user_password_history VALUES (1,3,'\$2y\$10\$oldhash1'),(2,4,'\$2y\$10\$oldhash2');
+
+-- auth/deleted columns + siteadmins → exercises the admin-loginability restore.
+ALTER TABLE ${PREFIX}user ADD COLUMN auth VARCHAR(20) NOT NULL DEFAULT 'manual',
+                          ADD COLUMN deleted TINYINT NOT NULL DEFAULT 0;
+UPDATE ${PREFIX}user SET auth='nologin' WHERE id=2;
+CREATE TABLE ${PREFIX}config (id BIGINT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(100), value TEXT);
+INSERT INTO ${PREFIX}config (name,value) VALUES ('siteadmins','2');
+
+-- free-text CONTENT table with real PII a student typed (must be TRUNCATED).
+CREATE TABLE ${PREFIX}forum_posts (id BIGINT PRIMARY KEY, userid BIGINT, subject VARCHAR(255), message LONGTEXT);
+INSERT INTO ${PREFIX}forum_posts VALUES (1,3,'hello','contact me at real.student@school.example');
+-- numeric attainment (retention dial → TRUNCATE by default).
+CREATE TABLE ${PREFIX}grade_grades (id BIGINT PRIMARY KEY, userid BIGINT, finalgrade DECIMAL(10,5));
+INSERT INTO ${PREFIX}grade_grades VALUES (1,3,87.50000),(2,4,92.00000);
 SQL
 
 echo "--- BEFORE (synthetic real PII) ---"
@@ -201,13 +215,25 @@ cnt="$(zcat "$OUT" | grep -oF "$expect_teacher" | wc -l | tr -d ' ')"
                  || bad "OIDC join not preserved (fake email count=$cnt, expected >=2)"
 
 # 4c. Truncations landed (no rows for those tables in the dump).
-for tbl in tool_policy_acceptances sessions user_password_history; do
+for tbl in tool_policy_acceptances sessions user_password_history \
+           forum_posts grade_grades; do
     if zcat "$OUT" | grep -qE "INSERT INTO \`?${PREFIX}${tbl}\`?"; then
         bad "$tbl not truncated (INSERT present in dump)"
     else
         ok "$tbl truncated (no INSERT in dump)"
     fi
 done
+# Free-text content PII must be gone (the forum message held a real email).
+zcat "$OUT" | grep -q 'real.student@school.example' \
+    && bad "free-text forum PII survived (real.student@school.example in dump)" \
+    || ok "free-text forum content PII removed"
+# Admin loginability restored: uid 2 (siteadmins) → auth='manual' (was 'nologin').
+if zcat "$OUT" | grep -oE "\(2,'[^)]*'manual'[^)]*\)" | grep -q manual \
+   || zcat "$OUT" | grep -E "INSERT INTO \`?${PREFIX}user\`?" | grep -q "'manual'"; then
+    ok "admin (uid 2) auth restored to manual (loginability)"
+else
+    bad "admin auth not restored to manual (staging would be unadministerable)"
+fi
 # Policy DEFINITION kept.
 zcat "$OUT" | grep -qE "INSERT INTO \`?${PREFIX}tool_policy\`? " && ok "tool_policy definition KEPT (consent handled, not blanket-dropped)" \
     || bad "tool_policy definition missing (should be kept)"

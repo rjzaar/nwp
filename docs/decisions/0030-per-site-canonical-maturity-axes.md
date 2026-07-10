@@ -89,8 +89,10 @@ recorded to an append-only ledger.
 
 ### 2. `maturity:` — the code-flow axis (P67 / ops#48)
 Values **`incubating | stabilizing | production`**. It names who may deploy code and past
-what gate, independently of where content is canonical. Absent = `incubating`. Rendered
-beside the PHASE column (a `MAT` column) in `pl status` / `pl rag`.
+what gate, independently of where content is canonical. **Its promotion gate is the `stg`
+verification step (§4)** — off while `incubating`, a required test-gated stage once
+`stabilizing` / `production`. Absent = `incubating`. Rendered beside the PHASE column
+(a `MAT` column) in `pl status` / `pl rag`.
 
 ### 3. The impact / fate-manifest contract on destructive verbs (ops#47, `lib/impact.sh`)
 Every destructive verb sources `lib/impact.sh` and, before acting, renders a fate manifest
@@ -99,10 +101,28 @@ confirmation. `-y` skips the prompt, never the report. `test-impact-contract.bat
 sourcing under a **shrink-only allowlist** — the CI-enforced ratchet that guarantees the
 contract's coverage can only expand.
 
-### 4. `stg` is a working copy, not a state
-The four-state linear model of ADR-0013 is retired. There is no `stg` phase or maturity
-value; staging is a transient sanitized copy produced *for* a deploy, not a canonicality
-position a site occupies.
+### 4. `stg` is the verification gate of the code axis — not a state, not a mere copy
+The four-state linear model of ADR-0013 is retired: `stg` is **not** a canonicality phase
+or a maturity value, and a site never "sits in" staging. But `stg` is more than a transient
+copy — it is the **verification gate of the code-flow (`maturity:`) axis**: an **ephemeral
+environment composed as candidate code × sanitized canonical data**, built to prove a
+release against realistic data before it may reach live/prod.
+
+- **Composition.** Data flows *down* from the canonical host, **sanitized** (`live2stg` /
+  `prod2stg`); candidate code flows *up* (`dev2stg`). The point is "new code against
+  real-shaped data" — the closest safe rehearsal of a live/prod deploy.
+- **Keyed to maturity, so it switches on exactly when there is content worth protecting:**
+  - `incubating` — **no stg gate.** `dev→live` may deploy directly; there is no canonical
+    data at risk and nothing to rehearse against. *(The common early state — a site with no
+    audience does not need staging.)*
+  - `stabilizing` / `production` — stg is a **required gate**: `stg2live` / `stg2prod` may
+    write only after a fresh stg run (candidate code + freshly-sanitized canonical data) has
+    **passed its test suite**.
+- **Ephemeral — rebuilt per deploy, not a long-lived box.** A persistent staging environment
+  *drifts* (manual tweaks, stale data, config matching neither dev nor live) and then tests a
+  fiction. stg is composed fresh each release and discarded — the review-environment /
+  deploy-preview pattern — so it always reflects *this* candidate's code against *current*
+  sanitized data.
 
 ## Rationale
 
@@ -135,11 +155,21 @@ they are applied and enforced.
 - Migration is a no-op: absent `canonical` defaults to `dev`, absent `maturity` to
   `incubating` — today's behaviour. The operator assigns real classes site-by-site via
   `pl canonical set` / `pl maturity set`.
+- The `stg` verification gate is **inert while a site is `incubating`** (no canonical data to
+  rehearse against) and becomes a required test-gated step only once the site is
+  `stabilizing` / `production` — early sites keep the simple `dev→live` path and pay the
+  staging cost exactly when there is live/prod content worth protecting.
 
 ## Implementation Notes
 - Phase guards: `lib/canonical.sh` + the six deploy verbs (ops#33, merged).
 - Maturity axis: P67 / ops#48 (MR !47) — `pl maturity set`, `MAT` column, one-line hook in
   `canonical_deploy_manifest` / `build_impact_report`.
+- **`stg` verification gate (follow-up):** compose the existing verbs into a
+  build-verify-discard step — `live2stg` / `prod2stg` (sanitized data) + `dev2stg` (candidate
+  code) → run the site's test suite → promote on green. Enforce it when `maturity ≥
+  stabilizing`; allow the direct `dev→live` path while `incubating`. Keep stg ephemeral
+  (rebuilt per deploy) to prevent staging drift. This is the code-axis counterpart to the
+  content-axis phase guards.
 - Fate-manifest contract: `lib/impact.sh` + `tests/unit/test-impact-contract.bats`
   (shrink-only allowlist), reference consumer `scripts/commands/delete.sh`.
 - ADR-0028 already depends on this model (it cites "canonical phase guards (dev|live|prod,

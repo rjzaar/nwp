@@ -166,6 +166,9 @@ servers/*
 # SSH key contents (keep directory but ignore all keys)
 keys/*
 !keys/.gitkeep
+# Public keys only — the deploy-gate authorization list (ADR-0028, ops#79).
+# Safe and intended to be distributed in-repo; contains no private material.
+!keys/allowed_signers
 
 # Secrets files - NEVER commit these
 **/.secrets.yml

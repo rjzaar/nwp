@@ -13,14 +13,24 @@
 //     Moodle OAuth2 service (Site admin > Server > OAuth2 services), NOT
 //     hard-coded here — see moodle/INSTALL.md.
 //   * This plugin adds the F26 UID-LOCK on top of that dance: it binds each
-//     Moodle account to the nwc uid (the ID token `sub`) via mdl_user.idnumber,
+//     Moodle account to the nwc uid (the `sub` claim) via mdl_user.idnumber,
 //     and thereafter resolves the user by idnumber, never by email.
 //   * The lock DECISION is pure and unit-tested in classes/uid_lock.php; this
 //     file only supplies the Moodle DB rows and executes the chosen action.
 //
+// TRUST MODEL (ops#82, verified read-only 2026-07-11): Moodle core auth_oauth2
+// does NOT verify the id_token RS256 signature against nwc's JWKS — it runs the
+// authorization-code + PKCE(S256) grant against the confidential client, then
+// reads the `sub` (and other claims) from the /oauth/userinfo endpoint over TLS
+// with a bearer access token. The trust anchors are therefore TLS + the
+// confidential-client token endpoint + PKCE + the bearer userinfo call, NOT a
+// JWT signature. (If a future consumer starts verifying the JWKS signature, the
+// key-rotation runbook's hard-swap safety no longer holds — see
+// docs/guides/ops82-key-rotation.md.)
+//
 // NO SHORTCUTS: there is no shared secret, no bearer token in a URL and no
-// anonymous auto-create. Every login requires a `sub` from an ID token the
-// issuer signed (verified by core OAuth2 against nwc's JWKS).
+// anonymous auto-create. Every login requires a `sub` obtained from the issuer's
+// authenticated userinfo endpoint; an empty/absent sub is a DENY.
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -75,9 +85,11 @@ class auth_plugin_nwc extends auth_plugin_base {
     /**
      * Apply the F26 UID-lock for a verified OIDC login.
      *
-     * Call this with the *verified* ID-token / userinfo claims (core OAuth2
-     * has already validated the token signature, nonce and audience). Returns
-     * the decision (see uid_lock) and mutates $DB accordingly.
+     * Call this with the userinfo claims core OAuth2 fetched after the
+     * authorization-code + PKCE grant (bearer call to /oauth/userinfo over TLS
+     * — core does NOT verify a JWKS/RS256 id_token signature; see the trust-model
+     * note at the top of this file). Returns the decision (see uid_lock) and
+     * mutates $DB accordingly.
      *
      * @param array $claims verified OIDC claims: sub, email, email_verified, name, ...
      * @param bool  $nwc_active whether userinfo resolved (nwc account still exists)

@@ -20,9 +20,14 @@ namespace auth_nwc;
  * auth plugin (auth.php) supplies the DB rows and executes the returned action.
  *
  * Security notes:
- *  - `sub` is the subject of an ID token signed by the nwc issuer (RS256,
- *    verified against nwc's JWKS). It is NOT user-supplied. An empty/unsigned
- *    sub is a broken token -> DENY (never create, never guess).
+ *  - `sub` is the subject asserted by the nwc issuer and read from its
+ *    authenticated /oauth/userinfo endpoint (bearer access token over TLS,
+ *    after the authorization-code + PKCE grant). NOTE (ops#82): Moodle core
+ *    auth_oauth2 does NOT verify an id_token RS256 signature against nwc's
+ *    JWKS — trust rests on TLS + the confidential-client token endpoint + PKCE
+ *    + the bearer userinfo call, not a JWT signature. `sub` is NOT
+ *    user-supplied; an empty/absent sub is untrusted -> DENY (never create,
+ *    never guess).
  *  - The one-time legacy-email link (ACTION_LOCK_EXISTING) is only reached when
  *    the ID token carries email_verified === true for that email; the caller
  *    MUST enforce that before passing row_by_email. This is why linking a

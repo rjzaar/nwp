@@ -189,9 +189,13 @@ cp "$MINISIGN_PUBLIC_KEY" "$OUT_DIR/nwp-minisign.pub"
 print_header "Step 3 · Sign + manifest"
 ( cd "$OUT_DIR"
   if [ "$SIGN" = y ]; then
-    while IFS= read -r f; do
-      minisign_sign "$f" "ver-kit $(basename "$f") $(date -I)" >/dev/null
-    done < <(find tools scripts -type f ! -name '*.minisig')
+    # Read the file list into an array FIRST so the signing loop keeps the
+    # terminal as stdin — otherwise `done < <(find …)` steals stdin and
+    # minisign's password prompt reads EOF from the find stream and bails.
+    mapfile -t _sign_files < <(find tools scripts -type f ! -name '*.minisig')
+    for f in "${_sign_files[@]}"; do
+      minisign_sign "$f" "ver-kit $(basename "$f") $(date -I)" >/dev/null </dev/tty
+    done
   fi
   find . -type f ! -name 'KIT.sha256*' -printf '%P\n' | sort | xargs sha256sum > KIT.sha256
   [ "$SIGN" = y ] && minisign_sign KIT.sha256 "ver-kit manifest $(date -I)" >/dev/null

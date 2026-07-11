@@ -85,6 +85,7 @@ ${BOLD}BACKUP & RESTORE:${NC}
     backup -g <sitename>            Backup with git commit
     backup --bundle <sitename>      Create git bundle archive
     backup --sanitize <sitename>    Create sanitized backup (no PII)
+    backup sweep [--dry-run]        Back up every site with stale/missing backups
     restore <sitename> [backup]     Restore from backup
     restore -b <sitename>           Restore database only
     copy <source> <dest>            Copy site to new location
@@ -150,6 +151,8 @@ ${BOLD}THEMING:${NC}
 ${BOLD}SCHEDULING:${NC}
     schedule install <sitename>     Install backup schedule (cron)
     schedule remove <sitename>      Remove backup schedule
+    schedule install-sweep          Install nightly 'pl backup sweep' cron
+    schedule remove-sweep           Remove the backup-sweep cron entry
     schedule list                   List all scheduled backups
     schedule show                   Show cron entries
     schedule run <sitename>         Run scheduled backup now
@@ -252,6 +255,7 @@ ${BOLD}GLOBAL OPTIONS:${NC}
 
 ${BOLD}SCRIPT-SPECIFIC OPTIONS:${NC}
     backup:    -b (db-only), -g (git), --bundle, --sanitize, --push-all
+    backup sweep: --dry-run, --start-stopped, --site <name>
     restore:   -b (db-only), -f (force), -o (overwrite)
     copy:      -f (files-only), -y (yes), -o (overwrite)
     delete:    -b (backup first), --purge (incl. backups), -y (yes; report still prints)

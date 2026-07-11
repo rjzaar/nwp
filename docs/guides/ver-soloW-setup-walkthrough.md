@@ -103,9 +103,13 @@ deploy key, never on a routine tap.) Everything else is a tap.
 18. **Turn the gate ON and fail-closed** on ver — add to `~/.bashrc`:
     ```bash
     export NWP_DEPLOY_ALLOWED_SIGNERS="$HOME/nwp/keys/allowed_signers"
-    export NWP_DEPLOY_SK_KEY="$HOME/.ssh/id_ed25519_sk"
     export NWP_DEPLOY_GATE_REQUIRE=true    # unconfigured = ABORT, never silent-skip
     ```
+    (No key variable needed: the gate auto-discovers every sk key at
+    `~/.ssh/id_ed25519_sk` and `~/.ssh/id_ed25519_sk_*` and signs with
+    **whichever enrolled Solo is plugged in** — W day-to-day, or the W2
+    hot-spare in an emergency, nothing to remember. Set `NWP_DEPLOY_SK_KEY`
+    only to force one specific key.)
     Then **pin the fail-closed with a marker file** too — it survives `sudo` and
     stripped environments, so the gate can't be skipped by accident:
     ```bash

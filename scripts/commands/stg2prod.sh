@@ -116,17 +116,47 @@ get_linode_config() {
         "$PROJECT_ROOT/nwp.yml" 2>/dev/null
 }
 
+# Resolve the staging directory for a site (ops#79 finding 3).
+# Prefers the v2 nested layout (sites/<name>/stg/, via resolve_project like
+# stg2live does); falls back to the legacy flat layout (sites/<name>-stg/).
+# Prints the absolute path, or returns 1 if no staging dir exists.
+get_stg_dir() {
+    local site=$1
+    local base
+    base=$(get_base_name "$site")
+
+    # v2 nested layout: sites/<name>/stg/. resolve_project returns the
+    # EXPECTED path for a v2 site even before stg exists, and returns the
+    # flat dir itself for v1 sites — so require both that the dir exists
+    # and that it is the stg env subdir before trusting it.
+    local v2_dir
+    v2_dir=$(resolve_project "$base" "stg" 2>/dev/null || true)
+    if [ -n "$v2_dir" ] && [ -d "$v2_dir" ] && [[ "$v2_dir" == */stg ]]; then
+        echo "$v2_dir"
+        return 0
+    fi
+
+    # Legacy flat layout: sites/<name>-stg/
+    if [ -d "$PROJECT_ROOT/sites/${base}-stg" ]; then
+        echo "$PROJECT_ROOT/sites/${base}-stg"
+        return 0
+    fi
+
+    return 1
+}
+
 # Check if site is in production mode
 # Returns 0 if in prod mode, 1 if in dev mode
+# Takes the resolved staging directory (v2 or legacy), not a site name.
 is_prod_mode() {
-    local sitename=$1
+    local stg_dir=$1
 
-    if [ ! -d "$PROJECT_ROOT/sites/$sitename" ]; then
+    if [ ! -d "$stg_dir" ]; then
         return 1
     fi
 
     local original_dir=$(pwd)
-    cd "$PROJECT_ROOT/sites/$sitename" || return 1
+    cd "$stg_dir" || return 1
 
     # Check CSS preprocessing setting - 1 means prod mode
     local css_preprocess=$(ddev drush config:get system.performance css.preprocess 2>/dev/null | grep -oP "'\K[^']+")
@@ -141,25 +171,28 @@ is_prod_mode() {
 }
 
 # Ensure site is in production mode before deployment
+# Takes the resolved staging dir (for the mode check) and the base site
+# name (make.sh normalises <base>-stg for both v1 and v2 layouts).
 ensure_prod_mode() {
-    local sitename=$1
+    local stg_dir=$1
+    local base_name=$2
 
-    print_info "Checking if $sitename is in production mode..."
+    print_info "Checking if staging ($stg_dir) is in production mode..."
 
-    if is_prod_mode "$sitename"; then
-        print_status "OK" "$sitename is already in production mode"
+    if is_prod_mode "$stg_dir"; then
+        print_status "OK" "Staging is already in production mode"
         return 0
     fi
 
-    print_status "WARN" "$sitename is in development mode"
+    print_status "WARN" "Staging is in development mode"
     print_info "Switching to production mode..."
 
     # Run make.sh -py to switch to prod mode with auto-confirm
-    if "${SCRIPT_DIR}/make.sh" -py "$sitename"; then
-        print_status "OK" "$sitename switched to production mode"
+    if "${SCRIPT_DIR}/make.sh" -py "${base_name}-stg"; then
+        print_status "OK" "Staging switched to production mode"
         return 0
     else
-        print_error "Failed to switch $sitename to production mode"
+        print_error "Failed to switch staging to production mode"
         return 1
     fi
 }
@@ -189,13 +222,13 @@ ${BOLD}ARGUMENTS:${NC}
     sitename                Base name of the staging site (production will be configured in nwp.yml)
 
 ${BOLD}EXAMPLES:${NC}
-    ./stg2prod.sh nwp                     # Deploy nwp-stg to production
+    ./stg2prod.sh nwp                     # Deploy nwp staging to production
     ./stg2prod.sh -y nwp                  # Deploy with auto-confirm
     ./stg2prod.sh --dry-run nwp           # Dry run - show what would happen
     ./stg2prod.sh -s 5 nwp                # Resume from step 5
 
 ${BOLD}ENVIRONMENT NAMING:${NC}
-    Staging site: <sitename>-stg         (e.g., nwp-stg)
+    Staging site: sites/<sitename>/stg/  (v2 layout; legacy sites/<sitename>-stg/ also supported)
     Production:   Configured in nwp.yml linode: section
 
 ${BOLD}DEPLOYMENT WORKFLOW:${NC}
@@ -231,17 +264,17 @@ EOF
 
 # Step 1: Validate deployment configuration
 validate_deployment() {
-    local stg_site=$1
+    local stg_dir=$1
     local base_name=$2
 
     print_header "Step 1: Validate Deployment Configuration"
 
-    # Check if staging site exists
-    if [ ! -d "$PROJECT_ROOT/sites/$stg_site" ]; then
-        print_error "Staging site not found: $PROJECT_ROOT/sites/$stg_site"
+    # Check if staging site exists (v2: sites/<name>/stg/, legacy: sites/<name>-stg/)
+    if [ -z "$stg_dir" ] || [ ! -d "$stg_dir" ]; then
+        print_error "Staging site not found for '$base_name' (expected sites/$base_name/stg/ or sites/$base_name-stg/)"
         return 1
     fi
-    print_status "OK" "Staging site exists: $PROJECT_ROOT/sites/$stg_site"
+    print_status "OK" "Staging site exists: $stg_dir"
 
     # Get recipe from sites: or use base_name
     local recipe=""
@@ -364,13 +397,13 @@ test_ssh_connection() {
 
 # Step 3: Export configuration from staging
 export_config_staging() {
-    local stg_site=$1
+    local stg_dir=$1
 
     print_header "Step 3: Export Configuration from Staging"
 
     local original_dir=$(pwd)
-    cd "$PROJECT_ROOT/sites/$stg_site" || {
-        print_error "Cannot access staging site: $PROJECT_ROOT/sites/$stg_site"
+    cd "$stg_dir" || {
+        print_error "Cannot access staging site: $stg_dir"
         return 1
     }
 
@@ -418,7 +451,7 @@ backup_production() {
 
 # Step 5: Sync files to production
 sync_files() {
-    local stg_site=$1
+    local stg_dir=$1
 
     print_header "Step 5: Sync Files to Production"
 
@@ -448,7 +481,7 @@ sync_files() {
         rsync_opts="-avz"
     fi
 
-    local rsync_cmd="rsync $rsync_opts --delete -e \"$ssh_opts\" ${excludes[@]} $PROJECT_ROOT/sites/$stg_site/ $SSH_USER@$SSH_HOST:$PROD_PATH/"
+    local rsync_cmd="rsync $rsync_opts --delete -e \"$ssh_opts\" ${excludes[@]} $stg_dir/ $SSH_USER@$SSH_HOST:$PROD_PATH/"
 
     ocmsg "Rsync command: $rsync_cmd"
 
@@ -763,21 +796,20 @@ clear_cache_and_display() {
 ################################################################################
 
 deploy_stg2prod() {
-    local stg_site=$1
-    local auto_yes=$2
-    local start_step=${3:-1}
-    local dry_run=${4:-false}
-
-    local base_name=$(get_base_name "$stg_site")
+    local stg_dir=$1
+    local base_name=$2
+    local auto_yes=$3
+    local start_step=${4:-1}
+    local dry_run=${5:-false}
 
     print_header "NWP Staging to Production Deployment"
-    echo -e "${BOLD}Staging:${NC}    $stg_site"
+    echo -e "${BOLD}Staging:${NC}    $stg_dir"
     echo -e "${BOLD}Site:${NC}       $base_name"
     echo ""
 
     # Validate first to get configuration
     if should_run_step 1 "$start_step"; then
-        if ! validate_deployment "$stg_site" "$base_name"; then
+        if ! validate_deployment "$stg_dir" "$base_name"; then
             return 1
         fi
     fi
@@ -807,7 +839,7 @@ deploy_stg2prod() {
     fi
 
     if should_run_step 3 "$start_step"; then
-        export_config_staging "$stg_site"
+        export_config_staging "$stg_dir"
     fi
 
     if should_run_step 4 "$start_step"; then
@@ -815,7 +847,7 @@ deploy_stg2prod() {
     fi
 
     if should_run_step 5 "$start_step"; then
-        if ! sync_files "$stg_site"; then
+        if ! sync_files "$stg_dir"; then
             return 1
         fi
     fi
@@ -936,20 +968,26 @@ main() {
 
     SITENAME="$1"
 
-    # Add -stg suffix if not present (support legacy _stg during migration)
-    if [[ ! "$SITENAME" =~ [-_]stg$ ]]; then
-        SITENAME="${SITENAME}-stg"
+    # Resolve the staging directory (ops#79 finding 3). Accepts a bare site
+    # name or a legacy -stg/_stg-suffixed name; prefers the v2 nested layout
+    # (sites/<name>/stg/), falls back to legacy flat (sites/<name>-stg/).
+    local base_name
+    base_name=$(get_base_name "$SITENAME")
+    local STG_DIR
+    if ! STG_DIR=$(get_stg_dir "$SITENAME"); then
+        print_error "No staging environment found for '$base_name'"
+        print_info "Expected sites/$base_name/stg/ (v2) or sites/$base_name-stg/ (legacy)."
+        print_info "Create staging first: pl dev2stg $base_name"
+        exit 1
     fi
 
-    ocmsg "Staging site: $SITENAME"
+    ocmsg "Staging dir: $STG_DIR"
     ocmsg "Auto yes: $AUTO_YES"
     ocmsg "Dry run: $DRY_RUN"
     ocmsg "Start step: $START_STEP"
 
     # Canonicality guard (nwp/ops#33): under canonical: prod, content changes
     # happen on prod ONLY — a stg→prod push would clobber the canonical source.
-    local base_name
-    base_name=$(get_base_name "$SITENAME")
     if ! canonical_guard_content_push "$base_name" "prod" "$OVERRIDE_CANONICAL" "stg2prod"; then
         exit 1
     fi
@@ -975,15 +1013,15 @@ main() {
     fi
 
     # Ensure staging site is in production mode before deploying to prod
-    if [ "$DRY_RUN" != "true" ] && [ -d "$PROJECT_ROOT/sites/$SITENAME" ]; then
-        if ! ensure_prod_mode "$SITENAME"; then
+    if [ "$DRY_RUN" != "true" ] && [ -d "$STG_DIR" ]; then
+        if ! ensure_prod_mode "$STG_DIR" "$base_name"; then
             print_error "Cannot deploy to production without staging site in production mode"
             exit 1
         fi
     fi
 
     # Run deployment
-    if deploy_stg2prod "$SITENAME" "$AUTO_YES" "$START_STEP" "$DRY_RUN"; then
+    if deploy_stg2prod "$STG_DIR" "$base_name" "$AUTO_YES" "$START_STEP" "$DRY_RUN"; then
         # Record the pair contract_version this half reached at prod (best-effort;
         # no-op for unpaired sites and dry runs).
         if [ "${DRY_RUN:-false}" != "true" ]; then

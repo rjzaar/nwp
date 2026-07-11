@@ -18,6 +18,9 @@ source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/linode.sh"
 source "$PROJECT_ROOT/lib/ssh.sh"
+# deploy-gate.sh: hardware+signature gate on prod-writes (ADR-0028); no-op unless
+# configured (ver) — the AI test tier (A14) is unaffected.
+source "$PROJECT_ROOT/lib/deploy-gate.sh"
 
 ################################################################################
 # Help
@@ -1270,6 +1273,16 @@ main() {
                 exit 1
             fi
         fi
+
+        # Hardware+signature gate (ADR-0028/ops#79): provisioning writes to
+        # the live host (nginx vhost, certbot certs, sshd/security config,
+        # site dir). Gate once here, before the first remote write. No-op on
+        # the unconfigured test tier. NOTE: stg2live auto-invokes live.sh, and
+        # a gated stg2live run will also gate its own deploy step — one touch
+        # per gated stage (acceptable double-touch for now). Dry runs exit
+        # above before reaching this point.
+        deploy_gate_require "$BASE_NAME" "live" \
+            "provision/reconfigure the live host (nginx, certs, sshd)" || exit 1
 
         case "$TYPE" in
             dedicated)

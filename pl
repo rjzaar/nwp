@@ -236,6 +236,7 @@ ${BOLD}SETUP & UTILITIES:${NC}
     setup-ssh                       Setup SSH keys for deployment
     list                            List all tracked sites
     status [options] [sitename]     Show site status (-f for fast text)
+    deploy-gate status|test         Inspect / self-test the hardware deploy gate (ADR-0028)
     doctor                          Diagnose common issues and verify configuration
     mini llm health [--json|--quick] Check the local LLM stack on mini (F21 Phase 3a)
     version                         Show NWP version
@@ -825,6 +826,9 @@ main() {
             ;;
 
         # Diagnostics
+        deploy-gate)
+            run_script "deploy-gate.sh" "$@"
+            ;;
         doctor)
             run_script "doctor.sh" "$@"
             ;;

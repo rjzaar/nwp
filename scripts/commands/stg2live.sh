@@ -1172,7 +1172,13 @@ deploy_to_live() {
     # Belt-and-suspenders: snapshot the live host's DBs + nginx configs
     # before doing anything destructive. Cheap insurance; recovers from
     # both DB-import gone-wrong and bad nginx config.
-    live_host_snapshot "$base_name" "$server_ip" "$ssh_user"
+    # Skipped on dry-run: a dry-run must not WRITE to the live host at all
+    # (the snapshot dumps DBs + tars configs onto it) — ops#79.
+    if [ "${DRY_RUN:-false}" != "true" ]; then
+        live_host_snapshot "$base_name" "$server_ip" "$ssh_user"
+    else
+        print_info "[dry-run] skipping live-host snapshot (would write to the live host)"
+    fi
 
     # Get webroot from staging site
     local webroot="web"
@@ -1210,11 +1216,16 @@ deploy_to_live() {
         sudo_prefix="sudo"
     fi
 
-    # Ensure target directory exists with correct ownership for rsync
-    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "$sudo_prefix mkdir -p ${remote_path}" 2>/dev/null || true
-    if [ "$ssh_user" == "gitlab" ]; then
-        # Give gitlab user ownership temporarily for rsync
-        ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "sudo chown -R gitlab:www-data ${remote_path}" 2>/dev/null || true
+    # Ensure target directory exists with correct ownership for rsync.
+    # Skipped on dry-run: mkdir/chown are real writes to the live host — ops#79.
+    if [ "${DRY_RUN:-false}" != "true" ]; then
+        ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "$sudo_prefix mkdir -p ${remote_path}" 2>/dev/null || true
+        if [ "$ssh_user" == "gitlab" ]; then
+            # Give gitlab user ownership temporarily for rsync
+            ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "sudo chown -R gitlab:www-data ${remote_path}" 2>/dev/null || true
+        fi
+    else
+        print_info "[dry-run] skipping remote mkdir/chown (would write to the live host)"
     fi
 
     # Rsync (quiet by default, verbose with -v flag). On dry-run we add

@@ -41,10 +41,17 @@ ${BOLD}SUBCOMMANDS:${NC}
                                       Record a deployed contract_version
                                       (side = provider|consumer)
     rag <consumer> <tier> <value>     Set the pair RAG (green|amber|red)
+    anchor <consumer> <side> <tier> [value]
+                                      Get/set an identity anchor (ops#83). side =
+                                      provider|consumer. Monotonic: set bumps the
+                                      newest identity cut for the both-or-forward
+                                      restore gate.
+    restore-check <site> <tier> <target-anchor> [--override-pair]
+                                      Dry-run pair_guard_restore's decision (ops#83)
 
 ${BOLD}NOTES:${NC}
-    * All subcommands are read-only w.r.t. sites; 'record'/'rag' only write the
-      local private/pairs/ state that pair_guard reads.
+    * All subcommands are read-only w.r.t. sites; 'record'/'rag'/'anchor' only write
+      the local private/pairs/ state that pair_guard reads.
     * A pair id is the CONSUMER site name (e.g. ssc, ssd).
 EOF
 }
@@ -131,6 +138,33 @@ cmd_rag() {
     print_status "OK" "Set RAG ${consumer}@${tier} = ${value}"
 }
 
+# ops#83: get/set identity anchors used by the both-or-forward restore gate.
+cmd_anchor() {
+    local consumer="${1:?consumer required}" side="${2:?side required}" tier="${3:?tier required}" value="${4:-}"
+    case "$side" in provider|consumer) ;; *) print_error "side must be provider|consumer"; return 1 ;; esac
+    if [ -z "$value" ]; then
+        local cur; cur="$(pair_anchor_get "$consumer" "$side" "$tier")"
+        printf '%s\n' "${cur:-<unset>}"
+        return 0
+    fi
+    pair_anchor_set "$consumer" "$side" "$tier" "$value" || return 1
+    print_status "OK" "Set anchor ${consumer} ${side}@${tier} = ${value}"
+}
+
+# ops#83: dry-run the both-or-forward restore decision (no restore is performed).
+cmd_restore_check() {
+    local site="${1:?site required}" tier="${2:?tier required}" target_anchor="${3:?target-anchor required}"; shift 3 || true
+    local override=false
+    for a in "$@"; do [ "$a" = "--override-pair" ] && override=true; done
+    print_header "pair_guard_restore dry-run: site=$site tier=$tier target_anchor=$target_anchor override=$override"
+    if pair_guard_restore "$site" "$tier" "restore-check" "$target_anchor" "$override"; then
+        print_status "OK" "pair_guard_restore would ALLOW this restore."
+    else
+        print_status "FAIL" "pair_guard_restore would REFUSE this restore (see above)."
+        return 1
+    fi
+}
+
 main() {
     local sub="${1:-}"; shift || true
     case "$sub" in
@@ -141,6 +175,8 @@ main() {
         check)  cmd_check "$@" ;;
         record) cmd_record "$@" ;;
         rag)    cmd_rag "$@" ;;
+        anchor) cmd_anchor "$@" ;;
+        restore-check) cmd_restore_check "$@" ;;
         *) print_error "Unknown subcommand: $sub"; show_help; exit 1 ;;
     esac
 }

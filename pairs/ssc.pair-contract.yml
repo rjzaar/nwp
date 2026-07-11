@@ -33,12 +33,12 @@ surfaces:
   # pair_guard does not yet enforce the sha (Phase 3) — inert-but-present today.
   oauth_sso:
     provider_min: "0.5.0"       # nwc simple_oauth issuer
-    consumer_min: "1.0.0"       # auth_nwc Moodle plugin (F26; 1.0.0 tag at !49 merge, now 0.1.0-f26)
+    consumer_min: "1.0.0"       # auth_nwc Moodle plugin (F26; matches the v1.0.0 release cut on ops-auth-nwc-v1)
     schema: "contracts/oauth_sso.claims.schema.json"
     schema_sha256: "1f6add0b00f595662a13cc093ac6224e9790e6be39473de394a49540c17a6572"
   copyright_sync:
     provider_min: "0.5.0"       # nwc_copyright document versions
-    consumer_min: "0.2.0"       # local_nwc_copyright_sync
+    consumer_min: "0.2.1"       # local_nwc_copyright_sync (ops#85 fix-forward: restores idempotency guard + beta_cc0)
     schema: "contracts/copyright_sync.record.schema.json"
     schema_sha256: "f52b4e0aa7cddc45f8f76d17ed3457681e6db2deb4e9491bca4ab0a5ff35593c"
   feedback_bridge:

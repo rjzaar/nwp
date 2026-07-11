@@ -90,6 +90,8 @@ NWP_SSH_HARDENING_OPTS="-o IdentitiesOnly=yes"
 # What it adds:
 #   1. -o IdentitiesOnly=yes  (always — prevents the fail2ban lockout)
 #   2. -i <key>               (when nwp.yml has an ssh_key for this site)
+#   3. ControlMaster/ControlPath/ControlPersist multiplexing (unless
+#      disabled — see _nwp_ssh_multiplex_enabled below)
 #
 # Why both: IdentitiesOnly alone is not enough for users whose key has a
 # non-default filename (e.g. ~/.ssh/nwp). Without -i, ssh would skip their
@@ -110,7 +112,38 @@ nwp_ssh_opts() {
             opts="$opts -i $key"
         fi
     fi
+    # 3. Connection multiplexing (touch economy for sk-key transport, ops#79
+    #    design 1). When the transport key is hardware-backed (ed25519-sk on
+    #    a Solo), every NEW ssh connection needs a physical touch. A deploy
+    #    session makes dozens of ssh/scp calls; ControlMaster reuses one
+    #    authenticated connection for all of them, so the session costs ~1
+    #    transport touch instead of dozens. ControlPersist=600 bounds the
+    #    reuse window to 10 idle minutes; %C hashes host+port+user so
+    #    sockets never collide across servers or users. Harmless for
+    #    non-hardware keys (just faster).
+    if _nwp_ssh_multiplex_enabled; then
+        opts="$opts -o ControlMaster=auto -o ControlPath=$HOME/.ssh/nwp-cm-%C -o ControlPersist=600"
+    fi
     echo "$opts"
+}
+
+# Should nwp_ssh_opts add ControlMaster multiplexing options?
+# Kill-switches (either disables):
+#   - env: NWP_SSH_NO_MULTIPLEX=1
+#   - nwp.yml: settings.ssh.multiplex: false (read via get_setting when
+#     lib/common.sh is in scope; env-only otherwise)
+_nwp_ssh_multiplex_enabled() {
+    if [ "${NWP_SSH_NO_MULTIPLEX:-0}" = "1" ]; then
+        return 1
+    fi
+    if declare -F get_setting &>/dev/null; then
+        local v
+        v=$(get_setting "ssh.multiplex" "true" 2>/dev/null)
+        if [ "$v" = "false" ]; then
+            return 1
+        fi
+    fi
+    return 0
 }
 
 # Check if strict SSH mode is enabled
@@ -317,14 +350,37 @@ get_ssh_connection() {
 
 # Get SSH key path for a server or site
 # Resolution chain:
-#   1. sites.<name>.live.ssh_key (explicit per-site)
-#   2. linode.servers.<ref>.ssh_key (server config)
-#   3. Default to ~/.ssh/nwp
+#   1. sites/<name>/.nwp.yml live.ssh_key (per-site config, F23)
+#   2. servers/<ref>/.nwp-server.yml ssh_key (via site's live.server)
+#   3. sites.<name>.live.ssh_key (legacy root nwp.yml)
+#   4. linode.servers.<ref>.ssh_key (legacy root nwp.yml)
+#   5. Default to ~/.ssh/nwp
+# Arbitrary paths are honored (with ~ expansion) — e.g. pointing a site or
+# server at a hardware-backed key (~/.ssh/id_ed25519_sk) is pure config.
 # Usage: get_ssh_key <site_or_server_name> [config_file]
 get_ssh_key() {
     local name="$1"
     local config_file="${2:-${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}/nwp.yml}"
     local key=""
+
+    # F23: try per-site .nwp.yml first (mirrors get_ssh_user above)
+    if declare -F get_site_config_value &>/dev/null; then
+        key=$(get_site_config_value "$name" '.live.ssh_key' "")
+        if [[ -n "$key" ]]; then
+            echo "${key/#\~/$HOME}"
+            return
+        fi
+        # Also try resolving via server name → server config
+        local server_name
+        server_name=$(get_site_config_value "$name" '.live.server' "")
+        if [[ -n "$server_name" ]] && declare -F get_server_config &>/dev/null; then
+            key=$(get_server_config "$server_name" "ssh_key" "")
+            if [[ -n "$key" ]]; then
+                echo "${key/#\~/$HOME}"
+                return
+            fi
+        fi
+    fi
 
     if [[ ! -f "$config_file" ]]; then
         echo "$HOME/.ssh/nwp"

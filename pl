@@ -239,6 +239,7 @@ ${BOLD}SETUP & UTILITIES:${NC}
     setup-ssh                       Setup SSH keys for deployment
     list                            List all tracked sites
     status [options] [sitename]     Show site status (-f for fast text)
+    config export|import <file>     Export/import site+server configs as a checksummed bundle (ops#79)
     deploy-gate status|test         Inspect / self-test the hardware deploy gate (ADR-0028)
     doctor                          Diagnose common issues and verify configuration
     mini llm health [--json|--quick] Check the local LLM stack on mini (F21 Phase 3a)
@@ -827,6 +828,11 @@ main() {
         # Cross-site proposal aggregator (F23 §7.4)
         proposals)
             run_script "proposals.sh" "$@"
+            ;;
+
+        # Config bundle export/import (ops#79)
+        config)
+            run_script "config.sh" "$@"
             ;;
 
         # Diagnostics

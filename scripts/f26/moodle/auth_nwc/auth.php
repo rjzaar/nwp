@@ -128,8 +128,12 @@ class auth_plugin_nwc extends auth_plugin_base {
                 return $decision;
 
             case uid_lock::ACTION_CREATE:
-                // Delegated to Moodle core account creation with idnumber preset;
-                // the caller (core OAuth2 create flow) reads locked_idnumber().
+                // New users are created by core auth_oauth2 itself (via the required
+                // sub->idnumber issuer field-mapping) BEFORE this executor runs from
+                // the \auth_nwc\observer::user_loggedin seam, so by the time we see
+                // the login the row already exists and resolves as REUSE_LOCKED.
+                // Nothing to create here. (Removed the never-implemented
+                // locked_idnumber() indirection referenced in the old comment — F26 B1.)
                 return $decision;
 
             case uid_lock::ACTION_DENY:

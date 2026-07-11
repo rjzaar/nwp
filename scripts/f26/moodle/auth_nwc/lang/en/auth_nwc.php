@@ -22,4 +22,6 @@ $string['link_legacy_by_email_desc'] = 'MIGRATION WINDOW ONLY. When enabled, a f
 $string['enable_logging'] = 'Developer logging';
 $string['enable_logging_desc'] = 'Emit UID-lock decisions to the developer log (DEBUG_DEVELOPER only).';
 
+$string['locked_denied'] = 'Sign-in was refused: your Narrow Way Commons identity could not be verified for this account. Please contact support.';
+
 $string['privacy:metadata'] = 'The NWC OIDC plugin does not store personal data itself; identity is asserted by the nwc issuer and stored in the standard Moodle user record.';

@@ -55,7 +55,7 @@ cmd_status() {
 
     local signers sk
     signers="$(_dg_allowed_signers)"
-    sk="$(_dg_sk_key)"
+    sk="$(_dg_sk_keys | head -1)"
 
     # Configuration files
     if [ -f "$signers" ]; then
@@ -65,7 +65,13 @@ cmd_status() {
     fi
 
     if [ -f "$sk" ]; then
-        print_status "OK" "signing key:     $sk"
+        # list every candidate — the gate signs with whichever Solo is plugged in
+        local k n=0
+        while IFS= read -r k; do
+            [ -n "$k" ] || continue
+            n=$((n+1))
+            print_status "OK" "signing key $n:   $k"
+        done < <(_dg_sk_keys)
     else
         print_status "WARN" "signing key:     $sk (missing)"
     fi
@@ -113,7 +119,7 @@ cmd_test() {
 
     if ! deploy_gate_configured; then
         print_error "Gate not configured — nothing to test."
-        print_info "Need both: $(_dg_allowed_signers) and $(_dg_sk_key)"
+        print_info "Need both: $(_dg_allowed_signers) and an sk key at ~/.ssh/id_ed25519_sk[_*]"
         print_info "Run 'pl deploy-gate status' for details."
         return 1
     fi

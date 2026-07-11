@@ -42,6 +42,24 @@
 _dg_allowed_signers() { printf '%s' "${NWP_DEPLOY_ALLOWED_SIGNERS:-${PROJECT_ROOT:-$HOME/nwp}/keys/allowed_signers}"; }
 _dg_sk_key()          { printf '%s' "${NWP_DEPLOY_SK_KEY:-$HOME/.ssh/id_ed25519_sk}"; }
 
+# _dg_sk_keys — candidate signing keys, one per line. An explicit
+# NWP_DEPLOY_SK_KEY wins outright; otherwise every sk key at the default
+# location (id_ed25519_sk, then id_ed25519_sk_*) is a candidate, so the gate
+# works with WHICHEVER enrolled Solo is plugged in (W or the W2 hot-spare) —
+# no env var to remember during a lost-token emergency (ops#25).
+_dg_sk_keys() {
+    if [ -n "${NWP_DEPLOY_SK_KEY:-}" ]; then
+        printf '%s\n' "$NWP_DEPLOY_SK_KEY"
+        return
+    fi
+    local k
+    for k in "$HOME/.ssh/id_ed25519_sk" "$HOME"/.ssh/id_ed25519_sk_*; do
+        [ -f "$k" ] || continue
+        case "$k" in *.pub) continue ;; esac
+        printf '%s\n' "$k"
+    done
+}
+
 # _dg_require_enforced — is fail-closed-when-unconfigured demanded? True if the
 # env var says so OR a marker file exists (files survive sudo env_reset / cron
 # env stripping — the env-only version was silently bypassable, ops#79).
@@ -55,7 +73,7 @@ _dg_require_enforced() {
 # deploy_gate_configured — 0 if both the allowed_signers file and a signing key
 # are present (i.e. this host is set up to enforce the gate).
 deploy_gate_configured() {
-    [ -f "$(_dg_allowed_signers)" ] && [ -f "$(_dg_sk_key)" ]
+    [ -f "$(_dg_allowed_signers)" ] && [ -n "$(_dg_sk_keys)" ]
 }
 
 # _dg_note / _dg_err — colour-aware, TTY-safe messaging (fall back to plain).
@@ -83,7 +101,7 @@ deploy_gate_require() {
     if ! deploy_gate_configured; then
         if _dg_require_enforced; then
             _dg_err "Hardware signature gate REQUIRED but not configured (ADR-0028):"
-            _dg_err "  need $(_dg_allowed_signers) and $(_dg_sk_key). Aborting."
+            _dg_err "  need $(_dg_allowed_signers) and an sk key at ~/.ssh/id_ed25519_sk[_*]. Aborting."
             return 1
         fi
         _dg_note "  (hardware signature gate not configured — proceeding without it;"
@@ -96,8 +114,8 @@ deploy_gate_require() {
         return 1
     fi
 
-    local signers sk manifest sig signer rc
-    signers="$(_dg_allowed_signers)"; sk="$(_dg_sk_key)"
+    local signers manifest sig signer rc
+    signers="$(_dg_allowed_signers)"
     # Bind the signature to THIS deploy (site+target+source commit+host).
     local commit host
     commit="$(git -C "${PROJECT_ROOT:-.}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -108,11 +126,23 @@ deploy_gate_require() {
     # shellcheck disable=SC2064
     trap "rm -f '$sig'" RETURN
 
-    _dg_note "  → Touch your Solo now to authorize this deploy ..."
+    # Try each candidate key: the one whose Solo is actually plugged in signs;
+    # the others fail fast (their token is absent). Lets W or the W2 hot-spare
+    # work interchangeably with zero configuration (ops#25).
     # NOTE: ssh-keygen's own stderr stays visible on purpose — it carries the
     # "Confirm user presence"/PIN prompts and the real failure reason (ops#79).
-    if ! printf '%s' "$manifest" | ssh-keygen -Y sign -n nwp-deploy -f "$sk" > "$sig"; then
-        _dg_err "  Signing failed (no touch / wrong key / device absent). Deploy aborted."
+    local sk signed=false
+    while IFS= read -r sk; do
+        [ -n "$sk" ] || continue
+        _dg_note "  → Touch your Solo now to authorize this deploy (key: $(basename "$sk")) ..."
+        if printf '%s' "$manifest" | ssh-keygen -Y sign -n nwp-deploy -f "$sk" > "$sig"; then
+            signed=true
+            break
+        fi
+        _dg_note "  (that key's token isn't present or declined — trying the next candidate)"
+    done < <(_dg_sk_keys)
+    if [ "$signed" != "true" ]; then
+        _dg_err "  Signing failed on every candidate key (no touch / no enrolled Solo plugged in). Deploy aborted."
         return 1
     fi
 

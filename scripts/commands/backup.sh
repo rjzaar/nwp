@@ -53,6 +53,10 @@ ${BOLD}ARGUMENTS:${NC}
     sitename                Name of the DDEV site to backup
     message                 Optional backup description (spaces converted to underscores)
 
+${BOLD}SUBCOMMANDS:${NC}
+    sweep                   Sweep all sites: back up any with stale/missing
+                            backups (see: ./backup.sh sweep --help)
+
 ${BOLD}EXAMPLES:${NC}
     ./backup.sh nwp                              # Backup 'nwp' site (full)
     ./backup.sh -b nwp                           # Database-only backup
@@ -447,10 +451,281 @@ backup_site() {
 }
 
 ################################################################################
+# Sweep (nwp/ops#87 Part A) — self-driving backups
+#
+# `pl backup sweep` iterates every discovered site and backs up any whose
+# newest backup is older than settings.todo.thresholds.backup_warn_days
+# (default 7 — the SAME threshold and directory logic as
+# check_missing_backups in lib/todo-checks.sh, so sweep and `pl todo`/
+# `pl rag` always agree on what "stale" means).
+################################################################################
+
+show_sweep_help() {
+    cat << EOF
+${BOLD}NWP Backup Sweep${NC}
+
+Back up every site whose newest backup is stale or missing.
+
+${BOLD}USAGE:${NC}
+    ./backup.sh sweep [OPTIONS]
+
+${BOLD}OPTIONS:${NC}
+    -h, --help          Show this help message
+    --dry-run           List the decision for each site; take no backups
+    --start-stopped     Start stopped DDEV projects, back up, stop them again
+    --site NAME         Sweep a single site (for testing)
+
+${BOLD}BEHAVIOR:${NC}
+    - Freshness threshold: settings.todo.thresholds.backup_warn_days
+      (default 7) — identical to the 'pl todo' missing-backups check.
+    - Sweep backups are database-only (-b) with message "sweep automated backup".
+    - Sites whose DDEV project is not running are skipped unless
+      --start-stopped is given (prior stopped state is restored afterwards).
+    - Sites without a dev DDEV project are noted and skipped.
+
+${BOLD}SCHEDULING:${NC}
+    pl schedule install-sweep       # nightly cron (default 0 2 * * *)
+
+EOF
+}
+
+# Epoch mtime of the newest backup artifact for a site, or fail if none.
+# Mirrors check_missing_backups in lib/todo-checks.sh exactly:
+# candidates are <site-dir>/backups then \$ROOT/backups/<site>, and only
+# *.sql.gz / *.tar.gz files count.
+sweep_latest_backup_epoch() {
+    local site="$1"
+    local root="${NWP_DIR:-$PROJECT_ROOT}"
+
+    local backup_dir="$root/sites/$site/backups"
+    if [ ! -d "$backup_dir" ]; then
+        backup_dir="$root/backups/$site"
+    fi
+    [ -d "$backup_dir" ] || return 1
+
+    local latest
+    latest=$(find "$backup_dir" -type f \( -name "*.sql.gz" -o -name "*.tar.gz" \) -printf '%T@\n' 2>/dev/null | sort -n | tail -1)
+    [ -z "$latest" ] && return 1
+
+    echo "${latest%.*}"
+}
+
+# DDEV project state for a project dir: running | stopped | unknown.
+# `ddev describe` is read-only. "unknown" = ddev binary unavailable.
+sweep_ddev_state() {
+    local proj_dir="$1"
+
+    if ! command -v ddev &>/dev/null; then
+        echo "unknown"
+        return 0
+    fi
+
+    local desc
+    if ! desc=$(cd "$proj_dir" && ddev describe -j 2>/dev/null); then
+        echo "stopped"
+        return 0
+    fi
+
+    if echo "$desc" | grep -q '"status": *"running"'; then
+        echo "running"
+    else
+        echo "stopped"
+    fi
+}
+
+sweep_main() {
+    local DRY_RUN=false
+    local START_STOPPED=false
+    local ONLY_SITE=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                show_sweep_help
+                exit 0
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            --start-stopped)
+                START_STOPPED=true
+                shift
+                ;;
+            --site)
+                ONLY_SITE="${2:-}"
+                if [ -z "$ONLY_SITE" ]; then
+                    print_error "--site requires a site name"
+                    exit 1
+                fi
+                shift 2
+                ;;
+            --site=*)
+                ONLY_SITE="${1#*=}"
+                shift
+                ;;
+            *)
+                print_error "Unknown sweep option: $1"
+                echo ""
+                show_sweep_help
+                exit 1
+                ;;
+        esac
+    done
+
+    # Stale threshold — read via the todo library so sweep and `pl todo`
+    # can never drift apart on the definition of "stale".
+    local warn_days=7
+    if [ -f "$PROJECT_ROOT/lib/todo-checks.sh" ]; then
+        # shellcheck source=/dev/null
+        source "$PROJECT_ROOT/lib/todo-checks.sh"
+        warn_days=$(get_todo_setting "thresholds.backup_warn_days" "7")
+    fi
+
+    local now_epoch warn_seconds
+    now_epoch=$(date +%s)
+    warn_seconds=$((warn_days * 86400))
+
+    print_header "NWP Backup Sweep"
+    print_info "Stale threshold: ${warn_days} days"
+    if [ "$DRY_RUN" = true ]; then
+        print_info "Dry run — no backups will be taken"
+    fi
+
+    # Collect sites up-front (array, not a pipe: backup/ddev calls below
+    # must not eat the site list from stdin).
+    local -a sweep_sites=()
+    if [ -n "$ONLY_SITE" ]; then
+        sweep_sites=("$ONLY_SITE")
+    else
+        mapfile -t sweep_sites < <(discover_sites)
+    fi
+
+    if [ ${#sweep_sites[@]} -eq 0 ]; then
+        print_warning "No sites discovered under ${NWP_DIR:-$PROJECT_ROOT}/sites/"
+        exit 0
+    fi
+
+    local total=0 fresh=0 backed_up=0 skipped=0 noproj=0 failed=0
+    local site
+
+    for site in "${sweep_sites[@]}"; do
+        [ -z "$site" ] && continue
+        total=$((total + 1))
+
+        # Locate the dev DDEV project (v2 nested dev/, v1 flat).
+        local proj_dir=""
+        proj_dir=$(resolve_project "$site" dev 2>/dev/null) || proj_dir=""
+        if [ -z "$proj_dir" ] || [ ! -d "$proj_dir/.ddev" ]; then
+            echo -e "  ${DIM}- $site: no dev DDEV project — skipping${NC}"
+            noproj=$((noproj + 1))
+            continue
+        fi
+
+        # Freshness check (same logic as check_missing_backups).
+        local latest_epoch="" age_desc="no backups found"
+        if latest_epoch=$(sweep_latest_backup_epoch "$site"); then
+            local age=$((now_epoch - latest_epoch))
+            if [ "$age" -le "$warn_seconds" ]; then
+                echo -e "  ${GREEN}✓${NC} $site: fresh (last backup $((age / 86400))d old)"
+                fresh=$((fresh + 1))
+                continue
+            fi
+            age_desc="last backup $((age / 86400))d old"
+        fi
+
+        # Stale or missing — decide based on DDEV state.
+        local state
+        state=$(sweep_ddev_state "$proj_dir")
+
+        if [ "$DRY_RUN" = true ]; then
+            case "$state" in
+                running)
+                    echo -e "  ${YELLOW}→${NC} $site: would back up ($age_desc; project running)"
+                    backed_up=$((backed_up + 1))
+                    ;;
+                stopped)
+                    if [ "$START_STOPPED" = true ]; then
+                        echo -e "  ${YELLOW}→${NC} $site: would start, back up, stop ($age_desc)"
+                        backed_up=$((backed_up + 1))
+                    else
+                        echo -e "  ${DIM}- $site: skipped — not running ($age_desc; use --start-stopped)${NC}"
+                        skipped=$((skipped + 1))
+                    fi
+                    ;;
+                *)
+                    echo -e "  ${DIM}- $site: skipped — ddev not available${NC}"
+                    skipped=$((skipped + 1))
+                    ;;
+            esac
+            continue
+        fi
+
+        if [ "$state" = "unknown" ]; then
+            print_warning "$site: ddev not available — skipped"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        local was_stopped=false
+        if [ "$state" = "stopped" ]; then
+            if [ "$START_STOPPED" != true ]; then
+                echo -e "  ${DIM}- $site: skipped — not running ($age_desc; use --start-stopped)${NC}"
+                skipped=$((skipped + 1))
+                continue
+            fi
+            was_stopped=true
+            print_info "$site: starting DDEV project ($age_desc)..."
+            if ! (cd "$proj_dir" && ddev start -y >/dev/null 2>&1); then
+                print_error "$site: ddev start failed — skipped"
+                failed=$((failed + 1))
+                continue
+            fi
+        fi
+
+        # Reuse the standard backup path (db-only) — no duplicated export logic.
+        if backup_site "$site" "$site" "sweep automated backup" true false false false false false basic < /dev/null; then
+            backed_up=$((backed_up + 1))
+        else
+            print_error "$site: backup failed"
+            failed=$((failed + 1))
+        fi
+
+        # Restore prior state: stop only what we started.
+        if [ "$was_stopped" = true ]; then
+            print_info "$site: stopping DDEV project (was stopped before sweep)"
+            (cd "$proj_dir" && ddev stop >/dev/null 2>&1) || true
+        fi
+    done
+
+    print_header "Sweep Summary"
+    local summary="swept $total sites: $fresh fresh, $backed_up backed up, $skipped skipped-not-running, $noproj no-project"
+    if [ "$failed" -gt 0 ]; then
+        summary="$summary, $failed FAILED"
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        summary="$summary (dry run)"
+    fi
+    echo "$summary"
+
+    if [ "$failed" -gt 0 ]; then
+        exit 1
+    fi
+    exit 0
+}
+
+################################################################################
 # Main Script
 ################################################################################
 
 main() {
+    # Subcommand dispatch: `backup sweep [flags]` (sitename-first args
+    # otherwise — sweep is reserved and cannot be a site name).
+    if [[ "${1:-}" == "sweep" ]]; then
+        shift
+        sweep_main "$@"
+    fi
+
     # Parse options
     local DEBUG=false
     local DB_ONLY=false

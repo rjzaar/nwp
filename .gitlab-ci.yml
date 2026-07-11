@@ -336,7 +336,7 @@ test:unit:
   stage: test
   image: ubuntu:22.04
   before_script:
-    - apt-get update -qq && apt-get install -y -qq bats git || true
+    - apt-get update -qq && apt-get install -y -qq bats git php-cli || true
     - |
       YQ_VER=v4.44.1
       YQ_SHA256=6dc2d0cd4e0caca5aeffd0d784a48263591080e4a0895abe69f3a76eb50d1ba3

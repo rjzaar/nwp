@@ -53,7 +53,7 @@ surfaces:
     provider_min: "0.6.0"       # nwc_moodle_erase (new; sibling of nwc_moodle_sync)
     consumer_min: "1.0.0"       # local_nwc_erase (new; Privacy-API delete, not soft delete)
     schema: "contracts/erasure.command.schema.json"
-    schema_sha256: "88955e47b34f5c8797ee00a87542baebbf0deaf8abca0e7dde8e2645f5e96f18"
+    schema_sha256: "db6e27c915060ef7bb559da0a9053b379c8311b15a1dc7c8598bdb523bd75f6c"
 
   # --- P74 Phase 1: the 3 surfaces that were LIVE but UNDECLARED --------------
   # (research report §1 — 3 of the 7 real surfaces were absent from this

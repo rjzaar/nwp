@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.example/nwp/contracts/erasure.command.schema.json",
+  "title": "nwc → ssc erasure command",
+  "description": "The signed OP→RP right-to-be-forgotten command nwc (provider, nwc_moodle_erase) sends to the Moodle consumer (local_nwc_erase). DESTRUCTIVE, single-writer, idempotent on request_id. additionalProperties:false is the data-minimisation + tamper gate (P74 Phase-0 / ADR-0031). `sub` is the UUID identity anchor (= the OIDC sub = Drupal user.uuid()); the receiver resolves the Moodle row by idnumber==sub and NEVER by email. Changing this shape is a boundary change → contract_version bump + ss-side review. ops#81.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sub", "request_id", "action", "issuer", "timestamp"],
+  "properties": {
+    "sub": {
+      "description": "Subject = the provider OIDC sub = Drupal user.uuid(). The UID-lock join key → mdl_user.idnumber. Resolve-by-idnumber only; never by email.",
+      "type": "string",
+      "minLength": 1
+    },
+    "request_id": {
+      "description": "Unique id for this erasure request. The receiver is idempotent on this — a replay is a no-op, never a second delete.",
+      "type": "string",
+      "minLength": 1
+    },
+    "action": {
+      "description": "delete = full Privacy-API delete (tool_dataprivacy); anonymise = de-identify but retain de-identified aggregates.",
+      "type": "string",
+      "enum": ["delete", "anonymise"]
+    },
+    "issuer": {
+      "description": "The provider issuer URL; must match the configured trusted issuer on the consumer.",
+      "type": "string",
+      "format": "uri",
+      "minLength": 1
+    },
+    "timestamp": {
+      "description": "Seconds since epoch when the command was issued (integer, not a date string).",
+      "type": "integer"
+    }
+  }
+}

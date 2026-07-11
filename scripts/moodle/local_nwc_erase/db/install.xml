@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/nwc_erase/db" VERSION="2026071100" COMMENT="ops#81 erasure receiver — both-side auditable erase log."
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="local_nwc_erase_log" COMMENT="Immutable audit of every erase command received from nwc. Stores the durable sub (UUID) — never the email.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="request_id" TYPE="char" LENGTH="191" NOTNULL="true" SEQUENCE="false" COMMENT="Idempotency key from the command (UUID)."/>
+        <FIELD NAME="sub" TYPE="char" LENGTH="191" NOTNULL="true" SEQUENCE="false" COMMENT="Drupal account UUID == mdl_user.idnumber. Never an email."/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Resolved mdl_user.id at erase time (0 if none)."/>
+        <FIELD NAME="mode" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="delete | anonymise (the requested action)."/>
+        <FIELD NAME="outcome" TYPE="char" LENGTH="30" NOTNULL="true" SEQUENCE="false" COMMENT="done | noop_missing_user | error."/>
+        <FIELD NAME="touched" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON list of tables/tasks/files acted on."/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="request_id" UNIQUE="false" FIELDS="request_id"/>
+        <INDEX NAME="sub" UNIQUE="false" FIELDS="sub"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>

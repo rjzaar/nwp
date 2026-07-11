@@ -1,0 +1,9 @@
+name: 'NWC Moodle Erase'
+description: 'Propagates a right-to-be-forgotten user deletion on nwc to ssc (Moodle) via a signed erase command (ops#81).'
+type: module
+core_version_requirement: ^10 || ^11
+package: 'NWC'
+
+dependencies:
+  - nwc_moodle:nwc_moodle
+  - drupal:user

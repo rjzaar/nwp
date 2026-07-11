@@ -1,0 +1,97 @@
+<?php
+
+/**
+ * @file
+ * NWC Moodle Erase module (ops#81).
+ *
+ * When an nwc account is deleted, enqueue a signed erase command to the ssc
+ * Moodle receiver (local_nwc_erase) so the user's Moodle record + PII are
+ * erased via the Privacy API. Keyed on the durable account UUID (== the OIDC
+ * `sub` == mdl_user.idnumber, ops#83) — NEVER email.
+ *
+ * Mirrors the nwc_moodle_sync queue+cron pattern. DESTRUCTIVE cross-site write:
+ * on a real prod tier the delivery fires only behind the `ver` deploy gate
+ * (CLAUDE.md AI-never-prod); dev/stg/live-test are agent-operable (A14).
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Session\AccountInterface;
+
+/**
+ * Implements hook_help().
+ */
+function nwc_moodle_erase_help($route_name, RouteMatchInterface $route_match) {
+  if ($route_name === 'help.page.nwc_moodle_erase') {
+    return '<p>' . t('Propagates a right-to-be-forgotten user deletion on nwc to the ssc Moodle via a signed erase command (ops#81). Keyed on the durable account UUID, never email.') . '</p>';
+  }
+  return NULL;
+}
+
+/**
+ * Implements hook_user_predelete().
+ *
+ * Runs BEFORE the Drupal user row is gone, so we can still read the durable
+ * UUID. We only enqueue here (fast, transactional-safe); the Guzzle POST is
+ * done by the queue worker on cron so a Moodle outage cannot block/roll back
+ * the Drupal deletion, and the job is retriable.
+ */
+function nwc_moodle_erase_user_predelete($account) {
+  $config = \Drupal::config('nwc_moodle_erase.settings');
+  if (!$config->get('enable_erase')) {
+    // Fail-closed: do nothing unless the operator has explicitly enabled it.
+    return;
+  }
+
+  // The durable anchor. If an account somehow has no UUID, refuse to enqueue
+  // (never fabricate a sub; never fall back to email).
+  $sub = $account instanceof AccountInterface ? $account->uuid() : NULL;
+  if (empty($sub)) {
+    \Drupal::logger('nwc_moodle_erase')->error('Skipped erase enqueue: account @id has no UUID.', [
+      '@id' => method_exists($account, 'id') ? $account->id() : '?',
+    ]);
+    return;
+  }
+
+  $queue = \Drupal::queue('nwc_moodle_erase');
+  $queue->createItem([
+    'sub' => $sub,
+    'request_id' => \Drupal::service('uuid')->generate(),
+    'action' => $config->get('default_action') ?: 'delete',
+    'issuer' => $config->get('issuer') ?: '',
+    'timestamp' => \Drupal::time()->getRequestTime(),
+    'attempts' => 0,
+  ]);
+}
+
+/**
+ * Implements hook_cron().
+ *
+ * Drains the erase queue. Mirrors nwc_moodle_sync_cron().
+ */
+function nwc_moodle_erase_cron() {
+  $config = \Drupal::config('nwc_moodle_erase.settings');
+  if (!$config->get('enable_erase')) {
+    return;
+  }
+
+  $queue = \Drupal::queue('nwc_moodle_erase');
+  $worker = \Drupal::service('plugin.manager.queue_worker')->createInstance('nwc_moodle_erase');
+  $batch = (int) ($config->get('batch_size') ?: 20);
+
+  $processed = 0;
+  while ($processed < $batch && ($item = $queue->claimItem())) {
+    try {
+      $worker->processItem($item->data);
+      $queue->deleteItem($item);
+      $processed++;
+    }
+    catch (\Exception $e) {
+      \Drupal::logger('nwc_moodle_erase')->error('Erase queue item failed, will retry: @m', [
+        '@m' => $e->getMessage(),
+      ]);
+      // Release for retry (idempotent on the receiver via request_id).
+      $queue->releaseItem($item);
+      break;
+    }
+  }
+}

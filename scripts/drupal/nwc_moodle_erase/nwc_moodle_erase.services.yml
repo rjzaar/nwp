@@ -1,0 +1,4 @@
+services:
+  nwc_moodle_erase.sender:
+    class: Drupal\nwc_moodle_erase\NwcMoodleErase
+    arguments: ['@config.factory', '@http_client', '@logger.factory']

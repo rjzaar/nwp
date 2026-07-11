@@ -54,10 +54,18 @@ ${BOLD}OPTIONS:${NC}
     --consumer-base=URL   Consumer base URL (required for --run if not derivable)
     --force-prod          Permit --run against tier=prod (token round-trip skipped)
 
+${BOLD}JOIN-INTEGRITY PROBE (ops#83 — verifies a real join, not just liveness):${NC}
+    --join --join-uuid=<uuid>   Confirm a known uuid resolves nwc(uuid) AND
+                                mdl_user.idnumber == uuid (end-to-end). Fail-closed.
+    --nwc-ledger=FILE           Resolve the provider side from an identity ledger
+    --nwc-resolve-cmd="CMD"     …or a command printing "uid<TAB>email" for uuid \$1
+    --mdl-resolve-cmd="CMD"     Command printing the mdl_user idnumber for uuid \$1
+    --mdl-idnumber=<value>      …or a literal observed idnumber (hand-captured)
+
 ${BOLD}NOTES:${NC}
     * Default is a DRY RUN. Nothing touches the network without --run.
-    * A red result (--run) sets the pair RAG to red; pair_guard then blocks
-      promotion of either half onto that tier until it is green again.
+    * A red result (--run OR a broken --join) sets the pair RAG to red; pair_guard
+      then blocks promotion of either half onto that tier until it is green again.
     * The token round-trip is performed on non-prod tiers only.
 EOF
 }
@@ -69,6 +77,13 @@ MODE="dry-run"
 PROVIDER_BASE=""
 CONSUMER_BASE=""
 FORCE_PROD=false
+# ops#83 join-integrity probe options.
+JOIN=false
+JOIN_UUID=""
+NWC_LEDGER=""          # resolve the provider side from an identity ledger (offline-safe)
+NWC_RESOLVE_CMD=""     # else a command: prints "uid<TAB>email" for a given uuid ($1)
+MDL_RESOLVE_CMD=""     # command: prints the mdl_user idnumber (+optional TAB email) for uuid ($1)
+MDL_IDNUMBER=""        # or a literal observed idnumber (stub / hand-captured)
 
 for arg in "$@"; do
     case "$arg" in
@@ -79,6 +94,12 @@ for arg in "$@"; do
         --tier=*)  TIER="${arg#*=}" ;;
         --provider-base=*) PROVIDER_BASE="${arg#*=}" ;;
         --consumer-base=*) CONSUMER_BASE="${arg#*=}" ;;
+        --join)            JOIN=true ;;
+        --join-uuid=*)     JOIN=true; JOIN_UUID="${arg#*=}" ;;
+        --nwc-ledger=*)    NWC_LEDGER="${arg#*=}" ;;
+        --nwc-resolve-cmd=*) NWC_RESOLVE_CMD="${arg#*=}" ;;
+        --mdl-resolve-cmd=*) MDL_RESOLVE_CMD="${arg#*=}" ;;
+        --mdl-idnumber=*)  MDL_IDNUMBER="${arg#*=}" ;;
         -*) print_error "Unknown option: $arg"; show_help; exit 1 ;;
         *)  [ -z "$CONSUMER" ] && CONSUMER="$arg" || { print_error "Unexpected arg: $arg"; exit 1; } ;;
     esac
@@ -101,6 +122,92 @@ fi
 
 PROVIDER="$(pair_contract_get "$CONTRACT" '.provider')"
 CV="$(pair_contract_get "$CONTRACT" '.contract_version')"
+
+################################################################################
+# ops#83 — join-integrity probe (NOT just liveness).
+#
+# The URL smoke below proves the endpoints are UP. It does NOT prove the
+# identity JOIN is intact: that a real locked idnumber still resolves
+# nwc(uuid) ↔ mdl_user.idnumber. A restore/rebuild can leave every URL 200 while
+# every UID-lock is silently orphaned. This mode verifies ONE known join,
+# end-to-end, and FAILS CLOSED — a broken join sets the pair RAG red (which
+# pair_guard then blocks promotion on; visible in `pl pair status`).
+#
+# Resolvers are pluggable so the probe runs offline/in CI and against real DBs:
+#   provider side : --nwc-ledger=FILE (latest snapshot) | --nwc-resolve-cmd="CMD"
+#   consumer side : --mdl-resolve-cmd="CMD" | --mdl-idnumber=<literal>
+# Each *-cmd receives the uuid as $1 and prints its answer on stdout.
+################################################################################
+if [ "$JOIN" = "true" ]; then
+    print_header "Pair JOIN-integrity probe: ${CONSUMER} ↔ ${PROVIDER} @ ${TIER} (contract v${CV})"
+    if [ -z "$JOIN_UUID" ]; then
+        print_error "--join needs a known uuid: --join-uuid=<uuid> (the locked mdl_user.idnumber)."
+        exit 1
+    fi
+    echo "  uuid (locked sub/idnumber): $JOIN_UUID"
+    echo ""
+
+    join_red() { pair_rag_set "$CONSUMER" "$TIER" "red"; print_error "$1"; print_error "JOIN-integrity RED — RAG set red for ${CONSUMER}@${TIER}; pair_guard will block promotion."; exit 1; }
+
+    # --- provider side: does nwc hold this uuid? -----------------------------
+    nwc_uid=""; nwc_email=""
+    if [ -n "$NWC_RESOLVE_CMD" ]; then
+        nwc_row="$(eval "$NWC_RESOLVE_CMD $(printf '%q' "$JOIN_UUID")" 2>/dev/null || true)"
+        nwc_uid="$(printf '%s' "$nwc_row" | cut -f1)"
+        nwc_email="$(printf '%s' "$nwc_row" | cut -f2)"
+    elif [ -n "$NWC_LEDGER" ]; then
+        [ -f "$NWC_LEDGER" ] || join_red "provider ledger not found: $NWC_LEDGER"
+        latest_snap="$(grep '"t":"snap"' "$NWC_LEDGER" | jq -r '.snap' | tail -1)"
+        nwc_json="$(jq -c "select(.t==\"rec\" and .snap==${latest_snap:-0} and .uuid==\"$JOIN_UUID\")" "$NWC_LEDGER" | tail -1)"
+        if [ -n "$nwc_json" ]; then
+            nwc_uid="$(printf '%s' "$nwc_json" | jq -r '.uid')"
+            nwc_email="$(printf '%s' "$nwc_json" | jq -r '.email // .email_sha256 // ""')"
+        fi
+    else
+        # Default: resolve from the pair's own provider ledger.
+        LEDGER_DEFAULT="$(pair_ledger_file "$CONSUMER")"
+        [ -f "$LEDGER_DEFAULT" ] || join_red "no provider resolver: pass --nwc-ledger= / --nwc-resolve-cmd=, or dump the ledger ($LEDGER_DEFAULT)."
+        latest_snap="$(grep '"t":"snap"' "$LEDGER_DEFAULT" | jq -r '.snap' | tail -1)"
+        nwc_json="$(jq -c "select(.t==\"rec\" and .snap==${latest_snap:-0} and .uuid==\"$JOIN_UUID\")" "$LEDGER_DEFAULT" | tail -1)"
+        if [ -n "$nwc_json" ]; then
+            nwc_uid="$(printf '%s' "$nwc_json" | jq -r '.uid')"
+            nwc_email="$(printf '%s' "$nwc_json" | jq -r '.email // .email_sha256 // ""')"
+        fi
+    fi
+    if [ -z "$nwc_uid" ] || [ "$nwc_uid" = "null" ]; then
+        join_red "PROVIDER side: uuid=$JOIN_UUID does NOT resolve to any nwc account (identity absent/severed)."
+    fi
+    print_status "OK" "provider: uuid=$JOIN_UUID → nwc uid=$nwc_uid"
+
+    # --- consumer side: does mdl_user.idnumber == uuid resolve? --------------
+    mdl_idnumber=""; mdl_email=""
+    if [ -n "$MDL_RESOLVE_CMD" ]; then
+        mdl_row="$(eval "$MDL_RESOLVE_CMD $(printf '%q' "$JOIN_UUID")" 2>/dev/null || true)"
+        mdl_idnumber="$(printf '%s' "$mdl_row" | cut -f1)"
+        mdl_email="$(printf '%s' "$mdl_row" | cut -f2)"
+    elif [ -n "$MDL_IDNUMBER" ]; then
+        mdl_idnumber="$MDL_IDNUMBER"
+    else
+        print_status "WARN" "consumer: no Moodle resolver (--mdl-resolve-cmd/--mdl-idnumber) — provider half only."
+        print_status "OK" "JOIN half-verified (provider). Provide a Moodle handle for the full end-to-end check."
+        pair_rag_set "$CONSUMER" "$TIER" "amber"
+        exit 0
+    fi
+    if [ "$mdl_idnumber" != "$JOIN_UUID" ]; then
+        join_red "CONSUMER side: mdl_user.idnumber='$mdl_idnumber' != uuid '$JOIN_UUID' (UID-lock does NOT resolve — join broken)."
+    fi
+    print_status "OK" "consumer: mdl_user.idnumber == uuid ($JOIN_UUID) resolves"
+
+    # --- optional cross-field agreement (email), when both sides expose it ---
+    if [ -n "$nwc_email" ] && [ -n "$mdl_email" ] && [ "$nwc_email" != "$mdl_email" ]; then
+        print_status "WARN" "email differs across sides (nwc='$nwc_email' vs moodle='$mdl_email') — expected under sanitized/hashed tiers."
+    fi
+
+    pair_rag_set "$CONSUMER" "$TIER" "green"
+    echo ""
+    print_status "OK" "JOIN-integrity GREEN: nwc(uuid=$JOIN_UUID,uid=$nwc_uid) ↔ mdl_user.idnumber — join intact. RAG green for ${CONSUMER}@${TIER}."
+    exit 0
+fi
 
 # Provider base URL: explicit override, else the contract issuer for this tier.
 if [ -z "$PROVIDER_BASE" ]; then

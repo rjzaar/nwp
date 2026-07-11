@@ -27,6 +27,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/rollback-remote.sh"
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/deploy-gate.sh"
 
+# pair.sh: ops#83 both-or-forward RESTORE choke-point. A remote rollback at a
+# coupled tier (live/prod) restores the provider/consumer DB — which can orphan
+# UID-locks. pair_guard_restore refuses a restore that would move one member
+# behind the other's identity anchor unless a typed, ledgered --override-pair is
+# given. No-op for unpaired sites / uncoupled tiers.
+# shellcheck disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/pair.sh"
+
 ################################################################################
 # Deployment History
 ################################################################################
@@ -231,6 +239,20 @@ rollback_execute() {
         # deploy. Local-DDEV rollbacks (below) never prompt; dry runs write
         # nothing so they are exempt.
         if [ "$dry_run" != "--dry-run" ]; then
+            # ops#83 both-or-forward RESTORE gate (BEFORE the hardware gate, same
+            # order pair_guard sits before deploy_gate_require on deploys). Maps
+            # the rollback environment to a coupled tier; a no-op for unpaired
+            # sites / uncoupled tiers. The backup's identity anchor comes from the
+            # entry (identity_anchor) or NWP_RESTORE_ANCHOR; unknown ⇒ fail-closed.
+            local _pg_tier="$environment"
+            [ "$_pg_tier" = "stage" ] && _pg_tier="stg"
+            local _pg_anchor _pg_override
+            _pg_anchor=$(grep -m1 '"identity_anchor"' "$entry_file" 2>/dev/null | sed 's/.*: *"\{0,1\}\([0-9]*\)"\{0,1\}.*/\1/' || true)
+            [ -z "$_pg_anchor" ] && _pg_anchor="${NWP_RESTORE_ANCHOR:-}"
+            _pg_override="${PL_OVERRIDE_PAIR:-false}"
+            if command -v pair_guard_restore >/dev/null 2>&1; then
+                pair_guard_restore "$sitename" "$_pg_tier" "rollback" "$_pg_anchor" "$_pg_override" || return 1
+            fi
             deploy_gate_require "$sitename" "$environment" \
                 "rollback: restore DBs + nginx on the production host" || return 1
         fi

@@ -458,3 +458,219 @@ pair_guard_record_success() {
     pair_guard_record "$pair_id" "$role" "$tier" "$cv"
     return 0
 }
+
+################################################################################
+# ops#83 — RESTORE choke-point (ADR-0031 D9, both-or-forward invariant)
+#
+# ADR-0031 D5 says CODE rollback is safe per-site (expand-contract). That is
+# FALSE for a DB restore/rebuild at a coupled tier: it can change or drop the
+# provider (uuid,uid) map and orphan every consumer UID-lock. sub_stability:uuid
+# neutralises WITHIN-half renumber; this guard governs CROSS-half point-in-time
+# consistency — the "both-or-forward" invariant:
+#
+#   You may not restore ONE member to a state OLDER than the OTHER member's
+#   identity anchor. Either restore BOTH halves to one logical cut, or move the
+#   restored member's identity set only FORWARD (>=) of the counterpart's anchor.
+#
+# FAIL-CLOSED: at a coupled tier, a restore is REFUSED unless (a) the contract's
+# identity.restore block is present, (b) the provider identity ledger exists,
+# (c) a consumer join-snapshot exists (pre_check_required), and (d) the target
+# anchor is known AND not behind the counterpart. The ONLY escape is a loud,
+# typed, ledgered --override-pair. Unpaired / uncoupled-tier restores are no-ops.
+#
+# ⚠ AI BLAST RADIUS: prod restores stay ver/Solo-gated (CLAUDE.md, deploy-gate).
+# This guard is the LOGIC layer; it does not itself run a restore.
+################################################################################
+
+# Identity anchor per side/tier: a monotonically-increasing integer marking the
+# newest identity cut recorded for that side (bumped on a provider ledger dump /
+# consumer SSO-lock / promotion). Absent ⇒ "unknown" (empty).
+pair_anchor_get() {
+    local pair_id="$1" side="$2" tier="$3"
+    local f; f="$(pair_state_dir)/${pair_id}.${side}.${tier}.anchor"
+    [ -f "$f" ] && cat "$f" 2>/dev/null || true
+}
+
+# Set the identity anchor (monotonic guard: never moves an anchor backwards).
+pair_anchor_set() {
+    local pair_id="$1" side="$2" tier="$3" val="$4"
+    [ -n "$pair_id" ] && [ -n "$side" ] && [ -n "$tier" ] && [ -n "$val" ] || return 0
+    case "$val" in ''|*[!0-9]*) _pair_err "pair_anchor_set: anchor must be a non-negative integer"; return 1 ;; esac
+    local dir; dir="$(pair_state_dir)"; mkdir -p "$dir" 2>/dev/null || return 0
+    local cur; cur="$(pair_anchor_get "$pair_id" "$side" "$tier")"
+    if [ -n "$cur" ] && [ "$val" -lt "$cur" ] 2>/dev/null; then
+        _pair_err "pair_anchor_set: refusing to move ${side}@${tier} anchor BACKWARD ($cur → $val)"
+        return 1
+    fi
+    printf '%s\n' "$val" > "$dir/${pair_id}.${side}.${tier}.anchor" 2>/dev/null || true
+    pair_ledger_append "$pair_id" "action=anchor-set side=$side tier=$tier value=$val"
+    return 0
+}
+
+# Path to the provider identity ledger (written by scripts/f26/nwc-identity-ledger.sh).
+pair_ledger_file() {
+    local pair_id="$1"
+    local dir="${NWP_PAIR_LEDGER_DIR:-$(pair_state_dir)/ledger}"
+    echo "${dir}/${pair_id}.provider-identity.jsonl"
+}
+
+# 0 if the provider ledger exists and is non-empty with at least one snapshot
+# commit line. (Deep hash-chain integrity is verified by the f26 tool; the guard
+# only needs presence + structural sanity to decide it CAN reconcile.)
+pair_ledger_present() {
+    local pair_id="$1"
+    local f; f="$(pair_ledger_file "$pair_id")"
+    [ -f "$f" ] && [ -s "$f" ] || return 1
+    grep -q '"t":"snap"' "$f" 2>/dev/null || return 1
+    return 0
+}
+
+# Path to the consumer join-snapshot (the ground-truth locked-idnumber list an
+# operator captures on the consumer before a coupled-tier restore, ops#83 §3).
+pair_join_snapshot_file() {
+    local pair_id="$1" tier="$2"
+    echo "$(pair_state_dir)/${pair_id}.${tier}.join-snapshot.tsv"
+}
+
+################################################################################
+# pair_guard_restore <site> <target-tier> <cmd> <target-anchor> <override-pair> [confirm]
+#
+#   site           the member being restored (base name)
+#   target-tier    dev | stg | live | prod
+#   cmd            label for messages/ledger (restore|rollback)
+#   target-anchor  integer identity cut the backup represents (empty = unknown)
+#   override-pair  true|false  (was --override-pair passed?)
+#   confirm        typed confirmation token for the override (must == RESTORE-OVERRIDE);
+#                  or set NWP_PAIR_OVERRIDE_CONFIRM=RESTORE-OVERRIDE in the env.
+#
+# Returns 0 = proceed, non-zero = refuse the restore. Called at the restore
+# choke-point (restore.sh destructive DB step; lib/rollback.sh remote path)
+# alongside deploy_gate_require — same place pair_guard sits for deploys.
+################################################################################
+pair_guard_restore() {
+    local site="${1:?pair_guard_restore: site required}"
+    local target="${2:?pair_guard_restore: target tier required}"
+    local cmd="${3:-restore}"
+    local target_anchor="${4:-}"
+    local override="${5:-false}"
+    local confirm="${6:-${NWP_PAIR_OVERRIDE_CONFIRM:-}}"
+
+    # 1. Membership — not paired ⇒ no-op (off-unless-configured).
+    local role pair_id rest
+    rest="$(pair_role_of "$site")"
+    role="$(echo "$rest" | awk '{print $1}')"
+    pair_id="$(echo "$rest" | awk '{print $2}')"
+    [ -n "$role" ] && [ -n "$pair_id" ] || return 0
+
+    # 2. Contract — required once paired. Fail closed if missing/invalid.
+    local contract; contract="$(pair_contract_file "$pair_id")"
+    if ! pair_contract_valid "$contract"; then
+        if [ "${NWP_PAIR_GATE_SOFT:-false}" = "true" ]; then
+            _pair_note "pair_guard_restore: '$site' paired ($pair_id) but contract missing/invalid — SOFT skip."
+            pair_ledger_append "$pair_id" "action=restore-soft-skip cmd=$cmd site=$site target=$target reason=no-contract"
+            return 0
+        fi
+        _pair_err "REFUSED restore: '$site' is paired ($pair_id) but its pair contract is missing/invalid ($contract)."
+        _pair_info "The both-or-forward invariant (ADR-0031 D9) cannot be verified — failing closed."
+        return 1
+    fi
+
+    local provider consumer
+    provider="$(pair_contract_get "$contract" '.provider')"
+    consumer="$(pair_contract_get "$contract" '.consumer')"
+
+    # 3. Only coupled tiers are gated. An uncoupled tier (dev/stg, or a pair with
+    #    uid_lock:false) cannot orphan a lock ⇒ restore freely.
+    if ! pair_contract_couples_tier "$contract" "$target"; then
+        return 0
+    fi
+
+    # 4. Contract must carry the ops#83 restore block, else we cannot assert the
+    #    invariant — fail closed (a pre-ops#83 contract at a coupled tier).
+    local inv precheck
+    inv="$(pair_contract_get "$contract" '.identity.restore.invariant' 2>/dev/null || true)"
+    precheck="$(pair_contract_get "$contract" '.identity.restore.pre_check_required' 2>/dev/null || echo false)"
+    if [ "$inv" != "both-or-forward" ]; then
+        if [ "$override" != "true" ]; then
+            _pair_err "REFUSED restore: '$site' coupled at $target but contract has no identity.restore.invariant=both-or-forward (ops#83)."
+            _pair_info "Add the identity.restore block, or override (ledgered): --override-pair."
+            return 1
+        fi
+    fi
+
+    # 5. Fail-closed pre-checks (design §3): provider ledger + consumer join-snapshot.
+    local missing=""
+    if ! pair_ledger_present "$pair_id"; then
+        missing="provider-identity-ledger ($(pair_ledger_file "$pair_id"))"
+    fi
+    if [ "$precheck" = "true" ]; then
+        local snap; snap="$(pair_join_snapshot_file "$pair_id" "$target")"
+        if [ ! -s "$snap" ]; then
+            missing="${missing:+$missing; }consumer-join-snapshot ($snap)"
+        fi
+    fi
+    if [ -n "$missing" ] && [ "$override" != "true" ]; then
+        _pair_err "REFUSED restore: '$site' ($role of pair '$pair_id') at coupled tier $target — required reconcile inputs are MISSING:"
+        _pair_err "  $missing"
+        _pair_info "Capture them first: run  scripts/f26/nwc-identity-ledger.sh dump  (provider) and the"
+        _pair_info "consumer join-snapshot query (ops#83 §3), then retry. Override (ledgered): --override-pair."
+        return 1
+    fi
+
+    # 6. Both-or-forward: the restored member's target anchor must be >= the
+    #    counterpart's current anchor.
+    local counter_side counter_anchor
+    if [ "$role" = "provider" ]; then counter_side="consumer"; else counter_side="provider"; fi
+    counter_anchor="$(pair_anchor_get "$pair_id" "$counter_side" "$target")"
+
+    if [ -z "$counter_anchor" ]; then
+        # Counterpart has never recorded an anchor ⇒ nothing to strand yet.
+        _pair_info "pair_guard_restore: counterpart '$counter_side' has no recorded identity anchor at $target — no lock to orphan."
+    else
+        if [ -z "$target_anchor" ]; then
+            if [ "$override" != "true" ]; then
+                _pair_err "REFUSED restore: '$site' target identity anchor is UNKNOWN while '$counter_side' is at anchor $counter_anchor ($target)."
+                _pair_err "Cannot prove the restore moves the identity set FORWARD (ADR-0031 D9 both-or-forward) — failing closed."
+                _pair_info "Provide the backup's identity anchor (pl pair anchor …), or override (ledgered): --override-pair."
+                return 1
+            fi
+        elif [ "$target_anchor" -lt "$counter_anchor" ] 2>/dev/null; then
+            if [ "$override" != "true" ]; then
+                _pair_err "REFUSED restore: restoring '$site' ($role) to anchor $target_anchor is OLDER than '$counter_side' anchor $counter_anchor at $target."
+                _pair_err "That would strand every '$counter_side' UID-lock newer than $target_anchor (ADR-0031 D9)."
+                _pair_info "Restore BOTH halves to one cut, or to an anchor >= $counter_anchor. Override (ledgered): --override-pair."
+                return 1
+            fi
+        fi
+    fi
+
+    # 7. Override path — loud + TYPED confirm + audit. Fail-closed even here: a
+    #    bare --override-pair without the typed token is refused.
+    if [ "$override" = "true" ]; then
+        if [ "$confirm" != "RESTORE-OVERRIDE" ]; then
+            if [ -t 0 ]; then
+                echo "" >&2
+                _pair_note "You are about to OVERRIDE the ops#83 both-or-forward restore invariant for '$site' @ $target."
+                _pair_note "This can permanently orphan consumer UID-locks. Type RESTORE-OVERRIDE to proceed:"
+                read -r confirm || confirm=""
+            fi
+        fi
+        if [ "$confirm" != "RESTORE-OVERRIDE" ]; then
+            _pair_err "REFUSED restore: --override-pair requires the typed confirmation 'RESTORE-OVERRIDE' (got none/mismatch)."
+            pair_ledger_append "$pair_id" "action=restore-override-DENIED cmd=$cmd site=$site role=$role target=$target target_anchor=${target_anchor:-unknown}"
+            return 1
+        fi
+        echo "" >&2
+        _pair_note "════════════════════════════════════════════════════════════════"
+        _pair_note "RESTORE OVERRIDE: '$site' ($role of pair '$pair_id') restored at $target"
+        _pair_note "DESPITE the both-or-forward invariant (target_anchor=${target_anchor:-unknown},"
+        _pair_note "counterpart=${counter_anchor:-none}). Reconcile per ops#83 §3 immediately after."
+        _pair_note "Audited in $(pair_state_dir)/${pair_id}.log."
+        _pair_note "════════════════════════════════════════════════════════════════"
+        echo "" >&2
+        pair_ledger_append "$pair_id" \
+            "action=restore-override cmd=$cmd site=$site role=$role target=$target target_anchor=${target_anchor:-unknown} counter=${counter_anchor:-none}"
+    fi
+
+    return 0
+}

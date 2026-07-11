@@ -17,6 +17,10 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 # Source shared libraries
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh"
+# ops#83: both-or-forward RESTORE choke-point (no-op for unpaired sites / uncoupled
+# tiers; the default --tier=dev restore is never gated). pair.sh is not
+# auto-sourced by common.sh, so pull it in explicitly.
+source "$PROJECT_ROOT/lib/pair.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -77,6 +81,11 @@ ${BOLD}OPTIONS:${NC}
     -f, --first             Use latest backup without prompting
     -y, --yes               Auto-confirm deletion of existing content
     -o, --open              Generate login link after restoration
+    -t, --tier=T            Tier being restored (dev|stg|live|prod; default dev).
+                            A coupled tier (live/prod on an identity-paired site)
+                            is gated by the ops#83 both-or-forward restore rule.
+        --anchor=N          Identity anchor of the backup (ops#83; for coupled tiers)
+        --override-pair     Ledgered escape past the ops#83 restore gate (typed)
 
 ${BOLD}ARGUMENTS:${NC}
     from                    Source site name (backup to restore from)
@@ -440,6 +449,9 @@ restore_site() {
     local start_step=${4:-1}
     local open_after=${5:-false}
     local db_only=${6:-false}
+    local tier=${7:-dev}
+    local anchor=${8:-}
+    local override_pair=${9:-false}
 
     # Clean up spinner on exit/error
     trap 'stop_spinner' EXIT INT TERM
@@ -448,6 +460,18 @@ restore_site() {
         print_header "NWP Database Restore: $from_site → $to_site"
     else
         print_header "NWP Site Restore: $from_site → $to_site"
+    fi
+
+    # ops#83: both-or-forward RESTORE gate — refuse a coupled-tier restore that
+    # would move one paired member behind the other's identity anchor (orphaning
+    # UID-locks) unless a typed, ledgered --override-pair is given. No-op for
+    # unpaired sites and uncoupled tiers (the default dev restore). ⚠ A real
+    # live/prod restore remains ver/Solo-gated (CLAUDE.md); this is the logic gate.
+    if command -v pair_guard_restore >/dev/null 2>&1; then
+        if ! pair_guard_restore "$to_site" "$tier" "restore" "$anchor" "$override_pair"; then
+            print_error "Restore refused by the ops#83 pair restore gate (see above)."
+            return 1
+        fi
     fi
 
     # Step 1: Select backup
@@ -650,10 +674,13 @@ main() {
     local START_STEP=1
     local FROM_SITE=""
     local TO_SITE=""
+    local TIER=dev
+    local ANCHOR=""
+    local OVERRIDE_PAIR=false
 
     # Parse options
-    local OPTIONS=hdbfyos:
-    local LONGOPTS=help,debug,db-only,first,yes,open,step:
+    local OPTIONS=hdbfyos:t:
+    local LONGOPTS=help,debug,db-only,first,yes,open,step:,tier:,anchor:,override-pair
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -692,6 +719,18 @@ main() {
                 START_STEP="$2"
                 shift 2
                 ;;
+            -t|--tier)
+                TIER="$2"
+                shift 2
+                ;;
+            --anchor)
+                ANCHOR="$2"
+                shift 2
+                ;;
+            --override-pair)
+                OVERRIDE_PAIR=true
+                shift
+                ;;
             --)
                 shift
                 break
@@ -728,9 +767,10 @@ main() {
     ocmsg "Open after: $OPEN_AFTER"
     ocmsg "Database-only: $DB_ONLY"
     ocmsg "Start step: $START_STEP"
+    ocmsg "Tier: $TIER"
 
     # Run restore
-    if restore_site "$FROM_SITE" "$TO_SITE" "$USE_FIRST" "$START_STEP" "$OPEN_AFTER" "$DB_ONLY"; then
+    if restore_site "$FROM_SITE" "$TO_SITE" "$USE_FIRST" "$START_STEP" "$OPEN_AFTER" "$DB_ONLY" "$TIER" "$ANCHOR" "$OVERRIDE_PAIR"; then
         show_elapsed_time "Restore"
         exit 0
     else

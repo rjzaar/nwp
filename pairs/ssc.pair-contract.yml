@@ -177,13 +177,62 @@ endpoints:
     issuer: "https://nwc.<example-prod-domain>"
   # prod: add when the provider has a dedicated prod tier (offline-deploy-gated).
 
+# --- F26 OIDC concrete wiring (LIVE-PROVEN 2026-07-11) -----------------------
+# On 2026-07-11 the ssc↔nwc OIDC round-trip was stood up BY HAND on live and
+# PROVEN end-to-end (a nwc user logged into ssc; Moodle idnumber == nwc sub — the
+# UID-lock held). These are the exact facts that made it work, now codified so
+# `pl moodle-promote` reproduces them (lib/moodle-promote.sh: the apply-script,
+# moodle_deploy_auth_nwc; provider half: scripts/f26/nwc-provider-oidc-setup.sh).
+# NO LONGER A STUB. See docs/guides/moodle-promotion-substrate.md §F26 runbook.
+oidc:
+  consumer_plugin: auth_nwc         # the REAL consumer (genuine UID-lock; NOT the
+                                    # lock-less auth_nwc_oauth2 decoy). authtype 'nwc'.
+  # Provider endpoints are set MANUALLY on the Moodle issuer — nwc exposes NO
+  # discovery document (/.well-known/openid-configuration returns 404).
+  discovery_available: false
+  endpoints:
+    authorization: "/oauth/authorize"
+    token: "/oauth/token"
+    userinfo: "/oauth/userinfo"      # native simple_oauth (F26 M1)
+    # ⚠ GOTCHA: JWKS is at /.well-known/jwks.json — NOT /oauth/jwks, which
+    #   301-redirects and silently breaks token signature verification.
+    jwks: "/.well-known/jwks.json"
+  issuer_name: "nwc (F26)"
+  issuer_flags:
+    showonloginpage: 1
+    enabled: 1
+    requireconfirmation: 0           # trusted issuer — no email-confirm interstitial
+    loginscopes: "openid email profile"
+  # User-field mappings. sub→idnumber is the UID-lock and is MANDATORY: without
+  # it auth_nwc DENIES every login (B1 fail-closed edge).
+  user_field_mappings:
+    sub: idnumber                    # the UID-lock
+    email: email
+    name: firstname
+    preferred_username: lastname
+  auth_nwc_config:
+    autoredirect: 0                  # keep the login page recoverable
+    cfg_auth_appended: [oauth2, nwc] # added to $CFG->auth; core 'email' kept
+  provider_prereqs:                  # nwc side — MISSING these silently breaks it
+    signing_keypair: required        # drush simple-oauth:generate-keys + cset public/private
+    consent_permission: "grant simple_oauth codes"   # granted to authenticated role
+    consumer_confidential: true
+    consumer_pkce: true              # S256
+    consumer_grant_types: [authorization_code, refresh_token]
+    consumer_redirect: "<consumer-wwwroot>/admin/oauth2callback.php"
+  # Moodle 4.4 rejects PHP 8.4 → run admin/cli with php8.2/8.3 + max_input_vars=5000.
+  cli_php_version: "8.2"
+
 # --- Onboarding smoke: the 5-URL set checked after any promotion (D5) --------
 # Paths are relative to that side's tier base URL. A failure sets the pair RAG
 # red (which pair_guard then blocks on).
 smoke_urls:
-  - name: oidc_discovery
+  - name: oidc_signing
     side: provider
-    path: "/.well-known/openid-configuration"
+    # LIVE-PROVEN: nwc has NO discovery doc (/.well-known/openid-configuration =
+    # 404). The real signing-health probe is the JWKS at /.well-known/jwks.json
+    # (200) — NOT /oauth/jwks (301). Endpoints are configured manually.
+    path: "/.well-known/jwks.json"
     method: GET
     expect_status: "200"
   - name: provider_health

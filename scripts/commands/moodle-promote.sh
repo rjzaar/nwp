@@ -48,13 +48,20 @@ ${BOLD}OPTIONS:${NC}
     --apply             Actually write config.php + vhost + OIDC descriptors
     --out-dir=DIR       Where vhost + OIDC artifacts go (default: private/moodle/<site>)
     --php=<x.y>         PHP-FPM version for the vhost (default: 8.1)
+    --auth-nwc-src=DIR  auth_nwc plugin source tree to deploy into <root>/auth/nwc
+                        (F26 consumer; also read from .moodle.oauth.auth_nwc_src)
+    --run-cli           Also EXECUTE the generated OIDC apply-script against the
+                        Moodle DB (creates the issuer+mappings+auth config). Off by
+                        default — the default only WRITES the script + prints how to
+                        run it. Refuses prod. Needs the client secret provisioned.
 
 ${BOLD}NOTES:${NC}
     * A site whose project.type != moodle is a no-op (exit 0).
     * Only dev/stg/test are writable — a live/prod Moodle root is never rewritten.
     * The wwwroot DB-side rewrite + cache purge are PRINTED, never executed.
-    * OIDC descriptors are off-by-default; enabling a live client is an operator
-      step (client-secret provisioning) — see docs/guides/moodle-promotion-substrate.md.
+    * The F26 OIDC wiring (issuer + sub→idnumber lock + auth_nwc config) is emitted
+      as a real, idempotent admin/cli-style PHP apply-script — codifies the flow
+      proven by hand on live ssc↔nwc (see docs/guides/moodle-promotion-substrate.md).
 EOF
 }
 
@@ -63,16 +70,20 @@ TIER="dev"
 MODE="dry-run"
 OUT_DIR=""
 PHP_VERSION="8.1"
+AUTH_NWC_SRC=""
+RUN_CLI="no"
 
 for arg in "$@"; do
     case "$arg" in
-        -h|--help)   show_help; exit 0 ;;
-        --dry-run)   MODE="dry-run" ;;
-        --apply)     MODE="apply" ;;
-        --tier=*)    TIER="${arg#*=}" ;;
-        --out-dir=*) OUT_DIR="${arg#*=}" ;;
-        --php=*)     PHP_VERSION="${arg#*=}" ;;
-        -*)          print_error "Unknown option: $arg"; show_help; exit 1 ;;
+        -h|--help)         show_help; exit 0 ;;
+        --dry-run)         MODE="dry-run" ;;
+        --apply)           MODE="apply" ;;
+        --tier=*)          TIER="${arg#*=}" ;;
+        --out-dir=*)       OUT_DIR="${arg#*=}" ;;
+        --php=*)           PHP_VERSION="${arg#*=}" ;;
+        --auth-nwc-src=*)  AUTH_NWC_SRC="${arg#*=}" ;;
+        --run-cli)         RUN_CLI="yes" ;;
+        -*)                print_error "Unknown option: $arg"; show_help; exit 1 ;;
         *)  [ -z "$SITE" ] && SITE="$arg" || { print_error "Unexpected arg: $arg"; exit 1; } ;;
     esac
 done
@@ -147,7 +158,9 @@ else
     print_warning "No domain/wwwroot to build a vhost from — skipped vhost generation."
 fi
 
-# 3. OIDC wiring descriptors (off-by-default). Only when a contract exists.
+# 3. OIDC wiring (F26). Descriptors + the live-proven apply-script. Contract-gated.
+CLI_PHP="$(_mp_cfg "$CONFIG_FILE" '.moodle.oauth.cli_php_version' '8.2' || true)"
+APPLY_SCRIPT="$OUT_DIR/${SITE}-${TIER}.oidc-apply.php"
 if [ -n "$CONTRACT_FILE" ]; then
     moodle_oauth_consumer_config "$SITE" "$TIER" "$CONTRACT_FILE" "$CONFIG_FILE" \
         "$OUT_DIR/${SITE}-${TIER}.oidc-consumer.yml" || \
@@ -155,8 +168,31 @@ if [ -n "$CONTRACT_FILE" ]; then
     moodle_oauth_provider_snippet "$SITE" "$TIER" "$CONTRACT_FILE" "$CONFIG_FILE" \
         "$OUT_DIR/${SITE}-${TIER}.oidc-provider-snippet.yml" || \
         print_warning "OIDC provider snippet not written (see message above)."
+    # The real, runnable apply-script (issuer + endpoints + sub→idnumber + auth_nwc).
+    moodle_generate_oidc_apply_script "$SITE" "$TIER" "$CONTRACT_FILE" "$CONFIG_FILE" \
+        "$APPLY_SCRIPT" || print_warning "OIDC apply-script not written (see message above)."
 else
     print_info "No pair contract for '$SITE' — OIDC wiring skipped (author pairs/${SITE}.pair-contract.yml)."
+fi
+
+# 3b. Deploy the auth_nwc plugin (F26 consumer). Source from flag or config.
+[ -z "$AUTH_NWC_SRC" ] && AUTH_NWC_SRC="$(_mp_cfg "$CONFIG_FILE" '.moodle.oauth.auth_nwc_src' '' || true)"
+if [ -n "$AUTH_NWC_SRC" ]; then
+    moodle_deploy_auth_nwc "$MOODLE_ROOT" "$TIER" "$AUTH_NWC_SRC" "$CLI_PHP" || \
+        print_warning "auth_nwc plugin not deployed (see message above)."
+else
+    print_info "No auth_nwc source (--auth-nwc-src / .moodle.oauth.auth_nwc_src) — plugin deploy skipped."
+fi
+
+# 3c. Optionally EXECUTE the apply-script against the Moodle DB (--run-cli).
+if [ "$RUN_CLI" = "yes" ] && [ -f "$APPLY_SCRIPT" ]; then
+    moodle_run_oidc_apply "$MOODLE_ROOT" "$TIER" "$APPLY_SCRIPT" "$SITE" "$CONFIG_FILE" "$CLI_PHP" || \
+        print_warning "OIDC apply-script execution reported an error (see above)."
+elif [ -f "$APPLY_SCRIPT" ]; then
+    print_info "OIDC apply-script written but NOT executed. To create the issuer on the DB, run:"
+    echo "  MOODLE_CONFIG_PATH=${MOODLE_ROOT}/config.php \\"
+    echo "  NWC_OIDC_CLIENT_SECRET=<secret> php${CLI_PHP} -d max_input_vars=5000 ${APPLY_SCRIPT}"
+    echo "  # or: pl moodle-promote $SITE --tier=$TIER --apply --run-cli"
 fi
 
 # 4. wwwroot DB-rewrite + cache purge PLAN (printed, never executed here)

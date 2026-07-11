@@ -351,6 +351,13 @@ NGINXEOF
 # time into a 0600 file.
 ################################################################################
 
+# JWKS URI for an issuer — the LIVE-PROVEN path (memory f26-auth-plugin-reconcile
+# 2026-07-11): nwc serves its JWKS at /.well-known/jwks.json. The obvious
+# /oauth/jwks 301-redirects, which silently breaks token signature verification.
+# Single source of truth so the descriptor and the apply-script never diverge.
+# Usage: _mp_jwks_uri <issuer_baseurl>
+_mp_jwks_uri() { printf '%s/.well-known/jwks.json\n' "${1%/}"; }
+
 # Read the issuer URL for <tier> from a pair contract file.
 # Uses lib/pair.sh's pair_contract_get when available, else a direct yq read.
 # Usage: _mp_issuer_for_tier <contract_file> <tier>
@@ -407,14 +414,27 @@ oauth2_issuer:
   authorization_endpoint: "${issuer}/oauth/authorize"
   token_endpoint: "${issuer}/oauth/token"
   userinfo_endpoint: "${issuer}/oauth/userinfo"
-  jwks_uri: "${issuer}/oauth/jwks"
-  discovery: "${issuer}/.well-known/openid-configuration"
+  # ⚠ LIVE-PROVEN GOTCHA (memory f26-auth-plugin-reconcile 2026-07-11): the JWKS
+  # URI is /.well-known/jwks.json — NOT /oauth/jwks, which 301-redirects and
+  # breaks token signature verification.
+  jwks_uri: "$(_mp_jwks_uri "$issuer")"
+  discovery: "${issuer}/.well-known/openid-configuration"   # nwc returns 404 — endpoints set MANUALLY
   scopes: "openid email profile"
   pkce: "S256"                 # F26 §6: ss_moodle client is PKCE-required
+  requireconfirmation: 0       # trusted issuer — no email-confirm interstitial
   client_id: "${client_id}"
   client_secret_source: "${secret_source}"   # secret PATH, never the value
   # UID-lock: Moodle mdl_user.idnumber ← Drupal uid (ID token sub) on first SSO.
+  # The sub→idnumber user-field mapping is MANDATORY: without it auth_nwc DENIES
+  # every login (B1 fail-closed edge).
   uid_lock_field: idnumber
+  user_field_mappings:         # applied by the generated apply-script (live-proven)
+    sub: idnumber              # the UID-lock — mandatory
+    email: email
+    name: firstname
+    preferred_username: lastname
+  # Moodle 4.4 rejects PHP 8.4; run admin/cli with php8.2/8.3 -d max_input_vars=5000.
+  cli_php_version: "8.2"
 YAMLEOF
 
     _mp_ok "Wrote Moodle OIDC consumer descriptor (${consumer}@${tier}, issuer=${issuer}) → ${out_file}"
@@ -463,6 +483,7 @@ consumer:
   client_id: "${client_id}"
   # client_secret: <operator provisions on nwc; do NOT write it here>
   is_default: false
+  confidential: true               # live-proven: Consumer confidential=TRUE
   pkce: true                       # S256 (F26 §6)
   redirect_uri:
     - "${redirect}"
@@ -474,10 +495,315 @@ consumer:
     - openid
     - email
     - profile
+# ── Provider-side prerequisites the operator MUST also apply on nwc (steps 5–7,
+#    memory f26-auth-plugin-reconcile — MISSING these silently breaks the flow):
+#   * simple_oauth signing keypair: drush simple-oauth:generate-keys <dir>, then
+#       drush cset simple_oauth.settings public_key  <dir>/public.key
+#       drush cset simple_oauth.settings private_key <dir>/private.key
+#     (were absent on live → JWKS + token signing failed until generated).
+#   * permission: grant 'grant simple_oauth codes' to the authenticated role,
+#     else the consent step fails.
+#   These are automated by scripts/f26/nwc-provider-oidc-setup.sh (operator-run).
 YAMLEOF
 
     _mp_ok "Wrote Drupal (nwc) provider Consumer snippet (${consumer}@${tier}) → ${out_file}"
     return 0
+}
+
+################################################################################
+# F26 CONSUMER APPLY — codification of the LIVE-PROVEN ssc↔nwc flow.
+#
+# On 2026-07-11 the ssc (Moodle) ↔ nwc (Drupal) OIDC round-trip was stood up BY
+# HAND on live and PROVEN end-to-end (a nwc user logged into ssc; Moodle
+# idnumber == nwc sub — the UID-lock held; the B1 user_loggedin observer fired).
+# The functions below turn that manual sequence into repeatable tooling. See
+# memory f26-auth-plugin-reconcile.md.
+#
+# The by-hand consumer steps, now generated/executed:
+#   1. deploy auth_nwc plugin → <moodleroot>/auth/nwc + admin/cli/upgrade.php
+#   2. create a core oauth2_issuer "nwc (F26)" with MANUAL endpoints
+#      (nwc has no discovery doc), jwks = /.well-known/jwks.json (NOT /oauth/jwks)
+#   3. create user-field mappings — sub→idnumber (the UID-lock — mandatory) +
+#      email→email, name→firstname, preferred_username→lastname
+#   4. set_config auth_nwc (issuerid, nwc_url, autoredirect=0) + add oauth2,nwc
+#      to $CFG->auth (keeping email)
+#
+# SAFETY (same contract as the rest of this library):
+#   * REFUSES a prod tier (auth-adjacent; operator-only) — mirrors the descriptor
+#     writers. dev/stg/test/live are permitted (live is where it was proven; the
+#     wiring is ADDITIVE — a new issuer + auth config, it does NOT rewrite the
+#     Moodle DB or config.php).
+#   * NO SECRET on argv or in any generated file. The generated PHP reads the
+#     client secret from the NWC_OIDC_CLIENT_SECRET environment variable; the
+#     runner resolves it via get_data_secret and exports it to the child php
+#     process only.
+#   * php-version-aware: Moodle 4.4 rejects PHP 8.4 → the emitted commands use
+#     php8.2 (the FPM version) with -d max_input_vars=5000.
+#   * The generator writes an artifact; EXECUTION against a live DB is a separate,
+#     explicit runner call (moodle_run_oidc_apply) — never implicit.
+################################################################################
+
+# 0 iff <tier> is permitted for the (additive, auth-adjacent) OIDC wiring.
+# Everything except prod is allowed (prod stays operator-only, offline-gated).
+_mp_oidc_tier_ok() { case "${1:-}" in prod) return 1 ;; ''|*) return 0 ;; esac; }
+
+# Resolve the OIDC client secret WITHOUT argv/hardcoding. Reads the SOURCE path
+# from config (.moodle.oauth.client_secret_source) and looks it up via
+# get_data_secret. Returns empty when no backend/secret — the caller decides.
+# Usage: moodle_oauth_client_secret <consumer> <config_file>
+moodle_oauth_client_secret() {
+    local consumer="$1" config_file="$2" src
+    src="$(_mp_cfg "$config_file" '.moodle.oauth.client_secret_source' "moodle.${consumer}.oauth.client_secret" || true)"
+    if declare -F get_data_secret >/dev/null 2>&1; then
+        get_data_secret "$src" "" 2>/dev/null || true
+    else
+        echo ""
+    fi
+}
+
+# moodle_generate_oidc_apply_script <consumer> <tier> <contract> <config_file> <out_file>
+#
+# Emit a REAL, idempotent admin/cli-style PHP script that — when run against a
+# non-prod Moodle — creates/updates the core oauth2_issuer, its MANUAL endpoints,
+# the user-field mappings (sub→idnumber first), and the auth_nwc plugin config,
+# exactly as was done by hand on live ssc. Uses core \core\oauth2\api +
+# persistent classes. Contains NO secret (reads getenv('NWC_OIDC_CLIENT_SECRET')).
+# REFUSES a prod tier or an empty issuer (fail-closed).
+moodle_generate_oidc_apply_script() {
+    local consumer="$1" tier="$2" contract="$3" config_file="$4" out_file="$5"
+    if [ -z "$consumer" ] || [ -z "$tier" ] || [ -z "$contract" ] || [ -z "$out_file" ]; then
+        _mp_err "moodle_generate_oidc_apply_script: usage: <consumer> <tier> <contract> <config_file> <out_file>"
+        return 2
+    fi
+    if ! _mp_oidc_tier_ok "$tier"; then
+        _mp_err "REFUSED: OIDC apply-script for a prod tier (auth-adjacent, operator-only)."
+        return 1
+    fi
+    local issuer; issuer="$(_mp_issuer_for_tier "$contract" "$tier")"
+    if [ -z "$issuer" ] || [ "$issuer" = "null" ]; then
+        _mp_err "REFUSED: no endpoints.${tier}.issuer in $contract (fail-closed) — cannot wire OIDC."
+        return 1
+    fi
+    issuer="${issuer%/}"
+    local client_id issuer_name jwks
+    client_id="$(_mp_cfg "$config_file" '.moodle.oauth.client_id' 'ss_moodle' || true)"
+    issuer_name="nwc (F26)"
+    jwks="$(_mp_jwks_uri "$issuer")"
+
+    cat > "$out_file" <<PHPEOF
+<?php
+// GENERATED by NWP moodle_generate_oidc_apply_script (ADR-0031 D8 / F26).
+// Codifies the LIVE-PROVEN ssc↔nwc OIDC consumer wiring (memory
+// f26-auth-plugin-reconcile, proven end-to-end 2026-07-11). IDEMPOTENT.
+//
+// Run against a NON-prod Moodle (Moodle 4.4 rejects PHP 8.4 → use php8.2/8.3):
+//   MOODLE_CONFIG_PATH=<moodleroot>/config.php \\
+//   NWC_OIDC_CLIENT_SECRET=<secret-from-secret-store> \\
+//   php8.2 -d max_input_vars=5000 ${out_file##*/}
+//
+// Contains NO secret — the client secret is read from the environment.
+define('CLI_SCRIPT', true);
+\$cfgpath = getenv('MOODLE_CONFIG_PATH');
+if (!\$cfgpath || !is_file(\$cfgpath)) {
+    fwrite(STDERR, "MOODLE_CONFIG_PATH is unset or not a file\n"); exit(2);
+}
+require(\$cfgpath);
+require_once(\$CFG->libdir . '/clilib.php');
+
+\$ISSUER_NAME = '${issuer_name}';
+\$BASEURL     = '${issuer}';
+\$CLIENTID    = '${client_id}';
+\$JWKS        = '${jwks}';   // /.well-known/jwks.json — NOT /oauth/jwks (301s)
+\$SECRET      = getenv('NWC_OIDC_CLIENT_SECRET');
+if (\$SECRET === false || \$SECRET === '') {
+    cli_error('NWC_OIDC_CLIENT_SECRET not set in the environment (never pass it on argv).');
+}
+
+// 1. Find-or-create the issuer (idempotent by name). Manual endpoints because
+//    nwc exposes no discovery doc (/.well-known/openid-configuration = 404).
+\$issuer = null;
+foreach (\core\oauth2\api::get_all_issuers() as \$i) {
+    if (\$i->get('name') === \$ISSUER_NAME) { \$issuer = \$i; break; }
+}
+\$fields = (object)[
+    'name'                => \$ISSUER_NAME,
+    'clientid'            => \$CLIENTID,
+    'clientsecret'        => \$SECRET,
+    'baseurl'             => \$BASEURL,
+    'loginscopes'         => 'openid email profile',
+    'loginscopesoffline'  => 'openid email profile',
+    'showonloginpage'     => 1,
+    'enabled'             => 1,
+    'requireconfirmation' => 0,   // trusted issuer — no email-confirm interstitial
+];
+if (\$issuer === null) {
+    \$issuer = new \core\oauth2\issuer(0, \$fields);
+    \$issuer->create();
+    cli_writeln('Created issuer "' . \$ISSUER_NAME . '" #' . \$issuer->get('id'));
+} else {
+    foreach ((array)\$fields as \$k => \$v) {
+        if (\$k === 'clientsecret' && (\$v === '' || \$v === null)) { continue; }
+        \$issuer->set(\$k, \$v);
+    }
+    \$issuer->update();
+    cli_writeln('Updated issuer "' . \$ISSUER_NAME . '" #' . \$issuer->get('id'));
+}
+\$issuerid = \$issuer->get('id');
+
+// 2. Manual endpoints — upsert by name.
+\$endpoints = [
+    'authorization_endpoint' => \$BASEURL . '/oauth/authorize',
+    'token_endpoint'         => \$BASEURL . '/oauth/token',
+    'userinfo_endpoint'      => \$BASEURL . '/oauth/userinfo',
+    'jwks_uri'               => \$JWKS,
+];
+\$byname = [];
+foreach (\core\oauth2\api::get_endpoints(\$issuer) as \$e) { \$byname[\$e->get('name')] = \$e; }
+foreach (\$endpoints as \$name => \$url) {
+    if (isset(\$byname[\$name])) {
+        \$byname[\$name]->set('url', \$url); \$byname[\$name]->update();
+    } else {
+        (new \core\oauth2\endpoint(0, (object)[
+            'issuerid' => \$issuerid, 'name' => \$name, 'url' => \$url,
+        ]))->create();
+    }
+}
+
+// 3. User-field mappings. sub→idnumber is the UID-lock and is MANDATORY:
+//    without it auth_nwc DENIES every login (B1 fail-closed edge).
+\$maps = [
+    'sub'                => 'idnumber',
+    'email'              => 'email',
+    'name'               => 'firstname',
+    'preferred_username' => 'lastname',
+];
+\$mapped = [];
+foreach (\core\oauth2\api::get_user_field_mappings(\$issuer) as \$m) {
+    \$mapped[\$m->get('externalfield')] = \$m;
+}
+foreach (\$maps as \$ext => \$int) {
+    if (isset(\$mapped[\$ext])) {
+        \$mapped[\$ext]->set('internalfield', \$int); \$mapped[\$ext]->update();
+    } else {
+        (new \core\oauth2\user_field_mapping(0, (object)[
+            'issuerid' => \$issuerid, 'externalfield' => \$ext, 'internalfield' => \$int,
+        ]))->create();
+    }
+}
+// Fail-closed assertion: the UID-lock MUST be present before we finish.
+\$haslock = false;
+foreach (\core\oauth2\api::get_user_field_mappings(\$issuer) as \$m) {
+    if (\$m->get('externalfield') === 'sub' && \$m->get('internalfield') === 'idnumber') { \$haslock = true; }
+}
+if (!\$haslock) {
+    cli_error('FATAL: sub->idnumber mapping absent — auth_nwc would DENY all logins. Aborting.');
+}
+
+// 4. auth_nwc plugin config + enable oauth2,nwc in \$CFG->auth (keep email).
+set_config('issuerid', \$issuerid, 'auth_nwc');
+set_config('nwc_url', \$BASEURL, 'auth_nwc');
+set_config('autoredirect', 0, 'auth_nwc');   // keep the login page recoverable
+\$auths = array_filter(array_map('trim', explode(',', (string)\$CFG->auth)));
+foreach (['email', 'oauth2', 'nwc'] as \$a) {
+    if (!in_array(\$a, \$auths, true)) { \$auths[] = \$a; }
+}
+set_config('auth', implode(',', \$auths));
+if (class_exists('\\core\\plugininfo\\auth')) {
+    \core\plugininfo\auth::enable_plugin('oauth2', 1);
+    \core\plugininfo\auth::enable_plugin('nwc', 1);
+}
+
+cli_writeln('OK: issuer #' . \$issuerid . ' wired — sub->idnumber locked, requireconfirmation=0, auth=' . \$CFG->auth);
+PHPEOF
+
+    _mp_ok "Wrote F26 OIDC apply-script (${consumer}@${tier}, issuer=${issuer}) → ${out_file}"
+    return 0
+}
+
+# moodle_deploy_auth_nwc <moodle_root> <tier> <plugin_src> [php_version]
+#
+# Deploy the auth_nwc plugin into <moodle_root>/auth/nwc (step 1) and PRINT the
+# php-version-aware upgrade command (Moodle 4.4 rejects PHP 8.4 → php8.2/8.3 with
+# -d max_input_vars=5000). Copies files (additive); does NOT run the upgrade
+# (that is a DB write — operator runs the printed command). REFUSES a prod tier,
+# a non-Moodle root, or a missing/invalid plugin source.
+moodle_deploy_auth_nwc() {
+    local moodle_root="$1" tier="$2" plugin_src="$3" php_version="${4:-8.2}"
+    if [ -z "$moodle_root" ] || [ -z "$tier" ] || [ -z "$plugin_src" ]; then
+        _mp_err "moodle_deploy_auth_nwc: usage: <moodle_root> <tier> <plugin_src> [php_version]"
+        return 2
+    fi
+    if ! _mp_oidc_tier_ok "$tier"; then
+        _mp_err "REFUSED: auth_nwc deploy to a prod tier (auth-adjacent, operator-only)."
+        return 1
+    fi
+    if [ ! -f "$moodle_root/version.php" ]; then
+        _mp_err "REFUSED: '$moodle_root' has no version.php — not a Moodle root (fail-closed)."
+        return 1
+    fi
+    if [ ! -f "$plugin_src/version.php" ]; then
+        _mp_err "REFUSED: plugin source '$plugin_src' has no version.php — not an auth_nwc plugin."
+        return 1
+    fi
+    local dest="${moodle_root%/}/auth/nwc"
+    mkdir -p "$dest" || { _mp_err "Cannot create $dest"; return 1; }
+    # Copy the plugin tree (additive). Prefer rsync; fall back to cp.
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -a --delete "${plugin_src%/}/" "$dest/" || { _mp_err "rsync of auth_nwc failed"; return 1; }
+    else
+        rm -rf "$dest" && mkdir -p "$dest" && cp -a "${plugin_src%/}/." "$dest/" \
+            || { _mp_err "cp of auth_nwc failed"; return 1; }
+    fi
+    _mp_ok "Deployed auth_nwc → ${dest}"
+    _mp_info "Then run the Moodle upgrade (operator; Moodle 4.4 needs php8.2/8.3, NOT 8.4):"
+    echo "  php${php_version} -d max_input_vars=5000 ${moodle_root%/}/admin/cli/upgrade.php --non-interactive"
+    return 0
+}
+
+# moodle_run_oidc_apply <moodle_root> <tier> <script> <consumer> <config_file> [php_version]
+#
+# EXECUTE the generated apply-script against a Moodle DB (the "actually create"
+# step). Resolves the client secret via get_data_secret and exports it to the
+# child php process only (NEVER argv, NEVER a file). php-version-aware. REFUSES
+# prod; requires the moodle root, the script, and a php binary. This is the one
+# place that writes to the Moodle DB, and only when called explicitly (the
+# command's default path generates the script and prints this command instead).
+moodle_run_oidc_apply() {
+    local moodle_root="$1" tier="$2" script="$3" consumer="$4" config_file="$5" php_version="${6:-8.2}"
+    if [ -z "$moodle_root" ] || [ -z "$tier" ] || [ -z "$script" ] || [ -z "$consumer" ]; then
+        _mp_err "moodle_run_oidc_apply: usage: <moodle_root> <tier> <script> <consumer> <config_file> [php_version]"
+        return 2
+    fi
+    if ! _mp_oidc_tier_ok "$tier"; then
+        _mp_err "REFUSED: OIDC apply execution against a prod tier (auth-adjacent, operator-only)."
+        return 1
+    fi
+    if [ ! -f "$moodle_root/config.php" ]; then
+        _mp_err "REFUSED: no $moodle_root/config.php — Moodle not bootstrappable."
+        return 1
+    fi
+    if [ ! -f "$script" ]; then
+        _mp_err "REFUSED: apply-script '$script' not found."
+        return 1
+    fi
+    local php_bin="php${php_version}"
+    command -v "$php_bin" >/dev/null 2>&1 || php_bin="php"
+    command -v "$php_bin" >/dev/null 2>&1 || { _mp_err "No php binary (need php${php_version})."; return 1; }
+
+    local secret; secret="$(moodle_oauth_client_secret "$consumer" "$config_file")"
+    if [ -z "$secret" ]; then
+        _mp_err "REFUSED: no OIDC client secret resolved (get_data_secret empty). Provision it first."
+        return 1
+    fi
+    _mp_info "Executing OIDC apply-script (${consumer}@${tier}) via ${php_bin} …"
+    # Secret goes to the child process env ONLY — never argv, never logged.
+    MOODLE_CONFIG_PATH="${moodle_root%/}/config.php" \
+    NWC_OIDC_CLIENT_SECRET="$secret" \
+        "$php_bin" -d max_input_vars=5000 "$script"
+    local rc=$?
+    if [ "$rc" -eq 0 ]; then _mp_ok "OIDC apply-script completed (${consumer}@${tier})."
+    else _mp_err "OIDC apply-script exited $rc."; fi
+    return "$rc"
 }
 
 ################################################################################

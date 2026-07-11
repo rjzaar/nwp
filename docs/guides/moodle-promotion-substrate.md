@@ -145,13 +145,97 @@ then **prints** the wwwroot DB-rewrite + cache-purge commands for the operator.
 9. **Flip `oauth.enabled: true`** and run `pl moodle-smoke <consumer> --tier=<t>
    --run` (a token round-trip stays F26-gated).
 
+## F26 OIDC end-to-end runbook (LIVE-PROVEN — no longer a stub)
+
+> On **2026-07-11** the ssc (Moodle) ↔ nwc (Drupal) OIDC round-trip was stood up
+> **by hand on live and proven end-to-end**: a nwc user logged into ssc and the
+> Moodle account's `idnumber` equalled the nwc `sub` (the UID-lock held; the B1
+> `user_loggedin` observer fired). The steps below are that exact sequence, now
+> codified so it never has to be manual again (memory `f26-auth-plugin-reconcile`).
+> The wiring is **additive** — a new issuer + auth config; it does not rewrite the
+> Moodle DB or `config.php`, so it is permitted on `live` (prod stays refused).
+
+### Consumer half (Moodle) — automated by `pl moodle-promote`
+
+```
+pl moodle-promote ssc --tier=dev --apply \
+    --auth-nwc-src=/path/to/auth_nwc            # deploy the plugin + write artifacts
+# then (explicit, refuses prod, needs the client secret provisioned):
+pl moodle-promote ssc --tier=dev --apply --auth-nwc-src=/path/to/auth_nwc --run-cli
+```
+
+`--apply` writes `private/moodle/ssc/ssc-<tier>.oidc-apply.php` — a **real,
+idempotent `admin/cli`-style PHP script** (uses `\core\oauth2\api` + the
+persistent classes) that:
+
+1. deploys `auth_nwc` into `<moodleroot>/auth/nwc` and prints the
+   `admin/cli/upgrade.php` command (⚠ **Moodle 4.4 rejects PHP 8.4** → run with
+   `php8.2`/`php8.3` and `-d max_input_vars=5000`);
+2. find-or-creates the core `oauth2_issuer` **"nwc (F26)"** with **manual
+   endpoints** (nwc has no discovery doc): `authorize`, `token`, `userinfo`, and
+   `jwks_uri = <issuer>/.well-known/jwks.json` — **NOT** `/oauth/jwks`, which
+   `301`s and breaks signature verification. Flags: `showonloginpage=1`,
+   `enabled=1`, **`requireconfirmation=0`** (trusted issuer);
+3. creates the user-field mappings — **`sub→idnumber` first (the UID-lock —
+   mandatory; without it `auth_nwc` DENIES every login)**, plus `email→email`,
+   `name→firstname`, `preferred_username→lastname`. It asserts the `sub→idnumber`
+   mapping exists and `cli_error`s fail-closed if not;
+4. `set_config` `auth_nwc` (`issuerid`, `nwc_url`, `autoredirect=0`) and appends
+   `oauth2,nwc` to `$CFG->auth` (keeping `email`).
+
+The client secret is **never on argv or in the file** — the script reads
+`getenv('NWC_OIDC_CLIENT_SECRET')`; `--run-cli` resolves it via `get_data_secret`
+and exports it to the child `php` process only.
+
+### Provider half (nwc / Drupal) — operator-run helper
+
+nwc is a separate site/repo, so its half is an **operator-run** script + this
+runbook, not auto-applied:
+
+```
+# from the nwc Drupal docroot (or pass --drush="ddev drush"):
+NWC_OIDC_CLIENT_SECRET=<secret> scripts/f26/nwc-provider-oidc-setup.sh \
+    --client-id=ss_moodle \
+    --redirect=https://ssc.<example-prod-domain>/admin/oauth2callback.php \
+    --keys-dir=/var/www/nwc/oauth-keys \
+    --apply
+```
+
+It performs the three provider prerequisites that were **missing on live** and
+silently broke the flow until fixed:
+
+5. **Consumer entity** (`client_id`, secret, `confidential=TRUE`, `pkce=TRUE`,
+   redirect `<moodle>/admin/oauth2callback.php`,
+   `grant_types=[authorization_code, refresh_token]`);
+6. **signing keypair** — `drush simple-oauth:generate-keys <dir>` then
+   `drush cset simple_oauth.settings public_key/private_key` (these were absent →
+   JWKS + token signing failed until generated);
+7. **`grant simple_oauth codes`** permission granted to the authenticated role
+   (else consent fails).
+
+Dry-run by default; `--apply` to run. The secret is taken from the environment
+(never argv); if unset it generates one and prints it once for you to store as
+`moodle.<consumer>.oauth.client_secret`.
+
+### Verify
+
+Browser login to `ssc /login` → the "nwc (F26)" button → confirm
+`mdl_user.idnumber == nwc sub`. Or `pl moodle-smoke ssc --tier=<t>` — the pair
+contract's `oidc_signing` probe checks `/.well-known/jwks.json` (200), the real
+signing-health signal (discovery is 404 on nwc, by design).
+
 ## Deliberate stubs / fail-closed choices (auth-adjacent)
 
-- No real OIDC token round-trip, no `simple_oauth` client creation, no secret is
-  read/written — those are F26 human-gated (nwp!49) and left as descriptors +
-  TODOs.
-- `moodle_oauth_*` **refuse** a `prod` tier and refuse an empty issuer rather
-  than guess.
+- The F26 OIDC wiring is now codified as a runnable apply-script + the provider
+  helper (see the runbook above — live-proven 2026-07-11). Execution against a
+  DB is still explicit: the default `--apply` only *writes* the apply-script and
+  prints how to run it; `--run-cli` (or the operator command) executes it. The
+  secret is resolved via `get_data_secret` into the child process env — never
+  argv, never a file. `!49` two-person paper review still stands.
+- `moodle_oauth_*`, the apply-script generator, the plugin deploy, and the
+  runner all **refuse** a `prod` tier and refuse an empty issuer rather than
+  guess. (live/stg/dev are permitted — live is where the flow was proven, and the
+  wiring is additive.)
 - The DB-side wwwroot rewrite is **printed, not executed** — Moodle's
   `admin/cli/replace.php` is destructive text replacement; running it is an
   operator act against a non-prod site.

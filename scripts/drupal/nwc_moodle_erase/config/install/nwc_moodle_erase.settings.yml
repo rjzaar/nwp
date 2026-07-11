@@ -1,0 +1,9 @@
+# Fail-closed defaults: erasure OFF, no endpoint, no token until the operator
+# wires it (and, on prod, until ver provisions the token).
+enable_erase: false
+moodle_url: ''
+moodle_host: ''
+admin_token: ''
+issuer: ''
+default_action: 'delete'
+batch_size: 20

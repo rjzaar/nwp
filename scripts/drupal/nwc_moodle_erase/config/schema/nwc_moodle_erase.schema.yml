@@ -1,0 +1,25 @@
+nwc_moodle_erase.settings:
+  type: config_object
+  label: 'NWC Moodle Erase settings'
+  mapping:
+    enable_erase:
+      type: boolean
+      label: 'Enable erasure propagation (fail-closed kill switch)'
+    moodle_url:
+      type: string
+      label: 'Moodle base URL (receiver host)'
+    moodle_host:
+      type: string
+      label: 'Moodle Host header override (DDEV cross-project)'
+    admin_token:
+      type: string
+      label: 'Shared bearer token (matches local_nwc_erase/admin_token)'
+    issuer:
+      type: string
+      label: 'Issuer identity to stamp on the command'
+    default_action:
+      type: string
+      label: 'Default action (delete | anonymise)'
+    batch_size:
+      type: integer
+      label: 'Queue batch size per cron run'

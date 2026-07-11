@@ -114,6 +114,8 @@ ${BOLD}MATURITY (code-flow classes, P67/ops#48):${NC}
 ${BOLD}INTERSITE BOUNDARY (P74 change-impact gate):${NC}
     impact [--base=main] [--json]   Classify a diff INTERNAL vs BOUNDARY-TOUCHING (nwc↔ssc)
     impact --honesty                Check no boundary symbol leaks outside its declared paths
+    contracts compat [--base=main]  Expand-and-contract (BACKWARD) schema gate
+    contracts sign|verify|bundle    Sign/verify the minisign schema bundle (trust root)
 
 ${BOLD}BRANCH TWINS (P67/ops#48):${NC}
     branch <site> <git-ref>         Create a disposable twin on a branch
@@ -674,6 +676,11 @@ main() {
         # Intersite change-impact classifier (P74 Phase 2 / boundary gate)
         impact)
             run_script "impact.sh" "$@"
+            ;;
+
+        # Intersite contract compat + signed schema bundle (P74 Phase 3)
+        contracts)
+            run_script "contracts.sh" "$@"
             ;;
 
         moodle-promote)

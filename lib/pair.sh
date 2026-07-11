@@ -169,6 +169,51 @@ pair_contract_valid() {
     return 0
 }
 
+# --- schema-pin verification (P74 Phase 3) -----------------------------------
+#
+# Each surface in the pair contract MAY carry `schema:` (a repo-relative path to
+# the surface's JSON Schema in contracts/) + `schema_sha256:` (its pin). P74
+# Phase 0 wired the pins in but left them inert; Phase 3 makes pair_guard
+# fail-closed on a mismatch — the deploy-time realization of "the consumer
+# trusts the schema by signature/hash, not host" (research §2).
+#
+# OFF-UNLESS-DECLARED: a surface without both keys is skipped, so a contract
+# with no schema pins is a no-op (returns 0). Where a pin IS declared:
+#   * the schema file MISSING            → FAIL (can't verify → fail-closed)
+#   * the on-disk sha256 ≠ the pin       → FAIL (the wire shape drifted from the
+#                                          pinned/signed contract)
+# Echoes one problem per line on failure; returns non-zero if any surface fails.
+pair_schema_verify() {
+    local file="$1"
+    local root="${PROJECT_ROOT:-$HOME/nwp}"
+    [ -f "$file" ] || return 0
+    local yq_bin; yq_bin="$(command -v yq || true)"
+    [ -n "$yq_bin" ] || return 0     # no yq ⇒ cannot read pins ⇒ no-op
+
+    local rc=0 surface schema pin actual abspath
+    while IFS= read -r surface; do
+        [ -n "$surface" ] || continue
+        # Export SURF so strenv(SURF) in the yq subshell can read it (a plain
+        # prefix assignment before an assignment word is NOT exported).
+        export SURF="$surface"
+        schema="$("$yq_bin" e -r '.surfaces[strenv(SURF)].schema // ""' "$file" 2>/dev/null)"
+        pin="$("$yq_bin" e -r '.surfaces[strenv(SURF)].schema_sha256 // ""' "$file" 2>/dev/null)"
+        unset SURF
+        [ -n "$schema" ] && [ "$schema" != "null" ] && [ -n "$pin" ] && [ "$pin" != "null" ] || continue
+        abspath="$root/$schema"
+        if [ ! -f "$abspath" ]; then
+            echo "surface '$surface': schema file missing ($schema)"
+            rc=1; continue
+        fi
+        actual="$(sha256sum "$abspath" 2>/dev/null | awk '{print $1}')"
+        if [ "$actual" != "$pin" ]; then
+            echo "surface '$surface': schema_sha256 mismatch — $schema is $actual, contract pins $pin"
+            rc=1
+        fi
+    done < <("$yq_bin" e -r '.surfaces // {} | keys | .[]' "$file" 2>/dev/null | grep -v '^null$')
+    return "$rc"
+}
+
 # 0 if the contract declares identity coupling at <tier> (uid_lock true AND
 # tier listed in identity.coupled_tiers).
 pair_contract_couples_tier() {
@@ -301,6 +346,27 @@ pair_guard() {
     provider="$(pair_contract_get "$contract" '.provider')"
     consumer="$(pair_contract_get "$contract" '.consumer')"
     cv="$(pair_contract_get "$contract" '.contract_version')"
+
+    # 2b. Schema-pin integrity (P74 Phase 3). Fail-closed if a surface's declared
+    # schema_sha256 no longer matches the on-disk schema file — the wire shape
+    # drifted from the pinned/signed contract and the deploy could break the
+    # other side silently. Off-unless-declared (no pins ⇒ pair_schema_verify 0).
+    local schema_problems
+    if ! schema_problems="$(pair_schema_verify "$contract")"; then
+        if [ "${NWP_PAIR_GATE_SOFT:-false}" = "true" ] || [ "$override" = "true" ]; then
+            _pair_note "pair_guard: schema-pin mismatch on '$pair_id' (soft/override — proceeding):"
+            while IFS= read -r _p; do [ -n "$_p" ] && _pair_note "  - $_p"; done <<< "$schema_problems"
+            pair_ledger_append "$pair_id" "action=schema-pin-override cmd=$cmd site=$site target=$target"
+        else
+            _pair_err "REFUSED: pair '$pair_id' schema pin(s) do not match the on-disk contract schemas:"
+            while IFS= read -r _p; do [ -n "$_p" ] && _pair_err "  - $_p"; done <<< "$schema_problems"
+            _pair_info "The wire shape drifted from the pinned/signed contract (contracts/*.schema.json)."
+            _pair_info "Fixes: re-run 'pl contracts sums' + 'pl contracts sign' and update schema_sha256 in"
+            _pair_info "       $(basename "$contract") after an intended (backward-compatible) change; or restore the schema."
+            _pair_info "Override (ledgered): --override-pair, or NWP_PAIR_GATE_SOFT=true."
+            return 1
+        fi
+    fi
 
     # 3. Red-pair block — a red pair means the coupling is currently broken.
     local rag; rag="$(pair_rag_get "$pair_id" "$target")"

@@ -65,8 +65,13 @@ Wired into `pairs/ssc.pair-contract.yml`: each `surfaces.<name>` now carries `sc
 - **Phase 2 — the classifier.** `lib/boundary.sh` + `pl impact` (INTERNAL vs BOUNDARY-TOUCHING, in
   `lib/impact.sh`'s idiom) + a CI fork cloned from `lint:doc-truth` (contract-verify, a
   `contract_version`-bump gate, CODEOWNERS scoped to the boundary paths). Reuses P66's deptrac engine.
-- **Phase 3 — compat + trust.** The expand-contract checker; fold `contracts/` into the minisign
-  bundle; signed-artifact cross-repo sync to the Moodle plugin repos.
+- **Phase 3 — compat + trust. IMPLEMENTED.** The expand-contract checker
+  (`contracts/compat.py` + `pl contracts compat`; CI job `contracts:compat`, MR-scoped `changes: contracts/**`,
+  blocking); the minisign-signed schema bundle (`pl contracts sums|sign|verify|bundle`; `pair_guard` now
+  fail-closes on a `schema_sha256` drift via `pair_schema_verify` in `lib/pair.sh`); and the signed-artifact
+  cross-repo sync runbook + helper (`docs/guides/p74-contract-sync.md`, `pl contracts bundle|sync-plan`).
+  ⚠ Operator step: `pl contracts sign` needs the minisign key password (not available to automation) — the
+  operator produces `contracts/SHA256SUMS.minisig`.
 
 ## Open questions (go-live prerequisites — filed as ops issues)
 
@@ -82,5 +87,7 @@ revocation, consent system-of-record, moodledata backups, shared-salt blast radi
 - [x] Phase 0: 3 schemas authored, validated, wired + sha-pinned into the pair contract.
 - [ ] Phase 1: 3 undeclared surfaces declared; boundary manifest + honesty test.
 - [ ] Phase 2: `pl impact` classifier + CI fork + CODEOWNERS.
-- [ ] Phase 3: expand-contract checker + minisign bundle + cross-repo sync.
+- [x] Phase 3: expand-contract checker (`contracts/compat.py`, `contracts:compat` CI) + minisign bundle
+  (`pl contracts sign|verify`, `pair_guard` schema-pin fail-closed) + cross-repo sync runbook. (Signing the
+  bundle is the one operator step — needs the minisign password.)
 - [ ] The 3 go-live-prerequisite open questions resolved (their ops issues closed).

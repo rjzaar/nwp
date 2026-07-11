@@ -284,6 +284,36 @@ boundary:classify:
     paths:
       - impact.json
 
+# Intersite schema compatibility gate (P74 Phase 3 / expand-and-contract). For
+# each changed contracts/*.schema.json, `pl contracts compat` diffs the new file
+# against its git-committed old version and FAILS on a breaking delta (field
+# removed, type narrowed, new required, enum value dropped, additionalProperties
+# tightened) — a schema-registry's BACKWARD guarantee with only git history
+# (research §2 layer 3). Provider-first ordering (the other half) is enforced by
+# pair_guard. Scoped to MRs that touch contracts/** (rules:changes), so most
+# changes never run it. BLOCKING (allow_failure:false): a breaking wire-shape
+# change must be caught before it ships. Uses the MR merge-base as the compare
+# base; an unresolvable base makes compat fail-safe CLOSED (checks every schema).
+# Pure bash + python3 (stdlib) — no site/composer needed.
+contracts:compat:
+  stage: lint
+  script:
+    - echo "Checking intersite schema compatibility (P74 Phase 3 / expand-and-contract)..."
+    - BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-main}"
+    - echo "Compare base ${BASE}"
+    - python3 contracts/validate.py            # schemas still self-valid + samples behave
+    - ./scripts/commands/contracts.sh compat --base="${BASE}"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "contracts/**"
+    - if: $CI_COMMIT_BRANCH == "main"
+      changes:
+        - "contracts/**"
+  tags:
+    - nwp
+  allow_failure: false
+
 ################################################################################
 # TEST STAGE
 # Unit and integration tests

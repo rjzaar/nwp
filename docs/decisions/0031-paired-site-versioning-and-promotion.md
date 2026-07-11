@@ -198,6 +198,11 @@ increasing `contract_version`:
   bundle expects nwc-bundle-X applied" — the field exists; this ADR gives it its first use.
 - Rollback remains per-site; because contract changes are expand-contract, rolling back one half
   never strands the other outside the contract window.
+  - **Carve-out (ops#83):** "rollback is safe per-site" is asserted here for **code** (git revert
+    up the tiers). It does **not** cover a **DB restore/rebuild that renumbers Drupal uids** at a
+    `coupled_tier` — that operation can silently re-point or orphan every consumer UID-lock and is
+    governed instead by **D9** (the `sub_stability: uuid` durable anchor + the both-or-forward
+    paired-restore invariant). Code rollback ≠ identity restore.
 
 ### D6. Per-plane canonicality — pair phases are legitimately asymmetric, with one directional invariant
 Forcing "pair members' `canonical:` phases must match" is **rejected**. ssc is effectively
@@ -236,6 +241,54 @@ handling, sanitizer, smoke) is required. The **Moodle sanitizer is security-crit
 is minors' learning records + consent rows): it gets the same human-review treatment as auth
 code, and P67's fail-closed behavior (abort rather than pass raw PII) is the required default.
 `moodledata` joins the backup surface (it is in zero backups today).
+
+### D9. Identity durability under restore/DR (ops#83)
+
+D5's expand-contract reasoning makes **code** rollback safe per-site. It says nothing about a **DB
+restore/rebuild that renumbers Drupal uids**, and the identity rail makes that case dangerous: the
+UID-lock binds `mdl_user.idnumber == OIDC sub == Drupal account`, and with the historical
+`sub = $account->id()` mapping the `sub` **is** the renumber-fragile serial uid. A full-DB push
+(blocked by `--code-only`, D6), a rebuild/re-seed/migrate (Open Social upgrade, re-import), or a
+point-in-time-**asymmetric** restore then silently re-points every ssc `idnumber` at the wrong — or
+no — nwc account. This decision closes that gap with two clauses, both required:
+
+- **(A) Durable anchor — `sub` is the Drupal account UUID, not the serial uid.** The Drupal `uuid`
+  base field is row-stored (survives a plain restore), never renumbered, and never reused, so the
+  lock survives a *within-half* renumber/rebuild/migrate and uid-reuse. Emitted via the existing
+  `hook_simple_oauth_oidc_claims_alter` in `nwc_oidc_claims` (`$claim_values['sub'] =
+  $account->uuid()`) — no core patch; `uid_lock` already treats `sub` as an opaque string and
+  Moodle `idnumber` is varchar(255). **This is LIVE-PROVEN: UUID-`sub` is already deployed on the
+  nwc live tier** (done while the five Moodles are empty seed instances — trivial now, a cross-stack
+  flag-day once real students hold locks). Recorded in the pair contract as
+  `identity.sub_stability: uuid`.
+- **(B) Both-or-forward restore invariant.** For any restore/rebuild of a UID-lock provider (nwc) or
+  consumer (ssc) at a `coupled_tier`, either **both halves are restored to the same logical cut**, or
+  the provider is restored/rebuilt to a point **no older than the consumer's newest locked
+  identity** — provider identities are append-only *forward* of every consumer lock, never dropped
+  behind one. In one line: *when in doubt, restore both halves to one instant, or neither.* (A)
+  handles within-half renumber; (B) handles cross-half point-in-time asymmetry — neither alone
+  suffices. Recorded as `identity.restore.invariant: both-or-forward`.
+
+**Provider identity ledger.** nwc snapshots an append-only `(uuid, uid, email, created_ts)` ledger
+with every backup (`identity.restore.ledger: provider`). It is the *deterministic* old-uid→uuid
+repair map after a renumbering restore — reconciliation joins on the ledger, **never** on email
+(recycled/changed emails make an email join unsafe; email fallback is a human-gated last resort).
+
+**`pair_guard` restore choke-point.** `pair_guard` gains a restore gate (parallel to its existing
+`--code-only`/full-DB-push refusal, D6) that **refuses a coupled-tier restore/rebuild** lacking the
+consumer join-snapshot + provider ledger (`identity.restore.pre_check_required: true`; escape =
+ledgered `--override-pair`).
+
+**Join-integrity probe.** The pair smoke suite (D5) is liveness-only today (JWKS 200, endpoints up).
+D9 adds a **join-integrity probe**: after a restore, pick a real `idnumber` and confirm it still
+resolves to the correct nwc account — not just that the endpoints answer. Clearing the ssc
+`autoredirect` guard is gated on that probe going green.
+
+**Scope split.** `--code-only` (D6) covers the full-DB *push*; D9 covers *restore/rebuild*. Both are
+faces of the same identity rail (D2(a)). Tooling — the ledger, the `pair_guard` restore gate, and the
+join-integrity probe — is **phased** (tracked under ops#83 / ops C / ops#49); the `sub_stability:
+uuid` anchor is already live, and the both-or-forward rule is a standing operator rule until the gate
+lands (see the paired-restore runbook, `docs/guides/ops83-dr-restore.md`).
 
 ## Immediate hazard note (standing rule until `pair_guard` exists)
 

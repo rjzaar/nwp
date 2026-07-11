@@ -14,7 +14,7 @@ setup() {
   source "${PROJECT_ROOT}/lib/boundary.sh"
 }
 
-@test "contract exposes the 6 boundary surfaces" {
+@test "contract exposes the 7 boundary surfaces" {
   run boundary_surfaces "$CONTRACT"
   [ "$status" -eq 0 ]
   [[ "$output" == *oauth_sso* ]]
@@ -23,7 +23,15 @@ setup() {
   [[ "$output" == *role_cohort_sync* ]]
   [[ "$output" == *badge_read* ]]
   [[ "$output" == *shared_salt* ]]
-  [ "$(boundary_surfaces "$CONTRACT" | wc -l)" -eq 6 ]
+  [[ "$output" == *erasure* ]]   # ops#81 P0 — 7th surface (nwc→ssc RTBF erase)
+  [ "$(boundary_surfaces "$CONTRACT" | wc -l)" -eq 7 ]
+}
+
+@test "BOUNDARY-TOUCHING: erasure (ops#81 consumer plugin glob fires)" {
+  export NWP_IMPACT_FILES="moodle/local/nwc_erase/erase.php"
+  boundary_classify main "$CONTRACT"
+  [ "$BOUNDARY_CLASS" = "BOUNDARY-TOUCHING" ]
+  [ "${BOUNDARY_SURFACES[0]}" = "erasure" ]
 }
 
 @test "INTERNAL: a diff touching no boundary path" {

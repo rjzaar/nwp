@@ -41,6 +41,14 @@ CASES = [
      # bad enum value for `type`
      {"ss_feedback_id": 7, "ss_userid": 12, "oauth_sub": "4210",
       "type": "rant", "title": "t", "status": "submitted", "timecreated": 1}),
+    ("erasure.command.schema.json",
+     {"sub": "8f14e45f-ceea-467a-9e2b-2c3b0a1d4e5f",
+      "request_id": "b1946ac9-2e1a-4c0e-9b2f-0d3e4f5a6b7c",
+      "action": "delete", "issuer": "https://nwc.example/", "timestamp": 1752000000},
+     # bad enum value for `action` (only delete|anonymise allowed)
+     {"sub": "8f14e45f-ceea-467a-9e2b-2c3b0a1d4e5f",
+      "request_id": "b1946ac9-2e1a-4c0e-9b2f-0d3e4f5a6b7c",
+      "action": "purge", "issuer": "https://nwc.example/", "timestamp": 1752000000}),
 ]
 
 fails = 0

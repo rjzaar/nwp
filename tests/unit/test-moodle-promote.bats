@@ -75,6 +75,12 @@ endpoints:
     issuer: "https://nwc-stg.ddev.site"
 EOF
 
+  # Fake auth_nwc plugin source tree (version.php marks it as a real plugin).
+  PLUGSRC="${TEST_TMP}/auth_nwc"
+  mkdir -p "${PLUGSRC}/classes"
+  echo "<?php \$plugin->component='auth_nwc'; \$plugin->version=2026070900;" > "${PLUGSRC}/version.php"
+  echo "<?php // auth.php" > "${PLUGSRC}/auth.php"
+
   source "${BATS_TEST_DIRNAME}/../../lib/ui.sh"
   source "${BATS_TEST_DIRNAME}/../../lib/pair.sh"
   source "${BATS_TEST_DIRNAME}/../../lib/moodle-promote.sh"
@@ -263,6 +269,138 @@ EOF
   grep -q 'client_id: "ss_moodle"' "$out"
   grep -q 'https://moodsite-dev.ddev.site/admin/oauth2callback.php' "$out"
   ! grep -qE '^\s*client_secret:' "$out"
+}
+
+# ── F26 OIDC consumer descriptor: the live-proven gotchas ────────────────────
+
+@test "consumer descriptor uses the /.well-known/jwks.json JWKS URI (not /oauth/jwks)" {
+  out="${TEST_TMP}/oidc-jwks.yml"
+  moodle_oauth_consumer_config moodsite dev "${CONTRACT}" "${CFG}" "$out"
+  grep -q 'jwks_uri: "https://nwc-dev.ddev.site/.well-known/jwks.json"' "$out"
+  ! grep -q '/oauth/jwks"' "$out"
+}
+
+@test "consumer descriptor carries sub→idnumber + requireconfirmation=0" {
+  out="${TEST_TMP}/oidc-map.yml"
+  moodle_oauth_consumer_config moodsite dev "${CONTRACT}" "${CFG}" "$out"
+  grep -q 'sub: idnumber' "$out"
+  grep -q 'requireconfirmation: 0' "$out"
+}
+
+@test "_mp_jwks_uri appends /.well-known/jwks.json and strips a trailing slash" {
+  run _mp_jwks_uri "https://x.example/"
+  [ "$status" -eq 0 ]
+  [ "$output" = "https://x.example/.well-known/jwks.json" ]
+}
+
+# ── F26 OIDC apply-script generator (the "actually create" artifact) ─────────
+
+@test "apply-script generator writes a runnable PHP script for a dev tier" {
+  out="${TEST_TMP}/apply.php"
+  run moodle_generate_oidc_apply_script moodsite dev "${CONTRACT}" "${CFG}" "$out"
+  [ "$status" -eq 0 ]
+  [ -f "$out" ]
+  head -1 "$out" | grep -q '<?php'
+  # real core APIs, not a descriptor
+  grep -q '\\core\\oauth2\\api::get_all_issuers' "$out"
+  grep -q "new \\\\core\\\\oauth2\\\\issuer" "$out"
+  grep -q "issuer_name.*nwc (F26)\|ISSUER_NAME = 'nwc (F26)'" "$out"
+}
+
+@test "apply-script ALWAYS creates the sub→idnumber UID-lock mapping" {
+  out="${TEST_TMP}/apply2.php"
+  moodle_generate_oidc_apply_script moodsite dev "${CONTRACT}" "${CFG}" "$out"
+  grep -q "'sub' *=> *'idnumber'" "$out"
+  # and fail-closed asserts it before finishing
+  grep -q "sub->idnumber mapping absent" "$out"
+}
+
+@test "apply-script sets the manual endpoints incl. the correct JWKS URI" {
+  out="${TEST_TMP}/apply3.php"
+  moodle_generate_oidc_apply_script moodsite dev "${CONTRACT}" "${CFG}" "$out"
+  grep -q "BASEURL . '/oauth/authorize'" "$out"
+  grep -q "BASEURL . '/oauth/userinfo'" "$out"
+  grep -q "/.well-known/jwks.json" "$out"
+  ! grep -q "/oauth/jwks'" "$out"
+}
+
+@test "apply-script sets requireconfirmation=0 and appends oauth2,nwc to auth" {
+  out="${TEST_TMP}/apply4.php"
+  moodle_generate_oidc_apply_script moodsite dev "${CONTRACT}" "${CFG}" "$out"
+  grep -q "'requireconfirmation' => 0" "$out"
+  grep -q "set_config('autoredirect', 0, 'auth_nwc')" "$out"
+  grep -q "'email', 'oauth2', 'nwc'" "$out"
+}
+
+@test "apply-script contains NO secret — reads it from the environment" {
+  out="${TEST_TMP}/apply5.php"
+  moodle_generate_oidc_apply_script moodsite dev "${CONTRACT}" "${CFG}" "$out"
+  grep -q "getenv('NWC_OIDC_CLIENT_SECRET')" "$out"
+  ! grep -qiE "clientsecret.*=.*'[A-Za-z0-9]{8,}'" "$out"
+}
+
+@test "apply-script generator REFUSES a prod tier — writes nothing" {
+  out="${TEST_TMP}/apply-prod.php"
+  run moodle_generate_oidc_apply_script moodsite prod "${CONTRACT}" "${CFG}" "$out"
+  [ "$status" -ne 0 ]
+  [ ! -f "$out" ]
+}
+
+@test "apply-script generator REFUSES when the contract has no issuer for the tier" {
+  cat > "${TEST_TMP}/noiss.yml" <<'EOF'
+provider: nwc
+endpoints: { dev: { issuer: "https://nwc-dev.ddev.site" } }
+EOF
+  out="${TEST_TMP}/apply-none.php"
+  run moodle_generate_oidc_apply_script moodsite stg "${TEST_TMP}/noiss.yml" "${CFG}" "$out"
+  [ "$status" -ne 0 ]
+  [ ! -f "$out" ]
+}
+
+# ── F26 auth_nwc plugin deploy ───────────────────────────────────────────────
+
+@test "auth_nwc deploy copies the plugin into <root>/auth/nwc + prints php8.x upgrade" {
+  run moodle_deploy_auth_nwc "${MROOT}" dev "${PLUGSRC}" 8.2
+  [ "$status" -eq 0 ]
+  [ -f "${MROOT}/auth/nwc/version.php" ]
+  [ -f "${MROOT}/auth/nwc/auth.php" ]
+  [[ "$output" == *"php8.2 -d max_input_vars=5000"* ]]
+  [[ "$output" == *"admin/cli/upgrade.php"* ]]
+}
+
+@test "auth_nwc deploy REFUSES a prod tier — copies nothing" {
+  run moodle_deploy_auth_nwc "${MROOT}" prod "${PLUGSRC}" 8.2
+  [ "$status" -ne 0 ]
+  [ ! -d "${MROOT}/auth/nwc" ]
+}
+
+@test "auth_nwc deploy REFUSES a non-Moodle root" {
+  noroot="${TEST_TMP}/notmoodle2"; mkdir -p "$noroot"
+  run moodle_deploy_auth_nwc "$noroot" dev "${PLUGSRC}" 8.2
+  [ "$status" -ne 0 ]
+  [ ! -d "$noroot/auth/nwc" ]
+}
+
+@test "auth_nwc deploy REFUSES a bogus plugin source (no version.php)" {
+  badsrc="${TEST_TMP}/badplug"; mkdir -p "$badsrc"
+  run moodle_deploy_auth_nwc "${MROOT}" dev "$badsrc" 8.2
+  [ "$status" -ne 0 ]
+  [ ! -d "${MROOT}/auth/nwc" ]
+}
+
+# ── F26 OIDC apply runner: fail-closed refusals (no php/live in unit tests) ───
+
+@test "run_oidc_apply REFUSES a prod tier" {
+  echo "<?php" > "${TEST_TMP}/s.php"
+  echo "x" > "${MROOT}/config.php"
+  run moodle_run_oidc_apply "${MROOT}" prod "${TEST_TMP}/s.php" moodsite "${CFG}" 8.2
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSED"* ]]
+}
+
+@test "run_oidc_apply REFUSES when config.php / script is missing" {
+  run moodle_run_oidc_apply "${MROOT}" dev "${TEST_TMP}/nope.php" moodsite "${CFG}" 8.2
+  [ "$status" -ne 0 ]
 }
 
 # ── off-unless-configured: the substrate is a no-op for non-Moodle sites ──────

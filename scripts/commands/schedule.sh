@@ -26,7 +26,9 @@ CRON_COMMENT="# NWP Backup Schedule"
 CRON_DB_DEFAULT="0 2 * * *"       # Daily at 2 AM
 CRON_FULL_DEFAULT="0 3 * * 0"     # Weekly Sunday at 3 AM
 CRON_BUNDLE_DEFAULT="0 4 1 * *"   # Monthly 1st at 4 AM
+CRON_SWEEP_DEFAULT="0 2 * * *"    # Daily at 2 AM (before the 04:30 rag-sync)
 LOG_DIR="/var/log/nwp"
+SWEEP_LOG_DIR="$PROJECT_ROOT/logs"
 
 ################################################################################
 # Help
@@ -42,6 +44,8 @@ ${BOLD}USAGE:${NC}
 ${BOLD}COMMANDS:${NC}
     install <sitename>      Install backup schedule for a site
     remove <sitename>       Remove backup schedule for a site
+    install-sweep           Install nightly 'pl backup sweep' cron (all sites)
+    remove-sweep            Remove the backup-sweep cron entry
     list                    List all scheduled backups
     show <sitename>         Show schedule for a specific site
     run <sitename>          Run scheduled backup now (for testing)
@@ -52,6 +56,7 @@ ${BOLD}OPTIONS:${NC}
     --db-schedule=CRON      Database backup schedule (default: 0 2 * * *)
     --full-schedule=CRON    Full backup schedule (default: 0 3 * * 0)
     --bundle-schedule=CRON  Bundle backup schedule (default: 0 4 1 * *)
+    --schedule=CRON         Sweep schedule for install-sweep (default: 0 2 * * *)
     --no-db                 Don't schedule database backups
     --no-full               Don't schedule full backups
     --no-bundle             Don't schedule bundle backups
@@ -63,6 +68,9 @@ ${BOLD}EXAMPLES:${NC}
     ./schedule.sh install nwp --git              # With git push
     ./schedule.sh install nwp --db-schedule="0 4 * * *"  # Custom time
     ./schedule.sh remove nwp                     # Remove schedule
+    ./schedule.sh install-sweep                  # Nightly sweep of all sites
+    ./schedule.sh install-sweep --schedule="30 1 * * *"  # Custom sweep time
+    ./schedule.sh remove-sweep                   # Remove sweep entry
     ./schedule.sh list                           # List all schedules
     ./schedule.sh run nwp                        # Test run now
 
@@ -242,6 +250,68 @@ remove_schedule() {
     return 0
 }
 
+# Install the fleet-wide backup-sweep cron entry (nwp/ops#87 Part A).
+# One user-crontab line runs `pl backup sweep` nightly; the sweep itself
+# decides per-site whether a backup is needed (stale threshold shared with
+# `pl todo`). Uses the same CRON_COMMENT marker family as per-site entries
+# so `schedule list` sees it.
+install_sweep_schedule() {
+    local schedule="$1"
+
+    print_header "Installing Backup Sweep Schedule"
+
+    # Sweep logs live under the project (matches logs/rag-sync.log et al.).
+    mkdir -p "$SWEEP_LOG_DIR" 2>/dev/null || true
+    local log_file="$SWEEP_LOG_DIR/backup-sweep.log"
+
+    # Get current crontab
+    local current_cron
+    current_cron=$(crontab -l 2>/dev/null || echo "")
+
+    # Remove any existing sweep entries (idempotent re-install)
+    local new_cron
+    new_cron=$(echo "$current_cron" | grep -v "${CRON_COMMENT} - sweep" | grep -v "pl backup sweep" || true)
+
+    local sweep_entry="$schedule ${PROJECT_ROOT}/pl backup sweep >> $log_file 2>&1"
+
+    echo -e "${new_cron}\n${CRON_COMMENT} - sweep\n${sweep_entry}\n" | crontab -
+
+    print_status "OK" "Backup sweep scheduled: $schedule"
+    print_info "Command: ${PROJECT_ROOT}/pl backup sweep"
+    print_info "Logs: $log_file"
+    return 0
+}
+
+# Remove the backup-sweep cron entry
+remove_sweep_schedule() {
+    print_header "Removing Backup Sweep Schedule"
+
+    local current_cron
+    current_cron=$(crontab -l 2>/dev/null || echo "")
+
+    if [ -z "$current_cron" ]; then
+        print_info "No cron entries found"
+        return 0
+    fi
+
+    if ! echo "$current_cron" | grep -q "pl backup sweep"; then
+        print_info "No backup sweep entry found"
+        return 0
+    fi
+
+    local new_cron
+    new_cron=$(echo "$current_cron" | grep -v "${CRON_COMMENT} - sweep" | grep -v "pl backup sweep" || true)
+
+    if [ -n "$new_cron" ]; then
+        echo "$new_cron" | crontab -
+    else
+        crontab -r 2>/dev/null || true
+    fi
+
+    print_status "OK" "Backup sweep schedule removed"
+    return 0
+}
+
 # List all scheduled backups
 list_schedules() {
     print_header "NWP Scheduled Backups"
@@ -255,7 +325,7 @@ list_schedules() {
     fi
 
     local nwp_entries
-    nwp_entries=$(echo "$cron" | grep -E "(NWP|backup\.sh)" || true)
+    nwp_entries=$(echo "$cron" | grep -E "(NWP|backup\.sh|pl backup sweep)" || true)
 
     if [ -z "$nwp_entries" ]; then
         print_info "No NWP scheduled backups found"
@@ -323,6 +393,7 @@ main() {
     local DB_SCHEDULE="$CRON_DB_DEFAULT"
     local FULL_SCHEDULE="$CRON_FULL_DEFAULT"
     local BUNDLE_SCHEDULE="$CRON_BUNDLE_DEFAULT"
+    local SWEEP_SCHEDULE="$CRON_SWEEP_DEFAULT"
     local NO_DB=false
     local NO_FULL=false
     local NO_BUNDLE=false
@@ -331,7 +402,7 @@ main() {
 
     # Use getopt for option parsing
     local OPTIONS=hd
-    local LONGOPTS=help,debug,db-schedule:,full-schedule:,bundle-schedule:,no-db,no-full,no-bundle,git,push-all
+    local LONGOPTS=help,debug,db-schedule:,full-schedule:,bundle-schedule:,schedule:,no-db,no-full,no-bundle,git,push-all
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -360,6 +431,10 @@ main() {
                 ;;
             --bundle-schedule)
                 BUNDLE_SCHEDULE="$2"
+                shift 2
+                ;;
+            --schedule)
+                SWEEP_SCHEDULE="$2"
                 shift 2
                 ;;
             --no-db)
@@ -425,6 +500,12 @@ main() {
                 exit 1
             fi
             remove_schedule "$SITENAME"
+            ;;
+        install-sweep)
+            install_sweep_schedule "$SWEEP_SCHEDULE"
+            ;;
+        remove-sweep)
+            remove_sweep_schedule
             ;;
         list)
             list_schedules

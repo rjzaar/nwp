@@ -729,6 +729,85 @@ check_agent_loop_cap() {
         "" "pl issue ls"
 }
 
+# LBK: live-tier backup freshness (nwp/ops#87 Part B).
+# The live box runs a producer cron that deposits pulled site backups under
+# /var/backups/nwp-pull. If the newest file there is older than
+# settings.todo.thresholds.live_backup_warn_days (default 2), the producer
+# has probably stopped — surface that as a MEDIUM finding. Fail-soft by
+# design: no key, no config, or no network (offline dev) → silent return.
+#
+# Box resolution is config-driven, never hardcoded here:
+#   - settings.todo.live_backup.server names a servers/<name>/.nwp-server.yml
+#     entry (default: nwpcode); ip/user come from lib/server-resolver.sh
+#     (which itself falls back to the legacy nwp.yml linode.servers block).
+#   - settings.todo.live_backup.ssh_key overrides the key path
+#     (default: ~/.ssh/gitlab_linode).
+#   - settings.todo.live_backup.path overrides the remote backup dir.
+check_live_backup_freshness() {
+    is_category_enabled "live_backup" || return 0
+
+    # server-resolver is auto-sourced via lib/common.sh in command contexts;
+    # load it here for standalone use.
+    if ! command -v get_server_ip &>/dev/null; then
+        if [ -f "$TODO_CHECKS_PROJECT_ROOT/lib/server-resolver.sh" ]; then
+            # shellcheck source=/dev/null
+            source "$TODO_CHECKS_PROJECT_ROOT/lib/server-resolver.sh"
+        else
+            return 0
+        fi
+    fi
+
+    local server ip user key remote_path warn_days
+    server=$(get_todo_setting "live_backup.server" "nwpcode")
+    ip=$(get_server_ip "$server" 2>/dev/null)
+    user=$(get_server_user "$server" 2>/dev/null)
+    [ -z "$ip" ] && return 0
+    [ -z "$user" ] && user="gitlab"
+
+    key=$(get_todo_setting "live_backup.ssh_key" "$HOME/.ssh/gitlab_linode")
+    key="${key/#\~/$HOME}"
+    [ -f "$key" ] || return 0
+
+    remote_path=$(get_todo_setting "live_backup.path" "/var/backups/nwp-pull")
+    warn_days=$(get_todo_setting "thresholds.live_backup_warn_days" "2")
+
+    # One remote round-trip: newest mtime epoch, or MISSING if the dir is gone.
+    local remote_out
+    remote_out=$(ssh -o BatchMode=yes -o ConnectTimeout=8 -o IdentitiesOnly=yes \
+        -i "$key" "$user@$ip" \
+        "if [ -d '$remote_path' ]; then find '$remote_path' -type f -printf '%T@\n' 2>/dev/null | sort -rn | head -1; else echo MISSING; fi" \
+        2>/dev/null) || return 0
+
+    if [ "$remote_out" = "MISSING" ]; then
+        todo_add_item "LBK" "$server" "medium" \
+            "Live-tier backup dir missing on $server (box producer cron?)" \
+            "Expected: $remote_path on $server | The producer cron may never have run" \
+            "" "ssh into $server and check the nwp-pull producer cron"
+        return 0
+    fi
+
+    local now_epoch newest_epoch age_days
+    now_epoch=$(date +%s)
+    newest_epoch="${remote_out%%.*}"
+
+    if [ -z "$newest_epoch" ] || ! [[ "$newest_epoch" =~ ^[0-9]+$ ]]; then
+        # Dir exists but holds no files — same signal as stale.
+        todo_add_item "LBK" "$server" "medium" \
+            "Live-tier backup dir empty on $server (box producer cron?)" \
+            "Path: $remote_path | No backup files found" \
+            "" "ssh into $server and check the nwp-pull producer cron"
+        return 0
+    fi
+
+    age_days=$(( (now_epoch - newest_epoch) / 86400 ))
+    if [ "$age_days" -ge "$warn_days" ]; then
+        todo_add_item "LBK" "$server" "medium" \
+            "Live-tier backup stale (${age_days}d old — box producer cron?)" \
+            "Path: $remote_path on $server | Threshold: $warn_days days" \
+            "" "ssh into $server and check the nwp-pull producer cron"
+    fi
+}
+
 ################################################################################
 # Main Check Runner
 ################################################################################
@@ -749,6 +828,7 @@ TODO_CHECK_LIST=(
     "check_token_rotation:Token rotation"
     "check_secret_expiry:Secret expiry"
     "check_missing_backups:Missing backups"
+    "check_live_backup_freshness:Live backup freshness"
     "check_disk_usage:Disk usage"
     "check_gitlab_issues:GitLab issues"
     "check_agent_loop_cap:Agent-loop cap"
@@ -823,6 +903,7 @@ export -f check_disk_usage
 export -f check_ssl_expiry
 export -f check_secret_expiry
 export -f check_agent_loop_cap
+export -f check_live_backup_freshness
 export -f run_all_checks
 export -f todo_get_check_count
 export -f todo_get_check_name

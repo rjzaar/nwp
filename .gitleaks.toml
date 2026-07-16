@@ -139,6 +139,60 @@ regex = '''(?i)\b(mazenod|mazenod\s+college|oblates?\s+of\s+mary\s+immaculate|ob
 tags = ["leak", "organisation"]
 
 [[rules]]
+id = "operator-public-ip"
+description = "Operator's real public server IP leak. Use an RFC-5737 example IP (203.0.113.10 / 192.0.2.x) in docs; resolve at runtime via the private manifest in code."
+# Known operator prod/live IPs. RFC-5737 (203.0.113.x, 192.0.2.x, 198.51.100.x)
+# and RFC-1918/6598 private ranges are safe and NOT matched here.
+regex = '''\b(97\.107\.137\.88|45\.33\.94\.133)\b'''
+tags = ["leak", "ip", "infra"]
+
+[rules.allowlist]
+description = "Functional scripts that resolve/deploy to the real live host. Candidates for `pl host` role resolution (F34); allowlisted meanwhile. tests/, docs/archive/, docs/reports/ are covered by the top-level allowlist."
+paths = [
+  '''^scripts/agent-loop/deploy-on-merge\.sh$''',
+  '''^scripts/commands/site\.sh$''',
+]
+
+[[rules]]
+id = "operator-personal-email"
+description = "Operator's personal email address leak (PII). Use a role/contact address (e.g. security@<domain>, legal@<domain>) in public artefacts."
+# Narrowly targets the operator's personal local-part so we don't false-positive
+# on contributors' or example emails. Extend the alternation if the operator
+# adds another personal address.
+regex = '''\b(rjzaar)@[a-z0-9.-]+\.[a-z]{2,}\b'''
+tags = ["leak", "email", "pii"]
+
+[rules.allowlist]
+description = "Copyright / security-contact contexts legitimately carry a reachable author/maintainer address (PUBLIC-PRIVATE-STRATEGY §2.2: author identity is permitted in copyright contexts; a public project needs a real SECURITY contact). Operator DECISION pending: swap these for role addresses (legal@ / security@) before the public refound — tracked in SCRUB-INVENTORY-2026-07-16.md."
+paths = [
+  '''^NOTICE$''',
+  '''^docs/CC0_DEDICATION\.md$''',
+  '''^docs/SECURITY\.md$''',
+]
+
+[[rules]]
+id = "live-domain-apex"
+description = "Bare APEX operator domain leak (nwpcode.org / mayostudios.org). The live-internal-domain rule only catches sub.domain forms; this also catches the bare apex."
+regex = '''\b(nwpcode|mayostudios)\.org\b'''
+tags = ["leak", "domain"]
+
+[rules.allowlist]
+description = "Functional files that must carry the real operator domain (deploy targets, sanitizer targets, schema example-defaults, CI, fallback defaults) + real-contact files (NOTICE/CC0/SECURITY carry a reachable maintainer address). Same operator-runtime class as the top-level allowlist entries. Candidates for role-label resolution (F34) / a role contact address, but NOT prose to genericise — see SCRUB-INVENTORY-2026-07-16.md. Prose docs are genericised to example.com instead of being allowlisted."
+paths = [
+  '''^\.gitlab-ci\.yml$''',
+  '''^lib/sanitizers/mayo\.sh$''',
+  '''^lib/schema/nwp_yml_v3\.json$''',
+  '''^lib/install-drupal\.sh$''',
+  '''^lib/rollback-remote\.sh$''',
+  '''^scripts/.*''',
+  '''^example\.nwp\.v2\.yml$''',
+  # Real-contact contexts (operator DECISION pending: swap for a role address).
+  '''^NOTICE$''',
+  '''^docs/CC0_DEDICATION\.md$''',
+  '''^docs/SECURITY\.md$''',
+]
+
+[[rules]]
 id = "live-internal-domain"
 description = "Live internal domain leak (subdomains of operator domains)"
 regex = '''\b[a-z0-9_-]+\.(nwpcode\.org|mayostudios\.org)\b'''
@@ -152,4 +206,11 @@ regexes = [
   '''<mayo-domain>''',
   '''<coder-domain>''',
   '''<headscale-host>''',
+]
+paths = [
+  # Functional files with a fallback default pointing at the operator's real
+  # GitLab host (env-overridable). Candidates for role resolution (F34);
+  # allowlisted meanwhile, same class as the top-level functional entries.
+  '''^lib/rollback-remote\.sh$''',
+  '''^scripts/agent-loop/agent-loop\.sh$''',
 ]

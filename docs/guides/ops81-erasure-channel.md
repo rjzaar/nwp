@@ -92,7 +92,7 @@ audited (log table both sides), replayable (safe to re-POST after a 502).
 ## 4. ver / prod boundary (CLAUDE.md AI-never-prod)
 
 This channel makes a **destructive** cross-site write. On dev/stg/live-test tiers
-(`*.nwpcode.org`) AI/agents may operate it (A14). **Real prod erasure must run through the `ver`
+(`*.example.com`) AI/agents may operate it (A14). **Real prod erasure must run through the `ver`
 desktop deploy gate** — a per-write Solo-touch (`lib/deploy-gate.sh`); no AI-accessible machine
 may fire an erase at prod. The receiver token for a prod tier is a `ver`-held secret, never on any
 AI-accessible build/agent host. The receiver is auth-adjacent + destructive → two-person review of the destructive path

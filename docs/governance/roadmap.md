@@ -616,10 +616,10 @@ Add security hardening features to `produce.sh` for production server provisioni
 **Status:** ✅ COMPLETE (v0.31.0) | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** None
 **Proposal:** [P59-ssh-identitiesonly-hardening.md](../proposals/P59-ssh-identitiesonly-hardening.md)
 
-Force `IdentitiesOnly=yes` on every `ssh`, `scp`, and `rsync` call in NWP so that SSH does not offer every key in `~/.ssh/` on every connection. Without this, developers with several keys trip fail2ban (`maxretry=3`) and are locked out of nwpcode.org.
+Force `IdentitiesOnly=yes` on every `ssh`, `scp`, and `rsync` call in NWP so that SSH does not offer every key in `~/.ssh/` on every connection. Without this, developers with several keys trip fail2ban (`maxretry=3`) and are locked out of example.com.
 
 **Problem:**
-- Developers with >3 keys in `~/.ssh/` were intermittently locked out of `97.107.137.88` by fail2ban
+- Developers with >3 keys in `~/.ssh/` were intermittently locked out of `203.0.113.10` by fail2ban
 - Root cause: NWP scripts ssh by raw IP, bypassing `~/.ssh/config` Host aliases, so OpenSSH offers every key it knows about until one succeeds
 - ~80 ssh/scp/rsync call sites across `lib/` and `scripts/commands/` had no `IdentitiesOnly` option
 
@@ -789,7 +789,7 @@ Three-hop pipeline: build-tier builds+signs → GitLab Packages → verifier ver
 **Status:** PROPOSED | **Priority:** High | **Effort:** Large | **Dependencies:** F26, F28, F29, S05, A02 ✅, A09 ✅
 **Proposal:** [F30-content-federation-network.md](../proposals/F30-content-federation-network.md)
 
-Architectural keystone connecting nwprog.org, saint.school, mayostudios.org, avcommons.org into a coherent content ecosystem:
+Architectural keystone connecting nwprog.org, saint.school, example.com, avcommons.org into a coherent content ecosystem:
 
 - **Central course repository** (`nwp/courses`) with 49 courses in S05 YAML format
 - **Three-stage review workflow:** Writer's Check → Pedagogy Check → Theology Check (using AVC's workflow_assignment module)

@@ -75,7 +75,7 @@ This document defines the contributor roles, responsibilities, and access levels
 | Create merge requests | Yes |
 | Be assigned issues | Yes |
 | View CI/CD pipelines | Yes |
-| Own subdomain (`<name>.nwpcode.org`) | Yes |
+| Own subdomain (`<name>.example.com`) | Yes |
 | Own Linode server | Yes |
 | Merge to main | No |
 | Approve others' MRs | No |

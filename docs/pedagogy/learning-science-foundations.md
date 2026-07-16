@@ -7,7 +7,7 @@ the editorial pipeline routes pedagogical revisions through `in_pedagogy_review`
 the standards those reviews apply. This document is those standards' evidence base.
 **Drives:** the render contract and moderation rubric in
 [`P70`](../proposals/P70-audience-variants-and-learnersourced-stories.md) (schema v3.1 atom typing +
-`story_contribution`), which sits under [ops#61](https://git.nwpcode.org/nwp/ops/-/issues/61)
+`story_contribution`), which sits under [ops#61](https://git.example.com/nwp/ops/-/issues/61)
 (canonical content model). Principle numbers here are cited by P70 §4–§5.
 **Evidence base:** two research syntheses, 2026-07-08 (learning science + Moodle 4.5 capability).
 Source URLs inline. Each claim carries an **evidence-strength flag** — the Guild should weight its

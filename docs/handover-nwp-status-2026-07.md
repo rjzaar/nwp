@@ -77,7 +77,7 @@ Core integration DONE (see `handover-nw2-build.md`): nw2 = un-forked OS13 + all 
     - **`pl onboard` — BUILT + VERIFIED 2026-07-01** ✅. `scripts/commands/onboard.sh` chains all 7
       steps (create-repo → human-supervised sanitize → **fail-closed PII gate** → scaffold → load →
       register → status). PII gate passed 6/6 adversarial tests; preflight hard-stops verified.
-    - **Remaining [gate/human]:** actually onboard mayostudios.org (needs the human-run sanitize on
+    - **Remaining [gate/human]:** actually onboard example.com (needs the human-run sanitize on
       prod — AI has no prod access by design); build the **AI-free `nwp-server` prod-executor**
       (§5/§7 design; less blocked now A14 test-tier authority is granted).
 18. **ops#3 — un-fork productionization** (nwc WORKS; punch list to close): replace the 2 dev

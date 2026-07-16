@@ -43,7 +43,7 @@
 
 set -euo pipefail
 
-NWP_ROOT="${NWP_ROOT:-/home/rob/nwp}"
+NWP_ROOT="${NWP_ROOT:-$HOME/nwp}"
 KILL_SWITCH="${NWP_ROOT}/.loop-paused"
 STATE_FILE="${NWP_ROOT}/.agent-loop.state.json"
 LOG_DIR="${NWP_ROOT}/logs"

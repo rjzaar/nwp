@@ -720,9 +720,9 @@ Complete inventory of all commands in the NWP codebase.
 - Note management
 
 **Coder Gets:**
-- NS delegation: <coder>.nwpcode.org → Linode nameservers
+- NS delegation: <coder>.example.com → Linode nameservers
 - Full DNS autonomy
-- Ability to create: git.<coder>.nwpcode.org, nwp.<coder>.nwpcode.org
+- Ability to create: git.<coder>.example.com, nwp.<coder>.example.com
 
 **Commands:**
 - add <coder_name> [--notes "description"]

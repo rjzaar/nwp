@@ -157,7 +157,7 @@ The `pl contribute` command enforces:
 upstream:
   url: git@<gitlab-host>:nwp/nwp.git
   tier: 1
-  maintainer: rob@nwpcode.org
+  maintainer: rob@example.com
 
 sync:
   auto_pull: daily

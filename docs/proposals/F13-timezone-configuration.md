@@ -292,5 +292,5 @@ get_site_timezone "mysite"    # Should return site-specific or fall back to defa
 grep TIMEZONE fin/fin-monitor.conf  # Should show configured timezone
 
 # Verify cron uses correct timezone
-ssh -i ~/.ssh/nwp gitlab@97.107.137.88 "crontab -l"  # Should show CRON_TZ=Australia/Sydney
+ssh -i ~/.ssh/nwp gitlab@203.0.113.10 "crontab -l"  # Should show CRON_TZ=Australia/Sydney
 ```

@@ -393,8 +393,25 @@ test:integration:
 test:verification:
   stage: test
   image: ubuntu:22.04
+  # Shell executor: image is ignored and apt-get is a permission-denied no-op
+  # (|| true). verify.sh reads YAML via yq, so bootstrap the same pinned,
+  # sha256-verified v4.44.1 into a per-runner cache as test:unit does.
   before_script:
-    - apt-get update -qq && apt-get install -y -qq bash git jq bc
+    - apt-get update -qq && apt-get install -y -qq bash git jq bc || true
+    - |
+      YQ_VER=v4.44.1
+      YQ_SHA256=6dc2d0cd4e0caca5aeffd0d784a48263591080e4a0895abe69f3a76eb50d1ba3
+      if ! command -v yq >/dev/null 2>&1; then
+        YQ_DIR="${HOME}/.cache/nwp-ci/yq-${YQ_VER}"
+        mkdir -p "$YQ_DIR"
+        if ! echo "$YQ_SHA256  $YQ_DIR/yq" | sha256sum -c - >/dev/null 2>&1; then
+          curl -fsSL -o "$YQ_DIR/yq" "https://github.com/mikefarah/yq/releases/download/${YQ_VER}/yq_linux_amd64"
+        fi
+        echo "$YQ_SHA256  $YQ_DIR/yq" | sha256sum -c -
+        chmod +x "$YQ_DIR/yq"
+        export PATH="$YQ_DIR:$PATH"
+      fi
+      yq --version
   script:
     - echo "Running NWP verification checks..."
     - ./scripts/commands/verify.sh ci --depth=basic --export-json

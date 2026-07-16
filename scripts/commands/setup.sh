@@ -901,27 +901,36 @@ install_yq() {
     print_status "INFO" "Installing yq YAML processor..."
     log_action "Installing yq"
 
-    # Try snap first (cleanest on Ubuntu)
-    if command -v snap &>/dev/null; then
-        sudo snap install yq
-        print_status "OK" "yq installed via snap"
-        return 0
-    fi
-
-    # Fallback: download binary directly
+    # Install the pinned mikefarah binary straight to /usr/local/bin — NEVER via
+    # snap (ops#77). snap confinement stops yq reading /tmp, which silently
+    # breaks 'pl config import' (the staged manifest reads back as "not valid
+    # JSON"). Download is sha256-verified against the upstream published
+    # checksums before it is moved into place; --progress-bar so the operator
+    # sees the download rather than a frozen-looking prompt.
     local yq_version="v4.44.1"
     local yq_binary="yq_linux_amd64"
     local yq_url="https://github.com/mikefarah/yq/releases/download/${yq_version}/${yq_binary}"
+    # sha256 for yq_linux_amd64 v4.44.1 (from the release's checksums file).
+    local yq_sha256="6dc2d0cd4e0caca5aeffd0d784a48263591080e4a0895abe69f3a76eb50d1ba3"
+    local tmp_yq
+    tmp_yq="$(mktemp)"
 
-    print_status "INFO" "Downloading yq ${yq_version}..."
-    if curl -fsSL "$yq_url" -o /tmp/yq; then
-        sudo mv /tmp/yq /usr/local/bin/yq
-        sudo chmod +x /usr/local/bin/yq
-        print_status "OK" "yq installed to /usr/local/bin/yq"
-    else
+    print_status "INFO" "Downloading yq ${yq_version} (pinned, sha256-verified)..."
+    if ! curl -fSL --progress-bar "$yq_url" -o "$tmp_yq"; then
         print_status "FAIL" "Failed to download yq"
+        rm -f "$tmp_yq"
         return 1
     fi
+
+    if ! echo "${yq_sha256}  ${tmp_yq}" | sha256sum -c - >/dev/null 2>&1; then
+        print_status "FAIL" "yq checksum verification failed (expected ${yq_sha256}) — refusing to install"
+        rm -f "$tmp_yq"
+        return 1
+    fi
+
+    sudo mv "$tmp_yq" /usr/local/bin/yq
+    sudo chmod +x /usr/local/bin/yq
+    print_status "OK" "yq ${yq_version} installed to /usr/local/bin/yq (sha256 verified)"
 }
 
 install_docker() {
@@ -960,7 +969,7 @@ install_composer() {
     print_status "INFO" "Installing Composer..."
     # Download and verify Composer installer
     local expected_checksum="$(curl -fsSL https://composer.github.io/installer.sig)"
-    curl -fsSL https://getcomposer.org/installer -o /tmp/composer-setup.php
+    curl -fSL --progress-bar https://getcomposer.org/installer -o /tmp/composer-setup.php
     local actual_checksum="$(php -r "echo hash_file('sha384', '/tmp/composer-setup.php');")"
 
     if [ "$expected_checksum" != "$actual_checksum" ]; then

@@ -128,6 +128,34 @@ _yq_field() {
 
 _utc_stamp() { date -u +%Y%m%d-%H%M%S; }
 
+# ops#77: import relies on yq to read the staged manifest + validate YAML. Two
+# silent impostors otherwise surface only as a misleading "not valid JSON":
+#   (a) Ubuntu's apt `yq` is a different tool (a Python jq-wrapper); its
+#       `--version` does not mention mikefarah.
+#   (b) snap-confined mikefarah yq cannot read /tmp (where the manifest is
+#       staged), so it reads back empty.
+# Returns: 0 = real, usable mikefarah yq; 1 = impostor/snap (message printed);
+#          2 = yq not installed at all (caller prints the install hint).
+_require_real_yq() {
+    command -v yq &>/dev/null || return 2
+    local yq_path yq_verline
+    yq_path="$(command -v yq)"
+    yq_verline="$(yq --version 2>&1 | head -1)"
+    if ! printf '%s' "$yq_verline" | grep -qi 'mikefarah'; then
+        print_error "The 'yq' on PATH ($yq_path) is the wrong tool."
+        print_info "Ubuntu's apt 'yq' is a Python jq-wrapper, not mikefarah yq; NWP config import cannot use it."
+        print_info "Fix: install the pinned mikefarah binary to /usr/local/bin/yq — run 'pl setup' (verify with 'pl doctor')."
+        return 1
+    fi
+    if [[ "$yq_path" == /snap/* ]]; then
+        print_error "The 'yq' on PATH ($yq_path) is snap-confined."
+        print_info "snap confinement blocks yq from reading /tmp, where the import manifest is staged — it reads back empty."
+        print_info "Fix: 'sudo snap remove yq' then install the pinned mikefarah binary to /usr/local/bin/yq — run 'pl setup'."
+        return 1
+    fi
+    return 0
+}
+
 ################################################################################
 # Export
 ################################################################################
@@ -286,14 +314,21 @@ cmd_import() {
     trap "rm -rf '$stage'" EXIT
     tar -xzf "$file" -C "$stage"
 
-    if ! command -v yq &>/dev/null; then
+    # Fail closed with a *useful* message if yq is missing, an impostor, or
+    # snap-confined — before it can mislead us with a bogus "not valid JSON".
+    local yq_rc=0
+    _require_real_yq || yq_rc=$?
+    if [ "$yq_rc" -eq 2 ]; then
         print_error "yq is required for import (manifest + YAML validation) but was not found in PATH."
+        print_info "Install the pinned mikefarah binary — run 'pl setup' (verify with 'pl doctor')."
         return 1
+    elif [ "$yq_rc" -ne 0 ]; then
+        return 1   # _require_real_yq already printed the diagnosis + fix
     fi
 
     # manifest sanity
     if ! yq eval '.' "$stage/$MANIFEST_NAME" >/dev/null 2>&1; then
-        print_error "Refusing import: $MANIFEST_NAME is not valid JSON"
+        print_error "Refusing import: manifest unreadable — bundle corrupt/truncated, OR yq is snap-confined/an impostor (run 'pl doctor')."
         return 1
     fi
 

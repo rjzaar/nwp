@@ -96,7 +96,7 @@ signature per restic's docs). The kit build fails closed without pins.
 - [ ] **No mesh/tailnet client** (see the §0 warning). Network default-off:
       Wi-Fi off, ethernet unplugged; per-session connectivity via hotspot or a
       dedicated modem.
-- [ ] `sudo apt-get update && sudo apt-get install -y minisign wireguard-tools libfido2-1 openssh-client`
+- [ ] `sudo apt-get update && sudo apt-get install -y minisign wireguard-tools libfido2-1 fido2-tools openssh-client`
       (during a deliberate online window or from local media; minisign is the
       only bootstrap verifier — everything else arrives signed in the kit).
 - [ ] Timezone/NTP sane (restic snapshot times matter for retention).
@@ -138,7 +138,7 @@ it off the other screen; the key is public, only its *authenticity* matters.
 
 - [ ] Physically label it `K` (tape/engrave).
 - [ ] Set a FIDO2 PIN (8+ digits, in the vault):
-      `fido2-token -S /dev/hidraw<N>` (from `libfido2-1`'s tools, or
+      `fido2-token -S /dev/hidraw<N>` (from the `fido2-tools` package, or
       `fido2-token -L` to find the device).
 - [ ] Enroll the keystore identity (creates a new hmac-secret credential):
       `sudo /usr/local/share/nwp-ver/ver-seal-keystore.sh init`

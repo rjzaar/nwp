@@ -51,6 +51,23 @@ EOF
 # Check Functions
 ################################################################################
 
+# First diagnostic (ops#77): is the global `pl` command registered? On a fresh
+# clone `./pl setup` has not been run, so `pl` is not on PATH and every other
+# instruction that says "pl ..." fails confusingly. Surface the fix up front.
+check_pl_registration() {
+    print_header "Checking pl Registration"
+
+    if command -v pl &>/dev/null; then
+        print_success "pl: registered ($(command -v pl))"
+    else
+        print_warning "pl not registered — run: ./pl setup"
+        print_hint "'./pl setup' installs the global 'pl' command (to /usr/local/bin/pl) so you can run 'pl' from any directory."
+    fi
+
+    # Advisory only — does not count toward the error total.
+    return 0
+}
+
 check_prerequisites() {
     local errors=0
 
@@ -99,10 +116,32 @@ check_prerequisites() {
         print_warning "Composer: NOT INSTALLED (optional, DDEV includes it)"
     fi
 
-    # yq (recommended)
+    # yq (recommended) — must be the *mikefarah* binary, and NOT snap-confined.
+    # Two silent impostors break NWP (ops#77):
+    #   (a) Ubuntu's apt `yq` is a different tool (a Python jq-wrapper); its
+    #       `--version` does not mention mikefarah and it has no `eval`.
+    #   (b) snap-confined mikefarah yq IS mikefarah, but snap confinement stops
+    #       it reading /tmp, which silently breaks `pl config import` (the staged
+    #       manifest reads back as "not valid JSON").
     if command -v yq &>/dev/null; then
-        local yq_version=$(yq --version 2>&1 | head -1 | grep -oP '\d+\.\d+\.\d+' || echo "unknown")
-        print_success "yq: $yq_version (recommended)"
+        local yq_path yq_verline
+        yq_path="$(command -v yq)"
+        yq_verline="$(yq --version 2>&1 | head -1)"
+        if ! printf '%s' "$yq_verline" | grep -qi 'mikefarah'; then
+            print_error "yq: wrong tool at $yq_path (not mikefarah yq)"
+            print_hint "Ubuntu's apt 'yq' is a different (Python jq-wrapper) tool that NWP cannot use."
+            print_hint "Install the pinned mikefarah binary to /usr/local/bin/yq — run: ./pl setup"
+            errors=$((errors + 1))
+        elif [[ "$yq_path" == /snap/* ]]; then
+            print_error "yq: snap-confined mikefarah yq at $yq_path"
+            print_hint "snap confinement blocks yq from reading /tmp, which silently breaks 'pl config import'."
+            print_hint "Remove the snap (sudo snap remove yq) and install the pinned binary — run: ./pl setup"
+            errors=$((errors + 1))
+        else
+            local yq_version
+            yq_version="$(printf '%s' "$yq_verline" | grep -oP '\d+\.\d+\.\d+' || echo "unknown")"
+            print_success "yq: $yq_version (mikefarah, $yq_path)"
+        fi
     else
         print_warning "yq: NOT INSTALLED (recommended for faster YAML parsing)"
         print_hint "Install from: https://github.com/mikefarah/yq"
@@ -424,7 +463,10 @@ main() {
     echo "╚════════════════════════════════════════╝"
     echo ""
 
-    # Run all checks
+    # Run all checks — pl registration first (ops#77), it is the fresh-clone gotcha.
+    check_pl_registration
+    echo ""
+
     local prereq_errors=0
     if check_prerequisites; then prereq_errors=0; else prereq_errors=$?; fi
     total_errors=$((total_errors + prereq_errors))

@@ -1,6 +1,16 @@
 # verifier Operations Guide
 
-> **Status:** ACTIVE (supersedes `verifier-mayo-bootstrap.md` for production deploys)
+> ## ⚠️ SUPERSEDED — do not follow this guide
+> **This describes the OLD `ver` model** (offline AI-free verifier; minisign as
+> the deploy credential; "when Solo 2C+ arrives"). That model was replaced by
+> **[ADR-0028](../decisions/0028-ver-single-operator-human-gated-workstation.md)**
+> (Accepted 2026-07-09, **live**): `ver` is a single-operator desktop running the
+> full `pl`, and prod-writes are authorized by a **Solo-touch `ed25519-sk`
+> signature** (`lib/deploy-gate.sh`, `pl deploy-gate test`), *not* minisign.
+> **Current guide: [`ver-soloW-setup-walkthrough.md`](ver-soloW-setup-walkthrough.md).**
+> Kept for history only (nwp/ops#95).
+
+> **Status:** SUPERSEDED by ADR-0028 (was: ACTIVE, supersedes `verifier-mayo-bootstrap.md`)
 > **F21 Phases:** 5 (verifier bootstrap), 7 (signed artifacts), 8 (blue-green)
 > **Last Updated:** 2026-04-10
 >

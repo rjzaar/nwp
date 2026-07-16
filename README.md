@@ -1263,7 +1263,7 @@ Comprehensive documentation is available in the `docs/` directory:
   - From project initialization to production
   - All 9 phases of development lifecycle
 
-- **[Complete Roadmap](docs/governance/complete-roadmap.md)** - Consolidated roadmap
+- **[Roadmap](docs/governance/roadmap.md)** - Pending proposals and future work
   - All phases of NWP development
   - Implementation details and status
 

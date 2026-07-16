@@ -478,7 +478,7 @@ silently reconciled:
 2. **The consumer plugin name is inconsistent across sources.** The live-proven,
    genuine UID-lock plugin is **`auth_nwc`** (authtype `nwc`; contract lines
    225–226, 250–252). But (a) the site config
-   [`sites/ssc/.nwp.yml`](../../sites/ssc/.nwp.yml) (dated 2026-05-19, pre-F26)
+   `sites/ssc/.nwp.yml` (dated 2026-05-19, pre-F26)
    still names `auth_nwc_oauth2` as the provider plugin, and (b) the contract's own
    `boundary.oauth_sso.consumer_paths` still points at `moodle/auth/oauth2/**` with
    the comment "auth_nwc_oauth2 Moodle plugin" (contract lines 110–111) while the

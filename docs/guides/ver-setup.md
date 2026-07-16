@@ -1,6 +1,18 @@
 # Setting up `ver` — the offline verifier / single-machine AI-free nwp
 
-> **Status:** DRAFT — the build is real and reproducible, and the runtime
+> ## ⚠️ SUPERSEDED — do not follow this guide for provisioning `ver`
+> This describes the **old `ver` model** (offline AI-free verifier + backup
+> custodian; minisign as the deploy credential; sealed restic keystore).
+> **[ADR-0028](../decisions/0028-ver-single-operator-human-gated-workstation.md)**
+> (Accepted 2026-07-09, **live**) replaced it: `ver` is a single-operator
+> **desktop** running full `pl`, browser-AI allowed, prod-writes authorized by a
+> **Solo-touch `ed25519-sk` signature** (`lib/deploy-gate.sh`). The keystore/DR
+> half is **DEFERRED**. **Current guide:
+> [`ver-soloW-setup-walkthrough.md`](ver-soloW-setup-walkthrough.md).** Parts of
+> the *build/verify* mechanics below are still accurate; the *posture/role* is not.
+> Kept for reference (nwp/ops#95).
+
+> **Status:** SUPERSEDED by ADR-0028 (was: DRAFT — the build is real and reproducible, and the runtime
 > capabilities were **validated end-to-end on 2026-07-02** on a disposable
 > prod-boundary test host (nwp/ops#23; `publish` verb excepted — see §5). `ver`
 > itself is **not provisioned** and not on the tailnet. Read the DONE / PENDING

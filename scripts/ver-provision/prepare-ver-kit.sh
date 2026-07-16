@@ -105,7 +105,7 @@ fetch_tool(){ # fetch_tool <tool> <dest-archive> — download or copy --local so
   else
     url="$(tool_url "$t")"
     print_info "$t: fetching $url"
-    curl -fsSL --proto '=https' --tlsv1.2 -o "$dest" "$url" || die "$t: download failed"
+    curl -fSL --progress-bar --proto '=https' --tlsv1.2 -o "$dest" "$url" || die "$t: download failed"
   fi
 }
 

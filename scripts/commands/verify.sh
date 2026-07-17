@@ -3765,6 +3765,82 @@ EOF
 }
 
 # Main
+# Prune verify/bats fixture debris (ops#37): registry ghosts (fixture-named
+# sites in nwp.yml with no sites/<name> dir), orphan fixture dirs (no registry
+# entry), and orphan bats-test-*/verify-test* docker volumes. DRY-RUN by
+# default; pass --execute to apply. Removals use the flock-locked yaml_remove_site.
+prune_fixtures() {
+    local execute=false
+    [ "${1:-}" = "--execute" ] && execute=true
+
+    # Defensive: these live in common.sh / yaml-write.sh.
+    command -v is_fixture_sitename >/dev/null 2>&1 || source "$PROJECT_ROOT/lib/common.sh"
+    command -v yaml_get_all_sites  >/dev/null 2>&1 || source "$PROJECT_ROOT/lib/yaml-write.sh"
+
+    local config="${PROJECT_ROOT}/nwp.yml"
+    local found=0 removed=0
+
+    if $execute; then
+        echo "Fixture prune — EXECUTE (removals use the locked writer)"
+    else
+        echo "Fixture prune — DRY-RUN (pass --execute to apply)"
+    fi
+
+    # 1. Registry ghosts: fixture-named sites in nwp.yml with no dir.
+    local site
+    while IFS= read -r site; do
+        [ -z "$site" ] && continue
+        if is_fixture_sitename "$site" && [ ! -d "${PROJECT_ROOT}/sites/${site}" ]; then
+            found=$((found + 1))
+            echo "  ghost registry entry: ${site}  (no sites/${site})"
+            if $execute && yaml_remove_site "$site" "$config" >/dev/null 2>&1; then
+                removed=$((removed + 1))
+            fi
+        fi
+    done < <(yaml_get_all_sites "$config" 2>/dev/null)
+
+    # 2. Orphan dirs: sites/<fixture> with no registry entry.
+    if [ -d "${PROJECT_ROOT}/sites" ]; then
+        local d name
+        for d in "${PROJECT_ROOT}/sites"/*/; do
+            [ -d "$d" ] || continue
+            name="$(basename "$d")"
+            if is_fixture_sitename "$name" \
+               && ! yaml_get_all_sites "$config" 2>/dev/null | grep -qx "$name"; then
+                found=$((found + 1))
+                echo "  orphan dir: sites/${name}  (no registry entry)"
+                if $execute; then
+                    ( cd "$d" && command -v ddev >/dev/null 2>&1 \
+                        && ddev delete --omit-snapshot --yes >/dev/null 2>&1 || true )
+                    rm -rf "$d" && removed=$((removed + 1))
+                fi
+            fi
+        done
+    fi
+
+    # 3. Orphan docker volumes: bats-test-* / verify-test*.
+    if command -v docker >/dev/null 2>&1; then
+        local vol
+        while IFS= read -r vol; do
+            [ -z "$vol" ] && continue
+            found=$((found + 1))
+            echo "  orphan docker volume: ${vol}"
+            if $execute && docker volume rm "$vol" >/dev/null 2>&1; then
+                removed=$((removed + 1))
+            fi
+        done < <(docker volume ls -q 2>/dev/null | grep -E 'bats-test|verify-test' || true)
+    fi
+
+    if [ "$found" -eq 0 ]; then
+        echo "No fixture debris found."
+    elif $execute; then
+        echo "Pruned ${removed}/${found} fixture item(s)."
+    else
+        echo "${found} fixture item(s) would be pruned — run 'pl verify --prune --execute' to apply."
+    fi
+    return 0
+}
+
 main() {
     local command="${1:-console}"
 
@@ -3814,6 +3890,10 @@ main() {
             ;;
         reset)
             reset_all
+            ;;
+        --prune|prune)
+            shift
+            prune_fixtures "$@"
             ;;
         --run|run)
             shift

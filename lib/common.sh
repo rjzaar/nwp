@@ -86,6 +86,18 @@ validate_sitename() {
     return 0
 }
 
+# True if a site name is test/verify fixture debris (not a real site).
+# Canonical fixture-prefix predicate (ops#37) — the same set rag.sh's
+# _rag_eligible_sites excludes; keep the two in sync. Deliberately does NOT
+# match the special names tmp/latest/(global) — those aren't prunable fixtures.
+# Usage: is_fixture_sitename "verify-test3" && echo debris
+is_fixture_sitename() {
+    case "$1" in
+        verify-test*|bats-test*|trace-*|*-del|*-del[0-9]*|*delete*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Ask a yes/no question
 # Usage: ask_yes_no "question" "default" (y or n)
 # Returns 0 for yes, 1 for no

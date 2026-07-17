@@ -1,6 +1,6 @@
 # ADR-0030: Per-site canonical & maturity axes + the impact/fate-manifest contract
 
-**Status:** Proposed
+**Status:** Accepted (ratified by operator 2026-07-18, nwp/ops#95 — shipped as the `lint:doc-truth` CI gate + `doc_truth` badge; ADR-0013 is superseded by this ADR)
 **Date:** 2026-07-09
 **Decision Makers:** Robert Karsten Zaar (draft; operator to accept)
 **Related Issues:** ops#33 (canonicality phases — merged, MRs !34/!36/!39/!44),

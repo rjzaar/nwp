@@ -24,11 +24,18 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # (schema file, a VALID payload, an INVALID payload + why it must fail)
 CASES = [
+    # `sub` is the Drupal UUID, not the serial uid (ADR-0031 D9 / ops#83, shipped
+    # 03672e2). This sample carried a uid ("4210") long after the code moved to
+    # uuid() — the fixture itself was the last uid-era artifact, and it is what
+    # made the drift invisible.
     ("oauth_sso.claims.schema.json",
-     {"sub": "4210", "email": "a@b.test", "email_verified": True,
-      "guilds": [{"id": 3, "label": "Scripture", "roles": ["guild-junior"]}]},
+     {"sub": "1f953704-7fc3-42e9-82cd-14fe3e616f71", "email": "a@b.test",
+      "email_verified": True, "given_name": "Ann", "family_name": "Scribe",
+      "guilds": [{"id": 3, "uuid": "205225aa-85ee-40e6-91f2-96b36cb43c96",
+                  "label": "Scripture", "type": "guild",
+                  "roles": ["guild-junior"]}]},
      # unknown claim → must be rejected (closed allow-list = data-minimisation)
-     {"sub": "4210", "date_of_birth": "2009-01-01"}),
+     {"sub": "1f953704-7fc3-42e9-82cd-14fe3e616f71", "date_of_birth": "2009-01-01"}),
     ("copyright_sync.record.schema.json",
      {"policy_name": "site_terms", "title": "Terms", "version": 2,
       "effective_date": "2026-07-11", "change_summary": "x", "body_md": "# Terms"},

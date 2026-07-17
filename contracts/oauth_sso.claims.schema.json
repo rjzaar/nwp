@@ -2,43 +2,87 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://git.example/nwp/contracts/oauth_sso.claims.schema.json",
   "title": "nwc → ss OIDC userinfo claim set",
-  "description": "The CLOSED allow-list of claims nwc (provider, native simple_oauth /oauth/userinfo) emits to the Moodle consumer (auth_nwc_oauth2). Derived from NwcOidcClaimsServiceProvider::REQUIRED_CLAIMS. additionalProperties:false is deliberate — it is the data-minimisation gate (P74 §Phase-0 / intersite-contract research §2). Adding a claim here is a boundary change: it must go through the contract_version bump + the ss side's review. `sub` is the load-bearing UID-lock join key (= Drupal uid).",
+  "description": "The CLOSED allow-list of claims nwc (provider, native simple_oauth /oauth/userinfo) emits to the Moodle consumer (auth_nwc). Derived from NwcOidcClaimsServiceProvider::REQUIRED_CLAIMS. additionalProperties:false is deliberate — it is the data-minimisation gate (P74 §Phase-0 / intersite-contract research §2). Adding a claim here is a boundary change: it must go through the contract_version bump + the ss side's review. `sub` is the load-bearing UID-lock join key (= Drupal user.uuid(), NOT the serial uid — ADR-0031 D9 / ops#83).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["sub"],
+  "required": [
+    "sub"
+  ],
   "properties": {
     "sub": {
-      "description": "Subject identifier = Drupal user.uid (simple_oauth default). THE UID-lock join key → mdl_user.idnumber. Must be stable and never reused (see intersite research open-question Q4).",
+      "description": "Subject identifier = Drupal user.uuid() — the STABLE account UUID, NOT the serial uid. THE UID-lock join key → mdl_user.idnumber. ADR-0031 D9 / ops#83 moved this off the uid (shipped 03672e2, live 2026-07-11): a DB restore/rebuild renumbers uids and would sever every ss UID-lock, whereas the UUID survives. Emitted by nwc_oidc_claims, which overrides simple_oauth's uid default. Must be stable and never reused.",
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
     },
-    "name": { "type": "string" },
-    "preferred_username": { "type": "string" },
-    "email": { "type": "string", "format": "email" },
+    "given_name": {
+      "description": "Standard OIDC claim → Moodle firstname (issuer field mapping). simple_oauth's normalizer never emits this (Drupal core has no first/last concept), so nwc_oidc_claims synthesises it from the Open Social profile. Without it the SSO'd member is bounced to Moodle's 'complete your profile' form with a blank name. ops#89.",
+      "type": "string"
+    },
+    "family_name": {
+      "description": "Standard OIDC claim → Moodle lastname. See given_name.",
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "preferred_username": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
     "email_verified": {
       "description": "MUST be the real verification state (never hardcoded true — see F26 M1). A hardcoded true enables takeover-by-email on the Moodle side.",
       "type": "boolean"
     },
-    "locale": { "type": "string" },
-    "profile": { "type": "string" },
+    "locale": {
+      "type": "string"
+    },
+    "profile": {
+      "type": "string"
+    },
     "updated_at": {
       "description": "Seconds since epoch (OIDC core) — integer, not a date string.",
       "type": "integer"
     },
-    "zoneinfo": { "type": "string" },
+    "zoneinfo": {
+      "type": "string"
+    },
     "guilds": {
       "description": "The ONE custom claim. Guild membership + per-guild role machine-names. Sole writer = nwc_oidc_claims (after the F26 flat-vs-nested collision fix). Role machine-names are a shared vocabulary across the boundary — renaming one silently changes what Moodle receives (see research §1 silent-break risks).",
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "label", "roles"],
+        "required": [
+          "id",
+          "label",
+          "roles"
+        ],
         "properties": {
-          "id": { "type": "integer" },
-          "label": { "type": "string" },
+          "id": {
+            "type": "integer",
+            "description": "Serial group id. DEBUG/back-compat ONLY — renumber-fragile. Bind on `uuid`."
+          },
+          "uuid": {
+            "description": "STABLE group UUID — the key consumers MUST bind on. `id` is the serial group id and renumbers on any DB restore/rebuild, which would orphan every cohort binding: the same failure ADR-0031 D9 fixed for `sub`. Optional only until the ss consumer adopts it (adding a required field is breaking per contracts/compat.py); it is always emitted. FOLLOW-UP: promote to required once auth_nwc reads it.",
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "description": "Group bundle: 'guild' (Sojourners, Media Guild, Trialing Guild) or 'flexible_group' (the IGs). Both are 'guilds you are drawn to' per nwc_registration.guild_mapping, whose header reads 'the guild/IG (group label)'.",
+            "type": "string"
+          },
           "roles": {
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           }
         }
       }

@@ -1,0 +1,59 @@
+# build/nwp-solo.include — the ALLOWLIST for the `nwp-solo` build target (ops#27).
+#
+# nwp-solo = the SINGLE-MACHINE, AI-FREE ENTRY TIER: one box, no AI, no fleet, no
+# SaaS. A strict SUPERSET of the nwp-server (prod-agent) set plus the local
+# lifecycle verbs a one-box operator needs. Same build-time guarantee: assembled
+# from this allowlist, then scanned fail-closed against build/nwp-server.deny-symbols
+# (shared). Build with:  pl build-server --target nwp-solo
+#
+# SCAFFOLD STATE (2026-07-18): the prod-agent base + `restore` are included and
+# deny-clean. `install`/`backup` are TODO — they pull in SaaS/token clients
+# (Linode DNS in lib/install-common.sh; the GitLab API client in lib/git.sh) that
+# must be split out first (ops#27 follow-up) and need a full install/backup test.
+#
+# ── prod-agent base (mirrors build/nwp-server.include) ──────────────────────
+bin/nwp-server
+
+# ── config resolution (read nwp.yml; reach prod over ssh) ───────────────────
+lib/ui.sh
+lib/common.sh
+lib/project-resolver.sh
+lib/server-resolver.sh
+lib/ssh.sh
+
+# ── pull + verify (signature + payload integrity) ───────────────────────────
+lib/minisign.sh
+lib/bundle-hash.sh
+lib/bundle-verify.sh
+scripts/commands/server-pull.sh
+
+# ── apply + rollback (deploy a verified bundle; roll back = re-apply previous) ─
+lib/rollback.sh
+lib/rollback-remote.sh
+scripts/commands/rollback.sh
+scripts/commands/server-apply.sh
+
+# ── local status (JSON; no SaaS, no outbound network) ───────────────────────
+scripts/commands/server-status.sh
+
+# ── snapshot → sanitize → fail-closed PII gate → publish (write-only token) ──
+# The prod publish verb is scripts/commands/server-publish.sh. The build-tier
+# scripts/commands/publish.sh (registry uploader needing a full-api PAT) is
+# DELIBERATELY EXCLUDED — it must never reach a prod host (ADR-0026 ledger).
+lib/pii-gate.sh
+lib/sanitizers/
+scripts/commands/server-publish.sh
+
+# ── backup (DR: raw restic snapshot to ver, custodian-pull) — ADR-0025 ───────
+scripts/commands/server-backup.sh
+scripts/commands/ver-backup-pull.sh
+
+# ── nwp-solo additions ───────────────────────────────────────────────────────
+# restore: recover a site from a backup (deny-clean after the ops#27 comment
+# rewords). NOTE: full functional restore also needs its lib deps
+# (database-router, pair, …) — tracked with install/backup below.
+scripts/commands/restore.sh
+
+# ── TODO (ops#27 follow-up — DO NOT ADD until split + tested) ────────────────
+# scripts/commands/install.sh      # needs Linode DNS client split out of install-common.sh
+# scripts/commands/backup.sh       # needs GitLab API client split out of lib/git.sh backup path

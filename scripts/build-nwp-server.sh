@@ -23,9 +23,13 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh" 2>/dev/null || { echo "[!] lib/ui.sh missing"; exit 1; }
 
-INCLUDE_FILE="$PROJECT_ROOT/build/nwp-server.include"
+# TARGET selects the build (ops#27): nwp-server (prod agent, default) or nwp-solo
+# (single-machine AI-free entry tier). Each has its own build/<target>.include
+# allowlist; both share the SAME fail-closed deny-symbols scan.
+TARGET="nwp-server"
 DENY_FILE="$PROJECT_ROOT/build/nwp-server.deny-symbols"
-OUT_DIR="$PROJECT_ROOT/build/out/nwp-server"
+INCLUDE_FILE=""   # resolved from TARGET after arg parse
+OUT_DIR=""        # resolved from TARGET after arg parse unless --out given
 MODE="build"
 SCAN_DIR=""
 
@@ -33,6 +37,8 @@ die(){ print_error "$*"; exit 1; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --target) TARGET="$2"; shift 2 ;;
+    --target=*) TARGET="${1#*=}"; shift ;;
     --out) OUT_DIR="$2"; shift 2 ;;
     --out=*) OUT_DIR="${1#*=}"; shift ;;
     --list) MODE="list"; shift ;;
@@ -42,6 +48,10 @@ while [ $# -gt 0 ]; do
     *) die "unknown argument: $1 (try --help)" ;;
   esac
 done
+
+case "$TARGET" in nwp-server|nwp-solo) : ;; *) die "unknown --target '$TARGET' (nwp-server|nwp-solo)" ;; esac
+INCLUDE_FILE="$PROJECT_ROOT/build/${TARGET}.include"
+[ -n "$OUT_DIR" ] || OUT_DIR="$PROJECT_ROOT/build/out/${TARGET}"
 
 [ -f "$INCLUDE_FILE" ] || die "include allowlist not found: $INCLUDE_FILE"
 [ -f "$DENY_FILE" ]    || die "deny-symbols list not found: $DENY_FILE"
@@ -59,7 +69,7 @@ mapfile -t INCLUDES < <(read_manifest "$INCLUDE_FILE")
 [ "${#INCLUDES[@]}" -gt 0 ] || die "include allowlist is empty — refusing to build an empty artifact"
 
 if [ "$MODE" = "list" ]; then
-  print_header "nwp-server include allowlist (${#INCLUDES[@]} entries)"
+  print_header "$TARGET include allowlist (${#INCLUDES[@]} entries)"
   printf '  %s\n' "${INCLUDES[@]}"
   exit 0
 fi
@@ -92,7 +102,7 @@ if [ "$MODE" = "scan" ]; then
 fi
 
 # ── Assemble ──────────────────────────────────────────────────────────────────
-print_header "Building nwp-server artifact"
+print_header "Building $TARGET artifact"
 print_info "source:  $PROJECT_ROOT"
 print_info "out:     $OUT_DIR"
 print_info "include: ${#INCLUDES[@]} entries"
@@ -142,5 +152,5 @@ print_status "OK" "deny-scan PASSED — zero AI/CI/SaaS symbols"
 } > "$OUT_DIR/MANIFEST.sha256"
 
 n_files=$(grep -vc '^#' "$OUT_DIR/MANIFEST.sha256" || echo 0)
-print_success "nwp-server built: $OUT_DIR ($n_files files, MANIFEST.sha256 written)"
+print_success "$TARGET built: $OUT_DIR ($n_files files, MANIFEST.sha256 written)"
 print_hint "verify independently:  pl build-server --scan-only $OUT_DIR"

@@ -330,3 +330,34 @@ teardown() {
     [ "$status" -eq 0 ]
     [ "$output" = "local" ]
 }
+
+################################################################################
+# get_secret() infra-secret resolution, incl. git worktree fallback (ops#70)
+################################################################################
+
+@test "get_secret: resolves section.key from PROJECT_ROOT/.secrets.yml" {
+    printf 'gitlab:\n  api_token: DIRECTVAL\n' > "${TEST_TEMP_DIR}/.secrets.yml"
+    PROJECT_ROOT="${TEST_TEMP_DIR}" run get_secret "gitlab.api_token" "DEF"
+    [ "$status" -eq 0 ]
+    [ "$output" = "DIRECTVAL" ]
+}
+
+@test "get_secret: missing key returns the default" {
+    printf 'gitlab:\n  api_token: X\n' > "${TEST_TEMP_DIR}/.secrets.yml"
+    PROJECT_ROOT="${TEST_TEMP_DIR}" run get_secret "gitlab.nope" "FALLBACK"
+    [ "$output" = "FALLBACK" ]
+}
+
+@test "get_secret: falls back to the MAIN worktree's .secrets.yml from a linked worktree (ops#70)" {
+    command -v git >/dev/null || skip "git required"
+    local main="${TEST_TEMP_DIR}/main"
+    mkdir -p "$main"
+    ( cd "$main" && git init -q && printf '.secrets.yml\n' > .gitignore \
+      && git add .gitignore && git -c user.email=t@t -c user.name=t commit -qm init )
+    # untracked → exists only in the main tree, like the real gitignored .secrets.yml
+    printf 'gitlab:\n  api_token: MAINVAL\n' > "$main/.secrets.yml"
+    ( cd "$main" && git worktree add -q wt )
+    PROJECT_ROOT="$main/wt" run get_secret "gitlab.api_token" "DEF"
+    ( cd "$main" && git worktree remove --force wt 2>/dev/null || true )
+    [ "$output" = "MAINVAL" ]
+}

@@ -154,6 +154,9 @@ boundary:
   erasure:
     direction: "nwc->ssc"       # provider-driven, single-writer, DESTRUCTIVE (ops#81)
     provider_paths:
+      # In-repo SOURCE of the sender module (sibling of nwc_moodle_sync)...
+      - "scripts/drupal/nwc_moodle_erase/**"
+      # ...and its INSTALL target inside the nwc site tree.
       - "sites/nwc/dev/html/profiles/custom/nwc/modules/nwc_features/nwc_moodle/modules/nwc_moodle_erase/**"
     provider_symbols:
       - NwcMoodleErase

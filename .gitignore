@@ -99,6 +99,13 @@ scripts/commands/.rollback/**
 !pairs/
 !pairs/**
 
+# Intersite data contracts (P74): JSON-Schema data contracts + validate.py +
+# compat.py (backward-compat differ) + SHA256SUMS. Public shapes, no secrets.
+# Whitelist the whole dir so future contract files aren't silently dropped by
+# the root /* rule (the reason ops#96 compat.py went missing the first time).
+!contracts/
+!contracts/**
+
 # Migration scripts (access via pl or scripts/commands/)
 
 # Documentation directory

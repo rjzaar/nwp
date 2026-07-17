@@ -14,6 +14,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/ui.sh"
+# Impact contract (nwp/ops#47): import overwrites existing configs — a
+# destructive verb — so it prints a live fate manifest before clobbering.
+source "$PROJECT_ROOT/lib/impact.sh"
 
 # The tree we export from / import into. Overridable for tests.
 CONFIG_ROOT="${NWP_CONFIG_ROOT:-$PROJECT_ROOT}"
@@ -44,11 +47,14 @@ Commands:
                               manifest; refuses unknown paths, traversal,
                               tampered files, or unparseable YAML. Existing
                               files are backed up to <file>.pre-import-*.bak
-                              before being overwritten.
+                              before being overwritten. When overwriting, a
+                              fate manifest is printed and (if interactive)
+                              confirmed first.
 
 Options:
     --out FILE      Export: write the bundle to FILE instead of the default
     --dry-run       Import: show what would be written/overwritten, write nothing
+    -y, --yes       Import: skip the overwrite prompt (the fate manifest still prints)
     -h, --help      Show this help message
 
 Examples:
@@ -257,10 +263,11 @@ cmd_export() {
 ################################################################################
 
 cmd_import() {
-    local file="" dry_run=0
+    local file="" dry_run=0 assume_yes=0
     while [ $# -gt 0 ]; do
         case "$1" in
             --dry-run) dry_run=1; shift ;;
+            -y|--yes) assume_yes=1; shift ;;
             -h|--help) show_help; return 0 ;;
             -*) print_error "Unknown import option: $1"; return 1 ;;
             *)
@@ -387,24 +394,47 @@ cmd_import() {
         fi
     done
 
+    if [ ${#writes[@]} -eq 0 ] && [ ${#overwrites[@]} -eq 0 ]; then
+        print_status "INFO" "Bundle contains no config files to apply"
+        return 0
+    fi
+
     echo ""
     if [ ${#writes[@]} -gt 0 ]; then
         print_info "New files to write:"
         for m in "${writes[@]}"; do print_info "  + $m"; done
     fi
+
+    # ── Impact contract (lib/impact.sh): overwriting an existing config is the
+    #    only destructive fate here — the replaced content survives solely in
+    #    the .pre-import-*.bak taken below. Build + print the fate manifest
+    #    (always, even under --dry-run) before touching anything. New writes are
+    #    pure additions and carry no fate, so they stay out of the manifest.
     if [ ${#overwrites[@]} -gt 0 ]; then
-        print_info "Existing files to overwrite (a .pre-import-*.bak copy is kept):"
-        for m in "${overwrites[@]}"; do print_info "  ~ $m"; done
-    fi
-    if [ ${#writes[@]} -eq 0 ] && [ ${#overwrites[@]} -eq 0 ]; then
-        print_status "INFO" "Bundle contains no config files to apply"
-        return 0
+        impact_reset
+        for m in "${overwrites[@]}"; do
+            impact_overwrite "Config" "$m — replaced by the bundle copy (a .pre-import-*.bak is kept)"
+        done
+        impact_render
     fi
 
     if [ $dry_run -eq 1 ]; then
         echo ""
         print_status "INFO" "Dry run — nothing written. Re-run without --dry-run to apply."
         return 0
+    fi
+
+    # Confirm before clobbering. The overwrite ALWAYS leaves a .pre-import-*.bak,
+    # so a recovery path is guaranteed — a "standard" (y/N) tier. -y skips the
+    # prompt (never the report); a non-interactive run (scripted bootstrap over
+    # scp/USB, no TTY) likewise proceeds, since the backup is unconditional.
+    if [ ${#overwrites[@]} -gt 0 ]; then
+        local auto_confirm=false
+        if [ "$assume_yes" -eq 1 ] || [ ! -t 0 ]; then
+            auto_confirm=true
+        fi
+        impact_confirm standard "overwrite ${#overwrites[@]} existing config file(s)" "$auto_confirm" \
+            || { echo ""; print_info "Import cancelled — nothing written."; return 0; }
     fi
 
     # ── Apply: back up existing files, then write into place

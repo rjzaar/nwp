@@ -583,7 +583,7 @@ git remote add upstream <url>
 
 ## Related Commands
 
-- [contribute.sh](../scripts/contribute.sh) - Submit changes upstream (Tier 2→1 or 1→0)
+- [contribute.sh](../../../scripts/commands/contribute.sh) - Submit changes upstream (Tier 2→1 or 1→0)
 - Git commands for manual management
 
 ## See Also

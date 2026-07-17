@@ -1030,10 +1030,10 @@ curl "https://img.shields.io/endpoint?url=https://${GITLAB_DOMAIN}/sites/mysite/
 
 ### NWP Internal References
 - [NWP Badges Library](../lib/badges.sh)
-- [NWP Verification System](../scripts/commands/verify.sh)
+- [NWP Verification System](../../scripts/commands/verify.sh)
 - [NWP GitLab Setup](../linode/gitlab/)
-- [NWP Git Library](../lib/git.sh) - GitLab API functions
-- [Coder Setup](../scripts/commands/coder-setup.sh) - Developer onboarding
+- [NWP Git Library](../../lib/git.sh) - GitLab API functions
+- [Coder Setup](../../scripts/commands/coder-setup.sh) - Developer onboarding
 
 ---
 

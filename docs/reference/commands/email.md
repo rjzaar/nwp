@@ -595,7 +595,7 @@ fi
 
 ## Related Commands
 
-- [config.sh](config.md) - Configure Drupal email settings
+- [config.sh](../../../scripts/agent-loop/prompts/config.md) - Configure Drupal email settings
 - [drush.sh](drush.md) - Manage Drupal via drush
 - [test.sh](test.md) - Run test suite
 

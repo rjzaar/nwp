@@ -659,8 +659,8 @@ cat /etc/hosts | grep ddev
 
 ## Related Documentation
 
-- [CI/CD Pipeline Configuration](CICD.md)
-- [Deployment Guide](LINODE_DEPLOYMENT.md)
+- [CI/CD Pipeline Configuration](cicd.md)
+- [Deployment Guide](linode-deployment.md)
 - [Developer Lifecycle Guide](DEVELOPER_LIFECYCLE_GUIDE.md)
 - [GitLab CI/CD Configuration](../.gitlab-ci.yml)
 - [GitHub Actions Workflow](../.github/workflows/build-test-deploy.yml)

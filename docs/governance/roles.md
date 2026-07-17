@@ -341,9 +341,9 @@ Process:
 
 ## Related Documentation
 
-- [CONTRIBUTING.md](../CONTRIBUTING.md) - How to contribute
-- [CODER_ONBOARDING.md](CODER_ONBOARDING.md) - Detailed onboarding steps
-- [DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md) - Full governance framework
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) - How to contribute
+- [CODER_ONBOARDING.md](../guides/coder-onboarding.md) - Detailed onboarding steps
+- [DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](distributed-contribution-governance.md) - Full governance framework
 - [docs/decisions/](decisions/) - Architecture Decision Records
 
 ---

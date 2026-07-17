@@ -332,7 +332,7 @@ See [setup-ssh.md](./setup-ssh.md) for details.
 ## Related Commands
 
 - [setup-ssh.md](./setup-ssh.md) - Generate SSH keys for deployment
-- [install.sh](../scripts/install.sh) - Install new Drupal sites
+- [install.sh](../../../scripts/commands/install.sh) - Install new Drupal sites
 
 ## See Also
 

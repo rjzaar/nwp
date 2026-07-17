@@ -199,7 +199,7 @@ This dedication can be verified by:
 **Repository:** https://github.com/rjzaar/nwp (mirror); canonical at
 https://<gitlab-host>/nwp/nwp
 **Primary Maintainer:** Robert Karsten Zaar
-**Contact:** rjzaar@gmail.com
+**Contact:** legal@nwpcode.org
 
 ---
 

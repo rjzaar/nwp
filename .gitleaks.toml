@@ -162,13 +162,10 @@ description = "Operator's personal email address leak (PII). Use a role/contact 
 regex = '''\b(rjzaar)@[a-z0-9.-]+\.[a-z]{2,}\b'''
 tags = ["leak", "email", "pii"]
 
-[rules.allowlist]
-description = "Copyright / security-contact contexts legitimately carry a reachable author/maintainer address (PUBLIC-PRIVATE-STRATEGY §2.2: author identity is permitted in copyright contexts; a public project needs a real SECURITY contact). Operator DECISION pending: swap these for role addresses (legal@ / security@) before the public refound — tracked in SCRUB-INVENTORY-2026-07-16.md."
-paths = [
-  '''^NOTICE$''',
-  '''^docs/CC0_DEDICATION\.md$''',
-  '''^docs/SECURITY\.md$''',
-]
+# No allowlist: the personal email was swapped for role addresses
+# (security@ / legal@, forwarding to the operator's inbox) in NOTICE /
+# CC0_DEDICATION.md / SECURITY.md on 2026-07-17 (ops#98), so nothing legitimately
+# carries the personal address any more — the rule now enforces everywhere.
 
 [[rules]]
 id = "live-domain-apex"

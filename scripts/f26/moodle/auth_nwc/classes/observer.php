@@ -127,8 +127,57 @@ class observer {
             case uid_lock::ACTION_CREATE:
             default:
                 // Happy path: the lock is intact / was just (re)applied by the
-                // executor. Nothing further to enforce at the session level.
+                // executor. Reconcile guild cohorts from the nwc `guilds` claim.
+                // Best-effort: sync_guilds() swallows its own errors so this can
+                // never break a login.
+                $guilds = self::fetch_guilds($config, $user);
+                if ($guilds !== null) {
+                    $auth->sync_guilds((int) $user->id, $guilds);
+                }
                 break;
+        }
+    }
+
+    /**
+     * Fetch the nwc `guilds` claim from the OIDC userinfo endpoint.
+     *
+     * The `guilds` claim is not written to any mdl_user field, so it must be
+     * read from userinfo. Core's get_userinfo() drops unmapped claims, so we use
+     * get_raw_userinfo(), which carries the full claim set. The user-tier access
+     * token is in the session (core stored it during complete_login, which runs
+     * in this same request), so no re-auth is needed.
+     *
+     * Returns the guilds array, or null if it could not be obtained (in which
+     * case the caller leaves cohorts untouched — never guesses).
+     *
+     * @param \stdClass $config auth_nwc config (has issuerid).
+     * @param \stdClass $user   The Moodle user.
+     * @return array|null
+     */
+    protected static function fetch_guilds(\stdClass $config, \stdClass $user): ?array {
+        try {
+            $issuer = \core\oauth2\api::get_issuer((int) $config->issuerid);
+            if (!$issuer || !$issuer->get('enabled')) {
+                return null;
+            }
+            $client = \core\oauth2\api::get_user_oauth_client(
+                $issuer, new \moodle_url('/auth/oauth2/login.php'));
+            if (!$client || !$client->is_logged_in()) {
+                // No live token in session (e.g. a later reconcile task calling
+                // this) — a scheduled userinfo probe is the right place for that.
+                return null;
+            }
+            $raw = $client->get_raw_userinfo();
+            if (!is_object($raw) || !isset($raw->guilds) || !is_array($raw->guilds)) {
+                // Claim absent → treat as "no guilds asserted", which would strip
+                // managed cohorts. That is too destructive on a missing claim, so
+                // return null (leave cohorts alone) rather than [] (remove all).
+                return null;
+            }
+            // Normalise stdClass entries to arrays for the pure decider.
+            return array_map(fn($g) => (array) $g, $raw->guilds);
+        } catch (\Throwable $e) {
+            return null;
         }
     }
 }

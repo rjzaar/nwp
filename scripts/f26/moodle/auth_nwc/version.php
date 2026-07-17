@@ -6,9 +6,9 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'auth_nwc';
-$plugin->version   = 2026071101;      // YYYYMMDDXX (bumped for the v1.0.0 release cut)
+$plugin->version   = 2026071800;      // guild→cohort sync (ops#93)
 $plugin->requires  = 2022041900;      // Moodle 4.0+
 $plugin->maturity  = MATURITY_STABLE; // merged to nwp/nwp main + live-proven end-to-end on ssc (F26).
-$plugin->release   = '1.0.0';         // ADR-0031 D3: tag = v + $plugin->release (=> v1.0.0).
+$plugin->release   = '1.1.0';         // guild→cohort claims-pull sync
 // Rides on Moodle core OAuth2 for the protocol dance (issuer/endpoints/keys).
 $plugin->dependencies = [];

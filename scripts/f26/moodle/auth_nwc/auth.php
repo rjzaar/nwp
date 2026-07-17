@@ -184,4 +184,85 @@ class auth_plugin_nwc extends auth_plugin_base {
             mtrace('[auth_nwc] ' . $msg);
         }
     }
+
+    /**
+     * Reconcile a member's Moodle cohorts to match their nwc `guilds` claim.
+     *
+     * Claims-pull at login (ops#93): each managed cohort mirrors one nwc guild,
+     * bound by the guild's STABLE uuid — cohort.idnumber = 'nwcguild:'.uuid —
+     * never by the serial group id (which renumbers on a DB rebuild) and never
+     * by label. The pure decision lives in \auth_nwc\guild_cohort_map; this only
+     * executes it against $DB.
+     *
+     * Only ever touches membership of cohorts whose idnumber carries the managed
+     * prefix, so operator-created cohorts are never modified. Best-effort: any
+     * failure is logged and swallowed — guild sync must never break a login.
+     *
+     * @param int   $userid Moodle user id.
+     * @param array $guilds The `guilds` claim: [{uuid, label, type, roles[]}, …].
+     * @return array{joined: string[], left: string[], created: string[]}
+     */
+    public function sync_guilds(int $userid, array $guilds): array {
+        global $DB, $CFG;
+        require_once($CFG->dirroot . '/cohort/lib.php');
+
+        $result = ['joined' => [], 'left' => [], 'created' => []];
+
+        try {
+            // The guild uuids the member is CURRENTLY in via managed cohorts.
+            $sql = "SELECT c.idnumber
+                      FROM {cohort} c
+                      JOIN {cohort_members} cm ON cm.cohortid = c.id
+                     WHERE cm.userid = :userid";
+            $current = [];
+            foreach ($DB->get_fieldset_sql($sql, ['userid' => $userid]) as $idnumber) {
+                if (\auth_nwc\guild_cohort_map::is_managed((string) $idnumber)) {
+                    $current[] = \auth_nwc\guild_cohort_map::uuid_from((string) $idnumber);
+                }
+            }
+
+            $plan = \auth_nwc\guild_cohort_map::decide($guilds, $current);
+
+            // JOIN / CREATE. Cohorts live in the system context.
+            $systemctx = \context_system::instance();
+            foreach ($plan['ensure'] as $g) {
+                $idnumber = \auth_nwc\guild_cohort_map::idnumber_for($g['uuid']);
+                $cohort = $DB->get_record('cohort', ['idnumber' => $idnumber]);
+                if (!$cohort) {
+                    $cohort = (object) [
+                        'contextid'   => $systemctx->id,
+                        'name'        => $g['label'],
+                        'idnumber'    => $idnumber,
+                        'description' => 'Auto-managed by auth_nwc; mirrors an nwc guild. Do not edit membership by hand.',
+                        'descriptionformat' => FORMAT_PLAIN,
+                        'visible'     => 1,
+                    ];
+                    $cohort->id = cohort_add_cohort($cohort);
+                    $result['created'][] = $g['label'];
+                }
+                if (!$DB->record_exists('cohort_members', ['cohortid' => $cohort->id, 'userid' => $userid])) {
+                    cohort_add_member($cohort->id, $userid);
+                    $result['joined'][] = $g['label'];
+                }
+            }
+
+            // LEAVE — only managed cohorts the member is no longer entitled to.
+            foreach ($plan['leave'] as $uuid) {
+                $idnumber = \auth_nwc\guild_cohort_map::idnumber_for($uuid);
+                $cohort = $DB->get_record('cohort', ['idnumber' => $idnumber]);
+                if ($cohort && $DB->record_exists('cohort_members', ['cohortid' => $cohort->id, 'userid' => $userid])) {
+                    cohort_remove_member($cohort->id, $userid);
+                    $result['left'][] = $cohort->name;
+                }
+            }
+
+            $this->log(sprintf('guild sync uid=%d joined=[%s] left=[%s] created=[%s]',
+                $userid, implode(',', $result['joined']), implode(',', $result['left']), implode(',', $result['created'])));
+        } catch (\Throwable $e) {
+            // Never let guild sync break a login.
+            $this->log('guild sync FAILED uid=' . $userid . ': ' . $e->getMessage());
+        }
+
+        return $result;
+    }
 }

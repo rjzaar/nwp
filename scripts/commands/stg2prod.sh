@@ -466,6 +466,13 @@ sync_files() {
         "--exclude=private/*"
         "--exclude=node_modules"
         "--exclude=.env"
+        # Never sync (and never --delete) per-host OAuth signing keys. They live
+        # at site-root (e.g. oauth-keys/), not under files/, so without this a
+        # stg→prod sync would replace prod's keypair with staging's (or delete
+        # it), invalidating every outstanding ss OIDC token → SSO breaks (ops#63).
+        "--exclude=oauth-keys/*"
+        "--exclude=*/oauth-keys/*"
+        "--exclude=keys/*"
     )
 
     # Build SSH options for rsync
@@ -554,11 +561,25 @@ import_config_production() {
         return 0
     fi
 
-    ocmsg "Importing configuration..."
-    if $ssh_cmd "cd $PROD_PATH && drush config:import -y" 2>&1 | tail -10; then
-        print_status "OK" "Configuration imported to production"
+    # GUARD (ops#63): config:import is fail-closed SKIPPED unless explicitly
+    # opted in. No NWP site tracks its Drupal config as code today — the sync dir
+    # is gitignored and stg's export never reaches prod through the rsync
+    # boundary — so importing whatever stale/empty snapshot prod happens to hold
+    # would REVOKE runtime-only config (e.g. nwc's `grant simple_oauth codes`,
+    # signing-key paths, the error-report token) and silently break live SSO.
+    # Opt in per run with NWP_ALLOW_CONFIG_IMPORT=1 once the site has a trusted
+    # tracked config/sync baseline (the real fix is ops#63 config-as-code). Also:
+    # a failed import is no longer demoted to a warning — it fails the deploy.
+    if [ "${NWP_ALLOW_CONFIG_IMPORT:-0}" != "1" ]; then
+        print_status "SKIP" "config:import skipped (set NWP_ALLOW_CONFIG_IMPORT=1 to enable — see ops#63)"
     else
-        print_status "WARN" "Configuration import had warnings"
+        ocmsg "Importing configuration..."
+        if $ssh_cmd "cd $PROD_PATH && drush config:import -y" 2>&1 | tail -10; then
+            print_status "OK" "Configuration imported to production"
+        else
+            print_error "Configuration import FAILED — aborting (config:import must not partially apply)"
+            return 1
+        fi
     fi
 
     return 0

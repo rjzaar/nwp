@@ -407,10 +407,16 @@ gitlab_api_create_project() {
     fi
 
     if [ -z "$token" ]; then
-        # Fallback to SSH method
-        ocmsg "No API token, using SSH method"
-        gitlab_create_project "$project_name" "$group"
-        return $?
+        # ops#49: FAIL CLOSED. Do NOT silently fall back to the SSH gitlab-rails
+        # path — that needs SSH + sudo on the GitLab box (full instance admin,
+        # MORE privilege than the API token) and would route straight around the
+        # ADR-0024 token downscope. Refuse and tell the operator; the explicit
+        # SSH path (gitlab_create_project) is still available to callers that
+        # deliberately choose it.
+        print_error "No GitLab API token — refusing to create project '${group}/${project_name}'."
+        print_info "Set a GitLab API token (pl secrets), or run the operator SSH path explicitly."
+        print_info "Not auto-escalating to SSH+sudo (that would bypass the token boundary)."
+        return 1
     fi
 
     local api_url="https://${gitlab_url}/api/v4"

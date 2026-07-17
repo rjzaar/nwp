@@ -229,6 +229,87 @@ pair_contract_couples_tier() {
         "$file" >/dev/null 2>&1
 }
 
+# pair_provider_sub_shape_guard <contract> <provider_code_root> <target_tier>
+#
+# The `sub_stability` gap that let nwp/ops#83's drift ship: pair_guard's D6 rule
+# only blocks a FULL-DB push. But a --code-only push (which D6 permits) also
+# severs every consumer UID-lock if the provider CODE reverts the `sub` shape —
+# e.g. deploying a branch whose nwc_oidc_claims module emits sub=$account->id()
+# (the serial uid) instead of sub=$user->uuid(). The contract declares
+# `identity.sub_stability: uuid`, but nothing verified the code honoured it —
+# `sub_stability` was read by NO code, only comments.
+#
+# This is that missing check. It is a STATIC assertion on the provider source
+# about to be deployed: the file(s) matching `identity.sub_source` (a glob under
+# the provider code root) must contain `identity.sub_assert` (a grep -E pattern
+# that proves the contracted sub shape is emitted).
+#
+# OPT-IN and fail-SAFE: no-op (returns 0) unless the contract couples the tier
+# AND declares sub_stability AND declares BOTH sub_source and sub_assert. So it
+# stays inert until an operator wires those fields — it can never block a deploy
+# it was not explicitly configured to guard. When wired and the assertion is
+# absent from the code, it returns 1 (REFUSE).
+#
+# Returns: 0 = pass or not-applicable · 1 = REFUSE (assertion missing) ·
+#          2 = misconfigured (declared but unverifiable — treated as refuse by
+#              callers, but distinguishable for diagnostics).
+pair_provider_sub_shape_guard() {
+    local contract="$1"
+    local code_root="$2"
+    local target="$3"
+
+    [ -f "$contract" ] || return 0
+    pair_contract_couples_tier "$contract" "$target" || return 0
+
+    local stability
+    stability="$(pair_contract_get "$contract" '.identity.sub_stability' 2>/dev/null || true)"
+    [ -n "$stability" ] || return 0   # not declared → nothing to enforce.
+
+    local source_glob assert_re
+    source_glob="$(pair_contract_get "$contract" '.identity.sub_source' 2>/dev/null || true)"
+    assert_re="$(pair_contract_get "$contract" '.identity.sub_assert' 2>/dev/null || true)"
+
+    # Declared stability but no enforceable assertion → advisory only, never block.
+    if [ -z "$source_glob" ] || [ -z "$assert_re" ]; then
+        _pair_info "pair sub-shape: '$stability' declared but no sub_source/sub_assert to enforce it (advisory)."
+        return 0
+    fi
+
+    if [ -z "$code_root" ] || [ ! -d "$code_root" ]; then
+        _pair_err "pair sub-shape: cannot verify — provider code root '$code_root' not found."
+        return 2
+    fi
+
+    # Resolve the glob under the code root and grep the matches for the assertion.
+    # The ls runs in a subshell cd'd to code_root (so the glob is relative to the
+    # provider tree), but the grep runs here, so re-anchor each match with
+    # "$code_root/$f".
+    local matches matched=0 found=0 f
+    matches="$(cd "$code_root" 2>/dev/null && eval "ls -1 $source_glob" 2>/dev/null)" || true
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        [ -f "$code_root/$f" ] || continue
+        matched=1
+        if grep -Eq "$assert_re" "$code_root/$f"; then
+            found=1
+            break
+        fi
+    done <<< "$matches"
+
+    if [ "$matched" -eq 0 ]; then
+        _pair_err "pair sub-shape: no file matched sub_source '$source_glob' under '$code_root'."
+        return 2
+    fi
+    if [ "$found" -eq 1 ]; then
+        return 0
+    fi
+
+    _pair_err "REFUSED: provider code does not emit the contracted sub shape (sub_stability: $stability)."
+    _pair_err "Expected /$assert_re/ in $source_glob — a --code-only deploy of this tree would revert the"
+    _pair_err "'$stability' sub and sever every consumer UID-lock (ADR-0031 D9 / nwp/ops#83)."
+    return 1
+}
+
 # --- deployed-version + RAG state (private/, never committed) -----------------
 #
 # The deployed contract_version each side reached at each tier is recorded on a
@@ -314,6 +395,10 @@ pair_guard() {
     local cmd="${3:-deploy}"
     local code_only="${4:-false}"
     local override="${5:-false}"
+    # Optional: the provider's code root, so the sub-shape guard can statically
+    # verify the deployed source honours the contracted sub_stability. Omitted by
+    # current callers → that check stays inert (opt-in at the caller layer too).
+    local code_root="${6:-}"
 
     # 1. Membership — not paired ⇒ no-op (off-unless-configured).
     local role pair_id rest
@@ -418,6 +503,17 @@ pair_guard() {
                 _pair_err "renumber Drupal uids and sever every '$consumer' SSO identity (ADR-0031 D6)."
                 _pair_info "Deploy code/config only: re-run with --code-only (the standing rule until this)."
                 _pair_info "Override (ledgered): --override-pair."
+                return 1
+            fi
+        fi
+        # 4d. sub-shape invariant (nwp/ops#83): even a --code-only push severs
+        # every consumer UID-lock if the provider CODE reverts the contracted sub
+        # shape. Opt-in — inert unless a code_root is passed AND the contract
+        # declares sub_source/sub_assert.
+        if [ -n "$code_root" ]; then
+            pair_provider_sub_shape_guard "$contract" "$code_root" "$target"
+            local sub_rc=$?
+            if [ "$sub_rc" -ne 0 ] && [ "$override" != "true" ]; then
                 return 1
             fi
         fi

@@ -178,6 +178,15 @@ identity:
   # re-import). Emitted by the nwc_oidc_claims alter hook (sub=$account->uuid()).
   # LIVE-PROVEN: the switch is already deployed on the empty-seed nwc live tier.
   sub_stability: uuid
+  # Enforcement for sub_stability (nwp/ops#75, pair_provider_sub_shape_guard):
+  # the provider file matching sub_source must contain sub_assert, or a
+  # --code-only deploy is REFUSED — this is the guard that would have caught the
+  # ops#83 branch-drift (a tree emitting sub=$account->id() reaching live).
+  # sub_source is a glob under the nwc provider code root; sub_assert is a
+  # grep -E pattern proving the UUID sub is emitted. Active once a deploy verb
+  # passes the provider code root to pair_guard (currently opt-in / inert).
+  sub_source: 'html/profiles/custom/nwc/modules/nwc_features/nwc_oidc_claims/nwc_oidc_claims.module'
+  sub_assert: '\$claims\["sub"\]\s*=\s*\$user->uuid\(\)'
   # ops#83 — paired-restore invariant. `sub_stability: uuid` makes the lock
   # survive a WITHIN-half renumber; `restore:` governs CROSS-half point-in-time
   # consistency (a DB restore/rebuild at a coupled tier, which D5's "rollback is

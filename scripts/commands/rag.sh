@@ -66,9 +66,14 @@ _rag_eligible_sites(){
             [ -d "$PROJECT_ROOT/sites/$s" ] && printf '%s\n' "$s"
         done
     } | sort -u | while read -r s; do
-        case "$s" in
-            verify-test*|bats-test*|trace-*|*-del|*-del[0-9]*|*delete*|tmp|latest|'(global)') continue ;;
-        esac
+        # Skip special pseudo-sites + fixture debris. is_fixture_sitename (lib/common.sh,
+        # ops#37) is the shared canonical fixture-prefix list; the pseudo-sites stay inline.
+        case "$s" in tmp|latest|'(global)') continue ;; esac
+        if command -v is_fixture_sitename >/dev/null 2>&1; then
+            is_fixture_sitename "$s" && continue
+        else
+            case "$s" in verify-test*|bats-test*|trace-*|*-del|*-del[0-9]*|*delete*) continue ;; esac
+        fi
         printf '%s\n' "$s"
     done
 }

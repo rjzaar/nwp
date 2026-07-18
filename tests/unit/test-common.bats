@@ -354,10 +354,27 @@ teardown() {
     mkdir -p "$main"
     ( cd "$main" && git init -q && printf '.secrets.yml\n' > .gitignore \
       && git add .gitignore && git -c user.email=t@t -c user.name=t commit -qm init )
-    # untracked → exists only in the main tree, like the real gitignored .secrets.yml
     printf 'gitlab:\n  api_token: MAINVAL\n' > "$main/.secrets.yml"
     ( cd "$main" && git worktree add -q wt )
     PROJECT_ROOT="$main/wt" run get_secret "gitlab.api_token" "DEF"
     ( cd "$main" && git worktree remove --force wt 2>/dev/null || true )
     [ "$output" = "MAINVAL" ]
+}
+
+################################################################################
+# is_fixture_sitename() — canonical fixture-prefix predicate (ops#37)
+################################################################################
+
+@test "is_fixture_sitename: matches verify/bats/trace/del fixture prefixes" {
+    for n in verify-test3 bats-test-x trace-del2 my-del foo-delete tr-del7; do
+        run is_fixture_sitename "$n"
+        [ "$status" -eq 0 ] || { echo "should match: $n"; return 1; }
+    done
+}
+
+@test "is_fixture_sitename: does NOT match real or special sites" {
+    for n in realsite nwc ss avc tmp latest deltoid; do
+        run is_fixture_sitename "$n"
+        [ "$status" -eq 1 ] || { echo "should NOT match: $n"; return 1; }
+    done
 }

@@ -774,6 +774,336 @@ cmd_consumers(){
 }
 
 ################################################################################
+# inject — registry-driven env-config + cross-site token injection (§6 P0-4)
+#
+#   pl secrets inject <site> --tier=stg|live [--dry-run|--apply]
+#
+# Injects the env-specific $config overrides + the cross-site link secrets
+# onto a LIVE box, WITHOUT ever reading a raw secret value off live (ADR-0017).
+#   • Drupal (project.type=drupal): writes the rsync-excluded, include-at-
+#     generate_live_settings file  settings.local.overrides.php  (NOT
+#     settings.local.php, which is nuked every deploy — design §3.5/§5.3),
+#     then `drush cr`.
+#   • Moodle (project.type=moodle): sets mdl_config rows via admin/cli/cfg.php
+#     as `sudo -u www-data`.
+#
+# The WHAT-to-inject + WHERE-it-targets come entirely from the registry's
+# top-level `inject:` list (private/secrets-registry.yml, tokenless). Secret
+# VALUES are pulled from the secret store (.secrets.yml) via each item's
+# `secret: <dotted.key>`; non-secret env-invariants (key PATHS, base_urls)
+# via `value: <literal>`. FAIL-CLOSED if a required `secret:` key is empty
+# or missing. Values are NEVER echoed; --dry-run prints key-paths + target
+# host/file only (no values). Registry inject-entry schema:
+#
+#   inject:
+#     - site: nwc
+#       platform: drupal
+#       tiers: [live, stg]
+#       # overrides_file: /var/www/nwc/html/sites/default/settings.local.overrides.php  (optional; else derived)
+#       # webroot: html   # optional; else derived from stg .ddev docroot, default "web"
+#       config:
+#         - { object: "nwc_feedback.cross_site", keys: [bearer_token],       secret: link.nwc_ssc.bearer_token }
+#         - { object: "nwc_copyright.settings",  keys: [moodle, admin_token], secret: link.nwc_ssc.admin_token }
+#         - { object: "nwc_copyright.settings",  keys: [moodle, base_url],    value:  "https://ssc.example.org" }
+#         - { object: "simple_oauth.settings",   keys: [public_key],          value:  "/var/www/nwc/oauth-keys/public.key" }
+#         - { object: "simple_oauth.settings",   keys: [private_key],         value:  "/var/www/nwc/oauth-keys/private.key" }
+#     - site: ssc
+#       platform: moodle
+#       tiers: [live, stg]
+#       config:
+#         - { component: local_nwc_copyright_sync, name: admin_token,  secret: link.nwc_ssc.admin_token }
+#         - { component: local_nwc_copyright_sync, name: signal_token, secret: link.nwc_ssc.signal_token }
+#         - { component: local_nwc_copyright_sync, name: nwc_base_url, value: "https://nwc.example.org" }
+################################################################################
+
+# yq scalar read helper for the inject: tree (empty on null/missing)
+_inj(){ "$YQ" e "$1 // \"\"" "$REGISTRY" 2>/dev/null | grep -v '^null$'; }
+
+# Find the inject-entry index for <site>+<tier>, or -1.
+inject_index_of(){
+  local site="$1" tier="$2" n i s t match
+  n=$("$YQ" e '.inject | length' "$REGISTRY" 2>/dev/null); { [ "$n" = "null" ] || [ -z "$n" ]; } && { echo "-1"; return; }
+  for ((i=0;i<n;i++)); do
+    s=$(_inj ".inject[$i].site")
+    [ "$s" = "$site" ] || continue
+    match=""
+    while IFS= read -r t; do [ "$t" = "$tier" ] && match=1; done \
+      < <("$YQ" e ".inject[$i].tiers[]?" "$REGISTRY" 2>/dev/null)
+    [ -n "$match" ] && { echo "$i"; return; }
+  done
+  echo "-1"
+}
+
+# Escape a value for a PHP single-quoted string literal.
+_php_q(){ local s="$1"; s="${s//\\/\\\\}"; s="${s//\'/\\\'}"; printf '%s' "$s"; }
+
+# Resolve a secret value length WITHOUT letting the value leave yq (presence
+# check only; used in every mode so fail-closed happens before any live write).
+_secret_len(){ "$YQ" e "(.$1 // \"\") | length" "$SECRETS_FILE" 2>/dev/null; }
+
+# Live config resolver — mirrors stg2live.sh/moodle.sh get_live_config VERBATIM
+# (reads per-site .nwp.yml → server config). Requires lib/common.sh sourced.
+get_live_config(){
+  local sitename="$1" field="$2"
+  local base; base=$(get_base_name "$sitename")
+  local yq_path
+  case "$field" in
+    server_ip)
+      local server_name
+      server_name=$(get_site_config_value "$base" '.live.server' "")
+      if [[ -n "$server_name" ]]; then get_server_config "$server_name" "ip" ""; return; fi
+      get_site_config_value "$base" '.live.server_ip' ""; return ;;
+    domain)      yq_path='.live.domain' ;;
+    type)        yq_path='.live.type' ;;
+    server)      yq_path='.live.server' ;;
+    remote_path) yq_path='.live.remote_path' ;;
+    *)           yq_path=".live.$field" ;;
+  esac
+  get_site_config_value "$base" "$yq_path" ""
+}
+
+cmd_inject(){
+  local site="" tier="" MODE="dry-run"
+  while [ $# -gt 0 ]; do case "$1" in
+    --tier=*)   tier="${1#*=}" ;;
+    --tier)     tier="${2:-}"; shift ;;
+    --dry-run)  MODE="dry-run" ;;
+    --apply|--apply-to-live) MODE="apply" ;;
+    -h|--help)  echo "usage: pl secrets inject <site> --tier=stg|live [--dry-run|--apply]"; return 0 ;;
+    -*)         die "unknown flag: $1" ;;
+    *)          [ -z "$site" ] && site="$1" || die "unexpected arg: $1" ;;
+  esac; shift; done
+
+  [ -n "$site" ] || die "usage: pl secrets inject <site> --tier=stg|live [--dry-run|--apply]"
+  case "$tier" in stg|live) ;; *) die "--tier must be stg or live (got: '${tier:-}')" ;; esac
+
+  need_yq; need_registry
+  # Heavy libs only needed here — keep the rest of `pl secrets` lightweight.
+  source "$PROJECT_ROOT/lib/common.sh"      2>/dev/null || die "cannot source lib/common.sh"
+  source "$PROJECT_ROOT/lib/impact.sh"      2>/dev/null || die "cannot source lib/impact.sh"
+  source "$PROJECT_ROOT/lib/deploy-gate.sh" 2>/dev/null || true
+
+  local base; base=$(get_base_name "$site")
+
+  # Registry-driven: find the inject spec for this site+tier. Fail-closed if absent.
+  local ix; ix=$(inject_index_of "$site" "$tier")
+  [ "$ix" = "-1" ] && ix=$(inject_index_of "$base" "$tier")
+  [ "$ix" = "-1" ] && die "no inject spec for site '$site' tier '$tier' in $REGISTRY (add an inject: block — see design §5.7 / P0-5 follow-up)"
+
+  local platform; platform=$(_inj ".inject[$ix].platform")
+  [ -n "$platform" ] || die "inject entry for '$site' has no platform (drupal|moodle)"
+
+  # Live-provision + gate checks (only bite on the live tier).
+  local server_ip="" ssh_user="" remote_path="" sudo_prefix=""
+  if [ "$tier" = "live" ]; then
+    server_ip=$(get_live_config "$base" "server_ip")
+    [ -n "$server_ip" ] || die "refusing live inject: no server_ip for '$base' (site not provisioned)"
+    ssh_user=$(get_ssh_user "$base")
+    remote_path=$(get_live_config "$base" "remote_path"); [ -z "$remote_path" ] && remote_path="/var/www/${base}"
+  else
+    # stg tier: resolve from stg config if present; else the deterministic default.
+    server_ip=$(get_site_config_value "$base" '.stg.server_ip' "")
+    ssh_user=$(get_site_config_value "$base" '.stg.ssh_user' "$(get_ssh_user "$base")")
+    remote_path=$(get_site_config_value "$base" '.stg.remote_path' "/var/www/${base}")
+  fi
+  [ "$ssh_user" = "gitlab" ] && sudo_prefix="sudo"
+
+  print_header "secrets inject — $base ($platform, tier=$tier, mode=$MODE)"
+
+  # ── Build the plan (targets only; secret VALUES never touched in this loop) ──
+  # Parallel arrays describing each config item.
+  local -a P_LABEL=() P_KIND=() P_SRC=() P_OBJ=() P_KEYIDX=() P_COMP=() P_NAME=()
+  local -a MISSING=()
+  local nc j
+  nc=$("$YQ" e ".inject[$ix].config | length" "$REGISTRY" 2>/dev/null); [ "$nc" = "null" ] && nc=0
+  [ "${nc:-0}" -gt 0 ] || die "inject entry for '$site' has no config items"
+
+  for ((j=0;j<nc;j++)); do
+    local secret value keypath keyidx object comp name label kind src
+    secret=$(_inj ".inject[$ix].config[$j].secret")
+    value=$(_inj ".inject[$ix].config[$j].value")
+    if [ "$platform" = "drupal" ]; then
+      object=$(_inj ".inject[$ix].config[$j].object")
+      [ -n "$object" ] || die "config item $j: drupal inject needs 'object'"
+      # Build the $config[...] index string from keys[]
+      keyidx=""
+      while IFS= read -r k; do [ -n "$k" ] && keyidx="${keyidx}['$(_php_q "$k")']"; done \
+        < <("$YQ" e ".inject[$ix].config[$j].keys[]?" "$REGISTRY" 2>/dev/null)
+      [ -n "$keyidx" ] || die "config item $j: drupal inject needs non-empty 'keys'"
+      label="\$config['${object}']${keyidx}"
+      P_OBJ+=("$object"); P_KEYIDX+=("$keyidx"); P_COMP+=(""); P_NAME+=("")
+    else
+      comp=$(_inj ".inject[$ix].config[$j].component")
+      name=$(_inj ".inject[$ix].config[$j].name")
+      { [ -n "$comp" ] && [ -n "$name" ]; } || die "config item $j: moodle inject needs 'component' + 'name'"
+      label="${comp}/${name}"
+      P_OBJ+=(""); P_KEYIDX+=(""); P_COMP+=("$comp"); P_NAME+=("$name")
+    fi
+
+    if [ -n "$secret" ]; then
+      kind="secret"; src="$secret"
+      # Fail-closed presence check — length computed INSIDE yq; value never read here.
+      local ln; ln=$(_secret_len "$secret"); ln=${ln:-0}
+      [ "$ln" = "null" ] && ln=0
+      [ "${ln:-0}" -gt 0 ] || MISSING+=("$label  ⇐  .secrets.yml:$secret (empty/missing)")
+    elif [ -n "$value" ]; then
+      kind="value"; src="$value"
+    else
+      die "config item $j ($label): neither 'secret' nor 'value' set"
+    fi
+    P_LABEL+=("$label"); P_KIND+=("$kind"); P_SRC+=("$src")
+  done
+
+  # Resolve the Drupal overrides-file path (target file).
+  local overrides_file="" webroot=""
+  if [ "$platform" = "drupal" ]; then
+    overrides_file=$(_inj ".inject[$ix].overrides_file")
+    if [ -z "$overrides_file" ]; then
+      webroot=$(_inj ".inject[$ix].webroot")
+      if [ -z "$webroot" ]; then
+        local stg_ddev="$PROJECT_ROOT/sites/$base/stg/.ddev/config.yaml"
+        [ -f "$stg_ddev" ] && webroot=$(grep "^docroot:" "$stg_ddev" 2>/dev/null | awk '{print $2}')
+        [ -z "$webroot" ] && webroot="web"
+      fi
+      overrides_file="${remote_path}/${webroot}/sites/default/settings.local.overrides.php"
+    fi
+  fi
+
+  # ── Print the plan (key-paths + targets ONLY; never any value) ──
+  local target_desc
+  if [ "$platform" = "drupal" ]; then
+    target_desc="${ssh_user}@${server_ip}:${overrides_file}"
+  else
+    target_desc="${ssh_user}@${server_ip}: admin/cli/cfg.php @ ${remote_path}"
+  fi
+  echo "  target: $target_desc"
+  printf "  %-6s %s\n" "KIND" "CONFIG KEY-PATH  ⇐  SOURCE"
+  printf "  %-6s %s\n" "----" "--------------------------"
+  local i
+  for i in "${!P_LABEL[@]}"; do
+    if [ "${P_KIND[$i]}" = "secret" ]; then
+      printf "  %-6s %s  ⇐  .secrets.yml:%s\n" "secret" "${P_LABEL[$i]}" "${P_SRC[$i]}"
+    else
+      printf "  %-6s %s  =  %s\n" "value" "${P_LABEL[$i]}" "${P_SRC[$i]}"
+    fi
+  done
+  echo
+
+  # ── Fail-closed on any missing required secret (before any live write) ──
+  if [ "${#MISSING[@]}" -gt 0 ]; then
+    print_error "FAIL-CLOSED: required secret value(s) empty/missing in $SECRETS_FILE:"
+    printf '    - %s\n' "${MISSING[@]}"
+    print_hint "store them safely: pl secrets set <dotted.key>  (hidden entry, never echoed)"
+    return 1
+  fi
+
+  # ── IMPACT manifest (always rendered) ──
+  impact_reset
+  if [ "$platform" = "drupal" ]; then
+    impact_overwrite "Overrides" "${overrides_file} — ${nc} \$config override(s), rewritten in full"
+    impact_keep "Live member DB, oauth-keys/{private,public}.key, settings.local.php — untouched"
+  else
+    impact_overwrite "mdl_config" "${nc} row(s) via admin/cli/cfg.php on ${base} (${remote_path})"
+    impact_keep "Live Moodle DB content, moodledata, config.php — untouched"
+  fi
+  impact_warn "cross-site secret values transit ssh only; written ${platform} target on '${base}' (mode 440 www-data). Never printed."
+  impact_render
+
+  if [ "$MODE" = "dry-run" ]; then
+    print_info "[dry-run] no live write. Re-run with --apply to inject."
+    return 0
+  fi
+
+  # ── APPLY ──
+  # No TTY + no live server → nothing to write to.
+  [ -n "$server_ip" ] || die "no server_ip resolved for '$base' tier '$tier' — cannot apply"
+
+  # Confirm: typed name on live (last-recovery-ish); standard on stg.
+  if [ "$tier" = "live" ]; then
+    # Hardware/signature deploy gate (ADR-0028) — no-op unless configured on ver.
+    if declare -F deploy_gate_require >/dev/null; then
+      deploy_gate_require "$base" "live" "inject cross-site config/secrets ($platform)" || die "deploy gate refused — aborting inject"
+    fi
+    impact_confirm typed "$base" "${AUTO_CONFIRM:-false}" || { print_warning "aborted"; return 1; }
+  else
+    impact_confirm standard "inject $platform config on '$base' (stg)" "${AUTO_CONFIRM:-false}" || { print_warning "aborted"; return 1; }
+  fi
+
+  local ssh_opts; ssh_opts=$(nwp_ssh_opts "$base")
+
+  if [ "$platform" = "drupal" ]; then
+    # Assemble the overrides file content locally (values in-memory only; never
+    # printed), pipe it over ssh into the rsync-excluded overrides file.
+    local body php_val
+    body="<?php
+/**
+ * settings.local.overrides.php — operator/tooling-managed, rsync-excluded,
+ * include()d at the tail of the generated settings.local.php. Written by
+ * \`pl secrets inject\` (design §3.5/§5.3, P0-4). DO NOT hand-edit tokens here;
+ * re-run \`pl secrets inject $base --tier=$tier --apply\`.
+ */
+"
+    for i in "${!P_LABEL[@]}"; do
+      if [ "${P_KIND[$i]}" = "secret" ]; then
+        # Read the value ONLY now, at write time, straight into the PHP literal.
+        php_val=$(_php_q "$("$YQ" e ".${P_SRC[$i]} // \"\"" "$SECRETS_FILE" 2>/dev/null)")
+      else
+        php_val=$(_php_q "${P_SRC[$i]}")
+      fi
+      body+="\$config['${P_OBJ[$i]}']${P_KEYIDX[$i]} = '${php_val}';
+"
+      php_val=""
+    done
+
+    if printf '%s' "$body" | ssh $ssh_opts -o BatchMode=yes "${ssh_user}@${server_ip}" \
+         "$sudo_prefix tee '${overrides_file}' >/dev/null"; then
+      body=""
+      ssh $ssh_opts -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "$sudo_prefix chown www-data:www-data '${overrides_file}'; $sudo_prefix chmod 440 '${overrides_file}'" 2>/dev/null
+      print_status "OK" "wrote ${nc} override(s) → ${overrides_file}"
+    else
+      body=""; die "failed to write ${overrides_file}"
+    fi
+
+    print_info "rebuilding Drupal cache (drush cr)…"
+    ssh $ssh_opts -o BatchMode=yes "${ssh_user}@${server_ip}" \
+      "cd '${remote_path}' && $sudo_prefix -u www-data drush cr" 2>/dev/null \
+      && print_status "OK" "drush cr" || print_warning "drush cr failed — run it manually on ${base}"
+
+  else
+    # Moodle: one cfg.php invocation per row, as www-data. cfg.php requires the
+    # value on argv (no stdin form) — that is the minimum exposure cfg.php needs;
+    # nothing is echoed locally and it lands only in the live php process argv.
+    local runas="sudo -u www-data"; [ "$ssh_user" = "www-data" ] && runas=""
+    local cfg="${remote_path}/admin/cli/cfg.php" ok=1 cval rcval
+    for i in "${!P_LABEL[@]}"; do
+      if [ "${P_KIND[$i]}" = "secret" ]; then
+        cval=$("$YQ" e ".${P_SRC[$i]} // \"\"" "$SECRETS_FILE" 2>/dev/null)
+      else
+        cval="${P_SRC[$i]}"
+      fi
+      # Escape the value for the remote single-quoted context (' -> '\'').
+      # cfg.php needs --set on argv (no stdin form) — that is the minimum
+      # exposure; the value transits ssh only and is never echoed locally.
+      rcval="${cval//\'/\'\\\'\'}"; cval=""
+      if ssh $ssh_opts -o BatchMode=yes "${ssh_user}@${server_ip}" \
+           "$runas php '${cfg}' --component='${P_COMP[$i]}' --name='${P_NAME[$i]}' --set='${rcval}'" 2>/dev/null; then
+        print_status "OK" "set ${P_COMP[$i]}/${P_NAME[$i]}"
+      else
+        print_status "FAIL" "set ${P_COMP[$i]}/${P_NAME[$i]}"; ok=0
+      fi
+      rcval=""
+    done
+    ssh $ssh_opts -o BatchMode=yes "${ssh_user}@${server_ip}" \
+      "$runas php '${remote_path}/admin/cli/purge_caches.php'" 2>/dev/null \
+      && print_status "OK" "purge_caches" || print_warning "purge_caches failed — run it manually on ${base}"
+    [ "$ok" = "1" ] || return 1
+  fi
+
+  print_success "inject complete — $base ($platform, tier=$tier). No value was printed (ADR-0017)."
+}
+
+################################################################################
 # main
 ################################################################################
 sub="${1:-status}"; shift || true
@@ -789,6 +1119,7 @@ case "$sub" in
   audit)          cmd_audit "$@" ;;
   steps|reissue)  cmd_steps "$@" ;;
   consumers)      cmd_consumers "$@" ;;
+  inject)         cmd_inject "$@" ;;
   scan)           cmd_scan "$@" ;;
   scrub)          cmd_scrub "$@" ;;
   lint)           cmd_lint "$@" ;;
@@ -812,6 +1143,10 @@ ${BOLD}pl secrets${NC} — registry-driven secret lifecycle (no token stored on 
   pl secrets audit [--days N]    LIVE probe: is each token valid? real expiry? drift? (--sync fixes drift, --quiet for cron)
   pl secrets steps <#|id>        print the exact reissue procedure for one entry
   pl secrets consumers [--write] map each token to the code/functions that read it (--write → private/token-consumers.md)
+  pl secrets inject <site> --tier=stg|live [--dry-run|--apply]
+                                 registry-driven env-config + cross-site token injection (§6 P0-4):
+                                 Drupal → settings.local.overrides.php + drush cr; Moodle → admin/cli/cfg.php.
+                                 DRY-RUN default; prints key-paths + targets ONLY, never values (ADR-0017).
   pl secrets lint                cross-check the registry against .secrets.yml (orphans, comment-secrets, gaps)
   pl secrets scan                leak sweep over transcripts, logs, history
   pl secrets scrub [files...]    redact secret strings (pattern + value) in place

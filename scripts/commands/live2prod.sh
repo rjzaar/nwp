@@ -263,6 +263,14 @@ run_db_updates() {
 import_config() {
     local base_name="$1"
 
+    # GUARD (ops#63): fail-closed skip unless opted in — see stg2prod.sh for the
+    # rationale (importing a stale/empty sync snapshot revokes runtime-only
+    # config and breaks live SSO). This path already fails the deploy on error.
+    if [ "${NWP_ALLOW_CONFIG_IMPORT:-0}" != "1" ]; then
+        print_status "SKIP" "config:import skipped (set NWP_ALLOW_CONFIG_IMPORT=1 to enable — see ops#63)"
+        return 0
+    fi
+
     print_info "Importing configuration on production..."
 
     local import_cmd="cd $PROD_PATH && drush config:import -y"

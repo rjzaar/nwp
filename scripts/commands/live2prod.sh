@@ -349,7 +349,14 @@ main() {
     # Pair guard (ADR-0031/ops#75): refuse a paired promotion that breaks
     # provider-first ordering, the D6 UID-lock/--code-only rule, or a red pair.
     # No-op for unpaired sites; fail-closed on a declared-but-missing contract.
-    if ! pair_guard "$BASE_NAME" "prod" "live2prod" "$CODE_ONLY" "$OVERRIDE_PAIR"; then
+    # ops#75/ops#83: resolve the provider's local code root (the live tier tree
+    # being promoted) so pair_provider_sub_shape_guard can statically verify the
+    # deployed source still emits the contracted UUID sub. Resolves empty when no
+    # local live checkout exists → the sub-shape check stays inert (never a false
+    # refusal); inert for non-provider/uncoupled sites regardless.
+    local PROVIDER_CODE_ROOT
+    PROVIDER_CODE_ROOT="$(resolve_project "$BASE_NAME" "live" 2>/dev/null || true)"
+    if ! pair_guard "$BASE_NAME" "prod" "live2prod" "$CODE_ONLY" "$OVERRIDE_PAIR" "$PROVIDER_CODE_ROOT"; then
         exit 1
     fi
 

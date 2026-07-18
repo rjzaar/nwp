@@ -1442,7 +1442,10 @@ main() {
     # promotion that violates provider-first ordering, the D6 UID-lock/--code-only
     # rule, or a red pair. No-op for unpaired sites; fail-closed on a declared pair
     # whose contract is missing. --override-pair is the ledgered escape.
-    if ! pair_guard "$BASE_NAME" "live" "stg2live" "$CODE_ONLY" "$OVERRIDE_PAIR"; then
+    # ops#75/ops#83: pass the provider code root (the staging tree being promoted)
+    # so pair_provider_sub_shape_guard can statically verify the deployed source
+    # still emits the contracted UUID sub. Inert for non-provider/uncoupled sites.
+    if ! pair_guard "$BASE_NAME" "live" "stg2live" "$CODE_ONLY" "$OVERRIDE_PAIR" "$STG_DIR"; then
         exit 1
     fi
 

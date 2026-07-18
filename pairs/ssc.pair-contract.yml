@@ -35,7 +35,7 @@ surfaces:
     provider_min: "0.5.0"       # nwc simple_oauth issuer
     consumer_min: "1.0.0"       # auth_nwc Moodle plugin (F26; matches the v1.0.0 release cut on ops-auth-nwc-v1)
     schema: "contracts/oauth_sso.claims.schema.json"
-    schema_sha256: "1f6add0b00f595662a13cc093ac6224e9790e6be39473de394a49540c17a6572"
+    schema_sha256: "52cc70c59994b5b03f834ad18f9ed88d545b5efb85c8900c6d60a8888d6e514f"
   copyright_sync:
     provider_min: "0.5.0"       # nwc_copyright document versions
     consumer_min: "0.2.1"       # local_nwc_copyright_sync (ops#85 fix-forward: restores idempotency guard + beta_cc0)
@@ -178,6 +178,15 @@ identity:
   # re-import). Emitted by the nwc_oidc_claims alter hook (sub=$account->uuid()).
   # LIVE-PROVEN: the switch is already deployed on the empty-seed nwc live tier.
   sub_stability: uuid
+  # Enforcement for sub_stability (nwp/ops#75, pair_provider_sub_shape_guard):
+  # the provider file matching sub_source must contain sub_assert, or a
+  # --code-only deploy is REFUSED — this is the guard that would have caught the
+  # ops#83 branch-drift (a tree emitting sub=$account->id() reaching live).
+  # sub_source is a glob under the nwc provider code root; sub_assert is a
+  # grep -E pattern proving the UUID sub is emitted. Active once a deploy verb
+  # passes the provider code root to pair_guard (currently opt-in / inert).
+  sub_source: 'html/profiles/custom/nwc/modules/nwc_features/nwc_oidc_claims/nwc_oidc_claims.module'
+  sub_assert: '\$claims\["sub"\]\s*=\s*\$user->uuid\(\)'
   # ops#83 — paired-restore invariant. `sub_stability: uuid` makes the lock
   # survive a WITHIN-half renumber; `restore:` governs CROSS-half point-in-time
   # consistency (a DB restore/rebuild at a coupled tier, which D5's "rollback is

@@ -131,14 +131,24 @@ rebrand `nwc_`→`nw2_` across 31 modules is a separate decision — do NOT do i
 ### Punch list to finish nw2 (remaining)
 1. **Auth-surface review (two-person, CLAUDE.md):** `nwc_collab` HMAC token service; `nwc_moodle_oauth`
    OIDC UserInfo endpoint. Both ported verbatim from avc — review before any stg/live exposure.
+   (ops#22 records these as reviewed + signed off.)
 2. **`nwc_collab` Node sidecar:** `…/nwc_collab/hocuspocus/server.mjs` needs `npm install` in that
    dir to run at runtime (module enables without it; real-time editing won't work until built).
-3. **Recipe:** add `nwc_collab` + `nwc_moodle*` to `…/custom/nwc/recipe/recipe.yml` so a FRESH
-   nw2 install enables them (right now they're enabled only in the imported DB).
-4. **nwc-only modules:** `nwc_editorial`/`nwc_formation`/`nwc_pairing` are present on disk (full nwc
-   copy) but not enabled in the imported DB — enable + verify if wanted.
-5. **Naming/rebrand decision (OPEN):** keep `nwc_` or rebrand `nwc_`→`nw2_` fleet-wide. Deferred.
-6. **nw2 git identity:** remotes are disconnected (sandbox). Give nw2 its own repo before any push.
+3. ✅ **Recipe + fresh-install verification (DONE 2026-07-01):** `nwc_collab` + `nwc_moodle` added
+   (`beaa44a`). Verified by a real fresh `drush site:install social` + recipe apply on nwc-dev
+   (snapshot-protected, restored): all 58 recipe modules enable incl. both ports. Runtime caught a
+   4-module divergence from the imported DB → recipe fixed (`f417444`) to add `book`,
+   `nwc_moodle_data`, `nwc_moodle_sync` (the parent `nwc_moodle` is an empty shell by its own
+   .info.yml). **`nwc_moodle_oauth` (OAuth2 provider / auth surface) left opt-in — needs sign-off.**
+4. ✅ **nwc-only WIP modules (DONE 2026-07-01 — left opt-in):** `nwc_editorial` (A30 WIP),
+   `nwc_carmelite_dictionary` (complete; lives inside the `nwc_formation` *container* dir — there is
+   no `nwc_formation` module), `nwc_pairing` (scaffold). None in recipe; none block anything.
+5. ✅ **Naming (DECIDED 2026-07-01):** keep `nwc_` prefix (matches repo `nwp/nwc`; no rebrand).
+6. ✅ **nwc git identity (DONE 2026-07-01):** adopted the existing `nwp/nwc` (profile) + `nwp/nwc-project`
+   (site) repos — the names already match the canonical 2.0. Un-fork line was a direct descendant of
+   each `main`, so adoption was a clean **fast-forward, not a force-push**: `nwp/nwc` `a552edb..beaa44a`,
+   `nwp/nwc-project` `dd2e1f8..e8b18ae` (both `main` + an `unfork/open-social-13` branch). `sites/nw1`
+   remotes disconnected → pure local-only archive. Ref: ops#22 punch-list #1.
 7. **Productionization** (shared w/ ops#3 §8): replace dev symlinks with composer packaging; CI gates.
 8. **Optional rigor:** deep per-file content diff of the divergent modules to 100%-confirm nwc ⊇ avc
    (size + feature-signature evidence already says yes; this would just remove all doubt).

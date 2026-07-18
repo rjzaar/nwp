@@ -254,6 +254,61 @@ check_network() {
     return $errors
 }
 
+check_gitlab_token() {
+    local errors=0
+    print_header "Checking GitLab Token"
+
+    # gitlab_token_status lives in lib/git.sh (not auto-sourced by doctor).
+    command -v gitlab_token_status >/dev/null 2>&1 || source "$PROJECT_ROOT/lib/git.sh"
+
+    local line status owner is_admin expires
+    line="$(gitlab_token_status)"
+    IFS='|' read -r status owner is_admin expires <<< "$line"
+
+    case "$status" in
+        MISSING)
+            print_warning "GitLab token (gitlab.api_token): not set"
+            print_hint "Set it:  pl secrets set gitlab.api_token"
+            ;;
+        NOURL)
+            print_warning "GitLab token: can't resolve the GitLab URL (settings.url in nwp.yml)"
+            ;;
+        UNREACHABLE)
+            print_warning "GitLab token: could not reach the API to verify (network/GitLab down)"
+            ;;
+        INVALID)
+            print_error "GitLab token: INVALID — revoked or EXPIRED (API returned 401/403)"
+            print_hint "This is why automation would fail silently. Rotate: create a new token, then 'pl secrets set gitlab.api_token'"
+            errors=1
+            ;;
+        OK)
+            if [ "$is_admin" = "True" ]; then
+                print_warning "GitLab token: valid but ADMIN identity ($owner)"
+                print_hint "Downscope to a non-admin group/project bot (Developer + api) — the ADR-0024 linchpin"
+            else
+                local msg="GitLab token: valid — $owner (non-admin)"
+                [ -n "$expires" ] && msg="$msg, expires $expires"
+                print_success "$msg"
+                if [ -n "$expires" ]; then
+                    local exp_epoch now days
+                    exp_epoch=$(date -d "$expires" +%s 2>/dev/null || echo 0)
+                    now=$(date +%s)
+                    if [ "$exp_epoch" -gt 0 ]; then
+                        days=$(( (exp_epoch - now) / 86400 ))
+                        if [ "$days" -lt 0 ]; then
+                            print_error "GitLab token EXPIRED $(( -days )) day(s) ago — rotate now"
+                            errors=1
+                        elif [ "$days" -lt 30 ]; then
+                            print_warning "GitLab token expires in $days day(s) — rotate soon"
+                        fi
+                    fi
+                fi
+            fi
+            ;;
+    esac
+    return $errors
+}
+
 check_common_issues() {
     local errors=0
 
@@ -476,6 +531,8 @@ main() {
     echo ""
 
     check_network || total_errors=$((total_errors + $?))
+
+    check_gitlab_token || total_errors=$((total_errors + $?))
     echo ""
 
     check_common_issues || total_errors=$((total_errors + $?))

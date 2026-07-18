@@ -367,7 +367,15 @@ get_gitlab_default_group() {
 # Get GitLab API token from .secrets.yml
 # Usage: get_gitlab_token
 get_gitlab_token() {
-    local secrets_file="${PROJECT_ROOT}/.secrets.yml"
+    # Resolve .secrets.yml worktree-aware (ops#70): it's gitignored, so from a
+    # linked git worktree it lives only in the main tree. Reuse the shared
+    # resolver when available, else fall back to PROJECT_ROOT.
+    local secrets_file
+    if command -v _resolve_infra_secrets_file >/dev/null 2>&1; then
+        secrets_file="$(_resolve_infra_secrets_file)"
+    else
+        secrets_file="${PROJECT_ROOT}/.secrets.yml"
+    fi
 
     if [ ! -f "$secrets_file" ]; then
         return 1
@@ -389,6 +397,48 @@ get_gitlab_token() {
             exit
         }
     ' "$secrets_file"
+}
+
+# Report the health of a GitLab api token WITHOUT ever printing its value.
+# The silent-401 problem (a revoked/expired token that just makes automation
+# fail quietly) is what this makes visible. Echoes one pipe-delimited line:
+#   "<STATUS>|<owner>|<is_admin>|<expires_at>"
+#   STATUS = MISSING | NOURL | UNREACHABLE | INVALID | OK
+# Returns 0 only when STATUS=OK. Used by `pl doctor` and can preflight the loop.
+# Usage: gitlab_token_status ["<token>"] ["<git.host>"]  (defaults from config)
+gitlab_token_status() {
+    local token="${1:-$(get_gitlab_token)}"
+    local url="${2:-$(get_gitlab_url)}"
+    [ -n "$token" ] || { echo "MISSING|||"; return 1; }
+    [ -n "$url" ]   || { echo "NOURL|||"; return 1; }
+
+    local resp code body
+    resp=$(curl -s -o - -w $'\n%{http_code}' --max-time 15 \
+        --header "PRIVATE-TOKEN: ${token}" "https://${url}/api/v4/user" 2>/dev/null)
+    code="${resp##*$'\n'}"
+    body="${resp%$'\n'*}"
+
+    case "$code" in
+        200)       : ;;
+        401|403)   echo "INVALID|||"; return 1 ;;
+        000|"")    echo "UNREACHABLE|||"; return 1 ;;
+        *)         echo "INVALID|||"; return 1 ;;
+    esac
+
+    local owner is_admin
+    owner=$(printf '%s' "$body"    | python3 -c 'import sys,json;print(json.load(sys.stdin).get("username",""))' 2>/dev/null)
+    is_admin=$(printf '%s' "$body" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("is_admin"))' 2>/dev/null)
+
+    # Expiry: works for a PAT via /self; group/project tokens 404 → left blank.
+    local expires
+    expires=$(curl -s --max-time 10 --header "PRIVATE-TOKEN: ${token}" \
+        "https://${url}/api/v4/personal_access_tokens/self" 2>/dev/null \
+        | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("expires_at") or "")
+except Exception: print("")' 2>/dev/null)
+
+    echo "OK|${owner}|${is_admin}|${expires}"
+    return 0
 }
 
 # Create GitLab project via API

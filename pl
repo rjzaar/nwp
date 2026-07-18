@@ -99,6 +99,8 @@ ${BOLD}DEPLOYMENT (Remote):${NC}
     stg2live <sitename>             Deploy staging to live server
     live2stg <sitename>             Pull live to staging
     live2prod <sitename>            Deploy live to production
+    drush <site> --tier=stg|live    Sanctioned drush runner (retires raw ssh drush);
+          [--dry-run|--execute] -- <args>   live is dry-run by default
 
 ${BOLD}CANONICALITY (content-flow phases, ops#33):${NC}
     canonical show [site]           Show per-site canonical phase (dev|live|prod)
@@ -653,6 +655,11 @@ main() {
             ;;
         live2prod)
             run_script "live2prod.sh" "$@"
+            ;;
+
+        # Sanctioned remote/stg drush runner (retires raw ssh drush; §6 P1-4)
+        drush)
+            run_script "drush.sh" "$@"
             ;;
 
         # Canonicality phases + content-flow guards (nwp/ops#33)

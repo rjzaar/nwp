@@ -68,6 +68,7 @@ ${BOLD}COMMANDS:${NC}
     (none)              Interactive TUI mode (default if available)
     list                Text-based list view
     check               Run all checks and show results
+    digest              Run all checks and email the daily digest (used by cron)
     resolve <id>        Mark a todo as resolved
     ignore <id>         Ignore a todo (with optional reason)
     unignore <id>       Stop ignoring a todo
@@ -513,11 +514,11 @@ install_schedule() {
         }
     fi
 
-    # Build cron entry
-    local cron_entry="$cron_expr $PROJECT_ROOT/pl todo check --quiet >> $log_file 2>&1"
+    # Build cron entry — `digest` runs all checks AND emails the daily digest
+    local cron_entry="$cron_expr $PROJECT_ROOT/pl todo digest --quiet >> $log_file 2>&1"
 
     # Check if already installed
-    if crontab -l 2>/dev/null | grep -q "pl todo check"; then
+    if crontab -l 2>/dev/null | grep -qE "pl todo (check|digest)"; then
         print_warning "Todo schedule already installed"
         return 0
     fi
@@ -535,12 +536,12 @@ install_schedule() {
 }
 
 remove_schedule() {
-    if ! crontab -l 2>/dev/null | grep -q "pl todo check"; then
+    if ! crontab -l 2>/dev/null | grep -qE "pl todo (check|digest)"; then
         print_warning "No todo schedule found"
         return 0
     fi
 
-    crontab -l 2>/dev/null | grep -v "pl todo check" | crontab -
+    crontab -l 2>/dev/null | grep -vE "pl todo (check|digest)" | crontab -
 
     if [ $? -eq 0 ]; then
         print_status "OK" "Todo schedule removed"
@@ -717,6 +718,21 @@ main() {
                     esac
                 done
                 echo "[$(date -Iseconds)] Total: $((high_count + medium_count + low_count)) (High: $high_count, Medium: $medium_count, Low: $low_count)"
+            else
+                show_list "$results"
+            fi
+            ;;
+        digest)
+            # Run all checks + send the daily email/desktop digest (cron entry point).
+            local results
+            results=$(run_all_checks "$NO_CACHE")
+            if type notify_schedule_run &>/dev/null; then
+                notify_schedule_run "$results"
+                local hc; hc=$(printf '%s' "$results" | grep -o '"priority":"high"' | wc -l | tr -d ' ')
+                [ "${hc:-0}" -gt 0 ] && type notify_new_high_priority &>/dev/null && notify_new_high_priority "$hc"
+            fi
+            if [ "$QUIET_MODE" = true ]; then
+                echo "[$(date -Iseconds)] todo digest run (email sent if notifications enabled)"
             else
                 show_list "$results"
             fi

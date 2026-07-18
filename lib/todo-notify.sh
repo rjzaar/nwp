@@ -193,7 +193,38 @@ notify_new_high_priority() {
     notify_email "[NWP Alert] $message" "You have $count high priority todo items that require attention within 24 hours.\n\nRun 'pl todo' to view and manage these items."
 }
 
-# Send scheduled run summary
+# Build a rich, urgency-grouped digest body from the JSON results array.
+# "What is happening, what needs doing, how urgent" — high items list their action.
+# Args: $1=json_results
+build_digest_body() {
+    local json_results="$1"
+    local host; host=$(hostname 2>/dev/null || echo nwp)
+    local date_s; date_s=$(date '+%Y-%m-%d %H:%M')
+    local h m l total
+    h=$(printf '%s' "$json_results" | grep -o '"priority":"high"'   | wc -l | tr -d ' ')
+    m=$(printf '%s' "$json_results" | grep -o '"priority":"medium"' | wc -l | tr -d ' ')
+    l=$(printf '%s' "$json_results" | grep -o '"priority":"low"'    | wc -l | tr -d ' ')
+    total=$((h + m + l))
+    {
+        printf 'NWP daily digest — %s (%s)\n' "$date_s" "$host"
+        printf '%s item(s) need attention   ·   High: %s   Medium: %s   Low: %s\n' "$total" "$h" "$m" "$l"
+        if command -v yq &>/dev/null; then
+            local pr label lines
+            for pr in high medium; do
+                lines=$(printf '%s' "$json_results" | yq -p=json e ".[] | select(.priority == \"$pr\") | \"• [\" + .category + \"] \" + .title + \"\n      → \" + (.action // \"\")" 2>/dev/null | sed '/^      → $/d')
+                if [ -n "$lines" ]; then
+                    label="$pr"; [ "$pr" = high ] && label="HIGH (do within 24h)" || label="MEDIUM"
+                    printf '\n── %s ──\n%s\n' "$label" "$lines"
+                fi
+            done
+            [ "$l" -gt 0 ] && printf '\n── LOW: %s item(s) — run `pl todo` to see them ──\n' "$l"
+        fi
+        printf '\nManage:  pl todo            Reissue a dead/expiring token:  pl secrets steps <id>\n'
+        printf '(Automated daily digest from the NWP todo system. Stop with: pl todo schedule remove)\n'
+    }
+}
+
+# Send scheduled run summary (desktop + rich email digest)
 # Args: $1=json_results
 notify_schedule_run() {
     local json_results="$1"
@@ -201,36 +232,16 @@ notify_schedule_run() {
     local on_schedule=$(get_notify_setting "on_schedule_run" "true")
     [ "$on_schedule" != "true" ] && return 0
 
-    # Parse results to count priorities
-    local high_count=0 medium_count=0 low_count=0
+    local high_count medium_count low_count total
+    high_count=$(printf '%s' "$json_results" | grep -o '"priority":"high"'   | wc -l | tr -d ' ')
+    medium_count=$(printf '%s' "$json_results" | grep -o '"priority":"medium"' | wc -l | tr -d ' ')
+    low_count=$(printf '%s' "$json_results" | grep -o '"priority":"low"'      | wc -l | tr -d ' ')
+    total=$((high_count + medium_count + low_count))
 
-    while IFS= read -r line; do
-        local priority=$(echo "$line" | grep -o '"priority":"[^"]*"' | cut -d'"' -f4)
-        case "$priority" in
-            high) ((high_count++)) ;;
-            medium) ((medium_count++)) ;;
-            low) ((low_count++)) ;;
-        esac
-    done <<< "$json_results"
+    [ "$high_count" -gt 0 ] && notify_desktop "NWP Todo" "$high_count high-priority item(s)" "critical"
 
-    local total=$((high_count + medium_count + low_count))
-
-    # Only notify if there are items (especially high priority)
-    if [ "$high_count" -gt 0 ]; then
-        notify_desktop "NWP Todo Check" "$high_count high priority items" "critical"
-    fi
-
-    # Email summary
     if is_email_notify_enabled && [ "$total" -gt 0 ]; then
-        local body="NWP Todo Daily Summary\n"
-        body="${body}========================\n\n"
-        body="${body}Total items: $total\n"
-        body="${body}  High priority: $high_count\n"
-        body="${body}  Medium priority: $medium_count\n"
-        body="${body}  Low priority: $low_count\n\n"
-        body="${body}Run 'pl todo' to view and manage these items.\n"
-
-        notify_email "[NWP] Daily Todo Summary: $total items" "$body"
+        notify_email "[NWP] Daily digest: $total items ($high_count high)" "$(build_digest_body "$json_results")"
     fi
 }
 
@@ -320,6 +331,7 @@ export -f is_email_notify_enabled
 export -f notify_desktop
 export -f notify_email
 export -f notify_new_high_priority
+export -f build_digest_body
 export -f notify_schedule_run
 export -f send_daily_digest
 export -f todo_scheduled_run

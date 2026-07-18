@@ -130,13 +130,32 @@ generate_secure_password() {
 # Configuration Reading Functions
 ################################################################################
 
+# Resolve the infrastructure secrets file (.secrets.yml). It is gitignored, so
+# in a linked git worktree it exists only in the MAIN working tree — fall back
+# to that copy so code/agents running inside a worktree still resolve infra
+# secrets instead of silently getting the default (ops#70).
+# Deliberately NOT applied to .secrets.data.yml — data secrets must stay hard to
+# reach from worktree/AI contexts.
+_resolve_infra_secrets_file() {
+    local f="${PROJECT_ROOT}/.secrets.yml"
+    if [ ! -f "$f" ]; then
+        local common
+        common=$(git -C "${PROJECT_ROOT:-.}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+        if [ -n "$common" ] && [ -f "$(dirname "$common")/.secrets.yml" ]; then
+            f="$(dirname "$common")/.secrets.yml"
+        fi
+    fi
+    printf '%s' "$f"
+}
+
 # Get secret value from .secrets.yml with fallback
 # Usage: get_secret "section.key" "default_value"
 # Example: get_secret "moodle.admin_password" "Admin123!"
 get_secret() {
     local path="$1"
     local default="$2"
-    local secrets_file="${PROJECT_ROOT}/.secrets.yml"
+    local secrets_file
+    secrets_file="$(_resolve_infra_secrets_file)"
 
     if [ ! -f "$secrets_file" ]; then
         echo "$default"

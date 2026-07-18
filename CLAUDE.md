@@ -142,6 +142,36 @@ safe_security_check avc     # Returns: Update count (no credentials)
 
 See `docs/DATA_SECURITY_BEST_PRACTICES.md` for the full security architecture.
 
+### Token & secret lifecycle — the registry is the source of record
+
+**Before doing ANY work on a token/secret** (creating, rotating, revoking, wiring
+a new consumer, debugging an auth failure), consult the tokenless registry
+`private/secrets-registry.yml` and use the `pl secrets` tooling — never hand-roll,
+and never guess a token's identity, scope, expiry, or storage location:
+
+| Need | Command |
+|------|---------|
+| What exists, expiry, rotation status | `pl secrets status` |
+| Is a token actually alive? real expiry? drift? | `pl secrets audit` (live probe; `--sync` fixes recorded drift) |
+| Who owns a GitLab token (revoked?) | `pl secrets whose <#\|id>` |
+| Exact reissue procedure for one entry | `pl secrets steps <#\|id>` |
+| Reissue/rotate (hidden entry, propagates to every `stored_in`, logs it) | `pl secrets rotate <#\|id>` |
+| Which code/functions read a token | `pl secrets consumers [--write]` → `private/token-consumers.md` |
+| Structure of `.secrets.yml` without values | `pl secrets keys` |
+
+Rules:
+- **Every token has three names** — the `.secrets.yml` key, the registry `id`, and
+  the live GitLab bot/token name. Use the crosswalk in the registry / `~/central/TOKEN-REGISTRY-*.md`; don't conflate them.
+- **After any token change**, the registry must reflect reality: `pl secrets rotate`/`done`
+  stamps `expires`/`last_rotated` and appends `private/rotation-YYYY-MM.md`; if you
+  add/retire a token or change where it's stored or read, update its entry
+  (`stored_in`) and regenerate `pl secrets consumers --write`.
+- **Never print a token value** — use the 0600-curl-config pattern (see `cmd_whose`);
+  read structure with `pl secrets keys`, copy with `pl secrets get` (clipboard).
+- Values live in `.secrets.yml` / `~/.nwp-agent-loop.env` / per-host `~/.config/*.token`;
+  the registry holds only metadata. A daily `pl secrets audit` (via `pl todo`'s
+  `check_token_liveness` + `scripts/secrets-daily-audit.sh`) catches dead/expiring tokens.
+
 ## Other Protected Files
 
 - `.env` files - Never commit environment secrets

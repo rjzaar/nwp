@@ -566,6 +566,214 @@ cmd_scaffold(){
 }
 
 ################################################################################
+# audit — LIVE token validity + REAL expiry + drift (the daily-check engine)
+#   Probes each provisioned token at its provider. Token values NEVER printed
+#   (0600 curl config, like `whose`). Exits non-zero if any token is DEAD or
+#   expiring within the warning window — so cron / pl doctor can alert.
+#   Flags: --days N (warn window, default 14) · --sync (write live expiry back
+#          to the registry, fixing drift) · --quiet (machine output for cron)
+################################################################################
+_audit_body(){ # url header-name value  -> response body (token only via 0600 cfg)
+  local cfg; cfg=$(mktemp); chmod 600 "$cfg"
+  printf 'silent\nmax-time = 12\nurl = "%s"\nheader = "%s: %s"\n' "$1" "$2" "$3" > "$cfg"
+  curl -K "$cfg" 2>/dev/null; rm -f "$cfg"
+}
+_audit_code(){ # url full-header-prefix value  -> http_code only
+  local cfg; cfg=$(mktemp); chmod 600 "$cfg"
+  printf 'silent\noutput = "/dev/null"\nwrite-out = "%%{http_code}"\nmax-time = 12\nurl = "%s"\nheader = "%s %s"\n' "$1" "$2" "$3" > "$cfg"
+  curl -K "$cfg" 2>/dev/null; rm -f "$cfg"
+}
+cmd_audit(){
+  need_yq; need_registry
+  command -v curl >/dev/null || die "curl required"
+  local WARN=14 SYNC=0 QUIET=0
+  while [ $# -gt 0 ]; do case "$1" in
+    --days) WARN="${2:-14}"; shift 2;;
+    --sync) SYNC=1; shift;;
+    --quiet|-q) QUIET=1; shift;;
+    *) shift;; esac; done
+  local host_default
+  host_default=$("$YQ" e '.gitlab.server.domain // ""' "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
+  # Reachability gate: if the GitLab host is DOWN, do NOT probe — every gitlab token
+  # would false-positive as DEAD. Exit 2 = transient (cron/todo treat as "retry later").
+  if [ -n "$host_default" ]; then
+    local _rc; _rc=$(curl -s -o /dev/null -w '%{http_code}' --max-time 12 "https://$host_default/api/v4/metadata" 2>/dev/null)
+    if [ "$_rc" = "000" ]; then
+      [ "$QUIET" = 0 ] && print_error "GitLab host $host_default unreachable — not probing (would false-positive). Try again later."
+      return 2
+    fi
+  fi
+  if [ "$QUIET" = 0 ]; then
+    print_header "Live token audit — probes each provider (values never printed)"
+    printf "  %-26s %-7s %-9s %-12s %-12s %s\n" "ID" "PROV" "LIVE" "EXPIRES" "RECORDED" "NOTE"
+    printf "  %-26s %-7s %-9s %-12s %-12s %s\n" "--------------------------" "-------" "---------" "------------" "------------" "----"
+  fi
+  local n i problems=0 dead=0 expiring=0 drift=0
+  n=$("$YQ" e '.secrets | length' "$REGISTRY"); [ "$n" = "null" ] && n=0
+  for ((i=0;i<n;i++)); do
+    local id prov st recorded key val live liveexp note col d useexp host
+    id=$(field "$i" id); prov=$(field "$i" provider); st=$(field "$i" status); recorded=$(field "$i" expires)
+    [ "$st" = "not-provisioned" ] && continue
+    key=$("$YQ" e ".secrets[$i].stored_in[]?" "$REGISTRY" 2>/dev/null | grep -oE '^\.secrets\.yml:[A-Za-z0-9_.]+' | head -1 | sed 's/^\.secrets\.yml://')
+    live="SKIP"; liveexp=""; note=""
+    if [ -n "$key" ]; then
+      val=$("$YQ" e ".$key // \"\"" "$SECRETS_FILE" 2>/dev/null)
+      if [ -z "$val" ] || [ "$val" = "null" ]; then live="EMPTY"; note="not provisioned"
+      else
+        local nsc; nsc=$("$YQ" e ".secrets[$i].scopes // [] | length" "$REGISTRY" 2>/dev/null)
+        if [ "${nsc:-0}" -eq 0 ]; then live="SKIP"; note="no API scope (password/app cred — recorded-date only)"
+        else
+        case "$prov" in
+          gitlab)
+            host=$(field "$i" rotate_url | sed -E 's|https?://([^/]+).*|\1|')
+            { [ -z "$host" ] || [ "$host" = "$(field "$i" rotate_url)" ]; } && host="$host_default"
+            if [ -z "$host" ]; then live="SKIP"; note="no host"; else
+              local ujson pjson uname active revoked isadmin
+              ujson=$(_audit_body "https://$host/api/v4/user" "PRIVATE-TOKEN" "$val")
+              uname=$("$YQ" e -p=json '.username // ""' <<<"$ujson" 2>/dev/null | grep -v '^null$')
+              if [ -z "$uname" ]; then live="DEAD"
+              else
+                pjson=$(_audit_body "https://$host/api/v4/personal_access_tokens/self" "PRIVATE-TOKEN" "$val")
+                active=$("$YQ" e -p=json '.active // ""' <<<"$pjson" 2>/dev/null)
+                revoked=$("$YQ" e -p=json '.revoked // ""' <<<"$pjson" 2>/dev/null)
+                liveexp=$("$YQ" e -p=json '.expires_at // ""' <<<"$pjson" 2>/dev/null | grep -v '^null$')
+                isadmin=$("$YQ" e -p=json '.is_admin // ""' <<<"$ujson" 2>/dev/null | grep -v '^null$')
+                if [ "$revoked" = "true" ] || [ "$active" = "false" ]; then live="DEAD"; else live="OK"; fi
+                [ "$isadmin" = "true" ] && note="ADMIN! "
+              fi
+            fi ;;
+          github) [ "$(_audit_code "https://api.github.com/user" "Authorization: Bearer" "$val")" = "200" ] && live="OK" || live="DEAD" ;;
+          linode) [ "$(_audit_code "https://api.linode.com/v4/profile" "Authorization: Bearer" "$val")" = "200" ] && live="OK" || live="DEAD" ;;
+          *) live="SKIP"; note="no live API (recorded-date only)" ;;
+        esac
+        fi
+      fi
+    else live="SKIP"; note="value not on this host"; fi
+    val=""
+    useexp="$liveexp"; { [ -z "$useexp" ]; } && useexp="$recorded"
+    d=$(days_until "$useexp")
+    if [ -n "$liveexp" ] && [ -n "$recorded" ] && [ "$recorded" != "unknown" ] && [ "$liveexp" != "$recorded" ]; then
+      note="${note}DRIFT(rec=$recorded) "; drift=$((drift+1))
+      [ "$SYNC" = 1 ] && { "$YQ" e -i ".secrets[$i].expires = \"$liveexp\"" "$REGISTRY" && note="${note}[synced] "; }
+    fi
+    case "$live" in
+      DEAD)  col="$RED";    dead=$((dead+1));     problems=$((problems+1)); note="REVOKED/INVALID ${note}" ;;
+      OK)    if   [ -n "$d" ] && [ "$d" -lt 0 ]      2>/dev/null; then col="$RED";    note="EXPIRED ${note}";        expiring=$((expiring+1)); problems=$((problems+1))
+             elif [ -n "$d" ] && [ "$d" -le "$WARN" ] 2>/dev/null; then col="$YELLOW"; note="expires in ${d}d ${note}"; expiring=$((expiring+1)); problems=$((problems+1))
+             else col="$GREEN"; fi ;;
+      *)     col="$DIM" ;;
+    esac
+    if [ "$QUIET" = 0 ]; then
+      printf "  ${col}%-26s${NC} %-7s ${col}%-9s${NC} %-12s %-12s %s\n" "$id" "$prov" "$live" "${liveexp:--}" "${recorded:-unknown}" "$note"
+    elif [ "$live" = "DEAD" ] || { [ "$live" = "OK" ] && [ -n "$d" ] && [ "$d" -le "$WARN" ] 2>/dev/null; }; then
+      printf '%s\t%s\t%s\t%s\n' "$id" "$live" "${useexp:-unknown}" "$note"
+    fi
+  done
+  if [ "$QUIET" = 0 ]; then
+    echo; printf "  %d dead · %d expiring(≤%dd) · %d drift\n" "$dead" "$expiring" "$WARN" "$drift"
+    [ "$problems" -eq 0 ] && print_success "all live tokens valid and outside the ${WARN}-day window" \
+      || print_hint "reissue a token: pl secrets steps <id> → create it → pl secrets rotate <id>"
+    [ "$drift" -gt 0 ] && [ "$SYNC" = 0 ] && print_hint "sync recorded expiry to live truth: pl secrets audit --sync"
+  fi
+  [ "$problems" -gt 0 ] && return 1 || return 0
+}
+
+################################################################################
+# steps — print the exact reissue procedure for one entry (non-interactive)
+################################################################################
+cmd_steps(){
+  need_yq; need_registry
+  local arg="${1:-}"; [ -n "$arg" ] || die "usage: pl secrets steps <#|id>"
+  local idx; if [[ "$arg" =~ ^[0-9]+$ ]]; then idx=$((arg-1)); else idx=$(registry_index_of "$arg"); fi
+  { [ "$idx" = "-1" ] || [ -z "$(field "$idx" id)" ]; } && die "no such secret: $arg (see: pl secrets status)"
+  local id prov typ scopes url role name proj
+  id=$(field "$idx" id); prov=$(field "$idx" provider); typ=$(field "$idx" type)
+  scopes=$("$YQ" e ".secrets[$idx].scopes // [] | join(\", \")" "$REGISTRY" 2>/dev/null)
+  url=$(field "$idx" rotate_url); role=$(field "$idx" role)
+  name=$(field "$idx" token_name_target); proj=$(field "$idx" project)
+  print_header "Reissue steps — $id"
+  echo "  provider : $prov"
+  echo "  type     : $typ"
+  [ -n "$name" ]   && echo "  name it  : $name"
+  [ -n "$role" ]   && echo "  role     : $role"
+  [ -n "$scopes" ] && echo "  scopes   : $scopes"
+  [ -n "$proj" ]   && echo "  scope to : $proj"
+  echo
+  echo "  1) Create the new token here (match name/role/scopes above):"
+  echo "       ${url:-<no rotate_url recorded — add one to the registry entry>}"
+  echo "  2) Feed it in — hidden entry, propagates to EVERY stored location, stamps expiry + logs:"
+  echo "       pl secrets rotate $((idx+1))"
+  echo "     …which writes it to:"
+  "$YQ" e ".secrets[$idx].stored_in[]" "$REGISTRY" 2>/dev/null | sed 's/^/         - /'
+  echo "  3) Revoke the OLD token at the same page."
+  echo "  4) Verify:  pl secrets whose $((idx+1))   then   pl secrets audit"
+}
+
+################################################################################
+# consumers — map each token to the CODE that reads it (which functions use it).
+#   Live-derived: greps lib/ + scripts/ for every identifier a token is known by
+#   (its .secrets.yml dotted key, the key tail, and any env-var name in
+#   stored_in) and reports file:line + the enclosing shell function. A token with
+#   no in-repo hit is consumed via env / a per-host script / auth.json (see its
+#   stored_in). `--write` (re)generates private/token-consumers.md as a durable log.
+################################################################################
+_enclosing_fn(){ # file line -> nearest preceding shell-function name (or "-")
+  awk -v L="$2" '
+    NR<=L && /^[[:space:]]*(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(\)/ {
+      f=$0; sub(/\(\).*/,"",f); sub(/^[[:space:]]*(function[[:space:]]+)?/,"",f); gsub(/[[:space:]]/,"",f); last=f
+    }
+    END{ print (last==""?"-":last) }' "$1" 2>/dev/null
+}
+cmd_consumers(){
+  need_yq; need_registry
+  local WRITE=0 only="" a
+  for a in "$@"; do case "$a" in --write) WRITE=1;; -*) ;; *) only="$a";; esac; done
+  local roots=("$PROJECT_ROOT/lib" "$PROJECT_ROOT/scripts")
+  local out; out=$(mktemp)
+  local n i; n=$("$YQ" e '.secrets | length' "$REGISTRY"); [ "$n" = "null" ] && n=0
+  for ((i=0;i<n;i++)); do
+    local id; id=$(field "$i" id); [ -z "$id" ] && continue
+    [ -n "$only" ] && [ "$only" != "$id" ] && continue
+    local -a idents=()
+    while IFS= read -r loc; do
+      [ -z "$loc" ] && continue
+      case "$loc" in
+        .secrets*.yml:*)                                    # gitlab.x_token (+ tail if specific)
+          local k="${loc#*:}" tail; tail="${k##*.}"; idents+=("$k")
+          case "$tail" in
+            api_token|token|password|initial_password|admin_password|url|user|username|key|secret|domain|ip) ;;  # too generic — full key only
+            *) idents+=("$tail") ;;
+          esac ;;
+        *:*)             local v="${loc#*:}"; v="${v%% *}"; idents+=("$v") ;; # env-var name e.g. GITLAB_TOKEN
+      esac
+    done < <("$YQ" e ".secrets[$i].stored_in[]?" "$REGISTRY" 2>/dev/null)
+    printf '## %s\n' "$id" >> "$out"
+    local found=0 idt file line
+    while IFS= read -r idt; do
+      [ -z "$idt" ] && continue; [ ${#idt} -lt 5 ] && continue
+      while IFS=: read -r file line _; do
+        [ -z "$file" ] && continue
+        printf -- '- `%s` — %s:%s  (`%s`)\n' "$idt" "${file#$PROJECT_ROOT/}" "$line" "$(_enclosing_fn "$file" "$line")" >> "$out"
+        found=1
+      done < <(grep -rnI --include='*.sh' -wF "$idt" "${roots[@]}" 2>/dev/null | grep -v '/\.secrets')
+    done < <(printf '%s\n' "${idents[@]}" | sort -u)
+    [ "$found" = 0 ] && printf -- '- _(no in-repo consumer — used via env / per-host script / auth.json; see stored_in)_\n' >> "$out"
+    printf '\n' >> "$out"
+  done
+  if [ "$WRITE" = 1 ]; then
+    local dest="$PROJECT_ROOT/private/token-consumers.md"
+    { printf '# Token → code consumers  (generated by `pl secrets consumers --write`)\n\n'
+      printf 'Which lib/ + scripts/ functions reference each token. Regenerate after code changes.\n\n'
+      cat "$out"; } > "$dest"
+    print_success "wrote $dest"
+  else
+    print_header "Token → code consumers  (lib/ + scripts/)"
+    cat "$out"
+  fi
+  rm -f "$out"
+}
+
+################################################################################
 # main
 ################################################################################
 sub="${1:-status}"; shift || true
@@ -578,6 +786,9 @@ case "$sub" in
   done)           cmd_done "$@" ;;
   get)            cmd_get "$@" ;;
   whose)          cmd_whose "$@" ;;
+  audit)          cmd_audit "$@" ;;
+  steps|reissue)  cmd_steps "$@" ;;
+  consumers)      cmd_consumers "$@" ;;
   scan)           cmd_scan "$@" ;;
   scrub)          cmd_scrub "$@" ;;
   lint)           cmd_lint "$@" ;;
@@ -598,6 +809,9 @@ ${BOLD}pl secrets${NC} — registry-driven secret lifecycle (no token stored on 
   pl secrets done <#|id> [date]  record a rotation you did by hand (stamps expiry + log)
   pl secrets get <dotted.key>    copy a value to the clipboard (never printed)
   pl secrets whose <#|id>        ask GitLab which user/bot/project owns the token
+  pl secrets audit [--days N]    LIVE probe: is each token valid? real expiry? drift? (--sync fixes drift, --quiet for cron)
+  pl secrets steps <#|id>        print the exact reissue procedure for one entry
+  pl secrets consumers [--write] map each token to the code/functions that read it (--write → private/token-consumers.md)
   pl secrets lint                cross-check the registry against .secrets.yml (orphans, comment-secrets, gaps)
   pl secrets scan                leak sweep over transcripts, logs, history
   pl secrets scrub [files...]    redact secret strings (pattern + value) in place

@@ -681,6 +681,45 @@ check_secret_expiry() {
     fi
 }
 
+# check_token_liveness — LIVE token validity + REAL expiry (daily-cached).
+# Runs `pl secrets audit --quiet` at most once per ~20h (the only network in
+# `pl todo`), caches the result, and turns DEAD/expiring tokens into todo items.
+# Distinct from check_secret_expiry (recorded dates only) — THIS catches revoked/
+# expired tokens whose recorded expiry still looks fine (the gap that hid 3 dead
+# tokens). Exit 2 from the audit = host unreachable → keep stale cache, no alert.
+check_token_liveness() {
+    is_category_enabled "token_liveness" || return 0
+    command -v yq &>/dev/null || return 0
+    local root="$TODO_CHECKS_PROJECT_ROOT"
+    local sec="$root/scripts/commands/secrets.sh"
+    [ -f "$sec" ] || return 0
+    local cache="$root/private/.token-audit-cache"
+    local warn_days=$(get_todo_setting "thresholds.secret_warn_days" "14")
+    local now age=999999
+    now=$(date +%s)
+    [ -f "$cache" ] && age=$(( now - $(stat -c %Y "$cache" 2>/dev/null || echo 0) ))
+    if [ "$age" -ge 72000 ]; then
+        local out rc
+        out=$(bash "$sec" audit --quiet --days "$warn_days" 2>/dev/null); rc=$?
+        [ "$rc" = "2" ] && return 0   # host unreachable → keep stale cache, don't alert
+        printf '%s\n' "$out" > "$cache" 2>/dev/null && chmod 600 "$cache" 2>/dev/null || true
+    fi
+    [ -f "$cache" ] || return 0
+    local id live exp note
+    while IFS=$'\t' read -r id live exp note; do
+        [ -z "$id" ] && continue
+        if [ "$live" = "DEAD" ]; then
+            todo_add_item "SEC" "$id" "high" \
+                "Token DEAD (revoked/invalid): $id" \
+                "Live probe returned no valid identity. $note" "" "pl secrets steps $id"
+        else
+            todo_add_item "SEC" "$id" "medium" \
+                "Token expiring soon: $id (live expiry $exp)" \
+                "$note" "" "pl secrets steps $id"
+        fi
+    done < "$cache"
+}
+
 # LOOP: agent-loop daily MR cap (nwp/ops#46).
 # The loop exits clean when it has opened AGENT_LOOP_DAILY_CAP (default 5) MRs in
 # a UTC day — silently. Surface that here so `pl todo` (and `pl rag`, as amber)
@@ -827,6 +866,7 @@ TODO_CHECK_LIST=(
     "check_test_instances:Test instances"
     "check_token_rotation:Token rotation"
     "check_secret_expiry:Secret expiry"
+    "check_token_liveness:Token liveness (live probe)"
     "check_missing_backups:Missing backups"
     "check_live_backup_freshness:Live backup freshness"
     "check_disk_usage:Disk usage"
@@ -902,6 +942,7 @@ export -f check_uncommitted_work
 export -f check_disk_usage
 export -f check_ssl_expiry
 export -f check_secret_expiry
+export -f check_token_liveness
 export -f check_agent_loop_cap
 export -f check_live_backup_freshness
 export -f run_all_checks

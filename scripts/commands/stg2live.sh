@@ -281,19 +281,41 @@ install_security_modules() {
 # Safety / Pre-Deploy Snapshots
 ################################################################################
 
+# Ledger an --override-snapshot use so a destructive deploy that ran WITHOUT a
+# proven webroot snapshot is auditable after the fact (mirrors the
+# --override-canonical / --override-pair ledgers).
+_snapshot_override_ledger() {
+    local base_name="$1"
+    local reason="$2"
+    local ledger_dir="${PROJECT_ROOT}/private/snapshots"
+    mkdir -p "$ledger_dir" 2>/dev/null || true
+    local who
+    who=$(whoami 2>/dev/null || echo "unknown")
+    echo "$(date -Iseconds 2>/dev/null || date)  ${who}  ${base_name}  --override-snapshot  ${reason}" \
+        >> "${ledger_dir}/${base_name}.log" 2>/dev/null || true
+    print_status "WARN" "--override-snapshot ledgered: ${ledger_dir}/${base_name}.log"
+}
+
 # Take a pre-deploy snapshot of the live host: all MySQL/MariaDB databases
-# (compressed dump) + the /etc/nginx/conf.d/ directory (tarball). Stored
-# in the deploying user's home dir on the remote box. Idempotent within
-# 1 hour (skips if a snapshot file from the last hour exists for the
-# same site) so repeated dev2stg+stg2live runs don't blow up disk.
+# (compressed dump) + the /etc/nginx/conf.d/ directory (tarball) + the WEBROOT
+# (tarball, excl. files/+private/ — F2/P0-2). Stored in the deploying user's
+# home dir on the remote box. Idempotent within 1 hour (skips if a webroot
+# snapshot from the last hour exists for the same site) so repeated
+# dev2stg+stg2live runs don't blow up disk.
 #
 # Recovery (manual): files written to ~ on the live host with timestamped
 # names; restore mysqldump via `gunzip -c <dump> | sudo mysql`; restore
-# nginx via `sudo tar xzf <tar> -C /`.
+# nginx via `sudo tar xzf <tar> -C /`; restore webroot via
+# `sudo tar xzf <webroot-tar> -C <remote_path>`.
 live_host_snapshot() {
     local base_name="$1"
     local server_ip="$2"
     local ssh_user="$3"
+    # F2/P0-2 (design 2026-07-19): remote_path + webroot are hoisted from the
+    # rsync-prep block above the call so the pre-deploy webroot tar can capture
+    # exactly what the rsync --delete is about to overwrite.
+    local remote_path="${4:-}"
+    local webroot="${5:-web}"
 
     print_header "Pre-Deploy Snapshot"
 
@@ -312,15 +334,27 @@ live_host_snapshot() {
     free_kb=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
         "df -k --output=avail ~ | tail -1" 2>/dev/null | tr -d ' ')
     if [ -n "$free_kb" ] && [ "$free_kb" -lt 1048576 ]; then
-        print_status "WARN" "Live host has <1GB free in ~ (${free_kb}KB). Skipping snapshot."
-        print_status "WARN" "Consider freeing disk before destructive deploys."
-        return 0
+        print_status "WARN" "Live host has <1GB free in ~ (${free_kb}KB)."
+        # F2/P0-2: a stg2live deploy always rsyncs --delete against the live
+        # webroot, so skipping the snapshot here would leave that --delete
+        # unrecoverable. Fail-closed abort unless the operator explicitly
+        # accepts the risk with --override-snapshot (ledgered).
+        if [ "${OVERRIDE_SNAPSHOT:-false}" == "true" ]; then
+            _snapshot_override_ledger "$base_name" "disk-tight (<1GB free in ~); snapshot skipped"
+            print_status "WARN" "--override-snapshot set — proceeding WITHOUT a pre-deploy snapshot."
+            return 0
+        fi
+        print_error "Refusing the destructive rsync --delete without a webroot snapshot (disk-tight)."
+        print_error "Free disk on the live host, or re-run with --override-snapshot (ledgered)."
+        return 1
     fi
 
-    # Idempotent: skip if a snapshot from the last hour exists for this site.
+    # Idempotent: skip if a WEBROOT snapshot from the last hour exists for this
+    # site — the webroot tar is the critical --delete backstop (F2/P0-2), so
+    # idempotency keys off it, not the DB dump.
     local recent
     recent=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
-        "find ~ -maxdepth 1 -name 'nwp-snapshot-${base_name}-dbs-*.sql.gz' -mmin -60 2>/dev/null | head -1" \
+        "find ~ -maxdepth 1 -name 'nwp-snapshot-${base_name}-webroot-*.tar.gz' -mmin -60 2>/dev/null | head -1" \
         2>/dev/null)
     if [ -n "$recent" ]; then
         print_status "INFO" "Recent snapshot exists: $(basename "$recent")"
@@ -347,6 +381,41 @@ live_host_snapshot() {
         print_status "WARN" "Nginx snapshot failed (continuing — verify live state manually)"
     fi
 
+    # F2/P0-2: snapshot the live WEBROOT before the rsync --delete swaps it out.
+    # This is the fail-closed backstop for the ~6,253-out/~6,497-in un-fork swap:
+    # captures code + oauth-keys/ + auth.json + the generated env settings, but EXCLUDES the
+    # large, rsync-safe uploads (files/ + private/), which the deploy never
+    # touches. Unlike the DB/nginx dumps above (WARN-and-continue), a webroot
+    # snapshot failure ABORTS the deploy (return 1) unless --override-snapshot is
+    # set — without this tar a bad --delete/updatedb is unrecoverable. Success is
+    # decided by `test -s` on the resulting tar (not tar's exit code, which can
+    # be 1 on a benign "file changed as we read it" against a live site).
+    local webroot_file="nwp-snapshot-${base_name}-webroot-${ts}.tar.gz"
+    local web_remote=""
+    if [ -n "$remote_path" ]; then
+        print_info "Snapshotting live webroot (${remote_path}, excl. ${webroot}/sites/default/files + private)..."
+        if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+            "${sudo_prefix}tar czf ~/${webroot_file} -C ${remote_path} . --exclude=./${webroot}/sites/default/files --exclude=./private 2>/dev/null; ${sudo_prefix}chown ${ssh_user}:${ssh_user} ~/${webroot_file} 2>/dev/null; test -s ~/${webroot_file}"; then
+            local web_size
+            web_size=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+                "ls -lh ~/${webroot_file} | awk '{print \$5}'" 2>/dev/null)
+            print_status "OK" "Webroot snapshot: ~/${webroot_file} (${web_size})"
+            web_remote="${webroot_file}"
+        else
+            print_status "WARN" "Webroot snapshot failed or empty (~/${webroot_file})."
+            if [ "${OVERRIDE_SNAPSHOT:-false}" == "true" ]; then
+                _snapshot_override_ledger "$base_name" "webroot snapshot failed/empty; --override-snapshot set"
+                print_status "WARN" "--override-snapshot set — proceeding WITHOUT a webroot snapshot (ledgered)."
+            else
+                print_error "Refusing the destructive rsync --delete without a webroot snapshot."
+                print_error "Investigate the live host, or re-run with --override-snapshot (ledgered)."
+                return 1
+            fi
+        fi
+    else
+        print_status "WARN" "No remote_path resolved — skipping webroot snapshot (no --delete backstop)."
+    fi
+
     # Register the snapshot as a rollback point so `pl rollback list` /
     # `pl rollback execute` can find it. Failure here is non-fatal — the
     # snapshot files are written regardless; we just lose the
@@ -363,8 +432,13 @@ live_host_snapshot() {
             'echo $HOME' 2>/dev/null || echo "/home/${ssh_user}")
         dbs_remote="${home_dir}/${dbs_file}"
         nginx_remote="${home_dir}/${nginx_file}"
+        # F2/P0-2: thread the webroot tar (arg 9) + its extraction target (arg
+        # 10 = remote_path) into the registry so `pl rollback execute` can
+        # `tar xzf` the code back on a failed --delete/updatedb.
+        local web_remote_abs=""
+        [ -n "$web_remote" ] && web_remote_abs="${home_dir}/${web_remote}"
         rollback_record_remote "$base_name" "prod" "$ssh_user" "$server_ip" \
-            "$ts" "$dbs_remote" "$nginx_remote" "$commit_sha" \
+            "$ts" "$dbs_remote" "$nginx_remote" "$commit_sha" "$web_remote_abs" "$remote_path" \
             || print_status "WARN" "Could not register rollback point (snapshot files OK)."
     fi
 
@@ -919,6 +993,57 @@ full_database_deployment() {
     return 0
 }
 
+# §3.6 (design 2026-07-19): the missing live DB-update sequence.
+#
+# stg2live historically ran NO `drush updatedb` at all — after a code sync (esp.
+# the cross-version un-fork swap) the live code and DB schema would be
+# mismatched. This runs the canonical drush-deploy order on live, for BOTH full
+# and --code-only deploys (it operates on whatever DB is now present), BEFORE
+# the final `drush cr`:
+#     drush updatedb -y        (hook_update_N + hook_post_update_NAME; schema
+#                               advances in place against the live DB — never a
+#                               DB import, INV-1)
+#     (config step: stg2live has NO config:import by design — §3.2 "no blind
+#      config:import against the stale sync dir" — so nothing runs here)
+#     drush cache:rebuild
+#
+# Uses the same remote `sudo -u www-data drush` idiom as the post-deploy cr.
+# Skips cleanly on --dry-run (prints what it would do).
+run_live_db_updates() {
+    local base_name="$1"
+    local server_ip="$2"
+    local ssh_user="$3"
+    local webroot="$4"
+    local remote_path="$5"
+
+    print_header "Database Updates (updatedb)"
+
+    if [ "${DRY_RUN:-false}" == "true" ]; then
+        print_info "[dry-run] would run: drush updatedb -y  →  drush cache:rebuild on ${remote_path}"
+        return 0
+    fi
+
+    local sudo_prefix=""
+    if [ "$ssh_user" == "gitlab" ]; then
+        sudo_prefix="sudo"
+    fi
+
+    print_info "Running drush updatedb -y..."
+    if ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd ${remote_path} && $sudo_prefix -u www-data drush updatedb -y" 2>/dev/null || \
+       ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd ${remote_path}/$webroot && $sudo_prefix -u www-data ../vendor/bin/drush updatedb -y" 2>/dev/null; then
+        print_status "OK" "Database updates applied (updatedb)"
+    else
+        print_status "WARN" "drush updatedb failed or drush unavailable — verify schema state manually"
+    fi
+
+    print_info "Running drush cache:rebuild..."
+    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd ${remote_path} && $sudo_prefix -u www-data drush cache:rebuild" 2>/dev/null || \
+        ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd ${remote_path}/$webroot && $sudo_prefix -u www-data ../vendor/bin/drush cache:rebuild" 2>/dev/null || \
+        print_status "WARN" "Could not run cache:rebuild (drush may not be available)"
+
+    return 0
+}
+
 # Display elapsed time
 show_elapsed_time() {
     local end_time=$(date +%s)
@@ -1084,6 +1209,10 @@ ${BOLD}OPTIONS:${NC}
     --override-pair         Proceed past a paired-site guard (ADR-0031): provider-first
                             ordering, the D6 UID-lock/--code-only rule, or a red pair.
                             Ledgered in private/pairs/<pair>.log. For paired sites only.
+    --override-snapshot     Proceed with the destructive rsync --delete even when the
+                            fail-closed pre-deploy WEBROOT snapshot (F2/P0-2) could not
+                            be taken (disk-tight or tar failed). The --delete is then
+                            UNRECOVERABLE. Ledgered in private/snapshots/<site>.log.
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Site name (with or without _stg suffix)
@@ -1183,18 +1312,9 @@ deploy_to_live() {
     fi
     print_status "OK" "SSH connection successful (user: $ssh_user)"
 
-    # Belt-and-suspenders: snapshot the live host's DBs + nginx configs
-    # before doing anything destructive. Cheap insurance; recovers from
-    # both DB-import gone-wrong and bad nginx config.
-    # Skipped on dry-run: a dry-run must not WRITE to the live host at all
-    # (the snapshot dumps DBs + tars configs onto it) — ops#79.
-    if [ "${DRY_RUN:-false}" != "true" ]; then
-        live_host_snapshot "$base_name" "$server_ip" "$ssh_user"
-    else
-        print_info "[dry-run] skipping live-host snapshot (would write to the live host)"
-    fi
-
-    # Get webroot from staging site
+    # Get webroot from staging site. Hoisted ABOVE the pre-deploy snapshot
+    # (F2/P0-2) so the webroot tar and the rsync --delete share one resolution
+    # of what the deploy is about to overwrite.
     local webroot="web"
     if [ -f "$stg_site/.ddev/config.yaml" ]; then
         webroot=$(grep "^docroot:" "$stg_site/.ddev/config.yaml" 2>/dev/null | awk '{print $2}')
@@ -1205,6 +1325,23 @@ deploy_to_live() {
     local remote_path
     remote_path=$(get_live_config "$base_name" "remote_path")
     [ -z "$remote_path" ] && remote_path="/var/www/${base_name}"
+
+    # Belt-and-suspenders: snapshot the live host's DBs + nginx configs AND the
+    # webroot before doing anything destructive. Cheap insurance; recovers from
+    # DB-import gone-wrong, bad nginx config, and a bad rsync --delete swap.
+    # Skipped on dry-run: a dry-run must not WRITE to the live host at all
+    # (the snapshot dumps DBs + tars configs onto it) — ops#79.
+    # F2/P0-2: the snapshot is now FAIL-CLOSED — a failure ABORTS the deploy
+    # (exit 1) before the destructive rsync --delete, unless --override-snapshot.
+    if [ "${DRY_RUN:-false}" != "true" ]; then
+        if ! live_host_snapshot "$base_name" "$server_ip" "$ssh_user" "$remote_path" "$webroot"; then
+            print_error "Pre-deploy snapshot failed — aborting before the destructive rsync --delete."
+            print_error "(Override at your own risk with --override-snapshot.)"
+            exit 1
+        fi
+    else
+        print_info "[dry-run] skipping live-host snapshot (would write to the live host)"
+    fi
 
     # Build rsync excludes
     local excludes=(
@@ -1298,6 +1435,7 @@ deploy_to_live() {
         local live_db_name="${base_name}"
         print_info "[dry-run] would dump stg DB '${stg_db_name}' and import into live DB '${live_db_name}' on ${server_ip}"
         print_info "[dry-run] would generate fresh settings.local.php for live"
+        print_info "[dry-run] would run drush updatedb -y + cache:rebuild on live (§3.6)"
         print_info "[dry-run] would run drush cr on live"
         print_status "OK" "Dry run complete; no destructive ops executed"
         return 0
@@ -1305,8 +1443,20 @@ deploy_to_live() {
     if [ "${CODE_ONLY:-false}" == "true" ]; then
         print_info "[code-only] skipping database push — live content preserved (canonical: $(canonical_get_phase "$base_name"))"
     elif ! full_database_deployment "$stg_site" "$base_name" "$server_ip" "$ssh_user" "$webroot"; then
-        print_status "WARN" "Database deployment had issues (site may need manual database setup)"
+        # F4 (design 2026-07-19 §Critic F4): a FAILED live DB import must ABORT,
+        # not WARN-and-continue. A half-imported member DB served live violates
+        # INV-1 (live data sovereignty); fail loud so the operator restores from
+        # the pre-deploy snapshot rather than serving broken/partial data.
+        print_error "Live database deployment FAILED — aborting deploy."
+        print_error "Recover the live DB from the pre-deploy snapshot: pl rollback execute ${base_name} prod"
+        return 1
     fi
+
+    # §3.6 (design 2026-07-19): run the Drupal DB-update sequence on live AFTER
+    # the code sync (and DB push, if any), for BOTH full and --code-only modes.
+    # stg2live historically ran NO updatedb, leaving code + schema mismatched
+    # after a code swap. Runs BEFORE the final `drush cr` below.
+    run_live_db_updates "$base_name" "$server_ip" "$ssh_user" "$webroot" "$remote_path"
 
     # Setup SSL certificate
     print_header "SSL Certificate"
@@ -1364,11 +1514,12 @@ main() {
     local CODE_ONLY=false
     local OVERRIDE_CANONICAL=false
     local OVERRIDE_PAIR=false
+    local OVERRIDE_SNAPSHOT=false
     local SITENAME=""
 
     # Parse options
     local OPTIONS=hdyv
-    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision,dry-run,code-only,override-canonical,override-pair
+    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision,dry-run,code-only,override-canonical,override-pair,override-snapshot
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -1390,13 +1541,14 @@ main() {
             --code-only) CODE_ONLY=true; shift ;;
             --override-canonical) OVERRIDE_CANONICAL=true; shift ;;
             --override-pair) OVERRIDE_PAIR=true; shift ;;
+            --override-snapshot) OVERRIDE_SNAPSHOT=true; shift ;;
             --) shift; break ;;
             *) echo "Programming error"; exit 3 ;;
         esac
     done
 
     # Export so deploy_to_live and friends can read it.
-    export DRY_RUN CODE_ONLY OVERRIDE_CANONICAL OVERRIDE_PAIR
+    export DRY_RUN CODE_ONLY OVERRIDE_CANONICAL OVERRIDE_PAIR OVERRIDE_SNAPSHOT
 
     # Get sitename
     if [ $# -ge 1 ]; then

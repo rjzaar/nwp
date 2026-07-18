@@ -23,7 +23,13 @@
 # Record a remote snapshot as a rollback point.
 # Usage:
 #   rollback_record_remote <sitename> <env> <ssh_user> <server_ip> \
-#       <ts:YYYYMMDD-HHMMSS> <dbs_remote_path> <nginx_remote_path> [<commit_sha>]
+#       <ts:YYYYMMDD-HHMMSS> <dbs_remote_path> <nginx_remote_path> \
+#       [<commit_sha>] [<webroot_tar_path>] [<webroot_restore_target>]
+#
+# F2/P0-2: <webroot_tar_path> is the ~/nwp-snapshot-<site>-webroot-<ts>.tar.gz
+# captured before the rsync --delete; <webroot_restore_target> is the remote
+# path it was archived relative to (`tar czf -C <remote_path> .`), so the
+# restore branch can `tar xzf -C <remote_path>`.
 rollback_record_remote() {
     local sitename="$1"
     local environment="$2"
@@ -33,6 +39,8 @@ rollback_record_remote() {
     local dbs_path="$6"
     local nginx_path="$7"
     local commit_sha="${8:-}"
+    local web_path="${9:-}"
+    local web_target="${10:-}"
 
     rollback_init
 
@@ -51,7 +59,9 @@ rollback_record_remote() {
         "host": "${server_ip}",
         "ssh_user": "${ssh_user}",
         "snapshot_dbs": "${dbs_path}",
-        "snapshot_nginx": "${nginx_path}"
+        "snapshot_nginx": "${nginx_path}",
+        "snapshot_webroot": "${web_path}",
+        "snapshot_webroot_target": "${web_target}"
     },
     "commit": "${commit_sha}",
     "status": "active"
@@ -156,7 +166,7 @@ rollback_execute_remote_from_entry() {
 
     # Parse the entry — `|| true` keeps us alive under set -euo pipefail
     # when an entry is partial (e.g. DB-only snapshots have no nginx tar).
-    local site env ts host user dbs nginx
+    local site env ts host user dbs nginx web web_target
     site=$(grep -m1 '"sitename"'        "$entry_file" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
     env=$(grep  -m1 '"environment"'     "$entry_file" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
     ts=$(grep   -m1 '"timestamp"'       "$entry_file" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
@@ -164,6 +174,11 @@ rollback_execute_remote_from_entry() {
     user=$(grep -m1 '"ssh_user"'        "$entry_file" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
     dbs=$(grep  -m1 '"snapshot_dbs"'    "$entry_file" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
     nginx=$(grep -m1 '"snapshot_nginx"' "$entry_file" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+    # F2/P0-2: webroot tar + its extraction target (may be absent on older
+    # DB/nginx-only entries).
+    web=$(grep -m1 '"snapshot_webroot"'        "$entry_file" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+    web_target=$(grep -m1 '"snapshot_webroot_target"' "$entry_file" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+    [ -n "$web" ] && [ -z "$web_target" ] && web_target="/var/www/${site}"
 
     local sudo_prefix=""
     [ "$user" = "gitlab" ] && sudo_prefix="sudo "
@@ -173,6 +188,7 @@ rollback_execute_remote_from_entry() {
     print_info "  Live host:          ${user}@${host}"
     print_info "  DB dump:            ${dbs}"
     print_info "  Nginx tar:          ${nginx:-(none — DB-only restore)}"
+    print_info "  Webroot tar:        ${web:-(none)}${web:+  → ${web_target}}"
 
     # Verify the snapshot files still exist on the remote.
     if [ "$dry_run" != "--dry-run" ]; then
@@ -196,6 +212,14 @@ rollback_execute_remote_from_entry() {
         # pattern; mirroring it here.
         restore_nginx_cmd="${sudo_prefix}tar xzf '${nginx}' -C / && ${sudo_prefix}nginx -t && (${sudo_prefix}gitlab-ctl hup nginx 2>/dev/null || ${sudo_prefix}systemctl reload nginx)"
     fi
+    # F2/P0-2: webroot restore. The tar was created with `-C <remote_path> .`
+    # and EXCLUDES files/ + private/ (uploads are rsync-safe, never archived),
+    # so this restores code + oauth-keys/ + auth.json + the generated env settings back
+    # into <web_target> without touching live uploads.
+    local restore_web_cmd=""
+    if [ -n "$web" ]; then
+        restore_web_cmd="${sudo_prefix}tar xzf '${web}' -C '${web_target}'"
+    fi
 
     if [ "$dry_run" = "--dry-run" ]; then
         print_warning "DRY RUN — commands not executed."
@@ -206,6 +230,11 @@ rollback_execute_remote_from_entry() {
             echo ""
             echo "  ssh ${user}@${host} \\"
             echo "    \"${restore_nginx_cmd}\""
+        fi
+        if [ -n "$restore_web_cmd" ]; then
+            echo ""
+            echo "  ssh ${user}@${host} \\"
+            echo "    \"${restore_web_cmd}\""
         fi
         echo ""
         print_info "Re-run without --dry-run to execute. (You will be prompted before destructive steps.)"
@@ -237,6 +266,19 @@ rollback_execute_remote_from_entry() {
         else
             print_error "Nginx restore failed. Site may still be serving (old config in memory), but config-on-disk is now inconsistent."
             return 3
+        fi
+    fi
+
+    # F2/P0-2: webroot code restore (behind the same typed-timestamp confirm
+    # above). Undoes a bad rsync --delete swap; uploads (files/+private/) were
+    # excluded from the tar and are therefore left untouched.
+    if [ -n "$restore_web_cmd" ]; then
+        print_info "Restoring webroot code from ${web} into ${web_target}..."
+        if ssh -n -o BatchMode=yes "${user}@${host}" "${restore_web_cmd}"; then
+            print_status "OK" "Webroot code restored."
+        else
+            print_error "Webroot restore failed. Investigate on-host: ${web} → ${web_target}"
+            return 4
         fi
     fi
 

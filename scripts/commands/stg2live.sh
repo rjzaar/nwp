@@ -1218,6 +1218,15 @@ deploy_to_live() {
         "--exclude=node_modules"
         "--exclude=.env"
         "--exclude=.env.local"
+        # Live-only runtime state that MUST survive rsync --delete. These are
+        # generated ON the live host and never exist in staging, so without an
+        # exclude the --delete would remove them:
+        #   oauth-keys/  simple_oauth signing keys — deleting them breaks all
+        #                OAuth/OIDC logins (SSO) on live instantly.
+        #   auth.json    composer credentials for the live host; overwriting it
+        #                with staging's can break composer auth on live.
+        "--exclude=oauth-keys"
+        "--exclude=auth.json"
     )
 
     # Sync files
@@ -1235,8 +1244,14 @@ deploy_to_live() {
     if [ "${DRY_RUN:-false}" != "true" ]; then
         ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "$sudo_prefix mkdir -p ${remote_path}" 2>/dev/null || true
         if [ "$ssh_user" == "gitlab" ]; then
-            # Give gitlab user ownership temporarily for rsync
-            ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "sudo chown -R gitlab:www-data ${remote_path}" 2>/dev/null || true
+            # Give gitlab user ownership temporarily for rsync — but NEVER touch
+            # oauth-keys/. Those are the simple_oauth signing keys (0600, www-data);
+            # rsync already excludes them, so gitlab needs no access. If the -R
+            # chown reassigned them to gitlab and the deploy then aborted before
+            # the post-rsync chown restored www-data:www-data, www-data could no
+            # longer read private.key and EVERY SSO/OIDC login would break until a
+            # manual re-chown. Prune oauth-keys so it stays www-data-owned throughout.
+            ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "sudo find ${remote_path} -path ${remote_path}/oauth-keys -prune -o -exec chown gitlab:www-data {} +" 2>/dev/null || true
         fi
     else
         print_info "[dry-run] skipping remote mkdir/chown (would write to the live host)"

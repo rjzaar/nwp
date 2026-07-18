@@ -101,6 +101,8 @@ ${BOLD}DEPLOYMENT (Remote):${NC}
     live2prod <sitename>            Deploy live to production
     drush <site> --tier=stg|live    Sanctioned drush runner (retires raw ssh drush);
           [--dry-run|--execute] -- <args>   live is dry-run by default
+    cutover <site> --rehearse       One-time nwc un-fork migration orchestrator
+            | --execute [--from=N]        (guarded, fail-closed, resumable; §3.7/P1-4)
 
 ${BOLD}CANONICALITY (content-flow phases, ops#33):${NC}
     canonical show [site]           Show per-site canonical phase (dev|live|prod)
@@ -660,6 +662,12 @@ main() {
         # Sanctioned remote/stg drush runner (retires raw ssh drush; §6 P1-4)
         drush)
             run_script "drush.sh" "$@"
+            ;;
+
+        # One-time nwc un-fork migration orchestrator (PL-STG2LIVE §3.7 / P1-4):
+        # guarded, fail-closed, resumable wrapper around the cutover step sequence.
+        cutover)
+            run_script "cutover.sh" "$@"
             ;;
 
         # Canonicality phases + content-flow guards (nwp/ops#33)

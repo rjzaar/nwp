@@ -731,7 +731,31 @@ deploy_dev2stg() {
 # Main
 ################################################################################
 
+# PL-STG2LIVE §4.1: a Moodle site is promoted via the guarded `pl moodle` family,
+# not the Drupal dev→stg path. Detect project.type==moodle and hand off before
+# any option parsing. No-op (and thus safe) for every non-moodle site.
+_maybe_delegate_moodle() {
+    local delegate_verb="$1"; shift
+    local a site=""
+    for a in "$@"; do
+        case "$a" in -*) continue ;; *) site="$a"; break ;; esac
+    done
+    [ -n "$site" ] || return 0
+    local base cfg ptype="" yq_bin=""
+    base="$(get_base_name "$site" 2>/dev/null || echo "$site")"
+    cfg="${PROJECT_ROOT:-$HOME/nwp}/sites/${base}/.nwp.yml"
+    [ -f "$cfg" ] || return 0
+    if command -v yq >/dev/null 2>&1; then yq_bin=yq
+    elif [ -x "$HOME/.local/bin/yq" ]; then yq_bin="$HOME/.local/bin/yq"; fi
+    [ -n "$yq_bin" ] && ptype="$("$yq_bin" eval '.project.type' "$cfg" 2>/dev/null || true)"
+    case "$ptype" in
+        moodle|Moodle|MOODLE) exec "${SCRIPT_DIR}/moodle.sh" "$delegate_verb" "$@" ;;
+    esac
+    return 0
+}
+
 main() {
+    _maybe_delegate_moodle "dev2stg" "$@"
     # Parse options
     local DEBUG=false
     local AUTO_YES=false

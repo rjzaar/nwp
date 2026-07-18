@@ -72,6 +72,57 @@ EOF
     return 0
 }
 
+# Record a MOODLE remote snapshot as a rollback point (type: "moodle-remote").
+# Reuses the rollback_record_remote shape but carries the Moodle-specific fields
+# the moodle rollback executor needs: a plugin-code tar + the moodle_root (for
+# tar -C and for reading DB creds from config.php at restore time). moodledata is
+# never snapshotted (DR of it belongs to server-backup restic).
+#
+# Usage:
+#   rollback_record_moodle_remote <sitename> <env> <ssh_user> <server_ip> \
+#       <ts:YYYYMMDD-HHMMSS> <db_dump_path> <plugins_tar_path> <moodle_root> \
+#       <plugin_relpaths_space_sep> [<commit_sha>]
+rollback_record_moodle_remote() {
+    local sitename="$1"
+    local environment="$2"
+    local ssh_user="$3"
+    local server_ip="$4"
+    local ts="$5"
+    local db_path="${6:-}"
+    local plugins_path="${7:-}"
+    local moodle_root="$8"
+    local plugins="${9:-}"
+    local commit_sha="${10:-}"
+
+    rollback_init
+
+    local entry_file="${ROLLBACK_DIR}/${sitename}_${environment}_${ts}.json"
+    local iso_ts
+    iso_ts=$(rollback_remote_iso "$ts")
+
+    cat > "$entry_file" << EOF
+{
+    "sitename": "${sitename}",
+    "environment": "${environment}",
+    "timestamp": "${iso_ts}",
+    "type": "moodle-remote",
+    "remote": {
+        "host": "${server_ip}",
+        "ssh_user": "${ssh_user}",
+        "snapshot_db": "${db_path}",
+        "snapshot_plugins": "${plugins_path}",
+        "moodle_root": "${moodle_root}",
+        "plugins": "${plugins}"
+    },
+    "commit": "${commit_sha}",
+    "status": "active"
+}
+EOF
+
+    print_status "OK" "Rollback point registered: ${sitename}@${environment} (moodle-remote, ${ts})"
+    return 0
+}
+
 # Convert YYYYMMDD-HHMMSS -> ISO-8601 with local TZ.
 rollback_remote_iso() {
     local raw="$1"  # e.g. 20260520-132046
@@ -161,6 +212,21 @@ rollback_execute_remote_from_entry() {
 
     if [ ! -f "$entry_file" ]; then
         print_error "Rollback entry not found: $entry_file"
+        return 1
+    fi
+
+    # Moodle-remote entries (type: "moodle-remote") have a different shape
+    # (plugin-code tar + moodle_root, DB creds resolved on the remote at restore
+    # time). Delegate to the Moodle executor when that lib is loaded.
+    if grep -q '"type": *"moodle-remote"' "$entry_file" 2>/dev/null; then
+        if declare -F moodle_remote_rollback_execute >/dev/null 2>&1; then
+            local mapply="true"
+            [ "$dry_run" = "--dry-run" ] && mapply="false"
+            moodle_remote_rollback_execute "$entry_file" "${NWP_SSH_OPTS:-}" "$mapply"
+            return $?
+        fi
+        print_error "moodle-remote rollback entry but lib/moodle-deploy.sh not loaded."
+        print_info  "Run via: pl moodle rollback <site> --tier=live execute"
         return 1
     fi
 

@@ -35,7 +35,7 @@ surfaces:
     provider_min: "0.5.0"       # nwc simple_oauth issuer
     consumer_min: "1.0.0"       # auth_nwc Moodle plugin (F26; matches the v1.0.0 release cut on ops-auth-nwc-v1)
     schema: "contracts/oauth_sso.claims.schema.json"
-    schema_sha256: "1f6add0b00f595662a13cc093ac6224e9790e6be39473de394a49540c17a6572"
+    schema_sha256: "52cc70c59994b5b03f834ad18f9ed88d545b5efb85c8900c6d60a8888d6e514f"
   copyright_sync:
     provider_min: "0.5.0"       # nwc_copyright document versions
     consumer_min: "0.2.1"       # local_nwc_copyright_sync (ops#85 fix-forward: restores idempotency guard + beta_cc0)

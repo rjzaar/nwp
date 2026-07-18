@@ -684,6 +684,12 @@ main() {
             run_script "contracts.sh" "$@"
             ;;
 
+        # Moodle command family (PL-STG2LIVE §4 / P1-2): guarded plugin
+        # build/deploy/upgrade/backup/rollback. moodle-promote/moodle-smoke stay
+        # as back-compat aliases (also reachable as `pl moodle config|smoke`).
+        moodle)
+            run_script "moodle.sh" "$@"
+            ;;
         moodle-promote)
             run_script "moodle-promote.sh" "$@"
             ;;

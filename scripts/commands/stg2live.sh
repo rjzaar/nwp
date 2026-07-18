@@ -1324,7 +1324,37 @@ deploy_to_live() {
 # Main
 ################################################################################
 
+# PL-STG2LIVE §4.1: a Moodle site's live promotion is handled by the guarded
+# `pl moodle` family (per-plugin rsync + upgrade under maintenance), NOT the
+# Drupal whole-webroot rsync path. Detect project.type==moodle BEFORE getopt
+# (moodle.sh has its own flag grammar) and hand off. No-op — and thus safe — for
+# every non-moodle site (the common case), so nothing else changes.
+_maybe_delegate_moodle() {
+    local delegate_verb="$1"; shift
+    local a site=""
+    for a in "$@"; do
+        case "$a" in -*) continue ;; *) site="$a"; break ;; esac
+    done
+    [ -n "$site" ] || return 0
+    local base cfg ptype="" yq_bin=""
+    base="$(get_base_name "$site" 2>/dev/null || echo "$site")"
+    # Read project.type straight from the site config file (independent of
+    # resolve_project so the detection can never be silently dropped).
+    cfg="${PROJECT_ROOT:-$HOME/nwp}/sites/${base}/.nwp.yml"
+    [ -f "$cfg" ] || return 0
+    if command -v yq >/dev/null 2>&1; then yq_bin=yq
+    elif [ -x "$HOME/.local/bin/yq" ]; then yq_bin="$HOME/.local/bin/yq"; fi
+    [ -n "$yq_bin" ] && ptype="$("$yq_bin" eval '.project.type' "$cfg" 2>/dev/null || true)"
+    case "$ptype" in
+        moodle|Moodle|MOODLE)
+            exec "${SCRIPT_DIR}/moodle.sh" "$delegate_verb" "$@"
+            ;;
+    esac
+    return 0
+}
+
 main() {
+    _maybe_delegate_moodle "stg2live" "$@"
     local DEBUG=false
     local YES=false
     local VERBOSE=false

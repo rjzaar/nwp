@@ -680,6 +680,13 @@ main() {
             run_script "pair-smoke.sh" "$@"
             ;;
 
+        # nwc(IdP)↔ssc(Moodle) SSO/token link health gate + lifecycle
+        # (PL-STG2LIVE §5.5/§5.7). `pl link verify` is the read-only 3-channel
+        # deploy-gate; provision/token/keys rotate are stubs pending §5.7.
+        link)
+            run_script "link.sh" "$@"
+            ;;
+
         # Moodle promotion substrate + smoke (ADR-0031 D8 / ops D)
         # Intersite change-impact classifier (P74 Phase 2 / boundary gate)
         impact)

@@ -1214,6 +1214,21 @@ generate_badges_json() {
     git_branch=$(git -C "$VERIFY_PROJECT_ROOT" branch --show-current 2>/dev/null || echo "unknown")
     git_sha=$(git -C "$VERIFY_PROJECT_ROOT" rev-parse HEAD 2>/dev/null || echo "unknown")
 
+    # doc-truth badge (P62 / ops#59): red on NEW drift, amber on baselined rot,
+    # green when clean. Derived from the doc-truth gate's own --json summary.
+    local dt_json dt_new dt_total dt_msg dt_color
+    dt_json=$("$VERIFY_PROJECT_ROOT/scripts/commands/doc-truth.sh" --json 2>/dev/null || echo '{}')
+    dt_new=$(printf '%s' "$dt_json" | grep -oE '"new"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)
+    dt_total=$(printf '%s' "$dt_json" | grep -oE '"total"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1)
+    dt_new="${dt_new:-0}"; dt_total="${dt_total:-0}"
+    if [ "$dt_new" -gt 0 ]; then
+        dt_msg="${dt_new} new"; dt_color="red"
+    elif [ "$dt_total" -gt 0 ]; then
+        dt_msg="${dt_total} baselined"; dt_color="yellow"
+    else
+        dt_msg="clean"; dt_color="brightgreen"
+    fi
+
     cat > "$output_file" << EOF
 {
   "schemaVersion": 2,
@@ -1243,6 +1258,11 @@ generate_badges_json() {
       "label": "Open Issues",
       "message": "${issues}",
       "color": "$issues_color"
+    },
+    "doc_truth": {
+      "label": "Doc Truth",
+      "message": "${dt_msg}",
+      "color": "$dt_color"
     }
   }
 }
@@ -1270,6 +1290,9 @@ print_badge_urls() {
     echo ""
     echo "Fully Verified:"
     echo "![Fully Verified](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.fully_verified.message&label=Fully%20Verified&color=green&logo=qualitybadge)"
+    echo ""
+    echo "Doc Truth:"
+    echo "![Doc Truth](https://img.shields.io/badge/dynamic/json?url=$base_url&query=\$.badges.doc_truth.message&label=Doc%20Truth&logo=markdown)"
     echo ""
 }
 

@@ -777,60 +777,17 @@ git_commit() {
     return 0
 }
 
-# Create GitLab project via rails runner (requires SSH access)
-# Usage: gitlab_create_project "project-name" "group"
+# gitlab_create_project — RETIRED per ADR-0024 (no SSH+sudo to the GitLab box).
+#
+# This used to `ssh gitlab@<box> "sudo gitlab-rails runner …"` — full instance
+# admin from an AI-reachable host, the exact boundary ADR-0024 forbids. Project
+# creation now goes through the TOKEN path (gitlab_api_create_project) or the UI.
+# Kept as a fail-closed stub so any stale caller errors loudly instead of silently
+# escalating over SSH+sudo.
 gitlab_create_project() {
-    local project_name="$1"
-    local group="${2:-$(get_gitlab_default_group)}"
-
-    ocmsg "Creating GitLab project: $group/$project_name"
-
-    local gitlab_host="${NWP_GITLAB_HOST:-<gitlab-host>}"
-
-    # Check if we can SSH to gitlab server
-    if ! ssh -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5 "gitlab@${gitlab_host}" exit 2>/dev/null; then
-        print_warning "Cannot SSH to GitLab server to create project"
-        return 1
-    fi
-
-    # Create project via gitlab-rails runner
-    local result=$(ssh -o IdentitiesOnly=yes "gitlab@${gitlab_host}" "sudo gitlab-rails runner \"
-        g = Group.find_by(path: '$group')
-        if g.nil?
-            puts 'GROUP_NOT_FOUND'
-        else
-            p = Project.find_by(path: '$project_name', namespace_id: g.id)
-            if p.nil?
-                p = Project.new(name: '$project_name', path: '$project_name', namespace_id: g.id, visibility_level: 0)
-                if p.save
-                    puts 'CREATED'
-                else
-                    puts 'ERROR: ' + p.errors.full_messages.join(', ')
-                end
-            else
-                puts 'EXISTS'
-            end
-        end
-    \"" 2>&1)
-
-    case "$result" in
-        CREATED)
-            print_status "OK" "GitLab project created: $group/$project_name"
-            return 0
-            ;;
-        EXISTS)
-            ocmsg "GitLab project already exists: $group/$project_name"
-            return 0
-            ;;
-        GROUP_NOT_FOUND)
-            print_error "GitLab group '$group' not found"
-            return 1
-            ;;
-        *)
-            print_warning "GitLab project creation result: $result"
-            return 1
-            ;;
-    esac
+    print_error "gitlab_create_project (SSH+sudo gitlab-rails) is disabled per ADR-0024."
+    print_info  "Create the project via the token path (gitlab_api_create_project) or the GitLab UI, then retry."
+    return 1
 }
 
 # Push to remote
@@ -870,20 +827,10 @@ git_push() {
         return 0
     fi
 
-    # If push fails, try to create the project first
-    if [ -n "$project_name" ]; then
-        print_info "Attempting to create GitLab project..."
-        if gitlab_create_project "$project_name" "$group"; then
-            # Retry push
-            if git push -u --force origin "$branch" 2>&1; then
-                print_status "OK" "Pushed to origin/$branch"
-                cd - > /dev/null
-                return 0
-            fi
-        fi
-    fi
-
-    print_warning "Push failed - check GitLab project permissions"
+    # ADR-0024: do NOT auto-create the project via SSH+sudo on push failure (that
+    # was full instance admin on the GitLab box). If the project is missing, create
+    # it via the token path (gitlab_api_create_project) or the GitLab UI, then retry.
+    print_warning "Push failed — if the project is missing, create it via the token path or the GitLab UI, then retry. Not auto-escalating to SSH+sudo (ADR-0024)."
     cd - > /dev/null
     return 1
 }

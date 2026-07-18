@@ -135,6 +135,14 @@ secure_user_passwords() {
     local original_dir=$(pwd)
     cd "$stg_site" || return 1
 
+    # Skip cleanly if drush isn't available (composer --no-dev removes it where drush
+    # is a dev-only dep); a missing-drush staging site must not hard-fail the deploy. (MR !11)
+    if ! ddev drush --version >/dev/null 2>&1; then
+        print_status "WARN" "drush unavailable in staging — skipping password security"
+        print_info "  To enable: ddev composer require drush/drush in $stg_site"
+        cd "$original_dir"; return 0
+    fi
+
     # Generate secure admin password (16 chars, alphanumeric)
     local new_admin_pass=$(openssl rand -base64 24 | tr -d '/=+' | cut -c -16)
 
@@ -227,6 +235,12 @@ install_security_modules() {
 
     local original_dir=$(pwd)
     cd "$stg_site" || return 1
+
+    # Skip cleanly if drush isn't available — module enable uses drush. (MR !11)
+    if ! ddev drush --version >/dev/null 2>&1; then
+        print_status "WARN" "drush unavailable in staging — skipping security module install"
+        cd "$original_dir"; return 0
+    fi
 
     # Install each module via composer and enable
     while IFS= read -r module; do

@@ -144,7 +144,7 @@ description = "Live internal domain leak (subdomains of operator domains)"
 regex = '''\b[a-z0-9_-]+\.(nwpcode\.org|mayostudios\.org)\b'''
 tags = ["leak", "domain"]
 
-[rules.allowlist]
+[[rules.allowlists]]
 description = "Bare domain mentions in the format <subdomain>.<example-prod-domain> placeholders or known-public subdomains the operator does want to reference."
 regexes = [
   '''<gitlab-host>''',
@@ -152,4 +152,16 @@ regexes = [
   '''<mayo-domain>''',
   '''<coder-domain>''',
   '''<headscale-host>''',
+]
+
+# Decision 14 (2026-07-09): public GitLab project URLs on the git host
+# (git.nwpcode.org/-/issues|merge_requests|blob|tree/...) are public issue/MR/
+# source links, not site-subdomain leaks. Scoped narrowly to the git host + the
+# /-/.../ path form, matched against the whole line, so a bare site subdomain
+# (e.g. avc.nwpcode.org) still fires. Recovered from closed MR !50.
+[[rules.allowlists]]
+description = "Public git.nwpcode.org GitLab issue/MR/blob/tree URLs (public project links, not subdomain leaks)."
+regexTarget = "line"
+regexes = [
+  '''git\.nwpcode\.org/[\w./-]+/-/(issues|merge_requests|blob|tree)/''',
 ]

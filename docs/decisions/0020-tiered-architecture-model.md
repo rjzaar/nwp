@@ -1,6 +1,6 @@
 # ADR-0020: Tiered Architecture Model
 
-**Status:** Proposed
+**Status:** Accepted (ratified by operator 2026-07-18, nwp/ops#95 — the role vocabulary + tier ladder are load-bearing across the public-release/scaling model)
 **Date:** 2026-05-09
 **Decision Makers:** Robert Karsten Zaar
 **Related Issues:** Generic OSS adoption; reference-architecture clarity

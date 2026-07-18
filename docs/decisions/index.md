@@ -83,11 +83,11 @@ Proposed → Accepted → [Deprecated | Superseded]
 
 | ADR | Title | Date | Note |
 |-----|-------|------|------|
-| [0020](0020-tiered-architecture-model.md) | Tiered architecture model | 2026-04 | Proposed |
-| [0022](0022-nwp-verifier-binary-split.md) | nwp-verifier binary split | 2026-04 | Proposed; its build target was renamed/re-scoped to `nwp-server` by 0026; no standalone verifier host to build under 0024 |
+| [0020](0020-tiered-architecture-model.md) | Tiered architecture model | 2026-04 | Accepted (2026-07-18) |
+| [0022](0022-nwp-verifier-binary-split.md) | nwp-verifier binary split | 2026-04 | Superseded by 0026 (2026-07-18); its build target was renamed/re-scoped to `nwp-server` by 0026; no standalone verifier host to build under 0024 |
 | 0023 | *(reserved for the AI Confidentiality Boundary, P67 — not yet drafted)* | — | Reserved |
 | [0029](0029-nwc-authorization-model.md) | nwc authorization model (domain-layer choke-point, machine-id guild resolution, fail-closed floors) | 2026-07-09 | Proposed; generalises P73, cites OWASP A01 |
-| [0030](0030-per-site-canonical-maturity-axes.md) | Per-site canonical & maturity axes + impact/fate-manifest contract | 2026-07-09 | Proposed; supersedes 0013 (ops#33 `canonical:` + P67 `maturity:` + ops#47 `lib/impact.sh`) |
+| [0030](0030-per-site-canonical-maturity-axes.md) | Per-site canonical & maturity axes + impact/fate-manifest contract | 2026-07-09 | Accepted (2026-07-18); supersedes 0013 (ops#33 `canonical:` + P67 `maturity:` + ops#47 `lib/impact.sh`) |
 
 ## Creating a New ADR
 

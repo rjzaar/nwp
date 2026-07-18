@@ -19,6 +19,16 @@ WebAuthn enrolment for the operator's forge account, and the protected
 `prod-deploy` runner. Until then, real user-facing production deploys remain
 gated by the offline deploy host + hardware token (ADR-0017).
 
+> **Amendment — 2026-07-18 (nwp/ops#52, verify-then-apply).** The runner-resident
+> deploy step is **verify-then-apply**, NOT a bare `git pull`: the ▶ job invokes
+> the `nwp-server` pull/apply path (`server-pull` / `server-apply`), which
+> minisign-verifies the signed bundle **at the box** (`lib/bundle-verify.sh`,
+> fail-closed) before applying. A GitLab/ref compromise that rewrites a ref
+> without a valid signature is then rejected locally — restoring ADR-0017's
+> "trust flows through signatures, not machines" property to the routine prod
+> path (SLSA verify-at-consumption). The "fixed `git pull <ref>` + `pl stg2live`"
+> wording in Option 3 below is superseded by this step.
+
 > **Operator authority grant — 2026-07-01 (A14 scoping):** The operator granted the AI
 > (Claude Code) **deploy authority to the LIVE TEST tier** (the shared test box) — on the basis
 > that these are **test sites, not real production**. Consistent with the threat model's "AI blast

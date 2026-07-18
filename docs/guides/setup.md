@@ -269,7 +269,7 @@ If you have an existing `.secrets.yml` with mixed secrets:
 ./migrate-secrets.sh --nwp
 ```
 
-See [DATA_SECURITY_BEST_PRACTICES.md](DATA_SECURITY_BEST_PRACTICES.md) for full documentation.
+See [DATA_SECURITY_BEST_PRACTICES.md](../security/data-security-best-practices.md) for full documentation.
 
 ## CLI Installation
 

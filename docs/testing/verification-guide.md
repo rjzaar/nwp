@@ -52,7 +52,7 @@ pl verify                    # Same, via pl CLI
 ./verify.sh reset            # Clear all verifications (start fresh)
 ```
 
-**What's New (v0.18.0+):** The default `./verify.sh` now opens an interactive TUI console instead of showing a static report. See [Verify Enhancements](../VERIFY_ENHANCEMENTS.md) for the complete console guide with keyboard shortcuts, checklist editing, history viewing, and auto-verification features.
+**What's New (v0.18.0+):** The default `./verify.sh` now opens an interactive TUI console instead of showing a static report. See [Verify Enhancements](verify-enhancements.md) for the complete console guide with keyboard shortcuts, checklist editing, history viewing, and auto-verification features.
 
 ---
 
@@ -81,7 +81,7 @@ cd "$NWP_ROOT"
 ./verify.sh report # Traditional status report
 ```
 
-**Interactive Console (recommended):** Navigate with arrow keys, press `v` to verify, `i` to edit checklists, `h` for history. See [Verify Enhancements](../VERIFY_ENHANCEMENTS.md) for full keyboard shortcuts.
+**Interactive Console (recommended):** Navigate with arrow keys, press `v` to verify, `i` to edit checklists, `h` for history. See [Verify Enhancements](verify-enhancements.md) for full keyboard shortcuts.
 
 Look for:
 - `[✓]` = Verified and unchanged
@@ -169,7 +169,7 @@ This shows:
 - Feature auto-verifies when all items are done
 - Perfect for team collaboration
 
-See [Verify Enhancements](../VERIFY_ENHANCEMENTS.md) for detailed console usage.
+See [Verify Enhancements](verify-enhancements.md) for detailed console usage.
 
 ---
 
@@ -563,7 +563,7 @@ A complete map of all NWP documentation organized by purpose.
 | Document | Purpose |
 |----------|---------|
 | [Backup Implementation](../reference/backup-implementation.md) | Backup system details |
-| [Git Backup Recommendations](../reference/git-backup-recommendations.md) | Git-based backup strategy |
+| [Git Backup Recommendations](../deployment/git-backup-recommendations.md) | Git-based backup strategy |
 | [Migration Sites Tracking](../guides/migration-sites-tracking.md) | Sites registry migration |
 
 ## Planning & Roadmap

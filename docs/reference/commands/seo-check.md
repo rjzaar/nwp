@@ -444,13 +444,13 @@ done
 
 - [security.sh](security.md) - Security update management
 - [live-deploy.sh](live-deploy.md) - Production deployment
-- [config.sh](config.md) - Site configuration management
+- [config.sh](../../../scripts/agent-loop/prompts/config.md) - Site configuration management
 - [drush.sh](drush.md) - Drupal command-line operations
 
 ## See Also
 
 - [SEO Robots Proposal](../../proposals/SEO_ROBOTS_PROPOSAL.md) - Full SEO specification
-- [SEO Setup Guide](../../guides/seo-setup.md) - Implementing SEO best practices
+- [SEO Setup Guide](../../security/seo-setup.md) - Implementing SEO best practices
 - [Staging Best Practices](../../guides/staging-best-practices.md) - Staging environment setup
 - [Robots.txt Templates](../../templates/) - Template robots.txt files
 - [Google Search Console](https://search.google.com/search-console) - Monitor search performance

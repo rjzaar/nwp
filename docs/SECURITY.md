@@ -597,8 +597,8 @@ If you suspect a security incident:
 
 - [OWASP Bash Security Cheatsheet](https://cheatsheetseries.owasp.org/cheatsheets/OS_Command_Injection_Defense_Cheat_Sheet.html)
 - [SSH Security Best Practices](https://www.ssh.com/academy/ssh/security)
-- [NWP Data Security Best Practices](DATA_SECURITY_BEST_PRACTICES.md)
-- [Distributed Contribution Governance](DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md)
+- [NWP Data Security Best Practices](security/data-security-best-practices.md)
+- [Distributed Contribution Governance](governance/distributed-contribution-governance.md)
 
 ---
 

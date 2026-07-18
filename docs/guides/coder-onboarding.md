@@ -531,7 +531,7 @@ Administrators can manage coders using the interactive TUI:
 
 ## Related Documentation
 
-- [ROLES.md](ROLES.md) - Developer role definitions and access levels
-- [CONTRIBUTING.md](../CONTRIBUTING.md) - How to contribute to NWP
+- [ROLES.md](../governance/roles.md) - Developer role definitions and access levels
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) - How to contribute to NWP
 - [CORE_DEVELOPER_ONBOARDING_PROPOSAL.md](CORE_DEVELOPER_ONBOARDING_PROPOSAL.md) - Full onboarding automation proposal
-- [DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md) - Governance framework
+- [DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](../governance/distributed-contribution-governance.md) - Governance framework

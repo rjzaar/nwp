@@ -564,10 +564,10 @@ The console auto-detects schema version:
 
 ## Related Documentation
 
-- [VERIFICATION_GUIDE.md](VERIFICATION_GUIDE.md) - Overall verification system guide
+- [VERIFICATION_GUIDE.md](verification-guide.md) - Overall verification system guide
 - [TESTING.md](TESTING.md) - Automated testing infrastructure
-- [HUMAN_TESTING.md](HUMAN_TESTING.md) - Manual testing procedures
-- [CHANGELOG.md](../CHANGELOG.md) - Version history with verification features
+- [HUMAN_TESTING.md](human-testing.md) - Manual testing procedures
+- [CHANGELOG.md](../../CHANGELOG.md) - Version history with verification features
 
 ---
 

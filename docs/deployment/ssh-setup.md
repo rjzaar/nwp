@@ -198,6 +198,6 @@ After SSH setup is complete:
 
 ## See Also
 
-- [Production Deployment Guide](PRODUCTION_DEPLOYMENT.md)
+- [Production Deployment Guide](production-deployment.md)
 - [README.md](../README.md)
 - [Linode SSH Keys Documentation](https://www.linode.com/docs/products/tools/cloud-manager/guides/manage-ssh-keys/)

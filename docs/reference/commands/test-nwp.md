@@ -499,6 +499,6 @@ rm -rf sitebackups/test-nwp*
 - [test.md](test.md) - Test individual Drupal sites
 - [run-tests.md](run-tests.md) - BATS unit/integration test runner
 - [testos.md](testos.md) - OpenSocial-specific testing
-- [CLAUDE.md](../../CLAUDE.md) - Release process and tag creation
-- [ROADMAP.md](../../ROADMAP.md) - Future test coverage plans
+- [CLAUDE.md](../../../CLAUDE.md) - Release process and tag creation
+- [ROADMAP.md](../../governance/roadmap.md) - Future test coverage plans
 - [CI/CD Documentation](../../testing/ci-cd-integration.md) - Integration with pipelines

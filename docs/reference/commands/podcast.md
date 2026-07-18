@@ -694,7 +694,7 @@ Check site availability:
 
 ## Related Commands
 
-- [setup-ssh](../../../setup-ssh.sh) - Generate SSH keys for server access
+- [setup-ssh](../../../scripts/commands/setup-ssh.sh) - Generate SSH keys for server access
 - Podcast library: `<nwp-root>/lib/podcast.sh`
 - Linode library: `<nwp-root>/lib/linode.sh`
 - Cloudflare library: `<nwp-root>/lib/cloudflare.sh`

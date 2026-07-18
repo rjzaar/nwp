@@ -585,7 +585,7 @@ ddev drush migrate:reset-status migration_name
 
 ## Related Commands
 
-- [install.sh](../scripts/install.sh) - Create sites and migration stubs
+- [install.sh](../../../scripts/commands/install.sh) - Create sites and migration stubs
 - [sync.md](./sync.md) - Sync from remote servers
 - [import.sh](../scripts/import.sh) - Import existing sites
 

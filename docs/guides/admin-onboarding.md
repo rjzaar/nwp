@@ -784,9 +784,9 @@ echo "Ready to onboard: pl coder-setup add $username --email $email"
 
 ## Related Documentation
 
-- [CODER_ONBOARDING.md](CODER_ONBOARDING.md) - User-facing onboarding guide
+- [CODER_ONBOARDING.md](coder-onboarding.md) - User-facing onboarding guide
 - [DEVELOPER_LIFECYCLE_GUIDE.md](DEVELOPER_LIFECYCLE_GUIDE.md) - Developer workflow
-- [DATA_SECURITY_BEST_PRACTICES.md](DATA_SECURITY_BEST_PRACTICES.md) - Security architecture
+- [DATA_SECURITY_BEST_PRACTICES.md](../security/data-security-best-practices.md) - Security architecture
 - [GITLAB_COMPOSER.md](GITLAB_COMPOSER.md) - GitLab package registry
 
 ---

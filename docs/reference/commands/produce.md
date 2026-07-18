@@ -394,7 +394,7 @@ Planned features for `produce`:
 
 ## See Also
 
-- [Production Deployment Guide](../../guides/production-deployment.md) - Complete production workflow
+- [Production Deployment Guide](../../deployment/production-deployment.md) - Complete production workflow
 - [Linode Setup Guide](../../deployment/linode-setup.md) - Manual Linode configuration
 - [SSL Certificate Setup](../../deployment/ssl-setup.md) - Let's Encrypt configuration
 - [Production Checklist](../../deployment/production-checklist.md) - Pre-launch verification

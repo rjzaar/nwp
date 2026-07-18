@@ -538,8 +538,8 @@ When onboarding a new core developer, ensure they have:
 
 ## References
 
-- [DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md) - Full governance framework
-- [CODER_ONBOARDING.md](CODER_ONBOARDING.md) - Current onboarding guide
+- [DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md](distributed-contribution-governance.md) - Full governance framework
+- [CODER_ONBOARDING.md](../guides/coder-onboarding.md) - Current onboarding guide
 - [GitLab API Documentation](https://docs.gitlab.com/ee/api/) - For contribution tracking
 
 ---

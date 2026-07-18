@@ -3770,32 +3770,33 @@ EOF
 # entry), and orphan bats-test-*/verify-test* docker volumes. DRY-RUN by
 # default; pass --execute to apply. Removals use the flock-locked yaml_remove_site.
 prune_fixtures() {
-    local execute=false
-    [ "${1:-}" = "--execute" ] && execute=true
+    local execute=false auto=false
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --execute) execute=true ;;
+            -y|--yes)  auto=true ;;
+        esac
+        shift
+    done
 
-    # Defensive: these live in common.sh / yaml-write.sh.
+    # Defensive: these live in common.sh / yaml-write.sh / impact.sh.
     command -v is_fixture_sitename >/dev/null 2>&1 || source "$PROJECT_ROOT/lib/common.sh"
     command -v yaml_get_all_sites  >/dev/null 2>&1 || source "$PROJECT_ROOT/lib/yaml-write.sh"
+    command -v impact_reset        >/dev/null 2>&1 || source "$PROJECT_ROOT/lib/impact.sh"
 
     local config="${PROJECT_ROOT}/nwp.yml"
-    local found=0 removed=0
 
-    if $execute; then
-        echo "Fixture prune — EXECUTE (removals use the locked writer)"
-    else
-        echo "Fixture prune — DRY-RUN (pass --execute to apply)"
-    fi
+    # ops#47 impact contract: compute the FULL fate manifest before touching anything.
+    impact_reset
+    local -a ghost_sites=() orphan_dirs=() orphan_vols=()
 
     # 1. Registry ghosts: fixture-named sites in nwp.yml with no dir.
     local site
     while IFS= read -r site; do
         [ -z "$site" ] && continue
         if is_fixture_sitename "$site" && [ ! -d "${PROJECT_ROOT}/sites/${site}" ]; then
-            found=$((found + 1))
-            echo "  ghost registry entry: ${site}  (no sites/${site})"
-            if $execute && yaml_remove_site "$site" "$config" >/dev/null 2>&1; then
-                removed=$((removed + 1))
-            fi
+            ghost_sites+=("$site")
+            impact_delete "Registry ghost" "nwp.yml entry '${site}' (no sites/${site})"
         fi
     done < <(yaml_get_all_sites "$config" 2>/dev/null)
 
@@ -3807,13 +3808,8 @@ prune_fixtures() {
             name="$(basename "$d")"
             if is_fixture_sitename "$name" \
                && ! yaml_get_all_sites "$config" 2>/dev/null | grep -qx "$name"; then
-                found=$((found + 1))
-                echo "  orphan dir: sites/${name}  (no registry entry)"
-                if $execute; then
-                    ( cd "$d" && command -v ddev >/dev/null 2>&1 \
-                        && ddev delete --omit-snapshot --yes >/dev/null 2>&1 || true )
-                    rm -rf "$d" && removed=$((removed + 1))
-                fi
+                orphan_dirs+=("$d")
+                impact_delete "Orphan dir" "sites/${name} (no registry entry)"
             fi
         done
     fi
@@ -3823,21 +3819,43 @@ prune_fixtures() {
         local vol
         while IFS= read -r vol; do
             [ -z "$vol" ] && continue
-            found=$((found + 1))
-            echo "  orphan docker volume: ${vol}"
-            if $execute && docker volume rm "$vol" >/dev/null 2>&1; then
-                removed=$((removed + 1))
-            fi
+            orphan_vols+=("$vol")
+            impact_delete "Orphan docker volume" "$vol"
         done < <(docker volume ls -q 2>/dev/null | grep -E 'bats-test|verify-test' || true)
     fi
 
+    local found=$(( ${#ghost_sites[@]} + ${#orphan_dirs[@]} + ${#orphan_vols[@]} ))
     if [ "$found" -eq 0 ]; then
         echo "No fixture debris found."
-    elif $execute; then
-        echo "Pruned ${removed}/${found} fixture item(s)."
-    else
-        echo "${found} fixture item(s) would be pruned — run 'pl verify --prune --execute' to apply."
+        return 0
     fi
+
+    # Print the computed fate manifest (the impact report) before any removal.
+    impact_render
+
+    if ! $execute; then
+        echo "${found} fixture item(s) would be pruned — run 'pl verify --prune --execute' to apply."
+        return 0
+    fi
+
+    # Destructive path: confirm (auto via -y; fail-closed with no TTY) before removing.
+    impact_confirm standard "prune ${found} fixture item(s)" "$auto" \
+        || { echo "Fixture prune cancelled."; return 0; }
+
+    local removed=0
+    for site in "${ghost_sites[@]}"; do
+        yaml_remove_site "$site" "$config" >/dev/null 2>&1 && removed=$((removed + 1))
+    done
+    for d in "${orphan_dirs[@]}"; do
+        ( cd "$d" && command -v ddev >/dev/null 2>&1 \
+            && ddev delete --omit-snapshot --yes >/dev/null 2>&1 || true )
+        rm -rf "$d" && removed=$((removed + 1))
+    done
+    for vol in "${orphan_vols[@]}"; do
+        docker volume rm "$vol" >/dev/null 2>&1 && removed=$((removed + 1))
+    done
+
+    echo "Pruned ${removed}/${found} fixture item(s)."
     return 0
 }
 

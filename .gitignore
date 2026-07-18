@@ -122,6 +122,7 @@ scripts/commands/.rollback/**
 build/*
 !build/nwp-server.include
 !build/nwp-server.deny-symbols
+!build/nwp-solo.include
 
 # Tests
 !tests/

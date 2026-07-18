@@ -478,7 +478,7 @@ pair_guard_record_success() {
 # anchor is known AND not behind the counterpart. The ONLY escape is a loud,
 # typed, ledgered --override-pair. Unpaired / uncoupled-tier restores are no-ops.
 #
-# ⚠ AI BLAST RADIUS: prod restores stay ver/Solo-gated (CLAUDE.md, deploy-gate).
+# ⚠ AI BLAST RADIUS: prod restores stay ver/Solo-gated (per the operator threat model + deploy-gate).
 # This guard is the LOGIC layer; it does not itself run a restore.
 ################################################################################
 

@@ -466,7 +466,7 @@ restore_site() {
     # would move one paired member behind the other's identity anchor (orphaning
     # UID-locks) unless a typed, ledgered --override-pair is given. No-op for
     # unpaired sites and uncoupled tiers (the default dev restore). ⚠ A real
-    # live/prod restore remains ver/Solo-gated (CLAUDE.md); this is the logic gate.
+    # live/prod restore remains ver/Solo-gated (per the operator threat model); this is the logic gate.
     if command -v pair_guard_restore >/dev/null 2>&1; then
         if ! pair_guard_restore "$to_site" "$tier" "restore" "$anchor" "$override_pair"; then
             print_error "Restore refused by the ops#83 pair restore gate (see above)."

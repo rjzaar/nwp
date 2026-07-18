@@ -557,7 +557,7 @@ run_deployment_tests() {
         return 0
     fi
 
-    run_tests "$(basename "$stg_site")" "$test_selection"
+    run_tests "$stg_site" "$test_selection"
     local result=$?
 
     if [ $result -eq 0 ]; then

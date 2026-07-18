@@ -10,6 +10,45 @@
 ################################################################################
 
 ################################################################################
+# Site path resolution
+################################################################################
+
+# Resolve a site identifier to its on-disk DDEV project directory.
+# Handles both the flat v1 layout (sites/<name>) and the v2 nested layout
+# (sites/<tenant>/<env>). Callers may pass:
+#   - a full path to the site dir (used as-is if it holds a .ddev config)
+#   - a flat name          → sites/<name>            (v1)
+#   - an env-suffixed name  → sites/<tenant>/<env>    (v2, e.g. nwc-stg)
+#   - a bare tenant name    → sites/<tenant>/dev      (v2 default env)
+# Falls back to the legacy sites/<name> form so existing callers (e.g. CI,
+# which passes an empty name and relies on cwd) keep their behaviour.
+resolve_test_site_path() {
+    local sitename="$1"
+    local root="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+    # 1. already a path to a real DDEV site dir
+    if [ -n "$sitename" ] && [ -d "$sitename" ] && [ -f "$sitename/.ddev/config.yaml" ]; then
+        echo "$sitename"; return 0
+    fi
+    # 2. flat v1 layout
+    if [ -n "$sitename" ] && [ -d "$root/sites/$sitename" ] && \
+       [ -f "$root/sites/$sitename/.ddev/config.yaml" ]; then
+        echo "$root/sites/$sitename"; return 0
+    fi
+    # 3. env-suffixed v2: nwc-stg → nwc/stg
+    if [[ "$sitename" =~ ^(.+)-(dev|stg|live|test|prod)$ ]] && \
+       [ -d "$root/sites/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}" ]; then
+        echo "$root/sites/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"; return 0
+    fi
+    # 4. bare tenant → default dev env
+    if [ -n "$sitename" ] && [ -d "$root/sites/$sitename/dev" ] && \
+       [ -f "$root/sites/$sitename/dev/.ddev/config.yaml" ]; then
+        echo "$root/sites/$sitename/dev"; return 0
+    fi
+    # 5. legacy fallback (preserves prior behaviour incl. empty sitename)
+    echo "$root/sites/$sitename"
+}
+
+################################################################################
 # Test Type Definitions
 ################################################################################
 
@@ -186,7 +225,7 @@ run_tests() {
 run_phpunit() {
     local sitename="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/sites/$sitename"
+    local site_path="$(resolve_test_site_path "$sitename")"
 
     cd "$site_path" || return 1
 
@@ -212,7 +251,7 @@ run_phpunit() {
 run_behat() {
     local sitename="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/sites/$sitename"
+    local site_path="$(resolve_test_site_path "$sitename")"
 
     cd "$site_path" || return 1
 
@@ -236,7 +275,7 @@ run_behat() {
 run_phpstan() {
     local sitename="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/sites/$sitename"
+    local site_path="$(resolve_test_site_path "$sitename")"
 
     cd "$site_path" || return 1
 
@@ -258,7 +297,7 @@ run_phpstan() {
 run_phpcs() {
     local sitename="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/sites/$sitename"
+    local site_path="$(resolve_test_site_path "$sitename")"
 
     cd "$site_path" || return 1
 
@@ -284,7 +323,7 @@ run_phpcs() {
 run_eslint() {
     local sitename="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/sites/$sitename"
+    local site_path="$(resolve_test_site_path "$sitename")"
 
     cd "$site_path" || return 1
 
@@ -327,7 +366,7 @@ run_eslint() {
 run_stylelint() {
     local sitename="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/sites/$sitename"
+    local site_path="$(resolve_test_site_path "$sitename")"
 
     cd "$site_path" || return 1
 
@@ -364,7 +403,7 @@ run_stylelint() {
 run_security() {
     local sitename="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/sites/$sitename"
+    local site_path="$(resolve_test_site_path "$sitename")"
 
     cd "$site_path" || return 1
 
@@ -388,7 +427,7 @@ run_security() {
 run_accessibility() {
     local sitename="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/sites/$sitename"
+    local site_path="$(resolve_test_site_path "$sitename")"
 
     cd "$site_path" || return 1
 
@@ -469,7 +508,7 @@ estimate_test_duration() {
 check_available_tests() {
     local sitename="$1"
     local script_dir="${PROJECT_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
-    local site_path="$script_dir/sites/$sitename"
+    local site_path="$(resolve_test_site_path "$sitename")"
     local available=""
 
     cd "$site_path" 2>/dev/null || return 1

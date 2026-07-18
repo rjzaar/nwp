@@ -1204,6 +1204,15 @@ deploy_to_live() {
         "--exclude=node_modules"
         "--exclude=.env"
         "--exclude=.env.local"
+        # Live-only runtime state that MUST survive rsync --delete. These are
+        # generated ON the live host and never exist in staging, so without an
+        # exclude the --delete would remove them:
+        #   oauth-keys/  simple_oauth signing keys — deleting them breaks all
+        #                OAuth/OIDC logins (SSO) on live instantly.
+        #   auth.json    composer credentials for the live host; overwriting it
+        #                with staging's can break composer auth on live.
+        "--exclude=oauth-keys"
+        "--exclude=auth.json"
     )
 
     # Sync files

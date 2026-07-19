@@ -1568,6 +1568,12 @@ deploy_to_live() {
     # Build rsync excludes
     local excludes=(
         "--exclude=.ddev"
+        # DDEV also writes sites/default/settings.ddev.php (OUTSIDE .ddev/). It is
+        # included un-guarded by DDEV's settings.php and forces symfony_mailer to a
+        # mailpit SMTP at localhost:1025 — on a production host that has no mailpit,
+        # every outbound mail then fails ("Unable to send email"). This is exactly
+        # how nwc live went mail-dark (2026-07-20). It must never reach prod.
+        "--exclude=$webroot/sites/default/settings.ddev.php"
         "--exclude=.git"
         "--exclude=.nwp.yml"
         "--exclude=$webroot/sites/default/settings.local.php"

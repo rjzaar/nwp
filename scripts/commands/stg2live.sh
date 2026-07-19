@@ -1325,6 +1325,11 @@ ${BOLD}OPTIONS:${NC}
                             fail-closed pre-deploy WEBROOT snapshot (F2/P0-2) could not
                             be taken (disk-tight or tar failed). The --delete is then
                             UNRECOVERABLE. Ledgered in private/snapshots/<site>.log.
+    --allow-profile-change  Override the fail-closed PROFILE-CHANGE GUARD and run
+                            --code-only ACROSS a Drupal install-profile change on a
+                            canonical:live|prod site. Almost certainly WRONG: --code-only
+                            cannot cross a profile change (e.g. nwc → social), so the site
+                            will likely be unbootable. See UNFORK-PROFILE-INTENT-2026-07-19.
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Site name (with or without _stg suffix)
@@ -1356,6 +1361,111 @@ ${BOLD}REQUIREMENTS:${NC}
     - Staging site must exist and be in production mode
 
 EOF
+}
+
+################################################################################
+# PROFILE-CHANGE GUARD (fail-closed) — protect the --code-only primitive.
+#
+# A `--code-only` deploy pushes code/config but NOT the DB, so the live DB keeps
+# recording whatever install profile it already has. If the staging build
+# installs a DIFFERENT profile, `--code-only` cannot cross that change: the live
+# DB keeps recording the OLD profile while the new code ships no such profile
+# (e.g. nwc un-fork — live `nwc` → build `social`, Open Social under
+# profiles/contrib/social/), so the site will not boot. The correct route is a
+# fresh `drush site:install <target>` + recipe + Migrate import.
+# See ~/central/UNFORK-PROFILE-INTENT-2026-07-19.md.
+################################################################################
+
+# Read the install profile the STAGING BUILD installs, from its config-sync
+# core.extension.yml (`profile:` key). Offline — no live contact.
+read_build_profile() {
+    local stg_dir="$1" sync val
+    sync="$stg_dir/html/sites/default/files/sync/core.extension.yml"
+    [ -f "$sync" ] || return 1
+    val="$(awk -F: '/^profile:/{gsub(/[[:space:]]/,"",$2); print $2; exit}' "$sync")"
+    [ -n "$val" ] || return 1
+    printf '%s\n' "$val"
+}
+
+# Read the LIVE site's installed profile from the live DB (READ-ONLY: drush
+# config:get). Uses the same remote `sudo -u www-data drush` idiom (with the
+# webroot/vendor fallback) as run_live_db_updates. Callers MUST NOT invoke this
+# on --dry-run (it contacts the live host).
+read_live_profile() {
+    local base_name="$1" server_ip ssh_user remote_path webroot sudo_prefix out val
+    server_ip=$(get_live_config "$base_name" "server_ip")
+    [ -n "$server_ip" ] || return 1
+    ssh_user=$(get_ssh_user "$base_name")
+    remote_path=$(get_live_config "$base_name" "remote_path")
+    [ -z "$remote_path" ] && remote_path="/var/www/${base_name}"
+    webroot="web"
+    sudo_prefix=""
+    [ "$ssh_user" == "gitlab" ] && sudo_prefix="sudo"
+    out="$(ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
+            "cd ${remote_path} && $sudo_prefix -u www-data drush cget core.extension profile --format=string" 2>/dev/null \
+        || ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
+            "cd ${remote_path}/$webroot && $sudo_prefix -u www-data ../vendor/bin/drush cget core.extension profile --format=string" 2>/dev/null)"
+    val="$(printf '%s\n' "$out" | awk 'NF{v=$NF} END{gsub(/[[:space:]'"'"'"]/,"",v); print v}')"
+    [ -n "$val" ] || return 1
+    printf '%s\n' "$val"
+}
+
+# Refuse a --code-only deploy that would cross an install-profile change on a
+# canonical:live|prod site. Returns 0 = allowed, 1 = refused (fail-closed).
+stg2live_profile_change_guard() {
+    local base_name="$1" stg_dir="$2"
+    local phase; phase=$(canonical_get_phase "$base_name" 2>/dev/null || echo dev)
+    # Only content-bearing live/prod tiers are at risk; a dev target is throwaway.
+    if [ "$phase" != "live" ] && [ "$phase" != "prod" ]; then
+        return 0
+    fi
+
+    local target; target="$(read_build_profile "$stg_dir" 2>/dev/null || true)"
+    if [ -z "$target" ]; then
+        print_error "PROFILE-CHANGE GUARD: cannot read the staging build's install profile (core.extension.yml) — refusing --code-only (fail-closed)."
+        print_hint "See ~/central/UNFORK-PROFILE-INTENT-2026-07-19.md."
+        if [ "${ALLOW_PROFILE_CHANGE:-false}" == "true" ]; then
+            print_warning "--allow-profile-change: proceeding despite an unreadable build profile — almost certainly WRONG."
+            return 0
+        fi
+        return 1
+    fi
+
+    # --dry-run must touch NOTHING live: print the verdict and pass. A real run
+    # reads the live profile and enforces the comparison below.
+    if [ "${DRY_RUN:-false}" == "true" ]; then
+        print_info "[dry-run] PROFILE-CHANGE GUARD: staging build installs profile '${target}'."
+        print_info "[dry-run] a real --code-only run refuses if the LIVE profile differs from '${target}' (unless --allow-profile-change) — the live profile is not read on a dry run."
+        return 0
+    fi
+
+    local live; live="$(read_live_profile "$base_name" 2>/dev/null || true)"
+    if [ -z "$live" ]; then
+        print_error "PROFILE-CHANGE GUARD: could not read the LIVE install profile — refusing --code-only (fail-closed)."
+        print_hint "See ~/central/UNFORK-PROFILE-INTENT-2026-07-19.md."
+        if [ "${ALLOW_PROFILE_CHANGE:-false}" == "true" ]; then
+            print_warning "--allow-profile-change: proceeding despite an unreadable live profile — almost certainly WRONG."
+            return 0
+        fi
+        return 1
+    fi
+
+    if [ "$live" != "$target" ]; then
+        print_error "PROFILE-CHANGE GUARD: refusing --code-only across an install-profile change."
+        print_error "Live installs profile '${live}' but the staging build installs profile '${target}'."
+        print_error "--code-only CANNOT cross a profile change: the live DB keeps recording '${live}' while the new"
+        print_error "code ships no '${live}' profile (Open Social sits under profiles/contrib/social/) → the site will not boot."
+        print_hint "Correct route: Option 1 — fresh 'drush site:install ${target}' + recipe + Migrate import."
+        print_hint "See ~/central/UNFORK-PROFILE-INTENT-2026-07-19.md (§4 Option 1)."
+        if [ "${ALLOW_PROFILE_CHANGE:-false}" == "true" ]; then
+            print_warning "--allow-profile-change: proceeding across the '${live}' → '${target}' profile change — almost certainly WRONG; the site will likely be unbootable."
+            return 0
+        fi
+        return 1
+    fi
+
+    print_status "OK" "PROFILE-CHANGE GUARD: live profile '${live}' == build profile '${target}' — no profile change."
+    return 0
 }
 
 ################################################################################
@@ -1692,11 +1802,12 @@ main() {
     local OVERRIDE_CANONICAL=false
     local OVERRIDE_PAIR=false
     local OVERRIDE_SNAPSHOT=false
+    local ALLOW_PROFILE_CHANGE=false
     local SITENAME=""
 
     # Parse options
     local OPTIONS=hdyv
-    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision,dry-run,code-only,push-content,override-canonical,override-pair,override-snapshot
+    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision,dry-run,code-only,push-content,override-canonical,override-pair,override-snapshot,allow-profile-change
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -1720,13 +1831,14 @@ main() {
             --override-canonical) OVERRIDE_CANONICAL=true; shift ;;
             --override-pair) OVERRIDE_PAIR=true; shift ;;
             --override-snapshot) OVERRIDE_SNAPSHOT=true; shift ;;
+            --allow-profile-change) ALLOW_PROFILE_CHANGE=true; shift ;;
             --) shift; break ;;
             *) echo "Programming error"; exit 3 ;;
         esac
     done
 
     # Export so deploy_to_live and friends can read it.
-    export DRY_RUN CODE_ONLY PUSH_CONTENT OVERRIDE_CANONICAL OVERRIDE_PAIR OVERRIDE_SNAPSHOT
+    export DRY_RUN CODE_ONLY PUSH_CONTENT OVERRIDE_CANONICAL OVERRIDE_PAIR OVERRIDE_SNAPSHOT ALLOW_PROFILE_CHANGE
 
     # Get sitename
     if [ $# -ge 1 ]; then
@@ -1792,6 +1904,22 @@ main() {
     # still emits the contracted UUID sub. Inert for non-provider/uncoupled sites.
     if ! pair_guard "$BASE_NAME" "live" "stg2live" "$CODE_ONLY" "$OVERRIDE_PAIR" "$STG_DIR"; then
         exit 1
+    fi
+
+    # PROFILE-CHANGE GUARD (fail-closed) — a --code-only deploy CANNOT cross a
+    # Drupal install-profile change. On a canonical:live|prod site, if the LIVE
+    # DB installs a DIFFERENT profile than the staging build, --code-only leaves
+    # the live DB recording the OLD profile while the new code ships no such
+    # profile — e.g. the nwc un-fork: live `nwc` → build `social`, which hides
+    # Open Social under profiles/contrib/social/ so the site will not boot.
+    # Refuse unless --allow-profile-change (which is almost certainly wrong).
+    # See ~/central/UNFORK-PROFILE-INTENT-2026-07-19.md. Inert for same-profile
+    # sites, non-code-only deploys, and dev-phase targets. Runs BEFORE the
+    # destructive deploy_to_live; --dry-run prints the verdict, touches nothing live.
+    if [ "$CODE_ONLY" == "true" ]; then
+        if ! stg2live_profile_change_guard "$BASE_NAME" "$STG_DIR"; then
+            exit 1
+        fi
     fi
 
     # Hardware+signature gate on the live write (ADR-0028). No-op on the test

@@ -27,6 +27,15 @@ setup() {
            "${PROJECT_ROOT}/sites/nwc/stg" \
            "${PROJECT_ROOT}/sites/nwc/backups"
 
+  # PROFILE-CHANGE GUARD fixture: the stg build's config-sync records the TARGET
+  # install profile. Default the happy-path suite to a SAME-PROFILE world (build
+  # == live == 'social') so the fail-closed guard passes and these orchestration
+  # tests keep exercising the step sequence. The mismatch (nwc → social) case is
+  # covered in test-cutover-profile-guard.bats.
+  mkdir -p "${PROJECT_ROOT}/sites/nwc/stg/html/sites/default/files/sync"
+  printf 'profile: social\n' \
+    > "${PROJECT_ROOT}/sites/nwc/stg/html/sites/default/files/sync/core.extension.yml"
+
   # Mock `ddev` on PATH: the rehearsal's live-DB import (`ddev import-db`) is the
   # only direct ddev call; everything else routes through the mock pl. No real
   # container is touched.
@@ -58,6 +67,10 @@ EOF
 echo "$*" >> "$PL_CALLS"
 if [[ "$*" == *"pm:list"* && "$*" == *"--tier=live"* ]]; then printf 'block\nnode\n'; fi
 if [[ "$*" == *"pm:list"* && "$*" == *"--tier=stg"* ]];  then printf 'block\nnode\n'; fi
+# PROFILE-CHANGE GUARD reads the live profile from the imported DB on the stg
+# scratch surface — emit a matching 'social' so the same-profile happy path
+# passes the fail-closed guard.
+if [[ "$*" == *"cget core.extension profile"* && "$*" == *"--tier=stg"* ]]; then printf "'core.extension:profile': social\n"; fi
 if [[ "$*" == *"updatedb"* ]]; then echo "Performed update: nwc_update_9001"; fi
 # The rehearsal's `pl backup --remote nwc --db-only` must leave a dump the
 # rehearsal then imports into the stg scratch DB — mirror that side effect.
@@ -76,6 +89,10 @@ teardown() { rm -rf "${TEST_TMP}"; }
 _mark_rehearsed() {
   mkdir -p "${PROJECT_ROOT}/private/cutover"
   printf 'status=passed\n' > "${PROJECT_ROOT}/private/cutover/nwc.rehearse"
+  # A passed rehearsal records the live install profile it read from the imported
+  # DB; --execute's offline PROFILE-CHANGE GUARD compares it to the target. Match
+  # the same-profile fixture ('social') so the guard passes.
+  printf 'social\n' > "${PROJECT_ROOT}/private/cutover/nwc.liveprofile"
 }
 
 # ── dispatch / help ──────────────────────────────────────────────────────────

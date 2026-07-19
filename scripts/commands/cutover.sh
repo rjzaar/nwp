@@ -1,5 +1,21 @@
 #!/bin/bash
 ################################################################################
+# ⚠  PROFILE-CHANGE GUARD — READ BEFORE RUNNING AGAINST nwc  ⚠
+#
+# Step 4 below uses `pl stg2live nwc --code-only`, which is INVALID for the nwc
+# un-fork. The un-fork is a Drupal INSTALL-PROFILE CHANGE: live runs profile
+# `nwc`; the new build's profile is `social` (Open Social distro + nwc recipes).
+# `--code-only` CANNOT cross a profile change — it leaves the live DB recording
+# `profile: nwc` while the new code ships NO `nwc` profile and hides Open
+# Social's modules under `profiles/contrib/social/`, so the site cannot boot.
+# See ~/central/UNFORK-PROFILE-INTENT-2026-07-19.md.
+#
+# This orchestrator is being REPLACED by the Option-1 rebuild+migrate flow
+# (fresh `drush site:install social` + recipe + Migrate import). Until that
+# lands, DO NOT run this against nwc. The fail-closed `preflight_profile_guard`
+# (and the in-rehearsal profile check) below ABORT any rehearse/execute when the
+# LIVE install profile differs from the TARGET build's install profile.
+################################################################################
 # scripts/commands/cutover.sh — `pl cutover nwc` : the one-time nwc un-fork
 # migration orchestrator (PL-STG2LIVE-INTEGRATION-DESIGN-2026-07-19 §3.7 + §6
 # P1-4, promote order §5.4).
@@ -185,6 +201,96 @@ parse_args() {
 record_progress() { echo "$1" > "$PROGRESS_FILE"; }
 
 ################################################################################
+# PROFILE-CHANGE GUARD (fail-closed).
+#
+# The nwc un-fork is a Drupal INSTALL-PROFILE change: live installs profile
+# `nwc`; the new build installs profile `social`. `--code-only` (step 4) CANNOT
+# cross a profile change — it leaves the live DB recording `profile: nwc` while
+# the new code ships no `nwc` profile and hides Open Social under
+# `profiles/contrib/social/`, so the site will not boot. The correct route is
+# Option 1 (fresh `drush site:install social` + recipe + Migrate import).
+# See ~/central/UNFORK-PROFILE-INTENT-2026-07-19.md.
+#
+#   TARGET profile — read OFFLINE from the staging build's config-sync
+#     core.extension.yml (`profile:` key): the profile the new code installs as.
+#   LIVE profile   — read from the LIVE DB. The rehearsal imports the live DB
+#     into the stg scratch surface, so we read it there READ-ONLY (`--tier=stg
+#     -- cget core.extension profile`) and RECORD it. `--execute` then compares
+#     OFFLINE (recorded live profile vs target) BEFORE any live contact.
+#
+# Fail-closed: an unreadable target profile aborts; a recorded live profile that
+# differs from the target aborts; `--execute` with no recorded live profile
+# aborts. Same-profile sites pass silently (no behaviour change).
+################################################################################
+
+# Read the TARGET (new build) install profile from the stg config-sync dir.
+# Offline: a plain file read, no live contact.
+read_target_profile() {
+    local site="$1" stg_dir sync val
+    stg_dir="$(resolve_project "$site" stg 2>/dev/null || true)"
+    [ -n "$stg_dir" ] || return 1
+    sync="$stg_dir/html/sites/default/files/sync/core.extension.yml"
+    [ -f "$sync" ] || return 1
+    val="$(awk -F: '/^profile:/{gsub(/[[:space:]]/,"",$2); print $2; exit}' "$sync")"
+    [ -n "$val" ] || return 1
+    printf '%s\n' "$val"
+}
+
+# Read the LIVE install profile from the just-imported live DB on the stg
+# scratch surface (READ-ONLY on live — the dump was already pulled+imported).
+read_stg_live_profile() {
+    local site="$1" out val
+    out="$(run_pl drush "$site" --tier=stg -- cget core.extension profile 2>/dev/null || true)"
+    # drush prints e.g.  'core.extension:profile': social   → take the last field.
+    val="$(printf '%s\n' "$out" | awk 'NF{v=$NF} END{gsub(/[[:space:]'"'"'"]/,"",v); print v}')"
+    [ -n "$val" ] || return 1
+    printf '%s\n' "$val"
+}
+
+record_live_profile()   { echo "$1" > "$STATE_DIR/$SITE.liveprofile"; }
+recorded_live_profile() { [ -f "$STATE_DIR/$SITE.liveprofile" ] && cat "$STATE_DIR/$SITE.liveprofile"; }
+
+profile_change_abort() {
+    local live="$1" target="$2"
+    print_error "PROFILE-CHANGE GUARD: refusing the nwc un-fork via --code-only."
+    print_error "Live installs profile '${live}' but the new build installs profile '${target}'."
+    print_error "The un-fork is a Drupal INSTALL-PROFILE change ('${live}' → '${target}') — --code-only CANNOT cross it:"
+    print_error "  it leaves the live DB recording profile '${live}' while the new code ships no '${live}' profile"
+    print_error "  and hides Open Social under profiles/contrib/social/, so the site will not boot."
+    print_hint "Correct route: Option 1 — fresh 'drush site:install ${target}' + recipe + Migrate import."
+    print_hint "See ~/central/UNFORK-PROFILE-INTENT-2026-07-19.md (§4 Option 1)."
+}
+
+# Offline preflight guard. $1=require_live (true|false).
+#   * Target profile must be readable → else fail-closed abort.
+#   * A recorded live profile that differs from target → fail-closed abort.
+#   * require_live=true (--execute) with no recorded live profile → abort.
+# Runs BEFORE any destructive step / before the rehearsal pulls a live dump.
+preflight_profile_guard() {
+    local require_live="${1:-false}" target live
+    target="$(read_target_profile "$SITE" 2>/dev/null || true)"
+    if [ -z "$target" ]; then
+        abort "PROFILE-CHANGE GUARD: cannot read the TARGET install profile from the stg config-sync (core.extension.yml) — refusing (fail-closed)."
+    fi
+    live="$(recorded_live_profile 2>/dev/null || true)"
+    if [ -z "$live" ]; then
+        if [ "$require_live" == "true" ]; then
+            abort "PROFILE-CHANGE GUARD: no recorded LIVE install profile — run 'pl cutover $SITE --rehearse' first (it reads live profile from the imported DB). Refusing (fail-closed)."
+        fi
+        # First rehearse: the live profile is established from the imported DB
+        # (in-rehearsal check below). Nothing to compare offline yet.
+        print_info "PROFILE-CHANGE GUARD: target profile '${target}'; live profile will be read from the imported DB during the rehearsal."
+        return 0
+    fi
+    if [ "$live" != "$target" ]; then
+        profile_change_abort "$live" "$target"
+        abort "profile change ('${live}' → '${target}') cannot be crossed by --code-only."
+    fi
+    print_status "OK" "PROFILE-CHANGE GUARD: live profile '${live}' == target profile '${target}' — profile-safe."
+    return 0
+}
+
+################################################################################
 # The IMPACT typed-confirm — rendered before step 1 on --execute (P1-4).
 # impact_confirm typed forces the operator to type the site name; -y skips only
 # the prompt, never the printed manifest (the impact.sh contract).
@@ -319,6 +425,29 @@ run_rehearsal() {
         return 1
     fi
     print_status "OK" "live member DB imported into the stg scratch surface."
+
+    # b'. PROFILE-CHANGE GUARD (in-DB): read the LIVE install profile from the
+    #     just-imported live DB and compare it to the TARGET (new build) profile.
+    #     A profile change ('nwc' → 'social') CANNOT be crossed by the step-4
+    #     --code-only swap, so abort the rehearsal BEFORE the pointless updatedb
+    #     and RECORD the mismatch so --execute stays blocked offline. Fail-closed
+    #     if either profile can't be read. See UNFORK-PROFILE-INTENT-2026-07-19.
+    local _target _live
+    _target="$(read_target_profile "$SITE" 2>/dev/null || true)"
+    _live="$(read_stg_live_profile "$SITE" 2>/dev/null || true)"
+    [ -n "$_live" ] && record_live_profile "$_live"
+    if [ -z "$_target" ] || [ -z "$_live" ]; then
+        record_rehearse "failed" "profile guard could not read live='${_live}' / target='${_target}'"
+        print_status "FAIL" "PROFILE-CHANGE GUARD: could not determine live/target install profile — refusing (fail-closed)."
+        return 1
+    fi
+    if [ "$_live" != "$_target" ]; then
+        profile_change_abort "$_live" "$_target"
+        record_rehearse "failed" "install-profile change ${_live} -> ${_target}; --code-only invalid (UNFORK-PROFILE-INTENT)"
+        print_status "FAIL" "PROFILE-CHANGE GUARD: install-profile change (${_live} → ${_target}) — --execute stays blocked."
+        return 1
+    fi
+    print_status "OK" "PROFILE-CHANGE GUARD: live profile '${_live}' == target '${_target}' — profile-safe."
 
     # c. Mirror the step-2 uninstall at the DB level, TOLERANTLY. pm:uninstall
     #    CANNOT run here: the new un-forked build ships no tracer/nwp_lockdown
@@ -505,6 +634,11 @@ step_stamp_lock() {
 # Drivers
 ################################################################################
 do_rehearse() {
+    # Offline PROFILE-CHANGE GUARD: block a REPEAT rehearse (a prior rehearsal
+    # recorded a mismatched live profile) BEFORE it wastes another live dump, and
+    # fail-closed if the target profile is unreadable. The first rehearse has no
+    # recorded live profile yet — the in-rehearsal check establishes it.
+    preflight_profile_guard false
     run_rehearsal || abort "rehearsal failed — --execute remains blocked."
     print_success "rehearsal recorded PASSED — you may now run: pl cutover $SITE --execute"
 }
@@ -523,6 +657,12 @@ do_execute() {
         print_hint "The cross-version updatedb against the live member DB must be rehearsed on a scratch copy before execution (design §3.7 / F3 / G4)."
         exit 1
     fi
+
+    # PROFILE-CHANGE GUARD (fail-closed, OFFLINE) — refuse BEFORE any live
+    # contact / the IMPACT prompt if the live install profile (recorded by the
+    # passed rehearsal) differs from the target build's profile. --code-only
+    # cannot cross a profile change (nwc → social); see UNFORK-PROFILE-INTENT.
+    preflight_profile_guard true
 
     # IMPACT typed-confirm before the first destructive step (unless resuming
     # past the destructive rsync at step 4).

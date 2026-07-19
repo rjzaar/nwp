@@ -21,6 +21,12 @@ source "$PROJECT_ROOT/lib/git.sh"
 source "$PROJECT_ROOT/lib/sanitize.sh"
 # canonical.sh: canonicality-phase stamping (nwp/ops#33)
 source "$PROJECT_ROOT/lib/canonical.sh"
+# ssh.sh: get_ssh_user / nwp_ssh_opts for the remote (--remote) pre-deploy
+# snapshot path (PL-STG2LIVE-INTEGRATION-DESIGN §6 P0-3).
+source "$PROJECT_ROOT/lib/ssh.sh"
+# impact.sh: fate manifest + confirm for the remote backup (impact_render /
+# impact_confirm). No-op-safe for the local DDEV path.
+source "$PROJECT_ROOT/lib/impact.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -43,11 +49,26 @@ ${BOLD}OPTIONS:${NC}
     -b, --db-only           Database-only backup (skip files)
     -g, --git               Create supplementary git backup
     -e, --endpoint=NAME     Backup to different endpoint (default: sitename)
+    -y, --yes               Skip the confirmation prompt (for --remote)
     --bundle                Create git bundle for offline/archival backup
     --incremental           Create incremental bundle (use with --bundle)
     --push-all              Push to all configured remotes (with -g)
     --sanitize              Sanitize database backup (remove PII)
     --sanitize-level=LEVEL  Sanitization level: basic, full (default: basic)
+
+${BOLD}REMOTE PRE-DEPLOY SNAPSHOT (P0-3):${NC}
+    --remote                Snapshot the LIVE site (not the DDEV-local site).
+                            Full webroot tar INCLUDING oauth-keys/ + auth.json +
+                            the per-env local settings (EXCLUDING files/ +
+                            private) plus a
+                            DB dump, pulled back to sites/<name>/backups/ with a
+                            verified sha256 sidecar each. Read-only against live.
+                            REFUSES if no live server is provisioned.
+                            The DR-preflight that 'pl cutover' / 'pl moodle
+                            deploy' require. Combine with --db-only / --files-only
+                            / --dry-run.
+    --files-only            (with --remote) snapshot files only, skip the DB
+    --dry-run               (with --remote) print the plan; write nothing
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Name of the DDEV site to backup
@@ -68,6 +89,9 @@ ${BOLD}EXAMPLES:${NC}
     ./backup.sh --bundle --incremental nwp       # Create incremental bundle
     ./backup.sh -g --push-all nwp                # Push to all remotes
     ./backup.sh --sanitize nwp                   # Sanitized backup (GDPR)
+    ./backup.sh nwc --remote --dry-run           # Preview a live pre-deploy snapshot
+    ./backup.sh nwc --remote -y                  # Full live pre-deploy snapshot (P0-3)
+    ./backup.sh ssc --remote --db-only -y        # Live Moodle DB-only snapshot
 
 ${BOLD}COMBINED FLAGS:${NC}
     Multiple short flags can be combined: -bd = -b -d
@@ -307,6 +331,410 @@ write_backup_manifest() {
     } > "$manifest"
 
     echo "$manifest"
+}
+
+################################################################################
+# Remote pre-deploy backup — `pl backup <site> --remote`
+#
+# PL-STG2LIVE-INTEGRATION-DESIGN-2026-07-19 §6 P0-3. The local backup_site()
+# path is DDEV-local only; it cannot snapshot a remote LIVE site. This is the
+# guarded pre-deploy DR snapshot that `pl cutover` and `pl moodle deploy`
+# require before any destructive live change.
+#
+# Unlike the DDEV path it:
+#   - skips resolve_project / DDEV entirely;
+#   - resolves the live target via get_live_config + get_ssh_user (REFUSES if
+#     server_ip is empty — no provisioned live host to back up);
+#   - captures a FULL pre-deploy snapshot: the remote webroot tar INCLUDING
+#     oauth-keys/ + auth.json + the per-env local settings (the whole point of a
+#     pre-deploy backup — §3.4/INV-2) but EXCLUDING the huge uploads
+#     (<webroot>/sites/default/files + private), plus a remote DB dump;
+#   - pulls both artifacts back with a sha256 sidecar, verified fail-closed;
+#   - is read-only against live (honours live.enabled; NO deploy_gate_require
+#     — it never writes site state).
+################################################################################
+
+# Get live server config (borrowed verbatim from stg2live.sh:72-96 so the
+# backup and the deploy resolve the identical live target from the same
+# per-site .nwp.yml). Kept local to avoid sourcing a command script.
+backup_get_live_config() {
+    local sitename="$1"
+    local field="$2"
+    local base
+    base=$(get_base_name "$sitename")
+
+    local yq_path
+    case "$field" in
+        server_ip)
+            local server_name
+            server_name=$(get_site_config_value "$base" '.live.server' "")
+            if [[ -n "$server_name" ]] && declare -F get_server_config &>/dev/null; then
+                get_server_config "$server_name" "ip" ""
+                return
+            fi
+            get_site_config_value "$base" '.live.server_ip' ""
+            return
+            ;;
+        domain)      yq_path='.live.domain' ;;
+        type)        yq_path='.live.type' ;;
+        server)      yq_path='.live.server' ;;
+        remote_path) yq_path='.live.remote_path' ;;
+        enabled)     yq_path='.live.enabled' ;;
+        *)           yq_path=".live.$field" ;;
+    esac
+    get_site_config_value "$base" "$yq_path" ""
+}
+
+# Sibling manifest for a remote snapshot. Carries the extra provenance the
+# local manifest lacks: remote:true + remote_host + per-artifact sha256s +
+# taken_at, so a restore can bind the pulled artifacts to the live host and
+# verify integrity independently of the sidecars (P0-3).
+write_remote_backup_manifest() {
+    local backup_dir="$1"
+    local backup_name="$2"
+    local sitename="$3"
+    local endpoint="$4"
+    local remote_host="$5"
+    local project_type="$6"
+    local db_only="$7"
+    local files_only="$8"
+    local webroot_sha256="$9"
+    local db_sha256="${10}"
+    local taken_at="${11}"
+
+    local abs_backup_dir
+    abs_backup_dir=$(cd "$(dirname "$backup_dir")" && pwd)/$(basename "$backup_dir")
+    local manifest="${abs_backup_dir}/${backup_name}.manifest.json"
+
+    {
+        printf '{\n'
+        printf '  "site": "%s",\n' "$sitename"
+        printf '  "endpoint": "%s",\n' "$endpoint"
+        printf '  "backup_name": "%s",\n' "$backup_name"
+        printf '  "remote": true,\n'
+        printf '  "remote_host": "%s",\n' "$remote_host"
+        printf '  "project_type": "%s",\n' "$project_type"
+        printf '  "canonical_phase": "%s",\n' "$(canonical_get_phase "$sitename")"
+        printf '  "created": "%s",\n' "$(date -u +%FT%TZ)"
+        printf '  "taken_at": "%s",\n' "$taken_at"
+        printf '  "by": "%s",\n' "$(canonical_actor)"
+        printf '  "db_only": %s,\n' "$db_only"
+        printf '  "files_only": %s,\n' "$files_only"
+        printf '  "webroot_sha256": "%s",\n' "$webroot_sha256"
+        printf '  "db_sha256": "%s"\n' "$db_sha256"
+        printf '}\n'
+    } > "$manifest"
+
+    echo "$manifest"
+}
+
+# Detect the remote docroot under remote_path (html | web | "" for root-served
+# Moodle). Mirrors the auto-detect in stg2live.sh:659-667 so the exclude paths
+# line up with the real live layout instead of a guess.
+backup_remote_webroot() {
+    local base_name="$1"
+    local server_ip="$2"
+    local ssh_user="$3"
+    local remote_path="$4"
+    local sudo_prefix="$5"
+
+    if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "$sudo_prefix test -d ${remote_path}/web" 2>/dev/null; then
+        echo "web"
+    elif ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "$sudo_prefix test -d ${remote_path}/html" 2>/dev/null; then
+        echo "html"
+    else
+        echo ""
+    fi
+}
+
+# Compute a remote artifact's sha256, pull it back, re-verify locally, and
+# write a .sha256 sidecar. Fail-closed on any mismatch (P0-3: "compute sha on
+# the remote, pull, re-verify locally, compare — fail-closed on mismatch").
+# Echoes the verified sha256 on success; returns 1 on any failure.
+backup_pull_verified() {
+    local base_name="$1"
+    local server_ip="$2"
+    local ssh_user="$3"
+    local remote_file="$4"     # path relative to remote ~ (home)
+    local local_path="$5"      # destination path on this box
+
+    # 1. Authoritative sha computed on the remote host.
+    local remote_sha
+    remote_sha=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "sha256sum ~/${remote_file} 2>/dev/null | awk '{print \$1}'" 2>/dev/null)
+    if [ -z "$remote_sha" ]; then
+        print_error "Could not compute remote sha256 for ~/${remote_file}" >&2
+        return 1
+    fi
+
+    # 2. Pull the artifact back.
+    if ! scp $(nwp_ssh_opts "$base_name") -o BatchMode=yes \
+        "${ssh_user}@${server_ip}:${remote_file}" "$local_path" >/dev/null 2>&1; then
+        print_error "Failed to pull ~/${remote_file} from live host" >&2
+        return 1
+    fi
+
+    # 3. Re-verify locally and compare — fail-closed on mismatch.
+    local local_sha
+    local_sha=$(sha256sum "$local_path" 2>/dev/null | awk '{print $1}')
+    if [ "$local_sha" != "$remote_sha" ]; then
+        print_error "sha256 MISMATCH for $(basename "$local_path") (remote=$remote_sha local=$local_sha) — backup is corrupt, removing." >&2
+        rm -f "$local_path"
+        return 1
+    fi
+
+    # 4. Sidecar. Format matches `sha256sum` so `sha256sum -c` works.
+    printf '%s  %s\n' "$local_sha" "$(basename "$local_path")" > "${local_path}.sha256"
+
+    echo "$local_sha"
+    return 0
+}
+
+# Remote pre-deploy backup entry point.
+backup_remote() {
+    local sitename="$1"
+    local endpoint="$2"
+    local db_only="${3:-false}"
+    local files_only="${4:-false}"
+    local dry_run="${5:-false}"
+    local auto_confirm="${6:-false}"
+
+    local base_name
+    base_name=$(get_base_name "$sitename")
+
+    print_header "NWP Remote Pre-Deploy Backup: $base_name"
+
+    # Honour live.enabled (a read-only backup still respects the operator's
+    # intent to leave a site alone). Only an explicit false blocks it.
+    local live_enabled
+    live_enabled=$(backup_get_live_config "$base_name" "enabled")
+    if [ "$live_enabled" == "false" ]; then
+        print_error "Live deployment disabled for '$base_name' (live.enabled: false in sites/$base_name/.nwp.yml)"
+        return 1
+    fi
+
+    # Resolve the live target. REFUSE if no server_ip — there is no
+    # provisioned live host to snapshot (P0-3).
+    local server_ip remote_path domain ssh_user project_type
+    server_ip=$(backup_get_live_config "$base_name" "server_ip")
+    if [ -z "$server_ip" ]; then
+        print_error "No live server configured for '$base_name' (live.server_ip is empty)."
+        print_info "Refusing --remote backup: nothing to snapshot. Provision live first (pl live $base_name)."
+        return 1
+    fi
+    remote_path=$(backup_get_live_config "$base_name" "remote_path")
+    [ -z "$remote_path" ] && remote_path="/var/www/${base_name}"
+    domain=$(backup_get_live_config "$base_name" "domain")
+    ssh_user=$(get_ssh_user "$base_name")
+    project_type=$(get_site_config_value "$base_name" '.project.type' "drupal")
+
+    # sudo idiom (stg2live): the gitlab ssh user runs privileged remote ops
+    # via sudo; a direct root user does not.
+    local sudo_prefix=""
+    local drush_sudo=""
+    if [ "$ssh_user" == "gitlab" ]; then
+        sudo_prefix="sudo"
+        drush_sudo="sudo -u www-data"
+    fi
+
+    print_info "Live host:   ${ssh_user}@${server_ip}"
+    print_info "Remote path: ${remote_path}"
+    print_info "Site type:   ${project_type}"
+    [ -n "$domain" ] && print_info "Domain:      https://${domain}"
+
+    # SSH reachability check (read-only).
+    if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes -o ConnectTimeout=5 \
+        "${ssh_user}@${server_ip}" "echo ok" >/dev/null 2>&1; then
+        print_error "Cannot connect to live server: ${ssh_user}@${server_ip}"
+        return 1
+    fi
+
+    # Disk gate — fail-closed (NOT the WARN-and-continue of live_host_snapshot;
+    # a pre-deploy backup that silently produced nothing would be worse than
+    # useless). Need ~1GB headroom in ~ for the tar + dump.
+    local free_kb
+    free_kb=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "df -k --output=avail ~ | tail -1" 2>/dev/null | tr -d ' ')
+    if [ -n "$free_kb" ] && [ "$free_kb" -lt 1048576 ]; then
+        print_error "Live host has <1GB free in ~ (${free_kb}KB) — refusing remote backup (fail-closed)."
+        print_info "Free disk on the live host before taking a pre-deploy snapshot."
+        return 1
+    fi
+
+    # Resolve the remote docroot so the Drupal uploads-exclude paths line up.
+    local webroot=""
+    if [ "$project_type" != "moodle" ]; then
+        webroot=$(backup_remote_webroot "$base_name" "$server_ip" "$ssh_user" "$remote_path" "$sudo_prefix")
+    fi
+
+    local ts backup_name
+    ts=$(date +%Y%m%dT%H%M%S)
+    backup_name="${base_name}-remote-${ts}"
+
+    local do_files="true" do_db="true"
+    [ "$db_only" == "true" ] && do_files="false"
+    [ "$files_only" == "true" ] && do_db="false"
+
+    # Build the tar exclude list. KEEP oauth-keys/ + auth.json + the per-env local settings
+    # (they are the point of a pre-deploy backup); DROP the huge uploads.
+    local -a tar_excludes=()
+    if [ "$project_type" != "moodle" ]; then
+        if [ -n "$webroot" ]; then
+            tar_excludes+=("--exclude=./${webroot}/sites/default/files")
+        else
+            tar_excludes+=("--exclude=./sites/default/files")
+        fi
+        tar_excludes+=("--exclude=./private")
+    fi
+    # (Moodle: moodledata lives OUTSIDE remote_path, so the -C scope excludes
+    # it structurally — nothing extra to add.)
+
+    local backup_base
+    backup_base=$(get_backup_dir "$endpoint")
+
+    # IMPACT fate manifest (unconditional; the prompt is what -y skips).
+    impact_reset
+    if [ "$do_files" == "true" ]; then
+        impact_archive "Live files" "tar of ${remote_path} (incl. oauth-keys/, auth.json, local settings; excl. files/ + private) → ${backup_base}/${backup_name}.tar.gz (+.sha256)"
+    fi
+    if [ "$do_db" == "true" ]; then
+        impact_archive "Live DB" "${project_type} dump → ${backup_base}/${backup_name}.sql.gz (+.sha256)"
+    fi
+    impact_keep "Live site https://${domain:-$server_ip} — DB, uploads and signing keys are READ ONLY; nothing on live is modified or deleted"
+    impact_warn "Writes temp artifacts to ${ssh_user}@${server_ip}:~ then pulls + removes them"
+    impact_render
+
+    if [ "$dry_run" == "true" ]; then
+        print_header "[dry-run] Remote backup plan"
+        if [ "$do_files" == "true" ]; then
+            echo "  would run on live:  ${sudo_prefix} tar czf ~/${backup_name}.tar.gz ${tar_excludes[*]} -C ${remote_path} ."
+        fi
+        if [ "$do_db" == "true" ]; then
+            if [ "$project_type" == "moodle" ]; then
+                echo "  would run on live:  ${sudo_prefix} mysqldump <dbname-from-config.php> | gzip > ~/${backup_name}.sql.gz"
+            else
+                echo "  would run on live:  cd ${remote_path} && ${drush_sudo} drush sql:dump --gzip > ~/${backup_name}.sql.gz"
+            fi
+        fi
+        echo "  would pull both to: ${backup_base}/ with a verified .sha256 sidecar each"
+        echo "  would write:        ${backup_base}/${backup_name}.manifest.json (remote:true)"
+        print_status "OK" "Dry run complete; nothing written remote or local."
+        return 0
+    fi
+
+    # Confirm (standard tier — a backup keeps a recovery path; nothing is
+    # destroyed). Fail-closed with no TTY unless -y.
+    if ! impact_confirm standard "take a remote pre-deploy backup of '${base_name}' (live ${server_ip})" "$auto_confirm"; then
+        print_info "Aborted."
+        return 1
+    fi
+
+    mkdir -p "$backup_base"
+
+    local webroot_sha="" db_sha=""
+
+    # ---- FILES ----------------------------------------------------------
+    if [ "$do_files" == "true" ]; then
+        print_header "Snapshotting Live Files"
+        local excl_str=""
+        local e
+        for e in "${tar_excludes[@]}"; do
+            excl_str+=" $e"
+        done
+        # tar as root/sudo so oauth-keys (0600 www-data) + the local settings
+        # are readable; chown the artifact back to the ssh user so scp can
+        # pull it without sudo.
+        if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+            "${sudo_prefix} tar czf ~/${backup_name}.tar.gz${excl_str} -C ${remote_path} . 2>/dev/null && ${sudo_prefix} chown ${ssh_user}:${ssh_user} ~/${backup_name}.tar.gz"; then
+            print_error "Remote files tar failed"
+            return 1
+        fi
+        print_status "OK" "Files tarred on live host"
+
+        if ! webroot_sha=$(backup_pull_verified "$base_name" "$server_ip" "$ssh_user" \
+            "${backup_name}.tar.gz" "${backup_base}/${backup_name}.tar.gz"); then
+            print_error "Files artifact verification failed — aborting backup."
+            ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+                "rm -f ~/${backup_name}.tar.gz" 2>/dev/null || true
+            return 1
+        fi
+        print_status "OK" "Files pulled + sha256 verified: ${backup_name}.tar.gz"
+
+        # Clean up the remote temp artifact.
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+            "rm -f ~/${backup_name}.tar.gz" 2>/dev/null || true
+    fi
+
+    # ---- DATABASE -------------------------------------------------------
+    if [ "$do_db" == "true" ]; then
+        print_header "Snapshotting Live Database"
+        if [ "$project_type" == "moodle" ]; then
+            # Read $CFG->dbname WITHOUT bootstrapping Moodle (ABORT_AFTER_CONFIG,
+            # same idiom as lib/sanitizers/moodle.sh). config.php is
+            # r--r----- www-data, so read it AS www-data. dbname is not a
+            # secret; the dump itself runs via credential-free root-socket
+            # mysqldump (the live_host_snapshot idiom) so no password is ever
+            # read into the pipeline.
+            local mdl_dbname
+            mdl_dbname=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+                "${drush_sudo} php -d error_reporting=0 -d display_errors=0 -r 'define(\"CLI_SCRIPT\",true);define(\"ABORT_AFTER_CONFIG\",true);require(\$argv[1]);echo isset(\$CFG->dbname)?\$CFG->dbname:\"\";' ${remote_path}/config.php" 2>/dev/null)
+            if [ -z "$mdl_dbname" ]; then
+                print_error "Could not read \$CFG->dbname from ${remote_path}/config.php on live — refusing to guess the Moodle DB name."
+                return 1
+            fi
+            if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+                "${sudo_prefix} mysqldump --single-transaction --quick --routines --triggers ${mdl_dbname} 2>/dev/null | gzip > ~/${backup_name}.sql.gz"; then
+                print_error "Remote Moodle mysqldump failed"
+                return 1
+            fi
+        else
+            # Drupal: drush sql:dump as www-data. Try the project root, then
+            # the webroot/../vendor/bin/drush fallback (stg2live:1297-1298).
+            if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+                "cd ${remote_path} && ${drush_sudo} drush sql:dump --gzip 2>/dev/null > ~/${backup_name}.sql.gz" 2>/dev/null; then
+                if ! ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+                    "cd ${remote_path}/${webroot:-html} && ${drush_sudo} ../vendor/bin/drush sql:dump --gzip 2>/dev/null > ~/${backup_name}.sql.gz" 2>/dev/null; then
+                    print_error "Remote Drupal drush sql:dump failed (tried ${remote_path} and ${remote_path}/${webroot:-html}/../vendor/bin/drush)"
+                    return 1
+                fi
+            fi
+        fi
+        print_status "OK" "Database dumped on live host"
+
+        if ! db_sha=$(backup_pull_verified "$base_name" "$server_ip" "$ssh_user" \
+            "${backup_name}.sql.gz" "${backup_base}/${backup_name}.sql.gz"); then
+            print_error "DB artifact verification failed — aborting backup."
+            ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+                "rm -f ~/${backup_name}.sql.gz" 2>/dev/null || true
+            return 1
+        fi
+        print_status "OK" "Database pulled + sha256 verified: ${backup_name}.sql.gz"
+
+        ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+            "rm -f ~/${backup_name}.sql.gz" 2>/dev/null || true
+    fi
+
+    # ---- MANIFEST -------------------------------------------------------
+    local taken_at
+    taken_at=$(date -u +%FT%TZ)
+    local manifest_file
+    manifest_file=$(write_remote_backup_manifest "$backup_base" "$backup_name" \
+        "$base_name" "$endpoint" "${ssh_user}@${server_ip}" "$project_type" \
+        "$db_only" "$files_only" "$webroot_sha" "$db_sha" "$taken_at" 2>/dev/null) || true
+
+    print_header "Remote Backup Summary"
+    if [ "$do_files" == "true" ]; then
+        echo -e "${GREEN}✓${NC} Files:    ${backup_base}/${backup_name}.tar.gz (+.sha256)"
+    fi
+    if [ "$do_db" == "true" ]; then
+        echo -e "${GREEN}✓${NC} Database: ${backup_base}/${backup_name}.sql.gz (+.sha256)"
+    fi
+    if [ -n "$manifest_file" ]; then
+        echo -e "${GREEN}✓${NC} Manifest: ${manifest_file} (remote:true, host ${server_ip})"
+    fi
+    return 0
 }
 
 # Main backup function
@@ -738,10 +1166,15 @@ main() {
     local ENDPOINT=""
     local SITENAME=""
     local MESSAGE=""
+    # Remote pre-deploy snapshot (P0-3).
+    local REMOTE=false
+    local FILES_ONLY=false
+    local DRY_RUN=false
+    local YES=false
 
     # Use getopt for option parsing
-    local OPTIONS=hdbge:
-    local LONGOPTS=help,debug,db-only,git,endpoint:,bundle,incremental,push-all,sanitize,sanitize-level:
+    local OPTIONS=hdbge:y
+    local LONGOPTS=help,debug,db-only,git,endpoint:,bundle,incremental,push-all,sanitize,sanitize-level:,remote,files-only,dry-run,yes
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -792,6 +1225,22 @@ main() {
                 SANITIZE_LEVEL="$2"
                 shift 2
                 ;;
+            --remote)
+                REMOTE=true
+                shift
+                ;;
+            --files-only)
+                FILES_ONLY=true
+                shift
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            -y|--yes)
+                YES=true
+                shift
+                ;;
             --)
                 shift
                 break
@@ -822,6 +1271,23 @@ main() {
     # Default endpoint to sitename
     if [ -z "$ENDPOINT" ]; then
         ENDPOINT="$SITENAME"
+    fi
+
+    # Remote pre-deploy snapshot path (P0-3). Bypasses the entire DDEV-local
+    # flow: no resolve_project, no ddev export-db — it snapshots the LIVE host.
+    # This is the DR-preflight `pl cutover` / `pl moodle deploy` require.
+    if [ "$REMOTE" == "true" ]; then
+        if [ "$DB_ONLY" == "true" ] && [ "$FILES_ONLY" == "true" ]; then
+            print_error "--db-only and --files-only are mutually exclusive"
+            exit 1
+        fi
+        if backup_remote "$SITENAME" "$ENDPOINT" "$DB_ONLY" "$FILES_ONLY" "$DRY_RUN" "$YES"; then
+            show_elapsed_time "Remote backup"
+            exit 0
+        else
+            print_error "Remote backup failed for site: $SITENAME"
+            exit 1
+        fi
     fi
 
     ocmsg "Site: $SITENAME"

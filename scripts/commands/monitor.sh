@@ -322,6 +322,18 @@ cmd_mail() {
         return 1
     fi
 
+    # Mail authentication (SPF/DKIM/DMARC) applies to the FROM/send domain, which
+    # is frequently the registrable parent, not the site's web subdomain. A site
+    # served at app.example.org may send its mail as admin@example.org — checking
+    # the subdomain then gives a false "no records" alarm while the parent has full
+    # records. Prefer an explicit sites.<base>.live.mail_domain override; otherwise
+    # fall back to the web domain.
+    local mail_domain
+    mail_domain=$(site="$base" yq eval '.sites[env(site)].live.mail_domain // ""' "$CONFIG_FILE" 2>/dev/null || true)
+    if [ -n "$mail_domain" ] && ! _is_placeholder_domain "$mail_domain"; then
+        domain="$mail_domain"
+    fi
+
     print_header "Mail deliverability — $base ($domain)"
 
     local fails=0 warns=0

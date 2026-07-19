@@ -154,3 +154,31 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"pl drush <site> --tier=stg|live"* ]]
 }
+
+# ── --root override (fresh-build side docroot for pl cutover) ────────────────
+
+@test "--root live dry-run targets the non-canonical docroot, not remote_path" {
+  run bash "$DRUSH" nwc --tier=live --root=/var/www/nwc-20260720 -- site:install social -y
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"gitlab@203.0.113.10:/var/www/nwc-20260720"* ]]
+  [[ "$output" == *"NON-canonical docroot"* ]]
+  [[ "$output" == *"site:install social -y"* ]]
+}
+
+@test "--root is refused on the stg tier" {
+  run bash "$DRUSH" nwc --tier=stg --root=/var/www/nwc-20260720 -- cr
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"only valid with --tier=live"* ]]
+}
+
+@test "--root refuses a non-absolute path" {
+  run bash "$DRUSH" nwc --tier=live --root=nwc-20260720 -- cr
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"absolute path"* ]]
+}
+
+@test "--root refuses a docroot whose basename does not start with the site name (wrong-site guard)" {
+  run bash "$DRUSH" nwc --tier=live --root=/var/www/avc-20260720 -- cr
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"wrong-site guard"* ]]
+}

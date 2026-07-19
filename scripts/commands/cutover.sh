@@ -50,6 +50,11 @@ PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 
 source "$REPO_ROOT/lib/ui.sh"
 source "$REPO_ROOT/lib/impact.sh"
+# project-resolver.sh gives resolve_project (the same resolver `pl drush
+# --tier=stg` uses) + get_backup_dir (where `pl backup --remote` writes its
+# dump). The rehearsal needs both to import the pulled live DB into the stg
+# DDEV scratch surface. Self-contained (defines functions only; no side effects).
+source "$REPO_ROOT/lib/project-resolver.sh"
 
 # ── sibling `pl` invocation (mockable) ───────────────────────────────────────
 # All sibling verbs are invoked through PL_BIN so a mock `pl` can record/assert
@@ -251,11 +256,17 @@ step_uninstall_nonsurvivable() {
 # the result. Blocks --execute unless the update hooks all succeeded (F3/G4).
 # Read-only on live except the scratch DB (created + dropped here).
 #
-# Orchestrated via pl only (no raw ssh):
+# Faithfully models the real --execute order (step-2 uninstall on LIVE with the
+# OLD code present → step-4 stg2live swaps to the NEW code → step-4 updatedb on
+# the live member DB). On the scratch surface that becomes:
 #   a. pl backup --remote nwc --db-only  → a local live DB dump (+ sha sidecar)
-#   b. import the dump into the disposable stg (DDEV) DB — the scratch surface
-#   c. pl drush nwc --tier=stg -- pm:uninstall tracer nwp_lockdown -y  (mirror step 2)
-#   d. pl drush nwc --tier=stg -- updatedb -y   → scan for failed hooks
+#   b. ddev import-db the dump into the disposable stg (DDEV) DB — WITHOUT this
+#      the rehearsal ran updatedb against stg's OWN fresh DB, never the live one
+#   c. DE-REGISTER tracer + nwp_lockdown at the DB level (mirror of the step-2
+#      uninstall). NOT pm:uninstall: the new un-forked build ships no tracer/
+#      nwp_lockdown CODE, so pm:uninstall aborts "module does not exist". We drop
+#      them from system.schema + core.extension instead (tolerant of absence).
+#   d. pl drush nwc --tier=stg -- updatedb -y (+ cr)  → scan for failed hooks
 #   e. record status=passed|failed; the stg DB is rebuilt by the operator after
 ################################################################################
 run_rehearsal() {
@@ -268,20 +279,63 @@ run_rehearsal() {
 
     print_status "OK" "rehearsal is READ-ONLY on live except the scratch DB (created + dropped here)."
 
-    # a. Pull a live DB dump (read-only on live).
+    # a. Pull a live DB dump (read-only on live). Writes
+    #    sites/<site>/backups/<site>-remote-<ts>.sql.gz (+ .sha256 + manifest).
     if ! run_pl backup --remote "$SITE" --db-only; then
         record_rehearse "failed" "live DB dump failed"
         return 1
     fi
 
-    # b/c. Load the dump into the disposable stg DDEV DB (the scratch surface),
-    # then mirror the step-2 module cleanup so updatedb sees a representative set.
-    if ! run_pl drush "$SITE" --tier=stg -- pm:uninstall tracer nwp_lockdown -y; then
-        record_rehearse "failed" "scratch module cleanup failed"
+    # a'. Locate the just-written dump (newest remote db-only artifact). Without
+    #     a real dump there is nothing to test — fail-closed.
+    local backup_dir dump
+    backup_dir="$(get_backup_dir "$SITE")"
+    dump="$(ls -1t "$backup_dir/$SITE"-remote-*.sql.gz 2>/dev/null | head -1)"
+    if [ -z "$dump" ] || [ ! -f "$dump" ]; then
+        record_rehearse "failed" "could not locate the pulled live DB dump under $backup_dir"
+        print_status "FAIL" "no live DB dump found to import — rehearsal cannot test the live DB."
+        return 1
+    fi
+    print_status "OK" "pulled live DB dump: $dump"
+
+    # a''. Resolve the disposable stg DDEV scratch surface (the SAME resolver that
+    #      `pl drush --tier=stg` uses). It must exist to import into.
+    local stg_dir
+    stg_dir="$(resolve_project "$SITE" stg 2>/dev/null || true)"
+    if [ -z "$stg_dir" ] || [ ! -d "$stg_dir" ]; then
+        record_rehearse "failed" "stg DDEV scratch dir not found — run 'pl dev2stg $SITE' first"
+        print_status "FAIL" "no stg DDEV site to rehearse against."
         return 1
     fi
 
-    # d. The rehearsed updatedb. Capture output to scan for hook failures.
+    # b. Import the live dump into the stg DDEV scratch DB (ddev import-db infers
+    #    gzip from the .sql.gz extension). THE FIX: the old rehearsal pulled the
+    #    dump but never imported it, so updatedb ran against stg's own fresh DB —
+    #    not the live member DB it is meant to gate. Fail-closed on import error.
+    print_info "importing the live DB dump into the stg scratch surface (ddev import-db)…"
+    if ! ( cd "$stg_dir" && ddev import-db --file="$dump" ); then
+        record_rehearse "failed" "ddev import-db of the live dump into stg failed"
+        print_status "FAIL" "could not import the live DB into the stg scratch surface — --execute stays blocked."
+        return 1
+    fi
+    print_status "OK" "live member DB imported into the stg scratch surface."
+
+    # c. Mirror the step-2 uninstall at the DB level, TOLERANTLY. pm:uninstall
+    #    CANNOT run here: the new un-forked build ships no tracer/nwp_lockdown
+    #    code, so drush would abort "The module tracer does not exist" (this was
+    #    the second rehearsal bug). De-register them directly instead — the same
+    #    end-state a clean uninstall leaves — so updatedb doesn't choke on a
+    #    missing-code enabled module. Never fail-closed on an already-absent
+    #    module (it is *supposed* to be gone).
+    rehearsal_deregister_nonsurvivable "$stg_dir" \
+        || print_warning "de-registration reported a non-zero — continuing (tolerant of already-absent modules)."
+
+    # d. The rehearsed updatedb on the scratch surface (now = new code + imported
+    #    live DB, minus the 2 modules). This is the real gate. Mirrors stg2live's
+    #    actual post-swap sequence (updatedb -y → cache:rebuild, §3.6 / lines
+    #    1068-1112 of stg2live.sh), not the P0.5 two-phase --no-post-updates
+    #    variant (stg2live does not implement that). Capture output to scan for
+    #    failed hooks.
     local out
     if ! out="$(run_pl drush "$SITE" --tier=stg -- updatedb -y 2>&1)"; then
         printf '%s\n' "$out"
@@ -296,9 +350,54 @@ run_rehearsal() {
         return 1
     fi
 
+    # Faithful tail of the stg2live sequence: rebuild caches after updatedb.
+    # A cr wobble is not the gate (updatedb output already passed) — warn only.
+    run_pl drush "$SITE" --tier=stg -- cr >/dev/null 2>&1 \
+        || print_warning "post-updatedb cache:rebuild reported a non-zero (not the gate — continuing)."
+
     record_rehearse "passed" "all update hooks succeeded"
     print_status "OK" "rehearsal PASSED — --execute is now permitted."
-    print_hint "The stg DB now holds the rehearsed (post-updatedb) copy — rebuild it with 'pl dev2stg $SITE --dev-db' before go-live."
+    print_hint "The stg DB now holds the rehearsed (post-updatedb) copy of the LIVE DB — rebuild it with 'pl dev2stg $SITE --dev-db' before go-live."
+    return 0
+}
+
+################################################################################
+# De-register the 2 non-survivable modules (tracer, nwp_lockdown) at the DB
+# level on the stg scratch surface — the DB-level mirror of the step-2 live
+# `pm:uninstall`. The new un-forked build ships NO code for these modules, so
+# `pm:uninstall` is impossible (it would abort "module does not exist"); we
+# instead drop them from the `system.schema` key-value store AND from the
+# `core.extension` config `module` list, then rebuild caches. That is exactly
+# the end-state a clean uninstall leaves, so the rehearsed updatedb won't choke
+# on a missing-code enabled module.
+#
+# TOLERANT BY DESIGN: an already-absent module is a no-op (array_key_exists /
+# keyValue delete are both safe on absence), so a to-be-removed module that is
+# already gone never fails the rehearsal. Routed through `pl drush --tier=stg`
+# (local DDEV, no ssh) for consistency with the rehearsed updatedb.
+################################################################################
+rehearsal_deregister_nonsurvivable() {
+    # $1 (stg_dir) is accepted for symmetry/logging; the drush routing resolves
+    # the same stg surface via --tier=stg.
+    local php='
+$mods = ["tracer", "nwp_lockdown"];
+$ext = \Drupal::configFactory()->getEditable("core.extension");
+$list = $ext->get("module") ?: [];
+$schema = \Drupal::keyValue("system.schema");
+foreach ($mods as $m) {
+  if (array_key_exists($m, $list)) {
+    unset($list[$m]);
+    \Drupal::logger("cutover")->notice("rehearsal: de-registered @m from core.extension", ["@m" => $m]);
+  } else {
+    \Drupal::logger("cutover")->notice("rehearsal: @m already absent from core.extension (tolerated)", ["@m" => $m]);
+  }
+  $schema->delete($m);
+}
+$ext->set("module", $list)->save();
+'
+    print_info "de-registering tracer + nwp_lockdown at the DB level (mirror of the live step-2 uninstall)…"
+    run_pl drush "$SITE" --tier=stg -- php:eval "$php" || return 1
+    run_pl drush "$SITE" --tier=stg -- cr || return 1
     return 0
 }
 

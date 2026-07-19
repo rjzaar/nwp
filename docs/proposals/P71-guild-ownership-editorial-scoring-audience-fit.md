@@ -77,10 +77,18 @@ gate", nothing more.
 |---|---|---|
 | `core` / invariant | **Sojourners propose → Theology approve** (+ a Theology *higher-confirmation* tier for core) | graded propose→approve gate, `LegalGate`-shaped, on the `in_theology_review` stage |
 | `contrast` | Theology (same gate as core — it fixes the concept boundary) | as core |
-| `variants` | **Writers Guild** (decisive at `in_writer_review`) | promote IG→guild (§4) |
+| `variants` (framing: intro/example/metaphor/story) | **Writers Guild** (decisive at `in_writer_review`) | promote IG→guild (§4) |
+| **`application` (how-to-live-it) + its checkpoint typing (Act→Task/Skill/Habit)** | **Pedagogy Guild** (decisive at `in_pedagogy_review`) — **B1, operator-ratified 2026-07-19** | promote IG→guild (§4) |
 | quizzes | **Pedagogy Guild** (decisive at `in_pedagogy_review`) | promote IG→guild (§4) |
 | `contributed` (stories) | Pedagogy Guild light gate (P70 §5, briefing Principle 7) | already routed to `in_pedagogy_review` |
 | video / audio | **Media Guild** (already a full guild) | `guilds/media-guild.yml` |
+
+**`application` → Pedagogy, not the `variants` default (B1).** The `application` slot lives inside `variants` in
+P70's schema, so without this row it would default to the **Writers Guild** — a mis-fit. Choosing *how a truth is
+lived* (and typing the checkpoint as Act/Skill/Habit — see MASTERY-AND-THEOLOGY-EDITOR) is a **pedagogical-intervention**
+judgment (dosing, sequencing, formation-integrity), not a prose-quality one. So `application` atoms + their checkpoint
+typing route their decisive gate to `in_pedagogy_review`. Audience-*fit* of a youth-flavoured application still runs the
+§7 `in_audience_fit_review`. *(Operator-ratified 2026-07-19; `~/central/PHASE-4-RATIFICATIONS-2026-07-19.md`.)*
 
 **Core = an apprenticeship gate.** The two guilds on `core` are an apprenticeship pair, already
 wired this way in the pool resolver:

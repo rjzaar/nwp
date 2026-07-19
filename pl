@@ -223,6 +223,11 @@ ${BOLD}ROLLBACK:${NC}
     rollback execute <sitename>     Rollback to pre-deployment state
     rollback cleanup                Remove old rollback points
 
+${BOLD}MONITORING (launch gate, P13/#71):${NC}
+    monitor uptime [--tier=live]    Fleet HTTP status + TLS expiry (red/amber/green)
+    monitor mail <site>             Outbound mail readiness (SPF/DKIM/DMARC/PTR/MX)
+    monitor mail <site> --send-test <addr> --execute   Opt-in live probe (gated)
+
 ${BOLD}VERIFICATION:${NC}
     verify                          Interactive verification TUI
     verify --run                    Run machine verification tests
@@ -868,6 +873,11 @@ main() {
         # Config bundle export/import (ops#79)
         config)
             run_script "config.sh" "$@"
+            ;;
+
+        # Fleet uptime + mail deliverability launch gate (P13 / nwp/ops#71)
+        monitor)
+            run_script "monitor.sh" "$@"
             ;;
 
         # Diagnostics

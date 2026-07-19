@@ -20,6 +20,24 @@ setup() {
   export PROJECT_ROOT="${TEST_TMP}/proj"
   mkdir -p "${PROJECT_ROOT}"
 
+  # v2 site fixture so resolve_project nwc stg → sites/nwc/stg (the rehearsal's
+  # scratch surface) and get_backup_dir → sites/nwc/backups (where the pulled
+  # live dump lands). dev/ present makes the resolver treat nwc as v2.
+  mkdir -p "${PROJECT_ROOT}/sites/nwc/dev" \
+           "${PROJECT_ROOT}/sites/nwc/stg" \
+           "${PROJECT_ROOT}/sites/nwc/backups"
+
+  # Mock `ddev` on PATH: the rehearsal's live-DB import (`ddev import-db`) is the
+  # only direct ddev call; everything else routes through the mock pl. No real
+  # container is touched.
+  mkdir -p "${TEST_TMP}/bin"
+  cat > "${TEST_TMP}/bin/ddev" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+  chmod +x "${TEST_TMP}/bin/ddev"
+  export PATH="${TEST_TMP}/bin:${PATH}"
+
   # A fixture command dir where EVERY in-flight sibling reads as "merged" —
   # each capability probe greps these stubs for its marker.
   export CUTOVER_CMD_DIR="${TEST_TMP}/cmd"
@@ -41,6 +59,12 @@ echo "$*" >> "$PL_CALLS"
 if [[ "$*" == *"pm:list"* && "$*" == *"--tier=live"* ]]; then printf 'block\nnode\n'; fi
 if [[ "$*" == *"pm:list"* && "$*" == *"--tier=stg"* ]];  then printf 'block\nnode\n'; fi
 if [[ "$*" == *"updatedb"* ]]; then echo "Performed update: nwc_update_9001"; fi
+# The rehearsal's `pl backup --remote nwc --db-only` must leave a dump the
+# rehearsal then imports into the stg scratch DB — mirror that side effect.
+if [[ "$*" == *"backup --remote"* && "$*" == *"--db-only"* ]]; then
+  mkdir -p "${PROJECT_ROOT}/sites/nwc/backups"
+  printf 'live-db-dump\n' | gzip > "${PROJECT_ROOT}/sites/nwc/backups/nwc-remote-$(date +%Y%m%dT%H%M%S).sql.gz"
+fi
 exit 0
 EOF
   chmod +x "${PL_BIN}"
@@ -106,6 +130,10 @@ _mark_rehearsed() {
   # the rehearsal pulls a live DB dump and runs updatedb on the scratch (stg) DB
   grep -q -- 'backup --remote nwc --db-only' "${PL_CALLS}"
   grep -q -- 'drush nwc --tier=stg -- updatedb -y' "${PL_CALLS}"
+  # …de-registers the 2 non-survivable modules at the DB level (NOT pm:uninstall,
+  # whose code is absent from the new build)…
+  grep -q -- 'php:eval' "${PL_CALLS}"
+  ! grep -q -- 'pm:uninstall tracer nwp_lockdown' "${PL_CALLS}"
   # …and NEVER touches live with a write (read-only-on-live invariant)
   ! grep -q -- '--tier=live --execute' "${PL_CALLS}"
 }

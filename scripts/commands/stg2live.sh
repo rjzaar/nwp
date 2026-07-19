@@ -1310,6 +1310,11 @@ ${BOLD}OPTIONS:${NC}
     --code-only             Deploy code/config only — skip the database push so live
                             CONTENT is preserved. The allowed deploy shape when the
                             site is canonical: live|prod (see 'pl canonical').
+    --fresh-build           nwc un-fork go-live: print the fresh-install-alongside +
+                            flip PLAN (side docroot + fresh DB + install sequence).
+                            PLAN-ONLY today — fail-closes on a real run until the
+                            mutation path is rehearsed attended. Pairs with --dry-run.
+                            Mutually exclusive with --code-only.
     --push-content          Opt in to pushing the staging DB OVER the live database
                             (INV-1). Required to run full_database_deployment against
                             a canonical: live|prod site; without it the DB push is
@@ -1762,6 +1767,53 @@ deploy_to_live() {
 }
 
 ################################################################################
+# FRESH-BUILD PLAN (nwc un-fork go-live). Prints the ordered, side-by-side
+# fresh-install cutover for review — the executable form of the ratified
+# NWC-GO-LIVE-FRESH-BUILD plan. Pure/read-only: resolves names + prints; runs
+# nothing. The mutation path is deliberately not here (attended rehearsal first).
+################################################################################
+fresh_build_plan() {
+    local base_name="$1"
+    local stg_dir="$2"
+
+    local remote_path
+    remote_path=$(get_live_config "$base_name" "remote_path")
+    [ -z "$remote_path" ] && remote_path="/var/www/${base_name}"
+    local db_name="${base_name//-/_}"
+    # Deterministic-per-run timestamp for the side docroot/DB names.
+    local ts
+    ts=$(date +%Y%m%d%H%M%S 2>/dev/null || echo TS)
+    local side_docroot="${remote_path}-${ts}"
+    local side_db="${db_name}_fresh_${ts}"
+
+    print_header "pl stg2live ${base_name} --fresh-build — PLAN (review only)"
+    print_info "Builds a FRESH Open-Social+nwc site ALONGSIDE the running live site, then the operator flips a symlink. No data migrated; the old docroot+DB are kept as an instant rollback."
+    cat <<EOF
+
+  Source (code)  : ${stg_dir}         (rsync, NO --delete, dev-file excludes applied)
+  Side docroot   : ${side_docroot}    (live ${remote_path} stays untouched until the flip)
+  Side database  : ${side_db}          (fresh; live DB '${db_name}' preserved for rollback)
+
+  Build sequence (each run via: pl drush ${base_name} --tier=live --root=${side_docroot} --execute -- …):
+    1. site:install social            (php memory_limit=2G — 512M OOMs)
+    2. recipe <nwc>/recipes/full
+    3. nwc:config-heal                 (recover the ~41 recipe-skipped configs)
+    4. pl secrets inject ${base_name} --tier=live   (cross-site tokens + moodle config into the side docroot)
+    5. nwc-copyright:sync              (5 data_policy legal docs from canonical-text)
+    6. simple-oauth:generate-keys + OIDC consumer; re-provision the ssc link (new keys)
+
+  Health gate (before any flip):
+    - pl link verify ${base_name} --tier=live --round-trip   (OIDC sub==uuid + copyright_sync)
+    - assert the side docroot ships NO DDEV dev settings file (mail guard)
+    - pl monitor mail ${base_name} == GREEN
+
+  Flip (operator, via pl cutover): repoint ${remote_path} symlink at the side docroot; reload php-fpm; opcache reset; nginx reload; drush cr
+  Rollback: repoint ${remote_path} at the old docroot + reload (instant; nothing was migrated)
+EOF
+    print_status "OK" "[plan] nothing executed."
+}
+
+################################################################################
 # Main
 ################################################################################
 
@@ -1809,11 +1861,12 @@ main() {
     local OVERRIDE_PAIR=false
     local OVERRIDE_SNAPSHOT=false
     local ALLOW_PROFILE_CHANGE=false
+    local FRESH_BUILD=false
     local SITENAME=""
 
     # Parse options
     local OPTIONS=hdyv
-    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision,dry-run,code-only,push-content,override-canonical,override-pair,override-snapshot,allow-profile-change
+    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision,dry-run,code-only,push-content,override-canonical,override-pair,override-snapshot,allow-profile-change,fresh-build
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -1838,13 +1891,21 @@ main() {
             --override-pair) OVERRIDE_PAIR=true; shift ;;
             --override-snapshot) OVERRIDE_SNAPSHOT=true; shift ;;
             --allow-profile-change) ALLOW_PROFILE_CHANGE=true; shift ;;
+            --fresh-build) FRESH_BUILD=true; shift ;;
             --) shift; break ;;
             *) echo "Programming error"; exit 3 ;;
         esac
     done
 
+    # --fresh-build and --code-only are contradictory routes (fresh install vs
+    # in-place code swap). Refuse both.
+    if [ "$FRESH_BUILD" = "true" ] && [ "$CODE_ONLY" = "true" ]; then
+        print_error "--fresh-build and --code-only are mutually exclusive (fresh install vs in-place code swap)."
+        exit 1
+    fi
+
     # Export so deploy_to_live and friends can read it.
-    export DRY_RUN CODE_ONLY PUSH_CONTENT OVERRIDE_CANONICAL OVERRIDE_PAIR OVERRIDE_SNAPSHOT ALLOW_PROFILE_CHANGE
+    export DRY_RUN CODE_ONLY PUSH_CONTENT OVERRIDE_CANONICAL OVERRIDE_PAIR OVERRIDE_SNAPSHOT ALLOW_PROFILE_CHANGE FRESH_BUILD
 
     # Get sitename
     if [ $# -ge 1 ]; then
@@ -1879,6 +1940,21 @@ main() {
         print_error "Live deployment disabled for '$BASE_NAME' (live.enabled: false in sites/$BASE_NAME/.nwp.yml)"
         print_info "To enable: set live.enabled: true in the site's .nwp.yml, or pass --force-enabled (not yet implemented)."
         exit 1
+    fi
+
+    # --fresh-build: the nwc un-fork go-live route (fresh install alongside +
+    # flip), NOT the in-place code swap. Short-circuits the normal deploy path.
+    # Currently PLAN-ONLY: it prints exactly what the cutover will do and
+    # fail-closes on a real run, because the live-mutation path (side DB/docroot
+    # provisioning) MUST be built + rehearsed attended (cutover design step 3).
+    if [ "$FRESH_BUILD" = "true" ]; then
+        fresh_build_plan "$BASE_NAME" "$STG_DIR"
+        if [ "$DRY_RUN" = "true" ]; then
+            exit 0
+        fi
+        print_warning "The --fresh-build EXECUTE path is not yet wired — nothing was run."
+        print_info "It provisions a live DB + docroot and must be rehearsed attended first (see ~/central/NWC-CUTOVER-RESCOPE-DESIGN-2026-07-20.md step 3). Re-run with --dry-run to just view the plan."
+        exit 2
     fi
 
     # Canonicality guard (nwp/ops#33): a dev→live CONTENT push is allowed only

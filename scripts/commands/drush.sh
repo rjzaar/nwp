@@ -91,6 +91,10 @@ ${BOLD}OPTIONS:${NC}
     --tier=<t>          stg | live   (REQUIRED). Any other tier is REFUSED.
     --dry-run           Print the exact command, run nothing (DEFAULT for live)
     --execute           Actually run the command (required for --tier=live)
+    --root <path>       (live only) run drush against a NON-canonical docroot on
+                        the live host instead of the resolved remote_path — for
+                        the pl cutover fresh-build side docroot before the flip.
+                        Must be absolute and its basename must start with <site>.
     --                  Everything after this is passed to drush VERBATIM
 
 ${BOLD}BEHAVIOUR:${NC}
@@ -106,6 +110,7 @@ ${BOLD}EXAMPLES:${NC}
     pl drush nwc --tier=live --execute -- cr          # runs drush cr on live
     pl drush nwc --tier=live --execute -- pm:uninstall tracer nwp_lockdown -y
     pl drush nwc --tier=stg -- updatedb -y            # local DDEV staging
+    pl drush nwc --tier=live --root=/var/www/nwc-20260720 --execute -- site:install social -y
 
 ${BOLD}NOTES:${NC}
     * Replaces raw \`ssh … "… drush …"\` one-liners (§6 P1-4). Raw ssh drush is
@@ -125,6 +130,10 @@ TIER=""
 # Mode is decided per-tier below: live defaults to dry-run, stg runs directly.
 # EXPLICIT_MODE records an operator-supplied --dry-run/--execute.
 EXPLICIT_MODE=""
+# ROOT_OVERRIDE: run drush against a NON-canonical docroot on the live host
+# (e.g. a fresh-build side docroot /var/www/<site>-<ts> during pl cutover, before
+# the symlink flip) instead of the resolved live remote_path. live tier only.
+ROOT_OVERRIDE=""
 DRUSH_ARGS=()
 SAW_SEP="no"
 
@@ -139,6 +148,8 @@ while [[ $# -gt 0 ]]; do
         --execute)   EXPLICIT_MODE="execute" ;;
         --tier=*)    TIER="${1#*=}" ;;
         --tier)      shift; TIER="${1:-}" ;;
+        --root=*)    ROOT_OVERRIDE="${1#*=}" ;;
+        --root)      shift; ROOT_OVERRIDE="${1:-}" ;;
         -*)          print_error "Unknown option: $1"; show_help; exit 1 ;;
         *)           if [[ -z "$SITE" ]]; then SITE="$1"; else
                          print_error "Unexpected argument: $1 (drush args go after --)"; exit 1
@@ -169,6 +180,23 @@ if [[ ${#DRUSH_ARGS[@]} -eq 0 ]]; then
 fi
 
 BASE_NAME=$(get_base_name "$SITE")
+
+# --root: live tier only, absolute path, and its basename must start with the
+# site name (guards against a typo pointing drush at the wrong site's docroot).
+if [[ -n "$ROOT_OVERRIDE" ]]; then
+    if [[ "$TIER" != "live" ]]; then
+        print_error "--root is only valid with --tier=live (stg runs against local DDEV)"
+        exit 1
+    fi
+    if [[ "$ROOT_OVERRIDE" != /* ]]; then
+        print_error "--root must be an absolute path (got '$ROOT_OVERRIDE')"
+        exit 1
+    fi
+    if [[ "$(basename "$ROOT_OVERRIDE")" != "$BASE_NAME"* ]]; then
+        print_error "--root basename must start with the site name '$BASE_NAME' (got '$(basename "$ROOT_OVERRIDE")') — refusing (wrong-site guard)"
+        exit 1
+    fi
+fi
 
 ################################################################################
 # STG tier — local DDEV staging site. Runs directly (no gate; local only).
@@ -241,6 +269,14 @@ run_live() {
     local remote_path
     remote_path=$(get_live_config "$BASE_NAME" "remote_path")
     [[ -z "$remote_path" ]] && remote_path="/var/www/${BASE_NAME}"
+
+    # A --root override targets a non-canonical docroot on the SAME host (the
+    # fresh-build side docroot during pl cutover). The host/user/gate are
+    # unchanged; only the cd target moves.
+    if [[ -n "$ROOT_OVERRIDE" ]]; then
+        print_warning "targeting NON-canonical docroot via --root: ${ROOT_OVERRIDE} (not the live ${remote_path})"
+        remote_path="$ROOT_OVERRIDE"
+    fi
 
     # Webroot: read the staging DDEV docroot if present, else default to web —
     # exactly how stg2live resolves it (html vs web).

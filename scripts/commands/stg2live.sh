@@ -543,6 +543,66 @@ setup_live_database() {
     return 0
 }
 
+# F5 / INV-10 (design 2026-07-19 §3.5a): resolve a PERSISTENT hash_salt for the
+# live settings.local.php. hash_salt is stable live state — regenerating it every
+# deploy (the old inline `openssl rand -hex 32`) invalidates every member's
+# one-time-login / password-reset link and in-flight CSRF tokens, and (on a DB
+# that is preserved under --code-only) breaks session/CSRF continuity. Three
+# states, never treating an unreadable/empty read as "absent" (F5):
+#   (a) REUSE — a stored salt is preferred; on a live site the mint-once source of
+#       truth is `pl secrets inject` (P0-5). Here we reuse the salt already
+#       persisted in the live settings.local.php (mint-once holds: first provision
+#       writes one, every deploy after reuses it).
+#   (b) MINT-ONCE — only when the site is provably first-provision AND not
+#       canonical:live|prod: mint a fresh salt.
+#   (c) ABORT (fail-closed) — on a canonical:live|prod site with no reusable salt,
+#       or under --code-only, REFUSE to mint. A fresh salt on a live site logs
+#       everyone out and breaks stored hashes; an empty/failed read must not be
+#       mistaken for "absent". The operator seeds it once via `pl secrets`.
+# NEVER `openssl rand` a fresh salt on a canonical:live site.
+resolve_live_hash_salt() {
+    local base_name="$1"
+    local server_ip="$2"
+    local ssh_user="$3"
+    local settings_path="$4"
+    local sudo_prefix="$5"
+
+    local phase
+    phase=$(canonical_get_phase "$base_name" 2>/dev/null || echo dev)
+
+    # (a) Reuse the salt already persisted on live. A non-empty read = present.
+    #     The sed runs LOCALLY on the fetched file so remote quoting stays sane.
+    local existing
+    existing=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "${sudo_prefix} cat ${settings_path}/settings.local.php 2>/dev/null" 2>/dev/null \
+        | sed -n "s/.*\\\$settings\\['hash_salt'\\][[:space:]]*=[[:space:]]*'\\([^']*\\)'.*/\\1/p" | head -1)
+    if [ -n "$existing" ]; then
+        print_status "OK" "Reusing persisted hash_salt (INV-10: stable live state)" >&2
+        printf '%s' "$existing"
+        return 0
+    fi
+
+    # (c) FAIL-CLOSED: on a canonical:live|prod site an unreadable/empty read
+    #     cannot be told apart from a genuine first-provision — refuse to mint.
+    if [ "$phase" == "live" ] || [ "$phase" == "prod" ]; then
+        print_error "hash_salt not readable off live for canonical:${phase} site '${base_name}' (F5/INV-10)." >&2
+        print_error "Refusing to mint a fresh salt: it logs every member out + breaks stored hashes and one-time links." >&2
+        print_error "Seed it once via 'pl secrets' (mint-once), then re-run." >&2
+        return 1
+    fi
+    # (c) FAIL-CLOSED under --code-only: the DB (and its salt-keyed CSRF/session
+    #     state) is preserved, so a fresh salt would break it silently.
+    if [ "${CODE_ONLY:-false}" == "true" ]; then
+        print_error "hash_salt not readable off live under --code-only for '${base_name}' — refusing to mint (F5)." >&2
+        return 1
+    fi
+
+    # (b) Provably first-provision on a non-canonical:live site: mint once.
+    print_status "OK" "Minting hash_salt (first provision; site is not canonical:live)" >&2
+    openssl rand -hex 32
+    return 0
+}
+
 # Generate settings.local.php with database credentials for live server
 generate_live_settings() {
     local base_name="$1"
@@ -561,6 +621,14 @@ generate_live_settings() {
     local sudo_prefix=""
     if [ "$ssh_user" == "gitlab" ]; then
         sudo_prefix="sudo"
+    fi
+
+    # F5/INV-10: resolve a PERSISTENT hash_salt (reuse → mint-once → abort) BEFORE
+    # writing settings — never regenerate it inline on a canonical:live site.
+    local hash_salt
+    if ! hash_salt=$(resolve_live_hash_salt "$base_name" "$server_ip" "$ssh_user" "$settings_path" "$sudo_prefix"); then
+        print_error "Could not resolve a persistent hash_salt for live — aborting settings generation (F5/INV-10)."
+        return 1
     fi
 
     # Create settings.local.php with database credentials
@@ -596,8 +664,10 @@ generate_live_settings() {
 // Config sync directory
 \$settings['config_sync_directory'] = '../config/sync';
 
-// Hash salt (generate unique for this site)
-\$settings['hash_salt'] = '$(openssl rand -hex 32)';
+// Hash salt — PERSISTENT live state (F5/INV-10). Resolved by
+// resolve_live_hash_salt: reused from live if present, minted only on a
+// provable first provision, never regenerated on a canonical:live site.
+\$settings['hash_salt'] = '${hash_salt}';
 
 // Operator-managed overrides — never touched by the deploy. Put any
 // per-host config (e.g. \$config['nwc_feedback.agent_fast_path'][...])
@@ -1044,6 +1114,43 @@ run_live_db_updates() {
     return 0
 }
 
+# G3 (design 2026-07-19): Drupal maintenance mode around the destructive swap.
+# Enable maintenance mode BEFORE the rsync --delete so members never hit a
+# half-populated webroot during the ~6.3k-out/~6.5k-in un-fork swap + the live
+# updatedb; disable it only AFTER the post-sync updatedb/cr sequence. Matches
+# the Moodle `pl moodle upgrade` maintenance pattern (§4.4). Uses the same
+# remote `sudo -u www-data drush` idiom as run_live_db_updates, with the
+# webroot/vendor fallback. Caller MUST gate this on --dry-run (no live writes).
+# Fail-loud philosophy: if a later step aborts, maintenance is deliberately
+# left ON (the caller does not disable it on the error paths) and the operator
+# is pointed at rollback.
+live_maintenance_set() {
+    local base_name="$1"
+    local server_ip="$2"
+    local ssh_user="$3"
+    local webroot="$4"
+    local remote_path="$5"
+    local state="$6"   # 1 = ON (maintenance), 0 = OFF (live)
+
+    local sudo_prefix=""
+    if [ "$ssh_user" == "gitlab" ]; then
+        sudo_prefix="sudo"
+    fi
+
+    local label="ON"
+    [ "$state" == "0" ] && label="OFF"
+    print_info "Maintenance mode ${label} (system.maintenance_mode=${state})..."
+
+    if ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
+        "cd ${remote_path} && $sudo_prefix -u www-data drush state:set system.maintenance_mode ${state} --input-format=integer && $sudo_prefix -u www-data drush cr" 2>/dev/null || \
+       ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
+        "cd ${remote_path}/$webroot && $sudo_prefix -u www-data ../vendor/bin/drush state:set system.maintenance_mode ${state} --input-format=integer && $sudo_prefix -u www-data ../vendor/bin/drush cr" 2>/dev/null; then
+        print_status "OK" "Maintenance mode ${label}"
+    else
+        print_status "WARN" "Could not set maintenance_mode=${state} (drush may be unavailable)"
+    fi
+}
+
 # Display elapsed time
 show_elapsed_time() {
     local end_time=$(date +%s)
@@ -1203,6 +1310,11 @@ ${BOLD}OPTIONS:${NC}
     --code-only             Deploy code/config only — skip the database push so live
                             CONTENT is preserved. The allowed deploy shape when the
                             site is canonical: live|prod (see 'pl canonical').
+    --push-content          Opt in to pushing the staging DB OVER the live database
+                            (INV-1). Required to run full_database_deployment against
+                            a canonical: live|prod site; without it the DB push is
+                            refused to protect the live member DB. No effect with
+                            --code-only (which never pushes the DB).
     --override-canonical    Push content even though the site is NOT canonical: dev.
                             OVERWRITES the canonical content source. Warns loudly and
                             records who/when in private/canonical/<site>.log.
@@ -1394,6 +1506,17 @@ deploy_to_live() {
         print_info "[dry-run] skipping remote mkdir/chown (would write to the live host)"
     fi
 
+    # G3: hoist maintenance mode ON BEFORE the destructive rsync --delete so
+    # members never see a half-populated webroot mid-swap. Skipped on --dry-run
+    # (a dry-run must not write to the live host — the rsync itself runs with
+    # --dry-run below). Left ON if any later step aborts (fail-loud); dropped
+    # after the post-sync updatedb/cr sequence on success.
+    if [ "${DRY_RUN:-false}" != "true" ]; then
+        live_maintenance_set "$base_name" "$server_ip" "$ssh_user" "$webroot" "$remote_path" 1
+    else
+        print_info "[dry-run] skipping maintenance-mode enable (would write to the live host)"
+    fi
+
     # Rsync (quiet by default, verbose with -v flag). On dry-run we add
     # --dry-run so rsync prints the planned changes without writing anything;
     # we always print the verbose summary in that mode so the operator
@@ -1414,7 +1537,7 @@ deploy_to_live() {
         "${ssh_user}@${server_ip}:${remote_path}/"; then
         print_status "OK" "Files synced"
     else
-        print_error "File sync failed"
+        print_error "File sync failed (maintenance mode left ON — verify the live host / rollback)."
         return 1
     fi
 
@@ -1440,14 +1563,29 @@ deploy_to_live() {
         print_status "OK" "Dry run complete; no destructive ops executed"
         return 0
     fi
+    # Determine the canonical phase once for the P2-2 DB-push guard below.
+    local _phase
+    _phase=$(canonical_get_phase "$base_name" 2>/dev/null || echo dev)
     if [ "${CODE_ONLY:-false}" == "true" ]; then
-        print_info "[code-only] skipping database push — live content preserved (canonical: $(canonical_get_phase "$base_name"))"
+        print_info "[code-only] skipping database push — live content preserved (canonical: ${_phase})"
+    elif { [ "$_phase" == "live" ] || [ "$_phase" == "prod" ]; } && [ "${PUSH_CONTENT:-false}" != "true" ]; then
+        # P2-2/INV-1 (design 2026-07-19 §6): full_database_deployment imports the
+        # staging DB OVER the live database. On a canonical:live|prod site that
+        # would clobber the live member DB — a live-data-sovereignty violation.
+        # REFUSE by default; the operator must opt in with --push-content (or use
+        # --code-only, the canonical:live default). This is the second independent
+        # INV-1 guard alongside the pair contract (F4-forward-to-P0).
+        print_error "Refusing to push the staging DB over the LIVE member database (canonical:${_phase}, INV-1)."
+        print_error "Use --code-only to deploy code/config only (the canonical:live default),"
+        print_error "or --push-content to intentionally overwrite live content."
+        print_error "Maintenance mode was enabled before the file sync — verify/disable it after you resolve this."
+        return 1
     elif ! full_database_deployment "$stg_site" "$base_name" "$server_ip" "$ssh_user" "$webroot"; then
         # F4 (design 2026-07-19 §Critic F4): a FAILED live DB import must ABORT,
         # not WARN-and-continue. A half-imported member DB served live violates
         # INV-1 (live data sovereignty); fail loud so the operator restores from
         # the pre-deploy snapshot rather than serving broken/partial data.
-        print_error "Live database deployment FAILED — aborting deploy."
+        print_error "Live database deployment FAILED — aborting deploy (maintenance mode left ON)."
         print_error "Recover the live DB from the pre-deploy snapshot: pl rollback execute ${base_name} prod"
         return 1
     fi
@@ -1457,6 +1595,14 @@ deploy_to_live() {
     # stg2live historically ran NO updatedb, leaving code + schema mismatched
     # after a code swap. Runs BEFORE the final `drush cr` below.
     run_live_db_updates "$base_name" "$server_ip" "$ssh_user" "$webroot" "$remote_path"
+
+    # G3: post-sync updatedb/cr sequence is done and the swap is coherent — drop
+    # maintenance mode so the site serves members again. Skipped on --dry-run
+    # (which returned earlier, before any live write). Only reached on the
+    # success path; every error path above returns without disabling it.
+    if [ "${DRY_RUN:-false}" != "true" ]; then
+        live_maintenance_set "$base_name" "$server_ip" "$ssh_user" "$webroot" "$remote_path" 0
+    fi
 
     # Setup SSL certificate
     print_header "SSL Certificate"
@@ -1542,6 +1688,7 @@ main() {
     local NO_PROVISION=false
     local DRY_RUN=false
     local CODE_ONLY=false
+    local PUSH_CONTENT=false
     local OVERRIDE_CANONICAL=false
     local OVERRIDE_PAIR=false
     local OVERRIDE_SNAPSHOT=false
@@ -1549,7 +1696,7 @@ main() {
 
     # Parse options
     local OPTIONS=hdyv
-    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision,dry-run,code-only,override-canonical,override-pair,override-snapshot
+    local LONGOPTS=help,debug,yes,verbose,no-security,no-password-reset,no-provision,dry-run,code-only,push-content,override-canonical,override-pair,override-snapshot
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -1569,6 +1716,7 @@ main() {
             --no-provision) NO_PROVISION=true; shift ;;
             --dry-run) DRY_RUN=true; shift ;;
             --code-only) CODE_ONLY=true; shift ;;
+            --push-content) PUSH_CONTENT=true; shift ;;
             --override-canonical) OVERRIDE_CANONICAL=true; shift ;;
             --override-pair) OVERRIDE_PAIR=true; shift ;;
             --override-snapshot) OVERRIDE_SNAPSHOT=true; shift ;;
@@ -1578,7 +1726,7 @@ main() {
     done
 
     # Export so deploy_to_live and friends can read it.
-    export DRY_RUN CODE_ONLY OVERRIDE_CANONICAL OVERRIDE_PAIR OVERRIDE_SNAPSHOT
+    export DRY_RUN CODE_ONLY PUSH_CONTENT OVERRIDE_CANONICAL OVERRIDE_PAIR OVERRIDE_SNAPSHOT
 
     # Get sitename
     if [ $# -ge 1 ]; then

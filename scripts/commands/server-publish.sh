@@ -81,27 +81,41 @@ case "$PUBLISH_URL" in https://*) : ;; *) die "refusing non-HTTPS --publish-url:
 perms="$(stat -c '%a' "$TOKEN_FILE" 2>/dev/null || echo '')"
 case "$perms" in 600|400|'') : ;; *) print_warning "token file $TOKEN_FILE is $perms — expected 600/400" ;; esac
 
-ARTIFACT_NAME="${SITE}-sanitized-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+# Stack detection (ADR-0032 Flow A): a Moodle root carries version.php and its
+# sanitizer (ssc.sh → moodle-full.sh) emits a .tar.gz BUNDLE {db.sql.gz, manifest};
+# a Drupal site emits a plain .sql.gz dump. The extension + gate method follow.
+if [ -f "$SITE_DIR/version.php" ]; then
+    STACK="moodle"; ARTIFACT_EXT="tar.gz"
+else
+    STACK="drupal"; ARTIFACT_EXT="sql.gz"
+fi
+ARTIFACT_NAME="${SITE}-sanitized-$(date -u +%Y%m%dT%H%M%SZ).${ARTIFACT_EXT}"
 DEST_URL="${PUBLISH_URL%/}/${ARTIFACT_NAME}"
 
 print_header "nwp-server publish — $SITE"
 print_info "site-dir:  $SITE_DIR"
 print_info "sanitizer: $SANITIZER"
+print_info "stack:     $STACK"
 print_info "artifact:  $ARTIFACT_NAME"
 print_info "dest:      $DEST_URL"
 
 if [ "$EXECUTE" != y ]; then
     print_header "Dry run — no snapshot, no publish"
     echo "Would, in order:"
-    echo "  1. run the sanitizer (live DB read-only → scratch → sanitized dump)"
-    echo "  2. run the fail-closed PII gate over the dump (abort on ANY PII)"
-    echo "  3. PUT the dump to $DEST_URL using the write-only deploy token"
+    if [ "$STACK" = moodle ]; then
+        echo "  1. run the sanitizer → bundle {db.sql.gz (scratch DB), dataroot-manifest}"
+        echo "  2. gate the INNER db.sql.gz (abort on ANY PII) + assert manifest attests empty filedir"
+    else
+        echo "  1. run the sanitizer (live DB read-only → scratch → sanitized dump)"
+        echo "  2. run the fail-closed PII gate over the dump (abort on ANY PII)"
+    fi
+    echo "  3. PUT the artifact to $DEST_URL using the write-only deploy token"
     print_hint "re-run with --execute to publish"
     exit 0
 fi
 
 command -v curl >/dev/null 2>&1 || die "curl not found — required to publish"
-TMP="$(mktemp --suffix=.sql.gz)"
+TMP="$(mktemp --suffix=".${ARTIFACT_EXT}")"
 cleanup(){ [ -f "$TMP" ] && { shred -u "$TMP" 2>/dev/null || rm -f "$TMP"; }; }
 trap cleanup EXIT
 
@@ -115,8 +129,12 @@ fi
 [ -s "$TMP" ] || die "sanitizer produced no output — nothing published"
 
 # ── Step 2: independent fail-closed PII gate ──────────────────────────────────
+# pii_gate_scan_artifact handles BOTH a plain .sql.gz (Drupal, unchanged) and a
+# moodle-full bundle (Moodle): for a bundle it extracts the inner db.sql.gz and
+# scans THAT + asserts the manifest attests an empty filedir — independently of
+# the sanitizer's own --verify, preserving the two-gate model.
 print_header "Step 2/3 — fail-closed PII gate"
-if pii_gate_scan "$TMP" "$ALLOWLIST"; then
+if pii_gate_scan_artifact "$TMP" "$ALLOWLIST"; then
     print_success "PII gate PASSED — no unsanitized PII"
 else
     die "PII gate FAILED (exit $?) — refusing to publish (fail-closed)"

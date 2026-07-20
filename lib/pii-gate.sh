@@ -162,6 +162,72 @@ pii_gate_scan() {
     return 1
 }
 
+################################################################################
+# pii_gate_scan_artifact <file> [extra_allowlist_file]
+#
+# Bundle-aware wrapper over pii_gate_scan. Accepts EITHER:
+#   - a plain gzipped SQL dump (Drupal / DB-only) — scanned directly, OR
+#   - a moodle-full bundle (a .tar.gz containing `db.sql.gz` + `dataroot-manifest.txt`,
+#     produced by lib/sanitizers/moodle-full.sh, ADR-0032 Flow A) — the inner
+#     `db.sql.gz` is EXTRACTED and scanned, and the manifest must attest an EMPTY
+#     filedir (the omit-and-placeholder contract).
+#
+# This stays INDEPENDENT of the sanitizer: it re-extracts and re-scans the dump
+# itself rather than trusting the sanitizer's own `--verify`, preserving the
+# two-gate model (a sanitizer bug must not be able to vouch for its own output).
+# Fail-closed: any tar/extraction/manifest problem returns non-zero.
+#
+# Returns: 0 clean · 1 PII / broken bundle contract · 2 usage / tooling / IO error.
+################################################################################
+pii_gate_scan_artifact() {
+    local file="${1:-}" extra_allow="${2:-}"
+    if [ -z "$file" ] || [ ! -r "$file" ]; then
+        echo "pii_gate_scan_artifact: usage: pii_gate_scan_artifact <file> [allowlist]" >&2
+        return 2
+    fi
+
+    # Discriminate by the TAR ENTRY LIST (GNU `tar -tzf` returns 0 with EMPTY
+    # output on a plain .sql.gz — its exit code cannot be trusted). Three cases:
+    #   - lists db.sql.gz            → a valid sanitised bundle → extract + gate inner
+    #   - lists entries, but no db   → a malformed/foreign tar → fail-closed
+    #                                  (raw tar bytes cannot be meaningfully scanned)
+    #   - lists nothing              → a plain gzipped SQL dump → delegate (Drupal, unchanged)
+    local entries; entries="$(tar -tzf "$file" 2>/dev/null || true)"
+    if ! printf '%s\n' "$entries" | grep -qx 'db.sql.gz'; then
+        if [ -n "$entries" ]; then
+            echo "pii_gate_scan_artifact: tar archive without db.sql.gz — not a valid sanitised bundle, refusing (fail-closed)" >&2
+            return 1
+        fi
+        pii_gate_scan "$file" "$extra_allow"
+        return $?
+    fi
+
+    command -v tar >/dev/null 2>&1 || { echo "pii_gate_scan_artifact: tar missing" >&2; return 2; }
+    local work; work="$(mktemp -d)" || { echo "pii_gate_scan_artifact: mktemp failed" >&2; return 2; }
+    # shellcheck disable=SC2064
+    trap "rm -rf -- '$work'" RETURN
+
+    if ! tar -xzf "$file" -C "$work" db.sql.gz 2>/dev/null; then
+        echo "pii_gate_scan_artifact: bundle has no extractable db.sql.gz — refusing (fail-closed)" >&2
+        return 1
+    fi
+    [ -s "$work/db.sql.gz" ] || { echo "pii_gate_scan_artifact: extracted db.sql.gz is empty — fail-closed" >&2; return 1; }
+
+    # The manifest must exist and attest an EMPTY filedir (omit-and-placeholder).
+    if ! tar -xzf "$file" -C "$work" dataroot-manifest.txt 2>/dev/null; then
+        echo "pii_gate_scan_artifact: bundle has no dataroot-manifest.txt — refusing (fail-closed)" >&2
+        return 1
+    fi
+    if ! grep -q 'filedir: EMPTY' "$work/dataroot-manifest.txt"; then
+        echo "pii_gate_scan_artifact: manifest does not attest 'filedir: EMPTY' — refusing (fail-closed)" >&2
+        return 1
+    fi
+
+    # Independent scan of the inner dump.
+    pii_gate_scan "$work/db.sql.gz" "$extra_allow"
+    return $?
+}
+
 # Allow standalone use:  bash lib/pii-gate.sh <file> [allowlist]
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     if pii_gate_scan "$@"; then

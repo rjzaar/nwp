@@ -913,11 +913,35 @@ deploy_production_robots() {
 }
 
 # Update nginx config to include SSL
+# Resolve the PHP-FPM version the live nginx vhost should target for a site.
+# NEVER hardcode: the nwc go-live 500'd (2026-07-20) because a PHP>=8.3 build was
+# served by php8.2-fpm ("Composer dependencies require a PHP version >= 8.3.0").
+# Order: the staging build's DDEV php_version (what it was tested on) → the built
+# composer.json require.php → 8.3 as the floor (never 8.2).
+resolve_site_php_version() {
+    local base_name="$1"
+    local ver="" stg_dir
+    stg_dir="$(get_stg_dir "$base_name" 2>/dev/null || true)"
+    if [ -n "$stg_dir" ] && [ -f "$stg_dir/.ddev/config.yaml" ]; then
+        ver="$(grep -E '^php_version:' "$stg_dir/.ddev/config.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' | head -1)"
+    fi
+    if [ -z "$ver" ] && [ -n "$stg_dir" ] && [ -f "$stg_dir/composer.json" ]; then
+        # ">=8.3" / "^8.3" / "8.3.*" -> 8.3
+        ver="$(grep -oE '"php"[[:space:]]*:[[:space:]]*"[^"]+"' "$stg_dir/composer.json" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+    fi
+    [ -z "$ver" ] && ver="8.3"
+    printf '%s' "$ver"
+}
+
 update_nginx_ssl() {
     local base_name="$1"
     local server_ip="$2"
     local ssh_user="$3"
     local domain="$4"
+
+    # PHP-FPM version for the fastcgi_pass — derived from the build, not hardcoded.
+    local php_ver
+    php_ver="$(resolve_site_php_version "$base_name")"
 
     local sudo_prefix=""
     if [ "$ssh_user" == "gitlab" ]; then
@@ -970,7 +994,7 @@ server {
     }
 
     location ~ \\.php\$ {
-        fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
+        fastcgi_pass unix:/var/run/php/php${php_ver}-fpm.sock;
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
         include /opt/gitlab/embedded/conf/fastcgi_params;
     }

@@ -544,18 +544,23 @@ detect_site_stack() {
     esac
 }
 
-# Moodle sanitize handler — FAIL-CLOSED STUB (ops#76 plumbing).
-# This deliberately REFUSES to proceed. The operator authors the real Moodle
-# anonymisation under human-review (see lib/sanitizers/moodle.sh for the
-# interface spec and the plane-5b table inventory). Until then, no Moodle DB
-# may be promoted un-sanitized: this returns non-zero so every caller
-# (prod2stg/live2stg/download_db_*) that fail-closes on sanitize will abort.
+# Moodle sanitize handler — FAIL-CLOSED (ops#76 plumbing; ops#110 routing).
+# This DDEV in-place path deliberately REFUSES to proceed. Moodle sanitisation
+# is IMPLEMENTED (lib/sanitizers/moodle.sh) but routed via PATH A — the
+# prod-native scratch-DB model in scripts/commands/server-publish.sh
+# (lib/sanitizers/<site>.sh → moodle.sh), which honours the threat model
+# (sanitise on prod, raw data never leaves prod). This in-place path (Path B)
+# runs `ddev drush`, a different execution context, and is intentionally NOT
+# wired to moodle.sh (see ops#110 for the decision). It returns non-zero so
+# every caller (prod2stg/live2stg/download_db_*) that fail-closes on sanitize
+# will abort rather than promote a Moodle DB un-sanitized.
 _sanitize_staging_db_moodle() {
     local target_site="$1"
-    fail "Moodle sanitizer not yet implemented — operator must author the mdl_user* / consent anonymisation"
+    fail "Moodle DDEV in-place sanitize (Path B) is intentionally not wired — use Path A"
     note "Target '$target_site' is a Moodle stack (ADR-0031 plane 5b: student learning records + tool_policy consent)."
-    note "Plumbing only: see lib/sanitizers/moodle.sh for the interface the operator must implement."
-    note "Refusing to promote a Moodle DB un-sanitized (fail-closed)."
+    note "Moodle sanitisation runs prod-native: scripts/commands/server-publish.sh with"
+    note "  lib/sanitizers/${target_site}.sh (→ lib/sanitizers/moodle.sh). See ops#110."
+    note "Refusing to promote a Moodle DB un-sanitized via the DDEV path (fail-closed)."
     return 1
 }
 

@@ -3,18 +3,26 @@ set -euo pipefail
 ################################################################################
 # lib/sanitizers/moodle.sh — Moodle DB sanitizer.
 #
-#   ****  FAIL-CLOSED STUB — NOT YET IMPLEMENTED  ****
+#   ****  IMPLEMENTED — prod-native, scratch-DB model (ops#76 / ops#110)  ****
 #
-# ADR-0031 Phase D (ops#76) ships the promotion-pipeline TYPE DISPATCH and this
-# placeholder ONLY. The actual anonymisation SQL is deliberately NOT written
-# here: per CLAUDE.md the sanitizer is security-critical and gets the same
-# human-review treatment as authentication code. ADR-0031 plane 5b is students'
-# learning records + `tool_policy` consent acceptances, so an AI must not author
-# it. THE OPERATOR authors the body of `moodle_sanitize` under human review.
+# `moodle_sanitize` (below, ~line 487) is the reviewed implementation. It
+# conforms to the SAME CLI interface as lib/sanitizers/standard.sh + mayo.sh
+# (--site-dir / --output / --verify), so scripts/commands/server-publish.sh can
+# invoke it directly (Path A). Per CLAUDE.md the sanitizer is security-critical
+# and gets the same human-review treatment as authentication code — every change
+# to this file requires explicit human review before merge.
 #
-# Until then this script REFUSES to run (exits non-zero), so no Moodle DB can be
-# promoted un-sanitized. This mirrors P67's required default: abort rather than
-# pass raw PII.
+# STILL FAIL-CLOSED: any precondition/post-condition failure exits non-zero and
+# produces NO "clean" artifact, so a failed sanitize can never yield a dump that
+# downstream treats as sanitized (P67's required default: abort rather than pass
+# raw PII). ADR-0031 plane 5b = students' learning records + `tool_policy`
+# consent acceptances; those are handled explicitly below (never silently dropped).
+#
+# NOTE (ops#110): the DDEV in-place path in lib/database-router.sh
+# (_sanitize_staging_db_moodle, used by pl prod2stg/live2stg) is a SEPARATE
+# execution context — it runs `ddev drush`, whereas this script runs bare
+# mysql/mysqldump against config.php creds. Wiring that path to this
+# implementation is a design decision tracked in ops#110, NOT done here.
 #
 # ── PARALLELS lib/sanitizers/standard.sh + lib/sanitizers/mayo.sh ─────────────
 # When implemented, this MUST follow the same security model as those two:

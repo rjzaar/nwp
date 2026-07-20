@@ -1,5 +1,9 @@
 #!/bin/bash
-set -euo pipefail
+# NOTE: no `set -euo pipefail` here — this is a SOURCED library (like lib/pii-gate.sh).
+# Forcing -e/-u onto the caller leaks into the bats runner, which older bats (as
+# installed in CI) does not snapshot/restore around each test, breaking test:unit.
+# Every function below does its own explicit error handling (`|| return`), so it
+# does not depend on errexit.
 ################################################################################
 # lib/moodle-fixture-load.sh — dev/stg CONSUMER of a sanitised Moodle fixture
 # bundle (ADR-0032 Flow A, increment 2b).

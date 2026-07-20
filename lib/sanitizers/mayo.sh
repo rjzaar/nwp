@@ -1,6 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
+# Fail-closed prod guard (ops#113): every mutation must target a SCRATCH DB
+# distinct from the live DB.
+_MAYO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$_MAYO_DIR/../prod-guard.sh"
+
 ################################################################################
 # Mayo Database Sanitizer
 #
@@ -162,6 +167,8 @@ init_db_access() {
 
     LIVE_DB="$db"
     SCRATCH_DB="${db}${SCRATCH_SUFFIX}"
+    # PROD GUARD (ops#113): never mutate the live DB — scratch must be distinct.
+    prod_guard_scratch_distinct "$LIVE_DB" "$SCRATCH_DB" "$SCRATCH_SUFFIX" || return 1
 
     MYSQL_CNF=$(mktemp); chmod 600 "$MYSQL_CNF"
     {

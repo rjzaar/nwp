@@ -206,6 +206,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/oidc-email.sh"
+# Fail-closed guard: every mutation must target a SCRATCH DB distinct from live.
+source "$SCRIPT_DIR/../prod-guard.sh"
 
 # Module-level DB handles, populated by _moodle_init_db_access.
 MYSQL_CNF=""
@@ -500,6 +502,8 @@ moodle_sanitize() {
         log_error "not a Moodle root (version.php missing): $site_dir — refusing (fail-closed)"; return 1; }
 
     _moodle_init_db_access "$site_dir" || return 1
+    # PROD GUARD (ops#113): never mutate the live DB — scratch must be distinct.
+    prod_guard_scratch_distinct "$LIVE_DB" "$SCRATCH_DB" "$SCRATCH_SUFFIX" || return 1
     _moodle_build_scratch || return 1
 
     log "anonymising ${PREFIX}user (identity + OIDC emails, id>1) and OIDC linkage"

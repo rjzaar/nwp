@@ -1,5 +1,9 @@
 #!/bin/bash
 set -euo pipefail
+# Fail-closed prod guard (ops#113): every mutation must target a SCRATCH DB
+# distinct from the live DB.
+_STD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$_STD_DIR/../prod-guard.sh"
 ################################################################################
 # lib/sanitizers/standard.sh — generic, prod-native sanitizer for a standard-
 # profile Drupal site. The safe default when a site has no bespoke
@@ -101,6 +105,7 @@ sock=$(awk -F'\t' '$1=="unix_socket"{print $2}' <<<"$creds")
   [ -n "$host" ] && echo "host=${host}"; [ -n "$port" ] && echo "port=${port}";
   [ -n "$sock" ] && echo "socket=${sock}"; } > "$MYSQL_CNF"
 SCRATCH_DB="${db}${SCRATCH_SUFFIX}"
+prod_guard_scratch_distinct "$db" "$SCRATCH_DB" "$SCRATCH_SUFFIX" || exit 1
 mysql_cli(){ mysql --defaults-extra-file="$MYSQL_CNF" "$@"; }
 sq(){ mysql_cli -N -B "$SCRATCH_DB" -e "$1"; }
 

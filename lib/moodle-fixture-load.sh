@@ -98,3 +98,34 @@ moodle_scaffold_empty_dataroot() {
     mfl_log "empty dataroot scaffold ready at $dr (run 'moosh file-dbcheck' after importing db.sql.gz)"
     return 0
 }
+
+# ── moodle_fixture_load <bundle> <target_dataroot> <import_cmd> [allowlist] ─────
+# End-to-end orchestration of a LOCAL bundle into a target Moodle (the thin `pl`
+# command supplies fetch + the real importer + the optional moosh prune):
+#   verify+extract (independent gate) → <import_cmd> <db.sql.gz> → empty scaffold.
+# <import_cmd> is a command/function NAME; the extracted db.sql.gz path is passed
+# as its single argument (e.g. a wrapper around `ddev import-db --file=`). This
+# indirection keeps the safety-critical sequencing unit-testable without ddev.
+# Fail-closed: a gate/import/scaffold failure returns non-zero; the DB is never
+# imported unless the bundle passed the gate first.
+moodle_fixture_load() {
+    local bundle="${1:-}" dataroot="${2:-}" import_cmd="${3:-}" allow="${4:-}"
+    [ -n "$bundle" ]     || { mfl_err "bundle is required";          return 2; }
+    [ -n "$dataroot" ]   || { mfl_err "target dataroot is required"; return 2; }
+    [ -n "$import_cmd" ] || { mfl_err "import command is required";  return 2; }
+
+    local work; work="$(mktemp -d)" || { mfl_err "mktemp failed"; return 2; }
+    # shellcheck disable=SC2064
+    trap "rm -rf -- '$work'" RETURN
+
+    local db
+    db="$(moodle_fixture_verify_extract "$bundle" "$work" "$allow")" || return 1
+
+    mfl_log "importing sanitised DB into target Moodle (via ${import_cmd})"
+    "$import_cmd" "$db" || { mfl_err "DB import failed — fail-closed"; return 1; }
+
+    moodle_scaffold_empty_dataroot "$dataroot" || return 1
+
+    mfl_log "fixture loaded. Prune orphaned mdl_files rows on the target: moosh file-dbcheck"
+    return 0
+}

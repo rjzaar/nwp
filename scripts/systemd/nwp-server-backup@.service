@@ -1,0 +1,35 @@
+# NWP nwp-server DR backup — per-site instantiated service (ADR-0032 Flow B / ADR-0025).
+#
+# Instance = site name, e.g.  nwp-server-backup@ss.service
+# Config comes from /etc/nwp-server/<site>.env (EnvironmentFile below), which sets
+# at least SITE_DIR and RESTIC_PUB. See nwp-server-backup.env.example.
+#
+# This runs the RAW DR backup (ADR-0025): raw DB + files → a restic repo LOCAL to
+# this prod host. `ver` later PULLS it into its durable immutable repo. This host
+# holds no credential that can delete ver's copy.
+#
+# Install (on the prod host, as root):
+#   cp scripts/systemd/nwp-server-backup@.service /etc/systemd/system/
+#   cp scripts/systemd/nwp-server-backup@.timer   /etc/systemd/system/
+#   install -m600 scripts/systemd/nwp-server-backup.env.example /etc/nwp-server/ss.env  # then edit
+#   systemctl daemon-reload && systemctl enable --now nwp-server-backup@ss.timer
+
+[Unit]
+Description=NWP DR backup for %i (raw DB+files → local restic, pulled by ver)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# NWP_BIN defaults to `nwp-server` on PATH; override in the env file if installed elsewhere.
+Environment=NWP_BIN=nwp-server
+EnvironmentFile=/etc/nwp-server/%i.env
+# SITE_DIR and RESTIC_PUB are required (from the env file). REPO/PASS_FILE/FILES
+# are optional overrides; server-backup has safe defaults for them.
+ExecStart=/bin/sh -c '${NWP_BIN} backup --site-dir "${SITE_DIR}" --restic-pub "${RESTIC_PUB}" ${BACKUP_EXTRA_ARGS} --execute'
+# Be gentle on a live prod host.
+Nice=15
+IOSchedulingClass=idle
+# Hardening (DR backup only needs to read the site + write its local restic repo).
+ProtectHome=false
+NoNewPrivileges=true

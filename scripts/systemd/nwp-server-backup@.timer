@@ -1,0 +1,16 @@
+# NWP nwp-server DR backup — per-site nightly timer (ADR-0032 Flow B).
+# Instance = site name, e.g.  nwp-server-backup@ss.timer
+# Enable:  systemctl enable --now nwp-server-backup@ss.timer
+
+[Unit]
+Description=Nightly NWP DR backup for %i
+
+[Timer]
+# 01:30 local, jittered up to 20m so fleet sites don't all fire at once. Persistent
+# catches up a missed run (host was off) at next boot.
+OnCalendar=*-*-* 01:30:00
+RandomizedDelaySec=20m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

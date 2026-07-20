@@ -18,7 +18,7 @@
 # =============================================================================
 
 pair: ssc-nwc                 # human label "<consumer>-<provider>"
-contract_version: 1           # monotonically increasing INTEGER; bump = expand-contract change
+contract_version: 2           # monotonically increasing INTEGER; bump = expand-contract change
 provider: nwc                 # Drupal/Open Social — OIDC issuer, copyright source, feedback sink
 consumer: ssc                 # Moodle — SSO client, copyright receiver, REAL students
 
@@ -314,11 +314,11 @@ smoke_urls:
     expect_status: "200,302"
   - name: copyright_status
     side: consumer
-    path: "/local/nwc_copyright_sync/status.php"
+    path: "/local/nwc_copyright_sync/policy_set.php"
     method: GET
-    expect_status: "200"
+    expect_status: "405"
   - name: feedback_post
     side: consumer
-    path: "/local/feedback/api.php"
-    method: POST
-    expect_status: "200,401"     # 401 acceptable without a token; token round-trip is non-prod only
+    path: "/local/feedback/submit.php"
+    method: GET
+    expect_status: "405"     # 401 acceptable without a token; token round-trip is non-prod only

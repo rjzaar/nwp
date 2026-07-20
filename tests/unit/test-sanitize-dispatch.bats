@@ -116,12 +116,17 @@ teardown() {
   [ "$output" = "DRUPAL_HANDLER" ]
 }
 
-# ── the real Moodle handler must fail closed (no anonymisation implemented) ───
+# ── the DDEV in-place Moodle handler stays fail-closed and points to Path A ───
+# ops#110: Moodle sanitisation is IMPLEMENTED (lib/sanitizers/moodle.sh) but
+# routed prod-native (Path A). This DDEV in-place path (Path B) is intentionally
+# not wired to it, so it must still refuse (non-zero) and steer the operator to
+# the prod-native route rather than claim the sanitizer is unauthored.
 
 @test "_sanitize_staging_db_moodle refuses and returns non-zero (fail-closed)" {
   run _sanitize_staging_db_moodle "moodsite-stg"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"not yet implemented"* ]]
+  [[ "$output" == *"Path A"* ]]
+  [[ "$output" == *"server-publish.sh"* ]]
 }
 
 # ── the standalone prod-native sanitizer fails closed on a non-Moodle dir ─────
@@ -131,6 +136,29 @@ teardown() {
 
 @test "lib/sanitizers/moodle.sh refuses a non-Moodle dir (no version.php, fail-closed)" {
   run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/moodle.sh" --site-dir "${TEST_TMP}"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"version.php"* ]]
+}
+
+# ── ssc.sh: the Path A per-site resolver delegates to moodle.sh (ops#110) ──────
+# server-publish.sh resolves lib/sanitizers/<site>.sh; ssc's is a thin wrapper
+# that must (a) delegate verbatim to moodle.sh, and (b) propagate its fail-closed
+# non-zero exit unchanged.
+
+@test "lib/sanitizers/ssc.sh delegates to moodle.sh (--verify on missing dump fails closed)" {
+  run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/ssc.sh" --verify --output "${TEST_TMP}/nope.sql.gz"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no output file to verify"* ]]   # message originates in moodle.sh
+}
+
+@test "lib/sanitizers/ssc.sh requires --site-dir (fail-closed, propagated from moodle.sh)" {
+  run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/ssc.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--site-dir"* ]]
+}
+
+@test "lib/sanitizers/ssc.sh refuses a non-Moodle dir (delegation reaches moodle.sh's version.php guard)" {
+  run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/ssc.sh" --site-dir "${TEST_TMP}"
   [ "$status" -ne 0 ]
   [[ "$output" == *"version.php"* ]]
 }

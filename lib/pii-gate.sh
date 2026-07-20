@@ -43,6 +43,7 @@ PII_GATE_DEFAULT_ALLOWLIST=(
     'noreply@'
     'no-reply@'
     '@example\.(com|org|net)'
+    '@sanitized\.test'
     '@drupal\.org'
     '@nwpcode\.org'
     'webmaster@'

@@ -177,3 +177,44 @@ EOF
     # Column 2 is a name (no @), so should not be hashed
     grep -q $'\tAlice\t' "$input"
 }
+
+################################################################################
+# oidc_email_rewrite_sql — SQL-column rewrite (ops#116; stubbed DB runners)
+################################################################################
+
+_q_stub() { printf '2\tjohn@gmail.com\n3\tmary@yahoo.com\n'; }
+_apply_cap() { cat >> "${OIDC_CAP:-/dev/null}"; }
+
+@test "oidc_email_rewrite_sql: writes UPDATEs using the deterministic hash" {
+    export OIDC_CAP="$(mktemp)"
+    run oidc_email_rewrite_sql _q_stub _apply_cap users_field_data uid mail "uid>1"
+    [ "$status" -eq 0 ]
+    exp=$(oidc_email_sanitize "john@gmail.com")
+    grep -qF "SET \`mail\`='${exp}' WHERE \`uid\`=2;" "$OIDC_CAP"
+    grep -qF "WHERE \`uid\`=3;" "$OIDC_CAP"
+    rm -f "$OIDC_CAP"
+}
+
+@test "oidc_email_rewrite_sql: cross-stack determinism (matches direct sanitize)" {
+    export OIDC_CAP="$(mktemp)"
+    oidc_email_rewrite_sql _q_stub _apply_cap t id mail
+    direct=$(oidc_email_sanitize "mary@yahoo.com")
+    grep -qF "'${direct}'" "$OIDC_CAP"
+    rm -f "$OIDC_CAP"
+}
+
+@test "oidc_email_rewrite_sql: non-numeric id is fail-closed" {
+    _q_bad() { printf 'notanum\tjohn@gmail.com\n'; }
+    export OIDC_CAP="$(mktemp)"
+    run oidc_email_rewrite_sql _q_bad _apply_cap t id mail
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"non-numeric id"* ]]
+    rm -f "$OIDC_CAP"
+}
+
+@test "oidc_email_rewrite_sql: missing salt is fail-closed" {
+    unset OIDC_SANITIZER_SALT
+    export OIDC_SANITIZER_SALT_FILE=/nonexistent-salt-xyz
+    run oidc_email_rewrite_sql _q_stub _apply_cap t id mail
+    [ "$status" -ne 0 ]
+}

@@ -5,6 +5,10 @@ set -euo pipefail
 # distinct from the live DB.
 _MAYO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_MAYO_DIR/../prod-guard.sh"
+# Shared-salt OIDC email hash so a paired site's fake emails match the Moodle
+# side's, preserving the cross-stack SSO join (ADR-0032). Used only when a salt
+# is present (non-paired sites keep the positional faker_email).
+source "$_MAYO_DIR/oidc-email.sh"
 
 ################################################################################
 # Mayo Database Sanitizer
@@ -404,6 +408,7 @@ PII_PATTERNS=(
 PII_ALLOWLIST=(
     'admin@example\.com'
     'user[0-9]+@example\.com'
+    '@sanitized\.test'
     'noreply@'
     '@example\.(com|org|net)'
     '@drupal\.org'
@@ -655,6 +660,22 @@ run_step_4() {
         # Preserve uid=1 as admin
         scratch_query "UPDATE users_field_data SET name = 'admin', mail = 'admin@example.com', init = 'admin@example.com' WHERE uid = 1;" 2>>"$LOG_FILE"
         log "  Admin (uid=1): preserved as admin@example.com"
+
+        # SSO-preserving email hash (ADR-0032): when a shared OIDC salt is present,
+        # rewrite users_field_data.mail (uid>1) via the SAME hash the Moodle side
+        # uses, overriding the faker_email positional value, so the cross-stack
+        # OIDC/SSO join survives a sanitised copy. Non-paired sites (no salt) keep
+        # the positional faker_email. Data is PII-free either way.
+        apply_scratch(){ mysql_cli "$SCRATCH_DB"; }
+        if oidc_email_salt_load 2>/dev/null; then
+            log "  OIDC salt present → SSO-preserving email hash on users_field_data.mail (uid>1)"
+            if oidc_email_rewrite_sql scratch_query apply_scratch users_field_data uid mail "uid>1"; then
+                scratch_query "UPDATE users_field_data SET mail=CONCAT('user',uid,'@example.com') WHERE uid>1 AND mail NOT LIKE '%@sanitized.test';" 2>>"$LOG_FILE"
+                scratch_query "UPDATE users_field_data SET init=mail WHERE uid>1;" 2>>"$LOG_FILE"
+            else
+                log_error "OIDC email rewrite failed — falling back to positional faker_email (already applied)"
+            fi
+        fi
     fi
 
     log "  Sanitized: ${sanitized} columns, Skipped: ${skipped}, Failed: ${failed}"

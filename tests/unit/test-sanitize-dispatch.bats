@@ -140,24 +140,24 @@ teardown() {
   [[ "$output" == *"version.php"* ]]
 }
 
-# ── ssc.sh: the Path A per-site resolver delegates to moodle.sh (ops#110) ──────
+# ── ssc.sh: the Path A per-site resolver delegates to moodle-full.sh (ops#110/#111) ─
 # server-publish.sh resolves lib/sanitizers/<site>.sh; ssc's is a thin wrapper
 # that must (a) delegate verbatim to moodle.sh, and (b) propagate its fail-closed
 # non-zero exit unchanged.
 
-@test "lib/sanitizers/ssc.sh delegates to moodle.sh (--verify on missing dump fails closed)" {
-  run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/ssc.sh" --verify --output "${TEST_TMP}/nope.sql.gz"
+@test "lib/sanitizers/ssc.sh delegates to moodle-full.sh (--verify on missing bundle fails closed)" {
+  run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/ssc.sh" --verify --output "${TEST_TMP}/nope.tar.gz"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"no output file to verify"* ]]   # message originates in moodle.sh
+  [[ "$output" == *"no bundle to verify"* ]]   # message originates in moodle-full.sh
 }
 
-@test "lib/sanitizers/ssc.sh requires --site-dir (fail-closed, propagated from moodle.sh)" {
+@test "lib/sanitizers/ssc.sh requires --site-dir (fail-closed, propagated from moodle-full.sh)" {
   run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/ssc.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"--site-dir"* ]]
 }
 
-@test "lib/sanitizers/ssc.sh refuses a non-Moodle dir (delegation reaches moodle.sh's version.php guard)" {
+@test "lib/sanitizers/ssc.sh refuses a non-Moodle dir (delegation reaches the version.php guard)" {
   run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/ssc.sh" --site-dir "${TEST_TMP}"
   [ "$status" -ne 0 ]
   [[ "$output" == *"version.php"* ]]

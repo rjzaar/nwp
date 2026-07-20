@@ -62,9 +62,11 @@ set -euo pipefail
 ################################################################################
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+# Resolve the gate via our OWN location (lib/sanitizers/../pii-gate.sh), not a
+# mutable PROJECT_ROOT — mirrors how moodle.sh sources oidc-email.sh, and keeps
+# this robust when a caller/test overrides PROJECT_ROOT.
 # shellcheck source=/dev/null
-source "$PROJECT_ROOT/lib/pii-gate.sh"
+source "$SCRIPT_DIR/../pii-gate.sh"
 
 DB_SANITIZER="${NWP_MOODLE_DB_SANITIZER:-$SCRIPT_DIR/moodle.sh}"
 DATAROOT_SCRUBBER="${NWP_MOODLE_DATAROOT_SCRUBBER:-$SCRIPT_DIR/moodle-dataroot.sh}"

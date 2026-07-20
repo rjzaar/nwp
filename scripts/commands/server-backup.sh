@@ -22,8 +22,14 @@ set -euo pipefail
 #   --restic BIN        restic binary (default: first `restic` in PATH)
 #   --restic-pub PATH   minisign public key to verify the restic binary before use
 #                       (fail-closed in --execute unless --skip-restic-verify)
-#   --drush PATH        drush (default: <site-dir>/vendor/bin/drush)
-#   --files SUBPATH     files dir relative to site-dir (default web/sites/default/files)
+#   --drush PATH        drush (default: <site-dir>/vendor/bin/drush) — Drupal only
+#   --files SUBPATH     Drupal PUBLIC files dir relative to site-dir
+#                       (default web/sites/default/files). Drupal private files are
+#                       auto-detected. IGNORED for Moodle (which backs up moodledata).
+#
+# Stack-aware (ADR-0032 Flow B): a Moodle site (version.php) is backed up as
+# moodledata + a mysqldump-via-config.php DB dump; a Drupal site as public+private
+# files + a drush sql-dump. Raw data → ver only (ADR-0025); never the dev/AI tier.
 #   --keep-last N       local staging retention (default 3)
 #   --tag TAG           restic tag (default: <host>/<site>)
 #   --db-only | --files-only
@@ -34,6 +40,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/minisign.sh" 2>/dev/null || true
+source "$PROJECT_ROOT/lib/server-backup-resolve.sh"
 
 SITE_DIR="" REPO="" PASS_FILE="/etc/nwp-server/restic.pass"
 RESTIC="$(command -v restic || echo restic)" RESTIC_PUB=""
@@ -107,7 +114,19 @@ main(){
   [ -n "$REPO" ]  || REPO="/var/backups/nwp-server/$site"
   [ -n "$DRUSH" ] || DRUSH="$SITE_DIR/vendor/bin/drush"
   [ -n "$TAG" ]   || TAG="$(hostname -s 2>/dev/null || echo host)/$site"
-  local files_path="$SITE_DIR/$FILES_SUB"
+
+  # Stack-aware (ADR-0032 Flow B): Moodle backs up moodledata + mysqldump-via-
+  # config.php; Drupal backs up public+private files + drush. --files overrides
+  # the Drupal PUBLIC subpath and is ignored for Moodle (which uses moodledata).
+  local stack; stack="$(sb_detect_stack "$SITE_DIR")"
+  local -a files_paths=()
+  while IFS= read -r _p; do [ -n "$_p" ] && files_paths+=("$_p"); done \
+    < <(sb_backup_files_paths "$SITE_DIR" "$FILES_SUB")
+  # Visibility guard: if a Drupal site's public files aren't at the default path
+  # (e.g. an `html` docroot), don't silently omit them — tell the operator.
+  if [ "$stack" = drupal ] && [ "$DB_ONLY" != y ] && [ ! -d "$SITE_DIR/$FILES_SUB" ]; then
+    print_warning "Drupal public files not found at '$FILES_SUB' — pass --files <docroot>/sites/default/files (backing up only what was resolved)"
+  fi
 
   print_header "nwp-server backup · $site"
   [ "$EXECUTE" = y ] || print_warning "DRY-RUN (default) — re-run with --execute to perform the backup."
@@ -115,7 +134,17 @@ main(){
   # ── Preflight ──────────────────────────────────────────────────────────────
   print_header "Preflight"
   [ -d "$SITE_DIR" ] || die "site dir not found: $SITE_DIR"
-  [ "$FILES_ONLY" = y ] || [ -x "$DRUSH" ] || die "drush not found/executable: $DRUSH"
+  if [ "$FILES_ONLY" != y ]; then
+    if [ "$stack" = drupal ]; then
+      [ -x "$DRUSH" ] || die "drush not found/executable: $DRUSH"
+    else
+      # Moodle DB dump needs php + mysqldump (no drush). Warn in dry-run; the
+      # dump helper is fail-closed on a live run if either is missing.
+      { command -v php >/dev/null 2>&1 && command -v mysqldump >/dev/null 2>&1; } \
+        || { [ "$EXECUTE" = y ] && die "moodle DB backup needs php + mysqldump"; \
+             print_warning "[dry-run] moodle DB backup needs php + mysqldump (missing here)"; }
+    fi
+  fi
   if [ ! -r "$PASS_FILE" ]; then
     [ "$EXECUTE" = y ] && die "restic password file not readable: $PASS_FILE"
     print_warning "[dry-run] restic password file $PASS_FILE not present (required for live run)"
@@ -127,8 +156,15 @@ main(){
   local RC=("$RESTIC" -r "$REPO" --password-file "$PASS_FILE")
   print_info "repo:    $REPO"
   print_info "tag:     $TAG"
-  print_info "db:      $([ "$FILES_ONLY" = y ] && echo skip || echo "$DRUSH sql-dump (raw)")"
-  print_info "files:   $([ "$DB_ONLY" = y ] && echo skip || echo "$files_path")"
+  print_info "stack:   $stack"
+  if [ "$FILES_ONLY" = y ]; then
+    print_info "db:      skip"
+  elif [ "$stack" = moodle ]; then
+    print_info "db:      mysqldump via config.php (raw)"
+  else
+    print_info "db:      $DRUSH sql-dump (raw)"
+  fi
+  print_info "files:   $([ "$DB_ONLY" = y ] && echo skip || printf '%s ' "${files_paths[@]:-<none found>}")"
 
   # ── Ensure repo exists (init once) ─────────────────────────────────────────
   print_header "Step 1 · Ensure restic repo"
@@ -144,7 +180,13 @@ main(){
     print_header "Step 2 · Snapshot database (raw)"
     tmp_db="$(mktemp -d)/db.sql.gz"
     if [ "$EXECUTE" = y ]; then
-      ( cd "$SITE_DIR" && "$DRUSH" sql-dump --gzip --result-file="${tmp_db%.gz}" ) || die "drush sql-dump failed"
+      if [ "$stack" = moodle ]; then
+        sb_moodle_db_dump "$SITE_DIR" "$tmp_db" || die "moodle DB dump failed (mysqldump via config.php)"
+      else
+        ( cd "$SITE_DIR" && "$DRUSH" sql-dump --gzip --result-file="${tmp_db%.gz}" ) || die "drush sql-dump failed"
+      fi
+    elif [ "$stack" = moodle ]; then
+      print_info "[dry-run] would: sb_moodle_db_dump $SITE_DIR $tmp_db (mysqldump via config.php)"
     else
       print_info "[dry-run] would: cd $SITE_DIR && $DRUSH sql-dump --gzip --result-file=${tmp_db%.gz}"
     fi
@@ -154,8 +196,16 @@ main(){
   # ── Files → restic (dedup) ─────────────────────────────────────────────────
   if [ "$DB_ONLY" != y ]; then
     print_header "Step 3 · Snapshot files (dedup)"
-    [ -d "$files_path" ] || { [ "$EXECUTE" = y ] && die "files dir not found: $files_path"; }
-    run "${RC[@]}" backup --tag "$TAG" --tag files "$files_path"
+    if [ "${#files_paths[@]}" -gt 0 ]; then
+      local fp
+      for fp in "${files_paths[@]}"; do
+        [ -d "$fp" ] || { [ "$EXECUTE" = y ] && die "files dir not found: $fp"; }
+        run "${RC[@]}" backup --tag "$TAG" --tag files "$fp"
+      done
+    else
+      [ "$EXECUTE" = y ] && die "no files paths found to back up for $stack site: $SITE_DIR"
+      print_warning "[dry-run] no files paths resolved (a live run would fail here)"
+    fi
   fi
 
   # ── Local staging retention (prod prunes its OWN local repo only) ──────────

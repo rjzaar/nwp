@@ -71,16 +71,30 @@ MOODLE_ROOT="$PROJECT_DIR"
     || die "target is not a Moodle root (no version.php): $PROJECT_DIR — fixture-load is Moodle-only"
 [ -f "$MOODLE_ROOT/web/version.php" ] && MOODLE_ROOT="$MOODLE_ROOT/web"
 
-# Resolve the target dataroot: explicit → config.php $CFG->dataroot → sibling default.
+# Resolve the target dataroot: explicit → DDEV moodledata mount (host path) →
+# config.php $CFG->dataroot (HOST paths only) → sibling default.
 if [ -z "$DATAROOT" ]; then
-    if [ -f "$MOODLE_ROOT/config.php" ] && command -v php >/dev/null 2>&1; then
-        DATAROOT="$(php -d error_reporting=0 -d display_errors=0 -r '
-            define("CLI_SCRIPT", true); define("ABORT_AFTER_CONFIG", true);
-            require($argv[1]); echo isset($CFG->dataroot) ? $CFG->dataroot : "";' \
-            "$MOODLE_ROOT/config.php" 2>/dev/null || true)"
+    # DDEV Moodle mounts the HOST moodledata into the container, so config.php's
+    # $CFG->dataroot is a CONTAINER path (e.g. /var/www/moodledata). Read the host
+    # source from the compose override instead:  "<hostpath>:/var/www/moodledata:rw"
+    _dc="$PROJECT_DIR/.ddev/docker-compose.moodledata.yaml"
+    if [ -f "$_dc" ]; then
+        DATAROOT="$(sed -nE 's|^[[:space:]]*-[[:space:]]*"([^"]+):/var/www/moodledata:[^"]*".*$|\1|p' "$_dc" | head -1)"
     fi
-    [ -n "$DATAROOT" ] || DATAROOT="${PROJECT_DIR%/}/moodledata"
 fi
+if [ -z "$DATAROOT" ] && [ -f "$MOODLE_ROOT/config.php" ] && command -v php >/dev/null 2>&1; then
+    _dr="$(php -d error_reporting=0 -d display_errors=0 -r '
+        define("CLI_SCRIPT", true); define("ABORT_AFTER_CONFIG", true);
+        require($argv[1]); echo isset($CFG->dataroot) ? $CFG->dataroot : "";' \
+        "$MOODLE_ROOT/config.php" 2>/dev/null || true)"
+    # Accept ONLY an absolute host path that exists. Reject container paths
+    # (/var/www/*) and Moodle's dataroot-check fatal message (not a path at all).
+    case "$_dr" in
+        /var/www/*) : ;;
+        /*) [ -d "$_dr" ] && DATAROOT="$_dr" ;;
+    esac
+fi
+[ -n "$DATAROOT" ] || DATAROOT="${PROJECT_DIR%/}/moodledata"
 
 print_header "pl fixture-load — ${SITE:-$PROJECT_DIR}"
 print_info "project-dir: $PROJECT_DIR"

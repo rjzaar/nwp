@@ -1,5 +1,13 @@
 #!/bin/bash
 set -euo pipefail
+# Fail-closed prod guard (ops#113): every mutation must target a SCRATCH DB
+# distinct from the live DB.
+_STD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$_STD_DIR/../prod-guard.sh"
+# Shared-salt OIDC email hash so a paired Drupal site's fake emails MATCH the
+# Moodle side's, preserving the cross-stack SSO join (ADR-0032). Optional: only
+# used when a salt is available (a non-paired Drupal site falls back to positional).
+source "$_STD_DIR/oidc-email.sh"
 ################################################################################
 # lib/sanitizers/standard.sh — generic, prod-native sanitizer for a standard-
 # profile Drupal site. The safe default when a site has no bespoke
@@ -61,7 +69,7 @@ pii_sweep() { # $1 = gz dump
     local hits
     hits=$(zcat -- "$f" 2>/dev/null \
         | grep -E -- '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' 2>/dev/null \
-        | grep -Ev -- '@(example\.(com|org|net)|drupal\.org|nwpcode\.org)|noreply@|no-reply@' \
+        | grep -Ev -- '@(example\.(com|org|net)|sanitized\.test|drupal\.org|nwpcode\.org)|noreply@|no-reply@' \
         | head -5 || true)
     [ -z "$hits" ] && { log "PII sweep: clean"; return 0; }
     log_error "PII sweep FAIL — residual email-like values remain:"
@@ -101,6 +109,7 @@ sock=$(awk -F'\t' '$1=="unix_socket"{print $2}' <<<"$creds")
   [ -n "$host" ] && echo "host=${host}"; [ -n "$port" ] && echo "port=${port}";
   [ -n "$sock" ] && echo "socket=${sock}"; } > "$MYSQL_CNF"
 SCRATCH_DB="${db}${SCRATCH_SUFFIX}"
+prod_guard_scratch_distinct "$db" "$SCRATCH_DB" "$SCRATCH_SUFFIX" || exit 1
 mysql_cli(){ mysql --defaults-extra-file="$MYSQL_CNF" "$@"; }
 sq(){ mysql_cli -N -B "$SCRATCH_DB" -e "$1"; }
 
@@ -115,8 +124,26 @@ zcat "$LIVE_DUMP" | mysql_cli "$SCRATCH_DB" || { log_error "scratch load failed"
 
 # ── sanitize the SCRATCH copy ─────────────────────────────────────────────────
 log "anonymising users_field_data (all real users, uid>0 incl. admin)"
-sq "UPDATE users_field_data SET mail=CONCAT('user',uid,'@example.com'), init=CONCAT('user',uid,'@example.com'), name=CONCAT('user_',uid) WHERE uid>0;" \
-  || { log_error "user anonymisation failed"; exit 1; }
+# Emails: on a PAIRED site (shared OIDC salt present) rewrite via the same hash
+# the Moodle side uses, so the same real email → same fake email on both stacks
+# (SSO join survives a sanitised copy). On a non-paired site (no salt) fall back
+# to positional user<uid>@example.com — the historic behaviour.
+apply_scratch(){ mysql_cli "$SCRATCH_DB"; }
+if oidc_email_salt_load 2>/dev/null; then
+  log "  OIDC salt present → cross-stack-consistent email hash (SSO-preserving)"
+  oidc_email_rewrite_sql sq apply_scratch users_field_data uid mail "uid>0" \
+    || { log_error "OIDC email rewrite failed"; exit 1; }
+  # Any residual mail not rewritten (empty/malformed) → safe positional placeholder.
+  sq "UPDATE users_field_data SET mail=CONCAT('user',uid,'@example.com') WHERE uid>0 AND mail NOT LIKE '%@sanitized.test';" \
+    || { log_error "residual email cleanup failed"; exit 1; }
+else
+  log "  no OIDC salt → positional emails (non-paired site)"
+  sq "UPDATE users_field_data SET mail=CONCAT('user',uid,'@example.com') WHERE uid>0;" \
+    || { log_error "user email anonymisation failed"; exit 1; }
+fi
+# init (registration email) mirrors mail; username is not a join key.
+sq "UPDATE users_field_data SET init=mail, name=CONCAT('user_',uid) WHERE uid>0;" \
+  || { log_error "user init/name anonymisation failed"; exit 1; }
 table_exists(){ [ -n "$(sq "SELECT 1 FROM information_schema.tables WHERE table_schema='${SCRATCH_DB}' AND table_name='$1' LIMIT 1;")" ]; }
 for t in sessions watchdog contact_message key_value_expire history; do
     table_exists "$t" && { log "truncating $t"; sq "TRUNCATE \`$t\`;" || true; }

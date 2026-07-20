@@ -149,8 +149,11 @@ boundary:
     provider_symbols:
       - oidc_email_sanitize
       - oidc_email_salt_load
+      - oidc_email_rewrite_sql
     consumer_paths:
       - "lib/sanitizers/moodle.sh"       # IN-REPO: the Moodle-side sanitizer
+      - "lib/sanitizers/standard.sh"     # IN-REPO: generic Drupal sanitizer (nwc/nwd) — ops#116
+      - "lib/sanitizers/mayo.sh"         # IN-REPO: mayo/AVC Drupal sanitizer — ops#116
   erasure:
     direction: "nwc->ssc"       # provider-driven, single-writer, DESTRUCTIVE (ops#81)
     provider_paths:

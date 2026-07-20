@@ -158,6 +158,42 @@ oidc_email_sanitize() {
     return 0
 }
 
+# Deterministically rewrite an email column on a LIVE (scratch) DB via the shared
+# salt, row by row — the SQL-side analogue of oidc_email_batch. Used by the
+# prod-native sanitisers so BOTH stacks (Drupal + Moodle) map the same real email
+# to the same fake email, preserving the cross-stack OIDC/SSO join in a sanitised
+# copy (ADR-0032; F26 §3.3).
+#
+# Usage: oidc_email_rewrite_sql <query_fn> <apply_fn> <table> <id_col> <email_col> [where]
+#   <query_fn> "<sql>"  → must echo TSV rows "id<TAB>email"; e.g. the sanitiser's sq()
+#   <apply_fn>          → reads UPDATE statements from stdin; e.g. a wrapper around
+#                         `mysql --defaults-extra-file=… <scratch_db>`
+#
+# Only @-shaped values are touched; the id column is validated ^[0-9]+$.
+# Injection-safe: real emails are fed ONLY to sha256 (via oidc_email_sanitize),
+# never interpolated into SQL. Fail-closed (non-zero) on any error, incl. a
+# missing salt — callers that must tolerate a non-paired site should gate this on
+# `oidc_email_salt_load` succeeding first.
+oidc_email_rewrite_sql() {
+    local query_fn="$1" apply_fn="$2" table="$3" idc="$4" col="$5" where="${6:-1=1}"
+    oidc_email_salt_load || return 1
+    local rows sqlfile id val fake
+    rows="$("$query_fn" "SELECT \`${idc}\`, \`${col}\` FROM \`${table}\` WHERE \`${col}\` IS NOT NULL AND \`${col}\` LIKE '%@%' AND (${where});")" || return 1
+    sqlfile="$(mktemp)" || return 1
+    while IFS=$'\t' read -r id val; do
+        [ -n "$id" ] || continue
+        [[ "$id" =~ ^[0-9]+$ ]] || { echo "oidc_email_rewrite_sql: non-numeric id from ${table}.${col} — refusing (fail-closed)" >&2; rm -f "$sqlfile"; return 1; }
+        fake="$(oidc_email_sanitize "$val")" || { rm -f "$sqlfile"; return 1; }
+        [ -n "$fake" ] || continue
+        printf "UPDATE \`%s\` SET \`%s\`='%s' WHERE \`%s\`=%s;\n" "$table" "$col" "$fake" "$idc" "$id" >> "$sqlfile"
+    done <<< "$rows"
+    if [ -s "$sqlfile" ]; then
+        "$apply_fn" < "$sqlfile" || { rm -f "$sqlfile"; return 1; }
+    fi
+    rm -f "$sqlfile"
+    return 0
+}
+
 # Sanitize column $col of a TSV-like file in place. This is the helper
 # used by the per-site sanitizer SQL dump rewrites.
 #

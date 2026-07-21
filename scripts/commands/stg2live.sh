@@ -1666,9 +1666,19 @@ deploy_to_live() {
     # --dry-run so rsync prints the planned changes without writing anything;
     # we always print the verbose summary in that mode so the operator
     # actually sees what would change.
-    local rsync_opts="-az"
+    #
+    # --no-owner --no-group: the ssh user is 'gitlab' (non-root), pre-chowned to
+    # gitlab:www-data above. -a's implicit -o/-g would then try to chgrp each
+    # destination file to the STAGING source's group, which the gitlab user
+    # cannot set -> "chgrp ... Operation not permitted" and rsync aborts (code
+    # 23), leaving the webroot half-synced + maintenance mode stuck ON. This bit
+    # a live --code-only deploy (2026-07-21: behat.yml + the html/modules/custom
+    # symlink). Owner/group preservation is redundant here anyway — the
+    # post-rsync `chown -R www-data:www-data` (below) sets final ownership. So we
+    # drop owner/group preservation and let that chown be authoritative.
+    local rsync_opts="-az --no-owner --no-group"
     if [ "${VERBOSE:-false}" == "true" ]; then
-        rsync_opts="-avz"
+        rsync_opts="-avz --no-owner --no-group"
     fi
     local rsync_dryflag=""
     if [ "${DRY_RUN:-false}" == "true" ]; then

@@ -1122,18 +1122,30 @@ run_live_db_updates() {
         sudo_prefix="sudo"
     fi
 
+    # Resolve drush EXPLICITLY (do NOT rely on PATH — the old `cd ${remote_path}
+    # && drush` form silently failed because there is no drush on PATH there) and
+    # DO NOT swallow stderr. vendor/ is the sibling of the webroot in a Drupal
+    # project; --root points drush at the docroot. `$D` is left set to the first
+    # existing candidate (or the last, non-existent, one → the command fails).
+    local resolve="for D in ${remote_path}/vendor/bin/drush ${remote_path}/${webroot}/vendor/bin/drush; do [ -x \"\$D\" ] && break; done"
+
     print_info "Running drush updatedb -y..."
-    if ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd ${remote_path} && $sudo_prefix -u www-data drush updatedb -y" 2>/dev/null || \
-       ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd ${remote_path}/$webroot && $sudo_prefix -u www-data ../vendor/bin/drush updatedb -y" 2>/dev/null; then
+    if ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
+        "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} updatedb -y"; then
         print_status "OK" "Database updates applied (updatedb)"
     else
-        print_status "WARN" "drush updatedb failed or drush unavailable — verify schema state manually"
+        # FAIL-LOUD (2026-07-21 incident: a silently-failed updatedb left hooks
+        # unrun + the site in maintenance while the deploy reported success).
+        # Return non-zero so the caller ABORTS (maintenance stays ON for recovery).
+        print_error "drush updatedb FAILED on live — schema hooks NOT applied. Maintenance mode left ON."
+        print_error "Recover on the host, then re-run: ${sudo_prefix} -u www-data ${remote_path}/vendor/bin/drush --root=${remote_path}/${webroot} updatedb -y && ... cr && ... sset system.maintenance_mode 0"
+        return 1
     fi
 
     print_info "Running drush cache:rebuild..."
-    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd ${remote_path} && $sudo_prefix -u www-data drush cache:rebuild" 2>/dev/null || \
-        ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "cd ${remote_path}/$webroot && $sudo_prefix -u www-data ../vendor/bin/drush cache:rebuild" 2>/dev/null || \
-        print_status "WARN" "Could not run cache:rebuild (drush may not be available)"
+    ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
+        "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} cache:rebuild" \
+        || print_status "WARN" "cache:rebuild reported an error — verify the site"
 
     return 0
 }
@@ -1165,13 +1177,17 @@ live_maintenance_set() {
     [ "$state" == "0" ] && label="OFF"
     print_info "Maintenance mode ${label} (system.maintenance_mode=${state})..."
 
+    # Explicit drush resolve (no PATH reliance), stderr NOT swallowed.
+    local resolve="for D in ${remote_path}/vendor/bin/drush ${remote_path}/${webroot}/vendor/bin/drush; do [ -x \"\$D\" ] && break; done"
     if ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
-        "cd ${remote_path} && $sudo_prefix -u www-data drush state:set system.maintenance_mode ${state} --input-format=integer && $sudo_prefix -u www-data drush cr" 2>/dev/null || \
-       ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
-        "cd ${remote_path}/$webroot && $sudo_prefix -u www-data ../vendor/bin/drush state:set system.maintenance_mode ${state} --input-format=integer && $sudo_prefix -u www-data ../vendor/bin/drush cr" 2>/dev/null; then
+        "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} state:set system.maintenance_mode ${state} --input-format=integer && ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} cr"; then
         print_status "OK" "Maintenance mode ${label}"
+    elif [ "$state" == "0" ]; then
+        # A failed maintenance-OFF leaves the site stuck at 503 — make it LOUD.
+        print_error "Could NOT disable maintenance mode — THE SITE MAY BE STUCK IN MAINTENANCE (503)."
+        print_error "Fix on the host: ${sudo_prefix} -u www-data ${remote_path}/vendor/bin/drush --root=${remote_path}/${webroot} sset system.maintenance_mode 0 && ... cr"
     else
-        print_status "WARN" "Could not set maintenance_mode=${state} (drush may be unavailable)"
+        print_status "WARN" "Could not set maintenance_mode=${state} (drush unavailable?)"
     fi
 }
 
@@ -1749,7 +1765,13 @@ deploy_to_live() {
     # the code sync (and DB push, if any), for BOTH full and --code-only modes.
     # stg2live historically ran NO updatedb, leaving code + schema mismatched
     # after a code swap. Runs BEFORE the final `drush cr` below.
-    run_live_db_updates "$base_name" "$server_ip" "$ssh_user" "$webroot" "$remote_path"
+    # ABORT if updatedb failed (fail-loud): leave maintenance ON, point to
+    # rollback — do NOT fall through to maintenance-OFF and report success with a
+    # half-updated schema (2026-07-21 incident).
+    if ! run_live_db_updates "$base_name" "$server_ip" "$ssh_user" "$webroot" "$remote_path"; then
+        print_error "Live DB updates FAILED — aborting (maintenance left ON). Rollback: pl rollback execute ${base_name} prod"
+        return 1
+    fi
 
     # G3: post-sync updatedb/cr sequence is done and the swap is coherent — drop
     # maintenance mode so the site serves members again. Skipped on --dry-run

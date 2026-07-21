@@ -16,7 +16,7 @@ set -euo pipefail
 # NOTHING is updated/applied — this only reports. Apply with the (separate)
 # update flow once it exists; today: `pl security update <site>`.
 #
-# Usage: pl audit [--all | --site <name>] [--security-only] [--format=json]
+# Usage: pl audit [--all | --site <name>] [--security-only] [--notify] [--format=json]
 # Exit:  0 clean · 3 security findings present · 1 usage/error   (3 matches drush)
 ################################################################################
 
@@ -42,6 +42,9 @@ ${BOLD}OPTIONS:${NC}
     --all                 Audit every Drupal site in nwp.yml (default if no --site)
     --site <name>         Audit a single site
     --security-only       Skip the "outdated/drift" sweep; advisories only
+    --notify              Email the operator (settings.todo.notifications.email)
+                          once when a NEW advisory appears vs the last record.
+                          Used by the daily cron; quiet for known-open sets.
     --format=json         Emit the merged result as JSON (no table)
     -h, --help            This help
 
@@ -128,6 +131,15 @@ audit_site() {
 
     [ "$sec_count" -gt 0 ] && had_sec=1
 
+    # Read the PREVIOUS advisory count before we overwrite the record, so the
+    # daily timer can email only on a NEW advisory (0→N or an increase) rather
+    # than every run for the same known-open set. audit_site runs in a subshell,
+    # so we signal a new advisory via a sibling .alert file that main() reads.
+    local prev_sec=0
+    if [ -f "$STATE_DIR/$site.json" ]; then
+        prev_sec=$(python3 -c "import json,sys;print(json.load(open('$STATE_DIR/$site.json')).get('security_count',0))" 2>/dev/null || echo 0)
+    fi
+
     # Write the record via python json.dump — bulletproof escaping of the
     # ANSI/control chars that composer audit emits (bash printf can't do this safely).
     mkdir -p "$STATE_DIR"
@@ -150,6 +162,14 @@ rec = {
 json.dump(rec, open(path, "w"), indent=2)
 PY
 
+    # Signal a NEW advisory (count went up, or first-ever record with advisories)
+    # so main() can email. cache_stale (registry auth failed) is treated as
+    # "unknown → alert" if advisories are present, never silently as clean.
+    if [ "$sec_count" -gt "${prev_sec:-0}" ] || { [ "$stale" = "true" ] && [ "$sec_count" -gt 0 ]; }; then
+        printf 'site=%s prev=%s now=%s stale=%s\n%s\n' \
+            "$site" "${prev_sec:-0}" "$sec_count" "$stale" "$audit_txt" > "$STATE_DIR/$site.alert" 2>/dev/null || true
+    fi
+
     local status="OK"
     [ "$sec_count" -gt 0 ] && status="INSECURE"
     [ "$stale" = "true" ] && status="${status}*"
@@ -160,7 +180,7 @@ PY
 }
 
 main() {
-    local ALL=false SITE="" FORMAT="table"
+    local ALL=false SITE="" FORMAT="table" NOTIFY=false
     SECURITY_ONLY=false
     # a single timestamp for the whole run (records stay reproducible/diffable)
     STAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)"
@@ -171,6 +191,7 @@ main() {
             --all) ALL=true; shift ;;
             --site) SITE="${2:-}"; shift 2 ;;
             --security-only) SECURITY_ONLY=true; shift ;;
+            --notify) NOTIFY=true; shift ;;
             --format=json) FORMAT="json"; shift ;;
             --format) FORMAT="${2:-table}"; shift 2 ;;
             *) print_error "Unknown option: $1"; show_help; exit 1 ;;
@@ -190,6 +211,8 @@ main() {
     [ "${#sites[@]}" -eq 0 ] && { print_error "No sites found"; exit 1; }
 
     print_header "Update-awareness audit (read-only) — ${#sites[@]} site(s)"
+    # Clear last run's new-advisory markers so --notify only acts on THIS run.
+    rm -f "$STATE_DIR"/*.alert 2>/dev/null || true
     local rows="" row
     for s in "${sites[@]}"; do
         # audit_site runs in a subshell here, so its had_sec can't propagate —
@@ -221,6 +244,40 @@ main() {
             print_warning "Security advisories present — review records in $STATE_DIR/ ; apply with: pl security update <site>"
         else
             print_status "OK" "No security advisories detected across audited (running) sites"
+        fi
+    fi
+
+    # --notify: email the operator ONCE when a new advisory appears (an .alert
+    # marker was written this run). Keeps the daily timer quiet for known-open
+    # sets. Uses postfix (mail/sendmail) directly — no dependency on the todo
+    # notification config. Recipient = settings.email.admin_email from nwp.yml.
+    if [ "$NOTIFY" = "true" ]; then
+        local alerts=("$STATE_DIR"/*.alert)
+        if [ -e "${alerts[0]}" ]; then
+            local subj body
+            subj="[nwp security] new advisory on $(basename "${alerts[0]}" .alert)$([ "${#alerts[@]}" -gt 1 ] && echo " +$(( ${#alerts[@]} - 1 )) more")"
+            body="A new package security advisory was detected by 'pl audit' on $(hostname).
+
+$(for a in "${alerts[@]}"; do echo "=== $(basename "$a" .alert) ==="; cat "$a"; echo; done)
+
+Records: $STATE_DIR/
+Next: 'pl rag --sync-issues --execute' files/updates the nwp/ops issue; review +
+apply behind the human/hardware gate (pl security update <site> on dev, rehearse,
+pl stg2live <site> --code-only)."
+            # Reuse the standard notification transport (msmtp/sendmail/mail/curl-SMTP,
+            # gated on nwp.yml settings.todo.notifications.email). Works as soon as a
+            # transport is configured; today the reliable alert is the GitLab issue
+            # that rag-sync files ~40 min later (GitLab emails the operator).
+            if [ -f "$PROJECT_ROOT/lib/todo-notify.sh" ]; then
+                # shellcheck disable=SC1091
+                TODO_NOTIFY_PROJECT_ROOT="$PROJECT_ROOT" . "$PROJECT_ROOT/lib/todo-notify.sh" 2>/dev/null || true
+                if command -v notify_email >/dev/null 2>&1 && \
+                   TODO_NOTIFY_PROJECT_ROOT="$PROJECT_ROOT" notify_email "$subj" "$body" 2>/dev/null; then
+                    print_status "OK" "Emailed new-advisory alert"
+                else
+                    print_warning "Advisory email not sent (no working mail transport) — the nwp/ops GitLab issue (rag-sync) is the alert; set smtp.default.password or install msmtp to enable email."
+                fi
+            fi
         fi
     fi
 

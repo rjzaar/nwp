@@ -88,6 +88,97 @@ _num_before() {  # $1 = text, $2 = phrase regex
 # JSON-escape a blob for embedding as a string value in the record.
 _json_str() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk 'BEGIN{ORS="\\n"}{print}'; }
 
+# --- Moodle support ------------------------------------------------------------
+# Moodle is NOT composer-managed, so composer audit can't see it. Moodle ships
+# security fixes ONLY in the latest point release of a supported branch (older
+# point releases never get them), so "behind the latest point release" is the
+# actionable security signal. We read the installed version.php and compare its
+# numeric $version against the head of MOODLE_<branch>_STABLE on github (one
+# small file, no auth). Network failure ⇒ cache_stale=true (unknown, not clean).
+
+_site_dir() {  # echo the site's base dir (mirrors resolve_webroot's dir logic)
+    local site="$1" dir
+    dir=$(yaml_get_site_field "$site" "directory" "$CONFIG_FILE" 2>/dev/null || true)
+    [ -z "$dir" ] && dir="$PROJECT_ROOT/sites/$site"
+    printf '%s' "$dir"
+}
+
+_moodle_version_php() {  # echo path to the site's version.php, or nothing
+    local dir; dir="$(_site_dir "$1")"
+    local base
+    for base in "$dir/dev" "$dir/stg" "$dir"; do
+        [ -f "$base/version.php" ] && grep -q 'MOODLE_INTERNAL\|\$branch' "$base/version.php" 2>/dev/null \
+            && { printf '%s' "$base/version.php"; return 0; }
+    done
+    return 1
+}
+
+_site_is_moodle() {
+    local cfg; cfg="$(_site_dir "$1")/.nwp.yml"
+    [ -f "$cfg" ] && grep -qiE '^\s*type:\s*moodle' "$cfg" 2>/dev/null && return 0
+    _moodle_version_php "$1" >/dev/null 2>&1
+}
+
+_moodle_field() { grep -E "\\\$$2" "$1" 2>/dev/null | head -1 | sed 's/.*=//; s/;.*//' | tr -d " '\""; }
+
+moodle_audit_site() {
+    local site="$1" vphp
+    if ! vphp="$(_moodle_version_php "$site")"; then
+        printf '%s\tSKIP\t-\t-\t-\tmoodle: no version.php\n' "$site"; return 0
+    fi
+    local inst_ver inst_rel branch
+    inst_ver="$(_moodle_field "$vphp" version)"
+    inst_rel="$(_moodle_field "$vphp" release)"
+    branch="$(_moodle_field "$vphp" branch)"
+    branch="${branch%%[!0-9]*}"
+
+    # Latest point release on the site's stable branch.
+    local latest_php latest_ver latest_rel stale="false"
+    latest_php="$(curl -fsS --max-time 20 "https://raw.githubusercontent.com/moodle/moodle/MOODLE_${branch}_STABLE/version.php" 2>/dev/null || true)"
+    if [ -n "$latest_php" ]; then
+        latest_ver="$(printf '%s' "$latest_php" | grep -E '\$version' | head -1 | sed 's/.*=//; s/;.*//' | tr -d ' ')"
+        latest_rel="$(printf '%s' "$latest_php" | grep -E '\$release' | head -1 | sed 's/.*=//; s/;.*//' | tr -d " '\"")"
+    else
+        stale="true"
+    fi
+
+    # behind = installed numeric $version < latest (awk float-safe).
+    local behind=0
+    if [ "$stale" != "true" ] && [ -n "$inst_ver" ] && [ -n "$latest_ver" ]; then
+        behind=$(awk -v a="$inst_ver" -v b="$latest_ver" 'BEGIN{print (a+0 < b+0)?1:0}')
+    fi
+    local sec_count=0; [ "$behind" = "1" ] && sec_count=1
+    [ "$sec_count" -gt 0 ] && had_sec=1
+
+    local prev_sec=0
+    [ -f "$STATE_DIR/$site.json" ] && prev_sec=$(python3 -c "import json;print(json.load(open('$STATE_DIR/$site.json')).get('security_count',0))" 2>/dev/null || echo 0)
+
+    mkdir -p "$STATE_DIR"
+    python3 - "$site" "$STAMP" "$sec_count" "$stale" "$inst_rel" "$latest_rel" "$branch" "$inst_ver" "$latest_ver" "$STATE_DIR/$site.json" <<'PY' 2>/dev/null || true
+import sys, json
+site, stamp, sec, stale, inst_rel, latest_rel, branch, inst_ver, latest_ver, path = sys.argv[1:11]
+json.dump({
+  "site": site, "checked": stamp, "platform": "moodle",
+  "source": "Moodle point-release check (MOODLE_%s_STABLE version.php)" % branch,
+  "security_count": int(sec or 0), "ignored_count": 0, "outdated_count": int(sec or 0),
+  "cache_stale": (stale == "true"),
+  "moodle_branch": branch, "moodle_installed": inst_rel, "moodle_latest": latest_rel,
+  "moodle_installed_version": inst_ver, "moodle_latest_version": latest_ver,
+  "note": ("Behind the latest point release on this branch — Moodle ships security fixes only in the newest point release; review moodle.org/security and update." if sec == "1" else "Current on the latest point release of this branch."),
+}, open(path, "w"), indent=2)
+PY
+
+    if [ "$sec_count" -gt 0 ] || { [ "$stale" = "true" ]; }; then
+        printf 'site=%s prev=%s now=%s stale=%s (moodle %s -> %s)\nMoodle %s is behind the latest point release %s on branch %s. Moodle ships security fixes only in the newest point release. Update + review moodle.org/security.\n' \
+            "$site" "$prev_sec" "$sec_count" "$stale" "$inst_rel" "$latest_rel" "$inst_rel" "$latest_rel" "$branch" > "$STATE_DIR/$site.alert" 2>/dev/null || true
+        [ "$sec_count" -le "${prev_sec:-0}" ] && [ "$stale" != "true" ] && rm -f "$STATE_DIR/$site.alert" 2>/dev/null || true
+    fi
+
+    local status="OK"; [ "$behind" = "1" ] && status="INSECURE"; [ "$stale" = "true" ] && status="OK*"
+    local secfield="$sec_count"; [ "$stale" = "true" ] && secfield="?"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$site" "$status" "$secfield" "$sec_count" "$STAMP" "$STATE_DIR/$site.json"
+}
+
 # --- audit one site; prints a one-line TSV summary; sets GLOBAL had_sec ---
 # Environment reality (verified 2026-06-27): drush pm:security is REMOVED in the
 # installed Drush ("use composer audit"). composer audit is the source of truth,
@@ -96,6 +187,10 @@ _json_str() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk 'BEGIN{ORS="
 had_sec=0
 audit_site() {
     local site="$1"
+    # Moodle sites aren't composer-managed — audit against the Moodle release feed.
+    if _site_is_moodle "$site"; then
+        moodle_audit_site "$site"; return $?
+    fi
     local root
     if ! root=$(resolve_webroot "$site"); then
         printf '%s\tSKIP\t-\t-\t-\tnot a Drupal site\n' "$site"; return 0
@@ -252,6 +347,10 @@ main() {
     # sets. Uses postfix (mail/sendmail) directly — no dependency on the todo
     # notification config. Recipient = settings.email.admin_email from nwp.yml.
     if [ "$NOTIFY" = "true" ]; then
+        # Best-effort alerting: never let a nonzero here abort the run under the
+        # script's `set -euo pipefail` (e.g. a false [ -gt 1 ] test in a command
+        # substitution). Restore strict mode after the block.
+        set +e
         local alerts=("$STATE_DIR"/*.alert)
         if [ -e "${alerts[0]}" ]; then
             local subj body
@@ -268,17 +367,38 @@ pl stg2live <site> --code-only)."
             # gated on nwp.yml settings.todo.notifications.email). Works as soon as a
             # transport is configured; today the reliable alert is the GitLab issue
             # that rag-sync files ~40 min later (GitLab emails the operator).
+            local sent=false
+            # Transport 1: the standard notify_email chain (msmtp/sendmail/mail/
+            # curl-SMTP), if any is configured on this box.
             if [ -f "$PROJECT_ROOT/lib/todo-notify.sh" ]; then
                 # shellcheck disable=SC1091
                 TODO_NOTIFY_PROJECT_ROOT="$PROJECT_ROOT" . "$PROJECT_ROOT/lib/todo-notify.sh" 2>/dev/null || true
                 if command -v notify_email >/dev/null 2>&1 && \
                    TODO_NOTIFY_PROJECT_ROOT="$PROJECT_ROOT" notify_email "$subj" "$body" 2>/dev/null; then
-                    print_status "OK" "Emailed new-advisory alert"
-                else
-                    print_warning "Advisory email not sent (no working mail transport) — the nwp/ops GitLab issue (rag-sync) is the alert; set smtp.default.password or install msmtp to enable email."
+                    sent=true
                 fi
             fi
+            # Transport 2 (fallback): relay through a mail-capable host's postfix
+            # over ssh (settings.todo.notifications.email.relay_ssh in nwp.yml).
+            # This box has no local MTA, so this is what actually delivers today.
+            if [ "$sent" != "true" ]; then
+                local relay relay_key rcpt
+                relay=$(grep -E '^\s*relay_ssh:' "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*relay_ssh:[[:space:]]*//; s/[[:space:]]*#.*//; s/[[:space:]]*$//')
+                relay_key=$(grep -E '^\s*relay_ssh_key:' "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*relay_ssh_key:[[:space:]]*//; s/[[:space:]]*#.*//; s/[[:space:]]*$//')
+                rcpt=$(grep -E '^\s*recipient:' "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*recipient:[[:space:]]*//; s/[[:space:]]*#.*//; s/[[:space:]]*$//')
+                if [ -n "$relay" ] && [ -n "$rcpt" ]; then
+                    local relay_dom="${relay#*@}"
+                    if printf 'To: %s\nFrom: nwp-security@nwpcode.org\nSubject: %s\n\n%s\n' "$rcpt" "$subj" "$body" \
+                        | ssh ${relay_key:+-i "$relay_key"} -o BatchMode=yes -o ConnectTimeout=15 "$relay" \
+                          "$([ -x /usr/sbin/sendmail ] && echo /usr/sbin/sendmail || echo sendmail) -t" 2>/dev/null; then
+                        sent=true
+                        print_status "OK" "Emailed new-advisory alert to $rcpt (via ${relay_dom} postfix relay)"
+                    fi
+                fi
+            fi
+            [ "$sent" = "true" ] || print_warning "Advisory email not sent (no transport + relay failed) — the nwp/ops GitLab issue (rag-sync) is the working alert; set smtp.default.password or a valid relay_ssh to enable email."
         fi
+        set -e  # restore strict mode after the best-effort notify block
     fi
 
     [ "$had_sec" -eq 1 ] && exit 3

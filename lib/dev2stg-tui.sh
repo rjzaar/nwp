@@ -376,6 +376,17 @@ draw_test_menu() {
 run_dev2stg_tui() {
     local sitename="$1"
 
+    # Headless / non-interactive stdin: the interactive planner needs a real
+    # terminal. Without this guard `read -rsn1` returns instantly on EOF and the
+    # `while true` menu loop spins forever, redrawing the menu (this once emitted
+    # an 86 MB log). Refuse cleanly and point at -y; the caller treats a nonzero
+    # return as "cancelled" and exits, so no half-built state results.
+    if [ ! -t 0 ]; then
+        echo "dev2stg: the interactive planner needs a TTY on stdin." >&2
+        echo "  Run non-interactively with:  pl dev2stg $sitename -y" >&2
+        return 1
+    fi
+
     # Load state
     load_tui_state "$sitename"
 
@@ -384,7 +395,9 @@ run_dev2stg_tui() {
         draw_main_screen "$sitename"
 
         local key
-        read -rsn1 key
+        # Break out on EOF/read failure rather than spinning the menu (defense in
+        # depth behind the non-TTY guard above).
+        read -rsn1 key || { echo ""; return 1; }
 
         case "$key" in
             e|E)

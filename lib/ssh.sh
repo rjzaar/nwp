@@ -99,9 +99,30 @@ NWP_SSH_HARDENING_OPTS="-o IdentitiesOnly=yes"
 #
 # If $1 is empty or unset, only the IdentitiesOnly option is returned —
 # safe to use even when there's no site context.
+# Reap stale ControlMaster sockets left behind by a killed/timed-out deploy.
+#
+# A dead `~/.ssh/nwp-cm-*` socket (e.g. after `stg2live` was SIGKILLed mid-run)
+# makes the NEXT `ssh -o ControlMaster=auto` HANG indefinitely trying to reuse
+# it — the failure that stalled a live deploy at "Testing SSH connection"
+# (2026-07-22). For each socket, ask the master if it is alive (`ssh -O check`,
+# bounded by `timeout` so even a wedged socket can't hang us); remove any that
+# do not answer. Idempotent, safe to run repeatedly, no-op when no sockets exist.
+nwp_ssh_reap_stale_masters() {
+    local sock
+    for sock in "$HOME"/.ssh/nwp-cm-*; do
+        [ -S "$sock" ] || continue
+        if ! timeout 5 ssh -O check -o ControlPath="$sock" nwp-reap-probe >/dev/null 2>&1; then
+            rm -f "$sock"
+        fi
+    done
+    return 0
+}
+
 nwp_ssh_opts() {
     local name="${1:-}"
-    local opts="-o IdentitiesOnly=yes"
+    # ConnectTimeout bounds a wedged connection (incl. a half-open multiplex
+    # master) so a bad socket fails fast instead of hanging the deploy.
+    local opts="-o IdentitiesOnly=yes -o ConnectTimeout=10"
     if [ -n "$name" ]; then
         local key
         key=$(get_ssh_key "$name" 2>/dev/null)
@@ -122,6 +143,13 @@ nwp_ssh_opts() {
     #    sockets never collide across servers or users. Harmless for
     #    non-hardware keys (just faster).
     if _nwp_ssh_multiplex_enabled; then
+        # Clear any dead master sockets once per process before the first
+        # multiplexed connection, so a socket orphaned by a killed run can't
+        # hang us. Guarded so the reap runs once, not on every ssh call.
+        if [ -z "${_NWP_SSH_REAPED:-}" ]; then
+            nwp_ssh_reap_stale_masters
+            export _NWP_SSH_REAPED=1
+        fi
         opts="$opts -o ControlMaster=auto -o ControlPath=$HOME/.ssh/nwp-cm-%C -o ControlPersist=600"
     fi
     echo "$opts"

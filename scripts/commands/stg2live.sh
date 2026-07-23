@@ -1142,6 +1142,29 @@ run_live_db_updates() {
         return 1
     fi
 
+    # Post-deploy canonical legal-text propagation (idempotent, version-aware).
+    # A code deploy rsyncs the updated canonical-text/*.md but nothing re-syncs
+    # them into the live data_policy entities: the seeding hook (update_10002)
+    # is ONE-TIME, so `updatedb` above does not re-run it. If this site exposes
+    # `nwc-copyright:sync`, run it so any versions.yml-bumped legal-text edit
+    # reaches the live data_policy bodies + login consent gate (+ SS tool_policy).
+    # Existence-guarded → clean no-op on non-nwc sites; version-aware → no-op
+    # when nothing changed. Non-fatal: a sync hiccup must not abort a good deploy.
+    if ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
+        "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} help nwc-copyright:sync >/dev/null 2>&1"; then
+        print_info "Post-deploy legal-text sync (nwc-copyright:sync --nwc-only)..."
+        # --nwc-only: propagate NWC canonical-text -> data_policy + consent gate
+        # only. The SS Moodle tool_policy push + repo-NOTICE writes are separate
+        # targets (a different box / different deploy) and must not run — or
+        # error — as a side effect of an nwc code deploy.
+        if ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
+            "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} nwc-copyright:sync --nwc-only" 2>&1 | tail -14; then
+            print_status "OK" "Canonical legal-text synced to data_policy + consent gate"
+        else
+            print_status "WARN" "nwc-copyright:sync errored — verify /legal/* + consent gate on live"
+        fi
+    fi
+
     print_info "Running drush cache:rebuild..."
     ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
         "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} cache:rebuild" \

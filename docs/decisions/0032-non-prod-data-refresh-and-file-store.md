@@ -1,6 +1,6 @@
 # ADR-0032: Non-Production Data Refresh & File-Store Handling — two flows, omit-and-placeholder, no raw bytes across the boundary
 
-**Status:** Proposed (2026-07-20)
+**Status:** Accepted (2026-07-23) — implementation merged to `main`; see `docs/reports/adr-0032-session-handoff.md`. Live-host validation (prod publish + restic backup + supervised OAuth E2E) tracked in ops#120.
 **Date:** 2026-07-20
 **Decision Makers:** Robert Karsten Zaar (with AI assistance)
 **Related Issues:** ops#110 (ssc DB sanitiser wired, Path A), ops#111 (Flow A — full Moodle

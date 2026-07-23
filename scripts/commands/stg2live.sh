@@ -1147,21 +1147,22 @@ run_live_db_updates() {
     # them into the live data_policy entities: the seeding hook (update_10002)
     # is ONE-TIME, so `updatedb` above does not re-run it. If this site exposes
     # `nwc-copyright:sync`, run it so any versions.yml-bumped legal-text edit
-    # reaches the live data_policy bodies + login consent gate (+ SS tool_policy).
-    # Existence-guarded → clean no-op on non-nwc sites; version-aware → no-op
-    # when nothing changed. Non-fatal: a sync hiccup must not abort a good deploy.
+    # reaches BOTH the live NWC data_policy (+ login consent gate) AND the
+    # co-located SS Moodle tool_policy. Existence-guarded → clean no-op on
+    # non-nwc sites; version-aware on both sides → no-op when nothing changed.
+    # Non-fatal: a sync hiccup must not abort a good deploy.
     if ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
         "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} help nwc-copyright:sync >/dev/null 2>&1"; then
-        print_info "Post-deploy legal-text sync (nwc-copyright:sync --nwc-only)..."
-        # --nwc-only: propagate NWC canonical-text -> data_policy + consent gate
-        # only. The SS Moodle tool_policy push + repo-NOTICE writes are separate
-        # targets (a different box / different deploy) and must not run — or
-        # error — as a side effect of an nwc code deploy.
+        print_info "Post-deploy legal-text sync (nwc-copyright:sync --skip-notice)..."
+        # --skip-notice: sync the NWC data_policy + consent gate AND push to the
+        # SS Moodle tool_policy (both idempotent/version-aware). Only the repo
+        # NOTICE-file writes are skipped — they target ~/nwp + ~/nwptoolkit repo
+        # paths that do not exist on a live web box.
         if ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
-            "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} nwc-copyright:sync --nwc-only" 2>&1 | tail -14; then
-            print_status "OK" "Canonical legal-text synced to data_policy + consent gate"
+            "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} nwc-copyright:sync --skip-notice" 2>&1 | tail -18; then
+            print_status "OK" "Canonical legal-text synced: NWC data_policy + consent gate + SS tool_policy"
         else
-            print_status "WARN" "nwc-copyright:sync errored — verify /legal/* + consent gate on live"
+            print_status "WARN" "nwc-copyright:sync errored — verify /legal/* + SS tool_policy on live"
         fi
     fi
 

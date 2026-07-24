@@ -1,0 +1,24 @@
+# pull-sources.conf — sources for ver-pull-session.sh (installed at
+# /etc/nwp-server/pull-sources.conf on `ver`). One source per line:
+#
+#   name|from_repo|to_repo|kind
+#
+# Fields:
+#   name      keystore-entry stem; `<name>.from` holds the source repo password.
+#   from_repo prod's restic repo, reached over the 1:1 WireGuard tunnel, e.g.
+#             sftp:<backup-user>@10.66.<N>.1:/var/backups/nwp-server/<site>
+#   to_repo   ver's durable repo, e.g. /srv/ver-backups/<site>
+#   kind      DATA CLASS (mandatory — the session fails closed without it):
+#               raw        unsanitised user data (PII, ADR-0025). Gets a HARD
+#                          30-day erasure ceiling (ver-backup-pull --keep-within
+#                          30d) so no RAW snapshot outlives the erasure promise
+#                          (ops#127/#124). Override the window with raw:<DUR>,
+#                          e.g. raw:14d.
+#               sanitized  no PII — keeps the tiered daily/weekly/monthly policy.
+#
+# Lines beginning with # and blank lines are ignored. Validate without going
+# online:  ver-pull-session.sh --check
+#
+# Examples (replace with real repos; do NOT commit real hostnames):
+# site1|sftp:backup@10.66.1.1:/var/backups/nwp-server/site1|/srv/ver-backups/site1|raw
+# site2-pub|sftp:backup@10.66.1.1:/var/backups/nwp-server/site2-sanitized|/srv/ver-backups/site2-pub|sanitized

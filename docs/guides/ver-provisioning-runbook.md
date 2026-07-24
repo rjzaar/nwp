@@ -246,9 +246,15 @@ Generate each side's keypair **on that side**; exchange only public keys.
 nwp-server backup --site-dir <SITE_DIR> --restic-pub /etc/nwp-server/nwp-minisign.pub          # dry-run
 nwp-server backup --site-dir <SITE_DIR> --restic-pub /etc/nwp-server/nwp-minisign.pub --execute
 
-# on ver — configure sources once:
-echo '<site>|sftp:<backup-user>@10.66.<N>.1:/var/backups/nwp-server/<site>|/srv/ver-backups/<site>' \
+# on ver — configure sources once. The trailing field is the DATA CLASS and is
+# mandatory (ops#127): `raw` (unsanitised/PII) gets a hard 30-day erasure ceiling;
+# `sanitized` keeps the tiered daily/weekly/monthly policy. See
+# scripts/ver-provision/pull-sources.conf.example for the full format.
+echo '<site>|sftp:<backup-user>@10.66.<N>.1:/var/backups/nwp-server/<site>|/srv/ver-backups/<site>|raw' \
   | sudo tee -a /etc/nwp-server/pull-sources.conf
+
+# validate the conf (fail-closed preflight — no tunnel/keystore needed):
+sudo /usr/local/share/nwp-ver/ver-pull-session.sh --check
 
 # then the session (dry-run first, then execute; Solo K touch when prompted):
 sudo /usr/local/share/nwp-ver/ver-pull-session.sh --wg verprod<N>

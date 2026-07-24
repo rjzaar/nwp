@@ -44,6 +44,15 @@ SITE_DIR=""
 DRUSH=""
 VERIFY_ONLY=false
 SCRATCH_SUFFIX="_sanitize_scratch"
+# ops#127: DR mode. Default (dev-preview) scrubs ALL real users incl. the admin
+# (uid>0). --preserve-admin keeps uid 1 (the Drupal superadmin) INTACT so a
+# disaster-recovery restore has a usable admin, and scrubs everyone else (uid>1).
+# uid 1's real email is then a legitimately-retained value; it is captured from
+# the scratch DB and allowlisted through this sanitizer's own pii_sweep (the
+# external lib/pii-gate.sh must be given the same allowlist by the caller).
+PRESERVE_ADMIN=false
+ADMIN_MAIL=""            # in --verify, pass the preserved admin email to allowlist it
+PRESERVE_ADMIN_MAIL=""  # captured from the scratch DB in the main flow
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -53,11 +62,17 @@ while [ $# -gt 0 ]; do
         --site-dir=*) SITE_DIR="${1#*=}"; shift ;;
         --drush)    DRUSH="$2"; shift 2 ;;
         --drush=*)  DRUSH="${1#*=}"; shift ;;
+        --preserve-admin) PRESERVE_ADMIN=true; shift ;;
+        --admin-mail) ADMIN_MAIL="$2"; shift 2 ;;
+        --admin-mail=*) ADMIN_MAIL="${1#*=}"; shift ;;
         --verify)   VERIFY_ONLY=true; shift ;;
         -h|--help)  sed -n '3,/^###/{/^###/d;p}' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "standard-sanitizer: unknown arg: $1" >&2; exit 2 ;;
     esac
 done
+
+# The user-scrub floor: uid>1 preserves the superadmin (DR), uid>0 scrubs all.
+if [ "$PRESERVE_ADMIN" = true ]; then USER_SCRUB_WHERE="uid>1"; else USER_SCRUB_WHERE="uid>0"; fi
 
 log()       { echo "[standard-sanitizer] $*"; }
 log_error() { echo "[standard-sanitizer] ERROR: $*" >&2; }
@@ -66,10 +81,17 @@ log_error() { echo "[standard-sanitizer] ERROR: $*" >&2; }
 pii_sweep() { # $1 = gz dump
     local f="$1"
     command -v zcat >/dev/null 2>&1 || { log_error "zcat missing"; return 2; }
+    # ops#127: when --preserve-admin retains uid 1's real email, that ONE value is
+    # a legitimately-kept address, not residual member PII — allowlist it (exact,
+    # ERE-escaped) so the sweep stays fail-closed on everything else. The captured
+    # scratch value (PRESERVE_ADMIN_MAIL) or the --verify-passed ADMIN_MAIL.
+    local admin_mail="${PRESERVE_ADMIN_MAIL:-$ADMIN_MAIL}"
     local hits
     hits=$(zcat -- "$f" 2>/dev/null \
         | grep -E -- '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' 2>/dev/null \
         | grep -Ev -- '@(example\.(com|org|net)|sanitized\.test|drupal\.org|nwpcode\.org)|noreply@|no-reply@' \
+        | { if [ "$PRESERVE_ADMIN" = true ] && [ -n "$admin_mail" ]; then \
+                grep -Fv -- "$admin_mail"; else cat; fi; } \
         | head -5 || true)
     [ -z "$hits" ] && { log "PII sweep: clean"; return 0; }
     log_error "PII sweep FAIL — residual email-like values remain:"
@@ -123,7 +145,14 @@ mysql_cli -e "DROP DATABASE IF EXISTS \`${SCRATCH_DB}\`; CREATE DATABASE \`${SCR
 zcat "$LIVE_DUMP" | mysql_cli "$SCRATCH_DB" || { log_error "scratch load failed"; exit 1; }
 
 # ── sanitize the SCRATCH copy ─────────────────────────────────────────────────
-log "anonymising users_field_data (all real users, uid>0 incl. admin)"
+# ops#127: in --preserve-admin (DR) mode, capture uid 1's real email from the
+# scratch copy BEFORE scrubbing so pii_sweep can allowlist that one retained
+# value; uid 1 itself is then left untouched (scrub floor = uid>1).
+if [ "$PRESERVE_ADMIN" = true ]; then
+    PRESERVE_ADMIN_MAIL="$(sq "SELECT mail FROM users_field_data WHERE uid=1;" | head -1)"
+    log "preserve-admin: uid 1 retained; scrub floor = ${USER_SCRUB_WHERE}"
+fi
+log "anonymising users_field_data (real users, ${USER_SCRUB_WHERE})"
 # Emails: on a PAIRED site (shared OIDC salt present) rewrite via the same hash
 # the Moodle side uses, so the same real email → same fake email on both stacks
 # (SSO join survives a sanitised copy). On a non-paired site (no salt) fall back
@@ -131,18 +160,18 @@ log "anonymising users_field_data (all real users, uid>0 incl. admin)"
 apply_scratch(){ mysql_cli "$SCRATCH_DB"; }
 if oidc_email_salt_load 2>/dev/null; then
   log "  OIDC salt present → cross-stack-consistent email hash (SSO-preserving)"
-  oidc_email_rewrite_sql sq apply_scratch users_field_data uid mail "uid>0" \
+  oidc_email_rewrite_sql sq apply_scratch users_field_data uid mail "$USER_SCRUB_WHERE" \
     || { log_error "OIDC email rewrite failed"; exit 1; }
   # Any residual mail not rewritten (empty/malformed) → safe positional placeholder.
-  sq "UPDATE users_field_data SET mail=CONCAT('user',uid,'@example.com') WHERE uid>0 AND mail NOT LIKE '%@sanitized.test';" \
+  sq "UPDATE users_field_data SET mail=CONCAT('user',uid,'@example.com') WHERE ${USER_SCRUB_WHERE} AND mail NOT LIKE '%@sanitized.test';" \
     || { log_error "residual email cleanup failed"; exit 1; }
 else
   log "  no OIDC salt → positional emails (non-paired site)"
-  sq "UPDATE users_field_data SET mail=CONCAT('user',uid,'@example.com') WHERE uid>0;" \
+  sq "UPDATE users_field_data SET mail=CONCAT('user',uid,'@example.com') WHERE ${USER_SCRUB_WHERE};" \
     || { log_error "user email anonymisation failed"; exit 1; }
 fi
 # init (registration email) mirrors mail; username is not a join key.
-sq "UPDATE users_field_data SET init=mail, name=CONCAT('user_',uid) WHERE uid>0;" \
+sq "UPDATE users_field_data SET init=mail, name=CONCAT('user_',uid) WHERE ${USER_SCRUB_WHERE};" \
   || { log_error "user init/name anonymisation failed"; exit 1; }
 table_exists(){ [ -n "$(sq "SELECT 1 FROM information_schema.tables WHERE table_schema='${SCRATCH_DB}' AND table_name='$1' LIMIT 1;")" ]; }
 for t in sessions watchdog contact_message key_value_expire history; do

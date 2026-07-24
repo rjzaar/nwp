@@ -206,6 +206,10 @@ ${BOLD}BUILD TARGETS:${NC}
     ver-pull --from R --to R        ver drains prod's snapshots, prunes, verifies (ADR-0025)
     test-ver <provision|assert|…>   Validate the ver (signed-deploy) tier on throwaway
                                     Linodes: WG tunnel + fail-closed invariant sweep (ops#29)
+    ver-test <provision|provision-prod|cycle|teardown|status>
+                                    pl-driven ver DR test harness: throwaway test-ver +
+                                    test-prod Linodes run the FULL raw+sanitised backup →
+                                    pull-session → restore-drill chain (ops#25/#127)
 
 ${BOLD}CI/CD:${NC}
     badges show <sitename>          Show GitLab badge URLs
@@ -835,6 +839,12 @@ main() {
         # Validate the ver (signed-deploy) tier setup on throwaway Linodes (nwp/ops#29)
         test-ver)
             run_script "test-ver.sh" "$@"
+            ;;
+
+        # pl-driven ver DR test harness — full raw+sanitised → pull → drill chain
+        # on throwaway Linodes (task #11; ops#25 + ops#127)
+        ver-test)
+            run_script "ver-test.sh" "$@"
             ;;
 
         # Production agent (nwp-server) — DR backup (ADR-0025)

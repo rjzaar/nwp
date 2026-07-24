@@ -238,8 +238,11 @@ prod_maintenance_set() {
         print_error "Fix on the host: cd $PROD_PATH && drush sset system.maintenance_mode 0 && drush cr"
         return 1
     else
-        print_status "WARN" "Could not enable maintenance_mode=${state} (drush unavailable?) — continuing"
-        return 0
+        # Failed to turn maintenance ON. Return non-zero so the caller REFUSES
+        # to start the destructive rsync --delete (members would otherwise see a
+        # half-populated webroot mid-deploy). Parity with live2prod.
+        print_status "WARN" "Could not enable maintenance_mode=${state} (drush unavailable?)"
+        return 1
     fi
 }
 
@@ -635,7 +638,11 @@ sync_files() {
             print_error "(Override at your own risk with --override-snapshot, which is ledgered.)"
             return 1
         fi
-        prod_maintenance_set 1
+        if ! prod_maintenance_set 1; then
+            print_error "REFUSING destructive rsync --delete — maintenance mode not enabled."
+            print_error "(Members would otherwise see a half-populated webroot mid-deploy.)"
+            return 1
+        fi
     else
         print_info "[dry-run] skipping pre-deploy snapshot + maintenance-mode enable (would write to production)"
     fi

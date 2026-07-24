@@ -169,6 +169,55 @@ CMD="${BATS_TEST_DIRNAME}/../../scripts/commands/stg2prod.sh"
 }
 
 # ---------------------------------------------------------------------------
+# M — maintenance-ON failure is fail-closed (refuse the --delete, not WARN)
+#     Parity with live2prod. The old helper returned 0 ("continuing") on an
+#     ON failure and the caller ran it UNCHECKED, so a failed maintenance-ON
+#     let the destructive rsync --delete proceed with no 503 — members saw a
+#     half-populated webroot mid-deploy.
+# ---------------------------------------------------------------------------
+
+@test "M: prod_maintenance_set returns non-zero on any failure (ON and OFF)" {
+  # Both the OFF-failure and the ON-failure branches must 'return 1'.
+  run bash -c "sed -n '/^prod_maintenance_set() {/,/^}/p' '$CMD' | grep -c 'return 1'"
+  [ "$output" -ge 2 ]
+}
+
+@test "M: the ON-failure branch no longer returns 0 ('continuing')" {
+  run bash -c "sed -n '/^prod_maintenance_set() {/,/^}/p' '$CMD' | grep -F 'continuing'"
+  [ "$status" -ne 0 ]
+}
+
+@test "M: the maintenance-ON call is gated (if ! prod_maintenance_set 1) not unchecked" {
+  run bash -c "sed -n '/^sync_files() {/,/^}/p' '$CMD' | grep -E 'if ! prod_maintenance_set 1; then'"
+  [ "$status" -eq 0 ]
+}
+
+@test "M: a failed maintenance-ON ABORTS before the destructive rsync in sync_files" {
+  # Inside sync_files: the `if ! prod_maintenance_set 1` block must reach its
+  # `return 1` before the rsync --delete line.
+  run bash -c "sed -n '/^sync_files() {/,/^}/p' '$CMD' | awk '/if ! prod_maintenance_set 1; then/{f=1} f&&/return 1/{print \"ok\"; exit} f&&/rsync_cmd=\"rsync/{print \"leak\"; exit}'"
+  [ "$output" = "ok" ]
+}
+
+@test "M: functional — sync_files fail-closes (rc=1) and never rsyncs when maintenance-ON fails" {
+  marker="$BATS_TEST_TMPDIR/synced"
+  run bash -c '
+    set +e; exec 2>&1
+    source "'"$CMD"'" >/dev/null 2>&1
+    set +e   # the sourced script re-enables set -e; disable so we can read $?
+    DRY_RUN=false
+    prod_host_snapshot() { return 0; }        # snapshot OK so we reach the gate
+    prod_maintenance_set() { return 1; }       # maintenance-ON FAILS
+    rsync() { echo REACHED_RSYNC > "'"$marker"'"; return 0; }
+    sync_files /tmp/nonexistent-stg testsite; echo "RC=$?"
+  '
+  # The destructive rsync must NEVER have been reached.
+  [ ! -f "$marker" ]
+  [[ "$output" == *"REFUSING destructive rsync --delete"* ]]
+  [[ "$output" == *"RC=1"* ]]
+}
+
+# ---------------------------------------------------------------------------
 # flag plumbing + sanity
 # ---------------------------------------------------------------------------
 

@@ -163,6 +163,13 @@ ${BOLD}SCHEDULING:${NC}
     schedule show                   Show cron entries
     schedule run <sitename>         Run scheduled backup now
 
+${BOLD}DEMO TIER (daily reset, ops#133):${NC}
+    demo golden <sitename>          Capture current state as the golden image
+    demo reset <sitename>           Verified restore of the golden (+reseed)
+    demo status <sitename>          Last reset/skips, golden, invite codes
+    demo codes <sitename> ...       list | issue <bundle> | revoke <id> | rotate
+    demo schedule <sitename>        Install the 01:00 Melbourne nightly cron
+
 ${BOLD}SECURITY:${NC}
     security check <sitename>       Check for security updates
     security check --all            Check all sites
@@ -762,6 +769,11 @@ main() {
         # Scheduling
         schedule)
             run_script "schedule.sh" "$@"
+            ;;
+
+        # Daily-reset demo tier (ops#133 Phase 1)
+        demo)
+            run_script "demo.sh" "$@"
             ;;
 
         # Security - handle both forms

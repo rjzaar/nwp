@@ -27,6 +27,12 @@ source "$PROJECT_ROOT/lib/ssh.sh"
 # impact.sh: fate manifest + confirm for the remote backup (impact_render /
 # impact_confirm). No-op-safe for the local DDEV path.
 source "$PROJECT_ROOT/lib/impact.sh"
+# files-secrets.sh: files_secrets_verify — a WARNING gate (never an abort) run
+# over the tree the local backup tars. Backups must stay FAITHFUL copies, so we
+# never scrub them; the gate just says loudly when the archive will carry a
+# live credential (files/sync/*.yml, auth.json, .env) so it can be rotated or
+# removed at source instead of being discovered in an artifact later.
+source "$PROJECT_ROOT/lib/sanitizers/files-secrets.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -268,6 +274,21 @@ backup_files() {
     fi
 
     ocmsg "Backing up: ${backup_paths[*]}"
+
+    # Leftover-secret WARNING gate (never an abort): a backup is a FAITHFUL copy
+    # by design, so nothing is scrubbed here — but if the tree being tarred
+    # carries a live credential (files/sync/*.yml, auth.json, .env — the
+    # lib/sanitizers/files-secrets.sh vocabulary), the operator must hear about
+    # it NOW, not when the archive leaks later. Scoped to the paths that
+    # actually enter the archive, so it never warns about files outside it.
+    local bp fs_out
+    for bp in "${backup_paths[@]}"; do
+        [ -d "$site_dir/$bp" ] || continue
+        if ! fs_out="$(files_secrets_verify "$site_dir/$bp" 2>&1)"; then
+            print_warning "Live-secret-shaped value(s) under '$bp' — the backup archive WILL contain them (backups stay faithful; not scrubbed). Rotate/remove at source:"
+            [ -n "$fs_out" ] && printf '%s\n' "$fs_out" | sed 's/^/    /'
+        fi
+    done
 
     # Create tar.gz archive (suppress "Removing leading" warnings)
     # SECURITY FIX: Use array expansion "${backup_paths[@]}" to properly quote each path
@@ -582,6 +603,10 @@ backup_remote() {
 
     # Build the tar exclude list. KEEP oauth-keys/ + auth.json + the per-env local settings
     # (they are the point of a pre-deploy backup); DROP the huge uploads.
+    # NB: the local-path files-secrets WARNING gate is deliberately NOT applied
+    # here — the tar runs ON the live host (no lib there), sites/default/files
+    # is excluded (so files/sync never enters this artifact), and auth.json is
+    # kept BY DESIGN: a pre-deploy snapshot exists to restore live exactly.
     local -a tar_excludes=()
     if [ "$project_type" != "moodle" ]; then
         if [ -n "$webroot" ]; then

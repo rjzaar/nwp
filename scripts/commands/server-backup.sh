@@ -33,6 +33,12 @@ set -euo pipefail
 #   --keep-last N       local staging retention (default 3)
 #   --tag TAG           restic tag (default: <host>/<site>)
 #   --db-only | --files-only
+#   --sanitize          ops#127: produce a SANITISED long-term DR snapshot instead
+#                       of a raw one — runs the site sanitiser (--preserve-admin:
+#                       keep the real admin, scrub all other users) + the external
+#                       PII gate (fail-closed), into a DISTINCT `<site>-sanitized`
+#                       repo. Implies --db-only (sanitised files = ops#84).
+#   --sanitizer PATH    sanitiser to use (default: lib/sanitizers/<site>.sh)
 #   --skip-restic-verify   (debug) skip the minisign check on the restic binary
 #   --dry-run (default) | --execute
 ################################################################################
@@ -41,11 +47,19 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/minisign.sh" 2>/dev/null || true
 source "$PROJECT_ROOT/lib/server-backup-resolve.sh"
+source "$PROJECT_ROOT/lib/pii-gate.sh" 2>/dev/null || true  # ops#127: --sanitize gate
 
 SITE_DIR="" REPO="" PASS_FILE="/etc/nwp-server/restic.pass"
 RESTIC="$(command -v restic || echo restic)" RESTIC_PUB=""
 DRUSH="" FILES_SUB="web/sites/default/files" KEEP_LAST=3 TAG=""
 DB_ONLY=n FILES_ONLY=n SKIP_RESTIC_VERIFY=n EXECUTE=n
+# ops#127: sanitised long-term DR tier. --sanitize runs the site sanitiser
+# (--preserve-admin: keep the real admin, scrub every other user) → external
+# lib/pii-gate.sh (fail-closed) → snapshots the SANITISED DB to a DISTINCT
+# `<site>-sanitized` repo. It carries no member PII, so ver keeps it long-term
+# (tiered), while the RAW repo is capped at 30d (--keep-within). DB-only for now:
+# sanitised FILES (moodledata/uploads) are ops#84 — never mix raw files in here.
+SANITIZE=n SANITIZER=""
 
 die(){ print_error "$*"; exit 1; }
 show_help(){ sed -n '3,/^###/{/^###/d;p}' "$0" | sed 's/^# \{0,1\}//'; }
@@ -72,6 +86,9 @@ while [ $# -gt 0 ]; do
     --tag)        TAG="$2"; shift ;;
     --db-only)    DB_ONLY=y ;;
     --files-only) FILES_ONLY=y ;;
+    --sanitize)   SANITIZE=y ;;
+    --sanitizer=*) SANITIZER="${1#*=}" ;;
+    --sanitizer)  SANITIZER="$2"; shift ;;
     --skip-restic-verify) SKIP_RESTIC_VERIFY=y ;;
     --execute|-y) EXECUTE=y ;;
     --dry-run)    EXECUTE=n ;;
@@ -111,9 +128,18 @@ verify_restic(){
 main(){
   [ -n "$SITE_DIR" ] || { show_help; die "--site-dir is required"; }
   local site; site="$(basename "$SITE_DIR")"
-  [ -n "$REPO" ]  || REPO="/var/backups/nwp-server/$site"
+  local repo_site="$site"
+  # ops#127: sanitised tier resolution — distinct repo, DB-only, fail-closed on a
+  # missing sanitiser (never emit an unsanitised long-term archive).
+  if [ "$SANITIZE" = y ]; then
+    repo_site="${site}-sanitized"
+    DB_ONLY=y
+    [ -n "$SANITIZER" ] || SANITIZER="${PROJECT_ROOT:-.}/lib/sanitizers/${site}.sh"
+    [ -f "$SANITIZER" ] || die "--sanitize: no sanitiser at '$SANITIZER' — pass --sanitizer PATH. Refusing to write an unsanitised long-term archive (fail-closed)."
+  fi
+  [ -n "$REPO" ]  || REPO="/var/backups/nwp-server/$repo_site"
   [ -n "$DRUSH" ] || DRUSH="$SITE_DIR/vendor/bin/drush"
-  [ -n "$TAG" ]   || TAG="$(hostname -s 2>/dev/null || echo host)/$site"
+  [ -n "$TAG" ]   || TAG="$(hostname -s 2>/dev/null || echo host)/$repo_site"
 
   # Stack-aware (ADR-0032 Flow B): Moodle backs up moodledata + mysqldump-via-
   # config.php; Drupal backs up public+private files + drush. --files overrides
@@ -177,20 +203,36 @@ main(){
   # ── DB dump (raw) → restic ─────────────────────────────────────────────────
   local tmp_db=""
   if [ "$FILES_ONLY" != y ]; then
-    print_header "Step 2 · Snapshot database (raw)"
+    print_header "Step 2 · Snapshot database ($([ "$SANITIZE" = y ] && echo 'SANITISED, preserve-admin' || echo raw))"
     tmp_db="$(mktemp -d)/db.sql.gz"
     if [ "$EXECUTE" = y ]; then
-      if [ "$stack" = moodle ]; then
+      if [ "$SANITIZE" = y ]; then
+        # Reviewed site sanitiser (scratch-DB; raw data stays on this host) with
+        # the real admin preserved, THEN the independent external PII gate. Both
+        # fail-closed — an unsanitised or unverifiable dump is never snapshotted.
+        local _san_args=(--site-dir "$SITE_DIR" --output "$tmp_db" --preserve-admin)
+        [ "$stack" != moodle ] && _san_args+=(--drush "$DRUSH")
+        "$SANITIZER" "${_san_args[@]}" || die "sanitiser failed — refusing to snapshot (fail-closed)"
+        [ -s "$tmp_db" ] || die "sanitiser produced no dump — refusing (fail-closed)"
+        type pii_gate_scan >/dev/null 2>&1 || die "lib/pii-gate.sh not loaded — cannot run the independent PII gate (fail-closed)"
+        pii_gate_scan "$tmp_db" "${tmp_db}.admin-allow" \
+          || die "external PII gate FAILED on the sanitised dump — refusing to snapshot (fail-closed)"
+        print_status "OK" "sanitised + PII-gate clean (admin preserved, all other users scrubbed)"
+      elif [ "$stack" = moodle ]; then
         sb_moodle_db_dump "$SITE_DIR" "$tmp_db" || die "moodle DB dump failed (mysqldump via config.php)"
       else
         ( cd "$SITE_DIR" && "$DRUSH" sql-dump --gzip --result-file="${tmp_db%.gz}" ) || die "drush sql-dump failed"
       fi
+    elif [ "$SANITIZE" = y ]; then
+      print_info "[dry-run] would: $SANITIZER --site-dir $SITE_DIR --output <tmp> --preserve-admin → pii_gate_scan → restic (repo: $REPO)"
     elif [ "$stack" = moodle ]; then
       print_info "[dry-run] would: sb_moodle_db_dump $SITE_DIR $tmp_db (mysqldump via config.php)"
     else
       print_info "[dry-run] would: cd $SITE_DIR && $DRUSH sql-dump --gzip --result-file=${tmp_db%.gz}"
     fi
-    run "${RC[@]}" backup --tag "$TAG" --tag db "$tmp_db"
+    local _dbtags=(--tag "$TAG" --tag db)
+    [ "$SANITIZE" = y ] && _dbtags+=(--tag sanitized)
+    run "${RC[@]}" backup "${_dbtags[@]}" "$tmp_db"
   fi
 
   # ── Files → restic (dedup) ─────────────────────────────────────────────────
@@ -215,6 +257,7 @@ main(){
   # ── Shred the temp raw dump ────────────────────────────────────────────────
   if [ -n "$tmp_db" ] && [ "$EXECUTE" = y ]; then
     shred -u "$tmp_db" 2>/dev/null || rm -f "$tmp_db"
+    [ -f "${tmp_db}.admin-allow" ] && { shred -u "${tmp_db}.admin-allow" 2>/dev/null || rm -f "${tmp_db}.admin-allow"; }
     rmdir "$(dirname "$tmp_db")" 2>/dev/null || true
   fi
 

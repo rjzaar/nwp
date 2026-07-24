@@ -626,6 +626,13 @@ moodle_sanitize() {
         || { log_error "sanitized export failed"; return 1; }
     [ -s "$OUTPUT" ] || { log_error "sanitized dump is empty"; return 1; }
 
+    # ops#127: emit preserved siteadmin emails as an allowlist SIDECAR for the
+    # caller's external lib/pii-gate.sh (defence-in-depth; fail-closed elsewhere).
+    if [ "$PRESERVE_ADMIN" = true ] && [ -n "$PRESERVE_ADMIN_MAILS" ]; then
+        printf '%s\n' "$PRESERVE_ADMIN_MAILS" | grep -E '.@.' > "${OUTPUT}.admin-allow" || true
+        log "wrote admin-allow sidecar → ${OUTPUT}.admin-allow"
+    fi
+
     pii_sweep "$OUTPUT" || { log_error "built-in PII sweep found residue — refusing to hand off"; return 1; }
 
     # moodledata is a SEPARATE surface (not in the DB): user/private files,

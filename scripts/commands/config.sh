@@ -50,6 +50,13 @@ Commands:
                               before being overwritten. When overwriting, a
                               fate manifest is printed and (if interactive)
                               confirmed first.
+    track <site> [--apply]    Scaffold config-as-code for a site's Drupal config
+                              (report P3 / ops#63): print the steps to commit
+                              config/sync + add config_split per environment, and
+                              (with --apply) create the config/{sync,dev,stg,live,
+                              prod} skeleton in the site's dev tree. DRY-RUN by
+                              default; never runs git or edits .gitignore for you.
+                              See docs/CONFIG_AS_CODE.md.
 
 Options:
     --out FILE      Export: write the bundle to FILE instead of the default
@@ -457,6 +464,88 @@ cmd_import() {
 }
 
 ################################################################################
+# track — scaffold config-as-code for a site (report P3 / ops#63)
+################################################################################
+
+# Locate the webroot inside a resolved env dir (web/ | html/ | docroot/ | .),
+# so we can place config/ as its sibling (Drupal's conventional layout).
+_track_find_webroot() {
+    local env_dir="$1" wr
+    for wr in web html docroot; do
+        if [ -f "$env_dir/$wr/index.php" ] || [ -d "$env_dir/$wr/core" ]; then
+            echo "$wr"; return 0
+        fi
+    done
+    # Fall back to the env dir itself (composer-less / flat layout).
+    echo "."
+}
+
+cmd_track() {
+    local site="" apply=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --apply) apply=1 ;;
+            -h|--help) show_help; return 0 ;;
+            -*) print_error "Unknown track option: $1"; return 1 ;;
+            *) [ -z "$site" ] && site="$1" || { print_error "Unexpected argument: $1"; return 1; } ;;
+        esac
+        shift
+    done
+
+    if [ -z "$site" ]; then
+        print_error "Usage: pl config track <site> [--apply]"
+        return 1
+    fi
+
+    # resolve_project comes from lib/project-resolver.sh (via lib/common.sh).
+    local env_dir
+    env_dir="$(resolve_project "$site" dev 2>/dev/null)" || true
+    if [ -z "$env_dir" ] || [ ! -d "$env_dir" ]; then
+        print_error "Cannot resolve a dev tree for site '$site' (looked for sites/$site/dev)."
+        return 1
+    fi
+
+    # config/ sits in the project root (beside the webroot), Drupal-conventional.
+    local webroot config_dir
+    webroot="$(_track_find_webroot "$env_dir")"
+    config_dir="$env_dir/config"
+
+    print_header "Config-as-code scaffold — ${site}"
+    print_info "Dev tree:  ${env_dir}"
+    print_info "Webroot:   ${webroot}"
+    print_info "Config at: ${config_dir}/{sync,dev,stg,live,prod}"
+    echo ""
+
+    local -a splits=(sync dev stg live prod)
+
+    if [ "$apply" -eq 1 ]; then
+        for s in "${splits[@]}"; do
+            mkdir -p "$config_dir/$s"
+            # .gitkeep so empty split dirs are committable; harmless if config lands later.
+            [ -e "$config_dir/$s/.gitkeep" ] || : > "$config_dir/$s/.gitkeep"
+        done
+        print_status "OK" "Created ${config_dir}/{$(IFS=,; echo "${splits[*]}")}"
+        print_info "Nothing was committed and .gitignore was NOT modified — that stays with you."
+    else
+        print_status "WARN" "DRY-RUN — no files created. Re-run with --apply to create the skeleton."
+    fi
+
+    echo ""
+    echo "Next steps (operator, in the SITE repo — see docs/CONFIG_AS_CODE.md):"
+    echo "  1. Un-ignore config/sync in the site's .gitignore   (e.g. add: !config/sync/)"
+    echo "  2. settings.php: \$settings['config_sync_directory'] = '../config/sync';"
+    echo "  3. Export the trusted baseline + commit:   ddev drush cex -y  &&  git add config/sync"
+    echo "  4. composer require drupal/config_split — one split per env → config/{dev,stg,live,prod}"
+    echo "  5. Move the runtime-only set (simple_oauth keys/grants, error-report token,"
+    echo "     search_api backend) into settings.local.php overrides, NOT tracked config."
+    echo "  6. Opt into the drift gate:  set  config.drift_gate: true  in sites/${site}/.nwp.yml"
+    echo "     (or run a deploy with NWP_CONFIG_DRIFT_GATE=1)."
+    echo ""
+    print_info "The drift gate then verifies live 'drush updatedb' does not silently change active config."
+    return 0
+}
+
+################################################################################
 # Main
 ################################################################################
 
@@ -467,6 +556,7 @@ main() {
     case "$command" in
         export) cmd_export "$@" ;;
         import) cmd_import "$@" ;;
+        track) cmd_track "$@" ;;
         -h|--help|help|"") show_help ;;
         *)
             print_error "Unknown command: $command"

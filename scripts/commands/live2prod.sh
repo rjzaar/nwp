@@ -254,10 +254,66 @@ prod_host_snapshot() {
     return 0
 }
 
+# Is there a FRESH pre-deploy snapshot ARTIFACT for this site on the prod host?
+# Keys off the webroot tar (the rsync --delete backstop) written by
+# prod_host_snapshot in the last hour — the same artifact prod_host_snapshot
+# uses for its own idempotency. Returns 0 iff one is present.
+_prod_snapshot_present() {
+    local base_name="$1"
+    local recent
+    recent=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${PROD_USER}@${PROD_IP}" \
+        "find ~ -maxdepth 1 -name 'nwp-snapshot-${base_name}-webroot-*.tar.gz' -mmin -60 2>/dev/null | head -1" \
+        2>/dev/null)
+    [ -n "$recent" ]
+}
+
+# FAIL-CLOSED gate on the destructive region. Called immediately BEFORE the
+# rsync --delete, regardless of --step, so a `-s N` resume that jumps PAST the
+# snapshot step (step 1) can NEVER reach the --delete without a fresh backstop
+# for THIS deploy. If no fresh snapshot artifact is present it RE-TAKES one
+# (prod_host_snapshot is idempotent, so a normal full run does not double-dump);
+# only an explicit --override-snapshot / --skip-backup (ledgered) may proceed
+# without a proven snapshot. Returns non-zero to make the caller abort.
+require_prod_snapshot() {
+    local base_name="$1"
+
+    # Explicit operator override: proceed, but ledger loudly if no artifact
+    # actually exists (so a --step resume under --skip-backup is still audited).
+    if [ "${SKIP_BACKUP:-false}" == "true" ] || [ "${OVERRIDE_SNAPSHOT:-false}" == "true" ]; then
+        if ! _prod_snapshot_present "$base_name"; then
+            _snapshot_override_ledger "$base_name" "rsync --delete reached with NO fresh snapshot artifact (override/--skip-backup)"
+            print_warning "Proceeding to the rsync --delete WITHOUT a verified snapshot (override, ledgered)."
+        fi
+        return 0
+    fi
+
+    # Fresh snapshot already on the host (normal full run, or a resume soon
+    # after a prior snapshot) — nothing to do.
+    if _prod_snapshot_present "$base_name"; then
+        print_status "OK" "Fresh pre-deploy snapshot verified — destructive rsync --delete may proceed."
+        return 0
+    fi
+
+    # No fresh snapshot for THIS deploy — most likely a `-s N` resume that
+    # skipped step 1. Re-take it fail-closed rather than silently --delete.
+    print_warning "No fresh pre-deploy snapshot found (--step resume?). Re-taking BEFORE the rsync --delete."
+    if ! backup_production "$base_name"; then
+        print_error "Pre-deploy snapshot failed — REFUSING the destructive rsync --delete (fail-closed)."
+        print_error "(Override at your own risk with --override-snapshot or --skip-backup, both ledgered.)"
+        return 1
+    fi
+    if ! _prod_snapshot_present "$base_name"; then
+        print_error "Snapshot reported success but no artifact is present — REFUSING the rsync --delete (fail-closed)."
+        return 1
+    fi
+    return 0
+}
+
 # Drupal maintenance mode around the destructive swap (G3). Enable BEFORE the
 # rsync --delete so members never hit a half-populated webroot; disable only
-# AFTER the post-sync updatedb/cr sequence. Fail-loud: a failed maintenance-OFF
-# leaves the site stuck at 503 and is reported LOUDLY. Mirrors
+# AFTER the post-sync updatedb/cr sequence. Fail-loud: a failed maintenance-ON
+# ABORTS before the --delete (return 1); a failed maintenance-OFF leaves the
+# site stuck at 503 and is reported LOUDLY. Mirrors
 # stg2live.sh::live_maintenance_set.
 prod_maintenance_set() {
     local base_name="$1"
@@ -281,11 +337,17 @@ prod_maintenance_set() {
     if ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
         "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} state:set system.maintenance_mode ${state} --input-format=integer && ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} cr"; then
         print_status "OK" "Maintenance mode ${label}"
+        return 0
     elif [ "$state" == "0" ]; then
         print_error "Could NOT disable maintenance mode — THE SITE MAY BE STUCK IN MAINTENANCE (503)."
         print_error "Fix on the host: ${sudo_prefix} -u www-data ${remote_path}/vendor/bin/drush --root=${remote_path}/${webroot} sset system.maintenance_mode 0 && ... cr"
+        return 1
     else
+        # Failed to turn maintenance ON. Return non-zero so the caller REFUSES
+        # to start the destructive rsync --delete (members would otherwise see a
+        # half-populated webroot mid-deploy).
         print_status "WARN" "Could not set maintenance_mode=${state} (drush unavailable?)"
+        return 1
     fi
 }
 
@@ -303,7 +365,10 @@ ${BOLD}USAGE:${NC}
 ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -y, --yes               Skip confirmation prompts (NEVER the pre-deploy snapshot)
-    -s, --step <n>          Start from step n
+    -s, --step <n>          Start from step n. A resume that jumps PAST the
+                            snapshot step still RE-TAKES a fresh pre-deploy
+                            snapshot before the rsync --delete (fail-closed) —
+                            it never silently --deletes without a backstop.
     --skip-backup           Skip the fail-closed pre-deploy production snapshot
                             (dangerous!). No longer a silent bypass — it is
                             ledgered to private/snapshots/<site>.log.
@@ -320,6 +385,7 @@ ${BOLD}WORKFLOW:${NC}
     2. Fail-closed pre-deploy production snapshot (DBs + nginx + webroot)
        -- maintenance mode ON (wraps the destructive region below) --
     3. Export configuration from live
+       -- assert a fresh snapshot exists (re-take on --step resume, else refuse) --
     4. Sync files from live to production (rsync --delete)
     5. Run composer install on production (fail-loud)
     6. Run database updates (fail-loud; maintenance left ON on failure)
@@ -670,10 +736,25 @@ main() {
     local wrap_maint=false
     if [ 5 -ge "$START_STEP" ]; then
         wrap_maint=true
-        prod_maintenance_set "$BASE_NAME" "$PROD_IP" "$PROD_USER" "$PROD_PATH" "$PROD_WEBROOT" 1
+        # Fail-closed: if maintenance mode cannot be turned ON we must NOT run the
+        # destructive rsync --delete (members would hit a half-populated webroot).
+        if ! prod_maintenance_set "$BASE_NAME" "$PROD_IP" "$PROD_USER" "$PROD_PATH" "$PROD_WEBROOT" 1; then
+            print_error "Could not enable maintenance mode — REFUSING the destructive rsync --delete (fail-closed)."
+            print_error "Investigate drush on the prod host, then re-run."
+            exit 1
+        fi
     fi
 
     if [ $step -ge $START_STEP ]; then
+        # CRITICAL fail-closed gate: the pre-deploy snapshot (step 1) is
+        # START_STEP-gated, so a `-s 3` resume jumps straight here and would
+        # otherwise run the rsync --delete with NO backstop. Assert a fresh
+        # snapshot artifact exists on the prod host REGARDLESS of --step — and
+        # re-take (or refuse) if it does not — before touching the webroot.
+        if ! require_prod_snapshot "$BASE_NAME"; then
+            print_error "Aborting before the destructive rsync --delete (no verified snapshot; maintenance left ON)."
+            exit 1
+        fi
         print_info "Step $step: Sync files"
         if ! sync_files "$BASE_NAME"; then
             print_error "File sync FAILED — aborting (maintenance mode left ON). Verify the prod host / rollback:"
@@ -707,7 +788,9 @@ main() {
     # serves members again. Only reached on the success path (every error path
     # above exits without disabling it).
     if [ "$wrap_maint" == "true" ]; then
-        prod_maintenance_set "$BASE_NAME" "$PROD_IP" "$PROD_USER" "$PROD_PATH" "$PROD_WEBROOT" 0
+        # OFF failure is loudly reported inside prod_maintenance_set (503 risk);
+        # tolerate its non-zero here so we still reach the cache/config steps.
+        prod_maintenance_set "$BASE_NAME" "$PROD_IP" "$PROD_USER" "$PROD_PATH" "$PROD_WEBROOT" 0 || true
     fi
 
     if [ $step -ge $START_STEP ]; then

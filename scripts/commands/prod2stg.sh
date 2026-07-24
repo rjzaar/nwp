@@ -291,6 +291,23 @@ if [ "$FILES_ONLY" = true ] && [ "$DB_ONLY" = true ]; then
     exit 1
 fi
 
+# ── ops#68: resolve the staging DDEV project the F17/F23 way (v2:
+#    sites/<name>/stg/, v1: sites/<name>-stg/) ONCE, so the whole prod pull —
+#    existence check, rsync destination, ddev cwd, and the sanitize arg — targets
+#    the real stg project. The old code assumed the flat v1 `sites/$SITENAME`
+#    path, so on a v2 nested site `sanitize_staging_db "$SITENAME"` cd'd to the
+#    non-DDEV parent dir and the (now hardened) sanitizer FAILED CLOSED / aborted
+#    the pull — and before hardening it silently no-op'd, leaving RAW prod PII in
+#    stg. STG_REL is the `<name>/stg` (or `<name>-stg`) segment the sanitizer's
+#    `cd "sites/$target_site"` needs. Plain assignments (top-level, under set -e).
+BASE_NAME=$(get_base_name "$SITENAME")
+STG_DIR=$(resolve_project "$BASE_NAME" "stg")
+if [ -z "$STG_DIR" ]; then
+    print_error "Cannot resolve staging directory for $BASE_NAME (v2: sites/$BASE_NAME/stg/, v1: sites/$BASE_NAME-stg/)"
+    exit 1
+fi
+STG_REL="${STG_DIR#"$PROJECT_ROOT"/sites/}"
+
 ################################################################################
 # Main Deployment Process
 ################################################################################
@@ -312,13 +329,13 @@ fi
 if should_run_step 1 "$START_STEP"; then
     print_header "Step 1: Validate Pull Configuration"
 
-    # Check staging site exists
-    if [ ! -d "sites/$SITENAME" ]; then
-        print_error "Staging site not found: sites/$SITENAME"
-        print_info "Create staging site first with: ./install.sh $SITENAME"
+    # Check staging site exists (ops#68: resolved v2/v1 stg project dir)
+    if [ ! -d "$STG_DIR" ]; then
+        print_error "Staging site not found: $STG_DIR"
+        print_info "Create staging site first with: pl install $BASE_NAME"
         exit 1
     fi
-    print_status "OK" "Staging site exists: sites/$SITENAME"
+    print_status "OK" "Staging site exists: $STG_REL"
 
     # Get production config
     PROD_SERVER=$(get_prod_config "$SITENAME" "server")
@@ -431,7 +448,7 @@ if should_run_step 4 "$START_STEP" && [ "$DB_ONLY" = false ]; then
     if [ "$DRY_RUN" = false ]; then
         print_info "Syncing files from production..."
         print_info "Source: $SSH_CONN:$PROD_PATH/"
-        print_info "Destination: $SITENAME/"
+        print_info "Destination: $STG_REL/"
 
         # Build SSH options for rsync
         # IdentitiesOnly=yes prevents fail2ban lockouts from key spraying.
@@ -460,7 +477,7 @@ if should_run_step 4 "$START_STEP" && [ "$DB_ONLY" = false ]; then
         if rsync -avz --delete \
             -e "$rsync_ssh" \
             "$user_host:$PROD_PATH/" \
-            "$PROJECT_ROOT/sites/$SITENAME/" \
+            "$STG_DIR/" \
             --exclude=".ddev" \
             --exclude=".git" \
             --exclude="html/sites/default/files" \
@@ -535,7 +552,7 @@ if should_run_step 6 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
     if [ "$DRY_RUN" = false ]; then
         print_info "Importing database to staging..."
 
-        cd "sites/$SITENAME" || exit 1
+        cd "$STG_DIR" || exit 1
 
         # Import database
         if ddev import-db --file="$TMP_SQL"; then
@@ -555,7 +572,7 @@ if should_run_step 6 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
         # canonical user content — default ON unless --no-sanitize.
         if [ "${NO_SANITIZE:-false}" != "true" ]; then
             print_info "Sanitizing staging database (prod pull)..."
-            if sanitize_staging_db "$SITENAME" >/dev/null 2>&1; then
+            if sanitize_staging_db "$STG_REL" >/dev/null 2>&1; then
                 print_status "OK" "Database sanitized (PII anonymized, sessions/logs truncated)"
             else
                 print_error "Sanitization FAILED — the staging DB still holds RAW prod data."
@@ -573,7 +590,7 @@ if should_run_step 6 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
             # already relied on by lib/database-router.sh download_db_development.)
             print_info "Running independent PII gate over sanitized DB..."
             _verify_gz="$(mktemp --suffix=.sql.gz)"
-            cd "$PROJECT_ROOT/sites/$SITENAME" || exit 1
+            cd "$STG_DIR" || exit 1
             if ddev export-db --file="$_verify_gz" >/dev/null 2>&1 && [ -s "$_verify_gz" ]; then
                 cd "$PROJECT_ROOT"
                 if pii_gate_scan "$_verify_gz"; then
@@ -607,7 +624,7 @@ if should_run_step 7 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
     print_header "Step 7: Update Database"
 
     if [ "$DRY_RUN" = false ]; then
-        cd "$PROJECT_ROOT/sites/$SITENAME" || exit 1
+        cd "$STG_DIR" || exit 1
 
         print_info "Running database updates..."
         if ddev drush updatedb -y; then
@@ -630,7 +647,7 @@ if should_run_step 8 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
     print_header "Step 8: Import Configuration"
 
     if [ "$DRY_RUN" = false ]; then
-        cd "$PROJECT_ROOT/sites/$SITENAME" || exit 1
+        cd "$STG_DIR" || exit 1
 
         print_info "Importing configuration..."
         if ddev drush config:import -y; then
@@ -669,7 +686,7 @@ if should_run_step 9 "$START_STEP" && [ "$FILES_ONLY" = false ]; then
 
     if [ -n "$REINSTALL_MODULES" ]; then
         if [ "$DRY_RUN" = false ]; then
-            cd "$PROJECT_ROOT/sites/$SITENAME" || exit 1
+            cd "$STG_DIR" || exit 1
 
             for module in $REINSTALL_MODULES; do
                 # Check if module is enabled
@@ -709,7 +726,7 @@ if should_run_step 10 "$START_STEP"; then
     print_header "Step 10: Clear Cache"
 
     if [ "$DRY_RUN" = false ]; then
-        cd "$PROJECT_ROOT/sites/$SITENAME" || exit 1
+        cd "$STG_DIR" || exit 1
 
         print_info "Clearing cache..."
         if ddev drush cr; then

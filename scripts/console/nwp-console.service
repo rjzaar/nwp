@@ -1,0 +1,26 @@
+# NWP Console — systemd USER unit (deploy host: mini; linger must be enabled).
+# Installed to ~/.config/systemd/user/nwp-console.service by `pl console deploy`.
+# All knobs live in ~/.config/nwp-console/env (EnvironmentFile).
+[Unit]
+Description=NWP Console (mesh-only operational web console)
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/nwp-console/env
+WorkingDirectory=%h/nwp-console/src
+# TLS is mandatory in practice: WebAuthn only works in a secure context.
+ExecStart=/bin/bash -c 'exec %h/nwp-console/venv/bin/uvicorn app.main:app \
+  --host "${NWP_CONSOLE_BIND}" --port "${NWP_CONSOLE_PORT}" \
+  --ssl-certfile "${NWP_CONSOLE_TLS_CERT}" --ssl-keyfile "${NWP_CONSOLE_TLS_KEY}" \
+  --workers 1 --no-server-header'
+Restart=on-failure
+RestartSec=5
+# Keep the footprint tiny + contained (mini's RAM is shared with local LLMs).
+MemoryMax=512M
+NoNewPrivileges=true
+StandardOutput=append:%h/nwp-console/console.log
+StandardError=append:%h/nwp-console/console.log
+
+[Install]
+WantedBy=default.target

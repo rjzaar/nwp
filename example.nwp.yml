@@ -457,6 +457,15 @@ settings:
       digest_time: 07:00
     schedule:
       cron: 0 7 * * *
+  # NWP Console (pl console) — the mesh-only, passkey-only web console.
+  # Operator-specific by nature; these placeholder values are replaced in your
+  # gitignored nwp.yml (P61: real host names never live in committed code).
+  console:
+    host: console-host              # ssh alias of the deploy host (AI/dev tier box)
+    fqdn: console.example.com       # public DNS name; A record -> tailnet_ip (mesh-only reach)
+    tailnet_ip: 100.64.0.2          # the host's WireGuard/Headscale mesh IP (uvicorn binds ONLY this)
+    port: 8600
+    headscale_url: https://headscale.example.com   # control server URL for device enrolment
 ################################################################################
 # Extension fields
 #

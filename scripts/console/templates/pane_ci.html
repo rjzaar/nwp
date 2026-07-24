@@ -1,0 +1,33 @@
+{% if not api_ok %}
+<p class="muted">No GitLab token provisioned — CI states unavailable. Deep links only.</p>
+{% endif %}
+{% for b in blocks %}
+<h3>{{ b.project }}</h3>
+{% if b.mrs %}
+<table class="tbl">
+  {% for row in b.mrs %}
+  <tr>
+    <td>
+      <a href="{{ row.mr.web_url }}" target="_blank" rel="noopener">!{{ row.mr.iid }}</a>
+      {{ row.mr.title }}
+      {% if row.pipeline %}
+        <span class="chip pipe-{{ row.pipeline.status }}">{{ row.pipeline.status }}</span>
+        {% if can_act and row.pipeline.status == 'failed' %}
+        <form hx-post="/ci/retry" hx-target="#ci-result-{{ b.project | replace('/','-') }}-{{ row.mr.iid }}" class="inline">
+          <input type="hidden" name="project" value="{{ b.project }}">
+          <input type="hidden" name="pipeline_id" value="{{ row.pipeline.id }}">
+          <button>Retry pipeline</button>
+        </form>
+        <span id="ci-result-{{ b.project | replace('/','-') }}-{{ row.mr.iid }}"></span>
+        {% endif %}
+      {% else %}
+        <span class="muted">no pipeline</span>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">no open MRs{% if not api_ok %} visible{% endif %} · <a href="{{ b.url }}">GitLab →</a></p>
+{% endif %}
+{% endfor %}

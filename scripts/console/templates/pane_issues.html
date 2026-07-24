@@ -1,0 +1,39 @@
+{% if not api_ok %}
+<p class="muted">No GitLab token provisioned on this host ({{ api_error }}) — read-only deep-links.
+Provision <code>~/.config/nwp-console/gitlab.token</code> (0600, walled bot token) to enable the embedded board.</p>
+<p><a class="primary-link" href="{{ project_url }}/-/issues">Open {{ project }} issues in GitLab →</a></p>
+{% else %}
+<table class="tbl">
+  {% for i in issues %}
+  <tr>
+    <td class="issue-row">
+      <a href="{{ i.web_url }}" target="_blank" rel="noopener">#{{ i.iid }}</a>
+      <strong>{{ i.title }}</strong>
+      <span class="labels">{% for l in i.labels %}<span class="chip">{{ l }}</span>{% endfor %}</span>
+      <span class="muted">{{ i.updated_at[:10] }}</span>
+      {% if can_act %}
+      <details>
+        <summary>act</summary>
+        <form hx-post="/issues/{{ i.iid }}/note" hx-target="#issue-result-{{ i.iid }}">
+          <textarea name="body" rows="3" placeholder="reply / note (posted via the walled bot)" required></textarea>
+          <button class="primary">Post note</button>
+        </form>
+        <form hx-post="/issues/{{ i.iid }}/label" hx-target="#issue-result-{{ i.iid }}" class="inline">
+          <input name="label" placeholder="label" required>
+          <select name="mode"><option value="add">add</option><option value="remove">remove</option></select>
+          <button>Label</button>
+        </form>
+        <form hx-post="/issues/{{ i.iid }}/close" hx-target="#issue-result-{{ i.iid }}" class="inline">
+          <button class="warn" hx-confirm="Close #{{ i.iid }}?">Close</button>
+        </form>
+        <div id="issue-result-{{ i.iid }}"></div>
+      </details>
+      {% endif %}
+    </td>
+  </tr>
+  {% else %}
+  <tr><td class="ok">No open issues in {{ project }}.</td></tr>
+  {% endfor %}
+</table>
+<p><a href="{{ project_url }}/-/issues">all issues in GitLab →</a></p>
+{% endif %}

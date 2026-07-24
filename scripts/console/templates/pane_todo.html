@@ -1,0 +1,17 @@
+{% if todo.ok %}
+<p class="muted">{{ todo.summary.get('total', todo['items'] | length) }} items
+  ({{ todo.summary.get('high', '?') }} high / {{ todo.summary.get('medium', '?') }} med / {{ todo.summary.get('low', '?') }} low)
+  {% if res.cached %}· cached {{ res.age }}s{% endif %}</p>
+<table class="tbl">
+  {% for it in todo['items'][:60] %}
+  <tr class="prio-{{ it.priority }}">
+    <td><span class="chip">{{ it.priority }}</span></td>
+    <td><strong>{{ it.site or '—' }}</strong> {{ it.text }}
+        {% if it.action %}<div class="muted mono">{{ it.action }}</div>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="err">Todo data unavailable: {{ todo.error }}</p>
+{% if todo.raw %}<details><summary>raw output</summary><pre>{{ todo.raw }}</pre></details>{% endif %}
+{% endif %}

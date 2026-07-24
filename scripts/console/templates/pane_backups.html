@@ -1,0 +1,17 @@
+{% if todo_ok %}
+  {% if items %}
+  <table class="tbl">
+    {% for it in items %}
+    <tr class="prio-{{ it.priority }}">
+      <td><span class="chip">{{ it.priority }}</span></td>
+      <td><strong>{{ it.site or '—' }}</strong> {{ it.text }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="ok">No backup-freshness items in the todo sweep on this host.</p>
+  {% endif %}
+  <p class="muted">Backup sweeps run from the workstation/met (this host holds no site backups).</p>
+{% else %}
+<p class="err">Backup freshness derives from <code>pl todo check --json</code>, which is unavailable here.</p>
+{% endif %}

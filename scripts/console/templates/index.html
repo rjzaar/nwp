@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid">
+  {% for pane, label in [('fleet','Fleet RAG'), ('issues','Issues'), ('todo','Todo'),
+                         ('demo','Demo tier'), ('backups','Backups'), ('ci','CI / MRs')] %}
+  <section class="card" id="pane-{{ pane }}">
+    <div class="card-head">
+      <h2>{{ label }}</h2>
+      <button class="ghost" hx-get="/panes/{{ pane }}?force=1" hx-target="#body-{{ pane }}" hx-indicator="#spin-{{ pane }}">
+        ⟳<span id="spin-{{ pane }}" class="htmx-indicator">…</span>
+      </button>
+    </div>
+    <div id="body-{{ pane }}" hx-get="/panes/{{ pane }}" hx-trigger="load" hx-target="this">
+      <p class="muted">loading…</p>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+<p class="muted footnote">Reads run on the console host (AI/dev tier). Live/prod verbs are not
+wired here by design — run those on the workstation. Heavy issue edits: <a href="{{ gitlab_url }}">GitLab</a>.</p>
+{% endblock %}

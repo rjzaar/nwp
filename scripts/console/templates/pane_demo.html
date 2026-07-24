@@ -1,0 +1,47 @@
+{% for d in demo_sites %}
+<div class="demosite">
+  <h3>{{ d.site }}</h3>
+  {% if d.status.ok %}
+  <ul class="plain">
+    {% for h in d.status.highlights %}<li>{{ h }}</li>{% endfor %}
+  </ul>
+  <details><summary>full status</summary><pre>{{ d.status.raw }}</pre></details>
+  {% else %}
+  <p class="err">no demo status on this host (rc={{ d.rc }})</p>
+  {% endif %}
+
+  <h4>Invite codes <span class="muted">(hashes only)</span></h4>
+  {% if d.codes.rows %}
+  <pre class="codes">{% for r in d.codes.rows %}{{ r }}
+{% endfor %}</pre>
+  {% else %}
+  <p class="muted">no code registry visible here</p>
+  {% endif %}
+
+  {% if can_act %}
+  <div class="actions">
+    <form hx-post="/actions/run" hx-target="#demo-result-{{ d.site }}">
+      <input type="hidden" name="action" value="demo_reset">
+      <input type="hidden" name="site" value="{{ d.site }}">
+      <button class="warn" hx-confirm="Reset {{ d.site }} to golden (skips if a tester was active in the last 30m)?">
+        Reset (if idle)</button>
+    </form>
+    <form hx-post="/actions/run" hx-target="#demo-result-{{ d.site }}">
+      <input type="hidden" name="action" value="demo_code_issue">
+      <input type="hidden" name="site" value="{{ d.site }}">
+      <select name="bundle">
+        {% for b in bundles %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+      </select>
+      <button class="primary">Issue code</button>
+    </form>
+    <form hx-post="/actions/run" hx-target="#demo-result-{{ d.site }}">
+      <input type="hidden" name="action" value="demo_code_revoke">
+      <input type="hidden" name="site" value="{{ d.site }}">
+      <input name="code_id" placeholder="code id" required pattern="[A-Za-z0-9_-]{1,40}">
+      <button class="warn">Revoke</button>
+    </form>
+  </div>
+  <div id="demo-result-{{ d.site }}"></div>
+  {% endif %}
+</div>
+{% endfor %}

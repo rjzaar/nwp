@@ -1,0 +1,5 @@
+{% if r.ok %}
+<p class="ok">✓ {{ verb }} on #{{ iid }} done</p>
+{% else %}
+<p class="err">✗ {{ verb }} on #{{ iid }} failed: {{ r.error }}{% if r.detail %} — {{ r.detail }}{% endif %}</p>
+{% endif %}

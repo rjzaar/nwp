@@ -7,9 +7,12 @@
 #   1. `composer audit  --no-dev --format=json`   — installed-package CVEs.
 #   2. `composer outdated --direct --format=json` — direct deps with a newer
 #      release available (regardless of CVE).
-#   3. If the site declares an upstream package, fetch the upstream
-#      `composer.json` (e.g. Open Social `main`) and compare its drupal/* and
-#      webonyx/graphql-php constraints to ours (upstream-drift tracking).
+#   3. If the site declares an upstream package, fetch the upstream package's
+#      Packagist p2 metadata (e.g. goalgorilla/open_social) and compare the
+#      LATEST RELEASED version's drupal/* and webonyx/graphql-php require
+#      constraints to ours (upstream-drift tracking). NOTE: this tracks the
+#      newest tagged RELEASE on Packagist, not the upstream `dev-main` branch —
+#      Packagist's p2/<pkg>.json exposes only tagged (non-dev) versions.
 #   4. Build a small "fingerprint" of the interesting findings.
 #   5. Diff it against yesterday's baseline in $CACHE_DIR/baseline-<site>.txt.
 #   6. If the fingerprint CHANGED: post one issue to the ops log queue (role
@@ -171,7 +174,8 @@ for p in data.get("installed", []):
 PY
         fi
 
-        # UPSTREAM <pkg>: ours=X upstream=Y — Open Social main vs our constraint.
+        # UPSTREAM <pkg>: ours=X upstream=Y — our constraint vs the upstream
+        # package's LATEST RELEASED version on Packagist (not dev-main).
         if [[ -n "$upstream_json" && -f "$dir/composer.json" ]]; then
             UPSTREAM_JSON="$upstream_json" OUR_COMPOSER="$dir/composer.json" \
                 python3 - <<'PY' 2>/dev/null || true
@@ -182,8 +186,9 @@ try:
         ours = json.load(fh)
 except Exception:
     sys.exit(0)
-# Packagist p2 payload: packages -> {name: [versions...]}; take the first
-# (most recent) version's require map as "upstream".
+# Packagist p2 payload: packages -> {name: [versions...]}; p2/<pkg>.json lists
+# only tagged (non-dev) releases, newest first, so versions[0].require is the
+# LATEST RELEASED version's require map (NOT the dev-main branch).
 up_req = {}
 for _name, versions in (up.get("packages", {}) or {}).items():
     if versions:
@@ -218,14 +223,25 @@ post_issue() {
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     preamble="host: ${host}"$'\n'"time: ${ts}"$'\n\n'
 
-    local token; token="$(cat "$AUDIT_TOKEN_FILE")"
+    # The PAT goes into a 0600 curl config (a `header` directive), NOT on argv:
+    # an -H "PRIVATE-TOKEN: <tok>" flag would expose the token in
+    # /proc/<pid>/cmdline for the life of the curl process. Same 0600-curl-config
+    # discipline as `pl secrets` (scripts/commands/secrets.sh cmd_whose /
+    # _audit_body). Only the token lives in the config; the (non-secret) title +
+    # body stay on argv as --data-urlencode.
+    local cfg; cfg="$(mktemp)"; chmod 600 "$cfg"
+    printf 'header = "PRIVATE-TOKEN: %s"\n' "$(cat "$AUDIT_TOKEN_FILE")" > "$cfg"
+
     local resp
-    resp="$(curl -sS --fail-with-body -X POST \
-        -H "PRIVATE-TOKEN: ${token}" \
+    if ! resp="$(curl -sS --fail-with-body -X POST -K "$cfg" \
         --data-urlencode "title=${title}" \
         --data-urlencode "description=${preamble}${body}" \
-        "${API}" 2>&1)" || { log "WARN: POST failed: $resp"; return 1; }
-    token=""
+        "${API}" 2>&1)"; then
+        rm -f "$cfg"
+        log "WARN: POST failed: $resp"
+        return 1
+    fi
+    rm -f "$cfg"
     log "posted: $title"
     return 0
 }
@@ -310,5 +326,6 @@ main "$@"
 #      ADV <pkg> <id>            new composer audit finding (cross-ref the
 #                                dependency-refresh-cadence severity table)
 #      OUTDATED <pkg> <a> -> <b> newer release exists (major bumps tracked apart)
-#      UPSTREAM <pkg>: ...       Open Social main constraint differs from ours
+#      UPSTREAM <pkg>: ...       upstream's latest RELEASED constraint (Packagist,
+#                                not dev-main) differs from ours
 # ===========================================================================

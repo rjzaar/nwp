@@ -23,3 +23,36 @@ SCRIPT="${BATS_TEST_DIRNAME}/../../scripts/commands/ver-backup-pull.sh"
   [[ "$output" == *"keep-within"* ]]
   [[ "$output" == *"erasure"* ]]
 }
+
+# ── ops#127 wiring: --kind fail-closed gate ──────────────────────────────────
+
+@test "--kind raw WITHOUT --keep-within is refused (fail-closed)" {
+  run bash "$SCRIPT" --from x --to y --kind raw --skip-restic-verify
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"RAW"* ]]
+  [[ "$output" == *"erasure ceiling"* ]]
+}
+
+@test "--kind raw WITH --keep-within proceeds (dry-run) and uses the ceiling" {
+  run bash "$SCRIPT" --from x --to y --kind raw --keep-within 30d --skip-restic-verify
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"forget --keep-within 30d --prune"* ]]
+}
+
+@test "--kind sanitized is allowed without a ceiling (tiered policy)" {
+  run bash "$SCRIPT" --from x --to y --kind sanitized --skip-restic-verify
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"forget --keep-daily"* ]]
+}
+
+@test "an unknown --kind is refused" {
+  run bash "$SCRIPT" --from x --to y --kind bogus --skip-restic-verify
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--kind must be raw or sanitized"* ]]
+}
+
+@test "help documents the --kind data class" {
+  run bash "$SCRIPT" --help
+  [[ "$output" == *"--kind"* ]]
+  [[ "$output" == *"sanitized"* ]]
+}

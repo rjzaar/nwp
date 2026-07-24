@@ -29,6 +29,13 @@ set -euo pipefail
 #                          DUR, remove ALL older ones (overrides daily/weekly/
 #                          monthly). Use for user-data/PII repos to honour the
 #                          30-day erasure promise (ops#127/#124). Default: unset.
+#   --kind raw|sanitized   declare the source's data class. `raw` (unsanitised,
+#                          PII, ADR-0025) REQUIRES an erasure ceiling: this
+#                          command FAILS CLOSED unless --keep-within is also set,
+#                          so a RAW source can never silently fall through to the
+#                          tiered daily/weekly/monthly (~1yr) policy. `sanitized`
+#                          has no PII and may use the tiered policy. Default: unset
+#                          (legacy: honours --keep-within if given, else tiered).
 #   --check-subset PCT     `restic check --read-data-subset` after drain (default 5%)
 #   --skip-restic-verify   (debug) skip the minisign check on the restic binary
 #   --dry-run (default) | --execute
@@ -47,6 +54,9 @@ KEEP_DAILY=7 KEEP_WEEKLY=8 KEEP_MONTHLY=12 CHECK_SUBSET="5%"
 # survive past the window. Required for user-data (PII) sites to honour the
 # 30-day erasure promise (ops#124/#123). Empty = legacy daily/weekly/monthly.
 KEEP_WITHIN=""
+# ops#127 wiring: data class of this source. When "raw", an erasure ceiling
+# (--keep-within) is MANDATORY — preflight fails closed without one.
+KIND=""
 SKIP_RESTIC_VERIFY=n EXECUTE=n
 
 die(){ print_error "$*"; exit 1; }
@@ -67,6 +77,7 @@ while [ $# -gt 0 ]; do
     --keep-weekly=*) KEEP_WEEKLY="${1#*=}" ;; --keep-weekly) KEEP_WEEKLY="$2"; shift ;;
     --keep-monthly=*) KEEP_MONTHLY="${1#*=}" ;; --keep-monthly) KEEP_MONTHLY="$2"; shift ;;
     --keep-within=*) KEEP_WITHIN="${1#*=}" ;; --keep-within) KEEP_WITHIN="$2"; shift ;;
+    --kind=*) KIND="${1#*=}" ;;             --kind) KIND="$2"; shift ;;
     --check-subset=*) CHECK_SUBSET="${1#*=}" ;; --check-subset) CHECK_SUBSET="$2"; shift ;;
     --skip-restic-verify) SKIP_RESTIC_VERIFY=y ;;
     --execute|-y) EXECUTE=y ;;             --dry-run) EXECUTE=n ;;
@@ -117,9 +128,22 @@ main(){
       print_warning "[dry-run] password file $pf not present"
     fi
   done
+  # ── Data-class / erasure-ceiling gate (ops#127, fail-closed) ────────────────
+  # A RAW source carries unsanitised user data (PII). It MUST NOT fall through to
+  # the tiered daily/weekly/monthly policy (~1yr retention) — that would defeat
+  # the 2-tier split and outlive the 30-day erasure promise. Refuse, always
+  # (dry-run included), unless a --keep-within ceiling is present.
+  case "$KIND" in
+    ''|raw|sanitized) : ;;
+    *) die "--kind must be raw or sanitized (got: $KIND)" ;;
+  esac
+  if [ "$KIND" = raw ] && [ -z "$KEEP_WITHIN" ]; then
+    die "refusing to drain a RAW (unsanitised/PII) source without an erasure ceiling — pass --keep-within DUR (e.g. 30d)"
+  fi
   verify_restic
   print_info "from: $FROM"
   print_info "to:   $TO"
+  print_info "kind: ${KIND:-unset}$([ -n "$KEEP_WITHIN" ] && echo " · ceiling: $KEEP_WITHIN")"
 
   # restic copy needs both passwords. The destination repo is the primary -r/--password-file;
   # the source is --from-repo/--from-password-file.

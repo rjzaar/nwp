@@ -36,6 +36,10 @@ source "$PROJECT_ROOT/lib/deploy-gate.sh"
 # pair.sh: paired-site versioning guard (ADR-0031/ops#75); no-op unless the site
 # is declared paired (paired_with:) — fail-closed on a declared-but-missing contract.
 source "$PROJECT_ROOT/lib/pair.sh"
+# config-drift.sh: Vortex-style config-as-code gate around live `drush updatedb`
+# (report P3 / ops#63); OFF unless the site opts in (config.drift_gate: true or
+# NWP_CONFIG_DRIFT_GATE=1), so it cannot alter current deploys until adopted.
+source "$PROJECT_ROOT/lib/config-drift.sh"
 
 # Source install-common for get_settings_value
 if [ -f "$PROJECT_ROOT/lib/install-common.sh" ]; then
@@ -1129,17 +1133,44 @@ run_live_db_updates() {
     # existing candidate (or the last, non-existent, one → the command fails).
     local resolve="for D in ${remote_path}/vendor/bin/drush ${remote_path}/${webroot}/vendor/bin/drush; do [ -x \"\$D\" ] && break; done"
 
-    print_info "Running drush updatedb -y..."
-    if ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
-        "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} updatedb -y"; then
-        print_status "OK" "Database updates applied (updatedb)"
+    # config-drift gate (ops#63): only when the site has opted into tracked
+    # config-as-code (config.drift_gate: true, or NWP_CONFIG_DRIFT_GATE=1). When
+    # OFF (every site today), the original updatedb path below runs UNCHANGED.
+    if config_drift_enabled "$base_name"; then
+        # Executor: run an arbitrary shell string on the live host. Defined here
+        # so it closes (bash dynamic scope) over base_name/ssh_user/server_ip.
+        _stg2live_drift_exec() {
+            ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" "$1"
+        }
+        # Drush prefix valid on the target: resolve $D first (no PATH reliance),
+        # then invoke as www-data. \$D stays literal so the REMOTE shell expands
+        # it in the same session the gate runs each command in.
+        local remote_drush="${resolve}; ${sudo_prefix} -u www-data \$D --root=${remote_path}/${webroot}"
+        config_drift_guarded_updatedb _stg2live_drift_exec "$remote_drush" "updatedb -y" "live (${base_name})"
+        local _drift_rc=$?
+        case "$_drift_rc" in
+            0) print_status "OK" "Database updates applied (updatedb, config-drift verified)" ;;
+            1) print_error "drush updatedb FAILED on live — schema hooks NOT applied. Maintenance mode left ON."
+               print_error "Recover on the host, then re-run: ${sudo_prefix} -u www-data ${remote_path}/vendor/bin/drush --root=${remote_path}/${webroot} updatedb -y && ... cr && ... sset system.maintenance_mode 0"
+               return 1 ;;
+            2) print_error "Config drift detected on live — aborting (maintenance left ON). See diff above; NWP_ALLOW_CONFIG_DRIFT=1 to override."
+               return 1 ;;
+            *) print_error "config-drift gate could not run on live — aborting (maintenance left ON). Fix, then re-deploy (or unset NWP_CONFIG_DRIFT_GATE / config.drift_gate to bypass)."
+               return 1 ;;
+        esac
     else
-        # FAIL-LOUD (2026-07-21 incident: a silently-failed updatedb left hooks
-        # unrun + the site in maintenance while the deploy reported success).
-        # Return non-zero so the caller ABORTS (maintenance stays ON for recovery).
-        print_error "drush updatedb FAILED on live — schema hooks NOT applied. Maintenance mode left ON."
-        print_error "Recover on the host, then re-run: ${sudo_prefix} -u www-data ${remote_path}/vendor/bin/drush --root=${remote_path}/${webroot} updatedb -y && ... cr && ... sset system.maintenance_mode 0"
-        return 1
+        print_info "Running drush updatedb -y..."
+        if ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
+            "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} updatedb -y"; then
+            print_status "OK" "Database updates applied (updatedb)"
+        else
+            # FAIL-LOUD (2026-07-21 incident: a silently-failed updatedb left hooks
+            # unrun + the site in maintenance while the deploy reported success).
+            # Return non-zero so the caller ABORTS (maintenance stays ON for recovery).
+            print_error "drush updatedb FAILED on live — schema hooks NOT applied. Maintenance mode left ON."
+            print_error "Recover on the host, then re-run: ${sudo_prefix} -u www-data ${remote_path}/vendor/bin/drush --root=${remote_path}/${webroot} updatedb -y && ... cr && ... sset system.maintenance_mode 0"
+            return 1
+        fi
     fi
 
     # Post-deploy canonical legal-text propagation (idempotent, version-aware).

@@ -86,6 +86,9 @@ ${BOLD}OPTIONS:${NC}
                             is gated by the ops#83 both-or-forward restore rule.
         --anchor=N          Identity anchor of the backup (ops#83; for coupled tiers)
         --override-pair     Ledgered escape past the ops#83 restore gate (typed)
+        --skip-verify       Skip the pre-restore integrity check of the backup
+                            artifact's .sha256 sidecar/manifest (NOT recommended;
+                            off by default — a missing/mismatched sidecar aborts).
 
 ${BOLD}ARGUMENTS:${NC}
     from                    Source site name (backup to restore from)
@@ -214,6 +217,128 @@ select_backup() {
 }
 
 ################################################################################
+# Integrity Verification (report P2 gap)
+#
+# Backups written by backup.sh carry a `.sha256` sidecar next to every artifact
+# (format: "<sha>  <basename>", so `sha256sum -c` validates it) and, for the
+# whole set, a "<backup_name>.manifest.json" provenance file. Restore is
+# destructive (it deletes/overwrites the destination), so we FAIL-CLOSED here:
+# a missing or mismatched sidecar aborts the restore before anything is touched.
+# --skip-verify (off by default) is the explicit, loud escape hatch.
+################################################################################
+
+# Set true after a successful up-front verification so the per-step guards in
+# restore_files/restore_database don't re-print on the normal path.
+INTEGRITY_VERIFIED=false
+
+# Lightweight sanity-check of a manifest.json: it must exist, be non-empty, and
+# parse as JSON (jq/python3 if available, else a structural smell test).
+verify_backup_manifest() {
+    local manifest=$1
+
+    [ -s "$manifest" ] || return 1
+
+    if command -v jq >/dev/null 2>&1; then
+        jq -e . "$manifest" >/dev/null 2>&1 || return 1
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$manifest" >/dev/null 2>&1 || return 1
+    else
+        # No JSON parser available — structural smell test only.
+        local first last
+        first=$(head -c1 "$manifest" 2>/dev/null)
+        last=$(tr -d '[:space:]' < "$manifest" 2>/dev/null | tail -c1)
+        [ "$first" = "{" ] && [ "$last" = "}" ] || return 1
+    fi
+
+    return 0
+}
+
+# Verify one artifact's integrity before it is extracted/imported.
+# Returns 0 if the artifact is trustworthy (or verification is explicitly
+# skipped); returns 1 (fail-closed) on any missing/mismatched sidecar so the
+# caller aborts the restore.
+verify_backup_artifact() {
+    local artifact=$1
+
+    if [ "${SKIP_VERIFY:-false}" == "true" ]; then
+        print_status "WARN" "Integrity verification SKIPPED (--skip-verify): $(basename "$artifact")"
+        return 0
+    fi
+
+    if [ ! -f "$artifact" ]; then
+        print_error "Cannot verify integrity — artifact not found: $artifact"
+        return 1
+    fi
+
+    local sidecar="${artifact}.sha256"
+    if [ ! -f "$sidecar" ]; then
+        print_error "Integrity sidecar missing: $(basename "$sidecar")"
+        print_error "Refusing to restore an unverifiable backup. Re-run with --skip-verify to override (NOT recommended)."
+        return 1
+    fi
+
+    # `sha256sum -c` resolves the filename recorded in the sidecar relative to
+    # the current directory, so run it from the artifact's own directory.
+    local art_dir art_base
+    art_dir=$(cd "$(dirname "$artifact")" && pwd) || {
+        print_error "Cannot access backup directory for: $artifact"
+        return 1
+    }
+    art_base=$(basename "$artifact")
+    if ( cd "$art_dir" && sha256sum -c "${art_base}.sha256" >/dev/null 2>&1 ); then
+        print_status "OK" "Integrity verified: ${art_base}"
+    else
+        print_error "Integrity check FAILED (sha256 mismatch): ${art_base}"
+        print_error "Backup is corrupt or has been tampered with — aborting restore."
+        return 1
+    fi
+
+    # Optional manifest sanity-check for the whole backup set.
+    local backup_name="$art_base"
+    backup_name="${backup_name%.sql.gz}"
+    backup_name="${backup_name%.sql}"
+    backup_name="${backup_name%.tar.gz}"
+    local manifest="${art_dir}/${backup_name}.manifest.json"
+    if [ -f "$manifest" ]; then
+        if verify_backup_manifest "$manifest"; then
+            print_status "OK" "Manifest sane: $(basename "$manifest")"
+        else
+            print_error "Backup manifest failed sanity-check (not valid JSON): $(basename "$manifest")"
+            print_error "Backup provenance is unreadable — aborting restore."
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+# Verify every artifact a restore is about to consume, up front, before any
+# destructive step. For a DB-only restore that's just the .sql[.gz]; for a full
+# restore it's the .sql[.gz] plus the .tar.gz files archive if present.
+verify_backup_set() {
+    local db_backup=$1
+    local db_only=${2:-false}
+
+    if ! verify_backup_artifact "$db_backup"; then
+        return 1
+    fi
+
+    if [ "$db_only" != "true" ]; then
+        local tar_base="${db_backup%.sql.gz}"
+        tar_base="${tar_base%.sql}"
+        local tar_file="${tar_base}.tar.gz"
+        if [ -f "$tar_file" ]; then
+            if ! verify_backup_artifact "$tar_file"; then
+                return 1
+            fi
+        fi
+    fi
+
+    INTEGRITY_VERIFIED=true
+    return 0
+}
+
+################################################################################
 # Restore Functions
 ################################################################################
 
@@ -231,6 +356,15 @@ restore_files() {
     if [ ! -f "$tar_file" ]; then
         print_error "Files backup not found: $tar_file"
         return 1
+    fi
+
+    # Fail-closed integrity gate for resume (--step) runs where the up-front
+    # step-1 verification was skipped. No-op if already verified.
+    if [ "${INTEGRITY_VERIFIED:-false}" != "true" ]; then
+        if ! verify_backup_artifact "$tar_file"; then
+            print_error "Refusing to extract an unverified files archive."
+            return 1
+        fi
     fi
 
     local dest_dir="sites/$dest_site"
@@ -257,6 +391,15 @@ restore_database() {
     if [ ! -f "$backup_file" ]; then
         print_error "Database backup not found: $backup_file"
         return 1
+    fi
+
+    # Fail-closed integrity gate for resume (--step) runs where the up-front
+    # step-1 verification was skipped. No-op if already verified.
+    if [ "${INTEGRITY_VERIFIED:-false}" != "true" ]; then
+        if ! verify_backup_artifact "$backup_file"; then
+            print_error "Refusing to import an unverified database backup."
+            return 1
+        fi
     fi
 
     ocmsg "Importing database from: $backup_file"
@@ -452,6 +595,9 @@ restore_site() {
     local tier=${7:-dev}
     local anchor=${8:-}
     local override_pair=${9:-false}
+    # SKIP_VERIFY is read by verify_backup_artifact; keep it script-scoped (not
+    # local) so the verification helpers see it.
+    SKIP_VERIFY=${10:-false}
 
     # Clean up spinner on exit/error
     trap 'stop_spinner' EXIT INT TERM
@@ -488,6 +634,14 @@ restore_site() {
         local display_name=$(basename "$BACKUP_FILE" .sql.gz)
         display_name=$(basename "$display_name" .sql)
         print_info "Selected backup: ${BOLD}${display_name}${NC}"
+
+        # Report P2 gap: verify integrity BEFORE anything destructive happens
+        # (step 2 deletes the destination for a full restore). Fail-closed.
+        print_header "Verify Backup Integrity"
+        if ! verify_backup_set "$BACKUP_FILE" "$db_only"; then
+            print_error "Backup integrity verification failed — nothing was restored."
+            return 1
+        fi
     else
         print_status "INFO" "Skipping Step 1: Using existing backup selection"
     fi
@@ -677,10 +831,11 @@ main() {
     local TIER=dev
     local ANCHOR=""
     local OVERRIDE_PAIR=false
+    local SKIP_VERIFY=false
 
     # Parse options
     local OPTIONS=hdbfyos:t:
-    local LONGOPTS=help,debug,db-only,first,yes,open,step:,tier:,anchor:,override-pair
+    local LONGOPTS=help,debug,db-only,first,yes,open,step:,tier:,anchor:,override-pair,skip-verify
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -731,6 +886,10 @@ main() {
                 OVERRIDE_PAIR=true
                 shift
                 ;;
+            --skip-verify)
+                SKIP_VERIFY=true
+                shift
+                ;;
             --)
                 shift
                 break
@@ -768,9 +927,10 @@ main() {
     ocmsg "Database-only: $DB_ONLY"
     ocmsg "Start step: $START_STEP"
     ocmsg "Tier: $TIER"
+    ocmsg "Skip verify: $SKIP_VERIFY"
 
     # Run restore
-    if restore_site "$FROM_SITE" "$TO_SITE" "$USE_FIRST" "$START_STEP" "$OPEN_AFTER" "$DB_ONLY" "$TIER" "$ANCHOR" "$OVERRIDE_PAIR"; then
+    if restore_site "$FROM_SITE" "$TO_SITE" "$USE_FIRST" "$START_STEP" "$OPEN_AFTER" "$DB_ONLY" "$TIER" "$ANCHOR" "$OVERRIDE_PAIR" "$SKIP_VERIFY"; then
         show_elapsed_time "Restore"
         exit 0
     else

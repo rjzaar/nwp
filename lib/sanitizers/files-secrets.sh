@@ -19,21 +19,45 @@
 # Two INDEPENDENT redaction passes per target file (either alone is a backstop):
 #   1. KEY-BASED   — redact a value whose KEY ends in a secret word
 #                    (token / secret / password / api_key / webhook_secret / …),
-#                    covering YAML `key: value`, env `KEY=value`, JSON `"k":"v"`.
+#                    covering YAML `key: value`, YAML block/folded scalars
+#                    (`key: |` / `key: >-` — the indicator line is redacted AND
+#                    the indented body is DELETED), YAML/JSON inline flow
+#                    mappings (`{gitlab_token: …}` mid-line after `{` or `,`),
+#                    env `KEY=value`, and JSON `"k":"v"`.
 #   2. SHAPE-BASED — redact any value MATCHING a known credential shape (glpat-…,
-#                    ghp_…, slack xox…, AWS AKIA…, Google AIza…, PEM header)
-#                    wherever it appears, regardless of key — catches a token
-#                    nested under a NON-secret key (e.g. composer auth.json's
-#                    host→token maps, where the key is a hostname).
+#                    ghp_…, slack xox…, AWS AKIA…, Google AIza…, PEM header, and
+#                    DSN userinfo `scheme://user:pass@`) wherever it appears,
+#                    regardless of key — catches a token nested under a
+#                    NON-secret key (e.g. composer auth.json's host→token maps,
+#                    where the key is a hostname, or a `db_url:` DSN).
 #
 # Target files under <root-dir>:
 #   */files/sync/*.yml  */files/sync/*.yaml   (config-sync only — not every YAML)
 #   auth.json           (anywhere)
 #   .env  .env.*        (anywhere)
 #
-# Fail-closed: files_secrets_verify returns non-zero if ANY secret-shaped value
-# or un-redacted secret KEY survives, so a scrub bug can never vouch for its own
-# output — mirroring the two-gate model in lib/pii-gate.sh.
+# Fail-closed: files_secrets_verify returns non-zero if ANY secret-shaped value,
+# un-redacted secret KEY (line-anchored OR inside a flow mapping), DSN userinfo,
+# or surviving block-scalar body under a secret key remains — so a scrub bug can
+# never vouch for its own output, mirroring the two-gate model in lib/pii-gate.sh.
+#
+# WIRING (honest map — where these functions actually run today):
+#   - files_secrets_verify:
+#       * scripts/commands/backup.sh (local DDEV path) — WARNING gate over the
+#         tree being tarred. Backups stay FAITHFUL (never scrubbed); the gate
+#         tells the operator loudly when the archive will carry a live secret.
+#       * scripts/commands/server-backup.sh — pre-snapshot fail-LOUD warning
+#         (never aborts: DR must not be blocked by a leftover secret; the restic
+#         --exclude there already keeps the secret-bearing files OUT of the
+#         snapshot). The warning exists so the credential gets rotated/removed
+#         at source.
+#   - files_secrets_scrub has NO production caller yet. No export flow ships a
+#     file tree today (standard.sh exports a DB dump only; moodle-full.sh bundles
+#     db.sql.gz + an omit-and-placeholder manifest with zero user-file bytes).
+#     scrub is the ready building block for the FUTURE sanitized file-tree
+#     publish step (ADR-0026): when server-publish.sh (or a successor) exports a
+#     file tree, run files_secrets_scrub then files_secrets_verify over the
+#     export root BEFORE signing/shipping. Do not call scrub on backups.
 #
 # Usage:
 #   files_secrets_scrub  <root-dir>          # redact in place under <root-dir>
@@ -63,8 +87,14 @@ FILES_SECRETS_SHAPES=(
     'xox[baprs]-[A-Za-z0-9-]{10,}'             # Slack token
     'AKIA[0-9A-Z]{16}'                         # AWS access key id
     'AIza[0-9A-Za-z_-]{35}'                    # Google API key
-    'sk-[A-Za-z0-9]{20,}'                      # OpenAI-style secret key
+    'sk-[A-Za-z0-9]{20,}'                      # generic "sk-"-prefixed API secret key
     '-----BEGIN [A-Z ]*PRIVATE KEY-----'       # PEM private key header
+    # DSN userinfo — mysql://user:pass@host, pgsql://:pass@host, redis://… —
+    # the `user:pass` credential pair before `@` is credential-shaped wherever
+    # it appears (catches a DSN under a NON-secret key like `db_url:` or
+    # `DATABASE_URL=`). Redaction consumes `scheme://user:pass@` whole, so the
+    # scrubbed remainder has no `://` and can never re-trip this pattern.
+    '[A-Za-z][A-Za-z0-9+.-]*://[^/@[:space:]]*:[^/@[:space:]]+@'
 )
 
 # Enumerate the target files under a root. Prints newline-separated paths. Kept
@@ -79,6 +109,42 @@ _files_secrets_targets() { # $1 = root
             -name '.env'                -o \
             -name '.env.*' \
         \) 2>/dev/null
+}
+
+# YAML block/folded scalars — a secret KEY introducing a block scalar
+# (`api_key: |`, `signing_key: >-` …) keeps the secret in the INDENTED BODY, not
+# on the key line, so a line-anchored sed can never reach it. Redact the
+# indicator line to the placeholder AND DELETE the body lines (everything more
+# indented than the key, blank lines included) — fail-closed: the body is
+# dropped, never kept.
+_files_secrets_scrub_yaml_blocks() { # $1 = file
+    local f="$1" tmp
+    tmp="$(mktemp)" || return 1
+    if ! awk -v red="$FILES_SECRETS_REDACT" \
+             -v keyre="^[[:space:]]*\"?[a-z0-9_.-]*${FILES_SECRETS_KEYWORD}\"?[[:space:]]*:" '
+        function ind(s) { match(s, /^[ ]*/); return RLENGTH }
+        {
+            if (skip) {
+                if ($0 ~ /^[[:space:]]*$/) next        # blank line inside the block
+                if (ind($0) > skipind) next            # block body -> drop
+                skip = 0
+            }
+            if (tolower($0) ~ keyre) {
+                val = $0; sub(/^[^:]*:[[:space:]]*/, "", val)
+                if (val ~ /^[|>]/) {                   # literal/folded indicator
+                    head = $0; sub(/:.*$/, "", head)
+                    print head ": " red
+                    skip = 1; skipind = ind($0)
+                    next
+                }
+            }
+            print
+        }' "$f" > "$tmp" 2>/dev/null; then
+        rm -f "$tmp"; return 1
+    fi
+    cat "$tmp" > "$f" || { rm -f "$tmp"; return 1; }
+    rm -f "$tmp"
+    return 0
 }
 
 # Apply the SHAPE backstop to one file (all target types).
@@ -96,11 +162,22 @@ _files_secrets_scrub_file() { # $1 = file
     [ -w "$f" ] || return 1
     case "$f" in
         *.yml|*.yaml)
+            # Block/folded scalars FIRST (`key: |` / `key: >-`): redact the
+            # indicator line and DELETE the indented body — a line-anchored sed
+            # cannot reach the body, and the SHAPE pass only catches known
+            # shapes, not an arbitrary secret string.
+            _files_secrets_scrub_yaml_blocks "$f" || return 1
             # YAML `key: value` (key optionally quoted). Redact the whole scalar
-            # value; a block scalar (`key: |`) loses its indicator but the SHAPE
-            # pass still scrubs the indented secret body.
+            # value.
             sed -E -i \
                 "s#^([[:space:]]*\"?[A-Za-z0-9_.-]*${FILES_SECRETS_KEYWORD}\"?[[:space:]]*:[[:space:]]*)[^[:space:]].*\$#\1${FILES_SECRETS_REDACT}#I" \
+                "$f" 2>/dev/null || return 1
+            # Inline FLOW mappings (`bridge: {gitlab_token: glpat-…, mode: x}`):
+            # the secret key sits mid-line after `{` or `,`, invisible to the
+            # line-anchored pass above. Redact the pair's value up to the next
+            # `,` or `}`.
+            sed -E -i \
+                "s#([{,][[:space:]]*\"?[A-Za-z0-9_.-]*${FILES_SECRETS_KEYWORD}\"?[[:space:]]*:[[:space:]]*)[^,}]*#\\1${FILES_SECRETS_REDACT}#gI" \
                 "$f" 2>/dev/null || return 1
             ;;
         auth.json|*/auth.json)
@@ -148,11 +225,35 @@ files_secrets_scrub() {
     return "$rc"
 }
 
+# Detect a surviving block/folded-scalar BODY under a secret key: the key line
+# still carries `|`/`>` (unscrubbed) or already shows the placeholder (i.e. a
+# scrub bug redacted the indicator line but left the body), and the next
+# non-blank line is MORE indented. Returns 1 on any survivor (fail-closed).
+_files_secrets_verify_yaml_blocks() { # $1 = file
+    awk -v red="$FILES_SECRETS_REDACT" \
+        -v keyre="^[[:space:]]*\"?[a-z0-9_.-]*${FILES_SECRETS_KEYWORD}\"?[[:space:]]*:" '
+        function ind(s) { match(s, /^[ ]*/); return RLENGTH }
+        {
+            if (pend) {
+                if ($0 ~ /^[[:space:]]*$/) next
+                if (ind($0) > pind) { bad = 1; exit }
+                pend = 0
+            }
+            if (tolower($0) ~ keyre) {
+                val = $0; sub(/^[^:]*:[[:space:]]*/, "", val)
+                if (val ~ /^[|>]/ || index(val, red) == 1) { pend = 1; pind = ind($0) }
+            }
+        }
+        END { exit bad ? 1 : 0 }' "$1" 2>/dev/null
+}
+
 ################################################################################
 # files_secrets_verify <root-dir>
-#   Fail-closed scan: non-zero if any SHAPE-matching credential OR any secret-KEY
-#   line with a real (non-placeholder, non-trivial) value survives. Independent
-#   of the scrub so a scrub bug can't vouch for its own output.
+#   Fail-closed scan: non-zero if any SHAPE-matching credential (incl. DSN
+#   userinfo), any secret-KEY line or flow-mapping pair with a real
+#   (non-placeholder, non-trivial) value, or any block-scalar body under a
+#   secret key survives. Independent of the scrub so a scrub bug can't vouch
+#   for its own output.
 ################################################################################
 files_secrets_verify() {
     local root="${1:-}"
@@ -175,9 +276,9 @@ files_secrets_verify() {
         done
         # 2) KEY — a secret key still carries a value that is NOT the placeholder
         #    and NOT a trivial literal (empty / null / ~ / true / false / 0 / 1 /
-        #    [] / {} / quoted-empty).
+        #    [] / {} / quoted-empty). Case-insensitive: SECRET_TOKEN= counts.
         local bad
-        bad="$(grep -EnI -- \
+        bad="$(grep -EniI -- \
             "^[[:space:]]*(export[[:space:]]+)?\"?[A-Za-z0-9_.-]*${FILES_SECRETS_KEYWORD}\"?[[:space:]]*[:=]" \
             "$f" 2>/dev/null \
           | grep -Fv -- "$FILES_SECRETS_REDACT" \
@@ -187,11 +288,37 @@ files_secrets_verify() {
             hits=$((hits + 1))
             [ "${#samples[@]}" -lt 10 ] && samples+=("$f: secret key with un-redacted value")
         fi
+        # 3) FLOW — a secret key inside an inline flow mapping (`{k_token: v}`)
+        #    sits mid-line, invisible to the line-anchored check above. Extract
+        #    each `{|, key: value` pair; any non-placeholder, non-trivial value
+        #    is a survivor.
+        local flowbad
+        flowbad="$(grep -hioE -- \
+            "[{,][[:space:]]*\"?[A-Za-z0-9_.-]*${FILES_SECRETS_KEYWORD}\"?[[:space:]]*:[[:space:]]*[^,}]+" \
+            "$f" 2>/dev/null \
+          | grep -Fv -- "$FILES_SECRETS_REDACT" \
+          | grep -Ev -- ":[[:space:]]*(\"\")?('')?[[:space:]]*(null|~|true|false|0|1)?[[:space:]]*\$" \
+          | head -5 || true)"
+        if [ -n "$flowbad" ]; then
+            hits=$((hits + 1))
+            [ "${#samples[@]}" -lt 10 ] && samples+=("$f: secret key in flow mapping with un-redacted value")
+        fi
+        # 4) BLOCK — a block/folded-scalar body surviving under a secret key
+        #    (`api_key: |` + indented body): the body carries the secret and the
+        #    key line may even LOOK redacted. Fail-closed on any survivor.
+        case "$f" in
+            *.yml|*.yaml)
+                if ! _files_secrets_verify_yaml_blocks "$f"; then
+                    hits=$((hits + 1))
+                    [ "${#samples[@]}" -lt 10 ] && samples+=("$f: block-scalar body under a secret key survived")
+                fi
+                ;;
+        esac
     done < <(_files_secrets_targets "$root")
     if [ "$hits" -eq 0 ]; then
         return 0
     fi
-    echo "files_secrets_verify: FAIL — $hits target file(s) still carry a secret:" >&2
+    echo "files_secrets_verify: FAIL — $hits leak indicator(s) across the target files:" >&2
     local s; for s in "${samples[@]}"; do echo "    $s" >&2; done
     return 1
 }

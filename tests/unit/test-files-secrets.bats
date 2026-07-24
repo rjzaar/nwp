@@ -6,6 +6,11 @@
 #   - redacts secret VALUES in files/sync/*.yml, auth.json and .env (KEY-based)
 #   - redacts credential SHAPES (glpat-…, ghp_…, AWS/Google keys) under a
 #     NON-secret key (the composer auth.json host→token case)
+#   - deletes the indented BODY of YAML block/folded scalars under a secret key
+#     (api_key: | / key: >-) — and verify refuses a surviving body even when the
+#     key line already looks redacted (scrub-bug simulation)
+#   - covers inline flow mappings ({gitlab_token: …}) and DSN userinfo
+#     credentials (scheme://user:pass@host), shape- and key-based
 #   - leaves non-secret config AND non-target files untouched
 #   - keeps auth.json valid JSON after redaction
 #   - is idempotent, and files_secrets_verify is FAIL-CLOSED on a leaked secret.
@@ -40,6 +45,18 @@ DATABASE_URL=mysql://u:p@h/db
 API_KEY=AIzaSyA1234567890abcdefghijklmnopqrstuvw
 export SECRET_TOKEN=abcdef0123456789abcdef
 MAIL_ENABLED=true
+EOF
+    # Covers the three adversarial-verify classes: a block scalar under a secret
+    # key, an inline flow mapping, and DSN-embedded credentials — all in one
+    # config-sync file so the idempotence + verify-after-scrub tests sweep them.
+    cat > "$ROOT/web/sites/default/files/sync/nwc_bridge.settings.yml" <<'EOF'
+bridge:
+  push: {auth_token: glpat-InlineFlow0123456789, mode: live}
+private_key: |
+  block-body-secret-AAAA
+  block-body-secret-BBBB
+dsn: mysql://svc:S3cretDsnPw@db.internal/prod
+after_block: kept
 EOF
     # A non-target file: same secret-looking key, but NOT under files/sync/ →
     # must be left ALONE (proves the scope restriction).
@@ -163,6 +180,112 @@ teardown() { rm -rf "$ROOT"; }
 @test "verify on a missing root is fail-closed (exit 2)" {
     run files_secrets_verify "$ROOT/does-not-exist"
     [ "$status" -eq 2 ]
+}
+
+# ── adversarial-verify classes: block scalars, flow mappings, DSN creds ───────
+
+@test "scrub deletes the indented BODY of a literal block scalar under a secret key (api_key: |)" {
+    local f="$ROOT/web/sites/default/files/sync/block.yml"
+    cat > "$f" <<'EOF'
+langcode: en
+api_key: |
+  line1-very-secret-material
+  line2-very-secret-material
+after: kept
+EOF
+    files_secrets_scrub "$ROOT"
+    run grep -F 'very-secret-material' "$f"
+    [ "$status" -ne 0 ]
+    grep -q 'langcode: en' "$f"
+    grep -q 'after: kept' "$f"
+    grep -qF "api_key: $FILES_SECRETS_REDACT" "$f"
+}
+
+@test "scrub deletes a FOLDED scalar body under a secret key (key: >-)" {
+    local f="$ROOT/web/sites/default/files/sync/folded.yml"
+    printf 'client_secret: >-\n  folded-secret-body-value\nnext: ok\n' > "$f"
+    files_secrets_scrub "$ROOT"
+    run grep -F 'folded-secret-body-value' "$f"
+    [ "$status" -ne 0 ]
+    grep -q 'next: ok' "$f"
+}
+
+@test "verify FAILS on an unscrubbed block scalar under a secret key" {
+    rm -rf "$ROOT"; mkdir -p "$ROOT/web/sites/default/files/sync"
+    printf 'api_key: |\n  cleartext-block-secret\n' > "$ROOT/web/sites/default/files/sync/b.yml"
+    run files_secrets_verify "$ROOT"
+    [ "$status" -eq 1 ]
+}
+
+@test "verify FAILS while a block body survives under a REDACTED key (scrub-bug simulation)" {
+    rm -rf "$ROOT"; mkdir -p "$ROOT/web/sites/default/files/sync"
+    # The key line LOOKS clean (placeholder) but the body leaked — verify must
+    # not vouch for the scrub's own output.
+    printf 'api_key: %s\n  leaked-block-body-secret\n' "$FILES_SECRETS_REDACT" \
+        > "$ROOT/web/sites/default/files/sync/bug.yml"
+    run files_secrets_verify "$ROOT"
+    [ "$status" -eq 1 ]
+}
+
+@test "scrub + verify cover an inline flow mapping (shape token under {})" {
+    rm -rf "$ROOT"; mkdir -p "$ROOT/web/sites/default/files/sync"
+    local f="$ROOT/web/sites/default/files/sync/flow.yml"
+    printf 'bridge: {gitlab_token: glpat-FlowMapSecret1234567890, url: kept}\n' > "$f"
+    run files_secrets_verify "$ROOT"
+    [ "$status" -eq 1 ]
+    files_secrets_scrub "$ROOT"
+    run grep -F 'glpat-FlowMapSecret' "$f"
+    [ "$status" -ne 0 ]
+    grep -qF 'url: kept' "$f"
+    run files_secrets_verify "$ROOT"
+    [ "$status" -eq 0 ]
+}
+
+@test "scrub + verify catch a NON-shape secret in a flow mapping (key-based)" {
+    rm -rf "$ROOT"; mkdir -p "$ROOT/web/sites/default/files/sync"
+    local f="$ROOT/web/sites/default/files/sync/flow2.yml"
+    printf 'thing: {client_secret: plainNotAShape123, name: ok}\n' > "$f"
+    run files_secrets_verify "$ROOT"
+    [ "$status" -eq 1 ]
+    files_secrets_scrub "$ROOT"
+    run grep -F 'plainNotAShape123' "$f"
+    [ "$status" -ne 0 ]
+    grep -qF 'name: ok' "$f"
+    run files_secrets_verify "$ROOT"
+    [ "$status" -eq 0 ]
+}
+
+@test "scrub + verify catch DSN-embedded credentials (scheme://user:pass@host)" {
+    rm -rf "$ROOT"; mkdir -p "$ROOT/web/sites/default/files/sync"
+    printf 'db_url: mysql://produser:pr0dpass@db.example.com/main\n' \
+        > "$ROOT/web/sites/default/files/sync/dsn.yml"
+    printf 'DATABASE_URL=pgsql://u1:hunter2@10.0.0.5/app\n' > "$ROOT/.env"
+    run files_secrets_verify "$ROOT"
+    [ "$status" -eq 1 ]
+    files_secrets_scrub "$ROOT"
+    run grep -F 'pr0dpass' "$ROOT/web/sites/default/files/sync/dsn.yml"
+    [ "$status" -ne 0 ]
+    run grep -F 'hunter2' "$ROOT/.env"
+    [ "$status" -ne 0 ]
+    run files_secrets_verify "$ROOT"
+    [ "$status" -eq 0 ]
+}
+
+@test "DSN redaction leaves a plain https URL (no userinfo) alone" {
+    rm -rf "$ROOT"; mkdir -p "$ROOT/web/sites/default/files/sync"
+    local f="$ROOT/web/sites/default/files/sync/url.yml"
+    printf "endpoint: 'https://example.com/hook'\n" > "$f"
+    files_secrets_scrub "$ROOT"
+    grep -qF "endpoint: 'https://example.com/hook'" "$f"
+    run files_secrets_verify "$ROOT"
+    [ "$status" -eq 0 ]
+}
+
+@test "verify catches an UPPERCASE secret key in .env (SECRET_TOKEN=…)" {
+    rm -rf "$ROOT"; mkdir -p "$ROOT"
+    printf 'SECRET_TOKEN=notAShapedValueButLive42\n' > "$ROOT/.env"
+    run files_secrets_verify "$ROOT"
+    [ "$status" -eq 1 ]
 }
 
 @test "standalone: scrub-then-self-verify exits 0 and reports clean" {

@@ -48,6 +48,11 @@ source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/minisign.sh" 2>/dev/null || true
 source "$PROJECT_ROOT/lib/server-backup-resolve.sh"
 source "$PROJECT_ROOT/lib/pii-gate.sh" 2>/dev/null || true  # ops#127: --sanitize gate
+# files_secrets_verify — pre-snapshot fail-LOUD leftover-secret warning (never an
+# abort; DR must not be blocked by a leftover credential). lib/sanitizers/ ships
+# in the nwp-server artifact (build/nwp-server.include), so this is present on
+# the prod host; guarded anyway so a partial install degrades to no-check.
+source "$PROJECT_ROOT/lib/sanitizers/files-secrets.sh" 2>/dev/null || true
 
 SITE_DIR="" REPO="" PASS_FILE="/etc/nwp-server/restic.pass"
 RESTIC="$(command -v restic || echo restic)" RESTIC_PUB=""
@@ -246,15 +251,33 @@ main(){
     # `ver` must NOT carry them. Restic --exclude drops only the secret-bearing
     # files; user uploads are still backed up. Kept in step with the artifact-level
     # redactor lib/sanitizers/files-secrets.sh (same target-file vocabulary).
+    #
+    # KNOWN OVER-EXCLUSION (accepted trade-off): restic patterns here match by
+    # BASENAME anywhere under the files tree, so a legitimate USER UPLOAD that
+    # happens to be named `auth.json` or `.env` (or live under a `sync/`
+    # directory as *.yml) is dropped from the DR snapshot too. We bias toward
+    # never snapshotting a credential over perfectly-faithful uploads; the
+    # fail-LOUD verify below surfaces the affected paths so an operator can see
+    # what was skipped and rescue a false positive by renaming it.
     local -a secret_excludes=(
       --exclude 'sync/*.yml'  --exclude 'sync/*.yaml'
       --exclude 'auth.json'   --exclude '.env'  --exclude '.env.*'
     )
     print_info "files secret-exclude: sync/*.yml sync/*.yaml auth.json .env .env.*"
     if [ "${#files_paths[@]}" -gt 0 ]; then
-      local fp
+      local fp fs_out
       for fp in "${files_paths[@]}"; do
         [ -d "$fp" ] || { [ "$EXECUTE" = y ] && die "files dir not found: $fp"; }
+        # Pre-snapshot fail-LOUD warning (NOT an abort — DR must never be
+        # blocked by a leftover secret; the excludes above already keep these
+        # files OUT of the snapshot). The point is to get the live credential
+        # rotated/removed at source, not to fail the backup.
+        if [ -d "$fp" ] && type files_secrets_verify >/dev/null 2>&1; then
+          if ! fs_out="$(files_secrets_verify "$fp" 2>&1)"; then
+            print_warning "leftover live-secret(s) detected under $fp — NOT snapshotted (excluded above); rotate/remove at source:"
+            [ -n "$fs_out" ] && printf '%s\n' "$fs_out" | sed 's/^/     /'
+          fi
+        fi
         run "${RC[@]}" backup --tag "$TAG" --tag files "${secret_excludes[@]}" "$fp"
       done
     else

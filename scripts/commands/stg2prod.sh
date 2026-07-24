@@ -92,6 +92,157 @@ build_rsync_ssh_opts() {
     echo "$opts"
 }
 
+################################################################################
+# Safety / Pre-Deploy Snapshots + Maintenance-Mode Wrap
+#
+# Ported from stg2live.sh (live_host_snapshot / live_maintenance_set, P0
+# cutover-safety hardening 2026-07-19). stg2prod's prod leg was v1-era and did a
+# bare destructive `rsync --delete` with NO pre-deploy snapshot and NO
+# maintenance wrap. These bring the prod leg to parity: a fail-closed webroot
+# snapshot BEFORE the --delete, and Drupal maintenance mode ON before the swap /
+# OFF only after updatedb + cache rebuild SUCCEED.
+################################################################################
+
+# Ledger an --override-snapshot use so a destructive deploy that ran WITHOUT a
+# proven webroot snapshot is auditable after the fact (mirrors stg2live).
+_snapshot_override_ledger() {
+    local base_name="$1"
+    local reason="$2"
+    local ledger_dir="${PROJECT_ROOT}/private/snapshots"
+    mkdir -p "$ledger_dir" 2>/dev/null || true
+    local who
+    who=$(whoami 2>/dev/null || echo "unknown")
+    echo "$(date -Iseconds 2>/dev/null || date)  ${who}  ${base_name}  stg2prod --override-snapshot  ${reason}" \
+        >> "${ledger_dir}/${base_name}.log" 2>/dev/null || true
+    print_status "WARN" "--override-snapshot ledgered: ${ledger_dir}/${base_name}.log"
+}
+
+# Take a fail-closed pre-deploy snapshot of the production host BEFORE the
+# destructive rsync --delete: all databases (compressed dump) + /etc/nginx/conf.d/
+# (tarball) + the WEBROOT ($PROD_PATH, excl. files/ + private/). Stored in the
+# deploying user's home dir on the remote box. Idempotent within 1 hour (keyed on
+# the webroot tar). The DB + nginx dumps WARN-and-continue; a WEBROOT snapshot
+# failure ABORTS the deploy (return 1) unless --override-snapshot is set — without
+# that tar a bad --delete/updatedb is unrecoverable (mirrors stg2live F2/P0-2).
+prod_host_snapshot() {
+    local base_name="$1"
+
+    print_header "Pre-Deploy Snapshot"
+
+    local ssh_cmd
+    ssh_cmd=$(build_ssh_cmd)
+
+    local sudo_prefix=""
+    if [ "$SSH_USER" == "gitlab" ]; then
+        sudo_prefix="sudo "
+    fi
+
+    local ts
+    ts=$(date +%Y%m%d-%H%M%S)
+    local dbs_file="nwp-snapshot-${base_name}-dbs-${ts}.sql.gz"
+    local nginx_file="nwp-snapshot-${base_name}-nginx-${ts}.tar.gz"
+    local webroot_file="nwp-snapshot-${base_name}-webroot-${ts}.tar.gz"
+
+    # Check disk space first (bail if tighter than ~1 GB free in ~).
+    local free_kb
+    free_kb=$($ssh_cmd "df -k --output=avail ~ | tail -1" 2>/dev/null | tr -d ' ')
+    if [ -n "$free_kb" ] && [ "$free_kb" -lt 1048576 ]; then
+        print_status "WARN" "Production host has <1GB free in ~ (${free_kb}KB)."
+        if [ "${OVERRIDE_SNAPSHOT:-false}" == "true" ]; then
+            _snapshot_override_ledger "$base_name" "disk-tight (<1GB free in ~); snapshot skipped"
+            print_status "WARN" "--override-snapshot set — proceeding WITHOUT a pre-deploy snapshot."
+            return 0
+        fi
+        print_error "Refusing the destructive rsync --delete without a webroot snapshot (disk-tight)."
+        print_error "Free disk on the production host, or re-run with --override-snapshot (ledgered)."
+        return 1
+    fi
+
+    # Idempotent: skip if a WEBROOT snapshot from the last hour already exists.
+    local recent
+    recent=$($ssh_cmd "find ~ -maxdepth 1 -name 'nwp-snapshot-${base_name}-webroot-*.tar.gz' -mmin -60 2>/dev/null | head -1" 2>/dev/null)
+    if [ -n "$recent" ]; then
+        print_status "INFO" "Recent snapshot exists: $(basename "$recent")"
+        print_status "INFO" "Skipping (idempotent within 1 hour)."
+        return 0
+    fi
+
+    print_info "Snapshotting all databases..."
+    if $ssh_cmd "${sudo_prefix}mysqldump --all-databases --single-transaction --quick --routines --triggers 2>/dev/null | gzip > ~/${dbs_file}"; then
+        print_status "OK" "DB snapshot: ~/${dbs_file}"
+    else
+        print_status "WARN" "DB snapshot failed (continuing — verify prod state manually before destructive ops)"
+    fi
+
+    print_info "Snapshotting /etc/nginx/conf.d/..."
+    if $ssh_cmd "${sudo_prefix}tar czf ~/${nginx_file} /etc/nginx/conf.d/ 2>/dev/null && ${sudo_prefix}chown ${SSH_USER}:${SSH_USER} ~/${nginx_file}"; then
+        print_status "OK" "Nginx snapshot: ~/${nginx_file}"
+    else
+        print_status "WARN" "Nginx snapshot failed (continuing — verify prod state manually)"
+    fi
+
+    # FAIL-CLOSED webroot snapshot. Captures code (excl. the large, rsync-safe
+    # uploads under files/ + private/, which the deploy never --deletes). Success
+    # is decided by `test -s` on the tar (not tar's exit code, which can be 1 on a
+    # benign "file changed as we read it" against a live site).
+    print_info "Snapshotting production webroot (${PROD_PATH}, excl. files/ + private)..."
+    if $ssh_cmd "${sudo_prefix}tar czf ~/${webroot_file} -C ${PROD_PATH} . --exclude=./sites/*/files --exclude=./*/sites/default/files --exclude=./private 2>/dev/null; ${sudo_prefix}chown ${SSH_USER}:${SSH_USER} ~/${webroot_file} 2>/dev/null; test -s ~/${webroot_file}"; then
+        print_status "OK" "Webroot snapshot: ~/${webroot_file}"
+    else
+        print_status "WARN" "Webroot snapshot failed or empty (~/${webroot_file})."
+        if [ "${OVERRIDE_SNAPSHOT:-false}" == "true" ]; then
+            _snapshot_override_ledger "$base_name" "webroot snapshot failed/empty; --override-snapshot set"
+            print_status "WARN" "--override-snapshot set — proceeding WITHOUT a webroot snapshot (ledgered)."
+        else
+            print_error "Refusing the destructive rsync --delete without a webroot snapshot."
+            print_error "Investigate the production host, or re-run with --override-snapshot (ledgered)."
+            return 1
+        fi
+    fi
+
+    echo ""
+    print_info "To restore from this snapshot if needed (manual):"
+    echo "  ssh ${SSH_USER}@${SSH_HOST}"
+    echo "  # restore DBs:     gunzip -c ~/${dbs_file} | ${sudo_prefix}mysql"
+    echo "  # restore nginx:   ${sudo_prefix}tar xzf ~/${nginx_file} -C / && ${sudo_prefix}nginx -t && ${sudo_prefix}systemctl reload nginx"
+    echo "  # restore webroot: ${sudo_prefix}tar xzf ~/${webroot_file} -C ${PROD_PATH}"
+    echo ""
+
+    return 0
+}
+
+# Drupal maintenance mode around the destructive swap (ported from stg2live G3).
+# Enable BEFORE the rsync --delete so members never hit a half-populated webroot;
+# disable only AFTER the post-sync updatedb + cache:rebuild SUCCEED. On a failed
+# DISABLE the site is stuck at 503 — make it LOUD and return non-zero.
+prod_maintenance_set() {
+    local state=$1   # 1 = ON (maintenance), 0 = OFF (live)
+
+    local label="ON"
+    [ "$state" == "0" ] && label="OFF"
+
+    if [ "$DRY_RUN" == "true" ]; then
+        print_info "[dry-run] would set system.maintenance_mode=${state} on production"
+        return 0
+    fi
+
+    local ssh_cmd
+    ssh_cmd=$(build_ssh_cmd)
+
+    print_info "Maintenance mode ${label} (system.maintenance_mode=${state})..."
+    if $ssh_cmd "cd $PROD_PATH && drush state:set system.maintenance_mode ${state} --input-format=integer && drush cr" >/dev/null 2>&1; then
+        print_status "OK" "Maintenance mode ${label}"
+        return 0
+    elif [ "$state" == "0" ]; then
+        print_error "Could NOT disable maintenance mode — THE SITE MAY BE STUCK IN MAINTENANCE (503)."
+        print_error "Fix on the host: cd $PROD_PATH && drush sset system.maintenance_mode 0 && drush cr"
+        return 1
+    else
+        print_status "WARN" "Could not enable maintenance_mode=${state} (drush unavailable?) — continuing"
+        return 0
+    fi
+}
+
 # Get recipe value from nwp.yml
 # F36 A-C2: yq-first per ADR-0015 (replaces legacy AWK YAML parser).
 get_recipe_value() {
@@ -217,6 +368,10 @@ ${BOLD}OPTIONS:${NC}
                             provider/consumer prod deploy.
     --override-pair         Proceed past a paired-site guard (ADR-0031). Ledgered in
                             private/pairs/<pair>.log. For paired sites only.
+    --override-snapshot     Proceed with the destructive rsync --delete even when the
+                            fail-closed pre-deploy WEBROOT snapshot could not be taken
+                            (disk-tight or tar failed). The --delete is then
+                            UNRECOVERABLE. Ledgered in private/snapshots/<site>.log.
 
 ${BOLD}ARGUMENTS:${NC}
     sitename                Base name of the staging site (production will be configured in nwp.yml)
@@ -235,10 +390,10 @@ ${BOLD}DEPLOYMENT WORKFLOW:${NC}
     1. Validate deployment configuration
     2. Test SSH connection to production server
     3. Export configuration from staging
-    4. Backup production (optional)
-    5. Sync files to production via rsync
-    6. Run composer install on production
-    7. Run database updates on production
+    4. Backup production (always in -y mode; never skipped)
+    5. Fail-closed pre-deploy snapshot + maintenance ON, then rsync files
+    6. Run composer install on production (failure aborts the deploy)
+    7. Run database updates on production (failure aborts the deploy)
     8. Import configuration to production
     9. Verify and configure site email
    10. Reinstall modules on production (if configured)
@@ -418,20 +573,33 @@ export_config_staging() {
     return 0
 }
 
-# Step 4: Backup production (optional)
+# Step 4: Backup production
+# The pre-deploy full-copy backup. In -y (AUTO_YES) mode this now ALWAYS runs —
+# it must NEVER be skipped just because prompts were suppressed (a -y prod deploy
+# is exactly when an unattended safety copy matters most). Only an interactive
+# operator may decline. The fail-closed webroot snapshot (prod_host_snapshot, run
+# at the top of sync_files) is the hard --delete backstop; this cp is the
+# belt-and-suspenders full copy incl. files/.
 backup_production() {
-    print_header "Step 4: Backup Production (Optional)"
+    print_header "Step 4: Backup Production"
 
-    if [ "$AUTO_YES" == "true" ]; then
-        print_status "INFO" "Skipping production backup (auto-yes mode)"
+    if [ "$DRY_RUN" == "true" ]; then
+        print_status "INFO" "DRY RUN: Would create a full production backup copy"
         return 0
     fi
 
-    echo -n "Create production backup before deployment? [y/N]: "
-    read do_backup
+    # -y mode always backs up; interactive mode prompts (default Yes).
+    local do_backup="y"
+    if [ "$AUTO_YES" != "true" ]; then
+        echo -n "Create production backup before deployment? [Y/n]: "
+        read do_backup
+        do_backup="${do_backup:-y}"
+    else
+        print_status "INFO" "Auto-yes mode: creating production backup (never skipped)"
+    fi
 
     if [[ ! "$do_backup" =~ ^[Yy] ]]; then
-        print_status "INFO" "Skipping production backup"
+        print_status "INFO" "Skipping production backup (operator declined)"
         return 0
     fi
 
@@ -443,7 +611,7 @@ backup_production() {
     if $ssh_cmd "cd $(dirname $PROD_PATH) && cp -r $(basename $PROD_PATH) ${backup_name}" 2>&1; then
         print_status "OK" "Backup created: $backup_name"
     else
-        print_status "WARN" "Backup creation failed (continuing anyway)"
+        print_status "WARN" "Backup creation failed (fail-closed webroot snapshot still applies before rsync)"
     fi
 
     return 0
@@ -452,8 +620,25 @@ backup_production() {
 # Step 5: Sync files to production
 sync_files() {
     local stg_dir=$1
+    local base_name=$2
 
     print_header "Step 5: Sync Files to Production"
+
+    # Fail-closed pre-deploy snapshot + maintenance-mode enable BEFORE the
+    # destructive rsync --delete (parity with stg2live). A snapshot failure
+    # ABORTS here, before anything is overwritten; maintenance ON keeps members
+    # off a half-populated webroot during the swap. Skipped on --dry-run (no
+    # writes to the production host).
+    if [ "$DRY_RUN" != "true" ]; then
+        if ! prod_host_snapshot "$base_name"; then
+            print_error "Pre-deploy snapshot failed — aborting before the destructive rsync --delete."
+            print_error "(Override at your own risk with --override-snapshot, which is ledgered.)"
+            return 1
+        fi
+        prod_maintenance_set 1
+    else
+        print_info "[dry-run] skipping pre-deploy snapshot + maintenance-mode enable (would write to production)"
+    fi
 
     # Build rsync exclude list
     local excludes=(
@@ -501,7 +686,7 @@ sync_files() {
     if eval "$rsync_cmd"; then
         print_status "OK" "Files synced to production"
     else
-        print_error "File sync failed"
+        print_error "File sync failed (maintenance mode left ON — verify the production host / rollback)."
         return 1
     fi
 
@@ -520,10 +705,16 @@ run_composer_production() {
     fi
 
     ocmsg "Running composer install..."
+    # FAIL-LOUD (was demoted to a WARN): a failed composer install leaves the
+    # webroot with code that does not match its dependencies (a PHP>=8.3 build
+    # served under the wrong deps is exactly how nwc go-live 500'd). Abort so the
+    # caller leaves maintenance ON and points at rollback. pipefail (set at top)
+    # makes the `| tail` pipeline carry composer's real exit code.
     if $ssh_cmd "cd $PROD_PATH && composer install --no-dev --optimize-autoloader" 2>&1 | tail -10; then
         print_status "OK" "Composer install completed on production"
     else
-        print_status "WARN" "Composer install had warnings"
+        print_error "Composer install FAILED on production — dependencies do not match the deployed code."
+        return 1
     fi
 
     return 0
@@ -541,10 +732,16 @@ run_db_updates_production() {
     fi
 
     ocmsg "Running database updates..."
+    # FAIL-LOUD (was demoted to a WARN): a silently-failed updatedb leaves schema
+    # hooks unrun and the code/DB schema mismatched. Abort so the caller leaves
+    # maintenance ON and points at rollback rather than serving a half-updated
+    # schema (2026-07-21 stg2live incident, ported here). pipefail carries drush's
+    # real exit code through the `| tail`.
     if $ssh_cmd "cd $PROD_PATH && drush updatedb -y" 2>&1 | tail -10; then
         print_status "OK" "Database updates completed on production"
     else
-        print_status "WARN" "Database updates had warnings"
+        print_error "drush updatedb FAILED on production — schema hooks NOT applied. Maintenance mode left ON."
+        return 1
     fi
 
     return 0
@@ -785,20 +982,29 @@ reinstall_modules_production() {
     return 0
 }
 
-# Step 11: Clear cache and display URL
+# Step 11: Clear cache, disable maintenance, display URL
 clear_cache_and_display() {
-    print_header "Step 11: Clear Cache and Display Production URL"
+    print_header "Step 11: Clear Cache, Disable Maintenance, Display Production URL"
 
     local ssh_cmd=$(build_ssh_cmd)
 
     if [ "$DRY_RUN" == "true" ]; then
-        print_status "INFO" "DRY RUN: Would clear cache on production"
+        print_status "INFO" "DRY RUN: Would clear cache + disable maintenance on production"
     else
         ocmsg "Clearing cache..."
+        # Maintenance mode is dropped ONLY AFTER cache:rebuild succeeds (and only
+        # this far because updatedb, step 7, already succeeded fail-loud). A failed
+        # cache rebuild leaves maintenance ON (site at 503) rather than exposing a
+        # stale/incoherent cache — fail-loud so the operator recovers.
         if $ssh_cmd "cd $PROD_PATH && drush cache:rebuild" >/dev/null 2>&1; then
             print_status "OK" "Cache cleared on production"
+            if ! prod_maintenance_set 0; then
+                return 1
+            fi
         else
-            print_status "WARN" "Cache clear had warnings"
+            print_error "Cache rebuild FAILED — leaving maintenance mode ON (site stays at 503 until recovered)."
+            print_error "Recover: cd $PROD_PATH && drush cr && drush sset system.maintenance_mode 0"
+            return 1
         fi
     fi
 
@@ -868,21 +1074,34 @@ deploy_stg2prod() {
     fi
 
     if should_run_step 5 "$start_step"; then
-        if ! sync_files "$stg_dir"; then
+        # sync_files takes the fail-closed pre-deploy snapshot + enables
+        # maintenance mode before the destructive rsync --delete.
+        if ! sync_files "$stg_dir" "$base_name"; then
             return 1
         fi
     fi
 
     if should_run_step 6 "$start_step"; then
-        run_composer_production
+        # Composer failure is now fail-loud: abort with maintenance left ON.
+        if ! run_composer_production; then
+            print_error "Composer install FAILED — aborting (maintenance left ON). Rollback: pl rollback execute ${base_name} prod"
+            return 1
+        fi
     fi
 
     if should_run_step 7 "$start_step"; then
-        run_db_updates_production
+        # updatedb failure is now fail-loud: abort with maintenance left ON.
+        if ! run_db_updates_production; then
+            print_error "Live DB updates FAILED — aborting (maintenance left ON). Rollback: pl rollback execute ${base_name} prod"
+            return 1
+        fi
     fi
 
     if should_run_step 8 "$start_step"; then
-        import_config_production
+        if ! import_config_production; then
+            print_error "Config import FAILED — aborting (maintenance left ON). Rollback: pl rollback execute ${base_name} prod"
+            return 1
+        fi
     fi
 
     if should_run_step 9 "$start_step"; then
@@ -894,7 +1113,10 @@ deploy_stg2prod() {
     fi
 
     if should_run_step 11 "$start_step"; then
-        clear_cache_and_display
+        # Drops maintenance mode ONLY AFTER cache:rebuild succeeds.
+        if ! clear_cache_and_display; then
+            return 1
+        fi
     fi
 
     return 0
@@ -913,15 +1135,17 @@ main() {
     local START_STEP=1
     local SITENAME=""
 
+    local OVERRIDE_SNAPSHOT=false
+
     # Export for use in functions
-    export DEBUG AUTO_YES DRY_RUN VERBOSE
+    export DEBUG AUTO_YES DRY_RUN VERBOSE OVERRIDE_SNAPSHOT
 
     local OVERRIDE_CANONICAL=false
     local OVERRIDE_PAIR=false
     local CODE_ONLY=false
 
     local OPTIONS=hdyvs:
-    local LONGOPTS=help,debug,yes,verbose,step:,dry-run,override-canonical,override-pair,code-only
+    local LONGOPTS=help,debug,yes,verbose,step:,dry-run,override-canonical,override-pair,code-only,override-snapshot
 
     if ! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@"); then
         show_help
@@ -962,6 +1186,10 @@ main() {
                 ;;
             --code-only)
                 CODE_ONLY=true
+                shift
+                ;;
+            --override-snapshot)
+                OVERRIDE_SNAPSHOT=true
                 shift
                 ;;
             -s|--step)
@@ -1029,8 +1257,11 @@ main() {
     # Hardware+signature gate on the production write (ADR-0028). No-op on the
     # test tier (unconfigured); on ver it requires a live Solo touch.
     if [ "${DRY_RUN:-false}" != "true" ]; then
+        # stg2prod rsyncs the staging webroot only — it pushes NO database (no
+        # dump/import step exists on this leg). The old summary that claimed both
+        # files and the database mis-described the write this gate authorizes.
         deploy_gate_require "$base_name" "prod" \
-            "push staging → production (files + DB)" || exit 1
+            "rsync staging files → production webroot (--delete); NO database push" || exit 1
     fi
 
     # Ensure staging site is in production mode before deploying to prod

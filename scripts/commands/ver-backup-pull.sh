@@ -25,6 +25,10 @@ set -euo pipefail
 #   --keep-daily N         (default 7)
 #   --keep-weekly N        (default 8)
 #   --keep-monthly N       (default 12)
+#   --keep-within DUR      erasure ceiling (e.g. 30d): keep every snapshot within
+#                          DUR, remove ALL older ones (overrides daily/weekly/
+#                          monthly). Use for user-data/PII repos to honour the
+#                          30-day erasure promise (ops#127/#124). Default: unset.
 #   --check-subset PCT     `restic check --read-data-subset` after drain (default 5%)
 #   --skip-restic-verify   (debug) skip the minisign check on the restic binary
 #   --dry-run (default) | --execute
@@ -37,6 +41,12 @@ source "$PROJECT_ROOT/lib/minisign.sh" 2>/dev/null || true
 FROM="" TO="" FROM_PASS="" TO_PASS=""
 RESTIC="$(command -v restic || echo restic)" RESTIC_PUB=""
 KEEP_DAILY=7 KEEP_WEEKLY=8 KEEP_MONTHLY=12 CHECK_SUBSET="5%"
+# ops#127: erasure-window ceiling. When set (e.g. "30d"), forget uses
+# `--keep-within <DUR>` — restic keeps every snapshot within the window and
+# removes ALL older ones, so RAW (unsanitised, ADR-0025) user data cannot
+# survive past the window. Required for user-data (PII) sites to honour the
+# 30-day erasure promise (ops#124/#123). Empty = legacy daily/weekly/monthly.
+KEEP_WITHIN=""
 SKIP_RESTIC_VERIFY=n EXECUTE=n
 
 die(){ print_error "$*"; exit 1; }
@@ -56,6 +66,7 @@ while [ $# -gt 0 ]; do
     --keep-daily=*) KEEP_DAILY="${1#*=}" ;; --keep-daily) KEEP_DAILY="$2"; shift ;;
     --keep-weekly=*) KEEP_WEEKLY="${1#*=}" ;; --keep-weekly) KEEP_WEEKLY="$2"; shift ;;
     --keep-monthly=*) KEEP_MONTHLY="${1#*=}" ;; --keep-monthly) KEEP_MONTHLY="$2"; shift ;;
+    --keep-within=*) KEEP_WITHIN="${1#*=}" ;; --keep-within) KEEP_WITHIN="$2"; shift ;;
     --check-subset=*) CHECK_SUBSET="${1#*=}" ;; --check-subset) CHECK_SUBSET="$2"; shift ;;
     --skip-restic-verify) SKIP_RESTIC_VERIFY=y ;;
     --execute|-y) EXECUTE=y ;;             --dry-run) EXECUTE=n ;;
@@ -128,9 +139,16 @@ main(){
   print_header "Step 2 · Copy snapshots (prod → ver)"
   run "${CP[@]}" copy
 
-  # ── Long-term retention (ver is the ONLY pruner) ───────────────────────────
-  print_header "Step 3 · Retention (d:$KEEP_DAILY w:$KEEP_WEEKLY m:$KEEP_MONTHLY)"
-  run "${TOREPO[@]}" forget --keep-daily "$KEEP_DAILY" --keep-weekly "$KEEP_WEEKLY" --keep-monthly "$KEEP_MONTHLY" --prune
+  # ── Retention (ver is the ONLY pruner) ─────────────────────────────────────
+  # ops#127: with --keep-within, enforce a hard erasure ceiling (nothing older
+  # than the window survives) instead of the tiered daily/weekly/monthly policy.
+  if [ -n "$KEEP_WITHIN" ]; then
+    print_header "Step 3 · Retention (erasure ceiling: keep-within $KEEP_WITHIN)"
+    run "${TOREPO[@]}" forget --keep-within "$KEEP_WITHIN" --prune
+  else
+    print_header "Step 3 · Retention (d:$KEEP_DAILY w:$KEEP_WEEKLY m:$KEEP_MONTHLY)"
+    run "${TOREPO[@]}" forget --keep-daily "$KEEP_DAILY" --keep-weekly "$KEEP_WEEKLY" --keep-monthly "$KEEP_MONTHLY" --prune
+  fi
 
   # ── Integrity verification (the "0" in 3-2-1-1-0) ──────────────────────────
   print_header "Step 4 · Verify (check --read-data-subset=$CHECK_SUBSET)"

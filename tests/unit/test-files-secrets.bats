@@ -293,3 +293,14 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" == *"scrub + verify clean"* ]]
 }
+
+@test "key-family vocabulary: signing_key block scalar scrubbed AND caught by verify" {
+  d="$BATS_TEST_TMPDIR/keyfam"; mkdir -p "$d/files/sync"
+  printf 'signing_key: |\n  -----BEGIN FAKE-----\n  abc123secretbody\n  -----END FAKE-----\nname: ok\n' > "$d/files/sync/x.yml"
+  run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/files-secrets.sh" --verify "$d"   # raw file must FAIL
+  [ "$status" -ne 0 ]
+  run bash "${BATS_TEST_DIRNAME}/../../lib/sanitizers/files-secrets.sh" "$d"            # scrub+self-verify must PASS
+  [ "$status" -eq 0 ]
+  ! grep -q "abc123secretbody" "$d/files/sync/x.yml"
+  grep -q "name: ok" "$d/files/sync/x.yml"
+}

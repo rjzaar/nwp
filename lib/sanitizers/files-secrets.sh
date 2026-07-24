@@ -75,7 +75,7 @@ FILES_SECRETS_REDACT='***REDACTED-BY-SANITIZER***'
 # Secret KEY tail: a key is secret when it ENDS in one of these words (optionally
 # prefixed, e.g. db_password, oauth_token, webhook_secret). Anchoring to the tail
 # keeps innocuous flags like `password_reset_enabled` (ends "enabled") out.
-FILES_SECRETS_KEYWORD='(webhook[_-]?secret|api[_-]?key|apikey|client[_-]?secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|oauth[_-]?token|private[_-]?key|secret|token|password|passwd|passphrase)'
+FILES_SECRETS_KEYWORD='(webhook[_-]?secret|api[_-]?key|apikey|client[_-]?secret|access[_-]?token|refresh[_-]?token|auth[_-]?token|oauth[_-]?token|private[_-]?key|signing[_-]?key|ssh[_-]?key|gpg[_-]?key|encryption[_-]?key|license[_-]?key|secret[_-]?key|secret|token|password|passwd|passphrase)'
 
 # Known credential SHAPES — redacted wherever they appear (case-sensitive; these
 # prefixes are fixed-case by their issuers). This is the backstop that catches a

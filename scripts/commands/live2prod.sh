@@ -22,6 +22,9 @@ source "$PROJECT_ROOT/lib/canonical.sh"
 source "$PROJECT_ROOT/lib/deploy-gate.sh"
 # pair.sh: paired-site versioning guard (ADR-0031/ops#75); no-op unless paired.
 source "$PROJECT_ROOT/lib/pair.sh"
+# rollback.sh: register the pre-deploy snapshot as a rollback point (optional —
+# rollback_record_remote is called guarded, so a missing helper is a clean no-op).
+source "$PROJECT_ROOT/lib/rollback.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -77,6 +80,215 @@ get_prod_config() {
     ' "$PROJECT_ROOT/nwp.yml"
 }
 
+################################################################################
+# Safety / Pre-Deploy Snapshots + Maintenance Wrap
+#
+# Ported from stg2live.sh's guard-stack (F2/P0-2 fail-closed snapshot + G3
+# maintenance wrap + §3.6 fail-loud updatedb). live2prod is server→server (live
+# → prod), so all destructive ops target the PROD host; the snapshot and the
+# maintenance toggle are taken there, before/around the rsync --delete.
+################################################################################
+
+# Resolve the deploy webroot (docroot subdir) from the v2 site tree via
+# resolve_project (F23). Prefers the live checkout's DDEV docroot, then stg,
+# then dev; defaults to "web". Scopes the pre-deploy webroot tar AND the drush
+# --root path so both point at the same docroot the deploy overwrites.
+get_deploy_webroot() {
+    local base_name="$1"
+    local env dir webroot=""
+    for env in live stg dev; do
+        dir=$(resolve_project "$base_name" "$env" 2>/dev/null || true)
+        if [ -n "$dir" ] && [ -f "$dir/.ddev/config.yaml" ]; then
+            webroot=$(grep '^docroot:' "$dir/.ddev/config.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' | head -1)
+            [ -n "$webroot" ] && break
+        fi
+    done
+    [ -z "$webroot" ] && webroot="web"
+    printf '%s' "$webroot"
+}
+
+# Ledger an --override-snapshot / --skip-backup use so a destructive deploy that
+# ran WITHOUT a proven prod snapshot is auditable after the fact (mirrors the
+# --override-canonical / --override-pair ledgers in stg2live.sh).
+_snapshot_override_ledger() {
+    local base_name="$1"
+    local reason="$2"
+    local ledger_dir="${PROJECT_ROOT}/private/snapshots"
+    mkdir -p "$ledger_dir" 2>/dev/null || true
+    local who
+    who=$(whoami 2>/dev/null || echo "unknown")
+    echo "$(date -Iseconds 2>/dev/null || date)  ${who}  ${base_name}  override  ${reason}" \
+        >> "${ledger_dir}/${base_name}.log" 2>/dev/null || true
+    print_status "WARN" "snapshot override ledgered: ${ledger_dir}/${base_name}.log"
+}
+
+# Take a pre-deploy snapshot of the PRODUCTION host: all databases (compressed
+# dump) + /etc/nginx/conf.d/ (tarball) + the WEBROOT (tarball, excl.
+# files/+private). FAIL-CLOSED: a webroot-snapshot failure ABORTS the deploy
+# (return 1) unless --override-snapshot (ledgered), because the live→prod rsync
+# --delete that follows is otherwise unrecoverable. Idempotent within 1 hour off
+# the webroot tar. Mirrors stg2live.sh::live_host_snapshot.
+prod_host_snapshot() {
+    local base_name="$1"
+    local server_ip="$2"
+    local ssh_user="$3"
+    local remote_path="${4:-}"
+    local webroot="${5:-web}"
+
+    print_header "Pre-Deploy Production Snapshot"
+
+    local sudo_prefix=""
+    if [ "$ssh_user" == "gitlab" ]; then
+        sudo_prefix="sudo "
+    fi
+
+    local ts
+    ts=$(date +%Y%m%d-%H%M%S)
+    local dbs_file="nwp-snapshot-${base_name}-dbs-${ts}.sql.gz"
+    local nginx_file="nwp-snapshot-${base_name}-nginx-${ts}.tar.gz"
+
+    # Check disk space first (bail if tighter than 1 GB free in ~).
+    local free_kb
+    free_kb=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "df -k --output=avail ~ | tail -1" 2>/dev/null | tr -d ' ')
+    if [ -n "$free_kb" ] && [ "$free_kb" -lt 1048576 ]; then
+        print_status "WARN" "Prod host has <1GB free in ~ (${free_kb}KB)."
+        if [ "${OVERRIDE_SNAPSHOT:-false}" == "true" ]; then
+            _snapshot_override_ledger "$base_name" "disk-tight (<1GB free in ~); snapshot skipped"
+            print_status "WARN" "--override-snapshot set — proceeding WITHOUT a pre-deploy snapshot."
+            return 0
+        fi
+        print_error "Refusing the destructive rsync --delete without a webroot snapshot (disk-tight)."
+        print_error "Free disk on the prod host, or re-run with --override-snapshot (ledgered)."
+        return 1
+    fi
+
+    # Idempotent: skip if a WEBROOT snapshot from the last hour exists (the
+    # webroot tar is the critical --delete backstop, so idempotency keys off it).
+    local recent
+    recent=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "find ~ -maxdepth 1 -name 'nwp-snapshot-${base_name}-webroot-*.tar.gz' -mmin -60 2>/dev/null | head -1" \
+        2>/dev/null)
+    if [ -n "$recent" ]; then
+        print_status "INFO" "Recent snapshot exists: $(basename "$recent")"
+        print_status "INFO" "Skipping (idempotent within 1 hour)."
+        return 0
+    fi
+
+    print_info "Snapshotting all databases..."
+    if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "${sudo_prefix}mysqldump --all-databases --single-transaction --quick --routines --triggers 2>/dev/null | gzip > ~/${dbs_file}"; then
+        local dbs_size
+        dbs_size=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+            "ls -lh ~/${dbs_file} | awk '{print \$5}'" 2>/dev/null)
+        print_status "OK" "DB snapshot: ~/${dbs_file} (${dbs_size})"
+    else
+        print_status "WARN" "DB snapshot failed (continuing — verify prod state manually before destructive ops)"
+    fi
+
+    print_info "Snapshotting /etc/nginx/conf.d/..."
+    if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+        "${sudo_prefix}tar czf ~/${nginx_file} /etc/nginx/conf.d/ 2>/dev/null && ${sudo_prefix}chown ${ssh_user}:${ssh_user} ~/${nginx_file}"; then
+        print_status "OK" "Nginx snapshot: ~/${nginx_file}"
+    else
+        print_status "WARN" "Nginx snapshot failed (continuing — verify prod state manually)"
+    fi
+
+    # Snapshot the prod WEBROOT before the rsync --delete swaps it out. This is
+    # the fail-closed backstop: unlike the DB/nginx dumps above (WARN-and-
+    # continue), a webroot snapshot failure ABORTS the deploy (return 1) unless
+    # --override-snapshot. Success is decided by `test -s` on the resulting tar
+    # (not tar's exit code, which can be 1 on a benign "file changed as we read
+    # it" against a live site).
+    local webroot_file="nwp-snapshot-${base_name}-webroot-${ts}.tar.gz"
+    local web_remote=""
+    if [ -n "$remote_path" ]; then
+        print_info "Snapshotting prod webroot (${remote_path}, excl. ${webroot}/sites/default/files + private)..."
+        if ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+            "${sudo_prefix}tar czf ~/${webroot_file} -C ${remote_path} . --exclude=./${webroot}/sites/default/files --exclude=./private 2>/dev/null; ${sudo_prefix}chown ${ssh_user}:${ssh_user} ~/${webroot_file} 2>/dev/null; test -s ~/${webroot_file}"; then
+            local web_size
+            web_size=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+                "ls -lh ~/${webroot_file} | awk '{print \$5}'" 2>/dev/null)
+            print_status "OK" "Webroot snapshot: ~/${webroot_file} (${web_size})"
+            web_remote="${webroot_file}"
+        else
+            print_status "WARN" "Webroot snapshot failed or empty (~/${webroot_file})."
+            if [ "${OVERRIDE_SNAPSHOT:-false}" == "true" ]; then
+                _snapshot_override_ledger "$base_name" "webroot snapshot failed/empty; --override-snapshot set"
+                print_status "WARN" "--override-snapshot set — proceeding WITHOUT a webroot snapshot (ledgered)."
+            else
+                print_error "Refusing the destructive rsync --delete without a webroot snapshot."
+                print_error "Investigate the prod host, or re-run with --override-snapshot (ledgered)."
+                return 1
+            fi
+        fi
+    else
+        print_status "WARN" "No remote_path resolved — skipping webroot snapshot (no --delete backstop)."
+    fi
+
+    # Register the snapshot as a rollback point (best-effort; guarded so a
+    # missing helper is a clean no-op).
+    if command -v rollback_record_remote >/dev/null 2>&1; then
+        local commit_sha=""
+        if [ -d "${PROJECT_ROOT}/.git" ]; then
+            commit_sha=$(cd "$PROJECT_ROOT" && git rev-parse HEAD 2>/dev/null || true)
+        fi
+        local dbs_remote nginx_remote home_dir
+        home_dir=$(ssh $(nwp_ssh_opts "$base_name") -o BatchMode=yes "${ssh_user}@${server_ip}" \
+            'echo $HOME' 2>/dev/null || echo "/home/${ssh_user}")
+        dbs_remote="${home_dir}/${dbs_file}"
+        nginx_remote="${home_dir}/${nginx_file}"
+        local web_remote_abs=""
+        [ -n "$web_remote" ] && web_remote_abs="${home_dir}/${web_remote}"
+        rollback_record_remote "$base_name" "prod" "$ssh_user" "$server_ip" \
+            "$ts" "$dbs_remote" "$nginx_remote" "$commit_sha" "$web_remote_abs" "$remote_path" \
+            || print_status "WARN" "Could not register rollback point (snapshot files OK)."
+    fi
+
+    echo ""
+    print_info "To restore from this snapshot if needed:"
+    echo "  pl rollback execute ${base_name} prod --dry-run    # preview"
+    echo "  pl rollback execute ${base_name} prod              # apply (with confirmation)"
+    echo ""
+
+    return 0
+}
+
+# Drupal maintenance mode around the destructive swap (G3). Enable BEFORE the
+# rsync --delete so members never hit a half-populated webroot; disable only
+# AFTER the post-sync updatedb/cr sequence. Fail-loud: a failed maintenance-OFF
+# leaves the site stuck at 503 and is reported LOUDLY. Mirrors
+# stg2live.sh::live_maintenance_set.
+prod_maintenance_set() {
+    local base_name="$1"
+    local server_ip="$2"
+    local ssh_user="$3"
+    local remote_path="$4"
+    local webroot="$5"
+    local state="$6"   # 1 = ON (maintenance), 0 = OFF (live)
+
+    local sudo_prefix=""
+    if [ "$ssh_user" == "gitlab" ]; then
+        sudo_prefix="sudo"
+    fi
+
+    local label="ON"
+    [ "$state" == "0" ] && label="OFF"
+    print_info "Maintenance mode ${label} (system.maintenance_mode=${state})..."
+
+    # Explicit drush resolve (no PATH reliance), stderr NOT swallowed.
+    local resolve="for D in ${remote_path}/vendor/bin/drush ${remote_path}/${webroot}/vendor/bin/drush; do [ -x \"\$D\" ] && break; done"
+    if ssh $(nwp_ssh_opts "$base_name") "${ssh_user}@${server_ip}" \
+        "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} state:set system.maintenance_mode ${state} --input-format=integer && ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} cr"; then
+        print_status "OK" "Maintenance mode ${label}"
+    elif [ "$state" == "0" ]; then
+        print_error "Could NOT disable maintenance mode — THE SITE MAY BE STUCK IN MAINTENANCE (503)."
+        print_error "Fix on the host: ${sudo_prefix} -u www-data ${remote_path}/vendor/bin/drush --root=${remote_path}/${webroot} sset system.maintenance_mode 0 && ... cr"
+    else
+        print_status "WARN" "Could not set maintenance_mode=${state} (drush unavailable?)"
+    fi
+}
+
 show_help() {
     cat << EOF
 ${BOLD}NWP Live to Production Deployment${NC}
@@ -90,9 +302,13 @@ ${BOLD}USAGE:${NC}
 
 ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
-    -y, --yes               Skip confirmation prompts
+    -y, --yes               Skip confirmation prompts (NEVER the pre-deploy snapshot)
     -s, --step <n>          Start from step n
-    --skip-backup           Skip production backup (dangerous!)
+    --skip-backup           Skip the fail-closed pre-deploy production snapshot
+                            (dangerous!). No longer a silent bypass — it is
+                            ledgered to private/snapshots/<site>.log.
+    --override-snapshot     Proceed past a failed/disk-tight pre-deploy snapshot
+                            (ledgered). The rsync --delete then has no backstop.
     --code-only             Signal code/config-only intent to the pair guard
                             (ADR-0031 D6) — satisfies the UID-lock rule for a paired
                             provider/consumer prod deploy.
@@ -101,12 +317,14 @@ ${BOLD}OPTIONS:${NC}
 
 ${BOLD}WORKFLOW:${NC}
     1. Validate live and production configurations
-    2. Backup production database
+    2. Fail-closed pre-deploy production snapshot (DBs + nginx + webroot)
+       -- maintenance mode ON (wraps the destructive region below) --
     3. Export configuration from live
-    4. Sync files from live to production
-    5. Run composer install on production
-    6. Run database updates
-    7. Import configuration
+    4. Sync files from live to production (rsync --delete)
+    5. Run composer install on production (fail-loud)
+    6. Run database updates (fail-loud; maintenance left ON on failure)
+       -- maintenance mode OFF (only after a clean updatedb) --
+    7. Import configuration (fail-closed skip; NWP_ALLOW_CONFIG_IMPORT=1 to enable)
     8. Clear caches
 
 ${BOLD}EXAMPLES:${NC}
@@ -181,17 +399,12 @@ validate_deployment() {
 backup_production() {
     local base_name="$1"
 
-    print_info "Creating production backup before deployment..."
-
-    local backup_name="${base_name}_pre_deploy_$(date +%Y%m%d_%H%M%S)"
-    local backup_cmd="cd $PROD_PATH && drush sql-dump --gzip > /tmp/${backup_name}.sql.gz"
-
-    if ssh $(nwp_ssh_opts "$base_name") "${PROD_USER}@${PROD_IP}" "$backup_cmd"; then
-        print_status "OK" "Production database backed up: ${backup_name}.sql.gz"
-    else
-        print_error "Failed to backup production database"
-        return 1
-    fi
+    # FAIL-CLOSED pre-deploy snapshot (DBs + nginx + WEBROOT), mirroring
+    # stg2live's live_host_snapshot. Replaces the old DB-only dump-to-/tmp backup
+    # which (a) captured no webroot backstop for the rsync --delete, and (b) was
+    # a bare-cd-drush that could silently no-op. A webroot-snapshot failure now
+    # ABORTS the deploy (return 1) unless --override-snapshot (ledgered).
+    prod_host_snapshot "$base_name" "$PROD_IP" "$PROD_USER" "$PROD_PATH" "${PROD_WEBROOT:-web}"
 }
 
 export_live_config() {
@@ -248,16 +461,38 @@ run_composer() {
 
 run_db_updates() {
     local base_name="$1"
+    local remote_path="${PROD_PATH}"
+    local webroot="${PROD_WEBROOT:-web}"
 
     print_info "Running database updates on production..."
 
-    local update_cmd="cd $PROD_PATH && drush updatedb -y"
+    local sudo_prefix=""
+    [ "$PROD_USER" == "gitlab" ] && sudo_prefix="sudo"
 
-    if ssh $(nwp_ssh_opts "$base_name") "${PROD_USER}@${PROD_IP}" "$update_cmd"; then
+    # Resolve drush EXPLICITLY (never rely on PATH — the old `cd $PROD_PATH &&
+    # drush` form silently no-ops where drush isn't on PATH) and DO NOT swallow
+    # stderr. Mirrors stg2live.sh::run_live_db_updates.
+    local resolve="for D in ${remote_path}/vendor/bin/drush ${remote_path}/${webroot}/vendor/bin/drush; do [ -x \"\$D\" ] && break; done"
+
+    if ssh $(nwp_ssh_opts "$base_name") "${PROD_USER}@${PROD_IP}" \
+        "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} updatedb -y"; then
         print_status "OK" "Database updates complete"
     else
-        print_warning "Database updates returned non-zero (may be OK)"
+        # FAIL-LOUD (was WARN-and-continue): a silently-failed updatedb leaves
+        # hooks unrun + code/schema mismatched while the deploy would otherwise
+        # report success (2026-07-21 incident). Return non-zero so the caller
+        # ABORTS and maintenance mode stays ON for recovery.
+        print_error "drush updatedb FAILED on production — schema hooks NOT applied. Maintenance mode left ON."
+        print_error "Recover on the host, then re-run: ${sudo_prefix} -u www-data ${remote_path}/vendor/bin/drush --root=${remote_path}/${webroot} updatedb -y"
+        return 1
     fi
+
+    print_info "Rebuilding cache..."
+    ssh $(nwp_ssh_opts "$base_name") "${PROD_USER}@${PROD_IP}" \
+        "${resolve}; ${sudo_prefix} -u www-data \"\$D\" --root=${remote_path}/${webroot} cache:rebuild" \
+        || print_status "WARN" "cache:rebuild reported an error — verify the site"
+
+    return 0
 }
 
 import_config() {
@@ -309,6 +544,7 @@ main() {
 
     local OVERRIDE_CANONICAL=false
     local OVERRIDE_PAIR=false
+    local OVERRIDE_SNAPSHOT=false
     local CODE_ONLY=false
 
     while [[ $# -gt 0 ]]; do
@@ -317,6 +553,7 @@ main() {
             -y|--yes) YES=true; shift ;;
             -s|--step) START_STEP="$2"; shift 2 ;;
             --skip-backup) SKIP_BACKUP=true; shift ;;
+            --override-snapshot) OVERRIDE_SNAPSHOT=true; shift ;;
             --override-canonical) OVERRIDE_CANONICAL=true; shift ;;
             --override-pair) OVERRIDE_PAIR=true; shift ;;
             --code-only) CODE_ONLY=true; shift ;;
@@ -389,12 +626,33 @@ main() {
         fi
     fi
 
+    # Resolve the prod docroot subdir once (v2 resolve_project) and export it so
+    # the snapshot tar, the maintenance toggle and the updatedb --root all scope
+    # to the same webroot the deploy overwrites.
+    export OVERRIDE_SNAPSHOT
+    local PROD_WEBROOT
+    PROD_WEBROOT=$(get_deploy_webroot "$BASE_NAME")
+    export PROD_WEBROOT
+
     # Execute deployment steps
     local step=1
 
-    if [ $step -ge $START_STEP ] && [ "$SKIP_BACKUP" != "true" ]; then
-        print_info "Step $step: Backup production"
-        backup_production "$BASE_NAME"
+    # Step 1: FAIL-CLOSED pre-deploy production snapshot (DBs + nginx + webroot).
+    # -y NEVER skips it. --skip-backup is no longer a silent bypass: it is a
+    # loud, ledgered override of the snapshot. Otherwise a snapshot failure
+    # ABORTS before the destructive rsync --delete (prod_host_snapshot returns 1).
+    if [ $step -ge $START_STEP ]; then
+        if [ "$SKIP_BACKUP" == "true" ]; then
+            _snapshot_override_ledger "$BASE_NAME" "--skip-backup passed; pre-deploy prod snapshot skipped"
+            print_warning "--skip-backup — proceeding WITHOUT a pre-deploy production snapshot (ledgered)."
+        else
+            print_info "Step $step: Pre-deploy production snapshot"
+            if ! backup_production "$BASE_NAME"; then
+                print_error "Pre-deploy snapshot failed — aborting before the destructive rsync --delete."
+                print_error "(Override at your own risk with --override-snapshot or --skip-backup, both ledgered.)"
+                exit 1
+            fi
+        fi
     fi
     ((step++))
 
@@ -404,23 +662,53 @@ main() {
     fi
     ((step++))
 
+    # G3: maintenance mode wraps the destructive region (rsync --delete →
+    # composer → updatedb). Enable ON here, BEFORE the sync; disable OFF only
+    # after a clean updatedb (below). On ANY abort in the region the error paths
+    # return without disabling it — members see a 503, not a broken half-deploy.
+    # Gated so a --step resume PAST the DB step (START_STEP >= 6) never toggles it.
+    local wrap_maint=false
+    if [ 5 -ge "$START_STEP" ]; then
+        wrap_maint=true
+        prod_maintenance_set "$BASE_NAME" "$PROD_IP" "$PROD_USER" "$PROD_PATH" "$PROD_WEBROOT" 1
+    fi
+
     if [ $step -ge $START_STEP ]; then
         print_info "Step $step: Sync files"
-        sync_files "$BASE_NAME"
+        if ! sync_files "$BASE_NAME"; then
+            print_error "File sync FAILED — aborting (maintenance mode left ON). Verify the prod host / rollback:"
+            print_error "  pl rollback execute ${BASE_NAME} prod"
+            exit 1
+        fi
     fi
     ((step++))
 
     if [ $step -ge $START_STEP ]; then
         print_info "Step $step: Run composer"
-        run_composer "$BASE_NAME"
+        if ! run_composer "$BASE_NAME"; then
+            print_error "Composer install FAILED — aborting (maintenance mode left ON)."
+            print_error "Recover the prod host / rollback: pl rollback execute ${BASE_NAME} prod"
+            exit 1
+        fi
     fi
     ((step++))
 
     if [ $step -ge $START_STEP ]; then
         print_info "Step $step: Database updates"
-        run_db_updates "$BASE_NAME"
+        if ! run_db_updates "$BASE_NAME"; then
+            print_error "Live DB updates FAILED — aborting (maintenance left ON)."
+            print_error "Rollback: pl rollback execute ${BASE_NAME} prod"
+            exit 1
+        fi
     fi
     ((step++))
+
+    # Destructive region complete + coherent — drop maintenance mode so prod
+    # serves members again. Only reached on the success path (every error path
+    # above exits without disabling it).
+    if [ "$wrap_maint" == "true" ]; then
+        prod_maintenance_set "$BASE_NAME" "$PROD_IP" "$PROD_USER" "$PROD_PATH" "$PROD_WEBROOT" 0
+    fi
 
     if [ $step -ge $START_STEP ]; then
         print_info "Step $step: Import configuration"

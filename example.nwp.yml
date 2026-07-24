@@ -437,6 +437,16 @@ recipes:
     install_modules: [pathauto, simple_sitemap, podcast_publisher]
 settings:
   todo:
+    thresholds:
+      # A site's newest backup older than this many days is flagged stale by
+      # `pl todo` / `pl rag` and picked up by `pl backup sweep`.
+      backup_warn_days: 7
+      # ops#124: `pl backup prune` deletes LOCAL backup sets older than this
+      # (default 30) so deleted user data does not survive the erasure window
+      # in local backups. The newest set per site is always kept. Remote DR
+      # tiers (restic on ver, LUKS sticks, box nightly) enforce their own
+      # retention — see docs/reports/consolidation-arc-2026-07.
+      backup_retention_days: 30
     notifications:
       enabled: false
       email:

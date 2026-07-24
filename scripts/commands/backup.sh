@@ -77,6 +77,9 @@ ${BOLD}ARGUMENTS:${NC}
 ${BOLD}SUBCOMMANDS:${NC}
     sweep                   Sweep all sites: back up any with stale/missing
                             backups (see: ./backup.sh sweep --help)
+    prune                   Delete local backups older than the retention
+                            window (default 30d; keeps newest per site;
+                            see: ./backup.sh prune --help)
 
 ${BOLD}EXAMPLES:${NC}
     ./backup.sh nwp                              # Backup 'nwp' site (full)
@@ -961,6 +964,167 @@ sweep_ddev_state() {
     fi
 }
 
+################################################################################
+# `pl backup prune` — retention window on LOCAL backups (ops#124)
+#
+# Deletes local backup SETS (.sql.gz/.tar.gz + their .sha256/.manifest.json
+# sidecars) older than the retention window, so deleted user data does not
+# survive in local dev backups beyond the promised window (the erasure promise).
+# SAFETY: the newest set per site is ALWAYS kept — a site is never left with
+# zero backups, even if its newest backup is already older than the window.
+#
+# Scope note: this enforces retention on the LOCAL sites/<name>/backups/ tier
+# only. The remote DR tiers (restic on ver, LUKS sticks, box nightly) enforce
+# their own retention; see docs/reports/consolidation-arc-2026-07 for the
+# multi-tier erasure-promise reconciliation (⚠ restic keeps 12 monthly today).
+################################################################################
+show_prune_help() {
+    cat <<EOF
+pl backup prune — enforce a retention window on local backups (ops#124)
+
+Usage:
+  pl backup prune [--days N] [--site NAME] [--dry-run] [-y]
+
+Options:
+  --days N       Retention window in days (default: settings
+                 thresholds.backup_retention_days, else 30).
+  --site NAME    Prune one site (default: all discovered sites).
+  --dry-run      Show what would be deleted; delete nothing.
+  -y, --yes      Skip the confirmation prompt.
+  -h, --help     This help.
+
+The newest backup set per site is always kept.
+EOF
+}
+
+prune_main() {
+    local DRY_RUN=false YES=false ONLY_SITE="" DAYS=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)   show_prune_help; exit 0 ;;
+            --dry-run)   DRY_RUN=true; shift ;;
+            -y|--yes)    YES=true; shift ;;
+            --days)      DAYS="${2:-}"; [ -z "$DAYS" ] && { print_error "--days requires a number"; exit 1; }; shift 2 ;;
+            --days=*)    DAYS="${1#*=}"; shift ;;
+            --site)      ONLY_SITE="${2:-}"; [ -z "$ONLY_SITE" ] && { print_error "--site requires a name"; exit 1; }; shift 2 ;;
+            --site=*)    ONLY_SITE="${1#*=}"; shift ;;
+            *)           print_error "Unknown prune option: $1"; echo ""; show_prune_help; exit 1 ;;
+        esac
+    done
+
+    # Retention window: flag > setting > 30.
+    if [ -z "$DAYS" ]; then
+        DAYS=30
+        if [ -f "$PROJECT_ROOT/lib/todo-checks.sh" ]; then
+            # shellcheck source=/dev/null
+            source "$PROJECT_ROOT/lib/todo-checks.sh"
+            DAYS=$(get_todo_setting "thresholds.backup_retention_days" "30")
+        fi
+    fi
+    if ! [[ "$DAYS" =~ ^[0-9]+$ ]] || [ "$DAYS" -lt 1 ]; then
+        print_error "Retention days must be a positive integer (got: $DAYS)"; exit 1
+    fi
+
+    local now_epoch cutoff
+    now_epoch=$(date +%s)
+    cutoff=$((now_epoch - DAYS * 86400))
+
+    print_header "NWP Backup Prune (retention: ${DAYS} days)"
+    [ "$DRY_RUN" = true ] && print_info "Dry run — nothing will be deleted"
+
+    local -a sites=()
+    if [ -n "$ONLY_SITE" ]; then
+        sites=("$ONLY_SITE")
+    else
+        mapfile -t sites < <(discover_sites)
+    fi
+    [ ${#sites[@]} -eq 0 ] && { print_warning "No sites discovered"; exit 0; }
+
+    # ── PASS 1: collect victims (stem + backup dir), keeping the newest set. ──
+    local -a victim_stems=() victim_dirs=() victim_ages=()
+    local total_bytes=0 kept=0
+    local site
+    for site in "${sites[@]}"; do
+        [ -z "$site" ] && continue
+        local bdir
+        bdir=$(get_backup_dir "$site" 2>/dev/null) || bdir=""
+        { [ -z "$bdir" ] || [ ! -d "$bdir" ]; } && continue
+
+        local -a stems=()
+        mapfile -t stems < <(
+            find "$bdir" -maxdepth 1 -type f \( -name '*.sql.gz' -o -name '*.tar.gz' \) -printf '%f\n' 2>/dev/null \
+            | sed -E 's/\.(sql|tar)\.gz$//' | sort -u
+        )
+        [ ${#stems[@]} -eq 0 ] && continue
+
+        # Newest set (max mtime across its files) is always kept.
+        local newest_stem="" newest_epoch=0 stem
+        declare -A _epoch=()
+        for stem in "${stems[@]}"; do
+            local e
+            e=$(find "$bdir" -maxdepth 1 -type f -name "${stem}.*" -printf '%T@\n' 2>/dev/null | sort -n | tail -1)
+            e=${e%.*}; [ -z "$e" ] && e=0
+            _epoch["$stem"]=$e
+            if [ "$e" -gt "$newest_epoch" ]; then newest_epoch=$e; newest_stem=$stem; fi
+        done
+
+        for stem in "${stems[@]}"; do
+            local e=${_epoch[$stem]}
+            if [ "$stem" = "$newest_stem" ] || [ "$e" -ge "$cutoff" ]; then
+                kept=$((kept + 1)); continue
+            fi
+            victim_stems+=("$stem"); victim_dirs+=("$bdir")
+            victim_ages+=("$(( (now_epoch - e) / 86400 ))")
+            local f
+            while IFS= read -r f; do
+                total_bytes=$((total_bytes + $(stat -c%s "$f" 2>/dev/null || echo 0)))
+            done < <(find "$bdir" -maxdepth 1 -type f -name "${stem}.*" 2>/dev/null)
+        done
+        unset _epoch
+    done
+
+    local nvictims=${#victim_stems[@]}
+    if [ "$nvictims" -eq 0 ]; then
+        print_success "Nothing to prune — all backups within ${DAYS} days (kept $kept set(s))."
+        exit 0
+    fi
+
+    echo ""
+    print_info "Backup sets older than ${DAYS} days (newest per site always kept):"
+    local i
+    for i in "${!victim_stems[@]}"; do
+        echo -e "  ${YELLOW}→${NC} ${victim_stems[$i]} (${victim_ages[$i]}d old)"
+    done
+    echo -e "  ${DIM}total: $nvictims set(s), ~$((total_bytes/1024/1024)) MB; keeping $kept${NC}"
+
+    if [ "$DRY_RUN" = true ]; then
+        echo ""; print_info "Dry run — nothing deleted."; exit 0
+    fi
+
+    if [ "$YES" != true ]; then
+        echo ""
+        read -r -p "Delete these $nvictims backup set(s)? [y/N] " _ans
+        case "$_ans" in
+            y|Y|yes|YES) : ;;
+            *) print_info "Aborted — nothing deleted."; exit 0 ;;
+        esac
+    fi
+
+    # ── PASS 2: delete. ──
+    local deleted=0
+    for i in "${!victim_stems[@]}"; do
+        local f
+        while IFS= read -r f; do rm -f "$f"; done \
+            < <(find "${victim_dirs[$i]}" -maxdepth 1 -type f -name "${victim_stems[$i]}.*" 2>/dev/null)
+        echo -e "  ${RED}✗${NC} deleted ${victim_stems[$i]}"
+        deleted=$((deleted + 1))
+    done
+    echo ""
+    print_success "Pruned $deleted backup set(s) (~$((total_bytes/1024/1024)) MB freed); kept $kept."
+    exit 0
+}
+
 sweep_main() {
     local DRY_RUN=false
     local START_STOPPED=false
@@ -1152,6 +1316,13 @@ main() {
     if [[ "${1:-}" == "sweep" ]]; then
         shift
         sweep_main "$@"
+    fi
+
+    # Subcommand dispatch: `backup prune [flags]` (ops#124 retention; reserved,
+    # cannot be a site name). prune_main always exits.
+    if [[ "${1:-}" == "prune" ]]; then
+        shift
+        prune_main "$@"
     fi
 
     # Parse options

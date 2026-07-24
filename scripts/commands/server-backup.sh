@@ -238,11 +238,24 @@ main(){
   # ── Files → restic (dedup) ─────────────────────────────────────────────────
   if [ "$DB_ONLY" != y ]; then
     print_header "Step 3 · Snapshot files (dedup)"
+    # Secret-exclude (defence in depth): a Drupal config-sync export written under
+    # a site's PUBLIC files (…/files/sync/*.yml) — plus any auth.json / .env that
+    # lands in the files tree — can carry LIVE credentials (a real incident: a
+    # config-sync file held a glpat token + webhook_secret). Those creds are
+    # recoverable from git/config, not user data, so the RAW DR snapshot bound for
+    # `ver` must NOT carry them. Restic --exclude drops only the secret-bearing
+    # files; user uploads are still backed up. Kept in step with the artifact-level
+    # redactor lib/sanitizers/files-secrets.sh (same target-file vocabulary).
+    local -a secret_excludes=(
+      --exclude 'sync/*.yml'  --exclude 'sync/*.yaml'
+      --exclude 'auth.json'   --exclude '.env'  --exclude '.env.*'
+    )
+    print_info "files secret-exclude: sync/*.yml sync/*.yaml auth.json .env .env.*"
     if [ "${#files_paths[@]}" -gt 0 ]; then
       local fp
       for fp in "${files_paths[@]}"; do
         [ -d "$fp" ] || { [ "$EXECUTE" = y ] && die "files dir not found: $fp"; }
-        run "${RC[@]}" backup --tag "$TAG" --tag files "$fp"
+        run "${RC[@]}" backup --tag "$TAG" --tag files "${secret_excludes[@]}" "$fp"
       done
     else
       [ "$EXECUTE" = y ] && die "no files paths found to back up for $stack site: $SITE_DIR"

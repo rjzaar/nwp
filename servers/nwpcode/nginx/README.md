@@ -34,6 +34,41 @@ on the box.
   copied here).
 - `renew-hook.sh` — certbot renew **deploy-hook** that reloads GitLab nginx
   after a certificate renews. See below.
+- `snippets/deny-files-secrets.conf` — a reusable `location` snippet that
+  **refuses to serve** credential-bearing files under a site's public `files/`
+  dir (`*.yml`/`*.yaml`, `.env`/`.env.*`, `auth.json`). See below.
+
+## Denying credential files under `/files/` (`snippets/deny-files-secrets.conf`)
+
+Drupal's config-sync export can land under a site's **public** files tree
+(`…/sites/default/files/sync/*.yml`) and those YAMLs can carry live secrets — a
+real incident had a config-sync file holding a `glpat` token **and** a
+`webhook_secret`. Composer `auth.json` and `.env` files can slip in too. Because
+this box serves every site with GitLab's **bundled nginx**, a Drupal
+`.htaccess` deny does nothing — nginx must enforce it.
+
+`snippets/deny-files-secrets.conf` is the HTTP-serving layer of a three-part
+defence (the other two: files are chmod-locked on disk, and
+`lib/sanitizers/files-secrets.sh` + `nwp-server backup --exclude` keep the
+secrets out of every export/DR artifact).
+
+Install it **on the box** as root, then add one `include` line inside each
+Drupal `server{}` block (before the generic `location ~ \.php$` / `try_files`):
+
+```bash
+sudo install -m 0644 snippets/deny-files-secrets.conf \
+    /etc/nginx/snippets/deny-files-secrets.conf
+# then, in each Drupal vhost's server{} block:
+#     include /etc/nginx/snippets/deny-files-secrets.conf;
+sudo /opt/gitlab/embedded/sbin/nginx -p /var/opt/gitlab/nginx -t   # validate
+sudo gitlab-ctl hup nginx                                          # apply
+```
+
+Verify (should be `404`):
+
+```bash
+curl -sI https://<host>/sites/default/files/sync/system.site.yml | head -1
+```
 
 ## Certbot renewal gap (why `renew-hook.sh` exists)
 

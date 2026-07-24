@@ -188,6 +188,14 @@ mysqldump --defaults-extra-file="$MYSQL_CNF" --single-transaction --quick "$SCRA
   || { log_error "sanitized export failed"; exit 1; }
 [ -s "$OUTPUT" ] || { log_error "sanitized dump is empty"; exit 1; }
 
+# ops#127: emit the preserved-admin email as an allowlist SIDECAR so the external
+# lib/pii-gate.sh (run by the caller, e.g. server-backup --sanitize) allows that
+# one legitimately-retained value and stays fail-closed on everything else.
+if [ "$PRESERVE_ADMIN" = true ] && [ -n "$PRESERVE_ADMIN_MAIL" ]; then
+    printf '%s\n' "$PRESERVE_ADMIN_MAIL" > "${OUTPUT}.admin-allow"
+    log "wrote admin-allow sidecar → ${OUTPUT}.admin-allow"
+fi
+
 # ── first-gate PII sweep (the independent lib/pii-gate.sh is the real backstop) ─
 pii_sweep "$OUTPUT" || { log_error "built-in sweep found PII — refusing to hand off"; exit 1; }
 log "done: $OUTPUT"

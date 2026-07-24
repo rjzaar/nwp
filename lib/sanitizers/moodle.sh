@@ -136,6 +136,16 @@ VERIFY_ONLY=false
 # SCRATCH_SUFFIX is part of the future contract (parallel to standard.sh); the
 # operator's implementation uses it when creating the throwaway scratch DB.
 SCRATCH_SUFFIX="_sanitize_scratch"
+# ops#127: DR mode. Default (dev-preview) scrubs ALL real users (id>1, incl. the
+# admin) then makes the primary admin loginable with an anonymised identity.
+# --preserve-admin (DR) instead PRESERVES the real siteadmins untouched (so a
+# restore has usable real admins) and scrubs everyone else. Moodle admins are the
+# `siteadmins` set (typically uid 2; uid 1 is guest) — NOT literally uid 1. The
+# preserved admins' real emails are captured pre-scrub and allowlisted in pii_sweep.
+PRESERVE_ADMIN=false
+ADMIN_MAIL=""              # --verify: comma/space-separated preserved admin emails
+USER_SCRUB_WHERE="id > 1" # scrub floor; --preserve-admin appends "AND id NOT IN (siteadmins)"
+PRESERVE_ADMIN_MAILS=""   # captured from the scratch DB in the main flow (newline-sep)
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -143,6 +153,9 @@ while [ $# -gt 0 ]; do
         --output=*)   OUTPUT="${1#*=}"; shift ;;
         --site-dir)   SITE_DIR="$2"; shift 2 ;;
         --site-dir=*) SITE_DIR="${1#*=}"; shift ;;
+        --preserve-admin) PRESERVE_ADMIN=true; shift ;;
+        --admin-mail) ADMIN_MAIL="$2"; shift 2 ;;
+        --admin-mail=*) ADMIN_MAIL="${1#*=}"; shift ;;
         --verify)     VERIFY_ONLY=true; shift ;;
         -h|--help)    sed -n '3,/^###/{/^###/d;p}' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "moodle-sanitizer: unknown arg: $1" >&2; exit 2 ;;
@@ -163,11 +176,24 @@ pii_sweep() { # $1 = gz dump
     # BEFORE the sweep (else `hits` is empty for the wrong reason → false clean).
     gzip -t -- "$f" 2>/dev/null || { log_error "PII sweep: '$f' is not a valid gzip (corrupt/truncated) — refusing (fail-closed)"; return 2; }
     [ "$(zcat -- "$f" 2>/dev/null | head -c1 | wc -c)" -gt 0 ] || { log_error "PII sweep: '$f' decompresses to empty — refusing (fail-closed)"; return 2; }
+    # ops#127: with --preserve-admin, the real siteadmin emails are legitimately
+    # retained — allowlist exactly those (fixed-string, one per line) so the sweep
+    # stays fail-closed on every other address. Sources: captured scratch values
+    # (PRESERVE_ADMIN_MAILS) or the --verify-passed ADMIN_MAIL (comma/space list).
+    local admin_allow="" _amf=""
+    if [ "$PRESERVE_ADMIN" = true ]; then
+        admin_allow="${PRESERVE_ADMIN_MAILS:-$(printf '%s' "$ADMIN_MAIL" | tr ', ' '\n\n')}"
+    fi
     local hits
+    if [ -n "$admin_allow" ]; then
+        _amf="$(mktemp)"; printf '%s\n' "$admin_allow" | grep -E '.@.' > "$_amf" || true
+    fi
     hits=$(zcat -- "$f" 2>/dev/null \
         | grep -E -- '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' 2>/dev/null \
         | grep -Ev -- '@(example\.(com|org|net)|sanitized\.test|drupal\.org|nwpcode\.org)|noreply@|no-reply@' \
+        | { if [ -n "$_amf" ] && [ -s "$_amf" ]; then grep -Fvf "$_amf"; else cat; fi; } \
         | head -5 || true)
+    [ -n "$_amf" ] && rm -f "$_amf"
     [ -z "$hits" ] && { log "PII sweep: clean"; return 0; }
     log_error "PII sweep FAIL — residual email-like values remain:"
     printf '%s\n' "$hits" | sed -E 's/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/[REDACTED]/g' | sed 's/^/    /' >&2
@@ -391,20 +417,20 @@ _moodle_anonymise_users() {
         fi
     done <<< "$existing"
     if [ -n "$set_clause" ]; then
-        sq "UPDATE \`${ut}\` SET ${set_clause} WHERE id > 1;" \
+        sq "UPDATE \`${ut}\` SET ${set_clause} WHERE ${USER_SCRUB_WHERE};" \
             || { log_error "user identity anonymisation failed"; return 1; }
     fi
 
-    # 2. Emails (id>1) → deterministic OIDC fake (preserves the AVC↔SS join).
-    _moodle_oidc_rewrite_column "$ut" "email" "id > 1" || return 1
-    # Any malformed non-'@' residue for id>1 → a safe example.com placeholder.
-    sq "UPDATE \`${ut}\` SET email=CONCAT('user', id, '@example.com') WHERE id > 1 AND email <> '' AND email NOT LIKE '%@%';" \
+    # 2. Emails (scrub floor) → deterministic OIDC fake (preserves the AVC↔SS join).
+    _moodle_oidc_rewrite_column "$ut" "email" "${USER_SCRUB_WHERE}" || return 1
+    # Any malformed non-'@' residue → a safe example.com placeholder.
+    sq "UPDATE \`${ut}\` SET email=CONCAT('user', id, '@example.com') WHERE ${USER_SCRUB_WHERE} AND email <> '' AND email NOT LIKE '%@%';" \
         || { log_error "residual-email cleanup failed"; return 1; }
 
     # 3. Usernames: email-shaped → OIDC (keeps the join when username IS the
     #    email); everything else not-yet-sanitized → deterministic user<id>.
-    _moodle_oidc_rewrite_column "$ut" "username" "id > 1" || return 1
-    sq "UPDATE \`${ut}\` SET username=CONCAT('user', id) WHERE id > 1 AND username NOT LIKE '%@sanitized.test';" \
+    _moodle_oidc_rewrite_column "$ut" "username" "${USER_SCRUB_WHERE}" || return 1
+    sq "UPDATE \`${ut}\` SET username=CONCAT('user', id) WHERE ${USER_SCRUB_WHERE} AND username NOT LIKE '%@sanitized.test';" \
         || { log_error "username anonymisation failed"; return 1; }
 
     # 4. Guest (id=1): tidy any stray email/idnumber (not real PII, but clean).
@@ -506,10 +532,27 @@ moodle_sanitize() {
     prod_guard_scratch_distinct "$LIVE_DB" "$SCRATCH_DB" "$SCRATCH_SUFFIX" || return 1
     _moodle_build_scratch || return 1
 
-    log "anonymising ${PREFIX}user (identity + OIDC emails, id>1) and OIDC linkage"
+    # ops#127 --preserve-admin (DR): keep the real siteadmins untouched, scrub the
+    # rest. Resolve the siteadmins CSV from <prefix>config (validated: digits+commas
+    # only — it flows into an `IN (...)` clause), widen the scrub floor to exclude
+    # them, and capture their real emails so pii_sweep can allowlist exactly those.
+    if [ "$PRESERVE_ADMIN" = true ]; then
+        local _cfg="${PREFIX}config" _sa=""
+        _moodle_table_exists "$_cfg" && _sa=$(sq "SELECT value FROM \`${_cfg}\` WHERE name='siteadmins' LIMIT 1;")
+        [[ "$_sa" =~ ^[0-9]+(,[0-9]+)*$ ]] || { log_error "--preserve-admin: no valid siteadmins list ('${_sa}') — refusing (fail-closed)"; return 1; }
+        USER_SCRUB_WHERE="id > 1 AND id NOT IN (${_sa})"
+        PRESERVE_ADMIN_MAILS=$(sq "SELECT email FROM \`${PREFIX}user\` WHERE id IN (${_sa}) AND email LIKE '%@%';")
+        log "preserve-admin: siteadmins {${_sa}} retained; scrub floor = ${USER_SCRUB_WHERE}"
+    fi
+
+    log "anonymising ${PREFIX}user (identity + OIDC emails, ${USER_SCRUB_WHERE}) and OIDC linkage"
     _moodle_anonymise_users || return 1
     _moodle_anonymise_oauth_links || return 1
-    _moodle_restore_dev_admin || return 1
+    if [ "$PRESERVE_ADMIN" = true ]; then
+        log "preserve-admin: real siteadmins kept intact (skipping dev-admin restore)"
+    else
+        _moodle_restore_dev_admin || return 1
+    fi
 
     # Volatile / log / message / token / free-text-profile tables → TRUNCATE.
     # Names are enumerated (not pattern-matched) so we never blow away messaging
@@ -582,6 +625,13 @@ moodle_sanitize() {
         --skip-lock-tables --quick "$SCRATCH_DB" 2>/dev/null | gzip > "$OUTPUT" \
         || { log_error "sanitized export failed"; return 1; }
     [ -s "$OUTPUT" ] || { log_error "sanitized dump is empty"; return 1; }
+
+    # ops#127: emit preserved siteadmin emails as an allowlist SIDECAR for the
+    # caller's external lib/pii-gate.sh (defence-in-depth; fail-closed elsewhere).
+    if [ "$PRESERVE_ADMIN" = true ] && [ -n "$PRESERVE_ADMIN_MAILS" ]; then
+        printf '%s\n' "$PRESERVE_ADMIN_MAILS" | grep -E '.@.' > "${OUTPUT}.admin-allow" || true
+        log "wrote admin-allow sidecar → ${OUTPUT}.admin-allow"
+    fi
 
     pii_sweep "$OUTPUT" || { log_error "built-in PII sweep found residue — refusing to hand off"; return 1; }
 

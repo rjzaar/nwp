@@ -47,13 +47,31 @@ make_good_artifact() {
   [[ "$output" == *"Integrity verified"* ]]
 }
 
-@test "verify aborts (fail-closed) when the sidecar is missing" {
-  local art="${TEST_TMP}/nwp-remote-20260101T120000.sql.gz"
+@test "verify PROCEEDS with a notice when the sidecar is ABSENT (legacy/local backup)" {
+  # Legacy local backups (local 'pl backup', automated sweep) never write a
+  # .sha256 sidecar. With nothing to verify against we must NOT fail-closed —
+  # otherwise the local-DDEV rollback path (lib/rollback.sh, no --skip-verify)
+  # breaks. Proceed, but say so.
+  local art="${TEST_TMP}/nwp-local-20260101T120000.sql.gz"
   printf 'payload\n' > "$art"   # note: no .sha256 sidecar
   SKIP_VERIFY=false
   run verify_backup_artifact "$art"
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"sidecar missing"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"No integrity sidecar"* ]]
+  [[ "$output" == *"skipping verification"* ]]
+}
+
+@test "verify_backup_set PROCEEDS for a sidecar-less legacy backup set" {
+  # End-to-end of the regression: a full (db+files) legacy backup with no
+  # sidecars anywhere must pass the up-front gate so rollback can continue.
+  local db="${TEST_TMP}/nwp-local-20260101T120000.sql.gz"
+  local tar="${TEST_TMP}/nwp-local-20260101T120000.tar.gz"
+  printf 'db\n'    > "$db"
+  printf 'files\n' > "$tar"
+  SKIP_VERIFY=false
+  INTEGRITY_VERIFIED=false
+  run verify_backup_set "$db" false
+  [ "$status" -eq 0 ]
 }
 
 @test "verify aborts (fail-closed) on a tampered artifact (sha mismatch)" {

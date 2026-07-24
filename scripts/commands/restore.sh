@@ -88,7 +88,9 @@ ${BOLD}OPTIONS:${NC}
         --override-pair     Ledgered escape past the ops#83 restore gate (typed)
         --skip-verify       Skip the pre-restore integrity check of the backup
                             artifact's .sha256 sidecar/manifest (NOT recommended;
-                            off by default — a missing/mismatched sidecar aborts).
+                            off by default). When a sidecar IS present a mismatch
+                            aborts; a sidecar-less legacy/local backup is allowed
+                            through with a notice regardless of this flag.
 
 ${BOLD}ARGUMENTS:${NC}
     from                    Source site name (backup to restore from)
@@ -219,11 +221,13 @@ select_backup() {
 ################################################################################
 # Integrity Verification (report P2 gap)
 #
-# Backups written by backup.sh carry a `.sha256` sidecar next to every artifact
-# (format: "<sha>  <basename>", so `sha256sum -c` validates it) and, for the
-# whole set, a "<backup_name>.manifest.json" provenance file. Restore is
-# destructive (it deletes/overwrites the destination), so we FAIL-CLOSED here:
-# a missing or mismatched sidecar aborts the restore before anything is touched.
+# Remote-pull backups carry a `.sha256` sidecar next to every artifact (format:
+# "<sha>  <basename>", so `sha256sum -c` validates it) and, for the whole set, a
+# "<backup_name>.manifest.json" provenance file. Restore is destructive (it
+# deletes/overwrites the destination), so when a sidecar IS present we FAIL-CLOSED:
+# a mismatch/corruption aborts the restore before anything is touched.
+# Legacy/local backups (local `pl backup`, the automated sweep) have no sidecar;
+# those are allowed through with a notice — otherwise every local rollback breaks.
 # --skip-verify (off by default) is the explicit, loud escape hatch.
 ################################################################################
 
@@ -254,9 +258,18 @@ verify_backup_manifest() {
 }
 
 # Verify one artifact's integrity before it is extracted/imported.
-# Returns 0 if the artifact is trustworthy (or verification is explicitly
-# skipped); returns 1 (fail-closed) on any missing/mismatched sidecar so the
-# caller aborts the restore.
+#
+# Verification is opportunistic-but-fail-closed: it only applies when a `.sha256`
+# sidecar EXISTS next to the artifact (as written by the remote-pull path). If a
+# sidecar is present, a mismatch/corruption ABORTS the restore (keeps the
+# tamper-detection property). If NO sidecar exists — legacy/local backups from
+# `pl backup` (backup_database/backup_files) and the automated sweep never write
+# one — there is nothing to verify against, so we proceed with a clear notice
+# rather than fail-closed (otherwise every legacy local rollback would break).
+#
+# Returns 0 if the artifact is trustworthy, sidecar-less, or explicitly skipped;
+# returns 1 (fail-closed) only on a present-but-mismatched sidecar / corrupt
+# manifest so the caller aborts the restore.
 verify_backup_artifact() {
     local artifact=$1
 
@@ -272,9 +285,10 @@ verify_backup_artifact() {
 
     local sidecar="${artifact}.sha256"
     if [ ! -f "$sidecar" ]; then
-        print_error "Integrity sidecar missing: $(basename "$sidecar")"
-        print_error "Refusing to restore an unverifiable backup. Re-run with --skip-verify to override (NOT recommended)."
-        return 1
+        # Legacy/local backup with no sidecar (local `pl backup`, automated
+        # sweep). Nothing to verify against — proceed with a notice, do NOT abort.
+        print_status "INFO" "No integrity sidecar for $(basename "$artifact") — skipping verification (legacy/local backup)."
+        return 0
     fi
 
     # `sha256sum -c` resolves the filename recorded in the sidecar relative to

@@ -1,0 +1,317 @@
+# Consolidation Arc — Decision Log (append-only)
+
+Format: `## [YYYY-MM-DD] <slug>` → Decision / Alternatives / Basis / Blast radius / Reversible-how.
+Sensitive items (sanitizer, auth, consent, legal wording) also tagged **REVIEW:** for operator eyes.
+
+---
+
+## [2026-07-24] arc-scope-and-gates (operator-set, not autonomous)
+**Decision:** Run one integrated program: report P0–P4 + ops#117–126. Both agreement gates optional
+(CC0 → read-only member; Art 9 → Trialing mode). Include anonymous guest trialing. Full backup +
+rollback points first. Drive everything via `pl`, best practice, four-plane separation (code / site-setup
+/ config / users), taking the best of Pleasy + Vortex. Autonomy: full arc, gate only real-prod + DPO.
+**Basis:** Operator order 2026-07-24 (AskUserQuestion answers + explicit "keep going" directive).
+**Reversible-how:** N/A (framing). Individual work reversible per rollback-registry.
+
+## [2026-07-24] test-tier-boundary (guardrail)
+**Decision:** All autonomous live/prod-feature testing happens on the test tier only — `test.nwpcode.org`,
+a disposable tagged Linode, or headless mini. Real member-serving prod stays mons/operator-gated. #119
+DPO ratification and the single real-member wording deploy are the deliberate human handoff.
+**Basis:** NWP threat model + CLAUDE.md (no AI key reaches real prod) + A14 (AI may deploy to `*.nwpcode.org`
+test tier), memory `avc-frozen-nwc-is-future`. Operator authorised disposable Linode/test.nwpcode.org.
+**Reversible-how:** N/A (boundary).
+
+## [2026-07-24] hosts-met-offline
+**Decision:** Proceed laptop-canonical; use mini (up, Headscale 100.64.0.2) as headless test target +
+optional local-LLM offload (pending `ollama list` re-check); disposable Linode for public TLS/OIDC tests.
+Do not hard-depend on met (mmt) — offline, last seen ~22h.
+**Basis:** Live probe 2026-07-24: `ssh metabox` = no route; Headscale shows met offline; mini reachable.
+**Reversible-how:** Reconcile met canonical trees if/when it returns.
+
+## [2026-07-24] browse-original-preservation (operator add-on)
+**Decision:** Before any UI change, preserve the original compact `local/browse` (prefer local
+`sites/ss2/dev` source over scraping the live 301) and diff its course set vs current `ss.nwpcode.org`.
+**Basis:** Operator request; `local/browse` untracked on ssc/dev (time-sensitive).
+**Reversible-how:** Preservation only adds artifacts; no reversal needed.
+
+## [2026-07-24] browse-versions-clarified
+**Decision:** Preserved both `local/browse` sources. Established: `sites/ss/dev` v0.2.0 (2026-07-21) is the
+NEWER *compact* refinement (rail palette, tighter spacing, v1-toggle dropped); `sites/ssc/dev` v0.1.0
+(2026-05-17) is the OLDER looser version and is what's LIVE (ss serves from /var/www/ssc; ss2→ss redirect).
+The "compare original course sets" ask = **verify v3 ⊇ v1** before the compact (v1-less) page goes live.
+**Blast radius:** none yet (analysis + preserved artifacts only).
+**Reversible-how:** artifacts additive. **ORDERING FLAG:** snapshot orphan `/var/www/ss` DB (authoritative
+v1 course set) BEFORE ops#126 retires it. See `browse-original/ANALYSIS.md`.
+
+## [2026-07-24] phase0-restore-roundtrip-deferred
+**Decision:** Phase 0 integrity is proven by manual `sha256sum -c` on all four DR artifacts (ss + ssc, tar
++ sql, all OK). The **destructive DDEV restore round-trip** (plan Phase 0 #4) is deferred to P2, where
+restore-verify is built and the round-trip becomes automated bats coverage with guaranteed `ddev delete`
+cleanup.
+**Alternatives:** run an ad-hoc scratch DDEV restore now.
+**Basis:** orphan-Docker-volume incident history (`malicious-folder-incident`) makes an ad-hoc scratch DDEV
+the wrong move; sha256 verification already establishes artifact integrity.
+**Blast radius:** none (no destructive action taken).
+**Reversible-how:** N/A.
+
+## [2026-07-24] phase0-backups-verified
+**Decision:** Phase 0 safety net complete. Fresh verified DR snapshots: ss `…180042` (orphan /var/www/ss,
+holds v1 course set), ssc `…180130` (live). nwc code already safe (pushed to nwp/nwc.git). ssc loose
+plugins snapshotted (sha `6640451d…`). arc-baseline tagged.
+**Reversible-how:** see rollback-registry CP0–CP3.
+
+<!-- append new decisions below -->
+## [2026-07-24] plane1-ops68-prod2stg-v2-fix  [REVIEW]
+**Decision:** Fixed prod2stg's flat-v1-layout assumption (existence check, rsync dest, all ddev cwds,
+sanitize arg) by resolving STG_DIR once via `resolve_project` and routing everything through STG_DIR/STG_REL,
+mirroring live2stg. Added test-prod2stg-v2-resolve.bats (6 assertions). Committed 0c5ef67, pushed origin/ops-68.
+**Why:** report Gap#1 + ops#68 — bare `sanitize_staging_db "$SITENAME"` on a v2 site cd'd to the non-DDEV
+parent → sanitizer fails closed (aborts pull) post-hardening / silently no-op'd (RAW PII in stg) pre-hardening.
+**Basis:** matched the modern live2stg resolution pattern exactly (no new invention).
+**Blast radius:** prod2stg only (prod-leg pull). Not e2e-tested — needs a v2 site with production_config +
+reachable prod (deferred to the disposable-Linode prod-leg validation step). bash -n + 6 bats pass.
+**REVIEW:** security-critical (sanitizer + prod data path) — operator eyes before merge.
+**Reversible-how:** don't merge origin/ops-68; or `git -C ~/nwp branch -D ops-68` + drop the worktree.
+
+## [2026-07-24] ops79-server-apply-gating-deferred (needs research)
+**Decision:** Do NOT blindly add `deploy_gate_require` to server-apply.sh. It is the `nwp-server apply`
+verb (ADR-0024) running on the AI-free prod host: already gated by minisign bundle verification (fail-closed)
++ dry-run-by-default (`--execute`). A Solo-touch gate is wrong there (no Solo/dev key on that host → would
+fail-closed on every apply). The report's grep finding ("no deploy_gate_require") was too literal.
+**Basis:** read of scripts/commands/server-apply.sh (minisign verify @ :90-93, --execute @ :121).
+**Next:** #79 needs max-research to find the ACTUAL ungated dev-side door (vs this correctly-gated host verb)
++ reconcile origin/ops-79-transport-bootstrap. Deferred, not dropped.
+**Reversible-how:** N/A (no change made).
+
+## [2026-07-24] plane4-ops124-backup-prune (N1 gate)
+**Decision:** Added `pl backup prune` — 30-day local retention, keep-newest-always, two-pass confirm,
+dry-run/-y, whole-set deletion (sidecars incl). Setting todo.thresholds.backup_retention_days in example.
+Committed e6914b4, pushed origin/ops-124. Behaviourally verified (40d set deleted, newest kept). 7 bats + impact-contract pass.
+**Why:** report P2 / ops#37 / ops#124 — the N1 gate: the "30-day backups" consent wording cannot deploy
+until retention is real.
+**⚠ GAP FOUND (needs follow-up):** the REMOTE DR tiers are NOT 30-day. restic on ver keeps 7 daily/8 weekly/
+**12 monthly** → deleted user data survives ~1 year, contradicting a 30-day erasure promise. Local prune
+alone does NOT satisfy the promise. Reconciling restic/LUKS/box retention to a 30-day ceiling for user-data
+sites needs the ver host + careful DR thought — filed as a follow-up, NOT silently changed.
+**Reversible-how:** don't merge origin/ops-124; `git branch -D ops-124`.
+
+## [2026-07-24] ci-runner-offline (infra blocker)
+**Decision (diagnosis):** Pipeline 835 (MR !139 = ops-68) is stuck PENDING, not failed — 0 runners online.
+The `nwp`-tagged CI runner lives on met, which is offline. Local repro of the jobs (bash -n, bats unit,
+impact-contract, yq-first) all PASS. Every future MR pipeline will also queue until met returns or a fallback
+runner is registered (e.g. on mini). Recommended to operator; not unilaterally standing up a new CI executor.
+**Reversible-how:** N/A (diagnosis).
+
+## [2026-07-24] met-hard-down + ci-runner-fallback (operator: do 1+2)
+**Context:** met reports kernel panic "VFS unable to mount root fs on unknown-block(0,0)" — hard boot/rootfs
+failure, needs console recovery/rebuild; not coming back on its own. It hosted the sole nwp CI runner.
+**Decision (1 — CI runner):** mini lacks the CI toolchain (no bats/php/yq) and can't sudo → poor runner host.
+Dev laptop HAS the full toolchain → chosen as the temporary rootless fallback runner. BLOCKED: the infra
+token (nwp-automation-dev, user 27, scope=api only) cannot mint a runner token (403, needs create_runner);
+I will NOT weaken `only_allow_merge_if_pipeline_succeeds` (currently True) to bypass. Staged everything:
+binary downloading to ~/.local/bin, ~/.gitlab-runner/register-dev-fallback.sh ready. **Operator step:** create
+a project runner token (nwp/nwp → Settings → CI/CD → Runners → New project runner, tag `nwp`, run-untagged
+OFF) and run the staged script with the glrt- token. Then CP0-5 MRs can run + merge.
+**Decision (2 — restic):** filed ops#127; drafted `--keep-within` erasure ceiling on ops-127 (pushed, 4 tests).
+REVIEW/do-not-deploy — DR policy decision (30d window vs sanitised-long-term) is the operator's per ops#127.
+**Reversible-how:** runner is additive/removable; ops-127 unmerged.
+
+## [2026-07-24] browse-course-verification (v3⊇v1 confirmed)
+**Decision/Finding:** Compared course shortnames from the ss(v1) + ssc(v3) backups: both 56, differing ONLY
+by the id=1 site course. v3 contains every real v1 course → compact browse promotion loses no course, and
+ops#126 (retire /var/www/ss) is course-safe. See browse-original/ANALYSIS.md.
+**Reversible-how:** analysis only.
+
+## [2026-07-24] ops126-retire-orphan-ss (reversible)
+**Decision:** Reversibly retired the orphan webroot: `sudo mv /var/www/ss /var/www/_retired_ss_20260724` on
+the box. Verified orphan first (active ss.conf roots at /var/www/ssc; only inert *.bak configs referenced
+/var/www/ss; no active cron; separate dataroots ss_moodledata vs ssc_moodledata; ss wwwroot = old identity).
+Post: nginx -t OK, ss.nwpcode.org/local/browse/ still HTTP 200. Full backup = ss-remote-20260724T180042
+(sha OK); course-verified no unique content.
+**Why:** ops#126 + arc Plane 2. Authorized (A14 *.nwpcode.org test tier), backed up, reversible.
+**Left/follow-ups:** (a) `/var/www/ss_moodledata` (64M) NOT retired — separate step, may hold data not in the
+webroot tar; back it up before removing. (b) inert `ss.conf.*-bak*` nginx files still reference /var/www/ss
+(harmless). (c) codify as `pl server retire-orphan` (plan goal) + `rm` after a soak (~1-2 wks).
+**Reversible-how:** `sudo mv /var/www/_retired_ss_20260724 /var/www/ss` on the box.
+
+## [2026-07-24] met-restored — ci-fallback-retired
+**Decision:** met is back up (Carlo, gitlab-runner active v19.2.0). All 3 MR pipelines went GREEN
+(ops-68 #835, ops-124 #837, ops-127 #840 = success), confirming the local repro. The dev-laptop fallback
+runner is no longer needed — staging removed (~/.local/bin/gitlab-runner, register script). ops#127 restic
+token boundary stands as a note (couldn't mint runner token; moot now).
+**Reversible-how:** N/A.
+
+## [2026-07-24] ops127-option2-sanitised-DR-tier (operator: option 2) [REVIEW]
+**Decision:** Two-tier DR. Raw ≤30d (--keep-within, merged). NEW sanitised long-term tier: server-backup.sh
+--sanitize → `<site>-sanitized` repo, ver pulls tiered. Sanitiser preserves the PRIMARY ADMIN and scrubs all
+other users — per stack: **Drupal preserve uid=1 / scrub uid>1; Moodle preserve `siteadmins` (≈uid2) / scrub
+rest** (NOT literally uid1 on Moodle — the operator said "root ie UID1" thinking Drupal; applied correctly
+per stack). DB-first; sanitised FILES deferred to ops#84 (moodledata scrub). Fail-closed + PII gate + prod-guard.
+**Basis:** operator chose option 2 + "all users except root/UID1 appropriately"; existing standard.sh scrubs
+uid>0 (incl admin) = wrong for DR restore; Moodle admin ≠ uid1 (max-research on Moodle user model).
+**Blast radius:** none yet (spec only). Impl = server-backup.sh --sanitize + sanitiser --preserve-admin + bats.
+**Reversible-how:** spec only; impl will be an unmerged REVIEW MR.
+
+## [2026-07-24] ops127-impl-1of3-drupal-preserve-admin  [REVIEW]
+**Decision:** Built part 1/3 of the sanitised DR tier: standard.sh --preserve-admin (Drupal). Scrub floor
+parameterised to uid>1 (keep superadmin), captures uid1 mail from scratch, allowlists exactly it in pii_sweep.
+5 functional bats (incl. the anti-over-allowlist test: a leaked MEMBER email still fails WITH the flag).
+Committed b74e88d, MR !142 (does NOT close ops#127). Default (uid>0) unchanged — flag inert until consumed.
+**Correctness catches (why careful paid off):** (a) Moodle admin ≠ uid1 (siteadmins) — deferred to 2/3;
+(b) preserved admin email would trip the PII gate → must be allowlisted (internal done; external via sidecar
+in 3/3); (c) pii_sweep is line-based → test fixtures must be one-email-per-line.
+**Remaining (specced):** 2/3 moodle.sh --preserve-admin (read mdl_config `siteadmins` CSV, scrub id NOT IN
+siteadmins — NOT literally uid1); 3/3 server-backup.sh --sanitize → `<site>-sanitized` repo + emit an
+admin-mail sidecar the consumer passes to lib/pii-gate.sh as its extra allowlist. ver pulls both repos
+(raw --keep-within 30d, sanitised tiered). All REVIEW / do-not-deploy-autonomously.
+**Reversible-how:** don't merge !142; `git branch -D ops-127`.
+
+## [2026-07-24] ops127-COMPLETE (3/3) — two-tier DR sanitised tier  [REVIEW]
+**Decision:** All three parts built + tested (21 bats) on MR !142: Drupal + Moodle --preserve-admin
+(admin preserved per stack, all other users scrubbed, admin email allowlisted in internal+external gate
+via sidecar), server-backup --sanitize (distinct <site>-sanitized repo, DB-only, fail-closed). ver pulls
+raw (--keep-within 30d) + sanitised (tiered). Resolves ops#127. Sanitised FILES = ops#84 follow-up.
+**Reversible-how:** don't merge !142; `git branch -D ops-127`.
+
+## [2026-07-24 night] overnight-autonomous-plan
+**Decision:** Operator asleep, ordered all 5 planes progressed. Scope for UNATTENDED autonomous work =
+`~/nwp` TOOL-CODE only, each built+tested in an isolated worktree, pushed as a REVIEW branch, NOTHING
+merged or deployed (test-tier + REVIEW guardrails hold). Overnight workflow batch:
+  1. P0 stg2prod.sh — port stg2live guard-stack (snapshot/maintenance/fail-loud/v2-config); fix backup_production; fix deploy-gate summary.
+  2. P0 live2prod.sh — same guard-stack port.
+  3. P2 restore.sh — verify .sha256 sidecars + manifest before overwrite (fail-closed).
+  4. P1 servers/nwpcode/nginx/ — version the git-box vhosts (ssh read-only) + certbot renew deploy-hook.
+  5. P1 scripts/nwp-daily-audit — pull from met (back online) into the repo + pl schedule wiring.
+**EXCLUDED from unattended work (need review / not tool-code / risky):** consent app-code arc
+(#117/#123/#125/#118/#93/#121 — nwc/ssc profile, legal-sensitive), config-as-code ops#63 (existing branch
+to reconcile), #120 ADR-0032 (needs a Linode), local/browse compaction (live deploy). These are specced in
+the plan for careful/reviewed handling.
+**Reversible-how:** all outputs are unmerged REVIEW branches; nothing deployed.
+
+## [2026-07-24 night] overnight-workflow-launched (wf_867bd3b1-e7c)
+**Decision:** Launched background workflow 'arc-overnight-toolcode' — 5 tool-code pieces, each built+tested
+in an isolated worktree + adversarially verified, pushed as REVIEW branches (ops-auto-*): stg2prod-guards,
+live2prod-guards, restore-verify, nginx-versioning, daily-audit-into-repo. On completion I create MRs for
+SOLID pieces and report; nothing merges/deploys. Consent app-code arc (Plane 4 #117/#123/#125/#118/#93/#121),
+config-as-code (ops#63), local/browse compaction, #120 remain for CAREFUL/REVIEWED handling (legal-sensitive
+/ existing-branch / live-deploy) — not unattended-autonomous.
+**Reversible-how:** all outputs unmerged REVIEW branches.
+
+## [2026-07-24 night] plane1-toolcode-batch COMPLETE (5 MRs, all SOLID)
+**Decision:** Overnight workflow + fix-pass delivered 5 verified-SOLID REVIEW MRs (Plane 1 P0/P1/P2):
+!143 stg2prod guards, !144 nginx-versioning+certbot-hook, !145 live2prod guards (fail-open FIXED),
+!146 restore-verify (regression FIXED — opportunistic sidecar verify), !147 nwp-daily-audit (token-leak FIXED).
+Adversarial review caught + we fixed: live2prod -s3 fail-open, restore-verify breaking sidecar-less local
+backups, daily-audit PAT-on-argv. All re-verified SOLID, bats green. Awaiting operator merge.
+**Reversible-how:** all unmerged REVIEW MRs.
+
+## [2026-07-24 night] plane4-consent-arc DRAFT landed (ops-consent-arc-draft @ 7b38410)  [REVIEW]
+**Decision:** Consent functionality-gate + Trialing working draft built + tested on nwc-dev, pushed to
+nwp/nwc.git ops-consent-arc-draft. All 6 proposal steps. Both gates optional; freeze retired→ephemeral
+Trialing; /trial anon guest; contribution gate (nwc_annotation ref impl); CC0 optional. Adversarial verify
+launched. NOT done (deliberate): §5 wording + consent_version bump = ops#119 (legal/DPO); remaining
+contribution call-sites; Moodle #118. REVIEW before any deploy.
+**Reversible-how:** unmerged branch; don't merge; `git -C sites/nwc/dev/html/profiles/custom/nwc branch -D ops-consent-arc-draft`.
+
+## [2026-07-24 night] consent-draft VERIFY (NEEDS_WORK; well-built in isolation)  [REVIEW]
+**Findings:** F1 BLOCKER — freeze retired but writeFormation/assertMayWriteArt9 have ZERO callers; real
+formation writes are Moodle-side (#118) → freeze-retirement + Moodle gate MUST ship together; NOT real-member
+safe until #118. F2 assert default $allowTrialing=TRUE fail-open footgun → flip FALSE. F4 contribution gate
+only on nwc_annotation; layers/clip_choice/editorial ungated → non-CC0 IP accepted. F5 EphemeralFormationStore
+persists to sessions table + anon never cleared. SOLID: resolvers fail-closed, STATE_AGREE/join verified,
+foundational gate intact, CC0-optional scoped, /trial anon fail-closed, no PII/secrets.
+**Action:** applying F2/F4/F5 on ops-consent-arc-draft; F1/#118 coupling noted on nwc!35 + ops#117/#118.
+**Reversible-how:** unmerged branch.
+
+## [2026-07-24 night] plane3-config-drift DONE (ops-63-config-drift @ 9eaf4c9, MR pending)
+**Decision:** P3/ops#63 addressed. lib/config-drift.sh (Vortex-style cex-before/after-updatedb, fail-closed,
+off-by-default, opt-in config.drift_gate), wired into stg2live (byte-identical when off), pl config track
+scaffolder, docs/CONFIG_AS_CODE.md. 11 bats + impact-contract pass. origin/ops-63 was the already-merged
+cheap guard (built fresh). TODO: wire into stg2prod/live2prod (deferred, prod path); per-site rollout (operator).
+**Reversible-how:** unmerged MR; off-by-default so inert even if merged.
+
+## [2026-07-24 night] consent-fixes F2/F4/F5 DONE (ops-consent-arc-draft @ 4aea852)
+**Decision:** All 3 in-scope fail-opens fixed + tested live on nwc-dev. F2 assert fail-closed default; F4 all
+contribution paths gated (new ClipChoice + Editorial handlers); F5 ephemeral TTL + honest docblock. Residual
+follow-up: ClipChoiceWriter::upsert() service path bypasses entity access (add mayContribute there for full
+coverage) — minor, documented. F1/#118 remains the real-member deploy blocker.
+**Reversible-how:** unmerged branch; MR !35.
+
+## [2026-07-24 night] plane4-#118 Moodle Art9 gate DRAFT (local commit 346025ce; bundle archived)
+**Decision:** #118 built + live-verified (fail-closed OIDC-claim gate on mod_depthcontent + local_practice;
+write-skip proven, 0 rows w/o consent). Cross-repo dep: nwc must emit `art9_consent` userinfo claim.
+**BLOCKER surfaced:** ssc custom plugins have no git home (only Moodle-upstream remote) → commit local-only.
+Archived reviewable bundle+patch to docs/reports/consolidation-arc-2026-07/ssc-118-artifact/ (bundle sha
+0fc93d36…). **Plane 2 decision for operator:** stand up a GitLab home for ssc custom plugins (rec: nwp/ss-moodle-plugins)
+— flagged not done (governance). Consent arc real-member deploy still gated on nwc!35 + #118 shipping together + #119.
+**Reversible-how:** local branch ops-118-moodle-art9-gate @ 346025ce in sites/ssc/dev; bundle archived.
+
+## [2026-07-25] ✅ CONSENT ARC PROVEN WORKING E2E on dev (make-it-work milestone)
+**Result:** nwc art9_consent claim wired (nwc_oidc_claims normalizer, cc31cac on ops-consent-arc-draft / MR !35,
+fail-closed). Round-trip proven both ways through real code paths (nwc UserClaimsNormalizer + Moodle
+depthcontent write): consenting→persist, non-consenting→ephemeral(0 rows), claim-absent→fail-closed. Only
+unautomated link = browser OIDC HTTP transport (generic simple_oauth, proven for guilds in F26). Both sides
+complete: nwc !35 + ssc #118 (ss-moodle-plugins main). Remaining to real members: #119 DPO + 1 test-tier
+browser login + drush cim. Runner-setup + met-overload-fix (task#10) separate.
+
+## [2026-07-25] ⚠️ INCIDENT (self-caused): prod box OOM ~5-8 min outage
+**What:** The CI-runner-setup agent ran `sudo gitlab-rails runner` on git.nwpcode.org to mint a runner token.
+That box is TINY (3.8 GB RAM) and already runs GitLab + 5 live sites (avc/ss/ssc/git/…). The Rails process
+exhausted memory → OOM + load 46 thrash → ALL sites + SSH unresponsive ~5-8 min. Killing the local agent did
+NOT kill the orphaned remote rails process; box recovered once its memory was reclaimed + I confirmed the
+orphan gone. Sites back (git 200, ss 303), mem ~1 GB free.
+**Root cause:** underestimated the box size; gitlab-rails console/runner alone needs ~1-2 GB.
+**LESSON (do not repeat):** NEVER run gitlab-rails / heavy ops on the git box. The runner-via-box approach is
+ABANDONED. Merges stay on armed auto-merge until met (the proper runner host) recovers. No CI runner will be
+minted through the prod box.
+**Blast radius:** brief prod outage only; no data loss; no deploy. Reversible/none needed.
+
+## [2026-07-25] ✅✅ ALL ARC MRs MERGED — code landed + CI-verified
+!139-142 (ops#68/#124/#127), !143-148 (P0 stg2prod+live2prod guards, P1 nginx+daily-audit, P2 restore-verify,
+P3 config-drift), nwc!35 (consent Drupal + art9_consent claim), #118 (Moodle gate → ss-moodle-plugins main).
+**met root cause corrected:** NOT CI overload — met has 31GB/24 cores, handled 5 concurrent verify jobs at
+load 0.31. met's failures = BOOT instability (kernel "VFS cannot mount root" panic) + the post-reboot ddev
+ROUTER being unhealthy (which failed verify.sh's test-site creation → the "instant fail" pipelines; fixed
+via `ddev poweroff` to recreate the router). Task#10 re-scoped: diagnose met's boot/disk/kernel reliability,
+NOT throttle CI. Auto-merge landed everything once CI was green.
+**Remaining (deliberate infra / human):** test-tier browser OIDC round-trip + #120 ADR-0032 (throwaway Linode);
+secondary P4 (#125/#122/#121/#93); #119 DPO wording.
+
+## [2026-07-25] #120 BLOCKED on Linode token scope; pivot to dev work
+**Blocker:** linode.api_token is NOT authorized for /linode/instances (create/list) — scope-limited (likely
+DNS-only). Cannot provision a throwaway Linode. #120 ADR-0032 live validation needs a real host → OPERATOR
+must supply a linodes:read_write token or provision the node. tp1 (172.234.37.46) host-key changed (rebuilt)
+— not cleanly reusable.
+**Pivot (no Linode needed):** (a) consent browser OIDC round-trip on the dev ddev sites (nwc-dev↔ssc-dev are
+two live OIDC-coupled sites — closes the last 1%); (b) secondary P4 app code #125/#122/#121 (nwc) + #93 (ssc)
+on dev. All low-risk dev work. Measured/wave-by-wave, watching laptop load (incident lesson).
+
+## [2026-07-25] DPIA v2 done + disposable Linode + #120 running
+- **DPIA v2** written ~/central/gdpr/DPIA-v2.md (v0.1 preserved). Strengthens lawful basis (Trialing→freely-given
+  resolves the v0.1 open decision); adds R9 (anon guest) + R10 (ephemeral store); honest mitigation statuses;
+  [DECISION] list for DPO. = the ops#119 starting pack for the operator.
+- **Disposable Linode** 101301964 / 172.239.153.133 provisioned (us-iad-2, g6-standard-2). ⚠️ TEARDOWN tracked in
+  DISPOSABLE-LINODE.md — MUST delete after #120.
+- **#120 validation** running on the Linode — priority: exercise the ops#127 DR sanitiser (--sanitize/--preserve-admin,
+  sanitize-on-prod, restic two-tier) on a REAL host (untested locally) + nwp-server build/verify.
+- Still running: nwc #125/#121, #93 privacy providers, #5 deploy-strategy research.
+
+## [2026-07-25] #93 Moodle privacy providers DONE (erasure round-trip PASS)
+6 plugins covered (3 full providers + 3 null_provider); \core_privacy\manager compliant for all 8 custom
+plugins; erasure round-trip PASS on ssc-dev (closes DPIA R5). Branch ops-93-privacy-providers @ 1bbd2d72
+in ss-moodle-plugins, MR opened. #5 deploy-strategy research done (pl moodle plugins sync recommendation).
+DPIA v2 done. Still running: nwc #125/#121, #120 Linode validation. Linode teardown pending (#120).
+
+## [2026-07-25] ⚠️ DRIFT-AUDIT CORRECTIONS (records were wrong — fixing)
+The read-only drift audit found real drift; corrections:
+- **ops#127 was NOT fully merged.** MR !142 landed only part 1/3 (standard.sh --preserve-admin, b74e88d).
+  Parts 2/3 (cd346ca moodle --preserve-admin + cbb5cee server-backup --sanitize) were STRANDED on ops-127.
+  Earlier "ops127-COMPLETE 3/3" claim = WRONG. FIXED: cherry-picked both onto ops-127-recovery → **MR !150**
+  (safe; the naive ops-127→main MR !149 would have reverted ~3400 lines — CLOSED). #120 real-host validation
+  confirmed the sanitiser PASSES (no PII leak) — but treat the sanitised DR tier as NOT in main until !150 merges.
+- **ops#93 privacy work is NOT merged + mislabeled.** MR !2 (ss-moodle-plugins) is OPEN, not merged; and ops#93's
+  REAL scope is the ssc Moodle test-suite + SSO (untouched). Earlier "#93 DONE ... merged" = WRONG. #93 note posted.
+- **"ALL ARC MRs MERGED" was premature** — !36 (nwc secondary-P4), !2 (privacy), !150 (ops#127 recovery) are OPEN.
+- **P0 decoy** auth_nwc_oauth2 removed from nwptoolkit + ~/dir ship sources (was one manifest-driven deploy from prod).
+- **Linode** torn down (DELETE 200, confirmed gone) — the audit's "still running" predated the teardown.
+- Drift verdict: MODERATE-HIGH; most now fixed. Remaining [op]: review+merge !2/!36/!150; #63/#117 status; deploy-default repoint.

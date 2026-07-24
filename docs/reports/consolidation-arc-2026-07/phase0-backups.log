@@ -1,0 +1,94 @@
+=== Phase 0 remote backups started 2026-07-24T08:00:37Z ===
+--- ss (orphan /var/www/ss; captures v1 course set before ops#126) ---
+
+═══════════════════════════════════════════════════════════════
+  NWP Remote Pre-Deploy Backup: ss
+═══════════════════════════════════════════════════════════════
+
+INFO: Live host:   gitlab@97.107.137.88
+INFO: Remote path: /var/www/ss
+INFO: Site type:   moodle
+INFO: Domain:      https://ss.nwpcode.org
+
+ARCHIVED (kept, relocated):
+  Live files: tar of /var/www/ss (incl. oauth-keys/, auth.json, local settings; excl. files/ + private) → /home/rob/nwp/sites/ss/backups/ss-remote-20260724T180042.tar.gz (+.sha256)
+  Live DB:    moodle dump → /home/rob/nwp/sites/ss/backups/ss-remote-20260724T180042.sql.gz (+.sha256)
+
+DATA-LOSS WARNINGS:
+  ⚠ Writes temp artifacts to gitlab@97.107.137.88:~ then pulls + removes them
+
+NOT AFFECTED:
+  • Live site https://ss.nwpcode.org — DB, uploads and signing keys are READ ONLY; nothing on live is modified or deleted
+
+
+═══════════════════════════════════════════════════════════════
+  Snapshotting Live Files
+═══════════════════════════════════════════════════════════════
+
+[✓] Files tarred on live host
+[✓] Files pulled + sha256 verified: ss-remote-20260724T180042.tar.gz
+
+═══════════════════════════════════════════════════════════════
+  Snapshotting Live Database
+═══════════════════════════════════════════════════════════════
+
+[✓] Database dumped on live host
+[✓] Database pulled + sha256 verified: ss-remote-20260724T180042.sql.gz
+
+═══════════════════════════════════════════════════════════════
+  Remote Backup Summary
+═══════════════════════════════════════════════════════════════
+
+✓ Files:    /home/rob/nwp/sites/ss/backups/ss-remote-20260724T180042.tar.gz (+.sha256)
+✓ Database: /home/rob/nwp/sites/ss/backups/ss-remote-20260724T180042.sql.gz (+.sha256)
+✓ Manifest: /home/rob/nwp/sites/ss/backups/ss-remote-20260724T180042.manifest.json (remote:true, host 97.107.137.88)
+
+[✓] Remote backup completed in 00:00:52
+RC_ss=0
+--- ssc (current live /var/www/ssc) ---
+
+═══════════════════════════════════════════════════════════════
+  NWP Remote Pre-Deploy Backup: ssc
+═══════════════════════════════════════════════════════════════
+
+INFO: Live host:   gitlab@97.107.137.88
+INFO: Remote path: /var/www/ssc
+INFO: Site type:   moodle
+INFO: Domain:      https://ssc.nwpcode.org
+
+ARCHIVED (kept, relocated):
+  Live files: tar of /var/www/ssc (incl. oauth-keys/, auth.json, local settings; excl. files/ + private) → /home/rob/nwp/sites/ssc/backups/ssc-remote-20260724T180130.tar.gz (+.sha256)
+  Live DB:    moodle dump → /home/rob/nwp/sites/ssc/backups/ssc-remote-20260724T180130.sql.gz (+.sha256)
+
+DATA-LOSS WARNINGS:
+  ⚠ Writes temp artifacts to gitlab@97.107.137.88:~ then pulls + removes them
+
+NOT AFFECTED:
+  • Live site https://ssc.nwpcode.org — DB, uploads and signing keys are READ ONLY; nothing on live is modified or deleted
+
+
+═══════════════════════════════════════════════════════════════
+  Snapshotting Live Files
+═══════════════════════════════════════════════════════════════
+
+[✓] Files tarred on live host
+[✓] Files pulled + sha256 verified: ssc-remote-20260724T180130.tar.gz
+
+═══════════════════════════════════════════════════════════════
+  Snapshotting Live Database
+═══════════════════════════════════════════════════════════════
+
+[✓] Database dumped on live host
+[✓] Database pulled + sha256 verified: ssc-remote-20260724T180130.sql.gz
+
+═══════════════════════════════════════════════════════════════
+  Remote Backup Summary
+═══════════════════════════════════════════════════════════════
+
+✓ Files:    /home/rob/nwp/sites/ssc/backups/ssc-remote-20260724T180130.tar.gz (+.sha256)
+✓ Database: /home/rob/nwp/sites/ssc/backups/ssc-remote-20260724T180130.sql.gz (+.sha256)
+✓ Manifest: /home/rob/nwp/sites/ssc/backups/ssc-remote-20260724T180130.manifest.json (remote:true, host 97.107.137.88)
+
+[✓] Remote backup completed in 00:00:44
+RC_ssc=0
+=== done 2026-07-24T08:02:13Z ===

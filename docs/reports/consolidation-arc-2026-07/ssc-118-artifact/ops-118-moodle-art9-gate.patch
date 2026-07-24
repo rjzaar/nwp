@@ -1,0 +1,1972 @@
+commit 346025ce13dc2151c0a6d084c1b24c19b713aa91
+Author: rjzaar <rjzaar@gmail.com>
+Date:   Fri Jul 24 23:04:39 2026 +1000
+
+    REVIEW(legal/cross-app): ops#118 Moodle-side Art.9 formation-data consent gate (fail-closed WORKING DRAFT)
+    
+    Safety partner to the nwc (Drupal) consent arc. The real special-category
+    religious-formation writes happen cross-app HERE on Moodle (ssc): mod_depthcontent
+    (progress/mastery/spaced-repetition/retrieval) and local_practice (practice ledger).
+    Until Moodle also gates those on Art.9 consent, a no-consent (Trialing) member would
+    persist special-category data on Moodle = GDPR breach. This gate carries the consent
+    decision from nwc via a new OIDC claim and fails CLOSED.
+    
+    MUST SHIP TOGETHER with the nwc freeze-retirement / consent-arc change that EMITS the
+    claim. Until then every member reads as Trialing and formation writes are skipped
+    (the safe pre-rollout posture).
+    
+    Cross-repo contract (nwc MUST emit): userinfo boolean claim `art9_consent`
+    (optional secondary `may_keep_formation`, ANDed if present).
+    
+    - auth_nwc\consent: pure decide() (fail-closed: null/false -> block; siteadmin -> allow)
+      + Moodle I/O (store_from_userinfo / get / may_keep_formation). Carried at login as
+      user pref auth_nwc_art9_consent; gate reads the STORED pref so a userinfo failure
+      never opens the gate.
+    - observer::user_loggedin: fetch raw userinfo ONCE, drive both guild sync (ops#93)
+      and consent carry (ops#118). Missing claim on a valid userinfo -> store FALSE.
+    - mod_depthcontent: gate get_progress / update_sr / apply_retrieval + early-return
+      the two external write entry points (record_response, submit_review) -> ephemeral
+      no-op, UX intact, nothing persisted.
+    - local_practice: gate the ONE write path engaged() (returns existing false "rejected"
+      contract) + set_anchor.
+    - Pure unit test (plain php) for the decision truth table. version.php bumped so a
+      deploy rebuilds the classmap.
+    
+    Tests: php -l clean on all files; consent_logic_test 6/6; live Moodle bootstrap probe
+    (helper + module wrappers, admin allowed / guest+unknown blocked); functional
+    write-skip proven on a throwaway user (0 rows persisted with no consent), cleaned up.
+    
+    Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+
+diff --git a/auth/nwc/classes/consent.php b/auth/nwc/classes/consent.php
+new file mode 100644
+index 00000000..05942ecc
+--- /dev/null
++++ b/auth/nwc/classes/consent.php
+@@ -0,0 +1,217 @@
++<?php
++// This file is part of the auth_nwc plugin for Moodle (F26 nwc<->ss OIDC).
++//
++//   LEGAL / CROSS-APP SURFACE — REQUIRES HUMAN REVIEW BEFORE MERGE/ENABLE.
++//   This is the Moodle half of the ops#118 Art. 9 consent gate. It MUST ship
++//   together with the nwc (Drupal) consent-arc change that EMITS the
++//   `art9_consent` claim (see the cross-repo contract below). Until BOTH ship,
++//   this gate treats every member as Trialing (fail-closed), which is the
++//   correct pre-rollout posture but blocks real formation writes.
++//
++// GNU GPL v3 or later. Copyright 2026 Narrow Way Project.
++//
++// WHY THIS EXISTS (ops#118)
++// ------------------------
++// On nwc (Drupal) the Art. 9 formation-data freeze was retired and replaced by
++// a *capability* gate. But the REAL special-category religious-formation writes
++// happen cross-app, here on Moodle (Saint School / ssc): mod_depthcontent
++// (progress / mastery / spaced-repetition / retrieval log) and local_practice
++// (the religious PRACTICE ledger of named members). Until Moodle ALSO gates
++// those writes on Art. 9 consent, a no-consent ("Trialing") member would
++// persist special-category data on Moodle = a GDPR breach. This class carries
++// the consent decision to Moodle and is the single source of truth the two
++// modules gate their writes on.
++//
++// CROSS-REPO CONTRACT (nwc MUST emit this) — the load-bearing dependency
++// ---------------------------------------------------------------------
++// The nwc OIDC issuer must add a boolean claim to its /oauth/userinfo response:
++//
++//     art9_consent : bool   // true  = member has given Art. 9 consent to keep
++//                           //         religious-formation data (Member tier).
++//                           // false = Trialing / consent withdrawn -> ephemeral.
++//
++// (Optional, reserved for a future finer split — NOT required by this gate:
++//     may_keep_formation : bool   // if present, ANDed with art9_consent.)
++//
++// The claim name is defined once here as self::CLAIM. auth_nwc reads it from the
++// RAW userinfo (\core\oauth2\client::get_raw_userinfo() — core drops unmapped
++// claims from get_userinfo(), exactly as for the `guilds` claim) on every login
++// and stores it as a per-user preference. The GATE itself then works purely off
++// the STORED preference, so a transient userinfo failure never silently opens
++// the gate — it just leaves the last-known (fail-closed) value in place.
++//
++// FAIL-CLOSED SEMANTICS
++// ---------------------
++//   * pref never set / unknown        -> NO consent (Trialing) -> writes skipped.
++//   * pref explicitly '0'             -> NO consent            -> writes skipped.
++//   * pref explicitly '1'             -> consent               -> writes persist.
++//   * site administrator (is_siteadmin) -> ALWAYS allowed, so CLI seeding,
++//     admin tooling and break-glass never break. Admin accounts are operators,
++//     not data subjects whose formation we are protecting.
++//   * any error evaluating the decision -> treated as NO consent.
++
++namespace auth_nwc;
++
++defined('MOODLE_INTERNAL') || die();
++
++/**
++ * Art. 9 formation-data consent state, carried nwc -> Moodle via an OIDC claim
++ * and enforced as a fail-closed write gate (ops#118).
++ *
++ * The DECISION is pure (self::decide) and unit-tested with plain PHP, matching
++ * the uid_lock / guild_cohort_map pattern. All Moodle I/O (preference read,
++ * is_siteadmin) lives in the thin self::may_keep_formation composer.
++ */
++final class consent {
++
++    /** The Moodle user-preference key that stores the carried consent state. */
++    const PREF = 'auth_nwc_art9_consent';
++
++    /** The OIDC userinfo claim nwc must emit (cross-repo contract). */
++    const CLAIM = 'art9_consent';
++
++    /**
++     * Optional secondary claim; if present it is ANDed with CLAIM. Reserved for
++     * a future finer-grained split — not required for the gate to work today.
++     */
++    const CLAIM_MAY_KEEP = 'may_keep_formation';
++
++    /**
++     * PURE decision: may we persist this member's formation data?
++     *
++     * @param bool|null $consent Stored consent tri-state: true/false, or null if
++     *                           no consent state has ever been carried/stored.
++     * @param bool      $isadmin Whether the user is a Moodle site administrator.
++     * @return bool true only when persistence is permitted; false fails closed.
++     */
++    public static function decide(?bool $consent, bool $isadmin): bool {
++        // Operators (siteadmins) are never gated: CLI seeding, admin tooling and
++        // break-glass must always work. They are not the protected data subjects.
++        if ($isadmin) {
++            return true;
++        }
++        // Fail-closed: only an explicit, carried TRUE opens the gate.
++        return $consent === true;
++    }
++
++    /**
++     * Read the stored consent tri-state for a user.
++     *
++     * @param int $userid
++     * @return bool|null true='1', false='0', null=never carried/stored.
++     */
++    public static function get(int $userid): ?bool {
++        if ($userid <= 0) {
++            return null;
++        }
++        // Default sentinel distinguishes "never stored" from an explicit '0'.
++        $val = get_user_preferences(self::PREF, null, $userid);
++        if ($val === null || $val === '') {
++            return null;
++        }
++        return ((string) $val) === '1';
++    }
++
++    /**
++     * Store the carried consent state for a user (called at login from the
++     * observer). Passing null CLEARS any stored value (back to fail-closed
++     * "unknown"); pass a bool to record an explicit decision.
++     *
++     * @param int       $userid
++     * @param bool|null $consent
++     * @return void
++     */
++    public static function store(int $userid, ?bool $consent): void {
++        if ($userid <= 0) {
++            return;
++        }
++        if ($consent === null) {
++            unset_user_preference(self::PREF, $userid);
++            return;
++        }
++        set_user_preference(self::PREF, $consent ? '1' : '0', $userid);
++    }
++
++    /**
++     * Extract the consent decision from a RAW OIDC userinfo object and store it.
++     *
++     * Semantics (deliberately fail-closed):
++     *   * $raw is null (userinfo unreachable)        -> leave stored value alone
++     *                                                   (last-known wins; getter
++     *                                                    still fails closed if it
++     *                                                    was never set).
++     *   * CLAIM absent from an otherwise-valid $raw  -> store FALSE. nwc has not
++     *                                                   emitted the claim yet
++     *                                                   (cross-repo TODO) -> the
++     *                                                   member is Trialing.
++     *   * CLAIM present                              -> store its bool, ANDed
++     *                                                   with CLAIM_MAY_KEEP when
++     *                                                   that optional claim is set.
++     *
++     * @param int          $userid
++     * @param object|null  $raw Raw userinfo (from get_raw_userinfo()), or null.
++     * @return void
++     */
++    public static function store_from_userinfo(int $userid, ?object $raw): void {
++        if ($userid <= 0) {
++            return;
++        }
++        if ($raw === null) {
++            // Could not read userinfo this login: do NOT overwrite. Never opens
++            // the gate — the getter fails closed on a missing/last-known value.
++            return;
++        }
++        if (!isset($raw->{self::CLAIM})) {
++            // Valid userinfo but no consent claim: nwc has not implemented the
++            // contract yet. Treat as no consent (Trialing) and record it.
++            self::store($userid, false);
++            return;
++        }
++        $consent = self::truthy($raw->{self::CLAIM});
++        if ($consent && isset($raw->{self::CLAIM_MAY_KEEP})) {
++            $consent = self::truthy($raw->{self::CLAIM_MAY_KEEP});
++        }
++        self::store($userid, $consent);
++    }
++
++    /**
++     * THE gate helper. May we persist this member's formation data right now?
++     *
++     * Fail-closed by construction: any exception, missing subsystem or unknown
++     * state resolves to false. Callers in mod_depthcontent / local_practice call
++     * this immediately before an INSERT/UPDATE of per-user formation rows and
++     * SKIP the persist (silent, ephemeral no-op) when it returns false.
++     *
++     * @param int $userid
++     * @return bool
++     */
++    public static function may_keep_formation(int $userid): bool {
++        try {
++            if ($userid <= 0 || isguestuser($userid)) {
++                return false;
++            }
++            $isadmin = is_siteadmin($userid);
++            return self::decide(self::get($userid), $isadmin);
++        } catch (\Throwable $e) {
++            // Anything unexpected -> fail closed (never persist on doubt).
++            return false;
++        }
++    }
++
++    /**
++     * Normalise a claim value that may arrive as bool, int, or string.
++     *
++     * @param mixed $v
++     * @return bool
++     */
++    private static function truthy($v): bool {
++        if (is_bool($v)) {
++            return $v;
++        }
++        if (is_int($v)) {
++            return $v === 1;
++        }
++        $s = strtolower(trim((string) $v));
++        return $s === '1' || $s === 'true' || $s === 'yes';
++    }
++}
+diff --git a/auth/nwc/classes/observer.php b/auth/nwc/classes/observer.php
+new file mode 100644
+index 00000000..676b3d95
+--- /dev/null
++++ b/auth/nwc/classes/observer.php
+@@ -0,0 +1,203 @@
++<?php
++// auth_nwc observer — wires the F26 UID-lock EXECUTOR into the real post-auth
++// path for core-OAuth2 logins (fixes F26 B1: resolve_and_lock() was dead code).
++//
++//   AUTH SURFACE — REQUIRES HUMAN REVIEW BEFORE MERGE/ENABLE.
++//   UNTESTED ON MOODLE — draft for two-person review.
++//
++// GNU GPL v3 or later. Copyright 2026 Narrow Way Project.
++//
++// WHY AN EVENT OBSERVER (not user_authenticated_hook):
++//   \auth_oauth2\auth::complete_login() calls complete_user_login() DIRECTLY and
++//   deliberately bypasses authenticate_user_login() (core comment: "We used to
++//   call authenticate_user - but that won't work if the current user has a
++//   different default authentication type."). authenticate_user_login() is the
++//   ONLY caller of auth_plugin_base::user_authenticated_hook(), so that hook never
++//   fires on the OAuth2 path. \core\event\user_loggedin DOES fire (from
++//   complete_user_login()) for every successful login regardless of auth path.
++//
++// LIMITATION (flagged for the 2-person review):
++//   This observer runs AFTER core has already created/linked and logged the user
++//   in. It enforces the lock as a GUARD + REPAIR (assert idnumber==sub; DENY and
++//   kill the session on a broken/empty sub). It does NOT pre-empt core's own
++//   email-based linking. The durable happy-path lock remains the REQUIRED issuer
++//   field-mapping sub->idnumber (INSTALL.md §2): core writes idnumber at account
++//   creation and never rewrites it. Faithfully running the migration LOCK_EXISTING
++//   branch (needs mid-flow email_verified + the pre-link row) or the SUSPEND branch
++//   (needs a live userinfo probe) requires, respectively, owning the callback and a
++//   scheduled reconcile task — see TODO(build-host) markers below.
++
++namespace auth_nwc;
++
++defined('MOODLE_INTERNAL') || die();
++
++class observer {
++
++    /**
++     * Runs on every successful login; acts only for logins through OUR nwc issuer.
++     *
++     * @param \core\event\user_loggedin $event
++     */
++    public static function user_loggedin(\core\event\user_loggedin $event): void {
++        global $DB;
++
++        $config = get_config('auth_nwc');
++
++        // 0. Do nothing unless the plugin is enabled AND pointed at an issuer.
++        //    Enabling/disabling auth_nwc is the operator's on/off switch for
++        //    lock ENFORCEMENT (core still uses authtype 'oauth2' for the dance).
++        if (empty($config->issuerid) || !is_enabled_auth('nwc')) {
++            return;
++        }
++
++        $userid = (int) ($event->objectid ?? $event->userid);
++        if (empty($userid)) {
++            return;
++        }
++        $user = $DB->get_record('user', ['id' => $userid]);
++        if (!$user) {
++            return;
++        }
++
++        // 1. GUARD: only touch logins that actually came through our nwc issuer.
++        //    Core stamps auth='oauth2' (not 'nwc') and owns the linked-login row
++        //    keyed by issuerid — that row is the reliable "this was our SSO" signal.
++        //    TODO(build-host): confirm the linked_login row already exists when
++        //    user_loggedin fires (it is created earlier, inside complete_login()).
++        $islinked = $DB->record_exists('auth_oauth2_linked_login', [
++            'userid'   => $user->id,
++            'issuerid' => (int) $config->issuerid,
++        ]);
++        if (!$islinked) {
++            return; // manual / admin / other-issuer login — not ours.
++        }
++
++        // 2. Obtain the nwc uid (`sub`). Core wrote it to mdl_user.idnumber via the
++        //    REQUIRED issuer field-mapping sub->idnumber at account creation, and
++        //    does not rewrite it on later logins — so that mapped value IS the sub.
++        //    TODO(build-host): if sub is ALSO mapped to username, corroborate
++        //    $user->idnumber against auth_oauth2_linked_login.username here.
++        //    TODO(build-host): if idnumber is empty, the mapping is not configured
++        //    -> decision is DENY -> ALL logins are rejected. Verify the mapping is
++        //    in place BEFORE enabling auth_nwc.
++        $claims = [
++            'sub'            => (string) $user->idnumber,
++            'email'          => $user->email,
++            // email_verified is asserted by the issuer MID-FLOW and is not available
++            // at this post-login event; we pass false so the observer never performs
++            // an email-based re-link. The migration LOCK_EXISTING branch is therefore
++            // out of scope for the observer — see LIMITATION above.
++            'email_verified' => false,
++            'given_name'     => $user->firstname,
++            'family_name'    => $user->lastname,
++        ];
++
++        // 3. At a successful login the nwc account, by definition, just resolved,
++        //    so nwc_active=true here. The SUSPEND-on-nwc-deletion branch needs a
++        //    LIVE userinfo probe and belongs in a scheduled reconcile task, NOT the
++        //    login hook. TODO(build-host): add \auth_nwc\task\reconcile_locks
++        //    (db/tasks.php) to walk locked rows, call userinfo, and SUSPEND rows
++        //    whose nwc account is gone (uid_lock already returns ACTION_SUSPEND).
++        $nwcactive = true;
++
++        // 4. Run the pure, unit-tested decision + its $DB executor.
++        $auth = get_auth_plugin('nwc'); // auth_plugin_nwc
++        $decision = $auth->resolve_and_lock($claims, $nwcactive);
++
++        // 5. SESSION-level enforcement (resolve_and_lock only mutates $DB rows).
++        switch ($decision['action']) {
++            case uid_lock::ACTION_DENY:
++            case uid_lock::ACTION_SUSPEND:
++                // Broken/empty sub, or a lock that must not stand: tear the session
++                // down and bounce to the login page with a neutral error.
++                // TODO(build-host): review UX + whether redirect() from inside an
++                //   observer is acceptable on your Moodle version (observers run
++                //   synchronously within complete_user_login()); an alternative is
++                //   to set a session flag and redirect at the next require_login().
++                \core\session\manager::kill_user_sessions($user->id);
++                if (!during_initial_install() && !CLI_SCRIPT) {
++                    redirect(new \moodle_url('/login/index.php'),
++                        get_string('locked_denied', 'auth_nwc'), null,
++                        \core\output\notification::NOTIFY_ERROR);
++                }
++                break;
++
++            case uid_lock::ACTION_REUSE_LOCKED:
++            case uid_lock::ACTION_LOCK_EXISTING:
++            case uid_lock::ACTION_CREATE:
++            default:
++                // Happy path: the lock is intact / was just (re)applied by the
++                // executor. Read the nwc userinfo ONCE and drive both claim-pull
++                // reconciliations off it. Best-effort throughout: any failure is
++                // swallowed so it can never break a login.
++                $raw = self::fetch_raw_userinfo($config, $user);
++
++                // (ops#118) Carry the Art. 9 consent state into Moodle so the
++                // formation-write gate can enforce it. A null $raw (userinfo
++                // unreachable) deliberately leaves the last-known value in place
++                // — store_from_userinfo() never opens the gate on a bad fetch.
++                \auth_nwc\consent::store_from_userinfo((int) $user->id, $raw);
++
++                // (ops#93) Reconcile guild cohorts from the `guilds` claim.
++                $guilds = self::guilds_from_userinfo($raw);
++                if ($guilds !== null) {
++                    $auth->sync_guilds((int) $user->id, $guilds);
++                }
++                break;
++        }
++    }
++
++    /**
++     * Fetch the FULL raw nwc userinfo object from the OIDC userinfo endpoint.
++     *
++     * Neither the `guilds` nor the ops#118 `art9_consent` claim is written to any
++     * mdl_user field, so both must be read from userinfo. Core's get_userinfo()
++     * drops unmapped claims, so we use get_raw_userinfo(), which carries the full
++     * claim set. The user-tier access token is in the session (core stored it
++     * during complete_login, which runs in this same request), so no re-auth is
++     * needed.
++     *
++     * Returns the raw userinfo object, or null if it could not be obtained (a
++     * later reconcile task with no live session token also gets null — a
++     * scheduled userinfo probe is the right place for that path).
++     *
++     * @param \stdClass $config auth_nwc config (has issuerid).
++     * @param \stdClass $user   The Moodle user.
++     * @return object|null
++     */
++    protected static function fetch_raw_userinfo(\stdClass $config, \stdClass $user): ?object {
++        try {
++            $issuer = \core\oauth2\api::get_issuer((int) $config->issuerid);
++            if (!$issuer || !$issuer->get('enabled')) {
++                return null;
++            }
++            $client = \core\oauth2\api::get_user_oauth_client(
++                $issuer, new \moodle_url('/auth/oauth2/login.php'));
++            if (!$client || !$client->is_logged_in()) {
++                return null;
++            }
++            $raw = $client->get_raw_userinfo();
++            return is_object($raw) ? $raw : null;
++        } catch (\Throwable $e) {
++            return null;
++        }
++    }
++
++    /**
++     * Extract the `guilds` claim from a raw userinfo object (pure, no I/O).
++     *
++     * Returns the normalised guilds array, or null if the claim is absent/ill-
++     * formed. Null means "leave cohorts alone" — the caller never strips managed
++     * cohorts on a missing claim (returning [] would remove all; too destructive).
++     *
++     * @param object|null $raw
++     * @return array|null
++     */
++    protected static function guilds_from_userinfo(?object $raw): ?array {
++        if (!is_object($raw) || !isset($raw->guilds) || !is_array($raw->guilds)) {
++            return null;
++        }
++        // Normalise stdClass entries to arrays for the pure decider.
++        return array_map(fn($g) => (array) $g, $raw->guilds);
++    }
++}
+diff --git a/auth/nwc/tests/consent_logic_test.php b/auth/nwc/tests/consent_logic_test.php
+new file mode 100644
+index 00000000..f75bdb1d
+--- /dev/null
++++ b/auth/nwc/tests/consent_logic_test.php
+@@ -0,0 +1,43 @@
++<?php
++// Standalone unit test for auth_nwc\consent::decide — runs with plain `php`,
++// no Moodle. Verifies the fail-closed ops#118 Art. 9 gate decision.
++//
++//   php auth/nwc/tests/consent_logic_test.php
++//
++// The Moodle I/O half (preference read, is_siteadmin, claim extraction) lives in
++// consent::may_keep_formation / store_from_userinfo and needs a Moodle test env;
++// the load-bearing DECISION is pure and covered here.
++
++// consent.php calls defined('MOODLE_INTERNAL') || die(); satisfy it for standalone run.
++define('MOODLE_INTERNAL', true);
++require __DIR__ . '/../classes/consent.php';
++
++use auth_nwc\consent;
++
++$pass = 0; $fail = 0;
++function check($name, $got, $want) {
++    global $pass, $fail;
++    $g = var_export($got, true);
++    $w = var_export($want, true);
++    if ($got === $want) { echo "  ok   $name\n"; $pass++; }
++    else { echo "  FAIL $name (got $g, want $w)\n"; $fail++; }
++}
++
++// --- decide(): fail-closed truth table -------------------------------------
++
++// 1. Explicit consent + ordinary member -> allowed.
++check('consent=true, member -> keep', consent::decide(true, false), true);
++
++// 2. Explicit NO consent + ordinary member -> blocked (fail closed).
++check('consent=false, member -> block', consent::decide(false, false), false);
++
++// 3. Unknown / never-carried + ordinary member -> blocked (fail closed).
++check('consent=null, member -> block', consent::decide(null, false), false);
++
++// 4. Site admin is NEVER gated, regardless of stored consent.
++check('admin overrides null', consent::decide(null, true), true);
++check('admin overrides false', consent::decide(false, true), true);
++check('admin with consent', consent::decide(true, true), true);
++
++echo "== $pass passed, $fail failed ==\n";
++exit($fail === 0 ? 0 : 1);
+diff --git a/auth/nwc/version.php b/auth/nwc/version.php
+new file mode 100644
+index 00000000..95fdecf8
+--- /dev/null
++++ b/auth/nwc/version.php
+@@ -0,0 +1,14 @@
++<?php
++// auth_nwc — Moodle OIDC client for the F26 nwc<->ss single sign-on.
++// AUTH SURFACE — REQUIRES HUMAN REVIEW BEFORE MERGE/ENABLE.
++// GNU GPL v3 or later. Copyright 2026 Narrow Way Project.
++
++defined('MOODLE_INTERNAL') || die();
++
++$plugin->component = 'auth_nwc';
++$plugin->version   = 2026072400;      // + Art.9 formation-data consent carry/gate (ops#118)
++$plugin->requires  = 2022041900;      // Moodle 4.0+
++$plugin->maturity  = MATURITY_ALPHA;  // ops#118 consent gate is a WORKING DRAFT — review + ship WITH nwc claim.
++$plugin->release   = '1.2.0-draft';   // guild sync + ops#118 art9_consent gate (fail-closed)
++// Rides on Moodle core OAuth2 for the protocol dance (issuer/endpoints/keys).
++$plugin->dependencies = [];
+diff --git a/local/practice/lib.php b/local/practice/lib.php
+new file mode 100644
+index 00000000..2fc03554
+--- /dev/null
++++ b/local/practice/lib.php
+@@ -0,0 +1,419 @@
++<?php
++// This file is part of Moodle - http://moodle.org/
++//
++// Moodle is free software: you can redistribute it and/or modify
++// it under the terms of the GNU General Public License as published by
++// the Free Software Foundation, either version 3 of the License, or
++// (at your option) any later version.
++//
++// Moodle is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++//
++// You should have received a copy of the GNU General Public License
++// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
++
++/**
++ * local_practice library — the ONE write path (engaged()) + read helpers.
++ *
++ * SECURITY / GDPR (NWC-LEDGER-GDPR-DESIGN-2026-07-20, Art. 9): the
++ * local_practice_* member tables record the religious PRACTICE of named
++ * members. They carry NO foreign keys and NO delete callbacks (see
++ * db/install.xml), so a data-subject erasure is a trivial explicit
++ * DELETE WHERE userid=? (classes/privacy/provider.php + ops#93). A `--clear`
++ * render rebuild deliberately PRESERVES this state — `--clear` != erasure.
++ *
++ * NO-AI-ACCESS MANDATE: this store must NEVER be exposed to, exported to, or
++ * used as context for ANY AI/LLM system. No read path here may feed an
++ * assistant, RAG index, or training set.
++ *
++ * @package    local_practice
++ * @copyright  2026 NWP (https://nwpcode.org)
++ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
++ */
++
++defined('MOODLE_INTERNAL') || die();
++
++use local_practice\engine;
++use local_practice\progression;
++
++/**
++ * (ops#118) Art. 9 formation-data consent gate — fail-closed wrapper.
++ *
++ * The local_practice_* tables record the religious PRACTICE of named members —
++ * special-category data. A member who has NOT given Art. 9 consent (Trialing)
++ * must not have that practice persisted cross-app on Moodle. The canonical
++ * decision lives in \auth_nwc\consent (fed by the nwc `art9_consent` OIDC claim);
++ * this wrapper isolates local_practice from a hard symbol dependency and FAILS
++ * CLOSED if the consent subsystem is absent.
++ *
++ * MUST SHIP TOGETHER with the nwc consent-arc change that emits the claim — until
++ * then every member reads as Trialing and practice writes are skipped (the safe
++ * pre-rollout posture). Site admins are never gated (CLI seeding / tooling).
++ *
++ * @param int $userid
++ * @return bool true if this member's practice may be persisted.
++ */
++function local_practice_may_keep_formation(int $userid): bool {
++    if (!class_exists('\\auth_nwc\\consent')) {
++        // Consent subsystem not installed -> cannot prove consent -> fail closed.
++        return false;
++    }
++    return \auth_nwc\consent::may_keep_formation($userid);
++}
++
++/**
++ * THE one write path. Record that a member engaged a checkpoint on a date.
++ *
++ * Pipeline: enforce the MF-2 firewall -> append to local_practice_log ->
++ * recompute derived state via the pure engine -> upsert local_practice_state.
++ *
++ * MF-2 FIREWALL (hard): a HABIT checkpoint can ONLY be engaged by an explicit
++ * member tick (source=manual). A view/scroll (auto) engage on a habit-typed
++ * checkpoint is REJECTED here — it is neither logged as an engagement nor
++ * allowed to move state. (The pure engine drops it too; this is the outer,
++ * authoritative guard so a view event can never even reach the log as an
++ * engagement.) Viewing a guide never marks a prayer done.
++ *
++ * @param string   $checkpointuid Canonical checkpoint key <course>.<pointid>.<key>.
++ * @param int      $userid        Moodle user id.
++ * @param int|null $date          YYYYMMDD in the member's tz. Null => today (member tz).
++ * @param string   $source        manual | view | scroll | cleared | adopt | paused | resumed. Default manual.
++ * @param int|null $ts            Event unix ts. Null => now.
++ * @return array|false Derived state array, or false if the engage was rejected
++ *                     (MF-2 firewall, or no such active def).
++ */
++function local_practice_engaged(string $checkpointuid, int $userid, ?int $date = null,
++        string $source = 'manual', ?int $ts = null) {
++    global $DB;
++
++    // ops#118 Art. 9 consent gate (fail-closed): a Trialing (non-consented)
++    // member's practice is ephemeral — reject the engage BEFORE anything is
++    // logged or any state row is written. `false` is the existing "engage
++    // rejected" contract, so every caller already handles it gracefully.
++    if (!local_practice_may_keep_formation($userid)) {
++        debugging('local_practice: skipped engage persist for non-consented '
++            . '(Art.9/Trialing) userid=' . $userid, DEBUG_DEVELOPER);
++        return false;
++    }
++
++    $ts = $ts ?? time();
++    if ($date === null) {
++        // Member-timezone day bucket (tick-not-calendar).
++        $date = (int) userdate($ts, '%Y%m%d', 99, false);
++    }
++
++    // Resolve the definition (needed for the type -> firewall decision).
++    $def = $DB->get_record('local_practice_def', ['checkpoint_uid' => $checkpointuid]);
++    if (!$def || empty($def->active) || !empty($def->tombstoned)) {
++        // No live checkpoint to engage (a retired checkpoint accepts no new marks).
++        return false;
++    }
++
++    // Lifecycle control verbs (adopt/paused/resumed) are logged as-is; they are
++    // never engagements (the engine drops them from the day resolver).
++    $controlverbs = ['adopt', 'paused', 'resumed', 'cleared'];
++
++    // Resolve the EFFECTIVE type for the firewall decision: a suggested checkpoint
++    // engages per its adopts_as, but ONLY once adopted. Pre-adoption, nothing but
++    // an explicit 'adopt' verb may be logged (tap-accept, never scroll-accept).
++    $efftype = $def->type;
++    if ($def->type === 'suggested') {
++        $isadopted = $DB->record_exists('local_practice_log',
++            ['userid' => $userid, 'checkpoint_uid' => $checkpointuid, 'source' => 'adopt']);
++        if ($source !== 'adopt' && !$isadopted && !in_array($source, ['paused', 'resumed'], true)) {
++            // An un-adopted suggestion carries zero state pressure — reject any
++            // engagement until the member explicitly taps to adopt it.
++            return false;
++        }
++        $efftype = (string) ($def->adopts_as ?? 'task');
++    }
++
++    // MF-2 firewall at the write boundary: an auto (view/scroll) source may never
++    // engage a habit/rule/challenge (or an adopted-as-such suggestion). Control
++    // verbs are allowed through (they are not engagements).
++    if (!in_array($source, $controlverbs, true) && !engine::source_permitted($efftype, $source)) {
++        // Rejected — the view event does not tick it and is not logged.
++        return false;
++    }
++
++    // Append to the immutable engagement log.
++    $logrow = (object) [
++        'userid'         => $userid,
++        'checkpoint_uid' => $checkpointuid,
++        'ts'             => $ts,
++        'localdate'      => $date,
++        'source'         => $source,
++    ];
++    $DB->insert_record('local_practice_log', $logrow);
++
++    // GATEWAY fan-out (contributes_to): a manual tick on a gateway checkpoint also
++    // marks the linked rule/discipline for the SAME day — one act, one tick,
++    // surfaced once. The fan-out source is 'manual', so MF-2 is preserved (the
++    // rule is manual-only and this is a real member tick). Never fans out control
++    // verbs, and never recurses (a rule has no contributes_to).
++    if ($source === 'manual' && !empty($def->contributes_to)) {
++        $ruleuid = 'rule.' . $def->contributes_to;
++        if ($DB->record_exists('local_practice_def', ['checkpoint_uid' => $ruleuid, 'active' => 1])) {
++            local_practice_engaged($ruleuid, $userid, $date, 'manual', $ts);
++        }
++    }
++
++    // Recompute derived state from the whole log for this (user, checkpoint).
++    return local_practice_recompute_state($checkpointuid, $userid, $def);
++}
++
++/**
++ * Tap-adopt a `suggested` checkpoint (the explicit accept — never scroll-accept).
++ * Logs an 'adopt' verb; from here the checkpoint behaves as its adopts_as type.
++ *
++ * Optionally captures an if-then implementation-intention ANCHOR at adoption
++ * ("after X, I will Y") — the strongest positive adherence lever (d=0.65). The
++ * anchor is stored on the member's state row and surfaced on the plan grid; it is
++ * DISPLAY/support only and never gates state.
++ *
++ * @param string      $checkpointuid
++ * @param int         $userid
++ * @param int|null    $ts
++ * @param string|null $anchor Optional "after X, I will Y" implementation intention.
++ * @return array|false Derived state after adoption, or false if not a suggestion.
++ */
++function local_practice_adopt(string $checkpointuid, int $userid, ?int $ts = null, ?string $anchor = null) {
++    global $DB;
++    $def = $DB->get_record('local_practice_def', ['checkpoint_uid' => $checkpointuid]);
++    if (!$def || $def->type !== 'suggested' || empty($def->active) || !empty($def->tombstoned)) {
++        return false;
++    }
++    $state = local_practice_engaged($checkpointuid, $userid, null, 'adopt', $ts);
++    if ($state !== false && $anchor !== null) {
++        local_practice_set_anchor($checkpointuid, $userid, $anchor);
++    }
++    return $state;
++}
++
++/**
++ * Store (or clear) the member's if-then implementation-intention anchor for a
++ * checkpoint. Display/support only — the anchor never affects recorded state.
++ *
++ * @param string      $checkpointuid
++ * @param int         $userid
++ * @param string|null $anchor "after X, I will Y" (null/empty clears it).
++ * @return void
++ */
++function local_practice_set_anchor(string $checkpointuid, int $userid, ?string $anchor): void {
++    global $DB;
++
++    // ops#118 Art. 9 consent gate (fail-closed): never seed or update a member's
++    // practice state row (which carries the if-then anchor) without consent.
++    if (!local_practice_may_keep_formation($userid)) {
++        debugging('local_practice: skipped set_anchor persist for non-consented '
++            . '(Art.9/Trialing) userid=' . $userid, DEBUG_DEVELOPER);
++        return;
++    }
++
++    $clean = progression::sanitise_anchor($anchor);
++    $now = time();
++    $existing = $DB->get_record('local_practice_state',
++        ['userid' => $userid, 'checkpoint_uid' => $checkpointuid]);
++    if ($existing) {
++        $existing->anchor_plan = $clean;
++        $existing->timemodified = $now;
++        $DB->update_record('local_practice_state', $existing);
++    } else {
++        // No state row yet (anchor set at/around adoption): seed a minimal row.
++        $DB->insert_record('local_practice_state', (object) [
++            'userid'             => $userid,
++            'checkpoint_uid'     => $checkpointuid,
++            'status'             => 'todo',
++            'streak'             => 0,
++            'engaged_days'       => 0,
++            'last_engaged_at'    => 0,
++            'last_engaged_date'  => 0,
++            'first_engaged_date' => 0,
++            'retired_by_member'  => 0,
++            'anchor_plan'        => $clean,
++            'timecreated'        => $now,
++            'timemodified'       => $now,
++        ]);
++    }
++}
++
++/**
++ * Recompute and upsert local_practice_state from the engagement log.
++ *
++ * @param string        $checkpointuid
++ * @param int           $userid
++ * @param stdClass|null $def Optional preloaded def.
++ * @return array The derived state array.
++ */
++function local_practice_recompute_state(string $checkpointuid, int $userid, $def = null): array {
++    global $DB;
++
++    if ($def === null) {
++        $def = $DB->get_record('local_practice_def', ['checkpoint_uid' => $checkpointuid]);
++    }
++    // Pass the FULL def shape the v3.3 engine understands (type + the lifecycle
++    // fields). All numbers stay injected via local_practice_thresholds().
++    $defarr = [
++        'type'              => $def->type ?? 'task',
++        'pacing'            => $def->pacing ?? 'tick',
++        'cadence'          => $def->cadence ?? null,
++        'adopts_as'         => $def->adopts_as ?? null,
++        'on_consolidate'    => $def->on_consolidate ?? null,
++        'review_after_days' => isset($def->review_after_days) ? (int) $def->review_after_days : null,
++        'season'            => (!empty($def->season_completes_at)) ? [
++            'window'       => $def->season_window ?? null,
++            'completes_at' => $def->season_completes_at,
++        ] : null,
++    ];
++
++    $log = $DB->get_records('local_practice_log',
++        ['userid' => $userid, 'checkpoint_uid' => $checkpointuid], 'ts ASC',
++        'id, ts, localdate, source');
++    $rows = [];
++    foreach ($log as $r) {
++        $rows[] = ['ts' => (int) $r->ts, 'localdate' => (int) $r->localdate, 'source' => $r->source];
++    }
++
++    $state = engine::derive($rows, $defarr, local_practice_thresholds());
++
++    $now = time();
++    $existing = $DB->get_record('local_practice_state',
++        ['userid' => $userid, 'checkpoint_uid' => $checkpointuid]);
++    $consolidatedat = ($state['on_consolidate'] !== null) ? ($state['last_engaged_at'] ?: $now) : null;
++    if ($existing) {
++        $existing->status             = $state['status'];
++        $existing->streak             = $state['streak'];
++        $existing->engaged_days       = $state['engaged_days'];
++        $existing->last_engaged_at    = $state['last_engaged_at'];
++        $existing->last_engaged_date  = $state['last_engaged_date'];
++        $existing->first_engaged_date = $state['first_engaged_date'];
++        $existing->adopted_as         = $state['adopted_as'];
++        if (!empty($state['adopted']) && empty($existing->adopted_at)) {
++            $existing->adopted_at = $now;
++        }
++        if ($consolidatedat !== null && empty($existing->consolidated_at)) {
++            $existing->consolidated_at = $consolidatedat;
++        }
++        $existing->timemodified       = $now;
++        $DB->update_record('local_practice_state', $existing);
++    } else {
++        $DB->insert_record('local_practice_state', (object) [
++            'userid'             => $userid,
++            'checkpoint_uid'     => $checkpointuid,
++            'status'             => $state['status'],
++            'streak'             => $state['streak'],
++            'engaged_days'       => $state['engaged_days'],
++            'last_engaged_at'    => $state['last_engaged_at'],
++            'last_engaged_date'  => $state['last_engaged_date'],
++            'first_engaged_date' => $state['first_engaged_date'],
++            'adopted_at'         => !empty($state['adopted']) ? $now : null,
++            'adopted_as'         => $state['adopted_as'],
++            'consolidated_at'    => $consolidatedat,
++            'retired_by_member'  => 0,
++            'timecreated'        => $now,
++            'timemodified'       => $now,
++        ]);
++    }
++
++    return $state;
++}
++
++/**
++ * Injected engine thresholds (Pedagogy-owned `practice_defaults`; the runtime
++ * seam mirroring catalog/schema.yaml). A later phase reads these from site config;
++ * for now they mirror the ratified defaults, plus today's date for season-window
++ * completion. Cadence-keyed values are resolved per-def inside the engine.
++ *
++ * @return array
++ */
++function local_practice_thresholds(): array {
++    return [
++        'skill_consolidate_days' => 3,
++        'habit_form_count'       => ['daily' => 21, 'weekly' => 8, 'situational' => 5],
++        'habit_span_floor_days'  => ['daily' => 30, 'weekly' => 60, 'situational' => 21],
++        'challenge_window_days'  => ['daily' => 30, 'weekly' => 56, 'situational' => 21],
++        // Today (member-tz-agnostic UTC day bucket) drives season-window completion.
++        'as_of_date'             => (int) userdate(time(), '%Y%m%d', 99, false),
++    ];
++}
++
++/**
++ * Return a member's plan: their state rows joined to the live definitions.
++ *
++ * Only the member's OWN checkpoints (surfacing firewall — a member sees only
++ * their own detail). Retired (tombstoned) defs are surfaced flagged, never
++ * dropped, so no state orphans.
++ *
++ * @param int $userid
++ * @return array List of plan-item objects (def fields + state fields).
++ */
++function local_practice_get_plan(int $userid): array {
++    global $DB;
++
++    $sql = "SELECT s.id, s.checkpoint_uid, s.status, s.streak, s.engaged_days,
++                   s.last_engaged_at, s.last_engaged_date, s.first_engaged_date,
++                   s.adopted_at, s.adopted_as, s.consolidated_at, s.retired_by_member,
++                   s.anchor_plan,
++                   d.type, d.title, d.pacing, d.cadence, d.autotick, d.prompt_self,
++                   d.prompt_self_text, d.contributes_to, d.on_consolidate,
++                   d.review_after_days, d.season_window, d.season_completes_at,
++                   d.condition_text, d.active, d.tombstoned
++              FROM {local_practice_state} s
++              JOIN {local_practice_def} d ON d.checkpoint_uid = s.checkpoint_uid
++             WHERE s.userid = :userid
++          ORDER BY d.tombstoned ASC, d.type ASC, d.title ASC";
++    return array_values($DB->get_records_sql($sql, ['userid' => $userid]));
++}
++
++/**
++ * Get a member's progression-view preference (full | gentle | quiet).
++ *
++ * DISPLAY ONLY — this preference governs what renders; ALL progression data is
++ * always recorded regardless (hiding is never a data operation). Default = Gentle.
++ *
++ * @param int $userid
++ * @return string one of progression::MODES.
++ */
++function local_practice_get_progression_view(int $userid): string {
++    $pref = get_user_preferences('local_practice_progression_view',
++        progression::default_mode(), $userid);
++    return progression::normalise_mode($pref);
++}
++
++/**
++ * Set a member's progression-view preference. This is the ONLY thing the setting
++ * touches — it never reads, writes, or gates recorded state.
++ *
++ * @param int    $userid
++ * @param string $mode full | gentle | quiet.
++ * @return void
++ */
++function local_practice_set_progression_view(int $userid, string $mode): void {
++    set_user_preference('local_practice_progression_view',
++        progression::normalise_mode($mode), $userid);
++}
++
++/**
++ * Build the render-ready progression payload for one plan item, governed by the
++ * member's own progression-view preference. Pure display over recorded state.
++ *
++ * @param object $item   A plan item (from local_practice_get_plan()).
++ * @param int    $userid
++ * @param int    $asof   YYYYMMDD "today" for renewal detection (0 => use today).
++ * @return array The progression::view() payload.
++ */
++function local_practice_progression_for($item, int $userid, int $asof = 0): array {
++    if ($asof <= 0) {
++        $asof = (int) userdate(time(), '%Y%m%d', 99, false);
++    }
++    $state = [
++        'status'            => $item->status,
++        'engaged_days'      => (int) $item->engaged_days,
++        'last_engaged_date' => (int) $item->last_engaged_date,
++        'on_consolidate'    => $item->on_consolidate ?? null,
++        'anchor_plan'       => $item->anchor_plan ?? null,
++    ];
++    return progression::view($state, local_practice_get_progression_view($userid), $asof);
++}
+diff --git a/mod/depthcontent/classes/external/record_response.php b/mod/depthcontent/classes/external/record_response.php
+new file mode 100644
+index 00000000..1a79c1a5
+--- /dev/null
++++ b/mod/depthcontent/classes/external/record_response.php
+@@ -0,0 +1,149 @@
++<?php
++// This file is part of Moodle - http://moodle.org/
++//
++// Moodle is free software: you can redistribute it and/or modify
++// it under the terms of the GNU General Public License as published by
++// the Free Software Foundation, either version 3 of the License, or
++// (at your option) any later version.
++//
++// Moodle is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++//
++// You should have received a copy of the GNU General Public License
++// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
++
++/**
++ * Record inline quiz response.
++ *
++ * @package    mod_depthcontent
++ * @copyright  2026 NWP (https://nwpcode.org)
++ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
++ */
++
++namespace mod_depthcontent\external;
++
++defined('MOODLE_INTERNAL') || die();
++
++require_once($CFG->libdir . '/externallib.php');
++
++use core_external\external_api;
++use core_external\external_function_parameters;
++use core_external\external_value;
++use core_external\external_single_structure;
++
++class record_response extends external_api {
++
++    public static function execute_parameters(): external_function_parameters {
++        return new external_function_parameters([
++            'cmid' => new external_value(PARAM_INT, 'Course module ID'),
++            'quizitemid' => new external_value(PARAM_TEXT, 'Quiz item ID'),
++            'response' => new external_value(PARAM_TEXT, 'User response'),
++            'correct' => new external_value(PARAM_INT, '1 if correct, 0 if not'),
++            // SR-signal repair inputs (all optional / backward-compatible).
++            'confidence' => new external_value(PARAM_INT, 'Transient 1-tap confidence 1..3 (1=guessing)', VALUE_DEFAULT, 0),
++            'latencyms' => new external_value(PARAM_INT, 'Answer latency in ms', VALUE_DEFAULT, 0),
++            'itemtype' => new external_value(PARAM_ALPHA, 'multichoice|truefalse|shortanswer', VALUE_DEFAULT, ''),
++            'cognition' => new external_value(PARAM_ALPHA, 'recall|apply|discern', VALUE_DEFAULT, ''),
++            'coreaccountable' => new external_value(PARAM_INT, '1 if the item moves the ledger (MF-4)', VALUE_DEFAULT, 1),
++            'singletag' => new external_value(PARAM_INT, '1 if the item tags exactly one pointid (MF-D)', VALUE_DEFAULT, 1),
++        ]);
++    }
++
++    public static function execute(int $cmid, string $quizitemid, string $response, int $correct,
++            int $confidence = 0, int $latencyms = 0, string $itemtype = '', string $cognition = '',
++            int $coreaccountable = 1, int $singletag = 1): array {
++        global $DB, $USER;
++
++        $params = self::validate_parameters(self::execute_parameters(), [
++            'cmid' => $cmid,
++            'quizitemid' => $quizitemid,
++            'response' => $response,
++            'correct' => $correct,
++            'confidence' => $confidence,
++            'latencyms' => $latencyms,
++            'itemtype' => $itemtype,
++            'cognition' => $cognition,
++            'coreaccountable' => $coreaccountable,
++            'singletag' => $singletag,
++        ]);
++
++        $cm = get_coursemodule_from_id('depthcontent', $params['cmid'], 0, false, MUST_EXIST);
++        $context = \context_module::instance($cm->id);
++        self::validate_context($context);
++        require_capability('mod/depthcontent:view', $context);
++
++        require_once($GLOBALS['CFG']->dirroot . '/mod/depthcontent/lib.php');
++
++        // ops#118 Art. 9 consent gate: a Trialing (non-consented) member's inline
++        // quiz responses / progress / spaced-repetition / mastery are ephemeral —
++        // acknowledge the answer to keep the UX intact, but persist NOTHING. Fail
++        // closed: if we cannot prove consent, we do not store.
++        if (!depthcontent_may_keep_formation($USER->id)) {
++            debugging('depthcontent: record_response ephemeral (no Art.9 consent) '
++                . 'userid=' . $USER->id, DEBUG_DEVELOPER);
++            return ['success' => true];
++        }
++
++        $record = new \stdClass();
++        $record->userid = $USER->id;
++        $record->depthcontentid = $cm->instance;
++        $record->quizitemid = $params['quizitemid'];
++        $record->response = json_encode($params['response']);
++        $record->correct = $params['correct'];
++        $record->timecreated = time();
++
++        $DB->insert_record('depthcontent_responses', $record);
++
++        // Update progress status to 'learning' if currently 'new'.
++        $progress = $DB->get_record('depthcontent_progress', [
++            'userid' => $USER->id,
++            'depthcontentid' => $cm->instance,
++        ]);
++        if ($progress && $progress->status === 'new') {
++            $progress->status = 'learning';
++            $progress->timemodified = time();
++            $DB->update_record('depthcontent_progress', $progress);
++        }
++
++        require_once($GLOBALS['CFG']->dirroot . '/mod/depthcontent/lib.php');
++
++        // SR-signal repair: the old correct-only guard is GONE. Every outcome
++        // (right OR wrong) now reaches the scheduler, mapped to a real grade.
++        $conf = $params['confidence'] > 0 ? $params['confidence'] : null;
++        $lat = $params['latencyms'] > 0 ? $params['latencyms'] : null;
++        $grade = depthcontent_grade_from_outcome($params['correct'], $conf, $lat, null, false);
++
++        // Legacy instance-keyed due-queue (repaired: wrong answers reset it too).
++        depthcontent_update_sr($USER->id, $cm->instance, $grade);
++
++        // Mastery ledger (pointid-keyed). Resolve the permanent pointid from the
++        // activity instance; the orchestrator appends the retrieval log and runs
++        // the pure ACT/HABIT/CHARACTER evaluators.
++        $dc = $DB->get_record('depthcontent', ['id' => $cm->instance], 'id, pointid', MUST_EXIST);
++        depthcontent_apply_retrieval([
++            'userid' => $USER->id,
++            'pointid' => $dc->pointid,
++            'item_id' => $params['quizitemid'],
++            'outcome' => $params['correct'],
++            'grade' => $grade,
++            'item_type' => $params['itemtype'] !== '' ? $params['itemtype'] : null,
++            'cognition' => $params['cognition'] !== '' ? $params['cognition'] : null,
++            'core_accountable' => $params['coreaccountable'],
++            'single_tag' => $params['singletag'],
++            'confidence' => $conf,
++            'latency_ms' => $lat,
++            'mode' => 'inline',
++            'context' => 'course:' . $cm->course,
++        ]);
++
++        return ['success' => true];
++    }
++
++    public static function execute_returns(): external_single_structure {
++        return new external_single_structure([
++            'success' => new external_value(PARAM_BOOL, 'Whether the response was recorded'),
++        ]);
++    }
++}
+diff --git a/mod/depthcontent/classes/external/submit_review.php b/mod/depthcontent/classes/external/submit_review.php
+new file mode 100644
+index 00000000..725c011c
+--- /dev/null
++++ b/mod/depthcontent/classes/external/submit_review.php
+@@ -0,0 +1,187 @@
++<?php
++// This file is part of Moodle - http://moodle.org/
++//
++// Moodle is free software: you can redistribute it and/or modify
++// it under the terms of the GNU General Public License as published by
++// the Free Software Foundation, either version 3 of the License, or
++// (at your option) any later version.
++//
++// Moodle is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++//
++// You should have received a copy of the GNU General Public License
++// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
++
++/**
++ * Submit credit-by-examination results.
++ *
++ * Receives per-point pass/fail data and updates:
++ * - depthcontent_progress: status → 'mastered', mastered_via → 'examination' for passed points.
++ * - depthcontent_sr: interval_days → 7, next_review set accordingly for passed points.
++ * - depthcontent_progress: status → 'learning' for failed points (if currently 'new').
++ *
++ * @package    mod_depthcontent
++ * @copyright  2026 NWP (https://nwpcode.org)
++ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
++ */
++
++namespace mod_depthcontent\external;
++
++defined('MOODLE_INTERNAL') || die();
++
++require_once($CFG->libdir . '/externallib.php');
++
++use core_external\external_api;
++use core_external\external_function_parameters;
++use core_external\external_value;
++use core_external\external_single_structure;
++use core_external\external_multiple_structure;
++
++class submit_review extends external_api {
++
++    /**
++     * Parameter definitions.
++     */
++    public static function execute_parameters(): external_function_parameters {
++        return new external_function_parameters([
++            'courseid' => new external_value(PARAM_INT, 'Course ID'),
++            'pointresults' => new external_value(PARAM_RAW, 'JSON array of per-point results'),
++        ]);
++    }
++
++    /**
++     * Process examination results.
++     *
++     * @param int $courseid
++     * @param string $pointresults JSON string: [{ depthcontentid, correct, total, passed }]
++     * @return array
++     */
++    public static function execute(int $courseid, string $pointresults): array {
++        global $DB, $USER;
++
++        $params = self::validate_parameters(self::execute_parameters(), [
++            'courseid' => $courseid,
++            'pointresults' => $pointresults,
++        ]);
++
++        $context = \context_course::instance($params['courseid']);
++        self::validate_context($context);
++
++        require_once($GLOBALS['CFG']->dirroot . '/mod/depthcontent/lib.php');
++
++        // ops#118 Art. 9 consent gate: a Trialing (non-consented) member's
++        // credit-by-examination results (progress / spaced-repetition / response
++        // summaries) are special-category formation data. Acknowledge the
++        // submission but persist NOTHING. Fail closed on unproven consent.
++        if (!depthcontent_may_keep_formation($USER->id)) {
++            debugging('depthcontent: submit_review ephemeral (no Art.9 consent) '
++                . 'userid=' . $USER->id, DEBUG_DEVELOPER);
++            return ['success' => true, 'passed' => 0, 'failed' => 0];
++        }
++
++        $results = json_decode($params['pointresults'], true);
++        if (!is_array($results)) {
++            throw new \invalid_parameter_exception('pointresults must be a valid JSON array');
++        }
++
++        $userid = $USER->id;
++        $now = time();
++        $passedcount = 0;
++        $failedcount = 0;
++
++        foreach ($results as $result) {
++            $depthcontentid = (int) ($result['depthcontentid'] ?? 0);
++            $passed = !empty($result['passed']);
++            $correct = (int) ($result['correct'] ?? 0);
++            $total = (int) ($result['total'] ?? 0);
++
++            if ($depthcontentid <= 0) {
++                continue;
++            }
++
++            // Verify this depthcontent belongs to the specified course.
++            $dc = $DB->get_record('depthcontent', ['id' => $depthcontentid, 'course' => $params['courseid']]);
++            if (!$dc) {
++                continue;
++            }
++
++            // Get or create progress record.
++            $progress = depthcontent_get_progress($userid, $depthcontentid);
++
++            if ($passed) {
++                // Mark as mastered via examination.
++                $progress->status = 'mastered';
++                $progress->mastered_via = 'examination';
++                $progress->timemodified = $now;
++                $DB->update_record('depthcontent_progress', $progress);
++
++                // Set up spaced repetition: start at 7-day interval.
++                $sr = depthcontent_get_sr_state($userid, $depthcontentid);
++                if (!$sr) {
++                    $sr = new \stdClass();
++                    $sr->userid = $userid;
++                    $sr->depthcontentid = $depthcontentid;
++                    $sr->ease_factor = 2.50;
++                    $sr->repetitions = 0;
++                }
++
++                $sr->interval_days = 7;
++                $sr->repetitions = 1;
++                $sr->next_review = $now + (7 * 86400);
++                $sr->last_reviewed = $now;
++
++                if (isset($sr->id)) {
++                    $DB->update_record('depthcontent_sr', $sr);
++                } else {
++                    $sr->id = $DB->insert_record('depthcontent_sr', $sr);
++                }
++
++                $passedcount++;
++            } else {
++                // Failed: set status to 'learning' if currently 'new', leave as-is otherwise.
++                if ($progress->status === 'new') {
++                    $progress->status = 'learning';
++                    $progress->timemodified = $now;
++                    $DB->update_record('depthcontent_progress', $progress);
++                }
++
++                $failedcount++;
++            }
++
++            // Record individual question responses for analytics.
++            // Store a summary response for the examination attempt.
++            $response = new \stdClass();
++            $response->userid = $userid;
++            $response->depthcontentid = $depthcontentid;
++            $response->quizitemid = 'examination';
++            $response->response = json_encode([
++                'correct' => $correct,
++                'total' => $total,
++                'passed' => $passed,
++                'mode' => 'examination',
++            ]);
++            $response->correct = $passed ? 1 : 0;
++            $response->timecreated = $now;
++            $DB->insert_record('depthcontent_responses', $response);
++        }
++
++        return [
++            'success' => true,
++            'passed' => $passedcount,
++            'failed' => $failedcount,
++        ];
++    }
++
++    /**
++     * Return value definitions.
++     */
++    public static function execute_returns(): external_single_structure {
++        return new external_single_structure([
++            'success' => new external_value(PARAM_BOOL, 'Whether results were recorded'),
++            'passed' => new external_value(PARAM_INT, 'Number of points that passed'),
++            'failed' => new external_value(PARAM_INT, 'Number of points that failed'),
++        ]);
++    }
++}
+diff --git a/mod/depthcontent/lib.php b/mod/depthcontent/lib.php
+new file mode 100644
+index 00000000..70d97a3b
+--- /dev/null
++++ b/mod/depthcontent/lib.php
+@@ -0,0 +1,652 @@
++<?php
++// This file is part of Moodle - http://moodle.org/
++//
++// Moodle is free software: you can redistribute it and/or modify
++// it under the terms of the GNU General Public License as published by
++// the Free Software Foundation, either version 3 of the License, or
++// (at your option) any later version.
++//
++// Moodle is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++//
++// You should have received a copy of the GNU General Public License
++// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
++
++/**
++ * Library functions for mod_depthcontent.
++ *
++ * @package    mod_depthcontent
++ * @copyright  2026 NWP (https://nwpcode.org)
++ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
++ */
++
++defined('MOODLE_INTERNAL') || die();
++
++/** Depth level constants. */
++define('DEPTHCONTENT_DEPTH_SHORT', 'short');
++define('DEPTHCONTENT_DEPTH_STANDARD', 'standard');
++define('DEPTHCONTENT_DEPTH_LONGER', 'longer');
++define('DEPTHCONTENT_DEPTH_DETAILED', 'detailed');
++define('DEPTHCONTENT_DEPTH_ADVANCED', 'advanced');
++define('DEPTHCONTENT_DEPTH_SCHOLAR', 'scholar');
++
++/**
++ * (ops#118) Art. 9 formation-data consent gate — fail-closed wrapper.
++ *
++ * mod_depthcontent's per-user rows (depthcontent_progress / _sr / _mastery /
++ * _retrieval_log) are special-category religious-formation data. A member who
++ * has NOT given Art. 9 consent (Trialing) must not have that data persisted
++ * cross-app on Moodle. The canonical decision lives in \auth_nwc\consent, fed by
++ * the nwc `art9_consent` OIDC claim; this wrapper isolates depthcontent from a
++ * hard symbol dependency and FAILS CLOSED if the consent subsystem is absent.
++ *
++ * MUST SHIP TOGETHER with the nwc consent-arc change that emits the claim — until
++ * then every member reads as Trialing and formation writes are skipped (the safe
++ * pre-rollout posture). Site admins are never gated (CLI seeding / tooling).
++ *
++ * @param int $userid
++ * @return bool true if this member's formation data may be persisted.
++ */
++function depthcontent_may_keep_formation($userid): bool {
++    if (!class_exists('\\auth_nwc\\consent')) {
++        // Consent subsystem not installed -> cannot prove consent -> fail closed.
++        return false;
++    }
++    return \auth_nwc\consent::may_keep_formation((int) $userid);
++}
++
++/**
++ * Ordered list of depth levels.
++ */
++function depthcontent_get_depth_levels(): array {
++    return [
++        DEPTHCONTENT_DEPTH_SHORT,
++        DEPTHCONTENT_DEPTH_STANDARD,
++        DEPTHCONTENT_DEPTH_LONGER,
++        DEPTHCONTENT_DEPTH_DETAILED,
++        DEPTHCONTENT_DEPTH_ADVANCED,
++        DEPTHCONTENT_DEPTH_SCHOLAR,
++    ];
++}
++
++/**
++ * Feature support.
++ */
++function depthcontent_supports($feature) {
++    switch ($feature) {
++        case FEATURE_MOD_ARCHETYPE:           return MOD_ARCHETYPE_RESOURCE;
++        case FEATURE_MOD_INTRO:               return true;
++        case FEATURE_COMPLETION_TRACKS_VIEWS: return true;
++        case FEATURE_GRADE_HAS_GRADE:         return false;
++        case FEATURE_BACKUP_MOODLE2:          return true;
++        case FEATURE_SHOW_DESCRIPTION:        return true;
++        case FEATURE_MOD_PURPOSE:             return MOD_PURPOSE_CONTENT;
++        default: return null;
++    }
++}
++
++/**
++ * Add a new depthcontent instance.
++ */
++function depthcontent_add_instance($data, $mform = null) {
++    global $DB;
++
++    $data->timemodified = time();
++    $data->id = $DB->insert_record('depthcontent', $data);
++
++    return $data->id;
++}
++
++/**
++ * Update an existing depthcontent instance.
++ */
++function depthcontent_update_instance($data, $mform = null) {
++    global $DB;
++
++    $data->timemodified = time();
++    $data->id = $data->instance;
++    $DB->update_record('depthcontent', $data);
++
++    return true;
++}
++
++/**
++ * Delete a depthcontent instance.
++ */
++function depthcontent_delete_instance($id) {
++    global $DB;
++
++    if (!$DB->get_record('depthcontent', ['id' => $id])) {
++        return false;
++    }
++
++    $DB->delete_records('depthcontent_progress', ['depthcontentid' => $id]);
++    $DB->delete_records('depthcontent_responses', ['depthcontentid' => $id]);
++    $DB->delete_records('depthcontent_sr', ['depthcontentid' => $id]);
++    $DB->delete_records('depthcontent', ['id' => $id]);
++
++    // NOTE: depthcontent_mastery and depthcontent_retrieval_log are keyed on the
++    // PERMANENT pointid, not this instance id, and are deliberately NOT deleted
++    // here — member formation state survives an activity delete / `--clear`
++    // render rebuild (the durability litmus). Data-subject erasure of that state
++    // is a separate explicit path (core_privacy provider, DELETE WHERE userid=?).
++
++    return true;
++}
++
++/**
++ * Mark the activity as viewed and trigger completion.
++ */
++function depthcontent_view($depthcontent, $course, $cm, $context) {
++    // Trigger event.
++    $event = \mod_depthcontent\event\course_module_viewed::create([
++        'objectid' => $depthcontent->id,
++        'context' => $context,
++    ]);
++    $event->add_record_snapshot('course_modules', $cm);
++    $event->add_record_snapshot('course', $course);
++    $event->add_record_snapshot('depthcontent', $depthcontent);
++    $event->trigger();
++
++    // Completion.
++    $completion = new completion_info($course);
++    $completion->set_module_viewed($cm);
++}
++
++/**
++ * Get or create user progress record for a learning point.
++ */
++function depthcontent_get_progress($userid, $depthcontentid) {
++    global $DB;
++
++    $progress = $DB->get_record('depthcontent_progress', [
++        'userid' => $userid,
++        'depthcontentid' => $depthcontentid,
++    ]);
++
++    if (!$progress) {
++        $progress = new stdClass();
++        $progress->userid = $userid;
++        $progress->depthcontentid = $depthcontentid;
++        $progress->status = 'new';
++        $progress->depth_viewed = 'standard';
++        $progress->timecreated = time();
++        $progress->timemodified = time();
++        // ops#118 Art. 9 gate: only persist for consented members. A Trialing
++        // member gets an ephemeral in-memory row (no id) — do NOT store.
++        if (depthcontent_may_keep_formation($userid)) {
++            $progress->id = $DB->insert_record('depthcontent_progress', $progress);
++        } else {
++            debugging('depthcontent: skipped depthcontent_progress persist for '
++                . 'non-consented (Art.9/Trialing) userid=' . $userid, DEBUG_DEVELOPER);
++        }
++    }
++
++    return $progress;
++}
++
++/**
++ * Get user's preferred depth level.
++ */
++function depthcontent_get_user_depth($userid) {
++    $depth = get_user_preferences('mod_depthcontent_depth', DEPTHCONTENT_DEPTH_STANDARD, $userid);
++    $valid = depthcontent_get_depth_levels();
++    return in_array($depth, $valid) ? $depth : DEPTHCONTENT_DEPTH_STANDARD;
++}
++
++/**
++ * Set user's preferred depth level.
++ *
++ * @param int $userid
++ * @param string $depth
++ * @param bool $remember Whether to persist as the global default.
++ */
++function depthcontent_set_user_depth($userid, $depth, bool $remember = true) {
++    $valid = depthcontent_get_depth_levels();
++    if (in_array($depth, $valid)) {
++        if ($remember) {
++            set_user_preference('mod_depthcontent_depth', $depth, $userid);
++        }
++    }
++}
++
++/**
++ * Check whether the user has enabled "remember my preference".
++ *
++ * Defaults to true so first-time users get persistence automatically.
++ *
++ * @param int $userid
++ * @return bool
++ */
++function depthcontent_get_remember_preference($userid): bool {
++    return (bool) get_user_preferences('mod_depthcontent_remember', 1, $userid);
++}
++
++/**
++ * Set whether the user wants depth choices persisted globally.
++ *
++ * @param int $userid
++ * @param bool $remember
++ */
++function depthcontent_set_remember_preference($userid, bool $remember): void {
++    set_user_preference('mod_depthcontent_remember', $remember ? 1 : 0, $userid);
++}
++
++/**
++ * Get a per-point depth override for a specific activity.
++ *
++ * @param int $userid
++ * @param int $depthcontentid The activity instance id.
++ * @return string|null The depth level override, or null if none set.
++ */
++function depthcontent_get_point_depth($userid, $depthcontentid): ?string {
++    $key = 'mod_depthcontent_point_' . $depthcontentid;
++    $depth = get_user_preferences($key, null, $userid);
++    if ($depth !== null) {
++        $valid = depthcontent_get_depth_levels();
++        return in_array($depth, $valid) ? $depth : null;
++    }
++    return null;
++}
++
++/**
++ * Set a per-point depth override for a specific activity.
++ *
++ * @param int $userid
++ * @param int $depthcontentid The activity instance id.
++ * @param string $depth The depth level.
++ */
++function depthcontent_set_point_depth($userid, $depthcontentid, $depth): void {
++    $valid = depthcontent_get_depth_levels();
++    if (in_array($depth, $valid)) {
++        $key = 'mod_depthcontent_point_' . $depthcontentid;
++        set_user_preference($key, $depth, $userid);
++    }
++}
++
++/**
++ * Clear a per-point depth override, reverting to the global preference.
++ *
++ * @param int $userid
++ * @param int $depthcontentid The activity instance id.
++ */
++function depthcontent_clear_point_depth($userid, $depthcontentid): void {
++    $key = 'mod_depthcontent_point_' . $depthcontentid;
++    unset_user_preference($key, $userid);
++}
++
++/**
++ * Resolve the effective depth for a user viewing a specific point.
++ *
++ * Priority: URL override > per-point override > global preference > default.
++ *
++ * @param int $userid
++ * @param int $depthcontentid
++ * @param string|null $urloverride Depth passed via URL parameter.
++ * @return string The effective depth level.
++ */
++function depthcontent_resolve_effective_depth($userid, $depthcontentid, ?string $urloverride = null): string {
++    $valid = depthcontent_get_depth_levels();
++
++    // URL override takes first priority.
++    if ($urloverride && in_array($urloverride, $valid)) {
++        return $urloverride;
++    }
++
++    // Per-point override second.
++    $pointdepth = depthcontent_get_point_depth($userid, $depthcontentid);
++    if ($pointdepth !== null) {
++        return $pointdepth;
++    }
++
++    // Global preference.
++    return depthcontent_get_user_depth($userid);
++}
++
++/**
++ * Get SM-2 spaced repetition state for a user+point.
++ */
++function depthcontent_get_sr_state($userid, $depthcontentid) {
++    global $DB;
++
++    return $DB->get_record('depthcontent_sr', [
++        'userid' => $userid,
++        'depthcontentid' => $depthcontentid,
++    ]);
++}
++
++/**
++ * Pure SM-2 step. Given the current scheduler state and a 0-5 quality grade,
++ * returns the next scheduler state. No DB, no globals — unit-testable and
++ * shared by both the legacy depthcontent_sr updater and the mastery-ledger
++ * orchestrator.
++ *
++ * The ledger's attainment evaluators are defined over outcomes+timestamps only,
++ * NOT over these scheduler internals, so this SM-2 core can be swapped for FSRS
++ * with no change to the ledger.
++ *
++ * @param array $s {ease_factor, interval_days, repetitions, lapses}
++ * @param int   $quality 0-5 SM-2 grade.
++ * @return array {ease_factor, interval_days, repetitions, lapses}
++ */
++function depthcontent_sm2_step(array $s, int $quality): array {
++    $ef   = (float) ($s['ease_factor'] ?? 2.50);
++    $ivl  = (int) ($s['interval_days'] ?? 1);
++    $reps = (int) ($s['repetitions'] ?? 0);
++    $lapses = (int) ($s['lapses'] ?? 0);
++
++    if ($quality >= 3) {
++        // Correct response.
++        if ($reps == 0) {
++            $ivl = 1;
++        } else if ($reps == 1) {
++            $ivl = 6;
++        } else {
++            $ivl = (int) round($ivl * $ef);
++        }
++        $reps++;
++    } else {
++        // Incorrect — reset, and count the lapse (SR-signal repair: wrong
++        // answers now reach the scheduler instead of being silently dropped).
++        $reps = 0;
++        $ivl = 1;
++        $lapses++;
++    }
++
++    // EF' = EF + (0.1 - (5-q) * (0.08 + (5-q) * 0.02)), floored at 1.30.
++    $ef = max(1.30, $ef + (0.1 - (5 - $quality) * (0.08 + (5 - $quality) * 0.02)));
++
++    return [
++        'ease_factor'   => $ef,
++        'interval_days' => $ivl,
++        'repetitions'   => $reps,
++        'lapses'        => $lapses,
++    ];
++}
++
++/**
++ * Map a real outcome to an SM-2 quality grade (SR-signal repair, design §A.3).
++ *
++ * Replaces the old hardcoded quality=4. A wrong answer now yields a real
++ * failing grade (1, or 2 if "near") so the scheduler resets and the lapse is
++ * counted — the correct-only guard is removed at the call site.
++ *
++ *   correct + high confidence (3)                       => 5
++ *   correct                                             => 4
++ *   correct + guessing OR latency > 2x median           => 3
++ *   wrong-but-near (fuzzy shortanswer / correct 2nd try) => 2
++ *   wrong                                               => 1
++ *
++ * @param int      $correct 1 correct, 0 wrong.
++ * @param int|null $confidence 1..3 (1=guessing) or null.
++ * @param int|null $latencyms latency of this answer, or null.
++ * @param int|null $medianlatency member median latency for this item type, or null.
++ * @param bool     $near true if a wrong answer was fuzzy-close / correct on 2nd try.
++ * @return int 1..5
++ */
++function depthcontent_grade_from_outcome(int $correct, ?int $confidence = null,
++        ?int $latencyms = null, ?int $medianlatency = null, bool $near = false): int {
++    if (!$correct) {
++        return $near ? 2 : 1;
++    }
++    if ($confidence !== null && $confidence >= 3) {
++        return 5;
++    }
++    $slow = ($latencyms !== null && $medianlatency !== null && $medianlatency > 0
++             && $latencyms > 2 * $medianlatency);
++    if (($confidence !== null && $confidence <= 1) || $slow) {
++        return 3;
++    }
++    return 4;
++}
++
++/**
++ * Update legacy SM-2 state (depthcontent_sr, instance-keyed) after a review.
++ *
++ * Retained for the existing daily due-queue (depthcontent_get_due_reviews)
++ * until the Q-Q rekey migrates that queue onto depthcontent_mastery. The
++ * correct-only guard that used to wrap the CALL to this function is removed
++ * (see record_response) so wrong answers now reset the schedule here too.
++ *
++ * @param int $userid
++ * @param int $depthcontentid
++ * @param int $quality 0-5 response quality (SM-2 scale)
++ */
++function depthcontent_update_sr($userid, $depthcontentid, $quality) {
++    global $DB;
++
++    // ops#118 Art. 9 gate: a Trialing member's spaced-repetition schedule is not
++    // persisted. Return an ephemeral, unsaved state so callers never break.
++    if (!depthcontent_may_keep_formation($userid)) {
++        debugging('depthcontent: skipped depthcontent_sr persist for non-consented '
++            . '(Art.9/Trialing) userid=' . $userid, DEBUG_DEVELOPER);
++        $sr = depthcontent_get_sr_state($userid, $depthcontentid);
++        return $sr ?: false;
++    }
++
++    $sr = depthcontent_get_sr_state($userid, $depthcontentid);
++    $now = time();
++
++    if (!$sr) {
++        $sr = new stdClass();
++        $sr->userid = $userid;
++        $sr->depthcontentid = $depthcontentid;
++        $sr->ease_factor = 2.50;
++        $sr->interval_days = 1;
++        $sr->repetitions = 0;
++        $sr->next_review = $now;
++        $sr->last_reviewed = $now;
++    }
++
++    $next = depthcontent_sm2_step([
++        'ease_factor'   => $sr->ease_factor,
++        'interval_days' => $sr->interval_days,
++        'repetitions'   => $sr->repetitions,
++    ], (int) $quality);
++
++    $sr->ease_factor   = $next['ease_factor'];
++    $sr->interval_days = $next['interval_days'];
++    $sr->repetitions   = $next['repetitions'];
++    $sr->next_review   = $now + ($sr->interval_days * 86400);
++    $sr->last_reviewed = $now;
++
++    if (isset($sr->id)) {
++        $DB->update_record('depthcontent_sr', $sr);
++    } else {
++        $sr->id = $DB->insert_record('depthcontent_sr', $sr);
++    }
++
++    return $sr;
++}
++
++/**
++ * Pedagogy-owned completion thresholds, injected into the pure evaluators.
++ *
++ * These mirror the catalog `completion_defaults` block (schema.yaml). Admins
++ * may override any value via mod_depthcontent config; nothing is hardcoded at a
++ * call site. This is THE injection point for the ACT/HABIT/CHARACTER evaluators.
++ *
++ * @return array
++ */
++function depthcontent_get_completion_defaults(): array {
++    $defaults = [
++        'pass_threshold'        => 0.8,
++        'habit_k'               => 3,
++        'habit_gap_days'        => 3,
++        'habit_span_floor_days' => 21,
++        'probe_schedule'        => [30, 60, 120, 240, 365],
++        'probe_budget'          => 20,
++        'bank_floor'            => 4,
++    ];
++    // Allow admin override from plugin config (set via settings.php later).
++    foreach (['pass_threshold', 'habit_k', 'habit_gap_days', 'habit_span_floor_days',
++              'probe_budget', 'bank_floor'] as $key) {
++        $val = get_config('mod_depthcontent', $key);
++        if ($val !== false && $val !== null && $val !== '') {
++            $defaults[$key] = is_numeric($val) ? $val + 0 : $val;
++        }
++    }
++    return $defaults;
++}
++
++/**
++ * Orchestrator (impure adapter): record one retrieval event, then recompute the
++ * mastery-ledger row for its (userid, pointid) using the PURE evaluators.
++ *
++ * Appends to the append-only depthcontent_retrieval_log, runs SM-2 over the
++ * mastery row's scheduler columns, then overlays the ACT/HABIT/CHARACTER
++ * attainment fields derived by \mod_depthcontent\mastery\evaluator from the
++ * full log for that (userid, pointid). Every surface (inline quiz, examination,
++ * weekly quiz, monthly probe) funnels through here — one write path.
++ *
++ * GDPR: this table has no delete callback and no FKs; erasure of a member's
++ * formation record is an explicit DELETE WHERE userid=? performed by the
++ * depthcontent core_privacy provider (+ the ops#93 round-trip), NOT by Moodle
++ * cascade and NOT by a `--clear` render rebuild. No per-(user,pointid)
++ * confidence flag is stored: `confidence` is a transient signal on the log row
++ * only, used in-request for the grade/anti-guess guard and later retention-pruned.
++ *
++ * @param array $e Event: {userid, pointid, item_id, outcome, item_type,
++ *                  cognition, core_accountable, single_tag, confidence,
++ *                  latency_ms, mode, context, grade, near, bank_size}
++ * @return \stdClass The upserted mastery row.
++ */
++function depthcontent_apply_retrieval(array $e) {
++    global $DB;
++
++    $now = (int) ($e['ts'] ?? time());
++    $userid = (int) $e['userid'];
++    $pointid = (string) $e['pointid'];
++    $correct = (int) ($e['outcome'] ?? 0);
++
++    // ops#118 Art. 9 gate: for a Trialing (non-consented) member, do NOT append
++    // to the append-only retrieval log and do NOT upsert the mastery ledger.
++    // Return an ephemeral, unsaved mastery row so callers never break.
++    if (!depthcontent_may_keep_formation($userid)) {
++        debugging('depthcontent: skipped retrieval_log + mastery persist for '
++            . 'non-consented (Art.9/Trialing) userid=' . $userid, DEBUG_DEVELOPER);
++        return $DB->get_record('depthcontent_mastery',
++            ['userid' => $userid, 'pointid' => $pointid])
++            ?: (object) ['userid' => $userid, 'pointid' => $pointid, 'status' => 'new'];
++    }
++
++    $grade = isset($e['grade']) ? (int) $e['grade']
++        : depthcontent_grade_from_outcome($correct, $e['confidence'] ?? null,
++            $e['latency_ms'] ?? null, $e['median_latency'] ?? null, !empty($e['near']));
++
++    // 1. APPEND the retrieval log (append-only; the FSRS training set).
++    $log = (object) [
++        'userid'           => $userid,
++        'pointid'          => $pointid,
++        'ts'               => $now,
++        'outcome'          => $correct,
++        'grade'            => $grade,
++        'item_id'          => (string) ($e['item_id'] ?? ''),
++        'item_type'        => $e['item_type'] ?? null,
++        'cognition'        => $e['cognition'] ?? null,
++        'core_accountable' => isset($e['core_accountable']) ? (int) $e['core_accountable'] : 1,
++        'single_tag'       => isset($e['single_tag']) ? (int) $e['single_tag'] : 1,
++        'confidence'       => $e['confidence'] ?? null,   // transient; retention-pruned.
++        'latency_ms'       => $e['latency_ms'] ?? null,
++        'mode'             => $e['mode'] ?? null,
++        'context'          => $e['context'] ?? null,      // provenance only, never a key.
++    ];
++    $DB->insert_record('depthcontent_retrieval_log', $log);
++
++    // 2. Load the full log for this (userid, pointid) and run the PURE evaluators.
++    $rows = [];
++    $recs = $DB->get_records('depthcontent_retrieval_log',
++        ['userid' => $userid, 'pointid' => $pointid], 'ts ASC');
++    foreach ($recs as $r) {
++        $rows[] = [
++            'ts'               => (int) $r->ts,
++            'outcome'          => (int) $r->outcome,
++            'item_id'          => (string) $r->item_id,
++            'item_type'        => $r->item_type,
++            'cognition'        => $r->cognition,
++            'core_accountable' => (bool) $r->core_accountable,
++            'single_tag'       => (bool) $r->single_tag,
++            'confidence'       => isset($r->confidence) ? (int) $r->confidence : null,
++        ];
++    }
++    $thresholds = depthcontent_get_completion_defaults();
++    $banksize = isset($e['bank_size']) ? (int) $e['bank_size'] : null;
++    $state = \mod_depthcontent\mastery\evaluator::evaluate($rows, $thresholds, $banksize);
++
++    // 3. Upsert the mastery row: SM-2 scheduler + evaluator-derived attainment.
++    $row = $DB->get_record('depthcontent_mastery', ['userid' => $userid, 'pointid' => $pointid]);
++    $isnew = !$row;
++    if ($isnew) {
++        $row = (object) [
++            'userid' => $userid, 'pointid' => $pointid,
++            'ease_factor' => 2.50, 'interval_days' => 1, 'repetitions' => 0, 'lapses' => 0,
++        ];
++    }
++    $next = depthcontent_sm2_step([
++        'ease_factor'   => $row->ease_factor,
++        'interval_days' => $row->interval_days,
++        'repetitions'   => $row->repetitions,
++        'lapses'        => $row->lapses,
++    ], $grade);
++    $row->ease_factor   = $next['ease_factor'];
++    $row->interval_days = $next['interval_days'];
++    $row->repetitions   = $next['repetitions'];
++    $row->lapses        = $next['lapses'];
++    $row->next_review   = $now + ($row->interval_days * 86400);
++    $row->last_reviewed = $now;
++
++    // Attainment (monotonic) — evaluators are the source of truth.
++    $row->act_at            = (int) $state['act_at'];
++    $row->act_confirmed     = $state['act_confirmed'] ? 1 : 0;
++    if (empty($row->act_via) && $row->act_at > 0) {
++        $row->act_via = $e['mode'] ?? 'inline';
++    }
++    $row->habit_at          = (int) $state['habit_at'];
++    $row->habit_streak      = (int) $state['habit_streak'];
++    $row->first_success_at  = (int) $state['first_success_at'];
++    $row->last_success_at   = (int) $state['last_success_at'];
++    $row->character_at       = (int) $state['character_at'];
++    $row->char_window_start  = (int) $state['char_window_start'];
++    $row->probes_answered    = (int) $state['probes_answered'];
++    $row->distinct_items_correct = (int) $state['distinct_items_correct'];
++    $row->last_transfer_ok   = $state['last_transfer_ok'] ? 1 : 0;
++    $row->status             = $state['status'];
++    $row->lapsed             = $state['lapsed'] ? 1 : 0;
++    $row->timemodified       = $now;
++
++    if ($isnew) {
++        $row->id = $DB->insert_record('depthcontent_mastery', $row);
++    } else {
++        $DB->update_record('depthcontent_mastery', $row);
++    }
++    return $row;
++}
++
++/**
++ * Get all learning points due for review for a user in a course.
++ */
++function depthcontent_get_due_reviews($userid, $courseid = 0) {
++    global $DB;
++
++    $now = time();
++    $sql = "SELECT sr.*, dc.name, dc.pointid, dc.content_json, cm.id AS cmid
++              FROM {depthcontent_sr} sr
++              JOIN {depthcontent} dc ON dc.id = sr.depthcontentid
++              JOIN {course_modules} cm ON cm.instance = dc.id
++              JOIN {modules} m ON m.id = cm.module AND m.name = 'depthcontent'
++             WHERE sr.userid = :userid
++               AND sr.next_review <= :now
++               AND sr.repetitions > 0";
++    $params = ['userid' => $userid, 'now' => $now];
++
++    if ($courseid > 0) {
++        $sql .= " AND dc.course = :courseid";
++        $params['courseid'] = $courseid;
++    }
++
++    $sql .= " ORDER BY sr.next_review ASC";
++
++    return $DB->get_records_sql($sql, $params);
++}

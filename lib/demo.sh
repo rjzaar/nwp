@@ -232,6 +232,193 @@ demo_codes_payload() {
 }
 
 ################################################################################
+# Invitation email (pl demo invite) — pure rendering, unit-testable
+################################################################################
+
+# The community's public-facing name in the invitation. The demo tier is the
+# Saint School pilot (ops#133); override via env for another community.
+DEMO_INVITE_SITE_NAME="${DEMO_INVITE_SITE_NAME:-Saint School}"
+
+# demo_invite_join_url <site> → "https://<live.domain>/demo/join" read from
+# sites/<site>/.nwp.yml, or a visible placeholder when the domain (or yq)
+# is unavailable. Never fails — the draft must always render.
+demo_invite_join_url() {
+    local site="$1" domain="" yml
+    yml="$(demo_site_dir "$site")/.nwp.yml"
+    if command -v yq >/dev/null 2>&1 && [[ -f "$yml" ]]; then
+        domain="$(yq eval '.live.domain' "$yml" 2>/dev/null || true)"
+        [[ "$domain" == "null" ]] && domain=""
+    fi
+    if [[ -n "$domain" ]]; then
+        echo "https://${domain}/demo/join"
+    else
+        echo "<YOUR-SITE-URL>/demo/join"
+    fi
+}
+
+# demo_invite_level_label <bundle> → the plain-language block heading.
+demo_invite_level_label() {
+    case "$1" in
+        tester-member)                echo "MEMBER TESTER" ;;
+        tester-guild-leader)          echo "GUILD LEADER TESTER" ;;
+        tester-content-manager)       echo "CONTENT MANAGER TESTER" ;;
+        tester-copyright-reviewer)    echo "COPYRIGHT REVIEWER TESTER" ;;
+        tester-safeguarding-reviewer) echo "SAFEGUARDING REVIEWER TESTER" ;;
+        *)                            echo "TESTER" ;;
+    esac
+}
+
+# demo_invite_level_block <bundle> <code>
+# One self-contained, deletable block: heading, code, what this level is,
+# 3-5 concrete things to try. Plain text / markdown-safe, no jargon.
+demo_invite_level_block() {
+    local bundle="$1" code="$2"
+    local label; label="$(demo_invite_level_label "$bundle")"
+    printf '──────── %s ────────\n\n' "$label"
+    printf 'Your code:  %s\n\n' "$code"
+    case "$bundle" in
+        tester-member)
+            cat <<'BLOCK'
+This is the everyday member experience — what most people who join will see.
+
+Things to try:
+- Join a guild (a small community group) and look around inside it.
+- Browse the courses, pick one that looks interesting, and start it.
+- Open your profile and try the privacy and sharing choices — change
+  them and see what it affects.
+- Write a short reflection or comment somewhere.
+- Do some of this on your phone — does it still feel easy?
+BLOCK
+            ;;
+        tester-guild-leader)
+            cat <<'BLOCK'
+This is everything a member can do, plus the tools for someone who leads
+a small community group.
+
+Things to try:
+- Open the leader views for your guild — do they make sense at a glance?
+- Look at member progress (you only see what members chose to share —
+  check that boundary feels right).
+- Post a welcome or announcement to the guild.
+- Try managing who is in the guild.
+BLOCK
+            ;;
+        tester-content-manager)
+            cat <<'BLOCK'
+This is the perspective of someone who writes and arranges the teaching
+material on the site.
+
+Things to try:
+- Edit an existing page or course item and save it.
+- Create a brand-new piece of content.
+- Rearrange the structure — move things around, change the order.
+- Then look at your changes the way an ordinary member would see them.
+BLOCK
+            ;;
+        tester-copyright-reviewer)
+            cat <<'BLOCK'
+This is the perspective of someone who checks that material used on the
+site is properly cleared for use.
+
+Things to try:
+- Open the copyright review queue and look through what is waiting.
+- Approve or decline an item and leave a note explaining why.
+- Check what happens to the content after your decision.
+BLOCK
+            ;;
+        tester-safeguarding-reviewer)
+            cat <<'BLOCK'
+This is the perspective of someone who helps keep the community safe —
+reviewing reports and flagged items.
+
+Things to try:
+- Open the safeguarding review queue and work through an item.
+- Leave a review note and complete the item.
+- Notice what is visible to you and what is kept private — does the
+  boundary feel right?
+BLOCK
+            ;;
+        *)
+            printf 'Things to try: explore whatever this level unlocks.\n'
+            ;;
+    esac
+    printf '\n'
+}
+
+# demo_invite_email <join_url> <expiry_days> <bundle=code>...
+# Renders the COMPLETE copy-ready invitation email on stdout. Each level is
+# a self-contained block the operator can delete before sending. Plain
+# text / markdown-safe; warm, non-technical tone; no jargon.
+demo_invite_email() {
+    local join_url="$1" expiry_days="$2"; shift 2
+    local pair bundle code
+
+    cat <<INTRO
+Subject: Would you help us test ${DEMO_INVITE_SITE_NAME}?
+
+Hi!
+
+Thank you so much for being willing to help. Here's everything you need —
+it takes about a minute to get in.
+
+WHAT IS ${DEMO_INVITE_SITE_NAME^^}?
+
+${DEMO_INVITE_SITE_NAME} is a Catholic faith-formation community site we
+are building — courses to grow in the faith, guilds (small communities to
+walk with), and tools for prayer and spiritual practice. We're getting it
+ready for real members, and before we open the doors we need friendly
+humans to try to break it.
+
+WHAT WE'RE ASKING
+
+Click around for 20-60 minutes as if you were a real member. Try the
+things your level unlocks (details below). And whenever anything is
+broken, confusing, or just feels wrong — even slightly — press the
+"Report a problem" button and tell us in a sentence or two. Every report
+goes straight into our fix queue. There are no silly reports; "this
+confused me" is exactly what we need to hear.
+
+COMPLETELY SAFE, COMPLETELY PRIVATE
+
+This is a practice copy of the site. The WHOLE SITE IS ERASED EVERY
+NIGHT at 1am Melbourne time — everything anyone did that day is wiped.
+You never enter your email or your real name; the site gives you a
+saint's name to use instead. Nothing about you is kept. So please: poke
+at everything, break anything you like — that is genuinely the point.
+
+HOW TO JOIN (3 steps)
+
+1. Open:  ${join_url}
+2. Paste YOUR code (from your section below).
+3. You're in.
+
+INTRO
+
+    for pair in "$@"; do
+        bundle="${pair%%=*}"
+        code="${pair#*=}"
+        demo_invite_level_block "$bundle" "$code"
+    done
+
+    cat <<CLOSING
+────────────────────────────────
+
+Thank you — truly. This kind of unhurried, honest clicking-around is the
+most valuable help we can get right now.
+
+If you have any trouble at all (or the code doesn't work), just reply to
+this email and I'll sort it out.
+
+One last practical note: your code expires in ${expiry_days} days. The
+site forgets everyone nightly, but your code keeps working until it
+expires — so if you come back tomorrow, just join again with the same
+code.
+
+With gratitude,
+CLOSING
+}
+
+################################################################################
 # Pre-wipe error harvest (fail-OPEN by contract)
 ################################################################################
 

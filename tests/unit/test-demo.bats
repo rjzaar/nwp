@@ -208,6 +208,105 @@ make_golden() {
   [ "$(demo_next_code_id "$CFILE")" = "c8" ]
 }
 
+# --- invite: copy-ready email with per-level codes ----------------------------
+
+# The invite subcommand end-to-end (minus the site sync, which is non-fatal
+# and fails cleanly here — no ddev in the fixture).
+run_invite() {
+  run bash "$DEMO_CMD" invite demo1 "$@"
+}
+
+@test "invite writes a 0600 draft under sites/<site>/demo-invites/" {
+  run_invite
+  [ "$status" -eq 0 ]
+  draft=$(ls "${PROJECT_ROOT}/sites/demo1/demo-invites"/invite-*.md)
+  [ -s "$draft" ]
+  [ "$(stat -c %a "$draft")" = "600" ]
+}
+
+@test "invite registers ONE hashed code per default bundle (no plaintext at rest)" {
+  run_invite
+  [ "$status" -eq 0 ]
+  CFILE="$(demo_codes_file demo1)"
+  jq -e '.codes | length == 3' "$CFILE"
+  jq -e '[.codes[].bundle] | sort ==
+         ["tester-content-manager","tester-guild-leader","tester-member"]' "$CFILE"
+  jq -e 'all(.codes[]; .hash | test("^[0-9a-f]{64}$"))' "$CFILE"
+  # no plaintext code (XXXXX-XXXXX-XXXXX-XXXXX) may appear in the registry
+  ! grep -qE '[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}' "$CFILE"
+}
+
+@test "invite --all covers all five bundles; --bundles narrows; unknown refuses" {
+  run_invite --all
+  [ "$status" -eq 0 ]
+  jq -e '.codes | length == 5' "$(demo_codes_file demo1)"
+  run_invite --bundles tester-member
+  [ "$status" -eq 0 ]
+  jq -e '.codes | length == 6' "$(demo_codes_file demo1)"
+  run_invite --bundles tester-member,not-a-bundle
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Unknown bundle"* ]]
+}
+
+@test "draft email: each code exactly once, join URL, nightly-erase promise" {
+  # give the fixture site a live domain so the real join URL is rendered
+  cat > "${PROJECT_ROOT}/sites/demo1/.nwp.yml" <<'EOF'
+live:
+  enabled: true
+  domain: demo1.example.org
+EOF
+  run_invite
+  [ "$status" -eq 0 ]
+  draft=$(ls "${PROJECT_ROOT}/sites/demo1/demo-invites"/invite-*.md)
+  # every registered hash corresponds to exactly one plaintext occurrence:
+  # 3 bundles → exactly 3 distinct code strings, each appearing once
+  codes=$(grep -oE '[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}' "$draft" | sort)
+  [ "$(echo "$codes" | wc -l)" -eq 3 ]
+  [ "$(echo "$codes" | uniq | wc -l)" -eq 3 ]
+  # each plaintext hashes to a registered hash (right codes, not random text)
+  while IFS= read -r c; do
+    h="$(demo_hash_code "$c")"
+    jq -e --arg h "$h" '.codes[] | select(.hash == $h)' "$(demo_codes_file demo1)"
+  done <<< "$codes"
+  grep -qF "https://demo1.example.org/demo/join" "$draft"
+  grep -q "ERASED EVERY" "$draft"
+  grep -q "1am Melbourne" "$draft"
+  grep -q "Report a problem" "$draft"
+}
+
+@test "draft email: one deletable block per level with plain-language names" {
+  run_invite --all
+  draft=$(ls "${PROJECT_ROOT}/sites/demo1/demo-invites"/invite-*.md)
+  for label in "MEMBER TESTER" "GUILD LEADER TESTER" "CONTENT MANAGER TESTER" \
+               "COPYRIGHT REVIEWER TESTER" "SAFEGUARDING REVIEWER TESTER"; do
+    grep -q "$label" "$draft"
+  done
+  # jargon must not leak into the email
+  ! grep -qiE '\b(OIDC|bundles?|RAG)\b' "$draft"
+}
+
+@test "invite without live.domain falls back to a visible placeholder" {
+  run_invite
+  [ "$status" -eq 0 ]
+  draft=$(ls "${PROJECT_ROOT}/sites/demo1/demo-invites"/invite-*.md)
+  grep -qF "<YOUR-SITE-URL>/demo/join" "$draft"
+  [[ "$output" == *"placeholder"* ]]
+}
+
+@test "invite --expiry is validated and reflected in the email" {
+  run_invite --expiry 7d
+  [ "$status" -eq 0 ]
+  draft=$(ls "${PROJECT_ROOT}/sites/demo1/demo-invites"/invite-*.md)
+  grep -q "expires in 7 days" "$draft"
+  run_invite --expiry "next week"
+  [ "$status" -ne 0 ]
+}
+
+@test "demo.sh and lib/demo.sh are bash -n clean" {
+  bash -n "$DEMO_CMD"
+  bash -n "${REPO_ROOT}/lib/demo.sh"
+}
+
 # --- pre-wipe error harvest (fail-open) ---------------------------------------
 
 @test "harvest with findings writes a labelled spool digest" {

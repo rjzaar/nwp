@@ -13,6 +13,9 @@ set -euo pipefail
 #   pl demo nightly <site>                    scheduled entrypoint (retry loop)
 #   pl demo status <site>                     last reset/skips, golden, codes
 #   pl demo codes  <site> list|issue|revoke|rotate|sync
+#   pl demo invite <site> [--bundles a,b] [--expiry 14d] [--all]
+#                                             copy-ready invite email, one
+#                                             fresh code per level (0600 draft)
 #   pl demo schedule <site> [--remove]        install the 01:00 Melbourne cron
 #
 # GUARDS (fail-closed):
@@ -69,6 +72,14 @@ ${BOLD}SUBCOMMANDS:${NC}
     codes <site> rotate           Revoke every live code, reissue one per
                                   bundle that had one (new plaintexts, once)
     codes <site> sync             Re-push the hashed registry into the site
+    invite <site> [--bundles a,b] [--expiry 14d] [--all]
+                                  Issue ONE fresh code per level and render a
+                                  copy-ready invitation email (stdout + a 0600
+                                  draft under sites/<site>/demo-invites/ — the
+                                  draft holds PLAINTEXT codes; delete unwanted
+                                  level blocks, paste into any mail client).
+                                  Default levels: member, guild-leader,
+                                  content-manager; --all adds both reviewers.
     schedule <site> [--remove]    Install/remove the nightly cron on THIS
                                   machine (intended host: met)
 
@@ -480,6 +491,108 @@ cmd_codes() {
 }
 
 ################################################################################
+# invite — copy-ready invitation email with one fresh code per level
+################################################################################
+
+# Default invite levels (decisions §4.4). The two reviewer bundles are
+# opt-in (--all / --bundles=…): reviewer queues are a narrower ask and the
+# operator usually recruits for them separately.
+DEMO_INVITE_DEFAULT_BUNDLES=(tester-member tester-guild-leader tester-content-manager)
+
+cmd_invite() {
+    local site="$1" tier="$2"; shift 2 || true
+    demo_require_jq || return 1
+
+    # ---- invite-specific options (arrive via passthru) ----
+    local bundles_csv="" expiry="14d" all="false" a
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --bundles=*) bundles_csv="${1#--bundles=}"; shift ;;
+            --bundles)   [[ $# -ge 2 ]] || { print_error "--bundles needs a value"; return 1; }
+                         bundles_csv="$2"; shift 2 ;;
+            --expiry=*|--expires=*) expiry="${1#*=}"; shift ;;
+            --expiry|--expires)     [[ $# -ge 2 ]] || { print_error "--expiry needs a value"; return 1; }
+                         expiry="$2"; shift 2 ;;
+            --all)       all="true"; shift ;;
+            *) print_error "Unknown invite option '$1'"; return 1 ;;
+        esac
+    done
+
+    # ---- resolve the bundle list (fail-closed on unknown names) ----
+    local bundles=()
+    if [[ -n "$bundles_csv" ]]; then
+        IFS=',' read -r -a bundles <<< "$bundles_csv"
+        local b
+        for b in "${bundles[@]}"; do
+            demo_bundle_valid "$b" || {
+                print_error "Unknown bundle '$b'. Valid: ${DEMO_BUNDLES[*]}"
+                return 1
+            }
+        done
+    elif [[ "$all" == "true" ]]; then
+        bundles=("${DEMO_BUNDLES[@]}")
+    else
+        bundles=("${DEMO_INVITE_DEFAULT_BUNDLES[@]}")
+    fi
+
+    local secs expiry_days
+    secs="$(demo_parse_duration "$expiry")" || {
+        print_error "Bad --expiry duration '$expiry' (use e.g. 14d)"
+        return 1
+    }
+    expiry_days=$(( (secs + 86399) / 86400 ))
+
+    # ---- issue ONE fresh code per bundle (hashed at rest; plaintext lives
+    #      only in this process and the 0600 draft) ----
+    local cfile pairs=() code hash id expires
+    cfile="$(demo_codes_file "$site")"
+    expires=$(( $(date +%s) + secs ))
+    local b
+    for b in "${bundles[@]}"; do
+        code="$(demo_generate_code)" || { print_error "Code generation failed"; return 1; }
+        hash="$(demo_hash_code "$code")"
+        id="$(demo_next_code_id "$cfile")"
+        demo_code_add "$cfile" "$id" "$b" "$hash" "$expires" || return 1
+        demo_log "$site" codes-issued "id=$id bundle=$b expires_in=$expiry invite"
+        pairs+=("${b}=${code}")
+    done
+
+    # ---- render the draft: stdout + 0600 file (it holds plaintext codes) ----
+    local join_url invite_dir invite_file draft
+    join_url="$(demo_invite_join_url "$site")"
+    invite_dir="$(demo_site_dir "$site")/demo-invites"
+    invite_file="${invite_dir}/invite-$(date -u '+%Y%m%d-%H%M%S').md"
+    # Never clobber an earlier draft (its plaintext codes exist nowhere else).
+    local n=2
+    while [[ -e "$invite_file" ]]; do
+        invite_file="${invite_dir}/invite-$(date -u '+%Y%m%d-%H%M%S')-${n}.md"
+        n=$(( n + 1 ))
+    done
+    draft="$(demo_invite_email "$join_url" "$expiry_days" "${pairs[@]}")"
+
+    ( umask 077; mkdir -p "$invite_dir" && printf '%s\n' "$draft" > "$invite_file" ) || {
+        print_error "Could not write draft to $invite_file"
+        return 1
+    }
+
+    print_header "Invitation draft — $site (${#bundles[@]} level(s), codes expire in ${expiry_days}d)"
+    echo ""
+    printf '%s\n' "$draft"
+    echo ""
+    print_status "OK" "Draft saved: $invite_file (mode 0600 — it contains PLAINTEXT codes)"
+    print_info "Delete any level blocks the recipient shouldn't get, then paste into your mail client."
+    print_info "Distribute to INVITED helpers only (decisions §4.2 — never post publicly)."
+    if [[ "$join_url" == "<YOUR-SITE-URL>"* ]]; then
+        print_warning "No live.domain in sites/$site/.nwp.yml — replace the <YOUR-SITE-URL> placeholder before sending."
+    fi
+    print_hint "Consider deleting the draft file after sending (the registry keeps only hashes)."
+
+    # Push the new hashes into the running site (non-fatal — codes can be
+    # re-synced with `pl demo codes $site sync`).
+    demo_sync_codes_to_site "$site" "$tier" || true
+}
+
+################################################################################
 # schedule — nightly cron on THIS machine (intended host: met)
 ################################################################################
 
@@ -551,6 +664,7 @@ main() {
         nightly)  cmd_nightly "$site" "$tier" ;;
         status)   cmd_status "$site" ;;
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
+        invite)   cmd_invite "$site" "$tier" "${passthru[@]}" ;;
         schedule) cmd_schedule "$site" "$remove" ;;
         *)        print_error "Unknown subcommand: $sub"; show_help; return 1 ;;
     esac

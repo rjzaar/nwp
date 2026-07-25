@@ -63,6 +63,12 @@ PANE_CACHE_TTL = int(_env("NWP_CONSOLE_CACHE_TTL", "60"))
 # Enrolment tokens (one-time) expire after this many hours.
 ENROL_TOKEN_HOURS = int(_env("NWP_CONSOLE_ENROL_HOURS", "48"))
 
+# Quokka — the local-LLM chat tab. Talks ONLY to the loopback ollama on the
+# console host itself (AI tier); read-only context injection, zero action path.
+QUOKKA_URL = _env("NWP_CONSOLE_QUOKKA_URL", "http://127.0.0.1:11434")
+QUOKKA_MODEL = _env("NWP_CONSOLE_QUOKKA_MODEL", "llama3.3:70b")
+QUOKKA_TIMEOUT = int(_env("NWP_CONSOLE_QUOKKA_TIMEOUT", "60"))
+
 
 def secret_key() -> bytes:
     """Session-signing secret; auto-generated once, 0600."""

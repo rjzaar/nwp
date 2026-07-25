@@ -83,3 +83,40 @@ ul.plain li { padding: 2px 0; font-size: 13.5px; }
 .htmx-indicator { opacity: 0; transition: opacity 200ms; }
 .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; }
 details > summary { cursor: pointer; color: var(--muted); }
+
+/* ---- full-screen tabs (top bar on wide screens, bottom nav on phones) ---- */
+.tabbar { display: flex; gap: 2px; align-items: stretch; position: sticky; top: 49px;
+  z-index: 4; background: var(--bg); border-bottom: 1px solid var(--line);
+  padding: 4px 0; overflow-x: auto; scrollbar-width: none; }
+.tab { display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; flex: 1 1 0; min-width: 64px; border: none; background: transparent;
+  border-radius: 8px 8px 0 0; padding: 6px 4px; color: var(--muted); }
+.tab .tab-label { font-size: 13.5px; font-weight: 600; }
+.tab .tab-count { font-size: 11px; min-height: 14px; line-height: 14px; white-space: nowrap; }
+.tab.active { color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
+.tab-refresh { flex: 0 0 auto; align-self: center; }
+.alert-dot { color: var(--err); font-size: 10px; }
+.pane-body { padding-top: 12px; }
+@media (max-width: 700px) {
+  .tabbar { position: fixed; top: auto; bottom: 0; left: 0; right: 0;
+    border-bottom: none; border-top: 1px solid var(--line);
+    padding: 4px 2px calc(4px + env(safe-area-inset-bottom)); }
+  .tab { border-radius: 8px; }
+  .tab.active { box-shadow: inset 0 2px 0 var(--accent); }
+  main { padding-bottom: 96px; }
+}
+
+/* ---- invite email draft ---- */
+.invite-text { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px; white-space: pre; }
+
+/* ---- Quokka chat ---- */
+.quokka { display: flex; flex-direction: column; gap: 8px; }
+.qk-msgs { display: flex; flex-direction: column; gap: 8px; min-height: 120px;
+  max-height: 60vh; overflow-y: auto; padding: 4px 0; }
+.qk-msg { max-width: 92%; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap;
+  font-size: 14px; border: 1px solid var(--line); }
+.qk-user { align-self: flex-end; background: var(--card2); border-color: var(--accent); }
+.qk-assistant { align-self: flex-start; background: var(--card); }
+.qk-form { display: flex; gap: 6px; flex-wrap: wrap; }
+.qk-form input { flex: 1 1 200px; }

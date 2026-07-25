@@ -63,6 +63,15 @@ def _valid_code_id(code_id: str) -> str:
     return code_id
 
 
+def _valid_flag(value) -> bool:
+    """Checkbox-style boolean: only exact known truthy strings count."""
+    if value in ("", None, False, "0", "false", "off"):
+        return False
+    if value in ("1", "true", "on", True):
+        return True
+    raise ActionError("invalid flag value")
+
+
 # action name -> (min_role, human label, argv builder(params, demo_sites))
 ACTIONS: dict = {
     "rag_refresh": {
@@ -84,6 +93,18 @@ ACTIONS: dict = {
             "demo", "codes", _valid_site(p.get("site", ""), ds), "issue",
             _valid_bundle(p.get("bundle", "")), "--expires=14d",
         ],
+    },
+    "demo_invite": {
+        "min_role": "operator",
+        "label": "Invitation email draft",
+        # Renders the copy-ready invite email (pl demo invite): one fresh code
+        # per level, plaintext ONLY in the command output (registry stores
+        # hashes). Args are fixed literals except the validated site and the
+        # boolean --all toggle — no free-text ever reaches the argv.
+        "build": lambda p, ds: (
+            ["demo", "invite", _valid_site(p.get("site", ""), ds)]
+            + (["--all"] if _valid_flag(p.get("all", "")) else [])
+        ),
     },
     "demo_code_revoke": {
         "min_role": "operator",

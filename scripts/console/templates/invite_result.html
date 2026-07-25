@@ -1,0 +1,23 @@
+{% if error %}
+<p class="err">✗ invite refused: {{ error }}</p>
+{% elif res and res.rc == 0 and email %}
+<div class="invite-result">
+  <p class="ok">✓ Invitation draft ready ({{ res.secs }}s). Delete any level blocks the
+    recipient shouldn't get, then paste into your mail client.</p>
+  <p class="muted">⚠ The codes below are shown ONCE here (registry stores hashes only).
+    A 0600 copy was saved under sites/…/demo-invites/ on the console host.</p>
+  <textarea id="invite-text-{{ res.secs }}" class="invite-text" rows="16" readonly>{{ email }}</textarea>
+  <button class="primary" onclick="
+    var t = this.previousElementSibling; t.select();
+    navigator.clipboard.writeText(t.value).then(
+      () => { this.textContent = 'Copied ✓'; },
+      () => { document.execCommand('copy'); this.textContent = 'Copied ✓'; });
+  ">Copy email</button>
+</div>
+{% else %}
+<div class="action-result">
+  <p class="err">✗ invite failed{% if res %} — rc={{ res.rc }} ({{ res.secs }}s){% endif %}</p>
+  {% if res and res.out %}<details><summary>output</summary><pre>{{ res.out }}</pre></details>{% endif %}
+  {% if res and res.err %}<details><summary>stderr</summary><pre>{{ res.err }}</pre></details>{% endif %}
+</div>
+{% endif %}

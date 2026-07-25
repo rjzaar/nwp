@@ -150,6 +150,90 @@ def parse_demo_status(stdout: str) -> dict:
     return {"ok": bool(text.strip()), "highlights": highlights, "raw": text[-6000:]}
 
 
+# ---------------------------------------------------------------------------
+# Tab counts — pure formatters for the tab-bar titles. Contract: return a
+# short string ("" on any parse failure — a missing number must NEVER block
+# or break a tab) and never raise.
+# ---------------------------------------------------------------------------
+def fmt_rag_tab(rag: dict) -> str:
+    """parsed rag → '2🔴 1🟡 9🟢' (non-zero groups only; '' when unparsed)."""
+    try:
+        if not rag.get("ok"):
+            return ""
+        c = rag.get("counts", {})
+        parts = [f"{c[k]}{dot}" for k, dot in (("RED", "🔴"), ("AMBER", "🟡"), ("GREEN", "🟢")) if c.get(k)]
+        return " ".join(parts)
+    except Exception:  # noqa: BLE001 — counts are decoration, never load-bearing
+        return ""
+
+
+def fmt_n_tab(n, suffix: str = "") -> str:
+    """int → '(14)' / '(2 stale)'; anything non-int-able → ''."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return ""
+    return f"({n}{(' ' + suffix) if suffix else ''})"
+
+
+DEMO_LIVE_ROW_RE = re.compile(r"\blive\b", re.I)
+DEMO_EVENT_RE = re.compile(r"\b(reset-ok|reset-failed|skip-active|skip-floor)\b")
+
+
+def demo_live_code_count(codes: dict) -> int:
+    """parse_demo_codes result → number of live (usable) codes. 0 on doubt."""
+    try:
+        return sum(1 for r in codes.get("rows", []) if DEMO_LIVE_ROW_RE.search(r))
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def demo_reset_alert(status: dict) -> bool:
+    """parse_demo_status result → True when the LAST logged reset event is a
+    skip or failure (the tab shows a dot). No events / no data → False."""
+    try:
+        events = DEMO_EVENT_RE.findall(status.get("raw", "") or "")
+        return bool(events) and events[-1] != "reset-ok"
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def ci_running_count(blocks) -> int:
+    """CI pane blocks → number of head pipelines currently running/pending."""
+    n = 0
+    try:
+        for b in blocks or []:
+            for row in b.get("mrs", []):
+                pipe = row.get("pipeline") or {}
+                if str(pipe.get("status", "")).lower() in ("running", "pending"):
+                    n += 1
+    except Exception:  # noqa: BLE001
+        return 0
+    return n
+
+
+# ---------------------------------------------------------------------------
+# Invite email extraction (`pl demo invite` → the copyable draft)
+# ---------------------------------------------------------------------------
+def extract_invite_email(stdout: str) -> str:
+    """Slice the copy-ready email out of `pl demo invite` output.
+
+    The draft runs from the 'Subject:' line through the 'With gratitude,'
+    closing. Returns '' when no draft is present (caller shows raw output).
+    """
+    text = strip_ansi(stdout or "")
+    start = text.find("Subject:")
+    if start == -1:
+        return ""
+    end_marker = "With gratitude,"
+    end = text.find(end_marker, start)
+    if end != -1:
+        return text[start : end + len(end_marker)].rstrip()
+    # Fallback: stop before the trailing status lines if the closing changed.
+    end = text.find("Draft saved", start)
+    return (text[start:end] if end != -1 else text[start:]).rstrip()
+
+
 def parse_demo_codes(stdout: str) -> dict:
     """`pl demo codes <site> list` — hashes only. Keep rows that look tabular."""
     text = strip_ansi(stdout or "")
@@ -158,6 +242,7 @@ def parse_demo_codes(stdout: str) -> dict:
         s = l.strip()
         if not s or set(s) <= {"-", "=", "+", "|", " "}:
             continue
-        if re.search(r"[0-9a-f]{8}", s, re.I) or re.search(r"\b(active|revoked|expired|used)\b", s, re.I):
+        # State words match the real emitter (demo.sh cmd_status): live|revoked|expired.
+        if re.search(r"[0-9a-f]{8}", s, re.I) or re.search(r"\b(live|active|revoked|expired|used)\b", s, re.I):
             rows.append(s[:200])
     return {"ok": bool(text.strip()), "rows": rows[:100], "raw": text[-6000:]}

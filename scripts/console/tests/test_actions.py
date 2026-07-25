@@ -90,3 +90,22 @@ def test_metacharacter_guard_is_backstop():
             build_action("_tmp_bad", {}, DEMO)
     finally:
         del A.ACTIONS["_tmp_bad"]
+
+
+def test_demo_invite_action():
+    argv, role = build_action("demo_invite", {"site": "nwd"}, DEMO)
+    assert argv == ["demo", "invite", "nwd"]
+    assert role == "operator"
+    argv, _ = build_action("demo_invite", {"site": "nwd", "all": "1"}, DEMO)
+    assert argv == ["demo", "invite", "nwd", "--all"]
+    argv, _ = build_action("demo_invite", {"site": "nwd", "all": ""}, DEMO)
+    assert argv == ["demo", "invite", "nwd"]
+
+
+def test_demo_invite_strict_validation():
+    for bad_site in ("nwc", "", "nwd; rm -rf", "../nwd", "NWD"):
+        with pytest.raises(ActionError):
+            build_action("demo_invite", {"site": bad_site}, DEMO)
+    for bad_flag in ("yes", "--force", "1;2", "maybe"):
+        with pytest.raises(ActionError):
+            build_action("demo_invite", {"site": "nwd", "all": bad_flag}, DEMO)

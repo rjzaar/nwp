@@ -1,0 +1,108 @@
+{% include "_tabcount.html" %}
+<div class="quokka">
+  {% if awake %}
+  <p class="muted">Quokka runs entirely on this host ({{ model }}) and can only <em>read</em>
+    the fleet — it has no path to any action. It answers from a live snapshot of the panes;
+    if the snapshot doesn't contain something, it will say so.</p>
+  {% else %}
+  <p class="err">💤 Quokka is asleep — the local model isn't answering. Every other tab still works.</p>
+  {% endif %}
+  <div id="qk-msgs" class="qk-msgs"></div>
+  <form id="qk-form" class="qk-form">
+    <input id="qk-input" placeholder="Ask Quokka about the fleet…" autocomplete="off" maxlength="4000">
+    <button class="primary">Send</button>
+    <button type="button" id="qk-brief">Summarize today</button>
+    <button type="button" id="qk-clear" class="ghost" title="clear this conversation">✕</button>
+  </form>
+</div>
+<script>
+(function () {
+  var KEY = 'nwp-quokka-history';
+  var msgs = document.getElementById('qk-msgs');
+  var form = document.getElementById('qk-form');
+  var input = document.getElementById('qk-input');
+  var busy = false;
+
+  function history() {
+    try { return JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch (e) { return []; }
+  }
+  function save(h) {
+    try { sessionStorage.setItem(KEY, JSON.stringify(h.slice(-12))); } catch (e) {}
+  }
+  function bubble(role, text) {
+    var d = document.createElement('div');
+    d.className = 'qk-msg qk-' + role;
+    d.textContent = text;
+    msgs.appendChild(d);
+    msgs.scrollTop = msgs.scrollHeight;
+    return d;
+  }
+  history().forEach(function (t) { bubble(t.role === 'user' ? 'user' : 'assistant', t.content); });
+
+  async function streamInto(url, opts, el) {
+    var text = '';
+    try {
+      var resp = await fetch(url, opts);
+      if (!resp.ok) {
+        el.textContent = resp.status === 503
+          ? 'Quokka is asleep (local model not reachable). The other tabs still work.'
+          : 'Error ' + resp.status;
+        return el.textContent;
+      }
+      var reader = resp.body.getReader();
+      var dec = new TextDecoder();
+      for (;;) {
+        var r = await reader.read();
+        if (r.done) break;
+        text += dec.decode(r.value, {stream: true});
+        el.textContent = text;
+        msgs.scrollTop = msgs.scrollHeight;
+      }
+    } catch (e) {
+      text = text || 'Connection lost while Quokka was answering.';
+      el.textContent = text;
+    }
+    return text;
+  }
+
+  async function ask(message, recordUser) {
+    if (busy) return;
+    busy = true;
+    var h = history();
+    if (recordUser) { bubble('user', message); }
+    var el = bubble('assistant', '…');
+    var body = new FormData();
+    body.append('message', message);
+    body.append('history', JSON.stringify(h));
+    var reply = await streamInto('/quokka/chat', {method: 'POST', body: body}, el);
+    if (recordUser) {
+      h.push({role: 'user', content: message});
+      h.push({role: 'assistant', content: reply});
+      save(h);
+    }
+    busy = false;
+  }
+
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var m = input.value.trim();
+    if (!m) return;
+    input.value = '';
+    ask(m, true);
+  });
+
+  document.getElementById('qk-brief').addEventListener('click', async function () {
+    if (busy) return;
+    busy = true;
+    bubble('user', 'Summarize today');
+    var el = bubble('assistant', 'gathering the last 24 hours…');
+    await streamInto('/quokka/brief', {method: 'GET'}, el);
+    busy = false;
+  });
+
+  document.getElementById('qk-clear').addEventListener('click', function () {
+    save([]);
+    msgs.textContent = '';
+  });
+})();
+</script>

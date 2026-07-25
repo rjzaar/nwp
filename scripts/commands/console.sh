@@ -186,6 +186,9 @@ NWP_CONSOLE_GITLAB_HOST=${gitlab_host}
 NWP_CONSOLE_DEMO_SITES=nwd
 NWP_CONSOLE_CI_PROJECTS=nwp/nwp
 NWP_CONSOLE_OPS_PROJECT=nwp/ops
+# Quokka (local-LLM chat tab) — loopback ollama on this host only.
+NWP_CONSOLE_QUOKKA_URL=http://127.0.0.1:11434
+NWP_CONSOLE_QUOKKA_MODEL=llama3.3:70b
 EOF
     # systemd EnvironmentFile doesn't expand %h — replace with the real home dir.
     _ssh 'sed -i "s|%h|$HOME|g" ~/.config/nwp-console/env'

@@ -14,7 +14,21 @@ is stored hashed; the plaintext appears only in this terminal output.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+from pathlib import Path
+
+# Load the deployed EnvironmentFile BEFORE importing config (config reads env
+# at import time) so CLI printouts — the enrolment ORIGIN links especially —
+# match what the running service uses. systemd passes these vars to the app;
+# a bare shell invocation would otherwise print placeholder-default URLs.
+# (Mirrors the hotfix applied live on the deploy host, 2026-07-24.)
+_ENV_FILE = Path.home() / ".config/nwp-console/env"
+if _ENV_FILE.exists():
+    for _line in _ENV_FILE.read_text().splitlines():
+        if "=" in _line and not _line.strip().startswith("#"):
+            _k, _v = _line.split("=", 1)
+            os.environ.setdefault(_k.strip(), _v.strip())
 
 from . import config
 from .store import AuditLog, StoreError, UserStore

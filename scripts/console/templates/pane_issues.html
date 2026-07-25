@@ -1,3 +1,4 @@
+{% include "_tabcount.html" %}
 {% if not api_ok %}
 <p class="muted">No GitLab token provisioned on this host ({{ api_error }}) — read-only deep-links.
 Provision <code>~/.config/nwp-console/gitlab.token</code> (0600, walled bot token) to enable the embedded board.</p>

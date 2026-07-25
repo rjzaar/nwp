@@ -118,3 +118,108 @@ def test_parse_demo_codes_hashes_only_rows():
     assert d["ok"]
     assert any("9f86d081aa" in r for r in d["rows"])
     assert not any(r.startswith("----") for r in d["rows"])
+
+
+# --- tab counts (full-screen tabs feature) ------------------------------------
+from app.parsers import (  # noqa: E402
+    ci_running_count,
+    demo_live_code_count,
+    demo_reset_alert,
+    extract_invite_email,
+    fmt_n_tab,
+    fmt_rag_tab,
+)
+
+
+def test_fmt_rag_tab_counts_in_title():
+    assert fmt_rag_tab(parse_rag(RAG_JSON)) == "1🔴 1🟡 1🟢"
+    two = parse_rag(RAG_JSON)
+    two["counts"] = {"RED": 0, "AMBER": 0, "GREEN": 9, "OTHER": 0}
+    assert fmt_rag_tab(two) == "9🟢"
+
+
+def test_fmt_rag_tab_degrades_to_empty():
+    """A parse failure must give NO number, never an exception/blocked tab."""
+    assert fmt_rag_tab(parse_rag("garbage")) == ""
+    assert fmt_rag_tab({}) == ""
+    assert fmt_rag_tab({"ok": True}) == ""
+    assert fmt_rag_tab(None) == ""
+
+
+def test_fmt_n_tab():
+    assert fmt_n_tab(14) == "(14)"
+    assert fmt_n_tab(0) == "(0)"
+    assert fmt_n_tab(2, "stale") == "(2 stale)"
+    assert fmt_n_tab("7") == "(7)"
+    assert fmt_n_tab(None) == ""
+    assert fmt_n_tab("wat") == ""
+
+
+def test_demo_live_code_count():
+    codes = parse_demo_codes(
+        "id    bundle                 state    expires\n"
+        "c1    tester-member          live     2026-08-08\n"
+        "c2    tester-guild-leader    revoked  2026-08-08\n"
+        "c3    tester-member          expired  2026-07-01\n"
+        "c4    tester-content-manager live     2026-08-08\n"
+    )
+    assert demo_live_code_count(codes) == 2
+    assert demo_live_code_count(parse_demo_codes("")) == 0
+    assert demo_live_code_count({}) == 0
+
+
+def test_demo_reset_alert_last_event_wins():
+    ok_then_skip = parse_demo_status(
+        "Recent resets/skips (last 10):\n"
+        "  2026-07-23T14:00:00Z reset-ok tier=dev took=41s\n"
+        "  2026-07-24T14:00:00Z skip-active tier=dev window=30m\n"
+    )
+    assert demo_reset_alert(ok_then_skip) is True
+    skip_then_ok = parse_demo_status(
+        "  2026-07-23T14:00:00Z skip-floor tier=dev\n"
+        "  2026-07-24T14:00:00Z reset-ok tier=dev took=39s\n"
+    )
+    assert demo_reset_alert(skip_then_ok) is False
+    assert demo_reset_alert(parse_demo_status("")) is False
+    assert demo_reset_alert({}) is False
+
+
+def test_ci_running_count():
+    blocks = [
+        {"project": "nwp/nwp", "mrs": [
+            {"mr": {"iid": 1}, "pipeline": {"status": "running"}},
+            {"mr": {"iid": 2}, "pipeline": {"status": "success"}},
+            {"mr": {"iid": 3}, "pipeline": None},
+            {"mr": {"iid": 4}, "pipeline": {"status": "pending"}},
+        ]},
+    ]
+    assert ci_running_count(blocks) == 2
+    assert ci_running_count([]) == 0
+    assert ci_running_count(None) == 0
+    assert ci_running_count([{"mrs": "broken"}]) == 0
+
+
+# --- invite email extraction --------------------------------------------------
+INVITE_STDOUT = (
+    "\x1b[1mInvitation draft — nwd (3 level(s), codes expire in 14d)\x1b[0m\n\n"
+    "Subject: Would you help us test Saint School?\n\nHi!\n\n"
+    "HOW TO JOIN (3 steps)\n\n1. Open:  https://nwd.example.org/demo/join\n"
+    "──────── MEMBER TESTER ────────\n\nYour code:  ABCDE-FGHJK-LMNPQ-RSTUV\n\n"
+    "With gratitude,\n\n"
+    "[OK] Draft saved: sites/nwd/demo-invites/invite-x.md (mode 0600 — it contains PLAINTEXT codes)\n"
+)
+
+
+def test_extract_invite_email_slices_draft_only():
+    email = extract_invite_email(INVITE_STDOUT)
+    assert email.startswith("Subject:")
+    assert email.endswith("With gratitude,")
+    assert "ABCDE-FGHJK-LMNPQ-RSTUV" in email
+    assert "Draft saved" not in email        # trailing status lines removed
+    assert "Invitation draft" not in email   # leading header removed
+
+
+def test_extract_invite_email_degrades():
+    assert extract_invite_email("no draft here") == ""
+    assert extract_invite_email("") == ""
+    assert extract_invite_email(None) == ""

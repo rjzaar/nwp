@@ -1,3 +1,4 @@
+{% include "_tabcount.html" %}
 {% if todo.ok %}
 <p class="muted">{{ todo.summary.get('total', todo['items'] | length) }} items
   ({{ todo.summary.get('high', '?') }} high / {{ todo.summary.get('medium', '?') }} med / {{ todo.summary.get('low', '?') }} low)

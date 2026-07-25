@@ -7,20 +7,28 @@ Action gate = the fail-closed allowlist in actions.py (no live/prod verbs).
 from __future__ import annotations
 
 import json
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-from . import config, parsers, webauthn_flow
+from . import config, parsers, quokka, webauthn_flow
 from .actions import ACTIONS, ActionError, build_action
 from .authz import role_allows
 from .gitlab_api import GitLab
 from .runner import run_pl, run_pl_cached
 from .store import AuditLog, StoreError, UserStore
+
+# Tab order = the whole UI: one full-screen pane at a time.
+PANES = [
+    ("fleet", "Fleet"), ("issues", "Issues"), ("todo", "Todo"), ("demo", "Demo"),
+    ("backups", "Backups"), ("ci", "CI"), ("quokka", "Quokka"),
+]
 
 BASE = Path(__file__).resolve().parent.parent
 
@@ -240,59 +248,157 @@ def index(request: Request, user: dict = Depends(require("viewer"))):
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"user": user, "gitlab_url": gitlab.web_url(), "can_act": role_allows(user["role"], "operator")},
+        {"user": user, "gitlab_url": gitlab.web_url(), "panes": PANES,
+         "can_act": role_allows(user["role"], "operator")},
     )
 
 
-def _pane(request: Request, template: str, ctx: dict, user: dict) -> HTMLResponse:
-    ctx = dict(ctx, user=user, can_act=role_allows(user["role"], "operator"))
+def _pane(request: Request, template: str, ctx: dict, user: dict,
+          tab: str = "", tab_count: str = "", tab_alert: bool = False) -> HTMLResponse:
+    """Render a pane. When `tab` is set, the template's _tabcount include emits
+    an hx-swap-oob span so the tab title's count refreshes WITH the pane."""
+    ctx = dict(ctx, user=user, can_act=role_allows(user["role"], "operator"),
+               tab=tab, tab_count=tab_count, tab_alert=tab_alert)
     return templates.TemplateResponse(request, template, ctx)
+
+
+# -- shared gatherers (panes + tab counts + Quokka context) ------------------
+def _gather_rag(force: bool = False) -> tuple[dict, dict]:
+    res = run_pl_cached(config.NWP_ROOT, ["rag", "--json", "--no-todo"],
+                        ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=force)
+    rag = parsers.parse_rag(res["out"]) if res["out"] else {"ok": False, "error": res["err"] or f"rc={res['rc']}"}
+    return rag, res
+
+
+def _gather_todo(force: bool = False) -> tuple[dict, dict]:
+    res = run_pl_cached(config.NWP_ROOT, ["todo", "check", "--json"],
+                        ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=force)
+    todo = parsers.parse_todo(res["out"]) if res["out"] else {"ok": False, "error": res["err"] or f"rc={res['rc']}"}
+    return todo, res
+
+
+def _gather_demo(force: bool = False) -> list[dict]:
+    sites = []
+    for site in config.DEMO_SITES:
+        st = run_pl_cached(config.NWP_ROOT, ["demo", "status", site],
+                           ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=force)
+        codes = run_pl_cached(config.NWP_ROOT, ["demo", "codes", site, "list"],
+                              ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=force)
+        status = parsers.parse_demo_status(st["out"] if st["rc"] == 0 else st["out"] + "\n" + st["err"])
+        codes_p = parsers.parse_demo_codes(codes["out"])
+        events = parsers.DEMO_EVENT_RE.findall(status.get("raw", "") or "")
+        sites.append(
+            {
+                "site": site, "status": status, "codes": codes_p, "rc": st["rc"],
+                "live_codes": parsers.demo_live_code_count(codes_p),
+                "alert": parsers.demo_reset_alert(status),
+                "last_event": events[-1] if events else "",
+            }
+        )
+    return sites
+
+
+def _gather_ci() -> tuple[list[dict], bool]:
+    blocks = []
+    api_ok = gitlab.has_token()
+    for project in config.CI_PROJECTS:
+        mrs = []
+        r = gitlab.open_mrs(project)
+        for mr in (r.get("data") or []) if r.get("ok") else []:
+            d = gitlab.mr_detail(project, mr["iid"])
+            pipe = (d.get("data") or {}).get("head_pipeline") if d.get("ok") else None
+            mrs.append({"mr": mr, "pipeline": pipe})
+        blocks.append({"project": project, "mrs": mrs, "url": gitlab.web_url(project + "/-/merge_requests")})
+    return blocks, api_ok
+
+
+_qk_alive_cache = {"t": 0.0, "v": False}
+
+
+def _quokka_alive() -> bool:
+    now = time.time()
+    if now - _qk_alive_cache["t"] > 60:
+        _qk_alive_cache["v"] = quokka.alive(config.QUOKKA_URL)
+        _qk_alive_cache["t"] = now
+    return _qk_alive_cache["v"]
+
+
+def _demo_tab(demo_sites: list[dict]) -> tuple[str, bool]:
+    total = sum(d.get("live_codes", 0) for d in demo_sites)
+    return parsers.fmt_n_tab(total, "codes"), any(d.get("alert") for d in demo_sites)
+
+
+# -- tab counts (every tab, one cheap endpoint; each count independent) ------
+@app.get("/tabs/counts", response_class=HTMLResponse)
+def tab_counts(request: Request, user: dict = Depends(require("viewer"))):
+    counts: list[dict] = []
+
+    def add(pane: str, fn):
+        """Each count is computed independently and best-effort: a broken
+        feed degrades to no-number, it must NEVER break or block a tab."""
+        text, alert = "", False
+        try:
+            text, alert = fn()
+        except Exception:  # noqa: BLE001
+            pass
+        counts.append({"pane": pane, "text": text, "alert": alert})
+
+    def _issues_count():
+        r = gitlab.list_issues(config.OPS_PROJECT)
+        return (parsers.fmt_n_tab(len(r.get("data") or [])) if r.get("ok") else ""), False
+
+    def _todo_counts():
+        todo = _gather_todo()[0]
+        todo_txt = parsers.fmt_n_tab(len(todo.get("items", []))) if todo.get("ok") else ""
+        stale = len(parsers.todo_backup_items(todo))
+        return todo_txt, (parsers.fmt_n_tab(stale, "stale") if stale else "")
+
+    todo_txt, backups_txt = "", ""
+    try:
+        todo_txt, backups_txt = _todo_counts()
+    except Exception:  # noqa: BLE001
+        pass
+
+    add("fleet", lambda: (parsers.fmt_rag_tab(_gather_rag()[0]), False))
+    add("issues", _issues_count)
+    add("todo", lambda: (todo_txt, False))
+    add("demo", lambda: _demo_tab(_gather_demo()))
+    add("backups", lambda: (backups_txt, False))
+    add("ci", lambda: ((lambda n: f"({n}▶)" if n else "")(parsers.ci_running_count(_gather_ci()[0])), False))
+    add("quokka", lambda: ("\U0001f7e2" if _quokka_alive() else "\U0001f4a4", False))
+    return templates.TemplateResponse(request, "tab_counts.html", {"counts": counts})
 
 
 @app.get("/panes/fleet", response_class=HTMLResponse)
 def pane_fleet(request: Request, force: int = 0, user: dict = Depends(require("viewer"))):
-    res = run_pl_cached(config.NWP_ROOT, ["rag", "--json", "--no-todo"],
-                        ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=bool(force))
-    rag = parsers.parse_rag(res["out"]) if res["out"] else {"ok": False, "error": res["err"] or f"rc={res['rc']}"}
-    return _pane(request, "pane_fleet.html", {"rag": rag, "res": res}, user)
+    rag, res = _gather_rag(force=bool(force))
+    return _pane(request, "pane_fleet.html", {"rag": rag, "res": res}, user,
+                 tab="fleet", tab_count=parsers.fmt_rag_tab(rag))
 
 
 @app.get("/panes/todo", response_class=HTMLResponse)
 def pane_todo(request: Request, force: int = 0, user: dict = Depends(require("viewer"))):
-    res = run_pl_cached(config.NWP_ROOT, ["todo", "check", "--json"],
-                        ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=bool(force))
-    todo = parsers.parse_todo(res["out"]) if res["out"] else {"ok": False, "error": res["err"] or f"rc={res['rc']}"}
-    return _pane(request, "pane_todo.html", {"todo": todo, "res": res}, user)
+    todo, res = _gather_todo(force=bool(force))
+    return _pane(request, "pane_todo.html", {"todo": todo, "res": res}, user,
+                 tab="todo", tab_count=parsers.fmt_n_tab(len(todo.get("items", []))) if todo.get("ok") else "")
 
 
 @app.get("/panes/backups", response_class=HTMLResponse)
 def pane_backups(request: Request, force: int = 0, user: dict = Depends(require("viewer"))):
-    res = run_pl_cached(config.NWP_ROOT, ["todo", "check", "--json"],
-                        ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=bool(force))
-    todo = parsers.parse_todo(res["out"]) if res["out"] else {"ok": False, "error": res["err"] or f"rc={res['rc']}"}
+    todo, res = _gather_todo(force=bool(force))
     items = parsers.todo_backup_items(todo)
-    return _pane(request, "pane_backups.html", {"items": items, "todo_ok": todo.get("ok", False), "res": res}, user)
+    return _pane(request, "pane_backups.html", {"items": items, "todo_ok": todo.get("ok", False), "res": res}, user,
+                 tab="backups", tab_count=parsers.fmt_n_tab(len(items), "stale") if items else "")
 
 
 @app.get("/panes/demo", response_class=HTMLResponse)
 def pane_demo(request: Request, force: int = 0, user: dict = Depends(require("viewer"))):
-    sites = []
-    for site in config.DEMO_SITES:
-        st = run_pl_cached(config.NWP_ROOT, ["demo", "status", site],
-                           ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=bool(force))
-        codes = run_pl_cached(config.NWP_ROOT, ["demo", "codes", site, "list"],
-                              ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=bool(force))
-        sites.append(
-            {
-                "site": site,
-                "status": parsers.parse_demo_status(st["out"] if st["rc"] == 0 else st["out"] + "\n" + st["err"]),
-                "codes": parsers.parse_demo_codes(codes["out"]),
-                "rc": st["rc"],
-            }
-        )
+    sites = _gather_demo(force=bool(force))
     from .actions import BUNDLES
 
-    return _pane(request, "pane_demo.html", {"demo_sites": sites, "bundles": BUNDLES}, user)
+    count, alert = _demo_tab(sites)
+    return _pane(request, "pane_demo.html", {"demo_sites": sites, "bundles": BUNDLES}, user,
+                 tab="demo", tab_count=count, tab_alert=alert)
 
 
 @app.get("/panes/issues", response_class=HTMLResponse)
@@ -310,22 +416,16 @@ def pane_issues(request: Request, user: dict = Depends(require("viewer"))):
             "project_url": gitlab.web_url(config.OPS_PROJECT),
         },
         user,
+        tab="issues", tab_count=parsers.fmt_n_tab(len(issues or [])) if r.get("ok") else "",
     )
 
 
 @app.get("/panes/ci", response_class=HTMLResponse)
 def pane_ci(request: Request, user: dict = Depends(require("viewer"))):
-    blocks = []
-    api_ok = gitlab.has_token()
-    for project in config.CI_PROJECTS:
-        mrs = []
-        r = gitlab.open_mrs(project)
-        for mr in (r.get("data") or []) if r.get("ok") else []:
-            d = gitlab.mr_detail(project, mr["iid"])
-            pipe = (d.get("data") or {}).get("head_pipeline") if d.get("ok") else None
-            mrs.append({"mr": mr, "pipeline": pipe})
-        blocks.append({"project": project, "mrs": mrs, "url": gitlab.web_url(project + "/-/merge_requests")})
-    return _pane(request, "pane_ci.html", {"blocks": blocks, "api_ok": api_ok}, user)
+    blocks, api_ok = _gather_ci()
+    n = parsers.ci_running_count(blocks)
+    return _pane(request, "pane_ci.html", {"blocks": blocks, "api_ok": api_ok}, user,
+                 tab="ci", tab_count=(f"({n}▶)" if n else ""))
 
 
 # ---------------------------------------------------------------------------
@@ -357,6 +457,197 @@ def action_run(
     label = ACTIONS[action]["label"]
     res_view = dict(res, out=parsers.strip_ansi(res["out"])[-8000:], err=parsers.strip_ansi(res["err"])[-2000:])
     return _pane(request, "action_result.html", {"label": label, "res": res_view, "error": None}, user)
+
+
+# -- invite email (operator+): allowlisted `pl demo invite`, copyable draft --
+@app.post("/actions/invite", response_class=HTMLResponse)
+def action_invite(
+    request: Request,
+    site: str = Form(""),
+    all_levels: str = Form(""),
+    user: dict = Depends(require("operator")),
+):
+    """The phone-friendly path to `pl demo invite`: runs the allowlisted
+    action and shows the complete draft in a copyable textarea. The plaintext
+    codes live in the response body only — the audit log records argv + sizes,
+    never the draft."""
+    _guard_origin(request)
+    params = {"site": site, "all": all_levels}
+    try:
+        argv, min_role = build_action("demo_invite", params, config.DEMO_SITES)
+    except ActionError as e:
+        audit.append(user["name"], user["role"], "action.demo_invite", {"params": params, "rejected": str(e)}, False)
+        return _pane(request, "invite_result.html", {"email": "", "res": None, "error": str(e)}, user)
+    if not role_allows(user["role"], min_role):
+        raise HTTPException(status_code=403)
+    res = run_pl(config.NWP_ROOT, argv, timeout=config.PL_TIMEOUT)
+    email = parsers.extract_invite_email(res["out"]) if res["rc"] == 0 else ""
+    audit.append(
+        user["name"], user["role"], "action.demo_invite",
+        {"argv": argv, "rc": res["rc"], "secs": res["secs"], "email_chars": len(email)}, res["rc"] == 0,
+    )
+    res_view = dict(res, out=parsers.strip_ansi(res["out"])[-4000:], err=parsers.strip_ansi(res["err"])[-2000:])
+    return _pane(request, "invite_result.html", {"email": email, "res": res_view, "error": None}, user)
+
+
+# ---------------------------------------------------------------------------
+# Quokka — local-LLM chat (viewer+). READ-ONLY BY CONSTRUCTION: these routes
+# never import or touch actions.py/build_action; Quokka's only fleet
+# knowledge is the rendered LIVE STATE text block (context injection).
+# ---------------------------------------------------------------------------
+_qk_ctx_cache = {"t": 0.0, "text": ""}
+
+
+def _quokka_state(force: bool = False) -> dict:
+    """Best-effort live-state gather from the EXISTING read-only gatherers."""
+    state: dict = {"generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
+    try:
+        state["rag"] = _gather_rag(force=force)[0]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        r = gitlab.list_issues(config.OPS_PROJECT)
+        state["issues_ok"] = bool(r.get("ok"))
+        state["issues"] = r.get("data") or []
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        state["todo"] = _gather_todo(force=force)[0]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        state["demo"] = _gather_demo(force=force)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        blocks, api_ok = _gather_ci()
+        state["ci"], state["ci_ok"] = blocks, api_ok
+    except Exception:  # noqa: BLE001
+        pass
+    return state
+
+
+def _quokka_context() -> str:
+    now = time.time()
+    if _qk_ctx_cache["text"] and now - _qk_ctx_cache["t"] < 60:
+        return _qk_ctx_cache["text"]
+    text = quokka.render_context(_quokka_state())
+    _qk_ctx_cache.update(t=now, text=text)
+    return text
+
+
+def _brief_state() -> dict:
+    """Richer 24h context for the morning brief."""
+    state = _quokka_state()
+    extra: list[str] = []
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    # Issues touched in the last 24 h (includes the demo-tester ones).
+    try:
+        recent = []
+        for i in state.get("issues", []):
+            try:
+                ts = datetime.fromisoformat(str(i.get("updated_at", "")).replace("Z", "+00:00"))
+                if ts >= cutoff:
+                    labels = ",".join(i.get("labels", [])[:4])
+                    recent.append(f"  #{i['iid']} {str(i.get('title', ''))[:80]}" + (f" [{labels}]" if labels else ""))
+            except (ValueError, KeyError, TypeError):
+                continue
+        extra.append(f"Issues updated in the last 24h: {len(recent)}")
+        extra.extend(recent[:15])
+    except Exception:  # noqa: BLE001
+        pass
+    # Demo reset/skip trail + unposted harvest digests (spool titles only).
+    try:
+        for d in state.get("demo", []):
+            raw = d.get("status", {}).get("raw", "") or ""
+            trail = [ln.strip() for ln in raw.splitlines() if parsers.DEMO_EVENT_RE.search(ln)]
+            if trail:
+                extra.append(f"Demo {d['site']} recent reset log:")
+                extra.extend(f"  {ln[:160]}" for ln in trail[-5:])
+            hdir = config.NWP_ROOT / "sites" / d["site"] / "demo-harvest"
+            if hdir.is_dir():
+                spools = sorted(p.name for p in hdir.glob("harvest-*.md"))[-5:]
+                if spools:
+                    extra.append(f"Demo {d['site']} unposted error harvests: {', '.join(spools)}")
+    except Exception:  # noqa: BLE001
+        pass
+    # Audit-log highlights (last 24 h): what ran, what failed.
+    try:
+        by_action: dict[str, int] = {}
+        fails: list[str] = []
+        for e in audit.tail(300):
+            try:
+                ts = datetime.fromisoformat(str(e.get("ts", "")).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if ts < cutoff:
+                continue
+            by_action[e.get("action", "?")] = by_action.get(e.get("action", "?"), 0) + 1
+            if not e.get("ok"):
+                fails.append(f"  FAILED {e.get('action', '?')} by {e.get('user', '?')} at {e.get('ts', '')}")
+        if by_action:
+            extra.append("Console activity (24h): " + ", ".join(f"{k}×{v}" for k, v in sorted(by_action.items())))
+        extra.extend(fails[:8])
+    except Exception:  # noqa: BLE001
+        pass
+    state["extra_lines"] = extra
+    return state
+
+
+def _quokka_streaming_response(messages: list[dict], user: dict, action: str, prompt_summary: str):
+    def gen():
+        got: list[str] = []
+        ok = False
+        try:
+            for chunk in quokka.chat_stream(config.QUOKKA_URL, config.QUOKKA_MODEL, messages,
+                                            timeout=config.QUOKKA_TIMEOUT):
+                got.append(chunk)
+                yield chunk
+            ok = True
+        except quokka.QuokkaError as e:
+            yield ("\n\n" if got else "") + (
+                f"Quokka is asleep (local model unavailable: {e}). The other tabs still work."
+            )
+        finally:
+            audit.append(user["name"], user["role"], action,
+                         {"prompt": prompt_summary[:200], "reply": "".join(got)[:200],
+                          "model": config.QUOKKA_MODEL}, ok)
+    return StreamingResponse(gen(), media_type="text/plain; charset=utf-8")
+
+
+@app.get("/panes/quokka", response_class=HTMLResponse)
+def pane_quokka(request: Request, force: int = 0, user: dict = Depends(require("viewer"))):
+    awake = _quokka_alive()
+    return _pane(request, "pane_quokka.html",
+                 {"awake": awake, "model": config.QUOKKA_MODEL}, user,
+                 tab="quokka", tab_count=("\U0001f7e2" if awake else "\U0001f4a4"))
+
+
+@app.post("/quokka/chat")
+def quokka_chat(request: Request, message: str = Form(...), history: str = Form("[]"),
+                user: dict = Depends(require("viewer"))):
+    _guard_origin(request)
+    msg = message.strip()[:4000]
+    if not msg:
+        raise HTTPException(status_code=400, detail="empty message")
+    try:
+        hist = json.loads(history)
+        if not isinstance(hist, list):
+            hist = []
+    except json.JSONDecodeError:
+        hist = []
+    messages = quokka.build_messages(_quokka_context(), hist, msg)
+    return _quokka_streaming_response(messages, user, "quokka.chat", msg)
+
+
+@app.get("/quokka/brief")
+def quokka_brief(request: Request, user: dict = Depends(require("viewer"))):
+    """Morning brief over a richer 24h context. Also the future-automation
+    hook — returns 503 cleanly when the local model is down."""
+    if not _quokka_alive():
+        raise HTTPException(status_code=503, detail="Quokka is asleep (local model not reachable)")
+    messages = quokka.build_messages(quokka.render_context(_brief_state()), [], quokka.BRIEF_PROMPT)
+    return _quokka_streaming_response(messages, user, "quokka.brief", "summarize today")
 
 
 # -- GitLab-backed issue actions (operator+) --------------------------------

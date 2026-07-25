@@ -1,3 +1,4 @@
+{% include "_tabcount.html" %}
 {% for d in demo_sites %}
 <div class="demosite">
   <h3>{{ d.site }}</h3>
@@ -20,6 +21,11 @@
 
   {% if can_act %}
   <div class="actions">
+    <form hx-post="/actions/invite" hx-target="#demo-result-{{ d.site }}" hx-indicator="#invite-spin-{{ d.site }}">
+      <input type="hidden" name="site" value="{{ d.site }}">
+      <label class="muted"><input type="checkbox" name="all_levels" value="1"> + reviewer levels</label>
+      <button class="primary">Invite email<span id="invite-spin-{{ d.site }}" class="htmx-indicator">…</span></button>
+    </form>
     <form hx-post="/actions/run" hx-target="#demo-result-{{ d.site }}">
       <input type="hidden" name="action" value="demo_reset">
       <input type="hidden" name="site" value="{{ d.site }}">

@@ -552,3 +552,20 @@ todo/doc-truth + new subcommands); `sites/nwc/.nwp.yml` MISSING — Commons conf
 benedicta.art at registrar, test.nwpcode.org no cert, dir 403, ssd missing local_browse (ssd agent rebuilding);
 3 conflicting test-pass-rate figures vs a February .badges.json; .gitleaks.toml gained a path-pinned allowlist
 for test-links.md (operator to confirm or move that file to ~/central instead).
+
+## [2026-07-26] ✅ Gotify push (MR pending) — + a NEAR MISS worth remembering
+Reused the EXISTING Gotify on mini (v2.9.1 :8080, 3 prior app tokens) rather than installing a second.
+⚠️ **NEAR MISS:** mini ran an UNPUSHED local branch (feat/quokka-voice with voice.py/stt_worker.py); a plain
+`pl console deploy` (rsync --delete) would have DESTROYED the voice feature. Agent backed up
+(~/nwp-console/src.bak-20260726-000354) and deployed a MERGE of both branches instead. **Lesson: pl console
+deploy must detect/refuse divergence on the target rather than clobber it.**
+Events (rag red+recovery, demo_tester, demo_reset, token_expiry, ci, optional daily brief), each toggleable,
+dedupe on state CHANGE, 0600 state, first-run seeds silently, one in-app asyncio task (no new service/port/
+deps). Real e2e: 4 event types delivered w/ correct deep links, then the fakes deleted. Found+fixed a real
+bug: token matcher required "token"+dead/expir and silently dropped `Secret EXPIRED n days ago` — the exact
+case the event exists for. 114 pytest + 13 bats. RSS +2.7MB.
+**GAP (flagship event INERT):** `pl rag --json` returns 0 sites on mini — the console reads THAT host's audit
+caches and the sites live on the laptop. So neither the Fleet tab nor the RAG alert can work until fleet
+state is PUBLISHED to mini. → queued as the next fix (laptop computes, publishes a snapshot; console displays).
+Phone still not a mesh node (last hop unproven); Gotify deliberately NOT yet tailnet-bound (would break LAN
+delivery + two local 127.0.0.1 producers before the phone joins — one-line change documented with ordering).

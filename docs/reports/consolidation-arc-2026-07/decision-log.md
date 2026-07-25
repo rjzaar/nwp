@@ -641,3 +641,24 @@ signals that should have said so were INCAPABLE OF FAILING.**
   replicated every dev secret onto the autonomous AI host; it needs an exclusion rule (own issue).
 **STILL OPERATOR-ONLY:** revoke the account-wide `linodes:read_write` token (it can delete the PROD box — my
 error to have requested that scope; a child account or per-run env var is the right shape).
+
+## [2026-07-26] 🔑 CATCH-22 RESOLVED — two-tier posture (operator direction)
+The deadlock was "Art.9 enforced nowhere (P0)" vs "can't deploy until legal (#119)". It dissolves on one
+distinction: **the gate is PROTECTIVE, not permissive.** Deploying enforcement only ever REFUSES to store
+special-category data — strictly more protective than today, so it needs no legal sign-off. #119 is needed to
+ASK for consent using specific wording and to RELY on it. Therefore:
+- **nwd/ssd (demo tier): deploy EVERYTHING incl. consent-asking.** No Art.9 exposure — synthetic accounts
+  (@demo.invalid, patron-saint names, no real email ever collected), wiped nightly 01:00 Melbourne, testers
+  told it's a practice copy. Invited testers exercise the FULL journey: consent, decline→Trialing, withdraw→
+  erasure, CC0 contribution gate. **This becomes the evidence counsel reviews** — a working system beats a spec.
+- **nwc/ssc (real): enforcement plumbing ON, asking OFF** until #119. Gate + art9_consent claim deployed
+  (protective only); no member sees unratified wording; nwc `--code-only` (UID-lock); backups first.
+**Why it is risk-free right now (verified, not assumed):** live ssc = 2 users, **0 depthcontent_mastery rows,
+0 local_practice_log rows, 0 art9 prefs**; live nwc = 1 active member, consent table present, nwc_oidc_claims
+enabled but pre-arc code. **Zero formation data exists in production** → deploying the gate cannot break
+existing recording and there is NO backfill dilemma. This is precisely the DPIA's "compliant window", and it
+closes the moment real testers arrive.
+**Consequence to state plainly:** until #119, no formation data is recorded for anyone on the real sites —
+the gate refuses by design. With 1 member and 0 rows that costs nothing.
+**Outcome sought:** every "Art.9 enforced nowhere" P0 drops to "enforced in production and proven; asking
+awaits ratified wording", + a `docs/guides/art9-golive-runbook.md` making #119 ONE pre-proven switch.

@@ -569,3 +569,27 @@ caches and the sites live on the laptop. So neither the Fleet tab nor the RAG al
 state is PUBLISHED to mini. → queued as the next fix (laptop computes, publishes a snapshot; console displays).
 Phone still not a mesh node (last hop unproven); Gotify deliberately NOT yet tailnet-bound (would break LAN
 delivery + two local 127.0.0.1 producers before the phone joins — one-line change documented with ordering).
+
+## [2026-07-26] GDPR audit intake — protected the at-risk work, answered #137, corrected the DPIA
+A parallel Art.9 audit session opened ops#137-142 with UNCOMMITTED, UNTRACKED edits in trees my agents were
+in. Actions:
+1. **LOSS RISK CLOSED (highest priority):** `sites/ssc/dev/mod/depthcontent/` was an UNTRACKED vendored
+   drop-in — an ops#103 re-vendor would have silently destroyed the Art.9 fixes. Now (a) committed locally
+   (38 files, bcc7f49), (b) bundled to gdpr-artifacts/, (c) **pushed to the canonical repo
+   nwp/ss-moodle-plugins `gdpr/art9-depthcontent-fixes` → MR !5 MERGED**. Triply safe.
+   `nwc_privacy/tests/` (hardened scanner + new sweep) committed ac76b21 + pushed.
+2. **In-flight agents warned** (explicit paths only; never add -A/reset/clean in shared trees; don't touch
+   nwc_privacy). UX agent verified 0 nwc_privacy paths in its commit; its nwc-dev test contamination was
+   fully undone (code+DB) → shared tree now **0 dirty**, audit work preserved *as commits*.
+3. **Standing checks re-run: privacy_sweep exit 1 / 26 findings, firewall_scan exit 1 / 2 egress violations
+   — EXACTLY the documented baseline.** Nothing loosened.
+4. **ops#137 ANSWERED with evidence:** the deploy DEFAULT is a THIRD tree — `pl moodle plugin deploy` falls
+   back to `~/nwptoolkit` (0 gate refs); `~/dir/courses_v3` 0; only `sites/ssc/dev` had it (5). **LIVE
+   /var/www/ssc is ungated** (mtime 2026-07-21). So the ship-together invariant could be *believed* satisfied
+   while violated — a GDPR fail-open. Fix in flight (repoint default → canonical repo + fail-closed
+   pre-deploy gate assertion + `pl moodle gate-status`).
+5. **ops#138: DPIA v2 CORRECTED** — the Drupal write-gate is a capability with zero callers, not a control;
+   enforcement is Moodle-side only; net position = neither side enforces on live, safe only because the
+   pre-arc freeze is still deployed.
+**Merged tonight (operator permission):** ss-moodle-plugins !5 (Art9), nwp !158 voice, !159 restricted key,
+!160 docs, !161 gotify (after resolving an additive voice×gotify conflict), nwc !40 UX.

@@ -362,6 +362,11 @@ test:unit:
       - tests/unit/results.xml
     expire_in: 1 week
   rules:
+    # MRs MUST run the unit suite. Until 2026-07-26 this was push-only, so every
+    # "CI-verified" merge was verified WITHOUT bats — that is how the ops#47
+    # impact-contract regression reached main with a green pipeline. A gate that
+    # cannot fail on the change being merged is decoration, not assurance.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "push"
   tags:
     - nwp
@@ -383,6 +388,7 @@ test:integration:
       - tests/integration/results.xml
     expire_in: 1 week
   rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "push"
   tags:
     - nwp

@@ -16,8 +16,13 @@ ExecStart=/bin/bash -c 'exec %h/nwp-console/venv/bin/uvicorn app.main:app \
   --workers 1 --no-server-header'
 Restart=on-failure
 RestartSec=5
-# Keep the footprint tiny + contained (mini's RAM is shared with local LLMs).
-MemoryMax=512M
+# Keep the footprint contained (the host's RAM is shared with local LLMs). The web
+# process itself sits ~140 MB; the headroom is for the SHORT-LIVED voice
+# children in this cgroup — faster-whisper `base` peaks ~400 MB and piper
+# ~180 MB, then exit and give it straight back. 512M would OOM-kill the
+# console mid-transcription; drop this back to 512M if you set
+# NWP_CONSOLE_STT_BACKEND=off and NWP_CONSOLE_TTS_BACKEND=off.
+MemoryMax=1500M
 NoNewPrivileges=true
 StandardOutput=append:%h/nwp-console/console.log
 StandardError=append:%h/nwp-console/console.log

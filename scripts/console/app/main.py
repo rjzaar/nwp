@@ -14,13 +14,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-from . import config, notify, parsers, quokka, webauthn_flow
+from . import config, notify, parsers, quokka, voice, webauthn_flow
 from .actions import ACTIONS, ActionError, build_action
 from .authz import role_allows
 from .gitlab_api import GitLab
@@ -656,8 +656,12 @@ def _quokka_streaming_response(messages: list[dict], user: dict, action: str, pr
 @app.get("/panes/quokka", response_class=HTMLResponse)
 def pane_quokka(request: Request, force: int = 0, user: dict = Depends(require("viewer"))):
     awake = _quokka_alive()
+    # Voice probes are TTL-cached in voice.py and fail closed, so a host with
+    # no whisper/piper just renders the tab without a mic button.
     return _pane(request, "pane_quokka.html",
-                 {"awake": awake, "model": config.QUOKKA_MODEL}, user,
+                 {"awake": awake, "model": config.QUOKKA_MODEL,
+                  "stt_ok": voice.stt_available(), "tts_ok": voice.tts_available(),
+                  "stt_max_seconds": config.STT_MAX_SECONDS}, user,
                  tab="quokka", tab_count=("\U0001f7e2" if awake else "\U0001f4a4"))
 
 
@@ -826,6 +830,62 @@ def notifications_check(request: Request, user: dict = Depends(require("owner"))
     return _notify_view(request, user,
                         f"checked: {res['events']} event(s) detected, {res['sent']} sent, "
                         f"{res['failed']} failed")
+# -- voice (viewer+): speech in, speech out — BOTH LOCAL TO THIS HOST -------
+# Speaking to Quokka is exactly as privileged as typing to it: /quokka/stt
+# only returns text, which the page then posts to /quokka/chat like any other
+# message. No cloud speech API is involved on either leg (see app/voice.py).
+_VOICE_STATUS = {"unavailable": 503, "too_large": 413, "too_long": 413, "unreadable": 400, "failed": 500}
+
+
+@app.post("/quokka/stt")
+def quokka_stt(request: Request, audio: UploadFile = File(...), user: dict = Depends(require("viewer"))):
+    """Push-to-talk audio -> transcript. The audio is never persisted and never
+    logged; the transcript is audited exactly like a typed message."""
+    _guard_origin(request)
+    if not voice.stt_available():
+        raise HTTPException(status_code=503, detail="Speech recognition isn't available on this host — type instead.")
+    try:
+        # Cap the read itself: one byte over the limit is enough to refuse
+        # without ever materialising a big buffer.
+        blob = audio.file.read(config.STT_MAX_BYTES + 1)
+    except OSError:
+        raise HTTPException(status_code=400, detail="could not read the upload") from None
+    finally:
+        try:
+            audio.file.close()  # starlette's spill file is unlinked on close
+        except OSError:
+            pass
+    try:
+        res = voice.transcribe(blob)
+    except voice.VoiceError as e:
+        audit.append(user["name"], user["role"], "quokka.stt",
+                     {"audio_bytes": len(blob), "error": f"{e.kind}: {str(e)[:160]}"}, False)
+        raise HTTPException(status_code=_VOICE_STATUS.get(e.kind, 500), detail=str(e)[:200]) from None
+    audit.append(
+        user["name"], user["role"], "quokka.stt",
+        {"transcript": res["text"][:200], "audio_bytes": len(blob), "audio_secs": res["duration"],
+         "secs": res["secs"], "backend": res["backend"], "model": config.STT_MODEL},
+        True,
+    )
+    return JSONResponse({"transcript": res["text"], "secs": res["secs"], "duration": res["duration"]})
+
+
+@app.post("/quokka/tts")
+def quokka_tts(request: Request, text: str = Form(...), user: dict = Depends(require("viewer"))):
+    """Reply text -> WAV from the local piper voice. 503 when piper isn't
+    installed; the page then falls back to the device's own offline voices."""
+    _guard_origin(request)
+    started = time.time()
+    try:
+        wav = voice.synthesize(text)
+    except voice.VoiceError as e:
+        raise HTTPException(status_code=_VOICE_STATUS.get(e.kind, 500), detail=str(e)[:200]) from None
+    # The words were already audited as Quokka's reply — record only that the
+    # speaker was used, not the text again.
+    audit.append(user["name"], user["role"], "quokka.tts",
+                 {"chars": len(text), "wav_bytes": len(wav), "secs": round(time.time() - started, 2),
+                  "backend": voice.tts_backend()}, True)
+    return Response(wav, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
 
 # -- GitLab-backed issue actions (operator+) --------------------------------

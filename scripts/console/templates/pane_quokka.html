@@ -14,13 +14,35 @@
     <button type="button" id="qk-brief">Summarize today</button>
     <button type="button" id="qk-clear" class="ghost" title="clear this conversation">✕</button>
   </form>
+  <div class="qk-voice">
+    {% if stt_ok %}
+    <button type="button" id="qk-mic" class="qk-mic" aria-pressed="false" aria-label="record a question">🎤 <span id="qk-mic-label">Talk</span></button>
+    {% endif %}
+    <label class="qk-speak"><input type="checkbox" id="qk-speak"> 🔈 Speak replies</label>
+    <button type="button" id="qk-hush" class="ghost" hidden>Stop</button>
+    <span id="qk-vstatus" class="muted"></span>
+  </div>
+  <p class="muted qk-vnote">
+    {% if stt_ok %}Voice stays on the mesh: recordings go to the speech model on this host
+    (max {{ stt_max_seconds }}s), are deleted the moment they're transcribed, and are never stored or logged.
+    {% else %}Speech recognition isn't installed on this host, so there's no mic button — typing still works.{% endif %}
+    {% if tts_ok %}Replies are spoken by the local piper voice on this host.
+    {% else %}Replies are spoken by your device's own offline voice.{% endif %}
+  </p>
 </div>
 <script>
 (function () {
   var KEY = 'nwp-quokka-history';
+  var SPEAK_KEY = 'nwp-quokka-speak';
+  var STT_OK = {{ 'true' if stt_ok else 'false' }};
+  var TTS_OK = {{ 'true' if tts_ok else 'false' }};
+  var MAX_SECS = {{ stt_max_seconds|int }};
   var msgs = document.getElementById('qk-msgs');
   var form = document.getElementById('qk-form');
   var input = document.getElementById('qk-input');
+  var vstatus = document.getElementById('qk-vstatus');
+  var speakBox = document.getElementById('qk-speak');
+  var hush = document.getElementById('qk-hush');
   var busy = false;
 
   function history() {
@@ -36,6 +58,10 @@
     msgs.appendChild(d);
     msgs.scrollTop = msgs.scrollHeight;
     return d;
+  }
+  function status(text, isErr) {
+    vstatus.textContent = text || '';
+    vstatus.className = isErr ? 'err' : 'muted';
   }
   history().forEach(function (t) { bubble(t.role === 'user' ? 'user' : 'assistant', t.content); });
 
@@ -81,6 +107,7 @@
       save(h);
     }
     busy = false;
+    speak(reply);
   }
 
   form.addEventListener('submit', function (ev) {
@@ -96,13 +123,190 @@
     busy = true;
     bubble('user', 'Summarize today');
     var el = bubble('assistant', 'gathering the last 24 hours…');
-    await streamInto('/quokka/brief', {method: 'GET'}, el);
+    var reply = await streamInto('/quokka/brief', {method: 'GET'}, el);
     busy = false;
+    speak(reply);
   });
 
   document.getElementById('qk-clear').addEventListener('click', function () {
     save([]);
     msgs.textContent = '';
+    stopSpeaking();
+  });
+
+  // -----------------------------------------------------------------------
+  // Speech OUT. Preference order: the host's piper voice (same voice on every
+  // device) -> the device's own OFFLINE voice. We deliberately prefer a voice
+  // with localService === true where one exists: on Android the default
+  // Google voices can synthesise over the network, and nothing here should
+  // leave the device.
+  // -----------------------------------------------------------------------
+  var audioEl = null;
+  var voicesReady = [];
+  function loadVoices() {
+    try { voicesReady = window.speechSynthesis ? speechSynthesis.getVoices() : []; } catch (e) {}
+  }
+  loadVoices();
+  if (window.speechSynthesis) { speechSynthesis.onvoiceschanged = loadVoices; }
+
+  function localVoice() {
+    var en = voicesReady.filter(function (v) { return /^en/i.test(v.lang); });
+    for (var i = 0; i < en.length; i++) { if (en[i].localService) return en[i]; }
+    return null;
+  }
+  function sayable(text) {
+    // Strip the markdown Quokka likes to emit so it isn't read out as "star".
+    return String(text || '')
+      .replace(/```[\s\S]*?```/g, ' code block ')
+      .replace(/[*_`#>]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 2000);
+  }
+  function stopSpeaking() {
+    try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) {}
+    if (audioEl) { try { audioEl.pause(); } catch (e) {} audioEl = null; }
+    hush.hidden = true;
+  }
+  hush.addEventListener('click', stopSpeaking);
+
+  function browserSpeak(text) {
+    if (!window.speechSynthesis) { status('This browser has no speech output.', true); return; }
+    var u = new SpeechSynthesisUtterance(text);
+    var v = localVoice();
+    if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'en-US'; }
+    u.onend = function () { hush.hidden = true; };
+    speechSynthesis.cancel();
+    hush.hidden = false;
+    speechSynthesis.speak(u);
+  }
+
+  async function speak(reply) {
+    if (!speakBox.checked) return;
+    var text = sayable(reply);
+    if (!text) return;
+    stopSpeaking();
+    if (TTS_OK) {
+      try {
+        var body = new FormData();
+        body.append('text', text);
+        var r = await fetch('/quokka/tts', {method: 'POST', body: body});
+        if (r.ok) {
+          var url = URL.createObjectURL(await r.blob());
+          audioEl = new Audio(url);
+          audioEl.onended = function () { URL.revokeObjectURL(url); hush.hidden = true; };
+          hush.hidden = false;
+          await audioEl.play();
+          return;
+        }
+      } catch (e) { /* fall through to the device's own voice */ }
+    }
+    browserSpeak(text);
+  }
+
+  try { speakBox.checked = localStorage.getItem(SPEAK_KEY) === '1'; } catch (e) {}
+  speakBox.addEventListener('change', function () {
+    try { localStorage.setItem(SPEAK_KEY, speakBox.checked ? '1' : '0'); } catch (e) {}
+    if (!speakBox.checked) stopSpeaking();
+  });
+
+  // -----------------------------------------------------------------------
+  // Speech IN. Tap to start, tap to stop (auto-stops at the server's limit).
+  // MediaRecorder ONLY — the browser's SpeechRecognition API is never used
+  // here: in Chromium/Brave it streams your microphone audio to Google.
+  // -----------------------------------------------------------------------
+  if (!STT_OK) return;
+  var mic = document.getElementById('qk-mic');
+  var micLabel = document.getElementById('qk-mic-label');
+  var rec = null, chunks = [], stream = null, autoStop = null, tick = null, t0 = 0;
+
+  function pickMime() {
+    var want = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+    for (var i = 0; i < want.length; i++) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported(want[i])) return want[i];
+    }
+    return '';
+  }
+
+  function releaseMic() {
+    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+    if (autoStop) { clearTimeout(autoStop); autoStop = null; }
+    if (tick) { clearInterval(tick); tick = null; }
+  }
+
+  function setRecording(on) {
+    mic.classList.toggle('recording', on);
+    micLabel.textContent = on ? 'Stop' : 'Talk';
+    mic.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+
+  async function startRec() {
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
+      status('This browser cannot record audio.', true); return;
+    }
+    stopSpeaking();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true}
+      });
+    } catch (e) {
+      status(e && e.name === 'NotAllowedError'
+        ? 'Microphone blocked. Allow it for this site: padlock/Shields ▾ → Site settings → Microphone → Allow.'
+        : 'No microphone available (' + ((e && e.name) || 'error') + ').', true);
+      releaseMic();
+      return;
+    }
+    var mime = pickMime();
+    try {
+      rec = mime ? new MediaRecorder(stream, {mimeType: mime, audioBitsPerSecond: 32000})
+                 : new MediaRecorder(stream);
+    } catch (e) { rec = new MediaRecorder(stream); }
+    chunks = [];
+    rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = finishRec;
+    rec.start();
+    t0 = Date.now();
+    setRecording(true);
+    tick = setInterval(function () {
+      var left = MAX_SECS - Math.floor((Date.now() - t0) / 1000);
+      status('Listening… ' + (left > 0 ? left : 0) + 's left, tap Stop when done.');
+    }, 1000);
+    status('Listening… ' + MAX_SECS + 's left, tap Stop when done.');
+    autoStop = setTimeout(function () { if (rec && rec.state === 'recording') rec.stop(); }, MAX_SECS * 1000);
+  }
+
+  async function finishRec() {
+    var type = (rec && rec.mimeType) || 'audio/webm';
+    var blob = new Blob(chunks, {type: type});
+    chunks = [];
+    releaseMic();
+    setRecording(false);
+    if (!blob.size) { status('Nothing recorded.', true); return; }
+    status('Transcribing…');
+    var ext = type.indexOf('mp4') >= 0 ? 'm4a' : (type.indexOf('ogg') >= 0 ? 'ogg' : 'webm');
+    var body = new FormData();
+    body.append('audio', blob, 'clip.' + ext);
+    var r;
+    try {
+      r = await fetch('/quokka/stt', {method: 'POST', body: body});
+    } catch (e) { status('Could not reach the console.', true); return; }
+    if (!r.ok) {
+      var detail = '';
+      try { detail = (await r.json()).detail || ''; } catch (e) {}
+      status(detail || ('Transcription failed (' + r.status + ').'), true);
+      return;
+    }
+    var data = await r.json();
+    var text = (data.transcript || '').trim();
+    if (!text) { status("Didn't catch that — try again.", true); return; }
+    status('Heard it in ' + data.secs + 's.');
+    ask(text, true);
+  }
+
+  mic.addEventListener('click', function () {
+    if (rec && rec.state === 'recording') { rec.stop(); return; }
+    if (busy) { status('Quokka is still answering…'); return; }
+    startRec();
   });
 })();
 </script>

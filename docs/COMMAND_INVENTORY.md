@@ -3,14 +3,24 @@
 Complete inventory of all commands in the NWP codebase.
 
 **Last Updated:** 2026-07-08 (partial refresh — nwp/ops#53)
-**Total Commands:** 72 `scripts/commands/*.sh` files.
+**Reviewed:** 2026-07-26 · **Total Commands:** **95** `scripts/commands/*.sh` files.
 
-> ⚠️ **This inventory is stale and incomplete.** It documents ~58 commands; the
-> tree now holds 72. Verbs missing below include: `audit`, `canonical`, `host`,
-> `issue`, `onboard`, `rag`, `secrets`, `server-apply`/`-backup`/`-publish`/`-pull`/`-status`,
-> `test-ver`, `vrt`, and the ai-host LLM-host utilities command. Regenerate from
-> `ls scripts/commands/*.sh`. The `ai-host` entry below is a **phantom** — there is
-> no `ai-host.sh`, so `pl ai-host` does not resolve.
+> ## ⚠️ Do not trust this inventory — it is hand-maintained and has drifted badly
+>
+> - It claims 72 commands and documents ~58. **The tree holds 95.**
+> - Verbs missing below include: `audit`, `canonical`, `console`, `config`, `demo`,
+>   `doc-truth`, `host`, `issue`, `impact`, `contracts`, `maturity`, `branch`,
+>   `onboard`, `pair`, `proposals`, `rag`, `secrets`, `site`, `server`,
+>   `server-apply`/`-backup`/`-publish`/`-pull`/`-status`, `test-ver`, `ver-test`,
+>   `ver-backup-pull`, `todo`, `vrt`.
+> - The `ai-host` entry below is a **phantom** — there is no `ai-host.sh`, so
+>   `pl ai-host` does not resolve.
+>
+> **The authoritative list is `ls scripts/commands/*.sh` and `pl help`.** (Note that
+> `pl help` is itself incomplete — 24 real commands are missing from it; see the
+> follow-up list in the docs-batch merge request.)
+>
+> This file should be replaced by a generated listing rather than maintained by hand.
 
 ---
 
@@ -29,10 +39,10 @@ Complete inventory of all commands in the NWP codebase.
 - GitLab Composer registry integration
 - DNS registration (Linode)
 
-**Recipes:** os (OpenSocial), d (Drupal), nwp (Networked Workforce Platform), dm (Drupal Minimal)
+**Recipes:** os (OpenSocial), d (Drupal), nwp (**Narrow Way Project** — the permanent project name), dm (Divine Mercy), m (Moodle)
 
 **Verification Points:**
-- Drupal recipes (os, d, nwp, dm)
+- Drupal recipes (os, d, nwp, dm)  *(defined in `nwp.yml`; there is no `recipes/` directory)*
 - Moodle recipe
 - GitLab recipe
 - Podcast (Castopod) recipe

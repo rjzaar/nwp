@@ -91,9 +91,19 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   least-privilege gitlab.ops_note_token).
                                   Retry-safe: only posted digests are moved to
                                   demo-harvest/posted/.
-    schedule <site> [--tier=live] [--remove]
+    schedule <site> [--tier=live] [--remove] [--via-key]
                                   Install/remove the nightly cron on THIS
-                                  machine (intended host: met)
+                                  machine (intended host: met).
+                                  --via-key schedules the RESTRICTED
+                                  forced-command key (~/.ssh/<site>_demo_reset →
+                                  /usr/local/bin/nwd-demo-reset-restricted on
+                                  the box) instead of running pl locally: the
+                                  scheduler then needs no repo checkout, no
+                                  admin key, and gets no root on the box.
+                                  Fires every 30 min 01:00–03:30 ${DEMO_TZ}
+                                  (the wrapper is idempotent), giving the same
+                                  ${DEMO_FLOOR_TIME} floor without holding a
+                                  3-hour ssh session open.
 
 ${BOLD}OPTIONS:${NC}
     --tier=dev|stg|live  Which instance to act on (default: dev). dev|stg are
@@ -1127,18 +1137,48 @@ cmd_harvest_post() {
 # schedule — nightly cron on THIS machine (intended host: met)
 ################################################################################
 
+# The restricted forced-command path (ops#133 / Option A): the scheduler host
+# holds only ~/.ssh/<site>_demo_reset, whose authorized_keys entry pins
+# command="/usr/local/bin/nwd-demo-reset-restricted". It can invoke the reset
+# and nothing else — no shell, no sudo, no scp, no forwarding.
+#
+# IdentitiesOnly=yes AND IdentityAgent=none are LOAD-BEARING: without them ssh
+# offers an agent-held admin key first and lands on the UNRESTRICTED gitlab
+# entry instead of the forced command (found the hard way — see the guide).
+DEMO_KEY_PATH="${DEMO_KEY_PATH:-\$HOME/.ssh/<site>_demo_reset}"
+
+# demo_schedule_key_cmd <site> → the ssh invocation the cron line will run.
+# Host and user come from sites/<site>/.nwp.yml (live.server_ip → live.domain,
+# get_ssh_user), never from a hardcoded hostname.
+demo_schedule_key_cmd() {
+    local site="$1" host="" user="" key="" server_name=""
+    # Same resolution order as demo_live_ctx: named server → server_ip → domain.
+    server_name="$(get_site_config_value "$site" '.live.server' "")"
+    if [[ -n "$server_name" ]] && declare -F get_server_config >/dev/null 2>&1; then
+        host="$(get_server_config "$server_name" "ip" "" 2>/dev/null)"
+    fi
+    [[ -z "$host" ]] && host="$(get_site_config_value "$site" '.live.server_ip' "")"
+    [[ -z "$host" ]] && host="$(get_site_config_value "$site" '.live.domain' "")"
+    [[ -n "$host" ]] || { print_error "No live.server_ip / live.domain for '$site' — cannot schedule --via-key"; return 1; }
+    user="$(get_ssh_user "$site")"
+    key="${DEMO_KEY_PATH//<site>/$site}"
+    printf 'ssh -i %s -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes -o ConnectTimeout=30 %s@%s' \
+        "$key" "$user" "$host"
+}
+
 cmd_schedule() {
-    local site="$1" remove="$2" tier="${3:-dev}"
+    local site="$1" remove="$2" tier="${3:-dev}" via_key="${4:-false}"
     local marker="# NWP Demo Reset - $site"
     local current
     current="$(crontab -l 2>/dev/null || true)"
     # Drop any existing entry (idempotent install / clean removal). The install
     # writes a 3-line block (marker, CRON_TZ, command) — remove the whole block
-    # by marker, plus any stray command line as belt-and-braces.
+    # by marker, plus any stray command line as belt-and-braces (either flavour).
     local cleaned
     cleaned="$(printf '%s\n' "$current" \
         | awk -v m="$marker" 'index($0, m) == 1 { skip = 3 } skip > 0 { skip--; next } { print }' \
-        | grep -v "pl demo nightly $site\b" || true)"
+        | grep -v "pl demo nightly $site\b" \
+        | grep -v "${site}_demo_reset" || true)"
 
     if [[ "$remove" == "true" ]]; then
         printf '%s\n' "$cleaned" | crontab -
@@ -1147,15 +1187,42 @@ cmd_schedule() {
     fi
 
     mkdir -p "$PROJECT_ROOT/logs"
-    # CRON_TZ pins the fire time to Melbourne regardless of host TZ (handles
-    # DST; supported by ISC/vixie cron on Ubuntu 22.04+). The retry semantics
-    # (every 30 min to a 04:00 floor) live in `pl demo nightly`, keeping cron
-    # itself a single dumb line.
-    local entry="CRON_TZ=${DEMO_TZ}
-0 1 * * * ${PROJECT_ROOT}/pl demo nightly ${site} --tier=${tier} >> ${PROJECT_ROOT}/logs/demo-nightly-${site}.log 2>&1"
-    printf '%s\n%s\n%s\n' "$cleaned" "$marker" "$entry" | crontab -
-    print_status "OK" "Installed nightly demo reset for $site --tier=${tier} (01:00 ${DEMO_TZ}, retries to ${DEMO_FLOOR_TIME})"
-    print_info "Runs on THIS machine's crontab — the production schedule belongs on met (pl schedule host)."
+    local log="${PROJECT_ROOT}/logs/demo-nightly-${site}.log"
+    local entry
+
+    if [[ "$via_key" == "true" ]]; then
+        # Restricted-key flavour. The retry loop lives in CRON, not in a
+        # 3-hour-long ssh session: the box-side wrapper is idempotent (one
+        # reset per Melbourne day) and returns 3 while sessions are active, so
+        # firing every 30 min from 01:00 to 03:30 gives the same "retry to the
+        # 04:00 floor" semantics without holding a connection open on a 3.8 GB
+        # host. No repo checkout is needed on the scheduler at all.
+        local sshcmd
+        sshcmd="$(demo_schedule_key_cmd "$site")" || return 1
+        entry="CRON_TZ=${DEMO_TZ}
+0,30 1-3 * * * ${sshcmd} nightly >> ${log} 2>&1"
+    else
+        # CRON_TZ pins the fire time to Melbourne regardless of host TZ (handles
+        # DST; supported by ISC/vixie cron on Ubuntu 22.04+). The retry semantics
+        # (every 30 min to a 04:00 floor) live in `pl demo nightly`, keeping cron
+        # itself a single dumb line.
+        entry="CRON_TZ=${DEMO_TZ}
+0 1 * * * ${PROJECT_ROOT}/pl demo nightly ${site} --tier=${tier} >> ${log} 2>&1"
+    fi
+
+    # The marker line stays a PREFIX (the removal awk matches index==1), so the
+    # suffix is free for provenance — which matters because the laptop copy is
+    # interim and someone has to know to delete it when met takes over.
+    local marker_line="$marker"
+    [[ "$via_key" == "true" ]] && marker_line="${marker} (restricted key; see docs/guides/demo-nightly-on-met.md)"
+    printf '%s\n%s\n%s\n' "$cleaned" "$marker_line" "$entry" | crontab -
+    if [[ "$via_key" == "true" ]]; then
+        print_status "OK" "Installed nightly demo reset for $site via the RESTRICTED key (01:00–03:30 ${DEMO_TZ}, every 30 min, ${DEMO_FLOOR_TIME} floor)"
+        print_info "This host needs only ~/.ssh/${site}_demo_reset — no repo, no admin key, no root on the box."
+    else
+        print_status "OK" "Installed nightly demo reset for $site --tier=${tier} (01:00 ${DEMO_TZ}, retries to ${DEMO_FLOOR_TIME})"
+        print_info "Runs on THIS machine's crontab — the production schedule belongs on met (pl schedule host)."
+    fi
     print_hint "Verify: crontab -l | grep -A2 'NWP Demo Reset'"
 }
 
@@ -1173,7 +1240,7 @@ main() {
     [[ -n "$site" ]] || { print_error "Site name required."; show_help; return 1; }
 
     # Common option parse (subcommand-specific positionals pass through).
-    local tier="dev" if_idle="" auto_yes="false" skip_seed="false" remove="false" dry_run="false"
+    local tier="dev" if_idle="" auto_yes="false" skip_seed="false" remove="false" dry_run="false" via_key="false"
     local passthru=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -1184,6 +1251,7 @@ main() {
             --force|--yes|-y) auto_yes="true"; shift ;;
             --skip-seed) skip_seed="true"; shift ;;
             --remove)   remove="true"; shift ;;
+            --via-key)  via_key="true"; shift ;;
             *)          passthru+=("$1"); shift ;;
         esac
     done
@@ -1197,7 +1265,7 @@ main() {
         status)   cmd_status "$site" "$tier" ;;
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
         invite)   cmd_invite "$site" "$tier" "${passthru[@]}" ;;
-        schedule) cmd_schedule "$site" "$remove" "$tier" ;;
+        schedule) cmd_schedule "$site" "$remove" "$tier" "$via_key" ;;
         harvest-post) cmd_harvest_post "$site" "$dry_run" ;;
         *)        print_error "Unknown subcommand: $sub"; show_help; return 1 ;;
     esac

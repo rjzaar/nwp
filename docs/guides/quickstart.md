@@ -24,7 +24,11 @@ This installs Docker, DDEV, mkcert, and the NWP CLI (`pl` command).
 ## Step 2: Create Your First Site
 
 ```bash
-# Install a Drupal site using the 'd' recipe
+# See which recipes YOUR install actually offers first
+pl install --list
+
+# Install a Drupal site using the 'd' recipe (if your nwp.yml defines it —
+# the shipped example.nwp.yml defines only 'pod')
 pl install d mysite
 ```
 
@@ -33,15 +37,18 @@ Wait 2-3 minutes for installation to complete.
 ## Step 3: Access Your Site
 
 ```bash
-# Open in browser (from site directory)
-cd sites/mysite
+# Open in browser (from the site's DEV environment directory)
+cd sites/mysite/dev
 ddev launch
 
 # Or get the URL
 ddev describe
 ```
 
-Your site is available at `https://mysite.ddev.site`
+Your site is available at `https://mysite-dev.ddev.site`
+
+> **Layout note (v2).** Code lives under `sites/<name>/dev/`, and the DDEV project
+> is named `<name>-dev`. Staging is `sites/<name>/stg/` (`<name>-stg`).
 
 ## Common Operations
 
@@ -52,7 +59,8 @@ Your site is available at `https://mysite.ddev.site`
 pl backup mysite
 
 # List backups
-ls sitebackups/mysite/
+ls sites/mysite/backups/
+# (the legacy location sitebackups/<name>/ is still read for unmigrated sites)
 
 # Restore from backup
 pl restore mysite
@@ -61,12 +69,11 @@ pl restore mysite
 ### Development to Staging
 
 ```bash
-# Create staging copy
-pl copy mysite mysite-stg
-
-# Deploy changes to staging
+# Create and populate staging in one step (it offers to create stg if missing)
 pl dev2stg mysite
 ```
+
+See [How to: deploy a change](howto-deploy.md) for the full picture.
 
 ### Running Tests
 
@@ -75,7 +82,7 @@ pl dev2stg mysite
 pl testos -a mysite
 
 # Just code quality
-pl testos -p mysite    # PHPStan
+pl testos -s mysite    # PHPStan
 pl testos -c mysite    # CodeSniffer
 ```
 
@@ -108,21 +115,24 @@ The `pl` CLI is installed by default during setup:
 | `pl delete sitename` | Delete site |
 | `pl status` | Check all sites |
 | `pl theme <cmd> sitename` | Frontend build tooling |
-| `pl --list` | List available recipes |
+| `pl install --list` | List available recipes |
 | `pl --help` | Show all commands |
 
 ## Available Recipes
 
-View all recipes:
+View the recipes **your** install actually offers:
 
 ```bash
-pl --list
+pl install --list
 ```
 
-Common recipes:
+Recipes are defined in the `recipes:` block of your own `nwp.yml` — there is no
+`recipes/` directory. The shipped template `example.nwp.yml` defines only `pod`;
+the fuller catalogue (`d`, `os`, `avc`, `dm`, `m`, `gitlab`, `pod`) lives in
+`example.nwp.v2.yml` or an operator overlay. Commonly referenced:
 - `d` - Standard Drupal
-- `nwp` - NWP default
 - `os` - OpenSocial
+- `m` - Moodle
 
 ## Configuration
 

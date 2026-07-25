@@ -2,7 +2,14 @@
 
 This document tracks known issues and limitations in the NWP system.
 
-**Last Updated**: 2026-01-20
+**Last Updated**: 2026-01-20 · **Reviewed**: 2026-07-26
+
+> ⚠️ **Stale.** Issue 1 below describes a `test-nwp.sh` transition that completed long
+> ago (`pl test-nwp` is now a deprecation shim that runs `pl verify --run`). Its "~88%
+> pass rate" is also one of three conflicting figures carried across the docs
+> (README said 98%, the roadmap says 99.5%, the last generated `.badges.json` said 90%
+> in February). **Trust `pl verify status`, not any of the prose.** This file needs a
+> full pass against current reality.
 
 See also: [Roadmap](docs/governance/roadmap.md) for planned improvements.
 

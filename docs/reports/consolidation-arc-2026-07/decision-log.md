@@ -502,3 +502,70 @@ verified against a stub. Until decided, **nwd resets on demand only**.
 MR !157 open for review (agent did NOT auto-merge — cited CLAUDE.md two-person rule for live-deploy/server
 config; correct default, though the operator had given a broad merge approval earlier).
 Noted, untouched: nwc profile build missing libraries/diff/dist/diff.min.js (JS-aggregation PHP warning).
+
+## [2026-07-26] ✅ Quokka VOICE live (MR !158, REVIEW) — X02 Phase 2 via console
+Real round-trip on the deployed mesh HTTPS: spoken question → faster-whisper 1.13s → Quokka reply → Piper
+voice back 1.50s (voice legs 2.6s total; LLM dominates). Piper installed on mini (~250MB, 175MB RSS).
+Abuse-tested live: 413/400/403/401 all correct; 2 real bugs found+fixed by abusing the deployment (500-vs-400
+on junk; scratch-path leak in an error body). MemoryMax 512M→1500M (measured 621MB peak during transcription
+— old cap would have OOM-killed mid-request). New attack surface stated plainly (authed viewer+ → PyAV/ffmpeg
+on mini; bounded by mesh+WebAuthn+caps+child-process). Browser speech APIs never used (Google-cloud);
+speechSynthesis fallback filters to localService voices. GAPS: browser/phone UI untested (needs operator);
+no queueing (household-scale); whisper-cli fallback path unit-tested only.
+
+## [2026-07-26] ✅ Option A: forced-command restricted key (MR !159, REVIEW) + interim laptop nightly
+Box wrapper /usr/local/bin/nwd-demo-reset-restricted (versioned servers/nwpcode/demo/): 8 enforced guarantees
+— literal allowlist for $SSH_ORIGINAL_COMMAND (logged, never eval'd), nwd hard-wired + live demo_mode=true
+re-check before anything destructive, fail-closed golden (manifest site + 2x sha256), idle guard (garbled
+query = ACTIVE), once-per-Melbourne-day + flock, full logging w/ logrotate, non-zero on failure.
+**Restriction PROVEN by transcript:** id/cat/bash/`reset; id`/`$(id)`/rm-rf all REFUSED+logged+not executed;
+sudo unreachable; PTY denied; scp failed; -L/-R forwarding administratively prohibited.
+⚠️ **KEY DISCOVERY:** `-o IdentitiesOnly=yes` AND `-o IdentityAgent=none` are LOAD-BEARING — without both,
+ssh offers the agent-held admin key first and lands on the unrestricted gitlab entry, silently bypassing the
+forced command (the first test run did exactly this). Both baked into cron + a ~/.ssh/config alias.
+Interim laptop cron ACTIVE (CRON_TZ Melbourne, 0,30 1-3 * * *, wrapper idempotency does the retrying — no
+3h held ssh session against a 3.8GB host). met handover = one command (install-on-met.sh, --check first).
+74/74 bats. GAPS: wrapper runs as `gitlab` (NOPASSWD sudo) — containment is "met may only invoke it", not
+unprivileged (fix = dedicated unix acct + narrow sudoers); **empty staged codes-payload CLEARS all invite
+codes** (footgun: issue codes → must --stage-codes or next nightly locks testers out); golden on box drifts
+until re-staged; no liveness alarm if the laptop sleeps through 01:00; met steps untested ON met.
+**Hygiene:** stale /tmp curl-configs holding live PRIVATE-TOKENs (Jul-18/24/25, one mode 664) — SHREDDED.
+
+## [2026-07-26] ✅ Docs batch #130/#131/#132 (MR !160, docs-only) + live-surface findings
+6 how-to guides (backup-restore, deploy, dr-chain, demo-tier, invite-codes, console) + accuracy fixes across
+~18 files. Removed real falsehoods: CLAUDE.md's phantom `recipes/` dir, ~40 root `./cmd.sh` invocations
+(F23 deleted those symlinks), `pl --list` (never existed, in 6 places), pre-v2 site tree. SAFETY: stg2prod/
+live2prod docs now cover the guard stack + the 4 ledgered override flags — incl. that `--override-snapshot`
+makes rsync --delete UNRECOVERABLE (was documented nowhere). doc-truth baseline 111→95. test-links.md +
+docs/overview/ (nwp, Saint School, NWC, theocat, overall) + the dir answer.
+**dir VERDICT: keep separate.** Record was silent (no ADR) but the architecture decides it: ops#34 product
+triple makes transcript search its own leg; ~/nwptoolkit already supersedes the Drupal module (610k segments,
+<0.05s vs 14-43s); DIR is Tier-1 never-public and Q-3PC-DIR-01 is BLOCKING (Burke approval + counsel).
+Recommend: deploy the toolkit behind its gate, retire dir_search, finish the thin CLIP integration
+(nwc_clip_review, P64/ops#60) that already ships disabled — and WRITE THE ADR (its absence caused the question).
+**Verified NOT a problem:** nwc live /trial 404 — nwc_privacy IS enabled on live but at the PRE-ARC version
+(hard freeze); new Trialing code correctly undeployed pending #119. Live is in the safe/restrictive state.
+**FIXED inline:** scripts/commands/fix.sh was 0664 → `pl fix` unresolvable; chmod +x, verified working.
+**Open follow-ups from the batch:** pl help omits 24 real commands (console/secrets/site/server/issue/rag/
+todo/doc-truth + new subcommands); `sites/nwc/.nwp.yml` MISSING — Commons config still physically at
+`sites/nw1/.nwp.yml` from the July rename; live surfaces: saintschool.mayostudios.org/user/login 404,
+benedicta.art at registrar, test.nwpcode.org no cert, dir 403, ssd missing local_browse (ssd agent rebuilding);
+3 conflicting test-pass-rate figures vs a February .badges.json; .gitleaks.toml gained a path-pinned allowlist
+for test-links.md (operator to confirm or move that file to ~/central instead).
+
+## [2026-07-26] ✅ Gotify push (MR pending) — + a NEAR MISS worth remembering
+Reused the EXISTING Gotify on mini (v2.9.1 :8080, 3 prior app tokens) rather than installing a second.
+⚠️ **NEAR MISS:** mini ran an UNPUSHED local branch (feat/quokka-voice with voice.py/stt_worker.py); a plain
+`pl console deploy` (rsync --delete) would have DESTROYED the voice feature. Agent backed up
+(~/nwp-console/src.bak-20260726-000354) and deployed a MERGE of both branches instead. **Lesson: pl console
+deploy must detect/refuse divergence on the target rather than clobber it.**
+Events (rag red+recovery, demo_tester, demo_reset, token_expiry, ci, optional daily brief), each toggleable,
+dedupe on state CHANGE, 0600 state, first-run seeds silently, one in-app asyncio task (no new service/port/
+deps). Real e2e: 4 event types delivered w/ correct deep links, then the fakes deleted. Found+fixed a real
+bug: token matcher required "token"+dead/expir and silently dropped `Secret EXPIRED n days ago` — the exact
+case the event exists for. 114 pytest + 13 bats. RSS +2.7MB.
+**GAP (flagship event INERT):** `pl rag --json` returns 0 sites on mini — the console reads THAT host's audit
+caches and the sites live on the laptop. So neither the Fleet tab nor the RAG alert can work until fleet
+state is PUBLISHED to mini. → queued as the next fix (laptop computes, publishes a snapshot; console displays).
+Phone still not a mesh node (last hop unproven); Gotify deliberately NOT yet tailnet-bound (would break LAN
+delivery + two local 127.0.0.1 producers before the phone joins — one-line change documented with ordering).

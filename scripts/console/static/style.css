@@ -120,3 +120,15 @@ details > summary { cursor: pointer; color: var(--muted); }
 .qk-assistant { align-self: flex-start; background: var(--card); }
 .qk-form { display: flex; gap: 6px; flex-wrap: wrap; }
 .qk-form input { flex: 1 1 200px; }
+
+/* ---- Quokka voice (mic + speak-replies) ---- */
+.qk-voice { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.qk-mic { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; }
+.qk-mic.recording { border-color: var(--err); color: var(--err);
+  animation: qk-pulse 1.2s ease-in-out infinite; }
+@keyframes qk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.qk-speak { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px;
+  color: var(--muted); }
+.qk-speak input { margin: 0; }
+.qk-vnote { font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .qk-mic.recording { animation: none; } }

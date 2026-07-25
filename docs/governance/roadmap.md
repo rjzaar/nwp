@@ -2,7 +2,7 @@
 
 **NWP — Narrow Way Project** | Drupal hosting, deployment & infrastructure automation
 
-**Last Updated:** July 8, 2026
+**Last Updated:** 2026-07-26 (status corrections; the July 2026 consolidation arc is **not** reflected in the tables below — see the note under Current Status)
 
 Pending implementation items and future improvements for **NWP core**.
 
@@ -40,6 +40,22 @@ Pending implementation items and future improvements for **NWP core**.
 | Completed NWP Proposals | P01–P35, P50–P51, P53–P60, P63, F03–F05, F07, F09, F12–F15, F17 (phases 1–8, 10), F19, F23 |
 | Proposed NWP Proposals | F16 (Claude Code Web), F18 (Unified Backup), F20 (SolveIt), F22 (Gotify Remote), F25 (Mayo NWP — superseded by F29), F26 (OIDC), F27 (Feedback Ingest), F28 (Unified Pipeline), F29 (Mayo Comprehensive), F30 (Content Federation Network) |
 | In-Progress NWP Proposals | F21 (Distributed Build/Deploy Pipeline — Phases 1 ✅, 2 ✅, 3a ✅; Phase 10 dry-run skeleton) |
+
+> ### ⚠️ Coverage gap (recorded 2026-07-26)
+> This roadmap has **not** been reconciled with two bodies of work:
+>
+> 1. **Proposals P70–P74 exist** (`docs/proposals/P70-…` … `P74-intersite-data-contract.md`)
+>    and are cited by ADR-0027/0029/0031, but appear nowhere in the tables below.
+> 2. **The July 2026 consolidation arc** (nwp/ops#117–#136) shipped a large body of
+>    work that is not represented here: ADR-0032, the prod-leg deploy guards, backup
+>    retention (`pl backup prune`), restore verification, the configuration-drift gate
+>    (`pl config track`), the two-tier disaster-recovery sanitiser
+>    (`nwp-server backup --sanitize`), the DR test harness (`pl ver-test`), consent
+>    functionality-gates + Trialing, the demo tier (`pl demo`), and the NWP Console
+>    (`pl console`).
+>
+> Until this is reconciled, treat `docs/reports/consolidation-arc-2026-07/decision-log.md`
+> and `docs/overview/` as the more current record of where things stand.
 | Pending NWP Proposals | F01, F02, F06, F08 |
 | Rejected NWP Proposals | P52 (rename — NWP is the permanent project name) |
 | Experimental/Outlier | X01 (idea only, no file), X02, X03 |
@@ -56,13 +72,13 @@ Post-v0.30.0 additions, catalogued here as a pointer; see each file under
 
 | ID | Title | Status |
 |----|-------|--------|
-| P61 | Leakage-hygiene CI | PROPOSED |
-| P62 | Documentation-truth gate | PROPOSED (not yet built on the NWP side — nwp/ops#53) |
+| P61 | Leakage-hygiene CI | ✅ SHIPPED — CI job `lint:leakage` (`.gitlab-ci.yml`); enforced by e.g. `scripts/commands/console.sh` |
+| P62 | Documentation-truth gate | ✅ SHIPPED — `pl doc-truth` + `.doc-truth-baseline` + CI job `lint:doc-truth` (nwp/ops#53) |
 | P63 | Secure rebuildable nwc project | ✅ COMPLETE (2026-05-22) |
 | P64 | Clip-choice as data, not content | PROPOSED |
 | P65 | Seed-content lifecycle | APPROVED (2026-07-02; impl nwp/ops#32) |
 | P66 | Module passports + scoped AI fixes | PROPOSED |
-| P67 | Per-site workflow maturity | PROPOSED (nwp/ops#48) |
+| P67 | Per-site workflow maturity | ✅ SHIPPED — `pl maturity`, `pl branch`, `maturity_guard_deploy()` in stg2prod/live2prod (nwp/ops#48, MR !47) |
 | P69 | Fix-engine bake-off | PROPOSED |
 | F31 | Repo-wide hardening & modernization | PROPOSED |
 | F32 | Tiered architecture implementation | IN PROGRESS (Phase A) |
@@ -613,7 +629,7 @@ Add security hardening features to `produce.sh` for production server provisioni
 ---
 
 #### P59: SSH IdentitiesOnly Hardening (Fail2ban Lockout Fix)
-**Status:** ✅ COMPLETE (v0.31.0) | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** None
+**Status:** ✅ COMPLETE (unreleased — no v0.31.0 tag exists; current version is v0.30.0) | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** None
 **Proposal:** [P59-ssh-identitiesonly-hardening.md](../proposals/P59-ssh-identitiesonly-hardening.md)
 
 Force `IdentitiesOnly=yes` on every `ssh`, `scp`, and `rsync` call in NWP so that SSH does not offer every key in `~/.ssh/` on every connection. Without this, developers with several keys trip fail2ban (`maxretry=3`) and are locked out of nwpcode.org.

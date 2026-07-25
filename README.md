@@ -6,6 +6,18 @@
 
 A streamlined installation system for Drupal and Moodle projects using DDEV and recipe-based configurations.
 
+> **New here, or been away?** Start with **[docs/overview/](docs/overview/README.md)** —
+> plain-language summaries of what NWP and the sites it hosts actually are, and how
+> they fit together. Then the task guides: [back up and restore](docs/guides/howto-backup-restore.md),
+> [deploy a change](docs/guides/howto-deploy.md), [disaster recovery](docs/guides/howto-dr-chain.md),
+> [the demo tier](docs/guides/howto-demo-tier.md), [the console](docs/guides/howto-console.md).
+>
+> **This README covers the install/recipe layer only.** It does not describe the
+> parts of NWP added since early 2026 — the canonical/maturity deployment axes, the
+> paired-site contract, the hardware deploy gate, the `nwp-server`/`ver` disaster-recovery
+> chain, backup retention, configuration-drift detection, the demo tier or the console.
+> For those, see `docs/guides/using-nwp.md` and `docs/overview/`.
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -146,7 +158,7 @@ More information about security below.
 
 3. **View available recipes**:
    ```bash
-   ./pl --list
+   pl install --list
    ```
 
 4. **Install a project using a recipe**:
@@ -406,7 +418,7 @@ Check your security setup:
 jq '.permissions.deny' ~/.claude/settings.json
 
 # Check for data secrets in wrong files
-./migrate-secrets.sh --check
+pl migrate-secrets --check
 
 # Test that secrets are properly separated
 grep -l "password" .secrets*.yml  # Should only be in .secrets.data.yml
@@ -557,81 +569,81 @@ pl status
 
 ```bash
 # Backup a site (full backup)
-./backup.sh nwp4
+pl backup nwp4
 
 # Database-only backup
-./backup.sh -b nwp4 "Before schema change"
+pl backup -b nwp4 "Before schema change"
 
 # Restore a site
-./restore.sh nwp4
+pl restore nwp4
 
 # Copy a site
-./copy.sh nwp4 nwp5
+pl copy nwp4 nwp5
 
 # Files-only copy (preserves destination database)
-./copy.sh -f nwp4 nwp5
+pl copy -f nwp4 nwp5
 
 # Enable development mode
-./make.sh -v nwp4
+pl make -v nwp4
 
 # Enable production mode
-./make.sh -p nwp4
+pl make -p nwp4
 
 # Deploy development to staging (interactive TUI)
-./dev2stg.sh nwp4  # Interactive mode - select DB source and tests
+pl dev2stg nwp4  # Interactive mode - select DB source and tests
 
 # Deploy with automated mode (CI/CD friendly)
-./dev2stg.sh -y nwp4  # Auto-selects best DB source, skips tests
+pl dev2stg -y nwp4  # Auto-selects best DB source, skips tests
 
 # Deploy with specific database source
-./dev2stg.sh --db-source=production nwp4  # Fresh from production
-./dev2stg.sh --dev-db nwp4                # Clone from development
+pl dev2stg --db-source=production nwp4  # Fresh from production
+pl dev2stg --dev-db nwp4                # Clone from development
 
 # Deploy with specific test preset
-./dev2stg.sh -t essential nwp4  # Run phpunit, phpstan, phpcs
-./dev2stg.sh -t skip nwp4       # Skip all tests
+pl dev2stg -t essential nwp4  # Run phpunit, phpstan, phpcs
+pl dev2stg -t skip nwp4       # Skip all tests
 
 # Run preflight checks only
-./dev2stg.sh --preflight nwp4
+pl dev2stg --preflight nwp4
 
 # Delete a site (with confirmation)
-./delete.sh nwp5
+pl delete nwp5
 
 # Delete with backup and auto-confirm
-./delete.sh -by old_site
+pl delete -by old_site
 
 # Test OpenSocial site
-./testos.sh -b -f groups nwp4  # Run Behat tests for groups feature
+pl testos -b -f groups nwp4  # Run Behat tests for groups feature
 
 # List available test features
-./testos.sh --list-features nwp4
+pl testos --list-features nwp4
 
 # Run all tests
-./testos.sh -a nwp4  # Behat + PHPUnit + PHPStan
+pl testos -a nwp4  # Behat + PHPUnit + PHPStan
 
 # Run security audit
-./security.sh audit nwp4
+pl security audit nwp4
 
 # Check for security updates
-./security.sh check nwp4
+pl security check nwp4
 
 # Migrate to two-tier secrets
-./migrate-secrets.sh --check  # Preview what needs migration
-./migrate-secrets.sh --nwp    # Migrate NWP root secrets
-./migrate-secrets.sh --all    # Migrate all secrets
+pl migrate-secrets --check  # Preview what needs migration
+pl migrate-secrets --nwp    # Migrate NWP root secrets
+pl migrate-secrets --all    # Migrate all secrets
 
 # Check verification status
-./verify.sh status             # Show all feature statuses
-./verify.sh check              # Check for invalidated verifications
-./verify.sh details backup     # Show details about a specific feature
+pl verify status             # Show all feature statuses
+pl verify check              # Check for invalidated verifications
+pl verify details backup     # Show details about a specific feature
 
 # Error reporting - wrap any command to capture and report errors
-./report.sh backup.sh mysite   # Run backup, offer to report on failure
-./report.sh install.sh d test  # Run install with error capture
-./report.sh -c backup.sh site  # Copy error report URL to clipboard
+pl report backup.sh mysite   # Run backup, offer to report on failure
+pl report install.sh d test  # Run install with error capture
+pl report -c backup.sh site  # Copy error report URL to clipboard
 
 # Production status dashboard
-./status.sh production         # Show all production sites with status
+pl status production         # Show all production sites with status
 
 # Frontend theming
 pl theme setup mysite          # Install Node.js dependencies
@@ -653,19 +665,19 @@ All scripts support combined short flags for efficient usage:
 
 ```bash
 # Database-only backup with auto-confirm
-./backup.sh -by nwp4
+pl backup -by nwp4
 
 # Database-only restore with auto-select latest and open login link
-./restore.sh -bfyo nwp4
+pl restore -bfyo nwp4
 
 # Files-only copy with auto-confirm
-./copy.sh -fy nwp4 nwp5
+pl copy -fy nwp4 nwp5
 
 # Dev mode with auto-confirm
-./make.sh -vy nwp4
+pl make -vy nwp4
 
 # Run Behat tests with auto-confirm and verbose
-./testos.sh -bvy nwp4
+pl testos -bvy nwp4
 ```
 
 For detailed documentation on each script, see the [Documentation](#documentation) section.
@@ -678,40 +690,40 @@ NWP includes a verification tracking system to ensure all features have been man
 
 ```bash
 # View verification status
-./verify.sh
+pl verify
 
 # See summary with progress bar
-./verify.sh summary
+pl verify summary
 
 # List all feature IDs
-./verify.sh list
+pl verify list
 
 # Mark a feature as verified
-./verify.sh verify setup
+pl verify verify setup
 
 # Mark verified by a specific person
-./verify.sh verify install rob
+pl verify verify install rob
 ```
 
 ### Commands
 
 | Command | Description |
 |---------|-------------|
-| `./verify.sh` | Show full verification status with checkboxes |
-| `./verify.sh summary` | Show progress statistics and progress bar |
-| `./verify.sh list` | List all feature IDs with current status |
-| `./verify.sh details <id>` | Show what changed and verification checklist |
-| `./verify.sh verify <id>` | Mark a feature as verified by you |
-| `./verify.sh verify <id> <name>` | Mark verified by a specific person |
-| `./verify.sh unverify <id>` | Mark a feature as unverified |
-| `./verify.sh check` | Detect modified files and invalidate verifications |
-| `./verify.sh reset` | Reset all verifications |
-| `./verify.sh help` | Show help message |
+| `pl verify` | Show full verification status with checkboxes |
+| `pl verify summary` | Show progress statistics and progress bar |
+| `pl verify list` | List all feature IDs with current status |
+| `pl verify details <id>` | Show what changed and verification checklist |
+| `pl verify verify <id>` | Mark a feature as verified by you |
+| `pl verify verify <id> <name>` | Mark verified by a specific person |
+| `pl verify unverify <id>` | Mark a feature as unverified |
+| `pl verify check` | Detect modified files and invalidate verifications |
+| `pl verify reset` | Reset all verifications |
+| `pl verify help` | Show help message |
 
 ### How It Works
 
 1. **Verification**: When you verify a feature, the script stores a SHA256 hash of all associated source files
-2. **Change Detection**: Running `./verify.sh check` compares current file hashes against stored hashes
+2. **Change Detection**: Running `pl verify check` compares current file hashes against stored hashes
 3. **Auto-Invalidation**: If any tracked file has changed, the verification is automatically cleared
 4. **Status Display**: Shows `[✓]` verified, `[ ]` unverified, `[!]` modified since verification
 
@@ -734,21 +746,21 @@ The system tracks 42 features across 10 categories:
 
 ```bash
 # Before release, check what needs verification
-./verify.sh summary
+pl verify summary
 
 # Run through and verify each feature
-./verify.sh verify setup
-./verify.sh verify install
-./verify.sh verify backup
+pl verify verify setup
+pl verify verify install
+pl verify verify backup
 
 # After code changes, check for invalidations
-./verify.sh check
+pl verify check
 
 # See what changed and what to verify for a specific feature
-./verify.sh details dev2stg
+pl verify details dev2stg
 
 # See what still needs verification
-./verify.sh status
+pl verify status
 ```
 
 ### When Verification is Invalidated
@@ -760,13 +772,13 @@ When code changes invalidate a verification, use the `details` command to see:
 
 ```bash
 # Check for invalidations (shows which files changed)
-./verify.sh check
+pl verify check
 
 # Get detailed checklist for a modified feature
-./verify.sh details dev2stg
+pl verify details dev2stg
 
 # After testing, re-verify
-./verify.sh verify dev2stg
+pl verify verify dev2stg
 ```
 
 The verification state is stored in `.verification.yml` and tracked in git, so the team can share verification progress.
@@ -861,7 +873,16 @@ Each directory is a complete, isolated DDEV project with its own:
 
 ## Available Recipes
 
-NWP comes with several pre-configured recipes:
+> ⚠️ **What you actually get depends on your `nwp.yml`.** Recipes are defined in the
+> `recipes:` block of your own `nwp.yml`, not in a `recipes/` directory (there isn't
+> one). The shipped template `example.nwp.yml` defines **only `pod`**; the fuller
+> catalogue below lives in `example.nwp.v2.yml` or an operator overlay at
+> `$HOME/nwp-instances/_global/nwp.yml`.
+>
+> **Always check what your install offers with `pl install --list`** before
+> following any recipe name in this section.
+
+The reference catalogue:
 
 ### `os` - OpenSocial
 
@@ -1206,7 +1227,7 @@ Comprehensive documentation is available in the `docs/` directory:
   - Active issues with investigation status
   - Test failure details and workarounds
   - Resolved issues history
-  - Current test suite success rate (98%)
+  - Current test suite success rate (see `pl verify status`; the docs have carried three conflicting figures — trust the command, not the prose)
 
 - **[Production Deployment](docs/deployment/production-deployment.md)** - Production deployment and testing guide
   - Safe testing strategies (local mock → remote test → dry-run → production)
@@ -1297,11 +1318,11 @@ Comprehensive documentation is available in the `docs/` directory:
 **For script usage:**
 ```bash
 # All scripts have built-in help
-./backup.sh --help
-./restore.sh --help
-./copy.sh --help
-./make.sh --help
-./dev2stg.sh --help
+pl backup --help
+pl restore --help
+pl copy --help
+pl make --help
+pl dev2stg --help
 ```
 
 **For detailed implementation:**
@@ -1311,7 +1332,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - See `docs/governance/roadmap.md`
 
 **For SSH setup and production deployment:**
-- **SSH Key Setup**: `./setup-ssh.sh` - See `docs/deployment/ssh-setup.md`
+- **SSH Key Setup**: `pl setup-ssh` - See `docs/deployment/ssh-setup.md`
 - **Production Deployment**: See `docs/deployment/production-deployment.md`
 
 ## Error Reporting
@@ -1324,7 +1345,7 @@ Wrap any NWP command with `report.sh` to capture errors and offer to report them
 
 ```bash
 # Run a command with error reporting enabled
-./report.sh backup.sh mysite
+pl report backup.sh mysite
 
 # If the command fails, you'll see:
 # ═══════════════════════════════════════════════════════════════
@@ -1352,17 +1373,17 @@ Wrap any NWP command with `report.sh` to capture errors and offer to report them
 
 ```bash
 # Report errors from backup
-./report.sh backup.sh mysite
+pl report backup.sh mysite
 
 # Report errors from install
-./report.sh install.sh d newsite
+pl report install.sh d newsite
 
 # Copy issue URL to clipboard instead of opening browser
-./report.sh -c backup.sh mysite
+pl report -c backup.sh mysite
 
 # Direct report (without running a command)
-./report.sh --report "Description of the issue"
-./report.sh --report -s backup.sh "Error message"
+pl report --report "Description of the issue"
+pl report --report -s backup.sh "Error message"
 ```
 
 ### What Gets Included
@@ -1450,7 +1471,7 @@ Could not find package...
 ```
 nwp/
 ├── nwp.yml              # Configuration file with all recipes
-├── *.sh                  # Command symlinks (→ scripts/commands/)
+├── pl                    # the single CLI entry point (F23 removed the root *.sh symlinks)
 ├── .verification.yml     # Verification status tracking
 ├── .gitlab-ci.yml        # GitLab CI pipeline configuration
 ├── renovate.json         # Automated dependency updates
@@ -1482,7 +1503,7 @@ nwp/
 │   │   ├── testing.md                  # Testing infrastructure
 │   │   └── human-testing.md            # Manual testing guide
 │   └── governance/                     # Planning and roadmap
-│       └── complete-roadmap.md         # Consolidated roadmap
+│       └── roadmap.md                 # Consolidated roadmap
 │
 ├── scripts/              # Scripts directory
 │   ├── commands/                       # Core command scripts (actual files)
@@ -1545,19 +1566,24 @@ nwp/
 │       ├── .nwp-server.yml          # Server identity (gitignored plaintext)
 │       ├── email/                   # postfix + mailpit setup scripts
 │       └── linode/                  # provisioning scripts and stackscripts
-└── sites/                # Self-contained site projects (F17, gitignored)
-    └── <sitename>/       # Each site is its own project
-        ├── .nwp.yml                 # Per-site config + schema_version
-        ├── .ddev/                   # DDEV configuration
-        ├── composer.json            # PHP dependencies
-        ├── web/ or html/            # Webroot (varies by recipe)
-        ├── web/modules/custom/      # Project-specific Drupal modules
-        ├── pipeline/                # Project-specific Python pipelines (mt, cathnet, fin)
-        ├── backups/                 # Per-site database backups (replaces sitebackups/)
-        ├── docs/proposals/          # Per-site proposals (aggregated by `pl proposals`)
-        ├── vendor/                  # Composer packages
-        └── private/                 # Private files directory
+└── sites/                # Self-contained site projects (F17 + F23, gitignored)
+    └── <sitename>/       # Each site is its own project (v2 nested layout)
+        ├── .nwp.yml                 # Site-level config + schema_version (v2)
+        ├── dev/                     # Development environment — DDEV project <name>-dev
+        │   ├── .ddev/               #   DDEV configuration
+        │   ├── .nwp.yml             #   Environment-level config
+        │   ├── composer.json        #   PHP dependencies
+        │   ├── web/ or html/        #   Webroot (varies by recipe)
+        │   ├── pipeline/            #   Project-specific Python pipelines (mt, cathnet, fin)
+        │   └── vendor/              #   Composer packages
+        ├── stg/                     # Staging environment — DDEV project <name>-stg
+        ├── backups/                 # Per-site backups, shared across environments
+        └── scripts/                 # Maintenance scripts, shared across environments
 ```
+
+> **v2 layout (F23).** Code lives under `sites/<name>/dev/`, *not* directly under
+> `sites/<name>/`. `sites/<name>-stg` sibling directories were absorbed into
+> `sites/<name>/stg/`. See `lib/migrations/site/002-env-layout.sh`.
 
 ### Site Directories (gitignored)
 
@@ -1567,11 +1593,12 @@ Site directories are created in the `sites/` subdirectory to keep the root direc
 nwp/
 └── sites/
     ├── nwp1/             # Installed sites (base from recipe name)
+    │   ├── dev/          #   development environment
+    │   └── stg/          #   staging environment
     ├── nwp2/             # Multiple installs get numbered
-    ├── avc/              # Custom-named sites
-    ├── avc-stg/          # Staging environment version
-    ├── avc-prod/         # Production environment version
-    └── avc-backup/       # Backup copies
+    └── avc/              # Custom-named sites
+        ├── dev/
+        └── stg/
 ```
 
 All site directory contents are automatically gitignored (via `sites/*/` in .gitignore).

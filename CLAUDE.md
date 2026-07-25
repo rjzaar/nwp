@@ -140,7 +140,7 @@ safe_db_status avc          # Returns: Table count, size (no actual data)
 safe_security_check avc     # Returns: Update count (no credentials)
 ```
 
-See `docs/DATA_SECURITY_BEST_PRACTICES.md` for the full security architecture.
+See `docs/security/data-security-best-practices.md` for the full security architecture.
 
 ### Token & secret lifecycle — the registry is the source of record
 
@@ -185,7 +185,11 @@ Rules:
   - `lib/server-resolver.sh` - Server resolution (`resolve_server`, `get_server_ip`, `get_server_ssh_command`, `discover_servers`, `get_server_sites`); auto-sourced via `lib/common.sh`
   - `lib/migrate-schema.sh` - Schema migration framework for `.nwp.yml`, global `nwp.yml`, and `servers/*/.nwp-server.yml`
   - `lib/migrations/{site,global,server}/` - Numbered migration scripts (one function `migrate_NNN_to_MMM` per file)
-- `recipes/` - Recipe definitions (os, d, nwp, dm, etc.)
+- **Recipes** — there is **no `recipes/` directory**. Recipes live in two places:
+  - the `recipes:` block inside `nwp.yml` (template: `example.nwp.yml`, which ships only `pod`;
+    the fuller catalogue is in `example.nwp.v2.yml` / an operator overlay)
+  - project-shipped `sites/<recipe>/recipe.yml` (see `lib/install-common.sh`)
+  - list what your install actually offers with `pl install --list`
 - `sites/` - Each site uses v2 nested layout (F17 + F23):
   - `sites/<name>/.nwp.yml` - Site-level config (schema v2); `project.*`, `live.*`, `environments`, `backups.directory`
   - `sites/<name>/dev/` - Development DDEV project (`<name>-dev`); `.ddev/`, `web/`, `composer.json`, env-level `.nwp.yml`
@@ -309,7 +313,7 @@ Encourage contributors to:
 - **Separate refactoring** - Don't mix cleanup with features
 - **Declare dependencies** - List any new packages in issue description
 
-See also: `docs/DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md` for the complete security review system.
+See also: `docs/governance/distributed-contribution-governance.md` for the complete security review system.
 
 ## Release Tag Process
 

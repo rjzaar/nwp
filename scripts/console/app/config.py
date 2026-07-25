@@ -101,6 +101,39 @@ NOTIFY_BRIEF_AT = _env("NWP_CONSOLE_NOTIFY_BRIEF_AT", "")
 
 # Where the dedupe high-water marks live (0600) so restarts don't re-notify.
 NOTIFY_STATE_FILE = Path(_env("NWP_CONSOLE_NOTIFY_STATE", str(DATA_DIR / "notify-state.json")))
+# ---------------------------------------------------------------------------
+# Voice — talk to Quokka, Quokka talks back. Everything runs ON THIS HOST:
+# faster-whisper/whisper.cpp for speech in, piper for speech out. No cloud
+# speech API is used anywhere, and the browser's SpeechRecognition (which
+# uploads audio to Google in Chromium/Brave) is never called. See app/voice.py.
+# Absent backends are not an error: the mic button hides and /quokka/stt 503s.
+# ---------------------------------------------------------------------------
+# auto | faster-whisper | whisper-cli | off
+STT_BACKEND = _env("NWP_CONSOLE_STT_BACKEND", "auto")
+# faster-whisper model id: tiny(.en)/base(.en)/small(.en)/… Small = low latency.
+STT_MODEL = _env("NWP_CONSOLE_STT_MODEL", "base")
+# Interpreter that HAS faster-whisper (kept out of the console venv on purpose).
+STT_PYTHON = _env("NWP_CONSOLE_STT_PYTHON", "/usr/bin/python3")
+STT_WHISPER_CLI = _env("NWP_CONSOLE_STT_WHISPER_CLI", str(HOME / "whisper.cpp/build/bin/whisper-cli"))
+STT_WHISPER_MODEL_FILE = _env(
+    "NWP_CONSOLE_STT_WHISPER_MODEL", str(HOME / "whisper.cpp/models/ggml-base.en.bin")
+)
+STT_LANGUAGE = _env("NWP_CONSOLE_STT_LANGUAGE", "en")  # "" => auto-detect
+STT_MAX_SECONDS = int(_env("NWP_CONSOLE_STT_MAX_SECONDS", "60"))
+STT_MAX_BYTES = int(_env("NWP_CONSOLE_STT_MAX_BYTES", str(10 * 1024 * 1024)))
+STT_MAX_CHARS = int(_env("NWP_CONSOLE_STT_MAX_CHARS", "4000"))  # matches the chat cap
+STT_TIMEOUT = int(_env("NWP_CONSOLE_STT_TIMEOUT", "120"))
+STT_THREADS = int(_env("NWP_CONSOLE_STT_THREADS", "4"))  # be a good neighbour to ollama
+
+TTS_BACKEND = _env("NWP_CONSOLE_TTS_BACKEND", "auto")  # auto | off (off => browser voices)
+TTS_PIPER = _env("NWP_CONSOLE_TTS_PIPER", str(HOME / "piper/venv/bin/piper"))
+TTS_VOICE = _env("NWP_CONSOLE_TTS_VOICE", str(HOME / "piper/voices/en_US-lessac-medium.onnx"))
+TTS_MAX_CHARS = int(_env("NWP_CONSOLE_TTS_MAX_CHARS", "2000"))
+TTS_TIMEOUT = int(_env("NWP_CONSOLE_TTS_TIMEOUT", "60"))
+
+# Where the milliseconds-long audio scratch file lives (0700 dir, 0600 file,
+# truncated + unlinked in a finally). Default: the system temp dir.
+VOICE_TMPDIR = _env("NWP_CONSOLE_VOICE_TMPDIR", "")
 
 
 def secret_key() -> bytes:

@@ -315,3 +315,119 @@ The read-only drift audit found real drift; corrections:
 - **P0 decoy** auth_nwc_oauth2 removed from nwptoolkit + ~/dir ship sources (was one manifest-driven deploy from prod).
 - **Linode** torn down (DELETE 200, confirmed gone) — the audit's "still running" predated the teardown.
 - Drift verdict: MODERATE-HIGH; most now fixed. Remaining [op]: review+merge !2/!36/!150; #63/#117 status; deploy-default repoint.
+
+## [2026-07-25] 🔍 DEEP HIDDEN-ISSUES SWEEP — 8 confirmed (worth it)
+P0/P1 CONFIRMED:
+1. [SECURITY] live glpat token + webhook_secret at 644 in web-served files/sync/ (nginx serves .yml plaintext) —
+   LOCKED to 600 (12 files) + dirs 700 by me. ⚠️ ROTATE token(id29)+webhook_secret [op] (also in ~/.nwp-agent-loop.env met/mini).
+   Follow-up [me]: sanitizer scrub files/sync secrets + server-backup exclude + nginx deny .yml under files/.
+2. [CONSENT] nwc_story submit/vote write cc0=TRUE member rows with NO mayContribute() gate — CC0 bypass. FIX [me].
+3. [CONSENT] Art9 withdrawal on nwc does NOT propagate to Moodle write-gate (stale login-time pref, no reconcile);
+   Moodle keeps persisting Art9 data post-withdrawal while form says "erased across Saint School". FIX [me]+[op design].
+4. [DEPLOY] stg2prod.sh fail-OPEN: rsync --delete runs even when maintenance-ON failed (live2prod was fixed, stg2prod wasn't). FIX [me].
+5. [DR] --keep-within 30d unreachable — no caller passes it; raw sources fall to keep-monthly 12 (~1yr PII). FIX [me].
+6. [DR] sanitised DR tier has no scheduled systemd runner. FIX [me] (now that !150 merged).
+7. [DR] restore.sh has zero restic/DR/PII awareness; no pl dr-restore verb; drill is a printed reminder. FIX [me].
+8. [MULTI-SITE] nwd↔ssd pair never got the arc: ssd points at the removed auth_nwc_oauth2 decoy; nwd 275 behind +37 uncommitted;
+   both live.enabled no-frozen-marker; pair-contract smoke can't pass. SCOPE decision [op] → exec [me].
+Verdict: SERIOUS but mostly [me]-fixable. Biggest single risk: the exposed live token (now file-locked; needs rotation).
+
+## [2026-07-25] met FIXED by operator (initramfs) + ops#93 approved
+- met boot-instability root cause = broken initramfs (cause 1 of the triage list); operator fixed at console.
+  Task#10 closed. CI runner healthy. (Post-boot self-heal unit remains a nice-to-have.)
+- ops#93 REAL scope approved by operator → task#12: ssc PHPUnit suite + browser SSO e2e (closes consent
+  last-1% transport link). Runs after the hidden-fixes workflow (ssc collision avoidance), parallel with
+  the ver harness (task#11).
+- Token rotation: operator weighing rotate-vs-accept; exposure was local-only (live=404), copies persist in
+  raw backups; recommendation to rotate stands, recorded as operator decision pending.
+
+## [2026-07-25] TOKEN EXPOSURE RESOLVED — no rotation needed (operator instinct correct)
+Max-research verdict on the files/sync "exposed secrets" (deep-sweep finding #1):
+- All 4 real-value copies (nwc_test dev/stg + nw1 dev/stg archives) hold ONE identical credential pair
+  (tok hash 8e78e859, ws hash fc164707) — a single stale export, propagated copies.
+- The gitlab_token (bot nwp-automation-met, user 29) is **DEAD** — 401 on /personal_access_tokens/self.
+  The deep-sweep's "active, exp 2027-07-16" claim was WRONG (verifier error — recorded as a lesson).
+- The webhook_secret ≠ the LIVE receiver's secret on mini (74d16f9b ≠ fc164707) — superseded, inert.
+- The FEATURE is in use (agent-loop receiver live on mini, not paused) but with CURRENT credentials in
+  ~/.nwp-agent-loop.env, not the exposed ones.
+**Conclusion:** exposure leaked nothing usable → NO rotation required. Severity downgraded P1→P2 hygiene:
+scrub the dead values from the 4 files (fix branch filessync-scrub covers the future pattern), registry
+drift still worth `pl secrets audit --sync`. Operator rotation ask WITHDRAWN.
+
+## [2026-07-25] Deep-sweep fixes: 3 SOLID MERGED, 2 in repair
+- MERGED: !151 stg2prod maintenance fail-closed (31 bats), nwc!37 story CC0 gate (SOLID). !152 keep-within
+  wiring armed auto-merge (pipeline running; 19 bats, SOLID).
+- REPAIR running: filessync-scrub (verify found block-scalar/flow-map/DSN survivals + zero callers — real
+  catch, a "fail-closed" verifier that wasn't) + withdrawal-form copy honesty. Withdrawal bridge itself
+  verified fail-closed (26 tests) and ships INERT (enabled:0) — safe draft posture; dedicated-token design
+  flag left for operator; live Moodle endpoint coverage lands with ops#93 (task #12).
+- Next: repairs → re-verify → merge → task#11 (ver harness) + task#12 (ops#93 e2e) in parallel.
+
+## [2026-07-25] scrub branch re-verified SOLID + hardened + merging (!153)
+Re-verify: all 3 repairs genuine, verify-independence PROVEN live (a scrub-miss was caught fail-closed),
+wiring fires, build-server deny-scan passes, 59/59→ now 26/26 lib bats. Took the reviewer's correlated
+*_key vocabulary suggestion inline (signing/ssh/gpg/encryption/license/secret_key + regression test,
+f5f5071). Known accepted noise: composer auth.json permanent warning (fail-closed direction). !153 armed.
+With this, ALL 5 deep-sweep fixes are merged/merging. Remaining in flight: ver harness (#11), ops#93 e2e (#12).
+
+## [2026-07-25] ✅ ALL 5 DEEP-SWEEP FIXES MERGED
+!151 stg2prod fail-closed · !152 keep-within ceiling wiring · !153 files-secrets scrub (re-verified SOLID,
+verify-independence proven, +key-family vocab, rebased over ops-127-recovery — both features coexist,
+32 bats) · nwc!37 story CC0 gate · nwc!38 withdrawal bridge (inert enabled:0 until operator flips post-#93).
+Remaining in flight: task#11 ver harness (real Linode run + teardown), task#12 ops#93 PHPUnit + browser SSO
+e2e. After those: program complete except human trio (#119 DPO, go-live, nwd↔ssd scope) + post-planes backlog.
+
+## [2026-07-25] ops#133 demo tier APPROVED (operator, amendments recorded)
+nwd/ssd = daily-reset demo tier; invited codes only; reset 01:00 Melbourne with 30-min idle guard
+(retry to 04:00 floor, else skip+log); top code = Open Social contentmanager (NOT sitemanager);
+optional copyright/safeguarding reviewer perspective codes. Proposal: ~/central/DAILY-DEMO-TIER-
+PROPOSAL-2026-07-25.md (§4 updated). Phase 1 queued after task#11 + #12 land.
+
+## [2026-07-25] ✅ task#11 ver harness DONE — DR chain proven on real hosts (16/16)
+pl ver-test provision|provision-prod|cycle|teardown built + REAL two-Linode run: full raw+sanitised chain,
+30d ceiling + tiered retention + restic check --read-data + restore drill + PII gates all PASS. Both
+Linodes destroyed (404-verified, 0 tagged remain, ~$0.11). Real bug fixed: nwp-server.include was missing
+server-backup-resolve.sh + prod-guard.sh (artifact would die on real prod). 17 bats. Run report:
+ver-harness-run-2026-07-25.md. Effect: the "apply ops#127 on ver/prod BY HAND" operator step is now largely
+AUTOMATED — the same pl commands, pointed at real hosts, are the setup; remaining human steps = WireGuard
+tunnel, Solo seal, offline posture (runbook).
+
+## [2026-07-25] ✅✅ task#12 ops#93 DONE — CONSENT ARC 100% PROVEN (real browser)
+Browser SSO e2e 6/6 GREEN (two consecutive runs): real auth-code round-trip → uid-lock binds → art9_consent
+pref 1/0 → guild cohort syncs → consenting depthcontent write PERSISTS / non-consenting = success-to-user
+but 0 rows (ephemeral). + 558 standalone checks (consent truth-table incl. staleness, write-gates vs real
+lib.php, privacy metadata w/ inverse completeness) + live erasure round-trip 45/45 (all 11 person tables,
+pref cleared, UID-lock severed, control user survives). MRs !3+!4 merged to ss-moodle-plugins.
+**Every machine-provable go-live gate is now closed. Remaining for real members: ops#119 DPO signature +
+flipping the withdrawal bridge (enabled:1) + a dedicated bridge token (design flag).**
+Dev leftovers documented (nwcdemo_* accounts, fixture course — swept by the demo-tier golden capture).
+Next: task#13 demo tier Phase 1 (trees now free).
+
+## [2026-07-25] ✅ task#13 demo tier Phase 1 BUILT (both halves, MRs armed)
+pl demo family (29 bats + REAL 24s golden→wipe→restore cycle on nwd-dev, harvest-pre-wipe proven, exit-3
+idle guard, hashed codes survive wipe, 01:00 Melbourne nightly w/ floor) + nwc_demo_access (full HTTP e2e:
+code→patron-saint account→role bundle; flood/expiry/forbidden-role guards; consent seeding incl. all data
+policies; banner/noindex/mail-kill). Upstream OS bug filed (AutomaticGroupAffiliation delete crash).
+CUTOVER remains (operator review first): nwd parity rebuild + golden + --tier=live reset support (currently
+fail-closed refusal) + schedule on met + harvest→GitLab poster + demo.nwpcode.org naming.
+
+## [2026-07-25] ops#134 console APPROVED: mini+mesh-only, passkey-only (devs get own Solos), embedded issue
+actions, 3 roles. Gotify undecided → Phase 3 default. Build launched (Phase 1+2 together since role
+decisions are in). Demo tier Phase 1 landed: nwc!39 MERGED, nwp!155 armed; upstream OS bug filed ops#135.
+
+## [2026-07-25] ✅ invite email + console tabs + QUOKKA — all landed
+pl demo invite merged to main (a370d3c): full lay-language Saint School email, 5 deletable level blocks,
+0600 drafts, 37 bats. Console (feat/nwp-console @ 40df387, DEPLOYED to mini): 7 full-screen tabs w/ live
+counts (bottom-nav mobile), invite button phone-path proven e2e, QUOKKA tab live — loopback ollama, live-
+state context injection (structurally action-free, AST-asserted), summarize-today + /quokka/brief, real
+round-trip verified (correct live facts, 11.8s on 8b; default llama3.3:70b). 52 pytest. Test-minted nwd
+codes ROTATED post-verification. Console branch still unmerged (REVIEW: auth surface) — operator review.
+
+## [2026-07-25] Crash recovery — no damage, work resumed
+Workstation crashed mid-session. Post-crash audit: local main synced (console !156 MERGED as 4b015a5 —
+ZERO open MRs, everything landed); console still live on mini (health 200 — survived because it runs on
+mini); all live sites healthy (nwd/nwc 200, ss 303, git 302); **no orphaned Linodes** (only the 2
+legitimate ones — the ver-test teardowns held); no scratch/test ddev debris.
+Resumed: nwd cutover with operator-approved Option A (flip nwd vhost php8.2→8.3) — agent instructed to
+verify 8.3 exists + back up the vhost + verify ALL other sites still serve before proceeding, and to stop
+rather than apt-install a PHP stack on the 3.8 GB box.

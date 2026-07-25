@@ -158,3 +158,59 @@ harness_call() { # $1 = snippet to eval after sourcing
   grep -q 'MEMBER_DOMAIN="harness-member.net"' "$VER_TEST_SH"
   ! grep -E 'ADMIN_MAIL=.*(example\.(com|org|net)|nwpcode\.org)' "$VER_TEST_SH"
 }
+
+################################################################################
+# ops#47 impact contract — teardown DESTROYS Linodes (instance + disks, no
+# backups). Disposable-by-design is why the answer is usually yes; it is not a
+# reason to skip the question. The API is stubbed: no network, no spend.
+################################################################################
+
+# A recorded instance + a stubbed Linode API that answers for it.
+_stub_api='api(){ printf "%s" "{\"id\":424242,\"label\":\"nwp-vertest-ver-bats\",\"status\":\"running\",\"ipv4\":[\"192.0.2.10\"],\"type\":\"g6-standard-2\",\"region\":\"us-iad-2\",\"data\":[]}"; };
+           api_code(){ if [ "$1" = DELETE ]; then echo 200; else echo 404; fi; };
+           mkdir -p "$STATE_DIR"; record_created ver 424242 192.0.2.10 nwp-vertest-ver-bats >/dev/null;'
+
+@test "teardown names every instance it is about to destroy (fate manifest)" {
+  run harness_call "NWP_VERTEST_LINODE_TOKEN=tok-bats; $_stub_api ASSUME_YES=true; do_teardown"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WILL BE PERMANENTLY DELETED"* ]]
+  [[ "$output" == *"424242"* ]]
+  [[ "$output" == *"nwp-vertest-ver-bats"* ]]
+  [[ "$output" == *"g6-standard-2"* ]]
+  [[ "$output" == *"us-iad-2"* ]]
+  [[ "$output" == *"no snapshot or backup exists"* ]]
+  # -y skipped the prompt, not the report: it really did tear down
+  [[ "$output" == *"confirmed GONE"* ]]
+}
+
+@test "teardown without -y and without a TTY refuses — nothing is destroyed" {
+  run harness_call "NWP_VERTEST_LINODE_TOKEN=tok-bats; $_stub_api ASSUME_YES=false;
+                    do_teardown || true; echo \"STILL_RECORDED=\$(cat \"\$STATE_DIR/ver.id\")\""
+  [[ "$output" == *"WILL BE PERMANENTLY DELETED"* ]]
+  [[ "$output" == *"No terminal available"* ]]
+  [[ "$output" == *"Teardown cancelled"* ]]
+  [[ "$output" != *"confirmed GONE"* ]]
+  [[ "$output" == *"STILL_RECORDED=424242"* ]]
+}
+
+@test "the manifest flags ver-harness instances that are NOT ours to destroy" {
+  local stub='api(){ if [ "$2" = "/linode/instances" ]; then
+                       printf "%s" "{\"data\":[{\"id\":999111,\"tags\":[\"ver-harness\"]}]}";
+                     else
+                       printf "%s" "{\"id\":424242,\"label\":\"nwp-vertest-ver-bats\",\"status\":\"running\",\"ipv4\":[\"192.0.2.10\"],\"type\":\"g6-standard-2\",\"region\":\"us-iad-2\"}";
+                     fi; };
+              api_code(){ if [ "$1" = DELETE ]; then echo 200; else echo 404; fi; };
+              mkdir -p "$STATE_DIR"; record_created ver 424242 192.0.2.10 nwp-vertest-ver-bats >/dev/null;'
+  run harness_call "NWP_VERTEST_LINODE_TOKEN=tok-bats; $stub ASSUME_YES=true; do_teardown || true"
+  [[ "$output" == *"NOT on record here: 999111"* ]]
+}
+
+@test "teardown adopts lib/impact.sh rather than hand-rolling a prompt" {
+  grep -q 'lib/impact.sh' "$VER_TEST_SH"
+  awk '/^do_teardown\(\)/,/^}/' "$VER_TEST_SH" | grep -q 'impact_render'
+  awk '/^do_teardown\(\)/,/^}/' "$VER_TEST_SH" | grep -q 'impact_confirm standard'
+  # the report is built before the first DELETE
+  render=$(grep -n 'impact_render' "$VER_TEST_SH" | head -1 | cut -d: -f1)
+  del=$(grep -n 'api_code DELETE' "$VER_TEST_SH" | head -1 | cut -d: -f1)
+  [ "$render" -lt "$del" ]
+}

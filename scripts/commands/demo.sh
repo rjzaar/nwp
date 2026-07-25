@@ -19,6 +19,11 @@ set -euo pipefail
 #   pl demo schedule <site> [--remove]        install the 01:00 Melbourne cron
 #
 # GUARDS (fail-closed):
+#   * reset prints a COMPUTED fate manifest before it destroys anything
+#     (lib/impact.sh, nwp/ops#47): what is erased, what replaces it (golden
+#     sha256 + capture time + age), what survives. `-y`/cron skip the PROMPT,
+#     never the REPORT — the manifest is rendered and logged on every run,
+#     including the unattended ones. --dry-run prints it and stops.
 #   * reset only proceeds when the golden manifest names THIS site and both
 #     artifacts pass sha256 verification (demo_golden_verify).
 #   * reset is tier-scoped: dev|stg act on the local DDEV pair, live acts on
@@ -40,6 +45,7 @@ PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 
 source "$REPO_ROOT/lib/ui.sh"
 source "$REPO_ROOT/lib/common.sh"
+source "$REPO_ROOT/lib/impact.sh"        # ops#47 impact contract (fate manifest)
 source "$REPO_ROOT/lib/demo.sh"
 source "$REPO_ROOT/lib/deploy-gate.sh"   # deploy_gate_require (live tier only)
 
@@ -58,13 +64,16 @@ ${BOLD}SUBCOMMANDS:${NC}
     golden <site>                 Capture the current state as the golden image
                                   (verified DB dump + files tar + manifest under
                                   sites/<site>/demo-golden/)
-    reset <site> [--if-idle 30m] [--force] [--yes] [--skip-seed]
-                                  Pre-wipe error harvest (watchdog → spool,
-                                  fail-open), then verified restore of the
-                                  golden image, drush nwc:seed-demo, code
-                                  re-sync, cache rebuild. --if-idle: skip
-                                  (exit 3) if any session was active within
-                                  the window.
+    reset <site> [--if-idle 30m] [--force] [--yes] [--skip-seed] [--dry-run]
+                                  Prints a FATE MANIFEST (what is destroyed,
+                                  what replaces it, what survives — all
+                                  measured live), then: pre-wipe error harvest
+                                  (watchdog → spool, fail-open), verified
+                                  restore of the golden image, drush
+                                  nwc:seed-demo, code re-sync, cache rebuild.
+                                  --if-idle: skip (exit 3) if any session was
+                                  active within the window. --dry-run: print
+                                  the manifest and stop, touching nothing.
     nightly <site>                Scheduled entrypoint: reset --if-idle 30m,
                                   retrying every 30 min until the 04:00
                                   ${DEMO_TZ} floor, then skip + log.
@@ -115,7 +124,11 @@ ${BOLD}OPTIONS:${NC}
                        the remote site reports demo_mode=true.
     --if-idle <dur>    Only reset when no session activity within <dur>
                        (e.g. 30m). Active → exit ${DEMO_EXIT_ACTIVE} (retryable), logged as skip.
-    --force            Override the interactive confirmation (same as --yes).
+    --force            Skip the confirmation PROMPT (same as --yes). It never
+                       skips the fate manifest — that always prints and is
+                       always logged (ops#47 impact contract).
+    --dry-run          reset: print the fate manifest and exit without touching
+                       anything. harvest-post: list digests, post nothing.
     --skip-seed        Skip drush nwc:seed-demo after restore (non-nwc sites).
     --expires=<dur>    Code lifetime for issue/rotate (default: 14d).
 
@@ -394,6 +407,148 @@ demo_harvest_collect() {
 }
 
 ################################################################################
+# FATE MANIFEST (nwp/ops#47 impact contract — lib/impact.sh)
+#
+# `pl demo reset` wipes a running site and puts a golden image back over it,
+# on the LIVE tier, unattended, every night. That is the exact class of action
+# the impact contract exists for, and being scheduled makes it worse rather
+# than safer: nobody is watching when it goes wrong.
+#
+# So the manifest is COMPUTED (never assumed): the current DB size, the current
+# files size and the number of accounts created since the golden was captured
+# are probed live off the very instance about to be destroyed; the replacement
+# is named by sha256, capture time and age out of the golden manifest. A probe
+# that fails yields "" and the report SAYS so — it never fills the gap with a
+# guess.
+#
+# `-y` / cron skip the PROMPT, never the REPORT: the manifest still renders to
+# stdout (which the nightly cron captures into logs/demo-nightly-<site>.log)
+# and a one-line digest is appended to demo-reset.log, so every unattended wipe
+# leaves an audit record of what it believed it was destroying.
+################################################################################
+
+# Bytes-of-data query, shared by both tiers so local and live measure the same
+# thing. Returns megabytes as a bare number (the manifest adds the unit).
+DEMO_SQL_DBSIZE="SELECT ROUND(SUM(data_length+index_length)/1048576,1) FROM information_schema.tables WHERE table_schema=DATABASE()"
+
+# Live measurements of the state about to be destroyed. Globals, because a
+# probe that fails must be distinguishable from one that returned zero.
+DEMO_M_DB=""; DEMO_M_FILES=""; DEMO_M_ACCTS=""
+
+_demo_clean_num() {  # keep only a plausible number; anything else = failed probe
+    local v; v="$(tr -d '[:space:]' <<< "${1:-}")"
+    [[ "$v" =~ ^[0-9]+(\.[0-9]+)?$ ]] && printf '%s' "$v"
+}
+
+demo_measure_local() {  # $1 proj  $2 files_parent  $3 since_epoch ("" to skip)
+    local proj="$1" files_parent="$2" since="$3" raw
+    DEMO_M_DB=""; DEMO_M_FILES=""; DEMO_M_ACCTS=""
+    raw="$(demo_drush "$proj" sqlq "$DEMO_SQL_DBSIZE" 2>/dev/null)" || raw=""
+    DEMO_M_DB="$(_demo_clean_num "$raw")"
+    DEMO_M_FILES="$(du -sh "$files_parent/files" 2>/dev/null | cut -f1)" || DEMO_M_FILES=""
+    if [[ -n "$since" ]]; then
+        raw="$(demo_drush "$proj" sqlq "SELECT COUNT(*) FROM users_field_data WHERE created > $since" 2>/dev/null)" || raw=""
+        DEMO_M_ACCTS="$(_demo_clean_num "$raw")"
+    fi
+}
+
+demo_measure_live() {  # $1 site  $2 files_parent  $3 since_epoch ("" to skip)
+    local site="$1" files_parent="$2" since="$3" raw
+    DEMO_M_DB=""; DEMO_M_FILES=""; DEMO_M_ACCTS=""
+    raw="$(demo_rdrush "$site" sqlq "$DEMO_SQL_DBSIZE" 2>/dev/null)" || raw=""
+    DEMO_M_DB="$(_demo_clean_num "$raw")"
+    DEMO_M_FILES="$(demo_rssh "$site" "${DEMO_LIVE_SUDO} du -sh ${files_parent}/files 2>/dev/null | cut -f1" 2>/dev/null | tr -d '[:space:]')" || DEMO_M_FILES=""
+    if [[ -n "$since" ]]; then
+        raw="$(demo_rdrush "$site" sqlq "SELECT COUNT(*) FROM users_field_data WHERE created > $since" 2>/dev/null)" || raw=""
+        DEMO_M_ACCTS="$(_demo_clean_num "$raw")"
+    fi
+}
+
+# One field out of golden.manifest.json (jq when available, awk otherwise).
+demo_golden_field() {  # $1 gdir  $2 field
+    local m="$1/golden.manifest.json" f="$2"
+    [[ -f "$m" ]] || return 0
+    if command -v jq >/dev/null 2>&1; then
+        jq -r --arg k "$f" '.[$k] // ""' "$m" 2>/dev/null || true
+    else
+        awk -F'"' -v k="$f" '$2 == k { print $4; exit }' "$m" 2>/dev/null || true
+    fi
+}
+
+demo_epoch_of() {  # $1 iso8601 → epoch seconds, "" when unparseable
+    [[ -n "${1:-}" ]] || return 0
+    date -u -d "$1" +%s 2>/dev/null || true
+}
+
+demo_human_age() {  # $1 epoch → "3h old" / "12d old"
+    local then="${1:-}" d
+    [[ "$then" =~ ^[0-9]+$ ]] || { printf 'age unknown'; return 0; }
+    d=$(( $(date -u +%s) - then ))
+    (( d < 0 )) && { printf 'captured in the future?!'; return 0; }
+    if   (( d < 3600 ));  then printf '%dm old' $(( d / 60 ))
+    elif (( d < 86400 )); then printf '%dh old' $(( d / 3600 ))
+    else                       printf '%dd old' $(( d / 86400 )); fi
+}
+
+# demo_reset_manifest <site> <tier> <gdir> <target> [dry_run]
+# Builds AND renders the fate manifest, then appends a one-line digest to
+# demo-reset.log. Call demo_measure_{local,live} first. Returns 0 always: the
+# report never decides, it only informs — the guards above it decide.
+# dry_run is carried into the log line so a rehearsal can never be misread as
+# a real wipe when someone reads the audit trail back.
+demo_reset_manifest() {
+    local site="$1" tier="$2" gdir="$3" target="$4" dry_run="${5:-false}"
+    local captured cap_epoch age db_sha gdb gfiles cfile live_codes
+
+    captured="$(demo_golden_field "$gdir" captured_utc)"
+    db_sha="$(demo_golden_field "$gdir" db_sha256)"
+    cap_epoch="$(demo_epoch_of "$captured")"
+    age="$(demo_human_age "$cap_epoch")"
+    gdb="$(du -h "$gdir/$GOLDEN_DB" 2>/dev/null | cut -f1)"
+    gfiles="$(du -h "$gdir/$GOLDEN_FILES" 2>/dev/null | cut -f1)"
+
+    impact_reset
+
+    impact_overwrite "Database" \
+        "${site} ${tier} DB${DEMO_M_DB:+ (${DEMO_M_DB}M)} — every table DROPPED, replaced by ${GOLDEN_DB} (${gdb:-?}, sha256 ${db_sha:0:12}…, captured ${captured:-unknown}, ${age})"
+    impact_delete "Files" \
+        "${target}/sites/default/files${DEMO_M_FILES:+ (${DEMO_M_FILES})} — removed, then restored from ${GOLDEN_FILES} (${gfiles:-?})"
+    impact_delete "Tester work" \
+        "every account, post, comment, upload and log row created since the golden was captured (${age})${DEMO_M_ACCTS:+ — ${DEMO_M_ACCTS} account(s) created since then}"
+
+    # Honest about blind spots: a failed probe is reported, never guessed past.
+    [[ -z "$DEMO_M_DB" ]]    && impact_warn "could not measure the current database size — the wipe proceeds without knowing what is there"
+    [[ -z "$DEMO_M_FILES" ]] && impact_warn "could not measure the current uploads directory — same"
+    [[ -z "$captured" ]]     && impact_warn "golden manifest carries no capture time — provenance of the replacement is unknown"
+    if [[ "$cap_epoch" =~ ^[0-9]+$ ]] && (( $(date -u +%s) - cap_epoch > 2592000 )); then
+        impact_warn "the golden image is ${age} — the site will be rolled back a long way; recapture with 'pl demo golden $site --tier=$tier'"
+    fi
+    if demo_is_live "$tier"; then
+        impact_warn "LIVE TIER: ${target} is the site real testers are using right now; their work is not backed up anywhere else"
+    fi
+
+    cfile="$(demo_codes_file "$site")"
+    live_codes=""
+    if [[ -f "$cfile" ]] && command -v jq >/dev/null 2>&1; then
+        live_codes="$(jq -r --argjson now "$(date +%s)" \
+            '[.codes[] | select(.revoked == false and .expires > $now)] | length' "$cfile" 2>/dev/null)" || live_codes=""
+    fi
+    impact_keep "Invite-code registry ${cfile}${live_codes:+ (${live_codes} live code(s))} — hashed codes survive the wipe and are re-synced afterwards"
+    impact_keep "The golden image itself (${gdir}) — verified (sha256 + site match) before this report was built"
+    impact_keep "Pre-wipe error digests — watchdog is harvested to demo-harvest/ BEFORE anything is destroyed"
+    if demo_is_live "$tier"; then
+        impact_keep "Code, vendor/, settings.php, TLS certificates and DNS on the host — only the DB and sites/default/files are touched"
+    fi
+
+    impact_render
+
+    # The audit half of the contract: this line lands even when -y/cron skipped
+    # the prompt, so an unattended wipe is still accounted for.
+    demo_log "$site" reset-manifest \
+        "tier=$tier dry_run=$dry_run target=$target golden_sha=${db_sha:0:12} captured=${captured:-unknown} age=${age// /_} db_now=${DEMO_M_DB:-unknown} files_now=${DEMO_M_FILES:-unknown} new_accounts=${DEMO_M_ACCTS:-unknown}"
+}
+
+################################################################################
 # golden — capture the current state as the golden image
 ################################################################################
 
@@ -519,9 +674,9 @@ cmd_golden_live() {
 ################################################################################
 
 cmd_reset() {
-    local site="$1" tier="$2" if_idle="$3" auto_yes="$4" skip_seed="$5"
+    local site="$1" tier="$2" if_idle="$3" auto_yes="$4" skip_seed="$5" dry_run="${6:-false}"
     if demo_is_live "$tier"; then
-        cmd_reset_live "$site" "$if_idle" "$auto_yes" "$skip_seed"
+        cmd_reset_live "$site" "$if_idle" "$auto_yes" "$skip_seed" "$dry_run"
         return $?
     fi
     local proj droot gdir start_ts
@@ -557,12 +712,19 @@ cmd_reset() {
         print_status "OK" "Idle for ≥ ${if_idle} — safe to reset"
     fi
 
-    # 3. Confirm (destructive). --force/--yes for the scheduler.
-    if [[ "$auto_yes" != "true" ]]; then
-        printf 'This will ERASE the current %s (%s) DB+files and restore the golden image. Continue? [y/N]: ' "$site" "$tier"
-        local reply; read -r reply
-        [[ "$reply" =~ ^[Yy]$ ]] || { print_info "Aborted."; return 1; }
+    # 3. FATE MANIFEST (ops#47). Measured off the live instance, rendered
+    #    unconditionally, logged. --force/--yes skips only the prompt below it.
+    local files_parent="$proj/$droot/sites/default"
+    demo_measure_local "$proj" "$files_parent" "$(demo_epoch_of "$(demo_golden_field "$gdir" captured_utc)")"
+    demo_reset_manifest "$site" "$tier" "$gdir" "$proj" "$dry_run"
+
+    if [[ "$dry_run" == "true" ]]; then
+        print_status "OK" "[dry-run] nothing was touched — the report above is what a real reset would do."
+        return 0
     fi
+
+    impact_confirm standard "ERASE ${site} (${tier}) and restore the golden image" "$auto_yes" \
+        || { print_info "Aborted."; return 1; }
 
     # 3.5 PRE-WIPE ERROR HARVEST (fail-OPEN — must never block the reset).
     #     Runs strictly BEFORE import-db: the restore destroys watchdog, and
@@ -581,7 +743,6 @@ cmd_reset() {
 
     # 5. Restore files (delete-then-untar so removed files don't linger).
     print_info "Restoring files from golden…"
-    local files_parent="$proj/$droot/sites/default"
     rm -rf "$files_parent/files"
     tar -xzf "$gdir/$GOLDEN_FILES" -C "$files_parent" || {
         demo_log "$site" reset-failed "tier=$tier reason=files-untar"
@@ -624,7 +785,7 @@ cmd_reset() {
 ################################################################################
 
 cmd_reset_live() {
-    local site="$1" if_idle="$2" auto_yes="$3" skip_seed="$4"
+    local site="$1" if_idle="$2" auto_yes="$3" skip_seed="$4" dry_run="${5:-false}"
     local gdir start_ts
     start_ts=$(date +%s)
     gdir="$(demo_golden_dir "$site" live)"
@@ -663,7 +824,20 @@ cmd_reset_live() {
         print_status "OK" "Idle for ≥ ${if_idle} — safe to reset"
     fi
 
-    # 4. Deploy gate. Unconfigured (met/dev) → a printed notice and proceed, so
+    # 4. FATE MANIFEST (ops#47) — measured on the REMOTE instance that is about
+    #    to be wiped, rendered unconditionally, logged. It sits above the deploy
+    #    gate on purpose: the operator sees what the Solo touch is authorising
+    #    BEFORE being asked to touch it, and --dry-run leaves without one.
+    local files_parent; files_parent="$(demo_live_files_parent)"
+    demo_measure_live "$site" "$files_parent" "$(demo_epoch_of "$(demo_golden_field "$gdir" captured_utc)")"
+    demo_reset_manifest "$site" live "$gdir" "https://${DEMO_LIVE_DOMAIN:-$DEMO_LIVE_IP}" "$dry_run"
+
+    if [[ "$dry_run" == "true" ]]; then
+        print_status "OK" "[dry-run] nothing was touched — the report above is what a real reset would do."
+        return 0
+    fi
+
+    # 4b. Deploy gate. Unconfigured (met/dev) → a printed notice and proceed, so
     #    the nightly cron still runs; configured (ver) → a real Solo touch.
     if declare -F deploy_gate_require >/dev/null 2>&1; then
         deploy_gate_require "$site" "live" \
@@ -673,13 +847,12 @@ cmd_reset_live() {
         }
     fi
 
-    # 5. Confirm (destructive). --force/--yes for the scheduler.
-    if [[ "$auto_yes" != "true" ]]; then
-        printf 'This will ERASE the LIVE %s DB+files at %s and restore the golden image. Continue? [y/N]: ' \
-            "$site" "${DEMO_LIVE_DOMAIN:-$DEMO_LIVE_IP}"
-        local reply; read -r reply
-        [[ "$reply" =~ ^[Yy]$ ]] || { print_info "Aborted."; return 1; }
-    fi
+    # 5. Confirm. A LIVE wipe destroys the LAST copy of everything the testers
+    #    made (nothing else holds it), so this is the TYPED tier — a y/N reflex
+    #    is not proportionate to erasing a site people are using. --force/--yes
+    #    skips the prompt for the scheduler; the report above already ran.
+    impact_confirm typed "${DEMO_LIVE_DOMAIN:-$site}" "$auto_yes" \
+        || { print_info "Aborted."; return 1; }
 
     # 6. PRE-WIPE ERROR HARVEST (fail-OPEN — must never block the reset).
     print_info "Harvesting error signals before the wipe…"
@@ -716,7 +889,6 @@ cmd_reset_live() {
     # 9. Restore files (delete-then-untar so removed files don't linger), and
     #    hand ownership back to the web user.
     print_info "Restoring files…"
-    local files_parent; files_parent="$(demo_live_files_parent)"
     if ! demo_rssh "$site" "${DEMO_LIVE_SUDO} rm -rf ${files_parent}/files && ${DEMO_LIVE_SUDO} tar xzf ~/${rfiles} -C ${files_parent} && ${DEMO_LIVE_SUDO} chown -R www-data:www-data ${files_parent}/files"; then
         demo_rssh "$site" "$cleanup" >/dev/null 2>&1 || true
         demo_log "$site" reset-failed "tier=live reason=files-untar"
@@ -792,7 +964,9 @@ cmd_nightly() {
     local rc now
     while true; do
         set +e
-        cmd_reset "$site" "$tier" "30m" "true" "false"
+        # -y for the scheduler: skips the PROMPT, never the fate manifest —
+        # the report lands in logs/demo-nightly-<site>.log + demo-reset.log.
+        cmd_reset "$site" "$tier" "30m" "true" "false" "false"
         rc=$?
         set -e
         if [[ "$rc" -ne "$DEMO_EXIT_ACTIVE" ]]; then
@@ -1260,7 +1434,7 @@ main() {
 
     case "$sub" in
         golden)   cmd_golden "$site" "$tier" ;;
-        reset)    cmd_reset "$site" "$tier" "$if_idle" "$auto_yes" "$skip_seed" ;;
+        reset)    cmd_reset "$site" "$tier" "$if_idle" "$auto_yes" "$skip_seed" "$dry_run" ;;
         nightly)  cmd_nightly "$site" "$tier" ;;
         status)   cmd_status "$site" "$tier" ;;
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
@@ -1271,4 +1445,8 @@ main() {
     esac
 }
 
-main "$@"
+# Sourced by tests (bats) to exercise the manifest builders without
+# dispatching (same idiom as ver-test.sh). Executed normally, this is `main`.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

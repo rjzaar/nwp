@@ -593,3 +593,24 @@ in. Actions:
    pre-arc freeze is still deployed.
 **Merged tonight (operator permission):** ss-moodle-plugins !5 (Art9), nwp !158 voice, !159 restricted key,
 !160 docs, !161 gotify (after resolving an additive voice×gotify conflict), nwc !40 UX.
+
+## [2026-07-26] ops#137 CLOSED (MR !164 merged) — and TWO corrections to my own analysis
+The fix agent re-derived precedence from pristine main and corrected me a second time. Accurate account:
+- **ship** path: `sites/<site>/dev/<t>/<n>` → `.moodle.plugins[].from` → `~/nwptoolkit`
+- **check** path: `.moodle.plugins[].from` → `~/nwptoolkit` — **dev tree never consulted**
+→ the REAL defect was a **check/ship SPLIT-BRAIN**: for ssc the freshness gate validated the ungated
+nwptoolkit copy while rsync shipped the gated dev tree. Two different trees — any bolt-on assertion would
+have been meaningless. All three consumers (assertion, freshness gate, rsync) now read the SAME resolved dir.
+- My correction ("hazard confined to the nwptoolkit fallback") was ALSO too narrow: `sites/ss` and
+  `sites/ss2` dev trees are UNGATED (0 refs) *and* `live.enabled: true` — independently verified. So
+  `pl moodle plugin deploy ss … --tier=live` would have shipped an ungated plugin FROM THE DEV TREE.
+  **Source precedence cannot establish the invariant at all** — only the assertion can.
+**Guard verified live, both directions (no false pos/neg):** ss → REFUSED (clear ops#137 message + canonical
+source hint); ssc → gate assertion OK, then correctly blocked by the *separate* AMD-freshness gate (known
+gap: 5 amd/src vs 3 amd/build in canonical).
+**⚠️ REGRESSION WE INTRODUCED (caught by content, not name):** test-impact-contract test 1 FAILS on main —
+`console.sh demo.sh ver-test.sh` are new destructive verbs without the impact contract. A prior agent
+mis-classified this as "pre-existing, byte-identical to main" by comparing the failure NAME not its CAUSE.
+Fix in flight. **Lesson recorded: compare failure REASONS, never test titles.**
+**Also fixed:** `write_gate_test.php` (281 lines) was silently deleted by the Art.9 vendor merge !5 that I
+merged — restored + 31/31 passing + merged (!6). Silent-regression class: nothing fails when a test vanishes.

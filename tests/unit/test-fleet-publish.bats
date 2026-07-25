@@ -221,3 +221,76 @@ assert len(parsers.todo_backup_items(todo)) == 1, todo
 print('ok')"
   [ "$status" -eq 0 ]
 }
+
+################################################################################
+# `pl fleet schedule` rewrites the WHOLE crontab and drops every line mentioning
+# `pl fleet publish` — including one a human wrote. ops#47 says compute that and
+# say it out loud. `crontab` is stubbed against a file: the real one is never
+# read or written by these tests.
+################################################################################
+
+_stub_crontab() {  # $1 = initial crontab contents
+  mkdir -p "$WORK/bin"
+  export FAKE_CRONTAB="$WORK/crontab.txt"
+  printf '%s' "$1" > "$FAKE_CRONTAB"
+  cat > "$WORK/bin/crontab" <<'EOS'
+#!/bin/bash
+case "${1:-}" in
+  -l) cat "$FAKE_CRONTAB" ;;
+  -)  cat > "$FAKE_CRONTAB" ;;
+  *)  exit 2 ;;
+esac
+EOS
+  chmod +x "$WORK/bin/crontab"
+}
+
+@test "schedule: a first install displaces nothing — report, no prompt, entry lands" {
+  _stub_crontab '@daily /usr/bin/something-else
+'
+  PATH="$WORK/bin:$PATH" run "$FLEET_SH" schedule
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"NOT AFFECTED"* ]]                 # the report is always printed
+  [[ "$output" != *"WILL BE PERMANENTLY DELETED"* ]]  # nothing was displaced
+  grep -q 'pl fleet publish --quiet' "$FAKE_CRONTAB"
+  grep -q 'something-else' "$FAKE_CRONTAB"            # the operator's line survives
+}
+
+@test "schedule: displacing an existing line reports it and fails closed with no TTY" {
+  _stub_crontab '@daily /usr/bin/something-else
+*/5 * * * * cd /somewhere && ./pl fleet publish --quiet
+'
+  PATH="$WORK/bin:$PATH" run "$FLEET_SH" schedule
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"WILL BE PERMANENTLY DELETED"* ]]
+  [[ "$output" == *"No terminal available"* ]]
+  # refused => the crontab is untouched
+  grep -q '\*/5 \* \* \* \*' "$FAKE_CRONTAB"
+}
+
+@test "schedule: -y skips the PROMPT, never the REPORT" {
+  _stub_crontab '@daily /usr/bin/something-else
+*/5 * * * * cd /somewhere && ./pl fleet publish --quiet
+'
+  PATH="$WORK/bin:$PATH" run "$FLEET_SH" schedule -y
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WILL BE PERMANENTLY DELETED"* ]]
+  grep -q 'something-else' "$FAKE_CRONTAB"
+  [ "$(grep -c 'pl fleet publish --quiet' "$FAKE_CRONTAB")" -eq 1 ]   # replaced, not doubled
+  ! grep -q '\*/5 \* \* \* \*' "$FAKE_CRONTAB"                        # the old cadence is gone
+}
+
+@test "schedule --remove with nothing installed is a no-op that still reports" {
+  _stub_crontab '@daily /usr/bin/something-else
+'
+  PATH="$WORK/bin:$PATH" run "$FLEET_SH" schedule --remove
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"nothing to remove"* ]]
+  grep -q 'something-else' "$FAKE_CRONTAB"
+}
+
+@test "schedule rejects an unknown option instead of ignoring it" {
+  _stub_crontab ''
+  PATH="$WORK/bin:$PATH" run "$FLEET_SH" schedule --yolo
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown option"* ]]
+}

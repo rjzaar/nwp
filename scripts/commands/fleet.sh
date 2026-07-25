@@ -32,6 +32,7 @@ REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 
 source "$REPO_ROOT/lib/ui.sh"
+source "$REPO_ROOT/lib/impact.sh"   # ops#47 impact contract (see cmd_schedule)
 
 # --- schema ------------------------------------------------------------------
 # Bump FLEET_SCHEMA_VERSION on any BREAKING change to the snapshot shape. The
@@ -78,7 +79,7 @@ ${BOLD}USAGE:${NC}
     pl fleet publish [--to <ssh-host>] [--dest <path>] [--no-todo] [--dry-run] [--quiet]
     pl fleet snapshot [--out <path>] [--no-todo]
     pl fleet status [--to <ssh-host>]
-    pl fleet schedule [--schedule "<cron>"] [--remove]
+    pl fleet schedule [--schedule "<cron>"] [--remove] [-y]
 
 ${BOLD}WHY:${NC}
     The console host has no sites, so \`pl rag\` there sees an empty fleet. This
@@ -423,26 +424,62 @@ cmd_status() {
 CRON_MARKER="# NWP Fleet Publish (pl fleet publish -> console host)"
 CRON_DEFAULT="*/30 * * * *"
 
+# `crontab -` REPLACES the whole crontab, and the filter below drops EVERY line
+# mentioning `pl fleet publish` — including one a human wrote by hand. That is a
+# small overwrite of something the operator owns, so it gets the ops#47
+# treatment: compute what is displaced, say it out loud, and only prompt when
+# something is actually being taken away (a first install displaces nothing).
 cmd_schedule() {
-    local remove=false schedule="$CRON_DEFAULT"
+    local remove=false schedule="$CRON_DEFAULT" auto_yes=false
     while [ $# -gt 0 ]; do
         case "$1" in
             --remove)     remove=true; shift ;;
             --schedule)   schedule="${2:-}"; shift 2 ;;
             --schedule=*) schedule="${1#--schedule=}"; shift ;;
-            *) shift ;;
+            --yes|-y)     auto_yes=true; shift ;;
+            -h|--help)    show_help; return 0 ;;
+            *) print_error "unknown option: $1"; return 1 ;;
         esac
     done
-    local current cleaned
+    command -v crontab >/dev/null 2>&1 || { print_error "no crontab on this machine"; return 1; }
+
+    local current cleaned dropped n_drop n_keep
     current="$(crontab -l 2>/dev/null || true)"
+    dropped="$(printf '%s\n' "$current" | grep -F -e "$CRON_MARKER" -e 'pl fleet publish' || true)"
     cleaned="$(printf '%s\n' "$current" | grep -v -F "$CRON_MARKER" | grep -v 'pl fleet publish' || true)"
+    n_drop=$(printf '%s' "$dropped" | grep -c . || true)
+    n_keep=$(printf '%s' "$cleaned" | grep -c . || true)
+
+    impact_reset
+    if [ "$n_drop" -gt 0 ]; then
+        impact_delete "Crontab lines" \
+            "$n_drop line(s) mentioning '$CRON_MARKER' or 'pl fleet publish' are removed by this rewrite"
+        impact_warn "removed verbatim — check nothing here is yours: $(printf '%s' "$dropped" | tr '\n' '\036' | sed 's/\o036/  ⏎  /g')"
+    fi
+    impact_keep "${n_keep} other crontab line(s) on this machine — preserved verbatim"
+    impact_keep "No site, database, backup or console file is touched — this verb only schedules 'pl fleet publish'"
+
     if [ "$remove" = true ]; then
+        [ "$n_drop" -gt 0 ] || impact_keep "no fleet-publish entry is installed — nothing to remove"
+        impact_render
+        if [ "$n_drop" -gt 0 ]; then
+            impact_confirm standard "rewrite this machine's crontab" "$auto_yes" \
+                || { print_info "Cancelled."; return 1; }
+        fi
         printf '%s\n' "$cleaned" | crontab -
         print_status "OK" "Removed the fleet-publish cron entry"
         return 0
     fi
+
     local entry="$CRON_MARKER
 $schedule cd $PROJECT_ROOT && ./pl fleet publish --quiet >> $PROJECT_ROOT/logs/fleet-publish.log 2>&1"
+    impact_overwrite "Crontab" \
+        "one fleet-publish entry on '$schedule' installed for $(id -un) on $(hostname -s 2>/dev/null || hostname)"
+    impact_render
+    if [ "$n_drop" -gt 0 ]; then
+        impact_confirm standard "rewrite this machine's crontab" "$auto_yes" \
+            || { print_info "Cancelled."; return 1; }
+    fi
     printf '%s\n%s\n' "$cleaned" "$entry" | crontab -
     print_status "OK" "Publishing fleet state on '$schedule' from this machine"
     print_info "The console marks the snapshot STALE past its max-age (default 2h) —"

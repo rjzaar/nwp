@@ -761,3 +761,108 @@ YML
   ! grep -q '^CRON_TZ=' "$STUB_CRON"
   grep -q 'nwp-daily-audit' "$STUB_CRON"
 }
+
+################################################################################
+# ops#47 impact contract — reset WIPES a site (live tier included) unattended,
+# so it must print a COMPUTED fate manifest first. -y skips the prompt, never
+# the report. The builder is exercised for real (demo.sh is sourceable);
+# the wiring around the destructive steps is pinned statically.
+################################################################################
+
+# A verifiable golden image for <site>/<tier>, so the manifest has real
+# sha256/capture-time provenance to report.
+_fixture_golden() {   # $1 site  $2 tier
+  local gdir; gdir="$(demo_golden_dir "$1" "$2")"
+  mkdir -p "$gdir"
+  printf 'db\n'    > "$gdir/golden.db.sql.gz"
+  printf 'files\n' > "$gdir/golden.files.tar.gz"
+  ( cd "$gdir" && sha256sum golden.db.sql.gz    > golden.db.sql.gz.sha256 \
+               && sha256sum golden.files.tar.gz > golden.files.tar.gz.sha256 )
+  demo_manifest_write "$gdir" "$1" golden.db.sql.gz golden.files.tar.gz
+  printf '%s' "$gdir"
+}
+
+@test "the fate manifest is COMPUTED: measured sizes + golden sha/age, nothing assumed" {
+  gdir="$(_fixture_golden demo1 live)"
+  run bash -c "source '$DEMO_CMD'
+               DEMO_M_DB=63.8 DEMO_M_FILES=4.5G DEMO_M_ACCTS=7
+               demo_reset_manifest demo1 live '$gdir' https://demo.example.org"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WILL BE PERMANENTLY DELETED"* ]]
+  [[ "$output" == *"WILL BE OVERWRITTEN"* ]]
+  [[ "$output" == *"63.8M"* ]]                       # measured DB, not guessed
+  [[ "$output" == *"4.5G"* ]]                        # measured uploads
+  [[ "$output" == *"7 account(s) created since"* ]]  # tester work at stake
+  [[ "$output" == *"sha256 $(head -c 12 "$gdir/golden.db.sql.gz.sha256")"* ]]
+  [[ "$output" == *"0m old"* ]]                      # replacement provenance
+  [[ "$output" == *"LIVE TIER"* ]]
+  [[ "$output" == *"NOT AFFECTED"* ]]
+  [[ "$output" == *"Invite-code registry"* ]]        # what survives the wipe
+}
+
+@test "a failed probe is REPORTED, never papered over with a guess" {
+  gdir="$(_fixture_golden demo1 dev)"
+  run bash -c "source '$DEMO_CMD'
+               DEMO_M_DB='' DEMO_M_FILES='' DEMO_M_ACCTS=''
+               demo_reset_manifest demo1 dev '$gdir' /srv/demo1"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"could not measure the current database size"* ]]
+  [[ "$output" == *"could not measure the current uploads directory"* ]]
+  [[ "$output" != *"LIVE TIER"* ]]
+}
+
+@test "an unattended (-y/cron) wipe still leaves the manifest in the log" {
+  gdir="$(_fixture_golden demo1 live)"
+  bash -c "source '$DEMO_CMD'
+           DEMO_M_DB=12.0 DEMO_M_FILES=800M DEMO_M_ACCTS=3
+           demo_reset_manifest demo1 live '$gdir' https://demo.example.org false" >/dev/null
+  # …and a rehearsal is marked as one, so the audit trail cannot be misread
+  bash -c "source '$DEMO_CMD'
+           demo_reset_manifest demo1 live '$gdir' https://demo.example.org true" >/dev/null
+  run cat "$(demo_log_file demo1)"
+  [[ "$output" == *"reset-manifest"* ]]
+  [[ "$output" == *"tier=live"* ]]
+  [[ "$output" == *"dry_run=false"* ]]
+  [[ "$output" == *"dry_run=true"* ]]
+  [[ "$output" == *"db_now=12.0"* ]]
+  [[ "$output" == *"new_accounts=3"* ]]
+  [[ "$output" == *"golden_sha="* ]]
+}
+
+@test "reset renders the manifest BEFORE the wipe, on both tiers (static)" {
+  # local tier: manifest → ddev import-db
+  m_local=$(grep -n 'demo_reset_manifest "\$site" "\$tier"' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  import=$(grep -n 'ddev import-db' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  [ -n "$m_local" ] && [ "$m_local" -lt "$import" ]
+  # live tier: manifest → sql:drop
+  m_live=$(grep -n 'demo_reset_manifest "\$site" live' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  drop=$(grep -n 'drush sql:drop' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  [ -n "$m_live" ] && [ "$m_live" -lt "$drop" ]
+}
+
+@test "a LIVE wipe confirms at the TYPED tier; dev/stg at standard" {
+  grep -q 'impact_confirm typed "\${DEMO_LIVE_DOMAIN:-\$site}"' "$DEMO_CMD"
+  grep -q 'impact_confirm standard "ERASE' "$DEMO_CMD"
+  # the hand-rolled y/N prompts are gone — one confirmation path, not three
+  ! grep -q 'This will ERASE' "$DEMO_CMD"
+}
+
+@test "the manifest is rendered ahead of the Solo deploy gate (see it, then touch)" {
+  m_live=$(grep -n 'demo_reset_manifest "\$site" live' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  gate=$(grep -n 'deploy_gate_require "\$site" "live"' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  [ -n "$m_live" ] && [ -n "$gate" ]
+  [ "$m_live" -lt "$gate" ]
+}
+
+@test "reset --dry-run stops after the report, before the gate and the wipe" {
+  grep -q 'dry-run\] nothing was touched' "$DEMO_CMD"
+  dry=$(grep -n 'dry-run\] nothing was touched' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  import=$(grep -n 'ddev import-db' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  [ "$dry" -lt "$import" ]
+  run bash "$DEMO_CMD" --help
+  [[ "$output" == *"--dry-run"* ]]
+}
+
+@test "the nightly path passes -y but never suppresses the report" {
+  awk '/^cmd_nightly\(\)/,/^}/' "$DEMO_CMD" | grep -q 'cmd_reset "\$site" "\$tier" "30m" "true" "false" "false"'
+}

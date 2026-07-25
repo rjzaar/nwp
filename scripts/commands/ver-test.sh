@@ -44,9 +44,15 @@ set -euo pipefail
 #                    artifact, and the ver→prod ssh path
 #   cycle            run the full DR chain + print a PASS/FAIL scorecard
 #   teardown         DELETE both Linodes via API, verify gone, update the ledger
+#                    (prints a fate manifest naming every instance first — -y
+#                     skips the prompt, never the report)
 #   status           show recorded state + live instances tagged ver-harness
 #
 # Options / env:
+#   -y | --yes         skip the teardown confirmation PROMPT. It never skips
+#                      the fate manifest (ops#47): teardown always prints, and
+#                      the ledger always records, exactly which instances it
+#                      destroyed.
 #   --state-dir DIR    (or VERTEST_STATE_DIR)  default: private/ver-test-harness
 #   --region R         (or VERTEST_REGION)     default: us-iad-2
 #   --type T           (or VERTEST_TYPE)       default: g6-standard-2
@@ -62,6 +68,8 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 # shellcheck source=/dev/null
 source "$PROJECT_ROOT/lib/common.sh" 2>/dev/null || true
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/impact.sh"   # ops#47 impact contract (fate manifest)
 
 API="https://api.linode.com/v4"
 STATE_DIR="${VERTEST_STATE_DIR:-$PROJECT_ROOT/private/ver-test-harness}"
@@ -72,6 +80,7 @@ TYPE="${VERTEST_TYPE:-g6-standard-2}"
 IMAGE="${VERTEST_IMAGE:-linode/ubuntu24.04}"
 LABEL_PREFIX="nwp-vertest"
 TAGS_JSON='["arc-disposable","ver-harness"]'
+ASSUME_YES="${VERTEST_ASSUME_YES:-false}"   # -y: skips the PROMPT, not the report
 
 # Fixture identity (the PII-gate semantics depend on these):
 #   - admin uses a REAL-DOMAIN address (NOT on the pii-gate allowlist) so
@@ -583,11 +592,63 @@ rm -rf /root/drill
 # ══════════════════════════════════════════════════════════════════════════════
 do_teardown(){
   require_token
-  local fail=0 any=0 role id code vcode tries
+  local fail=0 role id code vcode tries
+
+  # ── FATE MANIFEST (nwp/ops#47 impact contract) ─────────────────────────────
+  # Disposable-by-design is a reason the answer is usually "yes"; it is not a
+  # reason to skip the question. A DELETE here destroys the instance AND its
+  # disks (the harness runs backups_enabled:false), so name every instance —
+  # id, label, type/region, ip and its LIVE status from the API — before any
+  # of them is touched. -y skips the prompt, never the report.
+  local -a doomed=()
   for role in prod ver; do
     id="$(state_of "$role.id")"
-    [ -n "$id" ] || { print_info "no test-$role on record"; continue; }
-    any=1
+    if [ -n "$id" ]; then doomed+=("$role"); else print_info "no test-$role on record"; fi
+  done
+  if [ "${#doomed[@]}" -eq 0 ]; then
+    print_info "no harness instances on record — nothing to tear down"
+    return 0
+  fi
+
+  impact_reset
+  local info label status ip type region
+  for role in "${doomed[@]}"; do
+    id="$(state_of "$role.id")"
+    info="$(api GET "/linode/instances/$id" 2>/dev/null)" || info=""
+    label="$(jq -r '.label  // empty' <<<"$info" 2>/dev/null || true)"
+    status="$(jq -r '.status // empty' <<<"$info" 2>/dev/null || true)"
+    ip="$(jq -r '.ipv4[0]   // empty' <<<"$info" 2>/dev/null || true)"
+    type="$(jq -r '.type    // empty' <<<"$info" 2>/dev/null || true)"
+    region="$(jq -r '.region// empty' <<<"$info" 2>/dev/null || true)"
+    [ -n "$label" ] || label="$(state_of "$role.label")"
+    [ -n "$ip" ]    || ip="$(state_of "$role.ip")"
+    impact_delete "test-$role" \
+      "Linode id ${id} — ${label:-<unlabelled>} (${type:-$TYPE} in ${region:-$REGION}, ip ${ip:-unknown}, status ${status:-UNKNOWN — API could not see it}): instance and all its disks DESTROYED, no snapshot or backup exists"
+    [ -n "$status" ] || impact_warn "the API did not return a status for id ${id} — it may already be gone, or the token cannot see it; teardown verifies with GET→404 either way"
+  done
+
+  # Orphans: anything tagged ver-harness that this state dir did NOT record is
+  # NOT ours to destroy — say so loudly rather than leaving it billing quietly.
+  local tagged untracked
+  tagged="$(api GET "/linode/instances" | jq -r '[.data[]? | select(.tags | index("ver-harness")) | .id] | join(" ")' 2>/dev/null || true)"
+  untracked=""
+  for id in $tagged; do
+    local mine=false r
+    for r in "${doomed[@]}"; do [ "$(state_of "$r.id")" = "$id" ] && mine=true; done
+    [ "$mine" = false ] && untracked="${untracked}${untracked:+ }$id"
+  done
+  [ -n "$untracked" ] && impact_warn "instance(s) tagged ver-harness that are NOT on record here: ${untracked} — teardown will not destroy them; check 'pl ver-test status'"
+
+  impact_keep "The disposable ledger ($(basename "$LEDGER")) — a TORN DOWN line is appended; nothing is rewritten or removed"
+  impact_keep "Local harness state and logs under $STATE_DIR (ids, keys, cycle logs) — kept for the run report"
+  impact_keep "Every other Linode on the account — teardown only ever acts on ids it recorded itself"
+  impact_render
+
+  impact_confirm standard "destroy ${#doomed[@]} disposable harness Linode(s)" "$ASSUME_YES" \
+    || { print_info "Teardown cancelled — instances left running (they keep billing)."; return 1; }
+
+  for role in "${doomed[@]}"; do
+    id="$(state_of "$role.id")"
     print_header "Tearing down test-$role (id $id)"
     code="$(api_code DELETE "/linode/instances/$id")"
     if [ "$code" != 200 ]; then
@@ -611,7 +672,6 @@ do_teardown(){
       fail=1
     fi
   done
-  [ "$any" = 1 ] || { print_info "no harness instances on record — nothing to tear down"; return 0; }
   # residual sweep: nothing tagged ver-harness may remain on the account
   local left
   left="$(api GET "/linode/instances" | jq -r '[.data[]? | select(.tags | index("ver-harness"))] | length')"
@@ -654,6 +714,7 @@ main(){
       --region)      REGION="$2"; shift ;;
       --type=*)      TYPE="${1#*=}" ;;
       --type)        TYPE="$2"; shift ;;
+      -y|--yes)      ASSUME_YES=true ;;
       -h|--help)     usage; exit 0 ;;
       *) die "unknown argument: $1 (try --help)" ;;
     esac

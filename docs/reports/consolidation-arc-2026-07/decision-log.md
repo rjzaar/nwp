@@ -614,3 +614,30 @@ mis-classified this as "pre-existing, byte-identical to main" by comparing the f
 Fix in flight. **Lesson recorded: compare failure REASONS, never test titles.**
 **Also fixed:** `write_gate_test.php` (281 lines) was silently deleted by the Art.9 vendor merge !5 that I
 merged — restored + 31/31 passing + merged (!6). Silent-regression class: nothing fails when a test vanishes.
+
+## [2026-07-26] 🚨 END-STATE ADVERSARIAL SWEEP — "assurance that was decorative"
+The sweep's verdict is the important artefact: much of the arc's *code* is correct and its guards genuinely
+discriminate (Art.9 deploy gate refuses ungated + passes gated; restricted key refuses all but 4 words;
+golden sha256 fails on a corrupt byte) — **but almost none of it enforces anything in production, and several
+signals that should have said so were INCAPABLE OF FAILING.**
+**Vacuous passes found (the most valuable finding class):**
+- **MR pipelines never ran `test:unit`** (`rules: push` only) + `test:verification` is `allow_failure:true`.
+  "CI-verified" in this very log was therefore meaningless — and is the mechanism by which the impact-contract
+  regression landed on main. (P1-10)
+- **`privacy_sweep.php`/FirewallScanner hardening exists only on unmerged `ops-secondary-p4`.** From main the
+  standing check scans 850 files, finds 0, exits 0 "FIREWALL INTACT"; from the branch, 1277 files / 2
+  violations / exit 1. **The documented standing check, run as documented, cannot fail.** (P1-11)
+- met's nightly audit has reported "no change" for **31 nights over a stopped container**.
+- Moodle suite prints "ALL 13 test files passed" with **18 Art.9 cases skipped**.
+**ACTED ON IMMEDIATELY (this session):**
+- **`pl backup sweep` dead for 15 nights** — `lib/common.sh:39` expanded `$DEBUG` unguarded; sweep dispatches
+  before main()'s `local DEBUG`, so `set -u` killed it at the first site. 12 sites drifted to RED "backup 14
+  days old" while a log-only cron redirect hid it. Reproduced → fixed (`${DEBUG:-false}`) → verified it now
+  reaches Summary. **PUSHED.**
+- **Credentials at rest SHREDDED**: live owner console session cookie, curl-argv log, linode root password,
+  throwaway key (all in scratchpads).
+- **mini held 291 replicated secrets copies** via `~/backups/carlo/` (the report found 1; there were 291,
+  incl. 17 real `.secrets.yml`). **All live-secret files shredded — 0 remain.** The backup path silently
+  replicated every dev secret onto the autonomous AI host; it needs an exclusion rule (own issue).
+**STILL OPERATOR-ONLY:** revoke the account-wide `linodes:read_write` token (it can delete the PROD box — my
+error to have requested that scope; a child account or per-run env var is the right shape).

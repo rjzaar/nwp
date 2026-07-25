@@ -48,7 +48,19 @@ demo_site_dir() {
     echo "${PROJECT_ROOT:?PROJECT_ROOT not set}/sites/${site}"
 }
 
-demo_golden_dir()  { echo "$(demo_site_dir "$1")/demo-golden"; }
+# demo_golden_dir <site> [tier]
+# The golden image is TIER-SCOPED: a local dev capture and a live capture are
+# different images of different databases, and restoring one into the other
+# would be a silent cross-tier clobber. dev|stg share sites/<site>/demo-golden
+# (they are the same local pair and the Phase 1 layout); live gets its own
+# sites/<site>/demo-golden-live. Called with one arg (legacy) → local dir.
+demo_golden_dir() {
+    local site="$1" tier="${2:-dev}"
+    case "$tier" in
+        live|prod) echo "$(demo_site_dir "$site")/demo-golden-live" ;;
+        *)         echo "$(demo_site_dir "$site")/demo-golden" ;;
+    esac
+}
 demo_codes_file()  { echo "$(demo_site_dir "$1")/demo-codes.json"; }
 demo_log_file()    { echo "$(demo_site_dir "$1")/demo-reset.log"; }
 demo_harvest_dir() { echo "$(demo_site_dir "$1")/demo-harvest"; }

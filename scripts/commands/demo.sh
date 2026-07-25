@@ -21,8 +21,12 @@ set -euo pipefail
 # GUARDS (fail-closed):
 #   * reset only proceeds when the golden manifest names THIS site and both
 #     artifacts pass sha256 verification (demo_golden_verify).
-#   * reset is tier-scoped: dev|stg only in Phase 1. --tier=live is REFUSED —
-#     the nwd live cutover is a follow-up after operator review.
+#   * reset is tier-scoped: dev|stg act on the local DDEV pair, live acts on
+#     the remote demo host over ssh (Phase 2). --tier=prod is always REFUSED.
+#     A LIVE reset additionally requires the remote site to report
+#     demo_mode=true, and re-verifies the uploaded golden ON the remote host
+#     BEFORE dropping anything — so a bad upload can never leave a wiped host
+#     with nothing to restore.
 #   * --if-idle treats a failed/garbled sessions query as ACTIVE (never
 #     green-lights a wipe on bad data); "active" exits DEMO_EXIT_ACTIVE (3),
 #     distinct from errors, so the nightly wrapper can retry.
@@ -37,6 +41,7 @@ PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 source "$REPO_ROOT/lib/ui.sh"
 source "$REPO_ROOT/lib/common.sh"
 source "$REPO_ROOT/lib/demo.sh"
+source "$REPO_ROOT/lib/deploy-gate.sh"   # deploy_gate_require (live tier only)
 
 # Names of the golden artifacts inside sites/<site>/demo-golden/.
 GOLDEN_DB="golden.db.sql.gz"
@@ -80,13 +85,24 @@ ${BOLD}SUBCOMMANDS:${NC}
                                   level blocks, paste into any mail client).
                                   Default levels: member, guild-leader,
                                   content-manager; --all adds both reviewers.
-    schedule <site> [--remove]    Install/remove the nightly cron on THIS
+    harvest-post <site> [--dry-run]
+                                  Drain sites/<site>/demo-harvest/ into nwp/ops
+                                  issues (labels ${DEMO_HARVEST_LABELS};
+                                  least-privilege gitlab.ops_note_token).
+                                  Retry-safe: only posted digests are moved to
+                                  demo-harvest/posted/.
+    schedule <site> [--tier=live] [--remove]
+                                  Install/remove the nightly cron on THIS
                                   machine (intended host: met)
 
 ${BOLD}OPTIONS:${NC}
-    --tier=dev|stg     Which local instance to act on (default: dev).
-                       --tier=live is REFUSED in Phase 1 (nwd cutover is a
-                       follow-up after operator review).
+    --tier=dev|stg|live  Which instance to act on (default: dev). dev|stg are
+                       the local DDEV pair; live acts on the remote demo host
+                       over ssh (golden = remote dump+tar pulled back and
+                       sha-verified; reset = upload, re-verify ON the remote,
+                       then drop/restore/reseed). --tier=prod is always
+                       REFUSED, and a live reset additionally refuses unless
+                       the remote site reports demo_mode=true.
     --if-idle <dur>    Only reset when no session activity within <dur>
                        (e.g. 30m). Active → exit ${DEMO_EXIT_ACTIVE} (retryable), logged as skip.
     --force            Override the interactive confirmation (same as --yes).
@@ -101,12 +117,13 @@ ${BOLD}ROLE BUNDLES${NC} (decisions §4.4 — sitemanager is never offered):
     tester-safeguarding-reviewer  + safeguarding_reviewer role
 
 ${BOLD}FILES:${NC}
-    sites/<site>/demo-golden/     golden image + .sha256 sidecars + manifest
-    sites/<site>/demo-codes.json  hashed code registry (survives the wipe)
-    sites/<site>/demo-reset.log   every reset / skip / harvest, one line each
-    sites/<site>/demo-harvest/    pre-wipe error digests (labels
-                                  demo-tester,auto-harvest; GitLab posting is
-                                  wired at the nwd cutover)
+    sites/<site>/demo-golden/       local (dev|stg) golden + sidecars + manifest
+    sites/<site>/demo-golden-live/  live golden — tier-scoped so a local image
+                                    can never be restored over the live host
+    sites/<site>/demo-codes.json    hashed code registry (survives the wipe)
+    sites/<site>/demo-reset.log     every reset / skip / harvest, one line each
+    sites/<site>/demo-harvest/      pre-wipe error digests awaiting posting
+    sites/<site>/demo-harvest/posted/  digests confirmed posted to nwp/ops
 EOF
 }
 
@@ -144,19 +161,186 @@ demo_drush() {
     ( cd "$proj" && ddev drush "$@" )
 }
 
-# Refuse anything but dev|stg in Phase 1 (live lands with the nwd cutover).
+# dev|stg act on the local DDEV pair; live acts on the remote demo host over
+# ssh (Phase 2). prod is still REFUSED: a demo tier never touches a prod site.
 demo_check_tier() {
     local tier="$1"
     case "$tier" in
-        dev|stg) return 0 ;;
-        live|prod)
-            print_error "Phase 1 is local-only: --tier=$tier is REFUSED."
-            print_info  "The nwd live cutover (remote golden restore + schedule on met) is the follow-up after operator review."
+        dev|stg|live) return 0 ;;
+        prod)
+            print_error "--tier=prod is REFUSED: the demo tier never resets a production site."
             return 1 ;;
         *)
-            print_error "Unknown tier '$tier' (dev|stg)"
+            print_error "Unknown tier '$tier' (dev|stg|live)"
             return 1 ;;
     esac
+}
+
+demo_is_live() { [[ "$1" == "live" ]]; }
+
+################################################################################
+# LIVE tier plumbing (Phase 2) — remote demo host over ssh
+#
+# Mirrors the `pl backup --remote` / stg2live idiom: resolve the live target
+# from sites/<site>/.nwp.yml, run privileged remote work under sudo as the
+# ssh user, and bind every artifact to a sha256 computed on the FAR side.
+#
+# Live reset is destructive on a real host, so it is guarded by FOUR
+# independent fail-closed checks before anything is dropped:
+#   1. live.enabled is not false                    (operator intent)
+#   2. the remote site reports demo_mode = TRUE     (it is really a demo site)
+#   3. the local golden verifies (manifest + sha256) (we have something to restore)
+#   4. the golden, once PUSHED, re-verifies ON THE REMOTE before the wipe
+#      (we can still restore after we destroy)
+################################################################################
+
+DEMO_LIVE_IP=""; DEMO_LIVE_USER=""; DEMO_LIVE_PATH=""; DEMO_LIVE_DOMAIN=""
+DEMO_LIVE_WEBROOT=""; DEMO_LIVE_SUDO=""; DEMO_LIVE_DRUSHSUDO=""
+
+# Resolve (and memoise) the live target for <site>. Fail-closed on a missing
+# server_ip: there is no host to act on.
+demo_live_ctx() {
+    local site="$1"
+    [[ -n "$DEMO_LIVE_IP" ]] && return 0
+
+    local enabled; enabled="$(get_site_config_value "$site" '.live.enabled' "")"
+    if [[ "$enabled" == "false" ]]; then
+        print_error "Live deployment disabled for '$site' (live.enabled: false in sites/$site/.nwp.yml)"
+        return 1
+    fi
+
+    local server_name; server_name="$(get_site_config_value "$site" '.live.server' "")"
+    if [[ -n "$server_name" ]] && declare -F get_server_config >/dev/null 2>&1; then
+        DEMO_LIVE_IP="$(get_server_config "$server_name" "ip" "" 2>/dev/null)"
+    fi
+    [[ -z "$DEMO_LIVE_IP" ]] && DEMO_LIVE_IP="$(get_site_config_value "$site" '.live.server_ip' "")"
+    if [[ -z "$DEMO_LIVE_IP" ]]; then
+        print_error "No live server configured for '$site' (live.server / live.server_ip empty) — refusing."
+        return 1
+    fi
+
+    DEMO_LIVE_PATH="$(get_site_config_value "$site" '.live.remote_path' "")"
+    [[ -z "$DEMO_LIVE_PATH" ]] && DEMO_LIVE_PATH="/var/www/${site}"
+    DEMO_LIVE_DOMAIN="$(get_site_config_value "$site" '.live.domain' "")"
+    DEMO_LIVE_USER="$(get_ssh_user "$site")"
+
+    # The gitlab ssh user runs privileged remote work via sudo; root does not.
+    if [[ "$DEMO_LIVE_USER" == "gitlab" ]]; then
+        DEMO_LIVE_SUDO="sudo"
+        DEMO_LIVE_DRUSHSUDO="sudo -u www-data"
+    fi
+
+    if ! demo_rssh "$site" "echo ok" >/dev/null 2>&1; then
+        print_error "Cannot reach live host ${DEMO_LIVE_USER}@${DEMO_LIVE_IP}"
+        return 1
+    fi
+
+    # Docroot auto-detect (html | web | "" root-served), same as backup --remote.
+    if demo_rssh "$site" "test -d ${DEMO_LIVE_PATH}/web" 2>/dev/null; then
+        DEMO_LIVE_WEBROOT="web"
+    elif demo_rssh "$site" "test -d ${DEMO_LIVE_PATH}/html" 2>/dev/null; then
+        DEMO_LIVE_WEBROOT="html"
+    else
+        DEMO_LIVE_WEBROOT=""
+    fi
+    return 0
+}
+
+demo_rssh() {
+    local site="$1"; shift
+    # shellcheck disable=SC2046  # nwp_ssh_opts intentionally word-splits
+    ssh $(nwp_ssh_opts "$site") -o BatchMode=yes -o ConnectTimeout=15 \
+        "${DEMO_LIVE_USER}@${DEMO_LIVE_IP}" "$@"
+}
+
+# Remote drush, run from the site root as www-data. Args are shell-quoted so
+# SQL fragments and JSON payloads survive the round trip intact.
+demo_rdrush() {
+    local site="$1"; shift
+    local q="" a
+    for a in "$@"; do q+=" $(printf '%q' "$a")"; done
+    demo_rssh "$site" "cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush${q}"
+}
+
+# GUARD 2 — the remote site must actually be in demo mode. This is what stops
+# `pl demo reset <anything> --tier=live` from wiping a real site: a site that
+# has not opted into nwc_demo_access with demo_mode:true is never resettable.
+demo_live_require_demo_mode() {
+    local site="$1" val
+    val="$(demo_rdrush "$site" cget nwc_demo_access.settings demo_mode --format=string 2>/dev/null \
+           | tr -d '[:space:]')" || val=""
+    case "$val" in
+        1|true|TRUE) return 0 ;;
+    esac
+    print_error "REFUSING: ${site} live does not report demo_mode=true (got '${val:-<none>}')."
+    print_info  "A live demo reset is only ever allowed against a site running nwc_demo_access with demo_mode: true."
+    return 1
+}
+
+# Push a local artifact to the remote home dir and verify its sha256 ON THE
+# REMOTE against the local sidecar. Fail-closed: a corrupt upload must be
+# caught BEFORE anything is destroyed.
+demo_push_verified() {
+    local site="$1" local_path="$2" remote_name="$3"
+    local want; want="$(awk '{print $1}' "${local_path}.sha256" 2>/dev/null)"
+    if [[ ! "$want" =~ ^[0-9a-f]{64}$ ]]; then
+        print_error "No usable sha256 sidecar for $(basename "$local_path")"
+        return 1
+    fi
+    # shellcheck disable=SC2046
+    if ! scp $(nwp_ssh_opts "$site") -o BatchMode=yes \
+        "$local_path" "${DEMO_LIVE_USER}@${DEMO_LIVE_IP}:${remote_name}" >/dev/null 2>&1; then
+        print_error "Failed to push $(basename "$local_path") to the live host"
+        return 1
+    fi
+    local got
+    got="$(demo_rssh "$site" "sha256sum ~/${remote_name} 2>/dev/null | awk '{print \$1}'" 2>/dev/null)"
+    if [[ "$got" != "$want" ]]; then
+        print_error "sha256 MISMATCH after push for ${remote_name} (local=$want remote=${got:-none}) — aborting BEFORE any destructive step."
+        demo_rssh "$site" "rm -f ~/${remote_name}" >/dev/null 2>&1 || true
+        return 1
+    fi
+    return 0
+}
+
+# Compute the sha on the remote, pull, re-verify locally, write the sidecar.
+# Fail-closed on mismatch (identical contract to backup_pull_verified).
+demo_pull_verified() {
+    local site="$1" remote_name="$2" local_path="$3"
+    local remote_sha
+    remote_sha="$(demo_rssh "$site" "sha256sum ~/${remote_name} 2>/dev/null | awk '{print \$1}'" 2>/dev/null)"
+    if [[ ! "$remote_sha" =~ ^[0-9a-f]{64}$ ]]; then
+        print_error "Could not compute remote sha256 for ~/${remote_name}"
+        return 1
+    fi
+    # shellcheck disable=SC2046
+    if ! scp $(nwp_ssh_opts "$site") -o BatchMode=yes \
+        "${DEMO_LIVE_USER}@${DEMO_LIVE_IP}:${remote_name}" "$local_path" >/dev/null 2>&1; then
+        print_error "Failed to pull ~/${remote_name} from the live host"
+        return 1
+    fi
+    local local_sha; local_sha="$(sha256sum "$local_path" 2>/dev/null | awk '{print $1}')"
+    if [[ "$local_sha" != "$remote_sha" ]]; then
+        print_error "sha256 MISMATCH for $(basename "$local_path") (remote=$remote_sha local=$local_sha) — discarding."
+        rm -f "$local_path"
+        return 1
+    fi
+    printf '%s  %s\n' "$local_sha" "$(basename "$local_path")" > "${local_path}.sha256"
+    return 0
+}
+
+demo_live_files_parent() {
+    local p="$DEMO_LIVE_PATH"
+    [[ -n "$DEMO_LIVE_WEBROOT" ]] && p="${p}/${DEMO_LIVE_WEBROOT}"
+    echo "${p}/sites/default"
+}
+
+# Live counterpart of demo_harvest_collect: watchdog is destroyed by the
+# restore, so the digest is taken over ssh before the wipe.
+demo_harvest_collect_live() {
+    local site="$1"
+    demo_rdrush "$site" watchdog:show --severity=Error --count=100 --format=table 2>/dev/null || true
+    demo_rdrush "$site" watchdog:show --severity=Critical --count=100 --format=table 2>/dev/null || true
 }
 
 # Push the live (non-revoked, non-expired) hashed codes into the site's state
@@ -164,8 +348,20 @@ demo_check_tier() {
 demo_sync_codes_to_site() {
     local site="$1" tier="$2"
     local proj payload
-    proj="$(demo_project_dir "$site" "$tier")" || return 1
     payload="$(demo_codes_payload "$(demo_codes_file "$site")")" || return 1
+
+    if demo_is_live "$tier"; then
+        demo_live_ctx "$site" || return 1
+        if demo_rdrush "$site" state:set nwc_demo_access.codes "$payload" >/dev/null 2>&1; then
+            demo_log "$site" codes-synced "tier=$tier"
+            return 0
+        fi
+        print_warning "Could not sync codes into ${site} live (is nwc_demo_access enabled there?)"
+        print_hint "Re-run later: pl demo codes $site sync --tier=live"
+        return 1
+    fi
+
+    proj="$(demo_project_dir "$site" "$tier")" || return 1
     if demo_drush "$proj" state:set nwc_demo_access.codes "$payload" >/dev/null 2>&1; then
         demo_log "$site" codes-synced "tier=$tier"
         return 0
@@ -193,10 +389,14 @@ demo_harvest_collect() {
 
 cmd_golden() {
     local site="$1" tier="$2"
+    if demo_is_live "$tier"; then
+        cmd_golden_live "$site"
+        return $?
+    fi
     local proj droot gdir
     proj="$(demo_project_dir "$site" "$tier")" || return 1
     droot="$(demo_docroot "$proj")" || return 1
-    gdir="$(demo_golden_dir "$site")"
+    gdir="$(demo_golden_dir "$site" "$tier")"
     mkdir -p "$gdir"
 
     print_header "Capturing golden image: $site ($tier)"
@@ -241,17 +441,84 @@ cmd_golden() {
     print_hint "Nightly restore will return $site to exactly this state."
 }
 
+# --- live capture (read-only against the demo host) --------------------------
+# Dumps the DB and tars sites/default/files ON the live host, computes each
+# sha256 there, pulls both back and re-verifies locally. Nothing on live is
+# modified; the only writes are two temp files in ~ that are removed again.
+cmd_golden_live() {
+    local site="$1"
+    local gdir; gdir="$(demo_golden_dir "$site" live)"
+
+    demo_live_ctx "$site" || return 1
+    print_header "Capturing golden image: $site (live)"
+    print_info "Live host:   ${DEMO_LIVE_USER}@${DEMO_LIVE_IP}"
+    print_info "Remote path: ${DEMO_LIVE_PATH}"
+    [[ -n "$DEMO_LIVE_DOMAIN" ]] && print_info "Domain:      https://${DEMO_LIVE_DOMAIN}"
+
+    # Capturing a NON-demo site as a "golden" would be a loaded gun pointed at
+    # the reset path — refuse it here too, not just at restore time.
+    demo_live_require_demo_mode "$site" || return 1
+    print_status "OK" "Remote site reports demo_mode=true"
+
+    mkdir -p "$gdir"
+    local stamp="demo-golden-$$-$(date -u '+%Y%m%d%H%M%S')"
+    local rdb="${stamp}.db.sql.gz" rfiles="${stamp}.files.tar.gz"
+    local files_parent; files_parent="$(demo_live_files_parent)"
+
+    # 1. Remote DB dump.
+    print_info "Dumping database on the live host…"
+    if ! demo_rssh "$site" "cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush sql:dump --gzip 2>/dev/null > ~/${rdb}"; then
+        print_error "Remote drush sql:dump failed"
+        demo_rssh "$site" "rm -f ~/${rdb}" >/dev/null 2>&1 || true
+        return 1
+    fi
+
+    # 2. Remote files tar (as root: files/ is www-data-owned), then chown back
+    #    so scp can pull it without sudo.
+    print_info "Archiving files on the live host…"
+    if ! demo_rssh "$site" "${DEMO_LIVE_SUDO} tar czf ~/${rfiles} -C ${files_parent} files && ${DEMO_LIVE_SUDO} chown ${DEMO_LIVE_USER}:${DEMO_LIVE_USER} ~/${rfiles}"; then
+        print_error "Remote files tar failed (${files_parent}/files)"
+        demo_rssh "$site" "rm -f ~/${rdb} ~/${rfiles}" >/dev/null 2>&1 || true
+        return 1
+    fi
+
+    # 3. Pull both back, sha-verified fail-closed.
+    print_info "Pulling artifacts back (sha256 verified)…"
+    local ok=true
+    demo_pull_verified "$site" "$rdb"    "$gdir/$GOLDEN_DB"    || ok=false
+    if [[ "$ok" == "true" ]]; then
+        demo_pull_verified "$site" "$rfiles" "$gdir/$GOLDEN_FILES" || ok=false
+    fi
+    demo_rssh "$site" "rm -f ~/${rdb} ~/${rfiles}" >/dev/null 2>&1 || true
+    [[ "$ok" == "true" ]] || { print_error "Golden capture aborted — artifact verification failed."; return 1; }
+
+    # 4. Manifest + the same verification the restore will run.
+    demo_manifest_write "$gdir" "$site" "$GOLDEN_DB" "$GOLDEN_FILES" || return 1
+    demo_golden_verify "$gdir" "$site" || {
+        print_error "Post-capture verification failed — golden NOT usable"
+        return 1
+    }
+
+    demo_log "$site" golden-captured "tier=live host=${DEMO_LIVE_IP} db=$(du -h "$gdir/$GOLDEN_DB" | cut -f1) files=$(du -h "$gdir/$GOLDEN_FILES" | cut -f1)"
+    print_status "OK" "Live golden image captured + verified: $gdir"
+    print_hint "Nightly restore will return ${DEMO_LIVE_DOMAIN:-$site} to exactly this state."
+}
+
 ################################################################################
 # reset — verified restore of the golden image
 ################################################################################
 
 cmd_reset() {
     local site="$1" tier="$2" if_idle="$3" auto_yes="$4" skip_seed="$5"
+    if demo_is_live "$tier"; then
+        cmd_reset_live "$site" "$if_idle" "$auto_yes" "$skip_seed"
+        return $?
+    fi
     local proj droot gdir start_ts
     start_ts=$(date +%s)
     proj="$(demo_project_dir "$site" "$tier")" || return 1
     droot="$(demo_docroot "$proj")" || return 1
-    gdir="$(demo_golden_dir "$site")"
+    gdir="$(demo_golden_dir "$site" "$tier")"
 
     print_header "Demo reset: $site ($tier)"
 
@@ -338,6 +605,175 @@ cmd_reset() {
 }
 
 ################################################################################
+# reset (live) — verified restore of the golden image onto the remote demo host
+#
+# Step order is the safety property. Everything that can refuse, refuses BEFORE
+# the first destructive command; the golden is uploaded and re-verified on the
+# far side while the site is still intact, so a failed upload can never leave
+# the host wiped with nothing to restore.
+################################################################################
+
+cmd_reset_live() {
+    local site="$1" if_idle="$2" auto_yes="$3" skip_seed="$4"
+    local gdir start_ts
+    start_ts=$(date +%s)
+    gdir="$(demo_golden_dir "$site" live)"
+
+    demo_live_ctx "$site" || return 1
+    print_header "Demo reset: $site (live — ${DEMO_LIVE_DOMAIN:-$DEMO_LIVE_IP})"
+
+    # 1. GUARD 3 — fail-closed golden verification (site match + sha256 both).
+    demo_golden_verify "$gdir" "$site" || {
+        demo_log "$site" reset-failed "tier=live reason=golden-verify"
+        return 1
+    }
+    print_status "OK" "Golden image verified locally (sha256 + manifest site match)"
+
+    # 2. GUARD 2 — the remote really is a demo site.
+    demo_live_require_demo_mode "$site" || {
+        demo_log "$site" reset-failed "tier=live reason=not-demo-mode"
+        return 1
+    }
+    print_status "OK" "Remote site reports demo_mode=true"
+
+    # 3. Activity guard. A failed/garbled sessions query counts as ACTIVE.
+    if [[ -n "$if_idle" ]]; then
+        local window newest
+        window="$(demo_parse_duration "$if_idle")" || {
+            print_error "Bad --if-idle duration: '$if_idle' (use e.g. 30m)"
+            return 1
+        }
+        newest="$(demo_rdrush "$site" sqlq 'SELECT COALESCE(MAX(timestamp),0) FROM sessions' 2>/dev/null \
+                  | tr -d '[:space:]')" || newest=""
+        if ! demo_idle_ok "$newest" "$window"; then
+            demo_log "$site" skip-active "tier=live window=${if_idle} newest=${newest:-query-failed}"
+            print_status "WARN" "Session activity within ${if_idle} (newest=${newest:-query-failed}) — NOT resetting (exit ${DEMO_EXIT_ACTIVE})"
+            return "$DEMO_EXIT_ACTIVE"
+        fi
+        print_status "OK" "Idle for ≥ ${if_idle} — safe to reset"
+    fi
+
+    # 4. Deploy gate. Unconfigured (met/dev) → a printed notice and proceed, so
+    #    the nightly cron still runs; configured (ver) → a real Solo touch.
+    if declare -F deploy_gate_require >/dev/null 2>&1; then
+        deploy_gate_require "$site" "live" \
+            "restore the demo golden image over ${DEMO_LIVE_DOMAIN:-$site} (DB + uploads are ERASED and replaced)" || {
+            demo_log "$site" reset-failed "tier=live reason=deploy-gate"
+            return 1
+        }
+    fi
+
+    # 5. Confirm (destructive). --force/--yes for the scheduler.
+    if [[ "$auto_yes" != "true" ]]; then
+        printf 'This will ERASE the LIVE %s DB+files at %s and restore the golden image. Continue? [y/N]: ' \
+            "$site" "${DEMO_LIVE_DOMAIN:-$DEMO_LIVE_IP}"
+        local reply; read -r reply
+        [[ "$reply" =~ ^[Yy]$ ]] || { print_info "Aborted."; return 1; }
+    fi
+
+    # 6. PRE-WIPE ERROR HARVEST (fail-OPEN — must never block the reset).
+    print_info "Harvesting error signals before the wipe…"
+    demo_harvest "$site" live demo_harvest_collect_live "$site" || true
+
+    # 7. GUARD 4 — push both artifacts and re-verify their sha256 ON THE REMOTE
+    #    while the site is still intact. Nothing below this line is reversible.
+    local stamp="demo-restore-$$-$(date -u '+%Y%m%d%H%M%S')"
+    local rdb="${stamp}.db.sql.gz" rfiles="${stamp}.files.tar.gz"
+    print_info "Uploading golden image to the live host (sha256 verified on arrival)…"
+    if ! demo_push_verified "$site" "$gdir/$GOLDEN_DB" "$rdb"; then
+        demo_log "$site" reset-failed "tier=live reason=push-db"
+        return 1
+    fi
+    if ! demo_push_verified "$site" "$gdir/$GOLDEN_FILES" "$rfiles"; then
+        demo_rssh "$site" "rm -f ~/${rdb}" >/dev/null 2>&1 || true
+        demo_log "$site" reset-failed "tier=live reason=push-files"
+        return 1
+    fi
+    print_status "OK" "Golden image staged on the live host and re-verified there"
+
+    local cleanup="rm -f ~/${rdb} ~/${rfiles}"
+
+    # 8. Restore DB (drop then import — a plain import would leave orphan
+    #    tables that the golden no longer has).
+    print_info "Restoring database…"
+    if ! demo_rssh "$site" "cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush sql:drop -y >/dev/null 2>&1 && gunzip -c ~/${rdb} | ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush sql:cli"; then
+        demo_rssh "$site" "$cleanup" >/dev/null 2>&1 || true
+        demo_log "$site" reset-failed "tier=live reason=import-db"
+        print_error "Remote database restore FAILED — the golden is still at $gdir; restore by hand before reopening the site."
+        return 1
+    fi
+
+    # 9. Restore files (delete-then-untar so removed files don't linger), and
+    #    hand ownership back to the web user.
+    print_info "Restoring files…"
+    local files_parent; files_parent="$(demo_live_files_parent)"
+    if ! demo_rssh "$site" "${DEMO_LIVE_SUDO} rm -rf ${files_parent}/files && ${DEMO_LIVE_SUDO} tar xzf ~/${rfiles} -C ${files_parent} && ${DEMO_LIVE_SUDO} chown -R www-data:www-data ${files_parent}/files"; then
+        demo_rssh "$site" "$cleanup" >/dev/null 2>&1 || true
+        demo_log "$site" reset-failed "tier=live reason=files-untar"
+        print_error "Remote files restore FAILED"
+        return 1
+    fi
+
+    demo_rssh "$site" "$cleanup" >/dev/null 2>&1 || true
+
+    # 10. Reseed the demo account matrix. Deliberately NOT --force.
+    if [[ "$skip_seed" != "true" ]]; then
+        print_info "Reseeding demo accounts (drush nwc:seed-demo)…"
+        if ! demo_rdrush "$site" nwc:seed-demo >/dev/null 2>&1; then
+            demo_log "$site" reset-failed "tier=live reason=seed-demo"
+            print_error "Remote drush nwc:seed-demo failed (use --skip-seed for non-nwc sites)"
+            return 1
+        fi
+    fi
+
+    # 11. Re-push the invite-code registry (the wipe erased the state entry;
+    #     the local registry is the source of truth). Non-fatal.
+    demo_sync_codes_to_site "$site" live || true
+
+    # 12. Cache rebuild.
+    demo_rdrush "$site" cr >/dev/null 2>&1 || print_warning "remote drush cr failed (non-fatal)"
+
+    # 13. Post-restore smoke. RETRIED on purpose: the first request after a
+    #     cache rebuild is a cold full render, and on a small shared host that
+    #     can exceed the php-fpm worker pool and return 5xx once before the
+    #     caches warm. A single sample would report a healthy site as broken.
+    #     Persistent failure is real, so it degrades the exit status.
+    local degraded=false
+    if [[ -n "$DEMO_LIVE_DOMAIN" ]]; then
+        local code="" attempt
+        for attempt in 1 2 3 4 5; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 45 "https://${DEMO_LIVE_DOMAIN}/" 2>/dev/null || echo 000)"
+            [[ "$code" == "200" ]] && break
+            sleep 5
+        done
+        if [[ "$code" == "200" ]]; then
+            local jcode
+            jcode="$(curl -s -o /dev/null -w '%{http_code}' --max-time 45 "https://${DEMO_LIVE_DOMAIN}/demo/join" 2>/dev/null || echo 000)"
+            if [[ "$jcode" == "200" ]]; then
+                print_status "OK" "https://${DEMO_LIVE_DOMAIN}/ and /demo/join both serve 200"
+            else
+                degraded=true
+                demo_log "$site" reset-degraded "tier=live join_http=${jcode}"
+                print_status "FAIL" "/demo/join returned ${jcode} after the restore — testers cannot join."
+            fi
+        else
+            degraded=true
+            demo_log "$site" reset-degraded "tier=live http=${code} attempts=5"
+            print_status "FAIL" "https://${DEMO_LIVE_DOMAIN}/ still ${code} after 5 attempts — investigate."
+        fi
+    fi
+
+    local took=$(( $(date +%s) - start_ts ))
+    if [[ "$degraded" == "true" ]]; then
+        demo_log "$site" reset-ok-degraded "tier=live took=${took}s host=${DEMO_LIVE_IP}"
+        print_warning "Data restored, but the site did not pass its smoke check — treat as FAILED."
+        return 1
+    fi
+    demo_log "$site" reset-ok "tier=live took=${took}s host=${DEMO_LIVE_IP}"
+    print_status "OK" "Live demo reset complete in ${took}s — ${DEMO_LIVE_DOMAIN:-$site} is back at the golden image"
+}
+
+################################################################################
 # nightly — scheduled entrypoint with the §4.3 retry loop
 ################################################################################
 
@@ -368,13 +804,13 @@ cmd_nightly() {
 ################################################################################
 
 cmd_status() {
-    local site="$1"
+    local site="$1" tier="${2:-dev}"
     local gdir cfile lfile
-    gdir="$(demo_golden_dir "$site")"
+    gdir="$(demo_golden_dir "$site" "$tier")"
     cfile="$(demo_codes_file "$site")"
     lfile="$(demo_log_file "$site")"
 
-    print_header "Demo status: $site"
+    print_header "Demo status: $site ($tier)"
 
     if [[ -f "$gdir/golden.manifest.json" ]]; then
         echo "  Golden image:"
@@ -387,7 +823,18 @@ cmd_status() {
             print_status "FAIL" "Golden does NOT verify — recapture before the next reset"
         fi
     else
-        print_status "WARN" "No golden image captured yet (pl demo golden $site)"
+        print_status "WARN" "No golden image captured yet (pl demo golden $site --tier=$tier)"
+    fi
+
+    # Unposted harvest digests — until the GitLab poster runs they are the only
+    # place pre-wipe errors survive, so surface the backlog loudly.
+    local hdir; hdir="$(demo_harvest_dir "$site")"
+    if [[ -d "$hdir" ]]; then
+        local pending; pending=$(find "$hdir" -maxdepth 1 -name 'harvest-*.md' 2>/dev/null | wc -l)
+        if (( pending > 0 )); then
+            echo ""
+            print_status "WARN" "${pending} harvest digest(s) in the spool — post with: pl demo harvest-post $site"
+        fi
     fi
 
     echo ""
@@ -428,7 +875,7 @@ cmd_codes() {
 
     case "$action" in
         list)
-            cmd_status "$site" | sed -n '/Invite codes:/,/Recent resets/p' | head -n -1
+            cmd_status "$site" "$tier" | sed -n '/Invite codes:/,/Recent resets/p' | head -n -1
             print_info "Only sha256 hashes are stored — plaintext codes are shown once at issue time."
             ;;
         issue)
@@ -593,11 +1040,95 @@ cmd_invite() {
 }
 
 ################################################################################
+# harvest-post — drain the pre-wipe harvest spool into nwp/ops issues
+#
+# The nightly reset destroys watchdog, so demo_harvest writes a digest to
+# sites/<site>/demo-harvest/ BEFORE the wipe. This drains that spool into
+# GitLab issues using the least-privilege gitlab.ops_note_token (lib/gitlab-
+# issues.sh) — never the root PAT, and the token value is never printed or
+# placed in argv.
+#
+# Retry-safe: a digest is only moved to demo-harvest/posted/ after GitLab
+# confirms an iid. A failed post leaves the file in the spool for next time,
+# and `pl demo status` reports the backlog.
+################################################################################
+
+DEMO_HARVEST_LABELS="demo-tester,auto-harvest"
+
+cmd_harvest_post() {
+    local site="$1" dry_run="${2:-false}"
+    local hdir; hdir="$(demo_harvest_dir "$site")"
+
+    print_header "Demo harvest → nwp/ops: $site"
+
+    if [[ ! -d "$hdir" ]]; then
+        print_info "No harvest spool at $hdir — nothing to post."
+        return 0
+    fi
+    local -a spooled=()
+    while IFS= read -r f; do [[ -n "$f" ]] && spooled+=("$f"); done \
+        < <(find "$hdir" -maxdepth 1 -name 'harvest-*.md' -type f 2>/dev/null | sort)
+    if (( ${#spooled[@]} == 0 )); then
+        print_info "Harvest spool is empty — nothing to post."
+        return 0
+    fi
+    print_info "${#spooled[@]} digest(s) queued."
+
+    if [[ "$dry_run" == "true" ]]; then
+        local f
+        for f in "${spooled[@]}"; do
+            echo "  would post: $(basename "$f") → nwp/ops issue (labels: ${DEMO_HARVEST_LABELS})"
+        done
+        print_status "OK" "[dry-run] nothing posted, spool untouched."
+        return 0
+    fi
+
+    # Lazy-source: only harvest-post needs yq + a token, so `pl demo golden`
+    # keeps working on a host with neither.
+    # shellcheck source=../../lib/gitlab-issues.sh
+    source "$REPO_ROOT/lib/gitlab-issues.sh" || {
+        print_error "Could not load lib/gitlab-issues.sh"
+        return 1
+    }
+
+    mkdir -p "$hdir/posted"
+    local posted=0 failed=0 f
+    for f in "${spooled[@]}"; do
+        local when title body payload resp iid
+        when="$(awk -F': ' '/^harvested_utc:/ {print $2; exit}' "$f" 2>/dev/null)"
+        [[ -n "$when" ]] || when="$(basename "$f" .md)"
+        title="Demo harvest — ${site}: errors before the ${when} reset"
+        body="$(cat "$f")"
+        payload="$(jq -nc --arg t "$title" --arg d "$body" --arg l "$DEMO_HARVEST_LABELS" \
+            '{title:$t, description:$d, labels:$l}')" || {
+            print_status "FAIL" "$(basename "$f") — could not build payload"
+            failed=$(( failed + 1 )); continue
+        }
+        resp="$(_api_send POST "/projects/${PROJECT_ID}/issues" "$payload" 2>/dev/null)" || resp=""
+        iid="$(printf '%s' "$resp" | _jget 'iid')"
+        if [[ -n "$iid" ]]; then
+            mv "$f" "$hdir/posted/$(basename "$f")"
+            demo_log "$site" harvest-posted "file=$(basename "$f") issue=#${iid}"
+            print_status "OK" "$(basename "$f") → nwp/ops#${iid}"
+            posted=$(( posted + 1 ))
+        else
+            demo_log "$site" harvest-post-failed "file=$(basename "$f")"
+            print_status "FAIL" "$(basename "$f") — not posted (left in the spool for retry)"
+            failed=$(( failed + 1 ))
+        fi
+    done
+
+    echo ""
+    print_info "Posted: ${posted}   Failed: ${failed}   (posted digests moved to ${hdir}/posted/)"
+    (( failed == 0 ))
+}
+
+################################################################################
 # schedule — nightly cron on THIS machine (intended host: met)
 ################################################################################
 
 cmd_schedule() {
-    local site="$1" remove="$2"
+    local site="$1" remove="$2" tier="${3:-dev}"
     local marker="# NWP Demo Reset - $site"
     local current
     current="$(crontab -l 2>/dev/null || true)"
@@ -621,9 +1152,9 @@ cmd_schedule() {
     # (every 30 min to a 04:00 floor) live in `pl demo nightly`, keeping cron
     # itself a single dumb line.
     local entry="CRON_TZ=${DEMO_TZ}
-0 1 * * * ${PROJECT_ROOT}/pl demo nightly ${site} >> ${PROJECT_ROOT}/logs/demo-nightly-${site}.log 2>&1"
+0 1 * * * ${PROJECT_ROOT}/pl demo nightly ${site} --tier=${tier} >> ${PROJECT_ROOT}/logs/demo-nightly-${site}.log 2>&1"
     printf '%s\n%s\n%s\n' "$cleaned" "$marker" "$entry" | crontab -
-    print_status "OK" "Installed nightly demo reset for $site (01:00 ${DEMO_TZ}, retries to ${DEMO_FLOOR_TIME})"
+    print_status "OK" "Installed nightly demo reset for $site --tier=${tier} (01:00 ${DEMO_TZ}, retries to ${DEMO_FLOOR_TIME})"
     print_info "Runs on THIS machine's crontab — the production schedule belongs on met (pl schedule host)."
     print_hint "Verify: crontab -l | grep -A2 'NWP Demo Reset'"
 }
@@ -642,11 +1173,12 @@ main() {
     [[ -n "$site" ]] || { print_error "Site name required."; show_help; return 1; }
 
     # Common option parse (subcommand-specific positionals pass through).
-    local tier="dev" if_idle="" auto_yes="false" skip_seed="false" remove="false"
+    local tier="dev" if_idle="" auto_yes="false" skip_seed="false" remove="false" dry_run="false"
     local passthru=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --tier=*)   tier="${1#--tier=}"; shift ;;
+            --dry-run)  dry_run="true"; shift ;;
             --if-idle)  if_idle="${2:-}"; shift 2 ;;
             --if-idle=*) if_idle="${1#--if-idle=}"; shift ;;
             --force|--yes|-y) auto_yes="true"; shift ;;
@@ -662,10 +1194,11 @@ main() {
         golden)   cmd_golden "$site" "$tier" ;;
         reset)    cmd_reset "$site" "$tier" "$if_idle" "$auto_yes" "$skip_seed" ;;
         nightly)  cmd_nightly "$site" "$tier" ;;
-        status)   cmd_status "$site" ;;
+        status)   cmd_status "$site" "$tier" ;;
         codes)    cmd_codes "$site" "$tier" "${passthru[@]:-list}" ;;
         invite)   cmd_invite "$site" "$tier" "${passthru[@]}" ;;
-        schedule) cmd_schedule "$site" "$remove" ;;
+        schedule) cmd_schedule "$site" "$remove" "$tier" ;;
+        harvest-post) cmd_harvest_post "$site" "$dry_run" ;;
         *)        print_error "Unknown subcommand: $sub"; show_help; return 1 ;;
     esac
 }

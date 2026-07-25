@@ -36,10 +36,155 @@ teardown() {
   [[ "$output" == *"Unknown subcommand"* ]]
 }
 
-@test "demo.sh refuses --tier=live in Phase 1 (fail-closed)" {
-  run bash "$DEMO_CMD" status demo1 --tier=live
+@test "demo.sh refuses --tier=prod outright (a demo tier never resets prod)" {
+  run bash "$DEMO_CMD" status demo1 --tier=prod
   [ "$status" -ne 0 ]
   [[ "$output" == *"REFUSED"* ]]
+}
+
+@test "demo.sh refuses an unknown tier" {
+  run bash "$DEMO_CMD" status demo1 --tier=staging
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Unknown tier"* ]]
+}
+
+@test "demo.sh accepts --tier=live (Phase 2 no longer fail-closed on the tier)" {
+  run bash "$DEMO_CMD" status demo1 --tier=live
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"REFUSED"* ]]
+  [[ "$output" == *"live"* ]]
+}
+
+# --- tier-scoped golden dir ---------------------------------------------------
+
+@test "the live golden lives in its own dir — a local image can never be restored over live" {
+  [ "$(demo_golden_dir demo1)"      = "${PROJECT_ROOT}/sites/demo1/demo-golden" ]
+  [ "$(demo_golden_dir demo1 dev)"  = "${PROJECT_ROOT}/sites/demo1/demo-golden" ]
+  [ "$(demo_golden_dir demo1 stg)"  = "${PROJECT_ROOT}/sites/demo1/demo-golden" ]
+  [ "$(demo_golden_dir demo1 live)" = "${PROJECT_ROOT}/sites/demo1/demo-golden-live" ]
+  [ "$(demo_golden_dir demo1 live)" != "$(demo_golden_dir demo1 dev)" ]
+}
+
+@test "live status reads the live golden dir, not the local one" {
+  mkdir -p "$(demo_golden_dir demo1 live)"
+  # a manifest in the LOCAL dir must not be reported by --tier=live
+  mkdir -p "$(demo_golden_dir demo1 dev)"
+  echo '{"site":"demo1","captured_utc":"2026-01-01T00:00:00Z"}' > "$(demo_golden_dir demo1 dev)/golden.manifest.json"
+  run bash "$DEMO_CMD" status demo1 --tier=live
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"No golden image captured yet"* ]]
+  [[ "$output" == *"--tier=live"* ]]
+}
+
+# --- live reset: fail-closed ordering (static) --------------------------------
+
+@test "live reset verifies the golden BEFORE it touches the remote host" {
+  verify=$(grep -n 'demo_golden_verify "\$gdir" "\$site"' "$DEMO_CMD" | sed -n 2p | cut -d: -f1)
+  drop=$(grep -n 'drush sql:drop' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  [ -n "$verify" ] && [ -n "$drop" ]
+  [ "$verify" -lt "$drop" ]
+}
+
+@test "live reset requires remote demo_mode BEFORE the drop (the anti-wipe guard)" {
+  guard=$(grep -n 'demo_live_require_demo_mode "\$site"' "$DEMO_CMD" | sed -n 2p | cut -d: -f1)
+  drop=$(grep -n 'drush sql:drop' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  [ -n "$guard" ] && [ -n "$drop" ]
+  [ "$guard" -lt "$drop" ]
+}
+
+@test "live reset re-verifies the UPLOADED golden on the remote before the drop" {
+  push=$(grep -n 'demo_push_verified "\$site" "\$gdir/\$GOLDEN_FILES"' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  drop=$(grep -n 'drush sql:drop' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  [ -n "$push" ] && [ -n "$drop" ]
+  [ "$push" -lt "$drop" ]
+  # and the push itself compares a remote-computed sha against the local sidecar
+  grep -q 'sha256 MISMATCH after push' "$DEMO_CMD"
+}
+
+@test "live reset harvests errors BEFORE the wipe" {
+  harvest=$(grep -n 'demo_harvest "\$site" live demo_harvest_collect_live' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  drop=$(grep -n 'drush sql:drop' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  [ -n "$harvest" ] && [ -n "$drop" ]
+  [ "$harvest" -lt "$drop" ]
+}
+
+@test "live restore drops the DB first so orphan tables cannot survive" {
+  grep -q 'drush sql:drop -y' "$DEMO_CMD"
+}
+
+@test "demo_live_ctx refuses a site with no live server configured" {
+  mkdir -p "${PROJECT_ROOT}/sites/demo1"
+  cat > "${PROJECT_ROOT}/sites/demo1/.nwp.yml" <<'YML'
+schema_version: 2
+project:
+  name: demo1
+YML
+  run bash "$DEMO_CMD" golden demo1 --tier=live
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"No live server configured"* ]]
+}
+
+@test "demo_live_ctx refuses when live.enabled is false" {
+  mkdir -p "${PROJECT_ROOT}/sites/demo1"
+  cat > "${PROJECT_ROOT}/sites/demo1/.nwp.yml" <<'YML'
+schema_version: 2
+project:
+  name: demo1
+live:
+  enabled: false
+  server_ip: 203.0.113.9
+YML
+  run bash "$DEMO_CMD" golden demo1 --tier=live
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Live deployment disabled"* ]]
+}
+
+# --- schedule: the cron line carries the tier ---------------------------------
+
+@test "schedule writes a tier-explicit nightly line" {
+  grep -q 'pl demo nightly \${site} --tier=\${tier}' "$DEMO_CMD"
+}
+
+# --- harvest-post -------------------------------------------------------------
+
+@test "harvest-post on an empty spool is a no-op, not an error" {
+  run bash "$DEMO_CMD" harvest-post demo1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"nothing to post"* ]]
+}
+
+@test "harvest-post --dry-run lists digests and posts nothing" {
+  demo_harvest demo1 live echo "PHP Fatal error: kaboom"
+  run bash "$DEMO_CMD" harvest-post demo1 --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would post"* ]]
+  [[ "$output" == *"demo-tester,auto-harvest"* ]]
+  # spool untouched, nothing moved to posted/
+  [ -n "$(ls "$(demo_harvest_dir demo1)"/harvest-*.md)" ]
+  [ ! -d "$(demo_harvest_dir demo1)/posted" ]
+}
+
+@test "harvest-post only moves a digest to posted/ after GitLab confirms (retry-safe)" {
+  # static: the mv is inside the iid-confirmed branch, never before the POST
+  mv_line=$(grep -n 'mv "\$f" "\$hdir/posted/' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  iid_line=$(grep -n 'iid="\$(printf' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  [ -n "$mv_line" ] && [ -n "$iid_line" ]
+  [ "$iid_line" -lt "$mv_line" ]
+  grep -q 'left in the spool for retry' "$DEMO_CMD"
+}
+
+@test "harvest-post uses the least-privilege ops_note_token path, never a raw PAT" {
+  grep -q 'lib/gitlab-issues.sh' "$DEMO_CMD"
+  # no token ever reaches argv/stdout from this command
+  ! grep -q 'PRIVATE-TOKEN' "$DEMO_CMD"
+  ! grep -q 'api_token' "$DEMO_CMD"
+}
+
+@test "status surfaces an unposted harvest backlog" {
+  demo_harvest demo1 live echo "PHP Fatal error: kaboom"
+  run bash "$DEMO_CMD" status demo1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"harvest digest(s) in the spool"* ]]
 }
 
 # --- durations / idle guard ---------------------------------------------------
@@ -353,4 +498,76 @@ EOF
   lines=$(wc -l < "$(demo_log_file demo1)")
   [ "$lines" -eq 2 ]
   grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z reset-ok tier=dev' "$(demo_log_file demo1)"
+}
+
+# --- live post-restore smoke --------------------------------------------------
+
+@test "live smoke retries before declaring the site broken (cold-cache tolerance)" {
+  # a single sample would report a healthy site as broken on a small host
+  grep -q 'for attempt in 1 2 3 4 5; do' "$DEMO_CMD"
+  grep -q 'still \${code} after 5 attempts' "$DEMO_CMD"
+}
+
+@test "a live reset that restores data but fails its smoke check returns FAILURE" {
+  # the nightly wrapper must not treat a degraded site as success
+  grep -q 'reset-ok-degraded' "$DEMO_CMD"
+  block=$(sed -n '/if \[\[ "\$degraded" == "true" \]\]/,/^    fi$/p' "$DEMO_CMD")
+  [[ "$block" == *"return 1"* ]]
+}
+
+@test "live smoke checks /demo/join too — testers must be able to join" {
+  grep -q '/demo/join' "$DEMO_CMD"
+  grep -q 'testers cannot join' "$DEMO_CMD"
+}
+
+@test "the live deploy gate is actually sourced, not silently skipped" {
+  grep -q 'source "\$REPO_ROOT/lib/deploy-gate.sh"' "$DEMO_CMD"
+  gate=$(grep -n 'deploy_gate_require "\$site" "live"' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  drop=$(grep -n 'drush sql:drop' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  [ -n "$gate" ] && [ "$gate" -lt "$drop" ]
+}
+
+# --- schedule: real crontab round-trip against a stub `crontab` ---------------
+
+@test "schedule installs, is idempotent, removes cleanly, and preserves neighbours" {
+  mkdir -p "${TEST_TMP}/bin"
+  cat > "${TEST_TMP}/bin/crontab" <<'STUB'
+#!/bin/bash
+if [ "${1:-}" = "-l" ]; then cat "$STUB_CRON" 2>/dev/null; exit 0; fi
+cat > "$STUB_CRON"
+STUB
+  chmod +x "${TEST_TMP}/bin/crontab"
+  export STUB_CRON="${TEST_TMP}/current.cron"
+  printf '# unrelated\n30 2 * * * /home/rob/bin/nwp-daily-audit\n' > "$STUB_CRON"
+
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --tier=live
+  [ "$status" -eq 0 ]
+  grep -q '^CRON_TZ=Australia/Melbourne$' "$STUB_CRON"
+  grep -q 'pl demo nightly demo1 --tier=live' "$STUB_CRON"
+  grep -q 'nwp-daily-audit' "$STUB_CRON"          # neighbour survived
+
+  # re-install must not duplicate the block
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 --tier=live >/dev/null 2>&1
+  [ "$(grep -c 'pl demo nightly demo1' "$STUB_CRON")" -eq 1 ]
+  [ "$(grep -c '^CRON_TZ=' "$STUB_CRON")" -eq 1 ]
+
+  # removal takes the whole block and leaves the neighbour
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 --tier=live --remove >/dev/null 2>&1
+  ! grep -q 'pl demo nightly demo1' "$STUB_CRON"
+  ! grep -q '^CRON_TZ=' "$STUB_CRON"
+  grep -q 'nwp-daily-audit' "$STUB_CRON"
+}
+
+@test "a dev-tier schedule does not silently become a live one" {
+  mkdir -p "${TEST_TMP}/bin"
+  cat > "${TEST_TMP}/bin/crontab" <<'STUB'
+#!/bin/bash
+if [ "${1:-}" = "-l" ]; then cat "$STUB_CRON" 2>/dev/null; exit 0; fi
+cat > "$STUB_CRON"
+STUB
+  chmod +x "${TEST_TMP}/bin/crontab"
+  export STUB_CRON="${TEST_TMP}/current.cron"; : > "$STUB_CRON"
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 >/dev/null 2>&1
+  grep -q 'pl demo nightly demo1 --tier=dev' "$STUB_CRON"
+  ! grep -q -- '--tier=live' "$STUB_CRON"
 }

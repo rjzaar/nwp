@@ -431,3 +431,56 @@ legitimate ones — the ver-test teardowns held); no scratch/test ddev debris.
 Resumed: nwd cutover with operator-approved Option A (flip nwd vhost php8.2→8.3) — agent instructed to
 verify 8.3 exists + back up the vhost + verify ALL other sites still serve before proceeding, and to stop
 rather than apt-install a PHP stack on the 3.8 GB box.
+
+## [2026-07-25] ✅ ops#133 nwd demo-tier CUTOVER COMPLETE — live tier real-run proven
+**Re-verified state before acting; the handover was stale in two useful ways.**
+- **The PHP "blocker" was never on the box.** `php8.3-fpm` is installed *and running* with a live socket
+  (`/run/php/php8.3-fpm.sock`), and `/etc/nginx/conf.d/nwd.conf` was **already on 8.3** (mtime Jul-24
+  21:49, created by copying `nwc.conf`). The stale 8.2 pin was in the **repo copy**
+  `servers/nwpcode/nginx/conf.d/nwd.conf`. Fixed there — **no nginx edit, no reload, no `gitlab-ctl hup`
+  was performed on the box at all.** Full drift audit of all 18 versioned vhosts: nwd was the only one
+  out of sync; now 18/18 match. All sites re-verified at their opening baseline (nwd/nwc/avc/ba/ssd 200,
+  ss/rgs 303, ssc 301, git 302, dir 403); box load 0.40.
+- **Steps 5+6 were already done** by the pre-crash session: nwd dev, nwd live and nwc `origin/main` all
+  sit on profile `93ffa89` (composer ref identical in both lockfiles); live had `nwc_demo_access` + dblog
+  enabled, `demo_mode: true`, seed present, and a real code redemption (`Sebastian-1572`) already in its
+  user table. Cleaned that leftover tester, reseeded, then captured the golden.
+- **Backups verified intact, not assumed**: CP11–CP13 artifacts all pass `gzip -t` + `sha256sum -c`.
+
+**Built (step 7) — `--tier=live` for `pl demo`:**
+golden = remote `drush sql:dump` + `sudo tar` of `sites/default/files`, sha computed on the far side,
+pulled back and re-verified locally. reset = golden verify → **remote `demo_mode=true` guard** → idle
+guard → deploy gate → pre-wipe harvest → **upload + re-verify the golden ON the remote while the site is
+still intact** → `sql:drop` + restore → files restore → `nwc:seed-demo` → code re-sync → `cr` → smoke.
+Four independent fail-closed guards; nothing destructive runs before all four pass. The golden is
+**tier-scoped** (`demo-golden-live/` ≠ `demo-golden/`) so a dev image can never be restored over live.
+`--tier=prod` is refused outright. **60 bats (was 37), all green.**
+
+**Real end-to-end proof (step 11)** — issued a live code → redeemed it at `/demo/join` (created
+`Kolbe-9305`, real HTTP form round-trip) → `pl demo reset nwd --tier=live --force` → **74s, exit 0**.
+Scorecard 9/9: users back to 16, tester wiped, 5 `nwcdemo_*` seeds present, `demo_mode` true, dblog on,
+codes re-synced, `/` 200, `/demo/join` 200, noindex present. Then a **fresh** post-reset code redeemed
+(`Augustine-1176`) — proving the tier is usable after a reset — and every test code revoked (live state
+back to `{"codes":[]}`).
+
+**One real bug caught by the first run:** the post-restore smoke sampled `/` exactly once and got a 500 —
+a cold-cache first render exceeding the box's `pm.max_children=5` FPM pool, not a broken site (5/5 200 a
+minute later). Hardened: retry ×5, also smoke `/demo/join`, and a persistent failure now **returns
+non-zero** (`reset-ok-degraded`) instead of printing FAIL and exiting 0. Also found `deploy_gate_require`
+was never sourced, so the gate was silently skipped — now sourced and firing.
+
+**Harvest → GitLab (step 10):** `pl demo harvest-post` drains the spool via the least-privilege
+`gitlab.ops_note_token` (lib/gitlab-issues.sh — never the root PAT, token never in argv). Proven with a
+synthetic digest → **nwp/ops#136** (authored by `project_21_bot_…`, labels `demo-tester,auto-harvest`),
+then closed. Retry-safe: a digest only moves to `demo-harvest/posted/` after GitLab returns an iid.
+
+**⚠️ STEP 9 BLOCKED — operator decision required.** The nightly cannot be scheduled on **met**: met has
+**no ssh key authorised as `gitlab@` on the box** (its only box key is `nwp-dr-pull`, correctly
+rrsync-jailed and therefore unable to run drush), no `sites/nwd/` tree, and no `ops_note_token` in its
+`.secrets.yml` (only `linode`). Granting met a plain `gitlab@` key would hand met **root on the forge box
+that runs GitLab + 5 live sites** — exactly what the standing note warns against. **Not done
+unilaterally.** The cron mechanism itself is verified against a stub `crontab` (correct `CRON_TZ=
+Australia/Melbourne` + `0 1 * * *` line, idempotent re-install, clean `--remove`, neighbouring entries
+preserved) and regression-locked in bats. Options for the operator: (a) a **forced-command restricted
+key** for met scoped to the demo reset, (b) run the nightly from ver, (c) run it from the laptop as an
+interim. Until then nwd resets on demand only.

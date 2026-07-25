@@ -36,7 +36,12 @@ unset _common_sh_dir
 # Usage: debug_msg "message"
 debug_msg() {
     local message=$1
-    if [ "$DEBUG" == "true" ]; then
+    # ${DEBUG:-false}: sourced by scripts that run under `set -u`, where a bare
+    # $DEBUG is fatal. `pl backup sweep` dispatches before main() declares its
+    # local DEBUG, so this line silently killed the NIGHTLY SWEEP for 15 days —
+    # every site drifted to "backup 14 days old" while the cron logged nothing
+    # anyone read. Never reintroduce an unguarded expansion here.
+    if [ "${DEBUG:-false}" == "true" ]; then
         echo -e "${CYAN:-\033[0;36m}[DEBUG]${NC:-\033[0m} $message"
     fi
 }

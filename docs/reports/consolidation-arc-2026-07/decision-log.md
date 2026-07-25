@@ -2287,3 +2287,26 @@ so this is not an alarm that always rings.
 exit 2 it logs *"GitLab host unreachable — skipped (no alarm)"* and **`exit 0`**. An unreachable
 GitLab is indistinguishable from all-tokens-healthy, exactly the pattern fixed here. Flagged for its
 owner; `scripts/commands/secrets.sh` and the registry are off-limits to this change.
+
+## [2026-07-26] ✅ ops#133 Phase 2 — ssd joins the demo tier; nwd↔ssd is a PAIRED reset
+ssd rebuilt from `nwp/ss-moodle-plugins` (8 plugins; pinned to `gdpr/art9-depthcontent-fixes`
+@304c4db per ops#137 — main lacks the fb_events write gate). Decoy purged: `sites/ssd/.nwp.yml`
+named `auth_nwc_oauth2` (the lock-less decoy) and now names `auth_nwc`; the rebuild script
+fail-loud sweeps tree + config + `mdl_config_plugins` for it. nwd had NO simple_oauth issuer at
+all (no keypair → `/.well-known/jwks.json` was **500**, 0 scopes, no client) — now provisioned.
+**Paired design (decided):** the PAIR CONTRACT is the source, not a new registry — `demo.enabled:
+true` is the opt-in, so the real ssc↔nwc pair is structurally invisible to the nightly wipe.
+`pl demo golden nwd --with-pair` captures both halves and writes `pair.cut.json` binding them by
+sha256; a paired reset refuses unless both goldens still match the cut (ADR-0031 D9 both-or-
+nothing, mechanically enforced instead of by convention). Reset = verify-both → idle-guard-both →
+harvest-both-into-one-spool → restore PROVIDER-FIRST → reseed → re-assert consumer (oidc/posture/
+courses) and RETURN NON-ZERO if that fails.
+**E2E 8/8 GREEN, twice consecutively** (real chromium): code→redeem→SSO→UID-lock binds→art9_consent
+'1'→self-enrol→gated write PERSISTS; Trialing member's identical write = success:true + 0 rows;
+paired reset wipes the tester from BOTH halves and restores the catalogue; a FRESH code works after.
+39 new bats + 60 Phase-1 bats green. Contract brought to ssc parity (oidc/erasure/boundary blocks;
+JWKS smoke replaces the `oidc_discovery` probe that could never pass against simple_oauth).
+**Gaps:** ssd has no live host (paired `--tier=live` REFUSED, not faked); forced Moodle profile-
+completion because nwc_demo_access sets no profile names; cross-site feedback is a link-back (v1);
+`lib/moodle-promote.sh` emits `name`/`preferred_username` mappings auth_nwc never reads (drift).
+MR opened, NOT auto-merged (auth surface + two-person rule).

@@ -1,0 +1,6 @@
+{
+  "name": "nwp-demo-pair-e2e",
+  "private": true,
+  "description": "ops#133 Phase 2 — browser e2e for the nwd<->ssd daily-reset demo pair",
+  "devDependencies": { "@playwright/test": "~1.49.1" }
+}

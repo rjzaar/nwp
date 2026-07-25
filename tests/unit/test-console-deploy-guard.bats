@@ -1,0 +1,251 @@
+#!/usr/bin/env bats
+# `pl console deploy` must not clobber a diverged target.
+#
+# Real near miss (2026-07-25): the console host carried an UNPUSHED local
+# branch with the voice feature and `pl console deploy` rsyncs with --delete.
+# Only a careful human noticed. These tests pin the fail-closed behaviour.
+#
+# No network: `ssh` and `rsync` are stubbed on PATH and act on a local
+# directory that plays the part of the target host.
+
+setup() {
+  REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
+  CONSOLE_SH="$REPO_ROOT/scripts/commands/console.sh"
+
+  WORK="$BATS_TEST_TMPDIR/w"
+  export FAKE_REMOTE_HOME="$WORK/remote-home"
+  BIN="$WORK/bin"
+  mkdir -p "$FAKE_REMOTE_HOME" "$BIN"
+
+  # --- fake ssh: drop options + host, run the command with HOME=remote home
+  cat > "$BIN/ssh" <<'EOS'
+#!/bin/bash
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o|-i|-p|-F) shift 2 ;;
+    -*) shift ;;
+    *) break ;;
+  esac
+done
+shift            # the host
+mkdir -p "$FAKE_REMOTE_HOME"
+cd "$FAKE_REMOTE_HOME" || exit 1
+# Keep the suite hermetic: never really build a venv or reach PyPI. Drop a
+# marker dir instead, so "did the deploy get that far?" is still assertable.
+case "$*" in
+  *"python3 -m venv"*) mkdir -p "$FAKE_REMOTE_HOME/nwp-console/venv"; echo "(stub) venv + pip"; exit 0 ;;
+esac
+HOME="$FAKE_REMOTE_HOME" exec bash -c "$*"
+EOS
+
+  # --- fake rsync: rewrite "host:relpath" to the fake remote home, then run
+  #     the real rsync so --delete behaves exactly as it would in production.
+  cat > "$BIN/rsync" <<'EOS'
+#!/bin/bash
+args=()
+for a in "$@"; do
+  case "$a" in
+    *:*) [[ "$a" == /* || "$a" == ./* ]] && args+=("$a") || args+=("$FAKE_REMOTE_HOME/${a#*:}") ;;
+    *) args+=("$a") ;;
+  esac
+done
+exec /usr/bin/rsync "${args[@]}"
+EOS
+
+  # --- fake curl: the 5/5 health check always says healthy
+  cat > "$BIN/curl" <<'EOS'
+#!/bin/bash
+echo '{"ok":true,"app":"nwp-console"}'
+EOS
+
+  chmod +x "$BIN/ssh" "$BIN/rsync" "$BIN/curl"
+  export PATH="$BIN:$PATH"
+
+  # settings.console, so the guard clauses pass without touching the real one.
+  cat > "$WORK/nwp.yml" <<'EOY'
+settings:
+  console:
+    host: fake-console-host
+    fqdn: console.test.invalid
+    tailnet_ip: 127.0.0.1
+    port: 8600
+    headscale_url: https://hs.test.invalid
+EOY
+  export NWP_CONSOLE_CONFIG="$WORK/nwp.yml"
+  export NO_COLOR=1
+}
+
+# Seed the fake target with a copy of the real console source, so a deploy from
+# a clean tree is a no-op — exactly the steady state in production.
+seed_target() {
+  mkdir -p "$FAKE_REMOTE_HOME/nwp-console"
+  /usr/bin/rsync -a --delete \
+    --exclude '__pycache__' --exclude '*.pyc' --exclude '.pytest_cache' \
+    "$REPO_ROOT/scripts/console/" "$FAKE_REMOTE_HOME/nwp-console/src/"
+}
+
+@test "console-deploy.sh passes bash -n" {
+  bash -n "$REPO_ROOT/lib/console-deploy.sh"
+}
+
+# ---------------------------------------------------------------------------
+# the classifier
+# ---------------------------------------------------------------------------
+@test "classifier: identical trees produce no findings and exit 0" {
+  source "$REPO_ROOT/lib/console-deploy.sh"
+  mkdir -p "$WORK/a" "$WORK/b"
+  echo hello > "$WORK/a/f.txt"; cp -a "$WORK/a/f.txt" "$WORK/b/f.txt"
+  console_manifest_local "$WORK/a" > "$WORK/a.mf"
+  console_manifest_local "$WORK/b" > "$WORK/b.mf"
+  run console_deploy_classify "$WORK/a.mf" "$WORK/b.mf"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "classifier: a file only on the target is a D finding (exit 10)" {
+  source "$REPO_ROOT/lib/console-deploy.sh"
+  mkdir -p "$WORK/a" "$WORK/b"
+  echo hello > "$WORK/a/f.txt"; cp -a "$WORK/a/f.txt" "$WORK/b/f.txt"
+  echo 'unpushed feature' > "$WORK/b/unpushed_feature.py"
+  console_manifest_local "$WORK/a" > "$WORK/a.mf"
+  console_manifest_local "$WORK/b" > "$WORK/b.mf"
+  run console_deploy_classify "$WORK/a.mf" "$WORK/b.mf"
+  [ "$status" -eq 10 ]
+  [[ "$output" == *"D unpushed_feature.py"* ]]
+}
+
+@test "classifier: a file newer on the target is a ! finding (exit 10)" {
+  source "$REPO_ROOT/lib/console-deploy.sh"
+  mkdir -p "$WORK/a" "$WORK/b"
+  echo ours > "$WORK/a/f.txt"; touch -d '2026-01-01 00:00:00' "$WORK/a/f.txt"
+  echo theirs > "$WORK/b/f.txt"; touch -d '2026-06-01 00:00:00' "$WORK/b/f.txt"
+  console_manifest_local "$WORK/a" > "$WORK/a.mf"
+  console_manifest_local "$WORK/b" > "$WORK/b.mf"
+  run console_deploy_classify "$WORK/a.mf" "$WORK/b.mf"
+  [ "$status" -eq 10 ]
+  [[ "$output" == *"! f.txt"* ]]
+}
+
+@test "classifier: our newer edit is a plain M (no divergence)" {
+  source "$REPO_ROOT/lib/console-deploy.sh"
+  mkdir -p "$WORK/a" "$WORK/b"
+  echo theirs > "$WORK/b/f.txt"; touch -d '2026-01-01 00:00:00' "$WORK/b/f.txt"
+  echo ours > "$WORK/a/f.txt";   touch -d '2026-06-01 00:00:00' "$WORK/a/f.txt"
+  echo new > "$WORK/a/g.txt"
+  console_manifest_local "$WORK/a" > "$WORK/a.mf"
+  console_manifest_local "$WORK/b" > "$WORK/b.mf"
+  run console_deploy_classify "$WORK/a.mf" "$WORK/b.mf"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"M f.txt"* ]]
+  [[ "$output" == *"A g.txt"* ]]
+}
+
+@test "classifier: generated bytecode on the target is NOT divergence" {
+  # If the manifest and the rsync excludes ever disagreed, __pycache__ on the
+  # target would refuse every deploy forever.
+  source "$REPO_ROOT/lib/console-deploy.sh"
+  mkdir -p "$WORK/a" "$WORK/b/app/__pycache__"
+  echo x > "$WORK/a/app.py"; cp -a "$WORK/a/app.py" "$WORK/b/app.py"
+  echo junk > "$WORK/b/app/__pycache__/app.cpython-312.pyc"
+  console_manifest_local "$WORK/a" > "$WORK/a.mf"
+  console_manifest_local "$WORK/b" > "$WORK/b.mf"
+  run console_deploy_classify "$WORK/a.mf" "$WORK/b.mf"
+  [ "$status" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# end-to-end through `pl console deploy` (stubbed ssh/rsync/curl)
+# ---------------------------------------------------------------------------
+@test "clean deploy proceeds all the way to the health check" {
+  seed_target
+  run "$CONSOLE_SH" deploy --no-restart
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"0/5 checking the target"* ]]
+  [[ "$output" != *"REFUSING"* ]]
+  [[ "$output" == *"healthy"* ]]
+}
+
+@test "first-ever deploy (no target tree) is not treated as divergence" {
+  run "$CONSOLE_SH" deploy --no-restart
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"REFUSING"* ]]
+  [ -f "$FAKE_REMOTE_HOME/nwp-console/src/app/main.py" ]
+}
+
+@test "divergence (a file only on the target) REFUSES and writes nothing" {
+  seed_target
+  echo "# unpushed voice feature" > "$FAKE_REMOTE_HOME/nwp-console/src/app/unpushed_feature.py"
+  run "$CONSOLE_SH" deploy --no-restart
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSING to deploy"* ]]
+  [[ "$output" == *"unpushed_feature.py"* ]]
+  [[ "$output" == *"--force-overwrite"* ]]
+  # the file the deploy would have destroyed is still there
+  [ -f "$FAKE_REMOTE_HOME/nwp-console/src/app/unpushed_feature.py" ]
+  [ ! -d "$FAKE_REMOTE_HOME/nwp-console/backups" ]
+}
+
+@test "divergence (target file edited more recently) REFUSES" {
+  seed_target
+  echo "# hand-edit on the box" >> "$FAKE_REMOTE_HOME/nwp-console/src/app/config.py"
+  touch -d "$(date -d '+1 hour' '+%Y-%m-%d %H:%M:%S')" "$FAKE_REMOTE_HOME/nwp-console/src/app/config.py"
+  run "$CONSOLE_SH" deploy --no-restart
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSING to deploy"* ]]
+  [[ "$output" == *"config.py"* ]]
+  grep -q "hand-edit on the box" "$FAKE_REMOTE_HOME/nwp-console/src/app/config.py"
+}
+
+@test "--force-overwrite takes a timestamped backup, THEN deploys" {
+  seed_target
+  echo "# unpushed voice feature" > "$FAKE_REMOTE_HOME/nwp-console/src/app/unpushed_feature.py"
+  run "$CONSOLE_SH" deploy --no-restart --force-overwrite
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Backing up the target"* ]]
+  [[ "$output" == *"backup taken"* ]]
+  # the deploy really happened (unpushed_feature.py deleted by --delete)…
+  [ ! -f "$FAKE_REMOTE_HOME/nwp-console/src/app/unpushed_feature.py" ]
+  # …but it is recoverable from the backup this took first
+  local tarball
+  tarball=$(ls "$FAKE_REMOTE_HOME"/nwp-console/backups/src-*.tar.gz | head -1)
+  [ -s "$tarball" ]
+  run tar tzf "$tarball"
+  [[ "$output" == *"src/app/unpushed_feature.py"* ]]
+}
+
+@test "--dry-run on a diverged target writes nothing and still refuses" {
+  seed_target
+  echo "# unpushed voice feature" > "$FAKE_REMOTE_HOME/nwp-console/src/app/unpushed_feature.py"
+  run "$CONSOLE_SH" deploy --dry-run
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSING to deploy"* ]]
+  [ -f "$FAKE_REMOTE_HOME/nwp-console/src/app/unpushed_feature.py" ]
+  [ ! -d "$FAKE_REMOTE_HOME/nwp-console/backups" ]
+}
+
+@test "--dry-run on a clean target shows the plan and writes nothing" {
+  seed_target
+  # a change that WOULD be deployed
+  before=$(stat -c %Y "$FAKE_REMOTE_HOME/nwp-console/src/app/main.py")
+  run "$CONSOLE_SH" deploy --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--dry-run: nothing was written"* ]]
+  [[ "$output" != *"1/5 rsync source"* ]]
+  [ ! -d "$FAKE_REMOTE_HOME/nwp-console/venv" ]
+  [ "$(stat -c %Y "$FAKE_REMOTE_HOME/nwp-console/src/app/main.py")" = "$before" ]
+}
+
+@test "--dry-run with --force-overwrite still takes no backup" {
+  seed_target
+  echo "# unpushed" > "$FAKE_REMOTE_HOME/nwp-console/src/app/unpushed_feature.py"
+  run "$CONSOLE_SH" deploy --dry-run --force-overwrite
+  [ "$status" -eq 0 ]
+  [ ! -d "$FAKE_REMOTE_HOME/nwp-console/backups" ]
+  [ -f "$FAKE_REMOTE_HOME/nwp-console/src/app/unpushed_feature.py" ]
+}
+
+@test "deploy rejects an unknown option instead of ignoring it" {
+  run "$CONSOLE_SH" deploy --yolo
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown option"* ]]
+}

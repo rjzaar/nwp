@@ -11,7 +11,8 @@ set -euo pipefail
 # in the gitignored nwp.yml under settings.console — NOT in this script
 # (P61 leakage gate). See example.nwp.yml for the schema.
 #
-#   pl console deploy [--host <ssh-host>] [--no-restart] [--dry-run] [-y]
+#   pl console deploy [--host <ssh-host>] [--no-restart] [--dry-run|-n]
+#                     [--force-overwrite] [-y]             divergence guard, then
 #                                                          fate manifest, then
 #                                                          rsync + venv + unit + health
 #   pl console status [--host <ssh-host>]                  systemd + /health over mesh
@@ -36,7 +37,8 @@ REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 
 source "$REPO_ROOT/lib/ui.sh"
-source "$REPO_ROOT/lib/impact.sh"   # ops#47 impact contract (fate manifest)
+source "$REPO_ROOT/lib/console-deploy.sh"   # target-divergence guard for deploy
+source "$REPO_ROOT/lib/impact.sh"           # ops#47 impact contract (fate manifest)
 
 # Resolve operator config: env override > nwp.yml chain > public placeholder.
 _console_cfg_file() {
@@ -83,7 +85,7 @@ show_help() {
 ${BOLD}pl console${NC} — NWP Console (mesh-only web console on ${CONSOLE_HOST})
 
 ${BOLD}USAGE:${NC}
-    pl console deploy [--host <ssh-host>] [--no-restart] [--dry-run] [-y]
+    pl console deploy [--host <ssh-host>] [--no-restart] [--dry-run] [--force-overwrite] [-y]
     pl console status [--host <ssh-host>]
     pl console user add <name> --role viewer|operator|owner
     pl console user reset <name>       (break-glass: shell-only, revokes passkeys)
@@ -93,9 +95,19 @@ ${BOLD}USAGE:${NC}
     pl console cert                    (issue/renew the LE cert, DNS-01, push to host)
     pl console logs [--host <ssh-host>]
 
-deploy rsyncs with --delete, so it prints a fate manifest first (what is
-deleted / overwritten / added on the host, computed by rsync --dry-run itself).
---dry-run stops after the report; -y skips only the prompt, never the report.
+${BOLD}DEPLOY SAFETY (two gates, in this order):${NC}
+    1. DIVERGENCE GUARD — "is it safe to proceed at all?" deploy uses
+       'rsync --delete', so it first compares the target's tree with what is
+       about to be shipped and REFUSES if the target holds anything this deploy
+       does not explain — files that exist only there, or files edited there
+       more recently than ours. --force-overwrite proceeds anyway, taking a
+       timestamped tar.gz backup on the target FIRST.
+    2. FATE MANIFEST — "what exactly will change?" the deploy then prints what
+       is deleted / overwritten / added on the host, computed by
+       rsync --dry-run itself, and confirms at a strength matching the damage.
+       -y skips only the prompt, never the report.
+
+    --dry-run runs BOTH gates and writes nothing.
 
 First run: dns -> cert -> deploy -> user add <you> --role owner -> open the
 printed one-time enrolment link on the device that holds your passkey.
@@ -207,13 +219,49 @@ NWP_CONSOLE_STT_MAX_SECONDS=60
 NWP_CONSOLE_TTS_BACKEND=auto
 NWP_CONSOLE_TTS_PIPER=%h/piper/venv/bin/piper
 NWP_CONSOLE_TTS_VOICE=%h/piper/voices/en_US-lessac-medium.onnx
+# Fleet state is PUBLISHED here by \`pl fleet publish\` (this host has no sites).
+# Past FLEET_MAX_AGE seconds the panes mark the snapshot STALE instead of
+# presenting it as current. Keep the publisher's cron well inside this window.
+NWP_CONSOLE_FLEET_STATE=%h/.local/share/nwp-console/fleet-state.json
+NWP_CONSOLE_FLEET_MAX_AGE=7200
 EOF
     # systemd EnvironmentFile doesn't expand %h — replace with the real home dir.
     _ssh 'sed -i "s|%h|$HOME|g" ~/.config/nwp-console/env'
 }
 
+# -- gate 1: divergence guard (the 2026-07-25 near miss) ---------------------
+# `rsync --delete` is a loaded gun pointed at whatever is on the target. Before
+# firing, diff the target against what we are about to deploy and REFUSE when
+# the target holds work this change does not explain. See lib/console-deploy.sh.
+_deploy_classify() { # $1 outdir -> writes $1/classification; echoes rc
+    local out="$1" rc=0
+    console_manifest_local "$CONSOLE_SRC" > "$out/local.mf" || return 2
+    if ! _ssh "cd nwp-console/src 2>/dev/null && { $CONSOLE_MANIFEST_CMD ; }" > "$out/target.mf" 2>/dev/null; then
+        : > "$out/target.mf"      # no target tree yet => first deploy, nothing to lose
+    fi
+    console_deploy_classify "$out/local.mf" "$out/target.mf" > "$out/classification" || rc=$?
+    printf '%s' "$rc"
+}
+
+_deploy_backup_target() {
+    local stamp; stamp=$(date -u +%Y%m%d-%H%M%S)
+    local dest="nwp-console/backups/src-${stamp}.tar.gz"
+    print_info "Backing up the target's current tree first -> ~/${dest}"
+    if ! _ssh "mkdir -p ~/nwp-console/backups && tar czf ~/${dest} -C ~/nwp-console src"; then
+        print_error "backup FAILED — refusing to overwrite an unbacked-up target"
+        return 1
+    fi
+    local size; size=$(_ssh "wc -c < ~/${dest}" 2>/dev/null | tr -d ' ' || true)
+    if [ -z "$size" ] || [ "$size" -lt 100 ] 2>/dev/null; then
+        print_error "backup looks empty (${size:-none} bytes) — refusing to proceed"
+        return 1
+    fi
+    print_success "backup taken: ~/${dest} (${size} bytes) — restore with: tar xzf ~/${dest} -C ~/nwp-console"
+    return 0
+}
+
 ################################################################################
-# Deploy fate manifest (nwp/ops#47 impact contract — lib/impact.sh)
+# gate 2: deploy fate manifest (nwp/ops#47 impact contract — lib/impact.sh)
 #
 # `pl console deploy` rsyncs with --delete, so it can destroy work that exists
 # ONLY on the console host. That is not hypothetical: on 2026-07-25 the host
@@ -302,37 +350,98 @@ _console_deploy_manifest() {
     impact_render
 }
 
+################################################################################
+# cmd_deploy — the two gates, composed.
+#
+# They answer different questions and BOTH have to be asked, in this order:
+#
+#   gate 1  divergence guard   "is it safe to proceed AT ALL?"
+#           Compares the target's real tree against ours (sha256 + mtime).
+#           Work that exists only on the host, or is newer there, is work this
+#           deploy cannot explain — REFUSE, unless --force-overwrite, which
+#           takes a verified timestamped backup on the target first.
+#
+#   gate 2  fate manifest      "what EXACTLY will change?"
+#           rsync's own --dry-run --itemize-changes, rendered through
+#           lib/impact.sh, confirmed at a strength matching the damage.
+#
+# Gate 1 can say "stop" without gate 2 ever running (nothing to describe if we
+# are not going). Gate 2 never runs after a write. -y skips gate 2's PROMPT,
+# never its REPORT. --dry-run runs both gates and writes nothing.
+################################################################################
 cmd_deploy() {
-    local restart=true dry_run=false auto_yes=false a
-    for a in "$@"; do
-        case "$a" in
-            --no-restart) restart=false ;;
-            --dry-run)    dry_run=true ;;
-            --yes|-y)     auto_yes=true ;;
-            "")           ;;
-            *) print_error "unknown deploy option: $a"; return 1 ;;
+    local restart=true dry_run=false force=false auto_yes=false
+    while [ $# -gt 0 ]; do
+        case "${1:-}" in
+            --no-restart)      restart=false ;;
+            --dry-run|-n)      dry_run=true ;;
+            --force-overwrite) force=true ;;
+            --yes|-y)          auto_yes=true ;;
+            "")                : ;;
+            *) print_error "unknown option: $1"; return 1 ;;
         esac
+        shift
     done
+    # -y answers gate 2's prompt up front; --force-overwrite may also answer it
+    # later, but only once the target backup has actually been taken.
+    local prompt_answered="$auto_yes"
     print_info "Deploying NWP Console -> ${CONSOLE_HOST}"
 
-    print_info "1/5 rsync source"
+    # --- gate 1: divergence guard -------------------------------------------
+    print_info "0/5 checking the target for local changes"
+    local wk; wk=$(mktemp -d); chmod 700 "$wk"
+    # shellcheck disable=SC2064
+    trap "rm -rf '$wk'" RETURN
+    local crc; crc=$(_deploy_classify "$wk")
+    if [ "$crc" = "2" ]; then
+        print_error "could not build the deploy manifests — refusing to deploy blind"
+        return 1
+    fi
+    console_deploy_summary "$wk/classification"
 
-    # ops#47: compute + print the fate manifest before ANYTHING is written —
-    # including the mkdir, so --dry-run really does leave the host untouched.
+    if console_deploy_has_divergence "$wk/classification"; then
+        if [ "$force" != true ]; then
+            print_error "REFUSING to deploy: ${CONSOLE_HOST} has changes this deploy does not explain."
+            print_error "Files marked D exist ONLY on the target and 'rsync --delete' would DESTROY them."
+            print_error "Files marked ! are NEWER on the target and would be overwritten."
+            print_hint "Look first:      pl console deploy --dry-run"
+            print_hint "Rescue the work: ssh ${CONSOLE_HOST} 'cd ~/nwp-console/src && git status' (or scp it back)"
+            print_hint "Proceed anyway:  pl console deploy --force-overwrite   (takes a timestamped backup first)"
+            return 1
+        fi
+        print_warning "--force-overwrite: proceeding over target-local changes"
+        if [ "$dry_run" != true ]; then
+            _deploy_backup_target || return 1
+            # --force-overwrite is an explicit, typed-out authorisation for
+            # exactly the destruction gate 1 just itemised, and the verified
+            # backup above means this is no longer the last copy. So it stands
+            # in for gate 2's PROMPT — never for gate 2's REPORT, which is
+            # still rendered below (contract rule, ops#47).
+            prompt_answered=true
+        fi
+    fi
+
+    # --- gate 2: fate manifest ----------------------------------------------
+    # Computed + printed before ANYTHING is written — including the mkdir, so
+    # --dry-run really does leave the host untouched.
     _console_deploy_manifest || return 1
+
     if [ "$dry_run" = true ]; then
-        print_success "[dry-run] nothing was written — the report above is what a real deploy would do."
+        print_info "--dry-run: nothing was written to ${CONSOLE_HOST} (no rsync, no venv, no restart)"
+        print_info "The report above is what a real deploy would do."
         return 0
     fi
+
     case "$CONSOLE_FATE" in
         # Files only the host has: --delete is their last copy. Typed tier.
-        delete)    impact_confirm typed "$CONSOLE_HOST" "$auto_yes" \
+        delete)    impact_confirm typed "$CONSOLE_HOST" "$prompt_answered" \
                        || { print_info "Deploy cancelled."; return 1; } ;;
-        overwrite) impact_confirm standard "overwrite those files on ${CONSOLE_HOST}" "$auto_yes" \
+        overwrite) impact_confirm standard "overwrite those files on ${CONSOLE_HOST}" "$prompt_answered" \
                        || { print_info "Deploy cancelled."; return 1; } ;;
         *)         : ;;   # nothing destructive — report printed, no prompt
     esac
 
+    print_info "1/5 rsync source"
     _ssh 'mkdir -p ~/nwp-console/src'
     _console_rsync
 

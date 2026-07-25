@@ -64,6 +64,15 @@ form.inline { display: inline-flex; margin: 0 4px 0 0; }
 .dot.green { background: var(--green); } .dot { background: var(--muted); }
 .reasons span { display: block; color: var(--muted); font-size: 12.5px; }
 
+/* Provenance strip: where this fleet state came from and how old it is.
+   Quiet when the state is fresh; impossible to miss when it is not. */
+.prov { font-size: 12.5px; color: var(--muted); margin: 2px 0 10px; line-height: 1.5; }
+.prov code { font-size: 12px; }
+.prov-warn { color: var(--warn); border-left: 3px solid var(--warn);
+  background: var(--card2); border-radius: 6px; padding: 8px 10px; }
+.prov-stale { color: var(--err); border: 1px solid var(--err); background: var(--card2);
+  border-radius: 8px; padding: 10px; font-size: 13.5px; }
+
 .prio-high td { border-left: 3px solid var(--err); }
 .prio-medium td { border-left: 3px solid var(--warn); }
 .pipe-success { border-color: var(--ok); color: var(--ok); }

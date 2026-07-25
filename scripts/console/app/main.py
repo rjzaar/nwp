@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-from . import config, notify, parsers, quokka, voice, webauthn_flow
+from . import config, fleet_state, notify, parsers, quokka, voice, webauthn_flow
 from .actions import ACTIONS, ActionError, build_action
 from .authz import role_allows
 from .gitlab_api import GitLab
@@ -301,18 +301,43 @@ def _pane(request: Request, template: str, ctx: dict, user: dict,
 
 
 # -- shared gatherers (panes + tab counts + Quokka context) ------------------
-def _gather_rag(force: bool = False) -> tuple[dict, dict]:
-    res = run_pl_cached(config.NWP_ROOT, ["rag", "--json", "--no-todo"],
-                        ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=force)
-    rag = parsers.parse_rag(res["out"]) if res["out"] else {"ok": False, "error": res["err"] or f"rc={res['rc']}"}
-    return rag, res
+#
+# Fleet state is PUBLISHED to this host, not computed on it: the sites live on
+# the workstation, so `pl rag` here sees an empty fleet. `pl fleet publish`
+# ships a snapshot; fleet_state.decide() picks the source and hands back the
+# provenance the panes render. See scripts/console/app/fleet_state.py.
+def _gather_fleet_feed(name: str, argv: list[str], parse, rows_key: str,
+                       empty_is_missing: bool = False,
+                       force: bool = False) -> tuple[dict, dict, dict]:
+    def local() -> tuple[dict, dict]:
+        res = run_pl_cached(config.NWP_ROOT, argv, ttl=config.PANE_CACHE_TTL,
+                            timeout=config.PL_TIMEOUT, force=force)
+        parsed = parse(res["out"]) if res["out"] else {
+            "ok": False, "error": res["err"] or f"rc={res['rc']}"}
+        return parsed, res
+
+    snap = fleet_state.load(config.FLEET_STATE_FILE)
+    parsed, res, prov = fleet_state.decide(snap, name, local, config.FLEET_MAX_AGE, rows_key)
+    if parsed is None:                       # published feed won: parse it the same way
+        parsed = parse(res["out"])
+    # For RAG, an 'ok, zero sites' answer from a host that has no sites is not
+    # an answer. Saying so (with the fix) beats an empty table that looks
+    # healthy — and it keeps the RAG notifier from seeding an empty fleet and
+    # then screaming RED at every site the moment publishing starts. (An empty
+    # TODO sweep, by contrast, is real good news — hence the flag.)
+    if empty_is_missing and prov["source"] == "local" and parsed.get("ok") and not parsed.get(rows_key):
+        parsed = dict(fleet_state.empty_local_error(prov, "fleet"), **{rows_key: []})
+    return parsed, res, prov
 
 
-def _gather_todo(force: bool = False) -> tuple[dict, dict]:
-    res = run_pl_cached(config.NWP_ROOT, ["todo", "check", "--json"],
-                        ttl=config.PANE_CACHE_TTL, timeout=config.PL_TIMEOUT, force=force)
-    todo = parsers.parse_todo(res["out"]) if res["out"] else {"ok": False, "error": res["err"] or f"rc={res['rc']}"}
-    return todo, res
+def _gather_rag(force: bool = False) -> tuple[dict, dict, dict]:
+    return _gather_fleet_feed("rag", ["rag", "--json", "--no-todo"],
+                              parsers.parse_rag, "sites", empty_is_missing=True, force=force)
+
+
+def _gather_todo(force: bool = False) -> tuple[dict, dict, dict]:
+    return _gather_fleet_feed("todo", ["todo", "check", "--json"],
+                              parsers.parse_todo, "items", force=force)
 
 
 def _gather_demo(force: bool = False) -> list[dict]:
@@ -397,7 +422,9 @@ def tab_counts(request: Request, user: dict = Depends(require("viewer"))):
     except Exception:  # noqa: BLE001
         pass
 
-    add("fleet", lambda: (parsers.fmt_rag_tab(_gather_rag()[0]), False))
+    # The fleet tab flags itself when the state it is showing is stale, so a
+    # dead publisher is visible from the tab bar, not only inside the pane.
+    add("fleet", lambda: (lambda rag, _r, prov: (parsers.fmt_rag_tab(rag), bool(prov.get("stale"))))(*_gather_rag()))
     add("issues", _issues_count)
     add("todo", lambda: (todo_txt, False))
     add("demo", lambda: _demo_tab(_gather_demo()))
@@ -409,23 +436,24 @@ def tab_counts(request: Request, user: dict = Depends(require("viewer"))):
 
 @app.get("/panes/fleet", response_class=HTMLResponse)
 def pane_fleet(request: Request, force: int = 0, user: dict = Depends(require("viewer"))):
-    rag, res = _gather_rag(force=bool(force))
-    return _pane(request, "pane_fleet.html", {"rag": rag, "res": res}, user,
-                 tab="fleet", tab_count=parsers.fmt_rag_tab(rag))
+    rag, res, prov = _gather_rag(force=bool(force))
+    return _pane(request, "pane_fleet.html", {"rag": rag, "res": res, "prov": prov}, user,
+                 tab="fleet", tab_count=parsers.fmt_rag_tab(rag), tab_alert=bool(prov.get("stale")))
 
 
 @app.get("/panes/todo", response_class=HTMLResponse)
 def pane_todo(request: Request, force: int = 0, user: dict = Depends(require("viewer"))):
-    todo, res = _gather_todo(force=bool(force))
-    return _pane(request, "pane_todo.html", {"todo": todo, "res": res}, user,
+    todo, res, prov = _gather_todo(force=bool(force))
+    return _pane(request, "pane_todo.html", {"todo": todo, "res": res, "prov": prov}, user,
                  tab="todo", tab_count=parsers.fmt_n_tab(len(todo.get("items", []))) if todo.get("ok") else "")
 
 
 @app.get("/panes/backups", response_class=HTMLResponse)
 def pane_backups(request: Request, force: int = 0, user: dict = Depends(require("viewer"))):
-    todo, res = _gather_todo(force=bool(force))
+    todo, res, prov = _gather_todo(force=bool(force))
     items = parsers.todo_backup_items(todo)
-    return _pane(request, "pane_backups.html", {"items": items, "todo_ok": todo.get("ok", False), "res": res}, user,
+    return _pane(request, "pane_backups.html",
+                 {"items": items, "todo_ok": todo.get("ok", False), "res": res, "prov": prov}, user,
                  tab="backups", tab_count=parsers.fmt_n_tab(len(items), "stale") if items else "")
 
 
@@ -540,7 +568,13 @@ def _quokka_state(force: bool = False) -> dict:
     """Best-effort live-state gather from the EXISTING read-only gatherers."""
     state: dict = {"generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
     try:
-        state["rag"] = _gather_rag(force=force)[0]
+        rag, _res, prov = _gather_rag(force=force)
+        state["rag"] = rag
+        # Tell the model where this came from, so it can never present a stale
+        # snapshot as the current state of the fleet.
+        line = fleet_state.describe(prov)
+        if line:
+            state.setdefault("extra_lines", []).append(line)
     except Exception:  # noqa: BLE001
         pass
     try:

@@ -255,6 +255,33 @@ EOS
   grep -q 'something-else' "$FAKE_CRONTAB"            # the operator's line survives
 }
 
+@test "schedule: the entry carries a PATH — cron's bare PATH cannot find yq" {
+  # A cron that fails quietly is worse than no cron. yq usually lives in
+  # ~/.local/bin; without it the publish resolves no console host at all.
+  _stub_crontab ''
+  PATH="$WORK/bin:$PATH" run "$FLEET_SH" schedule
+  [ "$status" -eq 0 ]
+  grep -q 'PATH=' "$FAKE_CRONTAB"
+  # the PATH is set for ./pl itself, not just for the cd
+  grep -qE 'cd .* && PATH="[^"]+" \./pl fleet publish' "$FAKE_CRONTAB"
+  # and it really contains the directory yq is in on this machine
+  yqdir=$(dirname "$(command -v yq)")
+  grep -q "$yqdir" "$FAKE_CRONTAB"
+}
+
+@test "the scheduled command actually runs under a bare cron environment" {
+  # Extract the entry this verb would install and run it with cron's env.
+  _stub_crontab ''
+  PATH="$WORK/bin:$PATH" run "$FLEET_SH" schedule
+  [ "$status" -eq 0 ]
+  cmd=$(grep 'pl fleet publish --quiet' "$FAKE_CRONTAB" | sed 's/^[^ ]* [^ ]* [^ ]* [^ ]* [^ ]* //')
+  # strip the redirection; we only care that the tools resolve
+  cmd=${cmd%% >>*}
+  run env -i HOME="$HOME" SHELL=/bin/sh /bin/sh -c "${cmd/.\/pl fleet publish --quiet/./pl fleet --help}"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pl fleet"* ]]
+}
+
 @test "schedule: displacing an existing line reports it and fails closed with no TTY" {
   _stub_crontab '@daily /usr/bin/something-else
 */5 * * * * cd /somewhere && ./pl fleet publish --quiet

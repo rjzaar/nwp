@@ -85,3 +85,116 @@ setup() {
     | grep -E '\"(stg2live|live2prod|stg2prod|deploy-gate|server-apply|rollback|restore|live)\"'"
   [ "$status" -ne 0 ]
 }
+
+################################################################################
+# ops#47 impact contract — `deploy` rsyncs with --delete, so it must print a
+# COMPUTED fate manifest before the first byte moves. ssh/rsync/curl are
+# stubbed on PATH: no network, no console host, and the stub records whether
+# the REAL transfer ever ran.
+################################################################################
+
+_stub_bin() {   # writes ssh/rsync/curl stubs into $1; rsync prints an itemized plan
+  local bin="$1"
+  cat > "$bin/ssh" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+  cat > "$bin/rsync" <<EOF
+#!/bin/bash
+for a in "\$@"; do [ "\$a" = "--dry-run" ] && dry=1; done
+if [ -n "\${dry:-}" ]; then
+  printf '%s\n' '*deleting   app/only_on_host.py' \\
+                '<f+++++++++ app/brand_new.py' \\
+                '<f.st...... app/main.py' \\
+                'cd+++++++++ app/'
+  exit 0
+fi
+touch "$bin/REAL_RSYNC_RAN"
+EOF
+  cat > "$bin/curl" <<'EOF'
+#!/bin/bash
+exit 1
+EOF
+  chmod +x "$bin/ssh" "$bin/rsync" "$bin/curl"
+}
+
+@test "deploy --dry-run renders the fate manifest rsync itself computed, and writes nothing" {
+  BIN=$(mktemp -d); _stub_bin "$BIN"
+  PATH="$BIN:$PATH" NWP_CONSOLE_CONFIG=/nonexistent \
+    NWP_CONSOLE_FQDN=console.test.invalid NWP_CONSOLE_HOST=stub-host \
+    run "$CONSOLE_SH" deploy --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WILL BE PERMANENTLY DELETED"* ]]
+  [[ "$output" == *"only_on_host.py"* ]]
+  [[ "$output" == *"WILL BE OVERWRITTEN"* ]]
+  [[ "$output" == *"main.py"* ]]
+  [[ "$output" == *"dry-run"* ]]
+  # the real transfer must NOT have run
+  [ ! -f "$BIN/REAL_RSYNC_RAN" ]
+  rm -rf "$BIN"
+}
+
+@test "a deploy that would delete host-only files fails closed without a TTY (no -y)" {
+  BIN=$(mktemp -d); _stub_bin "$BIN"
+  PATH="$BIN:$PATH" NWP_CONSOLE_CONFIG=/nonexistent \
+    NWP_CONSOLE_FQDN=console.test.invalid NWP_CONSOLE_HOST=stub-host \
+    run "$CONSOLE_SH" deploy
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"WILL BE PERMANENTLY DELETED"* ]]
+  [[ "$output" == *"No terminal available"* ]]
+  [ ! -f "$BIN/REAL_RSYNC_RAN" ]
+  rm -rf "$BIN"
+}
+
+@test "-y skips the PROMPT, never the REPORT (manifest still printed, deploy proceeds)" {
+  BIN=$(mktemp -d); _stub_bin "$BIN"
+  PATH="$BIN:$PATH" NWP_CONSOLE_CONFIG=/nonexistent \
+    NWP_CONSOLE_FQDN=console.test.invalid NWP_CONSOLE_HOST=stub-host \
+    run "$CONSOLE_SH" deploy -y --no-restart
+  [[ "$output" == *"WILL BE PERMANENTLY DELETED"* ]]
+  [[ "$output" == *"only_on_host.py"* ]]
+  [ -f "$BIN/REAL_RSYNC_RAN" ]
+  rm -rf "$BIN"
+}
+
+@test "deploy REFUSES when the plan cannot be computed (never ships blind)" {
+  BIN=$(mktemp -d); _stub_bin "$BIN"
+  cat > "$BIN/rsync" <<EOF
+#!/bin/bash
+for a in "\$@"; do [ "\$a" = "--dry-run" ] && { echo "ssh: connect to host stub-host port 22: No route to host" >&2; exit 255; }; done
+touch "$BIN/REAL_RSYNC_RAN"
+EOF
+  chmod +x "$BIN/rsync"
+  PATH="$BIN:$PATH" NWP_CONSOLE_CONFIG=/nonexistent \
+    NWP_CONSOLE_FQDN=console.test.invalid NWP_CONSOLE_HOST=stub-host \
+    run "$CONSOLE_SH" deploy -y
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"REFUSING to deploy blind"* ]]
+  [ ! -f "$BIN/REAL_RSYNC_RAN" ]
+  rm -rf "$BIN"
+}
+
+@test "the dry run and the real transfer are ONE definition (they cannot drift)" {
+  # exactly one 'rsync -az --delete' in the file, inside _console_rsync
+  [ "$(grep -c 'rsync -az --delete' "$CONSOLE_SH")" -eq 1 ]
+  grep -A3 '^_console_rsync()' "$CONSOLE_SH" | grep -q 'rsync -az --delete'
+}
+
+@test "the manifest is built BEFORE the transfer (static ordering)" {
+  manifest=$(grep -n '_console_deploy_manifest ||' "$CONSOLE_SH" | head -1 | cut -d: -f1)
+  transfer=$(grep -n '^    _console_rsync$' "$CONSOLE_SH" | head -1 | cut -d: -f1)
+  [ -n "$manifest" ] && [ -n "$transfer" ]
+  [ "$manifest" -lt "$transfer" ]
+}
+
+@test "host-only deletions confirm at the TYPED tier (their last copy)" {
+  grep -q 'impact_confirm typed "\$CONSOLE_HOST"' "$CONSOLE_SH"
+}
+
+@test "--dry-run touches the host at all: not even the mkdir runs before the report" {
+  # the manifest must precede every remote write, mkdir included
+  manifest=$(grep -n '_console_deploy_manifest ||' "$CONSOLE_SH" | head -1 | cut -d: -f1)
+  mkdir_line=$(grep -n "mkdir -p ~/nwp-console/src" "$CONSOLE_SH" | head -1 | cut -d: -f1)
+  [ -n "$manifest" ] && [ -n "$mkdir_line" ]
+  [ "$manifest" -lt "$mkdir_line" ]
+}

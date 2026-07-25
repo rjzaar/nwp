@@ -6,8 +6,11 @@ Action gate = the fail-closed allowlist in actions.py (no live/prod verbs).
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -17,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-from . import config, parsers, quokka, webauthn_flow
+from . import config, notify, parsers, quokka, webauthn_flow
 from .actions import ACTIONS, ActionError, build_action
 from .authz import role_allows
 from .gitlab_api import GitLab
@@ -32,7 +35,40 @@ PANES = [
 
 BASE = Path(__file__).resolve().parent.parent
 
-app = FastAPI(title="NWP Console", docs_url=None, redoc_url=None, openapi_url=None)
+
+async def _notify_loop() -> None:
+    """Periodic push checker. One task, no extra unit, no extra port.
+
+    Every pass runs in a worker thread (the gatherers shell out to `pl`) and
+    swallows its own failures — the notifier must never be able to take the
+    console down or block a request.
+    """
+    await asyncio.sleep(min(60, max(1, config.NOTIFY_INTERVAL)))  # let the host settle
+    while True:
+        try:
+            await asyncio.to_thread(_notify_pass)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — a bad pass must not kill the loop
+            pass
+        await asyncio.sleep(config.NOTIFY_INTERVAL)
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    task = None
+    if config.NOTIFY_INTERVAL > 0:
+        task = asyncio.create_task(_notify_loop())
+    try:
+        yield
+    finally:
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+
+app = FastAPI(title="NWP Console", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 
@@ -42,6 +78,8 @@ _challenge_signer = URLSafeTimedSerializer(config.secret_key(), salt="nwp-consol
 store = UserStore(config.DATA_DIR / "users.json")
 audit = AuditLog(config.DATA_DIR / "audit.jsonl")
 gitlab = GitLab(config.GITLAB_HOST, config.GITLAB_TOKEN_FILE)
+notifier = notify.Notifier(config.GOTIFY_URL, config.GOTIFY_TOKEN_FILE, config.GOTIFY_TIMEOUT)
+notify_state = notify.NotifyState(config.NOTIFY_STATE_FILE)
 
 
 # ---------------------------------------------------------------------------
@@ -648,6 +686,146 @@ def quokka_brief(request: Request, user: dict = Depends(require("viewer"))):
         raise HTTPException(status_code=503, detail="Quokka is asleep (local model not reachable)")
     messages = quokka.build_messages(quokka.render_context(_brief_state()), [], quokka.BRIEF_PROMPT)
     return _quokka_streaming_response(messages, user, "quokka.brief", "summarize today")
+
+
+# ---------------------------------------------------------------------------
+# Gotify push notifications (Phase 3) — the console speaks first.
+#
+# One periodic checker, no second service and no second port. It reuses the
+# EXACT gatherers the panes use (and their TTL cache), so watching costs
+# roughly one extra pane refresh per NOTIFY_INTERVAL. Detection lives in
+# notify.py as pure functions; this layer only feeds them and ships the result.
+# ---------------------------------------------------------------------------
+def _notify_gather() -> dict:
+    """One best-effort gather for the checker. A feed that fails is simply
+    absent — its detector then produces nothing and leaves its state alone."""
+    g: dict = {"gitlab_url": gitlab.web_url(config.OPS_PROJECT)}
+    try:
+        g["rag"] = _gather_rag()[0]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        r = gitlab.list_issues(config.OPS_PROJECT)
+        g["issues"], g["issues_ok"] = (r.get("data") or []), bool(r.get("ok"))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        g["demo"] = _gather_demo()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        g["todo"] = _gather_todo()[0]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        g["ci"], g["ci_ok"] = _gather_ci()
+    except Exception:  # noqa: BLE001
+        pass
+    return g
+
+
+def _brief_text() -> str:
+    """Render the morning brief for pushing. Returns '' when the local model is
+    asleep — the brief is a nice-to-have and never wakes or waits on one."""
+    if not _quokka_alive():
+        return ""
+    try:
+        messages = quokka.build_messages(quokka.render_context(_brief_state()), [], quokka.BRIEF_PROMPT)
+        return "".join(quokka.chat_stream(config.QUOKKA_URL, config.QUOKKA_MODEL, messages,
+                                          timeout=config.QUOKKA_TIMEOUT)).strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _notify_pass() -> dict:
+    """One checker pass: gather -> detect -> send -> persist. Never raises."""
+    if not notifier.configured():
+        return {"ok": False, "skipped": "unconfigured"}
+    try:
+        state = notify_state.load()
+        events, state = notify.run_checks(
+            _notify_gather(), state, config.ORIGIN, set(config.NOTIFY_EVENTS)
+        )
+        sent, failed = notify.deliver(notifier, events, state)
+
+        # Optional daily brief, gated on its own toggle + a configured time.
+        if "brief" in config.NOTIFY_EVENTS and config.NOTIFY_BRIEF_AT:
+            if notify.due_for_brief(state.get("brief"), config.NOTIFY_BRIEF_AT, datetime.now()):
+                text = _brief_text()
+                if text and notifier.send("☀️ NWP morning brief", text,
+                                          notify.P_MUTED, f"{config.ORIGIN}/?tab=quokka"):
+                    sent += 1
+                    state["brief"] = {"last": datetime.now().strftime("%Y-%m-%d")}
+                    state.setdefault("last_sent", {})["brief"] = notify._now_iso()
+
+        notify_state.save(state)
+        if events or sent:
+            audit.append("(checker)", "-", "notify.push",
+                         {"events": [e.as_detail() for e in events], "sent": sent, "failed": failed},
+                         failed == 0)
+        return {"ok": True, "sent": sent, "failed": failed, "events": len(events)}
+    except Exception as e:  # noqa: BLE001 — fail-open, always
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _notify_view(request: Request, user: dict, message: str = "") -> HTMLResponse:
+    state = notify_state.load()
+    last_sent = state.get("last_sent", {}) if isinstance(state, dict) else {}
+    rows = [
+        {"kind": k, "label": lbl, "enabled": k in config.NOTIFY_EVENTS, "last": last_sent.get(k, "")}
+        for k, lbl in (
+            ("rag", "Site goes RAG red (and recovers to green)"),
+            ("demo_tester", "New demo-tester issue in GitLab"),
+            ("demo_reset", "Demo reset failed or was skipped"),
+            ("token_expiry", "Token dead or nearing expiry"),
+            ("ci", "CI pipeline failed on an open MR"),
+            ("brief", f"Daily morning brief{' at ' + config.NOTIFY_BRIEF_AT if config.NOTIFY_BRIEF_AT else ' (no time set)'}"),
+        )
+    ]
+    return templates.TemplateResponse(
+        request, "notifications.html",
+        {"user": user, "rows": rows, "status": notifier.status(), "message": message,
+         "interval": config.NOTIFY_INTERVAL, "seeded": bool(state.get("rag") is not None)},
+    )
+
+
+@app.get("/notifications", response_class=HTMLResponse)
+def notifications_page(request: Request, user: dict = Depends(require("owner"))):
+    return _notify_view(request, user)
+
+
+@app.post("/notifications/test", response_class=HTMLResponse)
+def notifications_test(request: Request, user: dict = Depends(require("owner"))):
+    """Send one real push, so the operator can prove the phone leg end-to-end."""
+    _guard_origin(request)
+    if not notifier.configured():
+        return _notify_view(request, user, "not configured — set NWP_CONSOLE_GOTIFY_URL and "
+                                           "provision the token file (see the setup steps below)")
+    ok = notifier.send(
+        "✅ NWP Console test",
+        f"Test push requested by {user['name']} at {notify._now_iso()}.\n"
+        "If you can read this on your phone, the whole chain works.",
+        notify.P_LOW, f"{config.ORIGIN}/?tab=fleet",
+    )
+    audit.append(user["name"], user["role"], "notify.test", {"delivered": ok}, ok)
+    return _notify_view(request, user,
+                        "test push accepted by Gotify" if ok else
+                        "Gotify did NOT accept the push — check the URL, the token file, and that "
+                        "the Gotify service is up (the console itself is unaffected)")
+
+
+@app.post("/notifications/check", response_class=HTMLResponse)
+def notifications_check(request: Request, user: dict = Depends(require("owner"))):
+    """Run a checker pass now instead of waiting for the interval."""
+    _guard_origin(request)
+    res = _notify_pass()
+    if res.get("skipped"):
+        return _notify_view(request, user, "not configured — nothing was checked")
+    if not res.get("ok"):
+        return _notify_view(request, user, f"check failed: {res.get('error', 'unknown')}")
+    return _notify_view(request, user,
+                        f"checked: {res['events']} event(s) detected, {res['sent']} sent, "
+                        f"{res['failed']} failed")
 
 
 # -- GitLab-backed issue actions (operator+) --------------------------------

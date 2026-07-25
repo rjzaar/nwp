@@ -20,6 +20,7 @@
     {% if user %}
     <nav>
       {% if user.role in ('operator','owner') %}<a href="/audit">Audit</a>{% endif %}
+      {% if user.role == 'owner' %}<a href="/notifications">Alerts</a>{% endif %}
       {% if user.role == 'owner' %}<a href="/users">Users</a>{% endif %}
       <form method="post" action="/logout" class="inline"><button class="ghost">{{ user.name }} ⏻</button></form>
     </nav>

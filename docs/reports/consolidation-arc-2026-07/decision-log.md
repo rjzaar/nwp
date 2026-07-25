@@ -512,3 +512,21 @@ on junk; scratch-path leak in an error body). MemoryMax 512M→1500M (measured 6
 on mini; bounded by mesh+WebAuthn+caps+child-process). Browser speech APIs never used (Google-cloud);
 speechSynthesis fallback filters to localService voices. GAPS: browser/phone UI untested (needs operator);
 no queueing (household-scale); whisper-cli fallback path unit-tested only.
+
+## [2026-07-26] ✅ Option A: forced-command restricted key (MR !159, REVIEW) + interim laptop nightly
+Box wrapper /usr/local/bin/nwd-demo-reset-restricted (versioned servers/nwpcode/demo/): 8 enforced guarantees
+— literal allowlist for $SSH_ORIGINAL_COMMAND (logged, never eval'd), nwd hard-wired + live demo_mode=true
+re-check before anything destructive, fail-closed golden (manifest site + 2x sha256), idle guard (garbled
+query = ACTIVE), once-per-Melbourne-day + flock, full logging w/ logrotate, non-zero on failure.
+**Restriction PROVEN by transcript:** id/cat/bash/`reset; id`/`$(id)`/rm-rf all REFUSED+logged+not executed;
+sudo unreachable; PTY denied; scp failed; -L/-R forwarding administratively prohibited.
+⚠️ **KEY DISCOVERY:** `-o IdentitiesOnly=yes` AND `-o IdentityAgent=none` are LOAD-BEARING — without both,
+ssh offers the agent-held admin key first and lands on the unrestricted gitlab entry, silently bypassing the
+forced command (the first test run did exactly this). Both baked into cron + a ~/.ssh/config alias.
+Interim laptop cron ACTIVE (CRON_TZ Melbourne, 0,30 1-3 * * *, wrapper idempotency does the retrying — no
+3h held ssh session against a 3.8GB host). met handover = one command (install-on-met.sh, --check first).
+74/74 bats. GAPS: wrapper runs as `gitlab` (NOPASSWD sudo) — containment is "met may only invoke it", not
+unprivileged (fix = dedicated unix acct + narrow sudoers); **empty staged codes-payload CLEARS all invite
+codes** (footgun: issue codes → must --stage-codes or next nightly locks testers out); golden on box drifts
+until re-staged; no liveness alarm if the laptop sleeps through 01:00; met steps untested ON met.
+**Hygiene:** stale /tmp curl-configs holding live PRIVATE-TOKENs (Jul-18/24/25, one mode 664) — SHREDDED.

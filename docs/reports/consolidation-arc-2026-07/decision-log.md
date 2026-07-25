@@ -484,3 +484,21 @@ Australia/Melbourne` + `0 1 * * *` line, idempotent re-install, clean `--remove`
 preserved) and regression-locked in bats. Options for the operator: (a) a **forced-command restricted
 key** for met scoped to the demo reset, (b) run the nightly from ver, (c) run it from the laptop as an
 interim. Until then nwd resets on demand only.
+## [2026-07-25] ✅ nwd CUTOVER COMPLETE — demo tier is live (on-demand resets)
+Reset scorecard 9/9 (real 74s run): live code issued → redeemed at /demo/join over the real HTTP form
+(Kolbe-9305) → reset → users back to 16, tester wiped, 5 seeds, demo_mode+dblog on, codes re-synced,
+/ + /demo/join 200, noindex present → FRESH post-reset code redeemed (Augustine-1176). All test codes
+revoked, test accounts removed, live == golden.
+**PHP blocker was PHANTOM:** the box already ran php8.3-fpm (since Jul-24) and nwd.conf was already 8.3 —
+the stale 8.2 pin was in the REPO copy. nginx on the box NEVER touched. Drift audit: nwd was the only
+out-of-sync vhost; now 18/18 repo↔box match. All sites re-verified at baseline; box load 0.40.
+**2 real bugs found by RUNNING it:** (a) post-restore smoke sampled the homepage once → false FAIL on a
+cold-cache render vs pm.max_children=5; now retries x5, smokes /demo/join, and RETURNS NON-ZERO (was
+printing FAIL then exit 0); (b) **deploy_gate_require was never sourced → the gate was silently skipped**
+(security) — now sourced and firing. 60 bats (was 37). harvest-post proven e2e via ops_note_token → ops#136.
+**BLOCKED (operator decision):** step 9 nightly-on-met — met has no `gitlab@` key on the box (only the
+rrsync-jailed nwp-dr-pull); granting one = root on the forge box (standing warning). Cron mechanism itself
+verified against a stub. Until decided, **nwd resets on demand only**.
+MR !157 open for review (agent did NOT auto-merge — cited CLAUDE.md two-person rule for live-deploy/server
+config; correct default, though the operator had given a broad merge approval earlier).
+Noted, untouched: nwc profile build missing libraries/diff/dist/diff.min.js (JS-aggregation PHP warning).

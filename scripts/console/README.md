@@ -71,13 +71,126 @@ ssh <console-host> 'umask 077 && mkdir -p ~/.config/nwp-console && cat > ~/.conf
 `pl console deploy` never copies tokens. With no token file the panes degrade to
 deep-links into GitLab; nothing breaks.
 
+## Quokka voice (talk to Quokka, Quokka talks back)
+
+Both legs run **on the console host**. No cloud speech API is called anywhere,
+and the browser's `SpeechRecognition` API is **deliberately never used** — in
+Chromium and Brave it implements "local" speech by streaming your microphone
+audio to Google. The only browser speech we touch is `speechSynthesis`
+(output only), and only as the fallback when the host has no piper.
+
+```
+phone mic ──MediaRecorder(webm/opus)──> POST /quokka/stt   (viewer+, ≤60 s, ≤10 MB)
+                                          │  faster-whisper in a short-lived child
+                                          ▼  audio: 0600 temp file, shredded in a finally
+                                       transcript ──> the SAME /quokka/chat pipeline
+                                          │            (context injection + loopback ollama)
+                                          ▼
+                                        reply ──> POST /quokka/tts ──> piper WAV ──> 🔈
+                                                  (or the device's own offline voice)
+```
+
+**Speaking to Quokka is exactly as privileged as typing to it.** `/quokka/stt`
+returns *text*, which the page then posts to `/quokka/chat` like any other
+message — `app/voice.py` has no import path to `actions.py`/`runner.py`, and a
+test asserts it (alongside the existing one for `quokka.py`).
+
+Nothing is required for the console to run: with no backends installed the mic
+button never renders and `/quokka/stt` answers 503 with "type instead".
+
+### Provisioning a host for voice (optional, one-time)
+
+Speech **in** — faster-whisper, in the *system* python (deliberately not in the
+console venv: the web process stays ~140 MB and a transcription's ~400 MB peak
+belongs to a child that exits):
+
+```
+pip3 install --user faster-whisper           # pulls ctranslate2 + av
+python3 -c 'from faster_whisper import WhisperModel; WhisperModel("base", device="cpu", compute_type="int8")'
+```
+
+That second line pre-fetches the model (~150 MB) into `~/.cache/huggingface`.
+Do it once at provisioning time — otherwise the *first* voice request pays for
+the download. `whisper.cpp` works too (`NWP_CONSOLE_STT_BACKEND=whisper-cli`,
+plus `…_STT_WHISPER_CLI` / `…_STT_WHISPER_MODEL`); it needs `ffmpeg` on PATH.
+
+Speech **out** — piper, in its own tiny venv (~250 MB with one voice):
+
+```
+python3 -m venv ~/piper/venv && ~/piper/venv/bin/pip install piper-tts
+~/piper/venv/bin/python -m piper.download_voices en_US-lessac-medium --data-dir ~/piper/voices
+```
+
+Then `pl console deploy` (or just `systemctl --user restart nwp-console`): the
+committed defaults already point at `~/piper/venv/bin/piper` and
+`~/piper/voices/en_US-lessac-medium.onnx`, so an existing install picks voice up
+with **no env changes**. Backend availability is probed lazily and cached for
+5 minutes.
+
+### Knobs (all optional, `~/.config/nwp-console/env`)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `NWP_CONSOLE_STT_BACKEND` | `auto` | `auto`\|`faster-whisper`\|`whisper-cli`\|`off` |
+| `NWP_CONSOLE_STT_MODEL` | `base` | `tiny`/`base`/`small`(`.en`) — bigger = slower |
+| `NWP_CONSOLE_STT_PYTHON` | `/usr/bin/python3` | must have faster-whisper |
+| `NWP_CONSOLE_STT_MAX_SECONDS` | `60` | over-long audio is refused, not truncated |
+| `NWP_CONSOLE_STT_MAX_BYTES` | `10485760` | enforced before the bytes touch disk |
+| `NWP_CONSOLE_STT_TIMEOUT` | `120` | hard subprocess kill |
+| `NWP_CONSOLE_STT_THREADS` | `4` | be a good neighbour to ollama |
+| `NWP_CONSOLE_TTS_BACKEND` | `auto` | `off` ⇒ browser voices only |
+| `NWP_CONSOLE_TTS_PIPER` / `_TTS_VOICE` | `~/piper/…` | binary + `.onnx` |
+
+**`MemoryMax` moved 512M → 1500M** in `nwp-console.service` to cover those
+short-lived children. Set both backends to `off` and you can put it back.
+
+### Browser notes (mobile-first)
+
+- **Mic needs HTTPS** — the console already is, so this Just Works.
+- **Brave**: the mic prompt can be swallowed by Shields. If tapping 🎤 shows
+  "Microphone blocked", open the padlock / Shields ▾ → **Site settings** →
+  **Microphone** → **Allow**, then reload. Chrome/Chromium: padlock → Site
+  settings → Microphone. Once allowed, the PWA remembers it.
+- **Codec**: Chromium/Brave/Firefox record `audio/webm;codecs=opus`; iOS Safari
+  records `audio/mp4`. Both are decoded server-side by PyAV — no conversion in
+  the page.
+- **Tap to start, tap to stop** (not press-and-hold: holding fights with scroll
+  gestures on a phone). Recording auto-stops at `STT_MAX_SECONDS`.
+- **"Speak replies"** is remembered per device in `localStorage`. With piper on
+  the host you get the same voice everywhere; without it the page picks a
+  `localService` (offline) system voice — note that on Android the *default*
+  Google voices may synthesise over the network, which is why we filter for
+  local ones first.
+- iOS/Safari may require the page to be foregrounded for `speechSynthesis`.
+
+### What voice does and doesn't leave behind
+
+- **The audio is never persisted.** It lives in a 0600 file inside a 0700
+  scratch dir for exactly as long as one transcriber process runs, and is
+  truncated + unlinked in a `finally` — on success, on error and on timeout.
+  Tests assert the file is gone and the scratch dir is empty afterwards. The
+  browser-supplied filename is discarded; the temp name is ours.
+- **The audit log records the transcript, never the audio** — the same detail a
+  typed message leaves, plus size/duration/backend. `/quokka/tts` logs only
+  that the speaker was used (char count), since the words were already audited
+  as Quokka's reply.
+- **New attack surface, stated plainly:** an authenticated viewer+ can now feed
+  arbitrary bytes to a media decoder (PyAV/ffmpeg) on the console host. That is
+  a large C surface. It is bounded by WebAuthn + the mesh (no anonymous reach),
+  a size cap before the bytes touch disk, a duration cap, a hard subprocess
+  timeout, and decoding in a short-lived child rather than in uvicorn.
+
 ## Layout
 
 ```
 scripts/console/
   app/            FastAPI app (main.py) + pure modules:
                   authz.py (roles) actions.py (allowlist) parsers.py store.py
-                  runner.py (only process spawner) gitlab_api.py webauthn_flow.py
+                  runner.py (spawns `pl`) gitlab_api.py webauthn_flow.py
+                  voice.py (spawns the transcriber/synthesiser — no action path)
+                  stt_worker.py (run BY voice.py under the system python, not
+                                 imported by the venv: keeps faster-whisper's
+                                 ~400 MB out of the long-lived web process)
                   manage.py (shell CLI: python3 -m app.manage — used by pl console user)
   templates/      Jinja2 (base + panes; htmx partial swaps)
   static/         style.css, webauthn.js, sw.js, icons,
@@ -111,3 +224,11 @@ bats tests/unit/test-console.bats           # pl console dispatch
 - Backups pane is read-only (the sweep runs where the backups live).
 - Live/prod anything: read-only by design — run it on the workstation (or the
   air-gapped deploy host for real prod).
+- Voice: `base` is chosen for latency, not accuracy — it mangles unusual site
+  names and acronyms (say "the fleet" not "n-w-d"). Bump
+  `NWP_CONSOLE_STT_MODEL` to `small.en` if you'd rather wait.
+- Voice concurrency is not queued: two people recording at once run two
+  transcribers. Fine for a household console, wrong for a crowd.
+- The model download on first use is a network call to huggingface.co from the
+  console host — pre-fetch it at provisioning time (above) so a voice request
+  never depends on it.

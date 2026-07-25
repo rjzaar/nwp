@@ -189,6 +189,17 @@ NWP_CONSOLE_OPS_PROJECT=nwp/ops
 # Quokka (local-LLM chat tab) — loopback ollama on this host only.
 NWP_CONSOLE_QUOKKA_URL=http://127.0.0.1:11434
 NWP_CONSOLE_QUOKKA_MODEL=llama3.3:70b
+# Quokka voice — speech in/out, both ON THIS HOST (never a cloud speech API).
+# Both are optional: with neither installed the mic button simply never renders.
+#   speech in : faster-whisper via NWP_CONSOLE_STT_PYTHON (see README)
+#   speech out: piper; without it the browser's own offline voice is used
+NWP_CONSOLE_STT_BACKEND=auto
+NWP_CONSOLE_STT_MODEL=base
+NWP_CONSOLE_STT_PYTHON=/usr/bin/python3
+NWP_CONSOLE_STT_MAX_SECONDS=60
+NWP_CONSOLE_TTS_BACKEND=auto
+NWP_CONSOLE_TTS_PIPER=%h/piper/venv/bin/piper
+NWP_CONSOLE_TTS_VOICE=%h/piper/voices/en_US-lessac-medium.onnx
 EOF
     # systemd EnvironmentFile doesn't expand %h — replace with the real home dir.
     _ssh 'sed -i "s|%h|$HOME|g" ~/.config/nwp-console/env'

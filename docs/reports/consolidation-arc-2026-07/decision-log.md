@@ -502,3 +502,13 @@ verified against a stub. Until decided, **nwd resets on demand only**.
 MR !157 open for review (agent did NOT auto-merge — cited CLAUDE.md two-person rule for live-deploy/server
 config; correct default, though the operator had given a broad merge approval earlier).
 Noted, untouched: nwc profile build missing libraries/diff/dist/diff.min.js (JS-aggregation PHP warning).
+
+## [2026-07-26] ✅ Quokka VOICE live (MR !158, REVIEW) — X02 Phase 2 via console
+Real round-trip on the deployed mesh HTTPS: spoken question → faster-whisper 1.13s → Quokka reply → Piper
+voice back 1.50s (voice legs 2.6s total; LLM dominates). Piper installed on mini (~250MB, 175MB RSS).
+Abuse-tested live: 413/400/403/401 all correct; 2 real bugs found+fixed by abusing the deployment (500-vs-400
+on junk; scratch-path leak in an error body). MemoryMax 512M→1500M (measured 621MB peak during transcription
+— old cap would have OOM-killed mid-request). New attack surface stated plainly (authed viewer+ → PyAV/ffmpeg
+on mini; bounded by mesh+WebAuthn+caps+child-process). Browser speech APIs never used (Google-cloud);
+speechSynthesis fallback filters to localService voices. GAPS: browser/phone UI untested (needs operator);
+no queueing (household-scale); whisper-cli fallback path unit-tested only.

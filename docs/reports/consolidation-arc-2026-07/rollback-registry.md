@@ -11,6 +11,9 @@ One row per checkpoint. To reverse a checkpoint, run its **Restore** command.
 | CP3 | 2026-07-24 | fresh remote DR snapshots — **verified** | `sites/ss/backups/ss-remote-20260724T180042.*` (74M tar+2.0M sql, sha256 OK) ; `sites/ssc/backups/ssc-remote-20260724T180130.*` (71M tar+2.6M sql, sha256 OK) | — | `pl restore <artifact>` (round-trip automated in P2) |
 
 <!-- append checkpoints below as backups are taken -->
+| CP11 | 2026-07-25 | nwd pre-cutover FULL live snapshot (ops#133 cutover) — **verified** | `sites/nwd/backups/nwd-remote-20260725T111425.tar.gz` (89M webroot) + `.sql.gz` (3.8M, sudo-mysqldump — live vendor had no drush) + `nwd-files-20260725.tar.gz` + `nwd-private-20260725.tar.gz`, all sha256 OK | — | untar webroot to `/var/www/nwd`, `sudo mysql nwd < dump`, untar files/private |
+| CP12 | 2026-07-25 | nwd dev profile 37 uncommitted files (stale `develop`, 275 behind) | `sites/nwd/backups/nwd-dev-profile-pre-cutover-20260725.bundle` (verified, complete history) + `…-uncommitted-20260725.list` | local branch `safety/pre-cutover-20260725` in the pre-rebuild checkout (also in the bundle) | `git clone nwd-dev-profile-pre-cutover-20260725.bundle && git checkout safety/pre-cutover-20260725` |
+| CP13 | 2026-07-25 | nwd dev DB+files local backup pre parity-rebuild | `sites/nwd/backups/20260725T112057-main-cc03f81b-pre-cutover-dev.{sql.gz,tar.gz,manifest.json}` | — | `pl restore nwd` from that artifact |
 
 ## Pre-arc site state (for reference)
 - `~/nwp` (tool): branch `main` @ `bb238a0`
@@ -25,3 +28,5 @@ One row per checkpoint. To reverse a checkpoint, run its **Restore** command.
 | CP8b | 2026-07-24 | ops#127 COMPLETE (3 parts) | — | `origin/ops-127` @ `cbb5cee` (MR !142) | don't merge; `git branch -D ops-127` |
 | CP9 | 2026-07-24n | Plane1 tool-code batch (5 MRs SOLID) | — | branches ops-auto-* @ origin; MRs !143-!147 | don't merge; `git push origin --delete ops-auto-<x>` |
 | CP10 | 2026-07-24n | P3 config-drift gate | — | origin/ops-63-config-drift @ 9eaf4c9 | don't merge; off-by-default if merged |
+| CP14 | 2026-07-25 | nwd LIVE golden image (ops#133 demo tier) — **verified**, restores the site to its post-seed demo state | `sites/nwd/demo-golden-live/golden.db.sql.gz` (2.7M) + `golden.files.tar.gz` (12K) + `.sha256` sidecars + `golden.manifest.json` (sha256 `55203b50…` / `629f23cc…`) | — | `pl demo reset nwd --tier=live --force` (verifies both sha256 before and after upload) |
+| CP15 | 2026-07-25 | nwd vhost — repo copy corrected php8.2→8.3 to match the box | `servers/nwpcode/nginx/conf.d/nwd.conf` @ branch `feat/demo-live-tier`; live copy unchanged throughout (box mtime Jul-24 21:49) | box `/etc/nginx/conf.d/nwd.conf` (untouched — **no .bak needed, no edit was made**) | `git checkout HEAD~1 -- servers/nwpcode/nginx/conf.d/nwd.conf` (repo-only; the box was never modified) |

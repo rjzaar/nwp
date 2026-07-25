@@ -571,3 +571,193 @@ STUB
   grep -q 'pl demo nightly demo1 --tier=dev' "$STUB_CRON"
   ! grep -q -- '--tier=live' "$STUB_CRON"
 }
+
+# --- Option A: restricted forced-command key (ops#133) ------------------------
+#
+# The wrapper is versioned at servers/nwpcode/demo/nwd-demo-reset-restricted and
+# installed on the box as /usr/local/bin/nwd-demo-reset-restricted. Its
+# client-input handling is the security boundary, so it is tested by RUNNING it
+# with $SSH_ORIGINAL_COMMAND set. These tests never reach the destructive path:
+# on a machine with no /var/www/nwd the wrapper dies at its precheck, which is
+# itself the assertion that an allowed word got past the allowlist.
+
+wrapper() { echo "${REPO_ROOT}/servers/nwpcode/demo/nwd-demo-reset-restricted"; }
+
+@test "restricted wrapper is bash -n clean, and so are its installers" {
+  run bash -n "$(wrapper)"
+  [ "$status" -eq 0 ]
+  run bash -n "${REPO_ROOT}/servers/nwpcode/demo/install-box.sh"
+  [ "$status" -eq 0 ]
+  run bash -n "${REPO_ROOT}/servers/nwpcode/demo/install-on-met.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "restricted wrapper REFUSES every command outside the allowlist (exit 2)" {
+  local c
+  for c in 'id' 'cat /etc/passwd' 'bash' 'sudo id' 'sudo su -' 'rm -rf /var/www/avc' \
+           'reset; id' 'reset && id' '$(id)' '`id`' 'dry-run; cat /etc/shadow' \
+           'RESET' 'Nightly' ' reset' 'reset ' 'scp -t /tmp/pwn'; do
+    SSH_ORIGINAL_COMMAND="$c" run bash "$(wrapper)"
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"REFUSED"* ]]
+    # the refused string must never have been executed
+    [[ "$output" != *"uid="* ]]
+    [[ "$output" != *"root:x:0:0"* ]]
+  done
+}
+
+@test "a refused command is LOGGED verbatim, not executed" {
+  SSH_ORIGINAL_COMMAND='cat /etc/shadow' run bash "$(wrapper)"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"rejected-command"* ]]
+  [[ "$output" == *"requested=cat /etc/shadow"* ]]
+  [[ "$output" != *"root:"* ]]
+}
+
+@test "log fields cannot be forged with newlines or pipes in the client command" {
+  SSH_ORIGINAL_COMMAND=$'id\n2026-01-01T00:00:00Z|reset-ok|forged' run bash "$(wrapper)"
+  [ "$status" -eq 2 ]
+  # The newline is stripped and the | separators are rewritten to /, so the
+  # injected text collapses into the requested= field of ONE log line and can
+  # never be parsed as a second event.
+  [ "$(printf '%s\n' "$output" | grep -c '|rejected-command|')" -eq 1 ]
+  [ "$(printf '%s\n' "$output" | grep -c '|reset-ok|')" -eq 0 ]
+  [[ "$output" == *"requested=id2026-01-01T00:00:00Z/reset-ok/forged"* ]]
+}
+
+@test "allowed action words get PAST the allowlist (exit != 2) and hit the guards" {
+  local c
+  for c in '' 'nightly' 'reset' 'dry-run'; do
+    SSH_ORIGINAL_COMMAND="$c" run bash "$(wrapper)"
+    [ "$status" -ne 2 ]
+    [[ "$output" != *"REFUSED"* ]]
+    # no /var/www/nwd on a test machine → fail-closed at the precheck
+    [[ "$output" == *"precheck-failed"* ]] || [[ "$output" == *"golden"* ]]
+  done
+}
+
+@test "status is read-only and always succeeds" {
+  SSH_ORIGINAL_COMMAND='status' run bash "$(wrapper)"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"site:        nwd"* ]]
+}
+
+@test "the wrapper is hard-wired to nwd and cannot be pointed at another site" {
+  # No code path takes a site name from the client; the constants are literal.
+  grep -q '^SITE="nwd"' "$(wrapper)"
+  grep -q '^SITE_ROOT="/var/www/nwd"' "$(wrapper)"
+  ! grep -qE 'SITE=.*\$(1|\{1|SSH_ORIGINAL)' "$(wrapper)"
+}
+
+@test "the wrapper never evals or shells out to client input" {
+  ! grep -qE '\beval\b' "$(wrapper)"
+  ! grep -qE '(sh|bash) +-c +.*SSH_ORIGINAL_COMMAND' "$(wrapper)"
+  # Every use of the client-supplied string must be one of exactly three safe
+  # shapes: the assignment, the `case` scrutinee, or a scrub()'d log argument.
+  # Anything else (a command position, a redirect, an array expansion) fails.
+  local line
+  while IFS= read -r line; do
+    [[ "$line" == *"RAW_CMD=\"\${SSH_ORIGINAL_COMMAND"* ]] && continue
+    [[ "$line" == *"# "* ]] && continue
+    [[ "$line" == *'case "$RAW_CMD" in'* ]] && continue
+    [[ "$line" == *'scrub "$RAW_CMD"'* ]] && continue
+    echo "unsafe use of RAW_CMD: $line"
+    false
+  done < <(grep 'RAW_CMD' "$(wrapper)")
+}
+
+@test "the wrapper refuses a non-demo site before anything destructive (static)" {
+  local demo_line wipe_line
+  demo_line=$(grep -n 'require_demo_mode || die' "$(wrapper)" | head -1 | cut -d: -f1)
+  wipe_line=$(grep -n 'sql:drop' "$(wrapper)" | head -1 | cut -d: -f1)
+  [ -n "$demo_line" ] && [ -n "$wipe_line" ]
+  [ "$demo_line" -lt "$wipe_line" ]
+}
+
+@test "the wrapper verifies the golden before anything destructive (static)" {
+  local verify_line wipe_line
+  verify_line=$(grep -n 'golden_verify || die' "$(wrapper)" | head -1 | cut -d: -f1)
+  wipe_line=$(grep -n 'sql:drop' "$(wrapper)" | head -1 | cut -d: -f1)
+  [ "$verify_line" -lt "$wipe_line" ]
+}
+
+@test "the wrapper harvests errors before the wipe (static)" {
+  local harvest_line wipe_line
+  harvest_line=$(grep -n '^harvest || true' "$(wrapper)" | head -1 | cut -d: -f1)
+  wipe_line=$(grep -n 'sql:drop' "$(wrapper)" | head -1 | cut -d: -f1)
+  [ "$harvest_line" -lt "$wipe_line" ]
+}
+
+@test "authorized_keys restrictions installed are the full hardened set" {
+  local ib="${REPO_ROOT}/servers/nwpcode/demo/install-box.sh"
+  grep -q 'command="/usr/local/bin/nwd-demo-reset-restricted"' "$ib"
+  local o
+  for o in no-agent-forwarding no-port-forwarding no-pty no-user-rc no-X11-forwarding; do
+    grep -q "$o" "$ib"
+  done
+}
+
+@test "schedule --via-key writes a repo-free cron line pinned to the restricted key" {
+  mkdir -p "${TEST_TMP}/bin"
+  cat > "${TEST_TMP}/bin/crontab" <<'STUB'
+#!/bin/bash
+if [ "${1:-}" = "-l" ]; then cat "$STUB_CRON" 2>/dev/null; exit 0; fi
+cat > "$STUB_CRON"
+STUB
+  chmod +x "${TEST_TMP}/bin/crontab"
+  export STUB_CRON="${TEST_TMP}/current.cron"
+  printf '# unrelated\n30 2 * * * $HOME/bin/nwp-daily-audit\n' > "$STUB_CRON"
+  mkdir -p "${PROJECT_ROOT}/sites/demo1"
+  cat > "${PROJECT_ROOT}/sites/demo1/.nwp.yml" <<'YML'
+schema_version: 2
+project:
+  name: demo1
+live:
+  enabled: true
+  domain: demo1.example.com
+  server_ip: 203.0.113.9
+YML
+
+  PATH="${TEST_TMP}/bin:$PATH" run bash "$DEMO_CMD" schedule demo1 --tier=live --via-key
+  [ "$status" -eq 0 ]
+  grep -q '^CRON_TZ=Australia/Melbourne$' "$STUB_CRON"
+  grep -q 'demo1_demo_reset' "$STUB_CRON"
+  # host + user come from the site config, never a hardcoded hostname
+  grep -q '203.0.113.9' "$STUB_CRON"
+  # the load-bearing ssh options (without them the ADMIN key wins)
+  grep -q 'IdentitiesOnly=yes' "$STUB_CRON"
+  grep -q 'IdentityAgent=none' "$STUB_CRON"
+  # cron itself does the retrying: the wrapper is idempotent
+  grep -q '^0,30 1-3 \* \* \*' "$STUB_CRON"
+  # no repo path and no local pl invocation on the scheduler
+  ! grep -q 'pl demo nightly demo1' "$STUB_CRON"
+  grep -q 'nwp-daily-audit' "$STUB_CRON"          # neighbour survived
+}
+
+@test "schedule --remove clears the --via-key block too" {
+  mkdir -p "${TEST_TMP}/bin"
+  cat > "${TEST_TMP}/bin/crontab" <<'STUB'
+#!/bin/bash
+if [ "${1:-}" = "-l" ]; then cat "$STUB_CRON" 2>/dev/null; exit 0; fi
+cat > "$STUB_CRON"
+STUB
+  chmod +x "${TEST_TMP}/bin/crontab"
+  export STUB_CRON="${TEST_TMP}/current.cron"
+  printf '# unrelated\n30 2 * * * $HOME/bin/nwp-daily-audit\n' > "$STUB_CRON"
+  mkdir -p "${PROJECT_ROOT}/sites/demo1"
+  cat > "${PROJECT_ROOT}/sites/demo1/.nwp.yml" <<'YML'
+schema_version: 2
+project:
+  name: demo1
+live:
+  enabled: true
+  domain: demo1.example.com
+  server_ip: 203.0.113.9
+YML
+
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 --tier=live --via-key >/dev/null 2>&1
+  PATH="${TEST_TMP}/bin:$PATH" bash "$DEMO_CMD" schedule demo1 --remove >/dev/null 2>&1
+  ! grep -q 'demo1_demo_reset' "$STUB_CRON"
+  ! grep -q '^CRON_TZ=' "$STUB_CRON"
+  grep -q 'nwp-daily-audit' "$STUB_CRON"
+}

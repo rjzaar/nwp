@@ -74,6 +74,12 @@ paths = [
   '''^scripts/mons-setup\.sh$''',
   '''^docs/guides/mons-verification\.stanza\.yml$''',
   '''^docs/guides/mons-operational-readiness\.md$''',
+  # nwd nightly demo-reset runbook (ops#133): an operator-bound server-access
+  # runbook whose whole content is "which key, on which host, may run what" —
+  # it has to name the forge box, met and the operator's crontab paths, and it
+  # quotes the installed cron line verbatim so it can be diffed against
+  # reality. Same class as the mons guides directly above.
+  '''^docs/guides/demo-nightly-on-met\.md$''',
 ]
 
 [[rules]]

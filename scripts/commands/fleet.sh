@@ -424,6 +424,24 @@ cmd_status() {
 CRON_MARKER="# NWP Fleet Publish (pl fleet publish -> console host)"
 CRON_DEFAULT="*/30 * * * *"
 
+# cron runs with a bare PATH (typically /usr/bin:/bin). NWP's tooling does not
+# all live there — `yq` is commonly in ~/.local/bin (installed by `pl setup`),
+# and without it `_console_cfg` silently returns the default, so the publish
+# resolves NO console host and fails every half hour into a log nobody reads.
+# Bake the directories of the binaries this job actually needs into the entry,
+# resolved HERE where the interactive PATH is correct. (Same class of bug as
+# the 15-day-silent backup sweep: a cron that fails quietly is worse than none.)
+_cron_path() {
+    local out="" d b
+    for b in yq ssh python3 git; do
+        d=$(command -v "$b" 2>/dev/null) || continue
+        d=$(dirname "$d")
+        case ":$out:" in *":$d:"*) continue ;; esac
+        out="${out:+$out:}$d"
+    done
+    printf '%s' "${out:+$out:}/usr/local/bin:/usr/bin:/bin"
+}
+
 # `crontab -` REPLACES the whole crontab, and the filter below drops EVERY line
 # mentioning `pl fleet publish` — including one a human wrote by hand. That is a
 # small overwrite of something the operator owns, so it gets the ops#47
@@ -472,7 +490,7 @@ cmd_schedule() {
     fi
 
     local entry="$CRON_MARKER
-$schedule cd $PROJECT_ROOT && ./pl fleet publish --quiet >> $PROJECT_ROOT/logs/fleet-publish.log 2>&1"
+$schedule cd $PROJECT_ROOT && PATH=\"$(_cron_path)\" ./pl fleet publish --quiet >> $PROJECT_ROOT/logs/fleet-publish.log 2>&1"
     impact_overwrite "Crontab" \
         "one fleet-publish entry on '$schedule' installed for $(id -un) on $(hostname -s 2>/dev/null || hostname)"
     impact_render

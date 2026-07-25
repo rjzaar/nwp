@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="authbox">
+  <h1>Passkey enrolment</h1>
+  {% if valid %}
+  <p>Registering a passkey for <strong>{{ username }}</strong>. Use your Solo key (touch when it blinks)
+     or your phone/laptop platform passkey. This link works <strong>once</strong>.</p>
+  <button id="enroll-btn" class="primary">Register passkey</button>
+  <p id="msg" class="err" role="alert"></p>
+  {% else %}
+  <p class="err">This enrolment link is invalid, expired, or already used.
+     Ask the owner to run <code>pl console user reset &lt;name&gt;</code> for a fresh one.</p>
+  {% endif %}
+</div>
+{% if valid %}
+<script src="/static/webauthn.js"></script>
+<script>
+document.getElementById('enroll-btn').addEventListener('click', async () => {
+  const msg = document.getElementById('msg');
+  msg.textContent = '';
+  try {
+    await nwpEnroll({{ token | tojson }});
+    msg.classList.remove('err'); msg.classList.add('ok');
+    msg.textContent = 'Passkey registered — signing you in…';
+    setTimeout(() => window.location = '/', 800);
+  } catch (e) { msg.textContent = 'Enrolment failed: ' + (e.message || e); }
+});
+</script>
+{% endif %}
+{% endblock %}

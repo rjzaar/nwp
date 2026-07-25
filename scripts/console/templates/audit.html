@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Audit — NWP Console{% endblock %}
+{% block content %}
+<h1>Audit log</h1>
+<p class="muted">Every action POST + auth event, newest first (jsonl on the console host).</p>
+<table class="tbl">
+  {% for e in entries %}
+  <tr class="{{ 'audit-fail' if not e.ok else '' }}">
+    <td class="mono">{{ e.ts }}</td>
+    <td>{{ e.user }} <span class="muted">({{ e.role }})</span></td>
+    <td><strong>{{ e.action }}</strong></td>
+    <td class="mono small">{{ e.detail | tojson if e.detail is defined else '' }}</td>
+    <td>{{ '✓' if e.ok else '✗' }}</td>
+  </tr>
+  {% else %}
+  <tr><td class="muted">no audit entries yet</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

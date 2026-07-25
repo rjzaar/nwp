@@ -1,0 +1,28 @@
+{% include "_tabcount.html" %}
+{% if rag.ok %}
+<div class="ragcounts">
+  <span class="badge red">{{ rag.counts.RED }}</span>
+  <span class="badge amber">{{ rag.counts.AMBER }}</span>
+  <span class="badge green">{{ rag.counts.GREEN }}</span>
+  {% if res.cached %}<span class="muted">cached {{ res.age }}s</span>{% endif %}
+</div>
+<table class="tbl">
+  {% for s in rag.sites %}
+  <tr>
+    <td><span class="dot {{ s.grade | lower }}"></span> <strong>{{ s.site }}</strong>
+        <span class="muted">{{ s.phase }}</span></td>
+    <td class="reasons">{% for r in s.reasons %}<span>{{ r }}</span>{% endfor %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% if can_act %}
+<form hx-post="/actions/run" hx-target="#fleet-action-result">
+  <input type="hidden" name="action" value="rag_refresh">
+  <button class="primary">Re-run RAG check</button>
+</form>
+<div id="fleet-action-result"></div>
+{% endif %}
+{% else %}
+<p class="err">RAG data unavailable: {{ rag.error }}</p>
+{% if rag.raw %}<details><summary>raw output</summary><pre>{{ rag.raw }}</pre></details>{% endif %}
+{% endif %}

@@ -1,0 +1,11 @@
+{% if error %}
+<p class="err">✗ {{ error }}</p>
+{% else %}
+<div class="action-result">
+  <p class="{{ 'ok' if res.rc == 0 else 'err' }}">
+    {{ '✓' if res.rc == 0 else '✗' }} {{ label }} — rc={{ res.rc }} ({{ res.secs }}s)
+  </p>
+  {% if res.out %}<pre>{{ res.out }}</pre>{% endif %}
+  {% if res.err %}<details><summary>stderr</summary><pre>{{ res.err }}</pre></details>{% endif %}
+</div>
+{% endif %}

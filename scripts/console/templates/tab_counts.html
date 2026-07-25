@@ -1,0 +1,6 @@
+{# /tabs/counts — nothing but hx-swap-oob spans; fetched with hx-swap="none"
+   so ONLY the tab-bar counts update. A failed count renders empty (no number
+   is always safe). #}
+{% for c in counts %}
+<span class="tab-count" id="tabcount-{{ c.pane }}" hx-swap-oob="true">{{ c.text }}{% if c.alert %} <span class="alert-dot" title="last reset skipped/failed">●</span>{% endif %}</span>
+{% endfor %}

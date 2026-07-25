@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<nav class="tabbar" id="tabbar" role="tablist" aria-label="Console panes">
+  {% for pane, label in panes %}
+  <button class="tab" id="tab-{{ pane }}" data-pane="{{ pane }}" role="tab"
+          hx-get="/panes/{{ pane }}" hx-target="#pane-body" hx-indicator="#pane-spin">
+    <span class="tab-label">{{ label }}</span>
+    <span class="tab-count" id="tabcount-{{ pane }}"></span>
+  </button>
+  {% endfor %}
+  <button class="ghost tab-refresh" id="pane-refresh" title="refresh this pane">
+    ⟳<span id="pane-spin" class="htmx-indicator">…</span>
+  </button>
+</nav>
+
+<div id="pane-body" class="pane-body"><p class="muted">loading…</p></div>
+
+{# counts for EVERY tab: on load + every 90s, OOB-swapped into the tab bar #}
+<div hx-get="/tabs/counts" hx-trigger="load, every 90s" hx-swap="none"></div>
+
+<p class="muted footnote">Reads run on the console host (AI/dev tier). Live/prod verbs are not
+wired here by design — run those on the workstation. Heavy issue edits: <a href="{{ gitlab_url }}">GitLab</a>.</p>
+
+<script>
+(function () {
+  var PANES = [{% for pane, label in panes %}'{{ pane }}'{{ "," if not loop.last }}{% endfor %}];
+  var KEY = 'nwp-console-tab';
+
+  function setActive(p) {
+    PANES.forEach(function (q) {
+      var el = document.getElementById('tab-' + q);
+      if (el) { el.classList.toggle('active', q === p); el.setAttribute('aria-selected', q === p); }
+    });
+    try { localStorage.setItem(KEY, p); } catch (e) { /* private mode: no persistence */ }
+  }
+  function activePane() {
+    try { var s = localStorage.getItem(KEY); if (PANES.indexOf(s) !== -1) return s; } catch (e) {}
+    return PANES[0];
+  }
+
+  document.querySelectorAll('#tabbar .tab').forEach(function (btn) {
+    btn.addEventListener('click', function () { setActive(btn.dataset.pane); });
+  });
+  document.getElementById('pane-refresh').addEventListener('click', function () {
+    if (window.htmx) {
+      htmx.ajax('GET', '/panes/' + activePane() + '?force=1',
+                {target: '#pane-body', indicator: '#pane-spin'});
+    }
+  });
+
+  // Reopen where you were (PWA muscle memory), then load that pane.
+  var start = activePane();
+  setActive(start);
+  window.addEventListener('DOMContentLoaded', function () {
+    if (window.htmx) htmx.ajax('GET', '/panes/' + start, {target: '#pane-body', indicator: '#pane-spin'});
+  });
+})();
+</script>
+{% endblock %}

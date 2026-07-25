@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#10151c">
+  <title>{% block title %}NWP Console{% endblock %}</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script>
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js'); }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">NWP<span>Console</span></a>
+    {% if user %}
+    <nav>
+      {% if user.role in ('operator','owner') %}<a href="/audit">Audit</a>{% endif %}
+      {% if user.role == 'owner' %}<a href="/users">Users</a>{% endif %}
+      <form method="post" action="/logout" class="inline"><button class="ghost">{{ user.name }} ⏻</button></form>
+    </nav>
+    {% endif %}
+  </header>
+  <main>
+  {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

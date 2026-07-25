@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="authbox">
+  <h1>NWP Console</h1>
+  <p class="muted">Passkey sign-in only — Solo key or platform passkey. No passwords exist.</p>
+  <label for="username">Username <span class="muted">(optional — leave blank to pick a passkey)</span></label>
+  <input id="username" autocomplete="username webauthn" placeholder="username">
+  <button id="login-btn" class="primary">Sign in with passkey</button>
+  <p id="msg" class="err" role="alert"></p>
+</div>
+<script src="/static/webauthn.js"></script>
+<script>
+document.getElementById('login-btn').addEventListener('click', async () => {
+  const msg = document.getElementById('msg');
+  msg.textContent = '';
+  try {
+    await nwpLogin(document.getElementById('username').value.trim());
+    window.location = '/';
+  } catch (e) { msg.textContent = 'Sign-in failed: ' + (e.message || e); }
+});
+</script>
+{% endblock %}

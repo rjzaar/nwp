@@ -1,0 +1,4 @@
+{# OOB tab-count refresh: when a pane loads over htmx, this span replaces the
+   matching tab-count in the tab bar, so counts refresh WITH the pane. On a
+   direct (non-htmx) GET it renders as a harmless empty-ish span. #}
+{% if tab %}<span class="tab-count" id="tabcount-{{ tab }}" hx-swap-oob="true">{{ tab_count }}{% if tab_alert %} <span class="alert-dot" title="last reset skipped/failed">●</span>{% endif %}</span>{% endif %}

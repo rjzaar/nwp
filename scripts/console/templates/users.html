@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Users — NWP Console{% endblock %}
+{% block content %}
+<h1>Users</h1>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+{% if enrol_link %}
+<pre class="enrol-link">{{ enrol_link }}</pre>
+<p class="muted">Copy it now — the token is stored hashed and cannot be re-shown. Expires in 48 h, single use.</p>
+{% endif %}
+
+<table class="tbl">
+  <tr><th>name</th><th>role</th><th>passkeys</th><th>created</th><th></th></tr>
+  {% for u in users %}
+  <tr>
+    <td><strong>{{ u.name }}</strong>{% if u.enrol_pending %} <span class="chip">enrolment pending</span>{% endif %}</td>
+    <td>
+      <form method="post" action="/users/{{ u.name }}/role" class="inline">
+        <select name="role">
+          {% for r in ['viewer','operator','owner'] %}
+          <option value="{{ r }}" {{ 'selected' if u.role == r else '' }}>{{ r }}</option>
+          {% endfor %}
+        </select>
+        <button>set</button>
+      </form>
+    </td>
+    <td>{{ u.passkeys }}</td>
+    <td class="mono small">{{ u.created }}</td>
+    <td>
+      <form method="post" action="/users/{{ u.name }}/reset" class="inline"
+            onsubmit="return confirm('Revoke all passkeys for {{ u.name }} and issue a new enrolment link?')">
+        <button class="warn">reset</button>
+      </form>
+      <form method="post" action="/users/{{ u.name }}/delete" class="inline"
+            onsubmit="return confirm('Delete {{ u.name }}?')">
+        <button class="warn">delete</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2>Add user</h2>
+<form method="post" action="/users/add">
+  <input name="name" placeholder="username (lowercase)" required pattern="[a-z0-9][a-z0-9_-]{0,31}">
+  <select name="role">
+    <option value="viewer">viewer</option>
+    <option value="operator">operator</option>
+    <option value="owner">owner</option>
+  </select>
+  <button class="primary">Create + get enrolment link</button>
+</form>
+<p class="muted">Their device also needs mesh access first: <code>pl console enroll</code> prints the
+Headscale pre-auth key runbook.</p>
+{% endblock %}

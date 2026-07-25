@@ -1,0 +1,30 @@
+{#
+  Where the numbers above/below came from, and how old they are.
+
+  The console has no sites: fleet state is PUBLISHED to it by the machine that
+  does (`pl fleet publish`). So every pane that shows fleet state must say
+  which host produced it and when — and must shout when that is no longer
+  current. Old data is never presented as current.
+#}
+{% if prov %}
+<div class="prov {% if prov.stale %}prov-stale{% elif prov.snapshot_stale %}prov-warn{% endif %}">
+  {%- if prov.source == 'published' and prov.stale %}
+  <strong>⚠ STALE — fleet state from {{ prov.host or 'an unknown host' }},
+    {{ prov.age_human }} old</strong> (max {{ prov.max_age_human }}).
+  Nothing has published since, so this is <strong>not current</strong>.
+  Run <code>pl fleet publish</code> on {{ prov.host or 'the workstation' }}.
+  {%- elif prov.source == 'published' %}
+  fleet state from <strong>{{ prov.host or '?' }}</strong>,
+  {% if prov.age_human == 'just now' %}just now{% else %}{{ prov.age_human }} ago{% endif %}
+  {%- if prov.generated_at %} <span class="muted">({{ prov.generated_at }})</span>{% endif %}
+  {%- elif prov.snapshot_stale %}
+  computed on this host (<strong>{{ prov.local_host }}</strong>) —
+  <strong>the published snapshot from {{ prov.host or '?' }} is {{ prov.age_human }} old
+  (older than {{ prov.max_age_human }}) and was not used</strong>.
+  {%- else %}
+  computed on this host (<strong>{{ prov.local_host }}</strong>) —
+  {% if prov.snapshot_present %}the published snapshot has no usable feed{% else %}no published fleet state{% endif %}.
+  Publish from the machine that holds the sites: <code>pl fleet publish</code>.
+  {%- endif %}
+</div>
+{% endif %}

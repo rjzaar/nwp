@@ -235,6 +235,11 @@ ${BOLD}ROLLBACK:${NC}
     rollback cleanup                Remove old rollback points
 
 ${BOLD}MONITORING (launch gate, P13/#71):${NC}
+    fleet publish [--to <host>]     Publish fleet state (rag + todo + backup freshness)
+                                    to the console host — the console DISPLAYS
+                                    fleet state, it cannot compute it (no sites there)
+    fleet status                    What is published, where, and how old
+    fleet schedule                  Publish periodically from this machine (cron)
     monitor uptime [--tier=live]    Fleet HTTP status + TLS expiry (red/amber/green)
     monitor mail <site>             Outbound mail readiness (SPF/DKIM/DMARC/PTR/MX)
     monitor mail <site> --send-test <addr> --execute   Opt-in live probe (gated)

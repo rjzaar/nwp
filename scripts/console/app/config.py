@@ -135,6 +135,15 @@ TTS_TIMEOUT = int(_env("NWP_CONSOLE_TTS_TIMEOUT", "60"))
 # truncated + unlinked in a finally). Default: the system temp dir.
 VOICE_TMPDIR = _env("NWP_CONSOLE_VOICE_TMPDIR", "")
 
+# -- Published fleet state ---------------------------------------------------
+# The console DISPLAYS fleet state; it does not compute it. The machine that
+# holds the sites runs `pl fleet publish`, which drops a schema-versioned
+# snapshot here (0600). The panes prefer it, show its provenance and age, and
+# mark it STALE loudly once it is older than FLEET_MAX_AGE. Absent snapshot =>
+# the previous behaviour (shell out to the local `pl`), clearly labelled.
+FLEET_STATE_FILE = Path(_env("NWP_CONSOLE_FLEET_STATE", str(DATA_DIR / "fleet-state.json")))
+FLEET_MAX_AGE = int(_env("NWP_CONSOLE_FLEET_MAX_AGE", "7200"))  # 2h
+
 
 def secret_key() -> bytes:
     """Session-signing secret; auto-generated once, 0600."""

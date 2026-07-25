@@ -57,6 +57,80 @@ role) — but their device needs mesh access first (`pl console enroll`).
 **Cert renewal is manual-ish:** Let's Encrypt certs last 90 days; re-run
 `pl console cert` (idempotent). A `pl todo` freshness check is a good follow-up.
 
+### deploy is fail-closed against divergence
+
+`pl console deploy` rsyncs with `--delete`. Before writing anything it compares
+the target's `~/nwp-console/src` with what is about to be shipped and **refuses**
+when the target holds work this deploy does not explain:
+
+| mark | meaning | verdict |
+|------|---------|---------|
+| `A` | new file we will create | fine |
+| `M` | differs, ours is newer — the change being deployed | fine |
+| `!` | differs and the **target's copy is newer** (edited on the box) | REFUSE |
+| `D` | exists **only** on the target — `--delete` would destroy it | REFUSE |
+
+```
+pl console deploy --dry-run           # show the plan, write nothing
+pl console deploy --force-overwrite   # tar.gz backup on the target FIRST, then deploy
+```
+
+`--force-overwrite` writes `~/nwp-console/backups/src-<UTC-stamp>.tar.gz` on the
+host before touching anything, and aborts if that backup is missing or empty.
+(This exists because on 2026-07-25 the console host was carrying an **unpushed**
+local branch with the voice feature and a plain deploy would have deleted it.)
+
+## Fleet state is PUBLISHED to the console, not computed on it
+
+The console host has no sites. `pl rag` there returns **zero sites** — which is
+why the Fleet tab used to be empty and the "a site went RED" push could never
+fire. The machine that holds the sites publishes a snapshot instead:
+
+```
+pl fleet publish              # on the workstation: gather -> snapshot -> ship
+pl fleet publish --dry-run    # build + summarise, ship nothing
+pl fleet status               # what is published here and on the console host
+pl fleet schedule             # cron it (default every 30 min)
+```
+
+The snapshot lands at `~/.local/share/nwp-console/fleet-state.json` (0600,
+written atomically), schema `nwp.fleet-state` v1:
+
+```jsonc
+{
+  "schema": "nwp.fleet-state", "schema_version": 1,
+  "generated_at": "2026-07-26T01:14:07Z",
+  "generated_by": {"host": "workstation", "user": "rob", "root": "$HOME/nwp", "pl_version": "0.30.0"},
+  "max_age_hint_seconds": 7200,
+  "summary": {"RED": 12, "AMBER": 0, "GREEN": 4, "sites": 16, "todo_items": 45, "backup_items": 35},
+  "feeds": {
+    "rag":  {"ok": true, "rc": 3, "secs": 0.4,  "cmd": "pl rag --json --no-todo", "data": {…}},
+    "todo": {"ok": true, "rc": 0, "secs": 30.5, "cmd": "pl todo check --json",    "data": {…}}
+  }
+}
+```
+
+`feeds.<name>.data` is the feed's JSON **verbatim**, so the console runs it
+through the same `parsers.py` as a local shell-out — one shape in the app.
+(`rc` is recorded but does not decide `ok`: `pl rag` exits 3 when a site is RED,
+which is the signal, not a failure.)
+
+Consumption (`app/fleet_state.py`, `NWP_CONSOLE_FLEET_STATE` /
+`NWP_CONSOLE_FLEET_MAX_AGE`, default 2 h):
+
+1. snapshot present and fresh → **show it**, with provenance
+   *"fleet state from **workstation**, 14 min ago"*;
+2. snapshot present but stale → try the local `pl`; it only wins if it actually
+   knows something (parsed ok **and** non-empty). Otherwise the stale snapshot
+   is still what you see — banner-red, *"⚠ STALE — fleet state from workstation, 5 h
+   old (max 2 h) … this is not current"*, and the Fleet tab flags itself;
+3. no snapshot → the local shell-out, labelled *"computed on this host (the console host) —
+   no published fleet state"*. If that returns zero sites the pane says so and
+   points at `pl fleet publish` instead of showing a healthy-looking empty table.
+
+The Gotify RAG detector reads the same gatherer, so it works off published state
+with no changes of its own.
+
 ## Issues/CI panes token (operator-provisioned — never automated)
 
 The issues + CI panes call the GitLab API with the **walled bot token pattern**
@@ -187,6 +261,7 @@ short-lived children. Set both backends to `off` and you can put it back.
 scripts/console/
   app/            FastAPI app (main.py) + pure modules:
                   authz.py (roles) actions.py (allowlist) parsers.py store.py
+                  fleet_state.py (published-snapshot consumption + provenance)
                   runner.py (only process spawner) gitlab_api.py webauthn_flow.py
                   notify.py (Gotify push: fail-open client + pure detectors)
                   runner.py (spawns `pl`) gitlab_api.py webauthn_flow.py
@@ -217,8 +292,10 @@ times, test button). Notification click-URLs deep-link back via `/?tab=<pane>`.
 ## Tests
 
 ```
-python3 -m pytest scripts/console/tests/    # pure-python unit tests
-bats tests/unit/test-console.bats           # pl console dispatch
+python3 -m pytest scripts/console/tests/          # pure-python unit tests
+bats tests/unit/test-console.bats                 # pl console dispatch
+bats tests/unit/test-console-deploy-guard.bats    # deploy divergence guard (stubbed ssh/rsync)
+bats tests/unit/test-fleet-publish.bats           # pl fleet publish snapshot contract
 ```
 
 ## Honest limits
@@ -226,10 +303,16 @@ bats tests/unit/test-console.bats           # pl console dispatch
 - `pl demo status` / `codes list` output is parsed heuristically (human tables);
   the panes always keep the raw text in a collapsible block. `pl rag --json` and
   `pl todo check --json` are real contracts.
-- The fleet view reflects **the console host's** checkout/caches (`pl rag
-  --no-todo` reads cached audit records on that host — typically empty unless
-  synced); it is not a substitute for `pl rag` on the workstation.
-- Backups pane is read-only (the sweep runs where the backups live).
+- The fleet view is only as current as the last `pl fleet publish`. It always
+  says which host produced it and how old it is, and shouts once that is past
+  `NWP_CONSOLE_FLEET_MAX_AGE` — but a dead publisher means stale numbers, so
+  keep the cron well inside the max-age window.
+- Publishing is **push-only from the workstation** today. If the workstation is
+  off, nothing refreshes (the console cannot pull — it holds no keys to the
+  sites). Later ver/met can take over the publish job; nothing in the schema is
+  workstation-specific.
+- Backups pane is read-only (the sweep runs where the backups live) and shows
+  the backup-freshness slice of the *published* todo sweep.
 - Live/prod anything: read-only by design — run it on the workstation (or the
   air-gapped deploy host for real prod).
 - Voice: `base` is chosen for latency, not accuracy — it mangles unusual site

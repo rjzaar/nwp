@@ -12,6 +12,7 @@ set -euo pipefail
 # (P61 leakage gate). See example.nwp.yml for the schema.
 #
 #   pl console deploy [--host <ssh-host>] [--no-restart]   rsync + venv + unit + health
+#                     [--dry-run] [--force-overwrite]
 #   pl console status [--host <ssh-host>]                  systemd + /health over mesh
 #   pl console user add <name> --role viewer|operator|owner
 #   pl console user reset <name>                           break-glass re-enrol
@@ -34,6 +35,7 @@ REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
 
 source "$REPO_ROOT/lib/ui.sh"
+source "$REPO_ROOT/lib/console-deploy.sh"   # target-divergence guard for deploy
 
 # Resolve operator config: env override > nwp.yml chain > public placeholder.
 _console_cfg_file() {
@@ -80,7 +82,7 @@ show_help() {
 ${BOLD}pl console${NC} — NWP Console (mesh-only web console on ${CONSOLE_HOST})
 
 ${BOLD}USAGE:${NC}
-    pl console deploy [--host <ssh-host>] [--no-restart]
+    pl console deploy [--host <ssh-host>] [--no-restart] [--dry-run] [--force-overwrite]
     pl console status [--host <ssh-host>]
     pl console user add <name> --role viewer|operator|owner
     pl console user reset <name>       (break-glass: shell-only, revokes passkeys)
@@ -89,6 +91,13 @@ ${BOLD}USAGE:${NC}
     pl console dns                     (upsert ${CONSOLE_FQDN} A -> ${CONSOLE_TAILNET_IP})
     pl console cert                    (issue/renew the LE cert, DNS-01, push to host)
     pl console logs [--host <ssh-host>]
+
+${BOLD}DEPLOY SAFETY:${NC}
+    deploy uses 'rsync --delete'. It first compares the target's tree with what
+    is about to be shipped and REFUSES if the target holds anything this deploy
+    does not explain — files that exist only there, or files edited there more
+    recently than ours. --dry-run shows the plan and writes nothing;
+    --force-overwrite takes a timestamped tar.gz backup on the target first.
 
 First run: dns -> cert -> deploy -> user add <you> --role owner -> open the
 printed one-time enrolment link on the device that holds your passkey.
@@ -200,15 +209,92 @@ NWP_CONSOLE_STT_MAX_SECONDS=60
 NWP_CONSOLE_TTS_BACKEND=auto
 NWP_CONSOLE_TTS_PIPER=%h/piper/venv/bin/piper
 NWP_CONSOLE_TTS_VOICE=%h/piper/voices/en_US-lessac-medium.onnx
+# Fleet state is PUBLISHED here by \`pl fleet publish\` (this host has no sites).
+# Past FLEET_MAX_AGE seconds the panes mark the snapshot STALE instead of
+# presenting it as current. Keep the publisher's cron well inside this window.
+NWP_CONSOLE_FLEET_STATE=%h/.local/share/nwp-console/fleet-state.json
+NWP_CONSOLE_FLEET_MAX_AGE=7200
 EOF
     # systemd EnvironmentFile doesn't expand %h — replace with the real home dir.
     _ssh 'sed -i "s|%h|$HOME|g" ~/.config/nwp-console/env'
 }
 
+# -- divergence guard (the 2026-07-25 near miss) -----------------------------
+# `rsync --delete` is a loaded gun pointed at whatever is on the target. Before
+# firing, diff the target against what we are about to deploy and REFUSE when
+# the target holds work this change does not explain. See lib/console-deploy.sh.
+_deploy_classify() { # $1 outdir -> writes $1/classification; echoes rc
+    local out="$1" rc=0
+    console_manifest_local "$CONSOLE_SRC" > "$out/local.mf" || return 2
+    if ! _ssh "cd nwp-console/src 2>/dev/null && { $CONSOLE_MANIFEST_CMD ; }" > "$out/target.mf" 2>/dev/null; then
+        : > "$out/target.mf"      # no target tree yet => first deploy, nothing to lose
+    fi
+    console_deploy_classify "$out/local.mf" "$out/target.mf" > "$out/classification" || rc=$?
+    printf '%s' "$rc"
+}
+
+_deploy_backup_target() {
+    local stamp; stamp=$(date -u +%Y%m%d-%H%M%S)
+    local dest="nwp-console/backups/src-${stamp}.tar.gz"
+    print_info "Backing up the target's current tree first -> ~/${dest}"
+    if ! _ssh "mkdir -p ~/nwp-console/backups && tar czf ~/${dest} -C ~/nwp-console src"; then
+        print_error "backup FAILED — refusing to overwrite an unbacked-up target"
+        return 1
+    fi
+    local size; size=$(_ssh "wc -c < ~/${dest}" 2>/dev/null | tr -d ' ' || true)
+    if [ -z "$size" ] || [ "$size" -lt 100 ] 2>/dev/null; then
+        print_error "backup looks empty (${size:-none} bytes) — refusing to proceed"
+        return 1
+    fi
+    print_success "backup taken: ~/${dest} (${size} bytes) — restore with: tar xzf ~/${dest} -C ~/nwp-console"
+    return 0
+}
+
 cmd_deploy() {
-    local restart=true
-    [ "${1:-}" = "--no-restart" ] && restart=false
+    local restart=true dry_run=false force=false
+    while [ $# -gt 0 ]; do
+        case "${1:-}" in
+            --no-restart)      restart=false ;;
+            --dry-run|-n)      dry_run=true ;;
+            --force-overwrite) force=true ;;
+            "")                : ;;
+            *) print_error "unknown option: $1"; return 1 ;;
+        esac
+        shift
+    done
     print_info "Deploying NWP Console -> ${CONSOLE_HOST}"
+
+    print_info "0/5 checking the target for local changes"
+    local wk; wk=$(mktemp -d); chmod 700 "$wk"
+    # shellcheck disable=SC2064
+    trap "rm -rf '$wk'" RETURN
+    local crc; crc=$(_deploy_classify "$wk")
+    if [ "$crc" = "2" ]; then
+        print_error "could not build the deploy manifests — refusing to deploy blind"
+        return 1
+    fi
+    console_deploy_summary "$wk/classification"
+
+    if console_deploy_has_divergence "$wk/classification"; then
+        if [ "$force" != true ]; then
+            print_error "REFUSING to deploy: ${CONSOLE_HOST} has changes this deploy does not explain."
+            print_error "Files marked D exist ONLY on the target and 'rsync --delete' would DESTROY them."
+            print_error "Files marked ! are NEWER on the target and would be overwritten."
+            print_hint "Look first:      pl console deploy --dry-run"
+            print_hint "Rescue the work: ssh ${CONSOLE_HOST} 'cd ~/nwp-console/src && git status' (or scp it back)"
+            print_hint "Proceed anyway:  pl console deploy --force-overwrite   (takes a timestamped backup first)"
+            return 1
+        fi
+        print_warning "--force-overwrite: proceeding over target-local changes"
+        if [ "$dry_run" != true ]; then
+            _deploy_backup_target || return 1
+        fi
+    fi
+
+    if [ "$dry_run" = true ]; then
+        print_info "--dry-run: nothing was written to ${CONSOLE_HOST} (no rsync, no venv, no restart)"
+        return 0
+    fi
 
     print_info "1/5 rsync source"
     _ssh 'mkdir -p ~/nwp-console/src'

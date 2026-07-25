@@ -287,11 +287,23 @@ def detect_demo_reset(demo_sites, prev, console_url: str = "") -> tuple[list[Eve
     return events, now
 
 
+# The credential-is-dying vocabulary, across BOTH emitters in lib/todo-checks.sh:
+#   check_token_liveness -> "Token DEAD (revoked/invalid): <id>"
+#                           "Token expiring soon: <id> (live expiry …)"
+#   check_secret_expiry  -> "Secret EXPIRED <n> days ago: <id>"
+#                           "Secret expires in <n> days: <id>"
+#   check_token_rotation -> "Token rotation due: <id> (<n> days old)"
+# Deliberately NOT matched: "Token rotation not tracked" and "<n> of <m>
+# secret(s) have no recorded rotation" — those are registry hygiene nags that
+# never change on their own, so pushing them is noise, not news.
+_TOKEN_SIGNALS = (
+    "token dead", "token expiring", "secret expired", "secret expires", "token rotation due",
+)
+
+
 def _is_token_item(item: dict) -> bool:
-    """Token-liveness items as emitted by lib/todo-checks.sh check_token_liveness
-    ('Token DEAD (revoked/invalid): <id>' / 'Token expiring soon: <id> ...')."""
     text = str(item.get("text", "")).lower()
-    return "token" in text and ("dead" in text or "expir" in text)
+    return any(sig in text for sig in _TOKEN_SIGNALS)
 
 
 def detect_token_expiry(todo: dict, prev, console_url: str = "") -> tuple[list[Event], dict]:

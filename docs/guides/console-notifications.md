@@ -175,6 +175,27 @@ Tightening it to `listenaddr: "100.64.0.2"` is a one-line change in
 the bind, then repoint those two scripts at `100.64.0.2:8080`, then re-test all
 three producers. See `docs/proposals/F22-gotify-remote-reachability.md`.
 
+## Which events are actually live today (measured, not assumed)
+
+A checker pass on the console host was inspected feed by feed. Wiring one of
+these up is not the same as it having anything to say yet:
+
+| Event | Feed status on the console host | Consequence |
+|---|---|---|
+| `rag` | **`pl rag --json --no-todo` returns 0 sites** | **inert** — the flagship alert cannot fire yet |
+| `demo_tester` | GitLab API fine, 40 open issues, but no issue carries the `demo-tester` label yet | armed; fires on the first tester report |
+| `demo_reset` | `pl demo status nwd` works, but its event trail only has `codes-issued` lines so far — no `reset-*`/`skip-*` yet | armed; fires on the first real reset cycle |
+| `token_expiry` | 46 todo items, of which 4 are `TOK-*` "rotation not tracked" hygiene nags (deliberately ignored) | armed; fires on a real expiry/death |
+| `ci` | GitLab API fine, 0 open MRs in `nwp/nwp` | armed; fires on the first failing pipeline |
+
+**The `rag` gap is the important one.** It is not a bug in the notifier — it is
+the pre-existing console limitation already noted in `scripts/console/README.md`:
+`pl rag` on the console host reads *that host's* cached audit records, which are
+empty unless something syncs them there. Until those caches are populated on the
+console host, "a site went red" will never fire, no matter how healthy the push
+path is. Fixing it means getting real audit data onto the console host; that is
+a separate piece of work from this one.
+
 ## Troubleshooting
 
 | Symptom | Check |
@@ -192,7 +213,7 @@ or a failed action.
 ## Tests
 
 ```bash
-python3 -m pytest scripts/console/tests/test_notify.py   # 53 tests, no network
+python3 -m pytest scripts/console/tests/test_notify.py   # 62 tests, no network
 ```
 
 The suite covers fail-open on every transport error, no-op when unconfigured,

@@ -320,6 +320,29 @@ def test_token_refires_after_being_fixed_then_breaking_again():
     assert len(events) == 1, "a token that breaks again must be reported again"
 
 
+@pytest.mark.parametrize("text", [
+    "Token DEAD (revoked/invalid): nwp-api",            # check_token_liveness
+    "Token expiring soon: ops-note (live expiry ...)",  # check_token_liveness
+    "Secret EXPIRED 3 days ago: linode",                # check_secret_expiry
+    "Secret expires in 9 days: cloudflare",             # check_secret_expiry
+    "Token rotation due: b2 (120 days old)",            # check_token_rotation
+])
+def test_token_matcher_covers_every_emitter_wording(text):
+    """Verified against the real strings in lib/todo-checks.sh — an expiring
+    secret must never be dropped just because it is phrased differently."""
+    assert notify._is_token_item({"check": "SEC-x", "text": text}) is True
+
+
+@pytest.mark.parametrize("text", [
+    "Token rotation not tracked: linode",                    # hygiene, never changes
+    "4 of 9 secret(s) have no recorded rotation",            # hygiene roll-up
+    "2 security update(s) available",                        # SEC- but a Drupal advisory
+    "Backup sweep is stale",
+])
+def test_token_matcher_ignores_hygiene_and_non_tokens(text):
+    assert notify._is_token_item({"check": "SEC-x", "text": text}) is False
+
+
 def test_token_dead_is_louder_than_expiring():
     dead, _ = notify.detect_token_expiry(_todo(TOK_DEAD), {"notified": []})
     soon, _ = notify.detect_token_expiry(_todo(TOK_SOON), {"notified": []})

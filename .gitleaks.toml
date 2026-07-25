@@ -133,6 +133,20 @@ regex = '''\b(mini|metabox|mons|carlo|mmt)\b'''
 tags = ["leak", "hostname"]
 path = '''(?i).*\.(md|markdown|rst|txt|yml|yaml|json|toml|sh|bash|py|php|js|ts|html)$'''
 
+# REVIEW (ops#131, 2026-07-26): the fleet smoke-test checklist is, by its
+# nature, a list of the operator's live surfaces — a page of clickable links is
+# the whole deliverable, so it cannot be genericised without destroying it.
+# Path-pinned to that ONE file, on the same reasoning the global allowlist
+# already applies to CLAUDE.md and docs/onboarding/ ("deliberately names
+# operator infrastructure — that's its purpose"). Detection is unchanged
+# everywhere else, and the default credential rules still apply to this file.
+# ALTERNATIVE IF PREFERRED: move docs/guides/test-links.md into the private
+# tree (~/central) and delete this allowlist. Everything else in the 2026-07
+# docs batch was genericised and needs no exemption.
+[[rules.allowlists]]
+description = "Fleet smoke-test checklist — a deliberate index of live surfaces (ops#131)."
+paths = ['''^docs/guides/test-links\.md$''']
+
 [[rules]]
 id = "operator-organisation"
 description = "Operator-specific organisation name leak"
@@ -149,6 +163,20 @@ id = "live-internal-domain"
 description = "Live internal domain leak (subdomains of operator domains)"
 regex = '''\b[a-z0-9_-]+\.(nwpcode\.org|mayostudios\.org)\b'''
 tags = ["leak", "domain"]
+
+# REVIEW (ops#131, 2026-07-26): the fleet smoke-test checklist is, by its
+# nature, a list of the operator's live surfaces — a page of clickable links is
+# the whole deliverable, so it cannot be genericised without destroying it.
+# Path-pinned to that ONE file, on the same reasoning the global allowlist
+# already applies to CLAUDE.md and docs/onboarding/ ("deliberately names
+# operator infrastructure — that's its purpose"). Detection is unchanged
+# everywhere else, and the default credential rules still apply to this file.
+# ALTERNATIVE IF PREFERRED: move docs/guides/test-links.md into the private
+# tree (~/central) and delete this allowlist. Everything else in the 2026-07
+# docs batch was genericised and needs no exemption.
+[[rules.allowlists]]
+description = "Fleet smoke-test checklist — a deliberate index of live surfaces (ops#131)."
+paths = ['''^docs/guides/test-links\.md$''']
 
 [[rules.allowlists]]
 description = "Bare domain mentions in the format <subdomain>.<example-prod-domain> placeholders or known-public subdomains the operator does want to reference."

@@ -3,6 +3,7 @@
 Deploy directly from live test server to production server.
 
 **Last Updated:** 2026-01-14
+**Reviewed:** 2026-07-26 — see the staleness notice below.
 
 ## Overview
 
@@ -19,6 +20,43 @@ pl live2prod [OPTIONS] <sitename>
 | Argument | Description |
 |----------|-------------|
 | `sitename` | Site name |
+
+> ⚠️ **Partially stale (reviewed 2026-07-26).** This page was written in January 2026
+> and predates every safety guard added since. The Options table below is incomplete
+> and the step descriptions describe the older **fail-open** behaviour. The guards and
+> flags documented in the two sections immediately below are authoritative; run
+> `pl live2prod --help` for the live list.
+
+## Guards that run before anything is pushed
+
+Since mid-2026 this command refuses to proceed unless several conditions hold. Each
+refusal is a safety feature, not a bug.
+
+| Guard | What it checks | Source |
+|-------|----------------|--------|
+| **Canonical content guard** | that pushing a database outward will not overwrite content that real people created on the server (ops#33) | `canonical_guard_content_push()` |
+| **Maturity guard** | that the site's code-flow class permits this deploy (P67/ops#48) | `maturity_guard_deploy()` |
+| **Pair guard** | that a paired site's ordering and identity-lock rules are respected (ADR-0031/ops#75) | `pair_guard()` |
+| **Pre-deploy snapshot** | that a full webroot snapshot was taken **before** the destructive `rsync --delete`. **Fail-closed** — if the snapshot cannot be taken, the deploy stops | — |
+| **Maintenance mode** | that maintenance mode was actually switched on. **Fail-closed** — if switching it on fails, the deploy aborts *before* `rsync --delete`, not after | — |
+
+The two fail-closed guards are the important change. Previously a failure here let the
+deploy continue, which could delete files with no recoverable snapshot.
+
+## Override flags (all ledgered — none are routine)
+
+| Option | What it does | Ledger |
+|--------|--------------|--------|
+| `--code-only` | Deploy code and configuration only; do **not** push the database. This is the correct shape for any site whose real content lives on the server, and it satisfies the identity-lock rule for paired sites (ADR-0031 D6). | — |
+| `--override-canonical` | Push content even though the site is not canonical `dev`. **Overwrites the canonical content source.** | `private/canonical/<site>.log` |
+| `--override-pair` | Proceed past a paired-site guard — wrong ordering, the identity-lock rule, or a red pair. | `private/pairs/<pair>.log` |
+| `--override-snapshot` | Proceed with the destructive `rsync --delete` even though the pre-deploy webroot snapshot could not be taken. **The deletion is then UNRECOVERABLE.** | `private/snapshots/<site>.log` |
+
+> **`--override-snapshot` is the dangerous one.** It removes the only thing standing
+> between a failed deploy and permanent data loss. Do not use it to get past a
+> disk-space problem — fix the disk-space problem.
+
+See also: [How to: deploy a change](../../guides/howto-deploy.md).
 
 ## Options
 

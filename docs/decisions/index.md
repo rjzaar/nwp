@@ -59,6 +59,9 @@ Proposed → Accepted → [Deprecated | Superseded]
 | [0027](0027-unified-course-content-architecture.md) | Unified course-content architecture (one canonical model, federation by overlay, trust-ceremony spectrum) | 2026-07-08 | Accepted 2026-07-09. **Supersedes F30** (specifics), **amends P70** (attribution → member-level/CC0); ops#61 canonical + `adaptations/<member>/` overlays + signed provenance |
 | [0028](0028-ver-single-operator-human-gated-workstation.md) | ver as a single-operator, human-gated desktop workstation | 2026-07-09 | Accepted. Amends 0017/0026 (ver *operating posture* only); ver runs full `pl` on a desktop, browser-AI allowed, **no live AI execution on the box**; prod-writes hardware+signature-gated; Solo **W/W2**; DR-backup half deferred |
 | [0031](0031-paired-site-versioning-and-promotion.md) | Paired-site versioning & promotion — five planes, versioned pair contract, provider-first ordering | 2026-07-10 | Accepted |
+| [0020](0020-tiered-architecture-model.md) | Tiered architecture model | 2026-04 | Accepted (ratified by operator 2026-07-18, nwp/ops#95) |
+| [0030](0030-per-site-canonical-maturity-axes.md) | Per-site canonical & maturity axes + impact/fate-manifest contract | 2026-07-09 | Accepted (ratified 2026-07-18, nwp/ops#95); supersedes 0013 (ops#33 `canonical:` + P67 `maturity:` + ops#47 `lib/impact.sh`) |
+| [0032](0032-non-prod-data-refresh-and-file-store.md) | Non-prod data refresh & file store (Flow B) | 2026-07-23 | Accepted (2026-07-23) — implementation merged to `main`; live host validation still outstanding (nwp/ops#120) |
 
 ## Rejected Proposals
 
@@ -72,6 +75,7 @@ Proposed → Accepted → [Deprecated | Superseded]
 |-----|-------|---------------|
 | [0013](0013-four-state-deployment-model.md) | Four-state deployment model (dev/stg/live/prod) | [0030](0030-per-site-canonical-maturity-axes.md) (code is `canonical: dev\|live\|prod` + `maturity:`, rejects `stg` as a state) |
 | [0019](0019-verifier-always-on-hardware-rooted-keys.md) | verifier always-on with hardware-rooted keys | [0024](0024-self-deploying-prod-supersedes-verifier.md) (before implementation) |
+| [0022](0022-nwp-verifier-binary-split.md) | nwp-verifier binary split | [0026](0026-nwp-server-capability-agent.md) (2026-07-18) — the build target was renamed/re-scoped to `nwp-server`; there is no standalone verifier host to build under 0024 |
 
 ## Deprecated Decisions
 
@@ -83,11 +87,8 @@ Proposed → Accepted → [Deprecated | Superseded]
 
 | ADR | Title | Date | Note |
 |-----|-------|------|------|
-| [0020](0020-tiered-architecture-model.md) | Tiered architecture model | 2026-04 | Accepted (2026-07-18) |
-| [0022](0022-nwp-verifier-binary-split.md) | nwp-verifier binary split | 2026-04 | Superseded by 0026 (2026-07-18); its build target was renamed/re-scoped to `nwp-server` by 0026; no standalone verifier host to build under 0024 |
 | 0023 | *(reserved for the AI Confidentiality Boundary, P67 — not yet drafted)* | — | Reserved |
 | [0029](0029-nwc-authorization-model.md) | nwc authorization model (domain-layer choke-point, machine-id guild resolution, fail-closed floors) | 2026-07-09 | Proposed; generalises P73, cites OWASP A01 |
-| [0030](0030-per-site-canonical-maturity-axes.md) | Per-site canonical & maturity axes + impact/fate-manifest contract | 2026-07-09 | Accepted (2026-07-18); supersedes 0013 (ops#33 `canonical:` + P67 `maturity:` + ops#47 `lib/impact.sh`) |
 
 ## Creating a New ADR
 

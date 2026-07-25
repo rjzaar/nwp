@@ -323,7 +323,7 @@ Once installed, use the CLI from anywhere:
 
 ```bash
 # List available recipes
-pl --list
+pl install --list
 
 # Install a site
 pl install d

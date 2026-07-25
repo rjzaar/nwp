@@ -498,10 +498,10 @@ If CLI is installed, use the `pl` command from anywhere:
 | `pl copy src dst` | `./scripts/commands/copy.sh src dst` |
 | `pl delete mysite` | `./scripts/commands/delete.sh mysite` |
 | `pl dev2stg mysite` | `./scripts/commands/dev2stg.sh mysite` |
-| `pl test mysite` | `./scripts/commands/testos.sh -a mysite` |
+| `pl test mysite` | `./scripts/commands/test.sh mysite` (`pl testos` → `testos.sh`) |
 | `pl theme watch mysite` | `./scripts/commands/theme.sh watch mysite` |
 | `pl status` | `./scripts/commands/status.sh` |
-| `pl --list` | `./scripts/commands/install.sh --list` |
+| `pl install --list` | `./scripts/commands/install.sh --list` |
 
 (F23 removed the root-level `./<command>.sh` symlinks. Use `pl` or
 invoke the script directly under `scripts/commands/`.)

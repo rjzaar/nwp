@@ -1,5 +1,24 @@
 # NWP Environment Management
 
+> ## ⚠️ SUPERSEDED MODEL — read this first
+>
+> **Reviewed 2026-07-26.** The "four-tier environment hierarchy" described below is
+> ADR-0013's four-state model, which **ADR-0030 supersedes and explicitly rejects**.
+>
+> Under the current model there are **two independent axes**, not one ladder:
+>
+> - **`canonical: dev | live | prod`** — *where the real content lives*, which decides
+>   whether pushing a database outward is allowed (`pl canonical`).
+> - **`maturity: incubating | stabilizing | production`** — *how carefully code moves*
+>   (`pl maturity`).
+>
+> `stg` is **not a state** in that model — staging is a place, not a phase.
+>
+> The environment *directories* described below (`dev/`, `stg/`, live, prod) are still
+> real and still correct. It is the four-**state** framing, and the deployment advice
+> built on it, that is out of date. See ADR-0030, ADR-0031, and
+> [How to: deploy a change](../guides/howto-deploy.md).
+
 This document describes the environment hierarchy, configuration splits, and preview environment setup for NWP-managed Drupal sites.
 
 ## Table of Contents
@@ -662,5 +681,5 @@ cat /etc/hosts | grep ddev
 - [CI/CD Pipeline Configuration](cicd.md)
 - [Deployment Guide](linode-deployment.md)
 - [Developer Lifecycle Guide](DEVELOPER_LIFECYCLE_GUIDE.md)
-- [GitLab CI/CD Configuration](../.gitlab-ci.yml)
-- [GitHub Actions Workflow](../.github/workflows/build-test-deploy.yml)
+- [GitLab CI/CD Configuration](../../.gitlab-ci.yml)
+- [GitHub Actions Workflow](../../.github/workflows/build-test-deploy.yml)

@@ -530,3 +530,25 @@ unprivileged (fix = dedicated unix acct + narrow sudoers); **empty staged codes-
 codes** (footgun: issue codes → must --stage-codes or next nightly locks testers out); golden on box drifts
 until re-staged; no liveness alarm if the laptop sleeps through 01:00; met steps untested ON met.
 **Hygiene:** stale /tmp curl-configs holding live PRIVATE-TOKENs (Jul-18/24/25, one mode 664) — SHREDDED.
+
+## [2026-07-26] ✅ Docs batch #130/#131/#132 (MR !160, docs-only) + live-surface findings
+6 how-to guides (backup-restore, deploy, dr-chain, demo-tier, invite-codes, console) + accuracy fixes across
+~18 files. Removed real falsehoods: CLAUDE.md's phantom `recipes/` dir, ~40 root `./cmd.sh` invocations
+(F23 deleted those symlinks), `pl --list` (never existed, in 6 places), pre-v2 site tree. SAFETY: stg2prod/
+live2prod docs now cover the guard stack + the 4 ledgered override flags — incl. that `--override-snapshot`
+makes rsync --delete UNRECOVERABLE (was documented nowhere). doc-truth baseline 111→95. test-links.md +
+docs/overview/ (nwp, Saint School, NWC, theocat, overall) + the dir answer.
+**dir VERDICT: keep separate.** Record was silent (no ADR) but the architecture decides it: ops#34 product
+triple makes transcript search its own leg; ~/nwptoolkit already supersedes the Drupal module (610k segments,
+<0.05s vs 14-43s); DIR is Tier-1 never-public and Q-3PC-DIR-01 is BLOCKING (Burke approval + counsel).
+Recommend: deploy the toolkit behind its gate, retire dir_search, finish the thin CLIP integration
+(nwc_clip_review, P64/ops#60) that already ships disabled — and WRITE THE ADR (its absence caused the question).
+**Verified NOT a problem:** nwc live /trial 404 — nwc_privacy IS enabled on live but at the PRE-ARC version
+(hard freeze); new Trialing code correctly undeployed pending #119. Live is in the safe/restrictive state.
+**FIXED inline:** scripts/commands/fix.sh was 0664 → `pl fix` unresolvable; chmod +x, verified working.
+**Open follow-ups from the batch:** pl help omits 24 real commands (console/secrets/site/server/issue/rag/
+todo/doc-truth + new subcommands); `sites/nwc/.nwp.yml` MISSING — Commons config still physically at
+`sites/nw1/.nwp.yml` from the July rename; live surfaces: saintschool.mayostudios.org/user/login 404,
+benedicta.art at registrar, test.nwpcode.org no cert, dir 403, ssd missing local_browse (ssd agent rebuilding);
+3 conflicting test-pass-rate figures vs a February .badges.json; .gitleaks.toml gained a path-pinned allowlist
+for test-links.md (operator to confirm or move that file to ~/central instead).

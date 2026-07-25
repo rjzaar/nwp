@@ -69,6 +69,38 @@ QUOKKA_URL = _env("NWP_CONSOLE_QUOKKA_URL", "http://127.0.0.1:11434")
 QUOKKA_MODEL = _env("NWP_CONSOLE_QUOKKA_MODEL", "llama3.3:70b")
 QUOKKA_TIMEOUT = int(_env("NWP_CONSOLE_QUOKKA_TIMEOUT", "60"))
 
+# -- Gotify push notifications (Phase 3) ------------------------------------
+# The console's "tell me" channel: a SELF-HOSTED Gotify server on the mesh.
+# Empty URL (the committed default) = the whole feature is a silent no-op, so
+# dev checkouts and fresh deploys never error. The application token is
+# provisioned by the OPERATOR at GOTIFY_TOKEN_FILE (0600) — `pl console deploy`
+# never copies it, exactly like the GitLab pane token.
+GOTIFY_URL = _env("NWP_CONSOLE_GOTIFY_URL", "")
+GOTIFY_TOKEN_FILE = Path(
+    _env("NWP_CONSOLE_GOTIFY_TOKEN_FILE", str(HOME / ".config/nwp-console/gotify.token"))
+)
+GOTIFY_TIMEOUT = int(_env("NWP_CONSOLE_GOTIFY_TIMEOUT", "5"))
+
+# Which events may push. Comma-separated subset of notify.EVENT_KINDS
+# (rag, demo_tester, demo_reset, token_expiry, ci, brief) — each individually
+# toggleable; "" or "none" disables every event but leaves the test button live.
+NOTIFY_EVENTS = [
+    e.strip() for e in _env(
+        "NWP_CONSOLE_NOTIFY_EVENTS", "rag,demo_tester,demo_reset,token_expiry,ci"
+    ).split(",")
+    if e.strip() and e.strip().lower() != "none"
+]
+
+# Seconds between checker passes. The gathers are TTL-cached and shared with
+# the panes, so this is cheap; below PANE_CACHE_TTL it just re-reads the cache.
+NOTIFY_INTERVAL = int(_env("NWP_CONSOLE_NOTIFY_INTERVAL", "300"))
+
+# Optional daily morning brief, local "HH:MM" ("" = off). Requires 'brief' in
+# NOTIFY_EVENTS and a reachable local model (Quokka); it never wakes one.
+NOTIFY_BRIEF_AT = _env("NWP_CONSOLE_NOTIFY_BRIEF_AT", "")
+
+# Where the dedupe high-water marks live (0600) so restarts don't re-notify.
+NOTIFY_STATE_FILE = Path(_env("NWP_CONSOLE_NOTIFY_STATE", str(DATA_DIR / "notify-state.json")))
 # ---------------------------------------------------------------------------
 # Voice — talk to Quokka, Quokka talks back. Everything runs ON THIS HOST:
 # faster-whisper/whisper.cpp for speech in, piper for speech out. No cloud

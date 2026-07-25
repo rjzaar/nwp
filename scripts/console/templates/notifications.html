@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Notifications — NWP Console{% endblock %}
+{% block content %}
+<h1>Notifications</h1>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+
+<p class="muted">Push goes to a <strong>self-hosted Gotify</strong> server on the mesh — nothing
+leaves the tailnet, no third party is involved. Every event fires on <strong>state change
+only</strong>; the high-water marks are persisted, so restarting the console never re-notifies.</p>
+
+<table class="tbl">
+  <tr><th>event</th><th>state</th><th>last sent</th></tr>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.label }}</td>
+    <td>{% if r.enabled %}<span class="chip">on</span>{% else %}<span class="muted">off</span>{% endif %}</td>
+    <td class="mono small">{{ r.last or '—' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+<p class="muted">Toggle events in <code>~/.config/nwp-console/env</code>
+(<code>NWP_CONSOLE_NOTIFY_EVENTS</code>, comma-separated) and restart the console.
+The checker runs every {{ interval }}s.
+{% if not seeded %}No state recorded yet — the first pass seeds silently, then you are told about
+changes from there on.{% endif %}</p>
+
+<h2>Server</h2>
+<table class="tbl">
+  <tr><th>Gotify URL</th><td class="mono small">{{ status.url or 'not set (feature is a no-op)' }}</td></tr>
+  <tr><th>token file</th><td class="mono small">{{ status.token_file }}</td></tr>
+  <tr><th>token present</th><td>{{ 'yes' if status.has_token else 'NO — provision it (below)' }}</td></tr>
+  <tr><th>status</th>
+      <td>{% if status.configured %}<span class="chip">configured</span>{% else %}<span class="muted">unconfigured — silent no-op</span>{% endif %}</td></tr>
+</table>
+
+<form method="post" action="/notifications/test" class="inline">
+  <button class="primary">Send test notification</button>
+</form>
+<form method="post" action="/notifications/check" class="inline">
+  <button>Run a check now</button>
+</form>
+
+<h2>Set up your phone</h2>
+<ol>
+  <li>Put the phone on the mesh: install the <strong>Tailscale</strong> app and join it to the
+      same Headscale network (<code>pl console enroll</code> prints the pre-auth key runbook).
+      Push only arrives while the phone is connected — see the caveat below.</li>
+  <li>Install <strong>Gotify</strong> (F-Droid or Play Store; the client is open source).</li>
+  <li>Open it and sign in against <code>{{ status.url or 'http://&lt;tailnet-ip&gt;:8080' }}</code>
+      with your Gotify <em>user</em> account — not the application token.</li>
+  <li>Tap <em>Send test notification</em> above and confirm it lands.</li>
+</ol>
+<p class="muted"><strong>Caveat, stated plainly:</strong> Gotify holds a WebSocket open from the
+phone, so a notification is only delivered while the phone can actually reach the server. Off the
+mesh (or with Tailscale toggled off to save battery) messages queue on the server and arrive when
+you reconnect — they are not lost, but they are not timely either. This channel is
+<em>"tell me now"</em>; the durable record stays in the console audit log and GitLab.</p>
+
+<p class="muted">Full runbook, including provisioning the 0600 application token on the console
+host: <code>docs/guides/console-notifications.md</code>.</p>
+{% endblock %}

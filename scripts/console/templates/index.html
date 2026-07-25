@@ -34,6 +34,12 @@ wired here by design — run those on the workstation. Heavy issue edits: <a hre
     try { localStorage.setItem(KEY, p); } catch (e) { /* private mode: no persistence */ }
   }
   function activePane() {
+    // ?tab=<pane> wins: that is what a push notification's click URL carries,
+    // so tapping an alert lands on the pane that explains it.
+    try {
+      var q = new URLSearchParams(window.location.search).get('tab');
+      if (PANES.indexOf(q) !== -1) return q;
+    } catch (e) { /* no URLSearchParams: fall through to the remembered tab */ }
     try { var s = localStorage.getItem(KEY); if (PANES.indexOf(s) !== -1) return s; } catch (e) {}
     return PANES[0];
   }

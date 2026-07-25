@@ -1,8 +1,9 @@
 # NWP Console
 
 The `pl` surfaces as a **mesh-only, passkey-only, role-gated** web app (PWA).
-Phases 1+2: dashboards + safe actions + roles + audit log. Push notifications
-(Gotify) are deferred (Phase 3).
+Phases 1+2: dashboards + safe actions + roles + audit log. Phase 3: **push
+notifications** via self-hosted Gotify — see `docs/guides/console-notifications.md`
+(setup, events, dedupe contract, phone app). Unconfigured = silent no-op.
 
 ```
 phone/laptop (Tailscale app → your headscale control URL)
@@ -186,6 +187,8 @@ short-lived children. Set both backends to `off` and you can put it back.
 scripts/console/
   app/            FastAPI app (main.py) + pure modules:
                   authz.py (roles) actions.py (allowlist) parsers.py store.py
+                  runner.py (only process spawner) gitlab_api.py webauthn_flow.py
+                  notify.py (Gotify push: fail-open client + pure detectors)
                   runner.py (spawns `pl`) gitlab_api.py webauthn_flow.py
                   voice.py (spawns the transcriber/synthesiser — no action path)
                   stt_worker.py (run BY voice.py under the system python, not
@@ -203,8 +206,13 @@ scripts/console/
 
 Runtime state on the console host (never in git):
 `~/nwp-console/{src,venv,console.log}`,
-`~/.local/share/nwp-console/{users.json,audit.jsonl,secret.key}` (0600),
-`~/.config/nwp-console/{env,gitlab.token,tls/}`.
+`~/.local/share/nwp-console/{users.json,audit.jsonl,secret.key,notify-state.json}` (0600),
+`~/.config/nwp-console/{env,gitlab.token,gotify.token,tls/}`.
+
+Push notifications add **no dependencies** (stdlib `urllib`) and no second
+service: one asyncio task inside the app reuses the pane gatherers and their TTL
+cache. Owner role gets a `/notifications` page (per-event status, last-sent
+times, test button). Notification click-URLs deep-link back via `/?tab=<pane>`.
 
 ## Tests
 

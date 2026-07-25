@@ -24,6 +24,37 @@ The command provides interactive backup selection, automatic validation, and saf
 | `from` | Yes | Source site name (backup to restore from) |
 | `to` | No | Destination site name (defaults to `from`) |
 
+> ⚠️ **Incomplete (reviewed 2026-07-26).** This page predates backup-integrity
+> verification and the paired-site restore gate. Run `pl restore --help` for the
+> live option list. The additions below are authoritative.
+
+## Integrity verification (added 2026-07, ops#146)
+
+Before a restore overwrites **anything**, the backup artifact is checked against its
+`.sha256` sidecar and manifest.
+
+- **Sidecar present + mismatch → the restore aborts.** Nothing is overwritten. This is
+  what stops a corrupted or tampered backup from destroying a working site.
+- **Sidecar absent** (an older or purely local backup) → allowed through with a notice.
+
+| Option | Description |
+|--------|-------------|
+| `--skip-verify` | Skip the pre-restore integrity check. **Not recommended.** It only affects backups that *have* a sidecar; sidecar-less backups pass either way. If a check is failing, find out why rather than skipping it. |
+
+## Paired-site restore gate (ops#83)
+
+Some sites' log-in identities are bound to a partner site. Restoring one half alone
+severs members' identities.
+
+| Option | Description |
+|--------|-------------|
+| `-t, --tier=T` | Which tier is being restored (`dev`\|`stg`\|`live`\|`prod`; default `dev`). A coupled tier is subject to the both-or-forward restore rule. |
+| `--anchor=N` | The identity anchor of the backup being restored (for coupled tiers). |
+| `--override-pair` | Ledgered escape past the gate (requires typing a confirmation). |
+
+See [ops83-dr-restore.md](../../guides/ops83-dr-restore.md) and
+[How to: back up and restore](../../guides/howto-backup-restore.md).
+
 ## Options
 
 | Option | Description | Default |

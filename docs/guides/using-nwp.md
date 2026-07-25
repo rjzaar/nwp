@@ -34,6 +34,13 @@ capability.** Trust flows through **signatures**, not machines.
 
 `pl <command>` is the single entry point. Grouped by what you reach for:
 
+> **Additions since this table was written (2026-07):** `pl console` (mesh-only web
+> console), `pl demo` (the daily-reset demo tier, incl. `demo invite`), `pl ver-test`
+> (the DR test harness), `pl backup prune` (30-day retention), `pl config track` (the
+> configuration-drift gate), `pl doc-truth` (the documentation-truth gate), and
+> `nwp-server backup --sanitize` (the sanitised long-term DR tier). Each has a how-to
+> guide — see [the guides index](README.md).
+
 **Oversight (read-only — "what needs attention"):**
 
 | Command | Purpose |

@@ -1,9 +1,41 @@
 # NWP Security Documentation
 
-**Last Updated:** 2026-01-14
-**Version:** 0.20.0+
+> # ⚠️ SUPERSEDED — DO NOT FOLLOW THE COMMANDS IN THIS DOCUMENT
+>
+> **Assessed 2026-07-25 and found beyond repair.** It is kept only for historical
+> reference. Two independent problems:
+>
+> **1. Its threat model is obsolete.** This document predates NWP's entire
+> distributed-trust architecture. It contains no mention of the offline deploy host, `ver`,
+> `nwp-server`, the hardware deploy gate, or signature-based trust — all of which
+> are now the core of how NWP treats production. For the current model read:
+> - `CLAUDE.md` § Threat Model (canonical)
+> - ADR-0017 — distributed build/deploy pipeline
+> - ADR-0024 — self-deploying prod
+> - ADR-0026 — the binary split
+> - ADR-0028 — `ver` as a single-operator, human-gated workstation
+>
+> **2. Eight of the commands it tells you to run do not exist.** They never did, or
+> they were renamed long ago. Substitutions:
+>
+> | This document says | Actually use |
+> |---|---|
+> | `pl deploy prod` | `pl stg2prod` / `pl live2prod` / `pl stg2live` |
+> | `pl ssh prod "…"` | `pl drush <site> --tier=live` (the sanctioned runner; raw ssh drush is retired) |
+> | `pl server-scan prod` | `pl server status`, `pl security audit <site>`, `pl monitor uptime` |
+> | `pl update prod` | `pl security update <site>` |
+> | `pl audit-access` | `pl secrets whose`, `pl secrets audit` |
+> | `pl backup-logs prod` | *(no equivalent)* |
+> | `pl rotate-secrets --all` | `pl secrets rotate <#\|id>` |
+> | `pl audit-logs prod --since …` | *(no equivalent)* |
+>
+> Everything below this banner is unverified and much of it is wrong.
 
-This document describes NWP's security architecture, threat models, and best practices.
+**Last Updated:** 2026-01-14 · **Superseded:** 2026-07-25
+**Version:** 0.20.0+ (historical)
+
+This document describes NWP's security architecture, threat models, and best practices
+**as they stood in January 2026**.
 
 ## Table of Contents
 

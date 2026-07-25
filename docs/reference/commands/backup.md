@@ -24,6 +24,60 @@ Backups are stored in timestamped files with contextual metadata (git branch, co
 | `sitename` | Yes | Name of the DDEV site to backup (e.g., `avc`, `nwp`) |
 | `message` | No | Optional description of the backup (spaces converted to underscores) |
 
+> ⚠️ **Incomplete (reviewed 2026-07-26).** This page does not cover the `sweep` and
+> `prune` subcommands, or the remote pre-deploy snapshot. Run `pl backup --help` for
+> the live list. The additions below are authoritative.
+
+## Subcommands
+
+### `pl backup sweep`
+
+Back up every site whose newest backup is stale or missing.
+
+```bash
+pl backup sweep --dry-run          # show the decision per site; take no backups
+pl backup sweep                    # do it
+pl backup sweep --start-stopped    # also start stopped DDEV projects (restored afterwards)
+pl backup sweep --site NAME        # one site only
+```
+
+Staleness threshold: `settings.todo.thresholds.backup_warn_days` (default 7). Sweep
+backups are database-only. Schedule with `pl schedule install-sweep`.
+
+### `pl backup prune` (retention — ops#124)
+
+Delete local backups older than the retention window.
+
+```bash
+pl backup prune --dry-run          # show what would go
+pl backup prune                    # delete backups older than 30 days
+pl backup prune --days 14
+pl backup prune --site NAME
+pl backup prune -y                 # skip the confirmation
+```
+
+**The newest backup set per site is always kept**, regardless of age. Window default:
+`settings.todo.thresholds.backup_retention_days`, else 30.
+
+Why 30: members are told their data is removed within 30 days. Backups retained longer
+would silently break that promise. The same ceiling is enforced separately on the
+off-site disaster-recovery copies — see
+[How to: the disaster-recovery chain](../../guides/howto-dr-chain.md).
+
+## Remote pre-deploy snapshot
+
+| Option | Description |
+|--------|-------------|
+| `--remote` | Snapshot the **live** site rather than the local DDEV copy: full webroot tar (including oauth keys, `auth.json` and per-environment local settings; excluding `files/` and private) plus a DB dump, pulled back to `sites/<name>/backups/` with a verified `.sha256` sidecar each. Read-only against live; refuses if no live server is provisioned. Required by `pl cutover` and `pl moodle deploy`. |
+| `--files-only` | With `--remote`: files only, skip the DB |
+| `--dry-run` | With `--remote`: print the plan, write nothing |
+
+```bash
+pl backup nwc --remote --dry-run
+pl backup nwc --remote -y
+pl backup ssc --remote --db-only -y
+```
+
 ## Options
 
 | Option | Description | Default |

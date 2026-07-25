@@ -3,7 +3,7 @@
 Welcome to the **Narrow Way Project (NWP)** documentation hub. This directory contains comprehensive documentation for developing, deploying, and maintaining Drupal sites using NWP's automated workflows.
 
 **Current Version:** v0.30.0
-**Documentation Last Updated:** 2026-04-07
+**Documentation Last Updated:** 2026-07-26
 
 ---
 
@@ -19,6 +19,35 @@ New to NWP? Start here:
 
 ---
 
+## Overview — what all of this actually is
+
+Plain-language summaries, no assumed knowledge. Start here if you are new, or have been away.
+
+| Document | Description |
+|----------|-------------|
+| [Fleet overview](overview/README.md) | How the four projects fit together, and the shared infrastructure |
+| [NWP](overview/nwp.md) | The tooling itself — what it does, where it's up to, what's next |
+| [Saint School](overview/saint-school.md) | The Moodle learning site |
+| [Narrow Way Commons](overview/narrow-way-commons.md) | The Drupal community site |
+| [theocat](overview/theocat.md) | The theology source library |
+| [The `dir` question](overview/dir-question.md) | What the `dir` site is, and whether it folds into nwc (research + recommendation) |
+
+## How-to guides — the main workflows
+
+One page each, task-oriented, plain language.
+
+| Document | Description |
+|----------|-------------|
+| [Back up and restore](guides/howto-backup-restore.md) | Everyday backups, restores, retention, scheduling |
+| [Deploy a change](guides/howto-deploy.md) | dev → staging → live → production, and the guards |
+| [The disaster-recovery chain](guides/howto-dr-chain.md) | Off-site backups, the two-tier sanitiser, rehearsing it |
+| [Run the demo tier](guides/howto-demo-tier.md) | Golden images, resets, the nightly cycle |
+| [Issue demo invite codes](guides/howto-invite-codes.md) | Recruiting testers |
+| [Use the NWP Console](guides/howto-console.md) | The fleet on your phone |
+| [Fleet test links](guides/test-links.md) | Click-through smoke test of every surface |
+
+---
+
 ## Quick Links
 
 Most frequently accessed documentation:
@@ -26,7 +55,7 @@ Most frequently accessed documentation:
 | Document | Description |
 |----------|-------------|
 | [Feature Reference](reference/features.md) | Complete list of NWP features by category |
-| [Command Reference](reference/commands/README.md) | All `pl` CLI commands (56% documented) |
+| [Command Reference](reference/commands/README.md) | Individual `pl` command pages (46 of 95 commands — ~48%; many pages predate the 2026 guard flags) |
 | [Libraries API](reference/libraries.md) | Bash library function reference |
 | [Production Deployment](deployment/production-deployment.md) | Deploy to production servers |
 | [Testing Guide](testing/testing.md) | Automated testing with Behat, PHPUnit, PHPStan |
@@ -77,7 +106,7 @@ Detailed documentation for specific commands:
 
 | Command | Description |
 |---------|-------------|
-| [All Commands](reference/commands/README.md) | Complete command reference (56% documented) |
+| [All Commands](reference/commands/README.md) | Command reference index (~48% of commands have a page) |
 | [backup](reference/commands/backup.md) | Create site backups |
 | [badges](reference/commands/badges.md) | Dynamic badge generation |
 | [coder-setup](reference/commands/coder-setup.md) | Initialize coder environment |
@@ -120,6 +149,7 @@ Guides for deploying NWP sites:
 | [Disaster Recovery](deployment/disaster-recovery.md) | Recovery procedures, RTO/RPO |
 | [CI/CD Pipelines](deployment/cicd.md) | GitLab CI, GitHub Actions |
 | [Git Backup Strategy](deployment/git-backup-recommendations.md) | Git-based backup recommendations |
+| [Configuration as Code](CONFIG_AS_CODE.md) | The configuration-drift gate and `pl config track` |
 
 ### Development
 
@@ -151,6 +181,7 @@ Security documentation and best practices:
 | [Data Security Best Practices](security/data-security-best-practices.md) | Two-tier secrets, AI safety, hardening |
 | [SEO Setup](security/seo-setup.md) | SEO and robots.txt configuration |
 | [Design Decisions](security/design-decisions.md) | Security architecture rationale |
+| ~~[SECURITY.md](SECURITY.md)~~ | ⚠️ **Superseded 2026-07-25** — obsolete threat model + 8 non-existent commands. Read `CLAUDE.md` § Threat Model and ADR-0017/0024/0026/0028 instead |
 
 ### Active Proposals
 
@@ -184,15 +215,11 @@ Documentation for specific projects:
 
 #### AVC Project
 
-| Document | Description |
-|----------|-------------|
-| [Email Reply Module](../sites/avc/html/profiles/custom/avc/modules/avc_features/avc_email_reply/README.md) | Email reply system for group notifications |
-| [Work Management Implementation](projects/avc/work-management-implementation.md) | AVC work management module |
-| [Mobile App Options](projects/avc/mobile-app-options.md) | Mobile application analysis |
-| [Hybrid Mobile Approach](projects/avc/hybrid-mobile-approach.md) | Hybrid app strategy |
-| [Hybrid Implementation Plan](projects/avc/hybrid-implementation-plan.md) | Implementation roadmap |
-| [Python Alternatives](projects/avc/python-alternatives.md) | Backend technology options |
-| [SSO Implementation Summary](projects/avc/implementation-summary.md) | AVC-Moodle SSO implementation summary |
+> ⚠️ **Removed.** `docs/projects/avc/` no longer exists — AVC is the frozen 1.x
+> predecessor to Narrow Way Commons. Its per-site documentation now lives inside
+> the site's own profile repository. See [Narrow Way Commons](overview/narrow-way-commons.md)
+> for the successor, and `docs/guides/nwc-ssc-architecture.md` for the current
+> architecture.
 
 #### Podcast Project
 
@@ -202,16 +229,14 @@ Documentation for specific projects:
 
 ### Integration & Completion Documents
 
-Documentation for completed integrations and implementations:
+> ⚠️ **Removed.** These pages documented the original AVC↔Moodle single-sign-on
+> work and lived under `docs/projects/avc/`, which no longer exists. The current
+> single-sign-on architecture (Narrow Way Commons ↔ Saint School, with identity
+> locking) is documented in [nwc-ssc-architecture.md](guides/nwc-ssc-architecture.md).
 
 | Document | Description |
 |----------|-------------|
-| [AVC Moodle Integration Proposal](projects/avc/moodle-sso-proposal.md) | Original Moodle SSO integration proposal |
-| [AVC Moodle SSO Implementation](projects/avc/moodle-sso-implementation.md) | Complete SSO implementation details |
-| [AVC Moodle SSO Complete](projects/avc/moodle-sso-complete.md) | Final SSO implementation summary |
-| [NWP Moodle SSO Implementation](projects/avc/moodle-sso-nwp.md) | NWP-wide Moodle SSO implementation |
 | [Moodle Course Creation Guide](guides/moodle-course-creation.md) | Guide for creating Moodle courses |
-| [AVC SSO Implementation Summary](projects/avc/implementation-summary.md) | AVC-Moodle SSO implementation summary |
 | [Verify Enhancements](testing/verify-enhancements.md) | Interactive verification console guide |
 
 ### Legal & Licensing
@@ -253,6 +278,14 @@ Documented technical decisions:
 | [ADR 0005](decisions/0005-distributed-contribution-governance.md) | Distributed contribution governance |
 | [ADR 0006](decisions/0006-contribution-workflow.md) | Contribution workflow |
 | [ADR 0016](decisions/0016-avc-email-reply-architecture.md) | AVC email reply architecture |
+| [ADR 0017](decisions/0017-distributed-build-deploy-pipeline.md) | Distributed build/deploy pipeline |
+| [ADR 0024](decisions/0024-self-deploying-prod-supersedes-verifier.md) | Self-deploying prod (production deploy authority) |
+| [ADR 0025](decisions/0025-production-backup-to-ver.md) | Production backup to `ver` (restic, custodian-pull) |
+| [ADR 0026](decisions/0026-nwp-server-capability-agent.md) | The AI-free `nwp-server` capability agent |
+| [ADR 0028](decisions/0028-ver-single-operator-human-gated-workstation.md) | `ver` as a single-operator, human-gated workstation |
+| [ADR 0030](decisions/0030-per-site-canonical-maturity-axes.md) | Per-site canonical & maturity axes |
+| [ADR 0031](decisions/0031-paired-site-versioning-and-promotion.md) | Paired-site versioning & promotion |
+| [ADR 0032](decisions/0032-non-prod-data-refresh-and-file-store.md) | Non-prod data refresh & file store |
 | [Decision Log](decisions/decision-log.md) | Chronological decision log |
 | [ADR Template](decisions/template.md) | Template for new ADRs |
 
@@ -268,15 +301,6 @@ Historical documents no longer actively maintained:
 | Historical Guides | [MIGRATION_GUIDE_ENV](archive/MIGRATION_GUIDE_ENV-HISTORICAL.md), [IMPLEMENTATION_SUMMARY](archive/IMPLEMENTATION_SUMMARY.md), [NWP_COMPLETE_ROADMAP](archive/NWP_COMPLETE_ROADMAP-ARCHIVED.md) |
 | Future Proposals | [EMAIL_POSTFIX_PROPOSAL](archive/EMAIL_POSTFIX_PROPOSAL.md), [NWP_TRAINING_SYSTEM](archive/NWP_TRAINING_SYSTEM.md), [NWP_TRAINING_IMPLEMENTATION_PLAN](archive/NWP_TRAINING_IMPLEMENTATION_PLAN.md) |
 | Reviews | [CODE_REVIEW_2024-12](archive/CODE_REVIEW_2024-12.md) |
-
-### Draft Documents
-
-Work in progress specifications:
-
-| Document | Description |
-|----------|-------------|
-| [AVC Work Management Module](drafts/AVC_WORK_MANAGEMENT_MODULE.md) | Draft module specification |
-| [Workflow Access Control Extension](drafts/WORKFLOW_ACCESS_CONTROL_EXTENSION.md) | Draft access control spec |
 
 ### Theme Documentation
 

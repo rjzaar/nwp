@@ -629,6 +629,65 @@ pair_join_snapshot_file() {
 }
 
 ################################################################################
+# pair_reconcile_classify <ledger-file> <snapshot-file>
+#
+# ops#83 §3, mechanised. Reads the provider identity ledger's NEWEST snapshot
+# and the consumer join-snapshot, and classifies every live UID-lock:
+#
+#   intact      locked_sub resolves to a uuid the provider still holds
+#   repairable  locked_sub is not a uuid but IS a serial uid the ledger carries
+#               — the legacy uid-`sub` era. The durable uuid is known, so the
+#               repair is deterministic: repoint idnumber at that uuid.
+#   orphaned    locked_sub resolves to nothing at all. NOT auto-repairable:
+#               ops#83 makes the email fallback a human-gated last resort
+#               because recycled/changed addresses can re-point a lock at the
+#               wrong person.
+#
+# Emits one TSV row per live lock: <class> <mdl_id> <locked_sub> <target_uuid>
+# (target_uuid empty unless repairable). Returns 0 always; the CALLER decides
+# what a non-empty repairable/orphaned set means. Deleted rows (deleted != 0)
+# are skipped — a deleted consumer account cannot be a severed identity.
+#
+# Deliberately does NOT fall back to email matching anywhere.
+################################################################################
+pair_reconcile_classify() {
+    local ledger="$1" snapshot="$2"
+    command -v jq >/dev/null 2>&1 || return 2
+    [ -f "$ledger" ] && [ -f "$snapshot" ] || return 2
+
+    local latest
+    latest="$(grep '"t":"snap"' "$ledger" 2>/dev/null | jq -r '.snap' 2>/dev/null | tail -1)"
+    [ -n "$latest" ] && [ "$latest" != "null" ] || return 2
+
+    # Two lookup tables from the newest ledger snapshot: uuid -> 1, uid -> uuid.
+    local uuids uids
+    uuids="$(jq -r --argjson s "$latest" 'select(.t=="rec" and .snap==$s) | .uuid' "$ledger" 2>/dev/null)"
+    uids="$(jq -r --argjson s "$latest" 'select(.t=="rec" and .snap==$s) | "\(.uid)\t\(.uuid)"' "$ledger" 2>/dev/null)"
+
+    local mdl_id locked_sub email deleted first=1
+    while IFS=$'\t' read -r mdl_id locked_sub email deleted; do
+        # Skip a header row and blanks.
+        if [ "$first" -eq 1 ]; then first=0; [ "$mdl_id" = "mdl_id" ] && continue; fi
+        [ -n "${mdl_id:-}" ] || continue
+        [ -n "${locked_sub:-}" ] || continue
+        case "${deleted:-0}" in 0|'') ;; *) continue ;; esac
+
+        if printf '%s\n' "$uuids" | grep -qxF "$locked_sub"; then
+            printf 'intact\t%s\t%s\t\n' "$mdl_id" "$locked_sub"
+            continue
+        fi
+        local target
+        target="$(printf '%s\n' "$uids" | awk -F'\t' -v k="$locked_sub" '$1==k {print $2; exit}')"
+        if [ -n "$target" ]; then
+            printf 'repairable\t%s\t%s\t%s\n' "$mdl_id" "$locked_sub" "$target"
+        else
+            printf 'orphaned\t%s\t%s\t\n' "$mdl_id" "$locked_sub"
+        fi
+    done < "$snapshot"
+    return 0
+}
+
+################################################################################
 # pair_guard_restore <site> <target-tier> <cmd> <target-anchor> <override-pair> [confirm]
 #
 #   site           the member being restored (base name)

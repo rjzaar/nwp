@@ -2512,3 +2512,107 @@ JSON, so there is no merge step that can quietly drop a page.
 **Cost:** a full run is now ~4-8 minutes (two API calls per issue). `--no-notes` roughly halves
 it at the cost of missing refs that only appear in comments.
 **Reversible-how:** `git revert -m 1 <merge>`.
+## [2026-07-26] item7-host-state-capture — the DR chain, the security snippet and the outage fix existed only on boxes  **REVIEW:**
+
+**What.** New read-only verb `pl server-state {list,capture,diff,check,php-check}` plus the first real
+captures: `servers/met/system/**` (the DR cron, the LUKS-stick cron, the CPU-cap unit that fixes this
+box's kernel panic, the running `nwp-daily-audit`) and `servers/nwpcode/system/**` (box-backup cron,
+`nwc-cron` timer+service, certbot deploy hook, ufw, Headscale ACL, redacted `authorized_keys` policy,
+nginx-snippet inclusion state, per-SAPI PHP map). Plus a declared-but-unapplied
+`servers/nwpcode/php/conf.d/90-nwp-moodle.ini`, one narrow `.gitignore` negation, and a durability
+assertion in `pl rollback registry check`.
+
+**Why this shape and not `pl host apply`.** Capture and apply are deliberately separate commands.
+`capture` cannot write to a host at all — there is no code path in it that does — so running it can
+never be the thing that breaks a box serving five live sites on 3.8 GB of RAM. Applying declared state
+is item 6's `pl host apply` and is operator-gated. *Alternative rejected:* one `pl host sync` verb, which
+would have made the safe half unusable without trusting the dangerous half.
+
+**Three verdicts, never two.** `diff` returns OK / DRIFT / UNREACHABLE and UNREACHABLE is an error.
+This estate has repeatedly shipped checks where "I could not look" rendered as "clean" (the met audit
+over a stopped container, the privacy sweep over an unmerged branch, the boundary scan over an absent
+tree). Reversing that default is the whole point of the verb.
+
+**Redaction happens at capture time, not at review time.** Two passes, both applied to the live side of
+`diff` as well so drift detection is unaffected:
+- `ssh-policy` artifacts keep forced-command OPTIONS and comments and drop key material. The security
+  content of `authorized_keys` is whether a key is jailed, not which key it is; capturing the blobs
+  would also train the habit of pulling `~/.ssh` into git.
+- Identity: routable IPv4 → `<public-ip-redacted>` (private/CGNAT/tailnet/loopback KEPT, because the
+  topology is the reviewable part), hostnames and the apex domain → their ROLE placeholders, and
+  `/home/<anyone>` → `/home/<operator>`.
+
+**The identity pass was forced by evidence, and the tempting fix was wrong.** The first real capture put
+SIX findings into the tree — `internal-bare-hostname`, `live-domain-apex`, `live-internal-domain` and
+`operator-home-path` twice. The gate was working; the capture was the new leak. *Alternative rejected:
+adding `servers/**` to `.gitleaks.toml`'s allowlist* — that re-blinds the gate over exactly the tree this
+item exists to add, one day after another item finished un-blinding it. Instead the vocabulary is read
+from the operator's private instance manifest (the same source `pl host` uses), so **no hostname, domain
+or home path is hardcoded in the script** — writing the apex literally would itself trip
+`live-domain-apex`, which covers `.sh` files. Post-fix: `gitleaks detect --source servers/` → no leaks.
+
+**Fidelity trade-off, stated rather than hidden.** A redacted capture is a faithful RECORD, not a
+byte-restorable backup. That is the right side of the trade here: the restore path for host state is
+declared state applied by a verb, the live host remains the authority for its own literal text, and
+`diff` still proves the record is true. Reversing this would mean choosing a leak over a placeholder.
+
+**Divergence is allowed; SILENT divergence is not.** An artifact may declare a `repo_counterpart`. If
+the two differ with no `counterpart_divergence:` justification recorded in the inventory, `check` fails.
+`nwp-daily-audit` is the first user: the running copy (257 lines) and `scripts/nwp-daily-audit.sh`
+(331 lines) share no header — two different programs with the same job, one of which reported "no
+change" for 31 nights over a stopped container. **The divergence is declared, NOT accepted**: the on-host
+copy is authoritative for behaviour, the repo copy for parameterisation, and reconciling them needs the
+remote-schedule verb from item 6. Do not delete that key to make the check green.
+
+**`.gitignore`: narrow negation, and why the ordering is not cosmetic.** Root `.gitignore` carried a
+blanket `servers/*`, which is *why* host state was never versioned: a captured file was ignored by
+default, so `git status` stayed clean and the tree merely looked captured. The negation opens
+`servers/*/system/**` and `servers/*/php/**` only, re-excludes `servers/*/*` so nothing else becomes
+trackable by accident, and re-asserts the deny for `.nwp-server.yml`, `.secrets*`, `*.key` and `id_*`.
+`!servers/*/` must come first — git will not descend into an excluded directory, so no child rule is
+even consulted until the parent is re-included. **Territory note:** root `.gitignore` is item 6's file;
+this is one delimited hunk appended after the existing `servers/*` block and should rebase trivially.
+
+**`registry check` now asks a second, different question.** It already verified integrity (does the
+artifact match its `.sha256`?). It never asked survivability (does anything but this laptop hold it?).
+A sidecar is untracked in exactly the cases the artifact is, so the check was comparing a file against
+its own untracked shadow. **Two remedies, and conflating them would be dangerous:** where the repo's own
+ignore policy excludes the path (site DB dumps, files tarballs) the verdict is `LAPTOP-ONLY` and the
+output must never say "commit it" — obeying that advice would manufacture the very P0 this estate
+already has, a 36 MB member-data `.sql` pushed to the forge where no Art.17 erasure reaches it. The
+discriminator is `git check-ignore`, read from the repo, so the policy cannot drift from a duplicated
+glob list here. There is a bats case asserting the dangerous string is *absent*, not merely outweighed.
+
+**Consequence, accepted:** `pl rollback registry check` now exits 1 on six pre-existing rows (CP11 ×3,
+CP12, CP14 ×2 — all nwd, the disposable demo site). That is a true statement about six recovery points
+that exist only on a travelling laptop, and it is the intended outcome, not a regression. Nothing in CI
+consumes this verb, so no other agent's pipeline turns red. Reversing: revert the `_artifact_is_tracked`
+block alone.
+
+**The programme's "red on CP17 today" claim did NOT hold.** CP17's tarball was already committed by the
+item 2 work earlier the same day, so it is green. The *gate* was still missing, which is what got built;
+the finding was re-derived rather than assumed.
+
+**Two RED states captured before any fix, both against the live fleet:**
+- `pl server-state php-check nwpcode` → `BELOW-FLOOR 8.2/fpm max_input_vars=1000` and the same for
+  `8.2/cli`, need ≥ 5000. The captured `php-map` shows `8.3/fpm` and `8.3/cli` at 5000. **known C
+  confirmed exactly**: the outage remedy was applied to a PHP version Moodle never touches
+  (`ss.conf` → `php8.2-fpm.sock`, cron → `/usr/bin/php8.2`), so any grep for `max_input_vars` found
+  5000 and concluded it was handled. The floors are asserted per-SAPI so silence cannot read as
+  satisfied.
+- `servers/nwpcode/system/nginx-snippet-includes` → `/etc/nginx/snippets/` contains only
+  `fastcgi-php.conf` and `snakeoil.conf`, and `grep -rl deny-files-secrets /etc/nginx/` → `NONE`.
+  The committed `deny-files-secrets.conf` calls itself "the HTTP-serving layer of a 3-part defence";
+  layer 2 is fiction, and is now measurable instead of assumed.
+
+**What the capture makes greppable that was not.** The restic retention the GDPR/erasure work has to
+agree with (`--keep-daily 14 --keep-weekly 8 --keep-monthly 12`) was an inline flag in a root cron
+one-liner on one box, written by a `dr-pull-setup.sh` that exists in no repository. It is now a tracked
+file. Likewise: one `authorized_keys` entry is unjailed and another uses a bare `rrsync` (PATH-dependent
+— the same class as the recent fleet-cron PATH bug), ufw allows 22/tcp from Anywhere twice against
+CLAUDE.md's explicit rule plus an orphan world-open 5050, and the Headscale ACL is `src:* dst:*:*`.
+None of those are *fixed* here — applying them is server configuration on a box serving five live sites
+and is operator territory — but they are now reviewable, diffable and impossible to lose.
+
+**Reversible-how.** `git revert -m 1 <merge>`. No host was written, so a revert removes capability and
+records, never state. Captures regenerate with `pl server-state capture <host>`.

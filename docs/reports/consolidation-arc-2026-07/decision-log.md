@@ -1023,6 +1023,103 @@ see: (a) MRs touching a CLAUDE.md sensitive path now need a `REVIEW:` marker (on
 (b) an MR that adds an AWK YAML parser or a new secret-shaped string now fails; (c) a suite that starts
 skipping fails instead of passing.
 
-**Reversible-how:** `git revert` the MR (registry row CP21). Every change is a CI job definition, a new script under
+**Reversible-how:** `git revert` the MR (registry row CP22). Every change is a CI job definition, a new script under
 `scripts/ci/`, or a baseline file — no state migration, nothing on any host. To relax a single gate without
 reverting: `allow_failure: true` on that job block.
+---
+
+## 2026-07-26 — item 1 `secrets-registry-truth`: `pl secrets` must fail when the estate's credentials are wrong
+
+**The defect, in one line.** `cmd_audit` took `... | head -1`, so it probed only the *first*
+`.secrets.yml:` location of each registry entry and never looked at the others. The registry's whole
+purpose is to record *every* place a value lives; checking one of them and printing OK is a vacuous pass
+by construction.
+
+**Reproduced on the real estate before changing anything** (read-only, no value printed):
+
+| Claim | Evidence |
+|---|---|
+| 16 declared composer-token copies hold a dead value while audit prints `OK 2027-06-26` | hash-compare of all 48 declared `auth.json` copies vs canonical: **27 MATCH, 16 DIFFER, 4 MISSING** — every DIFFER is a `.ddev/.homeadditions/.composer/auth.json`, i.e. exactly the ones DDEV mounts |
+| `~/.nwp-agent-loop.env:GITLAB_TOKEN` differs from canonical while audit prints `OK` | hash-compare: canonical `126c3da70def…` vs loop-env `35bf1ae55cc1…` → DIFFERENT |
+| `pl secrets audit` exits 0 over all of it | `0 dead · 0 expiring · 0 drift` / `EXIT=0` |
+| `pl secrets lint` exits 0 with 4 untracked credentials | `LINT PASS`, while `pl secrets keys` shows `linode.provision_token`, `restic.dr_pull.password`, `gitlab.admin.initial_password`, `rgv.sample_login` as `untracked` |
+| `pl secrets scan` exits 0 with 61 LEAK lines | `SCAN EXIT=0`, `grep -c LEAK = 61` |
+| `logs/gitleaks-nightly.json` is group/world readable | mode `664` |
+
+**After the fix, same estate:** audit `17 dead · 17 drifted location(s)`, exit 1 — 16 composer copies
++ the loop-env token, which is exactly the independently-derived number. Lint: 10 issues, exit 1.
+
+### Decisions
+
+1. **`stored_in` becomes a grammar, not prose.** `<path>:<ref>` · `host=<role>:<path>:<ref>` ·
+   `external:<free text>`, with notes moved to `stored_in_notes:`. *Why:* a location the tooling cannot
+   parse is a location it silently stops checking, which is the same failure one level down. *Alternative
+   rejected:* best-effort parsing with a warning — that is how you get a permanently-yellow check nobody
+   reads. *Reverse:* the grammar is only enforced by `lint`; drop the section 5 block to restore the old
+   permissiveness.
+
+2. **The registry migration ships as `pl secrets migrate-registry`, not as a hand edit.** *Why:* the
+   operator's standing order is that fixes work "long term through pl commands", and the nwp-daily-audit
+   lesson is that a transformation living only in someone's shell history cannot be re-run, reviewed or
+   reversed. It is idempotent, dry-run by default, and writes a `.bak`. *Reverse:* `cp
+   private/secrets-registry.yml.bak private/secrets-registry.yml`.
+
+3. **`ignored_keys:` is seeded with STRUCTURAL keys only.** The migration baselines suffixes
+   `url|domain|ip|linode_id|ssh_user|username|user|admin_user`; it deliberately does **not** baseline
+   anything whose name says credential. *Why:* a lint that is red on day one with a page of non-findings
+   is a lint everyone learns to skip; on the real estate this turns 14 errors into 5, and all 5 are real
+   (`linode.provision_token`, `restic.dr_pull.password`, `gitlab.admin.initial_password`,
+   `rgv.sample_login`, `gitlab.server.ssh_key`). *Alternative rejected:* baseline everything currently
+   present — that is the shrink-only-allowlist pattern, but here it would hide the four findings that
+   motivated the item. *Reverse:* delete the seeding block; the keys go back to red.
+
+4. **`pl secrets done` now refuses to stamp `last_rotated` unless every machine-readable local copy
+   already matches canonical.** *Why:* you may not RECORD a rotation you did not PROPAGATE — that is
+   precisely how the registry came to assert `OK 2027-06-26` over 16 dead tokens. Escape hatch
+   `NWP_SECRETS_FORCE_DONE=1` for the case where the operator genuinely knows better. *Reverse:* set that
+   variable, or delete the guard.
+
+5. **`private/secrets-registry.yml` stays gitignored; `token-consumers.md` and `rotation-*.md` are
+   un-ignored now.** *Why:* the two artefacts are provably clean (gitleaks: 0 findings). The registry is
+   not: it names live GitLab bot accounts (`mons-say`, `mini-alerts`, `mons-bot`) that the
+   `internal-bare-hostname` rule flags 5×, and those names cannot be genericised without destroying the
+   `id ↔ account` crosswalk the registry exists to hold. Suppressing them needs `.gitleaksignore`
+   fingerprints, and `.gitleaksignore` belongs to the leakage-gate work item. *Alternative rejected:*
+   editing `.gitleaks.toml`/`.gitleaksignore` anyway — two agents editing one gate file is how a
+   security control gets silently widened. *Alternative rejected:* mangling the bot names to force the
+   file through — that trades a real capability for a green tick. *Follow-up:* after the leakage-gate
+   item lands, add `!private/secrets-registry.yml`; the host-placeholder half of the work is already done
+   by `migrate-registry`.
+
+### Two real bugs found by writing the tests, not by reading the code
+
+- **`write_value_to_location` has never once written an env-style location.** The perl expression used
+  `($1//"")`, which perl tokenises as an empty match rather than defined-or; it aborted with a *compile*
+  error on every invocation. `rotate` printed "write failed" to stderr and then stamped the registry
+  anyway. This is the mechanical cause of `~/.nwp-agent-loop.env:GITLAB_TOKEN` drifting from canonical —
+  the propagation was never happening. Fixed to `defined($1) ? $1 : ""`, with a named regression test.
+
+- **`pl secrets` gave different answers inside a worktree than in the main checkout.** Relative
+  `stored_in` paths resolved against `$PROJECT_ROOT`, so inside a `pl issue work` worktree — which the
+  standing rules *require* — all 48 composer locations reported MISSING, and in `~/nwp` they reported
+  their real state. A check whose answer depends on your current directory is not a check. Paths now
+  resolve against the estate root via `git rev-parse --git-common-dir`.
+
+- (Third, minor, same class:) an unquoted `~/*` bash `case` pattern is tilde-expanded to
+  `/home/<user>/*` and never matches a literal `~`, which silently mis-classified every `~/`-relative
+  declared location. Now `'~/'*`.
+
+### Not done — needs the operator
+
+Revoke `linode.provision_token`; rotate the composer registry token and `pl secrets sync` it (16 copies
+are dead); downscope `verifier-say`/`llm-alerts`/`ci-audit` from Developer(30) to Reporter(20); mint one
+narrowly-scoped Maintainer project token for deploy keys + CI variables; paper-copy the non-recoverable
+`restic.dr_pull.password`; `chmod 600 logs/gitleaks-nightly.json`. The item ships the *detection* for all
+of these — `pl secrets audit --locations`, `pl secrets capabilities`, `pl secrets lint` — not the
+credential changes themselves.
+
+### Known-item J is confirmed DROPPED as false
+
+`.secrets.yml:gitlab.api_token` is **not** the root admin PAT; it is the non-admin `group_9_bot` /
+`nwp-automation-dev` (Developer, `is_admin: false`) and it *can* create MRs on `nwp/nwp`. CLAUDE.md now
+says so explicitly, and `pl secrets capabilities` makes it checkable instead of remembered.

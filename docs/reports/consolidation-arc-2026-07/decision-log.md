@@ -662,3 +662,49 @@ closes the moment real testers arrive.
 the gate refuses by design. With 1 member and 0 rows that costs nothing.
 **Outcome sought:** every "Art.9 enforced nowhere" P0 drops to "enforced in production and proven; asking
 awaits ratified wording", + a `docs/guides/art9-golive-runbook.md` making #119 ONE pre-proven switch.
+
+## [2026-07-26] ✅ ART.9 ENFORCEMENT IS LIVE ON THE REAL TIER — the P0 is closed
+Executed the two-tier posture above. **What changed:** `mod/depthcontent` v2026072600 deployed to live `ssc`,
+carrying the `may_keep_formation` gate (the last UNGATED artifact — `auth/nwc` and `local/practice` were
+already gated on live). `pl moodle gate-status ssc` LIVE block now reads **GATED / GATED / GATED**; the
+ops#137 ship-together assertion PASSED from the dev tree (the only remaining UNGATED source is the stale,
+deliberately-unreachable `~/nwptoolkit` snapshot).
+**Proven, not assumed** — a throwaway non-admin account on LIVE ssc, all three directions, then self-purged:
+no consent → **0 rows persisted**; explicit consent → **row persists** (so the 0 was the gate, not dead code);
+withdrawal → **gate shuts again**. Site returned to 4 users / 0 formation rows.
+**Proof that no consent is being solicited on the real sites:** live `nwc` has **2 accounts, both operator**
+(`admin` uid1, `rjzaar` uid2) and **0 `nwc_art9_consent` records**. `mayWriteArt9()` is true for both because
+`enforce_gate=false`, so the still-deployed protective freeze **fires for nobody** — no member can be shown
+unratified wording. Confirmed by direct evaluation on live, not inference.
+**🔑 THE INTERLOCK (new, load-bearing — belongs in every future discussion of #119):** on live nwc,
+`enforce_gate=true` would *simultaneously* switch on enforcement **and** consent-asking, because the OLD
+`ConsentFreezeSubscriber` redirects anyone with `mayWriteArt9()==false` to the consent form. Flipping the flag
+before deploying the new (Trialing) code would resurrect the abandoned "one wall for everything" model —
+consent as a condition of membership, i.e. **not freely given (Art. 7(4))**. Ordered switch: **new code first,
+flag second, same maintenance window.**
+**The reassuring half of the same interlock:** the `art9_consent` OIDC claim is computed from
+`hasExplicitConsent()`, **not** `mayWriteArt9()` — so `enforce_gate=false` **cannot** leak a `true` claim into
+Moodle. The Moodle gate is independent and fail-closed regardless. The escape hatch `enforce_gate=false` does
+open is `writeFormation()→'persist'` (loudly logged); moot today (no callers, no real members) but **must be
+`true` before any real member exists**.
+**Demo tier: already fully on.** `nwd` live runs the new code with `enforce_gate=true`,
+`enforce_contribution_gate=true`, Trialing + CC0 gate. All four journey paths verified end-to-end on the live
+demo site with a throwaway `@demo.invalid` account (15/15 assertions): decline→Trialing/ephemeral,
+consent→persist, withdraw→erasure→Trialing with the **withdrawal audit row retained** (Art. 7(1)), CC0 gate
+refusing contribution before acceptance. The nightly reset was checked and needs **no re-capture** — the live
+golden already encodes `enforce_gate=b:1` + `enforce_contribution_gate=b:1`, so the consent-enabled state
+survives every wipe.
+**⚠ Gap found, deliberately NOT improvised:** `ssd` has **no NWC Moodle plugins deployed at all** (`auth/nwc`,
+`mod/depthcontent`, `local/practice` all ABSENT; nwd→ssd push reports `skipped: moodle_not_configured`). The
+Drupal-side demo journey — which is what counsel needs to see — is complete without it. First-time 3-plugin
+deploy + OIDC wiring on ssd is its own workstream, not a step to slip into a deploy session.
+**⚠ Box gotcha (bit us, cost ~6 min of ss.nwpcode.org downtime):** `max_input_vars=1000` on the forge box vs
+Moodle's required 5000. `admin/cli/upgrade.php` fails the environment check **and leaves the site in
+maintenance mode**. Worked around per-invocation with `php8.2 -d max_input_vars=5000`; persisting it in
+`/etc/php/8.2/{cli,fpm}/php.ini` is the proper fix (open item). Also confirmed en route:
+**`ss.nwpcode.org` serves `/var/www/ssc`** (`/var/www/ss` was retired in CP7), so ss and ssc are one site.
+**Also:** the AMD build gap was real — 5 `amd/src` vs 3 `amd/build`, and the 3 that existed were unminified
+copies, not grunt output. Fixed properly with a real `grunt amd` (5 minified modules + sourcemaps) after
+clearing 6 cosmetic eslint errors. The build is now genuine, so the freshness gate means something.
+**Outcome:** "Art.9 enforced nowhere" is now "enforced in production and proven; asking awaits ratified
+wording", and `docs/guides/art9-golive-runbook.md` makes #119 one pre-proven switch.

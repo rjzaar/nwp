@@ -119,11 +119,59 @@ _site_is_moodle() {
     _moodle_version_php "$1" >/dev/null 2>&1
 }
 
-_moodle_field() { grep -E "\\\$$2" "$1" 2>/dev/null | head -1 | sed 's/.*=//; s/;.*//' | tr -d " '\""; }
+# Extract a PHP scalar assignment (`$version`, `$release`, `$branch`) from a
+# Moodle version.php.
+#
+# NEVER use a greedy `s/.*=//` here. Moodle's real version.php line is:
+#   $version  = 2024042212.01;   // 20240422  = branching date YYYYMMDD - do not modify!
+# — a greedy `.*=` takes the LAST `=`, which lives inside the trailing comment,
+# so BOTH the installed and the upstream version parsed to the literal string
+# `branchingdateYYYYMMDD-donotmodify!`. `awk 'a+0 < b+0'` then compared 0 < 0 and
+# `behind` was arithmetically incapable of being 1. Live ss/ssd awareness records
+# carried that string with security_count: 0 for months.
+# `[^=]*=` anchors on the FIRST `=` (the assignment), then `;.*` drops the
+# statement terminator and everything after it, including the comment.
+_moodle_field_from() {  # $1 = php text on stdin-substitute, $2 = var name
+    printf '%s\n' "$1" | grep -E "^\s*\\\$$2\b" | head -1 \
+        | sed 's/^[^=]*=//; s/;.*//' | tr -d " '\""
+}
+_moodle_field() { _moodle_field_from "$(cat "$1" 2>/dev/null)" "$2"; }
+
+# A Moodle $version is a numeric build stamp (YYYYMMDDXX.YY). Anything else means
+# we did NOT parse a version — a distributor constant, a patched file, a parser
+# regression. Refusing to compare is the honest answer; reporting 0 advisories is
+# not, because "0" is indistinguishable from "audited and clean".
+_moodle_version_is_numeric() { [[ "${1:-}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; }
+
+# Persist "we could not scan this site" as a first-class awareness record.
+#
+# SKIP/DOWN used to be printed to stdout and thrown away. The consequence: a site
+# that has NEVER been audited (no record at all) and a site audited clean
+# (security_count: 0) were indistinguishable to `pl rag`, which happily graded
+# both GREEN. Adding a site therefore made the fleet look safer. An unscanned
+# site now writes a record carrying `scanned: false` so every downstream reader
+# has something to go red on.
+# Args: $1=site $2=reason
+_write_unscanned_record() {
+    local site="$1" reason="$2"
+    mkdir -p "$STATE_DIR" 2>/dev/null || return 0
+    python3 - "$site" "$STAMP" "$reason" "$STATE_DIR/$site.json" <<'PY' 2>/dev/null || true
+import sys, json
+site, stamp, reason, path = sys.argv[1:5]
+json.dump({
+  "site": site, "checked": stamp,
+  "source": "pl audit — site not scanned",
+  "security_count": 0, "ignored_count": 0, "outdated_count": 0,
+  "cache_stale": True, "scanned": False, "stale_reason": reason,
+  "note": "UNSCANNED — %s. security_count 0 here means 'not measured', NOT 'clean'." % reason,
+}, open(path, "w"), indent=2)
+PY
+}
 
 moodle_audit_site() {
     local site="$1" vphp
     if ! vphp="$(_moodle_version_php "$site")"; then
+        _write_unscanned_record "$site" "moodle: no version.php found"
         printf '%s\tSKIP\t-\t-\t-\tmoodle: no version.php\n' "$site"; return 0
     fi
     local inst_ver inst_rel branch
@@ -133,18 +181,30 @@ moodle_audit_site() {
     branch="${branch%%[!0-9]*}"
 
     # Latest point release on the site's stable branch.
-    local latest_php latest_ver latest_rel stale="false"
+    local latest_php latest_ver latest_rel stale="false" stale_reason=""
     latest_php="$(curl -fsS --max-time 20 "https://raw.githubusercontent.com/moodle/moodle/MOODLE_${branch}_STABLE/version.php" 2>/dev/null || true)"
     if [ -n "$latest_php" ]; then
-        latest_ver="$(printf '%s' "$latest_php" | grep -E '\$version' | head -1 | sed 's/.*=//; s/;.*//' | tr -d ' ')"
-        latest_rel="$(printf '%s' "$latest_php" | grep -E '\$release' | head -1 | sed 's/.*=//; s/;.*//' | tr -d " '\"")"
+        latest_ver="$(_moodle_field_from "$latest_php" version)"
+        latest_rel="$(_moodle_field_from "$latest_php" release)"
     else
         stale="true"
+        stale_reason="upstream MOODLE_${branch}_STABLE/version.php unreachable"
+    fi
+
+    # A version we could not parse is UNKNOWN, not "current". Anything that keeps
+    # us from making a real comparison must set stale so the record, `pl audit`'s
+    # table and `pl rag`'s SEC column all render "?" rather than a confident 0.
+    if ! _moodle_version_is_numeric "$inst_ver"; then
+        stale="true"
+        stale_reason="installed \$version unparseable (got '${inst_ver:-<empty>}') in $vphp"
+    elif [ "$stale" != "true" ] && ! _moodle_version_is_numeric "$latest_ver"; then
+        stale="true"
+        stale_reason="upstream \$version unparseable (got '${latest_ver:-<empty>}')"
     fi
 
     # behind = installed numeric $version < latest (awk float-safe).
     local behind=0
-    if [ "$stale" != "true" ] && [ -n "$inst_ver" ] && [ -n "$latest_ver" ]; then
+    if [ "$stale" != "true" ]; then
         behind=$(awk -v a="$inst_ver" -v b="$latest_ver" 'BEGIN{print (a+0 < b+0)?1:0}')
     fi
     local sec_count=0; [ "$behind" = "1" ] && sec_count=1
@@ -154,27 +214,49 @@ moodle_audit_site() {
     [ -f "$STATE_DIR/$site.json" ] && prev_sec=$(python3 -c "import json;print(json.load(open('$STATE_DIR/$site.json')).get('security_count',0))" 2>/dev/null || echo 0)
 
     mkdir -p "$STATE_DIR"
-    python3 - "$site" "$STAMP" "$sec_count" "$stale" "$inst_rel" "$latest_rel" "$branch" "$inst_ver" "$latest_ver" "$STATE_DIR/$site.json" <<'PY' 2>/dev/null || true
+    python3 - "$site" "$STAMP" "$sec_count" "$stale" "$inst_rel" "$latest_rel" "$branch" "$inst_ver" "$latest_ver" "$STATE_DIR/$site.json" "$stale_reason" <<'PY' 2>/dev/null || true
 import sys, json
-site, stamp, sec, stale, inst_rel, latest_rel, branch, inst_ver, latest_ver, path = sys.argv[1:11]
+site, stamp, sec, stale, inst_rel, latest_rel, branch, inst_ver, latest_ver, path, reason = sys.argv[1:12]
+stale = (stale == "true")
+if stale:
+    note = "UNSCANNED — no comparison was made: %s. This is NOT a clean result." % (reason or "reason not recorded")
+elif sec == "1":
+    note = "Behind the latest point release on this branch — Moodle ships security fixes only in the newest point release; review moodle.org/security and update."
+else:
+    note = "Current on the latest point release of this branch."
 json.dump({
   "site": site, "checked": stamp, "platform": "moodle",
   "source": "Moodle point-release check (MOODLE_%s_STABLE version.php)" % branch,
-  "security_count": int(sec or 0), "ignored_count": 0, "outdated_count": int(sec or 0),
-  "cache_stale": (stale == "true"),
+  # security_count is only meaningful when a comparison actually happened.
+  # `scanned: false` is what downstream (pl rag) must key on so an unscanned site
+  # can never render identically to an audited-clean one.
+  "security_count": (0 if stale else int(sec or 0)),
+  "ignored_count": 0, "outdated_count": (0 if stale else int(sec or 0)),
+  "cache_stale": stale, "scanned": (not stale), "stale_reason": (reason if stale else ""),
   "moodle_branch": branch, "moodle_installed": inst_rel, "moodle_latest": latest_rel,
   "moodle_installed_version": inst_ver, "moodle_latest_version": latest_ver,
-  "note": ("Behind the latest point release on this branch — Moodle ships security fixes only in the newest point release; review moodle.org/security and update." if sec == "1" else "Current on the latest point release of this branch."),
+  "note": note,
 }, open(path, "w"), indent=2)
 PY
+    # A record we failed to write is itself a blind spot — say so rather than
+    # leaving the previous (possibly clean) record standing as current truth.
+    if [ ! -f "$STATE_DIR/$site.json" ]; then
+        printf '%s\tUNKNOWN\t?\t0\t%s\tawareness record could not be written\n' "$site" "$STAMP"
+        return 0
+    fi
 
     if [ "$sec_count" -gt 0 ] || { [ "$stale" = "true" ]; }; then
-        printf 'site=%s prev=%s now=%s stale=%s (moodle %s -> %s)\nMoodle %s is behind the latest point release %s on branch %s. Moodle ships security fixes only in the newest point release. Update + review moodle.org/security.\n' \
-            "$site" "$prev_sec" "$sec_count" "$stale" "$inst_rel" "$latest_rel" "$inst_rel" "$latest_rel" "$branch" > "$STATE_DIR/$site.alert" 2>/dev/null || true
+        printf 'site=%s prev=%s now=%s stale=%s (moodle %s -> %s)\n%s\n' \
+            "$site" "$prev_sec" "$sec_count" "$stale" "$inst_rel" "$latest_rel" \
+            "$([ "$stale" = "true" ] \
+                && printf 'Moodle version comparison could NOT be made for %s: %s. Treat as UNKNOWN, not clean.' "$site" "$stale_reason" \
+                || printf 'Moodle %s is behind the latest point release %s on branch %s. Moodle ships security fixes only in the newest point release. Update + review moodle.org/security.' "$inst_rel" "$latest_rel" "$branch")" \
+            > "$STATE_DIR/$site.alert" 2>/dev/null || true
         [ "$sec_count" -le "${prev_sec:-0}" ] && [ "$stale" != "true" ] && rm -f "$STATE_DIR/$site.alert" 2>/dev/null || true
     fi
 
-    local status="OK"; [ "$behind" = "1" ] && status="INSECURE"; [ "$stale" = "true" ] && status="OK*"
+    # "OK*" read as a pass with a footnote. It is not a pass — nothing was compared.
+    local status="OK"; [ "$behind" = "1" ] && status="INSECURE"; [ "$stale" = "true" ] && status="UNKNOWN"
     local secfield="$sec_count"; [ "$stale" = "true" ] && secfield="?"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$site" "$status" "$secfield" "$sec_count" "$STAMP" "$STATE_DIR/$site.json"
 }
@@ -193,12 +275,15 @@ audit_site() {
     fi
     local root
     if ! root=$(resolve_webroot "$site"); then
+        _write_unscanned_record "$site" "not a Drupal site (no resolvable webroot)"
         printf '%s\tSKIP\t-\t-\t-\tnot a Drupal site\n' "$site"; return 0
     fi
     if ! command -v ddev >/dev/null 2>&1 || [ ! -d "$root/.ddev" ]; then
+        _write_unscanned_record "$site" "no ddev binary or no .ddev in the webroot — composer audit could not run"
         printf '%s\tSKIP\t-\t-\t-\tno ddev\n' "$site"; return 0
     fi
     if ! (cd "$root" && ddev describe >/dev/null 2>&1); then
+        _write_unscanned_record "$site" "ddev project not running — composer audit could not run"
         printf '%s\tDOWN\t-\t-\t-\tddev not running\n' "$site"; return 0
     fi
 
@@ -250,7 +335,10 @@ rec = {
   "source": "composer audit (drush pm:security removed in this Drush)",
   "security_count": int(sec or 0), "ignored_count": int(ign or 0),
   "abandoned_count": int(ab or 0), "outdated_count": int(outd or 0),
-  "cache_stale": (stale == "true"),
+  # cache_stale == "composer fell back to the local cache / auth failed", i.e. the
+  # advisory set we compared against is not trustworthy. That is not a scan.
+  "cache_stale": (stale == "true"), "scanned": (stale != "true"),
+  "stale_reason": ("composer advisory registry could not be fully loaded (rotated auth.json token?)" if stale == "true" else ""),
   "composer_audit_text": clean(os.environ.get("AUDIT_TXT", "")),
   "composer_outdated_text": clean(os.environ.get("OUTDATED_TXT", "")),
 }

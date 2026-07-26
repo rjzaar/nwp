@@ -1743,3 +1743,222 @@ is 17/17 and now asserts `servers/nwpcode/demo/nwd-demo-reset-restricted` is in 
 **Consequence for this item:** sub-fixes 3 and 4 were dropped from this branch instead of being
 re-implemented. Duplicating them would have produced a conflicting diff that changed nothing.
 **Reversible-how:** N/A (work removed, not added).
+---
+
+## Item 2 — `oversight-honesty` (2026-07-26)
+
+**The thesis this item tests:** `pl rag` is the oversight surface. If the signals feeding it are
+arithmetically or structurally incapable of going red, then every green it has ever shown is
+uninformative — and the more sites you add, the safer the fleet looks.
+
+Every fix below was written test-first, with the failure observed on the current tree before any
+production code changed. The observed RED output is quoted, not paraphrased.
+
+### 1. `pl audit`'s Moodle leg could not report a CVE — proven
+
+`_moodle_field` used `sed 's/.*=//'`. `.*` is greedy, so it took the **last** `=` on the line.
+Moodle's real `version.php` line is:
+
+```
+$version  = 2024042212.01;   // 20240422      = branching date YYYYMMDD - do not modify!
+```
+
+so both the installed and the upstream `$version` parsed to the literal string
+`branchingdateYYYYMMDD-donotmodify!`. `awk 'BEGIN{print (a+0 < b+0)?1:0}'` then compared `0 < 0`,
+and `behind` was **arithmetically incapable of being 1**.
+
+**RED captured** — a synthetic Moodle 3.1 (`2016052300.00`) audited against a pinned 4.4 STABLE
+(`2024042212.01`):
+
+```
+not ok 2 a Moodle 3.1 audited against 4.4 STABLE reports behind=1 (security_count 1)
+# audit line: oldss	OK	0	0		.../state/oldss.json
+```
+
+Fix: anchor on the FIRST `=` (`s/^[^=]*=//`), and **refuse a non-numeric `$version`** — an
+unparseable version sets `stale`, because "0 advisories" and "I did not measure" must not render
+the same. Both the installed and the upstream parse now go through one shared `_moodle_field_from`,
+so they cannot drift apart (they were two separate copies of the same sed).
+
+*Alternative rejected:* just fixing the sed. That would leave a distributor-patched or
+constant-valued `$version` silently reporting clean, which is the same bug wearing a different hat.
+
+**Real-fleet impact, measured:** `ss`, `ss2`, `ssc`, `ssd` (including live `ss.nwpcode.org` and the
+`ssc` pilot) go from GREEN/`0` to AMBER/`-` with a stated reason. Their records will show a true
+count after the next `pl audit --all`.
+
+### 2. The renderer now distrusts the poisoned records already on disk
+
+Fixing the parser only helps the *next* audit. The existing
+`private/update-awareness/{ss,ss2,ssc,ssd}.json` still say `security_count: 0`,
+`cache_stale: false`, and would have kept grading GREEN until someone re-audited. They also carry
+the literal string `branchingdateYYYYMMDD-donotmodify!` in their version fields — i.e. **the
+evidence of their own invalidity**.
+
+Decision: `lib/rag-render.py` treats a `platform: moodle` record whose version fields are not
+numeric as UNSCANNED, regardless of what the record claims. A record that proves it is wrong is not
+believed.
+
+*Alternative rejected:* deleting the stale records. That loses the `checked` timestamps and makes
+the blind spot look like a fresh install rather than a four-month-old measurement failure.
+
+### 3. UNKNOWN is now a first-class outcome (`todo_add_unknown`)
+
+A check has three results, not two: FINDING, CLEAR, and **UNKNOWN — I could not look**. Roughly
+fifteen checks collapsed UNKNOWN into CLEAR with a bare `|| return 0`.
+
+**RED captured** — `check_live_backup_freshness` pointed at TEST-NET-1 (`192.0.2.1`, RFC 5737,
+guaranteed unroutable) emitted **zero** items and returned 0, i.e. reported the disaster-recovery
+backup chain healthy. Same for: no ssh key, no resolvable server IP, no `yq`, no secrets registry,
+no api_token, no `ddev`, and `pl secrets audit` exit 2.
+
+Fix: `todo_add_unknown <check> <reason>` files a `UNK-<check>` item carrying **why**.
+`pl todo --json` gains a top-level `summary.unknown` and a per-item `unknown` flag; the table prints
+`⚠ N check(s) COULD NOT RUN — this list is incomplete`; `pl rag` will not grade a site GREEN while
+any UNK item is open.
+
+*Alternative rejected:* making these checks hard-fail. `pl todo` runs on a laptop that is
+legitimately off-network; failing would train people to ignore it. Being loudly uncertain is the
+correct posture.
+
+Also fixed here: `check_token_liveness` kept a stale cache on probe exit 2 **with no age check**, so
+a 1-byte cache from any point in the past kept the fleet quiet indefinitely. It now reports how long
+it has been blind, and stamps `private/.token-audit-last-success` on a real probe.
+
+### 4. `check_uncommitted_work` was looking in a place no repo has ever been
+
+It required `sites/<name>/.git`. **No site has that** in the F17/F23 v2 layout — repos live at
+`sites/<name>/dev`, `.../stg`, in the profile trees, and under `servers/`. The loop `continue`d on
+every site. It also only iterated sites named in `nwp.yml`, so `servers/*` was invisible by
+construction, and it never looked at `git stash list`.
+
+Fix: **discover** repos rather than assume their paths; count dirt with `-uall` (the default
+collapses an untracked directory of 400 files to "1 file"); count stashes; raise severity off `low`.
+
+**RESOLVED IN FAVOUR OF ANOTHER AGENT'S IMPLEMENTATION — recorded because the reasoning matters.**
+Item 2 first shipped its own `lib/vcs-discovery.sh` (the programme assigns that file to item 8 and
+has item 2 consume it; it did not exist, so item 2 wrote the minimum primitive). While item 2 was in
+flight, another agent landed `discover_repos` in `lib/project-resolver.sh` together with a rewritten
+`check_uncommitted_work` that is **strictly better** than mine: per-repo timeouts so a pathological
+vendor tree cannot hang cron, one item *per stash* with its age, worktree-sprawl roll-up, repo→site
+mapping for the `site` column, and configurable thresholds.
+
+On rebase I took theirs wholesale and **deleted `lib/vcs-discovery.sh`**. Two discovery helpers over
+one tree is exactly how the duplicated backup-freshness logic in §5 drifted apart. The acceptance
+tests were repointed at the surviving implementation rather than deleted, so the *behaviour* stays
+pinned regardless of which file provides it — including a case their suite did not have (a repo
+under `servers/` being found at all, which was invisible by construction before).
+
+The lesson is worth keeping: when a concurrent agent has shipped a better version of your fix, the
+correct move is to delete yours and keep the test.
+
+### 5. Freshness was being mistaken for integrity
+
+`sweep_latest_backup_epoch` and `check_missing_backups` both took the newest matching file by mtime
+and asked nothing else of it. A 0-byte `.sql.gz` therefore reported FRESH — **and because it
+reported fresh it suppressed the next backup for another 7 days**. The one artifact you cannot
+restore from is the one that convinces the system it does not need another.
+
+Fix: one shared `lib/backup-integrity.sh` (size floor, `gzip -t`, `.sha256` sidecar when present)
+used by both callers, so the two copies of this logic cannot drift again. Freshness is now measured
+against the newest artifact that *passes*; a failing artifact raises a distinct high-priority
+`BAK-corrupt` item even when a valid older backup exists, because otherwise the producer keeps
+writing garbage and the only symptom is a silently ageing "last good" date.
+
+*Deliberate choice:* a missing `.sha256` sidecar is **not** a failure. Requiring one would turn the
+whole fleet red for a reason nobody can act on.
+
+### 6. A pause nobody can see is an outage
+
+`.loop-paused` sat on dev, mini and met since 2026-07-18; rag-sync logged "skipping" and exited 0 for
+eight consecutive nights. Green cron, green exit code, no surface anywhere.
+
+Fix: `check_paused_automation` files a HIGH item per sentinel **carrying its age**, plus per-part
+`parts.state` disables; an unannotated pause is itself a finding, and a pause past its own `until:`
+is escalated. `check_rag_sync_freshness` ages the last **completed** run — not the last log line,
+because "skipping" lines keep the file's mtime fresh forever.
+
+**DEVIATION FROM THE PROGRAMME, recorded deliberately.** Item 2 §7 asks to split the kill switch so
+`.loop-paused` no longer stops rag-sync. I did **not** do this.
+
+- The per-part switch machinery it describes already exists (`lib/loop-parts.sh`,
+  `pl loop disable rag-sync`, `.rag-sync-paused`) — that half of §7 was already landed by earlier
+  work. Evidence: `lib/loop-parts.sh:91-125`, `scripts/agent-loop/rag-sync.sh:30-45`.
+- The remaining half would *narrow* the operator's global kill switch. rag-sync is not read-only: it
+  creates, updates and closes GitLab issues. Reducing the blast radius of a big red button is not a
+  change an agent should make unilaterally, and the actual defect was that the pause was
+  **invisible**, not that the brake was too strong.
+- Making the pause loudly visible closes the observed failure (eight silent nights) without
+  weakening a safety control.
+
+**Operator decision required** if the narrower kill switch is still wanted. To reverse this
+judgement, add a `rag-sync` exemption to `loop_global_killed`.
+
+### 7. Executing an item permanently disarmed the check behind it — twice over
+
+`lib/todo-tui.sh` mapped SSL items to a local `certbot renew` under sudo and `eval`ed it **on the
+workstation**. The certs are on the box. certbot finds nothing, exits 0, and the TUI recorded success
+and suppressed the item. A local command that cannot possibly do the remote job is worse than no
+command, because success is indistinguishable from a no-op. SSL is now non-executable until a remote
+verb exists.
+
+Then, while fixing the suppression to carry an expiry, a **second, larger defect** surfaced:
+**`expires` was write-only.** `add_to_ignored` could record it and *nothing ever read it back* —
+`todo_is_ignored` / `is_ignored` / `is_item_ignored` all matched on `id` alone. So every "snooze
+until next week" in the entire system was in fact permanent silence, and the expiry I was adding
+would have been decorative. Both readers now honour it, an unparseable expiry fails **towards
+visibility**, and an entry with no `expires` stays permanent (that remains an explicit
+`pl todo ignore` choice).
+
+**RED captured:**
+
+```
+not ok 6 an EXPIRED suppression no longer hides its item
+#   `[ "$output" = "VISIBLE" ]' failed
+# IGNORED
+```
+
+The three DR action strings that read `ssh into <server> and check the nwp-pull producer cron` are
+now `pl server backup verify <server>` when that verb exists and `pl server status <server>` until
+then, via one `_lbk_action` helper — so the string upgrades itself when item 7 lands the verb,
+without editing this file. `tui_is_executable` accepts a real `pl`/`ddev`/`git` action string and
+still rejects prose, which is what had left the highest-consequence item in the list inert.
+
+### 8. `pl notify` — one path, that can tell you it is broken
+
+Every producer curled Gotify with its own inline token and its own `|| true`, putting the secret in
+the URL (and so in `/proc/<pid>/cmdline`) and discarding exactly the signal you wanted. There was no
+way to ask "can this machine notify me at all?".
+
+`pl notify send|health` is the single path: token via a 0600 curl config file (never argv, never the
+URL), non-zero exit on any delivery failure, and `health` asserts the server returned a **stored
+message id** — not merely that a socket opened. `scripts/secrets-daily-audit.sh` is migrated onto it.
+`check_notify_health` ages the last proven canary, because an alert path nobody has exercised is not
+an alert path.
+
+**Honest limit, stated rather than papered over:** Gotify app tokens are write-only, so `health`
+proves *accepted and stored*, not *read back by a client*. A true end-to-end round trip needs a
+client token with read scope. Recorded here so nobody later reads `notify health: OK` as more than
+it is.
+
+### Vacuous passes found in my own tests, and fixed
+
+Three of my own acceptance tests passed for the wrong reason and were tightened before the fix
+landed:
+
+- `repo discovery excludes vendor/` passed because the discovery function did not exist and the
+  output was empty — now asserts the real repo IS found first.
+- `uncommitted work is not filed as 'low'` passed because there was no item at all — now asserts an
+  item exists first.
+- `check_missing_backups stays quiet for a valid dump` passed because `yaml_get_all_sites` was
+  unsourced and the site loop never ran — now proves the loop visited the site.
+
+Two more assert `status -ne 127` so "the helper does not exist" cannot read as "the helper rejected
+it". A fixture that gzipped to 69 bytes was also replaced with an incompressible one, so the gzip
+and checksum branches are actually exercised rather than short-circuiting on the size floor.
+
+### Scope not taken
+
+`private/update-awareness/*.json` were **not** rewritten by hand. They are regenerated by
+`pl audit --all`, and hand-editing a measurement record to match what the code now believes is
+precisely the habit this item exists to break.

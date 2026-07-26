@@ -59,7 +59,7 @@ Go/no-go: JWKS 200 with one key, keys dir owned by `www-data`, clean baseline lo
 
 ## 2. Rotation procedure (hard swap — the only mode simple_oauth 6.1 supports)
 
-nwc is a `*.nwpcode.org` test-tier box (A14), not offline-gated the way real prod is; still
+nwc is a `*.example.com` test-tier box (A14), not offline-gated the way real prod is; still
 treat a live-with-real-students rotation as a change-window action.
 
 1. **Maintenance window.** Rotation is atomic; pick a low-traffic window so no in-progress

@@ -70,6 +70,13 @@ if [ -z "$MAX_SKIPPED" ] && [ -n "${NWP_BATS_SUITE:-}" ] && [ -f "$BUDGET_FILE" 
     [ -n "$MAX_SKIPPED" ] && echo "skip budget '${NWP_BATS_SUITE}'=$MAX_SKIPPED (from $BUDGET_FILE)"
 fi
 MAX_SKIPPED="${MAX_SKIPPED:-0}"
+# The budget governs THE SUITE THIS INVOCATION RUNS — not suites that those
+# tests themselves invoke. tests/unit/test-ci-lint-commands.bats runs this very
+# script in a subprocess to prove a stray skip goes red; if the outer budget
+# leaked in through the environment those meta-tests would assert against the
+# CI job's number instead of the default and fail spuriously. Resolve first,
+# then stop exporting, so every nested run starts from a clean default.
+unset NWP_BATS_MAX_SKIPPED NWP_BATS_SUITE
 
 echo "=== Preflight ==="
 missing=()

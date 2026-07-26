@@ -1,0 +1,88 @@
+# Host-state inventory — gitlab-host (the forge box; also serves 5 live sites).
+#
+# Every entry here is load-bearing state that, before 2026-07-26, existed ONLY
+# on the box. `pl server-state capture nwpcode` writes each one into this
+# directory; `pl server-state diff nwpcode` proves the captured copy is still
+# what is running. `why:` is mandatory in review: an artifact nobody can
+# justify is an artifact nobody will maintain.
+#
+# ⚠ This box has 3.8 GB RAM and runs GitLab + 5 live sites. Every command
+# below is read-only and cheap. NEVER add a `gitlab-rails` console/runner
+# invocation here — that OOM-killed prod for 5-8 minutes on 2026-07-25.
+#
+# No hostname appears in this file. `ssh_role` is resolved through `pl host`,
+# which reads the operator's private instance manifest (leakage gate).
+
+host: nwpcode
+ssh_role: gitlab-host
+ssh_user: gitlab
+
+# ---------------------------------------------------------------------------
+# Per-SAPI setting floors (known C).
+#
+# The 2026-07-26 Moodle outage was a max_input_vars ceiling on a course-edit
+# form. The remedy was applied to PHP 8.3 — but ss.conf points at
+# php8.2-fpm.sock and Moodle cron runs /usr/bin/php8.2, so the SAPI that
+# actually serves Moodle stayed at the default 1000. A check asking "is 5000
+# set on this box" passed the whole time. These floors name the SAPI.
+# ---------------------------------------------------------------------------
+php_floors:
+  - sapi: "8.2/fpm"
+    setting: max_input_vars
+    min: 5000
+    why: "Moodle course/section edit forms POST >1000 vars; ss.conf -> php8.2-fpm.sock. Below this the form silently truncates and the save 500s."
+  - sapi: "8.2/cli"
+    setting: max_input_vars
+    min: 5000
+    why: "Moodle cron + admin/cli/upgrade.php run under /usr/bin/php8.2. An upgrade that trips this leaves the site in maintenance mode."
+
+artifacts:
+  # --- the DR / backup leg -------------------------------------------------
+  - id: cron-nwp-box-backup
+    kind: file
+    remote: /etc/cron.d/nwp-box-backup
+    why: "Producer half of the fleet backup chain (gitlab tarball + 16 site DBs + nginx -> /var/backups/nwp-pull). The consumer half is met's nwp-dr-pull."
+
+  # --- scheduling that drives live sites -----------------------------------
+  - id: systemd-nwc-cron.timer
+    kind: cmd
+    remote: "systemctl cat nwc-cron.timer"
+    why: "Drives live nwc Drupal cron every 15 min. Unversioned until now; nwc is member-facing, and only nwc and ssc have any scheduler at all."
+  - id: systemd-nwc-cron.service
+    kind: cmd
+    remote: "systemctl cat nwc-cron.service"
+    why: "Unit invoked by nwc-cron.timer."
+
+  # --- TLS continuity ------------------------------------------------------
+  - id: certbot-deploy-hook
+    kind: file
+    remote: /etc/letsencrypt/renewal-hooks/deploy/reload-gitlab-nginx.sh
+    why: "The running web server is GitLab's bundled nginx; without this hook renewed certs are never picked up. The INSTALLED copy is a 14-line /bin/sh with no failure path and has drifted from the 48-line guarded nginx/renew-hook.sh in this repo."
+
+  # --- the network boundary ------------------------------------------------
+  - id: ufw
+    kind: cmd
+    remote: "sudo -n ufw status numbered 2>/dev/null || ufw status numbered"
+    why: "CLAUDE.md forbids exposing 22 to the internet, yet 22/tcp is ALLOW IN Anywhere (twice, via the OpenSSH profile and a bare rule) and 5050/tcp is world-open with nothing bound. Capturing it makes the gap reviewable."
+  - id: headscale-acl
+    kind: file
+    remote: /etc/headscale/acl.json
+    why: "The estate's VPN control plane policy. Currently accept src=* dst=*:* — every node may reach every node on every port. Unversioned until now."
+
+  # --- the ssh trust boundary (redacted: options only, never key material) --
+  - id: authorized-keys
+    kind: ssh-policy
+    remote: /home/gitlab/.ssh/authorized_keys
+    why: "The forced-command jails are the only thing between a leaked pull key and an account with (ALL) NOPASSWD: ALL. One entry uses a bare `rrsync` (PATH-dependent — same class as the fleet cron PATH bug); one key is unjailed."
+
+  # --- the claimed-but-absent defence layer --------------------------------
+  - id: nginx-snippet-includes
+    kind: cmd
+    remote: "ls /etc/nginx/snippets/ 2>/dev/null; echo '--- vhosts including deny-files-secrets ---'; grep -rl deny-files-secrets /etc/nginx/ 2>/dev/null || echo NONE"
+    why: "servers/nwpcode/nginx/snippets/deny-files-secrets.conf is committed and calls itself 'the HTTP-serving layer of a 3-part defence'. On the box the snippet is absent and no vhost includes it. This artifact makes that measurable instead of assumed."
+
+  # --- the PHP settings map that php_floors is asserted against ------------
+  - id: php-map
+    kind: cmd
+    remote: "for v in $(ls /etc/php 2>/dev/null); do for s in fpm cli; do [ -d /etc/php/$v/$s ] || continue; n=$(grep -rhs '^[[:space:]]*max_input_vars' /etc/php/$v/$s/php.ini /etc/php/$v/$s/conf.d/ 2>/dev/null | tail -1 | sed -E 's/^[^=]*=[[:space:]]*//; s/[;#].*$//; s/[[:space:]]*$//'); echo \"$v/$s max_input_vars=${n:-1000}\"; done; done"
+    why: "Feeds php_floors. NB the extraction takes the FIRST '=' and strips trailing comments — a greedy 's/.*=//' is exactly the bug that made the Moodle version audit return behind=0 forever."

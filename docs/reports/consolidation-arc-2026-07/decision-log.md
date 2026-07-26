@@ -1743,6 +1743,206 @@ is 17/17 and now asserts `servers/nwpcode/demo/nwd-demo-reset-restricted` is in 
 **Consequence for this item:** sub-fixes 3 and 4 were dropped from this branch instead of being
 re-implemented. Duplicating them would have produced a conflicting diff that changed nothing.
 **Reversible-how:** N/A (work removed, not added).
+
+## [2026-07-26] itemC-pl-freshness-banner — pl now knows, and says, when it is behind
+**Situation confirmed, not assumed:** `git grep -l 'rev-list --count.*@{u}|checkout is behind|stale
+checkout' origin/main` matched exactly one file and it is a 2026-07-11 *report*, not code. `pl`
+resolves symlinks to set `SCRIPT_DIR` and dispatches; there was no freshness logic anywhere, and
+`VERSION` is a hardcoded string, so `pl version` answered `0.30.0` identically on a checkout at
+`origin/main` and one forty commits behind. `/usr/local/bin/pl` is a symlink into ONE shared
+checkout, which is the sole code path for every `pl secrets audit`, `pl rag`, `pl deploy-gate` and
+every impact/fate manifest on this machine.
+
+**Decision:** new `lib/pl-freshness.sh`, sourced from `pl` immediately after `SCRIPT_DIR`
+resolution, printing at most one line to **stderr**, never altering stdout or exit status.
+
+**The two ways to get this wrong, and what stops each:**
+1. *Needing the network on every call.* The banner reads only refs already on disk
+   (`git rev-list --count HEAD..@{u}`), never fetches, and therefore reports "commits behind **as
+   of** the last fetch" — the wording is load-bearing, because a banner that implied a live check
+   would be trusted for a claim it never made. `pl version --check` is the one verb allowed to
+   fetch, and only on request. Asserted by test (g): a checkout whose upstream has moved but which
+   has not fetched must stay SILENT and must record zero `fetch`/`ls-remote` calls.
+2. *Firing on a deliberately-pinned checkout.* Detached HEAD, no upstream, and HEAD-exactly-on-a-tag
+   are all silent, always. This is the case a naive `rev-list --count HEAD..@{u}` gets wrong, and an
+   operator nagged for a choice they made on purpose learns to ignore the banner — which costs more
+   than never shipping it.
+Third risk from the brief (cache file inside the repo tripping the leakage/containment gates)
+avoided by putting the verdict under `${XDG_CACHE_HOME:-$HOME/.cache}/nwp/`, keyed by checkout path.
+`.gitignore` was deliberately NOT touched: it is a listed high-risk path, and the repo's
+ignore-everything-then-whitelist shape already covers a stray root file.
+
+**Fail open.** Whole check runs in a subshell with `set +e` so it cannot trip `pl`'s `set -euo
+pipefail`; call site is `pl_freshness_banner "$SCRIPT_DIR" || true`. A broken freshness check must
+never be the reason an emergency `pl rollback` does not run.
+
+**RED recorded before the fix** (`bats tests/unit/test-pl-freshness.bats` against unmodified `pl`):
+7 of 16 failed — (a) `[ -n "$ERR" ]' failed`, (e), (h), (i), (j), (k), (l) `bash -n
+lib/pl-freshness.sh` exit 127. The nine that passed were the SILENCE cases, which a do-nothing
+implementation satisfies trivially; that is precisely why (a)/(e)/(h)/(i)/(j)/(k) exist.
+**GREEN after:** 16/16, and the full unit suite via `scripts/ci/run-bats.sh` reports 1365
+testcases / 0 failures / 0 skipped (skip budget unit=0 honoured; nothing here skips).
+
+**Negative controls — both degenerate implementations were built and run, not merely imagined:**
+* *Always silent* (`_pl_freshness_emit` returns immediately): caught by (a), (e), (h), (i), (j).
+* *Naive — correct count, pinned guards deleted, upstream defaulted to `origin/main`*: caught by
+  (c1), (c2), (c3). Disjoint from the first set, so neither degenerate form has a green path.
+A first attempt at the second mutation also mangled the count and accidentally passed the pinned
+cases for the wrong reason; it was discarded and redone precisely rather than reported as evidence.
+
+**Deliberately NOT done:** nothing was wired into `pl todo`/`pl rag` to fetch on the banner's
+behalf — those are OFF LIMITS this session, and an automatic periodic fetch is a separate decision
+with its own risk surface. Consequence, stated honestly in `docs/reference/pl-freshness.md`: on a
+checkout nobody ever fetches, the banner stays silent forever.
+
+**Reversible-how:** delete `lib/pl-freshness.sh` — `pl` guards the source with `[[ -f ... ]]` and
+degrades to exactly today's behaviour. Or set `NWP_NO_FRESHNESS_CHECK=1`. No live site, server or
+database was touched, so no rollback-registry row was required.
+## [2026-07-26] b7-four-branches-swept-each-gated-on-the-line-that-superseded-it
+**Decision:** deleted five refs — `origin/pl-rollback-stdin-fix`, `origin/stg2live-drush-graceful`,
+`origin/chore/gitleaks-allowlist-issue-urls`, and the two duplicate `archive` heads
+`archive/pl-rollback-stdin-fix` and `archive/stg2live-drush-graceful`. Rollback registry row CP-B7.
+
+Each deletion was gated on a specific line of `origin/main`, not on a summary judgement. Verified
+against `origin/main` @ `388ef0b` (the item's stated `0cdb94c` had already been superseded):
+
+| Branch (tip) | MR | Behind main | Superseded by, on `origin/main` |
+|---|---|---|---|
+| `pl-rollback-stdin-fix` (`1813994`) | !10 closed | 487 | `lib/rollback-remote.sh` lines **169, 189, 261, 321, 330** carry `ssh -n -o BatchMode=yes` — the branch's whole diff — **plus a sixth at 343** that postdates the branch entirely |
+| `stg2live-drush-graceful` (`3f73691`) | !11 closed | 487 | `scripts/commands/stg2live.sh` lines **145** and **245** are the two `drush unavailable in staging` skip guards, each annotated `(MR !11)` at lines 143 and 243 |
+| `chore/gitleaks-allowlist-issue-urls` (`0b3f644`) | !50 closed | 349 | `.gitleaks.toml` lines **589** and **684** carry the branch's exact regex `git\.nwpcode\.org/[\w./-]+/-/(issues\|merge_requests\|blob\|tree)/`, duplicated per the SHARED-EXEMPTIONS rule |
+| `archive/pl-rollback-stdin-fix` | — | — | `git rev-parse` == `1813994`, byte-identical to the origin head above |
+| `archive/stg2live-drush-graceful` | — | — | `git rev-parse` == `3f73691`, byte-identical to the origin head above |
+
+**Nothing is lost.** GitLab keeps `refs/merge-requests/{10,11,50}/head` on project 9 forever; all
+three were confirmed by `git ls-remote` to hold the exact deleted SHAs *before* the push. The
+restore command is one line and is recorded in CP-B7.
+
+**What was checked beyond the item's own evidence:** that no *open* MR used any of the five as a
+source or target branch (all six API queries returned 0), so no MR was auto-closed or orphaned by
+the sweep, and that all three MRs were already `state=closed` rather than merged-and-stale.
+
+**Reversible-how:** `git push origin <sha>:refs/heads/<name>` / `git push archive <sha>:refs/heads/<name>`.
+
+## [2026-07-26] b7-gitleaks-branch-is-a-net-revert-not-a-fix
+**The load-bearing reason `chore/gitleaks-allowlist-issue-urls` had to be DELETED and not merged,
+recorded so a future agent does not "rescue" it.**
+
+The branch looks like a small, useful, still-unmerged fix: 17 lines adding a narrow allowlist so
+public `git.nwpcode.org/-/issues|merge_requests|blob|tree/` links stop tripping the
+`live-internal-domain` rule (Decision 14). Its author even wrote "leave MR open for operator
+review, do not auto-merge", which reads as an invitation to finish the job.
+
+It is not. It branched on 2026-07-09, before `92cf069`
+(*REVIEW: fix(security): un-blind the leakage gate — credential rules were off for 6 whole trees*)
+landed on 2026-07-26. `git diff origin/main origin/chore/gitleaks-allowlist-issue-urls --
+.gitleaks.toml` is **-626 lines**: merging or cherry-picking it restores the top-level
+`[allowlist]` `paths` block that RULE 1 of the current config exists to forbid. That block does not
+merely silence operator-identifier false positives — a top-level `paths` exemption disables *every*
+rule for those paths, **including the inherited AWS / GCP / GitHub / GitLab-PAT credential rules**,
+across `^tests/.*`, `^docs/reports/.*`, `^docs/archive/.*`, `^docs/onboarding/.*`, `^templates/.*`
+and `^servers/(mini|mayo1|nwpcode)/.*`. It would also drop `minVersion`, the `operator-home-path`
+capture group and its `secretGroup = 1` — the fix that stopped that rule being 100% dead on the
+gitleaks 8.30.0 that CI actually downloads.
+
+`pl branch` classifies it as SHRINKS, which is the correct verdict for exactly this reason.
+
+**And it costs nothing to delete**: its one genuine contribution, the Decision-14 regex, is already
+on main *twice* (lines 589 and 684). Deleting it loses no capability; merging it would silently
+re-blind the one blocking security gate on every MR.
+
+**Guard shipped with this decision:** `tests/unit/test-stale-branch-sweep.bats` case A4 fails, by
+name, if `.gitleaks.toml` ever regrows a top-level `paths` list — so a resurrection attempt trips a
+test that says *why* rather than a diff nobody reads.
+
+**Reversible-how:** the branch itself is at `refs/merge-requests/50/head`; restore it as a
+historical read only.
+
+## [2026-07-26] b7-my-own-first-acceptance-test-was-the-bug-it-was-written-to-prevent
+**Recorded against my own work, because it nearly shipped.**
+The first draft of `tests/unit/test-stale-branch-sweep.bats` asserted branch absence as three
+consecutive `! grep -qE 'refs/heads/<branch>$' <<<"$heads"` lines. POSIX says `set -e` is **ignored**
+for a command whose status is inverted with `!`, so under bats only the *last* of the three could
+ever fail the test. The RED run proved it: with all three branches still present on `origin`, bats
+reported a single failure at line 136 (`chore/gitleaks-allowlist-issue-urls`) and said nothing at
+all about lines 134-135 — two of the three branches were unasserted while the suite looked complete.
+That is precisely the "a test that proved nothing" failure this workflow exists to catch, and it was
+only visible because the test was run RED first; a test written after the deletion would have been
+green on day one and stayed green if two of the three pushes had silently failed.
+**Fix:** an explicit `assert_head_absent` helper that prints the offending ref and `return 1`s. The
+second RED run then aborted at the *first* offender, which is the proof each assertion is live.
+**Reversible-how:** N/A (test-only).
+
+## [2026-07-26] b7-what-the-remote-half-of-the-test-refuses-to-do
+**Decision:** the two remote-probing cases skip, never pass, when they cannot see.
+"Branch X is absent from remote R" is satisfied for free by a probe that is offline, unauthenticated
+or pointed at the wrong host — the same shape as the oversight surfaces this programme has been
+making honest. So `probe_remote` returns non-zero unless the remote answers *and* reports a
+`refs/heads/main`, and the caller `skip`s on that. Case B3 exercises the control directly: a bogus
+remote must make `probe_remote` fail with empty output, so the `assert_head_absent` calls can never
+read an empty listing as "all clear". PART A's four content assertions are mirrored against the
+pre-supersession commits (`68430dc`, `92cf069^`) for the same reason — an assertion that has never
+been observed failing is not evidence that it can.
+**Reversible-how:** N/A (test-only).
+
+## [2026-07-26] b7-worktree-removed-but-three-LOCAL-branches-are-left-standing-on-purpose
+**Done:** `/home/rob/nwp/.claude/worktrees/agent-adf8c402537d37717` (the dormant
+`chore/gitleaks-allowlist-issue-urls` checkout, untouched since 2026-07-09) removed with a plain
+`git worktree remove` — deliberately *without* `--force`, so git itself vouched the tree was clean;
+had there been uncommitted work it would have refused rather than destroyed it. Stale
+remote-tracking refs for all five swept heads were pruned from the shared clone.
+
+**Deliberately NOT done, and left for the operator:** the shared checkout `~/nwp` still holds three
+LOCAL branches — `pl-rollback-stdin-fix`, `stg2live-drush-graceful`,
+`chore/gitleaks-allowlist-issue-urls` — now with no upstream. They are outside this item's declared
+territory (which named `refs/remotes/origin/*` and the `archive` remote only), and `~/nwp` is shared
+by several concurrent sessions, so deleting branches there is not mine to do unasked.
+
+They are, however, precisely the resurrection vector this sweep is about: a future session sitting
+in `~/nwp` could `git push origin chore/gitleaks-allowlist-issue-urls` and re-blind the leakage
+gate in one command, with no MR and no review. Two mitigations are already in place — the branch
+tips are unchanged so nothing is silently different, and
+`tests/unit/test-stale-branch-sweep.bats` case A4 fails by name the moment `.gitleaks.toml`
+regrows a top-level `paths` list. To close it fully:
+`git -C ~/nwp branch -D pl-rollback-stdin-fix stg2live-drush-graceful chore/gitleaks-allowlist-issue-urls`
+(safe: every commit survives at `refs/merge-requests/{10,11,50}/head`).
+**Reversible-how:** N/A for the worktree (a clean checkout, rebuildable with `git worktree add`).
+## [2026-07-26] b2-branch-ops-127-retired-work-landed-via-ops-127-recovery
+**Decision:** deleted `origin/ops-127`. ops#127 parts 2/3 and 3/3 landed on `main` via the
+**`ops-127-recovery`** branch (merge `089c4ca`, carrying `96a5823` and `91d4e3e`), **not** via
+this branch. `origin/ops-127` @ `cbb5cee` was 2 ahead / 117 behind and held nothing main lacks.
+**Evidence (re-run before the deletion, not quoted from the planner):**
+- `git cherry -v origin/main origin/ops-127` printed `-` for **both** unique commits
+  (`cd346ca`, `cbb5cee`) — i.e. GitLab-side and locally, both are patch-equivalent to commits
+  already on main. Zero unique commits, which is the decisive superset test; the four-file
+  byte-diff is the human-readable version of it.
+- The four-file gate emitted **nothing** and exited 0: `lib/sanitizers/moodle.sh`,
+  `lib/sanitizers/standard.sh`, `tests/unit/test-moodle-preserve-admin.bats`,
+  `tests/unit/test-server-backup-sanitize.bats` are byte-identical between `origin/main` and
+  `origin/ops-127`.
+- Not just present but **alive**: `bats tests/unit/test-moodle-preserve-admin.bats
+  tests/unit/test-server-backup-sanitize.bats` on main is **12/12 ok**. Presence-on-main is a
+  weaker claim than passing-on-main, so the stronger one was taken.
+- **Merging it would have SHRUNK main, in two places, not one.** (a)
+  `scripts/commands/server-backup.sh`: main-only additions the branch lacks — the
+  `files_secrets_verify` pre-snapshot fail-LOUD check and the restic `--exclude`s for
+  `sync/*.yml|yaml`, `auth.json`, `.env*`. (b) The planner did not spot this one:
+  `git diff --stat` shows the branch **re-adding** `scripts/f26/moodle/auth_nwc/{auth.php,
+  classes/observer.php,db/events.php,lang,settings.php,version.php}` (+426 lines), which main
+  deliberately **retired to a pointer** (`CANONICAL-SOURCE.md`, programme item 9) precisely
+  because that copy is `2026071101/1.0.0` while LIVE ssc runs `2026072400/1.2.0-draft` — a
+  deploy sourced from it "would have silently downgraded live ssc and dropped the Art.9 consent
+  gate". So this branch is not merely redundant, it is a live-downgrade hazard.
+**Negative control (the gate is not vacuous):** the same gate script was first pointed at
+`scripts/commands/server-backup.sh`, a file that genuinely differs, and went **RED** (exit 1,
+26 diff lines). A gate that can only say "identical" would have proved nothing. It also fails
+RED, not silently green, on a file missing from either side.
+**Reversible-how:** the commits are preserved server-side forever at
+`refs/merge-requests/149/head` (= `cbb5cee`) and `refs/merge-requests/142/head` (= `b74e88d`) —
+`git fetch origin refs/merge-requests/149/head:ops-127` restores the branch verbatim. The local
+branch ref `ops-127` in `/home/rob/nwp` also survives worktree removal.
+**Not done deliberately:** `origin/ops-127-recovery` @ `91d4e3e` is also fully merged into main
+(`089c4ca`) and is now stale, but it is outside this item's territory and was left alone.
 ---
 
 ## Item 2 — `oversight-honesty` (2026-07-26)
@@ -2046,3 +2246,1773 @@ was then **recomputed independently with plain git** (no library code): `suspect
   the pl-freshness work.
 - No edit to `lib/impact.sh` (owned by impact-destructive-pattern), no branch deletion, no
   rollback-registry row — no live site or server was touched.
+## [2026-07-26] demo-invite-tier-and-parity-tmpfile — G + D2 in `scripts/commands/demo.sh`
+
+Two defects, one file, one MR.
+
+### G — `pl demo invite nwd` sent every code to the wrong site
+
+`main()` defaults `--tier` to `dev`. That default is right for the read-only verbs and silently
+wrong for the code verbs: `cmd_invite` ends with `demo_sync_codes_to_site "$site" "$tier"`, which
+branches on `demo_is_live "$tier"`, so the exact command printed in
+`howto-invite-codes.md`, `howto-demo-tier.md` and `art9-golive-runbook.md` issued three fresh codes
+and loaded the hashes into the **local nwd-dev DDEV project**. nwd live never received them. The
+operator saw a complete invitation email and an exit code of 0.
+
+Reproduced verbatim on origin/main against a throwaway `PROJECT_ROOT` — three codes written to
+`demo-codes.json`, then:
+
+```
+ERROR: No DDEV project for 'demo1' tier 'dev' at .../sites/demo1
+```
+
+…which is the *dev* branch of the sync, reached by a command that never mentioned a tier.
+Corroborating live state: `sites/nwd/demo-codes.json` holds 19 codes, all 19 revoked, none ever
+redeemable from the live site.
+
+**Decision: require the tier, do not change the default.** Flipping the default to `live` is the
+same defect aimed at a real host — it would make `pl demo codes nwd revoke 7` on a dev experiment
+reach out and touch production instead. So `invite` and `codes issue|revoke|rotate|sync` now refuse
+until `--tier` is named, and the refusal message names both options. `codes list` and every
+read-only verb keep the `dev` default, which is the negative control: a guard that refused
+everything would pass a "does it refuse?" test while destroying the tool.
+
+The guard runs **before** anything is generated — first statement in `cmd_invite`, ahead of the
+option parse; a `case` ahead of the action `case` in `cmd_codes`. A refusal that had already burned
+a code id, or worse printed a plaintext code, would be a worse outcome than the bug it guards.
+
+`revoke` is included deliberately and is the sharpest of the four: revoking against `dev` while the
+code is live in the site's state leaves the code **still redeemable**, i.e. the failure mode is
+"the leaked code you thought you killed still works".
+
+### D2 — the live parity probe was staged at a guessable path and then executed
+
+`demo_parity_check_live` scp'd the probe to `/tmp/nwp-config-parity-$$.php`, ran `chmod a+r` on it,
+and had drush execute it as `www-data`. `/tmp` is world-writable and the pid space is ~32k, so any
+local user could pre-create or symlink that path and choose the PHP that runs as the site user.
+
+Fixed by removing the need for a guessable name *and* the need to widen permissions at all:
+
+1. the **remote** `mktemp -d -p /tmp nwp-config-parity-XXXXXXXXXX` picks the name and creates the
+   directory `O_EXCL`, mode 0700 — there is nothing to squat;
+2. staging runs under the **same identity that runs drush** (`DEMO_LIVE_DRUSHSUDO`), streamed via
+   `tee` over the existing ssh channel rather than scp'd, so the probe is readable by its executor
+   and by nobody else. `chmod` is gone entirely; the returned path is regex-validated before it is
+   ever interpolated into `rm -rf`.
+
+Choosing `tee`-over-ssh instead of scp is what made this testable: the whole staging path now goes
+through `demo_rssh`, so a bats harness can stub the "remote" as local bash and assert the real
+staging code produces a 0700 dir, a 0600 probe, an unguessable name, an intact payload, and no
+leftover directory.
+
+### What I did NOT do
+
+- **Did not touch `scripts/console/`** (owned elsewhere). It builds `demo codes <site> issue …`,
+  `demo invite <site>` and `demo codes <site> revoke …` with **no `--tier`**, so those three
+  console actions will start failing loudly the moment this merges. That is the same bug from a
+  second surface — the console has been issuing dev-tier codes too — and the fix is three literals
+  in `ACTIONS`. `scripts/console/tests/test_actions.py` only asserts argv shape, so CI will not
+  catch it. **Flagged on the MR; must be sequenced with the console owner.**
+- **Did not re-issue real nwd live codes.** That is the operator step in the acceptance criteria and
+  it writes to a live site.
+- **Did not run `pl demo golden nwd --tier=live`.** The functional live-parity check is a real
+  remote operation against a live host; the staging change is proven by simulation instead, and the
+  live confirmation is left for the first operator run. See the trust note below.
+- **Did not change `demo_parity_check_local`'s `.nwp-config-parity.$$.php`.** It writes inside the
+  user-owned DDEV project directory, not a world-writable one, so the squat does not apply.
+- **Did not touch `lib/demo.sh`** — MR !162 modifies it.
+
+### A vacuous assertion in my own test, caught before the fix landed
+
+The first draft of the D2 test asserted `! grep -qE 'nwp-config-parity-\$\$' "$DEMO_CMD"`. Bash
+exempts `! cmd` from `set -e`, so in bats that line **cannot fail** — it silently asserted nothing,
+and the RED run proved it by failing on a later line while the two greps it was supposed to trip on
+both matched. Rewritten as `run grep …; [ "$status" -ne 0 ]`. The same pattern exists in two
+pre-existing tests in this file (lines ~381 and ~430); left alone as out of scope, but worth a sweep.
+
+### Sequencing note (the risk this item was warned about)
+
+MR !162 (`feat/demo-tier-ssd`) is still open and rewrites `main()`'s dispatch. This work was
+deliberately built as **pure insertions** in `main()` — a pre-scan loop above the option parse
+setting `DEMO_TIER_EXPLICIT`, rather than editing the `local tier="dev" …` declaration or the
+`--tier=*` case or the `codes)`/`invite)` dispatch lines — precisely so the two do not collide.
+`demo_parity_check_live` and `cmd_invite` are untouched by !162. Whichever merges second should
+still be re-run against the other's tree rather than assumed clean.
+## [2026-07-26] item-E-pre-commit-hook-repair — a gate nobody can pass takes the gate beside it down
+
+**RED, verbatim, in a scratch clone with the old `.hooks/pre-commit`:**
+
+```
+### RED case (a): stage valid .php, run hook:
+Running pre-commit checks...
+phpcs not found. Please install PHP_CodeSniffer.
+exit=1
+
+### RED case (b): stage broken .sh, run hook:
+Running pre-commit checks...
+No PHP files to check.
+exit=0
+```
+
+Both halves are the defect. (a): the hook `exit 1`d because a linter was *absent* — not because
+anything was wrong with the commit — and neither `phpcs` nor `phpstan` is installed on this machine,
+there is no `vendor/bin`, and `phpstan.neon`'s `paths:` (`web/modules/custom`, `web/themes/custom`)
+do not exist in this repo at all. So no commit staging a `.php` file could pass, ever. (b): a `.sh`
+with `if true; then` and no `fi` sailed straight through, in a repo that is ~90% bash. The hook was
+simultaneously unpassable and useless.
+
+**Why that matters beyond annoyance.** The rational response to (a) is `git commit --no-verify`, and
+`--no-verify` is not selective: it also disables the `gitleaks` hook declared next to it in
+`.pre-commit-config.yaml`. The broken quality gate was quietly disarming the *leak* gate. That, not
+tidiness, is why this was worth doing.
+
+**Decision — two rules, deliberately in tension:** fail-CLOSED on a real syntax error in staged
+content; fail-OPEN when a linter is merely missing (one skip line, exit 0). Concretely: `bash -n` on
+staged `*.sh`/`*.bash`/`pl`/extensionless-with-shell-shebang; `bats --count` on `*.bats`; `php -l`
+then `phpcs` on PHP when those exist; `phpstan` only when `web/modules/custom` AND `phpstan.neon`
+are both present, so the same file works in a site checkout and self-disables in the tool repo.
+
+**Checked against the index, not the worktree.** `git show :path` into a temp tree that preserves
+the path (phpcs needs the extension to pick a tokenizer), then temp paths are rewritten back so
+messages name the real file and line. A hook that lints the worktree blesses a blob the commit will
+not contain — test (b4) pins this.
+
+**`.bats` files are not bash.** `bash -n tests/unit/test-precommit-hook.bats` fails on `@test x { }`.
+Had the gate treated `shell`-tagged files uniformly it would have refused all 106 tracked `.bats`
+files. They get `bats --count` instead, fail-open.
+
+**Config wiring changed too, and it is the half that was easy to miss.** The hook block declared
+`types: [php]`, so on a pure-bash commit the hook never ran at all — every shell check above would
+have been unreachable in real life while passing in bats. Now `types_or: [shell, php]` with
+`pass_filenames: true`. Test (d2) asserts `types: [php]` is gone, so the wiring cannot silently
+regress to unreachable.
+
+**Vacuous-pass caught in my own tests.** My first GREEN run still failed the shell cases. Cause: the
+tests build a stripped PATH to guarantee `phpcs` is genuinely absent, and I had omitted `mkdir`/`cp`
+from it — so `materialise()` failed for *every* file and the hook checked nothing while exiting 0.
+Four tests would have "passed" on an empty file set had they been written less specifically. The
+fix was to the test's PATH, and it is recorded here rather than quietly corrected because it is the
+same failure mode this arc keeps finding: a green that means "nothing ran".
+
+**Negative controls.** (c2) a Markdown-only commit passes quietly, (c3) 40 real `lib/*.sh` files
+staged together pass, (c5) a mixed commit names the broken file and does not indict the valid one —
+so a hook that simply refused everything cannot pass this file, and (b*) means one that exits 0
+cannot either.
+
+**Whole-repo sweep before landing:** 262 tracked `.sh` + `pl` → 0 `bash -n` failures; 106 `.bats` →
+0 `bats --count` failures; 34 `.php` → 0 `php -l` failures. The new gate imposes no false-positive
+tax on existing code.
+
+**Scope not taken.** `phpstan.neon`'s `paths:` were NOT changed — they are correct for the Drupal
+site checkout where `lib/testing.sh run_phpstan()` actually consumes it (`ddev exec vendor/bin/phpstan`
+after cd'ing into the site); only a header comment saying so was added. The `nwp.yml`-protection and
+`commit-msg` hooks that `docs/development/git-hooks.md` described were NOT implemented — they exist
+nowhere in the tree, so the doc was corrected to say they were never real (`.gitignore` protects
+`nwp.yml`) rather than growing new hooks under cover of a doc fix. No `--advisory`/allow_failure
+knobs were touched.
+
+**Human-review class:** `.hooks/` matches the agent-loop `SENSITIVE_PATH_RE`, so the commit is
+tagged `REVIEW:`. A pre-commit hook is code that runs on every developer commit; it deserves eyes.
+## [2026-07-26] b4-cli-script-tests-rescued-from-stranded-branch-lib-was-already-on-main
+**Situation:** `fix/moodle-deploy-snapshot-cli-script` (1 commit, 13h old, never had an MR) was
+reported as "byte-equivalent to main, safe to delete". The **lib half is** — `origin/main`
+`lib/moodle-deploy.sh` lines 405 and 535 both already read
+`define("CLI_SCRIPT",1); define("ABORT_AFTER_CONFIG",1); require …`, landed in a2cb904, and
+`git diff origin/main HEAD -- lib/moodle-deploy.sh` is empty. The **test half is not**:
+`git show origin/main:tests/unit/test-moodle-command.bats | grep CLI_SCRIPT` returns nothing.
+Deleting the branch on the byte-equivalence report would have dropped the only regression
+coverage for a defect that made every guarded live Moodle `--apply` impossible (config.php
+hard-aborts a CLI include without CLI_SCRIPT ⇒ snapshot exits 1 ⇒ "Pre-deploy snapshot failed"
+⇒ the deploy can never take its rollback point). Fails closed, but permanently.
+**Decision:** cherry-pick the TEST hunk only onto main; do NOT merge the branch, because its
+`lib/moodle-deploy.sh` predates item 9's `MOODLE_CLI_PHP_DEFAULT_OPTS`/`moodle_cli_assert` work
+and merging it would revert that (this is why `pl branch stranded` scores the branch SHRINKS).
+**Non-vacuity — proven by three separate mutations of the real lib, not one:**
+The item predicted all three new cases would fail under a single mutation. That was wrong, and
+saying so is the point of the exercise:
+- delete `define("CLI_SCRIPT",1); ` from both call sites → `not ok 18`, `not ok 20`;
+  **19 still passed** — it asserts a different invariant (no db password on argv).
+- put the password back on argv (`MYSQL_PWD=… mysqldump` → `mysqldump -p"$DBP"`) → `not ok 19`.
+- **negative control** (the refuse-everything case): stub `moodle_backup_remote_script` to
+  `return 0` with no output → `not ok 18`, `not ok 19`. So neither behavioural case can be
+  satisfied by a generator that simply emits nothing; both carry positive anchors.
+- pristine lib (sha256 b4812147…) → **20/20 ok**.
+**Correction to the item's stated acceptance:** "the suite must be 23/23" is wrong.
+`origin/main` has 17 `@test`s in this file; the rescue takes it to **20**.
+**One real defect fixed in the rescued test, not merely copied:** case 20 was titled
+`moodle_upgrade_remote_script (rollback path)` — **no such function exists**. The second
+config.php reader is `moodle_remote_rollback_execute` (line 474). Retitled, and its comment now
+states plainly that it is a *source* grep, not a behavioural assertion: the negative control
+shows it still passes against a gutted function, so the rollback generator has **no behavioural
+cover**. Recorded rather than papered over.
+**Deliberately NOT done:** did not delete `origin/fix/moodle-deploy-snapshot-cli-script` and did
+not remove the `/home/rob/nwp-art9` worktree. Both are in the item's plan, but destroying the
+only other copy of this content *before* the rescue MR is reviewed is the same class of mistake
+as the one that stranded it. They are post-merge cleanup.
+**Reversible-how:** revert the single test-only commit; `lib/` is untouched.
+## [2026-07-26] item5-erasure-execute-fails-closed-rather-than-simulating  **REVIEW:**
+**Decision:** `pl erasure` ships `plan`, `verify`, `status`, `list` as fully working verbs, and
+`execute` as a verb that CANNOT succeed on the current estate. It refuses in a fixed order with
+a named reason: `NO-SUCH-REQUEST` → `CHANNEL-NOT-DEPLOYED` → `SEMANTICS-UNAPPROVED` →
+`NO-TRANSPORT` → `CONFIRM`.
+**Why:** ops#81 is at P0. The receiver (`local_nwc_erase`) and sender (`nwc_moodle_erase`) are
+unbuilt and deployed nowhere — verified by resolving `erasure.receiver_path` /
+`erasure.sender_path` against the contract's own `crossref` roots and finding neither. A verb
+that "succeeded" here would produce the single most dangerous artifact in this programme: a
+recorded, dated claim that a person was erased when nothing was sent.
+**Alternatives considered:** (a) don't ship `execute` at all — rejected: an absent verb tells the
+operator nothing, whereas a refusal names precisely which of the five conditions is missing and
+therefore doubles as the ops#81 status report; (b) ship it with a `--simulate` mode — rejected,
+that is the vacuous-pass shape wearing a flag.
+**Blast radius:** none. Nothing is sent, nothing is deleted.
+**Reversible-how:** `git revert -m 1 <merge>`; the only state is `private/erasure/*.json`
+(gitignored, uuid-only, no PII).
+
+## [2026-07-26] item5-a-probe-that-cannot-run-is-not-a-clean-probe  **REVIEW:**
+**Decision:** `pl erasure verify` treats FIVE distinct conditions as failure, not as clean:
+unconfigured probe, probe exiting non-zero, probe printing a non-integer, residual count > 0,
+and no declared backup retention ceiling. Only a probe that actually *counted* zero prints zero.
+**Why:** this is the item's whole point. `check_live_backup_freshness` returning "clean" against
+an unroutable IP, and a privacy sweep printing FIREWALL INTACT over an unmerged branch, are the
+same bug. The wording is deliberate: "A probe that cannot run is NOT a probe that found nothing."
+**On the backup half:** live rows can be zero while an unsanitised restic repo still holds the
+person in every snapshot; erasure is not complete until the retention window elapses (ops#127).
+So a missing ceiling is a verification failure, not a footnote.
+**Alternatives:** default the probes to a built-in `pl drush` / `pl moodle cli` invocation —
+rejected for now: that hardcodes DB shapes into this file, needs credentials it should not hold,
+and its failure mode is a plausible-looking wrong answer. Probes are pluggable commands taking
+the sub as `$1` and printing one integer; a unit test asserts the sub is actually passed.
+**Reversible-how:** revert; no state is written by `verify`.
+
+## [2026-07-26] item5-declared-backup-ceiling-left-EMPTY-on-purpose  **REVIEW:**
+**Decision:** `erasure.backup_ceiling` in `pairs/ssc.pair-contract.yml` is committed as `""`,
+so `pl erasure verify ssc` reports `NO-BACKUP-CEILING` and exits non-zero **today**.
+**Why:** `30d` is the value ops#127 designed and `pl ver-test` asserts, and writing it here would
+have made the check pass. But the fix programme records that the live DR producer is still an
+unversioned root cron on met whose retention is `--keep-within 12 monthly`, generated by a
+`dr-pull-setup.sh` that exists in no repo. Asserting `30d` in a committed contract would convert
+an unverified promise into a green check — manufacturing exactly the class of defect this item
+was written to remove. The red is TRUE.
+**Consequence, stated plainly:** `pl erasure verify ssc` cannot go green until the operator (or
+the item that owns the DR chain) makes the ceiling real and then sets it here. That is the
+correct order.
+**Reversible-how:** one YAML value.
+
+## [2026-07-26] item5-ops138-surfaced-as-a-verb-not-closed  **REVIEW:**
+**Decision:** ops#138 (Drupal Art.9 write-gate with zero call sites) is still NOT closed. What
+this item adds is `pl contracts guards`, which proves whether a declared guard has a real,
+non-comment CALL SITE, plus a `guards:` block on the ssc contract naming
+`assertMayWriteArt9` and `writeFormation`. `pl contracts guards ssc` exits 1 today.
+**Why not close it:** the fix is a `hook_entity_presave()` inside the nwc profile repo, and the
+issue carries an unanswered operator DECISION (block-with-explanation vs silent-Trialing when
+consent is absent). That is an Art.17/Art.9 lawful-basis question about deliberate member acts;
+an agent settling it would ship the wrong product behaviour under a legal label.
+**Why the verb is still the right deliverable:** the reason ops#138 survived is that
+`nwc_privacy/tests/src/PrivacySweep.php:83` lists `'assertMayWriteArt9'` as a covered control and
+"verifies" it by matching the NAME. The gap was invisible because the only thing watching it was
+a text grep. A call-site gate makes that class of hiding impossible, for this guard and the next.
+**Deliberately NOT wired into `pl pair-smoke`** (unlike `crossref`): pair-smoke's crossref failure
+blocks promotion, and turning a true, known, operator-owned finding into a surprise promotion
+block is a different decision from making it visible. Only the second is an agent's to take.
+**Reversible-how:** revert; or delete the `guards:` block to silence it. Do **not** silence it by
+adding a call site that does not gate anything.
+
+## [2026-07-26] item5-the-guard-gate-went-GREEN-on-a-docblock-first-try
+**Finding, recorded because it is the most useful thing this item produced:** the first version
+of `pl contracts guards` reported `assertMayWriteArt9` as **adopted, 2 call sites** against the
+real nwc tree. All three "call sites" were false:
+1. `nwc_privacy/src/Exception/Art9ConsentRequiredException.php` contains
+   `* Art9ConsentGate::assertMayWriteArt9($uid) first;` **inside a `/** */` docblock**. The
+   comment stripper was a per-line `sed` handling `//`, `#` and single-line `/* */` only, so a
+   multi-line docblock read as executable code.
+2. `defined_in` was excluded under only the FIRST root that held it (`break`), so the `stg/`
+   copy of the guard's own definition counted as a caller.
+3. `wc -l` on a single-line list with no trailing newline reported `0 call site(s)` **beside a
+   listed file** — a gate whose own arithmetic is wrong teaches people to skim it.
+**Decision:** all three were converted into failing unit tests first (observed red), then fixed
+(awk state machine for block comments; exclude under every root; `grep -c .`). The gate now
+correctly reports ops#138 red.
+**Why this is logged:** a guard-adoption gate that goes green on a comment is *precisely* the
+defect it was written to detect. It would have shipped as a new vacuous pass if it had not been
+run against the real corpus before commit. The general rule this confirms: fixture-green is not
+evidence; the first real run is.
+
+## [2026-07-26] item5-reconcile-holds-no-credentials-and-cannot-email-match  **REVIEW:**
+**Decision:** `pl pair reconcile` classifies severed UID-locks and repairs only the
+deterministically repairable ones. It issues **no SQL of its own** and holds no DB credentials:
+`--apply` requires `--repair-cmd=CMD`, invoked once per lock as `CMD <mdl_id> <new_idnumber>`.
+Coupled tiers additionally require `--confirm=RECONCILE-APPLY`.
+**Why no email fallback, at all:** ops#83's guide printed the email join two lines below the safe
+one. A recycled or changed address re-points a UID-lock at the WRONG PERSON — on a stack where
+that lock is the SSO identity. Making it impossible in code, and human-only in prose, is the
+right asymmetry. `orphaned` rows are reported and never touched.
+**Fail-closed:** a missing ledger, a missing join snapshot, or a snapshot with zero live rows is
+`CANNOT-VERIFY`. "Nothing to reconcile" and "nothing to reconcile *with*" must not print the same
+thing — the empty-corpus-reports-clean failure again.
+**Also fixed by a test:** the repair executor runs in a subshell, because a `--repair-cmd` that
+calls `exit` aborted the whole run mid-way and left the operator unsure what had applied.
+**Reversible-how:** revert. `--apply` was never run outside fixtures; the ssc ledger and join
+snapshot do not exist on this machine, so the verb's real-estate answer today is `CANNOT-VERIFY`.
+
+## [2026-07-26] item5-erasure-block-does-not-move-contract_version
+**Decision:** the `erasure:` and `guards:` blocks added to `pairs/ssc.pair-contract.yml` do NOT
+bump `contract_version` (left at 2).
+**Basis:** `contract_version` governs the WIRE shape — `surfaces.*` and the schemas they pin —
+and `pair_guard` compares it across the two halves to enforce provider-first promotion. These two
+blocks are read only by `pl erasure` and `pl contracts guards`, both local and read-only; the
+Moodle side neither sees nor needs them. Bumping would have falsely told `pair_guard` the
+consumer was behind and refused promotions for a local-tooling change.
+**Reversible-how:** YAML revert.
+
+## 2026-07-26 — Item 3 follow-up: the PAST half of containment (`--exposed`), and the back-apply
+
+The first item-3 pass (merged as `12e91e0`) shipped the FUTURE half of containment: "could a
+credential still be committed here?", answered behaviourally with `git check-ignore`. Re-verifying
+that merged work against the live fleet turned up two defects in it, and closed the back-apply it
+had deferred.
+
+### Defect 1 — the checker reported CLEAN on already-published member data
+
+git does not consult `.gitignore` for a path it already tracks. So `containment_fix_repo` +
+`containment_check_repo` on `sites/avc/backups` — a repo holding a 36 MB unsanitised production
+SQL dump and a 363 MB files tarball, blob-for-blob on `git@git.nwpcode.org:backups/avc-files.git`
+— returned **rc=0, clean**. Reproduced on a fixture before fixing:
+
+```
+tracked payloads still in the repo:
+  20260115T170824-main.sql
+containment_check_repo verdict:        CLEAN (rc=0)   <-- member data is tracked + pushed
+containment_assert_backup_path verdict: ALLOWED (rc=0)
+
+Installing the containment block therefore *silenced* the only signal that pointed at the
+exposure. That is the shape this arc keeps finding: a control that is real, and a scope that
+quietly excludes the case it exists for.
+
+**What.** Added the PAST half — `containment_check_tracked_repo` / `containment_check_tracked_fleet`
+and the `pl site gitignore --exposed | --all` surface. It reports already-TRACKED payloads and
+names the remote they are published to, because a remote is what turns "committed" into
+"disclosed". Seven bats cases were written first and observed failing.
+
+**Why a separate function rather than folding it into `containment_check_repo`.** `check_repo` is
+called by `containment_assert_backup_path`, the guard `pl backup` runs before every write. Making
+it fail on tracked payloads would refuse the nightly backup for exactly the site whose history is
+dirty — and the operator cannot clear the finding without a history rewrite, so the refusal would
+be permanent. Severity is therefore split: **committable = fatal** (fail closed, it is preventable),
+**already-published = loud warning on every run** (not fatal, it is not preventable by us).
+
+**Alternatives rejected.** (a) Block backups on exposure — breaks avc's nightly backup forever.
+(b) Auto-run `git rm --cached` — that is a history rewrite on a remote holding live member data,
+outside A14 and outside any AI's remit. (c) Report exposure only in `pl rag` — leaves `pl backup`
+silent at the exact moment it writes another dump beside the exposed one.
+
+### Defect 2 — the one S18 step that looked at the real fleet could not fail
+
+`.verification-scenarios/S18` ended with `cmd: ./pl site gitignore --check`, `expect_exit: 0`,
+`allow_failure: true`. Every other step was a self-contained fixture. So the single step that
+touched the actual estate asserted nothing at all. Replaced with a negative/positive control pair
+for the exposure detector plus an empty-corpus fail-closed step; the fleet-state step stays
+`allow_failure` (a CI checkout has no `sites/` at all) but it is no longer the only thing standing
+between the scenario and a green tick.
+
+### Signal quality — chosen by measurement, not by guess
+
+The first pattern set matched **300+ files across 22 repos**: every upstream Moodle plugin's
+`settings.php` (admin-settings declarations, not credentials), every bundled `cacert.pem`, and
+Drupal core's test fixtures. An exposure report that cries wolf 300 times is an alarm nobody
+reads — a slower vacuous pass. Patterns were re-derived by counting hits per candidate glob over
+the real 47-repo fleet, landing on: the Drupal credential file matched by its **location**
+(`sites/<x>/settings.php`) rather than its name, key material by its home (`oauth-keys/`), and
+path-anchored exclusions for `tests/`, `fixtures/`, `vendor/`, `node_modules/`, `*cacert*` and
+Moodle's upstream `lib/dml/`. Result: **300+ lines / 22 repos → 3 lines / 2 repos, both real.**
+
+The exclusion list is the dangerous half, so it is pinned by tests in both directions: upstream
+fixtures must NOT be reported, and a dump or a `sites/*/settings.php` at the repo root must still
+be caught. Proved by over-broadening the exclusions on purpose and watching cases 23/28/29/32 go
+red. The list is documented as shrink-only: every entry was justified by measurement, and widening
+it is how an exposure detector goes quietly blind.
+
+### The back-apply (the half the first pass deferred)
+
+The first pass shipped the mechanism and explicitly recorded that it had not run it. It had not:
+all 47 nested repos were leaky, and 6 of them held a real un-ignored credential or payload on disk
+beside a live remote — genuinely one `git add -A` from the forge. `sites/avc/backups` alone held
+**11 untracked dumps and tarballs, including that morning's automated sweep**.
+
+A blanket `--fix` over all 47 was rejected: it would have left 47 dirty repos under three
+concurrently-running agents, and item 3's own new `pl delete` guard refuses to operate over a dirty
+nested repo — so a mass apply could have blocked other work. Applied instead to the measured
+at-risk set only (`avc/{backups,dev,stg}`, `nwc/{dev,stg}`, `nwd/dev`), each `.gitignore` backed up
+first. Only `.gitignore` changed in each repo; the blocks are marker-delimited and additive, and an
+ignore rule cannot untrack anything.
+
+### New finding this surfaced — `sites/mayo/dev`
+
+The exposure sweep found a second published credential file that no audit in this programme had
+listed: `html/sites/default/settings.php`, 37,461 bytes, blob `b79d28a4`, **present on
+`refs/remotes/origin/main` of `git@git.nwpcode.org:mayo/mayo.git`** since 2026-04-13. Its contents
+were not read — `settings.php` is deny-ruled for Claude and this is recorded from git metadata
+only. Operator action: treat any credential in that file as disclosed to everyone with read access
+to the mayo project, rotate, then purge with `git filter-repo` + force-push.
+
+**How to reverse.** Repo changes: `git revert` the MR. Fleet changes: restore the six saved
+`.gitignore` files from the rollback registry row, or delete the block between the
+`# >>> nwp containment … >>>` markers by hand — neither can untrack a file, so reversing loses no
+containment that existed before. See rollback registry **CP-I3b**.
+
+### Handoff to item 4 — a leakage-gate false positive found while landing this
+
+`internal-hostname-fqdn` (`.gitleaks.toml`) is `\b[a-z][a-z0-9-]+\.(home|local|tunnel)\b`.
+Drupal's standard local-override filenames — `services.local.yml`, `settings.local.php` — match it,
+because `services.local` looks like an mDNS `.local` hostname. Any NWP file that names those
+conventions is unstageable. This blocked this commit until the two `services.local.yml` patterns
+were dropped from the exposure detector (no loss: they hold no member data, and the FUTURE half's
+template already ignores them). `.gitleaks.toml` belongs to item 4, so the rule itself was NOT
+edited here. Suggested fix for whoever owns it: a rule-level allowlist for
+`(services|settings|development)\.local\.(yml|php)`, rather than widening any `paths` entry.
+
+Also observed: `tests/**` is still globally allowlisted, so the same strings in
+`tests/unit/test-site-containment.bats` did NOT fire. The tests were rewritten to use
+`forge.example.org` anyway, so they stay clean when item 4 narrows that exemption.
+
+## [2026-07-26] branch-stranded-mixed-class — the class is a SET, and it had to be
+
+`pl branch stranded` classified each branch with ONE word by summing adds and deletes across the
+whole branch and reporting the dominant direction. Two branches found during the B-series triage —
+`pubrel/scrub-and-gate` and `fix/moodle-deploy-snapshot-cli-script` — were reported
+`SHRINKS — DO NOT MERGE WHOLESALE`. True, and useful. But both ALSO carried content main lacks
+(29 genericised docs; a whole regression-test file). The scalar label said "dangerous", the operator
+reads "throw it away", and 35 lines of non-vacuous tests go in the bin. A dominant class is not a
+classification, it is a vote.
+
+**Decision: classify PER FILE and report the union.** A file whose branch version loses more than it
+gains is subtractive; one that only gains is additive; a binary file counts as BOTH, because
+numstat cannot see inside it and "I cannot see" must never render as "all clear" (same principle as
+`boundary:classify` going amber-by-design). The set is then:
+
+| set | meaning |
+|---|---|
+| `{IDENTICAL}` | files already match the base byte for byte — the ONLY prunable set |
+| `{REVERT}` | adds not one line anywhere |
+| `{SHRINKS}` | some file loses more than it gains, nothing purely additive |
+| `{UNLANDED}` | carries content the base lacks, removes nothing |
+| `{SHRINKS, UNLANDED}` | **both** — cherry-pick, do not merge, do not delete |
+
+**What the evidence-claimed red condition actually was.** The item predicted `--prune-merged` could
+delete the mixed branch. It could not, and never could: `prune_list` was only ever appended in the
+IDENTICAL arm. That half of the item is wrong and is recorded as wrong rather than "fixed". The real
+red was purely the report — reproduced verbatim on a four-branch fixture, where the mixed branch
+(20 lines deleted, one 5-line file added) printed `SHRINKS` and named neither file.
+
+**Two adjacent bugs found while proving it, both fixed:**
+
+1. `pl branch stranded --prune-merged --yes` never worked. `main()` consumes `-y|--yes` into its own
+   `AUTO_YES` and does NOT forward it, so `cmd_stranded` always prompted; under `set -euo pipefail`
+   with no tty the `read` failed on EOF and the script exited 1 mid-report. The flag is now
+   re-injected at dispatch, and the `read` is `|| true` so "no tty" means "no", not "die".
+   **This activates a destructive flag that was previously inert in scripts** — bounded to branches
+   whose set is exactly `{IDENTICAL}`, i.e. whose content is by definition already in the base, and
+   `git branch -D` touches only the local ref.
+2. Unknown options were silently ignored. `--file` (typo for `--files`) used to run a full report as
+   if nothing had been asked for. Now it errors.
+
+**New `--files` mode.** Per branch, the additive (`+`) and subtractive (`-`) paths. On
+`pubrel/scrub-and-gate` this prints 29 additive docs and exactly four subtractive paths —
+`.gitleaks.toml`, `docs/COMMAND_INVENTORY.md`, `docs/governance/roadmap.md`,
+`scripts/agent-loop/agent-loop.sh`. That is the whole triage in one screen: the docs are the work,
+the leakage allowlist and the agent-loop are what merging it would eat. Hand-diffing produced the
+same answer over an evening.
+
+**Known cost, recorded not hidden.** Over the real estate, 17 of 39 branches now classify as
+`SHRINKS+UNLANDED`, up from 0. That is honest — a branch that has sat while main moved genuinely
+would remove content main has — but the label is no longer rare enough to function as an alarm on
+its own. `--files` is what carries the signal now. If it proves too noisy, the fix is to weight by
+volume (e.g. only count a file subtractive when it loses more than N lines), NOT to go back to one
+word.
+
+**Also note:** a doc that was genericised by REPLACING identifiers loses more than it gains, so it
+lands in the subtractive list even though it is the work. `--files` shows direction, not intent; it
+narrows the diff to read, it does not decide for you.
+
+Territory: `scripts/commands/branch.sh` (cmd_stranded + its dispatch/help only) and the new
+`tests/unit/test-branch-stranded.bats`. No live site or server touched — this is a reporting tool,
+so no rollback-registry row was taken.
+---
+
+## 2026-07-26 — the nightly dependency audit audited nothing for 33 nights (`fix/daily-audit-blindness`)
+
+**The defect.** `nwp-daily-audit` ran on met at 02:30 nightly. Its composer probes went through
+`ddev exec`; the `nwc-dev` DDEV project has been **stopped** (`docker ps` shows no containers at
+all). Every probe wrote a 0-byte file, and an empty result was treated as a clean result. The script
+speaks only when the fingerprint CHANGES — and blindness is perfectly stable — so 33 consecutive
+nights of "I could not look" produced exactly the same silence as 33 nights of "I looked, all fine":
+`no change`, `DONE (changes=0)`, **exit 0**, zero notifications. `grep -c "produced no output"` = 33.
+The cache files are the smoking gun: `run-nwc-dev-audit.json` and `run-nwc-dev-outdated.json` are
+**0 bytes**, while `run-nwc-dev-upstream.json` is 15,929 bytes — the one axis not routed through a
+container kept working, which is why the baseline still looked alive.
+
+**Reproduced before fixing.** met's real script, run in a sandbox with a stub `ddev` that fails the
+way a stopped project does, emits log lines byte-identical to the production log and returns
+**exit 0** with no post attempted. That transcript is the RED baseline.
+
+**What 33 blind nights were hiding** (first real audit, `nwc-dev`, run on met 2026-07-26):
+**20 advisories + 1 abandoned package.** 1 high (`twig/twig` sandbox filter/tag/function allow-list
+bypass, CVE-2026-49981), 16 medium (the `guzzlehttp/guzzle` + `guzzlehttp/psr7` cookie/CRLF/host-
+confusion cluster, `symfony/http-foundation` IpUtils IPv6, `symfony/routing` dot-segment), 2 low,
+1 unrated. Dangerous rather than merely embarrassing — though all are library-level and none is a
+confirmed remote-exploit path on this site's configuration. Also `oomphinc/composer-installers-
+extender` is abandoned. Answer to "was this dangerous": a **high-severity sandbox escape sat
+unreported for over a month** in a codebase whose whole security story is that a nightly job watches
+for exactly this.
+
+**Second, independent blindness cause found.** Fixing the container alone would NOT have restored the
+audit. `composer outdated` on met fails **RC=100, "Invalid credentials"** for the GitLab composer
+registry (`git.nwpcode.org/api/v4/group/nwp/-/packages/composer`) — met's `auth.json` gitlab-token is
+dead. That axis is *still* blind, now loudly and by name. Fixing it is secrets territory, not this
+change's; see "left undone".
+
+**Decision 1 — state model.** Three explicit per-axis outcomes, and "empty" is not one of them:
+`OK` (we looked; findings may be 0 or N), `BLIND` (we did not look — a FAILURE), `SKIP` (nothing was
+configured). Site rollup: `AUDITED_CLEAN` / `AUDITED_FOUND_N` / `COULD_NOT_AUDIT`. Exit codes
+`0` audited, `2` could-not-audit, `3` config error, `4` audited-but-could-not-notify. **Exit 2 for
+"cannot verify" deliberately matches `pl impact --honesty` and `pl secrets audit`** rather than
+inventing a parallel vocabulary — same defect class as f9b95c9, same words.
+
+**Decision 2 — alert fatigue.** Split the signal by cost. The **exit code is continuous**: non-zero
+on *every* blind run, so cron mail, `pl rag` and host-state capture see red every night for free. The
+**issue is rate-limited**: first blind run, then every 7th consecutive one, with the streak count in
+the title. 33 blind nights = 33 red exits + **5 issues** — not 33 (unreadable) and not 1 (which is
+what we got, and which decayed into silence). Recovery is announced; each blind report also names
+*how long since that axis was last successfully audited*, so "how long have we been blind" never has
+to be excavated from a log again.
+
+**Decision 3 — containers: removed from the path entirely.** Not "start it and stop it after". The
+CVE probe now runs `composer audit --locked` against a scratch **copy** of `composer.json` +
+`composer.lock`, on the host, with private `composer`/`vcs`/`path` repositories stripped. It needs no
+DDEV, no Docker, no `vendor/` tree and **no registry credentials** — verified working on met against
+the real site while every container is stopped. Rationale: starting DDEV nightly on a box with a
+kernel-panic history is exactly the load we were told to avoid and leaves cleanup debt, and a
+container in the path of a security check is what caused the outage. Stripping private repos also
+means a dead registry token can no longer blind the CVE check — which is not hypothetical, it is
+today's state on met. `composer outdated` genuinely needs live repository metadata, so it stays
+in-place and goes BLIND when the registry rejects it. **Considered and rejected:** retrying
+`outdated` against the stripped copy to get a public-packages-only number — that produces something
+that looks like a complete report while silently omitting every private package, a partial truth in
+the costume of a whole one, i.e. the same disease.
+
+**Decision 4 — blindness and findings are orthogonal.** The first cut skipped the findings comparison
+whenever any axis was blind. On met, where `outdated` is *persistently* blind, that would have
+suppressed CVE reporting **indefinitely** — a check that cannot fire, the defect re-created one level
+up. Corrected: a blind site still gets its fingerprint diffed and its findings posted (flagged
+`PARTIAL`); blindness only adds the streak, the cadence notification and the non-zero exit. R2 is
+preserved by carry-forward — a blind axis contributes its previous lines verbatim, so advancing the
+baseline can never erase a finding we merely failed to re-observe.
+
+**Split-brain, resolved.** Two versions existed: met's unversioned `~/bin/nwp-daily-audit` (what ran)
+and the repo copy (never ran; its own header admitted it was a "lightly parameterised
+RECONSTRUCTION" written while the build host was down). They had diverged **in both directions**.
+Ported IN from the box copy: ABANDONED reporting; advisories-as-list as well as dict (the
+reconstruction handled only dict and would have silently discarded a whole advisory set); parse
+errors surfaced instead of swallowed (the box copy was *more* honest here); the site profile's
+composer.json merged over the project's; upstream compared against the upstream repo's `main` branch
+(the reconstruction guessed Packagist p2 and then documented its own guess as fact — and a test
+asserted the guess). Kept from the repo copy: token via 0600 curl config never on argv (the box copy
+passed `-H "PRIVATE-TOKEN: $TOKEN"`, leaking it to `/proc/<pid>/cmdline`); env-injected host/project;
+and **a failed POST no longer advances the baseline** (the box copy advanced it *before* posting and
+regardless of result, so a failed notification lost that finding permanently). Prevention: the script
+logs its own provenance every run, and a copy running from outside `$NWP_ROOT/scripts` labels itself
+**`UNVERSIONED-COPY`** — the exact condition that hid for months now announces itself in line 1 of
+every log. met's `~/bin/nwp-daily-audit` is now a shim that execs the versioned file, and cron
+invokes the checkout with `NWP_AUDIT_GIT_PULL=1` (ff-only, refuses on a dirty tree or non-default
+branch, never fatal).
+
+**Tests: RED first, then green.** 36 cases in `tests/unit/test-nwp-daily-audit.bats`, run against the
+pre-fix script first: **25 failing / 11 passing**, including the headline `[ "$status" -ne 0 ]`.
+Against the fixed script: **36/36**. Negative controls included and passing *in both* directions — a
+genuinely clean audit stays silent and exits 0, and unchanged findings stay silent on a second run,
+so this is not an alarm that always rings.
+
+**Other nightly jobs — same defect, NOT fixed here (not my territory).**
+`scripts/secrets-daily-audit.sh` converts "cannot check" into a silent success: on `pl secrets audit`
+exit 2 it logs *"GitLab host unreachable — skipped (no alarm)"* and **`exit 0`**. An unreachable
+GitLab is indistinguishable from all-tokens-healthy, exactly the pattern fixed here. Flagged for its
+owner; `scripts/commands/secrets.sh` and the registry are off-limits to this change.
+
+## [2026-07-26] ✅ ops#133 Phase 2 — ssd joins the demo tier; nwd↔ssd is a PAIRED reset
+ssd rebuilt from `nwp/ss-moodle-plugins` (8 plugins; pinned to `gdpr/art9-depthcontent-fixes`
+@304c4db per ops#137 — main lacks the fb_events write gate). Decoy purged: `sites/ssd/.nwp.yml`
+named `auth_nwc_oauth2` (the lock-less decoy) and now names `auth_nwc`; the rebuild script
+fail-loud sweeps tree + config + `mdl_config_plugins` for it. nwd had NO simple_oauth issuer at
+all (no keypair → `/.well-known/jwks.json` was **500**, 0 scopes, no client) — now provisioned.
+**Paired design (decided):** the PAIR CONTRACT is the source, not a new registry — `demo.enabled:
+true` is the opt-in, so the real ssc↔nwc pair is structurally invisible to the nightly wipe.
+`pl demo golden nwd --with-pair` captures both halves and writes `pair.cut.json` binding them by
+sha256; a paired reset refuses unless both goldens still match the cut (ADR-0031 D9 both-or-
+nothing, mechanically enforced instead of by convention). Reset = verify-both → idle-guard-both →
+harvest-both-into-one-spool → restore PROVIDER-FIRST → reseed → re-assert consumer (oidc/posture/
+courses) and RETURN NON-ZERO if that fails.
+**E2E 8/8 GREEN, twice consecutively** (real chromium): code→redeem→SSO→UID-lock binds→art9_consent
+'1'→self-enrol→gated write PERSISTS; Trialing member's identical write = success:true + 0 rows;
+paired reset wipes the tester from BOTH halves and restores the catalogue; a FRESH code works after.
+39 new bats + 60 Phase-1 bats green. Contract brought to ssc parity (oidc/erasure/boundary blocks;
+JWKS smoke replaces the `oidc_discovery` probe that could never pass against simple_oauth).
+**Gaps:** ssd has no live host (paired `--tier=live` REFUSED, not faked); forced Moodle profile-
+completion because nwc_demo_access sets no profile names; cross-site feedback is a link-back (v1);
+`lib/moodle-promote.sh` emits `name`/`preferred_username` mappings auth_nwc never reads (drift).
+MR opened, NOT auto-merged (auth surface + two-person rule).
+
+## [2026-07-27] ✅ MR !162 review fix — the paired reset joins the ONE audited confirmation route
+Reviewer note 2218 held !162 on a real regression, **verified independently and confirmed**:
+`cmd_reset` (destroys one site) called `demo_reset_manifest` + `impact_confirm` — **2 call sites**;
+`cmd_reset_paired` (destroys **two** sites, one of them the SSO identity provider) called **0**, and
+hand-rolled `printf … read -r reply` instead. The more destructive verb was the less guarded one.
+The file-level impact-contract gate could not see it: `lib/impact.sh`'s `impact_contract_adopted`
+checks per FILE, and `demo.sh` already adopts the lib over in `cmd_reset`. **Two further defects
+found while fixing it, both missed by the review:**
+- **`--dry-run` was silently dropped on the paired path.** `cmd_reset_paired` took no `dry_run`
+  argument and the dispatch passed only 5, so `pl demo reset nwd --with-pair --dry-run` performed a
+  REAL double wipe when the operator asked for a rehearsal. Worse in operator-harm terms than the
+  missing prompt.
+- **`droot` was lost in the rebase** while its only consumer stayed. Under `set -euo pipefail` every
+  dev/stg single-site reset died with `droot: unbound variable` at the manifest step — fail-closed,
+  but `pl demo reset <site>` was dead on this branch. Proven by probe against both parents.
+**Fix (no weakening of the shared helper).** `demo_reset_manifest` split into
+`demo_reset_manifest_build` (appends one site's fates + its audit line; no reset, no render) and a
+thin `demo_reset_manifest` wrapper (reset → build → render) so `cmd_reset`/`cmd_reset_live` are
+behaviourally unchanged. The paired path does `impact_reset` → build provider → build consumer →
+pair-only warnings (both-sites-in-one-approval; provider-is-the-IdP; mid-run inconsistency is
+repaired by re-running, provider-first per ADR-0031 D5) → `impact_render` → dry-run stop →
+`impact_confirm standard "ERASE BOTH <prov> and <cons> …"`. **ONE report, ONE question, both sites
+named.** Strength is `standard`, not `typed`, by lib/impact.sh's own definition — a verified golden
+cut survives the wipe, so a recovery path exists; `typed` is reserved for destroying the LAST
+recovery path, and the paired verb refuses `--tier=live` outright. New `demo_files_dir` (fail-closed
+per kind) and `demo_measure_local_kind` (Moodle has no drush and no `users_field_data`) so the
+Moodle half's manifest reports real numbers instead of "could not measure" for every line.
+**Verdict on the 4 reds the review called benign: 2 of the 4 were true positives.** With the greps
+rescoped to the function body they actually assert about and run against the UNFIXED code:
+tests 52/53 (harvest-before-wipe, verify-before-wipe) go **green** — genuine `head -1` artefacts,
+the review was right; tests 78 and 81 go **red** with `cmd_reset_paired destroys without building a
+fate manifest` and `cmd_reset_paired wipes with no --dry-run stop before it`. They were tracking the
+same hole as the blocker (79) and were mis-triaged into the brittle-grep class. All three ordering
+tests are now per-destructive-body loops that fail LOUDLY (a `[ -n "$d" ] && …` chain inside a `for`
+silently did not fail the bats test — the reason 81 looked benign).
+**Proof.** 4 mutations, transcripts in the MR: full revert → 8/8 guard tests red; drop only
+`impact_confirm` → red; drop only `impact_render` → red; **negative control**, make the verb refuse
+everything → the guard still goes red, because it asserts the destructive step IS reached under a
+granted confirmation. Green: `test-demo.bats` 89/89, `test-demo-pair.bats` 47/47.
+**Sanity-checked, both reviewer calls upheld:** dropping `200` from `feedback_post` is right — a
+200 on an unauthenticated POST means the endpoint accepted an anonymous submission, which is the
+failure the probe exists to catch, so listing it made the assertion vacuous; `303,401,403` is the
+correct Moodle `require_login()` shape. `contract_version: 3` is right — two different v2 bumps
+landed in parallel and `lib/pair.sh` compares `>=`, never `==`, so the bump is safe. **Operational
+consequence to note:** the D5 guard will REFUSE an ssd (consumer) deploy until nwd (provider) is
+recorded at cv 3 — promote the provider first.
+**Merge-hygiene check (arc rule).** `comm` against BOTH parents (`19bc753` pre-rebase, `ee85e1d`
+main): decision-log 0 lines lost from either. Rollback registry 0 lost from main; 3 rows (CP11,
+CP12, CP14) differ from the pre-rebase branch and are **byte-identical to main's** rows — main had
+already superseded them with absolute paths, sidecar provenance and a deliberate de-duplication of
+the CP14 digest. Superseded, not dropped.
+## [2026-07-26] item6-pl-host — host state gets an owner, and the OOM guard becomes real
+**Decision:** Ship `pl host capture|diff|apply|schedule`, `pl server health`, `pl server forge status`,
+`pl logs`, `pl loop --host`, `pl schedule host|where`; replace `.gitignore`'s blanket `servers/*` with an
+allowlist; **delete `lib/safe-ops.sh`** and rewrite the CLAUDE.md section that pointed at it.
+**Basis:** No `pl` verb owned any host state. `pl server status` reported SSH reachability only, so there
+was no working verb answering "how much RAM does this box have left" — the exact preflight whose absence
+let a heavy op OOM-kill the 3.8 GB forge box (GitLab + 5 live sites) for 5–8 min on 2026-07-25. Verified
+before writing: `command -v nwp-server` empty on box and mini; no `pl logs`; no `pl schedule host` (which
+`demo.sh:1398` already tells operators to run); zero matches for `api/v4/version`/`gitlab_version`;
+`.gitignore:149 servers/*` proven with `git check-ignore` to ignore every would-be capture path.
+
+**Sub-decision A — delete `lib/safe-ops.sh` rather than wire it.** It had **zero callers** anywhere in
+lib/, scripts/ or pl, depended on `.secrets.data.yml` (which Claude is deny-ruled from), and printed
+`./stg2prod.sh` / `./backup.sh` — root scripts that do not exist. Keeping a parallel `safe_*` API beside
+`pl server health` would recreate the "two overlapping things over one path" failure this item is fixing.
+*Alternative rejected:* giving it a caller — that preserves duplication and the broken script names.
+*Reverse:* `git revert`; the file is one commit away.
+
+**Sub-decision B — swap pressure is part of "healthy".** An absolute-RAM floor alone graded the real
+forge box HEALTHY at 544 MB available. Measured live during this work: 3915 MB total, ~570 MB available,
+but only **626 of 2543 MB swap free (24%)** — a box already thrashing. With the swap rule the verb
+returns rc=1 "NO HEADROOM" for the machine that actually went down. A check that reassures you about the
+host that just fell over is the vacuous pass this programme exists to kill.
+*Reverse:* `NWP_HEALTH_MIN_SWAP_FREE_PCT=0` disables it without a code change.
+
+**Sub-decision C — `pl host apply --execute` and `pl host schedule --execute` are NOT enabled.** Both
+render the exact declared state and diff, then stop. Applying ufw/Headscale/nginx/php on 97.107.137.88 is
+production infrastructure serving 5 live sites — CLAUDE.md high-risk, operator work. The verbs exist so
+the operator executes a reviewed artifact instead of an improvised ssh.
+*Alternative rejected:* shipping a working `--execute` behind a typed confirm — an AI-authored write path
+to prod infra, however gated, is outside A14.
+
+**Sub-decision D — `.gitignore` allowlist, not blanket ignore.** `servers/*` meant the 26 tracked files
+got in by `git add -f` on 2026-07-25 and every new vhost/cron/unit was invisible. Now
+`servers/*/{nginx,demo,linode,backup,email,system}/**` are tracked while `.nwp-server.yml`, `.secrets*`,
+`*.key`, `*.pem`, `id_rsa*`, `id_ed25519*` and `*.env` stay ignored (re-ignore rules ordered last so they
+win). Both directions are asserted by `tests/unit/test-host.bats`, and the over-open direction was proven
+red on purpose by temporarily adding `!servers/*/.nwp-server.yml`.
+*Reverse:* one hunk in `.gitignore`.
+
+**Sub-decision E — capture scrubs, always.** Every stream passes `host_scrub_stream`; `authorized_keys`
+additionally passes `host_scrub_authorized_keys`, which keeps the forced-command options and the comment
+and replaces the key blob with `<KEY-REDACTED len=N>`. Verified against the live box: 0 raw blobs in the
+captured policy, while the `command="…",restrict` jails remain fully reviewable.
+
+**Blast radius:** additive verbs + one `.gitignore` hunk + one deleted dead library. No server was
+modified: every probe in this item is read-only (`crontab -l`, `cat /etc/…`, `dpkg-query`, three `/proc`
+reads, `df`). Nothing in `lib/host-capture.sh` can invoke `gitlab-rails`/`gitlab-rake`, and a test asserts it.
+
+**Findings surfaced by the new tooling (handed to item 7, which owns `servers/**`):**
+1. **known item C confirmed mechanically** — `pl host capture … --kind=php` on the box returns
+   `php8.2 max_input_vars=1000` / `php8.3 max_input_vars=5000` / `php8.4 max_input_vars=1000`. Moodle runs
+   on **8.2**. The 2026-07-26 outage fix was applied to the wrong SAPI and is in nobody's version control.
+2. **`deny-files-secrets.conf` is NOT installed** — the box's `/etc/nginx/snippets/` contains only
+   `fastcgi-php.conf` and `snakeoil.conf`. Layer 2 of the "3-part defence" is fiction, as reported.
+3. **ufw `22/tcp ALLOW IN Anywhere`** is live, against CLAUDE.md's explicit rule.
+4. **authorized_keys PATH bug class is live**: one jail is `command="/usr/bin/rrsync -ro …"`, another is
+   `command="rrsync -ro …"` (bare, PATH-dependent) — same class as `fix(fleet): bake a working PATH into
+   the publish cron entry`.
+5. **The 19 tracked `servers/nwpcode/nginx/conf.d/*.conf` match the live box byte-for-byte** — a real
+   GREEN, and end-to-end proof the diff engine compares real files against a real host correctly.
+
+**Left for item 9 (owns `README.md`, `docs/reference/**`):** `README.md:340-352` and
+`docs/reference/api/library-functions.md:43,178,3798-3913` still document the deleted `safe-ops` API.
+`CLAUDE.md` and `docs/security/data-security-best-practices.md` (both corrected here) were the binding
+ones. Item 9's new `dead-command-refs` doc-truth class will catch the remaining two; `pl doc-truth` is
+green today either way.
+
+**Not done here (out of item 6's territory):** capturing the estate's state into `servers/**` and
+converting it to declared state is **item 7**; `check_forge_version` registration inside
+`lib/todo-checks.sh` is **item 2's file** — `pl server forge status` ships as the verb it will call.
+
+## [2026-07-27] item8-the-triply-safe-bundle-was-a-brick-and-was-deleted-not-annotated
+**What:** deleted the tracked `ssc-118-artifact/ops-118-moodle-art9-gate.bundle` and replaced it
+with a README stating precisely what is and is not preserved. Shipped `pl snapshot
+bundle|verify|audit` and a `lint:snapshot-bundles` CI job so the shape cannot recur.
+**Why:** both committed "safety" bundles were *thin* — created from a revision range, so they
+carry only the objects since some base and record the base as a prerequisite they do not
+contain. In an empty repository each one fails:
+`error: Repository lacks these prerequisite commits: 346025ce…` / `67c80957…`. The trap is that
+`git bundle verify` run from *inside* the repo you bundled reports success, because it resolves
+prerequisites against the repo you are standing in — so whoever made them ran the check and got
+a green. The decision log called the result "triply safe"; it was singly safe, and the one copy
+was this laptop.
+**Alternatives considered:** (a) annotate it with a `.prereq.json` declaring "fetch `67c8095…`
+from github.com/moodle/moodle". Rejected: that recoverability claim was **not verifiable from
+here** — no route to github, no independent Moodle checkout — and writing an untested safety
+claim reproduces the original defect one layer up. (b) Re-make it standalone: it would have to
+carry all of Moodle's history, and the object it needs is upstream, not ours.
+**Nothing was lost:** the blob is in history at `8e27949952be…`; the same commit content is in
+the retained `.patch` (84 KB, full context, applies to any Moodle checkout) and on
+`nwp/ss-moodle-plugins` `origin/ops-137-depthcontent-amd-build`.
+**Reversible-how:** `git revert -m 1 <merge>`, or `git show 8e27949952be… > <path>`.
+
+## [2026-07-27] item8-vcs-strandedness-deduplicates-by-object-store-not-by-path
+**What:** `lib/vcs-truth.sh` keys its "already reported" set on `git rev-parse --git-common-dir`,
+not on the work-tree path, and the generic scanner prunes `.claude/worktrees/*`.
+**Why:** the first working run of `pl doctor`'s new check emitted 154 errors — two real stranded
+branches (`ops-79`, 5 commits, 16 days; `backup/main-pre-reconcile-2026-07-22`, 3 commits)
+repeated once per linked worktree, of which this tree has 77. A linked worktree shares the
+parent's `refs/`, so it can contribute no finding the parent does not already carry. After the
+fix the same tree reports **26** distinct findings, including `servers/nwpcode` (2 commits, no
+remote at all) and `sites/nw1/dev/html/profiles/custom/nwc` (46 commits, no remote).
+**Why it matters beyond tidiness:** a 154-line wall of duplicates is a report nobody reads, and
+an unread check is the same as an absent one — the failure mode this programme exists to remove,
+arriving by the other door.
+**Reversible-how:** `git revert -m 1 <merge>`; the dedupe is ~6 lines in one function.
+
+## [2026-07-27] item8-stale-ref-states-its-own-scope-rather-than-asserting-a-phantom
+**What:** `pl issue reconcile` now computes the STALE-REF class its header had advertised (and
+never assigned) since it was written, and prints `scope: N issue(s) · M git repo(s) searched`
+plus, on each finding, "found in none of M repo(s)".
+**Why the qualifier:** "this branch does not exist" is a claim about every repository in the
+estate, and the command can only search the ones on this disk. A confident phantom report that
+is wrong because the checkout was missing is exactly the class of wrong answer being removed.
+`_ref_is_known` therefore has three outcomes — exists / not found / **could not determine** —
+and only "not found" is ever reported.
+**Deliberately narrow matching:** only branch-shaped tokens in the namespaces this estate
+actually uses (`feat/ fix/ chore/ ci/ pubrel/ release/ hotfix/ refactor/ perf/`) and `ops-<N>`.
+`docs/` and `test/` are excluded on purpose — in prose they are far more often file paths, and a
+false STALE-REF is noise dressed as signal. Anything ending in a file extension is dropped.
+**Reversible-how:** `git revert -m 1 <merge>`; read-only reporting, nothing is written.
+
+## [2026-07-27] item8-the-programme-example-for-STALE-REF-ops70-is-STALE-ITSELF
+**Recorded as a correction, not a fix.** The programme cites ops#70 as the motivating case
+("its only note points at a branch and MR that never existed"). That is **no longer true and may
+never have been**: ops#70's note cites `fix/ops70-infra-secret`, which exists locally *and*
+landed on `origin/main` in merge `e9860ef`. Verified before building anything, so the assertion
+was not inherited.
+**What this changed:** nothing about the fix — STALE-REF was genuinely documented-and-unbuilt,
+which is the defect. But the acceptance evidence had to come from a fixture and from a live
+whole-tracker run, not from ops#70. The live run over 100+ issues produced **34** disagreements
+(20 STALE-REF, 14 MERGED-BUT-OPEN).
+**Also true of ops#70:** it is MERGED-BUT-OPEN in substance — the work landed 2026-07-17 and the
+issue is still open — but the merge commit names the branch, not `ops-70`, and the closing-keyword
+test is deliberately narrow, so the command does not claim it. Left as a known limit rather than
+loosened, because loosening it is how a reconciler starts proposing wrong closes.
+
+## [2026-07-27] item8-pl-issue-reconcile-was-scanning-a-truncated-tracker
+**What:** added pagination to `cmd_reconcile`; it now walks pages until a short one (cap 20).
+**Why:** it fetched exactly one `per_page=100` page and then printed "tracker and code agree".
+`pl issue ls --all` returns exactly 100 rows today, i.e. nwp/ops is **at** the cap — so every
+issue past the first page was invisible to a command whose whole job is to assert completeness.
+A positive assertion over data never read is the same defect class as the bundle above.
+**Implementation note:** pages are flattened to TSV as they arrive rather than concatenating
+JSON, so there is no merge step that can quietly drop a page.
+**Cost:** a full run is now ~4-8 minutes (two API calls per issue). `--no-notes` roughly halves
+it at the cost of missing refs that only appear in comments.
+**Reversible-how:** `git revert -m 1 <merge>`.
+## [2026-07-26] item7-host-state-capture — the DR chain, the security snippet and the outage fix existed only on boxes  **REVIEW:**
+
+**What.** New read-only verb `pl server-state {list,capture,diff,check,php-check}` plus the first real
+captures: `servers/met/system/**` (the DR cron, the LUKS-stick cron, the CPU-cap unit that fixes this
+box's kernel panic, the running `nwp-daily-audit`) and `servers/nwpcode/system/**` (box-backup cron,
+`nwc-cron` timer+service, certbot deploy hook, ufw, Headscale ACL, redacted `authorized_keys` policy,
+nginx-snippet inclusion state, per-SAPI PHP map). Plus a declared-but-unapplied
+`servers/nwpcode/php/conf.d/90-nwp-moodle.ini`, one narrow `.gitignore` negation, and a durability
+assertion in `pl rollback registry check`.
+
+**Why this shape and not `pl host apply`.** Capture and apply are deliberately separate commands.
+`capture` cannot write to a host at all — there is no code path in it that does — so running it can
+never be the thing that breaks a box serving five live sites on 3.8 GB of RAM. Applying declared state
+is item 6's `pl host apply` and is operator-gated. *Alternative rejected:* one `pl host sync` verb, which
+would have made the safe half unusable without trusting the dangerous half.
+
+**Three verdicts, never two.** `diff` returns OK / DRIFT / UNREACHABLE and UNREACHABLE is an error.
+This estate has repeatedly shipped checks where "I could not look" rendered as "clean" (the met audit
+over a stopped container, the privacy sweep over an unmerged branch, the boundary scan over an absent
+tree). Reversing that default is the whole point of the verb.
+
+**Redaction happens at capture time, not at review time.** Two passes, both applied to the live side of
+`diff` as well so drift detection is unaffected:
+- `ssh-policy` artifacts keep forced-command OPTIONS and comments and drop key material. The security
+  content of `authorized_keys` is whether a key is jailed, not which key it is; capturing the blobs
+  would also train the habit of pulling `~/.ssh` into git.
+- Identity: routable IPv4 → `<public-ip-redacted>` (private/CGNAT/tailnet/loopback KEPT, because the
+  topology is the reviewable part), hostnames and the apex domain → their ROLE placeholders, and
+  `/home/<anyone>` → `/home/<operator>`.
+
+**The identity pass was forced by evidence, and the tempting fix was wrong.** The first real capture put
+SIX findings into the tree — `internal-bare-hostname`, `live-domain-apex`, `live-internal-domain` and
+`operator-home-path` twice. The gate was working; the capture was the new leak. *Alternative rejected:
+adding `servers/**` to `.gitleaks.toml`'s allowlist* — that re-blinds the gate over exactly the tree this
+item exists to add, one day after another item finished un-blinding it. Instead the vocabulary is read
+from the operator's private instance manifest (the same source `pl host` uses), so **no hostname, domain
+or home path is hardcoded in the script** — writing the apex literally would itself trip
+`live-domain-apex`, which covers `.sh` files. Post-fix: `gitleaks detect --source servers/` → no leaks.
+
+**Fidelity trade-off, stated rather than hidden.** A redacted capture is a faithful RECORD, not a
+byte-restorable backup. That is the right side of the trade here: the restore path for host state is
+declared state applied by a verb, the live host remains the authority for its own literal text, and
+`diff` still proves the record is true. Reversing this would mean choosing a leak over a placeholder.
+
+**Divergence is allowed; SILENT divergence is not.** An artifact may declare a `repo_counterpart`. If
+the two differ with no `counterpart_divergence:` justification recorded in the inventory, `check` fails.
+`nwp-daily-audit` is the first user: the running copy (257 lines) and `scripts/nwp-daily-audit.sh`
+(331 lines) share no header — two different programs with the same job, one of which reported "no
+change" for 31 nights over a stopped container. **The divergence is declared, NOT accepted**: the on-host
+copy is authoritative for behaviour, the repo copy for parameterisation, and reconciling them needs the
+remote-schedule verb from item 6. Do not delete that key to make the check green.
+
+**`.gitignore`: narrow negation, and why the ordering is not cosmetic.** Root `.gitignore` carried a
+blanket `servers/*`, which is *why* host state was never versioned: a captured file was ignored by
+default, so `git status` stayed clean and the tree merely looked captured. The negation opens
+`servers/*/system/**` and `servers/*/php/**` only, re-excludes `servers/*/*` so nothing else becomes
+trackable by accident, and re-asserts the deny for `.nwp-server.yml`, `.secrets*`, `*.key` and `id_*`.
+`!servers/*/` must come first — git will not descend into an excluded directory, so no child rule is
+even consulted until the parent is re-included. **Territory note:** root `.gitignore` is item 6's file;
+this is one delimited hunk appended after the existing `servers/*` block and should rebase trivially.
+
+**`registry check` now asks a second, different question.** It already verified integrity (does the
+artifact match its `.sha256`?). It never asked survivability (does anything but this laptop hold it?).
+A sidecar is untracked in exactly the cases the artifact is, so the check was comparing a file against
+its own untracked shadow. **Two remedies, and conflating them would be dangerous:** where the repo's own
+ignore policy excludes the path (site DB dumps, files tarballs) the verdict is `LAPTOP-ONLY` and the
+output must never say "commit it" — obeying that advice would manufacture the very P0 this estate
+already has, a 36 MB member-data `.sql` pushed to the forge where no Art.17 erasure reaches it. The
+discriminator is `git check-ignore`, read from the repo, so the policy cannot drift from a duplicated
+glob list here. There is a bats case asserting the dangerous string is *absent*, not merely outweighed.
+
+**Consequence, accepted:** `pl rollback registry check` now exits 1 on six pre-existing rows (CP11 ×3,
+CP12, CP14 ×2 — all nwd, the disposable demo site). That is a true statement about six recovery points
+that exist only on a travelling laptop, and it is the intended outcome, not a regression. Nothing in CI
+consumes this verb, so no other agent's pipeline turns red. Reversing: revert the `_artifact_is_tracked`
+block alone.
+
+**The programme's "red on CP17 today" claim did NOT hold.** CP17's tarball was already committed by the
+item 2 work earlier the same day, so it is green. The *gate* was still missing, which is what got built;
+the finding was re-derived rather than assumed.
+
+**Two RED states captured before any fix, both against the live fleet:**
+- `pl server-state php-check nwpcode` → `BELOW-FLOOR 8.2/fpm max_input_vars=1000` and the same for
+  `8.2/cli`, need ≥ 5000. The captured `php-map` shows `8.3/fpm` and `8.3/cli` at 5000. **known C
+  confirmed exactly**: the outage remedy was applied to a PHP version Moodle never touches
+  (`ss.conf` → `php8.2-fpm.sock`, cron → `/usr/bin/php8.2`), so any grep for `max_input_vars` found
+  5000 and concluded it was handled. The floors are asserted per-SAPI so silence cannot read as
+  satisfied.
+- `servers/nwpcode/system/nginx-snippet-includes` → `/etc/nginx/snippets/` contains only
+  `fastcgi-php.conf` and `snakeoil.conf`, and `grep -rl deny-files-secrets /etc/nginx/` → `NONE`.
+  The committed `deny-files-secrets.conf` calls itself "the HTTP-serving layer of a 3-part defence";
+  layer 2 is fiction, and is now measurable instead of assumed.
+
+**What the capture makes greppable that was not.** The restic retention the GDPR/erasure work has to
+agree with (`--keep-daily 14 --keep-weekly 8 --keep-monthly 12`) was an inline flag in a root cron
+one-liner on one box, written by a `dr-pull-setup.sh` that exists in no repository. It is now a tracked
+file. Likewise: one `authorized_keys` entry is unjailed and another uses a bare `rrsync` (PATH-dependent
+— the same class as the recent fleet-cron PATH bug), ufw allows 22/tcp from Anywhere twice against
+CLAUDE.md's explicit rule plus an orphan world-open 5050, and the Headscale ACL is `src:* dst:*:*`.
+None of those are *fixed* here — applying them is server configuration on a box serving five live sites
+and is operator territory — but they are now reviewable, diffable and impossible to lose.
+
+**Reversible-how.** `git revert -m 1 <merge>`. No host was written, so a revert removes capability and
+records, never state. Captures regenerate with `pl server-state capture <host>`.
+## [2026-07-27] item7-redaction-failed-open-on-a-yq-version-difference  **REVIEW:**
+
+**What happened.** The item-7 identity-redaction acceptance test passed on the dev workstation and
+**failed on the CI runner**. That difference is the entire value of the test, so it is recorded rather
+than quietly patched.
+
+**Root cause.** `yq` 4.44.1 (the runner) emits a *literal backslash-t* for `"\t"` inside a string
+concatenation; 4.50.1 (the dev box) emits a real tab. The identity map was `literal<TAB>placeholder`
+lines, so on the runner every line was a single unsplit field: `IFS=$'\t' read -r lit ph` put the whole
+line into `lit` and left `ph` empty, every `${content//$lit/}` searched for a string that never occurred,
+and **`capture` wrote the host file un-redacted while reporting success**. Six leakage findings would
+have gone back into the tree on any host with an older yq, silently.
+
+**Why this is the same disease the programme is about.** The check did not report "I could not redact".
+It reported nothing at all and exited 0. A capture that captures the wrong thing is worse than one that
+fails, because the tree then looks both captured *and* clean.
+
+**Fix, in two parts — the separator was only the trigger.**
+1. Separator is now `|`: passed through verbatim by every yq version, and impossible inside a hostname,
+   a domain or a role label. The map is filtered through `^[^|]+\|<[^>]+>$`, so a malformed line is
+   *dropped* rather than mis-split into a substitution that does nothing.
+2. **Fail closed.** `_identity_require` runs before any byte is written. If a manifest exists but yields
+   no usable pairs, `capture` refuses and writes nothing; `diff` refuses too, because both sides are
+   redacted before comparison and a broken map would otherwise manufacture drift on every host and train
+   the signal away. Where no manifest exists at all, production `_fetch` cannot resolve a host anyway, so
+   that path also refuses; it is reachable only under the test-only fetch shim, where it prints a WARN
+   naming the fact instead of implying redaction happened.
+
+*Alternative rejected:* pinning a minimum yq version. That converts a silent data leak into a hard
+dependency bump across every host in the estate, and it would not have caught the next escape-handling
+difference. Asserting the map is *usable* is version-independent and catches the class.
+
+**Verified on the machine that actually gates**, not just locally: the fixed expression + the exact shell
+pipeline were run over ssh on the runner host against its own yq 4.44.1 — map built correctly, longest
+literal replaced first (`git.<apex>` before the bare apex), all four assertions PASS including
+`no-residue`. Local green had proven nothing about that box.
+
+**Test added:** `capture` must refuse a manifest that yields an empty map and must leave no file behind;
+plus a direct shape assertion on the emitted map (`no literal \t`, splits into exactly two fields) so a
+future version difference in escape handling cannot reintroduce this.
+
+## [2026-07-27] item6-and-item7-both-capture-host-state — the boundary, stated before it rots
+
+**Situation.** Fix-programme items 6 (`pl host`) and 7 (`pl server-state`) landed hours apart and BOTH
+write under `servers/<host>/system/`. Two commands owning one directory is the exact anti-pattern item 7
+itself warns about (`servers/nwpcode/.git` vs the outer repo: "two overlapping repos over one path
+guarantees a divergent second copy"). Recording the boundary now, while both authors' reasoning is
+still legible, is cheaper than rediscovering it from a conflict later.
+
+**They do not collide on disk, and that was verified, not assumed.** `host_capture` writes
+`servers/<h>/system/<kind>/<file>` for a FIXED kind set (`cron systemd nginx php ssh firewall
+headscale` → `crontab.root`, `units.list`, `ufw.rules`, `authorized_keys.policy`, …) and replaces each
+tree with `rm -rf "$sysdir/$k"; cp -a`. `pl server-state` writes FLAT files beside those directories
+(`cron-nwp-dr-pull`, `php-map`, `headscale-acl`, `inventory.yml`). No flat filename equals a kind
+directory name, so the `rm -rf` cannot reach them.
+
+**What each does that the other does not.**
+- `pl host capture` — a fixed, universal probe set that works on a host nobody has described yet, with
+  `lib/impact.sh` adoption, plus `health` / `logs` / `forge status` / `loop --host` / `apply`.
+- `pl server-state` — a DECLARED, per-host inventory: every artifact carries a `why:` a reviewer can
+  argue with, an optional `repo_counterpart` + `counterpart_divergence` (the nwp-daily-audit gate:
+  divergence allowed, silent divergence not), per-SAPI `php_floors` (known C), and a network-free
+  `check` asserting git-trackedness and the redaction invariant.
+
+**Recommended consolidation, for whoever picks this up:** keep ONE engine (item 6's
+`lib/host-capture.sh`, which has impact adoption and the health preflight) and move item 7's three
+distinguishing ideas onto it — the declarative inventory with mandatory `why:`, the counterpart-drift
+gate, and the per-SAPI floors. **Do not simply delete either verb**: item 6's value is the universal
+probe set, item 7's is that a human declared what matters and why. Deleting the declarations to remove
+a duplicate would keep the mechanism and lose the review surface.
+
+**`.gitignore`, resolved in item 6's favour.** Item 6's allowlist (`!servers/*/{nginx,demo,linode,
+backup,email,system}/**` plus re-ignores for identity, secrets and key material) is a strict superset of
+item 7's narrower negation, so item 7's hunk was **dropped wholesale** rather than merged — one owner,
+per the programme's cross-cutting note. The single line added is `!servers/*/php/**`, using the
+documented extension mechanism ("adding a new service directory is a deliberate one-line change here").
+That directory holds DECLARED php intent, deliberately separate from `system/php/**`, which holds the
+CAPTURED reading of what is actually running — keeping the two apart is what makes comparing them mean
+anything.
+## [2026-07-26] b3-ops-93-NOT-deleted-the-code-survived-the-test-did-not
+**Decision:** the stranded branch `nwp/nwp:ops-93` was **NOT deleted**, and its worktree
+`/home/rob/nwp-ops93` was **NOT removed**. Deletion is blocked on
+`nwp/ss-moodle-plugins!10` merging first.
+**Why the item said delete:** `ops-93` is 1 commit (`9e78092`, 2026-07-18, never an MR), now
+234 behind main, editing `scripts/f26/moodle/auth_nwc/**` — a tree main deleted in `601cf90`
+(item 9), which is why `git merge-tree` reports modify/delete conflicts. Its production work
+does exist canonically in `nwp/ss-moodle-plugins@auth/nwc`, newer.
+**Why it was wrong to delete on that evidence:** "the production code survived" is a different
+claim from "the coverage survived", and only the first was checked. Verified against project 33
+`main` @ `6b2a768`:
+- `auth/nwc/classes/guild_cohort_map.php` — present and **byte-identical** to the branch copy
+  (`diff` empty, 120 lines);
+- `auth/nwc/auth.php::sync_guilds()` — identical, 63 lines either side, calling
+  `guild_cohort_map::is_managed/uuid_from/decide/idnumber_for`;
+- `classes/observer.php` — a strict evolution of the branch version (same guild sync plus the
+  ops#118 consent carry, `fetch_guilds` refactored to `fetch_raw_userinfo` +
+  `guilds_from_userinfo`);
+- `auth/nwc/tests/` — held `uid_lock_logic_test.php`, `consent_logic_test.php`,
+  `consent_gate_test.php` and **no guild-cohort test at all**.
+So the branch's only unique artefact was its 79-line `tests/guild_cohort_map_logic_test.php`,
+and `git push origin --delete ops-93` would have destroyed it while every other check said
+"safe".
+**What was done instead:** ported the test verbatim (only the usage/provenance header rewritten)
+into `nwp/ss-moodle-plugins` on `rescue/ops-93-guild-cohort-logic-test`, registered it in
+`tests/run-standalone.sh` — a test present but run by nothing is not coverage — and documented
+it in `tests/README.md`. MR `nwp/ss-moodle-plugins!10`, unmerged.
+**Gate, red then green:** `tests/tools/verify-crossrepo-guild-cohort-coverage.sh` clones project
+33, checks both halves, runs the test, then **mutates the class under it** and requires a
+failure. Against `main`@`6b2a768` before the port it exited **1**: `RED  no guild-cohort logic
+test under auth/nwc/tests/ … correct action is to PORT THE TEST, not to delete ops-93`. Against
+the ported tree it exits **0**: test present, registered, `17 passed`, and both mutants
+(`MANAGED_PREFIX` → `mutant:`; `$leave[] = $uuid;` removed) are caught. Full canonical
+standalone suite after the port: `ALL 14 test files passed` (was 13).
+**Negative control:** without the mutation stage this gate would be satisfied by a test file
+that asserts nothing — file exists, exits 0, tick. The mutants are what make "coverage exists"
+mean something. The gate can also only ever report CANNOT-VERIFY (exit 2), never 0, when php or
+the repo is unreachable.
+**Not wired into CI, deliberately:** it reads a second private repo over SSH and the nwp/nwp
+runner holds no credential for `nwp/ss-moodle-plugins`. Wiring it in would produce a job that
+can only fail or skip — the "gate that cannot fail" shape this arc is removing. It is an
+operator/agent-run pre-deletion check.
+**Reversible-how:** nothing destructive happened. `refs/heads/ops-93` and the `nwp-ops93`
+worktree are untouched. The nwp/nwp side is `git revert -m 1 <merge>` (one new script, docs).
+The plugin-repo side is `git push origin --delete rescue/ops-93-guild-cohort-logic-test`, or
+simply not merging !10.
+**Follow-up (deliberately left for whoever merges !10):** once !10 is in, re-run
+`tests/tools/verify-crossrepo-guild-cohort-coverage.sh`, and only on exit 0 do
+`git worktree remove /home/rob/nwp-ops93` + `git push origin --delete ops-93` and post the
+result on nwp/ops#93.
+## [2026-07-26] D1 console-gate-regex-scope — the deny regex under-delivered on its own stated intent
+
+`scripts/agent-loop/agent-loop.sh:116` `SENSITIVE_PATH_RE` is the **only enforced** backstop between
+a member-controlled GitLab issue body and a pushed branch (the loop feeds that body to
+`claude -p --dangerously-skip-permissions`; the prompt's "HARD BOUNDARY" prose is advisory). Two
+clauses said less than the header block above them claimed:
+
+1. `requirements\.txt$` — the header justifies the deny as "dependency pins … supply chain", but
+   `scripts/console/requirements-dev.txt` **exists on disk** and never matched. It is not inert: it
+   is `pip install`-ed by the `test:console` CI job (`scripts/ci/test-console.sh`), so its contents
+   become code executed by a runner. Now `requirements(-dev)?\.txt$`.
+2. `static/[^/]*\.js$` — the header says "static/\*.js is denied", but `[^/]*` covered only files
+   sitting **directly** in `static/`. `scripts/console/static/js/foo.js` was allowed. Latent today
+   (no nested JS in the tree), live the moment console v2 nests its JS. Now `static/.*\.js$` — the
+   same fail-closed reasoning already applied to the `app/` **directory** rule: a denylist that has
+   to be remembered is a denylist that lapses.
+
+**Evidence, in order.** RED first: `bats tests/unit/test-agent-loop-sensitive-gate.bats` → 24 tests,
+`not ok 14` (requirements-dev.txt) and `not ok 15` (nested static JS). Fix applied. GREEN: 26/26.
+
+**Widening verified, not assumed.** "Deny more" tests pass trivially if a botched anchor starts
+matching everything, so two negative controls assert per-path that `static/style.css`,
+`templates/base.html`, `README.md`, `static/icon.svg` and nested non-JS assets stay **ALLOWED**.
+Independently, a whole-tree diff of the old vs new pattern over all 998 tracked files:
+
+```
+old denies: 84   new denies: 85
+NEWLY DENIED: scripts/console/requirements-dev.txt
+NEWLY ALLOWED: (empty)
+```
+
+Exactly one real file changes verdict; nothing goes denied → allowed. The nested-JS half is
+correctly latent.
+
+**Safe window.** The loop is paused — `/home/rob/nwp/.loop-paused` present on mini (100.64.0.2,
+0 bytes, 2026-07-18), confirmed at the time of the change.
+
+### Scope not taken
+
+- The gate was **not** restructured. One regex line and the header comment that describes it; no
+  change to the refusal block, the label/comment path, or the fail-closed ordering.
+- `scripts/console/` itself was **not** touched — that tree belongs to the console v2 workflow.
+- **Accepted residuals left standing, deliberately:** `scripts/console/tests/` and
+  `scripts/console/templates/` remain ALLOWED. Both are documented in the header as priced-in
+  trade-offs (the loop's own prompt demands test-writing; templates are the highest-churn area and
+  Jinja autoescapes). Widening into them is a design decision, not a regex bug, and is out of D1's
+  scope.
+
+---
+
+## [2026-07-26] Item 9 — `docs-pl-first`: the onboarding path taught 118 invocations of deleted scripts
+
+### The red, captured first
+
+`tests/unit/test-doc-truth.bats` was written before any fix and run against the pre-fix tree.
+Observed: **5 real failures, 3 guards green, 2 vacuously green.**
+
+```
+not ok 1 doc-truth: a guide teaching ./backup.sh (a script that does not exist) is NEW drift
+not ok 2 doc-truth: a fenced pl verb that cannot dispatch is NEW drift
+ok     3 doc-truth: real verbs and real paths are NOT drift (over-fire guard)
+not ok 4 doc-truth: a root-level markdown file (CONTRIBUTING.md) is in scope
+not ok 5 doc-truth: the agent-loop prompt docs are in scope
+ok     6 doc-truth: the scan does not follow gitignored trees
+ok     7 doc-truth: the Art.9 go-live runbook prescribes only commands that exist   ← VACUOUS
+ok     8 doc-truth: the onboarding guides prescribe only commands that exist        ← VACUOUS
+not ok 9 no print_error in a deploy verb prescribes a raw drush/ssh recovery
+ok    10 the recovery strings name a pl verb that actually dispatches
+```
+
+7 and 8 were green **because the check they assert on did not exist yet** — `grep 'dead-command-ref'`
+over output that never contains that string is always empty. That is the project's signature failure
+mode and it appeared inside this item's own suite. They were re-run the moment the check landed and
+went RED (art9-golive-runbook → `pl deploy`; five of the six onboarding guides), then green after the
+docs were rewritten. Both reds are recorded here because a test that was never seen red is not
+evidence.
+
+Test 9's first draft was **too broad** — it matched any `print_error` containing the word `drush`,
+which caught legitimate diagnostics like `"drush updatedb FAILED on live"`. It was narrowed to match
+a *command shape* (`ssh …@`, `sudo -u www-data`, `vendor/bin/drush`, `&& drush`) and re-proven RED
+against the stashed pre-fix files: 7 call sites, exactly the set the programme predicted.
+
+### What was actually wrong
+
+1. **`pl deploy` does not exist.** `docs/guides/art9-golive-runbook.md:153` — the counsel-facing
+   Art.9 go-live switch — had `pl deploy nwc --tier=live --code-only --apply` as **step 2**.
+   `./pl deploy` → `ERROR: Unknown command: deploy`, exit 1. The runbook stops there, in maintenance
+   mode, with the new code half-deployed and both consent gates open. Rewritten to
+   `pl stg2live nwc --code-only` (rehearse with `--dry-run` first), which is the verb that actually
+   carries `--code-only`, the fail-closed PROFILE-CHANGE GUARD, the pre-deploy webroot snapshot and
+   the ADR-0031 pair ordering.
+2. **Five root scripts were deleted; six guides never noticed.** `./backup.sh`, `./restore.sh`,
+   `./dev2stg.sh`, `./stg2prod.sh`, `./report.sh` — verified absent. 118 invocations across
+   training-booklet, developer-workflow, working-with-claude-securely, migration-sites-tracking,
+   coder-onboarding and setup.
+3. **`pl doc-truth` was green by design.** Its own header said it "deliberately does NOT check
+   `pl <verb>` mentions", and `scan_files()` read only `CLAUDE.md`, `README.md` and `docs/**` while
+   the CI job that runs it triggers on `**/*.md` — so ~35 tracked markdown files (CONTRIBUTING.md,
+   KNOWN_ISSUES.md, CHANGELOG.md, `lib/README.md`, `pairs/README.md` and all four
+   `scripts/agent-loop/prompts/*.md`, which route issues to fixes) fired a blocking gate that never
+   opened them.
+4. **`docs/guides/setup.md` documented five CLI aliases that never existed** — `pl i`, `pl b`,
+   `pl r`, `pl cp`, `pl del`. Verified: every one exits 1 with `Unknown command`. `pl` has no alias
+   table at all.
+5. **The instruction printed while a live site is dark was raw ssh.** 7 `print_error` call sites in
+   `stg2live.sh` / `live2prod.sh` / `stg2prod.sh` told the operator to run
+   `sudo -u www-data …/vendor/bin/drush … sset system.maintenance_mode 0` on the host — bypassing the
+   ADR-0028 deploy gate, the `live.enabled` flag and the rollback ledger, at the one moment the
+   operator is least likely to argue. `lib/moodle-deploy.sh` already did it right; the Drupal path
+   was the outlier.
+
+### Decision: the oracle is `pl` itself, not a second list
+
+`dead-command-ref` resolves `pl <verb>` against `pl commands --json` (falling back to enumerating
+`scripts/commands/*.sh` + the builtin list for a fixture tree with no `pl`). **Alternative rejected:**
+hard-coding a verb list in `doc-truth.sh` — that is a second source of truth, and the first thing it
+would do is drift. If the oracle comes back empty the gate `exit 2`s rather than reporting every
+`pl` mention in the tree as dead: a broken oracle is a broken gate, not a finding.
+**Reverse:** delete `load_known_commands` / `dead_command_ref_hits` from `doc-truth.sh`.
+
+### Decision: `pl <verb>` is checked only in command context; `./x.sh` everywhere
+
+A fenced or backticked `pl deploy …` is an instruction. The prose sentence "the RUN is a pl verb" is
+not — and the first draft flagged it. The matcher now anchors on command position (start of line,
+optional `$`/`#`/`>` prompt, or after `|`, `;`, `(`, `&&`, `||`). A relative `./x.sh` is unambiguous
+enough to check in prose too. **Alternative rejected:** checking every `pl <word>` anywhere, which
+produced false positives on ordinary English and would have made the gate uninstallable.
+**Reverse:** widen the regex in `dead_command_ref_hits`.
+
+### Decision: `<!-- doc-truth:retired -->`, a per-line escape hatch
+
+A good doc must be able to say "`./backup.sh` was removed, use `pl backup`" — and naming the dead
+thing is the entire point of the sentence. Rather than exempt a directory (which is how the previous
+version of this gate stayed green while the onboarding path rotted), a doc puts an HTML comment on
+that one line. It is invisible when rendered, per-line, and `grep -rn 'doc-truth:retired'` counts
+every one of them. Currently used **4 times**, all in prose that explains a retirement.
+**Alternative rejected:** adding those lines to the baseline — that hides a deliberate, correct
+sentence among 395 rows of genuine rot. **Reverse:** drop the two `grep -v` filters.
+
+### Decision: 264 dead-command-refs baselined, 7 files burned down
+
+The baseline is `.gitleaksignore`-shaped and SHRINK-ONLY: today's rot is recorded so the gate blocks
+NEW drift from day one. The seven files that matter — the six onboarding guides plus the Art.9
+runbook — were **fixed, not baselined**, and `test-doc-truth.bats` asserts they stay at zero, so they
+cannot silently regress. The remaining 264 are ADRs, proposals and reports describing verbs that were
+never built (`pl tier-up`, `pl llm-host`, `pl video`, `pl build-server`, …). They sit in the baseline
+where they are visible and countable. **Alternative rejected:** the old exemption ("proposal docs
+describe unbuilt future commands, so those checks are noisy") — that exemption is exactly what let
+the 118 live invocations through, because it could not distinguish a proposal from a runbook.
+
+### Decision: `pl drush` for the live tier; `pl rollback` for prod — and NO pl VERB said out loud
+
+The four `stg2live` recovery strings became `pl drush <site> --tier=live --execute -- …`. Correct and
+complete: that verb exists, is dry-run by default, honours `live.enabled` and calls the ADR-0028 gate.
+
+The prod-tier strings (`live2prod`, `stg2prod`) could **not** take the same treatment: `pl drush` is
+`stg|live` only, and the v2 site schema carries no `production:` block at all (`live2prod.sh`'s
+`get_prod_config` still parses a legacy `sites.<name>.production.*` shape out of `nwp.yml` with awk).
+**Alternative considered and rejected: adding `--tier=prod` to `pl drush`.** It would have been built
+on a config path the current schema does not have, it is outside this item's stated file territory,
+and prod writes are mons-gated by design — the sanctioned recovery from a failed prod deploy is
+`pl rollback execute <site> prod`, not a hand drush. So the prod strings name `pl rollback` +
+`pl monitor uptime`.
+
+One recovery genuinely has no verb and now **says so**: `stg2live.sh`'s MySQL-grant repair prints
+`NO pl VERB exists for this one — host DB-admin action, escalate to the server owner`. NWP has no
+credential-repair verb deliberately (it would need the data-tier secrets), and the deploy has already
+retried the `ALTER USER` twice by the time that line prints. Stating the gap in the operator-visible
+output is better than either a silent raw command or a pretend verb — and `NO pl VERB` greps, so the
+exemption is countable and shrink-only. Follow-up worth filing: `pl drush --tier=prod` once the v2
+schema carries a prod block.
+
+### Scope not taken
+
+- **`docs/SECURITY.md`'s two `*(no equivalent)*` rows were left alone.** They are honest today —
+  `pl logs` / `pl backup-logs` do not exist. Deleting the rows belongs to programme item 6, which
+  ships the verb. Only the two `./pl deploy prod` usages and one `./pl ssh prod "…"` were corrected.
+- **`lint:doc-truth` in `.gitlab-ci.yml` was not touched** — `.gitlab-ci.yml` is item 4's territory.
+  The job already runs `./scripts/commands/doc-truth.sh` with `allow_failure: false` on MRs and main
+  for `**/*.md`, so the widened scope and the new check take effect with no CI edit at all.
+- **`G3 live_maintenance_set` was not touched** (another agent owns that failing test). Only the
+  `print_error` strings around it changed.
+
+### Two defects the new gate caught in this item's OWN work
+
+Recorded because "the gate caught the author" is the only evidence that a gate is not decoration.
+
+1. **`pl monitor uptime --tier=prod` — a flag the verb refuses.** The first draft of the prod
+   recovery strings printed it. `monitor.sh:203` hard-refuses anything but `--tier=live`
+   ("Unsupported tier"). That is the *same* defect as `pl deploy`, one level down: a recovery line
+   that fails at the prompt during an outage. Replaced with `pl server status`, and a twelfth
+   acceptance case (`the recovery strings do not name a FLAG the verb refuses`) now asserts
+   `--tier=prod` never appears in a printed instruction in the three deploy verbs.
+2. **The gate fired on this decision log.** Documenting the defect requires quoting
+   `sudo -u www-data … drush …` and naming `./backup.sh`. Resolved with
+   `skip_prescription_checks()`: the two append-only arc ledgers (decision-log, rollback-registry)
+   are exempt from the two *prescription* checks only — `dead-link` and `dead-adr` still apply to
+   them, and a test asserts both that the exemption is exactly two entries and that a dead link
+   planted in the decision log still reddens the gate. **Alternative rejected:** baselining the
+   rows, which would bury a correct sentence among 392 rows of real rot; and per-line
+   `<!-- doc-truth:retired -->` markers, which would need ~12 per arc entry and would push the next
+   author to run `pl doc-truth --baseline` instead.
+## [2026-07-26] D3 — `IMPACT_DESTRUCTIVE_PATTERN` was spelling-dependent
+
+`lib/impact.sh` carried the literal alternative `rm -rf`. That is the ONLY thing that pulls a
+script into the fate-manifest contract, so every other spelling of a recursive delete was a
+silent exemption: `rm -fr`, `rm -r -f`, `rm -f -r`, `rm -rvf`, `rm -Rf` and
+`rm --recursive --force` all evaded it. A miss is not cosmetic — it means a destructive script
+ships with no manifest, no allowlist row, and a green pipeline. The shrink-only allowlist landed
+earlier tonight (76c0510) makes that coverage load-bearing.
+
+**Fix.** The rm arm is now flag-order agnostic and judged by a fixture table, not by reading it:
+a command-position `rm` head, then any run of dash-flags of which one contains `r`/`R`, plus a
+separate long-option arm for `--recursive`. All nine previously-missed spellings were observed RED
+before the change (transcript in the MR).
+
+**Decisions inside the fix, each with a cost:**
+
+- **RECURSION is the trigger, not force.** `rm -f x` deletes one named file and is not
+  manifest-class; it and `rm --force x` must not match, and are pinned as negative rows. The
+  side effect is that a bare `rm -r "$d"` now matches where it previously did not — correct, since
+  `-f` only suppresses prompts, but it is a genuine widening.
+- **Widening blast radius measured, not assumed.** Old vs new pattern was diffed across all 204
+  gate candidates before the edit: **zero** files change verdict (45 destructive either way). No
+  allowlist row is added — the allowlist header requires an ops issue for additions, and none is
+  needed. The fix is purely forward-looking, which is also its honest limitation: it prevents a
+  future evasion rather than exposing a present one.
+- **A bonus defect surfaced from the RED run.** The OLD pattern already false-positived on
+  `confirm -rf` (`rm -rf` is a substring of `confi` + `rm -rf`). The new `rm`-head anchor
+  `(^|[^[:alnum:]_.-])rm` fixes that too; `rmdir` is likewise excluded.
+- **Trailing comments still count as code, deliberately.** `_impact_code_lines` only drops lines
+  that BEGIN with a comment marker, so `true  # rm -rf /x` is treated as destructive. Stripping
+  trailing `#...` was considered and rejected: `rm -rf "${x#foo}"` is a real destructive line
+  containing `#`, and naive stripping would BLIND the gate to it. Over-matching costs one
+  allowlist conversation; under-matching costs a site. Pinned by a test named KNOWN LIMITATION so
+  a later "cleanup" has to argue with it rather than silently flip it.
+- **Flags after the operand are NOT matched** (`rm "$d" -rf`). Allowing arbitrary tokens between
+  `rm` and the flag made `rm "$d" && grep -r x` match, and a gate that cries wolf gets switched
+  off. Stated as a known limit in the code rather than hidden.
+
+**Scope not taken.** No consumer of the pattern was touched (`git grep` confirms it is defined at
+`lib/impact.sh:219` and read only at `:236`); no allowlist edit; `lib/moodle-deploy.sh` and
+`scripts/commands/branch.sh` remain the real known contract gaps, owned by other items.
+## [2026-07-27] pair-guard-binds-real-pair — the UID-lock guard was blind, and blindness read as consent
+
+`pl pair check ssc live` — a **full-DB push to the tier whose OIDC UID-locks the D6 rule exists to
+protect** — answered `[✓] pair_guard would ALLOW this promotion.` (rc 0). Reproduced on `main`
+before any change. `pl pair list` showed only `ssd ↔ nwd`; the real pair with real students was
+absent from it.
+
+**Root cause — two shapes, and the guard read the file the real pair did not use.**
+`lib/pair.sh:92` resolved membership with `yaml_get_site_field "$site" "paired_with" "$config"`
+against the **global** `nwp.yml`, and `:104` scanned the same file for consumers. `ssc` had no
+pairing key there at all. Meanwhile `sites/ssc/.nwp.yml:31` carried a *different* `paired_with:` —
+a **map of label→URL** (`nwc_canonical: https://nwc.nwpcode.org`) that no reader consumed and that
+cannot name a site. So the reader returned nothing, and nothing fell through
+`if [ -z "$role" ]; then return 0; fi`. **Unreadable read as unpaired; unpaired read as consent.**
+
+`ssd` returned ALLOW too, and that one was correct-by-configuration — verified rather than assumed:
+`pairs/ssd.pair-contract.yml` sets `uid_lock: false` / `coupled_tiers: []`, so
+`pair_contract_couples_tier` returns 1 and the D6 branch is skipped by design. (It also passes D5
+because `private/pairs/ssd.provider.live.cv` = 3, recorded by MR !210.)
+
+### The decision: the committed CONTRACT is the source of truth for membership
+
+The obvious fix — "copy `paired_with: nwc` into `nwp.yml`" — is what `example.nwp.yml` has told
+operators to do since ops#75 and was never done. It would have worked and would have left the
+defect's cause intact, because **both** candidate files are invisible to git: `nwp.yml` by hard
+rule (CLAUDE.md), `sites/*` by `.gitignore:14`. A guard whose only input is a file no reviewer and
+no CI job can see cannot be observed to be wrong — which is exactly how this one stayed inert while
+`pairs/ssc.pair-contract.yml` sat in the repo saying `provider: nwc / consumer: ssc` the whole time.
+
+So `pair_scan` now reads, in order: (0) `pairs/*.pair-contract.yml` `provider:`/`consumer:` —
+**source of truth**; (1) `sites/<site>/.nwp.yml` `paired_with:`; (2) `nwp.yml`
+`sites.<site>.paired_with`. This is ADR-0031 D2 ("the CONTRACT, not the pair, is the versioned
+artifact") carried through to the choke-point instead of stopping at the doc. Sources 1 and 2 stay
+honoured — `ssd` uses one — and must **agree**; disagreement is ambiguity.
+
+**Verdict on "half-finished migration vs typo": neither.** The per-site map was never a migration
+of the pairing key — nothing ever read it, and the URL it held duplicated `oauth2.provider_url`
+three lines below. It was independent documentation that collided with a load-bearing key name.
+The canonical **shape** was never in doubt (bare scalar site key: `example.nwp.yml`,
+`pairs/README.md`, `provider:`/`consumer:`, and the pair id all speak site keys); what was wrong
+was the **location**, and the location was wrong in a way that made the error unobservable.
+
+### Fail closed on ambiguity
+
+Every reader is now tri-state — `0` resolved / `1` not declared / `2` CANNOT VERIFY — and `2` is
+never collapsed into `1`. A `paired_with:` that is a map, a URL, unparseable YAML, two sources
+disagreeing, or a contract filed under a name that does not match its own `consumer:` key, all
+REFUSE via `_pair_blind_refuse`. Vocabulary is reused from `pl impact --honesty` /
+`boundary_honesty_check`, not reinvented: *"This is NOT a clean result: the guard found no pair
+because it could not look."* The only escape is the existing audited `NWP_PAIR_GATE_SOFT=true`
+(ledgered on **both** branches); `--override-pair` deliberately does **not** cover it, because a
+per-invariant override must not double as a licence to deploy past a config you cannot read.
+
+Blast radius of blindness is fleet-wide by design: if any declaration in the tree is illegible,
+"nothing points at this site" is a guess, so unpaired sites refuse too. The message names the
+offending file and the fix is one line.
+
+### Evidence
+
+RED first, on `origin/main`'s `lib/pair.sh` with the new suite dropped in: **11 of 20 fail**,
+including `CASE 1` (full-DB to ssc live REFUSED) and every `CASE 3` (CANNOT VERIFY). GREEN after:
+**20/20**, plus the 62 pre-existing `test-pair*.bats` unchanged and passing.
+
+**Negative controls that stay GREEN across the revert** (so the suite cannot be satisfied by a
+guard that refuses everything): `CASE 4` unpaired-site-promotes-to-prod, and coupled-pair-promotes-
+full-DB-at-an-uncoupled-tier. Note `CASE 2` (`--code-only` ALLOWED) is *also* green pre-fix — it
+has to be, because the broken guard allowed everything; it is evidence only in combination with
+`CASE 1`.
+
+Two tests run against the **shipped** `pairs/` with no operator config present at all, so CI itself
+now asserts the real `ssc↔nwc` and `ssd↔nwd` pairs bind — the property the old resolver could not
+have had.
+
+### Sweep: the same inversion elsewhere
+
+`lib/canonical.sh` has it twice, on the same read, and worse. `canonical_get_phase:62-67` and
+`maturity_get_class:281-286` both do `[ -f "$config" ] && raw=$(... || true)` then map `""` to the
+**weakest** value (`dev`, `incubating`). An unparseable or unreachable `nwp.yml` — same gitignored
+file — therefore turns every `canonical: live` site into `dev` (so
+`canonical_guard_content_push` permits the dev→live content overwrite it exists to stop) and every
+`maturity: production` site into `incubating` (so `maturity_guard_deploy` stops routing prod through
+the signed-bundle path — and *that* refusal has no override by design, making the fail-open the
+only way past it). Both files' own headers claim to fail closed on an unparseable **value**, which
+they do; neither handles an unparseable **file**. **Not fixed here — outside this change's
+territory.** Also found: `lib/sanitizers/mayo.sh:761` PII sweep reports `PASS` on a dump `zgrep`
+could not read (the sibling `lib/sanitizers/moodle.sh:177` already `gzip -t`s and refuses);
+`lib/moodle-deploy.sh:680` returns zero core-patch ids on an unparseable declaration, emptying a
+gate documented as having no override. Cleared as correct-by-design: `lib/boundary.sh` (rc 2 =
+CANNOT-VERIFY is the reference implementation), `lib/pii-gate.sh`, `lib/prod-guard.sh`,
+`lib/host-capture.sh`, `lib/restore-remote.sh`, `lib/config-drift.sh`'s
+`config_drift_guarded_updatedb` (rc 3 = could-not-check).
+
+### Scope not taken
+
+- `lib/canonical.sh` / the sanitizers / `moodle-deploy.sh` findings above are **reported, not
+  fixed** — `lib/canonical.sh` is auth-adjacent guard code with its own callers and deserves its
+  own reviewed change.
+- No pair contract's `contract_version` was touched (ssc stays 2, ssd stays 3 from MR !210).
+- `private/pairs/` state was **not** written. `ssc` has no recorded provider deployment at `live`,
+  so on the real tree the D5 provider-first rule fires *before* D6 — correct, but it means the
+  operator must bootstrap `pl pair record ssc provider live 2` before a `--code-only` ssc live
+  promotion is allowed. That is an operator assertion about what nwc live is running, not one an
+  agent should make.
+
+---
+
+## [2026-07-27] guards-fail-closed-on-unreadable-config — **REVIEW:** (sanitizer + deploy gate)
+**Decision:** Close the four "fail-open on an unreadable input" holes that the MR !211 sweep found
+and reported but did not fix. Reuse the existing CANNOT-VERIFY vocabulary (`lib/boundary.sh` rc 2,
+`lib/pair.sh` as of !211) rather than inventing a parallel one.
+
+1. **`lib/canonical.sh`** — `canonical_get_phase` / `maturity_get_class` now return
+   `cannot-verify:<reason>` when the config **exists and does not parse**, and every guard
+   (`canonical_guard_content_push`, `canonical_enforce_branch_policy`, `maturity_guard_deploy`)
+   refuses on it. `--override-canonical` deliberately does **not** buy past it; the only escape is
+   `NWP_CANONICAL_GATE_SOFT=true`, which warns and writes a ledger row.
+2. **`lib/sanitizers/mayo.sh`** (step 6) and **`lib/sanitizers/standard.sh`** (`pii_sweep`) —
+   `gzip -t` + a non-empty-decompressed-stream assertion before the sweep, copying the shape the
+   sibling `lib/sanitizers/moodle.sh:177` already had. `standard.sh` was found by finishing the
+   sweep and is the **generic default** Drupal sanitizer, so it was the widest-reach copy.
+3. **`lib/moodle-deploy.sh`** — `moodle_core_patch_ids` is tri-state (0 ids / 1 nothing declared /
+   2 CANNOT VERIFY). `cmd_core_patch` previously read it through `mapfile < <(…)`, which discards
+   the exit status, so "unreadable" arrived as an empty array and printed "no core patches
+   declared" — emptying a gate whose own refusal says *"Override is deliberately NOT provided."*
+
+**Alternatives rejected:** (a) a new rc/vocabulary per guard — rejected, one vocabulary or none;
+(b) making `--override-canonical` cover CANNOT-VERIFY — rejected, a per-decision override must not
+double as a licence to deploy past a config nobody can read.
+
+**Where the "absent by context" line was drawn, and the rule that was withdrawn:** an early version
+also treated *"global config missing while `sites/<site>/` is on disk"* as CANNOT-VERIFY. It was
+implemented, tested, and **withdrawn**: `pl moodle plugin deploy` legitimately resolves a fully
+configured Moodle site from `sites/<site>/.nwp.yml` alone, so that rule refused a supported layout
+(it turned `tests/unit/test-moodle-ops-verbs.bats` c4 red). The one signal that would have justified
+refusing — evidence the site had been classified before — is `private/canonical/<site>.log`, and it
+is **empty in practice**: the live fleet's phases were set by hand-editing `nwp.yml`, and the
+directory does not exist. With no evidence to separate "the registry vanished" from "this checkout
+never had one", refusing would have been a guess. So the line is drawn at **parseability, not
+presence**: a missing config keeps today's defaults, but now *says so out loud* when the site
+directory is present (silence was half the original defect), and stays silent in a fresh clone, CI
+job or worktree, where `sites/*` is gitignored and empty.
+
+**Basis:** `nwp.yml` is never committed (CLAUDE.md) and `.gitignore:14` ignores `sites/*`, so these
+guards' only inputs are files no reviewer and no CI job can see. A guard that silently degrades on
+an invisible input cannot be observed to be wrong.
+
+**Blast radius:** repo-only. No live site, server, DB or `private/` state touched. Net effect is
+strictly more refusals on unreadable inputs, and **no change at all** when the config parses — the
+suite carries a negative control per guard (a correctly configured site still does the normal
+thing), and all 18 fail-open assertions were shown to go red with the fix reverted while 0 negative
+controls did.
+
+**Reversible-how:** see CP-20260727-failopen.
+
+**Sweep remainder (reported, NOT fixed — out of this change's territory):**
+- `lib/sanitizers/files-secrets.sh:318` — a file that exists but cannot be **read** makes `grep`
+  exit 2 with no output, contributing zero hits, so a `.env`/`auth.json` carrying a live credential
+  is reported secret-free. The header itself says these files are chmod-locked on prod, i.e.
+  unreadable is the *normal* state for a non-owner. Contradicts its own stated contract (lines
+  39-42). Consumers are warn-only, so the visible effect is silence.
+- `lib/impact.sh:362` — `impact_contract_violations` has no empty-corpus guard, so a wrong/missing
+  root reports **clean over zero files**. Its own header (lines 220-227) records that this gate
+  previously "shrank toward zero while staying green"; the empty-corpus half is still unguarded.
+  Left alone deliberately: `ops-auto/d4-fate-manifest-truth` is in flight over this file.
+- `lib/sanitize.sh:266` — `check_for_pii` is `grep -qE … | grep -qvE …`; `grep -q` writes nothing,
+  so the email branch is **unreachable** and only the credit-card check can fire. Different bug
+  class (broken pipe, not fail-open-on-unreadable) and it has **no callers**, but it is a PII
+  detector that cannot detect PII sitting in a security-critical lib.
+- `lib/todo-checks.sh:1260,1267` — silent `return 0` where the parallel branch at 1278 correctly
+  raises `DRIFT unreadable`; inconsistent with its own comment at 1270-1271. Cheap fix, cosmetic
+  surface.
+- Documented warn-and-allow, flagged not changed: `lib/deploy-gate.sh:107-113` ("not configured" is
+  indistinguishable from "keys were removed"), `lib/vcs-truth.sh:138/149/159` (a timed-out or locked
+  repo counts as 0 stranded commits and vanishes from the report — fails *silent*, not soft),
+  `lib/backup-integrity.sh:236` (gzip absent ⇒ structural check skipped ⇒ "OK"),
+  `lib/rollback.sh:485`, `lib/ci-stats.sh:302`, `lib/testing.sh` (tool-not-found ⇒ pass).
+
+## [2026-07-27] b7-merge-queue-review-two-fixes-to-the-guard
+**Decision:** merged B7 (MR !192) after independently re-deriving all five deletions, with
+**two corrections to the MR's own guard** made during merge-queue review.
+**Independent verification of the deletions (not taken from the MR text):**
+- `pl-rollback-stdin-fix` @ `1813994` — its entire diff is 5 `ssh -o BatchMode` → `ssh -n -o
+  BatchMode` edits; `origin/main:lib/rollback-remote.sh` carries `ssh -n -o BatchMode` at
+  169, 189, 261, 321, 330 **and a sixth at 343**. Nothing unique.
+- `stg2live-drush-graceful` @ `3f73691` — both drush-missing guards are on main, annotated
+  `(MR !11)`; only a hint string is shorter. Nothing unique.
+- `chore/gitleaks-allowlist-issue-urls` @ `0b3f644` — its regex is on main **twice** (589, 684),
+  and `git diff origin/main <branch> -- .gitleaks.toml` is **58+/572−**, restoring a top-level
+  `[allowlist] paths` block main does not have. Net revert, confirmed.
+- **The two archive twins were verified from the forge's own audit log, not from the author's
+  word** (the byte-identical claim was the one the reviewer was told not to trust): project 15
+  push events show `removed stg2live-drush-graceful 3f73691a` and `removed pl-rollback-stdin-fix
+  18139945` — `commit_from` matches the origin heads exactly, and both objects are still
+  resolvable in the archive project.
+**Fix 1 — A3 guarded a comment, not a rule.** A3 grepped the bare substring
+`merge_requests|blob|tree`, which also matches the two explanatory COMMENT lines in
+`.gitleaks.toml`. Deleting BOTH live allowlist regexes left 2 matches and A3 stayed **GREEN** —
+so it did not actually evidence that MR !50's contribution survives on main. Found by mutation.
+Now counts only `'''`-quoted rule lines; verified RED on exactly that mutation and GREEN on restore.
+**Fix 2 — B2 can never run in CI, and that is now declared instead of hidden.** B2 probes the
+`archive` remote; project 15 is **private** and no CI checkout configures that remote, so B2
+skips there. bats reports a skip as `ok`, and the unit job's `NWP_BATS_MAX_SKIPPED: "0"` correctly
+went red. Declared as `"1"` **in the CI job only**, with the skipping test named in the comment.
+Not a loosening: `run-bats.sh` compares with `-ne`, so a second skip goes red AND B2 ceasing to
+skip goes red. Proven both ways — budget 1 against the operator clone (where the archive remote
+exists and B2 really runs, 0 skips) exits non-zero. `tests/.skip-budget` keeps `unit=0` because
+B2 genuinely runs on the operator's machine. Rejected alternative: giving a unit test
+cross-project credentials + a network call to reach a private repo.
+**Reversible-how:** `git revert -m 1 <merge>`. The five refs remain restorable per CP-B7.
+
+## [2026-07-27] b7-followup-skip-budget-must-not-leak-into-nested-runs
+**Decision:** declaring the CI skip (previous entry) exposed a second, pre-existing defect and it
+is fixed here rather than worked around. Setting `NWP_BATS_MAX_SKIPPED` as a **job variable** put
+it in the environment of every process under the job — including the three places
+`tests/unit/test-ci-lint-commands.bats` runs `scripts/ci/run-bats.sh` in a subprocess to prove a
+stray skip goes red. Those meta-tests silently relied on the ambient default of 0, so with the
+job budget at 1 they asserted against the CI job's number instead of the default and went RED
+("run-bats: writes a JUnit report…", "run-bats: an unexpected SKIP fails the job").
+**Fix:** `run-bats.sh` now `unset`s `NWP_BATS_MAX_SKIPPED` / `NWP_BATS_SUITE` **after resolving
+its own budget and before invoking bats**. The budget governs the suite THIS invocation runs, not
+suites those tests themselves invoke.
+**Proved, not asserted:** a fixture of two copies of the meta-tests plus one deliberately-skipping
+case, run with the budget poisoned to 1. With `origin/main`'s runner as the outer: `failures: 2`.
+With the fixed runner: `failures: 0`, and the outer still correctly honours its own budget of 1
+(`skipped: 1 (allowed: 1)`). So the fix does not blunt the guard, it scopes it.
+**Note this was latent, not introduced:** any operator with `NWP_BATS_MAX_SKIPPED` exported would
+already have seen those two tests fail spuriously.
+**⚠️ REVIEWER:** this MR now edits `.gitlab-ci.yml`, a CLAUDE.md sensitive path. The repo's own
+`security:review` gate caught that and required the `REVIEW:` marker, which is why the MR title
+carries it. The CI change is one number plus comments; the behavioural change is the `unset`.
+**Reversible-how:** `git revert -m 1 <merge>`.
+---
+
+## [2026-07-26] B1-pubrel-docs-scrub-reproduced-not-merged-and-the-gate-half-was-already-superseded
+**Situation:** `origin/pubrel/scrub-and-gate` (2 commits, 2 ahead / **228 behind**, last touched
+2026-07-17, never had an MR) genericised operator identifiers in 31 public-release docs and also
+added three leakage rules. The gate half is **superseded**: `operator-public-ip`,
+`operator-personal-email` and `live-domain-apex` are all on main since 92cf069, and the ops#98
+role-address swap (NOTICE, docs/CC0_DEDICATION.md) is done. `pl branch stranded` labels the whole
+branch DO NOT MERGE WHOLESALE — correct, since merging it would revert main's hardening and delete
+~59k lines of work landed in the intervening 228 commits.
+**Decision:** did **not** merge, rebase, or cherry-pick the branch. Instead proved its scrub was a
+purely mechanical substitution and re-applied that substitution to main's *current* content.
+**Evidence for that:** applying `nwpcode.org|mayostudios.org -> example.com` (RFC 2606) and
+`97.107.137.88 -> 203.0.113.10` (RFC 5737) to the branch's own base blob reproduced the branch blob
+**byte-identically for 31/31 files** (`identical: 31  differs: 0`). So nothing is lost by ignoring
+the 9-day-old blobs, and the "re-apply by hand what main changed since" step in the plan became
+unnecessary — 6 of the 31 had moved on main and were picked up automatically.
+**Departure from the item, 1 — the stated acceptance grep was wrong.** It matched domains only.
+Two files (F13, F16) leak the operator's **public IP**, not a domain, so a domains-only test would
+have called them clean. The checker matches all three identity rules the gate enforces.
+**Departure from the item, 2 — one file must NOT be scrubbed.** `.gitleaks.toml` explicitly
+allowlists public forge URLs (`git.<domain>/<proj>/-/(issues|merge_requests|blob|tree)/`) as
+"public project links, not subdomain leaks". The ONLY hit in
+`docs/pedagogy/learning-science-foundations.md` is such a URL — a live link to ops#61. The
+stranded branch rewrote it to `git.example.com` anyway, **breaking the hyperlink**. That is a
+defect in the branch and was deliberately not imported; the file is left byte-identical to main.
+So the real scope is **30 files scrubbed, 1 correctly untouched**, not 31.
+**Red (recorded before the fix):** 30/31 files carrying an identifier over 74 occurrences; with
+the 75 in-scope fingerprints stripped from `.gitleaksignore` the tracked-tree scan reported **78
+findings, exit 1**. Green: 0 offenders, and the scan exits 0 with those 75 fingerprints **deleted
+from the committed ledger** (79 `docs/` entries -> 4). That deletion is the load-bearing half: the
+scrub is real, not cosmetic.
+**Two gitleaks footguns found and documented in tests/helpers/pubrel-docs-check.sh:**
+(a) this repo's `.gitignore` starts with `/*`, and `gitleaks detect --no-git` honours `.gitignore`,
+so a scan from the repo root walks almost nothing — 1 finding from the root vs 82 scanning `docs/`
+explicitly. **The ledger header's own documented regenerate command therefore scans an empty
+tree.** The test exports the tracked file list to a temp dir without `.gitignore` instead.
+(b) `--gitleaks-ignore-path/-i` does not reliably override a `.gitleaksignore` present in the
+`--source` directory; the source-dir copy wins.
+**Distrust in my own work:** the first version of the checker was flaky (24/25/27 offenders on
+three consecutive runs of an unchanged tree) because `set -o pipefail` + `grep -q` SIGPIPEs the
+upstream `sed`; and its allowlist mask silently matched nothing because `|` was used as both the
+`sed` delimiter and the alternation operator. Both are fixed and the count is now stable at 30/30/30.
+Anyone reviewing should re-run rather than trust the numbers.
+**Not done, deliberately:** the branch is NOT deleted (that is an operator action, and the note
+recording the supersession belongs with it); its `NWP_ROOT=$HOME` one-liner in
+`scripts/agent-loop/agent-loop.sh` is still deferred to the console-gate item;
+`docs/guides/howto-deploy.md` keeps its fingerprint — out of B1 scope, still on the ops#97 backlog.
+**Reversible-how:** revert the single docs commit; the 75 fingerprints are restorable from
+`origin/main:.gitleaksignore`. No live site or server was touched, so no rollback-registry row.
+
+---
+
+## [2026-07-27] pubrel-scrub-gate-failed-open-scanner-error-read-as-clean (CP-20260727-pubrelfailopen)
+
+**Situation:** the B1 scrub gate (`tests/helpers/pubrel-docs-check.sh::pubrel_scan`, added by the
+entry above) ran gitleaks inside `( … >/dev/null 2>&1 )` and threw its exit status away, then
+judged the tree solely by `json.load(report)` under a bare `except Exception: rows = []`. A
+missing, empty or unparseable report decoded as **"0 findings = clean"**. The suite's own header
+calls tests 7/8 "the load-bearing assertion … what distinguishes a real scrub from a cosmetic
+one" — and those two tests were the only thing standing behind the whole scrub.
+
+**Why it mattered more than an ordinary test bug:** this check is what authorises publishing a
+public version of the docs library with private information removed. A false green here does not
+fail a build — it publishes the operator's home path, personal email or prod IP.
+
+**Reproduced (not theorised), 2026-07-27:** appended one malformed rule to `.gitleaks.toml` — a
+file another workstream actively edits, where a single bad regex suffices — and planted a real
+`/home/rob/nwp/lib/common.sh` leak in the in-scope doc `docs/governance/roles.md`. gitleaks exits
+2 and writes no report; the suite reported **8/8 GREEN with the leak still in the file**.
+Cross-checked with a gitleaks stub that errors and writes nothing: `pubrel_scan full` → 0,
+`pubrel_scan pruned` → 0. `.gitleaks.toml` was restored in the same step and is **not** modified
+by this work.
+
+**Compounding:** `PUBREL_DOMAIN_RE` claimed to mirror "the three identity rules the gate on main
+enforces". Main enforces **six**. The grep covered four, omitting `operator-home-path` and
+`operator-organisation` (and the second operator IP `45.33.94.133`) — which is exactly why the
+planted `/home/rob/…` left test 2 green. Those two rules were watched **only** by the backstop
+that failed open.
+
+**Decision:** fail closed everywhere.
+- `pubrel_scan` returns `0` clean / `1` findings / `2` COULD NOT SCAN. Only 0 means clean.
+- gitleaks' rc is captured (0/1 are verdicts, anything else is an error); an absent, empty or
+  unparseable report is an error; rc and report must agree.
+- `python3` was as unguarded as gitleaks was. Both now go through `pubrel_scan_missing_tool`, which
+  separates *absence* (the suite skips, visibly) from *runtime failure* (the suite fails).
+- `PUBREL_IDENTITY_RE` mirrors all six identity rules. `internal-hostname-fqdn` and
+  `internal-bare-hostname` are deliberately left to the backstop and the reason is written **in the
+  code**: they are role/host names rather than operator identity, and `\b(mini|mons|…)\b`
+  false-positives hard on ordinary prose. That is now a safe place to leave them, because the
+  backstop fails closed.
+- Mirroring `operator-home-path` meant mirroring its documented exemption: F15 names
+  `/home/gitlab/.ssh`, the conventional service-account home. Masked **narrower** than the gate
+  (the gate exempts that whole file for the rule; we exempt only the literal path).
+
+**Proof both ways:** the identical reproduction now turns tests 2, 7 and 8 RED. A clean tree with a
+working scanner still passes 15/15 — the fix is fail-closed, not fail-always. Six new cases pin the
+contract (scanner error · absent report · unparseable report · rc/report disagreement · findings
+reported as findings · absent-tool guard incl. python3) and one pins all six identity rules.
+
+**Corrections to the earlier claims:** the MR said "full unit suite 667/667"; the real count on the
+merged tree is 1449 (see the MR note). It said "rebased onto current main"; the base was `ee85e1d`
+and it has now actually been rebased.
+
+**Non-blocking finding, fixed here rather than filed:** the scrub mapped two *distinct* real
+domains onto one placeholder `example.com`. `docs/proposals/F30-content-federation-network.md` is a
+domain-state-machine document that already used `<example-prod-domain>` for the same domain, so it
+carried two placeholders for one domain and "move the AVC test site from `avc.<example-prod-domain>`
+to `example.com` (root domain)" lost the parent/child relation that sentence exists to state. F30
+now uses `<example-prod-domain>` throughout; the two places where `example.com` stood for
+mayostudios.org (`docs/governance/roadmap.md`'s four-item list, `docs/handover-nwp-status-2026-07.md`)
+use `<mayo-domain>`, the placeholder F30 already establishes. Elsewhere `example.com` genericises a
+domain with no competing placeholder in play and is left alone.
+
+**Reversible-how:** see CP-20260727-pubrelfailopen in the rollback registry. Repo-only.
+
+---
+
+## [2026-07-26] b1b-gitleaksignore-prune-stays-blocked-and-the-item-was-wrong-by-4
+
+**Decision, recorded as NOT done:** did not delete a single fingerprint from `.gitleaksignore`.
+The item is genuinely blocked, and that is now measured rather than asserted.
+
+**The red, verbatim, on main at `388ef0b`:**
+
+```
+$ scripts/gitleaksignore-audit.sh --prefix docs/
+gitleaksignore audit — ref=HEAD scope=docs/ (gitleaks 8.21.2)
+  declared fingerprints : 79
+  live findings         : 79
+  LOAD-BEARING          : 79   (deleting these re-exposes a real hit)
+  STALE                 : 0   (IOU paid — safe to retire)
+  UNSILENCED            : 0   (no fingerprint; gate primed to go red)
+```
+
+79 declared, 79 live, exact 1:1. Whole-tree it is 108/108. The ignore file is *precisely
+saturated*: not one spare line, not one gap. Deleting any of the 79 today re-exposes a real
+hit, because `pubrel-docs-genericise` (task #48, branch `origin/pubrel/scrub-and-gate`, which
+is 234 commits behind main) has not landed. Blocker (a) is not cleared, and the OFF-LIMITS list
+still names `.gitleaks.toml`, whose paired file this is, so blocker (b) is not cleared either.
+
+**The item's own acceptance test is impossible and would have proved nothing.** It specified:
+"after deleting the 79 lines, `gitleaks git --config=.gitleaks.toml --redact --no-banner` on a
+full-history scan exits 0." Measured on *unmodified* main, before deleting anything:
+
+```
+$ gitleaks git --config=.gitleaks.toml --redact --no-banner --exit-code 1
+INF 422 commits scanned.
+WRN leaks found: 2573
+EXIT=1
+```
+
+A full-history scan re-flags every already-reviewed string in the repo's past (2426 of the 2573
+are in `docs/` paths). It is red before the change and red after it, so it cannot distinguish a
+safe deletion from an unsafe one. Worse, the gate CI actually runs — `lint:leakage`, which is
+`gitleaks git --log-opts=<base>..HEAD` — scans only the MR's own commit range, so an MR that
+deletes fingerprint lines and touches nothing else is scanned **green** however many live leaks
+it just un-silenced. This change class is invisible to both the specified test and the real
+gate. That is why the deliverable here is a checker, not a deletion.
+
+**The item is wrong by 4: the payload is 75, not 79.** Simulating the scrub (main's tree with
+the 32 `docs/` files from `origin/pubrel/scrub-and-gate` swapped in, scanned with main's
+authoritative `.gitleaks.toml`) gives 4 live hits surviving, i.e. **75 retirable, 4 still
+load-bearing**, and 0 new unsilenced hits. The 4 survivors are exactly the fingerprinted files
+that are *not* in the scrub set:
+
+- `docs/guides/howto-deploy.md:live-domain-apex:15` — a public-release guide naming the live
+  apex in a table defining what "live" means. B1's scrub set should probably grow to include it.
+- `docs/reports/nwp-deep-audit-2026-07-09.md:operator-personal-email:304`
+- `docs/reports/nwp-deep-audit-recommendations-2026-07-09.md:operator-personal-email:462`
+- `docs/reports/consolidation-arc-2026-07/ssc-118-artifact/ops-118-moodle-art9-gate.patch:operator-personal-email:2`
+
+Note *why* those three survive: `^docs/reports/.*` is in the SHARED-EXEMPTIONS block, but that
+block is carried by only 7 of the 8 rules — `operator-personal-email` deliberately carries no
+path exemptions, because a personal address is never legitimate. That is correct design, and it
+means those three are real public-release IOUs that B1's current scope does not cover.
+
+**Two gitleaks behaviours found while measuring, both of which can silently blind a scan:**
+
+1. `--gitleaks-ignore-path` does **not** override a `.gitleaksignore` sitting at the scan root.
+   Pointing it at an empty file while the real one is on disk returns 0 findings — the root file
+   is honoured anyway. Measured on 8.21.2: source `.` with the file present = 0 findings; the
+   same command with the file physically deleted = 111. Any future tooling that tries to get an
+   un-silenced baseline via that flag will get a confident, wrong "clean".
+2. Scan-source form changes the reported path, and the rule `paths` exemptions are anchored
+   repo-relative (`^docs/reports/.*`). An **absolute** scan source yields absolute paths that
+   match no exemption and over-reports wildly — 1131 findings for `docs/` versus 82 for the same
+   files scanned repo-relative. Errs loud, not silent, but it will send someone chasing ghosts.
+
+**What did change:** `scripts/gitleaksignore-audit.sh` — read-only, not wired into CI. It
+exports the tree at a ref, scans the subtree twice (ignore file present, ignore file physically
+removed), and classifies every fingerprint LOAD-BEARING / STALE / UNSILENCED. Exit 0 exact,
+1 stale, 2 unsilenced, 3 CANNOT VERIFY. Exit 3 is fail-closed on a missing `gitleaks`/`jq` and
+on the two scans disagreeing, matching the `boundary:classify` posture that "I cannot see" beats
+"all clear". It carries a `--self-test` negative control that plants an impossible fingerprint
+(line 999999, must be called STALE) and removes a real one (its finding must surface as
+UNSILENCED); without both, a classifier that hardcoded "everything is load-bearing" would score
+100% on today's tree, since today everything *is* load-bearing.
+
+**Deliberately not done:** no edit to `.gitleaksignore`, `.gitleaks.toml`, `.gitlab-ci.yml`, or
+`tests/unit/test-leakage-gate.bats` — the hardening workflow owns the gate and its paired test.
+No CI job was added; a gate that needs a `gitleaks` binary and 5s of scanning should not be
+bolted onto other people's MRs without that workflow's consent.
+
+**Reversible-how:** delete `scripts/gitleaksignore-audit.sh`. Nothing else was touched, no
+live site or server was involved, so no rollback-registry row was required.
+
+**Follow-up before merge (2026-07-27, same defect class as CP-20260727-pubrelfailopen):** `scan()`
+in this script had the *same* fail-open shape as `pubrel_scan` — it ran gitleaks inside
+`( … >/dev/null 2>&1 )`, discarded the exit status, and substituted an empty report (`[]`) when
+nothing was written. Here that default is worse than "reports clean": with zero live findings
+every declared fingerprint classifies **STALE**, and this script's own documented workflow is
+"delete ONLY the lines it prints under `-- stale --`". Demonstrated with a stub scanner that exits
+2 and writes nothing: `79 declared / 0 live / 79 STALE "IOU paid — safe to retire"` — a scanner
+that merely failed to start would have instructed the operator to delete all 79 suppressions and
+un-silence 79 real leaks. `scan()` now captures the rc (0/1 are verdicts, anything else is an
+error), refuses an absent report, and requires the report to parse as a JSON array; all three
+exit 3 CANNOT VERIFY. Verified: the stub run now exits 3, the real run is unchanged, and
+`--self-test` still passes both controls.
+
+**What it measured across the !197 merge (the workflow this script was written for, run end to
+end).** Before !197 landed, against `docs/`: 79 declared / 78 load-bearing / 1 stale / **1
+unsilenced** (`docs/guides/ops81-erasure-channel.md:live-domain-apex:98`) — so it refused to
+classify at all (exit 3), correctly, because the two scans disagreed. After !197 merged: **4
+declared / 4 live / 4 LOAD-BEARING / 0 stale / 0 unsilenced, exit 0.** The 75 IOUs the scrub was
+supposed to retire are gone, the 4 that remain are each still holding back a real finding, and
+nothing was left un-silenced. That is an independent confirmation of !197's scrub by a different
+mechanism than !197's own tests — and it is a confirmation this script could not have made
+honestly before the fail-closed fix above, because a failed scan would have reported all 79 as
+STALE. The script stays a manual tool; it is not wired into CI.
+
+## [2026-07-27] merge-queue-keep-both-is-not-safe-for-structured-files
+**Decision:** recorded because it nearly shipped a permanently-hung CI job.
+Resolving the `.gitlab-ci.yml` conflict in !206 with the arc's standard
+**KEEP-BOTH-SIDES** rule concatenated this branch's `lint:registry-ids` block with main's
+`lint:snapshot-bundles` block. The conflict region ended *before* the shared trailing
+`rules:` / `tags:` / `allow_failure:` lines, so those attached to `lint:snapshot-bundles`
+only and `lint:registry-ids` was left with **no `tags:`**.
+**Why the existing zero-loss check did not catch it:** the `comm`-against-both-parents proof
+is **line-based**. Every line was still present — just bound to the wrong YAML key. Line
+presence is not structure preservation.
+**How it surfaced:** the job sat `pending` for 1205s while every other `lint:` job finished in
+~3s. `tag_list: []` against the `met-shell` runner, which only accepts `nwp`-tagged jobs. Merged,
+it would have been a blocking job that no runner could ever claim — on every MR.
+**New rule for structured files (YAML/JSON/TOML) in this arc:** after resolving, parse BOTH
+parents and the result and diff them **as data**, not as lines — assert no top-level key is
+missing and report every key whose value changed, expecting only the deliberate ones. Doing that
+here showed exactly one legitimate change (`test:unit.variables`) and zero missing jobs.
+**Reversible-how:** `git revert -m 1 <merge>`.

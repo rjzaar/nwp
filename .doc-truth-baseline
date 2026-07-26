@@ -5,15 +5,303 @@
 # line to it is a decision, not housekeeping — record it in
 # docs/reports/consolidation-arc-2026-07/decision-log.md.
 #
-# The 29 `raw-remote-cli` entries below were baselined by programme item 9
-# (2026-07-26) when that rule landed. Item 9's OWN territory,
-# docs/guides/art9-golive-runbook.md, was FIXED not baselined: it now prescribes
-# `pl drush` / `pl moodle cli` throughout and produces ZERO hits. The remaining
-# files belong to other territories; converting them is follow-up work, and the
-# gate now stops any NEW raw remote one-liner from entering a runbook.
+# Composition (2026-07-26): 262 dead-command-ref · 102 dead-link · 28 raw-remote-cli.
+#
+# The 28 `raw-remote-cli` entries were baselined when that rule landed. The
+# 262 `dead-command-ref` entries were baselined by fix-programme item 9
+# (`docs-pl-first`) when THAT rule landed — the honest size of the debt: five
+# root scripts (./backup.sh, ./restore.sh, ./dev2stg.sh, ./stg2prod.sh,
+# ./report.sh) were deleted when everything moved behind `pl`, and the docs
+# never followed.
+#
+# BURNED DOWN, NOT BASELINED, by item 9 (these files now produce ZERO
+# dead-command-ref hits — that is asserted by tests/unit/test-doc-truth.bats,
+# so they cannot silently regress):
+#   docs/guides/art9-golive-runbook.md      (`pl deploy` → `pl stg2live --code-only`)
+#   docs/guides/training-booklet.md
+#   docs/guides/developer-workflow.md
+#   docs/guides/working-with-claude-securely.md
+#   docs/guides/migration-sites-tracking.md
+#   docs/guides/coder-onboarding.md
+#   docs/guides/setup.md
+#
+# The remainder are ADRs, proposals and reports describing verbs that were
+# never built (`pl tier-up`, `pl llm-host`, `pl video`, …). They live here —
+# visible and countable — rather than behind a directory-wide exemption, which
+# is how the previous version of this gate stayed green while the onboarding
+# path rotted. Converting them is follow-up work; the gate now stops any NEW
+# dead command reference from entering a doc.
+#
+# A doc that legitimately needs to NAME a retired command (to say "it was
+# removed, use pl x instead") puts `<!-- doc-truth:retired -->` on that line
+# rather than adding a baseline entry.
 #
 # NOTE: `pl doc-truth --baseline` REGENERATES this file and will drop this
 # header. Re-add it after regenerating.
+dead-command-ref|CHANGELOG.md|pl ai-host
+dead-command-ref|CONTRIBUTING.md|./tests/run-tests.sh
+dead-command-ref|docs/COMMAND_INVENTORY.md|./bootstrap-coder.sh
+dead-command-ref|docs/COMMAND_INVENTORY.md|pl ai-host
+dead-command-ref|docs/COMMAND_INVENTORY.md|./report.sh
+dead-command-ref|docs/decisions/0007-verification-schema-v2-design.md|./migrate-verification-v2.sh
+dead-command-ref|docs/decisions/0008-recipe-system-architecture.md|./../lib/install-common.sh
+dead-command-ref|docs/decisions/0009-five-layer-yaml-protection.md|./../lib/yaml-write.sh
+dead-command-ref|docs/decisions/0010-tui-framework-design.md|./../lib/checkbox.sh
+dead-command-ref|docs/decisions/0010-tui-framework-design.md|./../lib/tui.sh
+dead-command-ref|docs/decisions/0013-four-state-deployment-model.md|./../scripts/commands/stg2live.sh
+dead-command-ref|docs/decisions/0014-git-hooks-documentation-enforcement.md|./setup.sh
+dead-command-ref|docs/decisions/0015-yq-first-awk-fallback-pattern.md|./../lib/yaml-write.sh
+dead-command-ref|docs/decisions/0018-twilio-bounded-saas-for-pstn.md|pl deploy
+dead-command-ref|docs/decisions/0019-verifier-always-on-hardware-rooted-keys.md|pl deploy
+dead-command-ref|docs/decisions/0020-tiered-architecture-model.md|pl ai
+dead-command-ref|docs/decisions/0020-tiered-architecture-model.md|pl tier
+dead-command-ref|docs/decisions/0020-tiered-architecture-model.md|pl tier-down
+dead-command-ref|docs/decisions/0020-tiered-architecture-model.md|pl tier-up
+dead-command-ref|docs/decisions/0022-nwp-verifier-binary-split.md|pl ai
+dead-command-ref|docs/decisions/0022-nwp-verifier-binary-split.md|pl bootstrap
+dead-command-ref|docs/decisions/0022-nwp-verifier-binary-split.md|pl ci
+dead-command-ref|docs/decisions/0022-nwp-verifier-binary-split.md|pl deploy
+dead-command-ref|docs/decisions/0025-production-backup-to-ver.md|pl build-server
+dead-command-ref|docs/decisions/0026-nwp-server-capability-agent.md|pl build-server
+dead-command-ref|docs/decisions/0031-paired-site-versioning-and-promotion.md|pl gitlab
+dead-command-ref|docs/deployment/advanced-deployment.md|./linode/server_scripts/nwp-healthcheck.sh
+dead-command-ref|docs/deployment/cicd.md|./backup.sh
+dead-command-ref|docs/deployment/cicd.md|./linode_deploy.sh
+dead-command-ref|docs/deployment/cicd.md|./linode/gitlab/setup_gitlab_site.sh
+dead-command-ref|docs/deployment/cicd.md|./restore.sh
+dead-command-ref|docs/deployment/cicd.md|./testos.sh
+dead-command-ref|docs/deployment/disaster-recovery.md|./linode/server_scripts/nwp-bootstrap.sh
+dead-command-ref|docs/deployment/disaster-recovery.md|./nwp-rollback.sh
+dead-command-ref|docs/deployment/disaster-recovery.md|./nwp-test-deploy.sh
+dead-command-ref|docs/deployment/disaster-recovery.md|./nwp-verify-backup.sh
+dead-command-ref|docs/deployment/environments.md|./dev2stg.sh
+dead-command-ref|docs/deployment/environments.md|./stg2prod.sh
+dead-command-ref|docs/deployment/git-backup-recommendations.md|./backup.sh
+dead-command-ref|docs/deployment/linode-deployment.md|./linode-backup.sh
+dead-command-ref|docs/deployment/linode-deployment.md|./linode-deploy.sh
+dead-command-ref|docs/deployment/linode-deployment.md|./linode-destroy.sh
+dead-command-ref|docs/deployment/linode-deployment.md|./linode-provision.sh
+dead-command-ref|docs/deployment/linode-deployment.md|./linode-rollback.sh
+dead-command-ref|docs/deployment/linode-deployment.md|./linode-swap.sh
+dead-command-ref|docs/deployment/linode-deployment.md|./testos.sh
+dead-command-ref|docs/deployment/production-deployment.md|./stg2prod.sh
+dead-command-ref|docs/deployment/ssh-setup.md|./dev2stg.sh
+dead-command-ref|docs/deployment/ssh-setup.md|./setup-ssh.sh
+dead-command-ref|docs/deployment/ssh-setup.md|./stg2prod.sh
+dead-command-ref|docs/governance/core-developer-onboarding.md|./coder-setup.sh
+dead-command-ref|docs/governance/core-developer-onboarding.md|./coders.sh
+dead-command-ref|docs/governance/core-developer-onboarding.md|./scripts/validate-request.sh
+dead-command-ref|docs/governance/roadmap.md|pl llm
+dead-command-ref|docs/governance/roadmap.md|pl llm-host
+dead-command-ref|docs/governance/roadmap.md|pl video
+dead-command-ref|docs/governance/roadmap.md|pl video-server
+dead-command-ref|docs/governance/roles.md|./coders.sh
+dead-command-ref|docs/guides/local-llm.md|pl llm
+dead-command-ref|docs/guides/local-llm.md|pl llm-host
+dead-command-ref|docs/guides/local-llm.md|./start_linux.sh
+dead-command-ref|docs/guides/mayo-avc-integration.md|./bluegreen-swap.sh
+dead-command-ref|docs/guides/mayo-avc-integration.md|./verifier-deploy.sh
+dead-command-ref|docs/guides/moodle-promotion-substrate.md|./../lib/moodle-promote.sh
+dead-command-ref|docs/guides/moodle-promotion-substrate.md|./../scripts/commands/moodle-promote.sh
+dead-command-ref|docs/guides/moodle-promotion-substrate.md|./../scripts/commands/moodle-smoke.sh
+dead-command-ref|docs/guides/nwc-ssc-architecture.md|./../lib/boundary.sh
+dead-command-ref|docs/guides/nwc-ssc-architecture.md|./../lib/canonical.sh
+dead-command-ref|docs/guides/nwc-ssc-architecture.md|./../lib/pair.sh
+dead-command-ref|docs/guides/nwp-server-operations.md|pl build-server
+dead-command-ref|docs/guides/nwp-single-machine.md|pl build-server
+dead-command-ref|docs/guides/ops74-versioning-scheme.md|./../scripts/commands/tag-hygiene.sh
+dead-command-ref|docs/guides/ops75-pair-contract-schema.md|./../lib/pair.sh
+dead-command-ref|docs/guides/ops75-pair-contract-schema.md|pl gitlab
+dead-command-ref|docs/guides/ops75-pair-contract-schema.md|./../scripts/commands/pair.sh
+dead-command-ref|docs/guides/ops75-pair-contract-schema.md|./../scripts/commands/pair-smoke.sh
+dead-command-ref|docs/guides/production-site-integration.md|./verifier-deploy.sh
+dead-command-ref|docs/guides/README.md|pl build-server
+dead-command-ref|docs/guides/using-nwp.md|pl apply
+dead-command-ref|docs/guides/using-nwp.md|pl build-server
+dead-command-ref|docs/guides/using-nwp.md|pl pull
+dead-command-ref|docs/guides/using-nwp.md|pl ver-pull
+dead-command-ref|docs/guides/ver-provisioning-runbook.md|pl build-server
+dead-command-ref|docs/guides/ver-setup.md|pl apply
+dead-command-ref|docs/guides/ver-setup.md|pl build-server
+dead-command-ref|docs/guides/ver-setup.md|pl pull
+dead-command-ref|docs/guides/ver-setup.md|pl ver-pull
+dead-command-ref|docs/history/P54-verification-fixes/test-nwp-equivalents.md|pl command
+dead-command-ref|docs/projects/podcast/podcast-setup.md|./podcast.sh
+dead-command-ref|docs/projects/podcast/podcast-setup.md|./setup-ssh.sh
+dead-command-ref|docs/proposals/API_CLIENT_ABSTRACTION.md|./scripts/audit-api-calls.sh
+dead-command-ref|docs/proposals/API_CLIENT_ABSTRACTION.md|./tests/integration/test-linode.sh
+dead-command-ref|docs/proposals/codercommands.md|pl coder
+dead-command-ref|docs/proposals/CODER_IDENTITY_BOOTSTRAP.md|./bootstrap-coder.sh
+dead-command-ref|docs/proposals/CODER_IDENTITY_BOOTSTRAP.md|./coder-setup.sh
+dead-command-ref|docs/proposals/F08-dynamic-badges.md|./../lib/git.sh
+dead-command-ref|docs/proposals/F08-dynamic-badges.md|./../scripts/commands/coder-setup.sh
+dead-command-ref|docs/proposals/F08-dynamic-badges.md|./scripts/commands/test-nwp.sh
+dead-command-ref|docs/proposals/F08-dynamic-badges.md|./../scripts/commands/verify.sh
+dead-command-ref|docs/proposals/F08-dynamic-badges.md|./setup.sh
+dead-command-ref|docs/proposals/F08-dynamic-badges.md|./test-nwp.sh
+dead-command-ref|docs/proposals/F08-dynamic-badges.md|./verify.sh
+dead-command-ref|docs/proposals/F09-comprehensive-testing.md|./backup.sh
+dead-command-ref|docs/proposals/F09-comprehensive-testing.md|./copy.sh
+dead-command-ref|docs/proposals/F09-comprehensive-testing.md|./dev2stg.sh
+dead-command-ref|docs/proposals/F09-comprehensive-testing.md|./install.sh
+dead-command-ref|docs/proposals/F09-comprehensive-testing.md|./make.sh
+dead-command-ref|docs/proposals/F09-comprehensive-testing.md|./restore.sh
+dead-command-ref|docs/proposals/F09-comprehensive-testing.md|./../scripts/commands/test-nwp.sh
+dead-command-ref|docs/proposals/F09-comprehensive-testing.md|./scripts/commands/test-nwp.sh
+dead-command-ref|docs/proposals/F09-comprehensive-testing.md|./tests/e2e/cleanup.sh
+dead-command-ref|docs/proposals/F09-comprehensive-testing.md|./tests/e2e/provision-and-test.sh
+dead-command-ref|docs/proposals/F09-comprehensive-testing.md|./tests/tui/run-all.sh
+dead-command-ref|docs/proposals/F13-timezone-configuration.md|./fin/deploy-fin-monitor.sh
+dead-command-ref|docs/proposals/F15-ssh-user-management.md|pl migrate-ssh-config
+dead-command-ref|docs/proposals/F15-ssh-user-management.md|pl server-audit
+dead-command-ref|docs/proposals/F15-ssh-user-management.md|pl server-update-sudo
+dead-command-ref|docs/proposals/F17-project-separation.md|pl auth
+dead-command-ref|docs/proposals/F17-project-separation.md|pl deploy
+dead-command-ref|docs/proposals/F17-project-separation.md|pl rebuild
+dead-command-ref|docs/proposals/F17-project-separation.md|pl update
+dead-command-ref|docs/proposals/F18-unified-backup-strategy.md|pl auth
+dead-command-ref|docs/proposals/F18-unified-backup-strategy.md|pl rebuild
+dead-command-ref|docs/proposals/F19-baseline-reset-cleanup.md|./linode/gitlab/gitlab_setup.sh
+dead-command-ref|docs/proposals/F21-distributed-build-deploy-pipeline.md|pl ai-host
+dead-command-ref|docs/proposals/F21-distributed-build-deploy-pipeline.md|pl deploy
+dead-command-ref|docs/proposals/F21-distributed-build-deploy-pipeline.md|pl llm
+dead-command-ref|docs/proposals/F21-distributed-build-deploy-pipeline.md|pl sanitizer
+dead-command-ref|docs/proposals/F23-site-environment-layout.md|./../lib/project-resolver.sh
+dead-command-ref|docs/proposals/F24-relocate-dev-tree-to-mirror-store.md|pl cleanup
+dead-command-ref|docs/proposals/F28-unified-pipeline.md|./lib/packages-upload.sh
+dead-command-ref|docs/proposals/F28-unified-pipeline.md|pl deploy
+dead-command-ref|docs/proposals/F29-mayo-comprehensive-integration.md|./build-example-site.sh
+dead-command-ref|docs/proposals/F29-mayo-comprehensive-integration.md|pl example
+dead-command-ref|docs/proposals/F30-content-federation-network.md|./tools/build-site-courses.sh
+dead-command-ref|docs/proposals/F32-tiered-architecture-implementation.md|pl ai
+dead-command-ref|docs/proposals/F32-tiered-architecture-implementation.md|pl build-server
+dead-command-ref|docs/proposals/F32-tiered-architecture-implementation.md|pl ci
+dead-command-ref|docs/proposals/F32-tiered-architecture-implementation.md|pl tier
+dead-command-ref|docs/proposals/F32-tiered-architecture-implementation.md|pl tier-down
+dead-command-ref|docs/proposals/F32-tiered-architecture-implementation.md|pl tier-up
+dead-command-ref|docs/proposals/F33-repository-topology-refactor.md|pl deploy
+dead-command-ref|docs/proposals/F36-comprehensive-codebase-improvements.md|./install.sh
+dead-command-ref|docs/proposals/F36-handover-2026-05-19.md|./install.sh
+dead-command-ref|docs/proposals/P50-layered-verification-system.md|pl test-nwp
+dead-command-ref|docs/proposals/P50-layered-verification-system.md|./scripts/commands/test-nwp.sh
+dead-command-ref|docs/proposals/X02-local-voice-agent.md|pl deploy
+dead-command-ref|docs/proposals/YAML_PARSER_CONSOLIDATION.md|pl cloudflare
+dead-command-ref|docs/proposals/YAML_PARSER_CONSOLIDATION.md|pl linode
+dead-command-ref|docs/proposals/YAML_PARSER_CONSOLIDATION.md|pl validate
+dead-command-ref|docs/reference/backup-implementation.md|./backup.sh
+dead-command-ref|docs/reference/backup-implementation.md|./restore.sh
+dead-command-ref|docs/reference/commands/bootstrap-coder.md|./coder-setup.sh
+dead-command-ref|docs/reference/commands/bootstrap-coder.md|./setup-ssh.sh
+dead-command-ref|docs/reference/commands/coder-setup.md|./setup-ssh.sh
+dead-command-ref|docs/reference/commands/migrate-secrets.md|./migrate-secrets.sh
+dead-command-ref|docs/reference/commands/migration.md|./migration.sh
+dead-command-ref|docs/reference/commands/migration.md|./../../scripts/commands/install.sh
+dead-command-ref|docs/reference/commands/migration.md|./scripts/import.sh
+dead-command-ref|docs/reference/commands/podcast.md|./../../scripts/commands/setup-ssh.sh
+dead-command-ref|docs/reference/commands/podcast.md|./setup-ssh.sh
+dead-command-ref|docs/reference/commands/produce.md|pl develop
+dead-command-ref|docs/reference/commands/produce.md|pl stage
+dead-command-ref|docs/reference/commands/schedule.md|./backup.sh
+dead-command-ref|docs/reference/commands/setup.md|./../../scripts/commands/install.sh
+dead-command-ref|docs/reference/commands/sync.md|./scripts/import.sh
+dead-command-ref|docs/reference/commands/test-nwp.md|./scripts/commands/test-nwp.sh
+dead-command-ref|docs/reference/commands/test-nwp.md|./setup-ssh.sh
+dead-command-ref|docs/reference/commands/upstream.md|./../../scripts/commands/contribute.sh
+dead-command-ref|docs/reference/features.md|./backup.sh
+dead-command-ref|docs/reference/features.md|./copy.sh
+dead-command-ref|docs/reference/features.md|./delete.sh
+dead-command-ref|docs/reference/features.md|./dev2stg.sh
+dead-command-ref|docs/reference/features.md|./gitlab_create_server.sh
+dead-command-ref|docs/reference/features.md|./linode/linode_create_test_server.sh
+dead-command-ref|docs/reference/features.md|./linode/linode_setup.sh
+dead-command-ref|docs/reference/features.md|./live.sh
+dead-command-ref|docs/reference/features.md|./make.sh
+dead-command-ref|docs/reference/features.md|./migrate-secrets.sh
+dead-command-ref|docs/reference/features.md|./modify.sh
+dead-command-ref|docs/reference/features.md|./prod2stg.sh
+dead-command-ref|docs/reference/features.md|./restore.sh
+dead-command-ref|docs/reference/features.md|./security.sh
+dead-command-ref|docs/reference/features.md|./setup_gitlab_site.sh
+dead-command-ref|docs/reference/features.md|./status.sh
+dead-command-ref|docs/reference/features.md|./stg2prod.sh
+dead-command-ref|docs/reference/features.md|./testos.sh
+dead-command-ref|docs/reference/features.md|./verify.sh
+dead-command-ref|docs/reference/nwp.yml.md|pl tier
+dead-command-ref|docs/reference/scripts-implementation.md|./backup.sh
+dead-command-ref|docs/reference/scripts-implementation.md|./copy.sh
+dead-command-ref|docs/reference/scripts-implementation.md|./dev2stg.sh
+dead-command-ref|docs/reference/scripts-implementation.md|./make.sh
+dead-command-ref|docs/reference/scripts-implementation.md|./restore.sh
+dead-command-ref|docs/reports/CODER_IDENTITY_BOOTSTRAP_IMPLEMENTATION.md|./bootstrap-coder.sh
+dead-command-ref|docs/reports/CODER_IDENTITY_BOOTSTRAP_IMPLEMENTATION.md|./coder-setup.sh
+dead-command-ref|docs/reports/implementation-consolidation.md|./live2prod.sh
+dead-command-ref|docs/reports/implementation-consolidation.md|./scripts/commands/test-nwp.sh
+dead-command-ref|docs/reports/milestones.md|pl deploy
+dead-command-ref|docs/reports/milestones.md|pl llm-host
+dead-command-ref|docs/reports/milestones.md|pl test-nwp
+dead-command-ref|docs/reports/P54-IMPLEMENTATION-PLAN.md|./make.sh
+dead-command-ref|docs/reports/P54-IMPLEMENTATION-PLAN.md|./modify.sh
+dead-command-ref|docs/reports/P54-IMPLEMENTATION-PLAN.md|./test.sh
+dead-command-ref|docs/reports/version-changes.md|./delete.sh
+dead-command-ref|docs/reports/version-changes.md|./install.sh
+dead-command-ref|docs/reports/version-changes.md|./setup.sh
+dead-command-ref|docs/reports/version-changes.md|./status.sh
+dead-command-ref|docs/reports/version-changes.md|./vortex/scripts/generate-ddev.sh
+dead-command-ref|docs/reports/version-changes.md|./vortex/scripts/generate-env.sh
+dead-command-ref|docs/security/data-security-best-practices.md|./backup.sh
+dead-command-ref|docs/security/data-security-best-practices.md|./linode/gitlab/gitlab_harden.sh
+dead-command-ref|docs/security/data-security-best-practices.md|./migrate-secrets.sh
+dead-command-ref|docs/security/data-security-best-practices.md|./prod2stg.sh
+dead-command-ref|docs/security/data-security-best-practices.md|./security.sh
+dead-command-ref|docs/security/design-decisions.md|pl provision
+dead-command-ref|docs/SECURITY.md|pl audit-access
+dead-command-ref|docs/SECURITY.md|pl audit-logs
+dead-command-ref|docs/SECURITY.md|pl backup-logs
+dead-command-ref|docs/SECURITY.md|pl deploy
+dead-command-ref|docs/SECURITY.md|pl rotate-secrets
+dead-command-ref|docs/SECURITY.md|pl server-scan
+dead-command-ref|docs/SECURITY.md|pl ssh
+dead-command-ref|docs/SECURITY.md|pl update
+dead-command-ref|docs/testing/human-testing.md|./dev2stg.sh
+dead-command-ref|docs/testing/human-testing.md|./nwp-audit.sh
+dead-command-ref|docs/testing/human-testing.md|./nwp-bluegreen-deploy.sh
+dead-command-ref|docs/testing/human-testing.md|./nwp-bootstrap.sh
+dead-command-ref|docs/testing/human-testing.md|./nwp-canary.sh
+dead-command-ref|docs/testing/human-testing.md|./nwp-healthcheck.sh
+dead-command-ref|docs/testing/human-testing.md|./nwp-monitor.sh
+dead-command-ref|docs/testing/human-testing.md|./nwp-perf-baseline.sh
+dead-command-ref|docs/testing/human-testing.md|./nwp-rollback.sh
+dead-command-ref|docs/testing/human-testing.md|./nwp-scheduled-backup.sh
+dead-command-ref|docs/testing/human-testing.md|./nwp-verify-backup.sh
+dead-command-ref|docs/testing/human-testing.md|./status.sh
+dead-command-ref|docs/testing/human-testing.md|./stg2prod.sh
+dead-command-ref|docs/testing/human-testing.md|./verify.sh
+dead-command-ref|docs/testing/testing.md|./backup.sh
+dead-command-ref|docs/testing/testing.md|./copy.sh
+dead-command-ref|docs/testing/testing.md|./restore.sh
+dead-command-ref|docs/testing/testing.md|./stg2prod.sh
+dead-command-ref|docs/testing/testing.md|./testos.sh
+dead-command-ref|docs/testing/verification-guide.md|./backup.sh
+dead-command-ref|docs/testing/verification-guide.md|./delete.sh
+dead-command-ref|docs/testing/verification-guide.md|./dev2stg.sh
+dead-command-ref|docs/testing/verification-guide.md|./modify.sh
+dead-command-ref|docs/testing/verification-guide.md|./report.sh
+dead-command-ref|docs/testing/verification-guide.md|./restore.sh
+dead-command-ref|docs/testing/verification-guide.md|./scriptname.sh
+dead-command-ref|docs/testing/verification-guide.md|./verify.sh
+dead-command-ref|docs/testing/verify-enhancements.md|./scripts/commands/migrate-verification-v2.sh
+dead-command-ref|KNOWN_ISSUES.md|pl test-nwp
+dead-command-ref|README.md|./servers/nwpcode/linode/gitlab/gitlab_create_server.sh
+dead-command-ref|README.md|./servers/nwpcode/linode/gitlab/gitlab_setup.sh
+dead-command-ref|README.md|./servers/nwpcode/linode/gitlab/gitlab_upload_stackscript.sh
+dead-command-ref|README.md|./setup_gitlab_site.sh
+dead-command-ref|scripts/f26/moodle/INSTALL.md|./provision-nwc-issuer.sh
+dead-command-ref|scripts/f26/moodle/INSTALL.md|./verify-nwc-issuer.sh
+dead-command-ref|tests/e2e/README.md|./tests/e2e/helpers/cleanup-helpers.sh
+dead-command-ref|tests/README.md|./scripts/commands/your-script.sh
+dead-command-ref|tests/README.md|./tests/e2e/helpers/cleanup-helpers.sh
+dead-link|CONTRIBUTING.md|docs/DISTRIBUTED_CONTRIBUTION_GOVERNANCE.md
+dead-link|CONTRIBUTING.md|docs/ROLES.md
 dead-link|docs/decisions/0022-nwp-verifier-binary-split.md|../reference/reproducible-build.md
 dead-link|docs/decisions/0022-nwp-verifier-binary-split.md|../tiers/tier-4-add-verifier.md
 dead-link|docs/deployment/advanced-deployment.md|DEPLOYMENT.md
@@ -108,7 +396,12 @@ dead-link|docs/testing/verification-guide.md|../../linode/gitlab/GITLAB_MIGRATIO
 dead-link|docs/testing/verification-guide.md|../../linode/gitlab/README.md
 dead-link|docs/testing/verification-guide.md|../../linode/README.md
 dead-link|docs/testing/verify-enhancements.md|TESTING.md
+dead-link|KNOWN_ISSUES.md|docs/proposals/p53.md
 dead-link|README.md|docs/reference/deployment-workflow-analysis.md
+dead-link|tests/e2e/README.md|../../docs/COMPREHENSIVE_TESTING_PROPOSAL.md
+dead-link|tests/e2e/README.md|../../docs/TESTING.md
+dead-link|tests/README.md|../docs/COMPREHENSIVE_TESTING_PROPOSAL.md
+dead-link|tests/README.md|../docs/TESTING.md
 raw-remote-cli|docs/CONFIG_AS_CODE.md|L33
 raw-remote-cli|docs/deployment/advanced-deployment.md|L758
 raw-remote-cli|docs/deployment/advanced-deployment.md|L761
@@ -135,6 +428,5 @@ raw-remote-cli|docs/guides/verifier-operations.md|L243
 raw-remote-cli|docs/proposals/F24-relocate-dev-tree-to-mirror-store.md|L264
 raw-remote-cli|docs/reference/commands/migration.md|L153
 raw-remote-cli|docs/reference/commands/stg2prod.md|L343
-raw-remote-cli|docs/reports/consolidation-arc-2026-07/rollback-registry.md|L35
 raw-remote-cli|docs/testing/testing.md|L342
 raw-remote-cli|docs/testing/testing.md|L343

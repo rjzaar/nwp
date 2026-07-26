@@ -119,7 +119,7 @@ copy). When not in use, `ddev stop` reclaims all RAM.
   is sufficient for NWP's solo-dev, single-Linode setup. A server-side
   stg vhost adds maintenance cost with minimal benefit.
 - **Server-hosted staging.** Local DDEV stg/ is sufficient for NWP's
-  solo-dev, single-Linode setup. A server-side stg vhost on nwpcode.org
+  solo-dev, single-Linode setup. A server-side stg vhost on example.com
   adds maintenance cost with minimal benefit over local DDEV.
 - **Per-site git repo creation.** Whether `sites/ba/dev/` gets its own
   git repo is a per-site decision, not an NWP core concern. NWP should

@@ -997,6 +997,67 @@ _audit_body(){ # url header-name value  -> response body (token only via 0600 cf
   printf 'silent\nmax-time = 12\nurl = "%s"\nheader = "%s: %s"\n' "$1" "$2" "$3" > "$cfg"
   curl -K "$cfg" 2>/dev/null; rm -f "$cfg"
 }
+
+# Same request, but the HTTP STATUS is not thrown away.
+#
+# WHY THIS EXISTS. `_audit_body` returns the body and discards the status, and
+# `_probe_value` then said "no username in the body ⇒ DEAD". So EVERY non-200 —
+# a 429 rate-limit, a 502 from the box, a 12-second timeout, a captive-portal
+# HTML page — was rendered as `DEAD` / `REVOKED/INVALID`. Measured 2026-07-26:
+# `gitlab_bot_ci_audit` was reported DEAD while the identical probe run again
+# returned HTTP 200 with `username: project_11_bot_…`, i.e. a healthy
+# project-access token on ops/verifier-log. The token was fine; the verdict was
+# invented from a transient failure.
+#
+# That is the same defect as `--honesty` printing "clean" over a corpus it could
+# not see, only inverted: here the tool asserts a DEFINITE NEGATIVE it has no
+# evidence for. A credential audit that cries "revoked" at healthy tokens gets
+# ignored exactly as fast as one that stays green over a dead one — and this
+# audit runs daily from cron (scripts/secrets-daily-audit.sh).
+#
+# Echoes "<http_code>\n<body verbatim>". Read it with:
+#     out="$(_audit_status_body …)"
+#     code="${out%%$'\n'*}"    body="${out#*$'\n'}"
+#
+# STATUS FIRST, on its own line, and the body untouched after it. Two earlier
+# shapes of this helper were wrong, and both are worth remembering:
+#
+#   1. "<code>\t<body>" with the body's newlines folded by `tr '\n' '\x01'`.
+#      In single quotes that is the literal string \x01 and GNU tr has no \xNN
+#      escape, so it translated the SET {\, x, 0, 1} to newline — every 0, 1
+#      and x in the JSON became a line break, the body stopped parsing, and a
+#      HEALTHY token probed as "unparseable body". A body is arbitrary bytes:
+#      do not encode it.
+#   2. Returning the body and passing the status in a global. `$( )` runs in a
+#      SUBSHELL, so the global never reached the caller and EVERY probe read
+#      "000". That reads as UNKNOWN — fail-safe, but it would have made the
+#      whole audit permanently unverifiable.
+#
+# Status-first + "everything after the first newline" needs no encoding, no
+# global and no subshell escape: the code is exactly three digits on line 1.
+_audit_status_body(){ # url header-name value
+  local cfg out code; cfg=$(mktemp); chmod 600 "$cfg"
+  printf 'silent\nmax-time = 12\nurl = "%s"\nheader = "%s: %s"\nwrite-out = "\\n%%{http_code}"\n' \
+    "$1" "$2" "$3" > "$cfg"
+  out="$(curl -K "$cfg" 2>/dev/null)"; rm -f "$cfg"
+  code="${out##*$'\n'}"                 # curl appends the status last…
+  [[ "$code" =~ ^[0-9]{3}$ ]] || code="000"
+  printf '%s\n%s' "$code" "${out%$'\n'*}"   # …we re-emit it FIRST.
+}
+
+# Turn an HTTP status into a verdict about the CREDENTIAL.
+#   200        -> OK        the provider accepted it
+#   401 / 403  -> DEAD      the provider actively REJECTED it (revoked/expired)
+#   anything   -> UNKNOWN   we did not get an answer about the credential at all
+# 404 is UNKNOWN, not DEAD: `/personal_access_tokens/self` 404s for a PROJECT
+# access token, which says nothing about whether the token works.
+_audit_verdict(){ # http_code -> OK|DEAD|UNKNOWN
+  case "$1" in
+    200)     echo OK ;;
+    401|403) echo DEAD ;;
+    *)       echo UNKNOWN ;;
+  esac
+}
 _audit_code(){ # url full-header-prefix value  -> http_code only
   local cfg; cfg=$(mktemp); chmod 600 "$cfg"
   printf 'silent\noutput = "/dev/null"\nwrite-out = "%%{http_code}"\nmax-time = 12\nurl = "%s"\nheader = "%s %s"\n' "$1" "$2" "$3" > "$cfg"
@@ -1010,21 +1071,38 @@ _probe_value(){ # provider host value
   case "$prov" in
     gitlab)
       if [ -z "$host" ]; then note="no host"; else
-        local ujson pjson uname active revoked isadmin
-        ujson=$(_audit_body "https://$host/api/v4/user" "PRIVATE-TOKEN" "$val")
-        uname=$("$YQ" e -p=json '.username // ""' <<<"$ujson" 2>/dev/null | grep -v '^null$')
-        if [ -z "$uname" ]; then live="DEAD"; else
-          pjson=$(_audit_body "https://$host/api/v4/personal_access_tokens/self" "PRIVATE-TOKEN" "$val")
-          active=$("$YQ" e -p=json '.active // ""' <<<"$pjson" 2>/dev/null)
-          revoked=$("$YQ" e -p=json '.revoked // ""' <<<"$pjson" 2>/dev/null)
-          exp=$("$YQ" e -p=json '.expires_at // ""' <<<"$pjson" 2>/dev/null | grep -v '^null$')
-          isadmin=$("$YQ" e -p=json '.is_admin // ""' <<<"$ujson" 2>/dev/null | grep -v '^null$')
-          if [ "$revoked" = "true" ] || [ "$active" = "false" ]; then live="DEAD"; else live="OK"; fi
-          [ "$isadmin" = "true" ] && note="ADMIN "
+        local ucode ujson pjson uname active revoked isadmin
+        local _u; _u="$(_audit_status_body "https://$host/api/v4/user" "PRIVATE-TOKEN" "$val")"
+        ucode="${_u%%$'\n'*}"; ujson="${_u#*$'\n'}"; _u=""
+        live="$(_audit_verdict "$ucode")"
+        if [ "$live" = "UNKNOWN" ]; then
+          note="no verdict (HTTP $ucode) "
+        elif [ "$live" = "OK" ]; then
+          uname=$("$YQ" e -p=json '.username // ""' <<<"$ujson" 2>/dev/null | grep -v '^null$')
+          if [ -z "$uname" ]; then
+            # 200 but unparseable — still not evidence of revocation.
+            live="UNKNOWN"; note="no verdict (HTTP 200, unparseable body) "
+          else
+            # /personal_access_tokens/self is a PERSONAL-token endpoint; a
+            # PROJECT access token 404s here. Only trust it when it answers 200.
+            local pcode
+            local _p; _p="$(_audit_status_body "https://$host/api/v4/personal_access_tokens/self" "PRIVATE-TOKEN" "$val")"
+            pcode="${_p%%$'\n'*}"; pjson="${_p#*$'\n'}"; _p=""
+            if [ "$pcode" = "200" ]; then
+              active=$("$YQ" e -p=json '.active // ""' <<<"$pjson" 2>/dev/null)
+              revoked=$("$YQ" e -p=json '.revoked // ""' <<<"$pjson" 2>/dev/null)
+              exp=$("$YQ" e -p=json '.expires_at // ""' <<<"$pjson" 2>/dev/null | grep -v '^null$')
+              [ "$revoked" = "true" ] || [ "$active" = "false" ] && live="DEAD"
+            fi
+            isadmin=$("$YQ" e -p=json '.is_admin // ""' <<<"$ujson" 2>/dev/null | grep -v '^null$')
+            [ "$isadmin" = "true" ] && note="ADMIN "
+          fi
         fi
       fi ;;
-    github) [ "$(_audit_code "https://api.github.com/user" "Authorization: Bearer" "$val")" = "200" ] && live="OK" || live="DEAD" ;;
-    linode) [ "$(_audit_code "https://api.linode.com/v4/profile" "Authorization: Bearer" "$val")" = "200" ] && live="OK" || live="DEAD" ;;
+    github) live="$(_audit_verdict "$(_audit_code "https://api.github.com/user" "Authorization: Bearer" "$val")")"
+            [ "$live" = "UNKNOWN" ] && note="no verdict (transport/rate-limit) " ;;
+    linode) live="$(_audit_verdict "$(_audit_code "https://api.linode.com/v4/profile" "Authorization: Bearer" "$val")")"
+            [ "$live" = "UNKNOWN" ] && note="no verdict (transport/rate-limit) " ;;
     *) note="no live API (recorded-date only)" ;;
   esac
   printf '%s\t%s\t%s\n' "$live" "$exp" "$note"
@@ -1091,7 +1169,7 @@ cmd_audit(){
     printf "  %-26s %-7s %-9s %-12s %-12s %s\n" "--------------------------" "-------" "---------" "------------" "------------" "----"
   fi
 
-  local n i problems=0 dead=0 expiring=0 drift=0 badloc=0 jbuf=""
+  local n i problems=0 dead=0 expiring=0 drift=0 badloc=0 unknown=0 jbuf=""
   n=$("$YQ" e '.secrets | length' "$REGISTRY"); [ "$n" = "null" ] && n=0
   for ((i=0;i<n;i++)); do
     local id prov st recorded canon canonval canonhash live liveexp note col d useexp host
@@ -1185,6 +1263,11 @@ cmd_audit(){
     fi
     case "$live" in
       DEAD)    col="$RED"; dead=$((dead+1)); problems=$((problems+1)); note="REVOKED/INVALID ${note}" ;;
+      # UNKNOWN is NOT dead and NOT ok. The provider did not answer the question,
+      # so neither a green tick nor "REVOKED/INVALID" would be true. Surfaced in
+      # yellow and counted separately; it drives exit 2 (cannot verify), never
+      # exit 0 — a probe nobody could run must not read as a passing audit.
+      UNKNOWN) col="$YELLOW"; unknown=$((unknown+1)) ;;
       MISSING) col="$RED"; problems=$((problems+1)) ;;
       OK)      if   [ -n "$d" ] && [ "$d" -lt 0 ]      2>/dev/null; then col="$RED";    note="EXPIRED ${note}";        expiring=$((expiring+1)); problems=$((problems+1))
                elif [ -n "$d" ] && [ "$d" -le "$WARN" ] 2>/dev/null; then col="$YELLOW"; note="expires in ${d}d ${note}"; expiring=$((expiring+1)); problems=$((problems+1))
@@ -1238,12 +1321,21 @@ cmd_audit(){
     jq -n --argjson e "[${jbuf}]" --argjson p "$problems" \
       '{problems:$p,entries:$e}'
   elif [ "$QUIET" = 0 ]; then
-    echo; printf "  %d dead · %d expiring(≤%dd) · %d drifted location(s) · %d unparseable location(s)\n" \
-      "$dead" "$expiring" "$WARN" "$drift" "$badloc"
-    [ "$problems" -eq 0 ] && print_success "every token valid, and every declared location matches canonical" \
-      || print_hint "propagate canonical to every location: pl secrets sync <id>   ·   reissue: pl secrets steps <id>"
+    echo; printf "  %d dead · %d unverifiable · %d expiring(≤%dd) · %d drifted location(s) · %d unparseable location(s)\n" \
+      "$dead" "$unknown" "$expiring" "$WARN" "$drift" "$badloc"
+    if [ "$problems" -gt 0 ]; then
+      print_hint "propagate canonical to every location: pl secrets sync <id>   ·   reissue: pl secrets steps <id>"
+    elif [ "$unknown" -gt 0 ]; then
+      print_warning "CANNOT VERIFY ${unknown} token(s) — the provider gave no verdict (rate-limit, 5xx or timeout)."
+      print_hint    "This is NOT a clean audit. Re-run when the provider is answering; nothing here says a token is bad."
+    else
+      print_success "every token valid, and every declared location matches canonical"
+    fi
   fi
-  [ "$problems" -gt 0 ] && return 1 || return 0
+  # 1 = a real problem · 2 = cannot verify · 0 = verified clean.
+  [ "$problems" -gt 0 ] && return 1
+  [ "$unknown"  -gt 0 ] && return 2
+  return 0
 }
 
 ################################################################################

@@ -177,6 +177,28 @@ _registry_resolve() {
     return 1
 }
 
+# Is this artifact in version control? Asked of the repo that OWNS the file,
+# which is not necessarily the one holding the registry: nested site repos keep
+# their own backups, and asking the wrong checkout returns a confident "no" for
+# a file that is tracked next door.
+_artifact_is_tracked() {
+    local f="$1" repo rel
+    repo="$(git -C "$(dirname "$f")" rev-parse --show-toplevel 2>/dev/null || true)"
+    [ -n "$repo" ] || return 1
+    rel="$(realpath --relative-to="$repo" "$f" 2>/dev/null || printf '%s' "$f")"
+    git -C "$repo" ls-files --error-unmatch -- "$rel" >/dev/null 2>&1
+}
+
+# Does the repo's own policy forbid committing this path? Read from git, not
+# from a glob list duplicated here — a duplicated list drifts, and the whole
+# point is that the containment rules are the single source of truth.
+_artifact_is_ignored() {
+    local f="$1" repo
+    repo="$(git -C "$(dirname "$f")" rev-parse --show-toplevel 2>/dev/null || true)"
+    [ -n "$repo" ] || return 1
+    git -C "$repo" check-ignore -q -- "$f" 2>/dev/null
+}
+
 cmd_registry_check() {
     local reg; reg="$(_registry_file)"
     if [ ! -f "$reg" ]; then
@@ -248,6 +270,61 @@ cmd_registry_check() {
                 continue
             fi
 
+            # SURVIVABILITY, asked before integrity — they are different
+            # questions and the sidecar only answers the second one.
+            #
+            # A `.sha256` sidecar proves the bytes have not rotted. It says
+            # nothing about whether the bytes still exist after `git clean
+            # -xfd`, a pruned worktree or a reimaged laptop — and the sidecar
+            # is untracked in exactly the cases the artifact is, so the check
+            # was comparing a file against its own untracked shadow and
+            # reporting OK. That is how CP17 sat green in this ledger while its
+            # tarball was one `git clean` from gone.
+            #
+            # `register` now refuses such a row at the front door, but every
+            # row written before that guard existed came in unchecked, and the
+            # ledger is read at the worst possible moment by someone who needs
+            # the artifact to still be there.
+            #
+            # The repo is derived from the ARTIFACT's own directory, not from
+            # PROJECT_ROOT: registry and artifact are not always in the same
+            # checkout (nested site repos hold their own backups), and asking
+            # the wrong repo about a path returns "not tracked" for a file that
+            # is perfectly well tracked next door.
+            local durable=1
+            if ! _artifact_is_tracked "$resolved"; then
+                durable=0
+                # TWO DIFFERENT DEFECTS WITH TWO DIFFERENT REMEDIES, and
+                # conflating them would be actively dangerous.
+                #
+                # If the repo's own ignore policy excludes this path, "commit
+                # it" is the WRONG advice: these are database dumps and files
+                # tarballs, and committing one is precisely the P0 already
+                # found in this estate (a 36 MB member-data .sql pushed to the
+                # forge, where no erasure request can reach it). Such an
+                # artifact cannot be made durable by git at all — it needs a
+                # second copy somewhere else, and the row needs to say where.
+                #
+                # Using `git check-ignore` rather than a glob list means the
+                # policy is read from the repo instead of duplicated here, so
+                # the two cannot drift apart.
+                if _artifact_is_ignored "$resolved"; then
+                    print_status "FAIL" "${row_id}: LAPTOP-ONLY — ${a} exists in exactly one place, and that place travels"
+                    print_info   "        Ignored by repo policy (it is member data) — do NOT commit it."
+                    print_info   "        Get a second copy off this machine, then re-record the row:"
+                    print_info   "          pl rollback register --cp=${row_id} --off-host --artifact=<host:path> --sha=<hex> ..."
+                else
+                    print_status "FAIL" "${row_id}: UNTRACKED — ${a} is on this disk but not in version control"
+                    print_info   "        A recovery point only this laptop holds is not a recovery point."
+                    print_info   "        Commit it, or re-record the row as off-host with a sha."
+                fi
+                problems=$((problems + 1))
+                # Deliberately NO `continue`. Survivability and integrity are
+                # independent questions and a row can be wrong in both ways at
+                # once; short-circuiting here would hide a stale sha behind an
+                # untracked artifact and force two round trips to learn it.
+            fi
+
             # Integrity: prefer the artifact's own .sha256 sidecar.
             sidecar="${resolved}.sha256"
             if [ -f "$sidecar" ]; then
@@ -265,14 +342,21 @@ cmd_registry_check() {
                     problems=$((problems + 1))
                     continue
                 fi
-                print_status "OK" "${row_id}: ${a}"
+                # Only claim OK if the row passed BOTH questions. An artifact
+                # that matches its sidecar but nothing durable holds is not an
+                # OK row, and printing OK under it is how the ledger looked
+                # green while its recovery points were one `git clean` away.
+                [ "$durable" -eq 1 ] && print_status "OK" "${row_id}: ${a}"
             else
-                # No sidecar: tracked-in-git is an acceptable integrity anchor.
-                if git -C "$PROJECT_ROOT" ls-files --error-unmatch "$a" >/dev/null 2>&1; then
+                # No sidecar. Git's own object hashing is the integrity anchor
+                # for a tracked file — a committed file that changed shows up
+                # as a diff. If it is not tracked, the durability branch above
+                # has already failed the row and there is nothing left to
+                # verify it with.
+                if [ "$durable" -eq 1 ]; then
                     print_status "OK" "${row_id}: ${a} (tracked in git)"
                 else
-                    print_status "WARN" "${row_id}: ${a} has no .sha256 sidecar and is not tracked — unverifiable"
-                    problems=$((problems + 1))
+                    print_info "        …and no .sha256 sidecar either, so nothing can verify it"
                 fi
             fi
         done <<< "$artifacts"
@@ -295,7 +379,7 @@ cmd_registry_check() {
 }
 
 cmd_register() {
-    local cp="" what="" artifact="" restore="" when
+    local cp="" what="" artifact="" restore="" when off_host=0 off_sha=""
     when="$(date +%Y-%m-%d)"
     local a
     for a in "$@"; do
@@ -305,12 +389,19 @@ cmd_register() {
             --artifact=*) artifact="${a#*=}" ;;
             --restore=*)  restore="${a#*=}" ;;
             --when=*)     when="${a#*=}" ;;
+            --off-host)   off_host=1 ;;
+            --sha=*)      off_sha="${a#*=}" ;;
             *) print_error "Unknown option: $a"; exit 1 ;;
         esac
     done
 
     [ -n "$cp" ]   || { print_error "--cp=CPn required";   exit 1; }
     [ -n "$what" ] || { print_error "--what=... required"; exit 1; }
+
+    if [ -n "$off_sha" ] && [ "$off_host" != 1 ]; then
+        print_error "--sha= is only meaningful with --off-host"
+        exit 1
+    fi
 
     local reg; reg="$(_registry_file)"
     [ -f "$reg" ] || { print_error "Registry not found: $reg"; exit 1; }
@@ -322,12 +413,51 @@ cmd_register() {
 
     # An artifact that cannot be located or verified is not a recovery point.
     local sha_note="—" resolved=""
-    if [ -n "$artifact" ]; then
+
+    # An artifact that lives on another host cannot be tracked here. It is still
+    # a legitimate recovery point, but it has to carry a recorded sha instead —
+    # which is exactly what `registry check` already demands of such rows. The
+    # flag is explicit so "off-host" is a decision someone made, not a state a
+    # typo can fall into.
+    if [ "$off_host" = 1 ]; then
+        [ -n "$artifact" ] || { print_error "--off-host requires --artifact="; exit 1; }
+        if ! printf '%s' "$off_sha" | grep -qE '^[0-9a-f]{8,}$'; then
+            print_error "--off-host requires --sha=<hex> (>=8 chars): an artifact nobody can reach here is trusted only by its recorded hash"
+            exit 1
+        fi
+        sha_note="\`${artifact}\` (off-host, sha \`${off_sha:0:8}…\`)"
+
+    elif [ -n "$artifact" ]; then
         if ! resolved="$(_registry_resolve "$artifact")"; then
             print_error "artifact not found: ${artifact}"
             print_info "Refusing to register a recovery point that does not resolve to a real file."
             exit 1
         fi
+
+        # TRACKEDNESS, not mere existence.
+        #
+        # Resolution only proves the file is on this laptop right now. CP17 was
+        # registered against a tarball that was on disk and untracked, so the
+        # ledger's integrity check was green while the artifact was one `git
+        # clean` from gone. The laptop is the machine we are least entitled to
+        # assume survives: it travels, and the fleet backup crons cover the box
+        # and the site DBs — not un-pushed local files.
+        local art_repo art_rel
+        art_repo="$(git -C "$(dirname "$resolved")" rev-parse --show-toplevel 2>/dev/null || true)"
+        if [ -z "$art_repo" ]; then
+            print_error "UNTRACKED: ${artifact} is not inside a git repository"
+            print_info "Commit it somewhere, or record it as --off-host --sha=<hex>."
+            exit 1
+        fi
+        art_rel="$(realpath --relative-to="$art_repo" "$resolved" 2>/dev/null || printf '%s' "$resolved")"
+        if ! git -C "$art_repo" ls-files --error-unmatch -- "$art_rel" >/dev/null 2>&1; then
+            print_error "UNTRACKED: ${artifact} exists on disk but is not in version control"
+            print_info "A recovery point that only exists locally is not a recovery point."
+            print_info "Fix:  git -C ${art_repo} add -- ${art_rel} && git commit"
+            print_info "Or, if it genuinely lives elsewhere: --off-host --sha=<hex>"
+            exit 1
+        fi
+
         local sidecar="${resolved}.sha256" sha
         sha=$(sha256sum "$resolved" | awk '{print $1}')
         if [ ! -f "$sidecar" ]; then

@@ -357,8 +357,11 @@ make_golden() {
 
 # The invite subcommand end-to-end (minus the site sync, which is non-fatal
 # and fails cleanly here — no ddev in the fixture).
+# --tier is REQUIRED for invite (demo_require_explicit_tier); these cases are
+# about the draft and the registry, so they name the local tier explicitly.
+# The refusal itself is covered further down.
 run_invite() {
-  run bash "$DEMO_CMD" invite demo1 "$@"
+  run bash "$DEMO_CMD" invite demo1 --tier=dev "$@"
 }
 
 @test "invite writes a 0600 draft under sites/<site>/demo-invites/" {
@@ -476,8 +479,15 @@ EOF
 }
 
 @test "reset ordering: harvest runs BEFORE the DB restore (static)" {
-  harvest_line=$(grep -n 'demo_harvest "\$site"' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  import_line=$(grep -n 'ddev import-db' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  # Scoped to the cmd_reset BODY. `grep … | head -1` over the whole file was
+  # wrong the moment a second reset verb appeared above this one: it compared
+  # cmd_reset's harvest against cmd_reset_paired's import and reported a
+  # correctly-ordered function as broken. The paired body has its own
+  # equivalent in test-demo-pair.bats ("harvests BOTH halves BEFORE the first
+  # import-db"), so scoping loses no coverage.
+  body=$(awk '/^cmd_reset\(\)/,/^}/' "$DEMO_CMD")
+  harvest_line=$(printf '%s\n' "$body" | grep -n 'demo_harvest "\$site"' | head -1 | cut -d: -f1)
+  import_line=$(printf '%s\n' "$body" | grep -n 'ddev import-db' | head -1 | cut -d: -f1)
   [ -n "$harvest_line" ] && [ -n "$import_line" ]
   [ "$harvest_line" -lt "$import_line" ]
   # and the call is belt-and-braces guarded against set -e
@@ -485,8 +495,12 @@ EOF
 }
 
 @test "reset ordering: golden verification precedes the wipe (static)" {
-  verify_line=$(grep -n 'demo_golden_verify "\$gdir" "\$site"' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  import_line=$(grep -n 'ddev import-db' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  # Scoped to the cmd_reset body — see the note above. The paired body's own
+  # verify-before-wipe assertion is in test-demo-pair.bats.
+  body=$(awk '/^cmd_reset\(\)/,/^}/' "$DEMO_CMD")
+  verify_line=$(printf '%s\n' "$body" | grep -n 'demo_golden_verify "\$gdir" "\$site"' | head -1 | cut -d: -f1)
+  import_line=$(printf '%s\n' "$body" | grep -n 'ddev import-db' | head -1 | cut -d: -f1)
+  [ -n "$verify_line" ] && [ -n "$import_line" ]
   [ "$verify_line" -lt "$import_line" ]
 }
 
@@ -829,15 +843,32 @@ _fixture_golden() {   # $1 site  $2 tier
   [[ "$output" == *"golden_sha="* ]]
 }
 
-@test "reset renders the manifest BEFORE the wipe, on both tiers (static)" {
-  # local tier: manifest → ddev import-db
-  m_local=$(grep -n 'demo_reset_manifest "\$site" "\$tier"' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  import=$(grep -n 'ddev import-db' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  [ -n "$m_local" ] && [ "$m_local" -lt "$import" ]
-  # live tier: manifest → sql:drop
-  m_live=$(grep -n 'demo_reset_manifest "\$site" live' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  drop=$(grep -n 'drush sql:drop' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  [ -n "$m_live" ] && [ "$m_live" -lt "$drop" ]
+@test "reset renders the manifest BEFORE the wipe, on EVERY reset verb (static)" {
+  # One assertion per destructive body, so a new reset verb that skips the
+  # manifest is caught HERE and cannot hide behind another body's line numbers.
+  # cmd_reset_paired's first cut did exactly that (MR !162 note 2218).
+  local_body=$(awk '/^cmd_reset\(\)/,/^}/' "$DEMO_CMD")
+  m_local=$(printf '%s\n' "$local_body" | grep -n 'demo_reset_manifest "\$site" "\$tier"' | head -1 | cut -d: -f1)
+  i_local=$(printf '%s\n' "$local_body" | grep -n 'ddev import-db' | head -1 | cut -d: -f1)
+  [ -n "$m_local" ] && [ -n "$i_local" ] && [ "$m_local" -lt "$i_local" ]
+
+  live_body=$(awk '/^cmd_reset_live\(\)/,/^}/' "$DEMO_CMD")
+  m_live=$(printf '%s\n' "$live_body" | grep -n 'demo_reset_manifest "\$site" live' | head -1 | cut -d: -f1)
+  d_live=$(printf '%s\n' "$live_body" | grep -n 'drush sql:drop' | head -1 | cut -d: -f1)
+  [ -n "$m_live" ] && [ -n "$d_live" ] && [ "$m_live" -lt "$d_live" ]
+
+  pair_body=$(awk '/^cmd_reset_paired\(\)/,/^}/' "$DEMO_CMD")
+  m_pair=$(printf '%s\n' "$pair_body" | grep -n 'impact_render' | head -1 | cut -d: -f1)
+  i_pair=$(printf '%s\n' "$pair_body" | grep -n 'ddev import-db' | head -1 | cut -d: -f1)
+  [ -n "$m_pair" ] && [ -n "$i_pair" ] && [ "$m_pair" -lt "$i_pair" ]
+
+  # EVERY body that wipes must build a manifest: no destructive verb is exempt.
+  for fn in cmd_reset cmd_reset_live cmd_reset_paired; do
+    b=$(awk "/^${fn}\\(\\)/,/^}/" "$DEMO_CMD")
+    if ! printf '%s\n' "$b" | grep -qE 'demo_reset_manifest|impact_render'; then
+      echo "FAIL: ${fn} destroys without building a fate manifest" >&2; return 1
+    fi
+  done
 }
 
 @test "a LIVE wipe confirms at the TYPED tier; dev/stg at standard" {
@@ -845,6 +876,20 @@ _fixture_golden() {   # $1 site  $2 tier
   grep -q 'impact_confirm standard "ERASE' "$DEMO_CMD"
   # the hand-rolled y/N prompts are gone — one confirmation path, not three
   ! grep -q 'This will ERASE' "$DEMO_CMD"
+  # …and no destructive body may prompt on its own instead of via
+  # impact_confirm. Checked on CODE lines only (same rule as lib/impact.sh's
+  # own gate): a comment that NAMES the banned pattern is documentation, not a
+  # violation — the note explaining why cmd_reset_paired must not hand-roll a
+  # prompt would otherwise fail the very test it exists to explain.
+  for fn in cmd_reset cmd_reset_live cmd_reset_paired; do
+    b=$(awk "/^${fn}\\(\\)/,/^}/" "$DEMO_CMD" | grep -vE '^[[:space:]]*#')
+    if ! printf '%s\n' "$b" | grep -q 'impact_confirm'; then
+      echo "FAIL: ${fn} destroys without calling impact_confirm" >&2; return 1
+    fi
+    if printf '%s\n' "$b" | grep -qE 'read -r reply|This will ERASE'; then
+      echo "FAIL: ${fn} hand-rolls its own prompt instead of impact_confirm" >&2; return 1
+    fi
+  done
 }
 
 @test "the manifest is rendered ahead of the Solo deploy gate (see it, then touch)" {
@@ -856,9 +901,21 @@ _fixture_golden() {   # $1 site  $2 tier
 
 @test "reset --dry-run stops after the report, before the gate and the wipe" {
   grep -q 'dry-run\] nothing was touched' "$DEMO_CMD"
-  dry=$(grep -n 'dry-run\] nothing was touched' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  import=$(grep -n 'ddev import-db' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  [ "$dry" -lt "$import" ]
+  # Per destructive body: a verb that accepts --dry-run and wipes anyway is the
+  # worst possible outcome of this flag. cmd_reset_paired shipped exactly that
+  # in its first cut — it took no dry_run argument at all and the dispatch
+  # silently dropped the operator's --dry-run.
+  for pair in "cmd_reset:ddev import-db" "cmd_reset_paired:ddev import-db" \
+              "cmd_reset_live:drush sql:drop"; do
+    fn="${pair%%:*}"; wipe="${pair#*:}"
+    b=$(awk "/^${fn}\\(\\)/,/^}/" "$DEMO_CMD")
+    d=$(printf '%s\n' "$b" | grep -n 'dry-run\] nothing was touched' | head -1 | cut -d: -f1)
+    i=$(printf '%s\n' "$b" | grep -Fn "$wipe" | head -1 | cut -d: -f1)
+    if [ -z "$d" ] || [ -z "$i" ] || [ "$d" -ge "$i" ]; then
+      echo "FAIL: ${fn} wipes with no --dry-run stop before it (dry=${d:-none} wipe=${i:-none})" >&2
+      return 1
+    fi
+  done
   run bash "$DEMO_CMD" --help
   [[ "$output" == *"--dry-run"* ]]
 }
@@ -966,4 +1023,166 @@ TOTAL_VENDOR 53'" >/dev/null 2>&1 || true
   # Scope must be decided by a custom/ path segment, not by guessing at names.
   run grep -q "custom/" "$probe"
   [ "$status" -eq 0 ]
+}
+
+# --- G: a code-issuing verb must NAME its tier ---------------------------------
+#
+# `pl demo invite nwd` — the exact command every guide printed — issued three
+# fresh codes and then pushed the hashes into the LOCAL nwd-dev DDEV project,
+# because main() defaults tier to "dev". nwd LIVE received nothing, and the
+# operator saw a success. Corroborated on the real registry: 19 codes issued,
+# 19 revoked, not one of them ever reachable from the live site.
+#
+# The fix is NOT to flip the default to live — that is the same bug pointing at
+# a real host. Anything that writes or syncs codes must say which tier it means.
+
+@test "invite REFUSES when no tier was named, and burns no code doing it" {
+  run bash "$DEMO_CMD" invite demo1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--tier=live"* ]]        # both options are named…
+  [[ "$output" == *"--tier=dev"* ]]
+  # …and the refusal is BEFORE any state change: no registry, no draft dir.
+  [ ! -e "$(demo_codes_file demo1)" ]
+  [ ! -e "${PROJECT_ROOT}/sites/demo1/demo-invites" ]
+}
+
+@test "the guides never print a code-issuing command that would now be refused" {
+  # The bug reached the operator through the docs: three guides printed
+  # `pl demo invite nwd` verbatim. A guide that prints a command the CLI
+  # refuses is worse than no guide, so pin it.
+  docs="$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )/docs/guides"
+  for f in howto-invite-codes.md howto-demo-tier.md art9-golive-runbook.md; do
+    [ -f "${docs}/${f}" ]
+    # every `pl demo invite <site> …` line must carry a --tier (prose that
+    # names the command without a site argument is not an instruction)
+    run bash -c "grep -nE 'pl demo invite [a-z0-9]+' '${docs}/${f}' | grep -v -- '--tier='"
+    [ "$status" -ne 0 ]
+    # …and so must every mutating `pl demo codes …` line (list is exempt)
+    run bash -c "grep -nE 'pl demo codes [a-z0-9]+ (issue|revoke|rotate|sync)' '${docs}/${f}' | grep -v -- '--tier='"
+    [ "$status" -ne 0 ]
+  done
+}
+
+@test "codes issue REFUSES when no tier was named, and never allocates an id" {
+  run bash "$DEMO_CMD" codes demo1 issue tester-member
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--tier"* ]]
+  [ ! -e "$(demo_codes_file demo1)" ]
+  # a refused command that had already printed a plaintext code would be worse
+  # than the bug it is guarding against. (Written as an explicit status check:
+  # `! cmd` is exempt from set -e, so a bare negation asserts nothing in bats.)
+  if [[ "$output" =~ [A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5} ]]; then
+    echo "a refused 'codes issue' printed something that looks like a code" >&2
+    return 1
+  fi
+}
+
+@test "codes revoke|rotate|sync REFUSE when no tier was named" {
+  # revoking at the wrong tier is the dangerous direction: the code stays live.
+  for action in revoke rotate sync; do
+    run bash "$DEMO_CMD" codes demo1 "$action" 1
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"--tier"* ]]
+  done
+}
+
+# NEGATIVE CONTROL — the guard must not be "refuse everything". Read-only and
+# non-code verbs still work with no --tier, and an explicit dev still works.
+@test "the tier guard is targeted: read-only verbs and an explicit tier still pass" {
+  run bash "$DEMO_CMD" status demo1
+  [ "$status" -eq 0 ]
+  run bash "$DEMO_CMD" codes demo1 list
+  [ "$status" -eq 0 ]
+  run bash "$DEMO_CMD" invite demo1 --tier=dev
+  [ "$status" -eq 0 ]
+  jq -e '.codes | length == 3' "$(demo_codes_file demo1)"
+  run bash "$DEMO_CMD" codes demo1 issue tester-member --tier=dev
+  [ "$status" -eq 0 ]
+  jq -e '.codes | length == 4' "$(demo_codes_file demo1)"
+}
+
+@test "an explicit --tier=live routes the sync at the LIVE tier, not the local project" {
+  cat > "${PROJECT_ROOT}/sites/demo1/.nwp.yml" <<'EOF'
+live:
+  enabled: true
+  domain: demo1.example.org
+EOF
+  run bash "$DEMO_CMD" invite demo1 --tier=live
+  [ "$status" -eq 0 ]
+  # The live path is taken: it resolves a live context (and here fails on the
+  # fixture's missing server_ip) instead of reaching for a DDEV project.
+  [[ "$output" == *"live server"* || "$output" == *"live host"* ]]
+  [[ "$output" != *"No DDEV project"* ]]
+}
+
+# --- D2: the live config-parity probe is staged unpredictably ------------------
+#
+# demo_parity_check_live used to scp the probe to /tmp/nwp-config-parity-$$.php
+# and then open it up to all readers — a name any local user can guess (the pid
+# space is ~32k and /tmp is world-writable) on a file that drush then EXECUTES
+# as the site user. Whoever wins that race chooses the PHP that runs as
+# www-data.
+
+@test "the parity probe is never staged at a PID-predictable, world-readable /tmp path" {
+  # `run` + an explicit status check, NOT `! grep`: bash exempts `! cmd` from
+  # set -e, so a bare negation in a bats test is an assertion that can never
+  # fail. (Both of these did exactly nothing until this was rewritten.)
+  run grep -nE 'nwp-config-parity-\$\$' "$DEMO_CMD"
+  [ "$status" -ne 0 ]
+  run grep -n 'chmod a+r' "$DEMO_CMD"
+  [ "$status" -ne 0 ]
+  fn="$(sed -n '/^demo_parity_check_live() {/,/^}/p' "$DEMO_CMD")"
+  [ -n "$fn" ]
+  [[ "$fn" == *"mktemp -d"* ]]     # the far side picks the name, exclusively
+  [[ "$fn" != *"chmod"* ]]         # nothing is opened up after the fact
+  [[ "$fn" == *"rm -rf"* ]]        # and it is always torn down
+}
+
+@test "demo_parity_check_live stages a readable probe in a private dir and removes it" {
+  # A local simulation of the remote: demo_rssh runs the same shell commands
+  # here, and a fake drush reports the mode + contents of what it was handed.
+  # This exercises the real staging code, not a grep of it.
+  probe="${TEST_TMP}/probe.php"
+  printf '%s\n' '<?php echo "TOTAL_CUSTOM 0\n";' > "$probe"
+  mkdir -p "${TEST_TMP}/siteroot/vendor/bin"
+  cat > "${TEST_TMP}/siteroot/vendor/bin/drush" <<'EOF'
+#!/bin/bash
+# $1 = php:script, $2 = staged probe path
+echo "STAGED_PATH $2"
+echo "STAGED_MODE $(stat -c %a "$2")"
+echo "STAGED_DIRMODE $(stat -c %a "$(dirname "$2")")"
+cat "$2"
+EOF
+  chmod +x "${TEST_TMP}/siteroot/vendor/bin/drush"
+
+  cat > "${TEST_TMP}/harness.sh" <<'EOF'
+source "$DEMO_CMD"                      # BASH_SOURCE != $0 → no dispatch
+demo_rssh() { shift; bash -c "$*"; }    # "remote" == here
+demo_parity_verdict() { printf '%s\n' "$3"; return 0; }
+DEMO_PARITY_PROBE="$PROBE"
+DEMO_LIVE_PATH="$SITEROOT"
+DEMO_LIVE_DRUSHSUDO=""
+demo_parity_check_live demo1
+EOF
+  DEMO_CMD="$DEMO_CMD" PROBE="$probe" SITEROOT="${TEST_TMP}/siteroot" \
+    run bash "${TEST_TMP}/harness.sh"
+  [ "$status" -eq 0 ]
+
+  staged="$(printf  '%s\n' "$output" | awk '/^STAGED_PATH /{print $2}')"
+  mode="$(printf    '%s\n' "$output" | awk '/^STAGED_MODE /{print $2}')"
+  dirmode="$(printf '%s\n' "$output" | awk '/^STAGED_DIRMODE /{print $2}')"
+
+  # unguessable: the name came from mktemp, not from $$
+  [[ "$staged" != *"$$"* ]]
+  [[ "$staged" =~ ^/tmp/nwp-config-parity-[A-Za-z0-9]{6,}/ ]]
+  # Nobody but the drush identity can read OR write it: staging under the same
+  # user that executes the probe removes the need to widen anything at all.
+  [ "$dirmode" = "700" ]
+  [ "$mode" = "600" ]
+  # the probe really arrived intact — a truncated probe fails CLOSED elsewhere,
+  # so a silently empty file would read as a misleading parity FAILURE
+  [[ "$output" == *"TOTAL_CUSTOM 0"* ]]
+  # NEGATIVE CONTROL: passing by never staging anything is not an option — the
+  # dir demonstrably existed, and it is demonstrably gone again afterwards.
+  [ ! -e "$(dirname "$staged")" ]
 }

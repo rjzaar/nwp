@@ -123,7 +123,7 @@ NWP supports two SSH host key verification modes:
 **Temporarily:**
 ```bash
 export NWP_SSH_STRICT=1
-./pl deploy prod
+pl stg2live <site>   # or pl live2prod / pl stg2prod
 ```
 
 **Permanently (add to ~/.bashrc or ~/.zshrc):**
@@ -137,7 +137,7 @@ export NWP_SSH_STRICT=1
 deploy:
   script:
     - export NWP_SSH_STRICT=1
-    - ./pl deploy prod
+    - pl stg2live <site>
 ```
 
 ### Managing Known Hosts in Strict Mode
@@ -209,8 +209,11 @@ export NWP_SSH_QUIET=1  # Hides security warnings
 
 5. **Audit authorized_keys**
    ```bash
-   ./pl ssh prod "cat ~/.ssh/authorized_keys"
-   # Remove any unrecognized keys
+   pl server status          # which servers exist and are reachable
+   pl secrets whose <#|id>   # who owns a given credential
+   # There is no `pl ssh` verb (see the substitution table above). Auditing a
+   # remote authorized_keys file is host state — see the `pl host capture`
+   # work; until it lands this is an operator action on the box.
    ```
 
 ---

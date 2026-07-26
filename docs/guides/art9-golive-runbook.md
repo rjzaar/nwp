@@ -150,8 +150,20 @@ pl drush nwc --tier=live --execute -- cr
 
 # STANDING RULE: --code-only. A full-DB push rewrites UIDs and severs the
 # UID-locked ssc/ssd OIDC SSO identities. See ADR-0029.
-pl deploy nwc --tier=live --code-only --apply
+#
+# Rehearse first — --dry-run snapshots and previews the rsync, then aborts
+# before any DB write, permission change or service reload:
+pl stg2live nwc --code-only --dry-run
+
+# Then the real thing:
+pl stg2live nwc --code-only
 ```
+
+> `pl stg2live` — there is no "pl deploy" verb, and this runbook prescribed one
+> until 2026-07-26 — is what carries the
+> `--code-only` primitive, the fail-closed PROFILE-CHANGE GUARD, the pre-deploy
+> webroot snapshot and the ADR-0031 paired-site ordering check. `pl live2prod
+> nwc --code-only` is the same step for the prod leg.
 
 This retires the freeze (it becomes a documented no-op) and brings in Trialing
 mode, `MemberCapabilities` and the CC0 contribution gate.
@@ -198,7 +210,7 @@ Both probes are throwaway-account based and clean up after themselves.
 Run the same probe already proven on `nwd`:
 
 ```bash
-# The probe script is staged and removed by the deploy path; the RUN is a pl verb
+# The probe script is staged and removed by the deploy path; the RUN goes through pl
 # so the gate, the live.enabled flag and the ledger apply.
 pl drush nwc --tier=live --execute -- php:script art9_nwd_journey.php
 ```
@@ -291,7 +303,7 @@ Counsel does not have to review a specification. The whole journey is running:
 
 - **URL:** `https://nwd.<example-prod-domain>` (the demo tier's public host — the
   operator will paste the real URL into the ops#119 invitation)
-- **Invite code:** `pl demo invite nwd` — issues a fresh code per level and
+- **Invite code:** `pl demo invite nwd --tier=live` — issues a fresh code per level and
   renders a copy-ready invitation email (plaintext printed once, into a 0600
   draft under `sites/nwd/demo-invites/`).
 - **Safety:** synthetic `@demo.invalid` accounts only, entire site wiped and

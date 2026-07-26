@@ -223,8 +223,8 @@ All use identical user creation logic.
 
 | # | Pattern | Location | Example |
 |---|---------|----------|---------|
-| 3.2.1 | Parse from combined field | `linode.servers.ssh_host: user@ip` | `gitlab@97.107.137.88` |
-| 3.2.2 | Separate fields (legacy) | `linode.servers.ssh_user` + `.ssh_host` | `ssh_user: gitlab`, `ssh_host: 97.107.137.88` |
+| 3.2.1 | Parse from combined field | `linode.servers.ssh_host: user@ip` | `gitlab@203.0.113.10` |
+| 3.2.2 | Separate fields (legacy) | `linode.servers.ssh_user` + `.ssh_host` | `ssh_user: gitlab`, `ssh_host: 203.0.113.10` |
 | 3.2.3 | Hardcoded by type | `live2stg.sh:139-140` | `shared→gitlab`, `dedicated→root` |
 | 3.2.4 | Dynamic fallback | Various | Try gitlab, then root on failure |
 | 3.2.5 | Parse from file | `deployment-info.txt` | Podcast only |
@@ -256,13 +256,13 @@ All use identical user creation logic.
 linode:
   servers:
     nwpcode:
-      ssh_host: 97.107.137.88         # Just IP (no user@)
+      ssh_host: 203.0.113.10         # Just IP (no user@)
       ssh_user: gitlab                # Explicit user field
       ssh_key: ~/.ssh/nwp
       ssh_port: 22
       label: "NWPCode GitLab"
       linode_id: 89322390             # Links to Linode instance
-      domain: nwpcode.org             # Primary domain
+      domain: example.com             # Primary domain
       recipe: gitlab                  # Recipe used to provision
       created: 2026-01-23T10:00:00Z   # Creation timestamp
 ```
@@ -274,7 +274,7 @@ sites:
     live:
       enabled: true
       domain: mysite.<prod-domain>
-      server_ip: 97.107.137.88
+      server_ip: 203.0.113.10
       server_ref: nwpcode            # Reference to linode.servers entry
       ssh_user: gitlab               # Explicit user
       ssh_key: ~/.ssh/nwp

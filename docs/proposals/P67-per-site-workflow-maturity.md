@@ -69,7 +69,7 @@ same as ops#33.
 
 1. **"When ver is set up, will the pipeline go through `ai-host` and my direct dev→live work
    change?"** — **No.** Three sources agree: the A14 grant (ADR-0024 header, 2026-07-01)
-   scopes the direct/AI deploy path to the `*.nwpcode.org` test fleet explicitly and
+   scopes the direct/AI deploy path to the `*.example.com` test fleet explicitly and
    permanently ("this grant does NOT extend AI write access" to real prod);
    `nwp-server-operations.md` encodes it in the CI rule (`test tier: on_success. real
    prod: when: manual`); and 08 Part IV makes retirement of the direct path a **per-site

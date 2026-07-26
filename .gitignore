@@ -187,6 +187,10 @@ servers/*
 !servers/*/backup/**
 !servers/*/email/**
 !servers/*/system/**
+# DECLARED php state (item 7). Distinct from system/php/**, which is CAPTURED:
+# this is the intent we mean to apply, that is the reading of what is running.
+# Keeping them in separate directories is what makes `diff` meaningful.
+!servers/*/php/**
 
 # ...but NEVER the identity file, secrets, or any key/cert material, wherever
 # under servers/ they appear. These re-ignores come last so they win.

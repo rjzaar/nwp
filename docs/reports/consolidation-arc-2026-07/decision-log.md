@@ -2512,3 +2512,186 @@ JSON, so there is no merge step that can quietly drop a page.
 **Cost:** a full run is now ~4-8 minutes (two API calls per issue). `--no-notes` roughly halves
 it at the cost of missing refs that only appear in comments.
 **Reversible-how:** `git revert -m 1 <merge>`.
+## [2026-07-26] item7-host-state-capture — the DR chain, the security snippet and the outage fix existed only on boxes  **REVIEW:**
+
+**What.** New read-only verb `pl server-state {list,capture,diff,check,php-check}` plus the first real
+captures: `servers/met/system/**` (the DR cron, the LUKS-stick cron, the CPU-cap unit that fixes this
+box's kernel panic, the running `nwp-daily-audit`) and `servers/nwpcode/system/**` (box-backup cron,
+`nwc-cron` timer+service, certbot deploy hook, ufw, Headscale ACL, redacted `authorized_keys` policy,
+nginx-snippet inclusion state, per-SAPI PHP map). Plus a declared-but-unapplied
+`servers/nwpcode/php/conf.d/90-nwp-moodle.ini`, one narrow `.gitignore` negation, and a durability
+assertion in `pl rollback registry check`.
+
+**Why this shape and not `pl host apply`.** Capture and apply are deliberately separate commands.
+`capture` cannot write to a host at all — there is no code path in it that does — so running it can
+never be the thing that breaks a box serving five live sites on 3.8 GB of RAM. Applying declared state
+is item 6's `pl host apply` and is operator-gated. *Alternative rejected:* one `pl host sync` verb, which
+would have made the safe half unusable without trusting the dangerous half.
+
+**Three verdicts, never two.** `diff` returns OK / DRIFT / UNREACHABLE and UNREACHABLE is an error.
+This estate has repeatedly shipped checks where "I could not look" rendered as "clean" (the met audit
+over a stopped container, the privacy sweep over an unmerged branch, the boundary scan over an absent
+tree). Reversing that default is the whole point of the verb.
+
+**Redaction happens at capture time, not at review time.** Two passes, both applied to the live side of
+`diff` as well so drift detection is unaffected:
+- `ssh-policy` artifacts keep forced-command OPTIONS and comments and drop key material. The security
+  content of `authorized_keys` is whether a key is jailed, not which key it is; capturing the blobs
+  would also train the habit of pulling `~/.ssh` into git.
+- Identity: routable IPv4 → `<public-ip-redacted>` (private/CGNAT/tailnet/loopback KEPT, because the
+  topology is the reviewable part), hostnames and the apex domain → their ROLE placeholders, and
+  `/home/<anyone>` → `/home/<operator>`.
+
+**The identity pass was forced by evidence, and the tempting fix was wrong.** The first real capture put
+SIX findings into the tree — `internal-bare-hostname`, `live-domain-apex`, `live-internal-domain` and
+`operator-home-path` twice. The gate was working; the capture was the new leak. *Alternative rejected:
+adding `servers/**` to `.gitleaks.toml`'s allowlist* — that re-blinds the gate over exactly the tree this
+item exists to add, one day after another item finished un-blinding it. Instead the vocabulary is read
+from the operator's private instance manifest (the same source `pl host` uses), so **no hostname, domain
+or home path is hardcoded in the script** — writing the apex literally would itself trip
+`live-domain-apex`, which covers `.sh` files. Post-fix: `gitleaks detect --source servers/` → no leaks.
+
+**Fidelity trade-off, stated rather than hidden.** A redacted capture is a faithful RECORD, not a
+byte-restorable backup. That is the right side of the trade here: the restore path for host state is
+declared state applied by a verb, the live host remains the authority for its own literal text, and
+`diff` still proves the record is true. Reversing this would mean choosing a leak over a placeholder.
+
+**Divergence is allowed; SILENT divergence is not.** An artifact may declare a `repo_counterpart`. If
+the two differ with no `counterpart_divergence:` justification recorded in the inventory, `check` fails.
+`nwp-daily-audit` is the first user: the running copy (257 lines) and `scripts/nwp-daily-audit.sh`
+(331 lines) share no header — two different programs with the same job, one of which reported "no
+change" for 31 nights over a stopped container. **The divergence is declared, NOT accepted**: the on-host
+copy is authoritative for behaviour, the repo copy for parameterisation, and reconciling them needs the
+remote-schedule verb from item 6. Do not delete that key to make the check green.
+
+**`.gitignore`: narrow negation, and why the ordering is not cosmetic.** Root `.gitignore` carried a
+blanket `servers/*`, which is *why* host state was never versioned: a captured file was ignored by
+default, so `git status` stayed clean and the tree merely looked captured. The negation opens
+`servers/*/system/**` and `servers/*/php/**` only, re-excludes `servers/*/*` so nothing else becomes
+trackable by accident, and re-asserts the deny for `.nwp-server.yml`, `.secrets*`, `*.key` and `id_*`.
+`!servers/*/` must come first — git will not descend into an excluded directory, so no child rule is
+even consulted until the parent is re-included. **Territory note:** root `.gitignore` is item 6's file;
+this is one delimited hunk appended after the existing `servers/*` block and should rebase trivially.
+
+**`registry check` now asks a second, different question.** It already verified integrity (does the
+artifact match its `.sha256`?). It never asked survivability (does anything but this laptop hold it?).
+A sidecar is untracked in exactly the cases the artifact is, so the check was comparing a file against
+its own untracked shadow. **Two remedies, and conflating them would be dangerous:** where the repo's own
+ignore policy excludes the path (site DB dumps, files tarballs) the verdict is `LAPTOP-ONLY` and the
+output must never say "commit it" — obeying that advice would manufacture the very P0 this estate
+already has, a 36 MB member-data `.sql` pushed to the forge where no Art.17 erasure reaches it. The
+discriminator is `git check-ignore`, read from the repo, so the policy cannot drift from a duplicated
+glob list here. There is a bats case asserting the dangerous string is *absent*, not merely outweighed.
+
+**Consequence, accepted:** `pl rollback registry check` now exits 1 on six pre-existing rows (CP11 ×3,
+CP12, CP14 ×2 — all nwd, the disposable demo site). That is a true statement about six recovery points
+that exist only on a travelling laptop, and it is the intended outcome, not a regression. Nothing in CI
+consumes this verb, so no other agent's pipeline turns red. Reversing: revert the `_artifact_is_tracked`
+block alone.
+
+**The programme's "red on CP17 today" claim did NOT hold.** CP17's tarball was already committed by the
+item 2 work earlier the same day, so it is green. The *gate* was still missing, which is what got built;
+the finding was re-derived rather than assumed.
+
+**Two RED states captured before any fix, both against the live fleet:**
+- `pl server-state php-check nwpcode` → `BELOW-FLOOR 8.2/fpm max_input_vars=1000` and the same for
+  `8.2/cli`, need ≥ 5000. The captured `php-map` shows `8.3/fpm` and `8.3/cli` at 5000. **known C
+  confirmed exactly**: the outage remedy was applied to a PHP version Moodle never touches
+  (`ss.conf` → `php8.2-fpm.sock`, cron → `/usr/bin/php8.2`), so any grep for `max_input_vars` found
+  5000 and concluded it was handled. The floors are asserted per-SAPI so silence cannot read as
+  satisfied.
+- `servers/nwpcode/system/nginx-snippet-includes` → `/etc/nginx/snippets/` contains only
+  `fastcgi-php.conf` and `snakeoil.conf`, and `grep -rl deny-files-secrets /etc/nginx/` → `NONE`.
+  The committed `deny-files-secrets.conf` calls itself "the HTTP-serving layer of a 3-part defence";
+  layer 2 is fiction, and is now measurable instead of assumed.
+
+**What the capture makes greppable that was not.** The restic retention the GDPR/erasure work has to
+agree with (`--keep-daily 14 --keep-weekly 8 --keep-monthly 12`) was an inline flag in a root cron
+one-liner on one box, written by a `dr-pull-setup.sh` that exists in no repository. It is now a tracked
+file. Likewise: one `authorized_keys` entry is unjailed and another uses a bare `rrsync` (PATH-dependent
+— the same class as the recent fleet-cron PATH bug), ufw allows 22/tcp from Anywhere twice against
+CLAUDE.md's explicit rule plus an orphan world-open 5050, and the Headscale ACL is `src:* dst:*:*`.
+None of those are *fixed* here — applying them is server configuration on a box serving five live sites
+and is operator territory — but they are now reviewable, diffable and impossible to lose.
+
+**Reversible-how.** `git revert -m 1 <merge>`. No host was written, so a revert removes capability and
+records, never state. Captures regenerate with `pl server-state capture <host>`.
+## [2026-07-27] item7-redaction-failed-open-on-a-yq-version-difference  **REVIEW:**
+
+**What happened.** The item-7 identity-redaction acceptance test passed on the dev workstation and
+**failed on the CI runner**. That difference is the entire value of the test, so it is recorded rather
+than quietly patched.
+
+**Root cause.** `yq` 4.44.1 (the runner) emits a *literal backslash-t* for `"\t"` inside a string
+concatenation; 4.50.1 (the dev box) emits a real tab. The identity map was `literal<TAB>placeholder`
+lines, so on the runner every line was a single unsplit field: `IFS=$'\t' read -r lit ph` put the whole
+line into `lit` and left `ph` empty, every `${content//$lit/}` searched for a string that never occurred,
+and **`capture` wrote the host file un-redacted while reporting success**. Six leakage findings would
+have gone back into the tree on any host with an older yq, silently.
+
+**Why this is the same disease the programme is about.** The check did not report "I could not redact".
+It reported nothing at all and exited 0. A capture that captures the wrong thing is worse than one that
+fails, because the tree then looks both captured *and* clean.
+
+**Fix, in two parts — the separator was only the trigger.**
+1. Separator is now `|`: passed through verbatim by every yq version, and impossible inside a hostname,
+   a domain or a role label. The map is filtered through `^[^|]+\|<[^>]+>$`, so a malformed line is
+   *dropped* rather than mis-split into a substitution that does nothing.
+2. **Fail closed.** `_identity_require` runs before any byte is written. If a manifest exists but yields
+   no usable pairs, `capture` refuses and writes nothing; `diff` refuses too, because both sides are
+   redacted before comparison and a broken map would otherwise manufacture drift on every host and train
+   the signal away. Where no manifest exists at all, production `_fetch` cannot resolve a host anyway, so
+   that path also refuses; it is reachable only under the test-only fetch shim, where it prints a WARN
+   naming the fact instead of implying redaction happened.
+
+*Alternative rejected:* pinning a minimum yq version. That converts a silent data leak into a hard
+dependency bump across every host in the estate, and it would not have caught the next escape-handling
+difference. Asserting the map is *usable* is version-independent and catches the class.
+
+**Verified on the machine that actually gates**, not just locally: the fixed expression + the exact shell
+pipeline were run over ssh on the runner host against its own yq 4.44.1 — map built correctly, longest
+literal replaced first (`git.<apex>` before the bare apex), all four assertions PASS including
+`no-residue`. Local green had proven nothing about that box.
+
+**Test added:** `capture` must refuse a manifest that yields an empty map and must leave no file behind;
+plus a direct shape assertion on the emitted map (`no literal \t`, splits into exactly two fields) so a
+future version difference in escape handling cannot reintroduce this.
+
+## [2026-07-27] item6-and-item7-both-capture-host-state — the boundary, stated before it rots
+
+**Situation.** Fix-programme items 6 (`pl host`) and 7 (`pl server-state`) landed hours apart and BOTH
+write under `servers/<host>/system/`. Two commands owning one directory is the exact anti-pattern item 7
+itself warns about (`servers/nwpcode/.git` vs the outer repo: "two overlapping repos over one path
+guarantees a divergent second copy"). Recording the boundary now, while both authors' reasoning is
+still legible, is cheaper than rediscovering it from a conflict later.
+
+**They do not collide on disk, and that was verified, not assumed.** `host_capture` writes
+`servers/<h>/system/<kind>/<file>` for a FIXED kind set (`cron systemd nginx php ssh firewall
+headscale` → `crontab.root`, `units.list`, `ufw.rules`, `authorized_keys.policy`, …) and replaces each
+tree with `rm -rf "$sysdir/$k"; cp -a`. `pl server-state` writes FLAT files beside those directories
+(`cron-nwp-dr-pull`, `php-map`, `headscale-acl`, `inventory.yml`). No flat filename equals a kind
+directory name, so the `rm -rf` cannot reach them.
+
+**What each does that the other does not.**
+- `pl host capture` — a fixed, universal probe set that works on a host nobody has described yet, with
+  `lib/impact.sh` adoption, plus `health` / `logs` / `forge status` / `loop --host` / `apply`.
+- `pl server-state` — a DECLARED, per-host inventory: every artifact carries a `why:` a reviewer can
+  argue with, an optional `repo_counterpart` + `counterpart_divergence` (the nwp-daily-audit gate:
+  divergence allowed, silent divergence not), per-SAPI `php_floors` (known C), and a network-free
+  `check` asserting git-trackedness and the redaction invariant.
+
+**Recommended consolidation, for whoever picks this up:** keep ONE engine (item 6's
+`lib/host-capture.sh`, which has impact adoption and the health preflight) and move item 7's three
+distinguishing ideas onto it — the declarative inventory with mandatory `why:`, the counterpart-drift
+gate, and the per-SAPI floors. **Do not simply delete either verb**: item 6's value is the universal
+probe set, item 7's is that a human declared what matters and why. Deleting the declarations to remove
+a duplicate would keep the mechanism and lose the review surface.
+
+**`.gitignore`, resolved in item 6's favour.** Item 6's allowlist (`!servers/*/{nginx,demo,linode,
+backup,email,system}/**` plus re-ignores for identity, secrets and key material) is a strict superset of
+item 7's narrower negation, so item 7's hunk was **dropped wholesale** rather than merged — one owner,
+per the programme's cross-cutting note. The single line added is `!servers/*/php/**`, using the
+documented extension mechanism ("adding a new service directory is a deliberate one-line change here").
+That directory holds DECLARED php intent, deliberately separate from `system/php/**`, which holds the
+CAPTURED reading of what is actually running — keeping the two apart is what makes comparing them mean
+anything.

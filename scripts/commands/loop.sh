@@ -16,6 +16,8 @@
 #
 # Usage:
 #   pl loop                       show the dashboard (alias: pl loop status)
+#   pl loop --host <role>         read the loop state on ANOTHER machine, over
+#                                 ssh, and say which machine it read
 #   pl loop enable  <part|all>    arm a part (or clear the global kill with `all`)
 #   pl loop disable <part|all>    disable a part (or `all` = global kill-switch)
 #   pl loop parts                 list the parts and their current state
@@ -90,6 +92,109 @@ cmd_parts(){
     print_info "toggle: pl loop enable|disable <part|all>   ·   state: $(loop_parts_state_file)"
 }
 
+################################################################################
+# --host <role|server|hostname> — interrogate the loop on ANOTHER machine.
+#
+# THE BUG THIS FIXES (fix-programme item 6): this dashboard read $HOME/nwp on
+# whatever machine you typed it on, with no ssh anywhere in the file — while the
+# loop is split across two hosts (fix-loop cron on the build-host, webhook unit
+# on the ai-host) with three divergent .loop-paused sentinels. `pl loop enable
+# all` typed on the authoring host cleared the AUTHORING host's sentinel,
+# printed all-green, and armed nothing. The ai-host's loop had been dark since
+# 2026-07-18 and no `pl` surface could see it.
+#
+# So: every rendering now NAMES the machine it interrogated, and the write verbs
+# refuse to run against a machine that is not this one.
+################################################################################
+LOOP_TARGET=""
+if [ "${1:-}" = "--host" ]; then
+    LOOP_TARGET="${2:-}"
+    [ -n "$LOOP_TARGET" ] || { print_error "usage: pl loop --host <role|server|hostname> [status]"; exit 2; }
+    shift 2
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/server-resolver.sh"
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/host-capture.sh"
+fi
+
+_loop_remote_probe() {
+    cat <<'PROBE'
+set -u
+printf 'NWPLOOP v1\n'
+R="${NWP_ROOT:-$HOME/nwp}"
+printf 'root=%s\n' "$R"
+if [ -f "$R/.loop-paused" ]; then printf 'kill=present\nkill_mtime=%s\n' "$(stat -c %Y "$R/.loop-paused" 2>/dev/null || echo 0)"
+else printf 'kill=absent\n'; fi
+if [ -f "$R/.rag-sync-paused" ]; then printf 'rag_pause=present\n'; else printf 'rag_pause=absent\n'; fi
+[ -f "$R/logs/agent-loop.log" ] && printf 'log_mtime=%s\n' "$(stat -c %Y "$R/logs/agent-loop.log" 2>/dev/null || echo 0)"
+if crontab -l 2>/dev/null | grep -qE '^[0-9*].*agent-loop\.sh'; then printf 'cron=present\n'; else printf 'cron=absent\n'; fi
+PROBE
+}
+
+cmd_remote_status() {
+    local target="$1" prefix name raw rc=0
+    prefix="$(host_resolve_dest "$target")" || { print_error "cannot resolve target: $target"; return 1; }
+    name="$(host_resolve_name "$target")"
+
+    raw="$(host_run "$prefix" "$(_loop_remote_probe)" 2>/dev/null)" || rc=$?
+    print_header "Self-healing loop — host: ${name}"
+    if [ "$rc" -ne 0 ] || [[ "$raw" != *"NWPLOOP"* ]]; then
+        printf '  %s  UNKNOWN — could not interrogate %s (rc=%s).\n' "$(dot off)" "$name" "$rc"
+        printf '      An unreachable loop host is NOT a healthy one. Fix the route, then re-run.\n'
+        return 3
+    fi
+
+    local root="" kill="" kill_mtime="" rag_pause="" log_mtime="" cron="" line
+    while IFS= read -r line; do
+        case "$line" in
+            root=*)       root="${line#root=}" ;;
+            kill=*)       kill="${line#kill=}" ;;
+            kill_mtime=*) kill_mtime="${line#kill_mtime=}" ;;
+            rag_pause=*)  rag_pause="${line#rag_pause=}" ;;
+            log_mtime=*)  log_mtime="${line#log_mtime=}" ;;
+            cron=*)       cron="${line#cron=}" ;;
+        esac
+    done <<< "$raw"
+
+    printf '  host:       %s   (tree: %s)\n' "$name" "${root:-?}"
+    if [ "$kill" = "present" ]; then
+        local since="?"
+        [ -n "$kill_mtime" ] && since="$(date -d "@$kill_mtime" +%Y-%m-%d 2>/dev/null || echo '?')"
+        printf '  %s  loop:       PAUSED on %s (.loop-paused since %s)\n' "$(dot off)" "$name" "$since"
+    else
+        printf '  %s  loop:       armed on %s (no .loop-paused)\n' "$(dot on)" "$name"
+    fi
+    if [ "$rag_pause" = "present" ]; then
+        printf '  %s  rag-sync:   PAUSED on %s\n' "$(dot off)" "$name"
+    else
+        printf '  %s  rag-sync:   not paused on %s\n' "$(dot on)" "$name"
+    fi
+    if [ "$cron" = "present" ]; then printf '  %s  cron:       armed on %s\n' "$(dot on)" "$name"
+    else printf '  %s  cron:       ABSENT on %s — the loop will not wake\n' "$(dot off)" "$name"; fi
+    if [ -n "$log_mtime" ]; then
+        printf '     last log:   %s\n' "$(date -d "@$log_mtime" '+%Y-%m-%d %H:%M' 2>/dev/null || echo '?')"
+    else
+        printf '     last log:   (no agent-loop.log on %s)\n' "$name"
+    fi
+    echo
+    print_info "write verbs must be run ON ${name}: pl loop enable|disable <part|all>"
+    return 0
+}
+
+if [ -n "$LOOP_TARGET" ]; then
+    case "${1:-status}" in
+        status|"") cmd_remote_status "$LOOP_TARGET"; exit $? ;;
+        enable|disable|parts)
+            # Refusing is the whole point: a toggle typed here would silently
+            # write the LOCAL sentinel and report success for the wrong machine.
+            _tname="$(host_resolve_name "$LOOP_TARGET")"
+            print_error "refusing: 'pl loop $1' writes local state, but you targeted ${_tname}."
+            print_hint  "Run it ON ${_tname} (e.g. via that host's own pl), or use 'pl loop --host ${LOOP_TARGET}' to read only."
+            exit 2 ;;
+        *) print_error "unknown arg: $1"; exit 2 ;;
+    esac
+fi
+
 case "${1:-status}" in
     -h|--help) sed -n '3,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     status|"") ;;
@@ -98,7 +203,11 @@ case "${1:-status}" in
     *) print_error "unknown arg: $1"; exit 2 ;;
 esac
 
-print_header "Self-healing loop — status"
+# Always NAME the machine this dashboard describes — the loop is split across
+# hosts, and an unlabelled dashboard is how the ai-host stayed dark for eight
+# consecutive nights while this screen read all-green on the authoring host.
+print_header "Self-healing loop — status (this machine: $(hostname -s 2>/dev/null || hostname))"
+print_info "other machines: pl loop --host <role>   (e.g. pl loop --host ai-host)"
 
 # ── Parts (wrapper-enforced enable/disable — deep-audit C0) ───────────────────
 if loop_global_killed; then

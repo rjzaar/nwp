@@ -79,3 +79,32 @@ let the deploy verbs record it on the first successful provider promotion.
 > nwc's live tier, no full-DB `pl stg2live nwc` — use `--code-only`. `pair_guard`
 > enforces this once `paired_with: nwc` is set. ssd (demo) is uncoupled, so a
 > full-DB rebuild of either half is allowed.
+
+### Cross-repo + adoption gates
+
+A pair contract makes promises about a **different repository** and about
+guards inside the provider's own code. Three read-only verbs prove them:
+
+```bash
+pl contracts crossref ssc     # every WS fn the provider calls is defined in the
+                              # consumer tree, and every consumer smoke path exists
+pl contracts guards ssc       # every guard declared under `guards:` has a real,
+                              # non-comment CALL SITE (ops#138)
+pl pair reconcile ssc --tier=live   # severed UID-locks after a restore (ops#83 §3)
+```
+
+All three **fail closed on an unverifiable corpus** (`CANNOT-VERIFY`) rather
+than reporting clean — a gate scanned over an absent checkout that prints OK is
+worse than no gate. `crossref` is wired into `pl pair-smoke` at plan time;
+`guards` is deliberately **not**, because it is red on the real estate today
+(ops#138) and turning a known operator-owned finding into a surprise promotion
+block is a separate decision.
+
+Contract blocks these read:
+
+| block | read by | notes |
+|---|---|---|
+| `crossref.provider_roots` / `.consumer_roots` | `crossref`, `guards` | where each side's code is checked out |
+| `crossref.core_paths` / `.core_ws_functions` | `crossref` | exemptions are DECLARED, never inferred |
+| `guards[].symbol` / `.side` / `.why` / `.defined_in` | `guards` | `defined_in` is excluded under **every** root |
+| `erasure.*` | `pl erasure` | operational half of ops#81; **not** a wire surface, so it does not move `contract_version` |

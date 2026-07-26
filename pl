@@ -251,6 +251,14 @@ ${BOLD}INTERSITE BOUNDARY (P74 change-impact gate):${NC}
     impact --honesty                Check no boundary symbol leaks outside its declared paths
     contracts compat [--base=main]  Expand-and-contract (BACKWARD) schema gate
     contracts sign|verify|bundle    Sign/verify the minisign schema bundle (trust root)
+    contracts crossref [<pair>]     Cross-repo promise gate (WS fns + probe paths exist)
+
+${BOLD}GDPR ART.17 ERASURE + IDENTITY REPAIR (ops#81 / ops#83):${NC}
+    erasure plan <pair> --sub=<uuid>       Build + schema-validate the erasure command
+    erasure verify <pair> --sub=<uuid>     Probe BOTH halves for residual rows (+ backup ceiling)
+    erasure status <request-id>            What happened to a request
+    erasure execute <pair> --request-id=   Fails closed until the ops#81 channel is deployed
+    pair reconcile <consumer> [--apply]    Detect/repair severed UID-locks (ops#83 §3)
 
 ${BOLD}BRANCH TWINS (P67/ops#48):${NC}
     branch <site> <git-ref>         Create a disposable twin on a branch
@@ -374,6 +382,28 @@ ${BOLD}MONITORING (launch gate, P13/#71):${NC}
     monitor uptime [--tier=live]    Fleet HTTP status + TLS expiry (red/amber/green)
     monitor mail <site>             Outbound mail readiness (SPF/DKIM/DMARC/PTR/MX)
     monitor mail <site> --send-test <addr> --execute   Opt-in live probe (gated)
+
+${BOLD}HOST STATE (own the box, don't ssh into it):${NC}
+    server health [name|--all]      Load / memory / disk / swap HEADROOM.
+                                    THE preflight before anything heavy on a
+                                    shared box. rc=1 no headroom, rc=3 UNKNOWN
+                                    (an unmeasurable host is never "healthy").
+    server forge status <name>      Forge package version, apt signing-key
+                                    expiry, pending upgrades (package manager
+                                    only — never the Rails console)
+    host <role|alias>               Resolve a role label to its hostname(s)
+    host capture <target> [--all]   Read cron/systemd/nginx/php/ssh/firewall
+                                    state into servers/<host>/system/
+    host diff <target>              Non-zero on drift, blindness or an
+                                    incomplete read — never a silent "clean"
+    host apply <target>             Dry-run: prints the exact declared change
+    host schedule <target> list     Cron on a REMOTE role, over ssh
+    schedule where                  Which HOST owns each schedule
+    schedule host <target> ...      Install/remove a remote cron entry
+    logs <target> --source=nginx    Read-only, clamped (max 5000 lines), fixed
+                                    source set: nginx php-fpm auth systemd watchdog
+    loop --host <role>              The loop's state on ANOTHER machine, and it
+                                    says which machine it read
 
 ${BOLD}VERIFICATION:${NC}
     verify                          Interactive verification TUI
@@ -867,6 +897,13 @@ main() {
             run_script "contracts.sh" "$@"
             ;;
 
+        # GDPR Art.17 right-to-be-forgotten across the nwc↔ssc pair (ops#81).
+        # plan/verify are real today; execute FAILS CLOSED until the ops#81
+        # P1/P2 channel is deployed and the operator has approved the semantics.
+        erasure)
+            run_script "erasure.sh" "$@"
+            ;;
+
         # Moodle command family (PL-STG2LIVE §4 / P1-2): guarded plugin
         # build/deploy/upgrade/backup/rollback. moodle-promote/moodle-smoke stay
         # as back-compat aliases (also reachable as `pl moodle config|smoke`).
@@ -1023,8 +1060,19 @@ main() {
             ;;
 
         # Per-server config / schema management (F23 Phase 8)
+        # + `health` (headroom preflight) and `forge status` (item 6)
         server)
             run_script "server.sh" "$@"
+            ;;
+
+        # Host state: role resolution + capture/diff/apply/schedule (item 6)
+        host)
+            run_script "host.sh" "$@"
+            ;;
+
+        # Read-only, resource-bounded log access — replaces "just ssh in"
+        logs)
+            run_script "logs.sh" "$@"
             ;;
 
         # Mini-specific utilities (F21 Phase 3a)

@@ -130,15 +130,31 @@ db_pass=$(get_data_secret "production_database.password" "")
 
 ### Safe Operations
 
-For operations needing data secrets, use proxy functions that return sanitized output:
+For operations needing data secrets, use the `pl` verbs that return sanitized output.
+They read the tracked `servers/<name>/.nwp-server.yml` route, never a credential you
+have to handle:
 
 ```bash
-source lib/safe-ops.sh
-
-safe_server_status prod1    # Returns: Status, CPU, Memory (no credentials)
-safe_db_status avc          # Returns: Table count, size (no actual data)
-safe_security_check avc     # Returns: Update count (no credentials)
+pl server status <name>        # SSH reachability only
+pl server health <name>        # load / memory / disk HEADROOM — no credentials
+pl server health --all         # every configured server
+pl server forge status <name>  # forge package version + apt key expiry
+pl logs <name> --source=nginx --tail=200   # read-only, clamped, fixed source set
+pl audit <site> --security-only            # advisory counts, no DB contents
 ```
+
+**`pl server health` is a REQUIRED PREFLIGHT** before anything heavy on a shared box.
+`git.nwpcode.org` has 3.8 GB of RAM and serves GitLab plus five live sites; on
+2026-07-25 a heavy op OOM-killed it for 5-8 minutes. `health` exits 1 with no
+headroom and **3 when it cannot measure** — an unmeasurable host is never treated as
+healthy. Never run `gitlab-rails`/`gitlab-rake` on that box.
+
+> **Retired 2026-07-26:** `lib/safe-ops.sh` and its `safe_server_status` /
+> `safe_db_status` / `safe_security_check` helpers. That library had **zero callers
+> anywhere in the tree** and told you to run `./stg2prod.sh` and `./backup.sh`, root
+> scripts that do not exist. Standing orders that point at dead code read as coverage.
+> `tests/unit/test-host.bats` now fails if any `lib/*.sh` named in this file has no
+> production caller.
 
 See `docs/security/data-security-best-practices.md` for the full security architecture.
 

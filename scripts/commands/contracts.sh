@@ -539,10 +539,201 @@ EOF
     return 0
 }
 
+# ---------------------------------------------------------------------------
+# guards — the GUARD-ADOPTION gate (ops#138)
+# ---------------------------------------------------------------------------
+# A safety guard that nothing calls is not a control; it is a capability with a
+# reassuring name. ops#138 is the estate's live example: `Art9ConsentGate::
+# assertMayWriteArt9()` — the Drupal-side Art.9 hard write-gate — has zero
+# production call sites, and `nwc_privacy/tests/src/PrivacySweep.php` "verifies"
+# it by grepping for the string, so the gap reported as covered for weeks.
+#
+# This verb asks the only question that distinguishes a control from a comment:
+# is the symbol CALLED, in executable position, from a file other than the one
+# that defines it?
+#
+# Contract block consumed:
+#   guards:
+#     - symbol: assertMayWriteArt9      # the function/method name
+#       side: provider|consumer         # which crossref root set to scan
+#       why: "Art.9 hard write-gate"    # printed with the failure
+#       defined_in: "src/.../Gate.php"  # excluded from the call-site search
+#
+# Deliberately NOT folded into `crossref` (which blocks `pl pair-smoke` at plan
+# time): ops#138 is red on the real estate right now and is an operator-owned
+# decision. Making a true finding visible and turning it into a surprise
+# promotion block are different calls; only the first is an agent's to make.
+#
+# Exit: 0 every declared guard is adopted (or none declared) · 1 otherwise.
+# ---------------------------------------------------------------------------
+
+# Strip PHP comments from stdin: MULTI-LINE /* */ and /** */ docblocks (state
+# machine, not a per-line regex), plus // and # line comments.
+#
+# The multi-line case is load-bearing, not pedantry. The first version of this
+# gate used a per-line `sed` and reported the ops#138 guard ADOPTED because
+# nwc_privacy/src/Exception/Art9ConsentRequiredException.php has the line
+# `* Art9ConsentGate::assertMayWriteArt9($uid) first;` inside a docblock. A
+# guard-adoption gate that goes green on a comment is the exact defect it exists
+# to find.
+_guards_strip_comments() {
+    awk '
+    {
+        line = $0
+        out = ""
+        while (length(line) > 0) {
+            if (inblock) {
+                p = index(line, "*/")
+                if (p == 0) { line = ""; break }
+                line = substr(line, p + 2); inblock = 0; continue
+            }
+            p = index(line, "/*")
+            q = index(line, "//")
+            r = index(line, "#")
+            # Earliest comment opener on the remaining text wins.
+            best = 0; kind = ""
+            if (p > 0)              { best = p; kind = "block" }
+            if (q > 0 && (best == 0 || q < best)) { best = q; kind = "line" }
+            if (r > 0 && (best == 0 || r < best)) { best = r; kind = "line" }
+            if (best == 0) { out = out line; line = ""; break }
+            out = out substr(line, 1, best - 1)
+            if (kind == "line") { line = ""; break }
+            line = substr(line, best + 2); inblock = 1
+        }
+        print out
+    }' 2>/dev/null
+}
+
+# Non-comment call sites of <symbol> under <roots>, excluding every path in
+# <exclude-list> (newline separated). Matches ->sym( / ::sym( / sym( in
+# executable position.
+_guards_call_sites() { # <symbol> <exclude-list> <roots...>
+    local sym="$1" excludes="$2"; shift 2
+    local roots=("$@") f
+    [ "${#roots[@]}" -gt 0 ] || return 0
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        if [ -n "$excludes" ] && printf '%s\n' "$excludes" | grep -qxF "$f"; then continue; fi
+        if _guards_strip_comments < "$f" \
+             | grep -qE "(->|::)?[[:space:]]*\b${sym}[[:space:]]*\("; then
+            printf '%s\n' "$f"
+        fi
+    done < <(grep -rlE "\b${sym}\b" --include='*.php' --include='*.module' --include='*.inc' \
+                --include='*.install' --include='*.theme' "${roots[@]}" 2>/dev/null)
+}
+
+cmd_guards() {
+    local want=() all=false arg
+    for arg in "$@"; do
+        case "$arg" in
+            --all) all=true ;;
+            -*)    _err "contracts guards: unknown option '$arg'"; return 2 ;;
+            *)     want+=("$arg") ;;
+        esac
+    done
+
+    if ! command -v yq >/dev/null 2>&1; then
+        _err "contracts guards: CANNOT-VERIFY — yq not installed (the contract cannot be parsed)."
+        return 1
+    fi
+
+    if [ "$all" = true ] || [ "${#want[@]}" -eq 0 ]; then
+        want=()
+        local f
+        for f in "$PAIRS_DIR"/*.pair-contract.yml; do
+            [ -e "$f" ] || continue
+            want+=("$(basename "$f" .pair-contract.yml)")
+        done
+        if [ "${#want[@]}" -eq 0 ]; then
+            _err "contracts guards: CANNOT-VERIFY — no pair contracts in $PAIRS_DIR."
+            return 1
+        fi
+    fi
+
+    local rc=0 pair
+    for pair in "${want[@]}"; do
+        _guards_one "$pair" || rc=1
+    done
+    return "$rc"
+}
+
+_guards_one() {
+    local pair="$1"
+    local contract="$PAIRS_DIR/${pair}.pair-contract.yml"
+
+    if [ ! -f "$contract" ]; then
+        _err "[$pair] CANNOT-VERIFY: no contract at $contract"
+        return 1
+    fi
+
+    local count
+    count="$(_crossref_yq "$contract" '.guards | length' | head -1)"
+    if [ -z "$count" ] || [ "$count" = "0" ]; then
+        _say "[$pair] guards NONE-DECLARED — this contract declares no safety guards to check."
+        _say "  If this pair has a write-gate, consent gate or similar, declare it under"
+        _say "  'guards:' so a guard with no callers cannot hide behind its own documentation."
+        return 0
+    fi
+
+    local prov_roots=() cons_roots=() r
+    while IFS= read -r r; do [ -n "$r" ] && prov_roots+=("$r"); done < <(
+        _crossref_yq "$contract" '.crossref.provider_roots[]' | _crossref_existing_roots)
+    while IFS= read -r r; do [ -n "$r" ] && cons_roots+=("$r"); done < <(
+        _crossref_yq "$contract" '.crossref.consumer_roots[]' | _crossref_existing_roots)
+
+    local bad=0 i sym side why defined roots=() sites exclude
+    for (( i=0; i<count; i++ )); do
+        sym="$(_crossref_yq "$contract" ".guards[$i].symbol")"
+        side="$(_crossref_yq "$contract" ".guards[$i].side")"; [ -n "$side" ] || side="provider"
+        why="$(_crossref_yq "$contract" ".guards[$i].why")"
+        defined="$(_crossref_yq "$contract" ".guards[$i].defined_in")"
+        [ -n "$sym" ] || continue
+
+        if [ "$side" = "consumer" ]; then roots=("${cons_roots[@]:-}"); else roots=("${prov_roots[@]:-}"); fi
+        # Drop the empty-array placeholder bash leaves behind.
+        [ "${#roots[@]}" -eq 1 ] && [ -z "${roots[0]}" ] && roots=()
+
+        if [ "${#roots[@]}" -eq 0 ]; then
+            _err "[$pair] guard $sym: CANNOT-VERIFY — no ${side} root from crossref.${side}_roots exists here."
+            _say  "  A guard scanned over an empty corpus reports adopted. Refusing to."
+            bad=1
+            continue
+        fi
+
+        # The definition must be excluded under EVERY declared root, not just
+        # the first that happens to hold it: dev/ and stg/ are both provider
+        # roots and both carry the file, so a `break` here let the stg copy of
+        # the guard's own definition count as adoption.
+        exclude=""
+        if [ -n "$defined" ]; then
+            for r in "${roots[@]}"; do
+                [ -f "$r/$defined" ] && exclude="${exclude}${r}/${defined}"$'\n'
+            done
+        fi
+
+        sites="$(_guards_call_sites "$sym" "$exclude" "${roots[@]}")"
+        if [ -z "$sites" ]; then
+            _err "[$pair] guard UNCALLED-GUARD  $sym  (${why:-no rationale recorded})"
+            _say  "  Declared as a control, called from nowhere. Every remaining reference is a"
+            _say  "  comment, a docblock or a name in a list — which is how this stayed invisible."
+            [ -n "$exclude" ] && printf '%s' "$exclude" | sed 's|^|  defined in: |'
+            bad=1
+        else
+            local n; n="$(printf '%s\n' "$sites" | grep -c .)"
+            _say "[$pair] guard adopted      $sym  (${n} call site(s))"
+            printf '%s\n' "$sites" | sed 's|^|    |'
+        fi
+    done
+
+    [ "$bad" -eq 0 ] || return 1
+    return 0
+}
+
 main() {
     local verb="${1:-help}"; shift || true
     case "$verb" in
         compat)    cmd_compat "$@" ;;
+        guards)    cmd_guards "$@" ;;
         sums)      cmd_sums "$@" ;;
         sign)      cmd_sign "$@" ;;
         verify)    cmd_verify "$@" ;;

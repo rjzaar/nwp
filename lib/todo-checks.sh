@@ -66,11 +66,33 @@ todo_is_ignored() {
 
     [ ! -f "$config_file" ] && return 1
 
-    if command -v yq &>/dev/null; then
-        local found=$(yq eval ".settings.todo.ignored[] | select(.id == \"$item_id\") | .id" "$config_file" 2>/dev/null)
-        [ -n "$found" ] && return 0
+    command -v yq &>/dev/null || return 1
+
+    local found
+    found=$(yq eval ".settings.todo.ignored[] | select(.id == \"$item_id\") | .id" "$config_file" 2>/dev/null)
+    [ -n "$found" ] || return 1
+
+    # HONOUR `expires`. It was write-only: add_to_ignored could record an expiry
+    # and NOTHING read it, so every "snooze until next week" was in fact a
+    # permanent silence. A snooze that never wakes is the same defect as a
+    # permanent ignore — and it is how an SSL item got disarmed for good.
+    #
+    # An entry with no `expires` remains permanent: that is a deliberate,
+    # explicit operator choice via `pl todo ignore`.
+    local expires
+    expires=$(yq eval ".settings.todo.ignored[] | select(.id == \"$item_id\") | .expires // \"\"" "$config_file" 2>/dev/null | grep -v '^null$' | head -1)
+    if [ -n "$expires" ]; then
+        local exp_epoch now_epoch
+        exp_epoch=$(date -d "$expires" +%s 2>/dev/null || echo 0)
+        now_epoch=$(date +%s)
+        # An UNPARSEABLE expiry must not be treated as "never expires" — fail
+        # towards visibility, because the cost of showing an item again is a
+        # line of output and the cost of hiding one is an unnoticed outage.
+        if [ "$exp_epoch" = "0" ] || [ "$exp_epoch" -le "$now_epoch" ]; then
+            return 1
+        fi
     fi
-    return 1
+    return 0
 }
 
 # Add a todo item to the results (skips if ignored)
@@ -94,9 +116,44 @@ todo_add_item() {
     fi
 
     # Store as JSON-like format for easy parsing
-    local item="{\"id\":\"$full_id\",\"category\":\"$category\",\"priority\":\"$priority\",\"title\":\"$title\",\"description\":\"$description\",\"site\":\"$site\",\"action\":\"$action\"}"
+    local item="{\"id\":\"$full_id\",\"category\":\"$category\",\"priority\":\"$priority\",\"title\":\"$title\",\"description\":\"$description\",\"site\":\"$site\",\"action\":\"$action\",\"unknown\":${TODO_ITEM_UNKNOWN:-false}}"
     TODO_ITEMS+=("$item")
 }
+
+# UNKNOWN — the third outcome. A check has three possible results, not two:
+#
+#   FINDING   we looked, and there is something to do
+#   CLEAR     we looked, and there is nothing to do
+#   UNKNOWN   we could NOT look
+#
+# Before this existed, ~15 checks collapsed UNKNOWN into CLEAR with a bare
+# `|| return 0` on transport/tool failure: no ssh key → clean; unroutable host →
+# clean; no yq → clean; no api_token → clean; audit rc=2 → keep a 1-byte stale
+# cache and say nothing. That is how a fleet reports green while nobody is
+# actually looking at it. `pl rag` grades any site with an open UNK item AMBER
+# and will never call it GREEN.
+#
+# Args: $1=check name (becomes UNK-<name>) $2=why we could not check
+#       $3=site (optional) $4=action (optional)
+todo_add_unknown() {
+    local check="$1"
+    local reason="$2"
+    local site="${3:-}"
+    local action="${4:-}"
+
+    # Set explicitly rather than as a command prefix: bash's scoping of
+    # `VAR=x func` differs between POSIX and default mode, and this flag must not
+    # leak into the next todo_add_item call.
+    TODO_ITEM_UNKNOWN=true
+    todo_add_item "UNK" "$check" "medium" \
+        "Check could not run: $check" \
+        "NOT a clean result — this check did not complete. Reason: $reason" \
+        "$site" "$action"
+    TODO_ITEM_UNKNOWN=false
+}
+
+# Every check runs with this false unless todo_add_unknown flips it.
+TODO_ITEM_UNKNOWN=false
 
 # Output all collected items as JSON array
 todo_output_items() {
@@ -332,11 +389,24 @@ check_orphaned_sites() {
 check_ghost_sites() {
     is_category_enabled "ghost_sites" || return 0
 
-    # Get DDEV list as JSON and parse it
-    local ddev_json
-    ddev_json=$(ddev list --json-output 2>/dev/null | grep -o '"raw":\[.*\]' | sed 's/"raw"://' 2>/dev/null) || return 0
+    # No ddev binary = we cannot enumerate projects. That is UNKNOWN, not
+    # "there are no ghost sites".
+    if ! command -v ddev >/dev/null 2>&1; then
+        todo_add_unknown "ghost_sites" \
+            "ddev is not installed on this machine, so DDEV projects could not be enumerated" \
+            "" ""
+        return 0
+    fi
 
-    [ -z "$ddev_json" ] && return 0
+    # Get DDEV list as JSON and parse it
+    local ddev_json rc=0
+    ddev_json=$(ddev list --json-output 2>/dev/null | grep -o '"raw":\[.*\]' | sed 's/"raw"://' 2>/dev/null) || rc=$?
+    if [ "$rc" -ne 0 ] || [ -z "$ddev_json" ]; then
+        todo_add_unknown "ghost_sites" \
+            "'ddev list --json-output' produced nothing usable (daemon down? ddev not initialised?)" \
+            "" "ddev list"
+        return 0
+    fi
 
     # Parse JSON to find ghost sites (using process substitution to avoid subshell)
     while read -r entry; do
@@ -397,7 +467,24 @@ check_missing_backups() {
     is_category_enabled "missing_backups" || return 0
 
     local config_file="${TODO_CONFIG_FILE:-$TODO_CHECKS_PROJECT_ROOT/nwp.yml}"
-    [ ! -f "$config_file" ] && return 0
+    if [ ! -f "$config_file" ]; then
+        todo_add_unknown "missing_backups" \
+            "no config at $config_file — no site's backup state was checked" "" ""
+        return 0
+    fi
+
+    # Shared integrity helper (see lib/backup-integrity.sh for why freshness
+    # alone was not enough).
+    if ! command -v backup_artifact_integrity &>/dev/null; then
+        if [ -f "$TODO_CHECKS_DIR/backup-integrity.sh" ]; then
+            # shellcheck source=/dev/null
+            source "$TODO_CHECKS_DIR/backup-integrity.sh"
+        else
+            todo_add_unknown "missing_backups" \
+                "lib/backup-integrity.sh is missing — backups could not be verified" "" ""
+            return 0
+        fi
+    fi
 
     local warn_days=$(get_todo_setting "thresholds.backup_warn_days" "7")
     local now_epoch=$(date +%s)
@@ -424,16 +511,35 @@ check_missing_backups() {
             continue
         fi
 
-        # Find most recent backup file
-        local latest_backup
-        latest_backup=$(find "$backup_dir" -type f \( -name "*.sql.gz" -o -name "*.tar.gz" \) -printf '%T@\n' 2>/dev/null | sort -n | tail -1)
-
-        if [ -z "$latest_backup" ]; then
+        # Any backup files at all?
+        if ! find "$backup_dir" -maxdepth 1 -type f \( -name "*.sql.gz" -o -name "*.tar.gz" \) 2>/dev/null | grep -q .; then
             todo_add_item "BAK" "$site" "medium" "No backup files found" "Site: $site | Directory: $backup_dir" "$site" "pl backup $site"
             continue
         fi
 
-        local backup_age=$((now_epoch - ${latest_backup%.*}))
+        # A corrupt artifact is a DISTINCT finding, filed even when a valid older
+        # backup exists — otherwise the producer keeps writing garbage and the
+        # only symptom is a silently ageing "last good" date.
+        local bad bad_path bad_reason
+        if bad=$(backup_first_bad_artifact "$backup_dir"); then
+            bad_path="${bad%%$'\t'*}"; bad_reason="${bad#*$'\t'}"
+            todo_add_item "BAK" "corrupt-$site" "high" \
+                "Backup artifact is NOT restorable: $(basename "$bad_path")" \
+                "Site: $site | $bad_reason | A bad artifact used to report FRESH and suppress the next backup for $warn_days more days." \
+                "$site" "pl backup $site"
+        fi
+
+        # Freshness is measured against the newest artifact that actually passes
+        # integrity, never merely the newest file.
+        local latest_backup
+        if ! latest_backup=$(backup_latest_good_epoch "$backup_dir"); then
+            todo_add_item "BAK" "$site" "high" "No RESTORABLE backup exists" \
+                "Site: $site | Directory: $backup_dir | Files are present but none passed an integrity check." \
+                "$site" "pl backup $site"
+            continue
+        fi
+
+        local backup_age=$((now_epoch - latest_backup))
 
         if [ "$backup_age" -gt "$warn_seconds" ]; then
             local days_ago=$((backup_age / 86400))
@@ -758,8 +864,20 @@ check_secret_expiry() {
     is_category_enabled "secret_expiry" || return 0
 
     local registry="$TODO_CHECKS_PROJECT_ROOT/private/secrets-registry.yml"
-    [ -f "$registry" ] || return 0
-    command -v yq &>/dev/null || return 0
+    # No registry / no yq means we have NOT verified any secret's expiry. Saying
+    # nothing here is what let expired credentials sit unreported.
+    if [ ! -f "$registry" ]; then
+        todo_add_unknown "secret_expiry" \
+            "no secrets registry at $registry — no secret expiry was checked" \
+            "" "pl secrets status"
+        return 0
+    fi
+    if ! command -v yq &>/dev/null; then
+        todo_add_unknown "secret_expiry" \
+            "yq is not installed, so the secrets registry could not be read" \
+            "" "pl doctor"
+        return 0
+    fi
 
     local warn_days=$(get_todo_setting "thresholds.secret_warn_days" "14")
     local alert_days=$(get_todo_setting "thresholds.secret_alert_days" "3")
@@ -820,22 +938,49 @@ check_secret_expiry() {
 # tokens). Exit 2 from the audit = host unreachable → keep stale cache, no alert.
 check_token_liveness() {
     is_category_enabled "token_liveness" || return 0
-    command -v yq &>/dev/null || return 0
+    if ! command -v yq &>/dev/null; then
+        todo_add_unknown "token_liveness" "yq is not installed — no token was probed" "" "pl doctor"
+        return 0
+    fi
     local root="$TODO_CHECKS_PROJECT_ROOT"
     local sec="$root/scripts/commands/secrets.sh"
-    [ -f "$sec" ] || return 0
+    if [ ! -f "$sec" ]; then
+        todo_add_unknown "token_liveness" "secrets.sh not found at $sec — no token was probed" "" ""
+        return 0
+    fi
     local cache="$root/private/.token-audit-cache"
     local warn_days=$(get_todo_setting "thresholds.secret_warn_days" "14")
     local now age=999999
     now=$(date +%s)
     [ -f "$cache" ] && age=$(( now - $(stat -c %Y "$cache" 2>/dev/null || echo 0) ))
     if [ "$age" -ge 72000 ]; then
-        local out rc
-        out=$(bash "$sec" audit --quiet --days "$warn_days" 2>/dev/null); rc=$?
-        [ "$rc" = "2" ] && return 0   # host unreachable → keep stale cache, don't alert
+        local out rc=0
+        out=$(bash "$sec" audit --quiet --days "$warn_days" 2>/dev/null) || rc=$?
+        if [ "$rc" = "2" ]; then
+            # Host unreachable. The old code kept the stale cache and returned
+            # clean — with NO age check, so a 1-byte cache from any point in the
+            # past kept the fleet quiet indefinitely. Say we are blind instead,
+            # and say how long we have been blind.
+            local cache_age_desc="never successfully audited"
+            if [ -f "$cache" ]; then
+                cache_age_desc="last successful audit ~$(( age / 86400 ))d ago"
+            fi
+            todo_add_unknown "token_liveness" \
+                "the token probe could not reach its host ($cache_age_desc) — no token liveness was verified this run" \
+                "" "pl secrets audit"
+            return 0
+        fi
         printf '%s\n' "$out" > "$cache" 2>/dev/null && chmod 600 "$cache" 2>/dev/null || true
+        # Record when we last actually managed to probe, so staleness is a fact
+        # rather than an inference from a file we may never have rewritten.
+        date -u +%FT%TZ > "$root/private/.token-audit-last-success" 2>/dev/null || true
     fi
-    [ -f "$cache" ] || return 0
+    if [ ! -f "$cache" ]; then
+        todo_add_unknown "token_liveness" \
+            "no token-audit cache exists and none could be produced — no token liveness was verified" \
+            "" "pl secrets audit"
+        return 0
+    fi
     local id live exp note
     while IFS=$'\t' read -r id live exp note; do
         [ -z "$id" ] && continue
@@ -870,19 +1015,18 @@ check_agent_loop_cap() {
     fi
     # FAIL-OPEN -> FAIL-LOUD. These three paths used to `return 0`, which is
     # indistinguishable from "checked, healthy". A cap check that cannot reach
-    # GitLab knows nothing; it must say so.
+    # GitLab knows nothing; it must say so — and via todo_add_unknown, so the
+    # structured `unknown: true` flag is set and `pl rag` refuses to grade GREEN.
     if [ -z "$api_token" ]; then
-        todo_add_item "LOOP" "health-unknown-token" "low" \
-            "Loop health UNKNOWN: no GitLab token on this host" \
-            "check_agent_loop_cap could not authenticate, so 'loop healthy' is not being asserted." \
+        todo_add_unknown "agent_loop" \
+            "no GitLab token on this host — check_agent_loop_cap could not authenticate, so 'loop healthy' is not being asserted" \
             "" "pl secrets status"
         return 0
     fi
     [ -z "$server" ] && server="${NWP_GITLAB_HOST:-}"
     if [ -z "$server" ]; then
-        todo_add_item "LOOP" "health-unknown-server" "low" \
-            "Loop health UNKNOWN: no GitLab server configured" \
-            "Set gitlab.server.domain in .secrets.yml or NWP_GITLAB_HOST." \
+        todo_add_unknown "agent_loop" \
+            "no GitLab server configured — set gitlab.server.domain in .secrets.yml or NWP_GITLAB_HOST" \
             "" "pl secrets keys"
         return 0
     fi
@@ -896,9 +1040,8 @@ check_agent_loop_cap() {
     mrs=$(curl -sf -H "PRIVATE-TOKEN: $api_token" \
         "https://$server/api/v4/merge_requests?scope=all&created_after=$since&per_page=100" 2>/dev/null)
     if [ -z "$mrs" ]; then
-        todo_add_item "LOOP" "health-unknown-api" "low" \
-            "Loop health UNKNOWN: GitLab unreachable from this host" \
-            "No MR list returned from https://$server — throughput cannot be assessed." \
+        todo_add_unknown "agent_loop" \
+            "GitLab unreachable from this host — no MR list returned, so throughput cannot be assessed (network down, or the token is dead)" \
             "" "pl loop"
         return 0
     fi
@@ -1226,46 +1369,90 @@ check_unpushed_commits() {
 #   - settings.todo.live_backup.ssh_key overrides the key path
 #     (default: ~/.ssh/gitlab_linode).
 #   - settings.todo.live_backup.path overrides the remote backup dir.
+# The action string for a DR-backup finding.
+#
+# All three branches used to file the literal string
+#   "ssh into <server> and check the nwp-pull producer cron"
+# which is not a command, so `tui_is_executable` returned false and the
+# highest-consequence item in the whole list was inert — you could not act on it
+# from `pl todo`, and it trained the reflex of starting an incident with raw ssh.
+# Prefer `pl server backup verify` the moment that verb exists (item 7 ships it);
+# until then fall back to the read-only server verb that does exist today. Either
+# way the operator gets something they can press enter on.
+_lbk_action() {
+    local server="$1"
+    if grep -qE '^\s*(verify|"verify")\)' "$TODO_CHECKS_PROJECT_ROOT/scripts/commands/server-backup.sh" 2>/dev/null; then
+        printf 'pl server backup verify %s' "$server"
+    else
+        printf 'pl server status %s' "$server"
+    fi
+}
+
 check_live_backup_freshness() {
     is_category_enabled "live_backup" || return 0
 
     # server-resolver is auto-sourced via lib/common.sh in command contexts;
     # load it here for standalone use.
+    local server
+    server=$(get_todo_setting "live_backup.server" "nwpcode")
+
     if ! command -v get_server_ip &>/dev/null; then
         if [ -f "$TODO_CHECKS_DIR/server-resolver.sh" ]; then
             # shellcheck source=/dev/null
             source "$TODO_CHECKS_DIR/server-resolver.sh"
         else
+            todo_add_unknown "live_backup" \
+                "lib/server-resolver.sh is missing, so '$server' could not be resolved — DR backup freshness was NOT checked" \
+                "" ""
             return 0
         fi
     fi
 
-    local server ip user key remote_path warn_days
-    server=$(get_todo_setting "live_backup.server" "nwpcode")
+    # EVERY failure below used to `return 0`, i.e. report the DR backup chain
+    # clean. Proven with TEST-NET-1: pointing this check at 192.0.2.1 produced
+    # silence, which `pl rag` rendered as green. The disaster-recovery signal is
+    # precisely the one that must never fail open.
+    local ip user key remote_path warn_days
     ip=$(get_server_ip "$server" 2>/dev/null)
     user=$(get_server_user "$server" 2>/dev/null)
-    [ -z "$ip" ] && return 0
+    if [ -z "$ip" ]; then
+        todo_add_unknown "live_backup" \
+            "server '$server' has no resolvable IP (missing servers/$server/.nwp-server.yml?) — DR backup freshness was NOT checked" \
+            "" "pl server list"
+        return 0
+    fi
     [ -z "$user" ] && user="gitlab"
 
     key=$(get_todo_setting "live_backup.ssh_key" "$HOME/.ssh/gitlab_linode")
     key="${key/#\~/$HOME}"
-    [ -f "$key" ] || return 0
+    if [ ! -f "$key" ]; then
+        todo_add_unknown "live_backup" \
+            "ssh key $key is not present on this machine — DR backup freshness on '$server' was NOT checked" \
+            "" "pl secrets status"
+        return 0
+    fi
 
     remote_path=$(get_todo_setting "live_backup.path" "/var/backups/nwp-pull")
     warn_days=$(get_todo_setting "thresholds.live_backup_warn_days" "2")
 
     # One remote round-trip: newest mtime epoch, or MISSING if the dir is gone.
-    local remote_out
+    local remote_out rc=0
     remote_out=$(ssh -o BatchMode=yes -o ConnectTimeout=8 -o IdentitiesOnly=yes \
         -i "$key" "$user@$ip" \
         "if [ -d '$remote_path' ]; then find '$remote_path' -type f -printf '%T@\n' 2>/dev/null | sort -rn | head -1; else echo MISSING; fi" \
-        2>/dev/null) || return 0
+        2>/dev/null) || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        todo_add_unknown "live_backup" \
+            "ssh to $user@$ip ('$server') failed with exit $rc — DR backup freshness was NOT checked. Being off-network looks identical to the producer cron being dead; this item exists so the two are distinguishable." \
+            "" "pl server backup verify $server"
+        return 0
+    fi
 
     if [ "$remote_out" = "MISSING" ]; then
         todo_add_item "LBK" "$server" "medium" \
             "Live-tier backup dir missing on $server (box producer cron?)" \
             "Expected: $remote_path on $server | The producer cron may never have run" \
-            "" "ssh into $server and check the nwp-pull producer cron"
+            "" "$(_lbk_action "$server")"
         return 0
     fi
 
@@ -1278,7 +1465,7 @@ check_live_backup_freshness() {
         todo_add_item "LBK" "$server" "medium" \
             "Live-tier backup dir empty on $server (box producer cron?)" \
             "Path: $remote_path | No backup files found" \
-            "" "ssh into $server and check the nwp-pull producer cron"
+            "" "$(_lbk_action "$server")"
         return 0
     fi
 
@@ -1287,7 +1474,182 @@ check_live_backup_freshness() {
         todo_add_item "LBK" "$server" "medium" \
             "Live-tier backup stale (${age_days}d old — box producer cron?)" \
             "Path: $remote_path on $server | Threshold: $warn_days days" \
-            "" "ssh into $server and check the nwp-pull producer cron"
+            "" "$(_lbk_action "$server")"
+    fi
+}
+
+# PAU: paused automation.
+#
+# WHY THIS EXISTS: a `.loop-paused` sentinel sat on all three AI hosts for over a
+# week. Every night the wrapper logged "skipping" and exited 0 — a green cron, a
+# green exit code, and not one `pl` surface anywhere that said the self-healing
+# loop had been off since the middle of the month. A pause is a decision; a pause
+# nobody can see is an outage. This check makes every pause visible, ages it, and
+# demands a reason.
+#
+# NOTE ON SCOPE: this deliberately does NOT weaken the global kill switch.
+# `.loop-paused` still stops every part including rag-sync (lib/loop-parts.sh).
+# The defect was that a pause was INVISIBLE, not that the brake was too strong,
+# and narrowing an operator's big red button is not a change an agent should make.
+check_paused_automation() {
+    is_category_enabled "paused_automation" || return 0
+
+    local root="$TODO_CHECKS_PROJECT_ROOT"
+    local now; now=$(date +%s)
+    local sentinel name age_days mtime reason until_s until_epoch
+
+    for sentinel in "$root/.loop-paused" "$root/.rag-sync-paused"; do
+        [ -f "$sentinel" ] || continue
+        name="$(basename "$sentinel")"
+        mtime=$(stat -c %Y "$sentinel" 2>/dev/null || echo "$now")
+        age_days=$(( (now - mtime) / 86400 ))
+
+        # A pause file may carry `reason:` and `until:` lines. An unannotated
+        # pause is indistinguishable from someone forgetting to un-pause.
+        reason=$(grep -iE '^\s*reason:' "$sentinel" 2>/dev/null | head -1 | sed 's/^[^:]*:[[:space:]]*//')
+        until_s=$(grep -iE '^\s*until:' "$sentinel" 2>/dev/null | head -1 | sed 's/^[^:]*:[[:space:]]*//')
+
+        local title="Automation PAUSED: $name (${age_days} day(s))"
+        local desc="Sentinel: $sentinel"
+        if [ -n "$reason" ]; then
+            desc="$desc | reason: $reason"
+        else
+            desc="$desc | no reason recorded — an unannotated pause is indistinguishable from a forgotten one. Add 'reason:' and 'until:' lines to the file."
+        fi
+        if [ -n "$until_s" ]; then
+            until_epoch=$(date -d "$until_s" +%s 2>/dev/null || echo 0)
+            if [ "$until_epoch" != "0" ] && [ "$until_epoch" -lt "$now" ]; then
+                title="Automation PAUSED PAST ITS DEADLINE: $name (until $until_s, expired)"
+                desc="$desc | until: $until_s — that window has expired"
+            else
+                desc="$desc | until: $until_s"
+            fi
+        fi
+        todo_add_item "PAU" "${name#.}" "high" "$title" "$desc" "" "pl loop status"
+    done
+
+    # Per-part disables (lib/loop-parts.sh state file). Host-local by design, so
+    # this reports THIS machine's arming state — which is the point: "armed on
+    # two hosts" was previously one invisible switch.
+    local state_file="${NWP_LOOP_STATE:-$HOME/.config/nwp-loop/parts.state}"
+    if [ -f "$state_file" ]; then
+        local k v
+        while IFS='=' read -r k v; do
+            k="${k%%[[:space:]]*}"; k="${k#"${k%%[![:space:]]*}"}"
+            [ -z "$k" ] && continue
+            case "$k" in \#*) continue ;; esac
+            v="${v%%[[:space:]]*}"
+            [ "$v" = "disabled" ] || continue
+            local sage; sage=$(( (now - $(stat -c %Y "$state_file" 2>/dev/null || echo "$now")) / 86400 ))
+            todo_add_item "PAU" "part-$k" "high" \
+                "Loop part disabled: $k (state file ${sage} day(s) old)" \
+                "State: $state_file | This host will not run '$k'. Re-enable with: pl loop enable $k" \
+                "" "pl loop status"
+        done < "$state_file"
+    fi
+}
+
+# RSY: rag-sync freshness.
+#
+# The tracker's WRITE half. `pl rag` reading the fleet is useless if nothing
+# turns that state into issues — and rag-sync failing is silent by construction,
+# because "skipping" is a successful exit. Age the last SUCCESSFUL run, not the
+# last log line: 8 nights of "skipping" is 8 nights of no writes, and the log
+# file's mtime looks fresh the whole time.
+check_rag_sync_freshness() {
+    is_category_enabled "rag_sync" || return 0
+
+    local log="$TODO_CHECKS_PROJECT_ROOT/logs/rag-sync.log"
+    if [ ! -f "$log" ]; then
+        todo_add_unknown "rag_sync" \
+            "no rag-sync log at $log — cannot tell whether the RAG→issues writer has ever run on this host" \
+            "" "pl loop status"
+        return 0
+    fi
+
+    local warn_days alert_days
+    warn_days=$(get_todo_setting "thresholds.rag_sync_warn_days" "2")
+    alert_days=$(get_todo_setting "thresholds.rag_sync_alert_days" "7")
+
+    # A "done" line is the only evidence a sync actually ran. "skipping" lines
+    # are explicitly NOT evidence — they are the failure mode.
+    local last_done
+    last_done=$(grep -E 'rag-sync done' "$log" 2>/dev/null | tail -1 | awk '{print $1}')
+
+    local now; now=$(date +%s)
+    local age_days
+    if [ -z "$last_done" ]; then
+        local skips
+        skips=$(grep -cE 'skipping' "$log" 2>/dev/null || echo 0)
+        todo_add_item "RSY" "never" "high" \
+            "rag-sync has NEVER completed a run on this host" \
+            "Log: $log | ${skips} 'skipping' line(s) and no completed run. A skipped run exits 0, so cron looks healthy while nothing is written to the tracker." \
+            "" "pl loop status"
+        return 0
+    fi
+
+    local done_epoch
+    done_epoch=$(date -d "$last_done" +%s 2>/dev/null || echo 0)
+    if [ "$done_epoch" = "0" ]; then
+        todo_add_unknown "rag_sync" \
+            "could not parse a timestamp from the last rag-sync 'done' line ('$last_done')" \
+            "" "pl loop status"
+        return 0
+    fi
+
+    age_days=$(( (now - done_epoch) / 86400 ))
+    if [ "$age_days" -ge "$alert_days" ]; then
+        todo_add_item "RSY" "stale" "high" \
+            "rag-sync has not completed for ${age_days} day(s)" \
+            "Log: $log | Last completed run: $last_done | Threshold: $alert_days days. The fleet's RAG state is not reaching nwp/ops." \
+            "" "pl loop status"
+    elif [ "$age_days" -ge "$warn_days" ]; then
+        todo_add_item "RSY" "stale" "medium" \
+            "rag-sync has not completed for ${age_days} day(s)" \
+            "Log: $log | Last completed run: $last_done | Threshold: $warn_days days." \
+            "" "pl loop status"
+    fi
+}
+
+# NTF: can this machine actually notify the operator?
+#
+# The guide's own conclusion about the old arrangement was "the notification
+# system can't notify you that it can't notify you". This check is the answer:
+# it ages the last successful `pl notify health` canary. It deliberately does NOT
+# send a notification itself — `pl todo` runs often and must stay read-only and
+# quiet — it reports on the freshness of the last proof.
+check_notify_health() {
+    is_category_enabled "notify_health" || return 0
+
+    local notify="$TODO_CHECKS_PROJECT_ROOT/scripts/commands/notify.sh"
+    if [ ! -x "$notify" ]; then
+        todo_add_unknown "notify_health" \
+            "pl notify is not available on this machine — cannot tell whether alerts would reach you" \
+            "" ""
+        return 0
+    fi
+
+    local stampfile="$TODO_CHECKS_PROJECT_ROOT/private/.notify-last-ok"
+    local warn_days
+    warn_days=$(get_todo_setting "thresholds.notify_health_warn_days" "7")
+
+    if [ ! -f "$stampfile" ]; then
+        todo_add_item "NTF" "never" "high" \
+            "The notification path has NEVER been proven on this machine" \
+            "No $stampfile. An alert path nobody has exercised is not an alert path — run: pl notify health" \
+            "" "pl notify health"
+        return 0
+    fi
+
+    local now age_days mtime
+    now=$(date +%s)
+    mtime=$(stat -c %Y "$stampfile" 2>/dev/null || echo "$now")
+    age_days=$(( (now - mtime) / 86400 ))
+    if [ "$age_days" -ge "$warn_days" ]; then
+        todo_add_item "NTF" "stale" "medium" \
+            "Notification path last proven ${age_days} day(s) ago" \
+            "Threshold: $warn_days days | Run: pl notify health" \
+            "" "pl notify health"
     fi
 }
 
@@ -1325,6 +1687,9 @@ TODO_CHECK_LIST=(
     "check_verification:Verification"
     "check_uncommitted_work:Uncommitted work"
     "check_unpushed_commits:Unpushed commits"
+    "check_paused_automation:Paused automation"
+    "check_rag_sync_freshness:RAG-sync freshness"
+    "check_notify_health:Notification path health"
 )
 
 # Get check count
@@ -1373,6 +1738,8 @@ export -f todo_cache_valid
 export -f todo_cache_init
 export -f todo_cache_clear
 export -f todo_add_item
+export -f todo_add_unknown
+export -f _lbk_action
 export -f todo_output_items
 export -f todo_clear_items
 export -f get_todo_setting
@@ -1400,6 +1767,9 @@ export -f check_site_registry_drift
 export -f check_unpushed_commits
 export -f _gwk_site_of
 export -f check_live_backup_freshness
+export -f check_paused_automation
+export -f check_rag_sync_freshness
+export -f check_notify_health
 export -f run_all_checks
 export -f todo_get_check_count
 export -f todo_get_check_name

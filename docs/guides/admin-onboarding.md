@@ -49,7 +49,7 @@ linode:
 ```
 
 **Requirements for Linode DNS:**
-- Base domain (e.g., `nwpcode.org`) must exist in Linode DNS Manager
+- Base domain (e.g., `example.com`) must exist in Linode DNS Manager
 - Domain nameservers should point to Linode: `ns1-5.linode.com`
 
 **Without either:** NS delegation will be skipped (configure manually)
@@ -832,9 +832,9 @@ If you want to simplify your stack by using Linode for both servers and DNS:
 ```bash
 # Via Linode CLI
 linode-cli domains create \
-  --domain nwpcode.org \
+  --domain example.com \
   --type master \
-  --soa_email admin@nwpcode.org
+  --soa_email admin@example.com
 
 # Or via Linode Dashboard: https://cloud.linode.com/domains
 ```

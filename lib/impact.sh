@@ -159,6 +159,56 @@ impact_confirm() {
 }
 
 ################################################################################
+# impact_rm_scratch <dir> — remove a throwaway directory THIS process created.
+#
+# WHY IT LIVES HERE. The contract's subject is destruction of things a human
+# cares about, on scope the verb INFERRED. Deleting a `mktemp -d` you made three
+# lines earlier is neither — but it is written `rm -rf`, so it is
+# indistinguishable from the real thing to any scanner, and the honest options
+# were (a) put every scratch-using file on the exemption list, which is how an
+# allowlist rots, or (b) give the tree ONE audited primitive for it. This is (b).
+#
+# It is deliberately paranoid, because the whole value is that a future caller
+# who passes the wrong variable gets a refusal rather than a catastrophe:
+#   • must be an absolute path that exists and is a directory
+#   • must sit under a temp root ($TMPDIR, /tmp, /var/tmp) — never $HOME, never
+#     the repo, never anywhere a site or a backup could live
+#   • must be at least one level BELOW that root (so a slip that resolves to
+#     "/tmp" itself, or to "/", refuses)
+#   • must not be a symlink (no following a link out of the temp root)
+#
+# Returns 0 when the directory is gone, 1 (with a message on stderr) otherwise.
+# It never prompts: there is nothing here a human could usefully decide.
+################################################################################
+impact_rm_scratch() {
+    local dir="${1:-}"
+    [ -n "$dir" ] || { echo "impact_rm_scratch: refusing: empty path" >&2; return 1; }
+    case "$dir" in
+        /*) ;;
+        *) echo "impact_rm_scratch: refusing non-absolute path: $dir" >&2; return 1 ;;
+    esac
+    [ -L "$dir" ] && { echo "impact_rm_scratch: refusing symlink: $dir" >&2; return 1; }
+    [ -d "$dir" ] || return 0   # already gone is success
+
+    local real root ok=false
+    real="$(cd "$dir" 2>/dev/null && pwd -P)" || {
+        echo "impact_rm_scratch: refusing unresolvable path: $dir" >&2; return 1; }
+    for root in "${TMPDIR:-}" /tmp /var/tmp; do
+        [ -n "$root" ] || continue
+        root="$(cd "$root" 2>/dev/null && pwd -P)" || continue
+        # strictly BELOW the root, never the root itself
+        case "$real" in "$root"/?*) ok=true; break ;; esac
+    done
+    if [ "$ok" != true ]; then
+        echo "impact_rm_scratch: refusing '$real' — not under a temp root" >&2
+        return 1
+    fi
+
+    rm -rf "$real"
+    [ ! -d "$real" ]
+}
+
+################################################################################
 # THE GATE (nwp/ops#47 + item 7) — enforce ADOPTION, not MENTION.
 #
 # The original gate was `grep -q 'lib/impact.sh' "$f"` over `scripts/commands/*.sh`.
@@ -194,7 +244,29 @@ impact_confirm() {
 
 # Destructive-operation signature. Matched on NON-COMMENT lines only, so a file
 # that merely *documents* `rm -rf` is not dragged into the contract.
-IMPACT_DESTRUCTIVE_PATTERN='rm -rf|ddev delete|DROP DATABASE|sql-drop|sql:drop|rsync .*--delete|--delete.*rsync'
+#
+# D3: the rm arm is FLAG-ORDER AGNOSTIC. It used to be the literal string
+# `rm -rf`, which meant `rm -fr`, `rm -r -f`, `rm -f -r`, `rm -rvf` and
+# `rm --recursive --force` all evaded the gate — and a miss here is not a
+# cosmetic one: this pattern is the ONLY thing that pulls a script into the
+# fate-manifest contract, so an unmatched spelling ships a destructive script
+# with no manifest, no allowlist row, and a green pipeline.
+#
+# Shape (judged by tests/unit/test-impact-contract.bats' fixture table, not by
+# reading it):
+#   _RM_HEAD  `rm` as a command, not the tail of an identifier — so `confirm -rf`
+#             and `rmdir` do not match, while `sudo rm`, `;rm`, `$(rm` do.
+#   arm 1     any run of dash-flags, at least one of which contains r/R:
+#             catches -rf, -fr, -r -f, -f -r, -rvf, -Rf and bare -r.
+#   arm 2     the long form, `rm ... --recursive`.
+# RECURSION, not force, is the trigger: `rm -f x` deletes one named file and is
+# not manifest-class, so it (and `rm --force x`) must NOT match.
+#
+# Known limits, deliberate: flags written AFTER the operand (`rm "$d" -rf`) are
+# not matched — allowing arbitrary tokens between `rm` and the flag made
+# `rm "$d" && grep -r x` match, and a gate that cries wolf gets switched off.
+_IMPACT_RM_HEAD='(^|[^[:alnum:]_.-])rm'
+IMPACT_DESTRUCTIVE_PATTERN="${_IMPACT_RM_HEAD}([[:space:]]+-[[:alnum:]-]+)*[[:space:]]+-[[:alnum:]]*[rR]|${_IMPACT_RM_HEAD}[[:space:]][^;&|]*--recursive|ddev delete|DROP DATABASE|sql-drop|sql:drop|rsync .*--delete|--delete.*rsync"
 
 impact_contract_root() {
     echo "${NWP_IMPACT_CONTRACT_ROOT:-$( cd "$_IMPACT_LIB_DIR/.." && pwd )}"

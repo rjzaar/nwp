@@ -34,6 +34,7 @@ Checks performed:
     - Configuration files (nwp.yml, .secrets.yml)
     - Network connectivity (Linode API, Cloudflare API, drupal.org)
     - Common issues (Docker daemon, DDEV sites, disk space, memory)
+    - Version control (commits/repos that exist only on this machine)
 
 Exit codes:
     0 - All checks passed
@@ -364,6 +365,67 @@ check_common_issues() {
 }
 
 ################################################################################
+# Version control: is anything here the ONLY copy?
+#
+# Every other check in this file asks whether the machine can do its job today.
+# This one asks whether the work survives the machine. `feat/nwptoolkit-deploy`
+# (340 lines) sat on no remote in any repo for three weeks; servers/nwpcode is a
+# two-commit repository with no remote at all and is the only home of the
+# fleet's backup producer. Both were invisible to `git status`, to `pl status`,
+# and to `pl doctor`.
+#
+# NWP_VCS_ROOT overrides the tree to scan (the acceptance suite uses it).
+################################################################################
+
+check_vcs_safety() {
+    local errors=0
+    print_header "Checking Version control (is anything the only copy?)"
+
+    if ! command -v git &>/dev/null; then
+        print_warning "Version control: git not installed — cannot check"
+        return 0
+    fi
+
+    local root="${NWP_VCS_ROOT:-$PROJECT_ROOT}"
+    if [ ! -d "$root" ]; then
+        print_warning "Version control: '$root' is not a directory — cannot check"
+        return 0
+    fi
+
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/vcs-truth.sh"
+
+    local warn_days="${NWP_VCS_WARN_DAYS:-3}"
+    local rows
+    rows=$(vcs_strand_rows "$root" "$warn_days" 2>/dev/null || true)
+
+    if [ -z "$rows" ]; then
+        print_success "Version control: every commit in every repo is on a remote"
+        return 0
+    fi
+
+    local kind repo label n age rel
+    while IFS=$'\t' read -r kind repo label n age; do
+        [ -n "$kind" ] || continue
+        rel="${repo#$root/}"; [ "$rel" = "$repo" ] && rel="$(basename "$repo")"
+        case "$kind" in
+            no-remote)
+                print_error "Version control: $rel has no remote — its $n commit(s) exist only on this machine"
+                print_hint "  give it one:  git -C $repo remote add origin <url> && git -C $repo push -u origin $label"
+                ((errors++))
+                ;;
+            unpushed)
+                print_error "Version control: $rel '$label' — $n commit(s) exist only on this machine (${age}d old)"
+                print_hint "  push them:    git -C $repo push -u origin $label"
+                ((errors++))
+                ;;
+        esac
+    done <<< "$rows"
+
+    return $errors
+}
+
+################################################################################
 # F23 Phase 1: Per-site schema checks
 ################################################################################
 
@@ -479,6 +541,47 @@ check_server_schemas() {
 }
 
 ################################################################################
+# Nested server repos + captured host state (fix-programme item 6)
+#
+# Two overlapping git repos over one path guarantee a divergent second copy.
+# servers/nwpcode/ is a 2-commit repo with NO REMOTE whose tracked set is
+# disjoint from the parent's — and it is the sole home of the fleet backup
+# producer and the CVE-response upgrade script. If that disk dies, the DR chain
+# and the security procedure die with it.
+################################################################################
+check_server_state() {
+    local errors=0
+
+    print_header "Checking Captured Host State (servers/)"
+
+    if [[ ! -f "$PROJECT_ROOT/lib/host-capture.sh" ]]; then
+        print_warning "lib/host-capture.sh missing — cannot check captured host state"
+        return 0
+    fi
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/host-capture.sh"
+
+    local out
+    if out=$(host_check_server_repos "$PROJECT_ROOT" 2>&1); then
+        print_success "no unbacked nested server repos"
+    else
+        while IFS= read -r line; do [[ -n "$line" ]] && print_error "$line"; done <<< "$out"
+        print_hint "Give it a real private remote, or delete the inner .git and let the outer repo own the tree"
+        errors=$((errors + 1))
+    fi
+
+    if out=$(host_check_servers_tracked "$PROJECT_ROOT" 2>&1); then
+        print_success "captured host state is trackable and committed"
+    else
+        while IFS= read -r line; do [[ -n "$line" ]] && print_warning "$line"; done <<< "$out"
+        print_hint "Capture with 'pl host capture <target>', then commit — do not 'git add -f'"
+        errors=$((errors + 1))
+    fi
+
+    return $errors
+}
+
+################################################################################
 # Main Function
 ################################################################################
 
@@ -538,10 +641,16 @@ main() {
     check_common_issues || total_errors=$((total_errors + $?))
     echo ""
 
+    check_vcs_safety || total_errors=$((total_errors + $?))
+    echo ""
+
     check_site_schemas || total_errors=$((total_errors + $?))
     echo ""
 
     check_server_schemas || total_errors=$((total_errors + $?))
+    echo ""
+
+    check_server_state || total_errors=$((total_errors + $?))
     echo ""
 
     # Print summary

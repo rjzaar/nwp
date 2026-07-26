@@ -50,6 +50,14 @@ ${BOLD}COMMANDS:${NC}
     show <sitename>         Show schedule for a specific site
     run <sitename>          Run scheduled backup now (for testing)
 
+${BOLD}CROSS-HOST:${NC}
+    where                   Which HOST owns each schedule (local + every server;
+                            an unreachable host reports UNREACHABLE, never "none")
+    host <target> list      List cron on a remote role/server over ssh
+    host <target> install --name=<id> --schedule="<expr>" --command=<abs-path>
+    host <target> remove  --name=<id>
+                            Remote cron, idempotent, dry-run by default
+
 ${BOLD}OPTIONS:${NC}
     -h, --help              Show this help message
     -d, --debug             Enable debug output
@@ -385,7 +393,84 @@ run_backup_now() {
 # Main Script
 ################################################################################
 
+################################################################################
+# Remote / cross-host scheduling (fix-programme item 6)
+#
+# `pl demo schedule` has been printing "the production schedule belongs on met
+# (pl schedule host)" while `pl schedule host` DID NOT EXIST — the handover was
+# a 5-step scp/ssh ritual against a LAN alias that is unreachable off-LAN. And
+# nothing could answer "which machine owns this cron?", so a reset schedule sat
+# on a travelling laptop for weeks without anyone noticing.
+################################################################################
+
+# pl schedule host <target> ...  — thin, deliberate delegation to `pl host
+# schedule`, which owns the remote-cron implementation.
+cmd_schedule_host() {
+    exec "$PROJECT_ROOT/scripts/commands/host.sh" schedule "$@"
+}
+
+# pl schedule where — which HOST owns each schedule.
+cmd_schedule_where() {
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/server-resolver.sh"
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/host-capture.sh"
+
+    printf '%-18s %-12s %s\n' "HOST" "STATE" "SCHEDULE"
+    printf '%-18s %-12s %s\n' "----" "-----" "--------"
+
+    local me; me="$(hostname -s 2>/dev/null || hostname)"
+    local local_entries
+    local_entries="$(crontab -l 2>/dev/null | grep -E '^[0-9*].*(nwp|pl |agent-loop|rag-sync|demo)' || true)"
+    if [ -n "$local_entries" ]; then
+        while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            printf '%-18s %-12s %s\n' "$me" "local" "$(printf '%s' "$line" | cut -c1-90)"
+        done <<< "$local_entries"
+    else
+        printf '%-18s %-12s %s\n' "$me" "local" "(no NWP cron entries on this machine)"
+    fi
+
+    local servers; servers="$(discover_servers 2>/dev/null || true)"
+    local name prefix out rc
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        if ! prefix="$(host_resolve_dest "$name" 2>/dev/null)"; then
+            printf '%-18s %-12s %s\n' "$name" "UNKNOWN" "(no ssh route resolved — cannot say)"
+            continue
+        fi
+        rc=0
+        out="$(host_run "$prefix" 'ls -1 /etc/cron.d 2>/dev/null | grep -E "nwp|demo|dr-pull" || true' 2>/dev/null)" || rc=$?
+        if [ "$rc" -ne 0 ]; then
+            # Blindness is reported as blindness, never as "no schedules".
+            printf '%-18s %-12s %s\n' "$name" "UNREACHABLE" "(could not read cron — this is NOT 'none')"
+            continue
+        fi
+        if [ -z "$out" ]; then
+            printf '%-18s %-12s %s\n' "$name" "remote" "(no /etc/cron.d NWP entries)"
+        else
+            while IFS= read -r f; do
+                [ -n "$f" ] || continue
+                printf '%-18s %-12s %s\n' "$name" "remote" "/etc/cron.d/$f"
+            done <<< "$out"
+        fi
+    done <<< "$servers"
+
+    echo ""
+    printf '  detail on one host:  pl host schedule <target> list\n'
+    printf '  install/remove:      pl schedule host <target> install|remove ...\n'
+    return 0
+}
+
 main() {
+    # Cross-host subcommands are handled BEFORE getopt: they take `--kind=` and
+    # `--schedule="..."` style arguments that the site-backup getopt spec would
+    # reject.
+    case "${1:-}" in
+        host)  shift; cmd_schedule_host "$@"; exit $? ;;
+        where) shift; cmd_schedule_where "$@"; exit $? ;;
+    esac
+
     # Parse options
     local DEBUG=false
     local COMMAND=""

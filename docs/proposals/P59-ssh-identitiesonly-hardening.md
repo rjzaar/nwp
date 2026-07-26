@@ -2,7 +2,7 @@
 
 **Status:** ✅ COMPLETE (v0.31.0) | **Priority:** HIGH | **Effort:** Medium | **Dependencies:** None
 
-> **TL;DR:** NWP scripts that ssh to production by raw IP would offer every key in `~/.ssh/` on every connection, tripping fail2ban (`maxretry=3`) and locking developers out of nwpcode.org. The fix forces `IdentitiesOnly=yes` everywhere ssh, scp, or rsync is called, plus a per-site `-i <key>` resolved from `nwp.yml`.
+> **TL;DR:** NWP scripts that ssh to production by raw IP would offer every key in `~/.ssh/` on every connection, tripping fail2ban (`maxretry=3`) and locking developers out of example.com. The fix forces `IdentitiesOnly=yes` everywhere ssh, scp, or rsync is called, plus a per-site `-i <key>` resolved from `nwp.yml`.
 
 ---
 
@@ -12,7 +12,7 @@
 
 Developers with several keys in `~/.ssh/` (>3) were intermittently locked out of the operator's GitLab IP (`<gitlab-host>`) by fail2ban. The lockouts:
 
-- Affected `pl stg2live`, `pl live`, `pl podcast`, and any direct `ssh gitlab@97.107.137.88` from a script.
+- Affected `pl stg2live`, `pl live`, `pl podcast`, and any direct `ssh gitlab@203.0.113.10` from a script.
 - Did **not** affect connections that went through a `Host` alias in `~/.ssh/config` (those already pinned an `IdentityFile`).
 - Manifested as repeated "Permission denied (publickey)" failures followed by a 10-minute ban.
 
@@ -22,7 +22,7 @@ OpenSSH offers every key it knows about (every file in `~/.ssh/` plus every key 
 
 There were two compounding factors:
 
-1. **`~/.ssh/config` was missing `IdentitiesOnly yes` on most `Host` blocks.** A `Host *` catch-all would have helped, but only the `git-server` alias was reliably matched. Scripts that ssh by raw IP (`ssh gitlab@97.107.137.88`) skipped the alias entirely and fell through to defaults.
+1. **`~/.ssh/config` was missing `IdentitiesOnly yes` on most `Host` blocks.** A `Host *` catch-all would have helped, but only the `git-server` alias was reliably matched. Scripts that ssh by raw IP (`ssh gitlab@203.0.113.10`) skipped the alias entirely and fell through to defaults.
 2. **NWP scripts called `ssh` / `scp` / `rsync` without `-o IdentitiesOnly=yes`** in ~80 places across `lib/` and `scripts/commands/`. Even fixing the user's local `~/.ssh/config` would not protect anyone running these commands on a fresh machine.
 
 ### 1.3 Why a Defensive Library Fix

@@ -120,7 +120,7 @@ Uses Let's Encrypt via certbot:
 ## Email Configuration
 
 Automatically configures email forwarding:
-- Creates `sitename@nwpcode.org` alias
+- Creates `sitename@example.com` alias
 - Forwards to admin email from `settings.email.admin_email`
 - Updates Drupal site email configuration
 

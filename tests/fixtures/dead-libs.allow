@@ -1,0 +1,25 @@
+# Frozen, SHRINK-ONLY allowlist of lib/*.sh files with no production caller.
+#
+# A file here is dead code: nothing under lib/, scripts/ or pl references it.
+# It is tolerated only because removing it is a separate decision with its own
+# blast radius — NOT because it works.
+#
+# RULES
+#   * NEVER add a line to this file. tests/unit/test-host.bats asserts the
+#     count is <= 6 and fails if a new dead lib appears.
+#   * Removing a line (by deleting the file or giving it a real caller) is
+#     always welcome and requires no ceremony.
+#   * A file named in CLAUDE.md may NEVER be allowlisted — the standing orders
+#     must not point at code that does not run. That rule is what retired
+#     lib/safe-ops.sh: CLAUDE.md told agents to `source` it, it had zero
+#     callers, and it printed the names of root scripts that do not exist
+#     (./stg2prod.sh, ./backup.sh), so dead code read as coverage.
+#
+# Frozen 2026-07-26 at 6 entries (was 7; safe-ops.sh deleted by item 6).
+
+lib/developer.sh
+lib/live-server-setup.sh
+lib/llm.sh
+lib/timezone.sh
+lib/todo-autolog.sh
+lib/verify-opportunistic.sh

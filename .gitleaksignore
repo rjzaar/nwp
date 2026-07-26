@@ -110,111 +110,41 @@ scripts/agent-loop/deploy-on-merge.sh:operator-home-path:31
 # pre-existing hit the gate could not see before, NOT a new leak. They are
 # listed rather than exempted by path so the scrub backlog is countable: when
 # this section reaches zero, the docs are publishable.
+#
+# BURN-DOWN 2026-07-26 (item B1): 75 of the original 76 entries are GONE because
+# the prose they covered was genericised, not because they were exempted. The 30
+# scrubbed files are listed in tests/fixtures/pubrel-docs.txt and the scrub is
+# enforced by tests/unit/test-pubrel-docs-genericised.bats, which deletes these
+# same fingerprints and re-scans -- so the suppressions cannot quietly come back.
+#
+# NOT scrubbed, deliberately:
+#   * docs/pedagogy/learning-science-foundations.md -- its only hit is a public
+#     forge issue URL, which .gitleaks.toml explicitly allowlists as a project
+#     link rather than a leak. Rewriting it would produce a dead hyperlink.
+#     (pubrel/scrub-and-gate rewrote it anyway; that edit was NOT imported.)
+#   * docs/guides/howto-deploy.md -- out of scope for B1, still on the backlog.
 # ---------------------------------------------------------------------------
-
-docs/COMMAND_INVENTORY.md:live-domain-apex:733
-docs/COMMAND_INVENTORY.md:live-domain-apex:735
-
-docs/decisions/0006-contribution-workflow.md:live-domain-apex:160
-
-docs/deployment/production-deployment.md:live-domain-apex:108
-docs/deployment/production-deployment.md:live-domain-apex:112
-docs/deployment/production-deployment.md:live-domain-apex:116
-docs/deployment/production-deployment.md:live-domain-apex:117
-docs/deployment/production-deployment.md:live-domain-apex:127
-docs/deployment/production-deployment.md:live-domain-apex:128
-
-docs/governance/core-developer-onboarding.md:live-domain-apex:49
-docs/governance/core-developer-onboarding.md:live-domain-apex:178
-docs/governance/core-developer-onboarding.md:live-domain-apex:181
-docs/governance/core-developer-onboarding.md:live-domain-apex:489
-
-docs/governance/distributed-contribution-governance.md:live-domain-apex:118
-
-docs/governance/roadmap.md:live-domain-apex:635
-docs/governance/roadmap.md:live-domain-apex:808
-docs/governance/roadmap.md:operator-public-ip:638
-
-docs/governance/roles.md:live-domain-apex:78
-
-docs/guides/admin-onboarding.md:live-domain-apex:52
-docs/guides/admin-onboarding.md:live-domain-apex:835
-docs/guides/admin-onboarding.md:live-domain-apex:837
 
 docs/guides/howto-deploy.md:live-domain-apex:15
 
-docs/guides/member-getting-started.md:live-domain-apex:5
-docs/guides/member-getting-started.md:live-domain-apex:7
-docs/guides/member-getting-started.md:live-domain-apex:11
-docs/guides/member-getting-started.md:live-domain-apex:13
-docs/guides/member-getting-started.md:live-domain-apex:20
-docs/guides/member-getting-started.md:live-internal-domain:5
-docs/guides/member-getting-started.md:live-internal-domain:7
-docs/guides/member-getting-started.md:live-internal-domain:11
-docs/guides/member-getting-started.md:live-internal-domain:20
 
-docs/guides/nwp-server-operations.md:live-domain-apex:248
 
-docs/guides/ops81-erasure-channel.md:live-domain-apex:95
 
-docs/guides/ops82-key-rotation.md:live-domain-apex:62
 
-docs/guides/self-healing-loop-guide.md:live-domain-apex:144
 
-docs/handover-nwp-status-2026-07.md:live-domain-apex:80
 
-docs/proposals/CODER_IDENTITY_BOOTSTRAP.md:live-domain-apex:331
-docs/proposals/CODER_IDENTITY_BOOTSTRAP.md:live-domain-apex:332
 
-docs/proposals/F08-dynamic-badges.md:live-domain-apex:522
 
-docs/proposals/F12-todo-command.md:live-domain-apex:357
-docs/proposals/F12-todo-command.md:live-domain-apex:405
 
-docs/proposals/F13-timezone-configuration.md:operator-public-ip:295
 
-docs/proposals/F16-claude-code-web-access.md:operator-public-ip:21
 
-docs/proposals/F17-project-separation.md:live-domain-apex:120
-docs/proposals/F17-project-separation.md:live-domain-apex:356
-docs/proposals/F17-project-separation.md:live-domain-apex:357
-docs/proposals/F17-project-separation.md:live-domain-apex:433
-docs/proposals/F17-project-separation.md:live-domain-apex:912
-docs/proposals/F17-project-separation.md:live-domain-apex:972
-docs/proposals/F17-project-separation.md:live-domain-apex:1274
-docs/proposals/F17-project-separation.md:operator-public-ip:120
-docs/proposals/F17-project-separation.md:operator-public-ip:154
-docs/proposals/F17-project-separation.md:operator-public-ip:407
-docs/proposals/F17-project-separation.md:operator-public-ip:912
-docs/proposals/F17-project-separation.md:operator-public-ip:971
-docs/proposals/F17-project-separation.md:operator-public-ip:1096
-docs/proposals/F17-project-separation.md:operator-public-ip:1270
 
-docs/proposals/F23-site-environment-layout.md:live-domain-apex:122
 
-docs/proposals/F30-content-federation-network.md:live-domain-apex:20
-docs/proposals/F30-content-federation-network.md:live-domain-apex:1113
-docs/proposals/F30-content-federation-network.md:live-domain-apex:1120
-docs/proposals/F30-content-federation-network.md:live-domain-apex:1276
-docs/proposals/F30-content-federation-network.md:live-domain-apex:1282
-docs/proposals/F30-content-federation-network.md:live-domain-apex:1298
-docs/proposals/F30-content-federation-network.md:live-domain-apex:1304
-docs/proposals/F30-content-federation-network.md:live-domain-apex:1322
-docs/proposals/F30-content-federation-network.md:live-domain-apex:1330
 
-docs/proposals/P50-layered-verification-system.md:live-domain-apex:932
 
-docs/proposals/P52-rename-nwp-to-nwo.md:live-domain-apex:347
 
-docs/proposals/P56-produce-security-hardening.md:live-domain-apex:360
 
-docs/proposals/P59-ssh-identitiesonly-hardening.md:live-domain-apex:5
-docs/proposals/P59-ssh-identitiesonly-hardening.md:operator-public-ip:15
-docs/proposals/P59-ssh-identitiesonly-hardening.md:operator-public-ip:25
 
-docs/proposals/P67-per-site-workflow-maturity.md:live-domain-apex:72
 
-docs/reference/commands/live.md:live-domain-apex:123
 
-docs/research/seed-content-research-2026-07-02.md:live-domain-apex:140
 

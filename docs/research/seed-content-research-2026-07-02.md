@@ -137,7 +137,7 @@ non-live policy). This is why P65 lands install-time Class-3 content as publishe
 the nwc_growth first-run wizard collects the community name → `system.site.name` (treats
 literal "Narrow Way Commons" as the unset sentinel, FirstRunWizardForm ~L126/158). Baked
 literals live in: **legal docs** (`canonical-text/*.md` — operator name ×8, contact email
-×12, Melbourne/Victoria jurisdiction, AU statutes, AUD 100 cap, nwpcode.org URL family,
+×12, Melbourne/Victoria jurisdiction, AU statutes, AUD 100 cap, example.com URL family,
 infra facts in privacy.md:64); **help book** (`migrate_help_to_book.php` — "Narrow Way
 Commons" ×25 incl. the book-root title that doubles as the book-tree parent key at L224/282/
 840/901/935; two mailto: contacts L946/956); **guild seeds** (founder name in

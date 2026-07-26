@@ -45,6 +45,20 @@ ${BOLD}USAGE:${NC}
                                            URL (never merges anything itself)
     pl branch delete <twin>                Delete the twin (delegates to pl delete
                                            — impact report + archived backups)
+    pl branch stranded [options]           Every unmerged branch in the estate,
+                                           classified by CONTENT against origin/main
+
+${BOLD}OPTIONS (stranded):${NC}
+    --files             Per branch, list which paths are additive (+) and which
+                        subtractive (-) — the datum a cherry-pick decision needs
+    --prune-merged      Delete branches classed exactly IDENTICAL (confirm first)
+    --json              Machine-readable rows incl. the full class set
+    --base=<ref>        Compare against <ref> instead of origin/main
+    -y, --yes           Skip the prune confirmation
+
+    Classes are a SET, not one word: ${BOLD}SHRINKS+UNLANDED${NC} means the branch would
+    remove content main has AND carries content main lacks — cherry-pick it,
+    never merge it wholesale, and never delete it.
 
 ${BOLD}OPTIONS (create):${NC}
     --name=<twin>       Twin site name (default: <site>-<ref-slug>)
@@ -88,20 +102,62 @@ EOF
 #
 #   IDENTICAL  — its files match main exactly: debris, safe to prune
 #   REVERT     — it only DELETES lines main has: DO NOT MERGE, cherry-pick
+#   SHRINKS    — some file would lose more than it gains: cherry-pick the hunks
 #   UNLANDED   — it adds content main lacks: real work, needs an MR
 #
-# --prune-merged deletes only IDENTICAL branches, and only with confirmation.
+# WHY THE CLASS IS A SET AND NOT A SCALAR: the first version of this reported
+# the DOMINANT class — it summed adds and deletes across the whole branch and
+# printed one word. Two real branches (pubrel/scrub-and-gate,
+# fix/moodle-deploy-snapshot-cli-script) were reported "SHRINKS — DO NOT MERGE
+# WHOLESALE", which was true, while ALSO carrying content main lacks (31
+# un-genericised docs; 35 lines of non-vacuous regression tests). An operator
+# reading one word would have thrown that away. So we classify PER FILE and
+# report the union: a branch is SHRINKS+UNLANDED when it would remove content
+# main has AND carries content main lacks. That combination means
+# "cherry-pick, do not merge, do not delete".
+#
+# Per-file verdict from `git diff --numstat base branch -- <touched>`:
+#   del == 0            → additive     (new file, or pure addition)
+#   add == 0            → subtractive  (deleted file, or pure deletion)
+#   both > 0            → net: del > add is subtractive, else additive
+#   binary ("-" fields) → BOTH; we cannot see inside it, and "I cannot see"
+#                         must not read as "all clear"
+#
+# --prune-merged deletes only branches whose set is exactly {IDENTICAL}, and
+# only with confirmation. --files prints the additive/subtractive paths, which
+# is the datum that makes a triage decision possible without hand-diffing.
 ################################################################################
+
+# Minimal JSON string/array emitters — paths and branch names are attacker-ish
+# input only in the sense that a colleague can create a branch named `a"b`, but
+# unescaped that still produces JSON no consumer can parse.
+_json_str() {
+    printf '%s' "${1-}" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g'
+}
+_json_arr() {
+    local out="[" first=true x
+    for x in "$@"; do
+        [ "$first" = true ] && first=false || out+=","
+        out+="\"$(_json_str "$x")\""
+    done
+    printf '%s]' "$out"
+}
+
 cmd_stranded() {
-    local do_prune=false as_json=false auto_yes=false base="origin/main"
+    local do_prune=false as_json=false auto_yes=false show_files=false base="origin/main"
     local a
     for a in "$@"; do
         case "$a" in
             --prune-merged) do_prune=true ;;
             --json)         as_json=true ;;
+            --files)        show_files=true ;;
             -y|--yes)       auto_yes=true ;;
             --base=*)       base="${a#*=}" ;;
             -h|--help)      show_help; return 0 ;;
+            "")             ;;
+            *)              print_error "Unknown option for 'pl branch stranded': $a"
+                            print_info  "Valid: --prune-merged  --files  --json  --base=<ref>  -y|--yes"
+                            return 1 ;;
         esac
     done
 
@@ -118,7 +174,7 @@ cmd_stranded() {
     local first_json=true
     [ "$as_json" = true ] && printf '[\n'
 
-    local repo rel b ahead behind last kind diffstat only_del
+    local repo rel b ahead behind last kind diffstat total_add
     for repo in "${repos[@]}"; do
         [ -d "$repo/.git" ] || [ -f "$repo/.git" ] || continue
         git -C "$repo" rev-parse --verify -q "$base" >/dev/null 2>&1 || continue
@@ -142,43 +198,91 @@ cmd_stranded() {
             # is what makes "landed by re-application" show up as IDENTICAL: the
             # branch's own files already match main, even though its commits
             # were never merged.
-            local -a touched=()
+            local -a touched=() add_files=() del_files=() classes=()
+            local verdict path prunable=false
             mapfile -t touched < <(git -C "$repo" diff --name-only "$base...$b" 2>/dev/null || true)
-            if [ ${#touched[@]} -eq 0 ]; then
-                kind="IDENTICAL"
-                prune_list+=("$repo|$b")
-            else
+
+            diffstat=""
+            [ ${#touched[@]} -gt 0 ] && \
                 diffstat=$(git -C "$repo" diff --numstat "$base" "$b" -- "${touched[@]}" 2>/dev/null || true)
+
+            if [ -n "$diffstat" ]; then
+                # PER-FILE verdicts (see the header block): the union of these
+                # is the class set. Summing across files is what hid unlanded
+                # work behind a SHRINKS label.
+                while IFS=$'\t' read -r verdict path; do
+                    [ -z "${verdict:-}" ] && continue
+                    case "$verdict" in
+                        A) add_files+=("$path") ;;
+                        S) del_files+=("$path") ;;
+                        B) add_files+=("$path"); del_files+=("$path") ;;
+                    esac
+                done < <(printf '%s\n' "$diffstat" | awk -F'\t' '
+                    NF < 3 { next }
+                    {
+                        a = $1; d = $2; p = $3
+                        # binary: numstat cannot tell us the direction, so it
+                        # counts as BOTH — unreadable must not read as safe.
+                        if (a == "-" || d == "-") { print "B\t" p; next }
+                        if (a+0 == 0 && d+0 == 0) next          # mode-only change
+                        if (d+0 == 0) { print "A\t" p; next }
+                        if (a+0 == 0) { print "S\t" p; next }
+                        if (d+0 > a+0) { print "S\t" p } else { print "A\t" p }
+                    }')
+                total_add=$(printf '%s\n' "$diffstat" | awk '{ if ($1 != "-") a += $1 } END { print a+0 }')
+            else
+                total_add=0
+            fi
+
+            if [ ${#add_files[@]} -eq 0 ] && [ ${#del_files[@]} -eq 0 ]; then
                 if [ -z "$diffstat" ]; then
-                    kind="IDENTICAL"
+                    # Its files already match the base byte for byte: debris.
+                    classes=("IDENTICAL")
+                    prunable=true
                     prune_list+=("$repo|$b")
                 else
-                    # Net direction of the merge, tip-to-tip on the touched
-                    # files. A branch that would REMOVE more of main than it
-                    # adds is the dangerous shape: both known offenders
-                    # (chore/gitleaks-allowlist-issue-urls 9+/39-,
-                    # fix/ssc-pair-contract-probe-urls 6+/9-) add a little while
-                    # deleting landed hardening, so "only deletions" would miss
-                    # them. Report the net, and refuse to call it prunable.
-                    only_del=$(printf '%s\n' "$diffstat" | awk '
-                        { if ($1 != "-") add += $1; if ($2 != "-") del += $2 }
-                        END { if (add+0 == 0) print "REVERT";
-                              else if (del+0 > add+0) print "SHRINKS";
-                              else print "UNLANDED" }')
-                    kind="${only_del:-UNLANDED}"
+                    # Non-empty diff that produced no per-file verdict (mode
+                    # bits only). Real, but not content — needs eyes, not a
+                    # delete.
+                    classes=("UNLANDED")
                 fi
+            elif [ ${#add_files[@]} -eq 0 ]; then
+                # Nothing additive anywhere. REVERT is the stronger statement
+                # (adds not one line); SHRINKS means it adds a little inside
+                # files it guts.
+                if [ "${total_add:-0}" -eq 0 ]; then classes=("REVERT"); else classes=("SHRINKS"); fi
+            elif [ ${#del_files[@]} -eq 0 ]; then
+                classes=("UNLANDED")
+            else
+                # THE CASE THIS COMMAND EXISTS FOR.
+                classes=("SHRINKS" "UNLANDED")
             fi
+
+            kind=$(IFS='+'; printf '%s' "${classes[*]}")
 
             if [ "$as_json" = true ]; then
                 [ "$first_json" = true ] && first_json=false || printf ',\n'
-                printf '  {"repo":"%s","branch":"%s","class":"%s","ahead":%s,"behind":%s,"last_commit":"%s"}' \
-                    "$rel" "$b" "$kind" "${ahead:-0}" "${behind:-0}" "$last"
+                printf '  {"repo":"%s","branch":"%s","class":"%s","classes":%s,"prunable":%s,"additive":%s,"subtractive":%s,"ahead":%s,"behind":%s,"last_commit":"%s"}' \
+                    "$(_json_str "$rel")" "$(_json_str "$b")" "$kind" \
+                    "$(_json_arr ${classes[@]+"${classes[@]}"})" "$prunable" \
+                    "$(_json_arr ${add_files[@]+"${add_files[@]}"})" \
+                    "$(_json_arr ${del_files[@]+"${del_files[@]}"})" \
+                    "${ahead:-0}" "${behind:-0}" "$(_json_str "$last")"
             else
                 case "$kind" in
-                    IDENTICAL)      printf '  %s%-10s%s %-14s %-46s %s\n' "$DIM" "$kind" "$NC" "$rel" "$b" "$last" ;;
-                    REVERT|SHRINKS) printf '  %s%-10s%s %-14s %-46s %s  %s← DO NOT MERGE WHOLESALE%s\n' "$RED" "$kind" "$NC" "$rel" "$b" "$last" "$RED" "$NC" ;;
-                    *)              printf '  %s%-10s%s %-14s %-46s %s\n' "$YELLOW" "$kind" "$NC" "$rel" "$b" "$last" ;;
+                    IDENTICAL)        printf '  %s%-17s%s %-14s %-46s %s\n' "$DIM" "$kind" "$NC" "$rel" "$b" "$last" ;;
+                    SHRINKS+UNLANDED) printf '  %s%-17s%s %-14s %-46s %s  %s← cherry-pick, do not merge, do not delete%s\n' "$RED" "$kind" "$NC" "$rel" "$b" "$last" "$RED" "$NC" ;;
+                    REVERT|SHRINKS)   printf '  %s%-17s%s %-14s %-46s %s  %s← DO NOT MERGE WHOLESALE%s\n' "$RED" "$kind" "$NC" "$rel" "$b" "$last" "$RED" "$NC" ;;
+                    *)                printf '  %s%-17s%s %-14s %-46s %s\n' "$YELLOW" "$kind" "$NC" "$rel" "$b" "$last" ;;
                 esac
+                if [ "$show_files" = true ]; then
+                    for path in ${add_files[@]+"${add_files[@]}"}; do
+                        printf '      %s+ %s%s   (content %s lacks)\n' "$YELLOW" "$path" "$NC" "$base"
+                    done
+                    for path in ${del_files[@]+"${del_files[@]}"}; do
+                        printf '      %s- %s%s   (would remove content %s has)\n' "$RED" "$path" "$NC" "$base"
+                    done
+                fi
             fi
         done < <(git -C "$repo" for-each-ref --format='%(refname:short)' refs/remotes/origin refs/heads 2>/dev/null \
                  | sed 's#^origin/##' | sort -u)
@@ -190,10 +294,14 @@ cmd_stranded() {
     fi
 
     echo ""
-    printf '  %sIDENTICAL%s = its files already match %s exactly (landed by re-application, or debris) — prunable\n' "$DIM" "$NC" "$base"
-    printf '  %sREVERT%s    = adds nothing, only removes lines %s has — never merge\n' "$RED" "$NC" "$base"
-    printf '  %sSHRINKS%s   = removes more of %s than it adds — cherry-pick the intended hunks only\n' "$RED" "$NC" "$base"
-    printf '  %sUNLANDED%s  = real unlanded work — open an MR\n' "$YELLOW" "$NC"
+    printf '  %sIDENTICAL%s        = its files already match %s exactly (landed by re-application, or debris) — prunable\n' "$DIM" "$NC" "$base"
+    printf '  %sREVERT%s           = adds nothing, only removes lines %s has — never merge\n' "$RED" "$NC" "$base"
+    printf '  %sSHRINKS%s          = some file would lose more than it gains — cherry-pick the intended hunks only\n' "$RED" "$NC"
+    printf '  %sUNLANDED%s         = real unlanded work — open an MR\n' "$YELLOW" "$NC"
+    printf '  %sSHRINKS+UNLANDED%s = BOTH: it would remove content %s has AND carries content %s lacks.\n' "$RED" "$NC" "$base" "$base"
+    printf '                     Cherry-pick the additions, do not merge it, do NOT delete it.\n'
+    printf '  The class is a SET — %s--files%s lists which paths are additive and which subtractive.\n' "$BOLD" "$NC"
+    printf '  Only a branch classed exactly IDENTICAL is ever prunable.\n'
     echo ""
 
     if [ "$do_prune" = true ]; then
@@ -206,7 +314,9 @@ cmd_stranded() {
         for e in "${prune_list[@]}"; do printf '    %s  %s\n' "${e%%|*}" "${e#*|}"; done
         if [ "$auto_yes" != true ]; then
             printf '  Delete these local branches? [y/N] '
-            local ans; read -r ans
+            # `|| true`: with no tty, read fails on EOF and `set -e` would kill
+            # the script mid-prune-report. No answer means no.
+            local ans=""; read -r ans || true
             [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { print_info "Aborted."; return 0; }
         fi
         for e in "${prune_list[@]}"; do
@@ -487,7 +597,14 @@ main() {
     local sub="${1:-}"
     case "$sub" in
         ""|-*)      show_help; exit 1 ;;
-        stranded)   shift || true; cmd_stranded "$@" ;;
+        stranded)
+            shift || true
+            # main() consumes -y/--yes before dispatch, so re-inject it or
+            # `stranded --prune-merged --yes` silently prompts anyway.
+            local -a sargs=("$@")
+            [ "$AUTO_YES" = true ] && sargs+=(--yes)
+            cmd_stranded ${sargs[@]+"${sargs[@]}"}
+            ;;
         list)       cmd_list "${2:-}" ;;
         content)    cmd_content "${2:-}" "$FROM" ;;
         merge)      cmd_merge "${2:-}" ;;

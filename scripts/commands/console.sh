@@ -490,6 +490,10 @@ _name_ok() { # local hygiene guard; authoritative validation is in app/store.py
     [[ "$1" =~ ^[a-z0-9][a-z0-9_-]{0,31}$ ]] || { print_error "invalid username: $1"; return 1; }
 }
 
+# Argument validation runs BEFORE _require_configured (see main()): bad input is
+# rejected on its own merits, on any machine, configured or not. Ordering it the
+# other way round made the guards below dead code everywhere nwp.yml is absent —
+# e.g. every CI runner — so they were never actually exercised.
 cmd_user() {
     local sub="${1:-}"; shift || true
     case "$sub" in
@@ -500,26 +504,31 @@ cmd_user() {
             [ -n "$name" ] || { print_error "usage: pl console user add <name> --role viewer|operator|owner"; return 1; }
             _name_ok "$name" || return 1
             [[ "$role" =~ ^(viewer|operator|owner)$ ]] || { print_error "role must be viewer|operator|owner"; return 1; }
+            _require_configured || return 1
             _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-add '$name' --role '$role'"
             print_hint "Their device must be on the mesh first — see: pl console enroll"
             ;;
         reset)
             [ -n "${1:-}" ] || { print_error "usage: pl console user reset <name>"; return 1; }
             _name_ok "$1" || return 1
+            _require_configured || return 1
             _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-reset '$1'"
             ;;
         role)
             [ -n "${2:-}" ] || { print_error "usage: pl console user role <name> <role>"; return 1; }
             _name_ok "$1" || return 1
             [[ "$2" =~ ^(viewer|operator|owner)$ ]] || { print_error "role must be viewer|operator|owner"; return 1; }
+            _require_configured || return 1
             _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-role '$1' '$2'"
             ;;
         rm)
             [ -n "${1:-}" ] || { print_error "usage: pl console user rm <name>"; return 1; }
             _name_ok "$1" || return 1
+            _require_configured || return 1
             _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-rm '$1'"
             ;;
         list|"")
+            _require_configured || return 1
             _ssh 'cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-list'
             ;;
         *) print_error "unknown: pl console user $sub"; return 1 ;;
@@ -564,7 +573,7 @@ main() {
         -h|--help|"") show_help ;;
         deploy)  _require_configured && cmd_deploy "${args[@]:-}" ;;
         status)  _require_configured && cmd_status ;;
-        user)    _require_configured && cmd_user "${args[@]:-}" ;;
+        user)    cmd_user "${args[@]:-}" ;;   # gates itself AFTER validating input
         enroll)  cmd_enroll ;;
         dns)     _require_configured && cmd_dns ;;
         cert)    _require_configured && cmd_cert ;;

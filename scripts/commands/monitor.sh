@@ -94,14 +94,23 @@ _is_placeholder_domain() {
     esac
 }
 
-# Emit "site<TAB>domain" for every configured site that has a real live.domain.
+# Emit "site|domain" for every configured site that has a real live.domain.
+#
+# The separator is a literal "|", NOT a yq "\t" escape: yq only began expanding
+# "\t" to a real tab in v4.45+. Under the v4.44.1 that CI pins, `.key + "\t" +
+# .domain` emitted a literal backslash-t, `IFS=$'\t' read` split nothing, and
+# every site fell out through the empty-domain placeholder test — so uptime
+# monitored ZERO site domains while still exiting 0 and printing a healthy
+# table. A plain "|" behaves identically on every yq 4.x, and matches the
+# delimiter the rest of this file already uses for target rows. Neither a site
+# key nor a DNS name can contain "|".
 _monitor_configured_domains() {
     [ -f "$CONFIG_FILE" ] || return 0
     command -v yq >/dev/null 2>&1 || return 0
-    yq eval '.sites // {} | to_entries | .[] | select(.value.live.domain) | .key + "\t" + .value.live.domain' \
-        "$CONFIG_FILE" 2>/dev/null | while IFS=$'\t' read -r site domain; do
+    yq eval '.sites // {} | to_entries | .[] | select(.value.live.domain) | .key + "|" + .value.live.domain' \
+        "$CONFIG_FILE" 2>/dev/null | while IFS='|' read -r site domain; do
         _is_placeholder_domain "$domain" && continue
-        printf '%s\t%s\n' "$site" "$domain"
+        printf '%s|%s\n' "$site" "$domain"
     done
 }
 
@@ -205,8 +214,10 @@ cmd_uptime() {
     # server_ip + the git origin host + any reachable configured tailnet hosts.
     local -a rows=()
     local line site domain ip gh
-    while IFS=$'\t' read -r site domain; do
-        [ -z "$site" ] && continue
+    while IFS='|' read -r site domain; do
+        # A row missing EITHER field means the emitter broke (as the yq "\t"
+        # bug did) — drop it, but never let it masquerade as a real target.
+        if [ -z "$site" ] || [ -z "$domain" ]; then continue; fi
         rows+=("${site}|${domain}|domain")
     done < <(_monitor_configured_domains)
     while IFS= read -r ip; do

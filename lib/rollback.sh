@@ -9,8 +9,57 @@
 # Dependencies: lib/ui.sh, lib/common.sh
 ################################################################################
 
-# Rollback data directory
-ROLLBACK_DIR="${SCRIPT_DIR}/.rollback"
+# Rollback data directory.
+#
+# HISTORY: this was `${SCRIPT_DIR}/.rollback` — i.e. inside whatever checkout
+# happened to run the command. The standing rule mandates deploying from a
+# `pl issue work` worktree, and worktrees are deleted when the issue closes, so
+# the ledger pointing at a snapshot on a live host died with the worktree. At
+# the time of this change 33 such `.rollback` directories existed across the
+# tree. The problem got WORSE as worktree discipline improved.
+#
+# The ledger is machine state, not checkout state, so it now lives in the
+# XDG state dir and is resolved checkout-independently. Entries written by
+# older checkouts are still READ (see rollback_legacy_dirs) for one release,
+# and rollback_init migrates them forward idempotently without deleting the
+# originals.
+ROLLBACK_DIR="${NWP_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/nwp}/rollback"
+
+# Legacy per-checkout ledger locations, read-only, for one release.
+# Emits one path per line; may be empty.
+rollback_legacy_dirs() {
+    local d
+    # The caller's own checkout (SCRIPT_DIR is set by each command script).
+    [ -n "${SCRIPT_DIR:-}" ] && [ -d "${SCRIPT_DIR}/.rollback" ] && printf '%s\n' "${SCRIPT_DIR}/.rollback"
+    # This library's repo, whether we are in a worktree or the main checkout.
+    local here repo_root
+    here="$(dirname "${BASH_SOURCE[0]}")"
+    if repo_root=$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
+        repo_root="$(dirname "$repo_root")"
+        for d in "${repo_root}/scripts/commands/.rollback" "${repo_root}/.rollback"; do
+            [ -d "$d" ] && printf '%s\n' "$d"
+        done
+    fi
+}
+
+# Copy legacy entries forward into the canonical ledger. Idempotent, and
+# non-destructive: the originals are left in place so a revert of this change
+# loses nothing.
+rollback_migrate_legacy() {
+    local dir f base
+    while IFS= read -r dir; do
+        [ -n "$dir" ] || continue
+        [ "$dir" = "$ROLLBACK_DIR" ] && continue
+        for f in "$dir"/*.json; do
+            [ -f "$f" ] || continue
+            base="$(basename "$f")"
+            [ "$base" = "history.json" ] && continue
+            if [ ! -f "${ROLLBACK_DIR}/${base}" ]; then
+                cp -p "$f" "${ROLLBACK_DIR}/${base}" 2>/dev/null || true
+            fi
+        done
+    done < <(rollback_legacy_dirs | sort -u)
+}
 
 # Remote rollback subsystem (registers snapshots written by pl stg2live
 # on the live host so they show up in pl rollback list and can be
@@ -45,6 +94,8 @@ rollback_init() {
         mkdir -p "$ROLLBACK_DIR"
         echo "[]" > "${ROLLBACK_DIR}/history.json"
     fi
+    # Pull forward anything a pre-relocation checkout wrote. Cheap, idempotent.
+    rollback_migrate_legacy
 }
 
 # Record a deployment for potential rollback
@@ -131,6 +182,19 @@ rollback_list() {
                     snap_dbs=$(grep -m1 '"snapshot_dbs"' "$entry" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
                     echo "    Host: $host"
                     echo "    DB:   $snap_dbs"
+                elif [ "$type" = "moodle-remote" ]; then
+                    # Different key names to the generic remote shape; rendering
+                    # them as "Backup:" printed an empty path and made a usable
+                    # recovery point look broken.
+                    local mroot mplug
+                    host=$(grep -m1 '"host"' "$entry" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+                    snap_dbs=$(grep -m1 '"snapshot_db"' "$entry" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+                    mplug=$(grep -m1 '"snapshot_plugins"' "$entry" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+                    mroot=$(grep -m1 '"moodle_root"' "$entry" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
+                    echo "    Host:    $host"
+                    echo "    DB:      $snap_dbs"
+                    echo "    Plugins: $mplug"
+                    echo "    Root:    $mroot"
                 else
                     backup=$(grep -m1 '"backup_path"' "$entry" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || true)
                     echo "    Backup: $backup"
@@ -206,10 +270,65 @@ rollback_backup_before() {
 
 # Perform rollback
 # Usage: rollback_execute "sitename" "environment" [--dry-run]
+
+# Rollback entry types this build knows how to execute. An entry whose type is
+# not in this table is a FAIL-CLOSED error: we must never hand an artifact to a
+# code path written for a different artifact shape. That is precisely the bug
+# this table replaces — `moodle-remote` entries fell through an
+# `if type = remote` test into the legacy local-DDEV branch, which then read a
+# `backup_path` key that a moodle-remote entry does not have, and reported
+# "Backup not found:" for a snapshot that was sitting on the live host.
+ROLLBACK_KNOWN_TYPES=(local remote moodle-remote)
+
+# Resolve the tier to roll back. Never guess "prod": no site in this fleet has
+# a prod tier, so the old default made every real recovery point invisible.
+# Prefers an explicit argument, else the tier of the most recent entry that
+# actually exists for the site.
+rollback_default_env() {
+    local sitename="$1"
+    local f base env latest=""
+    rollback_init
+    for f in "${ROLLBACK_DIR}/${sitename}_"*.json; do
+        [ -f "$f" ] || continue
+        base="$(basename "$f" .json)"
+        # <site>_<env>[_<ts>]
+        env="${base#"${sitename}_"}"
+        env="${env%%_*}"
+        [ -n "$env" ] && latest="$env"
+    done
+    printf '%s' "$latest"
+}
+
+# Which tiers DO have entries for this site (for a useful error message).
+rollback_available_envs() {
+    local sitename="$1" f base env
+    for f in "${ROLLBACK_DIR}/${sitename}_"*.json; do
+        [ -f "$f" ] || continue
+        base="$(basename "$f" .json)"
+        env="${base#"${sitename}_"}"
+        env="${env%%_*}"
+        [ -n "$env" ] && printf '%s\n' "$env"
+    done | sort -u
+}
+
 rollback_execute() {
     local sitename="$1"
-    local environment="${2:-prod}"
+    local environment="${2:-}"
     local dry_run="${3:-}"
+
+    rollback_init
+
+    # Default the tier from reality rather than a hardcoded "prod".
+    if [ -z "$environment" ]; then
+        environment="$(rollback_default_env "$sitename")"
+        if [ -z "$environment" ]; then
+            print_error "No rollback points found for ${sitename}"
+            print_info "Try: pl rollback list ${sitename}"
+            print_info "Hint: pl rollback backfill ${sitename}   # discover snapshots already on the live host"
+            return 1
+        fi
+        print_info "No tier given; using '${environment}' (the tier that has recovery points)."
+    fi
 
     print_header "Executing Rollback: ${sitename}@${environment}"
 
@@ -224,6 +343,14 @@ rollback_execute() {
 
     if [ ! -f "$entry_file" ]; then
         print_error "No rollback point found for ${sitename}@${environment}"
+        # Say which tiers DO have points — the operator almost always chose the
+        # wrong word (live vs prod vs stg), not the wrong site.
+        local other_envs
+        other_envs=$(rollback_available_envs "$sitename" | grep -v "^${environment}$" | paste -sd', ' - || true)
+        if [ -n "$other_envs" ]; then
+            print_info "Recovery points DO exist for ${sitename} at: ${other_envs}"
+            print_info "Try: pl rollback execute ${sitename} <tier> --dry-run"
+        fi
         print_info "Try: pl rollback list ${sitename}"
         return 1
     fi
@@ -233,7 +360,22 @@ rollback_execute() {
     type=$(grep -m1 '"type"' "$entry_file" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/')
     [ -z "$type" ] && type="local"
 
-    if [ "$type" = "remote" ]; then
+    # FAIL CLOSED on an unrecognised type. Do not fall through to any branch.
+    local _known _t_ok=false
+    for _known in "${ROLLBACK_KNOWN_TYPES[@]}"; do
+        [ "$_known" = "$type" ] && _t_ok=true && break
+    done
+    if [ "$_t_ok" != "true" ]; then
+        print_error "unknown rollback type: '${type}'"
+        print_info "Entry: ${entry_file}"
+        print_info "Known types: ${ROLLBACK_KNOWN_TYPES[*]}"
+        print_info "Refusing to guess — an entry of an unknown shape must not be"
+        print_info "handed to a restore path written for a different shape."
+        return 1
+    fi
+
+    # Both remote shapes restore on a live/prod host and share the same gates.
+    if [ "$type" = "remote" ] || [ "$type" = "moodle-remote" ]; then
         # Hardware+signature gate (ADR-0028/ops#79): a remote rollback writes
         # DBs + nginx config on the live/prod host. Gate it exactly like a
         # deploy. Local-DDEV rollbacks (below) never prompt; dry runs write
@@ -352,7 +494,9 @@ rollback_verify() {
 # Usage: rollback_quick "sitename" "environment"
 rollback_quick() {
     local sitename="$1"
-    local environment="${2:-prod}"
+    # Empty means "let rollback_execute pick the tier that actually has points".
+    # Do NOT default to prod — no site in this fleet has a prod tier.
+    local environment="${2:-}"
     local start_time=$(date +%s)
 
     print_header "Quick Rollback: ${sitename}@${environment}"

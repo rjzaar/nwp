@@ -128,7 +128,13 @@ fi
 # cron armed?
 cron_loop="$(crontab -l 2>/dev/null | grep -cE '^[0-9*].*agent-loop\.sh' || true)"
 cron_rag="$(crontab -l 2>/dev/null  | grep -cE '^[0-9*].*rag-sync\.sh'   || true)"
-sched="$(crontab -l 2>/dev/null | grep -E '^[0-9*].*agent-loop\.sh' | grep -oE '^[^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+' | head -1)"
+# `|| true` is load-bearing: with `set -euo pipefail`, an empty grep here KILLED
+# `pl loop` mid-report — and it is empty exactly when the agent-loop cron is
+# absent, i.e. when the loop is most broken. The dashboard aborted (exit 1) just
+# before the line that would have said "cron: ABSENT". Observed on this host:
+# the agent-loop cron IS missing, and `pl loop` had been exiting 1 without ever
+# saying so.
+sched="$(crontab -l 2>/dev/null | grep -E '^[0-9*].*agent-loop\.sh' | grep -oE '^[^ ]+ [^ ]+ [^ ]+ [^ ]+ [^ ]+' | head -1 || true)"
 if [ "${cron_loop:-0}" -gt 0 ]; then printf '  %s  cron:       armed   (%s)\n' "$(dot on)" "${sched:-schedule}"
 else printf '  %s  cron:       ABSENT  (loop will not wake — see scripts/agent-loop/crontab.entry)\n' "$(dot off)"; fi
 
@@ -155,6 +161,29 @@ if ! loop_part_enabled rag-sync; then
 elif [ "${cron_rag:-0}" -gt 0 ]; then printf '  %s  rag-sync:   armed   (daily; stage 1 of the loop)\n' "$(dot on)"
 else printf '  %s  rag-sync:   part enabled but no cron\n' "$(dot off)"; fi
 [ -f "$RAG_LOG" ] && printf '     last run:   %s\n' "$(grep 'rag-sync done' "$RAG_LOG" 2>/dev/null | tail -1 | cut -c1-70)"
+
+# Freshness of the READ half, stated as an age rather than left to be inferred
+# from a log line. "armed" and "actually completing" are different facts: for 8
+# nights rag-sync was armed, exited 0 every night, and completed nothing.
+if [ -f "$RAG_LOG" ]; then
+    _last="$(grep 'rag-sync done' "$RAG_LOG" 2>/dev/null | tail -1 | awk '{print $1}')"
+    if [ -z "${_last:-}" ]; then
+        printf '  %s  freshness:  NEVER completed a run — the fleet is not reaching the tracker\n' "$(dot off)"
+    else
+        _e="$(date -d "$_last" +%s 2>/dev/null || echo 0)"
+        if [ "${_e:-0}" != "0" ]; then
+            _age=$(( ( $(date +%s) - _e ) / 86400 ))
+            if   [ "$_age" -ge 7 ]; then printf '  %s  freshness:  last COMPLETED run was %sd ago (%s)\n' "$(dot off)"   "$_age" "$_last"
+            elif [ "$_age" -ge 2 ]; then printf '  %s  freshness:  last completed run was %sd ago (%s)\n' "$(dot AMBER)" "$_age" "$_last"
+            else                          printf '  %s  freshness:  last completed run was %sd ago\n'      "$(dot on)"    "$_age"; fi
+        fi
+    fi
+fi
+if [ "${NWP_LOOP_SPLIT_GATES:-0}" = "1" ]; then
+    printf '     gates:      SPLIT — the global kill stops the WRITE parts only; rag-sync (read-only) keeps running\n'
+else
+    printf '     gates:      UNIFIED — the global kill also stops rag-sync (set NWP_LOOP_SPLIT_GATES=1 to split)\n'
+fi
 
 echo
 # ── Fleet RAG (what the loop grades) ─────────────────────────────────────────

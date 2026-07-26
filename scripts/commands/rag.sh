@@ -78,6 +78,62 @@ _rag_eligible_sites(){
     done
 }
 
+# SELF-LIVENESS BANNER (item 4).
+#
+# WHY: for 8 nights `pl rag` graded the fleet 12 red / 10 amber / 0 green while
+# the machinery that turns those grades into issues was switched off. Every
+# component reported success: the rag-sync cron exited 0 ("part disabled —
+# skipping"), the agent-loop exited 0 ("globally disabled"), and `pl rag` itself
+# printed a perfectly accurate table. Nothing anywhere said the pipeline
+# downstream of the table was dark.
+#
+# An oversight surface that cannot report on its own liveness is asserting more
+# than it knows. This banner makes `pl rag` state, every time it runs, whether
+# the thing that acts on its output is alive.
+_rag_self_banner() {
+    local rt="${NWP_ROOT:-$HOME/nwp}"
+    local killed="" last_sync="" age="?"
+
+    if [ -f "$PROJECT_ROOT/lib/loop-parts.sh" ]; then
+        # shellcheck source=/dev/null
+        NWP_ROOT="$rt" source "$PROJECT_ROOT/lib/loop-parts.sh" 2>/dev/null || true
+    fi
+    if [ -f "$rt/.loop-paused" ]; then
+        killed=".loop-paused"
+    elif command -v loop_part_raw >/dev/null 2>&1 && [ "$(loop_part_raw all 2>/dev/null)" = "disabled" ]; then
+        killed="parts.state all=disabled"
+    fi
+
+    local log="$rt/logs/rag-sync.log"
+    if [ -f "$log" ]; then
+        last_sync=$(grep 'rag-sync done' "$log" 2>/dev/null | tail -1 | awk '{print $1}')
+        if [ -n "$last_sync" ]; then
+            local e n
+            e=$(date -d "$last_sync" +%s 2>/dev/null || echo 0)
+            n=$(date +%s)
+            [ "$e" != "0" ] && age=$(( (n - e) / 86400 ))
+        fi
+    fi
+
+    if [ -n "$killed" ]; then
+        printf '  %sLOOP ● DARK%s   the self-healing loop is disabled (%s) — this table will NOT become issues.\n' \
+            "${RED}" "${NC}" "$killed"
+        printf '               re-arm: pl loop enable all   ·   detail: pl loop\n'
+    elif [ -z "$last_sync" ]; then
+        printf '  %sLOOP ● UNKNOWN%s  rag-sync has never completed a run — grades are not reaching the tracker.\n' \
+            "${YELLOW}" "${NC}"
+    elif [ "$age" != "?" ] && [ "$age" -ge 7 ]; then
+        printf '  %sLOOP ● STALE%s   rag-sync last completed %sd ago (%s) — grades are not reaching the tracker.\n' \
+            "${RED}" "${NC}" "$age" "$last_sync"
+    elif [ "$age" != "?" ] && [ "$age" -ge 2 ]; then
+        printf '  %sLOOP ● AGING%s   rag-sync last completed %sd ago (%s).\n' \
+            "${YELLOW}" "${NC}" "$age" "$last_sync"
+    else
+        printf '  %sLOOP ● live%s    rag-sync last completed %s\n' "${GREEN}" "${NC}" "${last_sync:-?}"
+    fi
+    echo ""
+}
+
 # pl rag --sync-issues [--execute] — turn the RAG state into tracked nwp/ops
 # issues (ops#6 Deliverable 1). Dry-run by default; --execute writes.
 cmd_sync_issues(){
@@ -270,7 +326,7 @@ main() {
     # it so the table/JSON doesn't precede the sync plan on stdout.
     local out=/dev/stdout
     if [ "$SYNC" = "true" ]; then JSON=true; out=/dev/null; fi
-    [ "$JSON" = "true" ] || print_header "Fleet RAG — per-site Red/Amber/Green"
+    [ "$JSON" = "true" ] || { print_header "Fleet RAG — per-site Red/Amber/Green"; _rag_self_banner; }
 
     local rag_rc=0
     set +e

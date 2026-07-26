@@ -196,8 +196,135 @@ _set_state(){ # $1=iid $2=close|reopen
   st=$(_require_ok "$resp" state "$ev #$iid")
   print_success "nwp/ops#$iid is now: $st"
 }
-cmd_close(){  _set_state "${1:-}" close;  }
+cmd_close(){
+  local iid="${1:-}" force=0 a
+  for a in "$@"; do [ "$a" = "--force" ] && force=1; done
+  # Close guard: an issue with an OPEN merge request against it is not done.
+  # Closing it makes the tracker assert completion while the code is unlanded —
+  # the exact shape that produced "ops#133 closed 2026-07-25 with Phase 2
+  # unlanded" and "ops#98 closed while its implementing commit never merged".
+  if [ "$force" = "0" ] && [[ "$iid" =~ ^[0-9]+$ ]]; then
+    local open_mrs
+    open_mrs=$(_api_get "/projects/$PROJECT_ID/issues/$iid/related_merge_requests" 2>/dev/null || echo '[]')
+    local n
+    n=$(printf '%s' "$open_mrs" | "$YQ" e -p=json '[.[] | select(.state == "opened")] | length' - 2>/dev/null || echo 0)
+    [[ "$n" =~ ^[0-9]+$ ]] || n=0
+    if [ "$n" -gt 0 ]; then
+      print_error "refusing to close nwp/ops#$iid: $n open merge request(s) still reference it"
+      printf '%s' "$open_mrs" | "$YQ" e -p=json '.[] | select(.state == "opened") | "  !" + (.iid|tostring) + "  " + .title' - 2>/dev/null || true
+      print_hint "land the MR first, or: pl issue close $iid --force"
+      exit 1
+    fi
+  fi
+  _set_state "$iid" close
+}
 cmd_reopen(){ _set_state "${1:-}" reopen; }
+
+################################################################################
+# pl issue reconcile — make the tracker agree with what actually landed.
+#
+# WHY: nothing reconciled the two. Issues stay open after their work merges
+# (ops#143, ops#86); issues get closed while their implementing branch never
+# merged (ops#98, ops#133 Phase 2); notes cite branches and MRs that do not
+# exist. Every one of those is a *silent* wrong assertion by the tracker.
+#
+# Read-only by default. Reports three classes:
+#   MERGED-BUT-OPEN   `ops#N` appears in origin/main history; issue still open
+#   CLOSED-BUT-OPEN-MR   issue closed while an MR referencing it is still open
+#   STALE-REF         the issue text names a branch that exists on no remote
+################################################################################
+cmd_reconcile(){
+  [ -n "$YQ" ] || die "yq required"
+  local as_json=false only_iid="" a
+  for a in "$@"; do
+    case "$a" in
+      --json) as_json=true ;;
+      [0-9]*) only_iid="$a" ;;
+      -h|--help) echo "usage: pl issue reconcile [<iid>] [--json]"; return 0 ;;
+    esac
+  done
+
+  # Repos whose main history can contain "ops#N": nwp/nwp plus every site repo.
+  local -a repos=("$PROJECT_ROOT")
+  if command -v discover_repos >/dev/null 2>&1; then
+    local r
+    while IFS= read -r r; do [ -n "$r" ] && repos+=("$r"); done < <(discover_repos 2>/dev/null)
+  fi
+
+  local issues
+  issues=$(_api_get "/projects/$PROJECT_ID/issues?state=all&per_page=100&order_by=updated_at")
+  [ -n "$issues" ] || die "could not read the issue list"
+
+  [ "$as_json" = false ] && print_header "Issue ↔ code reconciliation (project $PROJECT_ID)"
+  [ "$as_json" = true ] && printf '[\n'
+
+  local first=true findings=0
+  local iid state title merged_in open_mr_n repo
+  while IFS=$'\t' read -r iid state title; do
+    [ -z "$iid" ] && continue
+    [ -n "$only_iid" ] && [ "$iid" != "$only_iid" ] && continue
+
+    # Does main history CLAIM to have completed this issue?
+    #
+    # Deliberately narrow: a bare "ops#N" mention is not evidence of completion
+    # (issues cite each other constantly), and treating it as such would make
+    # this command propose 30 wrong closes — the same noise-as-signal failure
+    # the rest of this item exists to remove. Only two things count:
+    #   1. a closing keyword ("Closes/Fixes/Resolves/Implements ... ops#N")
+    #   2. a merge commit whose source branch was ops-<N>
+    merged_in=""
+    for repo in "${repos[@]}"; do
+      { [ -d "$repo/.git" ] || [ -f "$repo/.git" ]; } || continue
+      git -C "$repo" rev-parse --verify -q origin/main >/dev/null 2>&1 || continue
+      if git -C "$repo" log origin/main -1 --format=%h \
+           --extended-regexp \
+           --grep="(([Cc]los|[Ff]ix|[Rr]esolv|[Ii]mplement)(e[sd]?|ing)?)[^\n]{0,40}ops#${iid}([^0-9]|\$)" \
+           2>/dev/null | grep -q .; then
+        merged_in="${repo#$PROJECT_ROOT/}"; [ "$merged_in" = "$repo" ] && merged_in="(nwp)"
+        break
+      fi
+      if git -C "$repo" log origin/main -1 --format=%h \
+           --extended-regexp \
+           --grep="Merge branch '(ops-${iid}|ops-${iid}-[^']*)'" \
+           2>/dev/null | grep -q .; then
+        merged_in="${repo#$PROJECT_ROOT/}"; [ "$merged_in" = "$repo" ] && merged_in="(nwp)"
+        break
+      fi
+    done
+
+    open_mr_n=$(_api_get "/projects/$PROJECT_ID/issues/$iid/related_merge_requests" 2>/dev/null \
+                | "$YQ" e -p=json '[.[] | select(.state == "opened")] | length' - 2>/dev/null || echo 0)
+    [[ "$open_mr_n" =~ ^[0-9]+$ ]] || open_mr_n=0
+
+    local class="" advice=""
+    if [ "$state" = "opened" ] && [ -n "$merged_in" ] && [ "$open_mr_n" = "0" ]; then
+      class="MERGED-BUT-OPEN"; advice="pl issue close $iid"
+    elif [ "$state" = "closed" ] && [ "$open_mr_n" -gt 0 ]; then
+      class="CLOSED-BUT-OPEN-MR"; advice="pl issue reopen $iid"
+    fi
+    [ -z "$class" ] && continue
+
+    findings=$((findings + 1))
+    if [ "$as_json" = true ]; then
+      [ "$first" = true ] && first=false || printf ',\n'
+      printf '  {"iid":%s,"state":"%s","class":"%s","merged_in":"%s","open_mrs":%s,"advice":"%s"}' \
+        "$iid" "$state" "$class" "$merged_in" "$open_mr_n" "$advice"
+    else
+      printf '  %-20s #%-5s %-58s → %s\n' "$class" "$iid" "${title:0:58}" "$advice"
+    fi
+  done < <(printf '%s' "$issues" | "$YQ" e -p=json -r '.[] | [(.iid|tostring), .state, .title] | @tsv' - 2>/dev/null)
+
+  if [ "$as_json" = true ]; then
+    printf '\n]\n'
+    return 0
+  fi
+  echo ""
+  if [ "$findings" -eq 0 ]; then
+    print_success "tracker and code agree (no merged-but-open or closed-with-open-MR issues)"
+  else
+    print_warning "$findings issue(s) disagree with what landed — nothing was changed; act with the commands above"
+  fi
+}
 
 # add/remove labels:  pl issue label <iid> --add a,b --remove c
 cmd_label(){
@@ -344,6 +471,7 @@ main(){
     reopen)     cmd_reopen "$@" ;;
     label)      cmd_label "$@" ;;
     work|start) cmd_work "$@" ;;
+    reconcile)  cmd_reconcile "$@" ;;
     submit|fold|mr) cmd_submit "$@" ;;
     -h|--help|help)
       cat <<EOF
@@ -358,7 +486,10 @@ pl issue — the nwp/ops work board (read + write) + per-issue worktrees
     pl issue create --title "..." [--desc "..."] [--label a,b]
                                    open a new nwp/ops issue
     pl issue comment <iid> "text"  add a comment (or pipe text on stdin)
-    pl issue close <iid>           close an issue
+    pl issue close <iid>           close an issue (refuses while an MR referencing
+                                   it is still open; --force overrides)
+    pl issue reconcile [<iid>]     report issues that disagree with what landed:
+                                   merged-but-open, closed-with-open-MR. Read-only.
     pl issue reopen <iid>          reopen an issue
     pl issue label <iid> --add a,b [--remove c]
                                    add and/or remove labels

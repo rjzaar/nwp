@@ -886,3 +886,71 @@ at column 0).
 tarball from github **unverified** — item 5 owns `.gitlab-ci.yml` and pins the sha256. The pinned
 sha for 8.30.0 linux_x64 is `79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e`
 (verified here; the new bats test uses the same pin for its own bootstrap).
+## Item 4 — `pl-surfaces-report-reality` (2026-07-26)
+
+**What.** Five oversight surfaces were *structurally vacuous* — they ran, printed a positive assertion, and
+could not have produced a finding for any input. Fixed so each can go red, plus three new read-only verbs.
+
+**Decisions and why:**
+
+1. **`check_uncommitted_work` rebuilt on a new `discover_repos`, not on the site list.** The old test was
+   `[ -d sites/<name>/.git ]`; in the v2 layout no site has a repo there, so the loop `continue`d on every
+   iteration. Alternative considered: hard-code the four known nesting depths (`dev/`, `stg/`,
+   `dev/html/profiles/custom/*`, `.plugin-src/*`). Rejected — that is the same brittleness one level up, and
+   it would go silently blind again the next time the layout moves. `find`-based discovery cannot. Measured:
+   **48 repos, 8 s, 38 items** on the real fleet, vs 0 items before. Reverse: revert; nothing persists.
+
+2. **`check_verification` now reads `machine.state.verified`, and the human `verified:` flag is deliberately
+   NOT counted.** The old query was `.status == "fail"` — a key that appears nowhere in the file. The obvious
+   replacement, `grep -c 'verified: false'` → 190, is *wrong*: 91 of those are the human sign-off flag
+   (1.2 % human coverage by design), not failures. The real machine-failure count is **99**, plus 1 check that
+   has never run. Conflating the two would have replaced a false green with a false red. Also added a
+   staleness item — the newest machine run in the file is **2026-02-02, 173 days old** — because a stale green
+   is a claim about an unmeasured present.
+
+3. **`pl backup sweep` gets a `neverbacked` counter that forces exit 1; `skipped`/`noproj` still do not.**
+   A site with no backup *at all* is not a benign skip. The counter is computed before any skip branch so no
+   `continue` can hide it. Live result: `13 fresh, 0 backed up, 2 skipped, 2 no-project` EXIT=0 becomes
+   EXIT=1 naming **cccrdf, dir, fin, saintschool**. Alternative considered: warn only, keep exit 0. Rejected —
+   that is the defect. Reverse: revert the counter; suppression for a deliberate case is
+   `pl todo ignore BAK-<site>`.
+
+4. **Loop liveness is reported by `pl todo` AND by `pl rag`'s own header, not only by `pl loop`.** The loop has
+   been globally dark since 2026-07-18 13:50; rag-sync logged "part disabled — skipping" and exited 0 for
+   8 nights while the fleet was 12 red / 0 green. `pl loop` did show it, but only to someone who already
+   suspected. Putting a LOOP badge in `pl rag`'s header means the surface that *produces* the grades states
+   whether the machinery that *acts* on them is alive, every time it runs. Reverse: revert; read-only.
+
+5. **The `.loop-paused` / rag-sync gate split ships behind `NWP_LOOP_SPLIT_GATES=1`, default OFF.** The global
+   kill exists to stop the loop *writing*; rag-sync only reads fleet state and files issues. Splitting them is
+   correct, but flipping the default in the same change would alter a safety switch's meaning without an
+   observed clean night. Default stays unified; the skip is now logged *with a reason* either way, so
+   "switched off" is distinguishable from "broken". Reverse: unset the variable.
+
+6. **`pl branch stranded` classifies by CONTENT, not by `git branch --merged`.** Much of this work landed by
+   re-application, so ancestry calls it unmerged forever. More important: two branches are net reverts whose
+   wholesale merge would DELETE landed hardening. A pure "only deletions" test does **not** catch them — both
+   add a few lines while deleting more (`chore/gitleaks-allowlist-issue-urls` 9+/39−,
+   `fix/ssc-pair-contract-probe-urls` 6+/9−). Hence a `SHRINKS` class on net direction, and `--prune-merged`
+   deletes only `IDENTICAL` branches. Reverse: revert; prune requires interactive confirmation.
+
+7. **`pl issue reconcile` requires a closing keyword or an `ops-N` merge commit — a bare `ops#N` mention is
+   not evidence.** The first implementation matched any mention and proposed **30** closes, most of them
+   wrong (issues cite each other constantly). Tightened to `Closes/Fixes/Resolves/Implements … ops#N` or
+   `Merge branch 'ops-N…'` → **8**, each backed by an explicit completion claim. A reconciler that cries wolf
+   is the same disease it is meant to cure. It is read-only; it proposes, it never writes.
+
+8. **`pl --help` gains a GENERATED "ALL COMMANDS" section, and the `*)` fallback is bounded by it.**
+   43 of 96 commands — including `pl rag`, `pl todo`, `pl issue`, `pl secrets`, `pl moodle`, `pl loop` — were
+   documented nowhere and worked only via the "is there a script with this name?" fallback. That fallback also
+   resolved any executable file, so `pl pl` re-entered `pl`. Alternative considered: hand-write the missing
+   43 entries. Rejected — that is what drifted in the first place. Reverse: revert; the curated sections are
+   untouched.
+
+9. **Incidental fix, same class:** `pl loop` was **exiting 1 mid-report** on any host where the agent-loop
+   cron is absent — an unguarded `grep` under `set -euo pipefail`, dying on the line immediately before the
+   one that says `cron: ABSENT`. Found on this host, where the cron *is* absent: clearing `.loop-paused` alone
+   would not restart the loop, and the dashboard could not say so.
+
+**Not done (operator's call, by design):** unpausing the loop, re-authenticating Claude on mini, and
+installing the missing agent-loop cron. This item ships the *visibility*; the arming is the operator's.

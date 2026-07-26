@@ -69,6 +69,157 @@ ${BOLD}EXAMPLE:${NC}
 EOF
 }
 
+################################################################################
+# pl branch stranded — unmerged/undeleted work, classified by CONTENT
+#
+# WHY: nothing enumerated stranded work. At the time of writing: 23 unmerged
+# branches across three repos, 38 merged-but-undeleted refs, 170 local branches,
+# 77 worktrees, and one branch (feat/nwptoolkit-deploy, 340 lines) that existed
+# on no remote at all.
+#
+# WHY CONTENT AND NOT `git branch --merged`: much of this work was landed by
+# RE-APPLICATION rather than by merging the branch, so `--merged` calls it
+# unmerged forever. Worse, two of these branches are NET REVERTS — merging them
+# wholesale would DELETE hardening that main already has
+# (chore/gitleaks-allowlist-issue-urls removes allowlists main added;
+# fix/ssc-pair-contract-probe-urls would drop oauth_email_rewrite_sql and two
+# sanitizer paths from the boundary contract). So we classify by comparing the
+# branch's file content against main:
+#
+#   IDENTICAL  — its files match main exactly: debris, safe to prune
+#   REVERT     — it only DELETES lines main has: DO NOT MERGE, cherry-pick
+#   UNLANDED   — it adds content main lacks: real work, needs an MR
+#
+# --prune-merged deletes only IDENTICAL branches, and only with confirmation.
+################################################################################
+cmd_stranded() {
+    local do_prune=false as_json=false auto_yes=false base="origin/main"
+    local a
+    for a in "$@"; do
+        case "$a" in
+            --prune-merged) do_prune=true ;;
+            --json)         as_json=true ;;
+            -y|--yes)       auto_yes=true ;;
+            --base=*)       base="${a#*=}" ;;
+            -h|--help)      show_help; return 0 ;;
+        esac
+    done
+
+    # Every repo in the estate, plus the nwp repo itself.
+    local -a repos=("$PROJECT_ROOT")
+    if command -v discover_repos >/dev/null 2>&1; then
+        local r
+        while IFS= read -r r; do [ -n "$r" ] && repos+=("$r"); done < <(discover_repos 2>/dev/null)
+    fi
+
+    [ "$as_json" = false ] && print_header "Stranded branches"
+
+    local -a prune_list=()
+    local first_json=true
+    [ "$as_json" = true ] && printf '[\n'
+
+    local repo rel b ahead behind last kind diffstat only_del
+    for repo in "${repos[@]}"; do
+        [ -d "$repo/.git" ] || [ -f "$repo/.git" ] || continue
+        git -C "$repo" rev-parse --verify -q "$base" >/dev/null 2>&1 || continue
+
+        rel="${repo#$PROJECT_ROOT/}"; [ "$rel" = "$repo" ] && rel="(nwp)"
+
+        while IFS= read -r b; do
+            [ -z "$b" ] && continue
+            case "$b" in "${base#origin/}"|main|master|HEAD) continue ;; esac
+
+            ahead=$(git -C "$repo" rev-list --count "$base".."$b" 2>/dev/null || echo 0)
+            behind=$(git -C "$repo" rev-list --count "$b".."$base" 2>/dev/null || echo 0)
+            [ "$ahead" = "0" ] && continue   # nothing on it that main lacks
+
+            last=$(git -C "$repo" log -1 --format=%cs "$b" 2>/dev/null || echo "?")
+
+            # Content classification (NOT ancestry).
+            #
+            # Restrict the comparison to the files the BRANCH touched (three-dot
+            # against the merge base), then compare those files tip-to-tip. This
+            # is what makes "landed by re-application" show up as IDENTICAL: the
+            # branch's own files already match main, even though its commits
+            # were never merged.
+            local -a touched=()
+            mapfile -t touched < <(git -C "$repo" diff --name-only "$base...$b" 2>/dev/null || true)
+            if [ ${#touched[@]} -eq 0 ]; then
+                kind="IDENTICAL"
+                prune_list+=("$repo|$b")
+            else
+                diffstat=$(git -C "$repo" diff --numstat "$base" "$b" -- "${touched[@]}" 2>/dev/null || true)
+                if [ -z "$diffstat" ]; then
+                    kind="IDENTICAL"
+                    prune_list+=("$repo|$b")
+                else
+                    # Net direction of the merge, tip-to-tip on the touched
+                    # files. A branch that would REMOVE more of main than it
+                    # adds is the dangerous shape: both known offenders
+                    # (chore/gitleaks-allowlist-issue-urls 9+/39-,
+                    # fix/ssc-pair-contract-probe-urls 6+/9-) add a little while
+                    # deleting landed hardening, so "only deletions" would miss
+                    # them. Report the net, and refuse to call it prunable.
+                    only_del=$(printf '%s\n' "$diffstat" | awk '
+                        { if ($1 != "-") add += $1; if ($2 != "-") del += $2 }
+                        END { if (add+0 == 0) print "REVERT";
+                              else if (del+0 > add+0) print "SHRINKS";
+                              else print "UNLANDED" }')
+                    kind="${only_del:-UNLANDED}"
+                fi
+            fi
+
+            if [ "$as_json" = true ]; then
+                [ "$first_json" = true ] && first_json=false || printf ',\n'
+                printf '  {"repo":"%s","branch":"%s","class":"%s","ahead":%s,"behind":%s,"last_commit":"%s"}' \
+                    "$rel" "$b" "$kind" "${ahead:-0}" "${behind:-0}" "$last"
+            else
+                case "$kind" in
+                    IDENTICAL)      printf '  %s%-10s%s %-14s %-46s %s\n' "$DIM" "$kind" "$NC" "$rel" "$b" "$last" ;;
+                    REVERT|SHRINKS) printf '  %s%-10s%s %-14s %-46s %s  %s← DO NOT MERGE WHOLESALE%s\n' "$RED" "$kind" "$NC" "$rel" "$b" "$last" "$RED" "$NC" ;;
+                    *)              printf '  %s%-10s%s %-14s %-46s %s\n' "$YELLOW" "$kind" "$NC" "$rel" "$b" "$last" ;;
+                esac
+            fi
+        done < <(git -C "$repo" for-each-ref --format='%(refname:short)' refs/remotes/origin refs/heads 2>/dev/null \
+                 | sed 's#^origin/##' | sort -u)
+    done
+
+    if [ "$as_json" = true ]; then
+        printf '\n]\n'
+        return 0
+    fi
+
+    echo ""
+    printf '  %sIDENTICAL%s = its files already match %s exactly (landed by re-application, or debris) — prunable\n' "$DIM" "$NC" "$base"
+    printf '  %sREVERT%s    = adds nothing, only removes lines %s has — never merge\n' "$RED" "$NC" "$base"
+    printf '  %sSHRINKS%s   = removes more of %s than it adds — cherry-pick the intended hunks only\n' "$RED" "$NC" "$base"
+    printf '  %sUNLANDED%s  = real unlanded work — open an MR\n' "$YELLOW" "$NC"
+    echo ""
+
+    if [ "$do_prune" = true ]; then
+        if [ ${#prune_list[@]} -eq 0 ]; then
+            print_info "Nothing to prune — no branch is content-identical to $base."
+            return 0
+        fi
+        print_warning "Would delete ${#prune_list[@]} content-identical branch(es):"
+        local e
+        for e in "${prune_list[@]}"; do printf '    %s  %s\n' "${e%%|*}" "${e#*|}"; done
+        if [ "$auto_yes" != true ]; then
+            printf '  Delete these local branches? [y/N] '
+            local ans; read -r ans
+            [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { print_info "Aborted."; return 0; }
+        fi
+        for e in "${prune_list[@]}"; do
+            git -C "${e%%|*}" branch -D "${e#*|}" 2>/dev/null \
+                && print_success "deleted ${e#*|} in ${e%%|*}" \
+                || print_warning "could not delete ${e#*|} (remote-only?)"
+        done
+    else
+        [ ${#prune_list[@]} -gt 0 ] && \
+            print_info "${#prune_list[@]} branch(es) are content-identical to $base — 'pl branch stranded --prune-merged' removes them."
+    fi
+}
+
 # slugify a git ref for use in a site name: feat/big-idea → big-idea
 _ref_slug() {
     basename "$1" | tr -c 'a-zA-Z0-9' '-' | sed 's/^-*//; s/-*$//' | cut -c1-20
@@ -336,6 +487,7 @@ main() {
     local sub="${1:-}"
     case "$sub" in
         ""|-*)      show_help; exit 1 ;;
+        stranded)   shift || true; cmd_stranded "$@" ;;
         list)       cmd_list "${2:-}" ;;
         content)    cmd_content "${2:-}" "$FROM" ;;
         merge)      cmd_merge "${2:-}" ;;

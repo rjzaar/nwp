@@ -30,13 +30,45 @@ ts(){ date -u +%FT%TZ; }
 # via `pl loop disable rag-sync`, and the global kill / legacy .rag-sync-paused
 # sentinel also stop it. If the library is absent (older checkout) we fall back
 # to the legacy sentinel only, which is fail-safe.
+#
+# SPLIT GATES (item 4, opt-in via NWP_LOOP_SPLIT_GATES=1)
+# ------------------------------------------------------
+# The global kill (`.loop-paused` / parts.state all=disabled) exists to stop the
+# loop WRITING — opening MRs, deploying. rag-sync does neither: it reads fleet
+# state and files/updates nwp/ops issues. Lumping it under the same switch cost
+# 8 nights of complete oversight blackout (2026-07-18 → 2026-07-25) during which
+# the fleet was 12 red / 10 amber / 0 green and zero issues were filed, while
+# every cron in the chain exited 0.
+#
+# With NWP_LOOP_SPLIT_GATES=1 rag-sync honours only its OWN gate, so pausing the
+# write half no longer blinds the read half. DEFAULT IS OFF: the existing
+# global-kill semantics are preserved until one clean night has been observed
+# with the flag on (see the rollback note in the MR).
+#
+# Either way the skip is now recorded with a REASON, so `pl todo`'s
+# check_rag_sync_freshness and `pl rag`'s LOOP banner can tell "switched off"
+# from "broken" — previously both looked identical from outside.
 export NWP_ROOT="$NWP_DIR"
+SPLIT="${NWP_LOOP_SPLIT_GATES:-0}"
 LOOP_PARTS_LIB="$NWP_DIR/lib/loop-parts.sh"
 if [ -f "$LOOP_PARTS_LIB" ]; then
   # shellcheck source=/dev/null
   . "$LOOP_PARTS_LIB"
-  if ! loop_part_enabled rag-sync; then
-    echo "$(ts) rag-sync part disabled (parts.state / global / .rag-sync-paused) — skipping" >> "$LOG"
+  if [ "$SPLIT" = "1" ]; then
+    # Read-only part: only its own switches apply.
+    if [ -f "$NWP_DIR/.rag-sync-paused" ] || [ "$(loop_part_raw rag-sync)" = "disabled" ]; then
+      echo "$(ts) rag-sync DISABLED by its own gate (.rag-sync-paused / parts.state rag-sync) — skipping [split-gates]" >> "$LOG"
+      exit 0
+    fi
+    if loop_global_killed; then
+      echo "$(ts) global kill is set but split-gates is on — rag-sync (read-only) CONTINUES" >> "$LOG"
+    fi
+  elif ! loop_part_enabled rag-sync; then
+    if loop_global_killed; then
+      echo "$(ts) rag-sync DISABLED by the GLOBAL kill — skipping. The fleet is ungraded into the tracker while this holds; 'pl rag' says LOOP DARK. Set NWP_LOOP_SPLIT_GATES=1 to keep this read-only part running." >> "$LOG"
+    else
+      echo "$(ts) rag-sync part disabled (parts.state rag-sync / .rag-sync-paused) — skipping" >> "$LOG"
+    fi
     exit 0
   fi
 elif [ -f "$NWP_DIR/.rag-sync-paused" ]; then

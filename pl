@@ -62,6 +62,137 @@ else
 fi
 
 ################################################################################
+# Command inventory  (item 4 — "the CLI must not hide its own surface")
+#
+# WHY: the curated help below is hand-maintained and had drifted badly — 43 of
+# 96 commands, INCLUDING `pl rag`, `pl todo`, `pl moodle`, `pl loop`, `pl issue`
+# and `pl secrets`, appeared nowhere in `pl --help`. They worked only because
+# the `*)` arm of the dispatcher falls back to "is there a script with this
+# name?". That is a discoverability hole (an operator cannot find the verb that
+# exists) and a correctness hole (the same fallback happily resolves any
+# executable file in the repo root, so a typo can run something unintended).
+#
+# The ALL COMMANDS section is therefore GENERATED from the filesystem, so it
+# cannot drift, and the fallback now refuses anything not in this inventory.
+################################################################################
+
+# Commands that exist as scripts but are not standalone user verbs. Each entry
+# carries its reason; they are still LISTED (tagged `internal`) so nothing is
+# hidden — they are merely excluded from the fallback's "did you mean" hints.
+PL_INTERNAL_COMMANDS=(
+    "uninstall_nwp:invoked as \`pl uninstall\`"
+    "run-tests:CI helper, invoked by the pipeline"
+    "fixture-load:test-fixture loader used by the bats suites"
+    "bootstrap-coder:one-shot bootstrap, run by coder-setup"
+)
+
+_pl_is_internal_command() {
+    local want="$1" e
+    for e in "${PL_INTERNAL_COMMANDS[@]}"; do
+        [ "${e%%:*}" = "$want" ] && return 0
+    done
+    return 1
+}
+
+_pl_internal_reason() {
+    local want="$1" e
+    for e in "${PL_INTERNAL_COMMANDS[@]}"; do
+        if [ "${e%%:*}" = "$want" ]; then printf '%s' "${e#*:}"; return 0; fi
+    done
+    printf ''
+}
+
+# Every command name pl can dispatch: one per line, sorted.
+_pl_all_commands() {
+    {
+        local f
+        for f in "${SCRIPT_DIR}"/scripts/commands/*.sh; do
+            [ -e "$f" ] || continue
+            basename "$f" .sh
+        done
+        # Verbs implemented inside pl itself (no script of their own).
+        printf '%s\n' uninstall list status version help gitlab-create gitlab-list commands
+    } | sort -u
+}
+
+_pl_command_exists() {
+    local want="$1" c
+    while IFS= read -r c; do
+        [ "$c" = "$want" ] && return 0
+    done < <(_pl_all_commands)
+    return 1
+}
+
+# One-line synopsis for a command, read from the script's own header so the
+# help text is generated from the code rather than restated beside it.
+_pl_command_synopsis() {
+    local name="$1"
+    local f="${SCRIPT_DIR}/scripts/commands/${name}.sh"
+    [ -f "$f" ] || { printf '%s' "$(_pl_builtin_synopsis "$name")"; return 0; }
+
+    local line
+    # 1. A self-describing header: "# pl foo — does the thing"
+    line=$(grep -m1 -E "^#[[:space:]]*pl[[:space:]]+${name}\b" "$f" 2>/dev/null \
+           | sed -E 's/^#[[:space:]]*//; s/^pl[[:space:]]+[^[:space:]]+[[:space:]]*[-—–:]*[[:space:]]*//')
+    # 2. Otherwise the first real comment line that is not a divider/shebang.
+    if [ -z "$line" ]; then
+        line=$(sed -n '2,25p' "$f" 2>/dev/null \
+               | grep -E '^#' \
+               | grep -vE '^#[[:space:]]*$|^#{3,}|^#!' \
+               | head -1 \
+               | sed -E 's/^#[[:space:]]*//')
+    fi
+    [ -z "$line" ] && line="(no synopsis in $(basename "$f"))"
+    printf '%s' "${line:0:96}"
+}
+
+_pl_builtin_synopsis() {
+    case "$1" in
+        uninstall)     printf 'Uninstall NWP completely (alias for uninstall_nwp)' ;;
+        list)          printf 'List all tracked sites' ;;
+        status)        printf 'Show site status table (RAG grade + phase)' ;;
+        version)       printf 'Show NWP version' ;;
+        help)          printf 'Show this help' ;;
+        commands)      printf 'List every dispatchable command (--json for machine use)' ;;
+        gitlab-create) printf 'Create a GitLab project' ;;
+        gitlab-list)   printf 'List GitLab projects' ;;
+        *)             printf '(built-in)' ;;
+    esac
+}
+
+# `pl commands [--json]` — the machine-readable inventory. `pl --help` renders
+# the same data; anything that can dispatch appears in both.
+cmd_commands() {
+    local as_json=false
+    [ "${1:-}" = "--json" ] && as_json=true
+
+    if [ "$as_json" = true ]; then
+        local first=true c syn kind
+        printf '[\n'
+        while IFS= read -r c; do
+            kind="command"
+            _pl_is_internal_command "$c" && kind="internal"
+            syn=$(_pl_command_synopsis "$c")
+            [ "$first" = true ] && first=false || printf ',\n'
+            printf '  {"name":"%s","kind":"%s","synopsis":"%s"}' \
+                "$c" "$kind" "$(printf '%s' "$syn" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+        done < <(_pl_all_commands)
+        printf '\n]\n'
+        return 0
+    fi
+
+    local c syn
+    while IFS= read -r c; do
+        syn=$(_pl_command_synopsis "$c")
+        if _pl_is_internal_command "$c"; then
+            printf '  %-22s %s\n' "$c" "[internal: $(_pl_internal_reason "$c")]"
+        else
+            printf '  %-22s %s\n' "$c" "$syn"
+        fi
+    done < <(_pl_all_commands)
+}
+
+################################################################################
 # Help
 ################################################################################
 
@@ -319,6 +450,15 @@ ${BOLD}MORE HELP:${NC}
     See docs/README.md for full documentation
 
 EOF
+
+    # ── ALL COMMANDS (generated — never hand-edited) ──────────────────────────
+    # The curated sections above are a guided tour and will always lag. This
+    # section is derived from scripts/commands/*.sh plus pl's own built-ins, so
+    # a command cannot exist without being documented here.
+    printf '%sALL COMMANDS (generated from scripts/commands/ — %s total):%s\n' \
+        "$BOLD" "$(_pl_all_commands | wc -l | tr -d ' ')" "$NC"
+    cmd_commands
+    printf '\n  Machine-readable: pl commands --json\n\n'
 }
 
 ################################################################################
@@ -964,17 +1104,33 @@ main() {
             show_help
             ;;
 
-        # Unknown command - try as script name
+        # Command inventory
+        commands)
+            cmd_commands "$@"
+            ;;
+
+        # Script-name fallback — bounded by the inventory.
+        #
+        # This arm used to resolve ANY executable file it could find, including
+        # ones that are not commands at all (`$SCRIPT_DIR/$command` matches the
+        # repo root, so `pl pl` re-entered pl). It now dispatches only names
+        # that `pl commands` lists, so what runs is exactly what is documented.
         *)
-            # Check if it's a script name (with or without .sh)
-            if script_exists "${command}.sh"; then
+            if _pl_command_exists "$command" && script_exists "${command}.sh"; then
                 run_script "${command}.sh" "$@"
-            elif script_exists "${command}"; then
-                run_script "${command}" "$@"
+            elif script_exists "${command}.sh" || script_exists "${command}"; then
+                print_error "Undocumented command: $command"
+                echo ""
+                echo "A file matching '$command' exists but it is not a registered NWP command."
+                echo "Registered commands: pl commands"
+                exit 1
             else
                 print_error "Unknown command: $command"
                 echo ""
-                echo "Run 'pl --help' for usage information."
+                local _suggest
+                _suggest=$(_pl_all_commands | grep -F "$command" | head -3 | tr '\n' ' ' || true)
+                [ -n "${_suggest// /}" ] && echo "Did you mean: $_suggest"
+                echo "Run 'pl --help' or 'pl commands' for usage information."
                 exit 1
             fi
             ;;

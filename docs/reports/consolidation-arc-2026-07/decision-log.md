@@ -2988,3 +2988,106 @@ before the change (transcript in the MR).
 **Scope not taken.** No consumer of the pattern was touched (`git grep` confirms it is defined at
 `lib/impact.sh:219` and read only at `:236`); no allowlist edit; `lib/moodle-deploy.sh` and
 `scripts/commands/branch.sh` remain the real known contract gaps, owned by other items.
+## [2026-07-27] pair-guard-binds-real-pair — the UID-lock guard was blind, and blindness read as consent
+
+`pl pair check ssc live` — a **full-DB push to the tier whose OIDC UID-locks the D6 rule exists to
+protect** — answered `[✓] pair_guard would ALLOW this promotion.` (rc 0). Reproduced on `main`
+before any change. `pl pair list` showed only `ssd ↔ nwd`; the real pair with real students was
+absent from it.
+
+**Root cause — two shapes, and the guard read the file the real pair did not use.**
+`lib/pair.sh:92` resolved membership with `yaml_get_site_field "$site" "paired_with" "$config"`
+against the **global** `nwp.yml`, and `:104` scanned the same file for consumers. `ssc` had no
+pairing key there at all. Meanwhile `sites/ssc/.nwp.yml:31` carried a *different* `paired_with:` —
+a **map of label→URL** (`nwc_canonical: https://nwc.nwpcode.org`) that no reader consumed and that
+cannot name a site. So the reader returned nothing, and nothing fell through
+`if [ -z "$role" ]; then return 0; fi`. **Unreadable read as unpaired; unpaired read as consent.**
+
+`ssd` returned ALLOW too, and that one was correct-by-configuration — verified rather than assumed:
+`pairs/ssd.pair-contract.yml` sets `uid_lock: false` / `coupled_tiers: []`, so
+`pair_contract_couples_tier` returns 1 and the D6 branch is skipped by design. (It also passes D5
+because `private/pairs/ssd.provider.live.cv` = 3, recorded by MR !210.)
+
+### The decision: the committed CONTRACT is the source of truth for membership
+
+The obvious fix — "copy `paired_with: nwc` into `nwp.yml`" — is what `example.nwp.yml` has told
+operators to do since ops#75 and was never done. It would have worked and would have left the
+defect's cause intact, because **both** candidate files are invisible to git: `nwp.yml` by hard
+rule (CLAUDE.md), `sites/*` by `.gitignore:14`. A guard whose only input is a file no reviewer and
+no CI job can see cannot be observed to be wrong — which is exactly how this one stayed inert while
+`pairs/ssc.pair-contract.yml` sat in the repo saying `provider: nwc / consumer: ssc` the whole time.
+
+So `pair_scan` now reads, in order: (0) `pairs/*.pair-contract.yml` `provider:`/`consumer:` —
+**source of truth**; (1) `sites/<site>/.nwp.yml` `paired_with:`; (2) `nwp.yml`
+`sites.<site>.paired_with`. This is ADR-0031 D2 ("the CONTRACT, not the pair, is the versioned
+artifact") carried through to the choke-point instead of stopping at the doc. Sources 1 and 2 stay
+honoured — `ssd` uses one — and must **agree**; disagreement is ambiguity.
+
+**Verdict on "half-finished migration vs typo": neither.** The per-site map was never a migration
+of the pairing key — nothing ever read it, and the URL it held duplicated `oauth2.provider_url`
+three lines below. It was independent documentation that collided with a load-bearing key name.
+The canonical **shape** was never in doubt (bare scalar site key: `example.nwp.yml`,
+`pairs/README.md`, `provider:`/`consumer:`, and the pair id all speak site keys); what was wrong
+was the **location**, and the location was wrong in a way that made the error unobservable.
+
+### Fail closed on ambiguity
+
+Every reader is now tri-state — `0` resolved / `1` not declared / `2` CANNOT VERIFY — and `2` is
+never collapsed into `1`. A `paired_with:` that is a map, a URL, unparseable YAML, two sources
+disagreeing, or a contract filed under a name that does not match its own `consumer:` key, all
+REFUSE via `_pair_blind_refuse`. Vocabulary is reused from `pl impact --honesty` /
+`boundary_honesty_check`, not reinvented: *"This is NOT a clean result: the guard found no pair
+because it could not look."* The only escape is the existing audited `NWP_PAIR_GATE_SOFT=true`
+(ledgered on **both** branches); `--override-pair` deliberately does **not** cover it, because a
+per-invariant override must not double as a licence to deploy past a config you cannot read.
+
+Blast radius of blindness is fleet-wide by design: if any declaration in the tree is illegible,
+"nothing points at this site" is a guess, so unpaired sites refuse too. The message names the
+offending file and the fix is one line.
+
+### Evidence
+
+RED first, on `origin/main`'s `lib/pair.sh` with the new suite dropped in: **11 of 20 fail**,
+including `CASE 1` (full-DB to ssc live REFUSED) and every `CASE 3` (CANNOT VERIFY). GREEN after:
+**20/20**, plus the 62 pre-existing `test-pair*.bats` unchanged and passing.
+
+**Negative controls that stay GREEN across the revert** (so the suite cannot be satisfied by a
+guard that refuses everything): `CASE 4` unpaired-site-promotes-to-prod, and coupled-pair-promotes-
+full-DB-at-an-uncoupled-tier. Note `CASE 2` (`--code-only` ALLOWED) is *also* green pre-fix — it
+has to be, because the broken guard allowed everything; it is evidence only in combination with
+`CASE 1`.
+
+Two tests run against the **shipped** `pairs/` with no operator config present at all, so CI itself
+now asserts the real `ssc↔nwc` and `ssd↔nwd` pairs bind — the property the old resolver could not
+have had.
+
+### Sweep: the same inversion elsewhere
+
+`lib/canonical.sh` has it twice, on the same read, and worse. `canonical_get_phase:62-67` and
+`maturity_get_class:281-286` both do `[ -f "$config" ] && raw=$(... || true)` then map `""` to the
+**weakest** value (`dev`, `incubating`). An unparseable or unreachable `nwp.yml` — same gitignored
+file — therefore turns every `canonical: live` site into `dev` (so
+`canonical_guard_content_push` permits the dev→live content overwrite it exists to stop) and every
+`maturity: production` site into `incubating` (so `maturity_guard_deploy` stops routing prod through
+the signed-bundle path — and *that* refusal has no override by design, making the fail-open the
+only way past it). Both files' own headers claim to fail closed on an unparseable **value**, which
+they do; neither handles an unparseable **file**. **Not fixed here — outside this change's
+territory.** Also found: `lib/sanitizers/mayo.sh:761` PII sweep reports `PASS` on a dump `zgrep`
+could not read (the sibling `lib/sanitizers/moodle.sh:177` already `gzip -t`s and refuses);
+`lib/moodle-deploy.sh:680` returns zero core-patch ids on an unparseable declaration, emptying a
+gate documented as having no override. Cleared as correct-by-design: `lib/boundary.sh` (rc 2 =
+CANNOT-VERIFY is the reference implementation), `lib/pii-gate.sh`, `lib/prod-guard.sh`,
+`lib/host-capture.sh`, `lib/restore-remote.sh`, `lib/config-drift.sh`'s
+`config_drift_guarded_updatedb` (rc 3 = could-not-check).
+
+### Scope not taken
+
+- `lib/canonical.sh` / the sanitizers / `moodle-deploy.sh` findings above are **reported, not
+  fixed** — `lib/canonical.sh` is auth-adjacent guard code with its own callers and deserves its
+  own reviewed change.
+- No pair contract's `contract_version` was touched (ssc stays 2, ssd stays 3 from MR !210).
+- `private/pairs/` state was **not** written. `ssc` has no recorded provider deployment at `live`,
+  so on the real tree the D5 provider-first rule fires *before* D6 — correct, but it means the
+  operator must bootstrap `pl pair record ssc provider live 2` before a `--code-only` ssc live
+  promotion is allowed. That is an operator assertion about what nwc live is running, not one an
+  agent should make.

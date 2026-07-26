@@ -14,9 +14,17 @@ pairs/ssd.pair-contract.yml    # nwd (provider) ↔ ssd (consumer)
 - **Authoring:** copy [`../pair-contract.example.yml`](../pair-contract.example.yml)
   here and fill in the real versions/URLs. See
   [`../docs/guides/ops75-pair-contract-schema.md`](../docs/guides/ops75-pair-contract-schema.md).
-- **Fail-closed:** if a site declares `paired_with:` in `nwp.yml` but its
-  contract here is missing/invalid, `pair_guard` refuses the deploy (override
-  with `NWP_PAIR_GATE_SOFT=true` while mid-authoring).
+- **These files ARE the pair.** A contract's `provider:` / `consumer:` keys are
+  what `pair_guard` resolves membership from (2026-07-27). Dropping a valid
+  contract here is the act of configuring a pair — no operator config required.
+- **Fail-closed:** if a site is declared paired but its contract here is
+  missing/invalid, `pair_guard` refuses the deploy (override with
+  `NWP_PAIR_GATE_SOFT=true` while mid-authoring).
+- **Fail-closed on the declaration too:** a `paired_with:` that exists but
+  cannot be read as a bare provider site key — a map, a URL, unparseable YAML,
+  two sources disagreeing, or a contract filed under the wrong name — is
+  **CANNOT VERIFY**, and CANNOT VERIFY refuses. It does not fall through to
+  "unpaired". See the note below.
 - Override the location with `NWP_PAIR_CONTRACT_DIR`.
 
 Deployed-version + RAG **state** lives elsewhere — `private/pairs/` (gitignored).
@@ -25,18 +33,45 @@ Deployed-version + RAG **state** lives elsewhere — `private/pairs/` (gitignore
 
 | File | Pair | contract_version | identity coupling |
 |---|---|---|---|
-| [`ssc.pair-contract.yml`](ssc.pair-contract.yml) | nwc (provider) ↔ ssc (consumer, **real students**) | 1 | `uid_lock`, `coupled_tiers: [live, prod]` — D6 `--code-only` applies |
-| [`ssd.pair-contract.yml`](ssd.pair-contract.yml) | nwd (provider) ↔ ssd (consumer, **demo twin**) | 1 | none (`uid_lock: false`, `coupled_tiers: []`) — full-DB rebuild is fine |
+| [`ssc.pair-contract.yml`](ssc.pair-contract.yml) | nwc (provider) ↔ ssc (consumer, **real students**) | 2 | `uid_lock`, `coupled_tiers: [live, prod]` — D6 `--code-only` applies |
+| [`ssd.pair-contract.yml`](ssd.pair-contract.yml) | nwd (provider) ↔ ssd (consumer, **demo twin**) | 3 | none (`uid_lock: false`, `coupled_tiers: []`) — full-DB rebuild is fine |
 
 Both hold only versions + public URLs (no secrets) and pass `pair_contract_valid`.
 The OAuth/OIDC issuer wiring the `endpoints.*` describe is **F26-gated** (config
 only) — see [`../docs/guides/ops75-pair-contract-schema.md`](../docs/guides/ops75-pair-contract-schema.md) §OAuth.
 
-## Operator activation
+## Where a pair is declared
 
-The contracts above are inert until the two consumer sites declare their
-provider in the **operator's** `nwp.yml` (which is gitignored — **never
-committed**; the template lives in `example.nwp.yml`). Add, under `sites:`:
+`pair_guard` resolves membership from three sources, in this order:
+
+| # | source | shape | visible to git? |
+|---|---|---|---|
+| 0 | `pairs/<consumer>.pair-contract.yml` → `provider:` / `consumer:` | site keys | **yes — source of truth** |
+| 1 | `sites/<consumer>/.nwp.yml` → `paired_with:` | bare scalar site key | no (`sites/*` gitignored) |
+| 2 | `nwp.yml` → `sites.<consumer>.paired_with` | bare scalar site key | no (never committed) |
+
+Sources 1 and 2 remain honoured, and **must agree** with the contract. Any
+disagreement, or any declaration that is not a bare site key, is CANNOT VERIFY
+and refuses.
+
+> **Why the contract is the source of truth.** Until 2026-07-27 membership came
+> only from source 2. `nwp.yml` is gitignored by hard project rule and `sites/*`
+> is gitignored too, so the guard's only input was a file no reviewer and no CI
+> job could see. The real `ssc`↔`nwc` pair was never copied into it, and someone
+> later added a *different* `paired_with:` — a map of label→URL — to
+> `sites/ssc/.nwp.yml`, which looked like configuration but could not name a
+> site. `pl pair check ssc live` (a full-DB push to the tier whose UID-locks D6
+> exists to protect) answered **ALLOW** for months. Reading membership from the
+> committed contract is ADR-0031 D2 ("the contract is the versioned artifact")
+> carried through to the choke-point, and it is what lets
+> `tests/unit/test-pair-membership.bats` assert the real pair binds.
+
+### Operator config (optional, kept in sync)
+
+Declaring the provider in the **operator's** `nwp.yml` (gitignored — **never
+committed**; the template lives in `example.nwp.yml`) is no longer required to
+activate a pair, but is still read and still checked for agreement. Under
+`sites:`:
 
 ```yaml
 sites:
@@ -56,8 +91,11 @@ sites:
     canonical: dev            # demo — throwaway user state
 ```
 
-`paired_with:` is the single opt-in key: a consumer that declares it activates
-`pair_guard`; its provider is auto-derived (any site another site points at).
+`paired_with:` must be a **bare provider site key** (`paired_with: nwc`), never a
+map or a URL — the provider's endpoint URL belongs in `oauth2.provider_url` /
+the contract's `endpoints.<tier>.issuer`. The provider's own role is auto-derived
+(any site another site points at), which is why a full-DB `pl stg2live nwc` is
+refused without ever naming `nwc` in a pairing key.
 
 ### Verify (no network, no deploy)
 

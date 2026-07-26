@@ -11,7 +11,16 @@
   {% for s in rag.sites %}
   <tr>
     <td><span class="dot {{ s.grade | lower }}"></span> <strong>{{ s.site }}</strong>
-        <span class="muted">{{ s.phase }}</span></td>
+        <span class="muted">{{ s.phase }}</span>
+        {#- The clickable bit: a site's advisory count jumps to (and opens) that
+            site's detail block below. A plain anchor, so it still works when
+            the enhancement script at the bottom does not run. -#}
+        {%- set sb = (sec_by_site or {}).get(s.site) %}
+        {%- if sb and sb.count %}
+        <a class="seclink" href="#{{ sb.anchor }}"
+           title="show the {{ sb.count }} advisor{{ 'y' if sb.count == 1 else 'ies' }} for {{ s.site }}"
+           >{{ sb.count }} ⚠</a>
+        {%- endif %}</td>
     <td class="reasons">{% for r in s.reasons %}<span>{{ r }}</span>{% endfor %}</td>
   </tr>
   {% endfor %}
@@ -27,3 +36,22 @@
 <p class="err">RAG data unavailable: {{ rag.error }}</p>
 {% if rag.raw %}<details><summary>raw output</summary><pre>{{ rag.raw }}</pre></details>{% endif %}
 {% endif %}
+
+{% include "_security.html" %}
+
+<script>
+/* Progressive enhancement only: make the per-site advisory count in the table
+   above OPEN the matching <details> rather than merely scrolling to a closed
+   one. If this never runs, the anchor still navigates. */
+(function () {
+  document.querySelectorAll('a.seclink').forEach(function (a) {
+    a.addEventListener('click', function (ev) {
+      var el = document.getElementById(a.getAttribute('href').slice(1));
+      if (!el) { return; }
+      ev.preventDefault();
+      el.open = true;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+})();
+</script>

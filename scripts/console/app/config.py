@@ -82,11 +82,12 @@ GOTIFY_TOKEN_FILE = Path(
 GOTIFY_TIMEOUT = int(_env("NWP_CONSOLE_GOTIFY_TIMEOUT", "5"))
 
 # Which events may push. Comma-separated subset of notify.EVENT_KINDS
-# (rag, demo_tester, demo_reset, token_expiry, ci, brief) — each individually
-# toggleable; "" or "none" disables every event but leaves the test button live.
+# (rag, demo_tester, demo_reset, token_expiry, security, ci, brief) — each
+# individually toggleable; "" or "none" disables every event but leaves the
+# test button live.
 NOTIFY_EVENTS = [
     e.strip() for e in _env(
-        "NWP_CONSOLE_NOTIFY_EVENTS", "rag,demo_tester,demo_reset,token_expiry,ci"
+        "NWP_CONSOLE_NOTIFY_EVENTS", "rag,demo_tester,demo_reset,token_expiry,security,ci"
     ).split(",")
     if e.strip() and e.strip().lower() != "none"
 ]

@@ -194,7 +194,29 @@ impact_confirm() {
 
 # Destructive-operation signature. Matched on NON-COMMENT lines only, so a file
 # that merely *documents* `rm -rf` is not dragged into the contract.
-IMPACT_DESTRUCTIVE_PATTERN='rm -rf|ddev delete|DROP DATABASE|sql-drop|sql:drop|rsync .*--delete|--delete.*rsync'
+#
+# D3: the rm arm is FLAG-ORDER AGNOSTIC. It used to be the literal string
+# `rm -rf`, which meant `rm -fr`, `rm -r -f`, `rm -f -r`, `rm -rvf` and
+# `rm --recursive --force` all evaded the gate — and a miss here is not a
+# cosmetic one: this pattern is the ONLY thing that pulls a script into the
+# fate-manifest contract, so an unmatched spelling ships a destructive script
+# with no manifest, no allowlist row, and a green pipeline.
+#
+# Shape (judged by tests/unit/test-impact-contract.bats' fixture table, not by
+# reading it):
+#   _RM_HEAD  `rm` as a command, not the tail of an identifier — so `confirm -rf`
+#             and `rmdir` do not match, while `sudo rm`, `;rm`, `$(rm` do.
+#   arm 1     any run of dash-flags, at least one of which contains r/R:
+#             catches -rf, -fr, -r -f, -f -r, -rvf, -Rf and bare -r.
+#   arm 2     the long form, `rm ... --recursive`.
+# RECURSION, not force, is the trigger: `rm -f x` deletes one named file and is
+# not manifest-class, so it (and `rm --force x`) must NOT match.
+#
+# Known limits, deliberate: flags written AFTER the operand (`rm "$d" -rf`) are
+# not matched — allowing arbitrary tokens between `rm` and the flag made
+# `rm "$d" && grep -r x` match, and a gate that cries wolf gets switched off.
+_IMPACT_RM_HEAD='(^|[^[:alnum:]_.-])rm'
+IMPACT_DESTRUCTIVE_PATTERN="${_IMPACT_RM_HEAD}([[:space:]]+-[[:alnum:]-]+)*[[:space:]]+-[[:alnum:]]*[rR]|${_IMPACT_RM_HEAD}[[:space:]][^;&|]*--recursive|ddev delete|DROP DATABASE|sql-drop|sql:drop|rsync .*--delete|--delete.*rsync"
 
 impact_contract_root() {
     echo "${NWP_IMPACT_CONTRACT_ROOT:-$( cd "$_IMPACT_LIB_DIR/.." && pwd )}"

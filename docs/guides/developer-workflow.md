@@ -117,8 +117,8 @@ ddev start
 git pull origin develop
 
 # Fetch production database (if available)
-./backup.sh -d myproject --from-prod  # Creates sanitized backup
-./restore.sh -d myproject             # Restores to local
+pl backup -d myproject --from-prod  # Creates sanitized backup
+pl restore -d myproject             # Restores to local
 
 # Run updates
 ddev drush updb -y
@@ -154,13 +154,13 @@ ddev drush cr
 
 ```bash
 # Export local database
-./backup.sh -d myproject
+pl backup -d myproject
 
 # Import specific backup
-./restore.sh myproject sitebackups/myproject/backup-20250105.sql.gz
+pl restore myproject sitebackups/myproject/backup-20250105.sql.gz
 
 # Clone database between environments
-./copy.sh myproject myproject_stg --db-only
+pl copy myproject myproject_stg --db-only
 ```
 
 ### 3.4 Configuration Management Best Practices
@@ -238,7 +238,7 @@ database:nightly:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
   script:
-    - ./backup.sh -d $SITE_NAME --from-prod --sanitize
+    - pl backup -d $SITE_NAME --from-prod --sanitize
     - # Cache the sanitized database for 24 hours
 ```
 
@@ -293,16 +293,16 @@ build:
 
 ```bash
 # Quick checks (for frequent runs)
-./dev2stg.sh -t quick myproject    # phpcs, eslint (~1 min)
+pl dev2stg -t quick myproject    # phpcs, eslint (~1 min)
 
 # Essential tests (recommended for PRs)
-./dev2stg.sh -t essential myproject    # phpunit, phpstan, phpcs (~4 min)
+pl dev2stg -t essential myproject    # phpunit, phpstan, phpcs (~4 min)
 
 # Full test suite (pre-production)
-./dev2stg.sh -t full myproject    # All tests (~15 min)
+pl dev2stg -t full myproject    # All tests (~15 min)
 
 # Security focused
-./dev2stg.sh -t security-only myproject    # security, phpstan (~2 min)
+pl dev2stg -t security-only myproject    # security, phpstan (~2 min)
 ```
 
 ### 6.3 Test Coverage Requirements
@@ -344,10 +344,10 @@ Feature: User Login
 
 ```bash
 # Interactive mode (recommended for first deployment)
-./dev2stg.sh myproject
+pl dev2stg myproject
 
 # Automated mode (for CI/CD)
-./dev2stg.sh -y --db-source=auto -t essential myproject
+pl dev2stg -y --db-source=auto -t essential myproject
 ```
 
 ### 7.2 Deployment Steps
@@ -407,10 +407,10 @@ curl -I https://myproject-stg.ddev.site/
 
 ```bash
 # Push staging to production
-./stg2prod.sh myproject
+pl stg2prod myproject
 
 # Or direct deployment (with full preflight)
-./stg2prod.sh --preflight myproject
+pl stg2prod --preflight myproject
 ```
 
 ### 8.3 Production Deployment Steps
@@ -430,14 +430,14 @@ If deployment fails:
 
 ```bash
 # Restore previous database
-./restore.sh myproject sitebackups/myproject/pre-deploy-backup.sql.gz
+pl restore myproject sitebackups/myproject/pre-deploy-backup.sql.gz
 
 # Revert code (if using git deployment)
 git revert HEAD
 git push
 
 # Or restore from backup
-./rollback.sh myproject
+pl rollback myproject
 ```
 
 ---
@@ -488,7 +488,7 @@ test:renovate:
   rules:
     - if: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /^renovate\//
   script:
-    - ./dev2stg.sh -y -t full $SITE_NAME
+    - pl dev2stg -y -t full $SITE_NAME
 ```
 
 ### 9.5 Auto-Merge for Patch Updates
@@ -534,10 +534,10 @@ Set up monitoring for:
 
 ```bash
 # Daily database backup
-./backup.sh -d myproject
+pl backup -d myproject
 
 # Weekly full backup
-./backup.sh myproject
+pl backup myproject
 
 # Retention: 7 daily, 4 weekly, 12 monthly
 ```
@@ -568,24 +568,24 @@ ddev drush cex                        # Export config
 ddev drush cim                        # Import config
 
 # Deployment
-./dev2stg.sh mysite                   # Dev to staging (TUI)
-./dev2stg.sh -y mysite                # Dev to staging (auto)
-./stg2prod.sh mysite                  # Staging to production
+pl dev2stg mysite                   # Dev to staging (TUI)
+pl dev2stg -y mysite                # Dev to staging (auto)
+pl stg2prod mysite                  # Staging to production
 
 # Testing
-./dev2stg.sh -t quick mysite          # Quick tests
-./dev2stg.sh -t essential mysite      # Essential tests
-./dev2stg.sh -t full mysite           # Full test suite
+pl dev2stg -t quick mysite          # Quick tests
+pl dev2stg -t essential mysite      # Essential tests
+pl dev2stg -t full mysite           # Full test suite
 
 # Backup/Restore
-./backup.sh mysite                    # Full backup
-./backup.sh -d mysite                 # Database only
-./restore.sh mysite backup.sql.gz     # Restore backup
+pl backup mysite                    # Full backup
+pl backup -d mysite                 # Database only
+pl restore mysite backup.sql.gz     # Restore backup
 
 # Maintenance
-./make.sh -v mysite                   # Enable dev mode
-./make.sh -p mysite                   # Enable prod mode
-./security.sh mysite                  # Security check
+pl make -v mysite                   # Enable dev mode
+pl make -p mysite                   # Enable prod mode
+pl security mysite                  # Security check
 ```
 
 ### Environment Variables

@@ -538,8 +538,14 @@ setup_live_database() {
     if [ $verify_rc -ne 0 ]; then
         print_error "Database user '${db_user}'@'localhost' cannot authenticate with the deploy-generated password."
         print_error "This is the credentials-drift bug class — generate_live_settings would write a settings.local.php with the wrong password and the site would 500."
-        print_error "Recovery: ssh to the live host and run as root:"
-        print_error "  sudo mysql -e \"ALTER USER '${db_user}'@'localhost' IDENTIFIED BY '<password-from-settings.local.php>'; FLUSH PRIVILEGES;\""
+        # NO pl VERB — this is the one recovery on this path with no `pl`
+        # equivalent: repairing a MySQL grant is host DB-admin, not a deploy
+        # step, and NWP has no credential-repair verb (deliberately: it would
+        # need the data-tier secrets). The deploy has ALREADY retried the
+        # ALTER USER twice above; a third automated attempt would not help.
+        print_error "NO pl VERB exists for this one — host DB-admin action, escalate to the server owner:"
+        print_error "  ALTER USER '${db_user}'@'localhost' IDENTIFIED BY '<password-from-settings.local.php>'; FLUSH PRIVILEGES;"
+        print_error "Then re-run: pl stg2live ${base_name}"
         return 1
     fi
 
@@ -1151,7 +1157,10 @@ run_live_db_updates() {
         case "$_drift_rc" in
             0) print_status "OK" "Database updates applied (updatedb, config-drift verified)" ;;
             1) print_error "drush updatedb FAILED on live — schema hooks NOT applied. Maintenance mode left ON."
-               print_error "Recover on the host, then re-run: ${sudo_prefix} -u www-data ${remote_path}/vendor/bin/drush --root=${remote_path}/${webroot} updatedb -y && ... cr && ... sset system.maintenance_mode 0"
+               print_error "Recover through pl — no ssh (the ADR-0028 gate, the live.enabled flag and the ledger all apply):"
+               print_error "  pl drush ${base_name} --tier=live --execute -- updatedb -y"
+               print_error "  pl drush ${base_name} --tier=live --execute -- cr"
+               print_error "  pl drush ${base_name} --tier=live --execute -- sset system.maintenance_mode 0"
                return 1 ;;
             2) print_error "Config drift detected on live — aborting (maintenance left ON). See diff above; NWP_ALLOW_CONFIG_DRIFT=1 to override."
                return 1 ;;
@@ -1168,7 +1177,10 @@ run_live_db_updates() {
             # unrun + the site in maintenance while the deploy reported success).
             # Return non-zero so the caller ABORTS (maintenance stays ON for recovery).
             print_error "drush updatedb FAILED on live — schema hooks NOT applied. Maintenance mode left ON."
-            print_error "Recover on the host, then re-run: ${sudo_prefix} -u www-data ${remote_path}/vendor/bin/drush --root=${remote_path}/${webroot} updatedb -y && ... cr && ... sset system.maintenance_mode 0"
+            print_error "Recover through pl — no ssh (the ADR-0028 gate, the live.enabled flag and the ledger all apply):"
+            print_error "  pl drush ${base_name} --tier=live --execute -- updatedb -y"
+            print_error "  pl drush ${base_name} --tier=live --execute -- cr"
+            print_error "  pl drush ${base_name} --tier=live --execute -- sset system.maintenance_mode 0"
             return 1
         fi
     fi
@@ -1240,7 +1252,9 @@ live_maintenance_set() {
     elif [ "$state" == "0" ]; then
         # A failed maintenance-OFF leaves the site stuck at 503 — make it LOUD.
         print_error "Could NOT disable maintenance mode — THE SITE MAY BE STUCK IN MAINTENANCE (503)."
-        print_error "Fix on the host: ${sudo_prefix} -u www-data ${remote_path}/vendor/bin/drush --root=${remote_path}/${webroot} sset system.maintenance_mode 0 && ... cr"
+        print_error "Fix through pl — no ssh (the ADR-0028 gate and the ledger apply):"
+        print_error "  pl drush ${base_name} --tier=live --execute -- sset system.maintenance_mode 0"
+        print_error "  pl drush ${base_name} --tier=live --execute -- cr"
     else
         print_status "WARN" "Could not set maintenance_mode=${state} (drush unavailable?)"
     fi

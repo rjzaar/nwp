@@ -2792,6 +2792,161 @@ correctly latent.
   trade-offs (the loop's own prompt demands test-writing; templates are the highest-churn area and
   Jinja autoescapes). Widening into them is a design decision, not a regex bug, and is out of D1's
   scope.
+
+---
+
+## [2026-07-26] Item 9 — `docs-pl-first`: the onboarding path taught 118 invocations of deleted scripts
+
+### The red, captured first
+
+`tests/unit/test-doc-truth.bats` was written before any fix and run against the pre-fix tree.
+Observed: **5 real failures, 3 guards green, 2 vacuously green.**
+
+```
+not ok 1 doc-truth: a guide teaching ./backup.sh (a script that does not exist) is NEW drift
+not ok 2 doc-truth: a fenced pl verb that cannot dispatch is NEW drift
+ok     3 doc-truth: real verbs and real paths are NOT drift (over-fire guard)
+not ok 4 doc-truth: a root-level markdown file (CONTRIBUTING.md) is in scope
+not ok 5 doc-truth: the agent-loop prompt docs are in scope
+ok     6 doc-truth: the scan does not follow gitignored trees
+ok     7 doc-truth: the Art.9 go-live runbook prescribes only commands that exist   ← VACUOUS
+ok     8 doc-truth: the onboarding guides prescribe only commands that exist        ← VACUOUS
+not ok 9 no print_error in a deploy verb prescribes a raw drush/ssh recovery
+ok    10 the recovery strings name a pl verb that actually dispatches
+```
+
+7 and 8 were green **because the check they assert on did not exist yet** — `grep 'dead-command-ref'`
+over output that never contains that string is always empty. That is the project's signature failure
+mode and it appeared inside this item's own suite. They were re-run the moment the check landed and
+went RED (art9-golive-runbook → `pl deploy`; five of the six onboarding guides), then green after the
+docs were rewritten. Both reds are recorded here because a test that was never seen red is not
+evidence.
+
+Test 9's first draft was **too broad** — it matched any `print_error` containing the word `drush`,
+which caught legitimate diagnostics like `"drush updatedb FAILED on live"`. It was narrowed to match
+a *command shape* (`ssh …@`, `sudo -u www-data`, `vendor/bin/drush`, `&& drush`) and re-proven RED
+against the stashed pre-fix files: 7 call sites, exactly the set the programme predicted.
+
+### What was actually wrong
+
+1. **`pl deploy` does not exist.** `docs/guides/art9-golive-runbook.md:153` — the counsel-facing
+   Art.9 go-live switch — had `pl deploy nwc --tier=live --code-only --apply` as **step 2**.
+   `./pl deploy` → `ERROR: Unknown command: deploy`, exit 1. The runbook stops there, in maintenance
+   mode, with the new code half-deployed and both consent gates open. Rewritten to
+   `pl stg2live nwc --code-only` (rehearse with `--dry-run` first), which is the verb that actually
+   carries `--code-only`, the fail-closed PROFILE-CHANGE GUARD, the pre-deploy webroot snapshot and
+   the ADR-0031 pair ordering.
+2. **Five root scripts were deleted; six guides never noticed.** `./backup.sh`, `./restore.sh`,
+   `./dev2stg.sh`, `./stg2prod.sh`, `./report.sh` — verified absent. 118 invocations across
+   training-booklet, developer-workflow, working-with-claude-securely, migration-sites-tracking,
+   coder-onboarding and setup.
+3. **`pl doc-truth` was green by design.** Its own header said it "deliberately does NOT check
+   `pl <verb>` mentions", and `scan_files()` read only `CLAUDE.md`, `README.md` and `docs/**` while
+   the CI job that runs it triggers on `**/*.md` — so ~35 tracked markdown files (CONTRIBUTING.md,
+   KNOWN_ISSUES.md, CHANGELOG.md, `lib/README.md`, `pairs/README.md` and all four
+   `scripts/agent-loop/prompts/*.md`, which route issues to fixes) fired a blocking gate that never
+   opened them.
+4. **`docs/guides/setup.md` documented five CLI aliases that never existed** — `pl i`, `pl b`,
+   `pl r`, `pl cp`, `pl del`. Verified: every one exits 1 with `Unknown command`. `pl` has no alias
+   table at all.
+5. **The instruction printed while a live site is dark was raw ssh.** 7 `print_error` call sites in
+   `stg2live.sh` / `live2prod.sh` / `stg2prod.sh` told the operator to run
+   `sudo -u www-data …/vendor/bin/drush … sset system.maintenance_mode 0` on the host — bypassing the
+   ADR-0028 deploy gate, the `live.enabled` flag and the rollback ledger, at the one moment the
+   operator is least likely to argue. `lib/moodle-deploy.sh` already did it right; the Drupal path
+   was the outlier.
+
+### Decision: the oracle is `pl` itself, not a second list
+
+`dead-command-ref` resolves `pl <verb>` against `pl commands --json` (falling back to enumerating
+`scripts/commands/*.sh` + the builtin list for a fixture tree with no `pl`). **Alternative rejected:**
+hard-coding a verb list in `doc-truth.sh` — that is a second source of truth, and the first thing it
+would do is drift. If the oracle comes back empty the gate `exit 2`s rather than reporting every
+`pl` mention in the tree as dead: a broken oracle is a broken gate, not a finding.
+**Reverse:** delete `load_known_commands` / `dead_command_ref_hits` from `doc-truth.sh`.
+
+### Decision: `pl <verb>` is checked only in command context; `./x.sh` everywhere
+
+A fenced or backticked `pl deploy …` is an instruction. The prose sentence "the RUN is a pl verb" is
+not — and the first draft flagged it. The matcher now anchors on command position (start of line,
+optional `$`/`#`/`>` prompt, or after `|`, `;`, `(`, `&&`, `||`). A relative `./x.sh` is unambiguous
+enough to check in prose too. **Alternative rejected:** checking every `pl <word>` anywhere, which
+produced false positives on ordinary English and would have made the gate uninstallable.
+**Reverse:** widen the regex in `dead_command_ref_hits`.
+
+### Decision: `<!-- doc-truth:retired -->`, a per-line escape hatch
+
+A good doc must be able to say "`./backup.sh` was removed, use `pl backup`" — and naming the dead
+thing is the entire point of the sentence. Rather than exempt a directory (which is how the previous
+version of this gate stayed green while the onboarding path rotted), a doc puts an HTML comment on
+that one line. It is invisible when rendered, per-line, and `grep -rn 'doc-truth:retired'` counts
+every one of them. Currently used **4 times**, all in prose that explains a retirement.
+**Alternative rejected:** adding those lines to the baseline — that hides a deliberate, correct
+sentence among 395 rows of genuine rot. **Reverse:** drop the two `grep -v` filters.
+
+### Decision: 264 dead-command-refs baselined, 7 files burned down
+
+The baseline is `.gitleaksignore`-shaped and SHRINK-ONLY: today's rot is recorded so the gate blocks
+NEW drift from day one. The seven files that matter — the six onboarding guides plus the Art.9
+runbook — were **fixed, not baselined**, and `test-doc-truth.bats` asserts they stay at zero, so they
+cannot silently regress. The remaining 264 are ADRs, proposals and reports describing verbs that were
+never built (`pl tier-up`, `pl llm-host`, `pl video`, `pl build-server`, …). They sit in the baseline
+where they are visible and countable. **Alternative rejected:** the old exemption ("proposal docs
+describe unbuilt future commands, so those checks are noisy") — that exemption is exactly what let
+the 118 live invocations through, because it could not distinguish a proposal from a runbook.
+
+### Decision: `pl drush` for the live tier; `pl rollback` for prod — and NO pl VERB said out loud
+
+The four `stg2live` recovery strings became `pl drush <site> --tier=live --execute -- …`. Correct and
+complete: that verb exists, is dry-run by default, honours `live.enabled` and calls the ADR-0028 gate.
+
+The prod-tier strings (`live2prod`, `stg2prod`) could **not** take the same treatment: `pl drush` is
+`stg|live` only, and the v2 site schema carries no `production:` block at all (`live2prod.sh`'s
+`get_prod_config` still parses a legacy `sites.<name>.production.*` shape out of `nwp.yml` with awk).
+**Alternative considered and rejected: adding `--tier=prod` to `pl drush`.** It would have been built
+on a config path the current schema does not have, it is outside this item's stated file territory,
+and prod writes are mons-gated by design — the sanctioned recovery from a failed prod deploy is
+`pl rollback execute <site> prod`, not a hand drush. So the prod strings name `pl rollback` +
+`pl monitor uptime`.
+
+One recovery genuinely has no verb and now **says so**: `stg2live.sh`'s MySQL-grant repair prints
+`NO pl VERB exists for this one — host DB-admin action, escalate to the server owner`. NWP has no
+credential-repair verb deliberately (it would need the data-tier secrets), and the deploy has already
+retried the `ALTER USER` twice by the time that line prints. Stating the gap in the operator-visible
+output is better than either a silent raw command or a pretend verb — and `NO pl VERB` greps, so the
+exemption is countable and shrink-only. Follow-up worth filing: `pl drush --tier=prod` once the v2
+schema carries a prod block.
+
+### Scope not taken
+
+- **`docs/SECURITY.md`'s two `*(no equivalent)*` rows were left alone.** They are honest today —
+  `pl logs` / `pl backup-logs` do not exist. Deleting the rows belongs to programme item 6, which
+  ships the verb. Only the two `./pl deploy prod` usages and one `./pl ssh prod "…"` were corrected.
+- **`lint:doc-truth` in `.gitlab-ci.yml` was not touched** — `.gitlab-ci.yml` is item 4's territory.
+  The job already runs `./scripts/commands/doc-truth.sh` with `allow_failure: false` on MRs and main
+  for `**/*.md`, so the widened scope and the new check take effect with no CI edit at all.
+- **`G3 live_maintenance_set` was not touched** (another agent owns that failing test). Only the
+  `print_error` strings around it changed.
+
+### Two defects the new gate caught in this item's OWN work
+
+Recorded because "the gate caught the author" is the only evidence that a gate is not decoration.
+
+1. **`pl monitor uptime --tier=prod` — a flag the verb refuses.** The first draft of the prod
+   recovery strings printed it. `monitor.sh:203` hard-refuses anything but `--tier=live`
+   ("Unsupported tier"). That is the *same* defect as `pl deploy`, one level down: a recovery line
+   that fails at the prompt during an outage. Replaced with `pl server status`, and a twelfth
+   acceptance case (`the recovery strings do not name a FLAG the verb refuses`) now asserts
+   `--tier=prod` never appears in a printed instruction in the three deploy verbs.
+2. **The gate fired on this decision log.** Documenting the defect requires quoting
+   `sudo -u www-data … drush …` and naming `./backup.sh`. Resolved with
+   `skip_prescription_checks()`: the two append-only arc ledgers (decision-log, rollback-registry)
+   are exempt from the two *prescription* checks only — `dead-link` and `dead-adr` still apply to
+   them, and a test asserts both that the exemption is exactly two entries and that a dead link
+   planted in the decision log still reddens the gate. **Alternative rejected:** baselining the
+   rows, which would bury a correct sentence among 392 rows of real rot; and per-line
+   `<!-- doc-truth:retired -->` markers, which would need ~12 per arc entry and would push the next
+   author to run `pl doc-truth --baseline` instead.
 ## [2026-07-26] D3 — `IMPACT_DESTRUCTIVE_PATTERN` was spelling-dependent
 
 `lib/impact.sh` carried the literal alternative `rm -rf`. That is the ONLY thing that pulls a

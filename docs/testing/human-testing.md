@@ -367,44 +367,59 @@ git branch -a | grep security/
 
 ## 7. Pre-commit Hook Tests
 
+Automated coverage: `bats tests/unit/test-precommit-hook.bats`. The manual pass
+below exists to confirm the wiring on a real machine. See
+[docs/development/git-hooks.md](../development/git-hooks.md).
+
 ### 7.1 Hook Installation
 
 | Test | Steps | Expected Result |
 |------|-------|-----------------|
-| Install hook | Copy to .git/hooks/ | Hook file exists |
-| Executable | Check permissions | Has execute permission |
-| Symlink method | Use symlink instead | Hook works via symlink |
+| Install hooks | `pre-commit install` | `.git/hooks/pre-commit` exists (the pre-commit shim) |
+| Both hooks registered | `pre-commit run --all-files` | `gitleaks` and `syntax-gate` both listed and Passed |
+| Entry executable | `ls -l .hooks/pre-commit` | Has execute permission |
 
 ```bash
-# Install hook
-cp .hooks/pre-commit .git/hooks/pre-commit
-chmod +x .git/hooks/pre-commit
+pipx install pre-commit    # once per machine
+pre-commit install         # once per clone — writes .git/hooks/pre-commit
 
-# Or symlink
-ln -sf ../../.hooks/pre-commit .git/hooks/pre-commit
+pre-commit run --all-files
 ```
+
+Do **not** copy or symlink `.hooks/pre-commit` into `.git/hooks/` by hand: that
+installs the syntax gate alone and silently drops the gitleaks leak gate.
+`.hooks/pre-commit` is the *entry* for one hook declared in
+`.pre-commit-config.yaml`, not the whole hook set.
 
 ### 7.2 Hook Behavior
 
+The load-bearing pair is the first two rows: absent tooling must **not** block a
+commit (that is what drove everyone to `--no-verify`), and a real syntax error
+must block it.
+
 | Test | Steps | Expected Result |
 |------|-------|-----------------|
-| Clean code | Commit valid PHP | Commit succeeds |
-| PHPCS errors | Commit code with style issues | Commit blocked |
-| PHPStan errors | Commit code with type errors | Commit blocked |
-| Bypass | Use --no-verify | Commit proceeds |
-| Non-PHP files | Commit CSS/JS | No PHP checks run |
+| Missing PHP tooling | Commit valid PHP on a machine with no `phpcs` | Commit succeeds; one `phpcs not installed — skipping` line |
+| Broken shell | Commit a `.sh` with `if true; then` and no `fi` | Commit blocked, naming the file and line |
+| Clean shell | Commit a valid `.sh` | Commit succeeds |
+| Broken PHP (php present) | Commit PHP with a parse error | Commit blocked, naming the file |
+| PHPCS errors (phpcs present) | Commit PHP with style issues | Commit blocked |
+| PHPStan | Commit PHP in a repo with no `web/modules/custom` | PHPStan not invoked, no path error |
+| Bypass | Use `--no-verify` | Commit proceeds (also skips gitleaks) |
+| Irrelevant files | Commit CSS/JS/Markdown only | No checks run |
 
 ```bash
-# Test with clean code
-git add web/modules/custom/clean_module.php
-git commit -m "Add clean module"  # Should succeed
+# Absent PHP tooling must not block a commit
+printf '<?php\nfunction ok() { return 1; }\n' > Ok.php
+git add Ok.php
+git commit -m "Add clean PHP"        # Should SUCCEED, with a skip notice
 
-# Test with bad code
-echo "<?php echo 'test'" > test_bad.php
-git add test_bad.php
-git commit -m "Add bad code"  # Should fail
+# A real shell syntax error must block it
+printf '#!/usr/bin/env bash\nif true; then\n  echo hi\n' > broken.sh
+git add broken.sh
+git commit -m "Add broken shell"     # Should FAIL, naming broken.sh and the line
 
-# Bypass if needed
+# Bypass if genuinely needed (skips the leak gate too)
 git commit -m "Bypass" --no-verify
 ```
 

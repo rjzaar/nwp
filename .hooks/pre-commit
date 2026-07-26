@@ -1,10 +1,37 @@
-#!/bin/bash
-# Pre-commit hook for code quality checks
+#!/usr/bin/env bash
+# .hooks/pre-commit — commit-time syntax gate for NWP.
+#
+# TWO RULES, and they are not negotiable in opposite directions:
+#
+#   FAIL-CLOSED on a real syntax error in a file you are about to commit.
+#   FAIL-OPEN when a linter is merely absent — one skip line, exit 0.
+#
+# The second rule is the point. This hook used to `exit 1` when phpcs or
+# phpstan was simply not installed, and then ran phpstan against
+# web/modules/custom, a directory that does not exist in the NWP tool repo. It
+# therefore could not pass on any commit that staged a .php file, so people
+# committed with `--no-verify` — which also skips the gitleaks hook next to it.
+# A gate nobody can pass is a gate nobody runs.
+#
+# What is checked (on the STAGED content, i.e. what the commit will record):
+#   *.sh, *.bash, `pl`, and extensionless files with a sh/bash shebang
+#                                   -> bash -n                (always available)
+#   *.bats                          -> bats --count           (skipped if absent)
+#   *.php/.module/.inc/.install/.theme/.profile/.engine
+#                                   -> php -l                 (skipped if absent)
+#                                   -> phpcs Drupal standards (skipped if absent)
+#   phpstan                         -> only in a real Drupal checkout, i.e. only
+#                                      when web/modules/custom exists AND
+#                                      phpstan and phpstan.neon are both present.
+#
+# Invocation: as a git hook (no args, reads the index), or with explicit file
+# paths (then it reads the worktree) — the latter is how the pre-commit
+# framework calls it with pass_filenames.
+#
+# Covered by tests/unit/test-precommit-hook.bats.
 
-set -e
+set -uo pipefail
 
-# Colors for output
-# Respects NO_COLOR standard (https://no-color.org/)
 if [ -n "${NO_COLOR:-}" ] || [ ! -t 1 ]; then
     RED=''
     GREEN=''
@@ -17,49 +44,216 @@ else
     NC='\033[0m'
 fi
 
-echo -e "${YELLOW}Running pre-commit checks...${NC}"
+errors=0
 
-# Get list of staged PHP files
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.php$' || true)
+TMPDIR_HOOK="$(mktemp -d "${TMPDIR:-/tmp}/nwp-precommit.XXXXXX")" || exit 1
+trap 'rm -rf "$TMPDIR_HOOK"' EXIT
+STAGE_DIR="$TMPDIR_HOOK/staged"
 
-if [ -z "$STAGED_FILES" ]; then
-    echo -e "${GREEN}No PHP files to check.${NC}"
-    exit 0
+# ---------------------------------------------------------------------------
+# Collect the files to check.
+# ---------------------------------------------------------------------------
+FROM_ARGS=0
+declare -a FILES=()
+if [ "$#" -gt 0 ]; then
+    FROM_ARGS=1
+    FILES=("$@")
+else
+    while IFS= read -r -d '' f; do
+        FILES+=("$f")
+    done < <(git diff --cached --name-only --diff-filter=ACM -z 2>/dev/null)
 fi
+[ "${#FILES[@]}" -gt 0 ] || exit 0
 
-# Check if phpcs is available
-if ! command -v phpcs &> /dev/null; then
-    echo -e "${RED}phpcs not found. Please install PHP_CodeSniffer.${NC}"
-    exit 1
-fi
+# Materialise the exact bytes that will be committed into $STAGE_DIR/<path>,
+# keeping the path (and therefore the extension, which phpcs needs to pick a
+# tokenizer) so error messages can be rewritten back to the real path.
+# Prints the temp path on success; returns 1 if the content is unavailable.
+materialise() {
+    local f="$1" dest="$STAGE_DIR/$f"
+    mkdir -p "$(dirname "$dest")" 2>/dev/null || return 1
+    if [ "$FROM_ARGS" -eq 1 ]; then
+        [ -f "$f" ] || return 1
+        cp -- "$f" "$dest" 2>/dev/null || return 1
+    else
+        git show ":$f" >"$dest" 2>/dev/null || return 1
+    fi
+    printf '%s\n' "$dest"
+}
 
-# Check if phpstan is available
-if ! command -v phpstan &> /dev/null; then
-    echo -e "${RED}phpstan not found. Please install PHPStan.${NC}"
-    exit 1
-fi
+# Rewrite temp paths back to repo-relative paths so messages name the real file.
+unmangle() {
+    sed -e "s#${STAGE_DIR}/##g" -e "s#${STAGE_DIR}##g"
+}
 
-# Run phpcs on staged files
-echo -e "${YELLOW}Running phpcs...${NC}"
-PHPCS_FAILED=0
-for FILE in $STAGED_FILES; do
-    if [ -f "$FILE" ]; then
-        phpcs --standard=Drupal,DrupalPractice --extensions=php,module,inc,install,test,profile,theme "$FILE" || PHPCS_FAILED=1
+has_tool() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# phpcs/phpstan may live in a project vendor/bin rather than on PATH.
+find_php_tool() {
+    local name="$1" root
+    if has_tool "$name"; then
+        command -v "$name"
+        return 0
+    fi
+    root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    if [ -x "$root/vendor/bin/$name" ]; then
+        printf '%s\n' "$root/vendor/bin/$name"
+        return 0
+    fi
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# Classification.
+# ---------------------------------------------------------------------------
+is_shell_path() {
+    local f="$1" base first
+    base="${f##*/}"
+    case "$f" in
+        # bats files are NOT valid bash (`@test x { }`); they get their own check.
+        *.bats) return 1 ;;
+        *.zsh | *.fish) return 1 ;;
+        *.sh | *.bash) return 0 ;;
+    esac
+    [ "$base" = "pl" ] && return 0
+    # Extensionless files: trust the shebang, so scripts/foo is covered too.
+    case "$base" in
+        *.*) return 1 ;;
+    esac
+    first="$(head -c 128 -- "$2" 2>/dev/null | head -n 1)"
+    case "$first" in
+        '#!'*bash* | '#!'*/sh | '#!'*/sh\ * | '#!'*env\ sh*) return 0 ;;
+    esac
+    return 1
+}
+
+is_php_path() {
+    case "$1" in
+        *.php | *.module | *.inc | *.install | *.theme | *.profile | *.engine) return 0 ;;
+    esac
+    return 1
+}
+
+declare -a SHELL_FILES=() BATS_FILES=() PHP_FILES=()
+declare -A TMP_OF=()
+
+for f in "${FILES[@]}"; do
+    case "$f" in
+        *.bats)
+            tmp="$(materialise "$f")" || continue
+            TMP_OF["$f"]="$tmp"
+            BATS_FILES+=("$f")
+            continue
+            ;;
+    esac
+    if is_php_path "$f"; then
+        tmp="$(materialise "$f")" || continue
+        TMP_OF["$f"]="$tmp"
+        PHP_FILES+=("$f")
+        continue
+    fi
+    # Shell classification may need the content (shebang sniff), so materialise
+    # first for the candidates that could possibly be shell.
+    case "${f##*/}" in
+        *.sh | *.bash | pl) ;;
+        *.*) continue ;;
+    esac
+    tmp="$(materialise "$f")" || continue
+    if is_shell_path "$f" "$tmp"; then
+        TMP_OF["$f"]="$tmp"
+        SHELL_FILES+=("$f")
     fi
 done
 
-if [ $PHPCS_FAILED -ne 0 ]; then
-    echo -e "${RED}phpcs found coding standard violations.${NC}"
-    echo -e "${YELLOW}Run 'phpcbf' to automatically fix some issues.${NC}"
+# ---------------------------------------------------------------------------
+# 1. Shell syntax — the check this repo (≈90% bash) never had at commit time.
+# ---------------------------------------------------------------------------
+if [ "${#SHELL_FILES[@]}" -gt 0 ]; then
+    for f in "${SHELL_FILES[@]}"; do
+        out="$(bash -n "${TMP_OF[$f]}" 2>&1)"
+        if [ -n "$out" ]; then
+            echo -e "${RED}Shell syntax error: ${f}${NC}"
+            printf '%s\n' "$out" | unmangle | sed 's/^/  /'
+            errors=$((errors + 1))
+        fi
+    done
+fi
+
+# ---------------------------------------------------------------------------
+# 2. bats files (valid-bats, not valid-bash). Fail-open if bats is absent.
+# ---------------------------------------------------------------------------
+if [ "${#BATS_FILES[@]}" -gt 0 ]; then
+    if has_tool bats; then
+        for f in "${BATS_FILES[@]}"; do
+            if ! out="$(bats --count "${TMP_OF[$f]}" 2>&1)"; then
+                echo -e "${RED}bats syntax error: ${f}${NC}"
+                printf '%s\n' "$out" | unmangle | sed 's/^/  /'
+                errors=$((errors + 1))
+            fi
+        done
+    else
+        echo -e "${YELLOW}bats not installed — skipping .bats syntax check.${NC}"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 3. PHP. Every step here is skip-if-absent: this repo ships no PHP toolchain.
+# ---------------------------------------------------------------------------
+if [ "${#PHP_FILES[@]}" -gt 0 ]; then
+    if has_tool php; then
+        for f in "${PHP_FILES[@]}"; do
+            if ! out="$(php -l "${TMP_OF[$f]}" 2>&1)"; then
+                echo -e "${RED}PHP syntax error: ${f}${NC}"
+                printf '%s\n' "$out" | unmangle | sed 's/^/  /'
+                errors=$((errors + 1))
+            fi
+        done
+    else
+        echo -e "${YELLOW}php not installed — skipping PHP lint.${NC}"
+    fi
+
+    if phpcs_bin="$(find_php_tool phpcs)"; then
+        phpcs_out=""
+        for f in "${PHP_FILES[@]}"; do
+            out="$("$phpcs_bin" --standard=Drupal,DrupalPractice \
+                --extensions=php,module,inc,install,test,profile,theme \
+                "${TMP_OF[$f]}" 2>&1)" || phpcs_out+="$out"$'\n'
+        done
+        if [ -n "$phpcs_out" ]; then
+            echo -e "${RED}phpcs found coding standard violations:${NC}"
+            printf '%s' "$phpcs_out" | unmangle
+            echo -e "${YELLOW}Run 'phpcbf' to fix the automatic ones.${NC}"
+            errors=$((errors + 1))
+        fi
+    else
+        echo -e "${YELLOW}phpcs not installed — skipping Drupal coding-standard check.${NC}"
+    fi
+
+    # phpstan only makes sense in a real Drupal checkout. phpstan.neon's paths
+    # are web/modules/custom + web/themes/custom, which do not exist in the NWP
+    # tool repo — so self-disable here rather than fail on every commit.
+    if [ -d web/modules/custom ] && [ -f phpstan.neon ]; then
+        if phpstan_bin="$(find_php_tool phpstan)"; then
+            if ! "$phpstan_bin" analyse --configuration=phpstan.neon --no-progress; then
+                echo -e "${RED}phpstan found errors.${NC}"
+                errors=$((errors + 1))
+            fi
+        else
+            echo -e "${YELLOW}phpstan not installed — skipping static analysis.${NC}"
+        fi
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+if [ "$errors" -ne 0 ]; then
+    echo -e "${RED}Pre-commit refused the commit: ${errors} file(s)/check(s) failed.${NC}"
+    echo -e "${YELLOW}Fix the syntax above. --no-verify exists but also skips the leak gate.${NC}"
     exit 1
 fi
 
-# Run phpstan analysis
-echo -e "${YELLOW}Running phpstan...${NC}"
-if ! phpstan analyse --configuration=phpstan.neon --no-progress; then
-    echo -e "${RED}phpstan found errors.${NC}"
-    exit 1
+if [ "${#SHELL_FILES[@]}" -gt 0 ] || [ "${#PHP_FILES[@]}" -gt 0 ] || [ "${#BATS_FILES[@]}" -gt 0 ]; then
+    echo -e "${GREEN}Syntax checks passed.${NC}"
 fi
-
-echo -e "${GREEN}All checks passed!${NC}"
 exit 0

@@ -760,10 +760,11 @@ security:review:
 # not run. It also pins the skipped-test count. Measured clean locally on
 # 2026-07-26 (223 passed, 1 skipped: optional faster_whisper).
 #
-# allow_failure: true for now ONLY because this job's `pip install` step is the
-# first of its kind on the shell runner and its network/venv behaviour there is
-# unproven — NOT because its assertions are optional. Flip to false once one
-# pipeline has run it end to end.
+# Shipped blocking. It was going to start `allow_failure: true` because the
+# `pip install` step is the first of its kind on this shell runner, but pipeline
+# 994 ran it end to end (`487 passed, 1 skipped`, `skipped=1 skip_baseline=1`),
+# so the caveat no longer applies. A gate left non-blocking after it has been
+# proven to work is exactly the defect class this file's other jobs suffered.
 test:console:
   stage: test
   needs: []
@@ -785,7 +786,7 @@ test:console:
         - "scripts/ci/.console-collect-baseline"
   tags:
     - nwp
-  allow_failure: true
+  allow_failure: false
 
 ################################################################################
 # Scheduled Pipeline Configuration

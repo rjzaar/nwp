@@ -107,7 +107,13 @@ assert_head_absent() {
 }
 
 @test "A3: .gitleaks.toml keeps the Decision-14 public-URL allowlist in every copy (supersedes chore/gitleaks-allowlist-issue-urls / MR !50)" {
-  run bash -c "grep -c 'merge_requests|blob|tree' '$REPO/.gitleaks.toml'"
+  # Count only LIVE rule lines — the '''-quoted regex — never the explanatory
+  # comment above each one. The first version of this assertion grepped the bare
+  # substring `merge_requests|blob|tree`, which ALSO matched the two comment
+  # lines, so it stayed GREEN with both real allowlist regexes deleted. A guard
+  # that a comment can satisfy is not a guard. (Found by mutation during the
+  # merge-queue review of this MR.)
+  run bash -c "grep -c \"^[^#]*'''git.*merge_requests|blob|tree\" '$REPO/.gitleaks.toml'"
   [ "$status" -eq 0 ]
   # Duplicated per the SHARED-EXEMPTIONS rule documented at the top of the config.
   [ "$output" -ge 2 ]

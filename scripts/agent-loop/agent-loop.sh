@@ -91,15 +91,24 @@ PROMPT_DIR="${AGENT_LOOP_PROMPT_DIR:-${SCRIPT_DIR}/prompts}"
 #     the loop keeps the console work it is actually good at (text, markup,
 #     CSS).
 # static/ splits on executability, not on being "assets": CSS and icons are
-# presentation and stay allowed, but static/*.js is denied — sw.js is a service
-# worker (intercepts every request on the origin and outlives the page),
-# webauthn.js drives the passkey ceremony, and htmx.min.js is vendored code
-# where a malicious swap is the least likely thing to be caught by eye.
+# presentation and stay allowed, but ANY .js anywhere under static/ is denied —
+# sw.js is a service worker (intercepts every request on the origin and outlives
+# the page), webauthn.js drives the passkey ceremony, and htmx.min.js is vendored
+# code where a malicious swap is the least likely thing to be caught by eye. The
+# rule is `static/.*\.js$`, not `static/[^/]*\.js$` (D1, 2026-07-26): the narrow
+# form only covered files sitting DIRECTLY in static/, so it would have lapsed
+# silently the moment console v2 nested its JS under static/js/ or
+# static/vendor/. Same fail-closed reasoning as the app/ directory rule — a
+# denylist that has to be remembered is a denylist that lapses. Extension-
+# anchored, so style.css, the icons and templates/ are untouched by the widening.
 # Also denied: scripts/commands/console.sh (ssh + rsync --delete to the console
 # host, and it writes the env file holding the GitLab pane token),
 # lib/console-* (the divergence guard that stops that rsync), the systemd unit
-# (ExecStart = arbitrary code as the console user) and requirements.txt
-# (dependency pins on the host that holds the token — supply chain).
+# (ExecStart = arbitrary code as the console user) and requirements*.txt
+# (dependency pins — supply chain). BOTH requirement files are covered
+# (`requirements(-dev)?\.txt`, D1): requirements.txt pins what runs on the host
+# that holds the token, and requirements-dev.txt is pip-installed by the
+# `test:console` CI job, so its contents become code executed by a runner.
 #
 # ACCEPTED RESIDUALS (explicit, not oversights):
 #   1. scripts/console/tests/ is ALLOWED. An agent can weaken or delete a
@@ -113,7 +122,7 @@ PROMPT_DIR="${AGENT_LOOP_PROMPT_DIR:-${SCRIPT_DIR}/prompts}"
 #      console's highest-churn area; this gate matches PATHS, not content, and
 #      making it content-aware would trade a clear rule for a flaky one.
 # shellcheck disable=SC2016
-SENSITIVE_PATH_RE='(^|/)(\.gitlab-ci\.yml|\.gitleaks\.toml|nwp\.yml|\.secrets[^/]*)$|(^|/)\.github/|(^|/)\.hooks/|(^|/)\.env|[Ss]ecret|(^|/)keys/|(^|/)lib/(auth|secrets|sanitizers|console-)|(^|/)scripts/agent-loop/|(^|/)scripts/commands/(live|stg2live|stg2prod|live2prod|deploy-gate|publish|server-publish|secrets|console)|(^|/)scripts/console/(app/|requirements\.txt$|[^/]*\.service$|static/[^/]*\.js$)|(\.pem|\.key|_rsa|ed25519|_ecdsa)$'
+SENSITIVE_PATH_RE='(^|/)(\.gitlab-ci\.yml|\.gitleaks\.toml|nwp\.yml|\.secrets[^/]*)$|(^|/)\.github/|(^|/)\.hooks/|(^|/)\.env|[Ss]ecret|(^|/)keys/|(^|/)lib/(auth|secrets|sanitizers|console-)|(^|/)scripts/agent-loop/|(^|/)scripts/commands/(live|stg2live|stg2prod|live2prod|deploy-gate|publish|server-publish|secrets|console)|(^|/)scripts/console/(app/|requirements(-dev)?\.txt$|[^/]*\.service$|static/.*\.js$)|(\.pem|\.key|_rsa|ed25519|_ecdsa)$'
 
 mkdir -p "$LOG_DIR" "$WORK_ROOT" "$RESPAWN_DIR"
 

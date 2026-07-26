@@ -168,8 +168,113 @@ zz_wipe() { rm -rf "$1"; }'
 }
 
 # ---------------------------------------------------------------------------
-# Converted verbs stay converted
+# D3 — IMPACT_DESTRUCTIVE_PATTERN must be FLAG-ORDER AGNOSTIC.
+#
+# The pattern is what forces a script into the fate-manifest contract, so every
+# spelling it misses is a destructive script that ships with no manifest and no
+# allowlist row — invisibly, with the gate green. The pre-D3 pattern carried the
+# literal alternative `rm -rf`, so `rm -fr`, `rm -r -f`, `rm -f -r`,
+# `rm --recursive --force` and `rm -rvf` all walked straight past it.
+#
+# These rows are a FIXTURE TABLE on purpose: the regex is not readable enough to
+# review by eye, so it is judged by what it does to inputs, not by how it looks.
+# Every MUST-MATCH row below was RED before the D3 fix (recorded in the MR).
 # ---------------------------------------------------------------------------
+
+# _is_destructive <code line> — run the real detector over a one-line file.
+_is_destructive() {
+    local f="${BATS_TEST_TMPDIR}/d3probe.sh"
+    printf '#!/bin/bash\n%s\n' "$1" > "$f"
+    impact_is_destructive "$f"
+}
+
+@test "D3: recursive rm is detected whatever the flag order or spelling" {
+    local fails=0 c
+    # Every spelling of "delete a tree" that a real script might use.
+    for c in \
+        'rm -rf /tmp/x' \
+        'rm -fr /tmp/x' \
+        'rm -r -f /tmp/x' \
+        'rm -f -r /tmp/x' \
+        'rm --recursive --force /tmp/x' \
+        'rm -rvf /tmp/x' \
+        'rm -Rf /tmp/x' \
+        'rm -r /tmp/x' \
+        'sudo rm -fr "$dir"' \
+        '    rm -rf "${dir}"' \
+        'ssh box "rm -fr /var/www/x"'
+    do
+        if ! _is_destructive "$c"; then
+            echo "MISSED (should be destructive): $c" >&2
+            fails=$((fails + 1))
+        fi
+    done
+    [ "$fails" -eq 0 ]
+}
+
+@test "D3: incidental rm mentions are NOT dragged into the contract" {
+    # The specific condition that makes a careless widening go red: a pattern
+    # that just looks for the letters r and f near "rm" flags half the repo,
+    # and a gate that flags everything is a gate nobody can keep green.
+    local fails=0 c
+    for c in \
+        'rm -f /tmp/x' \
+        'rm --force /tmp/x' \
+        'rm file.rf' \
+        'rm "$tmpfile"' \
+        'rmdir -p /tmp/x' \
+        'confirm -rf' \
+        'rm "$d" && grep -r pattern /etc' \
+        'echo "removing the stale lock"' \
+        'FORM_RF=1'
+    do
+        if _is_destructive "$c"; then
+            echo "FALSE POSITIVE (should not be destructive): $c" >&2
+            fails=$((fails + 1))
+        fi
+    done
+    [ "$fails" -eq 0 ]
+}
+
+@test "D3: a full-line comment containing rm -rf is stripped before matching" {
+    # _impact_code_lines is *supposed* to drop comments so a file that merely
+    # documents rm -rf is not dragged in. This asserts it actually does.
+    ! _is_destructive '# rm -rf /tmp/x   <- documented, not executed'
+    ! _is_destructive '   #rm -rf /tmp/x'
+}
+
+@test "D3: KNOWN LIMITATION — a TRAILING comment still counts as code" {
+    # _impact_code_lines only drops lines that BEGIN with a comment marker.
+    # Stripping trailing `#...` was considered and rejected: `rm -rf "${x#foo}"`
+    # is a real destructive line containing a `#`, so naive trailing-comment
+    # stripping would BLIND the gate to it. Over-matching a stray trailing
+    # comment costs one allowlist conversation; under-matching costs a site.
+    # This test pins the trade-off so a future "cleanup" has to argue with it.
+    _is_destructive 'true   # rm -rf /tmp/x'
+}
+
+@test "D3: the non-rm arms of the pattern still fire" {
+    # Negative control on the negative control: if a fix broke the detector into
+    # a yes-machine or a no-machine, one of these two tests catches it.
+    _is_destructive 'ddev delete --omit-snapshot --yes'
+    _is_destructive 'mysql -e "DROP DATABASE nwp"'
+    _is_destructive 'drush sql:drop -y'
+    _is_destructive 'rsync -a --delete src/ dst/'
+}
+
+@test "D3: the detector is not a yes-machine (benign script stays benign)" {
+    local f="${BATS_TEST_TMPDIR}/d3benign.sh"
+    cat > "$f" <<'BENIGN'
+#!/bin/bash
+set -euo pipefail
+name="$1"
+mkdir -p "/tmp/$name"
+cp -a src/. "/tmp/$name/"
+grep -rn TODO "/tmp/$name" || true
+printf 'done: %s\n' "$name"
+BENIGN
+    ! impact_is_destructive "$f"
+}
 
 # ---------------------------------------------------------------------------
 # ops#143 — the box-resident demo reset renders a REAL manifest, not a comment

@@ -673,14 +673,78 @@ moodle_core_patches_file() {
 }
 
 # moodle_core_patch_ids <decl_file> — echo one patch id per line.
+#
+# TRI-STATE (2026-07-27) — same vocabulary as lib/boundary.sh rc 2 / lib/pair.sh:
+#   rc 0  ids echoed          — the declaration parsed and names patches
+#   rc 1  nothing declared    — file absent/empty, or `core_patches:` is null or
+#                               an explicitly empty list. A clean no-op.
+#   rc 2  CANNOT VERIFY       — the file exists and carries content, but no patch
+#                               ids can be read from it (unparseable YAML, or a
+#                               `core_patches:` key that is missing/mis-shaped).
+#                               The reason is echoed; NEVER treat this as rc 1.
+#
+# Why the distinction is load-bearing: the ONLY caller (scripts/commands/moodle.sh
+# cmd_core_patch, armed by the `[ -s ... ]` test in the deploy guard chain)
+# printed "no core patches declared" and returned 0 on an empty id list. So a
+# corrupt or mis-keyed core-patches.yml emptied a gate whose own refusal message
+# says "Override is deliberately NOT provided". ssc's live guest front door is a
+# declared core patch; an emptied gate means the deploy silently stops checking
+# that live core still carries it.
 moodle_core_patch_ids() {
     local f="$1" yq_bin
-    [ -f "$f" ] || return 0
+    [ -f "$f" ] || return 1
+    [ -s "$f" ] || return 1
+
     if declare -F _mp_yq >/dev/null 2>&1 && yq_bin="$(_mp_yq 2>/dev/null)"; then
-        "$yq_bin" eval '.core_patches[].id' "$f" 2>/dev/null | grep -v '^null$' || true
+        if ! "$yq_bin" eval '.' "$f" >/dev/null 2>&1; then
+            printf '%s does not parse as YAML, so the core patches it declares cannot be read\n' "$f"
+            return 2
+        fi
+        # An explicit `core_patches:` that is null or [] is a real declaration of
+        # "this site has none" — rc 1, a clean no-op. A file with content and NO
+        # `core_patches:` key at all is a declaration filed under a name this
+        # reader does not know (typo, wrong schema) — rc 2, not an absence.
+        local roottag; roottag="$("$yq_bin" eval '. | tag' "$f" 2>/dev/null)"
+        if [ "$roottag" != '!!map' ]; then
+            printf "%s is a %s at its root, not a mapping with a 'core_patches:' key\n" "$f" "${roottag#!!}"
+            return 2
+        fi
+        if [ "$("$yq_bin" eval 'has("core_patches")' "$f" 2>/dev/null)" != "true" ]; then
+            printf "%s has content but no 'core_patches:' key — a declaration filed under a key this reader does not know is not the same as no declaration\n" "$f"
+            return 2
+        fi
+        local tag; tag="$("$yq_bin" eval '.core_patches | tag' "$f" 2>/dev/null)"
+        case "$tag" in
+            '!!null') return 1 ;;
+            '!!seq')  ;;
+            *)  printf "%s: 'core_patches:' is a %s, not a list of patch entries\n" "$f" "${tag#!!}"
+                return 2 ;;
+        esac
+        local n; n="$("$yq_bin" eval '.core_patches | length' "$f" 2>/dev/null)"
+        [ "${n:-0}" -gt 0 ] 2>/dev/null || return 1     # explicitly empty list
+        local ids; ids="$("$yq_bin" eval '.core_patches[].id' "$f" 2>/dev/null)"
+        if [ -z "$ids" ] || printf '%s\n' "$ids" | grep -q '^null$'; then
+            printf "%s declares %s core patch entr(y|ies) but not every one carries an 'id:' — refusing to verify a subset\n" "$f" "$n"
+            return 2
+        fi
+        printf '%s\n' "$ids"
         return 0
     fi
-    sed -n 's/^[[:space:]]*-[[:space:]]*id:[[:space:]]*//p' "$f" | tr -d '"'"'"
+
+    # No yq on this host: best-effort read, but a declaration file with content
+    # that yields ZERO ids is still blindness, not absence.
+    local ids
+    ids="$(sed -n 's/^[[:space:]]*-[[:space:]]*id:[[:space:]]*//p' "$f" | tr -d '"'"'")"
+    if [ -z "$ids" ]; then
+        if grep -q '^[[:space:]]*core_patches:[[:space:]]*\(\[\][[:space:]]*\)\?$' "$f" \
+           && ! grep -q '[^[:space:]#]' <(grep -v '^[[:space:]]*core_patches:' "$f"); then
+            return 1                                    # `core_patches:` and nothing else
+        fi
+        printf "%s has content but no patch 'id:' lines could be read from it (no yq available to parse it properly)\n" "$f"
+        return 2
+    fi
+    printf '%s\n' "$ids"
+    return 0
 }
 
 # moodle_core_patch_field <decl_file> <id> <field>

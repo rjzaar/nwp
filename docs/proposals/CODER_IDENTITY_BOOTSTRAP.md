@@ -328,8 +328,8 @@ configure_nwp() {
         yq -i ".settings.email.admin_email = \"admin@${subdomain}\"" nwp.yml
     else
         # Fallback: sed
-        sed -i "s/url: nwpcode.org/url: $subdomain/" nwp.yml
-        sed -i "s/domain: nwpcode.org/domain: $subdomain/" nwp.yml
+        sed -i "s/url: example.com/url: $subdomain/" nwp.yml
+        sed -i "s/domain: example.com/domain: $subdomain/" nwp.yml
         sed -i "s/admin_email: admin@example.com/admin_email: admin@$subdomain/" nwp.yml
     fi
 

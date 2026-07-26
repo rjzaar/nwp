@@ -253,6 +253,154 @@ containment_check_fleet() {
 }
 
 ################################################################################
+# Already-tracked payloads — the half ignore rules can never fix
+#
+# git does not consult .gitignore for a path it already tracks. So a repo that
+# has ALREADY committed a production dump reports perfectly clean once the
+# containment block is installed: containment_check_repo asks "could this be
+# committed?", and the answer for an already-committed file is "it already was".
+#
+# That is sites/avc/backups today — a 36 MB unsanitised SQL dump and a 363 MB
+# files tarball, blob-for-blob on the backups/avc-files repo on the code forge.
+# Clearing it needs `git filter-repo` + a force-push to the forge, which is a
+# history rewrite on a remote and therefore operator-gated. What the tooling
+# owes is to never let that state be mistaken for a clean one.
+################################################################################
+
+# Glob patterns whose presence in the TRACKED set is a disclosure, not a risk.
+#
+# These were chosen from measurement over the real 47-repo fleet, not guessed.
+# A bare `*/settings.php` matched 300+ upstream Moodle plugin admin-settings
+# declarations, which are not credentials — and an alarm that cries wolf 300
+# times is an alarm nobody reads, which is just a slower vacuous pass. So the
+# Drupal credential file is matched by its actual location (`sites/<x>/`), and
+# key material by its actual home (`oauth-keys/`), not by extension alone.
+containment_tracked_patterns() {
+    printf '%s\n' \
+        '*.sql' \
+        '*.sql.gz' \
+        '*.sql.bz2' \
+        '*.tar.gz' \
+        '*.tgz' \
+        'sites/*/settings.php' \
+        '*/sites/*/settings.php' \
+        'sites/*/settings.local.php' \
+        '*/sites/*/settings.local.php' \
+        'oauth-keys/*' \
+        '*/oauth-keys/*' \
+        'auth.json' \
+        '*/auth.json' \
+        '.secrets.yml' \
+        '*/.secrets.yml' \
+        '.secrets.data.yml' \
+        '*/.secrets.data.yml'
+}
+
+# Paths that match a payload pattern but are upstream test fixtures or vendored
+# third-party material, not site data. Measured against the fleet: these account
+# for every hit except sites/avc/backups (a real 36 MB production dump) and
+# sites/mayo/dev/html/sites/default/settings.php (a real tracked credential
+# file). Expressed as git pathspec-exclude magic so git does the matching.
+containment_tracked_exclusions() {
+    printf '%s\n' \
+        ':(exclude)tests/*' \
+        ':(exclude)*/tests/*' \
+        ':(exclude)test/*' \
+        ':(exclude)*/test/*' \
+        ':(exclude)fixtures/*' \
+        ':(exclude)*/fixtures/*' \
+        ':(exclude)vendor/*' \
+        ':(exclude)*/vendor/*' \
+        ':(exclude)node_modules/*' \
+        ':(exclude)*/node_modules/*' \
+        ':(exclude)*cacert*' \
+        ':(exclude)lib/dml/*' \
+        ':(exclude)*/lib/dml/*'
+}
+# NOTE on ':(exclude)*/lib/dml/*': Moodle ships Oracle DDL as
+# lib/dml/oci_native_moodle_package.sql in every Moodle checkout. It is upstream
+# schema, not site data, and it was public on github.com/moodle/moodle long
+# before we cloned it. This list is deliberately SHRINK-ONLY in spirit: every
+# entry above was justified by measurement over the real fleet, and widening it
+# is how an exposure detector goes quietly blind. Add an entry only with the
+# evidence that made it necessary.
+
+# containment_check_tracked_repo <repo_path>
+# Print one EXPOSED line per already-tracked sensitive blob. Non-zero if any.
+# Names the remote, because a remote is what turns "committed" into "published".
+containment_check_tracked_repo() {
+    local repo="${1:-}"
+
+    if [ ! -d "$repo" ]; then
+        echo "ERROR: not a directory: $repo" >&2
+        return 2
+    fi
+    if ! git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
+        echo "ERROR: not a git repository: $repo" >&2
+        return 2
+    fi
+
+    local pats=()
+    local p
+    while IFS= read -r p; do
+        [ -n "$p" ] && pats+=("$p")
+    done < <(containment_tracked_patterns)
+    while IFS= read -r p; do
+        [ -n "$p" ] && pats+=("$p")
+    done < <(containment_tracked_exclusions)
+
+    local hits=()
+    local f
+    while IFS= read -r f; do
+        [ -n "$f" ] && hits+=("$f")
+    done < <(git -C "$repo" ls-files -- "${pats[@]}" 2>/dev/null | sort -u)
+
+    [ "${#hits[@]}" -eq 0 ] && return 0
+
+    # A remote is what makes a committed blob a published one. Report it either
+    # way — a local-only repo still gains a remote the moment someone adds one.
+    local url
+    url="$(git -C "$repo" remote get-url origin 2>/dev/null)"
+    [ -n "$url" ] || url="(no remote — not published yet)"
+
+    for f in "${hits[@]}"; do
+        echo "EXPOSED   ${repo}  ${f}  ->  ${url}"
+    done
+    return 1
+}
+
+# containment_check_tracked_fleet [sites_root]
+# Fleet sweep for already-published payloads. Fails closed on an empty corpus:
+# a sweep that scanned nothing has verified nothing.
+containment_check_tracked_fleet() {
+    local root="${1:-}"
+    if [ -z "$root" ]; then
+        root="${NWP_DIR:-${PROJECT_ROOT:-.}}/sites"
+    fi
+
+    local repos=() r
+    while IFS= read -r r; do
+        [ -n "$r" ] && repos+=("$r")
+    done < <(containment_discover_repos "$root")
+
+    if [ "${#repos[@]}" -eq 0 ]; then
+        echo "CANNOT VERIFY: exposure scan found zero git repositories under '$root'."
+        echo "  A sweep that scanned nothing has verified nothing."
+        return 3
+    fi
+
+    local exposed=0
+    for r in "${repos[@]}"; do
+        if ! containment_check_tracked_repo "$r" 2>/dev/null; then
+            exposed=$((exposed + 1))
+        fi
+    done
+
+    echo "scanned ${#repos[@]} nested repositories under '$root'; ${exposed} with published payloads"
+    [ "$exposed" -eq 0 ]
+}
+
+################################################################################
 # Backup-write guard
 ################################################################################
 
@@ -289,6 +437,23 @@ containment_assert_backup_path() {
     local remotes
     remotes="$(git -C "$toplevel" remote 2>/dev/null)"
     [ -n "$remotes" ] || return 0
+
+    # Already-published payloads are a DIFFERENT finding from a committable one,
+    # and they get a different severity. Refusing here would break the nightly
+    # backup for exactly the site that most needs one, and the operator cannot
+    # clear the finding without a history rewrite on the forge. So: loud, and
+    # repeated every run, but never fatal.
+    local exposure
+    if exposure="$(containment_check_tracked_repo "$toplevel" 2>/dev/null)"; then
+        : # nothing already published
+    else
+        echo "WARNING: this backup repository has ALREADY published payloads." >&2
+        printf '%s\n' "$exposure" | sed 's/^/  /' >&2
+        echo "  Ignore rules cannot retract these — they are already in the history," >&2
+        echo "  and on the remote. Clearing them is 'git filter-repo' + force-push," >&2
+        echo "  a history rewrite on a remote, which stays operator-gated." >&2
+        echo "  Report: pl site gitignore --exposed" >&2
+    fi
 
     local committable=() p
     for p in nwp-containment-probe.sql nwp-containment-probe.sql.gz nwp-containment-probe.tar.gz; do

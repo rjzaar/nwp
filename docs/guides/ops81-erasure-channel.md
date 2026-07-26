@@ -3,7 +3,10 @@
 **Scope:** propagating a right-to-be-forgotten / account deletion from nwc (OIDC provider,
 Drupal/Open Social) to ssc (consumer, Moodle) so a delete on nwc does not leave PII stranded on
 the Moodle side. `ver` role-vocab; no real prod domain; no secrets. **Status: DESIGN + P0
-(schema + contract only).** The receiver + sender plugins are PHASED (P1–P5).
+(schema + contract + `pl erasure`).** The receiver + sender plugins are PHASED (P1–P5) and are
+**not deployed anywhere** — `pl erasure execute` fails closed with `CHANNEL-NOT-DEPLOYED` rather
+than reporting an erasure the estate cannot perform. See §6 for the operator runbook that is
+usable today.
 
 **Framing:** general data-protection / RTBF *hygiene* (relevant for EU users on a US-based
 international 13+ site) — **not** a minors-compliance blocker. Data protection by design.
@@ -92,7 +95,7 @@ audited (log table both sides), replayable (safe to re-POST after a 502).
 ## 4. ver / prod boundary (CLAUDE.md AI-never-prod)
 
 This channel makes a **destructive** cross-site write. On dev/stg/live-test tiers
-(`*.nwpcode.org`) AI/agents may operate it (A14). **Real prod erasure must run through the `ver`
+(`*.example.com`) AI/agents may operate it (A14). **Real prod erasure must run through the `ver`
 desktop deploy gate** — a per-write Solo-touch (`lib/deploy-gate.sh`); no AI-accessible machine
 may fire an erase at prod. The receiver token for a prod tier is a `ver`-held secret, never on any
 AI-accessible build/agent host. The receiver is auth-adjacent + destructive → two-person review of the destructive path
@@ -123,3 +126,63 @@ resolution of the un-propagated-erasure open question.
 
 Add a `smoke_url` (`/local/nwc_erase/status.php` → 200) when P1 lands; **never** exercise a real
 delete in smoke.
+
+---
+
+## 6. Operator runbook — `pl erasure` (available NOW, at P0)
+
+The channel is not built, but the *request* no longer has to be serviced by hand. `pl erasure`
+exists at P0 and is deliberately honest about what it can and cannot do.
+
+```bash
+pl erasure plan   ssc --sub=<uuid> [--action=delete|anonymise] [--tier=live]
+pl erasure verify ssc --sub=<uuid> [--tier=live]
+pl erasure status <request-id>
+pl erasure list
+pl erasure execute ssc --request-id=<id>     # FAILS CLOSED until P1/P2 land
+```
+
+**`plan`** builds the erasure command, validates it against the signed
+`contracts/erasure.command.schema.json` (structurally, and with `jsonschema` when available),
+records it under `private/erasure/<pair>/<id>.json`, and prints the full §2 target inventory for
+both stacks plus backups. This is the artifact that used to be assembled by hand under deadline.
+
+**`verify`** is the honest answer to "is this person gone?" and is capable of going red. It
+probes **both** halves and the backup ceiling:
+
+| result | meaning |
+|---|---|
+| `RESIDUAL` | a side counted rows for this subject — **not erased** |
+| `CANNOT-VERIFY` | a probe is unwired, errored, or printed a non-count — **not a pass** |
+| `NO-BACKUP-CEILING` | no `--keep-within` window declared, so residual PII in the raw restic repo outlives the promise indefinitely (ops#127) |
+| `ERASURE VERIFIED` | every configured probe **counted** zero and a ceiling is declared |
+
+The probes are pluggable so this file holds no DB credentials: each is a command receiving the
+sub as `$1` and printing one integer. Wire them once, in the pair contract:
+
+```yaml
+erasure:
+  provider_probe_cmd: "<a pl drush nwc --tier=live residual-row count>"
+  consumer_probe_cmd: "<a pl moodle cli ssc --tier=live residual-row count>"
+  backup_ceiling: "30d"        # ONLY once the DR chain provably carries the flag
+  semantics_approved: false    # OPERATOR
+```
+
+**`execute`** refuses, in this order, naming exactly which condition failed:
+
+1. `NO-SUCH-REQUEST` — nothing was planned under that id.
+2. `CHANNEL-NOT-DEPLOYED` — `local_nwc_erase` (P1) / `nwc_moodle_erase` (P2) are absent from the
+   declared trees. **This is the state today**, so an erasure must be recorded, escalated and
+   performed under the operator DR runbook — never marked done here.
+3. `SEMANTICS-UNAPPROVED` — the pair contract does not record operator sign-off. Anonymise vs
+   delete, which aggregates are lawfully retained, and what "verified erased" means across
+   nwc + ssc + moodledata + restic snapshots is an Art.17 lawful-basis question. An agent must
+   not settle it; flip `erasure.semantics_approved: true` in the contract when it is settled.
+4. `NO-TRANSPORT` — nothing is wired to deliver the validated command.
+5. `CONFIRM` — a coupled tier (live/prod) additionally needs `--confirm=ERASE-EXECUTE`.
+
+Real **prod** erasure stays behind the `ver` Solo-touch gate (§4) regardless of the above.
+
+**The subject is always the OIDC `sub`.** There is no `--email`; passing one is rejected with an
+explanation. Recycled and changed addresses make an email-keyed erasure capable of deleting the
+wrong person.

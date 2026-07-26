@@ -787,3 +787,102 @@ wording", and `docs/guides/art9-golive-runbook.md` makes #119 one pre-proven swi
 **Still open / operator-gated:** `pl restore --remote --execute` has never been run. Per the item, the
 restore leg must be exercised once on a disposable host before any real use; a real member-facing site stays
 operator/mons-gated. The remaining `pl server`-shaped gaps around `/etc` config drift belong to item 10.
+## [2026-07-26] 🔓 THE LEAKAGE GATE WAS BLIND — item 6 (`leakage-gate-scope`)
+
+`.gitleaks.toml` is the ONE blocking security gate on every MR and every push to main
+(`lint:leakage`, `allow_failure: false`). Three independent defects, all verified by running the
+**exact CI command** (`gitleaks git --config=.gitleaks.toml --exit-code 1 --log-opts=<base>..HEAD`)
+on both gitleaks 8.21.2 (dev box) and 8.30.0 (the release the CI job downloads).
+
+**Proof of the whole thing in one line.** A commit adding
+`GITLAB_TOKEN=glpat-…` + `97.107.137.88` + the operator's personal email under `docs/reports/`,
+`templates/` and `tests/`:
+
+| config | gitleaks 8.21.2 | gitleaks 8.30.0 |
+|---|---|---|
+| main (old) | **EXIT=0 — merged** | **EXIT=0 — merged** |
+| this MR | EXIT=1 — blocked | EXIT=1 — blocked |
+
+**Defect 1 — the exemptions disabled credential detection, not just identifier noise.**
+Every path exemption lived in the TOP-LEVEL `[allowlist]`, which in gitleaks disables *every* rule
+for that path, including the inherited AWS / GCP / GitHub / **GitLab-PAT** rules from
+`[extend] useDefault`. A byte-identical file was flagged 4× under `lib/` and **0×** under
+`^tests/.*`, `^docs/reports/.*`, `^docs/archive/.*`, `^docs/onboarding/.*`, `^templates/.*`,
+`^servers/(mini|mayo1|nwpcode)/.*`. The exemptions were curated to silence operator-identifier
+false positives in fixtures and docs; switching off credential scanning was collateral nobody
+tested for. `docs/reports/consolidation-arc-2026-07/` — where this arc has been writing all
+session — sat inside a blind path.
+
+**Defect 2 — the three identity rules were never merged.** `operator-public-ip`,
+`operator-personal-email` and `live-domain-apex` existed only on `origin/pubrel/scrub-and-gate`
+(pushed 2026-07-16, no MR). ops#98 was closed against work that never landed.
+
+**Defect 3 (NEW — not in the audit) — `operator-home-path` is 100% DEAD in CI.**
+gitleaks ≥ 8.25 ships a DEFAULT global allowlist containing
+`^/(?:bin|etc|home|opt|tmp|usr|var)/[\w ./-]+$`, matched against the reported *secret*. The old
+rule's whole secret was a bare absolute path, so it matched and was dropped. Measured:
+
+    useDefault=true, 8.21.2 -> rule fires
+    useDefault=true, 8.30.0 -> ZERO findings, on every input
+
+The CI job installs **8.30.0**; the dev box had **8.21.2**. The rule therefore worked for whoever
+ran it by hand and was dead in the gate that actually blocks merges — the classic
+"green on my machine" vacuous pass. Fixed with `secretGroup = 1` (report the *username*, not the
+absolute path), verified identical on both versions including the hardest shape (a bare path alone
+at column 0).
+
+**Decisions**
+
+1. **No path exemption may ever live in the top-level `[allowlist]` again.** They were moved onto
+   the operator-identifier rules only. Enforced by `tests/unit/test-leakage-gate.bats` case 8,
+   which parses the TOML and fails if a top-level allowlist declares `paths`.
+   *Alternative rejected:* keeping the global list and adding per-rule negations — gitleaks has no
+   negation, so the only expressible form is per-rule allowlists.
+   *Reverse:* `git revert` the MR.
+
+2. **The exemption list is DUPLICATED verbatim under each identity rule, on purpose.** The DRY
+   mechanism (`[[allowlists]]` + `targetRules`) is **silently ignored below gitleaks 8.25**
+   (measured: suppresses nothing on 8.21.2, works on 8.30.0) — using it would make the config mean
+   different things on different runners, which is the exact disease being cured. The duplication
+   is made safe by marker comments (`# --- SHARED-EXEMPTIONS BEGIN/END ---`) and a test that
+   asserts every copy is byte-identical.
+   *Alternative rejected:* vendoring gitleaks' 4,600-line default config and deleting the offending
+   allowlist regex — deterministic, but a large file that silently goes stale.
+   *Reverse:* revert; or, once every runner is ≥8.25, collapse to one `targetRules` block and
+   delete the marker test.
+
+3. **`operator-personal-email` gets NO path exemptions at all — not even SHARED.** PII is not
+   covered by the "this file's purpose is to name operator infrastructure" argument that justifies
+   the other exemptions. The three historical files that still carry it are pinned individually in
+   `.gitleaksignore` as a countable scrub backlog.
+   *Reverse:* add a `[[rules.allowlists]]` block to that rule.
+
+4. **`NOTICE` and `docs/CC0_DEDICATION.md` swapped the operator’s personal gmail address for `legal@nwpcode.org`**
+   (the ops#98 intent, cherry-picked). ⚠️ **REVIEW / operator action:** the `legal@` alias must be
+   confirmed deliverable. `security@nwpcode.org` is already published in `docs/SECURITY.md`, so the
+   role-address convention exists, but a legal NOTICE naming a dead mailbox is worse than one
+   naming a personal address. **Do not publish until the alias is verified.**
+   *Reverse:* two one-line reverts.
+
+5. **The scrub branch was NOT merged.** `origin/pubrel/scrub-and-gate` is 187 commits behind main;
+   merging it would have deleted the ops#131 `test-links.md` allowlist, the Decision-14 GitLab-URL
+   allowlist, the `demo-nightly-on-met.md` exemption, and would have reverted the 2026-07-25
+   SUPERSEDED banner on `docs/SECURITY.md`. Only the three `[[rules]]` blocks and the two
+   role-address lines were taken. **The branch should now be deleted, not merged.**
+
+6. **`.gitleaksignore`'s 2-part entries were inert — the whole file was decorative.**
+   `<path>:<rule-id>` (72 of the 100 entries) suppresses **nothing**; only `<path>:<rule-id>:<line>`
+   works. Measured on 8.21.2 and 8.30.0, in both `dir` and `git --log-opts` mode. Several of the
+   28 working entries had also drifted (`agent-loop.sh:29` and `:106` no longer exist; the real hit
+   is now at `:46`) and nothing noticed, because the inert 2-part entries above them looked like
+   coverage. The file is regenerated as a real ledger of 108 fingerprints from an actual scan,
+   grouped under four rationale headings, and the tracked tree now scans **0 findings on both
+   gitleaks versions**. Section 4 of that file *is* the ops#97 publish-scrub backlog, countable:
+   when it reaches zero the docs are publishable.
+   *Alternative rejected:* re-widening path exemptions to quieten the 64 `live-domain-apex` and 12
+   `operator-public-ip` pre-existing hits — that is how the gate got blind in the first place.
+
+**Not fixed here (out of item 6's territory):** the `lint:leakage` job downloads the gitleaks
+tarball from github **unverified** — item 5 owns `.gitlab-ci.yml` and pins the sha256. The pinned
+sha for 8.30.0 linux_x64 is `79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e`
+(verified here; the new bats test uses the same pin for its own bootstrap).

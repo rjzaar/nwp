@@ -1,57 +1,106 @@
 # .gitleaks.toml — public NWP leakage gate (P61 §4.1)
-# When a new operator-bound role name appears in instance-manifest.yml,
-# add it to internal-bare-hostname's regex. For legitimate references that
-# must remain (filename `.local.php`, the rule docs themselves, the
-# servers/ tree pending F33 Phase 4 move, etc.) use the per-rule
-# [rules.allowlist] blocks below (path-pinned, gitleaks-supported).
+#
+# This file is the ONE blocking security gate on every merge request and every
+# push to main (`lint:leakage`, allow_failure: false). Read these three rules
+# before editing it; `tests/unit/test-leakage-gate.bats` enforces all of them.
+#
+# RULE 1 — NEVER put a `paths` exemption in the top-level [allowlist].
+#   A top-level allowlist disables *every* rule for that path, including the
+#   inherited AWS / GCP / GitHub / GitLab-PAT credential rules from
+#   [extend] useDefault. Until 2026-07-26 this file exempted ^tests/.*,
+#   ^docs/reports/.*, ^docs/archive/.*, ^docs/onboarding/.*, ^templates/.* and
+#   ^servers/(mini|mayo1|nwpcode)/.* globally: a byte-identical file carrying a
+#   glpat- token was flagged under lib/ and found ZERO times in any of those
+#   trees. The exemptions were only ever meant to silence operator-identifier
+#   false positives; they silently switched off credential detection too.
+#   Path exemptions therefore live on the operator-identifier rules ONLY, in
+#   the SHARED-EXEMPTIONS block that is repeated verbatim under each of them.
+#
+# RULE 2 — if the gate is too noisy, add a FINGERPRINT to .gitleaksignore with
+#   a rationale comment. Never widen a path exemption to quieten a real hit.
+#   Only the 3-part `path:rule-id:line` fingerprint form works (2-part
+#   `path:rule-id` entries are silently inert — verified on 8.21.2 and 8.30.0
+#   in both `gitleaks dir` and `gitleaks git` mode).
+#
+# RULE 3 — the SHARED-EXEMPTIONS block is duplicated on purpose. gitleaks TOML
+#   has no includes, and the DRY alternative ([[allowlists]] + targetRules) is
+#   SILENTLY IGNORED below gitleaks 8.25 — the config would mean different
+#   things on different runners, which is precisely the failure class this gate
+#   exists to prevent. test-leakage-gate.bats asserts every copy is
+#   byte-identical, which is what makes the duplication safe. Edit one, edit
+#   all, and run the test.
+#
+# When a new operator-bound role name appears in instance-manifest.yml, add it
+# to internal-bare-hostname's regex.
 
 title = "NWP leakage gate"
 
-[extend]
-useDefault = true   # inherit AWS / GCP / GitHub / Slack / etc. credential rules
+# minVersion is advisory: this config is verified to behave IDENTICALLY on
+# gitleaks 8.21.2 and 8.30.0 (the release lint:leakage installs). It uses no
+# feature that changes meaning between them.
+minVersion = "v8.21.0"
 
-# Top-level allowlist: paths that are out of scope for ALL rules.
-# Use sparingly — prefer per-rule allowlists below.
-[allowlist]
-description = "global path exclusions"
+[extend]
+useDefault = true   # inherit AWS / GCP / GitHub / GitLab / Slack / etc. credential rules
+
+# NOTE: there is deliberately NO top-level [allowlist] `paths` list. See RULE 1.
+# gitleaks' own default config already exempts `gitleaks\.toml`, binaries,
+# lockfiles and vendor trees globally; that is enough.
+
+[[rules]]
+id = "operator-home-path"
+description = "Hardcoded operator home directory leak"
+# THE CAPTURE GROUP IS LOAD-BEARING — do not "simplify" it away.
+# gitleaks >= 8.25 ships a DEFAULT global allowlist regex
+# `^/(?:bin|etc|home|opt|tmp|usr|var)/[\w ./-]+$`, matched against the reported
+# SECRET. With the old bare-path regex the whole secret was exactly that shape,
+# so the rule was 100% dead on gitleaks 8.30.0 — the release lint:leakage
+# downloads — while still firing on the dev box's older 8.21.2. Capturing the
+# USERNAME makes the reported secret `rob`, not `/home/rob/`, which the default
+# allowlist does not match; verified firing on 8.21.2 AND 8.30.0, including a
+# bare path alone at column 0. `secretGroup = 1` states explicitly what gitleaks
+# would otherwise infer from the single group. Reverting either the group or
+# `secretGroup` fails tests/unit/test-leakage-gate.bats cases 2 and 3.
+regex = '''/home/([a-z][a-z0-9_-]+)/'''
+secretGroup = 1
+tags = ["leak", "path"]
+
+[[rules.allowlists]]
+description = "Operator-bound paths: files whose PURPOSE is to name the operator's own machines, homes, hosts and org. Credential rules still apply to all of them."
+# --- SHARED-EXEMPTIONS BEGIN ---
 paths = [
   # Operator's machine map (Distributed Actor Glossary) — by design.
   '''^CLAUDE\.md$''',
   # Test verification ledger — references operator's tier hosts intentionally.
   '''^\.verification\.yml$''',
-  # Internal ops tooling that legitimately names operator infra (same class as CLAUDE.md):
-  # the GitLab webhook receiver and the Saint School admin-reset helper.
+  # Internal ops tooling that legitimately names operator infra (same class as
+  # CLAUDE.md): the GitLab webhook receiver and the Saint School admin-reset helper.
   '''^scripts/agent-loop/gitlab-webhook-receiver\.py$''',
   '''^scripts/ss-admin-reset\.sh$''',
   # Archive directory holds historical infrastructure documents — defeats the purpose to scrub.
   '''^docs/archive/.*''',
-  # Coder onboarding docs deliberately name operator infrastructure (mini, nwpcode.org, /home/rob/) — that's their teaching purpose. Same shape as CLAUDE.md.
+  # Coder onboarding docs deliberately name operator infrastructure — that's their
+  # teaching purpose. Same shape as CLAUDE.md.
   '''^docs/onboarding/.*''',
-  # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers in F33 Phase 4.
+  # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
   '''^servers/(mini|mayo1|nwpcode)/.*''',
   # Role vocabulary doc must cite the banned tokens (it's the rule definition).
   '''^docs/reference/role-vocabulary\.md$''',
   # The proposals that define the rule must cite the tokens they ban.
   '''^docs/proposals/F34-role-label-proposal-rewrite\.md$''',
   '''^docs/proposals/P61-leakage-hygiene-ci\.md$''',
-  # CHANGELOG mentions the pre-restart archive remote and historical org names; allowlisted-only for organisation, but we allowlist broadly here for now (revisit when CHANGELOG is rewritten).
+  # CHANGELOG mentions the pre-restart archive remote and historical org names.
   '''^CHANGELOG\.md$''',
   # Migration script maps legacy hostnames to role labels — has to name them.
   '''^lib/migrations/global/migrate_002_to_003\.sh$''',
-  # F15 documents the conventional gitlab system service-account home (/home/gitlab/.ssh) — well-known service account, not the operator's personal home.
+  # F15 documents the conventional gitlab system service-account home
+  # (/home/gitlab/.ssh) — a well-known service account, not the operator's home.
   '''^docs/proposals/F15-ssh-user-management\.md$''',
   # Audit-authors script encodes the operator's name regex on purpose.
   '''^bin/audit-authors\.sh$''',
-  # Example and template files that demonstrate placeholder values
-  # (example.nwp.yml, .nwp-developer.example.yml, templates/) are not real
-  # operator config. The placeholders look hostname-shaped but they're
-  # explicitly mysite.example.com / yourname.local style.
+  # Example and template files demonstrate placeholder values that look
+  # hostname-shaped but are explicitly mysite.example.com / yourname.local style.
   '''^example\.nwp\.yml$''',
-  # Legacy v2 example preserved as migration reference (see commit message
-  # for F32 Phase A v3 example rewrite). Retains the legacy v2 shape with
-  # all original operator-specific values for users with v2 configs to
-  # cross-reference while running migrate_002_to_003.sh. Will eventually
-  # be removed in a later release.
   '''^example\.nwp\.v2\.yml$''',
   '''^\.nwp-developer\.example\.yml$''',
   '''^templates/.*''',
@@ -62,31 +111,21 @@ paths = [
   # The gitleaksignore file itself names the patterns it ignores.
   '''^\.gitleaksignore$''',
   # Historical reports document the operator's original infrastructure
-  # — same principle as docs/archive/ being allowlisted.
+  # — same principle as docs/archive/ being exempt.
   '''^docs/reports/.*''',
-  # The agent-loop crontab.entry is operator-specific documentation; cron
-  # has no $HOME so the path has to be absolute. Same principle as the
-  # other operator-bound files allowlisted above.
+  # The agent-loop crontab.entry is operator-specific documentation; cron has no
+  # $HOME so the path has to be absolute.
   '''^scripts/agent-loop/crontab\.entry$''',
-  # Verifier-host (ver) setup kit — operator-bound files that must name the
-  # host they configure and reference their own role-bound filenames. Same
-  # class as scripts/ss-admin-reset.sh and docs/onboarding/ above.
+  # Verifier-host (ver/mons) setup kit — operator-bound files that must name the
+  # host they configure.
   '''^scripts/mons-setup\.sh$''',
   '''^docs/guides/mons-verification\.stanza\.yml$''',
   '''^docs/guides/mons-operational-readiness\.md$''',
   # nwd nightly demo-reset runbook (ops#133): an operator-bound server-access
-  # runbook whose whole content is "which key, on which host, may run what" —
-  # it has to name the forge box, met and the operator's crontab paths, and it
-  # quotes the installed cron line verbatim so it can be diffed against
-  # reality. Same class as the mons guides directly above.
+  # runbook whose whole content is "which key, on which host, may run what".
   '''^docs/guides/demo-nightly-on-met\.md$''',
 ]
-
-[[rules]]
-id = "operator-home-path"
-description = "Hardcoded operator home directory leak"
-regex = '''/home/[a-z][a-z0-9_-]+/'''
-tags = ["leak", "path"]
+# --- SHARED-EXEMPTIONS END ---
 
 [[rules]]
 id = "internal-hostname-fqdn"
@@ -94,8 +133,70 @@ description = "Internal hostname (.home / .local / .tunnel) leak"
 regex = '''\b[a-z][a-z0-9-]+\.(home|local|tunnel)\b'''
 tags = ["leak", "hostname"]
 
-[rules.allowlist]
-description = "Standard config filenames ending in .local (settings.local.php, .env.local, jail.local, config.local.yaml, social.local, settings.local.json, .nwp.local.yml, .nwp-developer.local.yml etc.) — these are filename conventions, not internal hostnames. regexTarget=line matches against the surrounding line so any of these tokens in context suppresses the match."
+[[rules.allowlists]]
+description = "Operator-bound paths: files whose PURPOSE is to name the operator's own machines, homes, hosts and org. Credential rules still apply to all of them."
+# --- SHARED-EXEMPTIONS BEGIN ---
+paths = [
+  # Operator's machine map (Distributed Actor Glossary) — by design.
+  '''^CLAUDE\.md$''',
+  # Test verification ledger — references operator's tier hosts intentionally.
+  '''^\.verification\.yml$''',
+  # Internal ops tooling that legitimately names operator infra (same class as
+  # CLAUDE.md): the GitLab webhook receiver and the Saint School admin-reset helper.
+  '''^scripts/agent-loop/gitlab-webhook-receiver\.py$''',
+  '''^scripts/ss-admin-reset\.sh$''',
+  # Archive directory holds historical infrastructure documents — defeats the purpose to scrub.
+  '''^docs/archive/.*''',
+  # Coder onboarding docs deliberately name operator infrastructure — that's their
+  # teaching purpose. Same shape as CLAUDE.md.
+  '''^docs/onboarding/.*''',
+  # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
+  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Role vocabulary doc must cite the banned tokens (it's the rule definition).
+  '''^docs/reference/role-vocabulary\.md$''',
+  # The proposals that define the rule must cite the tokens they ban.
+  '''^docs/proposals/F34-role-label-proposal-rewrite\.md$''',
+  '''^docs/proposals/P61-leakage-hygiene-ci\.md$''',
+  # CHANGELOG mentions the pre-restart archive remote and historical org names.
+  '''^CHANGELOG\.md$''',
+  # Migration script maps legacy hostnames to role labels — has to name them.
+  '''^lib/migrations/global/migrate_002_to_003\.sh$''',
+  # F15 documents the conventional gitlab system service-account home
+  # (/home/gitlab/.ssh) — a well-known service account, not the operator's home.
+  '''^docs/proposals/F15-ssh-user-management\.md$''',
+  # Audit-authors script encodes the operator's name regex on purpose.
+  '''^bin/audit-authors\.sh$''',
+  # Example and template files demonstrate placeholder values that look
+  # hostname-shaped but are explicitly mysite.example.com / yourname.local style.
+  '''^example\.nwp\.yml$''',
+  '''^example\.nwp\.v2\.yml$''',
+  '''^\.nwp-developer\.example\.yml$''',
+  '''^templates/.*''',
+  # The pl CLI's help-text examples reference mysite.example.com etc.
+  '''^pl$''',
+  # Test fixtures intentionally include leaky-looking content for the test.
+  '''^tests/.*''',
+  # The gitleaksignore file itself names the patterns it ignores.
+  '''^\.gitleaksignore$''',
+  # Historical reports document the operator's original infrastructure
+  # — same principle as docs/archive/ being exempt.
+  '''^docs/reports/.*''',
+  # The agent-loop crontab.entry is operator-specific documentation; cron has no
+  # $HOME so the path has to be absolute.
+  '''^scripts/agent-loop/crontab\.entry$''',
+  # Verifier-host (ver/mons) setup kit — operator-bound files that must name the
+  # host they configure.
+  '''^scripts/mons-setup\.sh$''',
+  '''^docs/guides/mons-verification\.stanza\.yml$''',
+  '''^docs/guides/mons-operational-readiness\.md$''',
+  # nwd nightly demo-reset runbook (ops#133): an operator-bound server-access
+  # runbook whose whole content is "which key, on which host, may run what".
+  '''^docs/guides/demo-nightly-on-met\.md$''',
+]
+# --- SHARED-EXEMPTIONS END ---
+
+[[rules.allowlists]]
+description = "Standard config filenames ending in .local (settings.local.php, .env.local, jail.local, config.local.yaml, …) — filename conventions, not internal hostnames. regexTarget=line matches the surrounding line so any of these tokens in context suppresses the match."
 regexTarget = "line"
 regexes = [
   '''settings\.local\.php''',
@@ -125,24 +226,84 @@ paths = [
 [[rules]]
 id = "internal-bare-hostname"
 description = "Internal bare hostname leak (operator's role-bound names)"
-# Per P61 §4.1 OQ-1 (narrow ruleset). When a new role-bound host name is
-# added to instance-manifest.yml, append it here.
-# Note: `met` is NOT included as a bare word because it collides with
-# English usage ("prerequisites met"); `metabox` covers the full form.
+# Per P61 §4.1 OQ-1 (narrow ruleset). When a new role-bound host name is added
+# to instance-manifest.yml, append it here.
+# Note: `met` is NOT included as a bare word because it collides with English
+# usage ("prerequisites met"); `metabox` covers the full form.
 regex = '''\b(mini|metabox|mons|carlo|mmt)\b'''
 tags = ["leak", "hostname"]
 path = '''(?i).*\.(md|markdown|rst|txt|yml|yaml|json|toml|sh|bash|py|php|js|ts|html)$'''
 
+[[rules.allowlists]]
+description = "Operator-bound paths: files whose PURPOSE is to name the operator's own machines, homes, hosts and org. Credential rules still apply to all of them."
+# --- SHARED-EXEMPTIONS BEGIN ---
+paths = [
+  # Operator's machine map (Distributed Actor Glossary) — by design.
+  '''^CLAUDE\.md$''',
+  # Test verification ledger — references operator's tier hosts intentionally.
+  '''^\.verification\.yml$''',
+  # Internal ops tooling that legitimately names operator infra (same class as
+  # CLAUDE.md): the GitLab webhook receiver and the Saint School admin-reset helper.
+  '''^scripts/agent-loop/gitlab-webhook-receiver\.py$''',
+  '''^scripts/ss-admin-reset\.sh$''',
+  # Archive directory holds historical infrastructure documents — defeats the purpose to scrub.
+  '''^docs/archive/.*''',
+  # Coder onboarding docs deliberately name operator infrastructure — that's their
+  # teaching purpose. Same shape as CLAUDE.md.
+  '''^docs/onboarding/.*''',
+  # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
+  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Role vocabulary doc must cite the banned tokens (it's the rule definition).
+  '''^docs/reference/role-vocabulary\.md$''',
+  # The proposals that define the rule must cite the tokens they ban.
+  '''^docs/proposals/F34-role-label-proposal-rewrite\.md$''',
+  '''^docs/proposals/P61-leakage-hygiene-ci\.md$''',
+  # CHANGELOG mentions the pre-restart archive remote and historical org names.
+  '''^CHANGELOG\.md$''',
+  # Migration script maps legacy hostnames to role labels — has to name them.
+  '''^lib/migrations/global/migrate_002_to_003\.sh$''',
+  # F15 documents the conventional gitlab system service-account home
+  # (/home/gitlab/.ssh) — a well-known service account, not the operator's home.
+  '''^docs/proposals/F15-ssh-user-management\.md$''',
+  # Audit-authors script encodes the operator's name regex on purpose.
+  '''^bin/audit-authors\.sh$''',
+  # Example and template files demonstrate placeholder values that look
+  # hostname-shaped but are explicitly mysite.example.com / yourname.local style.
+  '''^example\.nwp\.yml$''',
+  '''^example\.nwp\.v2\.yml$''',
+  '''^\.nwp-developer\.example\.yml$''',
+  '''^templates/.*''',
+  # The pl CLI's help-text examples reference mysite.example.com etc.
+  '''^pl$''',
+  # Test fixtures intentionally include leaky-looking content for the test.
+  '''^tests/.*''',
+  # The gitleaksignore file itself names the patterns it ignores.
+  '''^\.gitleaksignore$''',
+  # Historical reports document the operator's original infrastructure
+  # — same principle as docs/archive/ being exempt.
+  '''^docs/reports/.*''',
+  # The agent-loop crontab.entry is operator-specific documentation; cron has no
+  # $HOME so the path has to be absolute.
+  '''^scripts/agent-loop/crontab\.entry$''',
+  # Verifier-host (ver/mons) setup kit — operator-bound files that must name the
+  # host they configure.
+  '''^scripts/mons-setup\.sh$''',
+  '''^docs/guides/mons-verification\.stanza\.yml$''',
+  '''^docs/guides/mons-operational-readiness\.md$''',
+  # nwd nightly demo-reset runbook (ops#133): an operator-bound server-access
+  # runbook whose whole content is "which key, on which host, may run what".
+  '''^docs/guides/demo-nightly-on-met\.md$''',
+]
+# --- SHARED-EXEMPTIONS END ---
+
 # REVIEW (ops#131, 2026-07-26): the fleet smoke-test checklist is, by its
 # nature, a list of the operator's live surfaces — a page of clickable links is
 # the whole deliverable, so it cannot be genericised without destroying it.
-# Path-pinned to that ONE file, on the same reasoning the global allowlist
-# already applies to CLAUDE.md and docs/onboarding/ ("deliberately names
-# operator infrastructure — that's its purpose"). Detection is unchanged
-# everywhere else, and the default credential rules still apply to this file.
+# Path-pinned to that ONE file, on the same reasoning the SHARED-EXEMPTIONS
+# block already applies to CLAUDE.md and docs/onboarding/. Detection is
+# unchanged everywhere else, and the credential rules still apply to this file.
 # ALTERNATIVE IF PREFERRED: move docs/guides/test-links.md into the private
-# tree (~/central) and delete this allowlist. Everything else in the 2026-07
-# docs batch was genericised and needs no exemption.
+# tree (~/central) and delete this allowlist.
 [[rules.allowlists]]
 description = "Fleet smoke-test checklist — a deliberate index of live surfaces (ops#131)."
 paths = ['''^docs/guides/test-links\.md$''']
@@ -150,13 +311,283 @@ paths = ['''^docs/guides/test-links\.md$''']
 [[rules]]
 id = "operator-organisation"
 description = "Operator-specific organisation name leak"
-# Bare `oblate` was previously included but false-positives on
-# bibliographic mentions of unrelated Oblate orders (e.g. the 1864
-# David Lewis English translation of John of the Cross was "edited
-# by Oblate Fathers" — Carmel project, 2026-05-22). The school-tie
-# is still caught via `omi` / `oblatesmi` / `oblates of mary immaculate`.
+# Bare `oblate` was previously included but false-positives on bibliographic
+# mentions of unrelated Oblate orders (e.g. the 1864 David Lewis English
+# translation of John of the Cross was "edited by Oblate Fathers" — Carmel
+# project, 2026-05-22). The school tie is still caught via `omi` / `oblatesmi` /
+# `oblates of mary immaculate`.
 regex = '''(?i)\b(mazenod|mazenod\s+college|oblates?\s+of\s+mary\s+immaculate|oblatesmi|omi)\b'''
 tags = ["leak", "organisation"]
+
+[[rules.allowlists]]
+description = "Operator-bound paths: files whose PURPOSE is to name the operator's own machines, homes, hosts and org. Credential rules still apply to all of them."
+# --- SHARED-EXEMPTIONS BEGIN ---
+paths = [
+  # Operator's machine map (Distributed Actor Glossary) — by design.
+  '''^CLAUDE\.md$''',
+  # Test verification ledger — references operator's tier hosts intentionally.
+  '''^\.verification\.yml$''',
+  # Internal ops tooling that legitimately names operator infra (same class as
+  # CLAUDE.md): the GitLab webhook receiver and the Saint School admin-reset helper.
+  '''^scripts/agent-loop/gitlab-webhook-receiver\.py$''',
+  '''^scripts/ss-admin-reset\.sh$''',
+  # Archive directory holds historical infrastructure documents — defeats the purpose to scrub.
+  '''^docs/archive/.*''',
+  # Coder onboarding docs deliberately name operator infrastructure — that's their
+  # teaching purpose. Same shape as CLAUDE.md.
+  '''^docs/onboarding/.*''',
+  # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
+  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Role vocabulary doc must cite the banned tokens (it's the rule definition).
+  '''^docs/reference/role-vocabulary\.md$''',
+  # The proposals that define the rule must cite the tokens they ban.
+  '''^docs/proposals/F34-role-label-proposal-rewrite\.md$''',
+  '''^docs/proposals/P61-leakage-hygiene-ci\.md$''',
+  # CHANGELOG mentions the pre-restart archive remote and historical org names.
+  '''^CHANGELOG\.md$''',
+  # Migration script maps legacy hostnames to role labels — has to name them.
+  '''^lib/migrations/global/migrate_002_to_003\.sh$''',
+  # F15 documents the conventional gitlab system service-account home
+  # (/home/gitlab/.ssh) — a well-known service account, not the operator's home.
+  '''^docs/proposals/F15-ssh-user-management\.md$''',
+  # Audit-authors script encodes the operator's name regex on purpose.
+  '''^bin/audit-authors\.sh$''',
+  # Example and template files demonstrate placeholder values that look
+  # hostname-shaped but are explicitly mysite.example.com / yourname.local style.
+  '''^example\.nwp\.yml$''',
+  '''^example\.nwp\.v2\.yml$''',
+  '''^\.nwp-developer\.example\.yml$''',
+  '''^templates/.*''',
+  # The pl CLI's help-text examples reference mysite.example.com etc.
+  '''^pl$''',
+  # Test fixtures intentionally include leaky-looking content for the test.
+  '''^tests/.*''',
+  # The gitleaksignore file itself names the patterns it ignores.
+  '''^\.gitleaksignore$''',
+  # Historical reports document the operator's original infrastructure
+  # — same principle as docs/archive/ being exempt.
+  '''^docs/reports/.*''',
+  # The agent-loop crontab.entry is operator-specific documentation; cron has no
+  # $HOME so the path has to be absolute.
+  '''^scripts/agent-loop/crontab\.entry$''',
+  # Verifier-host (ver/mons) setup kit — operator-bound files that must name the
+  # host they configure.
+  '''^scripts/mons-setup\.sh$''',
+  '''^docs/guides/mons-verification\.stanza\.yml$''',
+  '''^docs/guides/mons-operational-readiness\.md$''',
+  # nwd nightly demo-reset runbook (ops#133): an operator-bound server-access
+  # runbook whose whole content is "which key, on which host, may run what".
+  '''^docs/guides/demo-nightly-on-met\.md$''',
+]
+# --- SHARED-EXEMPTIONS END ---
+
+# ops#97/#98 (2026-07-16 scrub inventory). Cherry-picked from
+# origin/pubrel/scrub-and-gate — that branch is 187 commits behind main and
+# merging it wholesale would revert the ops#131 and Decision-14 allowlists and
+# the 2026-07-25 SUPERSEDED banner on docs/SECURITY.md. Only the three [[rules]]
+# blocks below and the two role-address swaps were taken.
+[[rules]]
+id = "operator-public-ip"
+description = "Operator's real public server IP leak. Use an RFC-5737 example IP (203.0.113.10 / 192.0.2.x) in docs; resolve at runtime via the private manifest in code."
+# Known operator prod/live IPs. RFC-5737 (203.0.113.x, 192.0.2.x, 198.51.100.x)
+# and RFC-1918/6598 private ranges are safe and NOT matched here.
+regex = '''\b(97\.107\.137\.88|45\.33\.94\.133)\b'''
+tags = ["leak", "ip", "infra"]
+
+[[rules.allowlists]]
+description = "Operator-bound paths: files whose PURPOSE is to name the operator's own machines, homes, hosts and org. Credential rules still apply to all of them."
+# --- SHARED-EXEMPTIONS BEGIN ---
+paths = [
+  # Operator's machine map (Distributed Actor Glossary) — by design.
+  '''^CLAUDE\.md$''',
+  # Test verification ledger — references operator's tier hosts intentionally.
+  '''^\.verification\.yml$''',
+  # Internal ops tooling that legitimately names operator infra (same class as
+  # CLAUDE.md): the GitLab webhook receiver and the Saint School admin-reset helper.
+  '''^scripts/agent-loop/gitlab-webhook-receiver\.py$''',
+  '''^scripts/ss-admin-reset\.sh$''',
+  # Archive directory holds historical infrastructure documents — defeats the purpose to scrub.
+  '''^docs/archive/.*''',
+  # Coder onboarding docs deliberately name operator infrastructure — that's their
+  # teaching purpose. Same shape as CLAUDE.md.
+  '''^docs/onboarding/.*''',
+  # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
+  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Role vocabulary doc must cite the banned tokens (it's the rule definition).
+  '''^docs/reference/role-vocabulary\.md$''',
+  # The proposals that define the rule must cite the tokens they ban.
+  '''^docs/proposals/F34-role-label-proposal-rewrite\.md$''',
+  '''^docs/proposals/P61-leakage-hygiene-ci\.md$''',
+  # CHANGELOG mentions the pre-restart archive remote and historical org names.
+  '''^CHANGELOG\.md$''',
+  # Migration script maps legacy hostnames to role labels — has to name them.
+  '''^lib/migrations/global/migrate_002_to_003\.sh$''',
+  # F15 documents the conventional gitlab system service-account home
+  # (/home/gitlab/.ssh) — a well-known service account, not the operator's home.
+  '''^docs/proposals/F15-ssh-user-management\.md$''',
+  # Audit-authors script encodes the operator's name regex on purpose.
+  '''^bin/audit-authors\.sh$''',
+  # Example and template files demonstrate placeholder values that look
+  # hostname-shaped but are explicitly mysite.example.com / yourname.local style.
+  '''^example\.nwp\.yml$''',
+  '''^example\.nwp\.v2\.yml$''',
+  '''^\.nwp-developer\.example\.yml$''',
+  '''^templates/.*''',
+  # The pl CLI's help-text examples reference mysite.example.com etc.
+  '''^pl$''',
+  # Test fixtures intentionally include leaky-looking content for the test.
+  '''^tests/.*''',
+  # The gitleaksignore file itself names the patterns it ignores.
+  '''^\.gitleaksignore$''',
+  # Historical reports document the operator's original infrastructure
+  # — same principle as docs/archive/ being exempt.
+  '''^docs/reports/.*''',
+  # The agent-loop crontab.entry is operator-specific documentation; cron has no
+  # $HOME so the path has to be absolute.
+  '''^scripts/agent-loop/crontab\.entry$''',
+  # Verifier-host (ver/mons) setup kit — operator-bound files that must name the
+  # host they configure.
+  '''^scripts/mons-setup\.sh$''',
+  '''^docs/guides/mons-verification\.stanza\.yml$''',
+  '''^docs/guides/mons-operational-readiness\.md$''',
+  # nwd nightly demo-reset runbook (ops#133): an operator-bound server-access
+  # runbook whose whole content is "which key, on which host, may run what".
+  '''^docs/guides/demo-nightly-on-met\.md$''',
+]
+# --- SHARED-EXEMPTIONS END ---
+
+[[rules.allowlists]]
+description = "Functional scripts that resolve/deploy to the real live host. Candidates for `pl host` role resolution (F34); allowlisted meanwhile."
+paths = [
+  '''^scripts/agent-loop/deploy-on-merge\.sh$''',
+  '''^scripts/commands/site\.sh$''',
+  '''^scripts/commands/drush\.sh$''',
+]
+
+[[rules]]
+id = "operator-personal-email"
+description = "Operator's personal email address leak (PII). Use a role/contact address (e.g. security@<domain>, legal@<domain>) in public artefacts."
+# Narrowly targets the operator's personal local-part so we don't false-positive
+# on contributors' or example emails. Extend the alternation if the operator
+# adds another personal address.
+regex = '''\b(rjzaar)@[a-z0-9.-]+\.[a-z]{2,}\b'''
+tags = ["leak", "email", "pii"]
+
+# DELIBERATELY NO PATH ALLOWLIST — not even SHARED-EXEMPTIONS. This is PII, and
+# the operator-bound-file argument ("this file's purpose is to name operator
+# infrastructure") does not extend to a personal email address. NOTICE and
+# docs/CC0_DEDICATION.md were swapped to role addresses (legal@) as part of
+# ops#98. Historical audit reports that still carry it are pinned individually
+# in .gitleaksignore with a scrub-backlog comment.
+
+[[rules]]
+id = "live-domain-apex"
+description = "Bare APEX operator domain leak (nwpcode.org / mayostudios.org). live-internal-domain only catches sub.domain forms; this also catches the bare apex."
+regex = '''\b(nwpcode|mayostudios)\.org\b'''
+tags = ["leak", "domain"]
+
+[[rules.allowlists]]
+description = "Operator-bound paths: files whose PURPOSE is to name the operator's own machines, homes, hosts and org. Credential rules still apply to all of them."
+# --- SHARED-EXEMPTIONS BEGIN ---
+paths = [
+  # Operator's machine map (Distributed Actor Glossary) — by design.
+  '''^CLAUDE\.md$''',
+  # Test verification ledger — references operator's tier hosts intentionally.
+  '''^\.verification\.yml$''',
+  # Internal ops tooling that legitimately names operator infra (same class as
+  # CLAUDE.md): the GitLab webhook receiver and the Saint School admin-reset helper.
+  '''^scripts/agent-loop/gitlab-webhook-receiver\.py$''',
+  '''^scripts/ss-admin-reset\.sh$''',
+  # Archive directory holds historical infrastructure documents — defeats the purpose to scrub.
+  '''^docs/archive/.*''',
+  # Coder onboarding docs deliberately name operator infrastructure — that's their
+  # teaching purpose. Same shape as CLAUDE.md.
+  '''^docs/onboarding/.*''',
+  # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
+  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Role vocabulary doc must cite the banned tokens (it's the rule definition).
+  '''^docs/reference/role-vocabulary\.md$''',
+  # The proposals that define the rule must cite the tokens they ban.
+  '''^docs/proposals/F34-role-label-proposal-rewrite\.md$''',
+  '''^docs/proposals/P61-leakage-hygiene-ci\.md$''',
+  # CHANGELOG mentions the pre-restart archive remote and historical org names.
+  '''^CHANGELOG\.md$''',
+  # Migration script maps legacy hostnames to role labels — has to name them.
+  '''^lib/migrations/global/migrate_002_to_003\.sh$''',
+  # F15 documents the conventional gitlab system service-account home
+  # (/home/gitlab/.ssh) — a well-known service account, not the operator's home.
+  '''^docs/proposals/F15-ssh-user-management\.md$''',
+  # Audit-authors script encodes the operator's name regex on purpose.
+  '''^bin/audit-authors\.sh$''',
+  # Example and template files demonstrate placeholder values that look
+  # hostname-shaped but are explicitly mysite.example.com / yourname.local style.
+  '''^example\.nwp\.yml$''',
+  '''^example\.nwp\.v2\.yml$''',
+  '''^\.nwp-developer\.example\.yml$''',
+  '''^templates/.*''',
+  # The pl CLI's help-text examples reference mysite.example.com etc.
+  '''^pl$''',
+  # Test fixtures intentionally include leaky-looking content for the test.
+  '''^tests/.*''',
+  # The gitleaksignore file itself names the patterns it ignores.
+  '''^\.gitleaksignore$''',
+  # Historical reports document the operator's original infrastructure
+  # — same principle as docs/archive/ being exempt.
+  '''^docs/reports/.*''',
+  # The agent-loop crontab.entry is operator-specific documentation; cron has no
+  # $HOME so the path has to be absolute.
+  '''^scripts/agent-loop/crontab\.entry$''',
+  # Verifier-host (ver/mons) setup kit — operator-bound files that must name the
+  # host they configure.
+  '''^scripts/mons-setup\.sh$''',
+  '''^docs/guides/mons-verification\.stanza\.yml$''',
+  '''^docs/guides/mons-operational-readiness\.md$''',
+  # nwd nightly demo-reset runbook (ops#133): an operator-bound server-access
+  # runbook whose whole content is "which key, on which host, may run what".
+  '''^docs/guides/demo-nightly-on-met\.md$''',
+]
+# --- SHARED-EXEMPTIONS END ---
+
+[[rules.allowlists]]
+description = "Functional files that must carry the real operator domain (deploy targets, sanitizer targets, schema example-defaults, CI, fallback defaults) + real-contact files. Candidates for role-label resolution (F34), NOT prose to genericise — see SCRUB-INVENTORY-2026-07-16.md. Prose docs are genericised to example.com instead of being allowlisted."
+paths = [
+  '''^\.gitlab-ci\.yml$''',
+  '''^lib/sanitizers/mayo\.sh$''',
+  '''^lib/schema/nwp_yml_v3\.json$''',
+  '''^lib/install-drupal\.sh$''',
+  '''^lib/rollback-remote\.sh$''',
+  '''^scripts/.*''',
+  # Real-contact contexts: these carry a reachable ROLE address (legal@), which
+  # is the whole point of the ops#98 swap — the apex domain in them is intended.
+  '''^NOTICE$''',
+  '''^docs/CC0_DEDICATION\.md$''',
+  '''^docs/SECURITY\.md$''',
+]
+
+[[rules.allowlists]]
+description = "Fleet smoke-test checklist — a deliberate index of live surfaces (ops#131)."
+paths = ['''^docs/guides/test-links\.md$''']
+
+[[rules.allowlists]]
+description = "Placeholder tokens of the form <gitlab-host> etc."
+regexes = [
+  '''<gitlab-host>''',
+  '''<example-prod-domain>''',
+  '''<mayo-domain>''',
+  '''<coder-domain>''',
+  '''<headscale-host>''',
+]
+
+# Decision 14 (2026-07-09): public GitLab project URLs on the git host
+# (git.nwpcode.org/-/issues|merge_requests|blob|tree/...) are public issue/MR/
+# source links, not site-subdomain leaks. Scoped narrowly to the git host + the
+# /-/.../ path form, matched against the whole line.
+[[rules.allowlists]]
+description = "Public git.nwpcode.org GitLab issue/MR/blob/tree URLs (public project links, not subdomain leaks)."
+regexTarget = "line"
+regexes = [
+  '''git\.nwpcode\.org/[\w./-]+/-/(issues|merge_requests|blob|tree)/''',
+]
 
 [[rules]]
 id = "live-internal-domain"
@@ -164,16 +595,69 @@ description = "Live internal domain leak (subdomains of operator domains)"
 regex = '''\b[a-z0-9_-]+\.(nwpcode\.org|mayostudios\.org)\b'''
 tags = ["leak", "domain"]
 
-# REVIEW (ops#131, 2026-07-26): the fleet smoke-test checklist is, by its
-# nature, a list of the operator's live surfaces — a page of clickable links is
-# the whole deliverable, so it cannot be genericised without destroying it.
-# Path-pinned to that ONE file, on the same reasoning the global allowlist
-# already applies to CLAUDE.md and docs/onboarding/ ("deliberately names
-# operator infrastructure — that's its purpose"). Detection is unchanged
-# everywhere else, and the default credential rules still apply to this file.
-# ALTERNATIVE IF PREFERRED: move docs/guides/test-links.md into the private
-# tree (~/central) and delete this allowlist. Everything else in the 2026-07
-# docs batch was genericised and needs no exemption.
+[[rules.allowlists]]
+description = "Operator-bound paths: files whose PURPOSE is to name the operator's own machines, homes, hosts and org. Credential rules still apply to all of them."
+# --- SHARED-EXEMPTIONS BEGIN ---
+paths = [
+  # Operator's machine map (Distributed Actor Glossary) — by design.
+  '''^CLAUDE\.md$''',
+  # Test verification ledger — references operator's tier hosts intentionally.
+  '''^\.verification\.yml$''',
+  # Internal ops tooling that legitimately names operator infra (same class as
+  # CLAUDE.md): the GitLab webhook receiver and the Saint School admin-reset helper.
+  '''^scripts/agent-loop/gitlab-webhook-receiver\.py$''',
+  '''^scripts/ss-admin-reset\.sh$''',
+  # Archive directory holds historical infrastructure documents — defeats the purpose to scrub.
+  '''^docs/archive/.*''',
+  # Coder onboarding docs deliberately name operator infrastructure — that's their
+  # teaching purpose. Same shape as CLAUDE.md.
+  '''^docs/onboarding/.*''',
+  # Servers tree is operator-specific (F33 §4.1); scheduled to move to nwp-instances/_servers.
+  '''^servers/(mini|mayo1|nwpcode)/.*''',
+  # Role vocabulary doc must cite the banned tokens (it's the rule definition).
+  '''^docs/reference/role-vocabulary\.md$''',
+  # The proposals that define the rule must cite the tokens they ban.
+  '''^docs/proposals/F34-role-label-proposal-rewrite\.md$''',
+  '''^docs/proposals/P61-leakage-hygiene-ci\.md$''',
+  # CHANGELOG mentions the pre-restart archive remote and historical org names.
+  '''^CHANGELOG\.md$''',
+  # Migration script maps legacy hostnames to role labels — has to name them.
+  '''^lib/migrations/global/migrate_002_to_003\.sh$''',
+  # F15 documents the conventional gitlab system service-account home
+  # (/home/gitlab/.ssh) — a well-known service account, not the operator's home.
+  '''^docs/proposals/F15-ssh-user-management\.md$''',
+  # Audit-authors script encodes the operator's name regex on purpose.
+  '''^bin/audit-authors\.sh$''',
+  # Example and template files demonstrate placeholder values that look
+  # hostname-shaped but are explicitly mysite.example.com / yourname.local style.
+  '''^example\.nwp\.yml$''',
+  '''^example\.nwp\.v2\.yml$''',
+  '''^\.nwp-developer\.example\.yml$''',
+  '''^templates/.*''',
+  # The pl CLI's help-text examples reference mysite.example.com etc.
+  '''^pl$''',
+  # Test fixtures intentionally include leaky-looking content for the test.
+  '''^tests/.*''',
+  # The gitleaksignore file itself names the patterns it ignores.
+  '''^\.gitleaksignore$''',
+  # Historical reports document the operator's original infrastructure
+  # — same principle as docs/archive/ being exempt.
+  '''^docs/reports/.*''',
+  # The agent-loop crontab.entry is operator-specific documentation; cron has no
+  # $HOME so the path has to be absolute.
+  '''^scripts/agent-loop/crontab\.entry$''',
+  # Verifier-host (ver/mons) setup kit — operator-bound files that must name the
+  # host they configure.
+  '''^scripts/mons-setup\.sh$''',
+  '''^docs/guides/mons-verification\.stanza\.yml$''',
+  '''^docs/guides/mons-operational-readiness\.md$''',
+  # nwd nightly demo-reset runbook (ops#133): an operator-bound server-access
+  # runbook whose whole content is "which key, on which host, may run what".
+  '''^docs/guides/demo-nightly-on-met\.md$''',
+]
+# --- SHARED-EXEMPTIONS END ---
+
+# REVIEW (ops#131, 2026-07-26): see the identical note on internal-bare-hostname.
 [[rules.allowlists]]
 description = "Fleet smoke-test checklist — a deliberate index of live surfaces (ops#131)."
 paths = ['''^docs/guides/test-links\.md$''']

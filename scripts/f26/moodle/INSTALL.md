@@ -1,5 +1,11 @@
 # F26 Moodle client (`auth_nwc`) — install & wire to the nwc issuer
 
+> **⚠ The plugin source is NO LONGER in this directory.** It was a stale
+> `2026071101 / 1.0.0` copy while every other copy — including live `ssc` — was
+> `2026072400 / 1.2.0-draft` with the Art.9 consent gate. Canonical source is
+> **`nwp/ss-moodle-plugins`, `auth/nwc/`**. See [CANONICAL-SOURCE.md](CANONICAL-SOURCE.md).
+> Check for drift with `pl moodle plugin drift <site> auth/nwc`.
+
 **AUTH SURFACE — REQUIRES HUMAN REVIEW BEFORE ENABLE.** Config-only in this
 repo: no Moodle DDEV site is owned by this build, so these steps are documented,
 not applied. The nwc (Drupal) issuer side *has* been provisioned and verified on
@@ -27,7 +33,10 @@ provider metadata. Note the client secret file
 ## 1. Install the plugin
 
 ```bash
-cp -r scripts/f26/moodle/auth_nwc  <moodle_root>/auth/nwc
+# Canonical source is nwp/ss-moodle-plugins — sync it, then deploy with the
+# guarded verb (never a hand cp: that is what produced the 3-way version split).
+pl moodle plugins sync   <site> --apply
+pl moodle plugin  deploy <site> auth/nwc --tier=live --apply
 # then: Site admin > Notifications  (installs the plugin)
 ```
 

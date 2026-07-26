@@ -95,13 +95,18 @@ _moodle_is_moodle_site() {
 # Default: infra/data-secret lookup. Tests and the ddev-dev path override/bypass
 # this. Returns empty when no secret backend is available (caller decides).
 # Usage: moodle_db_password <site> <tier>
+# RETURNS get_data_secret's status so the caller can distinguish "secrets file
+# unreachable" (2) from "key not provisioned" (3) — see get_data_secret in
+# lib/common.sh. Status 0 means a value was found. (The status is returned, not
+# exported, because callers read this through $( ) — a subshell.)
 moodle_db_password() {
-    local site="$1" tier="$2"
+    local site="$1" tier="$2" out rc=3
     if declare -F get_data_secret >/dev/null 2>&1; then
-        get_data_secret "moodle.${site}.${tier}.db_password" "" 2>/dev/null || true
-    else
-        echo ""
+        out="$(get_data_secret "moodle.${site}.${tier}.db_password" "" 2>/dev/null)" && rc=0 || rc=$?
+        printf '%s' "$out"
+        return "$rc"
     fi
+    return 2
 }
 
 ################################################################################
@@ -167,16 +172,32 @@ moodle_write_config() {
     fi
 
     # 4. Resolve the DB password WITHOUT argv/hardcoding. site name from config.
-    local site pass
+    #
+    # FAIL-CLOSED (item 9). This used to WARN and write an EMPTY $CFG->dbpass,
+    # advising the operator to "provision the secret" — advice that could not
+    # work, because get_data_secret's 2-level parser could never read the
+    # 4-level path this function asks for. A config.php with an empty dbpass is
+    # not a degraded config, it is a broken one that fails at the first DB
+    # connection with a misleading error. Refusing costs one clear message;
+    # writing costs an afternoon of debugging the wrong layer.
+    local site pass pass_status=3
     site="$(_mp_cfg "$config_file" '.project.name' "$(basename "$moodle_root")" || true)"
-    pass="$(moodle_db_password "$site" "$tier")"
+    pass="$(moodle_db_password "$site" "$tier")" && pass_status=0 || pass_status=$?
     if [ -z "$pass" ]; then
         if [ "$ddev_default" = "true" ]; then
             pass="db"   # well-known ddev dev default — not a secret
         else
-            _mp_warn "No DB password resolved for $site@$tier (get_data_secret empty)."
-            _mp_warn "Writing an EMPTY \$CFG->dbpass. Provision the secret, or set"
-            _mp_warn "  .moodle.tiers.${tier}.dbpass_ddev_default: true for a ddev dev tier."
+            _mp_err "REFUSED: no DB password resolved for ${site}@${tier} — refusing to write an EMPTY \$CFG->dbpass."
+            case "$pass_status" in
+                2) _mp_info "  cause: .secrets.data.yml is NOT PRESENT under PROJECT_ROOT (${PROJECT_ROOT:-unset})." ;;
+                *) _mp_info "  cause: .secrets.data.yml is present but has no moodle.${site}.${tier}.db_password." ;;
+            esac
+            _mp_info "  Data secrets are deliberately NOT resolved from a linked git worktree"
+            _mp_info "  (ops#70). If you are inside a 'pl issue work' worktree, run this from"
+            _mp_info "  the main checkout, or provision the key there."
+            _mp_info "  Fixes: add moodle.${site}.${tier}.db_password to .secrets.data.yml, or"
+            _mp_info "         set .moodle.tiers.${tier}.dbpass_ddev_default: true for a ddev dev tier."
+            return 1
         fi
     fi
 

@@ -11,6 +11,15 @@
 #   1. dead-file-links  — every repo-relative markdown link resolves to a file
 #                         that exists (tried relative-to-file AND relative-to-root).
 #   2. dead-adr-refs    — every `ADR-NNNN` mention resolves to docs/decisions/NNNN-*.md.
+#   3. raw-remote-cli   — no runbook prescribes a raw `ssh … drush …` or
+#                         `ssh … admin/cli/…` one-liner (item 9). Those are the
+#                         exact idioms `pl drush` and `pl moodle cli` were built
+#                         to retire: they bypass the dry-run default, the
+#                         ADR-0028 deploy gate, the live.enabled flag, the
+#                         no-secret-printing rule and the rollback ledger — at
+#                         go-live, when it matters most. This one IS a prose
+#                         assertion, but it is mechanical (a command shape, not
+#                         a claim) and every hit has a one-line `pl` rewrite.
 #
 # It deliberately does NOT check `pl <verb>` mentions or prose assertions: the
 # proposal docs describe unbuilt future commands, so those checks are noisy.
@@ -28,8 +37,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
-source "$PROJECT_ROOT/lib/ui.sh"
+REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+# Libs load from the repo; the SCANNED tree honours a pre-set PROJECT_ROOT so
+# the gate is testable on a fixture tree instead of only on the live repo.
+PROJECT_ROOT="${PROJECT_ROOT:-$REPO_ROOT}"
+source "$REPO_ROOT/lib/ui.sh"
 
 BASELINE="$PROJECT_ROOT/.doc-truth-baseline"
 ADR_RESERVED=" 0023 "   # intentionally file-less (reserved slot)
@@ -74,7 +86,37 @@ collect_drift(){
             case "$ADR_RESERVED" in *" $num "*) continue ;; esac
             compgen -G "$PROJECT_ROOT/docs/decisions/${num}-*.md" >/dev/null 2>&1 || echo "dead-adr|$rel|ADR-$num"
         done < <(grep -oE 'ADR-[0-9]{4}' "$file" 2>/dev/null | sort -u)
+
+        # 3. raw-remote-cli — an `ssh …` line that runs drush or a Moodle
+        #    admin/cli script directly. Reported as "file:line" so a rewrite is
+        #    unambiguous. Lines that mention the shape *in order to forbid it*
+        #    (this file's own docs, or prose containing `pl drush`/`pl moodle`)
+        #    are not hits.
+        raw_remote_cli_hits "$file" "$rel"
     done < <(scan_files)
+}
+
+# Emit one `raw-remote-cli|<rel>|L<line>` per offending line in <file>.
+#
+# TWO shapes, because one is how the rule gets evaded:
+#   (a) `ssh … drush …` / `ssh … admin/cli/…`  — the direct one-liner;
+#   (b) `sudo -u www-data … drush` / `… admin/cli/…` — the *remote* invocation
+#       itself, which catches the alias trick. NWC-LIVE-DEPLOY-RUNBOOK assigns
+#       `D="sudo -u www-data /var/www/nwc/vendor/bin/drush --root=…"` and then
+#       writes `ssh … "$D updatedb -y"`; shape (a) alone reads that as clean and
+#       reports a runbook full of raw remote drush as compliant. A gate that a
+#       shell variable defeats is a vacuous gate.
+raw_remote_cli_hits(){
+    local file="$1" rel="$2" lineno text
+    while IFS=: read -r lineno text; do
+        [ -n "$lineno" ] || continue
+        # A line that ALSO shows the sanctioned form is teaching the contrast.
+        case "$text" in
+            *"pl drush"*|*"pl moodle cli"*|*"raw-remote-cli"*) continue ;;
+        esac
+        echo "raw-remote-cli|$rel|L$lineno"
+    done < <(grep -nE 'ssh[^|]*(drush|admin/cli/)|sudo[[:space:]]+-u[[:space:]]+www-data[^|]*(drush|admin/cli/)' "$file" 2>/dev/null \
+             | grep -vE '^[0-9]+:[[:space:]]*(#|//)' || true)
 }
 
 main(){

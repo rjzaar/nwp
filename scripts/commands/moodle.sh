@@ -46,15 +46,28 @@ show_help() {
 ${BOLD}NWP Moodle — guarded plugin build / deploy / upgrade / backup / rollback${NC}
 
 ${BOLD}USAGE:${NC}
+    pl moodle cli           <site> --tier=live [--dry-run|--execute] -- <admin/cli/x.php> [args]
+    pl moodle maintenance   <site> --tier=live on|off [--dry-run|--execute]
     pl moodle plugin build  <plugin> [--from=DIR] [--ddev=SITE|--tree=DIR] [--check-only]
     pl moodle plugin deploy <site> <plugin>... --tier=stg|live [--dry-run|--apply] [--no-upgrade]
+    pl moodle plugin drift  <site> [<plugin>...] [--tree=DIR]... [--no-live]
     pl moodle plugins sync  <site> [--tier=dev|live] [--ref=REF] [--dry-run|--apply]
+    pl moodle core-patch status <site> [--root=DIR|--live]
     pl moodle gate-status   <site> [--no-live]     # == pl moodle plugins status
     pl moodle upgrade       <site> --tier=stg|live [--dry-run|--apply] [--no-maintenance]
     pl moodle backup        <site> --tier=live|stg [--db-only|--code-only] [--dry-run|--apply]
     pl moodle rollback      <site> --tier=live [list|execute] [--dry-run]
     pl moodle config        <site> [...]       # == pl moodle-promote (dev/stg substrate)
     pl moodle smoke         <site> [...]       # == pl moodle-smoke
+
+${BOLD}THE TWO PIECES OF BOX KNOWLEDGE (item 9) — now resolved, never typed:${NC}
+    Moodle 4.4 REJECTS PHP 8.4 (the box default), and the box php.ini sets
+    max_input_vars=1000, below Moodle's floor. Every admin/cli invocation from
+    'pl moodle' therefore resolves php8.2/8.3 + '-d max_input_vars=5000' and
+    ASSERTS both are present before running. Running upgrade.php without them
+    fails the env check AFTER maintenance mode is on and leaves the site DOWN
+    (the `ss` Moodle instance, ~6 min, 2026-07-26).
+    Recovery is always one verb: pl moodle maintenance <site> --tier=live off --execute
 
 ${BOLD}PLUGIN SOURCE (ops#137):${NC}
     Resolution order for each plugin's source directory — FIRST HIT WINS:
@@ -365,6 +378,22 @@ cmd_plugin_deploy() {
     if ! maturity_guard_deploy "$BASE" "moodle-deploy"; then return 1; fi
     # 4. pair guard (code-only by construction ⇒ passes the coupled-tier rule)
     if ! pair_guard "$BASE" "$tier" "moodle-deploy" "true" "${OVERRIDE_PAIR:-false}"; then return 1; fi
+    # 4b. DECLARED CORE PATCHES (item 9) — fail CLOSED before any bytes move,
+    #     on dry-run too. A target missing a declared core patch is running
+    #     DIFFERENT core code than the one this deploy was validated against;
+    #     ssc's guest front door is exactly such a patch and lived only as an
+    #     uncommitted working-tree diff until this gate existed. No declaration
+    #     ⇒ clean no-op, so sites without core patches are unaffected.
+    if [ -s "$(_moodle_core_patches_decl "$BASE" "$CONFIG_FILE")" ]; then
+        print_header "Declared core-patch verification (item 9)"
+        local _cp_args=("$BASE"); [ "$tier" = "live" ] && _cp_args+=(--live)
+        if ! cmd_core_patch status "${_cp_args[@]}"; then
+            print_error "Refusing the deploy: a declared core patch is not verified present on the target."
+            print_info  "  Re-apply it, or remove the declaration from sites/${BASE}/core-patches.yml."
+            print_info  "  Override is deliberately NOT provided — this is the fail-closed half of item 9."
+            return 1
+        fi
+    fi
     # 5. SOURCE RESOLUTION (ops#137) — resolve ONCE, up front, and reuse the
     #    same directory for the freshness gate, the Art.9 assertion and the
     #    rsync. Asserting one tree while shipping another is the fail-open.
@@ -811,6 +840,387 @@ cmd_rollback() {
 }
 
 ################################################################################
+# cli — the Moodle twin of `pl drush` (item 9)
+#
+# WHY: `pl moodle` dispatched only plugin/plugins/gate-status/upgrade/backup/
+# rollback/config/smoke. Every OTHER admin/cli call against ss, ss2, ssc, ssd
+# and sso_moodle was hand-ssh plus two pieces of tribal knowledge (php8.2/8.3,
+# -d max_input_vars=5000). Getting it wrong caused the ~6 min `ss` instance
+# outage on 2026-07-26: upgrade.php failed its env check and left maintenance
+# mode ON, with no pl verb able to clear it.
+#
+# HOUSE STYLE: identical to `pl drush` — live is DRY-RUN by default, --execute
+# is required, the deploy gate + live.enabled + typed confirm apply, and the
+# resolved command is ASSERTED (moodle_cli_assert) before anything runs.
+################################################################################
+cmd_cli() {
+    local site="" tier="" explicit_mode="" root_override=""
+    local -a cli_args=(); local saw_sep="no"
+    while [ "$#" -gt 0 ]; do
+        if [ "$saw_sep" = "yes" ]; then cli_args+=("$1"); shift; continue; fi
+        case "$1" in
+            --)          saw_sep="yes" ;;
+            --tier=*)    tier="${1#*=}" ;;
+            --dry-run)   explicit_mode="dry-run" ;;
+            --execute|--apply) explicit_mode="execute" ;;
+            --root=*)    root_override="${1#*=}" ;;
+            -h|--help)   print_info "usage: pl moodle cli <site> --tier=stg|live [--dry-run|--execute] -- <admin/cli script> [args...]"; return 0 ;;
+            -*)          print_error "Unknown option: $1"; return 1 ;;
+            *)           [ -z "$site" ] && site="$1" || { print_error "Unexpected arg: $1 (CLI args go after --)"; return 1; } ;;
+        esac
+        shift
+    done
+    [ -z "$site" ] && { print_error "usage: pl moodle cli <site> --tier=stg|live [--dry-run|--execute] -- <admin/cli script> [args...]"; return 1; }
+    case "$tier" in stg|live) ;; "") print_error "--tier is required (stg|live)"; return 1 ;; *) print_error "Unknown tier '$tier' — only stg|live"; return 1 ;; esac
+    if [ "${#cli_args[@]}" -eq 0 ]; then
+        print_error "No CLI script given — pass it after '--', e.g. pl moodle cli $site --tier=$tier -- admin/cli/purge_caches.php"
+        return 1
+    fi
+    _resolve_moodle_site "$site" || return 1
+
+    # The script must live under admin/cli. This is a *containment* rule, not a
+    # convenience: `pl moodle cli` runs as www-data on a live host, and a
+    # traversing path would turn it into an arbitrary-file php runner.
+    local script="${cli_args[0]}"
+    case "$script" in
+        admin/cli/*.php) ;;
+        *) print_error "Refusing '${script}': the script must be a repo-relative admin/cli/<name>.php path."
+           print_info  "  (containment: this runs as www-data on a live host — no traversal, no arbitrary path)"
+           return 1 ;;
+    esac
+    case "$script" in *..*) print_error "Refusing a path containing '..': ${script}"; return 1 ;; esac
+
+    if [ "$tier" != "live" ]; then
+        print_error "tier=stg is a local ddev tier for Moodle — use 'ddev exec php admin/cli/...' in sites/${BASE}/stg,"
+        print_info  "or 'pl moodle config ${BASE} --tier=stg' for the stg substrate (design §4)."
+        return 1
+    fi
+
+    local live_enabled; live_enabled=$(get_live_config "$BASE" "enabled")
+    local mode="dry-run"; [ "$explicit_mode" = "execute" ] && mode="execute"
+    if [ "$live_enabled" = "false" ] && [ "$mode" = "execute" ]; then
+        print_error "Live disabled for '$BASE' (live.enabled: false)."; return 1
+    fi
+
+    local server_ip ssh_user remote_path ssh_opts ssh_target sudo_prefix=""
+    server_ip=$(get_live_config "$BASE" "server_ip")
+    [ -z "$server_ip" ] && { print_error "No live server configured for '$BASE' (empty server_ip). 'pl moodle cli' does not provision."; return 1; }
+    ssh_user=$(get_ssh_user "$BASE")
+    remote_path=$(get_live_config "$BASE" "remote_path"); [ -z "$remote_path" ] && remote_path="/var/www/${BASE}"
+    [ "$ssh_user" = "gitlab" ] && sudo_prefix="sudo"
+    if [ -n "$root_override" ]; then
+        case "$root_override" in /*) ;; *) print_error "--root must be absolute"; return 1 ;; esac
+        case "$(basename "$root_override")" in "${BASE}"*) ;; *) print_error "--root basename must start with '${BASE}' (wrong-site guard)"; return 1 ;; esac
+        print_warning "targeting NON-canonical docroot via --root: ${root_override}"
+        remote_path="$root_override"
+    fi
+    ssh_opts="$(nwp_ssh_opts "$BASE")"; ssh_target="${ssh_user}@${server_ip}"
+
+    # Resolve the two pieces of box knowledge, then ASSERT them. A plan that has
+    # lost either half must refuse — that is the whole point of the verb.
+    local php_bin php_opts
+    php_bin="$(moodle_cli_php_bin "$CONFIG_FILE")"
+    php_opts="$(moodle_cli_php_opts "$CONFIG_FILE")"
+    moodle_cli_assert "$php_bin" "$php_opts" || return 1
+
+    local qargs="" a
+    for a in "${cli_args[@]:1}"; do qargs+=" $(printf '%q' "$a")"; done
+    local remote="cd ${remote_path} && ${sudo_prefix} -u www-data ${php_bin} ${php_opts} ${remote_path%/}/${script}${qargs}"
+
+    print_header "Moodle CLI: ${BASE}@live"
+    print_info "Target:  ${ssh_target}:${remote_path}"
+    print_info "php:     ${php_bin} ${php_opts}"
+    print_info "Command: ${remote}"
+
+    if [ "$mode" != "execute" ]; then
+        print_status "OK" "[dry-run] nothing executed. Re-run with --execute to run this on live."
+        return 0
+    fi
+
+    deploy_gate_require "$BASE" "live" "run ${script} on live via pl moodle cli" || return 1
+    impact_reset
+    impact_overwrite "Moodle CLI" "${remote_path%/}/${script} runs as www-data on LIVE"
+    impact_keep "config.php + moodledata — not touched by this verb"
+    impact_warn "admin/cli scripts can be irreversible. Take a backup first: pl moodle backup ${BASE} --tier=live --apply"
+    impact_render
+    impact_confirm typed "$BASE" "${AUTO_CONFIRM:-false}" || { print_error "aborted."; return 1; }
+
+    print_header "Running admin/cli on live"
+    if ! ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "$remote"; then
+        print_error "Remote admin/cli run FAILED."
+        print_info  "If the site is now in maintenance mode, clear it with:"
+        print_info  "    pl moodle maintenance ${BASE} --tier=live off --execute"
+        return 1
+    fi
+    print_status "OK" "admin/cli completed on live for ${BASE}."
+    return 0
+}
+
+################################################################################
+# maintenance — there must ALWAYS be a one-verb way OUT of maintenance mode.
+#
+# moodle_maintenance() has existed at lib/moodle-deploy.sh:306 since PL-STG2LIVE
+# and was unreachable from the CLI, so when the 2026-07-26 upgrade left ss in
+# maintenance the only recovery was hand-ssh. Turning maintenance OFF is a
+# RECOVERY action and is deliberately NOT behind a typed confirm — recovery must
+# never be harder than the failure.
+################################################################################
+cmd_maintenance() {
+    local site="" tier="live" action="" mode="dry-run"
+    for a in "$@"; do
+        case "$a" in
+            --tier=*)  tier="${a#*=}" ;;
+            --dry-run) mode="dry-run" ;;
+            --execute|--apply) mode="execute" ;;
+            on|enable)  action="enable" ;;
+            off|disable) action="disable" ;;
+            status)     action="status" ;;
+            -h|--help)  print_info "usage: pl moodle maintenance <site> --tier=live on|off [--dry-run|--execute]"; return 0 ;;
+            -*)         print_error "Unknown option: $a"; return 1 ;;
+            *)          if [ -z "$site" ]; then site="$a"; else
+                            print_error "Unknown maintenance action '$a' — the action must be on|off."
+                            return 1
+                        fi ;;
+        esac
+    done
+    [ -z "$site" ] && { print_error "usage: pl moodle maintenance <site> --tier=live on|off [--dry-run|--execute]"; return 1; }
+    [ -z "$action" ] && { print_error "action required: on|off (got none)"; return 1; }
+    case "$tier" in live) ;; *) print_error "--tier must be live (stg is a local ddev tier)"; return 1 ;; esac
+    _resolve_moodle_site "$site" || return 1
+
+    local server_ip ssh_user remote_path ssh_opts ssh_target sudo_prefix="" php_bin
+    server_ip=$(get_live_config "$BASE" "server_ip")
+    [ -z "$server_ip" ] && { print_error "No live server configured for '$BASE'."; return 1; }
+    ssh_user=$(get_ssh_user "$BASE")
+    remote_path=$(get_live_config "$BASE" "remote_path"); [ -z "$remote_path" ] && remote_path="/var/www/${BASE}"
+    [ "$ssh_user" = "gitlab" ] && sudo_prefix="sudo"
+    ssh_opts="$(nwp_ssh_opts "$BASE")"; ssh_target="${ssh_user}@${server_ip}"
+    php_bin="$(moodle_cli_php_bin "$CONFIG_FILE")"
+    moodle_cli_assert "$php_bin" "$(moodle_cli_php_opts "$CONFIG_FILE")" || return 1
+
+    print_header "Moodle maintenance ${action#en}${action#dis} — ${BASE}@live"
+    local apply="false"; [ "$mode" = "execute" ] && apply="true"
+    # Turning maintenance ON is a service-affecting write and takes the gate.
+    # Turning it OFF is RECOVERY and does not — see the block comment above.
+    if [ "$apply" = "true" ] && [ "$action" = "enable" ]; then
+        deploy_gate_require "$BASE" "live" "enable maintenance mode on live" || return 1
+    fi
+    moodle_maintenance "$ssh_target" "$ssh_opts" "$sudo_prefix" "$php_bin" "$remote_path" "$action" "$apply" || {
+        print_error "maintenance ${action} FAILED for ${BASE}."; return 1; }
+    if [ "$apply" != "true" ]; then
+        print_status "OK" "[dry-run] nothing executed. Re-run with --execute."
+    else
+        print_status "OK" "maintenance ${action}d for ${BASE}."
+    fi
+    return 0
+}
+
+################################################################################
+# core-patch — declared Moodle CORE patches (item 9)
+#
+# DECLARATION RESOLUTION (first hit wins):
+#   1. sites/<base>/core-patches.yml                      site-local override.
+#      sites/* is gitignored in nwp/nwp, so this rung is for local/test use —
+#      never the durable home.
+#   2. <plugin-repo cache>/core-patches/<base>.yml        CANONICAL. Lives in
+#      nwp/ss-moodle-plugins, i.e. under version control, and arrives via
+#      `pl moodle plugins sync <site> --apply` like everything else.
+# A declaration that lives only in a gitignored tree is the same disease as the
+# unversioned core patch it is meant to catch, so rung 2 is the real answer.
+################################################################################
+
+_moodle_core_patches_decl() {
+    local base="$1" config_file="$2" f
+    f="$(moodle_core_patches_file "$base")"
+    if [ -s "$f" ]; then printf '%s' "$f"; return 0; fi
+    local repo cache
+    repo="$(_moodle_plugins_repo "$config_file")"
+    cache="$(_moodle_plugin_cache "$base" "$repo")"
+    f="${cache}/core-patches/${base}.yml"
+    if [ -s "$f" ]; then printf '%s' "$f"; return 0; fi
+    printf '%s' "$(moodle_core_patches_file "$base")"   # non-existent ⇒ clean no-op
+}
+
+cmd_core_patch() {
+    local action="${1:-status}"; shift || true
+    local site="" root_override="" want_live="false"
+    for a in "$@"; do
+        case "$a" in
+            --root=*) root_override="${a#*=}" ;;
+            --live)   want_live="true" ;;
+            -*)       print_error "Unknown option: $a"; return 1 ;;
+            *)        [ -z "$site" ] && site="$a" || { print_error "Unexpected arg: $a"; return 1; } ;;
+        esac
+    done
+    case "$action" in status|list) ;; *) print_error "Unknown 'core-patch' action: $action (status|list)"; return 1 ;; esac
+    [ -z "$site" ] && { print_error "usage: pl moodle core-patch status <site> [--root=DIR|--live]"; return 1; }
+    _resolve_moodle_site "$site" || return 1
+
+    local decl; decl="$(_moodle_core_patches_decl "$BASE" "$CONFIG_FILE")"
+    local -a ids=(); mapfile -t ids < <(moodle_core_patch_ids "$decl")
+    print_header "Declared Moodle core patches: ${BASE}"
+    if [ "${#ids[@]}" -eq 0 ]; then
+        print_info "no core patches declared for ${BASE} (${decl#$PROJECT_ROOT/})"
+        return 0
+    fi
+
+    # Resolve the target tree: --root wins; --live queries the live webroot;
+    # otherwise the dev tree.
+    local target="" mode="local"
+    if [ -n "$root_override" ]; then
+        target="$root_override"
+    elif [ "$want_live" = "true" ]; then
+        mode="live"
+    else
+        target="$PROJECT_ROOT/sites/${BASE}/dev"
+    fi
+
+    local ssh_target="" ssh_opts="" sudo_prefix="" remote_path=""
+    if [ "$mode" = "live" ]; then
+        local server_ip ssh_user
+        server_ip=$(get_live_config "$BASE" "server_ip")
+        [ -z "$server_ip" ] && { print_error "No live server configured for '$BASE'."; return 1; }
+        ssh_user=$(get_ssh_user "$BASE")
+        remote_path=$(get_live_config "$BASE" "remote_path"); [ -z "$remote_path" ] && remote_path="/var/www/${BASE}"
+        [ "$ssh_user" = "gitlab" ] && sudo_prefix="sudo"
+        ssh_opts="$(nwp_ssh_opts "$BASE")"; ssh_target="${ssh_user}@${server_ip}"
+        print_info "target: LIVE ${ssh_target}:${remote_path}"
+    else
+        print_info "target: ${target}"
+    fi
+
+    local id file assert why st problems=0
+    for id in "${ids[@]}"; do
+        [ -n "$id" ] || continue
+        file="$(moodle_core_patch_field "$decl" "$id" file)"
+        assert="$(moodle_core_patch_field "$decl" "$id" assert)"
+        why="$(moodle_core_patch_field "$decl" "$id" why)"
+        if [ -z "$file" ] || [ -z "$assert" ]; then
+            printf '    %-38s %-14s %s\n' "$id" "[INVALID]" "declaration needs both 'file:' and 'assert:'"
+            problems=$((problems+1)); continue
+        fi
+        if [ "$mode" = "live" ]; then
+            moodle_core_patch_check_remote "$ssh_target" "$ssh_opts" "$sudo_prefix" "$remote_path" "$file" "$assert"
+        else
+            moodle_core_patch_check_local "$target" "$file" "$assert"
+        fi
+        case "$?" in
+            0) st="APPLIED" ;;
+            1) st="MISSING"; problems=$((problems+1)) ;;
+            2) st="FILE-ABSENT"; problems=$((problems+1)) ;;
+            *) st="UNREACHABLE"; problems=$((problems+1)) ;;
+        esac
+        printf '    %-38s %-14s %s — %s\n' "$id" "[$st]" "$file" "${why:-(no rationale recorded)}"
+    done
+
+    if [ "$problems" -gt 0 ]; then
+        print_error "${problems} declared core patch(es) are NOT verified present on the target."
+        print_info  "A declared patch that is not applied means the target is running DIFFERENT core code"
+        print_info  "than the one this site was validated against. Re-apply it, or remove the declaration."
+        return 1
+    fi
+    print_status "OK" "every declared core patch is present on the target."
+    return 0
+}
+
+################################################################################
+# plugin drift — version.php across every known copy (item 9)
+################################################################################
+cmd_plugin_drift() {
+    local site="" want_live="true"
+    local -a plugins=() trees=()
+    for a in "$@"; do
+        case "$a" in
+            --tree=*)  trees+=("${a#*=}") ;;
+            --no-live) want_live="false" ;;
+            -*)        print_error "Unknown option: $a"; return 1 ;;
+            *)         if [ -z "$site" ]; then site="$a"; else plugins+=("$a"); fi ;;
+        esac
+    done
+    [ -z "$site" ] && { print_error "usage: pl moodle plugin drift <site> [<plugin>...] [--tree=DIR]... [--no-live]"; return 1; }
+    _resolve_moodle_site "$site" || return 1
+    if [ "${#plugins[@]}" -eq 0 ]; then
+        mapfile -t plugins < <(_moodle_configured_plugins "$CONFIG_FILE")
+        [ "${#plugins[@]}" -eq 0 ] && { print_error "No plugins given and none configured under .moodle.plugins."; return 1; }
+    fi
+
+    # Default tree set: the dev tree, the canonical repo cache, and the legacy
+    # in-repo f26 copy (which is exactly the stale one — 2026071101/1.0.0).
+    if [ "${#trees[@]}" -eq 0 ]; then
+        local repo cache
+        repo="$(_moodle_plugins_repo "$CONFIG_FILE")"
+        cache="$(_moodle_plugin_cache "$BASE" "$repo")"
+        trees=("$PROJECT_ROOT/sites/${BASE}/dev" "$cache")
+    fi
+
+    print_header "Moodle plugin version drift: ${BASE}"
+    local total_problems=0 p t v seen ver_ref ref_tree copies
+    for p in "${plugins[@]}"; do
+        [ -n "$p" ] || continue
+        echo "  ${p}"
+        copies=0; ver_ref=""; ref_tree=""; seen=0
+        for t in "${trees[@]}"; do
+            v="$(moodle_plugin_version_local "$t" "$p" 2>/dev/null || true)"
+            if [ -z "$v" ]; then
+                printf '    %-52s %s\n' "${t}" "(absent)"
+                continue
+            fi
+            copies=$((copies+1))
+            if [ -z "$ver_ref" ]; then ver_ref="$v"; ref_tree="$t"; fi
+            if [ "$v" != "$ver_ref" ]; then
+                printf '    %-52s %-12s %s\n' "${t}" "$v" "[DRIFT vs ${ver_ref}]"
+                seen=1
+            else
+                printf '    %-52s %-12s\n' "${t}" "$v"
+            fi
+        done
+        if [ "$want_live" = "true" ]; then
+            local server_ip ssh_user remote_path ssh_opts sudo_prefix="" lv
+            server_ip=$(get_live_config "$BASE" "server_ip")
+            if [ -n "$server_ip" ]; then
+                ssh_user=$(get_ssh_user "$BASE")
+                remote_path=$(get_live_config "$BASE" "remote_path"); [ -z "$remote_path" ] && remote_path="/var/www/${BASE}"
+                [ "$ssh_user" = "gitlab" ] && sudo_prefix="sudo"
+                ssh_opts="$(nwp_ssh_opts "$BASE")"
+                lv="$(moodle_plugin_version_remote "${ssh_user}@${server_ip}" "$ssh_opts" "$sudo_prefix" "$remote_path" "$p" 2>/dev/null || true)"
+                if [ -z "$lv" ]; then
+                    printf '    %-52s %s\n' "LIVE ${remote_path}/${p}" "(unreachable or absent)"
+                else
+                    copies=$((copies+1))
+                    if [ -z "$ver_ref" ]; then ver_ref="$lv"; fi
+                    if [ "$lv" != "$ver_ref" ]; then
+                        printf '    %-52s %-12s %s\n' "LIVE ${remote_path}/${p}" "$lv" "[DRIFT vs ${ver_ref}]"
+                        seen=1
+                    else
+                        printf '    %-52s %-12s\n' "LIVE ${remote_path}/${p}" "$lv"
+                    fi
+                fi
+            fi
+        fi
+        # "I found nothing" must NEVER read as "everything agrees" — that is the
+        # vacuous-pass class this programme exists to eliminate.
+        if [ "$copies" -lt 2 ]; then
+            print_error "  cannot verify ${p}: found ${copies} copy(ies), need at least 2 to compare."
+            total_problems=$((total_problems+1))
+        elif [ "$seen" -eq 1 ]; then
+            print_error "  DRIFT: copies of ${p} disagree on \$plugin->version."
+            total_problems=$((total_problems+1))
+        fi
+        echo ""
+    done
+
+    if [ "$total_problems" -gt 0 ]; then
+        print_error "${total_problems} plugin(s) drifted or unverifiable."
+        print_info  "A deploy from the LOWER-versioned tree silently DOWNGRADES live and can drop"
+        print_info  "gates that shipped in the higher version (auth_nwc carries the Art.9 consent gate)."
+        print_info  "Canonical source: nwp/ss-moodle-plugins — pl moodle plugins sync ${BASE} --apply"
+        return 1
+    fi
+    print_status "OK" "every compared copy agrees on \$plugin->version."
+    return 0
+}
+
+################################################################################
 # Dispatch
 #
 # Sourcing this file (bats unit tests) defines the functions WITHOUT dispatching,
@@ -829,9 +1239,13 @@ case "$SUB" in
         case "$PSUB" in
             build)  cmd_plugin_build  "$@" ;;
             deploy) cmd_plugin_deploy "$@" ;;
-            *) print_error "Unknown 'plugin' subcommand: ${PSUB:-(none)} (build|deploy)"; exit 1 ;;
+            drift)  cmd_plugin_drift  "$@" ;;
+            *) print_error "Unknown 'plugin' subcommand: ${PSUB:-(none)} (build|deploy|drift)"; exit 1 ;;
         esac
         ;;
+    cli)         cmd_cli         "$@" ;;
+    maintenance) cmd_maintenance "$@" ;;
+    core-patch)  cmd_core_patch  "$@" ;;
     plugins)
         PSUB="${1:-}"; shift || true
         case "$PSUB" in

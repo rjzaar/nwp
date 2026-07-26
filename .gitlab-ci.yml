@@ -240,6 +240,23 @@ lint:conflict-markers:
     - nwp
   allow_failure: false
 
+# The rollback registry's checkpoint ids must resolve to exactly one row.
+# 2026-07-26: CP19 x3, CP20 x4, CP21 x3, CP22 x2 — three agents each read the
+# file, each saw CP18 as the highest, each allocated "the next four". CP19 named
+# both "item 2 recovery-path-repair" and "item 3 nested-repo-containment", i.e.
+# two different restore commands under one name, in the document an operator
+# reaches for mid-incident. Blocking, and fail-closed on an unreadable corpus.
+lint:registry-ids:
+  stage: lint
+  script:
+    - ./scripts/ci/lint-rollback-registry-ids.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  tags:
+    - nwp
+  allow_failure: false
+
 # Leakage gate — refuses MRs / main pushes that introduce operator-specific
 # identifiers (hostnames, paths, organisations) or generic credentials.
 # Per P61 §4.4. Configure `main` branch protection to require this job to

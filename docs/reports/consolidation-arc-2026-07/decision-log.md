@@ -1236,3 +1236,57 @@ says so explicitly, and `pl secrets capabilities` makes it checkable instead of 
   was **not attempted**: `nwp/ss-moodle-plugins` is concurrently held by fix-programme item 8
   (`auth/nwc/**`) and off-limits MR !7 (`mod/depthcontent`), and a 1,800-line plugin import is not a
   disjoint change to slide in beside them. It needs its own MR after those land. ops#86 stays open.
+---
+
+## [2026-07-26] 🔒 Agent-loop pre-push gate extended to the NWP Console (ops#91 Half A follow-up)
+**Verified defect (latent, not live).** `scripts/agent-loop/agent-loop.sh` feeds a member-controlled issue
+body to `claude -p --dangerously-skip-permissions`; the prompt's "HARD BOUNDARY" is prose, and the pre-push
+sensitive-path regex is the *only* enforced backstop. Ran that regex against the real tree: it covered
+`lib/auth*` but **not one byte of the console** — `scripts/console/app/authz.py`, `actions.py` (the argv
+allowlist), `webauthn_flow.py`, `store.py`, `main.py`, `runner.py`, `quokka.py`, `config.py`,
+`scripts/commands/console.sh` and `lib/console-deploy.sh` were all **ALLOWED**. An armed console issue could
+have pushed a branch rewriting the console's own authorisation. **The loop is paused (`.loop-paused` on mini
+since 2026-07-18), so this was latent — it goes live the moment the loop is unpaused.** Also found: Half A's
+spec said "denylist **+ bats**"; the bats never landed, so the single enforced control on the loop had **zero
+test coverage** for ~2 weeks.
+
+**Boundary chosen — deny `scripts/console/app/` as a DIRECTORY, not a filename list.** Three reasons, on
+evidence: (1) *enforcement is spread, not central* — `authz.py` is a 25-line pure role comparator, while
+`require()`, `current_user()`, `_set_session()`, the session signer and every per-route
+`Depends(require(...))` live in `main.py`; denying `authz.py` while leaving `main.py` open is a paper gate,
+since an agent could downgrade a route from `require("operator")` to `require("viewer")` and never trip it.
+(2) *an enumerated list fails OPEN on new modules* — console v2 is adding `app/scope.py` (multi-tenancy choke
+point) right now and it does not exist in the tree yet; a denylist you must remember to update is one that
+lapses. (3) *the cost is low* — 60-day churn shows `templates/`, `static/style.css` and `README.md` carry the
+clear majority of console changes and all stay ALLOWED. Blast radius measured: **20 of 932 tracked files
+newly denied (55 → 75); 36 console files remain editable.** A gate that always fires is a gate that gets
+removed, so `main.py` being high-churn was weighed and rejected as a reason to leave it open — it *is* the
+authorisation file.
+Also denied: `scripts/commands/console` (ssh + `rsync --delete` to the console host; writes the env file
+holding the GitLab pane token), `lib/console-*` (the divergence guard that stops that rsync),
+`scripts/console/*.service` (ExecStart = arbitrary code as the console user), `requirements.txt` (dependency
+pins on the token-holding host), and — found while measuring blast radius — `scripts/console/static/*.js`:
+`static/` splits on *executability*, not on "assets". `sw.js` is a service worker (intercepts every request
+on the origin, outlives the page), `webauthn.js` drives the passkey ceremony, `htmx.min.js` is vendored code
+where a malicious swap is least likely to be caught by eye. CSS and icons stay allowed.
+
+**ACCEPTED RESIDUALS (stated, not silent — also commented in the code):**
+1. `scripts/console/tests/` stays ALLOWED: an agent can weaken or delete a console security test without
+   tripping the gate. Accepted because it cannot touch the code under test, agent MRs never auto-merge, and
+   denying `tests/` would punish exactly the test-writing the loop's own prompt template demands.
+   *Reviewers must treat a test deletion in an agent MR as a red flag.*
+2. `scripts/console/templates/` stays ALLOWED: Jinja autoescapes so text edits are safe, but a template could
+   add `|safe` or an inline `<script>`. Accepted as the price of usability in the highest-churn area; this
+   gate matches PATHS, not content, and making it content-aware trades a clear rule for a flaky one.
+
+**Evidence — red then green, twice.** Wrote the bats first and watched it fail: with the original pattern,
+**14 of 22 failed** (all 13 console assertions + the behavioural refusal test) while the three negative
+controls, the pre-existing Half A coverage and the structural tests stayed green — proving the suite
+discriminates rather than refusing everything. After the fix: **22/22**. The pattern is *extracted from the
+live script*, never copied into the test, so it cannot drift and pass while the real gate rots. Coverage
+includes a behavioural test that executes the real gate block (GitLab calls stubbed) and asserts the four
+refusal effects — no push, `agent-eligible` pulled, comment posted, worktree kept — plus a behavioural
+negative control proving a template-only diff still reaches the push step.
+
+**Self-protecting:** `scripts/agent-loop/` was already denied, so once merged no loop-driven agent can quietly
+remove this. Tagged `REVIEW:` — security-class change to a sensitive path.

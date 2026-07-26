@@ -1744,6 +1744,42 @@ is 17/17 and now asserts `servers/nwpcode/demo/nwd-demo-reset-restricted` is in 
 re-implemented. Duplicating them would have produced a conflicting diff that changed nothing.
 **Reversible-how:** N/A (work removed, not added).
 
+## [2026-07-26] b2-branch-ops-127-retired-work-landed-via-ops-127-recovery
+**Decision:** deleted `origin/ops-127`. ops#127 parts 2/3 and 3/3 landed on `main` via the
+**`ops-127-recovery`** branch (merge `089c4ca`, carrying `96a5823` and `91d4e3e`), **not** via
+this branch. `origin/ops-127` @ `cbb5cee` was 2 ahead / 117 behind and held nothing main lacks.
+**Evidence (re-run before the deletion, not quoted from the planner):**
+- `git cherry -v origin/main origin/ops-127` printed `-` for **both** unique commits
+  (`cd346ca`, `cbb5cee`) — i.e. GitLab-side and locally, both are patch-equivalent to commits
+  already on main. Zero unique commits, which is the decisive superset test; the four-file
+  byte-diff is the human-readable version of it.
+- The four-file gate emitted **nothing** and exited 0: `lib/sanitizers/moodle.sh`,
+  `lib/sanitizers/standard.sh`, `tests/unit/test-moodle-preserve-admin.bats`,
+  `tests/unit/test-server-backup-sanitize.bats` are byte-identical between `origin/main` and
+  `origin/ops-127`.
+- Not just present but **alive**: `bats tests/unit/test-moodle-preserve-admin.bats
+  tests/unit/test-server-backup-sanitize.bats` on main is **12/12 ok**. Presence-on-main is a
+  weaker claim than passing-on-main, so the stronger one was taken.
+- **Merging it would have SHRUNK main, in two places, not one.** (a)
+  `scripts/commands/server-backup.sh`: main-only additions the branch lacks — the
+  `files_secrets_verify` pre-snapshot fail-LOUD check and the restic `--exclude`s for
+  `sync/*.yml|yaml`, `auth.json`, `.env*`. (b) The planner did not spot this one:
+  `git diff --stat` shows the branch **re-adding** `scripts/f26/moodle/auth_nwc/{auth.php,
+  classes/observer.php,db/events.php,lang,settings.php,version.php}` (+426 lines), which main
+  deliberately **retired to a pointer** (`CANONICAL-SOURCE.md`, programme item 9) precisely
+  because that copy is `2026071101/1.0.0` while LIVE ssc runs `2026072400/1.2.0-draft` — a
+  deploy sourced from it "would have silently downgraded live ssc and dropped the Art.9 consent
+  gate". So this branch is not merely redundant, it is a live-downgrade hazard.
+**Negative control (the gate is not vacuous):** the same gate script was first pointed at
+`scripts/commands/server-backup.sh`, a file that genuinely differs, and went **RED** (exit 1,
+26 diff lines). A gate that can only say "identical" would have proved nothing. It also fails
+RED, not silently green, on a file missing from either side.
+**Reversible-how:** the commits are preserved server-side forever at
+`refs/merge-requests/149/head` (= `cbb5cee`) and `refs/merge-requests/142/head` (= `b74e88d`) —
+`git fetch origin refs/merge-requests/149/head:ops-127` restores the branch verbatim. The local
+branch ref `ops-127` in `/home/rob/nwp` also survives worktree removal.
+**Not done deliberately:** `origin/ops-127-recovery` @ `91d4e3e` is also fully merged into main
+(`089c4ca`) and is now stale, but it is outside this item's territory and was left alone.
 ---
 
 ## Item 2 — `oversight-honesty` (2026-07-26)

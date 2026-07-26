@@ -29,16 +29,16 @@ This document covers three critical security areas:
 
 ```bash
 # Database-only backup (fast, recommended for daily backups)
-./backup.sh -by nwp5 "Daily automated backup"
+pl backup -by nwp5 "Daily automated backup"
 
 # Full backup (database + files)
-./backup.sh -y nwp5 "Weekly full backup"
+pl backup -y nwp5 "Weekly full backup"
 
 # Backup with Git integration (for off-site storage)
-./backup.sh --git -y nwp5 "Push to GitLab"
+pl backup --git -y nwp5 "Push to GitLab"
 
 # Backup with bundle for offline archival
-./backup.sh --bundle -y nwp5 "Offline archive"
+pl backup --bundle -y nwp5 "Offline archive"
 ```
 
 ### Backup Storage Rules
@@ -62,7 +62,7 @@ Archive:   Git bundle files (via --bundle flag)
 
 Before any production deployment:
 
-- [ ] Run `./backup.sh -by sitename_prod "Pre-deployment backup"`
+- [ ] Run `pl backup -by sitename_prod "Pre-deployment backup"`
 - [ ] Verify backup file exists and has reasonable size
 - [ ] Document the backup filename for rollback reference
 - [ ] Test restore procedure is documented
@@ -86,10 +86,10 @@ Production databases contain:
 
 ```bash
 # Basic sanitization (emails, passwords, sessions)
-./backup.sh --sanitize basic -by nwp5_prod "Sanitized for dev"
+pl backup --sanitize basic -by nwp5_prod "Sanitized for dev"
 
 # Full sanitization (includes logs, webforms, commerce)
-./backup.sh --sanitize full -by nwp5_prod "Fully sanitized"
+pl backup --sanitize full -by nwp5_prod "Fully sanitized"
 
 # Sanitize when syncing production to staging
 ./prod2stg.sh --sanitize nwp5
@@ -115,7 +115,7 @@ For EU user data:
 
 ```bash
 # Always use full sanitization for GDPR compliance
-./backup.sh --sanitize full -by production_site
+pl backup --sanitize full -by production_site
 
 # Consider field-level encryption for sensitive data in production
 # Install: drupal/encrypt, drupal/field_encrypt
@@ -338,7 +338,7 @@ pl audit avc --security-only
 
 > **Retired 2026-07-26:** the `lib/safe-ops.sh` proxy (`safe_server_status`,
 > `safe_db_status`, `safe_security_check`). It had **zero callers anywhere in the
-> tree** and printed instructions to run `./stg2prod.sh` and `./backup.sh` — root
+> tree** and printed instructions to run `./stg2prod.sh` and `./backup.sh` — root <!-- doc-truth:retired -->
 > scripts that do not exist. It was dead code that the standing orders pointed at,
 > which reads as coverage. The verbs above are the working replacement, and
 > `tests/unit/test-host.bats` fails if `CLAUDE.md` ever again names a `lib/*.sh`

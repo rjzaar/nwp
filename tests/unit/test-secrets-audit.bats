@@ -71,6 +71,15 @@ secrets:
     provider: gitlab
     type: fixture token with two declared locations
     scopes: [api]
+    # An entry that CLAIMS a scope must also say how the claim is checked, or
+    # the scope column is folklore that can never disagree with the provider.
+    # pl secrets lint enforces this (NO-PROBE), so the fixture carries one too —
+    # a fixture that could not pass the estate's own lint is a bad fixture.
+    # (No backticks here: this heredoc is unquoted, so they would be executed.)
+    probe:
+      - name: alive
+        url: https://fixture.example.org/api/v4/user
+        expect: 200
     stored_in:
       - .secrets.yml:fixture.token
       - ${TEST_TMP}/copy/auth.json:.["gitlab-token"]["fixture.example.org"]

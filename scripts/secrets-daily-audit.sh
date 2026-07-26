@@ -29,10 +29,26 @@ ALERT_FILE="$ROOT/private/.token-audit-alert"
 
 out=$(bash "$SEC" audit --sync --quiet --days "$WARN" 2>/dev/null); rc=$?
 
+BLIND_FILE="$ROOT/private/.token-audit-blind"
+BLIND_MAX="${SECRETS_BLIND_MAX_DAYS:-3}"
+
 if [ "$rc" = "2" ]; then
-  echo "$STAMP token-audit: GitLab host unreachable — skipped (no alarm)"
+  # BLINDNESS IS A STATE, NOT A PASS. "skipped (no alarm)" + exit 0 is the exact
+  # shape of the sweeps that ran dead for weeks while their logs said OK: the one
+  # condition under which the check cannot work is the one condition it reports
+  # as fine. Count consecutive blind days and escalate — a fleet nobody has been
+  # able to audit for BLIND_MAX days is a finding, not a quiet skip.
+  blind=$(( $( [ -f "$BLIND_FILE" ] && head -1 "$BLIND_FILE" 2>/dev/null | tr -dc '0-9' || echo 0 ) + 0 ))
+  blind=$(( blind + 1 ))
+  printf '%s\n%s\n' "$blind" "$STAMP" > "$BLIND_FILE"
+  if [ "$blind" -ge "$BLIND_MAX" ]; then
+    echo "$STAMP token-audit: AUDIT-BLIND for $blind consecutive run(s) — the fleet has NOT been audited"
+    exit 4
+  fi
+  echo "$STAMP token-audit: AUDIT-BLIND (run $blind of $BLIND_MAX before escalation) — provider unreachable"
   exit 0
 fi
+rm -f "$BLIND_FILE" 2>/dev/null || true
 
 if [ -n "$out" ]; then
   {

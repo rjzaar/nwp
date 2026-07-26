@@ -448,6 +448,13 @@ rotate_one(){
   post_rotate "$idx" "$id" "$cadence" "$partial"
 }
 
+# SAME GATE AS `done`: a half-propagated rotation is a failed rotation and must
+# read as one. This branch wrote that gate INSIDE post_rotate; main has since
+# landed it in the CALLER (rotate_one, above), where it also understands
+# `--force` and records the result as an explicit PARTIAL rather than refusing
+# outright. Main's placement is kept — duplicating the check here would re-refuse
+# exactly the `--force` path main added, so the gate would be unoverridable by
+# the flag built to override it.
 post_rotate(){ # idx id cadence [partial-marker]
   local idx="$1" id="$2" cadence="$3" partial="${4:-}" def exp
   def=$(date -d "+${cadence} days" +%F 2>/dev/null)
@@ -510,19 +517,58 @@ api_rotate(){ # id idx provider  -> 0 on success
   esac
 }
 
+################################################################################
+# rotate --dry-run — the preflight. Answers "if I rotated this right now, would
+#   the stamp be honest?" WITHOUT prompting for a value and without writing a
+#   byte. Safe to run from CI and from `pl todo`; that is the point.
+################################################################################
+rotate_dry_run(){ # id-or-#
+  local arg="$1" idx id
+  if [[ "$arg" =~ ^[0-9]+$ ]]; then idx=$((arg-1)); else idx=$(registry_index_of "$arg"); fi
+  { [ "$idx" = "-1" ] || [ -z "$(field "$idx" id)" ]; } && { print_error "no such secret: $arg"; return 1; }
+  id=$(field "$idx" id)
+  print_header "Rotate (dry-run): $id — nothing will be written"
+  "$YQ" e ".secrets[$idx].stored_in[]" "$REGISTRY" 2>/dev/null | sed 's/^/  stored in: /'
+  local drifted; drifted=$(entry_locations_in_sync "$idx" 2>&1 >/dev/null)
+  if [ -n "$drifted" ]; then
+    print_error "$id: refusing to stamp — these declared locations do NOT hold the canonical value:"
+    printf '    %s\n' $drifted
+    print_hint "propagate first:  pl secrets sync $id"
+    return 1
+  fi
+  print_success "$id: every declared location agrees — a rotation here would stamp honestly"
+  return 0
+}
+
 FORCE_ROTATE=0
 cmd_rotate(){
   need_yq; need_registry
-  local target="" a
+  # --dry-run (this branch) and --force (main) may appear on either side of the
+  # target, so both are parsed in one pass rather than by position.
+  local target="" DRY=0 a
   for a in "$@"; do
     case "$a" in
-      --force) FORCE_ROTATE=1 ;;
-      -*)      [ -z "$target" ] && target="$a" ;;   # --due / --all
-      *)       [ -z "$target" ] && target="$a" ;;
+      --dry-run|-n) DRY=1 ;;
+      --force)      FORCE_ROTATE=1 ;;
+      -*)           [ -z "$target" ] && target="$a" ;;   # --due / --all
+      *)            [ -z "$target" ] && target="$a" ;;
     esac
   done
-  [ -n "$target" ] || die "usage: pl secrets rotate <id|--due|--all> [--force]"
+  [ -n "$target" ] || die "usage: pl secrets rotate <id|--due|--all> [--dry-run] [--force]"
   local rc=0
+  if [ "$DRY" = 1 ]; then
+    local n i id
+    if [ "$target" = "--due" ] || [ "$target" = "--all" ]; then
+      n=$("$YQ" e '.secrets | length' "$REGISTRY"); [ "$n" = "null" ] && n=0
+      for ((i=0;i<n;i++)); do
+        [ "$(field "$i" status)" = "not-provisioned" ] && continue
+        id=$(field "$i" id); rotate_dry_run "$id" || rc=1
+      done
+    else
+      rotate_dry_run "$target" || rc=1
+    fi
+    return "$rc"
+  fi
   if [ "$target" = "--due" ] || [ "$target" = "--all" ]; then
     local n i id exp d; n=$("$YQ" e '.secrets | length' "$REGISTRY")
     for ((i=0;i<n;i++)); do
@@ -844,6 +890,98 @@ cmd_lint(){
               done; } | sort -u )
   [ "$perm_bad" -eq 0 ] && print_success "every secret-bearing file is 0600"
 
+  # 7. NO-PROBE — a declared SCOPE that is never checked is folklore.
+  #    `_probe_scopes` has existed since the last pass and works; 0 of 25 entries
+  #    carried a `probe:` block, so the scope column could not disagree with the
+  #    provider even in principle. That is how the registry came to attribute
+  #    "can destroy every prod Linode" to a token that is in fact DNS-only, while
+  #    the token that actually holds instances:read_write was not recorded at all.
+  #    If an entry claims a capability, it must also say how to check the claim.
+  local noprobe=0
+  for ((i=0;i<n;i++)); do
+    local pid pst nsc npr
+    pid=$(field "$i" id); pst=$(field "$i" status)
+    [ -z "$pid" ] && continue
+    [ "$pst" = "not-provisioned" ] && continue
+    nsc=$("$YQ" e ".secrets[$i].scopes // [] | length" "$REGISTRY" 2>/dev/null)
+    [ "${nsc:-0}" -eq 0 ] 2>/dev/null && continue
+    npr=$("$YQ" e ".secrets[$i].probe // [] | length" "$REGISTRY" 2>/dev/null)
+    [ "${npr:-0}" -gt 0 ] 2>/dev/null && continue
+    print_error "NO-PROBE: $pid declares scopes but no probe: — the scope claim can never be falsified"
+    noprobe=$((noprobe+1)); issues=$((issues+1))
+  done
+  if [ "$noprobe" -gt 0 ]; then
+    print_hint "scaffold one:  pl secrets probe-scaffold <id>    (then correct the expected codes against reality)"
+  else
+    print_success "every entry that claims a scope also declares how to check it"
+  fi
+
+  # 8. TIER — .secrets.yml is the tier CLAUDE.md tells an AI agent it MAY read.
+  #    An admin password or a backup-DECRYPTION password in that file is a tier
+  #    violation by construction: it hands an AI-readable file the ability to
+  #    become the operator, or to read prod user data out of a DR snapshot.
+  #    Those belong in .secrets.data.yml, which the agent is deny-ruled from.
+  #    Note this fires on the KEY NAME, deliberately — a rule that needed the
+  #    value would have to read the value.
+  local tierbad=0
+  while IFS= read -r k; do
+    [ -z "$k" ] && continue
+    case "$k" in
+      *admin.password|*admin.initial_password|*admin_password|*.root_password) ;;
+      restic.*.password|*.restic_password|*backup*.password|*.decryption_key) ;;
+      *) continue ;;
+    esac
+    len=$("$YQ" e "(.$k // \"\") | length" "$SECRETS_FILE" 2>/dev/null)
+    [ "${len:-0}" -eq 0 ] && continue
+    print_error "TIER: '$k' is an admin/backup-decryption credential living in the AI-readable tier ($SECRETS_FILE)"
+    tierbad=$((tierbad+1)); issues=$((issues+1))
+  done < <("$YQ" e '.. | select(tag == "!!str") | path | join(".")' "$SECRETS_FILE" 2>/dev/null)
+  if [ "$tierbad" -gt 0 ]; then
+    print_hint "move it to .secrets.data.yml (operator action — an AI agent must not perform this move):"
+    print_hint "  pl secrets migrate-tier <dotted.key>   then re-run this lint"
+  else
+    print_success "no admin/backup-decryption credential in the AI-readable tier"
+  fi
+
+  # 9. UNTRACKED-REGISTRY — the source of record had no history, no review and no
+  #    second copy, while its own GENERATED outputs (token-consumers.md, the
+  #    rotation logs) were tracked. A registry you cannot diff is a registry that
+  #    cannot be shown to have been wrong.
+  #
+  #    NOTE ON WHERE. The obvious fix — un-ignore it in nwp/nwp — is the wrong
+  #    one, and measurably so: gitleaks over this file reports 162 findings, ALL
+  #    of them identity/topology (66 live-domain-apex, 65 live-internal-domain,
+  #    25 internal-bare-hostname, 4 operator-public-ip, 2 operator-personal-email)
+  #    and ZERO credential findings. The registry is value-free exactly as
+  #    designed — and it is also a complete map of the estate plus the operator's
+  #    public IP and personal address. nwp/nwp is the public-release track; those
+  #    three rules exist precisely to keep that out of it. So the requirement is
+  #    "under version control", not "in THIS repo": a nested private repo at
+  #    private/.git satisfies the history/review/second-copy goal without
+  #    publishing the topology. `git -C <dir-of-registry>` resolves to whichever
+  #    repo is innermost, so either arrangement passes.
+  local _regdir; _regdir=$(dirname "$REGISTRY")
+  if git -C "$_regdir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if ! git -C "$_regdir" ls-files --error-unmatch "$REGISTRY" >/dev/null 2>&1; then
+      print_error "UNTRACKED-REGISTRY: $REGISTRY is not tracked by git — no history, no review, no second copy"
+      print_hint "put it under version control WITHOUT publishing the estate topology:  pl secrets registry-track"
+      issues=$((issues+1))
+    else
+      print_success "the registry itself is under version control"
+      # Tracked but never committed since the last edit is only half the property.
+      if ! git -C "$_regdir" diff --quiet -- "$REGISTRY" 2>/dev/null; then
+        print_warning "UNCOMMITTED-REGISTRY: tracked, but the working copy differs from the last commit"
+        issues=$((issues+1))
+      fi
+      # …and a repo with no remote is still a single copy on a single disk.
+      if [ -z "$(git -C "$_regdir" remote 2>/dev/null)" ]; then
+        print_warning "NO-REGISTRY-REMOTE: $_regdir has no remote — history exists, but there is still only one copy"
+        print_hint "add a PRIVATE remote (never nwp/nwp — see the note above):  git -C $_regdir remote add origin <private-url>"
+        issues=$((issues+1))
+      fi
+    fi
+  fi
+
   echo
   [ "$issues" -eq 0 ] && print_success "LINT PASS — registry and .secrets.yml are consistent" \
     || { print_error "LINT: $issues issue(s) above"; return 1; }
@@ -1162,10 +1300,31 @@ cmd_audit(){
   # declared location hold the same value?" — without spending a probe. The
   # provider rate-limits repeated auth probes and then answers 000, and a 000 is
   # not a verdict; a check that cannot be repeated safely gets run less often.
+  #
+  # The gate used to be a SINGLE 12s shot. On the 3.8 GB forge box — which serves
+  # GitLab plus five live sites and is routinely slow under load — one slow reply
+  # was indistinguishable from an outage, and an outage was indistinguishable from
+  # "audited clean": the caller got a quiet exit and no alarm. So:
+  #   · retry (default 3) with a short backoff before believing the host is down,
+  #   · say AUDIT-BLIND out loud so the word appears in logs and in `pl todo`,
+  #   · and NEVER stamp last_successful_audit while blind. That field is what lets
+  #     every downstream surface distinguish "checked, clean" from "never checked".
   if [ "$OFFLINE" = 0 ] && [ -n "$host_default" ]; then
-    local _rc; _rc=$(curl -s -o /dev/null -w '%{http_code}' --max-time 12 "https://$host_default/api/v4/metadata" 2>/dev/null)
+    local _tries="${NWP_SECRETS_AUDIT_RETRIES:-3}" _backoff="${NWP_SECRETS_AUDIT_BACKOFF:-3}"
+    local _rc="000" _t
+    for ((_t=1; _t<=_tries; _t++)); do
+      _rc=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$host_default/api/v4/metadata" 2>/dev/null)
+      [ "$_rc" != "000" ] && break
+      [ "$_t" -lt "$_tries" ] && sleep "$_backoff"
+    done
     if [ "$_rc" = "000" ]; then
-      [ "$QUIET" = 0 ] && print_error "GitLab host $host_default unreachable — not probing (would false-positive). Try again later."
+      if [ "$JSON" = 1 ]; then
+        jq -n --arg h "$host_default" --argjson t "$_tries" \
+          '{state:"AUDIT-BLIND",host:$h,attempts:$t,problems:null,entries:[]}'
+      else
+        print_error "AUDIT-BLIND: $host_default did not answer in $_tries attempt(s) — not probing (would report every token DEAD)."
+        print_hint "this is a STATE, not a pass: last_successful_audit is unchanged. Downstream surfaces must grade AMBER, not GREEN."
+      fi
       return 2
     fi
   fi
@@ -1339,6 +1498,25 @@ cmd_audit(){
       print_success "every token valid, and every declared location matches canonical"
     fi
   fi
+
+  # We got all the way here, which means the provider ANSWERED. Record it. This
+  # is the difference between "audited clean" and "never checked" — without the
+  # stamp, a fleet that has been blind for a fortnight is indistinguishable from
+  # one that was verified this morning. Findings do not suppress the stamp: an
+  # audit that found problems is still an audit that RAN.
+  #
+  # But UNKNOWN entries do suppress it. This branch's own rule is "never stamp
+  # last_successful_audit while blind", and main has since added a FINER-GRAINED
+  # blindness than the whole-host one this branch knew about: `unknown` counts
+  # tokens the provider gave no verdict on (rate-limit, 5xx, timeout). That is
+  # the same blindness per token, so it gets the same answer. Stamping a
+  # "successful audit" over tokens nobody managed to check is the exact lie both
+  # halves of this merge exist to remove.
+  if [ "$unknown" -eq 0 ]; then
+    local _now; _now=$(date -u +%FT%TZ)
+    NWP_AUDIT_STAMP="$_now" "$YQ" e -i '.last_successful_audit = strenv(NWP_AUDIT_STAMP)' "$REGISTRY" 2>/dev/null || true
+  fi
+
   # 1 = a real problem · 2 = cannot verify · 0 = verified clean.
   [ "$problems" -gt 0 ] && return 1
   [ "$unknown"  -gt 0 ] && return 2
@@ -1673,6 +1851,286 @@ cmd_verify_copy(){
   done < <(entry_locations "$idx")
   [ "$checked" -eq 0 ] && { print_info "no host=… locations declared for $id"; return 0; }
   [ "$problems" -eq 0 ] && return 0 || return 1
+}
+
+################################################################################
+# registry-track — put the source of record under version control, in the right
+#   place. Answers the UNTRACKED-REGISTRY lint error with a command instead of a
+#   paragraph of advice.
+#
+#   Why a NESTED repo and not the outer one: the registry holds no values, but it
+#   does hold the whole estate topology — measured, 162 gitleaks findings, all
+#   identity/hostname, zero credential. nwp/nwp is the public-release track and
+#   carries rules specifically to keep operator IP / personal email / live domains
+#   out of it. Committing the registry there would be the leakage gate's own
+#   counterexample. private/.git keeps history and review; a private remote (an
+#   operator step, since only the operator can choose it) supplies the second copy.
+################################################################################
+cmd_registry_track(){
+  need_registry
+  local regdir; regdir=$(dirname "$REGISTRY")
+  local DRY=0 a; for a in "$@"; do case "$a" in --dry-run|-n) DRY=1;; esac; done
+
+  # Refuse if the registry would land in the OUTER repo — that is the failure
+  # mode this verb exists to prevent, so it must not be reachable by accident.
+  local outer; outer=$(git -C "$regdir" rev-parse --show-toplevel 2>/dev/null || true)
+  if [ -n "$outer" ] && [ ! -e "$regdir/.git" ] && ! git -C "$regdir" check-ignore -q "$REGISTRY" 2>/dev/null; then
+    die "refusing: $REGISTRY is NOT ignored by the outer repo at $outer — tracking it there would publish the estate topology. Restore the private/* ignore first."
+  fi
+
+  print_header "registry-track — version control for $REGISTRY"
+  if [ -e "$regdir/.git" ]; then
+    print_info "$regdir is already a git repository"
+  else
+    if [ "$DRY" = 1 ]; then print_warning "--dry-run: would 'git init' $regdir"; else
+      git -C "$regdir" init -q || die "git init failed in $regdir"
+      print_success "initialised $regdir as its own repository"
+    fi
+  fi
+
+  # Belt and braces: even inside the private repo, never track a VALUE file.
+  local gi="$regdir/.gitignore"
+  if [ "$DRY" = 0 ] && [ ! -f "$gi" ]; then
+    cat > "$gi" <<'EOF'
+# This repo holds the TOKENLESS registry and its rotation log — metadata only.
+# Never a value. These denies are defence in depth, not the primary control.
+.secrets.yml
+.secrets.data.yml
+*.token
+*.key
+*.pem
+.token-audit-alert
+.token-audit-blind
+EOF
+    print_success "wrote $gi (value files denied even here)"
+  fi
+
+  if [ "$DRY" = 1 ]; then
+    print_warning "--dry-run: would add + commit secrets-registry.yml, rotation logs and token-consumers.md"
+    return 0
+  fi
+
+  git -C "$regdir" add -- "$(basename "$REGISTRY")" .gitignore 2>/dev/null || true
+  git -C "$regdir" add -- rotation-*.md token-consumers.md 2>/dev/null || true
+  if git -C "$regdir" diff --cached --quiet 2>/dev/null; then
+    print_info "nothing to commit — already up to date"
+  else
+    git -C "$regdir" commit -q -m "secrets: record the registry state ($(date -u +%F))" \
+      && print_success "committed"
+  fi
+
+  if [ -z "$(git -C "$regdir" remote 2>/dev/null)" ]; then
+    echo
+    print_warning "OPERATOR ACTION: this repo has no remote, so there is still exactly one copy."
+    print_warning "Add a PRIVATE remote — NOT nwp/nwp, which is the public-release track:"
+    print_hint "  git -C $regdir remote add origin <private-url> && git -C $regdir push -u origin HEAD"
+    return 0
+  fi
+  print_success "remote configured: $(git -C "$regdir" remote -v | head -1)"
+}
+
+################################################################################
+# cron — provision the daily audit BY CODE.
+#
+#   CLAUDE.md asserts "a daily `pl secrets audit` catches dead/expiring tokens".
+#   That was false: scripts/secrets-daily-audit.sh was installed on zero hosts,
+#   and there was no verb to install it — only a comment in the script's header
+#   telling a human to hand-edit a crontab. A control that exists only as an
+#   instruction is not a control, and the estate had no way to tell whether it
+#   was running anywhere.
+#
+#   install/status/remove are idempotent block rewrites on a MARKED region, so
+#   re-running never duplicates the entry and `remove` never eats a neighbour's
+#   line. --host=<role> installs on a remote role over ssh via server-resolver;
+#   with no --host it targets this machine. --dry-run prints the crontab that
+#   WOULD be written and touches nothing.
+################################################################################
+CRON_MARK_BEGIN="# >>> nwp secrets daily audit (pl secrets cron) >>>"
+CRON_MARK_END="# <<< nwp secrets daily audit <<<"
+
+_cron_block(){ # root schedule
+  printf '%s\n%s %s/scripts/secrets-daily-audit.sh >> %s/logs/secrets-daily-audit.log 2>&1\n%s\n' \
+    "$CRON_MARK_BEGIN" "$2" "$1" "$1" "$CRON_MARK_END"
+}
+
+cmd_cron(){
+  local sub="${1:-status}"; shift || true
+  local HOSTROLE="" DRY=0 SCHED="${NWP_SECRETS_CRON_SCHEDULE:-30 6 * * *}" a
+  for a in "$@"; do case "$a" in
+    --host=*)     HOSTROLE="${a#--host=}" ;;
+    --schedule=*) SCHED="${a#--schedule=}" ;;
+    --dry-run|-n) DRY=1 ;;
+  esac; done
+
+  # Resolve where the estate checkout lives on the TARGET. Locally that is
+  # $NWP_ROOT; remotely we ask, rather than assuming $HOME/nwp — assuming it is
+  # how `pl loop` came to report on whichever machine you typed it on.
+  local ssh_cmd="" target_desc="this machine ($(hostname -s 2>/dev/null || echo local))" remote_root=""
+  if [ -n "$HOSTROLE" ]; then
+    # shellcheck disable=SC1091
+    [ -f "$PROJECT_ROOT/lib/server-resolver.sh" ] && source "$PROJECT_ROOT/lib/server-resolver.sh" 2>/dev/null
+    if declare -F get_server_ssh_command >/dev/null 2>&1; then
+      ssh_cmd=$(get_server_ssh_command "$HOSTROLE" 2>/dev/null) || ssh_cmd=""
+    fi
+    [ -z "$ssh_cmd" ] && ssh_cmd="ssh -o BatchMode=yes $HOSTROLE"
+    target_desc="$HOSTROLE (via ${ssh_cmd%% *})"
+    remote_root=$($ssh_cmd 'for d in "$HOME/nwp" /opt/nwp /srv/nwp; do [ -x "$d/scripts/secrets-daily-audit.sh" ] && { echo "$d"; break; }; done' 2>/dev/null | head -1)
+    [ -z "$remote_root" ] && die "no NWP checkout with scripts/secrets-daily-audit.sh found on $HOSTROLE — deploy the checkout first"
+  fi
+  local root="${remote_root:-$NWP_ROOT}"
+
+  local block; block=$(_cron_block "$root" "$SCHED")
+
+  case "$sub" in
+    status)
+      print_header "secrets daily audit — cron status on $target_desc"
+      local ct
+      if [ -n "$ssh_cmd" ]; then ct=$($ssh_cmd 'crontab -l 2>/dev/null'); else ct=$(crontab -l 2>/dev/null); fi
+      if printf '%s\n' "$ct" | grep -qF "$CRON_MARK_BEGIN"; then
+        printf '%s\n' "$ct" | sed -n "/$(printf '%s' "$CRON_MARK_BEGIN" | sed 's/[]\/$*.^[]/\\&/g')/,/$(printf '%s' "$CRON_MARK_END" | sed 's/[]\/$*.^[]/\\&/g')/p" | sed 's/^/  /'
+        print_success "installed"
+        return 0
+      fi
+      print_error "NOT INSTALLED on $target_desc — the daily token audit is not running here"
+      print_hint "install it:  pl secrets cron install${HOSTROLE:+ --host=$HOSTROLE}"
+      return 1
+      ;;
+    install)
+      print_header "secrets daily audit — install on $target_desc"
+      echo "$block" | sed 's/^/  /'
+      if [ "$DRY" = 1 ]; then print_warning "--dry-run: nothing written"; return 0; fi
+      # idempotent: strip any existing marked block, then append the new one
+      local script
+      script=$(printf '%s\n' \
+        'set -e' \
+        "cur=\$(crontab -l 2>/dev/null || true)" \
+        "new=\$(printf '%s\n' \"\$cur\" | awk 'BEGIN{s=1} /^# >>> nwp secrets daily audit/{s=0} s{print} /^# <<< nwp secrets daily audit/{s=1}')" \
+        "printf '%s\n%s\n' \"\$new\" \"\$BLOCK\" | grep -v '^\$' | crontab -")
+      if [ -n "$ssh_cmd" ]; then
+        BLOCK="$block" $ssh_cmd "BLOCK=\$(cat <<'EOF'
+$block
+EOF
+); $script" || die "failed to install cron on $HOSTROLE"
+      else
+        BLOCK="$block" bash -c "$script" || die "failed to install cron locally"
+      fi
+      print_success "installed on $target_desc — schedule: $SCHED"
+      print_hint "verify:  pl secrets cron status${HOSTROLE:+ --host=$HOSTROLE}"
+      ;;
+    remove)
+      if [ "$DRY" = 1 ]; then print_warning "--dry-run: would remove the marked block on $target_desc"; return 0; fi
+      local rm_script="cur=\$(crontab -l 2>/dev/null || true); printf '%s\n' \"\$cur\" | awk 'BEGIN{s=1} /^# >>> nwp secrets daily audit/{s=0} s{print} /^# <<< nwp secrets daily audit/{s=1}' | crontab -"
+      if [ -n "$ssh_cmd" ]; then $ssh_cmd "$rm_script"; else bash -c "$rm_script"; fi
+      print_success "removed from $target_desc"
+      ;;
+    *) die "usage: pl secrets cron install|status|remove [--host=<role>] [--schedule='30 6 * * *'] [--dry-run]" ;;
+  esac
+}
+
+################################################################################
+# probe-scaffold — write a starter `probe:` block for an entry, so that "this
+#   entry claims a scope it never checks" is a fixable lint error rather than a
+#   hand-edit of the source of record.
+#
+#   A probe is a triple (name, url, expect). The expectation may be POSITIVE
+#   ("this token MUST reach instances" → 200) or NEGATIVE ("this token must NOT
+#   reach instances" → 401/403). The negative form is the important one and the
+#   one prose could never carry: it is how you record "linode.api_token is
+#   DNS-only" in a way that goes red the day somebody widens it.
+#
+#   Every scaffolded probe is READ-ONLY or a create-without-creating idiom
+#   (an empty-body POST that must be rejected at validation, i.e. 400 — proving
+#   the token was authorised to attempt it without any object being made).
+################################################################################
+cmd_probe_scaffold(){
+  need_yq; need_registry
+  local arg="${1:-}"
+  [ -n "$arg" ] || die "usage: pl secrets probe-scaffold <#|id|--all> [--force]"
+
+  # --all: scaffold every entry lint reports as NO-PROBE, so clearing the finding
+  # is one command rather than ten. Without this the lint error is technically
+  # actionable and practically a chore, and chores get muted.
+  if [ "$arg" = "--all" ]; then
+    local n i id st nsc npr done=0 skipped=0
+    n=$("$YQ" e '.secrets | length' "$REGISTRY"); [ "$n" = "null" ] && n=0
+    for ((i=0;i<n;i++)); do
+      id=$(field "$i" id); st=$(field "$i" status)
+      [ -z "$id" ] && continue
+      [ "$st" = "not-provisioned" ] && continue
+      nsc=$("$YQ" e ".secrets[$i].scopes // [] | length" "$REGISTRY" 2>/dev/null)
+      [ "${nsc:-0}" -eq 0 ] 2>/dev/null && continue
+      npr=$("$YQ" e ".secrets[$i].probe // [] | length" "$REGISTRY" 2>/dev/null)
+      [ "${npr:-0}" -gt 0 ] 2>/dev/null && { skipped=$((skipped+1)); continue; }
+      cmd_probe_scaffold "$id" "${2:-}" && done=$((done+1)) || true
+    done
+    echo
+    print_info "scaffolded $done entr(ies); $skipped already had a probe:"
+    print_warning "EVERY scaffolded expectation is a TEMPLATE. Run 'pl secrets audit' and correct"
+    print_warning "each SCOPE-DRIFT against what the provider actually says — an unverified probe"
+    print_warning "is the same folklore in a new shape."
+    return 0
+  fi
+
+  local idx
+  if [[ "$arg" =~ ^[0-9]+$ ]]; then idx=$((arg-1)); else idx=$(registry_index_of "$arg"); fi
+  { [ "$idx" = "-1" ] || [ -z "$(field "$idx" id)" ]; } && die "no such secret: $arg (see: pl secrets status)"
+
+  local id prov scopes host
+  id=$(field "$idx" id); prov=$(field "$idx" provider)
+  scopes=$("$YQ" e ".secrets[$idx].scopes // [] | join(\",\")" "$REGISTRY" 2>/dev/null)
+  [ -z "$scopes" ] && die "$id declares no scopes: — nothing to probe (add scopes: first, or leave both absent)"
+
+  local existing; existing=$("$YQ" e ".secrets[$idx].probe // [] | length" "$REGISTRY" 2>/dev/null)
+  if [ "${existing:-0}" -gt 0 ] && [ "${2:-}" != "--force" ]; then
+    print_warning "$id already has ${existing} probe(s) — refusing to overwrite (use --force)"
+    return 0
+  fi
+
+  # Write the PLACEHOLDER, not the resolved hostname. `expand_placeholders`
+  # resolves <gitlab-host> from .secrets.yml at probe time, so the registry never
+  # hard-codes the estate's internal domain — which is also why this file does
+  # not either (the leakage gate's live-internal-domain rule catches it if it
+  # ever does, as it did on the first draft of this function).
+  host='<gitlab-host>'
+
+  local json
+  case "$prov" in
+    gitlab)
+      # /user is the floor: any live token answers it. read_api/api then widen it.
+      json="[{\"name\":\"alive\",\"url\":\"https://${host}/api/v4/user\",\"expect\":200}"
+      case ",$scopes," in
+        *,api,*|*,read_api,*)
+          json="${json},{\"name\":\"read-projects\",\"url\":\"https://${host}/api/v4/projects?per_page=1\",\"expect\":200}" ;;
+      esac
+      # An entry that does NOT claim admin must be shown not to have it. This is
+      # the negative probe that would have caught a root PAT in a bot's slot.
+      [ "$(field "$idx" allow_admin)" = "true" ] \
+        || json="${json},{\"name\":\"not-admin\",\"url\":\"https://${host}/api/v4/admin/ci/variables\",\"expect\":403}"
+      json="${json}]"
+      ;;
+    linode)
+      # The exact pair that was mis-attributed: DNS reachable, instances NOT.
+      # Flip `expect` to 200 on the entry that is genuinely instances-capable.
+      json="[{\"name\":\"domains\",\"url\":\"https://api.linode.com/v4/domains\",\"expect\":200},"
+      json="${json}{\"name\":\"no-instances\",\"url\":\"https://api.linode.com/v4/linode/instances\",\"expect\":401}]"
+      ;;
+    github)
+      json="[{\"name\":\"alive\",\"url\":\"https://api.github.com/user\",\"expect\":200}]"
+      ;;
+    *)
+      die "no probe template for provider '$prov' — add one to cmd_probe_scaffold, or drop scopes: from $id if it has no API surface"
+      ;;
+  esac
+
+  PROBE_JSON="$json" "$YQ" e -i ".secrets[$idx].probe = (strenv(PROBE_JSON) | from_json)" "$REGISTRY" \
+    || die "failed to write probe block for $id"
+
+  print_success "scaffolded probe: for $id ($prov, scopes: $scopes)"
+  "$YQ" e ".secrets[$idx].probe" "$REGISTRY" | sed 's/^/    /'
+  echo
+  print_warning "these are TEMPLATE expectations. Verify each against the provider and correct it —"
+  print_warning "a probe that asserts what you assumed is the same folklore in a new shape."
+  print_hint "check it now:  pl secrets audit    (SCOPE-DRIFT = the registry and the provider disagree)"
 }
 
 ################################################################################
@@ -2203,6 +2661,9 @@ case "$sub" in
   migrate-registry|migrate) cmd_migrate_registry "$@" ;;
   discover-copies|discover) cmd_discover_copies "$@" ;;
   verify-copy)    cmd_verify_copy "$@" ;;
+  probe-scaffold|probe) cmd_probe_scaffold "$@" ;;
+  cron)           cmd_cron "$@" ;;
+  registry-track) cmd_registry_track "$@" ;;
   capabilities|caps) cmd_capabilities "$@" ;;
   surfaces)       cmd_surfaces "$@" ;;
   rotate)         cmd_rotate "$@" ;;
@@ -2250,6 +2711,17 @@ ${BOLD}pl secrets${NC} — registry-driven secret lifecycle (no token stored on 
   pl secrets adopt <dotted.key>  register a .secrets.yml key that lint reported as undeclared
   pl secrets discover-copies     find copies of a known credential the registry does NOT declare
   pl secrets verify-copy <#|id>  check host=… remote copies by SHA-256 over ssh (value never crosses)
+  pl secrets probe-scaffold <#|id> [--force]
+                                 write a starter probe: block so the entry's SCOPE claim is checkable.
+                                 Supports NEGATIVE probes (expect: 401/403 = "must NOT reach this") —
+                                 the only way to record "DNS-only" so it goes red when widened.
+  pl secrets cron install|status|remove [--host=<role>] [--dry-run]
+                                 provision the daily audit BY CODE instead of by remembered incantation.
+  pl secrets registry-track [--dry-run]
+                                 put the registry under version control in a NESTED private repo.
+                                 Not the outer repo: the registry is value-free but is a complete
+                                 estate map (162 gitleaks identity findings, 0 credential), and
+                                 nwp/nwp is the public-release track.
   pl secrets capabilities        live token x capability grid ("which token can do X" as a command)
   pl secrets surfaces            print the leak surfaces scan/scrub sweep
   pl secrets steps <#|id>        print the exact reissue procedure for one entry

@@ -52,6 +52,27 @@ emit() { # $1=body $2=code
   exit 0
 }
 
+# Transport failure. curl reports an unreachable host as exit 7 with an EMPTY
+# body; with -w '%{http_code}' that renders as the literal "000". The audit's
+# reachability gate keys off exactly that, so the blindness tests need it.
+#   FAKE_CURL_UNREACHABLE=1  — every call fails, forever (a real outage)
+#   FAKE_CURL_FLAP=<file>    — the file holds a countdown; that many calls fail
+#                              and then the host comes back (a transient flap,
+#                              which retry must absorb rather than alarm on)
+unreachable=0
+[ "${FAKE_CURL_UNREACHABLE:-0}" = "1" ] && unreachable=1
+if [ -n "${FAKE_CURL_FLAP:-}" ] && [ -f "$FAKE_CURL_FLAP" ]; then
+  n=$(head -1 "$FAKE_CURL_FLAP" 2>/dev/null); n="${n//[!0-9]/}"
+  if [ "${n:-0}" -gt 0 ]; then
+    unreachable=1
+    printf '%s\n' "$(( n - 1 ))" > "$FAKE_CURL_FLAP"
+  fi
+fi
+if [ "$unreachable" = 1 ]; then
+  [ "$want_code" = 1 ] && printf '000'
+  exit 7
+fi
+
 alive=0
 if [ -n "${FAKE_CURL_ALIVE:-}" ] && [ -f "$FAKE_CURL_ALIVE" ] && [ -n "$val" ]; then
   grep -qxF "$val" "$FAKE_CURL_ALIVE" && alive=1

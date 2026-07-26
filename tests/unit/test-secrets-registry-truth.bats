@@ -238,3 +238,258 @@ teardown() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"unparseable"* ]]
 }
+
+################################################################################
+# Programme item 1 — `secrets-truth-and-gate`.
+#
+# The prior pass made the registry's LOCATIONS honest (every declared copy is
+# probed). It left the registry's CAPABILITY claims folklore: `_probe_scopes`
+# was written but 0 of 25 entries carried a `probe:` block, so the scope column
+# could never disagree with the provider. That is the exact shape of a vacuous
+# pass — a column that renders, from a check that never runs. It is why the
+# registry attributed "destroy every prod Linode" to the wrong token for months.
+#
+# These assert the properties that make the scope claim real:
+#   (a) an entry that CLAIMS a scope but declares no probe is a LINT ERROR,
+#   (b) a probe whose expectation disagrees with the provider is a non-zero
+#       AUDIT (SCOPE-DRIFT),
+#   (c) `rotate` is gated the same way `done` already is — you may not stamp
+#       last_rotated while a declared copy still holds the old value,
+# plus the tier boundary, the blindness state, and tracking of the registry.
+################################################################################
+
+# --- (a) a claimed scope with no probe is a lint ERROR ----------------------
+
+@test "lint: an entry declaring scopes but no probe: block is NO-PROBE" {
+  # fixture_token declares `scopes: [api]` and (like all 25 live entries) has
+  # no probe:. Today lint calls this consistent.
+  run bash "$SECRETS_SH" lint
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"NO-PROBE"* ]]
+}
+
+@test "lint: NO-PROBE does not fire for an entry that claims no scope" {
+  yq e -i 'del(.secrets[0].scopes)' "$NWP_SECRETS_REGISTRY"
+  run bash "$SECRETS_SH" lint
+  [[ "$output" != *"NO-PROBE"* ]]
+}
+
+@test "lint: NO-PROBE does not fire for a not-provisioned entry" {
+  yq e -i '.secrets[0].status = "not-provisioned"' "$NWP_SECRETS_REGISTRY"
+  yq e -i '.fixture.token = ""' "$NWP_SECRETS_FILE"
+  run bash "$SECRETS_SH" lint
+  [[ "$output" != *"NO-PROBE"* ]]
+}
+
+@test "probe-scaffold: writes a probe block that satisfies the NO-PROBE rule" {
+  run bash "$SECRETS_SH" probe-scaffold fixture_token
+  [ "$status" -eq 0 ]
+  run yq e '.secrets[0].probe | length' "$NWP_SECRETS_REGISTRY"
+  [ "$output" -ge 1 ]
+  run bash "$SECRETS_SH" lint
+  [[ "$output" != *"NO-PROBE"* ]]
+}
+
+# --- (b) a probe whose expectation is wrong must make audit go red ----------
+
+@test "audit: SCOPE-DRIFT when the provider disagrees with the declared scope" {
+  bash "$SECRETS_SH" sync fixture_token
+  # declare a capability the provider refuses (fake-curl forces 403 on this url)
+  printf 'PLACEHOLDER_canonical_value_A\t/api/v4/admin\n' > "${TEST_TMP}/403"
+  export FAKE_CURL_403="${TEST_TMP}/403"
+  yq e -i '.secrets[0].probe = [{"name":"admin-read","url":"https://fixture.example.org/api/v4/admin","expect":200}]' "$NWP_SECRETS_REGISTRY"
+  run bash "$SECRETS_SH" audit
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"SCOPE-DRIFT"* ]]
+}
+
+@test "audit: a probe whose expectation matches reality is clean" {
+  bash "$SECRETS_SH" sync fixture_token
+  yq e -i '.secrets[0].probe = [{"name":"read-user","url":"https://fixture.example.org/api/v4/user","expect":200}]' "$NWP_SECRETS_REGISTRY"
+  run bash "$SECRETS_SH" audit
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"SCOPE-DRIFT"* ]]
+}
+
+@test "audit: a probe with a NEGATIVE expectation (scope absent) is honoured" {
+  # The registry must be able to record "this token must NOT reach instances".
+  # linode_api_token claims read_write but probes DNS-only; the way to make that
+  # claim checkable is an expect: 403 probe, not prose.
+  bash "$SECRETS_SH" sync fixture_token
+  printf 'PLACEHOLDER_canonical_value_A\t/api/v4/instances\n' > "${TEST_TMP}/403"
+  export FAKE_CURL_403="${TEST_TMP}/403"
+  yq e -i '.secrets[0].probe = [{"name":"no-instances","url":"https://fixture.example.org/api/v4/instances","expect":403}]' "$NWP_SECRETS_REGISTRY"
+  run bash "$SECRETS_SH" audit
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"SCOPE-DRIFT"* ]]
+}
+
+# --- (c) rotate must be gated exactly as `done` already is -------------------
+
+@test "rotate: --dry-run refuses to stamp while a declared copy is stale" {
+  # copy/auth.json and copy/env still hold PLACEHOLDER_stale_value_B.
+  run bash "$SECRETS_SH" rotate fixture_token --dry-run
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"refusing to stamp"* ]]
+  [ "$(yq e '.secrets[0].last_rotated' "$NWP_SECRETS_REGISTRY")" = "2026-01-01" ]
+}
+
+@test "rotate: --dry-run is clean once every location agrees" {
+  bash "$SECRETS_SH" sync fixture_token
+  run bash "$SECRETS_SH" rotate fixture_token --dry-run
+  [ "$status" -eq 0 ]
+  # dry-run stamps nothing either way
+  [ "$(yq e '.secrets[0].last_rotated' "$NWP_SECRETS_REGISTRY")" = "2026-01-01" ]
+}
+
+# --- tier boundary: the AI-readable file may not hold admin/decryption keys --
+
+@test "lint: an admin password in the AI-readable tier is a TIER violation" {
+  yq e -i '.gitlab.admin.password = "PLACEHOLDER_admin_password_value"' "$NWP_SECRETS_FILE"
+  yq e -i '.ignored_keys += ["gitlab.admin.password"]' "$NWP_SECRETS_REGISTRY"
+  run bash "$SECRETS_SH" lint
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"TIER"* ]]
+  [[ "$output" == *".secrets.data.yml"* ]]
+}
+
+@test "lint: a backup-decryption password in the AI-readable tier is a TIER violation" {
+  yq e -i '.restic.dr_pull.password = "PLACEHOLDER_restic_password_value"' "$NWP_SECRETS_FILE"
+  yq e -i '.ignored_keys += ["restic.dr_pull.password"]' "$NWP_SECRETS_REGISTRY"
+  run bash "$SECRETS_SH" lint
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"TIER"* ]]
+}
+
+@test "lint: an ordinary infra token is NOT a TIER violation" {
+  run bash "$SECRETS_SH" lint
+  [[ "$output" != *"TIER"* ]]
+}
+
+# --- blindness: an unreachable provider is a STATE, not a silent skip -------
+
+@test "audit: an unreachable provider reports AUDIT-BLIND and does not stamp" {
+  export FAKE_CURL_UNREACHABLE=1
+  export NWP_SECRETS_AUDIT_RETRIES=2 NWP_SECRETS_AUDIT_BACKOFF=0
+  run bash "$SECRETS_SH" audit
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"AUDIT-BLIND"* ]]
+  # blindness must never be recorded as a successful audit
+  run yq e '.last_successful_audit // "none"' "$NWP_SECRETS_REGISTRY"
+  [ "$output" = "none" ]
+}
+
+@test "audit: a reachable provider records last_successful_audit" {
+  bash "$SECRETS_SH" sync fixture_token
+  bash "$SECRETS_SH" audit
+  run yq e '.last_successful_audit // "none"' "$NWP_SECRETS_REGISTRY"
+  [ "$output" != "none" ]
+  [[ "$output" == 20* ]]
+}
+
+@test "audit: retries before declaring blindness" {
+  # one flap must not be reported as an outage
+  export FAKE_CURL_FLAP="${TEST_TMP}/flap"; printf '1\n' > "$FAKE_CURL_FLAP"
+  export NWP_SECRETS_AUDIT_RETRIES=3 NWP_SECRETS_AUDIT_BACKOFF=0
+  bash "$SECRETS_SH" sync fixture_token
+  run bash "$SECRETS_SH" audit
+  [ "$status" -ne 2 ]
+}
+
+# --- the source of record must itself be under version control ---------------
+
+@test "lint: an untracked registry inside a git work tree is an error" {
+  git -C "$NWP_ROOT" init -q 2>/dev/null || skip "git unavailable"
+  git -C "$NWP_ROOT" config user.email t@t; git -C "$NWP_ROOT" config user.name t
+  mkdir -p "$NWP_ROOT/private"
+  cp "$NWP_SECRETS_REGISTRY" "$NWP_ROOT/private/secrets-registry.yml"
+  NWP_SECRETS_REGISTRY="$NWP_ROOT/private/secrets-registry.yml" run bash "$SECRETS_SH" lint
+  [[ "$output" == *"UNTRACKED-REGISTRY"* ]]
+}
+
+@test "registry-track: makes private/ its own repo and clears UNTRACKED-REGISTRY" {
+  command -v git >/dev/null || skip "git unavailable"
+  git -C "$NWP_ROOT" init -q
+  git -C "$NWP_ROOT" config user.email t@t; git -C "$NWP_ROOT" config user.name t
+  # the outer repo must IGNORE private/ — that is the precondition the verb checks
+  printf 'private/*\n' > "$NWP_ROOT/.gitignore"
+  mkdir -p "$NWP_ROOT/private"
+  cp "$NWP_SECRETS_REGISTRY" "$NWP_ROOT/private/secrets-registry.yml"
+  export NWP_SECRETS_REGISTRY="$NWP_ROOT/private/secrets-registry.yml"
+  export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+
+  run bash "$SECRETS_SH" registry-track
+  [ "$status" -eq 0 ]
+  [ -e "$NWP_ROOT/private/.git" ]
+  # tracked in the NESTED repo, still invisible to the outer one
+  git -C "$NWP_ROOT/private" ls-files --error-unmatch secrets-registry.yml
+  run git -C "$NWP_ROOT" ls-files --error-unmatch private/secrets-registry.yml
+  [ "$status" -ne 0 ]
+
+  run bash "$SECRETS_SH" lint
+  [[ "$output" != *"UNTRACKED-REGISTRY"* ]]
+  # …but a single copy on a single disk is still flagged
+  [[ "$output" == *"NO-REGISTRY-REMOTE"* ]]
+}
+
+@test "registry-track: refuses when the outer repo would actually track the file" {
+  command -v git >/dev/null || skip "git unavailable"
+  git -C "$NWP_ROOT" init -q
+  git -C "$NWP_ROOT" config user.email t@t; git -C "$NWP_ROOT" config user.name t
+  # NO private/ ignore rule => committing here would publish the estate topology
+  mkdir -p "$NWP_ROOT/private"
+  cp "$NWP_SECRETS_REGISTRY" "$NWP_ROOT/private/secrets-registry.yml"
+  export NWP_SECRETS_REGISTRY="$NWP_ROOT/private/secrets-registry.yml"
+  run bash "$SECRETS_SH" registry-track
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"refusing"* ]]
+}
+
+@test "registry-track: --dry-run creates no repository" {
+  command -v git >/dev/null || skip "git unavailable"
+  git -C "$NWP_ROOT" init -q
+  printf 'private/*\n' > "$NWP_ROOT/.gitignore"
+  mkdir -p "$NWP_ROOT/private"
+  cp "$NWP_SECRETS_REGISTRY" "$NWP_ROOT/private/secrets-registry.yml"
+  export NWP_SECRETS_REGISTRY="$NWP_ROOT/private/secrets-registry.yml"
+  run bash "$SECRETS_SH" registry-track --dry-run
+  [ "$status" -eq 0 ]
+  [ ! -e "$NWP_ROOT/private/.git" ]
+}
+
+# --- the daily audit must be provisioned by code, not by a remembered command -
+
+@test "cron: status exits non-zero when the daily audit is not installed" {
+  # a control that exists only as a comment in a script header is not a control
+  run env CRONTAB_FAKE=1 bash "$SECRETS_SH" cron status
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"NOT INSTALLED"* ]]
+}
+
+@test "cron: install --dry-run writes no crontab and shows the exact line" {
+  run bash "$SECRETS_SH" cron install --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"secrets-daily-audit.sh"* ]]
+  [[ "$output" == *"dry-run"* ]]
+  run bash "$SECRETS_SH" cron status
+  [ "$status" -ne 0 ]
+}
+
+# --- the daily audit itself must not report blindness as success -------------
+
+@test "daily-audit: blindness is counted and escalates, never a silent OK" {
+  local sh="${BATS_TEST_DIRNAME}/../../scripts/secrets-daily-audit.sh"
+  [ -f "$sh" ] || skip "daily-audit script not present"
+  # a stub `pl secrets audit` that always reports unreachable (rc=2)
+  mkdir -p "${TEST_TMP}/estate/scripts/commands" "${TEST_TMP}/estate/private" "${TEST_TMP}/estate/logs"
+  printf '#!/bin/bash\nexit 2\n' > "${TEST_TMP}/estate/scripts/commands/secrets.sh"
+  cp "$sh" "${TEST_TMP}/estate/scripts/secrets-daily-audit.sh"
+
+  run env SECRETS_BLIND_MAX_DAYS=2 bash "${TEST_TMP}/estate/scripts/secrets-daily-audit.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"AUDIT-BLIND"* ]]
+  # second consecutive blind run reaches the ceiling and must ESCALATE
+  run env SECRETS_BLIND_MAX_DAYS=2 bash "${TEST_TMP}/estate/scripts/secrets-daily-audit.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"has NOT been audited"* ]]
+}

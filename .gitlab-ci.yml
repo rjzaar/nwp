@@ -217,6 +217,29 @@ lint:yq-first:
   tags:
     - nwp
 
+# Conflict-marker gate — refuses a tree with an unresolved merge in it.
+#
+# On 2026-07-26 commit 3c4c631 reached its MR with `<<<<<<< HEAD` / `=======` /
+# `>>>>>>> c6ba428` sitting at lines 1031/1129/1246 of
+# docs/reports/consolidation-arc-2026-07/decision-log.md — the append-only arc
+# DECISION LOG — and the pipeline went green. Every other job passed over it,
+# because not one of them looks for markers; a human reading a rebase caught it,
+# which is not a control. Blocking, and cheap (one grep over tracked text files).
+#
+# Exit 2 = CANNOT VERIFY (not a git repo / zero files scanned) — fail closed,
+# never silently green. Pinned by tests/unit/test-conflict-markers-gate.bats,
+# which includes negative controls for Markdown setext-H1 `=======` underlines.
+lint:conflict-markers:
+  stage: lint
+  script:
+    - ./scripts/ci/lint-conflict-markers.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  tags:
+    - nwp
+  allow_failure: false
+
 # Leakage gate — refuses MRs / main pushes that introduce operator-specific
 # identifiers (hostnames, paths, organisations) or generic credentials.
 # Per P61 §4.4. Configure `main` branch protection to require this job to

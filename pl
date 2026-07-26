@@ -383,6 +383,28 @@ ${BOLD}MONITORING (launch gate, P13/#71):${NC}
     monitor mail <site>             Outbound mail readiness (SPF/DKIM/DMARC/PTR/MX)
     monitor mail <site> --send-test <addr> --execute   Opt-in live probe (gated)
 
+${BOLD}HOST STATE (own the box, don't ssh into it):${NC}
+    server health [name|--all]      Load / memory / disk / swap HEADROOM.
+                                    THE preflight before anything heavy on a
+                                    shared box. rc=1 no headroom, rc=3 UNKNOWN
+                                    (an unmeasurable host is never "healthy").
+    server forge status <name>      Forge package version, apt signing-key
+                                    expiry, pending upgrades (package manager
+                                    only — never the Rails console)
+    host <role|alias>               Resolve a role label to its hostname(s)
+    host capture <target> [--all]   Read cron/systemd/nginx/php/ssh/firewall
+                                    state into servers/<host>/system/
+    host diff <target>              Non-zero on drift, blindness or an
+                                    incomplete read — never a silent "clean"
+    host apply <target>             Dry-run: prints the exact declared change
+    host schedule <target> list     Cron on a REMOTE role, over ssh
+    schedule where                  Which HOST owns each schedule
+    schedule host <target> ...      Install/remove a remote cron entry
+    logs <target> --source=nginx    Read-only, clamped (max 5000 lines), fixed
+                                    source set: nginx php-fpm auth systemd watchdog
+    loop --host <role>              The loop's state on ANOTHER machine, and it
+                                    says which machine it read
+
 ${BOLD}VERIFICATION:${NC}
     verify                          Interactive verification TUI
     verify --run                    Run machine verification tests
@@ -1038,8 +1060,19 @@ main() {
             ;;
 
         # Per-server config / schema management (F23 Phase 8)
+        # + `health` (headroom preflight) and `forge status` (item 6)
         server)
             run_script "server.sh" "$@"
+            ;;
+
+        # Host state: role resolution + capture/diff/apply/schedule (item 6)
+        host)
+            run_script "host.sh" "$@"
+            ;;
+
+        # Read-only, resource-bounded log access — replaces "just ssh in"
+        logs)
+            run_script "logs.sh" "$@"
             ;;
 
         # Mini-specific utilities (F21 Phase 3a)

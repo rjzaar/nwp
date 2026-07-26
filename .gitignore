@@ -159,16 +159,44 @@ build/*
 # Pipelines and modules are intentionally untracked by the parent NWP repo
 # (see the /sites/* rule above).
 
-# Servers directory (per-host operator config — same pattern as sites/)
-# Folder is tracked but contents are ignored. Per-host configs (wireguard,
-# deploy scripts, server YAMLs) are operator-specific and never belong in
-# the public tool repo. F33 (now SUPERSEDED) originally proposed moving
-# these to a separate ~/nwp-instances/ repo; gitignoring matches sites/
-# and is the simpler resolution.
+# Servers directory (per-host operator config).
+#
+# WAS: a blanket `servers/*`. That meant host configuration was versioned only
+# when someone remembered `git add -f` — the 26 tracked files under servers/ all
+# got in by force-add on 2026-07-25, and any NEW vhost, cron, systemd unit or
+# php.ini override was silently invisible. Load-bearing artifacts (the fleet
+# backup producer, the CVE-response upgrade script, the DR pull cron) therefore
+# lived only on boxes, which is precisely the nwp-daily-audit lesson.
+#
+# NOW: an ALLOWLIST. Declared, reviewable service directories are tracked;
+# identity, secrets and key material stay ignored. Adding a new service
+# directory is a deliberate one-line change here, which is the point.
+#
+# Guarded by tests/unit/test-host.bats ("no path under servers/*/{...} is
+# git-ignored" and "the server IDENTITY file and secrets stay ignored").
 !servers/
 servers/*
 !servers/.gitkeep
 !servers/example-*.yml
+
+# Tracked service directories (recurse into them).
+!servers/*/
+!servers/*/nginx/**
+!servers/*/demo/**
+!servers/*/linode/**
+!servers/*/backup/**
+!servers/*/email/**
+!servers/*/system/**
+
+# ...but NEVER the identity file, secrets, or any key/cert material, wherever
+# under servers/ they appear. These re-ignores come last so they win.
+servers/*/.nwp-server.yml
+servers/**/.secrets*
+servers/**/*.key
+servers/**/*.pem
+servers/**/id_rsa*
+servers/**/id_ed25519*
+servers/**/*.env
 
 # SSH keys directory (structure tracked, contents ignored)
 !keys/

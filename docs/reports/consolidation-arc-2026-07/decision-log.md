@@ -2362,3 +2362,74 @@ main): decision-log 0 lines lost from either. Rollback registry 0 lost from main
 CP12, CP14) differ from the pre-rebase branch and are **byte-identical to main's** rows — main had
 already superseded them with absolute paths, sidecar provenance and a deliberate de-duplication of
 the CP14 digest. Superseded, not dropped.
+## [2026-07-26] item6-pl-host — host state gets an owner, and the OOM guard becomes real
+**Decision:** Ship `pl host capture|diff|apply|schedule`, `pl server health`, `pl server forge status`,
+`pl logs`, `pl loop --host`, `pl schedule host|where`; replace `.gitignore`'s blanket `servers/*` with an
+allowlist; **delete `lib/safe-ops.sh`** and rewrite the CLAUDE.md section that pointed at it.
+**Basis:** No `pl` verb owned any host state. `pl server status` reported SSH reachability only, so there
+was no working verb answering "how much RAM does this box have left" — the exact preflight whose absence
+let a heavy op OOM-kill the 3.8 GB forge box (GitLab + 5 live sites) for 5–8 min on 2026-07-25. Verified
+before writing: `command -v nwp-server` empty on box and mini; no `pl logs`; no `pl schedule host` (which
+`demo.sh:1398` already tells operators to run); zero matches for `api/v4/version`/`gitlab_version`;
+`.gitignore:149 servers/*` proven with `git check-ignore` to ignore every would-be capture path.
+
+**Sub-decision A — delete `lib/safe-ops.sh` rather than wire it.** It had **zero callers** anywhere in
+lib/, scripts/ or pl, depended on `.secrets.data.yml` (which Claude is deny-ruled from), and printed
+`./stg2prod.sh` / `./backup.sh` — root scripts that do not exist. Keeping a parallel `safe_*` API beside
+`pl server health` would recreate the "two overlapping things over one path" failure this item is fixing.
+*Alternative rejected:* giving it a caller — that preserves duplication and the broken script names.
+*Reverse:* `git revert`; the file is one commit away.
+
+**Sub-decision B — swap pressure is part of "healthy".** An absolute-RAM floor alone graded the real
+forge box HEALTHY at 544 MB available. Measured live during this work: 3915 MB total, ~570 MB available,
+but only **626 of 2543 MB swap free (24%)** — a box already thrashing. With the swap rule the verb
+returns rc=1 "NO HEADROOM" for the machine that actually went down. A check that reassures you about the
+host that just fell over is the vacuous pass this programme exists to kill.
+*Reverse:* `NWP_HEALTH_MIN_SWAP_FREE_PCT=0` disables it without a code change.
+
+**Sub-decision C — `pl host apply --execute` and `pl host schedule --execute` are NOT enabled.** Both
+render the exact declared state and diff, then stop. Applying ufw/Headscale/nginx/php on 97.107.137.88 is
+production infrastructure serving 5 live sites — CLAUDE.md high-risk, operator work. The verbs exist so
+the operator executes a reviewed artifact instead of an improvised ssh.
+*Alternative rejected:* shipping a working `--execute` behind a typed confirm — an AI-authored write path
+to prod infra, however gated, is outside A14.
+
+**Sub-decision D — `.gitignore` allowlist, not blanket ignore.** `servers/*` meant the 26 tracked files
+got in by `git add -f` on 2026-07-25 and every new vhost/cron/unit was invisible. Now
+`servers/*/{nginx,demo,linode,backup,email,system}/**` are tracked while `.nwp-server.yml`, `.secrets*`,
+`*.key`, `*.pem`, `id_rsa*`, `id_ed25519*` and `*.env` stay ignored (re-ignore rules ordered last so they
+win). Both directions are asserted by `tests/unit/test-host.bats`, and the over-open direction was proven
+red on purpose by temporarily adding `!servers/*/.nwp-server.yml`.
+*Reverse:* one hunk in `.gitignore`.
+
+**Sub-decision E — capture scrubs, always.** Every stream passes `host_scrub_stream`; `authorized_keys`
+additionally passes `host_scrub_authorized_keys`, which keeps the forced-command options and the comment
+and replaces the key blob with `<KEY-REDACTED len=N>`. Verified against the live box: 0 raw blobs in the
+captured policy, while the `command="…",restrict` jails remain fully reviewable.
+
+**Blast radius:** additive verbs + one `.gitignore` hunk + one deleted dead library. No server was
+modified: every probe in this item is read-only (`crontab -l`, `cat /etc/…`, `dpkg-query`, three `/proc`
+reads, `df`). Nothing in `lib/host-capture.sh` can invoke `gitlab-rails`/`gitlab-rake`, and a test asserts it.
+
+**Findings surfaced by the new tooling (handed to item 7, which owns `servers/**`):**
+1. **known item C confirmed mechanically** — `pl host capture … --kind=php` on the box returns
+   `php8.2 max_input_vars=1000` / `php8.3 max_input_vars=5000` / `php8.4 max_input_vars=1000`. Moodle runs
+   on **8.2**. The 2026-07-26 outage fix was applied to the wrong SAPI and is in nobody's version control.
+2. **`deny-files-secrets.conf` is NOT installed** — the box's `/etc/nginx/snippets/` contains only
+   `fastcgi-php.conf` and `snakeoil.conf`. Layer 2 of the "3-part defence" is fiction, as reported.
+3. **ufw `22/tcp ALLOW IN Anywhere`** is live, against CLAUDE.md's explicit rule.
+4. **authorized_keys PATH bug class is live**: one jail is `command="/usr/bin/rrsync -ro …"`, another is
+   `command="rrsync -ro …"` (bare, PATH-dependent) — same class as `fix(fleet): bake a working PATH into
+   the publish cron entry`.
+5. **The 19 tracked `servers/nwpcode/nginx/conf.d/*.conf` match the live box byte-for-byte** — a real
+   GREEN, and end-to-end proof the diff engine compares real files against a real host correctly.
+
+**Left for item 9 (owns `README.md`, `docs/reference/**`):** `README.md:340-352` and
+`docs/reference/api/library-functions.md:43,178,3798-3913` still document the deleted `safe-ops` API.
+`CLAUDE.md` and `docs/security/data-security-best-practices.md` (both corrected here) were the binding
+ones. Item 9's new `dead-command-refs` doc-truth class will catch the remaining two; `pl doc-truth` is
+green today either way.
+
+**Not done here (out of item 6's territory):** capturing the estate's state into `servers/**` and
+converting it to declared state is **item 7**; `check_forge_version` registration inside
+`lib/todo-checks.sh` is **item 2's file** — `pl server forge status` ships as the verb it will call.

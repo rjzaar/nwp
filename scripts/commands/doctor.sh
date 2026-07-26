@@ -479,6 +479,47 @@ check_server_schemas() {
 }
 
 ################################################################################
+# Nested server repos + captured host state (fix-programme item 6)
+#
+# Two overlapping git repos over one path guarantee a divergent second copy.
+# servers/nwpcode/ is a 2-commit repo with NO REMOTE whose tracked set is
+# disjoint from the parent's — and it is the sole home of the fleet backup
+# producer and the CVE-response upgrade script. If that disk dies, the DR chain
+# and the security procedure die with it.
+################################################################################
+check_server_state() {
+    local errors=0
+
+    print_header "Checking Captured Host State (servers/)"
+
+    if [[ ! -f "$PROJECT_ROOT/lib/host-capture.sh" ]]; then
+        print_warning "lib/host-capture.sh missing — cannot check captured host state"
+        return 0
+    fi
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/host-capture.sh"
+
+    local out
+    if out=$(host_check_server_repos "$PROJECT_ROOT" 2>&1); then
+        print_success "no unbacked nested server repos"
+    else
+        while IFS= read -r line; do [[ -n "$line" ]] && print_error "$line"; done <<< "$out"
+        print_hint "Give it a real private remote, or delete the inner .git and let the outer repo own the tree"
+        errors=$((errors + 1))
+    fi
+
+    if out=$(host_check_servers_tracked "$PROJECT_ROOT" 2>&1); then
+        print_success "captured host state is trackable and committed"
+    else
+        while IFS= read -r line; do [[ -n "$line" ]] && print_warning "$line"; done <<< "$out"
+        print_hint "Capture with 'pl host capture <target>', then commit — do not 'git add -f'"
+        errors=$((errors + 1))
+    fi
+
+    return $errors
+}
+
+################################################################################
 # Main Function
 ################################################################################
 
@@ -542,6 +583,9 @@ main() {
     echo ""
 
     check_server_schemas || total_errors=$((total_errors + $?))
+    echo ""
+
+    check_server_state || total_errors=$((total_errors + $?))
     echo ""
 
     # Print summary

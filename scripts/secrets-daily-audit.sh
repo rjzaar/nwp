@@ -43,14 +43,21 @@ if [ -n "$out" ]; then
     echo "Reissue any of them with:  pl secrets steps <id>  →  create it  →  pl secrets rotate <id>"
   } | tee "$ALERT_FILE"
 
-  # --- best-effort push notification (fail-soft) -----------------------------
-  if command -v yq >/dev/null 2>&1 && [ -f "$ROOT/.secrets.yml" ]; then
-    gt=$(yq e '.gotify.mini_health_token // ""' "$ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
-    gu=$(yq e '.gotify.url // ""' "$ROOT/.secrets.yml" 2>/dev/null | grep -v '^null$')
-    if [ -n "$gt" ] && [ -n "$gu" ]; then
-      curl -s -o /dev/null --max-time 10 "${gu%/}/message?token=$gt" \
-        -F "title=NWP token audit" -F "message=$(printf '%s' "$out" | head -8)" -F "priority=7" 2>/dev/null || true
+  # --- push notification, through the ONE notification path -------------------
+  #
+  # This used to be an inline curl that put the token in the URL (and therefore
+  # in /proc/<pid>/cmdline) and ended in `|| true`, so a failed alert about dead
+  # credentials was itself silent. `pl notify` fails loudly and keeps the token
+  # off argv; we still do not abort the audit on a delivery failure, but we DO
+  # say so on stderr so the cron mail / log carries it.
+  if [ -x "$ROOT/scripts/commands/notify.sh" ]; then
+    if ! "$ROOT/scripts/commands/notify.sh" send secrets \
+           "$(printf '%s' "$out" | head -8)" \
+           --priority 7 --title "NWP token audit" >/dev/null; then
+      echo "$STAMP token-audit: WARNING — could not deliver the alert notification (run: pl notify health)" >&2
     fi
+  else
+    echo "$STAMP token-audit: WARNING — pl notify is unavailable; alert not pushed" >&2
   fi
   exit 1
 fi

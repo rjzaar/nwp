@@ -65,6 +65,56 @@ OPS_PROJECT_ID="${AGENT_LOOP_OPS_PROJECT_ID:-21}"
 FIX_REPO_MAP="${AGENT_LOOP_FIX_REPO_MAP:-${SCRIPT_DIR}/fix-repo-map.json}"
 PROMPT_DIR="${AGENT_LOOP_PROMPT_DIR:-${SCRIPT_DIR}/prompts}"
 
+# ---------------------------------------------------------------------------
+# SENSITIVE_PATH_RE — the ops#91 Half A fail-closed pre-push denylist.
+#
+# Hoisted out of the gate body so tests/unit/test-agent-loop-sensitive-gate.bats
+# can extract and exercise the LIVE pattern (a gate with no test is a gate that
+# silently rots). Not a general "don't touch" list: it is the set of paths where
+# an autonomous agent acting on a member-controlled issue body could weaken the
+# controls that bound it. Match => REFUSE TO PUSH, no exceptions.
+#
+# NWP CONSOLE (added 2026-07-26). The original pattern covered `lib/auth*` but
+# the console's authorisation does not live there — it lives in
+# scripts/console/app/. The whole of `app/` is denied, deliberately as a
+# DIRECTORY rule rather than a list of today's filenames:
+#   * the enforcement is spread, not central. authz.py is a 25-line pure role
+#     comparator; require()/current_user()/_set_session()/the session signer and
+#     every per-route Depends(require(...)) live in main.py. Denying authz.py
+#     while leaving main.py open would be a paper gate — an agent could
+#     downgrade a route from require("operator") to require("viewer").
+#   * an enumerated list fails OPEN on new modules. console v2 is adding
+#     app/scope.py (the multi-tenancy choke point) right now; the next one is
+#     unknown. A denylist that has to be remembered is a denylist that lapses.
+#   * the cost is low. templates/, static/*.css, the icons, README.md and
+#     tests/ carry the clear majority of console churn and stay ALLOWED, so
+#     the loop keeps the console work it is actually good at (text, markup,
+#     CSS).
+# static/ splits on executability, not on being "assets": CSS and icons are
+# presentation and stay allowed, but static/*.js is denied — sw.js is a service
+# worker (intercepts every request on the origin and outlives the page),
+# webauthn.js drives the passkey ceremony, and htmx.min.js is vendored code
+# where a malicious swap is the least likely thing to be caught by eye.
+# Also denied: scripts/commands/console.sh (ssh + rsync --delete to the console
+# host, and it writes the env file holding the GitLab pane token),
+# lib/console-* (the divergence guard that stops that rsync), the systemd unit
+# (ExecStart = arbitrary code as the console user) and requirements.txt
+# (dependency pins on the host that holds the token — supply chain).
+#
+# ACCEPTED RESIDUALS (explicit, not oversights):
+#   1. scripts/console/tests/ is ALLOWED. An agent can weaken or delete a
+#      console security test without tripping this gate. Accepted because it
+#      cannot touch the code under test, agent MRs never auto-merge, and
+#      denying tests/ would punish exactly the test-writing the loop's prompt
+#      template demands. Reviewers must read test deletions as a red flag.
+#   2. scripts/console/templates/ is ALLOWED. Jinja autoescapes, so text edits
+#      are safe, but a template could in principle add `|safe` or an inline
+#      <script>. Accepted as the price of keeping the gate usable in the
+#      console's highest-churn area; this gate matches PATHS, not content, and
+#      making it content-aware would trade a clear rule for a flaky one.
+# shellcheck disable=SC2016
+SENSITIVE_PATH_RE='(^|/)(\.gitlab-ci\.yml|\.gitleaks\.toml|nwp\.yml|\.secrets[^/]*)$|(^|/)\.github/|(^|/)\.hooks/|(^|/)\.env|[Ss]ecret|(^|/)keys/|(^|/)lib/(auth|secrets|sanitizers|console-)|(^|/)scripts/agent-loop/|(^|/)scripts/commands/(live|stg2live|stg2prod|live2prod|deploy-gate|publish|server-publish|secrets|console)|(^|/)scripts/console/(app/|requirements\.txt$|[^/]*\.service$|static/[^/]*\.js$)|(\.pem|\.key|_rsa|ed25519|_ecdsa)$'
+
 mkdir -p "$LOG_DIR" "$WORK_ROOT" "$RESPAWN_DIR"
 
 log() {
@@ -671,9 +721,13 @@ ${description}
 5. DO NOT push. The driver will push and open the MR.
 6. HARD BOUNDARY: if the fix would touch CI config (\`.gitlab-ci.yml\`,
    \`.github/\`), auth or secret handling (\`lib/auth*\`, \`*secret*\`,
-   \`keys/\`, \`.env*\`), sanitizers, or production deploy scripts
-   (\`scripts/commands/live*.sh\`), STOP and write \`AGENT-NOTE.md\`
-   instead — those paths require human review (the A14 boundary).
+   \`keys/\`, \`.env*\`), sanitizers, production deploy scripts
+   (\`scripts/commands/live*.sh\`), or the NWP Console's code
+   (\`scripts/console/app/\`, \`scripts/console/static/*.js\`,
+   \`scripts/commands/console.sh\`, \`lib/console-*\`), STOP and write
+   \`AGENT-NOTE.md\` instead — those paths require human review (the A14
+   boundary). Console \`templates/\`, \`static/style.css\` and \`README.md\`
+   are fine to edit.
 
 EOF
 
@@ -735,20 +789,20 @@ EOF
     # The issue body is member-controlled and was fed to an autonomous agent.
     # The prompt's "HARD BOUNDARY" is advisory; THIS is the enforced backstop.
     # BEFORE any push, refuse if the agent's diff touches CI, secrets/keys,
-    # auth, sanitizers, production-deploy scripts, the loop itself, or raw key
-    # material. Fail CLOSED: on refusal we do NOT push, pull the agent-eligible
-    # label so the loop won't re-attempt, comment, and leave the worktree.
+    # auth, sanitizers, production-deploy scripts, the NWP Console's code, the
+    # loop itself, or raw key material. Fail CLOSED: on refusal we do NOT push,
+    # pull the agent-eligible label so the loop won't re-attempt, comment, and
+    # leave the worktree. The pattern is SENSITIVE_PATH_RE (top of file) and is
+    # pinned by tests/unit/test-agent-loop-sensitive-gate.bats.
     changed_files="$(cd "$work_dir" && git diff --name-only "${head_main}" HEAD 2>/dev/null || true)"
-    sensitive_hits="$(printf '%s\n' "$changed_files" | grep -En \
-      '(^|/)(\.gitlab-ci\.yml|\.gitleaks\.toml|nwp\.yml|\.secrets[^/]*)$|(^|/)\.github/|(^|/)\.hooks/|(^|/)\.env|[Ss]ecret|(^|/)keys/|(^|/)lib/(auth|secrets|sanitizers)|(^|/)scripts/agent-loop/|(^|/)scripts/commands/(live|stg2live|stg2prod|live2prod|deploy-gate|publish|server-publish|secrets)|(\.pem|\.key|_rsa|ed25519|_ecdsa)$' \
-      || true)"
+    sensitive_hits="$(printf '%s\n' "$changed_files" | grep -En "$SENSITIVE_PATH_RE" || true)"
     if [[ -n "$sensitive_hits" ]]; then
       log "    REFUSING PUSH — agent diff touched sensitive path(s) (ops#91 fail-closed):"
       printf '%s\n' "$sensitive_hits" | while IFS= read -r sh; do log "      $sh"; done
       gitlab_curl PUT "/api/v4/projects/${pid}/issues/${iid}" \
         '{"remove_labels":"agent-eligible"}' >>"$LOG_FILE" 2>&1 || true
       gitlab_curl POST "/api/v4/projects/${pid}/issues/${iid}/notes" \
-        "$(python3 -c 'import json,sys; print(json.dumps({"body": "🚫 Agent-loop **refused to push**: the change touched a sensitive path (CI / secrets / keys / auth / sanitizers / deploy / the loop itself). This requires human review (A14 boundary). The worktree was left for inspection and `agent-eligible` was removed."}))')" \
+        "$(python3 -c 'import json,sys; print(json.dumps({"body": "🚫 Agent-loop **refused to push**: the change touched a sensitive path (CI / secrets / keys / auth / sanitizers / deploy / console code / the loop itself). This requires human review (A14 boundary). The worktree was left for inspection and `agent-eligible` was removed."}))')" \
         >>"$LOG_FILE" 2>&1 || true
       processed=$((processed + 1))
       continue

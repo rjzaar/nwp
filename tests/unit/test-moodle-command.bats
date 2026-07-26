@@ -180,3 +180,44 @@ teardown() { rm -rf "${TEST_TMP}"; }
   grep -q '"plugins": "mod/depthcontent local/nwc_copyright_sync"' "$entry"
   grep -q '"status": "active"' "$entry"
 }
+
+# --- pre-deploy snapshot script: CLI_SCRIPT regression ------------------------
+# Moodle's config.php hard-aborts a CLI include with
+#   "Command line scripts must define CLI_SCRIPT before requiring config.php"
+# unless CLI_SCRIPT is defined FIRST. Without it the generated remote snapshot
+# script exits 1, moodle_remote_backup returns 1, and the live deploy refuses
+# with "Pre-deploy snapshot failed" — i.e. `pl moodle plugin deploy --tier=live
+# --apply` could never take its rollback point. Fails closed, but permanently.
+
+@test "moodle_backup_remote_script defines CLI_SCRIPT before requiring config.php" {
+  run moodle_backup_remote_script "/var/www/ssc" "ssc" "20260726-101010" "sudo" \
+      "false" "false" "auth/nwc local/practice"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'define("CLI_SCRIPT",1)'* ]]
+  # …and it must come BEFORE the require, in the same -r program.
+  [[ "$output" == *'define("CLI_SCRIPT",1); define("ABORT_AFTER_CONFIG",1); require'* ]]
+}
+
+@test "moodle_backup_remote_script still keeps the db password off argv" {
+  run moodle_backup_remote_script "/var/www/ssc" "ssc" "20260726-101010" "sudo" \
+      "false" "false" "auth/nwc"
+  [ "$status" -eq 0 ]
+  # password is read into a remote shell var and passed via MYSQL_PWD, never -p
+  [[ "$output" == *'MYSQL_PWD='* ]]
+  [[ "$output" != *'--password='* ]]
+  [[ "$output" != *'-p$DBP'* ]]
+}
+
+@test "moodle_remote_rollback_execute (rollback path) also defines CLI_SCRIPT" {
+  # The second config.php reader lives in moodle_remote_rollback_execute, which
+  # interpolates the snapshot path into its heredoc and so is not callable here
+  # without a fixture. This is therefore a SOURCE assertion, not a behavioural
+  # one: it pins the count of correctly-ordered call sites at >= 2 so a future
+  # edit cannot fix one reader and leave the other broken. Being a grep, it
+  # canNOT detect a gutted/stubbed function — tests above cover that for the
+  # backup generator; the rollback generator has no behavioural cover yet.
+  run grep -c 'define("CLI_SCRIPT",1); define("ABORT_AFTER_CONFIG",1);' \
+      "${REPO_ROOT}/lib/moodle-deploy.sh"
+  [ "$status" -eq 0 ]
+  [ "$output" -ge 2 ]
+}

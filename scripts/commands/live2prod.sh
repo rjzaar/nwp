@@ -340,7 +340,16 @@ prod_maintenance_set() {
         return 0
     elif [ "$state" == "0" ]; then
         print_error "Could NOT disable maintenance mode — THE SITE MAY BE STUCK IN MAINTENANCE (503)."
-        print_error "Fix on the host: ${sudo_prefix} -u www-data ${remote_path}/vendor/bin/drush --root=${remote_path}/${webroot} sset system.maintenance_mode 0 && ... cr"
+        # NO pl VERB — `pl drush` is stg|live only; the v2 site schema carries no
+        # `production:` block, so there is nothing for a --tier=prod arm to
+        # resolve. Prod writes are operator-gated by design (ADR-0024/0028), so the
+        # sanctioned recovery is the rollback verb, not a hand drush.
+        print_error "Recover through pl (prod writes are operator-gated — do NOT hand-ssh):"
+        print_error "  pl rollback list ${base_name}"
+        print_error "  pl rollback execute ${base_name} prod        # restores the pre-deploy state"
+        print_error "  pl server status                            # confirm the host is up"
+        print_error "NO pl VERB clears maintenance_mode on prod on its own — if rollback does not lift"
+        print_error "the 503, escalate to the offline deploy operator (see docs/SECURITY.md)."
         return 1
     else
         # Failed to turn maintenance ON. Return non-zero so the caller REFUSES
@@ -549,7 +558,13 @@ run_db_updates() {
         # report success (2026-07-21 incident). Return non-zero so the caller
         # ABORTS and maintenance mode stays ON for recovery.
         print_error "drush updatedb FAILED on production — schema hooks NOT applied. Maintenance mode left ON."
-        print_error "Recover on the host, then re-run: ${sudo_prefix} -u www-data ${remote_path}/vendor/bin/drush --root=${remote_path}/${webroot} updatedb -y"
+        # NO pl VERB — see prod_maintenance_set: `pl drush` is stg|live only and
+        # prod writes are operator-gated (ADR-0024/0028). Rolling back is the
+        # sanctioned move; a hand drush on prod is not.
+        print_error "Recover through pl (prod writes are operator-gated — do NOT hand-ssh):"
+        print_error "  pl rollback list ${base_name}"
+        print_error "  pl rollback execute ${base_name} prod        # restores the pre-updatedb state"
+        print_error "Re-attempt the deploy only after the schema mismatch is understood: pl live2prod ${base_name}"
         return 1
     fi
 
@@ -740,7 +755,9 @@ main() {
         # destructive rsync --delete (members would hit a half-populated webroot).
         if ! prod_maintenance_set "$BASE_NAME" "$PROD_IP" "$PROD_USER" "$PROD_PATH" "$PROD_WEBROOT" 1; then
             print_error "Could not enable maintenance mode — REFUSING the destructive rsync --delete (fail-closed)."
-            print_error "Investigate drush on the prod host, then re-run."
+            print_error "Nothing was changed. Check the prod host is reachable and healthy, then re-run:"
+            print_error "  pl server status"
+            print_error "  pl live2prod ${BASE_NAME}"
             exit 1
         fi
     fi

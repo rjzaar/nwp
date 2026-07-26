@@ -151,7 +151,7 @@ healthy. Never run `gitlab-rails`/`gitlab-rake` on that box.
 
 > **Retired 2026-07-26:** `lib/safe-ops.sh` and its `safe_server_status` /
 > `safe_db_status` / `safe_security_check` helpers. That library had **zero callers
-> anywhere in the tree** and told you to run `./stg2prod.sh` and `./backup.sh`, root
+> anywhere in the tree** and told you to run `./stg2prod.sh` and `./backup.sh`, root <!-- doc-truth:retired -->
 > scripts that do not exist. Standing orders that point at dead code read as coverage.
 > `tests/unit/test-host.bats` now fails if any `lib/*.sh` named in this file has no
 > production caller.

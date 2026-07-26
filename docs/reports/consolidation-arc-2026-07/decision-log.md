@@ -1721,6 +1721,7 @@ larger blast radius: an operator gates a release tag on that number.
 **Not lost:** the two suites shipped here (`test-suite-honesty.bats`,
 `test-verify-freshness.bats`) are call-site/behavioural, not source-text, so the ratio moves
 the right way regardless.
+**Reversible-how:** N/A (nothing changed).
 
 ## [2026-07-26] item4-two-sub-fixes-landed-mid-session-and-were-re-verified-not-assumed
 **Situation:** while this item was in flight, `fix/item7-contract-and-boundary-gates` merged to

@@ -107,9 +107,25 @@ CMD="${BATS_TEST_DIRNAME}/../../scripts/commands/stg2live.sh"
 # G3 — maintenance-mode hoist (before the --delete rsync, after updatedb/cr)
 # ---------------------------------------------------------------------------
 
+# Asserts the INVARIANT, not one literal call shape. The original assertion
+# grepped for the adjacent tokens `drush state:set`; 181dfa7 legitimately
+# refactored the helper to resolve the drush binary into $D first (explicit
+# vendor/bin lookup, no PATH reliance, stderr no longer swallowed), which left
+# the behaviour identical but broke the literal match — and main went red.
+# What actually matters is checked here, and more of it than before:
+#   (a) the helper exists at all;
+#   (b) maintenance_mode is written with --input-format=integer — without it
+#       drush stores "0" as a STRING, Drupal reads that as truthy, and the
+#       site stays stuck at 503 after a deploy;
+#   (c) the drush binary is resolved from an explicit vendor/bin path BEFORE
+#       the state:set runs, rather than guessed off PATH.
 @test "G3: a live_maintenance_set helper exists using state:set --input-format=integer" {
-  run bash -c "sed -n '/^live_maintenance_set() {/,/^}/p' '$CMD' | grep -E 'drush state:set system.maintenance_mode .* --input-format=integer'"
+  run bash -c "sed -n '/^live_maintenance_set() {/,/^}/p' '$CMD'"
   [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [[ "$output" == *'state:set system.maintenance_mode ${state} --input-format=integer'* ]]
+  # ordering matters: the resolve loop must come before the state:set it feeds
+  [[ "$output" == *'for D in'*'vendor/bin/drush'*'state:set system.maintenance_mode'* ]]
 }
 
 @test "G3: maintenance is enabled BEFORE the destructive rsync --delete" {

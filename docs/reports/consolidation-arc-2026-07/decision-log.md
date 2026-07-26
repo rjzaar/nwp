@@ -4196,3 +4196,65 @@ so the next tick deletes nwd uid=21 while ssd keeps `idnumber=f7fb7bcd-…` poin
 a severed UID-lock, exactly the both-or-forward hazard ADR-0031 D9 names. On this pair it
 is survivable (`uid_lock: false`, throwaway users, a fresh code makes a fresh pair) but the
 demo tier is where that machinery is supposed to be proven.
+
+## [2026-07-27] ops#146 review — a widened tier guard was right, and it hid a key-rotation bug
+**Trigger:** `test:unit` on !210 failed one case, `the issuer provisioner refuses any tier but
+dev`. Not pre-existing: main's own HEAD pipeline fails only `allow_failure` jobs. Two readings
+were possible — **(a)** the guard's scope legitimately narrowed and the test asserts a
+superseded invariant, or **(b)** the code went further than intended. Resolved from the code
+first; making the test pass was explicitly not allowed to be the method.
+
+**Verdict: (a).** The evidence, in the order it settled the question:
+1. The SSRF relaxation the brief was protecting is not in this script at all. It is
+   `$CFG->curlsecurityblockedhosts = ''` in `apply_dev_prereqs()` in the *consumer* script,
+   `ssd-oidc-wire.sh`. The *issuer* is Drupal and has no such control:
+   `grep -c curlsecurityblockedhosts scripts/demo/nwd-issuer-provision.sh` = 0, on every tier.
+2. `apply_dev_prereqs()` has exactly one call site, inside `if [[ "$TIER" == "dev" ]]`, and
+   self-asserts `dev` on entry. Verified at runtime, not just by reading: the function was
+   extracted and executed against a scratch Moodle root at `TIER=live` — it refuses and
+   `config.php` comes back unrelaxed.
+3. On the live host the relaxation is absent, as claimed:
+   `sudo grep -c curlsecurityblockedhosts /var/www/ssd/config.php` = 0 (control: `ssc` = 0).
+4. What the old refusal was really buying — that the real, student-bearing `nwc`↔`ssc` pair is
+   never an argument to a demo script — is now enforced by the *contract* gate, which is
+   stronger than the tier ever was: `demo_pair_contract_for` requires `demo.enabled: true`, and
+   `pairs/ssc.pair-contract.yml` carries no `demo:` block. Confirmed live:
+   `demo_pair_contract_for nwc` → rc=1, `ssc` → rc=1, `nwd` → the ssd contract.
+5. The live path is *stricter*, not looser: TLS is verified on live (`-k` is dev-only, for
+   ddev's self-signed cert) and the client secret is per-tier, so a dev compromise cannot mint
+   live tokens.
+
+**So the test was rewritten, not deleted or slackened** — into the invariants that survive
+(prod/stg refused on both scripts; the contract gate bounds live; the gate precedes any
+transport; the issuer never touches the blocklist; the SSRF shim is dev-only, asserted at
+runtime). Each was proven able to fail by mutation, and a **negative control** was added
+because five of the six mutations would also be satisfied by a script that refused everything:
+making `apply_dev_prereqs` refuse every tier leaves the primary test green and turns the
+control red. That is the failure mode the control exists for.
+
+**The more valuable finding, which nobody was looking for.** Probing the refusals surfaced a
+real defect in the new live path. The keypair-presence probe ran as the ssh user:
+
+    rexec "test -r $KEY_DIR/private.key && test -r $KEY_DIR/public.key"
+
+while the same script creates that directory `sudo install -d -o www-data -g www-data -m 0700`.
+`gitlab` cannot read inside 0700 www-data, so the probe always answered "absent", so the script
+always regenerated — **minting a fresh RS256 signing keypair on every live run** and silently
+invalidating every `id_token` and refresh token already signed. The docblock claims the script
+is idempotent; on live it was not. On an auth surface idempotence is a security property, not a
+nicety. Fixed with a privileged `rprobe()` (sudo on live, plain on dev) plus a regression test.
+Confirmed read-only afterwards: `ssh gitlab@<box> 'ls -la /var/www/nwd/keys'` → Permission denied.
+
+**Blast radius: the demo pair only.** The real `nwc` issuer is provisioned by
+`scripts/f26/provision-nwc-issuer.sh`, untouched here, and the contract gate keeps `nwc`/`ssc`
+out of this script regardless of tier. The demo journey was re-verified intact afterwards: nwd
+JWKS 200, `/demo/join` 200, ssd `/login/index.php` 200 with the `nwd (F26)` button, `/course/` 200.
+
+**Process note, recorded against myself:** the *old* test invoked `--tier=live` with the default
+`--site` (`nwd`), which is demo-enabled. Under the bats fixture `PROJECT_ROOT` that is inert, but
+run from a real checkout on a host holding an ssh key to the box it performs an actual live
+provisioning run — which is how the key rotation was observed. No test in the rewrite opens the
+live transport. A refusal test must be refused *before* the socket, not by it.
+
+**Reversible-how:** `git revert -m 1 <merge>`. Repo-only; the only host contact was read-only
+probing plus the two accidental idempotent re-provisions described above, both verified benign.

@@ -17,7 +17,7 @@
 
 NWP manages multiple sites that share overlapping audiences, overlapping content, and overlapping educational goals — but have no mechanism to share *course content* between them:
 
-1. **nwpcom.org** is the canonical **governance / community / authoring** site (production). It is the editorial home for Catholic formation content — where reviewers approve changes, where the editorial team coordinates, and where the canonical AVC member community lives. It has its own user base. Today it runs at `avc.<example-prod-domain>` (test) and is being migrated through `nwpcode.org` (intermediate test deployment) before the final cutover to `nwpcom.org` — see §16 Domain Rollout.
+1. **nwpcom.org** is the canonical **governance / community / authoring** site (production). It is the editorial home for Catholic formation content — where reviewers approve changes, where the editorial team coordinates, and where the canonical AVC member community lives. It has its own user base. Today it runs at `avc.<example-prod-domain>` (test) and is being migrated through `<example-prod-domain>` (intermediate test deployment) before the final cutover to `nwpcom.org` — see §16 Domain Rollout.
 
 2. **saint.school** is the **canonical learning library** (production) — the single user-facing source of truth for approved Catholic formation courses. It currently runs at `ss.<example-prod-domain>` pending the prod cutover. It hosts 49 Moodle courses with 217 learning points across 6 depth levels (S05), 584 quiz items (S06), and a spaced-repetition engine. The canonical *source store* for this library is `git.nwpcom.org:nwp/courses` (YAML); `saint.school` is the canonical *delivery instance* of that store. Today this content is locked to one Moodle instance and changes flow one-way from authors to delivery — there is no structured feedback loop and no mechanism for other sites to consume the same courses.
 
@@ -1110,14 +1110,14 @@ CREATE TABLE depthcontent_adaptations (
 
 10.1. **MoodleNet channel:** Publish approved course packages to MoodleNet for discovery by other Moodle instances worldwide. This is a one-way publish (MoodleNet users can download; they cannot push changes back through MoodleNet — contributions come via git MR).
 
-10.2. **Course pack downloads:** Public page on nwpcode.org listing available course packs with download links. Each pack is a signed tar.gz containing JSON files + import instructions for any Moodle instance.
+10.2. **Course pack downloads:** Public page on `<example-prod-domain>` listing available course packs with download links. Each pack is a signed tar.gz containing JSON files + import instructions for any Moodle instance.
 
 10.3. **Moodle backup (.mbz) export:** For sites not using mod_depthcontent, provide standard Moodle backup files generated from the course content. These are less feature-rich (no depth levels, no inline quizzes) but broadly compatible.
 
 10.4. **Documentation:** How to import NWP courses into any Moodle instance, with and without mod_depthcontent.
 
 **Verification:**
-- [ ] At least 5 course packs downloadable from nwpcode.org
+- [ ] At least 5 course packs downloadable from `<example-prod-domain>`
 - [ ] MoodleNet listing live (if MoodleNet is stable enough)
 - [ ] .mbz export produces importable backups on stock Moodle
 - [ ] Import documentation tested on a fresh Moodle instance
@@ -1273,13 +1273,13 @@ This proposal is done when:
 
 ## 16. Domain Rollout
 
-The federation operates across multiple domains that are migrating from test (`*.nwpcode.org`) to prod (`*.nwpcom.org`, `saint.school`, `avcommons.org`, `<mayo-domain>`). This section captures the domain-state machine so that manifest paths, OIDC client configs, and signed-package distribution endpoints stay coherent across the cutover.
+The federation operates across multiple domains that are migrating from test (`*.<example-prod-domain>`) to prod (`*.nwpcom.org`, `saint.school`, `avcommons.org`, `<mayo-domain>`). This section captures the domain-state machine so that manifest paths, OIDC client configs, and signed-package distribution endpoints stay coherent across the cutover.
 
 ### 16.1 Domain inventory
 
 | Role | Test (today) | Intermediate test | Production (target) |
 |---|---|---|---|
-| Canonical AVC site | `avc.<example-prod-domain>` | `nwpcode.org` | **`nwpcom.org`** |
+| Canonical AVC site | `avc.<example-prod-domain>` | `<example-prod-domain>` | **`nwpcom.org`** |
 | Canonical Moodle | `ss.<example-prod-domain>` | `ss.<example-prod-domain>` | **`saint.school`** (alias `saintschool.org`) |
 | Code distribution | `<gitlab-host>` | `<gitlab-host>` | **`git.nwpcom.org`** |
 | Youth member AVC | n/a | `<mayo-domain>` | `<mayo-domain>` |
@@ -1295,13 +1295,13 @@ Member domains (`<mayo-domain>`, `avcommons.org`) are stable across the cutover 
 
 | Logical role (production) | Acted by (today, test) |
 |---|---|
-| `nwpcom.org` — canonical AVC + governance | `nwpcode.org` (Phase 1+) / `avc.<example-prod-domain>` (today) |
+| `nwpcom.org` — canonical AVC + governance | `<example-prod-domain>` (Phase 1+) / `avc.<example-prod-domain>` (today) |
 | `saint.school` — canonical Moodle library | `ss.<example-prod-domain>` |
 | `git.nwpcom.org` — code + course registry | `<gitlab-host>` |
 
 Reviewers, the editorial loop (§6.6), and the build pipeline all run against this mapping. F30 manifests, OIDC client configs, and signed-package URIs use the test domains during Phase 0–1 and only swap to production names at Phase 2 cutover. Anywhere this proposal says "nwpcom.org" or "saint.school" without qualification, read it as "the production target — currently acted by the test domain in the table above."
 
-**Phase 1 — Test consolidation.** Move the AVC test site from `avc.<example-prod-domain>` to `nwpcode.org` (root domain). `ss.<example-prod-domain>` stays. `<gitlab-host>` stays. Goal: prove the canonical AVC profile on a clean root domain before the prod cut. F30 manifests still reference `nwpcode.org` / `saint.school` (logical names) — only DNS/server config changes.
+**Phase 1 — Test consolidation.** Move the AVC test site from `avc.<example-prod-domain>` to `<example-prod-domain>` (root domain). `ss.<example-prod-domain>` stays. `<gitlab-host>` stays. Goal: prove the canonical AVC profile on a clean root domain before the prod cut. F30 manifests still reference `<example-prod-domain>` / `saint.school` (logical names) — only DNS/server config changes.
 
 **Phase 2 — Prod cutover.** Stand up `nwpcom.org`, `saint.school` (with `saintschool.org` redirect), `git.nwpcom.org`. Migrate the AVC instance, Moodle instance, and GitLab project namespace. `<gitlab-host>` is aliased to `git.nwpcom.org` for a transition window so existing remotes/clones keep working; new clones use `git.nwpcom.org`. Update OIDC issuer URLs (F26) for all member sites. Retire `avc.<example-prod-domain>`.
 
@@ -1319,7 +1319,7 @@ This decoupling lets the test→prod cutover be a deployment change, not a conte
 
 ### 16.4 Cross-cutting effects
 
-- **F26 (OIDC):** Multi-domain OIDC is required for federation. F26 must support multiple issuer/client domains and survive the `nwpcode.org` → `nwpcom.org` issuer rename. Every OIDC client config (Moodle plugin, member-site auth) needs a config update at Phase 2.
+- **F26 (OIDC):** Multi-domain OIDC is required for federation. F26 must support multiple issuer/client domains and survive the `<example-prod-domain>` → `nwpcom.org` issuer rename. Every OIDC client config (Moodle plugin, member-site auth) needs a config update at Phase 2.
 - **F28 (signed pipeline):** Package distribution endpoint changes from `<gitlab-host>` (Packages) to `git.nwpcom.org` at Phase 2. Existing signatures stay valid (they sign the artifact, not the URL); only the download URL changes.
 - **F29 (mayo integration):** Mayo's `ss.<mayo-domain>` consumes course packages from `git.nwp{code,com}.org` per the active phase. Mayo's OIDC client for `<mayo-domain>` ↔ `ss.<mayo-domain>` is internal to mayo and unaffected by the canonical cutover.
 - **DNS aliasing:** `<gitlab-host>` → `git.nwpcom.org` alias kept indefinitely (or until measured zero traffic). `avc.<example-prod-domain>` retired with 301 → `nwpcom.org`. `ss.<example-prod-domain>` retired with 301 → `saint.school`.
@@ -1327,4 +1327,4 @@ This decoupling lets the test→prod cutover be a deployment change, not a conte
 
 ### 16.5 Risk
 
-The biggest risk is OIDC issuer rename mid-flight. Mitigation: stand up `nwpcom.org` OIDC alongside `nwpcode.org` OIDC (dual-issue) for the cutover window, retire `nwpcode.org` issuer only after every member has migrated.
+The biggest risk is OIDC issuer rename mid-flight. Mitigation: stand up `nwpcom.org` OIDC alongside `<example-prod-domain>` OIDC (dual-issue) for the cutover window, retire `<example-prod-domain>` issuer only after every member has migrated.

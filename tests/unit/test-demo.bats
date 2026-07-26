@@ -479,8 +479,15 @@ EOF
 }
 
 @test "reset ordering: harvest runs BEFORE the DB restore (static)" {
-  harvest_line=$(grep -n 'demo_harvest "\$site"' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  import_line=$(grep -n 'ddev import-db' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  # Scoped to the cmd_reset BODY. `grep … | head -1` over the whole file was
+  # wrong the moment a second reset verb appeared above this one: it compared
+  # cmd_reset's harvest against cmd_reset_paired's import and reported a
+  # correctly-ordered function as broken. The paired body has its own
+  # equivalent in test-demo-pair.bats ("harvests BOTH halves BEFORE the first
+  # import-db"), so scoping loses no coverage.
+  body=$(awk '/^cmd_reset\(\)/,/^}/' "$DEMO_CMD")
+  harvest_line=$(printf '%s\n' "$body" | grep -n 'demo_harvest "\$site"' | head -1 | cut -d: -f1)
+  import_line=$(printf '%s\n' "$body" | grep -n 'ddev import-db' | head -1 | cut -d: -f1)
   [ -n "$harvest_line" ] && [ -n "$import_line" ]
   [ "$harvest_line" -lt "$import_line" ]
   # and the call is belt-and-braces guarded against set -e
@@ -488,8 +495,12 @@ EOF
 }
 
 @test "reset ordering: golden verification precedes the wipe (static)" {
-  verify_line=$(grep -n 'demo_golden_verify "\$gdir" "\$site"' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  import_line=$(grep -n 'ddev import-db' "$DEMO_CMD" | head -1 | cut -d: -f1)
+  # Scoped to the cmd_reset body — see the note above. The paired body's own
+  # verify-before-wipe assertion is in test-demo-pair.bats.
+  body=$(awk '/^cmd_reset\(\)/,/^}/' "$DEMO_CMD")
+  verify_line=$(printf '%s\n' "$body" | grep -n 'demo_golden_verify "\$gdir" "\$site"' | head -1 | cut -d: -f1)
+  import_line=$(printf '%s\n' "$body" | grep -n 'ddev import-db' | head -1 | cut -d: -f1)
+  [ -n "$verify_line" ] && [ -n "$import_line" ]
   [ "$verify_line" -lt "$import_line" ]
 }
 
@@ -832,15 +843,32 @@ _fixture_golden() {   # $1 site  $2 tier
   [[ "$output" == *"golden_sha="* ]]
 }
 
-@test "reset renders the manifest BEFORE the wipe, on both tiers (static)" {
-  # local tier: manifest → ddev import-db
-  m_local=$(grep -n 'demo_reset_manifest "\$site" "\$tier"' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  import=$(grep -n 'ddev import-db' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  [ -n "$m_local" ] && [ "$m_local" -lt "$import" ]
-  # live tier: manifest → sql:drop
-  m_live=$(grep -n 'demo_reset_manifest "\$site" live' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  drop=$(grep -n 'drush sql:drop' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  [ -n "$m_live" ] && [ "$m_live" -lt "$drop" ]
+@test "reset renders the manifest BEFORE the wipe, on EVERY reset verb (static)" {
+  # One assertion per destructive body, so a new reset verb that skips the
+  # manifest is caught HERE and cannot hide behind another body's line numbers.
+  # cmd_reset_paired's first cut did exactly that (MR !162 note 2218).
+  local_body=$(awk '/^cmd_reset\(\)/,/^}/' "$DEMO_CMD")
+  m_local=$(printf '%s\n' "$local_body" | grep -n 'demo_reset_manifest "\$site" "\$tier"' | head -1 | cut -d: -f1)
+  i_local=$(printf '%s\n' "$local_body" | grep -n 'ddev import-db' | head -1 | cut -d: -f1)
+  [ -n "$m_local" ] && [ -n "$i_local" ] && [ "$m_local" -lt "$i_local" ]
+
+  live_body=$(awk '/^cmd_reset_live\(\)/,/^}/' "$DEMO_CMD")
+  m_live=$(printf '%s\n' "$live_body" | grep -n 'demo_reset_manifest "\$site" live' | head -1 | cut -d: -f1)
+  d_live=$(printf '%s\n' "$live_body" | grep -n 'drush sql:drop' | head -1 | cut -d: -f1)
+  [ -n "$m_live" ] && [ -n "$d_live" ] && [ "$m_live" -lt "$d_live" ]
+
+  pair_body=$(awk '/^cmd_reset_paired\(\)/,/^}/' "$DEMO_CMD")
+  m_pair=$(printf '%s\n' "$pair_body" | grep -n 'impact_render' | head -1 | cut -d: -f1)
+  i_pair=$(printf '%s\n' "$pair_body" | grep -n 'ddev import-db' | head -1 | cut -d: -f1)
+  [ -n "$m_pair" ] && [ -n "$i_pair" ] && [ "$m_pair" -lt "$i_pair" ]
+
+  # EVERY body that wipes must build a manifest: no destructive verb is exempt.
+  for fn in cmd_reset cmd_reset_live cmd_reset_paired; do
+    b=$(awk "/^${fn}\\(\\)/,/^}/" "$DEMO_CMD")
+    if ! printf '%s\n' "$b" | grep -qE 'demo_reset_manifest|impact_render'; then
+      echo "FAIL: ${fn} destroys without building a fate manifest" >&2; return 1
+    fi
+  done
 }
 
 @test "a LIVE wipe confirms at the TYPED tier; dev/stg at standard" {
@@ -848,6 +876,20 @@ _fixture_golden() {   # $1 site  $2 tier
   grep -q 'impact_confirm standard "ERASE' "$DEMO_CMD"
   # the hand-rolled y/N prompts are gone — one confirmation path, not three
   ! grep -q 'This will ERASE' "$DEMO_CMD"
+  # …and no destructive body may prompt on its own instead of via
+  # impact_confirm. Checked on CODE lines only (same rule as lib/impact.sh's
+  # own gate): a comment that NAMES the banned pattern is documentation, not a
+  # violation — the note explaining why cmd_reset_paired must not hand-roll a
+  # prompt would otherwise fail the very test it exists to explain.
+  for fn in cmd_reset cmd_reset_live cmd_reset_paired; do
+    b=$(awk "/^${fn}\\(\\)/,/^}/" "$DEMO_CMD" | grep -vE '^[[:space:]]*#')
+    if ! printf '%s\n' "$b" | grep -q 'impact_confirm'; then
+      echo "FAIL: ${fn} destroys without calling impact_confirm" >&2; return 1
+    fi
+    if printf '%s\n' "$b" | grep -qE 'read -r reply|This will ERASE'; then
+      echo "FAIL: ${fn} hand-rolls its own prompt instead of impact_confirm" >&2; return 1
+    fi
+  done
 }
 
 @test "the manifest is rendered ahead of the Solo deploy gate (see it, then touch)" {
@@ -859,9 +901,21 @@ _fixture_golden() {   # $1 site  $2 tier
 
 @test "reset --dry-run stops after the report, before the gate and the wipe" {
   grep -q 'dry-run\] nothing was touched' "$DEMO_CMD"
-  dry=$(grep -n 'dry-run\] nothing was touched' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  import=$(grep -n 'ddev import-db' "$DEMO_CMD" | head -1 | cut -d: -f1)
-  [ "$dry" -lt "$import" ]
+  # Per destructive body: a verb that accepts --dry-run and wipes anyway is the
+  # worst possible outcome of this flag. cmd_reset_paired shipped exactly that
+  # in its first cut — it took no dry_run argument at all and the dispatch
+  # silently dropped the operator's --dry-run.
+  for pair in "cmd_reset:ddev import-db" "cmd_reset_paired:ddev import-db" \
+              "cmd_reset_live:drush sql:drop"; do
+    fn="${pair%%:*}"; wipe="${pair#*:}"
+    b=$(awk "/^${fn}\\(\\)/,/^}/" "$DEMO_CMD")
+    d=$(printf '%s\n' "$b" | grep -n 'dry-run\] nothing was touched' | head -1 | cut -d: -f1)
+    i=$(printf '%s\n' "$b" | grep -Fn "$wipe" | head -1 | cut -d: -f1)
+    if [ -z "$d" ] || [ -z "$i" ] || [ "$d" -ge "$i" ]; then
+      echo "FAIL: ${fn} wipes with no --dry-run stop before it (dry=${d:-none} wipe=${i:-none})" >&2
+      return 1
+    fi
+  done
   run bash "$DEMO_CMD" --help
   [[ "$output" == *"--dry-run"* ]]
 }

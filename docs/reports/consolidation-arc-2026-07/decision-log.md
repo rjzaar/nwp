@@ -2109,6 +2109,43 @@ and checksum branches are actually exercised rather than short-circuiting on the
 `pl audit --all`, and hand-editing a measurement record to match what the code now believes is
 precisely the habit this item exists to break.
 
+## [2026-07-26] b4-cli-script-tests-rescued-from-stranded-branch-lib-was-already-on-main
+**Situation:** `fix/moodle-deploy-snapshot-cli-script` (1 commit, 13h old, never had an MR) was
+reported as "byte-equivalent to main, safe to delete". The **lib half is** — `origin/main`
+`lib/moodle-deploy.sh` lines 405 and 535 both already read
+`define("CLI_SCRIPT",1); define("ABORT_AFTER_CONFIG",1); require …`, landed in a2cb904, and
+`git diff origin/main HEAD -- lib/moodle-deploy.sh` is empty. The **test half is not**:
+`git show origin/main:tests/unit/test-moodle-command.bats | grep CLI_SCRIPT` returns nothing.
+Deleting the branch on the byte-equivalence report would have dropped the only regression
+coverage for a defect that made every guarded live Moodle `--apply` impossible (config.php
+hard-aborts a CLI include without CLI_SCRIPT ⇒ snapshot exits 1 ⇒ "Pre-deploy snapshot failed"
+⇒ the deploy can never take its rollback point). Fails closed, but permanently.
+**Decision:** cherry-pick the TEST hunk only onto main; do NOT merge the branch, because its
+`lib/moodle-deploy.sh` predates item 9's `MOODLE_CLI_PHP_DEFAULT_OPTS`/`moodle_cli_assert` work
+and merging it would revert that (this is why `pl branch stranded` scores the branch SHRINKS).
+**Non-vacuity — proven by three separate mutations of the real lib, not one:**
+The item predicted all three new cases would fail under a single mutation. That was wrong, and
+saying so is the point of the exercise:
+- delete `define("CLI_SCRIPT",1); ` from both call sites → `not ok 18`, `not ok 20`;
+  **19 still passed** — it asserts a different invariant (no db password on argv).
+- put the password back on argv (`MYSQL_PWD=… mysqldump` → `mysqldump -p"$DBP"`) → `not ok 19`.
+- **negative control** (the refuse-everything case): stub `moodle_backup_remote_script` to
+  `return 0` with no output → `not ok 18`, `not ok 19`. So neither behavioural case can be
+  satisfied by a generator that simply emits nothing; both carry positive anchors.
+- pristine lib (sha256 b4812147…) → **20/20 ok**.
+**Correction to the item's stated acceptance:** "the suite must be 23/23" is wrong.
+`origin/main` has 17 `@test`s in this file; the rescue takes it to **20**.
+**One real defect fixed in the rescued test, not merely copied:** case 20 was titled
+`moodle_upgrade_remote_script (rollback path)` — **no such function exists**. The second
+config.php reader is `moodle_remote_rollback_execute` (line 474). Retitled, and its comment now
+states plainly that it is a *source* grep, not a behavioural assertion: the negative control
+shows it still passes against a gutted function, so the rollback generator has **no behavioural
+cover**. Recorded rather than papered over.
+**Deliberately NOT done:** did not delete `origin/fix/moodle-deploy-snapshot-cli-script` and did
+not remove the `/home/rob/nwp-art9` worktree. Both are in the item's plan, but destroying the
+only other copy of this content *before* the rescue MR is reviewed is the same class of mistake
+as the one that stranded it. They are post-merge cleanup.
+**Reversible-how:** revert the single test-only commit; `lib/` is untouched.
 ## [2026-07-26] item5-erasure-execute-fails-closed-rather-than-simulating  **REVIEW:**
 **Decision:** `pl erasure` ships `plan`, `verify`, `status`, `list` as fully working verbs, and
 `execute` as a verb that CANNOT succeed on the current estate. It refuses in a fixed order with

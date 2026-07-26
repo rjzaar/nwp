@@ -754,6 +754,34 @@ run_step_6() {
         return 1
     fi
 
+    # FAIL-CLOSED ON AN UNREADABLE ARTIFACT (2026-07-27).
+    # Every `zgrep` below is `2>/dev/null || true`, so a corrupt, truncated or
+    # empty .gz produced ZERO matches for the wrong reason and this step
+    # reported "PASS: No PII patterns detected" — a clean bill of health on a
+    # dump nothing had read. Step 5 pipes mysqldump THROUGH gzip, so a truncated
+    # or partial artifact is exactly what a mid-dump failure leaves behind: the
+    # realistic case, not a theoretical one. Integrity-check the container and
+    # assert a non-empty decompressed stream BEFORE sweeping, so "found nothing"
+    # can only ever mean "looked and found nothing".
+    # Same shape as the sibling lib/sanitizers/moodle.sh:177 pii_sweep().
+    if ! command -v gzip >/dev/null 2>&1 || ! command -v zcat >/dev/null 2>&1; then
+        log_error "PII sweep: gzip/zcat unavailable — cannot verify the artifact is readable, refusing (fail-closed)"
+        report_error 6 "gzip/zcat missing on this host — cannot sweep, refusing to call the output clean"
+        return 1
+    fi
+    if ! gzip -t -- "$OUTPUT" 2>/dev/null; then
+        log_error "PII sweep: '${OUTPUT}' is not a valid gzip (corrupt/truncated) — refusing (fail-closed)"
+        log_error "A sweep that cannot read the dump has not cleared it. DO NOT publish this file."
+        report_error 6 "output is not a valid gzip — cannot sweep it, refusing to call it clean"
+        return 1
+    fi
+    if [[ "$(zcat -- "$OUTPUT" 2>/dev/null | head -c1 | wc -c)" -eq 0 ]]; then
+        log_error "PII sweep: '${OUTPUT}' decompresses to an empty stream — refusing (fail-closed)"
+        log_error "An empty dump is not a sanitized dump. DO NOT publish this file."
+        report_error 6 "output decompresses to empty — cannot sweep it, refusing to call it clean"
+        return 1
+    fi
+
     local found=0
     local allowlist_regex
     allowlist_regex=$(printf '%s|' "${PII_ALLOWLIST[@]}" | sed 's/|$//')

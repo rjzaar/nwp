@@ -3091,3 +3091,76 @@ CANNOT-VERIFY is the reference implementation), `lib/pii-gate.sh`, `lib/prod-gua
   operator must bootstrap `pl pair record ssc provider live 2` before a `--code-only` ssc live
   promotion is allowed. That is an operator assertion about what nwc live is running, not one an
   agent should make.
+
+---
+
+## [2026-07-27] guards-fail-closed-on-unreadable-config — **REVIEW:** (sanitizer + deploy gate)
+**Decision:** Close the four "fail-open on an unreadable input" holes that the MR !211 sweep found
+and reported but did not fix. Reuse the existing CANNOT-VERIFY vocabulary (`lib/boundary.sh` rc 2,
+`lib/pair.sh` as of !211) rather than inventing a parallel one.
+
+1. **`lib/canonical.sh`** — `canonical_get_phase` / `maturity_get_class` now return
+   `cannot-verify:<reason>` when the config **exists and does not parse**, and every guard
+   (`canonical_guard_content_push`, `canonical_enforce_branch_policy`, `maturity_guard_deploy`)
+   refuses on it. `--override-canonical` deliberately does **not** buy past it; the only escape is
+   `NWP_CANONICAL_GATE_SOFT=true`, which warns and writes a ledger row.
+2. **`lib/sanitizers/mayo.sh`** (step 6) and **`lib/sanitizers/standard.sh`** (`pii_sweep`) —
+   `gzip -t` + a non-empty-decompressed-stream assertion before the sweep, copying the shape the
+   sibling `lib/sanitizers/moodle.sh:177` already had. `standard.sh` was found by finishing the
+   sweep and is the **generic default** Drupal sanitizer, so it was the widest-reach copy.
+3. **`lib/moodle-deploy.sh`** — `moodle_core_patch_ids` is tri-state (0 ids / 1 nothing declared /
+   2 CANNOT VERIFY). `cmd_core_patch` previously read it through `mapfile < <(…)`, which discards
+   the exit status, so "unreadable" arrived as an empty array and printed "no core patches
+   declared" — emptying a gate whose own refusal says *"Override is deliberately NOT provided."*
+
+**Alternatives rejected:** (a) a new rc/vocabulary per guard — rejected, one vocabulary or none;
+(b) making `--override-canonical` cover CANNOT-VERIFY — rejected, a per-decision override must not
+double as a licence to deploy past a config nobody can read.
+
+**Where the "absent by context" line was drawn, and the rule that was withdrawn:** an early version
+also treated *"global config missing while `sites/<site>/` is on disk"* as CANNOT-VERIFY. It was
+implemented, tested, and **withdrawn**: `pl moodle plugin deploy` legitimately resolves a fully
+configured Moodle site from `sites/<site>/.nwp.yml` alone, so that rule refused a supported layout
+(it turned `tests/unit/test-moodle-ops-verbs.bats` c4 red). The one signal that would have justified
+refusing — evidence the site had been classified before — is `private/canonical/<site>.log`, and it
+is **empty in practice**: the live fleet's phases were set by hand-editing `nwp.yml`, and the
+directory does not exist. With no evidence to separate "the registry vanished" from "this checkout
+never had one", refusing would have been a guess. So the line is drawn at **parseability, not
+presence**: a missing config keeps today's defaults, but now *says so out loud* when the site
+directory is present (silence was half the original defect), and stays silent in a fresh clone, CI
+job or worktree, where `sites/*` is gitignored and empty.
+
+**Basis:** `nwp.yml` is never committed (CLAUDE.md) and `.gitignore:14` ignores `sites/*`, so these
+guards' only inputs are files no reviewer and no CI job can see. A guard that silently degrades on
+an invisible input cannot be observed to be wrong.
+
+**Blast radius:** repo-only. No live site, server, DB or `private/` state touched. Net effect is
+strictly more refusals on unreadable inputs, and **no change at all** when the config parses — the
+suite carries a negative control per guard (a correctly configured site still does the normal
+thing), and all 18 fail-open assertions were shown to go red with the fix reverted while 0 negative
+controls did.
+
+**Reversible-how:** see CP-20260727-failopen.
+
+**Sweep remainder (reported, NOT fixed — out of this change's territory):**
+- `lib/sanitizers/files-secrets.sh:318` — a file that exists but cannot be **read** makes `grep`
+  exit 2 with no output, contributing zero hits, so a `.env`/`auth.json` carrying a live credential
+  is reported secret-free. The header itself says these files are chmod-locked on prod, i.e.
+  unreadable is the *normal* state for a non-owner. Contradicts its own stated contract (lines
+  39-42). Consumers are warn-only, so the visible effect is silence.
+- `lib/impact.sh:362` — `impact_contract_violations` has no empty-corpus guard, so a wrong/missing
+  root reports **clean over zero files**. Its own header (lines 220-227) records that this gate
+  previously "shrank toward zero while staying green"; the empty-corpus half is still unguarded.
+  Left alone deliberately: `ops-auto/d4-fate-manifest-truth` is in flight over this file.
+- `lib/sanitize.sh:266` — `check_for_pii` is `grep -qE … | grep -qvE …`; `grep -q` writes nothing,
+  so the email branch is **unreachable** and only the credit-card check can fire. Different bug
+  class (broken pipe, not fail-open-on-unreadable) and it has **no callers**, but it is a PII
+  detector that cannot detect PII sitting in a security-critical lib.
+- `lib/todo-checks.sh:1260,1267` — silent `return 0` where the parallel branch at 1278 correctly
+  raises `DRIFT unreadable`; inconsistent with its own comment at 1270-1271. Cheap fix, cosmetic
+  surface.
+- Documented warn-and-allow, flagged not changed: `lib/deploy-gate.sh:107-113` ("not configured" is
+  indistinguishable from "keys were removed"), `lib/vcs-truth.sh:138/149/159` (a timed-out or locked
+  repo counts as 0 stranded commits and vanishes from the report — fails *silent*, not soft),
+  `lib/backup-integrity.sh:236` (gzip absent ⇒ structural check skipped ⇒ "OK"),
+  `lib/rollback.sh:485`, `lib/ci-stats.sh:302`, `lib/testing.sh` (tool-not-found ⇒ pass).

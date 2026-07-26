@@ -2073,3 +2073,104 @@ edited here. Suggested fix for whoever owns it: a rule-level allowlist for
 Also observed: `tests/**` is still globally allowlisted, so the same strings in
 `tests/unit/test-site-containment.bats` did NOT fire. The tests were rewritten to use
 `forge.example.org` anyway, so they stay clean when item 4 narrows that exemption.
+
+---
+
+## 2026-07-26 — the nightly dependency audit audited nothing for 33 nights (`fix/daily-audit-blindness`)
+
+**The defect.** `nwp-daily-audit` ran on met at 02:30 nightly. Its composer probes went through
+`ddev exec`; the `nwc-dev` DDEV project has been **stopped** (`docker ps` shows no containers at
+all). Every probe wrote a 0-byte file, and an empty result was treated as a clean result. The script
+speaks only when the fingerprint CHANGES — and blindness is perfectly stable — so 33 consecutive
+nights of "I could not look" produced exactly the same silence as 33 nights of "I looked, all fine":
+`no change`, `DONE (changes=0)`, **exit 0**, zero notifications. `grep -c "produced no output"` = 33.
+The cache files are the smoking gun: `run-nwc-dev-audit.json` and `run-nwc-dev-outdated.json` are
+**0 bytes**, while `run-nwc-dev-upstream.json` is 15,929 bytes — the one axis not routed through a
+container kept working, which is why the baseline still looked alive.
+
+**Reproduced before fixing.** met's real script, run in a sandbox with a stub `ddev` that fails the
+way a stopped project does, emits log lines byte-identical to the production log and returns
+**exit 0** with no post attempted. That transcript is the RED baseline.
+
+**What 33 blind nights were hiding** (first real audit, `nwc-dev`, run on met 2026-07-26):
+**20 advisories + 1 abandoned package.** 1 high (`twig/twig` sandbox filter/tag/function allow-list
+bypass, CVE-2026-49981), 16 medium (the `guzzlehttp/guzzle` + `guzzlehttp/psr7` cookie/CRLF/host-
+confusion cluster, `symfony/http-foundation` IpUtils IPv6, `symfony/routing` dot-segment), 2 low,
+1 unrated. Dangerous rather than merely embarrassing — though all are library-level and none is a
+confirmed remote-exploit path on this site's configuration. Also `oomphinc/composer-installers-
+extender` is abandoned. Answer to "was this dangerous": a **high-severity sandbox escape sat
+unreported for over a month** in a codebase whose whole security story is that a nightly job watches
+for exactly this.
+
+**Second, independent blindness cause found.** Fixing the container alone would NOT have restored the
+audit. `composer outdated` on met fails **RC=100, "Invalid credentials"** for the GitLab composer
+registry (`git.nwpcode.org/api/v4/group/nwp/-/packages/composer`) — met's `auth.json` gitlab-token is
+dead. That axis is *still* blind, now loudly and by name. Fixing it is secrets territory, not this
+change's; see "left undone".
+
+**Decision 1 — state model.** Three explicit per-axis outcomes, and "empty" is not one of them:
+`OK` (we looked; findings may be 0 or N), `BLIND` (we did not look — a FAILURE), `SKIP` (nothing was
+configured). Site rollup: `AUDITED_CLEAN` / `AUDITED_FOUND_N` / `COULD_NOT_AUDIT`. Exit codes
+`0` audited, `2` could-not-audit, `3` config error, `4` audited-but-could-not-notify. **Exit 2 for
+"cannot verify" deliberately matches `pl impact --honesty` and `pl secrets audit`** rather than
+inventing a parallel vocabulary — same defect class as f9b95c9, same words.
+
+**Decision 2 — alert fatigue.** Split the signal by cost. The **exit code is continuous**: non-zero
+on *every* blind run, so cron mail, `pl rag` and host-state capture see red every night for free. The
+**issue is rate-limited**: first blind run, then every 7th consecutive one, with the streak count in
+the title. 33 blind nights = 33 red exits + **5 issues** — not 33 (unreadable) and not 1 (which is
+what we got, and which decayed into silence). Recovery is announced; each blind report also names
+*how long since that axis was last successfully audited*, so "how long have we been blind" never has
+to be excavated from a log again.
+
+**Decision 3 — containers: removed from the path entirely.** Not "start it and stop it after". The
+CVE probe now runs `composer audit --locked` against a scratch **copy** of `composer.json` +
+`composer.lock`, on the host, with private `composer`/`vcs`/`path` repositories stripped. It needs no
+DDEV, no Docker, no `vendor/` tree and **no registry credentials** — verified working on met against
+the real site while every container is stopped. Rationale: starting DDEV nightly on a box with a
+kernel-panic history is exactly the load we were told to avoid and leaves cleanup debt, and a
+container in the path of a security check is what caused the outage. Stripping private repos also
+means a dead registry token can no longer blind the CVE check — which is not hypothetical, it is
+today's state on met. `composer outdated` genuinely needs live repository metadata, so it stays
+in-place and goes BLIND when the registry rejects it. **Considered and rejected:** retrying
+`outdated` against the stripped copy to get a public-packages-only number — that produces something
+that looks like a complete report while silently omitting every private package, a partial truth in
+the costume of a whole one, i.e. the same disease.
+
+**Decision 4 — blindness and findings are orthogonal.** The first cut skipped the findings comparison
+whenever any axis was blind. On met, where `outdated` is *persistently* blind, that would have
+suppressed CVE reporting **indefinitely** — a check that cannot fire, the defect re-created one level
+up. Corrected: a blind site still gets its fingerprint diffed and its findings posted (flagged
+`PARTIAL`); blindness only adds the streak, the cadence notification and the non-zero exit. R2 is
+preserved by carry-forward — a blind axis contributes its previous lines verbatim, so advancing the
+baseline can never erase a finding we merely failed to re-observe.
+
+**Split-brain, resolved.** Two versions existed: met's unversioned `~/bin/nwp-daily-audit` (what ran)
+and the repo copy (never ran; its own header admitted it was a "lightly parameterised
+RECONSTRUCTION" written while the build host was down). They had diverged **in both directions**.
+Ported IN from the box copy: ABANDONED reporting; advisories-as-list as well as dict (the
+reconstruction handled only dict and would have silently discarded a whole advisory set); parse
+errors surfaced instead of swallowed (the box copy was *more* honest here); the site profile's
+composer.json merged over the project's; upstream compared against the upstream repo's `main` branch
+(the reconstruction guessed Packagist p2 and then documented its own guess as fact — and a test
+asserted the guess). Kept from the repo copy: token via 0600 curl config never on argv (the box copy
+passed `-H "PRIVATE-TOKEN: $TOKEN"`, leaking it to `/proc/<pid>/cmdline`); env-injected host/project;
+and **a failed POST no longer advances the baseline** (the box copy advanced it *before* posting and
+regardless of result, so a failed notification lost that finding permanently). Prevention: the script
+logs its own provenance every run, and a copy running from outside `$NWP_ROOT/scripts` labels itself
+**`UNVERSIONED-COPY`** — the exact condition that hid for months now announces itself in line 1 of
+every log. met's `~/bin/nwp-daily-audit` is now a shim that execs the versioned file, and cron
+invokes the checkout with `NWP_AUDIT_GIT_PULL=1` (ff-only, refuses on a dirty tree or non-default
+branch, never fatal).
+
+**Tests: RED first, then green.** 36 cases in `tests/unit/test-nwp-daily-audit.bats`, run against the
+pre-fix script first: **25 failing / 11 passing**, including the headline `[ "$status" -ne 0 ]`.
+Against the fixed script: **36/36**. Negative controls included and passing *in both* directions — a
+genuinely clean audit stays silent and exits 0, and unchanged findings stay silent on a second run,
+so this is not an alarm that always rings.
+
+**Other nightly jobs — same defect, NOT fixed here (not my territory).**
+`scripts/secrets-daily-audit.sh` converts "cannot check" into a silent success: on `pl secrets audit`
+exit 2 it logs *"GitLab host unreachable — skipped (no alarm)"* and **`exit 0`**. An unreachable
+GitLab is indistinguishable from all-tokens-healthy, exactly the pattern fixed here. Flagged for its
+owner; `scripts/commands/secrets.sh` and the registry are off-limits to this change.

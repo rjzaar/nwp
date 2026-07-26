@@ -708,3 +708,82 @@ copies, not grunt output. Fixed properly with a real `grunt amd` (5 minified mod
 clearing 6 cosmetic eslint errors. The build is now genuine, so the freshness gate means something.
 **Outcome:** "Art.9 enforced nowhere" is now "enforced in production and proven; asking awaits ratified
 wording", and `docs/guides/art9-golive-runbook.md` makes #119 one pre-proven switch.
+
+---
+
+## 2026-07-26 — Item 2 `recovery-path-repair`: the rollback/restore verbs did not work
+
+**What was actually broken (all reproduced before any change was made):**
+
+1. **`pl rollback execute` could not use a Moodle recovery point.** `lib/rollback.sh` dispatched on
+   `if [ "$type" = "remote" ]`. Entries written by `pl moodle deploy` carry `"type": "moodle-remote"` and
+   fell through to the legacy local-DDEV branch, which reads a `backup_path` key that shape does not have.
+   Observed against the two real ssc live Art.9 snapshots taken earlier the same day:
+   `pl rollback list ssc` showed them; `pl rollback execute ssc live --dry-run` answered
+   `ERROR: Backup not found:` (exit 1). The generic recovery verb **advertised a recovery point it could
+   not use, for the live Moodle instance carrying the consent gate.**
+2. **The documented `--env` flag was dead code.** Parsed into `$ENV` at `scripts/commands/rollback.sh:130`
+   and referenced nowhere else. The only working form was an undocumented positional.
+3. **The tier defaulted to `prod`, which no site has**, so the default invocation could never find a point.
+4. **The ledger was per-checkout** (`ROLLBACK_DIR="${SCRIPT_DIR}/.rollback"`). 33 such directories existed.
+   The standing rule mandates deploying from `pl issue work` worktrees, and worktrees are deleted when the
+   issue closes — taking the only pointer to the on-host snapshot with them. This got *worse* as worktree
+   discipline improved.
+5. **There was no inverse of `pl backup --remote`.** `grep -c 'ssh ' scripts/commands/restore.sh` → 0, while
+   this very registry named `pl restore <artifact>` as the reversal for CP3 and CP16 (the live nwc and ssc
+   snapshots). The DR chain was green only as far as "the artifact unpacks in a scratch dir".
+
+**Decisions taken**
+
+- **Dispatch became a table with an explicit fail-closed default.** An entry whose `type` is not in
+  `ROLLBACK_KNOWN_TYPES` is now a hard error naming the known types. *Alternative rejected:* adding
+  `|| type = "moodle-remote"` to the existing `if`. That fixes today's symptom and leaves the next artifact
+  shape to fall into a restore path written for a different shape — which is the actual bug class.
+  *Reverse:* revert the MR; no state migration.
+- **Ledger moved to `${NWP_STATE_DIR:-$XDG_STATE_HOME/nwp}/rollback`**, resolved checkout-independently.
+  Migration is forward-copy-only and idempotent: `rollback_migrate_legacy` copies legacy entries into the
+  new location and **leaves the originals in place**, and legacy dirs are still read for one release.
+  *Reverse:* revert; the old per-checkout directories were never touched. Verified: 29 real entries
+  migrated, 29 originals still present.
+- **Tier now defaults from the entries that exist** (`rollback_default_env`), and a miss reports which tiers
+  *do* have points. *Alternative rejected:* defaulting to `live`. That is right for today's fleet and wrong
+  the moment it isn't; deriving it from the ledger cannot go stale.
+- **`pl restore <site> --remote` added** (new `lib/restore-remote.sh`), dry-run by default, `--execute`
+  required. Ordering is deliberate and pinned by test: **integrity is verified before any gate, prompt or
+  remote write.** A restore from a corrupt artifact is worse than no restore — it destroys live state and
+  does not replace it. Gates are `pair_guard_restore` → `deploy_gate_require` → typed `impact_confirm`,
+  the same order as every other prod write. It takes a pre-restore snapshot and registers it as a rollback
+  point, so the restore is itself reversible; if that snapshot fails, the restore is refused.
+  DB credentials are read from the remote's own `config.php`/`settings.php` inside a remote subshell and
+  never appear on a local argv. *Reverse:* revert; the verb is additive and has never been executed.
+- **`lib/impact.sh` is sourced by `lib/restore-remote.sh`, not by `scripts/commands/restore.sh`.** Sourcing
+  it from the command script made the ops#47 impact-contract gate (a `grep` for the string `lib/impact.sh`)
+  believe `restore.sh` had been converted, and its shrink-only allowlist entry went stale. `restore.sh`
+  itself is still the unconverted legacy local verb, so it stays on the allowlist and item 7's file was not
+  touched. This is a concrete instance of the string-matching vacuity item 7 exists to fix.
+- **`pl rollback registry check` + `pl rollback register` added.** The registry was written by hand and never
+  validated. *Alternative rejected:* a prose "please keep this accurate" note.
+
+**What the validator found on its first real run (8 problems, since fixed):**
+
+- **CP14 quoted sha256 `55203b50…` / `629f23cc…`; the artifacts are `76605057…` / `b999e9d3…`.** The row was
+  stale — the golden was re-captured and the copied digest silently rotted. **Durable fix: the row no longer
+  duplicates the digest at all; it points at the `.sha256` sidecars, which the checker compares.** Copying a
+  digest into prose creates a second source of truth that can only ever drift.
+- **CP12 named a `.bundle` with no integrity record.** Sidecar written.
+- CP11/CP12/CP14 used bare filenames with no directory — qualified to repo-relative paths.
+- The checker's own first version was wrong in a way its test caught: it treated *any* absolute path as
+  "off-host, accept a quoted sha" **before** trying to resolve it, so a local file could be waved through on
+  the strength of a digest nobody compared. Now it resolves first and only unreachable paths take that
+  branch. It also scans only the artifact column — a bare filename inside a restore *command*
+  (`git clone foo.bundle`) is correct and was being reported as a defect, which is how a check trains people
+  to ignore it.
+- **The checker refuses to report clean when it parsed zero rows** ("cannot verify"), rather than printing
+  OK over an empty corpus.
+
+**Claim from the programme that did NOT hold:** CP17 was said to name an untracked tarball. It is tracked
+(`git ls-files` exit 0) and verifies clean. Recorded rather than manufactured into a change.
+
+**Still open / operator-gated:** `pl restore --remote --execute` has never been run. Per the item, the
+restore leg must be exercised once on a disposable host before any real use; a real member-facing site stays
+operator/mons-gated. The remaining `pl server`-shaped gaps around `/etc` config drift belong to item 10.

@@ -86,6 +86,11 @@ ${BOLD}OPTIONS:${NC}
                             is gated by the ops#83 both-or-forward restore rule.
         --anchor=N          Identity anchor of the backup (ops#83; for coupled tiers)
         --override-pair     Ledgered escape past the ops#83 restore gate (typed)
+        --remote            Restore a verified DR artifact back ONTO the live
+                            host — the inverse of \`pl backup <site> --remote\`.
+                            DRY RUN by default; --execute is required to write.
+                            Sub-options: --artifact=<name>, --db-only,
+                            --files-only, --tier=<t>, --execute.
         --skip-verify       Skip the pre-restore integrity check of the backup
                             artifact's .sha256 sidecar/manifest (NOT recommended;
                             off by default). When a sidecar IS present a mismatch
@@ -846,6 +851,29 @@ main() {
     local ANCHOR=""
     local OVERRIDE_PAIR=false
     local SKIP_VERIFY=false
+
+    # --remote turns this into the inverse of `pl backup <site> --remote`:
+    # push a verified local DR artifact back ONTO the live host. Handled by
+    # lib/restore-remote.sh, which is dry-run by default and gated exactly like
+    # a deploy. Parsed ahead of getopt because it changes which verb runs.
+    local REMOTE=false REMOTE_ARGS=()
+    local _a
+    for _a in "$@"; do
+        [ "$_a" = "--remote" ] && REMOTE=true
+    done
+    if [ "$REMOTE" = "true" ]; then
+        for _a in "$@"; do
+            [ "$_a" = "--remote" ] && continue
+            REMOTE_ARGS+=("$_a")
+        done
+        source "$PROJECT_ROOT/lib/deploy-gate.sh"
+        source "$PROJECT_ROOT/lib/ssh.sh"
+        source "$PROJECT_ROOT/lib/rollback.sh"
+        source "$PROJECT_ROOT/lib/moodle-deploy.sh"
+        source "$PROJECT_ROOT/lib/restore-remote.sh"
+        restore_remote_main "${REMOTE_ARGS[@]}"
+        exit $?
+    fi
 
     # Parse options
     local OPTIONS=hdbfyos:t:

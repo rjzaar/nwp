@@ -81,6 +81,19 @@ boundary_paths() {
         "$file" 2>/dev/null | grep -v '^null$' || true
 }
 
+# Echo provider_paths ONLY for a surface (one per line). The honesty check can
+# only ever verify the PROVIDER side: consumer_paths point at `moodle/**` in
+# nwp/ss-moodle-plugins, a different repo that is never checked out here.
+boundary_provider_paths() {
+    local surface="$1"
+    local file="${2:-$(boundary_contract_file)}"
+    local yq; yq="$(_boundary_yq)"
+    [ -n "$yq" ] && [ -f "$file" ] || return 0
+    SURF="$surface" "$yq" e -r \
+        '.boundary[strenv(SURF)].provider_paths // [] | .[]' \
+        "$file" 2>/dev/null | grep -v '^null$' || true
+}
+
 # Echo provider_symbols for a surface (one per line).
 boundary_symbols() {
     local surface="$1"
@@ -273,17 +286,42 @@ boundary_json() {
 # output). If the profile tree is absent (nwp CI, where sites/* is gitignored),
 # there are no references and the check is trivially clean.
 #
-# SCAN SCOPE: only the roots the boundary actually declares (the first two path
-# components of each in-repo glob, e.g. `sites/nwc`, `lib`) plus `scripts` — NOT
-# the whole monorepo. This keeps the check meaningful (catches a NEW edge from a
-# sibling module or from lib/scripts tooling into a boundary symbol) while not
-# tripping over unrelated SITE CHECKOUTS that each carry their own clone of the
-# nwc profile (sites/nw1, sites/nwt, .agent-checkouts — clones, not couplings).
+# SCAN SCOPE: only the roots the boundary actually declares plus `scripts` —
+# NOT the whole monorepo. This keeps the check meaningful (catches a NEW edge
+# from a sibling module or from lib/scripts tooling into a boundary symbol)
+# while not tripping over unrelated SITE CHECKOUTS that each carry their own
+# clone of the nwc profile (sites/nw1, sites/nwt, .agent-checkouts — clones,
+# not couplings).
+#
+# ROOT DEPTH (fixed in item 7). The root used to be the first TWO path
+# components of each glob, so `sites/nwc/dev/…/nwc_copyright/**` yielded the
+# root `sites/nwc` — which also contains `sites/nwc/stg`, the ENVIRONMENT TWIN
+# of the very tree being declared (F23 `sites/<site>/{dev,stg}` layout). Every
+# provider symbol therefore appeared once in `dev` (inside its declared path,
+# fine) and again in the byte-identical `stg` copy (outside it, "VIOLATION").
+# Measured 2026-07-26: **all 11 reported violations were the stg twin and not
+# one was a real coupling** — the twin files `diff` clean against their dev
+# originals. That is the noisy-detector failure mode: a check that cries wolf
+# 11 times out of 11 teaches everyone to ignore its output, which is how the
+# 12th — a real one — gets ignored too.
+#
+# So: under `sites/`, the root is `sites/<site>/<env>` (THREE components) — the
+# environment checkout that actually owns the declared code. A sibling module
+# inside that same checkout is still scanned, which is the edge the check is
+# for; the twin environment is a copy and is not.
+boundary_scan_root_depth() {
+    # First component decides: site checkouts are site/env-scoped, everything
+    # else (lib, scripts, moodle, contracts) is two-deep at most.
+    case "$1" in
+        sites) echo 3 ;;
+        *)     echo 2 ;;
+    esac
+}
 
 # Echo the set of existing scan roots (relative to PROJECT_ROOT), one per line.
 boundary_scan_roots() {
     local file="${1:-$(boundary_contract_file)}"
-    local surface glob head r
+    local surface glob head r depth
     local -A roots=()
     [ -d "${PROJECT_ROOT}/lib" ]     && roots["lib"]=1
     [ -d "${PROJECT_ROOT}/scripts" ] && roots["scripts"]=1
@@ -293,8 +331,8 @@ boundary_scan_roots() {
             [ -n "$glob" ] || continue
             head="${glob%%\**}"                 # portion before first '*'
             head="${head#/}"
-            # First two path components (e.g. sites/nwc, lib, moodle).
-            r="$(printf '%s\n' "$head" | cut -d/ -f1-2)"
+            depth="$(boundary_scan_root_depth "${head%%/*}")"
+            r="$(printf '%s\n' "$head" | cut -d/ -f1-"$depth")"
             r="${r%/}"
             [ -n "$r" ] && [ -d "${PROJECT_ROOT}/${r}" ] && roots["$r"]=1
         done < <(boundary_paths "$surface" "$file")
@@ -360,4 +398,82 @@ boundary_honesty_violations() {
             )
         done < <(boundary_symbols "$surface" "$file")
     done < <(boundary_surfaces "$file")
+}
+
+# --- CORPUS HONESTY: "cannot verify" is not "clean" (item 7) ------------------
+#
+# THE DEFECT THIS FIXES. boundary_honesty_violations greps for provider symbols
+# under the roots the contract declares. In nwp CI `sites/*` is gitignored, so
+# the nwc profile — where 10 of the 11 provider symbols live — is simply ABSENT.
+# Zero files scanned ⇒ zero hits ⇒ zero violations ⇒ "manifest is HONEST".
+# The previous version of the bats suite even documented this in a comment and
+# asserted clean anyway. Measured on 2026-07-26: the identical check reports
+# **0 violations in CI and 11 on a dev workstation with the profile present**.
+# A gate whose green light means "I could not look" is worse than no gate.
+#
+# So: presence of the corpus is asserted SEPARATELY from the absence of
+# violations, and a surface whose provider tree is not on disk is reported as
+# UNVERIFIABLE, never folded into "clean".
+
+# boundary_surface_present <surface> [file] — 0 if at least one provider file
+# for this surface actually exists on disk.
+boundary_surface_present() {
+    local surface="$1"
+    local file="${2:-$(boundary_contract_file)}"
+    local glob head
+    while IFS= read -r glob; do
+        [ -n "$glob" ] || continue
+        head="${glob%%\**}"          # portion before the first '*'
+        head="${head%/}"
+        head="${head#/}"
+        [ -n "$head" ] || continue
+        [ -f "${PROJECT_ROOT}/${head}" ] && return 0
+        if [ -d "${PROJECT_ROOT}/${head}" ]; then
+            find "${PROJECT_ROOT}/${head}" -type f \
+                 \( -name '*.php' -o -name '*.module' -o -name '*.inc' \
+                    -o -name '*.install' -o -name '*.sh' -o -name '*.theme' \) \
+                 -print -quit 2>/dev/null | grep -q . && return 0
+        fi
+    done < <(boundary_provider_paths "$surface" "$file")
+    return 1
+}
+
+# boundary_honesty_check [file] — the gate. Echoes UNVERIFIABLE/VIOLATION lines
+# plus a one-line verdict. Exit status:
+#   0  VERIFIED-CLEAN   every surface's provider tree present, no leaks
+#   1  VIOLATIONS       at least one boundary symbol leaked outside its paths
+#   2  CANNOT-VERIFY    at least one surface's provider tree is not on disk
+# 1 outranks 2: a real leak is worse news than a missing corpus.
+boundary_honesty_check() {
+    local file="${1:-$(boundary_contract_file)}"
+    local surface present=0 missing=0 viol
+
+    while IFS= read -r surface; do
+        [ -n "$surface" ] || continue
+        if boundary_surface_present "$surface" "$file"; then
+            present=$((present + 1))
+        else
+            missing=$((missing + 1))
+            echo "UNVERIFIABLE: surface '${surface}' — no provider file on disk (declared: $(boundary_provider_paths "$surface" "$file" | tr '\n' ' '))"
+        fi
+    done < <(boundary_surfaces "$file")
+
+    if [ "$((present + missing))" -eq 0 ]; then
+        echo "CANNOT-VERIFY: the pair contract declares no boundary surfaces at all."
+        return 2
+    fi
+
+    viol="$(boundary_honesty_violations "$file")"
+    [ -n "$viol" ] && printf '%s\n' "$viol"
+
+    if [ -n "$viol" ]; then
+        echo "manifest-honesty: VIOLATIONS — $(printf '%s\n' "$viol" | grep -c VIOLATION) symbol(s) referenced outside their declared paths (${present}/$((present + missing)) surfaces verifiable)."
+        return 1
+    fi
+    if [ "$missing" -gt 0 ]; then
+        echo "manifest-honesty: CANNOT VERIFY — ${missing} of $((present + missing)) surface(s) have no provider tree on disk. This is NOT a clean result: the check found nothing because it could not look. Run it where sites/nwc is checked out."
+        return 2
+    fi
+    echo "manifest-honesty: VERIFIED CLEAN — all ${present} surface(s) scanned, no boundary symbol referenced outside its declared paths."
+    return 0
 }

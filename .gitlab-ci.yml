@@ -296,6 +296,32 @@ lint:doc-truth:
 # compat (expand-contract) checker — are a LATER phase (P74 Phase 3); wire them
 # here (and flip allow_failure) then. Shell runner: needs bash + git + yq (yq is
 # what reads the boundary map; without it every diff would look internal).
+#
+# MANIFEST-HONESTY, AND WHY THIS JOB IS EXPECTED TO BE AMBER (item 7)
+#   The `--honesty` step used to always exit 0 and print "clean". In THIS
+#   pipeline `sites/*` is gitignored, so the nwc profile — which holds 10 of the
+#   11 declared provider symbols — is not on the runner at all. The step was
+#   therefore reporting a green boundary contract it had no way to inspect:
+#   measured 2026-07-26, the identical check saw 0 candidate files here and 11
+#   findings on a workstation with the profile checked out.
+#
+#   `pl impact --honesty` now separates the verdict from the corpus:
+#       exit 0  VERIFIED CLEAN  every surface's provider tree was scanned
+#       exit 1  VIOLATIONS      a boundary symbol leaked outside its paths
+#       exit 2  CANNOT VERIFY   a surface's provider tree is not on disk
+#   Until this runner has the nwc profile, exit 2 is the truthful answer and
+#   this job will show AMBER (allow_failure: true) on every MR. That is the
+#   intended state: loudly "I cannot see", never silently "all clear". Do NOT
+#   silence it by passing --advisory — the flag exists for callers that have
+#   already recorded the verdict elsewhere, not to repaint this job green.
+#
+#   The verifying path today is `pl impact --honesty` on a workstation, where
+#   the profile exists (7/7 surfaces, VERIFIED CLEAN as of 2026-07-26). Flip
+#   allow_failure to false once the corpus is available to the runner.
+#
+#   Note the `--honesty` step is also fail-closed on a missing yq: with no yq
+#   the contract parses to zero surfaces and the check reports CANNOT-VERIFY
+#   rather than "clean", which is how it behaved before.
 boundary:classify:
   stage: lint
   script:
@@ -304,7 +330,10 @@ boundary:classify:
     - echo "Compare base ${BASE}"
     - ./scripts/commands/impact.sh --base="${BASE}"                 # human report
     - ./scripts/commands/impact.sh --base="${BASE}" --json | tee impact.json
-    - ./scripts/commands/impact.sh --honesty                        # manifest-honesty (advisory)
+    # Manifest honesty. Non-zero here means EITHER a real leak (1) OR "I could
+    # not look" (2) — both are amber, and both are information the previous
+    # always-exit-0 version destroyed.
+    - ./scripts/commands/impact.sh --honesty
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   tags:

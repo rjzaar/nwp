@@ -1743,6 +1743,7 @@ is 17/17 and now asserts `servers/nwpcode/demo/nwd-demo-reset-restricted` is in 
 **Consequence for this item:** sub-fixes 3 and 4 were dropped from this branch instead of being
 re-implemented. Duplicating them would have produced a conflicting diff that changed nothing.
 **Reversible-how:** N/A (work removed, not added).
+
 ---
 
 ## Item 2 — `oversight-honesty` (2026-07-26)
@@ -2433,3 +2434,81 @@ green today either way.
 **Not done here (out of item 6's territory):** capturing the estate's state into `servers/**` and
 converting it to declared state is **item 7**; `check_forge_version` registration inside
 `lib/todo-checks.sh` is **item 2's file** — `pl server forge status` ships as the verb it will call.
+
+## [2026-07-27] item8-the-triply-safe-bundle-was-a-brick-and-was-deleted-not-annotated
+**What:** deleted the tracked `ssc-118-artifact/ops-118-moodle-art9-gate.bundle` and replaced it
+with a README stating precisely what is and is not preserved. Shipped `pl snapshot
+bundle|verify|audit` and a `lint:snapshot-bundles` CI job so the shape cannot recur.
+**Why:** both committed "safety" bundles were *thin* — created from a revision range, so they
+carry only the objects since some base and record the base as a prerequisite they do not
+contain. In an empty repository each one fails:
+`error: Repository lacks these prerequisite commits: 346025ce…` / `67c80957…`. The trap is that
+`git bundle verify` run from *inside* the repo you bundled reports success, because it resolves
+prerequisites against the repo you are standing in — so whoever made them ran the check and got
+a green. The decision log called the result "triply safe"; it was singly safe, and the one copy
+was this laptop.
+**Alternatives considered:** (a) annotate it with a `.prereq.json` declaring "fetch `67c8095…`
+from github.com/moodle/moodle". Rejected: that recoverability claim was **not verifiable from
+here** — no route to github, no independent Moodle checkout — and writing an untested safety
+claim reproduces the original defect one layer up. (b) Re-make it standalone: it would have to
+carry all of Moodle's history, and the object it needs is upstream, not ours.
+**Nothing was lost:** the blob is in history at `8e27949952be…`; the same commit content is in
+the retained `.patch` (84 KB, full context, applies to any Moodle checkout) and on
+`nwp/ss-moodle-plugins` `origin/ops-137-depthcontent-amd-build`.
+**Reversible-how:** `git revert -m 1 <merge>`, or `git show 8e27949952be… > <path>`.
+
+## [2026-07-27] item8-vcs-strandedness-deduplicates-by-object-store-not-by-path
+**What:** `lib/vcs-truth.sh` keys its "already reported" set on `git rev-parse --git-common-dir`,
+not on the work-tree path, and the generic scanner prunes `.claude/worktrees/*`.
+**Why:** the first working run of `pl doctor`'s new check emitted 154 errors — two real stranded
+branches (`ops-79`, 5 commits, 16 days; `backup/main-pre-reconcile-2026-07-22`, 3 commits)
+repeated once per linked worktree, of which this tree has 77. A linked worktree shares the
+parent's `refs/`, so it can contribute no finding the parent does not already carry. After the
+fix the same tree reports **26** distinct findings, including `servers/nwpcode` (2 commits, no
+remote at all) and `sites/nw1/dev/html/profiles/custom/nwc` (46 commits, no remote).
+**Why it matters beyond tidiness:** a 154-line wall of duplicates is a report nobody reads, and
+an unread check is the same as an absent one — the failure mode this programme exists to remove,
+arriving by the other door.
+**Reversible-how:** `git revert -m 1 <merge>`; the dedupe is ~6 lines in one function.
+
+## [2026-07-27] item8-stale-ref-states-its-own-scope-rather-than-asserting-a-phantom
+**What:** `pl issue reconcile` now computes the STALE-REF class its header had advertised (and
+never assigned) since it was written, and prints `scope: N issue(s) · M git repo(s) searched`
+plus, on each finding, "found in none of M repo(s)".
+**Why the qualifier:** "this branch does not exist" is a claim about every repository in the
+estate, and the command can only search the ones on this disk. A confident phantom report that
+is wrong because the checkout was missing is exactly the class of wrong answer being removed.
+`_ref_is_known` therefore has three outcomes — exists / not found / **could not determine** —
+and only "not found" is ever reported.
+**Deliberately narrow matching:** only branch-shaped tokens in the namespaces this estate
+actually uses (`feat/ fix/ chore/ ci/ pubrel/ release/ hotfix/ refactor/ perf/`) and `ops-<N>`.
+`docs/` and `test/` are excluded on purpose — in prose they are far more often file paths, and a
+false STALE-REF is noise dressed as signal. Anything ending in a file extension is dropped.
+**Reversible-how:** `git revert -m 1 <merge>`; read-only reporting, nothing is written.
+
+## [2026-07-27] item8-the-programme-example-for-STALE-REF-ops70-is-STALE-ITSELF
+**Recorded as a correction, not a fix.** The programme cites ops#70 as the motivating case
+("its only note points at a branch and MR that never existed"). That is **no longer true and may
+never have been**: ops#70's note cites `fix/ops70-infra-secret`, which exists locally *and*
+landed on `origin/main` in merge `e9860ef`. Verified before building anything, so the assertion
+was not inherited.
+**What this changed:** nothing about the fix — STALE-REF was genuinely documented-and-unbuilt,
+which is the defect. But the acceptance evidence had to come from a fixture and from a live
+whole-tracker run, not from ops#70. The live run over 100+ issues produced **34** disagreements
+(20 STALE-REF, 14 MERGED-BUT-OPEN).
+**Also true of ops#70:** it is MERGED-BUT-OPEN in substance — the work landed 2026-07-17 and the
+issue is still open — but the merge commit names the branch, not `ops-70`, and the closing-keyword
+test is deliberately narrow, so the command does not claim it. Left as a known limit rather than
+loosened, because loosening it is how a reconciler starts proposing wrong closes.
+
+## [2026-07-27] item8-pl-issue-reconcile-was-scanning-a-truncated-tracker
+**What:** added pagination to `cmd_reconcile`; it now walks pages until a short one (cap 20).
+**Why:** it fetched exactly one `per_page=100` page and then printed "tracker and code agree".
+`pl issue ls --all` returns exactly 100 rows today, i.e. nwp/ops is **at** the cap — so every
+issue past the first page was invisible to a command whose whole job is to assert completeness.
+A positive assertion over data never read is the same defect class as the bundle above.
+**Implementation note:** pages are flattened to TSV as they arrive rather than concatenating
+JSON, so there is no merge step that can quietly drop a page.
+**Cost:** a full run is now ~4-8 minutes (two API calls per issue). `--no-notes` roughly halves
+it at the cost of missing refs that only appear in comments.
+**Reversible-how:** `git revert -m 1 <merge>`.

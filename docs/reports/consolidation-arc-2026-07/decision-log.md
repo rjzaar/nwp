@@ -1411,6 +1411,338 @@ and an adjacent work item is operating on the remaining stashes — a blind drop
 index under it. A stashed blob also cannot be picked up by the `cp`/`tar` path the trust-anchor
 assertion guards, so there is no exposure to close.
 **Reversible-how:** N/A (nothing changed).
+---
+
+## 2026-07-26 — Fix programme item 3: `nested-repo-containment`
+
+**What.** NWP's v2 layout puts real git repositories *underneath* `sites/`
+(`<n>/dev/.git`, `<n>/stg/.git`, `<n>/backups/.git`, `.../profiles/custom/*/.git`,
+`.plugin-src/*/.git`). The repo-root gitleaks gate and the repo-root pre-commit hook cover
+none of them, so every one of those repos is its own, unguarded publication surface. Four
+defects were verified on the live tree before any code was written:
+
+1. `html/sites/default/settings.php` is untracked **and un-ignored** in the site repos.
+   Proven by copying `sites/nwc/dev/.gitignore` verbatim into a scratch repo: `settings.php`
+   → `LEAKABLE`, `settings.local.php` → ignored. The curated ignore file caught the *local*
+   override and missed the real one.
+2. `oauth-keys/private.key` is likewise un-ignored, and **the same key is reused across three
+   environments** — `md5 6e84421b730c3c3186a52e36e7f9279c` in `nwc/dev`, `nwc/stg` and
+   `nw1/dev` (`nwd/dev` differs).
+3. `sites/avc/backups` is a git repo with `remote.origin.url =
+   git@git.nwpcode.org:backups/avc-files.git`, holding a 36 MB unsanitised production SQL
+   dump and a 363 MB files tarball — committed and pushed.
+4. **Root cause of (3), and the reason it would have recurred:** `lib/git.sh:git_create_gitignore`
+   *generated* that state. For `db` repos it wrote `!*.sql` / `!*.sql.gz`; for `files` repos
+   `!*.tar.gz` / `!*.zip` — explicit **un-ignore** lines — and `git_backup()` then attached a
+   forge remote and pushed. The leak was not drift; it was the designed behaviour.
+
+**Why this shape of fix.** Three judgement calls worth recording:
+
+- *Behavioural checks, not textual ones.* `containment_check_repo` asks `git check-ignore`
+  whether a representative sensitive path would be committed, rather than grepping the
+  `.gitignore` for a rule string. This was chosen deliberately after the
+  `test-impact-contract.bats` precedent, where gating on `grep -q 'lib/impact.sh'` meant a
+  **comment** satisfied the gate. A comment cannot satisfy this one, and a rule written
+  differently but equivalently still passes.
+- *One source of truth for the rules.* The rules live in `templates/site-gitignore.tmpl`, and
+  both the scaffolder (`git_create_gitignore`) and the checker (`containment_check_repo`) read
+  it. The previous arrangement had the generator's idea of "safe" hard-coded in one place and
+  no checker at all, so nothing could ever notice they disagreed.
+- *Empty corpus is a failure, not a pass.* `containment_check_fleet` exits **3 / "CANNOT
+  VERIFY"** when it finds zero repos. In a CI checkout `sites/` is gitignored and therefore
+  absent, so a naive sweep would scan nothing and print "clean" — the exact shape of the
+  privacy sweep that scanned 850 files, found 0 violations and printed "FIREWALL INTACT"
+  because the hardening was on an unmerged branch. `S18` asserts the exit-3 behaviour
+  explicitly so the anti-vacuity property is itself tested.
+
+**The backup guard self-remediates instead of breaking the nightly sweep.** A pure fail-closed
+guard would have made `pl backup avc` — and therefore the nightly `pl backup sweep` — start
+failing immediately, because `sites/avc/backups` is exactly the shape the guard rejects. That
+trades a containment bug for a backup outage, which is a worse position. So when the backup
+directory **is** the repository root (the `sites/<n>/backups/` shape `lib/git.sh` created), the
+guard installs the containment block and proceeds, printing what it did; a backup directory
+buried inside a larger site or profile repo still fails closed, because fixing that case means
+editing a repo whose ignore rules have other consumers. Alternative considered: ship the pure
+refusal and require `pl site gitignore --fix` first. Rejected — it makes the *safe* state depend
+on an operator remembering a command, which is the failure mode this programme is paying off.
+Already-committed artifacts are untouched either way; removing those is a history rewrite and
+stays operator-gated.
+
+**`git_backup` retired rather than left inert.** Once the template ignores every payload
+extension, `git_backup` for `db`/`files` would commit nothing and return success — a new
+vacuous pass replacing the old leak. It now fails closed with a message naming
+`pl backup --remote` and `pl server backup status` instead. Alternative considered: delete the
+function. Rejected — an explicit refusal that explains itself is more useful to the next
+operator than a missing symbol.
+
+**Fail-closed over fail-open, twice.** The `pl delete` containment guard initially sourced
+`lib/site-containment.sh` behind an `[ -f ... ]` test, which would have silently disabled the
+guard on any install missing the library. That is the fail-open pattern this programme exists
+to remove, so the source is now unconditional: a missing containment library is a broken
+install, not a licence to delete a site unchecked. `tests/unit/test-delete-impact.bats` was
+extended to stage the library into its fixture root accordingly.
+
+**Evidence — every test was observed RED first.**
+- `tests/unit/test-site-containment.bats`: **21/21 failing** against the pre-fix tree. Cases
+  10–12 fail against *existing* `lib/git.sh` with no new library present, which is the
+  independent proof of the generator defect.
+- `tests/unit/test-delete-impact.bats`: the 4 new cases pass; with the guard's condition
+  flipped to `if false`, cases 10, 11 and 13 go red.
+- Mutation check on the template: deleting the four `oauth-keys` / `private.key` rules turns
+  cases 2, 7, 8 and 12 red, so the rules are load-bearing rather than decorative.
+- Full unit suite after the change: **1110 pass, 0 fail.**
+
+**Deliberately NOT done (and why).**
+- *No history rewrite on `git@git.nwpcode.org:backups/avc-files.git`.* Purging the two pushed
+  blobs needs a force-push to a remote holding live member data. That is operator hands and an
+  operator decision; the agent's job was to stop the next fifteen. Done: the generator no
+  longer produces un-ignore lines, and `pl backup` now refuses to write into a publishable
+  work tree at all.
+- *No OAuth key rotation.* One signing key across `nwc/dev`, `nwc/stg` and `nw1` is auth-class,
+  and rotating it would break UID-locked SSO identities. The scaffold now contains the key;
+  rotating the existing one stays operator-gated.
+- *No commits into the nested site repos.* This session ran in a sandboxed worktree with git
+  operations against the shared checkout blocked, so the data half of item 3 (committing avc's
+  260 entries, the `composer.json`/`patches/**` work, moving `nwc/dev` back onto `main`,
+  unstashing the legal-canonical-text stash) was **not attempted**. It is unblocked by this MR
+  — `pl site gitignore --fix` must be run *before* any of it, or the first `git add -A` in
+  those repos stages `settings.php` and the OAuth key. Recorded as the follow-up, not as done.
+
+**How to reverse.** `git revert -m 1 <merge>`. If a full revert is unwanted:
+`NWP_ALLOW_BACKUP_IN_REPO=1` restores the old backup-write behaviour and
+`NWP_ALLOW_DELETE_DIRTY=1` the old delete behaviour. Ignore blocks written by
+`pl site gitignore --fix` are delimited by `# >>> nwp containment … >>>` markers and can be
+removed by hand; doing so cannot untrack anything, because ignore rules only ever affected
+paths that were untracked to begin with. See rollback registry **CP19**.
+---
+
+## [2026-07-26] item7-contract-and-boundary-gates — enforce adoption, and let "cannot verify" say so
+**REVIEW:** yes — the fate manifest is the safety property standing in front of irreversible actions,
+and the boundary manifest is the nwc↔ssc security contract.
+
+**Decision (impact contract).** The ops#47 gate is rewritten from a `grep -q 'lib/impact.sh'` inside
+`tests/unit/test-impact-contract.bats` into library functions (`impact_contract_*` in `lib/impact.sh`)
+that the test, CI and any future `pl` verb all call, so there is one implementation rather than three
+drifting copies. Three concrete changes:
+
+1. **Adoption, not mention.** "Adopted" now means, on NON-COMMENT lines: `source …impact.sh` **and**
+   `impact_render` **and** `impact_confirm`. *Proven RED first:* a probe `scripts/commands/zzprobe-item7.sh`
+   containing `rm -rf "$1"` plus the comment "this file does NOT source lib/impact.sh" passed all four
+   pre-fix cases green. `impact_render` is required as well as `impact_confirm` because the contract is
+   "print the manifest, THEN prompt" — a confirm with no manifest is the prompt stripped of the
+   information that makes it answerable. This is not hypothetical twice over: the item-2 session
+   recorded `restore.sh` being believed converted because a *different* file's header named the path,
+   and `scripts/commands/branch.sh` on main today sources the lib and prompts but never renders.
+2. **Scan `lib/` and `servers/`, not just `scripts/commands/`.** *Proven RED first:* `lib/zzprobe-item7.sh`
+   with `rm -rf "$1"` and no contract at all was invisible — `lib/` was never scanned. Candidate count
+   goes from ~96 files to **201** (101 lib + 96 commands + 4 servers). This matters because destructive
+   logic is actively *migrating* from commands into lib (moodle-deploy, moodle-promote, rollback-remote,
+   restore-remote, the sanitizers), so the old gate's coverage was shrinking toward zero while staying green.
+3. **Destructive-pattern matching moved to code lines only**, so a file that merely *documents* `rm -rf`
+   is not dragged into the contract (`lib/rollback-remote.sh` is one such).
+
+**Alternatives rejected.** (a) Keeping the allowlist inline in the bats file — it then cannot be reviewed
+as a diff of its own, and no other caller can use it. (b) Accepting `impact_confirm` without
+`impact_render` — that is precisely the vacuous half of the contract. (c) Regex-matching the *call sites*
+of `rm -rf` to prove the manifest precedes them — brittle, and it would have failed open on any
+indirection.
+
+**The allowlist is the honest inventory, not a rubber stamp.** `lib/impact-contract.allowlist` seeds 35
+rows, each with a one-line justification, keyed by repo-relative path. It is larger than its 14-row
+predecessor only because two whole roots were never scanned and because "adopted" now means something.
+Nothing on it is newly broken; it was broken and invisible. Shrink-only is now *enforced*, not merely
+asserted in a comment: a file that converts and is left on the list is a hard failure
+(`impact_contract_stale_allowlist`), tested by parking `delete.sh` on a fixture list and asserting red.
+
+**Two findings worth flagging to the operator, recorded rather than silently allowlisted:**
+- `lib/moodle-deploy.sh` has `impact_render`/`impact_confirm` but never sources `impact.sh`; the calls
+  sit behind `command -v impact_confirm`, so a caller that has not sourced the lib **silently skips both
+  the manifest and the typed prompt** before a live Moodle rollback. Real gap. The file is item 9
+  territory and is carried by MR !168, so it is recorded on the allowlist with that note, not edited here.
+- `scripts/commands/branch.sh` prompts without a manifest (item 4 territory).
+
+**Decision (ops#143, box-resident manifest).** `servers/nwpcode/demo/nwd-demo-reset-restricted` is a
+forced command deployed to a box with no repo checkout, so it cannot source `lib/impact.sh`. It now
+renders the manifest inline and declares `# impact-contract: inline`. The pragma alone is deliberately
+**not** sufficient — a pragma with no emitted `FATE MANIFEST` is rejected, or it would be the same
+vacuous pass in a new costume. The manifest is verified by *executing* the extracted render function
+under stubbed `drush`/`du`/`jq`, not by reading the file; mutating one line of its text was confirmed to
+turn that test red. It prints for `dry-run` too, so a dry run is a truthful preview rather than a
+different code path.
+
+**Decision (boundary honesty).** `boundary_honesty_check` replaces the always-exit-0 report with three
+distinguishable states — 0 VERIFIED CLEAN / 1 VIOLATIONS / 2 CANNOT VERIFY — asserted per surface by
+whether its declared `provider_paths` are actually on disk. *Proven RED first:* in a checkout without
+`sites/nwc` (the CI condition) the pre-fix check returned empty and exit 0, and there was no function
+that could express "I could not look"; the old bats file even documented the vacuity in a comment and
+asserted clean anyway. It now reports `CANNOT VERIFY — 5 of 7 surfaces have no provider tree on disk`,
+exit 2. Missing `yq` now also fails closed the same way instead of rendering as clean.
+
+**Claim from the programme that did NOT hold — the "11 real VIOLATIONs" are 11 FALSE POSITIVES.**
+Measured on the full tree: all 11 were in `sites/nwc/stg`, the **byte-identical environment twin** of the
+declared `sites/nwc/dev` paths (`diff` clean), pulled in because `boundary_scan_roots` truncated the scan
+root to the first two path components — `sites/nwc` — which contains both twins. Not one was a real
+cross-module coupling. Fixed via `boundary_scan_root_depth`: under `sites/`, the root is
+`sites/<site>/<env>` (three components), i.e. the checkout that owns the declared code. A sibling module
+*inside* that checkout is still caught — that is the edge the check exists for and there is now a fixture
+test pinning it. **Consequence: the triage the programme made a precondition for flipping
+`allow_failure: false` is done, and its result is "no violations to triage."** The remaining blocker is
+the corpus, not the findings. After the fix the real tree reports `VERIFIED CLEAN — all 7 surfaces
+scanned`. *Alternative rejected:* adding an exclusion for the literal string `stg`, which would break the
+moment an environment is named anything else.
+
+**Why the bats cases use a synthetic fixture tree.** The detector cases (sibling-module leak, stg twin,
+unrelated clone, comment-only) build their own `PROJECT_ROOT` + contract in `BATS_TEST_TMPDIR`, so they
+behave identically on a workstation and on a runner with no `sites/` at all. Cases that depended on the
+real profile being checked out would silently degrade to a skip, which is the same disease as the
+vacuity being fixed.
+
+**`boundary:classify` stays `allow_failure: true` and is now EXPECTED TO BE AMBER on every MR.** The
+runner has no nwc profile, so exit 2 is the truthful answer, and amber is the honest rendering of
+"I cannot see". The comment in the job says explicitly not to silence it with `--advisory`. The verifying
+path today is `pl impact --honesty` on a workstation (7/7 surfaces, VERIFIED CLEAN, 2026-07-26). Flip to
+blocking when the runner can see the corpus.
+
+**Blast radius.** No live site, server or database is written by anything in this item. The only file that
+also exists outside the repo is the demo forced command, and only the repo copy is changed — see the
+rollback registry row for the resulting repo↔box divergence.
+
+**Reversible-how.** `git revert -m 1 <merge>`. All changes are a test file, two libs, one data file, one
+CI comment block and one not-yet-deployed box script; there is no state migration and no new verb that
+writes anything. If the seeded allowlist is judged to mask too much, the sharper posture is to delete
+rows (each is one line) rather than to revert the gate to string matching.
+
+## [2026-07-26] item4-triage-half-of-the-ci-gate-work-had-already-landed
+**Decision:** Before writing anything, triaged all 11 sub-fixes of the
+`ci-gates-that-cannot-fail` item against today's `origin/main` rather than against the
+programme text, and built only what was still broken.
+**Already landed (verified in tree, not assumed):** `lint:bash` now runs
+`scripts/ci/lint-bash.sh` (no `find -exec … \;` status loss) and carries a
+`merge_request_event` rule; `verify-signature` runs `scripts/ci/verify-signature.sh` for
+real at `allow_failure: false`; `.gitleaks.toml` was un-blinded on `fix/leakage-gate-scope`
+(merged, 92cf069); `lint:yq-first` resolves shell variables holding `*.yml` paths and has a
+shrink-only `.yq-first-baseline`; the phantom `junit:` stanzas now point at reports
+`scripts/ci/run-bats.sh` actually writes; `test:console` exists with a collected-count floor.
+**Still broken, and therefore this item's scope:** the `pl test` vacuous passes, the
+`test:integration` job that ran one file out of six under the name "integration", and
+`.verification.yml`'s age-blind coverage figure.
+**Alternative rejected:** re-deriving the already-landed fixes to "complete the item". That
+would have produced a large diff that changed nothing and buried the two real defects.
+**Reversible-how:** N/A (a triage, not a change).
+
+## [2026-07-26] item4-a-suite-that-runs-nothing-has-failed
+**Decision:** Gave every runner in `scripts/commands/run-tests.sh` a third outcome —
+`2 = DID NOT RUN` — and made `main()` count it as a failure in its own column.
+**Why:** `pl test --e2e` printed `Test suites run: 1 / Test suites passed: 1 / [✓] All test
+suites passed` in `00:00:00` having executed zero tests, because `run_e2e_tests` ended in a
+bare `return 0`. Captured verbatim before the change. The e2e directory holds standalone
+Linode-provisioning scripts that no harness has ever invoked from here.
+**Second half:** the bats suites now delegate to `scripts/ci/run-bats.sh` — the same runner
+CI uses — which asserts a non-empty JUnit report, `>0 <testcase>` and an exact skip budget.
+Two independent answers to "did the suite run?" had already diverged: CI refused a
+zero-testcase run while `pl test` celebrated one.
+**Alternative rejected:** deleting the `--e2e` flag. The scripts are real and someone should
+wire them; a flag that refuses to lie is a standing reminder, a deleted flag is not.
+**Reversible-how:** `git revert`. No state outside `.logs/junit/` is written.
+
+## [2026-07-26] item4-skips-are-declared-in-tree-and-shrink-only
+**Decision:** Added `tests/.skip-budget` (`integration=14`, `unit=0`, `e2e=0`) as the single
+source of truth for how many tests may skip, read by `scripts/ci/run-bats.sh` for both CI and
+`pl test`.
+**Why:** bats reports a `skip` as `ok`. Measured on this workstation: the integration suite is
+70 cases of which **14 skip** without ddev, exits 0, and prints "Integration tests passed".
+The budget was previously a literal `NWP_BATS_MAX_SKIPPED: "0"` in `.gitlab-ci.yml` that only
+held because CI ran a different, skip-free file — and `pl test` had no budget at all.
+**Measured baselines, not guessed:** unit = 1277 cases / 0 skips / 0 failures; integration =
+70 / 14 / 0.
+**Alternative rejected:** `ENABLE_DDEV_TESTS=true` in CI. The runner has no ddev; forcing the
+flag would turn 14 silent skips into 14 failures caused by runner capability rather than by
+the code under review. Declaring the shortfall is honest; faking the capability is not.
+**Reversible-how:** delete `tests/.skip-budget`; `run-bats.sh` falls back to 0.
+
+## [2026-07-26] item4-test-integration-ran-one-file-out-of-six
+**Decision:** `test:integration` now runs `tests/integration/` instead of
+`tests/integration/06-scripts-validation.bats`.
+**Why:** the job asserted 25 existence / `bash -n` / `--help` checks and was named for a suite
+of 70. The 45 lifecycle cases in `01-install` … `05-deployment` had never run in CI; **31 of
+them need no ddev at all** and were simply never invoked. The job now executes 70 cases with
+the 14 ddev-dependent skips declared in `tests/.skip-budget`.
+**Reversible-how:** `git revert` the `.gitlab-ci.yml` hunk.
+
+## [2026-07-26] item4-a-verification-result-has-an-age
+**Decision:** Taught `verify.sh` to read `verified_at`: new
+`count_machine_verified_fresh_items` / `count_machine_verified_stale_items` /
+`newest_verification_date`, a `config.freshness_days: 90` horizon in `.verification.yml`, and
+an "Evidence age" block in `pl verify summary`.
+**Why (measured, not asserted):** `pl verify summary` reported `Automated Tests: 514/570
+(90%)`. Running the new counters over the unmodified file gives **514 verified, 0 fresh, 514
+STALE, newest result 2026-02-02** — every `verified_at` in the file was written between
+2026-01-11 and 2026-02-02, several hundred commits ago. The figure could not go down, because
+nothing decayed: a verification run that never happens leaves coverage exactly where it was.
+CLAUDE.md's release checklist gates a tag on that number.
+**Also:** `run_ci_mode` now counts persisted results (`MACHINE_STATE_WRITES`) and returns 1
+when it wrote none, so a depth with no machine blocks — or a runner missing every tool —
+cannot exit 0 and regenerate `.badges.json` from the same stale counts it started with.
+**Alternative rejected:** deleting the coverage figure. The measurement is worth having; what
+was missing was its date.
+**Reversible-how:** `git revert`. The horizon is one config line; set it very large to restore
+the old age-blind behaviour without touching code.
+
+## [2026-07-26] item4-verify-test-site-cleanup-is-now-unconditional
+**Decision:** `run_machine_checks` installs an `EXIT INT TERM` trap that calls
+`cleanup_test_site` as soon as the site exists, disarmed on the normal path.
+**Why:** cleanup lived only on the normal return path, so an interrupt, a `set -e` abort or a
+runner timeout left `sites/verify-test*` and its docker volumes behind. That is the exact
+shape of the 2026-01 incident that put the ddev-cleanup rule in CLAUDE.md, and the reason
+`pl verify doctor` needs an orphan-volume sweeper at all.
+**Reversible-how:** `git revert`; the trap is one block.
+
+## [2026-07-26] item4-test-verification-stays-allow_failure-true-for-now
+**Decision, recorded as NOT done and why:** did not flip `test:verification` to
+`allow_failure: false`, despite now having a real "verified nothing" signal to gate on.
+**Why not:** the job runs `--depth=basic`, which calls `create_test_site` and a full composer
+Drupal install. The CI runner has no ddev, so flipping it blocking would red every MR on
+*runner capability*, not on the code under review — manufacturing exactly the kind of
+meaningless red this programme exists to remove. The prerequisite is the programme's own step
+7, "move site-creating depths out of the CI job", which is a larger change than this item can
+carry safely.
+**What did change:** the zero-machine-write guard is in place, so the flip is now a one-line
+change once the depths are separated.
+**Reversible-how:** N/A (nothing changed).
+
+## [2026-07-26] item4-source-text-only-test-budget-deferred
+**Decision, recorded as NOT done:** did not build the meta-test that classifies each `@test`
+body and freezes the source-text-only ratio at today's 208/1085.
+**Why not:** the planner already flagged it as effort-L folded in as a budget, and a
+classifier accurate enough to be trusted is itself a body of work — a crude regex would
+mis-file tests in both directions and produce a gate nobody believes, which is the failure
+mode being fixed. Between it and the `.verification.yml` freshness defect, the latter has the
+larger blast radius: an operator gates a release tag on that number.
+**Not lost:** the two suites shipped here (`test-suite-honesty.bats`,
+`test-verify-freshness.bats`) are call-site/behavioural, not source-text, so the ratio moves
+the right way regardless.
+**Reversible-how:** N/A (nothing changed).
+
+## [2026-07-26] item4-two-sub-fixes-landed-mid-session-and-were-re-verified-not-assumed
+**Situation:** while this item was in flight, `fix/item7-contract-and-boundary-gates` merged to
+main (0cdb94c), carrying two of item 4's own sub-fixes — `pl impact --honesty` failing closed,
+and the impact-contract gate scanning `lib/**` + executable non-`.sh` under `servers/**` with a
+call-site (not presence-grep) assertion.
+**Decision:** rebased onto the new main and **re-proved both against the merged code** rather
+than trusting the commit titles.
+**Evidence captured on the pre-merge tree (the red):** `pl impact --honesty` in this worktree
+printed `manifest-honesty: clean — no boundary symbol referenced outside its declared paths`
+and exited **0**, while 13 of the 18 contract-declared path heads were absent — the scan had
+silently collapsed to `lib` + `scripts`, so 5 of 7 boundary surfaces, including `oauth_sso`
+(SSO identity) and `erasure` (Art.17), were never looked at. That is a CI clone's exact state,
+since `sites/*` is gitignored.
+**Evidence after the merge (the green):** the same command exits **2** and prints
+`manifest-honesty: CANNOT VERIFY — 5 of 7 surface(s) have no provider tree on disk. This is NOT
+a clean result: the check found nothing because it could not look.` `test-impact-contract.bats`
+is 17/17 and now asserts `servers/nwpcode/demo/nwd-demo-reset-restricted` is in scope.
+**Consequence for this item:** sub-fixes 3 and 4 were dropped from this branch instead of being
+re-implemented. Duplicating them would have produced a conflicting diff that changed nothing.
+**Reversible-how:** N/A (work removed, not added).
 
 ## [2026-07-26] item5-erasure-execute-fails-closed-rather-than-simulating  **REVIEW:**
 **Decision:** `pl erasure` ships `plan`, `verify`, `status`, `list` as fully working verbs, and

@@ -3,6 +3,12 @@ config:
   machine_engine: verify.sh
   human_logging: true
   badges_enabled: true
+  # How long a machine verification counts as evidence. Past this, the result
+  # is reported as STALE rather than silently counted toward coverage.
+  # Added 2026-07-26: every verified_at in this file was written between
+  # 2026-01-11 and 2026-02-02, and `pl verify summary` was reporting the
+  # resulting 90% as a present-tense fact.
+  freshness_days: 90
   test_site:
     prefix: verify-test
     cleanup_on_success: true

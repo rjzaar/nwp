@@ -689,45 +689,61 @@ git_init_repo() {
 
 # Create standard .gitignore for backup directories
 # Usage: git_create_gitignore "/path/to/repo" "db|files|site"
+#
+# Containment: the rules come from templates/site-gitignore.tmpl via
+# lib/site-containment.sh, so this generator and `pl site gitignore --check`
+# can never disagree about what "contained" means.
+#
+# HISTORY — this function used to emit `!*.sql` / `!*.sql.gz` (db) and
+# `!*.tar.gz` / `!*.zip` (files), i.e. it actively UN-ignored backup payloads,
+# and git_backup() below then attached a remote on the code forge and pushed.
+# That is how a 36 MB unsanitised production database dump and a 363 MB files
+# tarball reached a `backups/*` project on the forge. Backup payloads replicate
+# through the restic/DR chain; they never belong in a code forge.
+# Do not reintroduce a `!` un-ignore line here.
 git_create_gitignore() {
     local repo_path="$1"
     local backup_type="${2:-db}"
     local gitignore_file="$repo_path/.gitignore"
 
+    # Source the containment library lazily (lib/git.sh is sourced by scripts
+    # with varying PROJECT_ROOT conventions).
+    if ! declare -F containment_render_section >/dev/null 2>&1; then
+        local _cdir
+        _cdir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        # shellcheck source=/dev/null
+        [ -f "$_cdir/site-containment.sh" ] && source "$_cdir/site-containment.sh"
+    fi
+
+    if ! declare -F containment_render_section >/dev/null 2>&1; then
+        echo "ERROR: lib/site-containment.sh unavailable; refusing to create an" >&2
+        echo "       unverified .gitignore for '$repo_path'." >&2
+        return 1
+    fi
+
     case "$backup_type" in
-        db)
-            cat > "$gitignore_file" << 'EOF'
-# NWP Database Backup .gitignore
-# Ignore temporary files
-*.tmp
-*.temp
-*.log
-
-# Keep SQL files
-!*.sql
-!*.sql.gz
-EOF
-            ;;
-        files)
-            cat > "$gitignore_file" << 'EOF'
-# NWP Files Backup .gitignore
-# Ignore temporary files
-*.tmp
-*.temp
-*.log
-
-# Keep archives
-!*.tar.gz
-!*.zip
-EOF
+        db|files|backups)
+            {
+                echo "# NWP ${backup_type} backup .gitignore"
+                echo "# Generated from templates/site-gitignore.tmpl — see lib/site-containment.sh"
+                echo ""
+                containment_render_section backups
+            } > "$gitignore_file" || return 1
             ;;
         site)
-            cat > "$gitignore_file" << 'EOF'
-# NWP Site .gitignore
-# Drupal specific
+            {
+                echo "# NWP site .gitignore"
+                echo "# Generated from templates/site-gitignore.tmpl — see lib/site-containment.sh"
+                echo ""
+                containment_render_section site
+                cat << 'EOF'
+
+# Drupal runtime state
 web/sites/*/files/*
 web/sites/*/private/*
 !web/sites/*/files/.gitkeep
+html/sites/*/files/*
+html/sites/*/private/*
 private/*
 !private/.gitkeep
 
@@ -758,6 +774,11 @@ Thumbs.db
 *.log
 *.cache
 EOF
+            } > "$gitignore_file" || return 1
+            ;;
+        *)
+            echo "ERROR: unknown backup type '$backup_type' (want: db|files|site)" >&2
+            return 1
             ;;
     esac
 
@@ -895,6 +916,32 @@ git_backup() {
     local group="backups"
 
     print_header "Git Backup"
+
+    # FAIL CLOSED: pushing backup PAYLOADS to a code forge is retired.
+    #
+    # This path created sites/avc/backups as a git repo with a remote on the
+    # code forge and pushed a 36 MB unsanitised production SQL dump plus a
+    # 363 MB files tarball to it. Backup payloads carry member PII and must
+    # replicate through the restic/DR chain (`pl backup --remote`, `pl server
+    # backup`), never through the forge that serves the code.
+    #
+    # Since the containment template now ignores every payload extension, this
+    # function would otherwise commit nothing and report success — a vacuous
+    # pass. Refuse explicitly instead, and say what to use.
+    case "$backup_type" in
+        db|files|backups)
+            print_error "git_backup is retired for '$backup_type' backups."
+            echo "  Backup payloads (*.sql, *.sql.gz, *.tar.gz) hold unsanitised member" >&2
+            echo "  data and must not be pushed to the code forge." >&2
+            echo "" >&2
+            echo "  Use instead:" >&2
+            echo "    pl backup <site> --remote     # verified artifact + sha256 sidecar" >&2
+            echo "    pl server backup status <host> # DR chain (restic) health" >&2
+            echo "" >&2
+            echo "  See templates/site-gitignore.tmpl for the rationale." >&2
+            return 1
+            ;;
+    esac
 
     # Determine project name based on backup type
     local project_name

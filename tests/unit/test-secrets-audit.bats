@@ -16,11 +16,19 @@
 # Everything runs OFFLINE: `curl` is shadowed by tests/unit/helpers/fake-curl.sh.
 # Fixture values are deliberately NOT token-shaped so the leakage gate stays green.
 
+load helpers/secrets-sandbox
+
 setup() {
-  # NWP_TEST_SECRETS_SH lets the suite be pointed at the PRE-FIX script so the
-  # red state can be reproduced on demand (see the MR description).
-  SECRETS_SH="${NWP_TEST_SECRETS_SH:-${BATS_TEST_DIRNAME}/../../scripts/commands/secrets.sh}"
+  estate_guard_arm   # BEFORE HOME moves — see helpers/secrets-sandbox.bash
   TEST_TMP=$(mktemp -d)
+  # NWP_TEST_SECRETS_SH lets the suite be pointed at the PRE-FIX script so the
+  # red state can be reproduced on demand (see the MR description). That script
+  # has no NWP_ROOT support and resolves its rotation log from its own location,
+  # so it must be run from a SANDBOX root — reproducing the red state must not
+  # edit the operator's real credential records to do it.
+  SECRETS_SH=$(secrets_sandbox_script \
+    "${NWP_TEST_SECRETS_SH:-${BATS_TEST_DIRNAME}/../../scripts/commands/secrets.sh}" \
+    "${TEST_TMP}/sandbox")
   # hermetic estate root: without this, lint/scan reach into the real
   # checkout and the suite reports the operator's findings as test failures
   export NWP_ROOT="${TEST_TMP}/estate"
@@ -84,7 +92,12 @@ YML
   export NWP_LEAK_SURFACES="${TEST_TMP}/surface"
 }
 
-teardown() { rm -rf "${TEST_TMP}"; }
+teardown() {
+  local rc=0
+  estate_guard_assert || rc=1
+  rm -rf "${TEST_TMP}"
+  return $rc
+}
 
 # ---------------------------------------------------------------------------
 # CASE 1 — a non-first stored_in location holding a different (and dead) value

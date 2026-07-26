@@ -14,7 +14,9 @@ setup() {
   cp "$REPO/lib/ui.sh" "$REPO/lib/common.sh" "$REPO/lib/impact.sh" \
      "$REPO/lib/canonical.sh" "$REPO/lib/yaml-write.sh" \
      "$REPO/lib/project-resolver.sh" "$REPO/lib/server-resolver.sh" \
-     "$REPO/lib/ssh.sh" "$ROOT/lib/" 2>/dev/null || true
+     "$REPO/lib/ssh.sh" "$REPO/lib/site-containment.sh" "$ROOT/lib/" 2>/dev/null || true
+  mkdir -p "$ROOT/templates"
+  cp "$REPO/templates/site-gitignore.tmpl" "$ROOT/templates/" 2>/dev/null || true
 
   # Fixture v2 site: container with dev/ + stg/ projects and in-tree backups
   mkdir -p "$ROOT/sites/fix/dev/.ddev" "$ROOT/sites/fix/stg/.ddev" "$ROOT/sites/fix/backups"
@@ -173,4 +175,64 @@ EOF
   [[ "$output" == *"untouched by this deletion"* ]]
   [[ "$output" == *"https://fix.example.org"* ]]
   [[ "$output" != *"SOURCE OF TRUTH"* ]] || true
+}
+
+################################################################################
+# Containment: pl delete must refuse while a nested repo holds unsaved work.
+# Nested repos (dev/, stg/, profiles/custom/*, .plugin-src/*) can hold the only
+# copy of a behavioural spec — the avc profile's 26-file Behat capability suite
+# is a live example sitting untracked in exactly such a repo.
+################################################################################
+
+_mk_nested_repo() {
+  git -C "$1" init -q
+  git -C "$1" config user.email t@example.org
+  git -C "$1" config user.name tester
+}
+
+@test "delete refuses while a nested repo has uncommitted work" {
+  _mk_nested_repo "$ROOT/sites/fix/dev"
+  echo "the only copy of a behat suite" > "$ROOT/sites/fix/dev/uncommitted-spec.feature"
+
+  run run_delete fix -y
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unsaved work"* ]]
+  [[ "$output" == *"sites/fix/dev"* ]]
+  [ -d "$ROOT/sites/fix/dev" ]
+}
+
+@test "delete refuses while a nested repo has a stash" {
+  _mk_nested_repo "$ROOT/sites/fix/dev"
+  echo a > "$ROOT/sites/fix/dev/f"
+  git -C "$ROOT/sites/fix/dev" add -A
+  git -C "$ROOT/sites/fix/dev" commit -qm init
+  echo b > "$ROOT/sites/fix/dev/f"
+  git -C "$ROOT/sites/fix/dev" stash -q
+
+  run run_delete fix -y
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"stashes=1"* ]]
+  [ -d "$ROOT/sites/fix/dev" ]
+}
+
+@test "delete proceeds when nested repos are clean and pushed" {
+  _mk_nested_repo "$ROOT/sites/fix/dev"
+  echo x > "$ROOT/sites/fix/dev/f"
+  git -C "$ROOT/sites/fix/dev" add -A
+  git -C "$ROOT/sites/fix/dev" commit -qm init
+  git -C "$ROOT/sites/fix/dev" update-ref refs/remotes/origin/main HEAD
+
+  run run_delete fix -y
+  [ "$status" -eq 0 ]
+  [ ! -d "$ROOT/sites/fix" ]
+}
+
+@test "delete dirty-repo guard has an explicit, logged override" {
+  _mk_nested_repo "$ROOT/sites/fix/dev"
+  echo "scratch" > "$ROOT/sites/fix/dev/uncommitted"
+
+  NWP_ALLOW_DELETE_DIRTY=1 run run_delete fix -y
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"NWP_ALLOW_DELETE_DIRTY=1"* ]]
+  [ ! -d "$ROOT/sites/fix" ]
 }

@@ -217,6 +217,29 @@ lint:yq-first:
   tags:
     - nwp
 
+# Conflict-marker gate — refuses a tree with an unresolved merge in it.
+#
+# On 2026-07-26 commit 3c4c631 reached its MR with `<<<<<<< HEAD` / `=======` /
+# `>>>>>>> c6ba428` sitting at lines 1031/1129/1246 of
+# docs/reports/consolidation-arc-2026-07/decision-log.md — the append-only arc
+# DECISION LOG — and the pipeline went green. Every other job passed over it,
+# because not one of them looks for markers; a human reading a rebase caught it,
+# which is not a control. Blocking, and cheap (one grep over tracked text files).
+#
+# Exit 2 = CANNOT VERIFY (not a git repo / zero files scanned) — fail closed,
+# never silently green. Pinned by tests/unit/test-conflict-markers-gate.bats,
+# which includes negative controls for Markdown setext-H1 `=======` underlines.
+lint:conflict-markers:
+  stage: lint
+  script:
+    - ./scripts/ci/lint-conflict-markers.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  tags:
+    - nwp
+  allow_failure: false
+
 # Leakage gate — refuses MRs / main pushes that introduce operator-specific
 # identifiers (hostnames, paths, organisations) or generic credentials.
 # Per P61 §4.4. Configure `main` branch protection to require this job to
@@ -296,6 +319,32 @@ lint:doc-truth:
 # compat (expand-contract) checker — are a LATER phase (P74 Phase 3); wire them
 # here (and flip allow_failure) then. Shell runner: needs bash + git + yq (yq is
 # what reads the boundary map; without it every diff would look internal).
+#
+# MANIFEST-HONESTY, AND WHY THIS JOB IS EXPECTED TO BE AMBER (item 7)
+#   The `--honesty` step used to always exit 0 and print "clean". In THIS
+#   pipeline `sites/*` is gitignored, so the nwc profile — which holds 10 of the
+#   11 declared provider symbols — is not on the runner at all. The step was
+#   therefore reporting a green boundary contract it had no way to inspect:
+#   measured 2026-07-26, the identical check saw 0 candidate files here and 11
+#   findings on a workstation with the profile checked out.
+#
+#   `pl impact --honesty` now separates the verdict from the corpus:
+#       exit 0  VERIFIED CLEAN  every surface's provider tree was scanned
+#       exit 1  VIOLATIONS      a boundary symbol leaked outside its paths
+#       exit 2  CANNOT VERIFY   a surface's provider tree is not on disk
+#   Until this runner has the nwc profile, exit 2 is the truthful answer and
+#   this job will show AMBER (allow_failure: true) on every MR. That is the
+#   intended state: loudly "I cannot see", never silently "all clear". Do NOT
+#   silence it by passing --advisory — the flag exists for callers that have
+#   already recorded the verdict elsewhere, not to repaint this job green.
+#
+#   The verifying path today is `pl impact --honesty` on a workstation, where
+#   the profile exists (7/7 surfaces, VERIFIED CLEAN as of 2026-07-26). Flip
+#   allow_failure to false once the corpus is available to the runner.
+#
+#   Note the `--honesty` step is also fail-closed on a missing yq: with no yq
+#   the contract parses to zero surfaces and the check reports CANNOT-VERIFY
+#   rather than "clean", which is how it behaved before.
 boundary:classify:
   stage: lint
   script:
@@ -304,7 +353,10 @@ boundary:classify:
     - echo "Compare base ${BASE}"
     - ./scripts/commands/impact.sh --base="${BASE}"                 # human report
     - ./scripts/commands/impact.sh --base="${BASE}" --json | tee impact.json
-    - ./scripts/commands/impact.sh --honesty                        # manifest-honesty (advisory)
+    # Manifest honesty. Non-zero here means EITHER a real leak (1) OR "I could
+    # not look" (2) — both are amber, and both are information the previous
+    # always-exit-0 version destroyed.
+    - ./scripts/commands/impact.sh --honesty
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   tags:
@@ -414,7 +466,20 @@ test:unit:
   tags:
     - nwp
 
-# Integration tests (BATS) - syntax validation only in CI
+# Integration tests (BATS).
+#
+# Until 2026-07-26 this job ran ONE file — 06-scripts-validation.bats, 25
+# existence / `bash -n` / --help assertions — under the name "test:integration".
+# The 45 real lifecycle cases in 01-install .. 05-deployment never ran in CI at
+# all. 31 of those 45 need no ddev and were simply never invoked; the other 14
+# guard on ENABLE_DDEV_TESTS and would `skip`, which bats reports as `ok`.
+#
+# The job now runs the whole directory and declares the shortfall: the budget
+# lives in tests/.skip-budget (integration=14), read by run-bats.sh, which is
+# also what `pl test --integration` calls. Exceed it and the job goes red; drop
+# below it and the runner tells you to lower the number in the same MR.
+#
+# Provisioning ddev on the runner is the way to burn the 14 down — see ops#47.
 test:integration:
   stage: test
   image: ubuntu:22.04
@@ -422,9 +487,9 @@ test:integration:
     - apt-get update -qq && apt-get install -y -qq bats git
   variables:
     NWP_BATS_REQUIRED_TOOLS: "bats git"
-    NWP_BATS_MAX_SKIPPED: "0"
+    NWP_BATS_SUITE: "integration"
   script:
-    - ./scripts/ci/run-bats.sh .logs/junit/integration tests/integration/06-scripts-validation.bats
+    - ./scripts/ci/run-bats.sh .logs/junit/integration tests/integration/
   artifacts:
     when: always
     reports:

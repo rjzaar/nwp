@@ -280,6 +280,159 @@ cmd_show() {
     cat "$config"
 }
 
+################################################################################
+# Containment (nested-repo credential + payload containment)
+################################################################################
+
+# pl site gitignore [--check|--fix] [--site=<name>]
+#
+# The v2 layout puts real git repos at sites/<n>/{dev,stg,backups}/.git and
+# deeper (profiles/custom/*, .plugin-src/*). The repo-root gitleaks gate and
+# pre-commit hook cover none of them, so containment has to be a property of
+# each nested repo's own ignore rules. Rules come from
+# templates/site-gitignore.tmpl via lib/site-containment.sh.
+cmd_gitignore() {
+    local mode="check" only_site=""
+    local a
+    for a in "$@"; do
+        case "$a" in
+            --check)      mode="check" ;;
+            --fix)        mode="fix" ;;
+            --site=*)     only_site="${a#--site=}" ;;
+            -h|--help)
+                cat <<'EOF'
+Usage: pl site gitignore [--check|--fix] [--site=<name>]
+
+  --check          Report every nested repo where a sensitive path would be
+                   committable (default). Non-zero if any are, and non-zero
+                   if the scan finds NO repos at all ("cannot verify").
+  --fix            Idempotently install the managed containment block into
+                   each leaky repo's .gitignore. Never removes an existing
+                   rule; never untracks an already-tracked file.
+  --site=<name>    Restrict to one site.
+
+Checks are behavioural: each probe path is put to `git check-ignore`, so a
+comment cannot satisfy the gate and an equivalently-written rule still passes.
+EOF
+                return 0 ;;
+            *) echo "Unknown option: $a" >&2; return 1 ;;
+        esac
+    done
+
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/site-containment.sh"
+
+    local root="$PROJECT_ROOT/sites"
+    [[ -n "$only_site" ]] && root="$PROJECT_ROOT/sites/$only_site"
+
+    if [[ ! -d "$root" ]]; then
+        echo "ERROR: no such path: $root" >&2
+        return 2
+    fi
+
+    local repos=() r
+    while IFS= read -r r; do
+        [[ -n "$r" ]] && repos+=("$r")
+    done < <(containment_discover_repos "$root")
+
+    if [[ "${#repos[@]}" -eq 0 ]]; then
+        echo "CANNOT VERIFY: no git repositories found under '$root'."
+        echo "  A containment sweep that scanned nothing has verified nothing."
+        return 3
+    fi
+
+    local leaky=0 fixed=0
+    for r in "${repos[@]}"; do
+        local kind
+        kind="$(containment_repo_kind "$r")"
+        if containment_check_repo "$r" "$kind" >/dev/null 2>&1; then
+            continue
+        fi
+        leaky=$((leaky + 1))
+        if [[ "$mode" == "fix" ]]; then
+            if containment_fix_repo "$r" "$kind"; then
+                echo "FIXED     ${r#$PROJECT_ROOT/}  (${kind})"
+                fixed=$((fixed + 1))
+            else
+                echo "FAILED    ${r#$PROJECT_ROOT/}  (${kind})" >&2
+            fi
+        else
+            containment_check_repo "$r" "$kind" | sed "s|$PROJECT_ROOT/||"
+        fi
+    done
+
+    echo ""
+    echo "scanned ${#repos[@]} nested repositories under '${root#$PROJECT_ROOT/}'"
+    if [[ "$mode" == "fix" ]]; then
+        echo "leaky: ${leaky}   fixed: ${fixed}"
+        [[ "$fixed" -eq "$leaky" ]] || return 1
+        return 0
+    fi
+    echo "leaky: ${leaky}"
+    [[ "$leaky" -eq 0 ]]
+}
+
+# pl site vcs [--site=<name>]
+#
+# Per nested repo: remote, branch, ahead/behind origin/main, detached HEAD,
+# dirty count (-uall), stash count. Consumed by pl todo's containment check.
+cmd_vcs() {
+    local only_site=""
+    local a
+    for a in "$@"; do
+        case "$a" in
+            --site=*) only_site="${a#--site=}" ;;
+            -h|--help)
+                echo "Usage: pl site vcs [--site=<name>]"
+                echo "Reports remote/branch/drift/dirty/stash state for every nested site repo."
+                return 0 ;;
+            *) echo "Unknown option: $a" >&2; return 1 ;;
+        esac
+    done
+
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/site-containment.sh"
+
+    local root="$PROJECT_ROOT/sites"
+    [[ -n "$only_site" ]] && root="$PROJECT_ROOT/sites/$only_site"
+
+    local repos=() r
+    while IFS= read -r r; do
+        [[ -n "$r" ]] && repos+=("$r")
+    done < <(containment_discover_repos "$root")
+
+    if [[ "${#repos[@]}" -eq 0 ]]; then
+        echo "CANNOT VERIFY: no git repositories found under '$root'." >&2
+        return 3
+    fi
+
+    printf "%-46s %-22s %-7s %-7s %-6s %s\n" "REPO" "BRANCH" "DIRTY" "STASH" "AHEAD" "REMOTE"
+    printf "%-46s %-22s %-7s %-7s %-6s %s\n" "----" "------" "-----" "-----" "-----" "------"
+
+    local problems=0
+    for r in "${repos[@]}"; do
+        local rel="${r#$PROJECT_ROOT/}"
+        local branch dirty stash remote ahead
+        branch="$(git -C "$r" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+        [[ "$branch" == "HEAD" ]] && branch="(detached)"
+        dirty="$(git -C "$r" status --porcelain -uall 2>/dev/null | wc -l | tr -d ' ')"
+        stash="$(git -C "$r" stash list 2>/dev/null | wc -l | tr -d ' ')"
+        remote="$(git -C "$r" remote get-url origin 2>/dev/null || echo '-')"
+        ahead="$(git -C "$r" rev-list --count HEAD --not --remotes 2>/dev/null || echo '?')"
+
+        printf "%-46s %-22s %-7s %-7s %-6s %s\n" \
+            "$rel" "$branch" "$dirty" "$stash" "$ahead" "$remote"
+
+        if [[ "$dirty" != "0" ]] || [[ "$stash" != "0" ]] || [[ "$branch" == "(detached)" ]]; then
+            problems=$((problems + 1))
+        fi
+    done
+
+    echo ""
+    echo "${#repos[@]} nested repositories; ${problems} with uncommitted work, stashes or a detached HEAD"
+    [[ "$problems" -eq 0 ]]
+}
+
 cmd_schema() {
     echo "Expected schema versions (this NWP build):"
     echo "  site    : $CURRENT_SITE_SCHEMA"
@@ -377,6 +530,8 @@ main() {
         schema) cmd_schema "$@" ;;
         migrate) cmd_migrate "$@" ;;
         init) cmd_init "$@" ;;
+        gitignore) cmd_gitignore "$@" ;;
+        vcs) cmd_vcs "$@" ;;
         help|--help|-h|"")
             cat <<'EOF'
 Usage: pl site <subcommand> [args]
@@ -389,6 +544,15 @@ Subcommands:
   init --all [--force]      Generate .nwp.yml for every real site
   migrate <site>            Run schema migrations for one site
   migrate --all             Run schema migrations for every site
+
+Containment (nested per-site git repos):
+  gitignore [--check]       Report nested repos where a credential or a backup
+                            payload would be committable (default; non-zero on
+                            any finding AND on an empty scan)
+  gitignore --fix           Install the managed containment block from
+                            templates/site-gitignore.tmpl (idempotent, additive)
+  vcs                       Per nested repo: branch, dirty count, stashes,
+                            unpushed commits, remote
 
 Part of F23 (project separation v2). See docs/proposals/F23-project-separation-v2.md.
 EOF

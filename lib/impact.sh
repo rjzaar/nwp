@@ -23,10 +23,14 @@
 #   impact_confirm standard "delete 'avc'" "$AUTO_CONFIRM" || abort
 #   impact_confirm typed   "avc"          "$AUTO_CONFIRM" || abort   # purge tier
 #
-# Enforcement: tests/unit/test-impact-contract.bats fails any command
-# script that performs destructive operations without sourcing this lib
-# (with a shrink-only allowlist for not-yet-converted verbs).
+# Enforcement: tests/unit/test-impact-contract.bats fails any script that
+# performs destructive operations without ADOPTING this lib (with a
+# shrink-only allowlist for not-yet-converted files). The gate itself lives
+# at the bottom of this file (impact_contract_* functions) so the test, CI
+# and any future `pl` verb all run the SAME code, not three copies.
 ################################################################################
+
+_IMPACT_LIB_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Colors: use ui.sh definitions when present, define minimal fallbacks
 # otherwise (mirrors the yaml-write.sh pattern).
@@ -152,4 +156,157 @@ impact_confirm() {
             return 1
             ;;
     esac
+}
+
+################################################################################
+# THE GATE (nwp/ops#47 + item 7) — enforce ADOPTION, not MENTION.
+#
+# The original gate was `grep -q 'lib/impact.sh' "$f"` over `scripts/commands/*.sh`.
+# It had two holes, both proven with probes before this code was written:
+#
+#   1. A STRING MENTION passed. A file containing `rm -rf "$1"` and the comment
+#      "# this file does NOT source lib/impact.sh" was green on all four cases.
+#      This was not hypothetical: `scripts/commands/restore.sh` was believed
+#      converted for a release because lib/restore-remote.sh's header mentioned
+#      the path (recorded in the item-2 decision log), and `branch.sh` sources
+#      the lib and prompts but never renders a manifest.
+#   2. `lib/` and `servers/` were NEVER SCANNED — yet the destructive engines
+#      (moodle-deploy, moodle-promote, rollback-remote, the sanitizers) live
+#      there, and logic is actively MIGRATING from commands into lib. The gate's
+#      coverage therefore shrank toward zero while staying green.
+#
+# ADOPTION now means one of two things, both checked on NON-COMMENT lines only:
+#
+#   (A) in-repo scripts — `source .../impact.sh` AND at least one `impact_render`
+#       AND at least one `impact_confirm`. Render is required because the
+#       contract is "print the manifest, THEN prompt": a confirm without a
+#       manifest is the prompt without the information that makes it meaningful.
+#
+#   (B) box-resident scripts that CANNOT source the repo lib (a forced-command
+#       shipped to a server that has no checkout) — the file declares the pragma
+#         # impact-contract: inline
+#       and emits a literal `FATE MANIFEST` block itself. The pragma alone is not
+#       enough; a pragma with no manifest is a violation.
+#
+# Allowlist: lib/impact-contract.allowlist, keyed by repo-relative path, one
+# justification per entry. SHRINK-ONLY.
+################################################################################
+
+# Destructive-operation signature. Matched on NON-COMMENT lines only, so a file
+# that merely *documents* `rm -rf` is not dragged into the contract.
+IMPACT_DESTRUCTIVE_PATTERN='rm -rf|ddev delete|DROP DATABASE|sql-drop|sql:drop|rsync .*--delete|--delete.*rsync'
+
+impact_contract_root() {
+    echo "${NWP_IMPACT_CONTRACT_ROOT:-$( cd "$_IMPACT_LIB_DIR/.." && pwd )}"
+}
+
+impact_contract_allowlist_file() {
+    echo "${NWP_IMPACT_ALLOWLIST:-${_IMPACT_LIB_DIR}/impact-contract.allowlist}"
+}
+
+# Echo a file's code lines (comments and doc-block lines dropped).
+_impact_code_lines() {
+    grep -vE '^[[:space:]]*(#|\*|//|/\*)' "$1" 2>/dev/null
+}
+
+# impact_is_destructive <file> — 0 if it performs a destructive op in CODE.
+impact_is_destructive() {
+    _impact_code_lines "$1" | grep -qE "$IMPACT_DESTRUCTIVE_PATTERN"
+}
+
+# impact_contract_adopted <file> — 0 if the file genuinely adopts the contract.
+impact_contract_adopted() {
+    local f="$1" code
+    code="$(_impact_code_lines "$f")"
+
+    # (B) box-resident inline manifest.
+    if grep -qE '^[[:space:]]*#[[:space:]]*impact-contract:[[:space:]]*inline([[:space:]]|$)' "$f" 2>/dev/null; then
+        printf '%s\n' "$code" | grep -q 'FATE MANIFEST' && return 0
+        return 1
+    fi
+
+    # (A) in-repo adoption: sourced AND rendered AND confirmed.
+    printf '%s\n' "$code" | grep -qE '(^|[[:space:]])(source|\.)[[:space:]]+[^[:space:]]*impact\.sh' || return 1
+    printf '%s\n' "$code" | grep -q 'impact_render'  || return 1
+    printf '%s\n' "$code" | grep -q 'impact_confirm' || return 1
+    return 0
+}
+
+# Echo allowlisted repo-relative paths, one per line (comments/blanks dropped).
+impact_contract_allowlist() {
+    local file; file="$(impact_contract_allowlist_file)"
+    [ -f "$file" ] || return 0
+    sed 's/[[:space:]]*#.*$//' "$file" | grep -vE '^[[:space:]]*$' | awk '{print $1}'
+}
+
+_impact_in_allowlist() {
+    local needle="$1" entry
+    while IFS= read -r entry; do
+        [ "$entry" = "$needle" ] && return 0
+    done < <(impact_contract_allowlist)
+    return 1
+}
+
+# Echo every candidate file (repo-relative) the gate must consider.
+#   scripts/commands/*.sh · lib/**/*.sh · servers/** (tracked, shebang)
+# lib/impact.sh itself is excluded — it IS the contract, not a consumer.
+impact_contract_candidates() {
+    local root; root="$(impact_contract_root)"
+    local f rel
+    for f in "$root"/scripts/commands/*.sh; do
+        [ -f "$f" ] && printf '%s\n' "${f#"$root"/}"
+    done
+    while IFS= read -r f; do
+        rel="${f#"$root"/}"
+        [ "$rel" = "lib/impact.sh" ] && continue
+        printf '%s\n' "$rel"
+    done < <(find "$root/lib" -type f -name '*.sh' 2>/dev/null | sort)
+    # servers/: no .sh convention (forced commands are extensionless), so take
+    # every TRACKED file carrying a shebang. Tracked-only keeps untracked box
+    # scratch out of the gate.
+    if [ -d "$root/servers" ] && command -v git >/dev/null 2>&1; then
+        while IFS= read -r rel; do
+            [ -n "$rel" ] || continue
+            [ -f "$root/$rel" ] || continue
+            head -c 2 "$root/$rel" 2>/dev/null | grep -q '#!' && printf '%s\n' "$rel"
+        done < <(git -C "$root" ls-files servers 2>/dev/null)
+    fi
+    return 0
+}
+
+# impact_contract_violations — echo "<path>\t<reason>" for each unadopted,
+# unallowlisted destructive file. Returns 0 when clean, 1 when violations exist.
+impact_contract_violations() {
+    local root; root="$(impact_contract_root)"
+    local rel found=0
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        impact_is_destructive "$root/$rel" || continue
+        impact_contract_adopted "$root/$rel" && continue
+        _impact_in_allowlist "$rel" && continue
+        printf '%s\tdestructive operation without the impact contract\n' "$rel"
+        found=1
+    done < <(impact_contract_candidates)
+    [ "$found" -eq 0 ]
+}
+
+# impact_contract_stale_allowlist — echo "<path>\t<reason>" for allowlist rows
+# that no longer earn their place. Keeps the list SHRINK-ONLY in practice, not
+# just by convention. Returns 0 when clean, 1 when stale rows exist.
+impact_contract_stale_allowlist() {
+    local root; root="$(impact_contract_root)"
+    local entry found=0
+    while IFS= read -r entry; do
+        [ -n "$entry" ] || continue
+        if [ ! -f "$root/$entry" ]; then
+            printf '%s\tfile removed — delete the row\n' "$entry"; found=1; continue
+        fi
+        if ! impact_is_destructive "$root/$entry"; then
+            printf '%s\tno longer destructive — delete the row\n' "$entry"; found=1; continue
+        fi
+        if impact_contract_adopted "$root/$entry"; then
+            printf '%s\tCONVERTED — delete the row\n' "$entry"; found=1; continue
+        fi
+    done < <(impact_contract_allowlist)
+    [ "$found" -eq 0 ]
 }

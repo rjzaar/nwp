@@ -1,0 +1,58 @@
+# lib/impact-contract.allowlist — the ops#47 impact-contract debt inventory.
+#
+# Format:  <repo-relative path>   # one-line justification
+#
+# SHRINK-ONLY. Every row is a file that performs a destructive operation
+# (rm -rf / ddev delete / DROP DATABASE / sql:drop / rsync --delete) on a
+# NON-COMMENT line and does NOT adopt lib/impact.sh. Removing a row as a file
+# converts is expected and is enforced (a converted file left on this list is a
+# hard failure — see impact_contract_stale_allowlist). ADDING a row requires an
+# explicit decision recorded on an ops issue: a new destructive file must adopt
+# the contract, not join this list.
+#
+# Seeded 2026-07-26 (item 7). The pre-item-7 gate scanned ONLY
+# scripts/commands/*.sh and accepted a bare string mention of "lib/impact.sh",
+# so this list is larger than its predecessor for two honest reasons:
+#   * lib/**  and servers/** are now scanned at all (they never were), and
+#   * "adopted" now means source + impact_render + impact_confirm on code lines,
+#     not a comment that names the file.
+# Nothing here is newly broken; it was always broken and previously invisible.
+
+# ---- scripts/commands: predate the contract (ops#47 conversion queue) --------
+scripts/commands/copy.sh            # copy verb: overwrites a whole env; conversion queued (ops#47)
+scripts/commands/dev2stg.sh         # promotion verb: rsync --delete over stg
+scripts/commands/install.sh         # tears down a partial install on failure
+scripts/commands/live.sh            # live-side maintenance ops
+scripts/commands/live2prod.sh       # promotion verb: overwrites prod
+scripts/commands/live2stg.sh        # promotion verb: overwrites stg
+scripts/commands/modify.sh          # site modify: recreates DDEV project dirs
+scripts/commands/prod2stg.sh        # promotion verb: overwrites stg from prod
+scripts/commands/restore.sh         # LEGACY LOCAL restore; the remote leg (lib/restore-remote.sh) IS converted
+scripts/commands/server-apply.sh    # server-side apply; ungated side door, noted in the deploy-gate audit
+scripts/commands/stg2live.sh        # promotion verb: overwrites live
+scripts/commands/stg2prod.sh        # promotion verb: overwrites prod
+scripts/commands/uninstall_nwp.sh   # removes the tool's own state
+scripts/commands/vrt.sh             # visual-regression scratch dirs
+scripts/commands/branch.sh          # NEW FINDING: sources impact.sh + impact_confirm but NO impact_render — prompts without a manifest (file is item 4 territory; not edited here)
+
+# ---- lib: never scanned before item 7 ----------------------------------------
+lib/bundle-build.sh                 # build scratch dirs
+lib/bundle-verify.sh                # verify scratch dirs
+lib/common.sh                       # shared helpers incl. temp-tree cleanup
+lib/config-drift.sh                 # config export scratch trees
+lib/database-router.sh              # DB routing incl. drop/reload paths
+lib/import.sh                       # import overwrites a target env
+lib/install-gitlab.sh               # GitLab install/reset paths
+lib/llm.sh                          # model/cache scratch cleanup
+lib/moodle-deploy.sh                # HAS impact_render/impact_confirm but does NOT source impact.sh — the calls sit behind `command -v impact_confirm`, so an unsourced caller SILENTLY SKIPS the manifest AND the typed prompt. Real gap; lib/moodle-deploy.sh is item 9 territory (and carried by MR !168), so it is recorded here rather than edited.
+lib/moodle-fixture-load.sh          # test-fixture load: drops the fixture DB
+lib/moodle-promote.sh               # destructive promotion engine behind pl moodle
+lib/pii-gate.sh                     # scratch scan trees
+lib/todo-checks.sh                  # scratch dirs in checks (item 4 territory)
+lib/verify-checkpoint.sh            # verification checkpoint scratch
+lib/verify-runner.sh                # verification scenario scratch trees
+lib/sanitizers/mayo.sh              # SANITIZER — human-review class; runs on the prod server
+lib/sanitizers/moodle.sh            # SANITIZER — human-review class
+lib/sanitizers/moodle-dataroot.sh   # SANITIZER — human-review class
+lib/sanitizers/moodle-full.sh       # SANITIZER — human-review class
+lib/sanitizers/standard.sh          # SANITIZER — human-review class

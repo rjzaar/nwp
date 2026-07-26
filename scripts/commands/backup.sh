@@ -33,6 +33,13 @@ source "$PROJECT_ROOT/lib/impact.sh"
 # live credential (files/sync/*.yml, auth.json, .env) so it can be rotated or
 # removed at source instead of being discovered in an artifact later.
 source "$PROJECT_ROOT/lib/sanitizers/files-secrets.sh"
+# site-containment.sh: containment_assert_backup_path — the gate that stops
+# backup artifacts becoming committable in a git work tree with a remote.
+# Backups hold UNSANITISED member data; sites/avc/backups is a live example of
+# one that was committed AND pushed to the forge. When the backup dir is its
+# own repo root the gate installs the containment block and proceeds (so the
+# nightly sweep keeps working); anywhere else it FAILS CLOSED.
+source "$PROJECT_ROOT/lib/site-containment.sh"
 
 # Script start time
 START_TIME=$(date +%s)
@@ -622,6 +629,11 @@ backup_remote() {
     local backup_base
     backup_base=$(get_backup_dir "$endpoint")
 
+    # Containment gate — before any plan is rendered or artifact written.
+    if ! containment_assert_backup_path "$backup_base"; then
+        return 1
+    fi
+
     # IMPACT fate manifest (unconditional; the prompt is what -y skips).
     impact_reset
     if [ "$do_files" == "true" ]; then
@@ -815,6 +827,12 @@ backup_site() {
     # F23 Phase 4: prefer sites/<name>/backups/, fall back to legacy sitebackups/<name>/
     local backup_base
     backup_base=$(get_backup_dir "$endpoint")
+
+    # Containment gate — fail closed before creating or writing into the dir.
+    if ! containment_assert_backup_path "$backup_base"; then
+        return 1
+    fi
+
     if [ ! -d "$backup_base" ]; then
         mkdir -p "$backup_base"
         print_status "OK" "Created backup directory: $backup_base"

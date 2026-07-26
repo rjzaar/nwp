@@ -1,0 +1,76 @@
+# NWP site containment template
+#
+# Source of truth for the ignore rules that keep credentials and site state out
+# of the nested per-site git repositories. Consumed by:
+#   lib/site-containment.sh   (containment_render_section / _check_repo / _fix_repo)
+#   pl site gitignore --check | --fix
+#   pl site init / pl install  (scaffolding new sites)
+#
+# Sections are delimited by the markers below. Do not reorder or rename them
+# without updating lib/site-containment.sh.
+#
+# NOTE ON SAFETY: adding a rule here can never untrack an already-tracked file
+# (.gitignore only affects untracked paths). These rules are purely preventative
+# — they stop the NEXT `git add -A`, they do not rewrite history. Removing a
+# blob that has already been committed and pushed is a separate, operator-gated
+# history-rewrite operation.
+
+# ===== nwp:section:site =====
+# Drupal runtime settings — these hold live DB credentials, hash salts and
+# (on this fleet) 39 KB of environment config with 7 lines matching `password`.
+# Verified untracked-and-un-ignored in avc/{dev,stg}, nwc/{dev,stg}, nwd/dev,
+# nw1/{dev,stg} on 2026-07-26.
+/html/sites/*/settings.php
+/web/sites/*/settings.php
+/html/sites/*/settings.local.php
+/web/sites/*/settings.local.php
+/html/sites/*/services.local.yml
+/web/sites/*/services.local.yml
+
+# OAuth / OpenID Connect signing material. simple_oauth writes these on install;
+# the same private key (md5 6e84421b…) was found reused across nwc/dev, nwc/stg
+# and nw1/dev. A leaked signing key forges tokens for every federated site.
+oauth-keys/
+**/oauth-keys/
+private.key
+**/private.key
+*.pem
+
+# Composer + NWP credential files
+/auth.json
+**/auth.json
+/.secrets.yml
+/.secrets.data.yml
+.env
+.env.local
+
+# Test scaffolding that carries fixture credentials
+private-nwc-test/
+**/private-nwc-test/
+
+# Backup payloads must never live inside a site repo
+*.sql
+*.sql.gz
+
+# ===== nwp:section:backups =====
+# Per-site backup directories. These hold UNSANITISED production data: database
+# dumps containing member PII and files tarballs containing uploads.
+#
+# There is deliberately no `!` un-ignore line in this section. An earlier
+# generator (lib/git.sh:git_create_gitignore) wrote `!*.sql` and `!*.tar.gz`
+# here, and lib/git.sh:git_backup then attached a remote on the code forge and
+# pushed — which is how a 36 MB unsanitised production dump reached it.
+# Backups replicate via the restic/DR chain, never via a code forge.
+*.sql
+*.sql.gz
+*.dump
+*.tar.gz
+*.tgz
+*.zip
+*.bundle
+*.manifest.json
+*.sha256
+*.tmp
+*.temp
+*.log
+# ===== nwp:section:end =====

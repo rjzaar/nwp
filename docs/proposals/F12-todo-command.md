@@ -354,7 +354,7 @@ HIGH PRIORITY (3 items)
             Site: avc | Run: pl security update avc
 
   [SSL-001] SSL certificate expires in 5 days
-            Domain: nwpcode.org | Run: certbot renew
+            Domain: example.com | Run: certbot renew
 
   [INC-001] Incomplete installation (step 4/9, 26 hours)
             Site: test-d-001 | Run: pl install -s=5 test-d-001
@@ -402,7 +402,7 @@ Run 'pl todo' for interactive mode or 'pl todo resolve <ID>'
 │                                                                   │
 │  ┌─ HIGH PRIORITY ─────────────────────────────────────────────┐ │
 │  │ [x] SEC-001  Security update: drupal/core                   │ │
-│  │ [ ] SSL-001  SSL expires in 5 days: nwpcode.org             │ │
+│  │ [ ] SSL-001  SSL expires in 5 days: example.com             │ │
 │  │ [ ] INC-001  Incomplete install: test-d-001                 │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 │                                                                   │

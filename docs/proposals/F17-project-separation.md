@@ -117,7 +117,7 @@ NWP currently mixes core tooling and project-specific code in a single repo with
 
 ### 2.2 Additional Problem: The Shared Server
 
-The Linode server (97.107.137.88 / nwpcode.org) hosts all live sites but has no "site" of its own. Its config is scattered:
+The Linode server (203.0.113.10 / example.com) hosts all live sites but has no "site" of its own. Its config is scattered:
 - `linode.*` section in `nwp.yml`
 - `email/` directory at NWP root
 - nginx configs only exist on the server (not tracked)
@@ -151,7 +151,7 @@ Sites reference it via `live.server_ip` in their config, but there's no single p
 ```
                     ┌─────────────────────────┐
                     │   servers/nwpcode/       │
-                    │   (97.107.137.88)        │
+                    │   (203.0.113.10)        │
                     │   nginx, postfix, SSL    │
                     └──────────┬──────────────┘
                                │
@@ -353,8 +353,8 @@ settings:
   timezone: Australia/Melbourne
   cli_command: pl
   email:
-    domain: nwpcode.org
-    admin_email: admin@nwpcode.org
+    domain: example.com
+    admin_email: admin@example.com
     auto_configure: true
   php: "8.3"
   database: mariadb
@@ -404,7 +404,7 @@ project:
 live:
   enabled: true
   domain: mt.example.org
-  server_ip: 97.107.137.88
+  server_ip: 203.0.113.10
   linode_id: 12345
   remote_path: /var/www/mt
 
@@ -430,7 +430,7 @@ vrt:
 
 email:
   enabled: true
-  address: mt@nwpcode.org
+  address: mt@example.com
 ```
 
 #### Per-Developer Overrides (`sites/<project>/.nwp.local.yml`, gitignored)
@@ -909,7 +909,7 @@ was moved verbatim into A03 on 2026-04-08 as part of the namespace cleanup.)
 
 ### 6.1 The Problem
 
-The Linode server (97.107.137.88 / nwpcode.org) is shared infrastructure that all live sites depend on. Currently its configuration is scattered: `linode.*` in nwp.yml, `email/` at root, nginx configs only on the server itself (not version controlled), SSL/firewall configs untracked.
+The Linode server (203.0.113.10 / example.com) is shared infrastructure that all live sites depend on. Currently its configuration is scattered: `linode.*` in nwp.yml, `email/` at root, nginx configs only on the server itself (not version controlled), SSL/firewall configs untracked.
 
 Additionally, NWP needs to support **multiple servers** — each coder can have their own server (`pl coder-setup provision`), and sites may eventually be distributed across servers.
 
@@ -968,8 +968,8 @@ nwp_version_updated: "0.30.0"
 
 server:
   name: nwpcode
-  ip: 97.107.137.88
-  domain: nwpcode.org
+  ip: 203.0.113.10
+  domain: example.com
   ssh_user: gitlab
   ssh_key: ~/.ssh/nwp_nwpcode           # User's ~/.ssh/ — standard location
   linode_id: 12345
@@ -1093,7 +1093,7 @@ pl server backup nwpcode                # Pull server configs as backup
 ```bash
 # Which server hosts this site?
 cd ~/nwp/sites/mt
-pl server                               # "nwpcode (97.107.137.88)"
+pl server                               # "nwpcode (203.0.113.10)"
 
 # Which sites are on this server?
 pl server sites nwpcode                 # Scans sites/*/.nwp.yml for server: nwpcode
@@ -1267,11 +1267,11 @@ project:
 
 live:
   enabled: true
-  deploy_to: gitlab@97.107.137.88:~/fin/
+  deploy_to: gitlab@203.0.113.10:~/fin/
   schedule: "*/30 * * * *"      # Run every 30 minutes
 
 email:
-  alert_to: admin@nwpcode.org
+  alert_to: admin@example.com
 ```
 
 ---

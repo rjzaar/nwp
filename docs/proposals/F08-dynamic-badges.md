@@ -519,7 +519,7 @@ update-badges:
     # Commit if changed (using CI bot)
     - |
       git config user.name "NWP CI Bot"
-      git config user.email "ci@nwpcode.org"
+      git config user.email "ci@example.com"
       git add .badges.json
       if ! git diff --cached --quiet; then
         git commit -m "Update badge data [skip ci]"

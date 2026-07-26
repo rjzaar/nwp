@@ -3262,3 +3262,54 @@ controls did.
   repo counts as 0 stranded commits and vanishes from the report — fails *silent*, not soft),
   `lib/backup-integrity.sh:236` (gzip absent ⇒ structural check skipped ⇒ "OK"),
   `lib/rollback.sh:485`, `lib/ci-stats.sh:302`, `lib/testing.sh` (tool-not-found ⇒ pass).
+
+---
+
+## [2026-07-26] B1-pubrel-docs-scrub-reproduced-not-merged-and-the-gate-half-was-already-superseded
+**Situation:** `origin/pubrel/scrub-and-gate` (2 commits, 2 ahead / **228 behind**, last touched
+2026-07-17, never had an MR) genericised operator identifiers in 31 public-release docs and also
+added three leakage rules. The gate half is **superseded**: `operator-public-ip`,
+`operator-personal-email` and `live-domain-apex` are all on main since 92cf069, and the ops#98
+role-address swap (NOTICE, docs/CC0_DEDICATION.md) is done. `pl branch stranded` labels the whole
+branch DO NOT MERGE WHOLESALE — correct, since merging it would revert main's hardening and delete
+~59k lines of work landed in the intervening 228 commits.
+**Decision:** did **not** merge, rebase, or cherry-pick the branch. Instead proved its scrub was a
+purely mechanical substitution and re-applied that substitution to main's *current* content.
+**Evidence for that:** applying `nwpcode.org|mayostudios.org -> example.com` (RFC 2606) and
+`97.107.137.88 -> 203.0.113.10` (RFC 5737) to the branch's own base blob reproduced the branch blob
+**byte-identically for 31/31 files** (`identical: 31  differs: 0`). So nothing is lost by ignoring
+the 9-day-old blobs, and the "re-apply by hand what main changed since" step in the plan became
+unnecessary — 6 of the 31 had moved on main and were picked up automatically.
+**Departure from the item, 1 — the stated acceptance grep was wrong.** It matched domains only.
+Two files (F13, F16) leak the operator's **public IP**, not a domain, so a domains-only test would
+have called them clean. The checker matches all three identity rules the gate enforces.
+**Departure from the item, 2 — one file must NOT be scrubbed.** `.gitleaks.toml` explicitly
+allowlists public forge URLs (`git.<domain>/<proj>/-/(issues|merge_requests|blob|tree)/`) as
+"public project links, not subdomain leaks". The ONLY hit in
+`docs/pedagogy/learning-science-foundations.md` is such a URL — a live link to ops#61. The
+stranded branch rewrote it to `git.example.com` anyway, **breaking the hyperlink**. That is a
+defect in the branch and was deliberately not imported; the file is left byte-identical to main.
+So the real scope is **30 files scrubbed, 1 correctly untouched**, not 31.
+**Red (recorded before the fix):** 30/31 files carrying an identifier over 74 occurrences; with
+the 75 in-scope fingerprints stripped from `.gitleaksignore` the tracked-tree scan reported **78
+findings, exit 1**. Green: 0 offenders, and the scan exits 0 with those 75 fingerprints **deleted
+from the committed ledger** (79 `docs/` entries -> 4). That deletion is the load-bearing half: the
+scrub is real, not cosmetic.
+**Two gitleaks footguns found and documented in tests/helpers/pubrel-docs-check.sh:**
+(a) this repo's `.gitignore` starts with `/*`, and `gitleaks detect --no-git` honours `.gitignore`,
+so a scan from the repo root walks almost nothing — 1 finding from the root vs 82 scanning `docs/`
+explicitly. **The ledger header's own documented regenerate command therefore scans an empty
+tree.** The test exports the tracked file list to a temp dir without `.gitignore` instead.
+(b) `--gitleaks-ignore-path/-i` does not reliably override a `.gitleaksignore` present in the
+`--source` directory; the source-dir copy wins.
+**Distrust in my own work:** the first version of the checker was flaky (24/25/27 offenders on
+three consecutive runs of an unchanged tree) because `set -o pipefail` + `grep -q` SIGPIPEs the
+upstream `sed`; and its allowlist mask silently matched nothing because `|` was used as both the
+`sed` delimiter and the alternation operator. Both are fixed and the count is now stable at 30/30/30.
+Anyone reviewing should re-run rather than trust the numbers.
+**Not done, deliberately:** the branch is NOT deleted (that is an operator action, and the note
+recording the supersession belongs with it); its `NWP_ROOT=$HOME` one-liner in
+`scripts/agent-loop/agent-loop.sh` is still deferred to the console-gate item;
+`docs/guides/howto-deploy.md` keeps its fingerprint — out of B1 scope, still on the ops#97 backlog.
+**Reversible-how:** revert the single docs commit; the 75 fingerprints are restorable from
+`origin/main:.gitleaksignore`. No live site or server was touched, so no rollback-registry row.

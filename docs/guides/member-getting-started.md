@@ -2,22 +2,22 @@
 
 Welcome. This is how you join and start a course. Two sites work together:
 
-- **nwc** (`nwc.nwpcode.org`) — the community site, and **where you sign in**. Your
+- **nwc** (`nwc.example.com`) — the community site, and **where you sign in**. Your
   account here is your single identity across everything.
-- **ssc** (`ssc.nwpcode.org`) — the **course site** (Moodle), where the learning happens.
+- **ssc** (`ssc.example.com`) — the **course site** (Moodle), where the learning happens.
 
 ## 1. Create your account (on nwc)
 
-1. Go to **`nwc.nwpcode.org`** and register.
+1. Go to **`nwc.example.com`** and register.
 2. **Verify your email** — we send a confirmation link; click it. (Check your spam
-   folder; the mail comes from `admin@nwpcode.org`.)
+   folder; the mail comes from `admin@example.com`.)
 3. **Wait for approval** — a moderator approves new members before your account goes
    live. You'll be notified when you're in. *(This is deliberate — it keeps the
    community safe during the pilot.)*
 
 ## 2. Sign in to the courses (ssc)
 
-1. Go to **`ssc.nwpcode.org`** and choose **“Log in with nwc.”**
+1. Go to **`ssc.example.com`** and choose **“Log in with nwc.”**
 2. You'll briefly hop to nwc to authorise, then land back in the course site,
    already signed in. You never type a second password — ssc trusts your nwc login.
 3. Your course history is permanently tied to your nwc identity, so it always

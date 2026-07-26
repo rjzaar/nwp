@@ -46,7 +46,7 @@ This proposal establishes a streamlined, automated onboarding process for NWP co
 
 #### 1. Automated Onboarding Infrastructure
 - **`coder-setup.sh`** (693 lines) - Fully automates:
-  - NS delegation via Cloudflare API for `<coder>.nwpcode.org`
+  - NS delegation via Cloudflare API for `<coder>.example.com`
   - GitLab user creation with group membership
   - Developer access level (30) assignment to `nwp` group
   - Config tracking in `nwp.yml`
@@ -175,10 +175,10 @@ cmd_provision() {
     local ip=$(linode-cli linodes list --label "${name}-nwp" --json | jq -r '.[0].ipv4[0]')
 
     # Create DNS zone
-    linode-cli domains create --domain "${name}.nwpcode.org" --type master
+    linode-cli domains create --domain "${name}.example.com" --type master
 
     # Add DNS records
-    local domain_id=$(linode-cli domains list --json | jq -r ".[] | select(.domain==\"${name}.nwpcode.org\") | .id")
+    local domain_id=$(linode-cli domains list --json | jq -r ".[] | select(.domain==\"${name}.example.com\") | .id")
     linode-cli domains records-create "$domain_id" --type A --name "" --target "$ip"
     linode-cli domains records-create "$domain_id" --type A --name "git" --target "$ip"
     linode-cli domains records-create "$domain_id" --type A --name "*" --target "$ip"
@@ -486,7 +486,7 @@ When onboarding a new core developer, ensure they have:
 - [ ] `.nwp-developer.yml` configured locally
 
 ### Infrastructure
-- [ ] NS delegation for `<name>.nwpcode.org`
+- [ ] NS delegation for `<name>.example.com`
 - [ ] Own Linode account with API token
 - [ ] Server provisioned and accessible
 - [ ] DNS zone with A records configured

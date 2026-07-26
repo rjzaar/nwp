@@ -3404,3 +3404,25 @@ exists and B2 really runs, 0 skips) exits non-zero. `tests/.skip-budget` keeps `
 B2 genuinely runs on the operator's machine. Rejected alternative: giving a unit test
 cross-project credentials + a network call to reach a private repo.
 **Reversible-how:** `git revert -m 1 <merge>`. The five refs remain restorable per CP-B7.
+
+## [2026-07-27] b7-followup-skip-budget-must-not-leak-into-nested-runs
+**Decision:** declaring the CI skip (previous entry) exposed a second, pre-existing defect and it
+is fixed here rather than worked around. Setting `NWP_BATS_MAX_SKIPPED` as a **job variable** put
+it in the environment of every process under the job — including the three places
+`tests/unit/test-ci-lint-commands.bats` runs `scripts/ci/run-bats.sh` in a subprocess to prove a
+stray skip goes red. Those meta-tests silently relied on the ambient default of 0, so with the
+job budget at 1 they asserted against the CI job's number instead of the default and went RED
+("run-bats: writes a JUnit report…", "run-bats: an unexpected SKIP fails the job").
+**Fix:** `run-bats.sh` now `unset`s `NWP_BATS_MAX_SKIPPED` / `NWP_BATS_SUITE` **after resolving
+its own budget and before invoking bats**. The budget governs the suite THIS invocation runs, not
+suites those tests themselves invoke.
+**Proved, not asserted:** a fixture of two copies of the meta-tests plus one deliberately-skipping
+case, run with the budget poisoned to 1. With `origin/main`'s runner as the outer: `failures: 2`.
+With the fixed runner: `failures: 0`, and the outer still correctly honours its own budget of 1
+(`skipped: 1 (allowed: 1)`). So the fix does not blunt the guard, it scopes it.
+**Note this was latent, not introduced:** any operator with `NWP_BATS_MAX_SKIPPED` exported would
+already have seen those two tests fail spuriously.
+**⚠️ REVIEWER:** this MR now edits `.gitlab-ci.yml`, a CLAUDE.md sensitive path. The repo's own
+`security:review` gate caught that and required the `REVIEW:` marker, which is why the MR title
+carries it. The CI change is one number plus comments; the behavioural change is the `unset`.
+**Reversible-how:** `git revert -m 1 <merge>`.

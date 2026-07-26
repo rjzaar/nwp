@@ -240,6 +240,23 @@ lint:conflict-markers:
     - nwp
   allow_failure: false
 
+# The rollback registry's checkpoint ids must resolve to exactly one row.
+# 2026-07-26: CP19 x3, CP20 x4, CP21 x3, CP22 x2 — three agents each read the
+# file, each saw CP18 as the highest, each allocated "the next four". CP19 named
+# both "item 2 recovery-path-repair" and "item 3 nested-repo-containment", i.e.
+# two different restore commands under one name, in the document an operator
+# reaches for mid-incident. Blocking, and fail-closed on an unreadable corpus.
+lint:registry-ids:
+  stage: lint
+  script:
+    - ./scripts/ci/lint-rollback-registry-ids.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  tags:
+    - nwp
+  allow_failure: false
+
 # Snapshot gate — a committed *.bundle must be able to rebuild what it claims
 # to hold. Two "safety" bundles under docs/reports/ were thin bundles that
 # restored nothing outside the laptop that made them, and nothing ever checked.
@@ -460,6 +477,16 @@ test:unit:
   # (c) asserts the report has >0 testcases and exactly NWP_BATS_MAX_SKIPPED
   # skips, so a suite that quietly stops running cases goes red.
   variables:
+    # Full history, not the default shallow clone. tests/unit/test-stale-branch-sweep.bats
+    # has three NEGATIVE CONTROLS (A1/A2/A4-control) that assert the superseding content
+    # was genuinely absent before it landed, by reading commits 68430dc (558 back) and
+    # 92cf069 (104 back). In a shallow clone those objects are missing and the controls
+    # `skip` — so the controls proving the gate is not vacuous were themselves silently
+    # not running, and the skip COUNT varied with whatever the runner had cached
+    # (pipeline 1167 on main saw 2 skips, 1169 saw 1, from the same test files). That
+    # made an exact skip contract intermittently red for no code reason. Depth 0 makes
+    # the controls actually execute and pins the skip count at exactly 1 (B2).
+    GIT_DEPTH: "0"
     NWP_BATS_REQUIRED_TOOLS: "bats git php yq"
     # EXACTLY ONE skip is expected on the CI runner, and it is named:
     #   tests/unit/test-stale-branch-sweep.bats

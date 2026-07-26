@@ -2616,3 +2616,43 @@ and is operator territory — but they are now reviewable, diffable and impossib
 
 **Reversible-how.** `git revert -m 1 <merge>`. No host was written, so a revert removes capability and
 records, never state. Captures regenerate with `pl server-state capture <host>`.
+## [2026-07-27] item7-redaction-failed-open-on-a-yq-version-difference  **REVIEW:**
+
+**What happened.** The item-7 identity-redaction acceptance test passed on the dev workstation and
+**failed on the CI runner**. That difference is the entire value of the test, so it is recorded rather
+than quietly patched.
+
+**Root cause.** `yq` 4.44.1 (the runner) emits a *literal backslash-t* for `"\t"` inside a string
+concatenation; 4.50.1 (the dev box) emits a real tab. The identity map was `literal<TAB>placeholder`
+lines, so on the runner every line was a single unsplit field: `IFS=$'\t' read -r lit ph` put the whole
+line into `lit` and left `ph` empty, every `${content//$lit/}` searched for a string that never occurred,
+and **`capture` wrote the host file un-redacted while reporting success**. Six leakage findings would
+have gone back into the tree on any host with an older yq, silently.
+
+**Why this is the same disease the programme is about.** The check did not report "I could not redact".
+It reported nothing at all and exited 0. A capture that captures the wrong thing is worse than one that
+fails, because the tree then looks both captured *and* clean.
+
+**Fix, in two parts — the separator was only the trigger.**
+1. Separator is now `|`: passed through verbatim by every yq version, and impossible inside a hostname,
+   a domain or a role label. The map is filtered through `^[^|]+\|<[^>]+>$`, so a malformed line is
+   *dropped* rather than mis-split into a substitution that does nothing.
+2. **Fail closed.** `_identity_require` runs before any byte is written. If a manifest exists but yields
+   no usable pairs, `capture` refuses and writes nothing; `diff` refuses too, because both sides are
+   redacted before comparison and a broken map would otherwise manufacture drift on every host and train
+   the signal away. Where no manifest exists at all, production `_fetch` cannot resolve a host anyway, so
+   that path also refuses; it is reachable only under the test-only fetch shim, where it prints a WARN
+   naming the fact instead of implying redaction happened.
+
+*Alternative rejected:* pinning a minimum yq version. That converts a silent data leak into a hard
+dependency bump across every host in the estate, and it would not have caught the next escape-handling
+difference. Asserting the map is *usable* is version-independent and catches the class.
+
+**Verified on the machine that actually gates**, not just locally: the fixed expression + the exact shell
+pipeline were run over ssh on the runner host against its own yq 4.44.1 — map built correctly, longest
+literal replaced first (`git.<apex>` before the bare apex), all four assertions PASS including
+`no-residue`. Local green had proven nothing about that box.
+
+**Test added:** `capture` must refuse a manifest that yields an empty map and must leave no file behind;
+plus a direct shape assertion on the emitted map (`no literal \t`, splits into exactly two fields) so a
+future version difference in escape handling cannot reintroduce this.

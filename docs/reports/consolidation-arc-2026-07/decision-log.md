@@ -2163,6 +2163,89 @@ and checksum branches are actually exercised rather than short-circuiting on the
 `pl audit --all`, and hand-editing a measurement record to match what the code now believes is
 precisely the habit this item exists to break.
 
+---
+
+## Item H — `pl worktree`: a verb that prunes worktrees safely, with a fate manifest (2026-07-26/27)
+
+### The measurement, re-taken rather than inherited
+
+The item quoted 90 worktrees. On re-measuring in the branch: **110**, ~1.2 GB in the non-primary
+trees, **24** carrying a commit `origin/main` lacks, **60** classified `REMOVE` (~784 MB
+reclaimable). It grows by roughly one tree per agent session and nothing had ever removed one.
+
+Existing tooling genuinely did not cover it, confirmed rather than assumed: `pl branch stranded
+--prune-merged` prunes **branch refs**; `grep -n worktree scripts/commands/branch.sh` hits exactly
+one line — the header comment recording "77 worktrees" as a known unaddressed problem.
+`scripts/commands/issue.sh` creates worktrees and tells you to `git worktree remove` by hand.
+
+### Design: refuse-first, with the refusal named
+
+A tree is removed only if EVERY predicate passes, and the FIRST predicate that objects becomes the
+printed fate — `KEEP(unmerged)`, `KEEP(payload)`, `KEEP(dirty)`, `KEEP(untracked)`, `KEEP(stash)`,
+`KEEP(locked)`, `KEEP(detached)`, `KEEP(primary)`, `KEEP(current)`/`KEEP(self)`. Dry-run is the
+default; `--yes` (or `--confirm` for a y/N) is required to act. `lib/impact.sh` is sourced, not
+edited: the same manifest-then-confirm contract as every other destructive verb.
+
+Deliberately **stricter than `pl branch stranded`**: stranded calls a branch `IDENTICAL` when its
+files match main even if its commits never merged. That is right for a ref and wrong for a
+checkout — those commits are the only record of how the work was done. The gate here is the blunt
+one: ahead-count exactly 0.
+
+`git worktree remove` is called **without `--force`**, so git's own refusal is a second,
+independent gate; and refs are never touched (a test diffs `git branch --list` across a prune).
+
+### RED first, and three vacuous passes caught in my own suite
+
+First run of the 19 tests against absent code: 15 red, **4 green** — `dry-run removes nothing`,
+`fails closed on an unresolvable base`, `a locked worktree is kept`, `no branch -D in the source`.
+All four passed because the command did not exist: nothing ran, so nothing was deleted; "Unknown
+command" also exits non-zero; `! grep` over a missing file is trivially true. Exactly the shape
+this arc exists to stamp out. Tightened (assert `status -eq 0`, assert the error text says "base
+ref", assert `KEEP(locked)` appears, assert the files exist) until **19/19 were red**, then
+implemented to green.
+
+### The fixture was not discriminating until mutation testing said so
+
+Mutation A (`REMOVE` → refuse everything) was caught by 4 tests including the explicit negative
+control. Mutation B (delete the payload predicate) was caught by only ONE — because the fixture's
+W4 held an *untracked* `backups/x.sql.gz`, so the untracked predicate saved it anyway and the
+payload predicate was doing nothing the test could see.
+
+Fixed the fixture to gitignore `backups/`, as the real nwp tree does. An **ignored** payload is
+invisible to the untracked predicate *and* to `git worktree remove`'s own refusal — git deletes
+ignored files without complaint. Re-run with Mutation B: `RED: removed W4 (data payload)`. That is
+the proof that `wt_payload()` is load-bearing rather than decorative. Mutation C (drop the
+self-protection) trips the "run from inside W1" test.
+
+### Two real bugs the tests found, both worth recording
+
+1. `IFS=$'\t' read -r path branch flags` **collapses** consecutive tabs, because tab is IFS
+   whitespace. A detached worktree has an empty branch field, so its flags slid into `$branch` and
+   it classified `KEEP(uncomparable)` instead of `KEEP(detached)`. Record separator changed to
+   US (`0x1f`).
+2. Stash subjects come in two shapes and the first has no leading space: `On wt7: wip` (from
+   `stash push -m`) vs `WIP on wt7: …`. Matching `" on <branch>:"` missed the former entirely.
+
+### Verification of the real-tree run, computed twice
+
+`pl worktree prune --dry-run --no-size` in ~/nwp: 60 REMOVE / 24 KEEP(unmerged) / 9 KEEP(locked) /
+8 KEEP(detached) / 7 KEEP(untracked) / 1 KEEP(primary) / 1 KEEP(current) — meeting the item's
+"at least the 15 unmerged trees classified KEEP" sanity bar. Every one of the 60 REMOVE verdicts
+was then **recomputed independently with plain git** (no library code): `suspect=0`. Reads use
+`git --no-optional-locks` so scanning other agents' trees does not rewrite their index.
+
+### What was deliberately NOT done
+
+- **The real prune was never executed.** Only `--dry-run`. `--yes` is an operator-timed action:
+  a session that has just committed and pushed leaves a tree that is clean and fully merged and
+  therefore indistinguishable from debris, and this tool cannot see that a process is attached to
+  it. That limitation is documented in the verb's help and in `docs/reference/commands/worktree.md`
+  rather than engineered around with a guess.
+- No edit to the `pl` launcher — `_pl_all_commands` enumerates `scripts/commands/*.sh`, so the verb
+  auto-registers (verified by a test asserting `pl commands` lists it). No collision surface with
+  the pl-freshness work.
+- No edit to `lib/impact.sh` (owned by impact-destructive-pattern), no branch deletion, no
+  rollback-registry row — no live site or server was touched.
 ## [2026-07-26] demo-invite-tier-and-parity-tmpfile — G + D2 in `scripts/commands/demo.sh`
 
 Two defects, one file, one MR.

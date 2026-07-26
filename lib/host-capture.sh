@@ -394,18 +394,61 @@ host_capture_kind() {
 host_system_dir() { printf '%s/%s/system\n' "$HOST_SERVERS_DIR" "$(host_resolve_name "$1")"; }
 
 # host_capture <target> [kind ...]
+#
+# Replacing a captured tree is a DESTRUCTIVE local write, so it adopts
+# lib/impact.sh: the fate manifest is rendered unconditionally and only the
+# prompt is skippable. Auto-confirms when there is nothing to lose (no existing
+# capture) or when the caller passed --yes; otherwise it asks.
 host_capture() {
     local target="$1"; shift
-    local kinds=("$@"); [ "${#kinds[@]}" -eq 0 ] && kinds=("${HOST_CAPTURE_KINDS[@]}")
+    local auto="false" kinds=() a
+    for a in "$@"; do
+        case "$a" in
+            -y|--yes) auto="true" ;;
+            *)        kinds+=("$a") ;;
+        esac
+    done
+    [ "${#kinds[@]}" -eq 0 ] && kinds=("${HOST_CAPTURE_KINDS[@]}")
+
     local prefix name sysdir rc=0
     prefix="$(host_resolve_dest "$target")" || { _host_warn "cannot resolve target: $target"; return 1; }
     name="$(host_resolve_name "$target")"
     sysdir="$HOST_SERVERS_DIR/$name/system"
 
+    # shellcheck source=/dev/null
+    [ -f "$HOST_PROJECT_ROOT/lib/impact.sh" ] && source "$HOST_PROJECT_ROOT/lib/impact.sh"
+
     local k
     for k in "${kinds[@]}"; do
         local tmp; tmp="$(mktemp -d)"
         if host_capture_kind "$prefix" "$k" "$tmp/$k"; then
+            # FATE MANIFEST — what replacing this capture costs.
+            if declare -F impact_reset >/dev/null 2>&1; then
+                impact_reset
+                local this_auto="$auto" f rel
+                if [ -d "$sysdir/$k" ]; then
+                    while IFS= read -r f; do
+                        rel="${f#"$sysdir/$k"/}"
+                        if [ -e "$tmp/$k/$rel" ]; then
+                            impact_overwrite "Captured" "system/${k}/${rel}"
+                        else
+                            impact_delete "Captured" "system/${k}/${rel} (the host no longer has it)"
+                        fi
+                    done < <(find "$sysdir/$k" -type f | sort)
+                    impact_keep "git history of servers/${name}/system/ — the previous capture is recoverable with git checkout"
+                else
+                    # Nothing on disk yet: no fate to weigh, so no prompt.
+                    impact_keep "no previous capture of system/${k} — nothing can be lost"
+                    this_auto="true"
+                fi
+                impact_render
+                if ! impact_confirm standard "replace the captured ${name}/system/${k} tree" "$this_auto"; then
+                    _host_say "aborted — ${name}/system/${k} left untouched"
+                    rm -rf "$tmp"
+                    rc=1
+                    continue
+                fi
+            fi
             rm -rf "${sysdir:?}/$k"
             mkdir -p "$sysdir"
             cp -a "$tmp/$k" "$sysdir/$k"

@@ -143,6 +143,48 @@ EOF
   [ "$output" = "0" ]
 }
 
+@test "pl host capture renders a REAL fate manifest before replacing a capture" {
+  # Replacing a captured tree is a destructive local write. The manifest must
+  # name the actual files at stake — a contract satisfied by the mere presence
+  # of the words is the presence-grep failure this programme keeps finding.
+  _fixture_manifest
+  local tree="${TMP}/servers/stubhost/system/cron"
+  mkdir -p "$tree"
+  printf 'old\n'  > "${tree}/crontab.root"
+  printf 'stale\n' > "${tree}/gone-from-host.txt"
+  printf 'new\n'  > "${TMP}/live-cron"
+  _stub_ssh "${TMP}/live-cron" 0
+
+  PATH="${STUBBIN}:$PATH" NWP_SERVERS_DIR="${TMP}/servers" \
+    run "$PL" host capture ci-host --kind=cron --yes
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WILL BE OVERWRITTEN"* ]]
+  [[ "$output" == *"crontab.root"* ]]
+  # A file the host no longer has is a DELETE, and must be named as one.
+  [[ "$output" == *"WILL BE PERMANENTLY DELETED"* ]]
+  [[ "$output" == *"gone-from-host.txt"* ]]
+  # And the capture actually happened.
+  run cat "${tree}/crontab.root"
+  [ "$output" = "new" ]
+}
+
+@test "pl host capture ABORTS without --yes when there is no terminal to confirm on" {
+  # impact_confirm fails closed with no TTY and no -y. A capture must not
+  # silently overwrite a previous one from a cron.
+  _fixture_manifest
+  local tree="${TMP}/servers/stubhost/system/cron"
+  mkdir -p "$tree"
+  printf 'old\n' > "${tree}/crontab.root"
+  printf 'new\n' > "${TMP}/live-cron"
+  _stub_ssh "${TMP}/live-cron" 0
+
+  PATH="${STUBBIN}:$PATH" NWP_SERVERS_DIR="${TMP}/servers" \
+    run "$PL" host capture ci-host --kind=cron < /dev/null
+  [ "$status" -ne 0 ]
+  run cat "${tree}/crontab.root"
+  [ "$output" = "old" ]        # untouched
+}
+
 @test "captured host state is scrubbed — private key material never lands in the repo" {
   source "${REPO_ROOT}/lib/host-capture.sh"
   run bash -c 'source "'"${REPO_ROOT}"'/lib/host-capture.sh"; printf "%s\n" \

@@ -157,7 +157,7 @@ _capture_help() {
 ${BOLD}pl host capture${NC} — read a host's real state into servers/<host>/system/
 
 ${BOLD}USAGE:${NC}
-  pl host capture <role|server|host> [--kind=<k>[,<k>]] [--all]
+  pl host capture <role|server|host> [--kind=<k>[,<k>]] [--all] [-y|--yes]
 
 ${BOLD}KINDS:${NC}
   ${HOST_CAPTURE_KINDS[*]}
@@ -170,9 +170,13 @@ ${BOLD}KINDS:${NC}
     firewall   ufw status (numbered)
     headscale  the ACL policy of the estate's VPN control plane
 
-Capture is READ-ONLY and fails CLOSED: if the host cannot read part of its own
-state the tree is left untouched and the exit code is non-zero. An unreachable
-host is never recorded as "no change".
+Capture is READ-ONLY on the HOST and fails CLOSED: if the host cannot read part
+of its own state the tree is left untouched and the exit code is non-zero. An
+unreachable host is never recorded as "no change".
+
+Replacing an existing capture is a destructive LOCAL write, so it renders a fate
+manifest (lib/impact.sh) first and asks. Pass -y to skip the prompt; with no TTY
+and no -y it aborts rather than guessing.
 EOF
 }
 
@@ -182,8 +186,10 @@ cmd_capture() {
         _capture_help; [ -z "$target" ] && return 1 || return 0
     fi
     local kinds; mapfile -t kinds < <(_parse_kinds "$@") || return 1
+    local yes=() a
+    for a in "$@"; do case "$a" in -y|--yes) yes=(--yes) ;; esac; done
     print_header "Capturing $(host_resolve_name "$target")"
-    host_capture "$target" "${kinds[@]}"
+    host_capture "$target" "${kinds[@]}" "${yes[@]}"
 }
 
 cmd_diff() {

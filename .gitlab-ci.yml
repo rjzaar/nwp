@@ -461,7 +461,28 @@ test:unit:
   # skips, so a suite that quietly stops running cases goes red.
   variables:
     NWP_BATS_REQUIRED_TOOLS: "bats git php yq"
-    NWP_BATS_MAX_SKIPPED: "0"
+    # EXACTLY ONE skip is expected on the CI runner, and it is named:
+    #   tests/unit/test-stale-branch-sweep.bats
+    #     "B2: archive twins are absent from the archive remote"
+    # B2 probes the `archive` remote (nwp/nwp-archive, project 15). That remote
+    # is configured only in the operator's clone and the project is PRIVATE, so
+    # a CI checkout has neither the remote nor credentials for it. The test
+    # refuses to report "absent" from a probe that can see nothing (probe_remote
+    # requires the remote to report refs/heads/main first), so it skips rather
+    # than passing blind — which is the correct behaviour and must not be
+    # "fixed" by making it pass.
+    #
+    # Declared here rather than provisioned because the alternative is giving a
+    # unit test cross-project credentials and a network call — scope the repo
+    # deliberately avoids. This is a statement that the RUNNER is less able to
+    # verify than the operator's machine, not that the code improved.
+    #
+    # This stays a strict EQUALITY contract (run-bats.sh uses -ne): if a second
+    # test starts skipping the job goes RED, and if B2 ever stops skipping the
+    # job ALSO goes RED and tells you to lower this number. It is not a ceiling.
+    # tests/.skip-budget keeps unit=0 because the operator's clone HAS the
+    # archive remote, so B2 really runs there.
+    NWP_BATS_MAX_SKIPPED: "1"
   script:
     - ./scripts/ci/run-bats.sh .logs/junit/unit tests/unit/
   artifacts:

@@ -1744,6 +1744,115 @@ is 17/17 and now asserts `servers/nwpcode/demo/nwd-demo-reset-restricted` is in 
 re-implemented. Duplicating them would have produced a conflicting diff that changed nothing.
 **Reversible-how:** N/A (work removed, not added).
 
+## [2026-07-26] b7-four-branches-swept-each-gated-on-the-line-that-superseded-it
+**Decision:** deleted five refs — `origin/pl-rollback-stdin-fix`, `origin/stg2live-drush-graceful`,
+`origin/chore/gitleaks-allowlist-issue-urls`, and the two duplicate `archive` heads
+`archive/pl-rollback-stdin-fix` and `archive/stg2live-drush-graceful`. Rollback registry row CP-B7.
+
+Each deletion was gated on a specific line of `origin/main`, not on a summary judgement. Verified
+against `origin/main` @ `388ef0b` (the item's stated `0cdb94c` had already been superseded):
+
+| Branch (tip) | MR | Behind main | Superseded by, on `origin/main` |
+|---|---|---|---|
+| `pl-rollback-stdin-fix` (`1813994`) | !10 closed | 487 | `lib/rollback-remote.sh` lines **169, 189, 261, 321, 330** carry `ssh -n -o BatchMode=yes` — the branch's whole diff — **plus a sixth at 343** that postdates the branch entirely |
+| `stg2live-drush-graceful` (`3f73691`) | !11 closed | 487 | `scripts/commands/stg2live.sh` lines **145** and **245** are the two `drush unavailable in staging` skip guards, each annotated `(MR !11)` at lines 143 and 243 |
+| `chore/gitleaks-allowlist-issue-urls` (`0b3f644`) | !50 closed | 349 | `.gitleaks.toml` lines **589** and **684** carry the branch's exact regex `git\.nwpcode\.org/[\w./-]+/-/(issues\|merge_requests\|blob\|tree)/`, duplicated per the SHARED-EXEMPTIONS rule |
+| `archive/pl-rollback-stdin-fix` | — | — | `git rev-parse` == `1813994`, byte-identical to the origin head above |
+| `archive/stg2live-drush-graceful` | — | — | `git rev-parse` == `3f73691`, byte-identical to the origin head above |
+
+**Nothing is lost.** GitLab keeps `refs/merge-requests/{10,11,50}/head` on project 9 forever; all
+three were confirmed by `git ls-remote` to hold the exact deleted SHAs *before* the push. The
+restore command is one line and is recorded in CP-B7.
+
+**What was checked beyond the item's own evidence:** that no *open* MR used any of the five as a
+source or target branch (all six API queries returned 0), so no MR was auto-closed or orphaned by
+the sweep, and that all three MRs were already `state=closed` rather than merged-and-stale.
+
+**Reversible-how:** `git push origin <sha>:refs/heads/<name>` / `git push archive <sha>:refs/heads/<name>`.
+
+## [2026-07-26] b7-gitleaks-branch-is-a-net-revert-not-a-fix
+**The load-bearing reason `chore/gitleaks-allowlist-issue-urls` had to be DELETED and not merged,
+recorded so a future agent does not "rescue" it.**
+
+The branch looks like a small, useful, still-unmerged fix: 17 lines adding a narrow allowlist so
+public `git.nwpcode.org/-/issues|merge_requests|blob|tree/` links stop tripping the
+`live-internal-domain` rule (Decision 14). Its author even wrote "leave MR open for operator
+review, do not auto-merge", which reads as an invitation to finish the job.
+
+It is not. It branched on 2026-07-09, before `92cf069`
+(*REVIEW: fix(security): un-blind the leakage gate — credential rules were off for 6 whole trees*)
+landed on 2026-07-26. `git diff origin/main origin/chore/gitleaks-allowlist-issue-urls --
+.gitleaks.toml` is **-626 lines**: merging or cherry-picking it restores the top-level
+`[allowlist]` `paths` block that RULE 1 of the current config exists to forbid. That block does not
+merely silence operator-identifier false positives — a top-level `paths` exemption disables *every*
+rule for those paths, **including the inherited AWS / GCP / GitHub / GitLab-PAT credential rules**,
+across `^tests/.*`, `^docs/reports/.*`, `^docs/archive/.*`, `^docs/onboarding/.*`, `^templates/.*`
+and `^servers/(mini|mayo1|nwpcode)/.*`. It would also drop `minVersion`, the `operator-home-path`
+capture group and its `secretGroup = 1` — the fix that stopped that rule being 100% dead on the
+gitleaks 8.30.0 that CI actually downloads.
+
+`pl branch` classifies it as SHRINKS, which is the correct verdict for exactly this reason.
+
+**And it costs nothing to delete**: its one genuine contribution, the Decision-14 regex, is already
+on main *twice* (lines 589 and 684). Deleting it loses no capability; merging it would silently
+re-blind the one blocking security gate on every MR.
+
+**Guard shipped with this decision:** `tests/unit/test-stale-branch-sweep.bats` case A4 fails, by
+name, if `.gitleaks.toml` ever regrows a top-level `paths` list — so a resurrection attempt trips a
+test that says *why* rather than a diff nobody reads.
+
+**Reversible-how:** the branch itself is at `refs/merge-requests/50/head`; restore it as a
+historical read only.
+
+## [2026-07-26] b7-my-own-first-acceptance-test-was-the-bug-it-was-written-to-prevent
+**Recorded against my own work, because it nearly shipped.**
+The first draft of `tests/unit/test-stale-branch-sweep.bats` asserted branch absence as three
+consecutive `! grep -qE 'refs/heads/<branch>$' <<<"$heads"` lines. POSIX says `set -e` is **ignored**
+for a command whose status is inverted with `!`, so under bats only the *last* of the three could
+ever fail the test. The RED run proved it: with all three branches still present on `origin`, bats
+reported a single failure at line 136 (`chore/gitleaks-allowlist-issue-urls`) and said nothing at
+all about lines 134-135 — two of the three branches were unasserted while the suite looked complete.
+That is precisely the "a test that proved nothing" failure this workflow exists to catch, and it was
+only visible because the test was run RED first; a test written after the deletion would have been
+green on day one and stayed green if two of the three pushes had silently failed.
+**Fix:** an explicit `assert_head_absent` helper that prints the offending ref and `return 1`s. The
+second RED run then aborted at the *first* offender, which is the proof each assertion is live.
+**Reversible-how:** N/A (test-only).
+
+## [2026-07-26] b7-what-the-remote-half-of-the-test-refuses-to-do
+**Decision:** the two remote-probing cases skip, never pass, when they cannot see.
+"Branch X is absent from remote R" is satisfied for free by a probe that is offline, unauthenticated
+or pointed at the wrong host — the same shape as the oversight surfaces this programme has been
+making honest. So `probe_remote` returns non-zero unless the remote answers *and* reports a
+`refs/heads/main`, and the caller `skip`s on that. Case B3 exercises the control directly: a bogus
+remote must make `probe_remote` fail with empty output, so the `assert_head_absent` calls can never
+read an empty listing as "all clear". PART A's four content assertions are mirrored against the
+pre-supersession commits (`68430dc`, `92cf069^`) for the same reason — an assertion that has never
+been observed failing is not evidence that it can.
+**Reversible-how:** N/A (test-only).
+
+## [2026-07-26] b7-worktree-removed-but-three-LOCAL-branches-are-left-standing-on-purpose
+**Done:** `/home/rob/nwp/.claude/worktrees/agent-adf8c402537d37717` (the dormant
+`chore/gitleaks-allowlist-issue-urls` checkout, untouched since 2026-07-09) removed with a plain
+`git worktree remove` — deliberately *without* `--force`, so git itself vouched the tree was clean;
+had there been uncommitted work it would have refused rather than destroyed it. Stale
+remote-tracking refs for all five swept heads were pruned from the shared clone.
+
+**Deliberately NOT done, and left for the operator:** the shared checkout `~/nwp` still holds three
+LOCAL branches — `pl-rollback-stdin-fix`, `stg2live-drush-graceful`,
+`chore/gitleaks-allowlist-issue-urls` — now with no upstream. They are outside this item's declared
+territory (which named `refs/remotes/origin/*` and the `archive` remote only), and `~/nwp` is shared
+by several concurrent sessions, so deleting branches there is not mine to do unasked.
+
+They are, however, precisely the resurrection vector this sweep is about: a future session sitting
+in `~/nwp` could `git push origin chore/gitleaks-allowlist-issue-urls` and re-blind the leakage
+gate in one command, with no MR and no review. Two mitigations are already in place — the branch
+tips are unchanged so nothing is silently different, and
+`tests/unit/test-stale-branch-sweep.bats` case A4 fails by name the moment `.gitleaks.toml`
+regrows a top-level `paths` list. To close it fully:
+`git -C ~/nwp branch -D pl-rollback-stdin-fix stg2live-drush-graceful chore/gitleaks-allowlist-issue-urls`
+(safe: every commit survives at `refs/merge-requests/{10,11,50}/head`).
+**Reversible-how:** N/A for the worktree (a clean checkout, rebuildable with `git worktree add`).
 ## [2026-07-26] b2-branch-ops-127-retired-work-landed-via-ops-127-recovery
 **Decision:** deleted `origin/ops-127`. ops#127 parts 2/3 and 3/3 landed on `main` via the
 **`ops-127-recovery`** branch (merge `089c4ca`, carrying `96a5823` and `91d4e3e`), **not** via
@@ -3263,6 +3372,60 @@ controls did.
   `lib/backup-integrity.sh:236` (gzip absent ⇒ structural check skipped ⇒ "OK"),
   `lib/rollback.sh:485`, `lib/ci-stats.sh:302`, `lib/testing.sh` (tool-not-found ⇒ pass).
 
+## [2026-07-27] b7-merge-queue-review-two-fixes-to-the-guard
+**Decision:** merged B7 (MR !192) after independently re-deriving all five deletions, with
+**two corrections to the MR's own guard** made during merge-queue review.
+**Independent verification of the deletions (not taken from the MR text):**
+- `pl-rollback-stdin-fix` @ `1813994` — its entire diff is 5 `ssh -o BatchMode` → `ssh -n -o
+  BatchMode` edits; `origin/main:lib/rollback-remote.sh` carries `ssh -n -o BatchMode` at
+  169, 189, 261, 321, 330 **and a sixth at 343**. Nothing unique.
+- `stg2live-drush-graceful` @ `3f73691` — both drush-missing guards are on main, annotated
+  `(MR !11)`; only a hint string is shorter. Nothing unique.
+- `chore/gitleaks-allowlist-issue-urls` @ `0b3f644` — its regex is on main **twice** (589, 684),
+  and `git diff origin/main <branch> -- .gitleaks.toml` is **58+/572−**, restoring a top-level
+  `[allowlist] paths` block main does not have. Net revert, confirmed.
+- **The two archive twins were verified from the forge's own audit log, not from the author's
+  word** (the byte-identical claim was the one the reviewer was told not to trust): project 15
+  push events show `removed stg2live-drush-graceful 3f73691a` and `removed pl-rollback-stdin-fix
+  18139945` — `commit_from` matches the origin heads exactly, and both objects are still
+  resolvable in the archive project.
+**Fix 1 — A3 guarded a comment, not a rule.** A3 grepped the bare substring
+`merge_requests|blob|tree`, which also matches the two explanatory COMMENT lines in
+`.gitleaks.toml`. Deleting BOTH live allowlist regexes left 2 matches and A3 stayed **GREEN** —
+so it did not actually evidence that MR !50's contribution survives on main. Found by mutation.
+Now counts only `'''`-quoted rule lines; verified RED on exactly that mutation and GREEN on restore.
+**Fix 2 — B2 can never run in CI, and that is now declared instead of hidden.** B2 probes the
+`archive` remote; project 15 is **private** and no CI checkout configures that remote, so B2
+skips there. bats reports a skip as `ok`, and the unit job's `NWP_BATS_MAX_SKIPPED: "0"` correctly
+went red. Declared as `"1"` **in the CI job only**, with the skipping test named in the comment.
+Not a loosening: `run-bats.sh` compares with `-ne`, so a second skip goes red AND B2 ceasing to
+skip goes red. Proven both ways — budget 1 against the operator clone (where the archive remote
+exists and B2 really runs, 0 skips) exits non-zero. `tests/.skip-budget` keeps `unit=0` because
+B2 genuinely runs on the operator's machine. Rejected alternative: giving a unit test
+cross-project credentials + a network call to reach a private repo.
+**Reversible-how:** `git revert -m 1 <merge>`. The five refs remain restorable per CP-B7.
+
+## [2026-07-27] b7-followup-skip-budget-must-not-leak-into-nested-runs
+**Decision:** declaring the CI skip (previous entry) exposed a second, pre-existing defect and it
+is fixed here rather than worked around. Setting `NWP_BATS_MAX_SKIPPED` as a **job variable** put
+it in the environment of every process under the job — including the three places
+`tests/unit/test-ci-lint-commands.bats` runs `scripts/ci/run-bats.sh` in a subprocess to prove a
+stray skip goes red. Those meta-tests silently relied on the ambient default of 0, so with the
+job budget at 1 they asserted against the CI job's number instead of the default and went RED
+("run-bats: writes a JUnit report…", "run-bats: an unexpected SKIP fails the job").
+**Fix:** `run-bats.sh` now `unset`s `NWP_BATS_MAX_SKIPPED` / `NWP_BATS_SUITE` **after resolving
+its own budget and before invoking bats**. The budget governs the suite THIS invocation runs, not
+suites those tests themselves invoke.
+**Proved, not asserted:** a fixture of two copies of the meta-tests plus one deliberately-skipping
+case, run with the budget poisoned to 1. With `origin/main`'s runner as the outer: `failures: 2`.
+With the fixed runner: `failures: 0`, and the outer still correctly honours its own budget of 1
+(`skipped: 1 (allowed: 1)`). So the fix does not blunt the guard, it scopes it.
+**Note this was latent, not introduced:** any operator with `NWP_BATS_MAX_SKIPPED` exported would
+already have seen those two tests fail spuriously.
+**⚠️ REVIEWER:** this MR now edits `.gitlab-ci.yml`, a CLAUDE.md sensitive path. The repo's own
+`security:review` gate caught that and required the `REVIEW:` marker, which is why the MR title
+carries it. The CI change is one number plus comments; the behavioural change is the `unset`.
+**Reversible-how:** `git revert -m 1 <merge>`.
 ---
 
 ## [2026-07-26] B1-pubrel-docs-scrub-reproduced-not-merged-and-the-gate-half-was-already-superseded

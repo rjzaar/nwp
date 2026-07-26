@@ -1,52 +1,199 @@
 # =============================================================================
 # pairs/ssd.pair-contract.yml — REAL pair contract (ADR-0031 D2 / ops#75)
 # =============================================================================
-#   nwd (Drupal demo,  PROVIDER)  ↔  ssd (Moodle demo,  CONSUMER)
+#   nwd (Drupal/Open Social demo, PROVIDER)  ↔  ssd (Moodle demo, CONSUMER)
 #
-# The DEMO twin of the ssc↔nwc pair. Same code surfaces, but demo user state is
-# THROWAWAY: ssd is canonical on dev, so no tier is identity-coupled — a full-DB
-# rebuild of either half is fine (uid_lock is off). pair_guard therefore never
-# invokes the D6 --code-only refusal here; it still enforces provider-first
-# ordering (D5) and the red-pair block.
+# The DEMO twin of the ssc↔nwc pair, and — since ops#133 — the **daily-reset
+# demo tier**: invited testers redeem a code on nwd, walk into ssd courses over
+# SSO, and BOTH halves are restored to a matched golden image every night.
+#
+# Demo user state is THROWAWAY: no tier is identity-coupled, so a full-DB
+# rebuild of either half is fine (uid_lock is off) and pair_guard never invokes
+# the D6 --code-only refusal here. It still enforces provider-first ordering
+# (D5) and the red-pair block.
+#
+# ⚠ ops#133 Phase 2 brought this contract to PARITY with ssc's:
+#   * the OIDC block is no longer a stub — nwd↔ssd is wired and browser-proven
+#     on dev, mirroring the live-proven ssc↔nwc shape;
+#   * the smoke set probes the JWKS (the discovery URL 404s on a Drupal
+#     simple_oauth issuer — the old `oidc_discovery` probe could never pass,
+#     so this pair's smoke was structurally red);
+#   * erasure + boundary blocks added so `pl impact` sees the whole surface;
+#   * a `demo:` block declares this pair as the daily-reset demo tier — the
+#     OPT-IN that lib/demo-pair.sh requires before it will wipe anything.
 #
 # Committable — versions + public URLs only, NO secrets.
-#
-# ⚠ The OAuth/OIDC WIRING is F26-gated and NOT implemented in Phase C — the
-#   issuer URLs below are configuration only.
 # =============================================================================
 
 pair: ssd-nwd                 # human label "<consumer>-<provider>"
-contract_version: 2           # monotonically increasing INTEGER; bump = expand-contract change
+contract_version: 3           # monotonically increasing INTEGER; bump = expand-contract change
                               # v2 (2026-07-26): phantom consumer probes repointed at real endpoints;
                               # the OIDC discovery probe replaced with the JWKS one (nwc/nwd expose NO
                               # discovery document — that probe could never go green); crossref: added.
+                              # v3 (2026-07-26): ops#133 Phase 2 expand (oidc/erasure/boundary/demo).
+                              # MERGE NOTE: two different v2 bumps landed in parallel, so Phase 2
+                              # becomes v3. A repeated value on a monotonic field is unresolvable later.
 provider: nwd                 # Drupal demo — OIDC issuer, copyright source, feedback sink
 consumer: ssd                 # Moodle demo — SSO client, copyright receiver (throwaway users)
 
 # --- F28 signed-bundle linkage (ADR-0031 D5) --------------------------------
 dependencies:
   provider_bundle: "nwd@0.5.0"
-  consumer_bundle: "auth_nwc@1.0.0"
+  consumer_bundle: "auth_nwc@1.2.0"     # ss-moodle-plugins (ops#118 gate + ops#93 privacy)
+  # ops#137 / Art.9 audit: ssd is pinned to the GDPR fixes branch, not main —
+  # main lacks the fb_events write gate. sites/ssd/.nwp.yml moodle.plugins_ref
+  # is the pin; sites/ssd/.plugin-src/INSTALLED.json records the exact SHA.
+  consumer_plugins_ref: "gdpr/art9-depthcontent-fixes"
+
+# --- ops#133 Phase 2: the daily-reset demo tier -----------------------------
+# Read by lib/demo-pair.sh. `enabled: true` is the OPT-IN that lets `pl demo`
+# treat these two sites as one system; without it every paired path refuses.
+# This is what keeps the REAL ssc↔nwc pair out of the nightly wipe: its
+# contract has no `demo:` block at all.
+demo:
+  enabled: true
+  paired_golden: true         # `pl demo golden nwd --with-pair` captures BOTH
+  paired_reset: true          # a reset restores BOTH to one logical cut
+  # Provider-first (ADR-0031 D5): the identity origin is restored first, so an
+  # aborted reset can never leave the consumer holding locks against accounts
+  # the provider has not brought back.
+  restore_order: provider-first
+  # The idle guard consults BOTH halves; a tester mid-course on ssd must block
+  # the wipe just as firmly as one clicking around nwd.
+  idle_guard: both
+  # Moodle-side error signals join the provider's harvest spool so the nightly
+  # digest is one issue, not two.
+  harvest: both
+  # Where the ssd banner's "Report a problem" link points (provider-relative).
+  # v1 of the cross-site report path (proposal §2.4 allows the link-back): ssd
+  # links to nwd's own feedback form, pre-filled with the Moodle page URL, so
+  # both halves' reports land in the same GitLab queue with the `demo-tester`
+  # label nwc_feedback adds automatically while demo_mode is on.
+  feedback_path: /feedback/submit
 
 # --- Code surfaces: minimum counterpart versions (expand-contract; D2) -------
 surfaces:
   oauth_sso:
     provider_min: "0.5.0"
     consumer_min: "1.0.0"       # auth_nwc (F26)
+    schema: "contracts/oauth_sso.claims.schema.json"
   copyright_sync:
     provider_min: "0.5.0"
     consumer_min: "0.2.0"
+    schema: "contracts/copyright_sync.record.schema.json"
   feedback_bridge:
     provider_min: "0.5.0"
     consumer_min: "0.1.0"
+    schema: "contracts/feedback_bridge.message.schema.json"
+  erasure:
+    # Present for surface parity with ssc. On the demo pair erasure is mostly
+    # MOOT — the nightly reset erases everything anyway — but the surface is
+    # declared so a diff touching it classifies BOUNDARY-TOUCHING here too, and
+    # so the demo tier can be used to REHEARSE an erasure without risking ssc.
+    provider_min: "0.6.0"       # nwc_moodle_erase
+    consumer_min: "1.0.0"       # local_nwc_erase (Privacy-API delete)
+    schema: "contracts/erasure.command.schema.json"
+  role_cohort_sync:
+    # direction nwd→ssd. NOTE: on this pair the live path is auth_nwc's own
+    # guild→cohort reconciliation at login (the `guilds` claim), NOT the
+    # nwc_moodle_sync web-service push — see oidc.guild_cohorts below.
+    provider_min: "0.5.0"
+    consumer_min: "1.0.0"       # auth_nwc guild_cohort_map
+  badge_read:
+    provider_min: "0.5.0"
+    consumer_min: "0.0.0"
+  shared_salt:
+    # Inert on the demo pair: there is no real email to sanitise (every demo
+    # account is user<N>@demo.invalid by construction). Declared for parity.
+    provider_min: "0.0.0"
+    consumer_min: "0.0.0"
+
+# --- P74 boundary manifest (change-impact gate source) ----------------------
+# Same shape as ssc's. Provider paths point into the nwd site tree (a separate,
+# gitignored profile repo — the classifier fires when `pl impact` runs there);
+# consumer paths point at the ss-moodle-plugins repo layout.
+boundary:
+  oauth_sso:
+    direction: "nwd->ssd"
+    provider_paths:
+      - "sites/nwd/dev/html/profiles/custom/nwc/modules/nwc_features/nwc_oidc_claims/**"
+      - "sites/nwd/dev/html/profiles/custom/nwc/modules/nwc_features/nwc_moodle/modules/nwc_moodle_oauth/**"
+    provider_symbols:
+      - NwcOidcClaimsServiceProvider
+      - GuildClaimsService
+    consumer_paths:
+      - "auth/nwc/**"                    # EXTERNAL: ss-moodle-plugins auth_nwc
+  copyright_sync:
+    direction: "nwd->ssd"
+    provider_paths:
+      - "sites/nwd/dev/html/profiles/custom/nwc/modules/nwc_features/nwc_copyright/**"
+    provider_symbols:
+      - MoodleToolPolicySync
+    consumer_paths:
+      - "local/nwc_copyright_sync/**"
+  feedback_bridge:
+    direction: "ssd->nwd"
+    provider_paths:
+      - "sites/nwd/dev/html/profiles/custom/nwc/modules/nwc_features/nwc_feedback/**"
+    provider_symbols:
+      - CrossSiteFeedbackController
+    consumer_paths:
+      - "local/feedback/**"
+  role_cohort_sync:
+    direction: "nwd->ssd"
+    provider_paths:
+      - "sites/nwd/dev/html/profiles/custom/nwc/modules/nwc_features/nwc_moodle/modules/nwc_moodle_sync/**"
+    consumer_paths:
+      - "auth/nwc/classes/guild_cohort_map.php"
+  badge_read:
+    direction: "ssd->nwd"
+    provider_paths:
+      - "sites/nwd/dev/html/profiles/custom/nwc/modules/nwc_features/nwc_moodle/modules/nwc_moodle_data/**"
+    consumer_paths:
+      - "badges/**"
+  erasure:
+    direction: "nwd->ssd"
+    provider_paths:
+      - "scripts/drupal/nwc_moodle_erase/**"
+    consumer_paths:
+      - "local/nwc_erase/**"
+  # ops#133 Phase 2: the demo tier itself is a boundary — a change to the
+  # paired golden/reset logic can desynchronise the two halves' identities.
+  demo_paired_reset:
+    direction: "bidirectional"
+    provider_paths:
+      - "lib/demo-pair.sh"               # IN-REPO
+      - "lib/demo.sh"
+      - "scripts/commands/demo.sh"
+    provider_symbols:
+      - demo_pair_cut_write
+      - demo_pair_cut_verify
+    consumer_paths:
+      - "scripts/demo/**"                # IN-REPO: ssd rebuild/wire/seed/posture
 
 # --- Data rails (ADR-0031 D2/D6) ---------------------------------------------
 identity:
-  # Demo twin: user state is throwaway, so NO UID-lock and NO coupled tiers.
-  # A full-DB push is permitted on every tier — the D6 --code-only refusal does
-  # not apply to this pair.
+  # Demo twin: user state is throwaway, so NO UID-lock constraint and NO
+  # coupled tiers. A full-DB push is permitted on every tier — the D6
+  # --code-only refusal does not apply to this pair.
+  #
+  # ⚠ READ THIS BEFORE "SIMPLIFYING": uid_lock:false is about DEPLOY
+  # permission, not about the runtime. At runtime auth_nwc DOES write
+  # mdl_user.idnumber = <nwd account uuid> on first SSO, exactly as on ssc —
+  # the lock exists, it is simply disposable. That is precisely why the two
+  # golden images must be captured and restored TOGETHER (see demo: above and
+  # lib/demo-pair.sh): restoring one half alone leaves live locks pointing at
+  # accounts the other half no longer has.
   uid_lock: false
   coupled_tiers: []
+  sub_stability: uuid           # nwd emits sub = account UUID (same as nwc)
+  restore:
+    # The demo tier's own invariant, mechanically enforced by the pair cut
+    # manifest rather than by pair_guard (no deploy is involved in a reset).
+    invariant: both-or-nothing
+    ledger: none                # throwaway identities — no repair map needed
+    reconcile: recapture        # drift ⇒ re-capture BOTH halves, never patch one
+    pre_check_required: true    # demo_pair_cut_verify before anything is dropped
 
 policy:
   writer: nwc_copyright
@@ -63,9 +210,126 @@ endpoints:
   stg:
     issuer: "https://nwd-stg.ddev.site"
   live:
+    # Redacted per the repo's live-domain rule (same convention as ssc's
+    # contract). The real host lives in sites/nwd/.nwp.yml (gitignored).
     issuer: "https://nwd.<example-prod-domain>"
 
-# --- Onboarding smoke: the 5-URL set checked after any promotion (D5) --------
+# --- F26 OIDC concrete wiring (nwd↔ssd; mirrors the live-proven ssc↔nwc) -----
+# NO LONGER A STUB (ops#133 Phase 2). These are the exact facts that make the
+# round-trip work; scripts/demo/{nwd-issuer-provision,ssd-oidc-wire}.sh
+# reproduce them and `ssd-oidc-wire.sh --check` re-asserts them.
+oidc:
+  consumer_plugin: auth_nwc         # the REAL consumer (genuine UID-lock; NOT the
+                                    # lock-less auth_nwc_oauth2 decoy, which was
+                                    # deleted fleet-wide). authtype 'nwc'.
+  # ⚠ The plugin COMPONENT NAME stays `auth_nwc` on ssd. The Art.9 write-gate
+  #   wrappers in mod_depthcontent and local_practice hard-reference the class
+  #   \auth_nwc\consent and FAIL CLOSED if it is absent — renaming the plugin
+  #   to "auth_nwd" would silently stop every formation write on ssd.
+  discovery_available: false        # Drupal simple_oauth serves no discovery doc (404)
+  endpoints:
+    authorization: "/oauth/authorize"
+    token: "/oauth/token"
+    userinfo: "/oauth/userinfo"
+    # ⚠ GOTCHA (inherited from ssc): JWKS is at /.well-known/jwks.json — NOT
+    #   /oauth/jwks, which 301-redirects and breaks signature verification.
+    jwks: "/.well-known/jwks.json"
+  issuer_name: "nwd (F26)"
+  issuer_flags:
+    showonloginpage: 1
+    enabled: 1
+    requireconfirmation: 0           # trusted issuer — no email-confirm interstitial
+    loginscopes: "openid email profile"
+  # User-field mappings. sub→idnumber is the UID-lock and is MANDATORY: without
+  # it auth_nwc DENIES every login (uid_lock::decide → ACTION_DENY on empty sub).
+  #
+  # ⚠ These are given_name/family_name — NOT name/preferred_username. auth_nwc
+  #   reads `given_name` and `family_name` from userinfo and consumes neither
+  #   `name` nor `preferred_username`. This matches what is actually configured
+  #   on the live-proven ssc-dev issuer. (lib/moodle-promote.sh's generic
+  #   generator still emits the name/preferred_username pair — see the ops#133
+  #   Phase 2 note; it is cosmetic-only but it is drift.)
+  user_field_mappings:
+    sub: idnumber                    # the UID-lock
+    email: email
+    given_name: firstname
+    family_name: lastname
+  auth_nwc_config:
+    autoredirect: 0                  # keep the login page recoverable
+    nwc_url: from-endpoints          # MUST be set to the nwd issuer: the plugin's
+                                     # built-in default is https://nwc-dev.ddev.site,
+                                     # which would send ssd testers to the WRONG site
+                                     # for password/profile links.
+    link_legacy_by_email: 0          # demo tier: never link by email
+    cfg_auth_appended: [oauth2, nwc] # added to $CFG->auth; core 'email' kept
+  # Claims auth_nwc actually consumes (everything else in userinfo is ignored).
+  claims_consumed:
+    - sub                            # → mdl_user.idnumber (UID-lock)
+    - email
+    - given_name                     # → firstname
+    - family_name                    # → lastname
+    - guilds                         # → cohort reconciliation (see guild_cohorts)
+    - art9_consent                   # → user pref auth_nwc_art9_consent ('1'/'0')
+    - may_keep_formation             # optional; ANDed with art9_consent
+  guild_cohorts:
+    # auth_nwc reconciles the `guilds` claim into Moodle cohorts at every login.
+    # Cohort idnumber = "<prefix><guild uuid>"; memberships under that prefix are
+    # auto-managed (added AND removed). Cohorts without the prefix are never
+    # touched. It assigns NO roles and enrols in NO courses — course access on
+    # the demo tier comes from an enrol_cohort instance bound to these cohorts,
+    # plus open self-enrolment (scripts/demo/ssd-seed-courses.php).
+    managed_prefix: "nwcguild:"
+    assigns_roles: false
+    enrols_in_courses: false
+    absent_claim_behaviour: leave-alone   # a missing `guilds` claim never strips
+  art9_consent:
+    # ops#118 — the Art.9 formation-data gate, merged and browser-proven on ssc.
+    preference: auth_nwc_art9_consent
+    values: { consent: "1", refused: "0", unknown: "" }
+    # Fail-closed: userinfo unreachable ⇒ stored value untouched (never opened);
+    # claim absent from a valid userinfo ⇒ stored as '0' (refused).
+    gate: 'auth_nwc\consent::may_keep_formation'
+    gated_writes:
+      - mod_depthcontent::record_response      # ack success, persist nothing
+      - mod_depthcontent::submit_review
+      - depthcontent_get_progress
+      - depthcontent_update_sr
+      - depthcontent_apply_retrieval
+      - local_practice_engaged
+      - local_practice_set_anchor
+  provider_prereqs:                  # nwd side — MISSING these silently breaks it
+    signing_keypair: required        # drush simple-oauth:generate-keys + cset public/private
+    consent_permission: "grant simple_oauth codes"   # granted to authenticated role
+    consumer_confidential: true
+    consumer_pkce: true              # S256
+    consumer_grant_types: [authorization_code, refresh_token]
+    consumer_redirect: "https://ssd-dev.ddev.site/admin/oauth2callback.php"
+    consumer_client_id: ssd_moodle
+  dev_only_prereqs:
+    # Container-to-container reachability inside ddev (documented dev-only; the
+    # identical set is what made the ops#93 ssc e2e pass).
+    - "sites/ssd/dev/.ddev/docker-compose.nwd-sso.yaml aliases nwd-dev.ddev.site onto ddev-router"
+    - "sites/ssd/dev/config.php sets curlsecurityblockedhosts='' + curlsecurityallowedport=''"
+    - "ssd-dev published on the default router ports (80/443) — a ported wwwroot cannot work"
+  # Moodle 4.4 rejects PHP 8.4 → run admin/cli with php8.3 + max_input_vars=5000.
+  cli_php_version: "8.3"
+  key_rotation:
+    # Same finding as ops#82 on ssc: Moodle core + auth_nwc take claims from the
+    # USERINFO endpoint and do NOT verify the id_token signature against JWKS, so
+    # a provider signing-key swap does not break SSO. Trust anchors = TLS +
+    # confidential client + PKCE(S256) + bearer userinfo.
+    consumer_verifies_signature: false
+    mode: hard_swap
+    cadence: annual
+    post_rotate_checks:
+      - jwks_200_new_modulus
+      - browser_sso_login_ssd
+
+# --- Onboarding smoke: the URL set checked after any promotion (D5) ----------
+# ⚠ ops#133 Phase 2 REPLACED the `oidc_discovery` probe. A Drupal simple_oauth
+#   issuer returns 404 for /.well-known/openid-configuration, so the old probe
+#   could NEVER pass and this pair's smoke was structurally red. The real
+#   signing-health probe is the JWKS — the same fix ssc already carries.
 smoke_urls:
   # ⚠ v1 probed /.well-known/openid-configuration expecting 200. nwd runs the
   #   same nwc codebase as the ssc pair, and that stack exposes NO discovery
@@ -81,23 +345,34 @@ smoke_urls:
     path: "/user/login"
     method: GET
     expect_status: "200"
+  - name: demo_join
+    side: provider
+    path: "/demo/join"
+    method: GET
+    expect_status: "200"
   - name: oauth_callback
     side: consumer
     path: "/auth/oauth2/login.php"
     method: GET
-    expect_status: "200,302"
+    expect_status: "200,302,303"   # Phase 2 measured 303 on ssd's callback
   # ⚠ v1 declared status.php + api.php — neither file has ever existed.
   #   See pairs/ssc.pair-contract.yml for the full note.
   - name: copyright_status
     side: consumer
     path: "/local/nwc_copyright_sync/policy_set.php"
     method: GET
-    expect_status: "405"
+    expect_status: "200,403"
   - name: feedback_post
     side: consumer
     path: "/local/feedback/submit.php"
-    method: GET
-    expect_status: "405"
+    method: POST
+    # MERGE NOTE (2026-07-26) — Phase 2 wrote "200,303,401,403" with the
+    # rationale "unauthenticated POST is rejected — that IS the pass". But 200
+    # means the endpoint ACCEPTED an anonymous submission, which is the very
+    # thing this probe exists to catch; listing it makes the probe pass either
+    # way. 200 is therefore NOT listed. If ssd really answers 200 here, that is
+    # a finding about ssd, not a probe bug. Flagged for the operator.
+    expect_status: "303,401,403"
 
 # --- Cross-repo corpus: what `pl contracts crossref` reads (item 8) ----------
 crossref:

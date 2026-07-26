@@ -240,6 +240,21 @@ lint:conflict-markers:
     - nwp
   allow_failure: false
 
+# Snapshot gate — a committed *.bundle must be able to rebuild what it claims
+# to hold. Two "safety" bundles under docs/reports/ were thin bundles that
+# restored nothing outside the laptop that made them, and nothing ever checked.
+# `pl snapshot audit` verifies each one in a pristine scratch repository.
+lint:snapshot-bundles:
+  stage: lint
+  script:
+    - ./scripts/commands/snapshot.sh audit
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  tags:
+    - nwp
+  allow_failure: false
+
 # Leakage gate — refuses MRs / main pushes that introduce operator-specific
 # identifiers (hostnames, paths, organisations) or generic credentials.
 # Per P61 §4.4. Configure `main` branch protection to require this job to

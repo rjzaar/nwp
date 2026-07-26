@@ -169,16 +169,16 @@ If you have an existing installation with secrets in a single file:
 
 ```bash
 # Check what needs migration
-./migrate-secrets.sh --check
+pl migrate-secrets --check
 
 # Migrate NWP root secrets
-./migrate-secrets.sh --nwp
+pl migrate-secrets --nwp
 
 # Migrate a specific site
-./migrate-secrets.sh --site avc
+pl migrate-secrets --site avc
 
 # Migrate everything
-./migrate-secrets.sh --all
+pl migrate-secrets --all
 ```
 
 See `docs/DATA_SECURITY_BEST_PRACTICES.md` for complete documentation.
@@ -482,7 +482,7 @@ The `backup.sh` script creates complete backups of your sites including database
 ### Basic Backup
 
 ```bash
-./backup.sh nwp5
+pl backup nwp5
 ```
 
 This creates:
@@ -493,7 +493,7 @@ This creates:
 ### Database-Only Backup
 
 ```bash
-./backup.sh -b nwp5
+pl backup -b nwp5
 ```
 
 The `-b` flag creates a database-only backup (faster, smaller).
@@ -501,7 +501,7 @@ The `-b` flag creates a database-only backup (faster, smaller).
 ### Backup with Description
 
 ```bash
-./backup.sh -b nwp5 "Before major update"
+pl backup -b nwp5 "Before major update"
 ```
 
 Add a description to identify the backup later.
@@ -509,7 +509,7 @@ Add a description to identify the backup later.
 ### Auto-Confirm Backup
 
 ```bash
-./backup.sh -y nwp5
+pl backup -y nwp5
 ```
 
 The `-y` flag skips confirmation prompts.
@@ -517,7 +517,7 @@ The `-y` flag skips confirmation prompts.
 ### Combined Flags
 
 ```bash
-./backup.sh -by nwp5 "Pre-release backup"
+pl backup -by nwp5 "Pre-release backup"
 ```
 
 Combines database-only (`-b`) with auto-confirm (`-y`).
@@ -546,13 +546,13 @@ Note: Backups reference sites by name (e.g., `nwp5`) regardless of their locatio
 
 ```bash
 # Exercise 1
-./backup.sh test1
+pl backup test1
 
 # Exercise 2
-./backup.sh -b test1 "Before migration"
+pl backup -b test1 "Before migration"
 
 # Exercise 3
-./backup.sh -by test1
+pl backup -by test1
 ```
 </details>
 
@@ -565,7 +565,7 @@ The `restore.sh` script restores sites from backups.
 ### Basic Restore
 
 ```bash
-./restore.sh nwp5
+pl restore nwp5
 ```
 
 Presents a list of available backups to choose from.
@@ -573,7 +573,7 @@ Presents a list of available backups to choose from.
 ### Auto-Select Latest Backup
 
 ```bash
-./restore.sh -f nwp5
+pl restore -f nwp5
 ```
 
 The `-f` flag automatically selects the most recent backup.
@@ -581,7 +581,7 @@ The `-f` flag automatically selects the most recent backup.
 ### Database-Only Restore
 
 ```bash
-./restore.sh -b nwp5
+pl restore -b nwp5
 ```
 
 Restores only the database (keeps current files).
@@ -589,7 +589,7 @@ Restores only the database (keeps current files).
 ### Open Login Link After Restore
 
 ```bash
-./restore.sh -o nwp5
+pl restore -o nwp5
 ```
 
 Opens a one-time login link after restoration.
@@ -597,7 +597,7 @@ Opens a one-time login link after restoration.
 ### Combined Restore
 
 ```bash
-./restore.sh -bfyo nwp5
+pl restore -bfyo nwp5
 ```
 
 Database-only, latest backup, auto-confirm, open login.
@@ -607,7 +607,7 @@ Database-only, latest backup, auto-confirm, open login.
 Restore a backup to a different site:
 
 ```bash
-./restore.sh -s nwp5_backup nwp5
+pl restore -s nwp5_backup nwp5
 ```
 
 This restores from `nwp5_backup` to `nwp5`.
@@ -633,13 +633,13 @@ This restores from `nwp5_backup` to `nwp5`.
 
 ```bash
 # Exercise 1
-./restore.sh -f test1
+pl restore -f test1
 
 # Exercise 2
-./restore.sh -bfy test1
+pl restore -bfy test1
 
 # Exercise 3
-./restore.sh -fyo test1
+pl restore -fyo test1
 ```
 </details>
 
@@ -652,7 +652,7 @@ The `copy.sh` script duplicates sites.
 ### Full Copy
 
 ```bash
-./copy.sh nwp5 nwp6
+pl copy nwp5 nwp6
 ```
 
 Creates an exact copy including:
@@ -663,7 +663,7 @@ Creates an exact copy including:
 ### Files-Only Copy
 
 ```bash
-./copy.sh -f nwp5 nwp6
+pl copy -f nwp5 nwp6
 ```
 
 Copies only files, preserving the destination database.
@@ -676,7 +676,7 @@ Use this when:
 ### Auto-Confirm Copy
 
 ```bash
-./copy.sh -y nwp5 nwp6
+pl copy -y nwp5 nwp6
 ```
 
 ### Copy to New Site
@@ -684,7 +684,7 @@ Use this when:
 If the destination doesn't exist, it will be created:
 
 ```bash
-./copy.sh nwp5 newsite
+pl copy nwp5 newsite
 ```
 
 ### Copy Process
@@ -707,13 +707,13 @@ If the destination doesn't exist, it will be created:
 
 ```bash
 # Exercise 1
-./copy.sh test1 test2
+pl copy test1 test2
 
 # Exercise 2
-./copy.sh -f dev staging
+pl copy -f dev staging
 
 # Exercise 3
-./copy.sh -y test1 test2
+pl copy -y test1 test2
 ```
 </details>
 
@@ -726,7 +726,7 @@ The `delete.sh` script safely removes sites.
 ### Basic Delete
 
 ```bash
-./delete.sh nwp5
+pl delete nwp5
 ```
 
 Prompts for confirmation before deleting.
@@ -734,7 +734,7 @@ Prompts for confirmation before deleting.
 ### Backup Before Delete
 
 ```bash
-./delete.sh -b nwp5
+pl delete -b nwp5
 ```
 
 Creates a backup before deletion (recommended).
@@ -742,7 +742,7 @@ Creates a backup before deletion (recommended).
 ### Auto-Confirm Delete
 
 ```bash
-./delete.sh -y nwp5
+pl delete -y nwp5
 ```
 
 **Use with caution!** Skips confirmation.
@@ -750,7 +750,7 @@ Creates a backup before deletion (recommended).
 ### Combined Delete
 
 ```bash
-./delete.sh -by nwp5
+pl delete -by nwp5
 ```
 
 Backup and delete with auto-confirm.
@@ -782,10 +782,10 @@ Sites can have a purpose that affects deletion:
 
 ```bash
 # Exercise 1
-./delete.sh -b test1
+pl delete -b test1
 
 # Exercise 2
-./delete.sh -y temp
+pl delete -y temp
 ```
 </details>
 
@@ -798,7 +798,7 @@ The `make.sh` script toggles between development and production modes.
 ### Enable Development Mode
 
 ```bash
-./make.sh -v nwp5
+pl make -v nwp5
 ```
 
 Development mode enables:
@@ -811,7 +811,7 @@ Development mode enables:
 ### Enable Production Mode
 
 ```bash
-./make.sh -p nwp5
+pl make -p nwp5
 ```
 
 Production mode enables:
@@ -823,8 +823,8 @@ Production mode enables:
 ### Auto-Confirm Mode Change
 
 ```bash
-./make.sh -vy nwp5   # Dev mode, auto-confirm
-./make.sh -py nwp5   # Prod mode, auto-confirm
+pl make -vy nwp5   # Dev mode, auto-confirm
+pl make -py nwp5   # Prod mode, auto-confirm
 ```
 
 ### When to Use Each Mode
@@ -862,13 +862,13 @@ $config['system.performance']['js']['preprocess'] = TRUE;
 
 ```bash
 # Exercise 1
-./make.sh -v test1
+pl make -v test1
 
 # Exercise 2
-./make.sh -p staging
+pl make -p staging
 
 # Exercise 3
-./make.sh -vy test1
+pl make -vy test1
 ```
 </details>
 
@@ -881,7 +881,7 @@ The `status.sh` script shows the health and status of your sites.
 ### Check All Sites
 
 ```bash
-./status.sh
+pl status
 ```
 
 Shows:
@@ -893,7 +893,7 @@ Shows:
 ### Check Specific Site
 
 ```bash
-./status.sh nwp5
+pl status nwp5
 ```
 
 Detailed information for one site.
@@ -954,13 +954,13 @@ If a check fails:
 
 ```bash
 # Exercise 1
-./status.sh
+pl status
 
 # Exercise 2
-./status.sh test1
+pl status test1
 
 # Exercise 3 - Look for [✗] in output
-./status.sh test1 | grep "✗"
+pl status test1 | grep "✗"
 ```
 </details>
 
@@ -982,10 +982,10 @@ Automated tests catch many issues, but some things require human verification:
 
 ```bash
 # Show all feature statuses
-./verify.sh status
+pl verify status
 
 # Check for invalidated verifications
-./verify.sh check
+pl verify check
 ```
 
 ### When Code Changes
@@ -996,13 +996,13 @@ If a file changes, its associated features are marked for re-verification:
 ⚠️  INVALIDATED: backup - Files changed since last verification:
     → backup.sh (3 commits, 45 lines changed)
 
-    Run './verify.sh details backup' for verification checklist
+    Run 'pl verify details backup' for verification checklist
 ```
 
 ### View Feature Details
 
 ```bash
-./verify.sh details backup
+pl verify details backup
 ```
 
 Shows:
@@ -1015,18 +1015,18 @@ Shows:
 After manually testing a feature:
 
 ```bash
-./verify.sh verify backup
+pl verify verify backup
 ```
 
 ### Available Commands
 
 | Command | Purpose |
 |---------|---------|
-| `./verify.sh status` | Show all feature statuses |
-| `./verify.sh check` | Check for invalidated verifications |
-| `./verify.sh details <feature>` | Show what changed and verification checklist |
-| `./verify.sh verify <feature>` | Mark feature as verified |
-| `./verify.sh list` | List all tracked features |
+| `pl verify status` | Show all feature statuses |
+| `pl verify check` | Check for invalidated verifications |
+| `pl verify details <feature>` | Show what changed and verification checklist |
+| `pl verify verify <feature>` | Mark feature as verified |
+| `pl verify list` | List all tracked features |
 
 ### Practice Exercises
 
@@ -1039,13 +1039,13 @@ After manually testing a feature:
 
 ```bash
 # Exercise 1
-./verify.sh status
+pl verify status
 
 # Exercise 2 - Pick any feature shown
-./verify.sh details backup
+pl verify details backup
 
 # Exercise 3 - After testing backup
-./verify.sh verify backup
+pl verify verify backup
 ```
 </details>
 
@@ -1068,7 +1068,7 @@ When an NWP script fails, you can wrap it with `report.sh` to:
 Wrap any NWP command with `report.sh`:
 
 ```bash
-./report.sh backup.sh mysite
+pl report backup.sh mysite
 ```
 
 If the command succeeds, nothing extra happens. If it fails:
@@ -1100,7 +1100,7 @@ Report this error? [y/N/c] (c=continue):
 Copy the issue URL to clipboard instead of opening browser:
 
 ```bash
-./report.sh -c backup.sh mysite
+pl report -c backup.sh mysite
 ```
 
 ### Direct Report Mode
@@ -1108,8 +1108,8 @@ Copy the issue URL to clipboard instead of opening browser:
 Report an issue without running a command:
 
 ```bash
-./report.sh --report "Description of the problem"
-./report.sh --report -s backup.sh "Error message"
+pl report --report "Description of the problem"
+pl report --report -s backup.sh "Error message"
 ```
 
 ### What Gets Included in the Report
@@ -1149,14 +1149,14 @@ The report automatically removes:
 
 ```bash
 # Exercise 1 - Wrap a command
-./report.sh backup.sh test1
+pl report backup.sh test1
 
 # Exercise 2 - Trigger failure and continue
-./report.sh backup.sh nonexistent
+pl report backup.sh nonexistent
 # When prompted, press 'c' to continue
 
 # Exercise 3 - Direct report
-./report.sh --report -s backup.sh "Backup fails when site name has spaces"
+pl report --report -s backup.sh "Backup fails when site name has spaces"
 ```
 </details>
 
@@ -1215,7 +1215,7 @@ The `dev2stg.sh` script deploys from development to staging.
 ### Basic Deployment
 
 ```bash
-./dev2stg.sh nwp5
+pl dev2stg nwp5
 ```
 
 This creates/updates `nwp5-stg`.
@@ -1238,7 +1238,7 @@ This creates/updates `nwp5-stg`.
 ### Auto-Confirm Deployment
 
 ```bash
-./dev2stg.sh -y nwp5
+pl dev2stg -y nwp5
 ```
 
 ### Deployment Checklist
@@ -1267,13 +1267,13 @@ Before deploying to staging:
 
 ```bash
 # Exercise 1
-./dev2stg.sh test1
+pl dev2stg test1
 
 # Exercise 2
-./dev2stg.sh -y test1
+pl dev2stg -y test1
 
 # Exercise 3
-./status.sh test1_stg
+pl status test1_stg
 ```
 </details>
 
@@ -1286,7 +1286,7 @@ The `stg2prod.sh` script deploys from staging to production.
 ### Basic Deployment
 
 ```bash
-./stg2prod.sh nwp5
+pl stg2prod nwp5
 ```
 
 Deploys `nwp5-stg` to `nwp5-prod`.
@@ -1294,7 +1294,7 @@ Deploys `nwp5-stg` to `nwp5-prod`.
 ### Pre-Deployment Backup
 
 ```bash
-./stg2prod.sh -b nwp5
+pl stg2prod -b nwp5
 ```
 
 Creates a backup of production before deploying.
@@ -1334,10 +1334,10 @@ If something goes wrong:
 
 ```bash
 # Restore from backup
-./restore.sh -f nwp5_prod
+pl restore -f nwp5_prod
 
 # Or sync back from a known good state
-./prod2stg.sh nwp5  # If staging is still good
+pl prod2stg nwp5  # If staging is still good
 ```
 
 ### Practice Exercises
@@ -1350,10 +1350,10 @@ If something goes wrong:
 
 ```bash
 # Exercise 1
-./stg2prod.sh -b test1
+pl stg2prod -b test1
 
 # Exercise 2
-./stg2prod.sh -f test1
+pl stg2prod -f test1
 ```
 </details>
 
@@ -1372,7 +1372,7 @@ The `prod2stg.sh` script syncs production content back to staging.
 ### Basic Sync
 
 ```bash
-./prod2stg.sh nwp5
+pl prod2stg nwp5
 ```
 
 Copies production database to staging.
@@ -1390,7 +1390,7 @@ Copies production database to staging.
 Production data may contain sensitive information:
 
 ```bash
-./prod2stg.sh -s nwp5
+pl prod2stg -s nwp5
 ```
 
 The `-s` flag sanitizes:
@@ -1408,10 +1408,10 @@ The `-s` flag sanitizes:
 
 ```bash
 # Exercise 1
-./prod2stg.sh test1
+pl prod2stg test1
 
 # Exercise 2
-./prod2stg.sh -s test1
+pl prod2stg -s test1
 ```
 </details>
 
@@ -1424,13 +1424,13 @@ The `live.sh` script deploys sites to live servers (Linode).
 ### Prerequisites
 
 1. Linode account configured
-2. SSH keys set up (`./setup-ssh.sh`)
+2. SSH keys set up (`pl setup-ssh`)
 3. Domain configured in Cloudflare
 
 ### Basic Live Deployment
 
 ```bash
-./live.sh nwp5
+pl live nwp5
 ```
 
 Creates a live site at `nwp5.<example-prod-domain>`.
@@ -1455,7 +1455,7 @@ Creates a live site at `nwp5.<example-prod-domain>`.
 ### Staging to Live
 
 ```bash
-./stg2live.sh nwp5
+pl stg2live nwp5
 ```
 
 Promotes staging to live server.
@@ -1463,7 +1463,7 @@ Promotes staging to live server.
 ### Live to Staging
 
 ```bash
-./live2stg.sh nwp5
+pl live2stg nwp5
 ```
 
 Syncs live content back to local staging.
@@ -1477,7 +1477,7 @@ The `security.sh` script applies security hardening.
 ### Run Security Hardening
 
 ```bash
-./security.sh nwp5
+pl security nwp5
 ```
 
 ### What Gets Hardened
@@ -1509,7 +1509,7 @@ The `security.sh` script applies security hardening.
 
 ```bash
 # Exercise 1
-./security.sh test1
+pl security test1
 
 # Exercise 2
 cd sites/test1 && ddev drush pm:list | grep security
@@ -1524,14 +1524,11 @@ cd sites/test1 && ddev drush pm:list | grep security
 
 NWP includes automated GitLab server deployment.
 
-### Quick GitLab Setup
-
-```bash
-cd git
-./setup_gitlab_site.sh
-```
-
-Creates a GitLab instance at `git.<your-domain>`.
+> **The `linode/` and `git/` script directories are gone.** Everything below used
+> to be a `./linode/*.sh` or `./setup_gitlab_site.sh` one-liner. Those files were <!-- doc-truth:retired -->
+> removed when provisioning moved behind `pl`; the verbs are the replacement, and
+> they carry the dry-run defaults, the fate manifests and the server resolver
+> that the loose scripts never had. Run any of them with `--help` first.
 
 ### GitLab Features
 
@@ -1543,38 +1540,32 @@ Creates a GitLab instance at `git.<your-domain>`.
 ### Connecting Sites to GitLab
 
 ```bash
-./linode/gitlab/setup_gitlab_repo.sh nwp5
+pl gitlab-create        # create the project on the forge
+pl gitlab-list          # what already exists
 ```
-
-Creates a repository and configures the site.
 
 ---
 
-## 6.2 Linode Deployment
+## 6.2 Server Provisioning
 
-### Linode Setup
-
-```bash
-./linode/linode_setup.sh
-```
-
-Configures Linode API access.
-
-### Server Provisioning
+### Server inventory and health
 
 ```bash
-./linode/linode_create_test_server.sh
+pl server list          # every server NWP knows about
+pl server show <name>   # one server's identity + bound sites
+pl server status        # SSH reachability
 ```
 
-Creates a test server for deployment testing.
-
-### StackScripts
-
-NWP uses StackScripts for automated server setup:
+### Provisioning
 
 ```bash
-./linode/linode_upload_stackscript.sh
+pl live --help          # live-tier server provisioning
+pl produce --help       # production server provisioning
 ```
+
+Linode API credentials live in `.secrets.yml` (`linode.api_token`) and are read
+through `get_infra_secret` — never pasted into a script. See
+[the secrets registry rules](../../CLAUDE.md).
 
 ---
 
@@ -1585,7 +1576,7 @@ NWP supports Castopod podcast hosting.
 ### Podcast Setup
 
 ```bash
-./podcast.sh
+pl podcast
 ```
 
 Configures Castopod infrastructure.
@@ -1670,54 +1661,54 @@ NWP's `lib/` directory contains reusable functions:
 
 | Command | Description |
 |---------|-------------|
-| `./backup.sh <site>` | Full backup |
-| `./backup.sh -b <site>` | Database-only backup |
-| `./restore.sh <site>` | Restore from backup |
-| `./restore.sh -f <site>` | Restore latest backup |
-| `./copy.sh <src> <dst>` | Copy site |
-| `./copy.sh -f <src> <dst>` | Copy files only |
-| `./delete.sh <site>` | Delete site |
-| `./delete.sh -b <site>` | Backup then delete |
+| `pl backup <site>` | Full backup |
+| `pl backup -b <site>` | Database-only backup |
+| `pl restore <site>` | Restore from backup |
+| `pl restore -f <site>` | Restore latest backup |
+| `pl copy <src> <dst>` | Copy site |
+| `pl copy -f <src> <dst>` | Copy files only |
+| `pl delete <site>` | Delete site |
+| `pl delete -b <site>` | Backup then delete |
 
 ### Development
 
 | Command | Description |
 |---------|-------------|
-| `./make.sh -v <site>` | Enable dev mode |
-| `./make.sh -p <site>` | Enable prod mode |
-| `./status.sh` | Check all sites |
-| `./status.sh <site>` | Check specific site |
-| `./verify.sh status` | Check feature verification status |
-| `./verify.sh check` | Check for invalidated verifications |
-| `./verify.sh details <feature>` | View changes and checklist |
-| `./verify.sh verify <feature>` | Mark feature as verified |
+| `pl make -v <site>` | Enable dev mode |
+| `pl make -p <site>` | Enable prod mode |
+| `pl status` | Check all sites |
+| `pl status <site>` | Check specific site |
+| `pl verify status` | Check feature verification status |
+| `pl verify check` | Check for invalidated verifications |
+| `pl verify details <feature>` | View changes and checklist |
+| `pl verify verify <feature>` | Mark feature as verified |
 
 ### Error Reporting
 
 | Command | Description |
 |---------|-------------|
-| `./report.sh <script> [args]` | Run script with error capture |
-| `./report.sh -c <script> [args]` | Copy error URL to clipboard |
-| `./report.sh --report "msg"` | Direct report without running script |
-| `./report.sh --help` | Show help |
+| `pl report <script> [args]` | Run script with error capture |
+| `pl report -c <script> [args]` | Copy error URL to clipboard |
+| `pl report --report "msg"` | Direct report without running script |
+| `pl report --help` | Show help |
 
 ### Deployment
 
 | Command | Description |
 |---------|-------------|
-| `./dev2stg.sh <site>` | Dev → Staging (auto-enables prod mode) |
-| `./stg2prod.sh <site>` | Staging → Production |
-| `./prod2stg.sh <site>` | Production → Staging |
-| `./live.sh <site>` | Deploy to live server |
-| `./security.sh <site>` | Security hardening |
+| `pl dev2stg <site>` | Dev → Staging (auto-enables prod mode) |
+| `pl stg2prod <site>` | Staging → Production |
+| `pl prod2stg <site>` | Production → Staging |
+| `pl live <site>` | Deploy to live server |
+| `pl security <site>` | Security hardening |
 
 ### Security & Secrets
 
 | Command | Description |
 |---------|-------------|
-| `./migrate-secrets.sh --check` | Check what needs secrets migration |
-| `./migrate-secrets.sh --nwp` | Migrate NWP root secrets |
-| `./migrate-secrets.sh --all` | Migrate all secrets |
+| `pl migrate-secrets --check` | Check what needs secrets migration |
+| `pl migrate-secrets --nwp` | Migrate NWP root secrets |
+| `pl migrate-secrets --all` | Migrate all secrets |
 
 ## Common Flag Combinations
 

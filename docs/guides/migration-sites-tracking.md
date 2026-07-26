@@ -29,11 +29,14 @@ The new system automatically tracks installed sites in `nwp.yml` with:
 
 ### Option 1: Automatic Migration (Recommended)
 
-A migration script will be provided to automatically scan your existing sites and register them in `nwp.yml`.
+Registration and schema migration are `pl` verbs — there is no separate
+migration script (a "coming soon: `./migrate-to-sites-tracking.sh`" was <!-- doc-truth:retired -->
+advertised here for years and was never written):
 
 ```bash
-# Coming soon: Auto-migration script
-# ./migrate-to-sites-tracking.sh
+pl site list          # what is registered, and at which schema version
+pl site init <name>   # scaffold .nwp.yml for an existing site
+pl site migrate       # bring .nwp.yml / nwp.yml up to the current schema
 ```
 
 ### Option 2: Manual Migration
@@ -168,20 +171,20 @@ grep -A 10 "^sites:" nwp.yml
 
 ```bash
 # Test with --keep-yml flag (preserves entry)
-./delete.sh --keep-yml test_site
+pl delete --keep-yml test_site
 
 # Normal deletion (removes from nwp.yml)
-./delete.sh test_site
+pl delete test_site
 ```
 
 ### Test Production Deployment
 
 ```bash
 # Dry run first
-./stg2prod.sh --dry-run mysite
+pl stg2prod --dry-run mysite
 
 # Actual deployment
-./stg2prod.sh mysite
+pl stg2prod mysite
 ```
 
 ## Backward Compatibility
@@ -250,7 +253,7 @@ grep -A 5 "prod_" nwp.yml | grep myrecipe
 ssh deploy@your-server.com echo "Connection OK"
 
 # Run with debug
-./stg2prod.sh --debug mysite
+pl stg2prod --debug mysite
 ```
 
 ## Getting Help

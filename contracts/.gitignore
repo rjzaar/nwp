@@ -1,0 +1,15 @@
+# The contracts/ trust anchor is SHA256SUMS.minisig — and there must be exactly
+# ONE of it. On 2026-07-26 two conflicting copies existed at once: the tracked
+# signature (trusted comment 2026-07-17, verifies) and an untracked backup copy
+# named SHA256SUMS.minisig.<suffix> (trusted comment 2026-07-15, does NOT
+# verify). Whichever copy a `cp` or `tar` happens to pick decides what the
+# offline consumer believes, which is the opposite of a trust anchor.
+#
+# `pl contracts verify` and `pl contracts bundle` now FAIL CLOSED with
+# "AMBIGUOUS TRUST ANCHOR" when more than one contracts/*.minisig* exists. These
+# rules stop a stray copy being committed in the first place.
+#
+# Do NOT add a broader rule here: contracts/*.schema.json, SHA256SUMS and
+# SHA256SUMS.minisig are all tracked on purpose.
+SHA256SUMS.minisig.*
+*.minisig.bak

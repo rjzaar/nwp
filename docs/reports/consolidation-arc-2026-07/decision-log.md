@@ -787,6 +787,7 @@ wording", and `docs/guides/art9-golive-runbook.md` makes #119 one pre-proven swi
 **Still open / operator-gated:** `pl restore --remote --execute` has never been run. Per the item, the
 restore leg must be exercised once on a disposable host before any real use; a real member-facing site stays
 operator/mons-gated. The remaining `pl server`-shaped gaps around `/etc` config drift belong to item 10.
+
 ## [2026-07-26] 🔓 THE LEAKAGE GATE WAS BLIND — item 6 (`leakage-gate-scope`)
 
 `.gitleaks.toml` is the ONE blocking security gate on every MR and every push to main
@@ -1290,3 +1291,123 @@ negative control proving a template-only diff still reaches the push step.
 
 **Self-protecting:** `scripts/agent-loop/` was already denied, so once merged no loop-driven agent can quietly
 remove this. Tagged `REVIEW:` — security-class change to a sensitive path.
+---
+
+---
+
+## [2026-07-26] item8-crossref-gate-not-symbol-grep  **REVIEW:**
+**Decision:** The cross-repo gate (`pl contracts crossref`) checks two *mechanical* facts —
+(1) every literal Moodle web-service function the provider code calls is declared in a
+`db/services.php` under the consumer plugin tree, and (2) every `smoke_urls` entry with
+`side: consumer` names a file that exists there. It deliberately does NOT try to prove a
+`boundary.<surface>.provider_symbols` entry has call sites.
+**Alternatives considered:** (a) extend the gate to assert every declared `provider_symbols`
+entry is referenced — this is the ops#138 shape ("a gate nothing calls"). Rejected here for two
+reasons: several of those symbols are Drupal *hook* implementations that are never explicitly
+called, so the check would be noise; and `tests/unit/test-boundary-honesty.bats` /
+`boundary:classify` are another work item's territory, so two gates would fight over the same
+manifest. (b) parse PHP properly rather than grep — rejected as disproportionate; the literal
+`WS_FUNCTION = '…'` / `'wsfunction' => '…'` shapes are the ones nwc actually uses, and a
+variable wsfunction is explicitly reported as unverifiable rather than skipped.
+**Basis:** the real defect was a *literal* name (`auth_nwc_set_consent`) promised by one repo
+and absent from another. Grep answers exactly that question and can be shown going red.
+**Blast radius:** new read-only verb; no writes, no network.
+**Reversible-how:** revert the MR; nothing consumes `crossref` yet except `pl pair-smoke`'s plan.
+
+## [2026-07-26] item8-empty-corpus-is-a-failure  **REVIEW:**
+**Decision:** `pl contracts crossref` exits NON-ZERO with `CANNOT-VERIFY` when a declared
+provider or consumer root is not checked out, when `yq` is missing, or when a pair contract has
+no `crossref:` block at all. It also prints `ws NONE-FOUND` (a warning, not a pass) when the
+provider roots contain zero web-service call sites, because that is indistinguishable from a
+stale provider checkout.
+**Alternatives:** exit 0 and print "skipped" when `sites/` is absent (which is the state inside
+CI, where `sites/*` is gitignored). Rejected — that is precisely the `test-boundary-honesty`
+failure mode this programme exists to eliminate: a scan over an empty corpus reporting clean.
+**Consequence, stated plainly:** this verb therefore CANNOT be added to the nwp CI pipeline as-is,
+because CI has no `sites/` tree and would always report CANNOT-VERIFY. It is wired into
+`pl pair-smoke` (which only ever runs where the trees exist) and belongs in a `pl verify`
+scenario, not a CI job. Wiring it to CI without a checked-out corpus would recreate the bug.
+**Reversible-how:** revert; or set the roots to `[]` in a contract, which the gate treats as an
+undeclared corpus and still fails on.
+
+## [2026-07-26] item8-probe-urls-cherry-pick-not-merge  **REVIEW:**
+**Decision:** Took ONLY the `smoke_urls` stanza and the `contract_version` bump from
+`origin/fix/ssc-pair-contract-probe-urls`; re-typed them onto current main rather than merging
+that branch. That branch also DELETES `oidc_email_rewrite_sql` from
+`boundary.shared_salt.provider_symbols` and `lib/sanitizers/standard.sh` +
+`lib/sanitizers/mayo.sh` from `consumer_paths` — three entries added by ops#116. Merging it
+wholesale would have traded a noisy false negative for a silent hole in the sanitizer boundary
+contract.
+**Evidence:** `git diff origin/main origin/fix/ssc-pair-contract-probe-urls -- pairs/ssc.pair-contract.yml`
+shows `6 insertions, 6 deletions` of which 3 deletions are the ops#116 entries.
+**Guard added:** `tests/unit/test-pair-contract.bats` pins all three entries; that test PASSED on
+the pre-fix tree (it is a regression pin, not a new assertion) and would go red the moment
+anyone re-applies that branch.
+**Reversible-how:** revert the MR. The stale branch is deleted from origin; its content is fully
+described here and in the test.
+
+## [2026-07-26] item8-ssd-oidc-discovery-probe-was-also-phantom
+**Decision:** Also replaced `ssd`'s `oidc_discovery` probe
+(`/.well-known/openid-configuration`, expect 200) with the JWKS probe used by the ssc contract.
+**Basis:** ssd's provider (nwd) runs the same nwc codebase, and the ssc contract already records
+LIVE-PROVEN that this stack exposes no discovery document (404). The ssd probe could never go
+green either — same defect class, not previously noticed because ssd's contract was never
+audited alongside ssc's.
+**Blast radius:** demo pair only. **Reversible-how:** YAML revert.
+
+## [2026-07-26] item8-single-trust-anchor-not-date-matching
+**Decision:** `pl contracts verify` and `pl contracts bundle` now fail closed when more than one
+`contracts/*.minisig*` file exists ("AMBIGUOUS TRUST ANCHOR"), and `contracts/.gitignore` ignores
+the stray shapes. The programme also proposed asserting the signature's trusted-comment date
+against the `SHA256SUMS` mtime; that half was NOT implemented.
+**Why not:** mtime is rewritten by every checkout, clone and rsync, so the assertion would be
+false on a fresh clone and would train people to ignore it — a new vacuous check to replace an
+old one. The property that actually matters (the signed sums match the on-disk schemas) is
+already enforced by the existing `sha256sum -c` step.
+**Alternatives:** compare against the git commit date of `SHA256SUMS` — deferred; it needs the
+file to be committed in the same MR as the signature, which is a workflow rule, not a check.
+**Reversible-how:** revert; the assertion is one function with two callers.
+**Note for the operator:** `contracts/.gitignore` was used instead of the repo-root `.gitignore`
+deliberately — three other work items in this programme own separate blocks of the root file and
+a shared edit would collide.
+
+## [2026-07-26] item8-ops138-not-discharged-here
+**Decision:** ops#138 (the Drupal-side Art.9 write gate `assertMayWriteArt9()` / `writeFormation()`
+having zero call sites) is NOT fixed by this item, and is deliberately left open with evidence
+posted rather than closed.
+**Why:** the fix is a `hook_entity_presave()` in `nwc_privacy` inside the nwc profile repo —
+another work item's file territory — and the issue itself records an unanswered operator
+DECISION (block-with-explanation vs silent-Trialing when consent is absent) that an agent must
+not settle on a GDPR lawful-basis question. Building it blind would produce the wrong product
+behaviour for deliberate member acts.
+**What was done instead:** re-verified the zero-callers claim, and recorded that the closest
+mechanical guard is a boundary-symbol reference check, which is the adjacent work item's gate.
+**Reversible-how:** N/A (no change made).
+
+## [2026-07-26] item8-deleted-the-invalid-second-trust-anchor
+**Decision:** Deleted the untracked `contracts/SHA256SUMS.minisig.local-untracked-bak` from the
+shared checkout after PROVING it is invalid, not merely older.
+**Evidence (run before deleting, against `keys/minisign/nwp-deploy.pub`):**
+`SHA256SUMS.minisig` → VERIFIES (trusted comment "NWP intersite contract schemas 2026-07-17");
+`SHA256SUMS.minisig.local-untracked-bak` → DOES NOT VERIFY (trusted comment "…2026-07-15",
+different signature bytes). `sha256sum -c SHA256SUMS` → all 4 schemas OK.
+So the tracked anchor is the correct one and the stray was a stale copy of a signature over an
+older schema set.
+**Safety:** a byte copy was kept out-of-repo at
+`<scratch>/SHA256SUMS.minisig.local-untracked-bak.KEPT`, sha256 `dc85d27f1d3191f1…`, in case the
+operator wants the artefact. It was deliberately NOT committed — committing a second signature
+is the exact ambiguity being removed.
+**Reversible-how:** restore that file if ever needed; `pl contracts verify` will then correctly
+report AMBIGUOUS TRUST ANCHOR again.
+
+## [2026-07-26] item8-third-minisig-in-a-stash-not-reproducible
+**Finding, recorded rather than acted on:** the audit reported a THIRD copy of
+`contracts/SHA256SUMS.minisig` inside `stash@{0}` of `~/nwp`. Re-checked 2026-07-26:
+`git stash list` holds two entries (`stash@{0}` WIP on main @ `85ce8d4`, `stash@{1}` WIP on
+`pl-dev2stg-rollback`) and `git stash show --name-only stash@{0}` contains **no** minisig path.
+The claim is not reproducible; the stash set has changed since the audit.
+**Decision:** do NOT drop any stash from this item. Dropping `stash@{0}` renumbers the others,
+and an adjacent work item is operating on the remaining stashes — a blind drop would move the
+index under it. A stashed blob also cannot be picked up by the `cp`/`tar` path the trust-anchor
+assertion guards, so there is no exposure to close.
+**Reversible-how:** N/A (nothing changed).

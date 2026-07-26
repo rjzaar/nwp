@@ -253,6 +253,33 @@ for name in "${SMOKE_NAMES[@]}"; do
 done
 echo ""
 
+# --- CROSS-REPO promise check (item 8) --------------------------------------
+# Before probing anything over HTTP, verify the contract is even CHECKABLE: that
+# every consumer path it names exists in the consumer plugin tree and every WS
+# function the provider calls is defined there. A probe URL that has never
+# existed (status.php / api.php, v1 of both contracts) produces a permanent 404
+# that everyone learns to ignore; this makes that state a hard failure at plan
+# time instead of a red probe nobody reads.
+#
+# NWP_PAIR_SMOKE_SKIP_CROSSREF=1 suppresses it — for the case where the site
+# trees genuinely are not checked out on this host. It prints that it did so.
+if [ "${NWP_PAIR_SMOKE_SKIP_CROSSREF:-0}" = "1" ]; then
+    print_warning "crossref SKIPPED (NWP_PAIR_SMOKE_SKIP_CROSSREF=1) — the cross-repo promises in"
+    print_warning "  this contract were NOT verified. The probe results below cannot distinguish a"
+    print_warning "  broken deployment from an endpoint that does not exist."
+else
+    if "${PROJECT_ROOT}/scripts/commands/contracts.sh" crossref "$CONSUMER"; then
+        print_status "OK" "crossref: the contract's cross-repo promises hold."
+    else
+        print_error "crossref FAILED for pair '${CONSUMER}' (see above)."
+        print_info  "  Fix the contract or the consumer tree before trusting any probe result."
+        print_info  "  Re-run with NWP_PAIR_SMOKE_SKIP_CROSSREF=1 only if you accept unverified probes."
+        pair_rag_set "$CONSUMER" "$TIER" "red" 2>/dev/null || true
+        exit 1
+    fi
+fi
+echo ""
+
 if [ "$MODE" != "run" ]; then
     print_status "OK" "Dry run — no network was touched. Re-run with --run to probe."
     exit 0

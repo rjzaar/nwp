@@ -1,0 +1,4 @@
+fastcgi-php.conf
+snakeoil.conf
+--- vhosts including deny-files-secrets ---
+NONE

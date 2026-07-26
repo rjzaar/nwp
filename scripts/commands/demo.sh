@@ -294,6 +294,21 @@ demo_files_restore() {
     fi
 }
 
+# demo_files_dir <proj> <site> <kind> — the directory a reset destroys, per
+# kind. Drupal: <docroot>/sites/default/files. Moodle: the whole dataroot.
+# Fail-closed on purpose: demo_files_restore refuses the same way, so a reset
+# that cannot say WHICH directory it is about to delete must not get as far as
+# asking permission to delete it.
+demo_files_dir() {
+    local proj="$1" site="$2" kind="$3"
+    if [[ "$kind" == "moodle" ]]; then
+        demo_moodledata_dir "$site"
+        return $?
+    fi
+    local droot; droot="$(demo_docroot "$proj")" || return 1
+    printf '%s\n' "$proj/$droot/sites/default/files"
+}
+
 # demo_moodledata_dir <site> — host path of the Moodle dataroot.
 # From sites/<site>/.nwp.yml `moodle.dataroot_host`, else sites/<site>_moodledata.
 # Fail-closed: a missing dir refuses rather than tarring nothing.
@@ -443,6 +458,12 @@ cmd_golden_paired() {
 
 cmd_reset_paired() {
     local site="$1" tier="$2" if_idle="$3" auto_yes="$4" skip_seed="$5"
+    # arg 6 = dry_run, mirroring cmd_reset. It was missing from both this
+    # signature and the dispatch, so `pl demo reset <site> --with-pair
+    # --dry-run` silently performed a REAL double wipe when the operator had
+    # asked for a rehearsal. Same position as cmd_reset, so the two verbs
+    # cannot drift apart again unnoticed.
+    local dry_run="${6:-false}"
     local start_ts; start_ts=$(date +%s)
 
     demo_pair_resolve "$site" || {
@@ -501,13 +522,47 @@ cmd_reset_paired() {
         print_status "OK" "Both halves idle for ≥ ${if_idle}"
     fi
 
-    # --- 3. One confirmation for the whole pair ------------------------------
-    if [[ "$auto_yes" != "true" ]]; then
-        printf 'This will ERASE BOTH %s and %s (%s) and restore the paired golden. Continue? [y/N]: ' \
-            "$prov" "$cons" "$tier"
-        local reply; read -r reply
-        [[ "$reply" =~ ^[Yy]$ ]] || { print_info "Aborted."; return 1; }
+    # --- 3. ONE FATE MANIFEST COVERING BOTH HALVES, THEN ONE CONFIRMATION ----
+    # This verb destroys TWO sites, one of which is the SSO provider, so it goes
+    # through the SAME audited route as the single-site reset — never a weaker
+    # one. The first cut of this function hand-rolled a `read -r reply` prompt
+    # with no manifest at all, which made the more destructive verb the less
+    # guarded one and broke the lib/impact.sh contract ("ALWAYS call
+    # impact_render before impact_confirm"). The file-level contract gate could
+    # not see it: demo.sh already adopts the lib via cmd_reset.
+    #
+    # ONE report, not two: impact_reset once, build each half into it, render
+    # once. The operator sees everything that is about to be destroyed before
+    # answering a single question, and cannot approve half a pair by accident.
+    # Measurement is per-half and immediately precedes that half's build,
+    # because DEMO_M_* are globals.
+    local pfiles cfiles
+    pfiles="$(demo_files_dir "$pproj" "$prov" "$pkind")" || return 1
+    cfiles="$(demo_files_dir "$cproj" "$cons" "$ckind")" || return 1
+
+    impact_reset
+    demo_measure_local_kind "$pproj" "$pkind" "$pfiles" \
+        "$(demo_epoch_of "$(demo_golden_field "$pdir" captured_utc)")"
+    demo_reset_manifest_build "$prov" "$tier" "$pdir" "$pproj" "$dry_run" "$pfiles"
+    demo_measure_local_kind "$cproj" "$ckind" "$cfiles" \
+        "$(demo_epoch_of "$(demo_golden_field "$cdir" captured_utc)")"
+    demo_reset_manifest_build "$cons" "$tier" "$cdir" "$cproj" "$dry_run" "$cfiles"
+
+    # The fate that only exists BECAUSE this is a pair, and that neither
+    # per-site block can state on its own.
+    impact_warn "PAIRED WIPE: ${prov} AND ${cons} are both destroyed by this one command — approving it approves both."
+    impact_warn "${prov} is the SSO IDENTITY PROVIDER for ${cons}. Every account it holds is dropped and re-created from the golden; ${cons}'s OIDC links are only valid again because its own DB is rolled back to the SAME cut (${DEMO_PAIR_LABEL} cut $(demo_pair_cut_id_of "$cut"))."
+    impact_keep "The paired cut manifest (${cut}) and both golden images — verified together before this report was built"
+    impact_warn "If this run dies between the halves the pair is left INCONSISTENT until it is re-run; the provider is restored first (ADR-0031 D5) so re-running repairs it."
+    impact_render
+
+    if [[ "$dry_run" == "true" ]]; then
+        print_status "OK" "[dry-run] nothing was touched — the report above is what a real paired reset would do."
+        return 0
     fi
+
+    impact_confirm standard "ERASE BOTH ${prov} and ${cons} (${tier}) and restore the paired golden cut" "$auto_yes" \
+        || { print_info "Aborted."; return 1; }
 
     # --- 4. Pre-wipe harvest, BOTH halves, ONE spool (fail-open) -------------
     print_info "Harvesting error signals from both halves before the wipe…"
@@ -964,14 +1019,42 @@ demo_human_age() {  # $1 epoch → "3h old" / "12d old"
     else                       printf '%dd old' $(( d / 86400 )); fi
 }
 
-# demo_reset_manifest <site> <tier> <gdir> <target> [dry_run]
-# Builds AND renders the fate manifest, then appends a one-line digest to
-# demo-reset.log. Call demo_measure_{local,live} first. Returns 0 always: the
-# report never decides, it only informs — the guards above it decide.
-# dry_run is carried into the log line so a rehearsal can never be misread as
-# a real wipe when someone reads the audit trail back.
-demo_reset_manifest() {
+# demo_measure_local_kind <proj> <kind> <files_dir> <since_epoch>
+# Kind-aware front door for demo_measure_local. The Drupal path is unchanged.
+# The Moodle path cannot use it at all — there is no drush and no
+# users_field_data table — so without this the Moodle half of a paired manifest
+# would be nothing but "could not measure" warnings, i.e. a manifest that tells
+# the operator nothing about the site it is asking permission to destroy.
+demo_measure_local_kind() {
+    local proj="$1" kind="$2" files_dir="$3" since="$4" raw
+    if [[ "$kind" != "moodle" ]]; then
+        demo_measure_local "$proj" "$(dirname "$files_dir")" "$since"
+        return 0
+    fi
+    DEMO_M_DB=""; DEMO_M_FILES=""; DEMO_M_ACCTS=""
+    raw="$( cd "$proj" && ddev mysql -N -e "$DEMO_SQL_DBSIZE" 2>/dev/null )" || raw=""
+    DEMO_M_DB="$(_demo_clean_num "$raw")"
+    DEMO_M_FILES="$(du -sh "$files_dir" 2>/dev/null | cut -f1)" || DEMO_M_FILES=""
+    if [[ -n "$since" ]]; then
+        raw="$( cd "$proj" && ddev mysql -N -e \
+            "SELECT COUNT(*) FROM mdl_user WHERE timecreated > $since" 2>/dev/null )" || raw=""
+        DEMO_M_ACCTS="$(_demo_clean_num "$raw")"
+    fi
+}
+
+# demo_reset_manifest_build <site> <tier> <gdir> <target> [dry_run] [files_path]
+# APPENDS one site's fates to the report currently in flight, and writes that
+# site's audit line. Does NOT impact_reset and does NOT impact_render — that is
+# the caller's job, and it is what lets a PAIRED reset put BOTH halves into ONE
+# manifest under ONE confirmation instead of rendering two reports and asking
+# twice (or, as the first cut of cmd_reset_paired did, asking with no report at
+# all). Call demo_measure_{local,local_kind,live} for THIS site immediately
+# before: the DEMO_M_* measurements are globals and the second call would
+# otherwise be reported with the first site's numbers.
+# Returns 0 always: the report never decides, it only informs.
+demo_reset_manifest_build() {
     local site="$1" tier="$2" gdir="$3" target="$4" dry_run="${5:-false}"
+    local files_path="${6:-${target}/sites/default/files}"
     local captured cap_epoch age db_sha gdb gfiles cfile live_codes
 
     captured="$(demo_golden_field "$gdir" captured_utc)"
@@ -981,19 +1064,17 @@ demo_reset_manifest() {
     gdb="$(du -h "$gdir/$GOLDEN_DB" 2>/dev/null | cut -f1)"
     gfiles="$(du -h "$gdir/$GOLDEN_FILES" 2>/dev/null | cut -f1)"
 
-    impact_reset
-
     impact_overwrite "Database" \
         "${site} ${tier} DB${DEMO_M_DB:+ (${DEMO_M_DB}M)} — every table DROPPED, replaced by ${GOLDEN_DB} (${gdb:-?}, sha256 ${db_sha:0:12}…, captured ${captured:-unknown}, ${age})"
     impact_delete "Files" \
-        "${target}/sites/default/files${DEMO_M_FILES:+ (${DEMO_M_FILES})} — removed, then restored from ${GOLDEN_FILES} (${gfiles:-?})"
+        "${files_path}${DEMO_M_FILES:+ (${DEMO_M_FILES})} — removed, then restored from ${GOLDEN_FILES} (${gfiles:-?})"
     impact_delete "Tester work" \
-        "every account, post, comment, upload and log row created since the golden was captured (${age})${DEMO_M_ACCTS:+ — ${DEMO_M_ACCTS} account(s) created since then}"
+        "${site}: every account, post, comment, upload and log row created since the golden was captured (${age})${DEMO_M_ACCTS:+ — ${DEMO_M_ACCTS} account(s) created since then}"
 
     # Honest about blind spots: a failed probe is reported, never guessed past.
-    [[ -z "$DEMO_M_DB" ]]    && impact_warn "could not measure the current database size — the wipe proceeds without knowing what is there"
-    [[ -z "$DEMO_M_FILES" ]] && impact_warn "could not measure the current uploads directory — same"
-    [[ -z "$captured" ]]     && impact_warn "golden manifest carries no capture time — provenance of the replacement is unknown"
+    [[ -z "$DEMO_M_DB" ]]    && impact_warn "${site}: could not measure the current database size — the wipe proceeds without knowing what is there"
+    [[ -z "$DEMO_M_FILES" ]] && impact_warn "${site}: could not measure the current uploads directory — same"
+    [[ -z "$captured" ]]     && impact_warn "${site}: golden manifest carries no capture time — provenance of the replacement is unknown"
     if [[ "$cap_epoch" =~ ^[0-9]+$ ]] && (( $(date -u +%s) - cap_epoch > 2592000 )); then
         impact_warn "the golden image is ${age} — the site will be rolled back a long way; recapture with 'pl demo golden $site --tier=$tier'"
     fi
@@ -1014,12 +1095,21 @@ demo_reset_manifest() {
         impact_keep "Code, vendor/, settings.php, TLS certificates and DNS on the host — only the DB and sites/default/files are touched"
     fi
 
-    impact_render
-
     # The audit half of the contract: this line lands even when -y/cron skipped
-    # the prompt, so an unattended wipe is still accounted for.
+    # the prompt, so an unattended wipe is still accounted for. One line PER
+    # SITE, so a paired reset is accounted for in both sites' logs.
     demo_log "$site" reset-manifest \
         "tier=$tier dry_run=$dry_run target=$target golden_sha=${db_sha:0:12} captured=${captured:-unknown} age=${age// /_} db_now=${DEMO_M_DB:-unknown} files_now=${DEMO_M_FILES:-unknown} new_accounts=${DEMO_M_ACCTS:-unknown}"
+}
+
+# demo_reset_manifest <site> <tier> <gdir> <target> [dry_run]
+# The single-site front door, unchanged for its callers: reset the report,
+# build this site's fates, render. Kept as a thin wrapper so cmd_reset and
+# cmd_reset_live are byte-identical in behaviour to before the split.
+demo_reset_manifest() {
+    impact_reset
+    demo_reset_manifest_build "$@"
+    impact_render
 }
 
 ################################################################################
@@ -1180,6 +1270,12 @@ cmd_reset() {
     local proj gdir start_ts kind
     start_ts=$(date +%s)
     proj="$(demo_project_dir "$site" "$tier")" || return 1
+    # NOTE (merge, 2026-07-27): the rebase dropped `droot="$(demo_docroot …)"`
+    # from here while keeping its only consumer below. Under `set -u` that made
+    # EVERY dev/stg single-site reset die with "droot: unbound variable" at the
+    # manifest step — fail-closed, but the verb was dead. The docroot lookup now
+    # lives in demo_files_dir, which both reset paths share, so the resolution
+    # and its only consumer can no longer be separated by a merge.
     kind="$(demo_kind_of "$site")"
     gdir="$(demo_golden_dir "$site" "$tier")"
 
@@ -1239,9 +1335,10 @@ cmd_reset() {
 
     # 3. FATE MANIFEST (ops#47). Measured off the live instance, rendered
     #    unconditionally, logged. --force/--yes skips only the prompt below it.
-    local files_parent="$proj/$droot/sites/default"
-    demo_measure_local "$proj" "$files_parent" "$(demo_epoch_of "$(demo_golden_field "$gdir" captured_utc)")"
-    demo_reset_manifest "$site" "$tier" "$gdir" "$proj" "$dry_run"
+    local files_dir; files_dir="$(demo_files_dir "$proj" "$site" "$kind")" || return 1
+    demo_measure_local_kind "$proj" "$kind" "$files_dir" \
+        "$(demo_epoch_of "$(demo_golden_field "$gdir" captured_utc)")"
+    demo_reset_manifest "$site" "$tier" "$gdir" "$proj" "$dry_run" "$files_dir"
 
     if [[ "$dry_run" == "true" ]]; then
         print_status "OK" "[dry-run] nothing was touched — the report above is what a real reset would do."
@@ -1495,7 +1592,7 @@ cmd_nightly() {
         # the report lands in logs/demo-nightly-<site>.log + demo-reset.log.
         # dry_run is explicitly "false": a scheduled reset is never a rehearsal.
         if [[ "$use_pair" == "true" ]]; then
-            cmd_reset_paired "$site" "$tier" "30m" "true" "false"
+            cmd_reset_paired "$site" "$tier" "30m" "true" "false" "false"
         else
             cmd_reset "$site" "$tier" "30m" "true" "false" "false"
         fi
@@ -2016,7 +2113,9 @@ main() {
                       # one product and one is never safe to wipe alone.
                       [[ "$site" != "$DEMO_PAIR_PROVIDER" ]] && \
                           print_info "'$site' is half of ${DEMO_PAIR_LABEL} — running the PAIRED reset (both halves)."
-                      cmd_reset_paired "$site" "$tier" "$if_idle" "$auto_yes" "$skip_seed"
+                      # dry_run is arg 6 on BOTH reset verbs. Dropping it here
+                      # turned `--with-pair --dry-run` into a real double wipe.
+                      cmd_reset_paired "$site" "$tier" "$if_idle" "$auto_yes" "$skip_seed" "$dry_run"
                   else
                       # --no-pair is the ONLY way to suppress the paired-half
                       # refusal; otherwise cmd_reset's own guard decides (and

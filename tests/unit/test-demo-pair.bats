@@ -13,6 +13,7 @@ setup() {
   mkdir -p "${PROJECT_ROOT}/pairs" \
            "${PROJECT_ROOT}/sites/prov" "${PROJECT_ROOT}/sites/cons"
   REPO_ROOT="$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )"
+  export REPO_ROOT TEST_TMP
   source "${REPO_ROOT}/lib/demo.sh"
   source "${REPO_ROOT}/lib/demo-pair.sh"
   DEMO_CMD="${REPO_ROOT}/scripts/commands/demo.sh"
@@ -402,4 +403,197 @@ _fake_golden() {
   ! grep -q 'name: oidc_discovery' "$c"
   # and the decoy must not be named as the consumer plugin
   grep -qE '^  consumer_plugin: auth_nwc([[:space:]]|#|$)' "$c"
+}
+
+################################################################################
+# THE AUDITED CONFIRMATION ROUTE (MR !162 review, note 2218)
+#
+# `main` asserts that every destructive demo path goes through ONE route:
+# render a fate manifest (lib/impact.sh), THEN impact_confirm. The first cut of
+# cmd_reset_paired hand-rolled a `read -r reply` instead — so the verb that
+# destroys TWO sites, one of them the SSO identity provider, was LESS guarded
+# than the one that destroys one. The file-level impact-contract gate could not
+# see it, because demo.sh already adopts the lib over in cmd_reset.
+#
+# These tests are BEHAVIOURAL: they run cmd_reset_paired against a stubbed
+# world and assert on the ORDER of the real impact_render / impact_confirm /
+# destructive-step events, not on the source text. The static greps below them
+# are a second, cheaper net for the specific pattern that regressed.
+################################################################################
+
+# Run cmd_reset_paired under a stub world and echo a TRACE, one event per line:
+#   RENDER · CONFIRM tier=<t> subject=<s> rc=<n> · DESTROY <site> · DRYRUN
+# $1 = auto_yes ("true" approves, "false" reaches the real prompt which
+#      fail-closes with no TTY), $2 = dry_run.
+_paired_trace() {
+  local auto_yes="$1" dry_run="$2"
+  local run="${TEST_TMP}/run.sh"
+
+  cat > "$run" <<'RUN'
+set -uo pipefail
+source "$REPO_ROOT/scripts/commands/demo.sh"
+set +e   # demo.sh carries `set -e` into whoever sources it; we need the rc
+
+# --- world stubs: everything that would touch a real site -------------------
+demo_project_dir() { case "$1" in prov) echo "$TEST_TMP/proj-prov" ;;
+                                  *)    echo "$TEST_TMP/proj-cons" ;; esac; }
+demo_measure_local_kind() { DEMO_M_DB=12.0; DEMO_M_FILES=3.4M; DEMO_M_ACCTS=2; }
+demo_harvest_collect()        { :; }
+demo_harvest_collect_moodle() { :; }
+demo_files_restore()      { echo "DESTROY files:$2" >> "$TRACE"; }
+demo_drush()              { :; }
+demo_sync_codes_to_site() { :; }
+demo_cache_rebuild()      { :; }
+demo_consumer_checks()    { :; }
+demo_moodledata_dir()     { echo "$PROJECT_ROOT/sites/cons_moodledata"; }
+
+# --- spies: the REAL impact.sh functions, wrapped so the order is visible ---
+eval "_real_impact_render() $(declare -f impact_render | tail -n +2)"
+impact_render()  { echo "RENDER" >> "$TRACE"; _real_impact_render "$@" >/dev/null; }
+eval "_real_impact_confirm() $(declare -f impact_confirm | tail -n +2)"
+impact_confirm() {
+  local rc=0; _real_impact_confirm "$@" >/dev/null 2>&1 || rc=$?
+  echo "CONFIRM tier=$1 subject=$2 rc=$rc" >> "$TRACE"
+  return "$rc"
+}
+_real_print_status="$(declare -f print_status)"
+print_status() { [[ "${2:-}" == *"[dry-run]"* ]] && echo "DRYRUN" >> "$TRACE"; return 0; }
+
+cmd_reset_paired prov dev "" "$AUTO_YES" true "$DRY_RUN" >/dev/null 2>&1
+echo "EXIT $?" >> "$TRACE"
+RUN
+
+  TRACE="${TEST_TMP}/trace"; : > "$TRACE"
+  PATH="${TEST_TMP}/bin:$PATH" TRACE="$TRACE" REPO_ROOT="$REPO_ROOT" \
+    TEST_TMP="$TEST_TMP" PROJECT_ROOT="$PROJECT_ROOT" \
+    AUTO_YES="$auto_yes" DRY_RUN="$dry_run" \
+    bash "$run" </dev/null >/dev/null 2>&1 || true
+  cat "$TRACE"
+}
+
+# The whole stub world both halves need: two ddev-shaped project dirs, a
+# moodledata dir, and two goldens bound into ONE cut.
+_paired_fixture() {
+  export DEMO_GOLDEN_ROOT="${TEST_TMP}/golden"
+  mkdir -p "${TEST_TMP}/bin" "${TEST_TMP}/proj-prov/.ddev" \
+           "${TEST_TMP}/proj-cons/.ddev" "${PROJECT_ROOT}/sites/cons_moodledata" \
+           "${TEST_TMP}/proj-prov/web/sites/default/files"
+  printf 'docroot: web\n' > "${TEST_TMP}/proj-prov/.ddev/config.yaml"
+  printf 'docroot: ""\n'  > "${TEST_TMP}/proj-cons/.ddev/config.yaml"
+  # A `ddev` that destroys nothing and reports that it was asked to.
+  cat > "${TEST_TMP}/bin/ddev" <<'STUB'
+#!/bin/bash
+if [ "${1:-}" = "import-db" ]; then echo "DESTROY ${PWD##*/}" >> "$TRACE"; fi
+exit 0
+STUB
+  chmod +x "${TEST_TMP}/bin/ddev"
+  _fake_golden "$(demo_golden_dir prov dev)" prov s1
+  _fake_golden "$(demo_golden_dir cons dev)" cons s1
+  demo_pair_cut_write "$(demo_pair_cut_file "$(demo_golden_dir prov dev)")" \
+    cons-prov "${PROJECT_ROOT}/pairs/cons.pair-contract.yml" dev cut-test \
+    prov "$(demo_golden_dir prov dev)" cons "$(demo_golden_dir cons dev)"
+}
+
+@test "GUARD: the paired wipe cannot be reached without a rendered manifest AND a confirmation" {
+  _paired_fixture
+  trace="$(_paired_trace true false)"
+  # The destructive step IS reached — this is the negative control: the guard
+  # cannot be satisfied by a function that simply refuses everything.
+  [[ "$trace" == *"DESTROY"* ]]
+  # …and it is reached ONLY after the manifest and the confirmation.
+  render=$(printf '%s\n' "$trace"  | grep -n '^RENDER'  | head -1 | cut -d: -f1)
+  confirm=$(printf '%s\n' "$trace" | grep -n '^CONFIRM' | head -1 | cut -d: -f1)
+  destroy=$(printf '%s\n' "$trace" | grep -n '^DESTROY' | head -1 | cut -d: -f1)
+  [ -n "$render" ] && [ -n "$confirm" ] && [ -n "$destroy" ]
+  [ "$render"  -lt "$confirm" ]
+  [ "$confirm" -lt "$destroy" ]
+}
+
+@test "GUARD: a REFUSED confirmation destroys nothing (fail-closed, no TTY, no -y)" {
+  _paired_fixture
+  trace="$(_paired_trace false false)"
+  # the report still lands — -y skips the PROMPT, never the REPORT
+  [[ "$trace" == *"RENDER"* ]]
+  [[ "$trace" == *"rc=1"* ]]
+  ! [[ "$trace" == *"DESTROY"* ]]
+  [[ "$trace" == *"EXIT 1"* ]]
+}
+
+@test "GUARD: --with-pair --dry-run reports and stops — it does NOT wipe two sites" {
+  _paired_fixture
+  trace="$(_paired_trace false true)"
+  [[ "$trace" == *"RENDER"* ]]
+  [[ "$trace" == *"DRYRUN"* ]]
+  ! [[ "$trace" == *"CONFIRM"* ]]
+  ! [[ "$trace" == *"DESTROY"* ]]
+  [[ "$trace" == *"EXIT 0"* ]]
+}
+
+@test "the paired confirmation names BOTH sites, at the standard tier" {
+  _paired_fixture
+  trace="$(_paired_trace true false)"
+  line="$(printf '%s\n' "$trace" | grep '^CONFIRM' | head -1)"
+  [[ "$line" == *"tier=standard"* ]]
+  [[ "$line" == *"prov"* ]]
+  [[ "$line" == *"cons"* ]]
+}
+
+@test "the paired manifest names BOTH halves and the SSO coupling" {
+  _paired_fixture
+  mkdir -p "${TEST_TMP}/bin"
+  # Render for real and read the report itself, not a trace of it.
+  run bash -c '
+    set -uo pipefail
+    source "$REPO_ROOT/scripts/commands/demo.sh"
+    demo_project_dir() { case "$1" in prov) echo "$TEST_TMP/proj-prov";; *) echo "$TEST_TMP/proj-cons";; esac; }
+    demo_measure_local_kind() { DEMO_M_DB=12.0; DEMO_M_FILES=3.4M; DEMO_M_ACCTS=2; }
+    demo_moodledata_dir() { echo "$PROJECT_ROOT/sites/cons_moodledata"; }
+    cmd_reset_paired prov dev "" false true true 2>&1
+  '
+  [[ "$output" == *"prov dev DB"* ]]
+  [[ "$output" == *"cons dev DB"* ]]
+  [[ "$output" == *"SSO IDENTITY PROVIDER"* ]]
+  [[ "$output" == *"PAIRED WIPE"* ]]
+}
+
+@test "STATIC: the hand-rolled y/N prompt never comes back to the paired path" {
+  body=$(awk '/^cmd_reset_paired\(\)/,/^}/' "$DEMO_CMD")
+  printf '%s\n' "$body" | grep -q 'impact_render'
+  printf '%s\n' "$body" | grep -q 'impact_confirm standard "ERASE BOTH'
+  # the pattern main's test-demo.bats bans, asserted inside THIS body too
+  ! printf '%s\n' "$body" | grep -q 'read -r reply'
+  ! printf '%s\n' "$body" | grep -q 'This will ERASE'
+  # ordering, in the body: render -> confirm -> wipe
+  r=$(printf '%s\n' "$body" | grep -n 'impact_render'           | head -1 | cut -d: -f1)
+  c=$(printf '%s\n' "$body" | grep -n 'impact_confirm standard' | head -1 | cut -d: -f1)
+  i=$(printf '%s\n' "$body" | grep -n 'ddev import-db'          | head -1 | cut -d: -f1)
+  [ "$r" -lt "$c" ] && [ "$c" -lt "$i" ]
+}
+
+@test "STATIC: dry_run is arg 6 on BOTH reset verbs and every call site passes it" {
+  # the regression was a 5-arg call to a 6-arg function: --dry-run vanished
+  grep -q 'local dry_run="\${6:-false}"' "$DEMO_CMD"
+  awk '/^cmd_reset\(\)/,/^}/' "$DEMO_CMD" | grep -q 'dry_run="\${6:-false}"'
+  # no 5-argument cmd_reset_paired call survives anywhere
+  ! grep -qE 'cmd_reset_paired ("[^"]*" ){4}"[^"]*"$' "$DEMO_CMD"
+  awk '/^main\(\)/,0' "$DEMO_CMD" | grep -q 'cmd_reset_paired "\$site" "\$tier" "\$if_idle" "\$auto_yes" "\$skip_seed" "\$dry_run"'
+}
+
+@test "REGRESSION: cmd_reset resolves its docroot — no 'droot: unbound variable'" {
+  # The rebase dropped droot="$(demo_docroot …)" but kept its only consumer, so
+  # under `set -u` EVERY dev/stg single-site reset died at the manifest step.
+  # --dry-run, so this exercises the whole path up to (not through) the wipe.
+  _paired_fixture
+  run bash -c '
+    set -euo pipefail
+    source "$REPO_ROOT/scripts/commands/demo.sh"
+    demo_is_live()       { return 1; }
+    demo_project_dir()   { echo "$TEST_TMP/proj-prov"; }
+    demo_kind_of()       { echo drupal; }
+    demo_pair_resolve()  { return 1; }
+    demo_measure_local() { :; }
+    cmd_reset prov dev "" true true true   # --dry-run: stops at the report
+  '
+  [[ "$output" != *"unbound variable"* ]]
+  [ "$status" -eq 0 ]
 }

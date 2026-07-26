@@ -517,6 +517,41 @@ case "$SITE_PURPOSE" in
         ;;
 esac
 
+# CONTAINMENT: a site's nested repos (dev/, stg/, backups/, profiles/custom/*,
+# .plugin-src/*) can hold work that exists nowhere else. Deleting the site
+# directory destroys it silently — this is how the avc profile's 26-file Behat
+# capability suite came within one `pl delete` of vanishing. Refuse while any
+# nested repo has uncommitted work, and say exactly which.
+#
+# Sourced unconditionally: a missing containment library means a broken
+# install, not a reason to delete a site unchecked.
+# shellcheck source=/dev/null
+source "$PROJECT_ROOT/lib/site-containment.sh"
+
+_dirty_repos=""
+while IFS= read -r _r; do
+    [ -n "$_r" ] || continue
+    _n="$(git -C "$_r" status --porcelain -uall 2>/dev/null | wc -l | tr -d ' ')"
+    _s="$(git -C "$_r" stash list 2>/dev/null | wc -l | tr -d ' ')"
+    _u="$(git -C "$_r" rev-list --count HEAD --not --remotes 2>/dev/null || echo 0)"
+    if [ "${_n:-0}" != "0" ] || [ "${_s:-0}" != "0" ] || [ "${_u:-0}" != "0" ]; then
+        _dirty_repos="${_dirty_repos}  ${_r#$PROJECT_ROOT/}  (dirty=${_n} stashes=${_s} unpushed=${_u})"$'\n'
+    fi
+done < <(containment_discover_repos "$PROJECT_ROOT/sites/$SITENAME")
+
+if [ -n "$_dirty_repos" ]; then
+    print_error "Refusing to delete '$SITENAME': nested repositories hold unsaved work."
+    echo ""
+    printf '%s' "$_dirty_repos"
+    echo ""
+    print_info "Inspect with:  pl site vcs --site=$SITENAME"
+    print_info "Commit or push the work, or set NWP_ALLOW_DELETE_DIRTY=1 to override."
+    if [ "${NWP_ALLOW_DELETE_DIRTY:-0}" != "1" ]; then
+        exit 1
+    fi
+    print_warning "NWP_ALLOW_DELETE_DIRTY=1 — proceeding over unsaved nested work."
+fi
+
 # THE IMPACT CONTRACT: compute + print the fate manifest, then confirm.
 # The report is printed even with -y; only the prompt is skipped.
 build_impact_report "$SITENAME" "$PURGE"

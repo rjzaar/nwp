@@ -1,0 +1,97 @@
+# S18: Nested-Repo Containment Scenario
+# Fix programme item 3 (nested-repo-containment)
+#
+# NWP's v2 layout puts real git repositories underneath sites/:
+#   sites/<n>/dev/.git, .../stg/.git, .../backups/.git,
+#   .../dev/html/profiles/custom/<x>/.git, .../.plugin-src/*/.git
+# The repo-root gitleaks gate and the repo-root pre-commit hook cover NONE of
+# them. This scenario asserts that each nested repo contains its own
+# credentials and backup payloads.
+#
+# WHY THIS RUNS HERE AND NOT IN CI: sites/ is gitignored in nwp/nwp, so in a CI
+# checkout the corpus is EMPTY. A containment sweep over an empty corpus that
+# printed "clean" would be a textbook vacuous pass — the same shape as the
+# privacy sweep that scanned 850 files, found 0 violations and printed
+# "FIREWALL INTACT" because the hardening was on an unmerged branch. The
+# checker therefore exits 3 ("cannot verify") on an empty corpus, and this
+# scenario asserts that behaviour explicitly.
+
+scenario:
+  id: S18
+  name: "Nested-Repo Containment"
+  description: "Credentials and backup payloads are contained inside every nested per-site git repo"
+  depends_on:
+    - S2  # Needs at least one installed site
+  estimated_duration: 3
+  is_gate: true
+
+  commands_tested:
+    - site.sh
+    - backup.sh
+    - delete.sh
+
+  live_state_commands:
+    - command: pl site gitignore --check
+      validates:
+        - Drupal settings.php is not committable in any site repo
+        - OAuth signing keys are not committable in any site repo
+        - Backup payloads (*.sql, *.sql.gz, *.tar.gz) are not committable
+        - The scan corpus is non-empty
+
+    - command: pl site vcs
+      validates:
+        - Every nested repo's branch, dirty count, stash count and unpushed count
+
+  steps:
+    - name: Containment library is present
+      cmd: test -f lib/site-containment.sh && echo "present"
+      expect_exit: 0
+      expect_contains: "present"
+
+    - name: Containment template is present
+      cmd: test -f templates/site-gitignore.tmpl && echo "present"
+      expect_exit: 0
+      expect_contains: "present"
+
+    - name: Template renders both sections
+      cmd: bash -c 'source lib/site-containment.sh && containment_render_section site | head -1 && containment_render_section backups | head -1'
+      expect_exit: 0
+
+    # ANTI-VACUOUS-PASS: an empty corpus must be reported, never called clean.
+    - name: Empty corpus reports CANNOT VERIFY rather than clean
+      cmd: bash -c 'source lib/site-containment.sh; d=$(mktemp -d); containment_check_fleet "$d"; rc=$?; rm -rf "$d"; exit $rc'
+      expect_exit: 3
+      expect_contains: "CANNOT VERIFY"
+
+    # NEGATIVE CONTROL: a deliberately leaky repo must go red. If this step
+    # ever passes, the checker has stopped checking.
+    - name: A leaky repo is detected (negative control)
+      cmd: bash -c 'source lib/site-containment.sh; d=$(mktemp -d); git -C "$d" init -q; printf "/vendor/\n" > "$d/.gitignore"; containment_check_repo "$d" site; rc=$?; rm -rf "$d"; test $rc -ne 0 && echo "detected"'
+      expect_exit: 0
+      expect_contains: "detected"
+
+    - name: A repaired repo passes (positive control)
+      cmd: bash -c 'source lib/site-containment.sh; d=$(mktemp -d); git -C "$d" init -q; containment_fix_repo "$d" site; containment_check_repo "$d" site && echo "contained"; rc=$?; rm -rf "$d"; exit $rc'
+      expect_exit: 0
+      expect_contains: "contained"
+
+    - name: Backup guard refuses a publishable work tree (negative control)
+      cmd: bash -c 'source lib/site-containment.sh; d=$(mktemp -d); git -C "$d" init -q; git -C "$d" remote add origin git@example.org:x.git; printf "*.tmp\n" > "$d/.gitignore"; containment_assert_backup_path "$d" 2>/dev/null; rc=$?; rm -rf "$d"; test $rc -ne 0 && echo "refused"'
+      expect_exit: 0
+      expect_contains: "refused"
+
+    - name: The generator no longer un-ignores backup payloads
+      cmd: bash -c '! grep -qE "^\s*!\*\.(sql|tar\.gz|zip)" lib/git.sh && echo "no un-ignore lines"'
+      expect_exit: 0
+      expect_contains: "no un-ignore"
+
+    # FLEET STATE: informational on a dev workstation where sites/ exists.
+    # Non-zero here means real repos are leaky and `pl site gitignore --fix`
+    # has not been run — it is a finding, not a harness fault.
+    - name: Fleet containment status
+      cmd: ./pl site gitignore --check
+      expect_exit: 0
+      allow_failure: true
+
+  teardown:
+    - No teardown required (all fixtures are mktemp -d and self-cleaning)

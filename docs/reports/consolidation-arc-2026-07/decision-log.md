@@ -1411,3 +1411,106 @@ and an adjacent work item is operating on the remaining stashes — a blind drop
 index under it. A stashed blob also cannot be picked up by the `cp`/`tar` path the trust-anchor
 assertion guards, so there is no exposure to close.
 **Reversible-how:** N/A (nothing changed).
+---
+
+## 2026-07-26 — Fix programme item 3: `nested-repo-containment`
+
+**What.** NWP's v2 layout puts real git repositories *underneath* `sites/`
+(`<n>/dev/.git`, `<n>/stg/.git`, `<n>/backups/.git`, `.../profiles/custom/*/.git`,
+`.plugin-src/*/.git`). The repo-root gitleaks gate and the repo-root pre-commit hook cover
+none of them, so every one of those repos is its own, unguarded publication surface. Four
+defects were verified on the live tree before any code was written:
+
+1. `html/sites/default/settings.php` is untracked **and un-ignored** in the site repos.
+   Proven by copying `sites/nwc/dev/.gitignore` verbatim into a scratch repo: `settings.php`
+   → `LEAKABLE`, `settings.local.php` → ignored. The curated ignore file caught the *local*
+   override and missed the real one.
+2. `oauth-keys/private.key` is likewise un-ignored, and **the same key is reused across three
+   environments** — `md5 6e84421b730c3c3186a52e36e7f9279c` in `nwc/dev`, `nwc/stg` and
+   `nw1/dev` (`nwd/dev` differs).
+3. `sites/avc/backups` is a git repo with `remote.origin.url =
+   git@git.nwpcode.org:backups/avc-files.git`, holding a 36 MB unsanitised production SQL
+   dump and a 363 MB files tarball — committed and pushed.
+4. **Root cause of (3), and the reason it would have recurred:** `lib/git.sh:git_create_gitignore`
+   *generated* that state. For `db` repos it wrote `!*.sql` / `!*.sql.gz`; for `files` repos
+   `!*.tar.gz` / `!*.zip` — explicit **un-ignore** lines — and `git_backup()` then attached a
+   forge remote and pushed. The leak was not drift; it was the designed behaviour.
+
+**Why this shape of fix.** Three judgement calls worth recording:
+
+- *Behavioural checks, not textual ones.* `containment_check_repo` asks `git check-ignore`
+  whether a representative sensitive path would be committed, rather than grepping the
+  `.gitignore` for a rule string. This was chosen deliberately after the
+  `test-impact-contract.bats` precedent, where gating on `grep -q 'lib/impact.sh'` meant a
+  **comment** satisfied the gate. A comment cannot satisfy this one, and a rule written
+  differently but equivalently still passes.
+- *One source of truth for the rules.* The rules live in `templates/site-gitignore.tmpl`, and
+  both the scaffolder (`git_create_gitignore`) and the checker (`containment_check_repo`) read
+  it. The previous arrangement had the generator's idea of "safe" hard-coded in one place and
+  no checker at all, so nothing could ever notice they disagreed.
+- *Empty corpus is a failure, not a pass.* `containment_check_fleet` exits **3 / "CANNOT
+  VERIFY"** when it finds zero repos. In a CI checkout `sites/` is gitignored and therefore
+  absent, so a naive sweep would scan nothing and print "clean" — the exact shape of the
+  privacy sweep that scanned 850 files, found 0 violations and printed "FIREWALL INTACT"
+  because the hardening was on an unmerged branch. `S18` asserts the exit-3 behaviour
+  explicitly so the anti-vacuity property is itself tested.
+
+**The backup guard self-remediates instead of breaking the nightly sweep.** A pure fail-closed
+guard would have made `pl backup avc` — and therefore the nightly `pl backup sweep` — start
+failing immediately, because `sites/avc/backups` is exactly the shape the guard rejects. That
+trades a containment bug for a backup outage, which is a worse position. So when the backup
+directory **is** the repository root (the `sites/<n>/backups/` shape `lib/git.sh` created), the
+guard installs the containment block and proceeds, printing what it did; a backup directory
+buried inside a larger site or profile repo still fails closed, because fixing that case means
+editing a repo whose ignore rules have other consumers. Alternative considered: ship the pure
+refusal and require `pl site gitignore --fix` first. Rejected — it makes the *safe* state depend
+on an operator remembering a command, which is the failure mode this programme is paying off.
+Already-committed artifacts are untouched either way; removing those is a history rewrite and
+stays operator-gated.
+
+**`git_backup` retired rather than left inert.** Once the template ignores every payload
+extension, `git_backup` for `db`/`files` would commit nothing and return success — a new
+vacuous pass replacing the old leak. It now fails closed with a message naming
+`pl backup --remote` and `pl server backup status` instead. Alternative considered: delete the
+function. Rejected — an explicit refusal that explains itself is more useful to the next
+operator than a missing symbol.
+
+**Fail-closed over fail-open, twice.** The `pl delete` containment guard initially sourced
+`lib/site-containment.sh` behind an `[ -f ... ]` test, which would have silently disabled the
+guard on any install missing the library. That is the fail-open pattern this programme exists
+to remove, so the source is now unconditional: a missing containment library is a broken
+install, not a licence to delete a site unchecked. `tests/unit/test-delete-impact.bats` was
+extended to stage the library into its fixture root accordingly.
+
+**Evidence — every test was observed RED first.**
+- `tests/unit/test-site-containment.bats`: **21/21 failing** against the pre-fix tree. Cases
+  10–12 fail against *existing* `lib/git.sh` with no new library present, which is the
+  independent proof of the generator defect.
+- `tests/unit/test-delete-impact.bats`: the 4 new cases pass; with the guard's condition
+  flipped to `if false`, cases 10, 11 and 13 go red.
+- Mutation check on the template: deleting the four `oauth-keys` / `private.key` rules turns
+  cases 2, 7, 8 and 12 red, so the rules are load-bearing rather than decorative.
+- Full unit suite after the change: **1110 pass, 0 fail.**
+
+**Deliberately NOT done (and why).**
+- *No history rewrite on `git@git.nwpcode.org:backups/avc-files.git`.* Purging the two pushed
+  blobs needs a force-push to a remote holding live member data. That is operator hands and an
+  operator decision; the agent's job was to stop the next fifteen. Done: the generator no
+  longer produces un-ignore lines, and `pl backup` now refuses to write into a publishable
+  work tree at all.
+- *No OAuth key rotation.* One signing key across `nwc/dev`, `nwc/stg` and `nw1` is auth-class,
+  and rotating it would break UID-locked SSO identities. The scaffold now contains the key;
+  rotating the existing one stays operator-gated.
+- *No commits into the nested site repos.* This session ran in a sandboxed worktree with git
+  operations against the shared checkout blocked, so the data half of item 3 (committing avc's
+  260 entries, the `composer.json`/`patches/**` work, moving `nwc/dev` back onto `main`,
+  unstashing the legal-canonical-text stash) was **not attempted**. It is unblocked by this MR
+  — `pl site gitignore --fix` must be run *before* any of it, or the first `git add -A` in
+  those repos stages `settings.php` and the OAuth key. Recorded as the follow-up, not as done.
+
+**How to reverse.** `git revert -m 1 <merge>`. If a full revert is unwanted:
+`NWP_ALLOW_BACKUP_IN_REPO=1` restores the old backup-write behaviour and
+`NWP_ALLOW_DELETE_DIRTY=1` the old delete behaviour. Ignore blocks written by
+`pl site gitignore --fix` are delimited by `# >>> nwp containment … >>>` markers and can be
+removed by hand; doing so cannot untrack anything, because ignore rules only ever affected
+paths that were untracked to begin with. See rollback registry **CP19**.

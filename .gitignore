@@ -165,6 +165,12 @@ servers/*
 # P62 documentation-truth gate baseline (pl doc-truth; ops#53)
 !.doc-truth-baseline
 
+# CI-gate baselines (item 5, ci-gate-honesty). Same contract as
+# .doc-truth-baseline / .gitleaksignore: SHRINK-ONLY records of pre-existing
+# findings, so the gate is enforceable on day one and can only get stricter.
+!.yq-first-baseline
+!.security-meta-baseline
+
 # bin/ holds operational helper scripts (audit-authors, migrate-* per F33, etc.)
 # tracked alongside lib/ and scripts/
 !bin/

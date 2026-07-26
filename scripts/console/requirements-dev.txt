@@ -1,0 +1,16 @@
+# NWP Console — development / CI-only dependencies.
+#
+# The 170+ pytest assertions under scripts/console/tests/ (including
+# test_authz.py and test_notify.py — the runtime half of the Gotify `security`
+# detector) ran in NO CI job and behind no `pl` verb until 2026-07-26, and
+# pytest was not declared anywhere, so "run the console tests" meant borrowing
+# somebody's venv. Install with:
+#
+#   python3 -m venv .venv
+#   .venv/bin/pip install -r scripts/console/requirements.txt \
+#                         -r scripts/console/requirements-dev.txt
+#
+# CI: see the `test:console` job in .gitlab-ci.yml (scripts/ci/test-console.sh).
+
+pytest>=8,<10
+httpx>=0.27,<1

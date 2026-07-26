@@ -1,0 +1,18 @@
+# Baseline for scripts/ci/test-console.sh — shrink-only.
+#
+# Measured 2026-07-26 with scripts/console/requirements.txt +
+# requirements-dev.txt installed in a clean venv:
+#   224 tests collected, 0 collection errors, 223 passed, 1 skipped.
+#
+# NOTE on the "23 collection errors" figure in the fix programme: that was an
+# artefact of a BORROWED venv missing the console's own runtime deps (fastapi,
+# webauthn, httpx). With the declared requirements installed there are none.
+# That is exactly why requirements-dev.txt now exists.
+#
+# skipped=1 is test_voice.py::…faster_whisper — an optional STT backend that is
+# deliberately not a CI dependency. If this number moves in EITHER direction the
+# job goes red: a skip reports as a pass, and a silently-growing skip count is
+# how 18 Art.9 cases disappeared from a "ALL 13 passed" Moodle run.
+
+collection_errors=0
+skipped=1

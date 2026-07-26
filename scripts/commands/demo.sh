@@ -147,6 +147,14 @@ ${BOLD}OPTIONS:${NC}
                        then drop/restore/reseed). --tier=prod is always
                        REFUSED, and a live reset additionally refuses unless
                        the remote site reports demo_mode=true.
+                       ${BOLD}REQUIRED${NC} — no default — for the verbs that write
+                       invite codes into a running site: 'invite', and
+                       'codes issue|revoke|rotate|sync'. An invitation whose
+                       codes were quietly synced to the local dev project is
+                       an invitation nobody can redeem, and the operator is
+                       shown a success either way, so those verbs refuse
+                       until the tier is named. 'codes list' and the
+                       read-only verbs keep the dev default.
     --if-idle <dur>    Only reset when no session activity within <dur>
                        (e.g. 30m). Active → exit ${DEMO_EXIT_ACTIVE} (retryable), logged as skip.
     --force            Skip the confirmation PROMPT (same as --yes). It never
@@ -816,16 +824,42 @@ demo_parity_check_live() {
         print_error "Config-parity probe missing: $DEMO_PARITY_PROBE"
         return 1
     }
-    local rname="nwp-config-parity-$$.php"
-    # shellcheck disable=SC2046
-    if ! scp $(nwp_ssh_opts "$site") -o BatchMode=yes \
-        "$DEMO_PARITY_PROBE" "${DEMO_LIVE_USER}@${DEMO_LIVE_IP}:/tmp/${rname}" >/dev/null 2>&1; then
-        print_error "Could not stage the config-parity probe on the live host"
+    # The probe is a PHP file that drush then EXECUTES as the site user. It
+    # used to be staged the cheap way: scp'd to a fixed /tmp/nwp-config-parity-
+    # <pid>.php and then opened up to all readers. Both halves of that are
+    # wrong on a shared host — /tmp is world-writable and the pid space is
+    # ~32k, so any local user can pre-create (or symlink) the path we are
+    # about to write, and thereby choose the PHP that runs as www-data.
+    #
+    # Two changes fix it, and neither needs the file to be world-anything:
+    #   1. the REMOTE mktemp picks the name. It creates the directory O_EXCL
+    #      with an unguessable suffix, mode 0700 — there is no path to squat.
+    #   2. the staging runs under the SAME identity that will run drush
+    #      (DEMO_LIVE_DRUSHSUDO), so the probe is readable by its executor
+    #      without ever being readable by anyone else.
+    local as="${DEMO_LIVE_DRUSHSUDO:+${DEMO_LIVE_DRUSHSUDO} }"
+    local rdir
+    rdir="$(demo_rssh "$site" "${as}mktemp -d -p /tmp nwp-config-parity-XXXXXXXXXX" 2>/dev/null | tr -d '\r' | tail -n 1)"
+    if [[ ! "$rdir" =~ ^/tmp/nwp-config-parity-[A-Za-z0-9]{10}$ ]]; then
+        print_error "Could not create a private staging dir for the config-parity probe on the live host"
+        print_hint  "The staging runs as the drush user (${DEMO_LIVE_DRUSHSUDO:-the ssh user}); check that it may run mktemp."
         return 1
     fi
+    local rprobe="${rdir}/probe.php"
+
+    # Streamed over the existing ssh channel instead of scp'd: scp would land
+    # the file as the ssh user, which cannot write into a 0700 dir owned by
+    # www-data — and it keeps the whole staging path inside demo_rssh, where
+    # it is stubbable and therefore testable.
+    if ! demo_rssh "$site" "umask 077; ${as}tee ${rprobe} >/dev/null" < "$DEMO_PARITY_PROBE"; then
+        print_error "Could not stage the config-parity probe on the live host"
+        demo_rssh "$site" "${as}rm -rf -- ${rdir}" >/dev/null 2>&1 || true
+        return 1
+    fi
+
     local out
-    out="$(demo_rssh "$site" "chmod a+r /tmp/${rname}; cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush php:script /tmp/${rname} 2>/dev/null")" || out="${out:-}"
-    demo_rssh "$site" "rm -f /tmp/${rname}" >/dev/null 2>&1 || true
+    out="$(demo_rssh "$site" "cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush php:script ${rprobe} 2>/dev/null")" || out="${out:-}"
+    demo_rssh "$site" "${as}rm -rf -- ${rdir}" >/dev/null 2>&1 || true
     demo_parity_verdict "$site" live "$out"
 }
 
@@ -919,7 +953,7 @@ demo_sync_codes_to_site() {
         return 0
     fi
     print_warning "Could not sync codes into the site (is $site-$tier running with nwc_demo_access enabled?)"
-    print_hint "Re-run later: pl demo codes $site sync"
+    print_hint "Re-run later: pl demo codes $site sync --tier=$tier"
     return 1
 }
 
@@ -1684,7 +1718,7 @@ cmd_status() {
         | awk -F'\t' 'BEGIN { printf "    %-5s %-30s %-8s %s\n", "id", "bundle", "state", "expires" }
                       { printf "    %-5s %-30s %-8s %s\n", $1, $2, $3, $4 }'
     else
-        echo "    (no code registry — pl demo codes $site issue <bundle>)"
+        echo "    (no code registry — pl demo codes $site issue <bundle> --tier=live)"
     fi
 
     echo ""
@@ -1707,6 +1741,17 @@ cmd_codes() {
     local site="$1" tier="$2" action="$3"; shift 3 || true
     local cfile; cfile="$(demo_codes_file "$site")"
     demo_require_jq || return 1
+
+    # `list` is read-only and keeps the default tier. Everything else either
+    # mints a code or pushes the registry into a running site, and must say
+    # WHICH site. (revoke is the sharpest of these: revoking against dev while
+    # the code is live in the site's state leaves it redeemable.)
+    case "$action" in
+        issue|revoke|rotate|sync)
+            demo_require_explicit_tier "codes ${action}" \
+                "pl demo codes ${site} ${action} --tier=live" || return 1
+            ;;
+    esac
 
     case "$action" in
         list)
@@ -1781,8 +1826,44 @@ cmd_codes() {
 # operator usually recruits for them separately.
 DEMO_INVITE_DEFAULT_BUNDLES=(tester-member tester-guild-leader tester-content-manager)
 
+################################################################################
+# TIER MUST BE NAMED for anything that writes or syncs codes.
+#
+# main() defaults --tier to `dev`, which is right for the read-only verbs and
+# wrong — silently — for the code verbs. `pl demo invite nwd`, the command
+# printed verbatim in howto-invite-codes.md, howto-demo-tier.md and the Art.9
+# runbook, issued three fresh codes and then pushed the hashes into the LOCAL
+# nwd-dev DDEV project. nwd LIVE never received them, and the operator was
+# shown a success either way. The registry bears it out: 19 codes issued, all
+# 19 revoked, not one that a live tester could ever have redeemed.
+#
+# Flipping the default to `live` would be the same defect aimed at a real host,
+# so the tier is simply REQUIRED here. The guard runs before any code is
+# generated: a refusal that had already burned a code id (or, worse, printed a
+# plaintext code) would be a worse outcome than the bug.
+################################################################################
+
+# Set by main() when the operator actually wrote --tier=… on the command line.
+DEMO_TIER_EXPLICIT="false"
+
+# $1 label for the message   $2 a copy-pasteable corrected example
+demo_require_explicit_tier() {
+    local label="$1" example="$2"
+    [[ "$DEMO_TIER_EXPLICIT" == "true" ]] && return 0
+    print_error "REFUSED: '$label' writes invite codes into a running site, so it must name the tier."
+    print_info  "  --tier=live   the public demo site — what an invitation is normally for"
+    print_info  "  --tier=dev    the local DDEV project"
+    print_hint  "Nothing was issued, revoked or synced. Re-run naming the tier, e.g.:"
+    print_hint  "  ${example}"
+    return 1
+}
+
 cmd_invite() {
     local site="$1" tier="$2"; shift 2 || true
+    # FIRST, before the option parse and long before a code is generated: an
+    # invitation whose codes landed on the wrong tier is an invitation to a
+    # site that will reject every one of its recipients.
+    demo_require_explicit_tier invite "pl demo invite ${site} --tier=live" || return 1
     demo_require_jq || return 1
 
     # ---- invite-specific options (arrive via passthru) ----
@@ -2063,6 +2144,14 @@ main() {
 
     local site="${1:-}"; shift || true
     [[ -n "$site" ]] || { print_error "Site name required."; show_help; return 1; }
+
+    # Did the operator NAME the tier? Recorded here, before the parse below
+    # substitutes the `dev` default, so the code verbs can refuse rather than
+    # silently pick a tier for the operator (see demo_require_explicit_tier).
+    local _arg
+    for _arg in "$@"; do
+        case "$_arg" in --tier=*) DEMO_TIER_EXPLICIT="true" ;; esac
+    done
 
     # Common option parse (subcommand-specific positionals pass through).
     local tier="dev" if_idle="" auto_yes="false" skip_seed="false" remove="false" dry_run="false" via_key="false"

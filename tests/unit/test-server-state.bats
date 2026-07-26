@@ -270,6 +270,64 @@ SH
     ! grep -q '/home/someone' "$captured"
 }
 
+# ---------------------------------------------------------------------------
+# 5e. FAIL CLOSED when identity substitution cannot be performed.
+#
+# This is the real bug the CI runner found, and it is worth stating precisely.
+# yq 4.44.1 emits a literal backslash-t for "\t" inside a concatenation; 4.50.1
+# emits a real tab. The dev box has 4.50.1, the runner has 4.44.1. The map was
+# built with a tab separator, so on the runner every line was one unsplit
+# field: `read` put the whole thing in the literal and left the placeholder
+# empty, every substitution looked for a string that never occurred, and
+# REDACTION SILENTLY DID NOTHING while capture reported success.
+#
+# The separator is now `|`, which every version passes through verbatim. But
+# the separator was only the trigger; the defect was that a broken map
+# degraded to "write the file unredacted". Writing an un-redacted host file
+# into the repo is the leak this pass exists to prevent, and it is silent by
+# construction — so the map is now asserted USABLE before any byte is written.
+# ---------------------------------------------------------------------------
+@test "capture REFUSES to write when the manifest yields no usable identity pairs" {
+    # A syntactically fine manifest with no roles and no domains: yq succeeds,
+    # the map is empty. Previously this captured happily, unredacted.
+    printf 'something_else: true\n' > "${FIX}/manifest.yml"
+    export NWP_INSTANCE_MANIFEST="${FIX}/manifest.yml"
+
+    mk_inventory conf file
+    printf 'url=https://git.example-apex.org/x\n' > "${NWP_SERVER_STATE_STAGE}/conf"
+
+    run "$PL" server-state capture h1
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"NO usable identity pairs"* ]]
+    # Nothing may have been written.
+    [ ! -f "${FIX}/servers/h1/system/conf" ]
+}
+
+@test "the identity map survives a yq that does not expand backslash escapes" {
+    # Pin the separator contract directly, independent of the local yq version:
+    # every emitted pair must split into exactly two fields on '|', and the
+    # placeholder must be angle-bracketed. A map line containing a literal
+    # backslash-t is the 4.44.1 signature and must not appear.
+    cat > "${FIX}/manifest.yml" <<'YML'
+roles:
+  gitlab-host: [git.example-apex.org]
+domains:
+  prod-base: example-apex.org
+YML
+    export NWP_INSTANCE_MANIFEST="${FIX}/manifest.yml"
+
+    mk_inventory conf file
+    printf 'x\n' > "${NWP_SERVER_STATE_STAGE}/conf"
+    run "$PL" server-state capture h1
+    [ "$status" -eq 0 ]
+
+    # Re-derive the map the way the script does and assert its SHAPE.
+    map="$(yq e '.roles // {} | to_entries | .[] | .key as $r | (.value // []) | .[] | . + "|<" + $r + ">"' "${FIX}/manifest.yml")"
+    [ -n "$map" ]
+    [[ "$map" != *'\t'* ]]
+    echo "$map" | grep -qE '^[^|]+\|<[^>]+>$'
+}
+
 # A home-relative remote (`~/bin/x`) is how an inventory names a file without
 # writing an operator home path into the repo -- the account differs per host,
 # and the literal would trip operator-home-path. It only works if the remote

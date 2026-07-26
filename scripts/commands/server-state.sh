@@ -200,14 +200,25 @@ _redact_public_ip() {
 # proves the captured record is true.
 # ---------------------------------------------------------------------------
 _IDENTITY_MAP_CACHE=""
+_IDENTITY_MANIFEST() { printf '%s' "${NWP_INSTANCE_MANIFEST:-$HOME/nwp-instances/instance-manifest.yml}"; }
 
 _identity_map() {
-    # "literal<TAB>placeholder" lines, LONGEST LITERAL FIRST so that a host
-    # like `git.<apex>` is replaced before the bare apex would swallow its tail
-    # and leave a half-substituted `git.<prod-base>`.
+    # "literal|placeholder" lines, LONGEST LITERAL FIRST so that a host like
+    # `git.<apex>` is replaced before the bare apex would swallow its tail and
+    # leave a half-substituted `git.<prod-base>`.
+    #
+    # THE SEPARATOR IS `|`, NOT A TAB, AND THAT IS NOT A STYLE CHOICE.
+    # yq 4.44.1 emits a literal backslash-t for "\t" inside a concatenation;
+    # 4.50.1 emits a real tab. The dev box has 4.50.1 and the CI runner has
+    # 4.44.1, so the tab version built a map whose every line was one unsplit
+    # field — `read` put it all in `lit` with an empty `ph`, every substitution
+    # replaced a string that never occurred, and REDACTION SILENTLY DID
+    # NOTHING while reporting success. Caught only because the acceptance test
+    # ran on the runner. `|` is passed through verbatim by every version and
+    # cannot occur in a hostname, a domain or a role label.
     [ -n "$_IDENTITY_MAP_CACHE" ] && { printf '%s' "$_IDENTITY_MAP_CACHE"; return 0; }
 
-    local manifest="${NWP_INSTANCE_MANIFEST:-$HOME/nwp-instances/instance-manifest.yml}"
+    local manifest; manifest="$(_IDENTITY_MANIFEST)"
     [ -f "$manifest" ] && [ -n "$YQ" ] || return 0
 
     local raw
@@ -215,25 +226,56 @@ _identity_map() {
         # role -> host bindings, emitted host-first. A host may carry several
         # roles; the first binding wins, deterministically, because the map is
         # de-duplicated on the literal below.
-        "$YQ" e '.roles // {} | to_entries | .[] | .key as $r | (.value // []) | .[] | . + "\t<" + $r + ">"' "$manifest" 2>/dev/null
-        "$YQ" e '.domains.prod-base // "" | select(. != "") | . + "\t<prod-base>"' "$manifest" 2>/dev/null
-        "$YQ" e '.domains.ddev-base // "" | select(. != "") | . + "\t<ddev-base>"' "$manifest" 2>/dev/null
+        "$YQ" e '.roles // {} | to_entries | .[] | .key as $r | (.value // []) | .[] | . + "|<" + $r + ">"' "$manifest" 2>/dev/null
+        "$YQ" e '.domains.prod-base // "" | select(. != "") | . + "|<prod-base>"' "$manifest" 2>/dev/null
+        "$YQ" e '.domains.ddev-base // "" | select(. != "") | . + "|<ddev-base>"' "$manifest" 2>/dev/null
     )"
 
     _IDENTITY_MAP_CACHE="$(
         printf '%s\n' "$raw" \
-          | grep -vE '^[[:space:]]*$' \
-          | awk -F'\t' '!seen[$1]++ { print length($1) "\t" $0 }' \
+          | grep -E '^[^|]+\|<[^>]+>$' \
+          | awk -F'|' '!seen[$1]++ { print length($1) "\t" $0 }' \
           | sort -rn -k1,1 | cut -f2-
     )"
     printf '%s' "$_IDENTITY_MAP_CACHE"
+}
+
+# FAIL CLOSED. Called once, before anything is written.
+#
+# If identity substitution cannot be performed, the only safe outcome is to
+# capture nothing: writing an un-redacted host file into the repo is the leak
+# this whole pass exists to prevent, and it is silent by nature. The yq
+# separator bug above is exactly how that happens without anyone noticing, so
+# the guard asserts the map is USABLE, not merely that yq is installed.
+_identity_require() {
+    local manifest; manifest="$(_IDENTITY_MANIFEST)"
+
+    if [ ! -f "$manifest" ]; then
+        # No manifest = no role vocabulary. In production `_fetch` cannot
+        # resolve a host without it, so this is reachable only under the
+        # test-only fetch shim; say so rather than pretending we redacted.
+        if [ -z "${NWP_SERVER_STATE_FETCH:-}" ]; then
+            print_error "no instance manifest at ${manifest} — cannot redact identity, refusing to capture"
+            return 1
+        fi
+        print_status "WARN" "no instance manifest — identity substitution is OFF for this run"
+        return 0
+    fi
+
+    if [ -z "$(_identity_map)" ]; then
+        print_error "the instance manifest produced NO usable identity pairs"
+        print_info  "Refusing to capture: an un-redacted host file in the repo is a leak."
+        print_info  "Check \`yq --version\` (>= 4.44) and that ${manifest} declares roles:/domains:."
+        return 1
+    fi
+    return 0
 }
 
 _redact_identity() {
     local content lit ph
     content="$(cat)"
 
-    while IFS=$'\t' read -r lit ph; do
+    while IFS='|' read -r lit ph; do
         [ -n "$lit" ] || continue
         content="${content//"$lit"/$ph}"
     done <<< "$(_identity_map)"
@@ -279,8 +321,11 @@ cmd_capture() {
     local only=""
     local a; for a in "$@"; do case "$a" in --artifact=*) only="${a#*=}" ;; esac; done
 
-    local dir; dir="$(_dir "$host")"; mkdir -p "$dir"
     print_header "Capture: $host"
+    # Before ANY byte is written to the repo.
+    _identity_require || exit 1
+
+    local dir; dir="$(_dir "$host")"; mkdir -p "$dir"
 
     # Read the id list into an array FIRST. Iterating a process substitution
     # while the loop body shells out to ssh let ssh drain the id stream (see
@@ -321,8 +366,13 @@ cmd_diff() {
     local only=""
     local a; for a in "$@"; do case "$a" in --artifact=*) only="${a#*=}" ;; esac; done
 
-    local dir; dir="$(_dir "$host")"
     print_header "Drift: $host"
+    # Both sides are redacted before comparison, so a broken identity map would
+    # make every host read as drifted — noise that gets trained away. Refuse
+    # instead of reporting a difference we manufactured.
+    _identity_require || exit 1
+
+    local dir; dir="$(_dir "$host")"
 
     # Array, not a process substitution — see the note in cmd_capture.
     local ids=(); mapfile -t ids < <(_artifact_ids "$host")

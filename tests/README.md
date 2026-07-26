@@ -55,12 +55,25 @@ tests/
 │   ├── 04-delete.bats            # Site deletion tests
 │   ├── 05-deployment.bats        # Deployment workflow tests
 │   └── 06-scripts-validation.bats # Script validation tests
-└── e2e/
-    ├── README.md                 # E2E testing documentation
-    ├── test-fresh-install.sh     # Fresh install E2E tests
-    ├── test-basic-workflow.sh    # Basic workflow validation
-    └── helpers/                  # E2E-specific helpers
+├── e2e/
+│   ├── README.md                 # E2E testing documentation
+│   ├── test-fresh-install.sh     # Fresh install E2E tests
+│   ├── test-basic-workflow.sh    # Basic workflow validation
+│   └── helpers/                  # E2E-specific helpers
+└── tools/                        # Operator-run checks, NOT in CI (see below)
+    └── verify-crossrepo-guild-cohort-coverage.sh
 ```
+
+## Operator-run tools (`tests/tools/`) — deliberately not in CI
+
+Checks that need a credential or a network the CI runner does not have. They are
+**not** wired into `.gitlab-ci.yml`: a job that can only fail or skip is the
+"gate that cannot fail" shape this repo is removing. Run them by hand and paste
+the output into the record of whatever irreversible thing they gate.
+
+| Tool | Gates | Needs |
+|------|-------|-------|
+| `verify-crossrepo-guild-cohort-coverage.sh` | deleting the stranded `ops-93` branch. Answers "does `nwp/ss-moodle-plugins` carry BOTH the `auth_nwc\guild_cohort_map` code *and* a registered, green, **non-vacuous** logic test for it?" — non-vacuity proven by mutating the class and requiring the test to fail. Exit 0 = safe to delete, 1 = port the test first, 2 = cannot verify (never 0). | SSH read to `nwp/ss-moodle-plugins`, `php` |
 
 ## Unit Tests (BATS)
 

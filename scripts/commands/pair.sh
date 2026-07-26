@@ -48,6 +48,13 @@ ${BOLD}SUBCOMMANDS:${NC}
                                       restore gate.
     restore-check <site> <tier> <target-anchor> [--override-pair]
                                       Dry-run pair_guard_restore's decision (ops#83)
+    reconcile <consumer> [--tier=T] [--apply] [--repair-cmd=CMD] [--json]
+                                      Detect (and deterministically repair) severed
+                                      UID-locks after a provider restore/rebuild —
+                                      ops#83 §3, replacing the raw-SQL runbook.
+                                      Dry-run by default; fails closed when the
+                                      provider ledger or consumer join snapshot
+                                      is missing. Orphans are never auto-repaired.
 
 ${BOLD}NOTES:${NC}
     * All subcommands are read-only w.r.t. sites; 'record'/'rag'/'anchor' only write
@@ -165,6 +172,168 @@ cmd_restore_check() {
     fi
 }
 
+################################################################################
+# reconcile — ops#83 §3 orphaned-UID-lock detect/repair, as a verb
+#
+# docs/guides/ops83-dr-restore.md handed the operator four raw SQL statements
+# against mdl_user to run over ssh, under DR time pressure, with an email-join
+# fallback sitting one line below the safe one. This replaces that with a
+# dry-run-by-default verb that classifies every live lock from the two
+# artifacts pair_guard_restore already requires, and repairs ONLY the
+# deterministically repairable ones.
+#
+#   pl pair reconcile <consumer> [--tier=T] [--snapshot=FILE] [--ledger=FILE]
+#                     [--dry-run|--apply] [--repair-cmd=CMD] [--confirm=TOKEN] [--json]
+#
+# Fail-closed: a missing ledger, a missing snapshot, or a snapshot with zero
+# live rows is CANNOT-VERIFY and exits non-zero. "Nothing to reconcile" and
+# "nothing to reconcile WITH" must never print the same thing.
+################################################################################
+cmd_reconcile() {
+    local consumer="" tier="live" snapshot="" ledger="" apply=false repair_cmd="" \
+          confirm="${NWP_PAIR_RECONCILE_CONFIRM:-}" json=false arg
+    for arg in "$@"; do
+        case "$arg" in
+            --tier=*)       tier="${arg#*=}" ;;
+            --snapshot=*)   snapshot="${arg#*=}" ;;
+            --ledger=*)     ledger="${arg#*=}" ;;
+            --apply)        apply=true ;;
+            --dry-run)      apply=false ;;
+            --repair-cmd=*) repair_cmd="${arg#*=}" ;;
+            --confirm=*)    confirm="${arg#*=}" ;;
+            --json)         json=true ;;
+            -*) print_error "pair reconcile: unknown option '$arg'"; return 2 ;;
+            *)  [ -z "$consumer" ] && consumer="$arg" || { print_error "pair reconcile: unexpected argument '$arg'"; return 2; } ;;
+        esac
+    done
+    [ -n "$consumer" ] || { print_error "pair reconcile: a consumer (pair id) is required"; return 2; }
+
+    local contract; contract="$(pair_contract_file "$consumer")"
+    if ! pair_contract_valid "$contract"; then
+        print_error "pair reconcile: CANNOT-VERIFY — no valid pair contract for '$consumer' at $contract"
+        return 1
+    fi
+    local provider; provider="$(pair_contract_get "$contract" '.provider')"
+
+    [ -n "$ledger" ]   || ledger="$(pair_ledger_file "$consumer")"
+    [ -n "$snapshot" ] || snapshot="$(pair_join_snapshot_file "$consumer" "$tier")"
+
+    print_header "Pair reconcile: ${consumer} ↔ ${provider} @ ${tier}  (ops#83 §3)"
+    echo "  provider identity ledger : $ledger"
+    echo "  consumer join snapshot   : $snapshot"
+    echo ""
+
+    local blocked=0
+    if [ ! -f "$ledger" ] || [ ! -s "$ledger" ] || ! grep -q '"t":"snap"' "$ledger" 2>/dev/null; then
+        print_error "CANNOT-VERIFY — the provider identity ledger is absent or holds no snapshot."
+        print_info  "  Capture one: scripts/f26/nwc-identity-ledger.sh dump --pair=$consumer"
+        print_info  "  Without it there is no deterministic old-uid→uuid map, and email is not a safe substitute."
+        blocked=1
+    fi
+    if [ ! -f "$snapshot" ]; then
+        print_error "CANNOT-VERIFY — the consumer join snapshot is absent."
+        print_info  "  Capture it on the consumer BEFORE any coupled-tier restore (ops#83 §2):"
+        print_info  "    SELECT id AS mdl_id, idnumber AS locked_sub, email, deleted"
+        print_info  "      FROM mdl_user WHERE idnumber <> '' AND deleted = 0;"
+        print_info  "  …written as TSV to $snapshot"
+        blocked=1
+    fi
+    [ "$blocked" -eq 0 ] || return 1
+
+    local rows; rows="$(pair_reconcile_classify "$ledger" "$snapshot")" || {
+        print_error "CANNOT-VERIFY — the ledger/snapshot pair could not be classified (jq missing, or an empty ledger snapshot)."
+        return 1
+    }
+    if [ -z "$rows" ]; then
+        print_error "CANNOT-VERIFY — the join snapshot holds ZERO live locks."
+        print_info  "  An empty corpus scanning clean is not the same as an intact join. Re-capture the snapshot."
+        return 1
+    fi
+
+    local n_intact n_repair n_orphan
+    n_intact="$(printf '%s\n' "$rows" | grep -c '^intact'     || true)"
+    n_repair="$(printf '%s\n' "$rows" | grep -c '^repairable' || true)"
+    n_orphan="$(printf '%s\n' "$rows" | grep -c '^orphaned'   || true)"
+
+    local cls mdl_id locked target
+    while IFS=$'\t' read -r cls mdl_id locked target; do
+        [ -n "$cls" ] || continue
+        case "$cls" in
+            intact)     [ "$json" = true ] || print_status "OK"   "intact      mdl_id=$mdl_id  sub=$locked" ;;
+            repairable) print_status "WARN" "repairable  mdl_id=$mdl_id  locked=$locked  →  $target" ;;
+            orphaned)   print_status "FAIL" "orphaned    mdl_id=$mdl_id  locked=$locked  (no ledger row — human-gated)" ;;
+        esac
+    done <<< "$rows"
+    echo ""
+    printf '  intact=%s  repairable=%s  orphaned=%s\n' "$n_intact" "$n_repair" "$n_orphan"
+
+    if [ "$json" = true ]; then
+        jq -cn --argjson i "$n_intact" --argjson r "$n_repair" --argjson o "$n_orphan" \
+               --arg pair "$consumer" --arg tier "$tier" \
+               '{pair:$pair, tier:$tier, intact:$i, repairable:$r, orphaned:$o}'
+    fi
+
+    if [ "$n_repair" -eq 0 ] && [ "$n_orphan" -eq 0 ]; then
+        echo ""
+        print_status "OK" "JOIN INTACT — every live UID-lock resolves on the provider."
+        return 0
+    fi
+
+    # ---- repair --------------------------------------------------------------
+    local rc=1
+    if [ "$apply" != true ]; then
+        echo ""
+        print_info "Dry run — nothing was changed. Re-run with --apply --repair-cmd=CMD to repoint"
+        print_info "the ${n_repair} repairable lock(s). Orphans are never auto-repaired (ops#83: the"
+        print_info "email fallback is a human-gated last resort; a recycled address re-points a lock"
+        print_info "at the wrong person)."
+        return 1
+    fi
+
+    if [ -z "$repair_cmd" ]; then
+        print_error "NO-REPAIR-EXECUTOR — --apply needs --repair-cmd=CMD."
+        print_info  "  CMD is invoked once per repairable lock as: CMD <mdl_id> <new_idnumber>"
+        print_info  "  (e.g. a 'pl moodle cli <site> --tier=$tier --execute -- …' wrapper). This verb"
+        print_info  "  deliberately holds no DB credentials and issues no SQL of its own."
+        return 1
+    fi
+    if pair_contract_couples_tier "$contract" "$tier" && [ "$confirm" != "RECONCILE-APPLY" ]; then
+        print_error "CONFIRM required — '$tier' is a coupled tier carrying real member identities."
+        print_info  "  Re-run with --confirm=RECONCILE-APPLY once you have read the classification above."
+        return 1
+    fi
+
+    local failed=0 done_n=0
+    while IFS=$'\t' read -r cls mdl_id locked target; do
+        [ "$cls" = "repairable" ] || continue
+        [ -n "$target" ] || continue
+        # Subshell on purpose: a repair command that calls `exit` (or trips
+        # `set -e` inside a sourced wrapper) must fail THAT repair, not abort
+        # the reconcile mid-run and leave the operator unsure what applied.
+        if ( eval "$repair_cmd $(printf '%q %q' "$mdl_id" "$target")" ); then
+            done_n=$((done_n + 1))
+            pair_ledger_append "$consumer" "action=reconcile-repair tier=$tier mdl_id=$mdl_id from=$locked to=$target"
+            print_status "OK" "repaired mdl_id=$mdl_id  →  $target"
+        else
+            failed=$((failed + 1))
+            print_status "FAIL" "REPAIR-FAILED mdl_id=$mdl_id  →  $target"
+        fi
+    done <<< "$rows"
+
+    echo ""
+    if [ "$failed" -gt 0 ]; then
+        print_error "REPAIR-FAILED — ${failed} of ${n_repair} repair(s) did not apply."
+        return 1
+    fi
+    print_status "OK" "Repaired ${done_n} lock(s)."
+    if [ "$n_orphan" -gt 0 ]; then
+        print_error "${n_orphan} orphaned lock(s) remain — these need an operator decision (ops#83 §3)."
+        return 1
+    fi
+    rc=0
+    return "$rc"
+}
+
 main() {
     local sub="${1:-}"; shift || true
     case "$sub" in
@@ -177,6 +346,7 @@ main() {
         rag)    cmd_rag "$@" ;;
         anchor) cmd_anchor "$@" ;;
         restore-check) cmd_restore_check "$@" ;;
+        reconcile)     cmd_reconcile "$@" ;;
         *) print_error "Unknown subcommand: $sub"; show_help; exit 1 ;;
     esac
 }

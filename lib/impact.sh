@@ -159,6 +159,56 @@ impact_confirm() {
 }
 
 ################################################################################
+# impact_rm_scratch <dir> — remove a throwaway directory THIS process created.
+#
+# WHY IT LIVES HERE. The contract's subject is destruction of things a human
+# cares about, on scope the verb INFERRED. Deleting a `mktemp -d` you made three
+# lines earlier is neither — but it is written `rm -rf`, so it is
+# indistinguishable from the real thing to any scanner, and the honest options
+# were (a) put every scratch-using file on the exemption list, which is how an
+# allowlist rots, or (b) give the tree ONE audited primitive for it. This is (b).
+#
+# It is deliberately paranoid, because the whole value is that a future caller
+# who passes the wrong variable gets a refusal rather than a catastrophe:
+#   • must be an absolute path that exists and is a directory
+#   • must sit under a temp root ($TMPDIR, /tmp, /var/tmp) — never $HOME, never
+#     the repo, never anywhere a site or a backup could live
+#   • must be at least one level BELOW that root (so a slip that resolves to
+#     "/tmp" itself, or to "/", refuses)
+#   • must not be a symlink (no following a link out of the temp root)
+#
+# Returns 0 when the directory is gone, 1 (with a message on stderr) otherwise.
+# It never prompts: there is nothing here a human could usefully decide.
+################################################################################
+impact_rm_scratch() {
+    local dir="${1:-}"
+    [ -n "$dir" ] || { echo "impact_rm_scratch: refusing: empty path" >&2; return 1; }
+    case "$dir" in
+        /*) ;;
+        *) echo "impact_rm_scratch: refusing non-absolute path: $dir" >&2; return 1 ;;
+    esac
+    [ -L "$dir" ] && { echo "impact_rm_scratch: refusing symlink: $dir" >&2; return 1; }
+    [ -d "$dir" ] || return 0   # already gone is success
+
+    local real root ok=false
+    real="$(cd "$dir" 2>/dev/null && pwd -P)" || {
+        echo "impact_rm_scratch: refusing unresolvable path: $dir" >&2; return 1; }
+    for root in "${TMPDIR:-}" /tmp /var/tmp; do
+        [ -n "$root" ] || continue
+        root="$(cd "$root" 2>/dev/null && pwd -P)" || continue
+        # strictly BELOW the root, never the root itself
+        case "$real" in "$root"/?*) ok=true; break ;; esac
+    done
+    if [ "$ok" != true ]; then
+        echo "impact_rm_scratch: refusing '$real' — not under a temp root" >&2
+        return 1
+    fi
+
+    rm -rf "$real"
+    [ ! -d "$real" ]
+}
+
+################################################################################
 # THE GATE (nwp/ops#47 + item 7) — enforce ADOPTION, not MENTION.
 #
 # The original gate was `grep -q 'lib/impact.sh' "$f"` over `scripts/commands/*.sh`.

@@ -2073,3 +2073,66 @@ edited here. Suggested fix for whoever owns it: a rule-level allowlist for
 Also observed: `tests/**` is still globally allowlisted, so the same strings in
 `tests/unit/test-site-containment.bats` did NOT fire. The tests were rewritten to use
 `forge.example.org` anyway, so they stay clean when item 4 narrows that exemption.
+
+## [2026-07-26] branch-stranded-mixed-class — the class is a SET, and it had to be
+
+`pl branch stranded` classified each branch with ONE word by summing adds and deletes across the
+whole branch and reporting the dominant direction. Two branches found during the B-series triage —
+`pubrel/scrub-and-gate` and `fix/moodle-deploy-snapshot-cli-script` — were reported
+`SHRINKS — DO NOT MERGE WHOLESALE`. True, and useful. But both ALSO carried content main lacks
+(29 genericised docs; a whole regression-test file). The scalar label said "dangerous", the operator
+reads "throw it away", and 35 lines of non-vacuous tests go in the bin. A dominant class is not a
+classification, it is a vote.
+
+**Decision: classify PER FILE and report the union.** A file whose branch version loses more than it
+gains is subtractive; one that only gains is additive; a binary file counts as BOTH, because
+numstat cannot see inside it and "I cannot see" must never render as "all clear" (same principle as
+`boundary:classify` going amber-by-design). The set is then:
+
+| set | meaning |
+|---|---|
+| `{IDENTICAL}` | files already match the base byte for byte — the ONLY prunable set |
+| `{REVERT}` | adds not one line anywhere |
+| `{SHRINKS}` | some file loses more than it gains, nothing purely additive |
+| `{UNLANDED}` | carries content the base lacks, removes nothing |
+| `{SHRINKS, UNLANDED}` | **both** — cherry-pick, do not merge, do not delete |
+
+**What the evidence-claimed red condition actually was.** The item predicted `--prune-merged` could
+delete the mixed branch. It could not, and never could: `prune_list` was only ever appended in the
+IDENTICAL arm. That half of the item is wrong and is recorded as wrong rather than "fixed". The real
+red was purely the report — reproduced verbatim on a four-branch fixture, where the mixed branch
+(20 lines deleted, one 5-line file added) printed `SHRINKS` and named neither file.
+
+**Two adjacent bugs found while proving it, both fixed:**
+
+1. `pl branch stranded --prune-merged --yes` never worked. `main()` consumes `-y|--yes` into its own
+   `AUTO_YES` and does NOT forward it, so `cmd_stranded` always prompted; under `set -euo pipefail`
+   with no tty the `read` failed on EOF and the script exited 1 mid-report. The flag is now
+   re-injected at dispatch, and the `read` is `|| true` so "no tty" means "no", not "die".
+   **This activates a destructive flag that was previously inert in scripts** — bounded to branches
+   whose set is exactly `{IDENTICAL}`, i.e. whose content is by definition already in the base, and
+   `git branch -D` touches only the local ref.
+2. Unknown options were silently ignored. `--file` (typo for `--files`) used to run a full report as
+   if nothing had been asked for. Now it errors.
+
+**New `--files` mode.** Per branch, the additive (`+`) and subtractive (`-`) paths. On
+`pubrel/scrub-and-gate` this prints 29 additive docs and exactly four subtractive paths —
+`.gitleaks.toml`, `docs/COMMAND_INVENTORY.md`, `docs/governance/roadmap.md`,
+`scripts/agent-loop/agent-loop.sh`. That is the whole triage in one screen: the docs are the work,
+the leakage allowlist and the agent-loop are what merging it would eat. Hand-diffing produced the
+same answer over an evening.
+
+**Known cost, recorded not hidden.** Over the real estate, 17 of 39 branches now classify as
+`SHRINKS+UNLANDED`, up from 0. That is honest — a branch that has sat while main moved genuinely
+would remove content main has — but the label is no longer rare enough to function as an alarm on
+its own. `--files` is what carries the signal now. If it proves too noisy, the fix is to weight by
+volume (e.g. only count a file subtractive when it loses more than N lines), NOT to go back to one
+word.
+
+**Also note:** a doc that was genericised by REPLACING identifiers loses more than it gains, so it
+lands in the subtractive list even though it is the work. `--files` shows direction, not intent; it
+narrows the diff to read, it does not decide for you.
+
+Territory: `scripts/commands/branch.sh` (cmd_stranded + its dispatch/help only) and the new
+`tests/unit/test-branch-stranded.bats`. No live site or server touched — this is a reporting tool,
+so no rollback-registry row was taken.

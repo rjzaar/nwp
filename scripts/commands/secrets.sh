@@ -19,9 +19,25 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 
-REGISTRY="${NWP_SECRETS_REGISTRY:-$PROJECT_ROOT/private/secrets-registry.yml}"
-SECRETS_FILE="${NWP_SECRETS_FILE:-$PROJECT_ROOT/.secrets.yml}"
-ROT_LOG="$PROJECT_ROOT/private/rotation-$(date +%Y-%m).md"
+# The ESTATE root — the main checkout, not whichever worktree we happen to be
+# running from. `.secrets.yml`, `private/` and the `sites/**/auth.json` copies
+# live in exactly one place; the standing rule is to work in `pl issue work`
+# worktrees, so resolving these against $PROJECT_ROOT made every relative
+# stored_in path report MISSING inside a worktree and OK in the main checkout —
+# a check whose answer depends on your current directory is not a check.
+NWP_ROOT="${NWP_ROOT:-}"
+if [ -z "$NWP_ROOT" ]; then
+  NWP_ROOT="$PROJECT_ROOT"
+  if _gcd=$(git -C "$PROJECT_ROOT" rev-parse --git-common-dir 2>/dev/null); then
+    case "$_gcd" in /*) ;; *) _gcd="$PROJECT_ROOT/$_gcd" ;; esac
+    _cand=$(cd "$(dirname "$_gcd")" 2>/dev/null && pwd) && [ -n "$_cand" ] && NWP_ROOT="$_cand"
+  fi
+  unset _gcd _cand
+fi
+
+REGISTRY="${NWP_SECRETS_REGISTRY:-$NWP_ROOT/private/secrets-registry.yml}"
+SECRETS_FILE="${NWP_SECRETS_FILE:-$NWP_ROOT/.secrets.yml}"
+ROT_LOG="$NWP_ROOT/private/rotation-$(date +%Y-%m).md"
 YQ="$(command -v yq || true)"
 
 die(){ print_error "$*"; exit 1; }
@@ -39,12 +55,150 @@ registry_index_of(){
   echo "-1"
 }
 
-field(){ "$YQ" e ".secrets[$1].$2 // \"\"" "$REGISTRY" 2>/dev/null | grep -v '^null$'; }
+# The registry is committed to git, so it must never carry the operator's live
+# domain (the leakage gate would — correctly — reject it). Hosts are written as
+# the `<gitlab-host>` placeholder and expanded here from the secret store, which
+# is exactly the pattern `pl issue` already uses.
+expand_placeholders(){ # stdin/arg -> arg with <gitlab-host> resolved
+  local s="$1" d
+  case "$s" in *'<gitlab-host>'*) ;; *) printf '%s' "$s"; return 0;; esac
+  d=$("$YQ" e '.gitlab.server.domain // ""' "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
+  printf '%s' "${s//<gitlab-host>/$d}"
+}
+
+field(){ expand_placeholders "$("$YQ" e ".secrets[$1].$2 // \"\"" "$REGISTRY" 2>/dev/null | grep -v '^null$')"; }
+
+# raw (unexpanded) read — for writing back, and for grammar checks
+field_raw(){ "$YQ" e ".secrets[$1].$2 // \"\"" "$REGISTRY" 2>/dev/null | grep -v '^null$'; }
+
+entry_locations(){ # idx -> one stored_in string per line, placeholders expanded
+  local loc
+  while IFS= read -r loc; do
+    [ -n "$loc" ] && expand_placeholders "$loc" && echo
+  done < <("$YQ" e ".secrets[$1].stored_in[]?" "$REGISTRY" 2>/dev/null)
+}
 
 days_until(){ # ISO date -> integer days from now (empty/unknown -> "")
   local d="$1" e; [ -z "$d" ] || [ "$d" = "unknown" ] && return 0
   e=$(date -d "$d" +%s 2>/dev/null) || return 0
   echo $(( (e - $(date +%s)) / 86400 ))
+}
+
+################################################################################
+# stored_in GRAMMAR  (item 1 — `secrets-registry-truth`)
+#
+# Every stored_in entry is ONE of:
+#
+#   <path>:<ref>                 a machine-checkable location on THIS host
+#   host=<role>:<path>:<ref>     the same location on another host — checked by
+#                                `pl secrets verify-copy` (hash over ssh), never
+#                                read from here
+#   external:<free text>         deliberately NOT machine-checkable (a CI
+#                                variable, a provider-side store, a DB row)
+#
+#   <path>  absolute, ~/-relative, or relative to the repo root.
+#           The literal `.secrets.yml` always means the active secret store.
+#   <ref>   *.yml|*.yaml -> dotted yq key   ·   *.json -> jq path expression
+#           `@file`      -> the whole file IS the value
+#           otherwise    -> a VAR name in a KEY=VALUE env file
+#
+# Prose belongs in `stored_in_notes:` / `host:`, never inside a location.
+# Anything that does not parse is a LINT ERROR — because a location the tooling
+# cannot read is a location the tooling silently stops checking, which is the
+# exact failure this whole item exists to remove.
+################################################################################
+loc_parse(){ # loc -> "kind<TAB>host<TAB>path<TAB>ref"; kind: yaml|json|env|file|external|bad
+  local loc="$1" host="" rest="$1" path ref kind
+  case "$loc" in
+    external:*) printf 'external\x1f\x1f\x1f%s\n' "${loc#external:}"; return 0 ;;
+    host=*)
+      rest="${loc#host=}"; host="${rest%%:*}"; rest="${rest#*:}"
+      if [ -z "$host" ] || [ "$host" = "$rest" ]; then printf 'bad\x1f\x1f\x1f%s\n' "$loc"; return 0; fi ;;
+  esac
+  case "$rest" in *:*) ;; *) printf 'bad\x1f\x1f\x1f%s\n' "$loc"; return 0 ;; esac
+  path="${rest%%:*}"; ref="${rest#*:}"
+  if [ -z "$path" ] || [ -z "$ref" ]; then printf 'bad\x1f\x1f\x1f%s\n' "$loc"; return 0; fi
+  case "$path" in *[[:space:]]*) printf 'bad\x1f\x1f\x1f%s\n' "$loc"; return 0 ;; esac
+  if [ "$ref" = "@file" ]; then
+    kind=file
+  else
+    case "$path" in
+      *.yml|*.yaml) kind=yaml ;;
+      *.json)       kind=json ;;
+      *)            kind=env  ;;
+    esac
+  fi
+  # a yq key / env var name never contains whitespace; a jq path may not either
+  case "$ref" in *[[:space:]]*) printf 'bad\x1f\x1f\x1f%s\n' "$loc"; return 0 ;; esac
+  printf '%s\x1f%s\x1f%s\x1f%s\n' "$kind" "$host" "$path" "$ref"
+}
+
+loc_abspath(){ # path -> absolute path on this host (relative = estate root)
+  local p="$1"
+  [ "$p" = ".secrets.yml" ] && { printf '%s' "$SECRETS_FILE"; return 0; }
+  p="${p/#\~/$HOME}"
+  case "$p" in /*) ;; *) p="$NWP_ROOT/$p" ;; esac
+  printf '%s' "$p"
+}
+
+# Read the value at a location. rc: 0 ok · 3 file missing · 4 key absent/empty
+# · 5 tool missing. The value goes to stdout and is only ever consumed by
+# loc_hash / a probe — it is never printed.
+loc_read(){ # kind abspath ref
+  local kind="$1" f="$2" ref="$3" v=""
+  [ -f "$f" ] || return 3
+  case "$kind" in
+    yaml) v=$("$YQ" e ".$ref // \"\"" "$f" 2>/dev/null) ;;
+    json) command -v jq >/dev/null || return 5
+          v=$(jq -r "($ref) // \"\"" "$f" 2>/dev/null) ;;
+    env)  v=$(grep -E "^(export )?${ref}=" "$f" 2>/dev/null | head -1 | sed -E "s/^(export )?${ref}=//")
+          v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}" ;;
+    file) v=$(head -1 "$f" 2>/dev/null) ;;
+    *)    return 5 ;;
+  esac
+  v="${v%"${v##*[![:space:]]}"}"   # rtrim
+  if [ -z "$v" ] || [ "$v" = "null" ]; then return 4; fi
+  printf '%s' "$v"
+}
+
+loc_hash(){ printf '%s' "$1" | sha256sum | cut -c1-16; }
+
+# The canonical location of an entry: its `canonical:` field if set, else the
+# first `.secrets.yml:` location, else the first machine-readable local one.
+entry_canonical_loc(){ # idx
+  local idx="$1" c loc kind host
+  c=$(field "$idx" canonical); [ -n "$c" ] && { printf '%s' "$c"; return 0; }
+  while IFS= read -r loc; do
+    [ -z "$loc" ] && continue
+    case "$loc" in .secrets.yml:*) printf '%s' "$loc"; return 0 ;; esac
+  done < <(entry_locations "$idx")
+  while IFS= read -r loc; do
+    [ -z "$loc" ] && continue
+    IFS=$'\x1f' read -r kind host _ _ < <(loc_parse "$loc")
+    if [ -n "$host" ] || [ "$kind" = "external" ] || [ "$kind" = "bad" ]; then continue; fi
+    printf '%s' "$loc"; return 0
+  done < <(entry_locations "$idx")
+  printf ''
+}
+
+################################################################################
+# leak surfaces — ONE definition, shared by `scan` and `scrub`.
+# They diverged once (scrub omitted logs/, the single surface scan reported
+# in-repo), so the sets are now the same function and a test asserts it.
+################################################################################
+_leak_surfaces(){
+  if [ -n "${NWP_LEAK_SURFACES:-}" ]; then
+    printf '%s\n' "${NWP_LEAK_SURFACES//:/$'\n'}"
+    return 0
+  fi
+  printf '%s\n' \
+    "$HOME/.claude/projects" \
+    "$HOME/.claude/prompts.log" \
+    "$HOME/.bash_history" \
+    "$HOME/.config" \
+    "$NWP_ROOT/private" \
+    "$NWP_ROOT/logs" \
+    "/tmp"
 }
 
 ################################################################################
@@ -130,8 +284,14 @@ write_value_to_location(){ # $1=location ("file:key" or "~/path:VAR"); value in 
     # env-style file: replace `export VAR=...` or `VAR=...`
     [ -f "$path" ] || { print_warning "  missing $path"; return 1; }
     if grep -qE "^(export )?$ref=" "$path"; then
+      # NOTE: this expression used to read `($1//"")`, which perl tokenises as an
+      # empty match `//` rather than defined-or — it aborted with a compile error
+      # on EVERY invocation, so `pl secrets rotate` has never once written an
+      # env-style location. That is the mechanical reason
+      # `~/.nwp-agent-loop.env:GITLAB_TOKEN` drifted away from its canonical
+      # `.secrets.yml` value while the registry recorded a clean rotation.
       NWP_REF="$ref" NWP_NEWVAL="$NWP_NEWVAL" perl -i -pe \
-        's/^(export\s+)?\Q$ENV{NWP_REF}\E=.*/($1//"")."$ENV{NWP_REF}=\"$ENV{NWP_NEWVAL}\""/e' "$path" \
+        's/^(export\s+)?\Q$ENV{NWP_REF}\E=.*/(defined($1) ? $1 : "") . "$ENV{NWP_REF}=\"$ENV{NWP_NEWVAL}\""/e' "$path" \
         && print_success "  updated $path : $ref" || { print_error "  write failed: $path"; return 1; }
     else
       print_warning "  $ref not present in $path (skipped)"
@@ -279,6 +439,18 @@ mark_done(){ # idx when
   local idx="$1" when="$2" id cadence exp
   id=$(field "$idx" id); cadence=$(field "$idx" cadence_days); [ -z "$cadence" ] && cadence=90
   exp=$(date -d "$when + $cadence days" +%F 2>/dev/null) || { print_error "bad date: $when (use YYYY-MM-DD)"; return 1; }
+  # You may not RECORD a rotation you did not PROPAGATE. Stamping last_rotated
+  # while half the declared copies still hold the old value is precisely how the
+  # registry came to assert "OK 2027-06-26" over 16 dead tokens.
+  if [ "${NWP_SECRETS_FORCE_DONE:-0}" != "1" ]; then
+    local drifted; drifted=$(entry_locations_in_sync "$idx" 2>&1 >/dev/null)
+    if [ -n "$drifted" ]; then
+      print_error "$id: refusing to stamp — these declared locations do NOT hold the canonical value:"
+      printf '    %s\n' $drifted
+      print_hint "propagate first:  pl secrets sync $id    (override only if you know why: NWP_SECRETS_FORCE_DONE=1)"
+      return 1
+    fi
+  fi
   "$YQ" e -i ".secrets[$idx].last_rotated = \"$when\" | .secrets[$idx].expires = \"$exp\"" "$REGISTRY"
   [ -f "$ROT_LOG" ] || printf '# Credential rotation — %s\n\nDates only; never paste values.\n\n' "$(date +%Y-%m)" > "$ROT_LOG"
   printf -- "- [x] %s — rotated %s, next expiry %s\n" "$id" "$when" "$exp" >> "$ROT_LOG"
@@ -367,31 +539,57 @@ cmd_whose(){
 
 ################################################################################
 # scan — leak sweep (filenames + counts only, never values)
+#
+#   Returns 1 on ANY hit. It used to print LEAK lines and exit 0, so nothing —
+#   not cron, not `pl todo`, not CI — could gate on it: 57 LEAK lines and a
+#   green exit code is a report nobody has to act on.
+#   Flags: --quiet (paths only) · --transcripts (also sweep the AI transcript
+#   tree, folding in what was previously a crontab-only script).
 ################################################################################
-cmd_scan(){
-  need_yq
+_leak_values_file(){ # -> path of a 0600 temp file holding every live value
   local TMP; TMP="$(mktemp)"; chmod 600 "$TMP"
   { "$YQ" e '.. | select(tag == "!!str")' "$SECRETS_FILE" 2>/dev/null
     cut -d= -f2- "$HOME/.nwp-agent-loop.env" 2>/dev/null
   } | tr -d '"'\' | sed -E 's/[[:space:]]+$//' \
     | grep -E '^[A-Za-z0-9_./+=:-]{16,}$' | grep -vE '^(https?://|/home/|~/|[0-9]+$)' \
     | sort -u > "$TMP"
+  printf '%s' "$TMP"
+}
+_LEAK_PAT='glpat-[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_]{40,}|gh[pousr]_[A-Za-z0-9]{36,}|sk-ant-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+
+cmd_surfaces(){ _leak_surfaces; }
+
+cmd_scan(){
+  need_yq
+  umask 077   # nothing this command writes may be group/world readable
+  local QUIET=0 TRANSCRIPTS=0 a
+  for a in "$@"; do case "$a" in
+    --quiet|-q) QUIET=1 ;;
+    --transcripts) TRANSCRIPTS=1 ;;
+  esac; done
+  local TMP; TMP="$(_leak_values_file)"
   local nvals; nvals=$(wc -l < "$TMP")
-  local PAT='glpat-[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_]{40,}|gh[pousr]_[A-Za-z0-9]{36,}|sk-ant-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
-  print_header "Secret leak scan ($nvals live values + shape patterns)"
-  local surfaces=("$HOME/.claude/projects" "$HOME/.claude/prompts.log" "$HOME/.bash_history" "$PROJECT_ROOT/private" "$PROJECT_ROOT/logs")
-  local hit=0 s
+  [ "$QUIET" = 0 ] && print_header "Secret leak scan ($nvals live values + shape patterns)"
+  local -a surfaces=(); mapfile -t surfaces < <(_leak_surfaces)
+  [ "$TRANSCRIPTS" = 1 ] && surfaces+=("$HOME/.claude/projects" "$HOME/.claude/todos")
+  local hit=0 s f
   for s in "${surfaces[@]}"; do
     [ -e "$s" ] || continue
     while IFS= read -r f; do
       [ -z "$f" ] && continue; hit=1
-      local c; c=$(grep -F -o -f "$TMP" "$f" 2>/dev/null | sort -u | wc -l)
-      printf "  ${RED}LEAK${NC} %-3s value(s) + shape  %s\n" "$c" "$f"
-    done < <( { [ -s "$TMP" ] && grep -rlF -f "$TMP" "$s" 2>/dev/null; grep -rlE "$PAT" "$s" 2>/dev/null; } | sort -u )
+      if [ "$QUIET" = 1 ]; then printf '%s\n' "$f"; else
+        local c; c=$(grep -F -o -f "$TMP" "$f" 2>/dev/null | sort -u | wc -l)
+        printf "  ${RED}LEAK${NC} %-3s value(s) + shape  %s\n" "$c" "$f"
+      fi
+    done < <( { [ -s "$TMP" ] && grep -rlF -f "$TMP" "$s" 2>/dev/null; grep -rlE "$_LEAK_PAT" "$s" 2>/dev/null; } | sort -u )
   done
   rm -f "$TMP"
-  [ "$hit" = "0" ] && print_success "no secret values or shaped strings found in any surface"
-  [ "$hit" = "1" ] && print_hint "rotate the affected secrets (their values become worthless), then re-run scan"
+  if [ "$hit" = "0" ]; then
+    [ "$QUIET" = 0 ] && print_success "no secret values or shaped strings found in any surface"
+    return 0
+  fi
+  [ "$QUIET" = 0 ] && print_hint "scrub them (pl secrets scrub), then rotate the affected secrets — a leaked value is a dead value"
+  return 1
 }
 
 ################################################################################
@@ -399,18 +597,17 @@ cmd_scan(){
 ################################################################################
 cmd_scrub(){
   need_yq
+  umask 077
   local ASSUME=0; { [ "${1:-}" = "-y" ] || [ "${1:-}" = "--yes" ]; } && { ASSUME=1; shift; }
   local today; today=$(date +%F)
-  local TMP; TMP="$(mktemp)"; chmod 600 "$TMP"
-  { "$YQ" e '.. | select(tag == "!!str")' "$SECRETS_FILE" 2>/dev/null
-    cut -d= -f2- "$HOME/.nwp-agent-loop.env" 2>/dev/null
-  } | tr -d '"'\' | sed -E 's/[[:space:]]+$//' \
-    | grep -E '^[A-Za-z0-9_./+=:-]{16,}$' | grep -vE '^(https?://|/home/|~/|[0-9]+$)' \
-    | sort -u > "$TMP"
-  local PAT='glpat-[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_]{40,}|gh[pousr]_[A-Za-z0-9]{36,}|sk-ant-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}|AKIA[0-9A-Z]{16}'
+  local TMP; TMP="$(_leak_values_file)"
+  local PAT="$_LEAK_PAT"
   print_header "Scrub secret strings (pattern + live value) -> [REDACTED-$today]"
 
-  local -a targets=("$@") roots=("$HOME/.claude/projects" "$HOME/.claude/prompts.log" "$HOME/.bash_history" "$PROJECT_ROOT/private")
+  # scan and scrub MUST sweep the same set — they diverged once (scrub omitted
+  # $PROJECT_ROOT/logs, the one surface scan reported in-repo), so both now read
+  # _leak_surfaces() and a unit test asserts the two sets are equal.
+  local -a targets=("$@") roots=(); mapfile -t roots < <(_leak_surfaces)
   if [ ${#targets[@]} -eq 0 ]; then
     mapfile -t targets < <( { [ -s "$TMP" ] && grep -rlF -f "$TMP" "${roots[@]}" 2>/dev/null
                               grep -rlE "$PAT" "${roots[@]}" 2>/dev/null; } | sort -u )
@@ -472,9 +669,113 @@ cmd_lint(){
     fi
   done
 
+  # 4. REVERSE direction — every non-empty .secrets.yml leaf must be DECLARED.
+  #    Without this the lint only ever asked "does what I recorded exist?", never
+  #    "is there anything here I never recorded?" — which is how the single most
+  #    powerful token in the estate (linode.provision_token) and a NON-RECOVERABLE
+  #    DR password (restic.dr_pull.password) sat untracked under a LINT PASS.
+  #    Suppression is allowed, but only as a recorded decision in `ignored_keys:`.
+  local declared ignored k len
+  declared=$("$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null \
+             | grep -oE '^\.secrets\.yml:[A-Za-z0-9_.]+' | sed 's/^\.secrets\.yml://' | sort -u)
+  ignored=$("$YQ" e '.ignored_keys[]? // ""' "$REGISTRY" 2>/dev/null | grep -v '^null$' | grep -v '^$')
+  local undeclared=0
+  while IFS= read -r k; do
+    [ -z "$k" ] && continue
+    printf '%s\n' "$declared" | grep -qxF "$k" && continue
+    printf '%s\n' "$ignored"  | grep -qxF "$k" && continue
+    len=$("$YQ" e "(.$k // \"\") | length" "$SECRETS_FILE" 2>/dev/null)
+    [ "${len:-0}" -eq 0 ] && continue
+    print_error "undeclared: .secrets.yml holds '$k' (${len} chars) but no registry entry claims it"
+    undeclared=$((undeclared+1)); issues=$((issues+1))
+  done < <("$YQ" e '.. | select(tag == "!!str") | path | join(".")' "$SECRETS_FILE" 2>/dev/null)
+  if [ "$undeclared" -gt 0 ]; then
+    print_hint "register it:  pl secrets adopt <dotted.key>   ·   or record the exemption in the registry's ignored_keys:"
+  else
+    print_success "every non-empty .secrets.yml key is declared (or explicitly in ignored_keys)"
+  fi
+
+  # 5. stored_in GRAMMAR — a location the tooling cannot parse is a location the
+  #    tooling silently stops checking. Prose goes in stored_in_notes:.
+  local loc lkind lhost lpath lref bad=0 phantom=0
+  for ((i=0;i<n;i++)); do
+    local eid; eid=$(field "$i" id)
+    while IFS= read -r loc; do
+      [ -z "$loc" ] && continue
+      IFS=$'\x1f' read -r lkind lhost lpath lref < <(loc_parse "$loc")
+      if [ "$lkind" = "bad" ]; then
+        print_error "$eid: unparseable stored_in (grammar) — '$loc'"
+        bad=$((bad+1)); issues=$((issues+1)); continue
+      fi
+      { [ "$lkind" = "external" ] || [ -n "$lhost" ]; } && continue
+      if [ ! -f "$(loc_abspath "$lpath")" ]; then
+        print_error "$eid: declared location does not exist — $lpath"
+        phantom=$((phantom+1)); issues=$((issues+1))
+      fi
+    done < <(entry_locations "$i")
+  done
+  [ "$bad" -eq 0 ] && [ "$phantom" -eq 0 ] && print_success "every stored_in entry parses and resolves"
+
+  # 6. FILE PERMISSIONS — a correctly-recorded secret in a world-readable file
+  #    is still a leaked secret.
+  local perm_bad=0 f mode
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    mode=$(stat -c '%a' "$f" 2>/dev/null)
+    if [ "$(( 8#${mode:-600} & 8#077 ))" -ne 0 ]; then
+      print_error "permission: $f is mode $mode — group/world readable (want 600)"
+      perm_bad=$((perm_bad+1)); issues=$((issues+1))
+    fi
+  done < <( { printf '%s\n' "$SECRETS_FILE" "$HOME/.nwp-agent-loop.env"
+              ls -1 "$NWP_ROOT"/logs/*leak*.json "$NWP_ROOT"/logs/gitleaks*.json 2>/dev/null
+              for ((i=0;i<n;i++)); do
+                while IFS= read -r loc; do
+                  [ -z "$loc" ] && continue
+                  IFS=$'\x1f' read -r lkind lhost lpath lref < <(loc_parse "$loc")
+                  { [ "$lkind" = "external" ] || [ "$lkind" = "bad" ] || [ -n "$lhost" ]; } && continue
+                  loc_abspath "$lpath"; echo
+                done < <(entry_locations "$i")
+              done; } | sort -u )
+  [ "$perm_bad" -eq 0 ] && print_success "every secret-bearing file is 0600"
+
   echo
   [ "$issues" -eq 0 ] && print_success "LINT PASS — registry and .secrets.yml are consistent" \
     || { print_error "LINT: $issues issue(s) above"; return 1; }
+}
+
+################################################################################
+# adopt — scaffold a registry entry for a .secrets.yml key that lint found
+#         undeclared. Makes "register it" a command, not a hand-edit.
+################################################################################
+cmd_adopt(){
+  need_yq; need_registry
+  local key="${1:-}"; [ -n "$key" ] || die "usage: pl secrets adopt <dotted.key>   e.g. linode.provision_token"
+  local len; len=$("$YQ" e "(.$key // \"\") | length" "$SECRETS_FILE" 2>/dev/null)
+  [ "${len:-0}" -eq 0 ] && die "$key is empty or missing in $SECRETS_FILE — nothing to adopt"
+  "$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null | grep -qxF ".secrets.yml:$key" \
+    && die "$key is already declared by a registry entry"
+  local id; id=$(printf '%s' "$key" | tr '.' '_')
+  local prov="${key%%.*}"
+  ID="$id" PROV="$prov" KEY="$key" "$YQ" e -i '.secrets += [{
+      "id": strenv(ID),
+      "provider": strenv(PROV),
+      "type": "TODO — describe what this credential is for",
+      "scopes": [],
+      "stored_in": ["\.secrets\.yml:" + strenv(KEY)],
+      "rotate_via": "manual",
+      "rotate_url": "",
+      "cadence_days": 365,
+      "expires": "unknown",
+      "last_rotated": "",
+      "owner": "operator",
+      "status": "adopted-needs-review",
+      "notes": "Adopted by `pl secrets adopt` — fill in type/scopes/rotate_url before the next rotation."
+    }]' "$REGISTRY" || die "failed to write registry"
+  # yq strenv concat above escapes oddly on some versions; normalise the location
+  local last; last=$(( $("$YQ" e '.secrets | length' "$REGISTRY") - 1 ))
+  KEY="$key" "$YQ" e -i ".secrets[$last].stored_in = [\".secrets.yml:\" + strenv(KEY)]" "$REGISTRY"
+  print_success "adopted $key as registry entry '$id' (status: adopted-needs-review)"
+  print_hint "now fill it in:  pl secrets steps $id   ·   verify:  pl secrets lint"
 }
 
 ################################################################################
@@ -566,12 +867,24 @@ cmd_scaffold(){
 }
 
 ################################################################################
-# audit — LIVE token validity + REAL expiry + drift (the daily-check engine)
-#   Probes each provisioned token at its provider. Token values NEVER printed
-#   (0600 curl config, like `whose`). Exits non-zero if any token is DEAD or
-#   expiring within the warning window — so cron / pl doctor can alert.
+# audit — LIVE token validity + REAL expiry + drift, across EVERY declared
+#         location (the daily-check engine).
+#
+#   The old implementation took `... | head -1` and probed only the FIRST
+#   `.secrets.yml:` location of each entry. Every other declared copy — the 16
+#   DDEV-mounted composer auth.json files, the agent-loop env token — was never
+#   read, so a dead or drifted copy printed OK and exited 0. A registry that
+#   records where a value lives, and then checks one of those places, is a
+#   registry that lies by construction.
+#
+#   Now: canonical value is probed at the provider; EVERY declared location is
+#   read and compared to canonical BY HASH (never by value, never printed);
+#   a distinct value found in a copy is itself probed. Any DRIFT / DEAD /
+#   MISSING / ABSENT / SCOPE-DRIFT counts as a problem and forces exit 1.
+#
 #   Flags: --days N (warn window, default 14) · --sync (write live expiry back
-#          to the registry, fixing drift) · --quiet (machine output for cron)
+#          to the registry) · --quiet (machine output for cron) · --locations
+#          (one row per location) · --json (machine envelope)
 ################################################################################
 _audit_body(){ # url header-name value  -> response body (token only via 0600 cfg)
   local cfg; cfg=$(mktemp); chmod 600 "$cfg"
@@ -583,15 +896,72 @@ _audit_code(){ # url full-header-prefix value  -> http_code only
   printf 'silent\noutput = "/dev/null"\nwrite-out = "%%{http_code}"\nmax-time = 12\nurl = "%s"\nheader = "%s %s"\n' "$1" "$2" "$3" > "$cfg"
   curl -K "$cfg" 2>/dev/null; rm -f "$cfg"
 }
+
+# Probe ONE value at its provider. Emits "LIVE<TAB>live_expires<TAB>note".
+# LIVE ∈ OK | DEAD | SKIP.  The value is passed in memory and never printed.
+_probe_value(){ # provider host value
+  local prov="$1" host="$2" val="$3" live="SKIP" exp="" note=""
+  case "$prov" in
+    gitlab)
+      if [ -z "$host" ]; then note="no host"; else
+        local ujson pjson uname active revoked isadmin
+        ujson=$(_audit_body "https://$host/api/v4/user" "PRIVATE-TOKEN" "$val")
+        uname=$("$YQ" e -p=json '.username // ""' <<<"$ujson" 2>/dev/null | grep -v '^null$')
+        if [ -z "$uname" ]; then live="DEAD"; else
+          pjson=$(_audit_body "https://$host/api/v4/personal_access_tokens/self" "PRIVATE-TOKEN" "$val")
+          active=$("$YQ" e -p=json '.active // ""' <<<"$pjson" 2>/dev/null)
+          revoked=$("$YQ" e -p=json '.revoked // ""' <<<"$pjson" 2>/dev/null)
+          exp=$("$YQ" e -p=json '.expires_at // ""' <<<"$pjson" 2>/dev/null | grep -v '^null$')
+          isadmin=$("$YQ" e -p=json '.is_admin // ""' <<<"$ujson" 2>/dev/null | grep -v '^null$')
+          if [ "$revoked" = "true" ] || [ "$active" = "false" ]; then live="DEAD"; else live="OK"; fi
+          [ "$isadmin" = "true" ] && note="ADMIN "
+        fi
+      fi ;;
+    github) [ "$(_audit_code "https://api.github.com/user" "Authorization: Bearer" "$val")" = "200" ] && live="OK" || live="DEAD" ;;
+    linode) [ "$(_audit_code "https://api.linode.com/v4/profile" "Authorization: Bearer" "$val")" = "200" ] && live="OK" || live="DEAD" ;;
+    *) note="no live API (recorded-date only)" ;;
+  esac
+  printf '%s\t%s\t%s\n' "$live" "$exp" "$note"
+}
+
+# Scope reconciliation: assert the registry's declared capability against the
+# provider. Registry entries carry
+#   probe:
+#     - { url: "https://<gitlab-host>/api/v4/projects", expect: 200, name: read-projects }
+# and this reports SCOPE-DRIFT when reality disagrees with the record. The
+# registry exists to record scope; a scope it never checks is folklore.
+_probe_scopes(){ # idx provider value -> "" (ok) | "SCOPE-DRIFT(name exp!=got) …"
+  local idx="$1" prov="$2" val="$3" np j url want got hdr out=""
+  np=$("$YQ" e ".secrets[$idx].probe // [] | length" "$REGISTRY" 2>/dev/null)
+  [ "${np:-0}" -eq 0 ] 2>/dev/null && return 0
+  case "$prov" in
+    gitlab) hdr="PRIVATE-TOKEN:" ;;
+    github|linode) hdr="Authorization: Bearer" ;;
+    *) return 0 ;;
+  esac
+  for ((j=0;j<np;j++)); do
+    url=$(expand_placeholders "$("$YQ" e ".secrets[$idx].probe[$j].url // \"\"" "$REGISTRY" 2>/dev/null)")
+    want=$("$YQ" e ".secrets[$idx].probe[$j].expect // \"\"" "$REGISTRY" 2>/dev/null)
+    local pname; pname=$("$YQ" e ".secrets[$idx].probe[$j].name // \"probe$j\"" "$REGISTRY" 2>/dev/null)
+    [ -z "$url" ] || [ -z "$want" ] && continue
+    got=$(_audit_code "$url" "$hdr" "$val")
+    [ "$got" = "$want" ] || out="${out}SCOPE-DRIFT($pname want=$want got=$got) "
+  done
+  printf '%s' "$out"
+}
+
 cmd_audit(){
   need_yq; need_registry
   command -v curl >/dev/null || die "curl required"
-  local WARN=14 SYNC=0 QUIET=0
+  local WARN=14 SYNC=0 QUIET=0 LOCS=0 JSON=0
   while [ $# -gt 0 ]; do case "$1" in
     --days) WARN="${2:-14}"; shift 2;;
     --sync) SYNC=1; shift;;
     --quiet|-q) QUIET=1; shift;;
+    --locations|--all-locations) LOCS=1; shift;;
+    --json) JSON=1; QUIET=1; shift;;
     *) shift;; esac; done
+
   local host_default
   host_default=$("$YQ" e '.gitlab.server.domain // ""' "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
   # Reachability gate: if the GitLab host is DOWN, do NOT probe — every gitlab token
@@ -603,79 +973,511 @@ cmd_audit(){
       return 2
     fi
   fi
+
   if [ "$QUIET" = 0 ]; then
-    print_header "Live token audit — probes each provider (values never printed)"
+    print_header "Live token audit — every declared location, values never printed"
     printf "  %-26s %-7s %-9s %-12s %-12s %s\n" "ID" "PROV" "LIVE" "EXPIRES" "RECORDED" "NOTE"
     printf "  %-26s %-7s %-9s %-12s %-12s %s\n" "--------------------------" "-------" "---------" "------------" "------------" "----"
   fi
-  local n i problems=0 dead=0 expiring=0 drift=0
+
+  local n i problems=0 dead=0 expiring=0 drift=0 badloc=0 jbuf=""
   n=$("$YQ" e '.secrets | length' "$REGISTRY"); [ "$n" = "null" ] && n=0
   for ((i=0;i<n;i++)); do
-    local id prov st recorded key val live liveexp note col d useexp host
+    local id prov st recorded canon canonval canonhash live liveexp note col d useexp host
     id=$(field "$i" id); prov=$(field "$i" provider); st=$(field "$i" status); recorded=$(field "$i" expires)
     [ "$st" = "not-provisioned" ] && continue
-    key=$("$YQ" e ".secrets[$i].stored_in[]?" "$REGISTRY" 2>/dev/null | grep -oE '^\.secrets\.yml:[A-Za-z0-9_.]+' | head -1 | sed 's/^\.secrets\.yml://')
-    live="SKIP"; liveexp=""; note=""
-    if [ -n "$key" ]; then
-      val=$("$YQ" e ".$key // \"\"" "$SECRETS_FILE" 2>/dev/null)
-      if [ -z "$val" ] || [ "$val" = "null" ]; then live="EMPTY"; note="not provisioned"
+
+    host=$(field "$i" rotate_url | sed -E 's|https?://([^/]+).*|\1|')
+    { [ -z "$host" ] || [ "$host" = "$(field "$i" rotate_url)" ]; } && host="$host_default"
+
+    canon=$(entry_canonical_loc "$i")
+    live="SKIP"; liveexp=""; note=""; canonval=""; canonhash=""
+    local ckind chost cpath cref crc
+    if [ -n "$canon" ]; then
+      IFS=$'\x1f' read -r ckind chost cpath cref < <(loc_parse "$canon")
+      if [ "$ckind" = "bad" ] || [ "$ckind" = "external" ]; then
+        note="canonical location not machine-readable"
       else
-        local nsc; nsc=$("$YQ" e ".secrets[$i].scopes // [] | length" "$REGISTRY" 2>/dev/null)
-        if [ "${nsc:-0}" -eq 0 ]; then live="SKIP"; note="no API scope (password/app cred — recorded-date only)"
-        else
-        case "$prov" in
-          gitlab)
-            host=$(field "$i" rotate_url | sed -E 's|https?://([^/]+).*|\1|')
-            { [ -z "$host" ] || [ "$host" = "$(field "$i" rotate_url)" ]; } && host="$host_default"
-            if [ -z "$host" ]; then live="SKIP"; note="no host"; else
-              local ujson pjson uname active revoked isadmin
-              ujson=$(_audit_body "https://$host/api/v4/user" "PRIVATE-TOKEN" "$val")
-              uname=$("$YQ" e -p=json '.username // ""' <<<"$ujson" 2>/dev/null | grep -v '^null$')
-              if [ -z "$uname" ]; then live="DEAD"
-              else
-                pjson=$(_audit_body "https://$host/api/v4/personal_access_tokens/self" "PRIVATE-TOKEN" "$val")
-                active=$("$YQ" e -p=json '.active // ""' <<<"$pjson" 2>/dev/null)
-                revoked=$("$YQ" e -p=json '.revoked // ""' <<<"$pjson" 2>/dev/null)
-                liveexp=$("$YQ" e -p=json '.expires_at // ""' <<<"$pjson" 2>/dev/null | grep -v '^null$')
-                isadmin=$("$YQ" e -p=json '.is_admin // ""' <<<"$ujson" 2>/dev/null | grep -v '^null$')
-                if [ "$revoked" = "true" ] || [ "$active" = "false" ]; then live="DEAD"; else live="OK"; fi
-                [ "$isadmin" = "true" ] && note="ADMIN! "
-              fi
-            fi ;;
-          github) [ "$(_audit_code "https://api.github.com/user" "Authorization: Bearer" "$val")" = "200" ] && live="OK" || live="DEAD" ;;
-          linode) [ "$(_audit_code "https://api.linode.com/v4/profile" "Authorization: Bearer" "$val")" = "200" ] && live="OK" || live="DEAD" ;;
-          *) live="SKIP"; note="no live API (recorded-date only)" ;;
+        canonval=$(loc_read "$ckind" "$(loc_abspath "$cpath")" "$cref"); crc=$?
+        case "$crc" in
+          3) live="MISSING"; note="canonical file absent: $cpath" ;;
+          4) live="EMPTY";   note="not provisioned" ;;
+          5) live="SKIP";    note="reader unavailable" ;;
         esac
-        fi
       fi
-    else live="SKIP"; note="value not on this host"; fi
-    val=""
-    useexp="$liveexp"; { [ -z "$useexp" ]; } && useexp="$recorded"
+    else
+      note="value not on this host"
+    fi
+
+    if [ -n "$canonval" ]; then
+      canonhash=$(loc_hash "$canonval")
+      local nsc; nsc=$("$YQ" e ".secrets[$i].scopes // [] | length" "$REGISTRY" 2>/dev/null)
+      if [ "${nsc:-0}" -eq 0 ]; then
+        live="SKIP"; note="no API scope (password/app cred — recorded-date only)"
+      else
+        IFS=$'\t' read -r live liveexp _n < <(_probe_value "$prov" "$host" "$canonval")
+        note="${note}${_n}"
+        local sd; sd=$(_probe_scopes "$i" "$prov" "$canonval")
+        [ -n "$sd" ] && { note="${note}${sd}"; problems=$((problems+1)); }
+      fi
+      # An admin-capable token is a hard failure unless the entry says so out loud.
+      if [[ "$note" == *"ADMIN"* ]] && [ "$(field "$i" allow_admin)" != "true" ]; then
+        note="ADMIN-NOT-ALLOWED ${note}"; problems=$((problems+1))
+      fi
+    fi
+
+    # ---- every declared location, compared to canonical BY HASH -------------
+    local -a lrows=(); local loc lkind lhost lpath lref lval lrc lstat lhash lrc2
+    while IFS= read -r loc; do
+      [ -z "$loc" ] && continue
+      IFS=$'\x1f' read -r lkind lhost lpath lref < <(loc_parse "$loc")
+      lstat=""; lhash=""
+      case "$lkind" in
+        external) lstat="EXTERNAL" ;;
+        bad)      lstat="UNPARSEABLE"; badloc=$((badloc+1)); problems=$((problems+1)) ;;
+        *)
+          if [ -n "$lhost" ]; then
+            lstat="REMOTE"    # checked by `pl secrets verify-copy` (hash over ssh)
+          else
+            lval=$(loc_read "$lkind" "$(loc_abspath "$lpath")" "$lref"); lrc=$?
+            case "$lrc" in
+              0) lhash=$(loc_hash "$lval")
+                 if [ -z "$canonhash" ]; then lstat="UNVERIFIED"
+                 elif [ "$lhash" = "$canonhash" ]; then lstat="OK"
+                 else
+                   lstat="DRIFT"; drift=$((drift+1)); problems=$((problems+1))
+                   # a drifted copy may ALSO be revoked — that is the composer case
+                   if [ "${nsc:-0}" -gt 0 ] 2>/dev/null; then
+                     IFS=$'\t' read -r lrc2 _ _ < <(_probe_value "$prov" "$host" "$lval")
+                     [ "$lrc2" = "DEAD" ] && { lstat="DRIFT/DEAD"; dead=$((dead+1)); }
+                   fi
+                 fi ;;
+              3) lstat="MISSING"; problems=$((problems+1)) ;;
+              4) lstat="ABSENT";  problems=$((problems+1)) ;;
+              5) lstat="NOREADER" ;;
+            esac
+            lval=""
+          fi ;;
+      esac
+      lrows+=("${lstat}"$'\t'"${loc}")
+    done < <(entry_locations "$i")
+    canonval=""
+
+    useexp="$liveexp"; [ -z "$useexp" ] && useexp="$recorded"
     d=$(days_until "$useexp")
     if [ -n "$liveexp" ] && [ -n "$recorded" ] && [ "$recorded" != "unknown" ] && [ "$liveexp" != "$recorded" ]; then
-      note="${note}DRIFT(rec=$recorded) "; drift=$((drift+1))
+      note="${note}DRIFT(rec=$recorded) "; problems=$((problems+1))
       [ "$SYNC" = 1 ] && { "$YQ" e -i ".secrets[$i].expires = \"$liveexp\"" "$REGISTRY" && note="${note}[synced] "; }
     fi
     case "$live" in
-      DEAD)  col="$RED";    dead=$((dead+1));     problems=$((problems+1)); note="REVOKED/INVALID ${note}" ;;
-      OK)    if   [ -n "$d" ] && [ "$d" -lt 0 ]      2>/dev/null; then col="$RED";    note="EXPIRED ${note}";        expiring=$((expiring+1)); problems=$((problems+1))
-             elif [ -n "$d" ] && [ "$d" -le "$WARN" ] 2>/dev/null; then col="$YELLOW"; note="expires in ${d}d ${note}"; expiring=$((expiring+1)); problems=$((problems+1))
-             else col="$GREEN"; fi ;;
-      *)     col="$DIM" ;;
+      DEAD)    col="$RED"; dead=$((dead+1)); problems=$((problems+1)); note="REVOKED/INVALID ${note}" ;;
+      MISSING) col="$RED"; problems=$((problems+1)) ;;
+      OK)      if   [ -n "$d" ] && [ "$d" -lt 0 ]      2>/dev/null; then col="$RED";    note="EXPIRED ${note}";        expiring=$((expiring+1)); problems=$((problems+1))
+               elif [ -n "$d" ] && [ "$d" -le "$WARN" ] 2>/dev/null; then col="$YELLOW"; note="expires in ${d}d ${note}"; expiring=$((expiring+1)); problems=$((problems+1))
+               else col="$GREEN"; fi ;;
+      *)       col="$DIM" ;;
     esac
-    if [ "$QUIET" = 0 ]; then
-      printf "  ${col}%-26s${NC} %-7s ${col}%-9s${NC} %-12s %-12s %s\n" "$id" "$prov" "$live" "${liveexp:--}" "${recorded:-unknown}" "$note"
-    elif [ "$live" = "DEAD" ] || { [ "$live" = "OK" ] && [ -n "$d" ] && [ "$d" -le "$WARN" ] 2>/dev/null; }; then
-      printf '%s\t%s\t%s\t%s\n' "$id" "$live" "${useexp:-unknown}" "$note"
+
+    # location summary always shown when anything is wrong — a problem can never
+    # be hidden behind the entry-level row.
+    local nloc=0 nbad=0 r
+    for r in "${lrows[@]:-}"; do
+      [ -z "$r" ] && continue; nloc=$((nloc+1))
+      case "${r%%$'\t'*}" in OK|EXTERNAL|REMOTE|UNVERIFIED) ;; *) nbad=$((nbad+1)) ;; esac
+    done
+
+    if [ "$JSON" = 1 ]; then
+      local jl="" first=1
+      for r in "${lrows[@]:-}"; do
+        [ -z "$r" ] && continue
+        [ "$first" = 1 ] || jl="${jl},"; first=0
+        jl="${jl}$(jq -cn --arg s "${r%%$'\t'*}" --arg l "${r#*$'\t'}" '{status:$s,location:$l}')"
+      done
+      [ -n "$jbuf" ] && jbuf="${jbuf},"
+      jbuf="${jbuf}$(jq -cn --arg id "$id" --arg prov "$prov" --arg live "$live" \
+        --arg exp "$liveexp" --arg rec "$recorded" --arg note "$note" \
+        --argjson locs "[${jl}]" \
+        '{id:$id,provider:$prov,live:$live,live_expires:$exp,recorded_expires:$rec,note:$note,locations:$locs}')"
+    elif [ "$QUIET" = 0 ]; then
+      printf "  ${col}%-26s${NC} %-7s ${col}%-9s${NC} %-12s %-12s %s\n" \
+        "$id" "$prov" "$live" "${liveexp:--}" "${recorded:-unknown}" "${note}${nbad:+ [${nbad}/${nloc} locations bad]}"
+      for r in "${lrows[@]:-}"; do
+        [ -z "$r" ] && continue
+        local rs="${r%%$'\t'*}" rl="${r#*$'\t'}"
+        case "$rs" in
+          OK|EXTERNAL|REMOTE|UNVERIFIED) [ "$LOCS" = 1 ] && printf "      ${DIM}%-12s %s${NC}\n" "$rs" "$rl" ;;
+          *)                             printf "      ${RED}%-12s${NC} %s\n" "$rs" "$rl" ;;
+        esac
+      done
+    elif [ "$live" = "DEAD" ] || [ "$nbad" -gt 0 ] || { [ "$live" = "OK" ] && [ -n "$d" ] && [ "$d" -le "$WARN" ] 2>/dev/null; }; then
+      printf '%s\t%s\t%s\t%s\n' "$id" "$live" "${useexp:-unknown}" "${nbad} bad location(s) ${note}"
     fi
   done
-  if [ "$QUIET" = 0 ]; then
-    echo; printf "  %d dead · %d expiring(≤%dd) · %d drift\n" "$dead" "$expiring" "$WARN" "$drift"
-    [ "$problems" -eq 0 ] && print_success "all live tokens valid and outside the ${WARN}-day window" \
-      || print_hint "reissue a token: pl secrets steps <id> → create it → pl secrets rotate <id>"
-    [ "$drift" -gt 0 ] && [ "$SYNC" = 0 ] && print_hint "sync recorded expiry to live truth: pl secrets audit --sync"
+
+  if [ "$JSON" = 1 ]; then
+    jq -n --argjson e "[${jbuf}]" --argjson p "$problems" \
+      '{problems:$p,entries:$e}'
+  elif [ "$QUIET" = 0 ]; then
+    echo; printf "  %d dead · %d expiring(≤%dd) · %d drifted location(s) · %d unparseable location(s)\n" \
+      "$dead" "$expiring" "$WARN" "$drift" "$badloc"
+    [ "$problems" -eq 0 ] && print_success "every token valid, and every declared location matches canonical" \
+      || print_hint "propagate canonical to every location: pl secrets sync <id>   ·   reissue: pl secrets steps <id>"
   fi
   [ "$problems" -gt 0 ] && return 1 || return 0
+}
+
+################################################################################
+# sync — rewrite EVERY declared location from the canonical value.
+#   `rotate` already wrote all locations; nothing re-asserted it afterwards, so
+#   the estate drifted silently. This is the repair verb `audit` points at.
+################################################################################
+cmd_sync(){
+  need_yq; need_registry
+  local arg="${1:-}"; [ -n "$arg" ] || die "usage: pl secrets sync <#|id> [--dry-run]"
+  local DRY=0; [ "${2:-}" = "--dry-run" ] && DRY=1
+  local idx; if [[ "$arg" =~ ^[0-9]+$ ]]; then idx=$((arg-1)); else idx=$(registry_index_of "$arg"); fi
+  { [ "$idx" = "-1" ] || [ -z "$(field "$idx" id)" ]; } && die "no such secret: $arg (see: pl secrets status)"
+  local id canon ckind chost cpath cref canonval
+  id=$(field "$idx" id); canon=$(entry_canonical_loc "$idx")
+  [ -n "$canon" ] || die "$id: no machine-readable canonical location"
+  IFS=$'\x1f' read -r ckind chost cpath cref < <(loc_parse "$canon")
+  canonval=$(loc_read "$ckind" "$(loc_abspath "$cpath")" "$cref") \
+    || die "$id: canonical location unreadable ($canon)"
+
+  print_header "Sync $id — canonical: $canon"
+  local loc lkind lhost lpath lref lval n_ok=0 n_write=0 n_skip=0
+  while IFS= read -r loc; do
+    [ -z "$loc" ] && continue
+    [ "$loc" = "$canon" ] && continue
+    IFS=$'\x1f' read -r lkind lhost lpath lref < <(loc_parse "$loc")
+    if [ "$lkind" = "external" ] || [ "$lkind" = "bad" ] || [ -n "$lhost" ]; then
+      print_warning "  skip (not writable from here): $loc"; n_skip=$((n_skip+1)); continue
+    fi
+    lval=$(loc_read "$lkind" "$(loc_abspath "$lpath")" "$lref")
+    if [ "$lval" = "$canonval" ]; then lval=""; n_ok=$((n_ok+1)); continue; fi
+    lval=""
+    if [ "$DRY" = 1 ]; then print_info "  would update: $loc"; n_write=$((n_write+1)); continue; fi
+    NWP_NEWVAL="$canonval" write_value_to_location "$loc" && n_write=$((n_write+1))
+  done < <(entry_locations "$idx")
+  canonval=""
+  printf "  %d already correct · %d %s · %d skipped\n" \
+    "$n_ok" "$n_write" "$([ "$DRY" = 1 ] && echo 'would update' || echo updated)" "$n_skip"
+  [ "$n_skip" -gt 0 ] && print_hint "remote/external copies: pl secrets verify-copy $id"
+  return 0
+}
+
+# Are every machine-readable local location and canonical in agreement?
+# rc 0 = yes.  Used by `done` so a rotation cannot be RECORDED without having
+# been PROPAGATED — the registry may not claim a state the estate is not in.
+entry_locations_in_sync(){ # idx  -> 0 in sync, 1 drift (names printed on stderr)
+  local idx="$1" canon ckind chost cpath cref canonval loc lkind lhost lpath lref lval bad=0
+  canon=$(entry_canonical_loc "$idx"); [ -n "$canon" ] || return 0
+  IFS=$'\x1f' read -r ckind chost cpath cref < <(loc_parse "$canon")
+  canonval=$(loc_read "$ckind" "$(loc_abspath "$cpath")" "$cref") || return 0
+  while IFS= read -r loc; do
+    [ -z "$loc" ] && continue
+    [ "$loc" = "$canon" ] && continue
+    IFS=$'\x1f' read -r lkind lhost lpath lref < <(loc_parse "$loc")
+    { [ "$lkind" = "external" ] || [ "$lkind" = "bad" ] || [ -n "$lhost" ]; } && continue
+    lval=$(loc_read "$lkind" "$(loc_abspath "$lpath")" "$lref")
+    if [ "$lval" != "$canonval" ]; then printf '%s\n' "$loc" >&2; bad=1; fi
+    lval=""
+  done < <(entry_locations "$idx")
+  canonval=""
+  return $bad
+}
+
+################################################################################
+# migrate-registry — bring an existing registry up to the stored_in grammar and
+#   the publishable host placeholders, IDEMPOTENTLY.
+#
+#   Shipped as a verb, not performed as a one-off hand edit, for the reason the
+#   whole programme exists: a transformation that lives only in somebody's shell
+#   history is a transformation nobody can re-run, review or reverse. Run it
+#   with --dry-run first; --apply writes a timestamped .bak beside the registry.
+#
+#   Rewrites, in order, per stored_in entry:
+#     "<loc> (on <role>)"        -> host=<role>:<loc>
+#     "live <host>:<path> (…)"   -> host=<host>:<path>:@file
+#     "<path>" with no <ref>     -> <path>:@file
+#     anything unparseable       -> external:<original text>
+#   and lifts trailing parentheticals into stored_in_notes:.
+################################################################################
+normalise_location(){ # raw stored_in string -> canonical grammar
+  local L="$1" note="" host="" base="$1" p r
+  case "$L" in external:*|host=*) printf '%s' "$L"; return 0 ;; esac
+
+  # lift ONE trailing parenthetical into $note
+  if [[ "$base" =~ ^(.*[^[:space:]])[[:space:]]+\((.*)\)$ ]]; then
+    base="${BASH_REMATCH[1]}"; note="${BASH_REMATCH[2]}"
+  fi
+  # "<loc> on <role>" / "(on the <role> host)" -> a host= qualifier
+  if [[ "$base" =~ ^(.*[^[:space:]])[[:space:]]+on[[:space:]]+(the[[:space:]]+)?\`?([A-Za-z0-9_.-]+)\`?([[:space:]]+host)?$ ]]; then
+    base="${BASH_REMATCH[1]}"; host="${BASH_REMATCH[3]}"
+  elif [[ "$note" =~ (^|[[:space:]])on[[:space:]]+(the[[:space:]]+)?\`?([A-Za-z0-9_.-]+)\`?([[:space:]]+host)?([,[:space:]]|$) ]]; then
+    host="${BASH_REMATCH[3]}"
+  fi
+  # "live <host>:<rest>" prefix
+  if [[ "$base" =~ ^live[[:space:]]+([^[:space:]:]+):(.+)$ ]]; then
+    host="${BASH_REMATCH[1]}"; base="${BASH_REMATCH[2]}"
+  fi
+  # a bare path with no ref: the whole file IS the value.
+  # NB '~/'* is QUOTED — bash tilde-expands an unquoted case pattern, so a bare
+  # ~/* pattern silently becomes /home/<user>/* and never matches a literal '~'.
+  case "$base" in
+    /*|'~/'*) case "$base" in *:*) ;; *) base="${base}:@file" ;; esac ;;
+  esac
+  # final validation — a <path>:<ref> pair with no whitespace in either half.
+  # Anything else is declared unverifiable rather than left to rot as a location
+  # the tooling cannot read.
+  case "$base" in *:*) p="${base%%:*}"; r="${base#*:}" ;; *) printf 'external:%s' "$L"; return 0 ;; esac
+  case "${p}${r}" in *[[:space:]]*) printf 'external:%s' "$L"; return 0 ;; esac
+  if [ -n "$host" ]; then printf 'host=%s:%s' "$host" "$base"; else printf '%s' "$base"; fi
+}
+
+cmd_migrate_registry(){
+  need_yq; need_registry
+  local APPLY=0 a
+  for a in "$@"; do case "$a" in --apply) APPLY=1 ;; esac; done
+  print_header "Registry migration — stored_in grammar + publishable host placeholders"
+  if [ "$APPLY" = 1 ]; then
+    cp -p "$REGISTRY" "${REGISTRY}.bak" || die "could not write ${REGISTRY}.bak — refusing to migrate"
+    print_info "backup: ${REGISTRY}.bak"
+  fi
+
+  local n i changed=0
+  n=$("$YQ" e '.secrets | length' "$REGISTRY"); [ "$n" = "null" ] && n=0
+  for ((i=0;i<n;i++)); do
+    local id j m loc new; id=$(field_raw "$i" id)
+    m=$("$YQ" e ".secrets[$i].stored_in // [] | length" "$REGISTRY" 2>/dev/null)
+    for ((j=0;j<m;j++)); do
+      loc=$("$YQ" e ".secrets[$i].stored_in[$j]" "$REGISTRY" 2>/dev/null)
+      new=$(normalise_location "$loc")
+      [ "$new" = "$loc" ] && continue
+      changed=$((changed+1))
+      printf "  %-26s\n    ${RED}- %s${NC}\n    ${GREEN}+ %s${NC}\n" "$id" "$loc" "$new"
+      if [ "$APPLY" = 1 ]; then
+        NEW="$new" "$YQ" e -i ".secrets[$i].stored_in[$j] = strenv(NEW)" "$REGISTRY"
+        # the prose that used to live inside the location is preserved, not lost
+        OLD="$loc" "$YQ" e -i ".secrets[$i].stored_in_notes = (.secrets[$i].stored_in_notes // []) + [strenv(OLD)]" "$REGISTRY"
+      fi
+    done
+  done
+
+  # host placeholders — so the registry can eventually carry history without
+  # publishing the operator's live surfaces (docs/reference/role-vocabulary.md)
+  local host_default hits=0
+  host_default=$("$YQ" e '.gitlab.server.domain // ""' "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
+  if [ -n "$host_default" ]; then
+    hits=$(grep -cF "$host_default" "$REGISTRY" 2>/dev/null || true)
+    if [ "${hits:-0}" -gt 0 ]; then
+      printf "  %d literal GitLab-host reference(s) -> <gitlab-host>\n" "$hits"
+      [ "$APPLY" = 1 ] && perl -i -pe "s/\Q$host_default\E/<gitlab-host>/g" "$REGISTRY"
+      changed=$((changed+hits))
+    fi
+  fi
+
+  if [ "$("$YQ" e 'has("ignored_keys")' "$REGISTRY")" != "true" ]; then
+    printf "  add ignored_keys: [] (the recorded-exemption list that lint reads)\n"
+    [ "$APPLY" = 1 ] && "$YQ" e -i '.ignored_keys = []' "$REGISTRY"
+    changed=$((changed+1))
+  fi
+
+  # Seed ignored_keys with the STRUCTURAL, non-credential keys only — hostnames,
+  # ids, usernames, URLs. A lint that is red on day one with a page of
+  # non-findings is a lint everybody learns to skip, so the noise is baselined
+  # and the signal is left red. Deliberately NOT seeded: anything whose name
+  # says credential (…password, …token, …key, …secret, …login). Those stay red
+  # until `pl secrets adopt` records what they are.
+  if [ -f "$SECRETS_FILE" ]; then
+    local k tail seeded=0
+    while IFS= read -r k; do
+      [ -z "$k" ] && continue
+      tail="${k##*.}"
+      case "$tail" in
+        url|domain|ip|linode_id|ssh_user|username|user|admin_user) ;;
+        *) continue ;;
+      esac
+      "$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null | grep -qxF ".secrets.yml:$k" && continue
+      "$YQ" e '.ignored_keys[]? // ""' "$REGISTRY" 2>/dev/null | grep -qxF "$k" && continue
+      printf "  ignored_keys += %s (structural, not a credential)\n" "$k"
+      [ "$APPLY" = 1 ] && K="$k" "$YQ" e -i '.ignored_keys += [strenv(K)]' "$REGISTRY"
+      seeded=$((seeded+1)); changed=$((changed+1))
+    done < <("$YQ" e '.. | select(tag == "!!str") | path | join(".")' "$SECRETS_FILE" 2>/dev/null)
+    [ "$seeded" -gt 0 ] && print_info "baselined $seeded structural key(s); every credential-shaped key stays RED until adopted"
+  fi
+
+  echo
+  if [ "$changed" -eq 0 ]; then print_success "registry already migrated — nothing to do"; return 0; fi
+  if [ "$APPLY" = 1 ]; then
+    print_success "$changed change(s) applied — backup at ${REGISTRY}.bak"
+    print_hint "verify: pl secrets lint   then   pl secrets audit --locations"
+  else
+    print_warning "$changed change(s) NOT applied (dry-run). Re-run with --apply."
+  fi
+  return 0
+}
+
+################################################################################
+# discover-copies — find copies of a registry-known credential that the registry
+#   does NOT declare. `audit` proves the declared copies are right; this proves
+#   there is nothing undeclared. (Four undeclared sites/nw1/** copies existed.)
+#   Compares BY HASH; no value is ever printed or written anywhere.
+################################################################################
+cmd_discover_copies(){
+  need_yq; need_registry
+  command -v jq >/dev/null || die "jq required"
+  print_header "Undeclared copies of registry-known credentials"
+
+  # hash -> id  for every canonical value we can read
+  local -A known=(); local -A declared=()
+  local n i id canon ckind chost cpath cref v loc lkind lhost lpath lref
+  n=$("$YQ" e '.secrets | length' "$REGISTRY"); [ "$n" = "null" ] && n=0
+  for ((i=0;i<n;i++)); do
+    id=$(field "$i" id); [ -z "$id" ] && continue
+    canon=$(entry_canonical_loc "$i"); [ -z "$canon" ] && continue
+    IFS=$'\x1f' read -r ckind chost cpath cref < <(loc_parse "$canon")
+    { [ "$ckind" = "bad" ] || [ "$ckind" = "external" ] || [ -n "$chost" ]; } && continue
+    v=$(loc_read "$ckind" "$(loc_abspath "$cpath")" "$cref") || continue
+    known["$(loc_hash "$v")"]="$id"; v=""
+    while IFS= read -r loc; do
+      [ -z "$loc" ] && continue
+      IFS=$'\x1f' read -r lkind lhost lpath lref < <(loc_parse "$loc")
+      { [ "$lkind" = "external" ] || [ "$lkind" = "bad" ] || [ -n "$lhost" ]; } && continue
+      declared["$(loc_abspath "$lpath")|$lref"]=1
+    done < <(entry_locations "$i")
+  done
+  [ "${#known[@]}" -eq 0 ] && { print_warning "no readable canonical values — nothing to compare against"; return 0; }
+
+  local found=0 f h key
+  # composer auth.json copies anywhere under the tree
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    while IFS= read -r h; do
+      [ -z "$h" ] && continue
+      key="$f|$h"
+      local hv; hv=$(jq -r --arg k "$h" '.["gitlab-token"][$k] // ""' "$f" 2>/dev/null)
+      [ -z "$hv" ] && continue
+      local hh; hh=$(loc_hash "$hv"); hv=""
+      [ -z "${known[$hh]:-}" ] && continue
+      local jref=".[\"gitlab-token\"][\"$h\"]"
+      [ -n "${declared["$f|$jref"]:-}" ] && continue
+      print_error "UNDECLARED  ${known[$hh]}  ->  ${f#$NWP_ROOT/}:$jref"
+      found=$((found+1))
+    done < <(jq -r '.["gitlab-token"] // {} | keys[]' "$f" 2>/dev/null)
+  done < <(find "$NWP_ROOT/sites" -maxdepth 6 -name auth.json -not -path '*/vendor/*' 2>/dev/null)
+
+  # env-style files holding a known value
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    while IFS= read -r line; do
+      case "$line" in *=*) ;; *) continue ;; esac
+      local vn="${line%%=*}"; vn="${vn#export }"
+      local vv="${line#*=}"; vv="${vv%\"}"; vv="${vv#\"}"
+      local vh; vh=$(loc_hash "$vv"); vv=""
+      [ -z "${known[$vh]:-}" ] && continue
+      [ -n "${declared["$f|$vn"]:-}" ] && continue
+      print_error "UNDECLARED  ${known[$vh]}  ->  $f:$vn"
+      found=$((found+1))
+    done < "$f"
+  done < <(printf '%s\n' "$HOME/.nwp-agent-loop.env" "$HOME/.nwp-agent-loop.env.local")
+
+  [ "$found" -eq 0 ] && { print_success "no undeclared copies found"; return 0; }
+  print_hint "declare them in the entry's stored_in (then `pl secrets sync <id>` keeps them true) — or delete the copy"
+  return 1
+}
+
+################################################################################
+# verify-copy — check a REMOTE declared location (host=<role>:…) by HASH over
+#   ssh. The value never crosses the wire and is never printed on either end.
+################################################################################
+cmd_verify_copy(){
+  need_yq; need_registry
+  local arg="${1:-}"; [ -n "$arg" ] || die "usage: pl secrets verify-copy <#|id>"
+  local idx; if [[ "$arg" =~ ^[0-9]+$ ]]; then idx=$((arg-1)); else idx=$(registry_index_of "$arg"); fi
+  { [ "$idx" = "-1" ] || [ -z "$(field "$idx" id)" ]; } && die "no such secret: $arg"
+  local id canon ckind chost cpath cref canonval canonhash
+  id=$(field "$idx" id); canon=$(entry_canonical_loc "$idx")
+  [ -n "$canon" ] || die "$id: no readable canonical location on this host"
+  IFS=$'\x1f' read -r ckind chost cpath cref < <(loc_parse "$canon")
+  canonval=$(loc_read "$ckind" "$(loc_abspath "$cpath")" "$cref") || die "$id: canonical unreadable"
+  canonhash=$(printf '%s' "$canonval" | sha256sum | cut -d' ' -f1); canonval=""
+
+  print_header "Remote copies of $id — compared by SHA-256, never by value"
+  local loc lkind lhost lpath lref remote_cmd rhash problems=0 checked=0
+  while IFS= read -r loc; do
+    [ -z "$loc" ] && continue
+    IFS=$'\x1f' read -r lkind lhost lpath lref < <(loc_parse "$loc")
+    [ -n "$lhost" ] || continue
+    checked=$((checked+1))
+    case "$lkind" in
+      file) remote_cmd="head -1 '$lpath' | tr -d '\\n' | sha256sum | cut -d' ' -f1" ;;
+      env)  remote_cmd="grep -E '^(export )?$lref=' '$lpath' | head -1 | sed -E 's/^(export )?$lref=//; s/^\"//; s/\"\$//' | tr -d '\\n' | sha256sum | cut -d' ' -f1" ;;
+      yaml) remote_cmd="yq e '.$lref // \"\"' '$lpath' | tr -d '\\n' | sha256sum | cut -d' ' -f1" ;;
+      json) remote_cmd="jq -r '($lref) // \"\"' '$lpath' | tr -d '\\n' | sha256sum | cut -d' ' -f1" ;;
+      *)    print_warning "  $lhost: cannot verify kind '$lkind'"; continue ;;
+    esac
+    rhash=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$lhost" "$remote_cmd" 2>/dev/null)
+    if [ -z "$rhash" ]; then
+      print_warning "  UNREACHABLE  $lhost — $lpath (cannot verify)"; problems=$((problems+1))
+    elif [ "$rhash" = "$canonhash" ]; then
+      print_success "  MATCH        $lhost:$lpath"
+    else
+      print_error   "  DRIFT        $lhost:$lpath  (remote value differs from canonical)"; problems=$((problems+1))
+    fi
+  done < <(entry_locations "$idx")
+  [ "$checked" -eq 0 ] && { print_info "no host=… locations declared for $id"; return 0; }
+  [ "$problems" -eq 0 ] && return 0 || return 1
+}
+
+################################################################################
+# capabilities — live token x capability grid. Turns "which token can do X?"
+#   from folklore into a command. Probes read-only endpoints only.
+################################################################################
+cmd_capabilities(){
+  need_yq; need_registry
+  command -v curl >/dev/null || die "curl required"
+  local host_default
+  host_default=$("$YQ" e '.gitlab.server.domain // ""' "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
+  [ -n "$host_default" ] || die "no gitlab.server.domain in $SECRETS_FILE"
+  local proj="${NWP_CAP_PROJECT:-nwp%2Fnwp}"
+
+  # name | url-suffix — every one is a READ; nothing here creates or deletes.
+  local -a CAPS=(
+    "read-mr|/api/v4/projects/$proj/merge_requests?per_page=1"
+    "read-issues|/api/v4/projects/$proj/issues?per_page=1"
+    "deploy-keys|/api/v4/projects/$proj/deploy_keys"
+    "ci-variables|/api/v4/projects/$proj/variables"
+    "proj-tokens|/api/v4/projects/$proj/access_tokens"
+    "admin-users|/api/v4/users?per_page=1&without_project_bots=true"
+  )
+  print_header "Token x capability (live, read-only probes against $host_default)"
+  printf "  %-26s" "ID"; local c; for c in "${CAPS[@]}"; do printf " %-12s" "${c%%|*}"; done; echo
+  local n i id prov canon ckind chost cpath cref val code
+  n=$("$YQ" e '.secrets | length' "$REGISTRY"); [ "$n" = "null" ] && n=0
+  for ((i=0;i<n;i++)); do
+    id=$(field "$i" id); prov=$(field "$i" provider)
+    [ "$prov" = "gitlab" ] || continue
+    [ "$(field "$i" status)" = "not-provisioned" ] && continue
+    canon=$(entry_canonical_loc "$i"); [ -z "$canon" ] && continue
+    IFS=$'\x1f' read -r ckind chost cpath cref < <(loc_parse "$canon")
+    { [ "$ckind" = "bad" ] || [ "$ckind" = "external" ] || [ -n "$chost" ]; } && continue
+    val=$(loc_read "$ckind" "$(loc_abspath "$cpath")" "$cref") || continue
+    printf "  %-26s" "$id"
+    for c in "${CAPS[@]}"; do
+      code=$(_audit_code "https://$host_default${c#*|}" "PRIVATE-TOKEN:" "$val")
+      case "$code" in
+        200|201) printf " ${GREEN}%-12s${NC}" "yes" ;;
+        401)     printf " ${RED}%-12s${NC}"   "dead" ;;
+        403)     printf " ${DIM}%-12s${NC}"   "no" ;;
+        404)     printf " ${DIM}%-12s${NC}"   "no/404" ;;
+        *)       printf " ${YELLOW}%-12s${NC}" "${code:-?}" ;;
+      esac
+    done
+    val=""; echo
+  done
+  echo
+  print_info "Least privilege: prefer the LOWEST row that says yes for the job you need."
 }
 
 ################################################################################
@@ -726,8 +1528,8 @@ _enclosing_fn(){ # file line -> nearest preceding shell-function name (or "-")
 }
 cmd_consumers(){
   need_yq; need_registry
-  local WRITE=0 only="" a
-  for a in "$@"; do case "$a" in --write) WRITE=1;; -*) ;; *) only="$a";; esac; done
+  local WRITE=0 STRICT=0 only="" a
+  for a in "$@"; do case "$a" in --write) WRITE=1;; --strict) STRICT=1;; -*) ;; *) only="$a";; esac; done
   local roots=("$PROJECT_ROOT/lib" "$PROJECT_ROOT/scripts")
   local out; out=$(mktemp)
   local n i; n=$("$YQ" e '.secrets | length' "$REGISTRY"); [ "$n" = "null" ] && n=0
@@ -760,8 +1562,42 @@ cmd_consumers(){
     [ "$found" = 0 ] && printf -- '- _(no in-repo consumer — used via env / per-host script / auth.json; see stored_in)_\n' >> "$out"
     printf '\n' >> "$out"
   done
+  # ---- REVERSE pass: code that reads a secret the registry never heard of ----
+  # The forward pass answers "where is this token used?". It cannot answer
+  # "what is this code reading?" — so every get_infra_secret/get_data_secret key
+  # that no registry entry declares is harvested here and reported. Without it,
+  # a whole class of credentials (claude.*, moodle.<site>.<tier>.db_password,
+  # cloudflare.*) is consumed by code and tracked by nothing.
+  local unreg=0 declared_keys ignored_keys
+  declared_keys=$("$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null \
+                  | grep -oE '^\.secrets\.yml:[A-Za-z0-9_.]+' | sed 's/^\.secrets\.yml://' | sort -u)
+  ignored_keys=$("$YQ" e '.ignored_keys[]? // ""' "$REGISTRY" 2>/dev/null | grep -v '^null$')
+  {
+    printf '## UNREGISTERED CONSUMERS\n\n'
+    local key hit=0
+    while IFS= read -r key; do
+      [ -z "$key" ] && continue
+      case "$key" in *'$'*|*'"'*|*"'"*) continue ;; esac   # dynamic key — cannot resolve statically
+      printf '%s\n' "$declared_keys" | grep -qxF "$key" && continue
+      printf '%s\n' "$ignored_keys"  | grep -qxF "$key" && continue
+      printf -- '- `%s` — read by code, declared by NO registry entry\n' "$key"
+      hit=1; unreg=$((unreg+1))
+    done < <(grep -rhoE "get_(infra|data)_secret[[:space:]]+[\"']([A-Za-z0-9_.]+)[\"']" \
+               --include='*.sh' "${roots[@]}" 2>/dev/null \
+             | sed -E "s/.*[\"']([A-Za-z0-9_.]+)[\"'].*/\1/" | sort -u)
+    [ "$hit" = 0 ] && printf -- '- _(none — every statically-resolvable secret key a script reads is declared)_\n'
+    printf '\n'
+  } >> "$out"
+
   if [ "$WRITE" = 1 ]; then
-    local dest="$PROJECT_ROOT/private/token-consumers.md"
+    local dest="$NWP_ROOT/private/token-consumers.md"
+    # Refuse to replace a populated map with an empty one. This file is tracked;
+    # a run against a missing/empty registry would otherwise silently truncate
+    # it, which is a data-loss shape, not a regeneration.
+    if [ ! -s "$out" ] && [ -s "$dest" ]; then
+      print_error "refusing to overwrite $dest with an empty document (no registry entries resolved)"
+      rm -f "$out"; return 1
+    fi
     { printf '# Token → code consumers  (generated by `pl secrets consumers --write`)\n\n'
       printf 'Which lib/ + scripts/ functions reference each token. Regenerate after code changes.\n\n'
       cat "$out"; } > "$dest"
@@ -771,6 +1607,11 @@ cmd_consumers(){
     cat "$out"
   fi
   rm -f "$out"
+  if [ "$unreg" -gt 0 ]; then
+    print_warning "$unreg unregistered consumer key(s) — adopt them: pl secrets adopt <dotted.key>"
+    [ "$STRICT" = 1 ] && return 1
+  fi
+  return 0
 }
 
 ################################################################################
@@ -961,7 +1802,7 @@ cmd_inject(){
     if [ -z "$overrides_file" ]; then
       webroot=$(_inj ".inject[$ix].webroot")
       if [ -z "$webroot" ]; then
-        local stg_ddev="$PROJECT_ROOT/sites/$base/stg/.ddev/config.yaml"
+        local stg_ddev="$NWP_ROOT/sites/$base/stg/.ddev/config.yaml"
         [ -f "$stg_ddev" ] && webroot=$(grep "^docroot:" "$stg_ddev" 2>/dev/null | awk '{print $2}')
         [ -z "$webroot" ] && webroot="web"
       fi
@@ -1112,6 +1953,13 @@ case "$sub" in
   keys|tree|structure) cmd_keys "$@" ;;
   set)            cmd_set "$@" ;;
   scaffold)       cmd_scaffold "$@" ;;
+  adopt)          cmd_adopt "$@" ;;
+  sync)           cmd_sync "$@" ;;
+  migrate-registry|migrate) cmd_migrate_registry "$@" ;;
+  discover-copies|discover) cmd_discover_copies "$@" ;;
+  verify-copy)    cmd_verify_copy "$@" ;;
+  capabilities|caps) cmd_capabilities "$@" ;;
+  surfaces)       cmd_surfaces "$@" ;;
   rotate)         cmd_rotate "$@" ;;
   done)           cmd_done "$@" ;;
   get)            cmd_get "$@" ;;
@@ -1140,15 +1988,26 @@ ${BOLD}pl secrets${NC} — registry-driven secret lifecycle (no token stored on 
   pl secrets done <#|id> [date]  record a rotation you did by hand (stamps expiry + log)
   pl secrets get <dotted.key>    copy a value to the clipboard (never printed)
   pl secrets whose <#|id>        ask GitLab which user/bot/project owns the token
-  pl secrets audit [--days N]    LIVE probe: is each token valid? real expiry? drift? (--sync fixes drift, --quiet for cron)
+  pl secrets audit [--days N]    LIVE probe of EVERY declared location: valid? real expiry? drift?
+                                 [--locations] row per location · [--json] machine envelope
+                                 [--sync] write live expiry back · [--quiet] for cron
+  pl secrets sync <#|id>         propagate the canonical value to every declared location (repair verb)
+  pl secrets adopt <dotted.key>  register a .secrets.yml key that lint reported as undeclared
+  pl secrets discover-copies     find copies of a known credential the registry does NOT declare
+  pl secrets verify-copy <#|id>  check host=… remote copies by SHA-256 over ssh (value never crosses)
+  pl secrets capabilities        live token x capability grid ("which token can do X" as a command)
+  pl secrets surfaces            print the leak surfaces scan/scrub sweep
   pl secrets steps <#|id>        print the exact reissue procedure for one entry
   pl secrets consumers [--write] map each token to the code/functions that read it (--write → private/token-consumers.md)
+                       [--strict] also fail on code reading an UNDECLARED secret key
   pl secrets inject <site> --tier=stg|live [--dry-run|--apply]
                                  registry-driven env-config + cross-site token injection (§6 P0-4):
                                  Drupal → settings.local.overrides.php + drush cr; Moodle → admin/cli/cfg.php.
                                  DRY-RUN default; prints key-paths + targets ONLY, never values (ADR-0017).
-  pl secrets lint                cross-check the registry against .secrets.yml (orphans, comment-secrets, gaps)
-  pl secrets scan                leak sweep over transcripts, logs, history
+  pl secrets lint                BOTH directions: registry->file AND file->registry (undeclared keys),
+                                 stored_in grammar, phantom paths, 0600 permissions. Exit 1 on any.
+  pl secrets scan [--quiet]      leak sweep over transcripts, logs, history — EXIT 1 on any hit
+                  [--transcripts] also sweep the AI transcript tree
   pl secrets scrub [files...]    redact secret strings (pattern + value) in place
   pl secrets check               show what the pl-todo expiry alert would report
 

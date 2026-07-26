@@ -156,12 +156,31 @@ and never guess a token's identity, scope, expiry, or storage location:
 | Who owns a GitLab token (revoked?) | `pl secrets whose <#\|id>` |
 | Exact reissue procedure for one entry | `pl secrets steps <#\|id>` |
 | Reissue/rotate (hidden entry, propagates to every `stored_in`, logs it) | `pl secrets rotate <#\|id>` |
-| Which code/functions read a token | `pl secrets consumers [--write]` → `private/token-consumers.md` |
+| Which code/functions read a token | `pl secrets consumers [--write] [--strict]` → `private/token-consumers.md` |
 | Structure of `.secrets.yml` without values | `pl secrets keys` |
+| Is every declared copy actually in sync? | `pl secrets audit --locations` (one row per `stored_in`) |
+| Propagate canonical to every copy (repair) | `pl secrets sync <#\|id>` |
+| Is there a copy nobody declared? | `pl secrets discover-copies` |
+| Check a copy on another host (by hash, over ssh) | `pl secrets verify-copy <#\|id>` |
+| Which token can create an MR / manage CI vars? | `pl secrets capabilities` |
+| Register a `.secrets.yml` key lint says is undeclared | `pl secrets adopt <dotted.key>` |
+| Bring an old registry up to the `stored_in` grammar | `pl secrets migrate-registry [--apply]` |
 
 Rules:
 - **Every token has three names** — the `.secrets.yml` key, the registry `id`, and
   the live GitLab bot/token name. Use the crosswalk in the registry / `~/central/TOKEN-REGISTRY-*.md`; don't conflate them.
+- **`.secrets.yml:gitlab.api_token` is NOT the root admin PAT.** That claim is stale.
+  Since the 2026-07-18 ADR-0024 cutover the slot holds the non-admin group bot
+  `group_9_bot` / `nwp-automation-dev` (`is_admin: false`, Developer). It **can**
+  create merge requests on `nwp/nwp`; it cannot manage deploy keys, CI variables or
+  project access tokens. Don't route work around it on the assumption that it is
+  root, and don't treat it as root-equivalent. Verify with `pl secrets capabilities`,
+  never from memory.
+- **`stored_in` is a grammar, not prose.** `<path>:<ref>` · `host=<role>:<path>:<ref>` ·
+  `external:<text>`. Anything else is a lint error, because a location the tooling
+  cannot parse is a location it silently stops checking. Notes go in `stored_in_notes:`.
+- **Recording a rotation requires having propagated it.** `pl secrets done` refuses to
+  stamp `last_rotated` while any declared copy still holds a different value.
 - **After any token change**, the registry must reflect reality: `pl secrets rotate`/`done`
   stamps `expires`/`last_rotated` and appends `private/rotation-YYYY-MM.md`; if you
   add/retire a token or change where it's stored or read, update its entry

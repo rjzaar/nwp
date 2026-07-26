@@ -22,8 +22,28 @@ sites/tmp/**
 # /private/ holds operator-private handoff packs (Coder/Greg setup script,
 # handbook, credentials). Defense in depth — explicit deny so even if a
 # later whitelist accidentally re-includes it, this stays ignored.
-private/
-private/**
+# Same shape as the sites/ block above: the FOLDER is walkable, its contents
+# are ignored. `private/` (a directory rule) would stop git descending at all
+# and make the negations below unreachable; `private/*/` keeps every
+# subdirectory ignored no matter what is whitelisted after it.
+!private/
+private/*
+private/*/
+# …with two VALUE-FREE exceptions. The token lifecycle's source of record and
+# its audit trail had no history and no replication at all, which is a poor
+# property for the thing that is supposed to be authoritative. These carry
+# metadata only — dates, ids, and which code reads which key — never a value.
+!private/token-consumers.md
+!private/rotation-*.md
+# NOTE (item 1, secrets-registry-truth): private/secrets-registry.yml is the
+# third candidate and is deliberately still ignored. It names live GitLab bot
+# ACCOUNTS, several of which are role-bound host names that the leakage gate's
+# internal-bare-hostname rule flags (5 findings). Those account names cannot be
+# genericised without destroying the registry-id <-> live-account crosswalk the
+# registry exists to hold, so un-ignoring it needs .gitleaksignore fingerprints
+# — and .gitleaksignore belongs to the leakage-gate work item. Land that first,
+# then add `!private/secrets-registry.yml` here. `pl secrets migrate-registry`
+# already does the host-placeholder half of the job.
 
 # Command entry points
 # Users run ./setup.sh to bootstrap

@@ -1,0 +1,341 @@
+#!/usr/bin/env bash
+################################################################################
+# lib/site-containment.sh — nested-repo containment
+#
+# NWP's v2 site layout puts real git repositories underneath sites/:
+#   sites/<name>/dev/.git, .../stg/.git, .../backups/.git,
+#   .../dev/html/profiles/custom/<x>/.git, .../.plugin-src/*/.git
+# The repo-root gitleaks gate and the repo-root pre-commit hook do not cover
+# any of them. Containment therefore has to be a property of each nested repo's
+# own ignore rules.
+#
+# This library provides the mechanism; `pl site gitignore` and `pl site vcs`
+# provide the operator surface, and scripts/commands/backup.sh calls
+# containment_assert_backup_path() before writing any artifact.
+#
+# Design notes:
+#   * Checks are BEHAVIOURAL, not textual. containment_check_repo asks
+#     `git check-ignore` whether a representative sensitive path would be
+#     committed, rather than grepping the .gitignore for a rule string. A
+#     comment cannot satisfy it, and an equivalent rule written differently
+#     still passes.
+#   * The rules live in templates/site-gitignore.tmpl, not in this file, so the
+#     scaffolder and the checker can never disagree.
+#   * containment_check_fleet fails on an EMPTY corpus. A containment sweep that
+#     scanned nothing must report "cannot verify", never "clean".
+################################################################################
+
+# Guard against double-sourcing.
+[ -n "${_NWP_SITE_CONTAINMENT_SOURCED:-}" ] && return 0
+_NWP_SITE_CONTAINMENT_SOURCED=1
+
+_CONTAINMENT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Marker wrapped around the managed block inside each repo's .gitignore.
+CONTAINMENT_BEGIN_MARKER='# >>> nwp containment (managed by `pl site gitignore --fix`) >>>'
+CONTAINMENT_END_MARKER='# <<< nwp containment <<<'
+
+################################################################################
+# Template access
+################################################################################
+
+# Absolute path to the containment template.
+containment_template_path() {
+    if [ -n "${NWP_CONTAINMENT_TEMPLATE:-}" ] && [ -f "$NWP_CONTAINMENT_TEMPLATE" ]; then
+        printf '%s\n' "$NWP_CONTAINMENT_TEMPLATE"
+        return 0
+    fi
+    local candidate="$_CONTAINMENT_LIB_DIR/../templates/site-gitignore.tmpl"
+    if [ -f "$candidate" ]; then
+        (cd "$(dirname "$candidate")" && printf '%s/%s\n' "$(pwd)" "$(basename "$candidate")")
+        return 0
+    fi
+    echo "ERROR: containment template not found (looked at $candidate)" >&2
+    return 1
+}
+
+# containment_render_section <site|backups>
+# Emit the rule lines for one section of the template (comments preserved).
+containment_render_section() {
+    local kind="${1:-}"
+    case "$kind" in
+        site|backups) ;;
+        *) echo "ERROR: unknown containment section '$kind' (want: site|backups)" >&2; return 2 ;;
+    esac
+
+    local tmpl
+    tmpl="$(containment_template_path)" || return 1
+
+    awk -v want="# ===== nwp:section:${kind} =====" '
+        $0 == want { inside = 1; next }
+        /^# ===== nwp:section:/ { if (inside) exit; next }
+        inside { print }
+    ' "$tmpl"
+}
+
+# containment_probe_paths <site|backups>
+# Representative paths that MUST be ignored for a repo of this kind. These are
+# what the behavioural check interrogates.
+containment_probe_paths() {
+    local kind="${1:-}"
+    case "$kind" in
+        site)
+            printf '%s\n' \
+                'html/sites/default/settings.php' \
+                'web/sites/default/settings.php' \
+                'oauth-keys/private.key' \
+                'auth.json' \
+                '.secrets.yml'
+            ;;
+        backups)
+            printf '%s\n' \
+                'nwp-containment-probe.sql' \
+                'nwp-containment-probe.sql.gz' \
+                'nwp-containment-probe.tar.gz' \
+                'nwp-containment-probe.manifest.json'
+            ;;
+        *)
+            echo "ERROR: unknown containment kind '$kind'" >&2; return 2 ;;
+    esac
+}
+
+################################################################################
+# Repo inspection
+################################################################################
+
+# containment_repo_kind <repo_path>
+# Infer which rule set applies. A directory literally named backups (the v2
+# per-site backup dir) is a backups repo; everything else is a site repo.
+containment_repo_kind() {
+    local repo="${1:-}"
+    case "$(basename "$repo")" in
+        backups|backup) echo "backups" ;;
+        *)              echo "site" ;;
+    esac
+}
+
+# containment_check_repo <repo_path> [kind]
+# Print the probe paths that would be COMMITTABLE. Non-zero if any are.
+containment_check_repo() {
+    local repo="${1:-}"
+    local kind="${2:-}"
+    [ -n "$kind" ] || kind="$(containment_repo_kind "$repo")"
+
+    if [ ! -d "$repo" ]; then
+        echo "ERROR: not a directory: $repo" >&2
+        return 2
+    fi
+    if ! git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
+        echo "ERROR: not a git repository: $repo" >&2
+        return 2
+    fi
+
+    local missing=0 probe
+    while IFS= read -r probe; do
+        [ -n "$probe" ] || continue
+        if ! git -C "$repo" check-ignore -q "$probe" 2>/dev/null; then
+            echo "LEAKABLE  ${repo}  ${probe}"
+            missing=$((missing + 1))
+        fi
+    done < <(containment_probe_paths "$kind")
+
+    [ "$missing" -eq 0 ]
+}
+
+# containment_fix_repo <repo_path> [kind]
+# Idempotently install/refresh the managed containment block in the repo's
+# .gitignore. Never removes or negates a pre-existing rule.
+containment_fix_repo() {
+    local repo="${1:-}"
+    local kind="${2:-}"
+    [ -n "$kind" ] || kind="$(containment_repo_kind "$repo")"
+
+    if [ ! -d "$repo" ]; then
+        echo "ERROR: not a directory: $repo" >&2
+        return 2
+    fi
+
+    local gi="$repo/.gitignore"
+    local section
+    section="$(containment_render_section "$kind")" || return 1
+
+    local desired
+    desired="$(
+        printf '%s\n' "$CONTAINMENT_BEGIN_MARKER"
+        printf '%s\n' "$section"
+        printf '%s\n' "$CONTAINMENT_END_MARKER"
+    )"
+
+    local existing="" preserved=""
+    if [ -f "$gi" ]; then
+        # Everything outside the managed block is preserved verbatim.
+        preserved="$(
+            awk -v b="$CONTAINMENT_BEGIN_MARKER" -v e="$CONTAINMENT_END_MARKER" '
+                $0 == b { skip = 1; next }
+                $0 == e { skip = 0; next }
+                !skip   { print }
+            ' "$gi"
+        )"
+        existing="$(cat "$gi")"
+    fi
+
+    local rebuilt
+    if [ -n "$preserved" ]; then
+        rebuilt="$(printf '%s\n\n%s\n' "$preserved" "$desired")"
+    else
+        rebuilt="$(printf '%s\n' "$desired")"
+    fi
+
+    # Idempotent: only write when the content actually changes.
+    if [ "$existing" = "$rebuilt" ]; then
+        return 0
+    fi
+
+    printf '%s\n' "$rebuilt" > "$gi" || return 1
+    return 0
+}
+
+################################################################################
+# Discovery
+################################################################################
+
+# containment_discover_repos <root>
+# Every nested git repo under <root>, one absolute path per line, sorted.
+# Skips vendor/, node_modules/, DDEV internals and agent worktrees.
+containment_discover_repos() {
+    local root="${1:-}"
+    [ -d "$root" ] || return 0
+
+    find "$root" \
+        \( -path '*/vendor/*' -o -path '*/node_modules/*' \
+           -o -path '*/.ddev/*' -o -path '*/.claude/*' \) -prune -o \
+        -name '.git' -print 2>/dev/null \
+    | while IFS= read -r gitpath; do
+        dirname "$gitpath"
+      done | sort -u
+}
+
+################################################################################
+# Fleet check
+################################################################################
+
+# containment_check_fleet [sites_root]
+# Check every discovered nested repo. Non-zero if ANY repo is leaky OR if the
+# corpus is empty (a sweep that scanned nothing has verified nothing).
+containment_check_fleet() {
+    local root="${1:-}"
+    if [ -z "$root" ]; then
+        root="${NWP_DIR:-${PROJECT_ROOT:-.}}/sites"
+    fi
+
+    local repos=() r
+    while IFS= read -r r; do
+        [ -n "$r" ] && repos+=("$r")
+    done < <(containment_discover_repos "$root")
+
+    if [ "${#repos[@]}" -eq 0 ]; then
+        echo "CANNOT VERIFY: containment scan found zero git repositories under '$root'."
+        echo "  A containment sweep that scanned nothing has verified nothing."
+        echo "  (In CI, sites/ is gitignored and therefore absent — this check belongs"
+        echo "   on a host where the fleet exists, surfaced via pl todo / pl rag.)"
+        return 3
+    fi
+
+    local leaky=0
+    for r in "${repos[@]}"; do
+        if ! containment_check_repo "$r" 2>/dev/null; then
+            leaky=$((leaky + 1))
+        fi
+    done
+
+    echo "scanned ${#repos[@]} nested repositories under '$root'; ${leaky} leaky"
+    [ "$leaky" -eq 0 ]
+}
+
+################################################################################
+# Backup-write guard
+################################################################################
+
+# containment_assert_backup_path <dir>
+# Refuse to write backup artifacts into a directory that sits inside a git work
+# tree with a configured remote, unless dumps/tarballs are already ignored
+# there. Fail closed.
+containment_assert_backup_path() {
+    local dir="${1:-}"
+    [ -n "$dir" ] || return 0
+
+    if [ "${NWP_ALLOW_BACKUP_IN_REPO:-0}" = "1" ]; then
+        echo "WARNING: NWP_ALLOW_BACKUP_IN_REPO=1 — containment guard bypassed for '$dir'." >&2
+        echo "WARNING: backup artifacts may become committable in an enclosing git repo." >&2
+        return 0
+    fi
+
+    # Walk up to the nearest existing ancestor so the guard works before mkdir.
+    local probe_dir="$dir"
+    while [ -n "$probe_dir" ] && [ ! -d "$probe_dir" ]; do
+        local parent
+        parent="$(dirname "$probe_dir")"
+        [ "$parent" = "$probe_dir" ] && break
+        probe_dir="$parent"
+    done
+    [ -d "$probe_dir" ] || return 0
+
+    local toplevel
+    toplevel="$(git -C "$probe_dir" rev-parse --show-toplevel 2>/dev/null)" || return 0
+    [ -n "$toplevel" ] || return 0
+
+    # No remote means nothing to publish to; a local-only repo is not a
+    # disclosure path.
+    local remotes
+    remotes="$(git -C "$toplevel" remote 2>/dev/null)"
+    [ -n "$remotes" ] || return 0
+
+    local committable=() p
+    for p in nwp-containment-probe.sql nwp-containment-probe.sql.gz nwp-containment-probe.tar.gz; do
+        if ! git -C "$probe_dir" check-ignore -q "${probe_dir}/${p}" 2>/dev/null; then
+            committable+=("$p")
+        fi
+    done
+
+    # SELF-REMEDIATION: when the backup directory IS the repository root (the
+    # sites/<n>/backups/ shape that lib/git.sh created), the containment block
+    # can simply be installed and the backup allowed to proceed. Installing an
+    # ignore rule is additive and cannot untrack an already-tracked file, so
+    # this is safe and it keeps the nightly sweep working. Anything else — a
+    # backup dir buried inside a site or profile repo — still fails closed.
+    if [ "${#committable[@]}" -gt 0 ] && [ "$toplevel" = "$probe_dir" ]; then
+        if containment_fix_repo "$probe_dir" backups 2>/dev/null; then
+            committable=()
+            for p in nwp-containment-probe.sql nwp-containment-probe.sql.gz nwp-containment-probe.tar.gz; do
+                if ! git -C "$probe_dir" check-ignore -q "${probe_dir}/${p}" 2>/dev/null; then
+                    committable+=("$p")
+                fi
+            done
+            if [ "${#committable[@]}" -eq 0 ]; then
+                echo "NOTE: installed the nwp containment block in ${probe_dir}/.gitignore" >&2
+                echo "      (backup payloads were committable in a repo with a remote)." >&2
+                echo "      Already-committed artifacts are unaffected — removing those is a" >&2
+                echo "      history rewrite and stays operator-gated." >&2
+                return 0
+            fi
+        fi
+    fi
+
+    if [ "${#committable[@]}" -gt 0 ]; then
+        echo "ERROR: refusing to write backups into a publishable git work tree." >&2
+        echo "  backup dir : $dir" >&2
+        echo "  work tree  : $toplevel" >&2
+        echo "  remote(s)  : $(printf '%s ' $remotes)" >&2
+        echo "  committable: ${committable[*]}" >&2
+        echo "" >&2
+        echo "  Backups hold UNSANITISED member data. Writing them where a" >&2
+        echo "  'git add -A' would stage them puts production data one command" >&2
+        echo "  away from the forge." >&2
+        echo "" >&2
+        echo "  Fix:      pl site gitignore --fix" >&2
+        echo "  Override: NWP_ALLOW_BACKUP_IN_REPO=1 (recorded, one release only)" >&2
+        return 1
+    fi
+
+    return 0
+}

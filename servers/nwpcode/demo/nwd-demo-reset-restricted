@@ -35,6 +35,21 @@
 #   [G6] Single-flight: flock, so overlapping invocations cannot interleave.
 #   [G7] Every invocation (accepted or refused) appends one line to LOG_FILE.
 #   [G8] Non-zero exit on failure; 3 = "active, retry"; 0 = reset done/no-op.
+#   [G9] FATE MANIFEST (ops#47 impact contract, ops#143). Nothing destructive
+#        runs until the manifest below has been printed AND logged, naming every
+#        component and its fate with sizes read live off this box. `dry-run`
+#        prints exactly the same manifest and stops — so a dry run is a truthful
+#        preview, not a different code path. There is no prompt here (the caller
+#        is met's cron over a forced command, never a human at a TTY), so the
+#        manifest is the whole of the contract: `-y` skips the PROMPT, never the
+#        REPORT, and here there is only report.
+#
+# impact-contract: inline
+#   This script is DEPLOYED TO A BOX WITH NO REPO CHECKOUT, so it cannot source
+#   lib/impact.sh. It therefore renders the manifest itself; the pragma above is
+#   what tells tests/unit/test-impact-contract.bats to expect an inline
+#   `FATE MANIFEST` block rather than a source of the lib. The pragma ALONE does
+#   not satisfy the gate — the manifest has to actually be there.
 #
 # NOT GUARANTEED (honest gaps — see docs/guides/demo-nightly-on-met.md §Gaps)
 #   * The script runs AS `gitlab`, which has NOPASSWD sudo, and it uses sudo for
@@ -260,9 +275,68 @@ if ! idle_ok "$NEWEST"; then
 fi
 echo "OK  idle for >= $(( IDLE_WINDOW / 60 )) min (newest=${NEWEST})"
 
+################################################################################
+# [G9] FATE MANIFEST — printed and logged BEFORE anything destructive runs.
+#
+# Every figure is read live off this box (du, drush, jq, stat). Nothing here is
+# assumed: if a size cannot be read the field says "?" rather than a guess, so
+# the manifest can never overstate how much is known. Rendering must never be
+# able to abort the reset, hence the `|| true` discipline throughout.
+################################################################################
+
+_size_of() {   # human size of a path, or "?" — never fails
+    du -sh "$1" 2>/dev/null | awk '{print $1}' || true
+}
+
+render_fate_manifest() {
+    local db_bytes db_size files_size code_count golden_captured
+    db_bytes="$(drush sqlq "SELECT COALESCE(SUM(data_length+index_length),0) FROM information_schema.TABLES WHERE table_schema=DATABASE()" 2>/dev/null | tr -dc '0-9')"
+    if [[ -n "$db_bytes" ]]; then
+        db_size="$(numfmt --to=iec --suffix=B "$db_bytes" 2>/dev/null || echo "${db_bytes}B")"
+    else
+        db_size="?"
+    fi
+    files_size="$(_size_of "${FILES_PARENT}/files")"
+    golden_captured="$(jq -r '.captured_utc // "?"' "${GOLDEN_DIR}/golden.manifest.json" 2>/dev/null || echo '?')"
+    if [[ -s "$CODES_PAYLOAD" ]]; then
+        code_count="$(jq -r '.codes | length' "$CODES_PAYLOAD" 2>/dev/null || echo '?')"
+    else
+        code_count="not-staged"
+    fi
+
+    echo ""
+    echo "FATE MANIFEST — ${SITE} (${DOMAIN}) demo reset, action=${ACTION}"
+    echo "  source of truth: golden image ${GOLDEN_DIR} (captured ${golden_captured}, sha256 verified)"
+    echo ""
+    echo "WILL BE PERMANENTLY DELETED:"
+    echo "    Uploads:    ${FILES_PARENT}/files (${files_size:-?}) — removed, then replaced from golden."
+    echo "                Anything a tester uploaded since the last reset is GONE; there is no copy."
+    echo "    Watchdog:   the dblog table — a digest is harvested to ${HARVEST_DIR} first (best effort)."
+    echo ""
+    echo "WILL BE OVERWRITTEN:"
+    echo "    Database:   ${SITE} (${db_size}) — dropped and reloaded from ${GOLDEN_DB}."
+    echo "                All demo accounts, content and sessions revert to the golden state."
+    echo "    Demo users: reseeded by 'drush nwc:seed-demo'."
+    echo "    Invite codes: staged payload holds ${code_count} code(s) — the staged payload is"
+    echo "                AUTHORITATIVE and replaces whatever the site currently has."
+    echo ""
+    echo "NOT AFFECTED:"
+    echo "    • the golden image itself (read-only here; a failed restore leaves it intact)"
+    echo "    • every other site on this box — SITE_ROOT is hard-wired to ${SITE_ROOT} [G2]"
+    echo "      and the live site was re-checked to report demo_mode=true"
+    echo "    • plaintext invite codes — only hashes ever exist on this box"
+    echo "    • ${LOG_FILE} and the harvest digests"
+    echo ""
+
+    log "fate-manifest" "action=${ACTION} db=${db_size} files=${files_size:-?} codes=${code_count} golden=${golden_captured}"
+}
+
+render_fate_manifest || log "fate-manifest-failed" "non-fatal — proceeding"
+
 if [[ "$ACTION" == "dry-run" ]]; then
     log "dry-run-ok" "all guards passed; nothing changed"
-    echo "OK  DRY RUN — all guards passed. Nothing was changed."
+    echo "OK  DRY RUN — all guards passed and the manifest above is what a real run would do."
+    echo "OK  Nothing was changed."
     exit 0
 fi
 

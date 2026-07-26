@@ -1,3 +1,17 @@
+# PHPStan config for a DRUPAL SITE CHECKOUT, not for the NWP tool repo.
+#
+# The paths below (web/modules/custom, web/themes/custom) are a Drupal docroot
+# layout. This repo has no web/ directory, so running phpstan here fails with a
+# path error — which is exactly what made .hooks/pre-commit unpassable until it
+# learned to self-disable (it now requires web/modules/custom to exist before
+# invoking phpstan at all).
+#
+# Where this file is actually consumed: `pl dev2stg -t essential|full` →
+# lib/testing.sh run_phpstan(), which cd's into the SITE path and runs
+# `ddev exec vendor/bin/phpstan analyse` against that site's own
+# phpstan.neon. Treat this copy as the template for that per-site config.
+# Do not "fix" the paths to point at something in the tool repo: there is no
+# PHP application here to analyse.
 parameters:
     level: 5
     paths:

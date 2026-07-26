@@ -1,377 +1,130 @@
 # Git Hooks
 
-Git hooks are automated scripts that run at specific points in the Git workflow. NWP uses git hooks to enforce code quality standards and prevent common mistakes.
-
-## Overview
-
-NWP provides two git hooks:
-
-| Hook | When it Runs | Purpose |
-|------|--------------|---------|
-| `pre-commit` | Before each commit | Validates files, checks documentation dates, prevents committing protected files |
-| `commit-msg` | After commit message entry | Validates commit message format and length |
-
-## Pre-commit Hook
-
-**Location:** `.git/hooks/pre-commit`
-
-The pre-commit hook runs automatically before each commit and performs the following checks:
-
-### 1. Protected File Check
-
-**Prevents committing `nwp.yml`**
-
-The `nwp.yml` file contains user-specific site configurations and must never be committed to git.
-
-```
-ERROR: Attempting to commit nwp.yml
-
-nwp.yml contains user-specific site configurations and must never be committed.
-
-If you need to update the configuration template:
-  - Edit example.nwp.yml instead
-  - Each user has their own local nwp.yml file
-
-To unstage nwp.yml:
-  git reset HEAD nwp.yml
-```
-
-**Why this exists:**
-- `nwp.yml` is in `.gitignore` for a reason
-- Each user has their own local site configurations
-- `example.nwp.yml` serves as the template for new installations
-- Users copy `example.nwp.yml` to `nwp.yml` and customize it
-
-### 2. Documentation Date Check
-
-**Warns about stale "Last Updated" dates**
-
-For any `.md` file in the `docs/` directory being committed, the hook checks:
-- Does the file have a "Last Updated" date?
-- Is the date more than 7 days old?
-
-```
-WARNING: docs/guides/quickstart.md
-  Last Updated: 2025-12-15 (more than 7 days old)
-  Consider updating the date to: 2026-01-14
-```
-
-**Why this exists:**
-- Keeps documentation dates accurate
-- Helps users know if documentation is current
-- Encourages updating docs when making changes
-
-**Note:** This is a warning only. Commits will still proceed, but you should consider updating the date if the content has changed.
-
-### 3. Command Documentation Structure
-
-**Validates required sections in command documentation**
-
-For files in `docs/reference/commands/` (excluding README.md), the hook checks for:
-- Overview or Description section
-- Usage or Syntax section
-- Examples section
-
-```
-WARNING: docs/reference/commands/backup.md
-  Missing recommended sections:
-  - Examples section
-```
-
-**Why this exists:**
-- Ensures consistent documentation structure
-- Makes command documentation more useful
-- Helps contributors know what to include
-
-**Note:** This is a warning only. Commits will proceed even with missing sections.
-
-### Sample Output
-
-**Success (no issues):**
-```
-Running NWP pre-commit checks...
-
-Checking Last Updated dates in documentation files...
-
-Validating command documentation structure...
-
-All pre-commit checks passed!
-```
-
-**With warnings:**
-```
-Running NWP pre-commit checks...
-
-Checking Last Updated dates in documentation files...
-WARNING: docs/guides/quickstart.md
-  Last Updated: 2025-12-15 (more than 7 days old)
-  Consider updating the date to: 2026-01-14
-
-Pre-commit checks passed with 1 warning(s)
-
-Warnings are advisory only. Commit will proceed.
-To bypass warnings in the future: git commit --no-verify
-```
-
-**With errors:**
-```
-Running NWP pre-commit checks...
-
-ERROR: Attempting to commit nwp.yml
-
-nwp.yml contains user-specific site configurations and must never be committed.
-
-Pre-commit check failed with 1 error(s)
-
-To bypass this hook (not recommended):
-  git commit --no-verify
-```
-
-## Commit-msg Hook
-
-**Location:** `.git/hooks/commit-msg`
-
-The commit-msg hook runs after you enter your commit message and validates the message format.
-
-### Validations
-
-#### 1. Non-empty Message
-
-Commit messages must not be empty.
-
-```
-ERROR: Empty commit message
-
-Commit messages must not be empty.
-
-Please provide a meaningful commit message describing your changes.
-```
-
-#### 2. Minimum Length
-
-The first line must be at least 10 characters.
-
-```
-ERROR: Commit message too short
-
-First line: "Fix bug"
-Length: 7 characters
-
-Commit messages should be at least 10 characters to be meaningful.
-
-Good examples:
-  - Fix backup restoration for staging sites
-  - Add validation to dev2stg workflow
-  - Update documentation for install command
-```
-
-#### 3. Maximum Length
-
-The first line must not exceed 500 characters.
-
-```
-ERROR: Commit message first line too long
-
-First line length: 523 characters
-
-The first line should be a concise summary (< 500 characters).
-Use additional lines for detailed explanation.
-```
-
-#### 4. Conventional Length Warning
-
-If the first line exceeds 72 characters (Git convention), you'll get a warning:
-
-```
-WARNING: Commit message first line is long (95 chars)
-
-Convention suggests keeping the first line under 72 characters.
-This is advisory only - commit will proceed.
-```
-
-**Note:** This is a warning only. Commits will still proceed.
-
-### Sample Output
-
-**Success:**
-```
-(No output - commit proceeds normally)
-```
-
-**With error:**
-```
-ERROR: Commit message too short
-
-First line: "Fix bug"
-Length: 7 characters
-
-Commit messages should be at least 10 characters to be meaningful.
-```
-
-## Bypassing Hooks
-
-In rare cases, you may need to bypass git hooks. Use the `--no-verify` flag:
+Git hooks run automatically at points in the git workflow. NWP uses the
+[pre-commit](https://pre-commit.com) framework as the single entry point, so
+there is exactly one installed hook file and everything else is declared in
+`.pre-commit-config.yaml`.
+
+## Installation
 
 ```bash
-git commit --no-verify -m "Emergency fix"
+pipx install pre-commit    # once per machine
+pre-commit install         # once per clone — writes .git/hooks/pre-commit
 ```
 
-### When to Bypass
+`.git/hooks/` is not tracked by git, so every fresh clone (and anyone who has
+never run `pre-commit install`) has **no** hooks at all. `pre-commit install`
+writes a small shim into `.git/hooks/pre-commit`; that shim dispatches to every
+hook declared in `.pre-commit-config.yaml`. See CONTRIBUTING.md.
 
-**Legitimate reasons:**
-- Emergency hotfix that needs immediate deployment
-- Committing work-in-progress to a feature branch
-- Automated commits from CI/CD systems
-- When hooks are genuinely incorrect (then fix the hook!)
+## What runs on commit
 
-**Not legitimate reasons:**
-- "The hook is annoying"
-- "I don't want to update the date"
-- "My commit message is fine" (when it's actually too short)
+| Hook | What it does | Blocks the commit? |
+|------|--------------|--------------------|
+| `gitleaks` | Scans the staged diff against `.gitleaks.toml` (operator-specific identifiers + credential patterns) | Yes, on a hit |
+| `syntax-gate` (`.hooks/pre-commit`) | Syntax-checks staged shell, bats and PHP | Yes, on a syntax error |
 
-### Best Practice
+### syntax-gate — `.hooks/pre-commit`
 
-If you find yourself frequently using `--no-verify`:
-1. Consider whether the hook is overly strict
-2. Open an issue to discuss adjusting the hook
-3. Submit a PR to improve the hook logic
+Two rules, deliberately pulling in opposite directions:
 
-## Hook Installation
+- **Fail-closed on a real syntax error** in a file you are about to commit.
+- **Fail-open when a linter is merely absent** — one skip line, exit 0.
 
-Git hooks in `.git/hooks/` are **not** tracked by Git. They are installed automatically by:
+| Staged file | Check | If the tool is missing |
+|-------------|-------|------------------------|
+| `*.sh`, `*.bash`, `pl`, extensionless files with a `sh`/`bash` shebang | `bash -n` | n/a — bash is always present |
+| `*.bats` | `bats --count` (a `.bats` file is *not* valid bash, so `bash -n` would raise a false failure) | one skip line, commit proceeds |
+| `*.php`, `*.module`, `*.inc`, `*.install`, `*.theme`, `*.profile`, `*.engine` | `php -l`, then `phpcs --standard=Drupal,DrupalPractice` | one skip line each, commit proceeds |
+| PHP, **only in a real Drupal checkout** (`web/modules/custom` exists and `phpstan.neon` is present) | `phpstan analyse` | one skip line, commit proceeds |
 
-1. **Initial setup:** Running `./pl setup` copies hooks to `.git/hooks/`
-2. **Manual installation:** Copy hooks from `.hooks/` (if we add that directory)
+It checks the **staged** content (`git show :path`), not the worktree — that is
+what the commit will actually record — and reports the real repo-relative path
+and line number, not the temporary file it used.
 
-**Current approach:** Hooks are created directly in `.git/hooks/` and documented here.
+`phpcs`/`phpstan` are looked up on `PATH` first, then in `./vendor/bin`.
+
+**Sample output** (a machine with no PHP toolchain, staging a `.php` file):
+
+```
+phpcs not installed — skipping Drupal coding-standard check.
+Syntax checks passed.
+```
+
+**Sample failure:**
+
+```
+Shell syntax error: lib/broken.sh
+  lib/broken.sh: line 4: syntax error: unexpected end of file
+Pre-commit refused the commit: 1 file(s)/check(s) failed.
+Fix the syntax above. --no-verify exists but also skips the leak gate.
+```
+
+Covered by `tests/unit/test-precommit-hook.bats`.
+
+#### Why the fail-open rule is load-bearing
+
+Until 2026-07 this hook hard-`exit 1`d whenever `phpcs` or `phpstan` was simply
+not installed, and then ran `phpstan analyse --configuration=phpstan.neon`,
+whose paths (`web/modules/custom`, `web/themes/custom`) do not exist in the NWP
+tool repo. No commit staging a `.php` file could pass, on any machine without a
+Drupal toolchain. The rational response was `git commit --no-verify` — which
+also skips the gitleaks leak gate sitting next to it. A gate nobody can pass is
+a gate nobody runs, and it silently takes the gate beside it down with it.
+
+## Bypassing hooks
+
+```bash
+git commit --no-verify -m "..."
+```
+
+`--no-verify` disables **all** hooks, including the leak gate — it is not a way
+to skip one noisy check. The CI leakage gate in `.gitlab-ci.yml` is not
+bypassable, so anything `--no-verify` lets through is caught later and louder.
+
+If you find yourself reaching for `--no-verify` routinely, the hook is wrong:
+fix the hook (and add a case to `tests/unit/test-precommit-hook.bats`).
+
+## Running hooks manually
+
+```bash
+pre-commit run --all-files                # every hook, every file
+pre-commit run syntax-gate --all-files
+bash .hooks/pre-commit                    # just the syntax gate, against the index
+bash .hooks/pre-commit lib/foo.sh         # against explicit files (worktree content)
+```
+
+## Not installed (documented here historically, never implemented)
+
+Earlier versions of this page described a `pre-commit` hook that blocked
+committing `nwp.yml` and warned about stale "Last Updated" dates, plus a
+`commit-msg` hook validating message length. **No such hooks exist in this
+repository** — there is no code for them anywhere in the tree, and
+`.git/hooks/commit-msg` is not installed. Those claims are removed rather than
+reimplemented, so this page describes only what actually runs.
+
+`nwp.yml` is protected by `.gitignore` (`**/nwp.yml`), not by a hook; committing
+it requires an explicit `git add -f`.
 
 ## Troubleshooting
 
-### Hook Not Running
+**Hooks do not run at all.** You have not run `pre-commit install` in this
+clone. Check `cat .git/hooks/pre-commit` — it should be the generated pre-commit
+shim. Worktrees share `.git/hooks` with their parent repository.
 
-If hooks don't run automatically:
+**`.hooks/pre-commit` is not executable.** `chmod +x .hooks/pre-commit` (the
+`language: script` hook type runs the file directly).
 
-1. **Check if executable:**
-   ```bash
-   ls -la .git/hooks/pre-commit
-   ls -la .git/hooks/commit-msg
-   ```
-
-   Should show `-rwxr-xr-x` (executable permissions).
-
-2. **Make executable:**
-   ```bash
-   chmod +x .git/hooks/pre-commit
-   chmod +x .git/hooks/commit-msg
-   ```
-
-3. **Verify hook exists:**
-   ```bash
-   cat .git/hooks/pre-commit
-   cat .git/hooks/commit-msg
-   ```
-
-### Hook Reports Wrong Date
-
-If the date check fails incorrectly:
-
-1. **Check system date:**
-   ```bash
-   date +%Y-%m-%d
-   ```
-
-2. **Check date format in file:**
-   Must be `YYYY-MM-DD` format, e.g., `2026-01-14`
-
-3. **Common patterns recognized:**
-   - `Last Updated: 2026-01-14`
-   - `Updated: 2026-01-14`
-   - Case-insensitive
-
-### Hook Fails on Bash Syntax
-
-If you see errors like `date: invalid option`:
-
-1. **Check Bash version:**
-   ```bash
-   bash --version
-   ```
-
-   Hooks require Bash 4.0+.
-
-2. **Verify date command:**
-   ```bash
-   date -d "2026-01-14" +%s
-   ```
-
-   Should output Unix timestamp.
-
-### Disabling Hooks Temporarily
-
-To temporarily disable hooks during development:
-
-```bash
-# Rename hooks
-mv .git/hooks/pre-commit .git/hooks/pre-commit.disabled
-mv .git/hooks/commit-msg .git/hooks/commit-msg.disabled
-
-# Re-enable later
-mv .git/hooks/pre-commit.disabled .git/hooks/pre-commit
-mv .git/hooks/commit-msg.disabled .git/hooks/commit-msg
-```
-
-Or use `--no-verify` on individual commits.
-
-## Customizing Hooks
-
-### Adjusting Date Warning Threshold
-
-Edit `.git/hooks/pre-commit` and change:
-
-```bash
-seven_days_ago=$((current_timestamp - 604800))  # 7 days in seconds
-```
-
-To a different value:
-- 1 day: 86400
-- 3 days: 259200
-- 14 days: 1209600
-- 30 days: 2592000
-
-### Adding New Protected Files
-
-To prevent committing additional files, add to the pre-commit hook:
-
-```bash
-if git diff --cached --name-only | grep -q "^.secrets.yml$"; then
-    echo -e "${RED}ERROR: Attempting to commit .secrets.yml${NC}"
-    # ... error message ...
-    errors=$((errors + 1))
-fi
-```
-
-### Adding Custom Validations
-
-Add new validation sections following the existing pattern:
-
-```bash
-# ============================================================================
-# Check 4: Your Custom Check
-# ============================================================================
-
-# Your validation logic here
-if [ condition ]; then
-    echo -e "${RED}ERROR: Description${NC}"
-    errors=$((errors + 1))
-fi
-```
+**The gate refuses a file you believe is fine.** Reproduce it exactly:
+`bash -n <file>`. If `bash -n` is happy and the hook is not, the hook has a bug
+— that is a test case, not a `--no-verify`.
 
 ## Related Documentation
 
-- [CLAUDE.md](../../CLAUDE.md) - Protected files and git commit workflow
-- [Developer Workflow](../guides/developer-workflow.md) - Complete development lifecycle
-- [Contribution Workflow](../governance/distributed-contribution-governance.md) - Security review process
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) — install instructions and the leakage gate
+- [CLAUDE.md](../../CLAUDE.md) — protected files and commit workflow
+- [Developer Workflow](../guides/developer-workflow.md) — complete development lifecycle
 
 ---
 
-Last Updated: 2026-01-14
+Last Updated: 2026-07-26

@@ -375,3 +375,174 @@ EOF
     [[ "$output" == *"bad/dev"* ]]
     [[ "$output" != *"good/dev"* ]] || true
 }
+
+################################################################################
+# 7. ALREADY-TRACKED payloads — the half that ignore rules can never fix
+#
+# git ignores .gitignore for files it already tracks. So installing the
+# containment block makes a repo that has ALREADY committed (and pushed) a
+# production dump report perfectly clean. That is exactly sites/avc/backups
+# today: a 36 MB unsanitised SQL dump and a 363 MB files tarball, blob-for-blob
+# on git@forge.example.org:backups/avc-files.git.
+#
+# Containment therefore has two halves, and only one of them had a check:
+#   FUTURE — "could this be committed?"        -> containment_check_repo
+#   PAST   — "was this already published?"     -> the cases below
+################################################################################
+
+# Build a repo that has already committed a sensitive blob.
+_mkrepo_tracked() {
+    local dir="$1"; shift
+    mkdir -p "$dir"
+    git -C "$dir" init -q
+    git -C "$dir" config user.email t@example.org
+    git -C "$dir" config user.name test
+    local f
+    for f in "$@"; do
+        mkdir -p "$dir/$(dirname "$f")"
+        echo "sensitive" > "$dir/$f"
+    done
+    git -C "$dir" add -A -f >/dev/null 2>&1
+    git -C "$dir" commit -qm "committed" >/dev/null 2>&1
+}
+
+@test "tracked dump is EXPOSED even after the containment block is installed" {
+    source "$REPO_ROOT/lib/site-containment.sh"
+    _mkrepo_tracked "$TMP/tr1" "20260115T170824-main.sql"
+    git -C "$TMP/tr1" remote add origin git@forge.example.org:backups/avc-files.git
+    containment_fix_repo "$TMP/tr1" backups
+
+    # The FUTURE half is satisfied — which is exactly why the PAST half is needed.
+    run containment_check_repo "$TMP/tr1" backups
+    [ "$status" -eq 0 ]
+
+    run containment_check_tracked_repo "$TMP/tr1"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"EXPOSED"* ]]
+    [[ "$output" == *"20260115T170824-main.sql"* ]]
+}
+
+@test "tracked settings.php and private keys are EXPOSED" {
+    source "$REPO_ROOT/lib/site-containment.sh"
+    _mkrepo_tracked "$TMP/tr2" "html/sites/default/settings.php" "oauth-keys/private.key"
+    containment_fix_repo "$TMP/tr2" site
+    run containment_check_tracked_repo "$TMP/tr2"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"settings.php"* ]]
+    [[ "$output" == *"private.key"* ]]
+}
+
+@test "a repo tracking only ordinary code is NOT reported as exposed" {
+    source "$REPO_ROOT/lib/site-containment.sh"
+    _mkrepo_tracked "$TMP/tr3" "composer.json" "html/modules/custom/foo/foo.module" "README.md"
+    run containment_check_tracked_repo "$TMP/tr3"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"EXPOSED"* ]]
+}
+
+@test "exposure names the publish target, because a remote is what makes it disclosure" {
+    source "$REPO_ROOT/lib/site-containment.sh"
+    _mkrepo_tracked "$TMP/tr4" "dump.sql.gz"
+    git -C "$TMP/tr4" remote add origin git@forge.example.org:backups/avc-files.git
+    run containment_check_tracked_repo "$TMP/tr4"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"avc-files.git"* ]]
+}
+
+@test "fleet exposure scan fails closed on an empty corpus" {
+    source "$REPO_ROOT/lib/site-containment.sh"
+    mkdir -p "$TMP/tr5/sites"
+    run containment_check_tracked_fleet "$TMP/tr5/sites"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"CANNOT VERIFY"* ]]
+}
+
+@test "fleet exposure scan goes red on the one repo that published member data" {
+    source "$REPO_ROOT/lib/site-containment.sh"
+    mkdir -p "$TMP/tr6/sites"
+    _mkrepo_tracked "$TMP/tr6/sites/good/dev" "composer.json"
+    _mkrepo_tracked "$TMP/tr6/sites/bad/backups" "prod.sql"
+    run containment_check_tracked_fleet "$TMP/tr6/sites"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"bad/backups"* ]]
+    [[ "$output" == *"prod.sql"* ]]
+}
+
+@test "the backup guard WARNS about an exposed history but does not block backups" {
+    # Blocking would break nightly backups for avc, and the operator cannot
+    # clear the finding without a history rewrite. Loud, not fatal.
+    source "$REPO_ROOT/lib/site-containment.sh"
+    _mkrepo_tracked "$TMP/tr7" "old.sql"
+    git -C "$TMP/tr7" remote add origin git@forge.example.org:backups/avc-files.git
+    run containment_assert_backup_path "$TMP/tr7"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"EXPOSED"* ]] || [[ "$output" == *"already published"* ]]
+}
+
+################################################################################
+# 8. Signal quality — the exclusions must not become a blind spot
+#
+# A bare `*/settings.php` matched 300+ upstream Moodle plugin admin-settings
+# files across the real fleet, and `*.pem` matched every bundled CA cert. An
+# exposure report that emits hundreds of false lines is an alarm nobody reads,
+# which is a slower vacuous pass. But the cure is the more dangerous half: a
+# too-eager exclusion silently swallows the real dump. These cases pin BOTH
+# ends against the shapes actually measured on the fleet.
+################################################################################
+
+@test "upstream test fixtures and CA bundles are NOT reported as exposure" {
+    source "$REPO_ROOT/lib/site-containment.sh"
+    _mkrepo_tracked "$TMP/sq1" \
+        "web/core/modules/system/tests/fixtures/HtaccessTest/access_test.sql" \
+        "web/core/modules/update/tests/aaa_update_test.tar.gz" \
+        "lib/filestorage/tests/fixtures/test.tgz" \
+        "lib/cacert.pem" \
+        "lib/dml/oci_native_moodle_package.sql" \
+        "vendor/some/pkg/dump.sql"
+    run containment_check_tracked_repo "$TMP/sq1"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"EXPOSED"* ]]
+}
+
+@test "a Moodle plugin settings.php is not mistaken for a Drupal credential file" {
+    source "$REPO_ROOT/lib/site-containment.sh"
+    _mkrepo_tracked "$TMP/sq2" \
+        "mod/quiz/settings.php" "report/log/settings.php" "theme/boost/settings.php"
+    run containment_check_tracked_repo "$TMP/sq2"
+    [ "$status" -eq 0 ]
+}
+
+@test "the exclusions do NOT swallow a real dump sitting at the repo root" {
+    # sites/avc/backups shape: the payload is not under tests/ or vendor/.
+    source "$REPO_ROOT/lib/site-containment.sh"
+    _mkrepo_tracked "$TMP/sq3" \
+        "20260115T170824-main-99385c10.sql" \
+        "20260115T170824-main-99385c10.tar.gz" \
+        "web/core/modules/update/tests/aaa_update_test.tar.gz"
+    run containment_check_tracked_repo "$TMP/sq3"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"20260115T170824-main-99385c10.sql"* ]]
+    [[ "$output" == *"20260115T170824-main-99385c10.tar.gz"* ]]
+    [[ "$output" != *"aaa_update_test"* ]]
+}
+
+@test "the exclusions do NOT swallow a real Drupal settings.php" {
+    # sites/mayo/dev shape: tracked html/sites/default/settings.php.
+    source "$REPO_ROOT/lib/site-containment.sh"
+    _mkrepo_tracked "$TMP/sq4" \
+        "html/sites/default/settings.php" "mod/quiz/settings.php"
+    run containment_check_tracked_repo "$TMP/sq4"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"html/sites/default/settings.php"* ]]
+    [[ "$output" != *"mod/quiz"* ]]
+}
+
+@test "a dump under a directory merely NAMED like a fixture dir is still caught at root" {
+    # Guards the shrink-only intent: exclusions are path-anchored, so a payload
+    # committed at the top of a backups repo can never be excluded by them.
+    source "$REPO_ROOT/lib/site-containment.sh"
+    _mkrepo_tracked "$TMP/sq5" "prod-2026.sql.gz"
+    run containment_check_tracked_repo "$TMP/sq5"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"prod-2026.sql.gz"* ]]
+}

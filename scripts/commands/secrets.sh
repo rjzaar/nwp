@@ -257,46 +257,102 @@ cmd_get(){
 ################################################################################
 # rotate
 ################################################################################
-write_value_to_location(){ # $1=location ("file:key" or "~/path:VAR"); value in env NWP_NEWVAL
-  local loc="$1" path="${1%%:*}" ref="${1#*:}"
-  case "$loc" in
-    VERIFY:*|*"not in .secrets.yml"*|*"Moodle DB"*)
-      print_warning "  manual location (not auto-writable): $loc"; return 0 ;;
+# Write NWP_NEWVAL to ONE declared location.
+#
+# The path is resolved by exactly the same two helpers the READER uses —
+# `loc_parse` then `loc_abspath`. It used to do its own ad-hoc path handling
+# (`~` expansion and nothing else), so every RELATIVE location resolved against
+# the caller's working directory instead of the estate root. `pl` is on $PATH
+# and the project's standing rule is to work inside a `pl issue work` worktree,
+# so the working directory is essentially never the estate root: on the live
+# registry that mis-resolved 48 of the 49 declared copies of the composer
+# registry token — including the canonical `.secrets.yml` itself.
+#
+# A writer and a reader that disagree about where a value lives is the same
+# defect class as an audit that checks one location out of forty-nine: the
+# command reports on something other than the thing it claims to report on.
+# There is now exactly one resolver, so `audit`, `sync`, `done` and `rotate`
+# cannot disagree.
+#
+# rc: 0 written · 1 skipped BY DESIGN (external / another host) · 2 FAILED
+write_value_to_location(){ # $1=location; value in env NWP_NEWVAL
+  local loc="$1" kind host path ref f jtmp
+  IFS=$'\x1f' read -r kind host path ref < <(loc_parse "$loc")
+
+  case "$kind" in
+    external) print_info    "  SKIP     $loc  (declared unverifiable)"; return 1 ;;
+    bad)      print_error   "  BAD      $loc  (unparseable — see: pl secrets migrate-registry)"; return 2 ;;
   esac
-  path="${path/#\~/$HOME}"
-  if [ "$path" = "$SECRETS_FILE" ] || [[ "$path" == *.secrets*.yml ]] || [[ "$path" == *.yml ]]; then
-    [ -f "$path" ] || { print_warning "  missing $path"; return 1; }
-    NWP_NEWVAL="$NWP_NEWVAL" "$YQ" e -i ".$ref = strenv(NWP_NEWVAL)" "$path" \
-      && print_success "  updated $path : $ref" || { print_error "  yq write failed: $path"; return 1; }
-  elif [[ "$path" == *.json ]]; then
-    # JSON file (e.g. composer auth.json): $ref is a jq path expression, written verbatim
-    # (bracket form required for keys with dashes/dots, e.g. .["gitlab-token"]["<gitlab-host>"]).
-    command -v jq >/dev/null || { print_error "  jq required to write $path"; return 1; }
-    [ -f "$path" ] || { print_warning "  missing $path"; return 1; }
-    local jtmp; jtmp=$(mktemp)
-    if jq --arg v "$NWP_NEWVAL" "$ref = \$v" "$path" > "$jtmp" 2>/dev/null && [ -s "$jtmp" ]; then
-      chmod --reference="$path" "$jtmp" 2>/dev/null || chmod 600 "$jtmp"
-      mv "$jtmp" "$path" && print_success "  updated $path : $ref"
-    else
-      rm -f "$jtmp"; print_error "  jq write failed: $path : $ref"; return 1
-    fi
-  else
-    # env-style file: replace `export VAR=...` or `VAR=...`
-    [ -f "$path" ] || { print_warning "  missing $path"; return 1; }
-    if grep -qE "^(export )?$ref=" "$path"; then
+  if [ -n "$host" ]; then
+    print_info "  REMOTE   $loc  (on $host — propagate there, verify with: pl secrets verify-copy)"
+    return 1
+  fi
+
+  f=$(loc_abspath "$path")
+  [ -f "$f" ] || { print_error "  MISSING  $loc  -> $f"; return 2; }
+
+  case "$kind" in
+    yaml)
+      NWP_NEWVAL="$NWP_NEWVAL" "$YQ" e -i ".$ref = strenv(NWP_NEWVAL)" "$f" \
+        && { print_success "  WROTE    $loc"; return 0; } \
+        || { print_error   "  FAILED   $loc  (yq write)"; return 2; } ;;
+    json)
+      command -v jq >/dev/null || { print_error "  FAILED   $loc  (jq not installed)"; return 2; }
+      jtmp=$(mktemp)
+      if jq --arg v "$NWP_NEWVAL" "$ref = \$v" "$f" > "$jtmp" 2>/dev/null && [ -s "$jtmp" ]; then
+        chmod --reference="$f" "$jtmp" 2>/dev/null || chmod 600 "$jtmp"
+        mv "$jtmp" "$f" && { print_success "  WROTE    $loc"; return 0; }
+      fi
+      rm -f "$jtmp"; print_error "  FAILED   $loc  (jq write)"; return 2 ;;
+    env)
       # NOTE: this expression used to read `($1//"")`, which perl tokenises as an
       # empty match `//` rather than defined-or — it aborted with a compile error
-      # on EVERY invocation, so `pl secrets rotate` has never once written an
-      # env-style location. That is the mechanical reason
-      # `~/.nwp-agent-loop.env:GITLAB_TOKEN` drifted away from its canonical
-      # `.secrets.yml` value while the registry recorded a clean rotation.
-      NWP_REF="$ref" NWP_NEWVAL="$NWP_NEWVAL" perl -i -pe \
-        's/^(export\s+)?\Q$ENV{NWP_REF}\E=.*/(defined($1) ? $1 : "") . "$ENV{NWP_REF}=\"$ENV{NWP_NEWVAL}\""/e' "$path" \
-        && print_success "  updated $path : $ref" || { print_error "  write failed: $path"; return 1; }
-    else
-      print_warning "  $ref not present in $path (skipped)"
-    fi
-  fi
+      # on EVERY invocation, so `pl secrets rotate` never once wrote an env-style
+      # location. That is the mechanical reason `~/.nwp-agent-loop.env:GITLAB_TOKEN`
+      # drifted away from canonical while the registry recorded a clean rotation.
+      if grep -qE "^(export )?$ref=" "$f"; then
+        NWP_REF="$ref" NWP_NEWVAL="$NWP_NEWVAL" perl -i -pe \
+          's/^(export\s+)?\Q$ENV{NWP_REF}\E=.*/(defined($1) ? $1 : "") . "$ENV{NWP_REF}=\"$ENV{NWP_NEWVAL}\""/e' "$f" \
+          && { print_success "  WROTE    $loc"; return 0; } \
+          || { print_error   "  FAILED   $loc  (perl write)"; return 2; }
+      fi
+      # The variable is not in the file. Declaring a location and then not
+      # writing it is how the estate drifted; append it rather than "skip".
+      printf '%s="%s"\n' "$ref" "$NWP_NEWVAL" >> "$f" \
+        && { print_success "  WROTE    $loc  (appended — var was absent)"; return 0; } \
+        || { print_error   "  FAILED   $loc  (append)"; return 2; } ;;
+    file)
+      # `@file`: the whole file IS the value.
+      jtmp=$(mktemp)
+      printf '%s\n' "$NWP_NEWVAL" > "$jtmp" \
+        && chmod --reference="$f" "$jtmp" 2>/dev/null || chmod 600 "$jtmp"
+      mv "$jtmp" "$f" && { print_success "  WROTE    $loc"; return 0; }
+      rm -f "$jtmp"; print_error "  FAILED   $loc  (file write)"; return 2 ;;
+  esac
+  print_error "  FAILED   $loc  (no writer for kind '$kind')"; return 2
+}
+
+# Write NWP_NEWVAL to every declared location of an entry and REPORT HONESTLY.
+# Sets WAL_WROTE / WAL_SKIPPED / WAL_FAILED / WAL_TOTAL and prints one row per
+# location. rc 0 only when nothing failed.
+WAL_WROTE=0; WAL_SKIPPED=0; WAL_FAILED=0; WAL_TOTAL=0
+write_all_locations(){ # $1=idx
+  local idx="$1" loc
+  WAL_WROTE=0; WAL_SKIPPED=0; WAL_FAILED=0; WAL_TOTAL=0
+  print_info "  propagating to every declared location:"
+  while IFS= read -r loc; do
+    [ -z "$loc" ] && continue
+    WAL_TOTAL=$((WAL_TOTAL+1))
+    write_value_to_location "$loc"
+    case $? in
+      0) WAL_WROTE=$((WAL_WROTE+1)) ;;
+      1) WAL_SKIPPED=$((WAL_SKIPPED+1)) ;;
+      *) WAL_FAILED=$((WAL_FAILED+1)) ;;
+    esac
+  done < <(entry_locations "$idx")
+  printf "  %d/%d written · %d skipped by design · %d FAILED\n" \
+    "$WAL_WROTE" "$WAL_TOTAL" "$WAL_SKIPPED" "$WAL_FAILED"
+  [ "$WAL_FAILED" -eq 0 ]
 }
 
 stamp_registry(){ # $1=idx $2=expires-date
@@ -304,9 +360,10 @@ stamp_registry(){ # $1=idx $2=expires-date
   "$YQ" e -i ".secrets[$idx].last_rotated = \"$today\" | .secrets[$idx].expires = \"$exp\"" "$REGISTRY"
 }
 
-log_rotation(){ # $1=id $2=expires
+log_rotation(){ # $1=id $2=expires $3=optional marker (e.g. PARTIAL)
   [ -f "$ROT_LOG" ] || printf '# Credential rotation — %s\n\nDates only; never paste values.\n\n' "$(date +%Y-%m)" > "$ROT_LOG"
-  printf -- "- [x] %s — rotated %s, next expiry %s\n" "$1" "$(date +%F)" "$2" >> "$ROT_LOG"
+  printf -- "- [x] %s — rotated %s, next expiry %s%s\n" \
+    "$1" "$(date +%F)" "$2" "${3:+ — $3}" >> "$ROT_LOG"
 }
 
 rotate_one(){
@@ -351,27 +408,58 @@ rotate_one(){
     *) print_warning "unknown rotate_via '$via' — treating as manual" ;;
   esac
 
-  # hidden capture of the new value, write to all stored_in
-  local NWP_NEWVAL=""; read -r -s -p "  new value (hidden, Enter to skip write): " NWP_NEWVAL </dev/tty; echo
+  # hidden capture of the new value, write to EVERY stored_in
+  local NWP_NEWVAL="" partial=""
+  read -r -s -p "  new value (hidden, Enter to skip write): " NWP_NEWVAL </dev/tty; echo
   if [ -n "$NWP_NEWVAL" ]; then
     export NWP_NEWVAL
-    while IFS= read -r loc; do [ -n "$loc" ] && write_value_to_location "$loc"; done \
-      < <("$YQ" e ".secrets[$idx].stored_in[]" "$REGISTRY" 2>/dev/null)
+    write_all_locations "$idx"; local wrc=$?
     unset NWP_NEWVAL
+    if [ "$wrc" -ne 0 ]; then
+      # A rotation that reached 1 of 49 locations is a FAILED rotation. Stamping
+      # `last_rotated` here is what let the registry assert a clean rotation over
+      # 47 copies of the previous token — the record said "done" and the estate
+      # said otherwise, which is the exact failure this command exists to prevent.
+      print_error "$id: $WAL_FAILED of $WAL_TOTAL declared location(s) were NOT written."
+      if [ "$FORCE_ROTATE" != 1 ]; then
+        print_error "  NOT stamping the registry and NOT logging a rotation."
+        print_hint  "  fix the locations above, then:  pl secrets sync $id && pl secrets done $id"
+        print_hint  "  or, if the partial state is genuinely intended:  pl secrets rotate $id --force"
+        return 1
+      fi
+      print_warning "  --force given: recording a PARTIAL rotation."
+      partial="PARTIAL ($WAL_FAILED/$WAL_TOTAL location(s) not written)"
+    fi
   else
-    print_warning "  no value written (you updated it elsewhere)"
+    print_warning "  no value pasted — assuming you updated it elsewhere; verifying the estate agrees."
+    local drifted; drifted=$(entry_locations_in_sync "$idx" 2>&1 >/dev/null)
+    if [ -n "$drifted" ]; then
+      print_error "$id: these declared locations do NOT hold the canonical value:"
+      printf '    %s\n' $drifted
+      if [ "$FORCE_ROTATE" != 1 ]; then
+        print_error "  NOT stamping the registry and NOT logging a rotation."
+        print_hint  "  propagate first:  pl secrets sync $id"
+        return 1
+      fi
+      print_warning "  --force given: recording a PARTIAL rotation."
+      partial="PARTIAL (declared copies still drifted)"
+    fi
   fi
-  post_rotate "$idx" "$id" "$cadence"
+  post_rotate "$idx" "$id" "$cadence" "$partial"
 }
 
-post_rotate(){ # idx id cadence
-  local idx="$1" id="$2" cadence="$3" def exp
+post_rotate(){ # idx id cadence [partial-marker]
+  local idx="$1" id="$2" cadence="$3" partial="${4:-}" def exp
   def=$(date -d "+${cadence} days" +%F 2>/dev/null)
   read -r -p "  new expiry date [default $def]: " exp </dev/tty
   [ -z "$exp" ] && exp="$def"
   stamp_registry "$idx" "$exp"
-  log_rotation "$id" "$exp"
-  print_success "rotated $id — expiry recorded $exp (logged to ${ROT_LOG##*/})"
+  log_rotation "$id" "$exp" "$partial"
+  if [ -n "$partial" ]; then
+    print_warning "rotated $id — expiry recorded $exp, logged as $partial"
+  else
+    print_success "rotated $id — expiry recorded $exp (logged to ${ROT_LOG##*/})"
+  fi
 }
 
 run_cli_helper(){ # id cmd
@@ -406,30 +494,48 @@ api_rotate(){ # id idx provider  -> 0 on success
       unset onetime
       [ -z "$newtok" ] || [ "$newtok" = "null" ] && { print_error "  rotation API returned no token"; return 1; }
       export NWP_NEWVAL="$newtok"; newtok=""
-      while IFS= read -r loc; do [ -n "$loc" ] && write_value_to_location "$loc"; done \
-        < <("$YQ" e ".secrets[$idx].stored_in[]" "$REGISTRY" 2>/dev/null)
+      write_all_locations "$idx"; local wrc=$?
       unset NWP_NEWVAL
+      if [ "$wrc" -ne 0 ]; then
+        # The credential at the PROVIDER has already changed; the old one is
+        # dead. Saying so is the whole point — a half-propagated API rotation is
+        # the one case where silence actually breaks the estate.
+        print_error "  GitLab issued a NEW token but $WAL_FAILED of $WAL_TOTAL declared location(s) still hold the OLD one."
+        print_hint  "  the previous value is now invalid — repair before anything runs: pl secrets sync $id"
+        return 1
+      fi
       print_success "  GitLab token rotated via API (one-time credential discarded)"
       return 0 ;;
     *) return 1 ;;
   esac
 }
 
+FORCE_ROTATE=0
 cmd_rotate(){
   need_yq; need_registry
-  local target="${1:-}"; [ -n "$target" ] || die "usage: pl secrets rotate <id|--due|--all>"
+  local target="" a
+  for a in "$@"; do
+    case "$a" in
+      --force) FORCE_ROTATE=1 ;;
+      -*)      [ -z "$target" ] && target="$a" ;;   # --due / --all
+      *)       [ -z "$target" ] && target="$a" ;;
+    esac
+  done
+  [ -n "$target" ] || die "usage: pl secrets rotate <id|--due|--all> [--force]"
+  local rc=0
   if [ "$target" = "--due" ] || [ "$target" = "--all" ]; then
     local n i id exp d; n=$("$YQ" e '.secrets | length' "$REGISTRY")
     for ((i=0;i<n;i++)); do
       id=$(field "$i" id); exp=$(field "$i" expires)
       [ "$(field "$i" status)" = "not-provisioned" ] && continue
-      if [ "$target" = "--all" ]; then rotate_one "$id"; continue; fi
-      [ -z "$exp" ] || [ "$exp" = "unknown" ] && { rotate_one "$id"; continue; }
-      d=$(days_until "$exp"); [ "${d:-99}" -le 14 ] 2>/dev/null && rotate_one "$id"
+      if [ "$target" = "--all" ]; then rotate_one "$id" || rc=1; continue; fi
+      [ -z "$exp" ] || [ "$exp" = "unknown" ] && { rotate_one "$id" || rc=1; continue; }
+      d=$(days_until "$exp"); [ "${d:-99}" -le 14 ] 2>/dev/null && { rotate_one "$id" || rc=1; }
     done
   else
-    rotate_one "$target"
+    rotate_one "$target" || rc=1
   fi
+  return $rc
 }
 
 ################################################################################
@@ -953,12 +1059,13 @@ _probe_scopes(){ # idx provider value -> "" (ok) | "SCOPE-DRIFT(name exp!=got) �
 cmd_audit(){
   need_yq; need_registry
   command -v curl >/dev/null || die "curl required"
-  local WARN=14 SYNC=0 QUIET=0 LOCS=0 JSON=0
+  local WARN=14 SYNC=0 QUIET=0 LOCS=0 JSON=0 OFFLINE=0
   while [ $# -gt 0 ]; do case "$1" in
     --days) WARN="${2:-14}"; shift 2;;
     --sync) SYNC=1; shift;;
     --quiet|-q) QUIET=1; shift;;
     --locations|--all-locations) LOCS=1; shift;;
+    --offline|--no-probe) OFFLINE=1; LOCS=1; shift;;
     --json) JSON=1; QUIET=1; shift;;
     *) shift;; esac; done
 
@@ -966,7 +1073,11 @@ cmd_audit(){
   host_default=$("$YQ" e '.gitlab.server.domain // ""' "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
   # Reachability gate: if the GitLab host is DOWN, do NOT probe — every gitlab token
   # would false-positive as DEAD. Exit 2 = transient (cron/todo treat as "retry later").
-  if [ -n "$host_default" ]; then
+  # `--offline` answers the question that needs no network at all — "does every
+  # declared location hold the same value?" — without spending a probe. The
+  # provider rate-limits repeated auth probes and then answers 000, and a 000 is
+  # not a verdict; a check that cannot be repeated safely gets run less often.
+  if [ "$OFFLINE" = 0 ] && [ -n "$host_default" ]; then
     local _rc; _rc=$(curl -s -o /dev/null -w '%{http_code}' --max-time 12 "https://$host_default/api/v4/metadata" 2>/dev/null)
     if [ "$_rc" = "000" ]; then
       [ "$QUIET" = 0 ] && print_error "GitLab host $host_default unreachable — not probing (would false-positive). Try again later."
@@ -1009,7 +1120,10 @@ cmd_audit(){
       note="value not on this host"
     fi
 
-    if [ -n "$canonval" ]; then
+    if [ -n "$canonval" ] && [ "$OFFLINE" = 1 ]; then
+      canonhash=$(loc_hash "$canonval")
+      live="OFFLINE"; note="not probed (--offline) "
+    elif [ -n "$canonval" ]; then
       canonhash=$(loc_hash "$canonval")
       local nsc; nsc=$("$YQ" e ".secrets[$i].scopes // [] | length" "$REGISTRY" 2>/dev/null)
       if [ "${nsc:-0}" -eq 0 ]; then
@@ -1047,7 +1161,7 @@ cmd_audit(){
                  else
                    lstat="DRIFT"; drift=$((drift+1)); problems=$((problems+1))
                    # a drifted copy may ALSO be revoked — that is the composer case
-                   if [ "${nsc:-0}" -gt 0 ] 2>/dev/null; then
+                   if [ "$OFFLINE" = 0 ] && [ "${nsc:-0}" -gt 0 ] 2>/dev/null; then
                      IFS=$'\t' read -r lrc2 _ _ < <(_probe_value "$prov" "$host" "$lval")
                      [ "$lrc2" = "DEAD" ] && { lstat="DRIFT/DEAD"; dead=$((dead+1)); }
                    fi
@@ -1059,7 +1173,7 @@ cmd_audit(){
             lval=""
           fi ;;
       esac
-      lrows+=("${lstat}"$'\t'"${loc}")
+      lrows+=("${lstat}"$'\t'"${loc}"$'\t'"${lhash:--}")
     done < <(entry_locations "$i")
     canonval=""
 
@@ -1091,7 +1205,9 @@ cmd_audit(){
       for r in "${lrows[@]:-}"; do
         [ -z "$r" ] && continue
         [ "$first" = 1 ] || jl="${jl},"; first=0
-        jl="${jl}$(jq -cn --arg s "${r%%$'\t'*}" --arg l "${r#*$'\t'}" '{status:$s,location:$l}')"
+        local _rest="${r#*$'\t'}"
+        jl="${jl}$(jq -cn --arg s "${r%%$'\t'*}" --arg l "${_rest%$'\t'*}" --arg h "${_rest##*$'\t'}" \
+                     '{status:$s,location:$l,hash:$h}')"
       done
       [ -n "$jbuf" ] && jbuf="${jbuf},"
       jbuf="${jbuf}$(jq -cn --arg id "$id" --arg prov "$prov" --arg live "$live" \
@@ -1103,10 +1219,14 @@ cmd_audit(){
         "$id" "$prov" "$live" "${liveexp:--}" "${recorded:-unknown}" "${note}${nbad:+ [${nbad}/${nloc} locations bad]}"
       for r in "${lrows[@]:-}"; do
         [ -z "$r" ] && continue
-        local rs="${r%%$'\t'*}" rl="${r#*$'\t'}"
+        # row is "<status>\t<location>\t<hash-prefix>". The hash is a 64-bit
+        # SHA-256 prefix, printed so a human can verify propagation without the
+        # value ever being displayed, logged or put on a clipboard.
+        local rs="${r%%$'\t'*}" rest="${r#*$'\t'}" rl rh
+        rl="${rest%$'\t'*}"; rh="${rest##*$'\t'}"
         case "$rs" in
-          OK|EXTERNAL|REMOTE|UNVERIFIED) [ "$LOCS" = 1 ] && printf "      ${DIM}%-12s %s${NC}\n" "$rs" "$rl" ;;
-          *)                             printf "      ${RED}%-12s${NC} %s\n" "$rs" "$rl" ;;
+          OK|EXTERNAL|REMOTE|UNVERIFIED) [ "$LOCS" = 1 ] && printf "      ${DIM}%-12s %-16s %s${NC}\n" "$rs" "$rh" "$rl" ;;
+          *)                             printf "      ${RED}%-12s${NC} %-16s %s\n" "$rs" "$rh" "$rl" ;;
         esac
       done
     elif [ "$live" = "DEAD" ] || [ "$nbad" -gt 0 ] || { [ "$live" = "OK" ] && [ -n "$d" ] && [ "$d" -le "$WARN" ] 2>/dev/null; }; then
@@ -1145,24 +1265,50 @@ cmd_sync(){
     || die "$id: canonical location unreadable ($canon)"
 
   print_header "Sync $id — canonical: $canon"
-  local loc lkind lhost lpath lref lval n_ok=0 n_write=0 n_skip=0
+  local loc lkind lhost lpath lref lval n_ok=0 n_write=0 n_skip=0 n_fail=0
   while IFS= read -r loc; do
     [ -z "$loc" ] && continue
     [ "$loc" = "$canon" ] && continue
     IFS=$'\x1f' read -r lkind lhost lpath lref < <(loc_parse "$loc")
-    if [ "$lkind" = "external" ] || [ "$lkind" = "bad" ] || [ -n "$lhost" ]; then
-      print_warning "  skip (not writable from here): $loc"; n_skip=$((n_skip+1)); continue
+    if [ "$lkind" = "external" ] || [ -n "$lhost" ]; then
+      print_info "  SKIP     $loc  (not writable from here)"; n_skip=$((n_skip+1)); continue
+    fi
+    if [ "$lkind" = "bad" ]; then
+      # An unparseable location is not a location we may quietly leave alone —
+      # it is a declared copy the tooling has stopped checking.
+      print_error "  BAD      $loc  (unparseable — pl secrets migrate-registry)"; n_fail=$((n_fail+1)); continue
     fi
     lval=$(loc_read "$lkind" "$(loc_abspath "$lpath")" "$lref")
     if [ "$lval" = "$canonval" ]; then lval=""; n_ok=$((n_ok+1)); continue; fi
     lval=""
-    if [ "$DRY" = 1 ]; then print_info "  would update: $loc"; n_write=$((n_write+1)); continue; fi
-    NWP_NEWVAL="$canonval" write_value_to_location "$loc" && n_write=$((n_write+1))
+    if [ "$DRY" = 1 ]; then
+      # A dry run that cannot predict a failure is not a rehearsal. Check the
+      # thing the real write will check.
+      if [ ! -f "$(loc_abspath "$lpath")" ]; then
+        print_error "  WOULD FAIL  $loc  -> $(loc_abspath "$lpath") does not exist"
+        n_fail=$((n_fail+1))
+      else
+        print_info "  would update: $loc"; n_write=$((n_write+1))
+      fi
+      continue
+    fi
+    NWP_NEWVAL="$canonval" write_value_to_location "$loc"
+    case $? in 0) n_write=$((n_write+1)) ;; 1) n_skip=$((n_skip+1)) ;; *) n_fail=$((n_fail+1)) ;; esac
   done < <(entry_locations "$idx")
   canonval=""
-  printf "  %d already correct · %d %s · %d skipped\n" \
-    "$n_ok" "$n_write" "$([ "$DRY" = 1 ] && echo 'would update' || echo updated)" "$n_skip"
+  printf "  %d already correct · %d %s · %d skipped · %d FAILED\n" \
+    "$n_ok" "$n_write" "$([ "$DRY" = 1 ] && echo 'would update' || echo updated)" "$n_skip" "$n_fail"
   [ "$n_skip" -gt 0 ] && print_hint "remote/external copies: pl secrets verify-copy $id"
+  # `audit` tells the operator to run `sync`. If `sync` can return 0 having
+  # written nothing, the tool's own remedy is a silent no-op and the audit
+  # finding survives untouched — which is exactly what happened when every
+  # relative path resolved against $PWD.
+  if [ "$n_fail" -gt 0 ]; then
+    print_error "$id: $n_fail declared location(s) could NOT be written — canonical has NOT been propagated everywhere."
+    return 1
+  fi
+  [ "$DRY" = 1 ] && { print_info "$id: dry run — nothing was written"; return 0; }
+  print_success "$id: every writable declared location now holds the canonical value"
   return 0
 }
 
@@ -1983,15 +2129,25 @@ ${BOLD}pl secrets${NC} — registry-driven secret lifecycle (no token stored on 
   pl secrets keys                show .secrets.yml STRUCTURE (key paths, status, len) — NO values
   pl secrets set <dotted.key>    store a value via hidden entry (never echoed/logged)
   pl secrets scaffold            create registry-declared keys missing from .secrets.yml (empty)
-  pl secrets rotate <#|id>       guided/assisted rotation (hidden value entry; # from status)
+  pl secrets rotate <#|id>       guided/assisted rotation (hidden value entry; # from status).
+                                 FAIL-CLOSED: if any declared location cannot be written it
+                                 prints a per-location table, refuses to stamp the registry or
+                                 the rotation log, and exits 1. [--force] records a PARTIAL.
   pl secrets rotate --due        rotate everything expiring within 14 days / untracked
   pl secrets done <#|id> [date]  record a rotation you did by hand (stamps expiry + log)
   pl secrets get <dotted.key>    copy a value to the clipboard (never printed)
   pl secrets whose <#|id>        ask GitLab which user/bot/project owns the token
   pl secrets audit [--days N]    LIVE probe of EVERY declared location: valid? real expiry? drift?
-                                 [--locations] row per location · [--json] machine envelope
+                                 [--locations] row per location + SHA-256 prefix (never the value)
+                                 [--offline] compare locations WITHOUT spending a probe — the
+                                             provider rate-limits and then answers 000, and 000
+                                             is not a verdict
+                                 [--json] machine envelope
                                  [--sync] write live expiry back · [--quiet] for cron
-  pl secrets sync <#|id>         propagate the canonical value to every declared location (repair verb)
+  pl secrets sync <#|id>         propagate the canonical value to every declared location (repair
+                   [--dry-run]   verb). Exits 1 if any declared location could not be written —
+                                 `audit` points here, so a silent no-op would leave the finding
+                                 standing while reporting success.
   pl secrets adopt <dotted.key>  register a .secrets.yml key that lint reported as undeclared
   pl secrets discover-copies     find copies of a known credential the registry does NOT declare
   pl secrets verify-copy <#|id>  check host=… remote copies by SHA-256 over ssh (value never crosses)

@@ -16,7 +16,10 @@
 # =============================================================================
 
 pair: ssd-nwd                 # human label "<consumer>-<provider>"
-contract_version: 1           # monotonically increasing INTEGER; bump = expand-contract change
+contract_version: 2           # monotonically increasing INTEGER; bump = expand-contract change
+                              # v2 (2026-07-26): phantom consumer probes repointed at real endpoints;
+                              # the OIDC discovery probe replaced with the JWKS one (nwc/nwd expose NO
+                              # discovery document — that probe could never go green); crossref: added.
 provider: nwd                 # Drupal demo — OIDC issuer, copyright source, feedback sink
 consumer: ssd                 # Moodle demo — SSO client, copyright receiver (throwaway users)
 
@@ -64,9 +67,13 @@ endpoints:
 
 # --- Onboarding smoke: the 5-URL set checked after any promotion (D5) --------
 smoke_urls:
-  - name: oidc_discovery
+  # ⚠ v1 probed /.well-known/openid-configuration expecting 200. nwd runs the
+  #   same nwc codebase as the ssc pair, and that stack exposes NO discovery
+  #   document (404) — endpoints are configured by hand. The real signing-health
+  #   probe is the JWKS. Same correction as the ssc contract.
+  - name: oidc_signing
     side: provider
-    path: "/.well-known/openid-configuration"
+    path: "/.well-known/jwks.json"
     method: GET
     expect_status: "200"
   - name: provider_health
@@ -79,13 +86,26 @@ smoke_urls:
     path: "/auth/oauth2/login.php"
     method: GET
     expect_status: "200,302"
+  # ⚠ v1 declared status.php + api.php — neither file has ever existed.
+  #   See pairs/ssc.pair-contract.yml for the full note.
   - name: copyright_status
     side: consumer
-    path: "/local/nwc_copyright_sync/status.php"
+    path: "/local/nwc_copyright_sync/policy_set.php"
     method: GET
-    expect_status: "200"
+    expect_status: "405"
   - name: feedback_post
     side: consumer
-    path: "/local/feedback/api.php"
-    method: POST
-    expect_status: "200,401"
+    path: "/local/feedback/submit.php"
+    method: GET
+    expect_status: "405"
+
+# --- Cross-repo corpus: what `pl contracts crossref` reads (item 8) ----------
+crossref:
+  provider_roots:
+    - "sites/nwd/dev/html/profiles/custom/nwc"
+    - "sites/nwd/stg/html/profiles/custom/nwc"
+  consumer_roots:
+    - "sites/ssd/.plugin-src/ss-moodle-plugins"
+  core_paths:
+    - "auth/oauth2/login.php"     # core auth_oauth2 (the OIDC callback landing)
+  core_ws_functions: []

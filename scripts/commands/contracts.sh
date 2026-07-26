@@ -39,20 +39,38 @@ set -euo pipefail
 #   sync-plan               Print the cross-repo signed-artifact sync runbook
 #                           summary (provider signs → bot PRs → consumer verifies).
 #
-# Usage: pl contracts <compat|sums|sign|verify|bundle|sync-plan> [opts]
+#   crossref [<pair>|--all] CROSS-REPO promise gate (item 8). A pair contract
+#                           names endpoints and Moodle web-service functions
+#                           that live in a DIFFERENT repository. This verb
+#                           checks the other repo actually honours them:
+#                             * every WS function the provider code calls is
+#                               defined in the consumer plugin tree's
+#                               db/services.php  → UNDEFINED-WS
+#                             * every `smoke_urls` entry with side: consumer
+#                               names a file that exists  → MISSING-PATH
+#                           Fail-closed on an empty corpus: a checkout that is
+#                           not present reports CANNOT-VERIFY (non-zero), never
+#                           a silent green.
+#
+# Usage: pl contracts <compat|sums|sign|verify|bundle|sync-plan|crossref> [opts]
 ################################################################################
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+# The repo this script ships in (libs always come from here). PROJECT_ROOT is
+# the tree being INSPECTED and is honoured when pre-set, so the bats fixtures
+# can point contracts/ + pairs/ + sites/ at a scratch dir.
+NWP_REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+PROJECT_ROOT="${PROJECT_ROOT:-$NWP_REPO_ROOT}"
 export PROJECT_ROOT
 NWP_ROOT="$PROJECT_ROOT"
 CONTRACTS_DIR="$PROJECT_ROOT/contracts"
 SUMS_FILE="$CONTRACTS_DIR/SHA256SUMS"
+PAIRS_DIR="${NWP_PAIR_CONTRACT_DIR:-$PROJECT_ROOT/pairs}"
 
 # shellcheck source=/dev/null
-[ -f "$PROJECT_ROOT/lib/ui.sh" ] && source "$PROJECT_ROOT/lib/ui.sh"
+[ -f "$NWP_REPO_ROOT/lib/ui.sh" ] && source "$NWP_REPO_ROOT/lib/ui.sh"
 # shellcheck source=/dev/null
-source "$PROJECT_ROOT/lib/minisign.sh"
+source "$NWP_REPO_ROOT/lib/minisign.sh"
 
 _say()  { if command -v print_info    >/dev/null 2>&1; then print_info  "$*"; else printf '%s\n' "$*"; fi; }
 _warn() { if command -v print_warning >/dev/null 2>&1; then print_warning "$*"; else printf '%s\n' "$*" >&2; fi; }
@@ -191,6 +209,33 @@ cmd_sign() {
 # ---------------------------------------------------------------------------
 # verify — fail-closed: signature + checksums
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# trust-anchor assertion — EXACTLY ONE signature file in contracts/
+# ---------------------------------------------------------------------------
+# Two conflicting copies of contracts/SHA256SUMS.minisig were found in the
+# working tree on 2026-07-26: the tracked one (which verifies) and an untracked
+# older backup named SHA256SUMS.minisig.<suffix> (which does NOT). A trust
+# anchor with more than one candidate is not a trust anchor: whichever copy
+# happens to win a `cp`/`tar` decides what the offline consumer believes.
+# Fail closed.
+# Echoes the candidate list; returns 1 when the anchor is ambiguous.
+_assert_single_trust_anchor() {
+    local found=() f
+    for f in "$CONTRACTS_DIR"/*.minisig*; do
+        [ -e "$f" ] || continue
+        found+=("$(basename "$f")")
+    done
+    if [ "${#found[@]}" -gt 1 ]; then
+        _err "contracts: AMBIGUOUS TRUST ANCHOR — ${#found[@]} signature files in $CONTRACTS_DIR:"
+        for f in "${found[@]}"; do _err "    $f"; done
+        _say  "  Exactly one *.minisig may exist. Delete the strays (they are ignored by"
+        _say  "  contracts/.gitignore, so they are local debris) and re-run."
+        return 1
+    fi
+    return 0
+}
+
 cmd_verify() {
     local pubkey="${1:-$MINISIGN_PUBLIC_KEY}"
     local ok=0
@@ -199,6 +244,9 @@ cmd_verify() {
         _err "contracts verify: $SUMS_FILE missing — cannot verify (fail-closed)."
         return 1
     fi
+
+    # 0. Exactly one trust anchor (see above).
+    _assert_single_trust_anchor || ok=1
 
     # 1. Signature (fail-closed on a missing .minisig — the whole point is that
     #    the consumer trusts by signature, not host).
@@ -241,6 +289,9 @@ cmd_bundle() {
         case "$arg" in --out=*) out="${arg#*=}" ;; esac
     done
     mkdir -p "$out"
+    # Never assemble a bundle while the trust anchor is ambiguous — the tar
+    # would pick a copy by name and the consumer would trust it blind.
+    _assert_single_trust_anchor || return 1
     [ -f "${SUMS_FILE}.minisig" ] || _warn "contracts bundle: SHA256SUMS.minisig absent — bundle will be UNSIGNED (run 'pl contracts sign')."
     local ts; ts="$(date -u +%Y%m%dT%H%M%SZ)"
     local name="nwp-contracts-${ts}.tar.gz"
@@ -254,6 +305,214 @@ cmd_bundle() {
     _say "  Consumer verifies with: minisign -Vm SHA256SUMS -p nwp-deploy.pub  &&  sha256sum -c SHA256SUMS"
     echo "$out/$name"
     return 0
+}
+
+# ---------------------------------------------------------------------------
+# crossref — the CROSS-REPO promise gate (item 8)
+# ---------------------------------------------------------------------------
+# A pair contract in pairs/ makes promises about a repository that is NOT this
+# one (the Moodle plugin repo, checked out at sites/<consumer>/.plugin-src/).
+# Two of those promises were silently false for weeks:
+#
+#   * nwc's Art.9 withdrawal push calls the Moodle web-service function
+#     `auth_nwc_set_consent`, which ss-moodle-plugins origin/main did not
+#     define. Because the failure path is DESIGNED to degrade gracefully, every
+#     withdrawal told the member "we could not confirm that saving was switched
+#     off on the Saint School just now" — forever, looking like a transient
+#     network blip rather than a permanently absent endpoint.
+#   * both pair contracts declared liveness probes at
+#     /local/nwc_copyright_sync/status.php and /local/feedback/api.php. Neither
+#     file has ever existed. A probe that can never go green trains everyone to
+#     ignore its output.
+#
+# This verb makes both classes impossible to reintroduce.
+#
+# Contract block consumed (see pairs/README.md):
+#   crossref:
+#     provider_roots:   [ <repo-relative dirs holding the PROVIDER code> ]
+#     consumer_roots:   [ <repo-relative dirs holding the CONSUMER plugin tree> ]
+#     core_paths:       [ <consumer paths served by Moodle CORE, exempt> ]
+#     core_ws_functions:[ <WS fns provided by Moodle CORE, exempt> ]
+#
+# Exit: 0 all promises honoured · 1 a promise is broken or CANNOT-VERIFY.
+# ---------------------------------------------------------------------------
+
+_crossref_yq() {
+    # $1 = file, $2 = yq expression. Echoes nothing on absence.
+    local yq_bin; yq_bin="$(command -v yq || true)"
+    [ -n "$yq_bin" ] || return 1
+    "$yq_bin" e "$2" "$1" 2>/dev/null | grep -v '^null$' || true
+}
+
+# Existing directories among a newline-separated list of repo-relative roots.
+_crossref_existing_roots() {
+    local r
+    while IFS= read -r r; do
+        [ -n "$r" ] || continue
+        [ -d "$PROJECT_ROOT/$r" ] && printf '%s\n' "$PROJECT_ROOT/$r"
+    done
+}
+
+# Every Moodle web-service function name the provider code references.
+# Recognises the two shapes nwc actually uses:
+#     public const WS_FUNCTION = 'auth_nwc_set_consent';
+#     'wsfunction' => 'auth_nwc_set_consent',
+# Variable wsfunctions ('wsfunction' => $function) are deliberately NOT
+# reported — they are resolved at runtime and cannot be checked statically.
+_crossref_ws_functions() {
+    local roots=("$@")
+    [ "${#roots[@]}" -gt 0 ] || return 0
+    grep -rhoE "(WS_FUNCTION[[:space:]]*=|'wsfunction'[[:space:]]*=>|\"wsfunction\"[[:space:]]*=>)[[:space:]]*['\"][a-z][a-z0-9_]+['\"]" \
+        --include='*.php' --include='*.module' --include='*.inc' "${roots[@]}" 2>/dev/null \
+        | grep -oE "['\"][a-z][a-z0-9_]+['\"]$" \
+        | tr -d "'\"" \
+        | LC_ALL=C sort -u
+}
+
+# 0 when <name> is declared in a db/services.php under any consumer root.
+_crossref_ws_defined() {
+    local name="$1"; shift
+    local roots=("$@")
+    [ "${#roots[@]}" -gt 0 ] || return 1
+    grep -rqE "['\"]${name}['\"][[:space:]]*=>" --include='services.php' "${roots[@]}" 2>/dev/null
+}
+
+cmd_crossref() {
+    local want=() all=false quiet=false arg
+    for arg in "$@"; do
+        case "$arg" in
+            --all)   all=true ;;
+            --quiet) quiet=true ;;
+            -*)      _err "contracts crossref: unknown option '$arg'"; return 2 ;;
+            *)       want+=("$arg") ;;
+        esac
+    done
+
+    if ! command -v yq >/dev/null 2>&1; then
+        _err "contracts crossref: CANNOT-VERIFY — yq not installed (the contract cannot be parsed)."
+        return 1
+    fi
+
+    if [ "$all" = true ] || [ "${#want[@]}" -eq 0 ]; then
+        want=()
+        local f
+        for f in "$PAIRS_DIR"/*.pair-contract.yml; do
+            [ -e "$f" ] || continue
+            want+=("$(basename "$f" .pair-contract.yml)")
+        done
+        if [ "${#want[@]}" -eq 0 ]; then
+            _err "contracts crossref: CANNOT-VERIFY — no pair contracts in $PAIRS_DIR."
+            return 1
+        fi
+    fi
+
+    local rc=0 pair
+    for pair in "${want[@]}"; do
+        _crossref_one "$pair" "$quiet" || rc=1
+    done
+    if [ "$rc" -eq 0 ]; then
+        [ "$quiet" = true ] || _say "contracts crossref: OK ✓ — every cross-repo promise is honoured."
+    fi
+    return "$rc"
+}
+
+_crossref_one() {
+    local pair="$1" quiet="${2:-false}"
+    local contract="$PAIRS_DIR/${pair}.pair-contract.yml"
+    local bad=0
+
+    if [ ! -f "$contract" ]; then
+        _err "[$pair] CANNOT-VERIFY: no contract at $contract"
+        return 1
+    fi
+    if [ -z "$(_crossref_yq "$contract" '.crossref')" ]; then
+        _err "[$pair] CANNOT-VERIFY: the contract declares no 'crossref:' corpus."
+        _say  "  Add crossref.provider_roots + crossref.consumer_roots so the cross-repo"
+        _say  "  promises can be checked. An unverifiable contract is not a passing one."
+        return 1
+    fi
+
+    local prov_roots=() cons_roots=() r
+    while IFS= read -r r; do [ -n "$r" ] && prov_roots+=("$r"); done < <(
+        _crossref_yq "$contract" '.crossref.provider_roots[]' | _crossref_existing_roots)
+    while IFS= read -r r; do [ -n "$r" ] && cons_roots+=("$r"); done < <(
+        _crossref_yq "$contract" '.crossref.consumer_roots[]' | _crossref_existing_roots)
+
+    if [ "${#prov_roots[@]}" -eq 0 ]; then
+        _err "[$pair] CANNOT-VERIFY: none of the declared crossref.provider_roots exist here."
+        _crossref_yq "$contract" '.crossref.provider_roots[]' | while IFS= read -r r; do
+            [ -n "$r" ] && _say "    absent: $r"
+        done
+        bad=1
+    fi
+    if [ "${#cons_roots[@]}" -eq 0 ]; then
+        _err "[$pair] CANNOT-VERIFY: none of the declared crossref.consumer_roots exist here."
+        _crossref_yq "$contract" '.crossref.consumer_roots[]' | while IFS= read -r r; do
+            [ -n "$r" ] && _say "    absent: $r"
+        done
+        bad=1
+    fi
+    [ "$bad" -eq 0 ] || return 1
+
+    # --- exemption lists -----------------------------------------------------
+    local core_ws core_paths
+    core_ws="$(_crossref_yq "$contract" '.crossref.core_ws_functions[]')"
+    core_paths="$(_crossref_yq "$contract" '.crossref.core_paths[]')"
+
+    [ "$quiet" = true ] || _say "[$pair] corpus  provider=${#prov_roots[@]} root(s)  consumer=${#cons_roots[@]} root(s)"
+
+    # --- 1. web-service functions -------------------------------------------
+    local fn ws_seen=0
+    while IFS= read -r fn; do
+        [ -n "$fn" ] || continue
+        ws_seen=$((ws_seen + 1))
+        if [ "$fn" != "${fn#core_}" ] || printf '%s\n' "$core_ws" | grep -qxF "$fn"; then
+            [ "$quiet" = true ] || _say "[$pair] ws  core-exempt  $fn"
+            continue
+        fi
+        if _crossref_ws_defined "$fn" "${cons_roots[@]}"; then
+            [ "$quiet" = true ] || _say "[$pair] ws  OK           $fn"
+        else
+            _err "[$pair] ws  UNDEFINED-WS $fn — provider code calls it; no db/services.php in the"
+            _err "                          consumer tree defines it. The call fails at runtime."
+            bad=1
+        fi
+    done < <(_crossref_ws_functions "${prov_roots[@]}")
+
+    # Zero WS call sites is legal (not every pair uses web services) but it is
+    # ALSO what a stale provider checkout looks like — say so out loud rather
+    # than leaving an empty section that reads as "checked, all fine".
+    if [ "$ws_seen" -eq 0 ]; then
+        _warn "[$pair] ws  NONE-FOUND  no literal wsfunction call site in the checked-out provider"
+        _warn "                        roots. If the provider is meant to call one, the checkout is"
+        _warn "                        on the wrong branch — this section verified nothing."
+    fi
+
+    # --- 2. consumer smoke_urls point at files that exist --------------------
+    local p rel found root
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        rel="${p%%\?*}"; rel="${rel%%#*}"; rel="${rel#/}"
+        if printf '%s\n' "$core_paths" | grep -qxF "$rel"; then
+            [ "$quiet" = true ] || _say "[$pair] url core-exempt  /$rel"
+            continue
+        fi
+        found=false
+        for root in "${cons_roots[@]}"; do
+            [ -e "$root/$rel" ] && { found=true; break; }
+        done
+        if [ "$found" = true ]; then
+            [ "$quiet" = true ] || _say "[$pair] url OK           /$rel"
+        else
+            _err "[$pair] url MISSING-PATH /$rel — the contract names a consumer endpoint that"
+            _err "                          does not exist in the consumer tree. The probe can"
+            _err "                          never go green; declare it under crossref.core_paths"
+            _err "                          if Moodle core serves it."
+            bad=1
+        fi
+    done < <(_crossref_yq "$contract" '.smoke_urls[] | select(.side == "consumer") | .path')
+
+    return "$bad"
 }
 
 cmd_sync_plan() {
@@ -289,11 +548,12 @@ main() {
         verify)    cmd_verify "$@" ;;
         bundle)    cmd_bundle "$@" ;;
         sync-plan) cmd_sync_plan "$@" ;;
+        crossref)  cmd_crossref "$@" ;;
         -h|--help|help)
-            sed -n '3,49p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '3,62p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             ;;
         *)
-            _err "pl contracts: unknown verb '$verb' (compat|sums|sign|verify|bundle|sync-plan)"
+            _err "pl contracts: unknown verb '$verb' (compat|sums|sign|verify|bundle|sync-plan|crossref)"
             return 2
             ;;
     esac

@@ -18,7 +18,10 @@
 # =============================================================================
 
 pair: ssc-nwc                 # human label "<consumer>-<provider>"
-contract_version: 1           # monotonically increasing INTEGER; bump = expand-contract change
+contract_version: 2           # monotonically increasing INTEGER; bump = expand-contract change
+                              # v2 (2026-07-26): the two consumer smoke probes were repointed at
+                              # endpoints that actually exist (status.php/api.php never did), and the
+                              # crossref: corpus was added so `pl contracts crossref` can prove it.
 provider: nwc                 # Drupal/Open Social — OIDC issuer, copyright source, feedback sink
 consumer: ssc                 # Moodle — SSO client, copyright receiver, REAL students
 
@@ -315,13 +318,38 @@ smoke_urls:
     path: "/auth/oauth2/login.php"
     method: GET
     expect_status: "200,302"
+  # ⚠ v1 declared status.php + api.php here. NEITHER FILE HAS EVER EXISTED — the
+  #   probes were permanently 404 and everyone learned to ignore them. The real
+  #   entrypoints are policy_set.php + submit.php, both POST-only with the method
+  #   guard BEFORE auth, so a GET returns a deterministic 405 = installed and
+  #   routable. `pl contracts crossref` now proves these paths exist in the
+  #   consumer plugin tree, so a phantom probe cannot be reintroduced.
   - name: copyright_status
     side: consumer
-    path: "/local/nwc_copyright_sync/status.php"
+    path: "/local/nwc_copyright_sync/policy_set.php"
     method: GET
-    expect_status: "200"
+    expect_status: "405"
   - name: feedback_post
     side: consumer
-    path: "/local/feedback/api.php"
-    method: POST
-    expect_status: "200,401"     # 401 acceptable without a token; token round-trip is non-prod only
+    path: "/local/feedback/submit.php"
+    method: GET
+    expect_status: "405"
+
+# --- Cross-repo corpus: what `pl contracts crossref` reads (item 8) ----------
+# The promises above name code in ANOTHER repository (nwp/ss-moodle-plugins).
+# These roots let the gate check that the other repo honours them. A root that
+# is not checked out makes the gate report CANNOT-VERIFY (non-zero) — never a
+# silent green.
+crossref:
+  provider_roots:
+    - "sites/nwc/dev/html/profiles/custom/nwc"
+    - "sites/nwc/stg/html/profiles/custom/nwc"
+  consumer_roots:
+    - "sites/ssc/.plugin-src/ss-moodle-plugins"
+  # Consumer endpoints served by Moodle CORE, not by the first-party plugin
+  # repo. Exempting one is an explicit, reviewable decision — the gate never
+  # skips an unknown path silently.
+  core_paths:
+    - "auth/oauth2/login.php"     # core auth_oauth2 (the OIDC callback landing)
+  # Web-service functions provided by Moodle core rather than auth_nwc.
+  core_ws_functions: []

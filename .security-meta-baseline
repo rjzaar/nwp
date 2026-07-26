@@ -1,0 +1,6 @@
+# .security-meta-baseline — pre-existing meta-repo security findings.
+# SHRINK-ONLY. Key = <check>:<path>. Delete a line when the finding is
+# resolved; regenerate with: scripts/ci/security-meta.sh --update-baseline
+# htmx 2.x vendored minified bundle: its own `eval()` feature-detect + the
+# hx-on attribute evaluator. Upstream code, not ours. Reviewed 2026-07-26.
+dynamic-exec:scripts/console/static/htmx.min.js

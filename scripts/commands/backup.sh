@@ -967,6 +967,14 @@ EOF
 # Mirrors check_missing_backups in lib/todo-checks.sh exactly:
 # candidates are <site-dir>/backups then \$ROOT/backups/<site>, and only
 # *.sql.gz / *.tar.gz files count.
+# Epoch of the newest RESTORABLE backup for a site, or non-zero if there is none.
+#
+# This used to be "newest matching file by mtime", full stop. A 0-byte or
+# truncated `.sql.gz` therefore reported FRESH — and, because the sweep skips
+# sites it thinks are fresh, it suppressed the very re-backup that would have
+# replaced it, for another `warn_days`. Integrity now lives in the shared
+# lib/backup-integrity.sh so this and lib/todo-checks.sh cannot drift apart
+# (they were already two copies of the same logic).
 sweep_latest_backup_epoch() {
     local site="$1"
     local root="${NWP_DIR:-$PROJECT_ROOT}"
@@ -977,11 +985,12 @@ sweep_latest_backup_epoch() {
     fi
     [ -d "$backup_dir" ] || return 1
 
-    local latest
-    latest=$(find "$backup_dir" -type f \( -name "*.sql.gz" -o -name "*.tar.gz" \) -printf '%T@\n' 2>/dev/null | sort -n | tail -1)
-    [ -z "$latest" ] && return 1
+    if ! command -v backup_latest_good_epoch &>/dev/null; then
+        # shellcheck source=/dev/null
+        source "$PROJECT_ROOT/lib/backup-integrity.sh" 2>/dev/null || return 1
+    fi
 
-    echo "${latest%.*}"
+    backup_latest_good_epoch "$backup_dir"
 }
 
 # DDEV project state for a project dir: running | stopped | unknown.

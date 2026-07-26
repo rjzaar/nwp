@@ -447,6 +447,25 @@ settings:
       # tiers (restic on ver, LUKS sticks, box nightly) enforce their own
       # retention — see docs/reports/consolidation-arc-2026-07.
       backup_retention_days: 30
+      # rag-sync (RAG state -> nwp/ops issues) is the tracker's WRITE half, and
+      # a skipped run exits 0 — so cron looks healthy while nothing is filed.
+      # `pl todo` ages the last COMPLETED run, not the last log line.
+      rag_sync_warn_days: 2
+      rag_sync_alert_days: 7
+      # An alert path nobody has exercised is not an alert path. `pl notify
+      # health` stamps private/.notify-last-ok; this ages that stamp.
+      notify_health_warn_days: 7
+    # Item 2 (oversight-honesty) checks. All default to enabled; set false to
+    # silence — but note that silencing a check is NOT the same as it passing,
+    # which is the whole failure mode these were added to close.
+    categories:
+      # Surfaces .loop-paused / .rag-sync-paused / disabled loop parts, with the
+      # age of the pause. A pause nobody can see is an outage.
+      paused_automation: true
+      # Ages the last successful rag-sync run.
+      rag_sync: true
+      # Ages the last proven `pl notify health` canary.
+      notify_health: true
     notifications:
       enabled: false
       email:

@@ -2745,3 +2745,50 @@ simply not merging !10.
 `tests/tools/verify-crossrepo-guild-cohort-coverage.sh`, and only on exit 0 do
 `git worktree remove /home/rob/nwp-ops93` + `git push origin --delete ops-93` and post the
 result on nwp/ops#93.
+## [2026-07-26] D1 console-gate-regex-scope — the deny regex under-delivered on its own stated intent
+
+`scripts/agent-loop/agent-loop.sh:116` `SENSITIVE_PATH_RE` is the **only enforced** backstop between
+a member-controlled GitLab issue body and a pushed branch (the loop feeds that body to
+`claude -p --dangerously-skip-permissions`; the prompt's "HARD BOUNDARY" prose is advisory). Two
+clauses said less than the header block above them claimed:
+
+1. `requirements\.txt$` — the header justifies the deny as "dependency pins … supply chain", but
+   `scripts/console/requirements-dev.txt` **exists on disk** and never matched. It is not inert: it
+   is `pip install`-ed by the `test:console` CI job (`scripts/ci/test-console.sh`), so its contents
+   become code executed by a runner. Now `requirements(-dev)?\.txt$`.
+2. `static/[^/]*\.js$` — the header says "static/\*.js is denied", but `[^/]*` covered only files
+   sitting **directly** in `static/`. `scripts/console/static/js/foo.js` was allowed. Latent today
+   (no nested JS in the tree), live the moment console v2 nests its JS. Now `static/.*\.js$` — the
+   same fail-closed reasoning already applied to the `app/` **directory** rule: a denylist that has
+   to be remembered is a denylist that lapses.
+
+**Evidence, in order.** RED first: `bats tests/unit/test-agent-loop-sensitive-gate.bats` → 24 tests,
+`not ok 14` (requirements-dev.txt) and `not ok 15` (nested static JS). Fix applied. GREEN: 26/26.
+
+**Widening verified, not assumed.** "Deny more" tests pass trivially if a botched anchor starts
+matching everything, so two negative controls assert per-path that `static/style.css`,
+`templates/base.html`, `README.md`, `static/icon.svg` and nested non-JS assets stay **ALLOWED**.
+Independently, a whole-tree diff of the old vs new pattern over all 998 tracked files:
+
+```
+old denies: 84   new denies: 85
+NEWLY DENIED: scripts/console/requirements-dev.txt
+NEWLY ALLOWED: (empty)
+```
+
+Exactly one real file changes verdict; nothing goes denied → allowed. The nested-JS half is
+correctly latent.
+
+**Safe window.** The loop is paused — `/home/rob/nwp/.loop-paused` present on mini (100.64.0.2,
+0 bytes, 2026-07-18), confirmed at the time of the change.
+
+### Scope not taken
+
+- The gate was **not** restructured. One regex line and the header comment that describes it; no
+  change to the refusal block, the label/comment path, or the fail-closed ordering.
+- `scripts/console/` itself was **not** touched — that tree belongs to the console v2 workflow.
+- **Accepted residuals left standing, deliberately:** `scripts/console/tests/` and
+  `scripts/console/templates/` remain ALLOWED. Both are documented in the header as priced-in
+  trade-offs (the loop's own prompt demands test-writing; templates are the highest-churn area and
+  Jinja autoescapes). Widening into them is a design decision, not a regex bug, and is out of D1's
+  scope.

@@ -85,11 +85,33 @@ scenario:
       expect_exit: 0
       expect_contains: "no un-ignore"
 
+    # ANTI-VACUOUS-PASS: ignore rules do NOT apply to already-tracked files, so
+    # a repo that has already committed and pushed a dump reports clean once the
+    # containment block is installed. These two steps are the negative/positive
+    # control pair for that PAST half. If the first ever passes, the exposure
+    # detector has stopped detecting.
+    - name: An already-published payload is EXPOSED despite the containment block (negative control)
+      cmd: bash -c 'source lib/site-containment.sh; d=$(mktemp -d); git -C "$d" init -q; git -C "$d" config user.email t@e.org; git -C "$d" config user.name t; git -C "$d" remote add origin git@example.org:backups/x.git; echo x > "$d/prod.sql"; git -C "$d" add -A -f >/dev/null 2>&1; git -C "$d" commit -qm c >/dev/null 2>&1; containment_fix_repo "$d" backups; containment_check_repo "$d" backups >/dev/null 2>&1 && containment_check_tracked_repo "$d" >/dev/null 2>&1; rc=$?; rm -rf "$d"; test $rc -ne 0 && echo "exposure detected"'
+      expect_exit: 0
+      expect_contains: "exposure detected"
+
+    - name: A repo tracking only ordinary code is not reported as exposed (positive control)
+      cmd: bash -c 'source lib/site-containment.sh; d=$(mktemp -d); git -C "$d" init -q; git -C "$d" config user.email t@e.org; git -C "$d" config user.name t; echo "{}" > "$d/composer.json"; git -C "$d" add -A >/dev/null 2>&1; git -C "$d" commit -qm c >/dev/null 2>&1; containment_check_tracked_repo "$d" && echo "not exposed"; rc=$?; rm -rf "$d"; exit $rc'
+      expect_exit: 0
+      expect_contains: "not exposed"
+
+    - name: Exposure fleet sweep fails closed on an empty corpus
+      cmd: bash -c 'source lib/site-containment.sh; d=$(mktemp -d); containment_check_tracked_fleet "$d"; rc=$?; rm -rf "$d"; exit $rc'
+      expect_exit: 3
+      expect_contains: "CANNOT VERIFY"
+
     # FLEET STATE: informational on a dev workstation where sites/ exists.
     # Non-zero here means real repos are leaky and `pl site gitignore --fix`
-    # has not been run — it is a finding, not a harness fault.
+    # has not been run — it is a finding, not a harness fault. It is marked
+    # allow_failure because a CI checkout has no sites/ at all; the hard
+    # assertions above are what make this scenario capable of going red.
     - name: Fleet containment status
-      cmd: ./pl site gitignore --check
+      cmd: ./pl site gitignore --all
       expect_exit: 0
       allow_failure: true
 

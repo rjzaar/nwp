@@ -3313,3 +3313,68 @@ recording the supersession belongs with it); its `NWP_ROOT=$HOME` one-liner in
 `docs/guides/howto-deploy.md` keeps its fingerprint — out of B1 scope, still on the ops#97 backlog.
 **Reversible-how:** revert the single docs commit; the 75 fingerprints are restorable from
 `origin/main:.gitleaksignore`. No live site or server was touched, so no rollback-registry row.
+
+---
+
+## [2026-07-27] pubrel-scrub-gate-failed-open-scanner-error-read-as-clean (CP-20260727-pubrelfailopen)
+
+**Situation:** the B1 scrub gate (`tests/helpers/pubrel-docs-check.sh::pubrel_scan`, added by the
+entry above) ran gitleaks inside `( … >/dev/null 2>&1 )` and threw its exit status away, then
+judged the tree solely by `json.load(report)` under a bare `except Exception: rows = []`. A
+missing, empty or unparseable report decoded as **"0 findings = clean"**. The suite's own header
+calls tests 7/8 "the load-bearing assertion … what distinguishes a real scrub from a cosmetic
+one" — and those two tests were the only thing standing behind the whole scrub.
+
+**Why it mattered more than an ordinary test bug:** this check is what authorises publishing a
+public version of the docs library with private information removed. A false green here does not
+fail a build — it publishes the operator's home path, personal email or prod IP.
+
+**Reproduced (not theorised), 2026-07-27:** appended one malformed rule to `.gitleaks.toml` — a
+file another workstream actively edits, where a single bad regex suffices — and planted a real
+`/home/rob/nwp/lib/common.sh` leak in the in-scope doc `docs/governance/roles.md`. gitleaks exits
+2 and writes no report; the suite reported **8/8 GREEN with the leak still in the file**.
+Cross-checked with a gitleaks stub that errors and writes nothing: `pubrel_scan full` → 0,
+`pubrel_scan pruned` → 0. `.gitleaks.toml` was restored in the same step and is **not** modified
+by this work.
+
+**Compounding:** `PUBREL_DOMAIN_RE` claimed to mirror "the three identity rules the gate on main
+enforces". Main enforces **six**. The grep covered four, omitting `operator-home-path` and
+`operator-organisation` (and the second operator IP `45.33.94.133`) — which is exactly why the
+planted `/home/rob/…` left test 2 green. Those two rules were watched **only** by the backstop
+that failed open.
+
+**Decision:** fail closed everywhere.
+- `pubrel_scan` returns `0` clean / `1` findings / `2` COULD NOT SCAN. Only 0 means clean.
+- gitleaks' rc is captured (0/1 are verdicts, anything else is an error); an absent, empty or
+  unparseable report is an error; rc and report must agree.
+- `python3` was as unguarded as gitleaks was. Both now go through `pubrel_scan_missing_tool`, which
+  separates *absence* (the suite skips, visibly) from *runtime failure* (the suite fails).
+- `PUBREL_IDENTITY_RE` mirrors all six identity rules. `internal-hostname-fqdn` and
+  `internal-bare-hostname` are deliberately left to the backstop and the reason is written **in the
+  code**: they are role/host names rather than operator identity, and `\b(mini|mons|…)\b`
+  false-positives hard on ordinary prose. That is now a safe place to leave them, because the
+  backstop fails closed.
+- Mirroring `operator-home-path` meant mirroring its documented exemption: F15 names
+  `/home/gitlab/.ssh`, the conventional service-account home. Masked **narrower** than the gate
+  (the gate exempts that whole file for the rule; we exempt only the literal path).
+
+**Proof both ways:** the identical reproduction now turns tests 2, 7 and 8 RED. A clean tree with a
+working scanner still passes 15/15 — the fix is fail-closed, not fail-always. Six new cases pin the
+contract (scanner error · absent report · unparseable report · rc/report disagreement · findings
+reported as findings · absent-tool guard incl. python3) and one pins all six identity rules.
+
+**Corrections to the earlier claims:** the MR said "full unit suite 667/667"; the real count on the
+merged tree is 1449 (see the MR note). It said "rebased onto current main"; the base was `ee85e1d`
+and it has now actually been rebased.
+
+**Non-blocking finding, fixed here rather than filed:** the scrub mapped two *distinct* real
+domains onto one placeholder `example.com`. `docs/proposals/F30-content-federation-network.md` is a
+domain-state-machine document that already used `<example-prod-domain>` for the same domain, so it
+carried two placeholders for one domain and "move the AVC test site from `avc.<example-prod-domain>`
+to `example.com` (root domain)" lost the parent/child relation that sentence exists to state. F30
+now uses `<example-prod-domain>` throughout; the two places where `example.com` stood for
+mayostudios.org (`docs/governance/roadmap.md`'s four-item list, `docs/handover-nwp-status-2026-07.md`)
+use `<mayo-domain>`, the placeholder F30 already establishes. Elsewhere `example.com` genericises a
+domain with no competing placeholder in play and is left alone.
+
+**Reversible-how:** see CP-20260727-pubrelfailopen in the rollback registry. Repo-only.

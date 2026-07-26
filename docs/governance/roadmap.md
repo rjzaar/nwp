@@ -805,7 +805,7 @@ Three-hop pipeline: build-tier builds+signs → GitLab Packages → verifier ver
 **Status:** PROPOSED | **Priority:** High | **Effort:** Large | **Dependencies:** F26, F28, F29, S05, A02 ✅, A09 ✅
 **Proposal:** [F30-content-federation-network.md](../proposals/F30-content-federation-network.md)
 
-Architectural keystone connecting nwprog.org, saint.school, example.com, avcommons.org into a coherent content ecosystem:
+Architectural keystone connecting nwprog.org, saint.school, <mayo-domain>, avcommons.org into a coherent content ecosystem:
 
 - **Central course repository** (`nwp/courses`) with 49 courses in S05 YAML format
 - **Three-stage review workflow:** Writer's Check → Pedagogy Check → Theology Check (using AVC's workflow_assignment module)

@@ -1514,3 +1514,100 @@ extended to stage the library into its fixture root accordingly.
 `pl site gitignore --fix` are delimited by `# >>> nwp containment … >>>` markers and can be
 removed by hand; doing so cannot untrack anything, because ignore rules only ever affected
 paths that were untracked to begin with. See rollback registry **CP19**.
+---
+
+## [2026-07-26] item7-contract-and-boundary-gates — enforce adoption, and let "cannot verify" say so
+**REVIEW:** yes — the fate manifest is the safety property standing in front of irreversible actions,
+and the boundary manifest is the nwc↔ssc security contract.
+
+**Decision (impact contract).** The ops#47 gate is rewritten from a `grep -q 'lib/impact.sh'` inside
+`tests/unit/test-impact-contract.bats` into library functions (`impact_contract_*` in `lib/impact.sh`)
+that the test, CI and any future `pl` verb all call, so there is one implementation rather than three
+drifting copies. Three concrete changes:
+
+1. **Adoption, not mention.** "Adopted" now means, on NON-COMMENT lines: `source …impact.sh` **and**
+   `impact_render` **and** `impact_confirm`. *Proven RED first:* a probe `scripts/commands/zzprobe-item7.sh`
+   containing `rm -rf "$1"` plus the comment "this file does NOT source lib/impact.sh" passed all four
+   pre-fix cases green. `impact_render` is required as well as `impact_confirm` because the contract is
+   "print the manifest, THEN prompt" — a confirm with no manifest is the prompt stripped of the
+   information that makes it answerable. This is not hypothetical twice over: the item-2 session
+   recorded `restore.sh` being believed converted because a *different* file's header named the path,
+   and `scripts/commands/branch.sh` on main today sources the lib and prompts but never renders.
+2. **Scan `lib/` and `servers/`, not just `scripts/commands/`.** *Proven RED first:* `lib/zzprobe-item7.sh`
+   with `rm -rf "$1"` and no contract at all was invisible — `lib/` was never scanned. Candidate count
+   goes from ~96 files to **201** (101 lib + 96 commands + 4 servers). This matters because destructive
+   logic is actively *migrating* from commands into lib (moodle-deploy, moodle-promote, rollback-remote,
+   restore-remote, the sanitizers), so the old gate's coverage was shrinking toward zero while staying green.
+3. **Destructive-pattern matching moved to code lines only**, so a file that merely *documents* `rm -rf`
+   is not dragged into the contract (`lib/rollback-remote.sh` is one such).
+
+**Alternatives rejected.** (a) Keeping the allowlist inline in the bats file — it then cannot be reviewed
+as a diff of its own, and no other caller can use it. (b) Accepting `impact_confirm` without
+`impact_render` — that is precisely the vacuous half of the contract. (c) Regex-matching the *call sites*
+of `rm -rf` to prove the manifest precedes them — brittle, and it would have failed open on any
+indirection.
+
+**The allowlist is the honest inventory, not a rubber stamp.** `lib/impact-contract.allowlist` seeds 35
+rows, each with a one-line justification, keyed by repo-relative path. It is larger than its 14-row
+predecessor only because two whole roots were never scanned and because "adopted" now means something.
+Nothing on it is newly broken; it was broken and invisible. Shrink-only is now *enforced*, not merely
+asserted in a comment: a file that converts and is left on the list is a hard failure
+(`impact_contract_stale_allowlist`), tested by parking `delete.sh` on a fixture list and asserting red.
+
+**Two findings worth flagging to the operator, recorded rather than silently allowlisted:**
+- `lib/moodle-deploy.sh` has `impact_render`/`impact_confirm` but never sources `impact.sh`; the calls
+  sit behind `command -v impact_confirm`, so a caller that has not sourced the lib **silently skips both
+  the manifest and the typed prompt** before a live Moodle rollback. Real gap. The file is item 9
+  territory and is carried by MR !168, so it is recorded on the allowlist with that note, not edited here.
+- `scripts/commands/branch.sh` prompts without a manifest (item 4 territory).
+
+**Decision (ops#143, box-resident manifest).** `servers/nwpcode/demo/nwd-demo-reset-restricted` is a
+forced command deployed to a box with no repo checkout, so it cannot source `lib/impact.sh`. It now
+renders the manifest inline and declares `# impact-contract: inline`. The pragma alone is deliberately
+**not** sufficient — a pragma with no emitted `FATE MANIFEST` is rejected, or it would be the same
+vacuous pass in a new costume. The manifest is verified by *executing* the extracted render function
+under stubbed `drush`/`du`/`jq`, not by reading the file; mutating one line of its text was confirmed to
+turn that test red. It prints for `dry-run` too, so a dry run is a truthful preview rather than a
+different code path.
+
+**Decision (boundary honesty).** `boundary_honesty_check` replaces the always-exit-0 report with three
+distinguishable states — 0 VERIFIED CLEAN / 1 VIOLATIONS / 2 CANNOT VERIFY — asserted per surface by
+whether its declared `provider_paths` are actually on disk. *Proven RED first:* in a checkout without
+`sites/nwc` (the CI condition) the pre-fix check returned empty and exit 0, and there was no function
+that could express "I could not look"; the old bats file even documented the vacuity in a comment and
+asserted clean anyway. It now reports `CANNOT VERIFY — 5 of 7 surfaces have no provider tree on disk`,
+exit 2. Missing `yq` now also fails closed the same way instead of rendering as clean.
+
+**Claim from the programme that did NOT hold — the "11 real VIOLATIONs" are 11 FALSE POSITIVES.**
+Measured on the full tree: all 11 were in `sites/nwc/stg`, the **byte-identical environment twin** of the
+declared `sites/nwc/dev` paths (`diff` clean), pulled in because `boundary_scan_roots` truncated the scan
+root to the first two path components — `sites/nwc` — which contains both twins. Not one was a real
+cross-module coupling. Fixed via `boundary_scan_root_depth`: under `sites/`, the root is
+`sites/<site>/<env>` (three components), i.e. the checkout that owns the declared code. A sibling module
+*inside* that checkout is still caught — that is the edge the check exists for and there is now a fixture
+test pinning it. **Consequence: the triage the programme made a precondition for flipping
+`allow_failure: false` is done, and its result is "no violations to triage."** The remaining blocker is
+the corpus, not the findings. After the fix the real tree reports `VERIFIED CLEAN — all 7 surfaces
+scanned`. *Alternative rejected:* adding an exclusion for the literal string `stg`, which would break the
+moment an environment is named anything else.
+
+**Why the bats cases use a synthetic fixture tree.** The detector cases (sibling-module leak, stg twin,
+unrelated clone, comment-only) build their own `PROJECT_ROOT` + contract in `BATS_TEST_TMPDIR`, so they
+behave identically on a workstation and on a runner with no `sites/` at all. Cases that depended on the
+real profile being checked out would silently degrade to a skip, which is the same disease as the
+vacuity being fixed.
+
+**`boundary:classify` stays `allow_failure: true` and is now EXPECTED TO BE AMBER on every MR.** The
+runner has no nwc profile, so exit 2 is the truthful answer, and amber is the honest rendering of
+"I cannot see". The comment in the job says explicitly not to silence it with `--advisory`. The verifying
+path today is `pl impact --honesty` on a workstation (7/7 surfaces, VERIFIED CLEAN, 2026-07-26). Flip to
+blocking when the runner can see the corpus.
+
+**Blast radius.** No live site, server or database is written by anything in this item. The only file that
+also exists outside the repo is the demo forced command, and only the repo copy is changed — see the
+rollback registry row for the resulting repo↔box divergence.
+
+**Reversible-how.** `git revert -m 1 <merge>`. All changes are a test file, two libs, one data file, one
+CI comment block and one not-yet-deployed box script; there is no state migration and no new verb that
+writes anything. If the seeded allowlist is judged to mask too much, the sharper posture is to delete
+rows (each is one line) rather than to revert the gate to string matching.

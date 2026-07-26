@@ -59,7 +59,7 @@ When requesting access, include:
 The NWP administrator will run:
 
 ```bash
-./coder-setup.sh add <yourname> --email "you@example.com" --fullname "Your Name"
+pl coder-setup add <yourname> --email "you@example.com" --fullname "Your Name"
 ```
 
 This automatically:
@@ -324,9 +324,13 @@ Get your token from: https://cloud.linode.com/profile/tokens
 
 If you want your own GitLab instance:
 
+The old `./linode/gitlab/setup_gitlab_site.sh` installer was removed when <!-- doc-truth:retired -->
+provisioning moved behind `pl`; there is no drop-in replacement script.
+Provision the server, then create the project on the forge:
+
 ```bash
-# Run GitLab installer
-./linode/gitlab/setup_gitlab_site.sh
+pl produce --help          # server provisioning
+pl gitlab-create --help    # create the GitLab project
 ```
 
 This will set up GitLab at `git.<yourname>.<coder-domain>`.
@@ -525,9 +529,9 @@ Administrators can manage coders using the interactive TUI:
 |---------|-------------|
 | `./pl install d sitename` | Create Drupal site |
 | `./pl install os sitename` | Create Open Social site |
-| `./delete.sh sitename` | Delete a site |
-| `./status.sh` | Show all sites |
-| `./backup.sh sitename` | Backup a site |
+| `pl delete sitename` | Delete a site |
+| `pl status` | Show all sites |
+| `pl backup sitename` | Backup a site |
 
 ## Related Documentation
 

@@ -353,3 +353,58 @@ crossref:
     - "auth/oauth2/login.php"     # core auth_oauth2 (the OIDC callback landing)
   # Web-service functions provided by Moodle core rather than auth_nwc.
   core_ws_functions: []
+
+# --- ops#81 erasure OPERATIONS (consumed by `pl erasure`) --------------------
+# NOT a wire surface — `surfaces.erasure` above pins the wire shape and is what
+# contract_version governs. This block is the operational half: where the two
+# channel plugins are expected to live, and the three operator assertions that
+# `pl erasure` refuses to make on the operator's behalf.
+#
+# Every value below is deliberately at its FAIL-CLOSED default. Filling one in
+# is an assertion about the real estate, and each is wrong today:
+#
+#   semantics_approved  Art.17 lawful-basis question (anonymise vs delete, which
+#                       aggregates are lawfully retained, what "verified erased"
+#                       means across nwc + ssc + moodledata + restic). An agent
+#                       must not settle it. `pl erasure execute` refuses while
+#                       this is false. OPERATOR ACTION.
+#   backup_ceiling      The restic --keep-within window on the RAW (unsanitised)
+#                       repo (ops#127). Set it ONLY once the DR chain provably
+#                       carries that flag — the producer cron is still an
+#                       unversioned one-liner on met at the time of writing, so
+#                       asserting "30d" here would make `pl erasure verify` pass
+#                       on a promise nobody has checked. Left unset on purpose:
+#                       verify reports NO-BACKUP-CEILING, which is TRUE today.
+#   *_probe_cmd         Residual-row probes. Unset => `pl erasure verify` reports
+#                       CANNOT-VERIFY rather than "0 rows, clean".
+erasure:
+  # Where the ops#81 channel halves live, relative to the crossref roots below.
+  receiver_path: "local/nwc_erase/erase.php"                       # ops#81 P1 — NOT BUILT
+  sender_path: "modules/nwc_moodle/modules/nwc_moodle_erase"       # ops#81 P2 — NOT BUILT
+  semantics_approved: false     # OPERATOR ACTION — see above
+  backup_ceiling: ""            # OPERATOR ACTION — assert only when provably true
+  provider_probe_cmd: ""        # e.g. a `pl drush nwc --tier=live` residual-row count
+  consumer_probe_cmd: ""        # e.g. a `pl moodle cli ssc --tier=live` residual-row count
+  backup_probe_cmd: ""          # optional: a restic-side residual probe
+
+# --- Guard adoption (ops#138) — read by `pl contracts guards` ---------------
+# A safety guard nothing calls is not a control. Declare each one here and the
+# gate proves it has a real, non-comment call site in the provider tree.
+#
+# ⚠ `assertMayWriteArt9` is RED today and that is TRUE, not a bug in the gate:
+#   ops#138 records that the Drupal Art.9 hard write-gate has zero production
+#   call sites, while nwc_privacy/tests/src/PrivacySweep.php reports it present
+#   by grepping for the name. Closing it needs an OPERATOR decision that an
+#   agent must not make (block-with-explanation vs silent-Trialing when consent
+#   is absent is an Art.9 lawful-basis question about deliberate member acts).
+#   Declared here so it is visible from a `pl` verb instead of living in an
+#   issue nobody re-runs.
+guards:
+  - symbol: assertMayWriteArt9
+    side: provider
+    why: "Art.9 hard write-gate — ops#138, ZERO call sites (operator decision pending)"
+    defined_in: "modules/nwc_features/nwc_privacy/src/Service/Art9ConsentGate.php"
+  - symbol: writeFormation
+    side: provider
+    why: "Art.9 routing writer (consented ledger vs Trialing) — ops#138"
+    defined_in: "modules/nwc_features/nwc_privacy/src/Service/Art9ConsentGate.php"

@@ -235,7 +235,12 @@ prod_maintenance_set() {
         return 0
     elif [ "$state" == "0" ]; then
         print_error "Could NOT disable maintenance mode — THE SITE MAY BE STUCK IN MAINTENANCE (503)."
-        print_error "Fix on the host: cd $PROD_PATH && drush sset system.maintenance_mode 0 && drush cr"
+        # NO pl VERB — `pl drush` is stg|live only and prod writes are operator-gated
+        # (ADR-0024/0028), so the sanctioned recovery is the rollback verb.
+        print_error "Recover through pl (prod writes are operator-gated — do NOT hand-ssh):"
+        print_error "  pl rollback list ${SITENAME:-<site>}"
+        print_error "  pl rollback execute ${SITENAME:-<site>} prod"
+        print_error "  pl server status"
         return 1
     else
         # Failed to turn maintenance ON. Return non-zero so the caller REFUSES
@@ -1010,7 +1015,11 @@ clear_cache_and_display() {
             fi
         else
             print_error "Cache rebuild FAILED — leaving maintenance mode ON (site stays at 503 until recovered)."
-            print_error "Recover: cd $PROD_PATH && drush cr && drush sset system.maintenance_mode 0"
+            # NO pl VERB — `pl drush` is stg|live only; prod is operator-gated.
+            print_error "Recover through pl (prod writes are operator-gated — do NOT hand-ssh):"
+            print_error "  pl rollback list ${SITENAME:-<site>}"
+            print_error "  pl rollback execute ${SITENAME:-<site>} prod"
+            print_error "  pl server status"
             return 1
         fi
     fi

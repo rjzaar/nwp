@@ -303,10 +303,13 @@ moodle_plugin_rsync() {
 ################################################################################
 
 # moodle_maintenance <ssh_target> <ssh_opts> <sudo_prefix> <php_bin> <root> <enable|disable> <apply>
+# The php_opts (item 9: -d max_input_vars=5000) are inserted here too — the
+# box's php.ini max_input_vars=1000 is below Moodle's floor, and getting it
+# wrong on the maintenance leg is how a site gets STUCK in maintenance.
 moodle_maintenance() {
     local ssh_target="$1" ssh_opts="$2" sudo_prefix="$3" php_bin="$4" root="$5" action="$6" apply="${7:-false}"
     local flag="--enable"; [ "$action" = "disable" ] && flag="--disable"
-    local remote="${sudo_prefix} -u www-data ${php_bin} ${root%/}/admin/cli/maintenance.php ${flag}"
+    local remote="${sudo_prefix} -u www-data ${php_bin} $(moodle_cli_php_opts) ${root%/}/admin/cli/maintenance.php ${flag}"
     remote="$(_md_trim "$remote")"
     if [ "$apply" != "true" ]; then _md_info "[dry-run] maintenance ${action}: ssh ${ssh_target} \"${remote}\""; return 0; fi
     ssh ${ssh_opts} -o BatchMode=yes "$ssh_target" "$remote"
@@ -327,8 +330,17 @@ moodle_remote_upgrade() {
     local ssh_target="$1" ssh_opts="$2" sudo_prefix="$3" php_bin="$4" root="$5" site="$6"
     local no_maint="${7:-false}" apply="${8:-false}"
 
-    local up="${sudo_prefix} -u www-data ${php_bin} ${root%/}/admin/cli/upgrade.php --non-interactive"
-    local pc="${sudo_prefix} -u www-data ${php_bin} ${root%/}/admin/cli/purge_caches.php"
+    # item 9: the php opts (-d max_input_vars=5000) are NOT optional here.
+    # Without them upgrade.php fails its environment check AFTER maintenance
+    # mode has been enabled — the exact sequence that took the `ss` instance down
+    # for ~6 minutes on 2026-07-26 with no pl verb able to clear it.
+    local opts; opts="$(moodle_cli_php_opts)"
+    if ! moodle_cli_assert "$php_bin" "$opts"; then
+        _md_err "Refusing to run the Moodle upgrade with an unsafe CLI invocation."
+        return 1
+    fi
+    local up="${sudo_prefix} -u www-data ${php_bin} ${opts} ${root%/}/admin/cli/upgrade.php --non-interactive"
+    local pc="${sudo_prefix} -u www-data ${php_bin} ${opts} ${root%/}/admin/cli/purge_caches.php"
     up="$(_md_trim "$up")"; pc="$(_md_trim "$pc")"
 
     if [ "$apply" != "true" ]; then
@@ -542,16 +554,207 @@ RB
     return 0
 }
 
+################################################################################
+# THE TWO PIECES OF TRIBAL KNOWLEDGE, CODIFIED (item 9)
+#
+# Every `admin/cli/*` invocation against a live Moodle on the forge box needs
+# BOTH of these, and typing either one wrong is how a site ends up stuck in
+# maintenance mode:
+#
+#   1. an explicit php8.2/8.3 binary — the box's DEFAULT `php` is 8.4
+#      (verified: `php -v` → 8.4.21) and Moodle 4.4 REJECTS PHP 8.4;
+#   2. `-d max_input_vars=5000` — the box's php.ini says 1000 (verified:
+#      `php8.2 -i | grep max_input_vars` → 1000 => 1000), below Moodle's floor.
+#
+# On 2026-07-26 `upgrade.php` was run without (2). It failed its environment
+# check *after* enabling maintenance mode and left the `ss` instance down for
+# ~6 minutes, with no `pl` verb able to clear maintenance. These helpers exist
+# so neither value is ever typed by a human again — and moodle_cli_assert makes
+# their absence a REFUSAL rather than a silent, damaging run.
+################################################################################
+
+# Default CLI php version for remote Moodle. Overridable per site via
+# .moodle.cli_php_version, or per invocation via NWP_MOODLE_CLI_PHP_BIN.
+MOODLE_CLI_PHP_DEFAULT_VERSION="${MOODLE_CLI_PHP_DEFAULT_VERSION:-8.2}"
+# Default CLI php flags. Overridable via .moodle.cli_php_opts / NWP_MOODLE_CLI_PHP_OPTS.
+MOODLE_CLI_PHP_DEFAULT_OPTS="${MOODLE_CLI_PHP_DEFAULT_OPTS:--d max_input_vars=5000}"
+
 # Resolve the Moodle CLI php binary for a site (Moodle 4.4 rejects PHP 8.4).
-# Reads .moodle.cli_php_version from the site config; defaults to php8.2 if that
-# binary exists, else php.
+#
+# REMOTE-CORRECT (item 9): this names a binary on the REMOTE host, so it must
+# NOT be validated with a LOCAL `command -v`. The previous implementation did
+# exactly that and fell back to bare `php` whenever the *local* machine lacked
+# php8.2 — on the box, bare `php` is 8.4 and Moodle refuses it. That fail-open
+# is invisible from the dev laptop (which has php8.2) and appears the moment the
+# command runs from another agent host or a CI runner, i.e. where nobody is watching.
 moodle_cli_php_bin() {
-    local config_file="$1"
+    local config_file="${1:-}"
+    if [ -n "${NWP_MOODLE_CLI_PHP_BIN:-}" ]; then
+        printf '%s' "$(_md_trim "${NWP_MOODLE_CLI_PHP_BIN}")"
+        return 0
+    fi
     local ver=""
-    if declare -F _mp_cfg >/dev/null 2>&1; then
+    if [ -n "$config_file" ] && declare -F _mp_cfg >/dev/null 2>&1; then
         ver="$(_mp_cfg "$config_file" '.moodle.cli_php_version' '' 2>/dev/null || true)"
     fi
-    if [ -n "$ver" ] && command -v "php${ver}" >/dev/null 2>&1; then echo "php${ver}"; return; fi
-    if command -v php8.2 >/dev/null 2>&1; then echo "php8.2"; return; fi
-    echo "php"
+    [ -z "$ver" ] && ver="$MOODLE_CLI_PHP_DEFAULT_VERSION"
+    printf 'php%s' "$ver"
+}
+
+# Resolve the Moodle CLI php flags. Same override chain as the binary.
+moodle_cli_php_opts() {
+    local config_file="${1:-}"
+    if [ -n "${NWP_MOODLE_CLI_PHP_OPTS+x}" ]; then
+        printf '%s' "$(_md_trim "${NWP_MOODLE_CLI_PHP_OPTS}")"
+        return 0
+    fi
+    local opts=""
+    if [ -n "$config_file" ] && declare -F _mp_cfg >/dev/null 2>&1; then
+        opts="$(_mp_cfg "$config_file" '.moodle.cli_php_opts' '' 2>/dev/null || true)"
+    fi
+    [ -z "$opts" ] && opts="$MOODLE_CLI_PHP_DEFAULT_OPTS"
+    printf '%s' "$opts"
+}
+
+# moodle_cli_assert <php_bin> <php_opts>
+# Fail-closed check that a resolved Moodle CLI invocation carries BOTH pieces of
+# box knowledge. This is the difference between documenting the gotcha and
+# enforcing it: a plan that has lost either half must REFUSE, not run.
+moodle_cli_assert() {
+    local php_bin="$1" php_opts="$2" ok=0
+    php_bin="$(_md_trim "$php_bin")"; php_opts="$(_md_trim "$php_opts")"
+    if [ -z "$php_bin" ]; then
+        _md_err "No php binary resolved for the Moodle CLI."
+        _md_err "  The box default 'php' is 8.4 and Moodle 4.4 REJECTS it — refusing to guess."
+        _md_err "  Set .moodle.cli_php_version in the site config (e.g. \"8.2\")."
+        ok=1
+    elif [ "$php_bin" = "php" ]; then
+        _md_err "Refusing a bare 'php' binary for the Moodle CLI: on the forge box that is 8.4,"
+        _md_err "  which Moodle 4.4 rejects. Set .moodle.cli_php_version (e.g. \"8.2\")."
+        ok=1
+    fi
+    case "$php_opts" in
+        *max_input_vars=*) ;;
+        *)  _md_err "Resolved Moodle CLI options do not set max_input_vars: '${php_opts}'"
+            _md_err "  The box php.ini value (1000) is BELOW Moodle's floor. Without"
+            _md_err "  -d max_input_vars=5000, admin/cli scripts fail their environment check"
+            _md_err "  AFTER maintenance mode is enabled and leave the site DOWN (2026-07-26)."
+            ok=1 ;;
+    esac
+    return "$ok"
+}
+
+################################################################################
+# DECLARED CORE PATCHES (item 9)
+#
+# ssc's live guest front door is a one-line change to Moodle CORE index.php
+# (`redirect(new moodle_url('/local/browse/'))`). It was verified live on the
+# box and existed ONLY as an uncommitted working-tree diff in a checkout whose
+# only remote is github.com/moodle/moodle — so a `git checkout`, a Moodle point
+# release or a DR rebuild silently reverts the pilot's entry point.
+#
+# A declared core patch is a row in <site>/core-patches.yml:
+#   core_patches:
+#     - id:     ssc-index-browse-frontdoor
+#       file:   index.php            # relative to the Moodle root
+#       assert: "local/browse"       # substring that MUST be present when applied
+#       why:    "guest front door redirects to local_browse"
+#       patch:  core-patches/ssc-index-browse-frontdoor.patch   # optional
+#
+# `assert` is deliberately a presence check on the target, not a diff: it
+# answers the only question that matters at deploy time ("is the patch actually
+# on the thing I am about to upgrade?") and stays true across Moodle point
+# releases that renumber lines.
+################################################################################
+
+# moodle_core_patches_file <base> — echo the declaration path for a site.
+moodle_core_patches_file() {
+    printf '%s/sites/%s/core-patches.yml' "${PROJECT_ROOT:-.}" "$1"
+}
+
+# moodle_core_patch_ids <decl_file> — echo one patch id per line.
+moodle_core_patch_ids() {
+    local f="$1" yq_bin
+    [ -f "$f" ] || return 0
+    if declare -F _mp_yq >/dev/null 2>&1 && yq_bin="$(_mp_yq 2>/dev/null)"; then
+        "$yq_bin" eval '.core_patches[].id' "$f" 2>/dev/null | grep -v '^null$' || true
+        return 0
+    fi
+    sed -n 's/^[[:space:]]*-[[:space:]]*id:[[:space:]]*//p' "$f" | tr -d '"'"'"
+}
+
+# moodle_core_patch_field <decl_file> <id> <field>
+moodle_core_patch_field() {
+    local f="$1" id="$2" field="$3" yq_bin v=""
+    [ -f "$f" ] || return 1
+    if declare -F _mp_yq >/dev/null 2>&1 && yq_bin="$(_mp_yq 2>/dev/null)"; then
+        v="$("$yq_bin" eval ".core_patches[] | select(.id == \"$id\") | .${field}" "$f" 2>/dev/null | grep -v '^null$' | head -1 || true)"
+    fi
+    if [ -z "$v" ]; then
+        v="$(awk -v id="$id" -v field="$field" '
+            $0 ~ "^[[:space:]]*-[[:space:]]*id:[[:space:]]*" { inblk = ($0 ~ id) }
+            inblk && $0 ~ "^[[:space:]]*" field ":" {
+                sub("^[[:space:]]*" field ":[[:space:]]*", "")
+                gsub(/^["'"'"']|["'"'"']$/, ""); print; exit
+            }' "$f")"
+    fi
+    printf '%s' "$v"
+}
+
+# moodle_core_patch_check_local <root> <file> <assert>
+# 0 = applied, 1 = missing, 2 = target file absent.
+moodle_core_patch_check_local() {
+    local root="${1%/}" file="$2" want="$3"
+    [ -f "${root}/${file}" ] || return 2
+    grep -qF -- "$want" "${root}/${file}" && return 0
+    return 1
+}
+
+# moodle_core_patch_check_remote <ssh_target> <ssh_opts> <sudo_prefix> <root> <file> <assert>
+# Read-only remote grep. Same status contract as the local check, plus 3 =
+# unreachable — which must NEVER be reported as "applied".
+moodle_core_patch_check_remote() {
+    local ssh_target="$1" ssh_opts="$2" sudo_prefix="$3" root="${4%/}" file="$5" want="$6"
+    local remote out
+    remote="f='${root}/${file}'; if [ ! -f \"\$f\" ]; then echo ABSENT; elif ${sudo_prefix} grep -qF -- $(printf '%q' "$want") \"\$f\"; then echo APPLIED; else echo MISSING; fi"
+    remote="$(_md_trim "$remote")"
+    out="$(ssh ${ssh_opts} -o BatchMode=yes -o ConnectTimeout=10 "$ssh_target" "$remote" 2>/dev/null || echo UNREACHABLE)"
+    case "$out" in
+        APPLIED) return 0 ;;
+        MISSING) return 1 ;;
+        ABSENT)  return 2 ;;
+        *)       return 3 ;;
+    esac
+}
+
+################################################################################
+# PLUGIN VERSION DRIFT (item 9)
+#
+# auth_nwc — the plugin carrying the SSO uid-lock AND the Art.9 consent gate —
+# exists in three repos at three versions. Verified 2026-07-26:
+#   scripts/f26/moodle/auth_nwc            2026071101 / 1.0.0
+#   sites/ssc/dev/auth/nwc                 2026072400 / 1.2.0-draft
+#   sites/*/.plugin-src/ss-moodle-plugins  2026072400 / 1.2.0-draft
+#   LIVE ssc:/var/www/ssc/auth/nwc         2026072400 / 1.2.0-draft
+# A "deploy auth_nwc v1.0.1" from the wrong tree silently DOWNGRADES live ssc
+# and drops the consent gate. Nothing detected that before this verb.
+################################################################################
+
+# moodle_plugin_version_local <tree_root> <plugin> — echo the numeric version.
+moodle_plugin_version_local() {
+    local root="${1%/}" plugin="$2" f="${1%/}/$2/version.php"
+    [ -f "$f" ] || return 1
+    sed -n 's/.*\$plugin->version[[:space:]]*=[[:space:]]*\([0-9]\{6,\}\).*/\1/p' "$f" | head -1
+}
+
+# moodle_plugin_version_remote <ssh_target> <ssh_opts> <sudo_prefix> <root> <plugin>
+moodle_plugin_version_remote() {
+    local ssh_target="$1" ssh_opts="$2" sudo_prefix="$3" root="${4%/}" plugin="$5"
+    local remote out
+    remote="${sudo_prefix} sed -n 's/.*\\\$plugin->version[[:space:]]*=[[:space:]]*\\([0-9]\\{6,\\}\\).*/\\1/p' '${root}/${plugin}/version.php' 2>/dev/null | head -1"
+    remote="$(_md_trim "$remote")"
+    out="$(ssh ${ssh_opts} -o BatchMode=yes -o ConnectTimeout=10 "$ssh_target" "$remote" 2>/dev/null || true)"
+    out="$(printf '%s' "$out" | tr -dc '0-9')"
+    [ -n "$out" ] || return 1
+    printf '%s' "$out"
 }

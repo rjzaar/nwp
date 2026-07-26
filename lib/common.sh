@@ -221,12 +221,83 @@ get_infra_secret() {
     get_secret "$path" "$default"
 }
 
+# Resolve a yq binary for data-secret parsing. Echoes the binary, or returns 1.
+# Deliberately local to the secret helpers so a missing yq degrades to the awk
+# fallback below rather than failing the caller.
+_nwp_yq_bin() {
+    if command -v yq >/dev/null 2>&1; then echo yq; return 0; fi
+    if [ -x "$HOME/.local/bin/yq" ]; then echo "$HOME/.local/bin/yq"; return 0; fi
+    if [ -x /snap/bin/yq ]; then echo /snap/bin/yq; return 0; fi
+    return 1
+}
+
+# Arbitrary-depth dotted-path reader for a YAML file, awk-only (no yq).
+#
+# Maintains an indent→key stack, so the *full* dotted path of every mapping key
+# is known as it is read; a match against the requested path prints the scalar.
+# Handles any nesting depth (the old reader was hardcoded to exactly two).
+# Sequences and multi-line scalars are deliberately NOT supported — secrets are
+# flat scalars, and quietly half-parsing a block scalar would be worse than a
+# clean miss (the caller then sees status 3, "key absent").
+_nwp_yaml_deep_awk() {
+    local file="$1" path="$2"
+    awk -v want="$path" '
+        function trim(s){ gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+        function unquote(s){ gsub(/^["'"'"']|["'"'"']$/, "", s); return s }
+        {
+            line = $0; sub(/\r$/, "", line)
+            if (line ~ /^[ \t]*$/ || line ~ /^[ \t]*#/) next
+            if (line ~ /^[ \t]*-/) next                 # sequence item: unsupported
+            match(line, /^ */); ind = RLENGTH
+            body = substr(line, ind + 1)
+            if (body !~ /:/) next
+            key = body; sub(/:.*$/, "", key); key = unquote(trim(key))
+            if (key == "" || key ~ /[ \t]/) next        # not a plain mapping key
+
+            # pop every stack frame at or deeper than this indent
+            while (top > 0 && stack_ind[top] >= ind) top--
+            top++; stack_ind[top] = ind; stack_key[top] = key
+
+            cur = stack_key[1]
+            for (i = 2; i <= top; i++) cur = cur "." stack_key[i]
+            if (cur != want) next
+
+            val = body; sub(/^[^:]*:[ \t]*/, "", val); val = trim(val)
+            sub(/[ \t]+#.*$/, "", val)
+            val = unquote(val)
+            if (val == "") next                         # a parent, not a scalar
+            print val
+            exit
+        }
+    ' "$file" 2>/dev/null
+}
+
 # Get data secret (from .secrets.data.yml - NEVER share with AI)
-# Usage: get_data_secret "section.key" "default_value"
-# These secrets provide access to user data (production DB, SSH, etc.)
+# Usage: get_data_secret "a.b.c.d" "default_value"
+#
+# ARBITRARY DEPTH (item 9). The previous implementation hardcoded a 2-level awk
+# (`section:` then `  key:`), so any deeper path silently returned the DEFAULT.
+# lib/moodle-promote.sh:101 passes a FOUR-level path
+# (`moodle.<site>.<tier>.db_password`), so every Moodle stg/dev config write
+# resolved an empty password and moodle_write_config then wrote an EMPTY
+# $CFG->dbpass while advising the operator to "provision the secret" — advice
+# that could not work because the reader could never see the value.
+#
+# EXIT STATUS is now meaningful (the value/default is always on stdout):
+#   0  value found
+#   2  secrets file absent      (distinct: "cannot verify" ≠ "not configured")
+#   3  file present, key absent
+# Callers that care (moodle_write_config) MUST distinguish these; callers that
+# do not are unaffected because the default is still echoed.
+#
+# DELIBERATELY NOT worktree-resolving: unlike _resolve_infra_secrets_file, this
+# does NOT fall back to the main checkout's copy via git-common-dir. That
+# asymmetry is an intentional security boundary (ops#70) — data secrets stay
+# hard to reach from worktree/AI contexts. Status 2 makes the resulting
+# "unreachable here" state loud instead of silently defaulting.
 get_data_secret() {
     local path="$1"
-    local default="$2"
+    local default="${2:-}"
     local data_secrets_file="${PROJECT_ROOT}/.secrets.data.yml"
 
     # Warn if we're in an AI-accessible context (optional env var)
@@ -235,33 +306,48 @@ get_data_secret() {
     fi
 
     if [ ! -f "$data_secrets_file" ]; then
-        # Fall back to default if no data secrets file
         echo "$default"
-        return
+        return 2
     fi
 
-    # Parse section.key format
-    local section="${path%%.*}"
-    local key="${path#*.}"
+    # Escape hatch for one release: NWP_DATA_SECRET_LEGACY=1 restores the old
+    # 2-level parser exactly (see the item-9 rollback note).
+    if [ "${NWP_DATA_SECRET_LEGACY:-0}" = "1" ]; then
+        local lsection="${path%%.*}" lkey="${path#*.}" lvalue
+        lvalue=$(awk -v section="$lsection" -v key="$lkey" '
+            $0 ~ "^" section ":" { in_section = 1; next }
+            in_section && /^[a-zA-Z]/ && !/^  / { in_section = 0 }
+            in_section && $0 ~ "^  " key ":" {
+                sub("^  " key ": *", ""); gsub(/["'"'"']/, "")
+                sub(/ *#.*$/, ""); gsub(/^[ \t]+|[ \t]+$/, "")
+                print; exit
+            }
+        ' "$data_secrets_file")
+        if [ -n "$lvalue" ]; then echo "$lvalue"; return 0; fi
+        echo "$default"; return 3
+    fi
 
-    local value=$(awk -v section="$section" -v key="$key" '
-        $0 ~ "^" section ":" { in_section = 1; next }
-        in_section && /^[a-zA-Z]/ && !/^  / { in_section = 0 }
-        in_section && $0 ~ "^  " key ":" {
-            sub("^  " key ": *", "")
-            gsub(/["'"'"']/, "")
-            sub(/ *#.*$/, "")
-            gsub(/^[ \t]+|[ \t]+$/, "")
-            print
-            exit
-        }
-    ' "$data_secrets_file")
+    local value="" yq_bin
+    if yq_bin="$(_nwp_yq_bin)"; then
+        # Build a yq expression from the dotted path with each segment quoted,
+        # so keys containing '-' or digits resolve correctly.
+        local expr="" seg
+        local IFS_SAVE="$IFS"; IFS='.'
+        for seg in $path; do expr="${expr}[\"${seg}\"]"; done
+        IFS="$IFS_SAVE"
+        value="$("$yq_bin" eval ".${expr}" "$data_secrets_file" 2>/dev/null || true)"
+        [ "$value" = "null" ] && value=""
+    fi
+    if [ -z "$value" ]; then
+        value="$(_nwp_yaml_deep_awk "$data_secrets_file" "$path")"
+    fi
 
-    if [ -n "$value" ] && [ "$value" != "" ]; then
+    if [ -n "$value" ]; then
         echo "$value"
-    else
-        echo "$default"
+        return 0
     fi
+    echo "$default"
+    return 3
 }
 
 # Get nested data secret (from .secrets.data.yml)

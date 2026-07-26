@@ -145,7 +145,8 @@ Update `consent_text`, bump `consent_version`, commit, MR, merge.
 ### Step 2 — maintenance ON, deploy the new `nwc` code
 
 ```bash
-ssh gitlab@<prod-box> "cd /var/www/nwc && sudo -u www-data ./vendor/bin/drush state:set system.maintenance_mode 1 -y && sudo -u www-data ./vendor/bin/drush cr"
+pl drush nwc --tier=live --execute -- state:set system.maintenance_mode 1 -y
+pl drush nwc --tier=live --execute -- cr
 
 # STANDING RULE: --code-only. A full-DB push rewrites UIDs and severs the
 # UID-locked ssc/ssd OIDC SSO identities. See ADR-0029.
@@ -158,24 +159,24 @@ mode, `MemberCapabilities` and the CC0 contribution gate.
 ### Step 3 — flip both flags, still in maintenance
 
 ```bash
-ssh gitlab@<prod-box> "cd /var/www/nwc && \
-  sudo -u www-data ./vendor/bin/drush cset nwc_privacy.settings enforce_gate true -y && \
-  sudo -u www-data ./vendor/bin/drush cset nwc_privacy.settings enforce_contribution_gate true -y && \
-  sudo -u www-data ./vendor/bin/drush cset nwc_privacy.settings consent_version <N> -y && \
-  sudo -u www-data ./vendor/bin/drush cr"
+pl drush nwc --tier=live --execute -- cset nwc_privacy.settings enforce_gate true -y
+pl drush nwc --tier=live --execute -- cset nwc_privacy.settings enforce_contribution_gate true -y
+pl drush nwc --tier=live --execute -- cset nwc_privacy.settings consent_version <N> -y
+pl drush nwc --tier=live --execute -- cr
 ```
 
 Confirm before lifting maintenance:
 
 ```bash
-ssh gitlab@<prod-box> "cd /var/www/nwc && sudo -u www-data ./vendor/bin/drush cget nwc_privacy.settings | grep -E '^(enforce_gate|enforce_contribution_gate|consent_version):'"
+pl drush nwc --tier=live --execute -- cget nwc_privacy.settings
 # expect: consent_version: <N> / enforce_gate: true / enforce_contribution_gate: true
 ```
 
 ### Step 4 — maintenance OFF
 
 ```bash
-ssh gitlab@<prod-box> "cd /var/www/nwc && sudo -u www-data ./vendor/bin/drush state:set system.maintenance_mode 0 -y && sudo -u www-data ./vendor/bin/drush cr"
+pl drush nwc --tier=live --execute -- state:set system.maintenance_mode 0 -y
+pl drush nwc --tier=live --execute -- cr
 ```
 
 ### Step 5 — `ssc` Moodle (already done)
@@ -197,12 +198,14 @@ Both probes are throwaway-account based and clean up after themselves.
 Run the same probe already proven on `nwd`:
 
 ```bash
-scp art9_nwd_journey.php gitlab@<prod-box>:/tmp/
-ssh gitlab@<prod-box> "sudo cp /tmp/art9_nwd_journey.php /var/www/nwc/ && \
-  sudo chown www-data:www-data /var/www/nwc/art9_nwd_journey.php && \
-  cd /var/www/nwc && sudo -u www-data ./vendor/bin/drush php:script art9_nwd_journey.php; \
-  sudo rm -f /var/www/nwc/art9_nwd_journey.php /tmp/art9_nwd_journey.php"
+# The probe script is staged and removed by the deploy path; the RUN is a pl verb
+# so the gate, the live.enabled flag and the ledger apply.
+pl drush nwc --tier=live --execute -- php:script art9_nwd_journey.php
 ```
+
+> The probe file itself is staged with the same `--code-only` deploy that ships
+> the release, not by a hand `scp`. If it ever needs staging on its own, that is
+> a missing `pl` verb, not a licence for a one-liner — file it.
 
 Expect **ALL DEMO-TIER JOURNEY PATHS PASSED**:
 
@@ -238,9 +241,8 @@ Reverse order. Each step is independently sufficient to stop consent-asking.
 **Fastest stop-the-asking (seconds):**
 
 ```bash
-ssh gitlab@<prod-box> "cd /var/www/nwc && \
-  sudo -u www-data ./vendor/bin/drush cset nwc_privacy.settings enforce_gate false -y && \
-  sudo -u www-data ./vendor/bin/drush cr"
+pl drush nwc --tier=live --execute -- cset nwc_privacy.settings enforce_gate false -y
+pl drush nwc --tier=live --execute -- cr
 ```
 
 With the **new** code this returns everyone to Trialing-with-gates-open (loudly
@@ -255,15 +257,31 @@ is shown the consent form.
 *removes* protection):
 
 ```bash
-ssh gitlab@<prod-box> "sudo tar -xzf /var/backups/ssc-depthcontent-pre-art9-20260726.tar.gz -C /var/www/ssc"
-ssh gitlab@<prod-box> "cd /var/www/ssc && sudo -u www-data php8.2 -d max_input_vars=5000 admin/cli/upgrade.php --non-interactive"
+# Restore the pre-Art.9 plugin tree (CP18 in the rollback registry):
+pl moodle rollback ssc --tier=live execute
+
+# Then re-run the Moodle upgrade. The php binary and -d max_input_vars=5000 are
+# resolved and ASSERTED by the verb — you do not type them:
+pl moodle cli ssc --tier=live --execute -- admin/cli/upgrade.php --non-interactive
 ```
 
-> **Box gotcha:** `max_input_vars` is `1000` on this host; Moodle requires
-> `>= 5000` and `admin/cli/upgrade.php` **fails the environment check and leaves
-> the site in maintenance mode** without the `-d max_input_vars=5000` override.
-> Always pass it. (Persisting it in `/etc/php/8.2/{cli,fpm}/php.ini` is the
-> proper fix — open item.)
+> **Box gotcha — now enforced, not remembered.** The box's default `php` is 8.4
+> (Moodle 4.4 rejects it) and its `max_input_vars` is `1000` (Moodle needs
+> `>= 5000`). `admin/cli/upgrade.php` run without the `-d max_input_vars=5000`
+> override **fails its environment check AFTER maintenance mode is enabled and
+> leaves the site DOWN** — that is what took the `ss` Moodle instance offline for ~6
+> minutes on 2026-07-26. Since item 9, `moodle_cli_assert()` REFUSES any
+> `pl moodle` invocation whose resolved command has lost either half, so the
+> failure mode is a refusal instead of an outage.
+>
+> If a site does end up stuck in maintenance, recovery is one verb:
+>
+> ```bash
+> pl moodle maintenance ssc --tier=live off --execute
+> ```
+>
+> Persisting `max_input_vars=5000` in `/etc/php/8.2/{cli,fpm}/php.ini` as
+> committed server config is programme item 10's `servers/<name>/php/`.
 
 ---
 

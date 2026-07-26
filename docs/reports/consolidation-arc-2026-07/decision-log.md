@@ -1124,3 +1124,115 @@ credential changes themselves.
 `.secrets.yml:gitlab.api_token` is **not** the root admin PAT; it is the non-admin `group_9_bot` /
 `nwp-automation-dev` (Developer, `is_admin: false`) and it *can* create MRs on `nwp/nwp`. CLAUDE.md now
 says so explicitly, and `pl secrets capabilities` makes it checkable instead of remembered.
+
+---
+
+## 2026-07-26 — Fix-programme item 9: `moodle-ops-verbs` (five live Moodle instances administered by hand-ssh)
+
+**What was actually verified before anything was written** (all read-only, against live):
+
+| Claim | Evidence |
+|---|---|
+| Box default `php` is 8.4, which Moodle 4.4 rejects | `ssh …97.107.137.88 "php -v"` → `PHP 8.4.21`; `php8.2` and `php8.3` also present |
+| Box `max_input_vars` is below Moodle's floor | `php8.2 -i \| grep max_input_vars` → `1000 => 1000` |
+| `max_input_vars` appeared NOWHERE in the deploy library | `grep -rn max_input_vars lib/moodle-deploy.sh` → 0 hits. `pl moodle upgrade --apply` reproduced the 2026-07-26 outage exactly. |
+| ssc's guest front door is an unversioned CORE patch | live `/var/www/ssc/index.php:67` = `redirect(new moodle_url('/local/browse/'))`; same line in `sites/ssc/dev/index.php:67`; that checkout's ONLY remote is `github.com/moodle/moodle`; no `core-patches/` existed anywhere |
+| `auth_nwc` was split three ways | `scripts/f26/moodle/auth_nwc` = `2026071101 / 1.0.0`; dev tree, `.plugin-src` cache, **and live ssc** all = `2026072400 / 1.2.0-draft` |
+| `get_data_secret` could not read the path its only Moodle caller passes | fixture with `moodle.ssc.stg.db_password: SENTINEL_VALUE_XYZ` → returned `DEFAULT`; the 2-level control (`production_database.password`) returned correctly |
+
+**Decisions:**
+
+1. **The two pieces of box knowledge are now an ASSERTION, not documentation.**
+   `moodle_cli_assert()` refuses any `pl moodle` invocation whose resolved command has lost the
+   explicit `php8.x` binary or `-d max_input_vars=5000`, and it runs on `--dry-run` too. Writing
+   them into a runbook (the previous state) is what produced the ~6 min `ss.nwpcode.org` outage:
+   the gotcha was *documented, accurately, in three places* and still got typed wrong.
+   *Alternative rejected:* defaulting silently. A default that is silently wrong on one host is the
+   fail-open this programme exists to remove; the failure has to be a refusal.
+   *Reverse:* `NWP_MOODLE_CLI_PHP_OPTS=` / `NWP_MOODLE_CLI_PHP_BIN=` override per invocation.
+
+2. **`moodle_cli_php_bin` no longer validates a REMOTE binary with a LOCAL `command -v`.**
+   The old body fell back to bare `php` whenever the *local* machine lacked `php8.2` — and bare
+   `php` on the box is 8.4. That fail-open is invisible from the dev laptop (which has php8.2) and
+   fires the first time the verb runs from mini or a CI runner, i.e. exactly where nobody is
+   watching. A bare `php` is now itself a refusal.
+
+3. **Turning maintenance OFF is deliberately NOT gated.** `pl moodle maintenance <site> off` skips
+   `deploy_gate_require`; turning it ON does not. Recovery must never be harder than the failure —
+   the whole reason the 2026-07-26 outage lasted 6 minutes is that there was no verb for the way out.
+   *Alternative rejected:* gating both symmetrically "for consistency". Consistency is not the goal;
+   bounded downtime is.
+
+4. **Core patches are declared with a substring `assert:`, not a diff.** The deploy-time question is
+   "is this change on the thing I am about to upgrade?", not "does the file byte-match a snapshot".
+   A substring survives Moodle point releases that renumber lines, so the gate keeps working instead
+   of going permanently red and being ignored — which is how gates die. The `.patch` file is the
+   *re-application* artifact; `assert:` is the *detection* artifact; both ship.
+   **UNREACHABLE counts as a failure.** "I could not check" is never rendered as "it is fine".
+   *Reverse:* delete `core-patches/<site>.yml` — no declaration is a clean no-op.
+
+5. **The canonical home for a declaration is `nwp/ss-moodle-plugins/core-patches/`, not `sites/`.**
+   `sites/*` is gitignored in nwp/nwp, so a declaration living only there would be exactly the
+   disease it exists to cure. `sites/<base>/core-patches.yml` remains rung 1 for local/test use;
+   rung 2 is the version-controlled copy that arrives via `pl moodle plugins sync`.
+
+6. **The preferred fix for `ssc-index-browse-frontdoor` is config, not a core patch — and that is
+   NOT done here.** A front-page/default-homepage configuration captured by the ops#63 drift gate
+   would be strictly better. It is a live behaviour change on a **member-facing pilot** and stays
+   operator-gated. The declaration ships now so the patch is at least visible and enforced; the
+   migration is recorded in `core-patches/README.md` as the intended direction.
+
+7. **`get_data_secret` was NOT given the worktree/git-common-dir fallback the programme suggested.**
+   `_resolve_infra_secrets_file` has that fallback and `get_data_secret` deliberately does not —
+   `lib/common.sh:154` records it as an intentional boundary (ops#70): data secrets must stay hard
+   to reach from worktree/AI contexts. Adding the fallback would have weakened a security decision
+   to fix an ergonomics complaint. Instead the function now returns a **distinct status 2 for
+   "file absent"** vs **3 for "key absent"**, and `moodle_write_config` names the worktree case in
+   its refusal message. The unreachability is now loud instead of silent, without moving the boundary.
+   *This is the one place item 9 deliberately did less than the programme asked. Flagged for the operator.*
+
+8. **`moodle_write_config` now REFUSES an empty `$CFG->dbpass` on any non-ddev tier.** It used to
+   WARN and write it, advising the operator to "provision the secret" — advice that could not work,
+   because the reader could never see a 4-level path. A config.php with an empty dbpass is not a
+   degraded config, it is a broken one that fails at the first DB connection with a misleading error.
+   *Reverse:* set `.moodle.tiers.<tier>.dbpass_ddev_default: true` for a genuine ddev tier.
+
+9. **`scripts/f26/moodle/auth_nwc/` deleted, replaced by `CANONICAL-SOURCE.md`.** It was the only
+   `auth_nwc` copy committed to nwp/nwp — and the only stale one. Anyone reading this repo would
+   have found the version that **downgrades live ssc and drops the Art.9 consent gate**. Deleting it
+   removes the trap; `pl moodle plugin drift` now detects the class of problem rather than this
+   instance of it.
+   *Alternative rejected:* bumping the f26 copy to match. That preserves a fourth copy to drift again.
+
+10. **`pl moodle plugin drift` fails on fewer than 2 comparable copies.** "Found nothing" must never
+    render as "everything agrees" — that is the vacuous-pass shape (`cannot verify` is a distinct,
+    non-zero outcome). Verified live: `pl moodle plugin drift ssc auth/nwc mod/depthcontent` compares
+    dev tree + repo cache + **live webroot** and reports agreement at `2026072400` / `2026072600`.
+
+11. **The `doc-truth` `raw-remote-cli` rule matches the ALIAS form too.** The first version matched
+    only the direct raw-remote-cli form `ssh … drush`; `NWC-LIVE-DEPLOY-RUNBOOK-2026-07-19.md` assigns
+    `D="sudo -u www-data …/drush --root=…"` and then writes `ssh … "$D updatedb -y"` — a raw-remote-cli
+    alias — so the first version reported a runbook containing 18 raw remote drush invocations as
+    **clean**. A gate a shell variable defeats is a vacuous gate. The rule now also matches the
+    raw-remote-cli `sudo -u www-data … drush|admin/cli/` shape, catching the one-liner and its alias.
+    A test (`f4`) plants exactly that alias and asserts it goes red.
+
+12. **`docs/guides/art9-golive-runbook.md` was FIXED; the other 29 hits were BASELINED.** Item 9's own
+    territory now prescribes `pl drush` / `pl moodle cli` throughout and produces zero hits. The rest
+    (production-site-integration, verifier-operations, testing, CONFIG_AS_CODE, disaster-recovery,
+    ops82-key-rotation, migration, stg2prod, F24, rollback-registry) belong to other territories;
+    they go into `.doc-truth-baseline` under a shrink-only header so the rule is enforceable **today**
+    against NEW drift. Baselining is recorded here because adding a baseline line is a decision.
+
+**Follow-ups owed to other territories (NOT done here):**
+- `rollback-registry.md` CP18's restore command is still a raw-remote-cli `ssh … admin/cli/upgrade.php`
+  one-liner (it is one of the baselined hits). Item 2 owns that file; the `pl` form is
+  `pl moodle rollback ssc --tier=live execute` then
+  `pl moodle cli ssc --tier=live --execute -- admin/cli/upgrade.php --non-interactive`.
+- Persisting `max_input_vars=5000` in `/etc/php/8.2/{cli,fpm}/php.ini` as committed server config is
+  item 10's `servers/<name>/php/`. Until then `pl` supplies it per-invocation, which is correct but
+  does not help anything running outside `pl`.
+- Moving `origin/ops-nwp-avatars-moodle` (~1,800 lines, wrong repo) into the canonical plugin repo
+  was **not attempted**: `nwp/ss-moodle-plugins` is concurrently held by fix-programme item 8
+  (`auth/nwc/**`) and off-limits MR !7 (`mod/depthcontent`), and a 1,800-line plugin import is not a
+  disjoint change to slide in beside them. It needs its own MR after those land. ops#86 stays open.

@@ -1,4 +1,19 @@
 # doc-truth baseline — known-existing doc drift (P62). Regenerate: pl doc-truth --baseline
+#
+# SHRINK-ONLY. This file records rot that already existed when a rule was
+# introduced, so the gate can be enforced from day one on NEW drift. Adding a
+# line to it is a decision, not housekeeping — record it in
+# docs/reports/consolidation-arc-2026-07/decision-log.md.
+#
+# The 29 `raw-remote-cli` entries below were baselined by programme item 9
+# (2026-07-26) when that rule landed. Item 9's OWN territory,
+# docs/guides/art9-golive-runbook.md, was FIXED not baselined: it now prescribes
+# `pl drush` / `pl moodle cli` throughout and produces ZERO hits. The remaining
+# files belong to other territories; converting them is follow-up work, and the
+# gate now stops any NEW raw remote one-liner from entering a runbook.
+#
+# NOTE: `pl doc-truth --baseline` REGENERATES this file and will drop this
+# header. Re-add it after regenerating.
 dead-link|docs/decisions/0022-nwp-verifier-binary-split.md|../reference/reproducible-build.md
 dead-link|docs/decisions/0022-nwp-verifier-binary-split.md|../tiers/tier-4-add-verifier.md
 dead-link|docs/deployment/advanced-deployment.md|DEPLOYMENT.md
@@ -6,8 +21,6 @@ dead-link|docs/deployment/advanced-deployment.md|../linode/server_scripts/nwp-he
 dead-link|docs/deployment/advanced-deployment.md|SERVER_MANAGEMENT.md
 dead-link|docs/deployment/cicd.md|../../linode/gitlab/README.md
 dead-link|docs/deployment/environments.md|DEVELOPER_LIFECYCLE_GUIDE.md
-dead-link|docs/deployment/environments.md|../.github/workflows/build-test-deploy.yml
-dead-link|docs/deployment/environments.md|../.gitlab-ci.yml
 dead-link|docs/guides/admin-onboarding.md|DEVELOPER_LIFECYCLE_GUIDE.md
 dead-link|docs/guides/admin-onboarding.md|GITLAB_COMPOSER.md
 dead-link|docs/guides/coder-onboarding.md|CORE_DEVELOPER_ONBOARDING_PROPOSAL.md
@@ -25,20 +38,6 @@ dead-link|docs/proposals/F32-tiered-architecture-implementation.md|../reference/
 dead-link|docs/proposals/F32-tiered-architecture-implementation.md|../tiers/tier-4-add-verifier.md
 dead-link|docs/proposals/F35-pl-site-rename.md|F23-project-separation-v2.md
 dead-link|docs/proposals/P71-guild-ownership-editorial-scoring-audience-fit.md|../../sites/nwc/dev/html/profiles/custom/nwc/docs/decisions/0002-three-guilds-plus-stewards.md
-dead-link|docs/README.md|drafts/AVC_WORK_MANAGEMENT_MODULE.md
-dead-link|docs/README.md|drafts/WORKFLOW_ACCESS_CONTROL_EXTENSION.md
-dead-link|docs/README.md|projects/avc/hybrid-implementation-plan.md
-dead-link|docs/README.md|projects/avc/hybrid-mobile-approach.md
-dead-link|docs/README.md|projects/avc/implementation-summary.md
-dead-link|docs/README.md|projects/avc/implementation-summary.md
-dead-link|docs/README.md|projects/avc/mobile-app-options.md
-dead-link|docs/README.md|projects/avc/moodle-sso-complete.md
-dead-link|docs/README.md|projects/avc/moodle-sso-implementation.md
-dead-link|docs/README.md|projects/avc/moodle-sso-nwp.md
-dead-link|docs/README.md|projects/avc/moodle-sso-proposal.md
-dead-link|docs/README.md|projects/avc/python-alternatives.md
-dead-link|docs/README.md|projects/avc/work-management-implementation.md
-dead-link|docs/README.md|../sites/avc/html/profiles/custom/avc/modules/avc_features/avc_email_reply/README.md
 dead-link|docs/reference/commands/bootstrap-coder.md|../../decisions/cli-registration.md
 dead-link|docs/reference/commands/doctor.md|../../guides/troubleshooting.md
 dead-link|docs/reference/commands/email.md|../../deployment/postfix-setup.md
@@ -110,3 +109,32 @@ dead-link|docs/testing/verification-guide.md|../../linode/gitlab/README.md
 dead-link|docs/testing/verification-guide.md|../../linode/README.md
 dead-link|docs/testing/verify-enhancements.md|TESTING.md
 dead-link|README.md|docs/reference/deployment-workflow-analysis.md
+raw-remote-cli|docs/CONFIG_AS_CODE.md|L33
+raw-remote-cli|docs/deployment/advanced-deployment.md|L758
+raw-remote-cli|docs/deployment/advanced-deployment.md|L761
+raw-remote-cli|docs/deployment/disaster-recovery.md|L527
+raw-remote-cli|docs/deployment/disaster-recovery.md|L530
+raw-remote-cli|docs/deployment/disaster-recovery.md|L533
+raw-remote-cli|docs/guides/ops74-half-b-runbook.md|L110
+raw-remote-cli|docs/guides/ops82-key-rotation.md|L134
+raw-remote-cli|docs/guides/ops82-key-rotation.md|L51
+raw-remote-cli|docs/guides/ops82-key-rotation.md|L75
+raw-remote-cli|docs/guides/ops82-key-rotation.md|L76
+raw-remote-cli|docs/guides/ops82-key-rotation.md|L77
+raw-remote-cli|docs/guides/ops82-key-rotation.md|L78
+raw-remote-cli|docs/guides/production-site-integration.md|L1176
+raw-remote-cli|docs/guides/production-site-integration.md|L1182
+raw-remote-cli|docs/guides/production-site-integration.md|L391
+raw-remote-cli|docs/guides/production-site-integration.md|L585
+raw-remote-cli|docs/guides/production-site-integration.md|L900
+raw-remote-cli|docs/guides/production-site-integration.md|L974
+raw-remote-cli|docs/guides/production-site-integration.md|L982
+raw-remote-cli|docs/guides/verifier-operations.md|L174
+raw-remote-cli|docs/guides/verifier-operations.md|L237
+raw-remote-cli|docs/guides/verifier-operations.md|L243
+raw-remote-cli|docs/proposals/F24-relocate-dev-tree-to-mirror-store.md|L264
+raw-remote-cli|docs/reference/commands/migration.md|L153
+raw-remote-cli|docs/reference/commands/stg2prod.md|L343
+raw-remote-cli|docs/reports/consolidation-arc-2026-07/rollback-registry.md|L35
+raw-remote-cli|docs/testing/testing.md|L342
+raw-remote-cli|docs/testing/testing.md|L343

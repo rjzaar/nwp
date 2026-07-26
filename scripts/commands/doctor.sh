@@ -34,6 +34,7 @@ Checks performed:
     - Configuration files (nwp.yml, .secrets.yml)
     - Network connectivity (Linode API, Cloudflare API, drupal.org)
     - Common issues (Docker daemon, DDEV sites, disk space, memory)
+    - Version control (commits/repos that exist only on this machine)
 
 Exit codes:
     0 - All checks passed
@@ -364,6 +365,67 @@ check_common_issues() {
 }
 
 ################################################################################
+# Version control: is anything here the ONLY copy?
+#
+# Every other check in this file asks whether the machine can do its job today.
+# This one asks whether the work survives the machine. `feat/nwptoolkit-deploy`
+# (340 lines) sat on no remote in any repo for three weeks; servers/nwpcode is a
+# two-commit repository with no remote at all and is the only home of the
+# fleet's backup producer. Both were invisible to `git status`, to `pl status`,
+# and to `pl doctor`.
+#
+# NWP_VCS_ROOT overrides the tree to scan (the acceptance suite uses it).
+################################################################################
+
+check_vcs_safety() {
+    local errors=0
+    print_header "Checking Version control (is anything the only copy?)"
+
+    if ! command -v git &>/dev/null; then
+        print_warning "Version control: git not installed — cannot check"
+        return 0
+    fi
+
+    local root="${NWP_VCS_ROOT:-$PROJECT_ROOT}"
+    if [ ! -d "$root" ]; then
+        print_warning "Version control: '$root' is not a directory — cannot check"
+        return 0
+    fi
+
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/lib/vcs-truth.sh"
+
+    local warn_days="${NWP_VCS_WARN_DAYS:-3}"
+    local rows
+    rows=$(vcs_strand_rows "$root" "$warn_days" 2>/dev/null || true)
+
+    if [ -z "$rows" ]; then
+        print_success "Version control: every commit in every repo is on a remote"
+        return 0
+    fi
+
+    local kind repo label n age rel
+    while IFS=$'\t' read -r kind repo label n age; do
+        [ -n "$kind" ] || continue
+        rel="${repo#$root/}"; [ "$rel" = "$repo" ] && rel="$(basename "$repo")"
+        case "$kind" in
+            no-remote)
+                print_error "Version control: $rel has no remote — its $n commit(s) exist only on this machine"
+                print_hint "  give it one:  git -C $repo remote add origin <url> && git -C $repo push -u origin $label"
+                ((errors++))
+                ;;
+            unpushed)
+                print_error "Version control: $rel '$label' — $n commit(s) exist only on this machine (${age}d old)"
+                print_hint "  push them:    git -C $repo push -u origin $label"
+                ((errors++))
+                ;;
+        esac
+    done <<< "$rows"
+
+    return $errors
+}
+
+################################################################################
 # F23 Phase 1: Per-site schema checks
 ################################################################################
 
@@ -577,6 +639,9 @@ main() {
     echo ""
 
     check_common_issues || total_errors=$((total_errors + $?))
+    echo ""
+
+    check_vcs_safety || total_errors=$((total_errors + $?))
     echo ""
 
     check_site_schemas || total_errors=$((total_errors + $?))

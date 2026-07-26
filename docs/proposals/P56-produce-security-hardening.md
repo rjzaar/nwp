@@ -357,7 +357,7 @@ Developer                          Lead Developer
 Developer receives credentials  ←──  7. Send GitLab credentials + confirmation
 
 8. Clone immediately:
-   git clone git@nwpcode.org:nwp/nwp.git
+   git clone git@example.com:nwp/nwp.git
 ```
 
 ### 7.4 Server Key Deployment

@@ -929,7 +929,7 @@ update-badges:
   script:
     # Configure git
     - git config user.name "GitLab CI"
-    - git config user.email "ci@nwpcode.org"
+    - git config user.email "ci@example.com"
 
     # Only update if .badges.json changed
     - |

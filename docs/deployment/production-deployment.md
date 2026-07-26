@@ -105,16 +105,16 @@ When deploying with `pl live`, the system automatically configures site emails:
 ```yaml
 # In nwp.yml settings section:
 settings:
-  url: nwpcode.org
+  url: example.com
   email:
     auto_configure: true          # Enable auto-config (default: true)
     site_email_pattern: "{site}@{domain}"  # Pattern for site email
-    admin_forward_to: admin@nwpcode.org    # Admin emails forwarded here
+    admin_forward_to: admin@example.com    # Admin emails forwarded here
 ```
 
 **What happens automatically:**
-1. Site email set to `sitename@nwpcode.org`
-2. Admin account email set to `admin-sitename@nwpcode.org`
+1. Site email set to `sitename@example.com`
+2. Admin account email set to `admin-sitename@example.com`
 3. Email forwarding configured for admin notifications
 
 **Verification Step (v0.19.1+):**
@@ -124,8 +124,8 @@ During `stg2live` and `stg2prod` deployments, you'll see:
 ```
 Email Configuration Verification
 ─────────────────────────────────
-  Site Email: mysite@nwpcode.org
-  Admin Email: admin-mysite@nwpcode.org
+  Site Email: mysite@example.com
+  Admin Email: admin-mysite@example.com
 
 ✓ Email addresses validated
 ! Make sure these email addresses are configured in your mail server

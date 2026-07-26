@@ -245,7 +245,7 @@ build tier never wrote to the box).
 
 To close the self-healing loop (OPERATING-MODEL §6), an **approved** pipeline can
 trigger the agent via a **GitLab Runner on the deploy-tier box**. Real prod stays
-ver/hardware-gated (A14); use this on the `*.nwpcode.org` test tier for the
+ver/hardware-gated (A14); use this on the `*.example.com` test tier for the
 autonomous loop. The runner box stays **AI-free** and holds only a runner
 authentication token (`glrt-…`) — never an `api` PAT.
 

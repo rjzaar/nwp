@@ -298,17 +298,31 @@ cmd_gitignore() {
         case "$a" in
             --check)      mode="check" ;;
             --fix)        mode="fix" ;;
+            --exposed)    mode="exposed" ;;
+            --all)        mode="all" ;;
             --site=*)     only_site="${a#--site=}" ;;
             -h|--help)
                 cat <<'EOF'
-Usage: pl site gitignore [--check|--fix] [--site=<name>]
+Usage: pl site gitignore [--check|--fix|--exposed|--all] [--site=<name>]
 
-  --check          Report every nested repo where a sensitive path would be
-                   committable (default). Non-zero if any are, and non-zero
-                   if the scan finds NO repos at all ("cannot verify").
+Containment has two halves, and they need different answers:
+
+  FUTURE  "could a sensitive path still be committed here?"
+  PAST    "was one already committed — and pushed?"
+
+  --check          FUTURE. Report every nested repo where a sensitive path
+                   would be committable (default). Non-zero if any are, and
+                   non-zero if the scan finds NO repos at all ("cannot verify").
   --fix            Idempotently install the managed containment block into
                    each leaky repo's .gitignore. Never removes an existing
                    rule; never untracks an already-tracked file.
+  --exposed        PAST. Report already-TRACKED payloads (dumps, tarballs,
+                   settings.php, private keys) and the remote they are
+                   published to. --fix CANNOT clear these: git does not
+                   consult .gitignore for a path it already tracks. Clearing
+                   them is `git filter-repo` + force-push, a history rewrite
+                   on a remote, which stays operator-gated.
+  --all            Both halves. Non-zero if either is non-zero.
   --site=<name>    Restrict to one site.
 
 Checks are behavioural: each probe path is put to `git check-ignore`, so a
@@ -341,6 +355,32 @@ EOF
         return 3
     fi
 
+    # PAST half — already-tracked, already-published payloads.
+    local exposed=0
+    if [[ "$mode" == "exposed" || "$mode" == "all" ]]; then
+        local report
+        for r in "${repos[@]}"; do
+            if report="$(containment_check_tracked_repo "$r" 2>/dev/null)"; then
+                continue
+            fi
+            exposed=$((exposed + 1))
+            printf '%s\n' "$report" | sed "s|$PROJECT_ROOT/||"
+        done
+        echo ""
+        echo "scanned ${#repos[@]} nested repositories under '${root#$PROJECT_ROOT/}'"
+        echo "already-published payloads: ${exposed} repo(s)"
+        if [[ "$exposed" -gt 0 ]]; then
+            echo ""
+            echo "These CANNOT be cleared by --fix. Removing them is a history rewrite"
+            echo "on a remote (git filter-repo + force-push) and is operator-gated."
+        fi
+        if [[ "$mode" == "exposed" ]]; then
+            [[ "$exposed" -eq 0 ]]
+            return
+        fi
+        echo ""
+    fi
+
     local leaky=0 fixed=0
     for r in "${repos[@]}"; do
         local kind
@@ -369,6 +409,10 @@ EOF
         return 0
     fi
     echo "leaky: ${leaky}"
+    if [[ "$mode" == "all" ]]; then
+        [[ "$leaky" -eq 0 && "$exposed" -eq 0 ]]
+        return
+    fi
     [[ "$leaky" -eq 0 ]]
 }
 

@@ -141,7 +141,7 @@ webhook respawn path closes the MR and re-queues the issue with a retry).
 The loop ends at **merged code**. Getting merged code onto live servers is the
 separate deploy pipeline (signed bundles → verification → apply), and its prod
 half is still human-driven pending the `ver` machine (ops#25) and the
-runner-resident model in ADR-0024. The `*.nwpcode.org` test tier is
+runner-resident model in ADR-0024. The `*.example.com` test tier is
 AI-deployable under A14; real prod is not. See
 `docs/onboarding/deploy-pipeline.md` and ADR-0017/0022/0024/0026.
 

@@ -21,6 +21,67 @@
 # defaults to "dev" (today's behavior); an unparseable value FAILS CLOSED —
 # every guard allows only exact, known-safe phases.
 #
+# FAIL-CLOSED ON AN UNREADABLE *FILE*, NOT JUST AN UNREADABLE *VALUE*
+# (2026-07-27, the same defect lib/pair.sh was fixed for in MR !211):
+#   The paragraph above was true of the VALUE and false of the FILE. Until this
+#   change both readers were `[ -f "$config" ] && raw=$(… || true)`, so a
+#   corrupt, truncated or half-written nwp.yml made yq fail, made `raw` empty,
+#   and empty is the branch that returns the WEAKEST setting. Every
+#   `canonical: live` site read as `dev` — so canonical_guard_content_push
+#   ALLOWED exactly the dev→live content overwrite it exists to stop — and every
+#   `maturity: production` site read as `incubating`, so maturity_guard_deploy
+#   stopped routing prod through the signed-bundle path. That refusal has no
+#   override BY DESIGN, which made this fail-open the only way past it.
+#
+#   nwp.yml is never committed (CLAUDE.md) and `.gitignore:14` ignores `sites/*`,
+#   so these guards' only inputs are files no reviewer and no CI job can see. A
+#   guard that silently degrades on an invisible input cannot be observed to be
+#   wrong. So "I could not read the config" is now its OWN answer, distinct from
+#   "the config says dev", and it REFUSES:
+#
+#     canonical_get_phase → "cannot-verify:<reason>"   (guards refuse)
+#     maturity_get_class  → "cannot-verify:<reason>"   (guards refuse)
+#
+#   Same vocabulary as lib/boundary.sh's rc 2 / `pl impact --honesty`: CANNOT
+#   VERIFY is NOT a clean result. Escape hatch: NWP_CANONICAL_GATE_SOFT=true,
+#   which downgrades to a loud warning and writes a ledger row — deliberately
+#   NOT --override-canonical, which is a per-decision override and must not
+#   double as a licence to deploy past a config nobody can read.
+#
+# ABSENT BY CONTEXT vs PRESENT BUT UNREADABLE — where the line is drawn, and why
+#   `pl` runs from a fresh clone, from CI, and from ~40 linked worktrees, and in
+#   those contexts nwp.yml legitimately does not exist (the worktrees are split:
+#   some symlink it to the main tree, some have no copy at all). A fail-closed
+#   that fires there would refuse ordinary work, get overridden or reverted, and
+#   leave us worse off than the bug.
+#
+#   THE LINE IS DRAWN AT PARSEABILITY, NOT PRESENCE:
+#     · config EXISTS and does not parse  → CANNOT VERIFY, refuse, always.
+#       Nothing legitimate produces a corrupt nwp.yml. This is also the failure
+#       that actually happens (an interrupted `pl canonical set`, a bad merge, a
+#       half-written file), and it is the one that was silently downgrading real
+#       `canonical: live` / `maturity: production` sites.
+#     · config MISSING                    → today's defaults, as before.
+#
+#   The tempting stronger rule — "missing config + sites/<site>/ on disk ⇒
+#   refuse" — was implemented, TESTED, AND WITHDRAWN, because it is not
+#   supported by evidence and it broke a legitimate path:
+#     · `pl moodle plugin deploy` resolves everything it needs from the per-site
+#       sites/<site>/.nwp.yml, so a real, fully-configured Moodle site can be
+#       deployed from a tree with no global nwp.yml at all. That is not a
+#       corrupt install; it is a supported layout (tests/unit/
+#       test-moodle-ops-verbs.bats builds exactly it), and the rule refused it.
+#     · The one signal that WOULD justify refusing — evidence this site was
+#       previously classified — is the ledger private/canonical/<site>.log. It
+#       is empty in practice: the live fleet's phases were set by editing
+#       nwp.yml directly, and the directory does not exist. A rule keyed on it
+#       would be a false negative for every real site today.
+#   With no evidence available to tell "the registry vanished" from "this
+#   checkout never had one", refusing would be a guess. So the missing-config
+#   case keeps its default AND SAYS SO OUT LOUD (rc 3 → _canonical_no_registry_warn):
+#   the residual hole is real, but it is now visible instead of silent, and
+#   silence was half the original defect.
+#
 # Transitions are explicit operator actions: `pl canonical set <site> <phase>`
 # (scripts/commands/canonical.sh) records who/when in nwp.yml and appends to
 # an append-only ledger in private/canonical/<site>.log.
@@ -37,6 +98,81 @@ fi
 
 CANONICAL_PHASES="dev live prod"
 
+# --- config legibility (shared by canonical + maturity) ----------------------
+#
+# _canonical_config_state <site> [config] — can this config be trusted to answer
+# a question about <site>? Echoes a reason on the non-zero paths. States:
+#   rc 0  legible          — the file exists and parses; ask it for fields
+#   rc 1  absent-by-context— no config and no sites/<site>/ on disk: a fresh
+#                            clone, a CI job, or a worktree. Silent default.
+#   rc 2  CANNOT VERIFY    — the file EXISTS and does not parse. Guards refuse.
+#   rc 3  absent-but-site-present — no config, yet sites/<site>/ is on disk.
+#                            Default applies, but LOUDLY (see below).
+#
+# ⚠ NEVER call this (or the getters that wrap it) and expect a warning: rc 3's
+# message must be printed by the GUARDS, because print_warning writes to stdout
+# and the getters are consumed inside $( ).
+_canonical_config_state() {
+    local site="$1"
+    local config="${2:-$(canonical_config_file)}"
+    local root="${PROJECT_ROOT:-$HOME/nwp}"
+
+    if [ ! -f "$config" ]; then
+        if [ -n "$site" ] && [ -d "${root}/sites/${site}" ]; then
+            printf "%s is missing, so '%s' fell back to the built-in defaults (canonical: dev, maturity: incubating) — those are the WEAKEST settings, and they were not read from anywhere\n" \
+                "$config" "$site"
+            return 3
+        fi
+        return 1
+    fi
+
+    # The file exists. It must PARSE, or every field read below silently returns
+    # empty and empty is the permissive branch. yq-first; without yq the awk
+    # fallback readers cannot detect corruption, so a yq-less host is itself a
+    # legibility question — but refusing the whole fleet for a missing binary is
+    # the wrong trade (same call lib/pair.sh's _pair_contract_side makes), so we
+    # only verify parseability when we have a parser.
+    local yq_bin; yq_bin="$(command -v yq || true)"
+    [ -n "$yq_bin" ] || return 0
+    if ! "$yq_bin" e '.' "$config" >/dev/null 2>&1; then
+        printf "%s exists but does not parse as YAML, so the canonical phase and maturity class it declares cannot be read\n" "$config"
+        return 2
+    fi
+    return 0
+}
+
+# _canonical_no_registry_warn <site> [config] — rc 3 handling. The defaults still
+# apply (refusing here would break ordinary work — see the header), but the
+# condition is announced instead of being silently indistinguishable from a
+# real, read `canonical: dev`. Silence was half the original defect.
+_canonical_no_registry_warn() {
+    local site="$1"
+    local config="${2:-$(canonical_config_file)}"
+    local why; why=$(_canonical_config_state "$site" "$config"); [ $? -eq 3 ] || return 0
+    print_warning "$why"
+    print_warning "  If '$site' is meant to be canonical: live / maturity: production, this deploy is NOT being gated. Check your checkout."
+    return 0
+}
+
+# _canonical_soft_ok <what> <site> <reason> — shared CANNOT-VERIFY handling.
+# rc 0 ⇒ caller may PROCEED (NWP_CANONICAL_GATE_SOFT=true, audited);
+# rc 1 ⇒ caller must REFUSE.
+_canonical_soft_ok() {
+    local what="$1" site="$2" reason="$3"
+    if [ "${NWP_CANONICAL_GATE_SOFT:-false}" = "true" ]; then
+        print_warning "$what: CANNOT VERIFY '$site' — NWP_CANONICAL_GATE_SOFT=true, proceeding:"
+        print_warning "  - $reason"
+        canonical_ledger_append "$site" "action=cannot-verify-soft-skip guard=$what reason=$reason"
+        return 0
+    fi
+    print_error "REFUSED: cannot verify '$site' — $reason"
+    print_error "This is NOT a clean result: the guard is allowing nothing because it could not look,"
+    print_error "not because it looked and found nothing to enforce."
+    print_info  "Fix the config, or run from a checkout that has it. To proceed anyway (audited):"
+    print_info  "  NWP_CANONICAL_GATE_SOFT=true pl <cmd> ..."
+    return 1
+}
+
 # Global nwp.yml (user config, never committed). NWP_YML override exists so
 # tests can point at a fixture without cd-ing into a repo root.
 canonical_config_file() {
@@ -52,14 +188,17 @@ canonical_actor() {
 }
 
 # Echo the site's phase. Absent/unregistered → "dev" (back-compat default);
-# present but not dev|live|prod → "invalid:<raw>" so guards fail closed.
+# present but not dev|live|prod → "invalid:<raw>" so guards fail closed;
+# config unreadable → "cannot-verify:<reason>" so guards fail closed too.
 # Always returns 0 (callers run under set -e); use canonical_phase_is_explicit
 # to distinguish an explicit "dev" from the default.
 canonical_get_phase() {
     local site="$1"
     local config="${2:-$(canonical_config_file)}"
+    local why; why=$(_canonical_config_state "$site" "$config"); local st=$?
+    if [ "$st" -eq 2 ]; then echo "cannot-verify:$why"; return 0; fi
     local raw=""
-    if [ -n "$site" ] && [ -f "$config" ]; then
+    if [ "$st" -eq 0 ] && [ -n "$site" ]; then
         raw=$(yaml_get_site_field "$site" "canonical" "$config" 2>/dev/null || true)
     fi
     case "$raw" in
@@ -110,6 +249,17 @@ canonical_guard_content_push() {
     local cmd="${4:-content-push}"
 
     local phase; phase=$(canonical_get_phase "$site")
+
+    # CANNOT VERIFY is decided BEFORE the override, and before the per-target
+    # rules: --override-canonical is a decision to clobber a phase you KNOW,
+    # not a licence to deploy past a config nobody can read.
+    if [ "${phase#cannot-verify:}" != "$phase" ]; then
+        _canonical_soft_ok "canonical_guard_content_push ($cmd → $target)" \
+            "$site" "${phase#cannot-verify:}" || return 1
+        return 0
+    fi
+    _canonical_no_registry_warn "$site"
+
     case "$target" in
         live) [ "$phase" = "dev" ] && return 0 ;;
         prod) case "$phase" in dev|live) return 0 ;; esac ;;
@@ -151,6 +301,11 @@ canonical_guard_content_push() {
 canonical_warn_dev_content() {
     local site="$1"
     local phase; phase=$(canonical_get_phase "$site")
+    if [ "${phase#cannot-verify:}" != "$phase" ]; then
+        print_warning "'$site': CANNOT VERIFY the canonical phase — ${phase#cannot-verify:}"
+        print_warning "Content authored on dev may be THROWAWAY; the deploy guards will refuse until this is fixed."
+        return 0
+    fi
     [ "$phase" = "dev" ] && return 0
     print_warning "'$site' is canonical: $phase — content authored on dev/stg is THROWAWAY."
     print_warning "It will be overwritten by the next sanitized $phase→dev refresh and can never be pushed to $phase."
@@ -171,6 +326,16 @@ canonical_enforce_branch_policy() {
     local mode="${2:-deploy}"
 
     local phase; phase=$(canonical_get_phase "$site")
+    # "not prod" must be something we LOOKED UP, not something we defaulted to
+    # because the config was unreadable. This guard is unconditional on every
+    # stg2live/stg2prod/live2prod (including --code-only), so it is the choke
+    # point that makes an unreadable config refuse the whole deploy.
+    if [ "${phase#cannot-verify:}" != "$phase" ]; then
+        _canonical_soft_ok "canonical_enforce_branch_policy ($mode)" \
+            "$site" "${phase#cannot-verify:}" || return 1
+        return 0
+    fi
+    _canonical_no_registry_warn "$site"
     [ "$phase" = "prod" ] || return 0
 
     local dev_dir=""
@@ -232,12 +397,19 @@ canonical_deploy_manifest() {
         nwp_sha=$(git -C "${PROJECT_ROOT:-$HOME/nwp}" rev-parse HEAD 2>/dev/null || true)
     fi
 
+    # A cannot-verify verdict carries a whole sentence; keep the manifest honest
+    # but JSON-safe by stamping the bare verdict. (Reaching here at all means a
+    # guard let it through under NWP_CANONICAL_GATE_SOFT, which is ledgered.)
+    local _mf_phase _mf_class
+    _mf_phase="$(canonical_get_phase "$site")"; case "$_mf_phase" in cannot-verify:*) _mf_phase="cannot-verify" ;; esac
+    _mf_class="$(maturity_get_class "$site")";  case "$_mf_class"  in cannot-verify:*) _mf_class="cannot-verify"  ;; esac
+
     {
         printf '{\n'
         printf '  "site": "%s",\n' "$site"
         printf '  "action": "%s",\n' "$action"
-        printf '  "canonical_phase": "%s",\n' "$(canonical_get_phase "$site")"
-        printf '  "maturity": "%s",\n' "$(maturity_get_class "$site")"
+        printf '  "canonical_phase": "%s",\n' "$_mf_phase"
+        printf '  "maturity": "%s",\n' "$_mf_class"
         printf '  "timestamp": "%s",\n' "$(date -u +%FT%TZ)"
         printf '  "by": "%s",\n' "$(canonical_actor)"
         printf '  "nwp_sha": "%s"' "$nwp_sha"
@@ -272,13 +444,16 @@ canonical_deploy_manifest() {
 MATURITY_CLASSES="incubating stabilizing production"
 
 # Echo the site's maturity class. Absent/unregistered → "incubating";
-# present but unrecognized → "invalid:<raw>" so guards fail closed.
+# present but unrecognized → "invalid:<raw>" so guards fail closed; config
+# unreadable → "cannot-verify:<reason>" so guards fail closed too.
 # Always returns 0 (callers run under set -e).
 maturity_get_class() {
     local site="$1"
     local config="${2:-$(canonical_config_file)}"
+    local why; why=$(_canonical_config_state "$site" "$config"); local st=$?
+    if [ "$st" -eq 2 ]; then echo "cannot-verify:$why"; return 0; fi
     local raw=""
-    if [ -n "$site" ] && [ -f "$config" ]; then
+    if [ "$st" -eq 0 ] && [ -n "$site" ]; then
         raw=$(yaml_get_site_field "$site" "maturity" "$config" 2>/dev/null || true)
     fi
     case "$raw" in
@@ -331,7 +506,15 @@ maturity_guard_deploy() {
     local cmd="${2:-deploy}"
 
     local class; class=$(maturity_get_class "$site")
+    _canonical_no_registry_warn "$site"
     case "$class" in
+        cannot-verify:*)
+            # NOT the same as "incubating". maturity: production has no override
+            # by design, so collapsing an unreadable config to the default was
+            # the ONLY way past it.
+            _canonical_soft_ok "maturity_guard_deploy ($cmd)" \
+                "$site" "${class#cannot-verify:}" || return 1
+            return 0 ;;
         incubating) return 0 ;;
         invalid:*)
             print_error "Site '$site' has an unrecognized maturity class in nwp.yml: '${class#invalid:}'"

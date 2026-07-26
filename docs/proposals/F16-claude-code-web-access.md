@@ -18,7 +18,7 @@
 
 ### 1.1 Purpose
 
-Provide remote web-based access to the Claude Code CLI running on the NWP server (97.107.137.88), enabling the user to interact with Claude Code — including its full tool suite (file editing, shell access, code search, etc.) — from any device with a web browser. Four architectural options are evaluated, each with a complete phased implementation plan.
+Provide remote web-based access to the Claude Code CLI running on the NWP server (203.0.113.10), enabling the user to interact with Claude Code — including its full tool suite (file editing, shell access, code search, etc.) — from any device with a web browser. Four architectural options are evaluated, each with a complete phased implementation plan.
 
 ### 1.2 Problem Statement
 

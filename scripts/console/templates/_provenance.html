@@ -14,9 +14,18 @@
   Nothing has published since, so this is <strong>not current</strong>.
   Run <code>pl fleet publish</code> on {{ prov.host or 'the workstation' }}.
   {%- elif prov.source == 'published' %}
-  fleet state from <strong>{{ prov.host or '?' }}</strong>,
+  {# Two shapes of published state, and the reader must be able to tell them
+     apart: a PROJECT snapshot was published for this project alone, whereas
+     the fleet snapshot is fleet-wide and filtered here at render time. Same
+     numbers either way — but not the same claim about what left the
+     workstation, which is the thing a file-isolated tenant is buying. #}
+  {%- if prov.scoped %}project snapshot{% else %}fleet state{% endif %}
+  from <strong>{{ prov.host or '?' }}</strong>,
   {% if prov.age_human == 'just now' %}just now{% else %}{{ prov.age_human }} ago{% endif %}
   {%- if prov.generated_at %} <span class="muted">({{ prov.generated_at }})</span>{% endif %}
+  {%- if scope and not scope.all_sites and not prov.scoped %}
+  <span class="muted">— filtered for this project</span>
+  {%- endif %}
   {%- elif prov.snapshot_stale %}
   computed on this host (<strong>{{ prov.local_host }}</strong>) —
   <strong>the published snapshot from {{ prov.host or '?' }} is {{ prov.age_human }} old

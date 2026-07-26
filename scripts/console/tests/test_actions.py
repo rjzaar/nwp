@@ -20,9 +20,12 @@ def test_unknown_action_rejected():
 
 
 def test_rag_refresh():
-    argv, role = build_action("rag_refresh", {}, DEMO)
+    # build_action now returns the whole spec, not just min_role: the route
+    # needs BOTH role axes plus the site/global scope flag to gate on.
+    argv, spec = build_action("rag_refresh", {}, DEMO)
     assert argv == ["rag", "--no-todo"]
-    assert role == "operator"
+    assert spec["min_role"] == "operator"
+    assert spec["scope"] == "global", "a fleet-wide sweep must be marked global"
 
 
 def test_demo_reset_keeps_idle_guard():
@@ -93,9 +96,9 @@ def test_metacharacter_guard_is_backstop():
 
 
 def test_demo_invite_action():
-    argv, role = build_action("demo_invite", {"site": "nwd"}, DEMO)
+    argv, spec = build_action("demo_invite", {"site": "nwd"}, DEMO)
     assert argv == ["demo", "invite", "nwd"]
-    assert role == "operator"
+    assert spec["min_role"] == "operator"
     argv, _ = build_action("demo_invite", {"site": "nwd", "all": "1"}, DEMO)
     assert argv == ["demo", "invite", "nwd", "--all"]
     argv, _ = build_action("demo_invite", {"site": "nwd", "all": ""}, DEMO)
@@ -109,3 +112,39 @@ def test_demo_invite_strict_validation():
     for bad_flag in ("yes", "--force", "1;2", "maybe"):
         with pytest.raises(ActionError):
             build_action("demo_invite", {"site": "nwd", "all": bad_flag}, DEMO)
+
+
+# ---------------------------------------------------------------------------
+# project scoping (Stage 1): both axes declared, and allowed_sites is the gate
+# ---------------------------------------------------------------------------
+def test_every_action_declares_both_role_axes_and_a_scope():
+    """A new action that forgets `min_project_role`/`scope` would fall back to
+    whatever the route assumes. Make the omission a test failure instead."""
+    for name, spec in ACTIONS.items():
+        assert spec.get("min_role") in ("viewer", "operator", "owner"), name
+        assert spec.get("min_project_role") in ("viewer", "operator", "maintainer"), \
+            f"{name} does not declare min_project_role"
+        assert spec.get("scope") in ("site", "global"), \
+            f"{name} does not declare scope (site|global)"
+
+
+def test_empty_allowed_sites_refuses_every_site_scoped_action():
+    """The fail-closed core of the action gate: a scope with no demo sites (a
+    project that has none, or a user with no project at all) can run nothing."""
+    for name, spec in ACTIONS.items():
+        if spec.get("scope") != "site":
+            continue
+        for site in ("nwd", "avc", "ss", ""):
+            with pytest.raises(ActionError):
+                build_action(name, {"site": site, "bundle": "tester-member", "code_id": "c1"}, [])
+
+
+def test_a_console_demo_site_outside_the_scope_is_still_refused():
+    """config.DEMO_SITES says the verb EXISTS for a site; the scope says who
+    may use it. Passing the console-wide list here would re-open the boundary,
+    so the argument is the scope's list and nothing else."""
+    with pytest.raises(ActionError):
+        build_action("demo_reset", {"site": "avc"}, ["nwd"])
+    argv, spec = build_action("demo_reset", {"site": "nwd"}, ["nwd"])
+    assert argv == ["demo", "reset", "nwd", "--if-idle", "30m", "--yes"]
+    assert spec["scope"] == "site"

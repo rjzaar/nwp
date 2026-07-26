@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import re
 
-SITE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,30}$")
+from .scope import SITE_RE
+
 CODE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
 # Role bundles `pl demo codes issue` accepts (decisions §4.4 — sitemanager never).
@@ -43,11 +44,15 @@ class ActionError(Exception):
     """Raised for any invalid action request — the route returns 400."""
 
 
-def _valid_site(site: str, demo_sites: list[str]) -> str:
+def _valid_site(site: str, allowed_sites: list[str]) -> str:
+    """`allowed_sites` is the caller's SCOPE-narrowed demo-site set, not the
+    console-wide one: config.DEMO_SITES says which sites the demo tier exists
+    for, the Scope says which of those THIS request may touch. Both must hold,
+    and an empty list therefore refuses every site (fail closed)."""
     if not isinstance(site, str) or not SITE_RE.match(site):
         raise ActionError("invalid site name")
-    if site not in demo_sites:
-        raise ActionError(f"site {site!r} is not a console-managed demo site")
+    if site not in (allowed_sites or []):
+        raise ActionError(f"site {site!r} is not a demo site you may act on")
     return site
 
 
@@ -72,15 +77,25 @@ def _valid_flag(value) -> bool:
     raise ActionError("invalid flag value")
 
 
-# action name -> (min_role, human label, argv builder(params, demo_sites))
+# action name -> spec. Every entry declares BOTH axes:
+#   min_role         global role floor (unchanged)
+#   min_project_role project role floor inside the scope
+#   scope            "site"   — acts on one site, gated by allowed_sites
+#                    "global" — acts on the whole fleet; cannot be narrowed to
+#                               a project, so it is unscoped-only (owner, or a
+#                               legacy install with no projects at all)
 ACTIONS: dict = {
     "rag_refresh": {
         "min_role": "operator",
+        "min_project_role": "operator",
+        "scope": "global",
         "label": "Re-run RAG fleet check",
         "build": lambda p, ds: ["rag", "--no-todo"],
     },
     "demo_reset": {
         "min_role": "operator",
+        "min_project_role": "operator",
+        "scope": "site",
         "label": "Demo reset (idle-guarded)",
         # --if-idle stays even on the console's "force" button: never
         # green-light a wipe while a tester session is active.
@@ -88,6 +103,8 @@ ACTIONS: dict = {
     },
     "demo_code_issue": {
         "min_role": "operator",
+        "min_project_role": "operator",
+        "scope": "site",
         "label": "Issue demo invite code",
         "build": lambda p, ds: [
             "demo", "codes", _valid_site(p.get("site", ""), ds), "issue",
@@ -96,6 +113,8 @@ ACTIONS: dict = {
     },
     "demo_invite": {
         "min_role": "operator",
+        "min_project_role": "operator",
+        "scope": "site",
         "label": "Invitation email draft",
         # Renders the copy-ready invite email (pl demo invite): one fresh code
         # per level, plaintext ONLY in the command output (registry stores
@@ -108,6 +127,8 @@ ACTIONS: dict = {
     },
     "demo_code_revoke": {
         "min_role": "operator",
+        "min_project_role": "operator",
+        "scope": "site",
         "label": "Revoke demo invite code",
         "build": lambda p, ds: [
             "demo", "codes", _valid_site(p.get("site", ""), ds), "revoke",
@@ -117,16 +138,21 @@ ACTIONS: dict = {
 }
 
 
-def build_action(name: str, params: dict, demo_sites: list[str]) -> tuple[list[str], str]:
-    """Validate + build. Returns (pl argv tail, min_role). Raises ActionError."""
+def build_action(name: str, params: dict, allowed_sites) -> tuple[list[str], dict]:
+    """Validate + build. Returns (pl argv tail, spec). Raises ActionError.
+
+    `allowed_sites` MUST be the requesting Scope's demo-site set. Passing the
+    console-wide list here would re-open the boundary this argument exists to
+    close, so the route passes sorted(scope.demo_sites) and nothing else.
+    """
     spec = ACTIONS.get(name)
     if spec is None:
         raise ActionError(f"unknown action: {name!r}")
-    argv = spec["build"](params or {}, list(demo_sites))
+    argv = spec["build"](params or {}, list(allowed_sites or []))
     # Belt & braces: re-assert the verb tier even if the map is edited later.
     if argv[0] in FORBIDDEN_VERBS:
         raise ActionError("action maps to a forbidden verb tier")
     for a in argv:
         if not isinstance(a, str) or any(ch in a for ch in ";|&$`\n\r<>"):
             raise ActionError("argv failed the shell-metacharacter guard")
-    return argv, spec["min_role"]
+    return argv, spec

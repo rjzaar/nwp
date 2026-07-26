@@ -34,6 +34,15 @@ headscale URL) live in the **gitignored** `nwp.yml` under `settings.console`
    verbs representable**. The console host holds no prod keys anyway (blast radius
    = the A14 dev/test tier). Every action POST appends to
    `~/.local/share/nwp-console/audit.jsonl` (also rendered at `/audit`).
+4. **Tenancy = the Scope choke point** (`app/scope.py`). A *project* is a named
+   set of sites; a member sees only those sites, only issues carrying the
+   project's label, only its CI projects. Three nets enforce it: the `scoped()`
+   route dependency, `_pane()`'s recursive scrub + redact, and an AST test over
+   `main.py` that fails the build if a new route forgets any of it. **Inert
+   until an owner creates a project** — with none, behaviour is byte-identical
+   to the pre-project console. See
+   [ADR-0033](../../docs/decisions/0033-console-multi-tenant-projects.md) and
+   [howto-console-projects](../../docs/guides/howto-console-projects.md).
 
 ## Deploy / operate (from the workstation)
 
@@ -298,7 +307,31 @@ bats tests/unit/test-console-deploy-guard.bats    # deploy divergence guard (stu
 bats tests/unit/test-fleet-publish.bats           # pl fleet publish snapshot contract
 ```
 
+### Proving the tenancy tests can fail
+
+`tests/test_tenant_isolation.py` is the cross-project leakage test. A test that
+only ever passes proves nothing, so it ships with a switch that simulates a
+future change forgetting the boundary — the scoped gatherers are replaced by
+their fleet-wide counterparts and `scrub`/`redact` are neutered:
+
+```
+NWP_CONSOLE_TEST_DISABLE_SCOPE=1 python3 -m pytest scripts/console/tests/test_tenant_isolation.py
+# expect ~11 failures, each naming the foreign site that leaked
+```
+
+The switch is honoured only by that test module; it does not exist in the app.
+
 ## Honest limits
+
+- **Project scoping is an APPLICATION boundary, not an OS one.** One Unix user,
+  one `pl` checkout, one GitLab token, one audit log, one snapshot. Anyone with
+  a *shell* on the console host reads every project's data whatever
+  `users.json` says. A Headscale ACL restricting an external dev's node to
+  the console port only (no SSH, no ollama, no Gotify) is a **hard
+  prerequisite before the first external developer** and lives outside this
+  codebase. Real isolation means a second console instance.
+- Audit entries written before projects existed carry no `project` field and
+  are therefore **owner-only**. A backfill would have to guess.
 
 - `pl demo status` / `codes list` output is parsed heuristically (human tables);
   the panes always keep the raw text in a collapsible block. `pl rag --json` and

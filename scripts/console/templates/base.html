@@ -21,12 +21,14 @@
     <nav>
       {% if user.role in ('operator','owner') %}<a href="/audit">Audit</a>{% endif %}
       {% if user.role == 'owner' %}<a href="/notifications">Alerts</a>{% endif %}
+      {% if user.role == 'owner' %}<a href="/projects">Projects</a>{% endif %}
       {% if user.role == 'owner' %}<a href="/users">Users</a>{% endif %}
       <form method="post" action="/logout" class="inline"><button class="ghost">{{ user.name }} ⏻</button></form>
     </nav>
     {% endif %}
   </header>
   <main>
+  {% include "_scopebar.html" %}
   {% block content %}{% endblock %}
   </main>
 </body>

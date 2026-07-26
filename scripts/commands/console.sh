@@ -87,9 +87,15 @@ ${BOLD}pl console${NC} — NWP Console (mesh-only web console on ${CONSOLE_HOST}
 ${BOLD}USAGE:${NC}
     pl console deploy [--host <ssh-host>] [--no-restart] [--dry-run] [--force-overwrite] [-y]
     pl console status [--host <ssh-host>]
-    pl console user add <name> --role viewer|operator|owner
+    pl console user add <name> --role viewer|operator|owner [--project <pid> --project-role <r>]
     pl console user reset <name>       (break-glass: shell-only, revokes passkeys)
-    pl console user list | role <name> <role> | rm <name>
+    pl console user list | show <name> | role <name> <role> | rm <name>
+    pl console project list
+    pl console project add|set <pid> [--name N] [--sites a b c] [--demo-sites a]
+                                     [--issue-label L] [--ci-projects p]
+    pl console project rm <pid>
+    pl console project assign|unassign <user> <pid> [--role viewer|operator|maintainer]
+    pl console project export [FILE]   (project->sites map -> private/project-map.json, 0600)
     pl console enroll                  (Headscale pre-auth key runbook for a new device)
     pl console dns                     (upsert ${CONSOLE_FQDN} A -> ${CONSOLE_TAILNET_IP})
     pl console cert                    (issue/renew the LE cert, DNS-01, push to host)
@@ -490,18 +496,129 @@ _name_ok() { # local hygiene guard; authoritative validation is in app/store.py
     [[ "$1" =~ ^[a-z0-9][a-z0-9_-]{0,31}$ ]] || { print_error "invalid username: $1"; return 1; }
 }
 
+_pid_ok() { # ditto for project ids — these end up in a remote shell command
+    [[ "$1" =~ ^[a-z0-9][a-z0-9_-]{0,31}$ ]] || { print_error "invalid project id: $1"; return 1; }
+}
+
+_site_ok() {
+    [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,30}$ ]] || { print_error "invalid site name: $1"; return 1; }
+}
+
+# Every token below is regex-checked before it reaches the remote shell, so the
+# quoting here is a second line of defence and not the only one. The store on
+# the console host re-validates all of it regardless — the authority for what a
+# project may contain lives there, never here.
+cmd_project() {
+    local sub="${1:-}"; shift || true
+    local remote="cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage"
+    case "$sub" in
+        list|"")
+            _ssh "$remote project-list"
+            ;;
+        add|set)
+            local pid="${1:-}"; shift || true
+            [ -n "$pid" ] || { print_error "usage: pl console project $sub <pid> [--name N] [--sites a b] [--demo-sites a] [--issue-label L] [--ci-projects p]"; return 1; }
+            _pid_ok "$pid" || return 1
+            local cmd="$remote project-$sub '$pid'" s
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --name) cmd+=" --name '${2//\'/}'"; shift 2 ;;
+                    --description) cmd+=" --description '${2//\'/}'"; shift 2 ;;
+                    --issue-label) cmd+=" --issue-label '${2//\'/}'"; shift 2 ;;
+                    --sites|--demo-sites|--ci-projects)
+                        local flag="$1"; shift
+                        cmd+=" $flag"
+                        while [ $# -gt 0 ] && [[ "$1" != --* ]]; do
+                            if [ "$flag" = "--ci-projects" ]; then
+                                [[ "$1" =~ ^[A-Za-z0-9._/-]+$ ]] || { print_error "invalid CI project: $1"; return 1; }
+                            else
+                                _site_ok "$1" || return 1
+                            fi
+                            cmd+=" '$1'"; shift
+                        done
+                        ;;
+                    *) print_error "unknown flag: $1"; return 1 ;;
+                esac
+            done
+            _ssh "$cmd"
+            ;;
+        rm)
+            [ -n "${1:-}" ] || { print_error "usage: pl console project rm <pid>"; return 1; }
+            _pid_ok "$1" || return 1
+            print_warning "Deleting a project revokes every membership in it."
+            _ssh "$remote project-rm '$1'"
+            ;;
+        assign)
+            local u="${1:-}" pid="${2:-}"; shift 2 2>/dev/null || true
+            local role="viewer"
+            while [ $# -gt 0 ]; do case "$1" in --role) role="${2:-}"; shift 2 ;; --role=*) role="${1#--role=}"; shift ;; *) shift ;; esac; done
+            [ -n "$u" ] && [ -n "$pid" ] || { print_error "usage: pl console project assign <user> <pid> [--role viewer|operator|maintainer]"; return 1; }
+            _name_ok "$u" || return 1; _pid_ok "$pid" || return 1
+            [[ "$role" =~ ^(viewer|operator|maintainer)$ ]] || { print_error "role must be viewer|operator|maintainer"; return 1; }
+            _ssh "$remote project-assign '$u' '$pid' --role '$role'"
+            ;;
+        unassign)
+            local u="${1:-}" pid="${2:-}"
+            [ -n "$u" ] && [ -n "$pid" ] || { print_error "usage: pl console project unassign <user> <pid>"; return 1; }
+            _name_ok "$u" || return 1; _pid_ok "$pid" || return 1
+            _ssh "$remote project-unassign '$u' '$pid'"
+            ;;
+        export)
+            # The console host AUTHORS the project->sites map; the workstation
+            # only ever receives a copy. 0600 and gitignored: it names every
+            # site of every tenant, which is the fact the boundary protects.
+            local out="${1:-$REPO_ROOT/private/project-map.json}"
+            mkdir -p "$(dirname "$out")"
+            local tmp; tmp="$(mktemp)"; chmod 600 "$tmp"
+            if _ssh "$remote project-export" > "$tmp"; then
+                mv "$tmp" "$out"; chmod 600 "$out"
+                print_success "project map -> $out (0600, gitignored)"
+            else
+                rm -f "$tmp"; print_error "export failed"; return 1
+            fi
+            ;;
+        *) print_error "unknown: pl console project $sub"; return 1 ;;
+    esac
+}
+
 cmd_user() {
     local sub="${1:-}"; shift || true
     case "$sub" in
         add)
             local name="${1:-}"; shift || true
-            local role="viewer"
-            while [ $# -gt 0 ]; do case "$1" in --role) role="${2:-}"; shift 2 ;; --role=*) role="${1#--role=}"; shift ;; *) shift ;; esac; done
-            [ -n "$name" ] || { print_error "usage: pl console user add <name> --role viewer|operator|owner"; return 1; }
+            local role="viewer" project="" prole="viewer"
+            while [ $# -gt 0 ]; do case "$1" in
+                --role) role="${2:-}"; shift 2 ;;
+                --role=*) role="${1#--role=}"; shift ;;
+                --project) project="${2:-}"; shift 2 ;;
+                --project=*) project="${1#--project=}"; shift ;;
+                --project-role) prole="${2:-}"; shift 2 ;;
+                --project-role=*) prole="${1#--project-role=}"; shift ;;
+                *) shift ;;
+            esac; done
+            [ -n "$name" ] || { print_error "usage: pl console user add <name> --role viewer|operator|owner [--project <pid>]"; return 1; }
             _name_ok "$name" || return 1
             [[ "$role" =~ ^(viewer|operator|owner)$ ]] || { print_error "role must be viewer|operator|owner"; return 1; }
-            _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-add '$name' --role '$role'"
+            local extra=""
+            if [ -n "$project" ]; then
+                _pid_ok "$project" || return 1
+                [[ "$prole" =~ ^(viewer|operator|maintainer)$ ]] || { print_error "--project-role must be viewer|operator|maintainer"; return 1; }
+                extra=" --project '$project' --project-role '$prole'"
+            fi
+            _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-add '$name' --role '$role'$extra"
             print_hint "Their device must be on the mesh first — see: pl console enroll"
+            if [ -z "$project" ]; then
+                # Say it out loud rather than let someone create an account that
+                # silently sees nothing: with projects configured, no membership
+                # means the /no-project page and an empty console, forever.
+                print_hint "No --project given. If any project exists, this account sees NOTHING until:"
+                print_hint "  pl console project assign $name <pid> --role viewer"
+            fi
+            ;;
+        show)
+            [ -n "${1:-}" ] || { print_error "usage: pl console user show <name>"; return 1; }
+            _name_ok "$1" || return 1
+            _ssh "cd ~/nwp-console/src && ~/nwp-console/venv/bin/python -m app.manage user-show '$1'"
             ;;
         reset)
             [ -n "${1:-}" ] || { print_error "usage: pl console user reset <name>"; return 1; }
@@ -565,6 +682,7 @@ main() {
         deploy)  _require_configured && cmd_deploy "${args[@]:-}" ;;
         status)  _require_configured && cmd_status ;;
         user)    _require_configured && cmd_user "${args[@]:-}" ;;
+        project) _require_configured && cmd_project "${args[@]:-}" ;;
         enroll)  cmd_enroll ;;
         dns)     _require_configured && cmd_dns ;;
         cert)    _require_configured && cmd_cert ;;

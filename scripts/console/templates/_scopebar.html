@@ -1,0 +1,41 @@
+{#
+  Which project you are looking at — and therefore which sites every number on
+  this screen is about.
+
+  This bar is deliberately ALWAYS visible when projects exist, never a hidden
+  setting: a dashboard that is silently showing you a subset of the fleet is
+  how someone concludes "everything is green" about sites they cannot see. It
+  renders nothing at all in legacy mode (no projects), so an install that never
+  creates one looks exactly as it did before.
+#}
+{% if scope and not scope.legacy %}
+<div class="scopebar" role="region" aria-label="Active project">
+  <span class="scopebar-label">Project</span>
+
+  {% if scope.memberships|length > 1 or scope.global_role == 'owner' %}
+  <form method="post" action="/scope/switch" class="inline scopebar-form">
+    <select name="project" onchange="this.form.submit()" aria-label="Switch project">
+      {% if scope.global_role == 'owner' %}
+      <option value="*" {{ 'selected' if scope.all_sites else '' }}>All projects (owner)</option>
+      {% endif %}
+      {% for pid, pname in scope.memberships %}
+      <option value="{{ pid }}" {{ 'selected' if scope.project_id == pid else '' }}>{{ pname }}</option>
+      {% endfor %}
+    </select>
+    <noscript><button>switch</button></noscript>
+  </form>
+  {% else %}
+  <strong class="scopebar-one">{{ scope.label }}</strong>
+  {% endif %}
+
+  {# The site list is the honest statement of what you can see. Spelling it out
+     beats a count: "7 sites" does not tell you WHICH seven. #}
+  {% if scope.all_sites %}
+  <span class="scopebar-sites muted">every site on this console</span>
+  {% else %}
+  <span class="scopebar-sites muted" title="Every number on this screen covers only these sites">
+    {{ scope.sites|sort|join(' · ') or 'no sites' }}
+  </span>
+  {% endif %}
+</div>
+{% endif %}

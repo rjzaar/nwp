@@ -33,7 +33,21 @@ Provision <code>~/.config/nwp-console/gitlab.token</code> (0600, walled bot toke
     </td>
   </tr>
   {% else %}
+  {# "No open issues" is only true unscoped. For a project member the list was
+     filtered by label, so an empty pane means "nothing carries your label" —
+     and if no label is configured it means the project sees no issues AT ALL,
+     which must not read as good news. #}
+  {%- if scope and not scope.all_sites %}
+    {%- if issue_labels %}
+  <tr><td class="ok">No open issues in {{ project }} labelled
+      <span class="mono">{{ issue_labels|join(' / ') }}</span>.</td></tr>
+    {%- else %}
+  <tr><td class="warnfg">This project has no issue label configured, so it shows
+      <strong>no issues at all</strong>. An owner sets one on the Projects page.</td></tr>
+    {%- endif %}
+  {%- else %}
   <tr><td class="ok">No open issues in {{ project }}.</td></tr>
+  {%- endif %}
   {% endfor %}
 </table>
 <p><a href="{{ project_url }}/-/issues">all issues in GitLab →</a></p>

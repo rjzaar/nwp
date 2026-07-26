@@ -63,7 +63,9 @@ ${BOLD}USAGE:${NC}
 ${BOLD}SUBCOMMANDS:${NC}
     golden <site>                 Capture the current state as the golden image
                                   (verified DB dump + files tar + manifest under
-                                  sites/<site>/demo-golden/)
+                                  sites/<site>/demo-golden/). REFUSES to capture
+                                  a site whose own modules' shipped config was
+                                  never installed — see --allow-config-gaps.
     reset <site> [--if-idle 30m] [--force] [--yes] [--skip-seed] [--dry-run]
                                   Prints a FATE MANIFEST (what is destroyed,
                                   what replaces it, what survives — all
@@ -130,6 +132,15 @@ ${BOLD}OPTIONS:${NC}
     --dry-run          reset: print the fate manifest and exit without touching
                        anything. harvest-post: list digests, post nothing.
     --skip-seed        Skip drush nwc:seed-demo after restore (non-nwc sites).
+    --allow-config-gaps
+                       golden: capture even though config-parity FAILED, i.e.
+                       config shipped by the site's own modules is missing from
+                       the database. Off by default and recorded in the demo
+                       log, because a golden is a reference image: capturing an
+                       incomplete site freezes the defect into every nightly
+                       reset. That is how nwd came to serve a dead /apply link
+                       (ops#133 → ops#145). Fix with 'drush nwc:config-heal'
+                       instead of reaching for this flag.
     --expires=<dur>    Code lifetime for issue/rotate (default: 14d).
 
 ${BOLD}ROLE BUNDLES${NC} (decisions §4.4 — sitemanager is never offered):
@@ -298,6 +309,103 @@ demo_live_require_demo_mode() {
     print_error "REFUSING: ${site} live does not report demo_mode=true (got '${val:-<none>}')."
     print_info  "A live demo reset is only ever allowed against a site running nwc_demo_access with demo_mode: true."
     return 1
+}
+
+################################################################################
+# CONFIG PARITY (nwp/ops#145) — a golden may not be captured from a site whose
+# shipped config was never installed.
+#
+# Drupal reads a module's config/install ONCE, at install time, and
+# ConfigInstaller silently skips anything whose dependencies are unmet at that
+# instant — which, under site:install / drush recipe (config syncing is on for
+# the whole run), can be most of it. The site boots and looks healthy.
+#
+# On 2026-07-25 the ops#133 nwd parity rebuild hit exactly that: the rebuilt
+# site was 99 config entities short, including the /apply webform the homepage
+# links to, the entire nwc_help topic set, the growth tiers and four content
+# types. Nothing failed. `pl demo golden` then captured that site 66 minutes
+# later and froze the defect into the image the nightly reset restores — so the
+# demo tier served a dead /apply link to testers, and would have kept restoring
+# it every night.
+#
+# So the gate belongs HERE, at capture: a golden is a reference image, and an
+# incomplete site must never become one.
+################################################################################
+
+DEMO_PARITY_PROBE="${PROJECT_ROOT}/lib/probes/config-parity.php"
+
+# Parse the probe's output. Fail-CLOSED: no TOTAL_CUSTOM line means the probe
+# did not complete, which is never a pass.
+#
+# $1 site  $2 tier  $3 probe stdout
+demo_parity_verdict() {
+    local site="$1" tier="$2" out="$3"
+    local custom vendor
+    custom="$(printf '%s\n' "$out" | awk '/^TOTAL_CUSTOM /{print $2; exit}')"
+    vendor="$(printf '%s\n' "$out" | awk '/^TOTAL_VENDOR /{print $2; exit}')"
+
+    if [[ ! "$custom" =~ ^[0-9]+$ ]]; then
+        print_error "Config-parity probe did not complete on ${site} (${tier}) — no TOTAL_CUSTOM line."
+        print_info  "Treated as a FAILURE: an unverifiable site is never captured as a golden."
+        demo_log "$site" parity-failed "tier=${tier} reason=probe-incomplete"
+        return 1
+    fi
+
+    if [[ "$custom" -eq 0 ]]; then
+        print_status "OK" "Config parity: every config item shipped by the site's own modules is installed${vendor:+ (${vendor} core/contrib default(s) absent — normal, not gating)}"
+        return 0
+    fi
+
+    print_error "Config parity FAILED: ${custom} config item(s) shipped by ${site}'s OWN modules are missing from the database."
+    printf '%s\n' "$out" | awk '/^MISSING custom /{printf "        %-58s (%s)\n", $3, $4}' | head -40
+    local shown; shown="$(printf '%s\n' "$out" | awk '/^MISSING custom /' | wc -l)"
+    [[ "$shown" -gt 40 ]] && print_info "… and $((shown - 40)) more."
+    print_info "This site is INCOMPLETE — capturing it as a golden would freeze the defect"
+    print_info "into every future nightly reset (this is exactly nwp/ops#145 / ops#133)."
+    print_hint "Remedy on an nwc-profile site, then re-run the capture:"
+    print_hint "  drush nwc:config-heal      # idempotent; only creates config that is absent"
+    print_hint "Override (recorded in the demo log) with: --allow-config-gaps"
+    demo_log "$site" parity-failed "tier=${tier} custom=${custom} vendor=${vendor:-unknown}"
+    return 1
+}
+
+# Run the probe against the LOCAL (dev|stg) DDEV project.
+demo_parity_check_local() {
+    local site="$1" tier="$2" proj="$3"
+    [[ -f "$DEMO_PARITY_PROBE" ]] || {
+        print_error "Config-parity probe missing: $DEMO_PARITY_PROBE"
+        return 1
+    }
+    # The probe must be inside the project so the web container can see it;
+    # DDEV mounts the project root at /var/www/html.
+    local tmp=".nwp-config-parity.$$.php"
+    cp "$DEMO_PARITY_PROBE" "$proj/$tmp" || return 1
+    local out rc=0
+    out="$( cd "$proj" && ddev drush php:script "/var/www/html/$tmp" 2>/dev/null )" || rc=$?
+    rm -f "$proj/$tmp"
+    [[ $rc -eq 0 || -n "$out" ]] || { out=""; }
+    demo_parity_verdict "$site" "$tier" "$out"
+}
+
+# Run the probe against the LIVE demo host. Read-only; the probe is removed
+# again whether it succeeded or not.
+demo_parity_check_live() {
+    local site="$1"
+    [[ -f "$DEMO_PARITY_PROBE" ]] || {
+        print_error "Config-parity probe missing: $DEMO_PARITY_PROBE"
+        return 1
+    }
+    local rname="nwp-config-parity-$$.php"
+    # shellcheck disable=SC2046
+    if ! scp $(nwp_ssh_opts "$site") -o BatchMode=yes \
+        "$DEMO_PARITY_PROBE" "${DEMO_LIVE_USER}@${DEMO_LIVE_IP}:/tmp/${rname}" >/dev/null 2>&1; then
+        print_error "Could not stage the config-parity probe on the live host"
+        return 1
+    fi
+    local out
+    out="$(demo_rssh "$site" "chmod a+r /tmp/${rname}; cd ${DEMO_LIVE_PATH} && ${DEMO_LIVE_DRUSHSUDO} ./vendor/bin/drush php:script /tmp/${rname} 2>/dev/null")" || out="${out:-}"
+    demo_rssh "$site" "rm -f /tmp/${rname}" >/dev/null 2>&1 || true
+    demo_parity_verdict "$site" live "$out"
 }
 
 # Push a local artifact to the remote home dir and verify its sha256 ON THE
@@ -553,9 +661,9 @@ demo_reset_manifest() {
 ################################################################################
 
 cmd_golden() {
-    local site="$1" tier="$2"
+    local site="$1" tier="$2" allow_gaps="${3:-false}"
     if demo_is_live "$tier"; then
-        cmd_golden_live "$site"
+        cmd_golden_live "$site" "$allow_gaps"
         return $?
     fi
     local proj droot gdir
@@ -565,6 +673,18 @@ cmd_golden() {
     mkdir -p "$gdir"
 
     print_header "Capturing golden image: $site ($tier)"
+
+    # 0. CONFIG PARITY (ops#145) — refuse to freeze an incomplete site into the
+    #    image the nightly reset restores. Runs BEFORE the dump so a failure
+    #    costs nothing and leaves the previous golden untouched.
+    if ! demo_parity_check_local "$site" "$tier" "$proj"; then
+        if [[ "$allow_gaps" != "true" ]]; then
+            print_error "Golden NOT captured — the existing image is unchanged."
+            return 1
+        fi
+        print_status "WARN" "--allow-config-gaps: capturing anyway (recorded in the demo log)"
+        demo_log "$site" parity-overridden "tier=$tier"
+    fi
 
     # 1. DB dump (ddev export-db handles credentials + gzip).
     print_info "Exporting database…"
@@ -611,7 +731,7 @@ cmd_golden() {
 # sha256 there, pulls both back and re-verifies locally. Nothing on live is
 # modified; the only writes are two temp files in ~ that are removed again.
 cmd_golden_live() {
-    local site="$1"
+    local site="$1" allow_gaps="${2:-false}"
     local gdir; gdir="$(demo_golden_dir "$site" live)"
 
     demo_live_ctx "$site" || return 1
@@ -624,6 +744,17 @@ cmd_golden_live() {
     # the reset path — refuse it here too, not just at restore time.
     demo_live_require_demo_mode "$site" || return 1
     print_status "OK" "Remote site reports demo_mode=true"
+
+    # CONFIG PARITY (ops#145). Read-only, and before the dump: a failure costs
+    # nothing and leaves the previous golden in place.
+    if ! demo_parity_check_live "$site"; then
+        if [[ "$allow_gaps" != "true" ]]; then
+            print_error "Golden NOT captured — the existing image is unchanged."
+            return 1
+        fi
+        print_status "WARN" "--allow-config-gaps: capturing anyway (recorded in the demo log)"
+        demo_log "$site" parity-overridden "tier=live"
+    fi
 
     mkdir -p "$gdir"
     local stamp="demo-golden-$$-$(date -u '+%Y%m%d%H%M%S')"
@@ -1415,10 +1546,12 @@ main() {
 
     # Common option parse (subcommand-specific positionals pass through).
     local tier="dev" if_idle="" auto_yes="false" skip_seed="false" remove="false" dry_run="false" via_key="false"
+    local allow_gaps="false"
     local passthru=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --tier=*)   tier="${1#--tier=}"; shift ;;
+            --allow-config-gaps) allow_gaps="true"; shift ;;
             --dry-run)  dry_run="true"; shift ;;
             --if-idle)  if_idle="${2:-}"; shift 2 ;;
             --if-idle=*) if_idle="${1#--if-idle=}"; shift ;;
@@ -1433,7 +1566,7 @@ main() {
     demo_check_tier "$tier" || return 1
 
     case "$sub" in
-        golden)   cmd_golden "$site" "$tier" ;;
+        golden)   cmd_golden "$site" "$tier" "$allow_gaps" ;;
         reset)    cmd_reset "$site" "$tier" "$if_idle" "$auto_yes" "$skip_seed" "$dry_run" ;;
         nightly)  cmd_nightly "$site" "$tier" ;;
         status)   cmd_status "$site" "$tier" ;;

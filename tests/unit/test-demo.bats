@@ -866,3 +866,104 @@ _fixture_golden() {   # $1 site  $2 tier
 @test "the nightly path passes -y but never suppresses the report" {
   awk '/^cmd_nightly\(\)/,/^}/' "$DEMO_CMD" | grep -q 'cmd_reset "\$site" "\$tier" "30m" "true" "false" "false"'
 }
+
+# --- config parity gate (ops#145) ---------------------------------------------
+#
+# nwd was rebuilt on 2026-07-25 by a profile reinstall. Drupal reads a module's
+# config/install once, at install time, and ConfigInstaller silently skips any
+# item whose dependencies are unmet at that instant — under site:install/recipe
+# (config syncing on for the whole run) that was 99 items, including the /apply
+# webform the homepage links to. `pl demo golden` then froze the incomplete site
+# into the image the nightly restores. These lock the gate that stops a repeat.
+
+@test "parity verdict PASSES a site whose own modules' config is fully installed" {
+  run bash -c "source '$DEMO_CMD'
+               demo_parity_verdict demo1 live 'TOTAL_CUSTOM 0
+TOTAL_VENDOR 53'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Config parity"* ]]
+  # core/contrib defaults are reported but explicitly NOT gating
+  [[ "$output" == *"53 core/contrib default(s) absent"* ]]
+  [[ "$output" == *"not gating"* ]]
+}
+
+@test "parity verdict FAILS on missing custom config and names each item + module" {
+  run bash -c "source '$DEMO_CMD'
+               demo_parity_verdict demo1 live 'MISSING custom webform.webform.apply nwc_registration
+MISSING custom nwc_help.topic.getting_started nwc_help
+TOTAL_CUSTOM 2
+TOTAL_VENDOR 53'"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Config parity FAILED: 2 config item(s)"* ]]
+  [[ "$output" == *"webform.webform.apply"* ]]      # the actual ops#133 casualty
+  [[ "$output" == *"nwc_registration"* ]]           # attributed to its module
+  [[ "$output" == *"nwc:config-heal"* ]]            # remedy is offered
+}
+
+@test "parity verdict is FAIL-CLOSED: an incomplete probe is never a pass" {
+  # No TOTAL_CUSTOM line at all (probe died, ssh truncated, drush bootstrap failed).
+  run bash -c "source '$DEMO_CMD'
+               demo_parity_verdict demo1 live 'PHP Fatal error: something'"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"did not complete"* ]]
+  [[ "$output" == *"never captured as a golden"* ]]
+
+  # Empty output must also fail, not silently pass.
+  run bash -c "source '$DEMO_CMD' ; demo_parity_verdict demo1 live ''"
+  [ "$status" -ne 0 ]
+
+  # A non-numeric total must fail rather than being coerced to 0.
+  run bash -c "source '$DEMO_CMD' ; demo_parity_verdict demo1 live 'TOTAL_CUSTOM unknown'"
+  [ "$status" -ne 0 ]
+}
+
+@test "a parity failure is recorded in the demo log (auditable, like every guard)" {
+  bash -c "source '$DEMO_CMD'
+           demo_parity_verdict demo1 live 'MISSING custom node.type.codoc nwc_collab
+TOTAL_CUSTOM 1
+TOTAL_VENDOR 53'" >/dev/null 2>&1 || true
+  run cat "$(demo_log_file demo1)"
+  [[ "$output" == *"parity-failed"* ]]
+  [[ "$output" == *"custom=1"* ]]
+}
+
+@test "golden capture runs the parity gate BEFORE dumping anything (both tiers)" {
+  # Ordering is the whole point: a failure must cost nothing and must leave the
+  # previous golden in place. Assert INSIDE each capture function, so the
+  # helper definitions earlier in the file cannot satisfy this by accident.
+  run bash -c "sed -n '/^cmd_golden() {/,/^}/p' '$DEMO_CMD' \
+               | grep -n 'demo_parity_check_local\|ddev export-db'"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == *"demo_parity_check_local"* ]]
+  [[ "${lines[1]}" == *"export-db"* ]]
+
+  run bash -c "sed -n '/^cmd_golden_live() {/,/^}/p' '$DEMO_CMD' \
+               | grep -n 'demo_parity_check_live\|sql:dump --gzip'"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == *"demo_parity_check_live"* ]]
+  [[ "${lines[1]}" == *"sql:dump"* ]]
+}
+
+@test "the parity override is opt-in, off by default, and logged" {
+  run bash -c "grep -c 'allow_gaps=\"false\"' '$DEMO_CMD'"
+  [ "$output" -ge 1 ]                                   # default is refuse
+  run grep -q 'parity-overridden' "$DEMO_CMD"
+  [ "$status" -eq 0 ]                                   # override leaves a trace
+  run bash "$DEMO_CMD" --help
+  [[ "$output" == *"--allow-config-gaps"* ]]
+}
+
+@test "the parity probe ships, parses, and reports both scopes fail-closed" {
+  probe="$( cd "${BATS_TEST_DIRNAME}/../.." && pwd )/lib/probes/config-parity.php"
+  [ -f "$probe" ]
+  if command -v php >/dev/null 2>&1; then
+    run php -l "$probe"
+    [ "$status" -eq 0 ]
+  fi
+  # The two totals the bash side parses must both be emitted.
+  run grep -c 'TOTAL_CUSTOM\|TOTAL_VENDOR' "$probe"
+  [ "$output" -ge 2 ]
+  # Scope must be decided by a custom/ path segment, not by guessing at names.
+  run grep -q "custom/" "$probe"
+  [ "$status" -eq 0 ]
+}

@@ -4411,3 +4411,75 @@ self-asserts `dev` on entry; `demo_pair_contract_for nwc` → rc=1, `ssc` → rc
 `ssd`'s carries `demo.enabled: true`. Verdict (a) stands.
 
 **Reversible-how:** `git revert -m 1 <merge>`. Repo-only; host contact was read-only probing only.
+## [2026-07-27] item1-registry-data-corrected — the capability was recorded against the wrong token
+
+**Context.** The previous pass on this item built the *machinery* (`probe:`, `NO-PROBE`,
+gated `rotate`, `AUDIT-BLIND`, the CI job) but deliberately did not touch the live registry,
+because the registry is untracked and five agents shared the checkout. That left the headline
+finding unfixed **in data**: the machinery could now detect a false capability claim, and the
+false capability claim was still sitting there.
+
+**Measured again before changing anything** (GET only; DELETE was not re-run — the capability
+was already established, and re-probing destruction is not free):
+
+| token | `/v4/linode/instances` | `/v4/domains` | `/v4/account` |
+|---|---|---|---|
+| `linode.api_token` | 401 | 200 | 401 |
+| `linode.provision_token` | **200** | 200 | 401 |
+
+`provision_token` enumerates 2 running instances, one of which is the production forge.
+It lives in `.secrets.yml` — the tier CLAUDE.md tells an agent it MAY read.
+
+**Red observed on the real defect, before correcting it.** A probe was written asserting what
+the registry *claimed* (`scopes: [read_write]` ⇒ instances reachable ⇒ `expect: 200`).
+`pl secrets audit` returned `SCOPE-DRIFT(instances-per-recorded-read_write want=200 got=401)`,
+exit 1. Only then were the scopes corrected to `[domains:read_write]` and the probe rewritten as
+a NEGATIVE assertion (`not-instances: expect 401`), so that *widening* this token later goes red.
+
+**Decisions taken.**
+1. `linode_api_token` is DNS-only. Its notes said "account-scoped = prod blast radius"; that was
+   folklore and is now recorded as such.
+2. `linode_provision_token` is tracked for the first time, `status: REVOKE-PENDING`, with POSITIVE
+   probes — while it exists, the registry states the danger out loud rather than omitting it.
+3. **New lint rule `TIER-CAPABILITY`.** The existing `TIER` rule keys on the key NAME, and would
+   never have caught this: `linode.provision_token` reads like an ordinary infra token. The
+   threat-model rule ("no AI-run machine may hold a key that reaches a production server") is
+   about what a credential CAN DO, so the lint now also keys on the entry's recorded scope —
+   which `NO-PROBE` has just forced to be a *measured* claim rather than an assumed one.
+4. `gitlab_bot_llm_bot` declared `host=<agent-host>:~/.nwp-agent-loop.env:GITLAB_TOKEN` as a location of a
+   token that had been dead since 2026-07-18. That file actually holds a **live** `api`-scoped
+   group bot (user id 28, token id 26, expires 2027-07-16), probed **on that host** so the value never
+   left the host. Recording a live credential as a location of a retired one is precisely why that host
+   read as unprovisioned while it was calling the API daily. Split: entry RETIRED, live token
+   adopted under its own entry.
+
+**Programme point 9 — un-ignoring the registry: DEFERRED again, with the number re-measured.**
+The previous pass measured 162 gitleaks findings. Running `pl secrets migrate-registry --apply`
+this pass replaced 61 literal host references with the `<gitlab-host>` placeholder, so the honest
+current number is **53** (36 `internal-bare-hostname`, 6 `operator-public-ip`, 5 `live-domain-apex`,
+4 `live-internal-domain`, 2 `operator-personal-email`, **0 credential findings**). Better, and still
+not committable to the public-release track. Two specific blockers, both measured rather than
+assumed:
+- `.secrets.yml:gitlab.server.ip` is still the unfilled template literal `YOUR_SERVER_IP`, so the
+  forge's public IP **cannot** be placeholdered without an operator action first. `<gitlab-ip>`
+  support is implemented and ready; it simply has nothing to resolve to today.
+- `operator-personal-email` has no placeholder mechanism at all, and inventing one for a person's
+  address inside a security-critical file is not this item's business.
+Suppression was explicitly rejected (it would mean ~53 `.gitleaksignore` fingerprints on the one
+file carrying operator PII, baked into history). The GOAL of point 9 — history, review, a second
+copy — is delivered by `pl secrets registry-track` (nested private repo), which is implemented and
+tested. **Un-ignoring stays closed until the operator fills `gitlab.server.ip` and rules on the
+email.**
+
+**Bugs found while building, each of the "check that cannot fail" family this item exists to kill:**
+- `set -o pipefail` + `yq … | grep -q && die`: `grep -q` exits at the first match, the still-writing
+  `yq` takes SIGPIPE, the pipeline reports 141, and the guard **silently does not fire**. `adopt`
+  therefore never refused an already-declared location. Small fixtures hide this; the existing unit
+  test passed against a 1-entry registry while the real 26-entry one was broken.
+- A remote read that finds nothing hashes to `e3b0c44298fc1c14…` — the SHA-256 of the empty string,
+  a perfectly well-formed digest. It was being accepted as proof a location existed.
+- Registry paths are written `~/…`, but were sent to the remote **single-quoted**, so the tilde
+  never expanded and `verify-copy` compared the hash of nothing against canonical. It has been
+  reporting permanent **false DRIFT** on remote copies that are byte-identical.
+- The fleet sweep initially emitted tab-separated rows; tab is IFS *whitespace*, so bash collapsed
+  the empty ref field and the hash landed in the wrong variable. Every row fell out at the

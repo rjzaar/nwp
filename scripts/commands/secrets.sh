@@ -59,11 +59,30 @@ registry_index_of(){
 # domain (the leakage gate would — correctly — reject it). Hosts are written as
 # the `<gitlab-host>` placeholder and expanded here from the secret store, which
 # is exactly the pattern `pl issue` already uses.
-expand_placeholders(){ # stdin/arg -> arg with <gitlab-host> resolved
+expand_placeholders(){ # stdin/arg -> arg with <gitlab-host>/<gitlab-ip> resolved
   local s="$1" d
-  case "$s" in *'<gitlab-host>'*) ;; *) printf '%s' "$s"; return 0;; esac
-  d=$("$YQ" e '.gitlab.server.domain // ""' "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
-  printf '%s' "${s//<gitlab-host>/$d}"
+  case "$s" in *'<gitlab-'*) ;; *) printf '%s' "$s"; return 0;; esac
+  # If a placeholder cannot be resolved, LEAVE IT IN. Substituting an empty
+  # string would turn "https://<gitlab-host>/api/v4/user" into "https:///api/v4/…"
+  # and a host= location into an empty hostname — both fail, but as a confusing
+  # transport error rather than as "this placeholder is not configured".
+  case "$s" in *'<gitlab-host>'*)
+    d=$("$YQ" e '.gitlab.server.domain // ""' "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
+    case "$d" in ""|YOUR_*|CHANGEME*|"<"*) ;; *) s="${s//<gitlab-host>/$d}" ;; esac ;;
+  esac
+  # The forge's public IP is `operator-public-ip` to the leakage gate — the
+  # highest-severity class the registry still carried after the host placeholders
+  # went in. It is already in the secret store under gitlab.server.ip, so it can
+  # be resolved exactly like the hostname rather than written out.
+  # NOTE (measured 2026-07-27): .secrets.yml:gitlab.server.ip is still the unfilled
+  # template value, so this placeholder cannot resolve yet. That is why the forge
+  # IP is still written literally in the registry, and part of why the registry is
+  # NOT committed to this repo — see the decision log.
+  case "$s" in *'<gitlab-ip>'*)
+    d=$("$YQ" e '.gitlab.server.ip // ""' "$SECRETS_FILE" 2>/dev/null | grep -v '^null$')
+    case "$d" in ""|YOUR_*|CHANGEME*|"<"*) ;; *) s="${s//<gitlab-ip>/$d}" ;; esac ;;
+  esac
+  printf '%s' "$s"
 }
 
 field(){ expand_placeholders "$("$YQ" e ".secrets[$1].$2 // \"\"" "$REGISTRY" 2>/dev/null | grep -v '^null$')"; }
@@ -162,6 +181,26 @@ loc_read(){ # kind abspath ref
 }
 
 loc_hash(){ printf '%s' "$1" | sha256sum | cut -c1-16; }
+
+# The SHA-256 of the empty string. A remote read that finds nothing hashes to
+# exactly this, so treating it as a value turns "the file is not there" into a
+# confident-looking digest. Every remote comparison must reject it explicitly.
+readonly HASH_OF_NOTHING_16="e3b0c44298fc1c14"
+readonly HASH_OF_NOTHING_64="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+loc_is_empty_hash(){ case "$1" in "$HASH_OF_NOTHING_16"*|"$HASH_OF_NOTHING_64") return 0;; *) return 1;; esac; }
+
+# Render a registry path for use inside a SINGLE-QUOTED remote shell word.
+# A leading "~/" must become "$HOME/" *outside* the quotes, because the remote
+# shell does not expand a tilde inside single quotes: `head -1 '~/.config/x'`
+# looks for a directory literally named "~". Every remote location in this
+# registry is written with a tilde, so verify-copy compared the hash of nothing
+# against canonical and reported permanent DRIFT on copies that were identical.
+loc_remote_quoted(){ # path -> shell-safe remote expression
+  case "$1" in
+    "~/"*) printf '"$HOME"/%s' "$(printf '%s' "${1#\~/}" | sed "s/'/'\\\\''/g")" ;;
+    *)     printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")" ;;
+  esac
+}
 
 # The canonical location of an entry: its `canonical:` field if set, else the
 # first `.secrets.yml:` location, else the first machine-readable local one.
@@ -902,7 +941,10 @@ cmd_lint(){
     local pid pst nsc npr
     pid=$(field "$i" id); pst=$(field "$i" status)
     [ -z "$pid" ] && continue
-    [ "$pst" = "not-provisioned" ] && continue
+    # A credential that does not exist yet, or no longer exists, has no live
+    # capability to check — demanding a probe for it would only train people to
+    # add probes that cannot run.
+    case "$pst" in not-provisioned|RETIRED|retired) continue ;; esac
     nsc=$("$YQ" e ".secrets[$i].scopes // [] | length" "$REGISTRY" 2>/dev/null)
     [ "${nsc:-0}" -eq 0 ] 2>/dev/null && continue
     npr=$("$YQ" e ".secrets[$i].probe // [] | length" "$REGISTRY" 2>/dev/null)
@@ -936,6 +978,35 @@ cmd_lint(){
     print_error "TIER: '$k' is an admin/backup-decryption credential living in the AI-readable tier ($SECRETS_FILE)"
     tierbad=$((tierbad+1)); issues=$((issues+1))
   done < <("$YQ" e '.. | select(tag == "!!str") | path | join(".")' "$SECRETS_FILE" 2>/dev/null)
+
+  # 8b. TIER by CAPABILITY, not by name. The name-based rule above would not have
+  #     caught the worst credential in the estate: `linode.provision_token` reads
+  #     like an ordinary infra token, and sat in the AI-readable tier while being
+  #     able to enumerate and destroy every production Linode. CLAUDE.md's first
+  #     trust assumption — "No AI-run machine may hold a key that reaches a
+  #     production server" — is about what a credential CAN DO, so the lint has to
+  #     be too. This reads the registry's recorded scope (which NO-PROBE now
+  #     forces to be a measured claim rather than an assumed one), so widening a
+  #     token's scope makes it fail here without anyone renaming anything.
+  local ti tid tst tk tsc
+  local ntier; ntier=$("$YQ" e '.secrets | length' "$REGISTRY" 2>/dev/null); [ "$ntier" = "null" ] && ntier=0
+  for ((ti=0; ti<ntier; ti++)); do
+    tid=$(field "$ti" id); [ -z "$tid" ] && continue
+    tst=$(field "$ti" status)
+    case "$tst" in not-provisioned|RETIRED|retired) continue ;; esac
+    tsc=$("$YQ" e ".secrets[$ti].scopes // [] | join(\",\")" "$REGISTRY" 2>/dev/null)
+    # Scopes that reach production infrastructure control.
+    case ",$tsc," in
+      *,linodes:read_write,*|*,linodes:*write*,*|*,instances:read_write,*|*,read_write,*) ;;
+      *) continue ;;
+    esac
+    # …only a problem if it actually lives in the tier the agent may read.
+    tk=$("$YQ" e ".secrets[$ti].stored_in[]? | select(. == \".secrets.yml:*\")" "$REGISTRY" 2>/dev/null | head -1)
+    [ -z "$tk" ] && continue
+    print_error "TIER-CAPABILITY: '$tid' can control production infrastructure (scopes: $tsc) from the AI-readable tier (${tk})"
+    print_hint "  CLAUDE.md: no AI-run machine may hold a key that reaches a production server — revoke it, or move it to the deny-ruled tier"
+    tierbad=$((tierbad+1)); issues=$((issues+1))
+  done
   if [ "$tierbad" -gt 0 ]; then
     print_hint "move it to .secrets.data.yml (operator action — an AI agent must not perform this move):"
     print_hint "  pl secrets migrate-tier <dotted.key>   then re-run this lint"
@@ -993,19 +1064,66 @@ cmd_lint(){
 ################################################################################
 cmd_adopt(){
   need_yq; need_registry
-  local key="${1:-}"; [ -n "$key" ] || die "usage: pl secrets adopt <dotted.key>   e.g. linode.provision_token"
+  local key="${1:-}"; [ -n "$key" ] || die "usage: pl secrets adopt <dotted.key>|host=<role>:<path>:<ref> [--as <id>]"
+  local AS=""; shift || true
+  while [ $# -gt 0 ]; do case "$1" in --as) AS="${2:-}"; shift 2;; *) shift;; esac; done
+
+  # A credential that lives ONLY on another host was previously unadoptable: this
+  # verb spoke .secrets.yml and nothing else, so the one live api-scoped token in
+  # the estate that is not on this laptop could not be entered into the source of
+  # record at all — the registry called it `not-provisioned` while it answered
+  # the API. Adopting by location closes that.
+  if [[ "$key" == host=* ]]; then
+    [ -n "$AS" ] || die "adopting a remote location needs an id:  pl secrets adopt '$key' --as <id>"
+    local akind ahost apath aref
+    IFS=$'\x1f' read -r akind ahost apath aref < <(loc_parse "$key")
+    [ -n "$ahost" ] || die "cannot parse host from '$key'"
+    local already
+    already=$("$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null | grep -cxF "$key" || true)
+    [ "${already:-0}" -gt 0 ] && die "$key is already declared by a registry entry — see: pl secrets status"
+
+    # Refuse to record a location we cannot show exists. Hash only; the value
+    # neither crosses the wire nor enters this process.
+    local rcmd rh qp; qp=$(loc_remote_quoted "$apath")
+    case "$akind" in
+      env)  rcmd="grep -E '^(export )?$aref=' $qp | head -1 | sed -E 's/^(export )?$aref=//; s/^\"//; s/\"\$//' | tr -d '\\n' | sha256sum | cut -c1-16" ;;
+      file) rcmd="head -1 $qp | tr -d '\\n' | sha256sum | cut -c1-16" ;;
+      *)    die "cannot verify a '$akind' location on a remote host" ;;
+    esac
+    rh=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$ahost" "$rcmd" 2>/dev/null)
+    [ -n "$rh" ] || die "$ahost: unreachable — refusing to adopt a location we could not look at"
+    loc_is_empty_hash "$rh" && die "$ahost: nothing readable at $apath${aref:+:$aref} — refusing to adopt a location that is not there"
+    ID="$AS" LOC="$key" "$YQ" e -i '.secrets += [{
+        "id": strenv(ID),
+        "provider": "gitlab",
+        "type": "TODO — describe what this credential is for",
+        "scopes": [],
+        "stored_in": [strenv(LOC)],
+        "rotate_via": "manual",
+        "rotate_url": "",
+        "cadence_days": 365,
+        "expires": "unknown",
+        "last_rotated": "",
+        "owner": "operator",
+        "status": "adopted-needs-review",
+        "notes": "Adopted by `pl secrets adopt` from a remote location — fill in type/scopes/rotate_url and add a probe: before the next rotation."
+      }]' "$REGISTRY" || die "failed to write registry"
+    print_success "adopted $key as registry entry '$AS' (status: adopted-needs-review)"
+    print_hint "now give it a checkable scope:  pl secrets probe-scaffold $AS   ·   verify:  pl secrets lint"
+    return 0
+  fi
+
   local len; len=$("$YQ" e "(.$key // \"\") | length" "$SECRETS_FILE" 2>/dev/null)
   [ "${len:-0}" -eq 0 ] && die "$key is empty or missing in $SECRETS_FILE — nothing to adopt"
   # NOT `yq | grep -q && die`: with `set -o pipefail` (line 2), grep -q exits at
   # the FIRST match, the still-writing yq takes SIGPIPE, the pipeline reports 141
   # and the `&&` never fires — so the guard silently lets a duplicate through.
-  # This is why `test:unit` fails on main: it reproduces on the CI runner and not
-  # on a fast local disk, which is exactly the shape of bug a gate must not have.
-  # Buffer first, then match.
+  # It reproduces on the CI runner and not on a fast local disk, which is exactly
+  # the shape of bug a gate must not have. Buffer first, then match.
   if [ "$( { "$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null || true; } | grep -cxF ".secrets.yml:$key" || true)" -gt 0 ]; then
     die "$key is already declared by a registry entry"
   fi
-  local id; id=$(printf '%s' "$key" | tr '.' '_')
+  local id; id="${AS:-$(printf '%s' "$key" | tr '.' '_')}"
   local prov="${key%%.*}"
   ID="$id" PROV="$prov" KEY="$key" "$YQ" e -i '.secrets += [{
       "id": strenv(ID),
@@ -1091,7 +1209,7 @@ cmd_set(){
   else
     v=""; die "yq write failed for $key"
   fi
-  if [ -f "$REGISTRY" ] && "$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null | grep -qxF ".secrets.yml:$key"; then
+  if [ -f "$REGISTRY" ] && [ "$( { "$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null || true; } | grep -cxF ".secrets.yml:$key" || true)" -gt 0 ]; then
     print_hint "registry tracks this key — stamp the rotation: pl secrets done <#|id>"
   fi
   print_hint "verify: pl secrets keys   ·   leak check: pl secrets scan"
@@ -1203,10 +1321,27 @@ _audit_verdict(){ # http_code -> OK|DEAD|UNKNOWN
     *)       echo UNKNOWN ;;
   esac
 }
-_audit_code(){ # url full-header-prefix value  -> http_code only
+_audit_code(){ # url full-header-prefix value [method] -> http_code only
+  # $4 (optional) is the HTTP method. It exists for the "create-without-creating"
+  # idiom: POST an EMPTY body to a creating endpoint. A token that may not create
+  # answers 401/403 at the authorization layer; a token that MAY create gets past
+  # it and is then rejected at validation with 400 — because the body is empty, so
+  # nothing is created. That distinguishes "can create MRs" from "cannot" without
+  # ever creating an MR. Never wire a method that mutates on an empty body here
+  # (no DELETE — the resource in the URL would be the thing destroyed).
   local cfg; cfg=$(mktemp); chmod 600 "$cfg"
   printf 'silent\noutput = "/dev/null"\nwrite-out = "%%{http_code}"\nmax-time = 12\nurl = "%s"\nheader = "%s %s"\n' "$1" "$2" "$3" > "$cfg"
-  curl -K "$cfg" 2>/dev/null; rm -f "$cfg"
+  case "${4:-GET}" in
+    GET|"") : ;;
+    POST|PUT|PATCH|HEAD)
+      printf 'request = "%s"\n' "${4}" >> "$cfg"
+      # Explicitly empty body: this is what makes the probe non-mutating.
+      [ "$4" = "POST" ] || [ "$4" = "PUT" ] || [ "$4" = "PATCH" ] && printf 'data = ""\n' >> "$cfg"
+      ;;
+    *) rm -f "$cfg"; printf '000'; return 0 ;;
+  esac
+  curl -K "$cfg" 2>/dev/null
+  shred -u "$cfg" 2>/dev/null || rm -f "$cfg"
 }
 
 # Probe ONE value at its provider. Emits "LIVE<TAB>live_expires<TAB>note".
@@ -1273,7 +1408,8 @@ _probe_scopes(){ # idx provider value -> "" (ok) | "SCOPE-DRIFT(name exp!=got) �
     want=$("$YQ" e ".secrets[$idx].probe[$j].expect // \"\"" "$REGISTRY" 2>/dev/null)
     local pname; pname=$("$YQ" e ".secrets[$idx].probe[$j].name // \"probe$j\"" "$REGISTRY" 2>/dev/null)
     [ -z "$url" ] || [ -z "$want" ] && continue
-    got=$(_audit_code "$url" "$hdr" "$val")
+    local pmeth; pmeth=$("$YQ" e ".secrets[$idx].probe[$j].method // \"GET\"" "$REGISTRY" 2>/dev/null)
+    got=$(_audit_code "$url" "$hdr" "$val" "$pmeth")
     [ "$got" = "$want" ] || out="${out}SCOPE-DRIFT($pname want=$want got=$got) "
   done
   printf '%s' "$out"
@@ -1721,8 +1857,8 @@ cmd_migrate_registry(){
         url|domain|ip|linode_id|ssh_user|username|user|admin_user) ;;
         *) continue ;;
       esac
-      "$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null | grep -qxF ".secrets.yml:$k" && continue
-      "$YQ" e '.ignored_keys[]? // ""' "$REGISTRY" 2>/dev/null | grep -qxF "$k" && continue
+      [ "$( { "$YQ" e '.secrets[].stored_in[]?' "$REGISTRY" 2>/dev/null || true; } | grep -cxF ".secrets.yml:$k" || true)" -gt 0 ] && continue
+      [ "$( { "$YQ" e '.ignored_keys[]? // ""' "$REGISTRY" 2>/dev/null || true; } | grep -cxF "$k" || true)" -gt 0 ] && continue
       printf "  ignored_keys += %s (structural, not a credential)\n" "$k"
       [ "$APPLY" = 1 ] && K="$k" "$YQ" e -i '.ignored_keys += [strenv(K)]' "$REGISTRY"
       seeded=$((seeded+1)); changed=$((changed+1))
@@ -1750,12 +1886,35 @@ cmd_migrate_registry(){
 cmd_discover_copies(){
   need_yq; need_registry
   command -v jq >/dev/null || die "jq required"
+  local REMOTE=1 INCLUDE_PROD=0 a
+  for a in "$@"; do case "$a" in
+    --no-remote|--local-only) REMOTE=0;;
+    --include-prod) INCLUDE_PROD=1;;
+  esac; done
   print_header "Undeclared copies of registry-known credentials"
 
   # hash -> id  for every canonical value we can read
-  local -A known=(); local -A declared=()
+  local -A known=(); local -A declared=(); local -A declared_remote=(); local -A fleet=()
   local n i id canon ckind chost cpath cref v loc lkind lhost lpath lref
   n=$("$YQ" e '.secrets | length' "$REGISTRY"); [ "$n" = "null" ] && n=0
+
+  # Pass 0: the fleet roster, collected INDEPENDENTLY of whether we can read the
+  # entry's canonical value here. An entry whose canonical lives somewhere this
+  # machine cannot read (a build host's loop env, an agent host's bot token) still
+  # names a host, and that host must still be swept — against every hash we do
+  # know. Folding this into the pass below meant precisely the remote-only entries
+  # contributed no host, so the sweep visited 2 of 5 hosts and still reported
+  # "no undeclared copies".
+  for ((i=0;i<n;i++)); do
+    while IFS= read -r loc; do
+      [ -z "$loc" ] && continue
+      IFS=$'\x1f' read -r lkind lhost lpath lref < <(loc_parse "$loc")
+      [ -n "$lhost" ] || continue
+      declared_remote["$lhost|$lpath|$lref"]=1
+      fleet["$lhost"]=1
+    done < <(entry_locations "$i")
+  done
+
   for ((i=0;i<n;i++)); do
     id=$(field "$i" id); [ -z "$id" ] && continue
     canon=$(entry_canonical_loc "$i"); [ -z "$canon" ] && continue
@@ -1766,7 +1925,9 @@ cmd_discover_copies(){
     while IFS= read -r loc; do
       [ -z "$loc" ] && continue
       IFS=$'\x1f' read -r lkind lhost lpath lref < <(loc_parse "$loc")
-      { [ "$lkind" = "external" ] || [ "$lkind" = "bad" ] || [ -n "$lhost" ]; } && continue
+      { [ "$lkind" = "external" ] || [ "$lkind" = "bad" ]; } && continue
+      # Remote copies were rostered in pass 0 above.
+      [ -n "$lhost" ] && continue
       declared["$(loc_abspath "$lpath")|$lref"]=1
     done < <(entry_locations "$i")
   done
@@ -1805,8 +1966,105 @@ cmd_discover_copies(){
     done < "$f"
   done < <(printf '%s\n' "$HOME/.nwp-agent-loop.env" "$HOME/.nwp-agent-loop.env.local")
 
-  [ "$found" -eq 0 ] && { print_success "no undeclared copies found"; return 0; }
-  print_hint "declare them in the entry's stored_in (then `pl secrets sync <id>` keeps them true) — or delete the copy"
+  # ---- fleet sweep -------------------------------------------------------
+  # Until now this function only ever looked at the machine it ran on, so a copy
+  # on a build/agent/deploy host could not be found even in principle — the loop above
+  # `continue`d on any location carrying a host. That made "no undeclared copies
+  # found" a statement about one laptop dressed up as a statement about the fleet.
+  #
+  # The hashing runs on the REMOTE. Only 64 hex characters ever cross the wire,
+  # in the same direction verify-copy already sends them. No value is read into
+  # this process, printed, or written anywhere.
+  local unreachable=0
+  if [ "$REMOTE" = "1" ] && [ "${#fleet[@]}" -gt 0 ]; then
+    local rh rline rkind rpath rref rhash; local -A swept_mid=()
+    # shellcheck disable=SC2016
+    local sweep='
+      # Emit the path HOME-RELATIVE ("~/.config/x.token"). The registry declares
+      # locations in exactly that form, so emitting the expanded absolute form
+      # made every correctly-declared remote copy look undeclared.
+      rel() { case "$1" in "$HOME"/*) printf "~/%s" "${1#$HOME/}" ;; *) printf "%s" "$1" ;; esac; }
+      for f in "$HOME"/.config/*.token "$HOME"/.config/*.tok; do
+        [ -f "$f" ] || continue
+        h=$(head -1 "$f" | tr -d "\n" | sha256sum | cut -d" " -f1)
+        printf "file\037%s\037\037%s\n" "$(rel "$f")" "$h"
+      done
+      for f in "$HOME"/.nwp-agent-loop.env "$HOME"/.nwp-agent-loop.env.local "$HOME"/.netrc.nwp; do
+        [ -f "$f" ] || continue
+        while IFS= read -r line; do
+          case "$line" in *=*) ;; *) continue ;; esac
+          n=${line%%=*}; n=${n#export }
+          v=${line#*=}; v=${v%\"}; v=${v#\"}
+          [ -z "$v" ] && continue
+          h=$(printf "%s" "$v" | sha256sum | cut -d" " -f1)
+          printf "env\037%s\037%s\037%s\n" "$(rel "$f")" "$n" "$h"
+        done < "$f"
+      done'
+    for rh in "${!fleet[@]}"; do
+      # A bare IP in this estate is a production endpoint, not a fleet role.
+      # CLAUDE.md: "No AI-run machine may hold a key that reaches a production
+      # server" — a read-only hash sweep is still a connection, and this verb runs
+      # unattended from cron. Named fleet roles only, unless the
+      # operator asks for prod explicitly and is present to see it.
+      if [[ "$rh" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$INCLUDE_PROD" != "1" ]; then
+        print_warning "  SKIPPED (prod endpoint)  $rh — re-run with --include-prod to sweep it"
+        unreachable=$((unreachable+1)); continue
+      fi
+      # Two ssh aliases for one machine (this estate has such a pair) would
+      # otherwise sweep it twice and report its single, correctly-declared copy
+      # as undeclared under the alias the registry does not happen to use.
+      # Identity is the machine, not the name we reached it by.
+      local rmid
+      rmid=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$rh" 'cat /etc/machine-id 2>/dev/null' 2>/dev/null)
+      if [ -n "$rmid" ] && [ -n "${swept_mid[$rmid]:-}" ]; then
+        print_info "  $rh is the same machine as ${swept_mid[$rmid]} — already swept"
+        continue
+      fi
+      [ -n "$rmid" ] && swept_mid["$rmid"]="$rh"
+
+      print_info "  sweeping $rh …"
+      local rout
+      rout=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$rh" "$sweep" 2>/dev/null)
+      if [ -z "$rout" ]; then
+        # Say blindness out loud. A host we could not reach is not a host we
+        # cleared; silently counting it as clean is the bug this item exists for.
+        print_warning "  UNREACHABLE  $rh — swept nothing (NOT the same as clean)"
+        unreachable=$((unreachable+1)); continue
+      fi
+      # \x1f, not \t: tab is IFS *whitespace*, so bash collapses a run of tabs
+      # into ONE delimiter and an empty middle field (a file location has no ref)
+      # shifts the hash into rref, leaving rhash empty — every row then fell out
+      # at the emptiness guard and the sweep reported a clean fleet it had in fact
+      # never compared. loc_parse already uses \x1f for this reason.
+      while IFS=$'\x1f' read -r rkind rpath rref rhash; do
+        [ -z "$rhash" ] && continue
+        # The remote emits a full SHA-256; `known` is keyed by loc_hash, which is
+        # that digest truncated to 16. Comparing the two forms silently matched
+        # nothing — the sweep would have reported "no undeclared copies" on a
+        # fleet it had genuinely searched, which is the exact failure mode this
+        # item exists to remove. Narrow to the same form before comparing.
+        rhash="${rhash:0:16}"
+        [ -z "${known[$rhash]:-}" ] && continue
+        # A whole-file location is spelled both ":@file" and with an empty ref in
+        # the wild; treat them as the same location rather than reporting a
+        # correctly-declared copy as undeclared.
+        if [ -n "${declared_remote["$rh|$rpath|$rref"]:-}" ] \
+        || [ -n "${declared_remote["$rh|$rpath|@file"]:-}" ] \
+        || [ -n "${declared_remote["$rh|$rpath|"]:-}" ]; then continue; fi
+        print_error "UNDECLARED  ${known[$rhash]}  ->  host=$rh:$rpath${rref:+:$rref}"
+        found=$((found+1))
+      done <<<"$rout"
+    done
+  fi
+
+  if [ "$found" -eq 0 ]; then
+    if [ "$unreachable" -gt 0 ]; then
+      print_warning "no undeclared copies found HERE, but $unreachable fleet host(s) were unreachable"
+      return 2
+    fi
+    print_success "no undeclared copies found"; return 0
+  fi
+  print_hint "declare them in the entry's stored_in (then \`pl secrets sync <id>\` keeps them true) — or delete the copy"
   return 1
 }
 
@@ -1833,16 +2091,22 @@ cmd_verify_copy(){
     IFS=$'\x1f' read -r lkind lhost lpath lref < <(loc_parse "$loc")
     [ -n "$lhost" ] || continue
     checked=$((checked+1))
+    local qpath; qpath=$(loc_remote_quoted "$lpath")
     case "$lkind" in
-      file) remote_cmd="head -1 '$lpath' | tr -d '\\n' | sha256sum | cut -d' ' -f1" ;;
-      env)  remote_cmd="grep -E '^(export )?$lref=' '$lpath' | head -1 | sed -E 's/^(export )?$lref=//; s/^\"//; s/\"\$//' | tr -d '\\n' | sha256sum | cut -d' ' -f1" ;;
-      yaml) remote_cmd="yq e '.$lref // \"\"' '$lpath' | tr -d '\\n' | sha256sum | cut -d' ' -f1" ;;
-      json) remote_cmd="jq -r '($lref) // \"\"' '$lpath' | tr -d '\\n' | sha256sum | cut -d' ' -f1" ;;
+      file) remote_cmd="head -1 $qpath | tr -d '\\n' | sha256sum | cut -d' ' -f1" ;;
+      env)  remote_cmd="grep -E '^(export )?$lref=' $qpath | head -1 | sed -E 's/^(export )?$lref=//; s/^\"//; s/\"\$//' | tr -d '\\n' | sha256sum | cut -d' ' -f1" ;;
+      yaml) remote_cmd="yq e '.$lref // \"\"' $qpath | tr -d '\\n' | sha256sum | cut -d' ' -f1" ;;
+      json) remote_cmd="jq -r '($lref) // \"\"' $qpath | tr -d '\\n' | sha256sum | cut -d' ' -f1" ;;
       *)    print_warning "  $lhost: cannot verify kind '$lkind'"; continue ;;
     esac
     rhash=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$lhost" "$remote_cmd" 2>/dev/null)
     if [ -z "$rhash" ]; then
       print_warning "  UNREACHABLE  $lhost — $lpath (cannot verify)"; problems=$((problems+1))
+    elif loc_is_empty_hash "$rhash"; then
+      # Absent is not the same as different. Saying DRIFT here sends the operator
+      # to re-propagate a value to a path that does not exist.
+      print_error "  ABSENT       $lhost:$lpath  (nothing readable there — declared location is wrong or the copy is gone)"
+      problems=$((problems+1))
     elif [ "$rhash" = "$canonhash" ]; then
       print_success "  MATCH        $lhost:$lpath"
     else

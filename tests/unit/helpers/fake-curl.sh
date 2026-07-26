@@ -22,12 +22,13 @@
 # $FAKE_CURL_403 (optional) lists "value<TAB>url-substring" pairs that 403.
 set -uo pipefail
 
-cfg=""; url=""; want_code=0; want_suffix=0; val=""
+cfg=""; url=""; want_code=0; want_suffix=0; val=""; method="GET"
 args=("$@")
 for ((i=0; i<${#args[@]}; i++)); do
   case "${args[$i]}" in
     -K) cfg="${args[$((i+1))]}" ;;
     -w|--write-out) want_code=1 ;;
+    -X|--request) method="${args[$((i+1))]}" ;;
     http*://*) url="${args[$i]}" ;;
   esac
 done
@@ -41,6 +42,8 @@ if [ -n "$cfg" ] && [ -f "$cfg" ]; then
     # write-out with no output       -> caller wants BODY then the code.
     if grep -q '^output' "$cfg"; then want_code=1; else want_suffix=1; fi
   fi
+  m=$(sed -n 's/^request = "\(.*\)"$/\1/p' "$cfg" | head -1)
+  [ -n "$m" ] && method="$m"
 fi
 
 # Emit per the requested shape. Every branch below sets $body and $code and
@@ -90,6 +93,21 @@ if [ -n "${FAKE_CURL_403:-}" ] && [ -f "$FAKE_CURL_403" ] && [ -n "$val" ]; then
       emit '{"message":"403 Forbidden"}' 403
     fi
   done < "$FAKE_CURL_403"
+fi
+
+# The "create-without-creating" idiom. A creating endpoint POSTed with an EMPTY
+# body separates the authorization layer from the validation layer: a token that
+# may NOT create is refused at 401/403 and never reaches validation; a token that
+# MAY create gets past authorization and is then rejected 400 for the empty body,
+# having created nothing. Modelling it here keeps the probe honest offline.
+if [ "$method" = "POST" ]; then
+  case "$url" in
+    */merge_requests|*/issues)
+      if [ "$alive" = 1 ]; then
+        emit '{"message":"400 Bad Request"}' 400
+      fi
+      emit '{"message":"401 Unauthorized"}' 401 ;;
+  esac
 fi
 
 case "$url" in

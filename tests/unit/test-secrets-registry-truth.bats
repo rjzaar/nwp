@@ -493,3 +493,240 @@ teardown() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"has NOT been audited"* ]]
 }
+
+# --- probe method: "create-without-creating" --------------------------------
+#
+# A capability like "can open a merge request" was previously unrecordable: the
+# only way to check it was to create one. POSTing an EMPTY body separates the
+# authorization layer (401/403 = may not create) from the validation layer
+# (400 = may create, but this request is invalid) — so the probe establishes the
+# capability while creating nothing.
+
+@test "probe: a POST probe expecting 400 records create capability and is clean" {
+  bash "$SECRETS_SH" sync fixture_token
+  yq e -i '.secrets[0].probe = [{"name":"can-create-mr","url":"https://fixture.example.org/api/v4/projects/9/merge_requests","method":"POST","expect":400}]' "$NWP_SECRETS_REGISTRY"
+  run bash "$SECRETS_SH" audit
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"SCOPE-DRIFT"* ]]
+}
+
+@test "probe: a POST probe is sent as POST, not silently downgraded to GET" {
+  # Negative control for the test above: if `method:` were ignored the request
+  # would be a GET, which this fixture answers 200 — so expecting 400 would drift.
+  # Passing above AND failing here would mean the method never left the registry.
+  yq e -i '.secrets[0].probe = [{"name":"mr-as-get","url":"https://fixture.example.org/api/v4/projects/9/merge_requests","expect":400}]' "$NWP_SECRETS_REGISTRY"
+  run bash "$SECRETS_SH" audit
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"SCOPE-DRIFT"* ]]
+  [[ "$output" == *"got=200"* ]]
+}
+
+@test "probe: a revoked token cannot create, and the POST probe says so" {
+  printf 'PLACEHOLDER_some_other_value\n' > "$FAKE_CURL_ALIVE"   # canonical now dead
+  yq e -i '.secrets[0].probe = [{"name":"can-create-mr","url":"https://fixture.example.org/api/v4/projects/9/merge_requests","method":"POST","expect":400}]' "$NWP_SECRETS_REGISTRY"
+  run bash "$SECRETS_SH" audit
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"got=401"* ]]
+}
+
+# --- discover-copies: the fleet sweep ---------------------------------------
+#
+# Before this, the loop `continue`d on any location carrying a host, so a copy on
+# met/mini/mons could not be found even in principle and "no undeclared copies
+# found" was a claim about one laptop wearing the costume of a claim about the
+# fleet. Hashing happens on the REMOTE; only digests cross the wire.
+
+_stub_ssh() { # $1 = sweep stdout the fake host should return (may be empty)
+  cat > "${TEST_TMP}/bin/ssh" <<EOF
+#!/bin/bash
+# consume ssh options, then ignore the remote command
+printf '%s' "\$(cat <<'PAYLOAD'
+$1
+PAYLOAD
+)"
+EOF
+  chmod +x "${TEST_TMP}/bin/ssh"
+}
+
+@test "discover-copies: an UNDECLARED copy on a fleet host is reported" {
+  yq e -i '.secrets[0].stored_in += ["host=fixturehost:~/.config/declared.token:@file"]' "$NWP_SECRETS_REGISTRY"
+  local h; h=$(printf '%s' 'PLACEHOLDER_canonical_value_A' | sha256sum | cut -d' ' -f1)
+  # same value, at a path nobody declared
+  _stub_ssh "$(printf 'file\037/home/x/.config/sneaky.token\037\037%s' "$h")"
+  run bash "$SECRETS_SH" discover-copies
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"UNDECLARED"* ]]
+  [[ "$output" == *"sneaky.token"* ]]
+}
+
+@test "discover-copies: a DECLARED copy on a fleet host is NOT reported" {
+  # Negative control. Without it, a sweep that flagged every remote file it saw
+  # would satisfy the test above while being useless.
+  yq e -i '.secrets[0].stored_in += ["host=fixturehost:/home/x/.config/declared.token:"]' "$NWP_SECRETS_REGISTRY"
+  local h; h=$(printf '%s' 'PLACEHOLDER_canonical_value_A' | sha256sum | cut -d' ' -f1)
+  _stub_ssh "$(printf 'file\037/home/x/.config/declared.token\037\037%s' "$h")"
+  run bash "$SECRETS_SH" discover-copies
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"UNDECLARED"* ]]
+}
+
+@test "discover-copies: an unrelated value on a fleet host is NOT reported" {
+  # Second negative control: only copies of a value we actually know are copies.
+  yq e -i '.secrets[0].stored_in += ["host=fixturehost:~/.config/declared.token:@file"]' "$NWP_SECRETS_REGISTRY"
+  local h; h=$(printf '%s' 'SOMETHING_COMPLETELY_UNRELATED' | sha256sum | cut -d' ' -f1)
+  _stub_ssh "$(printf 'file\037/home/x/.config/other.token\037\037%s' "$h")"
+  run bash "$SECRETS_SH" discover-copies
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"UNDECLARED"* ]]
+}
+
+@test "discover-copies: an UNREACHABLE fleet host is blind, not clean" {
+  yq e -i '.secrets[0].stored_in += ["host=fixturehost:~/.config/declared.token:@file"]' "$NWP_SECRETS_REGISTRY"
+  _stub_ssh ""            # host answers nothing
+  run bash "$SECRETS_SH" discover-copies
+  [ "$status" -eq 2 ]     # NOT 0 — "could not look" must not read as "looked, clean"
+  [[ "$output" == *"UNREACHABLE"* ]]
+}
+
+@test "discover-copies: --no-remote does not touch the fleet at all" {
+  yq e -i '.secrets[0].stored_in += ["host=fixturehost:~/.config/declared.token:@file"]' "$NWP_SECRETS_REGISTRY"
+  cat > "${TEST_TMP}/bin/ssh" <<'EOF'
+#!/bin/bash
+echo "ssh was invoked" >&2; exit 99
+EOF
+  chmod +x "${TEST_TMP}/bin/ssh"
+  run bash "$SECRETS_SH" discover-copies --no-remote
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"ssh was invoked"* ]]
+}
+
+@test "discover-copies: a bare-IP host is a prod endpoint and is skipped by default" {
+  # CLAUDE.md: no AI-run machine reaches production. This verb runs from cron.
+  yq e -i '.secrets[0].stored_in += ["host=203.0.113.9:/root/x.token:@file"]' "$NWP_SECRETS_REGISTRY"
+  cat > "${TEST_TMP}/bin/ssh" <<'EOF'
+#!/bin/bash
+echo "REACHED_PROD" ; exit 0
+EOF
+  chmod +x "${TEST_TMP}/bin/ssh"
+  run bash "$SECRETS_SH" discover-copies
+  [[ "$output" == *"SKIPPED (prod endpoint)"* ]]
+  [[ "$output" != *"REACHED_PROD"* ]]
+}
+
+# --- guards that could not fire ---------------------------------------------
+
+@test "adopt: refuses a remote location that is already declared" {
+  # `yq … | grep -q && die` looks like a guard but is not one: with
+  # `set -o pipefail`, grep -q exits at the first match, the still-writing yq
+  # takes SIGPIPE, the pipeline reports 141 and `die` never runs. Observed on the
+  # real registry — adopt happily created a second entry for a location that was
+  # already declared. Small fixtures hide it, so this asserts the OUTCOME.
+  yq e -i '.secrets[0].stored_in += ["host=fixturehost:~/.config/declared.token:@file"]' "$NWP_SECRETS_REGISTRY"
+  local before; before=$(yq e '.secrets | length' "$NWP_SECRETS_REGISTRY")
+  cat > "${TEST_TMP}/bin/ssh" <<'EOF'
+#!/bin/bash
+printf 'abcdef0123456789'
+EOF
+  chmod +x "${TEST_TMP}/bin/ssh"
+  run bash "$SECRETS_SH" adopt 'host=fixturehost:~/.config/declared.token:@file' --as dupe
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"already declared"* ]]
+  [ "$(yq e '.secrets | length' "$NWP_SECRETS_REGISTRY")" = "$before" ]
+}
+
+@test "adopt: refuses a remote location where nothing is readable" {
+  # A remote read that finds no file emits the SHA-256 of the empty string, which
+  # is a perfectly well-formed digest. Accepting it recorded locations that do
+  # not exist as verified.
+  cat > "${TEST_TMP}/bin/ssh" <<'EOF'
+#!/bin/bash
+printf ''  | sha256sum | cut -c1-16
+EOF
+  chmod +x "${TEST_TMP}/bin/ssh"
+  local before; before=$(yq e '.secrets | length' "$NWP_SECRETS_REGISTRY")
+  run bash "$SECRETS_SH" adopt 'host=fixturehost:~/.config/absent.token:@file' --as ghost
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"nothing readable"* ]]
+  [ "$(yq e '.secrets | length' "$NWP_SECRETS_REGISTRY")" = "$before" ]
+}
+
+@test "adopt: accepts a remote location that really holds something" {
+  # Negative control for the two refusals above: adopt must still be able to
+  # succeed, or "refuse everything" would satisfy them.
+  cat > "${TEST_TMP}/bin/ssh" <<'EOF'
+#!/bin/bash
+printf 'abcdef0123456789'
+EOF
+  chmod +x "${TEST_TMP}/bin/ssh"
+  run bash "$SECRETS_SH" adopt 'host=fixturehost:~/.config/real.token:@file' --as adopted_ok
+  [ "$status" -eq 0 ]
+  [ "$(yq e '.secrets[] | select(.id=="adopted_ok") | .stored_in[0]' "$NWP_SECRETS_REGISTRY")" = "host=fixturehost:~/.config/real.token:@file" ]
+}
+
+@test "remote paths: a leading ~/ is expanded on the remote, not sent in quotes" {
+  # `head -1 '~/.config/x'` looks for a directory literally called "~". Every
+  # remote location in the registry uses a tilde, so verify-copy hashed nothing
+  # and reported permanent DRIFT against copies that were byte-identical.
+  cat > "${TEST_TMP}/bin/ssh" <<'EOF'
+#!/bin/bash
+# echo the remote command back so the test can inspect how the path was quoted
+echo "$2$3$4$5$6$7$8$9" > "$SSH_CMD_LOG"
+printf 'abcdef0123456789'
+EOF
+  chmod +x "${TEST_TMP}/bin/ssh"
+  export SSH_CMD_LOG="${TEST_TMP}/sshcmd"
+  bash "$SECRETS_SH" adopt 'host=fixturehost:~/.config/real.token:@file' --as tilde_ok || true
+  [ -f "$SSH_CMD_LOG" ]
+  grep -q '"\$HOME"/.config/real.token' "$SSH_CMD_LOG"
+  ! grep -q "'~/.config/real.token'" "$SSH_CMD_LOG"
+}
+
+@test "verify-copy: an absent remote file is ABSENT, not DRIFT" {
+  yq e -i '.secrets[0].stored_in += ["host=fixturehost:~/.config/gone.token:@file"]' "$NWP_SECRETS_REGISTRY"
+  cat > "${TEST_TMP}/bin/ssh" <<'EOF'
+#!/bin/bash
+printf '' | sha256sum | cut -d' ' -f1
+EOF
+  chmod +x "${TEST_TMP}/bin/ssh"
+  run bash "$SECRETS_SH" verify-copy fixture_token
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"ABSENT"* ]]
+  [[ "$output" != *"DRIFT"* ]]
+}
+
+# --- TIER by capability -----------------------------------------------------
+#
+# The name-based TIER rule would not have caught the worst credential in the
+# estate: `linode.provision_token` reads like an ordinary infra token and sat in
+# the AI-readable tier while able to enumerate and destroy every production
+# Linode. The threat-model rule is about what a credential CAN DO.
+
+@test "lint: a production-control scope in the AI-readable tier is TIER-CAPABILITY" {
+  yq e -i '.secrets[0].provider = "linode" | .secrets[0].scopes = ["linodes:read_write"]' "$NWP_SECRETS_REGISTRY"
+  run bash "$SECRETS_SH" lint
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"TIER-CAPABILITY"* ]]
+}
+
+@test "lint: a NARROW scope in the AI-readable tier is not TIER-CAPABILITY" {
+  # Negative control. The rule must distinguish DNS-only from instance-capable —
+  # that distinction is the entire finding, so a rule that flagged every linode
+  # token would be no better than the folklore it replaces.
+  yq e -i '.secrets[0].provider = "linode" | .secrets[0].scopes = ["domains:read_write"]' "$NWP_SECRETS_REGISTRY"
+  run bash "$SECRETS_SH" lint
+  [[ "$output" != *"TIER-CAPABILITY"* ]]
+}
+
+@test "lint: a production-control scope NOT in the AI-readable tier is accepted" {
+  # Second negative control: the violation is the TIER, not the capability.
+  yq e -i '.secrets[0].provider = "linode" | .secrets[0].scopes = ["linodes:read_write"] | .secrets[0].stored_in = ["external:operator password manager"]' "$NWP_SECRETS_REGISTRY"
+  run bash "$SECRETS_SH" lint
+  [[ "$output" != *"TIER-CAPABILITY"* ]]
+}
+
+@test "lint: a RETIRED entry is not held to TIER-CAPABILITY or NO-PROBE" {
+  yq e -i '.secrets[0].provider = "linode" | .secrets[0].scopes = ["linodes:read_write"] | .secrets[0].status = "RETIRED"' "$NWP_SECRETS_REGISTRY"
+  run bash "$SECRETS_SH" lint
+  [[ "$output" != *"TIER-CAPABILITY"* ]]
+  [[ "$output" != *"NO-PROBE: fixture_token"* ]]
+}

@@ -10,6 +10,14 @@
 TODO_CHECKS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 TODO_CHECKS_PROJECT_ROOT="${TODO_CHECKS_PROJECT_ROOT:-$( cd "$TODO_CHECKS_DIR/.." && pwd )}"
 
+# Bounded HTTP with a shared timeout policy + the rc-2 "could not tell"
+# vocabulary. Every network call below goes through it: an unbounded curl in a
+# check is how `pl todo check --json` went from ~30s to >100s, and an unbounded
+# curl that silently returns "" is how a slow link produced a falsely-clean
+# result. See lib/http.sh.
+# shellcheck source=/dev/null
+[ -f "$TODO_CHECKS_DIR/http.sh" ] && source "$TODO_CHECKS_DIR/http.sh"
+
 # Cache settings
 TODO_CACHE_DIR="${TODO_CACHE_DIR:-/tmp/nwp-todo-cache}"
 TODO_CACHE_TTL="${TODO_CACHE_TTL:-300}"  # 5 minutes default
@@ -252,14 +260,32 @@ check_gitlab_issues() {
         server="${NWP_GITLAB_HOST:-<gitlab-host>}"
     fi
 
-    # Get user ID
-    local user_info
-    user_info=$(curl -sf -H "PRIVATE-TOKEN: $api_token" \
-        "https://$server/api/v4/user" 2>/dev/null)
-
-    if [ -z "$user_info" ]; then
+    # Get user ID.
+    #
+    # FAIL-OPEN -> FAIL-LOUD (same treatment as check_agent_loop_cap). These two
+    # calls used to be `curl -sf` with no timeout and a bare `return 0` on empty
+    # output. That is two bugs wearing one coat:
+    #   - no timeout: on a high-latency link curl blocks on its own defaults
+    #     (~2 min to give up on a connect, unbounded on a stalled transfer), so
+    #     `pl todo check` stopped finishing at all;
+    #   - `return 0` on empty: when the call finally failed, "GitLab unreachable"
+    #     was indistinguishable from "you have no assigned issues".
+    # Both are now handled: the budget comes from lib/http.sh, and rc 2 ("could
+    # not tell") becomes an UNK item so `pl rag` cannot grade the fleet GREEN
+    # off the back of a network failure.
+    local user_info rc=0
+    user_info=$(nwp_http_gitlab_get "$server" "/user" "$api_token") || rc=$?
+    if [ "$rc" = "$NWP_HTTP_RC_UNREACHABLE" ]; then
+        todo_add_unknown "git_issues" \
+            "GitLab ($server) did not answer within the $(nwp_http_budget_desc) — your assigned-issue list was NOT checked, so an empty list here means nothing" \
+            "" "pl todo check"
         return 0
     fi
+    # rc 1 = the server answered with an HTTP error (e.g. 401 on a dead token).
+    # That is a verdict, and a token that cannot read /user is its own finding —
+    # but check_token_liveness owns token health, so stay quiet here.
+    [ "$rc" != 0 ] && return 0
+    [ -n "$user_info" ] || return 0
 
     local user_id
     user_id=$(echo "$user_info" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
@@ -270,8 +296,16 @@ check_gitlab_issues() {
 
     # Fetch assigned issues
     local issues
-    issues=$(curl -sf -H "PRIVATE-TOKEN: $api_token" \
-        "https://$server/api/v4/issues?assignee_id=$user_id&state=opened&per_page=50" 2>/dev/null)
+    rc=0
+    issues=$(nwp_http_gitlab_get "$server" \
+        "/issues?assignee_id=$user_id&state=opened&per_page=50" "$api_token") || rc=$?
+    if [ "$rc" = "$NWP_HTTP_RC_UNREACHABLE" ]; then
+        todo_add_unknown "git_issues" \
+            "GitLab ($server) answered /user but not /issues within the $(nwp_http_budget_desc) — the assigned-issue list is UNKNOWN, not empty" \
+            "" "pl todo check"
+        return 0
+    fi
+    [ "$rc" != 0 ] && return 0
 
     if [ -z "$issues" ] || [ "$issues" = "[]" ]; then
         return 0
@@ -954,8 +988,17 @@ check_token_liveness() {
     now=$(date +%s)
     [ -f "$cache" ] && age=$(( now - $(stat -c %Y "$cache" 2>/dev/null || echo 0) ))
     if [ "$age" -ge 72000 ]; then
-        local out rc=0
-        out=$(bash "$sec" audit --quiet --days "$warn_days" 2>/dev/null) || rc=$?
+        # `pl secrets audit` probes every registry entry at its provider — one
+        # or more HTTPS round trips each. It is bounded per-call by lib/http.sh,
+        # but the SUM over N tokens is not, so the sweep gets its own wall clock
+        # too. Without it, one slow link turned this single check into the long
+        # pole of `pl todo check`. timeout(1) rc 124 is folded into rc 2: a probe
+        # we abandoned told us exactly as much as one that could not connect.
+        local out rc=0 budget
+        budget=$(get_todo_setting "thresholds.token_audit_budget_seconds" \
+                 "$([ "$(nwp_http_profile)" = batch ] && echo 120 || echo 30)")
+        out=$(timeout "$budget" bash "$sec" audit --quiet --days "$warn_days" 2>/dev/null) || rc=$?
+        [ "$rc" = "124" ] && rc=2
         if [ "$rc" = "2" ]; then
             # Host unreachable. The old code kept the stale cache and returned
             # clean — with NO age check, so a 1-byte cache from any point in the
@@ -1035,13 +1078,13 @@ check_agent_loop_cap() {
     cap=$(get_todo_setting "thresholds.agent_loop_daily_cap" "5")
 
     # MRs created since UTC midnight whose source branch is the loop's agent/ prefix.
-    local since mrs count
+    local since mrs count rc=0
     since=$(date -u +%Y-%m-%dT00:00:00Z)
-    mrs=$(curl -sf -H "PRIVATE-TOKEN: $api_token" \
-        "https://$server/api/v4/merge_requests?scope=all&created_after=$since&per_page=100" 2>/dev/null)
-    if [ -z "$mrs" ]; then
+    mrs=$(nwp_http_gitlab_get "$server" \
+        "/merge_requests?scope=all&created_after=$since&per_page=100" "$api_token") || rc=$?
+    if [ "$rc" != 0 ] || [ -z "$mrs" ]; then
         todo_add_unknown "agent_loop" \
-            "GitLab unreachable from this host — no MR list returned, so throughput cannot be assessed (network down, or the token is dead)" \
+            "GitLab unreachable from this host — no MR list returned within the $(nwp_http_budget_desc), so throughput cannot be assessed (network down, or the token is dead)" \
             "" "pl loop"
         return 0
     fi
@@ -1049,14 +1092,20 @@ check_agent_loop_cap() {
 
     [ "$count" -ge "$cap" ] || return 0
 
-    # Queue depth: how much eligible work is now waiting behind the cap.
-    local queued
-    queued=$(curl -sf -H "PRIVATE-TOKEN: $api_token" \
-        "https://$server/api/v4/issues?labels=agent-eligible&state=opened&scope=all&per_page=100" 2>/dev/null \
-        | grep -o '"iid":[0-9]*' | wc -l)
+    # Queue depth: how much eligible work is now waiting behind the cap. This one
+    # is decoration on an already-firing finding, so a failure downgrades the
+    # hint rather than discarding the finding.
+    local queued queued_json
+    if queued_json=$(nwp_http_gitlab_get "$server" \
+            "/issues?labels=agent-eligible&state=opened&scope=all&per_page=100" "$api_token"); then
+        queued=$(printf '%s' "$queued_json" | grep -o '"iid":[0-9]*' | wc -l)
+    else
+        queued=-1
+    fi
 
     local hint="none queued — check the MRs are wanted (runaway?)"
     [ "$queued" -gt 0 ] && hint="$queued agent-eligible issue(s) now wait for tomorrow"
+    [ "$queued" -lt 0 ] && hint="queue depth UNKNOWN — the issue list did not answer in time"
     todo_add_item "LOOP" "daily-cap" "medium" \
         "Agent-loop hit its daily MR cap ($count/$cap today)" \
         "Review today's agent/* MRs first; $hint. If throughput is legit, raise AGENT_LOOP_DAILY_CAP in the loop env on the ai-host (and match your merge cadence)." \

@@ -76,6 +76,26 @@ for f in glob.glob(os.path.join(audit_dir,"*.json")):
 try: todo=json.load(open(os.environ["TODO_JSON"]))
 except Exception: todo={"items":[]}
 items = todo if isinstance(todo,list) else todo.get("items",[])
+
+# Did the work sweep actually happen?
+#
+# `items == []` is ambiguous and the ambiguity was load-bearing: it is the shape
+# of "swept, nothing found" AND the shape of "the sweep timed out and rag.sh
+# substituted an empty list". The first should grade GREEN; the second must
+# never. A slow network therefore made the fleet render greener than a healthy
+# one — the same inversion item 2 fixed for unscanned sites, one signal over.
+#
+#   complete -> believe the items
+#   failed   -> we tried to look and could not. Every site is UNKNOWN on the
+#               work axis; none may grade GREEN.
+#   skipped  -> the operator passed --no-todo. Shown, but not treated as a
+#               blind spot: it is an answer to a question they chose not to ask.
+sweep_state=os.environ.get("SWEEP_STATE","complete") or "complete"
+sweep_reason=os.environ.get("SWEEP_REASON","") or ""
+if isinstance(todo,dict) and todo.get("sweep_state"):
+    sweep_state=todo["sweep_state"]
+    sweep_reason=todo.get("sweep_reason","") or sweep_reason
+sweep_failed = (sweep_state == "failed")
 work=defaultdict(lambda: {"high":0,"med":0,"low":0,"sec_high":0,"unknown":0,"top":""})
 SEC_CATS={"SEC","TOK"}
 for it in items:
@@ -97,6 +117,15 @@ for it in items:
 
 sites=set(sec)|set(work)
 if site_filter: sites={site_filter}
+
+# A failed sweep is a blind spot on EVERY site, including the ones that produced
+# no items precisely because nothing ran. Charge each of them one unknown so
+# grade() cannot reach GREEN.
+if sweep_failed:
+    for s in sites:
+        w=work[s]                      # defaultdict: also creates absent sites
+        w["unknown"]+=1
+        if not w["top"]: w["top"]="work sweep did not run — UNKNOWN"
 
 def is_scanned(s):
     # No audit record at all == never scanned. This is the case that made adding
@@ -140,6 +169,11 @@ for r in rows: counts[r["rag"]]+=1
 counts["UNSCANNED"]=sum(1 for r in rows if not r["scanned"])
 state={"generated":todo.get("timestamp") if isinstance(todo,dict) else None,
        "summary":counts,
+       # A consumer (the console, pl fleet publish, rag-sync) must be able to
+       # tell a green fleet from a fleet we could not measure. Publishing the
+       # grades without publishing how they were obtained is what let a silent
+       # sweep failure read as good news downstream.
+       "todo_sweep":{"state":sweep_state,"reason":sweep_reason},
        "unscanned":[{"site":r["site"],"reason":r["unscanned_reason"]} for r in rows if not r["scanned"]],
        "sites":rows}
 json.dump(state, open(os.path.join(state_dir,"state.json"),"w"), indent=2)
@@ -148,6 +182,11 @@ if as_json:
     print(json.dumps(state, indent=2))
 else:
     dot={"RED":RED+"●"+NC,"AMBER":YEL+"●"+NC,"GREEN":GRN+"●"+NC}
+    if sweep_state=="failed":
+        print(f"  {RED}TODO ● BLIND{NC}   {sweep_reason}")
+        print( "                every site below is graded on its audit record ALONE.\n")
+    elif sweep_state=="skipped":
+        print(f"  {YEL}TODO ● skipped{NC} {sweep_reason}\n")
     print(f"\n  {'':2} {'SITE':<16} {'PHASE':<7} {'MAT':<6} {'SEC':>4} {'TODO(h/m/l)':>12}  TOP")
     for r in sorted(rows, key=lambda x:{"RED":0,"AMBER":1,"GREEN":2}[x["rag"]]):
         if r["scanned"]:

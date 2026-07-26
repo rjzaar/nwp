@@ -30,6 +30,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 source "$PROJECT_ROOT/lib/ui.sh"
 source "$PROJECT_ROOT/lib/common.sh" 2>/dev/null || true
+source "$PROJECT_ROOT/lib/http.sh"            # shared timeout policy + rc-2 "could not tell"
 source "$PROJECT_ROOT/lib/gitlab-issues.sh"   # _api_get/_api_send for --sync-issues (ops#6)
 source "$PROJECT_ROOT/lib/canonical.sh"       # canonical phases for the PHASE column (ops#33)
 
@@ -308,15 +309,57 @@ main() {
 
     mkdir -p "$STATE_DIR"
     local todo_json="$STATE_DIR/.todo.json"
+
+    # THE FALSE-GREEN THIS FIXES.
+    #
+    # This block used to substitute `{"items":[]}` whenever the todo sweep
+    # failed or timed out. An empty item list is not neutral input to
+    # lib/rag-render.py — it is the exact shape of "I checked everything and
+    # found no work". So every audited-clean site graded GREEN, and a network
+    # slow enough to blow the sweep's deadline made the fleet look BETTER than a
+    # working one. The rest of this file goes to some length to insist that
+    # "GREEN is a positive assertion, not a default", and then the single most
+    # likely failure mode handed it a default.
+    #
+    # Note the deadline is now a policy value, not the flat 240s that made this
+    # reachable in the first place: 240s is longer than an operator will wait,
+    # so interactively the sweep "succeeded" by keeping them hostage, and in
+    # cron it exceeded the */30 publish window.
+    #
+    # Three states, and the difference between the last two is the whole point:
+    #   complete — the sweep ran; its items are the work signal.
+    #   failed   — we tried to look and could not. UNKNOWN. Nothing may grade
+    #              GREEN off the back of it.
+    #   skipped  — the operator said --no-todo. Recorded and shown loudly, but
+    #              it is not our place to call a deliberate choice a blind spot.
+    local sweep_state="complete" sweep_reason=""
     if [ "$NOTODO" = "true" ]; then
+        sweep_state="skipped"
+        sweep_reason="--no-todo: the work/drift sweep was not run; grades reflect audit records only"
         echo '{"items":[]}' > "$todo_json"
     else
-        # pl todo check --json — read-only; tolerate slowness/failure
-        if ! timeout 240 "$PROJECT_ROOT/pl" todo check --json > "$todo_json" 2>/dev/null; then
-            print_warning "pl todo sweep failed/timed out — grading from audit records only"
-            echo '{"items":[]}' > "$todo_json"
+        local budget
+        budget=$([ "$(nwp_http_profile)" = batch ] && echo 180 || echo 45)
+        budget="${NWP_RAG_TODO_BUDGET:-$budget}"
+        local trc=0
+        timeout "$budget" "$PROJECT_ROOT/pl" todo check --json > "$todo_json" 2>/dev/null || trc=$?
+        if [ "$trc" != 0 ]; then
+            sweep_state="failed"
+            if [ "$trc" = "124" ]; then
+                sweep_reason="pl todo check did not finish within ${budget}s ($(nwp_http_budget_desc)) — the work/drift signal is UNKNOWN for every site, not empty"
+            else
+                sweep_reason="pl todo check exited $trc — the work/drift signal is UNKNOWN for every site, not empty"
+            fi
+            # stderr, not stdout: under --json this warning used to be printed
+            # straight into the JSON document, so the one run that most needed a
+            # machine consumer to notice was the one it could not parse.
+            print_warning "$sweep_reason" >&2
+            printf '{"items":[],"sweep_state":"failed","sweep_reason":%s}\n' \
+                "$(printf '%s' "$sweep_reason" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
+                > "$todo_json"
         fi
     fi
+    export RAG_SWEEP_STATE="$sweep_state" RAG_SWEEP_REASON="$sweep_reason"
 
     # Canonical phases (ops#33) + maturity classes (P67) for the PHASE/MAT
     # columns: "site=value …". Only explicit values are passed; python
@@ -345,6 +388,7 @@ main() {
     local rag_rc=0
     set +e
     { AUDIT_DIR="$AUDIT_DIR" TODO_JSON="$todo_json" STATE_DIR="$STATE_DIR" \
+    SWEEP_STATE="$sweep_state" SWEEP_REASON="$sweep_reason" \
     SITE="$SITE" JSON="$JSON" PHASES="$phases" MATURITIES="$mats" \
     RED="$RED" YEL="$YELLOW" GRN="$GREEN" NC="$NC" BOLD="$BOLD" DIM="${DIM:-}" \
     python3 "$PROJECT_ROOT/lib/rag-render.py"

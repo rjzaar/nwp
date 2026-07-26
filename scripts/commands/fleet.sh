@@ -230,14 +230,43 @@ _known_sites() {
 # Each feed is captured independently and best-effort: a feed that fails is
 # recorded as ok:false with its rc/stderr, and the others still publish. The
 # consumer degrades that feed only (same contract as the console's panes).
+#
+# PER-FEED DEADLINE (this is the bit that keeps the */30 cron alive).
+#
+# `pl fleet publish` runs from cron every 30 minutes to feed the console. Before
+# this, no feed had a wall clock: a slow link made `pl todo check --json` block
+# for minutes, the cron's own `timeout` fired first, and the whole publish exited
+# 124 having shipped NOTHING. The console then sat on hours-old data — correctly
+# marked stale by _provenance.html, but stale is not the same as informed.
+#
+# The fix matches the honesty this function already had for a feed that FAILS: a
+# feed that runs out of time is recorded ok:false with its reason, and the other
+# feeds still publish. A partial snapshot that names its own gaps beats no
+# snapshot, every time. Per-feed override: FLEET_FEED_BUDGET_<name>.
+: "${FLEET_FEED_BUDGET:=90}"
+
+_feed_budget() { # $1 = feed name
+    local var="FLEET_FEED_BUDGET_${1^^}"
+    printf '%s' "${!var:-$FLEET_FEED_BUDGET}"
+}
+
 _capture_feed() { # $1 outdir, $2 name, $3... argv
     local outdir="$1" name="$2"; shift 2
-    local started ended rc=0
+    local started ended rc=0 budget
+    budget=$(_feed_budget "$name")
     started=$(date +%s.%N)
     set +e
-    "$PROJECT_ROOT/pl" "$@" >"$outdir/$name.out" 2>"$outdir/$name.err"
+    timeout --kill-after=10 "$budget" "$PROJECT_ROOT/pl" "$@" \
+        >"$outdir/$name.out" 2>"$outdir/$name.err"
     rc=$?
     set -e
+    # Leave the reason where _assemble can find it even though the feed wrote no
+    # usable stderr of its own — a bare rc=124 in the snapshot is a puzzle, and
+    # the operator reading the console should not have to solve it.
+    if [ "$rc" = 124 ] || [ "$rc" = 137 ]; then
+        printf 'feed exceeded its %ss deadline (rc=%s) — published as blind, not as clean\n' \
+            "$budget" "$rc" >> "$outdir/$name.err"
+    fi
     ended=$(date +%s.%N)
     printf '%s' "$rc" > "$outdir/$name.rc"
     awk -v a="$started" -v b="$ended" 'BEGIN{printf "%.1f", b-a}' > "$outdir/$name.secs"

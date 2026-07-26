@@ -26,6 +26,17 @@ fi
 : "${PROJECT_ID:=${NWP_OPS_PROJECT_ID:-21}}"          # nwp/ops
 : "${YQ:=$(command -v yq || true)}"
 
+# Shared timeout policy (interactive vs batch) — see lib/http.sh. These two
+# helpers previously hardcoded `max-time = 20` / `= 30`, which is bounded but is
+# a THIRD opinion about how long to wait, and a 30s stall is far too long in
+# front of an operator running `pl issue ls`. Take the budget from one place.
+# shellcheck source=/dev/null
+[ -f "$PROJECT_ROOT/lib/http.sh" ] && source "$PROJECT_ROOT/lib/http.sh"
+# Fallback so this lib still works if sourced standalone without lib/http.sh.
+if ! declare -F nwp_http_config_lines >/dev/null 2>&1; then
+  nwp_http_config_lines(){ printf 'connect-timeout = 8\nmax-time = 20\n'; }
+fi
+
 # Only define die if the caller hasn't (issue.sh defines its own; rag.sh doesn't).
 if ! declare -F die >/dev/null 2>&1; then
   die(){ print_error "$*" 2>/dev/null || echo "ERROR: $*" >&2; exit 1; }
@@ -50,7 +61,10 @@ _api_get(){ # $1 = path (e.g. /projects/21/issues?...)
   local host token cfg
   host=$(_host); token=$(_token)
   cfg=$(mktemp); chmod 600 "$cfg"
-  printf 'silent\nmax-time = 20\nheader = "PRIVATE-TOKEN: %s"\nurl = "https://%s/api/v4%s"\n' "$token" "$host" "$1" > "$cfg"
+  { printf 'silent\n'
+    nwp_http_config_lines
+    printf 'header = "PRIVATE-TOKEN: %s"\nurl = "https://%s/api/v4%s"\n' "$token" "$host" "$1"
+  } > "$cfg"
   token=""
   curl -K "$cfg" 2>/dev/null
   rm -f "$cfg"
@@ -65,7 +79,8 @@ _api_send(){ # $1=METHOD $2=path [$3=json-body]
   host=$(_host); token=$(_token)
   cfg=$(mktemp); chmod 600 "$cfg"
   {
-    printf 'silent\nmax-time = 30\n'
+    printf 'silent\n'
+    nwp_http_config_lines
     printf 'header = "PRIVATE-TOKEN: %s"\n' "$token"
     printf 'request = "%s"\n' "$method"
     if [ -n "$payload" ]; then

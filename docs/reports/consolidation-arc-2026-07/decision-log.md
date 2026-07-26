@@ -4073,3 +4073,126 @@ which is the shape of bug a gate must not have: it was green everywhere anyone l
 Only this one call site is fixed here, because it is the one that is red and this MR's job is to
 unblock. `!213` fixes the whole family (four `yq | grep -q` sites; after it, none remain) and
 carries the tests for it; the two fixes are written identically so they converge on rebase.
+## ops#146 — the live nwd→ssd demo journey (2026-07-27)
+
+MR !162 gave the demo pair `pl demo --with-pair` and an 8/8 e2e **on dev**. On live the
+journey stopped dead after code redemption: `nwd/.well-known/jwks.json` was HTTP 500
+(`openssl_pkey_get_details(): … false given` — `/var/www/nwd/keys` did not exist), ssd
+carried only `local/feedback` + `local/nwc_copyright_sync`, its login page offered no
+identity provider, and nothing on nwd linked to ssd.
+
+### Decision (a) — the dev-only guard on `ssd-oidc-wire.sh` was doing two jobs
+
+The blanket "dev only" refusal conflated a **security** constraint with a **statement of
+fact**. The security half is real: `apply_dev_prereqs()` sets
+`$CFG->curlsecurityblockedhosts=''`, which disables Moodle's SSRF blocklist for *every*
+server-side fetch the site makes — not just OIDC ones. It exists because inside ddev the
+provider hostname is aliased onto the ddev-router's RFC1918 address, which the default
+blocklist correctly rejects. The factual half — "there is no live consumer" — stopped
+being true.
+
+**We did not relax the guard so the dev path could run on live.** We built a live path and
+left the relaxation behind, enforced structurally rather than by tier accident:
+`apply_dev_prereqs()` now asserts `dev` *itself* and is called only on `dev`, so a future
+edit that moves the call still cannot leak it.
+
+The relaxation was never needed on live, and that is measured, not assumed:
+
+```
+box$ getent hosts nwd.nwpcode.org        -> 97.107.137.88      (PUBLIC, not RFC1918)
+box$ curl https://nwd.nwpcode.org/user/login -> 200, remote_ip=97.107.137.88
+live ssd config.php: grep -c curlsecurityblockedhosts -> 0   (default blocklist ARMED)
+```
+
+and the code→token exchange — the exact server-side call the dev shim exists to unblock —
+completed on live with the blocklist untouched (see the round-trip below). The live
+provider is reached over ordinary public DNS + TLS and needs no shim at all. Two further
+live-only tightenings came with it: the JWKS health probe drops `curl -k` off dev (an
+unverified probe would call a MITM'd issuer "healthy"), and the OAuth client secret is now
+per-tier (`…-oidc-client-secret.live`), because a dev and a live client sharing a secret
+means a dev-tier compromise mints live tokens.
+
+### Decision (b) — provider-first, and the guard that wasn't guarding
+
+Ordering is not a preference here. The provider is the identity origin, and a consumer
+running *ahead* of its provider fails **silently**, not loudly: ssd at `contract_version` 3
+consumes `art9_consent` and `guilds`; against a provider that does not emit them
+`auth_nwc\consent::may_keep_formation` fails closed and every formation write is discarded
+while still returning success. So: nwd issuer first → JWKS proven 200 → record the provider
+→ then ssd.
+
+The premise that "the D5 guard will refuse an ssd deploy until nwd is recorded at cv 3"
+turned out to be **false, and in the worse direction**. `pair_guard` resolves membership via
+`yaml_get_site_field <site> paired_with` against the **global `nwp.yml`** — and no site in
+the fleet declares it. `pl pair check ssd live` returned **ALLOW** before anything was
+recorded: the guard was not satisfied, it was inert. ADR-0031's D5 ordering and D6
+identity-coupling refusals were firing for nobody.
+
+We recorded the provider (true: the issuer is provisioned and serving), then **armed** the
+guard for the demo pair (`sites.ssd.paired_with: nwd`), then proved it binds in both
+directions rather than asserting it:
+
+| state | `pl pair check ssd live` |
+|---|---|
+| armed, provider recorded @ cv3 | **ALLOW** |
+| armed, provider record hidden  | **REFUSE** — "provider must promote first (ADR-0031 D5)" |
+| armed, record restored         | **ALLOW** |
+
+**Left for the operator, deliberately:** the same inertness covers the *real* `ssc↔nwc`
+pair, whose contract carries `uid_lock: true` and coupled tiers — meaning the D6
+`--code-only` refusal that is supposed to stop a full-DB push from severing live SSO
+identities is **also not firing**. Arming that one changes behaviour on the member-facing
+pair and is out of ops#146's scope; it should not wait long.
+
+### What the live journey actually does now (every leg a real request)
+
+```
+redeem   POST /demo/join  code=…            -> 200, "Welcome, Kateri-1554 … testing as a Member"
+                                               nwd uid=21 uuid=f7fb7bcd-52e9-457d-8e78-9692ced58b8d
+sso      ssd /login -> "nwd (F26)" -> 303 nwd/oauth/authorize?client_id=ssd_moodle…
+         -> examen gate (interstitial) -> returns to /oauth/authorize -> Allow
+         -> 302 ssd/admin/oauth2callback.php?code=… -> 303 -> 303 -> 200
+UID lock ssd mdl_user id=4 idnumber=f7fb7bcd-52e9-457d-8e78-9692ced58b8d   == the nwd uuid
+Art.9    user_preferences auth_nwc_art9_consent = 1
+gate     decide(true,nonadmin)=PERSIST  decide(false,·)=EPHEMERAL  decide(null,·)=EPHEMERAL
+```
+
+The `/examen-gate` hop is **not** a defect. `nwc_examen`'s OAuth bypass is scoped to
+Bearer-token (machine) requests, and `ExamenGateOauthBypassTest::testNormalMemberIsGated`
+asserts that a cookie-authenticated member **is** gated — by design. The gate stores the
+destination and returns the tester to `/oauth/authorize` after they discern. Exempting
+`simple_oauth.authorize` would let a member reach ssc without the examen: a product
+decision about the real pair, not ours. Recorded, not taken.
+
+### The reset trap, closed
+
+`demo_consumer_checks` only ever runs the three consumer scripts with `--check`; nothing in
+the reset path re-applies wiring. The restore is DB+files, so **the golden must already
+contain the wired state**. The staged image on the box was CP30, captured before any of
+this — one cron tick (01:00–03:30 Melbourne, every 30 min) would have silently un-wired the
+issuer. The cron was paused for the duration, the golden re-captured, staged and
+sha-verified on the box, and the cron restored `diff`-identical to its pre-session form.
+
+Proven rather than assumed — a real forced reset, then re-probed:
+
+```
+pl demo reset nwd --tier=live --force   -> "back at the golden image" (82s)
+after: JWKS 200 · consumer ssd_moodle PRESENT (pkce=y confidential=y) · scopes email,openid,profile
+       consent perm HAS · nwd→ssd link present
+```
+
+### Still open, and why
+
+`pl demo golden/reset --with-pair --tier=live` remains refused. The refusal is now the
+*only* honest answer: `demo.sh`'s entire live path is Drupal/drush end-to-end
+(`drush sql:dump`, `tar -C <docroot>/sites/default files`, `watchdog:show`,
+`nwc:seed-demo`, `users_field_data`), with no Moodle branch anywhere, and
+`demo_live_ctx` memoises into single-slot globals so resolving nwd then ssd silently
+returns nwd's context for ssd. Lifting the refusal without that work would produce a
+paired reset that quietly resets one half.
+
+That gap is not cosmetic, and tonight demonstrated it: nwd is reset nightly and ssd is not,
+so the next tick deletes nwd uid=21 while ssd keeps `idnumber=f7fb7bcd-…` pointing at it —
+a severed UID-lock, exactly the both-or-forward hazard ADR-0031 D9 names. On this pair it
+is survivable (`uid_lock: false`, throwaway users, a fresh code makes a fresh pair) but the
+demo tier is where that machinery is supposed to be proven.

@@ -49,12 +49,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# ---- GUARD 1: dev only. -----------------------------------------------------
-[[ "$TIER" == "dev" ]] || {
-    print_error "REFUSED: --tier=$TIER. This provisioner is dev-only."
-    print_info  "The live issuer half is an auth surface: operator-run, two-person reviewed."
-    exit 1
-}
+# ---- GUARD 1: dev or live, never stg/prod. ----------------------------------
+# ops#146: the live issuer half is now implemented. It is STILL an auth surface —
+# what bounds it is GUARD 2 (must be the provider of a `demo.enabled: true` pair,
+# i.e. a disposable A14 demo site), not the tier alone. `prod` stays refused
+# outright: a prod issuer is offline-deploy-host territory; nothing here may reach it.
+case "$TIER" in
+    dev|live) ;;
+    *)
+        print_error "REFUSED: --tier=$TIER. This provisioner does dev and live only."
+        print_info  "A prod issuer is provisioned from the offline deploy host under the hardware gate — never from here."
+        exit 1 ;;
+esac
 
 # ---- GUARD 2: must be the PROVIDER of a demo-enabled pair. -------------------
 CONTRACT="$(demo_pair_contract_for "$SITE")" || {
@@ -72,37 +78,89 @@ ISSUER="$(demo_pair_issuer "$CONTRACT" "$TIER")" || {
     exit 1
 }
 CLIENT_ID="$(demo_pair_get "$CONTRACT" '.oidc.provider_prereqs.consumer_client_id' "${CONSUMER}_moodle")"
-REDIRECT="$(demo_pair_get "$CONTRACT" '.oidc.provider_prereqs.consumer_redirect')"
-[[ -n "$REDIRECT" ]] || {
-    print_error "REFUSED: no oidc.provider_prereqs.consumer_redirect in $CONTRACT — refusing to guess a redirect URI."
+REDIRECT="$(demo_pair_consumer_redirect "$CONTRACT" "$TIER")" || {
+    print_error "REFUSED: cannot resolve the ${TIER} redirect URI for consumer '$CONSUMER'."
+    print_info  "Needs oidc.provider_prereqs.consumer_redirect in $(basename "$CONTRACT") and, for a"
+    print_info  "non-dev tier, moodle.tiers.${TIER}.wwwroot in sites/${CONSUMER}/.nwp.yml."
+    print_info  "Refusing to guess a redirect URI — a wrong one hands the auth code to the wrong host."
     exit 1
 }
 
-SITE_DIR="$(resolve_project "$SITE" "$TIER")" || { print_error "Cannot resolve $SITE ($TIER)"; exit 1; }
-KEY_DIR="/var/www/html/oauth-keys"
+# Per-tier client secret. dev keeps the historical un-suffixed path; any other
+# tier gets its own file, because a dev and a live OAuth client that share a
+# secret means a dev-tier compromise mints live tokens.
 SECRET_OUT="${PROJECT_ROOT}/private/demo/${CONSUMER}-oidc-client-secret"
+[[ "$TIER" == "dev" ]] || SECRET_OUT="${SECRET_OUT}.${TIER}"
+
+################################################################################
+# Transport. The provisioning LOGIC below is identical on both tiers — only the
+# way a drush/shell command reaches the site differs. Nothing tier-specific is
+# relaxed for live; there is no live equivalent of the consumer script's ddev
+# reachability shims because a live provider is reached over ordinary public
+# DNS + TLS and needs none.
+################################################################################
+if [[ "$TIER" == "live" ]]; then
+    [[ "$(get_site_config_value "$SITE" '.live.enabled' 'false')" != "false" ]] || {
+        print_error "REFUSED: live.enabled is false for '$SITE'."; exit 1; }
+    REMOTE_PATH="$(get_site_config_value "$SITE" '.live.remote_path' "/var/www/${SITE}")"
+    SERVER_NAME="$(get_site_config_value "$SITE" '.live.server' '')"
+    REMOTE_IP=""
+    [[ -n "$SERVER_NAME" ]] && REMOTE_IP="$(get_server_ip "$SERVER_NAME" 2>/dev/null || true)"
+    [[ -n "$REMOTE_IP" ]] || REMOTE_IP="$(get_site_config_value "$SITE" '.live.server_ip' '')"
+    [[ -n "$REMOTE_IP" ]] || { print_error "REFUSED: no live server for '$SITE'."; exit 1; }
+    SSH_USER="$(get_ssh_user "$SITE" 2>/dev/null || echo gitlab)"
+    SSH_TARGET="${SSH_USER}@${REMOTE_IP}"
+    # shellcheck disable=SC2086
+    RSSH_OPTS="$(nwp_ssh_opts "$SITE" 2>/dev/null || true)"
+    SUDO_DRUSH="sudo -u www-data"
+    KEY_DIR="${REMOTE_PATH%/}/keys"     # OUTSIDE the docroot (which is html/)
+
+    # shellcheck disable=SC2086
+    rexec() { ssh $RSSH_OPTS -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" "$1"; }
+    d() {
+        local q="" a
+        for a in "$@"; do q+=" $(printf '%q' "$a")"; done
+        rexec "cd ${REMOTE_PATH%/}/html && ${SUDO_DRUSH} ../vendor/bin/drush${q}"
+    }
+    rexec 'echo ok' >/dev/null 2>&1 || { print_error "Cannot reach $SSH_TARGET"; exit 1; }
+    SECRET_STAGE_REMOTE="${KEY_DIR}/.oidc-client-secret.stage"
+else
+    SITE_DIR="$(resolve_project "$SITE" "$TIER")" || { print_error "Cannot resolve $SITE ($TIER)"; exit 1; }
+    KEY_DIR="/var/www/html/oauth-keys"
+    cd "$SITE_DIR"
+    rexec() { ddev exec "$1"; }
+    d() { ddev drush "$@"; }
+fi
 
 print_header "Provisioning $SITE ($TIER) as the OIDC issuer for $CONSUMER"
 print_info "Issuer   : $ISSUER"
 print_info "Client   : $CLIENT_ID"
 print_info "Redirect : $REDIRECT"
-
-cd "$SITE_DIR"
-d() { ddev drush "$@"; }
+print_info "Keys     : $KEY_DIR"
 
 # ---- 0. sanity --------------------------------------------------------------
 d pm:list --status=enabled --field=name 2>/dev/null | grep -qx 'simple_oauth' \
     || { print_error "simple_oauth is not enabled on $SITE"; exit 1; }
 
 # ---- 1. signing keypair (generate if absent) --------------------------------
-if ddev exec "test -r $KEY_DIR/private.key && test -r $KEY_DIR/public.key" >/dev/null 2>&1; then
+if rexec "test -r $KEY_DIR/private.key && test -r $KEY_DIR/public.key" >/dev/null 2>&1; then
     print_status "OK" "Signing keypair already present at $KEY_DIR"
 else
     print_info "No signing keypair — generating (RS256)…"
-    ddev exec "mkdir -p $KEY_DIR" >/dev/null
+    if [[ "$TIER" == "live" ]]; then
+        # The keys must be READABLE BY THE WEBSERVER USER and by nothing else:
+        # the private key signs every id_token this issuer mints. drush runs as
+        # www-data, so create the dir owned by www-data 0700 and let drush write
+        # into it, rather than writing as root and loosening the mode afterwards.
+        rexec "sudo install -d -o www-data -g www-data -m 0700 $KEY_DIR" >/dev/null \
+            || { print_error "could not create $KEY_DIR"; exit 1; }
+    else
+        rexec "mkdir -p $KEY_DIR" >/dev/null
+    fi
     d simple-oauth:generate-keys "$KEY_DIR" >/dev/null 2>&1 \
         || { print_error "drush simple-oauth:generate-keys failed"; exit 1; }
-    ddev exec "chmod 600 $KEY_DIR/private.key && chmod 644 $KEY_DIR/public.key" >/dev/null
+    rexec "sudo chmod 600 $KEY_DIR/private.key && sudo chmod 644 $KEY_DIR/public.key" >/dev/null 2>&1 \
+        || rexec "chmod 600 $KEY_DIR/private.key && chmod 644 $KEY_DIR/public.key" >/dev/null
     print_status "OK" "Generated signing keypair"
 fi
 
@@ -141,14 +199,26 @@ else
 fi
 
 # The secret travels by FILE, not by argv: `drush php:eval` puts its whole
-# argument on a container command line, so interpolating the secret there would
-# expose it to anything that can read /proc inside the container. The file sits
-# at the ddev project root — OUTSIDE the docroot (html/), so it is never
-# web-servable — is 0600, and is unlinked by PHP the moment it is read.
-SECRET_TMP_HOST="${SITE_DIR}/.oidc-client-secret.stage"
-SECRET_TMP_CONTAINER="/var/www/html/.oidc-client-secret.stage"
-( umask 077; printf '%s' "$SECRET" > "$SECRET_TMP_HOST" )
-trap 'rm -f "$SECRET_TMP_HOST"' EXIT
+# argument on a command line, so interpolating the secret there would expose it
+# to anything that can read /proc on that host. The file sits OUTSIDE the docroot
+# (which is html/), so it is never web-servable, is 0600, and is unlinked by PHP
+# the moment it is read.
+#
+# On live it is also never written from this workstation over a shell argument:
+# it is piped over ssh stdin into a 0600 file owned by www-data.
+if [[ "$TIER" == "live" ]]; then
+    SECRET_TMP_CONTAINER="$SECRET_STAGE_REMOTE"
+    # shellcheck disable=SC2086
+    printf '%s' "$SECRET" | ssh $RSSH_OPTS -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" \
+        "umask 077 && sudo -u www-data tee $(printf '%q' "$SECRET_TMP_CONTAINER") >/dev/null && sudo chmod 600 $(printf '%q' "$SECRET_TMP_CONTAINER")" \
+        || { print_error "could not stage the client secret on the live host"; exit 1; }
+    trap 'rexec "sudo rm -f $(printf "%q" "$SECRET_TMP_CONTAINER")" >/dev/null 2>&1 || true' EXIT
+else
+    SECRET_TMP_HOST="${SITE_DIR}/.oidc-client-secret.stage"
+    SECRET_TMP_CONTAINER="/var/www/html/.oidc-client-secret.stage"
+    ( umask 077; printf '%s' "$SECRET" > "$SECRET_TMP_HOST" )
+    trap 'rm -f "$SECRET_TMP_HOST"' EXIT
+fi
 
 d php:eval '
 $cid    = "'"$CLIENT_ID"'";
@@ -197,7 +267,10 @@ if ($role && !$role->hasPermission("grant simple_oauth codes")) {
 d cr >/dev/null 2>&1 || true
 
 # ---- 6. verify the JWKS actually serves ------------------------------------
-jwks_code="$(curl -sk -o /dev/null -w '%{http_code}' "${ISSUER}/.well-known/jwks.json" || echo 000)"
+# -k only on dev (ddev's self-signed cert). On live the certificate is real and
+# MUST be verified: an unverified probe would call a MITM'd issuer "healthy".
+CURL_TLS=(); [[ "$TIER" == "dev" ]] && CURL_TLS=(-k)
+jwks_code="$(curl -s "${CURL_TLS[@]}" -o /dev/null -w '%{http_code}' "${ISSUER}/.well-known/jwks.json" || echo 000)"
 if [[ "$jwks_code" != "200" ]]; then
     print_error "JWKS check FAILED: ${ISSUER}/.well-known/jwks.json → HTTP $jwks_code"
     print_hint  "Without a served JWKS the issuer is not healthy; check the keypair + simple_oauth settings."

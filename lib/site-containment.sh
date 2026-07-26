@@ -428,6 +428,19 @@ containment_assert_backup_path() {
     done
     [ -d "$probe_dir" ] || return 0
 
+    # Resolve to the PHYSICAL path before probing. `git check-ignore` refuses any
+    # pathspec that traverses a symlink ("fatal: … is beyond a symbolic link"),
+    # and that refusal reads as "not ignored" → the guard fail-closes on a
+    # directory that is in fact perfectly well ignored. That is not a hypothetical:
+    # `pl issue work` deliberately symlinks sites/ into every issue worktree, so
+    # EVERY `pl backup --remote` run from a worktree hit this. The physical path is
+    # also the one that actually matters — `git add -A` sees the real location, not
+    # the symlink — so resolving makes the check both correct and stricter.
+    local probe_real
+    probe_real="$(cd "$probe_dir" 2>/dev/null && pwd -P)" || return 1
+    [ -n "$probe_real" ] || return 1
+    probe_dir="$probe_real"
+
     local toplevel
     toplevel="$(git -C "$probe_dir" rev-parse --show-toplevel 2>/dev/null)" || return 0
     [ -n "$toplevel" ] || return 0

@@ -291,7 +291,7 @@ Counsel does not have to review a specification. The whole journey is running:
 
 - **URL:** `https://nwd.<example-prod-domain>` (the demo tier's public host — the
   operator will paste the real URL into the ops#119 invitation)
-- **Invite code:** `pl demo invite nwd` — issues a fresh code per level and
+- **Invite code:** `pl demo invite nwd --tier=live` — issues a fresh code per level and
   renders a copy-ready invitation email (plaintext printed once, into a 0600
   draft under `sites/nwd/demo-invites/`).
 - **Safety:** synthetic `@demo.invalid` accounts only, entire site wiped and

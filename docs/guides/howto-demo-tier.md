@@ -148,7 +148,8 @@ last week still works after tonight's wipe.
 |---------|--------------|------------|
 | Reset exits 3 | someone was active within the idle window | expected — retry later, or `--force` |
 | Reset fails on integrity | golden image damaged | re-capture with `pl demo golden nwd` from a known-good state |
-| Codes stop working after a reset | registry was not re-pushed | `pl demo codes nwd sync` |
+| Codes stop working after a reset | registry was not re-pushed | `pl demo codes nwd sync --tier=live` |
+| Codes never worked at all | they were issued against the wrong tier | `pl demo codes nwd list --tier=live` — if it is empty, reissue with `--tier=live` |
 | Site looks wrong after reset | golden image captured in a bad state | fix the site, then re-capture the golden |
 
 ---
@@ -161,7 +162,7 @@ last week still works after tonight's wipe.
 | Wipe and rebuild | `pl demo reset nwd` |
 | Wipe only if nobody is on | `pl demo reset nwd --if-idle 30m` |
 | See what's been happening | `pl demo status nwd` |
-| Invite people | `pl demo invite nwd` |
+| Invite people | `pl demo invite nwd --tier=live` |
 | Automate the nightly wipe | `pl demo schedule nwd` |
 
 ## See also

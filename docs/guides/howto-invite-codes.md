@@ -1,7 +1,7 @@
 # How to: issue demo invite codes
 
 **Who this is for:** whoever is recruiting testers for the demo site.
-**Last updated:** 2026-07-25
+**Last updated:** 2026-07-26
 
 ---
 
@@ -41,8 +41,19 @@ Each code is tied to a **role bundle** — the set of permissions the tester get
 ## The one command you will use most
 
 ```bash
-pl demo invite nwd
+pl demo invite nwd --tier=live
 ```
+
+> **`--tier` is required, and there is no default.** `--tier=live` is the public
+> demo site — the one your testers will open — and is what you want almost every
+> time. `--tier=dev` targets the local DDEV copy on your own machine.
+>
+> It used to default to `dev`, which meant that leaving the flag off printed a
+> perfectly good-looking invitation whose codes had been loaded into the copy on
+> your laptop. The live site had never heard of them, so every recipient was
+> turned away at `/demo/join`, and nothing in the output said so. The command now
+> refuses rather than guess. (It refuses *before* issuing anything, so a refusal
+> never burns a code.)
 
 This does three things at once:
 
@@ -59,10 +70,10 @@ recipient should not get**, then paste the rest into any mail client and send.
 ### Variations
 
 ```bash
-pl demo invite nwd --all                              # include both reviewer levels
-pl demo invite nwd --bundles tester-member            # just one level
-pl demo invite nwd --bundles tester-member,tester-guild-leader
-pl demo invite nwd --expiry 30d                       # default is 14d
+pl demo invite nwd --tier=live --all                       # include both reviewer levels
+pl demo invite nwd --tier=live --bundles tester-member     # just one level
+pl demo invite nwd --tier=live --bundles tester-member,tester-guild-leader
+pl demo invite nwd --tier=live --expiry 30d                # default is 14d
 ```
 
 An unknown bundle name is rejected outright rather than silently ignored.
@@ -72,13 +83,19 @@ An unknown bundle name is rejected outright rather than silently ignored.
 ## Managing codes directly
 
 ```bash
-pl demo codes nwd list                          # what exists (hashes and IDs only)
-pl demo codes nwd issue tester-member           # one code, printed ONCE
-pl demo codes nwd issue tester-member --expires=30d
-pl demo codes nwd revoke 7                      # kill code #7
-pl demo codes nwd rotate                        # revoke everything, reissue one per level
-pl demo codes nwd sync                          # re-push the registry into the site
+pl demo codes nwd list                                     # what exists (hashes and IDs only)
+pl demo codes nwd issue tester-member --tier=live          # one code, printed ONCE
+pl demo codes nwd issue tester-member --tier=live --expires=30d
+pl demo codes nwd revoke 7 --tier=live                     # kill code #7
+pl demo codes nwd rotate --tier=live                       # revoke everything, reissue one per level
+pl demo codes nwd sync --tier=live                         # re-push the registry into the site
 ```
+
+`list` is read-only and needs no `--tier`. The other four all write codes into a
+running site, so each one must name the tier. `revoke` is the sharpest of them:
+revoking against `dev` while the code is live in the site's state leaves the
+code **still redeemable** on the live site, which is the opposite of what you
+asked for.
 
 ---
 
@@ -109,7 +126,7 @@ right up until its expiry date. Tell testers this — it is in the email templat
 already.
 
 If codes ever stop working after a reset, the re-push failed:
-`pl demo codes nwd sync`.
+`pl demo codes nwd sync --tier=live`.
 
 ---
 
@@ -120,8 +137,11 @@ If codes ever stop working after a reset, the re-push failed:
 - **One code per level, not per person, is fine** for a small trusted group — but
   if you want to revoke one person's access without disturbing the others, issue
   them their own code.
-- If a code leaks: `pl demo codes nwd revoke <id>`, then reissue.
-- After any round of testing you no longer need: `pl demo codes nwd rotate`.
+- If a code leaks: `pl demo codes nwd revoke <id> --tier=live`, then reissue.
+  Check afterwards with `pl demo codes nwd list --tier=live` that the code you
+  meant to kill is gone from the tier you meant to kill it on.
+- After any round of testing you no longer need:
+  `pl demo codes nwd rotate --tier=live`.
 
 ---
 
@@ -143,13 +163,13 @@ If codes ever stop working after a reset, the re-push failed:
 
 | I want to… | Command |
 |------------|---------|
-| Invite some testers (the usual case) | `pl demo invite nwd` |
-| Invite reviewers too | `pl demo invite nwd --all` |
-| One code, one level | `pl demo codes nwd issue tester-member` |
-| See what's outstanding | `pl demo codes nwd list` |
-| Kill a leaked code | `pl demo codes nwd revoke <id>` |
-| Start over | `pl demo codes nwd rotate` |
-| Codes stopped working | `pl demo codes nwd sync` |
+| Invite some testers (the usual case) | `pl demo invite nwd --tier=live` |
+| Invite reviewers too | `pl demo invite nwd --tier=live --all` |
+| One code, one level | `pl demo codes nwd issue tester-member --tier=live` |
+| See what's outstanding | `pl demo codes nwd list --tier=live` |
+| Kill a leaked code | `pl demo codes nwd revoke <id> --tier=live` |
+| Start over | `pl demo codes nwd rotate --tier=live` |
+| Codes stopped working | `pl demo codes nwd sync --tier=live` |
 
 ## See also
 

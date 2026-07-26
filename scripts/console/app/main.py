@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-from . import config, fleet_state, notify, parsers, quokka, voice, webauthn_flow
+from . import advisories, config, fleet_state, notify, parsers, quokka, voice, webauthn_flow
 from .actions import ACTIONS, ActionError, build_action
 from .authz import role_allows
 from .gitlab_api import GitLab
@@ -340,6 +340,18 @@ def _gather_todo(force: bool = False) -> tuple[dict, dict, dict]:
                               parsers.parse_todo, "items", force=force)
 
 
+def _gather_security(force: bool = False) -> tuple[dict, dict, dict]:
+    """Security advisories, from the SAME published snapshot as everything else.
+
+    This host cannot run `composer audit` — it has no sites. A snapshot with no
+    `security` feed (published before this feature existed, or with
+    --no-security) degrades to the honest "no security data in this snapshot"
+    rather than to a reassuring zero.
+    """
+    return _gather_fleet_feed("security", ["fleet", "security", "--json"],
+                              parsers.parse_security, "sites", empty_is_missing=True, force=force)
+
+
 def _gather_demo(force: bool = False) -> list[dict]:
     sites = []
     for site in config.DEMO_SITES:
@@ -437,7 +449,22 @@ def tab_counts(request: Request, user: dict = Depends(require("viewer"))):
 @app.get("/panes/fleet", response_class=HTMLResponse)
 def pane_fleet(request: Request, force: int = 0, user: dict = Depends(require("viewer"))):
     rag, res, prov = _gather_rag(force=bool(force))
-    return _pane(request, "pane_fleet.html", {"rag": rag, "res": res, "prov": prov}, user,
+    # The security feed is gathered separately and best-effort: it is the NEW
+    # thing on this pane, and a pane that has always worked must not start
+    # failing because of it.
+    sec = {"ok": False, "error": "security data unavailable on this host", "sites": [],
+           "totals": advisories.totals([])}
+    try:
+        sec = _gather_security(force=bool(force))[0]
+    except Exception:  # noqa: BLE001
+        pass
+    audit_from, audit_to = advisories.audit_window(sec)
+    return _pane(request, "pane_fleet.html",
+                 {"rag": rag, "res": res, "prov": prov, "sec": sec,
+                  "sec_headline": advisories.headline(sec),
+                  "sec_sites": advisories.affected_sites(sec),
+                  "sec_by_site": advisories.by_site(sec),
+                  "sec_audit_from": audit_from, "sec_audit_to": audit_to}, user,
                  tab="fleet", tab_count=parsers.fmt_rag_tab(rag), tab_alert=bool(prov.get("stale")))
 
 
@@ -756,6 +783,10 @@ def _notify_gather() -> dict:
     except Exception:  # noqa: BLE001
         pass
     try:
+        g["security"] = _gather_security()[0]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         g["ci"], g["ci_ok"] = _gather_ci()
     except Exception:  # noqa: BLE001
         pass
@@ -816,6 +847,7 @@ def _notify_view(request: Request, user: dict, message: str = "") -> HTMLRespons
             ("demo_tester", "New demo-tester issue in GitLab"),
             ("demo_reset", "Demo reset failed or was skipped"),
             ("token_expiry", "Token dead or nearing expiry"),
+            ("security", "New security advisory on a site (composer audit)"),
             ("ci", "CI pipeline failed on an open MR"),
             ("brief", f"Daily morning brief{' at ' + config.NOTIFY_BRIEF_AT if config.NOTIFY_BRIEF_AT else ' (no time set)'}"),
         )

@@ -124,6 +124,26 @@ def parse_todo(stdout: str) -> dict:
     return {"ok": True, "items": items, "summary": summary if isinstance(summary, dict) else {}}
 
 
+def parse_security(stdout: str) -> dict:
+    """`pl fleet security --json` → {"ok", "sites", "totals"}.
+
+    The heavy lifting (and ALL the sanitising) lives in advisories.read_feed —
+    this is only the stdout→JSON step every other parser here does. Advisory
+    text is third-party and ends up in the DOM, so it is re-cleaned on the way
+    in even though the publisher already cleaned it on the way out.
+    """
+    from . import advisories
+
+    data = extract_json(stdout)
+    if data is None:
+        return {"ok": False, "error": "no JSON found in pl fleet security output",
+                "sites": [], "totals": advisories.totals([]), "raw": strip_ansi(stdout)[-4000:]}
+    view = advisories.read_feed(data)
+    if not view.get("ok"):
+        view["raw"] = strip_ansi(stdout)[-4000:]
+    return view
+
+
 def todo_backup_items(todo: dict) -> list[dict]:
     """Backup-freshness slice of the todo items (backups pane)."""
     if not todo.get("ok"):

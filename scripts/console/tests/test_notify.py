@@ -424,6 +424,7 @@ def _gathered():
         "issues": [_issue(9)], "issues_ok": True,
         "demo": [{"site": "nwd", "last_event": "reset-failed"}],
         "todo": _todo(TOK_DEAD),
+        "security": _sec(),
         "ci": _ci("failed"), "ci_ok": True,
     }
 
@@ -431,16 +432,17 @@ def _gathered():
 def test_run_checks_fires_every_kind_once_seeded():
     seeded = {"rag": {"avc": "GREEN"}, "demo_tester": {"last_iid": 8},
               "demo_reset": {"nwd": "reset-ok"}, "token_expiry": {"notified": []},
-              "ci": {"nwp/nwp!5": "100:running"}}
+              "security": {"seen": []}, "ci": {"nwp/nwp!5": "100:running"}}
     events, state = notify.run_checks(_gathered(), seeded, "https://c")
-    assert {e.kind for e in events} == {"rag", "demo_tester", "demo_reset", "token_expiry", "ci"}
+    assert {e.kind for e in events} == {"rag", "demo_tester", "demo_reset",
+                                       "token_expiry", "security", "ci"}
     assert state["rag"] == {"avc": "RED"}
 
 
 def test_run_checks_honours_the_enabled_set():
     seeded = {"rag": {"avc": "GREEN"}, "demo_tester": {"last_iid": 8},
               "demo_reset": {"nwd": "reset-ok"}, "token_expiry": {"notified": []},
-              "ci": {"nwp/nwp!5": "100:running"}}
+              "security": {"seen": []}, "ci": {"nwp/nwp!5": "100:running"}}
     events, state = notify.run_checks(_gathered(), seeded, "", enabled={"rag"})
     assert {e.kind for e in events} == {"rag"}
     assert state["demo_reset"] == {"nwd": "reset-ok"}, "disabled detectors leave state untouched"
@@ -466,7 +468,8 @@ def test_run_checks_isolates_a_broken_feed(monkeypatch):
 def test_run_checks_first_run_is_entirely_silent():
     events, state = notify.run_checks(_gathered(), {}, "")
     assert events == []
-    assert set(state) == {"rag", "demo_tester", "demo_reset", "token_expiry", "ci"}
+    assert set(state) == {"rag", "demo_tester", "demo_reset", "token_expiry",
+                          "security", "ci"}
 
 
 def test_run_checks_is_idempotent_across_restarts():
@@ -500,3 +503,90 @@ def test_event_detail_carries_no_body():
     d = Event("rag", "Title", "secret body text", 8, "https://c").as_detail()
     assert "secret body text" not in json.dumps(d)
     assert d["kind"] == "rag" and d["priority"] == 8
+
+
+# ---------------------------------------------------------------------------
+# security — a NEW advisory appeared for a site
+#
+# Same contract as token_expiry: seeded silently, one push per new thing, and
+# nothing at all for good news. Grouped BY SITE because the first audit of a
+# fresh site can surface a dozen advisories at once, and twelve buzzes say less
+# than one that names the site.
+# ---------------------------------------------------------------------------
+def _adv(ident="SA-1", sev="medium", pkg="drupal/core", title="a hole"):
+    return {"id": ident, "severity": sev, "package": pkg, "title": title,
+            "cve": "", "link": "", "affected": "", "installed": "", "reported_at": ""}
+
+
+def _sec(*sites):
+    """sites: (name, [advisories]) pairs; default = one medium on avc."""
+    sites = sites or (("avc", [_adv()]),)
+    return {"ok": True, "sites": [{"site": n, "state": "ok", "count": len(a), "advisories": a}
+                                  for n, a in sites],
+            "totals": {"advisories": sum(len(a) for _n, a in sites)}}
+
+
+def test_security_first_run_seeds_silently():
+    events, state = notify.detect_security(_sec(), None)
+    assert events == []
+    assert state == {"seen": ["avc:SA-1"]}
+
+
+def test_security_new_advisory_pushes_once_then_stays_quiet():
+    _, state = notify.detect_security(_sec(), None)
+    two = _sec(("avc", [_adv(), _adv("SA-2", "high")]))
+    events, state = notify.detect_security(two, state, "https://c")
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.kind == "security"
+    assert "avc" in ev.title and "1 new security advisory" in ev.title
+    assert "SA-2" in ev.message
+    assert "SA-1" not in ev.message, "already-known advisories are not re-announced"
+    assert ev.click == "https://c/?tab=fleet"
+    assert ev.priority == notify.P_LOUD, "a high-severity advisory is worth a buzz"
+    again, _ = notify.detect_security(two, state)
+    assert again == []
+
+
+def test_security_groups_a_burst_by_site_not_one_push_per_advisory():
+    _, state = notify.detect_security(_sec(("avc", [])), None)
+    burst = _sec(("avc", [_adv(f"SA-{i}", "medium") for i in range(9)]))
+    events, _ = notify.detect_security(burst, state)
+    assert len(events) == 1
+    assert "9 new security advisories: avc" in events[0].title
+    assert "…and 3 more" in events[0].message, "the body is bounded"
+    assert events[0].priority == notify.P_NORMAL
+
+
+def test_security_one_push_per_affected_site():
+    _, state = notify.detect_security(_sec(("avc", []), ("nwc", [])), None)
+    now = _sec(("avc", [_adv("SA-9")]), ("nwc", [_adv("SA-8")]))
+    events, _ = notify.detect_security(now, state)
+    assert sorted(e.title.split(": ")[-1] for e in events) == ["avc", "nwc"]
+
+
+def test_security_fixed_advisory_is_silent_but_re_arms():
+    _, state = notify.detect_security(_sec(), None)
+    events, state = notify.detect_security(_sec(("avc", [])), state)
+    assert events == [], "good news is visible in the pane; it does not buzz a phone"
+    assert state == {"seen": []}
+    events, _ = notify.detect_security(_sec(), state)
+    assert len(events) == 1, "the same advisory coming back notifies again"
+
+
+def test_security_unavailable_feed_leaves_state_untouched():
+    seeded = {"seen": ["avc:SA-1"]}
+    # Including an ok-but-empty/garbled feed: it told us nothing, so wiping the
+    # seen-set would make the NEXT healthy pass re-announce everything as new.
+    for feed in ({"ok": False}, {}, None, "nonsense", {"ok": True, "sites": "bad"},
+                 {"ok": True, "sites": []}, {"ok": True}):
+        events, state = notify.detect_security(feed, seeded)
+        assert events == []
+        assert state == seeded, "a missing feed must never look like 'everything got fixed'"
+
+
+def test_security_survives_a_malformed_site_block():
+    weird = {"ok": True, "sites": [None, {"site": "avc", "advisories": [None, _adv("SA-3")]}, 7]}
+    events, state = notify.detect_security(weird, {"seen": []})
+    assert [e.title.split(": ")[-1] for e in events] == ["avc"]
+    assert state == {"seen": ["avc:SA-3"]}

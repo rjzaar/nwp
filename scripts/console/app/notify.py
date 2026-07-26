@@ -40,7 +40,7 @@ from pathlib import Path
 STATE_VERSION = 1
 
 # The toggle keys. Each is switchable on its own via NWP_CONSOLE_NOTIFY_EVENTS.
-EVENT_KINDS = ("rag", "demo_tester", "demo_reset", "token_expiry", "ci", "brief")
+EVENT_KINDS = ("rag", "demo_tester", "demo_reset", "token_expiry", "security", "ci", "brief")
 
 # Gotify priority ladder. The Android client raises a sound/heads-up
 # notification at >= 8 and stays quiet below it, so the loud end is reserved
@@ -334,6 +334,70 @@ def detect_token_expiry(todo: dict, prev, console_url: str = "") -> tuple[list[E
     return events, {"notified": sorted(current)}
 
 
+def detect_security(sec: dict, prev, console_url: str = "") -> tuple[list[Event], dict]:
+    """A NEW security advisory appeared for a site.
+
+    Same shape as detect_token_expiry: keyed on site:advisory-id, seeded
+    silently on the first run, one push per NEW key. Grouped BY SITE rather
+    than per advisory — the first audit of a fresh site can surface a dozen at
+    once, and twelve buzzes say less than one that names the site.
+
+    Deliberately quiet about advisories going AWAY: the state key disappears,
+    so the same advisory re-appearing later notifies again, but nothing is
+    pushed for good news (a fixed site is visible in the Fleet pane).
+    """
+    # An ok-but-empty feed is NOT an answer (same rule as fleet_state's
+    # default_usable): wiping the seen-set on a feed that told us nothing would
+    # make the next healthy pass re-announce every known advisory as new.
+    if not isinstance(sec, dict) or not sec.get("ok"):
+        return [], (prev if isinstance(prev, dict) else {})
+    blocks = sec.get("sites")
+    if not isinstance(blocks, list) or not blocks:
+        return [], (prev if isinstance(prev, dict) else {})
+    current: dict[str, dict] = {}
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        site = str(block.get("site", ""))[:60]
+        for adv in block.get("advisories") or []:
+            if not isinstance(adv, dict):
+                continue
+            key = f"{site}:{str(adv.get('id', ''))[:80]}"
+            current[key] = {"site": site, "adv": adv}
+    if not isinstance(prev, dict) or "seen" not in prev:
+        return [], {"seen": sorted(current)}  # first run: seed silently
+    seen = set(prev.get("seen") or [])
+    fresh: dict[str, list[dict]] = {}
+    for key in sorted(current):
+        if key not in seen:
+            fresh.setdefault(current[key]["site"], []).append(current[key]["adv"])
+
+    events = []
+    for site in sorted(fresh):
+        advs = fresh[site]
+        worst = min((str(a.get("severity", "")).lower() for a in advs),
+                    key=lambda s: _SEV_RANK.get(s, 99), default="")
+        lines = []
+        for a in advs[:6]:
+            sev = str(a.get("severity", "")) or "unrated"
+            lines.append(f"• [{sev}] {str(a.get('package', '?'))[:60]} — "
+                         f"{str(a.get('id', '?'))[:40]}: {str(a.get('title', ''))[:120]}")
+        if len(advs) > 6:
+            lines.append(f"…and {len(advs) - 6} more")
+        events.append(Event(
+            kind="security",
+            title=f"\U0001f6e1 {len(advs)} new security advisor"
+                  f"{'y' if len(advs) == 1 else 'ies'}: {site}",
+            message="\n".join(lines) + "\n\nOpen the Fleet tab and tap the count for full detail.",
+            priority=P_LOUD if worst in ("critical", "high") else P_NORMAL,
+            click=_console(console_url, "fleet"),
+            dedupe=f"security:{site}:{len(advs)}:{worst}"))
+    return events, {"seen": sorted(current)}
+
+
+_SEV_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
 def detect_ci(blocks, api_ok: bool, prev, console_url: str = "") -> tuple[list[Event], dict]:
     """Head-pipeline failures on open MRs. Keyed on project!iid -> pipeline:status,
     so a still-failing pipeline stays quiet until something actually changes."""
@@ -410,6 +474,8 @@ def run_checks(gathered: dict, state: dict, console_url: str = "",
         ("demo_reset", lambda: detect_demo_reset(gathered.get("demo"), state.get("demo_reset"), console_url)),
         ("token_expiry", lambda: detect_token_expiry(
             gathered.get("todo") or {}, state.get("token_expiry"), console_url)),
+        ("security", lambda: detect_security(
+            gathered.get("security") or {}, state.get("security"), console_url)),
         ("ci", lambda: detect_ci(gathered.get("ci"), bool(gathered.get("ci_ok")), state.get("ci"), console_url)),
     ]
     for kind, call in plan:

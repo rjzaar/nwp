@@ -89,6 +89,9 @@ fire. The machine that holds the sites publishes a snapshot instead:
 ```
 pl fleet publish              # on the workstation: gather -> snapshot -> ship
 pl fleet publish --dry-run    # build + summarise, ship nothing
+pl fleet publish --no-security   # skip the advisory feed
+pl fleet security             # what the advisory feed will contain, as a table
+pl fleet security --json      # …every advisory in full
 pl fleet status               # what is published here and on the console host
 pl fleet schedule             # cron it (default every 30 min)
 ```
@@ -102,13 +105,39 @@ written atomically), schema `nwp.fleet-state` v1:
   "generated_at": "2026-07-26T01:14:07Z",
   "generated_by": {"host": "workstation", "user": "rob", "root": "$HOME/nwp", "pl_version": "0.30.0"},
   "max_age_hint_seconds": 7200,
-  "summary": {"RED": 12, "AMBER": 0, "GREEN": 4, "sites": 16, "todo_items": 45, "backup_items": 35},
+  "summary": {"RED": 12, "AMBER": 0, "GREEN": 4, "sites": 16, "todo_items": 45, "backup_items": 35,
+              "security_advisories": 88, "security_sites_affected": 12, "security_sites_unknown": 5,
+              "security_worst": "high", "security_by_site": {"avc": 13, "mayo": 13, …}},
   "feeds": {
     "rag":  {"ok": true, "rc": 3, "secs": 0.4,  "cmd": "pl rag --json --no-todo", "data": {…}},
-    "todo": {"ok": true, "rc": 0, "secs": 30.5, "cmd": "pl todo check --json",    "data": {…}}
+    "todo": {"ok": true, "rc": 0, "secs": 30.5, "cmd": "pl todo check --json",    "data": {…}},
+    "security": {"ok": true, "rc": 0, "secs": 0.2, "cmd": "pl fleet security --json", "data": {…}}
   }
 }
 ```
+
+The `security` feed was **added without moving `schema_version`**, deliberately:
+the consumer refuses a version it does not know
+(`fleet_state.SUPPORTED_VERSIONS`), so a bump would blank the Fleet *and* Todo
+panes on any console not yet upgraded — a new feature taking out two working
+ones during the deploy window. Adding a feed is backwards-compatible by
+construction: an old console never asks for `security`, and a new console
+tolerates a snapshot without it (it says *"no security data in this
+snapshot"*, never a reassuring zero). Both directions are tested. `v2` stays
+reserved for a genuinely breaking change.
+
+`feeds.security.data` is `{generated_at, sites[], totals}`; each site carries
+`state` (`ok` / `stale` / `unreadable` / `n/a` / `missing`), `count`, and every
+advisory in full — id, CVE, package, installed version, affected constraint,
+title, severity, reported date, link.
+
+It is built from **`pl audit`'s cached records** in `private/update-awareness/`
+— the same source `pl rag` grades RED on — not from a fresh `composer audit`.
+Two reasons: 16 × `ddev composer audit` (containers up, minutes) cannot fit a
+`*/30` cron, and re-auditing would let the advisory detail disagree with the RAG
+badge next to it. Reading the cache costs **~0.2 s for 21 sites**.
+`pl fleet publish --refresh-security` is the explicit opt-in to re-audit first
+(slow — never on the cron); the daily audit timer keeps the cache fresh.
 
 `feeds.<name>.data` is the feed's JSON **verbatim**, so the console runs it
 through the same `parsers.py` as a local shell-out — one shape in the app.
@@ -297,6 +326,12 @@ bats tests/unit/test-console.bats                 # pl console dispatch
 bats tests/unit/test-console-deploy-guard.bats    # deploy divergence guard (stubbed ssh/rsync)
 bats tests/unit/test-fleet-publish.bats           # pl fleet publish snapshot contract
 ```
+
+Everything under `tests/` is stdlib-only except the handful of security-advisory
+**render** tests, which need a real Jinja environment to assert that hostile
+advisory text is actually escaped (a hand-rolled stand-in would only prove the
+stand-in works). Those skip cleanly on a bare interpreter and run wherever
+jinja2 exists — the console's own venv, the workstation, and the console host.
 
 ## Honest limits
 

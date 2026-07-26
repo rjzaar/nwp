@@ -37,8 +37,24 @@ source "$REPO_ROOT/lib/impact.sh"   # ops#47 impact contract (see cmd_schedule)
 # --- schema ------------------------------------------------------------------
 # Bump FLEET_SCHEMA_VERSION on any BREAKING change to the snapshot shape. The
 # consumer refuses versions it does not know rather than mis-rendering them.
+#
+# The `security` feed was ADDED WITHOUT a version bump, deliberately. The
+# consumer rejects the WHOLE snapshot when the version is unknown
+# (fleet_state.SUPPORTED_VERSIONS), so bumping to 2 would blank the Fleet AND
+# Todo panes on any console that had not been upgraded yet — a new feature
+# taking out two working ones during the deploy window. Adding a feed is
+# backwards-compatible by construction instead: an old console never asks for
+# `security` and ignores it, and a new console tolerates a snapshot that has no
+# `security` feed (it says "no security data in this snapshot"). Both
+# directions are covered by tests. v2 stays reserved for a real BREAKING change.
 FLEET_SCHEMA="nwp.fleet-state"
 FLEET_SCHEMA_VERSION=1
+
+# Where `pl audit` caches its per-site composer-audit records. The security
+# feed is built FROM this cache, not from a fresh `composer audit` — see
+# scripts/console/app/advisories.py for why (16 × ddev exec would not fit the
+# */30 publish window, and would let the console disagree with `pl rag`).
+AUDIT_STATE_DIR="${NWP_AUDIT_STATE_DIR:-$PROJECT_ROOT/private/update-awareness}"
 
 # Advisory only: the console has its own NWP_CONSOLE_FLEET_MAX_AGE. This tells
 # a consumer what cadence the publisher intends, so "stale" means something.
@@ -76,8 +92,10 @@ show_help() {
 ${BOLD}pl fleet${NC} — publish fleet state to the console host
 
 ${BOLD}USAGE:${NC}
-    pl fleet publish [--to <ssh-host>] [--dest <path>] [--no-todo] [--dry-run] [--quiet]
-    pl fleet snapshot [--out <path>] [--no-todo]
+    pl fleet publish [--to <ssh-host>] [--dest <path>] [--no-todo] [--no-security]
+                     [--refresh-security] [--dry-run] [--quiet]
+    pl fleet snapshot [--out <path>] [--no-todo] [--no-security] [--refresh-security]
+    pl fleet security [--json]
     pl fleet status [--to <ssh-host>]
     pl fleet schedule [--schedule "<cron>"] [--remove] [-y]
 
@@ -93,21 +111,119 @@ ${BOLD}OPTIONS:${NC}
                       (default: \$HOME/$DEFAULT_REMOTE_REL)
     --out <path>      snapshot: write here instead of $LOCAL_STATE
     --no-todo         skip the (slower) todo sweep; publish the RAG feed only
+    --no-security     skip the security-advisory feed
+    --refresh-security  re-run \`pl audit --all --security-only\` first. SLOW
+                      (one ddev container per site) — never use this on the cron
     --dry-run         build the snapshot, print the summary, ship nothing
     --quiet           only report failures (for cron)
 
 ${BOLD}SNAPSHOT:${NC}
     schema $FLEET_SCHEMA v$FLEET_SCHEMA_VERSION — generated_at (UTC), generated_by
     (host/user/root/version), and one entry per feed under .feeds:
-      feeds.rag.data   = \`pl rag --json --no-todo\` verbatim
-      feeds.todo.data  = \`pl todo check --json\` verbatim (backup freshness too)
+      feeds.rag.data      = \`pl rag --json --no-todo\` verbatim
+      feeds.todo.data     = \`pl todo check --json\` verbatim (backup freshness too)
+      feeds.security.data = \`pl fleet security --json\` — per site: state, count,
+                            and every advisory (id, CVE, package, installed +
+                            affected versions, title, severity, reported, link)
     Written 0600, shipped atomically (tmp + mv), never contains a secret.
+
+${BOLD}SECURITY FEED:${NC}
+    Built from \`pl audit\`'s cached records in private/update-awareness/, the
+    same source \`pl rag\` grades RED on — so the console's advisory detail and
+    its RAG badge can never disagree. Costs ~0.1 s, not 16 container starts.
+    Refresh the cache with \`pl audit --all\` (the daily timer already does).
 
 ${BOLD}EXAMPLES:${NC}
     pl fleet publish                     # gather + ship to the console host
     pl fleet publish --to <host> --dry-run  # see what would be published
+    pl fleet security                    # what the console will show, as a table
+    pl fleet security --json | python3 -m json.tool   # every advisory in full
     pl fleet schedule                    # publish every 30 min from this host
 EOF
+}
+
+# --- security feed -------------------------------------------------------------
+# `pl fleet security --json` — the structured advisory list for one fleet.
+#
+# It is its own verb (not just an inline block) for three reasons: the console's
+# LOCAL fallback path needs a `pl` argv to shell out to on a host that DOES have
+# sites; an operator can run it by hand to see exactly what will be published;
+# and _capture_feed then treats it like every other feed, inheriting the same
+# best-effort/ok:false honesty.
+cmd_security() {
+    local as_json=false
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --json)    as_json=true; shift ;;
+            -h|--help) show_help; return 0 ;;
+            *) print_error "unknown option: $1"; return 1 ;;
+        esac
+    done
+    # NWP_REPO locates the shared advisories module (it ships with this repo);
+    # NWP_ROOT locates the DATA (sites/*/composer.lock). They are the same
+    # directory in production and deliberately separable under test.
+    local out
+    out=$(NWP_AUDIT_DIR="$AUDIT_STATE_DIR" NWP_ROOT="$PROJECT_ROOT" NWP_REPO="$REPO_ROOT" \
+          NWP_SITES="$(_known_sites)" python3 - 2>&1 <<'PY'
+import json, os, sys
+sys.path.insert(0, os.path.join(os.environ["NWP_REPO"], "scripts", "console"))
+from datetime import datetime, timezone
+try:
+    from app import advisories
+except ImportError as e:                       # scripts/console missing/broken
+    sys.stderr.write("advisories module unavailable: %s\n" % e)
+    sys.exit(1)
+feed = advisories.build_feed(
+    os.environ["NWP_AUDIT_DIR"],
+    sites=[s for s in os.environ.get("NWP_SITES", "").split() if s],
+    root=os.environ["NWP_ROOT"],
+    now=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+)
+json.dump(feed, sys.stdout, sort_keys=True, separators=(",", ":"))
+PY
+    ) || { print_error "could not build the security feed: ${out:-no output}"; return 1; }
+
+    if [ "$as_json" = true ]; then
+        printf '%s\n' "$out"
+        return 0
+    fi
+    printf '%s' "$out" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+t = d.get("totals", {})
+print("Security advisories — %d site(s), %d advisor%s on %d site(s)" % (
+    t.get("sites", 0), t.get("advisories", 0),
+    "y" if t.get("advisories") == 1 else "ies", t.get("sites_affected", 0)))
+sev = t.get("by_severity", {})
+if sev:
+    print("  by severity: " + ", ".join("%s=%d" % kv for kv in sorted(sev.items())))
+print()
+print("  %-14s %-10s %5s %8s  %s" % ("SITE", "STATE", "ADV", "IGNORED", "CHECKED"))
+for b in d.get("sites", []):
+    print("  %-14s %-10s %5s %8s  %s %s" % (
+        b.get("site", "?"), b.get("state", "?"), b.get("count", 0),
+        b.get("ignored", 0), b.get("checked", "-"), b.get("note", "")[:50]))
+print()
+print("  Detail: pl fleet security --json | python3 -m json.tool")
+'
+}
+
+# Site names `pl audit` would sweep — so a site that STOPPED being audited shows
+# up as "missing" instead of quietly vanishing from the list.
+#
+# This MUST stay the same query as lib/yaml-write.sh:yaml_get_all_sites(), which
+# is what `pl audit` itself uses to build its site list; if the two ever
+# disagree, this pane invents "missing" sites that were never in scope, or hides
+# ones that were. It is duplicated rather than sourced on purpose: fleet.sh
+# deliberately pulls in only ui.sh + impact.sh (it runs from cron every 30
+# minutes), and yaml-write.sh is a large dependency for one `yq` expression.
+# yq-only, no awk fallback — an unparsable config must yield "no sites" (every
+# site reads "missing") rather than a half-parsed list that looks complete.
+_known_sites() {
+    local f="${NWP_CONFIG_FILE:-$PROJECT_ROOT/nwp.yml}"
+    [ -f "$f" ] || return 0
+    command -v yq >/dev/null 2>&1 || return 0
+    yq e '.sites | keys | .[]' "$f" 2>/dev/null | grep -vE '^(null|---)$' | tr '\n' ' ' || true
 }
 
 # --- gathering ---------------------------------------------------------------
@@ -217,6 +333,27 @@ if isinstance(rag, dict):
     sites = rag.get("sites")
     summary["sites"] = len(sites) if isinstance(sites, list) else 0
 
+# Security headline, so `pl fleet status`/a jq one-liner can answer "how exposed
+# are we?" without walking feeds.security.data.sites.
+sec = (feeds.get("security") or {}).get("data") or {}
+sec_totals = sec.get("totals") if isinstance(sec, dict) else None
+if isinstance(sec_totals, dict):
+    for k in ("advisories", "sites_affected", "sites_unknown"):
+        try:
+            summary["security_" + k] = int(sec_totals.get(k, 0) or 0)
+        except (TypeError, ValueError):
+            summary["security_" + k] = 0
+    summary["security_worst"] = str(sec_totals.get("worst", "") or "")
+    # Per-site count, the number the Fleet pane makes clickable.
+    per_site = {}
+    for b in sec.get("sites") or []:
+        if isinstance(b, dict) and b.get("site"):
+            try:
+                per_site[str(b["site"])] = int(b.get("count", 0) or 0)
+            except (TypeError, ValueError):
+                per_site[str(b["site"])] = 0
+    summary["security_by_site"] = per_site
+
 todo = (feeds.get("todo") or {}).get("data") or {}
 items = todo.get("items") if isinstance(todo, dict) else None
 if isinstance(items, list):
@@ -250,8 +387,9 @@ PY
 
 # Build the snapshot into $1 (0600). Non-zero if EVERY feed failed — a snapshot
 # with nothing usable in it is worse than none, because it would look fresh.
-build_snapshot() { # $1 dest file, $2 include_todo(true|false), $3 quiet
+build_snapshot() { # $1 dest, $2 include_todo, $3 quiet, $4 include_security, $5 refresh_security
     local dest="$1" include_todo="${2:-true}" quiet="${3:-false}"
+    local include_security="${4:-true}" refresh_security="${5:-false}"
     local tmpdir; tmpdir=$(mktemp -d); chmod 700 "$tmpdir"
     # shellcheck disable=SC2064
     trap "rm -rf '$tmpdir'" RETURN
@@ -263,6 +401,18 @@ build_snapshot() { # $1 dest file, $2 include_todo(true|false), $3 quiet
         [ "$quiet" = true ] || print_info "Gathering todo + backup freshness (pl todo check --json)…"
         _capture_feed "$tmpdir" todo todo check --json
         feeds="rag todo"
+    fi
+    if [ "$include_security" = true ]; then
+        # --refresh-security re-runs the (slow, container-bound) audit FIRST.
+        # Off by default: the cache is refreshed by the daily audit timer, and a
+        # */30 publish must never depend on 16 ddev containers being up.
+        if [ "$refresh_security" = true ]; then
+            [ "$quiet" = true ] || print_info "Refreshing the audit cache (pl audit --all --security-only)… this is slow"
+            "$PROJECT_ROOT/pl" audit --all --security-only >/dev/null 2>&1 || true
+        fi
+        [ "$quiet" = true ] || print_info "Gathering security advisories (pl fleet security --json)…"
+        _capture_feed "$tmpdir" security fleet security --json
+        feeds="$feeds security"
     fi
 
     local json
@@ -299,6 +449,12 @@ print("  fleet        : {} sites — {} RED / {} AMBER / {} GREEN".format(
     s.get("sites", 0), s.get("RED", 0), s.get("AMBER", 0), s.get("GREEN", 0)))
 print("  todo         : {} items ({} backup-freshness)".format(
     s.get("todo_items", "-"), s.get("backup_items", "-")))
+if "security_advisories" in s:
+    print("  security     : {} advisories on {} site(s), worst={} ({} unknown)".format(
+        s.get("security_advisories", 0), s.get("security_sites_affected", 0),
+        s.get("security_worst", "-") or "-", s.get("security_sites_unknown", 0)))
+else:
+    print("  security     : not in this snapshot")
 for name, f in sorted(d.get("feeds", {}).items()):
     mark = "ok" if f.get("ok") else "FAILED"
     print(f"  feed {name:<9}: {mark} ({f.get('secs','?')}s, rc={f.get('rc','?')})"
@@ -313,6 +469,7 @@ _dest_ok() { # refuse anything that is not a boring absolute path
 
 cmd_publish() {
     local host="$CONSOLE_HOST" dest="" include_todo=true dry_run=false quiet=false
+    local include_security=true refresh_security=false
     while [ $# -gt 0 ]; do
         case "$1" in
             --to)       host="${2:-}"; shift 2 ;;
@@ -320,6 +477,8 @@ cmd_publish() {
             --dest)     dest="${2:-}"; shift 2 ;;
             --dest=*)   dest="${1#--dest=}"; shift ;;
             --no-todo)  include_todo=false; shift ;;
+            --no-security) include_security=false; shift ;;
+            --refresh-security) refresh_security=true; shift ;;
             --dry-run)  dry_run=true; shift ;;
             --quiet|-q) quiet=true; shift ;;
             -h|--help)  show_help; return 0 ;;
@@ -327,7 +486,7 @@ cmd_publish() {
         esac
     done
 
-    build_snapshot "$LOCAL_STATE" "$include_todo" "$quiet" || return 1
+    build_snapshot "$LOCAL_STATE" "$include_todo" "$quiet" "$include_security" "$refresh_security" || return 1
     [ "$quiet" = true ] || { print_success "snapshot built: $LOCAL_STATE"; _summarise "$LOCAL_STATE"; }
 
     if [ "$dry_run" = true ]; then
@@ -375,17 +534,19 @@ cmd_publish() {
 }
 
 cmd_snapshot() {
-    local out="$LOCAL_STATE" include_todo=true
+    local out="$LOCAL_STATE" include_todo=true include_security=true refresh_security=false
     while [ $# -gt 0 ]; do
         case "$1" in
             --out)     out="${2:-}"; shift 2 ;;
             --out=*)   out="${1#--out=}"; shift ;;
             --no-todo) include_todo=false; shift ;;
+            --no-security) include_security=false; shift ;;
+            --refresh-security) refresh_security=true; shift ;;
             -h|--help) show_help; return 0 ;;
             *) print_error "unknown option: $1"; return 1 ;;
         esac
     done
-    build_snapshot "$out" "$include_todo" false || return 1
+    build_snapshot "$out" "$include_todo" false "$include_security" "$refresh_security" || return 1
     print_success "snapshot written: $out"
     _summarise "$out"
 }
@@ -511,6 +672,7 @@ main() {
         -h|--help|"") show_help ;;
         publish)  cmd_publish "$@" ;;
         snapshot) cmd_snapshot "$@" ;;
+        security) cmd_security "$@" ;;
         status)   cmd_status "$@" ;;
         schedule) cmd_schedule "$@" ;;
         *) print_error "Unknown subcommand: $sub"; show_help; return 1 ;;

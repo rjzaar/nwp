@@ -1,0 +1,112 @@
+{#
+  Security advisories for the fleet — summary, then one expandable detail per
+  affected site.
+
+  Three honesty rules this partial exists to keep:
+
+  1. ABSENCE IS NOT SAFETY. A snapshot published before this feature existed
+     (or with --no-security) has no security feed. That renders as "no security
+     data in this snapshot", never as a reassuring zero.
+  2. TWO CLOCKS, BOTH SHOWN. The snapshot's age is in _provenance.html at the
+     top of the pane; the age of the AUDIT the advisories came from is shown
+     here. A fresh snapshot of a stale audit is stale advice.
+  3. EVERY FIELD IS THIRD-PARTY TEXT. Titles, ids and URLs come from packagist
+     and drupal.org via another host. Jinja autoescape handles the markup;
+     advisories.clean() has already stripped ANSI/control characters and
+     advisories.safe_link() has already dropped any non-http(s) URL, so an href
+     here can only ever be a plain http(s) link.
+#}
+<section class="secblock" id="security">
+  <div class="sec-head">
+    <h3>Security</h3>
+    {%- if sec.ok and sec.totals.advisories %}
+    <span class="badge {% if sec.totals.worst in ('critical', 'high') %}red{% else %}amber{% endif %}">
+      {{ sec.totals.advisories }}</span>
+    {%- elif sec.ok %}
+    <span class="badge green">0</span>
+    {%- endif %}
+  </div>
+
+  {% if not sec.ok %}
+  <p class="prov prov-warn">
+    <strong>No security data in this snapshot.</strong>
+    {{ sec.error or 'The published snapshot has no security feed.' }}
+    Publish one from the machine that holds the sites:
+    <code>pl fleet publish</code> (and refresh the source with <code>pl audit --all</code>).
+  </p>
+  {% else %}
+
+  <p class="sec-headline">{{ sec_headline }}</p>
+
+  {% if sec.totals.by_severity %}
+  <p class="sev-row">
+    {%- for sev in ['critical', 'high', 'medium', 'low', 'unknown'] %}
+      {%- if sec.totals.by_severity.get(sev) %}
+    <span class="chip sev-{{ sev }}">{{ sec.totals.by_severity.get(sev) }} {{ sev }}</span>
+      {%- endif %}
+    {%- endfor %}
+  </p>
+  {% endif %}
+
+  {% if sec_audit_from %}
+  <p class="muted small">
+    Advisories as at
+    {% if sec_audit_from == sec_audit_to %}{{ sec_audit_from }}{% else %}{{ sec_audit_from }} – {{ sec_audit_to }}{% endif %}
+    (<code>pl audit</code> cache, refreshed by the daily timer — not the snapshot time above).
+  </p>
+  {% endif %}
+
+  {% if not sec_sites %}
+  <p class="ok">No open advisories on any audited site.</p>
+  {% endif %}
+
+  {% for b in sec_sites %}
+  <details class="secsite" id="{{ b.anchor }}">
+    <summary>
+      <span class="dot {% if b.count %}red{% elif b.state in ('stale', 'unreadable', 'missing') %}amber{% else %}green{% endif %}"></span>
+      <strong>{{ b.site }}</strong>
+      {#- the chip takes the site's WORST severity (advisories are sorted worst-first) -#}
+      {%- if b.count %} <span class="chip sev-{{ b.advisories[0].sev_label if b.advisories else 'unknown' }}">{{ b.count }}
+        advisor{{ 'y' if b.count == 1 else 'ies' }}</span>{% endif %}
+      {%- if b.state != 'ok' %} <span class="chip warnchip">{{ b.state }}</span>{% endif %}
+      {%- if b.ignored %} <span class="chip">{{ b.ignored }} ignored</span>{% endif %}
+    </summary>
+
+    {% if b.note %}<p class="secnote">{{ b.note }}</p>{% endif %}
+    {% if b.checked %}<p class="muted small">audited {{ b.checked }}</p>{% endif %}
+    {% if b.state == 'missing' %}
+    <p class="muted small">Nothing has audited this site, so <strong>0 is not a clean bill of health</strong> — it is
+      an absence of data.</p>
+    {% endif %}
+
+    {#- Not composer-managed (Moodle): there is no advisory list, but being
+        behind the newest point release IS the security signal, because Moodle
+        ships fixes only in the newest one. -#}
+    {% if b.state == 'n/a' and b.moodle %}
+    <dl class="adv-fields">
+      {% if b.moodle.installed %}<dt>installed</dt><dd class="mono">{{ b.moodle.installed }}</dd>{% endif %}
+      {% if b.moodle.latest %}<dt>latest</dt><dd class="mono">{{ b.moodle.latest }}</dd>{% endif %}
+      {% if b.moodle.branch %}<dt>branch</dt><dd class="mono">{{ b.moodle.branch }}</dd>{% endif %}
+    </dl>
+    <p class="muted small">Not composer-managed, so <code>composer audit</code> cannot see it —
+      review <a href="https://moodle.org/security/" target="_blank" rel="noopener noreferrer">moodle.org/security ↗</a>.</p>
+    {% endif %}
+
+    {% for a in b.advisories %}
+    {% include "_advisory.html" %}
+    {% endfor %}
+
+    {% if b.ignored_advisories %}
+    <details class="ignored">
+      <summary>{{ b.ignored_advisories | length }} advisor{{ 'y' if b.ignored_advisories | length == 1 else 'ies' }}
+        ignored by this site's composer audit policy</summary>
+      <p class="muted small">Ignored by configuration, not by assessment — worth re-reading occasionally.</p>
+      {% for a in b.ignored_advisories %}
+      {% include "_advisory.html" %}
+      {% endfor %}
+    </details>
+    {% endif %}
+  </details>
+  {% endfor %}
+  {% endif %}
+</section>

@@ -29,16 +29,16 @@ This document covers three critical security areas:
 
 ```bash
 # Database-only backup (fast, recommended for daily backups)
-./backup.sh -by nwp5 "Daily automated backup"
+pl backup -by nwp5 "Daily automated backup"
 
 # Full backup (database + files)
-./backup.sh -y nwp5 "Weekly full backup"
+pl backup -y nwp5 "Weekly full backup"
 
 # Backup with Git integration (for off-site storage)
-./backup.sh --git -y nwp5 "Push to GitLab"
+pl backup --git -y nwp5 "Push to GitLab"
 
 # Backup with bundle for offline archival
-./backup.sh --bundle -y nwp5 "Offline archive"
+pl backup --bundle -y nwp5 "Offline archive"
 ```
 
 ### Backup Storage Rules
@@ -62,7 +62,7 @@ Archive:   Git bundle files (via --bundle flag)
 
 Before any production deployment:
 
-- [ ] Run `./backup.sh -by sitename_prod "Pre-deployment backup"`
+- [ ] Run `pl backup -by sitename_prod "Pre-deployment backup"`
 - [ ] Verify backup file exists and has reasonable size
 - [ ] Document the backup filename for rollback reference
 - [ ] Test restore procedure is documented
@@ -86,10 +86,10 @@ Production databases contain:
 
 ```bash
 # Basic sanitization (emails, passwords, sessions)
-./backup.sh --sanitize basic -by nwp5_prod "Sanitized for dev"
+pl backup --sanitize basic -by nwp5_prod "Sanitized for dev"
 
 # Full sanitization (includes logs, webforms, commerce)
-./backup.sh --sanitize full -by nwp5_prod "Fully sanitized"
+pl backup --sanitize full -by nwp5_prod "Fully sanitized"
 
 # Sanitize when syncing production to staging
 ./prod2stg.sh --sanitize nwp5
@@ -115,7 +115,7 @@ For EU user data:
 
 ```bash
 # Always use full sanitization for GDPR compliance
-./backup.sh --sanitize full -by production_site
+pl backup --sanitize full -by production_site
 
 # Consider field-level encryption for sensitive data in production
 # Install: drupal/encrypt, drupal/field_encrypt
@@ -309,24 +309,40 @@ The migration script will:
 3. Guide you to move data secrets manually
 4. Validate the split
 
-#### Safe Operations Proxy
+#### Safe Operations — use the `pl` verbs
 
-For operations that need data secrets but should return sanitized output:
+For operations that need data secrets but should return sanitized output, use the
+`pl` verbs. They resolve the route from the tracked `servers/<name>/.nwp-server.yml`
+record, so no credential passes through your hands:
 
 ```bash
-source lib/safe-ops.sh
+# Reachability only
+pl server status prod1
 
-# Get server status (no credentials exposed)
-safe_server_status prod1
+# Load / memory / disk HEADROOM — the preflight before anything heavy.
+# Exit 1 = no headroom.  Exit 3 = UNKNOWN, which is NOT treated as healthy.
+pl server health prod1
+pl server health --all
 
-# Get database info (no actual data)
-safe_db_status avc
+# Forge package version, apt signing-key expiry, pending upgrades.
+# Package manager only — never the Rails console on a memory-starved box.
+pl server forge status prod1
 
-# Check for security updates
-safe_security_check avc
+# Read-only, resource-bounded logs: fixed source set, --tail clamped to 5000,
+# no follow mode and no arbitrary-command passthrough.
+pl logs prod1 --source=nginx --tail=200
+
+# Advisory counts for a site (no database contents)
+pl audit avc --security-only
 ```
 
-These functions use data secrets internally but only return sanitized information.
+> **Retired 2026-07-26:** the `lib/safe-ops.sh` proxy (`safe_server_status`,
+> `safe_db_status`, `safe_security_check`). It had **zero callers anywhere in the
+> tree** and printed instructions to run `./stg2prod.sh` and `./backup.sh` — root <!-- doc-truth:retired -->
+> scripts that do not exist. It was dead code that the standing orders pointed at,
+> which reads as coverage. The verbs above are the working replacement, and
+> `tests/unit/test-host.bats` fails if `CLAUDE.md` ever again names a `lib/*.sh`
+> with no production caller.
 
 #### Using the New Functions
 
@@ -375,9 +391,9 @@ Block all secrets files (original approach):
 For maximum security:
 
 ```bash
-# Option A: Two-tier with safe-ops
+# Option A: Two-tier with the sanitized pl verbs
 # Claude uses infrastructure secrets
-# Production ops through safe_* functions
+# Production ops through pl server health / pl logs / pl audit
 
 # Option B: Separate terminal
 # Claude in one terminal

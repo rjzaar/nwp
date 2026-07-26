@@ -233,34 +233,146 @@ cmd_reopen(){ _set_state "${1:-}" reopen; }
 #   CLOSED-BUT-OPEN-MR   issue closed while an MR referencing it is still open
 #   STALE-REF         the issue text names a branch that exists on no remote
 ################################################################################
+
+################################################################################
+# STALE-REF plumbing.
+#
+# For a long time this header advertised three classes and computed two:
+# STALE-REF was documented and never assigned to anything, so the command could
+# not emit it, and a clean run read as "checked, and none found". That is worse
+# than an absent check — ops#70's only note points at a branch and an MR that
+# never existed, and the tracker had no way to say so.
+#
+# Design note — deliberately narrow. A phantom-reference report is only useful
+# if a finding means something, so:
+#   • only branch-SHAPED tokens count: the namespaces this estate actually uses
+#     (feat/ fix/ chore/ ci/ pubrel/ release/ hotfix/ refactor/ perf/) and the
+#     ops-<N> convention. `docs/` and `test/` are excluded on purpose: they are
+#     far more often file paths in prose than branch names, and a false
+#     STALE-REF is noise dressed as signal.
+#   • anything ending in a file extension is dropped for the same reason.
+#   • "exists" is generous: a remote ref, a local ref, a tag, or a merge commit
+#     on origin/main naming the branch (landed and deleted) all count. Only a
+#     reference nobody can resolve at all is stale.
+################################################################################
+
+# _refs_in_text <text> → one candidate branch name per line (deduplicated)
+_refs_in_text() {
+  local text="${1:-}"
+  printf '%s\n' "$text" \
+    | grep -oE '(^|[^A-Za-z0-9._/-])(origin/)?((feat|fix|chore|ci|pubrel|release|hotfix|refactor|perf)/[A-Za-z0-9._/-]+|ops-[0-9]+[A-Za-z0-9._-]*)' 2>/dev/null \
+    | sed -E 's/^[^A-Za-z0-9]+//; s|^origin/||' \
+    | sed -E 's/[^A-Za-z0-9_/-]+$//' \
+    | grep -vE '\.(md|sh|yml|yaml|json|php|py|bats|ini|conf|txt|png|jpg|log|patch|bundle)$' 2>/dev/null \
+    | grep -vE '/$' 2>/dev/null \
+    | sort -u
+  return 0
+}
+
+# _ref_is_known <ref> [repo...] → 0 exists somewhere · 1 nowhere · 2 undetermined
+#
+# rc=2 (no repository could be inspected) is NOT "stale". Reporting a phantom
+# because the checkout was missing is exactly the kind of confident wrong answer
+# this command exists to remove.
+_ref_is_known() {
+  local ref="${1:-}"; shift || true
+  [ -n "$ref" ] || return 2
+  local -a repos=("$@")
+  [ "${#repos[@]}" -gt 0 ] || repos=("$PROJECT_ROOT")
+
+  local repo checked=0
+  for repo in "${repos[@]}"; do
+    [ -n "$repo" ] || continue
+    git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || continue
+    checked=$((checked + 1))
+
+    if git -C "$repo" for-each-ref --format='%(refname:short)' 'refs/remotes/' 2>/dev/null \
+         | sed -E 's|^[^/]+/||' | grep -qxF "$ref"; then
+      return 0
+    fi
+    if git -C "$repo" show-ref --verify --quiet "refs/heads/$ref" 2>/dev/null; then return 0; fi
+    if git -C "$repo" show-ref --verify --quiet "refs/tags/$ref" 2>/dev/null; then return 0; fi
+
+    # Landed and deleted: a merge commit on origin/main still names it.
+    if git -C "$repo" rev-parse --verify -q origin/main >/dev/null 2>&1; then
+      if git -C "$repo" log origin/main -1 --format=%h --fixed-strings \
+             --grep="Merge branch '$ref'" 2>/dev/null | grep -q .; then
+        return 0
+      fi
+    fi
+  done
+
+  [ "$checked" -gt 0 ] || return 2
+  return 1
+}
 cmd_reconcile(){
   [ -n "$YQ" ] || die "yq required"
-  local as_json=false only_iid="" a
+  local as_json=false only_iid="" scan_notes=true a
   for a in "$@"; do
     case "$a" in
       --json) as_json=true ;;
+      --no-notes) scan_notes=false ;;
       [0-9]*) only_iid="$a" ;;
-      -h|--help) echo "usage: pl issue reconcile [<iid>] [--json]"; return 0 ;;
+      -h|--help) echo "usage: pl issue reconcile [<iid>] [--json] [--no-notes]"; return 0 ;;
     esac
   done
 
   # Repos whose main history can contain "ops#N": nwp/nwp plus every site repo.
-  local -a repos=("$PROJECT_ROOT")
-  if command -v discover_repos >/dev/null 2>&1; then
-    local r
-    while IFS= read -r r; do [ -n "$r" ] && repos+=("$r"); done < <(discover_repos 2>/dev/null)
+  # NWP_RECONCILE_REPOS (whitespace-separated) overrides, for tests.
+  local -a repos=()
+  if [ -n "${NWP_RECONCILE_REPOS:-}" ]; then
+    # shellcheck disable=SC2206
+    repos=(${NWP_RECONCILE_REPOS})
+  else
+    repos=("$PROJECT_ROOT")
+    if command -v discover_repos >/dev/null 2>&1; then
+      local r
+      while IFS= read -r r; do [ -n "$r" ] && repos+=("$r"); done < <(discover_repos 2>/dev/null)
+    fi
   fi
 
-  local issues
-  issues=$(_api_get "/projects/$PROJECT_ID/issues?state=all&per_page=100&order_by=updated_at")
-  [ -n "$issues" ] || die "could not read the issue list"
+  # PAGINATE. The previous single `per_page=100` call silently scanned a
+  # TRUNCATED list and then printed "tracker and code agree" — a positive
+  # assertion over data it never read. nwp/ops is already AT the 100 cap, so
+  # every issue past the first page was invisible to this command.
+  #
+  # The rows are flattened to TSV as they arrive rather than concatenating JSON:
+  # one representation, no merge step that can quietly drop a page.
+  local issues_tsv="" page=0 batch rows
+  while :; do
+    page=$((page + 1))
+    batch=$(_api_get "/projects/$PROJECT_ID/issues?state=all&per_page=100&page=$page&order_by=updated_at")
+    [ -n "$batch" ] || break
+    rows=$(printf '%s' "$batch" | "$YQ" e -p=json -r \
+             '.[] | [(.iid|tostring), .state, .title,
+                     ((.description // "") | sub("\n"; " ") | sub("\t"; " "))] | @tsv' - 2>/dev/null || true)
+    [ -n "$rows" ] || break
+    issues_tsv="${issues_tsv}${rows}"$'\n'
+    [ "$(printf '%s\n' "$rows" | grep -c .)" -lt 100 ] && break
+    [ "$page" -ge 20 ] && break   # 2000 issues is not a tracker, it is a landfill
+  done
+  [ -n "$issues_tsv" ] || die "could not read the issue list"
 
-  [ "$as_json" = false ] && print_header "Issue ↔ code reconciliation (project $PROJECT_ID)"
-  [ "$as_json" = true ] && printf '[\n'
+  # State the SCOPE. "STALE-REF" means "found in none of the repositories this
+  # run could see" — which is only useful if the reader knows how many that was.
+  # An unqualified phantom report is itself an over-claim.
+  local n_repos=0 _r
+  for _r in "${repos[@]}"; do
+    git -C "$_r" rev-parse --git-dir >/dev/null 2>&1 && n_repos=$((n_repos + 1))
+  done
+
+  if [ "$as_json" = false ]; then
+    print_header "Issue ↔ code reconciliation (project $PROJECT_ID)"
+    printf '  scope: %d issue(s) · %d git repo(s) searched for cited refs%s\n\n' \
+      "$(printf '%s' "$issues_tsv" | grep -c .)" "$n_repos" \
+      "$([ "$scan_notes" = true ] && echo ' · notes included' || echo ' · notes SKIPPED (--no-notes)')"
+  else
+    printf '[\n'
+  fi
 
   local first=true findings=0
-  local iid state title merged_in open_mr_n repo
-  while IFS=$'\t' read -r iid state title; do
+  local iid state title desc merged_in open_mr_n repo
+  while IFS=$'\t' read -r iid state title desc; do
     [ -z "$iid" ] && continue
     [ -n "$only_iid" ] && [ "$iid" != "$only_iid" ] && continue
 
@@ -296,12 +408,45 @@ cmd_reconcile(){
                 | "$YQ" e -p=json '[.[] | select(.state == "opened")] | length' - 2>/dev/null || echo 0)
     [[ "$open_mr_n" =~ ^[0-9]+$ ]] || open_mr_n=0
 
+    # STALE-REF: branch-shaped tokens in the issue text that resolve nowhere.
+    # Notes are scanned too (ops#70's phantom is in a note, not the body); pass
+    # --no-notes to halve the API calls when you only want the state classes.
+    local text="$title $desc" ref stale_refs=""
+    if [ "$scan_notes" = true ]; then
+      local notes
+      notes=$(_api_get "/projects/$PROJECT_ID/issues/$iid/notes?per_page=100" 2>/dev/null || true)
+      if [ -n "$notes" ]; then
+        text="$text $("$YQ" e -p=json -r '[.[] | .body] | join(" ")' - <<<"$notes" 2>/dev/null | tr '\n\t' '  ' || true)"
+      fi
+    fi
+    local ref_rc
+    while IFS= read -r ref; do
+      [ -n "$ref" ] || continue
+      ref_rc=0; _ref_is_known "$ref" "${repos[@]}" || ref_rc=$?
+      # rc=0 exists · rc=2 could not determine — only rc=1 is a phantom.
+      [ "$ref_rc" -eq 1 ] || continue
+      stale_refs="${stale_refs:+$stale_refs }$ref"
+    done < <(_refs_in_text "$text")
+
     local class="" advice=""
     if [ "$state" = "opened" ] && [ -n "$merged_in" ] && [ "$open_mr_n" = "0" ]; then
       class="MERGED-BUT-OPEN"; advice="pl issue close $iid"
     elif [ "$state" = "closed" ] && [ "$open_mr_n" -gt 0 ]; then
       class="CLOSED-BUT-OPEN-MR"; advice="pl issue reopen $iid"
     fi
+
+    if [ -n "$stale_refs" ]; then
+      findings=$((findings + 1))
+      if [ "$as_json" = true ]; then
+        [ "$first" = true ] && first=false || printf ',\n'
+        printf '  {"iid":%s,"state":"%s","class":"STALE-REF","stale_refs":"%s","repos_searched":%s,"advice":"%s"}' \
+          "$iid" "$state" "$stale_refs" "$n_repos" "correct or delete the reference"
+      else
+        printf '  %-20s #%-5s %-58s → %s\n' "STALE-REF" "$iid" "${title:0:58}" \
+          "cites (found in none of $n_repos repo(s)): $stale_refs"
+      fi
+    fi
+
     [ -z "$class" ] && continue
 
     findings=$((findings + 1))
@@ -312,7 +457,7 @@ cmd_reconcile(){
     else
       printf '  %-20s #%-5s %-58s → %s\n' "$class" "$iid" "${title:0:58}" "$advice"
     fi
-  done < <(printf '%s' "$issues" | "$YQ" e -p=json -r '.[] | [(.iid|tostring), .state, .title] | @tsv' - 2>/dev/null)
+  done < <(printf '%s' "$issues_tsv")
 
   if [ "$as_json" = true ]; then
     printf '\n]\n'
@@ -488,8 +633,14 @@ pl issue — the nwp/ops work board (read + write) + per-issue worktrees
     pl issue comment <iid> "text"  add a comment (or pipe text on stdin)
     pl issue close <iid>           close an issue (refuses while an MR referencing
                                    it is still open; --force overrides)
-    pl issue reconcile [<iid>]     report issues that disagree with what landed:
-                                   merged-but-open, closed-with-open-MR. Read-only.
+    pl issue reconcile [<iid>] [--no-notes] [--json]
+                                   report issues that disagree with what landed:
+                                   MERGED-BUT-OPEN · CLOSED-BUT-OPEN-MR · STALE-REF
+                                   (cites a branch found in none of the repos
+                                   searched). Paginates the whole tracker.
+                                   Read-only. --no-notes skips the per-issue note
+                                   fetch (roughly twice as fast, misses refs that
+                                   only appear in comments).
     pl issue reopen <iid>          reopen an issue
     pl issue label <iid> --add a,b [--remove c]
                                    add and/or remove labels

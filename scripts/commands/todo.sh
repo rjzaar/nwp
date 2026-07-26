@@ -155,6 +155,7 @@ parse_todo_items() {
     TODO_SITES=()
     TODO_ACTIONS=()
     TODO_CATEGORIES=()
+    TODO_UNKNOWNS=()
 
     # Simple JSON parsing without jq
     while IFS= read -r line; do
@@ -167,6 +168,11 @@ parse_todo_items() {
         local site=$(echo "$line" | grep -o '"site":"[^"]*"' | cut -d'"' -f4)
         local action=$(echo "$line" | grep -o '"action":"[^"]*"' | cut -d'"' -f4)
         local category=$(echo "$line" | grep -o '"category":"[^"]*"' | cut -d'"' -f4)
+        # UNKNOWN items (a check that could not run) are not findings; they are
+        # the ABSENCE of a finding we cannot vouch for. Carry the flag through so
+        # `--json` consumers (pl rag, the console) can refuse to grade GREEN.
+        local unknown=$(echo "$line" | grep -o '"unknown":[a-z]*' | cut -d':' -f2)
+        [ -z "$unknown" ] && unknown=false
 
         [ -z "$id" ] && continue
 
@@ -177,6 +183,7 @@ parse_todo_items() {
         TODO_SITES+=("$site")
         TODO_ACTIONS+=("$action")
         TODO_CATEGORIES+=("$category")
+        TODO_UNKNOWNS+=("$unknown")
     done <<< "$json_data"
 }
 
@@ -213,7 +220,7 @@ filter_items() {
     done
 
     # Rebuild arrays with filtered items
-    local -a new_ids=() new_priorities=() new_titles=() new_descriptions=() new_sites=() new_actions=() new_categories=()
+    local -a new_ids=() new_priorities=() new_titles=() new_descriptions=() new_sites=() new_actions=() new_categories=() new_unknowns=()
     for i in "${filtered_indices[@]}"; do
         new_ids+=("${TODO_IDS[$i]}")
         new_priorities+=("${TODO_PRIORITIES[$i]}")
@@ -222,6 +229,7 @@ filter_items() {
         new_sites+=("${TODO_SITES[$i]}")
         new_actions+=("${TODO_ACTIONS[$i]}")
         new_categories+=("${TODO_CATEGORIES[$i]}")
+        new_unknowns+=("${TODO_UNKNOWNS[$i]:-false}")
     done
 
     TODO_IDS=("${new_ids[@]}")
@@ -231,38 +239,47 @@ filter_items() {
     TODO_SITES=("${new_sites[@]}")
     TODO_ACTIONS=("${new_actions[@]}")
     TODO_CATEGORIES=("${new_categories[@]}")
+    TODO_UNKNOWNS=("${new_unknowns[@]}")
 }
 
 ################################################################################
 # Ignored Items Management
 ################################################################################
 
-# Check if an item is ignored
-is_ignored() {
-    local item_id="$1"
-
-    if command -v yq &>/dev/null && [ -f "$CONFIG_FILE" ]; then
-        local ignored
-        ignored=$(yq eval ".settings.todo.ignored[] | select(.id == \"$item_id\")" "$CONFIG_FILE" 2>/dev/null)
-        [ -n "$ignored" ] && return 0
-    fi
-
-    return 1
-}
-
-# Check if item is in ignored list
-is_item_ignored() {
+# Is this suppression still in force?
+#
+# `expires` used to be write-only: add_to_ignored could record an expiry and
+# NOTHING read it back, so every "snooze until next week" was in practice a
+# permanent silence. Both readers below now consult it. Delegates to
+# todo_is_ignored (lib/todo-checks.sh) so there is ONE implementation — two
+# copies of a suppression rule is how one of them ends up wrong.
+_todo_suppression_active() {
     local item_id="$1"
     local config_file="${CONFIG_FILE:-$PROJECT_ROOT/nwp.yml}"
-
-    [ ! -f "$config_file" ] && return 1
-
-    if command -v yq &>/dev/null; then
-        local found=$(yq eval ".settings.todo.ignored[] | select(.id == \"$item_id\") | .id" "$config_file" 2>/dev/null)
-        [ -n "$found" ] && return 0
+    [ -f "$config_file" ] || return 1
+    if command -v todo_is_ignored &>/dev/null; then
+        TODO_CONFIG_FILE="$config_file" todo_is_ignored "$item_id"
+        return $?
     fi
-    return 1
+    # Fallback when todo-checks.sh is not loaded: same semantics, inline.
+    command -v yq &>/dev/null || return 1
+    local found expires exp_epoch now_epoch
+    found=$(yq eval ".settings.todo.ignored[] | select(.id == \"$item_id\") | .id" "$config_file" 2>/dev/null)
+    [ -n "$found" ] || return 1
+    expires=$(yq eval ".settings.todo.ignored[] | select(.id == \"$item_id\") | .expires // \"\"" "$config_file" 2>/dev/null | grep -v '^null$' | head -1)
+    if [ -n "$expires" ]; then
+        exp_epoch=$(date -d "$expires" +%s 2>/dev/null || echo 0)
+        now_epoch=$(date +%s)
+        { [ "$exp_epoch" = "0" ] || [ "$exp_epoch" -le "$now_epoch" ]; } && return 1
+    fi
+    return 0
 }
+
+# Check if an item is ignored
+is_ignored() { _todo_suppression_active "$1"; }
+
+# Check if item is in ignored list
+is_item_ignored() { _todo_suppression_active "$1"; }
 
 # Add item to ignored/processed list
 add_to_ignored() {
@@ -292,6 +309,34 @@ add_to_ignored() {
     else
         print_status "OK" "Item '$item_id' ignored"
     fi
+}
+
+# Suppress an item AFTER the TUI executed its command.
+#
+# WHY THIS IS SEPARATE FROM add_to_ignored: `add_to_ignored "$id" "Executed"`
+# passes no $3, so no `expires` key is written and the suppression is PERMANENT.
+# Combined with a command that could not do its job (the SSL item ran
+# `sudo certbot renew` on the workstation and exited 0), that silently and
+# permanently disarmed a certificate-expiry check.
+#
+# An "I just dealt with it" suppression is a SNOOZE, not a deletion: the check
+# must be allowed to re-raise the item if the condition is still true. A
+# permanent ignore stays available, but only as an explicit operator choice via
+# `pl todo ignore`.
+TODO_EXECUTE_SNOOZE_DAYS="${TODO_EXECUTE_SNOOZE_DAYS:-7}"
+todo_suppress_after_execute() {
+    local item_id="$1"
+    local reason="${2:-Executed}"
+    local expires
+    expires=$(date -u -d "+${TODO_EXECUTE_SNOOZE_DAYS} days" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
+              || date -u -v+"${TODO_EXECUTE_SNOOZE_DAYS}"d +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)
+    if [ -z "$expires" ]; then
+        # If we cannot compute an expiry we must NOT fall back to a permanent
+        # suppression — that is the defect. Leave the item standing.
+        print_warning "Could not compute a suppression expiry; leaving '$item_id' visible"
+        return 1
+    fi
+    add_to_ignored "$item_id" "$reason" "$expires"
 }
 
 # Remove item from ignored list
@@ -415,6 +460,22 @@ show_list() {
     echo -e "════════════════════════════════════════════════════════════════════"
     echo -e "Summary: ${BOLD}$total items${NC} total (${RED}$high_count high${NC}, ${YELLOW}$medium_count medium${NC}, $low_count low)"
 
+    # Blind spots. These are NOT findings — they are checks that did not run, and
+    # the whole point of surfacing them separately is that a short todo list is
+    # only good news if the checks behind it actually completed.
+    local unknown_count=0 ui
+    for ui in "${TODO_UNKNOWNS[@]:-}"; do
+        [ "$ui" = "true" ] && ((unknown_count++))
+    done
+    if [ "$unknown_count" -gt 0 ]; then
+        echo -e "         ${YELLOW}⚠ $unknown_count check(s) COULD NOT RUN — this list is incomplete${NC}"
+        local i
+        for i in "${!TODO_IDS[@]}"; do
+            [ "${TODO_UNKNOWNS[$i]:-false}" = "true" ] || continue
+            echo -e "           ${DIM}${TODO_IDS[$i]}: ${TODO_DESCRIPTIONS[$i]}${NC}"
+        done
+    fi
+
     # Count ignored items
     local ignored_count=0
     if command -v yq &>/dev/null && [ -f "$CONFIG_FILE" ]; then
@@ -445,19 +506,30 @@ show_json() {
         esac
     done
 
+    # `unknown` is a first-class summary field, not a subset of `medium`: a
+    # consumer must be able to tell "3 things to do" from "3 things I could not
+    # even look at". pl rag keys on it to refuse a GREEN grade.
+    local unknown_count=0
+    local u
+    for u in "${TODO_UNKNOWNS[@]:-}"; do
+        [ "$u" = "true" ] && ((unknown_count++))
+    done
+
     echo "    \"total\": $((high_count + medium_count + low_count)),"
     echo "    \"high\": $high_count,"
     echo "    \"medium\": $medium_count,"
-    echo "    \"low\": $low_count"
+    echo "    \"low\": $low_count,"
+    echo "    \"unknown\": $unknown_count"
     echo "  },"
     echo "  \"items\": ["
 
     local first=true
     for i in "${!TODO_IDS[@]}"; do
         [ "$first" = true ] && first=false || echo ","
-        printf '    {"id":"%s","category":"%s","priority":"%s","title":"%s","description":"%s","site":"%s","action":"%s"}' \
+        printf '    {"id":"%s","category":"%s","priority":"%s","title":"%s","description":"%s","site":"%s","action":"%s","unknown":%s}' \
             "${TODO_IDS[$i]}" "${TODO_CATEGORIES[$i]}" "${TODO_PRIORITIES[$i]}" \
-            "${TODO_TITLES[$i]}" "${TODO_DESCRIPTIONS[$i]}" "${TODO_SITES[$i]}" "${TODO_ACTIONS[$i]}"
+            "${TODO_TITLES[$i]}" "${TODO_DESCRIPTIONS[$i]}" "${TODO_SITES[$i]}" "${TODO_ACTIONS[$i]}" \
+            "${TODO_UNKNOWNS[$i]:-false}"
     done
 
     echo ""

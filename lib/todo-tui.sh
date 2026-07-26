@@ -579,8 +579,19 @@ tui_get_exec_command() {
             fi
             ;;
         SSL)
-            # SSL renewal (needs sudo typically)
-            cmd="sudo certbot renew"
+            # DELIBERATELY NOT EXECUTABLE.
+            #
+            # This used to invoke certbot with sudo, eval'd on the WORKSTATION.
+            # The certificates live on the server, not here; certbot on this box
+            # finds nothing to renew and exits 0, so the TUI recorded the item as
+            # "Executed" and suppressed it — permanently disarming that site's
+            # certificate-expiry check at the exact moment it mattered.
+            #
+            # A local command that cannot possibly do the remote job is worse
+            # than no command, because success is indistinguishable from a no-op.
+            # Restore this ONLY when a remote verb exists (e.g. `pl server cert
+            # renew <server>`), and only pointing at that verb.
+            cmd=""
             ;;
         TOK)
             # Token rotation tracking
@@ -588,10 +599,20 @@ tui_get_exec_command() {
             [ -n "$token_name" ] && cmd="pl todo token $token_name"
             ;;
         *)
-            # Not executable
             cmd=""
             ;;
     esac
+
+    # Fall back to the item's own action string when it is a real command.
+    # Checks now file runnable `pl ...` actions (see _lbk_action in
+    # lib/todo-checks.sh); prose like "ssh into <box> and check the cron" is NOT
+    # a command and must stay non-executable, which is what kept the DR-backup
+    # item inert until the strings were fixed.
+    if [ -z "$cmd" ] && [ -n "$action" ]; then
+        case "$action" in
+            "pl "*|"ddev "*|"git "*|"df "*) cmd="$action" ;;
+        esac
+    fi
 
     echo "$cmd"
 }
@@ -632,7 +653,8 @@ tui_execute_item() {
         if eval "$cmd"; then
             echo "------------------------------------------------------------------------"
             echo -e "${GREEN}Command completed successfully${NC}"
-            add_to_ignored "$id" "Executed" 2>/dev/null
+            # Snooze, never a permanent ignore — see todo_suppress_after_execute.
+            todo_suppress_after_execute "$id" "Executed" 2>/dev/null
             sleep 1
         else
             echo "------------------------------------------------------------------------"
@@ -640,7 +662,7 @@ tui_execute_item() {
             echo -n "Mark as processed anyway? [y/N] "
             read -r mark_anyway
             if [ "$mark_anyway" = "y" ] || [ "$mark_anyway" = "Y" ]; then
-                add_to_ignored "$id" "Executed (with errors)" 2>/dev/null
+                todo_suppress_after_execute "$id" "Executed (with errors)" 2>/dev/null
             fi
             sleep 1
         fi
@@ -872,7 +894,7 @@ todo_tui_main() {
 
                         if eval "${exec_commands[$i]}"; then
                             echo -e "${GREEN}OK${NC}"
-                            add_to_ignored "${exec_ids[$i]}" "Executed" 2>/dev/null
+                            todo_suppress_after_execute "${exec_ids[$i]}" "Executed" 2>/dev/null
                             ((success++))
                         else
                             echo -e "${RED}FAILED${NC}"

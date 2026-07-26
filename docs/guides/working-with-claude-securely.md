@@ -9,21 +9,21 @@ NWP is a standalone shell script system. Claude Code is entirely optional - all 
 ```bash
 # Site management
 ./pl install d mysite              # Create new Drupal site
-./backup.sh mysite                 # Backup site
-./restore.sh mysite                # Restore from backup
-./delete.sh mysite                 # Remove site
+pl backup mysite                 # Backup site
+pl restore mysite                # Restore from backup
+pl delete mysite                 # Remove site
 
 # Import existing production site
-./import.sh                        # Interactive mode
-./import.sh --server=production    # Use specific server from nwp.yml
-./import.sh --ssh=root@example.com # Custom SSH connection
+pl import                        # Interactive mode
+pl import --server=production    # Use specific server from nwp.yml
+pl import --ssh=root@example.com # Custom SSH connection
 
 # Deployment
-./dev2stg.sh mysite                # Deploy to staging
-./stg2prod.sh mysite               # Deploy to production
+pl dev2stg mysite                # Deploy to staging
+pl stg2prod mysite               # Deploy to production
 
 # Re-sync with production
-./sync.sh mysite                   # Pull fresh DB/files from origin
+pl sync mysite                   # Pull fresh DB/files from origin
 ```
 
 Claude is only useful for:
@@ -41,15 +41,15 @@ The `report.sh` wrapper captures command failures and offers to report them to G
 
 **Wrapper mode** (catches failures):
 ```bash
-./report.sh backup.sh mysite           # Run backup, offer to report on failure
-./report.sh install.sh d mysite        # Run install with args
-./report.sh -c backup.sh mysite        # Copy URL to clipboard instead of browser
+pl report backup.sh mysite           # Run backup, offer to report on failure
+pl report install.sh d mysite        # Run install with args
+pl report -c backup.sh mysite        # Copy URL to clipboard instead of browser
 ```
 
 **Direct report mode** (manual):
 ```bash
-./report.sh --report "Error message"
-./report.sh --report -s backup.sh "Description"
+pl report --report "Error message"
+pl report --report -s backup.sh "Description"
 ```
 
 ### How It Works
@@ -151,7 +151,7 @@ The functions internally use credentials from `.secrets.data.yml` (SSH keys, dat
 
 ```bash
 # On production server or machine without Claude
-./backup.sh mysite
+pl backup mysite
 # Error: Database connection failed
 ```
 
@@ -159,7 +159,7 @@ The functions internally use credentials from `.secrets.data.yml` (SSH keys, dat
 
 Option A - Use report.sh wrapper:
 ```bash
-./report.sh backup.sh mysite
+pl report backup.sh mysite
 # If it fails, press 'y' to generate GitLab issue URL
 # Share the issue URL with your Claude-enabled environment
 ```

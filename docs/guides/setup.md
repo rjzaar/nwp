@@ -263,10 +263,10 @@ If you have an existing `.secrets.yml` with mixed secrets:
 
 ```bash
 # Check for data secrets in wrong files
-./migrate-secrets.sh --check
+pl migrate-secrets --check
 
 # Migrate to two-tier architecture
-./migrate-secrets.sh --nwp
+pl migrate-secrets --nwp
 ```
 
 See [DATA_SECURITY_BEST_PRACTICES.md](../security/data-security-best-practices.md) for full documentation.
@@ -355,12 +355,15 @@ pl
 
 ### CLI Aliases
 
-Short aliases are supported:
-- `pl i` = `pl install`
-- `pl b` = `pl backup`
-- `pl r` = `pl restore`
-- `pl cp` = `pl copy`
-- `pl del` = `pl delete`
+**There are none.** This section used to claim "pl i" / "pl b" / "pl r" /
+"pl cp" / "pl del" were short aliases for `install` / `backup` / `restore` /
+`copy` / `delete`. They never existed — `pl` dispatches only names
+`pl commands` lists, and every one of those five exits 1 with `Unknown
+command`. Type the full verb, or run:
+
+```bash
+pl commands
+```
 
 ## Uninstallation
 
@@ -368,7 +371,7 @@ Short aliases are supported:
 
 ```bash
 cd ~/nwp
-./uninstall_nwp.sh
+pl uninstall_nwp
 ```
 
 ### Smart Uninstall
@@ -585,7 +588,7 @@ dpkg -l > ~/packages-before-nwp.txt
 Before running uninstall:
 ```bash
 ddev export-db --all
-./backup.sh mysite
+pl backup mysite
 ```
 
 ## See Also

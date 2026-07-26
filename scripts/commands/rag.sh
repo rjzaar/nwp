@@ -7,12 +7,21 @@ set -euo pipefail
 # The single "what needs attention across everything" view. Merges two existing
 # signals into ONE per-site grade + a fleet rollup:
 #   - security  → `pl audit` records (private/update-awareness/<site>.json)
-#   - work/drift→ `pl todo check --json` items (14 checks, grouped by site)
+#   - work/drift→ `pl todo check --json` items, grouped by site
 #
 # Grade per site:
 #   RED   = an open security advisory (audit) OR a high-priority security todo (SEC/TOK)
-#   AMBER = any other todo item (drift/work/uncommitted/backup/...) OR audit cache-stale
-#   GREEN = no advisories and no todo items
+#   AMBER = any other todo item (drift/work/uncommitted/backup/...), OR audit
+#           cache-stale, OR the site was never scanned, OR a check could not run
+#   GREEN = we LOOKED and it was clear
+#
+# GREEN is a positive assertion, not a default. Before item 2 (oversight-honesty)
+# a site with no audit record rendered `security: 0` and graded GREEN exactly
+# like an audited-clean site — so adding a site to the fleet made the fleet look
+# SAFER. Unscanned sites now render `-`, never `0`, and are counted separately.
+#
+# The rendering core lives in lib/rag-render.py so it can be unit-tested
+# (tests/unit/test-rag-unscanned.bats).
 #
 # Read-only. Writes private/rag/state.json. Exit 3 if any site is RED.
 ################################################################################
@@ -44,8 +53,13 @@ ${BOLD}USAGE:${NC} pl rag [--site <name>] [--json] [--no-todo]
   -h, --help
 
 🔴 RED   = open security advisory (pl audit) or high-priority security todo
-🟠 AMBER = any other todo item (drift/work/uncommitted/...) or stale audit cache
-🟢 GREEN = clear
+🟠 AMBER = any other todo item (drift/work/uncommitted/...), a stale audit cache,
+           an UNSCANNED site, or a check that could not run
+🟢 GREEN = we looked, and it was clear
+
+SEC column: a number means measured. '-' means UNSCANNED — nothing was measured,
+which is NOT the same as zero. TODO column '?N' = N checks could not run.
+A site that cannot be scanned can never grade GREEN.
 
 Sources: pl audit records ($AUDIT_DIR), pl todo check --json. Exit 3 if any RED.
 EOF
@@ -333,87 +347,7 @@ main() {
     { AUDIT_DIR="$AUDIT_DIR" TODO_JSON="$todo_json" STATE_DIR="$STATE_DIR" \
     SITE="$SITE" JSON="$JSON" PHASES="$phases" MATURITIES="$mats" \
     RED="$RED" YEL="$YELLOW" GRN="$GREEN" NC="$NC" BOLD="$BOLD" DIM="${DIM:-}" \
-    python3 - <<'PY'
-import os, json, glob
-from collections import defaultdict
-
-audit_dir=os.environ["AUDIT_DIR"]; state_dir=os.environ["STATE_DIR"]
-site_filter=os.environ.get("SITE",""); as_json=os.environ.get("JSON")=="true"
-RED,YEL,GRN,NC,BOLD=(os.environ[k] for k in ("RED","YEL","GRN","NC","BOLD"))
-
-# canonical phases (ops#33) + maturity classes (P67): explicit pairs; absent = defaults
-phases=dict(kv.split("=",1) for kv in os.environ.get("PHASES","").split() if "=" in kv)
-mats=dict(kv.split("=",1) for kv in os.environ.get("MATURITIES","").split() if "=" in kv)
-MAT_ABBR={"incubating":"inc","stabilizing":"stab","production":"prod"}
-
-# --- security signal from pl audit records ---
-sec={}  # site -> {count, stale}
-for f in glob.glob(os.path.join(audit_dir,"*.json")):
-    try: d=json.load(open(f))
-    except Exception: continue
-    s=d.get("site") or os.path.basename(f)[:-5]
-    sec[s]={"count":int(d.get("security_count",0) or 0),
-            "ignored":int(d.get("ignored_count",0) or 0),
-            "stale":bool(d.get("cache_stale",False))}
-
-# --- work signal from pl todo ---
-try: todo=json.load(open(os.environ["TODO_JSON"]))
-except Exception: todo={"items":[]}
-items = todo if isinstance(todo,list) else todo.get("items",[])
-work=defaultdict(lambda: {"high":0,"med":0,"low":0,"sec_high":0,"top":""})
-SEC_CATS={"SEC","TOK"}
-for it in items:
-    s=it.get("site") or "(global)"
-    p=(it.get("priority") or "").lower()
-    c=(it.get("category") or "").upper()
-    w=work[s]
-    if p=="high": w["high"]+=1
-    elif p=="medium": w["med"]+=1
-    else: w["low"]+=1
-    if c in SEC_CATS and p=="high": w["sec_high"]+=1
-    if not w["top"] and p in ("high","medium"):
-        w["top"]=(it.get("title") or it.get("description") or "")[:46]
-
-sites=set(sec)|set(work)
-if site_filter: sites={site_filter}
-def grade(s):
-    sc=sec.get(s,{}); wk=work.get(s,{})
-    secn=sc.get("count",0); sech=wk.get("sec_high",0)
-    if secn>0 or sech>0: return "RED"
-    if (wk.get("high",0)+wk.get("med",0)+wk.get("low",0))>0 or sc.get("stale"): return "AMBER"
-    return "GREEN"
-
-rows=[]
-for s in sorted(sites):
-    g=grade(s); sc=sec.get(s,{}); wk=work.get(s,{})
-    rows.append({"site":s,"rag":g,"phase":phases.get(s,"(dev)"),
-        "maturity":MAT_ABBR.get(mats.get(s,""),"(inc)") if mats.get(s) else "(inc)",
-        "security":sc.get("count",0),"ignored":sc.get("ignored",0),"stale":sc.get("stale",False),
-        "todo_high":wk.get("high",0),"todo_med":wk.get("med",0),"todo_low":wk.get("low",0),
-        "top":wk.get("top","")})
-
-counts={"RED":0,"AMBER":0,"GREEN":0}
-for r in rows: counts[r["rag"]]+=1
-state={"generated":todo.get("timestamp") if isinstance(todo,dict) else None,
-       "summary":counts,"sites":rows}
-json.dump(state, open(os.path.join(state_dir,"state.json"),"w"), indent=2)
-
-if as_json:
-    print(json.dumps(state, indent=2))
-else:
-    dot={"RED":RED+"●"+NC,"AMBER":YEL+"●"+NC,"GREEN":GRN+"●"+NC}
-    print(f"\n  {'':2} {'SITE':<16} {'PHASE':<7} {'MAT':<6} {'SEC':>4} {'TODO(h/m/l)':>12}  TOP")
-    for r in sorted(rows, key=lambda x:{"RED":0,"AMBER":1,"GREEN":2}[x["rag"]]):
-        sec_s=str(r["security"]) + (f"+{r['ignored']}i" if r["ignored"] else "") + ("*" if r["stale"] else "")
-        td=f"{r['todo_high']}/{r['todo_med']}/{r['todo_low']}"
-        print(f"  {dot[r['rag']]}  {r['site']:<16} {r['phase']:<7} {r['maturity']:<6} {sec_s:>4} {td:>12}  {r['top']}")
-    print(f"\n  {BOLD}Fleet:{NC} {RED}● {counts['RED']} red{NC}  {YEL}● {counts['AMBER']} amber{NC}  {GRN}● {counts['GREEN']} green{NC}"
-          f"   ({len(rows)} sites)   legend: SEC *=cache-stale, +Ni=ignored")
-    print(f"  state → {os.path.join(state_dir,'state.json')}")
-
-import sys
-sys.exit(3 if counts["RED"]>0 else 0)
-PY
+    python3 "$PROJECT_ROOT/lib/rag-render.py"
     } > "$out"
     rag_rc=$?
     set -e

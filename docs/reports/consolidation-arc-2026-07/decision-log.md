@@ -3426,3 +3426,233 @@ already have seen those two tests fail spuriously.
 `security:review` gate caught that and required the `REVIEW:` marker, which is why the MR title
 carries it. The CI change is one number plus comments; the behavioural change is the `unset`.
 **Reversible-how:** `git revert -m 1 <merge>`.
+---
+
+## [2026-07-26] B1-pubrel-docs-scrub-reproduced-not-merged-and-the-gate-half-was-already-superseded
+**Situation:** `origin/pubrel/scrub-and-gate` (2 commits, 2 ahead / **228 behind**, last touched
+2026-07-17, never had an MR) genericised operator identifiers in 31 public-release docs and also
+added three leakage rules. The gate half is **superseded**: `operator-public-ip`,
+`operator-personal-email` and `live-domain-apex` are all on main since 92cf069, and the ops#98
+role-address swap (NOTICE, docs/CC0_DEDICATION.md) is done. `pl branch stranded` labels the whole
+branch DO NOT MERGE WHOLESALE — correct, since merging it would revert main's hardening and delete
+~59k lines of work landed in the intervening 228 commits.
+**Decision:** did **not** merge, rebase, or cherry-pick the branch. Instead proved its scrub was a
+purely mechanical substitution and re-applied that substitution to main's *current* content.
+**Evidence for that:** applying `nwpcode.org|mayostudios.org -> example.com` (RFC 2606) and
+`97.107.137.88 -> 203.0.113.10` (RFC 5737) to the branch's own base blob reproduced the branch blob
+**byte-identically for 31/31 files** (`identical: 31  differs: 0`). So nothing is lost by ignoring
+the 9-day-old blobs, and the "re-apply by hand what main changed since" step in the plan became
+unnecessary — 6 of the 31 had moved on main and were picked up automatically.
+**Departure from the item, 1 — the stated acceptance grep was wrong.** It matched domains only.
+Two files (F13, F16) leak the operator's **public IP**, not a domain, so a domains-only test would
+have called them clean. The checker matches all three identity rules the gate enforces.
+**Departure from the item, 2 — one file must NOT be scrubbed.** `.gitleaks.toml` explicitly
+allowlists public forge URLs (`git.<domain>/<proj>/-/(issues|merge_requests|blob|tree)/`) as
+"public project links, not subdomain leaks". The ONLY hit in
+`docs/pedagogy/learning-science-foundations.md` is such a URL — a live link to ops#61. The
+stranded branch rewrote it to `git.example.com` anyway, **breaking the hyperlink**. That is a
+defect in the branch and was deliberately not imported; the file is left byte-identical to main.
+So the real scope is **30 files scrubbed, 1 correctly untouched**, not 31.
+**Red (recorded before the fix):** 30/31 files carrying an identifier over 74 occurrences; with
+the 75 in-scope fingerprints stripped from `.gitleaksignore` the tracked-tree scan reported **78
+findings, exit 1**. Green: 0 offenders, and the scan exits 0 with those 75 fingerprints **deleted
+from the committed ledger** (79 `docs/` entries -> 4). That deletion is the load-bearing half: the
+scrub is real, not cosmetic.
+**Two gitleaks footguns found and documented in tests/helpers/pubrel-docs-check.sh:**
+(a) this repo's `.gitignore` starts with `/*`, and `gitleaks detect --no-git` honours `.gitignore`,
+so a scan from the repo root walks almost nothing — 1 finding from the root vs 82 scanning `docs/`
+explicitly. **The ledger header's own documented regenerate command therefore scans an empty
+tree.** The test exports the tracked file list to a temp dir without `.gitignore` instead.
+(b) `--gitleaks-ignore-path/-i` does not reliably override a `.gitleaksignore` present in the
+`--source` directory; the source-dir copy wins.
+**Distrust in my own work:** the first version of the checker was flaky (24/25/27 offenders on
+three consecutive runs of an unchanged tree) because `set -o pipefail` + `grep -q` SIGPIPEs the
+upstream `sed`; and its allowlist mask silently matched nothing because `|` was used as both the
+`sed` delimiter and the alternation operator. Both are fixed and the count is now stable at 30/30/30.
+Anyone reviewing should re-run rather than trust the numbers.
+**Not done, deliberately:** the branch is NOT deleted (that is an operator action, and the note
+recording the supersession belongs with it); its `NWP_ROOT=$HOME` one-liner in
+`scripts/agent-loop/agent-loop.sh` is still deferred to the console-gate item;
+`docs/guides/howto-deploy.md` keeps its fingerprint — out of B1 scope, still on the ops#97 backlog.
+**Reversible-how:** revert the single docs commit; the 75 fingerprints are restorable from
+`origin/main:.gitleaksignore`. No live site or server was touched, so no rollback-registry row.
+
+---
+
+## [2026-07-27] pubrel-scrub-gate-failed-open-scanner-error-read-as-clean (CP-20260727-pubrelfailopen)
+
+**Situation:** the B1 scrub gate (`tests/helpers/pubrel-docs-check.sh::pubrel_scan`, added by the
+entry above) ran gitleaks inside `( … >/dev/null 2>&1 )` and threw its exit status away, then
+judged the tree solely by `json.load(report)` under a bare `except Exception: rows = []`. A
+missing, empty or unparseable report decoded as **"0 findings = clean"**. The suite's own header
+calls tests 7/8 "the load-bearing assertion … what distinguishes a real scrub from a cosmetic
+one" — and those two tests were the only thing standing behind the whole scrub.
+
+**Why it mattered more than an ordinary test bug:** this check is what authorises publishing a
+public version of the docs library with private information removed. A false green here does not
+fail a build — it publishes the operator's home path, personal email or prod IP.
+
+**Reproduced (not theorised), 2026-07-27:** appended one malformed rule to `.gitleaks.toml` — a
+file another workstream actively edits, where a single bad regex suffices — and planted a real
+`/home/rob/nwp/lib/common.sh` leak in the in-scope doc `docs/governance/roles.md`. gitleaks exits
+2 and writes no report; the suite reported **8/8 GREEN with the leak still in the file**.
+Cross-checked with a gitleaks stub that errors and writes nothing: `pubrel_scan full` → 0,
+`pubrel_scan pruned` → 0. `.gitleaks.toml` was restored in the same step and is **not** modified
+by this work.
+
+**Compounding:** `PUBREL_DOMAIN_RE` claimed to mirror "the three identity rules the gate on main
+enforces". Main enforces **six**. The grep covered four, omitting `operator-home-path` and
+`operator-organisation` (and the second operator IP `45.33.94.133`) — which is exactly why the
+planted `/home/rob/…` left test 2 green. Those two rules were watched **only** by the backstop
+that failed open.
+
+**Decision:** fail closed everywhere.
+- `pubrel_scan` returns `0` clean / `1` findings / `2` COULD NOT SCAN. Only 0 means clean.
+- gitleaks' rc is captured (0/1 are verdicts, anything else is an error); an absent, empty or
+  unparseable report is an error; rc and report must agree.
+- `python3` was as unguarded as gitleaks was. Both now go through `pubrel_scan_missing_tool`, which
+  separates *absence* (the suite skips, visibly) from *runtime failure* (the suite fails).
+- `PUBREL_IDENTITY_RE` mirrors all six identity rules. `internal-hostname-fqdn` and
+  `internal-bare-hostname` are deliberately left to the backstop and the reason is written **in the
+  code**: they are role/host names rather than operator identity, and `\b(mini|mons|…)\b`
+  false-positives hard on ordinary prose. That is now a safe place to leave them, because the
+  backstop fails closed.
+- Mirroring `operator-home-path` meant mirroring its documented exemption: F15 names
+  `/home/gitlab/.ssh`, the conventional service-account home. Masked **narrower** than the gate
+  (the gate exempts that whole file for the rule; we exempt only the literal path).
+
+**Proof both ways:** the identical reproduction now turns tests 2, 7 and 8 RED. A clean tree with a
+working scanner still passes 15/15 — the fix is fail-closed, not fail-always. Six new cases pin the
+contract (scanner error · absent report · unparseable report · rc/report disagreement · findings
+reported as findings · absent-tool guard incl. python3) and one pins all six identity rules.
+
+**Corrections to the earlier claims:** the MR said "full unit suite 667/667"; the real count on the
+merged tree is 1449 (see the MR note). It said "rebased onto current main"; the base was `ee85e1d`
+and it has now actually been rebased.
+
+**Non-blocking finding, fixed here rather than filed:** the scrub mapped two *distinct* real
+domains onto one placeholder `example.com`. `docs/proposals/F30-content-federation-network.md` is a
+domain-state-machine document that already used `<example-prod-domain>` for the same domain, so it
+carried two placeholders for one domain and "move the AVC test site from `avc.<example-prod-domain>`
+to `example.com` (root domain)" lost the parent/child relation that sentence exists to state. F30
+now uses `<example-prod-domain>` throughout; the two places where `example.com` stood for
+mayostudios.org (`docs/governance/roadmap.md`'s four-item list, `docs/handover-nwp-status-2026-07.md`)
+use `<mayo-domain>`, the placeholder F30 already establishes. Elsewhere `example.com` genericises a
+domain with no competing placeholder in play and is left alone.
+
+**Reversible-how:** see CP-20260727-pubrelfailopen in the rollback registry. Repo-only.
+
+---
+
+## [2026-07-26] b1b-gitleaksignore-prune-stays-blocked-and-the-item-was-wrong-by-4
+
+**Decision, recorded as NOT done:** did not delete a single fingerprint from `.gitleaksignore`.
+The item is genuinely blocked, and that is now measured rather than asserted.
+
+**The red, verbatim, on main at `388ef0b`:**
+
+```
+$ scripts/gitleaksignore-audit.sh --prefix docs/
+gitleaksignore audit — ref=HEAD scope=docs/ (gitleaks 8.21.2)
+  declared fingerprints : 79
+  live findings         : 79
+  LOAD-BEARING          : 79   (deleting these re-exposes a real hit)
+  STALE                 : 0   (IOU paid — safe to retire)
+  UNSILENCED            : 0   (no fingerprint; gate primed to go red)
+```
+
+79 declared, 79 live, exact 1:1. Whole-tree it is 108/108. The ignore file is *precisely
+saturated*: not one spare line, not one gap. Deleting any of the 79 today re-exposes a real
+hit, because `pubrel-docs-genericise` (task #48, branch `origin/pubrel/scrub-and-gate`, which
+is 234 commits behind main) has not landed. Blocker (a) is not cleared, and the OFF-LIMITS list
+still names `.gitleaks.toml`, whose paired file this is, so blocker (b) is not cleared either.
+
+**The item's own acceptance test is impossible and would have proved nothing.** It specified:
+"after deleting the 79 lines, `gitleaks git --config=.gitleaks.toml --redact --no-banner` on a
+full-history scan exits 0." Measured on *unmodified* main, before deleting anything:
+
+```
+$ gitleaks git --config=.gitleaks.toml --redact --no-banner --exit-code 1
+INF 422 commits scanned.
+WRN leaks found: 2573
+EXIT=1
+```
+
+A full-history scan re-flags every already-reviewed string in the repo's past (2426 of the 2573
+are in `docs/` paths). It is red before the change and red after it, so it cannot distinguish a
+safe deletion from an unsafe one. Worse, the gate CI actually runs — `lint:leakage`, which is
+`gitleaks git --log-opts=<base>..HEAD` — scans only the MR's own commit range, so an MR that
+deletes fingerprint lines and touches nothing else is scanned **green** however many live leaks
+it just un-silenced. This change class is invisible to both the specified test and the real
+gate. That is why the deliverable here is a checker, not a deletion.
+
+**The item is wrong by 4: the payload is 75, not 79.** Simulating the scrub (main's tree with
+the 32 `docs/` files from `origin/pubrel/scrub-and-gate` swapped in, scanned with main's
+authoritative `.gitleaks.toml`) gives 4 live hits surviving, i.e. **75 retirable, 4 still
+load-bearing**, and 0 new unsilenced hits. The 4 survivors are exactly the fingerprinted files
+that are *not* in the scrub set:
+
+- `docs/guides/howto-deploy.md:live-domain-apex:15` — a public-release guide naming the live
+  apex in a table defining what "live" means. B1's scrub set should probably grow to include it.
+- `docs/reports/nwp-deep-audit-2026-07-09.md:operator-personal-email:304`
+- `docs/reports/nwp-deep-audit-recommendations-2026-07-09.md:operator-personal-email:462`
+- `docs/reports/consolidation-arc-2026-07/ssc-118-artifact/ops-118-moodle-art9-gate.patch:operator-personal-email:2`
+
+Note *why* those three survive: `^docs/reports/.*` is in the SHARED-EXEMPTIONS block, but that
+block is carried by only 7 of the 8 rules — `operator-personal-email` deliberately carries no
+path exemptions, because a personal address is never legitimate. That is correct design, and it
+means those three are real public-release IOUs that B1's current scope does not cover.
+
+**Two gitleaks behaviours found while measuring, both of which can silently blind a scan:**
+
+1. `--gitleaks-ignore-path` does **not** override a `.gitleaksignore` sitting at the scan root.
+   Pointing it at an empty file while the real one is on disk returns 0 findings — the root file
+   is honoured anyway. Measured on 8.21.2: source `.` with the file present = 0 findings; the
+   same command with the file physically deleted = 111. Any future tooling that tries to get an
+   un-silenced baseline via that flag will get a confident, wrong "clean".
+2. Scan-source form changes the reported path, and the rule `paths` exemptions are anchored
+   repo-relative (`^docs/reports/.*`). An **absolute** scan source yields absolute paths that
+   match no exemption and over-reports wildly — 1131 findings for `docs/` versus 82 for the same
+   files scanned repo-relative. Errs loud, not silent, but it will send someone chasing ghosts.
+
+**What did change:** `scripts/gitleaksignore-audit.sh` — read-only, not wired into CI. It
+exports the tree at a ref, scans the subtree twice (ignore file present, ignore file physically
+removed), and classifies every fingerprint LOAD-BEARING / STALE / UNSILENCED. Exit 0 exact,
+1 stale, 2 unsilenced, 3 CANNOT VERIFY. Exit 3 is fail-closed on a missing `gitleaks`/`jq` and
+on the two scans disagreeing, matching the `boundary:classify` posture that "I cannot see" beats
+"all clear". It carries a `--self-test` negative control that plants an impossible fingerprint
+(line 999999, must be called STALE) and removes a real one (its finding must surface as
+UNSILENCED); without both, a classifier that hardcoded "everything is load-bearing" would score
+100% on today's tree, since today everything *is* load-bearing.
+
+**Deliberately not done:** no edit to `.gitleaksignore`, `.gitleaks.toml`, `.gitlab-ci.yml`, or
+`tests/unit/test-leakage-gate.bats` — the hardening workflow owns the gate and its paired test.
+No CI job was added; a gate that needs a `gitleaks` binary and 5s of scanning should not be
+bolted onto other people's MRs without that workflow's consent.
+
+**Reversible-how:** delete `scripts/gitleaksignore-audit.sh`. Nothing else was touched, no
+live site or server was involved, so no rollback-registry row was required.
+
+**Follow-up before merge (2026-07-27, same defect class as CP-20260727-pubrelfailopen):** `scan()`
+in this script had the *same* fail-open shape as `pubrel_scan` — it ran gitleaks inside
+`( … >/dev/null 2>&1 )`, discarded the exit status, and substituted an empty report (`[]`) when
+nothing was written. Here that default is worse than "reports clean": with zero live findings
+every declared fingerprint classifies **STALE**, and this script's own documented workflow is
+"delete ONLY the lines it prints under `-- stale --`". Demonstrated with a stub scanner that exits
+2 and writes nothing: `79 declared / 0 live / 79 STALE "IOU paid — safe to retire"` — a scanner
+that merely failed to start would have instructed the operator to delete all 79 suppressions and
+un-silence 79 real leaks. `scan()` now captures the rc (0/1 are verdicts, anything else is an
+error), refuses an absent report, and requires the report to parse as a JSON array; all three
+exit 3 CANNOT VERIFY. Verified: the stub run now exits 3, the real run is unchanged, and
+`--self-test` still passes both controls.
+
+**What it measured across the !197 merge (the workflow this script was written for, run end to
+end).** Before !197 landed, against `docs/`: 79 declared / 78 load-bearing / 1 stale / **1
+unsilenced** (`docs/guides/ops81-erasure-channel.md:live-domain-apex:98`) — so it refused to
+classify at all (exit 3), correctly, because the two scans disagreed. After !197 merged: **4
+declared / 4 live / 4 LOAD-BEARING / 0 stale / 0 unsilenced, exit 0.** The 75 IOUs the scrub was
+supposed to retire are gone, the 4 that remain are each still holding back a real finding, and
+nothing was left un-silenced. That is an independent confirmation of !197's scrub by a different
+mechanism than !197's own tests — and it is a confirmation this script could not have made
+honestly before the fail-closed fix above, because a failed scan would have reported all 79 as
+STALE. The script stays a manual tool; it is not wired into CI.

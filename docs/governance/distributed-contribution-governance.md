@@ -115,7 +115,7 @@ Each tier's GitLab stores its upstream in `.nwp-upstream.yml`:
 upstream:
   url: git@<gitlab-host>:nwp/nwp.git
   tier: 1
-  maintainer: rob@nwpcode.org
+  maintainer: rob@example.com
 
 downstream:
   - git@git.deva.org:nwp/nwp.git

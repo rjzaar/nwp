@@ -344,7 +344,7 @@ Based on comprehensive audit (~7,577 total references):
 | Question | Decision |
 |----------|----------|
 | Linode servers | Yes, update to `nwo-scripts` |
-| Domain `nwpcode.org` | Stays as-is (separate from project name) |
+| Domain `example.com` | Stays as-is (separate from project name) |
 | CLI command `pl` | Keep as `pl` |
 | Backward compatibility | None - clean break |
 | Git repository | `nwp/nwo.git` |

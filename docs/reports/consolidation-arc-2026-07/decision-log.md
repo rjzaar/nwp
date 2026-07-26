@@ -3371,3 +3371,36 @@ controls did.
   repo counts as 0 stranded commits and vanishes from the report — fails *silent*, not soft),
   `lib/backup-integrity.sh:236` (gzip absent ⇒ structural check skipped ⇒ "OK"),
   `lib/rollback.sh:485`, `lib/ci-stats.sh:302`, `lib/testing.sh` (tool-not-found ⇒ pass).
+
+## [2026-07-27] b7-merge-queue-review-two-fixes-to-the-guard
+**Decision:** merged B7 (MR !192) after independently re-deriving all five deletions, with
+**two corrections to the MR's own guard** made during merge-queue review.
+**Independent verification of the deletions (not taken from the MR text):**
+- `pl-rollback-stdin-fix` @ `1813994` — its entire diff is 5 `ssh -o BatchMode` → `ssh -n -o
+  BatchMode` edits; `origin/main:lib/rollback-remote.sh` carries `ssh -n -o BatchMode` at
+  169, 189, 261, 321, 330 **and a sixth at 343**. Nothing unique.
+- `stg2live-drush-graceful` @ `3f73691` — both drush-missing guards are on main, annotated
+  `(MR !11)`; only a hint string is shorter. Nothing unique.
+- `chore/gitleaks-allowlist-issue-urls` @ `0b3f644` — its regex is on main **twice** (589, 684),
+  and `git diff origin/main <branch> -- .gitleaks.toml` is **58+/572−**, restoring a top-level
+  `[allowlist] paths` block main does not have. Net revert, confirmed.
+- **The two archive twins were verified from the forge's own audit log, not from the author's
+  word** (the byte-identical claim was the one the reviewer was told not to trust): project 15
+  push events show `removed stg2live-drush-graceful 3f73691a` and `removed pl-rollback-stdin-fix
+  18139945` — `commit_from` matches the origin heads exactly, and both objects are still
+  resolvable in the archive project.
+**Fix 1 — A3 guarded a comment, not a rule.** A3 grepped the bare substring
+`merge_requests|blob|tree`, which also matches the two explanatory COMMENT lines in
+`.gitleaks.toml`. Deleting BOTH live allowlist regexes left 2 matches and A3 stayed **GREEN** —
+so it did not actually evidence that MR !50's contribution survives on main. Found by mutation.
+Now counts only `'''`-quoted rule lines; verified RED on exactly that mutation and GREEN on restore.
+**Fix 2 — B2 can never run in CI, and that is now declared instead of hidden.** B2 probes the
+`archive` remote; project 15 is **private** and no CI checkout configures that remote, so B2
+skips there. bats reports a skip as `ok`, and the unit job's `NWP_BATS_MAX_SKIPPED: "0"` correctly
+went red. Declared as `"1"` **in the CI job only**, with the skipping test named in the comment.
+Not a loosening: `run-bats.sh` compares with `-ne`, so a second skip goes red AND B2 ceasing to
+skip goes red. Proven both ways — budget 1 against the operator clone (where the archive remote
+exists and B2 really runs, 0 skips) exits non-zero. `tests/.skip-budget` keeps `unit=0` because
+B2 genuinely runs on the operator's machine. Rejected alternative: giving a unit test
+cross-project credentials + a network call to reach a private repo.
+**Reversible-how:** `git revert -m 1 <merge>`. The five refs remain restorable per CP-B7.

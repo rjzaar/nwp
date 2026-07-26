@@ -1,0 +1,31 @@
+# tests/.skip-budget — how many tests are ALLOWED to skip, per suite.
+#
+# WHY THIS FILE EXISTS
+#   bats reports a `skip` as `ok`. A machine missing ddev, php or yq therefore
+#   turns real assertions into green ticks and the suite still exits 0. That is
+#   how `pl test --integration` came to print "Integration tests passed" over a
+#   run in which 14 of 70 cases asserted nothing.
+#
+#   Declaring the number here makes the shortfall visible and, more importantly,
+#   makes it MOVE ONLY IN ONE DIRECTION: if a run skips more than the budget the
+#   suite fails; if it skips fewer, the runner tells you to lower the number in
+#   the same MR. A skip that nobody had to think about is the failure mode.
+#
+# SHRINK-ONLY. Raising a number needs a reason in the commit message and is a
+# statement that the machine got LESS able to verify, not that the code got
+# better. Provision the missing tool on the runner first.
+#
+# Override per-run (CI, a deliberately reduced runner) with:
+#   NWP_SKIP_BUDGET_UNIT / NWP_SKIP_BUDGET_INTEGRATION / NWP_SKIP_BUDGET_E2E
+#
+# Baseline captured 2026-07-26 on the dev workstation (bats 1.x, no ddev):
+#   integration — 14 of 70 cases guard on `ENABLE_DDEV_TESTS=true`; they are
+#                 the whole lifecycle half of the suite (install, backup/restore,
+#                 copy, delete, deployment). CI runs with a budget of 0 against
+#                 06-scripts-validation.bats only, which is why this number has
+#                 never been enforced anywhere until now.
+#   unit        — measured below; interpreter-dependent cases (php) are the bulk.
+
+integration=14
+unit=0
+e2e=0

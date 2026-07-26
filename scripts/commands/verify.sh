@@ -1333,6 +1333,33 @@ show_summary() {
     printf "    ${GREEN}Fully Verified:${NC}   %d (%d%%)\n" "$fully_verified" "$full_pct"
     echo ""
 
+    # Age of the evidence. Without this the coverage figure above is a number
+    # that cannot go down: a verification run that never happens leaves it
+    # exactly where it was. See the note above count_machine_verified_fresh_items.
+    local horizon fresh stale newest
+    horizon=$(verification_freshness_days)
+    fresh=$(count_machine_verified_fresh_items)
+    stale=$(count_machine_verified_stale_items)
+    newest=$(newest_verification_date)
+
+    echo -e "  ${BOLD}Evidence age${NC} ${DIM}(horizon: ${horizon}d, config.freshness_days)${NC}"
+    printf "    Newest result:   %s\n" "$newest"
+    printf "    ${GREEN}Fresh:${NC}           %d\n" "$fresh"
+    if [[ ${stale:-0} -gt 0 ]]; then
+        printf "    ${RED}STALE:${NC}           %d\n" "$stale"
+        echo ""
+        if [[ ${fresh:-0} -eq 0 ]]; then
+            echo -e "  ${RED}${BOLD}ALL machine verification above is STALE.${NC}"
+            echo -e "  ${DIM}The ${machine_pct}% figure describes a tree that no longer exists.${NC}"
+        else
+            echo -e "  ${YELLOW}Part of the coverage figure above is older than the horizon.${NC}"
+        fi
+        echo -e "  ${DIM}Re-measure with: pl verify --run --depth=thorough${NC}"
+    else
+        printf "    ${GREEN}STALE:${NC}           0\n"
+    fi
+    echo ""
+
     # Progress bar for features
     local bar_width=40
     local filled=$((verified * bar_width / total_features))
@@ -2543,6 +2570,76 @@ count_machine_verified_items() {
     echo "${count:-0}"
 }
 
+# --- Freshness -----------------------------------------------------------
+#
+# A machine verification is a measurement, and a measurement has an age.
+# Until 2026-07-26 nothing here read `verified_at`: the summary counted
+# `verified: true` and reported "Automated Tests: 514/570 (90%)". Every one of
+# those 514 flags was written between 2026-01-11 and 2026-02-02, against a tree
+# several hundred commits in the past. The number could not go down, because
+# nothing decayed — a verification run that never happens leaves coverage
+# exactly where it was, and CLAUDE.md's release checklist gates a tag on it.
+#
+# The horizon lives in .verification.yml (config.freshness_days) so "how old is
+# too old" is reviewable rather than buried in this file.
+
+# Horizon in days. Config wins; 90 is the fallback.
+verification_freshness_days() {
+    local days
+    days=$(grep -E '^[[:space:]]+freshness_days:[[:space:]]*[0-9]+' "$VERIFICATION_FILE" 2>/dev/null \
+           | head -1 | grep -oE '[0-9]+')
+    echo "${days:-90}"
+}
+
+# Every verified_at timestamp in the file, one per line.
+# yq, not awk — ADR-0015. `pl` reads YAML with yq; an AWK parser here would be
+# the sixth in this file and lint:yq-first refuses new ones.
+_machine_verified_timestamps() {
+    yq e '[.features[].checklist[]? | select(.machine.state.verified == true)
+           | .machine.state.verified_at // ""] | .[] | select(. != "")' \
+       "$VERIFICATION_FILE" 2>/dev/null
+}
+
+# Epoch seconds of the newest verified_at in the file, or empty if there is none.
+newest_verification_epoch() {
+    local stamp e best=""
+    while IFS= read -r stamp; do
+        [ -n "$stamp" ] || continue
+        e=$(date -d "$stamp" +%s 2>/dev/null) || continue
+        if [ -z "$best" ] || [ "$e" -gt "$best" ]; then best="$e"; fi
+    done < <(_machine_verified_timestamps)
+    printf '%s' "$best"
+}
+
+# Human-readable date of the newest evidence, or "never".
+newest_verification_date() {
+    local e; e=$(newest_verification_epoch)
+    if [ -z "$e" ]; then echo "never"; else date -d "@$e" +%Y-%m-%d; fi
+}
+
+# Count machine verifications whose verified_at is inside the horizon.
+count_machine_verified_fresh_items() {
+    local horizon cutoff stamp e count=0
+    horizon=$(verification_freshness_days)
+    cutoff=$(( $(date +%s) - horizon * 86400 ))
+
+    while IFS= read -r stamp; do
+        [ -n "$stamp" ] || continue
+        e=$(date -d "$stamp" +%s 2>/dev/null) || continue
+        [ "$e" -ge "$cutoff" ] && count=$((count + 1))
+    done < <(_machine_verified_timestamps)
+
+    echo "$count"
+}
+
+# Count machine verifications that exist but are past the horizon.
+count_machine_verified_stale_items() {
+    local all fresh
+    all=$(count_machine_verified_items)
+    fresh=$(count_machine_verified_fresh_items)
+    echo $(( ${all:-0} - ${fresh:-0} ))
+}
+
 # Count human-verified items
 count_human_verified_items() {
     local total=0
@@ -2645,6 +2742,11 @@ update_machine_verified() {
     local depth="$3"
     local duration="${4:-0}"
     local timestamp=$(date -Iseconds)
+
+    # Count every persisted result. run_ci_mode asserts this is non-zero, so a
+    # run in which every item was skipped (no machine block at that depth, a
+    # missing tool) cannot exit 0 while republishing the previous numbers.
+    MACHINE_STATE_WRITES=$(( ${MACHINE_STATE_WRITES:-0} + 1 ))
     local tmpfile=$(mktemp)
 
     # Update machine.state for the specified checklist item
@@ -3361,6 +3463,25 @@ run_machine_checks() {
             echo -e "${YELLOW}Warning:${NC} Could not create test site, some checks may be skipped"
         else
             echo -e "${GREEN}Test site created:${NC} $test_site"
+            # CLAUDE.md: "After any `ddev config` you initiate, you are
+            # responsible for `ddev delete --omit-snapshot --yes` ... BEFORE the
+            # session ends — `ddev stop` alone leaves orphan Docker volumes and
+            # built images that survive session crashes."
+            #
+            # Cleanup used to live only on the normal return path below, so an
+            # interrupt, a `set -e` abort or a runner timeout left sites/<prefix>*
+            # and its docker volumes behind — exactly the 2026-01 incident shape,
+            # and why `pl verify doctor` has an orphan-volume sweeper at all.
+            # The trap makes cleanup unconditional; the normal path clears it.
+            VERIFY_TRAP_SITE="$test_site"
+            trap '
+              if [[ -n "${VERIFY_TRAP_SITE:-}" ]]; then
+                echo "" >&2
+                echo "verify: cleaning up test site ${VERIFY_TRAP_SITE} (trap)" >&2
+                cleanup_test_site "$VERIFY_TRAP_SITE" "false" >/dev/null 2>&1 || true
+                VERIFY_TRAP_SITE=""
+              fi
+            ' EXIT INT TERM
         fi
         echo ""
     fi
@@ -3457,14 +3578,19 @@ run_machine_checks() {
     # Update statistics in .verification.yml
     update_verification_statistics
 
-    # Cleanup test site
+    # Cleanup test site (normal path). Either branch below is a deliberate
+    # decision about the site, so disarm the safety-net trap installed above.
     if [[ -n "$test_site" ]]; then
         if [[ $total_failed -eq 0 ]] && [[ "$VERIFY_CLEANUP_ON_SUCCESS" == true ]]; then
             echo -e "${BLUE}Cleaning up test site...${NC}"
             cleanup_test_site "$test_site" "false"
+            VERIFY_TRAP_SITE=""
         else
             echo -e "${YELLOW}Preserving test site for debugging:${NC} sites/$test_site"
+            echo -e "${DIM}Remove it with: pl delete $test_site --purge${NC}"
+            VERIFY_TRAP_SITE=""
         fi
+        trap - EXIT INT TERM
     fi
 
     # Print summary
@@ -3518,9 +3644,22 @@ run_ci_mode() {
     init_verify_log
 
     # Run all machine checks
+    MACHINE_STATE_WRITES=0
     run_machine_checks --depth="$depth" --all
 
     local exit_code=$?
+
+    # A run that persisted no results verified nothing. It used to exit 0 and
+    # regenerate .badges.json from the SAME stale counts it started with, so a
+    # depth with no machine blocks, or a runner missing every tool, published a
+    # fresh-looking badge over six-month-old evidence.
+    if [[ ${MACHINE_STATE_WRITES:-0} -eq 0 ]]; then
+        echo ""
+        echo -e "${RED}${BOLD}VERIFICATION DID NOT RUN${NC} — 0 machine results were written."
+        echo -e "${DIM}Nothing was measured at depth '$depth'. The coverage numbers in"
+        echo -e ".verification.yml are unchanged and are NOT evidence about this commit.${NC}"
+        return 1
+    fi
 
     # Export results
     if [[ "$export_json" == true ]]; then

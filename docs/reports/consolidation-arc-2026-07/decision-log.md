@@ -2695,3 +2695,53 @@ documented extension mechanism ("adding a new service directory is a deliberate 
 That directory holds DECLARED php intent, deliberately separate from `system/php/**`, which holds the
 CAPTURED reading of what is actually running — keeping the two apart is what makes comparing them mean
 anything.
+## [2026-07-26] b3-ops-93-NOT-deleted-the-code-survived-the-test-did-not
+**Decision:** the stranded branch `nwp/nwp:ops-93` was **NOT deleted**, and its worktree
+`/home/rob/nwp-ops93` was **NOT removed**. Deletion is blocked on
+`nwp/ss-moodle-plugins!10` merging first.
+**Why the item said delete:** `ops-93` is 1 commit (`9e78092`, 2026-07-18, never an MR), now
+234 behind main, editing `scripts/f26/moodle/auth_nwc/**` — a tree main deleted in `601cf90`
+(item 9), which is why `git merge-tree` reports modify/delete conflicts. Its production work
+does exist canonically in `nwp/ss-moodle-plugins@auth/nwc`, newer.
+**Why it was wrong to delete on that evidence:** "the production code survived" is a different
+claim from "the coverage survived", and only the first was checked. Verified against project 33
+`main` @ `6b2a768`:
+- `auth/nwc/classes/guild_cohort_map.php` — present and **byte-identical** to the branch copy
+  (`diff` empty, 120 lines);
+- `auth/nwc/auth.php::sync_guilds()` — identical, 63 lines either side, calling
+  `guild_cohort_map::is_managed/uuid_from/decide/idnumber_for`;
+- `classes/observer.php` — a strict evolution of the branch version (same guild sync plus the
+  ops#118 consent carry, `fetch_guilds` refactored to `fetch_raw_userinfo` +
+  `guilds_from_userinfo`);
+- `auth/nwc/tests/` — held `uid_lock_logic_test.php`, `consent_logic_test.php`,
+  `consent_gate_test.php` and **no guild-cohort test at all**.
+So the branch's only unique artefact was its 79-line `tests/guild_cohort_map_logic_test.php`,
+and `git push origin --delete ops-93` would have destroyed it while every other check said
+"safe".
+**What was done instead:** ported the test verbatim (only the usage/provenance header rewritten)
+into `nwp/ss-moodle-plugins` on `rescue/ops-93-guild-cohort-logic-test`, registered it in
+`tests/run-standalone.sh` — a test present but run by nothing is not coverage — and documented
+it in `tests/README.md`. MR `nwp/ss-moodle-plugins!10`, unmerged.
+**Gate, red then green:** `tests/tools/verify-crossrepo-guild-cohort-coverage.sh` clones project
+33, checks both halves, runs the test, then **mutates the class under it** and requires a
+failure. Against `main`@`6b2a768` before the port it exited **1**: `RED  no guild-cohort logic
+test under auth/nwc/tests/ … correct action is to PORT THE TEST, not to delete ops-93`. Against
+the ported tree it exits **0**: test present, registered, `17 passed`, and both mutants
+(`MANAGED_PREFIX` → `mutant:`; `$leave[] = $uuid;` removed) are caught. Full canonical
+standalone suite after the port: `ALL 14 test files passed` (was 13).
+**Negative control:** without the mutation stage this gate would be satisfied by a test file
+that asserts nothing — file exists, exits 0, tick. The mutants are what make "coverage exists"
+mean something. The gate can also only ever report CANNOT-VERIFY (exit 2), never 0, when php or
+the repo is unreachable.
+**Not wired into CI, deliberately:** it reads a second private repo over SSH and the nwp/nwp
+runner holds no credential for `nwp/ss-moodle-plugins`. Wiring it in would produce a job that
+can only fail or skip — the "gate that cannot fail" shape this arc is removing. It is an
+operator/agent-run pre-deletion check.
+**Reversible-how:** nothing destructive happened. `refs/heads/ops-93` and the `nwp-ops93`
+worktree are untouched. The nwp/nwp side is `git revert -m 1 <merge>` (one new script, docs).
+The plugin-repo side is `git push origin --delete rescue/ops-93-guild-cohort-logic-test`, or
+simply not merging !10.
+**Follow-up (deliberately left for whoever merges !10):** once !10 is in, re-run
+`tests/tools/verify-crossrepo-guild-cohort-coverage.sh`, and only on exit 0 do
+`git worktree remove /home/rob/nwp-ops93` + `git push origin --delete ops-93` and post the
+result on nwp/ops#93.

@@ -2287,3 +2287,78 @@ so this is not an alarm that always rings.
 exit 2 it logs *"GitLab host unreachable — skipped (no alarm)"* and **`exit 0`**. An unreachable
 GitLab is indistinguishable from all-tokens-healthy, exactly the pattern fixed here. Flagged for its
 owner; `scripts/commands/secrets.sh` and the registry are off-limits to this change.
+
+## [2026-07-26] ✅ ops#133 Phase 2 — ssd joins the demo tier; nwd↔ssd is a PAIRED reset
+ssd rebuilt from `nwp/ss-moodle-plugins` (8 plugins; pinned to `gdpr/art9-depthcontent-fixes`
+@304c4db per ops#137 — main lacks the fb_events write gate). Decoy purged: `sites/ssd/.nwp.yml`
+named `auth_nwc_oauth2` (the lock-less decoy) and now names `auth_nwc`; the rebuild script
+fail-loud sweeps tree + config + `mdl_config_plugins` for it. nwd had NO simple_oauth issuer at
+all (no keypair → `/.well-known/jwks.json` was **500**, 0 scopes, no client) — now provisioned.
+**Paired design (decided):** the PAIR CONTRACT is the source, not a new registry — `demo.enabled:
+true` is the opt-in, so the real ssc↔nwc pair is structurally invisible to the nightly wipe.
+`pl demo golden nwd --with-pair` captures both halves and writes `pair.cut.json` binding them by
+sha256; a paired reset refuses unless both goldens still match the cut (ADR-0031 D9 both-or-
+nothing, mechanically enforced instead of by convention). Reset = verify-both → idle-guard-both →
+harvest-both-into-one-spool → restore PROVIDER-FIRST → reseed → re-assert consumer (oidc/posture/
+courses) and RETURN NON-ZERO if that fails.
+**E2E 8/8 GREEN, twice consecutively** (real chromium): code→redeem→SSO→UID-lock binds→art9_consent
+'1'→self-enrol→gated write PERSISTS; Trialing member's identical write = success:true + 0 rows;
+paired reset wipes the tester from BOTH halves and restores the catalogue; a FRESH code works after.
+39 new bats + 60 Phase-1 bats green. Contract brought to ssc parity (oidc/erasure/boundary blocks;
+JWKS smoke replaces the `oidc_discovery` probe that could never pass against simple_oauth).
+**Gaps:** ssd has no live host (paired `--tier=live` REFUSED, not faked); forced Moodle profile-
+completion because nwc_demo_access sets no profile names; cross-site feedback is a link-back (v1);
+`lib/moodle-promote.sh` emits `name`/`preferred_username` mappings auth_nwc never reads (drift).
+MR opened, NOT auto-merged (auth surface + two-person rule).
+
+## [2026-07-27] ✅ MR !162 review fix — the paired reset joins the ONE audited confirmation route
+Reviewer note 2218 held !162 on a real regression, **verified independently and confirmed**:
+`cmd_reset` (destroys one site) called `demo_reset_manifest` + `impact_confirm` — **2 call sites**;
+`cmd_reset_paired` (destroys **two** sites, one of them the SSO identity provider) called **0**, and
+hand-rolled `printf … read -r reply` instead. The more destructive verb was the less guarded one.
+The file-level impact-contract gate could not see it: `lib/impact.sh`'s `impact_contract_adopted`
+checks per FILE, and `demo.sh` already adopts the lib over in `cmd_reset`. **Two further defects
+found while fixing it, both missed by the review:**
+- **`--dry-run` was silently dropped on the paired path.** `cmd_reset_paired` took no `dry_run`
+  argument and the dispatch passed only 5, so `pl demo reset nwd --with-pair --dry-run` performed a
+  REAL double wipe when the operator asked for a rehearsal. Worse in operator-harm terms than the
+  missing prompt.
+- **`droot` was lost in the rebase** while its only consumer stayed. Under `set -euo pipefail` every
+  dev/stg single-site reset died with `droot: unbound variable` at the manifest step — fail-closed,
+  but `pl demo reset <site>` was dead on this branch. Proven by probe against both parents.
+**Fix (no weakening of the shared helper).** `demo_reset_manifest` split into
+`demo_reset_manifest_build` (appends one site's fates + its audit line; no reset, no render) and a
+thin `demo_reset_manifest` wrapper (reset → build → render) so `cmd_reset`/`cmd_reset_live` are
+behaviourally unchanged. The paired path does `impact_reset` → build provider → build consumer →
+pair-only warnings (both-sites-in-one-approval; provider-is-the-IdP; mid-run inconsistency is
+repaired by re-running, provider-first per ADR-0031 D5) → `impact_render` → dry-run stop →
+`impact_confirm standard "ERASE BOTH <prov> and <cons> …"`. **ONE report, ONE question, both sites
+named.** Strength is `standard`, not `typed`, by lib/impact.sh's own definition — a verified golden
+cut survives the wipe, so a recovery path exists; `typed` is reserved for destroying the LAST
+recovery path, and the paired verb refuses `--tier=live` outright. New `demo_files_dir` (fail-closed
+per kind) and `demo_measure_local_kind` (Moodle has no drush and no `users_field_data`) so the
+Moodle half's manifest reports real numbers instead of "could not measure" for every line.
+**Verdict on the 4 reds the review called benign: 2 of the 4 were true positives.** With the greps
+rescoped to the function body they actually assert about and run against the UNFIXED code:
+tests 52/53 (harvest-before-wipe, verify-before-wipe) go **green** — genuine `head -1` artefacts,
+the review was right; tests 78 and 81 go **red** with `cmd_reset_paired destroys without building a
+fate manifest` and `cmd_reset_paired wipes with no --dry-run stop before it`. They were tracking the
+same hole as the blocker (79) and were mis-triaged into the brittle-grep class. All three ordering
+tests are now per-destructive-body loops that fail LOUDLY (a `[ -n "$d" ] && …` chain inside a `for`
+silently did not fail the bats test — the reason 81 looked benign).
+**Proof.** 4 mutations, transcripts in the MR: full revert → 8/8 guard tests red; drop only
+`impact_confirm` → red; drop only `impact_render` → red; **negative control**, make the verb refuse
+everything → the guard still goes red, because it asserts the destructive step IS reached under a
+granted confirmation. Green: `test-demo.bats` 89/89, `test-demo-pair.bats` 47/47.
+**Sanity-checked, both reviewer calls upheld:** dropping `200` from `feedback_post` is right — a
+200 on an unauthenticated POST means the endpoint accepted an anonymous submission, which is the
+failure the probe exists to catch, so listing it made the assertion vacuous; `303,401,403` is the
+correct Moodle `require_login()` shape. `contract_version: 3` is right — two different v2 bumps
+landed in parallel and `lib/pair.sh` compares `>=`, never `==`, so the bump is safe. **Operational
+consequence to note:** the D5 guard will REFUSE an ssd (consumer) deploy until nwd (provider) is
+recorded at cv 3 — promote the provider first.
+**Merge-hygiene check (arc rule).** `comm` against BOTH parents (`19bc753` pre-rebase, `ee85e1d`
+main): decision-log 0 lines lost from either. Rollback registry 0 lost from main; 3 rows (CP11,
+CP12, CP14) differ from the pre-rebase branch and are **byte-identical to main's** rows — main had
+already superseded them with absolute paths, sidecar provenance and a deliberate de-duplication of
+the CP14 digest. Superseded, not dropped.

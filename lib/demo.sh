@@ -454,39 +454,60 @@ CLOSING
 # `pl demo status` + the spool dir surface unposted digests.
 demo_harvest() {
     local site="${1:-}" tier="${2:-}"; shift 2 || true
-    [[ $# -gt 0 ]] || { demo_log "$site" harvest-failed "reason=no-collector"; return 0; }
+    demo_harvest_as "$site" "$site" "$tier" "$@"
+}
+
+# demo_harvest_as <spool_site> <subject_site> <tier> <collector-cmd> [args...]
+#
+# As demo_harvest, but the digest is written into <spool_site>'s spool while
+# being ABOUT <subject_site>. ops#133 Phase 2 uses this so the Moodle half's
+# error signals land in the PROVIDER's spool: a paired reset then produces ONE
+# nightly digest covering both halves instead of two issues that a triager has
+# to correlate by timestamp. (The subject is named in the digest header and in
+# the reset log, so nothing is lost by co-locating them.)
+#
+# Same fail-OPEN contract: ALWAYS returns 0.
+demo_harvest_as() {
+    local spool_site="${1:-}" subject="${2:-}" tier="${3:-}"; shift 3 || true
+    [[ $# -gt 0 ]] || { demo_log "$spool_site" harvest-failed "subject=$subject reason=no-collector"; return 0; }
     local out rc=0
     out="$("$@" 2>/dev/null)" || rc=$?
     if (( rc != 0 )); then
-        demo_log "$site" harvest-failed "tier=$tier rc=$rc"
+        demo_log "$spool_site" harvest-failed "subject=$subject tier=$tier rc=$rc"
         return 0
     fi
     # Empty forms drush emits for "no rows": whitespace, [], {}.
     local trimmed="${out//[[:space:]]/}"
     if [[ -z "$trimmed" || "$trimmed" == "[]" || "$trimmed" == "{}" ]]; then
-        demo_log "$site" harvest-empty "tier=$tier"
+        demo_log "$spool_site" harvest-empty "subject=$subject tier=$tier"
         return 0
     fi
     local hdir spool ts
-    hdir="$(demo_harvest_dir "$site")"
+    hdir="$(demo_harvest_dir "$spool_site")"
     ts="$(date -u '+%Y%m%d-%H%M%S')"
     spool="${hdir}/harvest-${ts}.md"
+    # Two halves harvested in the same second must not clobber each other.
+    local n=2
+    while [[ -e "$spool" ]]; do
+        spool="${hdir}/harvest-${ts}-${n}.md"
+        n=$(( n + 1 ))
+    done
     if ! mkdir -p "$hdir" 2>/dev/null; then
-        demo_log "$site" harvest-failed "tier=$tier reason=mkdir"
+        demo_log "$spool_site" harvest-failed "subject=$subject tier=$tier reason=mkdir"
         return 0
     fi
     {
-        printf '## Demo-tier pre-wipe error harvest — %s (%s)\n\n' "$site" "$tier"
+        printf '## Demo-tier pre-wipe error harvest — %s (%s)\n\n' "$subject" "$tier"
         printf 'labels: demo-tester,auto-harvest\n'
         printf 'harvested_utc: %s\n\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
         printf 'Errors captured from the demo site immediately before the nightly wipe\n'
-        printf '(watchdog is destroyed by the restore — this digest is what survives).\n\n'
+        printf '(the site log is destroyed by the restore — this digest is what survives).\n\n'
         printf '```\n%s\n```\n' "$out"
     } > "$spool" 2>/dev/null || {
-        demo_log "$site" harvest-failed "tier=$tier reason=write"
+        demo_log "$spool_site" harvest-failed "subject=$subject tier=$tier reason=write"
         return 0
     }
-    demo_log "$site" harvest-ok "tier=$tier file=$(basename "$spool")"
+    demo_log "$spool_site" harvest-ok "subject=$subject tier=$tier file=$(basename "$spool")"
     return 0
 }
 

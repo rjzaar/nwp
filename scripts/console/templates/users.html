@@ -9,7 +9,7 @@
 {% endif %}
 
 <table class="tbl">
-  <tr><th>name</th><th>role</th><th>passkeys</th><th>created</th><th></th></tr>
+  <tr><th>name</th><th>role</th><th>projects</th><th>passkeys</th><th>created</th><th></th></tr>
   {% for u in users %}
   <tr>
     <td><strong>{{ u.name }}</strong>{% if u.enrol_pending %} <span class="chip">enrolment pending</span>{% endif %}</td>
@@ -22,6 +22,14 @@
         </select>
         <button>set</button>
       </form>
+    </td>
+    {# Memberships are shown here but EDITED on /projects: the grant belongs
+       next to the thing being granted, not scattered across two screens. #}
+    <td class="mono small">
+      {%- if u.role == 'owner' %}<span class="muted">all (owner)</span>
+      {%- elif u.projects %}{% for pid, prole in u.projects.items() %}{{ pid }}:{{ prole }}{{ ' ' if not loop.last }}{% endfor %}
+      {%- elif projects %}<span class="warnfg">none — sees nothing</span>
+      {%- else %}<span class="muted">n/a</span>{% endif %}
     </td>
     <td>{{ u.passkeys }}</td>
     <td class="mono small">{{ u.created }}</td>
@@ -40,15 +48,35 @@
 </table>
 
 <h2>Add user</h2>
-<form method="post" action="/users/add">
+<form method="post" action="/users/add" class="stack">
   <input name="name" placeholder="username (lowercase)" required pattern="[a-z0-9][a-z0-9_-]{0,31}">
-  <select name="role">
+  <select name="role" aria-label="global role">
     <option value="viewer">viewer</option>
     <option value="operator">operator</option>
     <option value="owner">owner</option>
   </select>
+  {% if projects %}
+  {# Creating the user and their first membership in ONE write: a user with no
+     project can sign in and see nothing, so leaving that as a separate step
+     invites forgetting it. #}
+  <select name="project" aria-label="project">
+    <option value="">— no project (owner-only view) —</option>
+    {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+  </select>
+  <select name="project_role" aria-label="project role">
+    <option value="viewer">viewer</option>
+    <option value="operator">operator</option>
+    <option value="maintainer">maintainer</option>
+  </select>
+  {% endif %}
   <button class="primary">Create + get enrolment link</button>
 </form>
+{% if projects %}
+<p class="muted small">
+  A new user with no project lands on the "no project yet" page and sees nothing —
+  that is deliberate. Memberships are managed on <a href="/projects">Projects</a>.
+</p>
+{% endif %}
 <p class="muted">Their device also needs mesh access first: <code>pl console enroll</code> prints the
 Headscale pre-auth key runbook.</p>
 {% endblock %}

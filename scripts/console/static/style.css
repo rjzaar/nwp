@@ -186,3 +186,37 @@ details > summary { cursor: pointer; color: var(--muted); }
 .qk-speak input { margin: 0; }
 .qk-vnote { font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .qk-mic.recording { animation: none; } }
+
+/* ---- project scope bar (multi-tenancy) ----------------------------------
+   Always visible when projects exist. A dashboard quietly showing a SUBSET of
+   the fleet is how someone concludes "all green" about sites they cannot see,
+   so the active project and its site list are stated, not hidden in a menu. */
+.scopebar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 6px 10px; margin: 0 0 10px; border: 1px solid var(--line);
+  border-left: 3px solid var(--accent); border-radius: 8px; background: var(--card);
+  font-size: 13px; }
+.scopebar-label { text-transform: uppercase; letter-spacing: 0.06em; font-size: 10.5px;
+  color: var(--muted); }
+.scopebar-form { display: inline-flex; gap: 6px; }
+.scopebar select { font-size: 13px; padding: 3px 6px; max-width: 60vw; }
+.scopebar-one { font-size: 13.5px; }
+.scopebar-sites { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px; flex: 1 1 100%; overflow-wrap: anywhere; }
+@media (min-width: 700px) { .scopebar-sites { flex: 1 1 auto; } }
+
+/* ---- projects admin ---- */
+.proj { margin: 0 0 18px; padding: 12px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); }
+.proj h2 { margin-top: 0; }
+.proj h3 { margin-bottom: 4px; font-size: 14px; }
+.proj details { margin: 10px 0; }
+.proj summary { cursor: pointer; color: var(--warn); font-size: 13px; }
+.stack { display: flex; flex-direction: column; gap: 8px; align-items: stretch; margin: 8px 0; }
+.stack label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--muted); }
+.stack button { align-self: flex-start; }
+@media (min-width: 700px) {
+  .stack { flex-direction: row; flex-wrap: wrap; align-items: flex-end; }
+  .stack label { flex: 1 1 220px; }
+}
+.warnfg { color: var(--warn); }
+.small { font-size: 12px; }

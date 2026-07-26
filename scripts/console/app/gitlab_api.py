@@ -74,6 +74,12 @@ class GitLab:
             f"/projects/{self._proj(project)}/issues?state={state}&order_by=updated_at&per_page={per_page}",
         )
 
+    def get_issue(self, project: str, iid: int) -> dict:
+        """One issue, by iid. Used by the tenancy check before any issue WRITE:
+        the labels on the live issue — not the ones the rendering pane happened
+        to show — decide whether a scoped operator may touch it."""
+        return self._req("GET", f"/projects/{self._proj(project)}/issues/{int(iid)}")
+
     def issue_notes(self, project: str, iid: int, per_page: int = 20) -> dict:
         return self._req(
             "GET",

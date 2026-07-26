@@ -27,12 +27,18 @@ Old data is NEVER presented as current.
 from __future__ import annotations
 
 import json
+import re
 import socket
 from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA = "nwp.fleet-state"
 SUPPORTED_VERSIONS = (1,)
+
+# A project id reaches this module from a signed cookie / a validated query
+# param, but it is about to become part of a FILE NAME, so it is re-validated
+# here rather than trusted. Defence in depth costs one regex.
+_PID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 
 
 # ---------------------------------------------------------------------------
@@ -59,6 +65,28 @@ def load(path) -> dict | None:
     except (TypeError, ValueError):
         return None
     return data
+
+
+def load_for(data_dir, project_id, default_path=None) -> tuple[dict | None, bool]:
+    """Prefer a per-project snapshot when one has been published.
+
+    Render-time filtering (the Scope choke point) is the default and needs no
+    publisher change. But when a project must be FILE-isolated — a contractor
+    who should not have another tenant's bytes on the same disk page — the
+    publisher can drop `fleet-state.<pid>.json` and this picks it up with no
+    code change at all. Returns (snapshot, scoped_flag); the flag is rendered
+    by _provenance.html so the reader knows which of the two they are seeing.
+    """
+    if project_id:
+        pid = str(project_id)
+        if _PID_RE.match(pid):
+            scoped_path = Path(data_dir) / f"fleet-state.{pid}.json"
+            snap = load(scoped_path)
+            if snap is not None:
+                return snap, True
+    if default_path is None:
+        default_path = Path(data_dir) / "fleet-state.json"
+    return load(default_path), False
 
 
 def feed(snap: dict | None, name: str) -> dict | None:
@@ -256,7 +284,7 @@ def describe(prov: dict) -> str:
             f"This host does not hold the sites, so it may be incomplete.")
 
 
-def empty_local_error(prov: dict, what: str = "fleet") -> dict:
+def empty_local_error(prov: dict, what: str = "fleet", project: str = "") -> dict:
     """What to show instead of a silent empty table when the LOCAL shell-out
     on a host with no sites returns 'ok, zero rows'. Saying nothing here is how
     the Fleet tab looked healthy while showing nothing at all."""
@@ -266,4 +294,21 @@ def empty_local_error(prov: dict, what: str = "fleet") -> dict:
         "error": (f"no {what} state on {where} — the sites live elsewhere. "
                   f"Publish from the machine that has them: pl fleet publish"),
         "no_state": True,
+    }
+
+
+def empty_project_error(project: str, what: str = "fleet") -> dict:
+    """A project whose sites are ALL absent from the snapshot must say so.
+
+    An empty table for a project reads as 'everything is fine here', which is
+    the same lie the empty Fleet tab told before publishing existed — except
+    worse, because a member cannot tell the difference between "my sites are
+    healthy" and "my sites are not being published at all"."""
+    return {
+        "ok": False,
+        "error": (f"no {what} data for project '{project}' in the published snapshot — "
+                  f"none of this project's sites appear in it. Check that the publisher "
+                  f"still knows about them: pl fleet publish"),
+        "no_state": True,
+        "project_empty": True,
     }

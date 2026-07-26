@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Projects — NWP Console{% endblock %}
+{% block content %}
+<h1>Projects</h1>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+
+<p class="muted">
+  A project is a <strong>named set of sites</strong>. It is the tenancy boundary: a
+  member sees only these sites, only issues carrying this label, only these CI
+  projects. <strong>Editing the site list is a permission grant</strong> — which is
+  why only an owner can do it, and why a site may belong to at most one project.
+</p>
+
+{% for p in projects %}
+<section class="proj card">
+  <h2>{{ p.name }} <span class="mono small muted">{{ p.id }}</span></h2>
+
+  <table class="tbl">
+    <tr><th>sites</th><td class="mono small">{{ p.sites|join(' · ') or '—' }}</td></tr>
+    <tr><th>demo sites</th><td class="mono small">{{ p.demo_sites|join(' · ') or '—' }}</td></tr>
+    <tr>
+      <th>issue label</th>
+      <td class="mono small">
+        {{ p.gitlab.issue_label or '' }}
+        {%- if not p.gitlab.issue_label %}<span class="muted">none — this project sees NO issues</span>{% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th>CI projects</th>
+      <td class="mono small">
+        {{ p.gitlab.ci_projects|join(' · ') if p.gitlab.ci_projects else '' }}
+        {%- if not p.gitlab.ci_projects %}<span class="muted">none — this project sees NO CI</span>{% endif %}
+      </td>
+    </tr>
+    <tr><th>created</th><td class="mono small">{{ p.created }} by {{ p.created_by or '?' }}</td></tr>
+  </table>
+
+  <h3>Members</h3>
+  {% if p.members %}
+  <table class="tbl">
+    <tr><th>user</th><th>project role</th><th></th></tr>
+    {% for name, role in p.members.items() %}
+    <tr>
+      <td><strong>{{ name }}</strong></td>
+      <td>{{ role }}</td>
+      <td>
+        <form method="post" action="/projects/{{ p.id }}/members/{{ name }}/delete" class="inline"
+              onsubmit="return confirm('Remove {{ name }} from {{ p.id }}?')">
+          <button class="warn">remove</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">No members yet — nobody but an owner can see this project.</p>
+  {% endif %}
+
+  <form method="post" action="/projects/{{ p.id }}/members" class="stack">
+    <select name="member" aria-label="user to assign" required>
+      <option value="">— add an existing user —</option>
+      {% for u in users %}<option value="{{ u.name }}">{{ u.name }} ({{ u.role }})</option>{% endfor %}
+    </select>
+    <select name="role" aria-label="project role">
+      {% for r in project_roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+    </select>
+    <button>assign</button>
+  </form>
+  <p class="muted small">
+    A membership never grants more than the user's global role already allows: a
+    global viewer added as maintainer is still, in effect, a viewer.
+  </p>
+
+  <details>
+    <summary>Edit sites &amp; GitLab surfaces (owner — this is a permission change)</summary>
+    <form method="post" action="/projects/{{ p.id }}/sites" class="stack"
+          onsubmit="return confirm('Changing the site list changes who can see what. Continue?')">
+      <label>sites <input name="sites" value="{{ p.sites|join(' ') }}" class="mono"></label>
+      <label>demo sites <input name="demo_sites" value="{{ p.demo_sites|join(' ') }}" class="mono"
+             placeholder="must be a subset of sites"></label>
+      <label>issue label <input name="issue_label" value="{{ p.gitlab.issue_label or '' }}" class="mono"
+             placeholder="e.g. project::{{ p.id }} — empty means NO issues"></label>
+      <label>CI projects <input name="ci_projects" value="{{ p.gitlab.ci_projects|join(' ') if p.gitlab.ci_projects else '' }}"
+             class="mono" placeholder="empty means NO CI"></label>
+      <button class="warn">save</button>
+    </form>
+  </details>
+
+  <form method="post" action="/projects/{{ p.id }}/delete" class="inline"
+        onsubmit="return confirm('Delete project {{ p.id }}? Every membership in it is revoked.')">
+    <button class="warn">delete project</button>
+  </form>
+</section>
+{% else %}
+<p class="notice">
+  No projects yet. Until one exists this console behaves exactly as it always has:
+  every signed-in user sees the whole fleet, bounded only by their global role.
+</p>
+{% endfor %}
+
+<h2>Add project</h2>
+<form method="post" action="/projects/add" class="stack">
+  <label>id <input name="pid" required pattern="[a-z0-9][a-z0-9_-]{0,31}" class="mono"
+         placeholder="ss-nw"></label>
+  <label>name <input name="name" placeholder="Saint School + Narrow Way"></label>
+  <label>sites <input name="sites" class="mono" placeholder="nwc ssc nwd ssd ss ss2 saintschool"></label>
+  <label>demo sites <input name="demo_sites" class="mono" placeholder="nwd"></label>
+  <label>issue label <input name="issue_label" class="mono" placeholder="project::ss-nw"></label>
+  <label>CI projects <input name="ci_projects" class="mono" placeholder="nwp/nwc"></label>
+  <button class="primary">Create project</button>
+</form>
+
+<p class="muted small">
+  Known to this console — demo tier: <span class="mono">{{ demo_sites|join(' ') or 'none' }}</span>;
+  CI: <span class="mono">{{ ci_projects|join(' ') or 'none' }}</span>.
+  A site in <em>no</em> project is owner-only.
+</p>
+
+<p class="muted footnote">
+  This is an <strong>application</strong> boundary, not an OS one. Everyone with a
+  shell on this host can still read every project's data. See ADR-0033.
+</p>
+{% endblock %}

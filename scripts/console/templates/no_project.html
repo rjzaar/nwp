@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}No project — NWP Console{% endblock %}
+{% block content %}
+{#
+  The fail-closed landing page. An authenticated user with no membership sees
+  THIS, not an empty dashboard: a console full of working-looking tabs showing
+  zero of everything reads as "the fleet is fine", which is the one thing it
+  must never say to someone who simply cannot see the fleet.
+#}
+<h1>You are signed in — but not in a project yet</h1>
+
+<p class="notice">
+  Your account <strong>{{ user.name }}</strong> exists and your passkey works.
+  You have not been added to a project, so there is nothing you may see yet.
+</p>
+
+<p class="muted">
+  In this console a <strong>project</strong> is a named set of sites. Every pane —
+  Fleet, Todo, Demo, Issues, CI, Quokka — shows only the sites of the project you
+  are in. Until an owner adds you to one, the correct answer is "nothing", and that
+  is what you are seeing.
+</p>
+
+<h2>What to do</h2>
+<p>Ask the console owner to run one of:</p>
+<pre class="mono small">pl console project assign {{ user.name }} &lt;project&gt; --role viewer
+pl console project list</pre>
+
+{% if not has_projects %}
+<p class="muted">
+  (There are currently no projects on this console at all. If you are the owner,
+  <code>pl console project add</code> creates the first one — until then every
+  account behaves as it did before projects existed.)
+</p>
+{% endif %}
+
+<p class="muted footnote">
+  Signed in as {{ user.name }} ({{ user.role }}).
+  <form method="post" action="/logout" class="inline"><button class="ghost">sign out</button></form>
+</p>
+{% endblock %}

@@ -48,8 +48,20 @@ GITLAB_TOKEN_FILE = Path(
 OPS_PROJECT = _env("NWP_CONSOLE_OPS_PROJECT", "nwp/ops")
 CI_PROJECTS = [p.strip() for p in _env("NWP_CONSOLE_CI_PROJECTS", "nwp/nwp").split(",") if p.strip()]
 
-# Demo tier sites the demo pane covers (and the ONLY sites demo actions accept).
+# Demo tier sites the demo pane covers. This is the TIER GATE, not a grant:
+# it says which sites the demo verbs exist for at all. WHICH of them a given
+# request may act on comes from the Scope (project.demo_sites ∩ this list) —
+# see app/scope.py. Never pass this list to build_action().
 DEMO_SITES = [s.strip() for s in _env("NWP_CONSOLE_DEMO_SITES", "nwd").split(",") if s.strip()]
+
+# Project scoping (multi-tenancy). Strict mode turns a scrubbed foreign row
+# from "dropped + audited" into a hard error — it is set in CI and in the test
+# suite, so a leak fails the build instead of being quietly repaired at render
+# time. It is deliberately OFF in production: a leak must not become a 500.
+SCOPE_STRICT = _env("NWP_CONSOLE_SCOPE_STRICT", "0") in ("1", "true", "on", "yes")
+
+# Signed cookie remembering the last project a member looked at.
+PROJECT_COOKIE = "nwp_console_project"
 
 # Sessions
 SESSION_COOKIE = "nwp_console_session"

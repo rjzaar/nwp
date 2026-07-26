@@ -1,0 +1,218 @@
+{
+ "schema": "nwp.fleet-state",
+ "schema_version": 1,
+ "generated_at": "2099-01-01T00:00:00Z",
+ "generated_by": {
+  "host": "workstation-secret-hostname",
+  "user": "rob",
+  "version": "test"
+ },
+ "feeds": {
+  "rag": {
+   "ok": true,
+   "rc": 0,
+   "secs": 1,
+   "cmd": "pl rag --json --no-todo",
+   "data": {
+    "sites": [
+     {
+      "site": "nwc",
+      "rag": "GREEN",
+      "security": 0,
+      "stale": false
+     },
+     {
+      "site": "ssc",
+      "rag": "AMBER",
+      "security": 1,
+      "stale": false
+     },
+     {
+      "site": "nwd",
+      "rag": "GREEN",
+      "security": 0,
+      "stale": false
+     },
+     {
+      "site": "ssd",
+      "rag": "GREEN",
+      "security": 0,
+      "stale": false
+     },
+     {
+      "site": "ss",
+      "rag": "GREEN",
+      "security": 0,
+      "stale": false
+     },
+     {
+      "site": "ss2",
+      "rag": "GREEN",
+      "security": 0,
+      "stale": false
+     },
+     {
+      "site": "saintschool",
+      "rag": "GREEN",
+      "security": 0,
+      "stale": false
+     },
+     {
+      "site": "avc",
+      "rag": "RED",
+      "security": 9,
+      "stale": true
+     },
+     {
+      "site": "mt",
+      "rag": "RED",
+      "security": 4,
+      "stale": true
+     },
+     {
+      "site": "cathnet",
+      "rag": "AMBER",
+      "security": 2,
+      "stale": false
+     },
+     {
+      "site": "dir",
+      "rag": "GREEN",
+      "security": 0,
+      "stale": false
+     },
+     {
+      "site": "dir1",
+      "rag": "RED",
+      "security": 3,
+      "stale": false
+     }
+    ]
+   }
+  },
+  "todo": {
+   "ok": true,
+   "rc": 0,
+   "secs": 2,
+   "cmd": "pl todo check --json",
+   "data": {
+    "timestamp": "2099-01-01T00:00:00Z",
+    "summary": {
+     "total": 6,
+     "high": 3,
+     "medium": 2,
+     "low": 1
+    },
+    "items": [
+     {
+      "id": "t1",
+      "category": "SEC",
+      "priority": "high",
+      "title": "ssc advisory",
+      "description": "d",
+      "site": "ssc",
+      "action": "a"
+     },
+     {
+      "id": "t2",
+      "category": "INC",
+      "priority": "medium",
+      "title": "nwc backup stale",
+      "description": "backup is 9 days old",
+      "site": "nwc",
+      "action": "pl backup nwc"
+     },
+     {
+      "id": "t3",
+      "category": "SEC",
+      "priority": "high",
+      "title": "avc advisory",
+      "description": "d",
+      "site": "avc",
+      "action": "a"
+     },
+     {
+      "id": "t4",
+      "category": "INC",
+      "priority": "high",
+      "title": "mt backup stale",
+      "description": "backup is 40 days old",
+      "site": "mt",
+      "action": "pl backup mt"
+     },
+     {
+      "id": "t5",
+      "category": "TOK",
+      "priority": "medium",
+      "title": "cathnet token",
+      "description": "d",
+      "site": "cathnet",
+      "action": "a"
+     },
+     {
+      "id": "t6",
+      "category": "TST",
+      "priority": "low",
+      "title": "dir1 tests",
+      "description": "d",
+      "site": "dir1",
+      "action": "a"
+     }
+    ]
+   }
+  },
+  "security": {
+   "ok": true,
+   "rc": 0,
+   "secs": 1,
+   "cmd": "pl fleet security --json",
+   "data": {
+    "generated_at": "2099-01-01T00:00:00Z",
+    "sites": [
+     {
+      "site": "ssc",
+      "state": "vulnerable",
+      "platform": "drupal",
+      "checked": "2099-01-01",
+      "count": 1,
+      "ignored": 0,
+      "advisories": [
+       {
+        "id": "PKSA-MINE-1",
+        "cve": "CVE-2099-0001",
+        "package": "drupal/mine",
+        "installed": "1.0",
+        "affected": "<1.2",
+        "title": "ssc advisory",
+        "severity": "high",
+        "reported_at": "2099-01-01",
+        "link": "https://example.com/1"
+       }
+      ]
+     },
+     {
+      "site": "avc",
+      "state": "vulnerable",
+      "platform": "drupal",
+      "checked": "2099-01-01",
+      "count": 1,
+      "ignored": 0,
+      "advisories": [
+       {
+        "id": "PKSA-SECRET-9",
+        "cve": "CVE-2099-0009",
+        "package": "drupal/secretpkg",
+        "installed": "1.0",
+        "affected": "<9.9",
+        "title": "SECRET-ADVISORY-TITLE",
+        "severity": "critical",
+        "reported_at": "2099-01-01",
+        "link": "https://example.com/9"
+       }
+      ]
+     }
+    ]
+   }
+  }
+ }
+}

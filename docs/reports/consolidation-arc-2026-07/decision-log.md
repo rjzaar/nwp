@@ -1611,3 +1611,135 @@ rollback registry row for the resulting repo↔box divergence.
 CI comment block and one not-yet-deployed box script; there is no state migration and no new verb that
 writes anything. If the seeded allowlist is judged to mask too much, the sharper posture is to delete
 rows (each is one line) rather than to revert the gate to string matching.
+
+## [2026-07-26] item4-triage-half-of-the-ci-gate-work-had-already-landed
+**Decision:** Before writing anything, triaged all 11 sub-fixes of the
+`ci-gates-that-cannot-fail` item against today's `origin/main` rather than against the
+programme text, and built only what was still broken.
+**Already landed (verified in tree, not assumed):** `lint:bash` now runs
+`scripts/ci/lint-bash.sh` (no `find -exec … \;` status loss) and carries a
+`merge_request_event` rule; `verify-signature` runs `scripts/ci/verify-signature.sh` for
+real at `allow_failure: false`; `.gitleaks.toml` was un-blinded on `fix/leakage-gate-scope`
+(merged, 92cf069); `lint:yq-first` resolves shell variables holding `*.yml` paths and has a
+shrink-only `.yq-first-baseline`; the phantom `junit:` stanzas now point at reports
+`scripts/ci/run-bats.sh` actually writes; `test:console` exists with a collected-count floor.
+**Still broken, and therefore this item's scope:** the `pl test` vacuous passes, the
+`test:integration` job that ran one file out of six under the name "integration", and
+`.verification.yml`'s age-blind coverage figure.
+**Alternative rejected:** re-deriving the already-landed fixes to "complete the item". That
+would have produced a large diff that changed nothing and buried the two real defects.
+**Reversible-how:** N/A (a triage, not a change).
+
+## [2026-07-26] item4-a-suite-that-runs-nothing-has-failed
+**Decision:** Gave every runner in `scripts/commands/run-tests.sh` a third outcome —
+`2 = DID NOT RUN` — and made `main()` count it as a failure in its own column.
+**Why:** `pl test --e2e` printed `Test suites run: 1 / Test suites passed: 1 / [✓] All test
+suites passed` in `00:00:00` having executed zero tests, because `run_e2e_tests` ended in a
+bare `return 0`. Captured verbatim before the change. The e2e directory holds standalone
+Linode-provisioning scripts that no harness has ever invoked from here.
+**Second half:** the bats suites now delegate to `scripts/ci/run-bats.sh` — the same runner
+CI uses — which asserts a non-empty JUnit report, `>0 <testcase>` and an exact skip budget.
+Two independent answers to "did the suite run?" had already diverged: CI refused a
+zero-testcase run while `pl test` celebrated one.
+**Alternative rejected:** deleting the `--e2e` flag. The scripts are real and someone should
+wire them; a flag that refuses to lie is a standing reminder, a deleted flag is not.
+**Reversible-how:** `git revert`. No state outside `.logs/junit/` is written.
+
+## [2026-07-26] item4-skips-are-declared-in-tree-and-shrink-only
+**Decision:** Added `tests/.skip-budget` (`integration=14`, `unit=0`, `e2e=0`) as the single
+source of truth for how many tests may skip, read by `scripts/ci/run-bats.sh` for both CI and
+`pl test`.
+**Why:** bats reports a `skip` as `ok`. Measured on this workstation: the integration suite is
+70 cases of which **14 skip** without ddev, exits 0, and prints "Integration tests passed".
+The budget was previously a literal `NWP_BATS_MAX_SKIPPED: "0"` in `.gitlab-ci.yml` that only
+held because CI ran a different, skip-free file — and `pl test` had no budget at all.
+**Measured baselines, not guessed:** unit = 1277 cases / 0 skips / 0 failures; integration =
+70 / 14 / 0.
+**Alternative rejected:** `ENABLE_DDEV_TESTS=true` in CI. The runner has no ddev; forcing the
+flag would turn 14 silent skips into 14 failures caused by runner capability rather than by
+the code under review. Declaring the shortfall is honest; faking the capability is not.
+**Reversible-how:** delete `tests/.skip-budget`; `run-bats.sh` falls back to 0.
+
+## [2026-07-26] item4-test-integration-ran-one-file-out-of-six
+**Decision:** `test:integration` now runs `tests/integration/` instead of
+`tests/integration/06-scripts-validation.bats`.
+**Why:** the job asserted 25 existence / `bash -n` / `--help` checks and was named for a suite
+of 70. The 45 lifecycle cases in `01-install` … `05-deployment` had never run in CI; **31 of
+them need no ddev at all** and were simply never invoked. The job now executes 70 cases with
+the 14 ddev-dependent skips declared in `tests/.skip-budget`.
+**Reversible-how:** `git revert` the `.gitlab-ci.yml` hunk.
+
+## [2026-07-26] item4-a-verification-result-has-an-age
+**Decision:** Taught `verify.sh` to read `verified_at`: new
+`count_machine_verified_fresh_items` / `count_machine_verified_stale_items` /
+`newest_verification_date`, a `config.freshness_days: 90` horizon in `.verification.yml`, and
+an "Evidence age" block in `pl verify summary`.
+**Why (measured, not asserted):** `pl verify summary` reported `Automated Tests: 514/570
+(90%)`. Running the new counters over the unmodified file gives **514 verified, 0 fresh, 514
+STALE, newest result 2026-02-02** — every `verified_at` in the file was written between
+2026-01-11 and 2026-02-02, several hundred commits ago. The figure could not go down, because
+nothing decayed: a verification run that never happens leaves coverage exactly where it was.
+CLAUDE.md's release checklist gates a tag on that number.
+**Also:** `run_ci_mode` now counts persisted results (`MACHINE_STATE_WRITES`) and returns 1
+when it wrote none, so a depth with no machine blocks — or a runner missing every tool —
+cannot exit 0 and regenerate `.badges.json` from the same stale counts it started with.
+**Alternative rejected:** deleting the coverage figure. The measurement is worth having; what
+was missing was its date.
+**Reversible-how:** `git revert`. The horizon is one config line; set it very large to restore
+the old age-blind behaviour without touching code.
+
+## [2026-07-26] item4-verify-test-site-cleanup-is-now-unconditional
+**Decision:** `run_machine_checks` installs an `EXIT INT TERM` trap that calls
+`cleanup_test_site` as soon as the site exists, disarmed on the normal path.
+**Why:** cleanup lived only on the normal return path, so an interrupt, a `set -e` abort or a
+runner timeout left `sites/verify-test*` and its docker volumes behind. That is the exact
+shape of the 2026-01 incident that put the ddev-cleanup rule in CLAUDE.md, and the reason
+`pl verify doctor` needs an orphan-volume sweeper at all.
+**Reversible-how:** `git revert`; the trap is one block.
+
+## [2026-07-26] item4-test-verification-stays-allow_failure-true-for-now
+**Decision, recorded as NOT done and why:** did not flip `test:verification` to
+`allow_failure: false`, despite now having a real "verified nothing" signal to gate on.
+**Why not:** the job runs `--depth=basic`, which calls `create_test_site` and a full composer
+Drupal install. The CI runner has no ddev, so flipping it blocking would red every MR on
+*runner capability*, not on the code under review — manufacturing exactly the kind of
+meaningless red this programme exists to remove. The prerequisite is the programme's own step
+7, "move site-creating depths out of the CI job", which is a larger change than this item can
+carry safely.
+**What did change:** the zero-machine-write guard is in place, so the flip is now a one-line
+change once the depths are separated.
+**Reversible-how:** N/A (nothing changed).
+
+## [2026-07-26] item4-source-text-only-test-budget-deferred
+**Decision, recorded as NOT done:** did not build the meta-test that classifies each `@test`
+body and freezes the source-text-only ratio at today's 208/1085.
+**Why not:** the planner already flagged it as effort-L folded in as a budget, and a
+classifier accurate enough to be trusted is itself a body of work — a crude regex would
+mis-file tests in both directions and produce a gate nobody believes, which is the failure
+mode being fixed. Between it and the `.verification.yml` freshness defect, the latter has the
+larger blast radius: an operator gates a release tag on that number.
+**Not lost:** the two suites shipped here (`test-suite-honesty.bats`,
+`test-verify-freshness.bats`) are call-site/behavioural, not source-text, so the ratio moves
+the right way regardless.
+**Reversible-how:** N/A (nothing changed).
+
+## [2026-07-26] item4-two-sub-fixes-landed-mid-session-and-were-re-verified-not-assumed
+**Situation:** while this item was in flight, `fix/item7-contract-and-boundary-gates` merged to
+main (0cdb94c), carrying two of item 4's own sub-fixes — `pl impact --honesty` failing closed,
+and the impact-contract gate scanning `lib/**` + executable non-`.sh` under `servers/**` with a
+call-site (not presence-grep) assertion.
+**Decision:** rebased onto the new main and **re-proved both against the merged code** rather
+than trusting the commit titles.
+**Evidence captured on the pre-merge tree (the red):** `pl impact --honesty` in this worktree
+printed `manifest-honesty: clean — no boundary symbol referenced outside its declared paths`
+and exited **0**, while 13 of the 18 contract-declared path heads were absent — the scan had
+silently collapsed to `lib` + `scripts`, so 5 of 7 boundary surfaces, including `oauth_sso`
+(SSO identity) and `erasure` (Art.17), were never looked at. That is a CI clone's exact state,
+since `sites/*` is gitignored.
+**Evidence after the merge (the green):** the same command exits **2** and prints
+`manifest-honesty: CANNOT VERIFY — 5 of 7 surface(s) have no provider tree on disk. This is NOT
+a clean result: the check found nothing because it could not look.` `test-impact-contract.bats`
+is 17/17 and now asserts `servers/nwpcode/demo/nwd-demo-reset-restricted` is in scope.
+**Consequence for this item:** sub-fixes 3 and 4 were dropped from this branch instead of being
+re-implemented. Duplicating them would have produced a conflicting diff that changed nothing.
+**Reversible-how:** N/A (work removed, not added).

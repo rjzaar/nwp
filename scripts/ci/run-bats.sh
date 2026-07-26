@@ -51,7 +51,25 @@ fi
 
 REQUIRED_TOOLS_DEFAULT="bats git"
 read -r -a required <<< "${NWP_BATS_REQUIRED_TOOLS:-$REQUIRED_TOOLS_DEFAULT}"
-MAX_SKIPPED="${NWP_BATS_MAX_SKIPPED:-0}"
+
+# Skip budget resolution — ONE source of truth for CI and for `pl test`.
+#
+#   NWP_BATS_MAX_SKIPPED  explicit, wins (a deliberately reduced runner)
+#   NWP_BATS_SUITE        names a key in tests/.skip-budget
+#   otherwise             0
+#
+# The budget used to be a literal in .gitlab-ci.yml while `pl test` had none at
+# all, so the two disagreed about how much silence was acceptable. Declaring it
+# in-tree makes it reviewable and shrink-only.
+_repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+BUDGET_FILE="${NWP_SKIP_BUDGET_FILE:-$_repo_root/tests/.skip-budget}"
+MAX_SKIPPED="${NWP_BATS_MAX_SKIPPED:-}"
+if [ -z "$MAX_SKIPPED" ] && [ -n "${NWP_BATS_SUITE:-}" ] && [ -f "$BUDGET_FILE" ]; then
+    MAX_SKIPPED=$(grep -E "^${NWP_BATS_SUITE}=[0-9]+" "$BUDGET_FILE" 2>/dev/null \
+                  | head -1 | cut -d= -f2)
+    [ -n "$MAX_SKIPPED" ] && echo "skip budget '${NWP_BATS_SUITE}'=$MAX_SKIPPED (from $BUDGET_FILE)"
+fi
+MAX_SKIPPED="${MAX_SKIPPED:-0}"
 
 echo "=== Preflight ==="
 missing=()
@@ -84,7 +102,11 @@ rm -f "$report"
 
 echo ""
 echo "=== Running bats: ${TARGETS[*]} ==="
-bats --report-formatter junit --output "$OUT_DIR" "${TARGETS[@]}"
+# NWP_BATS_EXTRA_ARGS lets the interactive caller (pl test -v) add --verbose-run
+# without a second bats invocation existing anywhere. The report flags are not
+# negotiable: they are what makes "the suite did not run" detectable.
+read -r -a extra_args <<< "${NWP_BATS_EXTRA_ARGS:-}"
+bats "${extra_args[@]}" --report-formatter junit --output "$OUT_DIR" "${TARGETS[@]}"
 rc=$?
 
 echo ""

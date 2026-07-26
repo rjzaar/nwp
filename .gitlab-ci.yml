@@ -443,7 +443,20 @@ test:unit:
   tags:
     - nwp
 
-# Integration tests (BATS) - syntax validation only in CI
+# Integration tests (BATS).
+#
+# Until 2026-07-26 this job ran ONE file — 06-scripts-validation.bats, 25
+# existence / `bash -n` / --help assertions — under the name "test:integration".
+# The 45 real lifecycle cases in 01-install .. 05-deployment never ran in CI at
+# all. 31 of those 45 need no ddev and were simply never invoked; the other 14
+# guard on ENABLE_DDEV_TESTS and would `skip`, which bats reports as `ok`.
+#
+# The job now runs the whole directory and declares the shortfall: the budget
+# lives in tests/.skip-budget (integration=14), read by run-bats.sh, which is
+# also what `pl test --integration` calls. Exceed it and the job goes red; drop
+# below it and the runner tells you to lower the number in the same MR.
+#
+# Provisioning ddev on the runner is the way to burn the 14 down — see ops#47.
 test:integration:
   stage: test
   image: ubuntu:22.04
@@ -451,9 +464,9 @@ test:integration:
     - apt-get update -qq && apt-get install -y -qq bats git
   variables:
     NWP_BATS_REQUIRED_TOOLS: "bats git"
-    NWP_BATS_MAX_SKIPPED: "0"
+    NWP_BATS_SUITE: "integration"
   script:
-    - ./scripts/ci/run-bats.sh .logs/junit/integration tests/integration/06-scripts-validation.bats
+    - ./scripts/ci/run-bats.sh .logs/junit/integration tests/integration/
   artifacts:
     when: always
     reports:

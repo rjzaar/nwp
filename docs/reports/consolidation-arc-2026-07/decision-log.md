@@ -1023,9 +1023,10 @@ see: (a) MRs touching a CLAUDE.md sensitive path now need a `REVIEW:` marker (on
 (b) an MR that adds an AWK YAML parser or a new secret-shaped string now fails; (c) a suite that starts
 skipping fails instead of passing.
 
-**Reversible-how:** `git revert` the MR (registry row CP22). Every change is a CI job definition, a new script under
+**Reversible-how:** `git revert` the MR (registry row CP21). Every change is a CI job definition, a new script under
 `scripts/ci/`, or a baseline file — no state migration, nothing on any host. To relax a single gate without
 reverting: `allow_failure: true` on that job block.
+
 ---
 
 ## 2026-07-26 — item 1 `secrets-registry-truth`: `pl secrets` must fail when the estate's credentials are wrong

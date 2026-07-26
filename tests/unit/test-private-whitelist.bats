@@ -20,18 +20,22 @@ teardown() {
          "${REPO}/private/zz-probe-loose.yml"
 }
 
+# NB: these assertions must NEVER create or truncate the real artefacts —
+# `private/token-consumers.md` is a tracked file, and an earlier draft of this
+# test opened it with `: >` and silently emptied it. `git check-ignore` matches
+# patterns, not the filesystem, so no file needs to exist.
 @test "private/: the token-consumer map is trackable" {
-  : > "${REPO}/private/token-consumers.md"
   run git -C "$REPO" check-ignore -q private/token-consumers.md
   [ "$status" -ne 0 ]
 }
 
 @test "private/: rotation logs are trackable" {
-  : > "${REPO}/private/rotation-2099-01.md"
   run git -C "$REPO" check-ignore -q private/rotation-2099-01.md
-  local rc="$status"
-  rm -f "${REPO}/private/rotation-2099-01.md"
-  [ "$rc" -ne 0 ]
+  [ "$status" -ne 0 ]
+}
+
+@test "private/: the test suite leaves the real artefacts intact" {
+  [ -s "${REPO}/private/token-consumers.md" ]
 }
 
 @test "private/: an arbitrary loose file is still ignored" {

@@ -2656,3 +2656,42 @@ literal replaced first (`git.<apex>` before the bare apex), all four assertions 
 **Test added:** `capture` must refuse a manifest that yields an empty map and must leave no file behind;
 plus a direct shape assertion on the emitted map (`no literal \t`, splits into exactly two fields) so a
 future version difference in escape handling cannot reintroduce this.
+
+## [2026-07-27] item6-and-item7-both-capture-host-state — the boundary, stated before it rots
+
+**Situation.** Fix-programme items 6 (`pl host`) and 7 (`pl server-state`) landed hours apart and BOTH
+write under `servers/<host>/system/`. Two commands owning one directory is the exact anti-pattern item 7
+itself warns about (`servers/nwpcode/.git` vs the outer repo: "two overlapping repos over one path
+guarantees a divergent second copy"). Recording the boundary now, while both authors' reasoning is
+still legible, is cheaper than rediscovering it from a conflict later.
+
+**They do not collide on disk, and that was verified, not assumed.** `host_capture` writes
+`servers/<h>/system/<kind>/<file>` for a FIXED kind set (`cron systemd nginx php ssh firewall
+headscale` → `crontab.root`, `units.list`, `ufw.rules`, `authorized_keys.policy`, …) and replaces each
+tree with `rm -rf "$sysdir/$k"; cp -a`. `pl server-state` writes FLAT files beside those directories
+(`cron-nwp-dr-pull`, `php-map`, `headscale-acl`, `inventory.yml`). No flat filename equals a kind
+directory name, so the `rm -rf` cannot reach them.
+
+**What each does that the other does not.**
+- `pl host capture` — a fixed, universal probe set that works on a host nobody has described yet, with
+  `lib/impact.sh` adoption, plus `health` / `logs` / `forge status` / `loop --host` / `apply`.
+- `pl server-state` — a DECLARED, per-host inventory: every artifact carries a `why:` a reviewer can
+  argue with, an optional `repo_counterpart` + `counterpart_divergence` (the nwp-daily-audit gate:
+  divergence allowed, silent divergence not), per-SAPI `php_floors` (known C), and a network-free
+  `check` asserting git-trackedness and the redaction invariant.
+
+**Recommended consolidation, for whoever picks this up:** keep ONE engine (item 6's
+`lib/host-capture.sh`, which has impact adoption and the health preflight) and move item 7's three
+distinguishing ideas onto it — the declarative inventory with mandatory `why:`, the counterpart-drift
+gate, and the per-SAPI floors. **Do not simply delete either verb**: item 6's value is the universal
+probe set, item 7's is that a human declared what matters and why. Deleting the declarations to remove
+a duplicate would keep the mechanism and lose the review surface.
+
+**`.gitignore`, resolved in item 6's favour.** Item 6's allowlist (`!servers/*/{nginx,demo,linode,
+backup,email,system}/**` plus re-ignores for identity, secrets and key material) is a strict superset of
+item 7's narrower negation, so item 7's hunk was **dropped wholesale** rather than merged — one owner,
+per the programme's cross-cutting note. The single line added is `!servers/*/php/**`, using the
+documented extension mechanism ("adding a new service directory is a deliberate one-line change here").
+That directory holds DECLARED php intent, deliberately separate from `system/php/**`, which holds the
+CAPTURED reading of what is actually running — keeping the two apart is what makes comparing them mean
+anything.

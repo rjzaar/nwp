@@ -164,6 +164,64 @@ gate_verdict() {
 }
 
 # --------------------------------------------------------------------------
+# D1 — two gaps between the header's STATED intent and what the regex delivers.
+# --------------------------------------------------------------------------
+
+# The header justifies denying requirements.txt as "dependency pins on the host
+# that holds the token — supply chain". requirements-dev.txt EXISTS ON DISK and
+# is `pip install`-ed by the `test:console` CI job (scripts/ci/test-console.sh),
+# i.e. it is a dependency file whose contents become code executed by a runner.
+# `requirements\.txt$` never matched it, so the loop could rewrite it unreviewed.
+@test "gate REFUSES the console's dev/CI dependency pins (requirements-dev.txt)" {
+  run gate_verdict scripts/console/requirements-dev.txt
+  [ "$status" -eq 1 ]
+  [[ "$output" == REFUSED* ]]
+}
+
+# The header says "static/*.js is denied". `static/[^/]*\.js$` only denied files
+# sitting DIRECTLY in static/ (today: htmx.min.js, webauthn.js, sw.js). The
+# moment console v2 nests its JS — static/js/, static/vendor/ — the deny lapses
+# silently. Same fail-closed reasoning as the app/ directory rule: a denylist
+# that has to be remembered is a denylist that lapses.
+@test "gate REFUSES console JavaScript nested under static/ (fail-closed on new subdirs)" {
+  run gate_verdict scripts/console/static/js/app.js
+  [ "$status" -eq 1 ]
+  run gate_verdict scripts/console/static/vendor/some-lib.min.js
+  [ "$status" -eq 1 ]
+  run gate_verdict scripts/console/static/js/panes/fleet/invented-tomorrow.js
+  [ "$status" -eq 1 ]
+}
+
+# NEGATIVE CONTROL FOR THE WIDENING ITSELF. `static/.*\.js$` is a broader
+# pattern than `static/[^/]*\.js$`; a botched anchor (e.g. dropping the `$`, or
+# `static/.*js`) would start swallowing style.css / templates / README and the
+# gate would refuse everything — which reads as "passing" on every deny test
+# above. These three MUST stay allowed, asserted explicitly per path so the
+# widening is verified rather than assumed.
+@test "NEGATIVE CONTROL for D1: widening static/*.js must not swallow CSS, templates or README" {
+  run gate_verdict scripts/console/static/style.css
+  [ "$status" -eq 0 ]
+  [[ "$output" == ALLOWED* ]]
+  run gate_verdict scripts/console/templates/base.html
+  [ "$status" -eq 0 ]
+  [[ "$output" == ALLOWED* ]]
+  run gate_verdict scripts/console/README.md
+  [ "$status" -eq 0 ]
+  [[ "$output" == ALLOWED* ]]
+}
+
+# And the widening must not leak past static/: nested assets that are not JS,
+# and JS outside static/, are unaffected by this change.
+@test "NEGATIVE CONTROL for D1: non-JS nested assets and the icons stay ALLOWED" {
+  run gate_verdict scripts/console/static/img/logo.svg
+  [ "$status" -eq 0 ]
+  run gate_verdict scripts/console/static/css/panes.css
+  [ "$status" -eq 0 ]
+  run gate_verdict scripts/console/static/icon.svg
+  [ "$status" -eq 0 ]
+}
+
+# --------------------------------------------------------------------------
 # NEGATIVE CONTROLS — a gate that refuses everything is a gate that gets
 # ripped out. These prove the pattern still discriminates.
 # --------------------------------------------------------------------------

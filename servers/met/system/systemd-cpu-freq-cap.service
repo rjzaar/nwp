@@ -1,0 +1,12 @@
+# /etc/systemd/system/cpu-freq-cap.service
+[Unit]
+Description=Cap CPU frequency to 3GHz (shared heatpipe thermal protection)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/cpupower frequency-set -u 3000000
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

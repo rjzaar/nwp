@@ -77,8 +77,82 @@ scenario:
       expect_contains: "complete"
       timeout: 30
 
+    # ── Host state ownership (fix-programme item 6) ─────────────────────────
+    # These are BEHAVIOURAL, not "the file exists". Before item 6 no pl verb
+    # owned any host state: DR crons, nginx snippets, php.ini overrides and ufw
+    # rules lived only on boxes, and `.gitignore`'s blanket `servers/*` meant a
+    # capture could only be versioned by remembering `git add -f`.
+
+    - name: Captured host state is VERSIONABLE (servers/ is an allowlist, not a blanket ignore)
+      cmd: |
+        bad=0
+        for sub in nginx demo linode backup email system; do
+          if git check-ignore -q "servers/probe-host/${sub}/PROBE.conf" 2>/dev/null; then
+            echo "IGNORED: servers/*/${sub}/**"; bad=1
+          fi
+        done
+        [ "$bad" -eq 0 ] && echo "servers subtree versionable"
+      expect_exit: 0
+      expect_contains: "versionable"
+      timeout: 30
+
+    - name: Server identity and key material stay ignored (allowlist must not over-open)
+      cmd: |
+        git check-ignore -q servers/probe-host/.nwp-server.yml \
+          && git check-ignore -q servers/probe-host/system/ssh/id_ed25519 \
+          && echo "identity still ignored"
+      expect_exit: 0
+      expect_contains: "identity still ignored"
+      timeout: 30
+
+    - name: No nested servers/*/ repo is unbacked (no remote / unpushed commits)
+      cmd: |
+        source lib/host-capture.sh
+        host_check_server_repos "$(pwd)" && echo "server repos backed"
+      expect_exit: 0
+      expect_contains: "server repos backed"
+      timeout: 60
+
+    - name: Captured host state is committed, not left dirty
+      cmd: |
+        out=$(git status --porcelain -- servers/ 2>/dev/null)
+        if [ -n "$out" ]; then echo "UNCOMMITTED servers/ state:"; echo "$out"; exit 1; fi
+        echo "servers/ clean"
+      expect_exit: 0
+      expect_contains: "servers/ clean"
+      timeout: 30
+
+    - name: pl host diff FAILS CLOSED on an unreachable host (blindness is not 'clean')
+      cmd: |
+        # A capture engine that reports "no drift" when it could not reach the
+        # host is the vacuous pass this whole item exists to kill.
+        source lib/host-capture.sh
+        out=$(host_capture_kind "ssh -o BatchMode=yes -o ConnectTimeout=2 nwp-verify-no-such-host" cron /tmp/nwp-verify-hostdiff-$$ 2>&1)
+        rc=$?
+        rm -rf "/tmp/nwp-verify-hostdiff-$$"
+        if [ "$rc" -eq 0 ]; then echo "FAIL: unreachable host reported success"; exit 1; fi
+        case "$out" in *UNREACHABLE*|*CAPTURE-INCOMPLETE*) echo "fails closed" ;;
+                       *) echo "FAIL: wrong failure mode: $out"; exit 1 ;; esac
+      expect_exit: 0
+      expect_contains: "fails closed"
+      timeout: 60
+
+    - name: pl server health treats an unmeasurable host as UNKNOWN, never healthy
+      cmd: |
+        ./pl server health --probe-cmd="ssh -o BatchMode=yes -o ConnectTimeout=2 nwp-verify-no-such-host" --raw 2>&1 | tee /tmp/nwp-verify-health-$$ >/dev/null
+        rc=${PIPESTATUS[0]}
+        out=$(cat /tmp/nwp-verify-health-$$); rm -f /tmp/nwp-verify-health-$$
+        if [ "$rc" -eq 0 ]; then echo "FAIL: unreachable host graded healthy"; exit 1; fi
+        case "$out" in *UNKNOWN*|*UNREACHABLE*) echo "health fails closed" ;;
+                       *) echo "FAIL: wrong failure mode: $out"; exit 1 ;; esac
+      expect_exit: 0
+      expect_contains: "health fails closed"
+      timeout: 60
+
   success_criteria:
     all_required:
       - All infrastructure commands exist
       - Help text available
       - Storage command runs
+      - Captured host state under servers/ is trackable and committed
+      - Host-state probes fail closed rather than reporting a false clean

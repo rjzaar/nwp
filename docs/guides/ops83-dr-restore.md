@@ -62,24 +62,40 @@ consistency. Neither alone is sufficient.
 Only needed for a rebuild or a legacy uid-`sub` era restore; a plain UUID-`sub` restore keeps
 the anchor intact.
 
-```sql
--- Orphaned locks: ssc idnumbers that no longer resolve on nwc.
--- (uuid-sub era: join on u.uuid; legacy uid-sub era: join on u.uid.)
-SELECT l.mdl_id, l.locked_sub, l.email
-FROM tmp_locks l
-LEFT JOIN nwc_users n ON n.uuid = l.locked_sub   -- or n.uid = l.locked_sub
-WHERE n.uuid IS NULL;                            -- each row = a severed identity
-```
-```sql
--- Repair from the LEDGER (deterministic): re-point idnumber to the durable uuid.
-UPDATE mdl_user m
-JOIN ledger g ON g.uid = m.idnumber   -- old serial captured in the ledger
-SET m.idnumber = g.uuid
-WHERE m.idnumber IN (SELECT uid FROM ledger);
+**Use the verb. Do not hand-write the SQL.**
+
+```bash
+pl pair reconcile ssc --tier=live                 # dry run (DEFAULT) — classify only
+pl pair reconcile ssc --tier=live --json          # same, machine-readable
+pl pair reconcile ssc --tier=live --apply \
+    --repair-cmd="<cmd>" --confirm=RECONCILE-APPLY  # repair the repairable only
 ```
 
-Email fallback (`JOIN … ON n.mail = m.email`) is a **human-gated last resort only** — recycled
-or changed emails make it unsafe. Gate on email-unique-and-unchanged before ever using it.
+It reads the two artifacts §2 already requires — the provider identity ledger and the consumer
+join snapshot — and classifies every **live** UID-lock:
+
+| class | meaning | action |
+|---|---|---|
+| `intact` | `locked_sub` resolves to a uuid the provider still holds | none |
+| `repairable` | `locked_sub` is a *serial uid* the ledger carries; the durable uuid is known | deterministic re-point, `--apply` |
+| `orphaned` | resolves to nothing at all | **human-gated** — never auto-repaired |
+
+Properties that matter under DR pressure:
+
+* **Fail-closed.** A missing ledger, a missing join snapshot, or a snapshot with zero live rows
+  is `CANNOT-VERIFY` and exits non-zero. "Nothing to reconcile" and "nothing to reconcile
+  *with*" never print the same thing.
+* **Dry run by default.** `--apply` additionally requires `--repair-cmd` and, on a coupled
+  tier, the typed `--confirm=RECONCILE-APPLY`.
+* **No credentials, no SQL of its own.** `--repair-cmd` is invoked once per repairable lock as
+  `CMD <mdl_id> <new_idnumber>` — wrap `pl moodle cli <site> --tier=<t> --execute -- …`. Each
+  repair runs in a subshell, so one failure fails that row, not the run, and every applied
+  repair is appended to the pair ledger.
+* **Email is not a fallback anywhere in the code path.** ops#83's email join (`JOIN … ON
+  n.mail = m.email`) remains a **human-gated last resort only** — recycled or changed emails
+  make it unsafe, and an email-keyed repair re-points a lock at the wrong person. The verb
+  deliberately cannot do it; if you need it, you are doing it by hand, on purpose, having
+  first gated on email-unique-and-unchanged.
 
 ---
 
@@ -101,9 +117,13 @@ today is liveness only (JWKS 200, endpoints up):
   pre-checks (§2). Do not restore a coupled-tier half without the join snapshot + ledger.
 - **Phased build (tracked under ops#83 / ADR-0031 ops C / ops#49):**
   1. the **provider identity ledger** (append-only, per-backup) — the only trustworthy reconcile
-     source;
-  2. the **`pair_guard` restore choke-point** that enforces the pre-checks;
-  3. the **join-integrity smoke probe** (resolve a real idnumber, not just liveness).
+     source; **BUILT** (`scripts/f26/nwc-identity-ledger.sh dump|verify`);
+  2. the **`pair_guard` restore choke-point** that enforces the pre-checks; **BUILT**
+     (`pair_guard_restore`, dry-runnable via `pl pair restore-check`);
+  3. the **join-integrity smoke probe** (resolve a real idnumber, not just liveness); **BUILT**
+     (`pl pair-smoke <consumer> --join --join-uuid=<uuid>`);
+  4. the **reconcile/repair step** itself; **BUILT** (`pl pair reconcile`, §3) — this is what
+     replaced the raw SQL that used to live in §3.
 
 ---
 

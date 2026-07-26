@@ -251,6 +251,14 @@ ${BOLD}INTERSITE BOUNDARY (P74 change-impact gate):${NC}
     impact --honesty                Check no boundary symbol leaks outside its declared paths
     contracts compat [--base=main]  Expand-and-contract (BACKWARD) schema gate
     contracts sign|verify|bundle    Sign/verify the minisign schema bundle (trust root)
+    contracts crossref [<pair>]     Cross-repo promise gate (WS fns + probe paths exist)
+
+${BOLD}GDPR ART.17 ERASURE + IDENTITY REPAIR (ops#81 / ops#83):${NC}
+    erasure plan <pair> --sub=<uuid>       Build + schema-validate the erasure command
+    erasure verify <pair> --sub=<uuid>     Probe BOTH halves for residual rows (+ backup ceiling)
+    erasure status <request-id>            What happened to a request
+    erasure execute <pair> --request-id=   Fails closed until the ops#81 channel is deployed
+    pair reconcile <consumer> [--apply]    Detect/repair severed UID-locks (ops#83 §3)
 
 ${BOLD}BRANCH TWINS (P67/ops#48):${NC}
     branch <site> <git-ref>         Create a disposable twin on a branch
@@ -865,6 +873,13 @@ main() {
         # Intersite contract compat + signed schema bundle (P74 Phase 3)
         contracts)
             run_script "contracts.sh" "$@"
+            ;;
+
+        # GDPR Art.17 right-to-be-forgotten across the nwc↔ssc pair (ops#81).
+        # plan/verify are real today; execute FAILS CLOSED until the ops#81
+        # P1/P2 channel is deployed and the operator has approved the semantics.
+        erasure)
+            run_script "erasure.sh" "$@"
             ;;
 
         # Moodle command family (PL-STG2LIVE §4 / P1-2): guarded plugin

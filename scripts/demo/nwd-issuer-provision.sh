@@ -117,6 +117,14 @@ if [[ "$TIER" == "live" ]]; then
 
     # shellcheck disable=SC2086
     rexec() { ssh $RSSH_OPTS -o BatchMode=yes -o ConnectTimeout=15 "$SSH_TARGET" "$1"; }
+    # A PRIVILEGED probe. The live key dir is 0700 www-data (see below), so the
+    # ssh user cannot stat anything inside it — an unprivileged `test -r` there
+    # always says "absent". That is not a cosmetic difference: the caller below
+    # reads "absent" as "generate", so every single live run would mint a FRESH
+    # RS256 signing keypair and silently invalidate every id_token and refresh
+    # token this issuer has already signed. Idempotence on an auth surface is a
+    # security property, not a nicety.
+    rprobe() { rexec "sudo $1"; }
     d() {
         local q="" a
         for a in "$@"; do q+=" $(printf '%q' "$a")"; done
@@ -129,6 +137,7 @@ else
     KEY_DIR="/var/www/html/oauth-keys"
     cd "$SITE_DIR"
     rexec() { ddev exec "$1"; }
+    rprobe() { rexec "$1"; }   # dev: the ddev web user owns the key dir already
     d() { ddev drush "$@"; }
 fi
 
@@ -143,7 +152,7 @@ d pm:list --status=enabled --field=name 2>/dev/null | grep -qx 'simple_oauth' \
     || { print_error "simple_oauth is not enabled on $SITE"; exit 1; }
 
 # ---- 1. signing keypair (generate if absent) --------------------------------
-if rexec "test -r $KEY_DIR/private.key && test -r $KEY_DIR/public.key" >/dev/null 2>&1; then
+if rprobe "test -r $KEY_DIR/private.key && test -r $KEY_DIR/public.key" >/dev/null 2>&1; then
     print_status "OK" "Signing keypair already present at $KEY_DIR"
 else
     print_info "No signing keypair — generating (RS256)…"

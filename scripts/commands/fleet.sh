@@ -94,6 +94,7 @@ ${BOLD}pl fleet${NC} — publish fleet state to the console host
 ${BOLD}USAGE:${NC}
     pl fleet publish [--to <ssh-host>] [--dest <path>] [--no-todo] [--no-security]
                      [--refresh-security] [--dry-run] [--quiet]
+                     [--allow-empty] [--force]
     pl fleet snapshot [--out <path>] [--no-todo] [--no-security] [--refresh-security]
     pl fleet security [--json]
     pl fleet status [--to <ssh-host>]
@@ -116,6 +117,13 @@ ${BOLD}OPTIONS:${NC}
                       (one ddev container per site) — never use this on the cron
     --dry-run         build the snapshot, print the summary, ship nothing
     --quiet           only report failures (for cron)
+    --allow-empty     permit a snapshot that names ZERO sites. Off by default:
+                      publishing from a git worktree (no sites/, no
+                      private/update-awareness/) once replaced a good snapshot
+                      with an all-zeros one and the console showed an empty
+                      fleet. Zero sites is UNKNOWN, not a clean fleet.
+    --force           publish even if the fleet population collapsed by more
+                      than half against the snapshot being replaced
 
 ${BOLD}SNAPSHOT:${NC}
     schema $FLEET_SCHEMA v$FLEET_SCHEMA_VERSION — generated_at (UTC), generated_by
@@ -230,14 +238,48 @@ _known_sites() {
 # Each feed is captured independently and best-effort: a feed that fails is
 # recorded as ok:false with its rc/stderr, and the others still publish. The
 # consumer degrades that feed only (same contract as the console's panes).
+#
+# PER-FEED DEADLINE (this is the bit that keeps the */30 cron alive).
+#
+# `pl fleet publish` runs from cron every 30 minutes to feed the console. Before
+# this, no feed had a wall clock: a slow link made `pl todo check --json` block
+# for minutes, the cron's own `timeout` fired first, and the whole publish exited
+# 124 having shipped NOTHING. The console then sat on hours-old data — correctly
+# marked stale by _provenance.html, but stale is not the same as informed.
+#
+# The fix matches the honesty this function already had for a feed that FAILS: a
+# feed that runs out of time is recorded ok:false with its reason, and the other
+# feeds still publish. A partial snapshot that names its own gaps beats no
+# snapshot, every time. Per-feed override: FLEET_FEED_BUDGET_<name>.
+: "${FLEET_FEED_BUDGET:=90}"
+
+# Budgets for the ship leg. The whole job must fit inside the */30 cron window
+# with room to spare: 3 feeds x 90s + 20 + 60 + 20 = 370s worst case.
+: "${SSH_STEP_BUDGET:=20}"   # $HOME resolution, size verification
+: "${SSH_SHIP_BUDGET:=60}"   # the snapshot transfer itself
+
+_feed_budget() { # $1 = feed name
+    local var="FLEET_FEED_BUDGET_${1^^}"
+    printf '%s' "${!var:-$FLEET_FEED_BUDGET}"
+}
+
 _capture_feed() { # $1 outdir, $2 name, $3... argv
     local outdir="$1" name="$2"; shift 2
-    local started ended rc=0
+    local started ended rc=0 budget
+    budget=$(_feed_budget "$name")
     started=$(date +%s.%N)
     set +e
-    "$PROJECT_ROOT/pl" "$@" >"$outdir/$name.out" 2>"$outdir/$name.err"
+    timeout --kill-after=10 "$budget" "$PROJECT_ROOT/pl" "$@" \
+        >"$outdir/$name.out" 2>"$outdir/$name.err"
     rc=$?
     set -e
+    # Leave the reason where _assemble can find it even though the feed wrote no
+    # usable stderr of its own — a bare rc=124 in the snapshot is a puzzle, and
+    # the operator reading the console should not have to solve it.
+    if [ "$rc" = 124 ] || [ "$rc" = 137 ]; then
+        printf 'feed exceeded its %ss deadline (rc=%s) — published as blind, not as clean\n' \
+            "$budget" "$rc" >> "$outdir/$name.err"
+    fi
     ended=$(date +%s.%N)
     printf '%s' "$rc" > "$outdir/$name.rc"
     awk -v a="$started" -v b="$ended" 'BEGIN{printf "%.1f", b-a}' > "$outdir/$name.secs"
@@ -252,6 +294,7 @@ _assemble() { # $1 outdir, $2 feed names (space separated) -> JSON on stdout
     NWP_FEED_DIR="$1" NWP_FEEDS="$2" \
     NWP_SCHEMA="$FLEET_SCHEMA" NWP_SCHEMA_VERSION="$FLEET_SCHEMA_VERSION" \
     NWP_MAX_AGE_HINT="$FLEET_MAX_AGE_HINT" NWP_ROOT="$PROJECT_ROOT" \
+    NWP_ALLOW_EMPTY="${FLEET_ALLOW_EMPTY:-0}" \
     python3 - <<'PY'
 import json, os, socket, subprocess, sys
 from datetime import datetime, timezone
@@ -267,6 +310,31 @@ def read(path, limit=200_000):
             return f.read()[:limit]
     except OSError:
         return ""
+
+
+ALLOW_EMPTY = os.environ.get("NWP_ALLOW_EMPTY", "0") == "1"
+
+
+def _population(name, data):
+    """How many SITES did this feed actually see? None = not population-bearing.
+
+    This is the number that separates "the fleet is clean" from "I could not see
+    the fleet". Both render as zeros; only this tells them apart.
+    """
+    if not isinstance(data, dict):
+        return None
+    if name == "rag":
+        sites = data.get("sites")
+        return len(sites) if isinstance(sites, list) else 0
+    if name == "security":
+        totals = data.get("totals")
+        if not isinstance(totals, dict):
+            return 0
+        try:
+            return int(totals.get("sites", 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+    return None   # `todo`: 0 items is a legitimate clean result, not a blind spot
 
 
 def pl_version():
@@ -314,8 +382,51 @@ for name in names:
         feed["data"] = data
     if not ok:
         tail = err.strip().splitlines()[-1] if err.strip() else ""
-        feed["error"] = perr or tail or f"rc={rc}"
+        # A feed that ran out of time and a feed that emitted garbage are
+        # different problems with different fixes, and "feed produced no JSON"
+        # described both. timeout(1) reports 124, or 137 when the --kill-after
+        # SIGKILL was needed; say so plainly and set `blind` so a consumer can
+        # distinguish "this feed is broken" from "this feed was not reached in
+        # time" without parsing English.
+        timed_out = rc in (124, 137)
+        feed["blind"] = timed_out
+        feed["error"] = (tail if timed_out and tail else
+                         (f"feed exceeded its deadline (rc={rc})" if timed_out else
+                          (perr or tail or f"rc={rc}")))
         feed["raw"] = out[-2000:]
+
+    # ── A FEED THAT READ NOTHING IS NOT A CLEAN FEED ─────────────────────────
+    #
+    # Publishing from a git worktree shipped a snapshot to the live console in
+    # which security.totals was {advisories: 0, sites: 0} and rag.data.sites was
+    # [], with EVERY feed marked ok. It replaced a good snapshot (88 advisories
+    # across 12 sites, 24 rag sites) with an empty one, and the console showed an
+    # empty fleet until it was republished. Nothing was broken and nothing timed
+    # out: worktrees have no sites/ and no private/update-awareness/, so both
+    # feeds truthfully reported what they could see, which was nothing.
+    #
+    # This is the same defect as the timeout case one level up — the feed could
+    # not GATHER rather than could not FINISH — so it gets the same vocabulary
+    # (blind: true), not a parallel one. `pl audit` already refuses to let a site
+    # with no record read as "0 advisories" (state: missing); this extends that
+    # from the site to the feed, because a feed with no sites at all had no
+    # per-site record to mark missing.
+    #
+    # `todo` is deliberately NOT population-bearing: zero todo items is a real,
+    # common and correct clean result.
+    if feed.get("ok"):
+        pop = _population(name, data)
+        if pop is not None:
+            feed["population"] = pop
+            if pop == 0 and not ALLOW_EMPTY:
+                feed["ok"] = False
+                feed["blind"] = True
+                feed["error"] = (
+                    "gathered 0 sites — this feed read no site data at all, which is "
+                    "UNKNOWN, not a clean fleet. Usual cause: publishing from a tree "
+                    "with no sites/ or no private/update-awareness/ (e.g. a git "
+                    "worktree). If this host genuinely has no sites, set "
+                    "FLEET_ALLOW_EMPTY=1 or pass --allow-empty.")
     feeds[name] = feed
 
 # One flat headline so a consumer (or a human with jq) can answer "how bad is
@@ -365,6 +476,13 @@ if isinstance(items, list):
         and ("backup" in f"{it.get('id','')} {it.get('title','')} {it.get('category','')}".lower()
              or "sweep" in f"{it.get('id','')} {it.get('title','')}".lower())
     )
+
+# A consumer must be able to answer "can I trust this snapshot's zeros?" from
+# the envelope, without walking every feed. `population` is the total fleet the
+# snapshot actually saw; `degraded` says at least one feed is blind.
+pop_feeds = {n: f.get("population") for n, f in feeds.items() if "population" in f}
+summary["population"] = max([p for p in pop_feeds.values() if isinstance(p, int)] or [0])
+summary["degraded"] = any(f.get("blind") or not f.get("ok") for f in feeds.values())
 
 snapshot = {
     "schema": os.environ["NWP_SCHEMA"],
@@ -427,6 +545,30 @@ build_snapshot() { # $1 dest, $2 include_todo, $3 quiet, $4 include_security, $5
         return 1
     fi
 
+    # …and refuse one that saw no FLEET, even if some feed technically parsed.
+    #
+    # The check above passes on a worktree publish: `todo` returns a valid empty
+    # item list, so "some feed is ok" is satisfied while both feeds that carry
+    # the actual fleet saw zero sites. The console then renders an empty fleet
+    # as though it were a clean one. A snapshot that cannot name a single site
+    # is not a fleet snapshot; refusing is strictly better than overwriting a
+    # good one with it.
+    if [ "${FLEET_ALLOW_EMPTY:-0}" != "1" ]; then
+        if ! printf '%s' "$json" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+feeds = d.get("feeds", {})
+bearing = {n: f for n, f in feeds.items() if "population" in f or n in ("rag", "security")}
+sys.exit(0 if any(f.get("ok") and f.get("population", 0) > 0 for f in bearing.values()) else 1)'; then
+            print_error "this tree has no fleet to publish — refusing to overwrite a good snapshot with an empty one"
+            print_info "  Every population-bearing feed (rag, security) saw 0 sites."
+            print_info "  Usual cause: running from a git worktree, which has no sites/ and"
+            print_info "  no private/update-awareness/. Publish from the real tree instead."
+            print_hint "  If this host genuinely has no sites: pl fleet publish --allow-empty"
+            return 1
+        fi
+    fi
+
     mkdir -p "$(dirname "$dest")"
     ( umask 077; printf '%s' "$json" > "$dest.tmp.$$" )
     chmod 600 "$dest.tmp.$$"
@@ -456,7 +598,9 @@ if "security_advisories" in s:
 else:
     print("  security     : not in this snapshot")
 for name, f in sorted(d.get("feeds", {}).items()):
-    mark = "ok" if f.get("ok") else "FAILED"
+    # BLIND (ran out of time) reads differently from FAILED (broke). The
+    # operator's next move is different for each: wait/raise the budget vs fix.
+    mark = "ok" if f.get("ok") else ("BLIND" if f.get("blind") else "FAILED")
     print(f"  feed {name:<9}: {mark} ({f.get('secs','?')}s, rc={f.get('rc','?')})"
           + ("" if f.get("ok") else f" — {f.get('error','')}"))
 PY
@@ -469,7 +613,7 @@ _dest_ok() { # refuse anything that is not a boring absolute path
 
 cmd_publish() {
     local host="$CONSOLE_HOST" dest="" include_todo=true dry_run=false quiet=false
-    local include_security=true refresh_security=false
+    local include_security=true refresh_security=false force=false
     while [ $# -gt 0 ]; do
         case "$1" in
             --to)       host="${2:-}"; shift 2 ;;
@@ -481,6 +625,8 @@ cmd_publish() {
             --refresh-security) refresh_security=true; shift ;;
             --dry-run)  dry_run=true; shift ;;
             --quiet|-q) quiet=true; shift ;;
+            --allow-empty) export FLEET_ALLOW_EMPTY=1; shift ;;
+            --force)    force=true; shift ;;
             -h|--help)  show_help; return 0 ;;
             *) print_error "unknown option: $1"; return 1 ;;
         esac
@@ -504,19 +650,57 @@ cmd_publish() {
     # a literal ./~ directory is exactly the kind of quiet failure to avoid).
     if [ -z "$dest" ]; then
         local rhome
-        rhome=$(ssh -o ConnectTimeout=15 -o BatchMode=yes "$host" 'printf %s "$HOME"' 2>/dev/null) \
-            || { print_error "cannot ssh to $host"; return 1; }
+        # ConnectTimeout bounds the TCP+auth handshake ONLY. A session that
+        # stalls after connect — the exact failure a congested link produces —
+        # is unbounded, so the ship leg could hang past the */30 window even
+        # once the feeds were bounded. timeout(1) bounds the whole ssh.
+        rhome=$(timeout "$SSH_STEP_BUDGET" \
+                ssh -o ConnectTimeout=15 -o BatchMode=yes "$host" 'printf %s "$HOME"' 2>/dev/null) \
+            || { print_error "cannot ssh to $host (within ${SSH_STEP_BUDGET}s)"; return 1; }
         [ -n "$rhome" ] || { print_error "could not resolve \$HOME on $host"; return 1; }
         dest="$rhome/$DEFAULT_REMOTE_REL"
     fi
     _dest_ok "$dest" || { print_error "refusing suspicious --dest: $dest"; return 1; }
 
+    # ── COLLAPSE GUARD ───────────────────────────────────────────────────────
+    #
+    # The zero-population refusal above catches the total-blindness case. This
+    # catches the subtler one: a snapshot that sees SOME sites but drastically
+    # fewer than the one it is about to replace (half the fleet's configs
+    # unreadable, a partial checkout, a half-finished migration). The console
+    # cannot tell a shrinking fleet from a shrinking view of it, so the decision
+    # belongs here, where the previous number is still available.
+    #
+    # Fail-OPEN if the remote cannot be read: not being able to compare is not
+    # evidence of collapse, and a first publish has nothing to compare against.
+    # Refusing there would make the guard the outage.
+    if [ "$force" != true ]; then
+        local new_pop old_pop
+        new_pop=$(python3 -c '
+import json,sys
+try: print(json.load(open(sys.argv[1])).get("summary",{}).get("population",0) or 0)
+except Exception: print(0)' "$LOCAL_STATE" 2>/dev/null || echo 0)
+        old_pop=$(timeout "$SSH_STEP_BUDGET" ssh -o ConnectTimeout=15 -o BatchMode=yes "$host" \
+                  "cat '$dest' 2>/dev/null" 2>/dev/null | python3 -c '
+import json,sys
+try: print(json.load(sys.stdin).get("summary",{}).get("population",0) or 0)
+except Exception: print(-1)' 2>/dev/null || echo -1)
+        if [ "${old_pop:--1}" -gt 0 ] 2>/dev/null && [ "${new_pop:-0}" -lt $(( old_pop / 2 )) ] 2>/dev/null; then
+            print_error "refusing to publish: fleet population collapsed ${old_pop} → ${new_pop} sites"
+            print_info "  The snapshot on ${host} names ${old_pop} site(s); this one names ${new_pop}."
+            print_info "  That is more likely a broken view of the fleet than a shrunken fleet."
+            print_hint "  If the fleet really did shrink: pl fleet publish --force"
+            return 1
+        fi
+    fi
+
     [ "$quiet" = true ] || print_info "Shipping to ${host}:${dest} (0600, atomic)"
     # umask first so the tmp file is never briefly world-readable.
-    if ! ssh -o ConnectTimeout=20 -o BatchMode=yes "$host" \
+    if ! timeout "$SSH_SHIP_BUDGET" \
+            ssh -o ConnectTimeout=20 -o BatchMode=yes "$host" \
             "umask 077; mkdir -p \"\$(dirname '$dest')\" && cat > '$dest.tmp.\$\$' && chmod 600 '$dest.tmp.\$\$' && mv -f '$dest.tmp.\$\$' '$dest'" \
             < "$LOCAL_STATE"; then
-        print_error "failed to ship the snapshot to ${host}:${dest}"
+        print_error "failed to ship the snapshot to ${host}:${dest} (within ${SSH_SHIP_BUDGET}s)"
         return 1
     fi
 
@@ -524,7 +708,8 @@ cmd_publish() {
     # the consumer's problem — size + mtime is the cheap honest check.
     local local_size remote_size
     local_size=$(wc -c < "$LOCAL_STATE" | tr -d ' ')
-    remote_size=$(ssh -o ConnectTimeout=15 -o BatchMode=yes "$host" "wc -c < '$dest'" 2>/dev/null | tr -d ' ' || true)
+    remote_size=$(timeout "$SSH_STEP_BUDGET" \
+                  ssh -o ConnectTimeout=15 -o BatchMode=yes "$host" "wc -c < '$dest'" 2>/dev/null | tr -d ' ' || true)
     if [ "$local_size" != "$remote_size" ]; then
         print_error "verification failed: shipped $local_size bytes, host reports '${remote_size:-none}'"
         return 1
@@ -542,6 +727,7 @@ cmd_snapshot() {
             --no-todo) include_todo=false; shift ;;
             --no-security) include_security=false; shift ;;
             --refresh-security) refresh_security=true; shift ;;
+            --allow-empty) export FLEET_ALLOW_EMPTY=1; shift ;;
             -h|--help) show_help; return 0 ;;
             *) print_error "unknown option: $1"; return 1 ;;
         esac

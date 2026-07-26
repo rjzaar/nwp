@@ -538,3 +538,101 @@ assert advisories.headline(view) == 'no security data in this snapshot'
 print('ok')"
   [ "$status" -eq 0 ]
 }
+
+################################################################################
+# A FEED THAT GATHERED NOTHING IS BLIND, NOT CLEAN
+#
+# The incident: `pl fleet publish` run from a git worktree shipped a snapshot to
+# the live console in which security.totals was {advisories:0, sites:0} and
+# rag.data.sites was [], with EVERY feed marked ok. It replaced a good snapshot
+# (88 advisories across 12 sites; 24 rag sites) with an empty one, and the
+# console displayed an empty fleet until it was republished.
+#
+# Nothing was broken and nothing timed out — worktrees have no sites/ and no
+# private/update-awareness/, so both feeds truthfully reported what they could
+# see, which was nothing. "0 sites" and "a clean fleet" rendered identically.
+################################################################################
+
+RAG_EMPTY='{"summary":{"RED":0,"AMBER":0,"GREEN":0},"sites":[]}'
+
+@test "a feed that saw 0 sites is ok:false and blind:true, not ok with zeros" {
+  root=$(make_fake_root 0 0 "$RAG_EMPTY" "$TODO_OK")
+  run env PROJECT_ROOT="$root" FLEET_ALLOW_EMPTY=1 \
+      "$FLEET_SH" snapshot --no-security --out "$WORK/e.json"
+  # FLEET_ALLOW_EMPTY lets the snapshot be WRITTEN so we can inspect the feed;
+  # the marking is what this test is about.
+  run python3 -c "
+import json;d=json.load(open('$WORK/e.json'))
+f=d['feeds']['rag']
+print('population', f.get('population'), 'ok', f.get('ok'))"
+  [[ "$output" == *"population 0"* ]]
+}
+
+@test "an empty-fleet snapshot is refused rather than published" {
+  # THE REGRESSION. Before this, the snapshot was written and shipped, and the
+  # only guard ("is any feed ok?") passed because todo returned a valid empty
+  # item list. A snapshot that cannot name a single site is not a fleet
+  # snapshot; refusing beats overwriting a good one with it.
+  root=$(make_fake_root 0 0 "$RAG_EMPTY" "$TODO_OK")
+  run env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-security --out "$WORK/none2.json"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no fleet to publish"* ]] || [[ "$output" == *"refusing"* ]]
+  [ ! -f "$WORK/none2.json" ]
+}
+
+@test "the refusal names the cause and the escape hatch" {
+  # An operator who hits this at 3am must not have to read fleet.sh to act.
+  root=$(make_fake_root 0 0 "$RAG_EMPTY" "$TODO_OK")
+  run env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-security --out "$WORK/n3.json"
+  [[ "$output" == *"worktree"* ]]
+  [[ "$output" == *"--allow-empty"* ]]
+}
+
+@test "--allow-empty is an explicit opt-in for a genuinely empty fleet" {
+  root=$(make_fake_root 0 0 "$RAG_EMPTY" "$TODO_OK")
+  run env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-security --allow-empty --out "$WORK/ok.json"
+  [ "$status" -eq 0 ]
+  [ -f "$WORK/ok.json" ]
+}
+
+@test "NEGATIVE CONTROL: a populated fleet publishes unchanged, not flagged" {
+  # The fix must not turn every healthy publish into a refusal or a warning.
+  root=$(make_fake_root 0 0 "$RAG_OK" "$TODO_OK")
+  run env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-security --out "$WORK/good.json"
+  [ "$status" -eq 0 ]
+  run python3 -c "
+import json;d=json.load(open('$WORK/good.json'))
+f=d['feeds']['rag']
+assert f['ok'] is True, 'healthy rag feed must stay ok'
+assert f.get('blind') is not True, 'healthy feed must not be marked blind'
+assert f['population']==3, f['population']
+assert d['summary']['population']==3
+print('ok')"
+  [ "$status" -eq 0 ]
+}
+
+@test "todo is NOT population-bearing — zero todo items is a real clean result" {
+  # Guarding todo on emptiness would make "no maintenance work outstanding"
+  # unpublishable, which is the opposite of the point.
+  root=$(make_fake_root 0 0 "$RAG_OK" '{"summary":{"total":0},"items":[]}')
+  run env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-security --out "$WORK/t.json"
+  [ "$status" -eq 0 ]
+  run python3 -c "
+import json;d=json.load(open('$WORK/t.json'))
+assert d['feeds']['todo']['ok'] is True
+assert 'population' not in d['feeds']['todo']
+print('ok')"
+  [ "$status" -eq 0 ]
+}
+
+@test "summary carries population and degraded so a consumer can judge the zeros" {
+  root=$(make_fake_root 0 1 "$RAG_OK" 'not json')
+  run env PROJECT_ROOT="$root" "$FLEET_SH" snapshot --no-security --out "$WORK/d.json"
+  [ "$status" -eq 0 ]
+  run python3 -c "
+import json;d=json.load(open('$WORK/d.json'))
+assert d['summary']['population']==3
+assert d['summary']['degraded'] is True   # the todo feed failed
+print('ok')"
+  [ "$status" -eq 0 ]
+}

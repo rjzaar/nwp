@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+################################################################################
+# tests/unit/helpers/slow-curl.sh — a deterministic, root-free network-latency simulator.
+#
+# WHY THIS AND NOT `tc netem`: netem needs root and a real interface, so it
+# cannot run in CI and cannot be asserted on. Pointing at a blackholed IP is
+# root-free but its behaviour depends on whether the path DROPS or REJECTS, so
+# it is not deterministic either. This stub is both.
+#
+# It is a FAITHFUL simulator, not a stopwatch: it HONOURS the timeout the caller
+# asked for. That is the whole point — it can tell the difference between code
+# that passes a timeout and code that does not:
+#
+#   caller passes no timeout      -> blocks for the full simulated latency
+#   caller passes --max-time M    -> blocks min(M, latency); if M < latency it
+#                                    exits 28 (CURLE_OPERATION_TIMEDOUT), exactly
+#                                    as real curl does
+#
+# So reverting a `--max-time` makes a bounded test go red on the clock, and
+# adding one makes it go green *and* surface a timeout the caller must classify.
+#
+# Env:
+#   NWP_FAKE_CURL_LATENCY    simulated seconds of blocking      (default 0)
+#   NWP_FAKE_CURL_BODY       body to emit on success            (default '[]')
+#   NWP_FAKE_CURL_LOG        append "<url>\tmax_time=<N|NONE>" per call
+#   NWP_FAKE_CURL_RC         force this exit status after the latency (e.g. 22
+#                            for an HTTP error, 7 for connect refused) — lets a
+#                            test distinguish "no answer" from "an answer we
+#                            did not like" without a real server
+#   NWP_FAKE_CURL_ARGV_LOG   append the VERBATIM argv of every call. Used to
+#                            assert a token never reaches curl's command line,
+#                            where `ps` would expose it (CLAUDE.md).
+#
+# With NWP_FAKE_CURL_LATENCY=0 this is a transparent fast link — the negative
+# control: every caller must behave exactly as it does against a healthy host.
+################################################################################
+
+latency="${NWP_FAKE_CURL_LATENCY:-0}"
+body="${NWP_FAKE_CURL_BODY:-[]}"
+log="${NWP_FAKE_CURL_LOG:-}"
+
+# Record argv BEFORE parsing, verbatim, so a credential-in-argv assertion sees
+# exactly what the kernel would have shown `ps`.
+[ -n "${NWP_FAKE_CURL_ARGV_LOG:-}" ] && printf '%s\n' "$*" >> "$NWP_FAKE_CURL_ARGV_LOG"
+
+max_time=""      # seconds the caller is willing to wait in total
+out_file=""      # -o / output =
+write_out=""     # -w / write-out =
+url=""
+
+# --- parse a curl -K config file (the 0600-token pattern NWP uses) -----------
+parse_config() {
+    local cfg="$1" key val line
+    [ -r "$cfg" ] || return 0
+    while IFS= read -r line; do
+        line="${line#"${line%%[![:space:]]*}"}"          # ltrim
+        case "$line" in ''|'#'*) continue ;; esac
+        key="${line%%=*}"; val="${line#*=}"
+        if [ "$key" = "$line" ]; then key="$line"; val=""; fi
+        key="${key%"${key##*[![:space:]]}"}"             # rtrim key
+        val="${val#"${val%%[![:space:]]*}"}"             # ltrim val
+        val="${val%\"}"; val="${val#\"}"                 # strip quotes
+        case "$key" in
+            max-time)  max_time="$val" ;;
+            output)    out_file="$val" ;;
+            write-out) write_out="$val" ;;
+            url)       url="$val" ;;
+        esac
+    done < "$cfg"
+}
+
+# --- parse argv --------------------------------------------------------------
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --max-time)       max_time="${2:-}"; shift 2 ;;
+        --max-time=*)     max_time="${1#--max-time=}"; shift ;;
+        --connect-timeout)   shift 2 ;;
+        --connect-timeout=*) shift ;;
+        -K|--config)      parse_config "${2:-}"; shift 2 ;;
+        -o|--output)      out_file="${2:-}"; shift 2 ;;
+        -w|--write-out)   write_out="${2:-}"; shift 2 ;;
+        -H|--header|--request|-X|--data|-d|-u)  shift 2 ;;
+        -*)               shift ;;
+        *)                url="$1"; shift ;;
+    esac
+done
+
+[ -n "$log" ] && printf '%s\tmax_time=%s\n' "${url:-?}" "${max_time:-NONE}" >> "$log"
+
+emit() {  # $1 = payload, $2 = write-out substitution for %{http_code}
+    local payload="$1" code="$2"
+    if [ -n "$out_file" ]; then printf '%s' "$payload" > "$out_file"
+    else printf '%s' "$payload"; fi
+    if [ -n "$write_out" ]; then
+        printf '%s' "${write_out//'%{http_code}'/$code}" | sed 's/\\n/\n/g'
+    fi
+}
+
+# --- simulate ----------------------------------------------------------------
+# awk, not bash arithmetic: latency/max-time may be fractional.
+blocked=$(awk -v l="$latency" -v m="${max_time:-}" 'BEGIN{
+    if (m == "" ) { print l; exit }        # unbounded caller: waits the full latency
+    print (m+0 < l+0) ? m+0 : l+0
+}')
+timed_out=$(awk -v l="$latency" -v m="${max_time:-}" 'BEGIN{
+    print (m != "" && m+0 < l+0) ? 1 : 0
+}')
+
+awk -v s="$blocked" 'BEGIN{ if (s+0 > 0) system("sleep " s) }'
+
+# A forced status wins over the latency model: it is how a test says "the server
+# answered, and the answer was 401" as opposed to "nobody answered".
+if [ -n "${NWP_FAKE_CURL_RC:-}" ] && [ "${NWP_FAKE_CURL_RC}" != "0" ]; then
+    emit "" "$([ "$NWP_FAKE_CURL_RC" = 22 ] && echo 401 || echo 000)"
+    exit "$NWP_FAKE_CURL_RC"
+fi
+
+if [ "$timed_out" = "1" ]; then
+    # Real curl writes nothing useful and exits 28 on --max-time expiry. With -w
+    # it still prints the write-out, with %{http_code} as 000.
+    emit "" "000"
+    exit 28
+fi
+
+emit "$body" "200"
+exit 0
